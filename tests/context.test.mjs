@@ -21,7 +21,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
-import { loadContext, resolveContextDir, resolveProjectRoot } from '../skill/scripts/context.mjs';
+import { loadContext, resolveContextDir, resolveProjectRoot, extractRegister, extractPlatform } from '../skill/scripts/context.mjs';
 
 import { fileURLToPath } from 'node:url';
 const SCRIPT_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'skill', 'scripts', 'context.mjs');
@@ -278,11 +278,12 @@ describe('loadContext (monorepo project context)', () => {
 
   it('does not reuse stale project resolution after workspace markers change', () => {
     write('PRODUCT.md', '# Root product\n');
-    write('apps/dashboard/PRODUCT.md', '# Dashboard product\n');
+    write('apps/dashboard/package.json', JSON.stringify({ name: 'dashboard' }, null, 2));
     write('apps/dashboard/src/App.jsx', 'export default null;\n');
 
     const before = loadContext(scratch, { targetPath: 'apps/dashboard/src/App.jsx' });
     assert.equal(before.projectRoot, scratch);
+    assert.equal(before.isMonorepo, false);
     assert.match(before.product, /Root product/);
 
     write('package.json', JSON.stringify({
@@ -292,7 +293,77 @@ describe('loadContext (monorepo project context)', () => {
 
     const after = loadContext(scratch, { targetPath: 'apps/dashboard/src/App.jsx' });
     assert.equal(after.projectRoot, path.join(scratch, 'apps', 'dashboard'));
-    assert.match(after.product, /Dashboard product/);
+    assert.equal(after.isMonorepo, true);
+    assert.match(after.product, /Root product/);
+  });
+
+  it('resolves an explicit target onto a nested product context in a non-monorepo repo', () => {
+    write('nested/product/PRODUCT.md', '# Nested product\n');
+    write('nested/product/DESIGN.md', '# Nested design\n');
+    write('nested/product/file.ts', 'export const x = 1;\n');
+
+    const ctx = loadContext(scratch, { targetPath: 'nested/product/file.ts' });
+    assert.equal(ctx.isMonorepo, false);
+    assert.equal(ctx.projectRoot, path.join(scratch, 'nested', 'product'));
+    assert.equal(ctx.repoRoot, scratch);
+    assert.match(ctx.product, /Nested product/);
+    assert.match(ctx.design, /Nested design/);
+    assert.equal(ctx.productPath, path.join('nested', 'product', 'PRODUCT.md'));
+    assert.equal(ctx.designPath, path.join('nested', 'product', 'DESIGN.md'));
+  });
+
+  it('resolves a nested target whose context lives in .agents/context/', () => {
+    write('nested/product/.agents/context/PRODUCT.md', '# Nested product\n');
+    write('nested/product/file.ts', 'export const x = 1;\n');
+
+    const ctx = loadContext(scratch, { targetPath: 'nested/product/file.ts' });
+    assert.equal(ctx.isMonorepo, false);
+    assert.equal(ctx.projectRoot, path.join(scratch, 'nested', 'product'));
+    assert.match(ctx.product, /Nested product/);
+    assert.equal(ctx.productPath, path.join('nested', 'product', '.agents', 'context', 'PRODUCT.md'));
+  });
+
+  it('resolves a nested target whose context lives in docs/', () => {
+    write('nested/product/docs/DESIGN.md', '# Nested design\n');
+    write('nested/product/file.ts', 'export const x = 1;\n');
+
+    const ctx = loadContext(scratch, { targetPath: 'nested/product/file.ts' });
+    assert.equal(ctx.isMonorepo, false);
+    assert.equal(ctx.projectRoot, path.join(scratch, 'nested', 'product'));
+    assert.match(ctx.design, /Nested design/);
+    assert.equal(ctx.designPath, path.join('nested', 'product', 'docs', 'DESIGN.md'));
+  });
+
+  it('does not treat the root fallback context dirs as a nested product', () => {
+    write('.agents/context/PRODUCT.md', '# Root product\n');
+    write('.agents/context/notes/file.md', '# Notes\n');
+
+    const ctx = loadContext(scratch, { targetPath: '.agents/context/notes/file.md' });
+    assert.equal(ctx.projectRoot, scratch);
+    assert.match(ctx.product, /Root product/);
+  });
+
+  it('inherits missing root context per-file for a nested target in a non-monorepo repo', () => {
+    write('DESIGN.md', '# Root design\n');
+    write('nested/product/PRODUCT.md', '# Nested product\n');
+    write('nested/product/file.ts', 'export const x = 1;\n');
+
+    const ctx = loadContext(scratch, { targetPath: 'nested/product/file.ts' });
+    assert.equal(ctx.projectRoot, path.join(scratch, 'nested', 'product'));
+    assert.match(ctx.product, /Nested product/);
+    assert.match(ctx.design, /Root design/);
+    assert.equal(ctx.designPath, 'DESIGN.md');
+  });
+
+  it('keeps the repo root project for targets without nearby context files', () => {
+    write('PRODUCT.md', '# Root product\n');
+    write('src/App.jsx', 'export default null;\n');
+
+    const ctx = loadContext(scratch, { targetPath: 'src/App.jsx' });
+    assert.equal(ctx.isMonorepo, false);
+    assert.equal(ctx.projectRoot, scratch);
+    assert.match(ctx.product, /Root product/);
+    assert.equal(ctx.productPath, 'PRODUCT.md');
   });
 
   it('does not escape a nested git repo to an ancestor workspace', () => {
@@ -730,6 +801,65 @@ describe('loadContext (IMPECCABLE_CONTEXT_DIR escape hatch)', () => {
   });
 });
 
+describe('extractPlatform', () => {
+  it('returns null when the product is empty or platform-less', () => {
+    assert.equal(extractPlatform(null), null);
+    assert.equal(extractPlatform('# P\n\nno platform here\n'), null);
+  });
+
+  it('reads web / ios / android / adaptive case-insensitively', () => {
+    assert.equal(extractPlatform('## Platform\n\nweb\n'), 'web');
+    assert.equal(extractPlatform('## Platform\n\nios\n'), 'ios');
+    assert.equal(extractPlatform('## platform\n\nANDROID\n'), 'android');
+    assert.equal(extractPlatform('## Platform\n\nAdaptive\n'), 'adaptive');
+  });
+
+  it('reads a line naming both native targets as adaptive', () => {
+    assert.equal(extractPlatform('## Platform\n\nios, android\n'), 'adaptive');
+    assert.equal(extractPlatform('## Platform\n\nandroid and ios\n'), 'adaptive');
+    assert.equal(extractPlatform('## Platform\n\nios/android\n'), 'adaptive');
+  });
+
+  it('does not read prose mentioning both targets as adaptive', () => {
+    // Negations and explanations must fall through to the unrecognized-value
+    // warning, never silently classify as cross-platform native.
+    assert.equal(extractPlatform('## Platform\n\nweb only, not ios or android\n'), null);
+    assert.equal(extractPlatform('## Platform\n\nios first, android later this year\n'), null);
+  });
+
+  it('returns null for an unrecognized value', () => {
+    assert.equal(extractPlatform('## Platform\n\ndesktop\n'), null);
+    assert.equal(extractPlatform('## Platform\n\nflutter\n'), null);
+  });
+
+  it('ignores a near-miss heading and reads the real one', () => {
+    // `## Platform notes` must not be mistaken for the `## Platform` field.
+    const product = '## Platform notes\n\nsome prose here\n\n## Platform\n\nios\n';
+    assert.equal(extractPlatform(product), 'ios');
+    // Same precision for the register heading.
+    const reg = '## Register guidelines\n\nblah\n\n## Register\n\nbrand\n';
+    assert.equal(extractRegister(reg), 'brand');
+  });
+
+  it('reads the first non-empty line after the heading', () => {
+    assert.equal(extractPlatform('## Platform\n\n\nios\n'), 'ios');
+  });
+
+  it('treats an empty section followed by another heading as absent', () => {
+    // An empty `## Platform` must not swallow the next heading as its value
+    // (which would surface a nonsense "value `## Product Purpose` is not
+    // recognized" warning from the CLI).
+    assert.equal(extractPlatform('## Platform\n\n## Product Purpose\n\nAn app.\n'), null);
+    assert.equal(extractRegister('## Register\n\n## Users\n\nAnglers.\n'), null);
+  });
+
+  it('is independent of the register field', () => {
+    const product = '# P\n\n## Register\n\nproduct\n\n## Platform\n\nandroid\n';
+    assert.equal(extractRegister(product), 'product');
+    assert.equal(extractPlatform(product), 'android');
+  });
+});
+
 describe('context.mjs CLI', () => {
   it('emits NO_PRODUCT_MD directive when no PRODUCT.md is found', async () => {
     const { spawnSync } = await import('node:child_process');
@@ -789,6 +919,64 @@ describe('context.mjs CLI', () => {
     assert.match(res.stdout, /NEXT STEP: You MUST now read the matching register reference/);
     assert.match(res.stdout, /reference\/brand\.md.*reference\/product\.md/);
   });
+
+  it('appends a native platform directive for an ios project', async () => {
+    write('PRODUCT.md', '# Acme\n\n## Register\n\nproduct\n\n## Platform\n\nios\n');
+    const { spawnSync } = await import('node:child_process');
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
+    assert.equal(res.status, 0);
+    assert.match(res.stdout, /This project targets `ios`\./);
+    assert.match(res.stdout, /read `reference\/ios\.md`/);
+  });
+
+  it('appends both native directives for an adaptive project', async () => {
+    write('PRODUCT.md', '# Acme\n\n## Register\n\nproduct\n\n## Platform\n\nadaptive\n');
+    const { spawnSync } = await import('node:child_process');
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
+    assert.equal(res.status, 0);
+    assert.match(res.stdout, /targets `adaptive` \(both iOS and Android\)/);
+    assert.match(res.stdout, /reference\/ios\.md` and `reference\/android\.md`/);
+  });
+
+  it('appends no native platform directive for a web project', async () => {
+    write('PRODUCT.md', '# Acme\n\n## Register\n\nproduct\n\n## Platform\n\nweb\n');
+    const { spawnSync } = await import('node:child_process');
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
+    assert.equal(res.status, 0);
+    assert.equal(res.stdout.includes('This project targets'), false);
+    assert.equal(res.stdout.includes('reference/ios.md'), false);
+  });
+
+  it('appends a native platform directive for an android project', async () => {
+    write('PRODUCT.md', '# Acme\n\n## Register\n\nproduct\n\n## Platform\n\nandroid\n');
+    const { spawnSync } = await import('node:child_process');
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
+    assert.equal(res.status, 0);
+    assert.match(res.stdout, /This project targets `android`\./);
+    assert.match(res.stdout, /read `reference\/android\.md`/);
+  });
+
+  it('warns on an unrecognized platform value instead of silently defaulting to web', async () => {
+    // The likeliest misconfiguration is a toolchain name where the target
+    // belongs. Silent fallback to web would give web guidance to the exact
+    // projects that tried to declare themselves native.
+    write('PRODUCT.md', '# Acme\n\n## Register\n\nproduct\n\n## Platform\n\nflutter\n');
+    const { spawnSync } = await import('node:child_process');
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
+    assert.equal(res.status, 0);
+    assert.match(res.stdout, /WARNING: PRODUCT\.md's `## Platform` value `flutter` is not recognized/);
+    assert.match(res.stdout, /treating the project as `web`/);
+    assert.equal(res.stdout.includes('This project targets'), false);
+  });
+
+  it('emits no warning for an empty Platform section', async () => {
+    write('PRODUCT.md', '# Acme\n\n## Register\n\nproduct\n\n## Platform\n\n## Users\n\nAnglers.\n');
+    const { spawnSync } = await import('node:child_process');
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
+    assert.equal(res.status, 0);
+    assert.equal(res.stdout.includes('WARNING: PRODUCT.md'), false);
+    assert.equal(res.stdout.includes('This project targets'), false);
+  });
 });
 
 describe('context.mjs update check', () => {
@@ -808,6 +996,9 @@ describe('context.mjs update check', () => {
     const targetArgsDest = path.join(path.dirname(skillScript), 'lib', 'target-args.mjs');
     fs.mkdirSync(path.dirname(targetArgsDest), { recursive: true });
     fs.copyFileSync(targetArgsSrc, targetArgsDest);
+    const providerSrc = path.join(path.dirname(SCRIPT_PATH), 'lib', 'provider.mjs');
+    const providerDest = path.join(path.dirname(skillScript), 'lib', 'provider.mjs');
+    fs.copyFileSync(providerSrc, providerDest);
     fs.writeFileSync(
       path.join(scratch, 'skill', 'SKILL.md'),
       `---\nname: impeccable\nversion: ${LOCAL_VERSION}\n---\n\nbody\n`,

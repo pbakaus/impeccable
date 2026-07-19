@@ -9,6 +9,8 @@ const DESIGN_NAMES = ['DESIGN.md', 'Design.md', 'design.md'];
 const FALLBACK_DIRS = ['.agents/context', 'docs'];
 const COLOR_CHANNEL_TOLERANCE = 6;
 const RADIUS_TOLERANCE_PX = 0.5;
+const FONT_SIZE_TOLERANCE_PX = 0.5;
+const FONT_SIZE_LITERAL_RE = /^-?[\d.]+(?:px|rem)$/;
 
 const CSS_COLOR_RE = /#[0-9a-f]{3,8}\b|rgba?\([^)]+\)|oklch\([^)]+\)|hsla?\([^)]+\)/gi;
 const FONT_DECL_RE = /font-family\s*:\s*([^;}\n]+)/gi;
@@ -16,6 +18,9 @@ const FONT_JS_RE = /fontFamily\s*[:=]\s*["'`]([^"'`]+)["'`]/g;
 const GOOGLE_FONT_RE = /fonts\.googleapis\.com\/css2?\?[^"'\s)<>]*/gi;
 const BORDER_RADIUS_RE = /border-radius\s*:\s*([^;}\n]+)/gi;
 const BORDER_RADIUS_JS_RE = /borderRadius\s*[:=]\s*["'`]([^"'`]+)["'`]/g;
+const FONT_SIZE_DECL_RE = /font-size\s*:\s*([^;}\n]+)/gi;
+const FONT_SIZE_JS_RE = /fontSize\s*[:=]\s*["'`]([^"'`]+)["'`]/g;
+const TAILWIND_FONT_SIZE_RE = /\btext-\[(-?[\d.]+(?:px|rem))\]/g;
 const STATIC_DESIGN_SKIP_TAGS = new Set(['head', 'title', 'meta', 'link', 'style', 'script', 'noscript', 'template', 'source']);
 
 function firstExisting(dir, names) {
@@ -283,6 +288,18 @@ function addTypographyFonts(out, typography) {
   }
 }
 
+function addTypographySizes(out, typography) {
+  if (!typography || typeof typography !== 'object') return;
+  for (const role of Object.values(typography)) {
+    if (!role || typeof role !== 'object') continue;
+    const raw = String(role.fontSize ?? '').trim().toLowerCase();
+    if (!FONT_SIZE_LITERAL_RE.test(raw)) continue;
+    const px = resolveLengthPx(raw, 16);
+    if (px == null || !Number.isFinite(px) || px <= 0) continue;
+    out.allowedFontSizes.push({ value: raw, px });
+  }
+}
+
 function addRoundedScale(out, rounded) {
   if (!rounded || typeof rounded !== 'object') return;
   for (const [rawName, value] of Object.entries(rounded)) {
@@ -340,10 +357,12 @@ function normalizeDesignSystem(input = {}) {
     allowedFonts: new Set(),
     allowedColorKeys: new Map(),
     allowedRadii: [],
+    allowedFontSizes: [],
     hasPillRadius: false,
   };
 
   addTypographyFonts(out, frontmatter.typography);
+  addTypographySizes(out, frontmatter.typography);
   addColorObject(out, frontmatter.colors);
   addSidecarColors(out, sidecar);
   addRoundedScale(out, frontmatter.rounded);
@@ -352,6 +371,7 @@ function normalizeDesignSystem(input = {}) {
   out.hasFonts = out.allowedFonts.size > 0;
   out.hasColors = out.allowedColorKeys.size > 0;
   out.hasRadii = out.allowedRadii.length > 0;
+  out.hasFontSizes = out.allowedFontSizes.length > 0;
   return out;
 }
 
@@ -416,6 +436,17 @@ function isAllowedRadiusRaw(raw, designSystem) {
   if (px == null || !Number.isFinite(px) || px <= RADIUS_TOLERANCE_PX) return true;
   if (designSystem.hasPillRadius && px >= 99) return true;
   return designSystem.allowedRadii.some(entry => Math.abs(entry.px - px) <= RADIUS_TOLERANCE_PX);
+}
+
+function isAllowedFontSizeRaw(raw, designSystem) {
+  if (!designSystem?.hasFontSizes) return true;
+  const text = String(raw || '').trim().toLowerCase().replace(/\s*!important\s*$/, '');
+  if (!FONT_SIZE_LITERAL_RE.test(text)) return true;
+  const px = resolveLengthPx(text, 16);
+  if (px == null || !Number.isFinite(px) || px <= 0) return true;
+  return designSystem.allowedFontSizes.some(
+    entry => Math.abs(entry.px - px) <= FONT_SIZE_TOLERANCE_PX,
+  );
 }
 
 function lineLooksCommented(line) {
@@ -509,6 +540,18 @@ function checkRadiusValue(value, filePath, line, designSystem, context) {
   return findings;
 }
 
+function checkFontSizeValue(value, filePath, line, designSystem, context) {
+  const token = String(value || '').trim();
+  if (isAllowedFontSizeRaw(token, designSystem)) return [];
+  return [makeDesignFinding(
+    'design-system-font-size',
+    filePath,
+    `${context}: ${token} is off the DESIGN.md type ramp`,
+    line,
+    { ignoreValue: token },
+  )];
+}
+
 function checkSourceDesignSystem(content, filePath, options = {}) {
   const designSystem = options.designSystem;
   if (!designSystem?.present) return [];
@@ -567,6 +610,18 @@ function checkSourceDesignSystem(content, filePath, options = {}) {
         findings.push(...checkRadiusValue(match[1], filePath, lineNum, designSystem, 'borderRadius'));
       }
     }
+
+    if (designSystem.hasFontSizes) {
+      for (const match of line.matchAll(FONT_SIZE_DECL_RE)) {
+        findings.push(...checkFontSizeValue(match[1], filePath, lineNum, designSystem, 'font-size'));
+      }
+      for (const match of line.matchAll(FONT_SIZE_JS_RE)) {
+        findings.push(...checkFontSizeValue(match[1], filePath, lineNum, designSystem, 'fontSize'));
+      }
+      for (const match of line.matchAll(TAILWIND_FONT_SIZE_RE)) {
+        findings.push(...checkFontSizeValue(match[1], filePath, lineNum, designSystem, 'text-[…] class'));
+      }
+    }
   }
 
   return dedupeDesignFindings(findings);
@@ -581,6 +636,8 @@ function sampleText(el) {
   return text ? ` "${text.slice(0, 40)}"` : '';
 }
 
+// Font-size design-system checks are source-scan-only (see checkSourceDesignSystem).
+// Computed font-size cascades and clamp() ramps resolve to off-ramp px in the browser.
 function collectStaticDesignSystemFindings(document, window, filePath, designSystem) {
   if (!designSystem?.present) return [];
   const findings = [];
@@ -698,6 +755,12 @@ function canonicalDesignFindingKey(item) {
     const label = String(value || '').trim().toLowerCase();
     return label ? `${item.antipattern}:radius:${label}` : null;
   }
+  if (item.antipattern === 'design-system-font-size') {
+    const px = resolveLengthPx(String(value || '').trim(), 16);
+    if (px != null && Number.isFinite(px)) return `${item.antipattern}:font-size:${Math.round(px * 100) / 100}`;
+    const label = String(value || '').trim().toLowerCase();
+    return label ? `${item.antipattern}:font-size:${label}` : null;
+  }
   return null;
 }
 
@@ -744,6 +807,7 @@ export {
   isAllowedFont,
   isAllowedColorRaw,
   isAllowedRadiusRaw,
+  isAllowedFontSizeRaw,
   checkSourceDesignSystem,
   collectStaticDesignSystemFindings,
   mergeDesignSystemFindings,

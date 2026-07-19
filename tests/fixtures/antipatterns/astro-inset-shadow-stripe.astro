@@ -1,0 +1,100 @@
+---
+const title = 'Astro inset shadow stripe regression';
+---
+
+<main>
+  <h1>{title}</h1>
+  <section aria-labelledby="should-flag">
+    <h2 id="should-flag">Should flag</h2>
+    <article data-case="Kinpaku Edge"><h3>Kinpaku Edge</h3></article>
+    <article data-case="Patina Edge"><h3>Patina Edge</h3></article>
+    <article data-case="Accent Edge"><h3>Accent Edge</h3></article>
+    <article data-case="Signal Blue Edge"><h3>Signal Blue Edge</h3></article>
+    <article data-case="Chromatic Hex Edge"><h3>Chromatic Hex Edge</h3></article>
+    <article data-case="Named Red Edge"><h3>Named Red Edge</h3></article>
+    <article data-case="Chromatic Rgb Edge"><h3>Chromatic Rgb Edge</h3></article>
+    <article data-case="Chromatic Oklch Edge"><h3>Chromatic Oklch Edge</h3></article>
+    <article data-case="Trailing Inset Edge"><h3>Trailing Inset Edge</h3></article>
+    <article data-case="Trailing Inset Token Edge"><h3>Trailing Inset Token Edge</h3></article>
+    <article data-case="Inset Named Token Edge"><h3>Inset Named Token Edge</h3></article>
+    <article data-case="Two Length Edge"><h3>Two Length Edge</h3></article>
+    <article data-case="Two Length Trailing Inset Edge"><h3>Two Length Trailing Inset Edge</h3></article>
+  </section>
+  <section aria-labelledby="should-pass">
+    <h2 id="should-pass">Should pass</h2>
+    <article data-case="Neutral Shadow Token"><h3>Neutral Shadow Token</h3></article>
+    <article data-case="Current Color Edge"><h3>Current Color Edge</h3></article>
+    <article data-case="Selected State Edge" aria-current="page"><h3>Selected State Edge</h3></article>
+    <article data-case="Hairline Edge"><h3>Hairline Edge</h3></article>
+    <article data-case="Thick Fill Edge"><h3>Thick Fill Edge</h3></article>
+    <article data-case="Blurred Edge"><h3>Blurred Edge</h3></article>
+    <article data-case="Narrow Artwork"><h3>Narrow Artwork</h3></article>
+    <article data-case="Black Hex Edge"><h3>Black Hex Edge</h3></article>
+    <article data-case="Black Named Edge"><h3>Black Named Edge</h3></article>
+    <article data-case="Gray Hex Edge"><h3>Gray Hex Edge</h3></article>
+    <article data-case="Dimgray Named Edge"><h3>Dimgray Named Edge</h3></article>
+    <article data-case="Black Rgb Edge"><h3>Black Rgb Edge</h3></article>
+    <article data-case="Shorthand Neutral Hex Edge"><h3>Shorthand Neutral Hex Edge</h3></article>
+    <article data-case="Commented Out Edge"><h3>Commented Out Edge</h3></article>
+    <article data-case="Trailing Inset Neutral Edge"><h3>Trailing Inset Neutral Edge</h3></article>
+    <article data-case="Important Edge"><h3>Important Edge</h3></article>
+    <article data-case="Cascade Override Edge"><h3>Cascade Override Edge</h3></article>
+    <article data-case="Cascade Cancelled Edge"><h3>Cascade Cancelled Edge</h3></article>
+    <article data-case="Color First Edge"><h3>Color First Edge</h3></article>
+    <article data-case="Color First Var Edge"><h3>Color First Var Edge</h3></article>
+    <article data-case="Two Length Neutral Edge"><h3>Two Length Neutral Edge</h3></article>
+    <article data-case="Space Rgb Neutral Edge"><h3>Space Rgb Neutral Edge</h3></article>
+    <article data-case="Two Length Blurred Edge"><h3>Two Length Blurred Edge</h3></article>
+  </section>
+</main>
+
+<style is:inline>
+  [data-case="Kinpaku Edge"] { box-shadow: inset 3px 0 0 var(--ks-kinpaku-deep); }
+  [data-case="Patina Edge"] { box-shadow: inset 3px 0 0 var(--ks-patina-deep); }
+  [data-case="Accent Edge"] { box-shadow: inset -4px 0 0 var(--brand-accent); }
+  [data-case="Signal Blue Edge"] { box-shadow: inset 0 5px 0 var(--signal-blue); }
+  [data-case="Neutral Shadow Token"] { box-shadow: inset 3px 0 0 var(--shadow-color); }
+  [data-case="Current Color Edge"] { box-shadow: inset 3px 0 0 currentColor; }
+  [data-case="Selected State Edge"][aria-current="page"] { box-shadow: inset 3px 0 0 var(--brand-accent); }
+  [data-case="Hairline Edge"] { box-shadow: inset 2px 0 0 var(--brand-accent); }
+  [data-case="Thick Fill Edge"] { box-shadow: inset 14px 0 0 var(--brand-accent); }
+  [data-case="Blurred Edge"] { box-shadow: inset 3px 0 5px var(--brand-accent); }
+  [data-case="Narrow Artwork"] { width: 24px; box-shadow: inset 3px 0 0 var(--brand-accent); }
+
+  /* Literal colors: authored CSS spells neutrals as hex and keywords, not as
+     the computed rgb()/oklch() forms a browser emits. */
+  [data-case="Chromatic Hex Edge"] { box-shadow: inset 4px 0 0 #6366f1; }
+  [data-case="Named Red Edge"] { box-shadow: inset 4px 0 0 red; }
+  [data-case="Chromatic Rgb Edge"] { box-shadow: inset 4px 0 0 rgb(99, 102, 241); }
+  [data-case="Chromatic Oklch Edge"] { box-shadow: inset 4px 0 0 oklch(65% 0.18 250); }
+  [data-case="Black Hex Edge"] { box-shadow: inset 4px 0 0 #000; }
+  [data-case="Black Named Edge"] { box-shadow: inset 4px 0 0 black; }
+  [data-case="Gray Hex Edge"] { box-shadow: inset 4px 0 0 #e5e7eb; }
+  [data-case="Dimgray Named Edge"] { box-shadow: inset 4px 0 0 dimgray; }
+  [data-case="Black Rgb Edge"] { box-shadow: inset 4px 0 0 rgb(0, 0, 0); }
+  [data-case="Shorthand Neutral Hex Edge"] { box-shadow: inset 4px 0 0 #1118; }
+
+  /* `inset` is order-independent per spec; these paint the same stripe as above. */
+  [data-case="Trailing Inset Edge"] { box-shadow: 4px 0 0 #6366f1 inset; }
+  [data-case="Trailing Inset Token Edge"] { box-shadow: 4px 0 0 var(--brand-accent) inset; }
+  /* The keyword must only be stripped standalone: this token merely contains it. */
+  [data-case="Inset Named Token Edge"] { box-shadow: inset 4px 0 0 var(--inset-accent); }
+  [data-case="Trailing Inset Neutral Edge"] { box-shadow: 4px 0 0 #000 inset; }
+
+  /* box-shadow takes <length>{2,4}: blur and spread are optional and default to
+     0, so these paint the same stripe as the four-length forms above. */
+  [data-case="Two Length Edge"] { box-shadow: inset 4px 0 var(--brand-accent); }
+  [data-case="Two Length Trailing Inset Edge"] { box-shadow: 0 5px #6366f1 inset; }
+  [data-case="Important Edge"] { box-shadow: inset 4px 0 var(--brand-accent) !important; }
+  [data-case="Cascade Override Edge"] { box-shadow: none; box-shadow: inset 4px 0 red; }
+  [data-case="Cascade Cancelled Edge"] { box-shadow: inset 4px 0 red; box-shadow: none; }
+  [data-case="Color First Edge"] { box-shadow: red 4px 0 inset; }
+  [data-case="Color First Var Edge"] { box-shadow: var(--brand-accent) 4px 0 0 inset; }
+  [data-case="Two Length Neutral Edge"] { box-shadow: inset 4px 0 #000; }
+  [data-case="Space Rgb Neutral Edge"] { box-shadow: inset 4px 0 rgb(0 0 0); }
+  [data-case="Two Length Blurred Edge"] { box-shadow: inset 4px 0 5px var(--brand-accent); }
+
+  /* Commented-out rules are not live CSS.
+  [data-case="Commented Out Edge"] { box-shadow: inset 4px 0 0 var(--brand-accent); }
+  */
+</style>

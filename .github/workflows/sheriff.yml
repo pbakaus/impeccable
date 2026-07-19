@@ -1,0 +1,52 @@
+name: PR Sheriff
+
+on:
+  schedule:
+    # Daily UTC afternoon pass. The script uses an aggressive 7/14 day window:
+    # warn contributor-blocked PRs after 7 days open, close after 14.
+    - cron: "17 15 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Print planned changes without mutating GitHub"
+        type: boolean
+        default: false
+
+permissions:
+  actions: read
+  checks: read
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: pr-sheriff
+  cancel-in-progress: false
+
+jobs:
+  sheriff:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Run sheriff
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mode="--apply"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+            mode="--dry-run"
+          fi
+
+          node scripts/github/sheriff.mjs "$mode" \
+            --repo "$GITHUB_REPOSITORY" \
+            --warning-days 7 \
+            --close-days 14 \
+            --maintainers "pbakaus" \
+            --regular-contributors "pbakaus,abdulwahabone"

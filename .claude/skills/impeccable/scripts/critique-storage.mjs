@@ -2,11 +2,11 @@
 /**
  * Critique persistence helper.
  *
- * Each run of /impeccable critique writes a per-target snapshot to
+ * Each critique run writes a per-target snapshot to
  *   .impeccable/critique/<timestamp>__<slug>.md
  * with a small YAML frontmatter carrying the score + P0/P1 counts.
  *
- * /impeccable polish reads the latest matching snapshot at start as its
+ * The polish workflow reads the latest matching snapshot at start as its
  * fix backlog. No other skill auto-reads critique output.
  *
  * The slug is derived mechanically from the *resolved* primary artifact

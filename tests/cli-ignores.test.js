@@ -27,6 +27,16 @@ describe('impeccable ignores CLI', () => {
     return result;
   }
 
+  function detect(args, options = {}) {
+    const result = spawnSync(process.execPath, [CLI, 'detect', '--json', ...args], {
+      cwd: root,
+      encoding: 'utf-8',
+      ...options,
+    });
+    if (result.error) throw result.error;
+    return result;
+  }
+
   function readConfig(name = 'config.json') {
     return JSON.parse(readFileSync(join(root, '.impeccable', name), 'utf-8'));
   }
@@ -63,6 +73,39 @@ describe('impeccable ignores CLI', () => {
     expect(run(['remove-value', 'design-system-color', '*', '--file', 'site/styles/demo.css']).status).toBe(0);
     raw = readConfig();
     expect(raw.detector.ignoreValues).toEqual([]);
+  });
+
+  test('file-scoped wildcard value ignores suppress non-value-bearing rules only in matching files', () => {
+    mkdirSync(join(root, 'components'), { recursive: true });
+    const triangle = [
+      'export function TopicCard() {',
+      '  return (',
+      '    <div style={{',
+      '      width: 0, height: 0,',
+      "      borderLeft: '7px solid transparent',",
+      "      borderRight: '7px solid transparent',",
+      "      borderTop: '7px solid #fff',",
+      '    }} />',
+      '  );',
+      '}',
+      '',
+    ].join('\n');
+    writeFileSync(join(root, 'components', 'TopicCard.jsx'), triangle);
+    writeFileSync(join(root, 'components', 'Other.jsx'), triangle.replace('TopicCard', 'Other'));
+
+    const before = detect(['components/TopicCard.jsx']);
+    expect(before.status).toBe(2);
+    expect(before.stdout).toContain('side-tab');
+
+    expect(run(['add-value', 'side-tab', '*', '--file', '**/TopicCard.jsx']).status).toBe(0);
+
+    const afterTarget = detect(['components/TopicCard.jsx']);
+    expect(afterTarget.status).toBe(0);
+    expect(afterTarget.stdout.trim()).toBe('[]');
+
+    const afterOther = detect(['components/Other.jsx']);
+    expect(afterOther.status).toBe(2);
+    expect(afterOther.stdout).toContain('side-tab');
   });
 
   test('rejects broad wildcard value ignores', () => {

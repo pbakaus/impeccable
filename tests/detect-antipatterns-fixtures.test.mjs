@@ -6,6 +6,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import {
@@ -16,6 +17,72 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURES = path.join(__dirname, 'fixtures', 'antipatterns');
+
+describe('detectText - Astro structural CSS fixtures', () => {
+  const SHOULD_FLAG = [
+    'Kinpaku Edge',
+    'Patina Edge',
+    'Accent Edge',
+    'Signal Blue Edge',
+    'Chromatic Hex Edge',
+    'Named Red Edge',
+    'Chromatic Rgb Edge',
+    'Chromatic Oklch Edge',
+    // `inset` may follow the offsets/color. Requiring it first missed the same
+    // stripe written the other legal way.
+    'Trailing Inset Edge',
+    'Trailing Inset Token Edge',
+    'Inset Named Token Edge',
+    // Only the two offsets are required; blur/spread default to 0.
+    'Two Length Edge',
+    'Important Edge',
+    'Cascade Override Edge',
+    'Color First Edge',
+    'Color First Var Edge',
+    'Two Length Trailing Inset Edge',
+  ];
+  const SHOULD_PASS = [
+    'Neutral Shadow Token',
+    'Current Color Edge',
+    'Selected State Edge',
+    'Hairline Edge',
+    'Thick Fill Edge',
+    'Blurred Edge',
+    'Narrow Artwork',
+    // Authored CSS spells neutrals as hex and keywords. isNeutralColor only
+    // parses the computed function forms and reports everything else as
+    // chromatic, so routing these through it flagged plain black and gray
+    // hairlines as the "colored stripe" AI tell.
+    'Black Hex Edge',
+    'Black Named Edge',
+    'Gray Hex Edge',
+    'Dimgray Named Edge',
+    'Black Rgb Edge',
+    'Shorthand Neutral Hex Edge',
+    // Commented-out CSS is not a live rule.
+    'Commented Out Edge',
+    // Trailing `inset` still respects the neutral-color exemption.
+    'Trailing Inset Neutral Edge',
+    // The short form still respects the neutral and blur exclusions.
+    'Two Length Neutral Edge',
+    'Space Rgb Neutral Edge',
+    'Cascade Cancelled Edge',
+    'Two Length Blurred Edge',
+  ];
+
+  it('Astro style blocks flag unresolved chromatic inset stripes only', () => {
+    const filePath = path.join(FIXTURES, 'astro-inset-shadow-stripe.astro');
+    const source = fs.readFileSync(filePath, 'utf8');
+    const findings = detectText(source, filePath).filter(r => r.antipattern === 'side-tab');
+    const snippets = findings.map(r => r.snippet || '').join(' | ');
+    for (const heading of SHOULD_FLAG) {
+      assert.match(snippets, new RegExp(`data-case=${JSON.stringify(heading)}`), `expected "${heading}" to flag`);
+    }
+    for (const heading of SHOULD_PASS) {
+      assert.doesNotMatch(snippets, new RegExp(`data-case=${JSON.stringify(heading)}`), `"${heading}" should pass`);
+    }
+  });
+});
 
 describe('detectHtml — static HTML/CSS fixtures', () => {
   it('should-flag: catches border anti-patterns', async () => {
@@ -276,8 +343,9 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
     const designSystem = normalizeDesignSystem({
       frontmatter: {
         typography: {
-          display: { fontFamily: 'Avenir Next, Georgia, serif' },
-          body: { fontFamily: 'IBM Plex Sans, Arial, sans-serif' },
+          display: { fontFamily: 'Avenir Next, Georgia, serif', fontSize: 'clamp(2.5rem, 6vw, 4rem)' },
+          body: { fontFamily: 'IBM Plex Sans, Arial, sans-serif', fontSize: '16px' },
+          label: { fontFamily: 'IBM Plex Sans, Arial, sans-serif', fontSize: '14px' },
         },
         colors: {
           ink: '#241f1a',
@@ -315,6 +383,13 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
       designFindings.some((r) => r.antipattern === 'design-system-font' && /Google Fonts: Poppins/.test(r.snippet || '')),
       'expected source-level Google Fonts usage in HTML to be flagged',
     );
+    assert.ok(
+      designFindings.some((r) => r.antipattern === 'design-system-font-size' && /12\.5px/.test(r.snippet || '')),
+      'expected off-ramp literal font-size to be flagged',
+    );
+    assert.doesNotMatch(snippets, /1rem is off/, 'documented rem step must pass');
+    assert.doesNotMatch(snippets, /1\.2em is off/, 'relative em sizes are abstained on');
+    assert.doesNotMatch(snippets, /16px is off|14px is off/, 'on-ramp sizes must pass');
     assert.doesNotMatch(snippets, /Undocumented color #ff00aa/, 'source and computed color findings should not duplicate');
     assert.doesNotMatch(snippets, /font-family: Poppins/, 'source and computed font findings should not duplicate');
     assert.doesNotMatch(snippets, /border-radius: 18px is outside/, 'source and computed radius findings should not duplicate');
@@ -341,6 +416,8 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
     }
     for (const label of [
       'Pass Display Font',
+      'Pass Rem Font Size',
+      'Pass Relative Font Size',
       'Pass Generic Font',
       'Pass Token Color',
       'Pass Alpha Color',

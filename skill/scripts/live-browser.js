@@ -57,6 +57,7 @@
   const Z = { highlight: 100001, bar: 100005, picker: 100007, toast: 100010 };
   const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)'; // ease-out-quint
   const PREFIX = 'impeccable-live';
+  const IMPECCABLE_COMMAND = (window.__IMPECCABLE_COMMAND_PREFIX__ || '/') + 'impeccable';
   const PICK_CURSOR_STYLE_ID = PREFIX + '-pick-cursor-style';
   const MANUAL_APPLY_STATE_TTL_MS = 15 * 60 * 1000;
   const sessionState = window.__IMPECCABLE_LIVE_SESSION__?.createLiveBrowserSessionState({
@@ -153,6 +154,7 @@
   let scrollLockRaf = null;
   let scrollLockAbort = null;
   const SCROLL_ANCHOR_LOCK_ID = 'impeccable-scroll-anchor-lock';
+  const VARIANT_STATE_STYLE_ID = 'impeccable-variant-state';
 
   // Dedicated key for scroll position - SEPARATE from LS_KEY so that
   // saveSession's state updates don't clobber a carefully-captured scrollY.
@@ -3035,16 +3037,26 @@
   function applyParamValue(variantEl, param, value) {
     if (!variantEl) return;
     const attr = 'data-p-' + param.id;
-    if (param.kind === 'range') {
-      variantEl.style.setProperty('--p-' + param.id, String(value));
-    } else if (param.kind === 'toggle') {
+    if (param.kind === 'toggle') {
       const on = !!value;
-      variantEl.style.setProperty('--p-' + param.id, on ? '1' : '0');
       if (on) variantEl.setAttribute(attr, 'on');
       else variantEl.removeAttribute(attr);
     } else if (param.kind === 'steps') {
       variantEl.setAttribute(attr, String(value));
     }
+    // Svelte component variants are client-mounted into
+    // [data-impeccable-component-mount] with no [data-impeccable-variant="N"]
+    // wrapper for the state stylesheet to target, and the element is not SSR'd,
+    // so there is no React hydration to mismatch. Drive range/toggle --p-* inline
+    // on the mounted element so scoped preview CSS resolves them.
+    if (svelteComponentSession?.sessionId === currentSessionId) {
+      if (param.kind === 'range') variantEl.style.setProperty('--p-' + param.id, String(value));
+      else if (param.kind === 'toggle') variantEl.style.setProperty('--p-' + param.id, value ? '1' : '0');
+      return;
+    }
+    // range/toggle --p-* custom properties are driven through the injected
+    // variant-state stylesheet so we never mutate inline style on SSR'd divs.
+    updateVariantStateStylesheet(currentSessionId, visibleVariant);
   }
 
   function applyParamDefaults(variantEl, params) {
@@ -4714,6 +4726,7 @@
       paramsCurrentValues = {};
       tuneOpen = false;
       hideParamsPanel();
+      if (currentSessionId && visibleVariant) updateVariantStateStylesheet(currentSessionId, visibleVariant);
       return;
     }
     applyParamDefaults(variantEl, params);
@@ -4771,20 +4784,7 @@
 
   function isVariantShown(el) {
     if (!el) return false;
-    if (el.hidden) return false;
-    if (el.style?.display === 'none') return false;
-    return true;
-  }
-
-  function setVariantShown(el, shown) {
-    if (!el) return;
-    if (shown) {
-      el.removeAttribute('hidden');
-      el.style.display = '';
-    } else {
-      el.setAttribute('hidden', '');
-      el.style.display = 'none';
-    }
+    return getComputedStyle(el).display !== 'none';
   }
 
   function scheduleCyclingBarSync(sessionId, variantNum) {
@@ -4823,11 +4823,7 @@
     }
     const wrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
     if (!wrapper) return false;
-    for (const child of wrapper.children) {
-      const v = child.dataset ? child.dataset.impeccableVariant : null;
-      if (!v) continue;
-      setVariantShown(child, v === String(num));
-    }
+    updateVariantStateStylesheet(sessionId, num);
     // Unconditional refresh - covers first-reveal (no-op if state isn't
     // CYCLING yet, the subsequent CYCLING transition triggers its own
     // refresh) and every cycle step.
@@ -5492,6 +5488,7 @@
     if (pendingSvelteComponentRetryObserver) { pendingSvelteComponentRetryObserver.disconnect(); pendingSvelteComponentRetryObserver = null; }
     if (pendingVariantAnchorRetryObserver) { pendingVariantAnchorRetryObserver.disconnect(); pendingVariantAnchorRetryObserver = null; }
     stopScrollLock();
+    removeVariantStateStylesheet();
     clearSession();
     clearHandled();
     resetSessionFileMeta();
@@ -5806,6 +5803,68 @@
     return variantDiv;
   }
 
+  // Variant visibility and range/toggle params are expressed through ONE
+  // injected stylesheet, never inline attributes on the variant divs. Those
+  // divs are scaffolded into page source, so SSR frameworks (Next.js App
+  // Router) server-render them; toggling their `hidden` / inline `style` /
+  // `--p-*` client-side trips a React 19 hydration mismatch on the next
+  // Fast-Refresh re-render — the same failure mode the scroll-anchor (#276)
+  // and pick-cursor (#286) fixes address. A stylesheet rule has the same
+  // computed effect without mutating any hydrated element's attributes.
+  // (steps params keep driving `data-p-*` attributes, matching scoped CSS.)
+  const VARIANT_HIDE_DECL = 'display: none !important;';
+  const VARIANT_SHOW_DECL = 'display: block !important;';
+
+  // Build a direct-child variant selector for a session. With `num`, targets a
+  // single variant (`… > [data-impeccable-variant="N"]`); without it, targets
+  // every variant via the bare `[data-impeccable-variant]` attribute.
+  function variantStateSelector(sessionId, num) {
+    const wrapper = '[data-impeccable-variants="' + sessionId + '"]';
+    const variant = num == null
+      ? '[data-impeccable-variant]'
+      : '[data-impeccable-variant="' + num + '"]';
+    return wrapper + ' > ' + variant;
+  }
+
+  // Serialize the visible variant's knob values into `--p-<id>` custom-property
+  // declarations. Only range (number) and toggle (boolean) values become a
+  // custom property; steps params drive `data-p-*` attributes instead.
+  function variantParamDecls(values) {
+    return Object.entries(values || {})
+      .map(([id, val]) => {
+        if (typeof val === 'number') return ' --p-' + id + ': ' + val + ';';
+        if (typeof val === 'boolean') return ' --p-' + id + ': ' + (val ? '1' : '0') + ';';
+        return '';
+      })
+      .join('');
+  }
+
+  function updateVariantStateStylesheet(sessionId, num) {
+    if (!sessionId || num == null || num < 1) return;
+
+    let styleEl = document.getElementById(VARIANT_STATE_STYLE_ID);
+    if (!styleEl) {
+      styleEl = document.createElement('style');
+      styleEl.id = VARIANT_STATE_STYLE_ID;
+      (document.head || document.documentElement).appendChild(styleEl);
+    }
+
+    // Hide every variant except the visible one (incl. the SSR'd "original").
+    const hideOthers = variantStateSelector(sessionId)
+      + ':not([data-impeccable-variant="' + num + '"]) { ' + VARIANT_HIDE_DECL + ' }';
+
+    // Force-show the visible variant (beats the source inline display:none on
+    // v2/v3) and apply its knob values as custom properties.
+    const showVisible = variantStateSelector(sessionId, num)
+      + ' { ' + VARIANT_SHOW_DECL + variantParamDecls(paramsCurrentValues) + ' }';
+
+    styleEl.textContent = hideOthers + '\n' + showVisible + '\n';
+  }
+
+  function removeVariantStateStylesheet() {
+    document.getElementById(VARIANT_STATE_STYLE_ID)?.remove();
+  }
+
   // Hold window.scrollY at a fixed value across DOM mutations inside the
   // session's wrapper (HMR patches, variant inserts, cycle swaps).
   function startScrollLock(sessionId, initialTargetY) {
@@ -6087,7 +6146,7 @@
       switch (msg.type) {
         case 'connected':
           hasProjectContext = !!msg.hasProjectContext;
-          if (!hasProjectContext) showToast('No PRODUCT.md found. Variants will be brand-agnostic. Run /impeccable init to generate one.', 7000);
+          if (!hasProjectContext) showToast(`No PRODUCT.md found. Variants will be brand-agnostic. Run ${IMPECCABLE_COMMAND} init to generate one.`, 7000);
           console.log('[impeccable] Live mode connected.');
           syncAgentPollingUi(!!msg.agentPolling);
           startAgentStatusPoll();
@@ -7636,6 +7695,7 @@ void main() {
     stopScrollTracking();
     if (variantObserver) { variantObserver.disconnect(); variantObserver = null; }
     stopScrollLock();
+    removeVariantStateStylesheet();
     clearScrollY();
     clearSession();
     resetSessionFileMeta();
@@ -7897,6 +7957,7 @@ void main() {
     if (variantObserver) { variantObserver.disconnect(); variantObserver = null; }
     if (pendingVariantAnchorRetryObserver) { pendingVariantAnchorRetryObserver.disconnect(); pendingVariantAnchorRetryObserver = null; }
     stopScrollLock();
+    removeVariantStateStylesheet();
     clearScrollY();
     finalizeInsertSession();
     clearSession();
@@ -9989,6 +10050,7 @@ void main() {
     window.postMessage({ source: 'impeccable-command', action: 'remove' }, '*');
     setLiveState('IDLE');
     document.getElementById(PICK_CURSOR_STYLE_ID)?.remove();
+    removeVariantStateStylesheet();
     window.__IMPECCABLE_LIVE_INIT__ = false;
     console.log('[impeccable] Live mode exited.');
   }
@@ -10477,7 +10539,7 @@ void main() {
     if (designState.present === false) {
       const empty = document.createElement('div');
       empty.className = 'empty';
-      empty.innerHTML = `<strong>No DESIGN.md yet</strong>Create one by running <code>/impeccable document</code> in your terminal, then re-open this panel.`;
+      empty.innerHTML = `<strong>No DESIGN.md yet</strong>Create one by running <code>${IMPECCABLE_COMMAND} document</code> in your terminal, then re-open this panel.`;
       body.appendChild(empty);
       return;
     }
@@ -10507,7 +10569,7 @@ void main() {
     box.className = 'stale';
     box.innerHTML = `
       <span class="stale-dot"></span>
-      <span class="stale-text"><strong>DESIGN.md is newer than .impeccable/design.json.</strong> Run <code>/impeccable document</code> to refresh the sidecar.</span>
+      <span class="stale-text"><strong>DESIGN.md is newer than .impeccable/design.json.</strong> Run <code>${IMPECCABLE_COMMAND} document</code> to refresh the sidecar.</span>
     `;
     return box;
   }
@@ -10515,7 +10577,7 @@ void main() {
   function renderParsedMdCta() {
     const box = document.createElement('div');
     box.className = 'parsed-md-cta';
-    box.innerHTML = `<strong>Basic view</strong>This panel reads the tokens in your <code>DESIGN.md</code> frontmatter. Running <code>/impeccable document</code> also generates a <code>.impeccable/design.json</code> sidecar with your project's actual component snippets (button, input, nav) and tonal ramps, rendered live below the tokens.`;
+    box.innerHTML = `<strong>Basic view</strong>This panel reads the tokens in your <code>DESIGN.md</code> frontmatter. Running <code>${IMPECCABLE_COMMAND} document</code> also generates a <code>.impeccable/design.json</code> sidecar with your project's actual component snippets (button, input, nav) and tonal ramps, rendered live below the tokens.`;
     return box;
   }
 

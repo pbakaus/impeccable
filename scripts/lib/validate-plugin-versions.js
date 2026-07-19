@@ -18,6 +18,8 @@
  *   - `.cursor-plugin/marketplace.json`, `.cursor-plugin/plugin.json`,
  *     and `.cursor/skills/impeccable/SKILL.md` — the native Cursor plugin
  *     manifest, generated from the same root source of truth.
+ *   - `dist/openai/impeccable/.codex-plugin/plugin.json` version — generated
+ *     for public OpenAI submission and checked when that build output exists.
  *
  * The collector is pure (filesystem-in, data-out) so it can be unit-tested
  * against fixtures; build.js owns the logging and the non-zero exit.
@@ -97,6 +99,10 @@ export function collectPluginVersions(rootDir) {
     },
     {
       relPath: 'plugin/.claude-plugin/plugin.json',
+      read: (raw) => JSON.parse(raw).version,
+    },
+    {
+      relPath: 'dist/openai/impeccable/.codex-plugin/plugin.json',
       read: (raw) => JSON.parse(raw).version,
     },
     {

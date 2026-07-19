@@ -73,6 +73,47 @@ landing page.
 `;
 
 /**
+ * Native iOS app fixture: product register, `## Platform` set to `ios`.
+ * Exercises Setup step 5 — when context.mjs reports the platform is native,
+ * the agent must also load `reference/ios.md` (Apple HIG) on top of the
+ * register reference. Product register because this is app UI, not marketing.
+ */
+export const PRODUCT_MD_SAMPLE_IOS = `# Tideline
+
+## Register
+product
+
+## Platform
+ios
+
+## Product Purpose
+Tideline is a native iOS app for coastal anglers: tide tables, solunar
+windows, and a logbook. It SERVES the task — get in, read the conditions,
+log a catch — so fluent iPhone users should trust it instantly rather than
+relearn navigation. Earned familiarity over novelty.
+
+## Users
+Saltwater anglers checking conditions dockside on an iPhone, often one-handed
+in bright sun and sometimes offline. They live in Apple Weather, Notes, and
+Maps and expect the same gestures and controls here.
+
+## Brand
+Calm, legible, marine. Identity shows through color, type accent, and the
+logbook's character — never by reinventing the navigation bar or the back
+gesture.
+
+## Anti-references
+- Web dashboards ported into a WebView
+- Custom toggles and bespoke tab bars that fight the platform
+- Cluttered, metric-theater home screens
+
+## Strategic Principles
+- Platform conformance is the structural bar; brand lives in the expressive layer.
+- Standard navigation, SF Symbols, Dynamic Type, Dark Mode first-class.
+- One accent tint drives interactive elements.
+`;
+
+/**
  * Tiny static landing page fixture for scenarios that invoke sub-commands
  * (polish, audit) without standing up a full framework project. Gives the
  * agent something concrete to inspect so it doesn't bail with "what

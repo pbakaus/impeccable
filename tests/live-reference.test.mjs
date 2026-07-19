@@ -11,7 +11,7 @@ describe('live reference authoring contract', () => {
     const skillSrc = readFileSync(join(ROOT, 'skill/SKILL.src.md'), 'utf-8');
     const liveMd = readFileSync(join(ROOT, 'skill/reference/live.md'), 'utf-8');
 
-    assert.match(skillSrc, /infer the concrete path and run `node \{\{scripts_path\}\}\/context\.mjs --target <path>` instead/);
+    assert.match(skillSrc, /infer the concrete path and append `--target <path>` to the same command/);
     assert.doesNotMatch(skillSrc, /Use this same scripts directory for all Impeccable helper commands/);
     assert.doesNotMatch(skillSrc, /walk upward for the nearest project `\.agents`, `\.claude`, or `\.cursor` skill/);
     assert.doesNotMatch(skillSrc, /## Context diagnostics/);

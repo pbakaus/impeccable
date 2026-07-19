@@ -2,6 +2,8 @@ Run systematic **technical** quality checks and generate a comprehensive report.
 
 This is a code-level audit, not a design critique. Check what's measurable and verifiable in the implementation.
 
+**Web only.** Native platforms (`ios` / `android` / `adaptive`) route to [audit.native.md](audit.native.md) instead; if the project is native, switch to it now.
+
 ## Diagnostic Scan
 
 Run comprehensive checks across 5 dimensions. Score each dimension 0-4 using the criteria below.

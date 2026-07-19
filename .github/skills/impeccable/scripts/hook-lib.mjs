@@ -9,6 +9,7 @@
  *   ENVELOPE_PREFIX, ALLOWED_EXTS, ACK_EXTS, SENSITIVE_PATH, GENERATED_PATH, TRUTHY
  *   truthy(value)
  *   readConfig(cwd) / DEFAULT_CONFIG / getConfigPath(cwd) / getLocalConfigPath(cwd)
+ *   resolveProjectPlatform(cwd) / isNativePlatform(platform)
  *   normalizeIgnoreValue(value)
  *   readCache(cwd) / persistCache(cwd, cache) / resolveCacheCwd(primaryFile, sessionCwd)
  *   bumpEditCount(cache, sessionId, filePath) -> number
@@ -39,6 +40,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
+import { extractPlatform, loadContext } from './context.mjs';
+import { IMPECCABLE_COMMAND } from './lib/provider.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -168,6 +171,26 @@ export function resolveCacheCwd(primaryFile, sessionCwd) {
     if (parent === dir) return base;
     dir = parent;
   }
+}
+
+// The detector's rules are web rules (HTML/CSS shapes), but a React Native or
+// Flutter project is made of the exact extensions the hook watches (.tsx, .ts,
+// .js), so without this gate every native screen edit would draw web-shaped
+// findings that contradict the native platform references. PRODUCT.md's
+// `## Platform` field decides: `ios` / `android` / `adaptive` projects skip
+// the scan entirely. Resolution goes through loadContext so the hook reads the
+// same PRODUCT.md the skill does (alternate context dirs, monorepo fallback).
+export function resolveProjectPlatform(cwd) {
+  try {
+    const ctx = loadContext(cwd);
+    return extractPlatform(ctx && ctx.product);
+  } catch {
+    return null;
+  }
+}
+
+export function isNativePlatform(platform) {
+  return platform === 'ios' || platform === 'android' || platform === 'adaptive';
 }
 
 export function readConfig(cwd) {
@@ -479,11 +502,14 @@ export function normalizeIgnoreValueEntries(entries) {
       ...(Array.isArray(entry.files) ? entry.files.filter(v => typeof v === 'string' && v.trim()).map(v => v.trim()) : []),
     ]);
     if (files.length > 0) normalized.files = files;
-    if (typeof entry.reason === 'string' && entry.reason.trim()) {
-      normalized.reason = entry.reason.trim();
-    }
+    // Key order is rule, value, files, createdAt, reason and must stay that way:
+    // normalizing runs on every write, so emitting a different order than the one
+    // already on disk rewrites every untouched entry and churns the diff.
     if (typeof entry.createdAt === 'string' && entry.createdAt.trim()) {
       normalized.createdAt = entry.createdAt.trim();
+    }
+    if (typeof entry.reason === 'string' && entry.reason.trim()) {
+      normalized.reason = entry.reason.trim();
     }
     out.push(normalized);
   }
@@ -502,7 +528,9 @@ function mergeIgnoreValues(existing, incoming) {
 }
 
 function ignoreValueFilesKey(files) {
-  return Array.isArray(files) && files.length > 0 ? files.join('\x1f') : '';
+  // Sort before joining: a scope is a set, so an entry already on disk in another
+  // order must compare equal rather than dedup as two distinct entries.
+  return Array.isArray(files) && files.length > 0 ? [...files].sort().join('\x1f') : '';
 }
 
 export function readCache(cwd) {
@@ -639,7 +667,7 @@ export function bumpEditCount(cache, sessionId, filePath) {
 }
 
 export function suppressionNotice(filePath) {
-  return `${ENVELOPE_PREFIX} Suppressing further design hints on ${filePath}. More than ${EDIT_COUNT_THRESHOLD} edits in this session reached. Run /impeccable audit to revisit.`;
+  return `${ENVELOPE_PREFIX} Suppressing further design hints on ${filePath}. More than ${EDIT_COUNT_THRESHOLD} edits in this session reached. Run ${IMPECCABLE_COMMAND} audit to revisit.`;
 }
 
 // Glob → RegExp. Supports `**`, `*`, `?`, and `{a,b}` alternation.
@@ -711,11 +739,13 @@ export function filterFindings(findings, _content, _ext, config) {
 function isIgnoredFindingValue(finding, ignoreValues) {
   if (!Array.isArray(ignoreValues) || ignoreValues.length === 0) return false;
   const rule = normalizeIgnoreRule(finding.antipattern);
+  if (!rule) return false;
+  // File-scoped wildcards suppress rules with no extractable value, such as side-tab.
   const value = extractFindingIgnoreValue(finding);
-  if (!rule || !value) return false;
   return ignoreValues.some((entry) => {
+    if (entry.rule !== rule) return false;
     const wildcardValue = entry.value === '*';
-    if (entry.rule !== rule || (!wildcardValue && !ignoreValueMatches(rule, entry.value, value))) return false;
+    if (!wildcardValue && (!value || !ignoreValueMatches(rule, entry.value, value))) return false;
     if (!Array.isArray(entry.files) || entry.files.length === 0) return !wildcardValue;
     return findingMatchesScopedIgnoreFile(finding, entry.files);
   });
@@ -853,7 +883,7 @@ export function renderTemplate(findings, filePath, config, opts = {}) {
   const header = `${ENVELOPE_PREFIX} Design hook findings requiring review in ${display} (${total} issue(s)):`;
   const lines = shown.map((f) => formatFindingLine(f));
   const more = remaining > 0
-    ? `... and ${remaining} more (see /impeccable audit).`
+    ? `... and ${remaining} more (see ${IMPECCABLE_COMMAND} audit).`
     : null;
   const footer = directiveFooter(display);
 
@@ -897,7 +927,7 @@ function renderGroupedTemplate(groups, config, opts = {}) {
     shownCount += shown.length;
     const hidden = group.findings.length - shown.length;
     if (hidden > 0) {
-      lines.push(`- ... ${hidden} more in ${display} (see /impeccable audit).`);
+      lines.push(`- ... ${hidden} more in ${display} (see ${IMPECCABLE_COMMAND} audit).`);
     }
   }
 
@@ -913,7 +943,7 @@ function clampGroupedToBudget(header, lines, footer, maxChars) {
   const assemble = (linesArr, omitted) => [
     header,
     ...linesArr,
-    ...(omitted ? ['... and more (see /impeccable audit).'] : []),
+    ...(omitted ? [`... and more (see ${IMPECCABLE_COMMAND} audit).`] : []),
     '',
     footer,
   ].join('\n');
@@ -946,7 +976,7 @@ function clampToBudget(header, lines, more, footer, maxChars) {
   let assembled = assemble(working, moreText);
   while (assembled.length > maxChars && working.length > 1) {
     working.pop();
-    moreText = '... and more (see /impeccable audit).';
+    moreText = `... and more (see ${IMPECCABLE_COMMAND} audit).`;
     assembled = assemble(working, moreText);
   }
   if (assembled.length > maxChars) {
@@ -978,7 +1008,7 @@ function formatFindingIgnoreCommand(finding) {
   const value = extractFindingIgnoreValueRaw(finding);
   const valueArg = quoteCommandArg(value);
   const reason = quoteCommandArg(`User confirmed ${value} is intentional`);
-  return `/impeccable hooks ignore-value ${rule} ${valueArg} --shared --reason ${reason}`;
+  return `${IMPECCABLE_COMMAND} hooks ignore-value ${rule} ${valueArg} --shared --reason ${reason}`;
 }
 
 function quoteCommandArg(value) {
@@ -1423,7 +1453,7 @@ export function designSystemOptions(config, detector, projectCwd) {
 
 export function appendDesignSystemNote(text, scanOptions) {
   if (!text || !scanOptions?.designSystem?.mdNewerThanJson) return text;
-  return `${text}\n\n${ENVELOPE_PREFIX} DESIGN.md is newer than .impeccable/design.json. Run /impeccable document to refresh the design-system sidecar.`;
+  return `${text}\n\n${ENVELOPE_PREFIX} DESIGN.md is newer than .impeccable/design.json. Run ${IMPECCABLE_COMMAND} document to refresh the design-system sidecar.`;
 }
 
 // The directive footer is the part of the hook output that steers model
@@ -1440,16 +1470,17 @@ export function appendDesignSystemNote(text, scanOptions) {
 //      raw envelope. Asking the model to surface the resolution in its
 //      reply is the cheapest way to make the feedback loop visible.
 function directiveFooter(display, opts = {}) {
-  const ignoreFileCommand = `/impeccable hooks ignore-file ${quoteCommandArg(display)}`;
-  const fileIgnoreGuidance = opts.grouped
-    ? 'run `/impeccable hooks ignore-file <path>` for the specific file'
-    : `run \`${ignoreFileCommand}\``;
+  // Offer the rule-scoped-to-file form first. `ignore-file` silences every rule
+  // for the path forever, which is far more than one noisy rule on a real UI
+  // surface justifies, and it was previously the only option named here.
+  const target = opts.grouped ? '<path>' : quoteCommandArg(display);
+  const fileIgnoreGuidance = `run \`${IMPECCABLE_COMMAND} hooks ignore-value <id> "*" --file ${target}\` to scope just that rule to the file, or \`${IMPECCABLE_COMMAND} hooks ignore-file ${target}\` only when the whole file is out of scope for design review (a fixture, a generated artifact, a deliberate demo)`;
   return [
     'Handle these before finalizing: fix findings that are real design problems, or explicitly classify contextually intentional findings as false positives. Acknowledge what you changed or why you are leaving a finding unchanged.',
     '',
     'Use context judgment before editing. A finding is not automatically a defect; literal or domain-appropriate motion, intentional demos or fixtures, documentation of bad design, and user-confirmed choices can be valid as-is.',
     '',
-    `Do not change intentional design just to satisfy the hook, and do not silence a real finding with an inline ignore comment to skip fixing it. Suppress a finding only after the user explicitly confirms it is intentional. Prefer a config ignore (one reviewable place, the commands below); reach for an inline \`impeccable-disable <rule>\` comment only when the waiver must travel with a file that leaves the repo, such as an exported or standalone document. Prefer the narrowest persisted exception: run the exact \`/impeccable hooks ignore-value ... --shared\` command shown next to a value-specific finding. For \`overused-font\`, use \`ignore-value\` for a specific font and use \`/impeccable hooks ignore-rule overused-font --all-values\` only when the user asks to ignore overused fonts generally. For file-specific findings without an ignore-value command, ${fileIgnoreGuidance}; use \`/impeccable hooks ignore-rule <id>\` only when the user asks to suppress the whole non-value-specific rule. Run /impeccable audit for the full pass.`,
+    `Do not change intentional design just to satisfy the hook, and do not silence a real finding with an inline ignore comment to skip fixing it. Suppress a finding only after the user explicitly confirms it is intentional. Prefer a config ignore (one reviewable place, the commands below); reach for an inline \`impeccable-disable <rule>\` comment only when the waiver must travel with a file that leaves the repo, such as an exported or standalone document. Prefer the narrowest persisted exception: run the exact \`${IMPECCABLE_COMMAND} hooks ignore-value ... --shared\` command shown next to a value-specific finding. For \`overused-font\`, use \`ignore-value\` for a specific font and use \`${IMPECCABLE_COMMAND} hooks ignore-rule overused-font --all-values\` only when the user asks to ignore overused fonts generally. For a finding whose line shows no exact ignore-value command, such as \`side-tab\`, ${fileIgnoreGuidance}; use \`${IMPECCABLE_COMMAND} hooks ignore-rule <id>\` only when the user asks to suppress the whole non-value-specific rule. Run ${IMPECCABLE_COMMAND} audit for the full pass.`,
   ].join('\n');
 }
 
@@ -1505,6 +1536,11 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
     const config = readConfig(projectCwd);
     if (config.enabled === false) {
       return result({ skipped: 'config-disabled', durationMs: Date.now() - started });
+    }
+
+    const platform = resolveProjectPlatform(projectCwd);
+    if (isNativePlatform(platform)) {
+      return result({ skipped: 'native-platform', platform, durationMs: Date.now() - started });
     }
 
     const cache = readCache(projectCwd);

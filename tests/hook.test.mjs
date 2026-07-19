@@ -51,7 +51,11 @@ import {
   runHook,
   payload,
   extractFindingIgnoreValue,
+  resolveProjectPlatform,
+  isNativePlatform,
+  normalizeIgnoreValueEntries,
 } from '../skill/scripts/hook-lib.mjs';
+import { normalizeIgnoreValueEntries as normalizeIgnoreValueEntriesCli } from '../cli/lib/impeccable-config.mjs';
 import { detectHtml, detectText } from '../cli/engine/detect-antipatterns.mjs';
 
 function mkTmp() {
@@ -523,6 +527,72 @@ describe('hook-admin.mjs', () => {
     });
   }
 
+  it('refuses an empty --file glob instead of silently writing a project-wide ignore', () => {
+    // `--file=` was dropped by filter(Boolean), so this reported success and
+    // stored an entry with no files: a broader suppression than was asked for.
+    for (const args of [['--file='], ['--file', ''], ['--files=']]) {
+      assert.throws(
+        () => runAdmin(['ignore-value', 'overused-font', 'Inter', ...args]),
+        /requires a non-empty glob/,
+        `empty glob via ${args.join(' ')} must error`,
+      );
+    }
+    // `--file --reason "why"` consumed --reason as the scope and let the reason
+    // text fold into the value: stored value="* why" files=["--reason"], success.
+    assert.throws(
+      () => runAdmin(['ignore-value', 'design-system-font-size', '*', '--file', '--reason', 'why']),
+      /requires a glob, got the flag --reason/,
+      'a following flag is not a glob',
+    );
+    assert.equal(fs.existsSync(path.join(cwd, '.impeccable', 'config.json')), false, 'nothing may be written');
+  });
+
+  it('matches an on-disk scope whose glob order differs from the sorted argv form', () => {
+    // Storage is canonical now, but configs written before that are not. Every key
+    // that hashes `files` must sort or a re-add duplicates the entry.
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(path.join(cwd, '.impeccable', 'config.json'), JSON.stringify({
+      detector: { ignoreValues: [
+        { rule: 'design-system-font-size', value: '*', files: ['b.css', 'a.css'], createdAt: '2026-01-01T00:00:00.000Z' },
+      ] },
+    }));
+    runAdmin(['ignore-value', 'design-system-font-size', '*', '--file', 'a.css', '--file', 'b.css', '--reason', 're-add']);
+    const cfg = JSON.parse(fs.readFileSync(path.join(cwd, '.impeccable', 'config.json'), 'utf-8'));
+    const entries = cfg.detector.ignoreValues.filter((e) => e.rule === 'design-system-font-size');
+    assert.equal(entries.length, 1, 'an unsorted on-disk scope must match the sorted argv form, not duplicate');
+    assert.equal(entries[0].reason, 're-add', 'the existing entry is the one updated');
+  });
+
+  it('stores a multi-file scope in canonical order so argv order cannot duplicate it', () => {
+    runAdmin(['ignore-value', 'design-system-font-size', '*', '--file', 'b.css', '--file', 'a.css']);
+    runAdmin(['ignore-value', 'design-system-font-size', '*', '--file', 'a.css', '--file', 'b.css']);
+    const cfg = JSON.parse(fs.readFileSync(path.join(cwd, '.impeccable', 'config.json'), 'utf-8'));
+    const entries = cfg.detector.ignoreValues.filter((e) => e.rule === 'design-system-font-size');
+    assert.equal(entries.length, 1, 'the same scope in a different order is one entry, not two');
+    assert.deepEqual(entries[0].files, ['a.css', 'b.css']);
+  });
+
+  it('status shows the file scope of a scoped wildcard ignore', () => {
+    runAdmin(['ignore-value', 'design-system-font-size', '*', '--file', 'src/widget.js']);
+    const out = runAdmin(['status']);
+    // Printing `design-system-font-size=*` bare reads as the project-wide
+    // wildcard this command refuses, which is the opposite of what is on disk.
+    assert.match(out, /design-system-font-size=\*\s*\[src\/widget\.js\]/);
+  });
+
+  it('refuses a bare wildcard and names a project-wide command that actually works', () => {
+    assert.throws(
+      () => runAdmin(['ignore-value', 'design-system-font-size', '*']),
+      (err) => /--file/.test(String(err.stderr)) && /ignore-rule design-system-font-size\./.test(String(err.stderr)),
+    );
+    // ignore-rule overused-font refuses on its own without --all-values, so the
+    // suggestion must carry the flag or it hands the user a second error.
+    assert.throws(
+      () => runAdmin(['ignore-value', 'overused-font', '*']),
+      (err) => /ignore-rule overused-font --all-values/.test(String(err.stderr)),
+    );
+  });
+
   it('ignore-value writes shared config by default without creating local config', () => {
     const out = runAdmin(['ignore-value', 'overused-font', 'Inter', '--reason', 'User confirmed Inter']);
     assert.match(out, /overused-font=inter/);
@@ -560,6 +630,132 @@ describe('hook-admin.mjs', () => {
     const status = runAdmin(['status']);
     assert.match(status, /local file:\s+\.impeccable\/config\.local\.json/);
     assert.match(status, /ignoreValues:\s+overused-font=inter/);
+  });
+
+  // detector.ignoreValues honours a `files` scope, which is the narrowest way to
+  // silence one noisy rule on one file. hook-admin could not write it, so the
+  // only reachable option was ignore-file, which silences every rule for that
+  // file forever.
+  it('ignore-value scopes a wildcard to files via --file', () => {
+    const out = runAdmin([
+      'ignore-value', 'design-system-font-size', '*',
+      '--file', 'src/overlay/widget.js',
+      '--reason', 'Widget builds its own type scale',
+    ]);
+    assert.match(out, /scoped to src\/overlay\/widget\.js/);
+    const shared = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8')).detector;
+    assert.deepEqual(shared.ignoreValues, [{
+      rule: 'design-system-font-size',
+      value: '*',
+      files: ['src/overlay/widget.js'],
+      createdAt: shared.ignoreValues[0].createdAt,
+      reason: 'Widget builds its own type scale',
+    }]);
+  });
+
+  it('ignore-value accepts --file=, --files= and repeated --file', () => {
+    runAdmin(['ignore-value', 'side-tab', '*', '--file=a.css']);
+    runAdmin(['ignore-value', 'side-tab', '*', '--files=b.css']);
+    runAdmin(['ignore-value', 'low-contrast', '*', '--file', 'c.css', '--file', 'd.css']);
+    const shared = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8')).detector;
+    assert.deepEqual(
+      shared.ignoreValues.map(({ rule, files }) => ({ rule, files })),
+      [
+        { rule: 'side-tab', files: ['a.css'] },
+        { rule: 'side-tab', files: ['b.css'] },
+        { rule: 'low-contrast', files: ['c.css', 'd.css'] },
+      ],
+      'each distinct file scope is its own entry; a rule+value-only key overwrote them',
+    );
+  });
+
+  it('ignore-value refuses a wildcard with no file scope', () => {
+    assert.throws(
+      () => runAdmin(['ignore-value', 'design-system-font-size', '*']),
+      /Wildcard value ignores must be scoped with --file/,
+      'a bare wildcard is ignore-rule\'s job, not a per-file waiver',
+    );
+    assert.equal(fs.existsSync(getConfigPath(cwd)), false, 'a refused ignore must not write config');
+  });
+
+  it('ignore-value --file requires a glob', () => {
+    assert.throws(
+      () => runAdmin(['ignore-value', 'side-tab', '*', '--file']),
+      /--file requires a glob/,
+    );
+  });
+
+  it('ignore-value rejects an unknown flag instead of folding it into the value', () => {
+    // `--shard` (a typo for --shared) used to store the value "inter --shard",
+    // which matches nothing, while reporting a successful suppression.
+    assert.throws(
+      () => runAdmin(['ignore-value', 'overused-font', 'Inter', '--shard']),
+      /Unknown ignore-value flag: --shard/,
+    );
+    assert.equal(fs.existsSync(getConfigPath(cwd)), false);
+  });
+
+  // Every write runs the entries through normalizeIgnoreValueEntries. Emitting a
+  // different key order than the one on disk rewrote all untouched entries.
+  it('an unrelated edit leaves existing ignoreValues byte-identical', () => {
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    const seeded = {
+      detector: {
+        ignoreRules: [],
+        ignoreFiles: [],
+        ignoreValues: [
+          {
+            rule: 'bounce-easing',
+            value: 'bounce-ball',
+            createdAt: '2026-06-15T04:15:03.164Z',
+            reason: 'Intentional',
+          },
+          {
+            rule: 'design-system-color',
+            value: '*',
+            files: ['site/styles/demo.css'],
+            createdAt: '2026-06-15T23:37:38.170Z',
+            reason: 'Deliberate off-system demo',
+          },
+        ],
+      },
+    };
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify(seeded, null, 2) + '\n');
+    const before = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8')).detector.ignoreValues;
+
+    runAdmin(['ignore-file', 'some/other/**']);
+
+    const after = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8')).detector;
+    assert.deepEqual(after.ignoreFiles, ['some/other/**'], 'the intended change still lands');
+    assert.equal(
+      JSON.stringify(after.ignoreValues),
+      JSON.stringify(before),
+      'untouched ignoreValues must keep their exact key order, or every config diff churns',
+    );
+  });
+
+  // hook-lib.mjs (skill, ships into harness dirs) and cli/lib/impeccable-config.mjs
+  // (CLI + Pages functions) carry independent copies of this normalizer by
+  // necessity. They write the same file, so a key-order drift between them makes
+  // the config churn depending on which tool touched it last.
+  it('both config normalizers emit identical entries', () => {
+    const input = [
+      { rule: 'BOUNCE-EASING', value: 'Bounce-Ball', reason: ' r ', createdAt: '2026-01-01T00:00:00.000Z' },
+      { rule: 'design-system-color', value: '*', files: [' a.css ', 'b.css', 'a.css'], createdAt: '2026-02-02T00:00:00.000Z' },
+      { rule: 'side-tab', value: '*', file: 'legacy.css' },
+      { rule: '', value: 'dropped' },
+    ];
+    assert.equal(
+      JSON.stringify(normalizeIgnoreValueEntries(input)),
+      JSON.stringify(normalizeIgnoreValueEntriesCli(input)),
+      'skill/scripts/hook-lib.mjs and cli/lib/impeccable-config.mjs must agree, key order included',
+    );
+    // And pin the canonical order itself, which is what the config on disk uses.
+    const full = { rule: 'side-tab', value: '*', files: ['a.css'], createdAt: '2026-01-01T00:00:00.000Z', reason: 'r' };
+    assert.deepEqual(
+      Object.keys(normalizeIgnoreValueEntries([full])[0]),
+      ['rule', 'value', 'files', 'createdAt', 'reason'],
+    );
   });
 
   it('a /impeccable hooks edit preserves sibling hook fields (consent, quiet)', () => {
@@ -1114,6 +1310,29 @@ rounded:
     const r = await runHook({ stdinJson: JSON.stringify(eventFor(file)), env: {}, cwd, detector: det });
     assert.equal(r.stdout, '');
     assert.equal(r.audit.skipped, 'config-disabled');
+  });
+
+  it('skips the scan when PRODUCT.md declares a native platform', async () => {
+    // The web rule engine has no business flagging React Native screens; the
+    // hook watches .tsx/.ts/.js, which is exactly what a native project is
+    // made of, so the platform field gates the whole scan.
+    for (const platform of ['ios', 'android', 'adaptive']) {
+      writeFixture('PRODUCT.md', `# App\n\n## Register\n\nproduct\n\n## Platform\n\n${platform}\n`);
+      const file = writeFixture('src/Card.tsx', 'noop');
+      const det = fakeDetector([finding('side-tab', 1)]);
+      const r = await runHook({ stdinJson: JSON.stringify(eventFor(file, `native-${platform}`)), env: {}, cwd, detector: det });
+      assert.equal(r.stdout, '', `expected silence for platform ${platform}`);
+      assert.equal(r.audit.skipped, 'native-platform');
+      assert.equal(r.audit.platform, platform);
+    }
+  });
+
+  it('still scans when PRODUCT.md declares web (or has no platform field)', async () => {
+    writeFixture('PRODUCT.md', '# App\n\n## Register\n\nproduct\n\n## Platform\n\nweb\n');
+    const file = writeFixture('src/Card.tsx', 'noop');
+    const det = fakeDetector([finding('side-tab', 1, { name: 'Side-tab' })]);
+    const r = await runHook({ stdinJson: JSON.stringify(eventFor(file, 'web-platform')), env: {}, cwd, detector: det });
+    assert.match(r.stdout, /Side-tab/);
   });
 
   it('only unlocks design-system detector findings when DESIGN.md exists', async () => {
@@ -2098,6 +2317,31 @@ describe('runHook() — configured template extensions (issue #316)', () => {
   });
 });
 
+describe('resolveProjectPlatform() / isNativePlatform()', () => {
+  let cwd;
+  beforeEach(() => { cwd = mkTmp(); });
+  afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+  it('reads the platform from PRODUCT.md via the same resolution the skill uses', () => {
+    fs.writeFileSync(path.join(cwd, 'PRODUCT.md'), '# App\n\n## Platform\n\nios\n');
+    assert.equal(resolveProjectPlatform(cwd), 'ios');
+  });
+
+  it('returns null when PRODUCT.md is absent or platform-less', () => {
+    assert.equal(resolveProjectPlatform(cwd), null);
+    fs.writeFileSync(path.join(cwd, 'PRODUCT.md'), '# App\n\nno platform field\n');
+    assert.equal(resolveProjectPlatform(cwd), null);
+  });
+
+  it('isNativePlatform is true only for ios / android / adaptive', () => {
+    assert.equal(isNativePlatform('ios'), true);
+    assert.equal(isNativePlatform('android'), true);
+    assert.equal(isNativePlatform('adaptive'), true);
+    assert.equal(isNativePlatform('web'), false);
+    assert.equal(isNativePlatform(null), false);
+  });
+});
+
 describe('Cursor hook scripts', () => {
   let cwd;
   beforeEach(() => { cwd = mkTmp(); });
@@ -2137,6 +2381,33 @@ describe('Cursor hook scripts', () => {
     assert.equal(entries[0].event, 'preToolUse');
     assert.equal(entries[0].blocked, true);
     assert.equal(entries[0].blockedFindings, 1);
+  });
+
+  it('preToolUse allows writes with findings when the project platform is native', () => {
+    // Same slop content the deny test blocks, but the project declares a
+    // native platform, so the web rule engine must stand aside.
+    fs.writeFileSync(path.join(cwd, 'PRODUCT.md'), '# App\n\n## Platform\n\nios\n');
+    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-before-edit.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'preToolUse',
+        cwd,
+        tool_name: 'Write',
+        tool_input: {
+          file_path: path.join(cwd, 'src/Card.html'),
+          content: `
+            <style>
+              .card { border-left: 4px solid #7c3aed; border-radius: 16px; }
+            </style>
+            <div class="card">Hello</div>
+          `,
+        },
+      }),
+      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
+      encoding: 'utf-8',
+    });
+
+    assert.deepEqual(JSON.parse(out), { permission: 'allow' });
   });
 
   it('preToolUse allows clean proposed writes', () => {

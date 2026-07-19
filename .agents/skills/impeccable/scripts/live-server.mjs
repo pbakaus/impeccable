@@ -36,6 +36,7 @@ import {
   getDesignSidecarPath,
   getLiveDir,
   getLiveAnnotationsDir,
+  IMPECCABLE_COMMAND_PREFIX,
   readLiveServerInfo,
   removeLiveServerInfo,
   resolveDesignSidecarPath,
@@ -413,6 +414,7 @@ function createRequestHandler({ detectScript, liveScriptParts }) {
         token: state.token,
         port: state.port,
         vocabulary: LIVE_COMMANDS,
+        commandPrefix: IMPECCABLE_COMMAND_PREFIX,
         parts,
       });
       res.writeHead(200, {

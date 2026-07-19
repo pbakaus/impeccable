@@ -739,18 +739,36 @@ export function replacePlaceholders(content, provider, commandNames = [], allSki
     .replace(/\{\{available_commands\}\}/g, commandList);
 
   // Replace `/skillname` invocations with the correct command prefix for this provider
-  // (e.g., `/normalize` → `$normalize` for Codex)
+  // (e.g., `/normalize` → `$normalize` for Codex). Require the slash to be
+  // outside a path or URL so `.github/hooks/impeccable.json` and
+  // `.codex/skills/impeccable` remain untouched.
   if (cmdPrefix !== '/' && allSkillNames.length > 0) {
     const sorted = [...allSkillNames].sort((a, b) => b.length - a.length);
     for (const name of sorted) {
       result = result.replace(
-        new RegExp(`\\/(?=${escapeRegex(name)}(?:[^a-zA-Z0-9_-]|$))`, 'g'),
+        new RegExp(`(?<![a-zA-Z0-9_./-])\\/(?=${escapeRegex(name)}(?:[^a-zA-Z0-9_-]|$))`, 'g'),
         cmdPrefix
       );
     }
   }
 
   return result;
+}
+
+/**
+ * Render the one explicit provider marker allowed in executable skill scripts.
+ *
+ * Do not run replacePlaceholders() across JavaScript source: slash-command
+ * heuristics can collide with regex literals and runtime paths. Scripts import
+ * their command prefix from lib/provider.mjs, whose declaration is replaced
+ * here by an exact string match.
+ */
+export function replaceScriptProviderMarker(content, provider) {
+  const placeholders = PROVIDER_PLACEHOLDERS[provider] || PROVIDER_PLACEHOLDERS.cursor;
+  const commandPrefix = placeholders.command_prefix || '/';
+  const marker = "export const IMPECCABLE_COMMAND_PREFIX = '/'; // @impeccable-provider-command-prefix";
+  const rendered = `export const IMPECCABLE_COMMAND_PREFIX = ${JSON.stringify(commandPrefix)};`;
+  return content.replace(marker, rendered);
 }
 
 /**

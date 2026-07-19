@@ -10,7 +10,8 @@ import {
   writeFile,
   generateYamlFrontmatter,
   readPatterns,
-  replacePlaceholders
+  replacePlaceholders,
+  replaceScriptProviderMarker,
 } from '../../scripts/lib/utils.js';
 
 // Temporary test directory
@@ -653,5 +654,41 @@ describe('replacePlaceholders', () => {
   test('should fall back to cursor placeholders for unknown provider', () => {
     const result = replacePlaceholders('{{model}} {{config_file}}', 'unknown-provider');
     expect(result).toBe('the model .cursorrules');
+  });
+
+  test('should replace Codex command invocations without rewriting paths', () => {
+    const source = [
+      'Run /impeccable audit.',
+      'Use `/impeccable polish` next.',
+      '.github/hooks/impeccable.json',
+      '.codex/skills/impeccable/scripts/context.mjs',
+      'https://example.com/impeccable',
+    ].join('\n');
+
+    const result = replacePlaceholders(source, 'codex', [], ['impeccable']);
+
+    expect(result).toContain('Run $impeccable audit.');
+    expect(result).toContain('Use `$impeccable polish` next.');
+    expect(result).toContain('.github/hooks/impeccable.json');
+    expect(result).toContain('.codex/skills/impeccable/scripts/context.mjs');
+    expect(result).toContain('https://example.com/impeccable');
+  });
+});
+
+describe('replaceScriptProviderMarker', () => {
+  test('renders only the explicit command-prefix declaration', () => {
+    const source = [
+      "export const IMPECCABLE_COMMAND_PREFIX = '/'; // @impeccable-provider-command-prefix",
+      'const regex = /impeccable\\b/gi;',
+      "const runtime = '/src/lib/impeccable/__runtime.js';",
+      "const text = 'Run /impeccable audit';",
+    ].join('\n');
+
+    const result = replaceScriptProviderMarker(source, 'codex');
+
+    expect(result).toContain('export const IMPECCABLE_COMMAND_PREFIX = "$";');
+    expect(result).toContain('const regex = /impeccable\\b/gi;');
+    expect(result).toContain("const runtime = '/src/lib/impeccable/__runtime.js';");
+    expect(result).toContain("const text = 'Run /impeccable audit';");
   });
 });

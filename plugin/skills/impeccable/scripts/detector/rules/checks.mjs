@@ -18,6 +18,7 @@ import {
   parseRgb,
   relativeLuminance,
 } from '../shared/color.mjs';
+import { extractGoogleFontFamilies } from '../shared/fonts.mjs';
 
 const DETECTOR_IS_BROWSER = typeof window !== 'undefined';
 
@@ -2072,14 +2073,9 @@ function checkPageTypography(doc, win) {
 
   // Check Google Fonts links in HTML
   const html = doc.documentElement?.outerHTML || '';
-  const gfRe = /fonts\.googleapis\.com\/css2?\?family=([^&"'\s]+)/gi;
-  let m;
-  while ((m = gfRe.exec(html)) !== null) {
-    const families = m[1].split('|').map(f => f.split(':')[0].replace(/\+/g, ' ').toLowerCase());
-    for (const f of families) {
-      fonts.add(f);
-      if (OVERUSED_FONTS.has(f)) overusedFound.add(f);
-    }
+  for (const f of extractGoogleFontFamilies(html)) {
+    fonts.add(f);
+    if (OVERUSED_FONTS.has(f)) overusedFound.add(f);
   }
 
   // Also parse raw HTML/style content for font-family (jsdom may not expose all via CSSOM)

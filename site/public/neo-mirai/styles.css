@@ -233,7 +233,7 @@ a {
 }
 
 .ticket-pill svg,
-.text-action span {
+.text-action-icon {
   width: 1.44rem;
   height: 1.44rem;
   border: 1px solid currentColor;
@@ -532,6 +532,12 @@ section[id] {
 }
 
 .agenda-days {
+  --agenda-date-col: 4.6rem;
+  --agenda-column-gap: 0.58rem;
+  --agenda-rail-col: 0.88rem;
+  --agenda-marker-size: 0.88rem;
+  --agenda-marker-top: 0.12rem;
+  --agenda-line-bleed: 1.2rem;
   position: relative;
   z-index: 1;
   display: grid;
@@ -544,19 +550,36 @@ section[id] {
 .agenda-days li {
   position: relative;
   display: grid;
-  grid-template-columns: 4.6rem 1fr;
-  gap: 2.05rem;
+  grid-template-columns: var(--agenda-date-col) var(--agenda-rail-col) minmax(0, 1fr);
+  column-gap: var(--agenda-column-gap);
+  align-items: start;
+}
+
+.agenda-days time {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.agenda-days li > div {
+  grid-column: 3;
+  grid-row: 1;
+  min-width: 0;
 }
 
 .agenda-days li::before {
-  position: absolute;
-  left: 5.18rem;
-  top: 0.25rem;
-  width: 0.88rem;
+  position: relative;
+  z-index: 2;
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: center;
+  align-self: start;
+  margin-top: var(--agenda-marker-top);
+  width: var(--agenda-marker-size);
   aspect-ratio: 1;
   border: 1px solid var(--gold-bright);
   border-radius: 50%;
-  box-shadow: inset 0 0 0 0.25rem var(--night);
+  background: var(--night);
+  box-shadow: 0 0 0 0.16rem var(--night);
   content: "";
   opacity: 0;
   transform: scale(0.45);
@@ -565,10 +588,10 @@ section[id] {
 
 .agenda-days li:not(:last-child)::after {
   position: absolute;
-  left: calc(5.18rem + 0.44rem);
-  top: 1.2rem;
+  left: calc(var(--agenda-date-col) + var(--agenda-column-gap) + (var(--agenda-rail-col) / 2));
+  top: calc(var(--agenda-marker-top) + (var(--agenda-marker-size) / 2));
   width: 1px;
-  height: calc(100% + 1.2rem);
+  height: calc(100% + var(--agenda-line-bleed));
   background: var(--gold-bright);
   content: "";
   opacity: 0.76;
@@ -625,6 +648,7 @@ section[id] {
   color: var(--gold-bright);
   font-size: clamp(0.72rem, 1vw, 0.86rem);
   font-weight: 600;
+  line-height: 1.14;
 }
 
 .agenda-days p {
@@ -649,10 +673,22 @@ section[id] {
   transition: color 180ms var(--ease), transform 240ms var(--ease);
 }
 
-.text-action span {
+.text-action-icon {
+  position: relative;
   display: inline-grid;
   place-items: center;
+  flex: 0 0 auto;
+}
+
+.text-action-arrow {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-family: var(--font-serif);
+  font-size: 0.82em;
+  line-height: 1;
 }
 
 .agenda-panel .text-action,
@@ -1365,24 +1401,19 @@ section[id] {
   }
 
   .agenda-days {
+    --agenda-date-col: clamp(4.9rem, 5.45vw, 6.4rem);
+    --agenda-column-gap: clamp(0.48rem, 0.55vw, 0.72rem);
+    --agenda-rail-col: clamp(0.92rem, 1vw, 1.08rem);
+    --agenda-marker-size: clamp(0.92rem, 1vw, 1.08rem);
+    --agenda-marker-top: 0.19rem;
+    --agenda-line-bleed: clamp(1.05rem, 1.25vw, 1.45rem);
     gap: clamp(1rem, 1.35vw, 1.55rem);
     margin: clamp(1.75rem, 2.3vw, 2.65rem) 0 clamp(1.1rem, 1.55vw, 1.8rem);
   }
 
   .agenda-days li {
-    grid-template-columns: clamp(4.9rem, 5.45vw, 6.4rem) minmax(14rem, 19rem);
-    gap: clamp(1.75rem, 2.1vw, 2.45rem);
-  }
-
-  .agenda-days li::before {
-    left: calc(clamp(4.9rem, 5.45vw, 6.4rem) + clamp(0.88rem, 1.05vw, 1.22rem));
-    width: clamp(0.92rem, 1vw, 1.15rem);
-  }
-
-  .agenda-days li:not(:last-child)::after {
-    left: calc(clamp(4.9rem, 5.45vw, 6.4rem) + clamp(0.88rem, 1.05vw, 1.22rem) + clamp(0.46rem, 0.5vw, 0.575rem));
-    top: 1.25rem;
-    height: calc(100% + 1.35rem);
+    grid-template-columns: var(--agenda-date-col) var(--agenda-rail-col) minmax(14rem, 19rem);
+    column-gap: var(--agenda-column-gap);
   }
 
   .agenda-days time {
@@ -1948,17 +1979,18 @@ section[id] {
     padding: 3rem 1.1rem;
   }
 
+  .agenda-days {
+    --agenda-date-col: 4.15rem;
+    --agenda-column-gap: 0.52rem;
+    --agenda-rail-col: 0.8rem;
+    --agenda-marker-size: 0.76rem;
+    --agenda-marker-top: 0.14rem;
+    --agenda-line-bleed: 0.95rem;
+  }
+
   .agenda-days li {
-    grid-template-columns: 4.15rem minmax(0, 1fr);
-    gap: 2rem;
-  }
-
-  .agenda-days li::before {
-    left: 4.92rem;
-  }
-
-  .agenda-days li:not(:last-child)::after {
-    left: calc(4.92rem + 0.44rem);
+    grid-template-columns: var(--agenda-date-col) var(--agenda-rail-col) minmax(0, 1fr);
+    column-gap: var(--agenda-column-gap);
   }
 
   .agenda-days h3,

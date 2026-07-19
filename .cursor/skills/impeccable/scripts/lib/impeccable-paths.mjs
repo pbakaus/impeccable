@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { resolveProjectRoot } from '../context.mjs';
+export { IMPECCABLE_COMMAND_PREFIX } from './provider.mjs';
 
 export const IMPECCABLE_DIR = '.impeccable';
 export const LIVE_DIR = 'live';

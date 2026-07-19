@@ -10,8 +10,10 @@ import {
   buildImportGraph, resolveImport,
   detectFrameworkConfig, isPortListening, FRAMEWORK_CONFIGS,
 } from '../cli/engine/detect-antipatterns.mjs';
+import { filterByScopes } from '../cli/engine/registry/antipatterns.mjs';
 import {
   checkElementTextOverflowDOM,
+  checkPageTypography,
   isScreenReaderOnlyTextStyle,
 } from '../cli/engine/rules/checks.mjs';
 
@@ -46,6 +48,34 @@ async function withStaticFixture(files, callback) {
 
 function findingIds(findings) {
   return findings.map(f => f.antipattern);
+}
+
+function pageWithGoogleFonts(href) {
+  return [
+    '<!DOCTYPE html><html><head>',
+    `<link href="${href}" rel="stylesheet">`,
+    '</head><body>',
+    ...Array.from({ length: 22 }, (_, i) => `<p>Sample content row ${i + 1}</p>`),
+    '</body></html>',
+  ].join('\n');
+}
+
+function pageTypographyForGoogleFonts(href) {
+  const html = pageWithGoogleFonts(href);
+  const doc = {
+    styleSheets: [],
+    documentElement: { outerHTML: html },
+    querySelectorAll(selector) {
+      if (selector === '*') return Array.from({ length: 24 }, () => ({}));
+      return [];
+    },
+  };
+  const win = {
+    getComputedStyle() {
+      return { fontSize: '16px' };
+    },
+  };
+  return checkPageTypography(doc, win);
 }
 
 
@@ -198,6 +228,30 @@ describe('detectText — overused fonts', () => {
   test('does not flag distinctive fonts', () => {
     const f = detectText("body { font-family: 'Karla', sans-serif; }", 'test.css');
     expect(f.filter(r => r.antipattern === 'overused-font')).toHaveLength(0);
+  });
+
+  test('detects overused Google Fonts css2 family after first family param', () => {
+    const page = pageWithGoogleFonts('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300&family=Inter:wght@400;500;600&display=swap');
+    const f = detectText(page, 'index.html');
+    expect(f.some(r => r.antipattern === 'overused-font' && /Inter/i.test(r.snippet))).toBe(true);
+  });
+
+  test('does not flag single-font for combined Google Fonts css2 families', () => {
+    const page = pageWithGoogleFonts('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300&family=Jost:wght@300;400;500&display=swap');
+    const f = detectText(page, 'index.html');
+    expect(f.filter(r => r.antipattern === 'single-font')).toHaveLength(0);
+  });
+
+  test('keeps legacy Google Fonts css pipe-separated families multi-font', () => {
+    const page = pageWithGoogleFonts('https://fonts.googleapis.com/css?family=Cormorant+Garamond|Jost&display=swap');
+    const f = detectText(page, 'index.html');
+    expect(f.filter(r => r.antipattern === 'single-font')).toHaveLength(0);
+  });
+
+  test('page typography parses repeated Google Fonts css2 family params', () => {
+    const f = pageTypographyForGoogleFonts('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300&family=Inter:wght@400;500;600&display=swap');
+    expect(f.some(r => r.id === 'overused-font' && /inter/i.test(r.snippet))).toBe(true);
+    expect(f.filter(r => r.id === 'single-font')).toHaveLength(0);
   });
 });
 
@@ -996,6 +1050,79 @@ rounded:
       const raw = runIn(dir, '--json', '--no-config', 'index.html');
       const rawIds = JSON.parse(raw.stdout).map((finding) => finding.antipattern);
       expect(rawIds.some((id) => id.startsWith('design-system-'))).toBe(false);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('filterByScopes keeps only findings for the requested design domain', () => {
+    const findings = [
+      { antipattern: 'flat-type-hierarchy' },
+      { antipattern: 'nested-cards' },
+      { antipattern: 'line-length' },
+    ];
+
+    expect(filterByScopes(findings, ['type']).map((f) => f.antipattern)).toEqual([
+      'flat-type-hierarchy',
+      'line-length',
+    ]);
+    expect(filterByScopes(findings, ['layout']).map((f) => f.antipattern)).toEqual([
+      'nested-cards',
+      'line-length',
+    ]);
+    expect(filterByScopes(findings, [])).toEqual(findings);
+  });
+
+  test('--scope filters CLI output to a design domain', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-cli-scope-'));
+    try {
+      fs.writeFileSync(path.join(dir, 'DESIGN.md'), `---
+typography:
+  body:
+    fontFamily: "IBM Plex Sans, Arial, sans-serif"
+    fontSize: "16px"
+colors:
+  ink: "#241f1a"
+  paper: "#f7f4ee"
+---
+
+# Design System
+`);
+      fs.writeFileSync(path.join(dir, 'index.css'), `
+.bad {
+  font-family: "IBM Plex Sans", Arial, sans-serif;
+  font-size: 12.5px;
+  color: #ff00aa;
+}
+`);
+
+      const full = runIn(dir, '--json', 'index.css');
+      expect(full.code).toBe(2);
+      const fullIds = JSON.parse(full.stdout).map((finding) => finding.antipattern);
+      expect(fullIds).toContain('design-system-font-size');
+      expect(fullIds).toContain('design-system-color');
+
+      const typeOnly = runIn(dir, '--json', '--scope', 'type', 'index.css');
+      const typeIds = JSON.parse(typeOnly.stdout).map((finding) => finding.antipattern);
+      expect(typeIds).toContain('design-system-font-size');
+      expect(typeIds.some((id) => id === 'design-system-color')).toBe(false);
+
+      const badScope = runIn(dir, '--scope', 'bogus', 'index.css');
+      expect(badScope.code).toBe(1);
+      expect(badScope.stderr).toContain('Valid scopes:');
+
+      // A bare --scope must fail instead of silently scanning unscoped.
+      const missingTrailing = runIn(dir, 'index.css', '--scope');
+      expect(missingTrailing.code).toBe(1);
+      expect(missingTrailing.stderr).toContain('--scope requires a value');
+
+      const missingBeforeFlag = runIn(dir, '--scope', '--json', 'index.css');
+      expect(missingBeforeFlag.code).toBe(1);
+      expect(missingBeforeFlag.stderr).toContain('--scope requires a value');
+
+      const emptyInline = runIn(dir, '--scope=', 'index.css');
+      expect(emptyInline.code).toBe(1);
+      expect(emptyInline.stderr).toContain('--scope requires a value');
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

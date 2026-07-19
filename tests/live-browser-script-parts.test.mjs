@@ -46,6 +46,7 @@ describe('live browser script parts', () => {
       token: 'token-a',
       port: 8421,
       vocabulary: [{ value: 'shape', label: 'Shape' }],
+      commandPrefix: '$',
       parts: [
         { name: 'session-state', file: 'live-browser-session.js', source: 'window.__SESSION_PART__ = true;' },
         { name: 'dom-helpers', file: 'live-browser-dom.js', source: 'window.__DOM_PART__ = true;' },
@@ -55,6 +56,7 @@ describe('live browser script parts', () => {
 
     const tokenIndex = script.indexOf('window.__IMPECCABLE_TOKEN__');
     const portIndex = script.indexOf('window.__IMPECCABLE_PORT__');
+    const commandPrefixIndex = script.indexOf('window.__IMPECCABLE_COMMAND_PREFIX__');
     const vocabIndex = script.indexOf('window.__IMPECCABLE_VOCAB__');
     const sessionIndex = script.indexOf('window.__SESSION_PART__');
     const domIndex = script.indexOf('window.__DOM_PART__');
@@ -62,7 +64,9 @@ describe('live browser script parts', () => {
 
     assert.ok(tokenIndex !== -1);
     assert.ok(tokenIndex < portIndex);
-    assert.ok(portIndex < vocabIndex);
+    assert.ok(portIndex < commandPrefixIndex);
+    assert.ok(commandPrefixIndex < vocabIndex);
+    assert.match(script, /window\.__IMPECCABLE_COMMAND_PREFIX__ = "\$"/);
     assert.ok(vocabIndex < sessionIndex);
     assert.ok(sessionIndex < domIndex);
     assert.ok(domIndex < browserIndex);

@@ -132,6 +132,18 @@ import '../styles/changelog-faq-kinpaku.css';
       </ul>
     </article>
 
+    <article id="cli-v3.2.1" class="cf-entry">
+      <header class="cf-entry-head"><span class="cf-version">CLI v3.2.1</span><span class="cf-date">July 9, 2026</span></header>
+      <p class="cf-entry-lead">A compatibility release for Node 22/23 that also ships the detector and installer fixes already waiting on main.</p>
+      <ul class="cf-items">
+        <li><strong>Node 22 and 23 install cleanly again.</strong> The CLI now declares <code>"node": "&gt;=22.12.0"</code> and CI runs the main test/build lane on Node 22.12 and Node 24. The ZIP installer has used <code>fflate</code> since v3.0.2, so the old <code>extract-zip</code> stream bug no longer requires avoiding Node 22/23.</li>
+        <li><strong><code>npx</code> no longer falls back to stale 2.x on modern LTS Node.</strong> Because current releases are engine-compatible with Node 22.12+, <code>npx impeccable install</code> stays on the latest CLI instead of selecting an older Node-18-compatible release that does not understand the top-level <code>install</code> command.</li>
+        <li><strong>Detector pre-scans can target typography or layout.</strong> <code>impeccable detect --scope type</code> and <code>--scope layout</code> narrow findings to the design domain a command is about to edit, and the new <code>design-system-font-size</code> rule flags literal sizes outside the <code>DESIGN.md</code> typography ramp. Brings the deterministic rule set to 46.</li>
+        <li><strong>Google Fonts and detector ignores are sharper.</strong> <code>fonts.googleapis.com/css2</code> URLs with multiple families, axes, and encoded names now feed the overused-font and single-font checks correctly, and file-scoped wildcard ignores now suppress findings that do not carry a value, such as side tabs.</li>
+        <li><strong>Pi global installs land in the right directory.</strong> User-scope installs, updates, and checks now use <code>~/.pi/agent/skills</code> while project installs continue to use <code>.pi/skills</code>, so Pi users get the same install/update behavior as the other harnesses.</li>
+      </ul>
+    </article>
+
     <article id="cli-v3.2.0" class="cf-entry">
       <header class="cf-entry-head"><span class="cf-version">CLI v3.2.0</span><span class="cf-date">July 1, 2026</span></header>
       <ul class="cf-items">
