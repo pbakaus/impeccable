@@ -12,7 +12,8 @@ Use config for:
 
 - detector ignores shared by `npx impeccable detect` and the design hook;
 - private local ignores that should not be committed;
-- hook lifecycle settings such as enabled, quiet mode, and audit logging.
+- hook lifecycle settings such as enabled, quiet mode, and audit logging;
+- project roots, for repos where design boundaries are not declared by a package manager.
 
 Use `PRODUCT.md` and `DESIGN.md` for product and design intent. See [Design Context](/docs/context).
 
@@ -51,6 +52,24 @@ npx impeccable ignores add-file "src/private-experiment/**" --local
 ```
 
 Local settings go into `.impeccable/config.local.json`, which Impeccable keeps out of git.
+
+## Project Roots
+
+Impeccable normally finds nested projects through package-manager workspace declarations: `package.json` workspaces, `pnpm-workspace.yaml`, or `lerna.json`. When those files do not exist, or when design boundaries do not line up with packages, declare the roots directly:
+
+```json
+{
+  "projectRoots": ["docs/design/skins/*"]
+}
+```
+
+Each matched folder becomes its own project: it can carry its own `PRODUCT.md` and `DESIGN.md`, it appears in the app picker, and it falls back to the repo root per file for any context it does not define. See [Design Context](/docs/context).
+
+How the patterns behave:
+
+- Patterns are relative to the repo root and use the same glob syntax as `package.json` workspaces, including `*`, `**`, and `!` negation.
+- `projectRoots` in `config.local.json` extends the shared list, so one developer can add private roots without committing them.
+- A path matched by any `projectRoots` pattern, positive or negated, is governed by this config alone. Package-manager workspaces apply only to paths these patterns do not match, and each source's `!` negations apply only to its own patterns. So `"!apps/internal"` here hides a package workspace from Impeccable, while a package-level negation never hides a folder that `projectRoots` declares.
 
 ## Value ignores
 

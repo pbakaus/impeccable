@@ -107,6 +107,7 @@ Treat context files like any other design artifact: review them in code review w
   <div>
     <p>For normal projects, put <code>PRODUCT.md</code> and <code>DESIGN.md</code> in the project root.</p>
     <p>Skill commands look in the root first. If root context is missing, they also check <code>.agents/context/</code> and <code>docs/</code>.</p>
+    <p>In a monorepo, each workspace child resolves its own <code>PRODUCT.md</code> and <code>DESIGN.md</code> first, then falls back to the repo root per file. Project boundaries come from package-manager workspace declarations, or from <code>projectRoots</code> globs in <code>.impeccable/config.json</code> when no package manager declares them. See <a href="/docs/config">Config and ignores</a>.</p>
     <p>The detector's design-system rules use the same root-first behavior for <code>DESIGN.md</code>. For generated design metadata, the primary path is <code>.impeccable/design.json</code>. Legacy <code>DESIGN.json</code> files are still accepted as fallbacks, but new projects should use <code>.impeccable/design.json</code>.</p>
   </div>
 </details>

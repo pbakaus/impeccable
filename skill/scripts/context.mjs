@@ -15,7 +15,7 @@
  *   3. Repo root context, using the same order, as a per-file fallback
  *      whenever the active project is nested below it (a repo counts as a
  *      monorepo when a package manager declares workspaces, or
- *      `.impeccable/config.json` declares `contextRoots`)
+ *      `.impeccable/config.json` declares `projectRoots`)
  *   4. $IMPECCABLE_CONTEXT_DIR (absolute or cwd-relative) — power-user
  *      escape hatch, only consulted when defaults are empty
  *   5. Active project root as a "nothing found" default
@@ -244,7 +244,7 @@ function findMonorepoRoot(startDir) {
 }
 
 function isMonorepoRoot(dir) {
-  if (readWorkspacePatterns(dir).some((pattern) => !normalizeWorkspacePattern(pattern).startsWith('!'))) return true;
+  if (readProjectPatterns(dir).some((pattern) => !normalizeWorkspacePattern(pattern).startsWith('!'))) return true;
   if (!MONOREPO_MARKER_FILES.some((file) => fs.existsSync(path.join(dir, file)))) return false;
   return hasFallbackWorkspaceChildren(dir);
 }
@@ -269,10 +269,12 @@ function hasFallbackWorkspaceChildren(dir) {
 
 function discoverTargetCandidates(repoRoot) {
   const roots = new Map();
-  const patterns = readWorkspacePatterns(repoRoot);
-  for (const pattern of patterns) {
-    for (const root of discoverRootsForPattern(repoRoot, pattern)) {
-      roots.set(path.relative(repoRoot, root).split(path.sep).join('/'), root);
+  const patternGroups = readProjectPatternGroups(repoRoot);
+  for (const patterns of patternGroups) {
+    for (const pattern of patterns) {
+      for (const root of discoverRootsForPattern(repoRoot, pattern)) {
+        roots.set(path.relative(repoRoot, root).split(path.sep).join('/'), root);
+      }
     }
   }
   if (MONOREPO_MARKER_FILES.some((file) => fs.existsSync(path.join(repoRoot, file)))) {
@@ -293,10 +295,7 @@ function discoverTargetCandidates(repoRoot) {
   }
   return [...roots.entries()]
     .filter(([rel]) => rel && !rel.startsWith('..'))
-    // Honor negated workspace patterns (e.g. "!packages/internal"). resolveWorkspaceProjectRoot
-    // sends an excluded package back to the repo root, so an excluded folder must not appear as a
-    // selectable target — choosing it would silently resolve to the root instead.
-    .filter(([rel]) => !isExcludedByWorkspacePattern(rel.split('/').filter(Boolean), patterns))
+    .filter(([rel]) => isSelectableCandidate(repoRoot, rel, patternGroups))
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([rel, root]) => {
       const targetExample = findTargetExample(repoRoot, root);
@@ -452,15 +451,13 @@ function resolveWorkspaceProjectRoot(repoRoot, targetDir) {
   const rel = path.relative(repoRoot, targetDir);
   if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return repoRoot;
   const relSegments = rel.split(path.sep).filter(Boolean);
-  const patterns = readWorkspacePatterns(repoRoot);
-  const excluded = isExcludedByWorkspacePattern(relSegments, patterns);
-  if (!excluded) {
+  for (const patterns of readProjectPatternGroups(repoRoot)) {
+    if (isExcludedByWorkspacePattern(relSegments, patterns)) return repoRoot;
     for (const pattern of patterns) {
       const projectRoot = projectRootFromWorkspacePattern(repoRoot, relSegments, pattern);
       if (projectRoot) return projectRoot;
     }
   }
-  if (excluded) return repoRoot;
   if (
     relSegments.length >= 2
     && MONOREPO_FALLBACK_PROJECT_DIRS.includes(relSegments[0])
@@ -470,6 +467,25 @@ function resolveWorkspaceProjectRoot(repoRoot, targetDir) {
   const nearest = nearestProjectLikeRoot(repoRoot, targetDir);
   if (nearest) return nearest;
   return repoRoot;
+}
+
+// A discovered folder is only selectable when picking it would resolve back to
+// itself. Impeccable `projectRoots` patterns govern every path they match:
+// a negation drops the candidate (resolveWorkspaceProjectRoot would send it to
+// the repo root), and a positive match with a different boundary drops it too,
+// because the boundary root is already its own candidate and choosing the
+// deeper folder would silently resolve there. Paths the Impeccable group does
+// not match fall through to the package-manager negations, which is the
+// pre-existing behavior for package workspaces and marker-dir fallbacks.
+function isSelectableCandidate(repoRoot, rel, patternGroups) {
+  const relSegments = rel.split('/').filter(Boolean);
+  const [impeccablePatterns, packagePatterns] = patternGroups;
+  if (isExcludedByWorkspacePattern(relSegments, impeccablePatterns)) return false;
+  for (const pattern of impeccablePatterns) {
+    const boundary = projectRootFromWorkspacePattern(repoRoot, relSegments, pattern);
+    if (boundary) return path.resolve(boundary) === path.resolve(path.join(repoRoot, ...relSegments));
+  }
+  return !isExcludedByWorkspacePattern(relSegments, packagePatterns);
 }
 
 function isExcludedByWorkspacePattern(relSegments, patterns) {
@@ -560,21 +576,33 @@ function workspacePatternMatchesRel(pattern, relSegments) {
   return true;
 }
 
-function readWorkspacePatterns(repoRoot) {
+// Project boundaries come from two sources, in precedence order: explicit
+// `projectRoots` globs in .impeccable config, then package-manager workspace
+// declarations. A path matched by any Impeccable pattern — positive or
+// negated — is governed by the Impeccable group alone; package-manager
+// patterns only apply to paths the Impeccable group does not match. Within a
+// group, negations win over positives.
+function readProjectPatternGroups(repoRoot) {
   return [
-    ...readImpeccableContextRoots(repoRoot),
-    ...readPackageWorkspaces(repoRoot),
-    ...readPnpmWorkspaces(repoRoot),
-    ...readLernaWorkspaces(repoRoot),
-  ].filter(Boolean);
+    readImpeccableProjectRoots(repoRoot),
+    [
+      ...readPackageWorkspaces(repoRoot),
+      ...readPnpmWorkspaces(repoRoot),
+      ...readLernaWorkspaces(repoRoot),
+    ].filter(Boolean),
+  ];
 }
 
-function readImpeccableContextRoots(repoRoot) {
+function readProjectPatterns(repoRoot) {
+  return readProjectPatternGroups(repoRoot).flat();
+}
+
+function readImpeccableProjectRoots(repoRoot) {
   const patterns = [];
   for (const name of ['config.json', 'config.local.json']) {
     const cfg = readJson(path.join(repoRoot, '.impeccable', name));
-    if (!Array.isArray(cfg?.contextRoots)) continue;
-    for (const entry of cfg.contextRoots) {
+    if (!Array.isArray(cfg?.projectRoots)) continue;
+    for (const entry of cfg.projectRoots) {
       if (typeof entry === 'string' && entry.trim()) patterns.push(entry.trim());
     }
   }

@@ -769,9 +769,9 @@ describe('loadContext (monorepo project context)', () => {
   });
 });
 
-describe('loadContext (impeccable contextRoots config)', () => {
+describe('loadContext (impeccable projectRoots config)', () => {
   function writeSkinsConfig(extra = {}) {
-    write('.impeccable/config.json', JSON.stringify({ contextRoots: ['docs/design/skins/*'], ...extra }, null, 2));
+    write('.impeccable/config.json', JSON.stringify({ projectRoots: ['docs/design/skins/*'], ...extra }, null, 2));
     write('PRODUCT.md', '# Root product\n');
     write('DESIGN.md', '# Root design\n');
   }
@@ -803,9 +803,9 @@ describe('loadContext (impeccable contextRoots config)', () => {
     assert.match(ctx.product, /Root product/);
   });
 
-  it('extends shared contextRoots with config.local.json', () => {
-    write('.impeccable/config.json', JSON.stringify({ contextRoots: ['docs/design/skins/*'] }, null, 2));
-    write('.impeccable/config.local.json', JSON.stringify({ contextRoots: ['experiments/*'] }, null, 2));
+  it('extends shared projectRoots with config.local.json', () => {
+    write('.impeccable/config.json', JSON.stringify({ projectRoots: ['docs/design/skins/*'] }, null, 2));
+    write('.impeccable/config.local.json', JSON.stringify({ projectRoots: ['experiments/*'] }, null, 2));
     write('PRODUCT.md', '# Root product\n');
     write('DESIGN.md', '# Root design\n');
     write('experiments/wip/DESIGN.md', '# WIP design\n');
@@ -816,7 +816,7 @@ describe('loadContext (impeccable contextRoots config)', () => {
     assert.match(ctx.product, /Root product/);
   });
 
-  it('does not treat an .impeccable config without contextRoots as a monorepo', () => {
+  it('does not treat an .impeccable config without projectRoots as a monorepo', () => {
     write('.impeccable/config.json', JSON.stringify({ hook: { consent: 'accepted' } }, null, 2));
     write('PRODUCT.md', '# Root product\n');
     write('docs/design/skins/marble/DESIGN.md', '# Marble design\n');
@@ -826,7 +826,7 @@ describe('loadContext (impeccable contextRoots config)', () => {
   });
 
   it('asks for app selection from a config-declared monorepo root', () => {
-    write('.impeccable/config.json', JSON.stringify({ contextRoots: ['docs/design/skins/*'] }, null, 2));
+    write('.impeccable/config.json', JSON.stringify({ projectRoots: ['docs/design/skins/*'] }, null, 2));
     write('PRODUCT.md', '# Root product\n');
     write('DESIGN.md', '# Root design\n');
     write('docs/design/skins/neon-seoul/DESIGN.md', '# Neon Seoul\n');
@@ -841,6 +841,93 @@ describe('loadContext (impeccable contextRoots config)', () => {
     const selection = parseTargetSelection(res.stdout);
     const paths = selection.targetCandidates.map((candidate) => candidate.path).sort();
     assert.deepEqual(paths, ['docs/design/skins/marble', 'docs/design/skins/neon-seoul']);
+  });
+
+  // Composition with package-manager workspaces: a path matched by any
+  // projectRoots pattern (positive or negated) is governed by the impeccable
+  // config alone; package-manager patterns fill in the paths it does not match.
+  describe('composition with package-manager workspaces', () => {
+    function selectionPaths() {
+      const res = spawnSync(process.execPath, [SCRIPT_PATH], {
+        cwd: scratch,
+        encoding: 'utf8',
+        env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' },
+      });
+      assert.equal(res.status, 0, res.stderr);
+      const selection = parseTargetSelection(res.stdout);
+      return selection.targetCandidates.map((candidate) => candidate.path).sort();
+    }
+
+    it('lets an impeccable negation exclude a package-manager workspace', () => {
+      write('package.json', JSON.stringify({ private: true, workspaces: ['apps/*'] }, null, 2));
+      write('.impeccable/config.json', JSON.stringify({ projectRoots: ['!apps/internal'] }, null, 2));
+      write('PRODUCT.md', '# Root product\n');
+      write('apps/dashboard/PRODUCT.md', '# Dashboard product\n');
+      write('apps/internal/PRODUCT.md', '# Internal product\n');
+
+      const ctx = loadContext(scratch, { targetPath: 'apps/internal' });
+      assert.equal(ctx.isMonorepo, true);
+      assert.equal(ctx.projectRoot, scratch);
+      assert.match(ctx.product, /Root product/);
+      assert.deepEqual(selectionPaths(), ['apps/dashboard']);
+    });
+
+    it('keeps a package-manager negation scoped to its own source', () => {
+      write('package.json', JSON.stringify({
+        private: true,
+        workspaces: ['apps/*', '!docs/design/skins/marble'],
+      }, null, 2));
+      write('.impeccable/config.json', JSON.stringify({ projectRoots: ['docs/design/skins/*'] }, null, 2));
+      write('PRODUCT.md', '# Root product\n');
+      write('apps/dashboard/PRODUCT.md', '# Dashboard product\n');
+      write('docs/design/skins/marble/DESIGN.md', '# Marble design\n');
+
+      const ctx = loadContext(scratch, { targetPath: 'docs/design/skins/marble' });
+      assert.equal(ctx.projectRoot, path.join(scratch, 'docs', 'design', 'skins', 'marble'));
+      assert.match(ctx.design, /Marble design/);
+      assert.deepEqual(selectionPaths(), ['apps/dashboard', 'docs/design/skins/marble']);
+    });
+
+    it('gives a broad impeccable pattern the boundary over a deeper package workspace', () => {
+      write('package.json', JSON.stringify({ private: true, workspaces: ['apps/web/packages/ui'] }, null, 2));
+      write('.impeccable/config.json', JSON.stringify({ projectRoots: ['apps/*'] }, null, 2));
+      write('PRODUCT.md', '# Root product\n');
+      write('apps/web/PRODUCT.md', '# Web product\n');
+      write('apps/web/packages/ui/PRODUCT.md', '# UI product\n');
+      write('apps/web/packages/ui/src/Button.jsx', 'export default null;\n');
+
+      const ctx = loadContext(scratch, { targetPath: 'apps/web/packages/ui/src/Button.jsx' });
+      assert.equal(ctx.projectRoot, path.join(scratch, 'apps', 'web'));
+      assert.match(ctx.product, /Web product/);
+      // The subsumed package workspace must not appear as its own pick:
+      // choosing it would silently resolve to apps/web.
+      assert.deepEqual(selectionPaths(), ['apps/web']);
+    });
+
+    it('falls through to package workspaces for paths impeccable does not match', () => {
+      write('package.json', JSON.stringify({ private: true, workspaces: ['apps/*'] }, null, 2));
+      write('.impeccable/config.json', JSON.stringify({ projectRoots: ['docs/design/skins/*'] }, null, 2));
+      write('PRODUCT.md', '# Root product\n');
+      write('apps/dashboard/PRODUCT.md', '# Dashboard product\n');
+      write('docs/design/skins/marble/DESIGN.md', '# Marble design\n');
+
+      const ctx = loadContext(scratch, { targetPath: 'apps/dashboard' });
+      assert.equal(ctx.projectRoot, path.join(scratch, 'apps', 'dashboard'));
+      assert.match(ctx.product, /Dashboard product/);
+    });
+
+    it('resolves other workspaces normally when impeccable config only negates', () => {
+      write('package.json', JSON.stringify({ private: true, workspaces: ['apps/*'] }, null, 2));
+      write('.impeccable/config.json', JSON.stringify({ projectRoots: ['!apps/internal'] }, null, 2));
+      write('PRODUCT.md', '# Root product\n');
+      write('apps/dashboard/PRODUCT.md', '# Dashboard product\n');
+      write('apps/internal/PRODUCT.md', '# Internal product\n');
+
+      const ctx = loadContext(scratch, { targetPath: 'apps/dashboard' });
+      assert.equal(ctx.isMonorepo, true);
+      assert.equal(ctx.projectRoot, path.join(scratch, 'apps', 'dashboard'));
+      assert.match(ctx.product, /Dashboard product/);
+    });
   });
 });
 
