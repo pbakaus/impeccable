@@ -227,7 +227,7 @@
 .spread-flow {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--spacing-xs);
   flex-wrap: nowrap;
   margin-top: var(--spacing-xs);
   white-space: nowrap;

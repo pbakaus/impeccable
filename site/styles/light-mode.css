@@ -260,6 +260,10 @@ html.light .home-kinpaku .magazine-container .fisheye-item.is-active {
   color: var(--ks-accent-ink);
 }
 
+html.light .home-kinpaku .spread-flow-cmd {
+  background: transparent;
+}
+
 /* ============================================================
    Homepage — hero, scroll glass header, section shells
    ============================================================ */
