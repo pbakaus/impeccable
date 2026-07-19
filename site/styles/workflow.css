@@ -227,10 +227,16 @@
 .spread-flow {
   display: flex;
   align-items: center;
-  gap: var(--spacing-xs);
-  flex-wrap: nowrap;
+  gap: 6px;
+  flex-wrap: wrap;
   margin-top: var(--spacing-xs);
   white-space: nowrap;
+}
+
+@supports (flex-wrap: balance) {
+  .spread-flow {
+    flex-wrap: balance;
+  }
 }
 
 .spread-flow-label {
