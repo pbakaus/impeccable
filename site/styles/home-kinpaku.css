@@ -993,13 +993,12 @@
   --spread-accent: var(--ks-state-ink);
 }
 
-/* In the command palette the section accent (--spread-accent) carries the whole
-   category identity: the kicker, the skill name (big title + active list item),
-   and the divider. The slash before /impeccable is demoted to the namespace's
-   muted ink — it's punctuation, not identity. (Light mode re-applies these accent
-   colors in light-mode.css to clear that file's :is() eyebrow rule.) */
+/* Keep dark-mode command titles, category labels, and the active list item
+   consistently kinpaku. Category colors remain on decorative dividers and demo
+   accents, while the slash before /impeccable stays muted punctuation. Light
+   mode re-themes this text in light-mode.css. */
 .home-kinpaku .magazine-container :is(.spread-command-name, .spread-category-label, .fisheye-item.is-active) {
-  color: var(--spread-accent);
+  color: var(--ks-kinpaku);
 }
 
 .home-kinpaku .magazine-container .spread-command-name .spread-slash {
