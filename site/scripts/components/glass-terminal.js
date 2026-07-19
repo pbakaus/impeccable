@@ -189,7 +189,7 @@ function renderSpread(cmd, index, isActive) {
         } else if (relationship.combinesWith && relationship.combinesWith.length > 0) {
             flowHTML = `
                 <div class="spread-flow">
-                    <span class="spread-flow-icon">+</span>
+                    <span class="spread-flow-icon spread-flow-icon--combine">+</span>
                     <span class="spread-flow-label">combines with</span>
                     ${relationship.combinesWith.map(c => `<span class="spread-flow-cmd">/${c}</span>`).join(' ')}
                 </div>`;

@@ -245,6 +245,10 @@
   font-size: 0.8125rem;
 }
 
+.spread-flow-icon--combine {
+  transform: translateY(1px);
+}
+
 .spread-flow-cmd {
   font-family: var(--font-mono);
   font-size: 0.6875rem;
