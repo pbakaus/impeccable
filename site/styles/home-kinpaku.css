@@ -993,12 +993,10 @@
   --spread-accent: var(--ks-state-ink);
 }
 
-/* Keep dark-mode command titles, category labels, and the active list item
-   consistently kinpaku. Category colors remain on decorative dividers and demo
-   accents, while the slash before /impeccable stays muted punctuation. Light
-   mode re-themes this text in light-mode.css. */
+/* Command titles, category labels, and the active list item follow the current
+   category accent. The slash before /impeccable stays muted punctuation. */
 .home-kinpaku .magazine-container :is(.spread-command-name, .spread-category-label, .fisheye-item.is-active) {
-  color: var(--ks-kinpaku);
+  color: var(--spread-accent, var(--ks-kinpaku));
 }
 
 .home-kinpaku .magazine-container .spread-command-name .spread-slash {
@@ -1024,7 +1022,7 @@
 }
 
 .home-kinpaku .fisheye-item.is-active {
-  color: var(--ks-kinpaku);
+  color: var(--spread-accent, var(--ks-kinpaku));
 }
 
 .home-kinpaku .fisheye-slash,
@@ -1033,7 +1031,7 @@
 }
 
 .home-kinpaku .spread-command-name {
-  color: var(--ks-kinpaku);
+  color: var(--spread-accent, var(--ks-kinpaku));
   font-family: var(--ks-font-display);
   font-size: 4.2rem;
   font-weight: 100;
@@ -1041,13 +1039,20 @@
 }
 
 .home-kinpaku .spread-command-name .spread-namespace,
-.home-kinpaku .spread-description,
-.home-kinpaku .spread-flow-label {
+.home-kinpaku .spread-description {
+  color: var(--ks-muted);
+}
+
+.home-kinpaku .spread-flow-label,
+.home-kinpaku .spread-flow-icon {
   color: var(--ks-muted);
 }
 
 .home-kinpaku .spread-flow-cmd {
-  color: var(--ks-code-cmd);
+  color: var(--spread-accent, var(--ks-code-cmd));
+}
+
+.home-kinpaku .spread-flow-cmd {
   background: var(--ks-code-bg);
   border: 0;
   border-radius: var(--ks-code-radius);

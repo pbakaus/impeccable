@@ -246,21 +246,18 @@ html.light body.docs-kinpaku :is(
   color: var(--docs-accent);
 }
 
-/* Command palette (magazine spread). The kicker, skill name (big title + active
-   list item) all read in the section accent (--spread-accent) — gold for
-   create/refine/simplify, verdigris for evaluate/harden, neutral for system —
-   matching the divider. On the near-white card these read fine. This keeps the
-   palette colors distinct from the shared light-mode small-text accent; scoped
-   under .magazine-container so its specificity ties/beats that rule (and only
-   touches the palette). Dark mode gets the same accent colors via
-   home-kinpaku.css. */
+/* Command palette (magazine spread). Category text uses --spread-ink rather
+   than the brighter decorative --spread-accent: gold-family categories stay
+   ochre, evaluate/harden stay verdigris, and system stays neutral while all
+   small text remains AA-readable on paper. */
 html.light .home-kinpaku .magazine-container .spread-command-name,
 html.light .home-kinpaku .magazine-container .spread-category-label,
 html.light .home-kinpaku .magazine-container .fisheye-item.is-active {
-  color: var(--ks-accent-ink);
+  color: var(--spread-ink, var(--ks-accent-ink));
 }
 
 html.light .home-kinpaku .spread-flow-cmd {
+  color: var(--spread-ink, var(--ks-accent-ink));
   background: transparent;
 }
 
@@ -274,16 +271,16 @@ html.light .home-kinpaku {
 
   --cat-create-bg: linear-gradient(155deg, oklch(77% 0.13 82 / 0.12), transparent 56%), oklch(96% 0.012 95);
   --cat-create-border: oklch(61% 0.085 78 / 0.55);
-  --cat-create-text: var(--ks-kinpaku-ink);
+  --cat-create-text: var(--ks-gold-ink);
   --cat-evaluate-bg: linear-gradient(155deg, oklch(70% 0.12 188 / 0.12), transparent 58%), oklch(96% 0.012 95);
   --cat-evaluate-border: oklch(49% 0.08 188 / 0.55);
   --cat-evaluate-text: var(--ks-patina-deep);
   --cat-refine-bg: linear-gradient(155deg, oklch(86% 0.07 84 / 0.10), transparent 58%), oklch(96% 0.012 95);
   --cat-refine-border: oklch(77% 0.13 82 / 0.45);
-  --cat-refine-text: var(--ks-kinpaku-ink);
+  --cat-refine-text: var(--ks-gold-ink);
   --cat-simplify-bg: linear-gradient(155deg, oklch(61% 0.085 78 / 0.10), transparent 58%), oklch(96% 0.012 95);
   --cat-simplify-border: oklch(61% 0.085 78 / 0.50);
-  --cat-simplify-text: var(--ks-kinpaku-ink);
+  --cat-simplify-text: var(--ks-gold-ink);
   --cat-harden-bg: linear-gradient(155deg, oklch(49% 0.08 188 / 0.10), transparent 58%), oklch(96% 0.012 95);
   --cat-harden-border: oklch(49% 0.08 188 / 0.48);
   --cat-harden-text: var(--ks-patina-deep);
