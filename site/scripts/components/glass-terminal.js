@@ -489,6 +489,7 @@ function renderMobileLayout(container, commands) {
     // Keep setup/management commands off the palette (they stay in the periodic
     // table); match the desktop fisheye filter.
     commands = commands.filter(c => !PALETTE_EXCLUDED.has(c.id));
+    const initialCategory = commandCategories[commands[0]?.id] || 'other';
     // Build carousel pills
     // Carousel pills show bare command names for sub-commands, and /impeccable
     // for the root entry.
@@ -527,7 +528,7 @@ function renderMobileLayout(container, commands) {
     }).join('');
 
     container.innerHTML = `
-        <div class="mobile-commands-layout">
+        <div class="mobile-commands-layout" data-category="${initialCategory}">
             <div class="mobile-carousel-wrapper">
                 <div class="mobile-carousel">
                     ${carouselHTML}
@@ -546,6 +547,7 @@ function renderMobileLayout(container, commands) {
 }
 
 function setupMobileInteractions(commands) {
+    const layout = document.querySelector('.mobile-commands-layout');
     const pills = document.querySelectorAll('.mobile-cmd-pill');
     const demoArea = document.getElementById('mobile-demo-content');
     const infoCards = document.querySelectorAll('.mobile-cmd-info');
@@ -570,6 +572,7 @@ function setupMobileInteractions(commands) {
             if (!cmd || currentCommandId === cmdId) return;
 
             currentCommandId = cmdId;
+            if (layout) layout.dataset.category = commandCategories[cmdId] || 'other';
 
             // Update active pill
             pills.forEach(p => p.classList.remove('active'));

@@ -94,7 +94,7 @@ export function renderCommandDemo(commandId) {
                   <span style="opacity: 0.8;">Opens the result in a browser, checks against the brief and anti-pattern list, refines until the polish bar is high.</span>
                 </div>
               </div>
-              <div style="font-size: 12px; opacity: 0.5; margin-top: 2px; font-style: italic;">The full shape-then-build flow in one command. Best for brand-new features.</div>
+              <div class="demo-craft-note" style="font-size: 12px; opacity: 0.5; margin-top: 2px; font-style: italic;">The full shape-then-build flow in one command. Best for brand-new features.</div>
             </div>
           </div>
         </div>

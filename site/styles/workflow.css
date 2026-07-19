@@ -18,27 +18,33 @@
 /* Keep the full category accent for fills and rules, and give text a separate
    category-aware ink so light mode can darken it without flattening the
    palette. */
-.magazine-spread[data-category="create"] {
+.magazine-spread[data-category="create"],
+.mobile-commands-layout[data-category="create"] {
   --spread-accent: var(--color-accent);
   --spread-ink: var(--cat-create-text);
 }
-.magazine-spread[data-category="evaluate"] {
+.magazine-spread[data-category="evaluate"],
+.mobile-commands-layout[data-category="evaluate"] {
   --spread-accent: var(--ks-patina);
   --spread-ink: var(--cat-evaluate-text);
 }
-.magazine-spread[data-category="refine"] {
+.magazine-spread[data-category="refine"],
+.mobile-commands-layout[data-category="refine"] {
   --spread-accent: var(--color-accent);
   --spread-ink: var(--cat-refine-text);
 }
-.magazine-spread[data-category="simplify"] {
+.magazine-spread[data-category="simplify"],
+.mobile-commands-layout[data-category="simplify"] {
   --spread-accent: var(--ks-kinpaku-rich);
   --spread-ink: var(--cat-simplify-text);
 }
-.magazine-spread[data-category="harden"] {
+.magazine-spread[data-category="harden"],
+.mobile-commands-layout[data-category="harden"] {
   --spread-accent: var(--ks-patina);
   --spread-ink: var(--cat-harden-text);
 }
-.magazine-spread[data-category="system"] {
+.magazine-spread[data-category="system"],
+.mobile-commands-layout[data-category="system"] {
   --spread-accent: var(--color-ash);
   --spread-ink: var(--cat-system-text);
 }

@@ -982,15 +982,29 @@
   [data-category="create"],
   [data-category="refine"],
   [data-category="simplify"]
+) .demo-viewport,
+.home-kinpaku .mobile-commands-layout:is(
+  [data-category="create"],
+  [data-category="refine"],
+  [data-category="simplify"]
 ) .demo-viewport {
-  --spread-accent: var(--ks-accent-ink);
+  --spread-accent: var(--ks-gold-ink);
 }
 
 .home-kinpaku .magazine-spread:is(
   [data-category="evaluate"],
   [data-category="harden"]
+) .demo-viewport,
+.home-kinpaku .mobile-commands-layout:is(
+  [data-category="evaluate"],
+  [data-category="harden"]
 ) .demo-viewport {
   --spread-accent: var(--ks-state-ink);
+}
+
+html.light .home-kinpaku .mobile-commands-layout .demo-craft-note {
+  color: var(--ks-text-muted);
+  opacity: 1 !important;
 }
 
 /* Command titles and category labels follow the current category accent. The
