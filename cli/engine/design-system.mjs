@@ -646,12 +646,16 @@ function checkFontSizeValue(value, filePath, line, designSystem, context) {
     )];
   }
 
+  // The snippet shows the declaration as authored, but the ignoreValue has to
+  // be what a `hooks ignore-value` waiver can match, so the priority marker is
+  // stripped. Otherwise the same size needs two different waivers depending on
+  // whether it carries !important. font-family already behaves this way.
   return [makeDesignFinding(
     'design-system-font-size',
     filePath,
     `${context}: ${token} is off the DESIGN.md type ramp`,
     line,
-    { ignoreValue: token },
+    { ignoreValue: token.replace(/\s*!important\s*$/i, '').trim() },
   )];
 }
 

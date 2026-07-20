@@ -202,6 +202,23 @@ describe('normalizeDesignSystem()', () => {
     assert.equal(isAllowedFontSizeRaw('clamp(3.4rem, 6.5vw, 6rem)', designSystem), false);
   });
 
+  it('strips CSS priority markers from the font-size ignore value', () => {
+    // The ignoreValue is what a `hooks ignore-value` waiver has to match, so a
+    // size must not need two different waivers depending on whether the
+    // declaration carries !important. font-family already behaves this way.
+    const designSystem = normalizeDesignSystem({
+      frontmatter: { typography: { scale: { body: '1rem' } } },
+    });
+    const findings = checkSourceDesignSystem(
+      '.a { font-size: 1.4rem !important; }\n.b { font-size: 1.4rem; }',
+      '/tmp/important.css',
+      { designSystem },
+    );
+    const sizes = findings.filter((f) => f.antipattern === 'design-system-font-size');
+    assert.equal(sizes.length, 2);
+    assert.deepEqual(sizes.map((f) => f.ignoreValue), ['1.4rem', '1.4rem']);
+  });
+
   it('reports which fluid endpoint is off the ramp', () => {
     const designSystem = normalizeDesignSystem({
       frontmatter: { typography: { scale: { body: '1rem' } } },
