@@ -39,7 +39,7 @@
   color: var(--ks-kinpaku);
   font-family: var(--ks-font-wordmark);
   font-weight: 400;
-  font-size: 1.3rem;
+  font-size: 1.125rem;
   letter-spacing: 0.15em;
   text-transform: uppercase;
   line-height: 1;
@@ -883,7 +883,7 @@
   color: var(--ks-kinpaku);
   font-family: var(--ks-font-wordmark);
   font-weight: 400;
-  font-size: 1.3rem;
+  font-size: 1.125rem;
   letter-spacing: 0.15em;
   text-transform: uppercase;
   line-height: 1;

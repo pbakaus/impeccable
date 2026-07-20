@@ -284,7 +284,7 @@ html.light .docs-kinpaku {
   }
 
   .docs-kinpaku .docs-start-rail-title {
-    font-size: 2.15rem;
+    font-size: 2rem;
   }
 }
 
@@ -345,7 +345,7 @@ html.light .docs-kinpaku {
   font-family: var(--ks-font);
   font-style: normal;
   font-weight: 650;
-  font-size: 1.55rem;
+  font-size: 1.5rem;
   line-height: 1.25;
   letter-spacing: 0;
   color: var(--ks-champagne);
@@ -633,7 +633,7 @@ html.light .docs-kinpaku {
   font-family: var(--ks-font-display);
   font-style: normal;
   font-weight: var(--ks-type-headline-weight);
-  font-size: 1.4rem;
+  font-size: 1.5rem;
   line-height: 1.15;
   color: var(--ks-champagne);
 }
@@ -824,7 +824,7 @@ html.light .docs-kinpaku {
   gap: 14px;
   margin: 0;
   font-family: var(--ks-mono);
-  font-size: 1.06rem;
+  font-size: 1rem;
   line-height: 1.2;
 }
 
@@ -1011,7 +1011,7 @@ html.light .docs-kinpaku {
 }
 
 .docs-kinpaku .sub-page-lede {
-  font-size: 1.08rem;
+  font-size: 1.125rem;
   line-height: 1.65;
   color: var(--ks-text);
   margin: 0;

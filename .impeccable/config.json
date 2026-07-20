@@ -5,6 +5,8 @@
       "tests/fixtures/**",
       "tests/detect-antipatterns.test.js",
       "site/pages/slop/**",
+      "site/public/antipattern-examples/**",
+      "site/public/neo-mirai/**",
       "site/data/anti-patterns-catalog.js",
       "site/pages/shader-lab/**",
       "site/scripts/demos/commands/**",
@@ -12,6 +14,15 @@
       "site/styles/slop-kinpaku.css"
     ],
     "ignoreValues": [
+      {
+        "rule": "design-system-font-size",
+        "value": "*",
+        "files": [
+          "site/scripts/components/framework-viz.js"
+        ],
+        "createdAt": "2026-07-19T00:00:00.000Z",
+        "reason": "Periodic-table cell annotations (atomic number, alpha badge) are diagram geometry at 5-7px, not ramp type; they sit at 2-3px offsets inside a small cell"
+      },
       {
         "rule": "bounce-easing",
         "value": "bounce-ball",
@@ -71,6 +82,24 @@
         ],
         "createdAt": "2026-06-15T23:37:38.170Z",
         "reason": "Generic slop card intentionally uses Inter for the before-state comparison"
+      },
+      {
+        "rule": "overused-font",
+        "value": "Inter",
+        "files": [
+          "site/styles/workflow.css"
+        ],
+        "createdAt": "2026-07-19T00:00:00.000Z",
+        "reason": "User confirmed the .why-slop-* before-state card intentionally uses Inter; extends the existing design-system-font waiver for the same card"
+      },
+      {
+        "rule": "gradient-text",
+        "value": "*",
+        "files": [
+          "site/styles/workflow.css"
+        ],
+        "createdAt": "2026-07-19T00:00:00.000Z",
+        "reason": "User confirmed the .why-slop-title gradient is an intentional AI-tell demo in the before-state comparison"
       }
     ]
   },

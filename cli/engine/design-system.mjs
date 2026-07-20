@@ -288,15 +288,66 @@ function addTypographyFonts(out, typography) {
   }
 }
 
+function addFontSizeStep(out, raw, { fluid = false } = {}) {
+  const text = String(raw ?? '').trim().toLowerCase();
+  if (!FONT_SIZE_LITERAL_RE.test(text)) return;
+  const px = resolveLengthPx(text, 16);
+  if (px == null || !Number.isFinite(px) || px <= 0) return;
+  out.allowedFontSizes.push({ value: text, px, fluid });
+}
+
+// A fluid role declares its two fixed endpoints and interpolates between them
+// with a viewport unit. Both endpoints are documented sizes, so they belong in
+// the allowlist; the middle term is viewport-relative and never a fixed step.
+// Endpoints are marked `fluid` because they do not *enumerate* a ramp: see
+// `hasFontSizes` below for why that distinction has to survive.
+function addClampEndpoints(out, raw) {
+  const match = /^clamp\(\s*(.+)\s*\)$/i.exec(String(raw ?? '').trim());
+  if (!match) return false;
+  const args = splitTopLevelArgs(match[1]);
+  if (args.length !== 3) return false;
+  addFontSizeStep(out, args[0], { fluid: true });
+  addFontSizeStep(out, args[2], { fluid: true });
+  return true;
+}
+
+function splitTopLevelArgs(s) {
+  const args = [];
+  let depth = 0;
+  let current = '';
+  for (const ch of String(s)) {
+    if (ch === '(') depth++;
+    else if (ch === ')') depth--;
+    if (ch === ',' && depth === 0) {
+      args.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim()) args.push(current.trim());
+  return args;
+}
+
 function addTypographySizes(out, typography) {
   if (!typography || typeof typography !== 'object') return;
-  for (const role of Object.values(typography)) {
+
+  // `scale` is the enumerated ramp: a name -> size map, since the frontmatter
+  // parser has no list support. It sits alongside the named roles.
+  const scale = typography.scale;
+  if (scale && typeof scale === 'object') {
+    for (const value of Object.values(scale)) {
+      if (typeof value !== 'string' && typeof value !== 'number') continue;
+      addFontSizeStep(out, value);
+    }
+  }
+
+  for (const [name, role] of Object.entries(typography)) {
+    if (name === 'scale') continue;
     if (!role || typeof role !== 'object') continue;
     const raw = String(role.fontSize ?? '').trim().toLowerCase();
-    if (!FONT_SIZE_LITERAL_RE.test(raw)) continue;
-    const px = resolveLengthPx(raw, 16);
-    if (px == null || !Number.isFinite(px) || px <= 0) continue;
-    out.allowedFontSizes.push({ value: raw, px });
+    if (addClampEndpoints(out, raw)) continue;
+    addFontSizeStep(out, raw);
   }
 }
 
@@ -371,7 +422,10 @@ function normalizeDesignSystem(input = {}) {
   out.hasFonts = out.allowedFonts.size > 0;
   out.hasColors = out.allowedColorKeys.size > 0;
   out.hasRadii = out.allowedRadii.length > 0;
-  out.hasFontSizes = out.allowedFontSizes.length > 0;
+  // Gate on *enumerated* steps only. A fully fluid system declares clamp
+  // endpoints but no discrete ramp, so treating those endpoints as the whole
+  // allowlist would flag every intermediate size. Abstain instead.
+  out.hasFontSizes = out.allowedFontSizes.some(entry => !entry.fluid);
   return out;
 }
 

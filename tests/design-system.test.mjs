@@ -108,6 +108,66 @@ describe('normalizeDesignSystem()', () => {
     assert.equal(isAllowedFontSizeRaw('clamp(1rem, 2vw, 2rem)', designSystem), true);
     assert.equal(isAllowedFontSizeRaw('var(--text-body)', designSystem), true);
   });
+
+  it('reads a typography.scale map as literal ramp steps', () => {
+    const designSystem = normalizeDesignSystem({
+      frontmatter: {
+        typography: {
+          scale: {
+            micro: '0.5625rem', // 9px
+            body: '1rem', // 16px
+            title: '1.5rem', // 24px
+          },
+          body: { fontFamily: 'IBM Plex Sans, Arial, sans-serif', fontSize: '1rem' },
+        },
+      },
+    });
+
+    assert.equal(designSystem.hasFontSizes, true);
+    assert.equal(isAllowedFontSizeRaw('9px', designSystem), true);
+    assert.equal(isAllowedFontSizeRaw('0.5625rem', designSystem), true);
+    assert.equal(isAllowedFontSizeRaw('24px', designSystem), true);
+    // Off every step by more than the 0.5px tolerance.
+    assert.equal(isAllowedFontSizeRaw('0.82rem', designSystem), false);
+    assert.equal(isAllowedFontSizeRaw('20px', designSystem), false);
+  });
+
+  it('accepts both clamp() endpoints as ramp steps', () => {
+    const designSystem = normalizeDesignSystem({
+      frontmatter: {
+        typography: {
+          scale: { body: '1rem' },
+          display: { fontFamily: 'Alumni Sans, sans-serif', fontSize: 'clamp(3.4rem, 6.5vw, 5.6rem)' },
+        },
+      },
+    });
+
+    // 3.4rem = 54.4px (min) and 5.6rem = 89.6px (max) are both documented.
+    assert.equal(isAllowedFontSizeRaw('3.4rem', designSystem), true);
+    assert.equal(isAllowedFontSizeRaw('5.6rem', designSystem), true);
+    assert.equal(isAllowedFontSizeRaw('54.4px', designSystem), true);
+    assert.equal(isAllowedFontSizeRaw('89.6px', designSystem), true);
+    // The vw middle term is viewport-relative, never a fixed step.
+    assert.equal(isAllowedFontSizeRaw('6.5px', designSystem), false);
+    // An arbitrary size between the endpoints is still off the ramp.
+    assert.equal(isAllowedFontSizeRaw('4.2rem', designSystem), false);
+  });
+
+  it('does not let clamp() endpoints alone switch the font-size rule on', () => {
+    // A fully fluid system enumerates no discrete ramp, so inferring one from
+    // clamp endpoints would flag every intermediate size. Keep abstaining.
+    const designSystem = normalizeDesignSystem({
+      frontmatter: {
+        typography: {
+          display: { fontFamily: 'Avenir Next, Georgia, serif', fontSize: 'clamp(2.5rem, 6vw, 4rem)' },
+          body: { fontFamily: 'IBM Plex Sans, Arial, sans-serif', fontSize: 'clamp(1rem, 2vw, 1.125rem)' },
+        },
+      },
+    });
+
+    assert.equal(designSystem.hasFontSizes, false);
+    assert.equal(isAllowedFontSizeRaw('12.5px', designSystem), true);
+  });
 });
 
 describe('loadDesignSystemForCwd()', () => {

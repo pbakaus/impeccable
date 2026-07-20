@@ -424,7 +424,7 @@
   }
 
   .designing-kinpaku .designing-loop-name {
-    font-size: 1.45rem;
+    font-size: 1.5rem;
   }
 
   .designing-kinpaku .designing-loop-hint {
@@ -827,7 +827,7 @@
   color: var(--ks-champagne);
   font-family: var(--ks-font);
   font-weight: 600;
-  font-size: 1.2rem;
+  font-size: 1.25rem;
   line-height: 1.3;
   letter-spacing: -0.01em;
   margin: 0;
@@ -1214,7 +1214,7 @@
   color: var(--ks-champagne);
   font-family: var(--ks-font);
   font-weight: 600;
-  font-size: 1.2rem;
+  font-size: 1.25rem;
   line-height: 1.3;
   letter-spacing: -0.01em;
   margin: 0;
@@ -1315,7 +1315,7 @@
   color: var(--ks-champagne);
   font-family: var(--ks-font);
   font-weight: 600;
-  font-size: 1.2rem;
+  font-size: 1.25rem;
   line-height: 1.3;
   letter-spacing: -0.01em;
   margin: 0;
@@ -1355,7 +1355,7 @@
 .designing-kinpaku .designing-extract-arrow {
   color: var(--ks-kinpaku);
   font-family: var(--ks-mono);
-  font-size: 1.2rem;
+  font-size: 1.25rem;
 }
 .designing-kinpaku .designing-extract-after {
   justify-self: end;
@@ -1484,7 +1484,7 @@
   color: var(--ks-champagne);
   font-family: var(--ks-font);
   font-weight: 500;
-  font-size: 1.35rem;
+  font-size: 1.25rem;
   line-height: 1.15;
 }
 .designing-kinpaku .designing-lane-mock-accent {

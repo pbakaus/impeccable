@@ -974,7 +974,7 @@ code {
 
 .foundation-card-label {
   font-family: var(--font-display);
-  font-size: 1.35rem;
+  font-size: 1.125rem;
   color: var(--color-ink);
   line-height: 1.16;
 }

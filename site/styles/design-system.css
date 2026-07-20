@@ -933,7 +933,7 @@
   color: var(--ks-champagne);
   font-family: var(--ks-font);
   font-weight: 300;
-  font-size: 1.6rem;
+  font-size: 1.5rem;
   line-height: 1.15;
   letter-spacing: -0.005em;
 }
@@ -958,7 +958,7 @@
   color: var(--ks-kinpaku);
   font-family: var(--ks-font);
   font-weight: 300;
-  font-size: 4.4rem;
+  font-size: 4.5rem;
   line-height: 0.9;
   letter-spacing: -0.02em;
 }
