@@ -238,4 +238,14 @@ describe('cli/lib/impeccable-config', () => {
     expect(extractFindingIgnoreValue({ antipattern: 'overused-font', snippet: 'https://fonts.googleapis.com/css2?family=Alumni+Sans:wght@700' })).toBe('alumni sans');
     expect(extractFindingIgnoreValue({ antipattern: 'bounce-easing', snippet: 'animation: bounce-ball 1s infinite' })).toBe('bounce-ball');
   });
+
+  // This list is duplicated in skill/scripts/hook-lib.mjs. The two had drifted:
+  // font-size waivers worked in the hook but not in the CLI, so the same config
+  // filtered differently depending on which entry point read it.
+  test('extractFindingIgnoreValue covers design-system-font-size, matching the hook', () => {
+    expect(extractFindingIgnoreValue({ antipattern: 'design-system-font-size', ignoreValue: '0.82rem' })).toBe('0.82rem');
+    expect(extractFindingIgnoreValue({ antipattern: 'design-system-radius', ignoreValue: '18px' })).toBe('18px');
+    // A rule with no waivable value still extracts nothing.
+    expect(extractFindingIgnoreValue({ antipattern: 'side-tab', snippet: 'border-left: 4px' })).toBe('');
+  });
 });

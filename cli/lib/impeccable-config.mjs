@@ -494,6 +494,7 @@ export function extractFindingIgnoreValue(finding) {
     'design-system-font',
     'design-system-color',
     'design-system-radius',
+    'design-system-font-size',
   ]);
   if (!directValueRules.has(rule)) return '';
   return normalizeIgnoreValue(extractFindingIgnoreValueRaw(finding, rule));
