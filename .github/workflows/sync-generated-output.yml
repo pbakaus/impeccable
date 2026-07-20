@@ -48,7 +48,7 @@ jobs:
           token: ${{ secrets.SYNC_GENERATED_OUTPUT_TOKEN || github.token }}
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
 
