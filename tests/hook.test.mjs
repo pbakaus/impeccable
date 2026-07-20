@@ -1565,23 +1565,70 @@ describe('runHook() — oversized files', () => {
     assert.equal(r.audit.emitted, true);
   });
 
-  it('does not leak a skipped file\'s byte count into another file\'s audit entry', async () => {
+  // `bytes` describes the file that was skipped. It must never ride along on an
+  // audit entry whose `file` is something else, in either scan order, and must
+  // survive the early-continue paths that sit above the size check.
+  function patchEvent(...files) {
+    return JSON.stringify({
+      session_id: `sid-${files.length}-${files[0]}`, cwd,
+      hook_event_name: 'PostToolUse', tool_name: 'apply_patch',
+      tool_input: {
+        command: `*** Begin Patch\n${files.map(f => `*** Update File: ${f}`).join('\n')}\n*** End Patch`,
+      },
+    });
+  }
+
+  it('does not leak a skipped file\'s byte count when the bundle is scanned first', async () => {
     const big = path.join(cwd, 'bundle.js');
     const small = path.join(cwd, 'a.css');
     fs.writeFileSync(big, `/* ${'x'.repeat(200 * 1024)} */`);
     fs.writeFileSync(small, 'noop');
-    const multi = JSON.stringify({
-      session_id: 'sid-1', cwd, hook_event_name: 'PostToolUse', tool_name: 'apply_patch',
-      tool_input: {
-        command: `*** Begin Patch\n*** Update File: ${big}\n*** Update File: ${small}\n*** End Patch`,
-      },
-    });
     const r = await runHook({
-      stdinJson: multi, env: {}, cwd,
+      stdinJson: patchEvent(big, small), env: {}, cwd,
       detector: fakeDetector([finding('side-tab', 1, { name: 'Side-tab' })]),
     });
     assert.match(r.stdout, /a\.css/);
     assert.equal(r.audit.bytes, undefined, 'bytes belongs to the skipped file, not this one');
+  });
+
+  it('does not leak a skipped file\'s byte count when the bundle is scanned last', async () => {
+    const small = path.join(cwd, 'a.css');
+    const big = path.join(cwd, 'bundle.js');
+    fs.writeFileSync(small, 'noop');
+    fs.writeFileSync(big, `/* ${'x'.repeat(200 * 1024)} */`);
+    const r = await runHook({
+      stdinJson: patchEvent(small, big), env: {}, cwd,
+      detector: fakeDetector([finding('side-tab', 1, { name: 'Side-tab' })]),
+    });
+    assert.match(r.stdout, /a\.css/);
+    assert.equal(r.audit.bytes, undefined, 'the emitted file is not the oversized one');
+  });
+
+  it('does not leak a byte count past an early-continue target', async () => {
+    // `generated` is checked before the size gate, so a later generated target
+    // returns without ever reaching the point where bytes would be cleared.
+    const big = path.join(cwd, 'bundle.js');
+    const gen = path.join(cwd, 'dist', 'Card.tsx');
+    fs.writeFileSync(big, `/* ${'x'.repeat(200 * 1024)} */`);
+    fs.mkdirSync(path.dirname(gen), { recursive: true });
+    fs.writeFileSync(gen, 'noop');
+    const r = await runHook({
+      stdinJson: patchEvent(big, gen), env: {}, cwd,
+      detector: fakeDetector([finding('side-tab', 1, { name: 'Side-tab' })]),
+    });
+    assert.ok(!r.audit.emitted);
+    assert.equal(r.audit.bytes, undefined, 'bytes must not describe a different file');
+  });
+
+  it('still records the byte count when the oversized file is the outcome', async () => {
+    const big = path.join(cwd, 'bundle.js');
+    fs.writeFileSync(big, `/* ${'x'.repeat(200 * 1024)} */`);
+    const r = await runHook({
+      stdinJson: patchEvent(big), env: {}, cwd,
+      detector: fakeDetector([finding('side-tab', 1, { name: 'Side-tab' })]),
+    });
+    assert.equal(r.audit.skipped, 'too-large');
+    assert.ok(r.audit.bytes > 200 * 1024, 'the skip reason should still carry its size');
   });
 
   it('honors a configured limits.maxFileBytes', async () => {

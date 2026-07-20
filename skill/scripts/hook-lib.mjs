@@ -1569,6 +1569,7 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
     const freshGroups = [];
     let suppressionWinner = null;
     let cleanAckDeduped = false;
+    let skippedBytes = 0;
     const quietMode = truthy(env.IMPECCABLE_HOOK_QUIET) || config.quiet === true;
     let detectorThrewAny = false;
     let lastSkip = 'no-scannable-file';
@@ -1605,13 +1606,12 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
         continue;
       }
 
-      delete audit.bytes;
       const maxFileBytes = config.limits?.maxFileBytes ?? DEFAULT_CONFIG.limits.maxFileBytes;
       if (maxFileBytes > 0) {
         let size = 0;
         try { size = fs.statSync(filePath).size; } catch { size = 0; }
         if (size > maxFileBytes) {
-          audit.bytes = size;
+          skippedBytes = size;
           lastSkip = 'too-large';
           continue;
         }
@@ -1806,7 +1806,11 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
       return result({ suppressed: true, emitted: false, durationMs: Date.now() - started });
     }
 
-    return result({ skipped: lastSkip, durationMs: Date.now() - started });
+    return result({
+      skipped: lastSkip,
+      ...(lastSkip === 'too-large' ? { bytes: skippedBytes } : {}),
+      durationMs: Date.now() - started,
+    });
   } catch (err) {
     return {
       exitCode: 0,
