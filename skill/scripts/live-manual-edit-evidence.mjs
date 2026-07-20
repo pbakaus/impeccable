@@ -14,7 +14,12 @@ import { isGeneratedFile } from './lib/is-generated.mjs';
 import { readBuffer, getBufferPath } from './live/manual-edits-buffer.mjs';
 
 const EVIDENCE_VERSION = 1;
-const TEXT_EXTENSIONS = new Set(['.html', '.jsx', '.tsx', '.vue', '.svelte', '.astro', '.js', '.mjs', '.ts']);
+const TEXT_EXTENSIONS = new Set([
+  '.html', '.jsx', '.tsx', '.vue', '.svelte', '.astro', '.js', '.mjs', '.ts',
+  // Phoenix keeps `~H"""` markup in .ex alongside standalone .heex/.eex
+  // templates, so copy edits land in all three.
+  '.ex', '.heex', '.eex',
+]);
 const SEARCH_DIRS = ['src', 'app', 'pages', 'components', 'public', 'views', 'templates', 'site', 'lib', 'data'];
 const STRONG_LITERAL_MATCH_LIMIT = 8;
 const WEAK_LITERAL_MATCH_LIMIT = 4;

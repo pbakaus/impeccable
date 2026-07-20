@@ -14,14 +14,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { isGeneratedFile } from './lib/is-generated.mjs';
+import { resolveLiveTemplateExtensions } from './lib/template-extensions.mjs';
 import { readBuffer as readManualEditsBuffer } from './live/manual-edits-buffer.mjs';
+import { findSourceFile } from './live/source-search.mjs';
 import {
   buildSvelteComponentCssAuthoring,
   scaffoldSvelteComponentSession,
   shouldUseSvelteComponentInjection,
 } from './live/svelte-component.mjs';
-
-const EXTENSIONS = ['.html', '.jsx', '.tsx', '.vue', '.svelte', '.astro', '.ex', '.heex', '.exs', '.eex'];
 
 export async function wrapCli() {
   const args = process.argv.slice(2);
@@ -672,56 +672,19 @@ function buildCssAuthoring(styleMode, count) {
 /**
  * Search project files for the query string (class name, ID, etc.)
  * Returns the first matching file path, or null.
+ *
+ * Only `node_modules`, `.git`, and `.impeccable` are skipped outright.
+ * dist/build/out are left to the isGeneratedFile guard so the
+ * `includeGenerated` second pass can still find the element there and report
+ * `generatedMatch`.
  */
 function findFileWithQuery(query, cwd, genOpts = {}) {
-  const searchDirs = ['src', 'app', 'pages', 'components', 'public', 'views', 'templates', 'lib', '.'];
-  const seen = new Set();
-
-  for (const dir of searchDirs) {
-    const absDir = path.join(cwd, dir);
-    if (!fs.existsSync(absDir)) continue;
-    const result = searchDir(absDir, query, seen, 0, genOpts);
-    if (result) return result;
-  }
-  return null;
-}
-
-function searchDir(dir, query, seen, depth, genOpts) {
-  if (depth > 5) return null; // don't go too deep
-  const realDir = fs.realpathSync(dir);
-  if (seen.has(realDir)) return null;
-  seen.add(realDir);
-
-  let entries;
-  try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
-  catch { return null; }
-
-  // Check files first
-  for (const entry of entries) {
-    if (!entry.isFile()) continue;
-    const ext = path.extname(entry.name).toLowerCase();
-    if (!EXTENSIONS.includes(ext)) continue;
-
-    const filePath = path.join(dir, entry.name);
-    if (!genOpts.includeGenerated && isGeneratedFile(filePath, genOpts)) continue;
-    try {
-      const content = fs.readFileSync(filePath, 'utf-8');
-      if (content.includes(query)) return filePath;
-    } catch { /* skip unreadable files */ }
-  }
-
-  // Then recurse into directories. Always skip node_modules and .git (never
-  // project content). dist/build/out are left to the isGeneratedFile guard so
-  // the includeGenerated second-pass can still find the element there and
-  // report `generatedMatch`.
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    if (entry.name === 'node_modules' || entry.name === '.git') continue;
-    const result = searchDir(path.join(dir, entry.name), query, seen, depth + 1, genOpts);
-    if (result) return result;
-  }
-
-  return null;
+  return findSourceFile({
+    query,
+    cwd,
+    extensions: resolveLiveTemplateExtensions(cwd),
+    fileFilter: (filePath) => genOpts.includeGenerated || !isGeneratedFile(filePath, genOpts),
+  });
 }
 
 /**

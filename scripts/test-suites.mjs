@@ -25,11 +25,11 @@ export const SUITES = {
     triggers: [
       ...COMMON_INFRA_PATTERNS,
       /^scripts\/(?!benchmark-detector|build-browser-detector|build-extension)/,
-      /^skill\/(SKILL\.src\.md|agents\/|reference\/|scripts\/(cleanup-deprecated|context|context-signals|critique-storage|design-parser|hook|impeccable-paths|is-generated|lib\/provider|pin))/,
+      /^skill\/(SKILL\.src\.md|agents\/|reference\/|scripts\/(cleanup-deprecated|context|context-signals|critique-storage|design-parser|hook|impeccable-paths|is-generated|lib\/provider|lib\/template-extensions|pin))/,
       /^site\/(pages|content|components|layouts)\//,
       /^README(\.npm)?\.md$/,
       /^cli\/bin\//,
-      /^tests\/(build|cleanup-deprecated|cli-ignores|context|context-signals|critique-storage|design-parser|docs-integrity|github-sheriff|hook|hook-build|impeccable-paths|openai-plugin|pin|shiki-theme|skills-cli|target-args|test-suites|windows-path-fix|zip)\.test\.(js|mjs)$/,
+      /^tests\/(build|cleanup-deprecated|cli-ignores|context|context-signals|critique-storage|design-parser|docs-integrity|github-sheriff|hook|hook-build|impeccable-paths|openai-plugin|pin|shiki-theme|skills-cli|target-args|template-extensions|test-suites|windows-path-fix|zip)\.test\.(js|mjs)$/,
       /^tests\/lib\//,
     ],
     commands: [
@@ -67,6 +67,7 @@ export const SUITES = {
           'tests/pin.test.mjs',
           'tests/target-args.test.mjs',
           'tests/shiki-theme.test.mjs',
+          'tests/template-extensions.test.mjs',
           'tests/test-suites.test.mjs',
           'tests/zip.test.mjs',
         ],
@@ -109,7 +110,7 @@ export const SUITES = {
     description: 'Fast live-mode unit and local-server integration tests, excluding full browser fixture sweeps.',
     triggers: [
       ...COMMON_INFRA_PATTERNS,
-      /^skill\/(reference\/live\.md|scripts\/(detect-csp|lib\/is-generated|live\/|live|live-|modern-screenshot|pin|palette))/,
+      /^skill\/(reference\/live\.md|scripts\/(detect-csp|lib\/is-generated|lib\/template-extensions|live\/|live|live-|modern-screenshot|pin|palette))/,
       /^tests\/live-/,
       /^tests\/live-e2e\/(agent|agents\/llm-agent|cli-options|preactions|session|steer|ui)\.mjs$/,
       /^tests\/live-e2e\/agent-insert\.test\.mjs$/,
@@ -148,6 +149,7 @@ export const SUITES = {
           'tests/live-server.test.mjs',
           'tests/live-session-store.test.mjs',
           'tests/live-source-lock.test.mjs',
+          'tests/live-source-search.test.mjs',
           'tests/live-target-context.test.mjs',
           'tests/live-wrap.test.mjs',
           'tests/live-wrap-buffer-aware.test.mjs',
@@ -163,7 +165,8 @@ export const SUITES = {
       /^tests\/framework-fixtures\.test\.mjs$/,
       /^skill\/scripts\/(detect-csp|live-inject|live-wrap)\.mjs$/,
       /^skill\/scripts\/lib\/is-generated\.mjs$/,
-      /^skill\/scripts\/live\/sveltekit-adapter\.mjs$/,
+      /^skill\/scripts\/lib\/template-extensions\.mjs$/,
+      /^skill\/scripts\/live\/(source-search|sveltekit-adapter)\.mjs$/,
     ],
     commands: [
       {

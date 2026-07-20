@@ -42,6 +42,16 @@ import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { extractPlatform, loadContext } from './context.mjs';
 import { IMPECCABLE_COMMAND } from './lib/provider.mjs';
+// `detector.extensions` (issue #316) is shared with Live's source search, which
+// needs the same answer for `.heex` / `.blade.php` when it hunts for session
+// markers. lib/template-extensions.mjs owns the shape; re-exported here because
+// hook-lib has been the import site for matchConfiguredExtension since #347.
+import {
+  matchConfiguredExtension,
+  mergeExtensions,
+} from './lib/template-extensions.mjs';
+
+export { matchConfiguredExtension };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -261,49 +271,6 @@ function applyDetectorConfigSource(config, raw) {
     config.extensions = mergeExtensions(config.extensions, raw.extensions);
   }
   return config;
-}
-
-// Extra scanned extensions from `detector.extensions` config. Entries are
-// `{ ext, engine }` (engine 'html' | 'text', default 'html' — the common case
-// for server-side templates) or bare strings as shorthand. Extensions are
-// matched against the end of the filename, not path.extname, so double
-// extensions like `.blade.php` and `.html.erb` work (issue #316).
-function normalizeExtensionEntries(entries) {
-  if (!Array.isArray(entries)) return [];
-  const out = [];
-  for (const entry of entries) {
-    const raw = typeof entry === 'string' ? entry : entry?.ext;
-    if (typeof raw !== 'string') continue;
-    let ext = raw.trim().toLowerCase();
-    if (!ext) continue;
-    if (!ext.startsWith('.')) ext = `.${ext}`;
-    const engine = (!(typeof entry === 'string') && entry?.engine === 'text') ? 'text' : 'html';
-    out.push({ ext, engine });
-  }
-  return out;
-}
-
-function mergeExtensions(existing, incoming) {
-  const map = new Map();
-  for (const entry of normalizeExtensionEntries(existing)) map.set(entry.ext, entry);
-  for (const entry of normalizeExtensionEntries(incoming)) map.set(entry.ext, entry);
-  return Array.from(map.values());
-}
-
-export function matchConfiguredExtension(filePath, extensions) {
-  if (!Array.isArray(extensions) || extensions.length === 0) return null;
-  const name = path.basename(String(filePath || '')).toLowerCase();
-  if (!name) return null;
-  // The longest matching suffix wins, so `.blade.php` beats a broader `.php`
-  // entry regardless of config order.
-  let best = null;
-  for (const entry of normalizeExtensionEntries(extensions)) {
-    if (name.length > entry.ext.length && name.endsWith(entry.ext)
-      && (!best || entry.ext.length > best.ext.length)) {
-      best = entry;
-    }
-  }
-  return best;
 }
 
 function applyConfigSource(config, raw) {
