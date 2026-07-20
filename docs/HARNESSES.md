@@ -3,7 +3,7 @@
 Source of truth for what each AI coding harness supports in terms of agent skills.
 Used to inform provider configs in `scripts/lib/transformers/providers.js`.
 
-Last verified: 2026-07-16 (subagent landscape spot-checked 2026-06-28)
+Last verified: 2026-04-28 (subagent landscape spot-checked 2026-06-28; Mistral Vibe row verified 2026-07-16)
 
 > This file is point-in-time. Capabilities move fast; verify live before relying
 > on any "only X supports Y" claim. Notably, the subagent table below lists
@@ -24,7 +24,7 @@ Last verified: 2026-07-16 (subagent landscape spot-checked 2026-06-28)
 | Qoder | https://docs.qoder.com/extensions/skills |
 | Trae | TBD (no official skills docs found yet) |
 | Rovo Dev | https://support.atlassian.com/rovo/docs/extend-rovo-dev-cli-with-agent-skills |
-| Mistral Vibe | https://docs.mistral.ai/vibe/code/overview |
+| Mistral Vibe | https://docs.mistral.ai/vibe/code/cli/skills |
 
 ## Spec Compliance
 
@@ -46,7 +46,7 @@ Fields marked with * are spec-standard. Others are provider extensions.
 | `allowed-tools`* | Yes | No | Ignored | No | No | No | Yes | Yes | Yes | Yes | Yes |
 | `user-invocable` | Yes | No | No | No | Yes | No | Yes | No | Yes | Yes | Yes |
 | `argument-hint` | Yes | No | No | No | Yes | No | Yes | No | Yes | Yes | No |
-| `disable-model-invocation` | Yes | Yes | No | No | Yes | No | Yes | Yes | TBD | TBD | TBD |
+| `disable-model-invocation` | Yes | Yes | No | No | Yes | No | Yes | Yes | TBD | TBD | No |
 | `model` | Yes | No | No | No | No | No | Yes | No | No | No | No |
 | `effort` | Yes | No | No | No | No | No | No | No | No | No | No |
 | `context` | Yes | No | No | No | No | No | No | No | No | No | No |
@@ -85,7 +85,7 @@ Notes:
 | Trae China | `.trae-cn/skills/` | TBD |
 | Trae International | `.trae/skills/` | TBD |
 | Rovo Dev | `.rovodev/skills/` | `~/.rovodev/skills/` (user-level) |
-| Mistral Vibe | `.vibe/skills/` | `~/.vibe/skills/`, `.agents/skills/` |
+| Mistral Vibe | `.vibe/skills/` (project), `~/.vibe/skills/` (global) | `.agents/skills/` (project), `~/.agents/skills/` (global) |
 
 All harnesses support the `{skill-name}/SKILL.md` directory structure with optional `reference/`, `scripts/`, and `assets/` subdirectories.
 

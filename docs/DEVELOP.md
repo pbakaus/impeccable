@@ -165,7 +165,7 @@ The skill-behavior suite runs three providers (claude-haiku-4-5, gpt-5.4-mini, g
 - [OpenCode Skills](https://opencode.ai/docs/skills/)
 - [Pi Skills](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/skills.md)
 - [Qoder Skills](https://docs.qoder.com/extensions/skills)
-- [Mistral Vibe Skills](https://docs.mistral.ai/vibe/code/overview)
+- [Mistral Vibe Skills](https://docs.mistral.ai/vibe/code/cli/skills)
 
 ## Repository Structure
 
