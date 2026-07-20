@@ -1547,6 +1547,25 @@ describe('runHook() — oversized files', () => {
     assert.equal(r.audit.emitted, true);
   });
 
+  it('does not leak a skipped file\'s byte count into another file\'s audit entry', async () => {
+    const big = path.join(cwd, 'bundle.js');
+    const small = path.join(cwd, 'a.css');
+    fs.writeFileSync(big, `/* ${'x'.repeat(200 * 1024)} */`);
+    fs.writeFileSync(small, 'noop');
+    const multi = JSON.stringify({
+      session_id: 'sid-1', cwd, hook_event_name: 'PostToolUse', tool_name: 'apply_patch',
+      tool_input: {
+        command: `*** Begin Patch\n*** Update File: ${big}\n*** Update File: ${small}\n*** End Patch`,
+      },
+    });
+    const r = await runHook({
+      stdinJson: multi, env: {}, cwd,
+      detector: fakeDetector([finding('side-tab', 1, { name: 'Side-tab' })]),
+    });
+    assert.match(r.stdout, /a\.css/);
+    assert.equal(r.audit.bytes, undefined, 'bytes belongs to the skipped file, not this one');
+  });
+
   it('honors a configured limits.maxFileBytes', async () => {
     fs.writeFileSync(path.join(cwd, '.impeccable', 'config.json'), JSON.stringify({
       hook: { limits: { maxFileBytes: 1024 } },
@@ -1686,6 +1705,46 @@ describe('runHook() — clean-ack noise', () => {
     // A new session starts over, since the steer is per-session context.
     const r4 = await runHook({ stdinJson: event(a, 'sid-2'), env: {}, cwd, detector: det });
     assert.equal(r4.audit.kind, 'clean');
+  });
+
+  it('picks a not-yet-acked file when an earlier target was already acked', async () => {
+    // A multi-file event (apply_patch, MultiEdit) must not lose the ack for a
+    // file the session has never acked just because an earlier target in the
+    // same run was already deduped.
+    const a = path.join(cwd, 'a.css');
+    const b = path.join(cwd, 'b.css');
+    fs.writeFileSync(a, 'noop');
+    fs.writeFileSync(b, 'noop');
+    const det = fakeDetector([]);
+
+    // Ack a on its own first.
+    const r1 = await runHook({ stdinJson: event(a), env: {}, cwd, detector: det });
+    assert.equal(r1.audit.kind, 'clean');
+
+    // Now touch a and b together. a is spent; b has never been acked.
+    const multi = JSON.stringify({
+      session_id: 'sid-1', cwd, hook_event_name: 'PostToolUse', tool_name: 'apply_patch',
+      tool_input: {
+        command: `*** Begin Patch\n*** Update File: ${a}\n*** Update File: ${b}\n*** End Patch`,
+      },
+    });
+    const r2 = await runHook({ stdinJson: multi, env: {}, cwd, detector: det });
+    assert.equal(r2.audit.kind, 'clean', 'b has never been acked and should win');
+    assert.match(r2.stdout, /b\.css/);
+  });
+
+  it('does not spend the clean ack while quiet mode is suppressing output', async () => {
+    // Quiet emits nothing, so it must not consume the once-per-session ack and
+    // leave a later non-quiet run silent.
+    const file = path.join(cwd, 'a.css');
+    fs.writeFileSync(file, 'noop');
+    const det = fakeDetector([]);
+
+    const quiet = await runHook({ stdinJson: event(file), env: { IMPECCABLE_HOOK_QUIET: '1' }, cwd, detector: det });
+    assert.ok(!quiet.audit.emitted);
+
+    const loud = await runHook({ stdinJson: event(file), env: {}, cwd, detector: det });
+    assert.equal(loud.audit.kind, 'clean', 'the ack must survive a quiet run');
   });
 
   it('keeps re-nudging with the pending ack, which is the informative one', async () => {

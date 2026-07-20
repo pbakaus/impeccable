@@ -1568,6 +1568,7 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
     const freshGroups = [];
     let suppressionWinner = null;
     let cleanAckDeduped = false;
+    const quietMode = truthy(env.IMPECCABLE_HOOK_QUIET) || config.quiet === true;
     let detectorThrewAny = false;
     let lastSkip = 'no-scannable-file';
     let suppressedHit = false;
@@ -1603,6 +1604,7 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
         continue;
       }
 
+      delete audit.bytes;
       const maxFileBytes = config.limits?.maxFileBytes ?? DEFAULT_CONFIG.limits.maxFileBytes;
       if (maxFileBytes > 0) {
         let size = 0;
@@ -1673,11 +1675,20 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
         // clean edit spends context to say nothing, so it fires once per file
         // per session. The pending ack, which names real unresolved work, is
         // deliberately left to repeat.
-        cleanWinner = { filePath };
-        if (shouldEmitAckForFile(filePath, config)) {
-          const fileEntry = ensureFile(cache, sessionId, filePath);
-          if (fileEntry.cleanAcked) cleanAckDeduped = true;
-          else fileEntry.cleanAcked = true;
+        //
+        // Quiet mode emits nothing, so it must not consume the ack and leave a
+        // later non-quiet run in this session silent.
+        if (quietMode || !shouldEmitAckForFile(filePath, config)) {
+          cleanWinner = { filePath };
+        } else if (ensureFile(cache, sessionId, filePath).cleanAcked) {
+          // Spent for this file. Remember it for the audit trail, but keep
+          // scanning: another target in this same event may still be owed an
+          // ack, and dropping out here would lose it.
+          cleanAckDeduped = true;
+        } else {
+          ensureFile(cache, sessionId, filePath).cleanAcked = true;
+          cleanWinner = { filePath };
+          cleanAckDeduped = false;
         }
       }
     }
@@ -1721,7 +1732,7 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
       return result({ emitted: false, error: 'detector-threw', durationMs: Date.now() - started });
     }
 
-    if (truthy(env.IMPECCABLE_HOOK_QUIET) || config.quiet === true) {
+    if (quietMode) {
       return result({ emitted: false, quiet: true, durationMs: Date.now() - started });
     }
 
