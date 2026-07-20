@@ -174,7 +174,7 @@
     "typographyMeta": {
       "scale": {
         "displayName": "Type Ramp",
-        "purpose": "The enumerated 18-step ramp at a 16px root, 8px through 72px. Roles below pick from it; display and headline are fluid and interpolate between clamp endpoints."
+        "purpose": "The enumerated 21-step ramp at a 16px root, 8px through 88px. Roles below pick from it; display and headline are fluid and interpolate between clamp endpoints."
       },
       "wordmark": {
         "displayName": "Wordmark",

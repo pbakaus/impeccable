@@ -144,7 +144,7 @@ typography:
     fontFamily: "Alumni Sans, Albert Sans, Arial, sans-serif"
     fontSize: "1.125rem"
     fontWeight: 400
-    letterSpacing: "0.42em"
+    letterSpacing: "0.15em"
     lineHeight: 1
   display:
     fontFamily: "Alumni Sans, Albert Sans, Arial, sans-serif"

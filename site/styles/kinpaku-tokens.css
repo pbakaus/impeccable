@@ -132,7 +132,7 @@
 
 	/* Wordmark — IMPECCABLE in the header. */
 	--ks-type-wordmark-size:  1.125rem;
-	--ks-type-wordmark-track: 0.42em;
+	--ks-type-wordmark-track: 0.15em;
 
 	/* Mono — code, terminal, audit lines. */
 	--ks-type-mono-size:  0.6875rem;
