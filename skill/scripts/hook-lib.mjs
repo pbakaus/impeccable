@@ -70,7 +70,9 @@ export const SENSITIVE_PATH = new RegExp([
 ].join('|'), 'i');
 
 // Hard-skip regex for generated, lock, minified, and build-output paths.
-export const GENERATED_PATH = /(?:\.generated\.[a-z]+$|\.d\.ts$|\.min\.[a-z]+$|[/\\]node_modules[/\\]|[/\\](?:dist|build|out|\.next|\.cache|coverage)[/\\]|[/\\]?[^/\\]+\.lock(?:\.json)?$)/i;
+// `generated` is matched as a whole path segment so authored names such as
+// `generated-utils.ts` or `CodeGenerator.tsx` still get scanned.
+export const GENERATED_PATH = /(?:\.generated\.[a-z]+$|\.d\.ts$|\.min\.[a-z]+$|[/\\]node_modules[/\\]|[/\\]generated[/\\]|[/\\](?:dist|build|out|\.next|\.cache|coverage)[/\\]|[/\\]?[^/\\]+\.lock(?:\.json)?$)/i;
 
 export const TRUTHY = /^(1|true|yes|on)$/i;
 
@@ -83,7 +85,12 @@ export const DEFAULT_CONFIG = Object.freeze({
   ignoreFiles: [],
   ignoreValues: [],
   extensions: [],
-  limits: { maxFindings: 5, maxChars: 8000 },
+  // maxFileBytes: not every generated artifact lives under a path we can
+  // recognize. Committed browser bundles and vendored detector copies sit
+  // next to source and run 200KB+, while genuinely authored stylesheets in
+  // this codebase top out under 90KB. A single file past the ceiling is a
+  // bundle, and findings against a bundle are never actionable.
+  limits: { maxFindings: 5, maxChars: 8000, maxFileBytes: 131072 },
 });
 
 export const HOOK_LOCAL_IGNORE_PATTERNS = Object.freeze([
@@ -315,6 +322,7 @@ function applyConfigSource(config, raw) {
     config.limits = {
       maxFindings: numberOr(raw.limits.maxFindings, config.limits.maxFindings),
       maxChars: numberOr(raw.limits.maxChars, config.limits.maxChars),
+      maxFileBytes: numberOr(raw.limits.maxFileBytes, config.limits.maxFileBytes),
     };
   }
   return config;
@@ -845,11 +853,20 @@ export function dedupeAgainstCache(findings, cache, sessionId, filePath) {
   return fresh;
 }
 
+// Sync the remembered set to the findings present in the scan just performed.
+//
+// This replaces rather than accumulates, and that is the whole point. An
+// append-only set made the hook lie twice over: the pending ack counted
+// history instead of the live scan, so it kept naming findings the agent had
+// already fixed, and a finding that was fixed and later reintroduced was
+// deduped against a stale memory and never re-reported. Forgetting what is no
+// longer there is what lets the count shrink and a regression fire again.
+//
+// Callers must pass the complete current finding set, not just the fresh ones.
 export function rememberFindings(cache, sessionId, filePath, findings) {
   const fileEntry = ensureFile(cache, sessionId, filePath);
-  const known = new Set(fileEntry.findings || []);
-  for (const f of findings) known.add(findingCacheKey(f));
-  fileEntry.findings = Array.from(known);
+  const keys = new Set((findings || []).map(f => findingCacheKey(f)));
+  fileEntry.findings = Array.from(keys);
   ensureSession(cache, sessionId).updatedAt = Date.now();
 }
 
@@ -1550,6 +1567,7 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
     let cleanWinner = null;
     const freshGroups = [];
     let suppressionWinner = null;
+    let cleanAckDeduped = false;
     let detectorThrewAny = false;
     let lastSkip = 'no-scannable-file';
     let suppressedHit = false;
@@ -1585,6 +1603,17 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
         continue;
       }
 
+      const maxFileBytes = config.limits?.maxFileBytes ?? DEFAULT_CONFIG.limits.maxFileBytes;
+      if (maxFileBytes > 0) {
+        let size = 0;
+        try { size = fs.statSync(filePath).size; } catch { size = 0; }
+        if (size > maxFileBytes) {
+          audit.bytes = size;
+          lastSkip = 'too-large';
+          continue;
+        }
+      }
+
       if (primaryFileSet.has(filePath)) {
         const editCount = bumpEditCount(cache, sessionId, filePath);
         cacheDirty = true;
@@ -1618,23 +1647,38 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
       audit.findings = (findings || []).length;
       audit.freshFindings = fresh.length;
 
-      if (fresh.length > 0) {
-        rememberFindings(cache, sessionId, filePath, fresh);
-        cacheDirty = true;
-        freshGroups.push({ filePath, findings: fresh });
-        continue;
-      }
-
+      // A detector failure tells us nothing about the file, so leave whatever
+      // was remembered alone rather than recording an empty scan as truth.
       if (detectorThrew) {
         detectorThrewAny = true;
         continue;
       }
 
+      // Sync the cache to this scan before deciding what to emit, so fixed
+      // findings stop being remembered and a reintroduced one reads as fresh.
+      rememberFindings(cache, sessionId, filePath, filtered);
+      cacheDirty = true;
+
+      if (fresh.length > 0) {
+        freshGroups.push({ filePath, findings: fresh });
+        continue;
+      }
+
       if (filtered.length > 0 && !pendingWinner) {
-        const known = (ensureFile(cache, sessionId, filePath).findings || []).slice();
-        pendingWinner = { filePath, known };
+        // Count the live scan, not the session's history.
+        pendingWinner = { filePath, known: filtered.map(f => findingCacheKey(f)) };
       } else if (filtered.length === 0 && !cleanWinner) {
+        // The clean ack carries no finding, only the standing steer that a
+        // silent hook is not a verdict on the design. Repeating it on every
+        // clean edit spends context to say nothing, so it fires once per file
+        // per session. The pending ack, which names real unresolved work, is
+        // deliberately left to repeat.
         cleanWinner = { filePath };
+        if (shouldEmitAckForFile(filePath, config)) {
+          const fileEntry = ensureFile(cache, sessionId, filePath);
+          if (fileEntry.cleanAcked) cleanAckDeduped = true;
+          else fileEntry.cleanAcked = true;
+        }
       }
     }
 
@@ -1715,7 +1759,7 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
       };
     }
 
-    if (cleanWinner && shouldEmitAckForFile(cleanWinner.filePath, config)) {
+    if (cleanWinner && !cleanAckDeduped && shouldEmitAckForFile(cleanWinner.filePath, config)) {
       const text = appendDesignSystemNote(renderCleanAck(cleanWinner.filePath, { cwd: projectCwd }), scanOptions);
       return {
         exitCode: 0,
@@ -1732,7 +1776,17 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
       };
     }
 
-    if (pendingWinner || cleanWinner) {
+    if (pendingWinner) {
+      return result({ emitted: false, skipped: 'non-ui-ack', durationMs: Date.now() - started });
+    }
+
+    // Distinct from non-ui-ack so the audit log shows noise being suppressed on
+    // purpose rather than a file the hook could not classify.
+    if (cleanAckDeduped) {
+      return result({ emitted: false, skipped: 'clean-ack-deduped', durationMs: Date.now() - started });
+    }
+
+    if (cleanWinner) {
       return result({ emitted: false, skipped: 'non-ui-ack', durationMs: Date.now() - started });
     }
 
