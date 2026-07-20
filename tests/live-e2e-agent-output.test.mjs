@@ -1,8 +1,18 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { htmlToJsx, normalizeVariantOutput } from './live-e2e/agent.mjs';
+import {
+  htmlToJsx,
+  isExpectedGenerationCancellation,
+  normalizeVariantOutput,
+} from './live-e2e/agent.mjs';
 
 describe('live-e2e agent output translation', () => {
+  it('treats a fenced late generation as expected cancellation only', () => {
+    assert.equal(isExpectedGenerationCancellation(new Error('Source publication prepare failed: stale_generation_epoch')), true);
+    assert.equal(isExpectedGenerationCancellation(new Error('Source publication failed: stale_source_revision')), false);
+    assert.equal(isExpectedGenerationCancellation(new Error('provider unavailable')), false);
+  });
+
   it('converts HTML class and inline style attributes to JSX syntax', () => {
     const jsx = htmlToJsx(
       '<h1 class="hero-title" style="--p-scale:1; font-size:2.25rem; font-weight:700">Title</h1>',

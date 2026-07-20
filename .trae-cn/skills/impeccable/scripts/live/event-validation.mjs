@@ -118,6 +118,15 @@ export function validateEvent(msg) {
         return 'checkpoint: paramValues must be an object';
       }
       return null;
+    case 'agent_phase':
+      if (!isValidId(msg.id)) return 'agent_phase: missing or malformed id';
+      if (typeof msg.phase !== 'string' || !/^[a-z][a-z0-9_]{1,63}$/.test(msg.phase)) {
+        return 'agent_phase: missing or malformed phase';
+      }
+      if (msg.durationMs !== undefined && (!Number.isFinite(msg.durationMs) || msg.durationMs < 0)) {
+        return 'agent_phase: durationMs must be a non-negative number';
+      }
+      return null;
     case 'exit':
       return null;
     case 'prefetch':
@@ -130,6 +139,12 @@ export function validateEvent(msg) {
       if (typeof msg.message !== 'string' || !msg.message.trim()) return 'steer: message required';
       if (msg.message.length > 4000) return 'steer: message too long';
       if (msg.pageUrl !== undefined && typeof msg.pageUrl !== 'string') return 'steer: pageUrl must be string';
+      return null;
+    case 'carbonize_cleanup':
+      if (!isValidId(msg.id)) return 'carbonize_cleanup: missing or malformed id';
+      if (!isValidId(msg.sessionId)) return 'carbonize_cleanup: missing or malformed sessionId';
+      if (!msg.file || typeof msg.file !== 'string') return 'carbonize_cleanup: missing file';
+      if (!isValidVariantId(String(msg.variantId))) return 'carbonize_cleanup: missing or malformed variantId';
       return null;
     default:
       return 'Unknown event type: ' + msg.type;

@@ -502,11 +502,14 @@ export function normalizeIgnoreValueEntries(entries) {
       ...(Array.isArray(entry.files) ? entry.files.filter(v => typeof v === 'string' && v.trim()).map(v => v.trim()) : []),
     ]);
     if (files.length > 0) normalized.files = files;
-    if (typeof entry.reason === 'string' && entry.reason.trim()) {
-      normalized.reason = entry.reason.trim();
-    }
+    // Key order is rule, value, files, createdAt, reason and must stay that way:
+    // normalizing runs on every write, so emitting a different order than the one
+    // already on disk rewrites every untouched entry and churns the diff.
     if (typeof entry.createdAt === 'string' && entry.createdAt.trim()) {
       normalized.createdAt = entry.createdAt.trim();
+    }
+    if (typeof entry.reason === 'string' && entry.reason.trim()) {
+      normalized.reason = entry.reason.trim();
     }
     out.push(normalized);
   }
@@ -525,7 +528,9 @@ function mergeIgnoreValues(existing, incoming) {
 }
 
 function ignoreValueFilesKey(files) {
-  return Array.isArray(files) && files.length > 0 ? files.join('\x1f') : '';
+  // Sort before joining: a scope is a set, so an entry already on disk in another
+  // order must compare equal rather than dedup as two distinct entries.
+  return Array.isArray(files) && files.length > 0 ? [...files].sort().join('\x1f') : '';
 }
 
 export function readCache(cwd) {
@@ -1465,16 +1470,17 @@ export function appendDesignSystemNote(text, scanOptions) {
 //      raw envelope. Asking the model to surface the resolution in its
 //      reply is the cheapest way to make the feedback loop visible.
 function directiveFooter(display, opts = {}) {
-  const ignoreFileCommand = `${IMPECCABLE_COMMAND} hooks ignore-file ${quoteCommandArg(display)}`;
-  const fileIgnoreGuidance = opts.grouped
-    ? `run \`${IMPECCABLE_COMMAND} hooks ignore-file <path>\` for the specific file`
-    : `run \`${ignoreFileCommand}\``;
+  // Offer the rule-scoped-to-file form first. `ignore-file` silences every rule
+  // for the path forever, which is far more than one noisy rule on a real UI
+  // surface justifies, and it was previously the only option named here.
+  const target = opts.grouped ? '<path>' : quoteCommandArg(display);
+  const fileIgnoreGuidance = `run \`${IMPECCABLE_COMMAND} hooks ignore-value <id> "*" --file ${target}\` to scope just that rule to the file, or \`${IMPECCABLE_COMMAND} hooks ignore-file ${target}\` only when the whole file is out of scope for design review (a fixture, a generated artifact, a deliberate demo)`;
   return [
     'Handle these before finalizing: fix findings that are real design problems, or explicitly classify contextually intentional findings as false positives. Acknowledge what you changed or why you are leaving a finding unchanged.',
     '',
     'Use context judgment before editing. A finding is not automatically a defect; literal or domain-appropriate motion, intentional demos or fixtures, documentation of bad design, and user-confirmed choices can be valid as-is.',
     '',
-    `Do not change intentional design just to satisfy the hook, and do not silence a real finding with an inline ignore comment to skip fixing it. Suppress a finding only after the user explicitly confirms it is intentional. Prefer a config ignore (one reviewable place, the commands below); reach for an inline \`impeccable-disable <rule>\` comment only when the waiver must travel with a file that leaves the repo, such as an exported or standalone document. Prefer the narrowest persisted exception: run the exact \`${IMPECCABLE_COMMAND} hooks ignore-value ... --shared\` command shown next to a value-specific finding. For \`overused-font\`, use \`ignore-value\` for a specific font and use \`${IMPECCABLE_COMMAND} hooks ignore-rule overused-font --all-values\` only when the user asks to ignore overused fonts generally. For file-specific findings without an ignore-value command, ${fileIgnoreGuidance}; use \`${IMPECCABLE_COMMAND} hooks ignore-rule <id>\` only when the user asks to suppress the whole non-value-specific rule. Run ${IMPECCABLE_COMMAND} audit for the full pass.`,
+    `Do not change intentional design just to satisfy the hook, and do not silence a real finding with an inline ignore comment to skip fixing it. Suppress a finding only after the user explicitly confirms it is intentional. Prefer a config ignore (one reviewable place, the commands below); reach for an inline \`impeccable-disable <rule>\` comment only when the waiver must travel with a file that leaves the repo, such as an exported or standalone document. Prefer the narrowest persisted exception: run the exact \`${IMPECCABLE_COMMAND} hooks ignore-value ... --shared\` command shown next to a value-specific finding. For \`overused-font\`, use \`ignore-value\` for a specific font and use \`${IMPECCABLE_COMMAND} hooks ignore-rule overused-font --all-values\` only when the user asks to ignore overused fonts generally. For a finding whose line shows no exact ignore-value command, such as \`side-tab\`, ${fileIgnoreGuidance}; use \`${IMPECCABLE_COMMAND} hooks ignore-rule <id>\` only when the user asks to suppress the whole non-value-specific rule. Run ${IMPECCABLE_COMMAND} audit for the full pass.`,
   ].join('\n');
 }
 

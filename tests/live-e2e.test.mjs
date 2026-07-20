@@ -22,7 +22,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -38,6 +38,7 @@ import {
   clickAccept,
   clickApplyEdits,
   clickEditCopy,
+  clickDiscard,
   clickSaveEdit,
   clickGo,
   clickNext,
@@ -45,6 +46,7 @@ import {
   editTextLeaf,
   drawAnnotationPinAndStroke,
   getVisibleVariant,
+  installLiveQueryHelpers,
   pickElement,
   runLiveChromeBottomBarSmoke,
   waitForApplyDockHidden,
@@ -94,6 +96,10 @@ const reloadVariants = process.env.IMPECCABLE_E2E_RELOAD_VARIANTS === '1'
 const scenarioNames = parseFixtureFilter(process.env.IMPECCABLE_E2E_SCENARIOS);
 const liveE2eTestTimeoutMs = readPositiveIntEnv('IMPECCABLE_E2E_TEST_TIMEOUT_MS');
 const liveE2eTestOptions = liveE2eTestTimeoutMs ? { timeout: liveE2eTestTimeoutMs } : {};
+// Widens the window between the server-side preflight scaffold (which triggers
+// a framework HMR reload) and the agent's variant write. Used to reproduce
+// races where the browser observes a wrapper with zero variants mid-generation.
+const atomicDelayMs = readPositiveIntEnv('IMPECCABLE_E2E_ATOMIC_DELAY_MS') || 0;
 
 if (fixtures.length === 0) {
   describe('live-e2e (no runtime fixtures registered)', () => {
@@ -206,6 +212,7 @@ for (const { name, fixture } of fixtures) {
         browser,
         agent,
         wrapTarget: wrapTargetFromPickedElement,
+        atomicDelayMs,
         log: (m) => t.diagnostic(m),
       });
 
@@ -220,7 +227,7 @@ for (const { name, fixture } of fixtures) {
       const domSelector = isInsert
         ? insertDomSelector
         : pickSelector;
-      const usesSvelteComponentPreview = fixtureUsesSvelteKitAdapter(fixture);
+      const usesSvelteComponentPreview = fixtureUsesSvelteKitAdapter(fixture) || name === 'nuxt-vite7';
       const variantContentSelector = isInsert
         ? (usesSvelteComponentPreview ? '.inserted-copy' : '[data-impeccable-variant="2"] .inserted-copy')
         : usesSvelteComponentPreview
@@ -314,10 +321,11 @@ for (const { name, fixture } of fixtures) {
         const after = readFileSync(sourceFile, 'utf-8');
         const svelteComponentSession = svelteComponentTargetFor(sourceFile);
         if (svelteComponentSession) {
-          const variantFile = join(tmp, svelteComponentSession.manifest.componentDir, 'v2.svelte');
+          const componentExtension = svelteComponentSession.manifest.componentExtension || 'svelte';
+          const variantFile = join(tmp, svelteComponentSession.manifest.componentDir, `v2.${componentExtension}`);
           const variantBody = readFileSync(variantFile, 'utf-8');
           const routeBody = readFileSync(join(tmp, svelteComponentSession.manifest.sourceFile), 'utf-8');
-          assert.match(after, /"previewMode": "svelte-component"/, 'Svelte component manifest inserted');
+          assert.match(after, /"previewMode": "(?:svelte|vue)-component"/, 'framework component manifest inserted');
           if (isInsert) {
             assert.equal(svelteComponentSession.manifest.mode, 'insert', 'Svelte insert manifest marks insert mode');
             if (agentMode === 'fake') {
@@ -328,9 +336,9 @@ for (const { name, fixture } of fixtures) {
               assert.match(variantBody, /<([a-z][\w:-]*)\b[\s\S]*<\/\1>|<[a-z][\w:-]*\b[^>]*\/>/i, 'Svelte insert variant component contains a root element');
             }
           } else {
-            assert.match(variantBody, new RegExp(`<${svelteComponentSession.expectedTag}\\b`), 'Svelte variant component contains target element');
+            assert.match(variantBody, new RegExp(`<${svelteComponentSession.expectedTag}\\b`), 'component variant contains target element');
           }
-          assert.doesNotMatch(routeBody, /data-impeccable-variants="/, 'Svelte route source is not edited during generation');
+          assert.doesNotMatch(routeBody, /data-impeccable-variants="/, 'route source is not edited during component preview');
         } else {
           assert.match(after, /data-impeccable-variants="/, 'wrapper inserted');
         }
@@ -349,7 +357,8 @@ for (const { name, fixture } of fixtures) {
           }
         }
         if (svelteComponentSession) {
-          assert.match(readFileSync(join(tmp, svelteComponentSession.manifest.componentDir, 'v2.svelte'), 'utf-8'), /<style>/, 'Svelte component variant has scoped style block');
+          const componentExtension = svelteComponentSession.manifest.componentExtension || 'svelte';
+          assert.match(readFileSync(join(tmp, svelteComponentSession.manifest.componentDir, `v2.${componentExtension}`), 'utf-8'), /<style\b/, 'component variant has a style block');
         } else if (sourceFile.endsWith('.astro')) {
           assert.match(after, /<style is:inline data-impeccable-css="/, 'Astro live CSS uses an inline compiler-bypassing style block');
           assert.match(
@@ -376,6 +385,13 @@ for (const { name, fixture } of fixtures) {
           for (const kind of ['range', 'steps', 'toggle']) {
             assert.match(paramsSource, new RegExp(`"kind"\\s*:\\s*"${kind}"`), `param kind ${kind} present`);
           }
+          await page.waitForFunction(() => {
+            const root = window.__IMPECCABLE_LIVE_CHROME_CORE__?.root?.()
+              || window.__IMPECCABLE_LIVE_UI_ROOT__
+              || document;
+            const tune = root.querySelector('[data-iceq-tune="1"]');
+            return tune && tune.disabled === false && /Tune/.test(tune.textContent || '');
+          }, { timeout: 5_000 });
         }
 
         // 6. Cycle variants. Most fixtures stop at variant 2; Svelte Insert
@@ -649,6 +665,111 @@ for (const { name, fixture } of fixtures) {
       }
     });
 
+
+
+    if (shouldRunScenario('missed-done') && fixture.runtime.missedDoneReloadScenario) {
+      it('recovers when the preflight reload makes the browser miss the done broadcast', liveE2eTestOptions, async (t) => {
+        if (manualOnly || process.env.IMPECCABLE_E2E_MANUAL_SCENARIO) {
+          t.skip('manual scenario filter is active');
+          return;
+        }
+        // Deterministic reproduction of the race the CI astro-vite7 timeout
+        // exposed: the server-side preflight scaffold write triggers a
+        // framework full-reload, and the agent's variant write + `done` SSE
+        // land while the browser is mid-reload. The resumed page misses both
+        // signals and used to sit in GENERATING at 0/N forever. Here the
+        // reloaded page's HMR websocket connects to a dead mock and its SSE
+        // stream is refused until after the agent finishes, forcing the miss
+        // every time; recovery must come from the live server redelivering
+        // the completion once the browser's SSE reconnects.
+        const agent = createFakeAgent();
+        const session = await bootFixtureSession({
+          name,
+          fixture,
+          browser,
+          agent,
+          wrapTarget: wrapTargetFromPickedElement,
+          atomicDelayMs: 2500,
+          log: (m) => t.diagnostic(m),
+        });
+        const { page, tmp, teardown } = session;
+        const pickSelector = fixture.runtime.pickSelector || 'h1.hero-title';
+        try {
+          await waitForHandshake(page);
+
+          // Arm the blocks before Go. They only affect connections opened
+          // after this point — the current page keeps its live SSE and HMR
+          // socket, so the scaffold-triggered reload still goes through; it is
+          // the page that boots FROM that reload which comes up deaf.
+          let liveConnectionsBlocked = true;
+          await page.context().route('**/events?token=*', (route) => {
+            if (liveConnectionsBlocked && route.request().method() === 'GET') {
+              return route.abort();
+            }
+            return route.continue();
+          });
+          await page.context().routeWebSocket('**', () => {
+            // Never connectToServer(): the reloaded page's HMR client talks to
+            // a dead mock, so the variant-write full-reload push is lost.
+          });
+
+          await pickElement(page, pickSelector);
+          t.diagnostic('Clicking Go (agent write delayed 2.5s; reloaded page will miss HMR + SSE)');
+          await clickGo(page);
+
+          // The scaffold write reloads the page into wrapped-but-empty source.
+          await page.waitForFunction(() => {
+            const wrapper = document.querySelector('[data-impeccable-variants]');
+            if (!wrapper) return false;
+            const variants = wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])');
+            return variants.length === 0;
+          }, { timeout: 15_000 });
+          t.diagnostic('Browser reloaded into the scaffold-only wrapper (0 variants)');
+
+          // Capture the scaffold-only source now (the agent write is still
+          // ~1.5s away). The first post-reconnect /source read will be served
+          // this stale copy, forcing the completion-driven fallback through
+          // its retry path — a single no-retry read here strands the tab in
+          // GENERATING forever.
+          const scaffoldSourceFile = join(tmp, fixture.runtime.missedDoneReloadScenario.sourceFile);
+          const scaffoldOnlySource = readFileSync(scaffoldSourceFile, 'utf-8');
+          let staleSourceServed = false;
+          await page.context().route('**/source?token=*', (route) => {
+            if (!staleSourceServed) {
+              staleSourceServed = true;
+              return route.fulfill({
+                status: 200,
+                contentType: 'text/html; charset=utf-8',
+                body: scaffoldOnlySource,
+              });
+            }
+            return route.continue();
+          });
+
+          // Wait for the delayed agent write to land in source while the page
+          // is deaf to both delivery channels.
+          const writeDeadline = Date.now() + 20_000;
+          for (;;) {
+            if (/data-impeccable-variant="3"/.test(readFileSync(scaffoldSourceFile, 'utf-8'))) break;
+            if (Date.now() > writeDeadline) throw new Error('agent variant write never landed in source');
+            await new Promise((resolve) => setTimeout(resolve, 200));
+          }
+          t.diagnostic('Variants in source; the browser missed the broadcast. Unblocking SSE.');
+          liveConnectionsBlocked = false;
+
+          // EventSource auto-retries. On reconnect the live server must
+          // redeliver the missed completion; the browser's recovery read gets
+          // the stale scaffold first, retries, and then injects the real
+          // variants from source — reaching CYCLING despite the dead HMR.
+          await waitForCycling(page, 3, { timeout: 30_000 });
+          assert.equal(staleSourceServed, true, 'the stale /source intercept must have exercised the retry path');
+          t.diagnostic('Session recovered to CYCLING after SSE redelivery + stale-read retry');
+        } finally {
+          await teardownAndResetBrowser(teardown);
+        }
+      });
+    }
+
     if (shouldRunScenario('manual') && Array.isArray(fixture.runtime.manualEditScenarios) && fixture.runtime.manualEditScenarios.length > 0) {
       const manualScenarioFilter = process.env.IMPECCABLE_E2E_MANUAL_SCENARIO || '';
       for (const scenario of fixture.runtime.manualEditScenarios) {
@@ -796,6 +917,39 @@ function recordGenerateEvents(agent, events) {
       return agent.generateVariants(event, context);
     },
   };
+}
+
+function countSourceVariants(source) {
+  return (String(source).match(/<div\s+data-impeccable-variant="(?!original")/g) || []).length;
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function waitForGenerationTimings(tmp, id, { timeoutMs = 5_000, requireAllVariants = true } = {}) {
+  const snapshotPath = join(tmp, '.impeccable', 'live', 'sessions', `${id}.snapshot.json`);
+  const journalPath = join(tmp, '.impeccable', 'live', 'sessions', `${id}.jsonl`);
+  const deadline = Date.now() + timeoutMs;
+  let lastTimings = null;
+  while (Date.now() < deadline) {
+    if (existsSync(snapshotPath)) {
+      const snapshot = JSON.parse(readFileSync(snapshotPath, 'utf-8'));
+      const timings = snapshot.generationTimings || {};
+      lastTimings = timings;
+      if (timings.generation_ready && timings.first_reviewable && (!requireAllVariants || timings.all_variants_ready)) return timings;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  const checkpointReasons = existsSync(journalPath)
+    ? readFileSync(journalPath, 'utf-8')
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line)?.event)
+      .filter((event) => event?.type === 'checkpoint')
+      .map((event) => ({ reason: event.reason, arrivedVariants: event.arrivedVariants, expectedVariants: event.expectedVariants }))
+    : [];
+  throw new Error(`generation timings did not complete for ${id}: timings=${JSON.stringify(lastTimings)} checkpoints=${JSON.stringify(checkpointReasons)}`);
 }
 
 async function captureLiveE2eFailure({ name, fixture, session, sourceFile, error, log = () => {} }) {
@@ -1458,6 +1612,7 @@ function svelteComponentTargetFor(filePath) {
   const markers = [
     `${sep}node_modules${sep}.impeccable-live${sep}`,
     `${sep}src${sep}lib${sep}impeccable${sep}`,
+    `${sep}app${sep}.impeccable-live${sep}`,
   ];
   const marker = markers.find((candidate) => filePath.includes(candidate));
   const idx = marker ? filePath.indexOf(marker) : -1;
@@ -1547,18 +1702,19 @@ async function locateSessionFile(tmp) {
       return f;
     }
   }
-  for (const f of walkSvelteComponentManifests(tmp)) {
+  for (const f of walkComponentManifests(tmp)) {
     const body = readFileSync(f, 'utf-8');
-    if (body.includes('"previewMode": "svelte-component"')) return f;
+    if (/"previewMode": "(?:svelte|vue)-component"/.test(body)) return f;
   }
   throw new Error('Could not locate session source file under ' + tmp);
 }
 
-function walkSvelteComponentManifests(root) {
+function walkComponentManifests(root) {
   const results = [];
   const stack = [
     join(root, 'node_modules/.impeccable-live'),
     join(root, 'src/lib/impeccable'),
+    join(root, 'app/.impeccable-live'),
   ];
   while (stack.length) {
     const dir = stack.pop();

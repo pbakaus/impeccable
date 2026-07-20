@@ -1,17 +1,18 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { compileProviderBlocks } from '../scripts/lib/utils.js';
+import { PROVIDERS } from '../scripts/lib/transformers/providers.js';
 
 const ROOT = process.cwd();
 
 describe('live reference authoring contract', () => {
-  it('keeps setup guidance focused on inferred target paths', () => {
+  it('keeps setup guidance focused on routing live to its reference', () => {
     const skillSrc = readFileSync(join(ROOT, 'skill/SKILL.src.md'), 'utf-8');
     const liveMd = readFileSync(join(ROOT, 'skill/reference/live.md'), 'utf-8');
 
-    assert.match(skillSrc, /infer the concrete path and append `--target <path>` to the same command/);
+    assert.match(skillSrc, /If the user invoked a sub-command[\s\S]*?reference\/<command>\.md/);
     assert.doesNotMatch(skillSrc, /Use this same scripts directory for all Impeccable helper commands/);
     assert.doesNotMatch(skillSrc, /walk upward for the nearest project `\.agents`, `\.claude`, or `\.cursor` skill/);
     assert.doesNotMatch(skillSrc, /## Context diagnostics/);
@@ -22,7 +23,7 @@ describe('live reference authoring contract', () => {
     const skillSrc = readFileSync(join(ROOT, 'skill/SKILL.src.md'), 'utf-8');
     const liveMd = readFileSync(join(ROOT, 'skill/reference/live.md'), 'utf-8');
 
-    assert.match(skillSrc, /--target <path>/);
+    assert.match(skillSrc, /If the user invoked a sub-command[\s\S]*?reference\/<command>\.md/);
     assert.doesNotMatch(skillSrc, /TARGET_SELECTION_REQUIRED/);
     assert.doesNotMatch(skillSrc, /productStatus/);
     assert.doesNotMatch(skillSrc, /designStatus/);
@@ -40,13 +41,16 @@ describe('live reference authoring contract', () => {
     const openingContract = liveMd.split('\n').slice(0, 60).join('\n');
 
     assert.match(liveMd, /1\. `live\.mjs`: boot\./);
-    assert.match(liveMd, /3\. Poll loop with the default long timeout \(600000 ms\)\. After every event or `--reply`, run `live-poll\.mjs` again immediately\. Never pass a short `--timeout=`\./);
+    assert.match(liveMd, /3\. Poll loop with the default long timeout \(600000 ms\)\. Run `live-poll\.mjs` again immediately.*Codex runs this one-shot poll in the foreground\./);
     assert.match(openingContract, /## Poll loop/);
     assert.match(openingContract, /No step skipped, no step reordered\./);
     assert.doesNotMatch(liveMd, /live-copy-edits\.md/);
     assert.doesNotMatch(liveMd, /IMPECCABLE_LIVE_COPY_AGENT|mock/);
     assert.match(liveMd, /"manual_edit_apply" → Handle Manual Edit Apply/);
     assert.match(liveMd, /## Handle `manual_edit_apply`/);
+    assert.match(openingContract, /Codex.*one-shot poll in a \*\*yielded foreground exec session\*\*/);
+    assert.doesNotMatch(openingContract, /dedicated app-server generation lane by default/);
+    assert.doesNotMatch(liveMd, /app-server|IMPECCABLE_LIVE_CODEX_WORKER|codexWorker/);
     assert.ok(
       liveMd.indexOf('## Handle `manual_edit_apply`') > liveMd.indexOf('## Handle `prefetch`'),
       'manual_edit_apply handler section must sit after prefetch in the dispatch order',
@@ -60,6 +64,25 @@ describe('live reference authoring contract', () => {
     assert.match(liveMd, /delegate source edits to `impeccable_manual_edit_applier`/);
     assert.match(liveMd, /The subagent must not poll or reply/);
     assert.match(liveMd, /parent live thread keeps the foreground poll loop/);
+    // Generation stays in the main thread on every harness. The generator subagent
+    // was removed after the first real Claude Code run: the parent has to
+    // hand-compress the design system into the handoff, and compression is lossy.
+    // It shipped 0 `var(--token)` uses and 22 raw oklch literals, violating its own
+    // "never invent raw colors" rule, then needed hundreds of lines of hand
+    // carbonize to repair. The parent's context is the job, not overhead.
+    assert.doesNotMatch(
+      liveMd,
+      /impeccable[-_]live[-_]generator/,
+      'live generation must not be delegated to a subagent',
+    );
+    assert.equal(
+      existsSync(join(ROOT, 'skill/agents/impeccable-live-generator.md')),
+      false,
+      'the live generator agent must not come back without the context problem being solved',
+    );
+    // Copy edits keep their subagent: applying a known set of ops to a named file
+    // is self-contained work, so an isolated context costs nothing.
+    assert.match(manualAgentMd, /codex-name: impeccable_manual_edit_applier/);
     assert.match(liveMd, /live-accept\.mjs --page-url PAGE_URL/);
     assert.match(liveMd, /If `repair` is present/);
     assert.match(liveMd, /Fix the current source/);
@@ -106,8 +129,11 @@ describe('live reference authoring contract', () => {
 
   it('keeps Codex sandbox guidance Codex-only', () => {
     const liveMd = readFileSync(join(ROOT, 'skill/reference/live.md'), 'utf-8');
-    const codexLiveMd = compileProviderBlocks(liveMd, ['codex']);
-    const claudeLiveMd = compileProviderBlocks(liveMd, ['claude-code', 'claude']);
+    // Compile with each provider's real tags rather than hand-written ones, so a
+    // providers.js misconfiguration fails here instead of shipping.
+    const compileFor = (provider) => compileProviderBlocks(liveMd, PROVIDERS[provider].providerTags);
+    const codexLiveMd = compileFor('codex');
+    const claudeLiveMd = compileFor('claude-code');
 
     assert.match(
       codexLiveMd,
@@ -128,6 +154,19 @@ describe('live reference authoring contract', () => {
       claudeLiveMd,
       /sandbox_permissions: "require_escalated"/,
       'Codex-only sandbox guidance should not appear in Claude live reference',
+    );
+  });
+
+
+  it('routes every helper command through the per-provider scripts path', () => {
+    const liveMd = readFileSync(join(ROOT, 'skill/reference/live.md'), 'utf-8');
+    // A recipe that hardcodes `.agents/skills/...` is only correct for the Codex
+    // repo-skills bundle. Every other harness would be told to run the helper
+    // from a directory its install never creates.
+    assert.doesNotMatch(
+      liveMd,
+      /node\s+\.[a-z-]+\/skills\/impeccable\/scripts\//,
+      'live.md must not hardcode a harness config dir; use {{scripts_path}}',
     );
   });
 

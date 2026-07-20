@@ -13,6 +13,8 @@
  *   node hook-admin.mjs ignore-file <glob>             # append to ignoreFiles
  *   node hook-admin.mjs ignore-value <rule> <value>    # append to shared ignoreValues
  *   node hook-admin.mjs ignore-value <rule> <value> --local
+ *   node hook-admin.mjs ignore-value <rule> "*" --file <glob>   # rule off in <glob> only
+ *   node hook-admin.mjs ignore-value <rule> "*"                 # refused: scope it or use ignore-rule
  *   node hook-admin.mjs reset                          # remove all config + cache
  *
  * Designed to be invoked by the LLM from the reference/hooks.md flow.
@@ -265,7 +267,10 @@ function mergeIgnoreValueEntries(existing, incoming) {
 }
 
 function ignoreValueEntryKey(entry) {
-  const files = Array.isArray(entry.files) && entry.files.length > 0 ? entry.files.join('\x1f') : '';
+  // Sorted: a file scope is a set. Comparing stored order made an on-disk scope
+  // miss the sorted argv form, so a re-add duplicated the entry and a remove
+  // silently failed. Every key that hashes `files` must sort — there are four.
+  const files = Array.isArray(entry.files) && entry.files.length > 0 ? [...entry.files].sort().join('\x1f') : '';
   return `${entry.rule}\0${entry.value}\0${files}`;
 }
 
@@ -283,7 +288,14 @@ function statusReport(cwd) {
     if (info.exists) return relPath;
     return `${relPath} (${absent})`;
   };
-  const ignoreValues = cfg.ignoreValues.map((entry) => `${entry.rule}=${entry.value}`);
+  // Show the file scope. Dropping it rendered a file-scoped entry as
+  // `design-system-font-size=*`, which reads as the project-wide wildcard this
+  // command refuses — the opposite of what is on disk. Matches the
+  // `rule=value [files]` shape `impeccable ignores list` already prints.
+  const ignoreValues = cfg.ignoreValues.map((entry) => {
+    const scope = Array.isArray(entry.files) && entry.files.length ? ` [${entry.files.join(', ')}]` : '';
+    return `${entry.rule}=${entry.value}${scope}`;
+  });
 
   const lines = [
     `Impeccable design hook`,
@@ -532,14 +544,29 @@ function addIgnoreFile(cwd, glob) {
   return `Added "${glob}" to detector.ignoreFiles. Current: ${config.ignoreFiles.join(', ')}`;
 }
 
+// An empty glob used to be dropped by filter(Boolean), so `--file=` reported
+// success and wrote an entry with no files: the user asked to scope a rule to one
+// file and silently got the project-wide suppression instead. Refuse it.
+function requireGlob(raw, flag) {
+  const glob = String(raw ?? '').trim();
+  if (!glob) throw new Error(`${flag} requires a non-empty glob`);
+  // A following flag is not a glob. `--file --reason "why"` consumed `--reason`
+  // as the scope and left the reason text to fold into the value, storing
+  // value="* why" files=["--reason"] and reporting success. Same silent-no-op
+  // class as an unknown flag folding into the value; refuse it the same way.
+  if (glob.startsWith('--')) throw new Error(`${flag} requires a glob, got the flag ${glob}`);
+  return glob;
+}
+
 function parseIgnoreValueArgs(args) {
   const positionals = [];
+  const files = [];
   let shared = false;
   let local = false;
   let reason = '';
 
   for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
+    const arg = String(args[i] || '');
     if (arg === '--shared') {
       shared = true;
     } else if (arg === '--local') {
@@ -550,8 +577,20 @@ function parseIgnoreValueArgs(args) {
         chunks.push(args[++i]);
       }
       reason = chunks.join(' ').trim();
-    } else if (String(arg).startsWith('--reason=')) {
-      reason = String(arg).slice('--reason='.length).trim();
+    } else if (arg.startsWith('--reason=')) {
+      reason = arg.slice('--reason='.length).trim();
+    } else if (arg === '--file' || arg === '--files') {
+      if (i + 1 >= args.length) throw new Error(`${arg} requires a glob`);
+      files.push(requireGlob(args[++i], arg));
+    } else if (arg.startsWith('--file=')) {
+      files.push(requireGlob(arg.slice('--file='.length), '--file'));
+    } else if (arg.startsWith('--files=')) {
+      files.push(requireGlob(arg.slice('--files='.length), '--files'));
+    } else if (arg.startsWith('--')) {
+      // Otherwise a typo folds into the value: `ignore-value overused-font Inter
+      // --shard` stored the value "inter --shard", which matches no finding, and
+      // reported success. Matches `impeccable ignores add-value`.
+      throw new Error(`Unknown ignore-value flag: ${arg}`);
     } else {
       positionals.push(arg);
     }
@@ -561,6 +600,9 @@ function parseIgnoreValueArgs(args) {
   return {
     rule: String(rule || '').trim().toLowerCase(),
     value: normalizeIgnoreValue(valueParts.join(' ')),
+    // Sorted: the dedup key compares the files array, so an unsorted scope made
+    // `--file b.css --file a.css` a different entry from `--file a.css --file b.css`.
+    files: Array.from(new Set(files.filter(Boolean))).sort(),
     shared,
     local,
     reason,
@@ -577,10 +619,24 @@ function addIgnoreValue(cwd, args) {
     throw new Error('Pass only one scope flag: --shared or --local');
   }
 
+  // A bare `*` would suppress the rule everywhere, which is ignore-rule's job and
+  // not what a finding in one file justifies. detector.ignoreValues honours a
+  // `files` scope, so require one — matching `impeccable ignores add-value`.
+  if (parsed.value === '*' && parsed.files.length === 0) {
+    // `ignore-rule overused-font` refuses on its own without --all-values, so
+    // naming the bare form here would hand the user a second error.
+    const projectWide = parsed.rule === 'overused-font'
+      ? `${IMPECCABLE_COMMAND} hooks ignore-rule ${parsed.rule} --all-values`
+      : `${IMPECCABLE_COMMAND} hooks ignore-rule ${parsed.rule}`;
+    throw new Error(`Wildcard value ignores must be scoped with --file <glob>, e.g. ${IMPECCABLE_COMMAND} hooks ignore-value design-system-font-size "*" --file "src/widget.js". To suppress the rule project-wide use ${projectWide}.`);
+  }
+
   const local = parsed.local;
   const config = mergeDetectorConfig(readRawDetectorConfig(cwd, { local }));
-  const key = `${parsed.rule}\0${parsed.value}`;
-  const existing = config.ignoreValues.find((entry) => `${entry.rule}\0${entry.value}` === key);
+  // Key on the file scope too: the same rule/value legitimately appears more than
+  // once with different scopes, and a rule+value-only key overwrote them.
+  const key = ignoreValueEntryKey({ rule: parsed.rule, value: parsed.value, files: parsed.files });
+  const existing = config.ignoreValues.find((entry) => ignoreValueEntryKey(entry) === key);
 
   if (existing) {
     if (parsed.reason) existing.reason = parsed.reason;
@@ -588,15 +644,17 @@ function addIgnoreValue(cwd, args) {
     const entry = {
       rule: parsed.rule,
       value: parsed.value,
-      createdAt: new Date().toISOString(),
     };
+    if (parsed.files.length) entry.files = parsed.files;
+    entry.createdAt = new Date().toISOString();
     if (parsed.reason) entry.reason = parsed.reason;
     config.ignoreValues.push(entry);
   }
 
   const target = writeDetectorConfig(cwd, config, { local });
   const scope = local ? 'local detector.ignoreValues' : 'shared detector.ignoreValues';
-  return `Added ${parsed.rule}=${parsed.value} to ${scope} (${path.relative(cwd, target) || target}).`;
+  const scopeSuffix = parsed.files.length ? ` scoped to ${parsed.files.join(', ')}` : '';
+  return `Added ${parsed.rule}=${parsed.value}${scopeSuffix} to ${scope} (${path.relative(cwd, target) || target}).`;
 }
 
 function reset(cwd) {

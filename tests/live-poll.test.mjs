@@ -6,6 +6,7 @@ import {
   buildPollReplyPayload,
   isEventPending,
   manualApplyPollBanner,
+  normalizePollTypes,
   parseReplyArgs,
   requiresAgentReply,
 } from '../skill/scripts/live-poll.mjs';
@@ -24,6 +25,15 @@ describe('live-poll reply payloads', () => {
       { carbonize: true },
       'event=live_poll.reply_data actor=agent operation=completion_ack risk=carbonize_flag_dropped_before_server_journal expected={"carbonize":true} actual=' + JSON.stringify(payload.data),
     );
+  });
+
+  it('preserves the leased source event type when concurrent work shares a session id', () => {
+    const payload = buildPollReplyPayload('token-1', {
+      id: 'abc12345',
+      type: 'agent_done',
+      sourceEventType: 'accept',
+    });
+    assert.equal(payload.sourceEventType, 'accept');
   });
 });
 
@@ -134,6 +144,7 @@ describe('live-poll stream helpers', () => {
     assert.equal(requiresAgentReply({ type: 'generate' }), true);
     assert.equal(requiresAgentReply({ type: 'steer' }), true);
     assert.equal(requiresAgentReply({ type: 'manual_edit_apply' }), true);
+    assert.equal(requiresAgentReply({ type: 'carbonize_cleanup' }), true);
     assert.equal(requiresAgentReply({ type: 'prefetch' }), false);
     assert.equal(requiresAgentReply({ type: 'accept' }), false);
     assert.equal(requiresAgentReply({ type: 'timeout' }), false);
@@ -149,4 +160,12 @@ describe('live-poll stream helpers', () => {
     assert.equal(isEventPending(status, 'abc12345'), true);
     assert.equal(isEventPending(status, '00000000'), false);
   });
+
+  it('normalizes a non-overlapping foreground control lane', () => {
+    assert.deepEqual(
+      normalizePollTypes('steer,manual_edit_apply,carbonize_cleanup,exit,steer'),
+      ['steer', 'manual_edit_apply', 'carbonize_cleanup', 'exit'],
+    );
+  });
+
 });

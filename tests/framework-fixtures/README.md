@@ -112,6 +112,7 @@ When `preActions` is omitted, steer smoke inherits `runtime.preActions` to revea
 | `nextjs-app/` | `app/layout.tsx` as JSX inject target (commentSyntax `jsx`). |
 | `astro/` | `src/layouts/Layout.astro` as inject target. HTML comments. |
 | `sveltekit/` | `src/app.html` shell + `src/routes/+page.svelte`. |
+| `nuxt-vite7/` | Nuxt 4 `app/` structure + Vue 3 SFC. Live loads through a generated dev-only client plugin. |
 | `multipage-with-generator/` | `src/` tracked, `dist/` gitignored. Exercises the is-generated guard and `element_not_in_source` fallback. |
 | `nextjs-turborepo/` | Monorepo with shared CSP helper (`createBaseNextConfig`). CSP shape `append-arrays`. |
 | `nextjs-inline-csp/` | App-level `next.config.js` with a literal CSP string. CSP shape `append-string`. |

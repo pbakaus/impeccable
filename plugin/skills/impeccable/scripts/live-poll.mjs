@@ -27,7 +27,7 @@ const scriptCmd = (name) => `node "${path.join(SELF_DIR, name)}"`;
 export const PER_REQUEST_TIMEOUT_MS = 270_000;
 export const DEFAULT_EVENT_LEASE_MS = 600_000;
 
-const EVENT_TYPES_NEEDING_AGENT_REPLY = new Set(['generate', 'steer', 'manual_edit_apply']);
+const EVENT_TYPES_NEEDING_AGENT_REPLY = new Set(['generate', 'steer', 'manual_edit_apply', 'carbonize_cleanup']);
 
 function readServerInfo() {
   const record = readLiveServerInfo(process.cwd());
@@ -38,8 +38,8 @@ function readServerInfo() {
   return record.info;
 }
 
-export function buildPollReplyPayload(token, { id, type, message, file, data }) {
-  return { token, id, type, message, file, data };
+export function buildPollReplyPayload(token, { id, type, message, file, data, sourceEventType }) {
+  return { token, id, type, message, file, data, sourceEventType };
 }
 
 export function manualApplyPollBanner(event = {}) {
@@ -152,7 +152,14 @@ export async function waitForEventAck(base, token, eventId, {
   return false;
 }
 
-export async function fetchNextEvent(base, token, { totalDeadline } = {}) {
+export async function fetchNextEvent(base, token, {
+  totalDeadline,
+  types,
+  resolveTypes,
+  perRequestTimeoutMs = PER_REQUEST_TIMEOUT_MS,
+  leaseMs = DEFAULT_EVENT_LEASE_MS,
+  signal,
+} = {}) {
   while (true) {
     if (totalDeadline && Date.now() >= totalDeadline) {
       return { type: 'timeout' };
@@ -161,8 +168,15 @@ export async function fetchNextEvent(base, token, { totalDeadline } = {}) {
     const remaining = totalDeadline
       ? totalDeadline - Date.now()
       : PER_REQUEST_TIMEOUT_MS;
-    const slice = Math.min(Math.max(remaining, 1000), PER_REQUEST_TIMEOUT_MS);
-    const res = await fetch(`${base}/poll?token=${token}&timeout=${slice}&leaseMs=${DEFAULT_EVENT_LEASE_MS}`);
+    const slice = Math.min(Math.max(remaining, 1000), perRequestTimeoutMs);
+    const query = new URLSearchParams({
+      token,
+      timeout: String(slice),
+      leaseMs: String(leaseMs),
+    });
+    const normalizedTypes = normalizePollTypes(resolveTypes ? await resolveTypes() : types);
+    if (normalizedTypes.length > 0) query.set('types', normalizedTypes.join(','));
+    const res = await fetch(`${base}/poll?${query}`, { signal });
 
     if (res.status === 401) {
       const err = new Error('Authentication failed. The server token may have changed.');
@@ -202,11 +216,17 @@ export async function augmentEventWithAcceptHandling(event, base, token) {
     event._acceptResult = { handled: false, mode: 'error', error: err.message };
   }
 
+  await completeAcceptHandling(event, base, token);
+  return event;
+}
+
+export async function completeAcceptHandling(event, base, token) {
   const completionType = completionTypeForAcceptResult(event.type, event._acceptResult);
   try {
     await postReply(base, token, {
       id: event.id,
       type: completionType,
+      sourceEventType: event.type,
       message: event._acceptResult?.error,
       file: event._acceptResult?.file,
       data: event._acceptResult?.carbonize === true ? { carbonize: true } : undefined,
@@ -217,7 +237,6 @@ export async function augmentEventWithAcceptHandling(event, base, token) {
   if (!event._completionAck) {
     event._completionAck = completionAckForAcceptResult(event.id, completionType, event._acceptResult);
   }
-
   return event;
 }
 
@@ -245,9 +264,9 @@ export function printPollEvent(event) {
   console.log(JSON.stringify(event));
 }
 
-export async function runPollOnce(base, token, { totalTimeout = 600_000 } = {}) {
+export async function runPollOnce(base, token, { totalTimeout = 600_000, types, resolveTypes, perRequestTimeoutMs } = {}) {
   const deadline = Date.now() + totalTimeout;
-  const event = await fetchNextEvent(base, token, { totalDeadline: deadline });
+  const event = await fetchNextEvent(base, token, { totalDeadline: deadline, types, resolveTypes, perRequestTimeoutMs });
   await augmentEventWithAcceptHandling(event, base, token);
   writeCarbonizeBanner(event);
   printPollEvent(event);
@@ -258,11 +277,14 @@ export async function runPollStream(base, token, {
   ackTimeoutMs = 600_000,
   ackPollIntervalMs = 400,
   shouldContinue = () => true,
+  types,
+  resolveTypes,
+  perRequestTimeoutMs,
 } = {}) {
   process.stderr.write('[impeccable-poll] stream mode: one JSON object per line on stdout; use --reply while this process stays running\n');
 
   while (shouldContinue()) {
-    const event = await fetchNextEvent(base, token);
+    const event = await fetchNextEvent(base, token, { types, resolveTypes, perRequestTimeoutMs });
     await augmentEventWithAcceptHandling(event, base, token);
     writeCarbonizeBanner(event);
     printPollEvent(event);
@@ -322,14 +344,17 @@ Modes:
 
 Options:
   --timeout=MS        One-shot poll timeout in ms (default: 600000). Ignored in --stream mode
+  --types=A,B         Lease only these event types
   --ack-timeout=MS    Stream mode: max wait for --reply after generate/steer (default: 600000)
   --file PATH         Attach a source file path to the reply (generate/steer flow)
   --data JSON         Attach a JSON result object to the reply (manual_edit_apply flow). Must be valid JSON
   --help              Show this help message
 
 Harness note:
-  Default one-shot mode is the portable contract for Claude Code, Codex, and Cursor.
-  --stream is experimental for harnesses with fast incremental stdout; do not use on Cursor.`);
+  Default one-shot mode is the primary contract, including Codex foreground polling.
+  Claude Code may run it as a background task; Cursor uses a background terminal with exit notification.
+  --stream is retained for harnesses with measured, reliable incremental stdout.
+  Do not use --stream on Cursor.`);
     process.exit(0);
   }
 
@@ -360,21 +385,28 @@ Harness note:
   }
 
   const streamMode = args.includes('--stream');
+  const typesArg = args.find((a) => a.startsWith('--types='));
+  const types = normalizePollTypes(typesArg ? typesArg.slice('--types='.length) : null);
   const ackTimeoutArg = args.find((a) => a.startsWith('--ack-timeout='));
   const ackTimeoutMs = ackTimeoutArg ? parseInt(ackTimeoutArg.split('=')[1], 10) : 600_000;
 
   try {
     if (streamMode) {
-      await runPollStream(base, info.token, { ackTimeoutMs });
+      await runPollStream(base, info.token, { ackTimeoutMs, types });
       return;
     }
 
     const timeoutArg = args.find((a) => a.startsWith('--timeout='));
     const totalTimeout = timeoutArg ? parseInt(timeoutArg.split('=')[1], 10) : 600_000;
-    await runPollOnce(base, info.token, { totalTimeout });
+    await runPollOnce(base, info.token, { totalTimeout, types });
   } catch (err) {
     handlePollError(err);
   }
+}
+
+export function normalizePollTypes(value) {
+  const values = Array.isArray(value) ? value : String(value || '').split(',');
+  return [...new Set(values.map((type) => String(type).trim()).filter(Boolean))];
 }
 
 // Auto-execute when run directly

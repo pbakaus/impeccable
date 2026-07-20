@@ -74,7 +74,7 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
-  it('uses a Svelte-gated painted-ancestor crop proxy for shader capture', () => {
+  it('uses a framework-component-gated painted-ancestor crop proxy for shader capture', () => {
     assert.match(
       SOURCE,
       /function findShaderProxyCaptureRoot\(el\) \{[\s\S]{0,500}?let node = el\.parentElement;[\s\S]{0,700}?containsElement && paintsShaderProxySurface\(node\)[\s\S]{0,120}?return null;/,
@@ -87,8 +87,8 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
-      /function shouldUseAncestorCropShaderProxy\(el\) \{[\s\S]{0,260}?window\.__IMPECCABLE_LIVE_ADAPTER__[\s\S]{0,280}?currentPreviewMode === 'svelte-component' \|\| svelteComponentSession[\s\S]{0,260}?dataset\?\.impeccablePreview === 'svelte-component';/,
-      'ancestor crop proxy must be gated to the Svelte adapter / Svelte component previews',
+      /function shouldUseAncestorCropShaderProxy\(el\) \{[\s\S]{0,260}?window\.__IMPECCABLE_LIVE_ADAPTER__[\s\S]{0,280}?isFrameworkComponentPreviewMode\(currentPreviewMode\) \|\| svelteComponentSession[\s\S]{0,260}?isFrameworkComponentPreviewMode\(wrapper\?\.dataset\?\.impeccablePreview\);/,
+      'ancestor crop proxy must be gated to Svelte/Vue component previews',
     );
     assert.match(
       SOURCE,
@@ -141,9 +141,28 @@ describe('live-browser.js regression guards', () => {
   it('restores unsaved inline edit drafts before hideBar tears editing down', () => {
     assert.match(
       SOURCE,
-      /function hideBar\(\) \{[\s\S]{0,620}?if \(state === 'EDITING'\) restoreInlineEditDrafts\(\);[\s\S]{0,80}?disableInlineEdit\(\);/,
+      /function hideBar\(instant\) \{[\s\S]{0,720}?if \(state === 'EDITING'\) restoreInlineEditDrafts\(\);[\s\S]{0,80}?disableInlineEdit\(\);/,
       'hideBar should not leave unsaved contenteditable drafts in the DOM when an external event hides the bar',
     );
+  });
+
+  it('discards variants without hiding the original or animating stale chrome', () => {
+    assert.match(SOURCE, /function showOriginalDuringDiscard\(sessionId\)[\s\S]{0,900}?data-impeccable-variant="original"/);
+    assert.match(SOURCE, /function handleDiscard\(\)[\s\S]{0,420}?cleanup\(\{ restoreOriginal: true, instantChrome: true \}\)/);
+    assert.match(SOURCE, /if \(instant\) barEl\.style\.display = 'none'/);
+    assert.match(
+      SOURCE,
+      /if \(restoreOriginal\) showOriginalDuringDiscard\(cleanupSessionId\);\s*else wrapper\.style\.display = 'none';/,
+      'only non-discard cleanup may blank the wrapper while waiting for HMR',
+    );
+  });
+
+  it('stores live state off the document root and preserves the selected anchor top', () => {
+    assert.match(SOURCE, /window\.__IMPECCABLE_LIVE_STATE__ = next/);
+    assert.doesNotMatch(SOURCE, /document\.documentElement\.dataset\.impeccableLiveState/);
+    assert.match(SOURCE, /pickedAnchorViewportTop: Number\.isFinite\(pickedAnchorViewportTop\)/);
+    assert.match(SOURCE, /scrollLockAnchorTop = typeof initialAnchorTop === 'number' && isFinite\(initialAnchorTop\)/);
+    assert.match(SOURCE, /const anchorDelta = anchorTop - scrollLockAnchorTop/);
   });
 
   it('does not autofocus the steering chat while inline editing', () => {
@@ -442,6 +461,25 @@ describe('live-browser.js regression guards', () => {
       SOURCE,
       /function syncAgentPollingUi\(/,
       'global bar brand must reflect agent poll connectivity',
+    );
+    // The indicator goes quiet both when nobody is polling and when the agent
+    // holds leased work. Under one-shot foreground polling the second case is
+    // every normal generation, so a single "run live-poll.mjs to connect" tip
+    // told users to fix a healthy session.
+    assert.match(
+      SOURCE,
+      /function agentHasWorkInFlight\(\)\s*\{\s*return state === 'GENERATING' \|\| state === 'SAVING';/,
+      'agent poll copy must distinguish a busy agent from an absent one',
+    );
+    assert.match(
+      SOURCE,
+      /agentHasWorkInFlight\(\) \? AGENT_BUSY_TIP : AGENT_DISCONNECTED_TIP/,
+      'a busy agent must not be described as disconnected',
+    );
+    assert.match(
+      SOURCE,
+      /tip\.textContent = agentStatusText\(\)/,
+      'tooltip copy must be derived at display time, not read from a cache the 5s status poll last wrote',
     );
     assert.match(
       SOURCE,
@@ -838,6 +876,58 @@ describe('live-browser.js regression guards', () => {
       SOURCE,
       /selectedCount >= 4 \? 2/,
       'variant count must not skip x1 by wrapping 4 back to 2',
+    );
+  });
+
+  it('makes every arrived progressive variant immediately actionable', () => {
+    assert.match(
+      SOURCE,
+      /if \(arrivedVariants > 0\) \{[\s\S]{0,180}?setLiveState\('CYCLING'\)/,
+      'the first arrived variant should leave the generating-only state',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /arrivedVariants < expectedVariants\) \{[\s\S]{0,180}?accept\.style\.pointerEvents = 'none'/,
+      'Accept must not wait for variants the user did not choose',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /arrivedVariants < expectedVariants\) \{[\s\S]{0,180}?discard\.style\.pointerEvents = 'none'/,
+      'Discard must cancel remaining work immediately',
+    );
+    assert.match(
+      SOURCE,
+      /const resumedState = arrivedVariants > 0 \? 'CYCLING' : 'GENERATING'/,
+      'reload recovery should preserve a partially delivered review state',
+    );
+    assert.match(
+      SOURCE,
+      /arrivedVariants >= expectedVariants && expectedVariants > 0[\s\S]{0,100}?\? 'variants_ready'[\s\S]{0,60}?: 'variants_progress'/,
+      'checkpoint timing must distinguish partial review from complete delivery by counts',
+    );
+  });
+
+  it('keeps deferred Tune controls visible and refreshes params-only publications', () => {
+    assert.match(
+      SOURCE,
+      /const paramsPending = !hasParams && \(parameterGenerationState === 'pending' \|\| parameterGenerationState === 'loading'\)/,
+      'the cycling bar must expose Tune while parameter generation is outstanding',
+    );
+    assert.match(SOURCE, /tune\.disabled = true/, 'pending Tune must be visibly loading but non-interactive');
+    assert.match(SOURCE, /Tune controls are ready\./, 'parameter arrival needs a clear ready indication');
+    assert.match(
+      SOURCE,
+      /msg\.publicationKind !== 'params' && arrivedVariants >= targetArrived/,
+      'a params-only publication must refresh even though the variant count is unchanged',
+    );
+    assert.match(SOURCE, /revisionDomain: 'browser'/, 'browser checkpoints must use their own revision domain');
+  });
+
+  it('promotes an early-accepted Svelte preview before releasing the picker', () => {
+    assert.match(
+      SOURCE,
+      /function scheduleAcceptCleanup\(accepted\) \{[\s\S]{0,420}?if \(accepted\?\.isSvelteComponent\) \{[\s\S]{0,120}?commitAcceptedSvelteComponentToDom\(accepted\.id\);[\s\S]{0,120}?cleanupAcceptedSession\(\);/,
+      'Svelte early accept must tear down its adapter mount before the next picking session starts',
     );
   });
 

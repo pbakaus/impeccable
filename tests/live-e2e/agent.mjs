@@ -1325,15 +1325,25 @@ async function spliceVariantsIntoWrapper({ tmp, wrapInfo, sessionId, output }) {
     styleMode: wrapInfo.styleMode,
   });
 
+  const endMarkerIdx = lines.findIndex((line, index) =>
+    index > markerIdx && line.includes('impeccable-variants-end ' + sessionId),
+  );
+  if (endMarkerIdx === -1) {
+    throw new Error('end marker not found in ' + wrapInfo.file);
+  }
+  const tailIdx = wrapInfo.commentSyntax.open === '{/*'
+    ? endMarkerIdx
+    : endMarkerIdx - 1;
+
   const next = [
     ...lines.slice(0, markerIdx + 1),
     block,
-    ...lines.slice(markerIdx + 1),
+    ...lines.slice(tailIdx),
   ];
   await fs.writeFile(filePath, next.join('\n'), 'utf-8');
 }
 
-async function writeSvelteComponentVariants({ tmp, wrapInfo, event, output }) {
+async function writeSvelteComponentVariants({ tmp, wrapInfo, event, output, writeParams = true }) {
   const manifestPath = path.join(tmp, wrapInfo.file);
   const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf-8'));
   const componentDir = path.join(tmp, manifest.componentDir);
@@ -1373,7 +1383,11 @@ async function writeSvelteComponentVariants({ tmp, wrapInfo, event, output }) {
     paramsByVariant[String(variantId)] = Array.isArray(variant.params) ? variant.params : [];
   }
 
-  await fs.writeFile(path.join(componentDir, 'params.json'), JSON.stringify(paramsByVariant, null, 2) + '\n', 'utf-8');
+  if (writeParams) {
+    await fs.writeFile(path.join(componentDir, 'params.json'), JSON.stringify(paramsByVariant, null, 2) + '\n', 'utf-8');
+  }
+  manifest.arrivedVariants = output.variants.length;
+  await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf-8');
 }
 
 function variantMarkupHasVisibleContent(markup) {
@@ -1507,6 +1521,8 @@ export async function runAgentLoop({
   agent,
   signal,
   log = () => {},
+  trace = () => {},
+  atomicDelayMs = 0,
   wrapTarget = { classes: 'hero-title', tag: 'h1' },
   steerSourceFile,
   steerTarget,
@@ -1529,6 +1545,8 @@ export async function runAgentLoop({
     if (event.type === 'exit') return;
     if (event.type === 'prefetch') continue;
     if (event.type === 'connected') continue;
+
+    trace('agent.event.received', { id: event.id, type: event.type, clientSentAt: event.clientSentAt ?? null });
 
     if (event.type === 'steer') {
       log(`steer id=${event.id} message=${JSON.stringify(event.message)}`);
@@ -1578,7 +1596,16 @@ export async function runAgentLoop({
       log(`generate id=${event.id} mode=${isInsert ? 'insert' : 'replace'}${isInsert ? '' : ` action=${event.action}`} count=${event.count}`);
       try {
         let wrapInfo;
-        if (isInsert) {
+        if (event.scaffold) {
+          wrapInfo = event.scaffold;
+          trace('agent.scaffold.reused', {
+            id: event.id,
+            file: wrapInfo.file,
+            previewMode: wrapInfo.previewMode || 'source',
+            durationMs: event.scaffoldDurationMs ?? null,
+          });
+        } else if (isInsert) {
+          trace('agent.scaffold.start', { id: event.id, mode: 'insert' });
           const insertTarget = insertTargetFromEvent(event);
           wrapInfo = await runInsert({
             tmp,
@@ -1587,7 +1614,9 @@ export async function runAgentLoop({
             count: event.count,
             ...insertTarget,
           });
+          trace('agent.scaffold.end', { id: event.id, file: wrapInfo.file, previewMode: wrapInfo.previewMode || 'source' });
         } else {
+          trace('agent.scaffold.start', { id: event.id, mode: 'replace' });
           // 1. Wrap the original element in the variant scaffold (deterministic CLI)
           // wrapTarget can be a static {classes, tag, elementId} (test fixtures
           // know what they pick) or a function (event) => target (real-use
@@ -1606,41 +1635,63 @@ export async function runAgentLoop({
             ...target,
             text,
           });
+          trace('agent.scaffold.end', { id: event.id, file: wrapInfo.file, previewMode: wrapInfo.previewMode || 'source' });
         }
         log(`scaffolded: ${wrapInfo.file} insertLine=${wrapInfo.insertLine}`);
 
-        // 2. Agent generates variant content (LLM-pluggable seam)
-        let output = await agent.generateVariants(event, { wrapTarget, wrapInfo });
-        output = normalizeVariantOutput(output, wrapInfo);
+        // 2. Agent generates variant content (LLM-pluggable seam).
+        // Providers may expose a true split path so variant 1 is written before
+        // the request for the remaining variants completes.
+        trace('agent.generate.start', { id: event.id, count: event.count });
+        let output = normalizeVariantOutput(
+          await agent.generateVariants(event, { wrapTarget, wrapInfo }),
+          wrapInfo,
+        );
+        if (atomicDelayMs > 0) {
+          await new Promise((resolve) => setTimeout(resolve, atomicDelayMs));
+        }
+        trace('agent.generate.first_ready', { id: event.id, count: output?.variants?.length || 0 });
+        trace('agent.generate.end', { id: event.id, count: output?.variants?.length || 0 });
+
         if (output.variants.length !== event.count) {
           log(`warning: agent returned ${output.variants.length} variants, expected ${event.count}`);
         }
 
-        // 3. Write variants into the deterministic preview target.
+        // 3. Write the complete set into the deterministic preview target.
+        trace('agent.write.start', { id: event.id, file: wrapInfo.file });
         if (wrapInfo.previewMode === 'svelte-component') {
-          await writeSvelteComponentVariants({ tmp, wrapInfo, event, output });
+          await writeSvelteComponentVariants({ tmp, wrapInfo, event, output, writeParams: true });
         } else {
           await spliceVariantsIntoWrapper({ tmp, wrapInfo, sessionId: event.id, output });
         }
+        trace('agent.write.end', { id: event.id, file: wrapInfo.file });
         if (process.env.IMPECCABLE_E2E_DEBUG) {
           const post = await fs.readFile(path.join(tmp, wrapInfo.file), 'utf-8');
           log(`--- post-splice (variants written) ---\n${post}`);
         }
 
         // 4. Tell the server we're done (broadcasts SSE done → browser settles to CYCLING)
+        trace('agent.reply.start', { id: event.id });
         await fetch(`${base}/poll`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token, type: 'done', id: event.id, file: wrapInfo.file }),
+          body: JSON.stringify({ token, type: 'done', sourceEventType: 'generate', id: event.id, file: wrapInfo.file }),
           signal,
         });
+        trace('agent.reply.end', { id: event.id });
       } catch (err) {
         if (signal.aborted) return;
+        if (isExpectedGenerationCancellation(err)) {
+          trace('agent.generate.canceled', { id: event.id, reason: 'stale_generation_epoch' });
+          log('generate canceled after Accept/Discard: ' + err.message);
+          continue;
+        }
+        trace('agent.generate.error', { id: event.id, message: err.message });
         log('generate failed: ' + err.message);
         await fetch(`${base}/poll`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token, type: 'error', id: event.id, message: err.message }),
+          body: JSON.stringify({ token, type: 'error', sourceEventType: 'generate', id: event.id, message: err.message }),
           signal,
         }).catch(() => {});
       }
@@ -1740,6 +1791,7 @@ export async function runAgentLoop({
           body: JSON.stringify({
             token,
             type: completionType,
+            sourceEventType: 'accept',
             id: event.id,
             file: acceptResult.file,
             message: acceptResult.error,
@@ -1769,6 +1821,7 @@ export async function runAgentLoop({
           body: JSON.stringify({
             token,
             type: completionType,
+            sourceEventType: 'discard',
             id: event.id,
             file: discardResult.file,
             message: discardResult.error,
@@ -1785,6 +1838,10 @@ export async function runAgentLoop({
 
     log(`unhandled event: ${event.type}`);
   }
+}
+
+export function isExpectedGenerationCancellation(error) {
+  return /(?:^|\b)stale_generation_epoch(?:\b|$)/.test(String(error?.message || error || ''));
 }
 
 async function runPollReply({ tmp, scriptsDir, id, status, message, data }) {

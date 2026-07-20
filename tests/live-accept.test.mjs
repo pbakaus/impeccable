@@ -5,11 +5,12 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { sourceLockPath } from '../skill/scripts/live/source-lock.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ACCEPT = resolve(__dirname, '..', 'skill/scripts/live-accept.mjs');
@@ -28,6 +29,165 @@ function runAccept(cwd, args) {
     return JSON.parse(body || '{}');
   }
 }
+
+// The failure that broke the first real Claude Code Live run. Progressive
+// publication stages `.impeccable/live/artifacts/<id>-r<n>.<source-ext>`, which
+// carries the session marker. findSessionFile walks `src`, `app`, `pages`, ... and
+// then `.`; a project whose source is not under one of those (this repo's own site
+// lives in `site/pages/`) falls through to the `.` walk, where dot-directories sort
+// before letters — so the artifact was found before the real file.
+describe('live-accept — marker search must ignore Impeccable state', () => {
+  let tmp;
+  beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), 'impeccable-accept-decoy-')); });
+  afterEach(() => rmSync(tmp, { recursive: true, force: true }));
+
+  const SOURCE = [
+    '<main>',
+    '<!-- impeccable-variants-start ab12cd34 -->',
+    '<div data-impeccable-variant="original">ORIGINAL</div>',
+    '<div data-impeccable-variant="1">VARIANT ONE</div>',
+    '<!-- impeccable-variants-end ab12cd34 -->',
+    '</main>',
+    '',
+  ].join('\n');
+
+  function seed({ revisions = 3 } = {}) {
+    mkdirSync(join(tmp, 'site', 'pages'), { recursive: true });
+    mkdirSync(join(tmp, '.impeccable', 'live', 'artifacts'), { recursive: true });
+    writeFileSync(join(tmp, 'site', 'pages', 'index.astro'), SOURCE);
+    for (let r = 1; r <= revisions; r += 1) {
+      writeFileSync(join(tmp, '.impeccable', 'live', 'artifacts', `ab12cd34-r${r}.astro`), SOURCE);
+    }
+  }
+
+  it('accepts into real source when a staged artifact carries the same marker', () => {
+    seed();
+    const result = runAccept(tmp, ['--id', 'ab12cd34', '--variant', '1']);
+    assert.equal(result.handled, true, JSON.stringify(result));
+    assert.equal(
+      result.file,
+      'site/pages/index.astro',
+      'accept must resolve the project file, not the .impeccable artifact decoy',
+    );
+    const source = readFileSync(join(tmp, 'site', 'pages', 'index.astro'), 'utf-8');
+    assert.match(source, /VARIANT ONE/);
+    assert.doesNotMatch(source, /impeccable-variants-start/, 'the wrapper must be gone from real source');
+  });
+
+  it('discards into real source with an artifact decoy present', () => {
+    seed({ revisions: 1 });
+    const result = runAccept(tmp, ['--id', 'ab12cd34', '--discard']);
+    assert.equal(result.handled, true, JSON.stringify(result));
+    assert.equal(result.file, 'site/pages/index.astro');
+    assert.match(readFileSync(join(tmp, 'site', 'pages', 'index.astro'), 'utf-8'), /ORIGINAL/);
+  });
+});
+
+describe('live-accept — session id validation', () => {
+  let tmp;
+  beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), 'impeccable-accept-id-')); });
+  afterEach(() => rmSync(tmp, { recursive: true, force: true }));
+
+  // --id becomes a path segment for the accept receipt. Traversal here wrote
+  // JSON to arbitrary absolute paths (e.g. `--id ../../../../etc/evil`).
+  for (const id of ['../../../../etc/evil', 'a/b', '..', 'a\\b', '']) {
+    it(`refuses --id ${JSON.stringify(id)} without writing a receipt`, () => {
+      const res = spawnSync('node', [ACCEPT, '--id', id, '--discard'], {
+        cwd: tmp,
+        encoding: 'utf-8',
+      });
+      assert.equal(res.status, 1, 'must exit non-zero');
+      assert.match(res.stderr, /Invalid --id|Missing --id/);
+      assert.equal(existsSync(join(tmp, '.impeccable', 'live', 'accept-receipts')), false);
+    });
+  }
+
+  it('still accepts a well-formed id', () => {
+    const res = spawnSync('node', [ACCEPT, '--id', 'ab12cd34', '--discard'], {
+      cwd: tmp,
+      encoding: 'utf-8',
+    });
+    assert.doesNotMatch(res.stderr || '', /Invalid --id/);
+  });
+
+  // --variant is interpolated into a RegExp and into the markup written back to
+  // source. `.*` matched the `original` block first, so the CLI reported a
+  // successful accept while actually restoring the original.
+  for (const variant of ['.*', '[12]', 'original', '1e2', '']) {
+    it(`refuses --variant ${JSON.stringify(variant)} rather than matching by regex`, () => {
+      writeFileSync(join(tmp, 'page.html'), [
+        '<!-- impeccable-variants-start ab12cd34 -->',
+        '<div data-impeccable-variant="original">ORIGINAL CONTENT</div>',
+        '<div data-impeccable-variant="1">VARIANT ONE</div>',
+        '<!-- impeccable-variants-end ab12cd34 -->',
+        '',
+      ].join('\n'));
+      const res = spawnSync('node', [ACCEPT, '--id', 'ab12cd34', '--variant', variant], {
+        cwd: tmp,
+        encoding: 'utf-8',
+      });
+      assert.equal(res.status, 1);
+      assert.match(res.stderr, /Invalid --variant|Need --discard/);
+      assert.match(
+        readFileSync(join(tmp, 'page.html'), 'utf-8'),
+        /impeccable-variants-start/,
+        'a rejected variant must leave the wrapper untouched',
+      );
+    });
+  }
+});
+
+// The plain wrapper is the only non-component preview path now that the isolated
+// source-artifact mode is gone, so its lock-contention behaviour is what carries
+// these guarantees.
+describe('live-accept — plain wrapper under source-lock contention', () => {
+  let tmp;
+  beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), 'impeccable-accept-lock-')); });
+  afterEach(() => rmSync(tmp, { recursive: true, force: true }));
+
+  const PAGE = [
+    '<!-- impeccable-variants-start ab12cd34 -->',
+    '<div data-impeccable-variant="original">ORIGINAL</div>',
+    '<div data-impeccable-variant="1">VARIANT ONE</div>',
+    '<!-- impeccable-variants-end ab12cd34 -->',
+    '',
+  ].join('\n');
+
+  function holdLock() {
+    // realpath: mkdtemp hands back /var/... on macOS while the child's cwd
+    // resolves to /private/var/..., and the lock digest hashes the absolute path.
+    const realTmp = realpathSync(tmp);
+    const lockPath = sourceLockPath(join(realTmp, 'page.html'), realTmp);
+    mkdirSync(dirname(lockPath), { recursive: true });
+    // process.pid is alive, so the lock is a live holder rather than stale.
+    writeFileSync(lockPath, JSON.stringify({
+      owner: 'generation:ab12cd34:1', token: 'other', pid: process.pid, at: Date.now(),
+    }) + '\n');
+  }
+
+  for (const [label, args] of [['accept', ['--variant', '1']], ['discard', ['--discard']]]) {
+    it(`reports a blocked ${label} as mode:error rather than a manual handoff`, () => {
+      writeFileSync(join(tmp, 'page.html'), PAGE);
+      holdLock();
+      const result = runAccept(tmp, ['--id', 'ab12cd34', ...args]);
+      assert.equal(result.handled, false, JSON.stringify(result));
+      assert.equal(result.error, 'source_locked');
+      // Without mode:error, completion.mjs classifies this as agent_done with an ok
+      // ack and live.md tells the agent to hand-edit the file — racing the publisher
+      // that holds the lock.
+      assert.equal(result.mode, 'error');
+      assert.equal(readFileSync(join(tmp, 'page.html'), 'utf-8'), PAGE, 'source must be untouched');
+      assert.equal(existsSync(join(tmp, '.impeccable', 'live', 'accept-receipts')), false, 'no receipt for a failed op');
+    });
+  }
+
+  it('succeeds once the lock is gone', () => {
+    writeFileSync(join(tmp, 'page.html'), PAGE);
+    const result = runAccept(tmp, ['--id', 'ab12cd34', '--variant', '1']);
+    assert.equal(result.handled, true, JSON.stringify(result));
+    assert.match(readFileSync(join(tmp, 'page.html'), 'utf-8'), /VARIANT ONE/);
+  });
+});
 
 describe('live-accept — style-element edge cases', () => {
   let tmp;
@@ -72,6 +232,33 @@ describe('live-accept — style-element edge cases', () => {
     assert.ok(!after.includes('variant three'), 'other variant content dropped');
     assert.ok(!after.includes('variant one'), 'other variant content dropped');
     assert.ok(!after.includes('original text'), 'original content dropped');
+  });
+
+  it('replays a durable receipt when Accept is retried after source was already written', () => {
+    const html = `<body>
+  <!-- impeccable-variants-start RECEIPT1 -->
+  <div data-impeccable-variants="RECEIPT1" data-impeccable-variant-count="2" style="display: contents">
+    <div data-impeccable-variant="original"><p>original</p></div>
+    <style data-impeccable-css="RECEIPT1" />
+    <div data-impeccable-variant="1"><p>accepted once</p></div>
+    <div data-impeccable-variant="2" style="display: none"><p>other</p></div>
+  </div>
+  <!-- impeccable-variants-end RECEIPT1 -->
+</body>`;
+    writeFileSync(join(tmp, 'page.html'), html);
+
+    const first = runAccept(tmp, ['--id', 'RECEIPT1', '--variant', '1']);
+    const afterFirst = readFileSync(join(tmp, 'page.html'), 'utf-8');
+    const replay = runAccept(tmp, ['--id', 'RECEIPT1', '--variant', '1']);
+
+    assert.equal(first.handled, true);
+    assert.equal(replay.handled, true);
+    assert.equal(replay.alreadyApplied, true);
+    assert.equal(replay.file, 'page.html');
+    assert.equal(readFileSync(join(tmp, 'page.html'), 'utf-8'), afterFirst);
+    const conflict = runAccept(tmp, ['--id', 'RECEIPT1', '--variant', '2']);
+    assert.equal(conflict.handled, false);
+    assert.equal(conflict.error, 'accept_receipt_conflict');
   });
 
   // Variant: same-line <style>…</style> block should also be treated as a

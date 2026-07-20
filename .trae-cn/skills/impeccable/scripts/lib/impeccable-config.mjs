@@ -346,11 +346,15 @@ export function normalizeIgnoreValueEntries(entries) {
       ...(Array.isArray(entry.files) ? entry.files.filter(v => typeof v === 'string' && v.trim()).map(v => v.trim()) : []),
     ]);
     if (files.length > 0) normalized.files = files;
-    if (typeof entry.reason === 'string' && entry.reason.trim()) {
-      normalized.reason = entry.reason.trim();
-    }
+    // Key order is rule, value, files, createdAt, reason and must stay that way:
+    // normalizing runs on every write, so emitting a different order than the one
+    // already on disk rewrites every untouched entry and churns the diff. Keep in
+    // step with normalizeIgnoreValueEntries in skill/scripts/hook-lib.mjs.
     if (typeof entry.createdAt === 'string' && entry.createdAt.trim()) {
       normalized.createdAt = entry.createdAt.trim();
+    }
+    if (typeof entry.reason === 'string' && entry.reason.trim()) {
+      normalized.reason = entry.reason.trim();
     }
     out.push(normalized);
   }
@@ -369,7 +373,9 @@ function mergeIgnoreValues(existing, incoming) {
 }
 
 function ignoreValueFilesKey(files) {
-  return Array.isArray(files) && files.length > 0 ? files.join('\x1f') : '';
+  // Sort before joining: a scope is a set, so an entry already on disk in another
+  // order must compare equal rather than dedup as two distinct entries.
+  return Array.isArray(files) && files.length > 0 ? [...files].sort().join('\x1f') : '';
 }
 
 // Glob -> RegExp. Supports `**`, `*`, `?`, and `{a,b}` alternation.
