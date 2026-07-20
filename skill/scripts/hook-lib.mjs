@@ -777,6 +777,7 @@ export function extractFindingIgnoreValue(finding) {
     'design-system-font',
     'design-system-color',
     'design-system-radius',
+    'design-system-font-size',
   ]);
   if (!directValueRules.has(rule)) return '';
   return normalizeIgnoreValue(extractFindingIgnoreValueRaw(finding, rule));
@@ -1793,12 +1794,12 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
 
     // Distinct from non-ui-ack so the audit log shows noise being suppressed on
     // purpose rather than a file the hook could not classify.
-    if (cleanAckDeduped) {
-      return result({ emitted: false, skipped: 'clean-ack-deduped', durationMs: Date.now() - started });
-    }
-
     if (cleanWinner) {
       return result({ emitted: false, skipped: 'non-ui-ack', durationMs: Date.now() - started });
+    }
+
+    if (cleanAckDeduped) {
+      return result({ emitted: false, skipped: 'clean-ack-deduped', durationMs: Date.now() - started });
     }
 
     if (suppressedHit) {

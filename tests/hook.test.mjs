@@ -445,6 +445,24 @@ describe('filterFindings()', () => {
     assert.deepEqual(filtered.map((f) => `${f.antipattern}:${f.line}`), ['overused-font:2', 'bounce-easing:4', 'side-tab:3']);
   });
 
+  it('honors a specific-value ignoreValues entry for design-system-font-size', () => {
+    // The rule carries an ignoreValue and the hook's own directive tells the
+    // agent to waive value-specific findings with `hooks ignore-value`, but
+    // font-size was missing from the direct-value rule set, so any waiver
+    // naming an actual size was filtered against an empty extracted value and
+    // silently did nothing. Only the `*` wildcard worked.
+    const findings = [
+      { ...finding('design-system-font-size', 1), ignoreValue: '0.82rem' },
+      { ...finding('design-system-font-size', 2), ignoreValue: '0.9rem' },
+    ];
+    const filtered = filterFindings(findings, '', '.css', {
+      ignoreRules: [],
+      ignoreValues: [{ rule: 'design-system-font-size', value: '0.82rem' }],
+      limits: DEFAULT_CONFIG.limits,
+    });
+    assert.deepEqual(filtered.map((f) => f.ignoreValue), ['0.9rem']);
+  });
+
   it('scopes ignoreValues to file globs when files are provided', () => {
     const findings = [
       { ...finding('design-system-color', 1, { file: '/tmp/project/site/styles/main.css' }), ignoreValue: '#8b5cf6' },
@@ -1731,6 +1749,29 @@ describe('runHook() — clean-ack noise', () => {
     const r2 = await runHook({ stdinJson: multi, env: {}, cwd, detector: det });
     assert.equal(r2.audit.kind, 'clean', 'b has never been acked and should win');
     assert.match(r2.stdout, /b\.css/);
+  });
+
+  it('reports non-ui-ack when the winner was not ack-eligible, even after a dedupe', async () => {
+    // Mixed multi-target run: one UI file whose ack is already spent, plus a
+    // non-UI file. Nothing is emitted either way, but the audit reason must
+    // describe the winner rather than the earlier dedupe.
+    const css = path.join(cwd, 'a.css');
+    const ts = path.join(cwd, 'b.ts');
+    fs.writeFileSync(css, 'noop');
+    fs.writeFileSync(ts, 'export const a = 1;');
+    const det = fakeDetector([]);
+
+    await runHook({ stdinJson: event(css), env: {}, cwd, detector: det });
+
+    const multi = JSON.stringify({
+      session_id: 'sid-1', cwd, hook_event_name: 'PostToolUse', tool_name: 'apply_patch',
+      tool_input: {
+        command: `*** Begin Patch\n*** Update File: ${css}\n*** Update File: ${ts}\n*** End Patch`,
+      },
+    });
+    const r = await runHook({ stdinJson: multi, env: {}, cwd, detector: det });
+    assert.ok(!r.audit.emitted);
+    assert.equal(r.audit.skipped, 'non-ui-ack');
   });
 
   it('does not spend the clean ack while quiet mode is suppressing output', async () => {
