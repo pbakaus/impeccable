@@ -801,6 +801,56 @@ async function build() {
     );
 
     console.log('📦 Built Claude Code plugin subtree at ./plugin/');
+
+    // Native Cursor plugin manifest at repo root. Unlike the Claude Code plugin
+    // (which copies a slim ./plugin subtree for marketplace installs), Cursor
+    // vendors the canonical harness folders already synced above:
+    //   - skills: `.cursor/skills/` (same tree `npx skills` reads from GitHub)
+    //   - agents: `.claude/agents/` (shared markdown subagent format)
+    //   - hooks:  `.cursor/hooks.json` (pre-write gate, synced above)
+    // Marketplace `source: "./"` points at this repo; no duplicate payload.
+    const rootCursorPluginDir = path.join(ROOT_DIR, '.cursor-plugin');
+    fs.mkdirSync(rootCursorPluginDir, { recursive: true });
+
+    const { skills: _claudeSkillsPath, ...cursorBaseManifest } = rootManifest;
+    const cursorPluginManifest = {
+      ...cursorBaseManifest,
+      displayName: 'Impeccable',
+      license: 'Apache-2.0',
+      keywords: ['design', 'frontend', 'ui', 'ux', 'skills', 'hooks', 'anti-patterns'],
+      skills: './.cursor/skills/',
+      agents: './.claude/agents/',
+      hooks: './.cursor/hooks.json',
+    };
+    fs.writeFileSync(
+      path.join(rootCursorPluginDir, 'plugin.json'),
+      JSON.stringify(cursorPluginManifest, null, 2) + '\n',
+    );
+
+    const cursorMarketplace = {
+      name: 'impeccable',
+      owner: rootManifest.author,
+      metadata: {
+        description: 'Design fluency for AI harnesses. 1 skill, 23 commands, and curated anti-patterns for impeccable frontend design.',
+      },
+      plugins: [
+        {
+          name: 'impeccable',
+          source: './',
+          description: rootManifest.description,
+          version: rootManifest.version,
+          category: 'design',
+          homepage: rootManifest.homepage,
+          tags: ['design', 'frontend', 'ui', 'ux', 'skills', 'hooks'],
+        },
+      ],
+    };
+    fs.writeFileSync(
+      path.join(rootCursorPluginDir, 'marketplace.json'),
+      JSON.stringify(cursorMarketplace, null, 2) + '\n',
+    );
+
+    console.log('📦 Built native Cursor plugin manifest at ./.cursor-plugin/');
   } else {
     console.log('📋 Skipped root harness and plugin sync (--skip-root-sync)');
   }

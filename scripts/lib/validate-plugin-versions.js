@@ -15,6 +15,9 @@
  *     subtree fails loudly instead of merging a drift window onto main.
  *   - `plugin/skills/impeccable/SKILL.md` frontmatter version — generated;
  *     same rationale.
+ *   - `.cursor-plugin/marketplace.json`, `.cursor-plugin/plugin.json`,
+ *     and `.cursor/skills/impeccable/SKILL.md` — the native Cursor plugin
+ *     manifest, generated from the same root source of truth.
  *   - `dist/openai/impeccable/.codex-plugin/plugin.json` version — generated
  *     for public OpenAI submission and checked when that build output exists.
  *
@@ -104,6 +107,21 @@ export function collectPluginVersions(rootDir) {
     },
     {
       relPath: 'plugin/skills/impeccable/SKILL.md',
+      read: (raw) => readSkillFrontmatterVersion(raw),
+    },
+    // Native Cursor plugin: manifest points at the canonical `.cursor/skills/`
+    // harness tree (no duplicate plugin-cursor payload). Marketplace installs
+    // from repo root (`source: "./"`).
+    {
+      relPath: '.cursor-plugin/marketplace.json',
+      read: (raw) => JSON.parse(raw).plugins?.[0]?.version,
+    },
+    {
+      relPath: '.cursor-plugin/plugin.json',
+      read: (raw) => JSON.parse(raw).version,
+    },
+    {
+      relPath: '.cursor/skills/impeccable/SKILL.md',
       read: (raw) => readSkillFrontmatterVersion(raw),
     },
   ];
