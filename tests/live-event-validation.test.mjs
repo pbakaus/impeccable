@@ -97,3 +97,16 @@ describe('validateEvent — replace generate (regression)', () => {
     );
   });
 });
+
+describe('validateEvent — worker progress', () => {
+  it('accepts bounded agent phases and rejects malformed telemetry', () => {
+    assert.equal(validateEvent({
+      type: 'agent_phase',
+      id: VALID_ID,
+      phase: 'first_variant_generating',
+      durationMs: 123,
+    }), null);
+    assert.match(validateEvent({ type: 'agent_phase', id: VALID_ID, phase: 'Not valid' }), /phase/);
+    assert.match(validateEvent({ type: 'agent_phase', id: VALID_ID, phase: 'valid', durationMs: -1 }), /durationMs/);
+  });
+});

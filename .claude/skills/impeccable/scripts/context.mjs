@@ -7,9 +7,13 @@
  * using the existing code as context.
  *
  * Path resolution (first match wins):
- *   1. Active project root, if PRODUCT.md or DESIGN.md is there
+ *   1. Active project root, if PRODUCT.md or DESIGN.md is there. An explicit
+ *      --target selects the active project: the workspace child in a
+ *      monorepo, or the nearest directory around the target carrying
+ *      canonical context files in an ordinary repo (issue #376).
  *   2. Active project .agents/context/ then docs/
- *   3. Monorepo root context, using the same order, as a per-file fallback
+ *   3. Repo root context, using the same order, as a per-file fallback
+ *      whenever the active project is nested below it
  *   4. $IMPECCABLE_CONTEXT_DIR (absolute or cwd-relative) — power-user
  *      escape hatch, only consulted when defaults are empty
  *   5. Active project root as a "nothing found" default
@@ -88,7 +92,10 @@ function resolveContext(cwd = process.cwd(), options = {}) {
   const absCwd = path.resolve(cwd);
   const project = resolveProject(absCwd, options);
   const projectContextDir = resolveLocalContextDir(project.projectRoot);
-  const rootContextDir = project.isMonorepo && project.repoRoot !== project.projectRoot
+  // Per-file inheritance from the repo root whenever the active project is
+  // nested below it: monorepo workspace children and explicit-target nested
+  // products in ordinary repos behave the same way.
+  const rootContextDir = project.repoRoot !== project.projectRoot
     ? resolveLocalContextDir(project.repoRoot)
     : null;
 
@@ -165,7 +172,7 @@ function resolveProject(cwd = process.cwd(), options = {}) {
   if (!repoRoot) {
     return {
       targetDir,
-      projectRoot: absCwd,
+      projectRoot: nearestTargetContextRoot(absCwd, targetDir) || absCwd,
       repoRoot: absCwd,
       isMonorepo: false,
     };
@@ -469,6 +476,31 @@ function isExcludedByWorkspacePattern(relSegments, patterns) {
     if (!pattern.startsWith('!')) return false;
     return workspacePatternMatchesRel(pattern.slice(1), relSegments);
   });
+}
+
+// An explicit --target in an ordinary (non-monorepo) repository must still
+// select a nested product's own context (issue #376). Walk from the target up
+// to — but not including — the invocation root and return the nearest
+// directory carrying context files, in the canonical spot or a fallback dir
+// (resolveLocalContextDir covers both). Context files only, not package.json:
+// without the monorepo root-context fallback, a package.json marker would
+// strand targets inside plain subpackages away from the root PRODUCT.md. The
+// cwd's own fallback context dirs (.agents/context, docs) hold the root
+// project's context, not a nested product, so they never count.
+// Returns null when nothing nested is found, keeping the cwd default.
+function nearestTargetContextRoot(absCwd, targetDir) {
+  if (!isPathInside(targetDir, absCwd)) return null;
+  const rootFallbackDirs = FALLBACK_DIRS.map((rel) => path.resolve(absCwd, rel));
+  let dir = path.resolve(targetDir);
+  while (dir && dir !== absCwd) {
+    if (!rootFallbackDirs.includes(dir) && resolveLocalContextDir(dir)) {
+      return dir;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
 }
 
 function nearestProjectLikeRoot(repoRoot, targetDir) {

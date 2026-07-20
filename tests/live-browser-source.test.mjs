@@ -5,8 +5,35 @@ import { join } from 'node:path';
 
 const SOURCE = readFileSync(join(process.cwd(), 'skill/scripts/live-browser.js'), 'utf-8');
 const PENDING_DOCK_POSITION_SOURCE = SOURCE.match(/function positionPendingDock\(\) \{[\s\S]*?\n  \}/)?.[0] || '';
+const CAPTURE_AND_EMIT_SOURCE = SOURCE.match(/async function captureAndEmit\([\s\S]*?\n  \}/)?.[0] || '';
 
 describe('live-browser source contracts', () => {
+  it('reports foreground poll connectivity without a background worker dependency', () => {
+    assert.match(
+      SOURCE,
+      /syncAgentPollingUi\(!!msg\.agentPolling\)/,
+      'the initial SSE state should include foreground poll connectivity',
+    );
+    assert.doesNotMatch(SOURCE, /codexWorker|codex-worker|codex_cli_unavailable/);
+  });
+
+  it('dispatches plain generation before screenshot capture without bypassing annotated evidence', () => {
+    const dispatchIndex = CAPTURE_AND_EMIT_SOURCE.indexOf('await sendEvent(basePayload);');
+    const captureIndex = CAPTURE_AND_EMIT_SOURCE.indexOf('await captureElementToBlob');
+    assert.ok(dispatchIndex >= 0, 'plain generation should dispatch immediately');
+    assert.ok(captureIndex > dispatchIndex, 'plain generation dispatch must happen before capture begins');
+    assert.match(
+      CAPTURE_AND_EMIT_SOURCE,
+      /if \(blob && hasAnnotations\)[\s\S]*?\/annotation\?token=/,
+      'annotation screenshots should still upload before annotated generation dispatch',
+    );
+    assert.match(
+      CAPTURE_AND_EMIT_SOURCE,
+      /if \(hasAnnotations\) \{[\s\S]*?basePayload\.clientSentAt = Date\.now\(\);\s*sendEvent\(screenshotPath \? \{ \.\.\.basePayload, screenshotPath \} : basePayload\);\s*\}/,
+      'annotated generation should dispatch exactly after capture and upload resolve',
+    );
+  });
+
   it('saves copy edits to the staged buffer with rich AI context', () => {
     assert.doesNotMatch(
       SOURCE,
@@ -285,7 +312,7 @@ describe('live-browser source contracts', () => {
     assert.match(SOURCE, /sendEvent\(\{ type: 'discard', id: currentSessionId \}, \{ throwOnError: true \}\)/);
   });
 
-  it('waits for post-carbonize completion before final accepted DOM cleanup', () => {
+  it('releases the foreground picker after deterministic accept while carbonize finishes', () => {
     assert.match(
       SOURCE,
       /let pendingAcceptedSession = null;/,
@@ -309,8 +336,8 @@ describe('live-browser source contracts', () => {
     const agentDoneStart = SOURCE.indexOf("case 'agent_done':");
     const errorCaseStart = SOURCE.indexOf("case 'error':", agentDoneStart);
     const agentDoneSource = SOURCE.slice(agentDoneStart, errorCaseStart);
-    assert.match(agentDoneSource, /Carbonize accepts are not terminal/);
-    assert.match(agentDoneSource, /break;/);
+    assert.match(agentDoneSource, /must not hold the foreground picker hostage/);
+    assert.match(agentDoneSource, /maybeCompleteAcceptedSession\(msg\)/);
     assert.match(
       SOURCE,
       /function handleGo\(\)[\s\S]{0,900}?pendingAcceptedSession = null;[\s\S]{0,80}?currentSessionId = id8\(\);/,
@@ -319,15 +346,15 @@ describe('live-browser source contracts', () => {
     const handleAcceptStart = SOURCE.indexOf('function handleAccept()');
     const maybeCompleteStart = SOURCE.indexOf('function maybeCompleteAcceptedSession', handleAcceptStart);
     const handleAcceptSource = SOURCE.slice(handleAcceptStart, maybeCompleteStart);
-    assert.doesNotMatch(
+    assert.match(
       handleAcceptSource,
-      /state = 'CONFIRMED'|cleanupAcceptedSession\(|hideBar\(\)/,
-      'accept enqueue should not clear or confirm the browser session before source cleanup completes',
+      /sendEvent\(acceptPayload, \{ throwOnError: true \}\)[\s\S]*?markSessionHandled\(\);[\s\S]*?setLiveState\('CONFIRMED'\);[\s\S]*?scheduleAcceptCleanup\(pending\);/,
+      'durable accept intent should release the foreground picker before background source cleanup completes',
     );
     assert.match(
       SOURCE,
-      /function scheduleAcceptCleanup\(accepted\)[\s\S]*?acceptedDomAlreadyClean\(accepted\)[\s\S]*?setTimeout\(function\(\) \{[\s\S]*?ensureAcceptedDomClean\(accepted\);[\s\S]*?cleanupAcceptedSession\(\);[\s\S]*?\}, 1800\);/,
-      'post-cleanup fallback should give HMR a second chance before mutating React-owned DOM',
+      /function scheduleAcceptCleanup\(accepted\)[\s\S]*?queueMicrotask\(function\(\) \{[\s\S]*?cleanupAcceptedSession\(\);[\s\S]*?setTimeout\(function\(\) \{[\s\S]*?ensureAcceptedDomClean\(accepted\);[\s\S]*?\}, 1200\);/,
+      'foreground cleanup should be immediate while the no-HMR DOM fallback stays deferred',
     );
     assert.match(
       SOURCE,
@@ -391,6 +418,14 @@ describe('live-browser source contracts', () => {
       SOURCE,
       /function jsxStyleObjectToCss\(body\)/,
       'source fallback should translate simple JSX style objects such as display:none',
+    );
+  });
+
+  it('loads progressive source checkpoints through the no-HMR fallback', () => {
+    assert.match(
+      SOURCE,
+      /case 'variant_progress':[\s\S]{0,1400}?msg\.previewMode === 'source'[\s\S]{0,1000}?arrivedVariants >= targetArrived[\s\S]{0,260}?injectVariantsFromSource\(msg\.previewFile \|\| msg\.file, msg\.id\)/,
+      'source-mode progress should let framework HMR settle before using the no-HMR fallback',
     );
   });
 });

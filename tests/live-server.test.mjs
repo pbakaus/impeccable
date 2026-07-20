@@ -224,6 +224,40 @@ describe('live-server integration', () => {
     assert.equal(data.agentPolling, false);
   });
 
+  it('/status stops reporting agentPolling as soon as a poll returns an event', async () => {
+    await drainPolls(server);
+    const pollPromise = fetch(
+      `http://localhost:${server.port}/poll?token=${server.token}&timeout=5000&leaseMs=30000`,
+    ).then((response) => response.json());
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const eventRes = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'generate',
+        id: 'aabbcc77',
+        action: 'impeccable',
+        count: 1,
+        pageUrl: '/',
+        element: { outerHTML: '<button>Truthful poll</button>', tagName: 'BUTTON' },
+      }),
+    });
+    assert.equal(eventRes.status, 200);
+    const event = await pollPromise;
+    assert.equal(event.id, 'aabbcc77');
+
+    const status = await fetch(`http://localhost:${server.port}/status?token=${server.token}`).then((response) => response.json());
+    assert.equal(status.agentPolling, false);
+
+    await fetch(`http://localhost:${server.port}/poll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: server.token, id: event.id, type: 'done', sourceEventType: 'generate' }),
+    });
+  });
+
   it('/live.js serves script with token injected', async () => {
     const res = await fetch(`http://localhost:${server.port}/live.js`);
     assert.equal(res.status, 200);
@@ -2023,6 +2057,59 @@ colors: {}
     assert.equal(data.type, 'timeout');
   });
 
+  it('/poll type filters keep parallel poll consumers disjoint', async () => {
+    await drainPolls(server);
+    const controlPoll = fetch(
+      `http://localhost:${server.port}/poll?token=${server.token}&timeout=2000&types=steer,manual_edit_apply,carbonize_cleanup,exit`,
+    ).then((response) => response.json());
+    const workerPoll = fetch(
+      `http://localhost:${server.port}/poll?token=${server.token}&timeout=2000&types=generate,accept,discard,prefetch`,
+    ).then((response) => response.json());
+
+    const steer = {
+      token: server.token,
+      type: 'steer',
+      id: 'aabbcc01',
+      pageUrl: '/',
+      message: 'Keep this on the foreground lane',
+    };
+    const generate = {
+      token: server.token,
+      type: 'generate',
+      id: 'aabbcc02',
+      action: 'impeccable',
+      count: 1,
+      pageUrl: '/',
+      element: { outerHTML: '<button id="lane-test">Book</button>', id: 'lane-test', tagName: 'BUTTON' },
+    };
+    for (const event of [steer, generate]) {
+      const response = await fetch(`http://localhost:${server.port}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(event),
+      });
+      assert.equal(response.status, 200);
+    }
+
+    const [controlEvent, workerEvent] = await Promise.all([controlPoll, workerPoll]);
+    assert.equal(controlEvent.type, 'steer');
+    assert.equal(controlEvent.id, steer.id);
+    assert.equal(workerEvent.type, 'generate');
+    assert.equal(workerEvent.id, generate.id);
+
+    for (const reply of [
+      { id: steer.id, type: 'steer_done', message: 'Control lane handled it', sourceEventType: 'steer' },
+      { id: generate.id, type: 'done', sourceEventType: 'generate' },
+    ]) {
+      const response = await fetch(`http://localhost:${server.port}/poll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: server.token, ...reply }),
+      });
+      assert.equal(response.status, 200);
+    }
+  });
+
   it('/poll rejects invalid token', async () => {
     const res = await fetch(`http://localhost:${server.port}/poll?token=wrong&timeout=100`);
     assert.equal(res.status, 401);
@@ -2142,6 +2229,9 @@ colors: {}
     assert.equal(event.id, 'a1b2c3d4');
     assert.equal(event.action, 'bolder');
     assert.equal(event.count, 2);
+    assert.equal(event.scaffoldAttempted, true);
+    assert.equal(event.scaffoldError, 'insufficient_locator');
+    assert.equal(Number.isFinite(event.generationReadyAt), true);
 
     await fetch(`http://localhost:${server.port}/poll`, {
       method: 'POST',
@@ -2187,6 +2277,42 @@ colors: {}
 
   it('accepts checkpoint events without exposing them as agent poll work', async () => {
     await drainPolls(server);
+    const partialRes = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'checkpoint',
+        id: 'a1b2c3d7',
+        phase: 'cycling',
+        reason: 'browser_resumed',
+        revision: 1,
+        owner: 'browser-a',
+        expectedVariants: 3,
+        arrivedVariants: 1,
+        visibleVariant: 1,
+      }),
+    });
+    assert.equal(partialRes.status, 200);
+
+    const secondRes = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'checkpoint',
+        id: 'a1b2c3d7',
+        phase: 'cycling',
+        reason: 'variants_progress',
+        revision: 2,
+        owner: 'browser-a',
+        expectedVariants: 3,
+        arrivedVariants: 2,
+        visibleVariant: 2,
+      }),
+    });
+    assert.equal(secondRes.status, 200);
+
     const res = await fetch(`http://localhost:${server.port}/events`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2195,8 +2321,10 @@ colors: {}
         type: 'checkpoint',
         id: 'a1b2c3d7',
         phase: 'cycling',
-        revision: 2,
+        reason: 'variants_ready',
+        revision: 3,
         owner: 'browser-a',
+        expectedVariants: 3,
         arrivedVariants: 3,
         visibleVariant: 2,
         paramValues: { density: 'packed' },
@@ -2214,6 +2342,375 @@ colors: {}
     const snapshot = JSON.parse(readFileSync(join(getLiveSessionsDir(server.cwd), 'a1b2c3d7.snapshot.json'), 'utf-8'));
     assert.equal(snapshot.visibleVariant, 2);
     assert.deepEqual(snapshot.paramValues, { density: 'packed' });
+    assert.ok(snapshot.generationTimings.first_reviewable?.at);
+    assert.ok(snapshot.generationTimings.second_reviewable?.at);
+    assert.ok(snapshot.generationTimings.all_variants_ready?.at);
+    assert.ok(snapshot.generationTimings.first_reviewable.at <= snapshot.generationTimings.second_reviewable.at);
+    assert.ok(snapshot.generationTimings.second_reviewable.at <= snapshot.generationTimings.all_variants_ready.at);
+
+    const atomicRes = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'checkpoint',
+        id: 'a1b2c3da',
+        phase: 'cycling',
+        reason: 'variants_ready',
+        revision: 1,
+        owner: 'browser-a',
+        expectedVariants: 3,
+        arrivedVariants: 3,
+        visibleVariant: 1,
+      }),
+    });
+    assert.equal(atomicRes.status, 200);
+    const atomicSnapshot = JSON.parse(readFileSync(join(getLiveSessionsDir(server.cwd), 'a1b2c3da.snapshot.json'), 'utf-8'));
+    assert.ok(atomicSnapshot.generationTimings.first_reviewable?.at);
+    assert.equal(
+      atomicSnapshot.generationTimings.first_reviewable.at,
+      atomicSnapshot.generationTimings.all_variants_ready?.at,
+      'atomic delivery makes the first variant and full set reviewable together',
+    );
+  });
+
+  it('journals and streams agent progress without leasing it as work', async () => {
+    await drainPolls(server);
+    const controller = new AbortController();
+    const sseRes = await fetch(
+      `http://localhost:${server.port}/events?token=${server.token}`,
+      { signal: controller.signal },
+    );
+    const reader = sseRes.body.getReader();
+    await reader.read();
+    const progress = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'agent_phase',
+        id: 'a1b2c3e1',
+        phase: 'first_variant_generating',
+        owner: 'live-agent',
+      }),
+    });
+    assert.equal(progress.status, 200);
+    const message = new TextDecoder().decode((await reader.read()).value);
+    controller.abort();
+    assert.match(message, /"type":"agent_phase"/);
+    assert.match(message, /"phase":"first_variant_generating"/);
+    const polled = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=50`).then(r => r.json());
+    assert.equal(polled.type, 'timeout');
+    const snapshot = JSON.parse(readFileSync(join(getLiveSessionsDir(server.cwd), 'a1b2c3e1.snapshot.json'), 'utf-8'));
+    assert.ok(snapshot.generationTimings.first_variant_generating?.at);
+  });
+
+  it('streams Svelte component checkpoints as progressive preview updates', async () => {
+    const controller = new AbortController();
+    const sseRes = await fetch(
+      `http://localhost:${server.port}/events?token=${server.token}`,
+      { signal: controller.signal },
+    );
+    const reader = sseRes.body.getReader();
+    const decoder = new TextDecoder();
+    await reader.read(); // connected
+
+    const res = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'checkpoint',
+        id: 'a1b2c3de',
+        phase: 'cycling',
+        reason: 'variants_progress',
+        revision: 1,
+        owner: 'svelte-worker',
+        expectedVariants: 3,
+        arrivedVariants: 1,
+        visibleVariant: 1,
+        previewMode: 'svelte-component',
+        previewFile: 'node_modules/.impeccable-live/a1b2c3de/manifest.json',
+        sourceFile: 'src/routes/+page.svelte',
+      }),
+    });
+    assert.equal(res.status, 200);
+
+    const { value } = await reader.read();
+    const message = decoder.decode(value);
+    assert.match(message, /"type":"variant_progress"/);
+    assert.match(message, /"arrivedVariants":1/);
+    assert.match(message, /"previewMode":"svelte-component"/);
+    controller.abort();
+  });
+
+  it('streams source checkpoints so no-HMR frameworks can review variant 1', async () => {
+    const controller = new AbortController();
+    const sseRes = await fetch(
+      `http://localhost:${server.port}/events?token=${server.token}`,
+      { signal: controller.signal },
+    );
+    const reader = sseRes.body.getReader();
+    const decoder = new TextDecoder();
+    await reader.read(); // connected
+
+    const res = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'checkpoint',
+        id: 'a1b2c3df',
+        phase: 'cycling',
+        reason: 'variants_progress',
+        revision: 1,
+        owner: 'source-worker',
+        expectedVariants: 3,
+        arrivedVariants: 1,
+        visibleVariant: 1,
+        previewMode: 'source',
+        previewFile: 'app/pages/index.vue',
+        sourceFile: 'app/pages/index.vue',
+        publicationKind: 'params',
+      }),
+    });
+    assert.equal(res.status, 200);
+
+    const { value } = await reader.read();
+    const message = decoder.decode(value);
+    assert.match(message, /"type":"variant_progress"/);
+    assert.match(message, /"arrivedVariants":1/);
+    assert.match(message, /"previewMode":"source"/);
+    assert.match(message, /"previewFile":"app\/pages\/index.vue"/);
+    assert.match(message, /"publicationKind":"params"/);
+    controller.abort();
+  });
+
+  // A framework full-reload (Astro reloads the page for any .astro edit, and
+  // the preflight scaffold write triggers one) can put the browser mid-reload
+  // exactly when the agent's `done` broadcasts. The resumed page then sits in
+  // GENERATING at 0/N with the variants already in source. Its resumed
+  // checkpoint is the evidence of the miss; the server must re-broadcast the
+  // completion.
+  async function runGenerateToDone(id, file) {
+    await drainPolls(server);
+    // A behind session left by a previous run would itself trigger connect-time
+    // redelivery and contaminate this test's SSE stream — start from scratch.
+    rmSync(join(getLiveSessionsDir(server.cwd), id + '.jsonl'), { force: true });
+    rmSync(join(getLiveSessionsDir(server.cwd), id + '.snapshot.json'), { force: true });
+    const postRes = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'generate',
+        id,
+        action: 'bolder',
+        count: 3,
+        pageUrl: 'http://localhost:4321/',
+        element: { outerHTML: '<h1>miss</h1>', tagName: 'h1' },
+      }),
+    });
+    assert.equal(postRes.status, 200);
+    const event = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=2000`).then(r => r.json());
+    assert.equal(event.id, id);
+    const doneRes = await fetch(`http://localhost:${server.port}/poll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: server.token, id, type: 'done', file }),
+    });
+    assert.equal(doneRes.status, 200);
+  }
+
+  it('redelivers done when a resumed browser checkpoint shows it missed generation completion', async () => {
+    await runGenerateToDone('a1b2c3f5', 'src/pages/index.astro');
+
+    const controller = new AbortController();
+    const sseRes = await fetch(
+      `http://localhost:${server.port}/events?token=${server.token}`,
+      { signal: controller.signal },
+    );
+    const reader = sseRes.body.getReader();
+    const decoder = new TextDecoder();
+    await reader.read(); // connected
+
+    const res = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'checkpoint',
+        id: 'a1b2c3f5',
+        phase: 'generating',
+        reason: 'browser_resumed',
+        revision: 2,
+        owner: 'browser-resumed-tab',
+        expectedVariants: 3,
+        arrivedVariants: 0,
+        visibleVariant: 0,
+      }),
+    });
+    assert.equal(res.status, 200);
+
+    const text = await readSseUntil(reader, decoder, '"redelivered":true');
+    controller.abort();
+    assert.match(
+      text,
+      /"type":"done"/,
+      'event=live_server.missed_done_redelivery actor=browser operation=resumed_checkpoint_behind risk=session_stuck_generating expected=done rebroadcast actual=' + JSON.stringify(text.slice(0, 200)) + ' suggestion=rebroadcast stored completion when checkpoint reports generating with variants behind',
+    );
+    assert.match(text, /"file":"src\/pages\/index\.astro"/);
+    assert.match(text, /"redelivered":true/);
+
+    // Report the recovery so the session stops looking behind — later SSE
+    // connects (in this suite and in production) shouldn't keep redelivering.
+    const recovered = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'checkpoint',
+        id: 'a1b2c3f5',
+        phase: 'cycling',
+        reason: 'variants_ready',
+        revision: 3,
+        owner: 'browser-resumed-tab',
+        expectedVariants: 3,
+        arrivedVariants: 3,
+        visibleVariant: 1,
+      }),
+    });
+    assert.equal(recovered.status, 200);
+  });
+
+  it('does not redeliver done to a browser whose checkpoint is current', async () => {
+    await runGenerateToDone('a1b2c3f6', 'src/pages/index.astro');
+
+    const controller = new AbortController();
+    const sseRes = await fetch(
+      `http://localhost:${server.port}/events?token=${server.token}`,
+      { signal: controller.signal },
+    );
+    const reader = sseRes.body.getReader();
+    const decoder = new TextDecoder();
+    await reader.read(); // connected
+
+    const current = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'checkpoint',
+        id: 'a1b2c3f6',
+        phase: 'generating',
+        reason: 'browser_resumed',
+        revision: 2,
+        owner: 'browser-current-tab',
+        expectedVariants: 3,
+        arrivedVariants: 3,
+        visibleVariant: 1,
+      }),
+    });
+    assert.equal(current.status, 200);
+
+    const ready = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'checkpoint',
+        id: 'a1b2c3f6',
+        phase: 'cycling',
+        reason: 'variants_ready',
+        revision: 3,
+        owner: 'browser-current-tab',
+        expectedVariants: 3,
+        arrivedVariants: 3,
+        visibleVariant: 1,
+        previewMode: 'source',
+        previewFile: 'src/pages/index.astro',
+        sourceFile: 'src/pages/index.astro',
+      }),
+    });
+    assert.equal(ready.status, 200);
+
+    const text = await readSseUntil(reader, decoder, '"variant_progress"', 4);
+    controller.abort();
+    assert.match(text, /"type":"variant_progress"/);
+    const redeliveredForSession = text
+      .split('\n')
+      .some((line) => line.includes('"id":"a1b2c3f6"') && line.includes('"redelivered":true'));
+    assert.equal(
+      redeliveredForSession,
+      false,
+      'a checkpoint that already reports the full variant set must not trigger a done rebroadcast',
+    );
+  });
+
+  it('marks completed generations durably in connected-payload summaries', async () => {
+    await runGenerateToDone('a1b2c3f7', 'src/pages/about.astro');
+
+    // Checkpoint lands while no SSE client is connected (the reloading page
+    // POSTs checkpoints without waiting for its EventSource). It regresses
+    // phase/arrivedVariants, but generationCompletedAt must survive — the
+    // browser's connect-time self-heal keys on it.
+    const res = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'checkpoint',
+        id: 'a1b2c3f7',
+        phase: 'generating',
+        reason: 'browser_resumed',
+        revision: 2,
+        owner: 'browser-early-checkpoint',
+        expectedVariants: 3,
+        arrivedVariants: 0,
+        visibleVariant: 0,
+      }),
+    });
+    assert.equal(res.status, 200);
+
+    const controller = new AbortController();
+    const sseRes = await fetch(
+      `http://localhost:${server.port}/events?token=${server.token}`,
+      { signal: controller.signal },
+    );
+    const reader = sseRes.body.getReader();
+    const decoder = new TextDecoder();
+    const text = await readSseUntil(reader, decoder, '"type":"connected"', 2);
+    controller.abort();
+    const connectedLine = text.split('\n').find((line) => line.includes('"type":"connected"'));
+    assert.ok(connectedLine, 'connected payload present');
+    const connected = JSON.parse(connectedLine.replace(/^data: /, ''));
+    const summary = connected.activeSessions.find((session) => session.id === 'a1b2c3f7');
+    assert.ok(summary, 'behind session appears in activeSessions');
+    assert.equal(summary.phase, 'generating', 'behind checkpoint regressed the phase');
+    assert.equal(summary.arrivedVariants, 0, 'behind checkpoint regressed the arrived count');
+    assert.ok(
+      Number.isFinite(summary.generationCompletedAt) && summary.generationCompletedAt > 0,
+      'event=live_server.completed_marker_durable actor=browser operation=sse_connect_after_behind_checkpoint risk=session_stuck_generating expected=generationCompletedAt survives checkpoint regression actual=' + JSON.stringify(summary.generationCompletedAt) + ' suggestion=set monotone generationCompletedAt on agent_done in session-store',
+    );
+    assert.equal(summary.sourceFile, 'src/pages/about.astro');
+
+    const recovered = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'checkpoint',
+        id: 'a1b2c3f7',
+        phase: 'cycling',
+        reason: 'variants_ready',
+        revision: 3,
+        owner: 'browser-early-checkpoint',
+        expectedVariants: 3,
+        arrivedVariants: 3,
+        visibleVariant: 1,
+      }),
+    });
+    assert.equal(recovered.status, 200);
   });
 
   it('redelivers an unacknowledged browser event after helper server restart', async () => {
@@ -2337,14 +2834,22 @@ colors: {}
     });
     assert.equal(postRes.status, 200);
 
-    const first = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=100&leaseMs=50`).then(r => r.json());
+    // Both halves need real-time headroom in the direction they assert. With a
+    // 50ms lease the "still leased" poll had to complete a whole HTTP round trip
+    // inside 50ms or the lease expired first, the event was redelivered, and the
+    // assertion failed for a scheduling hiccup rather than a bookkeeping bug —
+    // which is what it did intermittently on CI while passing locally. Hold the
+    // lease long enough that the round trip cannot cross it, then wait past it
+    // explicitly to test redelivery.
+    const LEASE_MS = 1000;
+    const first = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=100&leaseMs=${LEASE_MS}`).then(r => r.json());
     assert.equal(first.id, 'a1b2c3da');
 
-    const leased = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=25&leaseMs=50`).then(r => r.json());
+    const leased = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=25&leaseMs=${LEASE_MS}`).then(r => r.json());
     assert.equal(leased.type, 'timeout', 'leased event should not be redelivered before lease expiry');
 
-    await new Promise(r => setTimeout(r, 75));
-    const redelivered = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=100&leaseMs=50`).then(r => r.json());
+    await new Promise(r => setTimeout(r, LEASE_MS + 300));
+    const redelivered = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=100&leaseMs=${LEASE_MS}`).then(r => r.json());
     assert.equal(
       redelivered.id,
       'a1b2c3da',
@@ -2358,6 +2863,105 @@ colors: {}
     });
     const acked = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=50&leaseMs=50`).then(r => r.json());
     assert.equal(acked.type, 'timeout', 'acked event should be removed from the poll queue');
+  });
+
+  it('retires the leased Generate when early Accept or Discard takes ownership', async () => {
+    await drainPolls(server);
+    for (const [type, id] of [['accept', 'ea11ac01'], ['discard', 'ea11dc01']]) {
+      const generated = await fetch(`http://localhost:${server.port}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: server.token,
+          type: 'generate',
+          id,
+          action: 'bolder',
+          count: 3,
+          element: { outerHTML: '<section>early choice</section>', tagName: 'section' },
+        }),
+      });
+      assert.equal(generated.status, 200);
+      const generation = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&types=generate&timeout=100&leaseMs=40`).then((response) => response.json());
+      assert.equal(generation.id, id);
+
+      const chosen = await fetch(`http://localhost:${server.port}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: server.token,
+          type,
+          id,
+          ...(type === 'accept' ? { variantId: '1' } : {}),
+        }),
+      });
+      assert.equal(chosen.status, 200);
+      const choice = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&types=${type}&timeout=100&leaseMs=40`).then((response) => response.json());
+      assert.equal(choice.type, type);
+      assert.equal(choice.id, id);
+      const reply = await fetch(`http://localhost:${server.port}/poll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: server.token,
+          id,
+          sourceEventType: type,
+          type: type === 'discard' ? 'discarded' : 'complete',
+        }),
+      });
+      assert.equal(reply.status, 200);
+
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      const stale = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&types=generate&timeout=30&leaseMs=20`).then((response) => response.json());
+      assert.equal(stale.type, 'timeout', `${type} must prevent Generate redelivery after its old lease expires`);
+      const status = await fetch(`http://localhost:${server.port}/status?token=${server.token}`).then((response) => response.json());
+      assert.equal(status.pendingEvents.some((event) => event.id === id && event.type === 'generate'), false);
+    }
+  });
+
+  it('releases a failed worker Generate lease without consuming or broadcasting it', async () => {
+    await drainPolls(server);
+    const id = 'fa11bac1';
+    const generated = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'generate',
+        id,
+        action: 'bolder',
+        count: 3,
+        element: { outerHTML: '<article>fallback</article>', tagName: 'article' },
+      }),
+    });
+    assert.equal(generated.status, 200);
+    const leased = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&types=generate&timeout=100&leaseMs=5000`).then((response) => response.json());
+    assert.equal(leased.id, id);
+
+    const retried = await fetch(`http://localhost:${server.port}/poll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        id,
+        type: 'retry',
+        sourceEventType: 'generate',
+      }),
+    });
+    assert.equal(retried.status, 200);
+    assert.equal((await retried.json()).released, true);
+
+    const fallback = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&types=generate&timeout=100&leaseMs=100`).then((response) => response.json());
+    assert.equal(fallback.id, id);
+    assert.equal(fallback.type, 'generate');
+    const status = await fetch(`http://localhost:${server.port}/status?token=${server.token}`).then((response) => response.json());
+    assert.equal(status.pendingEvents.some((event) => event.id === id && event.type === 'generate'), true);
+
+    const done = await fetch(`http://localhost:${server.port}/poll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: server.token, id, type: 'done', sourceEventType: 'generate' }),
+    });
+    assert.equal(done.status, 200);
   });
 
   it('wakes a parked poll as soon as a missed-ack lease expires', async () => {
@@ -2689,5 +3293,76 @@ colors: {}
     assert.equal(postRes.status, 400);
     const data = await postRes.json();
     assert.match(data.error, /freeformPrompt or annotations/i);
+  });
+
+  // A stale generate worker's `error` reply used to acknowledge *any* pending
+  // event for its id, because inferSourceEventType returned undefined and
+  // acknowledgePendingEvent treats that as a wildcard. It ate the user's queued
+  // Accept, which was then never handed to an agent: the browser sat in SAVING
+  // forever and a restart could not requeue it.
+  it('a stale generate error reply does not consume a queued accept', async () => {
+    await drainPolls(server);
+    const id = 'ee55ff66';
+
+    await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'generate',
+        id,
+        action: 'impeccable',
+        count: 1,
+        pageUrl: '/',
+        element: { outerHTML: '<button>Book</button>' },
+      }),
+    });
+
+    // Agent leases the generate.
+    const leased = await (await fetch(
+      `http://localhost:${server.port}/poll?token=${server.token}&timeout=200&leaseMs=60000`,
+    )).json();
+    assert.equal(leased.id, id);
+    assert.equal(leased.type, 'generate');
+
+    // User accepts. This retires the pending generate and queues the accept.
+    await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: server.token, type: 'accept', id, variantId: '1' }),
+    });
+
+    // The stale generate worker now fails, using live.md's documented reply.
+    const errRes = await fetch(`http://localhost:${server.port}/poll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: server.token, id, type: 'error', message: 'late failure' }),
+    });
+    assert.equal(errRes.status, 200);
+
+    const status = await (await fetch(
+      `http://localhost:${server.port}/status?token=${server.token}`,
+    )).json();
+    assert.equal(
+      status.pendingEvents.some((e) => e.id === id && e.type === 'accept'),
+      true,
+      'the queued accept must survive a stale generate error',
+    );
+
+    // And it must still be deliverable to the next agent that polls.
+    const next = await (await fetch(
+      `http://localhost:${server.port}/poll?token=${server.token}&timeout=500&leaseMs=30000`,
+    )).json();
+    assert.equal(next.id, id);
+    assert.equal(next.type, 'accept', 'the accept must reach an agent');
+
+    // Acknowledge the accept explicitly. drainPolls replies `done`, which maps
+    // to `generate`, so it can never retire an accept and would re-lease it in
+    // a loop forever.
+    await fetch(`http://localhost:${server.port}/poll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: server.token, id, type: 'complete', sourceEventType: 'accept' }),
+    });
   });
 });

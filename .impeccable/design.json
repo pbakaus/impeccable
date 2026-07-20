@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-06-15T23:30:35.569Z",
+  "generatedAt": "2026-07-19T18:55:00.000Z",
   "title": "Design System: Impeccable",
   "extensions": {
     "colorMeta": {
@@ -172,6 +172,10 @@
       }
     },
     "typographyMeta": {
+      "scale": {
+        "displayName": "Type Ramp",
+        "purpose": "The enumerated 21-step ramp at a 16px root, 8px through 88px. Roles below pick from it; display and headline are fluid and interpolate between clamp endpoints."
+      },
       "wordmark": {
         "displayName": "Wordmark",
         "purpose": "IMPECCABLE lockup only. Alumni Sans at weight 400."
@@ -190,7 +194,7 @@
       },
       "body": {
         "displayName": "Body",
-        "purpose": "Long copy. Albert Sans, line-height 1.8, max 65–75ch."
+        "purpose": "Long copy. Albert Sans, line-height 1.8, max 65\u201375ch."
       },
       "eyebrow": {
         "displayName": "Eyebrow",
@@ -365,7 +369,7 @@
       {
         "name": "The Two-Face Rule",
         "section": "typography",
-        "body": "Display sizes use Alumni Sans — thin (100) for the h1, heavier (300) for h2s. Anything sized below 1.2rem uses Albert Sans. The thin display cut reads too light at small sizes, so it never carries body or UI text."
+        "body": "Display sizes use Alumni Sans \u2014 thin (100) for the h1, heavier (300) for h2s. Anything sized below 1.2rem uses Albert Sans. The thin display cut reads too light at small sizes, so it never carries body or UI text."
       },
       {
         "name": "The Tracked Labels Are Short Rule",

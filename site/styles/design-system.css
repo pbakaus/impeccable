@@ -181,7 +181,7 @@
   color: var(--ks-kinpaku);
   font-family: var(--ks-font-display);
   font-weight: 100;
-  font-size: clamp(3.2rem, 7.2vw, 5.6rem);
+  font-size: clamp(3rem, 7.2vw, 5.6rem);
   line-height: 1;
   letter-spacing: 0.22em;
   margin: 0;
@@ -192,7 +192,7 @@
   margin: 28px 0 0;
   max-width: 540px;
   color: var(--ks-champagne);
-  font-size: clamp(1.05rem, 1.4vw, 1.25rem);
+  font-size: clamp(1rem, 1.4vw, 1.25rem);
   font-weight: 300;
   line-height: 1.55;
 }
@@ -933,7 +933,7 @@
   color: var(--ks-champagne);
   font-family: var(--ks-font);
   font-weight: 300;
-  font-size: 1.6rem;
+  font-size: 1.5rem;
   line-height: 1.15;
   letter-spacing: -0.005em;
 }
@@ -958,7 +958,7 @@
   color: var(--ks-kinpaku);
   font-family: var(--ks-font);
   font-weight: 300;
-  font-size: 4.4rem;
+  font-size: 4.5rem;
   line-height: 0.9;
   letter-spacing: -0.02em;
 }
@@ -1204,7 +1204,7 @@
 
 .ks-audit-stat-value {
   font-weight: 300;
-  font-size: clamp(2.4rem, 4vw, 3.2rem);
+  font-size: clamp(2.5rem, 4vw, 3rem);
   line-height: 1;
   letter-spacing: -0.01em;
 }

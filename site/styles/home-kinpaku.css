@@ -404,7 +404,7 @@
 .home-kinpaku .hero-title-combined {
   max-width: 760px;
   color: var(--ks-champagne);
-  font-size: clamp(3.4rem, 5.5vw, 5.2rem);
+  font-size: clamp(3.4rem, 5.5vw, 5rem);
   font-weight: 300;
   line-height: 1.02;
   letter-spacing: 0;
@@ -794,7 +794,7 @@
 .home-kinpaku .impeccable-title {
   color: var(--ks-kinpaku-pale);
   font-family: var(--ks-font);
-  font-size: 1.7rem;
+  font-size: 1.75rem;
   font-style: normal;
   font-weight: 400;
 }
@@ -921,7 +921,7 @@
 .home-kinpaku .foundation-card-label {
   color: var(--ks-champagne);
   font-family: var(--ks-font);
-  font-size: 1.18rem;
+  font-size: 1.125rem;
   font-weight: 400;
 }
 
@@ -1004,7 +1004,7 @@
 .home-kinpaku .fisheye-item {
   color: var(--ks-text);
   font-family: var(--ks-font);
-  font-size: 1.18rem;
+  font-size: 1.125rem;
 }
 
 .home-kinpaku .fisheye-item.is-active {
@@ -1019,7 +1019,7 @@
 .home-kinpaku .spread-command-name {
   color: var(--ks-kinpaku);
   font-family: var(--ks-font-display);
-  font-size: 4.2rem;
+  font-size: 4rem;
   font-weight: 100;
   letter-spacing: 0;
 }
@@ -1075,7 +1075,7 @@
   padding: clamp(24px, 4vw, 48px);
   color: var(--ks-text);
   font-family: var(--ks-font);
-  font-size: clamp(1rem, 1.5vw, 1.3rem);
+  font-size: clamp(1rem, 1.5vw, 1.25rem);
   font-style: normal;
   font-weight: 300;
   letter-spacing: 0.02em;
@@ -1205,7 +1205,7 @@
 }
 
 .home-kinpaku #framework-viz-container .ptable-symbol {
-  font-size: clamp(1.45rem, 1.8vw, 1.8rem) !important;
+  font-size: clamp(1.5rem, 1.8vw, 1.75rem) !important;
   font-weight: 400 !important;
   letter-spacing: 0.01em;
   color: var(--ks-champagne) !important;
@@ -2615,7 +2615,7 @@ html.light .home-kinpaku :is(.spread-demo-area, .terminal-preview, .mobile-demo-
 .home-kinpaku .load-error-title {
   color: var(--ks-champagne);
   font-family: var(--ks-font);
-  font-size: 1.45rem;
+  font-size: 1.5rem;
   font-weight: 400;
 }
 
@@ -2863,7 +2863,7 @@ body.home-kinpaku .footer-social-link:hover {
   }
 
   .home-kinpaku .hero-title-combined {
-    font-size: 4.35rem;
+    font-size: 4.5rem;
   }
 
   .home-kinpaku .why-layout {
@@ -2908,12 +2908,12 @@ body.home-kinpaku .footer-social-link:hover {
   }
 
   .home-kinpaku .hero-title-combined {
-    font-size: 3.1rem;
+    font-size: 3rem;
     letter-spacing: 0;
   }
 
   .home-kinpaku .hero-tagline-combined {
-    font-size: 1.08rem;
+    font-size: 1.125rem;
     letter-spacing: 0.08em;
   }
 
@@ -3051,7 +3051,7 @@ body.home-kinpaku .footer-social-link:hover {
      because they hid items the drawer is meant to show.) */
 
   .home-kinpaku .hero-title-combined {
-    font-size: 2.4rem;
+    font-size: 2.5rem;
     letter-spacing: 0;
   }
 

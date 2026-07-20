@@ -70,7 +70,9 @@ export const SENSITIVE_PATH = new RegExp([
 ].join('|'), 'i');
 
 // Hard-skip regex for generated, lock, minified, and build-output paths.
-export const GENERATED_PATH = /(?:\.generated\.[a-z]+$|\.d\.ts$|\.min\.[a-z]+$|[/\\]node_modules[/\\]|[/\\](?:dist|build|out|\.next|\.cache|coverage)[/\\]|[/\\]?[^/\\]+\.lock(?:\.json)?$)/i;
+// `generated` is matched as a whole path segment so authored names such as
+// `generated-utils.ts` or `CodeGenerator.tsx` still get scanned.
+export const GENERATED_PATH = /(?:\.generated\.[a-z]+$|\.d\.ts$|\.min\.[a-z]+$|[/\\]node_modules[/\\]|[/\\]generated[/\\]|[/\\](?:dist|build|out|\.next|\.cache|coverage)[/\\]|[/\\]?[^/\\]+\.lock(?:\.json)?$)/i;
 
 export const TRUTHY = /^(1|true|yes|on)$/i;
 
@@ -83,7 +85,12 @@ export const DEFAULT_CONFIG = Object.freeze({
   ignoreFiles: [],
   ignoreValues: [],
   extensions: [],
-  limits: { maxFindings: 5, maxChars: 8000 },
+  // maxFileBytes: not every generated artifact lives under a path we can
+  // recognize. Committed browser bundles and vendored detector copies sit
+  // next to source and run 200KB+, while genuinely authored stylesheets in
+  // this codebase top out under 90KB. A single file past the ceiling is a
+  // bundle, and findings against a bundle are never actionable.
+  limits: { maxFindings: 5, maxChars: 8000, maxFileBytes: 131072 },
 });
 
 export const HOOK_LOCAL_IGNORE_PATTERNS = Object.freeze([
@@ -315,6 +322,7 @@ function applyConfigSource(config, raw) {
     config.limits = {
       maxFindings: numberOr(raw.limits.maxFindings, config.limits.maxFindings),
       maxChars: numberOr(raw.limits.maxChars, config.limits.maxChars),
+      maxFileBytes: numberOr(raw.limits.maxFileBytes, config.limits.maxFileBytes),
     };
   }
   return config;
@@ -502,11 +510,14 @@ export function normalizeIgnoreValueEntries(entries) {
       ...(Array.isArray(entry.files) ? entry.files.filter(v => typeof v === 'string' && v.trim()).map(v => v.trim()) : []),
     ]);
     if (files.length > 0) normalized.files = files;
-    if (typeof entry.reason === 'string' && entry.reason.trim()) {
-      normalized.reason = entry.reason.trim();
-    }
+    // Key order is rule, value, files, createdAt, reason and must stay that way:
+    // normalizing runs on every write, so emitting a different order than the one
+    // already on disk rewrites every untouched entry and churns the diff.
     if (typeof entry.createdAt === 'string' && entry.createdAt.trim()) {
       normalized.createdAt = entry.createdAt.trim();
+    }
+    if (typeof entry.reason === 'string' && entry.reason.trim()) {
+      normalized.reason = entry.reason.trim();
     }
     out.push(normalized);
   }
@@ -525,7 +536,9 @@ function mergeIgnoreValues(existing, incoming) {
 }
 
 function ignoreValueFilesKey(files) {
-  return Array.isArray(files) && files.length > 0 ? files.join('\x1f') : '';
+  // Sort before joining: a scope is a set, so an entry already on disk in another
+  // order must compare equal rather than dedup as two distinct entries.
+  return Array.isArray(files) && files.length > 0 ? [...files].sort().join('\x1f') : '';
 }
 
 export function readCache(cwd) {
@@ -769,6 +782,7 @@ export function extractFindingIgnoreValue(finding) {
     'design-system-font',
     'design-system-color',
     'design-system-radius',
+    'design-system-font-size',
   ]);
   if (!directValueRules.has(rule)) return '';
   return normalizeIgnoreValue(extractFindingIgnoreValueRaw(finding, rule));
@@ -845,11 +859,20 @@ export function dedupeAgainstCache(findings, cache, sessionId, filePath) {
   return fresh;
 }
 
+// Sync the remembered set to the findings present in the scan just performed.
+//
+// This replaces rather than accumulates, and that is the whole point. An
+// append-only set made the hook lie twice over: the pending ack counted
+// history instead of the live scan, so it kept naming findings the agent had
+// already fixed, and a finding that was fixed and later reintroduced was
+// deduped against a stale memory and never re-reported. Forgetting what is no
+// longer there is what lets the count shrink and a regression fire again.
+//
+// Callers must pass the complete current finding set, not just the fresh ones.
 export function rememberFindings(cache, sessionId, filePath, findings) {
   const fileEntry = ensureFile(cache, sessionId, filePath);
-  const known = new Set(fileEntry.findings || []);
-  for (const f of findings) known.add(findingCacheKey(f));
-  fileEntry.findings = Array.from(known);
+  const keys = new Set((findings || []).map(f => findingCacheKey(f)));
+  fileEntry.findings = Array.from(keys);
   ensureSession(cache, sessionId).updatedAt = Date.now();
 }
 
@@ -1465,16 +1488,17 @@ export function appendDesignSystemNote(text, scanOptions) {
 //      raw envelope. Asking the model to surface the resolution in its
 //      reply is the cheapest way to make the feedback loop visible.
 function directiveFooter(display, opts = {}) {
-  const ignoreFileCommand = `${IMPECCABLE_COMMAND} hooks ignore-file ${quoteCommandArg(display)}`;
-  const fileIgnoreGuidance = opts.grouped
-    ? `run \`${IMPECCABLE_COMMAND} hooks ignore-file <path>\` for the specific file`
-    : `run \`${ignoreFileCommand}\``;
+  // Offer the rule-scoped-to-file form first. `ignore-file` silences every rule
+  // for the path forever, which is far more than one noisy rule on a real UI
+  // surface justifies, and it was previously the only option named here.
+  const target = opts.grouped ? '<path>' : quoteCommandArg(display);
+  const fileIgnoreGuidance = `run \`${IMPECCABLE_COMMAND} hooks ignore-value <id> "*" --file ${target}\` to scope just that rule to the file, or \`${IMPECCABLE_COMMAND} hooks ignore-file ${target}\` only when the whole file is out of scope for design review (a fixture, a generated artifact, a deliberate demo)`;
   return [
     'Handle these before finalizing: fix findings that are real design problems, or explicitly classify contextually intentional findings as false positives. Acknowledge what you changed or why you are leaving a finding unchanged.',
     '',
     'Use context judgment before editing. A finding is not automatically a defect; literal or domain-appropriate motion, intentional demos or fixtures, documentation of bad design, and user-confirmed choices can be valid as-is.',
     '',
-    `Do not change intentional design just to satisfy the hook, and do not silence a real finding with an inline ignore comment to skip fixing it. Suppress a finding only after the user explicitly confirms it is intentional. Prefer a config ignore (one reviewable place, the commands below); reach for an inline \`impeccable-disable <rule>\` comment only when the waiver must travel with a file that leaves the repo, such as an exported or standalone document. Prefer the narrowest persisted exception: run the exact \`${IMPECCABLE_COMMAND} hooks ignore-value ... --shared\` command shown next to a value-specific finding. For \`overused-font\`, use \`ignore-value\` for a specific font and use \`${IMPECCABLE_COMMAND} hooks ignore-rule overused-font --all-values\` only when the user asks to ignore overused fonts generally. For file-specific findings without an ignore-value command, ${fileIgnoreGuidance}; use \`${IMPECCABLE_COMMAND} hooks ignore-rule <id>\` only when the user asks to suppress the whole non-value-specific rule. Run ${IMPECCABLE_COMMAND} audit for the full pass.`,
+    `Do not change intentional design just to satisfy the hook, and do not silence a real finding with an inline ignore comment to skip fixing it. Suppress a finding only after the user explicitly confirms it is intentional. Prefer a config ignore (one reviewable place, the commands below); reach for an inline \`impeccable-disable <rule>\` comment only when the waiver must travel with a file that leaves the repo, such as an exported or standalone document. Prefer the narrowest persisted exception: run the exact \`${IMPECCABLE_COMMAND} hooks ignore-value ... --shared\` command shown next to a value-specific finding. For \`overused-font\`, use \`ignore-value\` for a specific font and use \`${IMPECCABLE_COMMAND} hooks ignore-rule overused-font --all-values\` only when the user asks to ignore overused fonts generally. For a finding whose line shows no exact ignore-value command, such as \`side-tab\`, ${fileIgnoreGuidance}; use \`${IMPECCABLE_COMMAND} hooks ignore-rule <id>\` only when the user asks to suppress the whole non-value-specific rule. Run ${IMPECCABLE_COMMAND} audit for the full pass.`,
   ].join('\n');
 }
 
@@ -1550,6 +1574,9 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
     let cleanWinner = null;
     const freshGroups = [];
     let suppressionWinner = null;
+    let cleanAckDeduped = false;
+    let skippedBytes = 0;
+    const quietMode = truthy(env.IMPECCABLE_HOOK_QUIET) || config.quiet === true;
     let detectorThrewAny = false;
     let lastSkip = 'no-scannable-file';
     let suppressedHit = false;
@@ -1585,6 +1612,17 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
         continue;
       }
 
+      const maxFileBytes = config.limits?.maxFileBytes ?? DEFAULT_CONFIG.limits.maxFileBytes;
+      if (maxFileBytes > 0) {
+        let size = 0;
+        try { size = fs.statSync(filePath).size; } catch { size = 0; }
+        if (size > maxFileBytes) {
+          skippedBytes = size;
+          lastSkip = 'too-large';
+          continue;
+        }
+      }
+
       if (primaryFileSet.has(filePath)) {
         const editCount = bumpEditCount(cache, sessionId, filePath);
         cacheDirty = true;
@@ -1618,23 +1656,47 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
       audit.findings = (findings || []).length;
       audit.freshFindings = fresh.length;
 
-      if (fresh.length > 0) {
-        rememberFindings(cache, sessionId, filePath, fresh);
-        cacheDirty = true;
-        freshGroups.push({ filePath, findings: fresh });
-        continue;
-      }
-
+      // A detector failure tells us nothing about the file, so leave whatever
+      // was remembered alone rather than recording an empty scan as truth.
       if (detectorThrew) {
         detectorThrewAny = true;
         continue;
       }
 
+      // Sync the cache to this scan before deciding what to emit, so fixed
+      // findings stop being remembered and a reintroduced one reads as fresh.
+      rememberFindings(cache, sessionId, filePath, filtered);
+      cacheDirty = true;
+
+      if (fresh.length > 0) {
+        freshGroups.push({ filePath, findings: fresh });
+        continue;
+      }
+
       if (filtered.length > 0 && !pendingWinner) {
-        const known = (ensureFile(cache, sessionId, filePath).findings || []).slice();
-        pendingWinner = { filePath, known };
+        // Count the live scan, not the session's history.
+        pendingWinner = { filePath, known: filtered.map(f => findingCacheKey(f)) };
       } else if (filtered.length === 0 && !cleanWinner) {
-        cleanWinner = { filePath };
+        // The clean ack carries no finding, only the standing steer that a
+        // silent hook is not a verdict on the design. Repeating it on every
+        // clean edit spends context to say nothing, so it fires once per file
+        // per session. The pending ack, which names real unresolved work, is
+        // deliberately left to repeat.
+        //
+        // Quiet mode emits nothing, so it must not consume the ack and leave a
+        // later non-quiet run in this session silent.
+        if (quietMode || !shouldEmitAckForFile(filePath, config)) {
+          cleanWinner = { filePath };
+        } else if (ensureFile(cache, sessionId, filePath).cleanAcked) {
+          // Spent for this file. Remember it for the audit trail, but keep
+          // scanning: another target in this same event may still be owed an
+          // ack, and dropping out here would lose it.
+          cleanAckDeduped = true;
+        } else {
+          ensureFile(cache, sessionId, filePath).cleanAcked = true;
+          cleanWinner = { filePath };
+          cleanAckDeduped = false;
+        }
       }
     }
 
@@ -1677,7 +1739,7 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
       return result({ emitted: false, error: 'detector-threw', durationMs: Date.now() - started });
     }
 
-    if (truthy(env.IMPECCABLE_HOOK_QUIET) || config.quiet === true) {
+    if (quietMode) {
       return result({ emitted: false, quiet: true, durationMs: Date.now() - started });
     }
 
@@ -1715,7 +1777,7 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
       };
     }
 
-    if (cleanWinner && shouldEmitAckForFile(cleanWinner.filePath, config)) {
+    if (cleanWinner && !cleanAckDeduped && shouldEmitAckForFile(cleanWinner.filePath, config)) {
       const text = appendDesignSystemNote(renderCleanAck(cleanWinner.filePath, { cwd: projectCwd }), scanOptions);
       return {
         exitCode: 0,
@@ -1732,15 +1794,29 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
       };
     }
 
-    if (pendingWinner || cleanWinner) {
+    if (pendingWinner) {
       return result({ emitted: false, skipped: 'non-ui-ack', durationMs: Date.now() - started });
+    }
+
+    // Distinct from non-ui-ack so the audit log shows noise being suppressed on
+    // purpose rather than a file the hook could not classify.
+    if (cleanWinner) {
+      return result({ emitted: false, skipped: 'non-ui-ack', durationMs: Date.now() - started });
+    }
+
+    if (cleanAckDeduped) {
+      return result({ emitted: false, skipped: 'clean-ack-deduped', durationMs: Date.now() - started });
     }
 
     if (suppressedHit) {
       return result({ suppressed: true, emitted: false, durationMs: Date.now() - started });
     }
 
-    return result({ skipped: lastSkip, durationMs: Date.now() - started });
+    return result({
+      skipped: lastSkip,
+      ...(lastSkip === 'too-large' ? { bytes: skippedBytes } : {}),
+      durationMs: Date.now() - started,
+    });
   } catch (err) {
     return {
       exitCode: 0,

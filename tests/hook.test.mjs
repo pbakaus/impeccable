@@ -53,7 +53,9 @@ import {
   extractFindingIgnoreValue,
   resolveProjectPlatform,
   isNativePlatform,
+  normalizeIgnoreValueEntries,
 } from '../skill/scripts/hook-lib.mjs';
+import { normalizeIgnoreValueEntries as normalizeIgnoreValueEntriesCli } from '../cli/lib/impeccable-config.mjs';
 import { detectHtml, detectText } from '../cli/engine/detect-antipatterns.mjs';
 
 function mkTmp() {
@@ -122,6 +124,30 @@ describe('SENSITIVE_PATH / GENERATED_PATH', () => {
       '/x/pkg.lock.json', '/x/.next/server.js', '/x/coverage/report.html',
     ]) {
       assert.ok(GENERATED_PATH.test(p), `expected generated: ${p}`);
+    }
+  });
+
+  it('skips committed build output living outside dist/', () => {
+    // Not every generated artifact lands in dist/. Repos commit browser
+    // bundles and detector copies next to source, and findings against them
+    // are never actionable.
+    for (const p of [
+      '/x/site/public/js/generated/counts.js',
+      '/x/src/generated/schema.ts',
+      '/x/app/generated/api.tsx',
+    ]) {
+      assert.ok(GENERATED_PATH.test(p), `expected generated: ${p}`);
+    }
+  });
+
+  it('does not treat authored paths that merely mention generation as generated', () => {
+    for (const p of [
+      '/x/src/generateReport.ts',
+      '/x/src/generated-utils.ts',
+      '/x/src/components/CodeGenerator.tsx',
+      '/x/src/ui/regenerate-button.jsx',
+    ]) {
+      assert.ok(!GENERATED_PATH.test(p), `unexpected generated: ${p}`);
     }
   });
 });
@@ -421,6 +447,24 @@ describe('filterFindings()', () => {
     assert.deepEqual(filtered.map((f) => `${f.antipattern}:${f.line}`), ['overused-font:2', 'bounce-easing:4', 'side-tab:3']);
   });
 
+  it('honors a specific-value ignoreValues entry for design-system-font-size', () => {
+    // The rule carries an ignoreValue and the hook's own directive tells the
+    // agent to waive value-specific findings with `hooks ignore-value`, but
+    // font-size was missing from the direct-value rule set, so any waiver
+    // naming an actual size was filtered against an empty extracted value and
+    // silently did nothing. Only the `*` wildcard worked.
+    const findings = [
+      { ...finding('design-system-font-size', 1), ignoreValue: '0.82rem' },
+      { ...finding('design-system-font-size', 2), ignoreValue: '0.9rem' },
+    ];
+    const filtered = filterFindings(findings, '', '.css', {
+      ignoreRules: [],
+      ignoreValues: [{ rule: 'design-system-font-size', value: '0.82rem' }],
+      limits: DEFAULT_CONFIG.limits,
+    });
+    assert.deepEqual(filtered.map((f) => f.ignoreValue), ['0.9rem']);
+  });
+
   it('scopes ignoreValues to file globs when files are provided', () => {
     const findings = [
       { ...finding('design-system-color', 1, { file: '/tmp/project/site/styles/main.css' }), ignoreValue: '#8b5cf6' },
@@ -525,6 +569,72 @@ describe('hook-admin.mjs', () => {
     });
   }
 
+  it('refuses an empty --file glob instead of silently writing a project-wide ignore', () => {
+    // `--file=` was dropped by filter(Boolean), so this reported success and
+    // stored an entry with no files: a broader suppression than was asked for.
+    for (const args of [['--file='], ['--file', ''], ['--files=']]) {
+      assert.throws(
+        () => runAdmin(['ignore-value', 'overused-font', 'Inter', ...args]),
+        /requires a non-empty glob/,
+        `empty glob via ${args.join(' ')} must error`,
+      );
+    }
+    // `--file --reason "why"` consumed --reason as the scope and let the reason
+    // text fold into the value: stored value="* why" files=["--reason"], success.
+    assert.throws(
+      () => runAdmin(['ignore-value', 'design-system-font-size', '*', '--file', '--reason', 'why']),
+      /requires a glob, got the flag --reason/,
+      'a following flag is not a glob',
+    );
+    assert.equal(fs.existsSync(path.join(cwd, '.impeccable', 'config.json')), false, 'nothing may be written');
+  });
+
+  it('matches an on-disk scope whose glob order differs from the sorted argv form', () => {
+    // Storage is canonical now, but configs written before that are not. Every key
+    // that hashes `files` must sort or a re-add duplicates the entry.
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(path.join(cwd, '.impeccable', 'config.json'), JSON.stringify({
+      detector: { ignoreValues: [
+        { rule: 'design-system-font-size', value: '*', files: ['b.css', 'a.css'], createdAt: '2026-01-01T00:00:00.000Z' },
+      ] },
+    }));
+    runAdmin(['ignore-value', 'design-system-font-size', '*', '--file', 'a.css', '--file', 'b.css', '--reason', 're-add']);
+    const cfg = JSON.parse(fs.readFileSync(path.join(cwd, '.impeccable', 'config.json'), 'utf-8'));
+    const entries = cfg.detector.ignoreValues.filter((e) => e.rule === 'design-system-font-size');
+    assert.equal(entries.length, 1, 'an unsorted on-disk scope must match the sorted argv form, not duplicate');
+    assert.equal(entries[0].reason, 're-add', 'the existing entry is the one updated');
+  });
+
+  it('stores a multi-file scope in canonical order so argv order cannot duplicate it', () => {
+    runAdmin(['ignore-value', 'design-system-font-size', '*', '--file', 'b.css', '--file', 'a.css']);
+    runAdmin(['ignore-value', 'design-system-font-size', '*', '--file', 'a.css', '--file', 'b.css']);
+    const cfg = JSON.parse(fs.readFileSync(path.join(cwd, '.impeccable', 'config.json'), 'utf-8'));
+    const entries = cfg.detector.ignoreValues.filter((e) => e.rule === 'design-system-font-size');
+    assert.equal(entries.length, 1, 'the same scope in a different order is one entry, not two');
+    assert.deepEqual(entries[0].files, ['a.css', 'b.css']);
+  });
+
+  it('status shows the file scope of a scoped wildcard ignore', () => {
+    runAdmin(['ignore-value', 'design-system-font-size', '*', '--file', 'src/widget.js']);
+    const out = runAdmin(['status']);
+    // Printing `design-system-font-size=*` bare reads as the project-wide
+    // wildcard this command refuses, which is the opposite of what is on disk.
+    assert.match(out, /design-system-font-size=\*\s*\[src\/widget\.js\]/);
+  });
+
+  it('refuses a bare wildcard and names a project-wide command that actually works', () => {
+    assert.throws(
+      () => runAdmin(['ignore-value', 'design-system-font-size', '*']),
+      (err) => /--file/.test(String(err.stderr)) && /ignore-rule design-system-font-size\./.test(String(err.stderr)),
+    );
+    // ignore-rule overused-font refuses on its own without --all-values, so the
+    // suggestion must carry the flag or it hands the user a second error.
+    assert.throws(
+      () => runAdmin(['ignore-value', 'overused-font', '*']),
+      (err) => /ignore-rule overused-font --all-values/.test(String(err.stderr)),
+    );
+  });
+
   it('ignore-value writes shared config by default without creating local config', () => {
     const out = runAdmin(['ignore-value', 'overused-font', 'Inter', '--reason', 'User confirmed Inter']);
     assert.match(out, /overused-font=inter/);
@@ -562,6 +672,132 @@ describe('hook-admin.mjs', () => {
     const status = runAdmin(['status']);
     assert.match(status, /local file:\s+\.impeccable\/config\.local\.json/);
     assert.match(status, /ignoreValues:\s+overused-font=inter/);
+  });
+
+  // detector.ignoreValues honours a `files` scope, which is the narrowest way to
+  // silence one noisy rule on one file. hook-admin could not write it, so the
+  // only reachable option was ignore-file, which silences every rule for that
+  // file forever.
+  it('ignore-value scopes a wildcard to files via --file', () => {
+    const out = runAdmin([
+      'ignore-value', 'design-system-font-size', '*',
+      '--file', 'src/overlay/widget.js',
+      '--reason', 'Widget builds its own type scale',
+    ]);
+    assert.match(out, /scoped to src\/overlay\/widget\.js/);
+    const shared = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8')).detector;
+    assert.deepEqual(shared.ignoreValues, [{
+      rule: 'design-system-font-size',
+      value: '*',
+      files: ['src/overlay/widget.js'],
+      createdAt: shared.ignoreValues[0].createdAt,
+      reason: 'Widget builds its own type scale',
+    }]);
+  });
+
+  it('ignore-value accepts --file=, --files= and repeated --file', () => {
+    runAdmin(['ignore-value', 'side-tab', '*', '--file=a.css']);
+    runAdmin(['ignore-value', 'side-tab', '*', '--files=b.css']);
+    runAdmin(['ignore-value', 'low-contrast', '*', '--file', 'c.css', '--file', 'd.css']);
+    const shared = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8')).detector;
+    assert.deepEqual(
+      shared.ignoreValues.map(({ rule, files }) => ({ rule, files })),
+      [
+        { rule: 'side-tab', files: ['a.css'] },
+        { rule: 'side-tab', files: ['b.css'] },
+        { rule: 'low-contrast', files: ['c.css', 'd.css'] },
+      ],
+      'each distinct file scope is its own entry; a rule+value-only key overwrote them',
+    );
+  });
+
+  it('ignore-value refuses a wildcard with no file scope', () => {
+    assert.throws(
+      () => runAdmin(['ignore-value', 'design-system-font-size', '*']),
+      /Wildcard value ignores must be scoped with --file/,
+      'a bare wildcard is ignore-rule\'s job, not a per-file waiver',
+    );
+    assert.equal(fs.existsSync(getConfigPath(cwd)), false, 'a refused ignore must not write config');
+  });
+
+  it('ignore-value --file requires a glob', () => {
+    assert.throws(
+      () => runAdmin(['ignore-value', 'side-tab', '*', '--file']),
+      /--file requires a glob/,
+    );
+  });
+
+  it('ignore-value rejects an unknown flag instead of folding it into the value', () => {
+    // `--shard` (a typo for --shared) used to store the value "inter --shard",
+    // which matches nothing, while reporting a successful suppression.
+    assert.throws(
+      () => runAdmin(['ignore-value', 'overused-font', 'Inter', '--shard']),
+      /Unknown ignore-value flag: --shard/,
+    );
+    assert.equal(fs.existsSync(getConfigPath(cwd)), false);
+  });
+
+  // Every write runs the entries through normalizeIgnoreValueEntries. Emitting a
+  // different key order than the one on disk rewrote all untouched entries.
+  it('an unrelated edit leaves existing ignoreValues byte-identical', () => {
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    const seeded = {
+      detector: {
+        ignoreRules: [],
+        ignoreFiles: [],
+        ignoreValues: [
+          {
+            rule: 'bounce-easing',
+            value: 'bounce-ball',
+            createdAt: '2026-06-15T04:15:03.164Z',
+            reason: 'Intentional',
+          },
+          {
+            rule: 'design-system-color',
+            value: '*',
+            files: ['site/styles/demo.css'],
+            createdAt: '2026-06-15T23:37:38.170Z',
+            reason: 'Deliberate off-system demo',
+          },
+        ],
+      },
+    };
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify(seeded, null, 2) + '\n');
+    const before = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8')).detector.ignoreValues;
+
+    runAdmin(['ignore-file', 'some/other/**']);
+
+    const after = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8')).detector;
+    assert.deepEqual(after.ignoreFiles, ['some/other/**'], 'the intended change still lands');
+    assert.equal(
+      JSON.stringify(after.ignoreValues),
+      JSON.stringify(before),
+      'untouched ignoreValues must keep their exact key order, or every config diff churns',
+    );
+  });
+
+  // hook-lib.mjs (skill, ships into harness dirs) and cli/lib/impeccable-config.mjs
+  // (CLI + Pages functions) carry independent copies of this normalizer by
+  // necessity. They write the same file, so a key-order drift between them makes
+  // the config churn depending on which tool touched it last.
+  it('both config normalizers emit identical entries', () => {
+    const input = [
+      { rule: 'BOUNCE-EASING', value: 'Bounce-Ball', reason: ' r ', createdAt: '2026-01-01T00:00:00.000Z' },
+      { rule: 'design-system-color', value: '*', files: [' a.css ', 'b.css', 'a.css'], createdAt: '2026-02-02T00:00:00.000Z' },
+      { rule: 'side-tab', value: '*', file: 'legacy.css' },
+      { rule: '', value: 'dropped' },
+    ];
+    assert.equal(
+      JSON.stringify(normalizeIgnoreValueEntries(input)),
+      JSON.stringify(normalizeIgnoreValueEntriesCli(input)),
+      'skill/scripts/hook-lib.mjs and cli/lib/impeccable-config.mjs must agree, key order included',
+    );
+    // And pin the canonical order itself, which is what the config on disk uses.
+    const full = { rule: 'side-tab', value: '*', files: ['a.css'], createdAt: '2026-01-01T00:00:00.000Z', reason: 'r' };
+    assert.deepEqual(
+      Object.keys(normalizeIgnoreValueEntries([full])[0]),
+      ['rule', 'value', 'files', 'createdAt', 'reason'],
+    );
   });
 
   it('a /impeccable hooks edit preserves sibling hook fields (consent, quiet)', () => {
@@ -1486,6 +1722,323 @@ describe('runHook() — cache write gating (issues #344, #305)', () => {
     assert.equal(r.audit.cwd, child);
     assert.ok(fs.existsSync(path.join(child, '.impeccable', 'hook.cache.json')), 'cache should land in the child project');
     assert.ok(!fs.existsSync(path.join(cwd, '.impeccable')), 'umbrella root should stay clean');
+  });
+});
+
+describe('runHook() — oversized files', () => {
+  let cwd;
+  beforeEach(() => {
+    cwd = mkTmp();
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+  });
+  afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+  const event = (file) => JSON.stringify({
+    session_id: 'sid-1', cwd, hook_event_name: 'PostToolUse',
+    tool_name: 'Edit', tool_input: { file_path: file },
+  });
+
+  it('skips a file past the size ceiling, since a huge single file is a bundle', async () => {
+    const file = path.join(cwd, 'bundle.js');
+    fs.writeFileSync(file, `/* ${'x'.repeat(200 * 1024)} */`);
+    const r = await runHook({
+      stdinJson: event(file), env: {}, cwd,
+      detector: fakeDetector([finding('side-tab', 1, { name: 'Side-tab' })]),
+    });
+    assert.ok(!r.audit.emitted);
+    assert.equal(r.audit.skipped, 'too-large');
+  });
+
+  it('still scans a large but plausibly authored stylesheet', async () => {
+    const file = path.join(cwd, 'main.css');
+    fs.writeFileSync(file, `/* ${'x'.repeat(90 * 1024)} */`);
+    const r = await runHook({
+      stdinJson: event(file), env: {}, cwd,
+      detector: fakeDetector([finding('side-tab', 1, { name: 'Side-tab' })]),
+    });
+    assert.equal(r.audit.emitted, true);
+  });
+
+  // `bytes` describes the file that was skipped. It must never ride along on an
+  // audit entry whose `file` is something else, in either scan order, and must
+  // survive the early-continue paths that sit above the size check.
+  function patchEvent(...files) {
+    return JSON.stringify({
+      session_id: `sid-${files.length}-${files[0]}`, cwd,
+      hook_event_name: 'PostToolUse', tool_name: 'apply_patch',
+      tool_input: {
+        command: `*** Begin Patch\n${files.map(f => `*** Update File: ${f}`).join('\n')}\n*** End Patch`,
+      },
+    });
+  }
+
+  it('does not leak a skipped file\'s byte count when the bundle is scanned first', async () => {
+    const big = path.join(cwd, 'bundle.js');
+    const small = path.join(cwd, 'a.css');
+    fs.writeFileSync(big, `/* ${'x'.repeat(200 * 1024)} */`);
+    fs.writeFileSync(small, 'noop');
+    const r = await runHook({
+      stdinJson: patchEvent(big, small), env: {}, cwd,
+      detector: fakeDetector([finding('side-tab', 1, { name: 'Side-tab' })]),
+    });
+    assert.match(r.stdout, /a\.css/);
+    assert.equal(r.audit.bytes, undefined, 'bytes belongs to the skipped file, not this one');
+  });
+
+  it('does not leak a skipped file\'s byte count when the bundle is scanned last', async () => {
+    const small = path.join(cwd, 'a.css');
+    const big = path.join(cwd, 'bundle.js');
+    fs.writeFileSync(small, 'noop');
+    fs.writeFileSync(big, `/* ${'x'.repeat(200 * 1024)} */`);
+    const r = await runHook({
+      stdinJson: patchEvent(small, big), env: {}, cwd,
+      detector: fakeDetector([finding('side-tab', 1, { name: 'Side-tab' })]),
+    });
+    assert.match(r.stdout, /a\.css/);
+    assert.equal(r.audit.bytes, undefined, 'the emitted file is not the oversized one');
+  });
+
+  it('does not leak a byte count past an early-continue target', async () => {
+    // `generated` is checked before the size gate, so a later generated target
+    // returns without ever reaching the point where bytes would be cleared.
+    const big = path.join(cwd, 'bundle.js');
+    const gen = path.join(cwd, 'dist', 'Card.tsx');
+    fs.writeFileSync(big, `/* ${'x'.repeat(200 * 1024)} */`);
+    fs.mkdirSync(path.dirname(gen), { recursive: true });
+    fs.writeFileSync(gen, 'noop');
+    const r = await runHook({
+      stdinJson: patchEvent(big, gen), env: {}, cwd,
+      detector: fakeDetector([finding('side-tab', 1, { name: 'Side-tab' })]),
+    });
+    assert.ok(!r.audit.emitted);
+    assert.equal(r.audit.bytes, undefined, 'bytes must not describe a different file');
+  });
+
+  it('still records the byte count when the oversized file is the outcome', async () => {
+    const big = path.join(cwd, 'bundle.js');
+    fs.writeFileSync(big, `/* ${'x'.repeat(200 * 1024)} */`);
+    const r = await runHook({
+      stdinJson: patchEvent(big), env: {}, cwd,
+      detector: fakeDetector([finding('side-tab', 1, { name: 'Side-tab' })]),
+    });
+    assert.equal(r.audit.skipped, 'too-large');
+    assert.ok(r.audit.bytes > 200 * 1024, 'the skip reason should still carry its size');
+  });
+
+  it('honors a configured limits.maxFileBytes', async () => {
+    fs.writeFileSync(path.join(cwd, '.impeccable', 'config.json'), JSON.stringify({
+      hook: { limits: { maxFileBytes: 1024 } },
+    }));
+    const file = path.join(cwd, 'small.css');
+    fs.writeFileSync(file, `/* ${'x'.repeat(4096)} */`);
+    const r = await runHook({
+      stdinJson: event(file), env: {}, cwd,
+      detector: fakeDetector([finding('side-tab', 1, { name: 'Side-tab' })]),
+    });
+    assert.equal(r.audit.skipped, 'too-large');
+  });
+});
+
+describe('runHook() — the session cache tracks the current scan', () => {
+  let cwd;
+  beforeEach(() => {
+    cwd = mkTmp();
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+  });
+  afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+  function eventFor(file, sessionId = 'sid-1') {
+    return {
+      session_id: sessionId,
+      cwd,
+      hook_event_name: 'PostToolUse',
+      tool_name: 'Edit',
+      tool_input: { file_path: file },
+    };
+  }
+
+  // A detector whose findings change between runs, so the cache can be
+  // observed as the file is progressively fixed.
+  function mutableDetector(initial = []) {
+    let current = initial;
+    return {
+      set(next) { current = next; },
+      detectText: () => current.slice(),
+      detectHtml: () => current.slice(),
+    };
+  }
+
+  function fontFinding(line, value) {
+    return { ...finding('overused-font', line, { name: 'Overused font' }), ignoreValue: value };
+  }
+
+  const run = (file, det) => runHook({ stdinJson: JSON.stringify(eventFor(file)), env: {}, cwd, detector: det });
+
+  it('counts the current scan in the pending ack, not the session history', async () => {
+    const file = path.join(cwd, 'a.css');
+    fs.writeFileSync(file, 'noop');
+    const det = mutableDetector([
+      fontFinding(1, 'inter'), fontFinding(2, 'roboto'), fontFinding(3, 'geist'),
+    ]);
+
+    const r1 = await run(file, det);
+    assert.match(r1.stdout, /\(3 issue\(s\)\)/);
+
+    // Fix two of the three. The pending ack must not keep naming them.
+    det.set([fontFinding(1, 'inter')]);
+    const r2 = await run(file, det);
+    assert.equal(r2.audit.kind, 'pending');
+    assert.match(r2.stdout, /Still has 1 finding\(s\)/);
+    assert.match(r2.stdout, /overused-font:1:inter/);
+    assert.ok(!r2.stdout.includes('roboto'), 'must not name a finding that was fixed');
+    assert.ok(!r2.stdout.includes('geist'), 'must not name a finding that was fixed');
+  });
+
+  it('reports a reintroduced finding as fresh instead of swallowing it', async () => {
+    const file = path.join(cwd, 'a.css');
+    fs.writeFileSync(file, 'noop');
+    const det = mutableDetector([fontFinding(1, 'inter')]);
+
+    const r1 = await run(file, det);
+    assert.match(r1.stdout, /Design hook findings requiring review/);
+
+    // Fixed: the hook goes clean and must forget the finding.
+    det.set([]);
+    const r2 = await run(file, det);
+    assert.equal(r2.audit.kind, 'clean');
+
+    // Reintroduced: this is a regression and has to surface as fresh, not be
+    // deduped against a stale memory of the same key.
+    det.set([fontFinding(1, 'inter')]);
+    const r3 = await run(file, det);
+    assert.equal(r3.audit.emitted, true);
+    assert.match(r3.stdout, /Design hook findings requiring review/, 'a reintroduced finding must fire again');
+  });
+
+  it('still dedupes an unchanged finding within a session', async () => {
+    // Guard against over-correcting: forgetting fixed findings must not turn
+    // every repeat edit back into a full findings dump.
+    const file = path.join(cwd, 'a.css');
+    fs.writeFileSync(file, 'noop');
+    const det = mutableDetector([fontFinding(1, 'inter')]);
+
+    await run(file, det);
+    const r2 = await run(file, det);
+    assert.equal(r2.audit.kind, 'pending');
+    assert.match(r2.stdout, /Still has 1 finding\(s\)/);
+  });
+});
+
+describe('runHook() — clean-ack noise', () => {
+  let cwd;
+  beforeEach(() => {
+    cwd = mkTmp();
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+  });
+  afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+  const event = (file, sessionId = 'sid-1') => JSON.stringify({
+    session_id: sessionId, cwd, hook_event_name: 'PostToolUse',
+    tool_name: 'Edit', tool_input: { file_path: file },
+  });
+
+  it('emits the clean ack once per file per session, then stays silent', async () => {
+    const a = path.join(cwd, 'a.css');
+    const b = path.join(cwd, 'b.css');
+    fs.writeFileSync(a, 'noop');
+    fs.writeFileSync(b, 'noop');
+    const det = fakeDetector([]);
+
+    const r1 = await runHook({ stdinJson: event(a), env: {}, cwd, detector: det });
+    assert.equal(r1.audit.kind, 'clean', 'first clean scan of a file still acks');
+
+    const r2 = await runHook({ stdinJson: event(a), env: {}, cwd, detector: det });
+    assert.ok(!r2.audit.emitted, 'repeat clean scans of the same file stay silent');
+    assert.equal(r2.audit.skipped, 'clean-ack-deduped');
+    assert.equal(r2.stdout, '');
+
+    // A different file gets its own first ack.
+    const r3 = await runHook({ stdinJson: event(b), env: {}, cwd, detector: det });
+    assert.equal(r3.audit.kind, 'clean');
+
+    // A new session starts over, since the steer is per-session context.
+    const r4 = await runHook({ stdinJson: event(a, 'sid-2'), env: {}, cwd, detector: det });
+    assert.equal(r4.audit.kind, 'clean');
+  });
+
+  it('picks a not-yet-acked file when an earlier target was already acked', async () => {
+    // A multi-file event (apply_patch, MultiEdit) must not lose the ack for a
+    // file the session has never acked just because an earlier target in the
+    // same run was already deduped.
+    const a = path.join(cwd, 'a.css');
+    const b = path.join(cwd, 'b.css');
+    fs.writeFileSync(a, 'noop');
+    fs.writeFileSync(b, 'noop');
+    const det = fakeDetector([]);
+
+    // Ack a on its own first.
+    const r1 = await runHook({ stdinJson: event(a), env: {}, cwd, detector: det });
+    assert.equal(r1.audit.kind, 'clean');
+
+    // Now touch a and b together. a is spent; b has never been acked.
+    const multi = JSON.stringify({
+      session_id: 'sid-1', cwd, hook_event_name: 'PostToolUse', tool_name: 'apply_patch',
+      tool_input: {
+        command: `*** Begin Patch\n*** Update File: ${a}\n*** Update File: ${b}\n*** End Patch`,
+      },
+    });
+    const r2 = await runHook({ stdinJson: multi, env: {}, cwd, detector: det });
+    assert.equal(r2.audit.kind, 'clean', 'b has never been acked and should win');
+    assert.match(r2.stdout, /b\.css/);
+  });
+
+  it('reports non-ui-ack when the winner was not ack-eligible, even after a dedupe', async () => {
+    // Mixed multi-target run: one UI file whose ack is already spent, plus a
+    // non-UI file. Nothing is emitted either way, but the audit reason must
+    // describe the winner rather than the earlier dedupe.
+    const css = path.join(cwd, 'a.css');
+    const ts = path.join(cwd, 'b.ts');
+    fs.writeFileSync(css, 'noop');
+    fs.writeFileSync(ts, 'export const a = 1;');
+    const det = fakeDetector([]);
+
+    await runHook({ stdinJson: event(css), env: {}, cwd, detector: det });
+
+    const multi = JSON.stringify({
+      session_id: 'sid-1', cwd, hook_event_name: 'PostToolUse', tool_name: 'apply_patch',
+      tool_input: {
+        command: `*** Begin Patch\n*** Update File: ${css}\n*** Update File: ${ts}\n*** End Patch`,
+      },
+    });
+    const r = await runHook({ stdinJson: multi, env: {}, cwd, detector: det });
+    assert.ok(!r.audit.emitted);
+    assert.equal(r.audit.skipped, 'non-ui-ack');
+  });
+
+  it('does not spend the clean ack while quiet mode is suppressing output', async () => {
+    // Quiet emits nothing, so it must not consume the once-per-session ack and
+    // leave a later non-quiet run silent.
+    const file = path.join(cwd, 'a.css');
+    fs.writeFileSync(file, 'noop');
+    const det = fakeDetector([]);
+
+    const quiet = await runHook({ stdinJson: event(file), env: { IMPECCABLE_HOOK_QUIET: '1' }, cwd, detector: det });
+    assert.ok(!quiet.audit.emitted);
+
+    const loud = await runHook({ stdinJson: event(file), env: {}, cwd, detector: det });
+    assert.equal(loud.audit.kind, 'clean', 'the ack must survive a quiet run');
+  });
+
+  it('keeps re-nudging with the pending ack, which is the informative one', async () => {
+    const file = path.join(cwd, 'a.css');
+    fs.writeFileSync(file, 'noop');
+    const det = fakeDetector([finding('side-tab', 1, { name: 'Side-tab' })]);
+
+    await runHook({ stdinJson: event(file), env: {}, cwd, detector: det });
+    const r2 = await runHook({ stdinJson: event(file), env: {}, cwd, detector: det });
+    const r3 = await runHook({ stdinJson: event(file), env: {}, cwd, detector: det });
+    assert.equal(r2.audit.kind, 'pending');
+    assert.equal(r3.audit.kind, 'pending', 'the unresolved-finding nudge must not be deduped away');
   });
 });
 

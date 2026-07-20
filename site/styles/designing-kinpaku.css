@@ -210,7 +210,7 @@
     /* Bring the display size down for narrow viewports — the token's 3.4rem
        minimum is sized for hero impact at desktop and tablet, too big when
        the line has to wrap into a 320-400px column. */
-    font-size: clamp(2.2rem, 11vw, 3rem);
+    font-size: clamp(2rem, 11vw, 3rem);
   }
 }
 
@@ -377,7 +377,7 @@
   }
 
   .designing-kinpaku .designing-page-title {
-    font-size: clamp(2.1rem, 12vw, 2.8rem);
+    font-size: clamp(2rem, 12vw, 2.5rem);
     line-height: 1.02;
     margin-bottom: 18px;
   }
@@ -424,7 +424,7 @@
   }
 
   .designing-kinpaku .designing-loop-name {
-    font-size: 1.45rem;
+    font-size: 1.5rem;
   }
 
   .designing-kinpaku .designing-loop-hint {
@@ -827,7 +827,7 @@
   color: var(--ks-champagne);
   font-family: var(--ks-font);
   font-weight: 600;
-  font-size: 1.2rem;
+  font-size: 1.25rem;
   line-height: 1.3;
   letter-spacing: -0.01em;
   margin: 0;
@@ -1214,7 +1214,7 @@
   color: var(--ks-champagne);
   font-family: var(--ks-font);
   font-weight: 600;
-  font-size: 1.2rem;
+  font-size: 1.25rem;
   line-height: 1.3;
   letter-spacing: -0.01em;
   margin: 0;
@@ -1315,7 +1315,7 @@
   color: var(--ks-champagne);
   font-family: var(--ks-font);
   font-weight: 600;
-  font-size: 1.2rem;
+  font-size: 1.25rem;
   line-height: 1.3;
   letter-spacing: -0.01em;
   margin: 0;
@@ -1355,7 +1355,7 @@
 .designing-kinpaku .designing-extract-arrow {
   color: var(--ks-kinpaku);
   font-family: var(--ks-mono);
-  font-size: 1.2rem;
+  font-size: 1.25rem;
 }
 .designing-kinpaku .designing-extract-after {
   justify-self: end;
@@ -1484,7 +1484,7 @@
   color: var(--ks-champagne);
   font-family: var(--ks-font);
   font-weight: 500;
-  font-size: 1.35rem;
+  font-size: 1.25rem;
   line-height: 1.15;
 }
 .designing-kinpaku .designing-lane-mock-accent {
@@ -1639,7 +1639,7 @@
   color: var(--ks-champagne);
   font-family: var(--ks-font-display);
   font-weight: 100;
-  font-size: clamp(1.8rem, 3vw, 2.4rem);
+  font-size: clamp(1.75rem, 3vw, 2.5rem);
   line-height: 1.1;
   margin: 0;
   letter-spacing: 0.01em;

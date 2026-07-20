@@ -938,7 +938,7 @@
 .live-demo-card--v3 h3 {
   font-family: var(--font-display);
   font-weight: 400;
-  font-size: 22px;
+  font-size: 1.25rem;
   line-height: 1.2;
   color: var(--color-ink);
 }

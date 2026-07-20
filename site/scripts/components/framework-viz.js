@@ -260,7 +260,7 @@ export class PeriodicTable {
 			top: 3px;
 			left: 5px;
 			font-family: var(--font-mono);
-			font-size: 7px;
+			font-size: 7px; /* impeccable-disable-line design-system-font-size -- atomic number is cell geometry, not ramp type */
 			color: ${colors.text};
 			opacity: 0.5;
 		`;
@@ -313,7 +313,7 @@ export class PeriodicTable {
 				top: 2px;
 				right: 3px;
 				font-family: var(--font-mono);
-				font-size: 5px;
+				font-size: 5px; /* impeccable-disable-line design-system-font-size -- alpha badge is cell geometry, not ramp type */
 				letter-spacing: 0.05em;
 				color: ${colors.text};
 				opacity: 0.45;

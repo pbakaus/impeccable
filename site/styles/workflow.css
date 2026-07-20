@@ -98,7 +98,7 @@
 
 .fisheye-beta {
   font-family: var(--font-body);
-  font-size: 0.45rem;
+  font-size: 0.5rem;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1556,7 +1556,7 @@
 
 .why-panel-body {
   font-family: var(--font-body);
-  font-size: 1.0625rem;
+  font-size: 1rem;
   line-height: 1.65;
   color: var(--color-charcoal);
   margin: 0 0 var(--spacing-md);
@@ -1849,7 +1849,7 @@
 }
 .why-impeccable-title {
   font-family: var(--font-display);
-  font-size: 22px;
+  font-size: 1.25rem;
   line-height: 1.05;
   color: var(--color-ink);
 }
@@ -3197,7 +3197,7 @@
   font-family: var(--font-display);
   font-style: italic;
   font-weight: 400;
-  font-size: 1.375rem;
+  font-size: 1.25rem;
   line-height: 1.1;
   color: var(--color-ink);
   letter-spacing: -0.01em;
@@ -3347,7 +3347,7 @@
   font-family: var(--font-display);
   font-style: italic;
   font-weight: 400;
-  font-size: 52px;
+  font-size: 3rem;
   line-height: 1;
   color: var(--color-ink);
   letter-spacing: -0.03em;

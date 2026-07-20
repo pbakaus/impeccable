@@ -5,7 +5,7 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -388,5 +388,72 @@ const title = 'Test';
     runInject(tmp, cfgPath, ['--remove']);
     const afterRemove = readFileSync(file, 'utf-8');
     assert.equal(afterRemove, original, 'CRLF file should round-trip cleanly after remove');
+  });
+
+  it('uses an idempotent dev-only client plugin for a Nuxt 4 app directory', () => {
+    const configSource = `export default defineNuxtConfig({\n  devtools: { enabled: false },\n});\n`;
+    const appSource = `<template>\n  <NuxtPage />\n</template>\n`;
+    writeFileSync(join(tmp, 'nuxt.config.ts'), configSource);
+    mkdirSync(join(tmp, 'app'), { recursive: true });
+    writeFileSync(join(tmp, 'app', 'app.vue'), appSource);
+
+    const cfgPath = join(tmp, 'config.json');
+    writeFileSync(cfgPath, JSON.stringify({
+      files: ['app/app.vue'],
+      insertBefore: '</template>',
+      commentSyntax: 'html',
+    }));
+
+    const first = runInject(tmp, cfgPath, ['--port', '8400']);
+    const pluginPath = join(tmp, 'app', 'plugins', 'impeccable-live.client.ts');
+    const firstPlugin = readFileSync(pluginPath, 'utf-8');
+    assert.equal(first.ok, true);
+    assert.equal(first.adapter, 'nuxt');
+    assert.equal(first.results[0].file, 'app/plugins/impeccable-live.client.ts');
+    assert.equal(first.results[0].changed, true);
+    assert.match(firstPlugin, /if \(!import\.meta\.dev/);
+    assert.match(firstPlugin, /data-impeccable-live-nuxt/);
+    assert.match(firstPlugin, /localhost:8400\/live\.js/);
+    assert.equal(readFileSync(join(tmp, 'nuxt.config.ts'), 'utf-8'), configSource, 'Nuxt config remains user-owned');
+    assert.equal(readFileSync(join(tmp, 'app', 'app.vue'), 'utf-8'), appSource, 'app.vue remains user-owned');
+
+    const second = runInject(tmp, cfgPath, ['--port', '8400']);
+    assert.equal(second.ok, true);
+    assert.equal(second.results[0].changed, false, 'same-port reinjection is byte-idempotent');
+    assert.equal(readFileSync(pluginPath, 'utf-8'), firstPlugin);
+
+    const moved = runInject(tmp, cfgPath, ['--port', '8401']);
+    assert.equal(moved.ok, true);
+    assert.equal(moved.results[0].changed, true);
+    assert.match(readFileSync(pluginPath, 'utf-8'), /localhost:8401\/live\.js/);
+    assert.doesNotMatch(readFileSync(pluginPath, 'utf-8'), /localhost:8400\/live\.js/);
+
+    const removed = runInject(tmp, cfgPath, ['--remove']);
+    assert.equal(removed.ok, true);
+    assert.equal(removed.adapter, 'nuxt');
+    assert.equal(removed.results[0].removed, true);
+    assert.equal(existsSync(pluginPath), false);
+    assert.equal(readFileSync(join(tmp, 'nuxt.config.ts'), 'utf-8'), configSource);
+    assert.equal(readFileSync(join(tmp, 'app', 'app.vue'), 'utf-8'), appSource);
+  });
+
+  it('respects a literal Nuxt srcDir and never overwrites a user plugin', () => {
+    writeFileSync(join(tmp, 'nuxt.config.ts'), `export default defineNuxtConfig({ srcDir: 'client/' });\n`);
+    mkdirSync(join(tmp, 'client', 'plugins'), { recursive: true });
+    const pluginPath = join(tmp, 'client', 'plugins', 'impeccable-live.client.ts');
+    const userPlugin = `export default defineNuxtPlugin(() => {});\n`;
+    writeFileSync(pluginPath, userPlugin);
+    const cfgPath = join(tmp, 'config.json');
+    writeFileSync(cfgPath, JSON.stringify({
+      files: ['client/app.vue'],
+      insertBefore: '</template>',
+      commentSyntax: 'html',
+    }));
+
+    const result = runInject(tmp, cfgPath, ['--port', '8400']);
+    assert.equal(result.ok, false);
+    assert.equal(result.adapter, 'nuxt');
+    assert.equal(result.results[0].error, 'nuxt_plugin_conflict');
+    assert.equal(readFileSync(pluginPath, 'utf-8'), userPlugin);
   });
 });

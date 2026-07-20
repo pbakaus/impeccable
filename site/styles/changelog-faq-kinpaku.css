@@ -37,7 +37,7 @@
 }
 
 .cf-lede {
-  font-size: 1.05rem;
+  font-size: 1.125rem;
   line-height: 1.65;
   color: var(--ks-text);
   margin: 0 0 clamp(28px, 4vw, 40px);
@@ -158,7 +158,7 @@
 .cf-entry-lead {
   margin: 0 0 20px;
   color: var(--ks-champagne);
-  font-size: 1.05rem;
+  font-size: 1.125rem;
   line-height: 1.5;
 }
 
@@ -240,7 +240,7 @@
 .cf-stat-num {
   font-family: var(--ks-font-display);
   font-weight: var(--ks-type-display-weight);
-  font-size: clamp(2.2rem, 5vw, 3rem);
+  font-size: clamp(2rem, 5vw, 3rem);
   line-height: 1;
   color: var(--ks-kinpaku);
 }
@@ -294,7 +294,7 @@
   top: 50%;
   transform: translateY(-50%);
   color: var(--ks-patina);
-  font-size: 1.4rem;
+  font-size: 1.5rem;
   line-height: 1;
   transition: transform 160ms ease;
 }

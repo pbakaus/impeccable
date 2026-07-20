@@ -78,6 +78,20 @@ function parseScope(args, { allowAll = false } = {}) {
   return { local, all, rest };
 }
 
+// An empty glob used to be dropped by filter(Boolean), so `--file=` reported
+// success and wrote an entry with no files: the user asked to scope a rule to one
+// file and silently got the project-wide suppression instead. Refuse it.
+function requireGlob(raw, flag) {
+  const glob = String(raw ?? '').trim();
+  if (!glob) throw new Error(`${flag} requires a non-empty glob`);
+  // A following flag is not a glob. `--file --reason "why"` consumed `--reason`
+  // as the scope and left the reason text to fold into the value, storing
+  // value="* why" files=["--reason"] and reporting success. Same silent-no-op
+  // class as an unknown flag folding into the value; refuse it the same way.
+  if (glob.startsWith('--')) throw new Error(`${flag} requires a glob, got the flag ${glob}`);
+  return glob;
+}
+
 function parseValueArgs(args, { allowUnscopedWildcard = false } = {}) {
   const positionals = [];
   const files = [];
@@ -93,11 +107,11 @@ function parseValueArgs(args, { allowUnscopedWildcard = false } = {}) {
       reason = arg.slice('--reason='.length).trim();
     } else if (arg === '--file' || arg === '--files') {
       if (i + 1 >= args.length) throw new Error(`${arg} requires a glob`);
-      files.push(String(args[++i]).trim());
+      files.push(requireGlob(args[++i], arg));
     } else if (arg.startsWith('--file=')) {
-      files.push(arg.slice('--file='.length).trim());
+      files.push(requireGlob(arg.slice('--file='.length), '--file'));
     } else if (arg.startsWith('--files=')) {
-      files.push(arg.slice('--files='.length).trim());
+      files.push(requireGlob(arg.slice('--files='.length), '--files'));
     } else if (arg.startsWith('--')) {
       throw new Error(`Unknown add-value flag: ${arg}`);
     } else {
@@ -108,7 +122,9 @@ function parseValueArgs(args, { allowUnscopedWildcard = false } = {}) {
   const [rule, ...valueParts] = positionals;
   const value = normalizeIgnoreValue(valueParts.join(' '));
   if (!rule || !value) throw new Error('Pass a rule id and value, e.g. impeccable ignores add-value overused-font Inter');
-  const scopedFiles = Array.from(new Set(files.filter(Boolean)));
+  // Sorted: the dedup key compares the files array, so an unsorted scope made
+  // `--file b.css --file a.css` a different entry from `--file a.css --file b.css`.
+  const scopedFiles = Array.from(new Set(files.filter(Boolean))).sort();
   if (value === '*' && scopedFiles.length === 0 && !allowUnscopedWildcard) {
     throw new Error('Wildcard value ignores must be scoped with --file <glob>.');
   }
@@ -226,12 +242,14 @@ function addValue(cwd, args) {
     if (parsed.reason) existing.reason = parsed.reason;
     if (parsed.files.length) existing.files = parsed.files;
   } else {
+    // rule, value, files, createdAt, reason — the same order the normalizers emit,
+    // so a fresh entry survives the next write untouched.
     const entry = {
       rule: parsed.rule,
       value: parsed.value,
-      createdAt: new Date().toISOString(),
     };
     if (parsed.files.length) entry.files = parsed.files;
+    entry.createdAt = new Date().toISOString();
     if (parsed.reason) entry.reason = parsed.reason;
     config.ignoreValues.push(entry);
   }
@@ -299,7 +317,10 @@ function clear(cwd, args) {
 }
 
 function ignoreValueKey(entry) {
-  const files = Array.isArray(entry.files) && entry.files.length ? entry.files.join('\x1f') : '';
+  // Sorted: a file scope is a set. Comparing stored order made an on-disk scope
+  // miss the sorted argv form, so a re-add duplicated the entry and a remove
+  // silently failed. Every key that hashes `files` must sort — there are four.
+  const files = Array.isArray(entry.files) && entry.files.length ? [...entry.files].sort().join('\x1f') : '';
   return `${String(entry.rule || '').trim().toLowerCase()}\0${normalizeIgnoreValue(entry.value)}\0${files}`;
 }
 

@@ -118,24 +118,24 @@
 	--ks-type-headline-line:   1.04;
 
 	/* Title — card and panel headings (h3). */
-	--ks-type-title-size:   1.18rem;
+	--ks-type-title-size:   1.125rem;
 	--ks-type-title-weight: 500;
 	--ks-type-title-line:   1.35;
 
 	/* Body. */
-	--ks-type-body-size: 1.02rem;
+	--ks-type-body-size: 1rem;
 	--ks-type-body-line: 1.8;
 
 	/* Eyebrow — small mono labels above titles. */
-	--ks-type-eyebrow-size:  0.7rem;
+	--ks-type-eyebrow-size:  0.6875rem;
 	--ks-type-eyebrow-track: 0.18em;
 
 	/* Wordmark — IMPECCABLE in the header. */
-	--ks-type-wordmark-size:  1.15rem;
-	--ks-type-wordmark-track: 0.42em;
+	--ks-type-wordmark-size:  1.125rem;
+	--ks-type-wordmark-track: 0.15em;
 
 	/* Mono — code, terminal, audit lines. */
-	--ks-type-mono-size:  0.72rem;
+	--ks-type-mono-size:  0.6875rem;
 	--ks-type-mono-track: 0.22em;
 
 	/* ============================================================

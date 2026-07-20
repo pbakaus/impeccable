@@ -103,12 +103,46 @@ colors:
   success-soft: "oklch(95% 0.05 145)"
 
 typography:
+  scale:
+    # The enumerated type ramp, at a 16px root. Keys are the px value; values
+    # are the rem form to author with. Every literal font-size in the codebase
+    # lands on one of these steps, and the detector allows +/-0.5px around each,
+    # so the px and rem spellings of a step are interchangeable.
+    #
+    # The named roles below pick from this ramp. The two fluid roles (display,
+    # headline) are the exception: they interpolate between clamp endpoints and
+    # are free to land between steps, which is what makes them fluid.
+    #
+    # Adding a step is a design decision, not a convenience. The tail this ramp
+    # replaced had 86 distinct sizes, including six near-identical steps between
+    # 13.7px and 15.4px that no reader could tell apart.
+    "8": "0.5rem"        # decorative micro-type: badges, superscript markers
+    "9": "0.5625rem"     # dense chrome, viz tick labels
+    "10": "0.625rem"     # overline, smallest legible caps
+    "11": "0.6875rem"    # eyebrow, badge, tag
+    "12": "0.75rem"      # meta lines, table chrome, inline code
+    "13": "0.8125rem"    # secondary UI text, card meta
+    "14": "0.875rem"     # dense body, list rows, controls
+    "15": "0.9375rem"    # long-form secondary text
+    "16": "1rem"         # default body
+    "18": "1.125rem"     # lead paragraph, card heading
+    "20": "1.25rem"      # card and panel titles
+    "24": "1.5rem"       # subsection heads
+    "28": "1.75rem"      # section heads
+    "32": "2rem"         # large section heads
+    "40": "2.5rem"       # sub-display
+    "48": "3rem"         # small display
+    "56": "3.5rem"       # display
+    "64": "4rem"         # large display
+    "72": "4.5rem"       # hero display
+    "80": "5rem"         # hero display, wide viewports
+    "88": "5.5rem"       # largest hero display
   wordmark:
     # Alumni Sans (token --ks-font-wordmark), the same face as display, held
     # at weight 400 for the small brand lockup where the thin display cut
     # would read too light.
     fontFamily: "Alumni Sans, Albert Sans, Arial, sans-serif"
-    fontSize: "1.3rem"
+    fontSize: "1.125rem"
     fontWeight: 400
     letterSpacing: "0.15em"
     lineHeight: 1
@@ -126,22 +160,22 @@ typography:
     lineHeight: 1.04
   title:
     fontFamily: "Albert Sans, Avenir Next, Helvetica Neue, Arial, system-ui, sans-serif"
-    fontSize: "1.18rem"
+    fontSize: "1.125rem"
     fontWeight: 500
     lineHeight: 1.35
   body:
     fontFamily: "Albert Sans, Avenir Next, Helvetica Neue, Arial, system-ui, sans-serif"
-    fontSize: "1.02rem"
+    fontSize: "1rem"
     fontWeight: 400
     lineHeight: 1.8
   eyebrow:
     fontFamily: "SFMono-Regular, Roboto Mono, Consolas, monospace"
-    fontSize: "0.7rem"
+    fontSize: "0.6875rem"
     fontWeight: 500
     letterSpacing: "0.18em"
   mono:
     fontFamily: "SFMono-Regular, Roboto Mono, Consolas, monospace"
-    fontSize: "0.72rem"
+    fontSize: "0.6875rem"
     fontWeight: 500
     letterSpacing: "0.22em"
 

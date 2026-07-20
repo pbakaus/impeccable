@@ -39,8 +39,8 @@
   color: var(--ks-kinpaku);
   font-family: var(--ks-font-wordmark);
   font-weight: 400;
-  font-size: 1.3rem;
-  letter-spacing: 0.15em;
+  font-size: var(--ks-type-wordmark-size);
+  letter-spacing: var(--ks-type-wordmark-track);
   text-transform: uppercase;
   line-height: 1;
   -webkit-font-smoothing: auto;
@@ -81,7 +81,7 @@
   margin: 0;
   color: var(--ks-champagne);
   font-family: var(--ks-font-display);
-  font-size: clamp(2.2rem, 3.6vw, 3rem);
+  font-size: clamp(2rem, 3.6vw, 3rem);
   font-weight: var(--ks-type-headline-weight);
   line-height: 1.06;
   letter-spacing: -0.005em;
@@ -883,8 +883,8 @@
   color: var(--ks-kinpaku);
   font-family: var(--ks-font-wordmark);
   font-weight: 400;
-  font-size: 1.3rem;
-  letter-spacing: 0.15em;
+  font-size: var(--ks-type-wordmark-size);
+  letter-spacing: var(--ks-type-wordmark-track);
   text-transform: uppercase;
   line-height: 1;
   /* main.css / sub-pages.css set -webkit-font-smoothing: antialiased on

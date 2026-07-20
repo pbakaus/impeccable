@@ -28,8 +28,10 @@ import {
   readLiveBrowserScriptParts,
   resolveLiveBrowserScriptParts,
 } from './live/browser-script-parts.mjs';
-import { createLiveSessionStore } from './live/session-store.mjs';
+import { createLiveSessionStore, GENERATION_FENCED_PHASES } from './live/session-store.mjs';
+import { runGenerationPreflight } from './live/generation-preflight.mjs';
 import { validateEvent } from './live/event-validation.mjs';
+import { selectAvailablePendingEvent } from './live/poll-lanes.mjs';
 import { createManualEditRoutes } from './live/manual-edit-routes.mjs';
 import { LIVE_COMMANDS } from './live/vocabulary.mjs';
 import {
@@ -63,6 +65,10 @@ const DESIGN_MD_PATH = PROJECT_CONTEXT.designPath
   : null;
 const DEFAULT_POLL_TIMEOUT = 600_000;   // 10 min — agent re-polls on timeout anyway
 const SSE_HEARTBEAT_INTERVAL = 30_000;  // keepalive ping every 30s
+// The browser checkpoints for several unrelated reasons (see checkpointPayload
+// in live-browser.js). Only these two report that variant availability changed,
+// and only they may drive variant_progress / the *_reviewable phases.
+const VARIANT_PROGRESS_CHECKPOINT_REASONS = new Set(['variants_progress', 'variants_ready']);
 
 // ---------------------------------------------------------------------------
 // Port detection
@@ -156,29 +162,206 @@ function restorePendingEventsFromStore() {
   }
 }
 
-function findAvailablePendingEvent(now = Date.now()) {
-  for (const entry of state.pendingEvents) {
-    if (entry.leaseUntil && entry.leaseUntil > now) continue;
-    return entry;
-  }
-  return null;
+function findAvailablePendingEvent(now = Date.now(), types = null) {
+  return selectAvailablePendingEvent(state.pendingEvents, { now, types });
 }
 
-function leaseEvent(entry, leaseMs) {
+async function leaseEvent(entry, leaseMs) {
+  // Claim the entry before awaiting anything. prepareGenerateEventForLease
+  // yields to the event loop, and selectAvailablePendingEvent only skips
+  // entries whose lease is in the future — an unclaimed entry would be handed
+  // to a second poll in that window and generated twice.
+  entry.leaseUntil = Date.now() + leaseMs;
+  await prepareGenerateEventForLease(entry);
   if (!entry.event?.id) {
     const idx = state.pendingEvents.indexOf(entry);
     if (idx !== -1) state.pendingEvents.splice(idx, 1);
     return entry.event;
   }
+  // Re-stamp so the lease window starts when the agent actually receives the
+  // work, not when scaffolding began.
   entry.leaseUntil = Date.now() + leaseMs;
+  recordGenerateDelivery(entry);
   scheduleLeaseFlush();
   broadcastAgentPollingIfChanged();
   return entry.event;
 }
 
-function acknowledgePendingEvent(id) {
+function recordGenerateDelivery(entry) {
+  const event = entry?.event;
+  if (!event || event.type !== 'generate' || event.generationReadyAt) return;
+  const at = Date.now();
+  entry.event = { ...event, generationReadyAt: at };
+  state.sessionStore?.appendEvent(entry.event);
+  recordAgentPhase(event.id, 'generation_ready', { at });
+}
+
+async function prepareGenerateEventForLease(entry) {
+  const event = entry?.event;
+  if (!event || event.type !== 'generate' || event.scaffoldAttempted) return;
+
+  recordAgentPhase(event.id, 'picked_up');
+  recordAgentPhase(event.id, 'scaffolding');
+  const result = await runGenerationPreflight(event, {
+    cwd: process.cwd(),
+    scriptsDir: __dirname,
+  });
+  entry.event = {
+    ...event,
+    scaffoldAttempted: true,
+    scaffoldDurationMs: result.durationMs ?? null,
+    ...(result.ok ? { scaffold: result.scaffold } : { scaffoldError: result.error || result.reason }),
+  };
+  state.sessionStore?.appendEvent(entry.event);
+  recordAgentPhase(event.id, result.ok ? 'source_ready' : 'scaffold_fallback', {
+    durationMs: result.durationMs ?? null,
+    previewMode: result.scaffold?.previewMode || 'source',
+  });
+}
+
+function recordAgentPhase(id, phase, details = {}) {
+  if (!id) return;
+  const event = {
+    type: 'agent_phase',
+    id,
+    phase,
+    at: Date.now(),
+    ...details,
+  };
+  state.sessionStore?.appendEvent(event);
+  broadcast(event);
+}
+
+/**
+ * Detect a browser that missed the generation `done` broadcast.
+ *
+ * The preflight scaffold write triggers a framework full-reload (Astro reloads
+ * the page for any .astro edit). If the agent's variant write + `done` land
+ * while the browser is mid-reload, the new page misses both the second HMR
+ * reload and the SSE `done` — it resumes from the scaffold-only source and
+ * sits in GENERATING at 0/N forever. That resumed page always checkpoints
+ * (`browser_resumed`), so a checkpoint claiming "still generating, variants
+ * missing" for a session whose generation already completed is direct
+ * evidence of the miss. Rebuild the `done` payload from the snapshot so the
+ * caller can re-broadcast it; the browser's done handler is idempotent and
+ * falls back to injecting variants from source.
+ *
+ * Keys on the store's monotone `generationCompletedAt`, not `phase` — the
+ * behind checkpoint itself regresses `phase` to `generating`, and a browser
+ * that misses the redelivered `done` too (another reload) must still trigger
+ * redelivery from its next checkpoint.
+ */
+function detectMissedGenerationCompletion(event) {
+  if (!event?.id || event.type !== 'checkpoint') return null;
+  if (event.phase !== 'generating') return null;
+  if (!variantCountLooksBehind(event.arrivedVariants, event.expectedVariants)) return null;
+  if (!state.sessionStore) return null;
+  let snapshot = null;
+  try {
+    snapshot = state.sessionStore.getSnapshot(event.id);
+  } catch {
+    return null;
+  }
+  return missedCompletionFromSnapshot(snapshot);
+}
+
+function variantCountLooksBehind(arrivedValue, expectedValue) {
+  const arrived = Number(arrivedValue) || 0;
+  const expected = Number(expectedValue) || 0;
+  return arrived <= 0 || (expected > 0 && arrived < expected);
+}
+
+function missedCompletionFromSnapshot(snapshot) {
+  if (!snapshot?.id || !snapshot.generationCompletedAt) return null;
+  if (snapshot.generationCanceled) return null;
+  // Accept/discard already underway: the browser is no longer waiting on
+  // generation, and a late `done` there would collide with teardown.
+  if (GENERATION_FENCED_PHASES.has(snapshot.phase)) return null;
+  const file = snapshot.sourceFile || snapshot.previewFile;
+  if (!file) return null;
+  return {
+    type: 'done',
+    id: snapshot.id,
+    file,
+    sourceFile: snapshot.sourceFile || undefined,
+    previewFile: snapshot.previewFile || undefined,
+    previewMode: snapshot.previewMode || undefined,
+    redelivered: true,
+  };
+}
+
+function recordGenerationCheckpoint(event) {
+  if (!event?.id || event.type !== 'checkpoint') return;
+  if (generationIsFenced(event.id)) return;
+  // Only checkpoints that report a change in variant availability are
+  // generation progress. The browser also checkpoints for durability on Tune
+  // slider drags, resumes, and anchor recovery; treating those as progress
+  // echoed `variant_progress` straight back to the browser that sent it, which
+  // remounts the component preview mid-drag (reverting the user's live param
+  // edit and detaching the popover's element), and permanently latched the
+  // *_reviewable phases from the wrong trigger, corrupting generation timings.
+  if (!VARIANT_PROGRESS_CHECKPOINT_REASONS.has(event.reason)) return;
+  const arrived = Number(event.arrivedVariants) || 0;
+  const expected = Number(event.expectedVariants) || 0;
+  if (arrived <= 0 || expected <= 0) return;
+  const previewMode = event.previewMode || 'source';
+  const previewFile = event.previewFile || event.file;
+  if (previewFile) {
+    broadcast({
+      type: 'variant_progress',
+      id: event.id,
+      file: previewFile,
+      sourceFile: event.sourceFile || (previewMode === 'source' ? previewFile : undefined),
+      previewFile,
+      previewMode,
+      arrivedVariants: arrived,
+      expectedVariants: expected,
+      publicationKind: event.publicationKind || 'variants',
+    });
+  }
+  const details = {
+    arrivedVariants: arrived,
+    expectedVariants: expected,
+    checkpointReason: event.reason || null,
+  };
+  const at = Date.now();
+  if (!generationPhaseAlreadyRecorded(event.id, 'first_reviewable')) {
+    recordAgentPhase(event.id, 'first_reviewable', { ...details, at });
+  }
+  if (arrived >= 2 && expected >= 3 && !generationPhaseAlreadyRecorded(event.id, 'second_reviewable')) {
+    recordAgentPhase(event.id, 'second_reviewable', { ...details, at });
+  }
+  if (arrived >= expected && !generationPhaseAlreadyRecorded(event.id, 'all_variants_ready')) {
+    recordAgentPhase(event.id, 'all_variants_ready', { ...details, at });
+  }
+}
+
+function generationIsFenced(id) {
+  if (!state.sessionStore || !id) return false;
+  try {
+    const snapshot = state.sessionStore.getSnapshot(id, { includeCompleted: true });
+    return snapshot?.generationCanceled === true;
+  } catch {
+    return false;
+  }
+}
+
+function generationPhaseAlreadyRecorded(id, phase) {
+  if (!state.sessionStore) return false;
+  try {
+    const snapshot = state.sessionStore.getSnapshot(id, { includeCompleted: true });
+    return !!snapshot?.generationTimings?.[phase];
+  } catch {
+    return false;
+  }
+}
+
+function acknowledgePendingEvent(id, sourceEventType) {
   if (!id) return false;
-  const idx = state.pendingEvents.findIndex((entry) => entry.event?.id === id);
+  const idx = state.pendingEvents.findIndex((entry) => (
+    entry.event?.id === id
+    && (!sourceEventType || entry.event?.type === sourceEventType)
+  ));
   if (idx === -1) return false;
   const acknowledged = state.pendingEvents[idx].event;
   state.pendingEvents.splice(idx, 1);
@@ -187,9 +370,39 @@ function acknowledgePendingEvent(id) {
   return acknowledged;
 }
 
-function findPendingEventById(id) {
+function releasePendingEvent(id, sourceEventType) {
+  const entry = state.pendingEvents.find((item) => (
+    item.event?.id === id
+    && (!sourceEventType || item.event?.type === sourceEventType)
+  ));
+  if (!entry) return null;
+  entry.leaseUntil = 0;
+  scheduleLeaseFlush();
+  return entry.event;
+}
+
+function retirePendingGeneration(id) {
+  if (!id) return 0;
+  let retired = 0;
+  for (let index = state.pendingEvents.length - 1; index >= 0; index -= 1) {
+    const event = state.pendingEvents[index]?.event;
+    if (event?.id !== id || event.type !== 'generate') continue;
+    state.pendingEvents.splice(index, 1);
+    retired += 1;
+  }
+  if (retired > 0) {
+    scheduleLeaseFlush();
+    broadcastAgentPollingIfChanged();
+  }
+  return retired;
+}
+
+function findPendingEventById(id, sourceEventType) {
   if (!id) return null;
-  const entry = state.pendingEvents.find((item) => item.event?.id === id);
+  const entry = state.pendingEvents.find((item) => (
+    item.event?.id === id
+    && (!sourceEventType || item.event?.type === sourceEventType)
+  ));
   return entry?.event || null;
 }
 
@@ -198,7 +411,7 @@ function summarizePendingEventForStatus(entry) {
   const summary = {
     id: event.id,
     type: event.type,
-    leased: !!(entry.leaseUntil && entry.leaseUntil > Date.now()),
+    leased: isLeased(entry),
     leaseUntil: entry.leaseUntil || null,
   };
   if (event.type === 'manual_edit_apply') {
@@ -224,7 +437,13 @@ function summarizeActiveSessionForClient(snapshot = {}) {
     arrivedVariants: snapshot.arrivedVariants ?? 0,
     visibleVariant: snapshot.visibleVariant ?? null,
     checkpointRevision: snapshot.checkpointRevision ?? 0,
+    browserCheckpointRevision: snapshot.browserCheckpointRevision ?? snapshot.checkpointRevision ?? 0,
+    publicationCheckpointRevision: snapshot.publicationCheckpointRevision ?? 0,
     paramValues: snapshot.paramValues || {},
+    generationPhase: snapshot.generationPhase ?? null,
+    generationCompletedAt: snapshot.generationCompletedAt ?? null,
+    generationCanceled: snapshot.generationCanceled === true,
+    cancelReason: snapshot.cancelReason ?? null,
   };
 }
 
@@ -269,24 +488,46 @@ function scheduleLeaseFlush() {
 function flushPendingPolls() {
   let changed = false;
   while (state.pendingPolls.length > 0) {
-    const entry = findAvailablePendingEvent();
+    let pollIndex = -1;
+    let entry = null;
+    for (let index = 0; index < state.pendingPolls.length; index += 1) {
+      const candidate = findAvailablePendingEvent(Date.now(), state.pendingPolls[index].types);
+      if (!candidate) continue;
+      pollIndex = index;
+      entry = candidate;
+      break;
+    }
     if (!entry) {
       scheduleLeaseFlush();
       broadcastAgentPollingIfChanged();
       return;
     }
-    const poll = state.pendingPolls.shift();
-    poll.resolve(leaseEvent(entry, poll.leaseMs));
+    const [poll] = state.pendingPolls.splice(pollIndex, 1);
+    // leaseEvent is async (it may scaffold source), but it claims the entry
+    // synchronously, so the next loop iteration will not re-select it. Resolve
+    // the poll when the lease settles rather than awaiting here, so one slow
+    // scaffold never delays the other parked polls. On the exceptional failure
+    // path, answer `timeout` so the agent re-polls; the claim stays until the
+    // lease expires, which keeps a deterministic failure from hot-looping.
+    leaseEvent(entry, poll.leaseMs).then(poll.resolve, (error) => {
+      console.error('[live] lease failed for ' + (entry.event?.id || 'unknown') + ': ' + (error?.message || error));
+      poll.resolve({ type: 'timeout' });
+    });
     changed = true;
   }
   scheduleLeaseFlush();
   if (changed) broadcastAgentPollingIfChanged();
 }
 
+function isLeased(entry) {
+  return !!(entry?.leaseUntil && entry.leaseUntil > Date.now());
+}
+
 function agentPollingConnected() {
-  const now = Date.now();
-  return state.pendingPolls.length > 0
-    || state.pendingEvents.some((entry) => entry.leaseUntil && entry.leaseUntil > now);
+  // A leased event only proves that a poll returned once. The foreground task
+  // may have ended immediately afterward, so only an actively waiting poll is
+  // evidence that steering can wake the task right now.
+  return state.pendingPolls.length > 0;
 }
 
 function broadcastAgentPollingIfChanged() {
@@ -689,6 +930,16 @@ function createRequestHandler({ detectScript, liveScriptParts }) {
           res.end(JSON.stringify({ error }));
           return;
         }
+        if (msg.type === 'agent_phase') {
+          recordAgentPhase(msg.id, msg.phase, {
+            ...(Number.isFinite(msg.durationMs) ? { durationMs: msg.durationMs } : {}),
+            owner: typeof msg.owner === 'string' ? msg.owner : undefined,
+          });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true }));
+          return;
+        }
+        const missedCompletion = detectMissedGenerationCompletion(msg);
         if (state.sessionStore && msg.id) {
           try {
             state.sessionStore.appendEvent(msg);
@@ -698,6 +949,11 @@ function createRequestHandler({ detectScript, liveScriptParts }) {
             return;
           }
         }
+        if (msg.type === 'accept' || msg.type === 'discard') {
+          retirePendingGeneration(msg.id);
+        }
+        recordGenerationCheckpoint(msg);
+        if (missedCompletion) broadcast(missedCompletion);
         if (msg.type === 'exit') {
           cleanupSvelteComponentSessionsBeforeExit();
         }
@@ -738,6 +994,12 @@ function createRequestHandler({ detectScript, liveScriptParts }) {
 // Agent poll endpoints (unchanged from WS version)
 // ---------------------------------------------------------------------------
 
+function parsePollTypes(value) {
+  if (!value) return null;
+  const types = String(value).split(',').map((type) => type.trim()).filter(Boolean);
+  return types.length > 0 ? new Set(types) : null;
+}
+
 function handlePollGet(req, res, url) {
   const token = url.searchParams.get('token');
   if (token !== state.token) {
@@ -748,13 +1010,25 @@ function handlePollGet(req, res, url) {
   state.lastPollAt = Date.now();
   const timeout = parseInt(url.searchParams.get('timeout') || DEFAULT_POLL_TIMEOUT, 10);
   const leaseMs = parseInt(url.searchParams.get('leaseMs') || '30000', 10);
-  const available = findAvailablePendingEvent();
+  const types = parsePollTypes(url.searchParams.get('types'));
+  const available = findAvailablePendingEvent(Date.now(), types);
   if (available) {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(leaseEvent(available, leaseMs)));
+    // Do not await inline: leaseEvent may scaffold source, and this handler runs
+    // on the server's only thread. The client can disconnect during that window,
+    // so check the socket before replying.
+    leaseEvent(available, leaseMs).then((event) => {
+      if (res.writableEnded || res.destroyed) return;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(event));
+    }, (error) => {
+      console.error('[live] lease failed for ' + (available.event?.id || 'unknown') + ': ' + (error?.message || error));
+      if (res.writableEnded || res.destroyed) return;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ type: 'timeout' }));
+    });
     return;
   }
-  const poll = { resolve, leaseMs };
+  const poll = { resolve, leaseMs, types };
   const timer = setTimeout(() => {
     const idx = state.pendingPolls.indexOf(poll);
     if (idx !== -1) state.pendingPolls.splice(idx, 1);
@@ -783,12 +1057,15 @@ function sessionFileMetadataFromPollReply(file) {
   if (!file || typeof file !== 'string') return { file };
   const normalized = file.split(path.sep).join('/');
   const base = { file: normalized };
-  if (!normalized.endsWith('/manifest.json') && normalized !== 'manifest.json') return base;
-  if (!normalized.includes('node_modules/.impeccable-live/') && !normalized.includes('src/lib/impeccable/')) return base;
+  const metadataFile = normalized;
+  if (!metadataFile.endsWith('/manifest.json') && metadataFile !== 'manifest.json') return base;
+  if (!metadataFile.includes('node_modules/.impeccable-live/')
+      && !metadataFile.includes('src/lib/impeccable/')
+      && !metadataFile.includes('/.impeccable-live/')) return base;
 
   let full;
   try {
-    full = path.resolve(process.cwd(), normalized);
+    full = path.resolve(process.cwd(), metadataFile);
     const rel = path.relative(process.cwd(), full);
     if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return base;
   } catch {
@@ -797,16 +1074,45 @@ function sessionFileMetadataFromPollReply(file) {
 
   try {
     const manifest = JSON.parse(fs.readFileSync(full, 'utf-8'));
-    if (manifest?.previewMode !== 'svelte-component' || !manifest.sourceFile) return base;
+    if (manifest?.previewMode !== 'svelte-component'
+        || !manifest.sourceFile) return base;
     return {
       file: String(manifest.sourceFile).split(path.sep).join('/'),
       sourceFile: String(manifest.sourceFile).split(path.sep).join('/'),
       previewFile: normalized,
-      previewMode: 'svelte-component',
+      previewMode: manifest.previewMode,
     };
   } catch {
     return base;
   }
+}
+
+function inferSourceEventType(msg = {}, pendingEvents = state.pendingEvents) {
+  const entriesForId = pendingEvents.filter((entry) => entry.event?.id === msg.id);
+  const pendingTypes = new Set(entriesForId.map((entry) => entry.event?.type));
+  if (msg.type === 'discarded' || msg.type === 'discard') return 'discard';
+  if (msg.type === 'complete') {
+    if (pendingTypes.has('carbonize_cleanup')) return 'carbonize_cleanup';
+    return pendingTypes.has('accept') ? 'accept' : (pendingTypes.has('generate') ? 'generate' : undefined);
+  }
+  if (msg.type === 'steer_done') return 'steer';
+  // `agent_done` can be the automatic acknowledgement for a carbonize Accept.
+  // New pollers send sourceEventType explicitly; default to generate only for
+  // older callers so a late worker cannot acknowledge a queued Accept.
+  if (msg.type === 'agent_done' || msg.type === 'done') return 'generate';
+  // `error` is reference/live.md's documented failure reply, and parseReplyArgs
+  // never sets sourceEventType on it (the poller is a fresh process that cannot
+  // know what it leased). Returning undefined here makes acknowledgePendingEvent
+  // match *any* event for this id: a stale generate worker's failure silently
+  // consumed the user's queued Accept, which was then never delivered to any
+  // agent and left the browser in SAVING forever. Attribute the failure to the
+  // event this agent actually holds a lease on, and otherwise to `generate` —
+  // never to a wildcard. If that generate was already retired by an Accept, the
+  // ack simply finds no match, which is the correct outcome for a stale reply.
+  if (msg.type === 'error') {
+    return entriesForId.find(isLeased)?.event?.type || 'generate';
+  }
+  return undefined;
 }
 
 function handlePollPost(req, res) {
@@ -869,7 +1175,23 @@ function handlePollPost(req, res) {
       res.end(JSON.stringify({ error: 'stale_manual_edit_apply_reply', ...rollback }));
       return;
     }
-    const pendingEventBeforeAck = findPendingEventById(msg.id);
+    const sourceEventType = msg.sourceEventType || inferSourceEventType(msg);
+    if (msg.type === 'retry') {
+      const releasedEvent = releasePendingEvent(msg.id, sourceEventType);
+      if (!releasedEvent) {
+        res.writeHead(msg.id ? 404 : 400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          error: msg.id ? 'unknown_poll_retry_id' : 'missing_poll_retry_id',
+          id: msg.id,
+        }));
+        return;
+      }
+      flushPendingPolls();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, released: true }));
+      return;
+    }
+    const pendingEventBeforeAck = findPendingEventById(msg.id, sourceEventType);
     if (pendingEventBeforeAck?.type === 'steer' && msg.type === 'steer_done'
         && !msg.file && !(typeof msg.message === 'string' && msg.message.trim())) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -879,7 +1201,7 @@ function handlePollPost(req, res) {
       }));
       return;
     }
-    const acknowledgedEvent = acknowledgePendingEvent(msg.id);
+    const acknowledgedEvent = acknowledgePendingEvent(msg.id, sourceEventType);
     let skipJournalReply = false;
     let existingSession = null;
     if (!acknowledgedEvent && state.sessionStore && msg.id) {
@@ -1083,7 +1405,10 @@ if (args.includes('--background')) {
         process.exit(0);
       }
     } catch { /* not ready yet */ }
-    await new Promise(r => setTimeout(r, 200));
+    // The detached child is typically listening in 35-45ms. A 200ms polling
+    // floor dominated configured cold Live startup; poll cheaply and return
+    // as soon as the child has written its ready record.
+    await new Promise(r => setTimeout(r, 5));
   }
   console.error('Timed out waiting for live server to start.');
   process.exit(1);

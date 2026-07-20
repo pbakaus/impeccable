@@ -101,7 +101,7 @@
 .hero-rebuild-body {
   margin: 0;
   color: var(--ks-text);
-  font-size: 1.05rem;
+  font-size: 1rem;
   line-height: 1.6;
   font-weight: 300;
   max-width: 56ch;
@@ -982,7 +982,7 @@ svg.downloads-rebuild-tab-logo {
 .home-kinpaku .downloads-rebuild-prompt {
   flex: none;
   font-family: var(--ks-mono);
-  font-size: 1.18rem;
+  font-size: 1.125rem;
   font-weight: 500;
   line-height: 1;
   color: var(--card-prompt);
@@ -1258,7 +1258,7 @@ svg.downloads-rebuild-tab-logo {
   color: var(--card-fg-strong);
   font-family: var(--ks-font);
   font-weight: 400;
-  font-size: 1.05rem;
+  font-size: 1rem;
 }
 
 .downloads-rebuild-extras span {
@@ -1330,7 +1330,7 @@ svg.downloads-rebuild-tab-logo {
   }
 
   .home-kinpaku .downloads-rebuild-prompt {
-    font-size: 1.05rem;
+    font-size: 1rem;
   }
 
   .home-kinpaku .downloads-rebuild-copy {
@@ -1568,7 +1568,7 @@ svg.downloads-rebuild-tab-logo {
   margin: 0;
   font-family: var(--h-serif);
   font-weight: 500;
-  font-size: 31px;
+  font-size: 2rem;
   line-height: 1.05;
   letter-spacing: -0.01em;
   color: oklch(98% 0.01 85);
@@ -1602,7 +1602,7 @@ svg.downloads-rebuild-tab-logo {
 .hotel-hero--slop .hotel-hero-title {
   font-family: ui-sans-serif, system-ui, sans-serif;
   font-weight: 800;
-  font-size: 27px;
+  font-size: 1.75rem;
   letter-spacing: -0.02em;
   color: oklch(32% 0.02 285);
 }
@@ -1715,7 +1715,7 @@ svg.downloads-rebuild-tab-logo {
   margin: 0;
   font-family: var(--h-serif);
   font-weight: 600;
-  font-size: 23px;
+  font-size: 1.5rem;
   line-height: 1.05;
   color: var(--c-ink);
 }
@@ -1778,7 +1778,7 @@ svg.downloads-rebuild-tab-logo {
 .hotel-card--slop .hotel-card-name {
   font-family: inherit;
   font-weight: 700;
-  font-size: 17px;
+  font-size: 1.125rem;
   letter-spacing: -0.01em;
   color: oklch(32% 0.02 290);
 }
@@ -1829,14 +1829,14 @@ svg.downloads-rebuild-tab-logo {
 }
 .hotel-card--2 .hotel-card-photo { display: none; }
 .hotel-card--2 .hotel-card-body { gap: 7px; padding: 22px 18px; align-items: center; }
-.hotel-card--2 .hotel-card-name { font-size: 30px; font-style: italic; }
+.hotel-card--2 .hotel-card-name { font-size: 2rem; font-style: italic; }
 .hotel-card--2 .hotel-card-foot {
   flex-direction: column;
   gap: 10px;
   border-top: 1px solid var(--h-line);
   margin-top: 12px;
 }
-.hotel-card--2 .hotel-card-price { font-size: 26px; }
+.hotel-card--2 .hotel-card-price { font-size: 1.5rem; }
 .hotel-card--2 .hotel-card-btn {
   background: transparent;
   color: var(--c-accent);
@@ -2018,7 +2018,7 @@ svg.downloads-rebuild-tab-logo {
   margin: 0;
   font-family: var(--ks-font-display);
   font-weight: var(--ks-type-headline-weight);
-  font-size: 1.18rem;
+  font-size: 1.125rem;
   color: var(--ks-champagne);
 }
 .live-how-copy {

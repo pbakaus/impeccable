@@ -424,7 +424,23 @@ export async function pickElement(page, selector, opts = {}) {
     if (visible) break;
     await resetPickMode(page);
     if (attempt === 2) {
-      await page.waitForSelector(BAR_ID, { state: 'visible', timeout: 1 });
+      const snapshot = await page.evaluate(({ selector, barSel, pickSel }) => {
+        const target = document.querySelector(selector);
+        const rect = target?.getBoundingClientRect();
+        const hit = rect ? document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2) : null;
+        const query = window.__impeccableLiveQuery || ((sel) => document.querySelector(sel));
+        const bar = query(barSel);
+        const pick = query(pickSel);
+        return {
+          liveState: window.__IMPECCABLE_LIVE_STATE__ || null,
+          target: target ? { tag: target.tagName, classes: target.className, rect: rect?.toJSON?.() || null } : null,
+          hit: hit ? { tag: hit.tagName, classes: hit.className, text: (hit.textContent || '').slice(0, 80) } : null,
+          pickActive: pick?.dataset.active || null,
+          bar: bar ? { display: bar.style.display, text: bar.textContent } : null,
+          debugState: window.__IMPECCABLE_LIVE_CHROME_CORE__?.debugState?.() || null,
+        };
+      }, { selector, barSel: BAR_ID, pickSel: PICK_TOGGLE_ID }).catch((error) => ({ error: error.message }));
+      throw new Error(`pick did not open configure bar for ${selector}: ${JSON.stringify(snapshot)}`);
     }
   }
   // Wait specifically for the Configure-row submit button to be in the bar.
@@ -528,6 +544,36 @@ export async function setCount(page, count) {
   throw new Error(`could not cycle count to ${count}`);
 }
 
+/** Select a named Impeccable sub-command from the configure-row picker. */
+export async function selectAction(page, action) {
+  const pickerSelector = '#impeccable-live-picker';
+  const opened = await page.evaluate(({ barSel, pickerSel }) => {
+    const query = window.__impeccableLiveQuery || ((selector) => document.querySelector(selector));
+    const bar = query(barSel);
+    const picker = query(pickerSel);
+    const actionControl = [...(bar?.querySelectorAll('button') || [])]
+      .find((button) => (button.textContent || '').includes('\u25BE'));
+    if (!actionControl || !picker) return false;
+    actionControl.click();
+    return true;
+  }, { barSel: BAR_ID, pickerSel: pickerSelector });
+  if (!opened) throw new Error('could not open Live action picker');
+
+  await page.waitForFunction((selector) => {
+    const picker = window.__impeccableLiveQuery(selector);
+    return picker && picker.style.display !== 'none';
+  }, pickerSelector, { timeout: 5_000 });
+
+  const selected = await page.evaluate(({ pickerSel, value }) => {
+    const picker = window.__impeccableLiveQuery(pickerSel);
+    const chip = picker?.querySelector(`button[data-action="${CSS.escape(value)}"]`);
+    if (!chip) return false;
+    chip.click();
+    return true;
+  }, { pickerSel: pickerSelector, value: action });
+  if (!selected) throw new Error(`Live action ${JSON.stringify(action)} is unavailable`);
+}
+
 /**
  * Click Go. Browser POSTs the generate event; the agent picks it up. Headed
  * browser runs can occasionally accept the click without leaving configure
@@ -578,7 +624,14 @@ export async function waitForCycling(page, expectedCount, { timeout = 30_000 } =
       // Counter format: "1/3", "2/3" etc. Look for any "i/N" with N matching.
       const m = text.match(/(\d+)\s*\/\s*(\d+)/);
       if (!m) return false;
-      return parseInt(m[2], 10) === expected;
+      const wrapper = window.__impeccableLiveQuery('[data-impeccable-variants]');
+      const debugState = window.__IMPECCABLE_LIVE_CHROME_CORE__?.debugState?.();
+      const arrived = /^(?:svelte|vue)-component$/.test(wrapper?.dataset.impeccablePreview || '')
+        ? Number(debugState?.arrivedVariants || 0)
+        : wrapper
+          ? wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])').length
+          : 0;
+      return parseInt(m[2], 10) === expected && arrived >= expected;
     },
     { barSel: BAR_ID, expected: expectedCount },
     { timeout },
@@ -590,7 +643,7 @@ export async function waitForCycling(page, expectedCount, { timeout = 30_000 } =
         const root = window.__IMPECCABLE_LIVE_CHROME_CORE__?.root?.() || window.__IMPECCABLE_LIVE_UI_ROOT__ || null;
         const bar = query(barSel);
         const toast = query('#impeccable-live-toast');
-        const wrapper = document.querySelector('[data-impeccable-variants]');
+        const wrapper = query('[data-impeccable-variants]');
         return {
           liveInit: window.__IMPECCABLE_LIVE_INIT__,
           adapter: window.__IMPECCABLE_LIVE_ADAPTER__,
@@ -751,7 +804,8 @@ async function ensureVisibleVariant(page, expectedVariant) {
  */
 export async function clickDiscard(page) {
   // The discard button has just a "✕" glyph as text content.
-  await page.locator(`${BAR_ID} button`, { hasText: '✕' }).click();
+  if (await dispatchBarButton(page, '✕')) return;
+  await clickBarButton(page, '✕');
 }
 
 export async function clickEditCopy(page) {

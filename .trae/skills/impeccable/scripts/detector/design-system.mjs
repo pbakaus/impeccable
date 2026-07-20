@@ -288,15 +288,74 @@ function addTypographyFonts(out, typography) {
   }
 }
 
+function addFontSizeStep(out, raw, { fluid = false } = {}) {
+  const text = String(raw ?? '').trim().toLowerCase();
+  if (!FONT_SIZE_LITERAL_RE.test(text)) return;
+  const px = resolveLengthPx(text, 16);
+  if (px == null || !Number.isFinite(px) || px <= 0) return;
+  out.allowedFontSizes.push({ value: text, px, fluid });
+}
+
+// Split a fluid value into its three terms, or null when it is not a
+// well-formed clamp(). Used both to read DESIGN.md's fluid roles and to
+// validate fluid values in source, so the two stay symmetric.
+function parseClampArgs(raw) {
+  const match = /^clamp\(\s*([\s\S]+)\s*\)$/i.exec(String(raw ?? '').trim());
+  if (!match) return null;
+  const args = splitTopLevelArgs(match[1]);
+  return args.length === 3 ? args : null;
+}
+
+// A fluid role declares its two fixed endpoints and interpolates between them
+// with a viewport unit. Both endpoints are documented sizes, so they belong in
+// the allowlist; the middle term is viewport-relative and never a fixed step.
+// Endpoints are marked `fluid` because they do not *enumerate* a ramp: see
+// `hasFontSizes` below for why that distinction has to survive.
+function addClampEndpoints(out, raw) {
+  const args = parseClampArgs(raw);
+  if (!args) return false;
+  addFontSizeStep(out, args[0], { fluid: true });
+  addFontSizeStep(out, args[2], { fluid: true });
+  return true;
+}
+
+function splitTopLevelArgs(s) {
+  const args = [];
+  let depth = 0;
+  let current = '';
+  for (const ch of String(s)) {
+    if (ch === '(') depth++;
+    else if (ch === ')') depth--;
+    if (ch === ',' && depth === 0) {
+      args.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim()) args.push(current.trim());
+  return args;
+}
+
 function addTypographySizes(out, typography) {
   if (!typography || typeof typography !== 'object') return;
-  for (const role of Object.values(typography)) {
+
+  // `scale` is the enumerated ramp: a name -> size map, since the frontmatter
+  // parser has no list support. It sits alongside the named roles.
+  const scale = typography.scale;
+  if (scale && typeof scale === 'object') {
+    for (const value of Object.values(scale)) {
+      if (typeof value !== 'string' && typeof value !== 'number') continue;
+      addFontSizeStep(out, value);
+    }
+  }
+
+  for (const [name, role] of Object.entries(typography)) {
+    if (name === 'scale') continue;
     if (!role || typeof role !== 'object') continue;
     const raw = String(role.fontSize ?? '').trim().toLowerCase();
-    if (!FONT_SIZE_LITERAL_RE.test(raw)) continue;
-    const px = resolveLengthPx(raw, 16);
-    if (px == null || !Number.isFinite(px) || px <= 0) continue;
-    out.allowedFontSizes.push({ value: raw, px });
+    if (addClampEndpoints(out, raw)) continue;
+    addFontSizeStep(out, raw);
   }
 }
 
@@ -371,7 +430,10 @@ function normalizeDesignSystem(input = {}) {
   out.hasFonts = out.allowedFonts.size > 0;
   out.hasColors = out.allowedColorKeys.size > 0;
   out.hasRadii = out.allowedRadii.length > 0;
-  out.hasFontSizes = out.allowedFontSizes.length > 0;
+  // Gate on *enumerated* steps only. A fully fluid system declares clamp
+  // endpoints but no discrete ramp, so treating those endpoints as the whole
+  // allowlist would flag every intermediate size. Abstain instead.
+  out.hasFontSizes = out.allowedFontSizes.some(entry => !entry.fluid);
   return out;
 }
 
@@ -438,15 +500,41 @@ function isAllowedRadiusRaw(raw, designSystem) {
   return designSystem.allowedRadii.some(entry => Math.abs(entry.px - px) <= RADIUS_TOLERANCE_PX);
 }
 
+// One term of a font-size value. `unjudgeable` covers var(), calc(), percentages
+// and units the ramp cannot resolve (em is parent-relative, not root-relative);
+// those abstain rather than guess.
+function fontSizeStepStatus(raw, designSystem) {
+  const text = String(raw || '').trim().toLowerCase();
+  if (!FONT_SIZE_LITERAL_RE.test(text)) return 'unjudgeable';
+  const px = resolveLengthPx(text, 16);
+  if (px == null || !Number.isFinite(px) || px <= 0) return 'unjudgeable';
+  return designSystem.allowedFontSizes.some(
+    entry => Math.abs(entry.px - px) <= FONT_SIZE_TOLERANCE_PX,
+  ) ? 'on-ramp' : 'off-ramp';
+}
+
+// The off-ramp endpoints of a fluid value, or null when `raw` is not a fluid
+// value at all. Only the min and max are judged: the viewport term interpolates
+// between them and is never a fixed step.
+//
+// Reading clamp endpoints as documented steps without also checking them in
+// usage would let `clamp(99rem, 1vw, 200rem)` through, which is how a fluid
+// declaration stayed invisible until someone measured computed styles.
+export function offRampClampEndpoints(raw, designSystem) {
+  if (!designSystem?.hasFontSizes) return null;
+  const args = parseClampArgs(String(raw || '').trim().replace(/\s*!important\s*$/i, ''));
+  if (!args) return null;
+  return [args[0], args[2]].filter(
+    endpoint => fontSizeStepStatus(endpoint, designSystem) === 'off-ramp',
+  );
+}
+
 function isAllowedFontSizeRaw(raw, designSystem) {
   if (!designSystem?.hasFontSizes) return true;
   const text = String(raw || '').trim().toLowerCase().replace(/\s*!important\s*$/, '');
-  if (!FONT_SIZE_LITERAL_RE.test(text)) return true;
-  const px = resolveLengthPx(text, 16);
-  if (px == null || !Number.isFinite(px) || px <= 0) return true;
-  return designSystem.allowedFontSizes.some(
-    entry => Math.abs(entry.px - px) <= FONT_SIZE_TOLERANCE_PX,
-  );
+  const offRampEndpoints = offRampClampEndpoints(text, designSystem);
+  if (offRampEndpoints) return offRampEndpoints.length === 0;
+  return fontSizeStepStatus(text, designSystem) !== 'off-ramp';
 }
 
 function lineLooksCommented(line) {
@@ -543,12 +631,31 @@ function checkRadiusValue(value, filePath, line, designSystem, context) {
 function checkFontSizeValue(value, filePath, line, designSystem, context) {
   const token = String(value || '').trim();
   if (isAllowedFontSizeRaw(token, designSystem)) return [];
+
+  // Name the offending endpoint on a fluid value; the whole clamp() string is
+  // not actionable on its own, and it makes a poor ignore-value.
+  const offRampEndpoints = offRampClampEndpoints(token, designSystem) || [];
+  if (offRampEndpoints.length > 0) {
+    const plural = offRampEndpoints.length > 1 ? 's' : '';
+    return [makeDesignFinding(
+      'design-system-font-size',
+      filePath,
+      `${context}: ${token} has fluid endpoint${plural} ${offRampEndpoints.join(' and ')} off the DESIGN.md type ramp`,
+      line,
+      { ignoreValue: offRampEndpoints[0] },
+    )];
+  }
+
+  // The snippet shows the declaration as authored, but the ignoreValue has to
+  // be what a `hooks ignore-value` waiver can match, so the priority marker is
+  // stripped. Otherwise the same size needs two different waivers depending on
+  // whether it carries !important. font-family already behaves this way.
   return [makeDesignFinding(
     'design-system-font-size',
     filePath,
     `${context}: ${token} is off the DESIGN.md type ramp`,
     line,
-    { ignoreValue: token },
+    { ignoreValue: token.replace(/\s*!important\s*$/i, '').trim() },
   )];
 }
 
