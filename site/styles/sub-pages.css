@@ -539,7 +539,7 @@ main#main {
 
 .docs-home-card-title {
   font-family: var(--font-display);
-  font-size: clamp(2rem, 4vw, 2.75rem);
+  font-size: clamp(2rem, 4vw, 2.5rem);
   font-weight: 500;
   color: var(--color-ink);
   letter-spacing: -0.02em;
@@ -954,7 +954,7 @@ main#main {
 
 .slop-section-heading {
   font-family: var(--font-display);
-  font-size: clamp(2rem, 3.5vw, 2.75rem);
+  font-size: clamp(2rem, 3.5vw, 2.5rem);
   font-weight: 500;
   font-style: italic;
   color: var(--color-ink);
@@ -1372,7 +1372,7 @@ main#main {
 
 .tutorial-detail-tagline {
   font-family: var(--font-body);
-  font-size: clamp(1.0625rem, 1.5vw, 1.1875rem);
+  font-size: clamp(1.125rem, 1.5vw, 1.25rem);
   line-height: 1.55;
   color: var(--color-charcoal);
   max-width: 60ch;

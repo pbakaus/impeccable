@@ -135,6 +135,8 @@ typography:
     "56": "3.5rem"       # display
     "64": "4rem"         # large display
     "72": "4.5rem"       # hero display
+    "80": "5rem"         # hero display, wide viewports
+    "88": "5.5rem"       # largest hero display
   wordmark:
     # Alumni Sans (token --ks-font-wordmark), the same face as display, held
     # at weight 400 for the small brand lockup where the thin display cut

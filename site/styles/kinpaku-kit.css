@@ -81,7 +81,7 @@
   margin: 0;
   color: var(--ks-champagne);
   font-family: var(--ks-font-display);
-  font-size: clamp(2.2rem, 3.6vw, 3rem);
+  font-size: clamp(2rem, 3.6vw, 3rem);
   font-weight: var(--ks-type-headline-weight);
   line-height: 1.06;
   letter-spacing: -0.005em;

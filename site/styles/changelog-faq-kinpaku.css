@@ -240,7 +240,7 @@
 .cf-stat-num {
   font-family: var(--ks-font-display);
   font-weight: var(--ks-type-display-weight);
-  font-size: clamp(2.2rem, 5vw, 3rem);
+  font-size: clamp(2rem, 5vw, 3rem);
   line-height: 1;
   color: var(--ks-kinpaku);
 }

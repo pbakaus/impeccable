@@ -15,15 +15,6 @@
     ],
     "ignoreValues": [
       {
-        "rule": "design-system-font-size",
-        "value": "*",
-        "files": [
-          "site/scripts/components/framework-viz.js"
-        ],
-        "createdAt": "2026-07-19T00:00:00.000Z",
-        "reason": "Periodic-table cell annotations (atomic number, alpha badge) are diagram geometry at 5-7px, not ramp type; they sit at 2-3px offsets inside a small cell"
-      },
-      {
         "rule": "bounce-easing",
         "value": "bounce-ball",
         "createdAt": "2026-06-15T04:15:03.164Z",

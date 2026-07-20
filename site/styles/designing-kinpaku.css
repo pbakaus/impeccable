@@ -210,7 +210,7 @@
     /* Bring the display size down for narrow viewports — the token's 3.4rem
        minimum is sized for hero impact at desktop and tablet, too big when
        the line has to wrap into a 320-400px column. */
-    font-size: clamp(2.2rem, 11vw, 3rem);
+    font-size: clamp(2rem, 11vw, 3rem);
   }
 }
 
@@ -377,7 +377,7 @@
   }
 
   .designing-kinpaku .designing-page-title {
-    font-size: clamp(2.1rem, 12vw, 2.8rem);
+    font-size: clamp(2rem, 12vw, 2.5rem);
     line-height: 1.02;
     margin-bottom: 18px;
   }
@@ -1639,7 +1639,7 @@
   color: var(--ks-champagne);
   font-family: var(--ks-font-display);
   font-weight: 100;
-  font-size: clamp(1.8rem, 3vw, 2.4rem);
+  font-size: clamp(1.75rem, 3vw, 2.5rem);
   line-height: 1.1;
   margin: 0;
   letter-spacing: 0.01em;

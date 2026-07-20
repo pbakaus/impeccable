@@ -404,7 +404,7 @@
 .home-kinpaku .hero-title-combined {
   max-width: 760px;
   color: var(--ks-champagne);
-  font-size: clamp(3.4rem, 5.5vw, 5.2rem);
+  font-size: clamp(3.4rem, 5.5vw, 5rem);
   font-weight: 300;
   line-height: 1.02;
   letter-spacing: 0;
@@ -1075,7 +1075,7 @@
   padding: clamp(24px, 4vw, 48px);
   color: var(--ks-text);
   font-family: var(--ks-font);
-  font-size: clamp(1rem, 1.5vw, 1.3rem);
+  font-size: clamp(1rem, 1.5vw, 1.25rem);
   font-style: normal;
   font-weight: 300;
   letter-spacing: 0.02em;

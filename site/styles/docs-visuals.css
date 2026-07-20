@@ -1729,7 +1729,7 @@
   font-family: var(--font-display);
   font-weight: 300;
   font-style: italic;
-  font-size: clamp(2.75rem, 6vw, 4rem);
+  font-size: clamp(2.5rem, 6vw, 4rem);
   line-height: 1;
   letter-spacing: -0.01em;
   color: var(--color-ink);
@@ -1987,7 +1987,7 @@
   font-family: var(--font-display);
   font-style: italic;
   font-weight: 400;
-  font-size: clamp(1.125rem, 2.2vw, 1.375rem);
+  font-size: clamp(1.125rem, 2.2vw, 1.25rem);
   line-height: 1;
   color: var(--color-ink);
 }
@@ -2058,7 +2058,7 @@
   font-family: var(--font-display);
   font-weight: 400;
   font-style: italic;
-  font-size: clamp(1.875rem, 3.5vw, 2.5rem);
+  font-size: clamp(1.75rem, 3.5vw, 2.5rem);
   line-height: 1.15;
   color: var(--color-ink);
   margin: 0 0 var(--spacing-sm, 16px) 0;
@@ -2066,7 +2066,7 @@
 }
 
 .designing-phase--appendix .designing-phase-title {
-  font-size: clamp(1.25rem, 2.2vw, 1.625rem);
+  font-size: clamp(1.25rem, 2.2vw, 1.5rem);
   font-style: normal;
   max-width: 32ch;
 }
@@ -2952,7 +2952,7 @@
 .designing-cta-card-title {
   font-family: var(--font-display);
   font-style: italic;
-  font-size: clamp(1.5rem, 2.5vw, 1.875rem);
+  font-size: clamp(1.5rem, 2.5vw, 1.75rem);
   line-height: 1.1;
   color: var(--color-ink);
   margin: 0;
@@ -3034,7 +3034,7 @@
 .craft-case-copy h2 {
   margin: 0.6rem 0 0.9rem;
   font-family: var(--font-display);
-  font-size: clamp(1.8rem, 4vw, 2.5rem);
+  font-size: clamp(1.75rem, 4vw, 2.5rem);
   font-style: italic;
   font-weight: 500;
   line-height: 1;
@@ -3288,7 +3288,7 @@
 .neon-case-command h2 {
   margin: 0.8rem 0 0;
   font-family: var(--ks-font-display);
-  font-size: clamp(2.2rem, 4vw, 3.4rem);
+  font-size: clamp(2rem, 4vw, 3.4rem);
   font-weight: var(--ks-type-headline-weight);
   letter-spacing: -0.005em;
   line-height: var(--ks-type-headline-line);
