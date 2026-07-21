@@ -85,7 +85,10 @@ async function findOpenPort(start = 8400) {
   });
 }
 
-const LOOPBACK_ORIGIN_RE = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
+// Loopback origins only. The whole 127.0.0.0/8 block is loopback (not just
+// 127.0.0.1), so a dev page on e.g. 127.0.0.2 is still same-machine and must
+// be allowed; localhost and the IPv6 loopback [::1] round out the set.
+const LOOPBACK_ORIGIN_RE = /^https?:\/\/(localhost|127(?:\.\d{1,3}){3}|\[::1\])(:\d+)?$/i;
 
 function isLoopbackOrigin(origin) {
   return typeof origin === 'string' && LOOPBACK_ORIGIN_RE.test(origin);
