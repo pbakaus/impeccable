@@ -116,7 +116,7 @@ node {{scripts_path}}/live-insert.mjs --id EVENT_ID --count EVENT_COUNT --positi
 - `--position` ← `event.insert.position` (`before` | `after`)
 - Anchor flags ← `event.insert.anchor` (same mapping as wrap: id, classes, tag, text)
 
-The scaffold has **no** `data-impeccable-variant="original"`. Variants are net-new HTML+CSS inserted at `insertLine`. Load `brand.md` or `product.md` (freeform only, no action sub-command). Deliver using the harness policy, then `--reply done`.
+The scaffold has **no** `data-impeccable-variant="original"`. Variants are net-new HTML+CSS inserted at `insertLine`. Decide the visitor mode from the surface and load [craft-floor.md](craft-floor.md) before writing net-new markup (freeform only, no action sub-command). Deliver using the harness policy, then `--reply done`.
 
 For Svelte/SvelteKit targets, `live-insert.mjs` returns `previewMode: "svelte-component"` with `mode: "insert"`, `file` pointing at a temporary `node_modules/.impeccable-live/<id>/manifest.json`, `componentDir` pointing at the variant component files, and `sourceFile` pointing at the real `.svelte` route. Write each inserted variant as a real Svelte component (`v1.svelte`, `v2.svelte`, …) under `componentDir`. Insert variants must be non-empty net-new content with a single top-level root, no `data-impeccable-*` attributes, and CSS in each component's `<style>` block. Do **not** edit the route source during generation; the browser mounts the temporary component before/after the live anchor while the user cycles variants. On Accept, `live-accept.mjs` inserts the selected component markup into `sourceFile` immediately and deletes the temp session after the source write succeeds.
 
@@ -197,7 +197,7 @@ All three carry `fallback: "agent-driven"`. Follow **Handle fallback** below.
 
 ### 3. Load the action's reference
 
-If `event.action` is `impeccable` (the default freeform action), use SKILL.md's shared laws and decide the visitor mode from the selected surface. Do not load a sub-command reference. **Freeform is not a pass to skip parameters:** you still follow the composition budget and the freeform bias in **§7 Parameters** below. Sub-command files list MUST-have signature knobs; freeform has no such file, so sizing knobs from surface weight and primary axes is entirely on you.
+If `event.action` is `impeccable` (the default freeform action), work from SKILL.md's design rules plus [craft-floor.md](craft-floor.md), and decide the visitor mode from the selected surface. Do not load a sub-command reference. **Freeform is not a pass to skip parameters:** you still follow the composition budget and the freeform bias in **§7 Parameters** below. Sub-command files list MUST-have signature knobs; freeform has no such file, so sizing knobs from surface weight and primary axes is entirely on you.
 
 Any other `event.action` (`bolder`, `quieter`, `distill`, `polish`, `typeset`, `colorize`, `layout`, `adapt`, `animate`, `delight`, `overdrive`): Read `reference/<action>.md` before planning. Each sub-command encodes a specific discipline; skipping its reference produces generic output. Those files may require specific params; layer them on top of the §7 budget, not instead of it.
 
