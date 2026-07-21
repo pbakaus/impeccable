@@ -8,7 +8,7 @@ Terms this file uses throughout, defined once:
 
 - **World:** the durable visual identity: palette, materials, type voice, ornament logic, and component character that outlive any single surface.
 - **Coupled pair:** one world joined to one concrete first-surface expression, selected together as a single decision, never as two tournaments.
-- **Staging:** an identity-free structural idea for a surface (hierarchy, sequence, interaction). The seed may append one; it brings no palette, typeface, or material.
+- **Staging:** an identity-free structural idea for a surface (hierarchy, sequence, interaction). The seed may append several; they bring no palette, typeface, or material.
 - **Candidate floor:** the five veto tests in section 4. A candidate passes all five or is discarded and replaced.
 - **Direction contract:** six promise blocks written into the artifact's opening comment before code, audited against the render by the hooks.
 - **Surface brief:** durable surface strategy persisted to `.impeccable/surfaces/` via `surface-brief.mjs`.
@@ -47,13 +47,13 @@ In an attended run, ask one round of at most three material questions without re
 
 When generating choices, veto rather than rationalize. Before a candidate reaches the user, discard and replace it if any floor fails:
 
-- **Truth:** every relationship it visualizes exists in product truth; resemblance is not evidence.
-- **Translation:** after removing source names, props, materials, and vocabulary, a product-native relationship, behavior, or proof remains. Otherwise it is costume, not a concept.
-- **Consequence:** removing its bar-raiser materially weakens the surface's central argument or use; name what the visitor could no longer understand or do. Otherwise it is ordinary craft.
-- **Survival:** its signature remains compelling on the primary device and within the real asset and tool budget.
+- **Truth:** every product relationship it visualizes exists; resemblance is not evidence.
+- **Translation:** remove the literal source prop and label. A coherent product-native experience must remain, still carrying the source's aesthetic and compositional laws. Function without that character is safe flattening; character without product structure is costume.
+- **Signature:** one authored move makes the experience unmistakable and materially shapes implementation. Name what the visitor experiences and what becomes possible; routine state or polish does not pass.
+- **Survival:** its identity and signature remain compelling on the primary device within the real asset and tool budget.
 - **Fit:** its risk is an honest tradeoff, not a probable violation of the brief or audience.
 
-Passing some floors never rescues a failed one. (The bar-raiser is the contract block defined in section 6: the product-native move that lifts the surface above competent convention.)
+Passing some floors never rescues a failed one. The selected signature becomes the direction contract's `BAR-RAISER`.
 
 ## 5. Shape or select the direction
 
@@ -68,7 +68,7 @@ Inherit both the world and the surrounding surface's direction. Resolve only the
 The world supplies the vocabulary; the task concept supplies the sentence.
 
 1. Derive five to seven structural candidates from the content, mechanism, audience, and confirmed authority. Translate its relationships and behavior, not just its styling.
-2. Run `node {{scripts_path}}/concept-seed.mjs --scope surface --mode <mode>` (the surface's mode: persuade, operate, read, or experience) only when a whole page, route, screen, flow, or standalone experience calls for high-concept exploration. Otherwise shape the strongest grounded structure directly. Never run it for a local extension. When the seed appends a STAGING CHALLENGER, it is identity-free structure: dress it in the committed visual identity before judging it against the grounded candidates.
+2. Run `node {{scripts_path}}/concept-seed.mjs --scope surface --mode <mode>` (the surface's mode: persuade, operate, read, or experience) only when a whole page, route, screen, flow, or standalone experience calls for high-concept exploration. Otherwise shape the strongest grounded structure directly. Never run it for a local extension. Translate every supplied STAGING CHALLENGER into this product's content and behavior, dress it in the committed identity, and compare it with the grounded structures; the point is to challenge the habitual layout, not append a flourish.
 3. Name the habitual arrangement and predictable contrarian response. Apply the candidate floor, then judge survivors skin-blind: topology, sequence, or interaction must remain different after names and styling disappear.
 4. When materially different whole-surface choices would help, present two or three neutral options with thesis, sequence, focal moment, signature, implementation consequence, and concrete inherited world rules, following **Present, visualize, re-roll** below. Let the user select or revise before code.
 
@@ -77,10 +77,10 @@ Unattended: use the promoted candidate when a roll ran, otherwise the strongest 
 ### New or replacement world (A, D, or E): choose a coupled pair
 
 1. **Ground.** Derive the product mechanism, user scene, audience's cultural home, and what this surface uniquely proves. Name the category default and its predictable contrarian response; neither may enter the shortlist unchanged.
-2. **Derive pairs.** Generate five to seven grounded coupled pairs and order them by product fit. Each joins a durable system to a concrete first-surface structure, native behavior, non-routine bar-raiser, and implementation consequence. State what becomes impossible without the bar-raiser. Different names or materials on the same experience are one candidate.
-3. **Break the ranking rut once.** Run `node {{scripts_path}}/concept-seed.mjs --scope direction --mode <mode>`, where the mode is the first surface's: persuade, operate, read, or experience. The seed names a PROMOTED INDEX; elevate the pair at that position of your own ranked list into the serious shortlist and judge it as a peer of your top picks. For each challenger, first state the relationship, state change, or affordance it imports without naming the source; only then translate it into a coherent system and task solution. Keep that logic, but discard the source carrier, materials, and vocabulary unless product evidence earns them as functional parts of the product. A candidate still named or explained by the source object has not been translated. Compare every translated pair with the grounded list on audience identification, product clarity, system leverage, and use of the medium. When the seed appends a FIRST-SURFACE STAGING, treat it as a candidate structure for the first surface: dress it in each shortlisted world before judging, and keep world and staging one coupled decision.
+2. **Derive pairs.** Generate five to seven grounded coupled pairs and order them by product fit. Each joins a durable system to a concrete first-surface structure, native behavior, non-routine signature move, and implementation consequence. Different names or materials on the same experience are one candidate.
+3. **Break the ranking rut once.** Run `node {{scripts_path}}/concept-seed.mjs --scope direction --mode <mode>`, where the mode is the first surface's: persuade, operate, read, or experience. The seed names a PROMOTED INDEX; elevate the pair at that position of your own ranked list into the serious shortlist and judge it as a peer of your top picks. For each world challenger, translate its system laws (material behavior, type/composition, topology, state, and motion) into product-native equivalents. Remove the literal carrier, not the character that made the source worth entering. Compare every translated pair with the grounded list on audience identification, product clarity, system leverage, and use of the medium. Translate each supplied FIRST-SURFACE STAGING into one concrete product structure and use the set to challenge your own habitual composition; when one survives, bind it to the world as one coupled decision.
 4. **Test at full strength.** Apply the candidate floor. Strip names, styling, and source carrier; survivors must still differ in structure, sequence, or interaction. Their world must also govern the whole product: the navigation, a dense surface, and a quiet surface, with the last two dissimilar.
-5. **Offer coupled choices.** Present two or three equally viable pairs without recommendation cues, following **Present, visualize, re-roll** below. For each, show the world rules, first-surface expression, bar-raiser, cross-surface consequence, risk, and what fails without the bar-raiser. If fewer than two clear every veto, derive replacements rather than padding the choice. Ask what is closest, should combine, or feels wrong; rejection is allowed.
+5. **Offer coupled choices.** Present two or three equally viable pairs without recommendation cues, following **Present, visualize, re-roll** below. For each, show the world rules, first-surface expression, signature move and implementation consequence, cross-surface breadth, and risk. If fewer than two clear every veto, derive replacements rather than padding the choice. Ask what is closest, should combine, or feels wrong; rejection is allowed.
 6. **Resolve once.** The user selects or revises the pair. Extract the durable rules into DESIGN.md and the task-specific strategy into the surface brief; do not reopen either half independently.
 
 Unattended: use the assigned grounded pair only if it survives product fit, coupling, and breadth; mark assumptions. This is fallback, not user choice.
@@ -97,9 +97,19 @@ An unattended run has no one to re-roll or eye-test. When image generation is av
 
 For a substantial high-fidelity surface with native image generation, load [codex.md](codex.md) after selection; probes stay inside the selected direction. For `shape`, stop after selection and continue in [shape.md](shape.md).
 
-## 6. Write the direction contract for a whole surface
+## 6. Expand, then contract, the chosen direction
 
 If a competent default could satisfy the concept, sharpen its focal moment until one product-specific move changes implementation and raises the experience above competent convention.
+
+Before compressing the decision, expand one coherent studio plan in working context:
+
+- **Spatial:** the whole-surface composition, navigation, reveals, and rhythm, not only section order.
+- **Motion:** the coordinated motion story and its major moments, not a list of repeated effects.
+- **Interaction:** the flagship experience, its feedback, and what the visitor can understand or do through it.
+- **Narrative:** how copy, evidence, and action build one persuasive or usable arc.
+- **System:** how the world governs components, dense and quiet surfaces, states, and responsive behavior.
+
+Make concrete decisions in every relevant discipline and make them cause one another. Do not use the list to decorate an unchanged page skeleton.
 
 Before code, write a direction contract of at most 150 words in the artifact's opening HTML or framework comment; the first 200 characters must name `DIRECTION CONTRACT`. The artifact comment is the contract's only home: hooks audit the render against it, and the surface brief references it rather than duplicating it. <!-- rule:skill-decide-then-build -->
 
@@ -107,7 +117,7 @@ Before code, write a direction contract of at most 150 words in the artifact's o
 - `OWN-WORLD`: the confirmed DESIGN.md invariants, tokens, and materials it uses;
 - `STORY`: what the visitor understands, believes, and does;
 - `FIRST VIEWPORT`: exact composition, hierarchy, action, and where the concept exceeds competent convention;
-- `BAR-RAISER`: the product-native use of interaction, motion, state, space, or computation that makes this more than a strong static composition; routine functional state alone does not clear the bar;
+- `BAR-RAISER`: the selected signature move: what the visitor experiences, what it makes possible, and the implementation consequence that keeps the surface from collapsing to a competent default;
 - `FORM`: chosen structure or behavior, signature, implementation consequence, and seed key.
 
 The contract is task-scoped, inspectable, and subordinate to the user's choice. A local extension skips it unless the user explicitly wants the addition to become a distinct authored moment; the shaped decisions are its implementation plan instead.
