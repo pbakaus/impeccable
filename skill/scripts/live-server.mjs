@@ -85,6 +85,12 @@ async function findOpenPort(start = 8400) {
   });
 }
 
+const LOOPBACK_ORIGIN_RE = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
+
+function isLoopbackOrigin(origin) {
+  return typeof origin === 'string' && LOOPBACK_ORIGIN_RE.test(origin);
+}
+
 // ---------------------------------------------------------------------------
 // Session state
 // ---------------------------------------------------------------------------
@@ -630,7 +636,16 @@ function statOrNull(filePath) {
 function createRequestHandler({ detectScript, liveScriptParts }) {
   return (req, res) => {
     const url = new URL(req.url, `http://localhost:${state.port}`);
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    // Reflect only loopback origins. This server always binds 127.0.0.1, so
+    // the dev-server tab (a different loopback port) is the only legitimate
+    // cross-origin caller. A wildcard here let any page open in the same
+    // browser — including a malicious one probing local ports — fetch
+    // /live.js and read the bearer token embedded in its body.
+    const requestOrigin = req.headers.origin;
+    if (isLoopbackOrigin(requestOrigin)) {
+      res.setHeader('Access-Control-Allow-Origin', requestOrigin);
+      res.setHeader('Vary', 'Origin');
+    }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
