@@ -156,7 +156,7 @@ const changelogCandidates = [
   path.join(repoRoot, 'site/pages/changelog.astro'),
   path.join(repoRoot, '..', 'impeccable-site', 'site/pages/changelog.astro'),
 ];
-const changelogSource = changelogCandidates.find(p => fs.existsSync(p)) || changelogCandidates[0];
+const changelogSource = changelogCandidates.find(p => existsSync(p)) || changelogCandidates[0];
 const changelogHtml = readFileSync(changelogSource, 'utf8');
 const expectedHeader = `<span class="cf-version">${cfg.changelogLabel}${version}</span>`;
 const headerIdx = changelogHtml.indexOf(expectedHeader);
