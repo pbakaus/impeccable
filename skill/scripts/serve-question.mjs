@@ -235,6 +235,7 @@ function page() {
   #scrim { position: fixed; inset: 0; z-index: 0; background: linear-gradient(180deg, oklch(7% 0.006 95 / 0.82), oklch(7% 0.006 95 / 0.9)); pointer-events: none; }
   header, main, footer { position: relative; z-index: 1; }
   #lightbox { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: oklch(4% 0.004 95 / 0.93); cursor: zoom-out; opacity: 0; transition: opacity .25s ease; }
+  #lightbox[hidden] { display: none; }
   #lightbox.open { opacity: 1; }
   #lightbox img { max-width: 94vw; max-height: 94vh; border: 1px solid var(--ks-rule); border-radius: 8px; box-shadow: 0 30px 80px oklch(0% 0 0 / 0.6); }
   header { width: 100%; max-width: 90rem; margin: 0 auto; }
