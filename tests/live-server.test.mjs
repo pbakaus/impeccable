@@ -302,6 +302,40 @@ describe('live-server integration', () => {
     );
   });
 
+  it('/live.js does not reflect a wildcard or non-loopback CORS origin (regression for #304 token leak)', async () => {
+    const evil = await fetch(`http://localhost:${server.port}/live.js`, {
+      headers: { Origin: 'https://evil.example.com' },
+    });
+    assert.equal(evil.status, 200);
+    assert.equal(
+      evil.headers.get('access-control-allow-origin'),
+      null,
+      'a non-loopback Origin must not be granted read access to the token-bearing response',
+    );
+
+    const loopback = await fetch(`http://localhost:${server.port}/live.js`, {
+      headers: { Origin: 'http://localhost:5173' },
+    });
+    assert.equal(loopback.status, 200);
+    assert.equal(
+      loopback.headers.get('access-control-allow-origin'),
+      'http://localhost:5173',
+      'a loopback dev-server origin should be reflected exactly, never as a wildcard',
+    );
+    assert.equal(loopback.headers.get('vary'), 'Origin');
+
+    // The whole 127.0.0.0/8 block is loopback, not just 127.0.0.1.
+    const altLoopback = await fetch(`http://localhost:${server.port}/live.js`, {
+      headers: { Origin: 'http://127.0.0.2:5173' },
+    });
+    assert.equal(altLoopback.status, 200);
+    assert.equal(
+      altLoopback.headers.get('access-control-allow-origin'),
+      'http://127.0.0.2:5173',
+      'any 127.0.0.0/8 loopback origin should be reflected, not only 127.0.0.1',
+    );
+  });
+
   it('/design-system.json reads DESIGN.md plus .impeccable/design.json', async () => {
     const tmp = mkdtempSync(join(tmpdir(), 'impeccable-design-system-'));
     let designServer;
