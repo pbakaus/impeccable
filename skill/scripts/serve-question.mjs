@@ -170,21 +170,33 @@ const options = payload.options.map((option) => ({
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 function page() {
+  const flipChip = (label) => `<button type="button" class="flip" aria-label="Flip the card"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a8 8 0 1 1-8 8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M4 5.5V12h6.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><span>${label}</span></button>`;
   const cards = options.map((option, index) => `
-    <article class="card${index === 0 ? ' lead' : ''}" style="--fan:${index === 0 ? '0deg' : (index % 2 ? '1.4deg' : '-1.2deg')};--deal:${index * 90}ms" data-id="${esc(option.id)}">
-      ${option.kicker ? `<span class="kicker">${esc(option.kicker)}</span>` : ''}
-      <div class="media${option.boardSrc ? ' flippable' : ''}">
-        <div class="faces">
-          <div class="face front">${option.heroSrc ? `<img src="${esc(option.heroSrc)}" alt="">` : '<div class="hero-blank"></div>'}</div>
-          ${option.boardSrc ? `<div class="face back"><img src="${esc(option.boardSrc)}" alt=""></div>` : ''}
+    <article class="card" style="--fan:${index === 0 ? '0deg' : (index % 2 ? '1.4deg' : '-1.2deg')};--deal:${index * 90}ms" data-id="${esc(option.id)}">
+      <div class="card-inner">
+        <div class="face front${index === 0 ? ' lead' : ''}">
+          ${option.kicker ? `<span class="kicker">${esc(option.kicker)}</span>` : ''}
+          <div class="media">
+            ${option.heroSrc ? `<img src="${esc(option.heroSrc)}" alt="">` : '<div class="hero-blank"></div>'}
+            ${option.boardSrc ? flipChip('Board') : ''}
+          </div>
+          <div class="body">
+            ${option.lineage ? `<p class="tier">${esc(option.lineage)}</p>` : ''}
+            <h2>${esc(option.label)}</h2>
+            ${option.body ? `<p class="detail">${esc(option.body)}</p>` : ''}
+            <button class="choose" data-id="${esc(option.id)}">Build this</button>
+          </div>
         </div>
-        ${option.boardSrc ? '<button type="button" class="flip" aria-label="Flip to the design-system board"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a8 8 0 1 1-8 8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M4 5.5V12h6.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Board</span></button>' : ''}
-      </div>
-      <div class="body">
-        ${option.lineage ? `<p class="tier">${esc(option.lineage)}</p>` : ''}
-        <h2>${esc(option.label)}</h2>
-        ${option.body ? `<p class="detail">${esc(option.body)}</p>` : ''}
-        <button class="choose" data-id="${esc(option.id)}">Build this</button>
+        ${option.boardSrc ? `<div class="face back${index === 0 ? ' lead' : ''}">
+          <div class="media back-media">
+            <img src="${esc(option.boardSrc)}" alt="">
+            ${flipChip('Hero')}
+          </div>
+          <div class="body back-bar">
+            <p class="tier">Design-system board &middot; ${esc(option.label)}</p>
+            <button class="choose" data-id="${esc(option.id)}">Build this</button>
+          </div>
+        </div>` : ''}
       </div>
     </article>`).join('\n');
   return `<!doctype html>
@@ -229,20 +241,24 @@ function page() {
   main { flex: 1; display: flex; align-items: center; width: 100%; max-width: 90rem; margin: 0 auto; }
   .stage { width: 100%; display: flex; flex-direction: column; gap: 1.5rem; }
   .grid { display: grid; gap: 1.6rem; grid-template-columns: repeat(auto-fit, minmax(min(23rem, 100%), 1fr)); width: 100%; }
-  .card { position: relative; overflow: hidden; background: var(--ks-lacquer-raised); border: 1px solid var(--ks-rule); border-radius: 10px; box-shadow: 0 18px 40px oklch(0% 0 0 / 0.35); transform: rotate(var(--fan, 0deg)); display: flex; flex-direction: column; opacity: 0; animation: deal .5s cubic-bezier(.16, 1, .3, 1) forwards; animation-delay: var(--deal, 0ms); transition: transform .25s cubic-bezier(.16, 1, .3, 1), border-color .25s; }
-  .card:hover { transform: rotate(0deg) translateY(-4px); border-color: var(--ks-kinpaku-deep); }
-  .card.lead { border-color: var(--ks-kinpaku); box-shadow: 0 0 0 1px var(--ks-kinpaku), 0 18px 40px oklch(0% 0 0 / 0.45); }
+  .card { position: relative; perspective: 1400px; transform: rotate(var(--fan, 0deg)); opacity: 0; animation: deal .5s cubic-bezier(.16, 1, .3, 1) forwards; animation-delay: var(--deal, 0ms); transition: transform .25s cubic-bezier(.16, 1, .3, 1); }
+  .card:hover { transform: rotate(0deg) translateY(-4px); }
+  .card-inner { position: relative; height: 100%; transform-style: preserve-3d; transition: transform .7s cubic-bezier(.16, 1, .3, 1); }
+  .card.flipped .card-inner { transform: rotateY(180deg); }
+  .face { background: var(--ks-lacquer-raised); border: 1px solid var(--ks-rule); border-radius: 10px; box-shadow: 0 18px 40px oklch(0% 0 0 / 0.35); overflow: hidden; display: flex; flex-direction: column; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+  .face.front { position: relative; height: 100%; }
+  .face.back { position: absolute; inset: 0; transform: rotateY(180deg); }
+  .face.lead { border-color: var(--ks-kinpaku); box-shadow: 0 0 0 1px var(--ks-kinpaku), 0 18px 40px oklch(0% 0 0 / 0.45); }
+  .card:hover .face { border-color: var(--ks-kinpaku-deep); }
+  .card:hover .face.lead { border-color: var(--ks-kinpaku); }
   @keyframes deal { from { opacity: 0; transform: translateY(26px) rotate(calc(var(--fan, 0deg) + 2deg)); } to { opacity: 1; transform: translateY(0) rotate(var(--fan, 0deg)); } }
-  @media (prefers-reduced-motion: reduce) { .card { animation: none; opacity: 1; } }
-  .kicker { position: absolute; z-index: 1; top: 12px; left: 12px; padding: 4px 10px; background: var(--ks-kinpaku); color: var(--ks-dark-ink); font-family: var(--ks-mono); font-size: .625rem; letter-spacing: .24em; text-transform: uppercase; border-radius: 4px; }
-  .media { position: relative; width: 100%; aspect-ratio: 16/9; perspective: 1200px; }
-  .faces { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform .6s cubic-bezier(.16, 1, .3, 1); }
-  .media.flipped .faces { transform: rotateY(180deg); }
-  .face { position: absolute; inset: 0; backface-visibility: hidden; overflow: hidden; }
-  .face.back { transform: rotateY(180deg); }
-  .face img { width: 100%; height: 100%; object-fit: cover; display: block; background: linear-gradient(100deg, var(--ks-graphite) 40%, var(--ks-graphite-2) 50%, var(--ks-graphite) 60%); }
+  @media (prefers-reduced-motion: reduce) { .card { animation: none; opacity: 1; } .card-inner { transition: none; } }
+  .kicker { position: absolute; z-index: 2; top: 12px; left: 12px; padding: 4px 10px; background: var(--ks-kinpaku); color: var(--ks-dark-ink); font-family: var(--ks-mono); font-size: .625rem; letter-spacing: .24em; text-transform: uppercase; border-radius: 4px; }
+  .media { position: relative; width: 100%; aspect-ratio: 16/9; flex: none; }
+  .media img { width: 100%; height: 100%; object-fit: cover; display: block; background: linear-gradient(100deg, var(--ks-graphite) 40%, var(--ks-graphite-2) 50%, var(--ks-graphite) 60%); }
+  .back-media { flex: 1; aspect-ratio: auto; min-height: 0; }
   .hero-blank { width: 100%; height: 100%; background: linear-gradient(100deg, var(--ks-graphite) 40%, var(--ks-graphite-2) 50%, var(--ks-graphite) 60%); }
-  @media (prefers-reduced-motion: reduce) { .faces { transition: none; } }
+  .back-bar { flex: none; flex-direction: row; align-items: center; justify-content: space-between; gap: .8rem; }
   .flip { position: absolute; z-index: 1; right: 10px; bottom: 10px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; font-family: var(--ks-mono); font-size: .625rem; letter-spacing: .18em; text-transform: uppercase; color: var(--ks-text); background: oklch(7% 0.006 95 / 0.72); border: 1px solid var(--ks-rule); border-radius: 5px; cursor: pointer; backdrop-filter: blur(4px); transition: color .2s, border-color .2s; }
   .flip:hover { color: var(--ks-kinpaku); border-color: var(--ks-kinpaku-deep); }
   .flip svg { width: 12px; height: 12px; }
@@ -289,9 +305,7 @@ function page() {
   document.querySelectorAll('button.choose').forEach(b => b.addEventListener('click', () => answer(b.dataset.id)));
   document.querySelectorAll('.flip').forEach(b => b.addEventListener('click', (e) => {
     e.stopPropagation();
-    const media = b.closest('.media');
-    media.classList.toggle('flipped');
-    b.querySelector('span').textContent = media.classList.contains('flipped') ? 'Hero' : 'Board';
+    b.closest('.card').classList.toggle('flipped');
   }));
   document.getElementById('reroll')?.addEventListener('click', () => answer('reroll'));
 </script>`;
