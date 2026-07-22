@@ -213,9 +213,14 @@ const ANTIPATTERNS = [
   {
     id: 'em-dash-overuse',
     category: 'slop',
+    // Advisory: humans use em-dashes legitimately, so this rule is opt-in noise
+    // rather than a failure. It fires only on the AI saturation pattern, not on
+    // ordinary prose. Advisory findings are surfaced separately, never counted
+    // as failures, and skipped by the design hook unless a project opts in.
+    advisory: true,
     name: 'Em-dash overuse',
     description:
-      'More than two em-dashes (— or --) in body copy is an AI cadence tell. Use commas, colons, periods, or parentheses instead.',
+      'Em-dash saturation in body copy is an AI cadence tell. Advisory only: humans use em-dashes legitimately, so this fires only on saturation — at least 8 em-dashes (— or --) at a density near one per 500 characters of body text — never on a long article that uses a few. Prefer commas, colons, periods, or parentheses.',
     skillSection: 'Copy',
     skillGuideline: 'no em dashes',
   },
@@ -406,6 +411,14 @@ const ANTIPATTERNS = [
       'Body text below 12px is hard to read, especially on high-DPI screens. Use at least 14px for body content, 16px is ideal.',
   },
   {
+    id: 'undersized-ui-text',
+    category: 'quality',
+    scopes: ['type'],
+    name: 'Undersized functional text',
+    description:
+      'Interactive and content-bearing UI text (links, buttons, nav items, labels, table cells, meta rows, timecodes) below 11px is a legibility failure, not a style choice. WCAG sets no absolute pixel floor, but functional text under 11px is a defensible quality bar: it fails on high-DPI and small viewports and it degrades tap and read targets. The 11px floor holds even inside a footer; only non-interactive legal smallprint gets the softer 10px floor. Being ON the DESIGN.md size ramp does not exempt a value here: adding 8px to the ramp launders the token but not the legibility problem, and that is exactly the escape hatch this rule closes. Exempts sup/sub, visually-hidden (sr-only) text, and code/terminal contexts. Decorative letterspaced micro-labels are still functional and stay in scope.',
+  },
+  {
     id: 'all-caps-body',
     category: 'quality',
     scopes: ['type'],
@@ -556,6 +569,18 @@ function getAntipattern(id) {
   return ANTIPATTERNS.find(rule => rule.id === id);
 }
 
+// Advisory rules are detected and reported, but never treated as failures:
+// the CLI lists them under a separate "Advisory" section, they do not affect
+// exit codes or the failure count, and the design hook skips them by default.
+// The set is derived from the registry so a rule only needs `advisory: true`.
+const ADVISORY_RULE_IDS = new Set(
+  ANTIPATTERNS.filter(rule => rule.advisory === true).map(rule => rule.id),
+);
+
+function isAdvisoryRule(id) {
+  return ADVISORY_RULE_IDS.has(id);
+}
+
 function getRulesForCategory(category) {
   return ANTIPATTERNS.filter(rule => rule.category === category);
 }
@@ -585,8 +610,10 @@ export {
   ANTIPATTERNS,
   RULE_SCOPES,
   RULE_ENGINE_SUPPORT,
+  ADVISORY_RULE_IDS,
   getAntipattern,
   getRulesForCategory,
   getRuleEngineSupport,
+  isAdvisoryRule,
   filterByScopes,
 };

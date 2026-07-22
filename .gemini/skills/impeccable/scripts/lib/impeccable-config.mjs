@@ -43,7 +43,7 @@ function detectorSection(raw) {
   return raw && raw.detector && typeof raw.detector === 'object' && !Array.isArray(raw.detector) ? raw.detector : null;
 }
 
-const DETECTOR_CONFIG_KEYS = new Set(['ignoreRules', 'ignoreFiles', 'ignoreValues', 'designSystem']);
+const DETECTOR_CONFIG_KEYS = new Set(['ignoreRules', 'ignoreFiles', 'ignoreValues', 'designSystem', 'advisoryRules']);
 
 const DEFAULT_DETECTION_CONFIG = Object.freeze({
   ignoreRules: [],
@@ -71,6 +71,11 @@ function cloneRawDetectionConfig() {
 
 function applyDetectionConfigSource(config, raw) {
   if (!raw || typeof raw !== 'object') return config;
+  // Advisory rules are opt-in for the design hook; the CLI carries the setting
+  // so config round-trips (e.g. `impeccable hooks ignore-value`) preserve it.
+  if (raw.advisoryRules === 'include' || raw.advisoryRules === 'exclude') {
+    config.advisoryRules = raw.advisoryRules;
+  }
   if (raw.designSystem && typeof raw.designSystem === 'object' && !Array.isArray(raw.designSystem)) {
     config.designSystem = {
       ...config.designSystem,
@@ -151,6 +156,9 @@ function normalizeDetectionConfigForWrite(config) {
     out.ignoreFiles = uniqueStrings(config.ignoreFiles.filter(v => typeof v === 'string' && v.trim()).map(v => v.trim()));
   }
   out.ignoreValues = normalizeIgnoreValueEntries(config?.ignoreValues || []);
+  if (config?.advisoryRules === 'include' || config?.advisoryRules === 'exclude') {
+    out.advisoryRules = config.advisoryRules;
+  }
   if (config?.designSystem && typeof config.designSystem === 'object' && !Array.isArray(config.designSystem)) {
     out.designSystem = {
       enabled: config.designSystem.enabled === false ? false : true,

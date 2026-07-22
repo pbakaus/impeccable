@@ -68,6 +68,15 @@ const GENERIC_FONTS = new Set([
 const WCAG_LARGE_TEXT_PX = 18 * (96 / 72);
 const WCAG_LARGE_BOLD_TEXT_PX = 14 * (96 / 72);
 
+// Em-dash overuse (advisory) thresholds, shared by the regex/static-HTML
+// analyzer and the browser DOM check so both fire on the same saturation
+// pattern. Two gates must hold: an absolute floor of EM_DASH_FLOOR dashes, and
+// a density of at least one dash per EM_DASH_CHARS_PER_DASH characters of body
+// text. A long article that uses a few em-dashes is left alone; a short,
+// dash-per-clause page is not.
+const EM_DASH_FLOOR = 8;
+const EM_DASH_CHARS_PER_DASH = 500;
+
 // Serif faces that show up in italic-display heroes. The rule also fires when
 // the primary face is unknown but the stack ends in the generic `serif` token,
 // which catches custom/private faces with a serif fallback.
@@ -97,5 +106,7 @@ export {
   GENERIC_FONTS,
   WCAG_LARGE_TEXT_PX,
   WCAG_LARGE_BOLD_TEXT_PX,
+  EM_DASH_FLOOR,
+  EM_DASH_CHARS_PER_DASH,
   KNOWN_SERIF_FONTS,
 };

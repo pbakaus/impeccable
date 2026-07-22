@@ -47,6 +47,11 @@ function stopEntry(command) {
   };
 }
 const CLAUDE_PROJECT_HOOK = '${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/hook.mjs';
+// A hook manifest can be copied into a user-level settings file (issue #399:
+// user-level hooks fire in every project, where a project-relative path may
+// not exist). Guard node invocations so a missing file exits 0 without
+// swallowing node's real exit code when the file is present.
+const guardedNode = (hookPath) => `[ ! -f "${hookPath}" ] || node "${hookPath}"`;
 const CLAUDE_PLUGIN_HOOK = '${CLAUDE_PLUGIN_ROOT}/skills/impeccable/scripts/hook.mjs';
 const CODEX_PLUGIN_HOOK = '${PLUGIN_ROOT}/skills/impeccable/scripts/hook.mjs';
 const CODEX_PROJECT_HOOK = '.agents/skills/impeccable/scripts/hook.mjs';
@@ -66,14 +71,14 @@ export function buildClaudeSettingsManifest() {
           hooks: [
             {
               type: 'command',
-              command: `node "${CLAUDE_PROJECT_HOOK}"`,
+              command: guardedNode(CLAUDE_PROJECT_HOOK),
               timeout: TIMEOUT_SECONDS,
               statusMessage: STATUS_MESSAGE,
             },
           ],
         },
       ],
-      Stop: [stopEntry(`node "${CLAUDE_PROJECT_HOOK}"`)],
+      Stop: [stopEntry(guardedNode(CLAUDE_PROJECT_HOOK))],
     },
   };
 }
@@ -138,14 +143,14 @@ export function buildCodexHooksManifest() {
           hooks: [
             {
               type: 'command',
-              command: `node "${CODEX_PROJECT_HOOK}"`,
+              command: guardedNode(CODEX_PROJECT_HOOK),
               timeout: TIMEOUT_SECONDS,
               statusMessage: STATUS_MESSAGE,
             },
           ],
         },
       ],
-      Stop: [stopEntry(`node "${CODEX_PROJECT_HOOK}"`)],
+      Stop: [stopEntry(guardedNode(CODEX_PROJECT_HOOK))],
     },
   };
 }
@@ -156,7 +161,7 @@ export function buildCursorHooksManifest() {
     hooks: {
       preToolUse: [
         {
-          command: `node "${CURSOR_BEFORE_EDIT_SCRIPT}"`,
+          command: guardedNode(CURSOR_BEFORE_EDIT_SCRIPT),
           timeout: TIMEOUT_SECONDS,
         },
       ],

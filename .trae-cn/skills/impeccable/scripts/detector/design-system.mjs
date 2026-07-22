@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 import { finding } from './findings.mjs';
@@ -7,6 +8,11 @@ import { parseAnyColor, resolveLengthPx } from './rules/checks.mjs';
 
 const DESIGN_NAMES = ['DESIGN.md', 'Design.md', 'design.md'];
 const FALLBACK_DIRS = ['.agents/context', 'docs'];
+// Files/dirs whose presence marks a directory as a project root. Mirrors the
+// walk-up semantics of skill/scripts/context.mjs (`resolveProject`), which the
+// CLI can't import (separate tree). `.git` and `package.json` are the common
+// boundaries; `.impeccable` is our own project marker.
+const PROJECT_ROOT_MARKERS = ['.git', 'package.json', '.impeccable'];
 const COLOR_CHANNEL_TOLERANCE = 6;
 const RADIUS_TOLERANCE_PX = 0.5;
 const FONT_SIZE_TOLERANCE_PX = 0.5;
@@ -467,6 +473,62 @@ function loadDesignSystemForCwd(cwd = process.cwd()) {
     sidecarPath,
     mdNewerThanJson: !!(mdStat && sidecarStat && mdStat.mtimeMs > sidecarStat.mtimeMs + 1000),
   });
+}
+
+// Directory to begin the project-root walk from, given a scan target that may
+// be a file or a directory (and may not exist yet).
+function designSystemStartDir(targetPath, cwd = process.cwd()) {
+  const abs = path.isAbsolute(targetPath) ? targetPath : path.resolve(cwd, targetPath);
+  try {
+    return fs.statSync(abs).isDirectory() ? abs : path.dirname(abs);
+  } catch {
+    // Nonexistent path: treat an extension-bearing leaf as a file.
+    return path.extname(abs) ? path.dirname(abs) : abs;
+  }
+}
+
+// Walk up from `startDir` to the directory that governs the target's design
+// system, mirroring skill/scripts/context.mjs's project-boundary semantics:
+//
+//   - A directory carrying a DESIGN.md (directly or in a fallback dir) IS the
+//     design root — that's where the rules live.
+//   - A directory carrying a project marker (.git / package.json / .impeccable)
+//     but no DESIGN.md is a project BOUNDARY: the walk stops with no design
+//     system, so a sibling project never inherits a parent's or cwd's rules.
+//   - Reaching the home directory / filesystem root with neither means no
+//     design system at all — never process.cwd()'s.
+//
+// Returns { dir, hasDesign } for the stopping directory, or null when the walk
+// runs out. This is the fix for cross-project contamination.
+export function findDesignRoot(startDir) {
+  let dir = path.resolve(startDir);
+  const homeDir = path.resolve(os.homedir());
+  while (true) {
+    if (resolveDesignMdPath(dir)) return { dir, hasDesign: true };
+    if (PROJECT_ROOT_MARKERS.some((marker) => fs.existsSync(path.join(dir, marker)))) {
+      return { dir, hasDesign: false };
+    }
+    if (dir === homeDir) return null;
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+// Resolve the design system that governs a specific scan target, by walking up
+// from the target's own location — never process.cwd(). Scanning project B's
+// files from inside project A applies B's DESIGN.md (or none), not A's.
+//
+// Pass a `cache` Map to memoize by resolved design root across a multi-file
+// scan; a target with no design root above it resolves to null.
+export function loadDesignSystemForTarget(targetPath, { cache, cwd = process.cwd() } = {}) {
+  const startDir = designSystemStartDir(targetPath, cwd);
+  const found = findDesignRoot(startDir);
+  const key = found ? `root:${found.dir}` : '\0none';
+  if (cache && cache.has(key)) return cache.get(key);
+  const loaded = found?.hasDesign ? loadDesignSystemForCwd(found.dir) : null;
+  if (cache) cache.set(key, loaded);
+  return loaded;
 }
 
 function isAllowedFont(font, designSystem) {

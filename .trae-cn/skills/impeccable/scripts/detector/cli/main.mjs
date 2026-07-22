@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-import { loadDesignSystemForCwd } from '../design-system.mjs';
+import { loadDesignSystemForTarget } from '../design-system.mjs';
 import { RULE_SCOPES, filterByScopes } from '../registry/antipatterns.mjs';
 import { createBrowserDetector, detectUrl } from '../engines/browser/detect-url.mjs';
 import { detectHtml } from '../engines/static-html/detect-html.mjs';
@@ -27,9 +28,37 @@ function formatFindingSummary(count) {
   return `${count} anti-pattern${count === 1 ? '' : 's'} found.`;
 }
 
-function formatFindings(findings, jsonMode) {
-  if (jsonMode) return JSON.stringify(findings, null, 2);
+// Local filesystem path behind a file:// URL, or null when it can't be mapped.
+function fileUrlToLocalPath(url) {
+  try {
+    return fileURLToPath(url);
+  } catch {
+    return null;
+  }
+}
 
+// Advisory findings are detected but never treated as failures: they list in a
+// separate, visually dimmed section, are excluded from the failure count that
+// drives the exit code, and carry `"advisory": true` in JSON so consumers can
+// filter. Every advisory finding carries the flag (stamped by the registry via
+// findings.mjs).
+function isAdvisory(finding) {
+  return finding && finding.advisory === true;
+}
+
+function partitionAdvisory(findings) {
+  const primary = [];
+  const advisory = [];
+  for (const f of findings) (isAdvisory(f) ? advisory : primary).push(f);
+  return { primary, advisory };
+}
+
+// ANSI dim, when stderr is a TTY. Advisory output is chrome, so keep it quiet.
+function dim(text) {
+  return process.stderr.isTTY ? `\x1b[2m${text}\x1b[0m` : text;
+}
+
+function formatFindingsBody(findings) {
   const grouped = {};
   for (const f of findings) {
     if (!grouped[f.file]) grouped[f.file] = [];
@@ -44,7 +73,28 @@ function formatFindings(findings, jsonMode) {
       out.push(`    → ${item.description}`);
     }
   }
-  out.push(`\n${formatFindingSummary(findings.length)}`);
+  return out;
+}
+
+function formatAdvisorySection(advisory) {
+  if (!advisory || advisory.length === 0) return '';
+  const lines = [`\n${dim('── Advisory (not counted as failures) ──')}`];
+  for (const line of formatFindingsBody(advisory)) lines.push(dim(line));
+  lines.push(dim(`\n${advisory.length} advisory note${advisory.length === 1 ? '' : 's'}. Suppress with --no-advisory.`));
+  return lines.join('\n');
+}
+
+// Text/JSON formatter. `findings` is the full set; advisory items are separated
+// out into their own section and excluded from the failure summary count. JSON
+// output keeps every finding (each advisory one flagged) in a single array.
+function formatFindings(findings, jsonMode) {
+  if (jsonMode) return JSON.stringify(findings, null, 2);
+
+  const { primary, advisory } = partitionAdvisory(findings);
+  const out = [...formatFindingsBody(primary)];
+  out.push(`\n${formatFindingSummary(primary.length)}`);
+  const advisorySection = formatAdvisorySection(advisory);
+  if (advisorySection) out.push(advisorySection);
   return out.join('\n');
 }
 
@@ -52,7 +102,11 @@ function formatFindings(findings, jsonMode) {
 // Stdin handling
 // ---------------------------------------------------------------------------
 
-async function handleStdin(options = {}) {
+// `optionsFor` maps a local path to scan options carrying that path's own
+// project design system (or base options when null). Falls back to a plain
+// object so direct/legacy callers still work.
+async function handleStdin(optionsFor = () => ({})) {
+  const resolve = typeof optionsFor === 'function' ? optionsFor : () => optionsFor;
   const chunks = [];
   for await (const chunk of process.stdin) chunks.push(chunk);
   const input = Buffer.concat(chunks).toString('utf-8');
@@ -60,11 +114,12 @@ async function handleStdin(options = {}) {
     const parsed = JSON.parse(input);
     const fp = parsed?.tool_input?.file_path;
     if (fp && fs.existsSync(fp)) {
+      const options = resolve(fp);
       return HTML_EXTENSIONS.has(path.extname(fp).toLowerCase())
         ? detectHtml(fp, options) : detectText(fs.readFileSync(fp, 'utf-8'), fp, options);
     }
   } catch { /* not JSON */ }
-  return detectText(input, '<stdin>', options);
+  return detectText(input, '<stdin>', resolve(null));
 }
 
 
@@ -100,7 +155,13 @@ Options:
                       ignore comments, or DESIGN.md
   --no-inline-ignores Do not honor in-file impeccable-disable* ignore comments
   --no-design-system  Do not load local DESIGN.md / .impeccable/design.json context
+  --no-advisory       Suppress advisory findings entirely (e.g. em-dash overuse)
   --help              Show this help message
+
+Advisory findings:
+  Some rules are advisory: detected and listed in a separate section, but never
+  counted as failures and never changing the exit code. They stay out of the
+  failure count so they never block automation. --no-advisory hides them.
 
 Project config:
   Respects .impeccable/config.json and .impeccable/config.local.json detector
@@ -139,6 +200,7 @@ async function detectCli() {
   const jsonMode = args.includes('--json');
   const quietMode = args.includes('--quiet');
   const helpMode = args.includes('--help');
+  const noAdvisory = args.includes('--no-advisory');
   // --fast (regex-only) is deprecated: since the jsdom removal, the static
   // HTML/CSS analysis is fast and covers every rule, so the regex-only path
   // only loses coverage for no real speed win. Accept the flag for back-compat
@@ -199,14 +261,23 @@ async function detectCli() {
     process.exit(1);
   }
   const designSystemEnabled = configEnabled && !args.includes('--no-design-system') && detectionConfig.designSystem?.enabled !== false;
-  const designSystem = designSystemEnabled ? loadDesignSystemForCwd(process.cwd()) : null;
   // Inline `impeccable-disable*` waivers are part of the scanned file, so they
   // apply by default. `--no-config` (raw scan) and the dedicated
   // `--no-inline-ignores` both turn them off.
   const inlineIgnoresEnabled = configEnabled && !args.includes('--no-inline-ignores');
-  const scanOptions = { inlineIgnores: inlineIgnoresEnabled };
-  if (designSystem) scanOptions.designSystem = designSystem;
-  if (viewport) scanOptions.viewport = viewport;
+  const baseScanOptions = { inlineIgnores: inlineIgnoresEnabled };
+  if (viewport) baseScanOptions.viewport = viewport;
+  // DESIGN.md must resolve from EACH scan target's own project root, not from
+  // process.cwd(): scanning project B's files from inside project A applied A's
+  // design rules (cross-project contamination). Resolve per target, memoized by
+  // resolved project root so a multi-file scan pays the read once per project.
+  // A target with no project marker above it gets no design system (never cwd's).
+  const designSystemCache = new Map();
+  const scanOptionsFor = (localPath) => {
+    if (!designSystemEnabled || !localPath) return baseScanOptions;
+    const designSystem = loadDesignSystemForTarget(localPath, { cache: designSystemCache });
+    return designSystem ? { ...baseScanOptions, designSystem } : baseScanOptions;
+  };
   const targets = args.filter(a => !a.startsWith('--'));
 
   if (helpMode) { printUsage(); process.exit(0); }
@@ -214,7 +285,7 @@ async function detectCli() {
   let allFindings = [];
 
   if (!process.stdin.isTTY && targets.length === 0) {
-    allFindings = await handleStdin(scanOptions);
+    allFindings = await handleStdin(scanOptionsFor);
   } else {
     const paths = targets.length > 0 ? targets : [process.cwd()];
     // file:// URLs get the same Puppeteer-rendered pass as http(s) — the
@@ -228,10 +299,17 @@ async function detectCli() {
     try {
       for (const target of paths) {
         if (urlRe.test(target)) {
+          // A file:// URL points at a local artifact, so its design system
+          // resolves from that file's project. A remote http(s) URL has no
+          // local project — it gets base options (no design system), never
+          // process.cwd()'s.
+          const urlOptions = /^file:/i.test(target)
+            ? scanOptionsFor(fileUrlToLocalPath(target))
+            : baseScanOptions;
           try {
             const scanner = browserDetector
-              ? (url) => browserDetector.detectUrl(url, scanOptions)
-              : (url) => detectUrl(url, scanOptions);
+              ? (url) => browserDetector.detectUrl(url, urlOptions)
+              : (url) => detectUrl(url, urlOptions);
             allFindings.push(...await scanner(target));
           } catch (e) { process.stderr.write(`Error: ${e.message}\n`); }
           continue;
@@ -297,11 +375,14 @@ async function detectCli() {
 
           for (const file of files) {
             const ext = path.extname(file).toLowerCase();
+            // Each file resolves its own project design system (cached by root),
+            // so a scan spanning sibling projects applies the right rules per file.
+            const fileOptions = scanOptionsFor(file);
             let fileFindings;
             if (HTML_EXTENSIONS.has(ext)) {
-              fileFindings = await detectHtml(file, scanOptions);
+              fileFindings = await detectHtml(file, fileOptions);
             } else {
-              fileFindings = detectText(fs.readFileSync(file, 'utf-8'), file, scanOptions);
+              fileFindings = detectText(fs.readFileSync(file, 'utf-8'), file, fileOptions);
             }
             // Annotate findings with import context
             const importers = importedByMap.get(file);
@@ -316,10 +397,11 @@ async function detectCli() {
         } else if (stat.isFile()) {
           if (shouldIgnoreDetectionFile(resolved, process.cwd(), detectionConfig)) continue;
           const ext = path.extname(resolved).toLowerCase();
+          const fileOptions = scanOptionsFor(resolved);
           if (HTML_EXTENSIONS.has(ext)) {
-            allFindings.push(...await detectHtml(resolved, scanOptions));
+            allFindings.push(...await detectHtml(resolved, fileOptions));
           } else {
-            allFindings.push(...detectText(fs.readFileSync(resolved, 'utf-8'), resolved, scanOptions));
+            allFindings.push(...detectText(fs.readFileSync(resolved, 'utf-8'), resolved, fileOptions));
           }
         }
       }
@@ -330,12 +412,24 @@ async function detectCli() {
 
   allFindings = filterDetectionFindings(allFindings, detectionConfig);
   allFindings = filterByScopes(allFindings, scopes);
+  // --no-advisory drops advisory findings before any output or exit-code math.
+  if (noAdvisory) allFindings = allFindings.filter((f) => !isAdvisory(f));
+
+  // The exit code and failure count reflect non-advisory findings only. An
+  // advisory-only scan still prints its notes but exits 0 (a clean pass), so
+  // advisory rules never break CI or block automation.
+  const { primary, advisory } = partitionAdvisory(allFindings);
 
   if (allFindings.length > 0) {
     if (jsonMode) process.stdout.write(formatFindings(allFindings, true) + '\n');
-    else if (quietMode) process.stderr.write(formatFindingSummary(allFindings.length) + '\n');
+    else if (quietMode) {
+      process.stderr.write(formatFindingSummary(primary.length) + '\n');
+      if (advisory.length > 0) {
+        process.stderr.write(dim(`${advisory.length} advisory note${advisory.length === 1 ? '' : 's'} (not counted).`) + '\n');
+      }
+    }
     else process.stderr.write(formatFindings(allFindings, false) + '\n');
-    process.exit(2);
+    process.exit(primary.length > 0 ? 2 : 0);
   }
   if (jsonMode) process.stdout.write('[]\n');
   process.exit(0);

@@ -1,4 +1,4 @@
-import { GENERIC_FONTS, OVERUSED_FONTS } from '../../shared/constants.mjs';
+import { GENERIC_FONTS, OVERUSED_FONTS, EM_DASH_FLOOR, EM_DASH_CHARS_PER_DASH } from '../../shared/constants.mjs';
 import { isNeutralColor } from '../../shared/color.mjs';
 import { extractGoogleFontFamilies } from '../../shared/fonts.mjs';
 import { checkSourceDesignSystem } from '../../design-system.mjs';
@@ -15,6 +15,7 @@ import { profileFindings, profileStep } from '../../profile/profiler.mjs';
 const hasRounded = (line) => /\brounded(?:-\w+)?\b/.test(line);
 const hasBorderRadius = (line) => /border-radius/i.test(line);
 const isSafeElement = (line) => /<(?:blockquote|nav[\s>]|pre[\s>]|code[\s>]|a\s|input[\s>]|span[\s>])/i.test(line);
+
 
 /** Strip HTML to plain text — drops script/style/comments/tags so
  *  content-text analyzers don't false-positive on code or CSS. */
@@ -306,9 +307,16 @@ const REGEX_ANALYZERS = [
     const dominant = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
     return [finding('monotonous-spacing', filePath, `~${dominant}px used ${maxCount}/${rounded.length} times (${Math.round(pct * 100)}%)`)];
   },
-  // Em-dash overuse: 5+ em-dashes or "--" in body text content
-  // (occasional em-dash use in prose is fine; the pattern fires only
-  // when count crosses into AI-cadence territory).
+  // Em-dash overuse (ADVISORY): the AI cadence tell is em-dash *saturation*,
+  // not the occasional dash. Humans use em-dashes legitimately, so this rule is
+  // advisory (surfaced separately, never a failure, hook-skipped by default) and
+  // its threshold is deliberately conservative. Two gates must both hold:
+  //   1. Absolute floor of EM_DASH_FLOOR (8) dashes — a page with a handful
+  //      never fires, no matter how short.
+  //   2. Density: at least one dash per EM_DASH_CHARS_PER_DASH (500) characters
+  //      of body text, so a long article that uses eight across several thousand
+  //      words is left alone while a short, dash-per-clause landing page is not.
+  // Raised from the old flat 5-dash floor, which fired on ordinary long prose.
   //
   // stripHtmlToText drops tags but leaves character-entity escapes intact, so
   // a model that writes `&mdash;`, `&#8212;`, or `&#x2014;` renders an em-dash
@@ -322,7 +330,11 @@ const REGEX_ANALYZERS = [
     let count = 0;
     const re = /[—]|--(?=\S)/g;
     while (re.exec(text) !== null) count++;
-    if (count < 5) return [];
+    if (count < EM_DASH_FLOOR) return [];
+    // Saturation gate: dashes must be dense in the prose, not sprinkled through
+    // a long document. textLength <= count * chars-per-dash means the density is
+    // at or above the threshold.
+    if (text.length > count * EM_DASH_CHARS_PER_DASH) return [];
     return [finding('em-dash-overuse', filePath, `${count} em-dashes in body text`)];
   },
   // Marketing buzzwords: SaaS phrase list

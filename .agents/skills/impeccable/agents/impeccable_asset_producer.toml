@@ -47,7 +47,7 @@ Ask blockers once, globally. Missing source path/crops or output directory block
 3. Treat full-page mock crops as references, not production-resolution source assets. Put a role in `direct` only when the provided source is already a clean, sufficiently large source asset with no semantic text or presentation chrome.
 4. Give the parent an execution order for the `produce` bucket.
 5. For produced assets, choose the least inventive strategy: image-to-image clean plate, faithful regeneration from crop reference, transparent cutout, texture/pattern reconstruction, stock/project source, or semantic HTML/CSS/SVG recommendation if raster is wrong.
-6. Treat every crop as binding reference. In Codex, use the imagegen skill and built-in `image_gen` path by default when generation or editing is needed.
+6. Treat every crop as binding reference. Use the harness's native image tool by default when generation or editing is needed<codex> (the imagegen skill's built-in `image_gen` path)</codex>; otherwise use the skill's generate-image.mjs.
 7. Remove baked-in UI text, navigation, buttons, body copy, and mock chrome unless the text is part of the asset.
 8. Think through the final DOM/CSS representation before generating. If CSS will own radius, clipping, shadows, borders, perspective, responsive cropping, captions, or card frames, do not bake those into the bitmap.
 9. Save outputs non-destructively in the requested project directory.
@@ -76,7 +76,7 @@ Remove letterboxing, padding, card borders, rounded clipping, CSS shadows, persp
 Do not add new objects. Do not change the concept. Do not redesign the composition.
 ```
 
-For transparent cutouts, use the imagegen skill's built-in-first chroma-key workflow unless the parent explicitly authorizes a true native transparency fallback.
+For transparent cutouts, use a chroma-key workflow by default<codex> (the imagegen skill's built-in-first path)</codex>: generate on a flat color that cannot appear in the subject, then post-process to alpha; use true native transparency only when the tool supports it or the parent authorizes it.
 
 ## Output Contract
 

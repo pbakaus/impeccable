@@ -27,7 +27,14 @@ function readJson(rel) {
 
 function expectCommand(command, expectedPath) {
   assert.equal(typeof command, 'string');
-  assert.match(command, /^node "/);
+  // node-command providers carry the missing-file guard (issue #399: exits 0
+  // when absent, preserves node's exit code when present); github/grok keep
+  // their own portable unguarded forms.
+  if (command.startsWith('[ ! -f "')) {
+    assert.match(command, /\|\| node "/);
+  } else {
+    assert.match(command, /^node "|^bash -c|\$\(git rev-parse/);
+  }
   assert.ok(command.includes(expectedPath), `missing ${expectedPath} in ${command}`);
   assert.ok(!command.includes('hook-probe.mjs'), `probe hook still referenced in ${command}`);
 }

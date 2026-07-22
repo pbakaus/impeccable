@@ -1223,6 +1223,10 @@ if (IS_BROWSER) {
           type: f.type || f.id,
           category: ap ? ap.category : 'quality',
           severity: f.severity || ap?.severity || 'warning',
+          // Advisory findings (em-dash overuse, etc.) are surfaced but never
+          // treated as failures; carry the flag so the overlay/extension can
+          // render them with the mildest affordance and consumers can filter.
+          advisory: (ap && ap.advisory === true) || f.advisory === true,
           detail: f.detail || f.snippet,
           ignoreValue: f.ignoreValue || f.value || '',
           name: ap ? ap.name : (f.type || f.id),
@@ -1539,6 +1543,17 @@ if (IS_BROWSER) {
     if (repeatedTextFindings.length > 0) {
       pageLevelFindings.push(...repeatedTextFindings);
       addBrowserFindings(groupMap, document.body, repeatedTextFindings);
+    }
+
+    // Em-dash overuse (advisory): browser parity with the static/regex path.
+    // Reads rendered body text so it catches dashes written as HTML entities.
+    // serializeFindings stamps the advisory flag from the registry.
+    const emDashFindings = checkEmDashOveruseDOM()
+      .map(f => ({ type: f.id, detail: f.snippet }))
+      .filter(f => _ruleOk(f.type));
+    if (emDashFindings.length > 0) {
+      pageLevelFindings.push(...emDashFindings);
+      addBrowserFindings(groupMap, document.body, emDashFindings);
     }
 
     const layoutFindings = checkLayout().filter(f => _ruleOk(f.type));

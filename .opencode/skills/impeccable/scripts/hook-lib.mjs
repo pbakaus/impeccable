@@ -16,6 +16,7 @@
  *   touchFile(cache, sessionId, filePath)
  *   suppressionNotice(filePath)
  *   filterFindings(findings, content, ext, config)
+ *   ADVISORY_RULES / isAdvisoryFinding(finding)
  *   IMMEDIATE_TIER_RULES / splitFindingsByTier(findings) / perEditTieringActive(config, harness)
  *   matchConfiguredExtension(filePath, extensions)
  *   dedupeAgainstCache(findings, cache, sessionId, filePath)
@@ -126,6 +127,26 @@ export const IMMEDIATE_TIER_RULES = new Set([
   'design-system-font-size',
 ]);
 
+// ── Advisory rules ────────────────────────────────────────────────────────
+// Advisory rules are opt-in noise: the CLI reports them in a separate section
+// and they never count as failures. The design hook skips them entirely by
+// default — in both the per-edit PostToolUse pass and the Stop deep pass — so
+// the agent is never nagged about a taste call a human might make on purpose.
+// A project opts back in with `.impeccable/config.json`:
+//   { "detector": { "advisoryRules": "include" } }
+// This set is the hook's own copy of the registry's `advisory: true` rules,
+// mirroring how IMMEDIATE_TIER_RULES lists rule ids inline so the hook stays
+// self-contained and testable without loading the detector. Keep it in sync
+// with the registry (cli/engine/registry/antipatterns.mjs).
+export const ADVISORY_RULES = new Set([
+  'em-dash-overuse',
+]);
+
+export function isAdvisoryFinding(finding) {
+  const id = finding && normalizeIgnoreRule(finding.antipattern);
+  return Boolean(id && (ADVISORY_RULES.has(id) || finding.advisory === true));
+}
+
 export const DEFAULT_CONFIG = Object.freeze({
   enabled: true,
   quiet: false,
@@ -136,6 +157,9 @@ export const DEFAULT_CONFIG = Object.freeze({
   ignoreValues: [],
   extensions: [],
   perEditRules: 'immediate',
+  // Advisory rules are skipped unless a project sets detector.advisoryRules to
+  // "include". See ADVISORY_RULES above.
+  advisoryRules: 'exclude',
   // maxFileBytes: not every generated artifact lives under a path we can
   // recognize. Committed browser bundles and vendored detector copies sit
   // next to source and run 200KB+, while genuinely authored stylesheets in
@@ -293,6 +317,11 @@ function cloneDefaultConfig() {
 
 function applyDetectorConfigSource(config, raw) {
   if (!raw || typeof raw !== 'object') return config;
+  // `detector.advisoryRules: "include"` opts the hook into advisory rules
+  // (em-dash overuse, etc.). Any other value keeps the default "exclude".
+  if (raw.advisoryRules === 'include' || raw.advisoryRules === 'exclude') {
+    config.advisoryRules = raw.advisoryRules;
+  }
   if (raw.designSystem && typeof raw.designSystem === 'object' && !Array.isArray(raw.designSystem)) {
     config.designSystem = {
       ...config.designSystem,
@@ -755,8 +784,12 @@ export function filterFindings(findings, _content, _ext, config) {
   if (!Array.isArray(findings) || findings.length === 0) return [];
   const ignoreRules = new Set((config.ignoreRules || []).map((rule) => normalizeIgnoreRule(rule)));
   const ignoreValues = normalizeIgnoreValueEntries(config.ignoreValues || []);
+  // Advisory rules are skipped by default so the hook never nags about them;
+  // a project opts in with detector.advisoryRules: "include".
+  const includeAdvisory = (config?.advisoryRules || DEFAULT_CONFIG.advisoryRules) === 'include';
   return findings.filter((f) => {
     if (!f || typeof f !== 'object') return false;
+    if (!includeAdvisory && isAdvisoryFinding(f)) return false;
     if (ignoreRules.has(normalizeIgnoreRule(f.antipattern))) return false;
     if (isIgnoredFindingValue(f, ignoreValues)) return false;
     return true;
