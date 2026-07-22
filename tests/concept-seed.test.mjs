@@ -1,6 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -346,5 +348,41 @@ describe('concept seed scopes', () => {
     assert.match(output, /spiral galaxy/);
     assert.match(output, /CREATIVE SPARK: A brilliant core/);
     assert.equal(output.indexOf('CREATIVE SPARK:') < output.indexOf('SYSTEM GRAMMAR:'), true);
+  });
+});
+
+describe('init gate', () => {
+  const gateRun = (cwd) => spawnSync(process.execPath, [SCRIPT, '--scope', 'direction', '--from', 'gate-test'], {
+    cwd,
+    encoding: 'utf-8',
+    env: { ...process.env, IMPECCABLE_CATALOG_DIR: FIXTURE_DIR, IMPECCABLE_CONTEXT_DIR: '' },
+  });
+
+  it('refuses to deal when no PRODUCT.md exists and routes to init', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'concept-seed-noproduct-'));
+    const result = gateRun(dir);
+    assert.equal(result.status, 1);
+    assert.match(result.stdout, /NO_PRODUCT_MD/);
+    assert.match(result.stdout, /init/);
+    assert.doesNotMatch(result.stdout, /ASSIGNED INDEX/);
+  });
+
+  it('deals normally once PRODUCT.md exists', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'concept-seed-product-'));
+    writeFileSync(path.join(dir, 'PRODUCT.md'), '# Test Product\n\n## Register\n\nbrand\n');
+    const result = gateRun(dir);
+    assert.equal(result.status, 0);
+    assert.doesNotMatch(result.stdout, /NO_PRODUCT_MD/);
+  });
+
+  it('never gates the choice ping', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'concept-seed-ping-'));
+    const result = spawnSync(process.execPath, [SCRIPT, '--chosen', 'assigned', '--from', 'gate-test'], {
+      cwd: dir,
+      encoding: 'utf-8',
+      env: { ...process.env, IMPECCABLE_CATALOG_DIR: FIXTURE_DIR, IMPECCABLE_NO_TELEMETRY: '1' },
+    });
+    assert.equal(result.status, 0);
+    assert.doesNotMatch(result.stdout, /NO_PRODUCT_MD/);
   });
 });
