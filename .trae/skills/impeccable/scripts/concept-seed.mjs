@@ -458,7 +458,10 @@ ASSIGNED INDEX: ${buildIndex}
   The assignment exists to refuse the model's ranking rut, never to outrank
   the user or the brief. Never expose assignment metadata in user-facing labels.
 No challengers this run: the roll service was unreachable and no local
-catalog exists. Proceed with the grounded candidates alone; the assignment
+catalog exists. A sandboxed shell without network egress is the most common
+cause: if this harness can rerun the command with network access granted,
+do that once before proceeding. Otherwise proceed with the grounded
+candidates alone; the assignment
 above still applies at full strength. Tell the user plainly that this roll
 ran degraded, with no challengers and no quality-bar boards; do not present
 the outcome as a full roll. A degraded roll changes the cards, not the
