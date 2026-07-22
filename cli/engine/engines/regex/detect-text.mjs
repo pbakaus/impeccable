@@ -309,8 +309,16 @@ const REGEX_ANALYZERS = [
   // Em-dash overuse: 5+ em-dashes or "--" in body text content
   // (occasional em-dash use in prose is fine; the pattern fires only
   // when count crosses into AI-cadence territory).
+  //
+  // stripHtmlToText drops tags but leaves character-entity escapes intact, so
+  // a model that writes `&mdash;`, `&#8212;`, or `&#x2014;` renders an em-dash
+  // the counter never saw. Decode the em-dash entities (named, zero-padded
+  // decimal, upper/lower hex) to the literal glyph first. En-dash entities are
+  // deliberately left alone: the rule counts em-dashes, and the literal `–`
+  // was never counted either.
   (content, filePath) => {
-    const text = stripHtmlToText(content);
+    const text = stripHtmlToText(content)
+      .replace(/&mdash;|&#0*8212;|&#x0*2014;/gi, '—');
     let count = 0;
     const re = /[—]|--(?=\S)/g;
     while (re.exec(text) !== null) count++;

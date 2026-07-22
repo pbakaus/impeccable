@@ -917,3 +917,80 @@ describe('detectHtml — generated-UI tells', () => {
     );
   });
 });
+
+describe('em-dash overuse — HTML entity escapes', () => {
+  // Build a full page so the page-level text-content analyzer runs. `body` is the
+  // prose that carries the dashes; the doctype/html scaffold is required by
+  // isFullPage(). Each dash spelling is a separate case because the rule counts
+  // per page, not per element.
+  const page = (body) =>
+    `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>t</title></head>` +
+    `<body><main><h1>A real page heading of ordinary length</h1><p>${body}</p></main></body></html>`;
+
+  // Six dashes clears the 5+ threshold. Sentence fragments keep the surrounding
+  // prose realistic so nothing else in the pipeline objects.
+  const sixNamed = 'fast &mdash; cheap &mdash; honest &mdash; simple &mdash; quiet &mdash; kind &mdash; done';
+  const sixNumeric = 'fast &#8212; cheap &#8212; honest &#8212; simple &#8212; quiet &#8212; kind &#8212; done';
+  const sixHex = 'fast &#x2014; cheap &#x2014; honest &#x2014; simple &#x2014; quiet &#x2014; kind &#x2014; done';
+  const sixHexUpper = 'fast &#X2014; cheap &#X2014; honest &#X2014; simple &#X2014; quiet &#X2014; kind &#X2014; done';
+  const sixNumericPadded = 'fast &#08212; cheap &#08212; honest &#08212; simple &#08212; quiet &#08212; kind &#08212; done';
+  // Three literal glyphs + three named entities render identically; the count
+  // must see all six.
+  const mixed = 'fast — cheap — honest — simple &mdash; quiet &mdash; kind &mdash; done';
+
+  const SHOULD_FLAG = {
+    'named &mdash;': sixNamed,
+    'numeric &#8212;': sixNumeric,
+    'hex &#x2014;': sixHex,
+    'uppercase-hex &#X2014;': sixHexUpper,
+    'zero-padded decimal &#08212;': sixNumericPadded,
+    'mixed literal + entity': mixed,
+  };
+
+  // False-positive shapes: none of these should trip the em-dash counter.
+  const SHOULD_PASS = {
+    // Below the 5+ threshold: occasional em-dash entity use is legitimate prose.
+    'two entities below threshold': 'fast &mdash; cheap &mdash; done, otherwise plain sentences fill the paragraph body',
+    // En-dashes are a different character and a different job (ranges); the em-dash
+    // rule must not decode or count them.
+    'en-dash entities': 'pages 10&ndash;20 and 30&ndash;40 and 50&ndash;60 and 70&ndash;80 and 90&ndash;100 and 1&ndash;2',
+    'numeric en-dash entities': 'pages 10&#8211;20 and 30&#8211;40 and 50&#8211;60 and 70&#8211;80 and 90&#8211;100 and 1&#8211;2',
+    // Double-escaped: the visible text is the literal string "&mdash;", not a dash.
+    'double-escaped ampersand': 'write &amp;mdash; and &amp;mdash; and &amp;mdash; and &amp;mdash; and &amp;mdash; and &amp;mdash; literally',
+    // Unrelated entities must never be miscounted as dashes.
+    'non-dash entities': 'a&nbsp;b &copy; c &hellip; d &amp; e &trade; f &reg; g &deg; h &sect; i &para;',
+    // Ordinary hyphenated compounds are single hyphens, not the double-hyphen tell.
+    'hyphenated compounds': 'state-of-the-art, well-being, high-quality, self-service, end-to-end, at-a-glance copy',
+  };
+
+  const emDashCount = (findings) =>
+    findings.filter((r) => r.antipattern === 'em-dash-overuse').length;
+
+  for (const [label, body] of Object.entries(SHOULD_FLAG)) {
+    it(`flags em-dash overuse spelled as ${label}`, () => {
+      const findings = detectText(page(body), 'em-dash.html');
+      assert.equal(
+        emDashCount(findings), 1,
+        `expected em-dash-overuse for "${label}", got: ${findings.map((r) => r.antipattern).join(', ') || 'none'}`,
+      );
+    });
+  }
+
+  for (const [label, body] of Object.entries(SHOULD_PASS)) {
+    it(`does not flag ${label}`, () => {
+      const findings = detectText(page(body), 'em-dash.html');
+      assert.equal(
+        emDashCount(findings), 0,
+        `"${label}" should not flag em-dash overuse`,
+      );
+    });
+  }
+
+  it('static-HTML path decodes entity em-dashes too (fixture file)', async () => {
+    const findings = await detectHtml(path.join(FIXTURES, 'em-dash-entities.html'));
+    assert.equal(
+      findings.filter((r) => r.antipattern === 'em-dash-overuse').length, 1,
+      'em-dash-entities.html should flag em-dash overuse via the static-HTML path',
+    );
+  });
+});
