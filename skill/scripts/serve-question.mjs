@@ -193,6 +193,7 @@ function page() {
   :root {
     color-scheme: dark;
     --ks-kinpaku: oklch(84% 0.19 80.46);
+    --ks-kinpaku-pale: oklch(86% 0.07 84);
     --ks-kinpaku-rich: oklch(77% 0.13 82);
     --ks-kinpaku-deep: oklch(61% 0.085 78);
     --ks-dark-ink: oklch(14% 0.018 95);
@@ -213,12 +214,11 @@ function page() {
   * { box-sizing: border-box; margin: 0; }
   body { background: var(--ks-lacquer); color: var(--ks-text); font: 15px/1.55 var(--ks-font); padding: 2.6rem clamp(1rem, 5vw, 4rem) 4rem; }
   header { max-width: 74rem; margin: 0 auto 2.4rem; }
-  .brand { display: flex; align-items: center; gap: .55rem; }
-  .brand svg { width: 26px; height: 26px; }
-  .brand svg path { fill: var(--ks-kinpaku); }
-  .wordmark { font-family: var(--ks-font-display); font-weight: 600; font-size: 1.35rem; letter-spacing: .012em; color: var(--ks-kinpaku); }
-  .headline { display: flex; align-items: center; gap: 1.1rem; margin-top: 1.6rem; }
-  .die { flex: none; display: flex; align-items: center; justify-content: center; min-width: 56px; height: 56px; font-family: var(--ks-font-display); font-size: 2.1rem; font-weight: 700; color: var(--ks-dark-ink); background: var(--ks-kinpaku); border-radius: 10px; transform: rotate(3deg); box-shadow: 0 10px 26px oklch(0% 0 0 / 0.45); }
+  .brand { display: flex; align-items: center; gap: .55rem; color: var(--ks-kinpaku); }
+  .brand svg { width: 22px; height: 22px; }
+  .wordmark { font-family: var(--ks-font-display); font-weight: 400; font-size: 1.125rem; letter-spacing: 0.15em; text-transform: uppercase; line-height: 1; color: var(--ks-kinpaku); }
+  .headline { display: flex; align-items: center; gap: .9rem; margin-top: 1.7rem; }
+  .headline-die { flex: none; width: 34px; height: 34px; color: var(--ks-kinpaku); }
   h1 { font-family: var(--ks-font-display); font-weight: 700; font-size: clamp(1.7rem, 3.4vw, 2.5rem); line-height: 1.05; color: var(--ks-champagne); }
   .question { color: var(--ks-text-muted); margin-top: .85rem; max-width: 52rem; }
   .grid { display: grid; gap: 1.6rem; grid-template-columns: repeat(auto-fit, minmax(min(23rem, 100%), 1fr)); max-width: 90rem; margin: 0 auto; }
@@ -227,30 +227,31 @@ function page() {
   .card.lead { border-color: var(--ks-kinpaku-deep); box-shadow: 0 0 0 1px var(--ks-kinpaku-deep), 0 18px 40px oklch(0% 0 0 / 0.45); }
   @keyframes deal { from { opacity: 0; transform: translateY(26px) rotate(calc(var(--fan, 0deg) + 2deg)); } to { opacity: 1; transform: translateY(0) rotate(var(--fan, 0deg)); } }
   @media (prefers-reduced-motion: reduce) { .card { animation: none; opacity: 1; } }
-  .kicker { position: absolute; z-index: 1; top: .8rem; left: .8rem; display: flex; align-items: center; justify-content: center; padding: .3rem .55rem; background: var(--ks-kinpaku); color: var(--ks-dark-ink); font-family: var(--ks-font-display); font-size: .78rem; font-weight: 700; letter-spacing: .14em; border-radius: 6px; transform: rotate(-3deg); box-shadow: 0 6px 16px oklch(0% 0 0 / 0.4); }
+  .kicker { position: absolute; z-index: 1; top: 12px; left: 12px; padding: 4px 10px; background: var(--ks-kinpaku); color: var(--ks-dark-ink); font-family: var(--ks-mono); font-size: .625rem; letter-spacing: .24em; text-transform: uppercase; border-radius: 4px; }
   img.hero { width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block; background: linear-gradient(100deg, var(--ks-graphite) 40%, var(--ks-graphite-2) 50%, var(--ks-graphite) 60%); }
   .hero-blank { width: 100%; aspect-ratio: 16/9; background: linear-gradient(100deg, var(--ks-graphite) 40%, var(--ks-graphite-2) 50%, var(--ks-graphite) 60%); }
   .body { padding: .95rem 1.1rem 1.2rem; display: flex; flex-direction: column; gap: .5rem; flex: 1; }
   .tier { font-family: var(--ks-mono); font-size: .625rem; letter-spacing: .24em; text-transform: uppercase; color: var(--ks-text-faint); }
-  h2 { font-family: var(--ks-font-display); font-size: 1.35rem; font-weight: 600; line-height: 1.15; letter-spacing: .01em; color: var(--ks-champagne); }
+  h2 { font-family: var(--ks-font-display); font-size: 1.125rem; font-weight: 600; line-height: 1.15; letter-spacing: .01em; color: var(--ks-champagne); }
   .detail { color: var(--ks-text-muted); font-size: .88rem; white-space: pre-wrap; }
   details { font-size: .78rem; color: var(--ks-text-faint); } details summary { cursor: pointer; } details img { width: 100%; margin-top: .5rem; border-radius: 6px; border: 1px solid var(--ks-rule); }
-  button.choose { margin-top: auto; align-self: start; background: var(--ks-kinpaku); color: var(--ks-dark-ink); border: 0; font-family: var(--ks-font); font-size: .9rem; font-weight: 650; padding: .55rem 1.15rem; border-radius: 7px; cursor: pointer; transition: background .15s; }
-  button.choose:hover { background: var(--ks-kinpaku-rich); }
+  button.choose { margin-top: auto; align-self: start; background: var(--ks-kinpaku); color: var(--ks-dark-ink); border: 0; font-family: var(--ks-font); font-size: 1rem; font-weight: 500; line-height: 1.35; padding: 10px 38px; border-radius: 6px; cursor: pointer; transition: background .15s; }
+  button.choose:hover { background: var(--ks-kinpaku-pale); }
   footer { max-width: 74rem; margin: 2.4rem auto 0; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
   #steer { flex: 1; min-width: 16rem; background: var(--ks-lacquer-raised); color: var(--ks-text); border: 1px solid var(--ks-rule); border-radius: 7px; padding: .6rem .85rem; font: inherit; }
   #steer:focus { outline: none; border-color: var(--ks-patina); }
-  #reroll { display: flex; align-items: center; gap: .5rem; background: none; border: 1px solid var(--ks-kinpaku-deep); color: var(--ks-kinpaku); font-family: var(--ks-font-display); font-weight: 600; font-size: .95rem; padding: .55rem 1.15rem; border-radius: 7px; cursor: pointer; transition: background .15s, color .15s; }
-  #reroll:hover { background: var(--ks-kinpaku); color: var(--ks-dark-ink); }
+  #reroll { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; font-family: var(--ks-mono); font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--ks-kinpaku); background: transparent; border: 1px solid var(--ks-rule); border-radius: 6px; cursor: pointer; transition: border-color .2s ease, color .2s ease; }
+  #reroll:hover { color: var(--ks-kinpaku-pale); border-color: var(--ks-kinpaku-deep); }
+  #reroll svg { width: 15px; height: 15px; }
   .done { display: flex; flex-direction: column; align-items: center; gap: 1rem; padding: 7rem 1rem; font-family: var(--ks-font-display); font-size: 1.4rem; color: var(--ks-champagne); text-align: center; }
 </style>
 <header>
   <div class="brand">
-    <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 1 L18 1 L8 31 L7 31 Q1 31 1 25 L1 7 Q1 1 7 1 Z"/><path d="M22 1 L25 1 Q31 1 31 7 L31 25 Q31 31 25 31 L12 31 Z"/></svg>
-    <span class="wordmark">impeccable</span>
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 2.5 L13.5 2.5 L5.5 21.5 L5 21.5 Q2.5 21.5 2.5 19 L2.5 5 Q2.5 2.5 5 2.5 Z"/><path d="M16.5 2.5 L19 2.5 Q21.5 2.5 21.5 5 L21.5 19 Q21.5 21.5 19 21.5 L8.5 21.5 Z"/></svg>
+    <span class="wordmark">Impeccable</span>
   </div>
   <div class="headline">
-    <div class="die">${options.length}</div>
+    <svg class="headline-die" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="8.4" cy="8.4" r="1.5" fill="currentColor"/><circle cx="15.6" cy="8.4" r="1.5" fill="currentColor"/><circle cx="8.4" cy="15.6" r="1.5" fill="currentColor"/><circle cx="15.6" cy="15.6" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/></svg>
     <h1>${esc(payload.title || 'Choose a direction')}</h1>
   </div>
   ${payload.question ? `<p class="question">${esc(payload.question)}</p>` : ''}
@@ -258,13 +259,13 @@ function page() {
 <main class="grid">${cards}</main>
 <footer>
   ${payload.steer ? '<input id="steer" placeholder="Optional steer: what should be different or kept?">' : ''}
-  ${payload.reroll ? '<button id="reroll"><span>&#9860;</span> Re-roll: none of these</button>' : ''}
+  ${payload.reroll ? '<button id="reroll"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="8.4" cy="8.4" r="1.5" fill="currentColor"/><circle cx="15.6" cy="8.4" r="1.5" fill="currentColor"/><circle cx="8.4" cy="15.6" r="1.5" fill="currentColor"/><circle cx="15.6" cy="15.6" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/></svg><span>Re-roll &middot; deal again</span></button>' : ''}
 </footer>
 <script>
   const steer = () => document.getElementById('steer')?.value || '';
   async function answer(optionId) {
     await fetch('/answer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId, steer: steer() }) });
-    document.body.innerHTML = '<div class="done"><svg viewBox="0 0 32 32" width="40" height="40" aria-hidden="true"><path d="M7 1 L18 1 L8 31 L7 31 Q1 31 1 25 L1 7 Q1 1 7 1 Z" fill="oklch(84% 0.19 80.46)"/><path d="M22 1 L25 1 Q31 1 31 7 L31 25 Q31 31 25 31 L12 31 Z" fill="oklch(84% 0.19 80.46)"/></svg>Choice recorded. The agent is resuming; you can close this tab.</div>';
+    document.body.innerHTML = '<div class="done"><svg viewBox="0 0 24 24" width="38" height="38" fill="oklch(84% 0.19 80.46)" aria-hidden="true"><path d="M5 2.5 L13.5 2.5 L5.5 21.5 L5 21.5 Q2.5 21.5 2.5 19 L2.5 5 Q2.5 2.5 5 2.5 Z"/><path d="M16.5 2.5 L19 2.5 Q21.5 2.5 21.5 5 L21.5 19 Q21.5 21.5 19 21.5 L8.5 21.5 Z"/></svg>Choice recorded. The agent is resuming; you can close this tab.</div>';
   }
   document.querySelectorAll('button.choose').forEach(b => b.addEventListener('click', () => answer(b.dataset.id)));
   document.getElementById('reroll')?.addEventListener('click', () => answer('reroll'));
