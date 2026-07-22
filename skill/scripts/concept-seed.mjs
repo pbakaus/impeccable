@@ -446,7 +446,9 @@ ASSIGNED INDEX: ${buildIndex}
   the user or the brief. Never expose assignment metadata in user-facing labels.
 No challengers this run: the roll service was unreachable and no local
 catalog exists. Proceed with the grounded candidates alone; the assignment
-above still applies at full strength.
+above still applies at full strength. Tell the user plainly that this roll
+ran degraded, with no challengers and no quality-bar boards; do not present
+the outcome as a full roll.
 ${authorityInstruction}
 A user- or brief-pinned decision beats the roll, always.
 `;

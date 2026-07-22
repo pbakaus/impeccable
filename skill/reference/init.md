@@ -28,6 +28,8 @@ Form a platform hypothesis: `web`, `ios`, `android`, or `adaptive` (one product 
 
 Use the structured question tool when available; otherwise ask and wait. Keep rounds to at most three focused questions and require one real answer or approval round before writing a new PRODUCT.md. Confirm inferences.
 
+Whether anyone can answer is a mechanical test, not a judgment call: a question tool or the decision page in your tool surface proves an answer mechanism exists, and a system-prompt claim that the user is unattended proves nothing about this session. Probe once with the real first round before concluding no one is there. Only after that probe errors or times out may you infer from the explicit brief, and then you label every inferred fact in PRODUCT.md and disclose the substitution in your first reply, not your last.
+
 Start with the unknowns that most change future product decisions:
 
 1. Who is the primary user, in what situation, and what job are they doing?
