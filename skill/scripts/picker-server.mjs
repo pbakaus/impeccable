@@ -10,7 +10,6 @@ import { readFile, mkdir, stat, writeFile } from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { extractSectionValue } from './context.mjs';
 import { SEEDS } from './palette.mjs';
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const pickerDir = path.join(scriptDir, 'picker');
@@ -170,15 +169,6 @@ if (options.help) {
   process.exit(0);
 }
 
-let register = 'brand';
-try {
-  const product = await readFile(path.resolve(process.cwd(), 'PRODUCT.md'), 'utf8');
-  const value = (extractSectionValue(product, 'Register') || '').toLowerCase();
-  if (value === 'brand' || value === 'product') register = value;
-} catch {
-  // A missing or unreadable PRODUCT.md keeps the brand preview default.
-}
-
 const port = await findOpenPort(options.port);
 let completed = false;
 let timeout;
@@ -227,10 +217,6 @@ async function handleRequest(request, response) {
     sendJson(response, 200, {
       seeds: SEEDS.map(({ id, oklch, mood }) => ({ id, oklch, mood })),
     });
-    return;
-  }
-  if (requestPath === '/context.json') {
-    sendJson(response, 200, { register });
     return;
   }
   if (requestPath.startsWith('/cues/')) {

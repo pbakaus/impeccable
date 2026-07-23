@@ -40,7 +40,7 @@ before(() => {
   });
 });
 
-async function createFixture(register = null) {
+async function createFixture() {
   const cwd = await realpath(await mkdtemp(path.join(tmpdir(), 'impeccable-picker-')));
   const cuesDir = path.join(cwd, '.impeccable/visual-cues');
   await mkdir(cuesDir, { recursive: true });
@@ -49,9 +49,6 @@ async function createFixture(register = null) {
     path.join(cuesDir, 'cues.json'),
     `${JSON.stringify(cueManifestFixture)}\n`,
   );
-  if (register) {
-    await writeFile(path.join(cwd, 'PRODUCT.md'), `# Product\n\n## Register\n\n${register}\n`);
-  }
   return { cwd, cuesDir };
 }
 
@@ -182,7 +179,7 @@ test('serves picker and cues, writes submission, prints answers, and exits 0', a
   }
 
   const exitPromise = waitForExit(server.processHandle);
-  const answers = { register: 'brand', direction: 'kinpaku' };
+  const answers = { cue: 'hero-01', direction: 'kinpaku' };
   const submitResponse = await fetch(`${server.url}/submit`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -207,27 +204,6 @@ test('palette CLI still prints a seed', () => {
   });
   assert.match(output, /^BRAND SEED · seed-\d+/);
   assert.match(output, /Seed color \(anchor for your primary brand color\):/);
-});
-
-test('serves the product register from PRODUCT.md', async (t) => {
-  const fixture = await createFixture('product');
-  const server = await startPicker(fixture.cwd, ['--port', String(portBase + 10)]);
-  await cleanup(t, fixture, server);
-
-  const response = await fetch(`${server.url}/context.json`);
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get('content-type'), /^application\/json/);
-  assert.deepEqual(await response.json(), { register: 'product' });
-});
-
-test('defaults picker context to brand without PRODUCT.md', async (t) => {
-  const fixture = await createFixture();
-  const server = await startPicker(fixture.cwd, ['--port', String(portBase + 11)]);
-  await cleanup(t, fixture, server);
-
-  const response = await fetch(`${server.url}/context.json`);
-  assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { register: 'brand' });
 });
 
 test('picker color math round-trips sRGB and clips out-of-gamut OKLCH', async () => {

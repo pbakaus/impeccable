@@ -324,9 +324,7 @@ document.addEventListener('picker:screenchange', (event) => activate(event.detai
 
 try {
   const get = (url) => fetch(url).then((response) => response.ok ? response.json() : Promise.reject());
-  const context = get('/context.json').catch(() => ({ register: 'brand' }));
-  const [cueData, seedData, contextData] = await Promise.all([get('/cues.json'), get('/palettes.json'), context]);
-  preview.dataset.register = contextData.register === 'product' ? 'product' : 'brand';
+  const [cueData, seedData] = await Promise.all([get('/cues.json'), get('/palettes.json')]);
   cards = [
     ...cueData.cues.map((id) => ({ id, type: 'cue', palette: cueData.palette[id] })),
     ...seedData.seeds.map((seed) => ({ ...seed, type: 'seed' })),
