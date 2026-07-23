@@ -13,16 +13,75 @@ const hint = $('[data-palette-hint]');
 const ringGuide = $('[data-ring-guide]');
 const loupe = $('[data-loupe]');
 const preview = $('.picker-preview');
+const strategyPreview = document.querySelector('[data-strategy-preview]');
+const typePreview = document.querySelector('[data-type-preview]');
+const fontOptions = document.querySelector('[data-font-options]');
+const pairTemplate = document.querySelector('[data-pair-card]');
 const states = new Map();
 const canvases = new WeakMap();
 let cards = [];
 let current = 0;
 let openTint;
+let fontManifest;
+
+const FALLBACK_FONTS = {
+  version: 1,
+  specimen: {
+    headline: 'Shape a clear visual direction',
+    body: 'Choose a type system that gives the product a distinct and usable voice.',
+  },
+  pairs: [
+    {
+      id: 'source-editorial',
+      name: 'Source editorial',
+      heading: { family: 'Source Serif 4', weight: 600 },
+      body: { family: 'Source Sans 3', weight: 400 },
+      why: 'Source Serif 4 gives the questionnaire an editorial voice while Source Sans 3 keeps guidance easy to scan.',
+    },
+    {
+      id: 'literary-clarity',
+      name: 'Literary clarity',
+      heading: { family: 'Libre Baskerville', weight: 700 },
+      body: { family: 'Libre Franklin', weight: 400 },
+      why: 'Libre Baskerville adds measured character while Libre Franklin supports the picker’s longer instructional copy.',
+    },
+    {
+      id: 'warm-structure',
+      name: 'Warm structure',
+      heading: { family: 'Bitter', weight: 600 },
+      body: { family: 'Cabin', weight: 400 },
+      why: 'Bitter brings sturdy detail to key choices while Cabin remains open at the picker’s compact text sizes.',
+    },
+    {
+      id: 'bold-utility',
+      name: 'Bold utility',
+      heading: { family: 'Archivo Black', weight: 400 },
+      body: { family: 'Archivo', weight: 400 },
+      why: 'Archivo Black makes decisions unmistakable while Archivo keeps the surrounding interface practical.',
+    },
+    {
+      id: 'technical-signal',
+      name: 'Technical signal',
+      heading: { family: 'Azeret Mono', weight: 600 },
+      body: { family: 'Noto Sans', weight: 400 },
+      why: 'Azeret Mono echoes the system-building task while Noto Sans carries the explanatory reading load.',
+    },
+    {
+      id: 'classical-poise',
+      name: 'Classical poise',
+      heading: { family: 'Marcellus', weight: 400 },
+      body: { family: 'Karla', weight: 400 },
+      why: 'Marcellus gives the visual direction a composed signature while Karla keeps controls direct.',
+    },
+  ],
+};
 
 const roleMap = (value) => Object.fromEntries(ROLES.map((role) => [role, value(role)]));
 const card = () => cards[current];
 const state = () => states.get(card().id);
 const dismissRingGuide = () => ringGuide.setAttribute('aria-hidden', 'true');
+const serifFamily = /serif|mincho|baskerville|bitter|marcellus|slab|antiqua|garamond|didot|bodoni/i;
+const fontStack = (family) => `"${family.replaceAll('"', '\\"')}", ${serifFamily.test(family) ? 'serif' : 'sans-serif'}`;
 
 function createState(item) {
   const colors = item.type === 'cue'
@@ -92,6 +151,92 @@ function renderPreview() {
   for (const role of ROLES) preview.style.setProperty(`--pv-${role}`, state().colors[role]);
   preview.style.setProperty('--pv-n-ink', contrastInk(state().colors.neutral));
 }
+
+function syncCommittedPalette(target) {
+  const committed = roleMap((role) => $(`[name="palette-${role}"]`).value);
+  if (!target || Object.values(committed).some((hex) => !hex)) return;
+  for (const role of ROLES) target.style.setProperty(`--pv-${role}`, committed[role]);
+  target.style.setProperty('--pv-n-ink', contrastInk(committed.neutral));
+  target.style.setProperty('--pv-p-ink', contrastInk(committed.primary));
+}
+
+function isFontManifest(value) {
+  return value?.version === 1
+    && typeof value.specimen?.headline === 'string'
+    && typeof value.specimen?.body === 'string'
+    && value.pairs?.length === 6
+    && value.pairs.every((pair) => (
+      typeof pair.id === 'string'
+      && typeof pair.name === 'string'
+      && typeof pair.heading?.family === 'string'
+      && Number.isFinite(pair.heading?.weight)
+      && typeof pair.body?.family === 'string'
+      && Number.isFinite(pair.body?.weight)
+      && typeof pair.why === 'string'
+    ));
+}
+
+function loadFontStylesheet(pairs) {
+  const families = new Map();
+  const addWeight = (family, weight) => {
+    if (!families.has(family)) families.set(family, new Set());
+    families.get(family).add(weight);
+  };
+  for (const pair of pairs) {
+    addWeight(pair.heading.family, pair.heading.weight);
+    addWeight(pair.body.family, pair.body.weight);
+    addWeight(pair.body.family, 700);
+  }
+  const query = [...families].map(([family, weights]) => {
+    const name = encodeURIComponent(family).replaceAll('%20', '+');
+    return `family=${name}:wght@${[...weights].sort((a, b) => a - b).join(';')}`;
+  }).join('&');
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = `https://fonts.googleapis.com/css2?${query}&display=swap`;
+  link.dataset.pickerFonts = '';
+  document.head.append(link);
+}
+
+function syncFontPair(pair) {
+  const specimen = { ...fontManifest.specimen, ...pair.specimen };
+  typePreview.style.setProperty('--pt-heading', fontStack(pair.heading.family));
+  typePreview.style.setProperty('--pt-body', fontStack(pair.body.family));
+  typePreview.style.setProperty('--pt-heading-weight', pair.heading.weight);
+  document.querySelector('[data-type-headline]').textContent = specimen.headline;
+  document.querySelector('[data-type-body]').textContent = specimen.body;
+  document.querySelector('[name="font-heading"]').value = pair.heading.family;
+  document.querySelector('[name="font-body"]').value = pair.body.family;
+}
+
+function renderFontPairs(manifest, fallback) {
+  fontManifest = manifest;
+  fontOptions.toggleAttribute('data-fallback', fallback);
+  const fragment = document.createDocumentFragment();
+  manifest.pairs.forEach((pair, index) => {
+    const node = pairTemplate.content.firstElementChild.cloneNode(true);
+    const input = node.querySelector('input');
+    input.value = pair.id;
+    input.checked = index === 0;
+    node.style.setProperty('--pair-heading', fontStack(pair.heading.family));
+    node.style.setProperty('--pair-body', fontStack(pair.body.family));
+    node.style.setProperty('--pair-heading-weight', pair.heading.weight);
+    node.style.setProperty('--pair-body-weight', pair.body.weight);
+    node.querySelector('[data-pair-name]').textContent = pair.name;
+    node.querySelector('[data-pair-body]').textContent = pair.body.family;
+    node.querySelector('[data-pair-why]').textContent = pair.why;
+    fragment.append(node);
+  });
+  fontOptions.append(fragment);
+  loadFontStylesheet(manifest.pairs);
+  syncFontPair(manifest.pairs[0]);
+}
+
+fontOptions.onchange = ({ target }) => {
+  if (!target.matches('input[name="font-pair"]')) return;
+  const pair = fontManifest.pairs.find(({ id }) => id === target.value);
+  if (pair) syncFontPair(pair);
+};
 
 function setActiveRole(role) {
   if (hint.textContent === hint.dataset[role]) return;
@@ -320,7 +465,11 @@ scroller.addEventListener('scroll', () => {
     render();
   }
 }, { passive: true });
-document.addEventListener('picker:screenchange', (event) => activate(event.detail.screen === '02'));
+document.addEventListener('picker:screenchange', (event) => {
+  activate(event.detail.screen === '02');
+  const target = { '03': strategyPreview, '04': typePreview }[event.detail.screen];
+  if (target) syncCommittedPalette(target);
+});
 
 try {
   const get = (url) => fetch(url).then((response) => response.ok ? response.json() : Promise.reject());
@@ -338,3 +487,17 @@ try {
 } catch {
   count.textContent = 'Palette sources could not be loaded.';
 }
+
+let manifest = FALLBACK_FONTS;
+let usingFallback = true;
+try {
+  const response = await fetch('/fonts.json');
+  const candidate = response.ok ? await response.json() : null;
+  if (isFontManifest(candidate)) {
+    manifest = candidate;
+    usingFallback = false;
+  }
+} catch {
+  // The built-in pairs keep older and incomplete runs moving.
+}
+renderFontPairs(manifest, usingFallback);

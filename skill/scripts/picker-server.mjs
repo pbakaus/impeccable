@@ -213,6 +213,10 @@ async function handleRequest(request, response) {
     await serveFile(response, options.cuesDir, 'cues.json', ['.json']);
     return;
   }
+  if (requestPath === '/fonts.json') {
+    await serveFile(response, options.cuesDir, 'fonts.json', ['.json']);
+    return;
+  }
   if (requestPath === '/palettes.json') {
     sendJson(response, 200, {
       seeds: SEEDS.map(({ id, oklch, mood }) => ({ id, oklch, mood })),
