@@ -1,0 +1,2136 @@
+/* Vendored from the site's design system (now in the private impeccable-site
+   repo) so the picker stays self-contained. Update by re-copying from there. */
+@import "./vendor/kinpaku-tokens.css";
+@import "./vendor/kinpaku-kit.css";
+
+/* Scoped subset of the reset imported by site/styles/main.css through
+   site/styles/tokens.css (lines 12-27). */
+.picker-page,
+.picker-page *,
+.picker-page *::before,
+.picker-page *::after {
+  box-sizing: border-box;
+}
+
+.picker-page * {
+  margin: 0;
+}
+
+.picker-page :is(button, input, textarea, select) {
+  font-family: inherit;
+}
+
+body.picker-page {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--ks-lacquer);
+  color: var(--ks-text);
+  font-family: var(--ks-font);
+  font-size: var(--ks-type-body-size);
+  line-height: var(--ks-type-body-line);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Copied from site/styles/light-mode.css lines 189-194. Light mode remaps
+   --ks-lacquer-deep to paper, so the primary button needs its dark ink value. */
+html.light .ks-button.ks-button-primary,
+html.light .ks-button.ks-button-primary:hover,
+html.light .ks-button.ks-button-primary:active {
+  color: oklch(14% 0.018 95);
+}
+
+/* On paper, ghost buttons lift toward deep patina, not fill gold. */
+html.light .ks-button.ks-button-ghost:hover {
+  color: var(--ks-patina-deep);
+}
+
+.picker-shell {
+  position: relative;
+  min-height: 100vh;
+  min-height: 100svh;
+  overflow: hidden;
+}
+
+.picker-hero-art {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-position: left center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  filter: saturate(1.12) contrast(1.04);
+  pointer-events: none;
+  transition: opacity 180ms var(--ks-ease);
+}
+
+#picker-form {
+  position: relative;
+  z-index: 1;
+}
+
+.picker-screen {
+  min-height: 100vh;
+  min-height: 100svh;
+  display: grid;
+  align-items: center;
+}
+
+.picker-screen:not([data-active]) {
+  display: none;
+}
+
+/* Mirrors site/styles/home-rebuild.css's .hero-rebuild-container width math. */
+.picker-container {
+  position: relative;
+  width: 100%;
+  max-width: 1500px;
+  margin: 0 auto;
+  padding-inline: 56px;
+}
+
+.picker-start {
+  max-width: 620px;
+  display: grid;
+  justify-items: start;
+  gap: 28px;
+}
+
+.picker-title {
+  color: var(--ks-champagne);
+  font-family: var(--ks-font-display);
+  font-size: var(--ks-type-display-size);
+  font-weight: var(--ks-type-display-weight);
+  line-height: var(--ks-type-display-line);
+  letter-spacing: var(--ks-type-display-track);
+  text-wrap: balance;
+}
+
+.picker-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.picker-key-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 12px;
+  color: var(--ks-text-muted);
+}
+
+.picker-key-cluster {
+  display: grid;
+  gap: 4px;
+}
+
+.picker-key-row {
+  display: flex;
+  gap: 4px;
+}
+
+.picker-key-row-top {
+  justify-content: center;
+}
+
+.picker-keycap {
+  min-width: 26px;
+  height: 26px;
+  display: inline-grid;
+  place-items: center;
+  padding-inline: 6px;
+  background: var(--ks-lacquer-raised);
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+  color: var(--ks-champagne);
+  font-family: var(--ks-mono);
+  font-size: var(--ks-type-mono-size);
+  line-height: 1;
+}
+
+.picker-key-caption {
+  color: var(--ks-text-muted);
+  font-size: var(--ks-type-mono-size);
+  line-height: 1.5;
+}
+
+.picker-shell:has(#picker-form[data-current="02"]) .picker-hero-art,
+.picker-shell:has(#picker-form[data-current="03"]) .picker-hero-art,
+.picker-shell:has(#picker-form[data-current="04"]) .picker-hero-art {
+  opacity: 0;
+}
+
+.picker-progress {
+  position: fixed;
+  top: 32px;
+  left: max(56px, calc((100vw - 1500px) / 2 + 56px));
+  z-index: 5;
+  width: 160px;
+  height: 3px;
+  overflow: hidden;
+  background: var(--ks-rule);
+  transition: opacity 180ms var(--ks-ease);
+}
+
+.picker-progress span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--ks-champagne);
+  transform: scaleX(var(--progress, 0));
+  transform-origin: left;
+  transition: transform 180ms var(--ks-ease);
+}
+
+#picker-form[data-current="01"] .picker-progress {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.picker-palette {
+  display: grid;
+  gap: 48px;
+  padding-block: clamp(32px, 5svh, 48px) clamp(24px, 3.5svh, 48px);
+}
+
+.picker-palette-title {
+  color: var(--ks-champagne);
+  font-family: var(--ks-font-display);
+  font-size: var(--ks-type-headline-size);
+  font-weight: var(--ks-type-headline-weight);
+  line-height: var(--ks-type-headline-line);
+  text-align: center;
+}
+
+.picker-palette-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  gap: 50px;
+  align-items: center;
+}
+
+.picker-deck-column {
+  --picker-card-size: min(39vw, 660px, calc(100svh - 292px));
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.picker-deck-stage {
+  position: relative;
+  width: calc(var(--picker-card-size) + 64px);
+  height: var(--picker-card-size);
+  perspective: 1000px;
+  perspective-origin: center 42%;
+}
+
+.picker-deck-scroller {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;
+  overscroll-behavior: contain;
+}
+
+.picker-deck-scroller::-webkit-scrollbar {
+  display: none;
+}
+
+.picker-snap-point {
+  height: var(--picker-card-size);
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+.picker-card-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  transform-style: preserve-3d;
+}
+
+.picker-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  width: var(--picker-card-size);
+  opacity: 0;
+  backface-visibility: hidden;
+  transform-origin: center center;
+  transform-style: preserve-3d;
+  transition:
+    opacity 240ms var(--ks-ease),
+    transform 240ms var(--ks-ease);
+}
+
+.picker-card[data-pos="0"] {
+  z-index: 5;
+  opacity: 1;
+  transform: translateX(0) rotateY(0) rotateZ(0) rotateX(0) translateZ(0);
+}
+
+.picker-card[data-pos="1"] {
+  z-index: 4;
+  opacity: 0.52;
+  transform: translateX(11%) rotateY(0) rotateZ(6deg) rotateX(0) translateZ(-160px);
+}
+
+.picker-card[data-pos="2"] {
+  z-index: 3;
+  opacity: 0.2;
+  transform: translateX(19%) rotateY(0) rotateZ(8deg) rotateX(0) translateZ(-180px);
+}
+
+.picker-card[data-pos="-1"] {
+  z-index: 4;
+  opacity: 0.52;
+  transform: translateX(-11%) rotateY(0) rotateZ(-6deg) rotateX(0) translateZ(-160px);
+}
+
+.picker-card[data-pos="-2"] {
+  z-index: 3;
+  opacity: 0.2;
+  transform: translateX(-19%) rotateY(0) rotateZ(-8deg) rotateX(0) translateZ(-180px);
+}
+
+.picker-card.is-far {
+  opacity: 0;
+  transform: translateX(0) rotateY(0) rotateZ(0) rotateX(0) translateZ(-220px);
+}
+
+.picker-card[data-exit="left"] {
+  z-index: 6;
+  animation: picker-card-exit-left 280ms var(--ks-ease) both;
+}
+
+.picker-card[data-exit="right"] {
+  z-index: 6;
+  animation: picker-card-exit-right 280ms var(--ks-ease) both;
+}
+
+@keyframes picker-card-exit-left {
+  0% {
+    opacity: 1;
+    transform: translateX(0) rotateY(0) rotateZ(0) rotateX(0) translateZ(0);
+  }
+
+  52% {
+    opacity: 0.78;
+    transform: translateX(-116%) rotateY(-24deg) rotateZ(0) rotateX(2deg) translateZ(-156px);
+  }
+
+  100% {
+    opacity: 0.52;
+    transform: translateX(-11%) rotateY(0) rotateZ(-6deg) rotateX(0) translateZ(-160px);
+  }
+}
+
+@keyframes picker-card-exit-right {
+  0% {
+    opacity: 1;
+    transform: translateX(0) rotateY(0) rotateZ(0) rotateX(0) translateZ(0);
+  }
+
+  52% {
+    opacity: 0.78;
+    transform: translateX(116%) rotateY(24deg) rotateZ(0) rotateX(2deg) translateZ(-156px);
+  }
+
+  100% {
+    opacity: 0.52;
+    transform: translateX(11%) rotateY(0) rotateZ(6deg) rotateX(0) translateZ(-160px);
+  }
+}
+
+.picker-card-face {
+  position: relative;
+  width: var(--picker-card-size);
+  aspect-ratio: 1;
+  overflow: hidden;
+  background: var(--ks-lacquer-raised);
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+}
+
+.picker-cue-face img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.picker-seed-face {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.picker-seed-face span {
+  background: var(--seed-color);
+}
+
+.picker-ring {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  z-index: 2;
+  width: 45px;
+  height: 45px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: grab;
+  opacity: 1;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  touch-action: none;
+  transition: opacity 180ms var(--ks-ease);
+}
+
+.picker-ring::before {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  background: var(--marker-color);
+  border: 2px solid var(--ks-lacquer-raised);
+  border-radius: 50%;
+  box-shadow:
+    0 0 12px color-mix(in srgb, var(--ks-champagne) 16%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--ks-champagne) 40%, transparent);
+}
+
+.picker-ring::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border: 2px solid white;
+  border-radius: 50%;
+  /* Dark edge on both sides of the white hairline so the hover highlight
+     reads over the neutral's pale image regions, not only over saturated
+     ones. Fixed near-black, not a theme token: it sits on the photo. */
+  box-shadow:
+    0 0 0 1.5px oklch(15% 0.006 95 / 0.6),
+    inset 0 0 0 1.5px oklch(15% 0.006 95 / 0.6);
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.78);
+  transition:
+    opacity 180ms var(--ks-ease),
+    transform 180ms var(--ks-ease);
+}
+
+.picker-palette:has(.picker-band[data-band="primary"]:is(:hover, :focus-within))
+  .picker-card[data-pos="0"] .picker-ring[data-role="primary"]::after,
+.picker-palette:has(.picker-band[data-band="secondary"]:is(:hover, :focus-within))
+  .picker-card[data-pos="0"] .picker-ring[data-role="secondary"]::after,
+.picker-palette:has(.picker-band[data-band="tertiary"]:is(:hover, :focus-within))
+  .picker-card[data-pos="0"] .picker-ring[data-role="tertiary"]::after,
+.picker-palette:has(.picker-band[data-band="neutral"]:is(:hover, :focus-within))
+  .picker-card[data-pos="0"] .picker-ring[data-role="neutral"]::after {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.picker-card[data-pos="0"] .picker-ring {
+  pointer-events: auto;
+}
+
+.picker-ring:is(:focus-visible, [data-dragging]) {
+  z-index: 3;
+}
+
+.picker-ring[data-dragging] {
+  cursor: grabbing;
+}
+
+.picker-ring[data-detached] {
+  opacity: 0.4;
+}
+
+.picker-ring:focus-visible {
+  outline: none;
+}
+
+.picker-ring:focus-visible::before {
+  outline: 2px solid var(--ks-patina);
+  outline-offset: 3px;
+}
+
+.picker-deck-controls {
+  min-width: 260px;
+  display: grid;
+  grid-template-columns: 44px minmax(120px, 1fr) 44px;
+  gap: 14px;
+  align-items: center;
+}
+
+.picker-ring-guide {
+  min-height: 2.9em;
+  max-width: 38ch;
+  color: var(--ks-text-muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  text-align: center;
+  transition: opacity 200ms var(--ks-ease);
+}
+
+.picker-ring-guide span {
+  display: block;
+}
+
+.picker-ring-guide[aria-hidden="true"] {
+  opacity: 0;
+}
+
+.picker-icon-button {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+  color: var(--ks-champagne);
+  cursor: pointer;
+  transition:
+    background-color 180ms var(--ks-ease),
+    border-color 180ms var(--ks-ease),
+    color 180ms var(--ks-ease);
+}
+
+.picker-icon-button:hover {
+  background: var(--ks-graphite);
+  border-color: var(--ks-link-on-paper);
+  color: var(--ks-link-on-paper);
+}
+
+.picker-icon-button:focus-visible,
+.picker-band:focus-visible,
+.picker-band-tool:focus-visible,
+.picker-tint:focus-visible,
+.picker-tint-close:focus-visible {
+  outline: 2px solid var(--ks-patina);
+  outline-offset: 3px;
+}
+
+.picker-icon-button:disabled {
+  color: var(--ks-text-mute-deep);
+  cursor: not-allowed;
+}
+
+.picker-icon-button svg,
+.picker-band-tool svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.picker-deck-count {
+  color: var(--ks-text-muted);
+  font-family: var(--ks-mono);
+  font-size: var(--ks-type-mono-size);
+  line-height: 1.35;
+  text-align: center;
+}
+
+.picker-palette-panel {
+  position: relative;
+  min-width: 0;
+  display: grid;
+  gap: 18px;
+  padding: 30px;
+  background: var(--ks-lacquer-raised);
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+}
+
+.picker-palette-panel > legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.picker-reset {
+  position: absolute;
+  top: -22px;
+  right: 18px;
+  z-index: 4;
+  background: var(--ks-lacquer-raised);
+}
+
+.picker-bands {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--ks-rule);
+  border: 1px solid var(--ks-rule);
+}
+
+.picker-band-item {
+  min-width: 0;
+  background: var(--ks-lacquer-raised);
+}
+
+.picker-band {
+  --band-color: var(--ks-graphite);
+  --band-ink: var(--ks-champagne);
+  position: relative;
+  height: 175px;
+  background: var(--band-color);
+  color: var(--band-ink);
+}
+
+.picker-band output {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  left: 14px;
+  font-family: var(--ks-mono);
+  font-size: var(--ks-type-mono-size);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.picker-band-tools {
+  position: absolute;
+  top: 12px;
+  right: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms var(--ks-ease);
+}
+
+.picker-band:hover .picker-band-tools,
+.picker-band:focus-within .picker-band-tools {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.picker-band-item[data-tint-open] .picker-band-tools {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.picker-band-tool {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 2px;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.72;
+  transition: opacity 180ms var(--ks-ease);
+}
+
+.picker-band-tool:is(:hover, :focus-visible) {
+  opacity: 1;
+}
+
+.picker-band-tool svg {
+  width: 17px;
+  height: 17px;
+}
+
+.picker-tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  z-index: 12;
+  width: max-content;
+  max-width: 210px;
+  padding: 7px 9px;
+  opacity: 0;
+  background: var(--ks-lacquer-raised);
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+  color: var(--ks-text);
+  font-size: 0.76rem;
+  line-height: 1.25;
+  pointer-events: none;
+  transform: translate(-50%, 3px);
+  transition:
+    opacity 180ms var(--ks-ease),
+    transform 180ms var(--ks-ease);
+}
+
+.picker-tip:hover::after,
+.picker-tip:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.picker-band-tool.picker-tip::after {
+  top: 50%;
+  right: calc(100% + 8px);
+  bottom: auto;
+  left: auto;
+  transform: translate(3px, -50%);
+}
+
+.picker-band-tool.picker-tip:is(:hover, :focus-visible)::after {
+  transform: translate(0, -50%);
+}
+
+.picker-native-color {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.picker-band-foot {
+  position: relative;
+  height: 46px;
+  display: grid;
+  place-items: center;
+}
+
+.picker-band-foot h2 {
+  color: var(--ks-champagne);
+  font-size: var(--ks-type-title-size);
+  font-weight: var(--ks-type-title-weight);
+  line-height: var(--ks-type-title-line);
+}
+
+.picker-band-item[data-tint-open] .picker-band-foot h2 {
+  visibility: hidden;
+}
+
+.picker-tint-strip {
+  position: absolute;
+  top: 9px;
+  left: 0;
+  z-index: 8;
+  display: flex;
+  background: var(--ks-lacquer-raised);
+  border: 1px solid var(--ks-rule);
+}
+
+.picker-band-item[data-band-item="secondary"] .picker-tint-strip {
+  left: -56px;
+}
+
+.picker-band-item:is([data-band-item="tertiary"], [data-band-item="neutral"]) .picker-tint-strip {
+  right: 0;
+  left: auto;
+}
+
+.picker-tint-strip[hidden] {
+  display: none;
+}
+
+.picker-tint,
+.picker-tint-close {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-right: 1px solid var(--ks-rule);
+  border-radius: 0;
+  cursor: pointer;
+}
+
+.picker-tint {
+  background: var(--tint-color);
+}
+
+.picker-tint[data-current]::after {
+  content: "";
+  position: absolute;
+  right: 8px;
+  bottom: 3px;
+  left: 8px;
+  height: 2px;
+  background: var(--ks-champagne);
+}
+
+.picker-tint-close {
+  background: var(--ks-lacquer-raised);
+  border-right: 0;
+  color: var(--ks-champagne);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.picker-preview {
+  --pv-primary: var(--ks-champagne);
+  --pv-secondary: var(--ks-patina);
+  --pv-tertiary: var(--ks-link-on-paper);
+  --pv-neutral: var(--ks-lacquer-raised);
+  --pv-n-ink: var(--ks-champagne);
+  --pv-p-ink: var(--ks-champagne);
+  --pv-surface-2: color-mix(in oklab, var(--pv-neutral) 92%, var(--pv-n-ink));
+  --pv-bone: color-mix(in oklab, var(--pv-neutral) 62%, var(--pv-n-ink));
+  --pv-strong: color-mix(in oklab, var(--pv-neutral) 22%, var(--pv-n-ink));
+  --pv-secondary-wash: color-mix(in oklab, var(--pv-secondary) 28%, var(--pv-neutral));
+  --pv-tertiary-wash: color-mix(in oklab, var(--pv-tertiary) 22%, var(--pv-neutral));
+  width: 100%;
+  aspect-ratio: 16 / 7;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+}
+
+/* Two artboards floating on the page itself: a landing page on the desktop
+   card (the palette persuading) and an app screen on the phone card (the
+   palette operating). Every palette is judged doing both jobs, so no
+   per-project switch is needed. The phone's fixed portrait ratio keeps the
+   wide frame from stretching a single page mock. */
+.pv-desktop,
+.pv-phone {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--pv-neutral);
+  border: 1px solid var(--ks-rule);
+}
+
+.pv-desktop {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  border-radius: 4px;
+}
+
+.pv-phone {
+  height: 100%;
+  aspect-ratio: 9 / 19;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  border-radius: 10px;
+}
+
+.pv-nav {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+}
+
+.pv-logo {
+  width: 8px;
+  aspect-ratio: 1;
+  background: var(--pv-primary);
+  border-radius: 50%;
+}
+
+.pv-nav-bars {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.pv-nav-bars i {
+  display: block;
+  width: 18px;
+  height: 3px;
+  background: var(--pv-bone);
+  border-radius: 2px;
+}
+
+.pv-pill {
+  width: 32px;
+  height: 12px;
+  background: var(--pv-primary);
+  border-radius: 2px;
+}
+
+.pv-hero {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: 8%;
+  align-items: center;
+  padding: 4px 8% 14px;
+}
+
+.pv-hero-copy {
+  display: grid;
+  gap: 8px;
+}
+
+.pv-eyebrow {
+  width: 22%;
+  height: 4px;
+  background: var(--pv-tertiary);
+  border-radius: 2px;
+}
+
+/* The headline is display type set in the brand color, not permanent black
+   ink: it must visibly react when the primary changes. */
+.pv-headline {
+  display: grid;
+  gap: 7px;
+  margin-block: 2px 3px;
+}
+
+.pv-headline i {
+  display: block;
+  width: 88%;
+  height: 8px;
+  background: color-mix(in oklab, var(--pv-primary) 80%, var(--pv-strong));
+  border-radius: 2px;
+}
+
+.pv-headline i:last-child {
+  width: 58%;
+}
+
+.pv-copy-bar {
+  width: 64%;
+  height: 5px;
+  background: var(--pv-bone);
+  border-radius: 2px;
+}
+
+.pv-actions {
+  display: flex;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.pv-actions i {
+  width: 38px;
+  height: 13px;
+  background: var(--pv-primary);
+  border-radius: 2px;
+}
+
+.pv-actions i:last-child {
+  background: transparent;
+  border: 1px solid var(--pv-secondary);
+}
+
+.pv-image {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: linear-gradient(135deg, var(--pv-secondary-wash), color-mix(in oklab, var(--pv-secondary) 52%, var(--pv-neutral)));
+  border: 1px solid var(--pv-secondary);
+  border-radius: 2px;
+}
+
+.pv-image::after {
+  content: "";
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  width: 7px;
+  aspect-ratio: 1;
+  background: var(--pv-tertiary);
+  border-radius: 50%;
+}
+
+.pv-avatar {
+  width: 9px;
+  aspect-ratio: 1;
+  border: 1px solid var(--pv-bone);
+  border-radius: 50%;
+}
+
+/* Phone artboard: an app screen. Each mini card highlights a different
+   palette role so the secondary and tertiary are judged as UI accents,
+   not just as washes. */
+.pv-phone-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 10px;
+  background: var(--pv-surface-2);
+  border-bottom: 1px solid var(--ks-rule);
+}
+
+.pv-phone-body {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  align-content: start;
+  gap: 7px;
+  padding: 9px 10px 10px;
+}
+
+.pv-mini-card {
+  display: grid;
+  gap: 5px;
+  padding: 8px 9px;
+  background: var(--pv-surface-2);
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+}
+
+.pv-mini-card i,
+.pv-mini-card span {
+  display: block;
+  height: 3px;
+  background: var(--pv-bone);
+  border-radius: 2px;
+}
+
+.pv-mini-card span {
+  width: 62%;
+  height: 6px;
+  background: var(--pv-secondary);
+}
+
+.pv-mini-card:nth-child(2) span {
+  background: var(--pv-tertiary);
+}
+
+.pv-mini-chart {
+  min-height: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 8px 9px;
+  background: var(--pv-surface-2);
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+}
+
+.pv-mini-chart i {
+  flex: 1;
+  height: 34%;
+  background: var(--pv-secondary);
+  border-radius: 2px 2px 0 0;
+}
+
+.pv-mini-chart i:nth-child(2) { height: 58%; }
+.pv-mini-chart i:nth-child(3) { height: 44%; }
+.pv-mini-chart i:nth-child(4) { height: 82%; background: var(--pv-primary); }
+.pv-mini-chart i:nth-child(5) { height: 66%; }
+
+.pv-tabbar {
+  display: flex;
+  justify-content: space-evenly;
+  align-items: center;
+  padding: 8px 0;
+  border-top: 1px solid var(--ks-rule);
+}
+
+.pv-tabbar i {
+  width: 5px;
+  aspect-ratio: 1;
+  background: var(--pv-bone);
+  border-radius: 50%;
+}
+
+.pv-tabbar i:first-child {
+  background: var(--pv-primary);
+}
+
+/* Screen 03 mirrors screen 02's rhythm: the same centered headline class,
+   the same vertical gaps, options left and preview right. */
+.picker-strategy {
+  display: grid;
+  gap: 48px;
+  padding-block: clamp(32px, 5svh, 48px) clamp(24px, 3.5svh, 48px);
+}
+
+.picker-strategy-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+  gap: 50px;
+  align-items: center;
+}
+
+.picker-strategy-options {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+}
+
+.picker-strategy-options > legend,
+.picker-strategy-option input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.picker-strategy-option {
+  position: relative;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  padding: 16px 18px;
+  background: var(--ks-lacquer-raised);
+  border: 1px solid color-mix(in oklab, var(--ks-patina-deep) 32%, var(--ks-rule));
+  border-radius: 2px;
+  cursor: pointer;
+  transition:
+    background-color 180ms var(--ks-ease),
+    border-color 180ms var(--ks-ease);
+}
+
+.picker-strategy-option:hover {
+  border-color: var(--ks-patina-deep);
+}
+
+.picker-strategy-indicator {
+  position: relative;
+  width: 17px;
+  height: 17px;
+  margin-top: 2px;
+  color: var(--ks-patina-deep);
+  border: 1px solid currentColor;
+  border-radius: 50%;
+}
+
+.picker-strategy-indicator::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  background: currentColor;
+  border-radius: 50%;
+  opacity: 0;
+  transform: scale(0.5);
+  transition:
+    opacity 160ms var(--ks-ease),
+    transform 160ms var(--ks-ease);
+}
+
+.picker-strategy-copy {
+  display: grid;
+  gap: 5px;
+}
+
+.picker-strategy-copy strong {
+  color: var(--ks-champagne);
+  font-size: var(--ks-type-title-size);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.picker-strategy-copy span {
+  color: var(--ks-text-muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.picker-strategy-option:has(input:checked) {
+  background: color-mix(in oklab, var(--ks-patina-deep) 7%, var(--ks-lacquer-raised));
+  border-color: var(--ks-patina-deep);
+}
+
+.picker-strategy-option:has(input:checked) .picker-strategy-indicator {
+  color: var(--ks-patina-deep);
+}
+
+.picker-strategy-option:has(input:checked) .picker-strategy-indicator::after {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.picker-strategy-option:has(input:focus-visible) {
+  outline: 2px solid var(--ks-patina-deep);
+  outline-offset: 3px;
+}
+
+/* Screen 03 shows one editorial landing page at desktop and phone sizes.
+   Geometry stays fixed while the strategy radios remap its color slots. */
+.picker-strategy-preview {
+  --pv-primary: var(--ks-champagne);
+  --pv-secondary: var(--ks-patina);
+  --pv-tertiary: var(--ks-link-on-paper);
+  --pv-neutral: var(--ks-lacquer-raised);
+  --pv-n-ink: var(--ks-champagne);
+  --pv-p-ink: var(--ks-champagne);
+  --pv-surface-2: color-mix(in oklab, var(--pv-neutral) 92%, var(--pv-n-ink));
+  --pv-bone: color-mix(in oklab, var(--pv-neutral) 62%, var(--pv-n-ink));
+  --pv-strong: color-mix(in oklab, var(--pv-neutral) 22%, var(--pv-n-ink));
+  --pvs-ground: var(--pv-neutral);
+  --pvs-headline: var(--pv-strong);
+  --pvs-eyebrow: var(--pv-bone);
+  --pvs-copy: var(--pv-bone);
+  --pvs-title: var(--pv-strong);
+  --pvs-cta: var(--pv-primary);
+  --pvs-signal: var(--pv-primary);
+  --pvs-ghost: var(--pv-bone);
+  --pvs-image: var(--pv-surface-2);
+  --pvs-image-edge: var(--pv-bone);
+  --pvs-bars: var(--pv-bone);
+  --pvs-rule: var(--ks-rule);
+  --pvs-accent-a: var(--pv-strong);
+  --pvs-accent-b: var(--pv-bone);
+  --pvs-accent-c: var(--pv-primary);
+  --pvs-accent-d: var(--pv-surface-2);
+  width: 100%;
+  aspect-ratio: 1.865 / 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 5.25%;
+}
+
+/* Hovering an option previews its strategy before the click commits it.
+   While any strategy option is hovered, the hovered branch drives the
+   preview and the checked branch stands down; hovering Restrained needs
+   no block of its own because standing down lands on the defaults. */
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="committed"]) .picker-strategy-preview,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="committed"]:checked) .picker-strategy-preview {
+  --pvs-headline: color-mix(in oklab, var(--pv-primary) 80%, var(--pv-strong));
+  --pvs-eyebrow: var(--pv-primary);
+  --pvs-ghost: var(--pv-primary);
+  --pvs-image: var(--pv-primary);
+  --pvs-image-edge: var(--pv-primary);
+  --pvs-accent-a: var(--pv-primary);
+  --pvs-accent-b: color-mix(in oklab, var(--pv-primary) 70%, var(--pv-neutral));
+  --pvs-accent-c: var(--pv-primary);
+  --pvs-accent-d: color-mix(in oklab, var(--pv-primary) 18%, var(--pv-neutral));
+}
+
+/* Full palette: every role on duty. Primary carries the headline, image,
+   and CTA; secondary the ghost action and gallery; tertiary the eyebrow,
+   signal, and accents; neutral stays the ground. */
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="full-palette"]) .picker-strategy-preview,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="full-palette"]:checked) .picker-strategy-preview {
+  --pvs-headline: color-mix(in oklab, var(--pv-primary) 80%, var(--pv-strong));
+  --pvs-eyebrow: var(--pv-tertiary);
+  --pvs-ghost: var(--pv-secondary);
+  --pvs-image: var(--pv-primary);
+  --pvs-image-edge: var(--pv-primary);
+  --pvs-signal: var(--pv-tertiary);
+  --pvs-accent-a: var(--pv-secondary);
+  --pvs-accent-b: color-mix(in oklab, var(--pv-secondary) 42%, var(--pv-neutral));
+  --pvs-accent-c: var(--pv-primary);
+  --pvs-accent-d: var(--pv-tertiary);
+}
+
+/* Drenched: the primary is the page. Everything on top is either ink,
+   an ink wash of the primary, or the secondary and tertiary doing accent
+   work; nothing is left bare white and the hairlines tint with the ground. */
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="drenched"]) .picker-strategy-preview,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="drenched"]:checked) .picker-strategy-preview {
+  --pvs-ground: var(--pv-primary);
+  --pvs-headline: var(--pv-p-ink);
+  --pvs-eyebrow: color-mix(in oklab, var(--pv-p-ink) 70%, var(--pv-primary));
+  --pvs-copy: color-mix(in oklab, var(--pv-p-ink) 55%, var(--pv-primary));
+  --pvs-title: var(--pv-p-ink);
+  --pvs-cta: var(--pv-p-ink);
+  --pvs-ghost: color-mix(in oklab, var(--pv-p-ink) 35%, var(--pv-primary));
+  --pvs-image: color-mix(in oklab, var(--pv-p-ink) 20%, var(--pv-primary));
+  --pvs-image-edge: color-mix(in oklab, var(--pv-p-ink) 40%, var(--pv-primary));
+  --pvs-signal: var(--pv-tertiary);
+  --pvs-bars: color-mix(in oklab, var(--pv-p-ink) 45%, var(--pv-primary));
+  --pvs-rule: color-mix(in oklab, var(--pv-p-ink) 28%, var(--pv-primary));
+  --pvs-accent-a: var(--pv-secondary);
+  --pvs-accent-b: var(--pv-tertiary);
+  --pvs-accent-c: color-mix(in oklab, var(--pv-p-ink) 30%, var(--pv-primary));
+  --pvs-accent-d: color-mix(in oklab, var(--pv-p-ink) 14%, var(--pv-primary));
+}
+
+.ps-desktop,
+.ps-phone {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background-color: var(--pvs-ground);
+  border: 1px solid var(--ks-rule);
+}
+
+.ps-desktop {
+  display: grid;
+  grid-template-rows: 9.4% 50.6% 9% 22.7% 8.3%;
+  border-radius: 4px;
+}
+
+.ps-phone {
+  height: 100%;
+  aspect-ratio: 8 / 19;
+  align-self: stretch;
+  display: grid;
+  grid-template-rows: 7.2% 1fr 7.5%;
+  border-radius: 5px;
+}
+
+.ps-nav {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 24px;
+  align-items: center;
+  padding: 0 5.5%;
+  border-bottom: 1px solid var(--pvs-rule);
+}
+
+.ps-brand-block {
+  width: clamp(28px, 3.35vw, 48px);
+  height: clamp(6px, 22%, 11px);
+  background-color: var(--pvs-cta);
+  border-radius: 2px;
+}
+
+.ps-nav-bars {
+  display: flex;
+  justify-content: flex-end;
+  gap: 27px;
+}
+
+.ps-nav-bars i {
+  display: block;
+  width: clamp(18px, 7%, 34px);
+  height: 4px;
+  background-color: var(--pvs-bars);
+  border-radius: 2px;
+}
+
+.ps-nav-action {
+  width: clamp(34px, 3.4vw, 48px);
+  height: clamp(7px, 26%, 13px);
+  background-color: var(--pvs-signal);
+  border-radius: 2px;
+}
+
+.ps-hero {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 35.8% minmax(0, 1fr);
+  gap: 11.3%;
+  align-items: center;
+  padding: 2% 3.2% 2% 5.5%;
+}
+
+.ps-hero-copy {
+  display: grid;
+  gap: 0;
+}
+
+.ps-eyebrow {
+  width: 54%;
+  height: 9px;
+  margin-bottom: 16px;
+  background-color: var(--pvs-eyebrow);
+  border-radius: 2px;
+}
+
+.ps-headline {
+  display: grid;
+  gap: clamp(6px, 0.8vw, 9px);
+  margin: 0 0 15px;
+}
+
+.ps-headline i {
+  display: block;
+  width: 100%;
+  height: 14px;
+  background-color: var(--pvs-headline);
+  border-radius: 2px;
+}
+
+.ps-headline i:last-child {
+  width: 100%;
+}
+
+.ps-copy {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 20px;
+}
+
+.ps-copy i {
+  display: block;
+  width: 70%;
+  height: 7px;
+  background-color: var(--pvs-copy);
+  border-radius: 2px;
+}
+
+.ps-copy i:last-child {
+  width: 70%;
+}
+
+.ps-actions {
+  display: flex;
+  gap: clamp(5px, 1vw, 10px);
+  margin-top: 0;
+}
+
+.ps-actions i {
+  width: clamp(42px, 42%, 86px);
+  height: clamp(12px, 2.35vw, 29px);
+  background-color: var(--pvs-cta);
+  border-radius: 2px;
+}
+
+.ps-actions i:last-child {
+  background-color: var(--pvs-ghost);
+}
+
+.ps-image {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background-color: var(--pvs-image);
+  border: 1px solid var(--pvs-image-edge);
+  border-radius: 2px;
+}
+
+.ps-proof {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 1.05fr 1fr 1fr 1.15fr;
+  align-items: center;
+  padding-inline: 0;
+  border-block: 1px solid var(--pvs-rule);
+}
+
+.ps-proof-item {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9%;
+  height: 46%;
+  padding: 0 8% 0 42px;
+}
+
+.ps-proof-item:nth-child(2) {
+  padding-left: 40px;
+}
+
+.ps-proof-item:nth-child(3) {
+  padding-left: 39px;
+}
+
+.ps-proof-item:nth-child(4) {
+  padding-left: 37px;
+}
+
+.ps-proof-item + .ps-proof-item {
+  border-left: 1px solid var(--pvs-rule);
+}
+
+.ps-proof-item i {
+  flex: none;
+  width: clamp(7px, 1.5vw, 13px);
+  aspect-ratio: 1;
+  background-color: var(--pvs-accent-a);
+  border-radius: 50%;
+}
+
+.ps-proof-item span {
+  width: 46%;
+  height: 5px;
+  background-color: var(--pvs-bars);
+  border-radius: 2px;
+}
+
+.ps-editorial {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 27.9% minmax(0, 1fr);
+  gap: 6%;
+  align-items: center;
+  padding: 2.2% 5.5%;
+}
+
+.ps-editorial-copy {
+  display: grid;
+  gap: clamp(3px, 0.55vw, 6px);
+}
+
+.ps-editorial-copy strong {
+  width: 78%;
+  height: 10px;
+  background-color: var(--pvs-title);
+  border-radius: 2px;
+}
+
+.ps-editorial-copy span {
+  display: grid;
+  gap: 5px;
+}
+
+.ps-editorial-copy span i {
+  display: block;
+  width: 90%;
+  height: 5px;
+  background-color: var(--pvs-bars);
+  border-radius: 2px;
+}
+
+.ps-editorial-copy span i:last-child {
+  width: 80%;
+}
+
+.ps-editorial-copy > em {
+  width: 30%;
+  height: 6px;
+  margin-top: 3px;
+  background-color: var(--pvs-signal);
+  border-radius: 2px;
+}
+
+.ps-gallery {
+  min-width: 0;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 1.12fr 0.9fr 0.9fr 0.9fr;
+  gap: 3%;
+}
+
+.ps-gallery-item {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 12px;
+}
+
+.ps-desktop .ps-editorial-copy {
+  gap: 8px;
+}
+
+.ps-desktop .ps-editorial-copy strong {
+  height: 9px;
+}
+
+.ps-desktop .ps-editorial-copy > em {
+  height: 5px;
+  margin-top: 9px;
+}
+
+.ps-gallery-item > i {
+  display: block;
+  min-height: 0;
+  background-color: var(--pvs-accent-a);
+  border-radius: 2px;
+}
+
+.ps-gallery-item:nth-child(2) > i {
+  background-color: var(--pvs-accent-b);
+}
+
+.ps-gallery-item:nth-child(3) > i {
+  background-color: var(--pvs-accent-c);
+}
+
+.ps-gallery-item:nth-child(4) > i {
+  background-color: var(--pvs-accent-d);
+}
+
+.ps-gallery-item span {
+  display: grid;
+  gap: 5px;
+}
+
+.ps-gallery-item b {
+  display: block;
+  width: 76%;
+  height: 5px;
+  background-color: var(--pvs-bars);
+  border-radius: 2px;
+}
+
+.ps-gallery-item b:last-child {
+  width: 58%;
+}
+
+.ps-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-inline: 5.5%;
+  border-top: 1px solid var(--pvs-rule);
+}
+
+.ps-footer-links {
+  display: flex;
+  gap: clamp(8px, 2vw, 18px);
+}
+
+.ps-footer-links i,
+.ps-phone-footer i {
+  width: clamp(12px, 3vw, 28px);
+  height: 4px;
+  background-color: var(--pvs-bars);
+  border-radius: 2px;
+}
+
+.ps-footer-mark {
+  width: 7%;
+  height: 5px;
+  background-color: var(--pvs-bars);
+  border-radius: 2px;
+}
+
+/* Phone artboard: the same site on mobile. */
+.ps-phone-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 0;
+  padding: 0 6%;
+  border-bottom: 1px solid var(--pvs-rule);
+}
+
+.ps-phone-top .ps-brand-block {
+  width: 22%;
+  height: 8px;
+}
+
+.ps-phone-top .ps-nav-action {
+  width: 16%;
+  height: 6px;
+}
+
+.ps-phone-body {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 29.5% auto auto auto 36px auto minmax(0, 1fr);
+  gap: 5px;
+  padding: 6%;
+}
+
+.ps-phone-body .ps-image {
+  margin: 0;
+}
+
+.ps-phone-body .ps-headline i {
+  height: clamp(5px, 0.75vw, 8px);
+}
+
+.ps-phone-body .ps-headline {
+  margin: 8px 0 0;
+}
+
+.ps-phone-body .ps-headline i:first-child {
+  width: 57%;
+  height: 8px;
+}
+
+.ps-phone-body .ps-headline i:last-child {
+  width: 86%;
+  height: 7px;
+}
+
+.ps-phone-body .ps-copy {
+  margin: 4px 0 0;
+}
+
+.ps-phone-body .ps-copy i {
+  width: 70%;
+  height: 5px;
+}
+
+.ps-phone-body .ps-copy i:last-child {
+  display: none;
+}
+
+.ps-phone-body .ps-actions {
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.ps-phone-body .ps-actions i {
+  width: 43%;
+  height: 20px;
+}
+
+.ps-phone-body .ps-proof {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-inline: -6.5%;
+  margin-top: 6.5px;
+}
+
+.ps-phone-body .ps-proof-item {
+  height: 100%;
+  padding: 0 6% 0 14%;
+}
+
+.ps-phone-body .ps-proof-item i {
+  width: 11px;
+}
+
+.ps-phone-body .ps-proof-item span {
+  width: 56%;
+  height: 5px;
+}
+
+.ps-phone-body .ps-editorial-copy strong {
+  width: 33%;
+  height: 6px;
+}
+
+.ps-phone-body .ps-editorial-copy {
+  margin-top: 9.5px;
+}
+
+.ps-phone-body .ps-editorial-copy span i {
+  height: 5px;
+}
+
+.ps-phone-body .ps-gallery {
+  grid-template-columns: 1.1fr 0.95fr;
+  gap: 12.5%;
+  margin-left: 1px;
+  margin-top: 8px;
+}
+
+.ps-phone-body .ps-gallery-item {
+  grid-template-rows: 31px auto;
+  gap: 6px;
+}
+
+.ps-phone-body .ps-gallery-item b {
+  height: 4px;
+}
+
+.ps-phone-body .ps-gallery-item span {
+  align-content: start;
+  gap: 5px;
+}
+
+.ps-phone-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  min-height: 0;
+  padding-inline: 6%;
+  border-top: 1px solid var(--pvs-rule);
+}
+
+.picker-strategy-preview :is(
+  .ps-desktop,
+  .ps-phone,
+  .ps-nav,
+  .ps-proof,
+  .ps-proof-item,
+  .ps-footer,
+  .ps-phone-top,
+  .ps-phone-footer,
+  .ps-brand-block,
+  .ps-nav-bars i,
+  .ps-nav-action,
+  .ps-eyebrow,
+  .ps-headline i,
+  .ps-copy i,
+  .ps-actions i,
+  .ps-image,
+  .ps-proof-item i,
+  .ps-proof-item span,
+  .ps-editorial-copy strong,
+  .ps-editorial-copy span i,
+  .ps-editorial-copy > em,
+  .ps-gallery-item > i,
+  .ps-gallery-item b,
+  .ps-footer-links i,
+  .ps-footer-mark,
+  .ps-phone-footer i,
+  .pt-headline,
+  .pt-body
+) {
+  transition:
+    background-color 280ms var(--ks-ease),
+    border-color 280ms var(--ks-ease),
+    color 280ms var(--ks-ease);
+}
+
+.picker-strategy-actions {
+  justify-content: center;
+  margin-top: 0;
+}
+
+/* Screen 04 mirrors screen 03's frame exactly: same centered headline, same
+   options-left preview-right grid, same dual artboards. Only two things are
+   its own: the option cards are large type specimens, and the wireframe's
+   headline and body are real text so the pair is judged as glyphs. */
+.picker-type {
+  display: grid;
+  gap: 48px;
+  padding-block: clamp(32px, 5svh, 48px) clamp(24px, 3.5svh, 48px);
+}
+
+.picker-type-grid {
+  display: grid;
+  grid-template-columns: minmax(340px, 400px) minmax(0, 1fr);
+  gap: 50px;
+  align-items: stretch;
+}
+
+/* The rail keeps the row height owned by the preview: the fieldset scrolls
+   inside it instead of stretching the page when six tall cards stack up. */
+.picker-type-rail {
+  position: relative;
+  min-width: 0;
+}
+
+.picker-type-options {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  align-content: start;
+  gap: 10px;
+  padding-right: 12px;
+  scrollbar-width: thin;
+}
+
+.picker-type-option {
+  grid-template-columns: 17px minmax(0, 1fr);
+  gap: 14px;
+  padding: 18px 20px;
+}
+
+.picker-type-copy {
+  min-width: 0;
+  display: grid;
+}
+
+/* Fonttrio-style specimen: the heading family name set big in its own
+   face, then one sentence in the body face that names its partner. The
+   sentence demonstrates the body font, so no Heading/Body labels. */
+.picker-type-sample-heading {
+  color: var(--ks-champagne);
+  font-family: var(--pair-heading, var(--ks-font-display));
+  font-size: 1.65rem;
+  font-weight: var(--pair-heading-weight, 600);
+  line-height: 1.15;
+}
+
+.picker-type-desc {
+  margin-top: 10px;
+  color: var(--ks-text);
+  font-family: var(--pair-body, var(--ks-font));
+  font-size: 0.92rem;
+  font-weight: var(--pair-body-weight, 400);
+  line-height: 1.55;
+}
+
+.picker-type-desc b {
+  font: inherit;
+  font-weight: 700;
+}
+
+.picker-preview-type {
+  --pt-heading: var(--ks-font-display);
+  --pt-body: var(--ks-font);
+  --pt-heading-weight: 600;
+}
+
+.picker-preview-type .ps-hero-copy {
+  align-content: center;
+}
+
+/* Type is the subject here, so the hero gives copy more column than the
+   color preview does, and the size cap leaves room for wide display faces
+   to fit a long word without hitting the image. */
+.picker-preview-type .ps-hero {
+  grid-template-columns: 44% minmax(0, 1fr);
+  gap: 7%;
+}
+
+.pt-headline {
+  max-width: 12ch;
+  margin: 0 0 12px;
+  color: var(--pvs-headline);
+  font-family: var(--pt-heading);
+  font-size: clamp(1.2rem, 1.7vw, 1.8rem);
+  font-weight: var(--pt-heading-weight);
+  line-height: 1.04;
+  letter-spacing: -0.02em;
+  overflow-wrap: break-word;
+  text-wrap: balance;
+}
+
+.pt-body {
+  max-width: 31ch;
+  margin: 0 0 16px;
+  color: var(--pvs-copy);
+  font-family: var(--pt-body);
+  font-size: clamp(0.64rem, 0.82vw, 0.82rem);
+  line-height: 1.45;
+}
+
+/* Phone artboard type: same specimen at handset scale. */
+.ps-phone .pt-headline {
+  max-width: none;
+  margin: 8px 0 0;
+  font-size: clamp(0.82rem, 1.05vw, 1.05rem);
+}
+
+.ps-phone .pt-body {
+  max-width: none;
+  margin: 4px 0 0;
+  font-size: clamp(0.5rem, 0.62vw, 0.64rem);
+}
+
+.picker-palette-hint {
+  min-height: 3.2em;
+  padding-inline-end: 48px;
+  color: var(--ks-text-muted);
+  font-size: 0.84rem;
+  line-height: 1.6;
+  opacity: 1;
+  transition: opacity 180ms var(--ks-ease);
+}
+
+.picker-palette-hint.is-changing {
+  opacity: 0;
+}
+
+.picker-select {
+  justify-self: end;
+}
+
+.picker-placeholder {
+  display: grid;
+  justify-items: start;
+  gap: 28px;
+  color: var(--ks-text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .picker-hero-art,
+  .picker-progress,
+  .picker-progress span,
+  .picker-card,
+  .picker-ring,
+  .picker-ring::after,
+  .picker-ring-guide,
+  .picker-icon-button,
+  .picker-band-tools,
+  .picker-tip::after,
+  .picker-palette-hint,
+  .picker-strategy-option,
+  .picker-strategy-indicator::after,
+  .picker-strategy-preview :is(
+    .ps-desktop,
+    .ps-phone,
+    .ps-nav,
+    .ps-proof,
+    .ps-proof-item,
+    .ps-footer,
+    .ps-phone-top,
+    .ps-phone-footer,
+    .ps-brand-block,
+    .ps-nav-bars i,
+    .ps-nav-action,
+    .ps-eyebrow,
+    .ps-headline i,
+    .ps-copy i,
+    .ps-actions i,
+    .ps-image,
+    .ps-proof-item i,
+    .ps-proof-item span,
+    .ps-editorial-copy strong,
+    .ps-editorial-copy span i,
+    .ps-editorial-copy > em,
+    .ps-gallery-item > i,
+    .ps-gallery-item b,
+    .ps-footer-links i,
+    .ps-footer-mark,
+    .ps-phone-footer i,
+    .pt-headline,
+    .pt-body
+  ) {
+    transition: none;
+  }
+
+  .picker-card[data-exit] {
+    animation: none;
+  }
+}
+
+.picker-width-gate {
+  display: none;
+}
+
+@media (max-width: 1199px) {
+  .picker-width-gate {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    display: grid;
+    place-items: center;
+    padding: 40px;
+    background: var(--ks-lacquer);
+    color: var(--ks-text);
+    text-align: center;
+  }
+
+  .picker-width-gate > div {
+    max-width: 560px;
+    display: grid;
+    gap: 12px;
+    justify-items: center;
+  }
+
+  .picker-width-gate h2 {
+    color: var(--ks-champagne);
+    font-family: var(--ks-font-display);
+    font-size: var(--ks-type-headline-size);
+    font-weight: var(--ks-type-headline-weight);
+    line-height: var(--ks-type-headline-line);
+  }
+
+  .picker-width-gate p {
+    color: var(--ks-text-muted);
+  }
+
+  .picker-copy-link {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: min(100%, 480px);
+    min-width: 0;
+    margin-top: 14px;
+    padding: 13px 12px 13px 18px;
+    background: var(--ks-lacquer-raised);
+    border: 1px solid var(--ks-rule);
+    border-radius: 2px;
+    text-align: left;
+  }
+
+  .picker-copy-link code {
+    flex: 1 1 auto;
+    min-width: 18ch;
+    overflow-x: auto;
+    color: var(--ks-link-on-paper, var(--ks-champagne));
+    font-family: var(--ks-mono);
+    font-size: var(--ks-type-body-size);
+    letter-spacing: 0;
+    white-space: nowrap;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    user-select: all;
+  }
+
+  .picker-copy-link-button {
+    position: relative;
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 1px solid var(--ks-rule);
+    border-radius: 2px;
+    background: transparent;
+    color: var(--ks-link-on-paper, var(--ks-champagne));
+    cursor: pointer;
+    transition:
+      background 180ms var(--ks-ease),
+      border-color 180ms var(--ks-ease),
+      color 180ms var(--ks-ease),
+      transform 120ms var(--ks-ease);
+  }
+
+  .picker-copy-link-button:hover,
+  .picker-copy-link-button.is-copied {
+    border-color: currentColor;
+    background: var(--ks-lacquer);
+  }
+
+  .picker-copy-link-button:active {
+    transform: scale(0.96);
+  }
+
+  .picker-copy-link-button:focus-visible {
+    outline: 2px solid var(--ks-patina);
+    outline-offset: 3px;
+  }
+
+  .picker-copy-link-icon,
+  .picker-copy-link-check {
+    grid-area: 1 / 1;
+    transition:
+      opacity 140ms var(--ks-ease),
+      transform 180ms var(--ks-ease);
+  }
+
+  .picker-copy-link-icon {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  .picker-copy-link-check {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+
+  .picker-copy-link-button.is-copied .picker-copy-link-icon {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+
+  .picker-copy-link-button.is-copied .picker-copy-link-check {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  .picker-copy-link-button span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .picker-copy-status {
+    min-height: 1.5em;
+    font-size: var(--ks-type-mono-size);
+  }
+
+  @media (max-width: 520px) {
+    .picker-width-gate {
+      padding-inline: 24px;
+    }
+
+    .picker-copy-link {
+      gap: 10px;
+      padding-left: 14px;
+    }
+
+    .picker-copy-link code {
+      overflow-x: visible;
+      overflow-wrap: anywhere;
+      white-space: normal;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .picker-copy-link-button,
+    .picker-copy-link-icon,
+    .picker-copy-link-check {
+      transition: none;
+    }
+  }
+}

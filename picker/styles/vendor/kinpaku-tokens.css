@@ -1,0 +1,205 @@
+/*
+ * impeccable.style — Neo kinpaku tokens (page-global, single source of truth)
+ *
+ * Every brand-bearing color, surface, text color, hairline rule, type-scale
+ * value, and motion easing used on the site lives here. New pages should read
+ * these tokens via var(--ks-*) rather than hand-typing oklch values.
+ *
+ * Pages may override individual tokens locally when there's a documented
+ * reason (e.g. .home-kinpaku bumps --ks-rule alpha for sharper UI borders
+ * against bento tiles). When in doubt, do not override — match.
+ *
+ * Imported by design-system.css, home-kinpaku.css, and designing-kinpaku.css.
+ * If a new page-level stylesheet needs these tokens, @import this file at the
+ * top so the values are available at :root.
+ */
+
+:root {
+	/* color-scheme follows html.light / html.dark class on <html> */
+	/* ============================================================
+	   Brand anchors. Two anchors carry the brand — kinpaku gold for
+	   commitment and brand voice, verdigris patina for state and
+	   contrast. Everything else is supporting role.
+	   ============================================================ */
+
+	/* Kinpaku gold. The rich, warm, vibrant primary. */
+	--ks-kinpaku:        oklch(84% 0.19 80.46);  /* primary accent, wordmark, icon */
+	--ks-kinpaku-pale:   oklch(86% 0.07 84);     /* hover lift, pale fills */
+	--ks-kinpaku-rich:   oklch(77% 0.13 82);     /* active CTA, severity-medium */
+	--ks-kinpaku-deep:   oklch(61% 0.085 78);    /* borders against the brand */
+
+	/* Verdigris patina. The secondary accent — state, signal, selection. */
+	--ks-patina:         oklch(70% 0.12 188);    /* secondary accent */
+	--ks-patina-pale:    oklch(82% 0.07 188);    /* hover lift on patina */
+	--ks-patina-deep:    oklch(49% 0.08 188);    /* deep oxide, dark variants */
+
+	/* Warning — vermilion. Used sparingly, only for failures and warnings. */
+	--ks-vermilion:      oklch(58% 0.15 35);
+
+	/* ============================================================
+	   Surfaces. Warm-black lacquer carries everything.
+	   ============================================================ */
+	--ks-lacquer:        oklch(7% 0.006 95);    /* page ground */
+	--ks-lacquer-deep:   oklch(4% 0.004 95);    /* deepest inset */
+	--ks-lacquer-raised: oklch(11% 0.006 95);   /* raised panels, inputs */
+	--ks-graphite:       oklch(15% 0.008 95);   /* inactive surfaces */
+	--ks-graphite-2:     oklch(19% 0.008 95);   /* one step up from graphite */
+
+	/* ============================================================
+	   Text. The whole text ramp runs near-neutral and bright so copy,
+	   headings, and labels read crisp on lacquer instead of mushing
+	   into the warm floor. Warmth now lives only in the gold accents
+	   and the surfaces, not in the type. (--ks-champagne keeps its name
+	   for compatibility but is no longer warm.)
+	   ============================================================ */
+	--ks-champagne:      oklch(91% 0 0);         /* headlines, <strong> — neutral white */
+	--ks-text:           oklch(88% 0 0);         /* body — neutral near-white */
+	--ks-text-muted:     oklch(72% 0 0);         /* captions, meta */
+	--ks-text-faint:     oklch(62% 0 0);         /* subdued */
+	--ks-text-mute-deep: oklch(52% 0 0);         /* disabled */
+
+	/* ============================================================
+	   Rules. The hairline is neutral so borders/dividers/labels don't
+	   carry warmth (warmth lives in the gold accents and surfaces). For a
+	   gold accent border, use --ks-kinpaku directly, not a readability variant.
+	   ============================================================ */
+	--ks-rule:           oklch(78% 0 0 / 0.16);
+
+	/* ============================================================
+	   Code. One treatment site-wide. Inline code is a neutral graphite
+	   chip; blocks / CLI commands are a deep lacquer terminal with a
+	   neutral hairline. Gold is only for code that is itself a command
+	   link (--ks-code-cmd). All code rules read these — don't hand-type.
+	   ============================================================ */
+	--ks-code-fg:         oklch(91% 0 0);        /* inline code text */
+	--ks-code-bg:         var(--ks-graphite-2);  /* inline code chip */
+	--ks-code-radius:     3px;
+	--ks-code-pad:        0.3em 0.5em;           /* inline code chip padding */
+	--ks-code-block-fg:   oklch(86% 0 0);        /* block / CLI text */
+	--ks-code-block-bg:   var(--ks-lacquer-deep);
+	--ks-code-block-border: var(--ks-rule);
+	--ks-code-block-radius: 2px;
+	--ks-code-cmd:        var(--ks-kinpaku);     /* code that's a command link */
+
+	/* ============================================================
+	   Typography — two faces.
+	   - --ks-font-display: Alumni Sans. A weightable humanist grotesque;
+	     the hero h1 runs at a thin hairline (100) for elegance, section
+	     h2s at a heavier cut (300) to anchor each block.
+	   - --ks-font-wordmark: Alumni Sans, same face as display, held at
+	     weight 400 for the brand lockup.
+	   - --ks-font: Albert Sans. Quiet geometric humanist, used for body
+	     and UI text. Pairs cleanly with the Alumni Sans display without
+	     competing.
+	   All loaded via Base.astro's Google Fonts link.
+	   ============================================================ */
+	--ks-font-display:  "Alumni Sans", "Albert Sans", Arial, sans-serif;
+	--ks-font-wordmark: "Alumni Sans", "Albert Sans", Arial, sans-serif;
+	--ks-font:          "Albert Sans", "Avenir Next", "Helvetica Neue", Arial, system-ui, sans-serif;
+	--ks-mono:          "SFMono-Regular", "Roboto Mono", "JetBrains Mono", Consolas, monospace;
+
+	/* ============================================================
+	   Type scale. These are the actual sizes the homepage ships with —
+	   new pages should read them via var(...) rather than hand-typing.
+	   The display vs headline weight split is deliberate: the hero h1
+	   reads thin (100) for elegance; section h2s read heavier (300) to
+	   anchor each block. Section h2s look heavier than the h1 on purpose.
+	   ============================================================ */
+
+	/* Display — hero h1. */
+	--ks-type-display-size:   clamp(3.4rem, 6.5vw, 5.6rem);
+	--ks-type-display-weight: 100;
+	--ks-type-display-line:   1.02;
+	--ks-type-display-track:  -0.01em;
+
+	/* Headline — section h2. Heavier than display. */
+	--ks-type-headline-size:   clamp(2.6rem, 4vw, 3.4rem);
+	--ks-type-headline-weight: 300;
+	--ks-type-headline-line:   1.04;
+
+	/* Title — card and panel headings (h3). */
+	--ks-type-title-size:   1.18rem;
+	--ks-type-title-weight: 500;
+	--ks-type-title-line:   1.35;
+
+	/* Body. */
+	--ks-type-body-size: 1.02rem;
+	--ks-type-body-line: 1.8;
+
+	/* Eyebrow — small mono labels above titles. */
+	--ks-type-eyebrow-size:  0.7rem;
+	--ks-type-eyebrow-track: 0.18em;
+
+	/* Wordmark — IMPECCABLE in the header. */
+	--ks-type-wordmark-size:  1.15rem;
+	--ks-type-wordmark-track: 0.42em;
+
+	/* Mono — code, terminal, audit lines. */
+	--ks-type-mono-size:  0.72rem;
+	--ks-type-mono-track: 0.22em;
+
+	/* ============================================================
+	   Motion.
+	   ============================================================ */
+	--ks-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+html.dark {
+	color-scheme: dark;
+}
+
+/* ============================================================
+   Light mode — pale surfaces, dark ink type, and kinpaku kept as the
+   real brand gold. Activated via html.light on
+   <html> (set by theme.js + inline FOUC guard in Base.astro).
+   ============================================================ */
+html.light {
+	color-scheme: light;
+
+	/* Brand gold — same fills as dark mode (logo, buttons, marks).
+	   For decorative small text on paper, use patina. Use --ks-link-on-paper
+	   for body-sized links that need stronger contrast. */
+	--ks-kinpaku:        oklch(84% 0.19 80.46);
+	--ks-kinpaku-pale:   oklch(86% 0.07 84);
+	--ks-kinpaku-rich:   oklch(77% 0.13 82);
+	--ks-kinpaku-deep:   oklch(61% 0.085 78);
+	--ks-kinpaku-ink:    var(--ks-patina);
+
+	/* Text links + active nav on paper — patina, not fill gold. */
+	--ks-link-on-paper:       var(--ks-patina-deep);
+	--ks-link-on-paper-hover: var(--ks-patina);
+	--ks-link-on-paper-line:  oklch(49% 0.08 188 / 0.42);
+	--ks-nav-active:          var(--ks-patina-deep);
+
+	/* Patina — brand values for fills; deep for text on paper. */
+	--ks-patina:         oklch(70% 0.12 188);
+	--ks-patina-pale:    oklch(82% 0.07 188);
+	--ks-patina-deep:    oklch(49% 0.08 188);
+
+	--ks-vermilion:      oklch(52% 0.16 35);
+
+	/* Surfaces — warm paper and cream panels. */
+	--ks-lacquer:        oklch(97% 0.012 95);
+	--ks-lacquer-deep:   oklch(94% 0.014 95);
+	--ks-lacquer-raised: oklch(99% 0.008 95);
+	--ks-graphite:       oklch(91% 0.012 95);
+	--ks-graphite-2:     oklch(88% 0.014 95);
+
+	/* Text — dark ink on paper. */
+	--ks-champagne:      oklch(18% 0.02 95);
+	--ks-text:           oklch(25% 0.018 95);
+	--ks-text-muted:     oklch(45% 0.015 95);
+	--ks-text-faint:     oklch(55% 0.012 95);
+	--ks-text-mute-deep: oklch(65% 0.01 95);
+
+	/* Rules — dark hairlines. */
+	--ks-rule:           oklch(25% 0.02 95 / 0.12);
+
+	/* Code — light chips, dark text. */
+	--ks-code-fg:         oklch(28% 0.02 95);
+	--ks-code-bg:         var(--ks-graphite);
+	--ks-code-block-fg:   oklch(30% 0.02 95);
+	--ks-code-block-bg:   var(--ks-lacquer-raised);
+	--ks-code-block-border: var(--ks-rule);
+	--ks-code-cmd:        var(--ks-link-on-paper);
+}

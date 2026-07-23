@@ -1,0 +1,1638 @@
+/* ============================================================================
+   Impeccable — Neo Kinpaku kit (page-global primitives)
+
+   Reusable component primitives lifted from /design-system so they work on
+   every page. Brand lockup, section scaffolding, buttons, form controls,
+   tabs, badges, tags, pagination, toasts, tooltips, modal, empty state,
+   changelog, skeleton. No `.kinpaku-system-page` scope — drop these classes
+   onto any element on any page.
+
+   All values resolve through kinpaku-tokens.css. If a token name changes
+   there, this file follows.
+
+   Imported globally from Base.astro so every page picks them up.
+   ============================================================================ */
+
+
+/* ============================================================
+   Brand lockup — mark + wordmark
+   ============================================================ */
+
+.ks-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-decoration: none;
+}
+
+.ks-mark {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  color: var(--ks-kinpaku);
+}
+
+.ks-mark svg { width: 32px; height: 32px; }
+
+.ks-wordmark {
+  color: var(--ks-kinpaku);
+  font-family: var(--ks-font-wordmark);
+  font-weight: 400;
+  font-size: 1.3rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  line-height: 1;
+  -webkit-font-smoothing: auto;
+}
+
+
+/* ============================================================
+   Section scaffolding — page-level sections, eyebrows, subsections
+   ============================================================ */
+
+.ks-section {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 110px 56px;
+}
+
+.ks-section + .ks-section {
+  border-top: 1px solid var(--ks-rule);
+}
+
+.ks-section-head {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 56px;
+  max-width: 720px;
+}
+
+.ks-section-eyebrow {
+  color: var(--ks-kinpaku);
+  font-family: var(--ks-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+.ks-section-head h2 {
+  margin: 0;
+  color: var(--ks-champagne);
+  font-family: var(--ks-font-display);
+  font-size: clamp(2.2rem, 3.6vw, 3rem);
+  font-weight: var(--ks-type-headline-weight);
+  line-height: 1.06;
+  letter-spacing: -0.005em;
+}
+
+.ks-subsection {
+  margin-top: 56px;
+}
+
+.ks-subsection-label {
+  display: block;
+  color: var(--ks-kinpaku);
+  font-family: var(--ks-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  margin-bottom: 22px;
+}
+
+.ks-section-sub {
+  color: var(--ks-text-muted);
+  font-size: 0.96rem;
+  line-height: 1.55;
+  margin: 4px 0 0;
+  max-width: 60ch;
+}
+
+
+/* ============================================================
+   Buttons — primary, secondary, ghost, disabled
+   ============================================================ */
+
+.ks-button {
+  --b-shift: 0;
+  position: relative;
+  min-height: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 0 28px;
+  border-radius: 2px;
+  font-size: 0.96rem;
+  font-weight: 500;
+  line-height: 1;
+  text-decoration: none;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: transform 180ms var(--ks-ease), background-color 180ms var(--ks-ease), border-color 180ms var(--ks-ease), color 180ms var(--ks-ease);
+}
+
+.ks-button .ks-button-arrow {
+  width: 16px;
+  height: 8px;
+  display: inline-block;
+  flex: none;
+}
+
+.ks-button-arrow svg { width: 100%; height: 100%; display: block; }
+
+/* Warm-gold flat primary. Hover lifts to pale; active darkens to rich.
+   Variants chain on .ks-button so specificity (0,2,0) wins over generic page
+   anchor resets like `.kinpaku-system-page a { color: inherit }` (0,1,1).
+   Use class="ks-button ks-button-primary" — both classes required. */
+.ks-button.ks-button-primary {
+  color: var(--ks-lacquer-deep);
+  background: var(--ks-kinpaku);
+  border-color: var(--ks-kinpaku);
+}
+
+.ks-button.ks-button-primary:hover {
+  background: var(--ks-kinpaku-pale);
+  border-color: var(--ks-kinpaku-pale);
+  color: var(--ks-lacquer-deep);
+  transform: translateY(-1px);
+}
+
+.ks-button.ks-button-primary:active {
+  transform: translateY(0);
+  background: var(--ks-kinpaku-rich);
+  border-color: var(--ks-kinpaku-rich);
+}
+
+.ks-button.ks-button-secondary {
+  color: var(--ks-kinpaku);
+  background: transparent;
+  border-color: var(--ks-kinpaku);
+}
+
+.ks-button.ks-button-secondary:hover {
+  background: oklch(77% 0.14 82 / 0.08);
+  color: var(--ks-kinpaku);
+  transform: translateY(-1px);
+}
+
+.ks-button.ks-button-secondary:active {
+  background: oklch(77% 0.14 82 / 0.16);
+  transform: translateY(0);
+}
+
+.ks-button.ks-button-ghost {
+  color: var(--ks-champagne);
+  background: transparent;
+  border-color: transparent;
+  padding: 0 14px;
+}
+
+.ks-button.ks-button-ghost:hover {
+  color: var(--ks-kinpaku);
+}
+
+.ks-button[disabled],
+.ks-button.ks-button-disabled {
+  color: var(--ks-text-mute-deep);
+  background: transparent;
+  border-color: var(--ks-rule);
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.ks-button:focus-visible {
+  outline: 2px solid var(--ks-patina);
+  outline-offset: 3px;
+}
+
+.ks-button-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px;
+}
+
+
+/* ============================================================
+   Form controls — input, toggle, checkbox, select
+   ============================================================ */
+
+.ks-form-sample {
+  display: grid;
+  gap: 22px;
+  max-width: 360px;
+}
+
+.ks-form-sample label {
+  display: grid;
+  gap: 8px;
+  color: var(--ks-text-muted);
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+}
+
+.ks-form-sample input[type="search"],
+.ks-form-sample input[type="text"] {
+  min-height: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+  background: var(--ks-lacquer-raised);
+  color: var(--ks-champagne);
+  font-size: 0.92rem;
+}
+
+.ks-form-sample input[type="search"]:focus,
+.ks-form-sample input[type="text"]:focus {
+  outline: none;
+  border-color: var(--ks-patina);
+}
+
+.ks-toggle {
+  display: flex !important;
+  align-items: center;
+  gap: 12px !important;
+}
+
+.ks-toggle input {
+  appearance: none;
+  width: 44px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid var(--ks-rule);
+  background: var(--ks-graphite);
+  position: relative;
+  cursor: pointer;
+  flex: none;
+}
+
+.ks-toggle input::before {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  left: 3px;
+  top: 3px;
+  border-radius: 999px;
+  background: var(--ks-text-muted);
+  transition: transform 220ms var(--ks-ease), background 220ms var(--ks-ease);
+}
+
+.ks-toggle input:checked {
+  border-color: var(--ks-patina);
+  background: oklch(48% 0.08 188 / 0.2);
+}
+
+.ks-toggle input:checked::before {
+  transform: translateX(20px);
+  background: var(--ks-patina);
+}
+
+.ks-toggle span { color: var(--ks-champagne); font-size: 0.92rem; }
+
+.ks-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ks-champagne);
+  font-size: 0.92rem;
+  cursor: pointer;
+}
+
+.ks-checkbox input {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+  background: var(--ks-lacquer-raised);
+  position: relative;
+  cursor: pointer;
+  flex: none;
+}
+
+.ks-checkbox input:checked {
+  border-color: var(--ks-kinpaku);
+  background: var(--ks-kinpaku);
+}
+
+.ks-checkbox input:checked::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  width: 5px;
+  height: 9px;
+  border: solid var(--ks-lacquer-deep);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+.ks-select {
+  appearance: none;
+  min-height: 46px;
+  padding: 0 38px 0 14px;
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+  background-color: var(--ks-lacquer-raised);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6' fill='none' stroke='%23c89a5a' stroke-width='1.2'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 10px 6px;
+  color: var(--ks-champagne);
+  font-size: 0.92rem;
+  cursor: pointer;
+}
+
+
+/* ============================================================
+   Tabs
+   ============================================================ */
+
+.ks-tabs { max-width: 460px; }
+
+.ks-tab-list { display: flex; border-bottom: 1px solid var(--ks-rule); }
+
+.ks-tab-list button {
+  flex: 1;
+  min-height: 42px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--ks-text-muted);
+  cursor: pointer;
+  font-size: 0.92rem;
+  transition: color 180ms var(--ks-ease), border-color 180ms var(--ks-ease);
+}
+
+.ks-tab-list button:hover { color: var(--ks-champagne); }
+
+.ks-tab-list button[aria-selected="true"] {
+  color: var(--ks-kinpaku);
+  border-bottom-color: var(--ks-kinpaku);
+}
+
+.ks-tab-panel {
+  padding: 22px 4px 0;
+  color: var(--ks-champagne);
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+
+/* ============================================================
+   Status badges + issue tags
+   ============================================================ */
+
+.ks-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.ks-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 14px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+}
+
+.ks-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.ks-badge.is-detected { color: var(--ks-vermilion); }
+.ks-badge.is-improved { color: var(--ks-patina); }
+.ks-badge.is-ready { color: var(--ks-kinpaku); }
+
+.ks-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ks-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 12px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  letter-spacing: 0.04em;
+}
+
+.ks-tag.is-detected { color: var(--ks-vermilion); }
+.ks-tag.is-improved { color: var(--ks-patina); }
+.ks-tag.is-neutral { color: var(--ks-text-muted); }
+.ks-tag.is-ready { color: var(--ks-kinpaku); }
+
+
+/* ============================================================
+   Pagination
+   ============================================================ */
+
+.ks-pagination {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ks-pagination button {
+  min-width: 36px;
+  min-height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--ks-champagne);
+  font-size: 0.86rem;
+  cursor: pointer;
+  transition: border-color 180ms var(--ks-ease), color 180ms var(--ks-ease);
+}
+
+.ks-pagination button:hover {
+  border-color: var(--ks-kinpaku);
+  color: var(--ks-kinpaku);
+}
+
+.ks-pagination button[aria-current="page"] {
+  border-color: var(--ks-kinpaku);
+  color: var(--ks-kinpaku);
+}
+
+
+/* ============================================================
+   Toast / alert
+   ============================================================ */
+
+.ks-toast {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 18px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  max-width: 420px;
+}
+
+.ks-toast-icon {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  color: currentColor;
+}
+
+.ks-toast strong {
+  display: block;
+  color: var(--ks-champagne);
+  font-size: 0.92rem;
+  font-weight: 500;
+}
+
+.ks-toast span:not(.ks-toast-close) {
+  color: var(--ks-text-muted);
+  font-size: 0.82rem;
+  display: block;
+  margin-top: 2px;
+}
+
+.ks-toast.is-success { color: var(--ks-patina); }
+.ks-toast.is-warning { color: var(--ks-vermilion); }
+
+.ks-toast-close {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--ks-text-muted);
+  cursor: pointer;
+}
+
+.ks-toast-close svg { width: 12px; height: 12px; }
+
+
+/* ============================================================
+   Icon button + tooltip
+   ============================================================ */
+
+.ks-icon-button {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--ks-rule);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ks-kinpaku);
+  cursor: pointer;
+}
+
+.ks-tooltip {
+  position: absolute;
+  bottom: calc(100% - 18px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 200px;
+  padding: 10px 12px;
+  border: 1px solid var(--ks-rule);
+  background: var(--ks-lacquer-deep);
+  color: var(--ks-champagne);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  border-radius: 2px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms var(--ks-ease);
+}
+
+.ks-icon-button:focus-visible + .ks-tooltip {
+  opacity: 1;
+}
+
+
+/* ============================================================
+   Modal
+   ============================================================ */
+
+.ks-modal {
+  position: relative;
+  max-width: 440px;
+  padding: 28px;
+  border: 1px solid var(--ks-rule);
+  background: var(--ks-lacquer-raised);
+  border-radius: 2px;
+}
+
+.ks-modal h3 {
+  margin: 0 0 8px;
+  color: var(--ks-champagne);
+  font-size: 1.1rem;
+  font-weight: 400;
+}
+
+.ks-modal p {
+  margin: 0 0 22px;
+  color: var(--ks-text-muted);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.ks-modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.ks-modal-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--ks-text-muted);
+  cursor: pointer;
+}
+
+
+/* ============================================================
+   Empty state
+   ============================================================ */
+
+.ks-empty {
+  display: grid;
+  place-items: center;
+  gap: 14px;
+  padding: 56px 28px;
+  text-align: center;
+  border: 1px dashed var(--ks-rule);
+  border-radius: 2px;
+}
+
+.ks-empty-icon {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  color: var(--ks-kinpaku);
+}
+
+.ks-empty strong {
+  color: var(--ks-champagne);
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+.ks-empty p {
+  margin: 0;
+  color: var(--ks-text-muted);
+  font-size: 0.86rem;
+}
+
+
+/* ============================================================
+   Changelog row
+   ============================================================ */
+
+.ks-changelog {
+  display: grid;
+  gap: 18px;
+}
+
+.ks-changelog-entry {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 24px;
+  align-items: start;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--ks-rule);
+}
+
+.ks-changelog-entry:last-child { border-bottom: 0; }
+
+.ks-changelog-date {
+  color: var(--ks-text-muted);
+  font-family: var(--ks-mono);
+  font-size: 0.78rem;
+}
+
+.ks-changelog-body strong {
+  color: var(--ks-champagne);
+  font-weight: 400;
+  font-size: 0.96rem;
+  display: block;
+}
+
+.ks-changelog-body em {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  color: var(--ks-kinpaku);
+  border: 1px solid var(--ks-kinpaku);
+  font-style: normal;
+  font-size: 0.66rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  border-radius: 2px;
+}
+
+.ks-changelog-body p {
+  margin: 4px 0 0;
+  color: var(--ks-text-muted);
+  font-size: 0.86rem;
+}
+
+
+/* ============================================================
+   Site chrome (kinpaku theme) — shared header AND footer
+
+   One definition for every kinpaku page, keyed off a single
+   `.kinpaku-chrome` body class instead of a per-page selector list. A
+   page opts into the dark-lacquer header + footer by adding
+   `kinpaku-chrome` to its bodyClass (alongside any page-specific class);
+   genuinely light pages (privacy, tutorials) simply omit it.
+
+   This is the reusable unit: the header markup is Header.astro, the
+   footer markup is Footer.astro, and everything visual lives here. Don't
+   re-declare header/footer chrome in per-page stylesheets — the only
+   legitimate per-page override is a deliberate brand moment (e.g. the
+   home page's textured `body.home-kinpaku .site-footer`).
+
+   Brand mark + wordmark mirror /design-system's .ks-brand / .ks-mark /
+   .ks-wordmark exactly, so the header is internally consistent. The
+   github pill and footer treatment used to be home-only / copy-pasted
+   per page; they now live here so every kinpaku page matches.
+   ============================================================ */
+
+.kinpaku-chrome .site-header {
+  padding: 28px clamp(22px, 4vw, 56px);
+  background: linear-gradient(180deg, oklch(5% 0.004 95 / 0.92), oklch(5% 0.004 95 / 0.68));
+  border-bottom: 1px solid oklch(78% 0.12 82 / 0.18);
+  backdrop-filter: blur(18px) saturate(1.25);
+}
+
+/* Hamburger toggle — hidden on desktop, shown on mobile. The toggle expands
+   the nav panel below the header. Two-line glyph styled in kinpaku gold so
+   it reads as the brand's own control, not a generic browser affordance. */
+.site-header-menu {
+  display: none;
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  border: 1px solid oklch(78% 0.12 82 / 0.32);
+  border-radius: 4px;
+  padding: 0;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 6px;
+  flex: none;
+  margin-left: auto;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+.site-header-menu:hover {
+  border-color: oklch(78% 0.12 82 / 0.55);
+  background: oklch(78% 0.12 82 / 0.06);
+}
+.site-header-menu-line {
+  display: block;
+  width: 16px;
+  height: 1.5px;
+  background: var(--ks-kinpaku);
+  transition: transform 200ms ease, opacity 200ms ease;
+}
+[data-site-header][data-nav-open="true"] .site-header-menu-line:nth-child(1) {
+  transform: translateY(3.75px) rotate(45deg);
+}
+[data-site-header][data-nav-open="true"] .site-header-menu-line:nth-child(2) {
+  transform: translateY(-3.75px) rotate(-45deg);
+}
+
+/* Mobile nav drawer. The right cluster (nav + github) collapses below the
+   header into a vertical panel that's hidden by default and revealed when
+   the hamburger toggles data-nav-open="true" on the header. */
+@media (max-width: 760px) {
+  .kinpaku-chrome .site-header {
+    flex-wrap: wrap;
+    padding: 16px clamp(16px, 4vw, 24px);
+    row-gap: 12px;
+  }
+
+  .site-header-menu {
+    display: inline-flex;
+  }
+
+  /* The right cluster (nav + github) becomes a collapsible drawer. Default
+     hidden; revealed when the header carries data-nav-open="true". The
+     panel extends past the header's horizontal padding to read as a true
+     full-width drawer, with a solid background so it doesn't bleed into
+     the hero content behind it. */
+  [data-site-header] .site-header-right {
+    order: 3;
+    flex-basis: 100%;
+    display: none;
+    grid-template-columns: max-content max-content 1fr;
+    column-gap: 10px;
+    flex-direction: column;
+    align-items: stretch;
+    row-gap: 0;
+    margin: 12px 0 -16px;
+    padding: 6px;
+    background: oklch(4% 0.004 95);
+    border-radius: 4px;
+    border-top: 1px solid oklch(78% 0.12 82 / 0.18);
+  }
+  [data-site-header][data-nav-open="true"] .site-header-right {
+    display: grid;
+  }
+
+  .kinpaku-chrome .site-header-nav {
+    grid-column: 1 / -1;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    font-size: 1rem;
+    /* Drop sub-pages.css's horizontal-scroll mask + overflow on the nav. */
+    overflow: visible;
+    mask-image: none;
+    -webkit-mask-image: none;
+  }
+  /* Each row reads as a tappable surface — full-width, generous vertical
+     padding, hairline separators between rows. */
+  [data-site-header] .site-header-nav a {
+    display: block;
+    padding: 14px clamp(16px, 4vw, 24px);
+    border-bottom: 1px solid oklch(78% 0.12 82 / 0.06);
+  }
+  [data-site-header] .site-header-nav a:last-child {
+    border-bottom: 0;
+  }
+
+  /* sub-pages.css hides Home on mobile via `a[data-nav="home"] {display:none}`
+     because the brand acted as the home link in the old horizontal nav.
+     The drawer pattern surfaces all items, so override that here. */
+  [data-site-header] .site-header-nav a[data-nav="home"] {
+    display: block;
+  }
+
+  .kinpaku-chrome .theme-toggle {
+    grid-column: 1;
+    margin: 12px 0 6px;
+  }
+
+  .kinpaku-chrome .site-header-github {
+    grid-column: 2;
+    align-self: flex-start;
+    margin: 12px 0 6px;
+  }
+
+  /* sub-pages.css hides the github star count label on mobile. The drawer
+     has room for it, so bring it back. */
+  [data-site-header] .site-header-github-label {
+    display: inline;
+  }
+}
+
+.kinpaku-chrome .site-header-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ks-kinpaku);
+  font-family: var(--ks-font);
+  text-decoration: none;
+}
+
+.kinpaku-chrome .site-header-brand-logo {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  color: var(--ks-kinpaku);
+  background: transparent;
+  box-shadow: none;
+}
+
+.kinpaku-chrome .site-header-brand-logo svg {
+  width: 32px;
+  height: 32px;
+}
+
+.kinpaku-chrome .site-header-brand-name,
+.kinpaku-chrome .footer-logo {
+  color: var(--ks-kinpaku);
+  font-family: var(--ks-font-wordmark);
+  font-weight: 400;
+  font-size: 1.3rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  line-height: 1;
+  /* main.css / sub-pages.css set -webkit-font-smoothing: antialiased on
+     <html> which renders thinner stems than the design-system page (which
+     uses the browser default). Match the design-system rendering so every
+     page's wordmark is visually identical, not just structurally the same. */
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+}
+
+.kinpaku-chrome .site-header-nav {
+  gap: clamp(22px, 3vw, 48px);
+  font-family: var(--ks-font);
+  font-size: 0.95rem;
+  font-weight: 400;
+}
+
+.kinpaku-chrome .theme-toggle,
+.kinpaku-chrome .site-header-github {
+  height: 36px;
+  min-height: 36px;
+  box-sizing: border-box;
+}
+
+.kinpaku-chrome .site-header-github {
+  padding: 0 12px 0 10px;
+}
+
+.kinpaku-chrome .site-header-nav a,
+.kinpaku-chrome .site-header-github {
+  color: var(--ks-champagne);
+}
+
+.kinpaku-chrome .site-header-nav a:hover,
+.kinpaku-chrome .site-header-nav a[aria-current="page"] {
+  color: var(--ks-kinpaku);
+}
+
+/* GitHub star pill. Previously home-only; now every kinpaku page gets it. */
+.kinpaku-chrome .site-header-github {
+  border: 1px solid oklch(80% 0 0);
+  border-radius: 999px;
+  background: oklch(10% 0.006 95 / 0.74);
+}
+
+.kinpaku-chrome .site-header-github:hover {
+  color: var(--ks-patina);
+  border-color: var(--ks-patina);
+  background: oklch(70% 0.105 190 / 0.08);
+}
+
+.kinpaku-chrome .site-header-github-star {
+  color: var(--ks-kinpaku);
+}
+
+/* ============================================================
+   Site footer (kinpaku theme) — the default dark footer for every
+   kinpaku page. Was copy-pasted identically into slop/docs/designing/
+   live-mode stylesheets; lives here once now. The home page layers a
+   textured verdigris divider on top via `body.home-kinpaku .site-footer`
+   (higher specificity, so it wins regardless of import order).
+   ============================================================ */
+.kinpaku-chrome .site-footer {
+  background: oklch(4% 0.004 95);
+  border-top: 1px solid var(--ks-rule);
+}
+
+.kinpaku-chrome .footer-links a,
+.kinpaku-chrome .footer-credit,
+.kinpaku-chrome .footer-social-link {
+  color: var(--ks-text-muted);
+}
+
+.kinpaku-chrome .footer-credit a {
+  color: var(--ks-champagne);
+}
+
+.kinpaku-chrome .footer-links a:hover,
+.kinpaku-chrome .footer-credit a:hover,
+.kinpaku-chrome .footer-social-link:hover {
+  color: var(--ks-kinpaku);
+}
+
+/* ============================================================
+   Kinpaku surface — legacy-token remap
+
+   For pages whose content still reads the old light tokens
+   (--color-paper, --color-ink, --font-display, …): instead of overriding
+   every rule, remap those tokens to kinpaku values at the body scope so
+   the existing legacy CSS renders dark for free. This is the same trick
+   docs-kinpaku/designing-kinpaku use per page, lifted into one reusable
+   class. It is also the prototype for making kinpaku the global default —
+   the eventual move is to lift this remap to :root and delete the light
+   token values entirely.
+
+   Pair with .kinpaku-chrome (header + footer). Existing bespoke kinpaku
+   pages already remap in their own page stylesheet, so they don't need
+   this class.
+   ============================================================ */
+.kinpaku-surface {
+  --color-paper: oklch(7% 0.006 95);
+  --color-cream: oklch(9% 0.006 95);
+  --color-bg: oklch(11% 0.006 95);
+  --color-mist: var(--ks-rule);
+  --color-charcoal: var(--ks-text-muted);
+  --color-ash: var(--ks-text-faint);
+  --color-ink: var(--ks-champagne);
+  --color-text: var(--ks-text);
+  --color-accent: var(--ks-kinpaku);
+  --color-accent-dim: oklch(78% 0.12 82 / 0.18);
+  --color-accent-hover: var(--ks-kinpaku-pale);
+  --color-accent-soft: oklch(78% 0.12 82 / 0.32);
+  --font-body: var(--ks-font);
+  --font-display: var(--ks-font-display);
+  --font-mono: var(--ks-mono);
+
+  background: linear-gradient(180deg, oklch(7% 0.006 95), oklch(4% 0.004 95));
+  color: var(--ks-text);
+  min-height: 100vh;
+}
+
+/* The legacy display face was italic serif; the kinpaku display face
+   (Alumni Sans) renders wrong as synthesized italic, so reset it on
+   the headings the base stylesheet set to italic. */
+.kinpaku-surface .sub-page-title,
+.kinpaku-surface .prose h1,
+.kinpaku-surface .prose h2 {
+  font-style: normal;
+}
+
+
+/* ============================================================
+   Bento — multi-tile container pattern. The canonical alternative
+   to card-in-card. Tiles are full-width slabs on a darker rail; the
+   8px gap between them shows the rail through as inset gutters.
+   Use with .ks-bento-tile--span-4 / --span-6 / --span-8 across a
+   12-column grid. Pages can extend with full-bleed breakout or
+   custom edge padding (see /).
+   ============================================================ */
+
+.ks-bento {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 8px;
+  background: oklch(0.17 0 0);
+  border-top: 8px solid oklch(0.17 0 0);
+  border-bottom: 8px solid oklch(0.17 0 0);
+}
+
+.ks-bento-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 48px;
+  background: var(--ks-lacquer);
+  border: 0;
+  border-radius: 0;
+  overflow: hidden;
+}
+
+.ks-bento-tile--span-4 { grid-column: span 4; }
+.ks-bento-tile--span-6 { grid-column: span 6; }
+.ks-bento-tile--span-8 { grid-column: span 8; }
+
+@media (max-width: 980px) {
+  .ks-bento-tile { grid-column: 1 / -1; }
+}
+
+/* Tile number — tiny mono caps. Defaults to kinpaku; flip individual tiles
+   to verdigris with data-color="patina" for tonal variety down a column. */
+.ks-bento-num {
+  font-family: var(--ks-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--ks-kinpaku);
+}
+
+.ks-bento-num[data-color="patina"] {
+  color: var(--ks-patina);
+}
+
+
+/* ============================================================
+   Skeleton (loading)
+   ============================================================ */
+
+.ks-skeleton {
+  display: grid;
+  gap: 8px;
+  max-width: 280px;
+}
+
+.ks-skeleton span {
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--ks-graphite), oklch(22% 0.008 95), var(--ks-graphite));
+  background-size: 200% 100%;
+  animation: ks-shimmer 1.8s linear infinite;
+}
+
+.ks-skeleton span:nth-child(2) { width: 70%; }
+.ks-skeleton span:nth-child(3) { width: 50%; }
+
+@keyframes ks-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+
+/* ============================================================
+   Live picker (kinpaku theme)
+
+   Shared kinpaku styling for the .live-demo-* picker mock used on the
+   homepage and /live-mode. The base structural CSS lives in
+   site/styles/live-mode.css; this block re-skins the picker chrome
+   (browser frame URL bar, bottom global bar, context bar, target
+   outline, comment tag, stroke) on dark kinpaku surfaces.
+
+   Page-specific bits stay in the page CSS:
+     - .live-demo-frame background (lacquer-raised vs lacquer-deep)
+     - .live-demo-stage (homepage shows a gold-grid stylized stage;
+       /live-mode shows a light cream surface that simulates a real
+       dev preview)
+     - .live-demo-card (different content per page)
+
+   To extend the picker to a new kinpaku-themed page, just add its body
+   class to the selector lists below. No duplicating CSS in page files.
+
+   The actual live picker that injects into user dev servers
+   (skill/scripts/live-browser.js) is a separate runtime; its color
+   constants are kept in sync with these tokens by hand.
+   ============================================================ */
+
+/* Browser-chrome bar at the top of the mock (URL pill + dots). Refined to read
+   like a precise tool, not a stock screenshot frame: slimmer bar, small uniform
+   neutral dots, and a clean neutral-edged URL pill (no warm gold hairline). */
+.home-kinpaku .live-demo-chrome,
+.live-mode-kinpaku .live-demo-chrome {
+  padding: 9px 14px;
+  background: var(--ks-graphite);
+  border-bottom: 1px solid oklch(92% 0 0 / 0.07);
+}
+
+.home-kinpaku .live-demo-dot,
+.live-mode-kinpaku .live-demo-dot {
+  width: 8px;
+  height: 8px;
+  background: oklch(34% 0 0);
+}
+
+.home-kinpaku .live-demo-url,
+.live-mode-kinpaku .live-demo-url {
+  margin-left: 12px;
+  font-family: var(--ks-mono);
+  font-size: 0.72rem;
+  color: var(--ks-text-muted);
+  letter-spacing: 0.04em;
+  background: transparent;
+  border: 1px solid oklch(92% 0 0 / 0.08);
+}
+
+/* Active control surfaces — the bottom picker bar and the context bar
+   that floats next to the picked element. These ARE the Impeccable UI,
+   so they get the full-saturation kinpaku-gold border at 1.5px with a
+   faint matching halo, distinguishing them from chrome. */
+.home-kinpaku .live-demo-gbar,
+.live-mode-kinpaku .live-demo-gbar,
+.home-kinpaku .live-demo-ctx,
+.live-mode-kinpaku .live-demo-ctx {
+  background: var(--ks-lacquer-deep);
+  /* Quiet neutral hairline instead of the loud 1.5px gold border + gold halo.
+     Gold is reserved for the brand mark and the active control, not the
+     container outline. */
+  border: 1px solid oklch(92% 0 0 / 0.13);
+  border-radius: 8px;
+  box-shadow: 0 16px 36px -12px oklch(0% 0 0 / 0.6);
+  color: var(--ks-champagne);
+}
+
+.home-kinpaku .live-demo-gbar-brand,
+.live-mode-kinpaku .live-demo-gbar-brand {
+  color: var(--ks-kinpaku);
+  background: transparent;
+}
+
+.home-kinpaku .live-demo-gbar-btn,
+.live-mode-kinpaku .live-demo-gbar-btn {
+  color: var(--ks-text-muted);
+  background: transparent;
+}
+
+/* Active state — a crisp neutral pill with kinpaku text. The translucent
+   kinpaku-dim wash read as a murky smudge; a solid graphite chip with gold
+   text/icon makes the selected control precise. */
+.home-kinpaku .live-demo-gbar-btn.is-active,
+.live-mode-kinpaku .live-demo-gbar-btn.is-active {
+  background: oklch(27% 0 0);
+  color: var(--ks-kinpaku);
+  border-radius: 6px;
+}
+
+/* Page chat — collapsed pill with chat + mic; expands on click. */
+.home-kinpaku .live-demo-gbar-chat,
+.live-mode-kinpaku .live-demo-gbar-chat {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  width: 104px;
+  margin: 0 4px 0 6px;
+  border-radius: 5px;
+  background: var(--ks-graphite);
+  border: 1px solid transparent;
+  overflow: hidden;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.15s ease;
+}
+
+.home-kinpaku .live-demo-gbar-chat.is-expanded,
+.live-mode-kinpaku .live-demo-gbar-chat.is-expanded {
+  width: min(220px, 34vw);
+  cursor: text;
+}
+
+.home-kinpaku .live-demo-gbar-chat-icon,
+.live-mode-kinpaku .live-demo-gbar-chat-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  color: var(--ks-text-muted);
+  pointer-events: none;
+}
+
+.home-kinpaku .live-demo-gbar-chat-hint,
+.live-mode-kinpaku .live-demo-gbar-chat-hint {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--ks-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.home-kinpaku .live-demo-gbar-chat-input,
+.live-mode-kinpaku .live-demo-gbar-chat-input {
+  flex: 1;
+  min-width: 0;
+  width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--ks-champagne);
+  outline: none;
+  opacity: 0;
+  pointer-events: none;
+  caret-color: var(--ks-kinpaku);
+  transition: opacity 0.15s ease;
+}
+
+.home-kinpaku .live-demo-gbar-chat[data-input-focused="true"]:not([data-expanded="true"]) .live-demo-gbar-chat-hint,
+.live-mode-kinpaku .live-demo-gbar-chat[data-input-focused="true"]:not([data-expanded="true"]) .live-demo-gbar-chat-hint {
+  display: none;
+}
+
+.home-kinpaku .live-demo-gbar-chat[data-input-focused="true"]:not([data-expanded="true"]) .live-demo-gbar-chat-input,
+.live-mode-kinpaku .live-demo-gbar-chat[data-input-focused="true"]:not([data-expanded="true"]) .live-demo-gbar-chat-input {
+  width: auto;
+  padding: 0 4px;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.home-kinpaku .live-demo-gbar-chat.is-expanded .live-demo-gbar-chat-hint,
+.live-mode-kinpaku .live-demo-gbar-chat.is-expanded .live-demo-gbar-chat-hint {
+  display: none;
+}
+
+.home-kinpaku .live-demo-gbar-chat.is-expanded .live-demo-gbar-chat-input,
+.live-mode-kinpaku .live-demo-gbar-chat.is-expanded .live-demo-gbar-chat-input {
+  width: auto;
+  padding: 0 6px;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.home-kinpaku .live-demo-gbar-chat-input::placeholder,
+.live-mode-kinpaku .live-demo-gbar-chat-input::placeholder {
+  color: var(--ks-text-muted);
+  opacity: 1;
+}
+
+.home-kinpaku .live-demo-gbar-chat-voice,
+.live-mode-kinpaku .live-demo-gbar-chat-voice {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ks-text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.home-kinpaku .live-demo-gbar-chat-voice:hover,
+.live-mode-kinpaku .live-demo-gbar-chat-voice:hover,
+.home-kinpaku .live-demo-gbar-chat-voice.is-active,
+.live-mode-kinpaku .live-demo-gbar-chat-voice.is-active {
+  color: var(--ks-kinpaku);
+  background: oklch(78% 0.12 82 / 0.12);
+}
+
+.home-kinpaku .live-demo-gbar-divider,
+.live-mode-kinpaku .live-demo-gbar-divider {
+  background: var(--ks-rule);
+}
+
+.home-kinpaku .live-demo-gbar-x,
+.live-mode-kinpaku .live-demo-gbar-x {
+  color: var(--ks-text-muted);
+  background: transparent;
+}
+
+.home-kinpaku .live-demo-gbar-x:hover,
+.live-mode-kinpaku .live-demo-gbar-x:hover {
+  color: var(--ks-vermilion);
+}
+
+/* Context bar sub-elements (the inline action panel that appears
+   next to a picked element during "configure" / "cycling" / "accepted"
+   states). */
+.home-kinpaku .live-demo-ctx[data-phase="configuring"],
+.live-mode-kinpaku .live-demo-ctx[data-phase="configuring"] {
+  padding: 0;
+  background: var(--ks-graphite-2);
+  overflow: hidden;
+}
+
+.home-kinpaku .live-demo-ctx-command,
+.live-mode-kinpaku .live-demo-ctx-command {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 6px 0 7px;
+  background: transparent;
+  border: 0;
+  overflow: hidden;
+}
+
+.home-kinpaku .live-demo-ctx-trailing,
+.live-mode-kinpaku .live-demo-ctx-trailing {
+  display: inline-flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  border-left: 1px solid oklch(92% 0 0 / 0.12);
+}
+
+.home-kinpaku .live-demo-ctx-modifiers,
+.live-mode-kinpaku .live-demo-ctx-modifiers {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  flex-shrink: 0;
+}
+
+.home-kinpaku .live-demo-ctx-selection,
+.live-mode-kinpaku .live-demo-ctx-selection {
+  box-sizing: border-box;
+  min-width: 28px;
+  height: auto;
+  padding: 1px 4px;
+  border: 1px solid oklch(70% 0.12 188);
+  border-radius: 7px;
+  flex-shrink: 0;
+  background: transparent;
+  color: oklch(70% 0.12 188);
+  font-family: var(--ks-mono);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.home-kinpaku .live-demo-ctx-action,
+.home-kinpaku .live-demo-ctx-count,
+.live-mode-kinpaku .live-demo-ctx-action,
+.live-mode-kinpaku .live-demo-ctx-count {
+  box-sizing: border-box;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ks-text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  transition: color 0.12s ease;
+}
+
+.home-kinpaku .live-demo-ctx-count,
+.live-mode-kinpaku .live-demo-ctx-count {
+  font-family: var(--ks-mono);
+  font-weight: 600;
+}
+
+.home-kinpaku .live-demo-ctx-row--configure,
+.live-mode-kinpaku .live-demo-ctx-row--configure {
+  width: 100%;
+  min-height: 36px;
+}
+
+.home-kinpaku .live-demo-ctx-actions,
+.live-mode-kinpaku .live-demo-ctx-actions {
+  display: inline-flex;
+  align-items: stretch;
+  border-left: 1px solid oklch(92% 0 0 / 0.12);
+}
+
+.home-kinpaku .live-demo-ctx-voice,
+.live-mode-kinpaku .live-demo-ctx-voice {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-right: 1px solid oklch(92% 0 0 / 0.12);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ks-text-muted);
+}
+
+.home-kinpaku .live-demo-ctx-actions .live-demo-ctx-go,
+.live-mode-kinpaku .live-demo-ctx-actions .live-demo-ctx-go {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 0;
+  border-left: 0;
+}
+
+.home-kinpaku .live-demo-ctx-action-caret,
+.live-mode-kinpaku .live-demo-ctx-action-caret {
+  font-size: 10px;
+  color: inherit;
+}
+
+.home-kinpaku .live-demo-ctx-selection:hover,
+.live-mode-kinpaku .live-demo-ctx-selection:hover {
+  background: oklch(27% 0 0);
+}
+
+.home-kinpaku .live-demo-ctx-action:hover,
+.home-kinpaku .live-demo-ctx-count:hover,
+.live-mode-kinpaku .live-demo-ctx-action:hover,
+.live-mode-kinpaku .live-demo-ctx-count:hover {
+  color: var(--ks-text);
+}
+
+.home-kinpaku .live-demo-ctx-input,
+.live-mode-kinpaku .live-demo-ctx-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  color: oklch(94% 0.02 82);
+}
+
+.home-kinpaku .live-demo-ctx-caret,
+.live-mode-kinpaku .live-demo-ctx-caret {
+  background: oklch(94% 0.02 82);
+}
+
+.home-kinpaku .live-demo-ctx-go,
+.live-mode-kinpaku .live-demo-ctx-go,
+.home-kinpaku .live-demo-ctx-accept,
+.live-mode-kinpaku .live-demo-ctx-accept {
+  background: var(--ks-kinpaku);
+  color: var(--ks-lacquer-deep);
+  border: 0;
+}
+
+/* Command-palette switcher — the picker's design vocabulary. Mirrors the real
+   action picker in live-browser.js: a 4-column grid of icon-over-label chips,
+   the selected chip on a soft kinpaku wash with its icon recolored to brand.
+   This is the move that makes the live approach unique, so the demo shows it. */
+.home-kinpaku .live-demo-ctx-palette,
+.live-mode-kinpaku .live-demo-ctx-palette {
+  position: absolute;
+  left: 6px;
+  bottom: calc(100% + 8px);
+  z-index: 2;
+  padding: 6px;
+  border-radius: 8px;
+  background: var(--ks-lacquer-deep);
+  border: 1px solid oklch(92% 0 0 / 0.13);
+  box-shadow: 0 18px 40px -14px oklch(0% 0 0 / 0.7);
+  opacity: 0;
+  transform: translateY(6px) scale(0.97);
+  transform-origin: bottom left;
+  pointer-events: none;
+  transition: opacity 160ms ease, transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.home-kinpaku .live-demo-ctx-palette.is-open,
+.live-mode-kinpaku .live-demo-ctx-palette.is-open {
+  opacity: 1;
+  transform: none;
+}
+.home-kinpaku .live-demo-ctx-palette-grid,
+.live-mode-kinpaku .live-demo-ctx-palette-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 3px;
+}
+.home-kinpaku .live-demo-ctx-palette-chip,
+.live-mode-kinpaku .live-demo-ctx-palette-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  width: 62px;
+  padding: 9px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ks-champagne);
+  font-family: var(--ks-font);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.home-kinpaku .live-demo-ctx-palette-ico,
+.live-mode-kinpaku .live-demo-ctx-palette-ico {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  opacity: 0.82;
+}
+.home-kinpaku .live-demo-ctx-palette-name,
+.live-mode-kinpaku .live-demo-ctx-palette-name {
+  line-height: 1;
+}
+.home-kinpaku .live-demo-ctx-palette-chip.is-highlight,
+.live-mode-kinpaku .live-demo-ctx-palette-chip.is-highlight {
+  background: oklch(78% 0.12 82 / 0.16);
+  color: var(--ks-kinpaku);
+}
+.home-kinpaku .live-demo-ctx-palette-chip.is-highlight .live-demo-ctx-palette-ico,
+.live-mode-kinpaku .live-demo-ctx-palette-chip.is-highlight .live-demo-ctx-palette-ico {
+  opacity: 1;
+}
+
+.home-kinpaku .live-demo-ctx-nav,
+.live-mode-kinpaku .live-demo-ctx-nav {
+  background: transparent;
+  color: var(--ks-text-muted);
+}
+
+.home-kinpaku .live-demo-ctx-nav:hover,
+.live-mode-kinpaku .live-demo-ctx-nav:hover {
+  color: var(--ks-kinpaku);
+}
+
+.home-kinpaku .live-demo-ctx-counter,
+.live-mode-kinpaku .live-demo-ctx-counter {
+  color: var(--ks-champagne);
+  font-family: var(--ks-mono);
+}
+
+.home-kinpaku .live-demo-ctx-divider,
+.live-mode-kinpaku .live-demo-ctx-divider {
+  background: var(--ks-rule);
+}
+
+.home-kinpaku .live-demo-ctx-discard,
+.live-mode-kinpaku .live-demo-ctx-discard {
+  background: transparent;
+  color: var(--ks-text-muted);
+}
+
+.home-kinpaku .live-demo-ctx-discard:hover,
+.live-mode-kinpaku .live-demo-ctx-discard:hover {
+  color: var(--ks-vermilion);
+}
+
+.home-kinpaku .live-demo-ctx-spinner,
+.live-mode-kinpaku .live-demo-ctx-spinner {
+  border-color: var(--ks-rule);
+  border-top-color: var(--ks-kinpaku);
+}
+
+.home-kinpaku .live-demo-ctx-row--accepted,
+.live-mode-kinpaku .live-demo-ctx-row--accepted {
+  color: var(--ks-kinpaku);
+}
+
+/* Target outline + annotations (stroke + comment tag) — kinpaku. */
+.home-kinpaku .live-demo-outline,
+.live-mode-kinpaku .live-demo-outline {
+  border-color: var(--ks-kinpaku);
+  border-width: 1.5px;
+  border-radius: 3px;
+  color: var(--ks-kinpaku);
+  /* No soft gold glow ring (off-brand accent halo); a crisp outline reads as a
+     precise selection, not a highlighter. */
+  box-shadow: none;
+}
+
+.home-kinpaku .live-demo-annotations,
+.live-mode-kinpaku .live-demo-annotations {
+  color: var(--ks-kinpaku);
+  border-color: var(--ks-kinpaku);
+}
+
+.home-kinpaku .live-demo-comment,
+.live-mode-kinpaku .live-demo-comment {
+  background: var(--ks-kinpaku);
+  color: var(--ks-lacquer-deep);
+}
+
+.home-kinpaku .live-demo-stroke,
+.live-mode-kinpaku .live-demo-stroke {
+  color: var(--ks-kinpaku);
+}
