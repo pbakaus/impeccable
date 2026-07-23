@@ -82,7 +82,7 @@ If the work establishes durable strategy for a route or artifact, read its exist
 
 Keep the brief small: scope and visitor mode; audience, job, action/task, proof/content, and constraints; chosen direction and memorable moment; unresolved decisions. Do not copy global product truth or DESIGN.md tokens into it.
 
-Whenever any image generation is available, a harness-native tool or the API fallback context.mjs reports, the locked direction is visualized before it is built, never skipped: load [visualize.md](visualize.md) and follow it, three compositional options rendered and put before the user for approval. This step is proven to produce the most compositional and ambitious work. One exception: under a hard harness turn or budget cap the full flow cannot fit, the shipped page outranks optional imagery; cut to one comp or skip generation, say so, and make certain the build lands. <!-- rule:skill-visualize-before-build -->
+Whenever any image generation is available, a harness-native tool or the API fallback context.mjs reports, the locked direction is visualized before it is built, never skipped: load [visualize.md](visualize.md) and follow it, three compositional options rendered and put before the user for approval. This step is proven to produce the most compositional and ambitious work. <!-- rule:skill-visualize-before-build -->
 
 For `shape`, return the selected direction to [shape.md](shape.md) and stop before persistence or implementation.
 
