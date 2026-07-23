@@ -37,6 +37,7 @@ async function main() {
 
 Commands:
   detect [file-or-dir-or-url...]   Scan for UI anti-patterns and design quality issues
+                                  On Windows cmd.exe prefer: detect --url "https://...?a=1&b=2"
   ignores                          Manage detector ignore rules, files, and values
   help                             List all available skills and commands
   install                          Install impeccable skills into your project or global harness

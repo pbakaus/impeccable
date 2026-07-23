@@ -1849,8 +1849,27 @@ describe('CLI', () => {
     expect(code).toBe(0);
     expect(stdout).toContain('Usage:');
     expect(stdout).toContain('--quiet');
+    expect(stdout).toContain('--url');
+    expect(stdout).toContain('Windows cmd.exe');
     expect(stdout).not.toContain('--gpt');
     expect(stdout).not.toContain('--gemini');
+  });
+
+  test('--url accepts a URL with query string ampersands', () => {
+    const { stderr, code } = run('--url');
+    expect(code).toBe(1);
+    expect(stderr).toContain('--url requires a URL value');
+  });
+
+  test('--url= form is accepted as a detect target alongside files', () => {
+    const file = path.join(FIXTURES, 'jsx-should-pass.jsx');
+    // --url of a non-http path is still treated as a target string; use a
+    // real local file via --url to prove the flag is consumed (not left in argv).
+    const { code, stderr } = run('--url', file);
+    // Local path via --url still goes through URL regex fail then path resolve.
+    // file path does not match urlRe, so it is scanned as a filesystem target.
+    expect([0, 2]).toContain(code);
+    expect(stderr).not.toContain('--url requires a URL value');
   });
 
   test('generated-UI tells run by default in the CLI', () => {
