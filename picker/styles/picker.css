@@ -1,5 +1,7 @@
-@import "../../site/styles/kinpaku-tokens.css";
-@import "../../site/styles/kinpaku-kit.css";
+/* Vendored from the site's design system (now in the private impeccable-site
+   repo) so the picker stays self-contained. Update by re-copying from there. */
+@import "./vendor/kinpaku-tokens.css";
+@import "./vendor/kinpaku-kit.css";
 
 /* Scoped subset of the reset imported by site/styles/main.css through
    site/styles/tokens.css (lines 12-27). */
@@ -170,10 +172,12 @@ html.light .ks-button.ks-button-primary:active {
 
 .picker-progress span {
   display: block;
-  width: calc(var(--progress, 0) * 100%);
+  width: 100%;
   height: 100%;
   background: var(--ks-champagne);
-  transition: width 180ms var(--ks-ease);
+  transform: scaleX(var(--progress, 0));
+  transform-origin: left;
+  transition: transform 180ms var(--ks-ease);
 }
 
 #picker-form[data-current="01"] .picker-progress {

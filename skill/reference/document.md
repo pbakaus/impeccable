@@ -75,7 +75,7 @@ If a `DESIGN.md` already exists, **do not silently overwrite it**. Show the user
 - **Scan mode** (default): the project has design tokens, components, or rendered output. Extract, then confirm descriptive language. Use when there's code to analyze.
 - **Seed mode**: the project is pre-implementation (fresh init, nothing built yet). Gather any existing brand assets, interview for five high-level answers, optionally generate visual cues for the palette pick, write a minimal DESIGN.md marked `<!-- SEED -->`. Re-run in scan mode once there's code.
 
-Decide by scanning first (Scan mode Step 1). If the scan finds no tokens, no component files, and no rendered site, offer seed mode; don't silently switch. `/impeccable document --seed` requests new-work's world workshop, but it does not authorize replacing coherent code: when an incumbent system exists, offer scan mode or route an explicit identity-replacement request through new-work.
+Decide by scanning first (Scan mode Step 1). If the scan finds no tokens, no component files, and no rendered site, offer seed mode; don't silently switch. `/impeccable document --seed` forces seed mode on a pre-implementation project, but it does not authorize replacing coherent code: when an incumbent system exists, offer scan mode or route an explicit identity-replacement request through new-work.
 
 ## Scan mode (approach C: auto-extract, then confirm descriptive language)
 
@@ -349,7 +349,9 @@ Your own write is the freshest source; subsequent commands in this session don't
 
 ## Seed mode
 
-For projects with no visual system to extract yet. Produces a user-chosen visual-world scaffold, not a fabricated token spec.
+For projects with no visual system to extract yet. Produces a minimal, user-chosen scaffold, not a fabricated token spec.
+
+PRODUCT.md is the prerequisite. If it is missing, load [init.md](init.md) and complete its product interview first. Do not create a visual identity without durable product context.
 
 ### Step 1: Confirm seed mode and ask for assets
 
@@ -412,7 +414,7 @@ When generation is available, **stop and load [visual-cues.md](visual-cues.md)**
 
 ### Step 5: Write seed DESIGN.md
 
-Use the six-section spec from Scan mode. Populate what the interview, the assets, and any cue pick answer; leave the rest as honest placeholders. The seed is a scaffold, not a fabricated spec.
+Use the canonical section order from Scan mode. Populate what the interview, the assets, and any cue pick answer; leave the rest as honest placeholders. The seed is a scaffold, not a fabricated spec.
 
 Lead the file with:
 
@@ -425,9 +427,10 @@ Per-section guidance in seed mode:
 - **Overview**: Creative North Star and philosophy phrased from the answers (color strategy + motion energy + references). Reference the user's anti-reference directly.
 - **Colors**: Color strategy as a Named Rule (e.g. *"The Drenched Rule. The surface IS the color."*). Hue family or anchor reference. Colors sampled from a provided logo, or from a cue image the user picked in Step 4, are real; include them with exact values and note the source. Everything else stays `[to be resolved during implementation]`; those sampled anchors are the only hex a seed may carry.
 - **Typography**: the direction the user picked (e.g. "Serif display + sans body"). No font names yet: `[font pairing to be chosen at implementation]`.
-- **Elevation**: inferred from motion energy. Restrained/Responsive → flat by default; Choreographed → layered. One sentence.
+- **Layout** and **Shapes**: omit unless an asset or answer established a spatial or form preference; do not invent grids or corner language pre-implementation.
+- **Elevation & Depth**: inferred from motion energy. Restrained/Responsive → flat by default; Choreographed → layered. One sentence.
 - **Components**: omit entirely; no components exist yet.
-- **Do's and Don'ts**: record the durable guardrails confirmed during the world choice, not task-local refusals.
+- **Do's and Don'ts**: carry PRODUCT.md's anti-references directly plus the anti-reference named in Q5.
 
 Seed mode writes a minimal frontmatter with `name` and `description` only; no colors, typography, rounded, spacing, or components yet. Real tokens land on the next Scan-mode run. Skip the `.impeccable/design.json` sidecar in seed mode for the same reason: nothing to render.
 
