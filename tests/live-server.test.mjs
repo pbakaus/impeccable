@@ -5,7 +5,7 @@
 
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync, execSync, spawn } from 'node:child_process';
@@ -3077,6 +3077,48 @@ colors: {}
     } catch {
       // Server may close socket on 404 for some Node versions
       assert.ok(true, 'Server rejected request for missing file');
+    }
+  });
+
+  it('/source rejects an absolute path to a sibling directory sharing the root prefix', async () => {
+    // Sibling dir whose name extends the project dir name (projeto -> projeto-evil):
+    // a plain string prefix check on the resolved path lets it escape the root.
+    // Build it off the server's real cwd (macOS symlinks /var -> /private/var,
+    // and the server guards against its own process.cwd(), i.e. the realpath).
+    const siblingDir = realpathSync(serverCwd) + '-evil';
+    mkdirSync(siblingDir, { recursive: true });
+    const secretPath = join(siblingDir, 'secret.txt');
+    writeFileSync(secretPath, 'TOP SECRET SIBLING');
+    try {
+      const res = await fetch(`http://localhost:${server.port}/source?token=${server.token}&path=${encodeURIComponent(secretPath)}`);
+      // Drain the body so the socket doesn't hang regardless of status.
+      await res.text().catch(() => {});
+      assert.equal(res.status, 403);
+    } finally {
+      rmSync(siblingDir, { recursive: true, force: true });
+    }
+  });
+
+  it('/source rejects the project root itself (directory, not a file)', async () => {
+    // `.` resolves exactly to cwd; the route only serves files, so an empty
+    // relative path is not a legitimate request and must be forbidden.
+    const res = await fetch(`http://localhost:${server.port}/source?token=${server.token}&path=${encodeURIComponent('.')}`);
+    await res.text().catch(() => {});
+    assert.equal(res.status, 403);
+  });
+
+  it('/source still serves a legitimate nested in-root file', async () => {
+    const nestedDir = join(serverCwd, 'nested');
+    mkdirSync(nestedDir, { recursive: true });
+    const nestedPath = join(nestedDir, 'page.html');
+    writeFileSync(nestedPath, '<h1>in root</h1>\n');
+    try {
+      const res = await fetch(`http://localhost:${server.port}/source?token=${server.token}&path=${encodeURIComponent('nested/page.html')}`);
+      assert.equal(res.status, 200);
+      const text = await res.text();
+      assert.ok(text.includes('in root'));
+    } finally {
+      rmSync(nestedDir, { recursive: true, force: true });
     }
   });
 

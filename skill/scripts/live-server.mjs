@@ -846,7 +846,13 @@ function createRequestHandler({ detectScript, liveScriptParts }) {
       const filePath = url.searchParams.get('path');
       if (!filePath || filePath.includes('..')) { res.writeHead(400); res.end('Bad path'); return; }
       const absPath = path.resolve(process.cwd(), filePath);
-      if (!absPath.startsWith(process.cwd())) { res.writeHead(403); res.end('Forbidden'); return; }
+      // Confine to the project root. A bare `startsWith(cwd)` string check lets a
+      // sibling dir whose name extends the root name (projeto -> projeto-backup)
+      // slip through; compare on the relative path instead (same pattern as
+      // sessionFileMetadataFromPollReply below). An empty rel means the request
+      // resolved to the root directory itself, which this file route never serves.
+      const rel = path.relative(process.cwd(), absPath);
+      if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) { res.writeHead(403); res.end('Forbidden'); return; }
       let content;
       try { content = fs.readFileSync(absPath, 'utf-8'); }
       catch { res.writeHead(404); res.end('File not found'); return; }
