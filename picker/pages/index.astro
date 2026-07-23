@@ -185,10 +185,211 @@ const roles = [
         </div>
       </section>
 
-      <section class="picker-screen" data-screen="03" aria-hidden="true" aria-labelledby="picker-finish-copy">
+      <section class="picker-screen" data-screen="03" aria-hidden="true" aria-labelledby="picker-strategy-title">
+        <div class="picker-container">
+          <div class="picker-strategy">
+            <h1 id="picker-strategy-title" class="picker-palette-title">How much color should this design use?</h1>
+
+            <div class="picker-strategy-grid">
+              <fieldset class="picker-strategy-options">
+                <legend>Color strategy</legend>
+
+                <label class="picker-strategy-option">
+                  <input type="radio" name="color-strategy" value="restrained" checked />
+                  <span class="picker-strategy-indicator" aria-hidden="true"></span>
+                  <span class="picker-strategy-copy">
+                    <strong>Restrained</strong>
+                    <span>Mostly neutral. The primary appears in a few deliberate places.</span>
+                  </span>
+                </label>
+
+                <label class="picker-strategy-option">
+                  <input type="radio" name="color-strategy" value="committed" />
+                  <span class="picker-strategy-indicator" aria-hidden="true"></span>
+                  <span class="picker-strategy-copy">
+                    <strong>Committed</strong>
+                    <span>One strong color does real work across the page.</span>
+                  </span>
+                </label>
+
+                <label class="picker-strategy-option">
+                  <input type="radio" name="color-strategy" value="full-palette" />
+                  <span class="picker-strategy-indicator" aria-hidden="true"></span>
+                  <span class="picker-strategy-copy">
+                    <strong>Full palette</strong>
+                    <span>All four colors on duty, each with a clear job.</span>
+                  </span>
+                </label>
+
+                <label class="picker-strategy-option">
+                  <input type="radio" name="color-strategy" value="drenched" />
+                  <span class="picker-strategy-indicator" aria-hidden="true"></span>
+                  <span class="picker-strategy-copy">
+                    <strong>Drenched</strong>
+                    <span>The page itself is the color. Everything else sits on top.</span>
+                  </span>
+                </label>
+              </fieldset>
+
+              <div class="picker-strategy-preview" data-strategy-preview aria-hidden="true">
+                <div class="ps-desktop">
+                  <div class="ps-nav">
+                    <div class="ps-brand-block"></div>
+                    <div class="ps-nav-bars"><i></i><i></i><i></i><i></i></div>
+                    <div class="ps-nav-action"></div>
+                  </div>
+                  <div class="ps-hero">
+                    <div class="ps-hero-copy">
+                      <div class="ps-eyebrow"></div>
+                      <div class="ps-headline"><i></i><i></i></div>
+                      <div class="ps-copy"><i></i></div>
+                      <div class="ps-actions"><i></i><i></i></div>
+                    </div>
+                    <div class="ps-image"></div>
+                  </div>
+                  <div class="ps-proof">
+                    <div class="ps-proof-item"><i></i><span></span></div>
+                    <div class="ps-proof-item"><i></i><span></span></div>
+                    <div class="ps-proof-item"><i></i><span></span></div>
+                    <div class="ps-proof-item"><i></i><span></span></div>
+                  </div>
+                  <div class="ps-editorial">
+                    <div class="ps-editorial-copy">
+                      <strong></strong>
+                      <span><i></i><i></i></span>
+                      <em></em>
+                    </div>
+                    <div class="ps-gallery">
+                      <div class="ps-gallery-item"><i></i><span><b></b><b></b></span></div>
+                      <div class="ps-gallery-item"><i></i><span><b></b><b></b></span></div>
+                      <div class="ps-gallery-item"><i></i><span><b></b><b></b></span></div>
+                      <div class="ps-gallery-item"><i></i><span><b></b><b></b></span></div>
+                    </div>
+                  </div>
+                  <div class="ps-footer">
+                    <div class="ps-footer-links"><i></i><i></i><i></i><i></i></div>
+                    <div class="ps-footer-mark"></div>
+                  </div>
+                </div>
+                <div class="ps-phone">
+                  <div class="ps-phone-top">
+                    <div class="ps-brand-block"></div>
+                    <div class="ps-nav-action"></div>
+                  </div>
+                  <div class="ps-phone-body">
+                    <div class="ps-image"></div>
+                    <div class="ps-headline"><i></i><i></i></div>
+                    <div class="ps-copy"><i></i><i></i></div>
+                    <div class="ps-actions"><i></i><i></i></div>
+                    <div class="ps-proof">
+                      <div class="ps-proof-item"><i></i><span></span></div>
+                      <div class="ps-proof-item"><i></i><span></span></div>
+                    </div>
+                    <div class="ps-editorial-copy">
+                      <strong></strong>
+                      <span><i></i><i></i></span>
+                    </div>
+                    <div class="ps-gallery">
+                      <div class="ps-gallery-item"><i></i><span><b></b><b></b></span></div>
+                      <div class="ps-gallery-item"><i></i><span><b></b><b></b></span></div>
+                    </div>
+                  </div>
+                  <div class="ps-phone-footer"><i></i><i></i><i></i></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="picker-actions picker-strategy-actions">
+              <button class="ks-button ks-button-ghost" type="button" data-advance="prev">Back</button>
+              <button class="ks-button ks-button-primary" type="button" data-advance="next">Select this strategy</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="picker-screen" data-screen="04" aria-hidden="true" aria-labelledby="picker-type-title">
+        <div class="picker-container">
+          <div class="picker-type">
+            <div class="picker-type-heading">
+              <p class="picker-type-kicker">Typography</p>
+              <h1 id="picker-type-title" class="picker-palette-title">Choose a font pair</h1>
+            </div>
+
+            <div class="picker-type-grid">
+              <fieldset class="picker-strategy-options picker-type-options" data-font-options>
+                <legend>Font pairs</legend>
+              </fieldset>
+
+              <div class="picker-preview picker-strategy-preview picker-preview-type" data-type-preview aria-hidden="true">
+                <div class="ps-desktop">
+                  <div class="ps-nav">
+                    <div class="ps-brand-block"></div>
+                    <div class="ps-nav-bars"><i></i><i></i><i></i><i></i></div>
+                    <div class="ps-nav-action"></div>
+                  </div>
+                  <div class="ps-hero">
+                    <div class="ps-hero-copy">
+                      <p class="pt-eyebrow" data-type-eyebrow>Typography</p>
+                      <h2 class="pt-headline" data-type-headline></h2>
+                      <p class="pt-body" data-type-body></p>
+                      <div class="ps-actions"><i></i><i></i></div>
+                    </div>
+                    <div class="ps-image"></div>
+                  </div>
+                  <div class="ps-proof">
+                    <div class="ps-proof-item"><i></i><span></span></div>
+                    <div class="ps-proof-item"><i></i><span></span></div>
+                    <div class="ps-proof-item"><i></i><span></span></div>
+                    <div class="ps-proof-item"><i></i><span></span></div>
+                  </div>
+                  <div class="ps-editorial">
+                    <div class="ps-editorial-copy">
+                      <strong></strong>
+                      <span><i></i><i></i></span>
+                      <em></em>
+                    </div>
+                    <div class="ps-gallery">
+                      <div class="ps-gallery-item"><i></i><span><b></b><b></b></span></div>
+                      <div class="ps-gallery-item"><i></i><span><b></b><b></b></span></div>
+                      <div class="ps-gallery-item"><i></i><span><b></b><b></b></span></div>
+                      <div class="ps-gallery-item"><i></i><span><b></b><b></b></span></div>
+                    </div>
+                  </div>
+                  <div class="ps-footer">
+                    <div class="ps-footer-links"><i></i><i></i><i></i><i></i></div>
+                    <div class="ps-footer-mark"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <template data-pair-card>
+              <label class="picker-strategy-option picker-type-option">
+                <input type="radio" name="font-pair" />
+                <span class="picker-strategy-indicator" aria-hidden="true"></span>
+                <span class="picker-type-copy">
+                  <strong data-pair-name></strong>
+                  <span class="picker-type-with">with <b data-pair-body></b></span>
+                  <span class="picker-type-why" data-pair-why></span>
+                </span>
+              </label>
+            </template>
+
+            <input type="hidden" name="font-heading" />
+            <input type="hidden" name="font-body" />
+
+            <div class="picker-actions picker-strategy-actions">
+              <button class="ks-button ks-button-ghost" type="button" data-advance="prev">Back</button>
+              <button class="ks-button ks-button-primary" type="button" data-advance="next">Select this pair</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="picker-screen" data-screen="05" aria-hidden="true" aria-labelledby="picker-finish-copy">
         <div class="picker-container">
           <div class="picker-placeholder">
-            <p id="picker-finish-copy">Your palette is ready.</p>
+            <p id="picker-finish-copy">Your visual direction is ready.</p>
             <div class="picker-actions">
               <button class="ks-button ks-button-ghost" type="button" data-advance="prev">Back</button>
               <button class="ks-button ks-button-primary" type="submit">Finish</button>

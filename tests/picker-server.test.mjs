@@ -31,6 +31,29 @@ const cueManifestFixture = {
     },
   },
 };
+const fontManifestFixture = {
+  version: 1,
+  specimen: {
+    headline: 'Flowers shaped by hand',
+    body: 'Seasonal stems become arrangements made for one room and one moment.',
+  },
+  pairs: [
+    {
+      id: 'marcellus-karla',
+      name: 'Atelier Classic',
+      heading: { family: 'Marcellus', weight: 400 },
+      body: { family: 'Karla', weight: 400 },
+      why: 'Marcellus echoes the high-contrast lettering observed in the atelier mark.',
+    },
+    {
+      id: 'bitter-cabin',
+      name: 'Garden Ledger',
+      heading: { family: 'Bitter', weight: 600 },
+      body: { family: 'Cabin', weight: 400 },
+      why: 'Bitter gives the seasonal catalog the practical character named in Positioning.',
+    },
+  ],
+};
 
 before(() => {
   if (existsSync(pickerIndex)) return;
@@ -40,7 +63,7 @@ before(() => {
   });
 });
 
-async function createFixture() {
+async function createFixture({ fonts = true } = {}) {
   const cwd = await realpath(await mkdtemp(path.join(tmpdir(), 'impeccable-picker-')));
   const cuesDir = path.join(cwd, '.impeccable/visual-cues');
   await mkdir(cuesDir, { recursive: true });
@@ -49,6 +72,12 @@ async function createFixture() {
     path.join(cuesDir, 'cues.json'),
     `${JSON.stringify(cueManifestFixture)}\n`,
   );
+  if (fonts) {
+    await writeFile(
+      path.join(cuesDir, 'fonts.json'),
+      `${JSON.stringify(fontManifestFixture)}\n`,
+    );
+  }
   return { cwd, cuesDir };
 }
 
@@ -166,6 +195,11 @@ test('serves picker and cues, writes submission, prints answers, and exits 0', a
   assert.equal(cueManifest.status, 200);
   assert.deepEqual(await cueManifest.json(), cueManifestFixture);
 
+  const fontsResponse = await fetch(`${server.url}/fonts.json`);
+  assert.equal(fontsResponse.status, 200);
+  assert.match(fontsResponse.headers.get('content-type'), /^application\/json/);
+  assert.deepEqual(await fontsResponse.json(), fontManifestFixture);
+
   const palettesResponse = await fetch(`${server.url}/palettes.json`);
   assert.equal(palettesResponse.status, 200);
   assert.match(palettesResponse.headers.get('content-type'), /^application\/json/);
@@ -195,6 +229,17 @@ test('serves picker and cues, writes submission, prints answers, and exits 0', a
   );
   assert.deepEqual(JSON.parse(await readFile(answersPath, 'utf8')), answers);
   assert.match(server.stdout(), new RegExp(`ANSWERS ${answersPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+});
+
+test('fonts endpoint returns 404 when fonts.json is absent', async (t) => {
+  const fixture = await createFixture({ fonts: false });
+  const server = await startPicker(fixture.cwd, ['--port', String(portBase + 10)]);
+  await cleanup(t, fixture, server);
+
+  const response = await fetch(`${server.url}/fonts.json`);
+  assert.equal(response.status, 404);
+  assert.match(response.headers.get('content-type'), /^application\/json/);
+  assert.deepEqual(await response.json(), { error: 'Not found' });
 });
 
 test('palette CLI still prints a seed', () => {

@@ -349,7 +349,62 @@ The script copies the hero untouched to `[slug].png` (removing a `[slug]-hero.pn
 
 Done when: `cues.json` lists one entry per completed palette and every listed slug has its hero PNG on disk.
 
-## Step 6: Launch the picker
+## Step 6: Compose the font pairs
+
+Run this pass yourself after compiling the cues and before launching the picker. Do not spawn specialists; six pairs need one editor holding the same brand facts and ranking them together.
+
+Build the composition context from exactly these inputs:
+
+- **Q2 typography direction** from the seed interview. Treat it as the anchor; execute the direction instead of asking for it again.
+- **Q4's three named references** and **Q5's anti-reference**. The anti-reference is a hard constraint on every pair.
+- From PRODUCT.md, only `## Users`, `## Product Purpose`, `## Positioning`, and `## Brand Commitments`.
+- The seed Step 2 asset observations when they exist, with the logo's letterforms as the strongest evidence.
+- **Q1's hue anchor and color strategy** as mood only. Never use either to select a family.
+
+Do **not** read PRODUCT.md wholesale into this task or add any other section to the composition context. The chosen palette does not exist yet; the picker joins it to the pairs later.
+
+Compose six distinct territories, then resolve each into one heading and body pair:
+
+- Keep at least five pairs inside Q2's chosen direction, varied by classification and voice within it. No two pairs may share a heading family or read as the same voice.
+- Let the sixth bend the direction only when Q4, Q5, or asset letterforms argue for it, and name that reason in its `why`.
+- Apply [new-work.md](new-work.md)'s `rule:skill-typo-reflex-faces` as the canonical denylist and subject-world test. A family the user named in the interview or supplied assets is the only exception.
+- Follow [typeset.md](typeset.md)'s workhorse discipline. Give the heading a point of view; give the body a real text face that stays legible at 15px and provides regular and bold weights. A display face in the body slot fails the pair.
+- Verify every family exists on Google Fonts under the exact current name. Spelling is part of correctness; use `Source Sans 3`, never a retired family name.
+- Write one sentence in `why` that names the Q4 reference, Users fact, positioning line, commitment, or letterform observation the pair serves. Replace a sentence that could describe any brand.
+- Order the pairs best-first. `pairs[0]` is the recommendation and reaches the picker pre-selected.
+
+Choose two specimen strings from the product's own world: a headline of at most six words and one honest body sentence. Do not invent a claim or use placeholder prose.
+
+Write `.impeccable/visual-cues/fonts.json` with this shape:
+
+```json
+{
+  "version": 1,
+  "specimen": {
+    "headline": "Six words from the product's world",
+    "body": "One honest sentence in the product's voice for the body face."
+  },
+  "pairs": [
+    {
+      "id": "kebab-slug",
+      "name": "Short human label",
+      "heading": { "family": "Exact Google Fonts Name", "weight": 600 },
+      "body": { "family": "Exact Google Fonts Name", "weight": 400 },
+      "why": "One sentence tying this pair to a named brand fact."
+    }
+  ]
+}
+```
+
+Write exactly six pair entries. Each role carries the single weight it needs; the picker also loads weight 700 for each body family. A per-pair `specimen` override may replace the shared strings when the brand evidence warrants it.
+
+If Q2 is missing because the interview was skipped, say in one line that the typography set is direction-neutral, then compose all six from the four allowed PRODUCT.md sections alone. Still write the file.
+
+Parse the finished file as JSON and verify its version, specimen, six unique ids, six unique heading families, role names, weights, and one-sentence `why` fields before continuing.
+
+Done when: `fonts.json` is parseable, contains exactly six ranked pairs, and every family name has been checked against Google Fonts.
+
+## Step 7: Launch the picker
 
 Tell the user in one line that the visual cues are ready at `.impeccable/visual-cues/` (name the count), then run `node {{scripts_path}}/picker-server.mjs` from the project root as a foreground command and parse its `PICKER_URL` line.
 
