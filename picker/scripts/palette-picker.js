@@ -203,8 +203,8 @@ function syncFontPair(pair) {
   typePreview.style.setProperty('--pt-heading', fontStack(pair.heading.family));
   typePreview.style.setProperty('--pt-body', fontStack(pair.body.family));
   typePreview.style.setProperty('--pt-heading-weight', pair.heading.weight);
-  document.querySelector('[data-type-headline]').textContent = specimen.headline;
-  document.querySelector('[data-type-body]').textContent = specimen.body;
+  for (const node of document.querySelectorAll('[data-type-headline]')) node.textContent = specimen.headline;
+  for (const node of document.querySelectorAll('[data-type-body]')) node.textContent = specimen.body;
   document.querySelector('[name="font-heading"]').value = pair.heading.family;
   document.querySelector('[name="font-body"]').value = pair.body.family;
 }
@@ -218,11 +218,12 @@ function renderFontPairs(manifest, fallback) {
     const input = node.querySelector('input');
     input.value = pair.id;
     input.checked = index === 0;
+    input.setAttribute('aria-label', `${pair.heading.family} with ${pair.body.family}`);
     node.style.setProperty('--pair-heading', fontStack(pair.heading.family));
     node.style.setProperty('--pair-body', fontStack(pair.body.family));
     node.style.setProperty('--pair-heading-weight', pair.heading.weight);
     node.style.setProperty('--pair-body-weight', pair.body.weight);
-    node.querySelector('[data-pair-name]').textContent = pair.name;
+    node.querySelector('[data-pair-heading]').textContent = pair.heading.family;
     node.querySelector('[data-pair-body]').textContent = pair.body.family;
     node.querySelector('[data-pair-why]').textContent = pair.why;
     fragment.append(node);
@@ -403,15 +404,24 @@ function openTints(role) {
   setActiveRole(role);
   const item = $(`[data-band-item="${role}"]`, panel);
   const strip = $('[data-tints]', item);
-  const [currentL, C, H] = hexToOklch(state().colors[role]);
-  const nearest = Math.max(0, Math.min(6, Math.round((0.92 - currentL) / (0.74 / 6))));
+  const current = state().colors[role];
+  const [L, C, H] = hexToOklch(current);
+  // The strip pivots on the band's color: the middle swatch is that color
+  // exactly, the three to its left step toward near-white, the three to its
+  // right toward near-black. Chroma eases off toward the ends so the
+  // extremes stay in gamut instead of clipping to a different hue.
   $$('[data-tint]', strip).forEach((button, index) => {
-    const L = 0.92 - index * (0.74 / 6);
-    const hex = oklchToHex([L, C * (0.55 + 0.45 * Math.sin(Math.PI * index / 6)), H]);
+    const offset = index - 3;
+    const tintL = offset < 0
+      ? L + (0.96 - L) * (-offset / 3)
+      : L - (L - 0.16) * (offset / 3);
+    const hex = offset === 0
+      ? current
+      : oklchToHex([tintL, C * (1 - 0.3 * (Math.abs(offset) / 3)), H]);
     button.dataset.tint = hex;
     button.style.setProperty('--tint-color', hex);
     button.setAttribute('aria-label', hex);
-    button.toggleAttribute('data-current', index === nearest);
+    button.toggleAttribute('data-current', offset === 0);
   });
   strip.hidden = false;
   item.dataset.tintOpen = '';

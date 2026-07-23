@@ -310,17 +310,16 @@ const roles = [
       <section class="picker-screen" data-screen="04" aria-hidden="true" aria-labelledby="picker-type-title">
         <div class="picker-container">
           <div class="picker-type">
-            <div class="picker-type-heading">
-              <p class="picker-type-kicker">Typography</p>
-              <h1 id="picker-type-title" class="picker-palette-title">Choose a font pair</h1>
-            </div>
+            <h1 id="picker-type-title" class="picker-palette-title">Choose a font pair</h1>
 
             <div class="picker-type-grid">
-              <fieldset class="picker-strategy-options picker-type-options" data-font-options>
-                <legend>Font pairs</legend>
-              </fieldset>
+              <div class="picker-type-rail">
+                <fieldset class="picker-strategy-options picker-type-options" data-font-options>
+                  <legend>Font pairs</legend>
+                </fieldset>
+              </div>
 
-              <div class="picker-preview picker-strategy-preview picker-preview-type" data-type-preview aria-hidden="true">
+              <div class="picker-strategy-preview picker-preview-type" data-type-preview aria-hidden="true">
                 <div class="ps-desktop">
                   <div class="ps-nav">
                     <div class="ps-brand-block"></div>
@@ -329,7 +328,6 @@ const roles = [
                   </div>
                   <div class="ps-hero">
                     <div class="ps-hero-copy">
-                      <p class="pt-eyebrow" data-type-eyebrow>Typography</p>
                       <h2 class="pt-headline" data-type-headline></h2>
                       <p class="pt-body" data-type-body></p>
                       <div class="ps-actions"><i></i><i></i></div>
@@ -360,6 +358,31 @@ const roles = [
                     <div class="ps-footer-mark"></div>
                   </div>
                 </div>
+                <div class="ps-phone">
+                  <div class="ps-phone-top">
+                    <div class="ps-brand-block"></div>
+                    <div class="ps-nav-action"></div>
+                  </div>
+                  <div class="ps-phone-body">
+                    <div class="ps-image"></div>
+                    <h2 class="pt-headline" data-type-headline></h2>
+                    <p class="pt-body" data-type-body></p>
+                    <div class="ps-actions"><i></i><i></i></div>
+                    <div class="ps-proof">
+                      <div class="ps-proof-item"><i></i><span></span></div>
+                      <div class="ps-proof-item"><i></i><span></span></div>
+                    </div>
+                    <div class="ps-editorial-copy">
+                      <strong></strong>
+                      <span><i></i><i></i></span>
+                    </div>
+                    <div class="ps-gallery">
+                      <div class="ps-gallery-item"><i></i><span><b></b><b></b></span></div>
+                      <div class="ps-gallery-item"><i></i><span><b></b><b></b></span></div>
+                    </div>
+                  </div>
+                  <div class="ps-phone-footer"><i></i><i></i><i></i></div>
+                </div>
               </div>
             </div>
 
@@ -368,8 +391,10 @@ const roles = [
                 <input type="radio" name="font-pair" />
                 <span class="picker-strategy-indicator" aria-hidden="true"></span>
                 <span class="picker-type-copy">
-                  <strong data-pair-name></strong>
-                  <span class="picker-type-with">with <b data-pair-body></b></span>
+                  <span class="picker-type-role">Heading</span>
+                  <strong class="picker-type-sample-heading" data-pair-heading></strong>
+                  <span class="picker-type-role">Body</span>
+                  <span class="picker-type-sample-body" data-pair-body></span>
                   <span class="picker-type-why" data-pair-why></span>
                 </span>
               </label>
