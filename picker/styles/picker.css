@@ -1812,40 +1812,29 @@ html.light .ks-button.ks-button-ghost:hover {
   display: grid;
 }
 
-.picker-type-role {
-  color: var(--ks-text-muted);
-  font-family: var(--ks-mono);
-  font-size: 0.62rem;
-  font-weight: 600;
-  line-height: 1;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
+/* Fonttrio-style specimen: the heading family name set big in its own
+   face, then one sentence in the body face that names its partner. The
+   sentence demonstrates the body font, so no Heading/Body labels. */
 .picker-type-sample-heading {
-  margin: 6px 0 14px;
   color: var(--ks-champagne);
   font-family: var(--pair-heading, var(--ks-font-display));
   font-size: 1.65rem;
   font-weight: var(--pair-heading-weight, 600);
-  line-height: 1.1;
+  line-height: 1.15;
 }
 
-.picker-type-sample-body {
-  margin-top: 6px;
+.picker-type-desc {
+  margin-top: 10px;
   color: var(--ks-text);
   font-family: var(--pair-body, var(--ks-font));
-  font-size: var(--ks-type-body-size);
+  font-size: 0.92rem;
   font-weight: var(--pair-body-weight, 400);
-  line-height: 1.3;
+  line-height: 1.55;
 }
 
-.picker-type-why {
-  margin-top: 12px;
-  color: var(--ks-text-muted);
-  font-family: var(--pair-body, var(--ks-font));
-  font-size: 0.78rem;
-  line-height: 1.5;
+.picker-type-desc b {
+  font: inherit;
+  font-weight: 700;
 }
 
 .picker-preview-type {
