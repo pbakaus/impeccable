@@ -36,14 +36,14 @@ export function detectSvelteKitProject(cwd = process.cwd(), config = null) {
   };
 }
 
-export function applySvelteKitLiveAdapter({ cwd = process.cwd(), port, config = null } = {}) {
+export function applySvelteKitLiveAdapter({ cwd = process.cwd(), port, token, config = null } = {}) {
   if (!Number.isFinite(Number(port))) {
     throw new Error('SvelteKit live adapter requires a numeric port');
   }
   const detected = detectSvelteKitProject(cwd, config);
   if (!detected) return null;
 
-  ensureSvelteLiveRootComponent(cwd, Number(port));
+  ensureSvelteLiveRootComponent(cwd, Number(port), token);
 
   const layoutRel = detected.layoutFile;
   const layoutAbs = path.join(cwd, layoutRel);
@@ -136,18 +136,20 @@ export function unpatchSvelteLayout(content) {
   return out.replace(/\n{3,}/g, '\n\n');
 }
 
-export function ensureSvelteLiveRootComponent(cwd, port) {
+export function ensureSvelteLiveRootComponent(cwd, port, token) {
   const file = path.join(cwd, SVELTE_LIVE_ROOT_COMPONENT);
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, buildSvelteLiveRootComponent(port), 'utf-8');
+  fs.writeFileSync(file, buildSvelteLiveRootComponent(port, token), 'utf-8');
   return file;
 }
 
-export function buildSvelteLiveRootComponent(port) {
+export function buildSvelteLiveRootComponent(port, token) {
+  const liveUrl = 'http://localhost:' + Number(port) + '/live.js'
+    + (token ? '?token=' + encodeURIComponent(token) : '');
   return `<script>
   import { onMount } from 'svelte';
 
-  const LIVE_URL = 'http://localhost:${Number(port)}/live.js';
+  const LIVE_URL = '${liveUrl}';
   const HOST_ID = 'impeccable-live-root';
 
   onMount(() => {

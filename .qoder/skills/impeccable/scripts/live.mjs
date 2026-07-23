@@ -112,7 +112,11 @@ The agent should then:
   }
 
   // 3. Inject the script tag at the current port
-  const injectOut = runScript('live-inject.mjs', ['--port', String(serverInfo.port)], { cwd: activeCwd });
+  const injectOut = runScript(
+    'live-inject.mjs',
+    ['--port', String(serverInfo.port), '--token', String(serverInfo.token)],
+    { cwd: activeCwd },
+  );
   const injectResult = safeParse(injectOut);
   if (!injectResult || !injectResult.ok) {
     console.log(JSON.stringify({

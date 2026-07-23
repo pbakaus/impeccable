@@ -624,13 +624,37 @@ function statOrNull(filePath) {
   try { return fs.statSync(filePath); } catch { return null; }
 }
 
+// Strict loopback-origin test for CORS. Parses the Origin as a URL (never a
+// substring match, so `http://localhost.evil.com` and `http://127.0.0.1.evil.com`
+// fail) and accepts only http/https on localhost, 127.0.0.1, or the IPv6 loopback.
+function isLoopbackOrigin(origin) {
+  if (typeof origin !== 'string' || origin.length === 0) return false;
+  let parsed;
+  try { parsed = new URL(origin); } catch { return false; }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+  const host = parsed.hostname.toLowerCase();
+  return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
+}
+
 // HTTP request handler
 // ---------------------------------------------------------------------------
 
 function createRequestHandler({ detectScript, liveScriptParts }) {
   return (req, res) => {
     const url = new URL(req.url, `http://localhost:${state.port}`);
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    // Loopback-restricted CORS. Reflect the caller's Origin only when it is a
+    // loopback origin, always paired with `Vary: Origin` so an intermediary
+    // cache never serves a response authorized for one origin to another. A
+    // remote page (e.g. https://evil.example probing the port from a tab open
+    // on the same machine) gets no Access-Control-Allow-Origin, so its
+    // JS-initiated fetch cannot read any response. Requests with no Origin
+    // header (script tags, curl, the agent's own fetches) are not subject to
+    // CORS and keep working; no ACAO header is needed for them.
+    const origin = req.headers.origin;
+    if (origin && isLoopbackOrigin(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Vary', 'Origin');
+    }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
@@ -639,6 +663,15 @@ function createRequestHandler({ detectScript, liveScriptParts }) {
 
     // --- Scripts ---
     if (p === '/live.js') {
+      // Token-gated: the script body embeds state.token, which unlocks every
+      // token-guarded route. Serving it unauthenticated let any local page read
+      // the token and drive the session. The injected <script src> carries
+      // `?token=...` (see live-inject.mjs). A missing/wrong token → 401.
+      if (url.searchParams.get('token') !== state.token) {
+        res.writeHead(401, { 'Content-Type': 'text/plain' });
+        res.end('Unauthorized');
+        return;
+      }
       // Re-read from disk each request so edits to live-browser.js land on
       // the next tab reload. No-store headers prevent browser caching across
       // sessions — during iteration, a cached old script silently breaks
@@ -846,7 +879,13 @@ function createRequestHandler({ detectScript, liveScriptParts }) {
       const filePath = url.searchParams.get('path');
       if (!filePath || filePath.includes('..')) { res.writeHead(400); res.end('Bad path'); return; }
       const absPath = path.resolve(process.cwd(), filePath);
-      if (!absPath.startsWith(process.cwd())) { res.writeHead(403); res.end('Forbidden'); return; }
+      // Confine to the project root. A bare `startsWith(cwd)` string check lets a
+      // sibling dir whose name extends the root name (projeto -> projeto-backup)
+      // slip through; compare on the relative path instead (same pattern as
+      // sessionFileMetadataFromPollReply below). An empty rel means the request
+      // resolved to the root directory itself, which this file route never serves.
+      const rel = path.relative(process.cwd(), absPath);
+      if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) { res.writeHead(403); res.end('Forbidden'); return; }
       let content;
       try { content = fs.readFileSync(absPath, 'utf-8'); }
       catch { res.writeHead(404); res.end('File not found'); return; }
