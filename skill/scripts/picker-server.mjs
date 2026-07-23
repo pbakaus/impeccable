@@ -10,7 +10,7 @@ import { readFile, mkdir, stat, writeFile } from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { extractRegister } from './context.mjs';
+import { extractSectionValue } from './context.mjs';
 import { SEEDS } from './palette.mjs';
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const pickerDir = path.join(scriptDir, 'picker');
@@ -173,7 +173,8 @@ if (options.help) {
 let register = 'brand';
 try {
   const product = await readFile(path.resolve(process.cwd(), 'PRODUCT.md'), 'utf8');
-  register = extractRegister(product) || register;
+  const value = (extractSectionValue(product, 'Register') || '').toLowerCase();
+  if (value === 'brand' || value === 'product') register = value;
 } catch {
   // A missing or unreadable PRODUCT.md keeps the brand preview default.
 }

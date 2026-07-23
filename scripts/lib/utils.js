@@ -779,7 +779,7 @@ export function replacePlaceholders(content, provider, commandNames = [], allSki
  * their command prefix from lib/provider.mjs, whose declaration is replaced
  * here by an exact string match.
  */
-export function replaceScriptProviderMarker(content, provider) {
+export function replaceScriptProviderMarker(content, provider, buildProvider = provider) {
   if (Buffer.isBuffer(content)) return content;
   const placeholders = PROVIDER_PLACEHOLDERS[provider] || PROVIDER_PLACEHOLDERS.cursor;
   const commandPrefix = placeholders.command_prefix || '/';

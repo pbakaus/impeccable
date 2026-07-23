@@ -25,13 +25,12 @@ export const SUITES = {
     description: 'Build, provider transforms, CLI helpers, context, and storage unit tests.',
     triggers: [
       ...COMMON_INFRA_PATTERNS,
-      /^scripts\/(?!benchmark-detector|build-browser-detector|build-extension)/,
       /^picker\//,
-      /^skill\/(SKILL\.src\.md|agents\/|reference\/|scripts\/(cleanup-deprecated|context|context-signals|critique-storage|design-parser|hook|impeccable-paths|is-generated|lib\/provider|picker|pin))/,
-      /^site\/(pages|content|components|layouts)\//,
+      /^scripts\/(?!benchmark-detector|build-browser-detector|build-extension)/,
+      /^skill\/(SKILL\.src\.md|agents\/|reference\/|scripts\/(cleanup-deprecated|concept-seed|context|context-signals|critique-storage|design-parser|doctor|hook|impeccable-paths|is-generated|lib\/(artifact-schema|composition-catalog|concept-catalog|provider|staleness|staleness-deep|staleness-notice|surface-briefs|target-slug|template-extensions)|picker|pin|surface-brief))/,
       /^README(\.npm)?\.md$/,
       /^cli\/bin\//,
-      /^tests\/(build|cleanup-deprecated|cli-ignores|context|context-signals|critique-storage|design-parser|docs-integrity|github-sheriff|hook|hook-build|impeccable-paths|openai-plugin|picker-server|pin|shiki-theme|skills-cli|target-args|test-suites|windows-path-fix|zip)\.test\.(js|mjs)$/,
+      /^tests\/(build|cleanup-deprecated|cli-args|cli-ignores|concept-seed|context|context-signals|critique-storage|design-parser|doctor|github-sheriff|hook|hook-build|impeccable-paths|openai-plugin|picker-server|pin|skills-cli|staleness|surface-brief|target-args|template-extensions|test-suites|windows-path-fix|zip)\.test\.(js|mjs)$/,
       /^tests\/lib\//,
     ],
     commands: [

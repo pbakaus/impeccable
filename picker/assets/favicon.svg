@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <style>
+    /* Light OS theme: black icon. Dark OS theme: pristine kinpaku gold,
+       matching the header logo (--ks-kinpaku, #ffb900) rather than the old
+       muddier #d8a83a. */
+    path { fill: #141207; }
+    @media (prefers-color-scheme: dark) {
+      path { fill: #ffb900; }
+    }
+  </style>
+  <path d="M7 1 L18 1 L8 31 L7 31 Q1 31 1 25 L1 7 Q1 1 7 1 Z"/>
+  <path d="M22 1 L25 1 Q31 1 31 7 L31 25 Q31 31 25 31 L12 31 Z"/>
+</svg>
