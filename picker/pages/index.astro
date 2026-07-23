@@ -104,6 +104,17 @@ const roles = [
                   <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.6 7.2A6.2 6.2 0 1 1 4 11.4M4.6 7.2V3.8m0 3.4H8"></path></svg>
                 </button>
 
+                <p
+                  class="picker-palette-hint"
+                  data-palette-hint
+                  data-idle="Drag the rings on the image to pull colors from it, or edit any swatch directly."
+                  data-primary="Your main brand color: buttons, links, the color people remember. Pick something with presence."
+                  data-secondary="Supports the primary: section accents, hovers, secondary buttons. Adjacent, not identical."
+                  data-tertiary="The rare accent: badges, highlights, one detail per screen. The most saturated of the four."
+                  data-neutral="Backgrounds and large surfaces: most of every page. Quiet, near-white or near-black."
+                  aria-live="polite"
+                >Drag the rings on the image to pull colors from it, or edit any swatch directly.</p>
+
                 <div class="picker-bands">
                   {roles.map(([role, label]) => (
                     <div class="picker-band-item" data-band-item={role}>
@@ -133,70 +144,37 @@ const roles = [
                   ))}
                 </div>
 
-                <div class="picker-preview" data-register="brand" aria-hidden="true">
-                  <div class="pv-brand">
-                    <div class="pv-chrome"></div>
-                    <div class="pv-brand-page">
-                      <div class="pv-brand-nav">
-                        <div class="pv-logo"></div>
-                        <div class="pv-nav-bars"><i></i><i></i><i></i><i></i></div>
-                        <div class="pv-primary-pill"></div>
+                <div class="picker-preview" aria-hidden="true">
+                  <div class="pv-desktop">
+                    <div class="pv-nav">
+                      <div class="pv-logo"></div>
+                      <div class="pv-nav-bars"><i></i><i></i><i></i></div>
+                      <div class="pv-pill"></div>
+                    </div>
+                    <div class="pv-hero">
+                      <div class="pv-hero-copy">
+                        <div class="pv-eyebrow"></div>
+                        <div class="pv-headline"><i></i><i></i></div>
+                        <div class="pv-copy-bar"></div>
+                        <div class="pv-actions"><i></i><i></i></div>
                       </div>
-                      <div class="pv-brand-hero">
-                        <div class="pv-hero-copy">
-                          <div class="pv-eyebrow"></div>
-                          <div class="pv-headline"></div>
-                          <div class="pv-copy-bars"></div>
-                          <div class="pv-actions"><i></i><i></i></div>
-                        </div>
-                        <div class="pv-image"></div>
-                      </div>
-                      <div class="pv-features">
-                        <div><i></i><span></span></div>
-                        <div><i></i><span></span></div>
-                        <div><i></i><span></span></div>
-                      </div>
+                      <div class="pv-image"></div>
                     </div>
                   </div>
-
-                  <div class="pv-product">
-                    <div class="pv-chrome"></div>
-                    <div class="pv-app">
-                      <div class="pv-sidebar">
-                        <div class="pv-logo"></div>
-                        <div class="pv-active-nav"></div>
-                        <div class="pv-side-bars"><i></i><i></i><i></i><i></i></div>
-                      </div>
-                      <div class="pv-app-main">
-                        <div class="pv-topbar">
-                          <div class="pv-search"></div>
-                          <div class="pv-alert"></div>
-                          <div class="pv-avatar"></div>
-                        </div>
-                        <div class="pv-stats">
-                          <div><i></i><span></span></div>
-                          <div><i></i><span></span></div>
-                          <div><i></i><span></span></div>
-                        </div>
-                        <div class="pv-app-lower">
-                          <div class="pv-chart"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-                          <div class="pv-app-aside"><span></span><i></i></div>
-                        </div>
-                      </div>
+                  <div class="pv-phone">
+                    <div class="pv-phone-top">
+                      <div class="pv-logo"></div>
+                      <div class="pv-avatar"></div>
                     </div>
+                    <div class="pv-phone-body">
+                      <div class="pv-mini-card"><i></i><span></span></div>
+                      <div class="pv-mini-card"><i></i><span></span></div>
+                      <div class="pv-mini-chart"><i></i><i></i><i></i><i></i><i></i></div>
+                    </div>
+                    <div class="pv-tabbar"><i></i><i></i><i></i><i></i></div>
                   </div>
                 </div>
 
-                <p
-                  class="picker-palette-hint"
-                  data-palette-hint
-                  data-idle="Drag the rings on the image to pull colors from it, or edit any swatch directly."
-                  data-primary="Your main brand color: buttons, links, the color people remember. Pick something with presence."
-                  data-secondary="Supports the primary: section accents, hovers, secondary buttons. Adjacent, not identical."
-                  data-tertiary="The rare accent: badges, highlights, one detail per screen. The most saturated of the four."
-                  data-neutral="Backgrounds and large surfaces: most of every page. Quiet, near-white or near-black."
-                  aria-live="polite"
-                >Drag the rings on the image to pull colors from it, or edit any swatch directly.</p>
                 <button class="ks-button ks-button-primary picker-select" type="button" data-select-palette data-advance="next" disabled>Select this palette</button>
               </fieldset>
             </div>

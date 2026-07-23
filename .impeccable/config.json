@@ -14,6 +14,14 @@
         ],
         "createdAt": "2026-07-17T00:00:00.000Z",
         "reason": "Live overlay chrome is injected over arbitrary host pages and builds a self-contained UI with its own small type scale; DESIGN.md's ramp describes the impeccable website, not this widget"
+      },
+      {
+        "rule": "broken-image",
+        "value": "*",
+        "files": [
+          "picker/pages/index.astro"
+        ],
+        "createdAt": "2026-07-23T14:51:18.241Z"
       }
     ]
   },

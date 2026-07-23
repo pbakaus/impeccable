@@ -403,6 +403,32 @@ html.light .ks-button.ks-button-primary:active {
     inset 0 0 0 1px color-mix(in srgb, var(--ks-champagne) 40%, transparent);
 }
 
+.picker-ring::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border: 2px solid white;
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.78);
+  transition:
+    opacity 180ms var(--ks-ease),
+    transform 180ms var(--ks-ease);
+}
+
+.picker-palette:has(.picker-band[data-band="primary"]:is(:hover, :focus-within))
+  .picker-card[data-pos="0"] .picker-ring[data-role="primary"]::after,
+.picker-palette:has(.picker-band[data-band="secondary"]:is(:hover, :focus-within))
+  .picker-card[data-pos="0"] .picker-ring[data-role="secondary"]::after,
+.picker-palette:has(.picker-band[data-band="tertiary"]:is(:hover, :focus-within))
+  .picker-card[data-pos="0"] .picker-ring[data-role="tertiary"]::after,
+.picker-palette:has(.picker-band[data-band="neutral"]:is(:hover, :focus-within))
+  .picker-card[data-pos="0"] .picker-ring[data-role="neutral"]::after {
+  opacity: 1;
+  transform: scale(1);
+}
+
 .picker-card[data-pos="0"] .picker-ring {
   pointer-events: auto;
 }
@@ -756,60 +782,49 @@ html.light .ks-button.ks-button-primary:active {
   --pv-surface-2: color-mix(in oklab, var(--pv-neutral) 92%, var(--pv-n-ink));
   --pv-bone: color-mix(in oklab, var(--pv-neutral) 62%, var(--pv-n-ink));
   --pv-strong: color-mix(in oklab, var(--pv-neutral) 22%, var(--pv-n-ink));
-  --pv-chrome: color-mix(in oklab, var(--pv-neutral) 35%, var(--pv-n-ink));
   --pv-secondary-wash: color-mix(in oklab, var(--pv-secondary) 28%, var(--pv-neutral));
   --pv-tertiary-wash: color-mix(in oklab, var(--pv-tertiary) 22%, var(--pv-neutral));
   width: 100%;
   aspect-ratio: 16 / 7;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+}
+
+/* Two artboards floating on the page itself: a landing page on the desktop
+   card (the palette persuading) and an app screen on the phone card (the
+   palette operating). Every palette is judged doing both jobs, so no
+   per-project switch is needed. The phone's fixed portrait ratio keeps the
+   wide frame from stretching a single page mock. */
+.pv-desktop,
+.pv-phone {
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
   background: var(--pv-neutral);
   border: 1px solid var(--ks-rule);
-  border-radius: 2px;
 }
 
-.picker-preview[data-register="brand"] .pv-product,
-.picker-preview[data-register="product"] .pv-brand {
-  display: none;
-}
-
-.pv-brand,
-.pv-product {
-  width: 100%;
-  height: 100%;
-  background: var(--pv-neutral);
-}
-
-.pv-chrome {
-  position: relative;
-  height: 13%;
-  background: var(--pv-chrome);
-}
-
-.pv-chrome::before {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 3.2%;
-  width: 5px;
-  aspect-ratio: 1;
-  background: var(--pv-bone);
-  border-radius: 50%;
-  box-shadow: 10px 0 var(--pv-bone), 20px 0 var(--pv-bone);
-  transform: translateY(-50%);
-}
-
-.pv-brand-page {
-  height: 87%;
+.pv-desktop {
   display: grid;
-  grid-template-rows: 20% 56% 24%;
+  grid-template-rows: auto 1fr;
+  border-radius: 4px;
 }
 
-.pv-brand-nav {
+.pv-phone {
+  height: 100%;
+  aspect-ratio: 9 / 19;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  border-radius: 10px;
+}
+
+.pv-nav {
   display: grid;
   grid-template-columns: auto 1fr auto;
-  gap: 5%;
+  gap: 10px;
   align-items: center;
-  padding-inline: 5%;
+  padding: 10px 12px;
 }
 
 .pv-logo {
@@ -822,74 +837,76 @@ html.light .ks-button.ks-button-primary:active {
 .pv-nav-bars {
   display: flex;
   justify-content: flex-end;
-  gap: 5%;
+  gap: 8px;
 }
 
-.pv-nav-bars i,
-.pv-side-bars i {
+.pv-nav-bars i {
   display: block;
+  width: 18px;
   height: 3px;
   background: var(--pv-bone);
   border-radius: 2px;
 }
 
-.pv-nav-bars i {
-  width: 9%;
-}
-
-.pv-primary-pill {
+.pv-pill {
   width: 32px;
   height: 12px;
   background: var(--pv-primary);
   border-radius: 2px;
 }
 
-.pv-brand-hero {
+.pv-hero {
+  min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
   gap: 8%;
   align-items: center;
-  padding: 3% 9%;
+  padding: 4px 8% 14px;
 }
 
 .pv-hero-copy {
   display: grid;
-  gap: 7px;
+  gap: 8px;
 }
 
 .pv-eyebrow {
-  width: 24%;
-  height: 7px;
-  background: var(--pv-tertiary-wash);
-  border-radius: 2px;
-}
-
-.pv-headline,
-.pv-copy-bars {
-  position: relative;
+  width: 22%;
   height: 4px;
-  background: var(--pv-strong);
+  background: var(--pv-tertiary);
   border-radius: 2px;
 }
 
+/* The headline is display type set in the brand color, not permanent black
+   ink: it must visibly react when the primary changes. */
 .pv-headline {
-  width: 86%;
-  height: 7px;
-  margin-block: 2px 7px;
-  box-shadow: 0 11px var(--pv-strong);
+  display: grid;
+  gap: 7px;
+  margin-block: 2px 3px;
 }
 
-.pv-copy-bars {
-  width: 66%;
-  margin-top: 3px;
+.pv-headline i {
+  display: block;
+  width: 88%;
+  height: 8px;
+  background: color-mix(in oklab, var(--pv-primary) 80%, var(--pv-strong));
+  border-radius: 2px;
+}
+
+.pv-headline i:last-child {
+  width: 58%;
+}
+
+.pv-copy-bar {
+  width: 64%;
+  height: 5px;
   background: var(--pv-bone);
-  box-shadow: 0 8px var(--pv-bone);
+  border-radius: 2px;
 }
 
 .pv-actions {
   display: flex;
   gap: 7px;
-  margin-top: 9px;
+  margin-top: 10px;
 }
 
 .pv-actions i {
@@ -905,104 +922,20 @@ html.light .ks-button.ks-button-primary:active {
 }
 
 .pv-image {
-  height: 82%;
-  background: var(--pv-secondary-wash);
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: linear-gradient(135deg, var(--pv-secondary-wash), color-mix(in oklab, var(--pv-secondary) 52%, var(--pv-neutral)));
   border: 1px solid var(--pv-secondary);
   border-radius: 2px;
 }
 
-.pv-features {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10%;
-  padding: 4% 11%;
-  border-top: 1px solid var(--pv-bone);
-}
-
-.pv-features > div {
-  display: grid;
-  gap: 5px;
-}
-
-.pv-features i {
-  width: 12px;
-  aspect-ratio: 1;
-  background: var(--pv-secondary-wash);
-  border-radius: 50%;
-}
-
-.pv-features > div:last-child i {
-  background: var(--pv-tertiary-wash);
-}
-
-.pv-features span,
-.pv-app-aside span {
-  width: 70%;
-  height: 3px;
-  background: var(--pv-bone);
-  border-radius: 2px;
-  box-shadow: 0 6px var(--pv-bone);
-}
-
-.pv-app {
-  height: 87%;
-  display: grid;
-  grid-template-columns: 18% 82%;
-}
-
-.pv-sidebar {
-  display: grid;
-  grid-template-rows: auto auto 1fr;
-  gap: 10%;
-  padding: 16% 14%;
-  background: var(--pv-surface-2);
-  border-right: 1px solid var(--pv-bone);
-}
-
-.pv-active-nav {
-  width: 100%;
-  height: 10px;
-  background: var(--pv-primary);
-  border-radius: 2px;
-}
-
-.pv-side-bars {
-  display: grid;
-  align-content: start;
-  gap: 9px;
-}
-
-.pv-side-bars i:nth-child(even) {
-  width: 72%;
-}
-
-.pv-app-main {
-  min-width: 0;
-  display: grid;
-  grid-template-rows: 20% 35% 45%;
-  background: var(--pv-neutral);
-}
-
-.pv-topbar {
-  display: flex;
-  align-items: center;
-  gap: 4%;
-  padding-inline: 5%;
-  background: var(--pv-surface-2);
-  border-bottom: 1px solid var(--pv-bone);
-}
-
-.pv-search {
-  width: 42%;
-  height: 9px;
-  margin-right: auto;
-  background: var(--pv-neutral);
-  border: 1px solid var(--pv-bone);
-  border-radius: 2px;
-}
-
-.pv-alert {
-  width: 6px;
+.pv-image::after {
+  content: "";
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  width: 7px;
   aspect-ratio: 1;
   background: var(--pv-tertiary);
   border-radius: 50%;
@@ -1015,99 +948,99 @@ html.light .ks-button.ks-button-primary:active {
   border-radius: 50%;
 }
 
-.pv-stats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 3%;
-  padding: 4%;
+/* Phone artboard: an app screen. Each mini card highlights a different
+   palette role so the secondary and tertiary are judged as UI accents,
+   not just as washes. */
+.pv-phone-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 10px;
+  background: var(--pv-surface-2);
+  border-bottom: 1px solid var(--ks-rule);
 }
 
-.pv-stats > div {
-  position: relative;
+.pv-phone-body {
+  min-height: 0;
   display: grid;
-  align-content: center;
+  grid-template-rows: auto auto 1fr;
+  align-content: start;
   gap: 7px;
-  padding: 9%;
+  padding: 9px 10px 10px;
+}
+
+.pv-mini-card {
+  display: grid;
+  gap: 5px;
+  padding: 8px 9px;
   background: var(--pv-surface-2);
-  border: 1px solid var(--pv-bone);
+  border: 1px solid var(--ks-rule);
   border-radius: 2px;
 }
 
-.pv-stats i,
-.pv-stats span {
+.pv-mini-card i,
+.pv-mini-card span {
   display: block;
   height: 3px;
   background: var(--pv-bone);
   border-radius: 2px;
 }
 
-.pv-stats span {
-  width: 68%;
+.pv-mini-card span {
+  width: 62%;
   height: 6px;
-  background: var(--pv-strong);
+  background: var(--pv-secondary);
 }
 
-.pv-stats > div:last-child::after {
-  content: "";
-  position: absolute;
-  top: 15%;
-  right: 10%;
-  width: 5px;
-  aspect-ratio: 1;
+.pv-mini-card:nth-child(2) span {
   background: var(--pv-tertiary);
-  border-radius: 50%;
 }
 
-.pv-app-lower {
+.pv-mini-chart {
   min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.8fr);
-  gap: 3%;
-  padding: 0 4% 4%;
-}
-
-.pv-chart,
-.pv-app-aside {
-  min-width: 0;
   display: flex;
   align-items: flex-end;
-  gap: 4%;
-  padding: 8%;
+  gap: 4px;
+  padding: 8px 9px;
   background: var(--pv-surface-2);
-  border: 1px solid var(--pv-bone);
+  border: 1px solid var(--ks-rule);
   border-radius: 2px;
 }
 
-.pv-chart i {
+.pv-mini-chart i {
   flex: 1;
-  height: 28%;
+  height: 34%;
   background: var(--pv-secondary);
   border-radius: 2px 2px 0 0;
 }
 
-.pv-chart i:nth-child(2) { height: 50%; }
-.pv-chart i:nth-child(3) { height: 72%; }
-.pv-chart i:nth-child(4) { height: 42%; }
-.pv-chart i:nth-child(5) { height: 86%; background: var(--pv-primary); }
-.pv-chart i:nth-child(6) { height: 62%; }
-.pv-chart i:nth-child(7) { height: 38%; }
+.pv-mini-chart i:nth-child(2) { height: 58%; }
+.pv-mini-chart i:nth-child(3) { height: 44%; }
+.pv-mini-chart i:nth-child(4) { height: 82%; background: var(--pv-primary); }
+.pv-mini-chart i:nth-child(5) { height: 66%; }
 
-.pv-app-aside {
-  align-items: flex-start;
-  flex-direction: column;
-  justify-content: center;
+.pv-tabbar {
+  display: flex;
+  justify-content: space-evenly;
+  align-items: center;
+  padding: 8px 0;
+  border-top: 1px solid var(--ks-rule);
 }
 
-.pv-app-aside i {
-  width: 32px;
-  height: 11px;
-  margin-top: 9px;
+.pv-tabbar i {
+  width: 5px;
+  aspect-ratio: 1;
+  background: var(--pv-bone);
+  border-radius: 50%;
+}
+
+.pv-tabbar i:first-child {
   background: var(--pv-primary);
-  border-radius: 2px;
 }
 
 .picker-palette-hint {
   min-height: 3.2em;
+  padding-inline-end: 48px;
   color: var(--ks-text-muted);
   font-size: 0.84rem;
   line-height: 1.6;
@@ -1136,6 +1069,7 @@ html.light .ks-button.ks-button-primary:active {
   .picker-progress span,
   .picker-card,
   .picker-ring,
+  .picker-ring::after,
   .picker-ring-guide,
   .picker-icon-button,
   .picker-band-tools,
