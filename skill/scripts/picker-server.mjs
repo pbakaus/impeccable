@@ -10,6 +10,8 @@ import { readFile, mkdir, stat, writeFile } from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { extractRegister } from './context.mjs';
+import { SEEDS } from './palette.mjs';
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const pickerDir = path.join(scriptDir, 'picker');
 const answersPath = path.resolve(process.cwd(), '.impeccable/design-interview/answers.json');
@@ -168,6 +170,14 @@ if (options.help) {
   process.exit(0);
 }
 
+let register = 'brand';
+try {
+  const product = await readFile(path.resolve(process.cwd(), 'PRODUCT.md'), 'utf8');
+  register = extractRegister(product) || register;
+} catch {
+  // A missing or unreadable PRODUCT.md keeps the brand preview default.
+}
+
 const port = await findOpenPort(options.port);
 let completed = false;
 let timeout;
@@ -210,6 +220,16 @@ async function handleRequest(request, response) {
   }
   if (requestPath === '/cues.json') {
     await serveFile(response, options.cuesDir, 'cues.json', ['.json']);
+    return;
+  }
+  if (requestPath === '/palettes.json') {
+    sendJson(response, 200, {
+      seeds: SEEDS.map(({ id, oklch, mood }) => ({ id, oklch, mood })),
+    });
+    return;
+  }
+  if (requestPath === '/context.json') {
+    sendJson(response, 200, { register });
     return;
   }
   if (requestPath.startsWith('/cues/')) {
