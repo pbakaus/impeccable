@@ -11,11 +11,13 @@ import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promi
 import http from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { before, test } from 'node:test';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const serverScript = path.join(root, 'skill/scripts/picker-server.mjs');
+const paletteScript = path.join(root, 'skill/scripts/palette.mjs');
+const colorModule = pathToFileURL(path.join(root, 'picker/scripts/color.js')).href;
 const pickerIndex = path.join(root, 'skill/scripts/picker/index.html');
 const portBase = 18_500 + (process.pid % 500);
 const cueManifestFixture = {
@@ -38,7 +40,7 @@ before(() => {
   });
 });
 
-async function createFixture() {
+async function createFixture(register = null) {
   const cwd = await realpath(await mkdtemp(path.join(tmpdir(), 'impeccable-picker-')));
   const cuesDir = path.join(cwd, '.impeccable/visual-cues');
   await mkdir(cuesDir, { recursive: true });
@@ -47,6 +49,9 @@ async function createFixture() {
     path.join(cuesDir, 'cues.json'),
     `${JSON.stringify(cueManifestFixture)}\n`,
   );
+  if (register) {
+    await writeFile(path.join(cwd, 'PRODUCT.md'), `# Product\n\n## Register\n\n${register}\n`);
+  }
   return { cwd, cuesDir };
 }
 
@@ -164,6 +169,18 @@ test('serves picker and cues, writes submission, prints answers, and exits 0', a
   assert.equal(cueManifest.status, 200);
   assert.deepEqual(await cueManifest.json(), cueManifestFixture);
 
+  const palettesResponse = await fetch(`${server.url}/palettes.json`);
+  assert.equal(palettesResponse.status, 200);
+  assert.match(palettesResponse.headers.get('content-type'), /^application\/json/);
+  const { seeds } = await palettesResponse.json();
+  assert.ok(seeds.length > 100);
+  for (const seed of seeds) {
+    assert.deepEqual(Object.keys(seed), ['id', 'oklch', 'mood']);
+    assert.equal(typeof seed.id, 'string');
+    assert.equal(seed.oklch.length, 3);
+    assert.equal(typeof seed.mood, 'string');
+  }
+
   const exitPromise = waitForExit(server.processHandle);
   const answers = { register: 'brand', direction: 'kinpaku' };
   const submitResponse = await fetch(`${server.url}/submit`, {
@@ -181,6 +198,63 @@ test('serves picker and cues, writes submission, prints answers, and exits 0', a
   );
   assert.deepEqual(JSON.parse(await readFile(answersPath, 'utf8')), answers);
   assert.match(server.stdout(), new RegExp(`ANSWERS ${answersPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+});
+
+test('palette CLI still prints a seed', () => {
+  const output = execFileSync(process.execPath, [paletteScript], {
+    cwd: root,
+    encoding: 'utf8',
+  });
+  assert.match(output, /^BRAND SEED · seed-\d+/);
+  assert.match(output, /Seed color \(anchor for your primary brand color\):/);
+});
+
+test('serves the product register from PRODUCT.md', async (t) => {
+  const fixture = await createFixture('product');
+  const server = await startPicker(fixture.cwd, ['--port', String(portBase + 10)]);
+  await cleanup(t, fixture, server);
+
+  const response = await fetch(`${server.url}/context.json`);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type'), /^application\/json/);
+  assert.deepEqual(await response.json(), { register: 'product' });
+});
+
+test('defaults picker context to brand without PRODUCT.md', async (t) => {
+  const fixture = await createFixture();
+  const server = await startPicker(fixture.cwd, ['--port', String(portBase + 11)]);
+  await cleanup(t, fixture, server);
+
+  const response = await fetch(`${server.url}/context.json`);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { register: 'brand' });
+});
+
+test('picker color math round-trips sRGB and clips out-of-gamut OKLCH', async () => {
+  const {
+    contrastInk,
+    formatOklch,
+    hexToOklch,
+    oklchToHex,
+    seedToRoles,
+  } = await import(colorModule);
+  const channels = (hex) => hex.match(/[\dA-F]{2}/gi).map((pair) => Number.parseInt(pair, 16));
+
+  for (const hex of ['#FFFFFF', '#1E4A42', '#D7A930']) {
+    const expected = channels(hex);
+    const actual = channels(oklchToHex(hexToOklch(hex)));
+    actual.forEach((channel, index) => assert.ok(Math.abs(channel - expected[index]) <= 1));
+  }
+
+  const clipped = oklchToHex([0.7, 0.4, 40]);
+  assert.match(clipped, /^#[\dA-F]{6}$/);
+  assert.ok(hexToOklch(clipped)[1] < 0.4);
+  assert.match(formatOklch('#1E4A42'), /^oklch\(\d+\.\d% \d+\.\d{3} \d+\.\d\)$/);
+  assert.deepEqual(Object.keys(seedToRoles({ oklch: [0.62, 0.15, 210] })), [
+    'primary', 'secondary', 'tertiary', 'neutral',
+  ]);
+  assert.equal(contrastInk('#FFFFFF'), 'var(--ks-champagne)');
+  assert.equal(contrastInk('#000000'), 'var(--ks-lacquer-raised)');
 });
 
 test('rejects raw, encoded, and double-encoded path traversal', async (t) => {
