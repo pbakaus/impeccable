@@ -22,6 +22,15 @@
           "picker/pages/index.astro"
         ],
         "createdAt": "2026-07-23T14:51:18.241Z"
+      },
+      {
+        "rule": "design-system-font-size",
+        "value": "*",
+        "files": [
+          "picker/styles/picker.css"
+        ],
+        "createdAt": "2026-07-23T21:00:00.000Z",
+        "reason": "The picker is a self-contained questionnaire widget with its own kit-token type scale, and screen 04's cards render arbitrary Google Fonts at specimen sizes; DESIGN.md's ramp describes the impeccable website, not this tool (same footing as the live-browser.js entry)"
       }
     ]
   },

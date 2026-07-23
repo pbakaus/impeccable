@@ -416,6 +416,12 @@ html.light .ks-button.ks-button-ghost:hover {
   inset: 1px;
   border: 2px solid white;
   border-radius: 50%;
+  /* Dark edge on both sides of the white hairline so the hover highlight
+     reads over the neutral's pale image regions, not only over saturated
+     ones. Fixed near-black, not a theme token: it sits on the photo. */
+  box-shadow:
+    0 0 0 1.5px oklch(15% 0.006 95 / 0.6),
+    inset 0 0 0 1.5px oklch(15% 0.006 95 / 0.6);
   opacity: 0;
   pointer-events: none;
   transform: scale(0.78);
@@ -1183,6 +1189,7 @@ html.light .ks-button.ks-button-ghost:hover {
   --pvs-image: var(--pv-surface-2);
   --pvs-image-edge: var(--pv-bone);
   --pvs-bars: var(--pv-bone);
+  --pvs-rule: var(--ks-rule);
   --pvs-accent-a: var(--pv-strong);
   --pvs-accent-b: var(--pv-bone);
   --pvs-accent-c: var(--pv-primary);
@@ -1194,7 +1201,12 @@ html.light .ks-button.ks-button-ghost:hover {
   gap: 5.25%;
 }
 
-#picker-form:has(input[name="color-strategy"][value="committed"]:checked) .picker-strategy-preview {
+/* Hovering an option previews its strategy before the click commits it.
+   While any strategy option is hovered, the hovered branch drives the
+   preview and the checked branch stands down; hovering Restrained needs
+   no block of its own because standing down lands on the defaults. */
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="committed"]) .picker-strategy-preview,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="committed"]:checked) .picker-strategy-preview {
   --pvs-headline: color-mix(in oklab, var(--pv-primary) 80%, var(--pv-strong));
   --pvs-eyebrow: var(--pv-primary);
   --pvs-ghost: var(--pv-primary);
@@ -1206,35 +1218,44 @@ html.light .ks-button.ks-button-ghost:hover {
   --pvs-accent-d: color-mix(in oklab, var(--pv-primary) 18%, var(--pv-neutral));
 }
 
-#picker-form:has(input[name="color-strategy"][value="full-palette"]:checked) .picker-strategy-preview {
+/* Full palette: every role on duty. Primary carries the headline, image,
+   and CTA; secondary the ghost action and gallery; tertiary the eyebrow,
+   signal, and accents; neutral stays the ground. */
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="full-palette"]) .picker-strategy-preview,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="full-palette"]:checked) .picker-strategy-preview {
   --pvs-headline: color-mix(in oklab, var(--pv-primary) 80%, var(--pv-strong));
-  --pvs-eyebrow: var(--pv-strong);
+  --pvs-eyebrow: var(--pv-tertiary);
   --pvs-ghost: var(--pv-secondary);
   --pvs-image: var(--pv-primary);
   --pvs-image-edge: var(--pv-primary);
   --pvs-signal: var(--pv-tertiary);
   --pvs-accent-a: var(--pv-secondary);
-  --pvs-accent-b: var(--pv-surface-2);
+  --pvs-accent-b: color-mix(in oklab, var(--pv-secondary) 42%, var(--pv-neutral));
   --pvs-accent-c: var(--pv-primary);
   --pvs-accent-d: var(--pv-tertiary);
 }
 
-#picker-form:has(input[name="color-strategy"][value="drenched"]:checked) .picker-strategy-preview {
+/* Drenched: the primary is the page. Everything on top is either ink,
+   an ink wash of the primary, or the secondary and tertiary doing accent
+   work; nothing is left bare white and the hairlines tint with the ground. */
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="drenched"]) .picker-strategy-preview,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="drenched"]:checked) .picker-strategy-preview {
   --pvs-ground: var(--pv-primary);
   --pvs-headline: var(--pv-p-ink);
   --pvs-eyebrow: color-mix(in oklab, var(--pv-p-ink) 70%, var(--pv-primary));
   --pvs-copy: color-mix(in oklab, var(--pv-p-ink) 55%, var(--pv-primary));
   --pvs-title: var(--pv-p-ink);
   --pvs-cta: var(--pv-p-ink);
-  --pvs-ghost: var(--pv-p-ink);
+  --pvs-ghost: color-mix(in oklab, var(--pv-p-ink) 35%, var(--pv-primary));
   --pvs-image: color-mix(in oklab, var(--pv-p-ink) 20%, var(--pv-primary));
   --pvs-image-edge: color-mix(in oklab, var(--pv-p-ink) 40%, var(--pv-primary));
   --pvs-signal: var(--pv-tertiary);
   --pvs-bars: color-mix(in oklab, var(--pv-p-ink) 45%, var(--pv-primary));
-  --pvs-accent-a: var(--pv-p-ink);
+  --pvs-rule: color-mix(in oklab, var(--pv-p-ink) 28%, var(--pv-primary));
+  --pvs-accent-a: var(--pv-secondary);
   --pvs-accent-b: var(--pv-tertiary);
-  --pvs-accent-c: var(--pv-p-ink);
-  --pvs-accent-d: color-mix(in oklab, var(--pv-p-ink) 24%, var(--pv-primary));
+  --pvs-accent-c: color-mix(in oklab, var(--pv-p-ink) 30%, var(--pv-primary));
+  --pvs-accent-d: color-mix(in oklab, var(--pv-p-ink) 14%, var(--pv-primary));
 }
 
 .ps-desktop,
@@ -1267,14 +1288,14 @@ html.light .ks-button.ks-button-ghost:hover {
   gap: 24px;
   align-items: center;
   padding: 0 5.5%;
-  border-bottom: 1px solid var(--ks-rule);
+  border-bottom: 1px solid var(--pvs-rule);
 }
 
 .ps-brand-block {
   width: clamp(28px, 3.35vw, 48px);
   height: clamp(6px, 22%, 11px);
   background-color: var(--pvs-cta);
-  border-radius: 1px;
+  border-radius: 2px;
 }
 
 .ps-nav-bars {
@@ -1286,7 +1307,7 @@ html.light .ks-button.ks-button-ghost:hover {
 .ps-nav-bars i {
   display: block;
   width: clamp(18px, 7%, 34px);
-  height: 3px;
+  height: 4px;
   background-color: var(--pvs-bars);
   border-radius: 2px;
 }
@@ -1295,7 +1316,7 @@ html.light .ks-button.ks-button-ghost:hover {
   width: clamp(34px, 3.4vw, 48px);
   height: clamp(7px, 26%, 13px);
   background-color: var(--pvs-signal);
-  border-radius: 1px;
+  border-radius: 2px;
 }
 
 .ps-hero {
@@ -1322,14 +1343,14 @@ html.light .ks-button.ks-button-ghost:hover {
 
 .ps-headline {
   display: grid;
-  gap: clamp(4px, 0.65vw, 7px);
+  gap: clamp(6px, 0.8vw, 9px);
   margin: 0 0 15px;
 }
 
 .ps-headline i {
   display: block;
   width: 100%;
-  height: 12px;
+  height: 14px;
   background-color: var(--pvs-headline);
   border-radius: 2px;
 }
@@ -1340,14 +1361,14 @@ html.light .ks-button.ks-button-ghost:hover {
 
 .ps-copy {
   display: grid;
-  gap: 5px;
+  gap: 7px;
   margin-bottom: 20px;
 }
 
 .ps-copy i {
   display: block;
   width: 70%;
-  height: 6px;
+  height: 7px;
   background-color: var(--pvs-copy);
   border-radius: 2px;
 }
@@ -1366,7 +1387,7 @@ html.light .ks-button.ks-button-ghost:hover {
   width: clamp(42px, 42%, 86px);
   height: clamp(12px, 2.35vw, 29px);
   background-color: var(--pvs-cta);
-  border-radius: 1px;
+  border-radius: 2px;
 }
 
 .ps-actions i:last-child {
@@ -1388,7 +1409,7 @@ html.light .ks-button.ks-button-ghost:hover {
   grid-template-columns: 1.05fr 1fr 1fr 1.15fr;
   align-items: center;
   padding-inline: 0;
-  border-block: 1px solid var(--ks-rule);
+  border-block: 1px solid var(--pvs-rule);
 }
 
 .ps-proof-item {
@@ -1413,7 +1434,7 @@ html.light .ks-button.ks-button-ghost:hover {
 }
 
 .ps-proof-item + .ps-proof-item {
-  border-left: 1px solid var(--ks-rule);
+  border-left: 1px solid var(--pvs-rule);
 }
 
 .ps-proof-item i {
@@ -1426,7 +1447,7 @@ html.light .ks-button.ks-button-ghost:hover {
 
 .ps-proof-item span {
   width: 46%;
-  height: 4px;
+  height: 5px;
   background-color: var(--pvs-bars);
   border-radius: 2px;
 }
@@ -1447,20 +1468,20 @@ html.light .ks-button.ks-button-ghost:hover {
 
 .ps-editorial-copy strong {
   width: 78%;
-  height: 9px;
+  height: 10px;
   background-color: var(--pvs-title);
   border-radius: 2px;
 }
 
 .ps-editorial-copy span {
   display: grid;
-  gap: 3px;
+  gap: 5px;
 }
 
 .ps-editorial-copy span i {
   display: block;
   width: 90%;
-  height: 4px;
+  height: 5px;
   background-color: var(--pvs-bars);
   border-radius: 2px;
 }
@@ -1471,7 +1492,7 @@ html.light .ks-button.ks-button-ghost:hover {
 
 .ps-editorial-copy > em {
   width: 30%;
-  height: 5px;
+  height: 6px;
   margin-top: 3px;
   background-color: var(--pvs-signal);
   border-radius: 2px;
@@ -1509,7 +1530,7 @@ html.light .ks-button.ks-button-ghost:hover {
   display: block;
   min-height: 0;
   background-color: var(--pvs-accent-a);
-  border-radius: 1px;
+  border-radius: 2px;
 }
 
 .ps-gallery-item:nth-child(2) > i {
@@ -1526,13 +1547,13 @@ html.light .ks-button.ks-button-ghost:hover {
 
 .ps-gallery-item span {
   display: grid;
-  gap: 3px;
+  gap: 5px;
 }
 
 .ps-gallery-item b {
   display: block;
   width: 76%;
-  height: 4px;
+  height: 5px;
   background-color: var(--pvs-bars);
   border-radius: 2px;
 }
@@ -1546,7 +1567,7 @@ html.light .ks-button.ks-button-ghost:hover {
   justify-content: space-between;
   align-items: center;
   padding-inline: 5.5%;
-  border-top: 1px solid var(--ks-rule);
+  border-top: 1px solid var(--pvs-rule);
 }
 
 .ps-footer-links {
@@ -1557,7 +1578,7 @@ html.light .ks-button.ks-button-ghost:hover {
 .ps-footer-links i,
 .ps-phone-footer i {
   width: clamp(12px, 3vw, 28px);
-  height: 3px;
+  height: 4px;
   background-color: var(--pvs-bars);
   border-radius: 2px;
 }
@@ -1576,7 +1597,7 @@ html.light .ks-button.ks-button-ghost:hover {
   align-items: center;
   min-height: 0;
   padding: 0 6%;
-  border-bottom: 1px solid var(--ks-rule);
+  border-bottom: 1px solid var(--pvs-rule);
 }
 
 .ps-phone-top .ps-brand-block {
@@ -1602,7 +1623,7 @@ html.light .ks-button.ks-button-ghost:hover {
 }
 
 .ps-phone-body .ps-headline i {
-  height: clamp(4px, 0.65vw, 7px);
+  height: clamp(5px, 0.75vw, 8px);
 }
 
 .ps-phone-body .ps-headline {
@@ -1611,12 +1632,12 @@ html.light .ks-button.ks-button-ghost:hover {
 
 .ps-phone-body .ps-headline i:first-child {
   width: 57%;
-  height: 7px;
+  height: 8px;
 }
 
 .ps-phone-body .ps-headline i:last-child {
   width: 86%;
-  height: 6px;
+  height: 7px;
 }
 
 .ps-phone-body .ps-copy {
@@ -1625,7 +1646,7 @@ html.light .ks-button.ks-button-ghost:hover {
 
 .ps-phone-body .ps-copy i {
   width: 70%;
-  height: 4px;
+  height: 5px;
 }
 
 .ps-phone-body .ps-copy i:last-child {
@@ -1659,12 +1680,12 @@ html.light .ks-button.ks-button-ghost:hover {
 
 .ps-phone-body .ps-proof-item span {
   width: 56%;
-  height: 4px;
+  height: 5px;
 }
 
 .ps-phone-body .ps-editorial-copy strong {
   width: 33%;
-  height: 5px;
+  height: 6px;
 }
 
 .ps-phone-body .ps-editorial-copy {
@@ -1672,7 +1693,7 @@ html.light .ks-button.ks-button-ghost:hover {
 }
 
 .ps-phone-body .ps-editorial-copy span i {
-  height: 4px;
+  height: 5px;
 }
 
 .ps-phone-body .ps-gallery {
@@ -1688,7 +1709,7 @@ html.light .ks-button.ks-button-ghost:hover {
 }
 
 .ps-phone-body .ps-gallery-item b {
-  height: 3px;
+  height: 4px;
 }
 
 .ps-phone-body .ps-gallery-item span {
@@ -1702,12 +1723,18 @@ html.light .ks-button.ks-button-ghost:hover {
   justify-content: space-around;
   min-height: 0;
   padding-inline: 6%;
-  border-top: 1px solid var(--ks-rule);
+  border-top: 1px solid var(--pvs-rule);
 }
 
 .picker-strategy-preview :is(
   .ps-desktop,
   .ps-phone,
+  .ps-nav,
+  .ps-proof,
+  .ps-proof-item,
+  .ps-footer,
+  .ps-phone-top,
+  .ps-phone-footer,
   .ps-brand-block,
   .ps-nav-bars i,
   .ps-nav-action,
@@ -1726,7 +1753,6 @@ html.light .ks-button.ks-button-ghost:hover {
   .ps-footer-links i,
   .ps-footer-mark,
   .ps-phone-footer i,
-  .pt-eyebrow,
   .pt-headline,
   .pt-body
 ) {
@@ -1741,144 +1767,138 @@ html.light .ks-button.ks-button-ghost:hover {
   margin-top: 0;
 }
 
-/* Screen 04 keeps the Phase 9 runway and replaces only its type samples. */
+/* Screen 04 mirrors screen 03's frame exactly: same centered headline, same
+   options-left preview-right grid, same dual artboards. Only two things are
+   its own: the option cards are large type specimens, and the wireframe's
+   headline and body are real text so the pair is judged as glyphs. */
 .picker-type {
   display: grid;
-  gap: 34px;
-  padding-block: clamp(32px, 4.5svh, 44px) clamp(24px, 3.5svh, 40px);
+  gap: 48px;
+  padding-block: clamp(32px, 5svh, 48px) clamp(24px, 3.5svh, 48px);
 }
 
-.picker-type-heading {
+.picker-type-grid {
   display: grid;
-  justify-items: center;
-  gap: 8px;
+  grid-template-columns: minmax(340px, 400px) minmax(0, 1fr);
+  gap: 50px;
+  align-items: stretch;
 }
 
-.picker-type-kicker {
-  color: var(--ks-patina-deep);
+/* The rail keeps the row height owned by the preview: the fieldset scrolls
+   inside it instead of stretching the page when six tall cards stack up. */
+.picker-type-rail {
+  position: relative;
+  min-width: 0;
+}
+
+.picker-type-options {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  align-content: start;
+  gap: 10px;
+  padding-right: 12px;
+  scrollbar-width: thin;
+}
+
+.picker-type-option {
+  grid-template-columns: 17px minmax(0, 1fr);
+  gap: 14px;
+  padding: 18px 20px;
+}
+
+.picker-type-copy {
+  min-width: 0;
+  display: grid;
+}
+
+.picker-type-role {
+  color: var(--ks-text-muted);
   font-family: var(--ks-mono);
-  font-size: var(--ks-type-mono-size);
+  font-size: 0.62rem;
   font-weight: 600;
   line-height: 1;
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
-.picker-type-grid {
-  display: grid;
-  grid-template-columns: minmax(330px, 390px) minmax(0, 1fr);
-  gap: 50px;
-  align-items: center;
-}
-
-.picker-type-options {
-  gap: 7px;
-}
-
-.picker-type-option {
-  grid-template-columns: 17px minmax(0, 1fr);
-  gap: 12px;
-  min-height: 64px;
-  padding: 9px 14px;
-}
-
-.picker-type-option .picker-strategy-indicator {
-  margin-top: 3px;
-}
-
-.picker-type-copy {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, auto) 1fr;
-  column-gap: 7px;
-  row-gap: 2px;
-  align-items: baseline;
-}
-
-.picker-type-copy > strong {
-  overflow: hidden;
+.picker-type-sample-heading {
+  margin: 6px 0 14px;
   color: var(--ks-champagne);
   font-family: var(--pair-heading, var(--ks-font-display));
-  font-size: 1.02rem;
+  font-size: 1.65rem;
   font-weight: var(--pair-heading-weight, 600);
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.1;
 }
 
-.picker-type-with {
-  overflow: hidden;
+.picker-type-sample-body {
+  margin-top: 6px;
   color: var(--ks-text);
   font-family: var(--pair-body, var(--ks-font));
-  font-size: 0.75rem;
-  line-height: 1.3;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.picker-type-with b {
-  font: inherit;
+  font-size: var(--ks-type-body-size);
   font-weight: var(--pair-body-weight, 400);
+  line-height: 1.3;
 }
 
 .picker-type-why {
-  grid-column: 1 / -1;
-  overflow: hidden;
+  margin-top: 12px;
   color: var(--ks-text-muted);
-  font-family: var(--ks-font);
-  font-size: 0.68rem;
-  line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-family: var(--pair-body, var(--ks-font));
+  font-size: 0.78rem;
+  line-height: 1.5;
 }
 
 .picker-preview-type {
   --pt-heading: var(--ks-font-display);
   --pt-body: var(--ks-font);
   --pt-heading-weight: 600;
-  display: block;
-  aspect-ratio: 1.865 / 1;
-}
-
-.picker-preview-type > .ps-desktop {
-  width: 100%;
-  height: 100%;
 }
 
 .picker-preview-type .ps-hero-copy {
   align-content: center;
 }
 
-.pt-eyebrow {
-  margin-bottom: 12px;
-  color: var(--pvs-eyebrow);
-  font-family: var(--pt-body);
-  font-size: clamp(0.48rem, 0.58vw, 0.64rem);
-  font-weight: 700;
-  line-height: 1.2;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+/* Type is the subject here, so the hero gives copy more column than the
+   color preview does, and the size cap leaves room for wide display faces
+   to fit a long word without hitting the image. */
+.picker-preview-type .ps-hero {
+  grid-template-columns: 44% minmax(0, 1fr);
+  gap: 7%;
 }
 
 .pt-headline {
-  max-width: 11ch;
-  margin-bottom: 12px;
+  max-width: 12ch;
+  margin: 0 0 12px;
   color: var(--pvs-headline);
   font-family: var(--pt-heading);
-  font-size: clamp(1.5rem, 2.25vw, 2.5rem);
+  font-size: clamp(1.2rem, 1.7vw, 1.8rem);
   font-weight: var(--pt-heading-weight);
-  line-height: 0.98;
-  letter-spacing: -0.025em;
+  line-height: 1.04;
+  letter-spacing: -0.02em;
+  overflow-wrap: break-word;
   text-wrap: balance;
 }
 
 .pt-body {
   max-width: 31ch;
-  margin-bottom: 16px;
+  margin: 0 0 16px;
   color: var(--pvs-copy);
   font-family: var(--pt-body);
   font-size: clamp(0.64rem, 0.82vw, 0.82rem);
   line-height: 1.45;
+}
+
+/* Phone artboard type: same specimen at handset scale. */
+.ps-phone .pt-headline {
+  max-width: none;
+  margin: 8px 0 0;
+  font-size: clamp(0.82rem, 1.05vw, 1.05rem);
+}
+
+.ps-phone .pt-body {
+  max-width: none;
+  margin: 4px 0 0;
+  font-size: clamp(0.5rem, 0.62vw, 0.64rem);
 }
 
 .picker-palette-hint {
@@ -1923,6 +1943,12 @@ html.light .ks-button.ks-button-ghost:hover {
   .picker-strategy-preview :is(
     .ps-desktop,
     .ps-phone,
+    .ps-nav,
+    .ps-proof,
+    .ps-proof-item,
+    .ps-footer,
+    .ps-phone-top,
+    .ps-phone-footer,
     .ps-brand-block,
     .ps-nav-bars i,
     .ps-nav-action,
@@ -1941,7 +1967,6 @@ html.light .ks-button.ks-button-ghost:hover {
     .ps-footer-links i,
     .ps-footer-mark,
     .ps-phone-footer i,
-    .pt-eyebrow,
     .pt-headline,
     .pt-body
   ) {
