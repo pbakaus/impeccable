@@ -381,7 +381,10 @@ Compose six distinct territories, then resolve each into one heading and body pa
 - Write one sentence in `why` that names the Q4 reference, Users fact, positioning line, commitment, or letterform observation the pair serves. Replace a sentence that could describe any brand.
 - Order the pairs best-first. `pairs[0]` is the recommendation and reaches the picker pre-selected.
 
-Choose two specimen strings from the product's own world: a headline of at most six words and one honest body sentence. Do not invent a claim or use placeholder prose.
+Choose specimen strings and wireframe copy from the product's own world. Do not invent claims or use placeholder prose that could describe any brand.
+
+- **Hero**: a headline of at most six words and one honest body sentence (`specimen.headline`, `specimen.body`).
+- **Wireframe**: every other label the type-preview artboard shows (`preview`): a short brand mark, four nav labels, nav and menu actions, two CTA labels, four proof chips, a section title, two section body lines, one section link, four gallery cards (`title` + `meta`), four footer links, and a footer mark. Pull each string from PRODUCT.md, the interview, or supplied assets. Keep labels short enough to fit the artboard.
 
 Write `.impeccable/visual-cues/fonts.json` with this shape:
 
@@ -391,6 +394,26 @@ Write `.impeccable/visual-cues/fonts.json` with this shape:
   "specimen": {
     "headline": "Six words from the product's world",
     "body": "One honest sentence in the product's voice for the body face."
+  },
+  "preview": {
+    "brand": "Ab",
+    "nav": ["Shop", "Stories", "Visit", "About"],
+    "navAction": "Order",
+    "menuAction": "Menu",
+    "ctaPrimary": "Primary action",
+    "ctaSecondary": "Secondary action",
+    "proof": ["Proof one", "Proof two", "Proof three", "Proof four"],
+    "sectionTitle": "Section title",
+    "sectionBody": ["First body line.", "Second body line."],
+    "sectionLink": "Section link",
+    "gallery": [
+      { "title": "Card one", "meta": "Detail one" },
+      { "title": "Card two", "meta": "Detail two" },
+      { "title": "Card three", "meta": "Detail three" },
+      { "title": "Card four", "meta": "Detail four" }
+    ],
+    "footerLinks": ["Link one", "Link two", "Link three", "Link four"],
+    "footerMark": "© Brand"
   },
   "pairs": [
     {
@@ -404,13 +427,13 @@ Write `.impeccable/visual-cues/fonts.json` with this shape:
 }
 ```
 
-Write exactly six pair entries. Each role carries the single weight it needs; the picker also loads weight 700 for each body family. A per-pair `specimen` override may replace the shared strings when the brand evidence warrants it.
+Write exactly six pair entries. Each role carries the single weight it needs; the picker also loads weight 700 for each body family. A per-pair `specimen` or `preview` override may replace the shared strings when the brand evidence warrants it.
 
 If Q2 is missing because the interview was skipped, say in one line that the typography set is direction-neutral, then compose all six from the four allowed PRODUCT.md sections alone. Still write the file.
 
-Parse the finished file as JSON and verify its version, specimen, six unique ids, six unique heading families, role names, weights, and one-sentence `why` fields before continuing.
+Parse the finished file as JSON and verify its version, specimen, preview (every field above), six unique ids, six unique heading families, role names, weights, and one-sentence `why` fields before continuing.
 
-Done when: `fonts.json` is parseable, contains exactly six ranked pairs, and every family name has been checked against Google Fonts.
+Done when: `fonts.json` is parseable, contains exactly six ranked pairs, every family name has been checked against Google Fonts, and the preview copy reads as this product, not generic SaaS filler.
 
 ## Step 7: Launch the picker
 

@@ -37,6 +37,29 @@ const fontManifestFixture = {
     headline: 'Flowers shaped by hand',
     body: 'Seasonal stems become arrangements made for one room and one moment.',
   },
+  preview: {
+    brand: 'Ha',
+    nav: ['Bouquets', 'Workshops', 'Seasonal', 'About'],
+    navAction: 'Order',
+    menuAction: 'Menu',
+    ctaPrimary: 'Shop stems',
+    ctaSecondary: 'See the studio',
+    proof: ['Same-day pickup', 'Local growers', 'Hand tied', 'Studio open'],
+    sectionTitle: 'Stems in season',
+    sectionBody: [
+      'Each arrangement starts with stems',
+      'chosen the morning it ships.',
+    ],
+    sectionLink: 'Our growers',
+    gallery: [
+      { title: 'Market bunch', meta: 'From $38' },
+      { title: 'Table vase', meta: 'From $52' },
+      { title: 'Ceremony', meta: 'From $120' },
+      { title: 'Workshop', meta: 'Next Sat' },
+    ],
+    footerLinks: ['Care guide', 'Delivery', 'Contact', 'Instagram'],
+    footerMark: '© Hanazono',
+  },
   pairs: [
     {
       id: 'marcellus-karla',
@@ -173,6 +196,8 @@ test('serves picker and cues, writes submission, prints answers, and exits 0', a
   assert.match(pageHtml, /aria-label="Copy link"/);
   assert.match(pageHtml, />Start<span class="ks-button-arrow"/);
   assert.match(pageHtml, /rel="icon" type="image\/svg\+xml" href="\.\/favicon\.svg"/);
+  assert.match(pageHtml, /data-type-headline/);
+  assert.doesNotMatch(pageHtml, />Made to last</);
   assert.match(pageHtml, /assets\/hero-light\.jpg/);
   const stylesheet = pageHtml.match(/href="(\.\/assets\/[^"]+\.css)"/)?.[1];
   assert.ok(stylesheet);

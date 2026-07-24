@@ -30,6 +30,29 @@ const FALLBACK_FONTS = {
     headline: 'Shape a clear visual direction',
     body: 'Choose a type system that gives the product a distinct and usable voice.',
   },
+  preview: {
+    brand: 'Im',
+    nav: ['Skills', 'Detect', 'Docs', 'About'],
+    navAction: 'Sign in',
+    menuAction: 'Menu',
+    ctaPrimary: 'Get started',
+    ctaSecondary: 'Learn more',
+    proof: ['23 commands', 'Open source', 'Any harness', 'Free to install'],
+    sectionTitle: 'Design laws, not vibes',
+    sectionBody: [
+      'Shared vocabulary your agent can follow',
+      'when shaping interfaces.',
+    ],
+    sectionLink: 'Read the skill',
+    gallery: [
+      { title: 'Audit', meta: 'Quality pass' },
+      { title: 'Polish', meta: 'Ship ready' },
+      { title: 'Bolder', meta: 'Turn it up' },
+      { title: 'Quieter', meta: 'Pull it back' },
+    ],
+    footerLinks: ['GitHub', 'Changelog', 'CLI', 'Extension'],
+    footerMark: '© Impeccable',
+  },
   pairs: [
     {
       id: 'source-editorial',
@@ -160,10 +183,48 @@ function syncCommittedPalette(target) {
   target.style.setProperty('--pv-p-ink', contrastInk(committed.primary));
 }
 
+function isPreviewCopy(value) {
+  return value
+    && typeof value.brand === 'string'
+    && Array.isArray(value.nav)
+    && value.nav.length === 4
+    && value.nav.every((entry) => typeof entry === 'string')
+    && typeof value.navAction === 'string'
+    && typeof value.menuAction === 'string'
+    && typeof value.ctaPrimary === 'string'
+    && typeof value.ctaSecondary === 'string'
+    && Array.isArray(value.proof)
+    && value.proof.length === 4
+    && value.proof.every((entry) => typeof entry === 'string')
+    && typeof value.sectionTitle === 'string'
+    && Array.isArray(value.sectionBody)
+    && value.sectionBody.length === 2
+    && value.sectionBody.every((entry) => typeof entry === 'string')
+    && typeof value.sectionLink === 'string'
+    && Array.isArray(value.gallery)
+    && value.gallery.length === 4
+    && value.gallery.every((entry) => (
+      typeof entry.title === 'string'
+      && typeof entry.meta === 'string'
+    ))
+    && Array.isArray(value.footerLinks)
+    && value.footerLinks.length === 4
+    && value.footerLinks.every((entry) => typeof entry === 'string')
+    && typeof value.footerMark === 'string';
+}
+
+function normalizeFontManifest(manifest) {
+  return {
+    ...manifest,
+    preview: { ...FALLBACK_FONTS.preview, ...manifest.preview },
+  };
+}
+
 function isFontManifest(value) {
   return value?.version === 1
     && typeof value.specimen?.headline === 'string'
     && typeof value.specimen?.body === 'string'
+    && (!value.preview || isPreviewCopy(value.preview))
     && value.pairs?.length === 6
     && value.pairs.every((pair) => (
       typeof pair.id === 'string'
@@ -173,6 +234,7 @@ function isFontManifest(value) {
       && typeof pair.body?.family === 'string'
       && Number.isFinite(pair.body?.weight)
       && typeof pair.why === 'string'
+      && (!pair.preview || isPreviewCopy(pair.preview))
     ));
 }
 
@@ -198,19 +260,72 @@ function loadFontStylesheet(pairs) {
   document.head.append(link);
 }
 
+function fillIndexed(root, selector, values) {
+  if (!root) return;
+  root.querySelectorAll(selector).forEach((node, index) => {
+    node.textContent = values[index] ?? '';
+  });
+}
+
+function fillGallery(root, gallery) {
+  if (!root) return;
+  root.querySelectorAll('.ps-gallery-item').forEach((item, index) => {
+    const title = item.querySelector('[data-type-gallery-title]');
+    const meta = item.querySelector('[data-type-gallery-meta]');
+    if (title) title.textContent = gallery[index]?.title ?? '';
+    if (meta) meta.textContent = gallery[index]?.meta ?? '';
+  });
+}
+
 function syncFontPair(pair) {
-  const specimen = { ...fontManifest.specimen, ...pair.specimen };
+  const manifest = fontManifest;
+  const preview = {
+    ...FALLBACK_FONTS.preview,
+    ...manifest.preview,
+    ...pair.preview,
+  };
+  const specimen = { ...manifest.specimen, ...pair.specimen };
+  const desktop = typePreview.querySelector('.ps-desktop');
+  const phoneBody = typePreview.querySelector('.ps-phone-body');
+  const phoneFooter = typePreview.querySelector('.ps-phone-footer');
   typePreview.style.setProperty('--pt-heading', fontStack(pair.heading.family));
   typePreview.style.setProperty('--pt-body', fontStack(pair.body.family));
   typePreview.style.setProperty('--pt-heading-weight', pair.heading.weight);
+  for (const node of document.querySelectorAll('[data-type-brand]')) node.textContent = preview.brand;
+  fillIndexed(desktop, '[data-type-nav]', preview.nav);
+  for (const node of document.querySelectorAll('[data-type-nav-action]')) node.textContent = preview.navAction;
+  for (const node of document.querySelectorAll('[data-type-menu-action]')) node.textContent = preview.menuAction;
   for (const node of document.querySelectorAll('[data-type-headline]')) node.textContent = specimen.headline;
   for (const node of document.querySelectorAll('[data-type-body]')) node.textContent = specimen.body;
+  document.querySelectorAll('[data-type-cta-primary]').forEach((node) => {
+    node.textContent = preview.ctaPrimary;
+  });
+  document.querySelectorAll('[data-type-cta-secondary]').forEach((node) => {
+    node.textContent = preview.ctaSecondary;
+  });
+  fillIndexed(desktop, '[data-type-proof]', preview.proof);
+  fillIndexed(phoneBody, '[data-type-proof]', preview.proof);
+  document.querySelectorAll('[data-type-section-title]').forEach((node) => {
+    node.textContent = preview.sectionTitle;
+  });
+  fillIndexed(desktop, '[data-type-section-body]', preview.sectionBody);
+  fillIndexed(phoneBody, '[data-type-section-body]', preview.sectionBody);
+  document.querySelectorAll('[data-type-section-link]').forEach((node) => {
+    node.textContent = preview.sectionLink;
+  });
+  fillGallery(desktop, preview.gallery);
+  fillGallery(phoneBody, preview.gallery);
+  fillIndexed(desktop.querySelector('.ps-footer'), '[data-type-footer-link]', preview.footerLinks);
+  fillIndexed(phoneFooter, '[data-type-footer-link]', preview.footerLinks);
+  document.querySelectorAll('[data-type-footer-mark]').forEach((node) => {
+    node.textContent = preview.footerMark;
+  });
   document.querySelector('[name="font-heading"]').value = pair.heading.family;
   document.querySelector('[name="font-body"]').value = pair.body.family;
 }
 
 function renderFontPairs(manifest, fallback) {
-  fontManifest = manifest;
+  fontManifest = normalizeFontManifest(manifest);
   fontOptions.toggleAttribute('data-fallback', fallback);
   const fragment = document.createDocumentFragment();
   manifest.pairs.forEach((pair, index) => {
@@ -504,7 +619,7 @@ try {
   const response = await fetch('/fonts.json');
   const candidate = response.ok ? await response.json() : null;
   if (isFontManifest(candidate)) {
-    manifest = candidate;
+    manifest = normalizeFontManifest(candidate);
     usingFallback = false;
   }
 } catch {
