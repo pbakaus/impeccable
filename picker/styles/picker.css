@@ -1086,10 +1086,11 @@ html.light .ks-button.ks-button-ghost:hover {
   white-space: nowrap;
 }
 
+/* Selection reads from the card itself: a champagne-tinted ground plus a
+   doubled hairline (border + inset ring), no radio dot spending a column. */
 .picker-strategy-option {
   position: relative;
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
   gap: 14px;
   align-items: start;
   padding: 16px 18px;
@@ -1099,34 +1100,12 @@ html.light .ks-button.ks-button-ghost:hover {
   cursor: pointer;
   transition:
     background-color 180ms var(--ks-ease),
-    border-color 180ms var(--ks-ease);
+    border-color 180ms var(--ks-ease),
+    box-shadow 180ms var(--ks-ease);
 }
 
 .picker-strategy-option:hover {
   border-color: var(--ks-patina-deep);
-}
-
-.picker-strategy-indicator {
-  position: relative;
-  width: 17px;
-  height: 17px;
-  margin-top: 2px;
-  color: var(--ks-patina-deep);
-  border: 1px solid currentColor;
-  border-radius: 50%;
-}
-
-.picker-strategy-indicator::after {
-  content: "";
-  position: absolute;
-  inset: 4px;
-  background: currentColor;
-  border-radius: 50%;
-  opacity: 0;
-  transform: scale(0.5);
-  transition:
-    opacity 160ms var(--ks-ease),
-    transform 160ms var(--ks-ease);
 }
 
 .picker-strategy-copy {
@@ -1150,15 +1129,11 @@ html.light .ks-button.ks-button-ghost:hover {
 .picker-strategy-option:has(input:checked) {
   background: color-mix(in oklab, var(--ks-patina-deep) 7%, var(--ks-lacquer-raised));
   border-color: var(--ks-patina-deep);
+  box-shadow: inset 0 0 0 1px var(--ks-patina-deep);
 }
 
-.picker-strategy-option:has(input:checked) .picker-strategy-indicator {
-  color: var(--ks-patina-deep);
-}
-
-.picker-strategy-option:has(input:checked) .picker-strategy-indicator::after {
-  opacity: 1;
-  transform: scale(1);
+.picker-strategy-option:has(input:checked) .picker-strategy-copy strong {
+  color: var(--ks-link-on-paper);
 }
 
 .picker-strategy-option:has(input:focus-visible) {
@@ -1802,7 +1777,6 @@ html.light .ks-button.ks-button-ghost:hover {
 }
 
 .picker-type-option {
-  grid-template-columns: 17px minmax(0, 1fr);
   gap: 14px;
   padding: 18px 20px;
 }
@@ -1837,10 +1811,27 @@ html.light .ks-button.ks-button-ghost:hover {
   font-weight: 700;
 }
 
+/* One golden-ratio ladder rules every piece of text on the artboards:
+   micro-copy sits one step below the body size, the headline two steps
+   above it. The phone artboard re-bases the same ladder smaller, so both
+   artboards stay on scale. A future type-scale step replaces the ratio;
+   until then the preview follows this one everywhere. */
 .picker-preview-type {
   --pt-heading: var(--ks-font-display);
   --pt-body: var(--ks-font);
   --pt-heading-weight: 600;
+  --pt-ratio: 1.618;
+  --pt-base: clamp(0.58rem, 0.75vw, 0.72rem);
+}
+
+/* The derived steps are declared on both artboard roots because custom
+   properties resolve their var() references where they are declared: the
+   phone re-bases --pt-base, so it needs its own ladder computation. */
+.picker-preview-type,
+.picker-preview-type .ps-phone {
+  --pt-micro: calc(var(--pt-base) / var(--pt-ratio));
+  --pt-title: calc(var(--pt-base) * var(--pt-ratio));
+  --pt-display: calc(var(--pt-base) * var(--pt-ratio) * var(--pt-ratio));
 }
 
 .picker-preview-type .ps-hero-copy {
@@ -1860,9 +1851,9 @@ html.light .ks-button.ks-button-ghost:hover {
   margin: 0 0 12px;
   color: var(--pvs-headline);
   font-family: var(--pt-heading);
-  font-size: clamp(1.2rem, 1.7vw, 1.8rem);
+  font-size: var(--pt-display);
   font-weight: var(--pt-heading-weight);
-  line-height: 1.04;
+  line-height: 1.15;
   letter-spacing: -0.02em;
   overflow-wrap: break-word;
   text-wrap: balance;
@@ -1873,21 +1864,122 @@ html.light .ks-button.ks-button-ghost:hover {
   margin: 0 0 16px;
   color: var(--pvs-copy);
   font-family: var(--pt-body);
-  font-size: clamp(0.64rem, 0.82vw, 0.82rem);
-  line-height: 1.45;
+  font-size: var(--pt-base);
+  line-height: 1.55;
 }
 
-/* Phone artboard type: same specimen at handset scale. */
+/* Phone artboard type: the same ladder re-based to handset scale. */
+.picker-preview-type .ps-phone {
+  --pt-base: clamp(0.42rem, 0.55vw, 0.52rem);
+}
+
 .ps-phone .pt-headline {
   max-width: none;
   margin: 8px 0 0;
-  font-size: clamp(0.82rem, 1.05vw, 1.05rem);
 }
 
 .ps-phone .pt-body {
   max-width: none;
   margin: 4px 0 0;
-  font-size: clamp(0.5rem, 0.62vw, 0.64rem);
+}
+
+/* On the type screen the wireframe's bar glyphs become micro-copy, so the
+   pair is judged on real glyphs in every slot: nav, buttons, proof row,
+   cards, footer. Each element keeps the color slot its bar used, moved
+   from background to ink; sizes come from the ladder above. */
+.picker-preview-type :is(
+  .ps-nav-bars i,
+  .ps-proof-item span,
+  .ps-editorial-copy span i,
+  .ps-editorial-copy > em,
+  .ps-gallery-item b,
+  .ps-footer-links i,
+  .ps-footer-mark,
+  .ps-phone-footer i
+) {
+  width: auto;
+  height: auto;
+  overflow: hidden;
+  background: none;
+  border-radius: 0;
+  font-family: var(--pt-body);
+  font-size: var(--pt-micro);
+  font-style: normal;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.picker-preview-type .ps-nav-bars i,
+.picker-preview-type .ps-footer-links i,
+.picker-preview-type .ps-footer-mark,
+.picker-preview-type .ps-phone-footer i {
+  color: var(--pvs-bars);
+}
+
+/* The lettermark takes the heading face: a logo is display type. */
+.picker-preview-type .ps-brand-block {
+  width: auto;
+  height: auto;
+  background: none;
+  color: var(--pvs-cta);
+  font-family: var(--pt-heading);
+  font-size: var(--pt-title);
+  font-weight: var(--pt-heading-weight);
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+/* Buttons keep their fills; the label borrows the page ground as ink. */
+.picker-preview-type .ps-nav-action,
+.picker-preview-type .ps-actions i {
+  width: auto;
+  height: auto;
+  display: grid;
+  place-items: center;
+  padding: 0.55em 1.3em;
+  color: var(--pvs-ground);
+  font-family: var(--pt-body);
+  font-size: var(--pt-micro);
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.picker-preview-type .ps-proof-item span {
+  color: var(--pvs-bars);
+}
+
+.picker-preview-type .ps-editorial-copy strong {
+  width: auto;
+  height: auto;
+  background: none;
+  color: var(--pvs-title);
+  font-family: var(--pt-heading);
+  font-size: var(--pt-title);
+  font-weight: var(--pt-heading-weight);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.picker-preview-type .ps-editorial-copy span i {
+  color: var(--pvs-copy);
+}
+
+.picker-preview-type .ps-editorial-copy > em {
+  width: auto;
+  height: auto;
+  margin-top: 3px;
+  background: none;
+  color: var(--pvs-signal);
+}
+
+.picker-preview-type .ps-gallery-item b {
+  color: var(--pvs-bars);
+}
+
+.picker-preview-type .ps-gallery-item b:first-child {
+  color: var(--pvs-title);
 }
 
 .picker-palette-hint {
@@ -1928,7 +2020,6 @@ html.light .ks-button.ks-button-ghost:hover {
   .picker-tip::after,
   .picker-palette-hint,
   .picker-strategy-option,
-  .picker-strategy-indicator::after,
   .picker-strategy-preview :is(
     .ps-desktop,
     .ps-phone,

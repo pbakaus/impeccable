@@ -69,8 +69,11 @@ Compose exactly four hex values with a 60-30-10 balance. These are
 website/app colors, headed for design tokens, not scene colors:
 
 - neutral (~60%, the dominant): the surface, what most of a screen will
-  be. An off-white or near-white with a temperature tint, or a near-black
-  when the mood calls for dark. Never pure #FFFFFF or #000000.
+  be. An off-white or near-white with a temperature tint, at least as
+  pale as #ECEAE6: a mid-tone neutral that reads fine as a scene material
+  turns into a gray slab once it is a screen background. Near-black is
+  the one alternative, when the mood calls for dark; there is no
+  in-between. Never pure #FFFFFF or #000000.
 - primary (~30%): the brand color, the mood's main carrier. Must read
   clearly against the neutral.
 - secondary: structure and support: an adjacent hue, or the primary
@@ -121,7 +124,9 @@ Written like screenplay direction, not a keyword list: subject doing something, 
 
 Name every color in plain language only, as a rich material description ("deep wine-plum, the color of reduced port"), tied to its carrier. **Never put a hex code, or any number, in an image prompt**: image models that render text well will paint it onto the image as a label or a swatch strip, and even one stray numeral fails the wordless check below. The hexes already travel in the PALETTE report line, and the compile step snaps them to rendered pixels; the prompt's job is the color's look, not its code. For the same reason, say what fills the frame instead of listing what to omit; a bare "no text" line is the weakest form of the instruction and the wordless sentence below is the strong form. Keep both.
 
-Light the scene to reveal color, not to set a mood. In a dim, dusky, or nocturnal rendering every color sinks into one warm-brown murk the user cannot sample from, so bright, generous light is a hard rule even when the concept's moment is dark: an "after hours" or "dawn" concept keeps its props and story but is lit like a studio still, not like the hour. Dark palettes are welcome; dark renderings are not; a near-black primary should read as a rich, clearly-lit surface, not as underexposure. Fill every `[bracketed]` slot; never leave template language in the prompt.
+Light the scene to reveal color, not to set a mood. In a dim, dusky, or nocturnal rendering every color sinks into one warm-brown murk the user cannot sample from, so bright, generous light is a hard rule even when the concept's moment is dark: an "after hours" or "dawn" concept keeps its props and story but is lit like a studio still, not like the hour. Dark palettes are welcome; dark renderings are not; a near-black primary should read as a rich, clearly-lit surface, not as underexposure.
+
+The neutral's ground pays the highest price for shading. The compile step snaps each role to the pixels the hero actually rendered, and the picker shows the snapped value, so a nominally off-white linen that renders in mid-gray shadow ships a mid-gray surface color to the user. Describe the neutral's material as pale in the prompt ("pale unbleached linen, near-white in even light") and keep its field lit edge to edge, so the rendered ground stays as pale as the composed hex. Fill every `[bracketed]` slot; never leave template language in the prompt.
 
 ```text
 One full-bleed photograph, square format, framed close: [one scene from
@@ -133,7 +138,8 @@ four-color story: every surface in frame carries one of the four colors,
 each color one large unbroken field, none reduced to a sliver, no
 stretch of frame left to a color outside the four: [the neutral's
 carrier], [plain-language color with a material-world comparison], as
-the ground and backdrop, about half the frame; [the primary's carrier],
+the ground and backdrop, about half the frame, evenly lit edge to edge
+with no shadow gradient across it; [the primary's carrier],
 [color description], one continuous mass over roughly a third of the
 frame, carried by the main subject; [the secondary's carrier], [color
 description], a clear supporting field beside it; [the tertiary's
@@ -266,10 +272,12 @@ generation tooling.
      every surface in frame carries one of the four colors, and
      everything is in crisp sharp focus, no blur anywhere."
    - Light: if the image is dim, dusky, or nocturnal, with palette
-     colors sinking into shadow instead of reading bright and true,
-     regenerate once, same prompt, plus "Render the scene in bright,
-     generous daylight-quality studio light; every color fully lit and
-     clearly readable, no darkness anywhere in the frame."
+     colors sinking into shadow, or the neutral's ground renders
+     visibly darker than its composed color (off-white linen reading
+     as mid-gray), regenerate once, same prompt, plus "Render the
+     scene in bright, generous daylight-quality studio light; every
+     color fully lit and clearly readable, the ground pale and evenly
+     lit edge to edge, no darkness anywhere in the frame."
 
 5. Reply with exactly these three lines and nothing else, the path
    being the file you verified in step 4:
