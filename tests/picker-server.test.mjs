@@ -198,7 +198,7 @@ test('serves picker and cues, writes submission, prints answers, and exits 0', a
   assert.match(pageHtml, /rel="icon" type="image\/svg\+xml" href="\.\/favicon\.svg"/);
   assert.match(pageHtml, /data-type-headline/);
   assert.doesNotMatch(pageHtml, />Made to last</);
-  assert.match(pageHtml, /assets\/hero-light\.jpg/);
+  assert.match(pageHtml, /assets\/hero-dark\.jpg/);
   const stylesheet = pageHtml.match(/href="(\.\/assets\/[^"]+\.css)"/)?.[1];
   assert.ok(stylesheet);
   assert.equal((await fetch(new URL(stylesheet, `${server.url}/`))).status, 200);
@@ -208,7 +208,7 @@ test('serves picker and cues, writes submission, prints answers, and exits 0', a
   assert.match(faviconResponse.headers.get('content-type'), /^image\/svg\+xml/);
   assert.match(await faviconResponse.text(), /<svg/);
 
-  const heroResponse = await fetch(`${server.url}/assets/hero-light.jpg`);
+  const heroResponse = await fetch(`${server.url}/assets/hero-dark.jpg`);
   assert.equal(heroResponse.status, 200);
   assert.equal(heroResponse.headers.get('content-type'), 'image/jpeg');
   assert.ok((await heroResponse.arrayBuffer()).byteLength > 0);
@@ -299,8 +299,13 @@ test('picker color math round-trips sRGB and clips out-of-gamut OKLCH', async ()
   assert.deepEqual(Object.keys(seedToRoles({ oklch: [0.62, 0.15, 210] })), [
     'primary', 'secondary', 'tertiary', 'neutral',
   ]);
-  assert.equal(contrastInk('#FFFFFF'), 'var(--ks-champagne)');
-  assert.equal(contrastInk('#000000'), 'var(--ks-lacquer-raised)');
+  // Swatch ink is theme-independent: it sits on a color the user picked, so
+  // it must not follow the picker's own light/dark tokens.
+  assert.equal(contrastInk('#FFFFFF'), 'var(--pk-ink-dark)');
+  assert.equal(contrastInk('#000000'), 'var(--pk-ink-light)');
+  // A mid-tone reads better against the dark ink, which a fixed lightness
+  // threshold gets backwards.
+  assert.equal(contrastInk('#8D7352'), 'var(--pk-ink-dark)');
 });
 
 test('rejects raw, encoded, and double-encoded path traversal', async (t) => {

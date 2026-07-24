@@ -12,8 +12,8 @@ const outputDir = path.join(root, 'skill/scripts/picker');
 // private impeccable-site repo, so the picker carries its own copies).
 const faviconSource = path.join(root, 'picker/assets/favicon.svg');
 const faviconOutput = path.join(outputDir, 'favicon.svg');
-const heroSource = path.join(root, 'picker/assets/hero-light.jpg');
-const heroOutput = path.join(outputDir, 'assets/hero-light.jpg');
+const heroSource = path.join(root, 'picker/assets/hero-dark.jpg');
+const heroOutput = path.join(outputDir, 'assets/hero-dark.jpg');
 
 await rm(buildDir, { recursive: true, force: true });
 execFileSync(

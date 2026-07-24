@@ -56,9 +56,24 @@ export function seedToRoles(seed) {
   };
 }
 
+// Relative luminance of the colors --pk-ink-dark and --pk-ink-light resolve
+// to in styles/picker.css: oklch(14% 0.018 95) and oklch(99% 0.008 95).
+const INK_DARK_LUMINANCE = 0.0027;
+const INK_LIGHT_LUMINANCE = 0.9716;
+
+// The ink sits on a color the user picked, so it must not follow the picker's
+// own theme: --ks-champagne and friends invert between light and dark and
+// would blank the label on exactly the swatches that need it most. Comparing
+// both ratios beats a fixed lightness threshold, which picks the losing ink
+// for mid-tones sitting near the cutoff.
 export function contrastInk(hex) {
   const [red, green, blue] = parseHex(hex).map(linearize);
-  return 0.2126 * red + 0.7152 * green + 0.0722 * blue > 0.22
-    ? 'var(--ks-champagne)'
-    : 'var(--ks-lacquer-raised)';
+  const swatch = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+  const against = (ink) => {
+    const [hi, lo] = ink > swatch ? [ink, swatch] : [swatch, ink];
+    return (hi + 0.05) / (lo + 0.05);
+  };
+  return against(INK_DARK_LUMINANCE) >= against(INK_LIGHT_LUMINANCE)
+    ? 'var(--pk-ink-dark)'
+    : 'var(--pk-ink-light)';
 }

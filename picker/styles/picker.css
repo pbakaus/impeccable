@@ -3,6 +3,17 @@
 @import "./vendor/kinpaku-tokens.css";
 @import "./vendor/kinpaku-kit.css";
 
+/* Ink for surfaces painted in a color the user chose, not in one of ours:
+   swatch labels and the wireframe artboards. Every --ks-* text token swaps
+   between the light and dark themes, which would invert these against
+   palettes that never changed. Values are the system's own ink and raised
+   paper, so neither is pure black or pure white. contrastInk() in
+   scripts/color.js mirrors their luminance; change both together. */
+:root {
+  --pk-ink-dark: oklch(14% 0.018 95);
+  --pk-ink-light: oklch(99% 0.008 95);
+}
+
 /* Scoped subset of the reset imported by site/styles/main.css through
    site/styles/tokens.css (lines 12-27). */
 .picker-page,
@@ -32,19 +43,6 @@ body.picker-page {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-}
-
-/* Copied from site/styles/light-mode.css lines 189-194. Light mode remaps
-   --ks-lacquer-deep to paper, so the primary button needs its dark ink value. */
-html.light .ks-button.ks-button-primary,
-html.light .ks-button.ks-button-primary:hover,
-html.light .ks-button.ks-button-primary:active {
-  color: oklch(14% 0.018 95);
-}
-
-/* On paper, ghost buttons lift toward deep patina, not fill gold. */
-html.light .ks-button.ks-button-ghost:hover {
-  color: var(--ks-patina-deep);
 }
 
 .picker-shell {
@@ -513,8 +511,8 @@ html.light .ks-button.ks-button-ghost:hover {
 
 .picker-icon-button:hover {
   background: var(--ks-graphite);
-  border-color: var(--ks-link-on-paper);
-  color: var(--ks-link-on-paper);
+  border-color: var(--ks-patina);
+  color: var(--ks-patina);
 }
 
 .picker-icon-button:focus-visible,
@@ -789,7 +787,7 @@ html.light .ks-button.ks-button-ghost:hover {
 .picker-preview {
   --pv-primary: var(--ks-champagne);
   --pv-secondary: var(--ks-patina);
-  --pv-tertiary: var(--ks-link-on-paper);
+  --pv-tertiary: var(--ks-kinpaku);
   --pv-neutral: var(--ks-lacquer-raised);
   --pv-n-ink: var(--ks-champagne);
   --pv-p-ink: var(--ks-champagne);
@@ -1156,7 +1154,7 @@ html.light .ks-button.ks-button-ghost:hover {
 }
 
 .picker-strategy-option:has(input:checked) .picker-strategy-title {
-  color: var(--ks-link-on-paper);
+  color: var(--ks-patina);
 }
 
 .picker-strategy-option:has(input:focus-visible) {
@@ -1183,7 +1181,7 @@ html.light .ks-button.ks-button-ghost:hover {
 }
 
 .picker-strategy-choices .picker-strategy-option:has(input:checked) .picker-strategy-title {
-  color: var(--ks-link-on-paper);
+  color: var(--ks-patina);
 }
 
 .picker-strategy-choices .picker-strategy-copy {
@@ -1209,7 +1207,7 @@ html.light .ks-button.ks-button-ghost:hover {
 .picker-strategy-preview {
   --pv-primary: var(--ks-champagne);
   --pv-secondary: var(--ks-patina);
-  --pv-tertiary: var(--ks-link-on-paper);
+  --pv-tertiary: var(--ks-kinpaku);
   --pv-neutral: var(--ks-lacquer-raised);
   --pv-n-ink: var(--ks-champagne);
   --pv-p-ink: var(--ks-champagne);
@@ -1960,7 +1958,7 @@ html.light .ks-button.ks-button-ghost:hover {
 }
 
 .picker-type-options .picker-strategy-option:has(input:checked) .picker-type-sample-heading {
-  color: var(--ks-link-on-paper);
+  color: var(--ks-patina);
 }
 
 .picker-type-copy {
@@ -2324,7 +2322,7 @@ html.light .ks-button.ks-button-ghost:hover {
     flex: 1 1 auto;
     min-width: 18ch;
     overflow-x: auto;
-    color: var(--ks-link-on-paper, var(--ks-champagne));
+    color: var(--ks-patina);
     font-family: var(--ks-mono);
     font-size: var(--ks-type-body-size);
     letter-spacing: 0;
@@ -2346,7 +2344,7 @@ html.light .ks-button.ks-button-ghost:hover {
     border: 1px solid var(--ks-rule);
     border-radius: 2px;
     background: transparent;
-    color: var(--ks-link-on-paper, var(--ks-champagne));
+    color: var(--ks-patina);
     cursor: pointer;
     transition:
       background 180ms var(--ks-ease),
