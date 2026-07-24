@@ -1136,16 +1136,16 @@ html.light .ks-button.ks-button-ghost:hover {
   gap: 6px;
 }
 
-.picker-strategy-copy strong {
+.picker-strategy-title {
   color: var(--ks-champagne);
   font-family: var(--ks-font-display);
   font-size: 1.22rem;
-  font-weight: 500;
+  font-weight: 400;
   line-height: 1.15;
   letter-spacing: -0.01em;
 }
 
-.picker-strategy-copy span {
+.picker-strategy-desc {
   color: var(--ks-text-muted);
   font-size: 0.88rem;
   line-height: 1.5;
@@ -1155,7 +1155,7 @@ html.light .ks-button.ks-button-ghost:hover {
   background: color-mix(in oklab, var(--ks-patina-deep) 7%, var(--ks-lacquer-raised));
 }
 
-.picker-strategy-option:has(input:checked) .picker-strategy-copy strong {
+.picker-strategy-option:has(input:checked) .picker-strategy-title {
   color: var(--ks-link-on-paper);
 }
 
@@ -1182,7 +1182,7 @@ html.light .ks-button.ks-button-ghost:hover {
   background: color-mix(in oklab, var(--ks-patina-deep) 9%, var(--ks-lacquer-raised));
 }
 
-.picker-strategy-choices .picker-strategy-option:has(input:checked) .picker-strategy-copy strong {
+.picker-strategy-choices .picker-strategy-option:has(input:checked) .picker-strategy-title {
   color: var(--ks-link-on-paper);
 }
 
@@ -1190,14 +1190,15 @@ html.light .ks-button.ks-button-ghost:hover {
   gap: 6px;
 }
 
-.picker-strategy-choices .picker-strategy-copy strong {
+.picker-strategy-choices .picker-strategy-title {
   font-family: var(--ks-font);
   font-size: 24px;
+  font-weight: 400;
   line-height: 1.1;
   letter-spacing: -0.015em;
 }
 
-.picker-strategy-choices .picker-strategy-copy span {
+.picker-strategy-choices .picker-strategy-desc {
   font-size: 16px;
   line-height: 1.55;
   max-width: 34ch;
@@ -1974,7 +1975,7 @@ html.light .ks-button.ks-button-ghost:hover {
   color: var(--ks-champagne);
   font-family: var(--pair-heading, var(--ks-font-display));
   font-size: 24px;
-  font-weight: var(--pair-heading-weight);
+  font-weight: var(--pair-heading-weight, 400);
   line-height: 1.1;
   letter-spacing: -0.015em;
 }
