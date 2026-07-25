@@ -31,7 +31,7 @@ let fontManifest;
    is judged on texture, and real prose pulls the eye into reading it. */
 const LOREM = {
   sentence: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore.',
-  lines: ['Ut enim ad minim veniam, quis nostrud exercitation', 'ullamco laboris nisi ut aliquip ex ea commodo.'],
+  paragraph: 'Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo.',
 };
 
 /* The desktop artboard sets three cards and the phone two, so a fourth would
@@ -328,8 +328,7 @@ function syncFontPair(pair) {
   document.querySelectorAll('[data-type-section-title]').forEach((node) => {
     node.textContent = preview.sectionTitle;
   });
-  fillIndexed(desktop, '[data-type-section-body]', LOREM.lines);
-  fillIndexed(phoneBody, '[data-type-section-body]', LOREM.lines);
+  for (const node of document.querySelectorAll('[data-type-section-body]')) node.textContent = LOREM.paragraph;
   document.querySelectorAll('[data-type-section-link]').forEach((node) => {
     node.textContent = preview.sectionLink;
   });
@@ -346,7 +345,13 @@ function syncFontPair(pair) {
   document.querySelector('[name="font-body-source"]').value = pair.body.source || '';
 }
 
-function addPairCard(pair, { checked = false, prepend = false } = {}) {
+/* Where each pair belongs when it is not the chosen one. The rail renders a
+   rotation of this list rather than the list itself, so hoisting the answer
+   to the top never loses the order the rest were dealt in. An uploaded pair
+   joins at the front: it is the one the user made. */
+const pairOrder = [];
+
+function addPairCard(pair, { checked = false, first = false } = {}) {
   const node = pairTemplate.content.firstElementChild.cloneNode(true);
   const input = node.querySelector('input');
   input.value = pair.id;
@@ -362,9 +367,16 @@ function addPairCard(pair, { checked = false, prepend = false } = {}) {
   node.querySelector('[data-pair-heading]').textContent = pair.heading.family;
   node.querySelector('[data-pair-body]').textContent = pair.body.family;
   node.querySelector('[data-pair-why]').textContent = pair.why;
-  if (prepend) fontOptions.prepend(node);
-  else fontOptions.append(node);
+  if (first) pairOrder.unshift(node);
+  else pairOrder.push(node);
+  fontOptions.append(node);
   return node;
+}
+
+function removePairCard(node) {
+  const index = pairOrder.indexOf(node);
+  if (index !== -1) pairOrder.splice(index, 1);
+  node.remove();
 }
 
 function renderFontPairs(manifest, fallback) {
@@ -373,12 +385,14 @@ function renderFontPairs(manifest, fallback) {
   manifest.pairs.forEach((pair, index) => addPairCard(pair, { checked: index === 0 }));
   loadFontStylesheet(manifest.pairs);
   syncFontPair(manifest.pairs[0]);
+  applyHoist();
 }
 
 fontOptions.onchange = ({ target }) => {
   if (!target.matches('input[name="font-pair"]')) return;
   const pair = fontManifest.pairs.find(({ id }) => id === target.value);
   if (pair) syncFontPair(pair);
+  requestHoist();
 };
 
 /* Scroll by whole rows so an option never ends up half in frame, and disable
@@ -407,6 +421,103 @@ function wireListScroll(list) {
 
 const syncScrollButtons = wireListScroll(fontOptions);
 wireListScroll(scaleOptions);
+
+/* The chosen pair takes the top of the rail, so the answer is the first thing
+   the list shows and the rest keep their dealt order underneath it.
+
+   The move is not made at the moment of choosing, and that is the whole
+   design. Reordering under a live cursor drags the row the user just clicked
+   out from under the pointer and parks a different pair where the next click
+   is already aimed. Reordering on a radio group's arrow keys is worse: every
+   press both moves focus and commits, so a list that re-sorts per press
+   re-sorts between presses and the group cannot be crossed at all.
+
+   So the rail reorders only while nobody is working it. A selection sets the
+   request; the pointer leaving, or focus leaving, spends it. Arriving on the
+   screen spends it too, which is the backstop if a settle is ever missed. */
+const typeRail = fontOptions.closest('.picker-type-rail');
+const RAIL_NAV_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', ' ']);
+let hoistPending = false;
+let pointerInRail = false;
+let keyboardInRail = false;
+let hoistFlash;
+
+/* :hover covers the one case the pointer events miss: the cursor already
+   resting where the rail appears, which fires no enter of its own. */
+const railBusy = () => pointerInRail
+  || typeRail.matches(':hover')
+  || (keyboardInRail && typeRail.contains(document.activeElement));
+
+/* Nothing is under the cursor when the rows move, so the move itself needs no
+   transition to be readable. What it needs is somewhere for the eye to land
+   after it: the row that just took the top comes up bright and settles to its
+   resting checked state. Color only, so the acknowledgement cannot disturb
+   the list it is pointing at. */
+function flashHoisted(node) {
+  clearTimeout(hoistFlash);
+  for (const other of pairOrder) other.removeAttribute('data-hoisted');
+  // Reading a layout property between the two writes is what restarts the
+  // animation on a row that is still marked from the previous hoist.
+  void node.offsetWidth;
+  node.dataset.hoisted = '';
+  hoistFlash = setTimeout(() => node.removeAttribute('data-hoisted'), 700);
+}
+
+function applyHoist({ force = false } = {}) {
+  hoistPending = false;
+  const chosen = fontOptions.querySelector('input[name="font-pair"]:checked')?.closest('.picker-type-option');
+  if (!chosen) return;
+  const wanted = [chosen, ...pairOrder.filter((node) => node !== chosen)];
+  const shown = [...fontOptions.querySelectorAll('.picker-type-option')];
+  const moved = wanted.some((node, index) => node !== shown[index]);
+  if (moved) {
+    // Rows move as real nodes so tab order, reading order, and what is on
+    // screen stay one order. Re-parenting can drop focus on the way, which
+    // would strand a keyboard user outside the group they were just in.
+    const focused = document.activeElement;
+    for (const node of wanted) fontOptions.append(node);
+    if (fontOptions.contains(focused) && document.activeElement !== focused) {
+      focused.focus({ preventScroll: true });
+    }
+  }
+  if (!moved && !force) return;
+  fontOptions.scrollTo({ top: 0 });
+  syncScrollButtons();
+  if (moved) flashHoisted(chosen);
+}
+
+function requestHoist() {
+  hoistPending = true;
+  if (!railBusy()) applyHoist();
+}
+
+function settleHoist() {
+  if (hoistPending && !railBusy()) applyHoist();
+}
+
+typeRail.addEventListener('pointerenter', () => {
+  pointerInRail = true;
+});
+
+// A frame of slack so :hover has resolved before the guard reads it.
+typeRail.addEventListener('pointerleave', () => {
+  pointerInRail = false;
+  requestAnimationFrame(settleHoist);
+});
+
+typeRail.addEventListener('pointerdown', () => {
+  keyboardInRail = false;
+});
+
+typeRail.addEventListener('keydown', ({ key }) => {
+  if (RAIL_NAV_KEYS.has(key)) keyboardInRail = true;
+});
+
+typeRail.addEventListener('focusout', ({ relatedTarget }) => {
+  if (typeRail.contains(relatedTarget)) return;
+  keyboardInRail = false;
+  settleHoist();
+});
 
 /* Type scale.
 
@@ -476,6 +587,8 @@ const fontModal = document.querySelector('[data-font-modal]');
 const customStatus = fontModal.querySelector('[data-custom-status]');
 const customFile = (role) => fontModal.querySelector(`[data-custom-file="${role}"]`);
 const customUrl = (role) => fontModal.querySelector(`[data-custom-url="${role}"]`);
+const customSave = fontModal.querySelector('[data-font-custom-save]');
+const customHint = fontModal.querySelector('[data-custom-hint]');
 const FONT_SOURCE_SEP = '\n';
 const FONT_FILE_EXTENSIONS = new Set(['.woff2', '.woff', '.ttf', '.otf']);
 const customFilesByRole = { heading: [], body: [] };
@@ -526,10 +639,36 @@ function renderCustomFileList(role) {
       customFilesByRole[role] = customFilesByRole[role].filter((entry) => !sameFontFile(entry, file));
       setChosenFontFiles(customFile(role), customFilesByRole[role]);
       renderCustomFileList(role);
+      syncCustomSave();
       customStatus.textContent = '';
     };
     item.append(name, remove);
     list.append(item);
+  }
+}
+
+/* Either kind of source satisfies a role: a URL or at least one file. */
+const roleHasSource = (role) => customFilesByRole[role].length > 0 || customUrl(role).value.trim() !== '';
+
+/* Both roles are required. A heading-only sheet used to commit and let the
+   body fall back to whichever pair happened to be selected, which is a
+   substitution the user never asked for and never saw.
+
+   The hint carries the reason. A commit that is dead with no explanation
+   leaves the user clicking an inert control to find out why, so the footer
+   names the role that is still open and the button is never the only
+   feedback. It reads as instruction rather than correction: nothing here is
+   wrong yet, the sheet is just unfinished. */
+function syncCustomSave() {
+  const missing = ['heading', 'body'].filter((role) => !roleHasSource(role));
+  customSave.disabled = missing.length > 0;
+  if (missing.length === 2) {
+    customHint.textContent = 'Heading and body each need a URL or a file.';
+  } else if (missing.length === 1) {
+    const role = missing[0] === 'heading' ? 'Heading' : 'Body';
+    customHint.textContent = `${role} still needs a URL or a file.`;
+  } else {
+    customHint.textContent = '';
   }
 }
 
@@ -545,8 +684,13 @@ document.querySelector('[data-font-custom-open]').onclick = () => {
     customFilesByRole[role] = [];
     customFile(role).value = '';
     setChosenFontFiles(customFile(role), []);
+    // The URL goes with the files. Clearing half the sheet leaves a field
+    // holding an address whose companion upload is already gone, and the
+    // commit would then read as available for work the user did last time.
+    customUrl(role).value = '';
     renderCustomFileList(role);
   }
+  syncCustomSave();
   fontModal.showModal();
 };
 
@@ -564,7 +708,9 @@ for (const role of ['heading', 'body']) {
     setChosenFontFiles(target, customFilesByRole[role]);
     target.value = '';
     renderCustomFileList(role);
+    syncCustomSave();
   };
+  customUrl(role).oninput = syncCustomSave;
 }
 
 async function uploadFontFile(file) {
@@ -591,7 +737,7 @@ async function resolveCustomFace(role) {
   return url ? { family: url.split('/').pop().replace(/\.[^.]+$/, '') || 'Custom', source: url } : null;
 }
 
-document.querySelector('[data-font-custom-save]').onclick = async () => {
+customSave.onclick = async () => {
   customStatus.textContent = 'Saving…';
   let heading;
   let body;
@@ -601,24 +747,30 @@ document.querySelector('[data-font-custom-save]').onclick = async () => {
     customStatus.textContent = error.message;
     return;
   }
-  if (!heading && !body) {
-    customStatus.textContent = 'Add a URL or a file for at least one role.';
+  // The button is already gated on both roles; this is the same rule stated
+  // where the pair is built, so no path can assemble a half pair.
+  if (!heading || !body) {
+    customStatus.textContent = 'Add a URL or a file for both the heading and the body.';
     return;
   }
-  const current = fontManifest.pairs.find(({ id }) => id === fontOptions.querySelector('input:checked')?.value);
   const pair = {
     id: 'custom',
     name: 'Custom',
-    heading: heading || current.heading,
-    body: body || current.body,
+    heading,
+    body,
     why: 'Your own faces',
   };
   fontManifest.pairs = [pair, ...fontManifest.pairs.filter(({ id }) => id !== 'custom')];
-  addPairCard(pair, { prepend: true });
+  // A second upload replaces the first rather than stacking a second row of
+  // the same id, which the rail would then have to order against itself.
+  for (const node of [...pairOrder]) {
+    if (node.querySelector('input').value === 'custom') removePairCard(node);
+  }
+  addPairCard(pair, { checked: true, first: true });
   loadCustomFace(pair);
-  fontOptions.querySelector('input[value="custom"]').checked = true;
   syncFontPair(pair);
-  fontOptions.scrollTo({ top: 0 });
+  // The dialog holds the pointer and focus, so the rail is free to reorder.
+  applyHoist({ force: true });
   fontModal.close();
 };
 
@@ -884,6 +1036,12 @@ document.addEventListener('picker:screenchange', (event) => {
   // picker's own theme, not a third artboard painted in the user's palette.
   const target = { '03': strategyPreview, '04': typePreview }[event.detail.screen];
   if (target) syncCommittedPalette(target);
+  // Arriving is the quietest moment there is, so the rail settles here even
+  // if it is already in order: the chosen pair is the row you land on.
+  if (event.detail.screen === '04') {
+    keyboardInRail = false;
+    applyHoist({ force: true });
+  }
   // A hidden sheet measures zero, so the fit can only be resolved on arrival.
   // The scroll waits a frame: the screen change focuses the first control after
   // this event, and that scrolls the list back to the top.
