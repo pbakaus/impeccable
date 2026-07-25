@@ -24,34 +24,40 @@ let current = 0;
 let openTint;
 let fontManifest;
 
+/* Headlines and labels come from the product so the display face is judged on
+   words it will really set. Running text stays lorem on purpose: a body face
+   is judged on texture, and real prose pulls the eye into reading it. */
+const LOREM = {
+  sentence: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore.',
+  lines: ['Ut enim ad minim veniam, quis nostrud exercitation', 'ullamco laboris nisi ut aliquip ex ea commodo.'],
+};
+
+/* The desktop artboard sets three cards and the phone two, so a fourth would
+   be words the agent writes and nobody ever reads. */
+const GALLERY_CARDS = 3;
+
 const FALLBACK_FONTS = {
   version: 1,
   specimen: {
-    headline: 'Shape a clear visual direction',
-    body: 'Choose a type system that gives the product a distinct and usable voice.',
+    headline: 'Built for the work at hand',
   },
   preview: {
-    brand: 'Im',
-    nav: ['Skills', 'Detect', 'Docs', 'About'],
+    brand: 'Ab',
+    nav: ['Product', 'Pricing', 'Docs', 'About'],
     navAction: 'Sign in',
     menuAction: 'Menu',
     ctaPrimary: 'Get started',
     ctaSecondary: 'Learn more',
-    proof: ['23 commands', 'Open source', 'Any harness', 'Free to install'],
-    sectionTitle: 'Design laws, not vibes',
-    sectionBody: [
-      'Shared vocabulary your agent can follow',
-      'when shaping interfaces.',
-    ],
-    sectionLink: 'Read the skill',
+    proof: ['Fast to set up', 'Works anywhere', 'No lock-in', 'Free to try'],
+    sectionTitle: 'Everything in one place',
+    sectionLink: 'Read the guide',
     gallery: [
-      { title: 'Audit', meta: 'Quality pass' },
-      { title: 'Polish', meta: 'Ship ready' },
-      { title: 'Bolder', meta: 'Turn it up' },
-      { title: 'Quieter', meta: 'Pull it back' },
+      { title: 'Overview', meta: 'Start here' },
+      { title: 'Library', meta: 'Browse all' },
+      { title: 'Reports', meta: 'See results' },
     ],
-    footerLinks: ['GitHub', 'Changelog', 'CLI', 'Extension'],
-    footerMark: '© Impeccable',
+    footerLinks: ['Product', 'Company', 'Support', 'Legal'],
+    footerMark: '© Your product',
   },
   pairs: [
     {
@@ -59,42 +65,42 @@ const FALLBACK_FONTS = {
       name: 'Source editorial',
       heading: { family: 'Source Serif 4', weight: 600 },
       body: { family: 'Source Sans 3', weight: 400 },
-      why: 'Source Serif 4 gives the questionnaire an editorial voice while Source Sans 3 keeps guidance easy to scan.',
+      why: 'Considered and editorial',
     },
     {
       id: 'literary-clarity',
       name: 'Literary clarity',
       heading: { family: 'Libre Baskerville', weight: 700 },
       body: { family: 'Libre Franklin', weight: 400 },
-      why: 'Libre Baskerville adds measured character while Libre Franklin supports the picker’s longer instructional copy.',
+      why: 'Bookish and plain-spoken',
     },
     {
       id: 'warm-structure',
       name: 'Warm structure',
       heading: { family: 'Bitter', weight: 600 },
       body: { family: 'Cabin', weight: 400 },
-      why: 'Bitter brings sturdy detail to key choices while Cabin remains open at the picker’s compact text sizes.',
+      why: 'Sturdy slab warmth',
     },
     {
       id: 'bold-utility',
       name: 'Bold utility',
       heading: { family: 'Archivo Black', weight: 400 },
       body: { family: 'Archivo', weight: 400 },
-      why: 'Archivo Black makes decisions unmistakable while Archivo keeps the surrounding interface practical.',
+      why: 'Headlines that shout',
     },
     {
       id: 'technical-signal',
       name: 'Technical signal',
       heading: { family: 'Azeret Mono', weight: 600 },
       body: { family: 'Noto Sans', weight: 400 },
-      why: 'Azeret Mono echoes the system-building task while Noto Sans carries the explanatory reading load.',
+      why: 'Machined and precise',
     },
     {
       id: 'classical-poise',
       name: 'Classical poise',
       heading: { family: 'Marcellus', weight: 400 },
       body: { family: 'Karla', weight: 400 },
-      why: 'Marcellus gives the visual direction a composed signature while Karla keeps controls direct.',
+      why: 'Inscriptional and formal',
     },
   ],
 };
@@ -183,34 +189,30 @@ function syncCommittedPalette(target) {
   target.style.setProperty('--pv-p-ink', contrastInk(committed.primary));
 }
 
+/* Every field is checked only when it is present. The manifest merges over
+   FALLBACK_FONTS, so a partial file is legal by design: the spec asks for the
+   full set on the shared block, and a per-pair override is allowed to carry
+   the one string it changes. Demanding the full shape anywhere it appears
+   would reject that override and drop the whole manifest, six chosen pairs
+   included, back to defaults. */
 function isPreviewCopy(value) {
-  return value
-    && typeof value.brand === 'string'
-    && Array.isArray(value.nav)
-    && value.nav.length === 4
-    && value.nav.every((entry) => typeof entry === 'string')
-    && typeof value.navAction === 'string'
-    && typeof value.menuAction === 'string'
-    && typeof value.ctaPrimary === 'string'
-    && typeof value.ctaSecondary === 'string'
-    && Array.isArray(value.proof)
-    && value.proof.length === 4
-    && value.proof.every((entry) => typeof entry === 'string')
-    && typeof value.sectionTitle === 'string'
-    && Array.isArray(value.sectionBody)
-    && value.sectionBody.length === 2
-    && value.sectionBody.every((entry) => typeof entry === 'string')
-    && typeof value.sectionLink === 'string'
-    && Array.isArray(value.gallery)
-    && value.gallery.length === 4
-    && value.gallery.every((entry) => (
-      typeof entry.title === 'string'
-      && typeof entry.meta === 'string'
+  if (!value || typeof value !== 'object') return false;
+  const strings = ['brand', 'navAction', 'menuAction', 'ctaPrimary', 'ctaSecondary', 'sectionTitle', 'sectionLink', 'footerMark'];
+  const lists = { nav: 4, proof: 4, footerLinks: 4 };
+  return strings.every((key) => value[key] === undefined || typeof value[key] === 'string')
+    && Object.entries(lists).every(([key, length]) => value[key] === undefined || (
+      Array.isArray(value[key])
+      && value[key].length === length
+      && value[key].every((entry) => typeof entry === 'string')
     ))
-    && Array.isArray(value.footerLinks)
-    && value.footerLinks.length === 4
-    && value.footerLinks.every((entry) => typeof entry === 'string')
-    && typeof value.footerMark === 'string';
+    && (value.gallery === undefined || (
+      Array.isArray(value.gallery)
+      && value.gallery.length === GALLERY_CARDS
+      && value.gallery.every((entry) => (
+        typeof entry?.title === 'string'
+        && typeof entry?.meta === 'string'
+      ))
+    ));
 }
 
 function normalizeFontManifest(manifest) {
@@ -223,7 +225,6 @@ function normalizeFontManifest(manifest) {
 function isFontManifest(value) {
   return value?.version === 1
     && typeof value.specimen?.headline === 'string'
-    && typeof value.specimen?.body === 'string'
     && (!value.preview || isPreviewCopy(value.preview))
     && value.pairs?.length === 6
     && value.pairs.every((pair) => (
@@ -296,7 +297,7 @@ function syncFontPair(pair) {
   for (const node of document.querySelectorAll('[data-type-nav-action]')) node.textContent = preview.navAction;
   for (const node of document.querySelectorAll('[data-type-menu-action]')) node.textContent = preview.menuAction;
   for (const node of document.querySelectorAll('[data-type-headline]')) node.textContent = specimen.headline;
-  for (const node of document.querySelectorAll('[data-type-body]')) node.textContent = specimen.body;
+  for (const node of document.querySelectorAll('[data-type-body]')) node.textContent = LOREM.sentence;
   document.querySelectorAll('[data-type-cta-primary]').forEach((node) => {
     node.textContent = preview.ctaPrimary;
   });
@@ -308,8 +309,8 @@ function syncFontPair(pair) {
   document.querySelectorAll('[data-type-section-title]').forEach((node) => {
     node.textContent = preview.sectionTitle;
   });
-  fillIndexed(desktop, '[data-type-section-body]', preview.sectionBody);
-  fillIndexed(phoneBody, '[data-type-section-body]', preview.sectionBody);
+  fillIndexed(desktop, '[data-type-section-body]', LOREM.lines);
+  fillIndexed(phoneBody, '[data-type-section-body]', LOREM.lines);
   document.querySelectorAll('[data-type-section-link]').forEach((node) => {
     node.textContent = preview.sectionLink;
   });
@@ -322,28 +323,32 @@ function syncFontPair(pair) {
   });
   document.querySelector('[name="font-heading"]').value = pair.heading.family;
   document.querySelector('[name="font-body"]').value = pair.body.family;
+  document.querySelector('[name="font-heading-source"]').value = pair.heading.source || '';
+  document.querySelector('[name="font-body-source"]').value = pair.body.source || '';
+}
+
+function addPairCard(pair, { checked = false, prepend = false } = {}) {
+  const node = pairTemplate.content.firstElementChild.cloneNode(true);
+  const input = node.querySelector('input');
+  input.value = pair.id;
+  input.checked = checked;
+  input.setAttribute('aria-label', `${pair.heading.family} with ${pair.body.family}`);
+  node.style.setProperty('--pair-heading', fontStack(pair.heading.family));
+  node.style.setProperty('--pair-body', fontStack(pair.body.family));
+  node.style.setProperty('--pair-heading-weight', pair.heading.weight);
+  node.style.setProperty('--pair-body-weight', pair.body.weight);
+  node.querySelector('[data-pair-heading]').textContent = pair.heading.family;
+  node.querySelector('[data-pair-body]').textContent = pair.body.family;
+  node.querySelector('[data-pair-why]').textContent = pair.why;
+  if (prepend) fontOptions.prepend(node);
+  else fontOptions.append(node);
+  return node;
 }
 
 function renderFontPairs(manifest, fallback) {
   fontManifest = normalizeFontManifest(manifest);
   fontOptions.toggleAttribute('data-fallback', fallback);
-  const fragment = document.createDocumentFragment();
-  manifest.pairs.forEach((pair, index) => {
-    const node = pairTemplate.content.firstElementChild.cloneNode(true);
-    const input = node.querySelector('input');
-    input.value = pair.id;
-    input.checked = index === 0;
-    input.setAttribute('aria-label', `${pair.heading.family} with ${pair.body.family}`);
-    node.style.setProperty('--pair-heading', fontStack(pair.heading.family));
-    node.style.setProperty('--pair-body', fontStack(pair.body.family));
-    node.style.setProperty('--pair-heading-weight', pair.heading.weight);
-    node.style.setProperty('--pair-body-weight', pair.body.weight);
-    node.querySelector('[data-pair-heading]').textContent = pair.heading.family;
-    node.querySelector('[data-pair-body]').textContent = pair.body.family;
-    node.querySelector('[data-pair-why]').textContent = pair.why;
-    fragment.append(node);
-  });
-  fontOptions.append(fragment);
+  manifest.pairs.forEach((pair, index) => addPairCard(pair, { checked: index === 0 }));
   loadFontStylesheet(manifest.pairs);
   syncFontPair(manifest.pairs[0]);
 }
@@ -353,6 +358,114 @@ fontOptions.onchange = ({ target }) => {
   const pair = fontManifest.pairs.find(({ id }) => id === target.value);
   if (pair) syncFontPair(pair);
 };
+
+// Scroll by whole cards so a row never ends up half in frame.
+const scrollButtons = [...document.querySelectorAll('[data-font-scroll]')];
+for (const button of scrollButtons) {
+  button.onclick = () => {
+    const step = fontOptions.querySelector('.picker-type-option')?.offsetHeight || 100;
+    fontOptions.scrollBy({ top: step * Number(button.dataset.fontScroll), behavior: 'smooth' });
+  };
+}
+
+function syncScrollButtons() {
+  const room = fontOptions.scrollHeight - fontOptions.clientHeight;
+  for (const button of scrollButtons) {
+    const down = button.dataset.fontScroll === '1';
+    const spent = down ? fontOptions.scrollTop >= room - 1 : fontOptions.scrollTop <= 1;
+    button.disabled = room < 2 || spent;
+  }
+}
+
+fontOptions.addEventListener('scroll', syncScrollButtons, { passive: true });
+new ResizeObserver(syncScrollButtons).observe(fontOptions);
+
+/* Custom fonts. A URL is carried through as-is; an uploaded face is handed to
+   the server, which stores the bytes and returns the path the answers record.
+   Neither is parsed here: the questionnaire validates at the end. */
+const fontModal = document.querySelector('[data-font-modal]');
+const customStatus = fontModal.querySelector('[data-custom-status]');
+const customFile = (role) => fontModal.querySelector(`[data-custom-file="${role}"]`);
+const customUrl = (role) => fontModal.querySelector(`[data-custom-url="${role}"]`);
+
+document.querySelector('[data-font-custom-open]').onclick = () => {
+  customStatus.textContent = '';
+  fontModal.showModal();
+};
+
+document.querySelector('[data-font-custom-close]').onclick = () => fontModal.close();
+
+for (const role of ['heading', 'body']) {
+  customFile(role).onchange = ({ target }) => {
+    const label = fontModal.querySelector(`[data-custom-file-name="${role}"]`);
+    label.textContent = target.files[0]?.name || 'No file chosen';
+  };
+}
+
+async function resolveCustomFace(role) {
+  const file = customFile(role).files[0];
+  if (file) {
+    const response = await fetch('/font-upload', {
+      method: 'POST',
+      headers: { 'X-Font-Filename': file.name, 'Content-Type': 'application/octet-stream' },
+      body: file,
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Upload failed');
+    return { family: file.name.replace(/\.[^.]+$/, ''), source: result.path };
+  }
+  const url = customUrl(role).value.trim();
+  return url ? { family: url.split('/').pop().replace(/\.[^.]+$/, '') || 'Custom', source: url } : null;
+}
+
+document.querySelector('[data-font-custom-save]').onclick = async () => {
+  customStatus.textContent = 'Saving…';
+  let heading;
+  let body;
+  try {
+    [heading, body] = await Promise.all([resolveCustomFace('heading'), resolveCustomFace('body')]);
+  } catch (error) {
+    customStatus.textContent = error.message;
+    return;
+  }
+  if (!heading && !body) {
+    customStatus.textContent = 'Add a URL or a file for at least one role.';
+    return;
+  }
+  const current = fontManifest.pairs.find(({ id }) => id === fontOptions.querySelector('input:checked')?.value);
+  const pair = {
+    id: 'custom',
+    name: 'Custom',
+    heading: heading || current.heading,
+    body: body || current.body,
+    why: 'Your own faces',
+  };
+  fontManifest.pairs = [pair, ...fontManifest.pairs.filter(({ id }) => id !== 'custom')];
+  addPairCard(pair, { prepend: true });
+  loadCustomFace(pair);
+  fontOptions.querySelector('input[value="custom"]').checked = true;
+  syncFontPair(pair);
+  fontOptions.scrollTo({ top: 0 });
+  fontModal.close();
+};
+
+// A hosted stylesheet is linked; an uploaded file is registered as a face so
+// the specimen and the artboards can render it immediately.
+function loadCustomFace({ heading, body }) {
+  for (const face of [heading, body]) {
+    if (!face?.source) continue;
+    if (/\.(css)(\?|$)/i.test(face.source) || !/\.(woff2?|ttf|otf)(\?|$)/i.test(face.source)) {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = face.source;
+      document.head.append(link);
+      continue;
+    }
+    const src = face.source.startsWith('http') ? face.source : `/fonts/${face.source.split('/').pop()}`;
+    document.fonts.add(new FontFace(face.family, `url(${src})`));
+    document.fonts.load(`16px "${face.family}"`);
+  }
+}
 
 function setActiveRole(role) {
   if (hint.textContent === hint.dataset[role]) return;

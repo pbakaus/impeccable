@@ -378,13 +378,15 @@ Compose six distinct territories, then resolve each into one heading and body pa
 - Apply [new-work.md](new-work.md)'s `rule:skill-typo-reflex-faces` as the canonical denylist and subject-world test. A family the user named in the interview or supplied assets is the only exception.
 - Follow [typeset.md](typeset.md)'s workhorse discipline. Give the heading a point of view; give the body a real text face that stays legible at 15px and provides regular and bold weights. A display face in the body slot fails the pair.
 - Verify every family exists on Google Fonts under the exact current name. Spelling is part of correctness; use `Source Sans 3`, never a retired family name.
-- Write one sentence in `why` that names the Q4 reference, Users fact, positioning line, commitment, or letterform observation the pair serves. Replace a sentence that could describe any brand.
+- Write `why` as three to five words naming the pair's voice, not a sentence about the brand. The picker sets it in tracked caps under the two family names, so anything longer wraps and stops scanning. `Considered and editorial`, not `Source Serif 4 gives the questionnaire an editorial voice while Source Sans 3 keeps guidance easy to scan`.
 - Order the pairs best-first. `pairs[0]` is the recommendation and reaches the picker pre-selected.
 
-Choose specimen strings and wireframe copy from the product's own world. Do not invent claims or use placeholder prose that could describe any brand.
+Choose the headline and every wireframe label from the product's own world. Do not invent claims or use placeholder prose that could describe any brand.
 
-- **Hero**: a headline of at most six words and one honest body sentence (`specimen.headline`, `specimen.body`).
-- **Wireframe**: every other label the type-preview artboard shows (`preview`): a short brand mark, four nav labels, nav and menu actions, two CTA labels, four proof chips, a section title, two section body lines, one section link, four gallery cards (`title` + `meta`), four footer links, and a footer mark. Pull each string from PRODUCT.md, the interview, or supplied assets. Keep labels short enough to fit the artboard.
+- **Hero**: a headline of at most six words (`specimen.headline`).
+- **Wireframe**: every other label the type-preview artboard shows (`preview`): a short brand mark, four nav labels, nav and menu actions, two CTA labels, four proof chips, a section title, one section link, three gallery cards (`title` + `meta`), four footer links, and a footer mark. Pull each string from PRODUCT.md, the interview, or supplied assets. Keep labels short enough to fit the artboard.
+
+**Running text is not yours to write.** The picker sets every paragraph in lorem, because a body face is judged on texture and real prose pulls the eye into reading it instead. Leave `specimen.body` and `preview.sectionBody` out of the file.
 
 Write `.impeccable/visual-cues/fonts.json` with this shape:
 
@@ -392,8 +394,7 @@ Write `.impeccable/visual-cues/fonts.json` with this shape:
 {
   "version": 1,
   "specimen": {
-    "headline": "Six words from the product's world",
-    "body": "One honest sentence in the product's voice for the body face."
+    "headline": "Six words from the product's world"
   },
   "preview": {
     "brand": "Ab",
@@ -404,13 +405,11 @@ Write `.impeccable/visual-cues/fonts.json` with this shape:
     "ctaSecondary": "Secondary action",
     "proof": ["Proof one", "Proof two", "Proof three", "Proof four"],
     "sectionTitle": "Section title",
-    "sectionBody": ["First body line.", "Second body line."],
     "sectionLink": "Section link",
     "gallery": [
       { "title": "Card one", "meta": "Detail one" },
       { "title": "Card two", "meta": "Detail two" },
-      { "title": "Card three", "meta": "Detail three" },
-      { "title": "Card four", "meta": "Detail four" }
+      { "title": "Card three", "meta": "Detail three" }
     ],
     "footerLinks": ["Link one", "Link two", "Link three", "Link four"],
     "footerMark": "© Brand"
@@ -431,7 +430,7 @@ Write exactly six pair entries. Each role carries the single weight it needs; th
 
 If Q2 is missing because the interview was skipped, say in one line that the typography set is direction-neutral, then compose all six from the four allowed PRODUCT.md sections alone. Still write the file.
 
-Parse the finished file as JSON and verify its version, specimen, preview (every field above), six unique ids, six unique heading families, role names, weights, and one-sentence `why` fields before continuing.
+Parse the finished file as JSON and verify its version, specimen, preview (every field above), six unique ids, six unique heading families, role names, weights, and short `why` fields before continuing.
 
 Done when: `fonts.json` is parseable, contains exactly six ranked pairs, every family name has been checked against Google Fonts, and the preview copy reads as this product, not generic SaaS filler.
 

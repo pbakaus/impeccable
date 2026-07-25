@@ -14,7 +14,9 @@ import { SEEDS } from './palette.mjs';
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const pickerDir = path.join(scriptDir, 'picker');
 const answersPath = path.resolve(process.cwd(), '.impeccable/design-interview/answers.json');
+const fontsDir = path.resolve(process.cwd(), '.impeccable/design-interview/fonts');
 const MAX_BODY_BYTES = 1024 * 1024;
+const FONT_EXTENSIONS = new Set(['.woff2', '.woff', '.ttf', '.otf']);
 const MIME = new Map([
   ['.html', 'text/html; charset=utf-8'],
   ['.css', 'text/css; charset=utf-8'],
@@ -23,6 +25,10 @@ const MIME = new Map([
   ['.png', 'image/png'],
   ['.svg', 'image/svg+xml'],
   ['.json', 'application/json; charset=utf-8'],
+  ['.woff2', 'font/woff2'],
+  ['.woff', 'font/woff'],
+  ['.ttf', 'font/ttf'],
+  ['.otf', 'font/otf'],
 ]);
 function printHelp() {
   console.log(`Usage: node picker-server.mjs [options]
@@ -205,6 +211,28 @@ async function handleRequest(request, response) {
     return;
   }
 
+  // Uploaded faces are stored, not parsed: the questionnaire defers validation
+  // to the end, so the server only needs to put the bytes where the agent can
+  // reach them and hand back the path the answers will carry.
+  if (request.method === 'POST' && requestPath === '/font-upload') {
+    const name = path.basename(request.headers['x-font-filename'] || '');
+    if (!name || !FONT_EXTENSIONS.has(path.extname(name).toLowerCase())) {
+      sendJson(response, 400, { error: 'Expected a .woff2, .woff, .ttf, or .otf filename' });
+      return;
+    }
+    const chunks = [];
+    let size = 0;
+    for await (const chunk of request) {
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) throw httpError(413, 'Font exceeds 1 MB');
+      chunks.push(chunk);
+    }
+    await mkdir(fontsDir, { recursive: true });
+    await writeFile(path.join(fontsDir, name), Buffer.concat(chunks));
+    sendJson(response, 200, { path: path.join('.impeccable/design-interview/fonts', name) });
+    return;
+  }
+
   if (request.method !== 'GET') {
     sendJson(response, 405, { error: 'Method not allowed' });
     return;
@@ -230,6 +258,16 @@ async function handleRequest(request, response) {
       return;
     }
     await serveFile(response, options.cuesDir, cueName, ['.png']);
+    return;
+  }
+  // Uploaded faces are read back so the specimen can render in them.
+  if (requestPath.startsWith('/fonts/')) {
+    const fontName = requestPath.slice('/fonts/'.length);
+    if (!fontName || fontName.includes('/')) {
+      sendJson(response, 404, { error: 'Not found' });
+      return;
+    }
+    await serveFile(response, fontsDir, fontName, [...FONT_EXTENSIONS]);
     return;
   }
 

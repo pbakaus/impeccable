@@ -24,14 +24,19 @@
 
 	/* Kinpaku gold. The rich, warm, vibrant primary. */
 	--ks-kinpaku:        oklch(84% 0.19 80.46);  /* primary accent, wordmark, icon */
-	--ks-kinpaku-pale:   oklch(86% 0.07 84);     /* hover lift, pale fills */
+	--ks-kinpaku-vivid:  oklch(87% 0.20 85);     /* hover on gold fills: lit, not washed */
+	--ks-kinpaku-pale:   oklch(86% 0.07 84);     /* pale fills, tints on dark */
 	--ks-kinpaku-rich:   oklch(77% 0.13 82);     /* active CTA, severity-medium */
 	--ks-kinpaku-deep:   oklch(61% 0.085 78);    /* borders against the brand */
+	--ks-dark-ink:       oklch(14% 0.018 95);    /* foreground on gold; never theme-remapped */
 
 	/* Verdigris patina. The secondary accent — state, signal, selection. */
 	--ks-patina:         oklch(70% 0.12 188);    /* secondary accent */
 	--ks-patina-pale:    oklch(82% 0.07 188);    /* hover lift on patina */
 	--ks-patina-deep:    oklch(49% 0.08 188);    /* deep oxide, dark variants */
+
+	/* Semantic foregrounds for state, selection, and interactive labels. */
+	--ks-state-ink:      oklch(70% 0.12 188);
 
 	/* Warning — vermilion. Used sparingly, only for failures and warnings. */
 	--ks-vermilion:      oklch(58% 0.15 35);
@@ -160,6 +165,7 @@ html.light {
 	   For decorative small text on paper, use patina. Use --ks-link-on-paper
 	   for body-sized links that need stronger contrast. */
 	--ks-kinpaku:        oklch(84% 0.19 80.46);
+	--ks-kinpaku-vivid:  oklch(87% 0.20 85);
 	--ks-kinpaku-pale:   oklch(86% 0.07 84);
 	--ks-kinpaku-rich:   oklch(77% 0.13 82);
 	--ks-kinpaku-deep:   oklch(61% 0.085 78);
@@ -175,6 +181,8 @@ html.light {
 	--ks-patina:         oklch(70% 0.12 188);
 	--ks-patina-pale:    oklch(82% 0.07 188);
 	--ks-patina-deep:    oklch(49% 0.08 188);
+
+	--ks-state-ink:      var(--ks-patina-deep);
 
 	--ks-vermilion:      oklch(52% 0.16 35);
 

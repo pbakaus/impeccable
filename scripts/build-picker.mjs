@@ -10,10 +10,15 @@ const buildDir = path.join(root, 'build-picker');
 const outputDir = path.join(root, 'skill/scripts/picker');
 // Static assets vendored under picker/assets/ (the site now lives in the
 // private impeccable-site repo, so the picker carries its own copies).
-const faviconSource = path.join(root, 'picker/assets/favicon.svg');
+// Static assets vendored under picker/assets/ (the site now lives in the
+// private impeccable-site repo, so the picker carries its own copies). These
+// are referenced from markup at runtime, so Vite never sees them.
+const assetsSource = path.join(root, 'picker/assets');
+const assetsOutput = path.join(outputDir, 'assets');
+const runtimeAssets = ['hero-dark.jpg', 'kinpaku-gold-leaf.jpg'];
+// The page links ./favicon.svg, so it is also served from the output root.
+const faviconSource = path.join(assetsSource, 'favicon.svg');
 const faviconOutput = path.join(outputDir, 'favicon.svg');
-const heroSource = path.join(root, 'picker/assets/hero-dark.jpg');
-const heroOutput = path.join(outputDir, 'assets/hero-dark.jpg');
 
 await rm(buildDir, { recursive: true, force: true });
 execFileSync(
@@ -24,9 +29,11 @@ execFileSync(
 
 await rm(outputDir, { recursive: true, force: true });
 await cp(buildDir, outputDir, { recursive: true });
-await mkdir(path.dirname(heroOutput), { recursive: true });
+await mkdir(assetsOutput, { recursive: true });
 await copyFile(faviconSource, faviconOutput);
-await copyFile(heroSource, heroOutput);
+for (const asset of runtimeAssets) {
+  await copyFile(path.join(assetsSource, asset), path.join(assetsOutput, asset));
+}
 await rm(buildDir, { recursive: true, force: true });
 
 console.log(`Built ${path.relative(root, outputDir)}/`);
