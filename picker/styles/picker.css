@@ -1382,6 +1382,9 @@ body.picker-page {
   --pv-p-on-n: var(--pv-primary);
   --pv-t-on-n: var(--pv-tertiary);
   --pv-t-on-p: var(--pv-tertiary);
+  --pv-p-on-p: var(--pk-ink-dark);
+  --pv-t-on-t: var(--pk-ink-light);
+  --pv-p-on-i: var(--pk-ink-light);
   --pv-surface-2: color-mix(in oklab, var(--pv-neutral) 92%, var(--pv-n-ink));
   --pv-bone: color-mix(in oklab, var(--pv-neutral) 62%, var(--pv-n-ink));
   --pv-muted: color-mix(in oklab, var(--pv-neutral) 84%, var(--pv-n-ink));
@@ -1395,6 +1398,7 @@ body.picker-page {
   --pvs-title: var(--pv-strong);
   --pvs-cta: var(--pv-primary);
   --pvs-cta-ink: var(--pv-p-ink);
+  --pvs-cta-text: var(--pv-p-on-p);
   --pvs-signal: var(--pv-primary);
   --pvs-signal-ink: var(--pv-p-ink);
   /* Three slots the wireframe never reads: where screen 04 turns a bar into
@@ -1403,7 +1407,8 @@ body.picker-page {
      by whichever strategy leaves the least room between ground and ink. */
   --pvs-headline-text: var(--pvs-headline);
   --pvs-mark-text: var(--pv-p-on-n);
-  --pvs-signal-text: var(--pv-p-on-n);
+  --pvs-accent-text: var(--pv-p-on-n);
+  --pvs-signal-text: var(--pv-p-on-p);
   --pvs-copy-mix: 34%;
   --pvs-bars-mix: 42%;
   --pvs-ghost: color-mix(in oklab, var(--pv-neutral) 88%, var(--pv-secondary));
@@ -1462,6 +1467,7 @@ body.picker-page {
 :where(#picker-form:has(input[name="color-strategy"][value="full-palette"]:checked)) .picker-preview-type {
   --pvs-headline: color-mix(in oklab, var(--pv-primary) 80%, var(--pv-strong));
   --pvs-headline-text: var(--pv-p-on-n);
+  --pvs-accent-text: var(--pv-t-on-n);
   --pvs-eyebrow: var(--pv-tertiary);
   --pvs-ghost: color-mix(in oklab, var(--pv-secondary) 18%, var(--pv-neutral));
   --pvs-ghost-edge: var(--pv-secondary);
@@ -1471,7 +1477,7 @@ body.picker-page {
   --pvs-image-edge: var(--pv-primary);
   --pvs-signal: var(--pv-tertiary);
   --pvs-signal-ink: var(--pv-t-ink);
-  --pvs-signal-text: var(--pv-t-on-n);
+  --pvs-signal-text: var(--pv-t-on-t);
   --pvs-accent-a: var(--pv-secondary);
   --pvs-accent-b: color-mix(in oklab, var(--pv-secondary) 42%, var(--pv-neutral));
   --pvs-accent-c: var(--pv-primary);
@@ -1493,7 +1499,9 @@ body.picker-page {
   --pvs-title: var(--pv-p-ink);
   --pvs-cta: var(--pv-p-ink);
   --pvs-cta-ink: var(--pv-primary);
+  --pvs-cta-text: var(--pv-p-on-i);
   --pvs-mark-text: var(--pv-p-ink);
+  --pvs-accent-text: var(--pv-t-on-p);
   /* A saturated primary sits far from both ends of the range, so copy mixed
      toward it at the paper percentages stops being readable. The drenched
      page holds its running text closer to the ink. */
@@ -1507,7 +1515,7 @@ body.picker-page {
   --pvs-image-edge: color-mix(in oklab, var(--pv-p-ink) 40%, var(--pv-primary));
   --pvs-signal: var(--pv-tertiary);
   --pvs-signal-ink: var(--pv-t-ink);
-  --pvs-signal-text: var(--pv-t-on-p);
+  --pvs-signal-text: var(--pv-t-on-t);
   --pvs-bars: color-mix(in oklab, var(--pv-p-ink) 45%, var(--pv-primary));
   --pvs-rule: color-mix(in oklab, var(--pv-p-ink) 28%, var(--pv-primary));
   --pvs-accent-a: var(--pv-secondary);
@@ -2662,11 +2670,16 @@ body.picker-page {
   font-size: 0.82rem;
 }
 
+/* Cancel then commit, both hard against the right padding edge. The dialog is a
+   fixed 520px behind a 1200px width gate and the pair needs 247px of it, so
+   wrapping can only ever fire on a stray long label; nowrap keeps the two
+   together and lets them shrink rather than stranding the commit button on a
+   line of its own under Cancel. */
 .picker-modal-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
   gap: 18px;
 }
 
@@ -2684,35 +2697,63 @@ body.picker-page {
 }
 
 /* Each face names itself in its own glyphs: the display family large, the
-   text family under it at reading size. The row is a specimen, not a label,
-   so the descriptor stays to a few words in tracked caps. */
+   text family under it at reading size. An uploaded pair can be named after
+   its file, so both lines are allowed to break inside a word rather than
+   push the marker out of the row. */
 .picker-type-sample-heading {
+  min-width: 0;
   color: var(--ks-champagne);
   font-family: var(--pair-heading, var(--ks-font-display));
   font-size: 26px;
   font-weight: var(--pair-heading-weight, 400);
   line-height: 1.15;
   letter-spacing: -0.015em;
+  overflow-wrap: anywhere;
   transition: color 180ms var(--ks-ease);
 }
 
 .picker-type-sample-body {
+  min-width: 0;
   color: var(--ks-text);
   font-family: var(--pair-body, var(--ks-font));
   font-size: 15px;
   font-weight: var(--pair-body-weight, 400);
   line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
+/* The role trails the family it names, on the same baseline and in the UI
+   font, the way a foundry annotates a specimen. Leading it would put the
+   chrome where the face belongs: the reader is judging glyphs first and only
+   then asking which slot they fill. */
+.picker-type-role {
+  margin-left: 9px;
+  color: var(--ks-text-faint);
+  font-family: var(--ks-font);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  transition: color 180ms var(--ks-ease);
+}
+
+/* The markers take the row's accent so they belong to the selected state,
+   mixed back toward faint ink so they never rise to the specimen's level. */
+.picker-strategy-option:hover .picker-type-role,
+.picker-strategy-option:has(input:checked) .picker-type-role {
+  color: color-mix(in oklab, var(--ks-patina) 45%, var(--ks-text-faint));
+}
+
+/* The descriptor is a phrase about the pairing, so it is set as one. Tracked
+   caps read as a category label and made a short sentence look shouted. */
 .picker-type-desc {
-  margin-top: 6px;
+  margin-top: 7px;
   color: var(--ks-text-muted);
   font-family: var(--ks-font);
-  font-size: 0.66rem;
+  font-size: 13px;
   font-weight: 400;
-  line-height: 1.4;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  line-height: 1.45;
 }
 
 /* One golden-ratio ladder rules every piece of text on the artboards:
@@ -3071,7 +3112,7 @@ body.picker-page {
   display: block;
   padding: 0.7em 1.3em;
   border: 1px solid transparent;
-  color: var(--pvs-cta-ink);
+  color: var(--pvs-cta-text);
   font-family: var(--pt-body);
   font-size: var(--pt-micro);
   font-weight: 600;
@@ -3081,9 +3122,9 @@ body.picker-page {
 }
 
 /* The nav button is the one fill a strategy can hand to the tertiary, so its
-   label reads that fill's ink and not the hero button's. */
+   label reads that fill's reading ink and not the hero button's. */
 .picker-preview-type .ps-nav-action {
-  color: var(--pvs-signal-ink);
+  color: var(--pvs-signal-text);
 }
 
 .picker-preview-type .ps-actions {
@@ -3184,7 +3225,7 @@ body.picker-page {
   height: auto;
   margin-top: var(--ps-gap-xs);
   background: none;
-  color: var(--pvs-signal-text);
+  color: var(--pvs-accent-text);
 }
 
 .picker-preview-type .ps-gallery-item span {

@@ -1,4 +1,4 @@
-import { contrastInk, formatOklch, hexToOklch, oklchToHex, readableOn, seedToRoles } from './color.js';
+import { contrastInk, contrastInkHex, formatOklch, hexToOklch, oklchToHex, readableOn, seedToRoles } from './color.js';
 
 const ROLES = ['primary', 'secondary', 'tertiary', 'neutral'];
 const screen = document.querySelector('[data-screen="02"]');
@@ -198,6 +198,11 @@ function syncCommittedPalette(target) {
   target.style.setProperty('--pv-p-on-n', readableOn(committed.primary, committed.neutral));
   target.style.setProperty('--pv-t-on-n', readableOn(committed.tertiary, committed.neutral));
   target.style.setProperty('--pv-t-on-p', readableOn(committed.tertiary, committed.primary));
+  // Labels on filled buttons: hue is the role that paints the fill, ground is
+  // that same fill — not the page neutral that produced the 1.63:1 regression.
+  target.style.setProperty('--pv-p-on-p', readableOn(committed.primary, committed.primary));
+  target.style.setProperty('--pv-t-on-t', readableOn(committed.tertiary, committed.tertiary));
+  target.style.setProperty('--pv-p-on-i', readableOn(committed.primary, contrastInkHex(committed.primary)));
 }
 
 /* Every field is checked only when it is present. The manifest merges over
@@ -346,7 +351,10 @@ function addPairCard(pair, { checked = false, prepend = false } = {}) {
   const input = node.querySelector('input');
   input.value = pair.id;
   input.checked = checked;
-  input.setAttribute('aria-label', `${pair.heading.family} with ${pair.body.family}`);
+  input.setAttribute(
+    'aria-label',
+    `${pair.heading.family} for headings with ${pair.body.family} for body text. ${pair.why}`,
+  );
   node.style.setProperty('--pair-heading', fontStack(pair.heading.family));
   node.style.setProperty('--pair-body', fontStack(pair.body.family));
   node.style.setProperty('--pair-heading-weight', pair.heading.weight);
