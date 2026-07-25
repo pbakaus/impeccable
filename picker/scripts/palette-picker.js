@@ -17,6 +17,8 @@ const strategyPreview = document.querySelector('[data-strategy-preview]');
 const typePreview = document.querySelector('[data-type-preview]');
 const fontOptions = document.querySelector('[data-font-options]');
 const pairTemplate = document.querySelector('[data-pair-card]');
+const scaleOptions = document.querySelector('[data-scale-options]');
+const scaleSheet = document.querySelector('[data-scale-sheet]');
 const states = new Map();
 const canvases = new WeakMap();
 let cards = [];
@@ -289,9 +291,12 @@ function syncFontPair(pair) {
   const desktop = typePreview.querySelector('.ps-desktop');
   const phoneBody = typePreview.querySelector('.ps-phone-body');
   const phoneFooter = typePreview.querySelector('.ps-phone-footer');
-  typePreview.style.setProperty('--pt-heading', fontStack(pair.heading.family));
-  typePreview.style.setProperty('--pt-body', fontStack(pair.body.family));
-  typePreview.style.setProperty('--pt-heading-weight', pair.heading.weight);
+  // The scale sheet is set in the pair chosen here, so it travels with it.
+  for (const target of [typePreview, scaleSheet]) {
+    target.style.setProperty('--pt-heading', fontStack(pair.heading.family));
+    target.style.setProperty('--pt-body', fontStack(pair.body.family));
+    target.style.setProperty('--pt-heading-weight', pair.heading.weight);
+  }
   for (const node of document.querySelectorAll('[data-type-brand]')) node.textContent = preview.brand;
   fillIndexed(desktop, '[data-type-nav]', preview.nav);
   for (const node of document.querySelectorAll('[data-type-nav-action]')) node.textContent = preview.navAction;
@@ -359,26 +364,93 @@ fontOptions.onchange = ({ target }) => {
   if (pair) syncFontPair(pair);
 };
 
-// Scroll by whole cards so a row never ends up half in frame.
-const scrollButtons = [...document.querySelectorAll('[data-font-scroll]')];
-for (const button of scrollButtons) {
-  button.onclick = () => {
-    const step = fontOptions.querySelector('.picker-type-option')?.offsetHeight || 100;
-    fontOptions.scrollBy({ top: step * Number(button.dataset.fontScroll), behavior: 'smooth' });
+/* Scroll by whole rows so an option never ends up half in frame, and disable
+   an arrow at the end it points to, since a live arrow that does nothing is
+   the reason the list looked unscrollable in the first place. */
+function wireListScroll(list) {
+  const buttons = [...list.closest('.picker-type-rail').querySelectorAll('[data-list-scroll]')];
+  const sync = () => {
+    const room = list.scrollHeight - list.clientHeight;
+    for (const button of buttons) {
+      const down = button.dataset.listScroll === '1';
+      const spent = down ? list.scrollTop >= room - 1 : list.scrollTop <= 1;
+      button.disabled = room < 2 || spent;
+    }
   };
-}
-
-function syncScrollButtons() {
-  const room = fontOptions.scrollHeight - fontOptions.clientHeight;
-  for (const button of scrollButtons) {
-    const down = button.dataset.fontScroll === '1';
-    const spent = down ? fontOptions.scrollTop >= room - 1 : fontOptions.scrollTop <= 1;
-    button.disabled = room < 2 || spent;
+  for (const button of buttons) {
+    button.onclick = () => {
+      const step = list.querySelector('.picker-strategy-option')?.offsetHeight || 100;
+      list.scrollBy({ top: step * Number(button.dataset.listScroll), behavior: 'smooth' });
+    };
   }
+  list.addEventListener('scroll', sync, { passive: true });
+  new ResizeObserver(sync).observe(list);
+  return sync;
 }
 
-fontOptions.addEventListener('scroll', syncScrollButtons, { passive: true });
-new ResizeObserver(syncScrollButtons).observe(fontOptions);
+const syncScrollButtons = wireListScroll(fontOptions);
+wireListScroll(scaleOptions);
+
+/* Type scale.
+
+   The numbers are the real ones: step n is 16px * ratio^n, and a Golden Ratio
+   H1 really is 287px. The specimen cannot be, because 287px of "This is the
+   Golden Ratio scale" is eight times the width of the sheet, and a sheet fitted
+   to that H1 would set its paragraph at 2px.
+
+   So the rendering compresses the exponent by half, which keeps every scale in
+   its own character (a Minor Second sheet still reads as nearly flat, a Golden
+   Ratio one as dramatic) while bringing the range from 18x down to about 4x.
+   The measured fit below then scales the whole sheet if even that overflows.
+   The quoted px and rem stay untouched, which is the point of showing them. */
+const SCALE_BASE = 16;
+const SCALE_BODY_PX = 13;
+const SCALE_COMPRESSION = 0.5;
+const scaleRows = [...scaleSheet.querySelectorAll('[data-scale-row]')];
+const scaleRatioInput = document.querySelector('[name="type-scale-ratio"]');
+
+const trimZeros = (value) => value.replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1');
+
+/* One pass is exact: every size is linear in the fit factor, and the row boxes
+   the text has to fit inside do not move when it changes. */
+function fitScaleSheet() {
+  scaleSheet.style.setProperty('--ts-fit', '1');
+  if (!scaleSheet.clientHeight) return;
+  let over = 1;
+  for (const row of scaleRows) {
+    const sample = row.querySelector('[data-scale-sample]');
+    over = Math.max(
+      over,
+      sample.scrollWidth / Math.max(sample.clientWidth, 1),
+      sample.scrollHeight / Math.max(row.clientHeight, 1),
+    );
+  }
+  if (over > 1.001) scaleSheet.style.setProperty('--ts-fit', (1 / over).toFixed(4));
+}
+
+function syncTypeScale(input) {
+  const ratio = Number(input.dataset.ratio);
+  const name = input.dataset.scaleName;
+  for (const row of scaleRows) {
+    const step = Number(row.dataset.scaleRow);
+    const px = SCALE_BASE * ratio ** step;
+    row.style.setProperty('--ts-size', (SCALE_BODY_PX * ratio ** (step * SCALE_COMPRESSION)).toFixed(3));
+    row.querySelector('[data-scale-sample]').textContent = `This is the ${name} scale`;
+    row.querySelector('[data-scale-px]').textContent = `${Math.round(px)}px`;
+    row.querySelector('[data-scale-rem]').textContent = `${trimZeros((px / SCALE_BASE).toFixed(2))}rem`;
+  }
+  scaleRatioInput.value = ratio.toFixed(3);
+  fitScaleSheet();
+}
+
+scaleOptions.onchange = ({ target }) => {
+  if (target.matches('input[name="type-scale"]')) syncTypeScale(target);
+};
+
+new ResizeObserver(fitScaleSheet).observe(scaleSheet);
+// Every face swap changes the width of the same string, fit included.
+document.fonts?.addEventListener('loadingdone', fitScaleSheet);
+syncTypeScale(scaleOptions.querySelector('input:checked'));
 
 /* Custom fonts. A URL is carried through as-is; an uploaded face is handed to
    the server, which stores the bytes and returns the path the answers record.
@@ -791,8 +863,17 @@ scroller.addEventListener('scroll', () => {
 }, { passive: true });
 document.addEventListener('picker:screenchange', (event) => {
   activate(event.detail.screen === '02');
-  const target = { '03': strategyPreview, '04': typePreview }[event.detail.screen];
+  const target = { '03': strategyPreview, '04': typePreview, '05': scaleSheet }[event.detail.screen];
   if (target) syncCommittedPalette(target);
+  // A hidden sheet measures zero, so the fit can only be resolved on arrival.
+  // The scroll waits a frame: the screen change focuses the first control after
+  // this event, and that scrolls the list back to the top.
+  if (event.detail.screen === '05') {
+    fitScaleSheet();
+    requestAnimationFrame(() => {
+      scaleOptions.querySelector('input:checked')?.parentElement.scrollIntoView({ block: 'center' });
+    });
+  }
 });
 
 try {

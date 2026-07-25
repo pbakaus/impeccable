@@ -7,6 +7,23 @@ const roles = [
   ['tertiary', 'Tertiary'],
   ['neutral', 'Neutral'],
 ];
+
+// Musical intervals, smallest step first. The ratio is the multiplier between
+// one size and the next; the description says what that much contrast is for,
+// since the number alone tells nobody which to pick.
+const scales = [
+  ['minor-second', 1.067, 'Minor Second', 'Almost no contrast. For dense tools where weight and color carry hierarchy instead of size.'],
+  ['major-second', 1.125, 'Major Second', 'A quiet step. Long documents and data screens that need many levels close together.'],
+  ['minor-third', 1.2, 'Minor Third', 'The workhorse. Clear order without shouting, and it survives on small screens.'],
+  ['major-third', 1.25, 'Major Third', 'Confident separation. A safe default when the page has both marketing and interface on it.'],
+  ['perfect-fourth', 1.333, 'Perfect Fourth', 'Real jumps between levels. Landing pages where the headline has to lead.'],
+  ['augmented-fourth', 1.414, 'Augmented Fourth', 'Sharp contrast. Editorial layouts built from few sizes used decisively.'],
+  ['perfect-fifth', 1.5, 'Perfect Fifth', 'Display type against small text, with little in between. Poster thinking.'],
+  ['golden-ratio', 1.618, 'Golden Ratio', 'The widest range here. Beautiful with one big statement, awkward with six levels.'],
+];
+
+// Exponent above the 16px base: P sits at the base, H1 six steps up.
+const scaleRows = [['H1', 6], ['H2', 5], ['H3', 4], ['H4', 3], ['H5', 2], ['H6', 1], ['P', 0]];
 ---
 
 <Picker>
@@ -348,10 +365,10 @@ const roles = [
 
                 <div class="picker-type-controls">
                   <div class="picker-type-scroll">
-                    <button class="picker-icon-button" type="button" data-font-scroll="-1" aria-label="Scroll font pairs up">
+                    <button class="picker-icon-button" type="button" data-list-scroll="-1" aria-label="Scroll font pairs up">
                       <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m4.5 12.5 5.5-5 5.5 5"></path></svg>
                     </button>
-                    <button class="picker-icon-button" type="button" data-font-scroll="1" aria-label="Scroll font pairs down">
+                    <button class="picker-icon-button" type="button" data-list-scroll="1" aria-label="Scroll font pairs down">
                       <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m4.5 7.5 5.5 5 5.5-5"></path></svg>
                     </button>
                   </div>
@@ -465,7 +482,90 @@ const roles = [
         </div>
       </section>
 
-      <section class="picker-screen" data-screen="05" data-step="Review" aria-hidden="true" aria-labelledby="picker-finish-copy">
+      <section class="picker-screen" data-screen="05" data-step="Type scale" aria-hidden="true" aria-labelledby="picker-scale-title">
+        <div class="picker-container">
+          <div class="picker-scale">
+            <div class="picker-question-head">
+              <h2 id="picker-scale-title" class="picker-question-title">Choose a type scale</h2>
+              <p class="picker-question-lede">
+                A type scale is the short list of sizes every heading and paragraph is allowed to use, each one a
+                fixed ratio above the last. Setting it here means every screen inherits the same steps, so hierarchy
+                is decided once instead of re-guessed in each component.
+              </p>
+            </div>
+
+            <div class="picker-scale-grid">
+              <div class="picker-type-rail">
+                <fieldset class="picker-strategy-options picker-type-options picker-scale-options" data-scale-options>
+                  <legend>Type scale</legend>
+
+                  {scales.map(([slug, ratio, name, description]) => (
+                    <label class="picker-strategy-option">
+                      <input
+                        type="radio"
+                        name="type-scale"
+                        value={slug}
+                        data-ratio={ratio}
+                        data-scale-name={name}
+                        checked={slug === 'minor-third'}
+                      />
+                      <span class="picker-strategy-copy">
+                        <span class="picker-strategy-title">
+                          <b class="picker-scale-ratio">{ratio.toFixed(3)}</b>
+                          {name}
+                        </span>
+                        <span class="picker-strategy-desc">{description}</span>
+                      </span>
+                    </label>
+                  ))}
+                </fieldset>
+
+                <div class="picker-type-controls">
+                  <div class="picker-type-scroll">
+                    <button class="picker-icon-button" type="button" data-list-scroll="-1" aria-label="Scroll type scales up">
+                      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m4.5 12.5 5.5-5 5.5 5"></path></svg>
+                    </button>
+                    <button class="picker-icon-button" type="button" data-list-scroll="1" aria-label="Scroll type scales down">
+                      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m4.5 7.5 5.5 5 5.5-5"></path></svg>
+                    </button>
+                  </div>
+
+                  <p class="picker-scale-note">Values at a 16px base, specimen scaled to fit</p>
+                </div>
+              </div>
+
+              <div class="picker-scale-sheet" data-scale-sheet aria-hidden="true">
+                {scaleRows.map(([tag, step]) => (
+                  <div class="ts-row" data-scale-row={step}>
+                    <p class="ts-sample" data-scale-sample></p>
+                    <span class="ts-tag">{tag}</span>
+                    <span class="ts-values">
+                      <b data-scale-px></b>
+                      <i data-scale-rem></i>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <input type="hidden" name="type-scale-ratio" />
+
+            <div class="picker-actions-stack">
+              <button class="ks-button ks-button-primary" type="button" data-advance="next">
+                Select this scale
+                <span class="ks-button-arrow" aria-hidden="true">
+                  <svg viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square">
+                    <path d="M0 4h14M10 0l4 4-4 4"></path>
+                  </svg>
+                </span>
+              </button>
+              <button class="picker-back" type="button" data-advance="prev">Back</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="picker-screen" data-screen="06" data-step="Review" aria-hidden="true" aria-labelledby="picker-finish-copy">
         <div class="picker-container">
           <div class="picker-placeholder">
             <p id="picker-finish-copy">Your visual direction is ready.</p>
@@ -486,10 +586,10 @@ const roles = [
 
       <div class="picker-progress" aria-hidden="true">
         <div class="picker-progress-track">
-          <i></i><i></i><i></i><i></i>
+          <i></i><i></i><i></i><i></i><i></i>
         </div>
         <p class="picker-progress-label">
-          <span class="picker-progress-index"><b data-progress-index>1</b> / 4</span>
+          <span class="picker-progress-index"><b data-progress-index>1</b> / 5</span>
           <span class="picker-progress-name" data-progress-name></span>
         </p>
       </div>
