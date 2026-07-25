@@ -194,7 +194,6 @@ const roles = [
                       </svg>
                     </span>
                   </button>
-                  <button class="picker-back" type="button" data-advance="prev">Back</button>
                 </div>
               </fieldset>
             </div>
@@ -267,8 +266,11 @@ const roles = [
                   </div>
                   <div class="ps-proof">
                     <div class="ps-proof-item"><i></i><span></span></div>
+                    <i class="ps-proof-divider" aria-hidden="true"></i>
                     <div class="ps-proof-item"><i></i><span></span></div>
+                    <i class="ps-proof-divider" aria-hidden="true"></i>
                     <div class="ps-proof-item"><i></i><span></span></div>
+                    <i class="ps-proof-divider" aria-hidden="true"></i>
                     <div class="ps-proof-item"><i></i><span></span></div>
                   </div>
                   <div class="ps-editorial">
@@ -301,6 +303,7 @@ const roles = [
                     <div class="ps-actions"><i></i><i></i></div>
                     <div class="ps-proof">
                       <div class="ps-proof-item"><i></i><span></span></div>
+                      <i class="ps-proof-divider" aria-hidden="true"></i>
                       <div class="ps-proof-item"><i></i><span></span></div>
                     </div>
                     <div class="ps-editorial-copy">
@@ -377,8 +380,11 @@ const roles = [
                   </div>
                   <div class="ps-proof">
                     <div class="ps-proof-item"><i></i><span data-type-proof></span></div>
+                    <i class="ps-proof-divider" aria-hidden="true"></i>
                     <div class="ps-proof-item"><i></i><span data-type-proof></span></div>
+                    <i class="ps-proof-divider" aria-hidden="true"></i>
                     <div class="ps-proof-item"><i></i><span data-type-proof></span></div>
+                    <i class="ps-proof-divider" aria-hidden="true"></i>
                     <div class="ps-proof-item"><i></i><span data-type-proof></span></div>
                   </div>
                   <div class="ps-editorial">
@@ -411,6 +417,7 @@ const roles = [
                     <div class="ps-actions"><i data-type-cta-primary></i><i data-type-cta-secondary></i></div>
                     <div class="ps-proof">
                       <div class="ps-proof-item"><i></i><span data-type-proof></span></div>
+                      <i class="ps-proof-divider" aria-hidden="true"></i>
                       <div class="ps-proof-item"><i></i><span data-type-proof></span></div>
                     </div>
                     <div class="ps-editorial-copy">
@@ -509,11 +516,20 @@ const roles = [
             data-custom-url={role}
           />
           <p class="picker-modal-or">or</p>
-          <label class="picker-modal-file">
-            <input type="file" accept=".woff2,.woff,.ttf,.otf" data-custom-file={role} />
-            <span class="picker-modal-file-button">Choose a file</span>
-            <span class="picker-modal-file-name" data-custom-file-name={role}>No file chosen</span>
-          </label>
+          <div class="picker-modal-file-block">
+            <div class="picker-modal-file">
+              <input
+                class="picker-modal-file-input"
+                id={`custom-${role}-file`}
+                type="file"
+                accept=".woff2,.woff,.ttf,.otf,font/woff2,font/woff,font/ttf,font/otf,application/font-woff,application/font-woff2,application/x-font-ttf,application/x-font-otf"
+                multiple
+                data-custom-file={role}
+              />
+              <label class="picker-modal-file-button" for={`custom-${role}-file`}>Choose font files</label>
+            </div>
+            <ul class="picker-modal-file-list" data-custom-file-list={role} hidden></ul>
+          </div>
         </fieldset>
       ))}
 

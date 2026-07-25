@@ -387,9 +387,77 @@ const fontModal = document.querySelector('[data-font-modal]');
 const customStatus = fontModal.querySelector('[data-custom-status]');
 const customFile = (role) => fontModal.querySelector(`[data-custom-file="${role}"]`);
 const customUrl = (role) => fontModal.querySelector(`[data-custom-url="${role}"]`);
+const FONT_SOURCE_SEP = '\n';
+const FONT_FILE_EXTENSIONS = new Set(['.woff2', '.woff', '.ttf', '.otf']);
+const customFilesByRole = { heading: [], body: [] };
+
+function fontFileExtension(name) {
+  const index = name.lastIndexOf('.');
+  return index === -1 ? '' : name.slice(index).toLowerCase();
+}
+
+function isFontFile(file) {
+  return FONT_FILE_EXTENSIONS.has(fontFileExtension(file.name));
+}
+
+function setChosenFontFiles(input, files) {
+  const transfer = new DataTransfer();
+  for (const file of files) transfer.items.add(file);
+  input.files = transfer.files;
+}
+
+function sameFontFile(a, b) {
+  return a.name === b.name && a.size === b.size && a.lastModified === b.lastModified;
+}
+
+function mergeFontFiles(existing, incoming) {
+  const merged = [...existing];
+  for (const file of incoming) {
+    if (!merged.some((entry) => sameFontFile(entry, file))) merged.push(file);
+  }
+  return merged;
+}
+
+function renderCustomFileList(role) {
+  const list = fontModal.querySelector(`[data-custom-file-list="${role}"]`);
+  const files = customFilesByRole[role];
+  list.replaceChildren();
+  list.hidden = files.length === 0;
+  for (const file of files) {
+    const item = document.createElement('li');
+    item.className = 'picker-modal-file-item';
+    const name = document.createElement('span');
+    name.textContent = file.name;
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'picker-modal-file-remove';
+    remove.setAttribute('aria-label', `Remove ${file.name}`);
+    remove.textContent = '×';
+    remove.onclick = () => {
+      customFilesByRole[role] = customFilesByRole[role].filter((entry) => !sameFontFile(entry, file));
+      setChosenFontFiles(customFile(role), customFilesByRole[role]);
+      renderCustomFileList(role);
+      customStatus.textContent = '';
+    };
+    item.append(name, remove);
+    list.append(item);
+  }
+}
+
+function parseFontSources(source) {
+  if (!source) return [];
+  if (source.includes(FONT_SOURCE_SEP)) return source.split(FONT_SOURCE_SEP).filter(Boolean);
+  return [source];
+}
 
 document.querySelector('[data-font-custom-open]').onclick = () => {
   customStatus.textContent = '';
+  for (const role of ['heading', 'body']) {
+    customFilesByRole[role] = [];
+    customFile(role).value = '';
+    setChosenFontFiles(customFile(role), []);
+    renderCustomFileList(role);
+  }
   fontModal.showModal();
 };
 
@@ -397,22 +465,38 @@ document.querySelector('[data-font-custom-close]').onclick = () => fontModal.clo
 
 for (const role of ['heading', 'body']) {
   customFile(role).onchange = ({ target }) => {
-    const label = fontModal.querySelector(`[data-custom-file-name="${role}"]`);
-    label.textContent = target.files[0]?.name || 'No file chosen';
+    const incoming = [...target.files].filter(isFontFile);
+    if (incoming.length !== target.files.length) {
+      customStatus.textContent = 'Only .woff2, .woff, .ttf, and .otf files are accepted.';
+    } else {
+      customStatus.textContent = '';
+    }
+    customFilesByRole[role] = mergeFontFiles(customFilesByRole[role], incoming);
+    setChosenFontFiles(target, customFilesByRole[role]);
+    target.value = '';
+    renderCustomFileList(role);
   };
 }
 
+async function uploadFontFile(file) {
+  const response = await fetch('/font-upload', {
+    method: 'POST',
+    headers: { 'X-Font-Filename': file.name, 'Content-Type': 'application/octet-stream' },
+    body: file,
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Upload failed');
+  return result.path;
+}
+
 async function resolveCustomFace(role) {
-  const file = customFile(role).files[0];
-  if (file) {
-    const response = await fetch('/font-upload', {
-      method: 'POST',
-      headers: { 'X-Font-Filename': file.name, 'Content-Type': 'application/octet-stream' },
-      body: file,
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || 'Upload failed');
-    return { family: file.name.replace(/\.[^.]+$/, ''), source: result.path };
+  const files = customFilesByRole[role].filter(isFontFile);
+  if (files.length) {
+    const paths = await Promise.all(files.map((file) => uploadFontFile(file)));
+    return {
+      family: files[0].name.replace(/\.[^.]+$/, ''),
+      source: paths.join(FONT_SOURCE_SEP),
+    };
   }
   const url = customUrl(role).value.trim();
   return url ? { family: url.split('/').pop().replace(/\.[^.]+$/, '') || 'Custom', source: url } : null;
@@ -454,15 +538,17 @@ document.querySelector('[data-font-custom-save]').onclick = async () => {
 function loadCustomFace({ heading, body }) {
   for (const face of [heading, body]) {
     if (!face?.source) continue;
-    if (/\.(css)(\?|$)/i.test(face.source) || !/\.(woff2?|ttf|otf)(\?|$)/i.test(face.source)) {
+    if (/\.(css)(\?|$)/i.test(face.source) || (!face.source.includes(FONT_SOURCE_SEP) && !/\.(woff2?|ttf|otf)(\?|$)/i.test(face.source))) {
       const link = document.createElement('link');
       link.rel = 'stylesheet';
       link.href = face.source;
       document.head.append(link);
       continue;
     }
-    const src = face.source.startsWith('http') ? face.source : `/fonts/${face.source.split('/').pop()}`;
-    document.fonts.add(new FontFace(face.family, `url(${src})`));
+    for (const entry of parseFontSources(face.source)) {
+      const src = entry.startsWith('http') ? entry : `/fonts/${entry.split('/').pop()}`;
+      document.fonts.add(new FontFace(face.family, `url(${src})`));
+    }
     document.fonts.load(`16px "${face.family}"`);
   }
 }

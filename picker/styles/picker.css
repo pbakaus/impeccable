@@ -146,6 +146,10 @@ body.picker-page {
   padding-inline: 56px;
 }
 
+.picker-screen[data-screen="01"] .picker-container {
+  padding-inline: 75px;
+}
+
 .picker-start {
   max-width: 620px;
   display: grid;
@@ -1670,15 +1674,37 @@ body.picker-page {
   border-radius: 50%;
 }
 
-.picker-strategy-preview:not(.picker-preview-type) .ps-proof-item:nth-child(2) i {
+.picker-strategy-preview:not(.picker-preview-type) .ps-proof {
+  grid-template-columns:
+    minmax(0, 1fr) auto
+    minmax(0, 1fr) auto
+    minmax(0, 1fr) auto
+    minmax(0, 1fr);
+}
+
+.picker-strategy-preview:not(.picker-preview-type) .ps-proof-item + .ps-proof-item {
+  border-left: 0;
+}
+
+.picker-strategy-preview:not(.picker-preview-type) .ps-proof-divider {
+  width: 1px;
+  align-self: stretch;
+  background-color: var(--pvs-rule);
+}
+
+.picker-strategy-preview:not(.picker-preview-type) .ps-phone-body .ps-proof {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+
+.picker-strategy-preview:not(.picker-preview-type) .ps-proof-item:nth-of-type(2) i {
   background-color: var(--pvs-accent-b);
 }
 
-.picker-strategy-preview:not(.picker-preview-type) .ps-proof-item:nth-child(3) i {
+.picker-strategy-preview:not(.picker-preview-type) .ps-proof-item:nth-of-type(3) i {
   background-color: var(--pvs-accent-c);
 }
 
-.picker-strategy-preview:not(.picker-preview-type) .ps-proof-item:nth-child(4) i {
+.picker-strategy-preview:not(.picker-preview-type) .ps-proof-item:nth-of-type(4) i {
   background-color: var(--pvs-accent-d);
 }
 
@@ -2106,13 +2132,21 @@ body.picker-page {
 
 /* The rail keeps the row height owned by the preview: the fieldset scrolls
    inside it instead of stretching the page when six tall cards stack up. The
-   control row underneath is what tells you the list runs past its frame. */
+   control row underneath is what tells you the list runs past its frame. On
+   wide screens the rail stops growing at 570px so a tall preview does not
+   turn six font cards into a page-length column. */
 .picker-type-rail {
   min-width: 0;
   min-height: 0;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   gap: 14px;
+}
+
+@media (min-width: 1200px) {
+  .picker-type-rail {
+    max-height: 570px;
+  }
 }
 
 .picker-type-options {
@@ -2205,7 +2239,7 @@ body.picker-page {
 
 .picker-modal-head h2 {
   color: var(--ks-champagne);
-  font-family: var(--ks-font-display);
+  font-family: var(--ks-font);
   font-size: 1.7rem;
   font-weight: 400;
   line-height: 1.1;
@@ -2268,6 +2302,11 @@ body.picker-page {
   text-transform: uppercase;
 }
 
+.picker-modal-file-block {
+  display: grid;
+  gap: 10px;
+}
+
 .picker-modal-file {
   display: flex;
   align-items: center;
@@ -2281,10 +2320,13 @@ body.picker-page {
   height: 1px;
   overflow: hidden;
   clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .picker-modal-file-button {
   flex: none;
+  display: inline-flex;
+  align-items: center;
   padding: 8px 14px;
   border: 1px solid var(--ks-rule);
   border-radius: 2px;
@@ -2304,13 +2346,57 @@ body.picker-page {
   outline-offset: 2px;
 }
 
-.picker-modal-file-name {
+.picker-modal-file-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.picker-modal-file-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--ks-lacquer-deep);
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+}
+
+.picker-modal-file-item span {
   min-width: 0;
   overflow: hidden;
-  color: var(--ks-text-muted);
+  color: var(--ks-text);
   font-size: 0.8rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.picker-modal-file-remove {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--ks-text-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 180ms var(--ks-ease), background-color 180ms var(--ks-ease);
+}
+
+.picker-modal-file-remove:hover {
+  color: var(--ks-champagne);
+  background: color-mix(in oklab, var(--ks-patina) 10%, transparent);
+}
+
+.picker-modal-file-remove:focus-visible {
+  outline: 1px solid var(--ks-kinpaku);
+  outline-offset: 2px;
 }
 
 .picker-modal-status:empty {
@@ -2323,9 +2409,11 @@ body.picker-page {
 }
 
 .picker-modal-actions {
-  display: grid;
-  justify-items: center;
-  gap: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
 }
 
 /* Screen 04 mirrors screen 03's options panel. */
@@ -2568,6 +2656,40 @@ body.picker-page {
 /* The ghost button sits on the ground, so ground-colored ink would erase it. */
 .picker-preview-type .ps-actions i:last-child {
   color: var(--pvs-title);
+}
+
+.picker-preview-type .ps-proof {
+  grid-template-columns:
+    minmax(0, 1fr) auto
+    minmax(0, 1fr) auto
+    minmax(0, 1fr) auto
+    minmax(0, 1fr);
+}
+
+.picker-preview-type .ps-proof-item + .ps-proof-item {
+  border-left: 0;
+}
+
+.picker-preview-type .ps-proof-divider {
+  width: 1px;
+  align-self: stretch;
+  background-color: var(--pvs-rule);
+}
+
+.picker-preview-type .ps-phone-body .ps-proof {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+
+.picker-preview-type .ps-proof-item:nth-of-type(2) i {
+  background-color: var(--pvs-accent-b);
+}
+
+.picker-preview-type .ps-proof-item:nth-of-type(3) i {
+  background-color: var(--pvs-accent-c);
+}
+
+.picker-preview-type .ps-proof-item:nth-of-type(4) i {
+  background-color: var(--pvs-accent-d);
 }
 
 .picker-preview-type .ps-proof-item span {
