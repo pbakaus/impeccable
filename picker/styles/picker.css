@@ -1242,7 +1242,19 @@ body.picker-page {
   border-bottom: 0;
 }
 
-/* Patina spine: hover previews, checked commits. */
+/* ============================================================
+   The standard option row. Every list of choices in the picker wears this
+   and nothing else: a patina spine that previews under the cursor and fills
+   in once the answer is committed, a wash of the same patina behind the row
+   at two strengths, and the row's own heading taking the patina in both
+   states. It came from screen 04's type rail; screens 03 and 05 read these
+   same rules.
+
+   A new question brings its own copy scale and its own row content. It does
+   not bring its own state colors, its own spine, or its own hover. If a
+   screen appears to need a different treatment, change it here for all of
+   them rather than adding a fourth variant.
+   ============================================================ */
 .picker-strategy-option::before {
   content: "";
   position: absolute;
@@ -1262,8 +1274,25 @@ body.picker-page {
   background: color-mix(in oklab, var(--ks-patina) 55%, transparent);
 }
 
+.picker-strategy-option:has(input:checked) {
+  background: color-mix(in oklab, var(--ks-patina) 14%, var(--ks-lacquer-raised));
+}
+
 .picker-strategy-option:has(input:checked)::before {
   background: var(--ks-patina);
+}
+
+/* Whatever names the row is what takes the accent: a strategy label, a scale
+   name, or the face a font pair is set in. */
+.picker-strategy-option:hover :is(.picker-strategy-title, .picker-type-sample-heading),
+.picker-strategy-option:has(input:checked) :is(.picker-strategy-title, .picker-type-sample-heading) {
+  color: var(--ks-patina);
+}
+
+.picker-strategy-option:has(input:focus-visible) {
+  outline: 2px solid var(--ks-patina-deep);
+  outline-offset: -2px;
+  z-index: 1;
 }
 
 .picker-strategy-copy {
@@ -1278,6 +1307,7 @@ body.picker-page {
   font-weight: 400;
   line-height: 1.15;
   letter-spacing: -0.01em;
+  transition: color 180ms var(--ks-ease);
 }
 
 .picker-strategy-desc {
@@ -1286,25 +1316,12 @@ body.picker-page {
   line-height: 1.5;
 }
 
-.picker-strategy-option:has(input:checked) {
-  background: color-mix(in oklab, var(--ks-patina) 14%, var(--ks-lacquer-raised));
-}
-
-.picker-strategy-option:has(input:checked) .picker-strategy-title {
-  color: var(--ks-patina);
-}
-
-.picker-strategy-option:has(input:focus-visible) {
-  outline: 2px solid var(--ks-patina-deep);
-  outline-offset: -2px;
-  z-index: 1;
-}
-
 /* Screen 03 uses the same rail shell as screen 04: scrollable fieldset inside
-   a height-capped column. Row rhythm, hover, and checked states follow the
-   type list; only the copy scale differs because these are strategy labels,
-   not font specimens. Four rows share the preview column's height equally so
-   a one-line description does not leave a short band beside a taller neighbor. */
+   a height-capped column. Row rhythm, hover, and checked states come from the
+   standard option row above; only the copy scale differs, because these are
+   strategy labels and not font specimens. Four rows share the preview column's
+   height equally so a one-line description does not leave a short band beside
+   a taller neighbor. */
 .picker-strategy-grid > .picker-type-rail {
   min-height: 0;
   height: 100%;
@@ -1319,26 +1336,6 @@ body.picker-page {
 
 .picker-strategy-choices.picker-type-options .picker-strategy-option {
   align-content: start;
-}
-
-.picker-strategy-choices.picker-type-options .picker-strategy-option:hover {
-  background: transparent;
-}
-
-.picker-strategy-choices.picker-type-options .picker-strategy-option:hover::before {
-  background: color-mix(in oklch, var(--ks-state-ink) 55%, transparent);
-}
-
-.picker-strategy-choices.picker-type-options .picker-strategy-option:hover .picker-strategy-title {
-  color: var(--ks-state-ink);
-}
-
-.picker-strategy-choices.picker-type-options .picker-strategy-option:has(input:checked)::before {
-  background: var(--ks-state-ink);
-}
-
-.picker-strategy-choices.picker-type-options .picker-strategy-option:has(input:checked) .picker-strategy-title {
-  color: var(--ks-state-ink);
 }
 
 .picker-strategy-choices .picker-strategy-copy {
@@ -1362,7 +1359,14 @@ body.picker-page {
 }
 
 /* Screen 03 shows one editorial landing page at desktop and phone sizes.
-   Geometry stays fixed while the strategy radios remap its color slots. */
+   Geometry stays fixed while the strategy radios remap its color slots.
+   Screen 04's artboards read the same slots, so the strategy travels there
+   with the palette instead of being re-decided.
+
+   Two of the slots name an ink rather than a fill: a filled button's label
+   has to come from the fill it sits on, and which fill that is changes with
+   the strategy. --pv-t-ink is set alongside the palette by the picker script;
+   the fallback here matches the gold that stands in before a palette lands. */
 .picker-strategy-preview {
   --pv-primary: var(--ks-champagne);
   --pv-secondary: var(--ks-patina);
@@ -1370,18 +1374,38 @@ body.picker-page {
   --pv-neutral: var(--ks-lacquer-raised);
   --pv-n-ink: var(--ks-champagne);
   --pv-p-ink: var(--ks-champagne);
+  --pv-t-ink: var(--ks-dark-ink);
+  /* The accents again, moved in lightness until they can be read as words on
+     the ground named in the suffix. The script publishes them; these values
+     stand in for the run before a palette is committed, where the accents are
+     the picker's own and already legible. */
+  --pv-p-on-n: var(--pv-primary);
+  --pv-t-on-n: var(--pv-tertiary);
+  --pv-t-on-p: var(--pv-tertiary);
   --pv-surface-2: color-mix(in oklab, var(--pv-neutral) 92%, var(--pv-n-ink));
   --pv-bone: color-mix(in oklab, var(--pv-neutral) 62%, var(--pv-n-ink));
   --pv-muted: color-mix(in oklab, var(--pv-neutral) 84%, var(--pv-n-ink));
   --pv-strong: color-mix(in oklab, var(--pv-neutral) 22%, var(--pv-n-ink));
   --pvs-ground: var(--pv-neutral);
+  --pvs-ink: var(--pv-n-ink);
   --pvs-surface: var(--pv-surface-2);
   --pvs-headline: var(--pv-strong);
   --pvs-eyebrow: var(--pv-bone);
   --pvs-copy: var(--pv-muted);
   --pvs-title: var(--pv-strong);
   --pvs-cta: var(--pv-primary);
+  --pvs-cta-ink: var(--pv-p-ink);
   --pvs-signal: var(--pv-primary);
+  --pvs-signal-ink: var(--pv-p-ink);
+  /* Three slots the wireframe never reads: where screen 04 turns a bar into
+     glyphs, the slot that filled the bar is not the one that can set the
+     type. The mix percentages are the same idea for running copy, tightened
+     by whichever strategy leaves the least room between ground and ink. */
+  --pvs-headline-text: var(--pvs-headline);
+  --pvs-mark-text: var(--pv-p-on-n);
+  --pvs-signal-text: var(--pv-p-on-n);
+  --pvs-copy-mix: 34%;
+  --pvs-bars-mix: 42%;
   --pvs-ghost: color-mix(in oklab, var(--pv-neutral) 88%, var(--pv-secondary));
   --pvs-ghost-edge: color-mix(in oklab, var(--pv-secondary) 55%, var(--pv-neutral));
   --pvs-image: var(--pv-surface-2);
@@ -1394,6 +1418,7 @@ body.picker-page {
   --pvs-accent-b: var(--pv-bone);
   --pvs-accent-c: var(--pv-primary);
   --pvs-accent-d: var(--pv-bone);
+  --ps-proof-gap: 25px;
   width: 100%;
   aspect-ratio: 1.865 / 1;
   display: grid;
@@ -1404,10 +1429,18 @@ body.picker-page {
 /* Hovering an option previews its strategy before the click commits it.
    While any strategy option is hovered, the hovered branch drives the
    preview and the checked branch stands down; hovering Restrained needs
-   no block of its own because standing down lands on the defaults. */
+   no block of its own because standing down lands on the defaults.
+
+   The third selector in each block carries the committed answer onto screen
+   04's type artboards. Only the committed answer travels: a hover preview
+   belongs to the screen whose options are under the cursor. Its :where()
+   holds that selector at one class of specificity on purpose, so the
+   reading-contrast slots the type preview declares further down still win. */
 #picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="committed"]) .picker-strategy-preview:not(.picker-preview-type),
-#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="committed"]:checked) .picker-strategy-preview:not(.picker-preview-type) {
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="committed"]:checked) .picker-strategy-preview:not(.picker-preview-type),
+:where(#picker-form:has(input[name="color-strategy"][value="committed"]:checked)) .picker-preview-type {
   --pvs-headline: color-mix(in oklab, var(--pv-primary) 80%, var(--pv-strong));
+  --pvs-headline-text: var(--pv-p-on-n);
   --pvs-eyebrow: var(--pv-primary);
   --pvs-ghost: color-mix(in oklab, var(--pv-primary) 14%, var(--pv-neutral));
   --pvs-ghost-edge: var(--pv-primary);
@@ -1425,8 +1458,10 @@ body.picker-page {
    and CTA; secondary the ghost action and gallery; tertiary the eyebrow,
    signal, and accents; neutral stays the ground. */
 #picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="full-palette"]) .picker-strategy-preview:not(.picker-preview-type),
-#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="full-palette"]:checked) .picker-strategy-preview:not(.picker-preview-type) {
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="full-palette"]:checked) .picker-strategy-preview:not(.picker-preview-type),
+:where(#picker-form:has(input[name="color-strategy"][value="full-palette"]:checked)) .picker-preview-type {
   --pvs-headline: color-mix(in oklab, var(--pv-primary) 80%, var(--pv-strong));
+  --pvs-headline-text: var(--pv-p-on-n);
   --pvs-eyebrow: var(--pv-tertiary);
   --pvs-ghost: color-mix(in oklab, var(--pv-secondary) 18%, var(--pv-neutral));
   --pvs-ghost-edge: var(--pv-secondary);
@@ -1435,6 +1470,8 @@ body.picker-page {
   --pvs-image-b: color-mix(in oklab, var(--pv-secondary) 32%, var(--pv-primary));
   --pvs-image-edge: var(--pv-primary);
   --pvs-signal: var(--pv-tertiary);
+  --pvs-signal-ink: var(--pv-t-ink);
+  --pvs-signal-text: var(--pv-t-on-n);
   --pvs-accent-a: var(--pv-secondary);
   --pvs-accent-b: color-mix(in oklab, var(--pv-secondary) 42%, var(--pv-neutral));
   --pvs-accent-c: var(--pv-primary);
@@ -1445,14 +1482,23 @@ body.picker-page {
    an ink wash of the primary, or the secondary and tertiary doing accent
    work; nothing is left bare white and the hairlines tint with the ground. */
 #picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="drenched"]) .picker-strategy-preview:not(.picker-preview-type),
-#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="drenched"]:checked) .picker-strategy-preview:not(.picker-preview-type) {
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="drenched"]:checked) .picker-strategy-preview:not(.picker-preview-type),
+:where(#picker-form:has(input[name="color-strategy"][value="drenched"]:checked)) .picker-preview-type {
   --pvs-ground: var(--pv-primary);
+  --pvs-ink: var(--pv-p-ink);
   --pvs-surface: color-mix(in oklab, var(--pv-p-ink) 10%, var(--pv-primary));
   --pvs-headline: var(--pv-p-ink);
   --pvs-eyebrow: color-mix(in oklab, var(--pv-p-ink) 70%, var(--pv-primary));
   --pvs-copy: color-mix(in oklab, var(--pv-p-ink) 55%, var(--pv-primary));
   --pvs-title: var(--pv-p-ink);
   --pvs-cta: var(--pv-p-ink);
+  --pvs-cta-ink: var(--pv-primary);
+  --pvs-mark-text: var(--pv-p-ink);
+  /* A saturated primary sits far from both ends of the range, so copy mixed
+     toward it at the paper percentages stops being readable. The drenched
+     page holds its running text closer to the ink. */
+  --pvs-copy-mix: 14%;
+  --pvs-bars-mix: 16%;
   --pvs-ghost: color-mix(in oklab, var(--pv-p-ink) 22%, var(--pv-primary));
   --pvs-ghost-edge: color-mix(in oklab, var(--pv-p-ink) 45%, var(--pv-primary));
   --pvs-image: color-mix(in oklab, var(--pv-p-ink) 20%, var(--pv-primary));
@@ -1460,6 +1506,8 @@ body.picker-page {
   --pvs-image-b: color-mix(in oklab, var(--pv-p-ink) 28%, var(--pv-primary));
   --pvs-image-edge: color-mix(in oklab, var(--pv-p-ink) 40%, var(--pv-primary));
   --pvs-signal: var(--pv-tertiary);
+  --pvs-signal-ink: var(--pv-t-ink);
+  --pvs-signal-text: var(--pv-t-on-p);
   --pvs-bars: color-mix(in oklab, var(--pv-p-ink) 45%, var(--pv-primary));
   --pvs-rule: color-mix(in oklab, var(--pv-p-ink) 28%, var(--pv-primary));
   --pvs-accent-a: var(--pv-secondary);
@@ -1633,6 +1681,7 @@ body.picker-page {
   display: grid;
   grid-template-columns: 1.05fr 1fr 1fr 1.15fr;
   align-items: stretch;
+  column-gap: var(--ps-proof-gap);
   padding: 2% 3.2% 2% 5.5%;
   position: relative;
 }
@@ -1710,8 +1759,10 @@ body.picker-page {
   background-color: var(--pvs-accent-d);
 }
 
+/* The label takes whatever the dot leaves, so a claim reads as one line of
+   the cell rather than a bar sized to a share of it. */
 .ps-proof-item span {
-  width: 46%;
+  flex: 1;
   height: 6px;
   background-color: var(--pvs-bars);
   border-radius: 2px;
@@ -1950,7 +2001,6 @@ body.picker-page {
 }
 
 .ps-phone-body .ps-proof-item span {
-  width: 56%;
   height: 6px;
 }
 
@@ -2182,13 +2232,17 @@ body.picker-page {
   gap: clamp(12px, 2svh, 18px);
 }
 
+/* Screen 05 is the only question that carries a lede, and one sentence at
+   caption size under a display headline reads as a footnote. Set above the
+   body size instead, with the measure pulled in so the sentence breaks into
+   two balanced lines rather than one long ruler. */
 .picker-question-lede {
-  max-width: 62ch;
-  color: var(--ks-text-muted);
-  font-size: 0.95rem;
-  line-height: 1.65;
+  max-width: 46ch;
+  color: var(--ks-text);
+  font-size: 1.18rem;
+  line-height: 1.5;
   text-align: center;
-  text-wrap: pretty;
+  text-wrap: balance;
 }
 
 /* Eight intervals and a lede leave less room than screen 04 has, so the sheet
@@ -2204,7 +2258,8 @@ body.picker-page {
 
 /* Eight rows scroll rather than share the height four strategy rows can split,
    so this list takes screen 04's rail and screen 03's copy scale, not screen
-   03's fixed four-row grid. */
+   03's fixed four-row grid. States come from the standard option row; the only
+   thing this list adds is the ratio sitting in front of the name. */
 .picker-scale-options .picker-strategy-copy {
   gap: 4px;
 }
@@ -2236,6 +2291,9 @@ body.picker-page {
   transition: color 180ms var(--ks-ease);
 }
 
+/* The ratio answers to the same two states as the name it sits in front of,
+   held one step back so the name still leads the row. */
+.picker-strategy-option:hover .picker-scale-ratio,
 .picker-strategy-option:has(input:checked) .picker-scale-ratio {
   color: color-mix(in oklab, var(--ks-patina) 70%, var(--ks-champagne));
 }
@@ -2246,34 +2304,44 @@ body.picker-page {
   letter-spacing: 0.04em;
 }
 
-/* Paper, set in the palette the user committed and the pair they just chose,
-   so the scale is judged in the design it will actually live in. */
+/* The sheet is picker chrome, not an artboard: it answers a question about
+   size, and every other screen already showed the palette. So it belongs to
+   the picker's own dark theme and reads the --ks tokens directly, matching the
+   raised panel the options sit in on the left. The one thing it borrows from
+   the run is the pair chosen on screen 04, because a scale is judged in the
+   faces that will set it.
+
+   Rows are not equal: the top three are the ones being judged, so they take a
+   larger share of the sheet and leave the small steps as the tail they are. */
 .picker-scale-sheet {
   --ts-fit: 1;
-  --pv-neutral: var(--ks-lacquer-raised);
-  --pv-n-ink: var(--ks-champagne);
   --pt-heading: var(--ks-font-display);
   --pt-body: var(--ks-font);
   --pt-heading-weight: 400;
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: repeat(7, minmax(0, 1fr));
+  grid-template-rows: 1.34fr 1.2fr 1.1fr repeat(4, minmax(0, 1fr));
   padding: clamp(14px, 2.4%, 28px) clamp(18px, 3.2%, 36px);
-  background: var(--pv-neutral);
-  color: var(--pv-n-ink);
-  border-radius: 4px;
+  background: var(--ks-lacquer-raised);
+  color: var(--ks-champagne);
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
   overflow: hidden;
 }
 
+/* Fixed side columns, because each row is its own grid: sized to their content
+   they would land wherever that row's specimen and numbers happened to end,
+   and the tag column would step left and right down the sheet and again on
+   every font change. Rem holds them still; the sheet's own face does not. */
 .ts-row {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 2.6em auto;
+  grid-template-columns: minmax(0, 1fr) 2.4rem 4.4rem;
   align-items: center;
   gap: clamp(12px, 2vw, 24px);
-  border-bottom: 1px dotted color-mix(in oklab, var(--pv-n-ink) 26%, transparent);
+  border-bottom: 1px dotted var(--ks-rule);
 }
 
 .ts-row:last-child {
@@ -2283,6 +2351,7 @@ body.picker-page {
 .ts-sample {
   min-width: 0;
   overflow: hidden;
+  color: var(--ks-text-muted);
   font-family: var(--pt-heading);
   font-weight: var(--pt-heading-weight);
   font-size: calc(var(--ts-size) * var(--ts-fit) * 1px);
@@ -2290,37 +2359,62 @@ body.picker-page {
   white-space: nowrap;
 }
 
+/* The three steps a display scale is actually chosen on. They carry the
+   brightest ink in the sheet; everything below them is there to show the
+   ratio continuing. */
+.ts-row[data-scale-row="6"] .ts-sample,
+.ts-row[data-scale-row="5"] .ts-sample,
+.ts-row[data-scale-row="4"] .ts-sample {
+  color: var(--ks-champagne);
+}
+
 .ts-row[data-scale-row="0"] .ts-sample {
+  color: var(--ks-text-faint);
   font-family: var(--pt-body);
   font-weight: 400;
 }
 
-/* The tag and the numbers are chrome, not specimen: they hold one size while
-   everything to their left moves, which is what makes the movement legible. */
+/* The tag and the numbers hold one size while everything to their left moves,
+   which is what makes the movement legible. Both are trimmed to their glyphs
+   so they center against the specimen rather than against a line box whose
+   height belongs to the font's metrics.
+
+   The tag is not chrome. It is the name of the step being judged, so it takes
+   the sheet's brightest ink and enough weight to be read across the row
+   without leaning in. The numbers under it are reference, and sit one step
+   back, but a size that needs a squint is not reference either. */
 .ts-tag {
-  color: color-mix(in oklab, var(--pv-n-ink) 62%, transparent);
+  color: var(--ks-champagne);
   font-family: var(--ks-font);
-  font-size: 0.82rem;
-  letter-spacing: 0.06em;
+  font-size: 1.02rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  text-box: trim-both cap alphabetic;
 }
 
 .ts-values {
   display: grid;
   justify-items: end;
-  gap: 2px;
+  gap: 5px;
   font-family: var(--ks-mono);
-  font-size: 0.68rem;
+  font-size: 0.8rem;
   font-variant-numeric: tabular-nums;
   line-height: 1.25;
 }
 
+.ts-values b,
+.ts-values i {
+  text-box: trim-both cap alphabetic;
+}
+
 .ts-values b {
-  color: color-mix(in oklab, var(--pv-n-ink) 88%, transparent);
+  color: var(--ks-text-muted);
   font-weight: 500;
 }
 
 .ts-values i {
-  color: color-mix(in oklab, var(--pv-n-ink) 52%, transparent);
+  color: var(--ks-text-faint);
   font-style: normal;
 }
 
@@ -2576,15 +2670,11 @@ body.picker-page {
   gap: 18px;
 }
 
-/* Screen 04 mirrors screen 03's options panel. */
+/* Screen 04 takes the standard option row and only tightens it: a specimen
+   needs less air around it than a label plus a sentence. */
 .picker-type-options .picker-strategy-option {
   gap: 0;
   padding: 18px 26px 18px 28px;
-}
-
-.picker-type-options .picker-strategy-option:has(input:checked) .picker-type-sample-heading,
-.picker-type-options .picker-strategy-option:hover .picker-type-sample-heading {
-  color: var(--ks-patina);
 }
 
 .picker-type-copy {
@@ -2638,9 +2728,29 @@ body.picker-page {
   --pt-base: clamp(0.72rem, 0.86vw, 0.84rem);
   /* Slot colors were mixed for bars, where a pale fill still reads as a
      shape. Once those bars carry glyphs the same mix disappears, so the type
-     artboards re-derive every ink slot at reading contrast. */
-  --pvs-copy: color-mix(in oklab, var(--pv-neutral) 34%, var(--pv-n-ink));
-  --pvs-bars: color-mix(in oklab, var(--pv-neutral) 42%, var(--pv-n-ink));
+     artboards re-derive every ink slot at reading contrast. The mix is taken
+     against the ground and the ink the strategy left in place, not against
+     the neutral: under Drenched the page is the primary, and running text
+     mixed toward a neutral it no longer sits on would go invisible. */
+  --pvs-copy: color-mix(in oklab, var(--pvs-ground) var(--pvs-copy-mix), var(--pvs-ink));
+  --pvs-bars: color-mix(in oklab, var(--pvs-ground) var(--pvs-bars-mix), var(--pvs-ink));
+}
+
+/* Drenched is the one page that raises a surface out of its own primary
+   rather than out of paper. A bar could take a heavy wash of the page ink and
+   still read as a shape; a label printed on that wash cannot, so the second
+   button keeps its fill near the ground and lets the border say button, and
+   the phone's chrome bands lift by less than they do in the wireframe. */
+:where(#picker-form:has(input[name="color-strategy"][value="drenched"]:checked)) .picker-preview-type {
+  --pvs-ghost: color-mix(in oklab, var(--pv-p-ink) 12%, var(--pv-primary));
+  --pvs-surface: color-mix(in oklab, var(--pv-p-ink) 5%, var(--pv-primary));
+}
+
+/* The phone's chrome bands are the other raised surface, and their labels are
+   mixed for the ground the rest of the page sets type on. Same derivation,
+   taken against the band they actually sit on. */
+.picker-preview-type :is(.ps-phone-top, .ps-phone-footer) {
+  --pvs-bars: color-mix(in oklab, var(--pvs-surface) var(--pvs-bars-mix), var(--pvs-ink));
 }
 
 /* The derived steps are declared on both artboard roots because custom
@@ -2824,7 +2934,7 @@ body.picker-page {
 .pt-headline {
   max-width: 16ch;
   margin: 0;
-  color: var(--pvs-headline);
+  color: var(--pvs-headline-text);
   font-family: var(--pt-heading);
   font-size: var(--pt-display);
   font-weight: var(--pt-heading-weight);
@@ -2939,7 +3049,7 @@ body.picker-page {
   aspect-ratio: auto;
   background: none;
   border-radius: 0;
-  color: var(--pvs-cta);
+  color: var(--pvs-mark-text);
   font-family: var(--pt-heading);
   font-size: var(--pt-title);
   font-weight: var(--pt-heading-weight);
@@ -2947,7 +3057,9 @@ body.picker-page {
   line-height: 1;
 }
 
-/* Buttons keep their fills; a filled label borrows the page ground as ink.
+/* Buttons keep their fills; a filled label takes the ink of the fill it sits
+   on, which is a different color per strategy: Drenched paints the button in
+   the page's own ink, and Full palette hands the nav button to the tertiary.
    The label is centered by the box being cut to the glyphs, so this stays a
    block: a grid container has no line box of its own to trim. The filled
    button carries a transparent border so it resolves to the same height as
@@ -2959,13 +3071,19 @@ body.picker-page {
   display: block;
   padding: 0.7em 1.3em;
   border: 1px solid transparent;
-  color: var(--pvs-ground);
+  color: var(--pvs-cta-ink);
   font-family: var(--pt-body);
   font-size: var(--pt-micro);
   font-weight: 600;
   line-height: 1;
   text-align: center;
   white-space: nowrap;
+}
+
+/* The nav button is the one fill a strategy can hand to the tertiary, so its
+   label reads that fill's ink and not the hero button's. */
+.picker-preview-type .ps-nav-action {
+  color: var(--pvs-signal-ink);
 }
 
 .picker-preview-type .ps-actions {
@@ -3066,7 +3184,7 @@ body.picker-page {
   height: auto;
   margin-top: var(--ps-gap-xs);
   background: none;
-  color: var(--pvs-signal);
+  color: var(--pvs-signal-text);
 }
 
 .picker-preview-type .ps-gallery-item span {

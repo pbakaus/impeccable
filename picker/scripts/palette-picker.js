@@ -1,4 +1,4 @@
-import { contrastInk, formatOklch, hexToOklch, oklchToHex, seedToRoles } from './color.js';
+import { contrastInk, formatOklch, hexToOklch, oklchToHex, readableOn, seedToRoles } from './color.js';
 
 const ROLES = ['primary', 'secondary', 'tertiary', 'neutral'];
 const screen = document.querySelector('[data-screen="02"]');
@@ -187,8 +187,17 @@ function syncCommittedPalette(target) {
   const committed = roleMap((role) => $(`[name="palette-${role}"]`).value);
   if (!target || Object.values(committed).some((hex) => !hex)) return;
   for (const role of ROLES) target.style.setProperty(`--pv-${role}`, committed[role]);
+  // One ink per fill a preview can paint a label on: the strategy decides
+  // which of the three carries the button on any given artboard.
   target.style.setProperty('--pv-n-ink', contrastInk(committed.neutral));
   target.style.setProperty('--pv-p-ink', contrastInk(committed.primary));
+  target.style.setProperty('--pv-t-ink', contrastInk(committed.tertiary));
+  // And one reading version of each accent that the type artboards set words
+  // in, per ground it can land on: the neutral page, or the primary once the
+  // strategy drenches the page in it.
+  target.style.setProperty('--pv-p-on-n', readableOn(committed.primary, committed.neutral));
+  target.style.setProperty('--pv-t-on-n', readableOn(committed.tertiary, committed.neutral));
+  target.style.setProperty('--pv-t-on-p', readableOn(committed.tertiary, committed.primary));
 }
 
 /* Every field is checked only when it is present. The manifest merges over
@@ -863,7 +872,9 @@ scroller.addEventListener('scroll', () => {
 }, { passive: true });
 document.addEventListener('picker:screenchange', (event) => {
   activate(event.detail.screen === '02');
-  const target = { '03': strategyPreview, '04': typePreview, '05': scaleSheet }[event.detail.screen];
+  // The scale sheet is deliberately absent: it is picker chrome in the
+  // picker's own theme, not a third artboard painted in the user's palette.
+  const target = { '03': strategyPreview, '04': typePreview }[event.detail.screen];
   if (target) syncCommittedPalette(target);
   // A hidden sheet measures zero, so the fit can only be resolved on arrival.
   // The scroll waits a frame: the screen change focuses the first control after
