@@ -455,8 +455,8 @@ const scaleRows = [['H1', 6], ['H2', 5], ['H3', 4], ['H4', 3], ['H5', 2], ['H6',
               <label class="picker-strategy-option picker-type-option">
                 <input type="radio" name="font-pair" />
                 <span class="picker-type-copy">
-                  <span class="picker-type-sample-heading" data-pair-heading></span>
-                  <span class="picker-type-sample-body" data-pair-body></span>
+                  <span class="picker-type-sample-heading"><span data-pair-heading></span><span class="picker-type-role">headings</span></span>
+                  <span class="picker-type-sample-body"><span data-pair-body></span><span class="picker-type-role">body text</span></span>
                   <span class="picker-type-desc" data-pair-why></span>
                 </span>
               </label>
@@ -634,8 +634,8 @@ const scaleRows = [['H1', 6], ['H2', 5], ['H3', 4], ['H4', 3], ['H5', 2], ['H6',
       <p class="picker-modal-status" data-custom-status aria-live="polite"></p>
 
       <div class="picker-modal-actions">
-        <button class="ks-button ks-button-primary" type="button" data-font-custom-save>Use these fonts</button>
         <button class="picker-back" type="button" data-font-custom-close>Cancel</button>
+        <button class="ks-button ks-button-primary" type="button" data-font-custom-save>Use these fonts</button>
       </div>
     </div>
   </dialog>

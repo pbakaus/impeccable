@@ -74,6 +74,13 @@ export function contrastInk(hex) {
     : 'var(--pk-ink-light)';
 }
 
+/** Hex counterpart to contrastInk(), for readableOn() grounds that are CSS vars. */
+export function contrastInkHex(hex) {
+  return contrastInk(hex).includes('light')
+    ? oklchToHex([0.99, 0.008, 95])
+    : oklchToHex([0.14, 0.018, 95]);
+}
+
 function relativeLuminance(hex) {
   const [red, green, blue] = parseHex(hex).map(linearize);
   return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
