@@ -60,6 +60,13 @@ body.picker-page {
 .picker-page .ks-button.ks-button-primary {
   position: relative;
   isolation: isolate;
+}
+
+/* The paint is gated on :not([disabled]) so it never competes with the disabled
+   state below. Without the gate this selector is (0,3,0) and the kit's
+   `.ks-button[disabled]` is (0,2,0), so a disabled button kept the full gold
+   fill and read as clickable. */
+.picker-page .ks-button.ks-button-primary:not([disabled]) {
   color: var(--ks-dark-ink);
   background: var(--ks-kinpaku);
   border-color: var(--ks-kinpaku);
@@ -77,18 +84,18 @@ body.picker-page {
   transition: opacity 180ms var(--ks-ease);
 }
 
-.picker-page .ks-button.ks-button-primary:hover {
+.picker-page .ks-button.ks-button-primary:not([disabled]):hover {
   color: var(--ks-dark-ink);
   background: var(--ks-kinpaku-vivid);
   border-color: var(--ks-kinpaku-vivid);
   transform: translateY(-1px);
 }
 
-.picker-page .ks-button.ks-button-primary:hover::before {
+.picker-page .ks-button.ks-button-primary:not([disabled]):hover::before {
   opacity: 0.26;
 }
 
-.picker-page .ks-button.ks-button-primary:active {
+.picker-page .ks-button.ks-button-primary:not([disabled]):active {
   background: var(--ks-kinpaku-rich);
   border-color: var(--ks-kinpaku-rich);
   transform: translateY(0);
@@ -99,6 +106,22 @@ body.picker-page {
    floats on the page with no gold under it. */
 .picker-page .ks-button.ks-button-primary[disabled]::before {
   opacity: 0;
+}
+
+/* A disabled button answering the pointer is the other half of the same bug:
+   the kit's `.ks-button.ks-button-secondary:hover` is (0,3,0) and outranks its
+   own `.ks-button[disabled]` at (0,2,0), so the tint and the lift still fired
+   on a button that cannot be pressed. Restating the state here puts it at
+   (0,3,0) at rest and (0,4,0) under the pointer, which clears every variant
+   rule in the kit without an !important. */
+.picker-page .ks-button[disabled],
+.picker-page .ks-button[disabled]:hover,
+.picker-page .ks-button[disabled]:active {
+  color: var(--ks-text-mute-deep);
+  background: transparent;
+  border-color: var(--ks-rule);
+  cursor: not-allowed;
+  transform: none;
 }
 
 .picker-shell {
@@ -2122,7 +2145,6 @@ body.picker-page {
   .ps-proof-item i,
   .ps-proof-item span,
   .ps-editorial-copy strong,
-  .ps-editorial-copy span i,
   .ps-editorial-copy > em,
   .ps-gallery-item > i,
   .ps-gallery-item b,
@@ -2130,7 +2152,8 @@ body.picker-page {
   .ps-footer-mark,
   .ps-phone-footer i,
   .pt-headline,
-  .pt-body
+  .pt-body,
+  .pt-section-body
 ) {
   transition:
     background-color 280ms var(--ks-ease),
@@ -2215,6 +2238,34 @@ body.picker-page {
   align-content: start;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in oklab, var(--ks-patina-deep) 35%, transparent) transparent;
+}
+
+/* The rail keeps the chosen pair in the first row, and it makes that move only
+   once the pointer and focus have both left the list, so no row is ever pulled
+   out from under a cursor and arrow keys can cross the group without it
+   re-sorting between presses. Waiting costs the user the sight of the travel,
+   so the row that has taken the top says so once: its wash and its spine come
+   up bright and settle to the resting checked state. Both keyframes animate
+   color and nothing else, so the acknowledgement cannot move the list it is
+   drawing the eye to. */
+@keyframes picker-pair-hoisted {
+  from {
+    background-color: color-mix(in oklab, var(--ks-patina) 32%, var(--ks-lacquer-raised));
+  }
+}
+
+@keyframes picker-pair-hoisted-spine {
+  from {
+    background-color: var(--ks-patina-pale);
+  }
+}
+
+.picker-type-option[data-hoisted] {
+  animation: picker-pair-hoisted 640ms var(--ks-ease);
+}
+
+.picker-type-option[data-hoisted]::before {
+  animation: picker-pair-hoisted-spine 640ms var(--ks-ease);
 }
 
 .picker-type-controls {
@@ -2670,6 +2721,20 @@ body.picker-page {
   font-size: 0.82rem;
 }
 
+.picker-modal-hint:empty {
+  display: none;
+}
+
+/* What the sheet is still waiting for, in the voice of the field labels above
+   it rather than an error. Nothing is wrong yet: the form is unfinished, so
+   this is muted caption ink and carries no vermilion and no icon. It sits in
+   the footer because that is where the button it explains is. */
+.picker-modal-hint {
+  color: var(--ks-text-muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
 /* Cancel then commit, both hard against the right padding edge. The dialog is a
    fixed 520px behind a 1200px width gate and the pair needs 247px of it, so
    wrapping can only ever fire on a stray long label; nowrap keeps the two
@@ -2994,6 +3059,25 @@ body.picker-page {
   line-height: 1.55;
 }
 
+/* The section paragraph is one element, so its leading is the face's own and
+   runs unbroken from the first line to the last. It was two stacked bars in
+   the wireframe, and two elements set two lines with the container's gap
+   between them, which read as a pair of unrelated lines rather than a
+   paragraph. Micro size over a near-full-column measure wants more leading
+   than the single-line labels around it, hence the step past their 1.4.
+
+   No measure cap: the artboard is a fixed-proportion frame with a ceiling of
+   its own, so the copy column stops growing before the line does. Measured
+   67 to 75 characters on the desktop board and 38 to 51 on the handset,
+   across every width from 1280 up. */
+.pt-section-body {
+  margin: 0;
+  color: var(--pvs-copy);
+  font-family: var(--pt-body);
+  font-size: var(--pt-micro);
+  line-height: 1.6;
+}
+
 /* Phone artboard type: the same ladder re-based to handset scale, held above
    the legibility floor rather than scaled straight down. */
 .picker-preview-type .ps-phone {
@@ -3013,11 +3097,16 @@ body.picker-page {
 
    Overflow stays visible: a bar had to be kept inside its box, but a line of
    text hangs its descenders below the baseline, and the trimmed box ends at
-   the baseline. Hiding the overflow would cut the tail off every g and p. */
+   the baseline. Hiding the overflow would cut the tail off every g and p.
+
+   The nowrap below is the default for a one-line label, and the proof and
+   card labels opt back out of it further down. Every selector in this list
+   is one class and one type, so those two rules win on source order. Adding
+   a more specific one here (a descendant pair, say) silently raises the whole
+   :is() above them and puts the clipping back. */
 .picker-preview-type :is(
   .ps-nav-bars i,
   .ps-proof-item span,
-  .ps-editorial-copy span i,
   .ps-editorial-copy > em,
   .ps-gallery-item b,
   .ps-footer-links i,
@@ -3214,12 +3303,6 @@ body.picker-page {
   text-wrap: balance;
 }
 
-.picker-preview-type .ps-editorial-copy span i {
-  overflow: visible;
-  color: var(--pvs-copy);
-  white-space: normal;
-}
-
 .picker-preview-type .ps-editorial-copy > em {
   width: auto;
   height: auto;
@@ -3331,7 +3414,6 @@ body.picker-page {
     .ps-proof-item i,
     .ps-proof-item span,
     .ps-editorial-copy strong,
-    .ps-editorial-copy span i,
     .ps-editorial-copy > em,
     .ps-gallery-item > i,
     .ps-gallery-item b,
@@ -3339,12 +3421,18 @@ body.picker-page {
     .ps-footer-mark,
     .ps-phone-footer i,
     .pt-headline,
-    .pt-body
+    .pt-body,
+    .pt-section-body
   ) {
     transition: none;
   }
 
   .picker-card[data-exit] {
+    animation: none;
+  }
+
+  .picker-type-option[data-hoisted],
+  .picker-type-option[data-hoisted]::before {
     animation: none;
   }
 }
