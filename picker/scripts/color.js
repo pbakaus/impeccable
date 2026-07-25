@@ -67,13 +67,41 @@ const INK_LIGHT_LUMINANCE = 0.9716;
 // both ratios beats a fixed lightness threshold, which picks the losing ink
 // for mid-tones sitting near the cutoff.
 export function contrastInk(hex) {
-  const [red, green, blue] = parseHex(hex).map(linearize);
-  const swatch = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
-  const against = (ink) => {
-    const [hi, lo] = ink > swatch ? [ink, swatch] : [swatch, ink];
-    return (hi + 0.05) / (lo + 0.05);
-  };
+  const swatch = relativeLuminance(hex);
+  const against = (ink) => ratio(ink, swatch);
   return against(INK_DARK_LUMINANCE) >= against(INK_LIGHT_LUMINANCE)
     ? 'var(--pk-ink-dark)'
     : 'var(--pk-ink-light)';
+}
+
+function relativeLuminance(hex) {
+  const [red, green, blue] = parseHex(hex).map(linearize);
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+}
+
+function ratio(a, b) {
+  const [hi, lo] = a > b ? [a, b] : [b, a];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/**
+ * The accent as type rather than as a fill. A color picked because it looks
+ * right as a shape on the page is not thereby readable as words on it, and a
+ * pale primary on paper is the common way that goes wrong. Only lightness
+ * moves, so the hue the user chose is the hue that shows up; a color that
+ * already clears the target comes back untouched.
+ */
+export function readableOn(accent, ground, target = 4.5) {
+  const groundLuminance = relativeLuminance(ground);
+  if (ratio(relativeLuminance(accent), groundLuminance) >= target) return accent;
+  const [L, C, H] = hexToOklch(accent);
+  // Toward whichever end of the range the ground leaves room in, by the same
+  // comparison contrastInk makes rather than a fixed lightness cutoff.
+  const darker = ratio(INK_DARK_LUMINANCE, groundLuminance) >= ratio(INK_LIGHT_LUMINANCE, groundLuminance);
+  const step = darker ? -0.015 : 0.015;
+  for (let lightness = L + step; lightness > 0.03 && lightness < 1; lightness += step) {
+    const candidate = oklchToHex([lightness, C, H]);
+    if (ratio(relativeLuminance(candidate), groundLuminance) >= target) return candidate;
+  }
+  return darker ? '#000000' : '#FFFFFF';
 }
