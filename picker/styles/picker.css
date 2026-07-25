@@ -2647,31 +2647,74 @@ body.picker-page {
    properties resolve their var() references where they are declared: the
    phone re-bases --pt-base, so it needs its own ladder computation. The
    micro step is floored rather than divided: strict scale fidelity puts it
-   under 8px, and this preview exists to be read. */
+   under 8px, and this preview exists to be read.
+
+   The spacing scale hangs off the same base, so an artboard that sets its
+   type smaller gets proportionally tighter bands without a second set of
+   numbers. The gutter is the one exception: it is a share of the frame,
+   because a band's inset reads against the frame edge, not the type. */
 .picker-preview-type,
 .picker-preview-type .ps-phone {
   --pt-micro: max(0.62rem, calc(var(--pt-base) / var(--pt-ratio)));
   --pt-title: calc(var(--pt-base) * var(--pt-ratio));
   --pt-display: calc(var(--pt-base) * var(--pt-ratio) * var(--pt-ratio));
+  --ps-band-y: calc(var(--pt-base) * 0.9);
+  --ps-gap-xs: calc(var(--pt-base) * 0.4);
+  --ps-gap-sm: calc(var(--pt-base) * 0.75);
+  --ps-gap-md: calc(var(--pt-base) * 1.25);
+  --ps-gap-lg: calc(var(--pt-base) * 2);
 }
 
+.picker-preview-type {
+  --ps-gutter: 5.5%;
+}
+
+.picker-preview-type .ps-phone {
+  --ps-gutter: 6%;
+}
+
+/* Centering a text box centers its em box, and every family puts its caps
+   somewhere else inside that box, so a centered label moves each time the
+   pair changes. Trimming to the cap and baseline edges makes the box the
+   glyphs, which is what the eye is aligning to. Browsers without it fall
+   back to today's line-box centering. */
+.picker-preview-type :is(
+  .ps-brand-block,
+  .ps-nav-bars i,
+  .ps-nav-action,
+  .ps-actions i,
+  .ps-proof-item span,
+  .ps-footer-links i,
+  .ps-footer-mark,
+  .ps-phone-footer i,
+  .ps-gallery-item b
+) {
+  text-box: trim-both cap alphabetic;
+}
+
+/* One rhythm down the column: the headline, the sentence, and the buttons are
+   spaced by the same scale rather than three margins that each drifted. */
 .picker-preview-type .ps-hero-copy {
   align-content: center;
+  gap: var(--ps-gap-md);
 }
 
-/* Type is the subject here, so the hero gives copy more column than the
-   color preview does, and the size cap leaves room for wide display faces
-   to fit a long word without hitting the image. */
+/* The pair is the subject and the image is a placeholder for one, so the copy
+   takes the column and the image takes what it needs to read as a picture. */
 .picker-preview-type .ps-hero {
-  grid-template-columns: 44% minmax(0, 1fr);
-  gap: 7%;
+  grid-template-columns: minmax(0, 1fr) 26%;
+  gap: var(--ps-gap-lg);
+  padding: var(--ps-band-y) var(--ps-gutter);
 }
 
-/* Real copy sets the hero's height, so the image has to state its own shape
-   instead of stretching to whatever the text column happens to need. */
+/* The column sets the width and the ratio sets the height, so the picture
+   stays a picture instead of stretching to whatever height the band has left.
+   The band is only a ceiling, for the pair whose copy runs long. */
 .picker-preview-type .ps-hero > .ps-image {
+  width: 100%;
   height: auto;
-  aspect-ratio: 5 / 4;
+  aspect-ratio: 4 / 5;
+  max-height: 100%;
   align-self: center;
 }
 
@@ -2680,20 +2723,47 @@ body.picker-page {
    one down. Real copy needs more of the page than bar glyphs did: the hero
    gives height to the editorial band, which now carries a wrapping title. */
 .picker-preview-type .ps-desktop {
-  grid-template-rows: 9.4% 46% 9% 27.3% 8.3%;
+  grid-template-rows: 9.4% 45% 9% 28.3% 8.3%;
 }
 
 /* The editorial band splits differently once its bars are words. Four cards
    left the copy column at 147px, under the 169px the widest pairing needs to
    set a four-word title in two lines, and left the last card a pixel short of
    its label. Three cards, in even columns, clears both with room to spare. */
+/* The two columns start together at the top of the row, and the row itself is
+   what centers in the band, so a pair that sets a shorter title does not leave
+   the whole section sitting against the rule above it. */
 .picker-preview-type .ps-editorial {
-  grid-template-columns: 45% minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 38%;
+  gap: var(--ps-gap-lg);
+  align-content: center;
   align-items: start;
+  padding: var(--ps-band-y) var(--ps-gutter);
+}
+
+.picker-preview-type .ps-editorial-copy {
+  gap: var(--ps-gap-sm);
 }
 
 .picker-preview-type .ps-desktop .ps-gallery {
+  height: auto;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--ps-gap-md);
+}
+
+/* The thumbnail stands in for a picture, not for the band: left to fill the
+   leftover height it grew taller than the copy beside it. A square sized off
+   the type scale keeps the three cards reading as a set of labels. */
+.picker-preview-type .ps-gallery-item {
+  grid-template-rows: auto auto;
+  gap: var(--ps-gap-sm);
+  align-content: start;
+}
+
+.picker-preview-type .ps-gallery-item > i {
+  width: 100%;
+  max-width: calc(var(--pt-base) * 4);
+  aspect-ratio: 1;
 }
 
 .picker-preview-type .ps-desktop .ps-gallery-item:nth-child(4) {
@@ -2703,18 +2773,57 @@ body.picker-page {
 /* Words set taller than bars, and the phone is the narrowest frame they have
    to fit. Its card row goes: nav, hero, proof and a section of running copy
    already show every face at both sizes, and the row that was left over is
-   the one that would clip. */
+   the one that would clip.
+
+   Every row after the image sizes to its own content. The band that held the
+   proof row at a fixed 34px was the one place a tall pair had nowhere to go.
+   Whatever height is left over is spread between the sections rather than
+   pooled under the last one, so a compact pair reads as a page with air in it
+   and a wide one closes up to its own gap without spilling past the frame. */
 .picker-preview-type .ps-phone-body {
-  grid-template-rows: 22% auto auto auto 34px auto;
+  grid-template-rows: 18% repeat(5, auto);
+  gap: var(--ps-gap-sm);
+  align-content: space-between;
+  padding: var(--ps-band-y) var(--ps-gutter);
 }
 
+/* One gap owns the spacing down the phone. The margins underneath it were a
+   second, unrelated scale, and every element that carried one landed on a
+   different interval from its neighbour. */
+.picker-preview-type .ps-phone-body > * {
+  margin: 0;
+}
+
+.picker-preview-type .ps-phone-body .ps-actions {
+  gap: var(--ps-gap-sm);
+}
+
+/* The band already sits inside the body's gutter; its own inset put it a
+   step to the right of everything it lines up with. */
+.picker-preview-type .ps-phone-body .ps-proof {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  padding-inline: 0;
+}
+
+.picker-preview-type .ps-phone-body .ps-editorial-copy {
+  align-content: start;
+}
+
+.picker-preview-type .ps-phone-top,
+.picker-preview-type .ps-phone-footer {
+  padding-inline: var(--ps-gutter);
+}
+
+/* The card row stays off the handset. The widest pairs set the headline in
+   three lines here, and the cards are the section that would be pushed past
+   the frame; every face the phone has to prove is already shown above. */
 .picker-preview-type .ps-phone-body .ps-gallery {
   display: none;
 }
 
 .pt-headline {
-  max-width: 12ch;
-  margin: 0 0 12px;
+  max-width: 16ch;
+  margin: 0;
   color: var(--pvs-headline);
   font-family: var(--pt-heading);
   font-size: var(--pt-display);
@@ -2726,8 +2835,8 @@ body.picker-page {
 }
 
 .pt-body {
-  max-width: 31ch;
-  margin: 0 0 16px;
+  max-width: 42ch;
+  margin: 0;
   color: var(--pvs-copy);
   font-family: var(--pt-body);
   font-size: var(--pt-base);
@@ -2740,20 +2849,20 @@ body.picker-page {
   --pt-base: clamp(0.66rem, 0.72vw, 0.74rem);
 }
 
-.ps-phone .pt-headline {
-  max-width: none;
-  margin: 8px 0 0;
-}
-
+.ps-phone .pt-headline,
 .ps-phone .pt-body {
   max-width: none;
-  margin: 4px 0 0;
+  margin: 0;
 }
 
 /* On the type screen the wireframe's bar glyphs become micro-copy, so the
    pair is judged on real glyphs in every slot: nav, buttons, proof row,
    cards, footer. Each element keeps the color slot its bar used, moved
-   from background to ink; sizes come from the ladder above. */
+   from background to ink; sizes come from the ladder above.
+
+   Overflow stays visible: a bar had to be kept inside its box, but a line of
+   text hangs its descenders below the baseline, and the trimmed box ends at
+   the baseline. Hiding the overflow would cut the tail off every g and p. */
 .picker-preview-type :is(
   .ps-nav-bars i,
   .ps-proof-item span,
@@ -2766,7 +2875,7 @@ body.picker-page {
 ) {
   width: auto;
   height: auto;
-  overflow: hidden;
+  overflow: visible;
   background: none;
   border-radius: 0;
   font-family: var(--pt-body);
@@ -2784,11 +2893,52 @@ body.picker-page {
   color: var(--pvs-bars);
 }
 
-/* The lettermark takes the heading face: a logo is display type. */
+/* Same construction as the nav: one baseline across the row, the row itself
+   centered in the band, both edges on the shared gutter. */
+.picker-preview-type .ps-footer {
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: space-between;
+  align-content: center;
+  align-items: baseline;
+  padding-inline: var(--ps-gutter);
+}
+
+.picker-preview-type .ps-footer-links {
+  align-items: baseline;
+  gap: var(--ps-gap-md);
+}
+
+/* The mark, the links, and the button are three sizes of the same row, so
+   they hang from one baseline instead of being centered against each other;
+   the row as a whole is what centers in the band. The button is a shape
+   rather than a line of running text, so it centers on the row. */
+.picker-preview-type .ps-nav {
+  gap: var(--ps-gap-lg);
+  align-content: center;
+  align-items: baseline;
+  padding-inline: var(--ps-gutter);
+}
+
+.picker-preview-type .ps-nav-bars {
+  justify-content: flex-start;
+  align-items: baseline;
+  gap: var(--ps-gap-md);
+}
+
+.picker-preview-type .ps-nav-action {
+  align-self: center;
+}
+
+/* The lettermark takes the heading face: a logo is display type. The circle's
+   square ratio has to go with its fill, or the mark keeps a box taller than
+   its glyphs and rides above the links it should sit beside. */
 .picker-preview-type .ps-brand-block {
   width: auto;
   height: auto;
+  aspect-ratio: auto;
   background: none;
+  border-radius: 0;
   color: var(--pvs-cta);
   font-family: var(--pt-heading);
   font-size: var(--pt-title);
@@ -2797,20 +2947,30 @@ body.picker-page {
   line-height: 1;
 }
 
-/* Buttons keep their fills; a filled label borrows the page ground as ink. */
+/* Buttons keep their fills; a filled label borrows the page ground as ink.
+   The label is centered by the box being cut to the glyphs, so this stays a
+   block: a grid container has no line box of its own to trim. The filled
+   button carries a transparent border so it resolves to the same height as
+   the outlined one sitting next to it. */
 .picker-preview-type .ps-nav-action,
 .picker-preview-type .ps-actions i {
   width: auto;
   height: auto;
-  display: grid;
-  place-items: center;
-  padding: 0.55em 1.3em;
+  display: block;
+  padding: 0.7em 1.3em;
+  border: 1px solid transparent;
   color: var(--pvs-ground);
   font-family: var(--pt-body);
   font-size: var(--pt-micro);
   font-weight: 600;
   line-height: 1;
+  text-align: center;
   white-space: nowrap;
+}
+
+.picker-preview-type .ps-actions {
+  align-items: center;
+  gap: var(--ps-gap-sm);
 }
 
 /* The ghost button sits on the ground, so ground-colored ink would erase it. */
@@ -2818,12 +2978,31 @@ body.picker-page {
   color: var(--pvs-title);
 }
 
+/* The band's rules become its own borders, so they run the full width of the
+   frame and meet the nav's bottom edge and the footer's top edge instead of
+   stopping short of the right margin. */
 .picker-preview-type .ps-proof {
   grid-template-columns:
     minmax(0, 1fr) auto
     minmax(0, 1fr) auto
     minmax(0, 1fr) auto
     minmax(0, 1fr);
+  padding: var(--ps-band-y) var(--ps-gutter);
+  border-block: 1px solid var(--pvs-rule);
+}
+
+.picker-preview-type .ps-proof::before,
+.picker-preview-type .ps-proof::after {
+  content: none;
+}
+
+/* A share of the cell put a different gap in every column. */
+.picker-preview-type .ps-proof-item {
+  gap: var(--ps-gap-sm);
+}
+
+.picker-preview-type .ps-proof-item i {
+  width: calc(var(--pt-base) * 0.55);
 }
 
 .picker-preview-type .ps-proof-item + .ps-proof-item {
@@ -2852,8 +3031,12 @@ body.picker-page {
   background-color: var(--pvs-accent-d);
 }
 
+/* A wide display face wraps the label rather than losing the end of a word to
+   the cell edge with no sign it went missing. */
 .picker-preview-type .ps-proof-item span {
+  min-width: 0;
   color: var(--pvs-bars);
+  white-space: normal;
 }
 
 /* Wraps rather than truncates: a section title is the product's own words and
@@ -2881,9 +3064,13 @@ body.picker-page {
 .picker-preview-type .ps-editorial-copy > em {
   width: auto;
   height: auto;
-  margin-top: 3px;
+  margin-top: var(--ps-gap-xs);
   background: none;
   color: var(--pvs-signal);
+}
+
+.picker-preview-type .ps-gallery-item span {
+  gap: var(--ps-gap-xs);
 }
 
 /* Card labels wrap instead of truncating: a two-line label still reads, and a
