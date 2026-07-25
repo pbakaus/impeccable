@@ -251,7 +251,8 @@ body.picker-page {
 
 .picker-shell:has(#picker-form[data-current="02"]) .picker-hero-art,
 .picker-shell:has(#picker-form[data-current="03"]) .picker-hero-art,
-.picker-shell:has(#picker-form[data-current="04"]) .picker-hero-art {
+.picker-shell:has(#picker-form[data-current="04"]) .picker-hero-art,
+.picker-shell:has(#picker-form[data-current="05"]) .picker-hero-art {
   opacity: 0;
 }
 
@@ -269,7 +270,7 @@ body.picker-page {
 
 .picker-progress-track {
   display: grid;
-  grid-template-columns: repeat(4, 34px);
+  grid-template-columns: repeat(5, 34px);
   gap: 6px;
 }
 
@@ -282,7 +283,8 @@ body.picker-page {
 .picker-progress[data-step="1"] .picker-progress-track i:nth-child(-n + 1),
 .picker-progress[data-step="2"] .picker-progress-track i:nth-child(-n + 2),
 .picker-progress[data-step="3"] .picker-progress-track i:nth-child(-n + 3),
-.picker-progress[data-step="4"] .picker-progress-track i {
+.picker-progress[data-step="4"] .picker-progress-track i:nth-child(-n + 4),
+.picker-progress[data-step="5"] .picker-progress-track i {
   background: var(--ks-kinpaku);
 }
 
@@ -2162,6 +2164,164 @@ body.picker-page {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+/* Screen 05 keeps screen 04's frame and swaps the artboards for a specimen
+   sheet. It is the one question that needs explaining before it can be
+   answered, so the title carries a lede; every other screen asks something the
+   options themselves make obvious. */
+.picker-scale {
+  display: grid;
+  gap: clamp(24px, 4.4svh, 40px);
+  padding-block: clamp(32px, 5svh, 48px) clamp(24px, 3.5svh, 48px);
+}
+
+.picker-question-head {
+  display: grid;
+  justify-items: center;
+  gap: clamp(12px, 2svh, 18px);
+}
+
+.picker-question-lede {
+  max-width: 62ch;
+  color: var(--ks-text-muted);
+  font-size: 0.95rem;
+  line-height: 1.65;
+  text-align: center;
+  text-wrap: pretty;
+}
+
+/* Eight intervals and a lede leave less room than screen 04 has, so the sheet
+   is capped harder. The subtraction covers the title, the lede, and the CTA
+   stack, which is what keeps Select this scale above the fold. */
+.picker-scale-grid {
+  max-height: calc(100svh - 420px);
+  display: grid;
+  grid-template-columns: minmax(340px, 420px) minmax(0, 1fr);
+  gap: 50px;
+  align-items: stretch;
+}
+
+/* Eight rows scroll rather than share the height four strategy rows can split,
+   so this list takes screen 04's rail and screen 03's copy scale, not screen
+   03's fixed four-row grid. */
+.picker-scale-options .picker-strategy-copy {
+  gap: 4px;
+}
+
+.picker-scale-options .picker-strategy-title {
+  display: flex;
+  align-items: baseline;
+  font-family: var(--ks-font);
+  font-size: 20px;
+  letter-spacing: -0.015em;
+}
+
+.picker-scale-options .picker-strategy-desc {
+  max-width: 38ch;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+/* The ratio leads the name: it is the thing being chosen, and eight of them
+   in a column read as a ladder when the numbers line up. */
+.picker-scale-ratio {
+  margin-inline-end: 12px;
+  color: var(--ks-text-faint);
+  font-family: var(--ks-mono);
+  font-size: 0.94rem;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  transition: color 180ms var(--ks-ease);
+}
+
+.picker-strategy-option:has(input:checked) .picker-scale-ratio {
+  color: color-mix(in oklab, var(--ks-patina) 70%, var(--ks-champagne));
+}
+
+.picker-scale-note {
+  color: var(--ks-text-faint);
+  font-size: 0.76rem;
+  letter-spacing: 0.04em;
+}
+
+/* Paper, set in the palette the user committed and the pair they just chose,
+   so the scale is judged in the design it will actually live in. */
+.picker-scale-sheet {
+  --ts-fit: 1;
+  --pv-neutral: var(--ks-lacquer-raised);
+  --pv-n-ink: var(--ks-champagne);
+  --pt-heading: var(--ks-font-display);
+  --pt-body: var(--ks-font);
+  --pt-heading-weight: 400;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: repeat(7, minmax(0, 1fr));
+  padding: clamp(14px, 2.4%, 28px) clamp(18px, 3.2%, 36px);
+  background: var(--pv-neutral);
+  color: var(--pv-n-ink);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.ts-row {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 2.6em auto;
+  align-items: center;
+  gap: clamp(12px, 2vw, 24px);
+  border-bottom: 1px dotted color-mix(in oklab, var(--pv-n-ink) 26%, transparent);
+}
+
+.ts-row:last-child {
+  border-bottom: 0;
+}
+
+.ts-sample {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--pt-heading);
+  font-weight: var(--pt-heading-weight);
+  font-size: calc(var(--ts-size) * var(--ts-fit) * 1px);
+  line-height: 1.12;
+  white-space: nowrap;
+}
+
+.ts-row[data-scale-row="0"] .ts-sample {
+  font-family: var(--pt-body);
+  font-weight: 400;
+}
+
+/* The tag and the numbers are chrome, not specimen: they hold one size while
+   everything to their left moves, which is what makes the movement legible. */
+.ts-tag {
+  color: color-mix(in oklab, var(--pv-n-ink) 62%, transparent);
+  font-family: var(--ks-font);
+  font-size: 0.82rem;
+  letter-spacing: 0.06em;
+}
+
+.ts-values {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  font-family: var(--ks-mono);
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+}
+
+.ts-values b {
+  color: color-mix(in oklab, var(--pv-n-ink) 88%, transparent);
+  font-weight: 500;
+}
+
+.ts-values i {
+  color: color-mix(in oklab, var(--pv-n-ink) 52%, transparent);
+  font-style: normal;
 }
 
 .picker-type-scroll {
