@@ -227,8 +227,10 @@ async function detectCli() {
   }
   // --url <url> keeps query strings with & out of bare argv. On Windows cmd.exe,
   // unquoted & is a command separator, so prefer: detect --url "https://...?a=1&b=2"
+  // Help mode never reaches the scan, so a bare `--url` must not exit with a
+  // parse error before the usage text gets a chance to print.
   const urlFlagTargets = [];
-  for (let i = 0; i < args.length; i++) {
+  for (let i = 0; !helpMode && i < args.length; i++) {
     if (args[i] !== '--url' && !args[i].startsWith('--url=')) continue;
     const inline = args[i].startsWith('--url=');
     const value = inline ? args[i].slice('--url='.length) : args[i + 1];
