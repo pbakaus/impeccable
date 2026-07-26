@@ -19,6 +19,11 @@ const runtimeAssets = ['hero-dark.jpg', 'kinpaku-gold-leaf.jpg'];
 // The page links ./favicon.svg, so it is also served from the output root.
 const faviconSource = path.join(assetsSource, 'favicon.svg');
 const faviconOutput = path.join(outputDir, 'favicon.svg');
+// The icon specimen is fetched at runtime rather than inlined, so it ships
+// beside the page instead of going through Vite. Regenerate it with
+// `node scripts/vendor-icons.mjs`.
+const iconDataSource = path.join(root, 'picker/data/icon-packs.json');
+const iconDataOutput = path.join(outputDir, 'icon-packs.json');
 
 await rm(buildDir, { recursive: true, force: true });
 execFileSync(
@@ -31,6 +36,7 @@ await rm(outputDir, { recursive: true, force: true });
 await cp(buildDir, outputDir, { recursive: true });
 await mkdir(assetsOutput, { recursive: true });
 await copyFile(faviconSource, faviconOutput);
+await copyFile(iconDataSource, iconDataOutput);
 for (const asset of runtimeAssets) {
   await copyFile(path.join(assetsSource, asset), path.join(assetsOutput, asset));
 }

@@ -421,6 +421,24 @@ function wireListScroll(list) {
 const syncScrollButtons = wireListScroll(fontOptions);
 wireListScroll(scaleOptions);
 
+/* Screens where the cursor previews and the click commits need one rule for
+   what the preview falls back to, and `focusout` on its own is not it. Clicking
+   a row blurs whatever held focus before the browser focuses that row's input,
+   and the intermediate event carries no relatedTarget, so a listener that
+   trusts it shows the old answer for a frame at the exact moment the user picks
+   a new one. Waiting a frame lets the pointer settle the question: still inside
+   the list means the user is browsing and the preview is already right. */
+function restWhenIdle(list, rest) {
+  let queued;
+  return () => {
+    cancelAnimationFrame(queued);
+    queued = requestAnimationFrame(() => {
+      if (list.matches(':hover')) return;
+      rest(list.contains(document.activeElement) ? document.activeElement : null);
+    });
+  };
+}
+
 /* The chosen pair takes the top of the rail, so the answer is the first thing
    the list shows and the rest keep their dealt order underneath it.
 
@@ -578,6 +596,140 @@ new ResizeObserver(fitScaleSheet).observe(scaleSheet);
 // Every face swap changes the width of the same string, fit included.
 document.fonts?.addEventListener('loadingdone', fitScaleSheet);
 syncTypeScale(scaleOptions.querySelector('input:checked'));
+
+/* Screen 11: the icon specimen. Every pack draws the same twenty-four concepts,
+   so the sheet compares hands rather than catalogs. The drawings are vendored
+   at build time and fetched on first arrival: eleven packs of markup is more
+   than the first paint should carry for a screen most runs reach late.
+
+   The cursor previews and the click commits, the same contract screen 03 uses
+   for color strategies. What differs is that no CSS can swap a drawing, so the
+   preview is painted here rather than remapped through custom properties. */
+const iconOptions = document.querySelector('[data-icon-options]');
+const iconSheet = document.querySelector('[data-icon-sheet]');
+const iconField = iconSheet.querySelector('[data-icon-field]');
+const iconStrip = iconSheet.querySelector('[data-icon-strip]');
+const iconPackInputs = ['name', 'license', 'url'].map((key) => [
+  key,
+  document.querySelector(`[name="icon-pack-${key}"]`),
+]);
+let iconPacks;
+let iconRequest;
+let iconPainted;
+
+wireListScroll(iconOptions);
+
+const checkedIconPack = () => iconOptions.querySelector('input[name="icon-pack"]:checked');
+const iconRowInput = (node) => node?.closest('.picker-icon-row')?.querySelector('input');
+
+/* Packs disagree on grid size and on whether they are drawn as strokes or as
+   filled paths, so the wrapper carries the pack's own viewBox and paint rather
+   than one house style the drawings were never made for. */
+function iconSvg(pack, glyph) {
+  const attrs = Object.entries(pack.attrs)
+    .map(([key, value]) => `${key}="${value}"`)
+    .join(' ');
+  return `<svg viewBox="${pack.viewBox}" ${attrs} aria-hidden="true">${glyph.body}</svg>`;
+}
+
+function paintIconPack(id) {
+  const pack = iconPacks?.get(id);
+  if (!pack || iconPainted === id) return;
+  iconPainted = id;
+  delete iconField.dataset.empty;
+  iconField.innerHTML = pack.glyphs
+    .map((glyph) => `<span class="picker-icon-cell">${iconSvg(pack, glyph)}</span>`)
+    .join('');
+  iconStrip.innerHTML = pack.glyphs.map((glyph) => iconSvg(pack, glyph)).join('');
+}
+
+/* The answer carries the pack's name, license, and home page, not just its
+   slug: whoever reads the answers has to credit it without looking it up. */
+function commitIconPack(input) {
+  for (const [key, field] of iconPackInputs) field.value = input.dataset[`pack${key[0].toUpperCase()}${key.slice(1)}`];
+  paintIconPack(input.value);
+}
+
+function loadIconPacks() {
+  iconRequest ??= fetch('/icon-packs.json')
+    .then((response) => (response.ok ? response.json() : Promise.reject()))
+    .then((data) => {
+      iconPacks = new Map(data.packs.map((pack) => [pack.id, pack]));
+      paintIconPack(checkedIconPack().value);
+    })
+    .catch(() => {
+      iconField.dataset.empty = '';
+      iconField.textContent = 'Icon sets could not be loaded.';
+    });
+  return iconRequest;
+}
+
+iconOptions.addEventListener('pointerover', (event) => {
+  const input = iconRowInput(event.target);
+  if (input) paintIconPack(input.value);
+});
+iconOptions.addEventListener('focusin', (event) => {
+  const input = iconRowInput(event.target);
+  if (input) paintIconPack(input.value);
+});
+/* With the pointer away, the keyboard is driving: the row it is on is the one
+   being asked about, and only once focus has left too is the answer itself. */
+const restIconPreview = restWhenIdle(iconOptions, (focused) => {
+  paintIconPack(iconRowInput(focused)?.value ?? checkedIconPack().value);
+});
+iconOptions.addEventListener('pointerleave', restIconPreview);
+iconOptions.addEventListener('focusout', restIconPreview);
+iconOptions.onchange = ({ target }) => {
+  if (target.matches('input[name="icon-pack"]')) commitIconPack(target);
+};
+
+commitIconPack(checkedIconPack());
+
+/* Screen 06: the motion scene. Its three energies are told apart by amplitude
+   on one shared 8s timeline, and the loudest difference between them, whether
+   the page arrives or is simply there, is over inside the first fifth of it.
+   A visitor who hovers a row five seconds into the loop is therefore comparing
+   two energies on press depth alone, which is why hovering restarts the scene:
+   the answer to "what does this one look like" is the scene from its first
+   frame. CSS cannot rewind an animation, so this is the one part of the screen
+   that is not a custom property.
+
+   Only a change of energy restarts it. Sliding the pointer across a row it is
+   already previewing would otherwise keep the page in a permanent entrance. */
+const motionOptions = document.querySelector('[data-question="motion"] .picker-strategy-choices');
+const motionScene = document.querySelector('.picker-preview-motion');
+const checkedMotion = () => motionOptions.querySelector('input:checked').value;
+let motionShown;
+
+function replayMotion(energy) {
+  if (energy === motionShown) return;
+  motionShown = energy;
+  // The hover rules resolve on their own; this only puts the timeline back to
+  // its first frame, pseudo-elements and all.
+  for (const animation of motionScene.getAnimations({ subtree: true })) {
+    animation.cancel();
+    animation.play();
+  }
+}
+
+const motionRowValue = (node) => node?.closest('.picker-strategy-option')?.querySelector('input').value;
+
+motionOptions.addEventListener('pointerover', (event) => {
+  const value = motionRowValue(event.target);
+  if (value) replayMotion(value);
+});
+motionOptions.addEventListener('focusin', (event) => {
+  const value = motionRowValue(event.target);
+  if (value) replayMotion(value);
+});
+const restMotionPreview = restWhenIdle(motionOptions, (focused) => {
+  replayMotion(motionRowValue(focused) ?? checkedMotion());
+});
+motionOptions.addEventListener('pointerleave', restMotionPreview);
+motionOptions.addEventListener('focusout', restMotionPreview);
+motionOptions.addEventListener('change', ({ target }) => {
+  if (target.matches('input[name="motion-energy"]')) replayMotion(target.value);
+});
 
 /* Custom fonts. A URL is carried through as-is; an uploaded face is handed to
    the server, which stores the bytes and returns the path the answers record.
@@ -1044,6 +1196,14 @@ document.addEventListener('picker:screenchange', (event) => {
     keyboardInRail = false;
     applyHoist({ force: true });
   }
+  // A hidden screen has no animations to rewind, so the scene starts on the
+  // frame after the one that revealed it, not on the frame that asked.
+  if (event.detail.screen === '06') {
+    requestAnimationFrame(() => {
+      motionShown = null;
+      replayMotion(checkedMotion());
+    });
+  }
   // A hidden sheet measures zero, so the fit can only be resolved on arrival.
   // The scroll waits a frame: the screen change focuses the first control after
   // this event, and that scrolls the list back to the top.
@@ -1051,6 +1211,14 @@ document.addEventListener('picker:screenchange', (event) => {
     fitScaleSheet();
     requestAnimationFrame(() => {
       scaleOptions.querySelector('input:checked')?.parentElement.scrollIntoView({ block: 'center' });
+    });
+  }
+  // The specimen is fetched the first time the screen is asked for, and the
+  // scroll waits a frame for the same reason screen 05's does.
+  if (event.detail.screen === '11') {
+    void loadIconPacks();
+    requestAnimationFrame(() => {
+      checkedIconPack()?.parentElement.scrollIntoView({ block: 'center' });
     });
   }
 });

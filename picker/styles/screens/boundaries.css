@@ -15,11 +15,18 @@
    than overwrite each other.
    ============================================================ */
 
+/* The four answers differ in material, not in vertical rhythm: a tint, a
+   hairline, an inset, an edge. None of them pads the proof band, because on the
+   desktop artboard that band is a fixed grid row and the row heights belong to
+   the layout answer on screen 07. Padding it was not buying air, it was
+   claiming room the row did not have: the copy overflowed the padding box
+   downward, which is why a tinted band read as squeezed and sat low in its own
+   tint, and why the open answer quietly stretched the row and shifted every
+   section under it. */
+
 /* ── Open space ──────────────────────────────────────────────
    Every rule off and every ground the same, so the only thing left holding
-   the sections apart is the air between them. The band the proof sits in
-   gets more of it, because with nothing drawn the page has to spend room to
-   say the same thing. */
+   the sections apart is the air between them. */
 #picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="open-space"]) .picker-preview-boundaries,
 :where(#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="open-space"]:checked)) [data-carry] {
   --pvs-divider-w: 0px;
@@ -29,7 +36,6 @@
   --pvs-panel: transparent;
   --pvs-panel-edge-w: 0px;
   --pvs-panel-pad: 0px;
-  --pvs-proof-pad-y: 4.2%;
   --pvs-proof-inset: 0px;
 }
 
@@ -46,7 +52,6 @@
   --pvs-panel: transparent;
   --pvs-panel-edge-w: 0px;
   --pvs-panel-pad: 0px;
-  --pvs-proof-pad-y: 2%;
   --pvs-proof-inset: 0px;
 }
 
@@ -62,7 +67,6 @@
   --pvs-panel: transparent;
   --pvs-panel-edge-w: 0px;
   --pvs-panel-pad: 0px;
-  --pvs-proof-pad-y: 2.8%;
   --pvs-proof-inset: 0px;
 }
 
@@ -80,7 +84,6 @@
   --pvs-panel-edge: color-mix(in oklab, var(--pvs-ink) 20%, var(--pvs-ground));
   --pvs-panel-edge-w: 1px;
   --pvs-panel-pad: 5%;
-  --pvs-proof-pad-y: 2.4%;
   --pvs-proof-inset: var(--pvs-gutter);
 }
 
@@ -90,7 +93,6 @@
    only exists where an inset was asked for. */
 [data-carry] .ps-desktop > .ps-proof {
   margin-inline: var(--pvs-proof-inset, 0px);
-  padding-block: var(--pvs-proof-pad-y, 2%);
   border: var(--pvs-panel-edge-w) solid var(--pvs-panel-edge);
   border-radius: var(--pvs-radius-surface);
 }
@@ -103,13 +105,15 @@
 }
 
 /* Percentage padding resolves against the card's own width, so one value
-   holds at both artboard sizes instead of swamping the handset. */
+   holds at both artboard sizes instead of swamping the handset. The depth
+   answer can ask for an inset of its own (see --pvs-tint-pad in depth.css);
+   the wider of the two wins, so neither answer can undo the other. */
 [data-carry] .ps-gallery-item {
-  padding: var(--pvs-panel-pad, 0px);
+  padding: max(var(--pvs-panel-pad, 0px), var(--pvs-tint-pad, 0px));
 }
 
 /* The handset's card row is already the block closest to the footer, so it
    takes a shorter version of the same padding rather than growing into it. */
 [data-carry] .ps-phone-body .ps-gallery-item {
-  padding: calc(var(--pvs-panel-pad, 0px) * 0.5);
+  padding: calc(max(var(--pvs-panel-pad, 0px), var(--pvs-tint-pad, 0px)) * 0.5);
 }

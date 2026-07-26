@@ -283,7 +283,8 @@ body.picker-page {
 .picker-shell:has(#picker-form[data-current="07"]) .picker-hero-art,
 .picker-shell:has(#picker-form[data-current="08"]) .picker-hero-art,
 .picker-shell:has(#picker-form[data-current="09"]) .picker-hero-art,
-.picker-shell:has(#picker-form[data-current="10"]) .picker-hero-art {
+.picker-shell:has(#picker-form[data-current="10"]) .picker-hero-art,
+.picker-shell:has(#picker-form[data-current="11"]) .picker-hero-art {
   opacity: 0;
 }
 
@@ -1230,7 +1231,10 @@ body.picker-page {
 }
 
 .picker-strategy-grid {
-  max-height: calc(100svh - 346px);
+  /* Named so the option panel can cap itself against the same budget: its
+     height no longer comes from the column, so nothing else would stop it. */
+  --pk-column: calc(100svh - 346px);
+  max-height: var(--pk-column);
   display: grid;
   grid-template-columns: minmax(340px, 420px) minmax(0, 1fr);
   gap: 50px;
@@ -1368,14 +1372,27 @@ body.picker-page {
   grid-template-rows: minmax(0, 1fr);
 }
 
+/* Equal rows, sized by the tallest one's copy rather than by how many there
+   are. Stretching the tracks to the artboard's height instead makes a row on a
+   three-option screen half again as tall as the same row on a four-option one,
+   and the difference is spent on empty space under two lines of text. The
+   panel hugs the rows it has, so nothing draws an empty band underneath. */
 .picker-strategy-choices.picker-type-options {
-  height: 100%;
-  align-content: stretch;
-  grid-template-rows: repeat(var(--pk-choices, 4), minmax(0, 1fr));
+  align-self: start;
+  max-height: var(--pk-column);
+  /* Four is the largest option count in the run, so the row is a quarter of the
+     column whether a screen has four of them or three, and one formula gives
+     every screen in the run the same band. Below 432px of column they shrink
+     together; the row padding absorbs it before the copy does. The 2px is the
+     panel's own hairline, which the column budget does not account for. */
+  grid-template-rows: none;
+  grid-auto-rows: min(108px, calc((var(--pk-column) - 2px) / 4));
 }
 
+/* Centred rather than top-aligned: whatever the row has left over after the
+   label and its sentence reads as air around them, not as a gap underneath. */
 .picker-strategy-choices.picker-type-options .picker-strategy-option {
-  align-content: start;
+  align-content: center;
 }
 
 .picker-strategy-choices .picker-strategy-copy {
@@ -2579,6 +2596,199 @@ body.picker-page {
 .ts-values i {
   color: var(--ks-text-faint);
   font-style: normal;
+}
+
+/* ============================================================
+   Screen 11: the icon set. Screen 05's frame again, because the question has
+   the same shape: more candidates than fit the rail, and one specimen that
+   redraws as the cursor moves down the list.
+   ============================================================ */
+.picker-icons {
+  display: grid;
+  gap: clamp(24px, 4.4svh, 40px);
+  padding-block: clamp(32px, 5svh, 48px) clamp(24px, 3.5svh, 48px);
+}
+
+.picker-icons-grid {
+  max-height: calc(100svh - 420px);
+  display: grid;
+  grid-template-columns: minmax(340px, 420px) minmax(0, 1fr);
+  gap: 50px;
+  align-items: stretch;
+}
+
+/* Eleven rows scroll, so this list takes screen 04's rail rather than screen
+   03's fixed row split. States come from the standard option row; what the
+   row adds is the pack's own numbers and the way out to its site. */
+.picker-icon-options .picker-strategy-option {
+  padding-block: 16px;
+  /* The link sits in this gutter. */
+  padding-inline-end: 60px;
+}
+
+.picker-icon-options .picker-strategy-copy {
+  gap: 5px;
+}
+
+.picker-icon-options .picker-strategy-title {
+  font-family: var(--ks-font);
+  font-size: 21px;
+  letter-spacing: -0.015em;
+}
+
+.picker-icon-options .picker-strategy-desc {
+  max-width: 40ch;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* Grid, weight, license: the three facts that decide this question before any
+   description does. Measurements, so they are set in the mono face. */
+.picker-icon-meta {
+  color: var(--ks-text-faint);
+  font-family: var(--ks-mono);
+  font-size: 0.7rem;
+}
+
+/* An anchor inside a <label> still checks the radio on its way to the new tab,
+   so the way out is a sibling of the row and sits above it. */
+.picker-icon-row {
+  position: relative;
+  display: grid;
+}
+
+.picker-icon-options .picker-icon-row:not(:last-child) .picker-strategy-option {
+  border-bottom: 1px solid var(--ks-rule);
+}
+
+.picker-icon-out {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  color: var(--ks-text-mute-deep);
+  border: 1px solid transparent;
+  border-radius: 2px;
+  transition:
+    color 180ms var(--ks-ease),
+    border-color 180ms var(--ks-ease);
+}
+
+.picker-icon-out svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.picker-icon-out:hover {
+  color: var(--ks-patina);
+  border-color: var(--ks-rule);
+}
+
+.picker-icon-out:focus-visible {
+  outline: 2px solid var(--ks-patina);
+  outline-offset: 2px;
+}
+
+/* Like the scale sheet, the specimen is picker chrome in the picker's own
+   theme: it answers a question about drawing, and the palette has had its
+   screens already. One field divided by hairlines, not twenty-four bordered
+   tiles on a dark ground, which is the icon grid this project spends its
+   detector telling people not to ship. */
+.picker-icon-sheet {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  background: var(--ks-lacquer-raised);
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.picker-icon-strip {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  /* A label row, so it gives height back to the field on a short screen instead
+     of holding a comfortable padding the specimen has to pay for. */
+  padding: clamp(9px, 1.5svh, 14px) clamp(16px, 2.2%, 24px);
+}
+
+/* The division is the grid's own gap over a rule-colored ground, so it reads as
+   one continuous hairline and no cell owns an edge. */
+.picker-icon-field {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-auto-rows: minmax(0, 1fr);
+  gap: 1px;
+  background: var(--ks-rule);
+  border-bottom: 1px solid var(--ks-rule);
+}
+
+/* Nothing to divide when the fetch fails, so the field drops the hairlines and
+   carries the reason in the space the glyphs would have used. */
+.picker-icon-field[data-empty] {
+  grid-template-columns: minmax(0, 1fr);
+  place-items: center;
+  padding: 24px;
+  background: var(--ks-lacquer-raised);
+  color: var(--ks-text-muted);
+  text-align: center;
+}
+
+.picker-icon-cell {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  background: var(--ks-lacquer-raised);
+  color: var(--ks-champagne);
+}
+
+.picker-icon-cell svg {
+  width: clamp(22px, 2.2vw, 32px);
+  height: auto;
+}
+
+/* The frame is short and wide before it is anything else, so on a laptop the
+   same twenty-four glyphs lie down into three long rows rather than four
+   letterbox ones. Nothing is dropped and nothing is scaled down. */
+@media (max-height: 830px) {
+  .picker-icon-field {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+  }
+}
+
+/* A pack is chosen for interface work, and interface work happens at 16px.
+   The row underneath is the same twenty-four glyphs at the size they will
+   actually be read, which is where a busy set gives itself away. */
+.picker-icon-strip-label {
+  flex: none;
+  color: var(--ks-text-faint);
+  font-family: var(--ks-mono);
+  font-size: 0.7rem;
+}
+
+.picker-icon-strip-row {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 11px;
+  color: var(--ks-text-muted);
+}
+
+.picker-icon-strip-row svg {
+  width: 16px;
+  height: 16px;
 }
 
 .picker-type-scroll {

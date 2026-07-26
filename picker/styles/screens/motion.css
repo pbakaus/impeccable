@@ -2,24 +2,38 @@
    Screen 06: motion energy.
 
    One scene, three energies. A synthetic pointer walks the same route through
-   the same wireframe on all three options and clicks the same four things: a
-   nav item, the second of two hero buttons, a choice in the proof row, and a
-   card. What differs is what the page does about it.
+   the same wireframe on all three options and clicks the same two things: the
+   second of the two hero buttons, and a card in the gallery. What differs is
+   what the page does about it.
+
+   Two clicks, not four. A visitor comparing three energies is reading the
+   difference between them, and a scene with something happening every second
+   spends the visitor's attention on following the pointer instead. The two that
+   are left are the two where the energies actually separate: a control
+   answering a press, and a selection that either lands or is staged.
 
    The whole scene runs on one 8s timeline with every beat written as a
    percentage of it, and nothing is offset by animation-delay. That is what
-   keeps a four-element orchestrated response in step after an hour of looping,
-   and it is why a frozen frame of this screen is always coherent.
+   keeps an orchestrated response in step after an hour of looping, and it is
+   why a frozen frame of this screen is always coherent.
 
    The three options are not three sets of keyframes. They set the amplitude of
    the shared ones: how far a press travels, whether an entrance starts from
-   nothing, whether siblings dim, and above all whether a state change steps or
-   eases. Restrained's step-start puts every change on the frame the click
+   nothing, whether siblings recede, and above all whether a state change steps
+   or eases. Restrained's step-start puts every change on the frame the click
    lands, which is what "state changes only" means in practice.
+
+   The script restarts the timeline whenever the previewed option changes. The
+   entrance is the loudest difference between the three, and it happens in the
+   first fifth of the loop: without a restart, a visitor who hovers a row four
+   seconds in is comparing two energies by their press depth alone.
    ============================================================ */
 .picker-preview-motion {
   --mt: 8s;
-  --mt-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Ease-out-cubic, not the expo curve this started on. Expo puts four fifths
+     of the travel in the first fifth of the duration, so lengthening a band it
+     runs on buys a longer tail and not a slower arrival. */
+  --mt-ease: cubic-bezier(0.33, 1, 0.68, 1);
 
   /* Restrained is the default state of every slot below: changes land whole,
      nothing travels, nothing arrives. */
@@ -27,6 +41,7 @@
   --mt-press-scale: 1;
   --mt-lift: 0px;
   --mt-dim: 1;
+  --mt-sink: 0px;
   --mt-in-o: 1;
   --mt-in-y: 0px;
   --mt-in-clip: 0%;
@@ -45,12 +60,20 @@
   --mt-press-scale: 0.94;
 }
 
+/* The siblings recede by 0.78 and 2px rather than by the 0.45 this started at.
+   Dimming is composited against whatever ground the color strategy chose, and
+   against a saturated primary a deep dim drags a brown thumbnail into olive and
+   a gold one into moss: the gallery stops reading as four cards standing back
+   and starts reading as a palette bug. Held this shallow the hue survives on
+   every ground, and the 2px carries the recession that the missing opacity
+   was carrying, in a channel no palette can distort. */
 #picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion,
 #picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion {
   --mt-tf: ease;
   --mt-press-scale: 0.94;
   --mt-lift: -4px;
-  --mt-dim: 0.45;
+  --mt-dim: 0.78;
+  --mt-sink: 2px;
   --mt-in-o: 0;
   --mt-in-y: 14px;
   --mt-in-clip: 100%;
@@ -94,198 +117,79 @@
   animation: mt-click var(--mt) linear infinite;
 }
 
+/* Parked below the page until the entrance has finished, because a pointer
+   moving through a page that is still arriving is two things to watch. */
 @keyframes mt-path {
-  0%, 6% { translate: 34cqw 96cqh; }
-  16%, 19% { translate: 76.9cqw 4.8cqh; }
-  31%, 33% { translate: 21.8cqw 45.8cqh; }
-  45%, 47% { translate: 54.9cqw 65.1cqh; }
-  58%, 60.5% { translate: 73.8cqw 80.2cqh; }
-  72%, 100% { translate: 34cqw 96cqh; }
+  0%, 24% { translate: 34cqw 96cqh; }
+  33%, 36% { translate: 21.8cqw 45.8cqh; }
+  50%, 54% { translate: 73.8cqw 80.2cqh; }
+  70%, 100% { translate: 34cqw 96cqh; }
 }
 
 @keyframes mt-click {
-  0%, 17.6% { scale: 0.35; opacity: 0; }
-  18% { scale: 0.35; opacity: 0.55; }
-  20.4% { scale: 1.5; opacity: 0; }
+  0%, 33.6% { scale: 0.35; opacity: 0; }
+  34% { scale: 0.35; opacity: 0.55; }
+  36.4% { scale: 1.5; opacity: 0; }
 
-  31.6% { scale: 0.35; opacity: 0; }
-  32% { scale: 0.35; opacity: 0.55; }
-  34.4% { scale: 1.5; opacity: 0; }
-
-  45.6% { scale: 0.35; opacity: 0; }
-  46% { scale: 0.35; opacity: 0.55; }
-  48.4% { scale: 1.5; opacity: 0; }
-
-  58.6% { scale: 0.35; opacity: 0; }
-  59% { scale: 0.35; opacity: 0.55; }
-  61.4%, 100% { scale: 1.5; opacity: 0; }
+  50.6% { scale: 0.35; opacity: 0; }
+  51% { scale: 0.35; opacity: 0.55; }
+  53.4%, 100% { scale: 1.5; opacity: 0; }
 }
 
-/* ── Beat one: the nav item at 18% ───────────────────────────── */
+/* ── Beat one: the hero buttons as one control, at 34% ───────── */
 
-.picker-preview-motion .ps-nav-bars i {
-  position: relative;
-}
-
-.picker-preview-motion .ps-nav-bars i::after {
-  content: "";
-  position: absolute;
-  inset: auto 0 -4px 0;
-  height: 2px;
-  background-color: var(--pvs-signal);
-  transform: scaleX(0);
-}
-
-.picker-preview-motion .ps-nav-bars i:first-child {
-  animation: mt-nav-off var(--mt) var(--mt-tf) infinite;
-}
-
-/* The outgoing marker collapses toward the item taking over and the incoming
-   one grows from the side it came from, so the pair reads as one marker
-   changing places rather than two independent bars. */
-.picker-preview-motion .ps-nav-bars i:first-child::after {
-  transform-origin: right;
-  animation: mt-rule-out var(--mt) var(--mt-tf) infinite;
-}
-
-.picker-preview-motion .ps-nav-bars i:nth-child(3) {
-  animation:
-    mt-nav-on var(--mt) var(--mt-tf) infinite,
-    mt-press-nav var(--mt) linear infinite;
-}
-
-.picker-preview-motion .ps-nav-bars i:nth-child(3)::after {
-  transform-origin: left;
-  animation: mt-rule-in var(--mt) var(--mt-tf) infinite;
-}
-
-@keyframes mt-nav-off {
-  0%, 18% { background-color: var(--pvs-cta); }
-  21%, 88% { background-color: var(--pvs-bars); }
-  91%, 100% { background-color: var(--pvs-cta); }
-}
-
-@keyframes mt-nav-on {
-  0%, 18% { background-color: var(--pvs-bars); }
-  21%, 88% { background-color: var(--pvs-cta); }
-  91%, 100% { background-color: var(--pvs-bars); }
-}
-
-@keyframes mt-rule-out {
-  0%, 18% { transform: scaleX(1); }
-  21%, 88% { transform: scaleX(0); }
-  91%, 100% { transform: scaleX(1); }
-}
-
-@keyframes mt-rule-in {
-  0%, 18% { transform: scaleX(0); }
-  21%, 88% { transform: scaleX(1); }
-  91%, 100% { transform: scaleX(0); }
-}
-
-@keyframes mt-press-nav {
-  0%, 17.6% { scale: 1; }
-  18.4% { scale: var(--mt-press-scale); }
-  20% { scale: 1; }
-  100% { scale: 1; }
-}
-
-/* ── Beat two: the hero buttons as one control, at 32% ───────── */
-
+/* The pressed button takes the fill on the frame of the click and the one it
+   came from fades out behind it, which is the order that keeps a filled button
+   on the page throughout. Cross-fading the pair in opposite directions instead
+   is where the wash came from: a fill and a ghost sit a long way apart in
+   lightness once the strategy is drenched, primary as the ground puts the
+   filled state on the page's ink, and for the length of the fade the hero held
+   two buttons of a grey belonging to neither. */
 .picker-preview-motion .ps-actions i:first-child {
   animation: mt-seg-off var(--mt) var(--mt-tf) infinite;
 }
 
 .picker-preview-motion .ps-actions i:last-child {
   animation:
-    mt-seg-on var(--mt) var(--mt-tf) infinite,
+    mt-seg-on var(--mt) steps(1, start) infinite,
     mt-press-seg var(--mt) linear infinite;
 }
 
+/* 120ms for the fade out, and the reset gets the same. */
 @keyframes mt-seg-off {
-  0%, 32% { background-color: var(--pvs-cta); }
-  35%, 88% { background-color: var(--pvs-ghost); }
-  91%, 100% { background-color: var(--pvs-cta); }
+  0%, 34% { background-color: var(--pvs-cta); }
+  35.5%, 88% { background-color: var(--pvs-ghost); }
+  89.5%, 100% { background-color: var(--pvs-cta); }
 }
 
 @keyframes mt-seg-on {
-  0%, 32% { background-color: var(--pvs-ghost); }
-  35%, 88% { background-color: var(--pvs-cta); }
-  91%, 100% { background-color: var(--pvs-ghost); }
+  0%, 34% { background-color: var(--pvs-ghost); }
+  35.5%, 88% { background-color: var(--pvs-cta); }
+  89.5%, 100% { background-color: var(--pvs-ghost); }
 }
 
 @keyframes mt-press-seg {
-  0%, 31.6% { scale: 1; }
-  32.4% { scale: var(--mt-press-scale); }
-  34% { scale: 1; }
+  0%, 33.6% { scale: 1; }
+  34.4% { scale: var(--mt-press-scale); }
+  36% { scale: 1; }
   100% { scale: 1; }
 }
 
-/* ── Beat three: the proof row as a choice, at 46% ───────────── */
-
-/* The row's four claims become four options, which is what gives the pointer
-   something to choose. Selection is a halo on the marker and the claim beside
-   it darkening: the dots keep the accent colors the palette gave them, because
-   this screen is not the one relitigating color. */
-.picker-preview-motion .ps-proof-item:nth-of-type(1) i {
-  animation: mt-halo-off var(--mt) var(--mt-tf) infinite;
-}
-
-.picker-preview-motion .ps-proof-item:nth-of-type(1) span {
-  animation: mt-claim-off var(--mt) var(--mt-tf) infinite;
-}
-
-.picker-preview-motion .ps-proof-item:nth-of-type(3) i {
-  animation:
-    mt-halo-on var(--mt) var(--mt-tf) infinite,
-    mt-press-choice var(--mt) linear infinite;
-}
-
-.picker-preview-motion .ps-proof-item:nth-of-type(3) span {
-  animation: mt-claim-on var(--mt) var(--mt-tf) infinite;
-}
-
-@keyframes mt-halo-off {
-  0%, 46% { box-shadow: 0 0 0 3px color-mix(in oklab, var(--pvs-cta) 30%, transparent); }
-  49%, 88% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--pvs-cta) 0%, transparent); }
-  91%, 100% { box-shadow: 0 0 0 3px color-mix(in oklab, var(--pvs-cta) 30%, transparent); }
-}
-
-@keyframes mt-halo-on {
-  0%, 46% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--pvs-cta) 0%, transparent); }
-  49%, 88% { box-shadow: 0 0 0 3px color-mix(in oklab, var(--pvs-cta) 30%, transparent); }
-  91%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--pvs-cta) 0%, transparent); }
-}
-
-@keyframes mt-claim-off {
-  0%, 46% { background-color: var(--pvs-headline); }
-  49%, 88% { background-color: var(--pvs-bars); }
-  91%, 100% { background-color: var(--pvs-headline); }
-}
-
-@keyframes mt-claim-on {
-  0%, 46% { background-color: var(--pvs-bars); }
-  49%, 88% { background-color: var(--pvs-headline); }
-  91%, 100% { background-color: var(--pvs-bars); }
-}
-
-@keyframes mt-press-choice {
-  0%, 45.6% { scale: 1; }
-  46.4% { scale: var(--mt-press-scale); }
-  48% { scale: 1; }
-  100% { scale: 1; }
-}
-
-/* ── Beat four: the card at 59% ──────────────────────────────── */
+/* ── Beat two: the card at 51% ───────────────────────────────── */
 
 /* Where the three energies separate most. All three mark the card as chosen.
-   Responsive stops there. Choreographed lifts it off the page and takes its
-   neighbours down 80ms later, which is the difference between feedback and
-   something staged. */
+   Responsive adds the press. Choreographed lifts it off the page and takes its
+   neighbours back 80ms later, which is the difference between feedback and
+   something staged.
+
+   The fill starts as the chosen surface at zero alpha rather than as the
+   keyword: `transparent` is a black nobody asked for, and a cross-fade through
+   it is how a green page comes to flash a grey card. */
 .picker-preview-motion .ps-gallery-item:nth-child(3) {
   animation:
     mt-card-on var(--mt) var(--mt-tf) infinite,
-    mt-card-lift var(--mt) var(--mt-tf) infinite;
+    mt-card-lift var(--mt) var(--mt-tf) infinite,
+    mt-press-card var(--mt) linear infinite;
 }
 
 .picker-preview-motion .ps-gallery-item:not(:nth-child(3)) {
@@ -293,38 +197,50 @@
 }
 
 @keyframes mt-card-on {
-  0%, 59% {
-    background-color: transparent;
+  0%, 51% {
+    background-color: color-mix(in oklab, var(--pvs-surface) 0%, transparent);
     box-shadow: inset 0 0 0 0 var(--pvs-cta);
   }
-  62%, 88% {
+  52.5%, 88% {
     background-color: var(--pvs-surface);
     box-shadow: inset 0 0 0 1.5px var(--pvs-cta);
   }
-  91%, 100% {
-    background-color: transparent;
+  89.5%, 100% {
+    background-color: color-mix(in oklab, var(--pvs-surface) 0%, transparent);
     box-shadow: inset 0 0 0 0 var(--pvs-cta);
   }
 }
 
+/* Lift and press are on the independent properties rather than both on
+   transform, so one can run on the option's curve while the other stays
+   linear. */
 @keyframes mt-card-lift {
-  0%, 59% { transform: translateY(0); }
-  62%, 88% { transform: translateY(var(--mt-lift)); }
-  91%, 100% { transform: translateY(0); }
+  0%, 51% { translate: 0 0; }
+  53.5%, 88% { translate: 0 var(--mt-lift); }
+  89.5%, 100% { translate: 0 0; }
+}
+
+@keyframes mt-press-card {
+  0%, 50.6% { scale: 1; }
+  51.4% { scale: var(--mt-press-scale); }
+  53% { scale: 1; }
+  100% { scale: 1; }
 }
 
 @keyframes mt-card-dim {
-  0%, 60% { filter: opacity(1); }
-  63%, 88% { filter: opacity(var(--mt-dim)); }
-  91%, 100% { filter: opacity(1); }
+  0%, 52% { filter: opacity(1); translate: 0 0; }
+  54%, 88% { filter: opacity(var(--mt-dim)); translate: 0 var(--mt-sink); }
+  89.5%, 100% { filter: opacity(1); translate: 0 0; }
 }
 
 /* ── The entrance, for the option that has one ───────────────── */
 
-/* Six bands down the page, 80ms apart, each arriving over 360ms: 760ms from
-   the first movement to the last, inside the band an authored entrance is
-   allowed to take. Restrained and Responsive run the same animations with the
-   travel set to zero, so the page is simply already there.
+/* Six bands down the page, 200ms apart, each arriving over 560ms: 1.56s from
+   the first movement to the last. Slow enough to watch a band arrive and name
+   what arrived, and staggered widely enough to read as a sequence rather than
+   as one block fading in, which is the whole point of showing it. Restrained
+   and Responsive run the same animations with the travel set to zero, so the
+   page is simply already there.
 
    The bands are containers rather than leaves. Every element that changes
    state during the loop is inside one, so an entrance never has to share a
@@ -359,31 +275,31 @@
 
 @keyframes mt-in-1 {
   0% { opacity: var(--mt-in-o); translate: 0 var(--mt-in-y); }
-  4.5%, 95% { opacity: 1; translate: 0 0; }
+  7%, 95% { opacity: 1; translate: 0 0; }
   100% { opacity: var(--mt-in-o); translate: 0 0; }
 }
 
 @keyframes mt-in-2 {
-  0%, 1% { opacity: var(--mt-in-o); translate: 0 var(--mt-in-y); }
-  5.5%, 95% { opacity: 1; translate: 0 0; }
+  0%, 2.5% { opacity: var(--mt-in-o); translate: 0 var(--mt-in-y); }
+  9.5%, 95% { opacity: 1; translate: 0 0; }
   100% { opacity: var(--mt-in-o); translate: 0 0; }
 }
 
 @keyframes mt-in-4 {
-  0%, 3% { opacity: var(--mt-in-o); translate: 0 var(--mt-in-y); }
-  7.5%, 95% { opacity: 1; translate: 0 0; }
+  0%, 7.5% { opacity: var(--mt-in-o); translate: 0 var(--mt-in-y); }
+  14.5%, 95% { opacity: 1; translate: 0 0; }
   100% { opacity: var(--mt-in-o); translate: 0 0; }
 }
 
 @keyframes mt-in-5 {
-  0%, 4% { opacity: var(--mt-in-o); translate: 0 var(--mt-in-y); }
-  8.5%, 95% { opacity: 1; translate: 0 0; }
+  0%, 10% { opacity: var(--mt-in-o); translate: 0 var(--mt-in-y); }
+  17%, 95% { opacity: 1; translate: 0 0; }
   100% { opacity: var(--mt-in-o); translate: 0 0; }
 }
 
 @keyframes mt-in-6 {
-  0%, 5% { opacity: var(--mt-in-o); translate: 0 var(--mt-in-y); }
-  9.5%, 95% { opacity: 1; translate: 0 0; }
+  0%, 12.5% { opacity: var(--mt-in-o); translate: 0 var(--mt-in-y); }
+  19.5%, 95% { opacity: 1; translate: 0 0; }
   100% { opacity: var(--mt-in-o); translate: 0 0; }
 }
 
@@ -391,11 +307,11 @@
    rather than rises, because a photograph revealing itself is the moment a
    staged entrance is built around. */
 @keyframes mt-in-image {
-  0%, 2% {
+  0%, 5% {
     opacity: var(--mt-in-o);
     clip-path: inset(0 0 var(--mt-in-clip) 0);
   }
-  6.5%, 95% {
+  12%, 95% {
     opacity: 1;
     clip-path: inset(0 0 0% 0);
   }
@@ -411,45 +327,29 @@
    without the movement. */
 @media (prefers-reduced-motion: reduce) {
   /* Pseudo-elements are not valid inside :is() and get dropped from the list
-     rather than failing loudly, so the two that animate are cancelled on their
-     own lines. */
+     rather than failing loudly, so the one that animates is cancelled on its
+     own line. */
   .picker-preview-motion .ps-cursor::after,
-  .picker-preview-motion .ps-nav-bars i::after,
   .picker-preview-motion :is(
     .ps-cursor,
     .ps-nav,
-    .ps-nav-bars i,
     .ps-hero-copy > *,
     .ps-image,
     .ps-actions i,
     .ps-proof-item,
-    .ps-proof-item i,
-    .ps-proof-item span,
     .ps-editorial-copy > *,
     .ps-gallery,
     .ps-gallery-item,
     .ps-footer
   ) {
     /* The declarations being cancelled are per-element and more specific than
-       any list can be without repeating all fifteen selectors. A preference
-       the visitor set in their operating system outranks them. */
+       any list can be without repeating all ten selectors. A preference the
+       visitor set in their operating system outranks them. */
     animation: none !important;
   }
 
   .picker-preview-motion .ps-cursor {
     translate: 73.8cqw 80.2cqh;
-  }
-
-  .picker-preview-motion .ps-nav-bars i:first-child {
-    background-color: var(--pvs-bars);
-  }
-
-  .picker-preview-motion .ps-nav-bars i:nth-child(3) {
-    background-color: var(--pvs-cta);
-  }
-
-  .picker-preview-motion .ps-nav-bars i:nth-child(3)::after {
-    transform: scaleX(1);
   }
 
   .picker-preview-motion .ps-actions i:first-child {
@@ -460,21 +360,14 @@
     background-color: var(--pvs-cta);
   }
 
-  .picker-preview-motion .ps-proof-item:nth-of-type(3) i {
-    box-shadow: 0 0 0 3px color-mix(in oklab, var(--pvs-cta) 30%, transparent);
-  }
-
-  .picker-preview-motion .ps-proof-item:nth-of-type(3) span {
-    background-color: var(--pvs-headline);
-  }
-
   .picker-preview-motion .ps-gallery-item:nth-child(3) {
     background-color: var(--pvs-surface);
     box-shadow: inset 0 0 0 1.5px var(--pvs-cta);
-    transform: translateY(var(--mt-lift));
+    translate: 0 var(--mt-lift);
   }
 
   .picker-preview-motion .ps-gallery-item:not(:nth-child(3)) {
     filter: opacity(var(--mt-dim));
+    translate: 0 var(--mt-sink);
   }
 }

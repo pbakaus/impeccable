@@ -32,11 +32,17 @@
   --pvs-shadow-surface: none;
   --pvs-tint-chrome: none;
   --pvs-tint-card: none;
+  --pvs-tint-pad: 0px;
 }
 
 /* ── Layered ─────────────────────────────────────────────────
    Two tonal steps off the ground, cards further up than chrome, and not one
-   shadow on the page. */
+   shadow on the page.
+
+   A tonal step is only read as a step if some of it is visible, so this is the
+   one answer that asks for padding of its own. It is a floor rather than a
+   replacement: the boundary answer that already draws panels keeps its wider
+   inset. */
 #picker-form:has(.picker-strategy-option:hover input[name="depth-style"][value="layered"]) .picker-preview-depth,
 :where(#picker-form:not(:has(.picker-strategy-option:hover input[name="depth-style"])):has(input[name="depth-style"][value="layered"]:checked)) [data-carry] {
   --pvs-shadow-chrome: none;
@@ -51,6 +57,7 @@
     color-mix(in oklab, var(--pvs-ink) 12%, transparent),
     color-mix(in oklab, var(--pvs-ink) 12%, transparent)
   );
+  --pvs-tint-pad: 3.5%;
 }
 
 /* ── Soft lift ───────────────────────────────────────────────
@@ -66,6 +73,7 @@
   --pvs-shadow-surface: 0 2px 5px rgb(0 0 0 / 0.14);
   --pvs-tint-chrome: none;
   --pvs-tint-card: none;
+  --pvs-tint-pad: 0px;
 }
 
 /* ── Floating ────────────────────────────────────────────────
@@ -81,6 +89,7 @@
   --pvs-shadow-surface: 0 6px 14px rgb(0 0 0 / 0.22);
   --pvs-tint-chrome: none;
   --pvs-tint-card: none;
+  --pvs-tint-pad: 0px;
 }
 
 /* Tonal steps paint as a ground, over whatever ground the boundary answer

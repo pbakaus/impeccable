@@ -2,6 +2,7 @@
 import Picker from '../layouts/Picker.astro';
 import Artboard from '../components/Artboard.astro';
 import QuestionScreen from '../components/QuestionScreen.astro';
+import iconPacks from '../data/icon-packs.json';
 
 const roles = [
   ['primary', 'Primary'],
@@ -26,6 +27,17 @@ const scales = [
 
 // Exponent above the 16px base: P sits at the base, H1 six steps up.
 const scaleRows = [['H1', 6], ['H2', 5], ['H3', 4], ['H4', 3], ['H5', 2], ['H6', 1], ['P', 0]];
+
+// Only the row copy is rendered here. The glyphs are 109KB of markup for sets
+// the run will use one of, so they are fetched when the screen first opens.
+const iconRows = iconPacks.packs.map((pack) => ({
+  id: pack.id,
+  name: pack.name,
+  license: pack.license,
+  url: pack.url,
+  note: pack.note,
+  meta: `${pack.grid} grid / ${pack.weight} / ${pack.license}`,
+}));
 
 // The five questions that are answered by looking at the same wireframe page.
 // Each one only rewrites the artboard slots it owns, so by the last screen the
@@ -78,7 +90,7 @@ const questions = [
       {
         value: 'balanced',
         title: 'Balanced',
-        desc: 'An aligned grid with a few deliberate breaks in it.',
+        desc: 'An aligned grid with a few deliberate breaks that carry the emphasis.',
       },
       {
         value: 'editorial',
@@ -593,7 +605,88 @@ const questions = [
 
       {questions.map((question) => <QuestionScreen {...question} />)}
 
-      <section class="picker-screen" data-screen="11" data-step="Review" aria-hidden="true" aria-labelledby="picker-finish-copy">
+      <section class="picker-screen" data-screen="11" data-step="Icons" aria-hidden="true" aria-labelledby="picker-icons-title">
+        <div class="picker-container">
+          <div class="picker-icons">
+            <h2 id="picker-icons-title" class="picker-question-title">Choose an icon set</h2>
+
+            <div class="picker-icons-grid">
+              <div class="picker-type-rail">
+                <fieldset class="picker-strategy-options picker-type-options picker-icon-options" data-icon-options>
+                  <legend>Icon set</legend>
+
+                  {iconRows.map((pack, index) => (
+                    <div class="picker-icon-row">
+                      <label class="picker-strategy-option">
+                        <input
+                          type="radio"
+                          name="icon-pack"
+                          value={pack.id}
+                          data-pack-name={pack.name}
+                          data-pack-license={pack.license}
+                          data-pack-url={pack.url}
+                          checked={index === 0}
+                        />
+                        <span class="picker-strategy-copy">
+                          <span class="picker-strategy-title">{pack.name}</span>
+                          <span class="picker-icon-meta">{pack.meta}</span>
+                          <span class="picker-strategy-desc">{pack.note}</span>
+                        </span>
+                      </label>
+                      <a
+                        class="picker-icon-out"
+                        href={pack.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={`Open the ${pack.name} site in a new tab`}
+                      >
+                        <svg viewBox="0 0 20 20" aria-hidden="true">
+                          <path d="M11 4.5h4.5V9M15.5 4.5 9.5 10.5M13 11.5v3.5a.5.5 0 0 1-.5.5h-7a.5.5 0 0 1-.5-.5v-7a.5.5 0 0 1 .5-.5H9"></path>
+                        </svg>
+                      </a>
+                    </div>
+                  ))}
+                </fieldset>
+
+                <div class="picker-type-scroll">
+                  <button class="picker-icon-button" type="button" data-list-scroll="-1" aria-label="Scroll icon sets up">
+                    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m4.5 12.5 5.5-5 5.5 5"></path></svg>
+                  </button>
+                  <button class="picker-icon-button" type="button" data-list-scroll="1" aria-label="Scroll icon sets down">
+                    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m4.5 7.5 5.5 5 5.5-5"></path></svg>
+                  </button>
+                </div>
+              </div>
+
+              <div class="picker-icon-sheet" data-icon-sheet aria-hidden="true">
+                <div class="picker-icon-field" data-icon-field></div>
+                <div class="picker-icon-strip">
+                  <span class="picker-icon-strip-label">At 16px</span>
+                  <div class="picker-icon-strip-row" data-icon-strip></div>
+                </div>
+              </div>
+            </div>
+
+            <input type="hidden" name="icon-pack-name" />
+            <input type="hidden" name="icon-pack-license" />
+            <input type="hidden" name="icon-pack-url" />
+
+            <div class="picker-actions-stack">
+              <button class="ks-button ks-button-primary" type="button" data-advance="next">
+                Select this set
+                <span class="ks-button-arrow" aria-hidden="true">
+                  <svg viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square">
+                    <path d="M0 4h14M10 0l4 4-4 4"></path>
+                  </svg>
+                </span>
+              </button>
+              <button class="picker-back" type="button" data-advance="prev">Back</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="picker-screen" data-screen="12" data-step="Review" aria-hidden="true" aria-labelledby="picker-finish-copy">
         <div class="picker-container">
           <div class="picker-placeholder">
             <p id="picker-finish-copy">Your visual direction is ready.</p>
@@ -718,11 +811,15 @@ const questions = [
       'button:not([disabled]), input:not([disabled]):not([type="hidden"]):not([tabindex="-1"]), select:not([disabled]), textarea:not([disabled]), a[href]',
     )];
 
-    // The start screen is not a step, so the stepper counts from screen 02.
+    // Neither the start screen nor the review is a question, so the stepper
+    // counts from screen 02 and fills on the last one, icons. Review holds it
+    // full rather than counting past the end.
+    const STEPS = 10;
     const progress = $('.picker-progress');
     const setProgress = (index, name) => {
-      progress.dataset.step = String(index);
-      $('[data-progress-index]').textContent = String(Math.max(index, 1));
+      const step = Math.min(Math.max(index, 1), STEPS);
+      progress.dataset.step = String(step);
+      $('[data-progress-index]').textContent = String(step);
       $('[data-progress-name]').textContent = name || '';
     };
 
