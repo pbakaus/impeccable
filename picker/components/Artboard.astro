@@ -53,13 +53,21 @@ const hook = type ? '' : undefined;
 >
   <div class="ps-desktop">
     <div class="ps-nav">
-      <div class="ps-brand-block" data-type-brand={hook}></div>
+      <div class="ps-nav-lede">
+        {!type && <i class="ps-menu"></i>}
+        <div class="ps-brand-block" data-type-brand={hook}></div>
+        {!type && <i class="ps-brand-word"></i>}
+      </div>
       {type ? (
         <div class="ps-nav-bars"><i data-type-nav></i><i data-type-nav></i><i data-type-nav></i><i data-type-nav></i></div>
       ) : (
         <div class="ps-nav-bars"><i></i><i></i><i></i><i></i></div>
       )}
-      <div class="ps-nav-action" data-type-nav-action={hook}></div>
+      <div class="ps-nav-tail">
+        {!type && <i class="ps-search"></i>}
+        <div class="ps-nav-action" data-type-nav-action={hook}></div>
+        {!type && <i class="ps-avatar"></i>}
+      </div>
     </div>
     <div class="ps-hero">
       <div class="ps-hero-copy">
@@ -73,7 +81,7 @@ const hook = type ? '' : undefined;
           <Fragment>
             <div class="ps-eyebrow"></div>
             <div class="ps-headline"><i></i><i></i></div>
-            <div class="ps-copy"><i></i></div>
+            <div class="ps-copy"><i></i><i></i><i></i></div>
             <div class="ps-actions"><i></i><i></i></div>
           </Fragment>
         )}
@@ -81,13 +89,17 @@ const hook = type ? '' : undefined;
       <div class="ps-image"></div>
     </div>
     <div class="ps-proof">
-      <div class="ps-proof-item"><i></i><span data-type-proof={hook}></span></div>
-      <i class="ps-proof-divider" aria-hidden="true"></i>
-      <div class="ps-proof-item"><i></i><span data-type-proof={hook}></span></div>
-      <i class="ps-proof-divider" aria-hidden="true"></i>
-      <div class="ps-proof-item"><i></i><span data-type-proof={hook}></span></div>
-      <i class="ps-proof-divider" aria-hidden="true"></i>
-      <div class="ps-proof-item"><i></i><span data-type-proof={hook}></span></div>
+      {[0, 1, 2, 3].map((n) => (
+        <Fragment>
+          {n > 0 && <i class="ps-proof-divider" aria-hidden="true"></i>}
+          <div class="ps-proof-item">
+            <i></i>
+            {type
+              ? <span data-type-proof></span>
+              : <span class="ps-proof-lines"><b></b><b></b></span>}
+          </div>
+        </Fragment>
+      ))}
     </div>
     <div class="ps-editorial">
       <div class="ps-editorial-copy">
@@ -101,7 +113,9 @@ const hook = type ? '' : undefined;
         {[0, 1, 2, 3].map(() => (
           <div class="ps-gallery-item">
             <i></i>
-            <span><b data-type-gallery-title={hook}></b><b data-type-gallery-meta={hook}></b></span>
+            {type
+              ? <span><b data-type-gallery-title></b><b data-type-gallery-meta></b></span>
+              : <span><b></b><b></b><b></b></span>}
           </div>
         ))}
       </div>
@@ -114,14 +128,33 @@ const hook = type ? '' : undefined;
       )}
       <div class="ps-footer-mark" data-type-footer-mark={hook}></div>
     </div>
+    {/*
+      Off-grid marks, drawn only where the page has already left the field:
+      opacity rides --pvs-drift, so on the three disciplined answers they are
+      rendered and invisible and the answers that pay for them are the ones
+      that asked. Absolute, so the desktop grid still has exactly its five
+      declared rows.
+    */}
+    {!type && (
+      <Fragment>
+        <i class="ps-scatter ps-scatter--lead" aria-hidden="true"></i>
+        <i class="ps-scatter ps-scatter--trail" aria-hidden="true"></i>
+      </Fragment>
+    )}
     {cursor && <i class="ps-cursor" data-cursor aria-hidden="true"></i>}
   </div>
 
   {phone && (
     <div class="ps-phone">
       <div class="ps-phone-top">
-        <div class="ps-brand-block" data-type-brand={hook}></div>
-        <div class="ps-nav-action" data-type-menu-action={hook}></div>
+        <div class="ps-nav-lede">
+          <div class="ps-brand-block" data-type-brand={hook}></div>
+          {!type && <i class="ps-brand-word"></i>}
+        </div>
+        <div class="ps-nav-tail">
+          <div class="ps-nav-action" data-type-menu-action={hook}></div>
+          {!type && <i class="ps-menu"></i>}
+        </div>
       </div>
       <div class="ps-phone-body">
         <div class="ps-image"></div>
@@ -140,9 +173,17 @@ const hook = type ? '' : undefined;
           <i data-type-cta-primary={hook}></i><i data-type-cta-secondary={hook}></i>
         </div>
         <div class="ps-proof">
-          <div class="ps-proof-item"><i></i><span data-type-proof={hook}></span></div>
-          <i class="ps-proof-divider" aria-hidden="true"></i>
-          <div class="ps-proof-item"><i></i><span data-type-proof={hook}></span></div>
+          {[0, 1].map((n) => (
+            <Fragment>
+              {n > 0 && <i class="ps-proof-divider" aria-hidden="true"></i>}
+              <div class="ps-proof-item">
+                <i></i>
+                {type
+                  ? <span data-type-proof></span>
+                  : <span class="ps-proof-lines"><b></b><b></b></span>}
+              </div>
+            </Fragment>
+          ))}
         </div>
         <div class="ps-editorial-copy">
           <strong data-type-section-title={hook}></strong>
@@ -154,7 +195,9 @@ const hook = type ? '' : undefined;
           {[0, 1].map(() => (
             <div class="ps-gallery-item">
               <i></i>
-              <span><b data-type-gallery-title={hook}></b><b data-type-gallery-meta={hook}></b></span>
+              {type
+                ? <span><b data-type-gallery-title></b><b data-type-gallery-meta></b></span>
+                : <span><b></b><b></b></span>}
             </div>
           ))}
         </div>
