@@ -223,6 +223,32 @@
   display: none;
 }
 
+/* The handset, on the same terms. The section copy goes for the same reason it
+   went on the desktop, and its row goes with it so the two cards keep the
+   flexible row at the bottom of the stack. The card gap comes down to the
+   page's own gutter and the proof band's uneven inset is evened out: one
+   margin, one gap, two equal cards. */
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="simple-grid"]) .picker-preview-layout .ps-phone-body .ps-editorial-copy,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="simple-grid"]:checked) .picker-preview-layout .ps-phone-body .ps-editorial-copy {
+  display: none;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="simple-grid"]) .picker-preview-layout .ps-phone-body,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="simple-grid"]:checked) .picker-preview-layout .ps-phone-body {
+  grid-template-rows: 31% auto auto auto 34px minmax(0, 1fr);
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="simple-grid"]) .picker-preview-layout .ps-phone-body .ps-gallery,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="simple-grid"]:checked) .picker-preview-layout .ps-phone-body .ps-gallery {
+  gap: 6%;
+  margin-left: 0;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="simple-grid"]) .picker-preview-layout .ps-phone-body .ps-proof,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="simple-grid"]:checked) .picker-preview-layout .ps-phone-body .ps-proof {
+  padding-inline: 4%;
+}
+
 /* The bars keep a text measure instead of running to the column edge, so the
    copy reads as a compact block in its half rather than a wide one. */
 #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="simple-grid"]) .picker-preview-layout .ps-hero-copy .ps-headline i,
