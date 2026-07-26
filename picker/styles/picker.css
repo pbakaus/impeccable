@@ -272,10 +272,18 @@ body.picker-page {
   line-height: 1.5;
 }
 
+/* The art belongs to the start screen and the finish. Every question in
+   between is judged against a plain ground, because a photograph behind a
+   palette or a wireframe is a second opinion nobody asked for. */
 .picker-shell:has(#picker-form[data-current="02"]) .picker-hero-art,
 .picker-shell:has(#picker-form[data-current="03"]) .picker-hero-art,
 .picker-shell:has(#picker-form[data-current="04"]) .picker-hero-art,
-.picker-shell:has(#picker-form[data-current="05"]) .picker-hero-art {
+.picker-shell:has(#picker-form[data-current="05"]) .picker-hero-art,
+.picker-shell:has(#picker-form[data-current="06"]) .picker-hero-art,
+.picker-shell:has(#picker-form[data-current="07"]) .picker-hero-art,
+.picker-shell:has(#picker-form[data-current="08"]) .picker-hero-art,
+.picker-shell:has(#picker-form[data-current="09"]) .picker-hero-art,
+.picker-shell:has(#picker-form[data-current="10"]) .picker-hero-art {
   opacity: 0;
 }
 
@@ -291,10 +299,14 @@ body.picker-page {
   transition: opacity 180ms var(--ks-ease);
 }
 
+/* Ten steps hold the same total width five did: the row is a measure of how
+   far along the interview is, and a wider one would start competing with the
+   question. The ticks divide whatever that width is. */
 .picker-progress-track {
+  width: 232px;
   display: grid;
-  grid-template-columns: repeat(5, 34px);
-  gap: 6px;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 5px;
 }
 
 .picker-progress-track i {
@@ -307,7 +319,12 @@ body.picker-page {
 .picker-progress[data-step="2"] .picker-progress-track i:nth-child(-n + 2),
 .picker-progress[data-step="3"] .picker-progress-track i:nth-child(-n + 3),
 .picker-progress[data-step="4"] .picker-progress-track i:nth-child(-n + 4),
-.picker-progress[data-step="5"] .picker-progress-track i {
+.picker-progress[data-step="5"] .picker-progress-track i:nth-child(-n + 5),
+.picker-progress[data-step="6"] .picker-progress-track i:nth-child(-n + 6),
+.picker-progress[data-step="7"] .picker-progress-track i:nth-child(-n + 7),
+.picker-progress[data-step="8"] .picker-progress-track i:nth-child(-n + 8),
+.picker-progress[data-step="9"] .picker-progress-track i:nth-child(-n + 9),
+.picker-progress[data-step="10"] .picker-progress-track i {
   background: var(--ks-kinpaku);
 }
 
@@ -1354,7 +1371,7 @@ body.picker-page {
 .picker-strategy-choices.picker-type-options {
   height: 100%;
   align-content: stretch;
-  grid-template-rows: repeat(4, minmax(0, 1fr));
+  grid-template-rows: repeat(var(--pk-choices, 4), minmax(0, 1fr));
 }
 
 .picker-strategy-choices.picker-type-options .picker-strategy-option {
@@ -1381,16 +1398,18 @@ body.picker-page {
   max-width: 34ch;
 }
 
-/* Screen 03 shows one editorial landing page at desktop and phone sizes.
-   Geometry stays fixed while the strategy radios remap its color slots.
-   Screen 04's artboards read the same slots, so the strategy travels there
-   with the palette instead of being re-decided.
+/* The wireframe landing page every option screen previews its answer on, at
+   desktop and phone sizes. Each screen remaps the slots its own question owns:
+   color on 03, glyphs on 04, then motion, grid, dividers, radius, and shadow.
+   Answers travel forward, so by the last screen the artboard is showing every
+   decision made so far rather than one at a time.
 
-   Two of the slots name an ink rather than a fill: a filled button's label
-   has to come from the fill it sits on, and which fill that is changes with
-   the strategy. --pv-t-ink is set alongside the palette by the picker script;
-   the fallback here matches the gold that stands in before a palette lands. */
-.picker-strategy-preview {
+   Two of the color slots name an ink rather than a fill: a filled button's
+   label has to come from the fill it sits on, and which fill that is changes
+   with the strategy. --pv-t-ink is set alongside the palette by the picker
+   script; the fallback here matches the gold that stands in before a palette
+   lands. */
+.picker-artboard {
   --pv-primary: var(--ks-champagne);
   --pv-secondary: var(--ks-patina);
   --pv-tertiary: var(--ks-kinpaku);
@@ -1447,6 +1466,58 @@ body.picker-page {
   --pvs-accent-c: var(--pv-primary);
   --pvs-accent-d: var(--pv-bone);
   --ps-proof-gap: 25px;
+
+  /* Geometry slots. Every default below is the value the artboard already had,
+     so screens 03 and 04 are unchanged by their existence. A later screen
+     answers its question by rewriting a handful of them.
+
+     Radius is four slots rather than one because a wireframe bar standing in
+     for a line of text must never round like a button: at pill radius it stops
+     reading as text and starts reading as a tag. So controls, surfaces, and
+     text bars move independently, and the dot stays a dot unless a screen
+     says otherwise. */
+  --pvs-radius-frame: 4px;
+  --pvs-radius-frame-phone: 5px;
+  --pvs-radius-surface: 2px;
+  --pvs-radius-control: 2px;
+  --pvs-radius-bar: 2px;
+  --pvs-radius-dot: 50%;
+
+  /* Section separation. The frame is the browser window and stays put; the
+     dividers are the page's own, and are what a boundary answer removes. */
+  --pvs-frame-w: 1px;
+  --pvs-frame-c: var(--pvs-rule);
+  --pvs-divider-w: 1px;
+  --pvs-divider-c: var(--pvs-rule);
+
+  /* Section grounds and element containers. Transparent by default, which is
+     why they cost nothing until a screen fills them. */
+  --pvs-band: transparent;
+  --pvs-band-alt: transparent;
+  --pvs-panel: transparent;
+  --pvs-panel-edge: transparent;
+  --pvs-panel-edge-w: 0px;
+  --pvs-panel-pad: 0px;
+
+  --pvs-shadow-card: none;
+  --pvs-shadow-control: none;
+  --pvs-shadow-surface: none;
+  --pvs-shadow-chrome: none;
+
+  /* Page grid. Gutters are percentages of the artboard, so they hold at both
+     sizes and at any zoom. */
+  --pvs-gutter: 5.5%;
+  --pvs-gutter-end: 3.2%;
+  --pvs-rows: 9.4% 50.6% 9% 22.7% 8.3%;
+  --pvs-nav-cols: auto 1fr auto;
+  --pvs-hero-cols: 35.8% minmax(0, 1fr);
+  --pvs-hero-gap: 11.3%;
+  --pvs-editorial-cols: 27.9% minmax(0, 1fr);
+  --pvs-editorial-gap: 6%;
+  --pvs-gallery-cols: 1.12fr 0.9fr 0.9fr 0.9fr;
+  --pvs-gallery-gap: 3%;
+  --pvs-section-align: center;
+
   width: 100%;
   aspect-ratio: 1.865 / 1;
   display: grid;
@@ -1454,19 +1525,33 @@ body.picker-page {
   gap: 5.25%;
 }
 
+/* One artboard filling the frame, for a screen whose answer only reads at
+   desktop width. It keeps the paired frame's ratio rather than taking a
+   taller one of its own: the preview then occupies the same block on every
+   screen, and the CTA underneath does not move as you page through. */
+.picker-artboard--solo {
+  aspect-ratio: 1.865 / 1;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
 /* Hovering an option previews its strategy before the click commits it.
    While any strategy option is hovered, the hovered branch drives the
    preview and the checked branch stands down; hovering Restrained needs
    no block of its own because standing down lands on the defaults.
 
-   The third selector in each block carries the committed answer onto screen
-   04's type artboards. Only the committed answer travels: a hover preview
-   belongs to the screen whose options are under the cursor. Its :where()
-   holds that selector at one class of specificity on purpose, so the
+   The last two selectors in each block carry the committed answer onto every
+   later screen's artboard, so a screen deciding motion or radius shows it on
+   the page the visitor actually chose. Only the committed answer travels: a
+   hover preview belongs to the screen whose options are under the cursor,
+   which is what the no-hover guard on the [data-artboard] selector is for.
+   Both hold themselves at one class of specificity on purpose, so the
+   artboard's own defaults are still beaten on source order while the
    reading-contrast slots the type preview declares further down still win. */
 #picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="committed"]) .picker-strategy-preview:not(.picker-preview-type),
 #picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="committed"]:checked) .picker-strategy-preview:not(.picker-preview-type),
-:where(#picker-form:has(input[name="color-strategy"][value="committed"]:checked)) .picker-preview-type {
+:where(#picker-form:has(input[name="color-strategy"][value="committed"]:checked)) .picker-preview-type,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="committed"]:checked)) [data-artboard] {
   --pvs-headline: color-mix(in oklab, var(--pv-primary) 80%, var(--pv-strong));
   --pvs-headline-text: var(--pv-p-on-n);
   --pvs-eyebrow: var(--pv-primary);
@@ -1487,7 +1572,8 @@ body.picker-page {
    signal, and accents; neutral stays the ground. */
 #picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="full-palette"]) .picker-strategy-preview:not(.picker-preview-type),
 #picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="full-palette"]:checked) .picker-strategy-preview:not(.picker-preview-type),
-:where(#picker-form:has(input[name="color-strategy"][value="full-palette"]:checked)) .picker-preview-type {
+:where(#picker-form:has(input[name="color-strategy"][value="full-palette"]:checked)) .picker-preview-type,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="full-palette"]:checked)) [data-artboard] {
   --pvs-headline: color-mix(in oklab, var(--pv-primary) 80%, var(--pv-strong));
   --pvs-headline-text: var(--pv-p-on-n);
   --pvs-accent-text: var(--pv-t-on-n);
@@ -1512,7 +1598,8 @@ body.picker-page {
    work; nothing is left bare white and the hairlines tint with the ground. */
 #picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="drenched"]) .picker-strategy-preview:not(.picker-preview-type),
 #picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="drenched"]:checked) .picker-strategy-preview:not(.picker-preview-type),
-:where(#picker-form:has(input[name="color-strategy"][value="drenched"]:checked)) .picker-preview-type {
+:where(#picker-form:has(input[name="color-strategy"][value="drenched"]:checked)) .picker-preview-type,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="drenched"]:checked)) [data-artboard] {
   --pvs-ground: var(--pv-primary);
   --pvs-ink: var(--pv-p-ink);
   --pvs-surface: color-mix(in oklab, var(--pv-p-ink) 10%, var(--pv-primary));
@@ -1553,13 +1640,13 @@ body.picker-page {
   min-height: 0;
   overflow: hidden;
   background-color: var(--pvs-ground);
-  border: 1px solid var(--pvs-rule);
+  border: var(--pvs-frame-w) solid var(--pvs-frame-c);
 }
 
 .ps-desktop {
   display: grid;
-  grid-template-rows: 9.4% 50.6% 9% 22.7% 8.3%;
-  border-radius: 4px;
+  grid-template-rows: var(--pvs-rows);
+  border-radius: var(--pvs-radius-frame);
 }
 
 .ps-phone {
@@ -1568,16 +1655,18 @@ body.picker-page {
   align-self: stretch;
   display: grid;
   grid-template-rows: 7.2% 1fr 7.5%;
-  border-radius: 5px;
+  border-radius: var(--pvs-radius-frame-phone);
 }
 
 .ps-nav {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: var(--pvs-nav-cols);
   gap: 24px;
   align-items: center;
-  padding: 0 5.5%;
-  border-bottom: 1px solid var(--pvs-rule);
+  padding: 0 var(--pvs-gutter);
+  background-color: var(--pvs-band);
+  border-bottom: var(--pvs-divider-w) solid var(--pvs-divider-c);
+  box-shadow: var(--pvs-shadow-chrome);
 }
 
 .ps-brand-block {
@@ -1585,7 +1674,7 @@ body.picker-page {
   height: auto;
   aspect-ratio: 1;
   background-color: var(--pvs-cta);
-  border-radius: 50%;
+  border-radius: var(--pvs-radius-dot);
 }
 
 .ps-nav-bars {
@@ -1599,23 +1688,24 @@ body.picker-page {
   width: clamp(18px, 7%, 34px);
   height: 4px;
   background-color: var(--pvs-bars);
-  border-radius: 2px;
+  border-radius: var(--pvs-radius-bar);
 }
 
 .ps-nav-action {
   width: clamp(34px, 3.4vw, 48px);
   height: clamp(7px, 26%, 13px);
   background-color: var(--pvs-signal);
-  border-radius: 2px;
+  border-radius: var(--pvs-radius-control);
+  box-shadow: var(--pvs-shadow-control);
 }
 
 .ps-hero {
   min-height: 0;
   display: grid;
-  grid-template-columns: 35.8% minmax(0, 1fr);
-  gap: 11.3%;
-  align-items: center;
-  padding: 2% 3.2% 2% 5.5%;
+  grid-template-columns: var(--pvs-hero-cols);
+  gap: var(--pvs-hero-gap);
+  align-items: var(--pvs-section-align);
+  padding: 2% var(--pvs-gutter-end) 2% var(--pvs-gutter);
 }
 
 .ps-hero-copy {
@@ -1628,7 +1718,7 @@ body.picker-page {
   height: 10px;
   margin-bottom: 14px;
   background-color: var(--pvs-eyebrow);
-  border-radius: 2px;
+  border-radius: var(--pvs-radius-bar);
 }
 
 .ps-headline {
@@ -1642,7 +1732,7 @@ body.picker-page {
   width: 100%;
   height: 15px;
   background-color: var(--pvs-headline);
-  border-radius: 2px;
+  border-radius: var(--pvs-radius-bar);
 }
 
 .ps-headline i:last-child {
@@ -1660,7 +1750,7 @@ body.picker-page {
   width: 64%;
   height: 8px;
   background-color: var(--pvs-copy);
-  border-radius: 2px;
+  border-radius: var(--pvs-radius-bar);
 }
 
 .ps-copy i:last-child {
@@ -1677,7 +1767,8 @@ body.picker-page {
   width: clamp(42px, 42%, 86px);
   height: clamp(12px, 2.35vw, 29px);
   background-color: var(--pvs-cta);
-  border-radius: 2px;
+  border-radius: var(--pvs-radius-control);
+  box-shadow: var(--pvs-shadow-control);
 }
 
 .ps-actions i:last-child {
@@ -1693,7 +1784,8 @@ body.picker-page {
   background-color: var(--pvs-image);
   background-image: linear-gradient(135deg, var(--pvs-image-a), var(--pvs-image-b));
   border: 1px solid var(--pvs-image-edge);
-  border-radius: 2px;
+  border-radius: var(--pvs-radius-surface);
+  box-shadow: var(--pvs-shadow-surface);
 }
 
 .ps-image::after {
@@ -1704,7 +1796,7 @@ body.picker-page {
   width: clamp(6px, 1.1vw, 10px);
   aspect-ratio: 1;
   background-color: var(--pvs-accent-d);
-  border-radius: 50%;
+  border-radius: var(--pvs-radius-dot);
 }
 
 .ps-proof {
@@ -1713,7 +1805,8 @@ body.picker-page {
   grid-template-columns: 1.05fr 1fr 1fr 1.15fr;
   align-items: stretch;
   column-gap: var(--ps-proof-gap);
-  padding: 2% 3.2% 2% 5.5%;
+  padding: 2% var(--pvs-gutter-end) 2% var(--pvs-gutter);
+  background-color: var(--pvs-band-alt);
   position: relative;
 }
 
@@ -1721,10 +1814,10 @@ body.picker-page {
 .ps-proof::after {
   content: "";
   position: absolute;
-  left: 5.5%;
-  right: 3.2%;
-  height: 1px;
-  background-color: var(--pvs-rule);
+  left: var(--pvs-gutter);
+  right: var(--pvs-gutter-end);
+  height: var(--pvs-divider-w);
+  background-color: var(--pvs-divider-c);
 }
 
 .ps-proof::before {
@@ -1745,7 +1838,7 @@ body.picker-page {
 }
 
 .ps-proof-item + .ps-proof-item {
-  border-left: 1px solid var(--pvs-rule);
+  border-left: var(--pvs-divider-w) solid var(--pvs-divider-c);
 }
 
 .ps-proof-item i {
@@ -1753,10 +1846,10 @@ body.picker-page {
   width: clamp(7px, 1.5vw, 13px);
   aspect-ratio: 1;
   background-color: var(--pvs-accent-a);
-  border-radius: 50%;
+  border-radius: var(--pvs-radius-dot);
 }
 
-.picker-strategy-preview:not(.picker-preview-type) .ps-proof {
+.picker-artboard:not(.picker-preview-type) .ps-proof {
   grid-template-columns:
     minmax(0, 1fr) auto
     minmax(0, 1fr) auto
@@ -1764,29 +1857,29 @@ body.picker-page {
     minmax(0, 1fr);
 }
 
-.picker-strategy-preview:not(.picker-preview-type) .ps-proof-item + .ps-proof-item {
+.picker-artboard:not(.picker-preview-type) .ps-proof-item + .ps-proof-item {
   border-left: 0;
 }
 
-.picker-strategy-preview:not(.picker-preview-type) .ps-proof-divider {
-  width: 1px;
+.picker-artboard:not(.picker-preview-type) .ps-proof-divider {
+  width: var(--pvs-divider-w);
   align-self: stretch;
-  background-color: var(--pvs-rule);
+  background-color: var(--pvs-divider-c);
 }
 
-.picker-strategy-preview:not(.picker-preview-type) .ps-phone-body .ps-proof {
+.picker-artboard:not(.picker-preview-type) .ps-phone-body .ps-proof {
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
 }
 
-.picker-strategy-preview:not(.picker-preview-type) .ps-proof-item:nth-of-type(2) i {
+.picker-artboard:not(.picker-preview-type) .ps-proof-item:nth-of-type(2) i {
   background-color: var(--pvs-accent-b);
 }
 
-.picker-strategy-preview:not(.picker-preview-type) .ps-proof-item:nth-of-type(3) i {
+.picker-artboard:not(.picker-preview-type) .ps-proof-item:nth-of-type(3) i {
   background-color: var(--pvs-accent-c);
 }
 
-.picker-strategy-preview:not(.picker-preview-type) .ps-proof-item:nth-of-type(4) i {
+.picker-artboard:not(.picker-preview-type) .ps-proof-item:nth-of-type(4) i {
   background-color: var(--pvs-accent-d);
 }
 
@@ -1796,16 +1889,16 @@ body.picker-page {
   flex: 1;
   height: 6px;
   background-color: var(--pvs-bars);
-  border-radius: 2px;
+  border-radius: var(--pvs-radius-bar);
 }
 
 .ps-editorial {
   min-height: 0;
   display: grid;
-  grid-template-columns: 27.9% minmax(0, 1fr);
-  gap: 6%;
-  align-items: center;
-  padding: 2.2% 5.5%;
+  grid-template-columns: var(--pvs-editorial-cols);
+  gap: var(--pvs-editorial-gap);
+  align-items: var(--pvs-section-align);
+  padding: 2.2% var(--pvs-gutter);
 }
 
 .ps-editorial-copy {
@@ -1817,7 +1910,7 @@ body.picker-page {
   width: 78%;
   height: 11px;
   background-color: var(--pvs-title);
-  border-radius: 2px;
+  border-radius: var(--pvs-radius-bar);
 }
 
 .ps-editorial-copy span {
@@ -1830,7 +1923,7 @@ body.picker-page {
   width: 90%;
   height: 6px;
   background-color: var(--pvs-bars);
-  border-radius: 2px;
+  border-radius: var(--pvs-radius-bar);
 }
 
 .ps-editorial-copy span i:last-child {
@@ -1842,15 +1935,15 @@ body.picker-page {
   height: 6px;
   margin-top: 3px;
   background-color: var(--pvs-signal);
-  border-radius: 2px;
+  border-radius: var(--pvs-radius-bar);
 }
 
 .ps-gallery {
   min-width: 0;
   height: 100%;
   display: grid;
-  grid-template-columns: 1.12fr 0.9fr 0.9fr 0.9fr;
-  gap: 3%;
+  grid-template-columns: var(--pvs-gallery-cols);
+  gap: var(--pvs-gallery-gap);
 }
 
 .ps-gallery-item {
@@ -1858,6 +1951,11 @@ body.picker-page {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   gap: 12px;
+  padding: var(--pvs-panel-pad);
+  background-color: var(--pvs-panel);
+  border: var(--pvs-panel-edge-w) solid var(--pvs-panel-edge);
+  border-radius: var(--pvs-radius-surface);
+  box-shadow: var(--pvs-shadow-card);
 }
 
 .ps-desktop .ps-editorial-copy {
@@ -1877,7 +1975,7 @@ body.picker-page {
   display: block;
   min-height: 0;
   background-color: var(--pvs-accent-a);
-  border-radius: 2px;
+  border-radius: var(--pvs-radius-surface);
 }
 
 .ps-gallery-item:nth-child(2) > i {
@@ -1902,7 +2000,7 @@ body.picker-page {
   width: 76%;
   height: 6px;
   background-color: var(--pvs-bars);
-  border-radius: 2px;
+  border-radius: var(--pvs-radius-bar);
 }
 
 .ps-gallery-item b:last-child {
@@ -1913,8 +2011,9 @@ body.picker-page {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-inline: 5.5%;
-  border-top: 1px solid var(--pvs-rule);
+  padding-inline: var(--pvs-gutter);
+  background-color: var(--pvs-band);
+  border-top: var(--pvs-divider-w) solid var(--pvs-divider-c);
 }
 
 .ps-footer-links {
@@ -1927,14 +2026,14 @@ body.picker-page {
   width: clamp(12px, 3vw, 28px);
   height: 4px;
   background-color: var(--pvs-bars);
-  border-radius: 2px;
+  border-radius: var(--pvs-radius-bar);
 }
 
 .ps-footer-mark {
   width: 7%;
   height: 5px;
   background-color: var(--pvs-bars);
-  border-radius: 2px;
+  border-radius: var(--pvs-radius-bar);
 }
 
 /* Phone artboard: the same site on mobile. */
@@ -1945,7 +2044,8 @@ body.picker-page {
   min-height: 0;
   padding: 0 6%;
   background-color: var(--pvs-surface);
-  border-bottom: 1px solid var(--pvs-rule);
+  border-bottom: var(--pvs-divider-w) solid var(--pvs-divider-c);
+  box-shadow: var(--pvs-shadow-chrome);
 }
 
 .ps-phone-top .ps-brand-block {
@@ -2082,10 +2182,10 @@ body.picker-page {
   min-height: 0;
   padding-inline: 6%;
   background-color: var(--pvs-surface);
-  border-top: 1px solid var(--pvs-rule);
+  border-top: var(--pvs-divider-w) solid var(--pvs-divider-c);
 }
 
-.picker-strategy-preview:not(.picker-preview-type) :is(
+.picker-artboard:not(.picker-preview-type) :is(
   .ps-desktop,
   .ps-phone,
   .ps-nav,
@@ -2110,6 +2210,8 @@ body.picker-page {
   .ps-editorial-copy strong,
   .ps-editorial-copy span i,
   .ps-editorial-copy > em,
+  .ps-gallery,
+  .ps-gallery-item,
   .ps-gallery-item > i,
   .ps-gallery-item b,
   .ps-footer-links i,
@@ -2119,7 +2221,9 @@ body.picker-page {
   transition:
     background-color 280ms var(--ks-ease),
     background-image 280ms var(--ks-ease),
-    border-color 280ms var(--ks-ease);
+    border-color 280ms var(--ks-ease),
+    border-radius 280ms var(--ks-ease),
+    box-shadow 280ms var(--ks-ease);
 }
 
 .picker-preview-type :is(
@@ -3366,7 +3470,7 @@ body.picker-page {
   .picker-tip::after,
   .picker-palette-hint,
   .picker-strategy-option,
-  .picker-strategy-preview:not(.picker-preview-type) :is(
+  .picker-artboard:not(.picker-preview-type) :is(
     .ps-desktop,
     .ps-phone,
     .ps-nav,

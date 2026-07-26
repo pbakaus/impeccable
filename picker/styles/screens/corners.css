@@ -1,0 +1,61 @@
+/* ============================================================
+   Screen 09: corner style.
+
+   One question, four radii, and a deliberate limit: the text bars barely move
+   and the dots do not move at all.
+
+   A bar in this wireframe stands for a line of type. Round it like a button
+   and it stops reading as text and starts reading as a tag, which would make
+   the pill answer look like a different page rather than the same page with
+   rounder corners. So bars top out a few pixels short of their own height.
+
+   The dots stay circular in every answer, Sharp included. A dot is a mark
+   rather than a shape with corners; squaring it changes what it is, not how
+   round it is, and the Sharp page reads as sharp without it.
+   ============================================================ */
+
+/* ── Sharp ───────────────────────────────────────────────────
+   Nothing rounded. Every corner is drafted. */
+#picker-form:has(.picker-strategy-option:hover input[name="corner-style"][value="sharp"]) .picker-preview-corners,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="corner-style"])):has(input[name="corner-style"][value="sharp"]:checked)) [data-carry] {
+  --pvs-radius-frame: 0px;
+  --pvs-radius-frame-phone: 0px;
+  --pvs-radius-surface: 0px;
+  --pvs-radius-control: 0px;
+  --pvs-radius-bar: 0px;
+}
+
+/* ── Slightly soft ───────────────────────────────────────────
+   Enough radius to take the edge off and not enough to be remarked on. */
+#picker-form:has(.picker-strategy-option:hover input[name="corner-style"][value="slightly-soft"]) .picker-preview-corners,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="corner-style"])):has(input[name="corner-style"][value="slightly-soft"]:checked)) [data-carry] {
+  --pvs-radius-frame: 4px;
+  --pvs-radius-frame-phone: 5px;
+  --pvs-radius-surface: 3px;
+  --pvs-radius-control: 3px;
+  --pvs-radius-bar: 2px;
+}
+
+/* ── Friendly ────────────────────────────────────────────────
+   Cards, pictures, and buttons are clearly rounded, and the handset rounds
+   with them. */
+#picker-form:has(.picker-strategy-option:hover input[name="corner-style"][value="friendly"]) .picker-preview-corners,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="corner-style"])):has(input[name="corner-style"][value="friendly"]:checked)) [data-carry] {
+  --pvs-radius-frame: 7px;
+  --pvs-radius-frame-phone: 11px;
+  --pvs-radius-surface: 8px;
+  --pvs-radius-control: 8px;
+  --pvs-radius-bar: 3px;
+}
+
+/* ── Pill-like ───────────────────────────────────────────────
+   Controls go fully round. Surfaces round hard but stay rectangles, because
+   a card at half its own height is no longer a card. */
+#picker-form:has(.picker-strategy-option:hover input[name="corner-style"][value="pill"]) .picker-preview-corners,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="corner-style"])):has(input[name="corner-style"][value="pill"]:checked)) [data-carry] {
+  --pvs-radius-frame: 9px;
+  --pvs-radius-frame-phone: 15px;
+  --pvs-radius-surface: 12px;
+  --pvs-radius-control: 999px;
+  --pvs-radius-bar: 3px;
+}
