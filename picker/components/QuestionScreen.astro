@@ -1,0 +1,79 @@
+---
+/*
+  One question, one artboard: the shape screens 03 onward all share. A screen
+  that only remaps artboard slots needs nothing of its own here, so it arrives
+  as data and its design lives in its own stylesheet.
+*/
+import Artboard from './Artboard.astro';
+
+interface Option {
+  value: string;
+  title: string;
+  desc: string;
+}
+
+interface Props {
+  id: string;
+  step: string;
+  slug: string;
+  name: string;
+  title: string;
+  legend: string;
+  cta: string;
+  options: Option[];
+  previewClass: string;
+  phone?: boolean;
+}
+
+const { id, step, slug, name, title, legend, cta, options, previewClass, phone = true } = Astro.props;
+const titleId = `picker-${slug}-title`;
+const artboardClass = phone ? previewClass : `${previewClass} picker-artboard--solo`;
+---
+
+<section class="picker-screen" data-screen={id} data-step={step} aria-hidden="true" aria-labelledby={titleId}>
+  <div class="picker-container">
+    <div class="picker-strategy" data-question={slug}>
+      <h2 id={titleId} class="picker-question-title">{title}</h2>
+
+      <div class="picker-strategy-grid">
+        <div class="picker-type-rail">
+          <fieldset
+            class="picker-strategy-options picker-strategy-choices picker-type-options"
+            style={`--pk-choices:${options.length}`}
+          >
+            <legend>{legend}</legend>
+
+            {options.map((option, index) => (
+              <label class="picker-strategy-option">
+                <input type="radio" name={name} value={option.value} checked={index === 0} />
+                <span class="picker-strategy-copy">
+                  <span class="picker-strategy-title">{option.title}</span>
+                  <span class="picker-strategy-desc">{option.desc}</span>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+        </div>
+
+        <Artboard
+          class={artboardClass}
+          phone={phone}
+          cursor={slug === 'motion'}
+          carry={slug !== 'motion'}
+        />
+      </div>
+
+      <div class="picker-actions-stack">
+        <button class="ks-button ks-button-primary" type="button" data-advance="next">
+          {cta}
+          <span class="ks-button-arrow" aria-hidden="true">
+            <svg viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square">
+              <path d="M0 4h14M10 0l4 4-4 4"></path>
+            </svg>
+          </span>
+        </button>
+        <button class="picker-back" type="button" data-advance="prev">Back</button>
+      </div>
+    </div>
+  </div>
+</section>

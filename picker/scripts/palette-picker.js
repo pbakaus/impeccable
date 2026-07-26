@@ -13,7 +13,6 @@ const hint = $('[data-palette-hint]');
 const ringGuide = $('[data-ring-guide]');
 const loupe = $('[data-loupe]');
 const preview = $('.picker-preview');
-const strategyPreview = document.querySelector('[data-strategy-preview]');
 const typePreview = document.querySelector('[data-type-preview]');
 const fontOptions = document.querySelector('[data-font-options]');
 const pairTemplate = document.querySelector('[data-pair-card]');
@@ -1032,10 +1031,13 @@ scroller.addEventListener('scroll', () => {
 }, { passive: true });
 document.addEventListener('picker:screenchange', (event) => {
   activate(event.detail.screen === '02');
-  // The scale sheet is deliberately absent: it is picker chrome in the
-  // picker's own theme, not a third artboard painted in the user's palette.
-  const target = { '03': strategyPreview, '04': typePreview }[event.detail.screen];
-  if (target) syncCommittedPalette(target);
+  // Every artboard on the screen being shown, whatever question it belongs to,
+  // gets the committed palette. The scale sheet is deliberately not one: it is
+  // picker chrome in the picker's own theme, not a page in the user's palette.
+  const screenNode = document.querySelector(`.picker-screen[data-screen="${event.detail.screen}"]`);
+  for (const artboard of screenNode?.querySelectorAll('[data-artboard]') ?? []) {
+    syncCommittedPalette(artboard);
+  }
   // Arriving is the quietest moment there is, so the rail settles here even
   // if it is already in order: the chosen pair is the row you land on.
   if (event.detail.screen === '04') {

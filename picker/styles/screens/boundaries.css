@@ -1,0 +1,115 @@
+/* ============================================================
+   Screen 08: boundary style.
+
+   What tells the reader one section has ended and the next has begun. Four
+   answers, in order of how much material they spend: nothing, a line, a
+   change of ground, an edge you can see.
+
+   Bands are mixed from the artboard's own ink and ground rather than named
+   colors, so a drenched page separates with a lighter wash of its primary
+   instead of turning grey.
+
+   The tokens moved here are section-scale, and they are the grounds and edges
+   themselves. Depth works at element scale and only ever adds to what is set
+   here, as a shadow or as a tonal overlay, so the two answers compose rather
+   than overwrite each other.
+   ============================================================ */
+
+/* ── Open space ──────────────────────────────────────────────
+   Every rule off and every ground the same, so the only thing left holding
+   the sections apart is the air between them. The band the proof sits in
+   gets more of it, because with nothing drawn the page has to spend room to
+   say the same thing. */
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="open-space"]) .picker-preview-boundaries,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="open-space"]:checked)) [data-carry] {
+  --pvs-divider-w: 0px;
+  --pvs-band: transparent;
+  --pvs-band-alt: transparent;
+  --pvs-band-top: transparent;
+  --pvs-panel: transparent;
+  --pvs-panel-edge-w: 0px;
+  --pvs-panel-pad: 0px;
+  --pvs-proof-pad-y: 4.2%;
+  --pvs-proof-inset: 0px;
+}
+
+/* ── Thin dividers ───────────────────────────────────────────
+   One hairline per boundary and nothing else: at the nav, above and below
+   the proof band, between its columns, and over the footer. */
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="thin-dividers"]) .picker-preview-boundaries,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked)) [data-carry] {
+  --pvs-divider-w: 1px;
+  --pvs-divider-c: color-mix(in oklab, var(--pvs-ink) 24%, var(--pvs-ground));
+  --pvs-band: transparent;
+  --pvs-band-alt: transparent;
+  --pvs-band-top: transparent;
+  --pvs-panel: transparent;
+  --pvs-panel-edge-w: 0px;
+  --pvs-panel-pad: 0px;
+  --pvs-proof-pad-y: 2%;
+  --pvs-proof-inset: 0px;
+}
+
+/* ── Surface changes ─────────────────────────────────────────
+   No lines at all. Chrome sits on one tone, the proof band on another, and
+   the boundary is wherever the ground changes under your eye. */
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="surface-changes"]) .picker-preview-boundaries,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked)) [data-carry] {
+  --pvs-divider-w: 0px;
+  --pvs-band: color-mix(in oklab, var(--pvs-ink) 7%, var(--pvs-ground));
+  --pvs-band-alt: color-mix(in oklab, var(--pvs-ink) 13%, var(--pvs-ground));
+  --pvs-band-top: color-mix(in oklab, var(--pvs-ink) 7%, var(--pvs-ground));
+  --pvs-panel: transparent;
+  --pvs-panel-edge-w: 0px;
+  --pvs-panel-pad: 0px;
+  --pvs-proof-pad-y: 2.8%;
+  --pvs-proof-inset: 0px;
+}
+
+/* ── Cards and panels ────────────────────────────────────────
+   Content moves inside containers. The proof band pulls in off the page
+   margins and grows an edge, the cards do the same, and the page reads as a
+   set of objects on a ground rather than a run of sections. */
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="cards-and-panels"]) .picker-preview-boundaries,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked)) [data-carry] {
+  --pvs-divider-w: 0px;
+  --pvs-band: transparent;
+  --pvs-band-alt: color-mix(in oklab, var(--pvs-ink) 5%, var(--pvs-ground));
+  --pvs-band-top: transparent;
+  --pvs-panel: color-mix(in oklab, var(--pvs-ink) 5%, var(--pvs-ground));
+  --pvs-panel-edge: color-mix(in oklab, var(--pvs-ink) 20%, var(--pvs-ground));
+  --pvs-panel-edge-w: 1px;
+  --pvs-panel-pad: 5%;
+  --pvs-proof-pad-y: 2.4%;
+  --pvs-proof-inset: var(--pvs-gutter);
+}
+
+/* The proof band is the one section that can become a container without the
+   page being restructured, so it carries the difference between a tinted
+   band and a panel: the inset pulls it off the page margins and the edge
+   only exists where an inset was asked for. */
+[data-carry] .ps-desktop > .ps-proof {
+  margin-inline: var(--pvs-proof-inset, 0px);
+  padding-block: var(--pvs-proof-pad-y, 2%);
+  border: var(--pvs-panel-edge-w) solid var(--pvs-panel-edge);
+  border-radius: var(--pvs-radius-surface);
+}
+
+/* The handset's chrome carries its own tint in the base artboard, which is a
+   boundary the open answers did not ask for. Both ends take the band. */
+[data-carry] .ps-phone-top,
+[data-carry] .ps-phone-footer {
+  background-color: var(--pvs-band-top, var(--pvs-surface));
+}
+
+/* Percentage padding resolves against the card's own width, so one value
+   holds at both artboard sizes instead of swamping the handset. */
+[data-carry] .ps-gallery-item {
+  padding: var(--pvs-panel-pad, 0px);
+}
+
+/* The handset's card row is already the block closest to the footer, so it
+   takes a shorter version of the same padding rather than growing into it. */
+[data-carry] .ps-phone-body .ps-gallery-item {
+  padding: calc(var(--pvs-panel-pad, 0px) * 0.5);
+}

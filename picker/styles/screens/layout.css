@@ -1,0 +1,130 @@
+/* ============================================================
+   Screen 07: layout structure.
+
+   Four grids on the same page. The answer is read off the columns, the page
+   margins, the vertical bands, and whether a block is allowed to leave its
+   cell, so each option rewrites all four rather than nudging one number.
+
+   Two selectors per option, the shape screen 03 established. The first is the
+   hover preview and belongs to this screen alone. The second is the committed
+   answer and reaches every artboard marked data-carry, which is this screen
+   plus boundaries, corners, and depth, so each later question is asked about
+   the page as it has been chosen so far.
+   ============================================================ */
+
+/* ── Simple grid ─────────────────────────────────────────────
+   Halves and quarters, both margins equal, bands of near-equal weight. The
+   thing to notice is that there is nothing to notice. */
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="simple-grid"]) .picker-preview-layout,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="simple-grid"]:checked)) [data-carry] {
+  --pvs-gutter: 5.5%;
+  --pvs-gutter-end: 5.5%;
+  --pvs-hero-cols: minmax(0, 1fr) minmax(0, 1fr);
+  --pvs-hero-gap: 5.5%;
+  --pvs-editorial-cols: 22.4% minmax(0, 1fr);
+  --pvs-editorial-gap: 5.5%;
+  --pvs-gallery-cols: repeat(4, minmax(0, 1fr));
+  --pvs-gallery-gap: 5.5%;
+  --pvs-section-align: start;
+  --pvs-rows: 9.4% 45.5% 9% 27.8% 8.3%;
+  --pvs-phone-gutter: 6%;
+}
+
+/* ── Balanced ────────────────────────────────────────────────
+   The grid still runs the page, but the hero leans and the first card is
+   given more room than its neighbours. Two breaks, both on purpose. */
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="balanced"]) .picker-preview-layout,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="balanced"]:checked)) [data-carry] {
+  --pvs-gutter: 5.5%;
+  --pvs-gutter-end: 4.5%;
+  --pvs-hero-cols: 42% minmax(0, 1fr);
+  --pvs-hero-gap: 9%;
+  --pvs-editorial-cols: 29% minmax(0, 1fr);
+  --pvs-editorial-gap: 6%;
+  --pvs-gallery-cols: 1.35fr 0.88fr 0.88fr 0.88fr;
+  --pvs-gallery-gap: 3.5%;
+  --pvs-section-align: center;
+  --pvs-rows: 9.4% 50.6% 9% 22.7% 8.3%;
+}
+
+/* ── Editorial ───────────────────────────────────────────────
+   A wide standing column against a narrow portrait, uneven margins, a hero
+   band that takes most of the page, and a lead card at twice its neighbours.
+   Copy hangs from the top of each band the way a column of text hangs from a
+   rule. */
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="editorial"]) .picker-preview-layout,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="editorial"]:checked)) [data-carry] {
+  --pvs-gutter: 9.5%;
+  --pvs-gutter-end: 2.5%;
+  --pvs-hero-cols: 56% minmax(0, 1fr);
+  --pvs-hero-gap: 11%;
+  --pvs-editorial-cols: 14% minmax(0, 1fr);
+  --pvs-editorial-gap: 7%;
+  --pvs-gallery-cols: 2.2fr 0.8fr 0.8fr 0.8fr;
+  --pvs-gallery-gap: 3%;
+  --pvs-section-align: start;
+  --pvs-rows: 8% 57.5% 8.5% 18.5% 7.5%;
+  --pvs-phone-gutter: 11%;
+  --pvs-phone-bleed: -9%;
+  --pvs-phone-bleed-w: 118%;
+}
+
+/* ── Freeform ────────────────────────────────────────────────
+   Columns of no particular relation, and blocks that leave their cells. */
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)) [data-carry] {
+  --pvs-gutter: 4%;
+  --pvs-gutter-end: 7%;
+  --pvs-hero-cols: 46% minmax(0, 1fr);
+  --pvs-hero-gap: 2%;
+  --pvs-editorial-cols: 37% minmax(0, 1fr);
+  --pvs-editorial-gap: 2.5%;
+  --pvs-gallery-cols: 1.45fr 0.72fr 1.1fr 0.83fr;
+  --pvs-gallery-gap: 2.5%;
+  --pvs-section-align: end;
+  --pvs-rows: 9.4% 48% 8.4% 26.2% 8%;
+  --pvs-phone-gutter: 4%;
+  --pvs-drift: 1;
+}
+
+/* Drift is declared on every artboard and multiplied by a flag only freeform
+   raises, so the other three options pay nothing for the rule existing. The
+   offsets are transforms: a block that steps out of its cell does not push
+   the rest of the page around to make room, which is what makes the overlap
+   read as intent rather than as a broken grid. */
+[data-carry] .ps-hero-copy {
+  position: relative;
+  z-index: var(--pvs-drift, 0);
+  translate: calc(var(--pvs-drift, 0) * 4%) calc(var(--pvs-drift, 0) * 9%);
+}
+
+[data-carry] .ps-hero > .ps-image {
+  translate: calc(var(--pvs-drift, 0) * -5%) calc(var(--pvs-drift, 0) * -7%);
+}
+
+/* Drift is a desktop move. The handset has one column and a stack sized in
+   pixels, so a block stepping out of line there has nowhere to go but through
+   the bottom of the frame. */
+[data-carry] .ps-desktop .ps-gallery-item:nth-child(2n) {
+  translate: 0 calc(var(--pvs-drift, 0) * 14%);
+}
+
+[data-carry] .ps-desktop .ps-editorial-copy {
+  translate: 0 calc(var(--pvs-drift, 0) * -12%);
+}
+
+/* ── The handset ─────────────────────────────────────────────
+   One column still answers the question, in the margins and in whether
+   anything is allowed to break the column: the picture is the one block given
+   that permission, full bleed under Editorial. The rhythm between blocks is
+   left alone, because the handset's stack is sized in pixels and a couple of
+   points of extra gap pushes the card row through the bottom of the frame at
+   the narrowest window the picker supports. */
+[data-carry] .ps-phone-body {
+  padding-inline: var(--pvs-phone-gutter, 6%);
+}
+
+[data-carry] .ps-phone-body > .ps-image {
+  margin-inline: var(--pvs-phone-bleed, 0);
+  width: var(--pvs-phone-bleed-w, auto);
+}

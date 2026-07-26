@@ -1,5 +1,7 @@
 ---
 import Picker from '../layouts/Picker.astro';
+import Artboard from '../components/Artboard.astro';
+import QuestionScreen from '../components/QuestionScreen.astro';
 
 const roles = [
   ['primary', 'Primary'],
@@ -24,6 +26,169 @@ const scales = [
 
 // Exponent above the 16px base: P sits at the base, H1 six steps up.
 const scaleRows = [['H1', 6], ['H2', 5], ['H3', 4], ['H4', 3], ['H5', 2], ['H6', 1], ['P', 0]];
+
+// The five questions that are answered by looking at the same wireframe page.
+// Each one only rewrites the artboard slots it owns, so by the last screen the
+// page is showing every decision made before it. Motion is the one question
+// whose answer cannot be read on a handset, so it takes the frame alone.
+const questions = [
+  {
+    id: '06',
+    step: 'Motion',
+    slug: 'motion',
+    name: 'motion-energy',
+    title: 'How much movement should this design have?',
+    legend: 'Motion energy',
+    cta: 'Select motion energy',
+    previewClass: 'picker-preview-motion',
+    phone: false,
+    options: [
+      {
+        value: 'restrained',
+        title: 'Restrained',
+        desc: 'State changes only. Things are already changed by the time you see them.',
+      },
+      {
+        value: 'responsive',
+        title: 'Responsive',
+        desc: 'Feedback and transitions on whatever you touch. Nothing is orchestrated.',
+      },
+      {
+        value: 'choreographed',
+        title: 'Choreographed',
+        desc: 'Entrances are staged and scrolling drives sequences.',
+      },
+    ],
+  },
+  {
+    id: '07',
+    step: 'Layout',
+    slug: 'layout',
+    name: 'layout-structure',
+    title: 'How strict should the layout feel?',
+    legend: 'Layout structure',
+    cta: 'Select layout structure',
+    previewClass: 'picker-preview-layout',
+    options: [
+      {
+        value: 'simple-grid',
+        title: 'Simple grid',
+        desc: 'Everything lines up. Equal columns and one rhythm down the page.',
+      },
+      {
+        value: 'balanced',
+        title: 'Balanced',
+        desc: 'An aligned grid with a few deliberate breaks in it.',
+      },
+      {
+        value: 'editorial',
+        title: 'Editorial',
+        desc: 'Uneven columns, with one of them clearly leading.',
+      },
+      {
+        value: 'freeform',
+        title: 'Freeform',
+        desc: 'Blocks step out of the grid and overlap where it pays off.',
+      },
+    ],
+  },
+  {
+    id: '08',
+    step: 'Boundaries',
+    slug: 'boundaries',
+    name: 'boundary-style',
+    title: 'How should sections be separated?',
+    legend: 'Boundary style',
+    cta: 'Select boundary style',
+    previewClass: 'picker-preview-boundaries',
+    options: [
+      {
+        value: 'open-space',
+        title: 'Open space',
+        desc: 'Nothing between sections but room. Spacing does the dividing.',
+      },
+      {
+        value: 'thin-dividers',
+        title: 'Thin dividers',
+        desc: 'A hairline marks where one section ends and the next starts.',
+      },
+      {
+        value: 'surface-changes',
+        title: 'Surface changes',
+        desc: 'Bands of tone. Sections are told apart by the ground they sit on.',
+      },
+      {
+        value: 'cards-and-panels',
+        title: 'Cards and panels',
+        desc: 'Content sits inside containers with edges you can see.',
+      },
+    ],
+  },
+  {
+    id: '09',
+    step: 'Corners',
+    slug: 'corners',
+    name: 'corner-style',
+    title: 'How round should shapes be?',
+    legend: 'Corner style',
+    cta: 'Select corner style',
+    previewClass: 'picker-preview-corners',
+    options: [
+      {
+        value: 'sharp',
+        title: 'Sharp',
+        desc: 'Square corners throughout. Precise, drafted, architectural.',
+      },
+      {
+        value: 'slightly-soft',
+        title: 'Slightly soft',
+        desc: 'Just enough radius to take the edge off without being noticed.',
+      },
+      {
+        value: 'friendly',
+        title: 'Friendly',
+        desc: 'Cards, buttons, and images are clearly rounded.',
+      },
+      {
+        value: 'pill',
+        title: 'Pill-like',
+        desc: 'Buttons and tags go fully round.',
+      },
+    ],
+  },
+  {
+    id: '10',
+    step: 'Depth',
+    slug: 'depth',
+    name: 'depth-style',
+    title: 'How much depth should the surface have?',
+    legend: 'Depth style',
+    cta: 'Select depth style',
+    previewClass: 'picker-preview-depth',
+    options: [
+      {
+        value: 'flat',
+        title: 'Flat',
+        desc: 'One plane. Nothing casts a shadow.',
+      },
+      {
+        value: 'layered',
+        title: 'Layered',
+        desc: 'Tone stacks the page. Still no shadows anywhere.',
+      },
+      {
+        value: 'soft-lift',
+        title: 'Soft lift',
+        desc: 'Cards and controls sit a little off the page.',
+      },
+      {
+        value: 'floating',
+        title: 'Floating',
+        desc: 'Panels are well above the surface, with the lift to prove it.',
+      },
+    ],
+  },
+];
 ---
 
 <Picker>
@@ -265,76 +430,7 @@ const scaleRows = [['H1', 6], ['H2', 5], ['H3', 4], ['H4', 3], ['H5', 2], ['H6',
                 </fieldset>
               </div>
 
-              <div class="picker-strategy-preview" data-strategy-preview aria-hidden="true">
-                <div class="ps-desktop">
-                  <div class="ps-nav">
-                    <div class="ps-brand-block"></div>
-                    <div class="ps-nav-bars"><i></i><i></i><i></i><i></i></div>
-                    <div class="ps-nav-action"></div>
-                  </div>
-                  <div class="ps-hero">
-                    <div class="ps-hero-copy">
-                      <div class="ps-eyebrow"></div>
-                      <div class="ps-headline"><i></i><i></i></div>
-                      <div class="ps-copy"><i></i></div>
-                      <div class="ps-actions"><i></i><i></i></div>
-                    </div>
-                    <div class="ps-image"></div>
-                  </div>
-                  <div class="ps-proof">
-                    <div class="ps-proof-item"><i></i><span></span></div>
-                    <i class="ps-proof-divider" aria-hidden="true"></i>
-                    <div class="ps-proof-item"><i></i><span></span></div>
-                    <i class="ps-proof-divider" aria-hidden="true"></i>
-                    <div class="ps-proof-item"><i></i><span></span></div>
-                    <i class="ps-proof-divider" aria-hidden="true"></i>
-                    <div class="ps-proof-item"><i></i><span></span></div>
-                  </div>
-                  <div class="ps-editorial">
-                    <div class="ps-editorial-copy">
-                      <strong></strong>
-                      <span><i></i><i></i></span>
-                      <em></em>
-                    </div>
-                    <div class="ps-gallery">
-                      <div class="ps-gallery-item"><i></i><span><b></b><b></b></span></div>
-                      <div class="ps-gallery-item"><i></i><span><b></b><b></b></span></div>
-                      <div class="ps-gallery-item"><i></i><span><b></b><b></b></span></div>
-                      <div class="ps-gallery-item"><i></i><span><b></b><b></b></span></div>
-                    </div>
-                  </div>
-                  <div class="ps-footer">
-                    <div class="ps-footer-links"><i></i><i></i><i></i><i></i></div>
-                    <div class="ps-footer-mark"></div>
-                  </div>
-                </div>
-                <div class="ps-phone">
-                  <div class="ps-phone-top">
-                    <div class="ps-brand-block"></div>
-                    <div class="ps-nav-action"></div>
-                  </div>
-                  <div class="ps-phone-body">
-                    <div class="ps-image"></div>
-                    <div class="ps-headline"><i></i><i></i></div>
-                    <div class="ps-copy"><i></i><i></i></div>
-                    <div class="ps-actions"><i></i><i></i></div>
-                    <div class="ps-proof">
-                      <div class="ps-proof-item"><i></i><span></span></div>
-                      <i class="ps-proof-divider" aria-hidden="true"></i>
-                      <div class="ps-proof-item"><i></i><span></span></div>
-                    </div>
-                    <div class="ps-editorial-copy">
-                      <strong></strong>
-                      <span><i></i><i></i></span>
-                    </div>
-                    <div class="ps-gallery">
-                      <div class="ps-gallery-item"><i></i><span><b></b><b></b></span></div>
-                      <div class="ps-gallery-item"><i></i><span><b></b><b></b></span></div>
-                    </div>
-                  </div>
-                  <div class="ps-phone-footer"><i></i><i></i><i></i></div>
-                </div>
-              </div>
+              <Artboard class="picker-strategy-preview" strategyHook />
             </div>
 
             <div class="picker-actions-stack">
@@ -380,75 +476,7 @@ const scaleRows = [['H1', 6], ['H2', 5], ['H3', 4], ['H4', 3], ['H5', 2], ['H6',
                 </div>
               </div>
 
-              <div class="picker-strategy-preview picker-preview-type" data-type-preview aria-hidden="true">
-                <div class="ps-desktop">
-                  <div class="ps-nav">
-                    <div class="ps-brand-block" data-type-brand></div>
-                    <div class="ps-nav-bars"><i data-type-nav></i><i data-type-nav></i><i data-type-nav></i><i data-type-nav></i></div>
-                    <div class="ps-nav-action" data-type-nav-action></div>
-                  </div>
-                  <div class="ps-hero">
-                    <div class="ps-hero-copy">
-                      <h2 class="pt-headline" data-type-headline></h2>
-                      <p class="pt-body" data-type-body></p>
-                      <div class="ps-actions"><i data-type-cta-primary></i><i data-type-cta-secondary></i></div>
-                    </div>
-                    <div class="ps-image"></div>
-                  </div>
-                  <div class="ps-proof">
-                    <div class="ps-proof-item"><i></i><span data-type-proof></span></div>
-                    <i class="ps-proof-divider" aria-hidden="true"></i>
-                    <div class="ps-proof-item"><i></i><span data-type-proof></span></div>
-                    <i class="ps-proof-divider" aria-hidden="true"></i>
-                    <div class="ps-proof-item"><i></i><span data-type-proof></span></div>
-                    <i class="ps-proof-divider" aria-hidden="true"></i>
-                    <div class="ps-proof-item"><i></i><span data-type-proof></span></div>
-                  </div>
-                  <div class="ps-editorial">
-                    <div class="ps-editorial-copy">
-                      <strong data-type-section-title></strong>
-                      <p class="pt-section-body" data-type-section-body></p>
-                      <em data-type-section-link></em>
-                    </div>
-                    <div class="ps-gallery">
-                      <div class="ps-gallery-item"><i></i><span><b data-type-gallery-title></b><b data-type-gallery-meta></b></span></div>
-                      <div class="ps-gallery-item"><i></i><span><b data-type-gallery-title></b><b data-type-gallery-meta></b></span></div>
-                      <div class="ps-gallery-item"><i></i><span><b data-type-gallery-title></b><b data-type-gallery-meta></b></span></div>
-                      <div class="ps-gallery-item"><i></i><span><b data-type-gallery-title></b><b data-type-gallery-meta></b></span></div>
-                    </div>
-                  </div>
-                  <div class="ps-footer">
-                    <div class="ps-footer-links"><i data-type-footer-link></i><i data-type-footer-link></i><i data-type-footer-link></i><i data-type-footer-link></i></div>
-                    <div class="ps-footer-mark" data-type-footer-mark></div>
-                  </div>
-                </div>
-                <div class="ps-phone">
-                  <div class="ps-phone-top">
-                    <div class="ps-brand-block" data-type-brand></div>
-                    <div class="ps-nav-action" data-type-menu-action></div>
-                  </div>
-                  <div class="ps-phone-body">
-                    <div class="ps-image"></div>
-                    <h2 class="pt-headline" data-type-headline></h2>
-                    <p class="pt-body" data-type-body></p>
-                    <div class="ps-actions"><i data-type-cta-primary></i><i data-type-cta-secondary></i></div>
-                    <div class="ps-proof">
-                      <div class="ps-proof-item"><i></i><span data-type-proof></span></div>
-                      <i class="ps-proof-divider" aria-hidden="true"></i>
-                      <div class="ps-proof-item"><i></i><span data-type-proof></span></div>
-                    </div>
-                    <div class="ps-editorial-copy">
-                      <strong data-type-section-title></strong>
-                      <p class="pt-section-body" data-type-section-body></p>
-                    </div>
-                    <div class="ps-gallery">
-                      <div class="ps-gallery-item"><i></i><span><b data-type-gallery-title></b><b data-type-gallery-meta></b></span></div>
-                      <div class="ps-gallery-item"><i></i><span><b data-type-gallery-title></b><b data-type-gallery-meta></b></span></div>
-                    </div>
-                  </div>
-                  <div class="ps-phone-footer"><i data-type-footer-link></i><i data-type-footer-link></i><i data-type-footer-link></i></div>
-                </div>
-              </div>
+              <Artboard mode="type" class="picker-strategy-preview picker-preview-type" typeHook />
             </div>
 
             <template data-pair-card>
@@ -563,7 +591,9 @@ const scaleRows = [['H1', 6], ['H2', 5], ['H3', 4], ['H4', 3], ['H5', 2], ['H6',
         </div>
       </section>
 
-      <section class="picker-screen" data-screen="06" data-step="Review" aria-hidden="true" aria-labelledby="picker-finish-copy">
+      {questions.map((question) => <QuestionScreen {...question} />)}
+
+      <section class="picker-screen" data-screen="11" data-step="Review" aria-hidden="true" aria-labelledby="picker-finish-copy">
         <div class="picker-container">
           <div class="picker-placeholder">
             <p id="picker-finish-copy">Your visual direction is ready.</p>
@@ -584,10 +614,10 @@ const scaleRows = [['H1', 6], ['H2', 5], ['H3', 4], ['H4', 3], ['H5', 2], ['H6',
 
       <div class="picker-progress" aria-hidden="true">
         <div class="picker-progress-track">
-          <i></i><i></i><i></i><i></i><i></i>
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
         </div>
         <p class="picker-progress-label">
-          <span class="picker-progress-index"><b data-progress-index>1</b> / 5</span>
+          <span class="picker-progress-index"><b data-progress-index>1</b> / 10</span>
           <span class="picker-progress-name" data-progress-name></span>
         </p>
       </div>

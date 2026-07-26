@@ -1,5 +1,13 @@
 ---
 import '../styles/picker.css';
+// Loaded after the shared sheet so a screen's own answers win on source order
+// as well as specificity. One file per question, each owning only the slots
+// its options rewrite.
+import '../styles/screens/motion.css';
+import '../styles/screens/layout.css';
+import '../styles/screens/boundaries.css';
+import '../styles/screens/corners.css';
+import '../styles/screens/depth.css';
 
 interface Props {
   title?: string;
