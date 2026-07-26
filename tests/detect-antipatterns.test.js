@@ -1850,15 +1850,41 @@ describe('CLI', () => {
     expect(stdout).toContain('Usage:');
     expect(stdout).toContain('--quiet');
     expect(stdout).toContain('--url');
+    expect(stdout).toContain('--url=<value>');
     expect(stdout).toContain('Windows cmd.exe');
     expect(stdout).not.toContain('--gpt');
     expect(stdout).not.toContain('--gemini');
   });
 
-  test('--url accepts a URL with query string ampersands', () => {
+  test('--url with no value errors instead of silently scanning cwd', () => {
     const { stderr, code } = run('--url');
     expect(code).toBe(1);
     expect(stderr).toContain('--url requires a URL value');
+  });
+
+  // The next two tests scan an unresolvable host so they fail fast (DNS
+  // rejection, no real navigation) while still exercising the real argv ->
+  // detectUrl() path. The assertion is on the *exact* URL string puppeteer
+  // was asked to navigate to, echoed back in the error message, which is
+  // the only reliable way to prove the value (including the query string's
+  // `&`) survived argument parsing intact rather than being split or
+  // truncated.
+  const UNRESOLVABLE_URL = 'https://impeccable-test-host-does-not-exist-zzz.invalid/x?a=1&b=2';
+
+  test('--url space-separated form preserves a query string with &', () => {
+    const { stdout, stderr, code } = run('--url', UNRESOLVABLE_URL, '--json');
+    expect(code).toBe(0);
+    expect(stderr).not.toContain('--url requires a URL value');
+    expect(stderr).toContain(`Error: net::ERR_NAME_NOT_RESOLVED at ${UNRESOLVABLE_URL}`);
+    expect(JSON.parse(stdout)).toEqual([]);
+  });
+
+  test('--url=<value> inline form preserves a query string with &', () => {
+    const { stdout, stderr, code } = run(`--url=${UNRESOLVABLE_URL}`, '--json');
+    expect(code).toBe(0);
+    expect(stderr).not.toContain('--url requires a URL value');
+    expect(stderr).toContain(`Error: net::ERR_NAME_NOT_RESOLVED at ${UNRESOLVABLE_URL}`);
+    expect(JSON.parse(stdout)).toEqual([]);
   });
 
   test('--url= form is accepted as a detect target alongside files', () => {

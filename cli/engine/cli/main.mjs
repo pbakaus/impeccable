@@ -147,6 +147,8 @@ Scan files or URLs for UI anti-patterns and design quality issues.
 Options:
   --json              Output results as JSON
   --quiet             In text mode, only print the final findings count
+  --url <value>       Scan a URL passed as its own argument, keeping query
+                      string & out of bare argv. Also accepts --url=<value>.
   --scope <name>      Only report rules in the given design domain
                       (type, layout). Comma-separated.
   --viewport <WxH>    Browser viewport for URL scans (default 1280x800),
@@ -187,13 +189,15 @@ Examples:
   impeccable detect index.html
   impeccable detect https://example.com
   impeccable detect --url "https://example.com?foo=1&bar=2"
+  impeccable detect --url="https://example.com?foo=1&bar=2"
   impeccable detect --json .
   impeccable detect --no-config src/
 
 Windows cmd.exe note:
   Bare URLs with & are command separators. Prefer --url with quotes, or use
   PowerShell / Git Bash. Example:
-    impeccable detect --url "https://example.com?foo=1&bar=2"`);
+    impeccable detect --url "https://example.com?foo=1&bar=2"
+    impeccable detect --url="https://example.com?foo=1&bar=2"`);
 }
 
 async function detectCli() {
