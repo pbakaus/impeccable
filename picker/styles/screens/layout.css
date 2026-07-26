@@ -179,6 +179,77 @@
   --pvs-phone-gallery-cols: 1.35fr 0.85fr;
 }
 
+/* Balanced needs no block of its own on this screen. The shared artboard is
+   already an asymmetrically balanced page: margins of 5.5 and 3.2, a hero that
+   splits 35.8 against the rest across a wide gap, and a lead card carrying more
+   than the three beside it. Unequal parts that settle on a centered axis is
+   what balance means, so the default is the answer and Simple grid is the one
+   that has to be talked out of it, below. */
+
+/* Simple grid, on this screen's own preview. The regular one: equal margins,
+   whole-column spans, four identical cards, and a single gutter used as every
+   gap down the page, so one rhythm runs from the nav to the footer. Every block
+   hangs from the top of its band rather than floating in the middle of it.
+   Nothing added, only proportions evened out. */
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="simple-grid"]) .picker-preview-layout,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="simple-grid"]:checked) .picker-preview-layout {
+  --pvs-gutter: 6%;
+  --pvs-gutter-end: 6%;
+  /* Equal halves. Any split with a dominant mass is asymmetrical balance,
+     which is the other answer. The copy's own bars are capped below so the
+     half does not read as a half-page smear of text. */
+  --pvs-hero-cols: var(--pvs-w6) minmax(0, 1fr);
+  --pvs-hero-gap: var(--pvs-gut);
+  /* The section copy is removed below, so the card row takes the whole band:
+     four cards of exactly three columns, sitting directly under the proof
+     band's four three-column claims. Two rows of the same four cells is what
+     a simple grid looks like. */
+  --pvs-editorial-cols: minmax(0, 1fr);
+  --pvs-editorial-gap: 0%;
+  --pvs-gallery-cols: repeat(4, minmax(0, 1fr));
+  --pvs-gallery-gap: var(--pvs-gut);
+  --pvs-section-align: start;
+  --pvs-rows: 9.4% 45.5% 9% 27.8% 8.3%;
+  --pvs-phone-gutter: 6%;
+  --pvs-phone-gallery-cols: 1fr 1fr;
+}
+
+/* The one block that leaves: the section copy beside the cards. A text column
+   against a card row is a two-weight composition, and this answer is the one
+   without a second weight. Desktop only; the handset stack is sized in pixels
+   and closes the gap itself. */
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="simple-grid"]) .picker-preview-layout .ps-desktop .ps-editorial-copy,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="simple-grid"]:checked) .picker-preview-layout .ps-desktop .ps-editorial-copy {
+  display: none;
+}
+
+/* The bars keep a text measure instead of running to the column edge, so the
+   copy reads as a compact block in its half rather than a wide one. */
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="simple-grid"]) .picker-preview-layout .ps-hero-copy .ps-headline i,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="simple-grid"]:checked) .picker-preview-layout .ps-hero-copy .ps-headline i {
+  width: 76%;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="simple-grid"]) .picker-preview-layout .ps-hero-copy .ps-headline i:last-child,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="simple-grid"]:checked) .picker-preview-layout .ps-hero-copy .ps-headline i:last-child {
+  width: 54%;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="simple-grid"]) .picker-preview-layout .ps-hero-copy .ps-copy i,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="simple-grid"]:checked) .picker-preview-layout .ps-hero-copy .ps-copy i {
+  width: 58%;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="simple-grid"]) .picker-preview-layout .ps-hero-copy .ps-copy i:last-child,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="simple-grid"]:checked) .picker-preview-layout .ps-hero-copy .ps-copy i:last-child {
+  width: 44%;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="simple-grid"]) .picker-preview-layout .ps-hero-copy .ps-eyebrow,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="simple-grid"]:checked) .picker-preview-layout .ps-hero-copy .ps-eyebrow {
+  width: 38%;
+}
+
 /* ── Editorial ───────────────────────────────────────────────
    Uneven margins, a standing text column at seven against a portrait at four,
    a single column of section copy beside a nine-column gallery, and a hero
