@@ -55,7 +55,7 @@
    editorial band are brought onto the same measure as the hero and the proof
    band. Scoped to the structural artboards: screens 03 and 04 are judging
    color and glyphs, and their page is not under a ruler. */
-[data-carry] :is(.ps-nav, .ps-editorial, .ps-footer) {
+[data-carry]:not(.picker-preview-layout) :is(.ps-nav, .ps-editorial, .ps-footer) {
   padding-right: var(--pvs-gutter-end);
 }
 
@@ -64,7 +64,7 @@
    equal shares of whatever was left after a fixed 25px gap, which lands a few
    pixels off every column line: close enough to pass unnoticed on a bare
    page, and the one row that looks wrong once the lines are drawn. */
-[data-carry] .ps-desktop > .ps-proof {
+[data-carry]:not(.picker-preview-layout) .ps-desktop > .ps-proof {
   grid-template-columns:
     var(--pvs-w3) auto
     var(--pvs-w3) auto
@@ -108,7 +108,7 @@
   background-image: repeating-linear-gradient(
     to right,
     transparent 0 calc(var(--pvs-mark) - 0.5px),
-    color-mix(in oklab, var(--pvs-ink) 17%, transparent)
+    color-mix(in oklab, var(--pvs-ink) 5%, transparent)
       calc(var(--pvs-mark) - 0.5px) calc(var(--pvs-mark) + 0.5px),
     transparent calc(var(--pvs-mark) + 0.5px)
       calc(var(--pvs-field-col) + var(--pvs-field-gut))
@@ -132,7 +132,7 @@
   bottom: 0;
   left: var(--pvs-phone-gutter, 6%);
   right: var(--pvs-phone-gutter, 6%);
-  border-inline: 1px solid color-mix(in oklab, var(--pvs-ink) 12%, transparent);
+  border-inline: 1px solid color-mix(in oklab, var(--pvs-ink) 5%, transparent);
   pointer-events: none;
 }
 
@@ -140,8 +140,7 @@
    Six and six, four cards of two, equal margins, bands of near-equal weight.
    Everything starts and stops on a line, and the thing to notice is that
    there is nothing to notice. */
-#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="simple-grid"]) .picker-preview-layout,
-:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="simple-grid"]:checked)) [data-carry] {
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="simple-grid"]:checked) [data-carry]:not(.picker-preview-layout) {
   --pvs-gutter: 6%;
   --pvs-gutter-end: 6%;
   --pvs-hero-cols: var(--pvs-w6) minmax(0, 1fr);
@@ -162,8 +161,7 @@
    The same grid, spent unevenly. The hero leans five-seven and the lead card
    takes three columns where its neighbours take two. Both breaks land on the
    lines: the emphasis is chosen, the discipline is not loosened. */
-#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="balanced"]) .picker-preview-layout,
-:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="balanced"]:checked)) [data-carry] {
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="balanced"]:checked) [data-carry]:not(.picker-preview-layout) {
   --pvs-gutter: 6%;
   --pvs-gutter-end: 6%;
   --pvs-hero-cols: var(--pvs-w5) minmax(0, 1fr);
@@ -194,8 +192,7 @@
    allowed to spend fewer columns than the page has. It is not allowed to
    spend them at a size the measure does not recognise, which is what a
    margin picked for its look does. */
-#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="editorial"]) .picker-preview-layout,
-:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="editorial"]:checked)) [data-carry] {
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="editorial"]:checked) [data-carry]:not(.picker-preview-layout) {
   --pvs-gutter: 13.4507%;
   --pvs-gutter-end: 6%;
   /* The ladder above, re-fitted. A column and a gutter are the same number of
@@ -235,8 +232,7 @@
    margins are the first thing off it: the page hangs past the measure on the
    left and stops short of it on the right, before a single block has moved.
    The escapes are listed under the drift flag below. */
-#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout,
-:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)) [data-carry] {
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) [data-carry]:not(.picker-preview-layout) {
   --pvs-gutter: 3.5%;
   --pvs-gutter-end: 9%;
   --pvs-hero-cols: 44% minmax(0, 1fr);
@@ -270,7 +266,7 @@
    the way a full-bleed image is clipped by the browser window. The width has
    to grow with the offset: the picture carries an explicit width, so a
    negative margin alone would slide it rather than stretch it. */
-[data-carry] .ps-hero > .ps-image {
+[data-carry]:not(.picker-preview-layout) .ps-hero > .ps-image {
   width: calc(100% + var(--pvs-drift, 0) * 16%);
   translate: calc(var(--pvs-drift, 0) * 6%) 0;
 }
@@ -278,7 +274,7 @@
 /* The copy sinks below the picture's top edge, so the two blocks in the hero
    no longer share a line. z-index is raised with the same flag: the actions
    below cross onto the picture and have to sit over it. */
-[data-carry] .ps-hero-copy {
+[data-carry]:not(.picker-preview-layout) .ps-hero-copy {
   position: relative;
   z-index: var(--pvs-drift, 0);
   translate: 0 calc(var(--pvs-drift, 0) * 12%);
@@ -289,14 +285,14 @@
    in the wireframe where the block on top is opaque and the block underneath
    has nothing to read: the same move over a line of copy is what a mistake
    looks like. */
-[data-carry] .ps-hero-copy .ps-actions {
+[data-carry]:not(.picker-preview-layout) .ps-hero-copy .ps-actions {
   translate: calc(var(--pvs-drift, 0) * 62%) 0;
 }
 
 /* Drift is a desktop move. The handset has one column and a stack sized in
    pixels, so a block stepping out of line there has nowhere to go but through
    the bottom of the frame. */
-[data-carry] .ps-desktop .ps-gallery-item:nth-child(2n) {
+[data-carry]:not(.picker-preview-layout) .ps-desktop .ps-gallery-item:nth-child(2n) {
   translate: 0 calc(var(--pvs-drift, 0) * 14%);
 }
 
@@ -304,12 +300,12 @@
    one decision about the right edge rather than two unrelated nudges. Both
    axes are named because this card is also an even one, and translate is a
    single property. */
-[data-carry] .ps-desktop .ps-gallery-item:last-child {
+[data-carry]:not(.picker-preview-layout) .ps-desktop .ps-gallery-item:last-child {
   margin-right: calc(var(--pvs-drift, 0) * -18%);
   translate: calc(var(--pvs-drift, 0) * 22%) calc(var(--pvs-drift, 0) * 14%);
 }
 
-[data-carry] .ps-desktop .ps-editorial-copy {
+[data-carry]:not(.picker-preview-layout) .ps-desktop .ps-editorial-copy {
   translate: 0 calc(var(--pvs-drift, 0) * -12%);
 }
 
@@ -321,18 +317,18 @@
    blocks is left alone, because the handset's stack is sized in pixels and a
    couple of points of extra gap pushes the card row through the bottom of the
    frame at the narrowest window the picker supports. */
-[data-carry] .ps-phone-body {
+[data-carry]:not(.picker-preview-layout) .ps-phone-body {
   padding-inline: var(--pvs-phone-gutter, 6%);
 }
 
 /* The picture carries an explicit width, so a negative margin moves it rather
    than widening it. Both are named together or the bleed slides the block
    sideways instead of stretching it past the measure. */
-[data-carry] .ps-phone-body > .ps-image {
+[data-carry]:not(.picker-preview-layout) .ps-phone-body > .ps-image {
   margin-inline: var(--pvs-phone-bleed, 0);
   width: var(--pvs-phone-bleed-w, 100%);
 }
 
-[data-carry] .ps-phone-body .ps-gallery {
+[data-carry]:not(.picker-preview-layout) .ps-phone-body .ps-gallery {
   grid-template-columns: var(--pvs-phone-gallery-cols, 1.05fr 0.95fr);
 }
