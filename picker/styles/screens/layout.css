@@ -369,86 +369,115 @@
   display: none;
 }
 
-/* ── Freeform ────────────────────────────────────────────────
-   Columns of no particular relation, and blocks that leave the field. The
-   margins are the first thing off it: the page hangs past the measure on the
-   left and stops short of it on the right, before a single block has moved.
-   The escapes are listed under the drift flag below. */
-:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) [data-carry]:not(.picker-preview-layout) {
-  --pvs-gutter: 3.5%;
-  --pvs-gutter-end: 9%;
-  --pvs-hero-cols: 44% minmax(0, 1fr);
-  --pvs-hero-gap: 3%;
-  --pvs-editorial-cols: 37% minmax(0, 1fr);
-  --pvs-editorial-gap: 2.5%;
-  --pvs-gallery-cols: 1.45fr 0.72fr 1.1fr 0.83fr;
-  --pvs-gallery-gap: 2.5%;
-  --pvs-section-align: end;
+/* Freeform, on this screen's own preview. The option's own definition is the
+   spec: blocks step out of the grid and overlap where it pays off. That is
+   not a looser grid; it is the same measure with permission granted. So the
+   base composition sits on the drawn lines exactly like the disciplined
+   answers, margins on the field, spans on whole columns, and then specific
+   blocks play against it: the picture is set down at a slight angle like a
+   print laid on a table, the buttons cross onto its corner, and the card row
+   bounces, leaning cards answering each other along the baseline. Held next
+   to the grid it is teasing, each move reads as a decision; without the held
+   grid it would read as the page being broken. The escape rules live under
+   the drift flag below. */
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout {
+  --pvs-gutter: 6%;
+  --pvs-gutter-end: 6%;
+  /* Copy at five, picture at seven: the picture is the block that leaves,
+     so it gets the mass that makes the exit legible. */
+  --pvs-hero-cols: var(--pvs-w5) minmax(0, 1fr);
+  --pvs-hero-gap: var(--pvs-gut);
+  --pvs-editorial-cols: var(--pvs-w3) minmax(0, 1fr);
+  --pvs-editorial-gap: var(--pvs-gut);
+  /* Four even cards on the lines. The stagger below breaks the row's
+     baseline, not its columns: one axis escapes at a time. */
+  --pvs-gallery-cols: repeat(4, minmax(0, 1fr));
+  --pvs-gallery-gap: calc(var(--pvs-gut) * 100 / 74.6);
+  --pvs-section-align: start;
   --pvs-rows: 9.4% 48% 8.4% 26.2% 8%;
-  --pvs-phone-gutter: 4%;
+  --pvs-phone-gutter: 6%;
+  --pvs-drift: 1;
+}
+
+/* The handset's cards divide the row unevenly; its print tilts under the
+   drift rules below instead of bleeding, so the angle stays whole. */
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout .ps-phone-body .ps-gallery,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout .ps-phone-body .ps-gallery {
+  grid-template-columns: 1.5fr 0.9fr;
+}
+
+/* ── Freeform ────────────────────────────────────────────────
+   The committed page, carried to boundaries, corners, and depth. Same terms
+   as the preview above: the measure every other answer uses, with the drift
+   flag up. What travels is the permission, not a different grid. */
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) [data-carry]:not(.picker-preview-layout) {
+  --pvs-gutter: 6%;
+  --pvs-gutter-end: 6%;
+  --pvs-hero-cols: var(--pvs-w5) minmax(0, 1fr);
+  --pvs-hero-gap: var(--pvs-gut);
+  --pvs-editorial-cols: var(--pvs-w3) minmax(0, 1fr);
+  --pvs-editorial-gap: var(--pvs-gut);
+  --pvs-gallery-cols: repeat(4, minmax(0, 1fr));
+  --pvs-gallery-gap: calc(var(--pvs-gut) * 100 / 74.6);
+  --pvs-section-align: start;
+  --pvs-rows: 9.4% 48% 8.4% 26.2% 8%;
+  --pvs-phone-gutter: 6%;
   --pvs-phone-gallery-cols: 1.5fr 0.9fr;
-  --pvs-phone-bleed: 0 -9%;
-  --pvs-phone-bleed-w: 109%;
   --pvs-drift: 1;
 }
 
 /* ── Leaving the grid ────────────────────────────────────────
-   Drift is declared on every artboard and multiplied by a flag only freeform
-   raises, so the other three pay nothing for the rules existing.
+   Freeform's one move, made big: everything on the page sits exactly on the
+   grid, straight and level, except the hero photograph, which is cut into an
+   angular shape that starts mid-page, bleeds off the frame's right edge, and
+   ends mid-band on a slanted bottom, its left side falling away on a steep
+   diagonal. One block granted the permission; the rest of the page refusing
+   to join in is what makes the shape read as a decision.
 
-   Each escape is a transform or a negative margin, never a change of flow: a
-   block that steps out does not push the rest of the page around to make room
-   for it, which is the difference between a composition and a broken grid.
+   The hero is a change of structure, not a nudge, so it is gated on the same
+   selectors as the measure blocks above; the handset's echo rides the
+   --pvs-drift flag inside its polygon, so the other answers keep a
+   rectangle. */
 
-   The moves are chosen so that nothing lands on top of running text. A bar
-   half-covered by a picture is what a mistake looks like; a picture running
-   off the edge of the page is what a decision looks like. */
-
-/* The picture takes the right margin and keeps going, clipped by the frame
-   the way a full-bleed image is clipped by the browser window. The width has
-   to grow with the offset: the picture carries an explicit width, so a
-   negative margin alone would slide it rather than stretch it. */
-[data-carry]:not(.picker-preview-layout) .ps-hero > .ps-image {
-  width: calc(100% + var(--pvs-drift, 0) * 16%);
-  translate: calc(var(--pvs-drift, 0) * 6%) 0;
-}
-
-/* The copy sinks below the picture's top edge, so the two blocks in the hero
-   no longer share a line. z-index is raised with the same flag: the actions
-   below cross onto the picture and have to sit over it. */
-[data-carry]:not(.picker-preview-layout) .ps-hero-copy {
+/* The band loses its own gutter so the image can reach the frame edge; the
+   copy re-applies it and keeps the page's left measure. */
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout .ps-desktop .ps-hero,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) [data-carry] .ps-desktop .ps-hero {
   position: relative;
-  z-index: var(--pvs-drift, 0);
-  translate: 0 calc(var(--pvs-drift, 0) * 12%);
+  display: block;
+  padding: 0;
 }
 
-/* The one overlap, and the only block allowed one. Two filled controls onto a
-   flat picture is a composition that holds anywhere, and it is the one pair
-   in the wireframe where the block on top is opaque and the block underneath
-   has nothing to read: the same move over a line of copy is what a mistake
-   looks like. */
-[data-carry]:not(.picker-preview-layout) .ps-hero-copy .ps-actions {
-  translate: calc(var(--pvs-drift, 0) * 62%) 0;
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout .ps-desktop .ps-hero > .ps-image,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) [data-carry] .ps-desktop .ps-hero > .ps-image {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  /* The shape: top edge from mid-page to the frame's right edge, right edge
+     dropping to just past the band's midpoint, a slanted bottom running
+     uphill to the right, and the steep diagonal falling back to the top. */
+  clip-path: polygon(40% 0, 100% 0, 100% 78%, 66% 84%);
 }
 
-/* Drift is a desktop move. The handset has one column and a stack sized in
-   pixels, so a block stepping out of line there has nowhere to go but through
-   the bottom of the frame. */
-[data-carry]:not(.picker-preview-layout) .ps-desktop .ps-gallery-item:nth-child(2n) {
-  translate: 0 calc(var(--pvs-drift, 0) * 14%);
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout .ps-desktop .ps-hero > .ps-hero-copy,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) [data-carry] .ps-desktop .ps-hero > .ps-hero-copy {
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+  width: 44%;
+  height: 100%;
+  align-content: center;
+  padding-left: var(--pvs-gutter, 6%);
 }
 
-/* The last card leaves the same way the picture did, so the escape reads as
-   one decision about the right edge rather than two unrelated nudges. Both
-   axes are named because this card is also an even one, and translate is a
-   single property. */
-[data-carry]:not(.picker-preview-layout) .ps-desktop .ps-gallery-item:last-child {
-  margin-right: calc(var(--pvs-drift, 0) * -18%);
-  translate: calc(var(--pvs-drift, 0) * 22%) calc(var(--pvs-drift, 0) * 14%);
-}
-
-[data-carry]:not(.picker-preview-layout) .ps-desktop .ps-editorial-copy {
-  translate: 0 calc(var(--pvs-drift, 0) * -12%);
+/* ── The handset ─────────────────────────────────────────────
+   The same permission at pocket scale: the print's bottom edge takes the
+   angular cut, running uphill to the right like the desktop shape. The cut
+   depth rides the flag inside the polygon, so the other answers keep a
+   rectangle. Everything else on the handset stays on its lines. */
+[data-carry] .ps-phone-body > .ps-image {
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--pvs-drift, 0) * 16%), 0 100%);
 }
 
 /* ── The handset ─────────────────────────────────────────────
