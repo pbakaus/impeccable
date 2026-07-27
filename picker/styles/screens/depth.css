@@ -1,0 +1,129 @@
+/* ============================================================
+   Screen 10: depth style.
+
+   How far off the page an element sits. Boundaries fills section grounds;
+   this file lifts individual elements, and the two answers compose instead
+   of arguing.
+
+   Two kinds of value, because a shadow and a tonal step are not the same
+   material. Cast shadows go in the --pvs-shadow-* slots and need something
+   solid under them, which is why the block at the bottom moves the card's
+   lift onto the picture inside it wherever the boundary answer left the card
+   transparent: a shadow around an invisible rectangle reads as a bug. Tonal
+   steps go in --pvs-tint-* and are painted as a ground, so they land on any
+   element whether or not it already has one.
+
+   Shadows are sized for the artboard rather than for a real page. The frame
+   is about a third of browser width, so a blur that would read as gentle at
+   full size disappears here; the offsets and blurs below are already scaled.
+
+   They are also black rather than mixed from the artboard's ink. Ink follows
+   the ground, so on a drenched page an ink shadow turns pale and the lift
+   comes out as a glow. Light falls the same way whatever color the page is.
+   ============================================================ */
+
+/* ── Flat ────────────────────────────────────────────────────
+   One plane. Nothing casts, nothing steps. */
+#picker-form:has(.picker-strategy-option:hover input[name="depth-style"][value="flat"]) .picker-preview-depth,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="depth-style"])):has(input[name="depth-style"][value="flat"]:checked)) [data-carry] {
+  --pvs-shadow-chrome: none;
+  --pvs-shadow-card: none;
+  --pvs-shadow-control: none;
+  --pvs-shadow-surface: none;
+  --pvs-tint-chrome: none;
+  --pvs-tint-card: none;
+  --pvs-tint-pad: 0px;
+}
+
+/* ── Layered ─────────────────────────────────────────────────
+   Two tonal steps off the ground, cards further up than chrome, and not one
+   shadow on the page.
+
+   A tonal step is only read as a step if some of it is visible, so this is the
+   one answer that asks for padding of its own. It is a floor rather than a
+   replacement: the boundary answer that already draws panels keeps its wider
+   inset. */
+#picker-form:has(.picker-strategy-option:hover input[name="depth-style"][value="layered"]) .picker-preview-depth,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="depth-style"])):has(input[name="depth-style"][value="layered"]:checked)) [data-carry] {
+  --pvs-shadow-chrome: none;
+  --pvs-shadow-card: none;
+  --pvs-shadow-control: none;
+  --pvs-shadow-surface: none;
+  --pvs-tint-chrome: linear-gradient(
+    color-mix(in oklab, var(--pvs-ink) 6%, transparent),
+    color-mix(in oklab, var(--pvs-ink) 6%, transparent)
+  );
+  --pvs-tint-card: linear-gradient(
+    color-mix(in oklab, var(--pvs-ink) 12%, transparent),
+    color-mix(in oklab, var(--pvs-ink) 12%, transparent)
+  );
+  --pvs-tint-pad: 3.5%;
+}
+
+/* ── Soft lift ───────────────────────────────────────────────
+   Cards and controls come off the page by a millimetre. Two shadows on the
+   cards: a tight one for the contact edge, a wider one for the ambient. */
+#picker-form:has(.picker-strategy-option:hover input[name="depth-style"][value="soft-lift"]) .picker-preview-depth,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="depth-style"])):has(input[name="depth-style"][value="soft-lift"]:checked)) [data-carry] {
+  --pvs-shadow-chrome: 0 1px 2px rgb(0 0 0 / 0.1);
+  --pvs-shadow-card:
+    0 1px 1px rgb(0 0 0 / 0.15),
+    0 3px 7px rgb(0 0 0 / 0.14);
+  --pvs-shadow-control: 0 1px 2px rgb(0 0 0 / 0.24);
+  --pvs-shadow-surface: 0 2px 5px rgb(0 0 0 / 0.14);
+  --pvs-tint-chrome: none;
+  --pvs-tint-card: none;
+  --pvs-tint-pad: 0px;
+}
+
+/* ── Floating ────────────────────────────────────────────────
+   A clear gap between the panels and the page. Offsets grow faster than
+   blurs, so the lift reads as height rather than as fog. */
+#picker-form:has(.picker-strategy-option:hover input[name="depth-style"][value="floating"]) .picker-preview-depth,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="depth-style"])):has(input[name="depth-style"][value="floating"]:checked)) [data-carry] {
+  --pvs-shadow-chrome: 0 2px 6px rgb(0 0 0 / 0.16);
+  --pvs-shadow-card:
+    0 2px 3px rgb(0 0 0 / 0.2),
+    0 9px 18px rgb(0 0 0 / 0.24);
+  --pvs-shadow-control: 0 3px 6px rgb(0 0 0 / 0.32);
+  --pvs-shadow-surface: 0 6px 14px rgb(0 0 0 / 0.22);
+  --pvs-tint-chrome: none;
+  --pvs-tint-card: none;
+  --pvs-tint-pad: 0px;
+}
+
+/* Tonal steps paint as a ground, over whatever ground the boundary answer
+   already chose. */
+[data-carry] .ps-gallery-item {
+  background-image: var(--pvs-tint-card, none);
+}
+
+[data-carry] :is(.ps-nav, .ps-footer, .ps-phone-top, .ps-phone-footer) {
+  background-image: var(--pvs-tint-chrome, none);
+}
+
+/* ── Where a cast shadow is allowed to land ──────────────────
+   Only off something solid. Under the two boundary answers that give the
+   card and the proof band a ground, the section itself lifts. Under the two
+   that leave them transparent, the lift moves inward to the picture, which
+   is the only part of the card that is a surface in its own right. */
+#picker-form:has(input[name="boundary-style"][value="cards-and-panels"]:checked) [data-carry] :is(.ps-gallery-item, .ps-desktop > .ps-proof),
+#picker-form:has(input[name="boundary-style"][value="surface-changes"]:checked) [data-carry] .ps-desktop > .ps-proof {
+  box-shadow: var(--pvs-shadow-card);
+}
+
+#picker-form:not(:has(input[name="boundary-style"][value="cards-and-panels"]:checked)) [data-carry] .ps-gallery-item {
+  box-shadow: none;
+}
+
+#picker-form:not(:has(input[name="boundary-style"][value="cards-and-panels"]:checked)) [data-carry] .ps-gallery-item > i {
+  box-shadow: var(--pvs-shadow-card);
+}
+
+/* Chrome is a ground only under the surface answer, so that is the only one
+   where the bar at the top of the page casts. The footers are left out: a
+   footer's shadow would fall out of the frame and be clipped away, so the
+   only trace of it would be a hard line. */
+#picker-form:not(:has(input[name="boundary-style"][value="surface-changes"]:checked)) [data-carry] :is(.ps-nav, .ps-phone-top) {
+  box-shadow: none;
+}

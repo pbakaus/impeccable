@@ -162,6 +162,25 @@ This is a test skill body.`;
     expect(fs.existsSync(path.join(DIST_DIR, 'codex/.codex/skills/test-skill/SKILL.md'))).toBe(true);
   });
 
+  test('integration: preserves binary skill assets byte-for-byte', () => {
+    const skillDir = path.join(TEST_DIR, 'skill');
+    const assetDir = path.join(skillDir, 'scripts/picker/assets');
+    const sourceBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0x00, 0x80]);
+    fs.mkdirSync(assetDir, { recursive: true });
+    fs.writeFileSync(path.join(skillDir, 'SKILL.src.md'), `---\nname: binary-skill\ndescription: Binary fixture\n---\n\nBody.`);
+    fs.writeFileSync(path.join(assetDir, 'hero.png'), sourceBytes);
+
+    const DIST_DIR = path.join(TEST_DIR, 'dist');
+    const { skills } = utils.readSourceFiles(TEST_DIR);
+    transformers.transformCursor(skills, DIST_DIR, utils.readPatterns(TEST_DIR));
+
+    const outputBytes = fs.readFileSync(path.join(
+      DIST_DIR,
+      'cursor/.cursor/skills/binary-skill/scripts/picker/assets/hero.png',
+    ));
+    expect(outputBytes).toEqual(sourceBytes);
+  });
+
   test('integration: emits native subagent files for Codex and Claude Code', () => {
     const skillContent = `---
 name: test-skill
