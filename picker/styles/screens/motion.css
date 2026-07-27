@@ -1,10 +1,11 @@
 /* ============================================================
    Screen 06: motion energy.
 
-   One scene, three energies. A synthetic pointer walks the same route through
-   the same wireframe on all three options and clicks the same two things: the
-   second of the two hero buttons, and a card in the gallery. What differs is
-   what the page does about it.
+   Three energies, and each now demonstrates itself in its own scene:
+   restrained and responsive carry dedicated loops further down, while the
+   shared scene below remains as choreographed's stage. In it, a synthetic
+   pointer walks a route through the wireframe and clicks two things: the
+   second of the two hero buttons, and a card in the gallery.
 
    Two clicks, not four. A visitor comparing three energies is reading the
    difference between them, and a scene with something happening every second
@@ -17,11 +18,11 @@
    keeps an orchestrated response in step after an hour of looping, and it is
    why a frozen frame of this screen is always coherent.
 
-   The three options are not three sets of keyframes. They set the amplitude of
-   the shared ones: how far a press travels, whether an entrance starts from
-   nothing, whether siblings recede, and above all whether a state change steps
-   or eases. Restrained's step-start puts every change on the frame the click
-   lands, which is what "state changes only" means in practice.
+   The amplitude variables below still describe the shared scene's dials: how
+   far a press travels, whether an entrance starts from nothing, whether
+   siblings recede, whether a state change steps or eases. With restrained
+   and responsive in their own scenes, choreographed is the one energy left
+   turning them.
 
    The script restarts the timeline whenever the previewed option changes. The
    entrance is the loudest difference between the three, and it happens in the
@@ -49,35 +50,11 @@
 
 /* Hover previews the energy before the click commits it, same as the color
    strategy rows. Motion is the one answer that does not travel to the screens
-   after it: a page still moving is a page you cannot judge a grid on. */
-/* State changes get a gentler curve than movement does. The deceleration curve
-   below is right for something arriving from somewhere, but it puts half a
-   color cross-fade in the first 25ms, which is another way of spelling
-   instant. */
-#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="responsive"]) .picker-preview-motion,
-#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="responsive"]:checked) .picker-preview-motion {
-  --mt-tf: ease;
-  --mt-press-scale: 0.94;
-}
+   after it: a page still moving is a page you cannot judge a grid on.
 
-/* The siblings recede by 0.78 and 2px rather than by the 0.45 this started at.
-   Dimming is composited against whatever ground the color strategy chose, and
-   against a saturated primary a deep dim drags a brown thumbnail into olive and
-   a gold one into moss: the gallery stops reading as four cards standing back
-   and starts reading as a palette bug. Held this shallow the hue survives on
-   every ground, and the 2px carries the recession that the missing opacity
-   was carrying, in a channel no palette can distort. */
-#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion,
-#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion {
-  --mt-tf: ease;
-  --mt-press-scale: 0.94;
-  --mt-lift: -4px;
-  --mt-dim: 0.78;
-  --mt-sink: 2px;
-  --mt-in-o: 0;
-  --mt-in-y: 14px;
-  --mt-in-clip: 100%;
-}
+   All three energies now carry their own scenes further down, so the shared
+   scene and its amplitude variables only run in the moment before any option
+   is previewed or chosen. */
 
 /* Size containment turns the frame into the coordinate system: the pointer's
    route is written in cqw and cqh, so it lands on the same button at every
@@ -89,15 +66,22 @@
 
 /* ── The pointer ─────────────────────────────────────────────── */
 
+/* The macOS pointer: black fill, white outline, the exact silhouette every
+   visitor's hand already has. Drawn as an inline SVG rather than a clip-path
+   because the outline is part of the shape, and it keeps its own colors on
+   every palette: a cursor belongs to the visitor, not to the design. One
+   soft shadow beneath so it sits above the page instead of printed on it,
+   and above every band by z-index: a hand does not pass behind the hero
+   image. */
 .picker-preview-motion .ps-cursor {
   position: absolute;
   top: 0;
   left: 0;
-  width: 13px;
-  height: 13px;
-  background-color: var(--pvs-ink);
-  clip-path: polygon(0 0, 0 76%, 24% 58%, 41% 100%, 58% 92%, 41% 50%, 74% 42%);
-  filter: drop-shadow(0.5px 0.5px 0 var(--pvs-ground));
+  width: 15px;
+  height: 21px;
+  z-index: 5;
+  background: url('data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 20"%3E%3Cpath d="M1 1v15l3.9-3.4 2.4 5.6 2.6-1.1-2.4-5.6h5.1z" fill="black" stroke="white" stroke-width="1.3" stroke-linejoin="round"/%3E%3C/svg%3E') 0 0 / contain no-repeat;
+  filter: drop-shadow(1px 1.5px 1.5px rgb(0 0 0 / 0.3));
   animation: mt-path var(--mt) ease-in-out infinite;
 }
 
@@ -321,6 +305,950 @@
   }
 }
 
+/* ============================================================
+   Restrained's own scene: a 3.8s seamless loop.
+
+   The shared 8s scene above shows restrained as the zero-amplitude case of
+   the other two energies. This scene replaces it whenever restrained is the
+   previewed option, and it demonstrates the thing restrained actually
+   promises: the pointer is the only element that ever travels. Every
+   interface response is a completed state, present on the frame the pointer
+   earns it and gone on the frame it stops being earned.
+
+   The route: in from the top edge to the first nav item (hover color plus a
+   dropdown, both instant and fully formed), across to the second (the first
+   resets the instant it is left, the two dropdowns never coexist), down to
+   the primary button (fill inverts to outline), across to the secondary
+   (primary restores, secondary fills), then out the way it came, with a
+   short idle hold so the loop has a breath in it. Every state edge below
+   sits on a pair of stops 0.01% apart, which under a linear timeline is a
+   change contained inside a single frame: nothing slides, fades, or exists
+   halfway.
+
+   The exit path is the entry path retraced, so 100% equals 0% and the loop
+   has no seam. The pointer crosses the hero copy on the way out, but only
+   controls answer hovers, so the page stays still. */
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="restrained"]) .picker-preview-motion .ps-cursor,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="restrained"]:checked) .picker-preview-motion .ps-cursor {
+  animation: mtr-path 3.8s linear infinite;
+}
+
+/* No clicks in this scene: hovers are the only events, so the ring stays
+   dark. */
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="restrained"]) .picker-preview-motion .ps-cursor::after,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="restrained"]:checked) .picker-preview-motion .ps-cursor::after {
+  animation: none;
+  opacity: 0;
+}
+
+/* The card beat belongs to the shared scene; this one leaves the gallery
+   alone. */
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="restrained"]) .picker-preview-motion .ps-gallery-item,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="restrained"]:checked) .picker-preview-motion .ps-gallery-item {
+  animation: none;
+}
+
+/* ── Scene furniture shared by the per-energy loops ─────────────
+   The dropdown and the chevrons are drawn on every energy and idle at
+   opacity 0; each scene animates only the ones its script calls for, so the
+   scenes stay pure timelines and the geometry lives in one place.
+
+   The nav band's entrance animation makes it a stacking context, and a
+   stacking context without a z-index paints in DOM order, which put the
+   dropdown behind the hero image. Raised, so a panel opens over the picture
+   the way a dropdown does. */
+.picker-preview-motion .ps-nav {
+  z-index: 3;
+}
+
+.picker-preview-motion .ps-nav-bars i:nth-child(-n + 2) {
+  position: relative;
+}
+
+/* The dropdown panel: a solid page-colored surface with the palette's dark
+   outline. The fill rides as a gradient layer clipped to the border box
+   because the panel opens by scaling and a background-color would too. Its
+   rows live on the ::before below, so an energy can move the rows without
+   moving the panel. */
+.picker-preview-motion .ps-nav-bars i:nth-child(-n + 2)::after {
+  content: "";
+  position: absolute;
+  top: calc(100% + 8px);
+  left: -10px;
+  width: 64px;
+  height: 54px;
+  box-sizing: border-box;
+  background-image: linear-gradient(var(--pvs-ground), var(--pvs-ground));
+  border: 1.5px solid var(--pvs-cta);
+  border-radius: var(--pvs-radius-control);
+  transform-origin: top center;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* The menu rows: three gradient layers over the panel's content area, the
+   first darker as the item the pointer would be on, ragged like a real
+   menu's labels. A separate box so entrances can stagger the rows against
+   the held panel. */
+.picker-preview-motion .ps-nav-bars i:nth-child(-n + 2)::before {
+  content: "";
+  position: absolute;
+  top: calc(100% + 18.5px);
+  left: 1.5px;
+  width: 41px;
+  height: 31px;
+  background-image:
+    linear-gradient(var(--pvs-headline), var(--pvs-headline)),
+    linear-gradient(var(--pvs-copy), var(--pvs-copy)),
+    linear-gradient(var(--pvs-copy), var(--pvs-copy));
+  background-repeat: no-repeat;
+  background-size: 78% 5px, 92% 5px, 64% 5px;
+  background-position: 0 0, 0 13px, 0 26px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* The affordance chevrons: one inside the primary button, one in the lower
+   corner of the first card's picture. Right-pointing, drawn by clip-path,
+   colored for the surface each sits on. */
+.picker-preview-motion .ps-actions i:first-child::after {
+  content: "";
+  position: absolute;
+  top: calc(50% - 4px);
+  right: 12%;
+  width: 6px;
+  height: 8px;
+  background-color: var(--pvs-cta);
+  clip-path: polygon(28% 0, 100% 50%, 28% 100%, 6% 82%, 42% 50%, 6% 18%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.picker-preview-motion .ps-actions i:first-child {
+  position: relative;
+}
+
+.picker-preview-motion .ps-gallery-item:nth-child(1) > i {
+  position: relative;
+}
+
+.picker-preview-motion .ps-gallery-item:nth-child(1) > i::after {
+  content: "";
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 7px;
+  height: 9px;
+  background-color: var(--pvs-ground);
+  clip-path: polygon(28% 0, 100% 50%, 28% 100%, 6% 82%, 42% 50%, 6% 18%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* The first card's tint sweep: a full-cover accent layer the choreographed
+   finale wipes across the picture, kept under the chevron because ::after
+   paints later. Responsive recolors the picture itself instead; this layer
+   idles invisible for it. */
+.picker-preview-motion .ps-gallery-item:nth-child(1) > i::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-color: var(--pvs-cta);
+  border-radius: inherit;
+  clip-path: inset(0 100% 0 0);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* The loop curtain: a ground-colored cover over the whole artboard that the
+   choreographed scene raises at the very end and lifts at the very start, so
+   an entrance-built loop can reset its stage without the page visibly
+   un-building itself. Below the cursor, which is off-frame whenever the
+   curtain is up. */
+.picker-preview-motion .ps-desktop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-color: var(--pvs-ground);
+  border-radius: inherit;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 4;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="restrained"]) .picker-preview-motion .ps-nav-bars i:nth-child(1),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="restrained"]:checked) .picker-preview-motion .ps-nav-bars i:nth-child(1) {
+  animation: mtr-nav-1 3.8s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="restrained"]) .picker-preview-motion .ps-nav-bars i:nth-child(1)::before,
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="restrained"]) .picker-preview-motion .ps-nav-bars i:nth-child(1)::after,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="restrained"]:checked) .picker-preview-motion .ps-nav-bars i:nth-child(1)::before,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="restrained"]:checked) .picker-preview-motion .ps-nav-bars i:nth-child(1)::after {
+  animation: mtr-drop-1 3.8s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="restrained"]) .picker-preview-motion .ps-nav-bars i:nth-child(2),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="restrained"]:checked) .picker-preview-motion .ps-nav-bars i:nth-child(2) {
+  animation: mtr-nav-2 3.8s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="restrained"]) .picker-preview-motion .ps-nav-bars i:nth-child(2)::before,
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="restrained"]) .picker-preview-motion .ps-nav-bars i:nth-child(2)::after,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="restrained"]:checked) .picker-preview-motion .ps-nav-bars i:nth-child(2)::before,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="restrained"]:checked) .picker-preview-motion .ps-nav-bars i:nth-child(2)::after {
+  animation: mtr-drop-2 3.8s linear infinite;
+}
+
+/* The hero pair. The primary's hover inverts it, fill to outline; the
+   secondary's fills it. Both are borrowed states the buttons already own,
+   arriving and leaving whole. */
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="restrained"]) .picker-preview-motion .ps-actions i:first-child,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="restrained"]:checked) .picker-preview-motion .ps-actions i:first-child {
+  animation: mtr-cta-primary 3.8s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="restrained"]) .picker-preview-motion .ps-actions i:last-child,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="restrained"]:checked) .picker-preview-motion .ps-actions i:last-child {
+  animation: mtr-cta-secondary 3.8s linear infinite;
+}
+
+/* The route, in seconds of the 3.8: enter 0-0.35, first nav 0.35-0.95,
+   across 0.95-1.25, second nav 1.25-1.55, down 1.55-2.20, primary 2.20-2.85,
+   across 2.85-3.15, secondary 3.15-3.45, out 3.45-3.67, idle to 3.8.
+
+   Every stop is a custom property that plotMotionRoute() in the picker
+   script measures off the live layout, because the nav spaces itself in
+   pixels and a hardcoded fraction lands on a different bar at a different
+   frame width. The fallbacks are the values measured at the reference
+   viewport, for the pathological case of the script not having run. */
+@keyframes mtr-path {
+  0% { translate: var(--mtr-entry, 64.5cqw -8cqh); }
+  9.21%, 25% { translate: var(--mtr-nav1, 64.8cqw 4.8cqh); }
+  32.89%, 40.79% { translate: var(--mtr-nav2, 71.4cqw 4.8cqh); }
+  57.89%, 75% { translate: var(--mtr-cta1, 10.3cqw 48.4cqh); }
+  82.89%, 90.79% { translate: var(--mtr-cta2, 20.7cqw 48.4cqh); }
+  96.5%, 100% { translate: var(--mtr-entry, 64.5cqw -8cqh); }
+}
+
+@keyframes mtr-nav-1 {
+  0%, 9.2% { background-color: var(--pvs-bars); }
+  9.21%, 24.99% { background-color: var(--pvs-cta); }
+  25%, 100% { background-color: var(--pvs-bars); }
+}
+
+@keyframes mtr-drop-1 {
+  0%, 9.2% { opacity: 0; }
+  9.21%, 24.99% { opacity: 1; }
+  25%, 100% { opacity: 0; }
+}
+
+@keyframes mtr-nav-2 {
+  0%, 32.88% { background-color: var(--pvs-bars); }
+  32.89%, 40.78% { background-color: var(--pvs-cta); }
+  40.79%, 100% { background-color: var(--pvs-bars); }
+}
+
+@keyframes mtr-drop-2 {
+  0%, 32.88% { opacity: 0; }
+  32.89%, 40.78% { opacity: 1; }
+  40.79%, 100% { opacity: 0; }
+}
+
+@keyframes mtr-cta-primary {
+  0%, 57.88% { background-color: var(--pvs-cta); box-shadow: inset 0 0 0 0 var(--pvs-cta); }
+  57.89%, 74.99% { background-color: var(--pvs-ghost); box-shadow: inset 0 0 0 1.5px var(--pvs-cta); }
+  75%, 100% { background-color: var(--pvs-cta); box-shadow: inset 0 0 0 0 var(--pvs-cta); }
+}
+
+@keyframes mtr-cta-secondary {
+  0%, 82.88% { background-color: var(--pvs-ghost); }
+  82.89%, 90.78% { background-color: var(--pvs-cta); }
+  90.79%, 100% { background-color: var(--pvs-ghost); }
+}
+
+/* ============================================================
+   Responsive's own scene: a 4.2s seamless loop.
+
+   Where restrained demonstrates completed states, this one demonstrates
+   answered ones: every hover gets a short, purposeful transition that
+   finishes and holds long enough to read. Three stations, one visit each:
+   the first nav item (color turn, a dropdown that expands downward with its
+   rows arriving on a 50ms stagger), the primary button (fill inverts to
+   outline and a chevron slides in 6px), and the first gallery card (picture
+   takes the accent tint, first label recolors, a chevron slides into the
+   picture's corner). Nothing bounces, nothing moves that was not hovered,
+   and every reset is faster than its entrance, the way real hover-out is.
+
+   In seconds of the 4.2: enter 0-0.25, dropdown opens 0.25-0.70, holds to
+   1.05, closes by 1.25, travel to the button by 1.45, responds by 1.80,
+   holds to 2.10, resets by 2.25, travel to the card by 2.55, responds by
+   2.85, holds to 3.50, resets by 3.70, exit and idle to 4.2. Entrances run
+   on cubic-bezier(0.16, 1, 0.3, 1); exits run linear and short.
+
+   The pointer leaves past the bottom edge and teleports to the top entry
+   point across the final 0.01% of the timeline, off-frame to off-frame, so
+   the loop closes without retracing the whole page. */
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="responsive"]) .picker-preview-motion .ps-cursor,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="responsive"]:checked) .picker-preview-motion .ps-cursor {
+  /* ease-in-out at the animation level gives every travel segment a soft
+     start and arrival without a per-frame timing table. */
+  animation: mtv-path 4.2s ease-in-out infinite;
+}
+
+/* Hovers only, no clicks: the ring stays dark. */
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="responsive"]) .picker-preview-motion .ps-cursor::after,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="responsive"]:checked) .picker-preview-motion .ps-cursor::after {
+  animation: none;
+  opacity: 0;
+}
+
+/* The shared scene's card beat and secondary-button beat are cancelled
+   before this scene claims the elements it needs. */
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="responsive"]) .picker-preview-motion .ps-gallery-item,
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="responsive"]) .picker-preview-motion .ps-actions i:last-child,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="responsive"]:checked) .picker-preview-motion .ps-gallery-item,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="responsive"]:checked) .picker-preview-motion .ps-actions i:last-child {
+  animation: none;
+}
+
+/* Station one: the nav item and its dropdown. The item turns in 120ms, the
+   panel scales open downward in 180ms, and the rows fade in and drop 6px
+   with the stagger written as intermediate background-position stops, since
+   the three rows are layers of one box. The close is the spec'd single
+   120ms gesture: rows and panel fade and retract upward together. */
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="responsive"]) .picker-preview-motion .ps-nav-bars i:nth-child(1),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="responsive"]:checked) .picker-preview-motion .ps-nav-bars i:nth-child(1) {
+  animation: mtv-nav 4.2s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="responsive"]) .picker-preview-motion .ps-nav-bars i:nth-child(1)::after,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="responsive"]:checked) .picker-preview-motion .ps-nav-bars i:nth-child(1)::after {
+  animation: mtv-panel 4.2s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="responsive"]) .picker-preview-motion .ps-nav-bars i:nth-child(1)::before,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="responsive"]:checked) .picker-preview-motion .ps-nav-bars i:nth-child(1)::before {
+  animation: mtv-rows 4.2s linear infinite;
+}
+
+/* Station two: the primary button inverts over 160ms and its chevron slides
+   in over 200ms. Fixed box, fixed position; only fill, outline, and the
+   chevron move. */
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="responsive"]) .picker-preview-motion .ps-actions i:first-child,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="responsive"]:checked) .picker-preview-motion .ps-actions i:first-child {
+  animation: mtv-cta 4.2s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="responsive"]) .picker-preview-motion .ps-actions i:first-child::after,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="responsive"]:checked) .picker-preview-motion .ps-actions i:first-child::after {
+  animation: mtv-cta-chev 4.2s linear infinite;
+}
+
+/* Station three: the first card. Its picture tints to the palette's dark
+   accent over 240ms, the first label bar recolors with it, and a
+   page-colored chevron slides into the picture's lower corner. */
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="responsive"]) .picker-preview-motion .ps-gallery-item:nth-child(1) > i,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="responsive"]:checked) .picker-preview-motion .ps-gallery-item:nth-child(1) > i {
+  animation: mtv-card-img 4.2s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="responsive"]) .picker-preview-motion .ps-gallery-item:nth-child(1) span b:first-child,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="responsive"]:checked) .picker-preview-motion .ps-gallery-item:nth-child(1) span b:first-child {
+  animation: mtv-card-label 4.2s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="responsive"]) .picker-preview-motion .ps-gallery-item:nth-child(1) > i::after,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="responsive"]:checked) .picker-preview-motion .ps-gallery-item:nth-child(1) > i::after {
+  animation: mtv-card-chev 4.2s linear infinite;
+}
+
+/* Arrivals: nav at 5.95% (0.25s), button at 34.52% (1.45s), card at 60.71%
+   (2.55s). Departures at 25% (1.05s), 50% (2.10s), and 83.33% (3.50s). Same
+   measured stops as the restrained route, plus the first card. */
+@keyframes mtv-path {
+  0% { translate: var(--mtr-entry, 64.5cqw -8cqh); }
+  5.95%, 25% { translate: var(--mtr-nav1, 64.8cqw 4.8cqh); }
+  34.52%, 50% { translate: var(--mtr-cta1, 10.3cqw 48.4cqh); }
+  60.71%, 83.33% { translate: var(--mtr-card1, 40cqw 80cqh); }
+  90%, 99.99% { translate: 32cqw 115cqh; }
+  100% { translate: var(--mtr-entry, 64.5cqw -8cqh); }
+}
+
+@keyframes mtv-nav {
+  0%, 5.95% {
+    background-color: var(--pvs-bars);
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  8.81%, 25% { background-color: var(--pvs-cta); }
+  27.86%, 100% { background-color: var(--pvs-bars); }
+}
+
+/* The panel becomes visible on a single frame and does all its arriving by
+   scale, so "expands downward" is literal: the top edge stays pinned to the
+   nav item. */
+@keyframes mtv-panel {
+  0%, 5.94% { opacity: 0; scale: 1 0; }
+  5.95% {
+    opacity: 1;
+    scale: 1 0;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  10.24%, 25% { opacity: 1; scale: 1 1; }
+  27.85% { opacity: 1; scale: 1 0; }
+  27.86%, 100% { opacity: 0; scale: 1 0; }
+}
+
+/* The stagger, spelled out: row one lands at 10.71% (200ms travel), rows
+   two and three hold their raised seats 50ms and 100ms longer and land at
+   11.9% and 13.1%. One box, three layers, so the offsets ride on
+   background-position stops instead of per-row delays. */
+@keyframes mtv-rows {
+  0%, 5.95% { opacity: 0; background-position: 0 -6px, 0 7px, 0 20px; }
+  7.14% { opacity: 0.25; background-position: 0 -4.5px, 0 7px, 0 20px; }
+  8.33% { opacity: 0.5; background-position: 0 -3px, 0 8.5px, 0 20px; }
+  10.71% { opacity: 1; background-position: 0 0, 0 11.5px, 0 23px; }
+  11.9% { opacity: 1; background-position: 0 0, 0 13px, 0 24.5px; }
+  13.1%, 25% { opacity: 1; background-position: 0 0, 0 13px, 0 26px; }
+  27.86%, 100% { opacity: 0; background-position: 0 -6px, 0 7px, 0 20px; }
+}
+
+@keyframes mtv-cta {
+  0%, 34.52% {
+    background-color: var(--pvs-cta);
+    box-shadow: inset 0 0 0 0 var(--pvs-cta);
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  38.33%, 50% {
+    background-color: var(--pvs-ghost);
+    box-shadow: inset 0 0 0 1.5px var(--pvs-cta);
+  }
+  52.86%, 100% {
+    background-color: var(--pvs-cta);
+    box-shadow: inset 0 0 0 0 var(--pvs-cta);
+  }
+}
+
+@keyframes mtv-cta-chev {
+  0%, 34.52% {
+    opacity: 0;
+    translate: -6px 0;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  39.29%, 50% { opacity: 1; translate: 0 0; }
+  52.38%, 100% { opacity: 0; translate: -6px 0; }
+}
+
+@keyframes mtv-card-img {
+  0%, 60.71% {
+    background-color: var(--pvs-accent-a);
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  66.43%, 83.33% { background-color: var(--pvs-cta); }
+  87.14%, 100% { background-color: var(--pvs-accent-a); }
+}
+
+@keyframes mtv-card-label {
+  0%, 60.71% {
+    background-color: var(--pvs-bars);
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  66.43%, 83.33% { background-color: var(--pvs-cta); }
+  87.14%, 100% { background-color: var(--pvs-bars); }
+}
+
+@keyframes mtv-card-chev {
+  0%, 60.71% {
+    opacity: 0;
+    translate: -6px 0;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  65%, 83.33% { opacity: 1; translate: 0 0; }
+  85.71%, 100% { opacity: 0; translate: -6px 0; }
+}
+
+/* ============================================================
+   Choreographed's own scene: a 5.6s directed sequence.
+
+   Restrained: the state changes. Responsive: the state transitions.
+   Choreographed: one transition deliberately cues the next. This scene is a
+   page performing its own reveal: the ground and frame are present from the
+   first frame, and the content arrives in a directed order, each band's
+   entrance handing off to the band below it.
+
+   In seconds of the 5.6: nav 0-0.45, eyebrow and headline bars wipe in
+   0.45-1.2, copy lines stagger 1.15-1.7, both CTAs rise as one 1.5-1.8, the
+   hero picture uncovers left to right 1.15-1.85 and its corner dot lands
+   last at 2.0. The proof row answers as one at 2.0-2.35: every dot fills
+   the accent together and every line extends together, a single beat rather
+   than a cascade, because four sequential rehearsals of the same move read
+   as waiting. The editorial block composes itself 2.5-3.35 (title wipe,
+   lines, the link dash drawing outward) while the gallery cards uncover
+   top-to-bottom on an 80ms stagger from 2.85. Then the finale: the cursor
+   enters and hovers the first card 3.8-4.8 (tint sweeps left to right,
+   label recolors and extends, chevron appears then travels 6px), reverses
+   faster on leave, and the page holds composed until the curtain resets the
+   loop at 5.4-5.6.
+
+   The nav dropdown and CTA hovers from the responsive scene stay available
+   on the page; this scene spends its seconds on page-level sequencing
+   instead of demonstrating them again.
+
+   Everything runs on the one 5.6s timeline as percentages, linear at the
+   animation level with the entrance curve applied per segment, so holds are
+   exact and a restart is always coherent. */
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion :is(.ps-hero-copy > *, .ps-proof-item, .ps-editorial-copy > *, .ps-gallery, .ps-gallery-item, .ps-actions i),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion :is(.ps-hero-copy > *, .ps-proof-item, .ps-editorial-copy > *, .ps-gallery, .ps-gallery-item, .ps-actions i) {
+  /* The shared scene's slots are cleared first; this scene animates leaves,
+     not bands. */
+  animation: none;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-cursor,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-cursor {
+  animation: mtc-path 5.6s ease-in-out infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-cursor::after,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-cursor::after {
+  animation: none;
+  opacity: 0;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-desktop::after,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-desktop::after {
+  animation: mtc-curtain 5.6s linear infinite;
+}
+
+/* ── The overture: nav, then type, then picture ──────────────── */
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-nav,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-nav {
+  animation: mtc-nav 5.6s linear infinite;
+}
+
+/* Child-combinator form, because the shared-scene reset above carries
+   :is()'s worst-argument specificity and a bare .ps-eyebrow loses to it. */
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-hero-copy > .ps-eyebrow,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-hero-copy > .ps-eyebrow {
+  animation: mtc-eyebrow 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-headline i:nth-child(1),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-headline i:nth-child(1) {
+  animation: mtc-headline-1 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-headline i:nth-child(2),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-headline i:nth-child(2) {
+  animation: mtc-headline-2 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-copy i:nth-child(1),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-copy i:nth-child(1) {
+  animation: mtc-copy-1 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-copy i:nth-child(2),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-copy i:nth-child(2) {
+  animation: mtc-copy-2 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-copy i:nth-child(3),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-copy i:nth-child(3) {
+  animation: mtc-copy-3 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-hero-copy > .ps-actions,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-hero-copy > .ps-actions {
+  animation: mtc-actions 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-hero > .ps-image,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-hero > .ps-image {
+  animation: mtc-image 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-hero > .ps-image::after,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-hero > .ps-image::after {
+  animation: mtc-dot 5.6s linear infinite;
+}
+
+/* ── The scroll handoff: dots fill, lines extend, one beat ────── */
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-proof-item i,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-proof-item i {
+  animation: mtc-pdot 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-proof-item span,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-proof-item span {
+  transform-origin: left center;
+  animation: mtc-pline 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-proof-divider,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-proof-divider {
+  animation: mtc-pdiv 5.6s linear infinite;
+}
+
+/* ── The editorial block composes itself ─────────────────────── */
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-editorial-copy strong,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-editorial-copy strong {
+  animation: mtc-ed-title 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-editorial-copy span i:nth-child(1),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-editorial-copy span i:nth-child(1) {
+  animation: mtc-ed-line-1 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-editorial-copy span i:nth-child(2),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-editorial-copy span i:nth-child(2) {
+  animation: mtc-ed-line-2 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-editorial-copy > em,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-editorial-copy > em {
+  transform-origin: left center;
+  animation: mtc-ed-dash 5.6s linear infinite;
+}
+
+/* ── The gallery cards, overlapping left to right ────────────── */
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-gallery-item:nth-child(1) > i,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-gallery-item:nth-child(1) > i {
+  animation: mtc-g-img-1 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-gallery-item:nth-child(2) > i,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-gallery-item:nth-child(2) > i {
+  animation: mtc-g-img-2 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-gallery-item:nth-child(3) > i,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-gallery-item:nth-child(3) > i {
+  animation: mtc-g-img-3 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-gallery-item:nth-child(4) > i,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-gallery-item:nth-child(4) > i {
+  animation: mtc-g-img-4 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-gallery-item:nth-child(1) span,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-gallery-item:nth-child(1) span {
+  animation: mtc-g-lab-1 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-gallery-item:nth-child(2) span,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-gallery-item:nth-child(2) span {
+  animation: mtc-g-lab-2 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-gallery-item:nth-child(3) span,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-gallery-item:nth-child(3) span {
+  animation: mtc-g-lab-3 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-gallery-item:nth-child(4) span,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-gallery-item:nth-child(4) span {
+  animation: mtc-g-lab-4 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-footer,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-footer {
+  animation: mtc-footer 5.6s linear infinite;
+}
+
+/* ── The finale: the first card answers a hover in order ─────── */
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-gallery-item:nth-child(1) > i::before,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-gallery-item:nth-child(1) > i::before {
+  animation: mtc-tint 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-gallery-item:nth-child(1) span b:first-child,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-gallery-item:nth-child(1) span b:first-child {
+  animation: mtc-label 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion .ps-gallery-item:nth-child(1) > i::after,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion .ps-gallery-item:nth-child(1) > i::after {
+  animation: mtc-chev 5.6s linear infinite;
+}
+
+/* The curtain is up across the loop's wrap, so the composed page never
+   visibly un-builds: it dissolves to ground at 5.4s and the ground lifts
+   onto the arriving nav at 0.26s. */
+@keyframes mtc-curtain {
+  0% { opacity: 1; }
+  4.6% { opacity: 0; }
+  96.4% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes mtc-nav {
+  0%, 1.7% {
+    opacity: 0;
+    translate: 0 8px;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  8%, 100% { opacity: 1; translate: 0 0; }
+}
+
+@keyframes mtc-eyebrow {
+  0%, 8% {
+    clip-path: inset(0 100% 0 0);
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  13.4%, 100% { clip-path: inset(0 0 0 0); }
+}
+
+@keyframes mtc-headline-1 {
+  0%, 11.6% {
+    clip-path: inset(0 100% 0 0);
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  17.9%, 100% { clip-path: inset(0 0 0 0); }
+}
+
+@keyframes mtc-headline-2 {
+  0%, 15.2% {
+    clip-path: inset(0 100% 0 0);
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  21.4%, 100% { clip-path: inset(0 0 0 0); }
+}
+
+@keyframes mtc-copy-1 {
+  0%, 20.5% {
+    opacity: 0;
+    translate: 0 6px;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  25.9%, 100% { opacity: 1; translate: 0 0; }
+}
+
+@keyframes mtc-copy-2 {
+  0%, 22.7% {
+    opacity: 0;
+    translate: 0 6px;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  28%, 100% { opacity: 1; translate: 0 0; }
+}
+
+@keyframes mtc-copy-3 {
+  0%, 24.8% {
+    opacity: 0;
+    translate: 0 6px;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  30.2%, 100% { opacity: 1; translate: 0 0; }
+}
+
+@keyframes mtc-actions {
+  0%, 26.8% {
+    opacity: 0;
+    translate: 0 6px;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  32.1%, 100% { opacity: 1; translate: 0 0; }
+}
+
+@keyframes mtc-image {
+  0%, 20.5% {
+    clip-path: inset(0 100% 0 0);
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  33%, 100% { clip-path: inset(0 0 0 0); }
+}
+
+@keyframes mtc-dot {
+  0%, 33% {
+    opacity: 0;
+    scale: 0.4;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  35.7%, 100% { opacity: 1; scale: 1; }
+}
+
+/* All four dots fill together at 2.0s and all four lines extend together a
+   breath behind them: one answered beat for the whole row. */
+@keyframes mtc-pdot {
+  0%, 35.7% {
+    opacity: 0;
+    scale: 0.6;
+    background-color: var(--pvs-accent-a);
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  38.6%, 100% { opacity: 1; scale: 1; background-color: var(--pvs-cta); }
+}
+
+@keyframes mtc-pline {
+  0%, 36.8% {
+    scale: 0 1;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  41.8%, 100% { scale: 1 1; }
+}
+
+@keyframes mtc-pdiv {
+  0%, 35.7% { opacity: 0; }
+  38.9%, 100% { opacity: 1; }
+}
+
+@keyframes mtc-ed-title {
+  0%, 44.6% {
+    clip-path: inset(0 100% 0 0);
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  50%, 100% { clip-path: inset(0 0 0 0); }
+}
+
+@keyframes mtc-ed-line-1 {
+  0%, 49.1% {
+    opacity: 0;
+    translate: 0 5px;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  54.5%, 100% { opacity: 1; translate: 0 0; }
+}
+
+@keyframes mtc-ed-line-2 {
+  0%, 50.9% {
+    opacity: 0;
+    translate: 0 5px;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  56.3%, 100% { opacity: 1; translate: 0 0; }
+}
+
+@keyframes mtc-ed-dash {
+  0%, 55.4% {
+    scale: 0 1;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  59.8%, 100% { scale: 1 1; }
+}
+
+/* The cards, 80ms apart from 2.85s, each picture uncovering top to bottom
+   with its labels arriving 200ms behind it: the next card is already moving
+   before the previous one settles. */
+@keyframes mtc-g-img-1 {
+  0%, 50.9% {
+    clip-path: inset(0 0 100% 0);
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  57.3%, 100% { clip-path: inset(0 0 0 0); }
+}
+
+@keyframes mtc-g-img-2 {
+  0%, 52.3% {
+    clip-path: inset(0 0 100% 0);
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  58.8%, 100% { clip-path: inset(0 0 0 0); }
+}
+
+@keyframes mtc-g-img-3 {
+  0%, 53.8% {
+    clip-path: inset(0 0 100% 0);
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  60.2%, 100% { clip-path: inset(0 0 0 0); }
+}
+
+@keyframes mtc-g-img-4 {
+  0%, 55.2% {
+    clip-path: inset(0 0 100% 0);
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  61.6%, 100% { clip-path: inset(0 0 0 0); }
+}
+
+@keyframes mtc-g-lab-1 {
+  0%, 54.5% {
+    opacity: 0;
+    translate: 0 5px;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  59.8%, 100% { opacity: 1; translate: 0 0; }
+}
+
+@keyframes mtc-g-lab-2 {
+  0%, 55.9% {
+    opacity: 0;
+    translate: 0 5px;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  61.3%, 100% { opacity: 1; translate: 0 0; }
+}
+
+@keyframes mtc-g-lab-3 {
+  0%, 57.3% {
+    opacity: 0;
+    translate: 0 5px;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  62.7%, 100% { opacity: 1; translate: 0 0; }
+}
+
+@keyframes mtc-g-lab-4 {
+  0%, 58.8% {
+    opacity: 0;
+    translate: 0 5px;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  64.1%, 100% { opacity: 1; translate: 0 0; }
+}
+
+@keyframes mtc-footer {
+  0%, 58.9% { opacity: 0; }
+  64.3%, 100% { opacity: 1; }
+}
+
+/* The cursor waits below the frame until the page has finished building,
+   rises to the first card at 3.8s, holds through the card's answer, and is
+   gone again before the curtain: at the wrap both endpoints are off-frame,
+   so the loop closes clean. */
+@keyframes mtc-path {
+  0%, 60.7% { translate: 45cqw 115cqh; }
+  67.9%, 85.7% { translate: var(--mtr-card1, 40cqw 80cqh); }
+  92%, 100% { translate: 45cqw 115cqh; }
+}
+
+@keyframes mtc-tint {
+  0%, 67.9% { opacity: 0; clip-path: inset(0 100% 0 0); }
+  67.91% {
+    opacity: 1;
+    clip-path: inset(0 100% 0 0);
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  72.1%, 85.7% { opacity: 1; clip-path: inset(0 0 0 0); }
+  88.6%, 100% { opacity: 0; clip-path: inset(0 0 0 0); }
+}
+
+@keyframes mtc-label {
+  0%, 71.4% {
+    background-color: var(--pvs-bars);
+    width: 76%;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  75.9%, 85.7% { background-color: var(--pvs-cta); width: 84%; }
+  88.6%, 100% { background-color: var(--pvs-bars); width: 76%; }
+}
+
+@keyframes mtc-chev {
+  0%, 73.2% { opacity: 0; translate: -6px 0; }
+  75.9% {
+    opacity: 1;
+    translate: -6px 0;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  79.5%, 85.7% { opacity: 1; translate: 0 0; }
+  87.5%, 100% { opacity: 0; translate: 0 0; }
+}
+
 /* A loop nobody asked for is the definition of a nonessential one. Reduced
    motion gets the end of the scene instead: the pointer parked over the card
    it chose, with every state already changed, which is the same information
@@ -330,16 +1258,34 @@
      rather than failing loudly, so the one that animates is cancelled on its
      own line. */
   .picker-preview-motion .ps-cursor::after,
+  .picker-preview-motion .ps-nav-bars i::before,
+  .picker-preview-motion .ps-nav-bars i::after,
+  .picker-preview-motion .ps-actions i::after,
+  .picker-preview-motion .ps-gallery-item > i::before,
+  .picker-preview-motion .ps-gallery-item > i::after,
+  .picker-preview-motion .ps-image::after,
+  .picker-preview-motion .ps-desktop::after,
   .picker-preview-motion :is(
     .ps-cursor,
     .ps-nav,
+    .ps-nav-bars i,
     .ps-hero-copy > *,
+    .ps-eyebrow,
+    .ps-headline i,
+    .ps-copy i,
     .ps-image,
     .ps-actions i,
     .ps-proof-item,
+    .ps-proof-item i,
+    .ps-proof-item span,
+    .ps-proof-divider,
     .ps-editorial-copy > *,
+    .ps-editorial-copy span i,
     .ps-gallery,
     .ps-gallery-item,
+    .ps-gallery-item > i,
+    .ps-gallery-item span,
+    .ps-gallery-item b,
     .ps-footer
   ) {
     /* The declarations being cancelled are per-element and more specific than
