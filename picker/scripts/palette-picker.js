@@ -712,6 +712,46 @@ function replayMotion(energy) {
   }
 }
 
+/* The restrained scene's pointer route is written in container units, but the
+   nav bars space themselves in fixed pixels, so where a given bar sits as a
+   fraction of the frame changes with the frame's size. The route is measured
+   off the live layout instead: one custom property per stop, re-resolved
+   whenever the frame resizes, so the pointer lands on the element that
+   reacts at every viewport. offsetLeft rather than getBoundingClientRect,
+   because the entrance animations translate the bands, and a route measured
+   mid-entrance would aim below the nav. */
+const motionDesk = motionScene.querySelector('.ps-desktop');
+
+function plotMotionRoute() {
+  if (!motionDesk.clientWidth) return;
+  // Summed up the offsetParent chain rather than read once: an element's
+  // offsets are relative to its nearest positioned ancestor, which for the
+  // buttons is not the frame.
+  const center = (el) => {
+    let x = el.offsetWidth / 2;
+    let y = el.offsetHeight / 2;
+    for (let node = el; node && node !== motionDesk; node = node.offsetParent) {
+      x += node.offsetLeft;
+      y += node.offsetTop;
+    }
+    return { x: (x / motionDesk.clientWidth) * 100, y: (y / motionDesk.clientHeight) * 100 };
+  };
+  const stop = (name, el) => {
+    const c = center(el);
+    motionScene.style.setProperty(name, `${c.x.toFixed(2)}cqw ${c.y.toFixed(2)}cqh`);
+  };
+  const nav1 = motionDesk.querySelector('.ps-nav-bars i:nth-child(1)');
+  stop('--mtr-nav1', nav1);
+  stop('--mtr-nav2', motionDesk.querySelector('.ps-nav-bars i:nth-child(2)'));
+  stop('--mtr-cta1', motionDesk.querySelector('.ps-actions i:first-child'));
+  stop('--mtr-cta2', motionDesk.querySelector('.ps-actions i:last-child'));
+  stop('--mtr-card1', motionDesk.querySelector('.ps-gallery-item:nth-child(1) > i'));
+  // The entry and exit point: straight above the first nav item, off-frame.
+  motionScene.style.setProperty('--mtr-entry', `${center(nav1).x.toFixed(2)}cqw -8cqh`);
+}
+
+new ResizeObserver(plotMotionRoute).observe(motionDesk);
+
 const motionRowValue = (node) => node?.closest('.picker-strategy-option')?.querySelector('input').value;
 
 motionOptions.addEventListener('pointerover', (event) => {
@@ -1200,6 +1240,7 @@ document.addEventListener('picker:screenchange', (event) => {
   // frame after the one that revealed it, not on the frame that asked.
   if (event.detail.screen === '06') {
     requestAnimationFrame(() => {
+      plotMotionRoute();
       motionShown = null;
       replayMotion(checkedMotion());
     });
