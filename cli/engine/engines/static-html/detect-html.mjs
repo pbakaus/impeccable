@@ -27,11 +27,11 @@ import {
   checkElementRadialSpotlight,
   checkCreamPalette,
   checkHtmlPatterns,
+  checkKickerAboveHeadingFromDoc,
   checkNumberedSectionLabelsFromDoc,
   checkPageLayout,
   checkPageQualityFromDoc,
   checkRepeatedContainerTextFromDoc,
-  checkRepeatedSectionKickersFromDoc,
   resolveBackground,
   resolveBorderRadiusPx,
 } from '../../rules/checks.mjs';
@@ -202,7 +202,7 @@ async function detectHtml(filePath, options = {}) {
     for (const f of runPageCheck('typography-rules', () => checkStaticPageTypography(document, window))) {
       findings.push(finding(f.id, filePath, f.snippet));
     }
-    for (const f of runPageCheck('repeated-section-kickers', () => checkRepeatedSectionKickersFromDoc(document, window))) {
+    for (const f of runPageCheck('kicker-above-heading', () => checkKickerAboveHeadingFromDoc(document, window))) {
       findings.push(finding(f.id, filePath, f.snippet));
     }
     for (const f of runPageCheck('numbered-section-labels', () => checkNumberedSectionLabelsFromDoc(document, window))) {

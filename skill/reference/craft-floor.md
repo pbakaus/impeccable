@@ -23,7 +23,7 @@ Page scaffolds:
 
 - Same-size cards of icon plus heading plus text as the page structure. Cards are the lazy container; nested cards are always wrong. <!-- rule:skill-ban-identical-card-grids --> <!-- rule:skill-layout-cards-lazy -->
 - The hero-metric template: big number, small label, supporting stats, accent. <!-- rule:skill-ban-hero-metric -->
-- A tracked uppercase eyebrow over every section. One named kicker is a system; an eyebrow everywhere is grammar you did not choose. <!-- rule:skill-ban-eyebrow-on-every-section -->
+- A kicker or eyebrow above a heading. This one is a ban, not a default: no brief earns it back. The heading carries its own weight; delete the label and let the heading speak. <!-- rule:skill-ban-eyebrow-on-every-section -->
 - Section numbers (01 / 02 / 03) unless the sequence itself carries information the reader needs. <!-- rule:skill-ban-numbered-section-markers -->
 - A modal for a task that needs neither interruption nor protected focus. <!-- rule:skill-reflex-modal-by-reflex -->
 

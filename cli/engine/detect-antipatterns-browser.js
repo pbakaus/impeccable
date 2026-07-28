@@ -309,15 +309,14 @@ const ANTIPATTERNS = [
     skillGuideline: 'tiny uppercase tracked label above the hero headline',
   },
   {
-    id: 'repeated-section-kickers',
+    id: 'kicker-above-heading',
     category: 'slop',
     scopes: ['type'],
-    severity: 'advisory',
-    name: 'Repeated section kicker labels',
+    name: 'Kicker / eyebrow label above heading',
     description:
-      'Repeating tiny uppercase tracked labels above section headings turns a brand page into AI editorial scaffolding. Replace them with stronger structure, artifacts, imagery, or a deliberate brand system.',
+      'A tiny tracked uppercase or small-caps label sitting as its own block directly above a heading is banned outright, repeated or not. Generated kickers never earn their place: the heading carries its own weight. Delete the label and let the heading speak; if the words matter, work them into the heading or the body.',
     skillSection: 'Typography',
-    skillGuideline: 'repeated eyebrow or kicker labels as section scaffolding',
+    skillGuideline: 'kicker or eyebrow labels above headings',
   },
   {
     id: 'numbered-section-labels',
@@ -1258,12 +1257,15 @@ function checkHeroEyebrow(opts) {
   }];
 }
 
-function checkRepeatedSectionKickers(opts) {
-  const { candidates, minCount = 3 } = opts;
-  if (!Array.isArray(candidates) || candidates.length < minCount) return [];
+// Outright ban: one kicker is one too many, so every collected candidate is
+// a finding. The judgment lives in the candidate gate (isKickerCandidate) and
+// the collector's context skips, not in a repetition count.
+function checkKickerAboveHeading(opts) {
+  const { candidates } = opts;
+  if (!Array.isArray(candidates)) return [];
   return candidates.map(candidate => ({
-    id: 'repeated-section-kickers',
-    snippet: `repeated section kicker "${candidate.kickerText}" before ${candidate.headingTag} "${candidate.headingText}" (${candidates.length} on page)`,
+    id: 'kicker-above-heading',
+    snippet: `kicker "${candidate.kickerText}" above ${candidate.headingTag} "${candidate.headingText}"`,
   }));
 }
 
@@ -3190,7 +3192,7 @@ function parseColorResolved(str, customPropMap) {
   return parseAnyColor(resolved);
 }
 
-const REPEATED_KICKER_SKIP_SELECTOR = [
+const KICKER_SKIP_SELECTOR = [
   'nav',
   'form',
   'table',
@@ -3209,7 +3211,7 @@ const REPEATED_KICKER_SKIP_SELECTOR = [
   '[data-impeccable-allow-kickers]',
 ].join(',');
 
-const REPEATED_KICKER_CARD_CONTEXT_SELECTOR = [
+const KICKER_CARD_CONTEXT_SELECTOR = [
   'article',
   'button',
   'a',
@@ -3227,23 +3229,32 @@ function cleanInlineText(el) {
     .trim();
 }
 
-function isRepeatedKickerCardContext(heading, kicker) {
-  const item = heading.closest?.(REPEATED_KICKER_CARD_CONTEXT_SELECTOR);
+function isKickerCardContext(heading, kicker) {
+  const item = heading.closest?.(KICKER_CARD_CONTEXT_SELECTOR);
   return Boolean(item && (!item.contains || item.contains(kicker)));
 }
 
-function isRepeatedKickerCandidate(opts) {
+// Meta lines above headlines join category and date (or path crumbs) with
+// separator glyphs, or carry a year. A kicker is one short phrase; metadata
+// keeps its markers.
+const KICKER_META_TEXT_RE = /[·•|]|\s[\/›»>]\s|\b(19|20)\d{2}\b/;
+// Legal and document numbering: "Section 4.2", "Article IX", "§ 12.3",
+// dotted decimal outlines. The label identifies the clause, so it stays.
+const KICKER_DOC_NUMBERING_RE = /^(§|\d+(\.\d+)+\b|(section|article|clause|appendix|exhibit|schedule|chapter|part|rule|title)\s+([\divxlc]+\b|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b)/i;
+
+function isKickerCandidate(opts) {
   const {
-    headingTag,
+    headingLevel,
     headingText,
     headingFontSize,
     kickerTag,
     kickerText,
     kickerTextTransform,
+    kickerFontVariant,
     kickerFontSize,
     kickerLetterSpacing,
   } = opts;
-  if (!['h2', 'h3', 'h4'].includes(headingTag)) return false;
+  if (!headingLevel || headingLevel > 4) return false;
   if (!headingText || headingText.length < 3) return false;
   if (/^\/[\w-]+/i.test(headingText.replace(/^"|"$/g, '').trim())) return false;
   if (!(headingFontSize >= 20)) return false;
@@ -3251,9 +3262,13 @@ function isRepeatedKickerCandidate(opts) {
   if (!['p', 'span', 'div', 'small'].includes(kickerTag)) return false;
   if (!kickerText || kickerText.length < 2 || kickerText.length > 34) return false;
   if (/^step\s*\d+/i.test(kickerText) || /^\d{1,2}$/.test(kickerText)) return false;
+  if (KICKER_META_TEXT_RE.test(kickerText)) return false;
+  if (KICKER_DOC_NUMBERING_RE.test(kickerText)) return false;
 
+  const isSmallCaps = /small-caps/.test(kickerFontVariant || '');
   const isUppercased = kickerTextTransform === 'uppercase'
-    || (/[A-Z]/.test(kickerText) && !/[a-z]/.test(kickerText));
+    || (/[A-Z]/.test(kickerText) && !/[a-z]/.test(kickerText))
+    || isSmallCaps;
   if (!isUppercased) return false;
   if (!(kickerFontSize > 0 && kickerFontSize <= 14)) return false;
   const minTrackedSpacing = Math.max(1, kickerFontSize * 0.08);
@@ -3261,37 +3276,64 @@ function isRepeatedKickerCandidate(opts) {
   return true;
 }
 
-function collectRepeatedSectionKickerCandidates(doc, getStyle, resolveLetterSpacing) {
+// Resolve a heading level for the anchor element: 1-4 for h1-h4, aria-level
+// (default 2) for role="heading" elements, 0 otherwise.
+function kickerHeadingLevel(heading) {
+  const tag = heading.tagName.toLowerCase();
+  const byTag = /^h([1-6])$/.exec(tag);
+  if (byTag) return parseInt(byTag[1], 10);
+  const role = heading.getAttribute?.('role') || '';
+  if (role.toLowerCase() !== 'heading') return 0;
+  const ariaLevel = parseInt(heading.getAttribute?.('aria-level') || '', 10);
+  return Number.isFinite(ariaLevel) && ariaLevel >= 1 ? ariaLevel : 2;
+}
+
+function collectKickerCandidates(doc, getStyle, resolveLetterSpacing) {
   const candidates = [];
-  for (const heading of doc.querySelectorAll('h2, h3, h4')) {
-    if (heading.closest?.(REPEATED_KICKER_SKIP_SELECTOR)) continue;
+  for (const heading of doc.querySelectorAll('h1, h2, h3, h4, [role="heading"]')) {
+    const headingLevel = kickerHeadingLevel(heading);
+    if (!headingLevel || headingLevel > 4) continue;
+    if (heading.closest?.(KICKER_SKIP_SELECTOR)) continue;
+    // Application contexts (tab panels, dialogs) use compact context labels
+    // above headings to describe state, not to decorate. Same carve-out the
+    // hero-eyebrow rule makes.
+    if (heading.closest?.('[role="tabpanel"], [role="dialog"], [role="application"], dialog')) continue;
     const kicker = heading.previousElementSibling;
-    if (!kicker || kicker.closest?.(REPEATED_KICKER_SKIP_SELECTOR)) continue;
-    if (isRepeatedKickerCardContext(heading, kicker)) continue;
+    if (!kicker || kicker.closest?.(KICKER_SKIP_SELECTOR)) continue;
+    if (isKickerCardContext(heading, kicker)) continue;
 
     const headingStyle = getStyle(heading);
     const kickerStyle = getStyle(kicker);
+    const headingTag = heading.tagName.toLowerCase();
     const headingText = (heading.textContent || '').replace(/\s+/g, ' ').trim();
     const kickerText = cleanInlineText(kicker) || (kicker.textContent || '').replace(/\s+/g, ' ').trim();
     const headingFontSize = resolveLetterSpacing(headingStyle.fontSize || '', 16) || parseFloat(headingStyle.fontSize) || 0;
     const kickerFontSize = resolveLetterSpacing(kickerStyle.fontSize || '', 16) || parseFloat(kickerStyle.fontSize) || 0;
     const kickerLetterSpacing = resolveLetterSpacing(kickerStyle.letterSpacing || '', kickerFontSize);
 
-    if (!isRepeatedKickerCandidate({
-      headingTag: heading.tagName.toLowerCase(),
+    if (!isKickerCandidate({
+      headingLevel,
       headingText,
       headingFontSize,
       kickerTag: kicker.tagName.toLowerCase(),
       kickerText,
       kickerTextTransform: kickerStyle.textTransform || '',
+      kickerFontVariant: `${kickerStyle.fontVariant || ''} ${kickerStyle.fontVariantCaps || ''}`,
       kickerFontSize,
       kickerLetterSpacing,
     })) {
       continue;
     }
 
+    // A tracked-caps eyebrow above a hero-scale h1 belongs to
+    // hero-eyebrow-chip (which also covers the accent-bold and dash-prefix
+    // stylings there). Stand down so one element gets one finding.
+    if (headingTag === 'h1' && headingFontSize >= 48 && kickerLetterSpacing >= 1.6) {
+      continue;
+    }
+
     candidates.push({
-      headingTag: heading.tagName.toLowerCase(),
+      headingTag,
       headingText: headingText.replace(/^"|"$/g, '').slice(0, 60),
       kickerText: kickerText.slice(0, 40),
     });
@@ -3299,17 +3341,17 @@ function collectRepeatedSectionKickerCandidates(doc, getStyle, resolveLetterSpac
   return candidates;
 }
 
-function checkRepeatedSectionKickersDOM() {
-  const candidates = collectRepeatedSectionKickerCandidates(
+function checkKickerAboveHeadingDOM() {
+  const candidates = collectKickerCandidates(
     document,
     (el) => getComputedStyle(el),
     (value, fontSize) => resolveLengthPx(value, fontSize) || 0,
   );
-  return checkRepeatedSectionKickers({ candidates });
+  return checkKickerAboveHeading({ candidates });
 }
 
 // ── Numbered section labels ─────────────────────────────────────────────────
-// Sibling of the repeated-kicker rule: instead of a tracked uppercase word,
+// Sibling of the kicker-above-heading rule: instead of a tracked uppercase word,
 // the section scaffold is a tiny numeric index riding beside each section
 // heading — bare and zero-padded, or an index joined to a short micro-label
 // by a separator glyph. The kicker rule deliberately excludes bare 1-2 digit
@@ -3363,7 +3405,7 @@ function collectNumberedSectionLabelCandidates(doc, getStyle, resolveLetterSpaci
   const candidates = [];
   const seenLabels = new Set();
   for (const heading of doc.querySelectorAll('h2, h3, h4')) {
-    if (heading.closest?.(REPEATED_KICKER_SKIP_SELECTOR)) continue;
+    if (heading.closest?.(KICKER_SKIP_SELECTOR)) continue;
     // The index sits either directly before the heading, or before the
     // wrapper the heading leads (label | <div><h2>…</h2>…</div>).
     let label = heading.previousElementSibling;
@@ -3373,9 +3415,9 @@ function collectNumberedSectionLabelCandidates(doc, getStyle, resolveLetterSpaci
       if (firstChild === heading) label = parent.previousElementSibling;
     }
     if (!label || seenLabels.has(label)) continue;
-    if (label.closest?.(REPEATED_KICKER_SKIP_SELECTOR)) continue;
+    if (label.closest?.(KICKER_SKIP_SELECTOR)) continue;
     if (HEADING_TAGS.has(label.tagName.toLowerCase())) continue;
-    if (isRepeatedKickerCardContext(heading, label)) continue;
+    if (isKickerCardContext(heading, label)) continue;
 
     const labelText = cleanInlineText(label) || (label.textContent || '').replace(/\s+/g, ' ').trim();
     const parsed = parseNumberedLabelText(labelText);
@@ -4548,13 +4590,13 @@ function checkElementHeroEyebrow(el, style, tag, window, customPropMap) {
   });
 }
 
-function checkRepeatedSectionKickersFromDoc(doc, win) {
-  const candidates = collectRepeatedSectionKickerCandidates(
+function checkKickerAboveHeadingFromDoc(doc, win) {
+  const candidates = collectKickerCandidates(
     doc,
     (el) => win.getComputedStyle(el),
     (value, fontSize) => resolveLengthPx(value, fontSize) || 0,
   );
-  return checkRepeatedSectionKickers({ candidates });
+  return checkKickerAboveHeading({ candidates });
 }
 
 function checkElementMotion(tag, style) {
@@ -7712,7 +7754,7 @@ if (IS_BROWSER) {
       addBrowserFindings(groupMap, document.body, typoFindings);
     }
 
-    const sectionKickerFindings = checkRepeatedSectionKickersDOM()
+    const sectionKickerFindings = checkKickerAboveHeadingDOM()
       .map(f => ({ type: f.id, detail: f.snippet }))
       .filter(f => _ruleOk(f.type));
     if (sectionKickerFindings.length > 0) {

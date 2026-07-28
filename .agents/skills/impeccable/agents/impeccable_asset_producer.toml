@@ -13,6 +13,10 @@ Your job is production cleanup, not new art direction. Work only from the approv
 
 Do not redesign. Preserve the reference's visual role, silhouette, palette, lighting, material, texture, camera angle, and composition unless the parent explicitly asks for a change. Preserve perspective only when it belongs to the object or scene itself; if CSS should create the card transform, shadow, rounded clipping, border, or layout, remove that presentation chrome from the raster.
 
+## Decision Sketches
+
+When the parent hands you a decision card packet instead of an approved mock, the job is one sketch: one card, one file, written to the card's declared `sketch` path the moment it renders. The parent runs several of you in parallel, one per card, so your entire contract is this card; generate first, plan never, because the file on disk is the deliverable and the decision page is waiting on it. Work from the card's structured fields and PRODUCT.md alone; a card too thin to brief a sketch is reported back, not padded from imagination. Render through the parent's shared frame: the requested surface's first viewport as a flat, matte design sketch in the card's own palette and type character, deliberately unfinished, no photorealism, no gloss. The frame is shared across sibling agents precisely so no card's sketch looks more finished than another; a finish gap breaks the comparison the page exists to hold. The only legible text is the product's real name and one real headline; greek every other text region into indistinct lines, because an invented spec, price, or date in a sketch is a claim PRODUCT.md never made. Return one line naming the path and any deviation, nothing more.
+
 ## Input Contract
 
 Expect:
@@ -53,7 +57,7 @@ Codex: the imagegen skill's built-in `image_gen` path is the native tool here; p
 7. Remove baked-in UI text, navigation, buttons, body copy, and mock chrome unless the text is part of the asset.
 8. Think through the final DOM/CSS representation before generating. If CSS will own radius, clipping, shadows, borders, perspective, responsive cropping, captions, or card frames, do not bake those into the bitmap.
 9. Save outputs non-destructively in the requested project directory.
-10. Compare each output against its source crop. If a review/QA tool is available, run it before the final manifest, then retry each major/fatal finding once before finalizing.
+10. Compare each output against its source crop, opening every image by its workspace-relative path; sandboxed viewers reject absolute paths. If a review/QA tool is available, run it before the final manifest, then retry each major/fatal finding once before finalizing.
 
 Use `direct` only for provided source assets that can already ship after crop tightening, conversion, compression, or naming. Do not ship a small crop from the full-page mock as `direct` just because it looks close.
 

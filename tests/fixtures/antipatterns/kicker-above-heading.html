@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Kicker Above Heading Fixture</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f6f2ec;
+      color: #171411;
+    }
+    main {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+      padding: 32px;
+    }
+    .col {
+      min-width: 0;
+      border: 1px solid #c9bfb2;
+      padding: 24px;
+    }
+    .case {
+      min-height: 120px;
+      margin: 0 0 24px;
+      padding: 16px;
+      background: #fffaf3;
+    }
+    .kicker,
+    .pass-kicker,
+    .pass-kicker-caps {
+      display: block;
+      width: 240px;
+      min-height: 16px;
+      margin: 0 0 8px;
+      font-size: 12px;
+      line-height: 16px;
+      letter-spacing: 0.11em;
+      color: #5b5046;
+    }
+    .kicker,
+    .pass-kicker-caps {
+      text-transform: uppercase;
+    }
+    .smallcaps-kicker {
+      display: block;
+      width: 240px;
+      min-height: 16px;
+      margin: 0 0 8px;
+      font-size: 12px;
+      line-height: 16px;
+      letter-spacing: 0.12em;
+      font-variant: small-caps;
+      color: #5b5046;
+    }
+    .untracked-caps {
+      display: block;
+      width: 240px;
+      min-height: 16px;
+      margin: 0 0 8px;
+      font-size: 12px;
+      line-height: 16px;
+      letter-spacing: normal;
+      text-transform: uppercase;
+      color: #5b5046;
+    }
+    h1,
+    h2 {
+      margin: 0 0 12px;
+      font-size: 32px;
+      line-height: 38px;
+      font-weight: 700;
+    }
+    h3 {
+      margin: 0 0 12px;
+      font-size: 24px;
+      line-height: 30px;
+      font-weight: 700;
+    }
+    h4 {
+      margin: 0 0 12px;
+      font-size: 20px;
+      line-height: 26px;
+      font-weight: 700;
+    }
+    .role-heading {
+      margin: 0 0 12px;
+      font-size: 28px;
+      line-height: 34px;
+      font-weight: 700;
+    }
+    .hero-h1 {
+      margin: 0 0 12px;
+      font-size: 64px;
+      line-height: 70px;
+      font-weight: 700;
+    }
+    .hero-eyebrow {
+      display: block;
+      width: 240px;
+      min-height: 16px;
+      margin: 0 0 8px;
+      font-size: 12px;
+      line-height: 16px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #5b5046;
+    }
+    p,
+    label,
+    figcaption,
+    a,
+    li {
+      font-size: 16px;
+      line-height: 24px;
+    }
+    nav,
+    form,
+    figure,
+    ol {
+      margin: 0 0 24px;
+      padding: 16px;
+      border: 1px solid #d8cec0;
+      min-height: 80px;
+    }
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin: 0 0 24px;
+    }
+    .suite-card {
+      display: block;
+      min-height: 120px;
+      padding: 16px;
+      border: 1px solid #d8cec0;
+      background: #fff;
+    }
+    .taxonomy-label {
+      display: block;
+      margin: 0 0 8px;
+      font-size: 12px;
+      line-height: 16px;
+      letter-spacing: 0.11em;
+      text-transform: uppercase;
+      color: #5b5046;
+    }
+    .suite-card h3 {
+      font-size: 24px;
+      line-height: 30px;
+    }
+    .stat {
+      min-height: 100px;
+      padding: 16px;
+      background: #fffaf3;
+    }
+    .stat h3 {
+      font-size: 40px;
+      line-height: 46px;
+    }
+    .hidden-mockup {
+      display: grid;
+      gap: 12px;
+      margin: 0 0 24px;
+    }
+    .mockup-hero {
+      min-height: 120px;
+      padding: 16px;
+      border: 1px solid #d8cec0;
+      background: #fff;
+    }
+    .mockup-hero h2 {
+      font-size: 24px;
+      line-height: 30px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="col" aria-label="Should flag">
+      <h1>Should flag</h1>
+
+      <section class="case">
+        <span class="kicker">Invitation protocol</span>
+        <h2>"A Single Kicker Still Flags"</h2>
+        <p>One tracked uppercase label above one heading is enough. No repetition required.</p>
+      </section>
+
+      <section class="case">
+        <p class="kicker">Preview sequence</p>
+        <h3>"Kicker Above An H3"</h3>
+        <p>Subsection headings get no eyebrow either.</p>
+      </section>
+
+      <section class="case">
+        <div class="kicker">Access window</div>
+        <h4>"Kicker Above An H4"</h4>
+        <p>The ban runs down to h4.</p>
+      </section>
+
+      <section class="case">
+        <span class="kicker">Platform notes</span>
+        <h1 class="sub-hero">"Sub Hero Heading"</h1>
+        <p>A 32px h1 is below hero scale, so this pair belongs to the general ban.</p>
+      </section>
+
+      <section class="case">
+        <span class="smallcaps-kicker">materials briefing</span>
+        <h2>"Small Caps Kicker"</h2>
+        <p>Small-caps styling is the same label in a different costume.</p>
+      </section>
+
+      <section class="case">
+        <div class="kicker">Field studies</div>
+        <div role="heading" aria-level="2" class="role-heading">"Heading Role Kicker"</div>
+        <p>Elements carrying a heading role are headings for this rule.</p>
+      </section>
+    </section>
+
+    <section class="col" aria-label="Should pass">
+      <h1>Should pass</h1>
+
+      <nav class="case" aria-label="Breadcrumb">
+        <span class="pass-kicker">Home / Journal</span>
+        <h2>"Breadcrumb Before Heading"</h2>
+        <a href="/">Home</a>
+      </nav>
+
+      <section class="case">
+        <span class="pass-kicker-caps">Home / Journal / Archive</span>
+        <h2>"Breadcrumb Trail Outside Nav"</h2>
+        <p>A path with separators is wayfinding, not a kicker, even without a nav wrapper.</p>
+      </section>
+
+      <section class="case">
+        <span class="pass-kicker-caps">News · Jan 12, 2026</span>
+        <h2>"Dateline Above Headline"</h2>
+        <p>Editorial category-and-date meta lines are content metadata.</p>
+      </section>
+
+      <article class="case">
+        <span class="pass-kicker-caps">Field report</span>
+        <h3>"Editorial Card Meta"</h3>
+        <p>Category labels inside an article card are structured metadata for scanning.</p>
+      </article>
+
+      <form class="case">
+        <label class="pass-kicker" for="guest">Guest name</label>
+        <input id="guest" name="guest" style="width: 220px; height: 40px;">
+        <h2>"Form Heading Is Separate"</h2>
+      </form>
+
+      <figure class="case">
+        <figcaption class="pass-kicker-caps">Plate study</figcaption>
+        <h3>"Figure Caption Label"</h3>
+      </figure>
+
+      <section class="case">
+        <span class="pass-kicker-caps">Section 4.2</span>
+        <h2>"Limitation Of Liability"</h2>
+        <p>Legal and document numbering identifies the clause; it is not decoration.</p>
+      </section>
+
+      <section class="case">
+        <span class="pass-kicker-caps">§ 12.3</span>
+        <h2>"Indemnification Clause"</h2>
+        <p>Statutory references keep their marker.</p>
+      </section>
+
+      <section class="case">
+        <span class="pass-kicker-caps">Chapter Four</span>
+        <h2>"Chapter Numbering Passes"</h2>
+        <p>Spelled-out chapter numbering is document structure, like legal numbering.</p>
+      </section>
+
+      <section class="case" role="tabpanel" aria-label="Saved station">
+        <span class="pass-kicker-caps">Next from</span>
+        <h2>"Application Panel Context"</h2>
+        <p>Context labels inside application panels describe state, not decoration.</p>
+      </section>
+
+      <section class="case">
+        <nav aria-label="Primary"><a href="/">Home</a> <a href="/docs">Docs</a></nav>
+        <h1>"Page Title After Nav"</h1>
+        <p>A navigation landmark preceding the page title is chrome, not a kicker.</p>
+      </section>
+
+      <div class="stat">
+        <h3>"48%"</h3>
+        <span class="pass-kicker-caps">Growth yoy</span>
+        <p>Stat callouts put the small label below the number. That direction is legal.</p>
+      </div>
+
+      <section class="case">
+        <span class="pass-kicker">A quiet lead-in sentence</span>
+        <h2>"Sentence Case Lead In"</h2>
+        <p>Not uppercase, not small-caps: an ordinary standfirst.</p>
+      </section>
+
+      <section class="case">
+        <span class="untracked-caps">New arrivals</span>
+        <h2>"Untracked Caps Label"</h2>
+        <p>Uppercase without tracking lacks the kicker styling signature.</p>
+      </section>
+
+      <section class="case" data-impeccable-allow-kickers>
+        <span class="pass-kicker-caps">Archive code</span>
+        <h2>"Intentional Brand Label"</h2>
+        <p>Deliberate brand systems can opt out with an explicit marker.</p>
+      </section>
+
+      <section class="case">
+        <span class="hero-eyebrow">Platform overview</span>
+        <h1 class="hero-h1">"Hero Owned By Hero Rule"</h1>
+        <p>Hero-scale h1 eyebrows stay with hero-eyebrow-chip; this rule stands down.</p>
+      </section>
+
+      <div class="card-grid" aria-label="Room cards">
+        <article class="suite-card">
+          <span class="taxonomy-label">Suite</span>
+          <h3>"Garden Suite"</h3>
+          <p>Category labels inside sibling cards are metadata for comparison.</p>
+        </article>
+        <article class="suite-card">
+          <span class="taxonomy-label">Suite</span>
+          <h3>"Sea Loft"</h3>
+          <p>The label is useful because the user is scanning sibling cards.</p>
+        </article>
+      </div>
+
+      <ol class="case">
+        <li>
+          <span class="pass-kicker-caps">Step 01</span>
+          <h3>"Step Indicator"</h3>
+          <p>Step indicators in ordered flows are sequence markers.</p>
+        </li>
+      </ol>
+
+      <div class="hidden-mockup" aria-hidden="true">
+        <div class="mockup-hero">
+          <span class="taxonomy-label">Amalfi Coast</span>
+          <h2>"Mockup Hero Variant One"</h2>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

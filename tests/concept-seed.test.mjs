@@ -325,6 +325,61 @@ describe('concept seed scopes', () => {
     assert.equal(picks.some(pick => pick.id === 'lone-marginal'), true);
   });
 
+  it('holds niche worlds out of the challenger pool however strong their rating', () => {
+    const make = (id, rating, breadth) => ({
+      id,
+      familyId: `${id}-family`,
+      wellId: `${id}-well`,
+      wellTier: 'graphic',
+      strength: 'world',
+      status: 'approved',
+      form: `${id} form`,
+      spark: `${id} spark`,
+      system: [],
+      webLeverage: `${id} web`,
+      review: { status: 'approved', ...(rating ? { rating } : {}), ...(breadth ? { breadth } : {}) },
+    });
+    const filler = (tier, id) => ({ ...make(id), wellTier: tier });
+    const pool = [
+      make('broad-flagship', 3),
+      make('narrow-flagship', 3, 'niche'),
+      make('broad-solid', 2),
+      filler('interaction', 'radar3'),
+      filler('atmosphere', 'cavern3'),
+    ];
+    // Breadth excludes independently of rating: over many keys a niche 3-star
+    // never challenges while its broad peers keep rotating.
+    for (let index = 0; index < 200; index += 1) {
+      const { picks } = selectApprovedChallengers({ scope: 'direction', key: `breadth-${index}`, sourceConcepts: pool });
+      assert.equal(picks.some(pick => pick.id === 'narrow-flagship'), false, `niche world drawn at key breadth-${index}`);
+    }
+    // A tier holding only niche approvals falls back rather than starving,
+    // exactly like the marginal-only tier above.
+    const onlyNiche = [
+      make('lone-niche', 3, 'niche'),
+      filler('interaction', 'radar4'),
+      filler('atmosphere', 'cavern4'),
+    ];
+    const { picks } = selectApprovedChallengers({ scope: 'direction', key: 'lone-niche', sourceConcepts: onlyNiche });
+    assert.equal(picks.some(pick => pick.id === 'lone-niche'), true);
+  });
+
+  it('gates stagings by breadth and falls back when every staging is niche', () => {
+    const pool = [
+      { id: 'broad-stage', surface: 'persuade', status: 'approved' },
+      { id: 'niche-stage', surface: 'persuade', status: 'approved', review: { breadth: 'niche' } },
+    ];
+    for (let index = 0; index < 60; index += 1) {
+      const picks = selectApprovedStagings({ scope: 'direction', key: `stage-breadth-${index}`, mode: 'persuade', sourceCompositions: pool });
+      assert.equal(picks.some(pick => pick.id === 'niche-stage'), false, `niche staging dealt at key stage-breadth-${index}`);
+    }
+    const allNiche = [
+      { id: 'only-niche-stage', surface: 'persuade', status: 'approved', review: { breadth: 'niche' } },
+    ];
+    const fallback = selectApprovedStagings({ scope: 'direction', key: 'all-niche', mode: 'persuade', sourceCompositions: allNiche });
+    assert.equal(fallback.some(pick => pick.id === 'only-niche-stage'), true, 'an all-niche pool must fall back instead of dealing nothing');
+  });
+
   it('mode-filters the fixture staging pool per surface register', () => {
     const operate = selectApprovedStaging({ scope: 'surface', key: 'fix-mode', mode: 'operate', sourceCompositions: fixtureCompositions });
     assert.equal(operate.surface, 'operate');

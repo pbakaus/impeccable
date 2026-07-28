@@ -86,15 +86,109 @@ function gitSignals(cwd) {
     return { isRepo: false, branch: null, base: null, changedFiles: [], changedCount: 0 };
   }
   const branch = run(['rev-parse', '--abbrev-ref', 'HEAD']);
+  // The merge target is detected, not assumed. A hardcoded main/master list
+  // diffed develop-based repos against the wrong base, so git.changedFiles
+  // carried the whole develop/main divergence into scan.targets (issue
+  // #302). Signals, most specific first: the branch's configured upstream
+  // (@{u}; a branch pushed with -u tracks itself and is skipped by the
+  // self-check), then the remote's default-branch symref (origin/HEAD),
+  // then the conventional integration names. The conventional fallbacks
+  // are withheld when the current branch IS one of them: sitting on main
+  // in a repo that also has develop must not diff the two integration
+  // branches against each other.
+  // Candidates carry a display name (what git.base reports) and the revs to
+  // try, in order. A remote ref like `upstream/release` (fork workflows) or
+  // an origin/HEAD target with no local checkout is a perfectly good diff
+  // base, so revs are not limited to local branch names.
+  const remotes = (run(['remote']) || '').split('\n').filter(Boolean);
+  // Read @{u} as a FULL symbolic ref: refs/heads/... is a local upstream
+  // (branch.<x>.remote = "."), refs/remotes/<r>/... is remote-tracking. No
+  // string guessing on the abbreviated form survives contact with reality:
+  // a local upstream named release/2.0 is one branch name, and a local
+  // feature/foo beside a remote actually named "feature" is only told apart
+  // from feature's remote-tracking refs by the full ref namespace.
+  const resolveUpstream = () => {
+    const full = run(['rev-parse', '--symbolic-full-name', '@{u}']);
+    if (!full) return null;
+    if (full.startsWith('refs/heads/')) {
+      const name = full.slice('refs/heads/'.length);
+      return { name, rev: name };
+    }
+    if (full.startsWith('refs/remotes/')) {
+      const rest = full.slice('refs/remotes/'.length);
+      const i = rest.indexOf('/');
+      if (i > 0) return { name: rest.slice(i + 1), rev: rest };
+    }
+    return null;
+  };
+  const conventional = ['develop', 'main', 'master'];
+  // On an integration branch itself the scope hint is the working tree. No
+  // signal may override that: an origin/HEAD or upstream naming a DIFFERENT
+  // integration branch (sitting on develop while the remote default is
+  // main) would produce exactly the integration-vs-integration divergence
+  // this detection exists to prevent. "Integration branch" means a
+  // conventional name OR any remote's default branch (origin first, but a
+  // fork-parent layout may only have an `upstream` remote), so a
+  // non-standard default like trunk is guarded the same way. A detached
+  // checkout (branch reads as the literal `HEAD`) has no branch identity to
+  // diff for and keeps the working-tree scope too.
+  const remoteHeads = [];
+  for (const r of [...new Set(['origin', ...remotes])]) {
+    // The symref's own prefix is the remote just queried, so it is stripped
+    // directly; the remote need not be in `git remote` output (tests and
+    // partial clones fabricate refs/remotes/origin/* without a remote).
+    const ref = run(['symbolic-ref', '--short', `refs/remotes/${r}/HEAD`]);
+    if (ref && ref.startsWith(`${r}/`)) remoteHeads.push({ name: ref.slice(r.length + 1), rev: ref });
+  }
+  const onIntegrationBranch = branch === 'HEAD'
+    || conventional.includes(branch)
+    || remoteHeads.some((head) => head.name === branch);
   let base = null;
-  for (const b of ['main', 'master']) {
-    if (run(['rev-parse', '--verify', '--quiet', b]) !== null) {
-      base = b;
-      break;
+  let baseRev = null;
+  if (!onIntegrationBranch) {
+    const upstream = resolveUpstream();
+    // Every named candidate tries the local branch first, then that name on
+    // every remote (origin first). Covering all remotes up front is what
+    // makes the name-level dedup below safe: a develop or main that exists
+    // only as upstream/<name> still resolves even though origin's candidate
+    // claimed the name first.
+    const remoteOrder = ['origin', ...remotes.filter((name) => name !== 'origin')];
+    const revsFor = (name) => [name, ...remoteOrder.map((r) => `${r}/${name}`)];
+    const candidates = [];
+    const seen = new Set();
+    const addCandidate = (name, revs) => {
+      if (!name || name === branch || seen.has(name)) return;
+      seen.add(name);
+      candidates.push({ name, revs });
+    };
+    // The upstream tracks the actual merge target, so its own rev wins over
+    // a possibly stale local branch of the same name.
+    if (upstream) addCandidate(upstream.name, [upstream.rev]);
+    // A develop branch marks a git-flow repo where features merge to develop
+    // even when the platform default (origin/HEAD) was never flipped off
+    // main; an existing develop therefore outranks the remote default. This
+    // is #302's own repro shape, and repos without develop are unaffected.
+    // A remote's advertised default prefers its own remote-tracking rev over
+    // a possibly stale local checkout of the same name, for the same reason
+    // the upstream candidate leads with its rev. That applies to the develop
+    // candidate too when the remote default IS develop: it sits before the
+    // remote-default entries in the order, so it must lead with their rev
+    // itself or a stale local develop would win.
+    const advertisedRevs = (name) => remoteHeads.filter((head) => head.name === name).map((head) => head.rev);
+    addCandidate('develop', [...new Set([...advertisedRevs('develop'), ...revsFor('develop')])]);
+    for (const head of remoteHeads) addCandidate(head.name, [...new Set([head.rev, ...revsFor(head.name)])]);
+    for (const name of ['main', 'master']) addCandidate(name, revsFor(name));
+    for (const c of candidates) {
+      const rev = c.revs.find((r) => run(['rev-parse', '--verify', '--quiet', r]) !== null);
+      if (rev) {
+        base = c.name;
+        baseRev = rev;
+        break;
+      }
     }
   }
   const diffBase = base && branch && branch !== base ? base : null;
-  const fromDiff = diffBase ? run(['diff', '--name-only', `${diffBase}...HEAD`]) : null;
+  const fromDiff = diffBase ? run(['diff', '--name-only', `${baseRev}...HEAD`]) : null;
   // porcelain lines are `XY PATH`: a 2-char status + a space, then the path.
   // Don't trim the combined output — an unstaged-modified line starts with a
   // leading space (` M path`), and a global trim would eat the first line's

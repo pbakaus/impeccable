@@ -1529,7 +1529,7 @@ if (IS_BROWSER) {
       addBrowserFindings(groupMap, document.body, typoFindings);
     }
 
-    const sectionKickerFindings = checkRepeatedSectionKickersDOM()
+    const sectionKickerFindings = checkKickerAboveHeadingDOM()
       .map(f => ({ type: f.id, detail: f.snippet }))
       .filter(f => _ruleOk(f.type));
     if (sectionKickerFindings.length > 0) {

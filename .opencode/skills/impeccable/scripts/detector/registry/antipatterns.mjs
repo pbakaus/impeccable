@@ -198,15 +198,14 @@ const ANTIPATTERNS = [
     skillGuideline: 'tiny uppercase tracked label above the hero headline',
   },
   {
-    id: 'repeated-section-kickers',
+    id: 'kicker-above-heading',
     category: 'slop',
     scopes: ['type'],
-    severity: 'advisory',
-    name: 'Repeated section kicker labels',
+    name: 'Kicker / eyebrow label above heading',
     description:
-      'Repeating tiny uppercase tracked labels above section headings turns a brand page into AI editorial scaffolding. Replace them with stronger structure, artifacts, imagery, or a deliberate brand system.',
+      'A tiny tracked uppercase or small-caps label sitting as its own block directly above a heading is banned outright, repeated or not. Generated kickers never earn their place: the heading carries its own weight. Delete the label and let the heading speak; if the words matter, work them into the heading or the body.',
     skillSection: 'Typography',
-    skillGuideline: 'repeated eyebrow or kicker labels as section scaffolding',
+    skillGuideline: 'kicker or eyebrow labels above headings',
   },
   {
     id: 'numbered-section-labels',

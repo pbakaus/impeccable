@@ -300,17 +300,17 @@ bun run build && bun run build:browser && bun run build:extension && bun run tes
 2. **Failing test** in `tests/detect-antipatterns-fixtures.test.mjs` using the snippet-substring pattern (regex `/"([^"]+)"/` against `SHOULD_FLAG` / `SHOULD_PASS` lists). Run it and watch it fail before implementing.
 3. **Rule entry** in the `ANTIPATTERNS` array: `id`, `category` (`slop` for AI tells, `quality` for real design or a11y issues), `name`, `description`, optional `skillSection` and `skillGuideline`.
 4. **Pure check function** `checkXxx(opts)` returning `[{ id, snippet }]`. No DOM access in the pure function.
-5. **Two adapters**: `checkElementXxxDOM(el)` for the browser (`getComputedStyle` + `getBoundingClientRect`) and `checkElementXxx(el, tag, window)` for jsdom (`parseFloat(style.width)` instead of layout). Wire **both** into **both** element loops in `cli/engine/detect-antipatterns.mjs` — the browser loop (~line 1837) and the jsdom loop in `detectHtml` (~line 2058). Forgetting one is the most common mistake; symptom is "test passes, live page silent" or vice versa.
+5. **Two adapters**: `checkElementXxxDOM(el)` for the browser (`getComputedStyle` + `getBoundingClientRect`) and `checkElementXxx(el, tag, window)` for jsdom (`parseFloat(style.width)` instead of layout). `cli/engine/detect-antipatterns.mjs` is now a thin facade over `cli/engine/{registry,rules,engines,shared}`: the registry entry goes in `registry/antipatterns.mjs`, the pure check + adapters in `rules/checks.mjs`, and the wiring into **both** element loops in `engines/static-html/detect-html.mjs` (jsdom) and `browser/injected/index.mjs` (concatenated into the browser bundle). Forgetting one loop is the most common mistake; symptom is "test passes, live page silent" or vice versa.
 6. **Verify on a live page**: `http://localhost:4321/fixtures/antipatterns/{rule-id}.html` and the homepage (no false positives). The two adapter paths can disagree, so manual browser checks catch what the fixture test can't.
 
 ### Conventions and jsdom gotchas
 
 - **Snippet format**: wrap the identifying heading text in straight double quotes (e.g. `'icon tile above h3 "Lightning Fast"'`) so the fixture test can extract it. For rules not anchored to a heading, pick another stable identifier.
 - **jsdom doesn't lay out**: `getBoundingClientRect()` returns 0×0. Read `parseFloat(style.width)` and `parseFloat(style.height)` from explicit CSS instead.
-- **`background:` shorthand isn't decomposed in jsdom**: use the existing `resolveBackground()` and `resolveGradientStops()` helpers (~line 631 / 670).
+- **`background:` shorthand isn't decomposed in jsdom**: use the existing `resolveBackground()` and `resolveGradientStops()` helpers (in `engines/static-html/detect-html.mjs`).
 - **Computed colors aren't normalized in jsdom**: `parseGradientColors()` handles both hex and rgb forms.
 
-Reference rules to copy from: `side-tab` (border, ~line 312), `low-contrast` (color + gradient, ~line 339), `icon-tile-stack` (sibling relationship, ~line 425), `flat-type-hierarchy` (page-level, ~line 1080).
+Reference rules to copy from (all in `cli/engine/rules/checks.mjs`): `side-tab` (border), `low-contrast` (color + gradient), `icon-tile-stack` (sibling relationship), `flat-type-hierarchy` (page-level), `kicker-above-heading` (heading-anchored with rule-ownership stand-down).
 
 ## Evals Framework (separate private repo)
 

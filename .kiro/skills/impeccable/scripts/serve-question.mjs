@@ -24,21 +24,36 @@
  *       "label": "Fillmore Handbill",
  *       "kicker": "THE ROLL",              // optional badge; the assigned option leads
  *       "lineage": "1966-71 Fillmore ...", // optional
- *       "body": "why it fits, first viewport, risk ...",  // optional, plain text
- *       "hero": "https://... or /abs/path.webp",   // optional image
+ *       "thesis": "one line: the idea this direction owns",       // optional
+ *       "palette": ["#1a2f5e", "oklch(84% .19 80)", ...],         // optional, rendered as chips
+ *       "materials": ["letterpress", "newsprint"],                // optional, rendered as tags
+ *       "viewport": "one line: the first-viewport composition",   // optional
+ *       "case": "one line: the fusion verdict, honest",           // optional
+ *       "risk": "one line: the honest risk",                      // optional
+ *       "body": "fallback prose when the structured fields are absent",
+ *       "sketch": ".impeccable/sketches/assigned.webp",  // optional; may not exist
+ *                                // yet: the page shimmer-waits and polls the
+ *                                // slot until the file lands, so serve first
+ *                                // and generate after
+ *       "hero": "https://... or /abs/path.webp",   // optional inspiration image;
+ *                                // rides picture-in-picture when a sketch exists
  *       "board": "https://... or /abs/path.webp"   // optional secondary image
  *     }, ...
  *   ],
  *   "reroll": true,          // adds a re-roll action (returns {"optionId":"reroll"})
- *   "canon": true,           // adds the quiet "Play it straight" standing exit
- *                            // (returns {"optionId":"canon"}); direction rounds only
+ *   "canon": true,           // adds the "Play it straight" standing exit;
+ *                            // direction rounds only (returns {"optionId":"canon"})
+ *   "canonCard": { ... },    // optional: the standing exit as a full card with the
+ *                            // same anatomy (label, thesis, palette, sketch, ...);
+ *                            // rendered last and visually subordinate. Without it,
+ *                            // canon stays a quiet footer action.
  *   "steer": true            // adds a free-text steer field returned with any answer
  * }
  *
- * Options render as large cards: hero render first when present (the dealt
- * catalog worlds already have cards; grounded directions may present text-only
- * or a freshly generated mock). Local image paths are served by this server;
- * nothing is uploaded anywhere.
+ * Options render as large cards: the sketch leads when present, with the
+ * inspiration image picture-in-picture; a hero alone renders full-bleed; a
+ * text-only direction gets its identity from the palette chips and tags.
+ * Local image paths are served by this server; nothing is uploaded anywhere.
  *
  * Modes:
  *   (default)  block until answered; ANSWER on stdout; exit 0.
@@ -107,6 +122,9 @@ function printAnswer(raw) {
     if (a.hero || a.board) {
       console.log("CHOSEN CARD: open the chosen world's board and hero images now, before any code. When your harness only reads files, or runs sandboxed, download them INTO the workspace and open the relative path; a sandboxed viewer rejects absolute paths outside it. They set the craft bar the build must reach.");
     }
+    if (a.sketch) {
+      console.log('CHOSEN SKETCH: the decision sketch at that path may seed one comp probe; the comp round still renders its full set, because a sketch chose the direction, not the composition.');
+    }
     if (a.optionId === 'canon') {
       console.log('CANON CHOSEN: the user picked the category standard on purpose. Ask once for two or three products this should sit alongside; their craft level becomes the quality bar. Execute the canon at full commitment, conventions embraced without irony or smuggled quirk.');
     }
@@ -125,14 +143,15 @@ if (hasFlag('schema')) {
     title: 'Choose the visual world',
     question: 'The roll assigned Fillmore Handbill. Keep it, take an alternate, or re-roll.',
     options: [
-      { id: 'assigned', label: 'Fillmore Handbill', kicker: 'THE ROLL', lineage: '1966-71 Fillmore psychedelic handbills', body: 'Why it fits, the first viewport, the honest risk.', hero: 'https://impeccable.style/worlds/cards/fillmore-handbill-hero.webp', board: 'https://impeccable.style/worlds/cards/fillmore-handbill.webp' },
-      { id: 'challenger-teletext', label: 'Teletext Service', lineage: 'broadcast teletext magazines', body: 'Fused alternate.', hero: 'https://impeccable.style/worlds/cards/broadcast-programming-teletext-service-hero.webp' },
+      { id: 'assigned', label: 'Fillmore Handbill', kicker: 'THE ROLL', lineage: '1966-71 Fillmore psychedelic handbills', thesis: 'The gig poster that treats every release like a one-night stand.', palette: ['#e8452c', '#f5d64c', '#1b2a52', '#f3ead8'], materials: ['letterpress', 'split-fountain ink'], viewport: 'A full-bleed dated bill with the product name in warped display type.', risk: 'Reads nostalgic when the type is set timidly.', sketch: '.impeccable/sketches/assigned.webp', hero: 'https://impeccable.style/worlds/cards/fillmore-handbill-hero.webp', board: 'https://impeccable.style/worlds/cards/fillmore-handbill.webp' },
+      { id: 'challenger-teletext', label: 'Teletext Service', lineage: 'broadcast teletext magazines', thesis: 'The catalog as a broadcast index: pages, not sections.', case: 'Fuses cleanly: releases map to numbered pages.', sketch: '.impeccable/sketches/challenger-teletext.webp', hero: 'https://impeccable.style/worlds/cards/broadcast-programming-teletext-service-hero.webp' },
     ],
     reroll: true,
     canon: true,
+    canonCard: { label: 'The category standard', thesis: 'What this category ships, executed impeccably.', viewport: 'The arrangement a visitor expects, at full craft.', sketch: '.impeccable/sketches/canon.webp' },
     steer: true,
   }, null, 2));
-  console.log('\nOption ids return verbatim in ANSWER; "reroll" and "canon" are reserved. hero/board accept URLs or local paths. canon adds a quiet standing "Play it straight" action for direction decisions: the user\'s explicit door to the category standard. Include it only for visual-direction rounds; never present canon as your own recommendation.');
+  console.log('\nOption ids return verbatim in ANSWER; "reroll" and "canon" are reserved. hero/board/sketch accept URLs or local paths; sketch slots may point at files that do not exist yet (serve first, generate after; the page polls until they land, so never block serving on generation). hero on a challenger is the inspiration it draws from and renders picture-in-picture beside the sketch, never as the promise of the build. canonCard renders the standing exit as a subordinate card with the same anatomy; without it, canon stays a quiet footer action. Include canon only for visual-direction rounds; never present it as your own recommendation. Keep thesis and each fact to one short sentence: the card front shows thesis, identity, and a two-line risk, while first viewport and the case read on the card back behind the Details chip, so long facts cost the reader a flip, not the page its scanability.');
   process.exit(0);
 }
 
@@ -203,14 +222,25 @@ if (hasFlag('start')) {
   const key = arg('key') || Math.random().toString(16).slice(2, 10);
   // In start mode the agent is alive and owns browser routing; the server
   // only opens the system browser itself when --open forces it.
+  // The daemon's output lands in a per-key log so a startup failure can say
+  // what actually went wrong instead of only that it did.
+  const logFile = path.join(QUESTION_DIR, `${key}.log`);
+  const logFd = fs.openSync(logFile, 'a');
   const child = spawn(process.execPath, [
     fileURLToPath(import.meta.url), '--payload', payloadPath, '--detached-serve', '--key', key,
     '--timeout', String(timeoutSec), ...(hasFlag('open') ? [] : ['--no-open']),
-  ], { detached: true, stdio: 'ignore' });
+  ], { detached: true, stdio: ['ignore', logFd, logFd] });
   child.unref();
+  fs.closeSync(logFd);
   const deadline = Date.now() + 8000;
   while (Date.now() < deadline && !fs.existsSync(stateFile(key))) await new Promise((r) => setTimeout(r, 100));
-  if (!fs.existsSync(stateFile(key))) { console.error('serve-question: server failed to start'); process.exit(1); }
+  if (!fs.existsSync(stateFile(key))) {
+    let tail = '';
+    try { tail = fs.readFileSync(logFile, 'utf8').trim().split('\n').slice(-4).join('\n  '); } catch { /* log never written */ }
+    console.error(`serve-question: server failed to start${tail ? `\n  ${tail}` : ''}`);
+    console.error(`serve-question: log at ${path.relative(process.cwd(), logFile) || logFile}. A sandboxed exec that cannot listen on localhost causes exactly this; rerun this command once through the harness's network-enabled or unsandboxed command tool before falling back.`);
+    process.exit(1);
+  }
   const state = JSON.parse(fs.readFileSync(stateFile(key), 'utf8'));
   console.log(`QUESTION URL: ${state.url}`);
   console.log(`QUESTION KEY: ${key}`);
@@ -244,12 +274,28 @@ function loadRound(json) {
     localImages.push(abs);
     return `/img/${localImages.length - 1}`;
   };
+  // Sketches stream in after the page is served, so their slots register
+  // whether or not the file exists yet; /img answers 404 until it lands and
+  // the page polls the slot. Remote sketch URLs pass through untouched.
+  const sketchSrc = (value) => {
+    if (!value) return null;
+    if (/^https?:\/\//.test(value)) return value;
+    localImages.push(path.resolve(value));
+    return `/img/${localImages.length - 1}`;
+  };
   payload = parsed;
-  options = parsed.options.map((option) => ({
+  const decorate = (option) => ({
     ...option,
     heroSrc: imageSrc(option.hero),
     boardSrc: imageSrc(option.board),
-  }));
+    sketchSrc: sketchSrc(option.sketch),
+  });
+  options = parsed.options.map(decorate);
+  // The standing exit as a full card: same anatomy, reserved id, rendered
+  // subordinate by the page. Without it, canon stays the quiet footer action.
+  if (parsed.canonCard && typeof parsed.canonCard === 'object') {
+    options = [...options, { ...decorate(parsed.canonCard), id: 'canon', isCanon: true }];
+  }
 }
 try { loadRound(raw); } catch (error) { console.error(`serve-question: ${error.message}`); process.exit(1); }
 const detachedKey = hasFlag('detached-serve') ? arg('key') : null;
@@ -260,30 +306,81 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<
 function page() {
   const flipChip = (label) => `<button type="button" class="chip flip" aria-label="Flip the card"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a8 8 0 1 1-8 8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M4 5.5V12h6.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><span>${label}</span></button>`;
   const expandChip = `<button type="button" class="chip expand" aria-label="Expand the image"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 15v5h-5M20 9V4h-5M4 15v5h5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
-  const cards = options.map((option, index) => `
-    <article class="card" style="--fan:${index === 0 ? '0deg' : (index % 2 ? '1.4deg' : '-1.2deg')};--deal:${index * 90}ms" data-id="${esc(option.id)}">
-      <div class="card-inner">
-        <div class="face front${index === 0 ? ' lead' : ''}${option.heroSrc || option.boardSrc ? '' : ' text-only'}">
-          ${option.kicker ? `<span class="kicker">${esc(option.kicker)}</span>` : ''}
-          ${option.heroSrc || option.boardSrc ? `<div class="media">
+  // Structured anatomy: chips and one-line facts render when the payload
+  // carries them; a plain body falls back to the prose block. Palette chips
+  // and material tags give a text-only direction an immediate identity that
+  // no generation luck can distort.
+  const fact = (label, value, cls = '') => value ? `<p class="fact${cls ? ` ${cls}` : ''}"><span class="fact-label">${label}</span>${esc(value)}</p>` : '';
+  const hasBack = (option) => Boolean(option.viewport || option.case || (option.boardSrc && option.heroSrc));
+  const anatomy = (option) => {
+    const rows = [];
+    if (option.thesis) rows.push(`<p class="thesis">${esc(option.thesis)}</p>`);
+    const idBits = [];
+    if (Array.isArray(option.palette) && option.palette.length) {
+      idBits.push(`<span class="swatches">${option.palette.slice(0, 6).map((c) => `<i style="background:${esc(c)}" title="${esc(c)}"></i>`).join('')}</span>`);
+    }
+    if (Array.isArray(option.materials) && option.materials.length) {
+      idBits.push(option.materials.slice(0, 4).map((m) => `<span class="tag">${esc(m)}</span>`).join(''));
+    }
+    if (idBits.length) rows.push(`<div class="identity">${idBits.join('')}</div>`);
+    // The front carries only what the choice needs: thesis, identity, and the
+    // honest risk clamped to two lines. First viewport and the case read on
+    // the card's back; once the sketch lands, the first viewport is a picture.
+    rows.push(fact('Risk', option.risk, 'clamp'));
+    if (!option.thesis && option.body) rows.push(`<p class="detail">${esc(option.body)}</p>`);
+    else if (option.body && option.thesis && !hasBack(option)) rows.push(`<p class="detail more">${esc(option.body)}</p>`);
+    return rows.join('\n            ');
+  };
+  const backFacts = (option) => [
+    fact('First viewport', option.viewport),
+    fact('The case', option.case),
+    fact('Risk', option.risk),
+    option.body && option.thesis ? `<p class="detail more">${esc(option.body)}</p>` : '',
+  ].filter(Boolean).join('\n            ');
+  const media = (option) => {
+    const inspiration = option.heroSrc ? `<figure class="pip" title="Inspiration: the world this direction draws from. Your page will not look like this image.">
+              <img src="${esc(option.heroSrc)}" alt="">
+              <figcaption>inspiration</figcaption>
+            </figure>` : '';
+    const details = hasBack(option) ? flipChip('Details') : '';
+    if (option.sketchSrc) {
+      return `<div class="media sketching" data-sketch="${esc(option.sketchSrc)}">
+            <div class="shimmer"><span class="sketch-note">sketching&hellip;</span></div>
+            <img class="sketch" alt="" hidden>
+            ${inspiration}
+            <div class="chips">${expandChip}${details}</div>
+          </div>`;
+    }
+    if (option.heroSrc || option.boardSrc) {
+      return `<div class="media">
             <img src="${esc(option.heroSrc || option.boardSrc)}" alt="">
-            <div class="chips">${expandChip}${option.boardSrc && option.heroSrc ? flipChip('Board') : ''}</div>
-          </div>` : ''}
+            <div class="chips">${expandChip}${details}</div>
+          </div>`;
+    }
+    return '';
+  };
+  const cards = options.map((option, index) => `
+    <article class="card${option.isCanon ? ' canon' : ''}" style="--fan:${index === 0 ? '0deg' : (index % 2 ? '1.4deg' : '-1.2deg')};--deal:${index * 90}ms" data-id="${esc(option.id)}">
+      <div class="card-inner">
+        <div class="face front${index === 0 ? ' lead' : ''}${media(option) ? '' : ' text-only'}">
+          ${option.kicker ? `<span class="kicker">${esc(option.kicker)}</span>` : option.isCanon ? '<span class="kicker standing">The standing door</span>' : ''}
+          ${media(option)}
           <div class="body">
             ${option.lineage ? `<p class="tier">${esc(option.lineage)}</p>` : ''}
             <h2>${esc(option.label)}</h2>
-            ${option.body ? `<p class="detail">${esc(option.body)}</p>` : ''}
-            <button class="choose" data-id="${esc(option.id)}">Build this</button>
+            ${anatomy(option)}
+            <button class="choose" data-id="${esc(option.id)}">${option.isCanon ? 'Play it straight' : 'Build this'}</button>
           </div>
         </div>
-        ${option.boardSrc && option.heroSrc ? `<div class="face back${index === 0 ? ' lead' : ''}">
-          <div class="media back-media">
+        ${hasBack(option) ? `<div class="face back${index === 0 ? ' lead' : ''}">
+          ${option.boardSrc ? `<div class="media back-media">
             <img src="${esc(option.boardSrc)}" alt="">
-            <div class="chips">${expandChip}${flipChip('Hero')}</div>
-          </div>
-          <div class="body back-bar">
-            <p class="tier">Design-system board &middot; ${esc(option.label)}</p>
-            <button class="choose" data-id="${esc(option.id)}">Build this</button>
+            <div class="chips">${expandChip}${flipChip('Front')}</div>
+          </div>` : `<div class="back-head"><p class="tier">The full read &middot; ${esc(option.label)}</p>${flipChip('Front')}</div>`}
+          <div class="body back-body">
+            ${option.boardSrc ? `<p class="tier">The full read &middot; ${esc(option.label)}</p>` : ''}
+            ${backFacts(option)}
+            <button class="choose" data-id="${esc(option.id)}">${option.isCanon ? 'Play it straight' : 'Build this'}</button>
           </div>
         </div>` : ''}
       </div>
@@ -318,7 +415,7 @@ function page() {
     --ks-mono: "SFMono-Regular", "Roboto Mono", "JetBrains Mono", Consolas, monospace;
   }
   * { box-sizing: border-box; margin: 0; }
-  body { background: var(--ks-lacquer); color: var(--ks-text); font: 15px/1.55 var(--ks-font); padding: 1.8rem clamp(1rem, 5vw, 4rem) 2rem; min-height: 100dvh; display: flex; flex-direction: column; }
+  body { background: var(--ks-lacquer); color: var(--ks-text); font: 15px/1.55 var(--ks-font); padding: 1.8rem clamp(1rem, 5vw, 4rem) 2rem; min-height: 100dvh; display: flex; flex-direction: column; overflow-x: clip; }
   #ambient { position: fixed; inset: -40px; z-index: 0; background-size: cover; background-position: center; filter: blur(34px) saturate(1.05); opacity: 0; transition: opacity .55s ease, background-image .2s; pointer-events: none; }
   #scrim { position: fixed; inset: 0; z-index: 0; background: linear-gradient(180deg, oklch(7% 0.006 95 / 0.62), oklch(7% 0.006 95 / 0.78)); pointer-events: none; }
   header, main, footer { position: relative; z-index: 1; }
@@ -336,7 +433,42 @@ function page() {
   .question { color: var(--ks-text-muted); margin-top: .7rem; max-width: 52rem; }
   main { flex: 1; display: flex; align-items: center; width: 100%; max-width: 90rem; margin: 0 auto; }
   .stage { width: 100%; display: flex; flex-direction: column; gap: 1.5rem; }
-  .grid { display: grid; gap: 1.6rem; grid-template-columns: repeat(auto-fit, minmax(min(23rem, 100%), 1fr)); width: 100%; }
+  /* The deck bleeds to the viewport edges while the first card aligns with the
+     content column; a carousel cut off at an invisible container edge reads as
+     a rendering bug, but one cut off at the screen edge reads as more cards. */
+  .deck-shell { position: relative; width: 100vw; margin-left: calc(50% - 50vw); }
+  /* One row in a wide viewport, one column in a tall one; the deck scrolls on
+     its axis with snap points and the arrows page it card by card. */
+  .grid { --deck-inset: max(clamp(1rem, 5vw, 4rem), calc((100vw - 90rem) / 2)); display: flex; gap: 1.6rem; width: 100%; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; scrollbar-width: none; padding: 6px var(--deck-inset); scroll-padding-inline: var(--deck-inset); align-items: stretch; }
+  .grid::-webkit-scrollbar { display: none; }
+  .grid > .card { flex: 0 0 clamp(20rem, 27vw, 27rem); scroll-snap-align: center; }
+  .nav { position: absolute; z-index: 6; width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: oklch(7% 0.006 95 / 0.78); border: 1px solid var(--ks-rule); color: var(--ks-kinpaku); cursor: pointer; backdrop-filter: blur(6px); transition: border-color .2s, color .2s, opacity .2s; }
+  .nav:hover { border-color: var(--ks-kinpaku-deep); color: var(--ks-kinpaku-pale); }
+  .nav[disabled] { opacity: .25; cursor: default; }
+  .nav[hidden] { display: none; }
+  .nav svg { width: 16px; height: 16px; }
+  .nav.prev { left: 14px; top: 50%; transform: translateY(-50%); }
+  .nav.next { right: 14px; top: 50%; transform: translateY(-50%); }
+  /* A side that hides more cards fades out; a hard edge means the end. */
+  .fade { position: absolute; z-index: 5; pointer-events: none; opacity: 0; transition: opacity .3s ease; }
+  .fade-prev { left: 0; top: 0; bottom: 0; width: 88px; background: linear-gradient(90deg, var(--ks-lacquer), transparent); }
+  .fade-next { right: 0; top: 0; bottom: 0; width: 88px; background: linear-gradient(270deg, var(--ks-lacquer), transparent); }
+  .deck-shell.can-prev .fade-prev { opacity: 1; }
+  .deck-shell.can-next .fade-next { opacity: 1; }
+  @media (max-aspect-ratio: 1/1) {
+    .grid { flex-direction: column; overflow-x: hidden; overflow-y: auto; scroll-snap-type: y mandatory; max-height: min(68dvh, 44rem); scroll-padding-block: 6px; }
+    .grid > .card { flex: 0 0 auto; }
+    /* In the vertical deck the pager is the primary way forward, so it grows
+       into a labeled pill instead of a bare chevron nobody notices. */
+    .nav { width: auto; height: 38px; border-radius: 19px; padding: 0 16px; gap: 8px; border-color: var(--ks-kinpaku-deep); background: oklch(7% 0.006 95 / 0.88); font-family: var(--ks-mono); font-size: .62rem; letter-spacing: .2em; text-transform: uppercase; }
+    .nav svg { transform: rotate(90deg); }
+    .nav.prev::after { content: "Back"; }
+    .nav.next::after { content: "More"; }
+    .nav.prev { left: 50%; top: 6px; transform: translate(-50%, 0); }
+    .nav.next { right: auto; left: 50%; top: auto; bottom: 6px; transform: translate(-50%, 0); }
+    .fade-prev { top: 0; left: 0; right: 0; bottom: auto; width: auto; height: 72px; background: linear-gradient(180deg, var(--ks-lacquer), transparent); }
+    .fade-next { top: auto; left: 0; right: 0; bottom: 0; width: auto; height: 72px; background: linear-gradient(0deg, var(--ks-lacquer), transparent); }
+  }
   .card { position: relative; perspective: 1400px; transform: rotate(var(--fan, 0deg)); transition: transform .25s cubic-bezier(.16, 1, .3, 1); }
   .card:hover { transform: rotate(0deg) translateY(-4px); }
   .card-inner { position: relative; height: 100%; transform-style: preserve-3d; transition: transform .7s cubic-bezier(.16, 1, .3, 1); }
@@ -344,6 +476,12 @@ function page() {
   .face { background: var(--ks-lacquer-raised); border: 1px solid var(--ks-rule); border-radius: 10px; box-shadow: 0 18px 40px oklch(0% 0 0 / 0.35); overflow: hidden; display: flex; flex-direction: column; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
   .face.front { position: relative; height: 100%; }
   .face.back { position: absolute; inset: 0; transform: rotateY(180deg); }
+  /* Only the visible face is interactive: a hidden backface still hit-tests
+     in Chrome, so the front's pip would otherwise sit invisibly over the
+     back's chips, showing its zoom cursor and eating the flip-back click. */
+  .face.back { pointer-events: none; }
+  .card.flipped .face.back { pointer-events: auto; }
+  .card.flipped .face.front { pointer-events: none; }
   .face.lead { border-color: var(--ks-kinpaku); box-shadow: 0 0 0 1px var(--ks-kinpaku), 0 18px 40px oklch(0% 0 0 / 0.45); }
   .card:hover .face { border-color: var(--ks-kinpaku-deep); }
   .card:hover .face.lead { border-color: var(--ks-kinpaku); }
@@ -355,7 +493,7 @@ function page() {
   .face.text-only .body { padding-top: 12px; }
   .media { position: relative; width: 100%; aspect-ratio: 16/9; flex: none; }
   .media img { width: 100%; height: 100%; object-fit: cover; display: block; background: linear-gradient(100deg, var(--ks-graphite) 40%, var(--ks-graphite-2) 50%, var(--ks-graphite) 60%); }
-  .face.back { background: var(--ks-lacquer-deep); }
+  .face.back { background: var(--ks-lacquer-raised); }
   .back-bar { margin-top: auto; background: var(--ks-lacquer-raised); }
   .hero-blank { width: 100%; height: 100%; background: linear-gradient(100deg, var(--ks-graphite) 40%, var(--ks-graphite-2) 50%, var(--ks-graphite) 60%); }
   .back-bar { flex: none; flex-direction: row; align-items: center; justify-content: space-between; gap: .8rem; }
@@ -367,6 +505,48 @@ function page() {
   .tier { font-family: var(--ks-mono); font-size: .625rem; letter-spacing: .24em; text-transform: uppercase; color: var(--ks-text-faint); }
   h2 { font-family: var(--ks-font); font-size: 1.125rem; font-weight: 500; line-height: 1.35; color: var(--ks-champagne); }
   .detail { color: var(--ks-text-muted); font-size: .88rem; white-space: pre-wrap; }
+  .detail.more { font-size: .8rem; color: var(--ks-text-faint); }
+  .thesis { color: var(--ks-text); font-size: .95rem; line-height: 1.45; }
+  .identity { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 2px 0; }
+  .swatches { display: inline-flex; gap: 4px; margin-right: 4px; }
+  .swatches i { width: 18px; height: 18px; border-radius: 5px; border: 1px solid oklch(100% 0 0 / 0.18); box-shadow: inset 0 0 0 1px oklch(0% 0 0 / 0.25); }
+  .tag { font-family: var(--ks-mono); font-size: .6rem; letter-spacing: .14em; text-transform: uppercase; color: var(--ks-text-muted); border: 1px solid var(--ks-rule); border-radius: 4px; padding: 3px 7px; }
+  .fact { font-size: .8rem; color: var(--ks-text-muted); line-height: 1.45; }
+  .fact-label { display: inline-block; font-family: var(--ks-mono); font-size: .6rem; letter-spacing: .18em; text-transform: uppercase; color: var(--ks-text-faint); margin-right: .55em; transform: translateY(-1px); }
+  .fact.clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  /* The back is the full read: first viewport, the case, the whole risk, and
+     the board when the world has one. */
+  .back-head { display: flex; align-items: center; justify-content: space-between; gap: .8rem; padding: 14px 14px 0; }
+  .media.back-media { aspect-ratio: 16/6; }
+  .media.back-media img { width: 100%; height: 100%; object-fit: cover; }
+  .body.back-body { overflow-y: auto; flex: 1; scrollbar-width: thin; }
+  /* Inspiration rides picture-in-picture: the catalog world explains where the
+     direction comes from without promising what the build will look like. */
+  /* Hovering the inspiration takes over the whole media region; the sketch is
+     the promise, the inspiration is a glance, so the glance must cost nothing. */
+  .pip { position: absolute; z-index: 2; left: 10px; bottom: 10px; margin: 0; width: 84px; height: 64px; border: 1px solid var(--ks-rule); border-radius: 6px; overflow: hidden; background: var(--ks-lacquer); cursor: zoom-in; transition: left .35s cubic-bezier(.16,1,.3,1), bottom .35s cubic-bezier(.16,1,.3,1), width .35s cubic-bezier(.16,1,.3,1), height .35s cubic-bezier(.16,1,.3,1), border-radius .35s ease; box-shadow: 0 6px 18px oklch(0% 0 0 / 0.45); }
+  .pip img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .pip figcaption { position: absolute; left: 0; right: 0; bottom: 0; font-family: var(--ks-mono); font-size: .5rem; letter-spacing: .2em; text-transform: uppercase; color: var(--ks-text); text-align: center; padding: 3px 0 4px; background: oklch(7% 0.006 95 / 0.72); backdrop-filter: blur(3px); }
+  .pip:hover { left: 0; bottom: 0; width: 100%; height: 100%; border-radius: 0; z-index: 3; }
+  .sketch-note { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: var(--ks-mono); font-size: .66rem; letter-spacing: .22em; text-transform: uppercase; color: var(--ks-text-faint); }
+  /* A stand-in is honest about being one: dimmed, labeled, and replaced by
+     the real sketch whenever it lands. */
+  .media.stand-in img.sketch { filter: brightness(.72) saturate(.85); }
+  .media.stand-in .pip { display: none; }
+  .stand-in-label { position: absolute; z-index: 2; left: 0; right: 0; bottom: 0; margin: 0; font-family: var(--ks-mono); font-size: .56rem; letter-spacing: .2em; text-transform: uppercase; color: var(--ks-text); text-align: center; padding: 4px 0 5px; background: oklch(7% 0.006 95 / 0.78); backdrop-filter: blur(3px); }
+  .media.sketching { position: relative; }
+  .media.sketching .shimmer { position: absolute; inset: 0; }
+  .media img.sketch { position: relative; z-index: 1; }
+  /* The generic .media img display:block would defeat [hidden] and float an
+     empty block over the shimmer; an unloaded sketch must truly not render. */
+  .media img[hidden] { display: none; }
+  /* The standing exit as a card: present with full anatomy, never dressed as a
+     contender. Graphite instead of kinpaku, and it never takes the lead ring. */
+  .card.canon .face { border-color: var(--ks-rule); background: var(--ks-graphite); }
+  .card.canon:hover .face { border-color: var(--ks-text-faint); }
+  .card.canon .kicker.standing { background: transparent; border: 1px solid var(--ks-rule); color: var(--ks-text-faint); }
+  .card.canon button.choose { background: transparent; color: var(--ks-text); border: 1px solid var(--ks-rule); }
+  .card.canon button.choose:hover { border-color: var(--ks-text-muted); background: var(--ks-graphite-2); }
   button.choose { margin-top: auto; align-self: start; background: var(--ks-kinpaku); color: var(--ks-dark-ink); border: 0; font-family: var(--ks-font); font-size: 1rem; font-weight: 500; line-height: 1.35; padding: 10px 38px; border-radius: 6px; cursor: pointer; transition: background .15s; }
   button.choose:hover { background: var(--ks-kinpaku-pale); }
   footer { width: 100%; max-width: 90rem; margin: 1.6rem auto 0; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
@@ -408,13 +588,19 @@ function page() {
       <h1>${esc(payload.title || 'Choose a direction')}</h1>
     </div>
     ${payload.question ? `<p class="question">${esc(payload.question)}</p>` : ''}
-    <div class="grid">${cards}</div>
+    <div class="deck-shell">
+      <div class="grid">${cards}</div>
+      <div class="fade fade-prev" aria-hidden="true"></div>
+      <div class="fade fade-next" aria-hidden="true"></div>
+      <button class="nav prev" hidden aria-label="Previous card"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5 8 12l6.5 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button class="nav next" hidden aria-label="Next card"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5 16 12l-6.5 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    </div>
   </div>
 </main>
 <footer>
   ${payload.steer ? '<input id="steer" placeholder="Optional steer: what should be different or kept?">' : ''}
   ${payload.reroll ? '<button id="reroll"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="8.4" cy="8.4" r="1.5" fill="currentColor"/><circle cx="15.6" cy="8.4" r="1.5" fill="currentColor"/><circle cx="8.4" cy="15.6" r="1.5" fill="currentColor"/><circle cx="15.6" cy="15.6" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/></svg><span>Re-roll</span></button>' : ''}
-  ${payload.canon ? '<button id="canon" title="Skip the roll: build the page this category ships, executed impeccably">Play it straight</button>' : ''}
+  ${payload.canon && !payload.canonCard ? '<button id="canon" title="Skip the roll: build the page this category ships, executed impeccably">Play it straight</button>' : ''}
 </footer>
 <script>
   const steer = () => document.getElementById('steer')?.value || '';
@@ -434,7 +620,11 @@ function page() {
   // Deal from the stack: cards begin piled at the grid's center, blurred,
   // then travel to their seats with a stagger.
   const cards = [...document.querySelectorAll('.card')];
-  if (!matchMedia('(prefers-reduced-motion: reduce)').matches && cards.length) {
+  // The deal is decoration: a hidden tab throttles rAF, so never let the
+  // animation hold the cards at opacity 0. Skip it when hidden, and force
+  // the final state after a beat no matter what the animation did.
+  setTimeout(() => cards.forEach(c => { c.style.opacity = ''; c.style.transform = ''; c.style.filter = ''; c.style.transition = ''; c.style.zIndex = ''; }), 1600);
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches && cards.length && !document.hidden) {
     const grid = document.querySelector('.grid').getBoundingClientRect();
     const cx = grid.left + grid.width / 2, cy = grid.top + grid.height / 2;
     cards.forEach((card, i) => {
@@ -460,12 +650,99 @@ function page() {
     }));
   }
 
-  // Ambient: the hovered card's hero bleeds into the page ground under a scrim.
+  // Sketches stream in after the deal: poll each slot until the file lands,
+  // then swap the shimmer for the image. Generation is genuinely slow and a
+  // sequential batch puts the last card many minutes out, so patience is the
+  // default: a slot only shows its inspiration as a stand-in when it has
+  // waited four minutes AND nothing has landed anywhere for four minutes, the
+  // stand-in is labeled as such, and polling continues so the real sketch
+  // still swaps in whenever it arrives. Progress anywhere resets patience.
+  const landTracker = { last: Date.now() };
+  document.querySelectorAll('.media.sketching').forEach(m => {
+    const url = m.dataset.sketch;
+    const img = m.querySelector('img.sketch');
+    const note = m.querySelector('.sketch-note');
+    const started = Date.now();
+    // A live elapsed count is the difference between "working" and "frozen".
+    const tick = setInterval(() => { if (note) note.textContent = 'sketching · ' + Math.round((Date.now() - started) / 1000) + 's'; }, 1000);
+    const settle = () => { clearInterval(tick); m.classList.remove('sketching', 'stand-in'); m.querySelector('.shimmer')?.remove(); m.querySelector('.stand-in-label')?.remove(); };
+    const standIn = () => {
+      const pip = m.querySelector('.pip img');
+      if (!pip || m.classList.contains('stand-in')) return;
+      img.src = pip.getAttribute('src'); img.hidden = false;
+      m.classList.add('stand-in');
+      m.querySelector('.shimmer')?.remove();
+      clearInterval(tick);
+      const label = document.createElement('p');
+      label.className = 'stand-in-label';
+      label.textContent = 'inspiration · sketch pending';
+      m.appendChild(label);
+    };
+    const tryLoad = () => {
+      const probe = new Image();
+      probe.onload = () => { landTracker.last = Date.now(); img.src = probe.src; img.hidden = false; settle(); };
+      probe.onerror = () => {
+        const quiet = Date.now() - landTracker.last > 240000;
+        if (Date.now() - started > 240000 && quiet) standIn();
+        setTimeout(tryLoad, m.classList.contains('stand-in') ? 5000 : 2500);
+      };
+      probe.src = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+    };
+    tryLoad();
+  });
+
+  // Inspiration PIP opens the full catalog card in the lightbox.
+  document.querySelectorAll('.pip').forEach(p => p.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const img = p.querySelector('img');
+    if (!img) return;
+    lightboxImg.src = img.getAttribute('src');
+    lightbox.hidden = false;
+    requestAnimationFrame(() => lightbox.classList.add('open'));
+  }));
+
+  // Deck paging: arrows appear only when the deck overflows its axis, page
+  // one card at a time, and follow the aspect-ratio flip between row and column.
+  const deck = document.querySelector('.grid');
+  const prevBtn = document.querySelector('.nav.prev');
+  const nextBtn = document.querySelector('.nav.next');
+  const vertical = () => matchMedia('(max-aspect-ratio: 1/1)').matches;
+  function updateNav() {
+    if (!deck || !prevBtn) return;
+    const shell = deck.closest('.deck-shell');
+    const v = vertical();
+    const overflow = v ? deck.scrollHeight > deck.clientHeight + 4 : deck.scrollWidth > deck.clientWidth + 4;
+    prevBtn.hidden = nextBtn.hidden = !overflow;
+    const pos = v ? deck.scrollTop : deck.scrollLeft;
+    const max = v ? deck.scrollHeight - deck.clientHeight : deck.scrollWidth - deck.clientWidth;
+    const canPrev = overflow && pos > 2;
+    const canNext = overflow && pos < max - 2;
+    prevBtn.toggleAttribute('disabled', !canPrev);
+    nextBtn.toggleAttribute('disabled', !canNext);
+    shell?.classList.toggle('can-prev', canPrev);
+    shell?.classList.toggle('can-next', canNext);
+  }
+  function pageDeck(dir) {
+    const card = deck.querySelector('.card');
+    if (!card) return;
+    const r = card.getBoundingClientRect();
+    const step = (vertical() ? r.height : r.width) + 26;
+    deck.scrollBy(vertical() ? { top: dir * step, behavior: 'smooth' } : { left: dir * step, behavior: 'smooth' });
+  }
+  prevBtn?.addEventListener('click', () => pageDeck(-1));
+  nextBtn?.addEventListener('click', () => pageDeck(1));
+  deck?.addEventListener('scroll', updateNav, { passive: true });
+  addEventListener('resize', updateNav);
+  updateNav();
+
+  // Ambient: the hovered card's visible art bleeds into the page ground.
   const ambient = document.getElementById('ambient');
   document.querySelectorAll('.card').forEach(card => {
-    const hero = card.querySelector('.face.front .media img');
-    if (!hero) return;
-    card.addEventListener('mouseenter', () => { ambient.style.backgroundImage = 'url("' + hero.getAttribute('src') + '")'; ambient.style.opacity = '1'; });
+    card.addEventListener('mouseenter', () => {
+      const art = card.querySelector('.face.front .media img:not([hidden])') || card.querySelector('.face.front .pip img');
+      if (!art || !art.getAttribute('src')) return;
+      ambient.style.backgroundImage = 'url("' + art.getAttribute('src') + '")'; ambient.style.opacity = '1';
+    });
     card.addEventListener('mouseleave', () => { ambient.style.opacity = '0'; });
   });
 
@@ -476,8 +753,8 @@ function page() {
     e.stopPropagation();
     const card = b.closest('.card');
     const face = card.classList.contains('flipped') ? '.face.back' : '.face.front';
-    const img = card.querySelector(face + ' .media img');
-    if (!img) return;
+    const img = card.querySelector(face + ' .media img:not([hidden])');
+    if (!img || !img.getAttribute('src')) return;
     lightboxImg.src = img.getAttribute('src');
     lightbox.hidden = false;
     requestAnimationFrame(() => lightbox.classList.add('open'));
@@ -546,10 +823,10 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({ ready: Boolean(pending && fs.existsSync(pending)) }));
     return;
   }
-  const imageMatch = req.method === 'GET' && req.url?.match(/^\/img\/(\d+)$/);
+  const imageMatch = req.method === 'GET' && req.url?.match(/^\/img\/(\d+)(?:\?.*)?$/);
   if (imageMatch) {
     const abs = localImages[Number(imageMatch[1])];
-    if (!abs) { res.writeHead(404); res.end(); return; }
+    if (!abs || !fs.existsSync(abs)) { res.writeHead(404); res.end(); return; }
     const type = abs.endsWith('.webp') ? 'image/webp'
       : abs.endsWith('.png') ? 'image/png'
       : abs.endsWith('.svg') ? 'image/svg+xml'
@@ -572,6 +849,7 @@ const server = http.createServer((req, res) => {
         optionId: parsed.optionId ?? null,
         steer: parsed.steer ?? '',
         ...(chosen?.hero || chosen?.board ? { hero: chosen.hero ?? null, board: chosen.board ?? null } : {}),
+        ...(chosen?.sketch ? { sketch: chosen.sketch } : {}),
       });
       const isReroll = parsed.optionId === 'reroll';
       if (detachedKey) {

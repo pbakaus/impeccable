@@ -223,7 +223,7 @@ function unwrapCssAtLayer(source) {
 // ---------------------------------------------------------------------------
 
 const STATIC_INHERITED_PROPS = new Set([
-  'color', 'fontFamily', 'fontSize', 'fontStyle', 'fontWeight',
+  'color', 'fontFamily', 'fontSize', 'fontStyle', 'fontWeight', 'fontVariant',
   'lineHeight', 'letterSpacing', 'textTransform', 'textAlign', 'hyphens',
   'webkitHyphens',
 ]);
@@ -252,6 +252,7 @@ const STATIC_DEFAULT_STYLE = {
   fontFamily: '',
   fontSize: '16px',
   fontStyle: 'normal',
+  fontVariant: 'normal',
   fontWeight: '400',
   lineHeight: 'normal',
   letterSpacing: 'normal',

@@ -145,4 +145,60 @@ describe('serve-question', () => {
     });
     assert.equal(code, 1);
   });
+
+  it('renders anatomy, streams late sketches, and returns the chosen sketch', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'serve-question-'));
+    const sketchPath = path.join(dir, 'sketches', 'assigned.webp');
+    const payload = {
+      title: 'Choose the visual world',
+      options: [
+        {
+          id: 'assigned', label: 'Fillmore Handbill', kicker: 'THE ROLL',
+          thesis: 'The gig poster idea.', palette: ['#e8452c', '#f5d64c'], materials: ['letterpress'],
+          viewport: 'Full-bleed dated bill.', risk: 'Nostalgia trap.',
+          sketch: sketchPath, hero: 'https://impeccable.style/worlds/cards/x-hero.webp',
+        },
+        { id: 'challenger-1', label: 'Teletext Service', case: 'Fuses cleanly.' },
+      ],
+      reroll: true,
+      canon: true,
+      canonCard: { label: 'The category standard', thesis: 'What the category ships.' },
+      steer: true,
+    };
+    const { child, url, read } = await startServer(payload);
+    const html = await (await fetch(url)).text();
+    // Anatomy renders: chips, tags, fact labels, thesis.
+    assert.match(html, /swatches/);
+    assert.match(html, /background:#e8452c/);
+    assert.match(html, /class="tag">letterpress/);
+    assert.match(html, /The gig poster idea\./);
+    assert.match(html, /Fuses cleanly\./);
+    // The inspiration image rides picture-in-picture beside the sketch slot.
+    assert.match(html, /class="pip"/);
+    assert.match(html, /media sketching/);
+    // canonCard renders as a subordinate card and suppresses the footer action.
+    assert.match(html, /card canon/);
+    assert.match(html, /Play it straight</);
+    assert.doesNotMatch(html, /<button id="canon"/);
+    // The sketch slot 404s until the file lands, then serves it.
+    const slot = html.match(/data-sketch="(\/img\/\d+)"/)?.[1];
+    assert.ok(slot, 'sketch slot registered before the file exists');
+    assert.equal((await fetch(url.replace(/\/$/, '') + slot)).status, 404);
+    const { mkdirSync } = await import('node:fs');
+    mkdirSync(path.dirname(sketchPath), { recursive: true });
+    writeFileSync(sketchPath, 'RIFFxxxxWEBP');
+    assert.equal((await fetch(url.replace(/\/$/, '') + slot)).status, 200);
+    // The page polls with a cache-busting query; the route must tolerate it.
+    assert.equal((await fetch(url.replace(/\/$/, '') + slot + '?t=1')).status, 200);
+    // The answer carries the chosen card's sketch for comp seeding.
+    await fetch(`${url}answer`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ optionId: 'assigned', steer: '' }),
+    });
+    const code = await new Promise((resolve) => child.on('exit', resolve));
+    assert.equal(code, 0);
+    assert.match(read(), /"sketch":/);
+    assert.match(read(), /CHOSEN SKETCH:/);
+  });
 });
