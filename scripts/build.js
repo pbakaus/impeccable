@@ -463,6 +463,7 @@ This folder contains skills for all supported tools:
   .agents/    -> Codex CLI
   .github/    -> GitHub Copilot
   .grok/      -> Grok Build
+  .hermes/    -> Hermes Agent
   .kiro/      -> Kiro
   .opencode/  -> OpenCode
   .pi/        -> Pi

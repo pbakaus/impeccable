@@ -146,4 +146,18 @@ export const PROVIDERS = {
     // settings.json). Claude tool-name matchers alias to Grok tools.
     hooksManifestRel: 'hooks/impeccable.json',
   },
+  hermes: {
+    provider: 'hermes',
+    providerTags: ['hermes'],
+    configDir: '.hermes',
+    displayName: 'Hermes Agent',
+    // Hermes ships the Agent Skills spec as-is. The optional fields below
+    // (license, compatibility, metadata) are spec-defined; harness-specific
+    // extensions (user-invocable, argument-hint, allowed-tools) are NOT
+    // recognized by the Hermes skill loader and would be silently ignored.
+    // Hermes also has no hook surface, no equivalent of Claude's slash
+    // commands, and no per-skill tool ACL -- so no emitHooks, no agentFormat,
+    // no writeOpenAIMetadata. See hermes-agent/SKILL.md "Skills" section.
+    frontmatterFields: ['license', 'compatibility', 'metadata'],
+  },
 };

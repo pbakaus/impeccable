@@ -639,6 +639,15 @@ export const PROVIDER_PLACEHOLDERS = {
     config_file: 'AGENTS.md',
     ask_instruction: 'STOP and call the AskUserQuestion tool to clarify.',
     command_prefix: '/'
+  },
+  'hermes': {
+    // Hermes is provider-agnostic and reads AGENTS.md / CLAUDE.md / .cursorrules
+    // for project context. "the model" matches the pi/opencode phrasing used
+    // for harnesses without a vendor-fixed assistant name.
+    model: 'the model',
+    config_file: 'AGENTS.md',
+    ask_instruction: 'ask the user directly to clarify what you cannot infer.',
+    command_prefix: '/'
   }
 };
 
@@ -651,6 +660,7 @@ export const PROVIDER_BLOCK_TAGS = new Set([
   'gemini',
   'github',
   'grok',
+  'hermes',
   'kiro',
   'opencode',
   'pi',
