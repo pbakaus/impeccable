@@ -1,6 +1,6 @@
 ---
 name: impeccable
-description: Design, build, or refine any frontend interface: layout, typography, color, motion, accessibility, responsive behavior, UX copy, design systems. Use when the user wants UI designed, critiqued, or improved, asks to make a design bolder or quieter, or invokes an impeccable sub-command. Not for backend-only tasks.
+description: "Design, build, or refine any frontend interface: layout, typography, color, motion, accessibility, responsive behavior, UX copy, design systems. Use when the user wants UI designed, critiqued, or improved, asks to make a design bolder or quieter, or invokes an impeccable sub-command. Not for backend-only tasks."
 version: 4.0.2
 user-invocable: true
 argument-hint: "[craft|shape · audit|critique · animate|bolder|colorize|delight|layout|overdrive|quieter|typeset · adapt|clarify|distill · harden|onboard|optimize|polish · init|document|extract|live] [target]"
