@@ -386,6 +386,21 @@ body.picker-page {
   align-items: center;
 }
 
+.picker-palette-subgrid {
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: 30px;
+  min-width: 0;
+  align-self: start;
+}
+
+.picker-palette-subgrid > .picker-actions-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
 .picker-deck-column {
   --picker-card-size: min(39vw, 660px, calc(100svh - 292px));
   display: grid;
@@ -1134,9 +1149,10 @@ body.picker-page {
   border-radius: 50%;
 }
 
-/* Phone artboard: an app screen. Each mini card highlights a different
-   palette role so the secondary and tertiary are judged as UI accents,
-   not just as washes. */
+/* Phone artboard: the desktop page narrowed, same hero plate over the same two
+   blocks, so the palette is judged making one argument at two widths. The
+   blocks each carry a different role, keeping the secondary and tertiary
+   visible as accents rather than only as washes. */
 .pv-phone-top {
   display: flex;
   justify-content: space-between;
@@ -1149,10 +1165,20 @@ body.picker-page {
 .pv-phone-body {
   min-height: 0;
   display: grid;
-  grid-template-rows: auto auto 1fr;
-  align-content: start;
+  /* The plate takes the row that flexes and the two blocks keep their drawn
+     size, so a narrower window shortens the hero rather than pushing a block
+     out through the bottom of the phone. */
+  grid-template-rows: minmax(0, 1fr) auto auto;
   gap: 7px;
   padding: 9px 10px 10px;
+}
+
+/* Its 4 / 3 is honored wherever the row is tall enough to hold it, which is
+   every window past the width the component stops growing at. Below that the
+   plate gives up height instead of overflowing. */
+.pv-phone-body > .pv-image {
+  align-self: center;
+  max-height: 100%;
 }
 
 .pv-mini-card {
@@ -1178,32 +1204,11 @@ body.picker-page {
   background: var(--pv-secondary);
 }
 
-.pv-mini-card:nth-child(2) span {
+/* Keyed off the pair rather than a position, so the hero plate sitting above
+   them cannot shift which block reads as tertiary. */
+.pv-mini-card + .pv-mini-card span {
   background: var(--pv-tertiary);
 }
-
-.pv-mini-chart {
-  min-height: 0;
-  display: flex;
-  align-items: flex-end;
-  gap: 4px;
-  padding: 8px 9px;
-  background: var(--pv-surface-2);
-  border: 1px solid var(--ks-rule);
-  border-radius: 2px;
-}
-
-.pv-mini-chart i {
-  flex: 1;
-  height: 34%;
-  background: var(--pv-secondary);
-  border-radius: 2px 2px 0 0;
-}
-
-.pv-mini-chart i:nth-child(2) { height: 58%; }
-.pv-mini-chart i:nth-child(3) { height: 44%; }
-.pv-mini-chart i:nth-child(4) { height: 82%; background: var(--pv-primary); }
-.pv-mini-chart i:nth-child(5) { height: 66%; }
 
 .pv-tabbar {
   display: flex;
@@ -1611,7 +1616,7 @@ body.picker-page {
 
 .picker-mode-goal {
   color: var(--ks-text-muted);
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.5;
 }
 
@@ -4098,8 +4103,7 @@ body.picker-page {
 }
 
 .picker-select {
-  width: 100%;
-  max-width: 320px;
+  width: auto;
 }
 
 .picker-placeholder {
