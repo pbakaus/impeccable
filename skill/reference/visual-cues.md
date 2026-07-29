@@ -438,6 +438,8 @@ Done when: `fonts.json` is parseable, contains exactly six ranked pairs, every f
 
 Before launching, add a top-level `modes` array to `cues.json` naming the surface kinds this product already implies, judged from PRODUCT.md and the codebase: any of `persuade`, `operate`, `read`, `experience`. The picker's first question pre-checks those tiles as its starting point; the user corrects the set by hand, and the final selection returns in the answers as `surface-modes`. Omit the field when the product gives no clear signal; the picker then starts from `persuade` alone.
 
+Color is then answered per surface rather than once for the whole run, because the distribution that suits a marketing page rarely suits the tool it sells. The answers carry `color-strategy` for the leading surface, which is the first chosen tile in tile order and the one every later screen previews, plus one `color-strategy-<mode>` key for each surface chosen. Surfaces the user never opened are included too, holding the default for their kind. When more than one comes back, DESIGN.md's color section says what each surface does with the palette instead of stating one distribution for the product.
+
 Tell the user in one line that the visual cues are ready at `.impeccable/visual-cues/` (name the count), then run `node {{scripts_path}}/picker-server.mjs` from the project root as a foreground command and parse its `PICKER_URL` line.
 
 - **The harness has a browser tool**: open the URL with it and let the user drive. The tool is a viewport only; never drive the questionnaire yourself, because the answers are the user's.

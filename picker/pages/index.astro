@@ -292,7 +292,7 @@ const questions = [
               <legend>Surfaces</legend>
 
               <label class="picker-mode-tile">
-                <input type="checkbox" name="surface-modes" value="persuade" aria-label="Landing pages, marketing, campaigns, and pricing" checked />
+                <input type="checkbox" name="surface-modes" value="persuade" aria-label="Landing pages, marketing, campaigns, and pricing" data-surface-label="Landing page" data-strategies="restrained committed full-palette drenched" data-strategy-default="committed" checked />
                 <span class="picker-mode-preview picker-mode-preview--exact" aria-hidden="true">
                   <span class="picker-preview">
                     <span class="pv-desktop">
@@ -332,7 +332,7 @@ const questions = [
               </label>
 
               <label class="picker-mode-tile">
-                <input type="checkbox" name="surface-modes" value="operate" aria-label="App UI, dashboards, admin, and settings" />
+                <input type="checkbox" name="surface-modes" value="operate" aria-label="App UI, dashboards, admin, and settings" data-surface-label="App UI" data-strategies="restrained committed full-palette" data-strategy-default="restrained" />
                 <span class="picker-mode-preview picker-mode-preview--exact" aria-hidden="true">
                   <span class="picker-preview picker-preview--ops">
                     <span class="pv-desktop">
@@ -421,7 +421,7 @@ const questions = [
               </label>
 
               <label class="picker-mode-tile">
-                <input type="checkbox" name="surface-modes" value="read" aria-label="Docs, articles, guides, and changelogs" />
+                <input type="checkbox" name="surface-modes" value="read" aria-label="Docs, articles, guides, and changelogs" data-surface-label="Docs" data-strategies="restrained committed full-palette" data-strategy-default="restrained" />
                 <span class="picker-mode-preview picker-mode-preview--exact" aria-hidden="true">
                   <span class="picker-preview picker-preview--docs">
                     <span class="pv-desktop">
@@ -476,7 +476,7 @@ const questions = [
               </label>
 
               <label class="picker-mode-tile">
-                <input type="checkbox" name="surface-modes" value="experience" aria-label="Portfolios, galleries, and showcases" />
+                <input type="checkbox" name="surface-modes" value="experience" aria-label="Portfolios, galleries, and showcases" data-surface-label="Portfolio" data-strategies="restrained committed drenched" data-strategy-default="restrained" />
                 <span class="picker-mode-preview picker-mode-preview--exact" aria-hidden="true">
                   <span class="picker-preview picker-preview--gallery">
                     <span class="pv-desktop">
@@ -764,6 +764,14 @@ const questions = [
                 </label>
                 </fieldset>
 
+                {/* Every chosen surface is colored separately and leaves its own
+                    answer, so each has a field to leave it in. They stay disabled
+                    until their tile is chosen, which is what keeps a surface
+                    nobody asked for out of the answers. */}
+                {surfaces.map(({ value }) => (
+                  <input type="hidden" name={`color-strategy-${value}`} data-surface-strategy={value} disabled />
+                ))}
+
                 <div class="picker-bands picker-bands--compact" data-band-scope="strategy">
                   {roles.map(([role, label]) => (
                     <div class="picker-band-item" data-band-item={role}>
@@ -787,7 +795,13 @@ const questions = [
                 <p class="picker-band-status" data-reorder-status role="status" aria-live="polite"></p>
               </div>
 
-              <Artboard class="picker-strategy-preview" strategyHook />
+              {/* The stage the chosen surfaces are drawn on. Its contents are
+                  lifted from the tiles on screen 01b, so it is filled by script;
+                  the ratio is the artboard's so the CTA sits where it sits on
+                  every other screen. */}
+              <div class="picker-strategy-stage" data-strategy-stage>
+                <div class="picker-surface-tabs" data-surface-tabs role="tablist" aria-label="Surface being colored" hidden></div>
+              </div>
             </div>
 
             <div class="picker-actions-stack">
