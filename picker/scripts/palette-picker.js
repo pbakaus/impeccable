@@ -12,7 +12,7 @@ const panel = $('.picker-palette-panel');
 const hint = $('[data-palette-hint]');
 const ringGuide = $('[data-ring-guide]');
 const loupe = $('[data-loupe]');
-const preview = $('.picker-preview');
+let preview = $('.picker-preview');
 const typePreview = document.querySelector('[data-type-preview]');
 const fontOptions = document.querySelector('[data-font-options]');
 const pairTemplate = document.querySelector('[data-pair-card]');
@@ -178,6 +178,9 @@ function renderBand(role) {
 }
 
 function renderPreview() {
+  // The preview is swapped for the chosen mode's variant before the deck is
+  // dealt, so this runs at least once with no card to read a color off.
+  if (!cards.length) return;
   for (const role of ROLES) preview.style.setProperty(`--pv-${role}`, state().colors[role]);
   preview.style.setProperty('--pv-n-ink', contrastInk(state().colors.neutral));
 }
@@ -1097,10 +1100,19 @@ function buildCard(item) {
 
 function closeTints() {
   if (!openTint) return;
-  const item = $(`[data-band-item="${openTint}"]`, panel);
+  const role = openTint;
+  const item = $(`[data-band-item="${role}"]`, panel);
+  const strip = $('[data-tints]', item);
+  // Focus cannot stay on a button that is about to be hidden, and the control
+  // that opened the strip is the one the user is back to deciding about.
+  const held = strip.contains(document.activeElement);
   delete item.dataset.tintOpen;
-  $('[data-tints]', item).hidden = true;
+  strip.hidden = true;
   openTint = null;
+  const toggle = $(`[data-edit-tints="${role}"]`, panel);
+  toggle.setAttribute('aria-expanded', 'false');
+  toggle.dataset.tip = 'Edit tints';
+  if (held) toggle.focus();
 }
 
 function render() {
@@ -1138,6 +1150,8 @@ function deckKeys(e) {
   const delta = { ArrowLeft: -1, ArrowRight: 1 }[e.key];
   if (!delta) return;
   if (e.target instanceof Element && e.target.closest('[role="slider"], input')) return;
+  // A band held by the keyboard owns the arrows until it is dropped.
+  if (drag?.keyboard) return;
   e.preventDefault();
   browse(current + delta);
 }
@@ -1171,8 +1185,318 @@ function openTints(role) {
   });
   strip.hidden = false;
   item.dataset.tintOpen = '';
+  const toggle = $(`[data-edit-tints="${role}"]`, panel);
+  toggle.setAttribute('aria-expanded', 'true');
+  toggle.dataset.tip = 'Close tints';
   $('button', strip)?.focus();
 }
+
+/* Reordering the palette.
+
+   The four slots keep their roles. Their labels sit in the feet and hold still;
+   what a drag carries is the color, so dropping the neutral band in second
+   place is what makes that color the secondary.
+
+   The bands travel and the feet do not, which is also what makes the swap
+   invisible. When a band lands, every slot on screen is already showing the
+   color it is about to be given, so the colors can be rearranged and the
+   transforms dropped in the same frame with nothing to see.
+
+   Pointer events rather than HTML5 drag and drop: the native API cannot be
+   animated and behaves badly by touch. */
+const REORDER_MS = 220;
+const LIFT_SCALE = 1.02;
+const EASE = getComputedStyle(document.documentElement).getPropertyValue('--ks-ease').trim() || 'ease';
+const REORDER_KEYS = new Set([' ', 'Enter', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Escape']);
+const moves = new WeakMap();
+// The editable strip on the palette screen, and its reading copy under the
+// strategy screen's choices. Which one a drag started in decides how far the
+// result has to be carried.
+const paletteBands = $('.picker-bands', panel);
+const strategyBands = document.querySelector('[data-band-scope="strategy"]');
+const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const bandNodes = (scope) => ROLES.map((role) => $(`[data-band="${role}"]`, scope));
+const gripNodes = (scope) => ROLES.map((role) => $(`[data-grip="${role}"]`, scope));
+const roleLabel = (index, scope) => $(`[data-band-item="${ROLES[index]}"] .picker-band-foot h2`, scope).textContent;
+const announceReorder = (scope, message) => {
+  const status = $('[data-reorder-status]', scope.closest('.picker-screen') ?? scope);
+  if (status) status.textContent = message;
+};
+let drag = null;
+let landing = null;
+
+/* Which band stands in which slot while the lifted one is headed for `to`:
+   the entry at slot n is the index of the band that belongs there. */
+function slotOrder(from, to) {
+  const order = ROLES.map((_, index) => index);
+  order.splice(to, 0, ...order.splice(from, 1));
+  return order;
+}
+
+/* FLIP: the node is put where it belongs first and then played back from where
+   it was, so nothing downstream ever measures a half-finished position. */
+function travel(node, previous, offset, animate) {
+  node.style.transform = offset ? `translateX(${offset}px)` : '';
+  moves.get(node)?.cancel();
+  if (!animate) return;
+  moves.set(node, node.animate(
+    [{ transform: `translateX(${previous}px)` }, { transform: `translateX(${offset}px)` }],
+    { duration: REORDER_MS, easing: EASE },
+  ));
+}
+
+function lift(offset, animate) {
+  const node = drag.nodes[drag.from];
+  const previous = drag.offsets[drag.from];
+  const at = (value) => `translateX(${value}px) scale(${LIFT_SCALE})`;
+  drag.offsets[drag.from] = offset;
+  node.style.transform = at(offset);
+  moves.get(node)?.cancel();
+  if (!animate) return;
+  moves.set(node, node.animate(
+    [{ transform: at(previous) }, { transform: at(offset) }],
+    { duration: REORDER_MS, easing: EASE },
+  ));
+}
+
+function openGap(to, animate) {
+  slotOrder(drag.from, to).forEach((index, slot) => {
+    if (index === drag.from) return;
+    const offset = drag.homes[slot].left - drag.homes[index].left;
+    if (offset === drag.offsets[index]) return;
+    travel(drag.nodes[index], drag.offsets[index], offset, animate);
+    drag.offsets[index] = offset;
+  });
+  drag.to = to;
+}
+
+function nearestSlot(shift) {
+  const { homes, from } = drag;
+  const center = homes[from].left + homes[from].width / 2 + shift;
+  const away = (index) => Math.abs(homes[index].left + homes[index].width / 2 - center);
+  return homes.reduce((best, home, index) => (away(index) < away(best) ? index : best), 0);
+}
+
+/* The rearranged palette goes back through the same path a reset takes: the
+   card's saved colors are rewritten and the screen is rendered from them, so
+   the readouts, the rings, the preview, and the values the select button copies
+   into the form all still come off one source. */
+function commitOrder(from, to, scope) {
+  const saved = state();
+  const colors = {};
+  const detached = {};
+  const rings = {};
+  slotOrder(from, to).forEach((index, slot) => {
+    const role = ROLES[slot];
+    const source = ROLES[index];
+    colors[role] = saved.colors[source];
+    detached[role] = saved.detached[source];
+    // The ring that sampled the color travels with it, so no marker is left
+    // sitting on a pixel it no longer matches.
+    rings[role] = saved.rings[source];
+  });
+  Object.assign(saved, { colors, detached, rings });
+  render();
+  // `render` reaches the palette screen, which draws itself from the deck. The
+  // rest of the run reads the palette out of the committed fields instead, so a
+  // reorder made on the strategy screen has to rewrite those too or it would
+  // last exactly as long as the screen it happened on.
+  if (scope !== paletteBands) recommitPalette();
+}
+
+/* The fields the select button writes, rewritten from the state the bands were
+   just rearranged into, and everything that reads them repainted. Silent before
+   a palette has been chosen: there is nothing to keep in step yet. */
+function recommitPalette() {
+  if (!$('[name="palette-source"]').value) return;
+  for (const role of ROLES) $(`[name="palette-${role}"]`).value = state().colors[role];
+  paintStrategyBands();
+  for (const artboard of document.querySelectorAll('.picker-screen[data-active] [data-artboard]')) {
+    syncCommittedPalette(artboard);
+  }
+}
+
+/* The strategy screen's band is a reading of the committed palette rather than
+   of the deck, which is also what makes it correct after a reorder on either
+   screen: both end in the fields this paints from. */
+function paintStrategyBands() {
+  const committed = roleMap((role) => $(`[name="palette-${role}"]`).value);
+  if (Object.values(committed).some((hex) => !hex)) return;
+  for (const role of ROLES) {
+    const band = $(`[data-band="${role}"]`, strategyBands);
+    band.style.setProperty('--band-color', committed[role]);
+    band.style.setProperty('--band-ink', contrastInk(committed[role]));
+    $('output', band).textContent = committed[role];
+  }
+}
+
+function reorderedSummary(from, to) {
+  const { colors } = state();
+  return slotOrder(from, to)
+    .map((index, slot) => `${ROLES[slot]} ${colors[ROLES[index]]}`)
+    .join(', ');
+}
+
+function beginDrag(index, keyboard, scope) {
+  // A second grab with one still in the air puts the first back first, so no
+  // measurement is taken off a row that is standing somewhere temporary.
+  if (drag) endDrag(true);
+  landing?.();
+  closeTints();
+  const nodes = bandNodes(scope);
+  for (const node of nodes) {
+    moves.get(node)?.cancel();
+    node.style.transform = '';
+  }
+  drag = {
+    from: index,
+    to: index,
+    keyboard,
+    scope,
+    nodes,
+    grips: gripNodes(scope),
+    homes: nodes.map((node) => node.getBoundingClientRect()),
+    offsets: ROLES.map(() => 0),
+    id: card().id,
+    pointerId: null,
+    startX: 0,
+  };
+  nodes[index].dataset.dragging = '';
+  drag.grips[index].dataset.dragging = '';
+  lift(0, false);
+}
+
+function endDrag(cancel, after) {
+  const { nodes, grips, from, to, homes, id, scope } = drag;
+  const target = cancel ? 0 : homes[to].left - homes[from].left;
+  if (cancel) openGap(from, !reduceMotion());
+  drag = null;
+  delete nodes[from].dataset.dragging;
+  delete grips[from].dataset.dragging;
+  landing = () => {
+    landing = null;
+    // The deck can be browsed under a drag, and another card's colors are not
+    // the ones that were picked up.
+    if (!cancel && to !== from && card().id === id) commitOrder(from, to, scope);
+    for (const node of nodes) {
+      moves.get(node)?.cancel();
+      node.style.transform = '';
+    }
+    after?.();
+  };
+  if (reduceMotion()) {
+    landing();
+    return;
+  }
+  const node = nodes[from];
+  const start = node.style.transform;
+  const end = `translateX(${target}px) scale(1)`;
+  node.style.transform = end;
+  const animation = node.animate(
+    [{ transform: start }, { transform: end }],
+    { duration: REORDER_MS, easing: EASE },
+  );
+  moves.set(node, animation);
+  animation.finished.then(() => landing?.(), () => {});
+}
+
+function finishDrag(keyboard) {
+  const { from, to, scope } = drag;
+  if (to === from) {
+    endDrag(true);
+    return;
+  }
+  const summary = `Palette reordered. ${reorderedSummary(from, to)}`;
+  // Focus follows the color rather than the slot it left, and only once the
+  // band has landed: a focus ring drawn on a band in flight points at nothing.
+  endDrag(false, keyboard ? () => gripNodes(scope)[to].focus() : null);
+  announceReorder(scope, summary);
+}
+
+const gripOf = (target) => (target instanceof Element ? target.closest('[data-grip]') : null);
+const scopeOf = (grip) => grip.closest('.picker-bands');
+
+/* Both strips reorder, and they reorder the same palette. The handlers are
+   written once against whichever strip the grip that was grabbed belongs to. */
+function wireReorder(root) {
+  root.addEventListener('pointerdown', (event) => {
+    const grip = gripOf(event.target);
+    if (!grip || event.button !== 0 || !cards.length) return;
+    // Keeps the press off the focus ring and out of a text selection. The grip is
+    // reached by keyboard through Tab, and the pointer drag needs neither.
+    event.preventDefault();
+    beginDrag(ROLES.indexOf(grip.dataset.grip), false, scopeOf(grip));
+    drag.pointerId = event.pointerId;
+    drag.startX = event.clientX;
+    grip.setPointerCapture(event.pointerId);
+  });
+
+  root.addEventListener('pointermove', (event) => {
+    if (!drag || drag.keyboard || event.pointerId !== drag.pointerId) return;
+    const { homes, from } = drag;
+    // Held inside the strip: a band that can be flown across the screen covers
+    // the image the colors were pulled from and says nothing more than this does.
+    const shift = Math.min(
+      homes.at(-1).left - homes[from].left,
+      Math.max(homes[0].left - homes[from].left, event.clientX - drag.startX),
+    );
+    lift(shift, false);
+    const to = nearestSlot(shift);
+    if (to !== drag.to) openGap(to, !reduceMotion());
+  });
+
+  root.addEventListener('pointerup', (event) => {
+    if (!drag || drag.keyboard || event.pointerId !== drag.pointerId) return;
+    finishDrag(false);
+  });
+
+  root.addEventListener('pointercancel', (event) => {
+    if (!drag || drag.keyboard || event.pointerId !== drag.pointerId) return;
+    endDrag(true);
+  });
+
+  root.addEventListener('keydown', (event) => {
+    const grip = gripOf(event.target);
+    if (!grip || !REORDER_KEYS.has(event.key) || !cards.length) return;
+    const scope = scopeOf(grip);
+    const held = Boolean(drag?.keyboard);
+    const grab = event.key === ' ' || event.key === 'Enter';
+    if (!held && (drag || !grab)) return;
+    event.preventDefault();
+    if (!held) {
+      beginDrag(ROLES.indexOf(grip.dataset.grip), true, scope);
+      announceReorder(scope, `${roleLabel(drag.from, scope)} color lifted, position ${drag.from + 1} of ${ROLES.length}. Arrow keys move it, space drops it, escape puts it back.`);
+      return;
+    }
+    if (grab) {
+      finishDrag(true);
+      return;
+    }
+    if (event.key === 'Escape') {
+      endDrag(true);
+      announceReorder(scope, 'Reorder cancelled.');
+      return;
+    }
+    const step = { ArrowLeft: -1, ArrowRight: 1, Home: -ROLES.length, End: ROLES.length }[event.key];
+    const to = Math.min(ROLES.length - 1, Math.max(0, drag.to + step));
+    if (to === drag.to) return;
+    openGap(to, !reduceMotion());
+    lift(drag.homes[to].left - drag.homes[drag.from].left, !reduceMotion());
+    announceReorder(scope, `Position ${to + 1} of ${ROLES.length}.`);
+  });
+
+  // A lifted band with nobody holding it would keep answering arrow keys aimed
+  // at whatever took the focus.
+  root.addEventListener('focusout', (event) => {
+    if (!drag?.keyboard || event.target !== drag.grips[drag.from]) return;
+    const scope = drag.scope;
+    endDrag(true);
+    announceReorder(scope, 'Reorder cancelled.');
+  });
+}
+
+wireReorder(panel);
+wireReorder(strategyBands);
 
 panel.onpointerover = panel.onfocusin = ({ target }) => {
   const band = target.closest('[data-band]');
@@ -1190,8 +1514,12 @@ panel.onclick = async (e) => {
     const tip = data.tip;
     data.tip = 'Copied';
     setTimeout(() => data.tip = tip, 1200);
-  } else if (data.editTints) openTints(data.editTints);
-  else if (data.customColor) $(`[data-color-input="${data.customColor}"]`, panel).click();
+  } else if (data.editTints) {
+    // The button that opened the strip closes it, so the × is a second way out
+    // rather than the only one.
+    if (openTint === data.editTints) closeTints();
+    else openTints(data.editTints);
+  } else if (data.customColor) $(`[data-color-input="${data.customColor}"]`, panel).click();
   else if (data.tint) setColor(openTint, data.tint);
   else if ('closeTints' in data) closeTints();
   else if ('reset' in data) {
@@ -1204,8 +1532,18 @@ panel.onclick = async (e) => {
     const item = card();
     $('[name="palette-source"]').value = item.id;
     for (const role of ROLES) $(`[name="palette-${role}"]`).value = state().colors[role];
+    // Painted before the screen changes rather than on arrival: the next screen
+    // is captured for the transition as it is handed over, and a strip still
+    // holding last run's colors is what would be captured.
+    paintStrategyBands();
   }
 };
+
+/* The select button lives with the screen's actions rather than inside the
+   fieldset, so the delegated handler above never reached it and the palette
+   left the run as four empty fields. It commits the same state the bands are
+   rendered from, reordered or not, so it is that handler and not a copy. */
+$('[data-select-palette]').addEventListener('click', panel.onclick);
 
 $('[data-deck-prev]').onclick = () => browse(current - 1);
 $('[data-deck-next]').onclick = () => browse(current + 1);
@@ -1230,6 +1568,9 @@ document.addEventListener('picker:screenchange', (event) => {
   for (const artboard of screenNode?.querySelectorAll('[data-artboard]') ?? []) {
     syncCommittedPalette(artboard);
   }
+  // Coming back to the strategy screen from further along, where the palette may
+  // have been reordered on the screen it was left on.
+  if (event.detail.screen === '03') paintStrategyBands();
   // Arriving is the quietest moment there is, so the rail settles here even
   // if it is already in order: the chosen pair is the row you land on.
   if (event.detail.screen === '04') {
@@ -1272,8 +1613,47 @@ const modesNext = document.querySelector('[data-modes-next]');
 const syncModesNext = () => {
   if (modesNext) modesNext.disabled = !modeInputs.some((input) => input.checked);
 };
-for (const input of modeInputs) input.addEventListener('change', syncModesNext);
+
+/* The palette is judged on a page, and which page that should be is answered
+   here: the palette screen shows the preview of the surface being designed.
+   Each tile already holds a finished drawing of its mode, so the chosen one is
+   lifted out of the tile rather than restated on screen 02, which is the only
+   way a new variant lands on both screens at once.
+
+   First in tile order, not first clicked. A multi-select answer has no other
+   stable primary, and click order would move the palette's test page around
+   for reasons the visitor cannot see. */
+const modePreviews = modeInputs.map((input) => (
+  input.closest('.picker-mode-tile')?.querySelector('.picker-preview')
+));
+const landingPreview = preview.cloneNode(true);
+let previewSource;
+
+function syncModePreview() {
+  const chosen = modeInputs.findIndex((input) => input.checked);
+  // A tile drawn in something other than this component keeps the landing page,
+  // which is also the floor for the empty answer the continue button blocks.
+  const source = (chosen === -1 ? null : modePreviews[chosen]) ?? landingPreview;
+  if (source === previewSource) return;
+  previewSource = source;
+  const clone = source.cloneNode(true);
+  // Decorative on both screens, but the marker sits on the tile's wrapper
+  // rather than on the component, so it does not survive the lift by itself.
+  clone.setAttribute('aria-hidden', 'true');
+  for (const node of [clone, ...clone.querySelectorAll('[id]')]) node.removeAttribute('id');
+  preview.replaceWith(clone);
+  preview = clone;
+  renderPreview();
+}
+
+for (const input of modeInputs) {
+  input.addEventListener('change', () => {
+    syncModesNext();
+    syncModePreview();
+  });
+}
 syncModesNext();
+syncModePreview();
 
 try {
   const get = (url) => fetch(url).then((response) => response.ok ? response.json() : Promise.reject());
@@ -1286,6 +1666,7 @@ try {
     if (modeInputs.some((input) => wanted.has(input.value))) {
       for (const input of modeInputs) input.checked = wanted.has(input.value);
       syncModesNext();
+      syncModePreview();
     }
   }
   cards = [

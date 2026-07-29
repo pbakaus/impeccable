@@ -294,10 +294,7 @@ const questions = [
               <label class="picker-mode-tile">
                 <input type="checkbox" name="surface-modes" value="persuade" aria-label="Landing pages, marketing, campaigns, and pricing" checked />
                 <span class="picker-mode-preview picker-mode-preview--exact" aria-hidden="true">
-                  <span
-                    class="picker-preview"
-                    style="--pv-primary: #195856; --pv-secondary: #5F7C7A; --pv-tertiary: #3A958B; --pv-neutral: #EDEFEF; --pv-n-ink: var(--pk-ink-dark);"
-                  >
+                  <span class="picker-preview">
                     <span class="pv-desktop">
                       <span class="pv-nav">
                         <span class="pv-logo"></span>
@@ -336,21 +333,85 @@ const questions = [
 
               <label class="picker-mode-tile">
                 <input type="checkbox" name="surface-modes" value="operate" aria-label="App UI, dashboards, admin, and settings" />
-                <span class="picker-mode-preview" aria-hidden="true">
-                  <span class="pm-desktop pm-split">
-                    <span class="pm-side"><i></i><i></i><i></i><i></i></span>
-                    <span class="pm-main">
-                      <span class="pm-cards"><i></i><i></i><i></i></span>
-                      <span class="pm-rows"><i></i><i></i><i></i><i></i></span>
+                <span class="picker-mode-preview picker-mode-preview--exact" aria-hidden="true">
+                  <span class="picker-preview picker-preview--ops">
+                    <span class="pv-desktop">
+                      <span class="pv-nav">
+                        <span class="pv-logo"></span>
+                        <span class="pv-nav-bars"><i></i><i></i><i></i></span>
+                        <span class="pv-pill"></span>
+                      </span>
+                      <span class="po-body">
+                        <span class="po-side">
+                          <span class="po-item"><i class="po-dot"></i><i class="po-line"></i></span>
+                          <span class="po-item po-item--on"><i class="po-dot"></i><i class="po-line"></i></span>
+                          <span class="po-item"><i class="po-dot"></i><i class="po-line"></i></span>
+                        </span>
+                        <span class="po-main">
+                          <span class="po-chart">
+                            <i style="--h: 19.23cqh"></i>
+                            <i style="--h: 26.17cqh"></i>
+                            <i style="--h: 16cqh"></i>
+                            <i class="po-peak" style="--h: 30.7cqh"></i>
+                            <i style="--h: 22.3cqh"></i>
+                          </span>
+                          <span class="po-divider"></span>
+                          <span class="po-rows">
+                            <span class="po-row">
+                              <i class="po-dot"></i>
+                              <i class="po-cell" style="--w: 15.24cqh"></i>
+                              <i class="po-cell" style="--w: 12.76cqh"></i>
+                              <i class="po-cell" style="--w: 12.76cqh"></i>
+                            </span>
+                            <span class="po-row po-row--on">
+                              <i class="po-dot"></i>
+                              <i class="po-cell" style="--w: 15.24cqh"></i>
+                              <i class="po-cell" style="--w: 12.76cqh"></i>
+                              <i class="po-cell" style="--w: 12.61cqh"></i>
+                            </span>
+                            <span class="po-row">
+                              <i class="po-dot"></i>
+                              <i class="po-cell" style="--w: 15.24cqh"></i>
+                              <i class="po-cell" style="--w: 12.76cqh"></i>
+                              <i class="po-cell" style="--w: 12.61cqh"></i>
+                            </span>
+                          </span>
+                        </span>
+                        <span class="po-panel">
+                          <span class="po-heading"></span>
+                          <span class="po-field"><i class="po-chev"></i></span>
+                          <span class="po-switch"><i class="po-label"></i><i class="po-toggle po-toggle--on"></i></span>
+                          <span class="po-switch"><i class="po-label"></i><i class="po-toggle"></i></span>
+                        </span>
+                      </span>
                     </span>
-                  </span>
-                  <span class="pm-phone">
-                    <span class="pm-phone-top"><i class="pm-dot"></i><i class="pm-bar pm-faint" style="--w:30%"></i></span>
-                    <span class="pm-phone-body">
-                      <span class="pm-cards pm-cards-2"><i></i><i></i></span>
-                      <span class="pm-rows"><i></i><i></i><i></i></span>
+                    <span class="pv-phone">
+                      <span class="pv-phone-top">
+                        <span class="pv-logo"></span>
+                        <span class="pv-avatar"></span>
+                      </span>
+                      <span class="po-phone-body">
+                        <span class="po-chart">
+                          <i style="--h: 17.34cqh"></i>
+                          <i style="--h: 25.42cqh"></i>
+                          <i style="--h: 15.33cqh"></i>
+                          <i class="po-peak" style="--h: 33.57cqh"></i>
+                          <i style="--h: 23.93cqh"></i>
+                        </span>
+                        <span class="po-field"><i class="po-chev"></i></span>
+                        <span class="po-prow">
+                          <i class="po-dot"></i>
+                          <i class="po-label"></i>
+                          <i class="po-toggle po-toggle--on"></i>
+                        </span>
+                        <span class="po-prow">
+                          <i class="po-dot"></i>
+                          <i class="po-label"></i>
+                          <i class="po-chev po-chev--next"></i>
+                        </span>
+                      </span>
+                      <span class="pv-tabbar"><i></i><i></i><i></i><i></i></span>
                     </span>
-                    <span class="pm-tabbar"><i></i><i></i><i></i><i></i></span>
                   </span>
                 </span>
                 <span class="picker-mode-copy">
@@ -361,28 +422,50 @@ const questions = [
 
               <label class="picker-mode-tile">
                 <input type="checkbox" name="surface-modes" value="read" aria-label="Docs, articles, guides, and changelogs" />
-                <span class="picker-mode-preview" aria-hidden="true">
-                  <span class="pm-desktop pm-landing">
-                    <span class="pm-topbar"><i class="pm-dot"></i><span class="pm-links"><i></i><i></i></span></span>
-                    <span class="pm-article">
-                      <i class="pm-bar pm-strong" style="--w:62%"></i>
-                      <i class="pm-bar pm-faint" style="--w:34%"></i>
-                      <i class="pm-bar" style="--w:100%"></i>
-                      <i class="pm-bar" style="--w:100%"></i>
-                      <i class="pm-bar" style="--w:90%"></i>
-                      <i class="pm-bar" style="--w:97%"></i>
-                      <i class="pm-bar" style="--w:58%"></i>
+                <span class="picker-mode-preview picker-mode-preview--exact" aria-hidden="true">
+                  <span class="picker-preview picker-preview--docs">
+                    <span class="pv-desktop">
+                      <span class="pv-nav">
+                        <span class="pv-logo"></span>
+                        <span class="pv-nav-bars"><i></i><i></i><i></i></span>
+                        <span class="pv-pill"></span>
+                      </span>
+                      <span class="pd-body">
+                        <span class="pd-side">
+                          <span class="pd-item"><i></i><span></span></span>
+                          <span class="pd-item pd-item--on"><i></i><span></span></span>
+                          <span class="pd-item"><i></i><span></span></span>
+                          <span class="pd-item"><i></i><span></span></span>
+                        </span>
+                        <span class="pd-main">
+                          <span class="pd-heading" style="--w:95%"></span>
+                          <span class="pd-para pd-para--lede"><i style="--w:71%"></i><i style="--w:41%"></i></span>
+                          <span class="pd-para"><i></i><i></i><i style="--w:72%"></i></span>
+                          <span class="pd-para"><i></i><i></i><i style="--w:43%"></i></span>
+                          <span class="pd-note">
+                            <i class="pd-note-dot"></i>
+                            <span class="pd-note-lines"><i style="--w:85%"></i><i style="--w:62%"></i></span>
+                          </span>
+                        </span>
+                      </span>
                     </span>
-                  </span>
-                  <span class="pm-phone">
-                    <span class="pm-phone-body">
-                      <i class="pm-bar pm-strong" style="--w:74%"></i>
-                      <i class="pm-bar pm-faint" style="--w:40%"></i>
-                      <i class="pm-bar" style="--w:100%"></i>
-                      <i class="pm-bar" style="--w:100%"></i>
-                      <i class="pm-bar" style="--w:88%"></i>
-                      <i class="pm-bar" style="--w:96%"></i>
-                      <i class="pm-bar" style="--w:64%"></i>
+                    <span class="pv-phone">
+                      <span class="pv-phone-top">
+                        <span class="pv-logo"></span>
+                        <span class="pv-avatar"></span>
+                      </span>
+                      <span class="pd-phone-body">
+                        <span class="pd-crumb"></span>
+                        <span class="pd-heading" style="--w:98.5%"></span>
+                        <span class="pd-para pd-para--lede"><i style="--w:71%"></i><i style="--w:55%"></i></span>
+                        <span class="pd-para"><i></i><i></i><i></i><i style="--w:69%"></i></span>
+                        <span class="pd-para"><i></i><i></i><i style="--w:57%"></i></span>
+                        <span class="pd-note">
+                          <i class="pd-note-dot"></i>
+                          <span class="pd-note-lines"><i style="--w:92%"></i><i style="--w:63%"></i></span>
+                        </span>
+                      </span>
+                      <span class="pv-tabbar"><i></i><i></i><i></i><i></i></span>
                     </span>
                   </span>
                 </span>
@@ -394,19 +477,63 @@ const questions = [
 
               <label class="picker-mode-tile">
                 <input type="checkbox" name="surface-modes" value="experience" aria-label="Portfolios, galleries, and showcases" />
-                <span class="picker-mode-preview" aria-hidden="true">
-                  <span class="pm-desktop">
-                    <span class="pm-mosaic">
-                      <span class="pm-media"></span>
-                      <span class="pm-media"></span>
-                      <span class="pm-media"></span>
+                <span class="picker-mode-preview picker-mode-preview--exact" aria-hidden="true">
+                  <span class="picker-preview picker-preview--gallery">
+                    <span class="pv-desktop">
+                      <span class="pv-nav">
+                        <span class="pv-logo"></span>
+                        <span class="pv-nav-bars"><i></i><i></i><i></i></span>
+                        <span class="pv-pill"></span>
+                      </span>
+                      <span class="pg-body">
+                        <span class="pg-row">
+                          <span class="pv-image"></span>
+                          <span class="pg-cap">
+                            <i class="pg-cap-title" style="--w:33.61%"></i>
+                            <i></i>
+                            <i style="--w:65.3%"></i>
+                          </span>
+                        </span>
+                        <span class="pg-row pg-row--flip">
+                          <span class="pg-cap">
+                            <i class="pg-cap-title" style="--w:36.64%"></i>
+                            <i></i>
+                            <i style="--w:66.07%"></i>
+                          </span>
+                          <span class="pv-image"></span>
+                        </span>
+                        <span class="pg-rail">
+                          <i class="pg-arrow"></i>
+                          <span class="pg-track">
+                            <i class="pg-track-on" style="--w:20.31cqh"></i>
+                            <i style="--w:9.14cqh"></i>
+                            <i style="--w:8.98cqh"></i>
+                            <i style="--w:12.44cqh"></i>
+                          </span>
+                          <i class="pg-arrow pg-arrow--next"></i>
+                        </span>
+                      </span>
                     </span>
-                  </span>
-                  <span class="pm-phone">
-                    <span class="pm-phone-body pm-fill">
-                      <span class="pm-media"></span>
-                      <span class="pm-media"></span>
-                      <i class="pm-bar pm-faint" style="--w:46%"></i>
+                    <span class="pv-phone">
+                      <span class="pv-phone-top">
+                        <span class="pv-logo"></span>
+                        <span class="pv-avatar"></span>
+                      </span>
+                      <span class="pg-phone-body">
+                        <span class="pv-image"></span>
+                        <span class="pg-cap">
+                          <i class="pg-cap-title" style="--w:30.18%"></i>
+                          <i style="--w:79.68%"></i>
+                          <i style="--w:55.6%"></i>
+                        </span>
+                        <span class="pv-image"></span>
+                        <span class="pg-cap">
+                          <i class="pg-cap-title" style="--w:30.18%"></i>
+                          <i style="--w:79.68%"></i>
+                          <i style="--w:55.6%"></i>
+                        </span>
+                      </span>
+                      <span class="pv-tabbar"><i></i><i></i><i></i></span>
                     </span>
                   </span>
                 </span>
@@ -508,12 +635,19 @@ const questions = [
                   {roles.map(([role, label]) => (
                     <div class="picker-band-item" data-band-item={role}>
                       <div class="picker-band" data-band={role} tabindex="0">
+                        <button class="picker-band-grip picker-tip" type="button" data-grip={role} data-tip="Drag to reorder" aria-label={`Reorder the ${label} color`}>
+                          <svg viewBox="0 0 20 20" aria-hidden="true">
+                            <circle cx="7" cy="5" r="1.5"></circle><circle cx="13" cy="5" r="1.5"></circle>
+                            <circle cx="7" cy="10" r="1.5"></circle><circle cx="13" cy="10" r="1.5"></circle>
+                            <circle cx="7" cy="15" r="1.5"></circle><circle cx="13" cy="15" r="1.5"></circle>
+                          </svg>
+                        </button>
                         <output data-band-hex={role}>#000000</output>
                         <div class="picker-band-tools" role="group" aria-label={`${label} color actions`}>
                           <button class="picker-band-tool picker-tip" type="button" data-copy-color={role} data-tip="Copy hex + OKLCH" aria-label={`Copy ${label} hex and OKLCH`}>
                             <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="6.5" y="6.5" width="9" height="9"></rect><path d="M4.5 13.5h-1v-10h10v1"></path></svg>
                           </button>
-                          <button class="picker-band-tool picker-tip" type="button" data-edit-tints={role} data-tip="Edit tints" aria-label={`Edit ${label} tints`}>
+                          <button class="picker-band-tool picker-tip" type="button" data-edit-tints={role} data-tip="Edit tints" aria-expanded="false" aria-label={`Edit ${label} tints`}>
                             <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m4 14.5-.4 2 2-.4L15 6.7 13.3 5 4 14.5Z"></path><path d="m11.9 6.4 1.7 1.7"></path></svg>
                           </button>
                           <button class="picker-band-tool picker-tip" type="button" data-custom-color={role} data-tip="Custom color" aria-label={`Choose custom ${label} color`}>
@@ -532,6 +666,8 @@ const questions = [
                     </div>
                   ))}
                 </div>
+
+                <p class="picker-band-status" data-reorder-status role="status" aria-live="polite"></p>
 
                 <div class="picker-preview" aria-hidden="true">
                   <div class="pv-desktop">
@@ -627,6 +763,28 @@ const questions = [
                   </span>
                 </label>
                 </fieldset>
+
+                <div class="picker-bands picker-bands--compact" data-band-scope="strategy">
+                  {roles.map(([role, label]) => (
+                    <div class="picker-band-item" data-band-item={role}>
+                      <div class="picker-band" data-band={role}>
+                        <button class="picker-band-grip picker-tip" type="button" data-grip={role} data-tip="Drag to reorder" aria-label={`Reorder the ${label} color`}>
+                          <svg viewBox="0 0 20 20" aria-hidden="true">
+                            <circle cx="7" cy="5" r="1.5"></circle><circle cx="13" cy="5" r="1.5"></circle>
+                            <circle cx="7" cy="10" r="1.5"></circle><circle cx="13" cy="10" r="1.5"></circle>
+                            <circle cx="7" cy="15" r="1.5"></circle><circle cx="13" cy="15" r="1.5"></circle>
+                          </svg>
+                        </button>
+                        <output data-band-hex={role}>#000000</output>
+                      </div>
+                      <div class="picker-band-foot">
+                        <h2>{label}</h2>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <p class="picker-band-status" data-reorder-status role="status" aria-live="polite"></p>
               </div>
 
               <Artboard class="picker-strategy-preview" strategyHook />
@@ -1010,9 +1168,32 @@ const questions = [
       $('[data-progress-name]').textContent = name || '';
     };
 
+    // The palette screen and the strategy screen are the one pair in the run
+    // that shows the same objects twice, so they are the pair whose change is
+    // worth animating: the four colors and the test page travel between the two
+    // positions instead of being redrawn. Everywhere else there is nothing to
+    // carry, and capturing a screen that is mid-animation reads worse than a
+    // plain swap does.
+    const MORPH = new Set(['02', '03']);
+    const morphs = (from, to) => (
+      typeof document.startViewTransition === 'function'
+      && !matchMedia('(prefers-reduced-motion: reduce)').matches
+      && MORPH.has(from?.dataset.screen)
+      && MORPH.has(to?.dataset.screen)
+    );
+
     const goTo = (index) => {
       const target = screens[index];
       if (!target) return;
+      if (morphs(screens[current], target)) {
+        document.startViewTransition(() => swap(index));
+        return;
+      }
+      swap(index);
+    };
+
+    const swap = (index) => {
+      const target = screens[index];
       screens.forEach((screen, screenIndex) => {
         const active = screenIndex === index;
         screen.toggleAttribute('data-active', active);
