@@ -185,8 +185,13 @@ body.picker-page {
   view-transition-name: pk-band-neutral;
 }
 
+/* Both screens now judge their answer on the same drawing, so the pair the
+   transition carries is one component in two sizes: the frame grows out of the
+   palette screen's rather than dissolving into a different page. The hidden
+   surfaces are display: none and so are not rendered, which is what keeps the
+   name unique while every chosen surface stays mounted. */
 .picker-screen[data-screen="02"] .picker-preview,
-.picker-screen[data-screen="03"] .picker-strategy-preview {
+.picker-screen[data-screen="03"] .picker-strategy-stage > .picker-preview {
   view-transition-name: pk-test-page;
 }
 
@@ -2565,15 +2570,23 @@ body.picker-page {
    only holds where there are four options to divide. */
 .picker-screen[data-screen="03"] .picker-strategy-grid > .picker-type-rail {
   grid-template-rows: minmax(0, 1fr) auto;
-  /* The artboard is width: 100% at 1.865/1, so its height is this column's own
-     width over that ratio: the container's 1500 cap less its padding, less the
-     rail and the gap. What the rail can spend without growing the row. */
-  --pk-art: calc((min(1500px, 100vw) - 582px) / 1.865);
-  /* And the band is what gives when that budget will not cover four legible
-     rows: 368px is the four at their floor plus the gap and the panel's
-     hairline. A shorter reading of the palette costs less than a squeezed
-     sentence, so the band yields first and the rows yield last. */
-  --pk-band: clamp(72px, calc(var(--pk-art) - 368px), 96px);
+  /* The rail is measured against the viewport rather than against the frame
+     beside it. The frame draws the chosen surface at that drawing's own ratio,
+     which is wider than the artboard this column used to hold, so matching its
+     height would spend the whole column on four rows of 78px.
+
+     It is also the tallest thing in its row now, which makes it the column
+     that decides where the CTA lands. The shared budget is measured for a row
+     an artboard sets and runs about 30px short of what this screen spends
+     around its grid; at a 900px viewport that difference is the whole
+     overhang, so this screen measures itself. Taken at 1600x900, the tightest
+     of the common sizes. */
+  --pk-fit: calc(100svh - 376px);
+  /* 546px is the comfortable rail: four rows at 108, the band at 96, the gap,
+     and the panel's hairline. Below that the band is the first thing to give,
+     down to a floor where the palette is still readable, because a shorter
+     reading of four colors costs less than a squeezed sentence. */
+  --pk-band: clamp(72px, calc(var(--pk-fit) - 450px), 96px);
 }
 
 /* And the rows come in under what the artboard beside them asks for, so the row
@@ -2590,7 +2603,7 @@ body.picker-page {
      measures against the column budget alone, which on a short viewport asks
      for less than the floor and clips the fourth option to reach it. */
   max-height: none;
-  grid-auto-rows: max(88px, min(108px, calc((var(--pk-art) - var(--pk-band) - 16px) / 4), calc((var(--pk-column) - 2px) / 4)));
+  grid-auto-rows: max(88px, min(108px, calc((var(--pk-fit) - var(--pk-band) - 18px) / 4)));
 }
 
 /* Equal rows, sized by the tallest one's copy rather than by how many there
@@ -2771,6 +2784,180 @@ body.picker-page {
   aspect-ratio: 1.865 / 1;
   grid-template-columns: minmax(0, 1fr);
   gap: 0;
+}
+
+/* ============================================================
+   The strategy stage. Screen 03 colors the surfaces chosen on screen 01b, so
+   the frame holds one drawing per chosen surface and shows one at a time. The
+   drawings are lifted whole from the tiles, which is why the frame takes their
+   ratio rather than imposing the artboard's: two of the four are drawn in
+   pixels and two scale off their own height, and stretching either to a taller
+   frame breaks the drawing rather than filling it.
+
+   The rail beside it is the taller column, so the frame is centred against it
+   and the tabs ride in the space above, where they cover none of the page they
+   are switching between.
+   ============================================================ */
+.picker-strategy-stage {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto auto;
+  align-content: center;
+  gap: 12px;
+}
+
+/* One drawing is shown and the rest stay mounted, so switching costs an
+   attribute rather than a rebuild. [hidden] is a display: none that the
+   component's own display: grid outranks, so it is restated here. */
+.picker-preview[hidden] {
+  display: none;
+}
+
+/* The group only appears with a second surface to switch to; a single surface
+   is already the only thing the frame can be showing. */
+.picker-surface-tabs {
+  justify-self: end;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--ks-lacquer-raised);
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+}
+
+.picker-surface-tabs[hidden] {
+  display: none;
+}
+
+.picker-surface-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px;
+  color: var(--ks-text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 2px;
+  font-family: inherit;
+  font-size: 0.82rem;
+  line-height: 1.2;
+  cursor: pointer;
+  transition:
+    background-color 180ms var(--ks-ease),
+    color 180ms var(--ks-ease);
+}
+
+.picker-surface-tab:hover {
+  color: var(--ks-champagne);
+  background: color-mix(in oklab, var(--ks-patina) 9%, var(--ks-lacquer-raised));
+}
+
+.picker-surface-tab[aria-pressed="true"] {
+  color: var(--ks-champagne);
+  background: color-mix(in oklab, var(--ks-patina) 14%, var(--ks-lacquer-raised));
+}
+
+.picker-surface-tab:focus-visible {
+  outline: 2px solid var(--ks-patina-deep);
+  outline-offset: -2px;
+}
+
+/* The whole report on state: filled once the surface has been answered
+   deliberately, hollow while it is still carrying the default it was given. */
+.picker-surface-dot {
+  width: 6px;
+  height: 6px;
+  border: 1px solid color-mix(in oklab, var(--ks-patina) 55%, transparent);
+  border-radius: 50%;
+}
+
+.picker-surface-tab[data-set="yes"] .picker-surface-dot {
+  background: var(--ks-patina);
+  border-color: var(--ks-patina);
+}
+
+/* A strategy the surface in the frame cannot carry. The row keeps its place so
+   the list does not reshuffle as you move between surfaces, and its sentence
+   is replaced by the reason it is out. */
+.picker-strategy-option.is-blocked {
+  opacity: 0.42;
+  /* Deaf to the cursor as well as to the click, so a row the surface cannot
+     carry cannot preview itself either. It also keeps the hover and checked
+     branches below written the way the artboard's are: no blocked row can be
+     the one being hovered, so neither branch has to ask. */
+  pointer-events: none;
+}
+
+/* ============================================================
+   The strategy, applied to the surface in the frame.
+
+   The drawings read the palette through role names, and every shade they mix
+   is mixed from those same names, so a strategy is a remapping of the roles
+   rather than a second set of rules per drawing. Redistributing four roles
+   reaches all four surfaces at once, and a new surface arrives already
+   answering to it.
+
+   The committed colors are painted onto the stage under --pkc-*, which gives
+   each remap a fixed handle on what was chosen. Reading --pv-* instead would
+   read whatever the remap had just written, which is how drenched would end
+   up mixing its ground out of its own ink.
+   ============================================================ */
+.picker-strategy-stage > .picker-preview {
+  --pv-primary: var(--pkc-primary, var(--ks-champagne));
+  --pv-secondary: var(--pkc-secondary, var(--ks-patina));
+  --pv-tertiary: var(--pkc-tertiary, var(--ks-kinpaku));
+  --pv-neutral: var(--pkc-neutral, var(--ks-lacquer-raised));
+  --pv-n-ink: var(--pkc-n-ink, var(--ks-champagne));
+  --pv-p-ink: var(--pkc-p-ink, var(--ks-champagne));
+}
+
+/* Restrained: the page is its neutral and the primary is the only color that
+   arrives. The other two stand down into the ground rather than disappearing,
+   so what they were holding is still legible as structure. */
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="restrained"]) .picker-strategy-stage > .picker-preview,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="restrained"]:checked) .picker-strategy-stage > .picker-preview {
+  --pv-secondary: color-mix(in oklab, var(--pkc-neutral) 78%, var(--pkc-n-ink));
+  --pv-tertiary: color-mix(in oklab, var(--pkc-neutral) 86%, var(--pkc-n-ink));
+  --pv-t-ink: var(--pkc-n-ink);
+  --pv-t-on-t: var(--pkc-n-ink);
+  --pv-t-on-n: color-mix(in oklab, var(--pkc-n-ink) 62%, var(--pkc-neutral));
+  --pv-t-on-p: var(--pkc-p-ink);
+}
+
+/* Committed: one color doing all the work the other two were doing, and a
+   trace of it in the paper as well. Without the paper, a surface whose accents
+   are small (a dashboard, a doc) separates from restrained by a few tinted
+   pixels, which is not what "does real work across the page" describes. */
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="committed"]) .picker-strategy-stage > .picker-preview,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="committed"]:checked) .picker-strategy-stage > .picker-preview {
+  --pv-neutral: color-mix(in oklab, var(--pkc-neutral) 95%, var(--pkc-primary));
+  --pv-secondary: var(--pkc-primary);
+  --pv-tertiary: var(--pkc-primary);
+  --pv-t-ink: var(--pkc-p-ink);
+  --pv-t-on-t: var(--pkc-p-on-p);
+  --pv-t-on-n: var(--pkc-p-on-n);
+  --pv-t-on-p: var(--pkc-p-on-p);
+}
+
+/* Full palette is the drawing as it was authored: four roles, each already
+   holding a different part of the page. It needs no block of its own, which
+   is the same reason the artboard's restrained does not have one. */
+
+/* Drenched: the ground becomes the primary, and everything that was picked out
+   in the primary is now picked out against it in ink. The shades the drawings
+   mix from the neutral follow the ground without being told, which is what
+   keeps the images and panels tinted rather than left as white holes. */
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="drenched"]) .picker-strategy-stage > .picker-preview,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="drenched"]:checked) .picker-strategy-stage > .picker-preview {
+  --pv-neutral: var(--pkc-primary);
+  --pv-n-ink: var(--pkc-p-ink);
+  --pv-primary: var(--pkc-p-ink);
+  --pv-p-ink: var(--pkc-primary);
+  --pv-p-on-n: var(--pkc-p-ink);
+  --pv-p-on-p: var(--pkc-primary);
+  --pv-secondary: var(--pkc-tertiary);
+  --pv-tertiary: var(--pkc-tertiary);
+  --pv-t-on-n: var(--pkc-t-on-p);
 }
 
 /* Hovering an option previews its strategy before the click commits it.

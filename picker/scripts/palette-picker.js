@@ -185,26 +185,30 @@ function renderPreview() {
   preview.style.setProperty('--pv-n-ink', contrastInk(state().colors.neutral));
 }
 
-function syncCommittedPalette(target) {
+/* The prefix exists for the strategy stage, which needs the committed colors
+   under names its own CSS never rewrites: the remap there reads these to know
+   what was chosen, and reading the live --pv-* would read its own output. */
+function syncCommittedPalette(target, prefix = 'pv') {
   const committed = roleMap((role) => $(`[name="palette-${role}"]`).value);
   if (!target || Object.values(committed).some((hex) => !hex)) return;
-  for (const role of ROLES) target.style.setProperty(`--pv-${role}`, committed[role]);
+  const set = (name, value) => target.style.setProperty(`--${prefix}-${name}`, value);
+  for (const role of ROLES) set(role, committed[role]);
   // One ink per fill a preview can paint a label on: the strategy decides
   // which of the three carries the button on any given artboard.
-  target.style.setProperty('--pv-n-ink', contrastInk(committed.neutral));
-  target.style.setProperty('--pv-p-ink', contrastInk(committed.primary));
-  target.style.setProperty('--pv-t-ink', contrastInk(committed.tertiary));
+  set('n-ink', contrastInk(committed.neutral));
+  set('p-ink', contrastInk(committed.primary));
+  set('t-ink', contrastInk(committed.tertiary));
   // And one reading version of each accent that the type artboards set words
   // in, per ground it can land on: the neutral page, or the primary once the
   // strategy drenches the page in it.
-  target.style.setProperty('--pv-p-on-n', readableOn(committed.primary, committed.neutral));
-  target.style.setProperty('--pv-t-on-n', readableOn(committed.tertiary, committed.neutral));
-  target.style.setProperty('--pv-t-on-p', readableOn(committed.tertiary, committed.primary));
+  set('p-on-n', readableOn(committed.primary, committed.neutral));
+  set('t-on-n', readableOn(committed.tertiary, committed.neutral));
+  set('t-on-p', readableOn(committed.tertiary, committed.primary));
   // Labels on filled buttons: hue is the role that paints the fill, ground is
-  // that same fill — not the page neutral that produced the 1.63:1 regression.
-  target.style.setProperty('--pv-p-on-p', readableOn(committed.primary, committed.primary));
-  target.style.setProperty('--pv-t-on-t', readableOn(committed.tertiary, committed.tertiary));
-  target.style.setProperty('--pv-p-on-i', readableOn(committed.primary, contrastInkHex(committed.primary)));
+  // that same fill, not the page neutral that produced the 1.63:1 regression.
+  set('p-on-p', readableOn(committed.primary, committed.primary));
+  set('t-on-t', readableOn(committed.tertiary, committed.tertiary));
+  set('p-on-i', readableOn(committed.primary, contrastInkHex(committed.primary)));
 }
 
 /* Every field is checked only when it is present. The manifest merges over
@@ -1311,6 +1315,7 @@ function recommitPalette() {
   if (!$('[name="palette-source"]').value) return;
   for (const role of ROLES) $(`[name="palette-${role}"]`).value = state().colors[role];
   paintStrategyBands();
+  paintStage();
   for (const artboard of document.querySelectorAll('.picker-screen[data-active] [data-artboard]')) {
     syncCommittedPalette(artboard);
   }
@@ -1536,6 +1541,7 @@ panel.onclick = async (e) => {
     // is captured for the transition as it is handed over, and a strip still
     // holding last run's colors is what would be captured.
     paintStrategyBands();
+    paintStage();
   }
 };
 
@@ -1570,7 +1576,16 @@ document.addEventListener('picker:screenchange', (event) => {
   }
   // Coming back to the strategy screen from further along, where the palette may
   // have been reordered on the screen it was left on.
-  if (event.detail.screen === '03') paintStrategyBands();
+  if (event.detail.screen === '03') {
+    paintStrategyBands();
+    paintStage();
+  } else {
+    /* Everywhere else previews the leading surface's answer, so the radio the
+       later screens read is parked there whenever 03 is off screen. Without
+       this the run would carry whichever surface was last on the tab, and a
+       strategy switched off for that surface would leave the answer empty. */
+    showSurface(chosenSurfaces()[0]?.value);
+  }
   // Arriving is the quietest moment there is, so the rail settles here even
   // if it is already in order: the chosen pair is the row you land on.
   if (event.detail.screen === '04') {
@@ -1630,6 +1645,9 @@ const landingPreview = preview.cloneNode(true);
 let previewSource;
 
 function syncModePreview() {
+  // Screen 03 draws every chosen surface, not just the leading one, so it is
+  // rebuilt from here: every path that changes the tiles already runs this.
+  syncSurfaces();
   const chosen = modeInputs.findIndex((input) => input.checked);
   // A tile drawn in something other than this component keeps the landing page,
   // which is also the floor for the empty answer the continue button blocks.
@@ -1645,6 +1663,163 @@ function syncModePreview() {
   preview = clone;
   renderPreview();
 }
+
+/* Screen 03 colors the surfaces that were chosen rather than one fixed page,
+   and it colors each of them separately: the answer that suits the marketing
+   page rarely suits the tool it sells. Every chosen tile's drawing is mounted
+   on the stage, one is shown, and a tab in the frame's corner carries between
+   them when there is more than one to carry between. */
+const stage = document.querySelector('[data-strategy-stage]');
+const surfaceTabs = document.querySelector('[data-surface-tabs]');
+const strategyInputs = [...document.querySelectorAll('input[name="color-strategy"]')];
+const strategyRows = new Map(strategyInputs.map((input) => [input.value, input.closest('.picker-strategy-option')]));
+
+/* Why a strategy is out belongs to the strategy, not to the pairing, so it is
+   written once here rather than once per surface that rules it out. */
+const BLOCKED_BECAUSE = {
+  drenched: 'Too loud for a page people work in or read at length.',
+  'full-palette': 'Four colors on duty compete with the work on show.',
+};
+
+const chosenSurfaces = () => modeInputs.filter((input) => input.checked);
+const surfaceInput = (value) => modeInputs.find((input) => input.value === value);
+const allowedFor = (value) => (surfaceInput(value)?.dataset.strategies ?? '').split(' ').filter(Boolean);
+const defaultFor = (value) => surfaceInput(value)?.dataset.strategyDefault ?? 'restrained';
+const strategyField = (value) => document.querySelector(`[data-surface-strategy="${value}"]`);
+const strategyTitle = (value) => strategyRows.get(value)?.querySelector('.picker-strategy-title').textContent ?? value;
+let activeSurface = null;
+
+/* One drawing per chosen surface, painted with the committed palette. All of
+   them stay mounted and one is shown, so a tab switch costs a hidden attribute
+   rather than a rebuild and the frame never blinks. */
+function syncSurfaces() {
+  if (!stage) return;
+  const chosen = chosenSurfaces();
+  for (const node of stage.querySelectorAll('[data-surface]')) node.remove();
+  for (const input of chosen) {
+    const source = modePreviews[modeInputs.indexOf(input)];
+    if (!source) continue;
+    const clone = source.cloneNode(true);
+    // Decorative here as on the tile, but the marker sits on the tile's
+    // wrapper rather than on the drawing, so it does not survive the lift.
+    clone.setAttribute('aria-hidden', 'true');
+    for (const node of [clone, ...clone.querySelectorAll('[id]')]) node.removeAttribute('id');
+    clone.dataset.surface = input.value;
+    stage.append(clone);
+  }
+  paintStage();
+
+  /* Every chosen surface leaves an answer whether or not it was ever opened,
+     so the field is filled with the default the moment the tile is chosen and
+     the tab reports it as unset until someone says otherwise. */
+  for (const input of modeInputs) {
+    const field = strategyField(input.value);
+    if (!field) continue;
+    field.disabled = !input.checked;
+    if (!input.checked) {
+      field.value = '';
+      delete field.dataset.chosen;
+    } else if (!field.value) {
+      field.value = defaultFor(input.value);
+    }
+  }
+
+  buildTabs(chosen);
+  showSurface(chosen.some((input) => input.value === activeSurface) ? activeSurface : chosen[0]?.value);
+}
+
+/* Painted once on the frame rather than on each drawing inside it, so the
+   strategy layer keeps a fixed reading of what was chosen and the drawings
+   themselves carry no inline color for it to argue with. */
+function paintStage() {
+  syncCommittedPalette(stage, 'pkc');
+}
+
+/* One surface needs no tabs: the frame is already showing the only answer
+   there is. The dot is the whole report on state, filled once the surface has
+   been answered deliberately and hollow while it is still holding a default. */
+function buildTabs(chosen) {
+  if (!surfaceTabs) return;
+  surfaceTabs.hidden = chosen.length < 2;
+  surfaceTabs.replaceChildren(...chosen.map((input) => {
+    const tab = document.createElement('button');
+    tab.type = 'button';
+    tab.className = 'picker-surface-tab';
+    tab.dataset.surfaceTab = input.value;
+    tab.innerHTML = '<span class="picker-surface-dot"></span>';
+    tab.append(input.dataset.surfaceLabel ?? input.value);
+    tab.onclick = () => showSurface(input.value);
+    return tab;
+  }));
+  markTabs();
+}
+
+function markTabs() {
+  for (const tab of surfaceTabs?.children ?? []) {
+    const value = tab.dataset.surfaceTab;
+    const field = strategyField(value);
+    const set = Boolean(field?.dataset.chosen);
+    const on = value === activeSurface;
+    tab.dataset.set = set ? 'yes' : 'no';
+    tab.setAttribute('aria-pressed', on ? 'true' : 'false');
+    tab.tabIndex = on ? 0 : -1;
+    tab.setAttribute('aria-label', set
+      ? `${tab.textContent}, colored ${strategyTitle(field.value).toLowerCase()}`
+      : `${tab.textContent}, no color strategy chosen yet`);
+  }
+}
+
+function showSurface(value) {
+  if (!value || !stage) return;
+  activeSurface = value;
+  for (const clone of stage.querySelectorAll('[data-surface]')) {
+    clone.hidden = clone.dataset.surface !== value;
+  }
+  applyApplicability();
+  const field = strategyField(value);
+  const wanted = field?.value || defaultFor(value);
+  const input = strategyInputs.find((radio) => radio.value === wanted);
+  if (input) input.checked = true;
+  markTabs();
+}
+
+/* A strategy a surface cannot carry is left in place and turned off rather
+   than removed: the list keeps its shape as you move between surfaces, and the
+   row says why it is out instead of vanishing without a reason. */
+function applyApplicability() {
+  const allowed = new Set(allowedFor(activeSurface));
+  for (const [value, row] of strategyRows) {
+    if (!row) continue;
+    const ok = allowed.has(value);
+    const desc = row.querySelector('.picker-strategy-desc');
+    desc.dataset.copy ??= desc.textContent;
+    desc.textContent = ok ? desc.dataset.copy : BLOCKED_BECAUSE[value] ?? desc.dataset.copy;
+    row.classList.toggle('is-blocked', !ok);
+    row.querySelector('input').disabled = !ok;
+  }
+}
+
+for (const input of strategyInputs) {
+  input.addEventListener('change', () => {
+    const field = strategyField(activeSurface);
+    if (!input.checked || !field) return;
+    field.value = input.value;
+    field.dataset.chosen = 'yes';
+    markTabs();
+  });
+}
+
+/* Arrow keys walk the group, which is the one thing a row of buttons owes a
+   keyboard once only the current tab is in the tab order. */
+surfaceTabs?.addEventListener('keydown', (event) => {
+  const step = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
+  if (!step) return;
+  const tabs = [...surfaceTabs.children];
+  const next = tabs[(tabs.findIndex((tab) => tab.dataset.surfaceTab === activeSurface) + step + tabs.length) % tabs.length];
+  event.preventDefault();
+  showSurface(next.dataset.surfaceTab);
+  next.focus();
+});
 
 for (const input of modeInputs) {
   input.addEventListener('change', () => {
