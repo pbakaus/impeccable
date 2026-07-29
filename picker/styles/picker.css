@@ -160,6 +160,41 @@ body.picker-page {
   display: none;
 }
 
+/* The palette screen and the strategy screen show the same two things: the four
+   chosen colors, and the page they are being judged on. Between those two the
+   objects move and resize rather than being redrawn, so each carries a name on
+   both of its copies. An inactive screen is display:none and therefore not
+   rendered, which is what leaves each name on exactly one element at capture.
+
+   Named per role rather than once for the whole strip: each color then travels
+   to its own slot, so a strip that was reordered reads as four colors moving to
+   new places instead of one block sliding. */
+:is(.picker-screen[data-screen="02"], .picker-screen[data-screen="03"]) .picker-band[data-band="primary"] {
+  view-transition-name: pk-band-primary;
+}
+
+:is(.picker-screen[data-screen="02"], .picker-screen[data-screen="03"]) .picker-band[data-band="secondary"] {
+  view-transition-name: pk-band-secondary;
+}
+
+:is(.picker-screen[data-screen="02"], .picker-screen[data-screen="03"]) .picker-band[data-band="tertiary"] {
+  view-transition-name: pk-band-tertiary;
+}
+
+:is(.picker-screen[data-screen="02"], .picker-screen[data-screen="03"]) .picker-band[data-band="neutral"] {
+  view-transition-name: pk-band-neutral;
+}
+
+.picker-screen[data-screen="02"] .picker-preview,
+.picker-screen[data-screen="03"] .picker-strategy-preview {
+  view-transition-name: pk-test-page;
+}
+
+::view-transition-group(*) {
+  animation-duration: 340ms;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
 /* Mirrors site/styles/home-rebuild.css's .hero-rebuild-container width math. */
 .picker-container {
   position: relative;
@@ -818,7 +853,10 @@ body.picker-page {
   pointer-events: auto;
 }
 
-.picker-band-item[data-tint-open] .picker-band-tools {
+/* With the strip open the edit button is also its close button, so it is the
+   one tool that stays live. The other two would act on a color the strip is in
+   the middle of changing. */
+.picker-band-item[data-tint-open] .picker-band-tool:is([data-copy-color], [data-custom-color]) {
   opacity: 0;
   pointer-events: none;
 }
@@ -898,6 +936,114 @@ body.picker-page {
   pointer-events: none;
 }
 
+/* Reorder grip. Dragging a band carries its color to another slot; the slots
+   keep their roles, so the label in the foot holds still while the band above
+   it travels. The affordance stays quiet because the color is the subject of
+   the row: no border of its own, and it strengthens on hover and on focus. */
+.picker-band-grip {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  z-index: 2;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 2px;
+  color: inherit;
+  cursor: grab;
+  opacity: 0.42;
+  touch-action: none;
+  transition: opacity 180ms var(--ks-ease);
+}
+
+.picker-band-grip svg {
+  width: 22px;
+  height: 22px;
+  fill: currentColor;
+  stroke: none;
+}
+
+.picker-band:hover .picker-band-grip,
+.picker-band:focus-within .picker-band-grip {
+  opacity: 0.9;
+}
+
+.picker-band-grip:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--ks-patina);
+  outline-offset: 3px;
+}
+
+.picker-band-grip[data-dragging] {
+  cursor: grabbing;
+  opacity: 1;
+}
+
+/* The leftmost grip sits against the panel's left edge, so its tip reads to the
+   side there is room on rather than to the left like the tools' tips do. */
+.picker-band-grip.picker-tip::after {
+  top: 50%;
+  right: auto;
+  bottom: auto;
+  left: calc(100% + 8px);
+  transform: translate(-3px, -50%);
+}
+
+.picker-band-grip.picker-tip:is(:hover, :focus-visible)::after {
+  transform: translate(0, -50%);
+}
+
+/* The tip has said its piece by the time the band is moving, and under the
+   pointer it would cover the color being placed. */
+.picker-band-grip[data-dragging].picker-tip::after {
+  opacity: 0;
+  transition: none;
+}
+
+/* A lifted band rides over its neighbours and carries a hairline of its own
+   ink, since this screen has no shadows to borrow. The ring fades rather than
+   cuts, so it is gone by the time the band hands its color to the slot it
+   landed on and the swap itself is invisible. */
+.picker-band[data-dragging] {
+  z-index: 6;
+  cursor: grabbing;
+}
+
+.picker-band::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  outline: 1px solid color-mix(in srgb, currentColor 55%, transparent);
+  outline-offset: -1px;
+  pointer-events: none;
+  transition: opacity 140ms var(--ks-ease);
+}
+
+.picker-band[data-dragging]::after {
+  opacity: 1;
+}
+
+.picker-band-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .picker-band-grip,
+  .picker-band::after {
+    transition: none;
+  }
+}
+
 .picker-band-foot {
   position: relative;
   height: 46px;
@@ -914,6 +1060,44 @@ body.picker-page {
 
 .picker-band-item[data-tint-open] .picker-band-foot h2 {
   visibility: hidden;
+}
+
+/* The same band, restated on the strategy screen under the choices. It is a
+   reading of the palette and a handle to reorder it, not a place to edit it, so
+   the tools come off and what is left fits in the column the options leave
+   behind: a little over a third of the height the editable band needs. */
+.picker-bands--compact .picker-band {
+  /* The strip's own height less the foot and the group's two hairlines. */
+  height: calc(var(--pk-band, 96px) - 32px);
+}
+
+/* Read from the far corner rather than under the grip: at the short end of the
+   band's range the swatch is not tall enough to stack them. */
+.picker-bands--compact .picker-band output {
+  right: 8px;
+  bottom: 8px;
+  left: 8px;
+  text-align: right;
+}
+
+.picker-bands--compact .picker-band-grip {
+  top: 3px;
+  left: 3px;
+  width: 30px;
+  height: 30px;
+}
+
+.picker-bands--compact .picker-band-grip svg {
+  width: 19px;
+  height: 19px;
+}
+
+.picker-bands--compact .picker-band-foot {
+  height: 30px;
+}
+
+.picker-bands--compact .picker-band-foot h2 {
+  font-size: 0.96rem;
 }
 
 .picker-tint-strip {
@@ -992,11 +1176,11 @@ body.picker-page {
   gap: 16px;
 }
 
-/* Two artboards floating on the page itself: a landing page on the desktop
-   card (the palette persuading) and an app screen on the phone card (the
-   palette operating). Every palette is judged doing both jobs, so no
-   per-project switch is needed. The phone's fixed portrait ratio keeps the
-   wide frame from stretching a single page mock. */
+/* Two artboards floating on the page itself: a desktop card and a phone card,
+   both in the same shell of shared chrome. What fills their bodies is the
+   variant the chosen surface brings, so the palette is judged on the kind of
+   page it is going to dress. The phone's fixed portrait ratio keeps the wide
+   frame from stretching a single page mock. */
 .pv-desktop,
 .pv-phone {
   min-width: 0;
@@ -1233,14 +1417,14 @@ body.picker-page {
    Four tiles, one per mode the skill recognizes, chosen before any visual
    question so every later answer knows what kind of page it is dressing.
    Multi-select: a product is allowed to be an app with a landing page and
-   docs. The previews are deliberately monochrome, drawn entirely from the
-   theme's own neutral ramp; color has not been chosen yet, and a gray
-   wireframe cannot pre-sell one. */
+   docs. All four previews are drawn in the one demo palette set on the frame
+   below: color has not been chosen yet, so no tile is allowed to read as a
+   better color decision than the three beside it. */
 /* Everything on this screen is cut from one measure: the width the palette
    screen's preview is currently rendering at, and the scale this tile reduces
-   it to. The Persuade tile shows that component itself under a transform
-   rather than a second copy tuned by hand, which is the only way the two
-   screens can agree pixel for pixel.
+   it to. Every tile shows that component itself under a transform rather than
+   a second copy tuned by hand, which is the only way the two screens can
+   agree pixel for pixel.
 
    --pk-pv-natural mirrors the palette screen's own preview width, which grows
    at 5/12 of the viewport and pins at 495.5px once the window passes 1500px.
@@ -1268,9 +1452,9 @@ body.picker-page {
 }
 
 /* Short windows spend their room on the frames rather than on the chrome
-   around them: below roughly 100px tall the three drawn wireframes start
-   pressing their bars against the frame edge, so the page padding and gutters
-   give way first. */
+   around them: below roughly 100px tall the drawn previews start pressing
+   their bars against the frame edge, so the page padding and gutters give way
+   first. */
 @media (max-height: 760px) {
   .picker-modes {
     --pk-pv-scale: 0.58;
@@ -1363,18 +1547,9 @@ body.picker-page {
   z-index: 1;
 }
 
-/* The tile's little pair of frames: same anatomy as the palette screen's
-   preview, drawn in the neutral ramp. Bars take their width from --w so each
-   mode's silhouette is written in the markup, not in a pile of one-off
-   classes. The three bar weights below are the whole drawing vocabulary. */
+/* The box every tile's preview is matted into: one measure, cut from the
+   palette screen's own preview width and handed to all four modes. */
 .picker-mode-preview {
-  --pm-strong: var(--ks-text-muted);
-  --pm-mid: var(--ks-text-mute-deep);
-  --pm-faint: color-mix(in oklab, var(--ks-text-mute-deep) 45%, var(--ks-graphite));
-  --pm-fill: var(--ks-graphite-2);
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
   /* The height is the budget and the width follows it, at the same 16 / 7 the
      palette screen's preview uses. Letting the tile set the width instead
      stretched the desktop card to about five times its own ratio. */
@@ -1385,211 +1560,7 @@ body.picker-page {
   justify-self: center;
 }
 
-.pm-desktop,
-.pm-phone {
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-  display: grid;
-  background: var(--ks-graphite);
-  border: 1px solid var(--ks-rule);
-  border-radius: 3px;
-}
-
-.pm-phone {
-  height: 100%;
-  aspect-ratio: 9 / 19;
-  grid-template-rows: auto 1fr auto;
-  border-radius: 7px;
-}
-
-.pm-phone > .pm-phone-body:first-child {
-  grid-row: 1 / -1;
-}
-
-.pm-landing {
-  grid-template-rows: auto 1fr;
-}
-
-.pm-bar {
-  display: block;
-  width: var(--w, 100%);
-  height: 5px;
-  background: var(--pm-mid);
-  border-radius: 2px;
-}
-
-.pm-strong {
-  height: 8px;
-  background: var(--pm-strong);
-}
-
-.pm-faint {
-  background: var(--pm-faint);
-}
-
-.pm-dot {
-  width: 5px;
-  aspect-ratio: 1;
-  background: var(--pm-strong);
-  border-radius: 50%;
-}
-
-.pm-topbar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--ks-rule);
-}
-
-.pm-links {
-  display: flex;
-  gap: 4px;
-  margin-left: auto;
-}
-
-.pm-links i {
-  width: 10px;
-  height: 3px;
-  background: var(--pm-mid);
-  border-radius: 2px;
-}
-
-.pm-media {
-  min-width: 0;
-  min-height: 0;
-  background: var(--pm-fill);
-  border-radius: 2px;
-}
-
-/* Operate: rail plus work area, the one silhouette nobody mistakes for a
-   landing page. */
-.pm-split {
-  grid-template-columns: 26% minmax(0, 1fr);
-}
-
-.pm-side {
-  display: grid;
-  align-content: start;
-  gap: 7px;
-  padding: 9px 8px;
-  border-right: 1px solid var(--ks-rule);
-}
-
-.pm-side i {
-  height: 5px;
-  background: var(--pm-mid);
-  border-radius: 2px;
-}
-
-.pm-side i:first-child {
-  background: var(--pm-strong);
-}
-
-.pm-main {
-  min-height: 0;
-  display: grid;
-  grid-template-rows: auto 1fr;
-  gap: 7px;
-  padding: 8px;
-}
-
-.pm-cards {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.pm-cards-2 {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.pm-cards i {
-  height: 26px;
-  background: var(--pm-fill);
-  border: 1px solid var(--ks-rule);
-  border-radius: 2px;
-}
-
-.pm-rows {
-  display: grid;
-  align-content: start;
-  gap: 7px;
-}
-
-.pm-rows i {
-  height: 5px;
-  background: var(--pm-faint);
-  border-radius: 2px;
-}
-
-/* Read: one measured column of text and nothing competing with it. */
-.pm-article {
-  min-height: 0;
-  display: grid;
-  gap: 7px;
-  align-content: center;
-  justify-items: center;
-  padding: 8px 20%;
-}
-
-/* Experience: the pictures are the page. */
-.pm-mosaic {
-  min-height: 0;
-  display: grid;
-  grid-template-columns: 1.5fr 1fr;
-  grid-template-rows: repeat(2, minmax(0, 1fr));
-  gap: 5px;
-  padding: 7px;
-}
-
-.pm-mosaic .pm-media:first-child {
-  grid-row: 1 / -1;
-}
-
-.pm-phone-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 7px;
-  border-bottom: 1px solid var(--ks-rule);
-}
-
-.pm-phone-body {
-  min-height: 0;
-  display: grid;
-  align-content: start;
-  gap: 5px;
-  padding: 7px;
-}
-
-.pm-fill {
-  align-content: stretch;
-  grid-template-rows: 1fr 1fr auto;
-}
-
-.pm-tabbar {
-  display: flex;
-  justify-content: space-evenly;
-  align-items: center;
-  padding: 5px 0;
-  border-top: 1px solid var(--ks-rule);
-}
-
-.pm-tabbar i {
-  width: 4px;
-  aspect-ratio: 1;
-  background: var(--pm-mid);
-  border-radius: 50%;
-}
-
-.pm-tabbar i:first-child {
-  background: var(--pm-strong);
-}
-
-/* Persuade shows the palette screen's preview itself, at that component's own
+/* Every mode shows the palette screen's preview itself, at that component's own
    canonical size, reduced by a single transform. Nothing inside is restated
    here: a second set of sizes tuned to this smaller box is how the two screens
    drifted apart in the first place. The frame is sized from the same scale, so
@@ -1600,12 +1571,780 @@ body.picker-page {
 }
 
 .picker-mode-preview--exact > .picker-preview {
+  /* The demo palette every tile is drawn in. It lives here rather than inline
+     on each tile so the four cannot drift: the palette screen has not been
+     reached yet, and without it the component falls back to the picker's own
+     dark chrome.
+
+     These four are hex and outside DESIGN.md on purpose. They stand in for the
+     palette the visitor is about to pick, so they are an example rather than a
+     system color, which is the carve-out DESIGN.md's OKLCH-Only Rule already
+     names. Do not move them into DESIGN.md: that file mirrors
+     kinpaku-tokens.css, and admitting a teal here would make every stray teal
+     in the repo pass. `detect skill/scripts/picker/` reports the first three as
+     design-system-color and is expected to; --pv-neutral lands 4 channels from
+     the documented neutral-94, inside the rule's 6-channel tolerance, so it
+     never registers. CLAUDE.md's Picker anti-pattern gate holds the count. */
+  --pv-primary: #195856;
+  --pv-secondary: #5f7c7a;
+  --pv-tertiary: #3a958b;
+  --pv-neutral: #edefef;
+  --pv-n-ink: var(--pk-ink-dark);
   position: absolute;
   top: 0;
   left: 0;
   width: var(--pk-pv-natural);
   transform: scale(var(--pk-pv-scale));
   transform-origin: top left;
+}
+
+/* ── Operate variant of the preview ──────────────────────────
+   Same shell, same nav, same phone chrome as the landing tile. The body is an
+   app screen instead: a section rail, a work area holding a chart above a
+   selectable list, and a settings panel of fields and switches. Sizes come from
+   measuring the reference illustration and mapping its card box onto this one,
+   the same way the docs variant below was built. */
+.picker-preview--ops {
+  --po-ink: var(--pv-bone);
+  --po-ink-soft: color-mix(in oklab, var(--pv-bone) 72%, var(--pv-neutral));
+  --po-wash: color-mix(in oklab, var(--pv-tertiary) 12%, var(--pv-neutral));
+  --po-rule: color-mix(in oklab, var(--pv-neutral) 86%, var(--pv-n-ink));
+}
+
+.picker-preview--ops .pv-nav {
+  border-bottom: 1px solid var(--po-rule);
+}
+
+/* Both bodies are size containers so the screen inside them scales with the
+   card rather than spilling out of it. Every `cqh` below is a canonical pixel
+   divided by the body height it sits in: 181.78 on the desktop, 133.75 inside
+   the phone's padded box. Chrome the exact tiles share (nav, phone top bar, tab
+   bar) stays in pixels so all the frames stay identical. */
+.po-body {
+  container-type: size;
+  min-height: 0;
+  display: grid;
+  /* Percentages, not `cqh`: a container cannot measure itself, and the three
+     panels are horizontal dimensions anyway. */
+  grid-template-columns: 18.68% 51.84% minmax(0, 1fr);
+}
+
+.po-side {
+  display: grid;
+  align-content: start;
+  gap: 5.25cqh;
+  padding: 6.38cqh 2.86cqh 0 2.22cqh;
+  border-right: 1px solid var(--po-rule);
+}
+
+.po-item {
+  display: flex;
+  align-items: center;
+  gap: 3.39cqh;
+  padding-left: 2.84cqh;
+}
+
+.po-dot {
+  flex: none;
+  width: 4.07cqh;
+  aspect-ratio: 1;
+  background: var(--po-ink);
+  border-radius: 50%;
+}
+
+.po-line {
+  width: 13.23cqh;
+  height: 1.53cqh;
+  background: var(--po-ink);
+  border-radius: 2px;
+}
+
+/* The open section is a filled plate, not a tinted row: it is the mark that
+   tells a reader this rail belongs to an app and not to a document. */
+.po-item--on {
+  padding-block: 2.97cqh;
+  background: var(--pv-primary);
+  border-radius: 2px;
+}
+
+.po-item--on .po-dot,
+.po-item--on .po-line {
+  background: var(--pv-neutral);
+}
+
+.po-main {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  padding: 8.14cqh 4.68cqh 0 5.23cqh;
+  border-right: 1px solid var(--po-rule);
+}
+
+/* The bars stand on the content box and the axis rules it, so nothing can come
+   off the baseline at any window width. The padding below the axis is the zone
+   the category ticks hang in: they are positioned against the chart rather than
+   against a bar so no element ends up with a scrolling overflow. */
+.po-chart {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 7.23cqh;
+  height: 33.26cqh;
+  margin-inline: 9.52cqh 14.63cqh;
+  padding: 0 4.29cqh 2.56cqh 4.46cqh;
+}
+
+.po-chart::before {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 2.56cqh;
+  left: 0;
+  height: 1px;
+  background: var(--po-ink-soft);
+}
+
+.po-chart i {
+  flex: none;
+  width: 6.92cqh;
+  height: var(--h);
+  background: var(--po-wash);
+}
+
+.po-chart .po-peak {
+  background: var(--pv-primary);
+}
+
+/* No `left`, so the tick takes the static position it would have had inside its
+   bar and the margin walks it to that bar's centre. */
+.po-chart i::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  width: 1px;
+  height: 1.29cqh;
+  margin-left: 3.19cqh;
+  background: var(--po-ink-soft);
+}
+
+.po-divider {
+  height: 1px;
+  margin-top: 6.46cqh;
+  background: var(--po-rule);
+}
+
+.po-rows {
+  display: grid;
+  gap: 0.5cqh;
+  margin-top: 0.85cqh;
+}
+
+.po-row {
+  display: flex;
+  align-items: center;
+  gap: 4.9cqh;
+  height: 11.61cqh;
+  padding-left: 3.41cqh;
+}
+
+.po-row .po-dot {
+  width: 3.85cqh;
+}
+
+.po-cell {
+  flex: none;
+  width: var(--w);
+  height: 1.45cqh;
+  background: var(--po-ink-soft);
+  border-radius: 2px;
+}
+
+/* The reference's two column gaps differ by less than half a canonical pixel,
+   so one step carries both. */
+.po-cell + .po-cell {
+  margin-left: 12.71cqh;
+}
+
+.po-row--on {
+  background: var(--po-wash);
+}
+
+.po-row--on .po-dot {
+  background: var(--pv-primary);
+}
+
+.po-panel {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  padding: 6.82cqh 6.71cqh 0 7.21cqh;
+}
+
+.po-heading {
+  width: 17.38cqh;
+  height: 1.62cqh;
+  background: var(--pv-primary);
+  border-radius: 2px;
+}
+
+.po-field {
+  display: flex;
+  align-items: center;
+  height: 8.75cqh;
+  margin-top: 5.81cqh;
+  border: 1px solid var(--pv-primary);
+  border-radius: 2px;
+}
+
+/* A square stood on its corner, two borders lit. Half of it falls outside the
+   drawn chevron, so the margins are placing the tip rather than the box. */
+.po-chev {
+  align-self: start;
+  width: 2cqh;
+  aspect-ratio: 1;
+  margin: 1.86cqh 3.14cqh 0 auto;
+  border-right: 1px solid var(--po-ink);
+  border-bottom: 1px solid var(--po-ink);
+  transform: rotate(45deg);
+}
+
+.po-switch {
+  display: flex;
+  align-items: center;
+  height: 5.34cqh;
+  margin-top: 8.39cqh;
+}
+
+.po-switch + .po-switch {
+  margin-top: 6.19cqh;
+}
+
+.po-label {
+  flex: none;
+  width: 17.22cqh;
+  height: 1.62cqh;
+  background: var(--po-ink);
+  border-radius: 2px;
+}
+
+.po-toggle {
+  position: relative;
+  flex: none;
+  width: 10.29cqh;
+  height: 5.34cqh;
+  margin-left: auto;
+  background: var(--po-ink);
+  border-radius: 999px;
+}
+
+.po-toggle--on {
+  background: var(--pv-primary);
+}
+
+.po-toggle::after {
+  content: "";
+  position: absolute;
+  top: 0.66cqh;
+  left: 0.66cqh;
+  width: 4.02cqh;
+  aspect-ratio: 1;
+  background: var(--pv-neutral);
+  border-radius: 50%;
+}
+
+.po-toggle--on::after {
+  right: 0.66cqh;
+  left: auto;
+}
+
+/* The phone is the same screen narrowed: one chart, the same field, two setting
+   rows. Its padded box is 133.75 tall, so every shared `cqh` above is restated
+   here against that number. The padding itself is a percentage of the phone's
+   width, since a container cannot measure itself. */
+.po-phone-body {
+  container-type: size;
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  padding: 16.19% 4.57% 14.63% 4.27%;
+}
+
+.po-phone-body .po-chart {
+  gap: 6.79cqh;
+  height: 36.93cqh;
+  margin-inline: 0.67cqh 2.92cqh;
+  padding: 0 3.51cqh 3.36cqh 3.36cqh;
+}
+
+.po-phone-body .po-chart::before {
+  bottom: 3.36cqh;
+}
+
+.po-phone-body .po-chart i {
+  width: 6.21cqh;
+}
+
+.po-phone-body .po-chart i::after {
+  height: 1.94cqh;
+  margin-left: 2.73cqh;
+}
+
+.po-phone-body .po-field {
+  height: 11.81cqh;
+  margin-top: 10.47cqh;
+}
+
+.po-phone-body .po-chev {
+  width: 2.77cqh;
+  margin: 2.65cqh 5.03cqh 0 auto;
+}
+
+.po-prow {
+  display: flex;
+  align-items: center;
+  gap: 4.49cqh;
+  height: 18.47cqh;
+  padding-left: 2.24cqh;
+}
+
+.po-field + .po-prow {
+  margin-top: 3.85cqh;
+}
+
+.po-prow + .po-prow {
+  border-top: 1px solid var(--po-rule);
+}
+
+.po-phone-body .po-dot {
+  width: 5.76cqh;
+}
+
+.po-phone-body .po-label {
+  width: 18.62cqh;
+  height: 2.17cqh;
+}
+
+.po-phone-body .po-toggle {
+  width: 12.64cqh;
+  height: 7.25cqh;
+}
+
+.po-phone-body .po-toggle::after {
+  top: 0.9cqh;
+  left: 0.9cqh;
+  width: 5.46cqh;
+}
+
+.po-phone-body .po-toggle--on::after {
+  right: 0.9cqh;
+  left: auto;
+}
+
+/* The row that opens a subpage points instead of switching: same square, the
+   other two borders lit. */
+.po-phone-body .po-chev--next {
+  align-self: center;
+  width: 2.99cqh;
+  margin: 0 4.86cqh 0 auto;
+  border-top: 1px solid var(--po-ink);
+  border-bottom: 0;
+}
+
+/* ── Docs variant of the preview ─────────────────────────────
+   Same shell as the landing preview, same nav, same phone chrome, so all four
+   tiles read as one drawing system. The body is a documentation page instead:
+   a section rail beside a measured column of prose, and a called-out note at
+   the end of it. Sizes are canonical pixels, matching how the rest of the
+   component is authored, and the proportions come from measuring the reference
+   illustration and mapping its card box onto this one. */
+.picker-preview--docs {
+  --pd-ink: var(--pv-bone);
+  --pd-strong: color-mix(in oklab, var(--pv-primary) 80%, var(--pv-strong));
+  --pd-rule: color-mix(in oklab, var(--pv-neutral) 86%, var(--pv-n-ink));
+}
+
+.picker-preview--docs .pv-nav {
+  border-bottom: 1px solid var(--pd-rule);
+}
+
+/* Both bodies are size containers so the page inside them scales with the card
+   rather than spilling out of it. The card is a fixed ratio, so measuring
+   against the body's own height keeps the drawing self-similar at every window
+   width. Every `cqh` below is a canonical pixel divided by the body height it
+   sits in: 181.78 on the desktop, 146.5 inside the phone. Chrome the two exact
+   tiles share (nav, phone top bar, tab bar) stays in pixels so both tiles keep
+   identical frames. */
+.pd-body {
+  container-type: size;
+  min-height: 0;
+  display: grid;
+  /* A percentage, not `cqh`: a container cannot measure itself, and the rail is
+     a horizontal dimension anyway. */
+  grid-template-columns: 23.75% minmax(0, 1fr);
+}
+
+.pd-side {
+  display: grid;
+  align-content: start;
+  gap: 8.69cqh;
+  padding: 9.24cqh 0 0 7.15cqh;
+  border-right: 1px solid var(--pd-rule);
+}
+
+.pd-item {
+  display: flex;
+  align-items: center;
+  gap: 3.03cqh;
+}
+
+.pd-item i {
+  width: 2.48cqh;
+  aspect-ratio: 1;
+  background: var(--pd-ink);
+  border-radius: 50%;
+}
+
+.pd-item span {
+  width: 19.36cqh;
+  height: 1.27cqh;
+  background: var(--pd-ink);
+  border-radius: 2px;
+}
+
+/* The open section reads in the palette rather than in ink, so the rail shows
+   where the reader is without needing a highlight plate. */
+.pd-item--on i {
+  background: var(--pv-primary);
+}
+
+.pd-item--on span {
+  background: var(--pv-tertiary);
+}
+
+/* The right padding is the measure: prose stops well short of the card edge,
+   which is what makes the column read as a document rather than as a page. */
+.pd-main {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  padding: 9.74cqh 50.06cqh 0 16.94cqh;
+}
+
+.pd-heading {
+  width: var(--w, 100%);
+  height: 2.53cqh;
+  background: var(--pd-strong);
+  border-radius: 2px;
+}
+
+.pd-para {
+  display: grid;
+  gap: 3.74cqh;
+}
+
+.pd-para--lede {
+  margin-top: 6.38cqh;
+}
+
+/* Two passage gaps, not one: the reference opens a slightly narrower gap after
+   the lede than it does between the passages that follow. */
+.pd-para + .pd-para {
+  margin-top: 9.9cqh;
+}
+
+.pd-para--lede + .pd-para {
+  margin-top: 9.46cqh;
+}
+
+.pd-para i {
+  width: var(--w, 100%);
+  height: 1.1cqh;
+  background: var(--pd-ink);
+  border-radius: 2px;
+}
+
+.pd-note {
+  display: flex;
+  gap: 3.41cqh;
+  height: 14.03cqh;
+  margin-top: 7.37cqh;
+  padding: 3.52cqh 4.4cqh 0 5.17cqh;
+  background: var(--pv-surface-2);
+  border-left: 1.27cqh solid var(--pv-primary);
+  border-radius: 0 2px 2px 0;
+}
+
+.pd-note-dot {
+  flex: none;
+  align-self: start;
+  width: 2.64cqh;
+  aspect-ratio: 1;
+  background: var(--pv-tertiary);
+  border-radius: 50%;
+}
+
+.pd-note-lines {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 3.69cqh;
+  align-content: start;
+}
+
+.pd-note-lines i {
+  width: var(--w, 100%);
+  height: 0.83cqh;
+  background: var(--pv-tertiary);
+  border-radius: 2px;
+}
+
+/* The phone is the same document narrowed: breadcrumb, heading, the same two
+   passages, the same note. */
+/* The phone body's own padding is a percentage of the phone's width, since a
+   container cannot measure itself. Everything inside it is `cqh` against the
+   padded box. */
+.pd-phone-body {
+  container-type: size;
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  padding: 8.84% 11.42% 9.33% 10.23%;
+}
+
+.pd-crumb {
+  width: 13.11cqh;
+  height: 1.77cqh;
+  margin-inline: auto;
+  background: var(--pd-ink);
+  border-radius: 2px;
+}
+
+.pd-phone-body .pd-heading {
+  height: 3.14cqh;
+  margin-top: 9.62cqh;
+}
+
+.pd-phone-body .pd-para {
+  gap: 4.1cqh;
+}
+
+.pd-phone-body .pd-para i {
+  height: 1.37cqh;
+}
+
+.pd-phone-body .pd-para--lede {
+  margin-top: 6.55cqh;
+  gap: 3.62cqh;
+}
+
+.pd-phone-body .pd-para + .pd-para {
+  margin-top: 10.03cqh;
+}
+
+.pd-phone-body .pd-para--lede + .pd-para {
+  margin-top: 11.4cqh;
+}
+
+.pd-phone-body .pd-note {
+  height: 14.27cqh;
+  gap: 3.34cqh;
+  margin-top: 6.76cqh;
+  padding: 4.37cqh 1.37cqh 0 3.14cqh;
+  border-left-width: 1.23cqh;
+}
+
+.pd-phone-body .pd-note-dot {
+  width: 3.34cqh;
+}
+
+.pd-phone-body .pd-note-lines {
+  gap: 2.8cqh;
+}
+
+.pd-phone-body .pd-note-lines i {
+  height: 1.37cqh;
+}
+
+/* ── Gallery variant of the preview ──────────────────────────
+   Same shell, same nav, same phone chrome as the other tiles. The body is a
+   portfolio index instead: two shots set alternately against their captions,
+   and a carousel rail under them saying the set continues. Sizes come from
+   measuring the reference illustration and mapping its card box onto this one,
+   the same way the docs variant was built.
+
+   Both bodies are size containers so the page inside scales with the card
+   rather than spilling out of it. Every `cqh` below is a canonical pixel
+   divided by the body height it sits in: 182.78 on the desktop, 148.53 inside
+   the phone's padded box. Chrome the tiles share (nav, phone top bar, tab bar)
+   stays in pixels so every frame stays identical. */
+.picker-preview--gallery {
+  --pg-ink: var(--pv-bone);
+}
+
+/* The work is the page, so the plates carry the drawn size and the shared
+   4 / 3 gives way to it. */
+.picker-preview--gallery .pv-image {
+  aspect-ratio: auto;
+}
+
+/* The illustration marks each shot in the brand color rather than the accent,
+   which is what ties the two rows back to the nav. */
+.picker-preview--gallery .pv-image::after {
+  top: 3.41cqh;
+  right: 3.15cqh;
+  width: 3.37cqh;
+  background: var(--pv-primary);
+}
+
+.pg-body {
+  container-type: size;
+  min-height: 0;
+  display: grid;
+  align-content: start;
+}
+
+/* The insets differ per row because the illustration staggers the pair rather
+   than mirroring it, which is what keeps the index from reading as a grid. */
+.pg-row {
+  display: grid;
+  grid-template-columns: 73.39cqh minmax(0, 1fr);
+  column-gap: 10.55cqh;
+  height: 37.31cqh;
+  margin-top: 2.31cqh;
+  padding-inline: 31.34cqh 32.13cqh;
+}
+
+.pg-row--flip {
+  grid-template-columns: minmax(0, 1fr) 73.39cqh;
+  column-gap: 11.18cqh;
+  margin-top: 7.28cqh;
+  padding-inline: 34.97cqh 33.07cqh;
+}
+
+.pg-row .pv-image {
+  height: 100%;
+}
+
+.pg-cap {
+  display: grid;
+  align-content: start;
+  gap: 3.1cqh;
+  padding-top: 12.39cqh;
+}
+
+.pg-cap i {
+  width: var(--w, 100%);
+  height: 1.5cqh;
+  background: var(--pg-ink);
+  border-radius: 2px;
+}
+
+.pg-cap i.pg-cap-title {
+  height: 2.01cqh;
+  margin-bottom: 0.93cqh;
+}
+
+/* The insets are measured to the chevrons' drawn tips, which sit outside their
+   layout boxes once the squares below are turned. */
+.pg-rail {
+  display: flex;
+  align-items: center;
+  height: 3.25cqh;
+  margin-top: 4.95cqh;
+  padding-inline: 7.78cqh 8.24cqh;
+}
+
+/* A square stood on its corner: two borders draw the chevron without pulling
+   in an inline SVG nothing else in the component uses. */
+.pg-arrow {
+  flex: none;
+  width: 2.3cqh;
+  aspect-ratio: 1;
+  border-left: 1px solid var(--pg-ink);
+  border-bottom: 1px solid var(--pg-ink);
+  transform: rotate(45deg);
+}
+
+.pg-arrow--next {
+  border-right: 1px solid var(--pg-ink);
+  border-top: 1px solid var(--pg-ink);
+  border-bottom: 0;
+  border-left: 0;
+}
+
+.pg-track {
+  display: flex;
+  align-items: center;
+  gap: 3.7cqh;
+  margin-left: 7.26cqh;
+  margin-right: auto;
+}
+
+.pg-track i {
+  flex: none;
+  width: var(--w);
+  height: 1.48cqh;
+  background: var(--pg-ink);
+  border-radius: 2px;
+}
+
+.pg-track i.pg-track-on {
+  background: var(--pv-primary);
+}
+
+/* The phone is the same index at one column: shot, caption, shot, caption. */
+/* Its own padding is a percentage of the phone's width, since a container
+   cannot measure itself. Everything inside is `cqh` against the padded box. */
+.pg-phone-body {
+  container-type: size;
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  padding: 5.65% 8.34% 10.49%;
+}
+
+.pg-phone-body .pv-image {
+  height: 33.27cqh;
+}
+
+.pg-phone-body > .pg-cap + .pv-image {
+  height: 31.95cqh;
+  margin-top: 5.59cqh;
+}
+
+/* The phone container is shorter than the desktop one, so every shared `cqh`
+   has to be restated against it. */
+.pg-phone-body .pv-image::after {
+  top: 3.02cqh;
+  right: 3.26cqh;
+  width: 3.4cqh;
+}
+
+.pg-phone-body .pg-cap {
+  gap: 2.93cqh;
+  margin-top: 4.15cqh;
+  padding-top: 0;
+}
+
+.pg-phone-body > .pg-cap ~ .pg-cap {
+  margin-top: 3.68cqh;
+}
+
+.pg-phone-body .pg-cap i {
+  height: 1.52cqh;
+}
+
+/* At this size the caption's first line is a shorter line, not a heavier one. */
+.pg-phone-body .pg-cap i.pg-cap-title {
+  height: 1.52cqh;
+  margin-bottom: 0.28cqh;
+}
+
+/* Three page dots rather than four tabs, closer together than the tab bar's
+   even spread. */
+.picker-preview--gallery .pv-tabbar {
+  justify-content: center;
+  gap: 11px;
 }
 
 .picker-mode-copy {
@@ -1817,6 +2556,41 @@ body.picker-page {
   min-height: 0;
   height: 100%;
   grid-template-rows: minmax(0, 1fr);
+}
+
+/* Screen 03 carries the palette under its choices, so its rail is two rows and
+   the options are measured against what is left of the column rather than
+   against all of it. Without the second measure the panel keeps its own 434 and
+   overflows the row the band now shares. Scoped to this screen because the cap
+   only holds where there are four options to divide. */
+.picker-screen[data-screen="03"] .picker-strategy-grid > .picker-type-rail {
+  grid-template-rows: minmax(0, 1fr) auto;
+  /* The artboard is width: 100% at 1.865/1, so its height is this column's own
+     width over that ratio: the container's 1500 cap less its padding, less the
+     rail and the gap. What the rail can spend without growing the row. */
+  --pk-art: calc((min(1500px, 100vw) - 582px) / 1.865);
+  /* And the band is what gives when that budget will not cover four legible
+     rows: 368px is the four at their floor plus the gap and the panel's
+     hairline. A shorter reading of the palette costs less than a squeezed
+     sentence, so the band yields first and the rows yield last. */
+  --pk-band: clamp(72px, calc(var(--pk-art) - 368px), 96px);
+}
+
+/* And the rows come in under what the artboard beside them asks for, so the row
+   they share keeps the height the artboard sets and the CTA underneath stays
+   where it is on every other screen.
+
+   Floored at 88px, which is the tallest option's two lines plus the air they
+   need to read as a paragraph rather than a block. Below that the row has no
+   padding left to give and the sentence is what gets cut, so past the floor the
+   rail is allowed to be taller than the artboard instead: the same trade this
+   column made before it carried a band. */
+.picker-screen[data-screen="03"] .picker-strategy-choices.picker-type-options {
+  /* The row formula below is the only cap this panel needs. The shared one
+     measures against the column budget alone, which on a short viewport asks
+     for less than the floor and clips the fourth option to reach it. */
+  max-height: none;
+  grid-auto-rows: max(88px, min(108px, calc((var(--pk-art) - var(--pk-band) - 16px) / 4), calc((var(--pk-column) - 2px) / 4)));
 }
 
 /* Equal rows, sized by the tallest one's copy rather than by how many there

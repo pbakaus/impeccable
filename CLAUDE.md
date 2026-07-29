@@ -230,6 +230,27 @@ bun run build:browser
 
 **IMPORTANT**: Always use `node` (not `bun`) to run the detect CLI. Bun's jsdom implementation is extremely slow and will cause scans with HTML files to hang for minutes.
 
+### Picker anti-pattern gate
+
+After `bun run build:picker`, scan the **built directory**:
+
+```bash
+node cli/bin/cli.js detect skill/scripts/picker/
+```
+
+**Name the directory, not `index.html`.** The built page only links its stylesheet, and the rules that read CSS text run per file, so scanning the page alone never reads a line of the picker's CSS. That is how three `design-system-color` findings vanished with nothing fixed: the mode-tile demo palette moved out of an inline `style` attribute and into `picker.css`, and the gate went quiet while the values stayed put. Naming the bundle by path is not a fix either, because Vite content-hashes the filename and the stale path silently narrows the scan back to the page.
+
+Baseline: **39 findings**, 27 on `index.html` and 12 on the bundled stylesheet. The groups below are accepted with a reason on record, so hold 39 rather than treating it as a backlog:
+
+- 18 `cramped-padding` on the palette strips, nine for each of the two: the editable one on screen 02 and the reading copy under screen 03's choices. Each strip reports its group, its four items, and its four swatches. A swatch is a color that has to reach its own edges, so `.picker-band` carries no padding and places its hex readout and drag grip by inset instead, which the rule has no way to see. Adding padding here would put a frame around every color the visitor picked.
+- 3 `design-system-color` for the mode-tile demo palette (`#195856`, `#5f7c7a`, `#3a958b`). They are examples standing in for the palette the visitor is about to pick, which is the carve-out DESIGN.md's OKLCH-Only Rule already names. The argument is at the declaration in `picker/styles/picker.css`; read it before touching them.
+- 7 `design-system-font-size` already waived for `picker/styles/picker.css` in `.impeccable/config.json`. They reappear under the built path only because that waiver is scoped to the source path.
+- 2 `border-accent-on-rounded` on `.ks-bento` in the vendored `kinpaku-kit.css`, which carries no `border-radius` at all. The rule wants a radius on the same line, and minification puts the whole stylesheet on one line, so every line-scoped regex rule reads this bundle with no line context. Check a snippet against the source before acting on it.
+
+The last 9 are the page findings the questionnaire has carried since those screens were built: `cramped-padding` on the option panel and the icon sheet, both edge-to-edge grids whose rows hold their own padding, and the mono readouts and micro-labels under the text-size floors. They are the group to revisit first if the number is ever worth lowering.
+
+For line numbers during triage, `node cli/bin/cli.js detect picker/styles/` scans the unminified sources. It is not the gate: the source scan's style-context heuristic skips custom-property declarations, so it misses the palette entirely. A served URL is worse than either, because the browser pass only measures the screen in front of it and the picker hides all but the active one.
+
 ## Versioning
 
 **Feature PRs do not bump versions and do not add changelog entries.** Bumping is a release step, not part of the change that earns the release: a version in a feature branch conflicts with every other open branch, and a changelog entry describes a release that has not happened. Land the code first; the maintainer bumps and writes the changelog when cutting the release. This holds even though the "Bump when: ..." notes below name the source dirs — those say *which* component a change belongs to, not *when* to edit the manifest. The only PR that touches a manifest version is one whose purpose is the release itself.
