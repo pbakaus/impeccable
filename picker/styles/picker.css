@@ -1231,11 +1231,64 @@ body.picker-page {
    docs. The previews are deliberately monochrome, drawn entirely from the
    theme's own neutral ramp; color has not been chosen yet, and a gray
    wireframe cannot pre-sell one. */
+/* Everything on this screen is cut from one measure: the width the palette
+   screen's preview is currently rendering at, and the scale this tile reduces
+   it to. The Persuade tile shows that component itself under a transform
+   rather than a second copy tuned by hand, which is the only way the two
+   screens can agree pixel for pixel.
+
+   --pk-pv-natural mirrors the palette screen's own preview width, which grows
+   at 5/12 of the viewport and pins at 495.5px once the window passes 1500px.
+   Measured at 1280 / 1366 / 1440 / 1512 wide, where the line is exact. Re-measure
+   it if screen 02's grid ever changes. The scale steps by viewport height
+   because CSS cannot divide one length by another to reach the unitless number
+   scale() needs, and the frame's height is derived from both so the reduced
+   component fills the frame exactly. */
 .picker-modes {
+  --pk-pv-natural: min(495.5px, calc(41.667vw - 129.5px));
+  --pk-pv-scale: 0.62;
+  --pk-mode-frame: calc(var(--pk-pv-natural) * 7 / 16 * var(--pk-pv-scale));
+  --pk-mode-pad: clamp(14px, 2svh, 24px);
+  --pk-mode-gap: clamp(16px, 2.2svh, 24px);
   display: grid;
-  gap: clamp(12px, 2svh, 26px);
+  gap: clamp(16px, 2.6svh, 36px);
   justify-items: center;
-  padding-block: clamp(16px, 2.6svh, 36px) clamp(12px, 2svh, 32px);
+  padding-block: clamp(20px, 3svh, 44px) clamp(14px, 2.2svh, 34px);
+}
+
+@media (min-height: 1040px) {
+  .picker-modes {
+    --pk-pv-scale: 0.68;
+  }
+}
+
+/* Short windows spend their room on the frames rather than on the chrome
+   around them: below roughly 100px tall the three drawn wireframes start
+   pressing their bars against the frame edge, so the page padding and gutters
+   give way first. */
+@media (max-height: 760px) {
+  .picker-modes {
+    --pk-pv-scale: 0.58;
+    --pk-mode-pad: 12px;
+    --pk-mode-gap: 12px;
+    gap: 14px;
+    padding-block: 14px 10px;
+  }
+}
+
+/* A wide short window is the hard case: the reference width has already pinned
+   at its maximum, so only the scale is left to give. Narrow short windows need
+   no such step, because their reference width is smaller to begin with. */
+@media (max-height: 760px) and (min-width: 1500px) {
+  .picker-modes {
+    --pk-pv-scale: 0.5;
+  }
+}
+
+@media (max-height: 700px) and (min-width: 1500px) {
+  .picker-modes {
+    --pk-pv-scale: 0.47;
+  }
 }
 
 .picker-modes-grid {
@@ -1244,10 +1297,13 @@ body.picker-page {
   /* Both rows take the taller row's height, so a goal or chip row that wraps
      in one tile cannot leave the other three sitting shorter than it. */
   grid-template-rows: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-  /* Narrow enough that a proportional preview fills most of its tile. A wider
-     grid leaves the frames marooned in empty space. */
-  width: min(100%, 760px);
+  gap: var(--pk-mode-gap);
+  /* Two tiles wide at the frame's largest, so a tall viewport never drives a
+     frame wider than the tile holding it. Below that the frame is matted by
+     the tile rather than the tile shrinking, because a narrower tile wraps
+     the chips and goal onto extra lines and costs more height than the
+     matting saves. */
+  width: min(100%, 860px);
   margin: 0;
   padding: 0;
   border: 0;
@@ -1267,8 +1323,8 @@ body.picker-page {
   position: relative;
   display: grid;
   grid-template-rows: auto 1fr;
-  gap: clamp(7px, 1.1svh, 14px);
-  padding: clamp(9px, 1.4svh, 16px);
+  gap: clamp(12px, 1.9svh, 20px);
+  padding: var(--pk-mode-pad);
   background: var(--ks-lacquer-raised);
   border: 1px solid var(--ks-rule);
   cursor: pointer;
@@ -1317,7 +1373,7 @@ body.picker-page {
   /* The height is the budget and the width follows it, at the same 16 / 7 the
      palette screen's preview uses. Letting the tile set the width instead
      stretched the desktop card to about five times its own ratio. */
-  height: clamp(104px, 13svh, 152px);
+  height: var(--pk-mode-frame);
   aspect-ratio: 16 / 7;
   width: auto;
   max-width: 100%;
@@ -1528,138 +1584,28 @@ body.picker-page {
   background: var(--pm-strong);
 }
 
-/* Persuade carries the palette screen's preview component itself, class and
-   all, so it inherits that component's every color derivation. The tile also
-   sets the four palette roles inline, because the palette screen has not been
-   reached yet and the component would otherwise fall back to the picker's own
-   dark chrome. Only the sizes below change: the component is authored for a
-   box roughly three times this tall, and every rule here is scoped to the
-   tile so screen 02 renders exactly as it did. */
-.picker-mode-preview .pv-desktop {
-  border-radius: 3px;
+/* Persuade shows the palette screen's preview itself, at that component's own
+   canonical size, reduced by a single transform. Nothing inside is restated
+   here: a second set of sizes tuned to this smaller box is how the two screens
+   drifted apart in the first place. The frame is sized from the same scale, so
+   the reduced component fills it exactly. */
+.picker-mode-preview--exact {
+  display: block;
+  position: relative;
 }
 
-.picker-mode-preview .pv-phone {
-  border-radius: 7px;
-}
-
-.picker-mode-preview .pv-nav {
-  gap: 5px;
-  padding: 4px 7px;
-}
-
-.picker-mode-preview .pv-logo {
-  width: 5px;
-}
-
-.picker-mode-preview .pv-nav-bars {
-  gap: 4px;
-}
-
-.picker-mode-preview .pv-nav-bars i {
-  width: 9px;
-  height: 2px;
-}
-
-.picker-mode-preview .pv-pill {
-  width: 15px;
-  height: 6px;
-}
-
-.picker-mode-preview .pv-hero {
-  gap: 7%;
-  padding: 3px 8% 6px;
-}
-
-.picker-mode-preview .pv-hero-copy {
-  gap: 3px;
-}
-
-.picker-mode-preview .pv-eyebrow {
-  width: 30%;
-  height: 3px;
-}
-
-.picker-mode-preview .pv-headline {
-  gap: 3px;
-  margin-block: 1px;
-}
-
-.picker-mode-preview .pv-headline i {
-  height: 5px;
-}
-
-.picker-mode-preview .pv-copy-bar {
-  height: 3px;
-}
-
-.picker-mode-preview .pv-actions {
-  gap: 4px;
-  margin-top: 3px;
-}
-
-.picker-mode-preview .pv-actions i {
-  width: 18px;
-  height: 7px;
-}
-
-/* The frame is wide and short here, so a 4 / 3 plate would stand taller than
-   the whole desktop: the image takes its height from the hero row instead of
-   setting it. Its gradient and border are the component's own. */
-.picker-mode-preview .pv-image {
-  align-self: stretch;
-  aspect-ratio: auto;
-}
-
-.picker-mode-preview .pv-image::after {
-  top: 4px;
-  right: 4px;
-  width: 5px;
-}
-
-.picker-mode-preview .pv-phone-top {
-  padding: 3px 5px;
-}
-
-.picker-mode-preview .pv-avatar {
-  width: 6px;
-}
-
-.picker-mode-preview .pv-phone-body {
-  gap: 3px;
-  padding: 4px 4px 5px;
-}
-
-.picker-mode-preview .pv-mini-card {
-  gap: 2px;
-  padding: 2px 3px;
-}
-
-.picker-mode-preview .pv-mini-card i,
-.picker-mode-preview .pv-mini-card span {
-  height: 2px;
-}
-
-.picker-mode-preview .pv-mini-card span {
-  height: 3px;
-}
-
-.picker-mode-preview .pv-mini-chart {
-  gap: 2px;
-  padding: 2px 3px;
-}
-
-.picker-mode-preview .pv-tabbar {
-  padding: 3px 0;
-}
-
-.picker-mode-preview .pv-tabbar i {
-  width: 3px;
+.picker-mode-preview--exact > .picker-preview {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--pk-pv-natural);
+  transform: scale(var(--pk-pv-scale));
+  transform-origin: top left;
 }
 
 .picker-mode-copy {
   display: grid;
-  gap: 6px;
+  gap: 10px;
   align-content: start;
 }
 
@@ -1675,13 +1621,13 @@ body.picker-page {
 .picker-mode-pills {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 6px;
 }
 
 .picker-mode-pills i {
-  padding: 3px 7px;
+  padding: 4px 9px;
   color: var(--ks-champagne);
-  font-size: 12px;
+  font-size: 12.5px;
   font-style: normal;
   letter-spacing: 0.015em;
   border: 1px solid color-mix(in oklab, var(--ks-champagne) 24%, var(--ks-rule));
