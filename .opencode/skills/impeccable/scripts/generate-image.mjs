@@ -1,15 +1,19 @@
 #!/usr/bin/env node
 /**
  * API image generation fallback: renders a mock or world board with the
- * user's own OpenAI key when the harness has no native image generation.
+ * user's own API key when the harness has no native image generation.
  *
- * context.mjs reports availability (it checks OPENAI_API_KEY); harness-native
- * generation always wins when present. This uses gpt-image-2 and spends the
- * user's API credit (roughly $0.05-0.25 per image at default quality), so the
- * skill states that before the first call in a session.
+ * context.mjs reports availability (it checks OPENAI_API_KEY, or
+ * MINIMAX_API_KEY for the MiniMax image-01 path); harness-native
+ * generation always wins when present. The OpenAI path uses gpt-image-2 and
+ * spends the user's API credit (roughly $0.05-0.25 per image at default
+ * quality). The MiniMax path calls the /v1/image_generation endpoint with
+ * image-01 and returns either a URL or base64; the skill states the cost
+ * before the first call in a session.
  *
  *   node generate-image.mjs --prompt "..." --out mock.png [--size 1536x1024] [--quality medium]
  *   node generate-image.mjs --prompt-file prompt.txt --out mock.png
+ *   node generate-image.mjs --prompt "..." --out mock.png --provider minimax [--aspect-ratio 16:9] [--model image-01]
  */
 import fs from 'node:fs';
 import zlib from 'node:zlib';
@@ -24,7 +28,7 @@ function arg(name, fallback = null) {
 // ---------------------------------------------------------------------------
 // Fake mode (IMPECCABLE_IMAGE_GEN_FAKE=1)
 //
-// Deterministic offline stand-in for the OpenAI call: same prompt -> identical
+// Deterministic offline stand-in for the API call: same prompt -> identical
 // bytes, no network, no key, cost line reads $0.00. Used by the new-work smoke
 // suite so the concept/serve-question/image chain can run without spend. The
 // output renders the prompt over a 2-3 color palette hashed from the prompt,
@@ -198,11 +202,133 @@ if (process.env.IMPECCABLE_IMAGE_GEN_FAKE) {
   process.exit(0);
 }
 
-const key = process.env.OPENAI_API_KEY;
-if (!key) {
-  console.error('generate-image: OPENAI_API_KEY is not set; use the harness-native image tool instead.');
-  process.exit(1);
+// Provider dispatch. The OpenAI path (default) uses gpt-image-2 and bills the
+// user's OpenAI key. The MiniMax path calls /v1/image_generation with the
+// image-01 model and bills the user's MiniMax key; it accepts an explicit
+// aspect ratio or width/height, and the response can return either image URLs
+// or base64 strings. The CN endpoint variant (api.minimaxi.com) is selected by
+// setting IMPECCABLE_IMAGE_GEN_MINIMAX_REGION=cn_zh; the default is the global
+// endpoint (api.minimax.io).
+const MINIMAX_ENDPOINTS = {
+  global_en: 'https://api.minimax.io/v1/image_generation',
+  cn_zh: 'https://api.minimaxi.com/v1/image_generation',
+};
+const MINIMAX_MODELS = ['image-01', 'image-01-live'];
+const MINIMAX_ASPECT_RATIOS = ['1:1', '16:9', '4:3', '3:2', '2:3', '3:4', '9:16', '21:9'];
+
+function resolveProvider() {
+  const explicit = arg('provider');
+  if (explicit) return String(explicit).toLowerCase();
+  if (process.env.MINIMAX_API_KEY && !process.env.OPENAI_API_KEY) return 'minimax';
+  return 'openai';
 }
+
+function selectMinimaxEndpoint() {
+  const region = process.env.IMPECCABLE_IMAGE_GEN_MINIMAX_REGION || 'global_en';
+  return MINIMAX_ENDPOINTS[region] || MINIMAX_ENDPOINTS.global_en;
+}
+
+async function generateWithMinimax({ prompt, out }) {
+  const key = process.env.MINIMAX_API_KEY;
+  if (!key) {
+    console.error('generate-image: MINIMAX_API_KEY is not set; use the harness-native image tool instead.');
+    process.exit(1);
+  }
+  const model = arg('model', 'image-01');
+  if (!MINIMAX_MODELS.includes(model)) {
+    console.error(`generate-image: invalid --model "${model}". Valid: ${MINIMAX_MODELS.join(', ')}.`);
+    process.exit(1);
+  }
+  const aspectRatio = arg('aspect-ratio');
+  const widthArg = arg('width');
+  const heightArg = arg('height');
+  const responseFormat = arg('response-format', 'url');
+  const n = Number(arg('n', '1'));
+  const seed = arg('seed');
+  const promptOptimizer = arg('prompt-optimizer');
+
+  const body = { model, prompt };
+  if (aspectRatio) {
+    if (!MINIMAX_ASPECT_RATIOS.includes(aspectRatio)) {
+      console.error(`generate-image: invalid --aspect-ratio "${aspectRatio}". Valid: ${MINIMAX_ASPECT_RATIOS.join(', ')}.`);
+      process.exit(1);
+    }
+    body.aspect_ratio = aspectRatio;
+  }
+  if (widthArg && heightArg) {
+    const w = Number(widthArg);
+    const h = Number(heightArg);
+    if (!Number.isInteger(w) || !Number.isInteger(h) || w < 512 || w > 2048 || h < 512 || h > 2048 || w % 8 !== 0 || h % 8 !== 0) {
+      console.error('generate-image: --width and --height must be integers in [512, 2048] divisible by 8, set together.');
+      process.exit(1);
+    }
+    body.width = w;
+    body.height = h;
+  }
+  body.response_format = responseFormat;
+  if (n >= 1 && n <= 9) body.n = n;
+  if (seed !== null) body.seed = Number(seed);
+  if (promptOptimizer !== null) body.prompt_optimizer = String(promptOptimizer).toLowerCase() === 'true';
+
+  const response = await fetch(selectMinimaxEndpoint(), {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok || json?.base_resp?.status_code !== undefined && json.base_resp.status_code !== 0) {
+    const status = json?.base_resp?.status_code ?? response.status;
+    const msg = json?.base_resp?.status_msg ?? '';
+    console.error(`generate-image: MiniMax API error ${status}: ${(msg || JSON.stringify(json)).slice(0, 300)}`);
+    process.exit(1);
+  }
+  const imageUrls = json?.data?.image_urls;
+  const imageBase64 = json?.data?.image_base64;
+  const firstUrl = Array.isArray(imageUrls) ? imageUrls[0] : null;
+  const firstB64 = Array.isArray(imageBase64) ? imageBase64[0] : null;
+  if (firstUrl) {
+    const imgResponse = await fetch(firstUrl);
+    if (!imgResponse.ok) {
+      console.error(`generate-image: failed to fetch generated image URL (${imgResponse.status})`);
+      process.exit(1);
+    }
+    const arrayBuffer = await imgResponse.arrayBuffer();
+    fs.writeFileSync(out, Buffer.from(arrayBuffer));
+  } else if (firstB64) {
+    fs.writeFileSync(out, Buffer.from(firstB64, 'base64'));
+  } else {
+    console.error('generate-image: no image in MiniMax response');
+    process.exit(1);
+  }
+  return { model, responseFormat, aspectRatio: aspectRatio || `${body.width || ''}x${body.height || ''}` };
+}
+
+async function generateWithOpenai({ prompt, out, size, quality }) {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) {
+    console.error('generate-image: OPENAI_API_KEY is not set; use the harness-native image tool instead.');
+    process.exit(1);
+  }
+  const response = await fetch('https://api.openai.com/v1/images/generations', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ model: 'gpt-image-2', prompt, size, quality, n: 1 }),
+  });
+  if (!response.ok) {
+    console.error(`generate-image: API error ${response.status}: ${(await response.text()).slice(0, 300)}`);
+    process.exit(1);
+  }
+  const json = await response.json();
+  const b64 = json?.data?.[0]?.b64_json;
+  if (!b64) {
+    console.error('generate-image: no image in response');
+    process.exit(1);
+  }
+  fs.writeFileSync(out, Buffer.from(b64, 'base64'));
+  return { model: 'gpt-image-2', size, quality };
+}
+
+const provider = resolveProvider();
 const promptFile = arg('prompt-file');
 const prompt = promptFile ? fs.readFileSync(promptFile, 'utf8') : arg('prompt');
 const out = arg('out');
@@ -213,28 +339,23 @@ if (!prompt || !out) {
 const size = arg('size', '1536x1024');
 const quality = arg('quality', 'medium');
 
-const response = await fetch('https://api.openai.com/v1/images/generations', {
-  method: 'POST',
-  headers: { Authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-  body: JSON.stringify({ model: 'gpt-image-2', prompt, size, quality, n: 1 }),
-});
-if (!response.ok) {
-  console.error(`generate-image: API error ${response.status}: ${(await response.text()).slice(0, 300)}`);
-  process.exit(1);
+let providerInfo;
+if (provider === 'minimax') {
+  providerInfo = await generateWithMinimax({ prompt, out });
+} else {
+  providerInfo = await generateWithOpenai({ prompt, out, size, quality });
 }
-const json = await response.json();
-const b64 = json?.data?.[0]?.b64_json;
-if (!b64) {
-  console.error('generate-image: no image in response');
-  process.exit(1);
-}
-fs.writeFileSync(out, Buffer.from(b64, 'base64'));
+const { model: usedModel } = providerInfo;
 // The prompt travels with the asset: embedded in the file itself (EXIF-class
 // metadata via embed-prompt.mjs) so intent survives copies across harnesses,
 // plus a sidecar for anything that indexes rather than opens the image.
 try {
   const { spawnSync } = await import('node:child_process');
   spawnSync(process.execPath, [new URL('./embed-prompt.mjs', import.meta.url).pathname, out, '--prompt', prompt], { stdio: 'ignore' });
-  fs.writeFileSync(`${out}.json`, JSON.stringify({ prompt, createdAt: new Date().toISOString(), tool: 'generate-image.mjs', model: 'gpt-image-2' }, null, 2));
+  fs.writeFileSync(`${out}.json`, JSON.stringify({ prompt, createdAt: new Date().toISOString(), tool: 'generate-image.mjs', model: usedModel }, null, 2));
 } catch { /* embedding is best-effort */ }
-console.log(`IMAGE: ${out} (${size}, ${quality}, gpt-image-2, billed to your OpenAI key); prompt embedded + sidecar at ${out}.json`);
+const providerTag = provider === 'minimax'
+  ? `minimax ${usedModel}${providerInfo.aspectRatio ? `, ${providerInfo.aspectRatio}` : ''}`
+  : `${size}, ${quality}, gpt-image-2`;
+const keyTag = provider === 'minimax' ? 'MiniMax key' : 'OpenAI key';
+console.log(`IMAGE: ${out} (${providerTag}, billed to your ${keyTag}); prompt embedded + sidecar at ${out}.json`);

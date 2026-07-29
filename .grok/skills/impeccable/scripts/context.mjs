@@ -1267,13 +1267,21 @@ function automaticHookMode(ctx) {
 
 
 // Image generation availability: harness-native tools always win, but when the
-// environment carries an OpenAI key the API fallback works everywhere. The
-// flag only reports capability, positively: absence stays silent, because a
-// "none" line reads as "no visualization anywhere" and suppresses the
-// harness's own image tools.
+// environment carries an OpenAI key (or a MiniMax key, for the image-01 path)
+// the API fallback works everywhere. The flag only reports capability,
+// positively: absence stays silent, because a "none" line reads as "no
+// visualization anywhere" and suppresses the harness's own image tools.
 function appendImageGenDirective(parts) {
-  if (!process.env.OPENAI_API_KEY) return;
+  if (!process.env.OPENAI_API_KEY && !process.env.MINIMAX_API_KEY) return;
   const scriptsPath = path.dirname(fileURLToPath(import.meta.url));
+  if (process.env.MINIMAX_API_KEY && !process.env.OPENAI_API_KEY) {
+    parts.push([
+      'IMAGE_GEN_AVAILABLE: A MiniMax key is present, so image generation works even without a harness-native image tool:',
+      `\`node ${scriptsPath}/generate-image.mjs --prompt "..." --out <file> --provider minimax\` (image-01, billed to the user's key; say so before the first render).`,
+      'Prefer the harness-native image tool when one exists. Visualizing a direction before building it measurably strengthens the result.',
+    ].join(' '));
+    return;
+  }
   parts.push([
     'IMAGE_GEN_AVAILABLE: An OpenAI key is present, so image generation works even without a harness-native image tool:',
     `\`node ${scriptsPath}/generate-image.mjs --prompt "..." --out <file>\` (gpt-image-2, billed to the user's key; say so before the first render).`,
