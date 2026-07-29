@@ -275,6 +275,7 @@ body.picker-page {
 /* The art belongs to the start screen and the finish. Every question in
    between is judged against a plain ground, because a photograph behind a
    palette or a wireframe is a second opinion nobody asked for. */
+.picker-shell:has(#picker-form[data-current="01b"]) .picker-hero-art,
 .picker-shell:has(#picker-form[data-current="02"]) .picker-hero-art,
 .picker-shell:has(#picker-form[data-current="03"]) .picker-hero-art,
 .picker-shell:has(#picker-form[data-current="04"]) .picker-hero-art,
@@ -300,13 +301,13 @@ body.picker-page {
   transition: opacity 180ms var(--ks-ease);
 }
 
-/* Ten steps hold the same total width five did: the row is a measure of how
-   far along the interview is, and a wider one would start competing with the
-   question. The ticks divide whatever that width is. */
+/* Eleven steps hold the same total width five did: the row is a measure of
+   how far along the interview is, and a wider one would start competing with
+   the question. The ticks divide whatever that width is. */
 .picker-progress-track {
   width: 232px;
   display: grid;
-  grid-template-columns: repeat(10, minmax(0, 1fr));
+  grid-template-columns: repeat(11, minmax(0, 1fr));
   gap: 5px;
 }
 
@@ -325,7 +326,8 @@ body.picker-page {
 .picker-progress[data-step="7"] .picker-progress-track i:nth-child(-n + 7),
 .picker-progress[data-step="8"] .picker-progress-track i:nth-child(-n + 8),
 .picker-progress[data-step="9"] .picker-progress-track i:nth-child(-n + 9),
-.picker-progress[data-step="10"] .picker-progress-track i {
+.picker-progress[data-step="10"] .picker-progress-track i:nth-child(-n + 10),
+.picker-progress[data-step="11"] .picker-progress-track i {
   background: var(--ks-kinpaku);
 }
 
@@ -1220,6 +1222,500 @@ body.picker-page {
 
 .pv-tabbar i:first-child {
   background: var(--pv-primary);
+}
+
+/* ── Screen 01b: which surfaces ──────────────────────────────
+   Four tiles, one per mode the skill recognizes, chosen before any visual
+   question so every later answer knows what kind of page it is dressing.
+   Multi-select: a product is allowed to be an app with a landing page and
+   docs. The previews are deliberately monochrome, drawn entirely from the
+   theme's own neutral ramp; color has not been chosen yet, and a gray
+   wireframe cannot pre-sell one. */
+.picker-modes {
+  display: grid;
+  gap: clamp(12px, 2svh, 26px);
+  justify-items: center;
+  padding-block: clamp(16px, 2.6svh, 36px) clamp(12px, 2svh, 32px);
+}
+
+.picker-modes-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* Both rows take the taller row's height, so a goal or chip row that wraps
+     in one tile cannot leave the other three sitting shorter than it. */
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  /* Narrow enough that a proportional preview fills most of its tile. A wider
+     grid leaves the frames marooned in empty space. */
+  width: min(100%, 760px);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.picker-modes-grid legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.picker-mode-tile {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: clamp(7px, 1.1svh, 14px);
+  padding: clamp(9px, 1.4svh, 16px);
+  background: var(--ks-lacquer-raised);
+  border: 1px solid var(--ks-rule);
+  cursor: pointer;
+  transition:
+    border-color 180ms var(--ks-ease),
+    background-color 180ms var(--ks-ease);
+}
+
+.picker-mode-tile input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.picker-mode-tile:hover {
+  border-color: color-mix(in oklab, var(--ks-patina) 45%, var(--ks-rule));
+}
+
+.picker-mode-tile:has(input:checked) {
+  background: color-mix(in oklab, var(--ks-patina) 9%, var(--ks-lacquer-raised));
+  border-color: var(--ks-patina);
+}
+
+.picker-mode-tile:has(input:focus-visible) {
+  outline: 2px solid var(--ks-patina-deep);
+  outline-offset: -2px;
+  z-index: 1;
+}
+
+/* The tile's little pair of frames: same anatomy as the palette screen's
+   preview, drawn in the neutral ramp. Bars take their width from --w so each
+   mode's silhouette is written in the markup, not in a pile of one-off
+   classes. The three bar weights below are the whole drawing vocabulary. */
+.picker-mode-preview {
+  --pm-strong: var(--ks-text-muted);
+  --pm-mid: var(--ks-text-mute-deep);
+  --pm-faint: color-mix(in oklab, var(--ks-text-mute-deep) 45%, var(--ks-graphite));
+  --pm-fill: var(--ks-graphite-2);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  /* The height is the budget and the width follows it, at the same 16 / 7 the
+     palette screen's preview uses. Letting the tile set the width instead
+     stretched the desktop card to about five times its own ratio. */
+  height: clamp(104px, 13svh, 152px);
+  aspect-ratio: 16 / 7;
+  width: auto;
+  max-width: 100%;
+  justify-self: center;
+}
+
+.pm-desktop,
+.pm-phone {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  background: var(--ks-graphite);
+  border: 1px solid var(--ks-rule);
+  border-radius: 3px;
+}
+
+.pm-phone {
+  height: 100%;
+  aspect-ratio: 9 / 19;
+  grid-template-rows: auto 1fr auto;
+  border-radius: 7px;
+}
+
+.pm-phone > .pm-phone-body:first-child {
+  grid-row: 1 / -1;
+}
+
+.pm-landing {
+  grid-template-rows: auto 1fr;
+}
+
+.pm-bar {
+  display: block;
+  width: var(--w, 100%);
+  height: 5px;
+  background: var(--pm-mid);
+  border-radius: 2px;
+}
+
+.pm-strong {
+  height: 8px;
+  background: var(--pm-strong);
+}
+
+.pm-faint {
+  background: var(--pm-faint);
+}
+
+.pm-dot {
+  width: 5px;
+  aspect-ratio: 1;
+  background: var(--pm-strong);
+  border-radius: 50%;
+}
+
+.pm-topbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--ks-rule);
+}
+
+.pm-links {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.pm-links i {
+  width: 10px;
+  height: 3px;
+  background: var(--pm-mid);
+  border-radius: 2px;
+}
+
+.pm-media {
+  min-width: 0;
+  min-height: 0;
+  background: var(--pm-fill);
+  border-radius: 2px;
+}
+
+/* Operate: rail plus work area, the one silhouette nobody mistakes for a
+   landing page. */
+.pm-split {
+  grid-template-columns: 26% minmax(0, 1fr);
+}
+
+.pm-side {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  padding: 9px 8px;
+  border-right: 1px solid var(--ks-rule);
+}
+
+.pm-side i {
+  height: 5px;
+  background: var(--pm-mid);
+  border-radius: 2px;
+}
+
+.pm-side i:first-child {
+  background: var(--pm-strong);
+}
+
+.pm-main {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 7px;
+  padding: 8px;
+}
+
+.pm-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.pm-cards-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.pm-cards i {
+  height: 26px;
+  background: var(--pm-fill);
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+}
+
+.pm-rows {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+}
+
+.pm-rows i {
+  height: 5px;
+  background: var(--pm-faint);
+  border-radius: 2px;
+}
+
+/* Read: one measured column of text and nothing competing with it. */
+.pm-article {
+  min-height: 0;
+  display: grid;
+  gap: 7px;
+  align-content: center;
+  justify-items: center;
+  padding: 8px 20%;
+}
+
+/* Experience: the pictures are the page. */
+.pm-mosaic {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  padding: 7px;
+}
+
+.pm-mosaic .pm-media:first-child {
+  grid-row: 1 / -1;
+}
+
+.pm-phone-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 7px;
+  border-bottom: 1px solid var(--ks-rule);
+}
+
+.pm-phone-body {
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  padding: 7px;
+}
+
+.pm-fill {
+  align-content: stretch;
+  grid-template-rows: 1fr 1fr auto;
+}
+
+.pm-tabbar {
+  display: flex;
+  justify-content: space-evenly;
+  align-items: center;
+  padding: 5px 0;
+  border-top: 1px solid var(--ks-rule);
+}
+
+.pm-tabbar i {
+  width: 4px;
+  aspect-ratio: 1;
+  background: var(--pm-mid);
+  border-radius: 50%;
+}
+
+.pm-tabbar i:first-child {
+  background: var(--pm-strong);
+}
+
+/* Persuade carries the palette screen's preview component itself, class and
+   all, so it inherits that component's every color derivation. The tile also
+   sets the four palette roles inline, because the palette screen has not been
+   reached yet and the component would otherwise fall back to the picker's own
+   dark chrome. Only the sizes below change: the component is authored for a
+   box roughly three times this tall, and every rule here is scoped to the
+   tile so screen 02 renders exactly as it did. */
+.picker-mode-preview .pv-desktop {
+  border-radius: 3px;
+}
+
+.picker-mode-preview .pv-phone {
+  border-radius: 7px;
+}
+
+.picker-mode-preview .pv-nav {
+  gap: 5px;
+  padding: 4px 7px;
+}
+
+.picker-mode-preview .pv-logo {
+  width: 5px;
+}
+
+.picker-mode-preview .pv-nav-bars {
+  gap: 4px;
+}
+
+.picker-mode-preview .pv-nav-bars i {
+  width: 9px;
+  height: 2px;
+}
+
+.picker-mode-preview .pv-pill {
+  width: 15px;
+  height: 6px;
+}
+
+.picker-mode-preview .pv-hero {
+  gap: 7%;
+  padding: 3px 8% 6px;
+}
+
+.picker-mode-preview .pv-hero-copy {
+  gap: 3px;
+}
+
+.picker-mode-preview .pv-eyebrow {
+  width: 30%;
+  height: 3px;
+}
+
+.picker-mode-preview .pv-headline {
+  gap: 3px;
+  margin-block: 1px;
+}
+
+.picker-mode-preview .pv-headline i {
+  height: 5px;
+}
+
+.picker-mode-preview .pv-copy-bar {
+  height: 3px;
+}
+
+.picker-mode-preview .pv-actions {
+  gap: 4px;
+  margin-top: 3px;
+}
+
+.picker-mode-preview .pv-actions i {
+  width: 18px;
+  height: 7px;
+}
+
+/* The frame is wide and short here, so a 4 / 3 plate would stand taller than
+   the whole desktop: the image takes its height from the hero row instead of
+   setting it. Its gradient and border are the component's own. */
+.picker-mode-preview .pv-image {
+  align-self: stretch;
+  aspect-ratio: auto;
+}
+
+.picker-mode-preview .pv-image::after {
+  top: 4px;
+  right: 4px;
+  width: 5px;
+}
+
+.picker-mode-preview .pv-phone-top {
+  padding: 3px 5px;
+}
+
+.picker-mode-preview .pv-avatar {
+  width: 6px;
+}
+
+.picker-mode-preview .pv-phone-body {
+  gap: 3px;
+  padding: 4px 4px 5px;
+}
+
+.picker-mode-preview .pv-mini-card {
+  gap: 2px;
+  padding: 2px 3px;
+}
+
+.picker-mode-preview .pv-mini-card i,
+.picker-mode-preview .pv-mini-card span {
+  height: 2px;
+}
+
+.picker-mode-preview .pv-mini-card span {
+  height: 3px;
+}
+
+.picker-mode-preview .pv-mini-chart {
+  gap: 2px;
+  padding: 2px 3px;
+}
+
+.picker-mode-preview .pv-tabbar {
+  padding: 3px 0;
+}
+
+.picker-mode-preview .pv-tabbar i {
+  width: 3px;
+}
+
+.picker-mode-copy {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.picker-mode-goal {
+  color: var(--ks-text-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* The examples name the tile now that the mode word is gone, so they lead the
+   copy block and carry its strongest weight. Sized to keep a four-chip row
+   within two lines at the narrowest tile the grid produces. */
+.picker-mode-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.picker-mode-pills i {
+  padding: 3px 7px;
+  color: var(--ks-champagne);
+  font-size: 12px;
+  font-style: normal;
+  letter-spacing: 0.015em;
+  border: 1px solid color-mix(in oklab, var(--ks-champagne) 24%, var(--ks-rule));
+  border-radius: 2px;
+  transition:
+    color 180ms var(--ks-ease),
+    border-color 180ms var(--ks-ease);
+}
+
+.picker-mode-tile:hover .picker-mode-pills i {
+  border-color: color-mix(in oklab, var(--ks-patina) 30%, var(--ks-rule));
+}
+
+.picker-mode-tile:has(input:checked) .picker-mode-pills i {
+  color: color-mix(in oklab, var(--ks-patina) 85%, var(--ks-champagne));
+  border-color: color-mix(in oklab, var(--ks-patina) 55%, var(--ks-rule));
+}
+
+/* The wording here is doing careful work: every preview in the interview is
+   an isolating instrument, not a sketch of the deliverable, and this is the
+   one place the visitor is told so before meeting the rest of them. */
+.picker-modes-note {
+  max-width: 52ch;
+  color: var(--ks-text-muted);
+  font-size: 1.08rem;
+  line-height: 1.5;
+  text-align: center;
+  text-wrap: balance;
+}
+
+.picker-modes-note strong,
+.picker-mode-goal strong {
+  color: var(--ks-text);
+  font-weight: 600;
 }
 
 /* Screen 03 mirrors screen 02's rhythm: the same centered headline class,
