@@ -39,6 +39,38 @@ const iconRows = iconPacks.packs.map((pack) => ({
   meta: `${pack.grid} grid / ${pack.weight} / ${pack.license}`,
 }));
 
+// The four kinds of surface a design system can be asked to serve, straight
+// from the skill's modes. Values travel as `surface-modes` (multi-select);
+// the agent pre-checks what PRODUCT.md suggests via cues.json, and the
+// visitor corrects it. Persuade is the markup default so the answer can
+// never arrive empty on runs whose cues carry no hint.
+const surfaces = [
+  {
+    value: 'persuade',
+    title: 'Persuade',
+    goal: 'Grab attention and move people to act.',
+    examples: ['Landing pages', 'Marketing', 'Campaigns', 'Pricing'],
+  },
+  {
+    value: 'operate',
+    title: 'Operate',
+    goal: 'Feel familiar so work gets done fast.',
+    examples: ['App UI', 'Dashboards', 'Admin', 'Settings'],
+  },
+  {
+    value: 'read',
+    title: 'Read',
+    goal: 'Get out of the way of understanding.',
+    examples: ['Docs', 'Articles', 'Guides', 'Changelogs'],
+  },
+  {
+    value: 'experience',
+    title: 'Experience',
+    goal: 'Be the work itself.',
+    examples: ['Portfolios', 'Galleries', 'Showcases'],
+  },
+];
+
 // The five questions that are answered by looking at the same wireframe page.
 // Each one only rewrites the artboard slots it owns, so by the last screen the
 // page is showing every decision made before it. Motion is the one question
@@ -246,6 +278,157 @@ const questions = [
                 </div>
               </div>
               <p class="picker-key-caption">Arrow keys to move</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="picker-screen" data-screen="01b" data-step="Surfaces" aria-hidden="true" aria-labelledby="picker-modes-title">
+        <div class="picker-container">
+          <div class="picker-modes">
+            <h2 id="picker-modes-title" class="picker-question-title">What are we designing?</h2>
+
+            <fieldset class="picker-modes-grid">
+              <legend>Surfaces</legend>
+
+              <label class="picker-mode-tile">
+                <input type="checkbox" name="surface-modes" value="persuade" aria-label="Landing pages, marketing, campaigns, and pricing" checked />
+                <span
+                  class="picker-mode-preview picker-preview"
+                  aria-hidden="true"
+                  style="--pv-primary: #195856; --pv-secondary: #5F7C7A; --pv-tertiary: #3A958B; --pv-neutral: #EDEFEF; --pv-n-ink: var(--pk-ink-dark);"
+                >
+                  <span class="pv-desktop">
+                    <span class="pv-nav">
+                      <span class="pv-logo"></span>
+                      <span class="pv-nav-bars"><i></i><i></i><i></i></span>
+                      <span class="pv-pill"></span>
+                    </span>
+                    <span class="pv-hero">
+                      <span class="pv-hero-copy">
+                        <span class="pv-eyebrow"></span>
+                        <span class="pv-headline"><i></i><i></i></span>
+                        <span class="pv-copy-bar"></span>
+                        <span class="pv-actions"><i></i><i></i></span>
+                      </span>
+                      <span class="pv-image"></span>
+                    </span>
+                  </span>
+                  <span class="pv-phone">
+                    <span class="pv-phone-top">
+                      <span class="pv-logo"></span>
+                      <span class="pv-avatar"></span>
+                    </span>
+                    <span class="pv-phone-body">
+                      <span class="pv-mini-card"><i></i><span></span></span>
+                      <span class="pv-mini-card"><i></i><span></span></span>
+                      <span class="pv-mini-chart"><i></i><i></i><i></i><i></i><i></i></span>
+                    </span>
+                    <span class="pv-tabbar"><i></i><i></i><i></i><i></i></span>
+                  </span>
+                </span>
+                <span class="picker-mode-copy">
+                  <span class="picker-mode-pills"><i>Landing pages</i><i>Marketing</i><i>Campaigns</i><i>Pricing</i></span>
+                  <span class="picker-mode-goal">You're <strong>convincing</strong> someone to act. Lead with proof and a clear next step.</span>
+                </span>
+              </label>
+
+              <label class="picker-mode-tile">
+                <input type="checkbox" name="surface-modes" value="operate" aria-label="App UI, dashboards, admin, and settings" />
+                <span class="picker-mode-preview" aria-hidden="true">
+                  <span class="pm-desktop pm-split">
+                    <span class="pm-side"><i></i><i></i><i></i><i></i></span>
+                    <span class="pm-main">
+                      <span class="pm-cards"><i></i><i></i><i></i></span>
+                      <span class="pm-rows"><i></i><i></i><i></i><i></i></span>
+                    </span>
+                  </span>
+                  <span class="pm-phone">
+                    <span class="pm-phone-top"><i class="pm-dot"></i><i class="pm-bar pm-faint" style="--w:30%"></i></span>
+                    <span class="pm-phone-body">
+                      <span class="pm-cards pm-cards-2"><i></i><i></i></span>
+                      <span class="pm-rows"><i></i><i></i><i></i></span>
+                    </span>
+                    <span class="pm-tabbar"><i></i><i></i><i></i><i></i></span>
+                  </span>
+                </span>
+                <span class="picker-mode-copy">
+                  <span class="picker-mode-pills"><i>App UI</i><i>Dashboards</i><i>Admin</i><i>Settings</i></span>
+                  <span class="picker-mode-goal"><strong>Familiarity</strong> comes first. Keep paths obvious and the layout predictable.</span>
+                </span>
+              </label>
+
+              <label class="picker-mode-tile">
+                <input type="checkbox" name="surface-modes" value="read" aria-label="Docs, articles, guides, and changelogs" />
+                <span class="picker-mode-preview" aria-hidden="true">
+                  <span class="pm-desktop pm-landing">
+                    <span class="pm-topbar"><i class="pm-dot"></i><span class="pm-links"><i></i><i></i></span></span>
+                    <span class="pm-article">
+                      <i class="pm-bar pm-strong" style="--w:62%"></i>
+                      <i class="pm-bar pm-faint" style="--w:34%"></i>
+                      <i class="pm-bar" style="--w:100%"></i>
+                      <i class="pm-bar" style="--w:100%"></i>
+                      <i class="pm-bar" style="--w:90%"></i>
+                      <i class="pm-bar" style="--w:97%"></i>
+                      <i class="pm-bar" style="--w:58%"></i>
+                    </span>
+                  </span>
+                  <span class="pm-phone">
+                    <span class="pm-phone-body">
+                      <i class="pm-bar pm-strong" style="--w:74%"></i>
+                      <i class="pm-bar pm-faint" style="--w:40%"></i>
+                      <i class="pm-bar" style="--w:100%"></i>
+                      <i class="pm-bar" style="--w:100%"></i>
+                      <i class="pm-bar" style="--w:88%"></i>
+                      <i class="pm-bar" style="--w:96%"></i>
+                      <i class="pm-bar" style="--w:64%"></i>
+                    </span>
+                  </span>
+                </span>
+                <span class="picker-mode-copy">
+                  <span class="picker-mode-pills"><i>Docs</i><i>Articles</i><i>Guides</i><i>Changelogs</i></span>
+                  <span class="picker-mode-goal">The job is to <strong>read and understand</strong>. Let type and structure do the work.</span>
+                </span>
+              </label>
+
+              <label class="picker-mode-tile">
+                <input type="checkbox" name="surface-modes" value="experience" aria-label="Portfolios, galleries, and showcases" />
+                <span class="picker-mode-preview" aria-hidden="true">
+                  <span class="pm-desktop">
+                    <span class="pm-mosaic">
+                      <span class="pm-media"></span>
+                      <span class="pm-media"></span>
+                      <span class="pm-media"></span>
+                    </span>
+                  </span>
+                  <span class="pm-phone">
+                    <span class="pm-phone-body pm-fill">
+                      <span class="pm-media"></span>
+                      <span class="pm-media"></span>
+                      <i class="pm-bar pm-faint" style="--w:46%"></i>
+                    </span>
+                  </span>
+                </span>
+                <span class="picker-mode-copy">
+                  <span class="picker-mode-pills"><i>Portfolios</i><i>Galleries</i><i>Showcases</i></span>
+                  <span class="picker-mode-goal">You're <strong>showcasing</strong> work, not pitching it. Let browsing feel like exploring the work up close.</span>
+                </span>
+              </label>
+            </fieldset>
+
+            <p class="picker-modes-note">
+              Previews only help you decide. They will <strong>not be the final design</strong>.
+            </p>
+
+            <div class="picker-actions-stack">
+              <button class="ks-button ks-button-primary" type="button" data-modes-next data-advance="next">
+                Continue
+                <span class="ks-button-arrow" aria-hidden="true">
+                  <svg viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square">
+                    <path d="M0 4h14M10 0l4 4-4 4"></path>
+                  </svg>
+                </span>
+              </button>
             </div>
           </div>
         </div>
@@ -707,10 +890,10 @@ const questions = [
 
       <div class="picker-progress" aria-hidden="true">
         <div class="picker-progress-track">
-          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
         </div>
         <p class="picker-progress-label">
-          <span class="picker-progress-index"><b data-progress-index>1</b> / 10</span>
+          <span class="picker-progress-index"><b data-progress-index>1</b> / 11</span>
           <span class="picker-progress-name" data-progress-name></span>
         </p>
       </div>
@@ -812,9 +995,9 @@ const questions = [
     )];
 
     // Neither the start screen nor the review is a question, so the stepper
-    // counts from screen 02 and fills on the last one, icons. Review holds it
-    // full rather than counting past the end.
-    const STEPS = 10;
+    // counts from the surfaces screen and fills on the last one, icons.
+    // Review holds it full rather than counting past the end.
+    const STEPS = 11;
     const progress = $('.picker-progress');
     const setProgress = (index, name) => {
       const step = Math.min(Math.max(index, 1), STEPS);

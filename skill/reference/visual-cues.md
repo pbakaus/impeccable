@@ -436,6 +436,8 @@ Done when: `fonts.json` is parseable, contains exactly six ranked pairs, every f
 
 ## Step 7: Launch the picker
 
+Before launching, add a top-level `modes` array to `cues.json` naming the surface kinds this product already implies, judged from PRODUCT.md and the codebase: any of `persuade`, `operate`, `read`, `experience`. The picker's first question pre-checks those tiles as its starting point; the user corrects the set by hand, and the final selection returns in the answers as `surface-modes`. Omit the field when the product gives no clear signal; the picker then starts from `persuade` alone.
+
 Tell the user in one line that the visual cues are ready at `.impeccable/visual-cues/` (name the count), then run `node {{scripts_path}}/picker-server.mjs` from the project root as a foreground command and parse its `PICKER_URL` line.
 
 - **The harness has a browser tool**: open the URL with it and let the user drive. The tool is a viewport only; never drive the questionnaire yourself, because the answers are the user's.

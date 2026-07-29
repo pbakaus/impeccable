@@ -1264,9 +1264,30 @@ document.addEventListener('picker:screenchange', (event) => {
   }
 });
 
+// Screen 01b: the surface tiles. Multi-select with a floor of one, so the
+// answer can never arrive empty; the continue button holds that line while
+// the markup's default (persuade) keeps scripted runs moving.
+const modeInputs = [...document.querySelectorAll('input[name="surface-modes"]')];
+const modesNext = document.querySelector('[data-modes-next]');
+const syncModesNext = () => {
+  if (modesNext) modesNext.disabled = !modeInputs.some((input) => input.checked);
+};
+for (const input of modeInputs) input.addEventListener('change', syncModesNext);
+syncModesNext();
+
 try {
   const get = (url) => fetch(url).then((response) => response.ok ? response.json() : Promise.reject());
   const [cueData, seedData] = await Promise.all([get('/cues.json'), get('/palettes.json')]);
+  // The agent's reading of PRODUCT.md arrives as cues.modes and pre-checks
+  // the surface tiles. Applied only when it names at least one real tile, so
+  // a bad hint cannot uncheck everything.
+  if (Array.isArray(cueData.modes)) {
+    const wanted = new Set(cueData.modes);
+    if (modeInputs.some((input) => wanted.has(input.value))) {
+      for (const input of modeInputs) input.checked = wanted.has(input.value);
+      syncModesNext();
+    }
+  }
   cards = [
     ...cueData.cues.map((id) => ({ id, type: 'cue', palette: cueData.palette[id] })),
     ...seedData.seeds.map((seed) => ({ ...seed, type: 'seed' })),
