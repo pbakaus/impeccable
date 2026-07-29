@@ -320,9 +320,9 @@ const questions = [
                         <span class="pv-avatar"></span>
                       </span>
                       <span class="pv-phone-body">
+                        <span class="pv-image"></span>
                         <span class="pv-mini-card"><i></i><span></span></span>
                         <span class="pv-mini-card"><i></i><span></span></span>
-                        <span class="pv-mini-chart"><i></i><i></i><i></i><i></i><i></i></span>
                       </span>
                       <span class="pv-tabbar"><i></i><i></i><i></i><i></i></span>
                     </span>
@@ -486,6 +486,7 @@ const questions = [
                 </p>
               </div>
 
+              <div class="picker-palette-subgrid">
               <fieldset class="picker-palette-panel">
                 <legend>Chosen colors</legend>
                 <button class="picker-icon-button picker-tip picker-reset" type="button" data-reset data-tip="Reset to this card's colors" aria-label="Reset to this card's colors">
@@ -555,25 +556,27 @@ const questions = [
                       <div class="pv-avatar"></div>
                     </div>
                     <div class="pv-phone-body">
+                      <div class="pv-image"></div>
                       <div class="pv-mini-card"><i></i><span></span></div>
                       <div class="pv-mini-card"><i></i><span></span></div>
-                      <div class="pv-mini-chart"><i></i><i></i><i></i><i></i><i></i></div>
                     </div>
                     <div class="pv-tabbar"><i></i><i></i><i></i><i></i></div>
                   </div>
                 </div>
-
-                <div class="picker-actions-stack">
-                  <button class="ks-button ks-button-primary picker-select" type="button" data-select-palette data-advance="next" disabled>
-                    Select this palette
-                    <span class="ks-button-arrow" aria-hidden="true">
-                      <svg viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square">
-                        <path d="M0 4h14M10 0l4 4-4 4"></path>
-                      </svg>
-                    </span>
-                  </button>
-                </div>
               </fieldset>
+
+              <div class="picker-actions-stack">
+                <button class="ks-button ks-button-primary picker-select" type="button" data-select-palette data-advance="next" disabled>
+                  Select this palette
+                  <span class="ks-button-arrow" aria-hidden="true">
+                    <svg viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square">
+                      <path d="M0 4h14M10 0l4 4-4 4"></path>
+                    </svg>
+                  </span>
+                </button>
+                <button class="picker-back" type="button" data-advance="prev">Back</button>
+              </div>
+              </div>
             </div>
 
             <input type="hidden" name="palette-source" />
