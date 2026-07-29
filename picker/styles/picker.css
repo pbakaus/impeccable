@@ -2568,6 +2568,17 @@ body.picker-page {
    against all of it. Without the second measure the panel keeps its own 434 and
    overflows the row the band now shares. Scoped to this screen because the cap
    only holds where there are four options to divide. */
+/* What this screen has to spend between the heading and the fold. Both columns
+   read it: the rail sizes its rows against it and the frame takes what the rail
+   leaves, so whichever of the two is taller is still the one that decides where
+   the CTA lands. The shared --pk-column is measured for a row an artboard sets
+   and runs about 30px short of what this screen spends around its grid; at a
+   900px viewport that difference is the whole overhang. Taken at 1600x900, the
+   tightest of the common sizes. */
+.picker-screen[data-screen="03"] .picker-strategy-grid {
+  --pk-fit: calc(100svh - 376px);
+}
+
 .picker-screen[data-screen="03"] .picker-strategy-grid > .picker-type-rail {
   grid-template-rows: minmax(0, 1fr) auto;
   /* The rail is measured against the viewport rather than against the frame
@@ -2575,14 +2586,7 @@ body.picker-page {
      which is wider than the artboard this column used to hold, so matching its
      height would spend the whole column on four rows of 78px.
 
-     It is also the tallest thing in its row now, which makes it the column
-     that decides where the CTA lands. The shared budget is measured for a row
-     an artboard sets and runs about 30px short of what this screen spends
-     around its grid; at a 900px viewport that difference is the whole
-     overhang, so this screen measures itself. Taken at 1600x900, the tightest
-     of the common sizes. */
-  --pk-fit: calc(100svh - 376px);
-  /* 546px is the comfortable rail: four rows at 108, the band at 96, the gap,
+     546px is the comfortable rail: four rows at 108, the band at 96, the gap,
      and the panel's hairline. Below that the band is the first thing to give,
      down to a floor where the palette is still readable, because a shorter
      reading of four colors costs less than a squeezed sentence. */
@@ -2802,7 +2806,9 @@ body.picker-page {
   min-width: 0;
   display: grid;
   grid-template-rows: auto auto;
-  align-content: center;
+  /* Level with the top of the rail beside it. Centring it against the taller
+     column opened a gap under the heading that read as a missing element. */
+  align-content: start;
   gap: 12px;
 }
 
@@ -2819,7 +2825,7 @@ body.picker-page {
   justify-self: end;
   display: flex;
   gap: 2px;
-  padding: 2px;
+  padding: 4px;
   background: var(--ks-lacquer-raised);
   border: 1px solid var(--ks-rule);
   border-radius: 2px;
@@ -2832,14 +2838,14 @@ body.picker-page {
 .picker-surface-tab {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 5px 11px;
+  gap: 10px;
+  padding: 13px 22px;
   color: var(--ks-text-muted);
   background: transparent;
   border: 0;
   border-radius: 2px;
   font-family: inherit;
-  font-size: 0.82rem;
+  font-size: 1.08rem;
   line-height: 1.2;
   cursor: pointer;
   transition:
@@ -2865,8 +2871,8 @@ body.picker-page {
 /* The whole report on state: filled once the surface has been answered
    deliberately, hollow while it is still carrying the default it was given. */
 .picker-surface-dot {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   border: 1px solid color-mix(in oklab, var(--ks-patina) 55%, transparent);
   border-radius: 50%;
 }
