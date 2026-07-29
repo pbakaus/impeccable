@@ -72,7 +72,13 @@ const NODE_MAJOR_FLOOR = 22;
 //     renders only on DENY, so warning would block the edit    -> probe only
 //   Grok Build: PostToolUse/Stop stdout is ignored outright    -> probe only
 //   Copilot: output contract unconfirmed; do not guess a shape -> probe only
-const NODE_PROBE = `node -e "process.exit(parseInt(process.versions.node,10)>=${NODE_MAJOR_FLOOR}?0:1)" 2>/dev/null`;
+//
+// The clamp avoids `<` and `>` deliberately: Volta's Windows shims run through
+// `cmd /C`, which reads an angle bracket in the `-e` payload as redirection, so
+// `>=` failed before node ran at all and the guard reported a missing runtime on
+// a machine that had a supported one (volta-cli/volta#1791). Newlines break the
+// same way, so this payload also has to stay on one line.
+const NODE_PROBE = `node -e "process.exit(Math.min(parseInt(process.versions.node,10),${NODE_MAJOR_FLOOR})===${NODE_MAJOR_FLOOR}?0:1)" 2>/dev/null`;
 const guardedNode = (hookPath, notice = '') => {
   const probe = notice
     ? `! { ${NODE_PROBE} || { ${notice}; exit 0; }; }`
