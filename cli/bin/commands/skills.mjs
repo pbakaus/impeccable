@@ -1328,7 +1328,18 @@ function hookScriptPathForProvider(skillRoot, provider) {
 // code when the file exists, so Claude's exit-2 blocking signal still reaches
 // the agent. POSIX-shell form, consistent with the project's other hook
 // commands (e.g. the GitHub manifest's `$(git rev-parse ...)`).
+//
+// On Windows that guard is a hard failure, not a degraded one: Codex runs hook
+// commands through PowerShell, which rejects `[` at parse time ("Missing type
+// name after '['") before node ever starts, so the hook dies even when the
+// file exists (issue #452). No guard syntax parses in PowerShell, cmd.exe, and
+// sh alike, so a Windows install emits the direct `node "PATH"` invocation the
+// bundled plugin manifests already use. Trade-off accepted with the issue: a
+// stale path then surfaces as a node resolution error instead of a silent
+// no-op. The manifest is machine-local (written by this install run on this
+// machine), so selecting the form by the installing platform is sound.
 function guardHookCommand(quotedPath) {
+  if (process.platform === 'win32') return `node ${quotedPath}`;
   return `[ ! -f ${quotedPath} ] || node ${quotedPath}`;
 }
 
@@ -1340,7 +1351,8 @@ function guardHookCommand(quotedPath) {
 //     when a project hook points at a skill installed elsewhere (--scope=global).
 //   * otherwise — keep the bundle's own ${CLAUDE_PROJECT_DIR}-relative path,
 //     which correctly resolves for a project-scoped install.
-// Either way the command is wrapped with the missing-file guard.
+// Either way the command goes through guardHookCommand (missing-file guard on
+// POSIX platforms, direct node invocation on Windows).
 function rewriteHookCommandsForSkillRoot(value, provider, { skillRoot, absolute }) {
   const hookScript = hookScriptPathForProvider(skillRoot, provider);
   // Providers we don't own a `node "PATH"` command hook for (.github, .grok)
