@@ -23,7 +23,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const API_BASE = 'https://impeccable.style';
 
 // Provider folder names in project roots
-const PROVIDER_DIRS = ['.claude', '.cursor', '.gemini', '.agents', '.github', '.grok', '.kiro', '.opencode', '.pi', '.qoder', '.trae', '.trae-cn', '.rovodev', '.vibe'];
+const PROVIDER_DIRS = ['.claude', '.cursor', '.gemini', '.agents', '.github', '.grok', '.kiro', '.omp', '.opencode', '.pi', '.qoder', '.trae', '.trae-cn', '.rovodev', '.vibe'];
 const PROVIDER_ALIASES = {
   agents: '.agents',
   claude: '.claude',
@@ -38,6 +38,8 @@ const PROVIDER_ALIASES = {
   xai: '.grok',
   kiro: '.kiro',
   opencode: '.opencode',
+  omp: '.omp',
+  'oh-my-pi': '.omp',
   pi: '.pi',
   qoder: '.qoder',
   'rovo-dev': '.rovodev',
@@ -55,6 +57,7 @@ const PROVIDER_DISPLAY = {
   '.github': { name: 'GitHub Copilot', input: 'github' },
   '.grok': { name: 'Grok Build', input: 'grok' },
   '.kiro': { name: 'Kiro', input: 'kiro' },
+  '.omp': { name: 'Oh My Pi', input: 'omp' },
   '.opencode': { name: 'OpenCode', input: 'opencode' },
   '.pi': { name: 'Pi Coding Agent', input: 'pi' },
   '.qoder': { name: 'Qoder', input: 'qoder' },
@@ -63,7 +66,7 @@ const PROVIDER_DISPLAY = {
   '.trae-cn': { name: 'Trae CN', input: 'trae-cn' },
   '.vibe': { name: 'Mistral Vibe', input: 'vibe' },
 };
-const PROVIDER_INPUT_ORDER = ['claude', 'codex', 'cursor', 'gemini', 'github', 'grok', 'kiro', 'opencode', 'pi', 'qoder', 'trae', 'trae-cn', 'rovo-dev', 'vibe'];
+const PROVIDER_INPUT_ORDER = ['claude', 'codex', 'cursor', 'gemini', 'github', 'grok', 'kiro', 'omp', 'opencode', 'pi', 'qoder', 'trae', 'trae-cn', 'rovo-dev', 'vibe'];
 
 // OpenCode reads global skills from its config directory, not ~/.opencode:
 // $OPENCODE_CONFIG_DIR, else $XDG_CONFIG_HOME/opencode, else
@@ -80,6 +83,7 @@ function opencodeGlobalConfigDir(home) {
 // ~/.pi/agent/skills/ (issue #327); OpenCode from its config dir (issue
 // #406). Project scope stays `<provider>/skills` for both.
 const HOME_SKILLS_DIR_OVERRIDES = {
+  '.omp': (home) => join(home, '.omp', 'agent', 'skills'),
   '.pi': (home) => join(home, '.pi', 'agent', 'skills'),
   '.opencode': (home) => join(opencodeGlobalConfigDir(home), 'skills'),
 };
@@ -95,6 +99,7 @@ const GLOBAL_HARNESS_HINTS = [
   { home: '.grok', provider: '.grok' },
   { home: '.kiro', provider: '.kiro' },
   { home: '.opencode', provider: '.opencode' },
+  { home: '.omp', provider: '.omp' },
   // OpenCode's real global config dir (issue #406); the ~/.opencode entry
   // above keeps recognizing machines that only have the legacy dir.
   { resolve: opencodeGlobalConfigDir, provider: '.opencode' },

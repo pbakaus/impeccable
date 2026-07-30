@@ -102,6 +102,13 @@ export const PROVIDERS = {
     displayName: 'Pi',
     frontmatterFields: ['license', 'compatibility', 'metadata', 'allowed-tools'],
   },
+  omp: {
+    provider: 'omp',
+    providerTags: ['omp'],
+    configDir: '.omp',
+    displayName: 'Oh My Pi',
+    frontmatterFields: ['license', 'compatibility', 'metadata', 'allowed-tools'],
+  },
   qoder: {
     provider: 'qoder',
     providerTags: ['qoder'],

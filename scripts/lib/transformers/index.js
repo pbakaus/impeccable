@@ -13,6 +13,7 @@ export const transformGitHub = createTransformer(PROVIDERS.github);
 export const transformKiro = createTransformer(PROVIDERS.kiro);
 export const transformOpenCode = createTransformer(PROVIDERS.opencode);
 export const transformPi = createTransformer(PROVIDERS.pi);
+export const transformOmp = createTransformer(PROVIDERS.omp);
 export const transformQoder = createTransformer(PROVIDERS.qoder);
 export const transformRovoDev = createTransformer(PROVIDERS['rovo-dev']);
 export const transformVibe = createTransformer(PROVIDERS.vibe);

@@ -65,6 +65,7 @@ describe('build orchestration', () => {
     const transformClaudeCodeSpy = spyOn(transformers, 'transformClaudeCode').mockImplementation(() => {});
     const transformGeminiSpy = spyOn(transformers, 'transformGemini').mockImplementation(() => {});
     const transformCodexSpy = spyOn(transformers, 'transformCodex').mockImplementation(() => {});
+    const transformOmpSpy = spyOn(transformers, 'transformOmp').mockImplementation(() => {});
 
     const ROOT_DIR = TEST_DIR;
     const DIST_DIR = path.join(ROOT_DIR, 'dist');
@@ -75,11 +76,13 @@ describe('build orchestration', () => {
     transformers.transformClaudeCode(sourceFiles.skills, DIST_DIR, patternData);
     transformers.transformGemini(sourceFiles.skills, DIST_DIR, patternData);
     transformers.transformCodex(sourceFiles.skills, DIST_DIR, patternData);
+    transformers.transformOmp(sourceFiles.skills, DIST_DIR, patternData);
 
     expect(transformCursorSpy).toHaveBeenCalledWith(skills, DIST_DIR, patterns);
     expect(transformClaudeCodeSpy).toHaveBeenCalledWith(skills, DIST_DIR, patterns);
     expect(transformGeminiSpy).toHaveBeenCalledWith(skills, DIST_DIR, patterns);
     expect(transformCodexSpy).toHaveBeenCalledWith(skills, DIST_DIR, patterns);
+    expect(transformOmpSpy).toHaveBeenCalledWith(skills, DIST_DIR, patterns);
 
     readSourceFilesSpy.mockRestore();
     readPatternsSpy.mockRestore();
@@ -87,6 +90,7 @@ describe('build orchestration', () => {
     transformClaudeCodeSpy.mockRestore();
     transformGeminiSpy.mockRestore();
     transformCodexSpy.mockRestore();
+    transformOmpSpy.mockRestore();
   });
 
   test('should handle empty source files', () => {
@@ -101,6 +105,7 @@ describe('build orchestration', () => {
     const transformClaudeCodeSpy = spyOn(transformers, 'transformClaudeCode').mockImplementation(() => {});
     const transformGeminiSpy = spyOn(transformers, 'transformGemini').mockImplementation(() => {});
     const transformCodexSpy = spyOn(transformers, 'transformCodex').mockImplementation(() => {});
+    const transformOmpSpy = spyOn(transformers, 'transformOmp').mockImplementation(() => {});
 
     const ROOT_DIR = TEST_DIR;
     const DIST_DIR = path.join(ROOT_DIR, 'dist');
@@ -111,11 +116,13 @@ describe('build orchestration', () => {
     transformers.transformClaudeCode(skills, DIST_DIR, patternData);
     transformers.transformGemini(skills, DIST_DIR, patternData);
     transformers.transformCodex(skills, DIST_DIR, patternData);
+    transformers.transformOmp(skills, DIST_DIR, patternData);
 
     expect(transformCursorSpy).toHaveBeenCalledWith([], DIST_DIR, patterns);
     expect(transformClaudeCodeSpy).toHaveBeenCalledWith([], DIST_DIR, patterns);
     expect(transformGeminiSpy).toHaveBeenCalledWith([], DIST_DIR, patterns);
     expect(transformCodexSpy).toHaveBeenCalledWith([], DIST_DIR, patterns);
+    expect(transformOmpSpy).toHaveBeenCalledWith([], DIST_DIR, patterns);
 
     readSourceFilesSpy.mockRestore();
     readPatternsSpy.mockRestore();
@@ -123,6 +130,7 @@ describe('build orchestration', () => {
     transformClaudeCodeSpy.mockRestore();
     transformGeminiSpy.mockRestore();
     transformCodexSpy.mockRestore();
+    transformOmpSpy.mockRestore();
   });
 
   test('integration: full build creates all expected outputs', () => {

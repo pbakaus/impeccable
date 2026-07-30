@@ -470,6 +470,7 @@ This folder contains skills for all supported tools:
   .grok/      -> Grok Build
   .kiro/      -> Kiro
   .opencode/  -> OpenCode
+  .omp/       -> Oh My Pi (omp)
   .pi/        -> Pi
   .trae-cn/   -> Trae China
   .trae/      -> Trae International

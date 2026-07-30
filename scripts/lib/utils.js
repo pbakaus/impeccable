@@ -610,6 +610,12 @@ export const PROVIDER_PLACEHOLDERS = {
     ask_instruction: 'ask the user directly to clarify what you cannot infer.',
     command_prefix: '/'
   },
+  'omp': {
+    model: 'the model',
+    config_file: 'AGENTS.md',
+    ask_instruction: 'ask the user directly to clarify what you cannot infer.',
+    command_prefix: '/'
+  },
   'qoder': {
     model: 'the model',
     config_file: 'AGENTS.md',
@@ -653,6 +659,7 @@ export const PROVIDER_BLOCK_TAGS = new Set([
   'grok',
   'kiro',
   'opencode',
+  'omp',
   'pi',
   'qoder',
   'rovo-dev',
