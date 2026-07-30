@@ -1332,14 +1332,24 @@ function hookScriptPathForProvider(skillRoot, provider) {
 // On Windows that guard is a hard failure, not a degraded one: Codex runs hook
 // commands through PowerShell, which rejects `[` at parse time ("Missing type
 // name after '['") before node ever starts, so the hook dies even when the
-// file exists (issue #452). No guard syntax parses in PowerShell, cmd.exe, and
-// sh alike, so a Windows install emits the direct `node "PATH"` invocation the
-// bundled plugin manifests already use. Trade-off accepted with the issue: a
-// stale path then surfaces as a node resolution error instead of a silent
-// no-op. The manifest is machine-local (written by this install run on this
-// machine), so selecting the form by the installing platform is sound.
+// file exists (issue #452). No shell-level guard syntax parses in PowerShell,
+// cmd.exe, and sh alike, so a Windows install moves the existence check into
+// node itself: a `node -e` wrapper that exits 0 when the target is missing and
+// otherwise re-spawns node on it with inherited stdio, forwarding the hook's
+// exit code. Project hook manifests (.codex/hooks.json, .cursor/hooks.json)
+// are committable and can be consumed on a teammate's POSIX machine, so the
+// wrapper has to hold there too: it uses only characters that survive
+// PowerShell, cmd.exe (issue #445: shims re-parse through `cmd /C`, which
+// claims < > | & ^ % !), and sh double-quoting alike, with single quotes for
+// the inner string literals. Note PowerShell's `-Command` mode collapses any
+// nonzero native exit code to 1, which equally affects a bare `node "PATH"`;
+// the wrapper preserves exact codes wherever the shell does.
+const WIN32_HOOK_GUARD_SCRIPT = "const p=process.argv[1];const f=require('fs');if(f.existsSync(p)){const r=require('child_process').spawnSync(process.execPath,[p],{stdio:'inherit'});process.exit(r.status===null?1:r.status);}";
+
 function guardHookCommand(quotedPath) {
-  if (process.platform === 'win32') return `node ${quotedPath}`;
+  if (process.platform === 'win32') {
+    return `node -e "${WIN32_HOOK_GUARD_SCRIPT}" ${quotedPath}`;
+  }
   return `[ ! -f ${quotedPath} ] || node ${quotedPath}`;
 }
 
@@ -1351,8 +1361,8 @@ function guardHookCommand(quotedPath) {
 //     when a project hook points at a skill installed elsewhere (--scope=global).
 //   * otherwise — keep the bundle's own ${CLAUDE_PROJECT_DIR}-relative path,
 //     which correctly resolves for a project-scoped install.
-// Either way the command goes through guardHookCommand (missing-file guard on
-// POSIX platforms, direct node invocation on Windows).
+// Either way the command goes through guardHookCommand (POSIX shell guard, or
+// the shell-agnostic node -e guard when installing on Windows).
 function rewriteHookCommandsForSkillRoot(value, provider, { skillRoot, absolute }) {
   const hookScript = hookScriptPathForProvider(skillRoot, provider);
   // Providers we don't own a `node "PATH"` command hook for (.github, .grok)
