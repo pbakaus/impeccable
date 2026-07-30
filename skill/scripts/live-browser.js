@@ -6210,14 +6210,34 @@
         const parser = new DOMParser();
         let srcWrapper = null;
 
-        // Full-file parse works for HTML/JSX; Astro/Vue sources need marker extraction.
-        const startMark = '<!-- impeccable-variants-start ' + sessionId + ' -->';
-        const endMark = '<!-- impeccable-variants-end ' + sessionId + ' -->';
-        const startIdx = html.indexOf(startMark);
-        const endIdx = html.indexOf(endMark);
-        const block = startIdx !== -1 && endIdx !== -1 && endIdx > startIdx
-          ? html.slice(startIdx + startMark.length, endIdx).trim()
-          : html;
+        // Marker comments differ by source syntax: HTML/Astro/Vue wrappers use
+        // <!-- ... -->, while JSX/TSX wrappers must use {/* ... */} (an HTML
+        // comment is invalid inside a JSX element tree), so scan for both.
+        // Never fall back to whole-file injection for JSX: raw JSX renders
+        // {expressions} and marker text as literal page content (#454).
+        const markerPairs = [
+          { open: '<!--', close: '-->' },
+          { open: '{/*', close: '*/}' },
+        ];
+        let block = null;
+        for (const pair of markerPairs) {
+          const startMark = pair.open + ' impeccable-variants-start ' + sessionId + ' ' + pair.close;
+          const endMark = pair.open + ' impeccable-variants-end ' + sessionId + ' ' + pair.close;
+          const startIdx = html.indexOf(startMark);
+          const endIdx = html.indexOf(endMark);
+          if (startIdx !== -1 && endIdx > startIdx) {
+            block = html.slice(startIdx + startMark.length, endIdx).trim();
+            break;
+          }
+        }
+        if (block == null) {
+          if (/\.[cm]?[jt]sx$/i.test(String(filePath || ''))) {
+            console.warn('[impeccable] JSX source has no variant markers; skipping raw-source injection (#454).');
+            block = '';
+          } else {
+            block = html;
+          }
+        }
         const doc = parser.parseFromString(normalizeSourceFallbackBlock(block, filePath), 'text/html');
         srcWrapper = doc.querySelector('[data-impeccable-variants="' + sessionId + '"]');
         if (!srcWrapper) {
@@ -6341,6 +6361,9 @@
   function normalizeSourceFallbackBlock(block, filePath) {
     if (!/\.[cm]?[jt]sx$/i.test(String(filePath || ''))) return block;
     return String(block)
+      // JSX comments ({/* ... */}) are not HTML comments; strip them so they
+      // don't render as literal text in the DOMParser preview (#454).
+      .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, '')
       .replace(
         /<style\b([^>]*)>\s*\{\s*`([\s\S]*?)`\s*\}\s*<\/style>/g,
         (_match, attrs, css) => '<style' + attrs + '>' + css + '</style>',
