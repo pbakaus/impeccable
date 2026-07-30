@@ -371,15 +371,30 @@ Build the composition context from exactly these inputs:
 
 Do **not** read PRODUCT.md wholesale into this task or add any other section to the composition context. The chosen palette does not exist yet; the picker joins it to the pairs later.
 
+### Name the surfaces before composing
+
+A pair that carries a landing page can fail a dashboard outright. The landing page asks the heading face for a six-word line at 40px and up; the dashboard asks the body face for a 12px column label sitting next to a number. Suggest fonts without knowing which of those is on the table and you are guessing at the only question that separates the shortlists.
+
+So decide first what this product is made of, from PRODUCT.md and the codebase, using the four surface kinds the picker's first question offers: `persuade` (landing, marketing, pricing), `operate` (app UI, dashboards, admin, settings), `read` (docs, articles, guides, changelogs), `experience` (portfolios, galleries, showcases). Name every kind the product already implies, not the one it leads with: a tool with a marketing site and a documentation site is `operate, read, persuade`. This is the same set Step 7 writes into `cues.json` as `modes`, so make the judgment once, here, and carry it. No clear signal anywhere leaves the set at `persuade` alone.
+
+What each surface asks of a pair:
+
+- **persuade**: the heading face is the page. It has to hold a short line at display size, where counters, joins, and one badly drawn character are all visible at a glance. The body face sets a paragraph and two button labels, so it is asked for less. This is the surface where a face with a point of view earns its place.
+- **operate**: the body face is also the interface face, and it works between 11px and 14px on column headings, form labels, menu items, and numbers in a row. Ask it for a 1, l, and I that stay apart, a 0 that does not read as O, lining figures, and a medium or semibold that the family actually draws rather than one the browser fakes. Headings here are 16px to 24px panel titles set many times per screen, so a face that only comes alive at poster size is the wrong heading for this surface.
+- **read**: the body face carries hundreds of words at 16px to 18px across a 60 to 75 character line, which is the hardest job on this list. Ask it for a generous x-height, an italic the family drew rather than sloped, and a bold that still reads inline. The heading face sits inside running text at 1.2 to 1.6 times the body, close enough that a mismatch in proportion shows immediately.
+- **experience**: the work is the subject and the type is the room around it. The heading face can be the most expressive of the six pairs. The body face sets captions, credits, and index metadata at 11px to 13px, often tracked out in caps, so it has to stay even when letter-spaced and survive at those sizes.
+
+Rank against the strictest surface in the set, never the loudest. Operate and read set the floor the body face has to clear; persuade and experience set how far the heading is allowed to go. Every pair still has to serve every named surface: the user picks one pair for the whole product, and one type system comes out the other end. A pair that only holds up on one surface belongs at the bottom of the list, or off it. None of this loosens [new-work.md](new-work.md)'s `rule:skill-typo-reflex-faces`, which rules all six pairs whatever the surfaces are.
+
 Compose six distinct territories, then resolve each into one heading and body pair:
 
 - Keep at least five pairs inside Q2's chosen direction, varied by classification and voice within it. No two pairs may share a heading family or read as the same voice.
 - Let the sixth bend the direction only when Q4, Q5, or asset letterforms argue for it, and name that reason in its `why`.
 - Apply [new-work.md](new-work.md)'s `rule:skill-typo-reflex-faces` as the canonical denylist and subject-world test. A family the user named in the interview or supplied assets is the only exception.
-- Follow [typeset.md](typeset.md)'s workhorse discipline. Give the heading a point of view; give the body a real text face that stays legible at 15px and provides regular and bold weights. A display face in the body slot fails the pair.
+- Follow [typeset.md](typeset.md)'s workhorse discipline. Give the heading a point of view; give the body a real text face that stays legible at 15px and provides regular and bold weights. A display face in the body slot fails the pair. Where the surface set names `operate` or `read`, that 15px floor is not the test the body face has to pass: the sizes in those two entries above are.
 - Verify every family exists on Google Fonts under the exact current name. Spelling is part of correctness; use `Source Sans 3`, never a retired family name.
 - Write `why` as three to five words naming the pair's voice, not a sentence about the brand. The picker sets it in tracked caps under the two family names, so anything longer wraps and stops scanning. `Considered and editorial`, not `Source Serif 4 gives the questionnaire an editorial voice while Source Sans 3 keeps guidance easy to scan`.
-- Order the pairs best-first. `pairs[0]` is the recommendation and reaches the picker pre-selected.
+- Order the pairs best-first, judged on the strictest surface in the set. `pairs[0]` is the recommendation and reaches the picker pre-selected.
 
 Choose the headline and every wireframe label from the product's own world. Do not invent claims or use placeholder prose that could describe any brand.
 
@@ -436,9 +451,13 @@ Done when: `fonts.json` is parseable, contains exactly six ranked pairs, every f
 
 ## Step 7: Launch the picker
 
-Before launching, add a top-level `modes` array to `cues.json` naming the surface kinds this product already implies, judged from PRODUCT.md and the codebase: any of `persuade`, `operate`, `read`, `experience`. The picker's first question pre-checks those tiles as its starting point; the user corrects the set by hand, and the final selection returns in the answers as `surface-modes`. Omit the field when the product gives no clear signal; the picker then starts from `persuade` alone.
+Before launching, write the surface set from Step 6 into `cues.json` as a top-level `modes` array: any of `persuade`, `operate`, `read`, `experience`. Do not re-derive it; the font pairs were composed against that reading, and a second judgment here would hand the user tiles the shortlist never answered to. The picker's first question pre-checks those tiles as its starting point; the user corrects the set by hand, and the final selection returns in the answers as `surface-modes`. Omit the field when the product gave no clear signal; the picker then starts from `persuade` alone.
 
-Color is then answered per surface rather than once for the whole run, because the distribution that suits a marketing page rarely suits the tool it sells. The answers carry `color-strategy` for the leading surface, which is the first chosen tile in tile order and the one every later screen previews, plus one `color-strategy-<mode>` key for each surface chosen. Surfaces the user never opened are included too, holding the default for their kind. When more than one comes back, DESIGN.md's color section says what each surface does with the palette instead of stating one distribution for the product.
+Four of the questions are then answered per surface rather than once for the whole run, because the answer that suits a marketing page rarely suits the tool it sells: `color-strategy`, `boundary-style` (how sections are separated), `corner-style` (how round shapes are), and `depth-style` (how far off the page things sit). Each of the four comes back twice over. The bare key holds the leading surface's answer, which is the first chosen tile in tile order and the one every later screen previews. Alongside it is one `<key>-<mode>` key for every surface chosen, `<mode>` being `persuade`, `operate`, `read`, or `experience`. Surfaces the user never opened are included too, holding the default for their kind; a surface nobody chose returns nothing at all.
+
+The picker does not offer every option on every surface. A landing page can take any answer to all four questions, and the other three surfaces have options withheld from them: a page people work in or read at length is not offered the loudest color or the deepest shadow, a tool is not offered separation by spacing alone, and a portfolio is not offered four working colors or fully round controls. So a value that comes back is one that suits the surface it came from, and a difference between two surfaces is a decision rather than an inconsistency to reconcile.
+
+When more than one surface comes back, DESIGN.md says what each of them does with color, section separation, corner radius, and depth, instead of stating one answer for the product.
 
 Tell the user in one line that the visual cues are ready at `.impeccable/visual-cues/` (name the count), then run `node {{scripts_path}}/picker-server.mjs` from the project root as a foreground command and parse its `PICKER_URL` line.
 

@@ -3,6 +3,7 @@ import Picker from '../layouts/Picker.astro';
 import Artboard from '../components/Artboard.astro';
 import QuestionScreen from '../components/QuestionScreen.astro';
 import iconPacks from '../data/icon-packs.json';
+import { SURFACE_MODES, surfaceAttrs, surfaceTabsAttrs } from '../data/surfaces.js';
 
 const roles = [
   ['primary', 'Primary'],
@@ -39,37 +40,9 @@ const iconRows = iconPacks.packs.map((pack) => ({
   meta: `${pack.grid} grid / ${pack.weight} / ${pack.license}`,
 }));
 
-// The four kinds of surface a design system can be asked to serve, straight
-// from the skill's modes. Values travel as `surface-modes` (multi-select);
-// the agent pre-checks what PRODUCT.md suggests via cues.json, and the
-// visitor corrects it. Persuade is the markup default so the answer can
-// never arrive empty on runs whose cues carry no hint.
-const surfaces = [
-  {
-    value: 'persuade',
-    title: 'Persuade',
-    goal: 'Grab attention and move people to act.',
-    examples: ['Landing pages', 'Marketing', 'Campaigns', 'Pricing'],
-  },
-  {
-    value: 'operate',
-    title: 'Operate',
-    goal: 'Feel familiar so work gets done fast.',
-    examples: ['App UI', 'Dashboards', 'Admin', 'Settings'],
-  },
-  {
-    value: 'read',
-    title: 'Read',
-    goal: 'Get out of the way of understanding.',
-    examples: ['Docs', 'Articles', 'Guides', 'Changelogs'],
-  },
-  {
-    value: 'experience',
-    title: 'Experience',
-    goal: 'Be the work itself.',
-    examples: ['Portfolios', 'Galleries', 'Showcases'],
-  },
-];
+// The surface tiles and the per-surface answer matrix both live in
+// data/surfaces.js, so the tiles carry what each surface allows without the
+// matrix being restated on every screen that reads it.
 
 // The five questions that are answered by looking at the same wireframe page.
 // Each one only rewrites the artboard slots it owns, so by the last screen the
@@ -125,14 +98,10 @@ const questions = [
         desc: 'An aligned grid with a few deliberate breaks that carry the emphasis.',
       },
       {
-        value: 'editorial',
-        title: 'Editorial',
-        desc: 'Uneven columns, with one of them clearly leading.',
-      },
-      {
         value: 'freeform',
         title: 'Freeform',
         desc: 'Blocks step out of the grid and overlap where it pays off.',
+        blocked: 'Blocks that step out of the grid have to be found again on a page people work in or read at length.',
       },
     ],
   },
@@ -150,6 +119,7 @@ const questions = [
         value: 'open-space',
         title: 'Open space',
         desc: 'Nothing between sections but room. Spacing does the dividing.',
+        blocked: 'Sidebars and toolbars need a ground of their own, which is the one thing air cannot give them.',
       },
       {
         value: 'thin-dividers',
@@ -165,6 +135,7 @@ const questions = [
         value: 'cards-and-panels',
         title: 'Cards and panels',
         desc: 'Content sits inside containers with edges you can see.',
+        blocked: 'An edge around every block comes between people and the thing they came for.',
       },
     ],
   },
@@ -197,6 +168,7 @@ const questions = [
         value: 'pill',
         title: 'Pill-like',
         desc: 'Buttons and tags go fully round.',
+        blocked: 'Fully round controls are the loudest shape on a page where the work should lead.',
       },
     ],
   },
@@ -216,11 +188,6 @@ const questions = [
         desc: 'One plane. Nothing casts a shadow.',
       },
       {
-        value: 'layered',
-        title: 'Layered',
-        desc: 'Tone stacks the page. Still no shadows anywhere.',
-      },
-      {
         value: 'soft-lift',
         title: 'Soft lift',
         desc: 'Cards and controls sit a little off the page.',
@@ -229,6 +196,7 @@ const questions = [
         value: 'floating',
         title: 'Floating',
         desc: 'Panels are well above the surface, with the lift to prove it.',
+        blocked: 'Lift this deep belongs to menus and dialogs, not to a page people work in or read at length.',
       },
     ],
   },
@@ -292,7 +260,7 @@ const questions = [
               <legend>Surfaces</legend>
 
               <label class="picker-mode-tile">
-                <input type="checkbox" name="surface-modes" value="persuade" aria-label="Landing pages, marketing, campaigns, and pricing" data-surface-label="Landing page" data-strategies="restrained committed full-palette drenched" data-strategy-default="committed" checked />
+                <input type="checkbox" name="surface-modes" value="persuade" aria-label="Landing pages, marketing, campaigns, and pricing" data-surface-label="Landing page" {...surfaceAttrs('persuade')} checked />
                 <span class="picker-mode-preview picker-mode-preview--exact" aria-hidden="true">
                   <span class="picker-preview">
                     <span class="pv-desktop">
@@ -332,7 +300,7 @@ const questions = [
               </label>
 
               <label class="picker-mode-tile">
-                <input type="checkbox" name="surface-modes" value="operate" aria-label="App UI, dashboards, admin, and settings" data-surface-label="App UI" data-strategies="restrained committed full-palette" data-strategy-default="restrained" />
+                <input type="checkbox" name="surface-modes" value="operate" aria-label="App UI, dashboards, admin, and settings" data-surface-label="App UI" {...surfaceAttrs('operate')} />
                 <span class="picker-mode-preview picker-mode-preview--exact" aria-hidden="true">
                   <span class="picker-preview picker-preview--ops">
                     <span class="pv-desktop">
@@ -359,21 +327,21 @@ const questions = [
                           <span class="po-rows">
                             <span class="po-row">
                               <i class="po-dot"></i>
-                              <i class="po-cell" style="--w: 15.24cqh"></i>
-                              <i class="po-cell" style="--w: 12.76cqh"></i>
-                              <i class="po-cell" style="--w: 12.76cqh"></i>
+                              <i class="po-cell" style="--w: 15.24"></i>
+                              <i class="po-cell" style="--w: 12.76"></i>
+                              <i class="po-cell" style="--w: 12.76"></i>
                             </span>
                             <span class="po-row po-row--on">
                               <i class="po-dot"></i>
-                              <i class="po-cell" style="--w: 15.24cqh"></i>
-                              <i class="po-cell" style="--w: 12.76cqh"></i>
-                              <i class="po-cell" style="--w: 12.61cqh"></i>
+                              <i class="po-cell" style="--w: 15.24"></i>
+                              <i class="po-cell" style="--w: 12.76"></i>
+                              <i class="po-cell" style="--w: 12.61"></i>
                             </span>
                             <span class="po-row">
                               <i class="po-dot"></i>
-                              <i class="po-cell" style="--w: 15.24cqh"></i>
-                              <i class="po-cell" style="--w: 12.76cqh"></i>
-                              <i class="po-cell" style="--w: 12.61cqh"></i>
+                              <i class="po-cell" style="--w: 15.24"></i>
+                              <i class="po-cell" style="--w: 12.76"></i>
+                              <i class="po-cell" style="--w: 12.61"></i>
                             </span>
                           </span>
                         </span>
@@ -421,7 +389,7 @@ const questions = [
               </label>
 
               <label class="picker-mode-tile">
-                <input type="checkbox" name="surface-modes" value="read" aria-label="Docs, articles, guides, and changelogs" data-surface-label="Docs" data-strategies="restrained committed full-palette" data-strategy-default="restrained" />
+                <input type="checkbox" name="surface-modes" value="read" aria-label="Docs, articles, guides, and changelogs" data-surface-label="Docs" {...surfaceAttrs('read')} />
                 <span class="picker-mode-preview picker-mode-preview--exact" aria-hidden="true">
                   <span class="picker-preview picker-preview--docs">
                     <span class="pv-desktop">
@@ -476,7 +444,7 @@ const questions = [
               </label>
 
               <label class="picker-mode-tile">
-                <input type="checkbox" name="surface-modes" value="experience" aria-label="Portfolios, galleries, and showcases" data-surface-label="Portfolio" data-strategies="restrained committed drenched" data-strategy-default="restrained" />
+                <input type="checkbox" name="surface-modes" value="experience" aria-label="Portfolios, galleries, and showcases" data-surface-label="Portfolio" {...surfaceAttrs('experience')} />
                 <span class="picker-mode-preview picker-mode-preview--exact" aria-hidden="true">
                   <span class="picker-preview picker-preview--gallery">
                     <span class="pv-desktop">
@@ -505,10 +473,10 @@ const questions = [
                         <span class="pg-rail">
                           <i class="pg-arrow"></i>
                           <span class="pg-track">
-                            <i class="pg-track-on" style="--w:20.31cqh"></i>
-                            <i style="--w:9.14cqh"></i>
-                            <i style="--w:8.98cqh"></i>
-                            <i style="--w:12.44cqh"></i>
+                            <i class="pg-track-on" style="--w: 20.31"></i>
+                            <i style="--w: 9.14"></i>
+                            <i style="--w: 8.98"></i>
+                            <i style="--w: 12.44"></i>
                           </span>
                           <i class="pg-arrow pg-arrow--next"></i>
                         </span>
@@ -747,7 +715,10 @@ const questions = [
                   </span>
                 </label>
 
-                <label class="picker-strategy-option">
+                {/* The reason a surface cannot take an option replaces the
+                    description on the row, so it is written here beside the
+                    copy it stands in for rather than in the script. */}
+                <label class="picker-strategy-option" data-blocked-reason="Four colors on duty compete with the work on show.">
                   <input type="radio" name="color-strategy" value="full-palette" />
                   <span class="picker-strategy-copy">
                     <span class="picker-strategy-title">Full palette</span>
@@ -755,7 +726,7 @@ const questions = [
                   </span>
                 </label>
 
-                <label class="picker-strategy-option">
+                <label class="picker-strategy-option" data-blocked-reason="Too loud for a page people work in or read at length.">
                   <input type="radio" name="color-strategy" value="drenched" />
                   <span class="picker-strategy-copy">
                     <span class="picker-strategy-title">Drenched</span>
@@ -768,8 +739,8 @@ const questions = [
                     answer, so each has a field to leave it in. They stay disabled
                     until their tile is chosen, which is what keeps a surface
                     nobody asked for out of the answers. */}
-                {surfaces.map(({ value }) => (
-                  <input type="hidden" name={`color-strategy-${value}`} data-surface-strategy={value} disabled />
+                {SURFACE_MODES.map((mode) => (
+                  <input type="hidden" data-surface-field={`color-strategy-${mode}`} name={`color-strategy-${mode}`} disabled />
                 ))}
 
                 <div class="picker-bands picker-bands--compact" data-band-scope="strategy">
@@ -795,25 +766,27 @@ const questions = [
                 <p class="picker-band-status" data-reorder-status role="status" aria-live="polite"></p>
               </div>
 
-              {/* The stage the chosen surfaces are drawn on. Its contents are
-                  lifted from the tiles on screen 01b, so it is filled by script;
-                  the ratio is the artboard's so the CTA sits where it sits on
-                  every other screen. */}
-              <div class="picker-strategy-stage" data-strategy-stage>
-                <div class="picker-surface-tabs" data-surface-tabs role="tablist" aria-label="Surface being colored" hidden></div>
-              </div>
-            </div>
+              <div class="picker-strategy-subgrid">
+                {/* The stage the chosen surfaces are drawn on. Its contents are
+                    lifted from the tiles on screen 01b, so it is filled by
+                    script. The clones land inside the stage, which is why the
+                    buttons are its sibling rather than its last child. */}
+                <div class="picker-strategy-stage" data-surface-stage>
+                  <div class="picker-surface-tabs" {...surfaceTabsAttrs('color-strategy')} hidden></div>
+                </div>
 
-            <div class="picker-actions-stack">
-              <button class="ks-button ks-button-primary" type="button" data-advance="next">
-                Select this strategy
-                <span class="ks-button-arrow" aria-hidden="true">
-                  <svg viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square">
-                    <path d="M0 4h14M10 0l4 4-4 4"></path>
-                  </svg>
-                </span>
-              </button>
-              <button class="picker-back" type="button" data-advance="prev">Back</button>
+                <div class="picker-actions-stack">
+                  <button class="ks-button ks-button-primary" type="button" data-advance="next">
+                    Select this strategy
+                    <span class="ks-button-arrow" aria-hidden="true">
+                      <svg viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square">
+                        <path d="M0 4h14M10 0l4 4-4 4"></path>
+                      </svg>
+                    </span>
+                  </button>
+                  <button class="picker-back" type="button" data-advance="prev">Back</button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -847,19 +820,36 @@ const questions = [
                 </div>
               </div>
 
-              <Artboard mode="type" class="picker-strategy-preview picker-preview-type" typeHook />
+              {/* One board per surface, all mounted and one shown. The stage is
+                  the box the strip docks on and the node the chosen pair's
+                  faces are written to, so every board is set in them at once. */}
+              <div class="picker-type-stage" data-type-stage>
+                <div class="picker-surface-tabs" {...surfaceTabsAttrs('font-pair')} hidden></div>
+                <Artboard mode="type" surface="persuade" class="picker-strategy-preview picker-preview-type" typeHook />
+                <Artboard mode="type" surface="operate" class="picker-strategy-preview picker-preview-type picker-preview-type--ops" typeHook />
+                <Artboard mode="type" surface="read" class="picker-strategy-preview picker-preview-type picker-preview-type--read" typeHook />
+                <Artboard mode="type" surface="experience" class="picker-strategy-preview picker-preview-type picker-preview-type--experience" typeHook />
+              </div>
             </div>
 
             <template data-pair-card>
               <label class="picker-strategy-option picker-type-option">
                 <input type="radio" name="font-pair" />
                 <span class="picker-type-copy">
-                  <span class="picker-type-sample-heading"><span data-pair-heading></span><span class="picker-type-role">headings</span></span>
+                  <span class="picker-type-sample-heading"><span class="picker-strategy-title" data-pair-heading></span><span class="picker-type-role">headings</span></span>
                   <span class="picker-type-sample-body"><span data-pair-body></span><span class="picker-type-role">body text</span></span>
-                  <span class="picker-type-desc" data-pair-why></span>
+                  <span class="picker-type-desc picker-strategy-desc" data-pair-why></span>
                 </span>
               </label>
             </template>
+
+            {/* The pair is one answer for the whole run, so these fields carry
+                no name and nothing but the strip reads them. They are what
+                stops a tab from putting its own surface's reading of the
+                question into the answers. */}
+            {SURFACE_MODES.map((mode) => (
+              <input type="hidden" data-surface-field={`font-pair-${mode}`} disabled />
+            ))}
 
             <input type="hidden" name="font-heading" />
             <input type="hidden" name="font-body" />
@@ -926,22 +916,90 @@ const questions = [
                       <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m4.5 7.5 5.5 5 5.5-5"></path></svg>
                     </button>
                   </div>
+                </div>
+              </div>
 
+              <div class="picker-scale-column">
+                <div class="picker-scale-sheet" data-scale-sheet aria-hidden="true">
+                  {scaleRows.map(([tag, step]) => (
+                    <div class="ts-row" data-scale-row={step}>
+                      <p class="ts-sample" data-scale-sample></p>
+                      <span class="ts-tag">{tag}</span>
+                      <span class="ts-values">
+                        <b data-scale-px></b>
+                        <i data-scale-rem></i>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <div class="picker-type-controls">
                   <p class="picker-scale-note">Values at a 16px base, specimen scaled to fit</p>
                 </div>
               </div>
 
-              <div class="picker-scale-sheet" data-scale-sheet aria-hidden="true">
-                {scaleRows.map(([tag, step]) => (
-                  <div class="ts-row" data-scale-row={step}>
-                    <p class="ts-sample" data-scale-sample></p>
-                    <span class="ts-tag">{tag}</span>
-                    <span class="ts-values">
-                      <b data-scale-px></b>
-                      <i data-scale-rem></i>
-                    </span>
-                  </div>
-                ))}
+              {/* The same scale on the components a page is actually built from.
+                  Headings are placeholders and running text is lorem, for the
+                  reason the wireframe copy is: a face and a ratio are judged on
+                  texture, and real prose pulls the eye into reading it instead.
+                  Every step the sheet lists has a component here, which is why
+                  the lede and the quote exist at all: they carry the two steps
+                  no editorial page would spend a heading level on. */}
+              <div class="picker-scale-column">
+                <div class="picker-scale-specimen" data-scale-specimen aria-hidden="true">
+                  <p class="sp-h1">A generic display heading</p>
+                  <p class="sp-lede">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt.</p>
+                  <p class="sp-p">
+                    Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo
+                    consequat. Duis aute <em>irure dolor in reprehenderit</em> in voluptate velit esse cillum dolore eu
+                    fugiat nulla pariatur, <u>excepteur sint occaecat</u> cupidatat non proident.
+                  </p>
+
+                  <p class="sp-h2">A section heading</p>
+                  <p class="sp-p">
+                    Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium,
+                    totam rem aperiam <strong>eaque ipsa quae</strong> ab illo inventore veritatis.
+                  </p>
+                  <ul class="sp-list">
+                    <li>Lorem ipsum dolor sit amet, consectetur</li>
+                    <li>Adipiscing elit, sed do eiusmod tempor incididunt ut labore</li>
+                    <li>Magna aliqua ut enim ad minim veniam</li>
+                  </ul>
+
+                  <blockquote class="sp-quote">
+                    <p>Quis autem vel eum iure reprehenderit qui in ea voluptate velit esse quam nihil molestiae.</p>
+                    <cite class="sp-cite">Attribution line</cite>
+                  </blockquote>
+
+                  <p class="sp-h3">A subsection heading</p>
+                  <p class="sp-p">
+                    At vero eos et accusamus et iusto odio dignissimos ducimus, qui blanditiis praesentium voluptatum
+                    deleniti atque, held together by <code class="sp-code">a run of inline code</code> mid sentence.
+                  </p>
+                  <ol class="sp-list sp-list-ordered">
+                    <li>Nam libero tempore, cum soluta nobis</li>
+                    <li>Eligendi optio cumque nihil impedit</li>
+                    <li>Quo minus id quod maxime placeat</li>
+                  </ol>
+                  <pre class="sp-pre"><code>function step(base, ratio, n) &#123;
+  return base * ratio ** n;
+&#125;</code></pre>
+
+                  <p class="sp-h4">A minor heading</p>
+                  <p class="sp-p">
+                    Temporibus autem quibusdam et aut officiis debitis aut rerum necessitatibus saepe eveniet, ut et
+                    voluptates repudiandae sint et molestiae non recusandae.
+                  </p>
+                </div>
+
+                <div class="picker-type-scroll">
+                  <button class="picker-icon-button" type="button" data-list-scroll="-1" aria-label="Scroll the specimen up">
+                    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m4.5 12.5 5.5-5 5.5 5"></path></svg>
+                  </button>
+                  <button class="picker-icon-button" type="button" data-list-scroll="1" aria-label="Scroll the specimen down">
+                    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m4.5 7.5 5.5 5 5.5-5"></path></svg>
+                  </button>
+                </div>
               </div>
             </div>
 

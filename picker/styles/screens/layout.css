@@ -3,11 +3,11 @@
 
    Every other structural screen changes something you can see on its own: a
    divider is there or it is not, a corner is round or it is square. This one
-   changes proportion, and a proportion is invisible without a ruler. Four
-   pages with the columns nudged a few points apart are four identical pages.
+   changes proportion, and a proportion is invisible without a ruler. Three
+   pages with the columns nudged a few points apart are three identical pages.
 
    So the ruler is drawn. The measure below is a real twelve-column grid, and
-   the three disciplined answers place every block on an exact column count:
+   the two disciplined answers place every block on an exact column count:
    what changes between them is which spans the page spends its columns on.
    Freeform is then the one answer that crosses the lines, and it reads as a
    decision because the thing it is breaking is on screen next to it.
@@ -46,11 +46,12 @@
   --pvs-w10: 83.0667%;
 }
 
-/* The page's own margins are asymmetric under two of the answers, and a
-   drawn grid makes it obvious when only some rows honor them. Chrome and the
-   editorial band are brought onto the same measure as the hero and the proof
-   band. Scoped to the structural artboards: screens 03 and 04 are judging
-   color and glyphs, and their page is not under a ruler. */
+/* The nav, the section band, and the footer inset both sides by the page
+   gutter, where the hero and the proof band read the end gutter on the right.
+   A drawn grid makes it obvious when only some rows honor the same margin, so
+   chrome and the section band are brought onto the one measure. Scoped to the
+   structural artboards: screens 03 and 04 are judging color and glyphs, and
+   their page is not under a ruler. */
 [data-carry]:not(.picker-preview-layout) :is(.ps-nav, .ps-editorial, .ps-footer) {
   padding-right: var(--pvs-gutter-end);
 }
@@ -83,10 +84,14 @@
 /* The field is nailed to six and six and carries its own twelve columns
    rather than reading the answer's margins and the ladder above. A measure
    that re-fits itself to whatever page is on it is not a measure: the origin
-   and the column width would both follow the answer, and four pages each
-   checked against a ruler cut to fit would be four pages checked against
-   nothing. The instrument is the same one under all four. What moves is the
-   page standing on it, which is the whole of what this screen is asking. */
+   and the column width would both follow the answer, and three pages each
+   checked against a ruler cut to fit would be three pages checked against
+   nothing. The instrument is the same one under all three. What moves is the
+   page standing on it, which is the whole of what this screen is asking.
+
+   Balanced is the answer that still disagrees. Its page is the shared
+   artboard's own 5.5 and 3.2 margins, so a field cut from those numbers would
+   slide the ruler onto the very lean the ruler is there to show. */
 .picker-preview-layout .ps-desktop {
   position: relative;
   isolation: isolate;
@@ -272,103 +277,6 @@
   width: 38%;
 }
 
-/* Editorial, on this screen's own preview. The option's own definition is
-   the spec: uneven columns, with one of them clearly leading. Every edge
-   still lands on the drawn lines; what changes is that the spans are ranked
-   instead of evened. The hero gives the copy seven columns against the
-   picture's five, and the headline takes the scale that span earns. The
-   section band drops from four columns to three, ranked four, three, two
-   left to right: a ladder, not a row. Balanced leans and settles around a
-   centered axis; this page has a first column, a second, and a third. */
-#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="editorial"]) .picker-preview-layout,
-:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="editorial"]:checked) .picker-preview-layout {
-  --pvs-gutter: 6%;
-  --pvs-gutter-end: 6%;
-  /* The leading column: copy at seven against the picture's five. Balanced
-     leans the other way, so the two answers cannot be mistaken. */
-  --pvs-hero-cols: var(--pvs-w7) minmax(0, 1fr);
-  --pvs-hero-gap: var(--pvs-gut);
-  --pvs-editorial-cols: var(--pvs-w3) minmax(0, 1fr);
-  --pvs-editorial-gap: var(--pvs-gut);
-  /* Three ranked columns in the nine-column track: four, three, two. The
-     tracks are fr in the same proportion as the spans, and the fourth card
-     is removed below; its columns are what pay for the lead's width. */
-  --pvs-gallery-cols: 32.2667fr 23.8fr 15.3333fr;
-  --pvs-gallery-gap: calc(var(--pvs-gut) * 100 / 74.6);
-  --pvs-section-align: start;
-  --pvs-rows: 8.5% 48% 9% 26.5% 8%;
-  --pvs-phone-gutter: 6%;
-}
-
-/* The lead column's type claims the width its span gives it: a heavier
-   headline over a shorter second line, and an eyebrow cut to a label rather
-   than stretched across the wide measure. */
-#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="editorial"]) .picker-preview-layout .ps-desktop .ps-headline i,
-:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="editorial"]:checked) .picker-preview-layout .ps-desktop .ps-headline i {
-  width: 88%;
-  height: 15px;
-}
-
-#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="editorial"]) .picker-preview-layout .ps-desktop .ps-headline i:last-child,
-:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="editorial"]:checked) .picker-preview-layout .ps-desktop .ps-headline i:last-child {
-  width: 52%;
-}
-
-#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="editorial"]) .picker-preview-layout .ps-desktop .ps-eyebrow,
-:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="editorial"]:checked) .picker-preview-layout .ps-desktop .ps-eyebrow {
-  width: 24%;
-}
-
-/* The copy holds a reading measure inside the wide column instead of running
-   to its edge; the width is the lead's, the text is not obliged to fill it. */
-#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="editorial"]) .picker-preview-layout .ps-desktop .ps-copy i,
-:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="editorial"]:checked) .picker-preview-layout .ps-desktop .ps-copy i {
-  width: 56%;
-}
-
-#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="editorial"]) .picker-preview-layout .ps-desktop .ps-copy i:last-child,
-:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="editorial"]:checked) .picker-preview-layout .ps-desktop .ps-copy i:last-child {
-  width: 42%;
-}
-
-/* Three ranked columns, not four even ones. */
-#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="editorial"]) .picker-preview-layout .ps-desktop .ps-gallery-item:nth-child(4),
-:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="editorial"]:checked) .picker-preview-layout .ps-desktop .ps-gallery-item:nth-child(4) {
-  display: none;
-}
-
-/* The handset ranks its two cards the same way: a clear lead and a short. */
-#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="editorial"]) .picker-preview-layout .ps-phone-body .ps-gallery,
-:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="editorial"]:checked) .picker-preview-layout .ps-phone-body .ps-gallery {
-  grid-template-columns: 1.7fr 0.7fr;
-}
-
-/* ── Editorial ───────────────────────────────────────────────
-   The committed ranked page, carried to boundaries, corners, and depth. Same
-   proportions as the preview above: the copy leading the hero at seven
-   against five, and the section band's three columns ranked four, three,
-   two, with the fourth card removed below. The headline scale-up is the
-   preview's own instrument and stays there; what travels is the ranking. */
-:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="editorial"]:checked) [data-carry]:not(.picker-preview-layout) {
-  --pvs-gutter: 6%;
-  --pvs-gutter-end: 6%;
-  --pvs-hero-cols: var(--pvs-w7) minmax(0, 1fr);
-  --pvs-hero-gap: var(--pvs-gut);
-  --pvs-editorial-cols: var(--pvs-w3) minmax(0, 1fr);
-  --pvs-editorial-gap: var(--pvs-gut);
-  --pvs-gallery-cols: 32.2667fr 23.8fr 15.3333fr;
-  --pvs-gallery-gap: calc(var(--pvs-gut) * 100 / 74.6);
-  --pvs-section-align: start;
-  --pvs-rows: 8.5% 48% 9% 26.5% 8%;
-  --pvs-phone-gutter: 6%;
-  --pvs-phone-gallery-cols: 1.7fr 0.7fr;
-}
-
-/* The ranked band is three columns on every screen that carries it. */
-:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="editorial"]:checked) [data-carry]:not(.picker-preview-layout) .ps-desktop .ps-gallery-item:nth-child(4) {
-  display: none;
-}
-
 /* Freeform, on this screen's own preview. The option's own definition is the
    spec: blocks step out of the grid and overlap where it pays off. That is
    not a looser grid; it is the same measure with permission granted. So the
@@ -483,21 +391,13 @@
 /* ── The handset ─────────────────────────────────────────────
    One column still answers the question: in the margin, in how unevenly the
    two cards divide the row, and in whether anything is allowed to cross the
-   measure. The picture is the block given that permission, both edges under
-   Editorial and the outer edge alone under Freeform. The rhythm between
+   measure. Freeform is the answer that takes that permission, and it takes it
+   on the picture's bottom edge rather than on the measure. The rhythm between
    blocks is left alone, because the handset's stack is sized in pixels and a
    couple of points of extra gap pushes the card row through the bottom of the
    frame at the narrowest window the picker supports. */
 [data-carry]:not(.picker-preview-layout) .ps-phone-body {
   padding-inline: var(--pvs-phone-gutter, 6%);
-}
-
-/* The picture carries an explicit width, so a negative margin moves it rather
-   than widening it. Both are named together or the bleed slides the block
-   sideways instead of stretching it past the measure. */
-[data-carry]:not(.picker-preview-layout) .ps-phone-body > .ps-image {
-  margin-inline: var(--pvs-phone-bleed, 0);
-  width: var(--pvs-phone-bleed-w, 100%);
 }
 
 [data-carry]:not(.picker-preview-layout) .ps-phone-body .ps-gallery {
