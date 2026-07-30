@@ -1249,6 +1249,553 @@
   87.5%, 100% { opacity: 0; translate: 0 0; }
 }
 
+/* ============================================================
+   The portfolio board, and its three scenes.
+
+   A landing page and a portfolio spend movement on different things, so the
+   two surfaces this question is put to are shown as two pages rather than as
+   one page relabelled. This board is the index the font screen already draws,
+   in bars: a page title, two staggered entries with a caption ladder beside
+   each, and the carousel rail under them.
+
+   Everything the two boards have in common is drawn once. The frame, the nav
+   and its dropdown, the pointer, the click ring, and the loop curtain all key
+   on the class both boards carry, so the nav station of every scene, the
+   curtain, and the nav's own entrance arrive here already written. What
+   follows is the part a portfolio does differently: the work is the interface,
+   so the stations that are not chrome are plates, captions, and the carousel.
+
+   The three scenes keep the landing page's timings to the frame, because the
+   two are compared by moving between tabs on one screen and a portfolio that
+   ran to a different clock would read as a different answer. Restrained keeps
+   its four stations and its 3.8s, responsive its three and its 4.2s,
+   choreographed its 5.6s reveal.
+
+   These rules are no more specific than the landing page's and come after
+   them, so source order is what settles the elements the two boards share.
+   Anything added here has to stay after them.
+   ============================================================ */
+.picker-preview-motion--index {
+  /* Three bands rather than five: the nav, the index, the footer. */
+  --pvs-rows: 9.4% minmax(0, 1fr) 8.3%;
+}
+
+.picker-preview-motion--index .ps-index {
+  gap: 13px;
+  padding: 2.4% var(--pvs-gutter-end) 2.4% var(--pvs-gutter);
+}
+
+.picker-preview-motion--index .ps-index-head {
+  display: block;
+  width: 26%;
+  height: 13px;
+  background-color: var(--pvs-headline);
+  border-radius: var(--pvs-radius-bar);
+}
+
+/* The plate clips because the caption band the scenes bring up starts below
+   its bottom edge. */
+.picker-preview-motion--index .ps-index-row > .ps-image {
+  overflow: hidden;
+}
+
+/* The view state: a caption band rising over the foot of the plate, which is
+   what a portfolio index answers a pointer with. The plate keeps its own
+   radius on the two corners it shares with the band. */
+.picker-preview-motion--index .ps-index-row > .ps-image::before {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 26%;
+  background-color: var(--pvs-cta);
+  border-radius: 0 0 var(--pvs-radius-surface) var(--pvs-radius-surface);
+  opacity: 0;
+  translate: 0 100%;
+  pointer-events: none;
+}
+
+.picker-preview-motion--index .ps-index-cap {
+  gap: 9px;
+}
+
+.picker-preview-motion--index .ps-index-name {
+  display: block;
+  width: 66%;
+  height: 11px;
+  background-color: var(--pvs-title);
+  border-radius: var(--pvs-radius-bar);
+}
+
+.picker-preview-motion--index .ps-index-tag {
+  display: block;
+  width: 32%;
+  height: 5px;
+  background-color: var(--pvs-bars);
+  border-radius: var(--pvs-radius-bar);
+}
+
+.picker-preview-motion--index .ps-index-lines {
+  display: grid;
+  gap: 7px;
+  margin-top: 3px;
+}
+
+.picker-preview-motion--index .ps-index-lines b {
+  display: block;
+  width: 76%;
+  height: 6px;
+  background-color: var(--pvs-copy);
+  border-radius: var(--pvs-radius-bar);
+}
+
+.picker-preview-motion--index .ps-index-lines b:last-child {
+  width: 54%;
+}
+
+.picker-preview-motion--index .ps-index-arrow {
+  width: 7px;
+}
+
+.picker-preview-motion--index .ps-index-track {
+  align-items: center;
+  gap: 13px;
+}
+
+.picker-preview-motion--index .ps-index-track b {
+  display: block;
+  width: 22px;
+  height: 5px;
+  background-color: var(--pvs-bars);
+  border-radius: var(--pvs-radius-bar);
+}
+
+/* The track is in the selector so the current stop outranks the row it sits
+   in, which is scoped one element deeper. */
+.picker-preview-motion--index .ps-index-track .ps-index-stop--on {
+  background-color: var(--pvs-cta);
+}
+
+/* ── Restrained on the index: four stations, no travel but the pointer ──
+   The two nav items are the landing page's own first two stations and arrive
+   with them. The two that follow are plates: the caption band is present on
+   the frame the pointer earns it and gone on the frame it leaves, the title
+   takes the accent with it, and the plate's corner mark answers as well. The
+   first plate resets the instant the pointer is off it, so no two entries are
+   ever both showing their caption. */
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="restrained"]) .picker-preview-motion--index .ps-cursor,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="restrained"]:checked) .picker-preview-motion--index .ps-cursor {
+  animation: mxr-path 3.8s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="restrained"]) .picker-preview-motion--index .ps-index-row:nth-of-type(1) > .ps-image::before,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="restrained"]:checked) .picker-preview-motion--index .ps-index-row:nth-of-type(1) > .ps-image::before {
+  animation: mxr-band-1 3.8s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="restrained"]) .picker-preview-motion--index .ps-index-row:nth-of-type(1) .ps-index-name,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="restrained"]:checked) .picker-preview-motion--index .ps-index-row:nth-of-type(1) .ps-index-name {
+  animation: mxr-name-1 3.8s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="restrained"]) .picker-preview-motion--index .ps-index-row:nth-of-type(1) > .ps-image::after,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="restrained"]:checked) .picker-preview-motion--index .ps-index-row:nth-of-type(1) > .ps-image::after {
+  animation: mxr-mark-1 3.8s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="restrained"]) .picker-preview-motion--index .ps-index-row:nth-of-type(2) > .ps-image::before,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="restrained"]:checked) .picker-preview-motion--index .ps-index-row:nth-of-type(2) > .ps-image::before {
+  animation: mxr-band-2 3.8s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="restrained"]) .picker-preview-motion--index .ps-index-row:nth-of-type(2) .ps-index-name,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="restrained"]:checked) .picker-preview-motion--index .ps-index-row:nth-of-type(2) .ps-index-name {
+  animation: mxr-name-2 3.8s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="restrained"]) .picker-preview-motion--index .ps-index-row:nth-of-type(2) > .ps-image::after,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="restrained"]:checked) .picker-preview-motion--index .ps-index-row:nth-of-type(2) > .ps-image::after {
+  animation: mxr-mark-2 3.8s linear infinite;
+}
+
+/* The landing page's own restrained stops, with the two plates standing in for
+   its two buttons: in 0-0.35, first nav 0.35-0.95, second 1.25-1.55, first
+   plate 2.20-2.85, second 3.15-3.45, out by 3.67. */
+@keyframes mxr-path {
+  0% { translate: var(--mtr-entry, 64.5cqw -8cqh); }
+  9.21%, 25% { translate: var(--mtr-nav1, 64.8cqw 4.8cqh); }
+  32.89%, 40.79% { translate: var(--mtr-nav2, 71.4cqw 4.8cqh); }
+  57.89%, 75% { translate: var(--mxi-work1, 25.6cqw 33.3cqh); }
+  82.89%, 90.79% { translate: var(--mxi-work2, 74.4cqw 60.9cqh); }
+  96.5%, 100% { translate: var(--mtr-entry, 64.5cqw -8cqh); }
+}
+
+@keyframes mxr-band-1 {
+  0%, 57.88% { opacity: 0; translate: 0 100%; }
+  57.89%, 74.99% { opacity: 1; translate: 0 0; }
+  75%, 100% { opacity: 0; translate: 0 100%; }
+}
+
+@keyframes mxr-name-1 {
+  0%, 57.88% { background-color: var(--pvs-title); }
+  57.89%, 74.99% { background-color: var(--pvs-cta); }
+  75%, 100% { background-color: var(--pvs-title); }
+}
+
+@keyframes mxr-mark-1 {
+  0%, 57.88% { background-color: var(--pvs-accent-d); scale: 1; }
+  57.89%, 74.99% { background-color: var(--pvs-cta); scale: 1.4; }
+  75%, 100% { background-color: var(--pvs-accent-d); scale: 1; }
+}
+
+@keyframes mxr-band-2 {
+  0%, 82.88% { opacity: 0; translate: 0 100%; }
+  82.89%, 90.78% { opacity: 1; translate: 0 0; }
+  90.79%, 100% { opacity: 0; translate: 0 100%; }
+}
+
+@keyframes mxr-name-2 {
+  0%, 82.88% { background-color: var(--pvs-title); }
+  82.89%, 90.78% { background-color: var(--pvs-cta); }
+  90.79%, 100% { background-color: var(--pvs-title); }
+}
+
+@keyframes mxr-mark-2 {
+  0%, 82.88% { background-color: var(--pvs-accent-d); scale: 1; }
+  82.89%, 90.78% { background-color: var(--pvs-cta); scale: 1.4; }
+  90.79%, 100% { background-color: var(--pvs-accent-d); scale: 1; }
+}
+
+/* ── Responsive on the index: three stations, each answered ──
+   The nav station and its staggered dropdown are the landing page's and run
+   here unchanged. The second is the first plate: the caption band rises over
+   its foot in 200ms, the title recolors and the corner mark answers with it.
+   The third is the carousel, which is the one control only this board has: the
+   next arrow turns, the track shifts under it, and the stop that was current
+   hands over to the next one.
+
+   A carousel that snapped back the moment the pointer left would be reporting
+   a state nobody put it in, so the advance is the one thing here that stays.
+   It returns across the single frame the pointer teleports off-frame on, which
+   is also what makes 100% equal 0% and the loop seamless. */
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="responsive"]) .picker-preview-motion--index .ps-cursor,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="responsive"]:checked) .picker-preview-motion--index .ps-cursor {
+  animation: mxv-path 4.2s ease-in-out infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="responsive"]) .picker-preview-motion--index .ps-index-row:nth-of-type(1) > .ps-image::before,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="responsive"]:checked) .picker-preview-motion--index .ps-index-row:nth-of-type(1) > .ps-image::before {
+  animation: mxv-band 4.2s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="responsive"]) .picker-preview-motion--index .ps-index-row:nth-of-type(1) .ps-index-name,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="responsive"]:checked) .picker-preview-motion--index .ps-index-row:nth-of-type(1) .ps-index-name {
+  animation: mxv-name 4.2s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="responsive"]) .picker-preview-motion--index .ps-index-row:nth-of-type(1) > .ps-image::after,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="responsive"]:checked) .picker-preview-motion--index .ps-index-row:nth-of-type(1) > .ps-image::after {
+  animation: mxv-mark 4.2s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="responsive"]) .picker-preview-motion--index .ps-index-arrow--next,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="responsive"]:checked) .picker-preview-motion--index .ps-index-arrow--next {
+  animation: mxv-arrow 4.2s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="responsive"]) .picker-preview-motion--index .ps-index-track,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="responsive"]:checked) .picker-preview-motion--index .ps-index-track {
+  animation: mxv-track 4.2s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="responsive"]) .picker-preview-motion--index .ps-index-track b:nth-child(1),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="responsive"]:checked) .picker-preview-motion--index .ps-index-track b:nth-child(1) {
+  animation: mxv-stop-off 4.2s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="responsive"]) .picker-preview-motion--index .ps-index-track b:nth-child(2),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="responsive"]:checked) .picker-preview-motion--index .ps-index-track b:nth-child(2) {
+  animation: mxv-stop-on 4.2s linear infinite;
+}
+
+/* Arrivals: nav at 5.95% (0.25s), plate at 34.52% (1.45s), arrow at 60.71%
+   (2.55s). Departures at 25%, 50%, and 83.33%, the landing page's own. */
+@keyframes mxv-path {
+  0% { translate: var(--mtr-entry, 64.5cqw -8cqh); }
+  5.95%, 25% { translate: var(--mtr-nav1, 64.8cqw 4.8cqh); }
+  34.52%, 50% { translate: var(--mxi-work1, 25.6cqw 33.3cqh); }
+  60.71%, 83.33% { translate: var(--mxi-rail, 92.6cqw 87.9cqh); }
+  90%, 99.99% { translate: 32cqw 115cqh; }
+  100% { translate: var(--mtr-entry, 64.5cqw -8cqh); }
+}
+
+@keyframes mxv-band {
+  0%, 34.52% {
+    opacity: 0;
+    translate: 0 100%;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  39.29%, 50% { opacity: 1; translate: 0 0; }
+  52.86%, 100% { opacity: 0; translate: 0 100%; }
+}
+
+@keyframes mxv-name {
+  0%, 34.52% {
+    background-color: var(--pvs-title);
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  38.33%, 50% { background-color: var(--pvs-cta); }
+  52.86%, 100% { background-color: var(--pvs-title); }
+}
+
+@keyframes mxv-mark {
+  0%, 34.52% {
+    background-color: var(--pvs-accent-d);
+    scale: 1;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  39.29%, 50% { background-color: var(--pvs-cta); scale: 1.4; }
+  52.86%, 100% { background-color: var(--pvs-accent-d); scale: 1; }
+}
+
+@keyframes mxv-arrow {
+  0%, 60.71% {
+    border-color: var(--pvs-bars);
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  63.57%, 83.33% { border-color: var(--pvs-cta); }
+  86.19%, 100% { border-color: var(--pvs-bars); }
+}
+
+@keyframes mxv-track {
+  0%, 61.9% {
+    translate: 0 0;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  67.62%, 99.99% { translate: -6px 0; }
+  100% { translate: 0 0; }
+}
+
+@keyframes mxv-stop-off {
+  0%, 61.9% {
+    background-color: var(--pvs-cta);
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  65.71%, 99.99% { background-color: var(--pvs-bars); }
+  100% { background-color: var(--pvs-cta); }
+}
+
+@keyframes mxv-stop-on {
+  0%, 61.9% {
+    background-color: var(--pvs-bars);
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  65.71%, 99.99% { background-color: var(--pvs-cta); }
+  100% { background-color: var(--pvs-bars); }
+}
+
+/* ── Choreographed on the index: the index hangs itself ──
+   The curtain, the nav's arrival, and the footer's are the landing page's and
+   run here as they are. What this board sequences is an index being hung: the
+   page title wipes in, the first plate uncovers left to right and its caption
+   composes after it, the second plate uncovers from the other side because the
+   row is flipped and a reveal that ignored the flip would run away from the
+   caption it belongs to, then the carousel's arrows and stops arrive on an
+   80ms walk. The finale is the pointer coming up to the first entry, which is
+   the same hover the responsive scene demonstrates, arriving as the last beat
+   of a sequence instead of as an answer.
+
+   In seconds of the 5.6: title 0.45-1.05, first plate 0.9-1.7 with its caption
+   1.5-2.0, second plate 1.9-2.7 with its caption 2.5-3.0, arrows 3.1-3.4,
+   stops 3.2-3.6, footer 3.3-3.6, the hover 3.9-4.9, curtain 5.4-5.6.
+
+   The caption reveals sit on the ladder rather than on its bars, because the
+   title bar spends its own keyframes on the finale and an element takes one
+   animation per property. */
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion--index .ps-cursor,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion--index .ps-cursor {
+  animation: mxc-path 5.6s ease-in-out infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion--index .ps-index-head,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion--index .ps-index-head {
+  animation: mxc-head 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion--index .ps-index-row:nth-of-type(1) > .ps-image,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion--index .ps-index-row:nth-of-type(1) > .ps-image {
+  animation: mxc-plate-1 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion--index .ps-index-row:nth-of-type(2) > .ps-image,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion--index .ps-index-row:nth-of-type(2) > .ps-image {
+  animation: mxc-plate-2 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion--index .ps-index-row:nth-of-type(1) .ps-index-cap,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion--index .ps-index-row:nth-of-type(1) .ps-index-cap {
+  animation: mxc-cap-1 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion--index .ps-index-row:nth-of-type(2) .ps-index-cap,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion--index .ps-index-row:nth-of-type(2) .ps-index-cap {
+  animation: mxc-cap-2 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion--index .ps-index-arrow,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion--index .ps-index-arrow {
+  animation: mxc-arrow 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion--index .ps-index-track b:nth-child(1),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion--index .ps-index-track b:nth-child(1) {
+  animation: mxc-stop-1 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion--index .ps-index-track b:nth-child(2),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion--index .ps-index-track b:nth-child(2) {
+  animation: mxc-stop-2 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion--index .ps-index-track b:nth-child(3),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion--index .ps-index-track b:nth-child(3) {
+  animation: mxc-stop-3 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion--index .ps-index-track b:nth-child(4),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion--index .ps-index-track b:nth-child(4) {
+  animation: mxc-stop-4 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion--index .ps-index-row:nth-of-type(1) > .ps-image::before,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion--index .ps-index-row:nth-of-type(1) > .ps-image::before {
+  animation: mxc-band 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion--index .ps-index-row:nth-of-type(1) .ps-index-name,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion--index .ps-index-row:nth-of-type(1) .ps-index-name {
+  animation: mxc-name 5.6s linear infinite;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion--index .ps-index-row:nth-of-type(1) > .ps-image::after,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion--index .ps-index-row:nth-of-type(1) > .ps-image::after {
+  animation: mxc-mark 5.6s linear infinite;
+}
+
+/* The pointer waits below the frame until the index is hung, comes up to the
+   first entry at 3.9s, and is gone again before the curtain, so both ends of
+   the loop are off-frame. */
+@keyframes mxc-path {
+  0%, 62.5% { translate: 45cqw 115cqh; }
+  69.64%, 87.5% { translate: var(--mxi-work1, 25.6cqw 33.3cqh); }
+  93%, 100% { translate: 45cqw 115cqh; }
+}
+
+@keyframes mxc-head {
+  0%, 8.04% {
+    clip-path: inset(0 100% 0 0);
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  18.75%, 100% { clip-path: inset(0 0 0 0); }
+}
+
+@keyframes mxc-plate-1 {
+  0%, 16.07% {
+    clip-path: inset(0 100% 0 0);
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  30.36%, 100% { clip-path: inset(0 0 0 0); }
+}
+
+@keyframes mxc-plate-2 {
+  0%, 33.93% {
+    clip-path: inset(0 0 0 100%);
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  48.21%, 100% { clip-path: inset(0 0 0 0); }
+}
+
+@keyframes mxc-cap-1 {
+  0%, 26.79% {
+    opacity: 0;
+    translate: 0 6px;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  35.71%, 100% { opacity: 1; translate: 0 0; }
+}
+
+@keyframes mxc-cap-2 {
+  0%, 44.64% {
+    opacity: 0;
+    translate: 0 6px;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  53.57%, 100% { opacity: 1; translate: 0 0; }
+}
+
+@keyframes mxc-arrow {
+  0%, 55.36% { opacity: 0; }
+  60.71%, 100% { opacity: 1; }
+}
+
+@keyframes mxc-stop-1 {
+  0%, 57.14% { opacity: 0; }
+  62.5%, 100% { opacity: 1; }
+}
+
+@keyframes mxc-stop-2 {
+  0%, 58.57% { opacity: 0; }
+  63.93%, 100% { opacity: 1; }
+}
+
+@keyframes mxc-stop-3 {
+  0%, 60% { opacity: 0; }
+  65.36%, 100% { opacity: 1; }
+}
+
+@keyframes mxc-stop-4 {
+  0%, 61.43% { opacity: 0; }
+  66.79%, 100% { opacity: 1; }
+}
+
+@keyframes mxc-band {
+  0%, 69.64% {
+    opacity: 0;
+    translate: 0 100%;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  73.21%, 87.5% { opacity: 1; translate: 0 0; }
+  89.29%, 100% { opacity: 0; translate: 0 100%; }
+}
+
+/* One animation for two beats: the title's own reveal, then the accent and the
+   extra measure it takes when the pointer arrives at the end of the scene. */
+@keyframes mxc-name {
+  0%, 26.79% {
+    clip-path: inset(0 100% 0 0);
+    width: 66%;
+    background-color: var(--pvs-title);
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  33.93%, 70.54% {
+    clip-path: inset(0 0 0 0);
+    width: 66%;
+    background-color: var(--pvs-title);
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  75%, 87.5% { clip-path: inset(0 0 0 0); width: 74%; background-color: var(--pvs-cta); }
+  89.29%, 100% { clip-path: inset(0 0 0 0); width: 66%; background-color: var(--pvs-title); }
+}
+
+@keyframes mxc-mark {
+  0%, 70.54% {
+    background-color: var(--pvs-accent-d);
+    scale: 1;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  74.11%, 87.5% { background-color: var(--pvs-cta); scale: 1.4; }
+  89.29%, 100% { background-color: var(--pvs-accent-d); scale: 1; }
+}
+
 /* A loop nobody asked for is the definition of a nonessential one. Reduced
    motion gets the end of the scene instead: the pointer parked over the card
    it chose, with every state already changed, which is the same information
@@ -1263,12 +1810,19 @@
   .picker-preview-motion .ps-actions i::after,
   .picker-preview-motion .ps-gallery-item > i::before,
   .picker-preview-motion .ps-gallery-item > i::after,
+  .picker-preview-motion .ps-image::before,
   .picker-preview-motion .ps-image::after,
   .picker-preview-motion .ps-desktop::after,
   .picker-preview-motion :is(
     .ps-cursor,
     .ps-nav,
     .ps-nav-bars i,
+    .ps-index-head,
+    .ps-index-cap,
+    .ps-index-name,
+    .ps-index-arrow,
+    .ps-index-track,
+    .ps-index-track b,
     .ps-hero-copy > *,
     .ps-eyebrow,
     .ps-headline i,
@@ -1315,5 +1869,26 @@
   .picker-preview-motion .ps-gallery-item:not(:nth-child(3)) {
     filter: opacity(var(--mt-dim));
     translate: 0 var(--mt-sink);
+  }
+
+  /* The portfolio board's own resting frame: the pointer on the first entry
+     with that entry's caption band up, which is where all three of its scenes
+     end up. */
+  .picker-preview-motion--index .ps-cursor {
+    translate: var(--mxi-work1, 25.6cqw 33.3cqh);
+  }
+
+  .picker-preview-motion--index .ps-index-row:nth-of-type(1) > .ps-image::before {
+    opacity: 1;
+    translate: 0 0;
+  }
+
+  .picker-preview-motion--index .ps-index-row:nth-of-type(1) .ps-index-name {
+    background-color: var(--pvs-cta);
+  }
+
+  .picker-preview-motion--index .ps-index-row:nth-of-type(1) > .ps-image::after {
+    background-color: var(--pvs-cta);
+    scale: 1.4;
   }
 }

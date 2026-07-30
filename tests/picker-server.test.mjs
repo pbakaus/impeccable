@@ -51,11 +51,12 @@ const fontManifestFixture = {
       'chosen the morning it ships.',
     ],
     sectionLink: 'Our growers',
+    // Three, the count the artboard draws and the manifest validator requires:
+    // a fourth card makes the whole file fall back to the default pairs.
     gallery: [
       { title: 'Market bunch', meta: 'From $38' },
       { title: 'Table vase', meta: 'From $52' },
       { title: 'Ceremony', meta: 'From $120' },
-      { title: 'Workshop', meta: 'Next Sat' },
     ],
     footerLinks: ['Care guide', 'Delivery', 'Contact', 'Instagram'],
     footerMark: '© Hanazono',
@@ -245,7 +246,12 @@ test('serves picker and cues, writes submission, prints answers, and exits 0', a
     body: JSON.stringify(answers),
   });
   assert.equal(submitResponse.status, 200);
-  assert.deepEqual(await submitResponse.json(), { ok: true });
+  const submitBody = await submitResponse.json();
+  assert.equal(submitBody.ok, true);
+  // Submit forks the detached doc-session sibling and hands the tab its
+  // address; the picker itself still exits 0 as the completion signal.
+  assert.match(submitBody.doc?.base || '', /^http:\/\/127\.0\.0\.1:\d+$/);
+  assert.equal(typeof submitBody.doc?.token, 'string');
   assert.equal((await exitPromise)[0], 0);
 
   const answersPath = path.join(
@@ -254,6 +260,20 @@ test('serves picker and cues, writes submission, prints answers, and exits 0', a
   );
   assert.deepEqual(JSON.parse(await readFile(answersPath, 'utf8')), answers);
   assert.match(server.stdout(), new RegExp(`ANSWERS ${answersPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+
+  // Reap the doc session so the fixture directory can be removed.
+  const sessionPath = path.join(fixture.cwd, '.impeccable/design-interview/doc-session.json');
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    try {
+      const session = JSON.parse(await readFile(sessionPath, 'utf8'));
+      assert.equal(session.token, submitBody.doc.token);
+      process.kill(session.pid);
+      break;
+    } catch (error) {
+      if (error.code === 'ERR_ASSERTION') throw error;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
 });
 
 test('fonts endpoint returns 404 when fonts.json is absent', async (t) => {

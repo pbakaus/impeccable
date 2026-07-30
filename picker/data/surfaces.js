@@ -34,6 +34,14 @@ export const SURFACE_MODES = ['persuade', 'operate', 'read', 'experience'];
     surface's choice is written down. A key per surface would promise whoever
     reads the answers a distinction the run has nowhere to spend.
 
+  A question that leaves a surface out of `surfaces` is not asked of that
+  surface at all, which is a stronger statement than withholding an option from
+  it. Withholding says the surface would answer this badly; leaving it out says
+  the surface has no stake in the question. So the tab strip only offers the
+  surfaces the question names, and a run whose surfaces are all left out never
+  sees the screen and records no answer for it. Only motion is scoped that way
+  today; the rest name all four.
+
   Persuade is allowed everything on every question: earning attention is the
   whole job of the surface, and no answer here is too much for it. The other
   three are ruled by what the surface is for rather than by how loud an option
@@ -80,6 +88,32 @@ export const SURFACE_ANSWERS = {
       operate: {},
       read: {},
       experience: {},
+    },
+  },
+
+  /*
+    The one question that is not put to every surface. Motion energy is a claim
+    on attention, and only two of the four surfaces are in a position to make
+    one: a landing page earning a decision and a portfolio presenting work. A
+    tool and a document are moved through rather than watched, and their motion
+    follows from what the interface is doing rather than from a house style, so
+    asking them would collect an answer nothing should act on. An app-UI-only or
+    docs-only run therefore never reaches this screen.
+
+    Both surfaces that are asked can take all three energies, so nothing is
+    withheld and no option carries a reason. Their defaults differ, because what
+    a surface does with movement when nobody says otherwise is the whole of what
+    it is for: a page earning a decision has to answer the pointer it is trying
+    to keep, and a portfolio stages the work's arrival, which is what a reveal
+    is for.
+  */
+  'motion-energy': {
+    tablist: 'Surface being moved',
+    answered: '{} movement',
+    unanswered: 'no motion energy chosen yet',
+    surfaces: {
+      persuade: { fallback: 'responsive' },
+      experience: { fallback: 'choreographed' },
     },
   },
 
@@ -190,15 +224,24 @@ export const SURFACE_ANSWERS = {
 /* The matrix reaches the browser on the surface tiles, which is already where
    the script looks for everything a surface knows about itself. One pair of
    attributes per question, read by name rather than by dataset key so the
-   question's own value is the lookup. */
+   question's own value is the lookup. A question this surface is not asked
+   contributes nothing, and the absent per-surface field is what the script
+   reads that from. */
 export const surfaceAttrs = (mode) => Object.fromEntries(
   Object.entries(SURFACE_ANSWERS).flatMap(([name, question]) => {
-    const { allow, fallback } = question.surfaces[mode];
+    const { allow, fallback } = question.surfaces[mode] ?? {};
     return [
       ...(allow ? [[`data-allow-${name}`, allow]] : []),
       ...(fallback ? [[`data-default-${name}`, fallback]] : []),
     ];
   }),
+);
+
+/* Which surfaces a question is put to at all, in tile order. The per-surface
+   fields a screen renders are the browser's copy of this, and the leading
+   applicable surface is the one whose answer the bare key carries. */
+export const surfacesAsked = (name) => SURFACE_MODES.filter(
+  (mode) => mode in SURFACE_ANSWERS[name].surfaces,
 );
 
 /* Everything the script needs to run a per-surface question is on its tab

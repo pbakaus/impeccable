@@ -453,11 +453,31 @@ Done when: `fonts.json` is parseable, contains exactly six ranked pairs, every f
 
 Before launching, write the surface set from Step 6 into `cues.json` as a top-level `modes` array: any of `persuade`, `operate`, `read`, `experience`. Do not re-derive it; the font pairs were composed against that reading, and a second judgment here would hand the user tiles the shortlist never answered to. The picker's first question pre-checks those tiles as its starting point; the user corrects the set by hand, and the final selection returns in the answers as `surface-modes`. Omit the field when the product gave no clear signal; the picker then starts from `persuade` alone.
 
-Four of the questions are then answered per surface rather than once for the whole run, because the answer that suits a marketing page rarely suits the tool it sells: `color-strategy`, `boundary-style` (how sections are separated), `corner-style` (how round shapes are), and `depth-style` (how far off the page things sit). Each of the four comes back twice over. The bare key holds the leading surface's answer, which is the first chosen tile in tile order and the one every later screen previews. Alongside it is one `<key>-<mode>` key for every surface chosen, `<mode>` being `persuade`, `operate`, `read`, or `experience`. Surfaces the user never opened are included too, holding the default for their kind; a surface nobody chose returns nothing at all.
+In the same write, add a top-level `context` object carrying the chat half of the run, because after the last question the picker shows the user a design context document assembled from everything the interview learned, and the browser only knows what it asked itself. Every field is optional and the document renders whatever arrives, so fill what the run actually established and leave out the rest:
 
-The picker does not offer every option on every surface. A landing page can take any answer to all four questions, and the other three surfaces have options withheld from them: a page people work in or read at length is not offered the loudest color or the deepest shadow, a tool is not offered separation by spacing alone, and a portfolio is not offered four working colors or fully round controls. So a value that comes back is one that suits the surface it came from, and a difference between two surfaces is a decision rather than an inconsistency to reconcile.
+```json
+"context": {
+  "product": { "name": "[product name]", "purpose": "[one-sentence purpose from PRODUCT.md]" },
+  "audience": { "primary": "[who]", "secondary": "[who]", "emotion": "[emotional goal on landing]", "needs": ["[need]"] },
+  "brand": { "words": ["[word]"], "personality": "[one sentence from PRODUCT.md Brand Personality]" },
+  "assets": ["[asset name: what Step 2 read off it]"],
+  "interview": {
+    "colorStrategy": "[Q1 pick]", "hueAnchor": "[Q1 anchor]",
+    "typeDirection": "[Q2 pick]", "motionEnergy": "[Q3 pick]",
+    "references": ["[Q4, all three]"], "antiReference": "[Q5]"
+  }
+}
+```
 
-When more than one surface comes back, DESIGN.md says what each of them does with color, section separation, corner radius, and depth, instead of stating one answer for the product.
+Quote the user's answers, not paraphrases of them; the document labels interview fields as the questions they answered. A missing block renders as a pointer to where that truth lives (PRODUCT.md), so an old `cues.json` without `context` still produces a complete document.
+
+Five of the questions are then answered per surface rather than once for the whole run, because the answer that suits a marketing page rarely suits the tool it sells: `color-strategy`, `motion-energy` (how much movement there is), `boundary-style` (how sections are separated), `corner-style` (how round shapes are), and `depth-style` (how far off the page things sit). Each of the five comes back twice over. The bare key holds the leading surface's answer, which is the first chosen tile in tile order and the one every later screen previews. Alongside it is one `<key>-<mode>` key for every surface chosen, `<mode>` being `persuade`, `operate`, `read`, or `experience`. Surfaces the user never opened are included too, holding the default for their kind; a surface nobody chose returns nothing at all.
+
+`motion-energy` is the one exception to that shape, because the question is only put to two of the four surfaces. A landing page and a portfolio are watched, so how much they move is a house decision; a tool and a document are worked in, and their movement follows the interface. So the motion keys cover the chosen surfaces among `persuade` and `experience` only, and the bare key holds the first of those two in tile order rather than the run's leading surface: on an app UI plus portfolio run, `motion-energy` is the portfolio's answer. **When a run chooses neither of those surfaces the question is never asked, and no `motion-energy` key comes back at all.** Read it as absent rather than defaulted, and say nothing about movement in DESIGN.md; a default written as a decision is a decision the user never made.
+
+The picker does not offer every option on every surface. A landing page can take any answer to all five questions, and the other three surfaces have options withheld from them: a page people work in or read at length is not offered the loudest color or the deepest shadow, a tool is not offered separation by spacing alone, and a portfolio is not offered four working colors or fully round controls. So a value that comes back is one that suits the surface it came from, and a difference between two surfaces is a decision rather than an inconsistency to reconcile.
+
+When more than one surface comes back, DESIGN.md says what each of them does with color, movement, section separation, corner radius, and depth, instead of stating one answer for the product.
 
 Tell the user in one line that the visual cues are ready at `.impeccable/visual-cues/` (name the count), then run `node {{scripts_path}}/picker-server.mjs` from the project root as a foreground command and parse its `PICKER_URL` line.
 
@@ -466,5 +486,32 @@ Tell the user in one line that the visual cues are ready at `.impeccable/visual-
 
 The server process exiting is the completion signal; never poll or watch the answers file while it runs.
 
-- **Exit 0**: read the `ANSWERS` path, tell the user the answers were received in one line, then stop. Do not show or describe the cues, ask for a pick in chat, or write DESIGN.md in this turn.
+- **Exit 0**: read the `ANSWERS` path, tell the user the answers were received in one line, then return to [document.md](document.md) Steps 5-6 and write the seed DESIGN.md from that file (its questionnaire-seed mapping owns which key lands where). Do not show or describe the cues or ask for a pick in chat; the picker already settled the pick. The user's tab is meanwhile showing the design context document the picker built from the run, and that document is now a working surface: on submit the server forked a detached edit session (`picker-doc-session.mjs`) that keeps the tab connected. After the seed DESIGN.md is written, enter the edit loop below.
 - **Exit 2**: tell the user the picker closed unanswered and that they can relaunch it with the same command. Never restart it unprompted.
+
+## The document edit loop
+
+The revealed document is editable in place, on live mode's division of labor:
+
+- **Simple edits never reach you.** A palette color change is applied by the session process itself: it rewrites `answers.json`, swaps the old hex for the new one across DESIGN.md, and journals the change to `.impeccable/design-interview/doc-edits.jsonl`. If the color edit landed before your seed write, the answers file you seed from already carries it.
+- **Complex edits queue for you.** Font changes (including uploaded faces, saved under `.impeccable/design-interview/fonts/`) and freeform asks arrive as `edit_request` events.
+
+After writing the seed DESIGN.md, tell the user in one line that the document in their tab is live for edits, then poll:
+
+```
+node {{scripts_path}}/picker-doc-poll.mjs
+```
+
+One-shot, exactly like live mode's poll: it blocks until one event and prints it as JSON. Run it on live mode's harness policy: on Claude Code as a background task; on Cursor as a one-shot poll in a background terminal with notify on `"type":"(edit_request|exit)"`; on Codex as a yielded foreground exec; elsewhere one-shot foreground. Never `--timeout` it short.
+
+- `{"type":"edit_request", "id", "kind", "prompt", "category", "payload"}`: do the work. Apply the change to DESIGN.md (and `answers.json` where a questionnaire key names the same fact, so the tab re-renders it), move any uploaded font files where the project keeps assets, then reply and poll again:
+
+  ```
+  node {{scripts_path}}/picker-doc-poll.mjs --reply <id> done "One line the user sees in the tab"
+  ```
+
+  Reply `error` with a reason when the ask cannot be applied; reply `retry` to put it back in the queue untouched.
+- `{"type":"timeout"}`: nothing arrived in the budget; poll again.
+- `{"type":"exit"}`: the session ended (tab closed or timed out). Before moving on, read `doc-edits.jsonl` and reconcile any prose the deterministic edits left stale: a swapped hex whose descriptive color name in DESIGN.md no longer matches its value gets a fresh name. Then stop polling; the loop is over.
+
+The user may keep working in chat while the document sits open; treat an `edit_request` like any other user instruction, just delivered through the tab.

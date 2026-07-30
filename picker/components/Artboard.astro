@@ -8,6 +8,13 @@
   adds the data-type-* hooks the font screen writes specimen copy into; that
   screen is judging glyphs, so bars would tell it nothing.
 
+  Every body is drawn both ways for the same reason. The slots stay one tree and
+  one set of class names; what changes is whether a slot holds a data-type-*
+  hook or the bars that stand in for the words. Only the font screen's boards are
+  filled, so a hook on any other board would promise copy that never arrives,
+  and a paragraph is a stack of bars rather than one because the block a
+  structural answer acts on is the shape of the passage, not a single line.
+
   phone: false drops the handset and leaves the desktop artboard alone in the
   frame, for a screen whose answer only reads at desktop width.
 */
@@ -89,41 +96,59 @@ const hook = type ? '' : undefined;
         <div class="ps-ops-rail">
           {[0, 1, 2].map((n) => (
             <span class:list={['ps-ops-item', n === 1 && 'ps-ops-item--on']}>
-              <i></i><b data-type-rail></b>
+              <i></i><b data-type-rail={hook}></b>
             </span>
           ))}
         </div>
         <div class="ps-ops-main">
-          <strong class="ps-ops-title" data-type-section-title></strong>
+          <strong class="ps-ops-title" data-type-section-title={hook}></strong>
           <div class="ps-ops-metrics">
             {[0, 1, 2].map(() => (
               <span class="ps-ops-metric">
-                <b data-type-figure></b>
-                <span data-type-proof></span>
+                <b data-type-figure={hook}></b>
+                <span data-type-proof={hook}></span>
               </span>
             ))}
+          </div>
+          {/* A chart is the one thing a dashboard has that no other surface
+              does, and it sets two kinds of text a pair has to be judged on
+              together: a heading over a plot, and a row of category labels
+              sitting under it at the smallest step on the board. The bars
+              themselves stay schematic, drawn as a share of the plot rather
+              than from numbers, because what is being chosen here is a pair
+              and not a reading of the data. */}
+          <div class="ps-ops-chart">
+            <b class="ps-ops-chart-title" data-type-chart-title={hook}></b>
+            <div class="ps-ops-plot">
+              {[46, 66, 100, 58, 44].map((h, n) => (
+                <i class:list={[n === 2 && 'ps-ops-bar--lead']} style={`--h: ${h}%`}></i>
+              ))}
+            </div>
+            <div class="ps-ops-lanes">
+              {[0, 1, 2, 3, 4].map(() => <b data-type-lane={hook}></b>)}
+            </div>
           </div>
           <div class="ps-ops-table">
             <span class="ps-ops-row ps-ops-row--head">
               <i></i>
-              <b data-type-column></b><b data-type-column></b><b data-type-column></b>
+              <b data-type-column={hook}></b><b data-type-column={hook}></b><b data-type-column={hook}></b>
             </span>
             {[0, 1, 2].map((n) => (
               <span class:list={['ps-ops-row', n === 1 && 'ps-ops-row--on']}>
                 <i></i>
-                <b data-type-gallery-title></b>
-                <b data-type-gallery-meta></b>
-                <b data-type-amount></b>
+                <b data-type-gallery-title={hook}></b>
+                <b data-type-gallery-meta={hook}></b>
+                <b data-type-amount={hook}></b>
               </span>
             ))}
           </div>
         </div>
         <div class="ps-ops-panel">
-          <b class="ps-ops-panel-title" data-type-panel></b>
-          <span class="ps-ops-field"><b data-type-panel></b><i class="ps-ops-chev"></i></span>
+          <b class="ps-ops-panel-title" data-type-panel={hook}></b>
+          <span class="ps-ops-field"><b data-type-panel={hook}></b><i class="ps-ops-chev"></i></span>
           {[0, 1].map((n) => (
             <span class="ps-ops-switch">
-              <b data-type-switch></b>
+              <b data-type-switch={hook}></b>
               <i class:list={['ps-ops-toggle', n === 0 && 'ps-ops-toggle--on']}></i>
             </span>
           ))}
@@ -137,7 +162,7 @@ const hook = type ? '' : undefined;
         <div class="ps-docs-rail">
           {[0, 1, 2, 3].map((n) => (
             <span class:list={['ps-docs-item', n === 1 && 'ps-docs-item--on']}>
-              <i></i><b data-type-rail></b>
+              <i></i><b data-type-rail={hook}></b>
             </span>
           ))}
         </div>
@@ -146,35 +171,71 @@ const hook = type ? '' : undefined;
             and the heading under it is visible at a glance, so the board shows
             both rather than the single heading the drawing carries. */}
         <div class="ps-docs-main">
-          <h2 class="pt-headline" data-type-headline></h2>
-          <p class="ps-docs-lede" data-type-body></p>
-          <strong class="ps-docs-sub" data-type-section-title></strong>
-          <p class="ps-docs-para" data-type-passage></p>
-          <p class="ps-docs-para" data-type-passage></p>
+          <h2 class="pt-headline" data-type-headline={hook}>{!type && <Fragment><i></i><i></i></Fragment>}</h2>
+          <p class="ps-docs-lede" data-type-body={hook}>{!type && [0, 1].map(() => <i></i>)}</p>
+          <strong class="ps-docs-sub" data-type-section-title={hook}></strong>
+          <p class="ps-docs-para" data-type-passage={hook}>{!type && [0, 1, 2].map(() => <i></i>)}</p>
+          <p class="ps-docs-para" data-type-passage={hook}>{!type && [0, 1, 2].map(() => <i></i>)}</p>
+          {/* Prose, a list, and a callout are what a documentation page is
+              made of, and the board carried two of the three. The list is
+              also the only setting here that asks the body face to hold a
+              short ragged line against a marker. */}
+          <ul class="ps-docs-list">
+            {[0, 1].map(() => <li data-type-item={hook}></li>)}
+          </ul>
           <div class="ps-docs-note">
-            <i class="ps-docs-note-dot"></i>
             <span class="ps-docs-note-copy">
-              <b data-type-note-label></b>
-              <span data-type-note-body></span>
+              <b data-type-note-label={hook}></b>
+              <span data-type-note-body={hook}>{!type && [0, 1].map(() => <i></i>)}</span>
             </span>
           </div>
         </div>
       </div>
+    ) : index && !type ? (
+      /* The index as a wireframe, for the screen that judges movement rather
+         than glyphs. Same four bands as the set version below, drawn in bars:
+         a page title, two staggered entries, and the carousel rail. */
+      <div class="ps-index">
+        <i class="ps-index-head"></i>
+        {[0, 1].map((n) => (
+          <div class:list={['ps-index-row', n === 1 && 'ps-index-row--flip']}>
+            <div class="ps-image"></div>
+            <div class="ps-index-cap">
+              <i class="ps-index-name"></i>
+              <i class="ps-index-tag"></i>
+              <span class="ps-index-lines"><b></b><b></b></span>
+            </div>
+          </div>
+        ))}
+        <div class="ps-index-rail">
+          <i class="ps-index-arrow"></i>
+          <div class="ps-index-track">
+            {[0, 1, 2, 3].map((n) => (
+              <b class:list={[n === 0 && 'ps-index-stop--on']}></b>
+            ))}
+          </div>
+          <i class="ps-index-arrow ps-index-arrow--next"></i>
+        </div>
+      </div>
     ) : index ? (
       <div class="ps-index">
-        {/* The drawing staggers two plates and neither says anything the other
-            does not. One row buys the page title above it, which is the only
-            place in the set where the heading face is allowed to be as large
-            as this surface would really set it. */}
+        {/* The page title the drawing has no room for, over the two staggered
+            entries it draws. The second entry is what the handset shows too,
+            and it is the one that proves the caption ladder repeats: a pair set
+            on an index is read down a run of entries rather than at one of
+            them. Alternating the plate keeps the run from collapsing into a
+            single column at a width that has room for two. */}
         <h2 class="pt-headline" data-type-headline></h2>
-        <div class="ps-index-row">
-          <div class="ps-image"></div>
-          <div class="ps-index-cap">
-            <strong class="ps-index-title" data-type-gallery-title></strong>
-            <span class="ps-index-meta" data-type-gallery-meta></span>
-            <span class="ps-index-note" data-type-caption></span>
+        {[0, 1].map((n) => (
+          <div class:list={['ps-index-row', n === 1 && 'ps-index-row--flip']}>
+            <div class="ps-image"></div>
+            <div class="ps-index-cap">
+              <strong class="ps-index-title" data-type-gallery-title></strong>
+              <span class="ps-index-meta" data-type-gallery-meta></span>
+              <span class="ps-index-note" data-type-caption></span>
+            </div>
           </div>
-        </div>
+        ))}
         {/* The chevrons stay shapes because an arrow is not a word. The track's
             segments are, so they are set: a carousel's stops are named. */}
         <div class="ps-index-rail">
@@ -229,8 +290,14 @@ const hook = type ? '' : undefined;
           : <span><i></i><i></i></span>}
         <em data-type-section-link={hook}></em>
       </div>
+      {/* Three cards once the labels are words, four while they are bars. The
+          type board sets three because a fourth column leaves the copy beside
+          it under the width the widest pairing needs, and the preview copy is
+          written to that count: a fourth card here would draw a picture with
+          no caption under it. The bar composition is measured at four by the
+          layout screens, so it keeps them. */}
       <div class="ps-gallery">
-        {[0, 1, 2, 3].map(() => (
+        {(type ? [0, 1, 2] : [0, 1, 2, 3]).map(() => (
           <div class="ps-gallery-item">
             <i></i>
             {type
@@ -280,11 +347,26 @@ const hook = type ? '' : undefined;
       </div>
       {ops ? (
       <div class="ps-phone-body">
-        <strong class="ps-ops-title" data-type-section-title></strong>
+        <strong class="ps-ops-title" data-type-section-title={hook}></strong>
         <span class="ps-ops-metric">
-          <b data-type-figure></b>
-          <span data-type-proof></span>
+          <b data-type-figure={hook}></b>
+          <span data-type-proof={hook}></span>
         </span>
+        {/* Three lanes rather than five. The handset keeps the leading one, so
+            the emphasis stays on the same lane the desktop board marks, and it
+            drops the tail: five labels at this width would either collide or
+            be set under the floor this preview is allowed to reach. */}
+        <div class="ps-ops-chart">
+          <b class="ps-ops-chart-title" data-type-chart-title={hook}></b>
+          <div class="ps-ops-plot">
+            {[52, 74, 100].map((h, n) => (
+              <i class:list={[n === 2 && 'ps-ops-bar--lead']} style={`--h: ${h}%`}></i>
+            ))}
+          </div>
+          <div class="ps-ops-lanes">
+            {[0, 1, 2].map(() => <b data-type-lane={hook}></b>)}
+          </div>
+        </div>
         {/* The table has nowhere to put four columns at this width, so it
             collapses to the two cells that carry the row: what it is and what
             it comes to. */}
@@ -292,15 +374,15 @@ const hook = type ? '' : undefined;
           {[0, 1, 2].map((n) => (
             <span class:list={['ps-ops-row', n === 1 && 'ps-ops-row--on']}>
               <i></i>
-              <b data-type-gallery-title></b>
-              <b data-type-amount></b>
+              <b data-type-gallery-title={hook}></b>
+              <b data-type-amount={hook}></b>
             </span>
           ))}
         </div>
         <div class="ps-ops-panel">
           {[0, 1].map((n) => (
             <span class="ps-ops-switch">
-              <b data-type-switch></b>
+              <b data-type-switch={hook}></b>
               <i class:list={['ps-ops-toggle', n === 0 && 'ps-ops-toggle--on']}></i>
             </span>
           ))}
@@ -310,16 +392,18 @@ const hook = type ? '' : undefined;
       <div class="ps-phone-body">
         {/* The crumb is the drawing's, and it is a phone element there because
             the rail it stands in for has nowhere to go at this width. */}
-        <span class="ps-docs-crumb" data-type-crumb></span>
-        <h2 class="pt-headline" data-type-headline></h2>
-        <p class="ps-docs-lede" data-type-body></p>
-        <strong class="ps-docs-sub" data-type-section-title></strong>
-        <p class="ps-docs-para" data-type-passage></p>
+        <span class="ps-docs-crumb" data-type-crumb={hook}></span>
+        <h2 class="pt-headline" data-type-headline={hook}>{!type && <Fragment><i></i><i></i></Fragment>}</h2>
+        <p class="ps-docs-lede" data-type-body={hook}>{!type && [0, 1].map(() => <i></i>)}</p>
+        <strong class="ps-docs-sub" data-type-section-title={hook}></strong>
+        <p class="ps-docs-para" data-type-passage={hook}>{!type && [0, 1, 2].map(() => <i></i>)}</p>
+        <ul class="ps-docs-list">
+          {[0, 1].map(() => <li data-type-item={hook}></li>)}
+        </ul>
         <div class="ps-docs-note">
-          <i class="ps-docs-note-dot"></i>
           <span class="ps-docs-note-copy">
-            <b data-type-note-label></b>
-            <span data-type-note-body></span>
+            <b data-type-note-label={hook}></b>
+            <span data-type-note-body={hook}>{!type && [0, 1].map(() => <i></i>)}</span>
           </span>
         </div>
       </div>
@@ -331,9 +415,19 @@ const hook = type ? '' : undefined;
           <Fragment>
             <div class="ps-image"></div>
             <div class="ps-index-cap">
-              <strong class="ps-index-title" data-type-gallery-title></strong>
-              <span class="ps-index-meta" data-type-gallery-meta></span>
-              <span class="ps-index-note" data-type-caption></span>
+              {type ? (
+                <Fragment>
+                  <strong class="ps-index-title" data-type-gallery-title></strong>
+                  <span class="ps-index-meta" data-type-gallery-meta></span>
+                  <span class="ps-index-note" data-type-caption></span>
+                </Fragment>
+              ) : (
+                <Fragment>
+                  <i class="ps-index-name"></i>
+                  <i class="ps-index-tag"></i>
+                  <span class="ps-index-lines"><b></b><b></b></span>
+                </Fragment>
+              )}
             </div>
           </Fragment>
         ))}
@@ -396,8 +490,5 @@ const hook = type ? '' : undefined;
     </div>
   )}
 
-  {/* Chrome that belongs to the frame rather than to the page drawn in it,
-      such as the surface tab strip. Taken out of the flow by its own rules, so
-      the artboard's grid is still the two columns declared above. */}
   <slot />
 </div>

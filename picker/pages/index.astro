@@ -44,10 +44,29 @@ const iconRows = iconPacks.packs.map((pack) => ({
 // data/surfaces.js, so the tiles carry what each surface allows without the
 // matrix being restated on every screen that reads it.
 
-// The five questions that are answered by looking at the same wireframe page.
-// Each one only rewrites the artboard slots it owns, so by the last screen the
-// page is showing every decision made before it. Motion is the one question
-// whose answer cannot be read on a handset, so it takes the frame alone.
+// The five questions that are answered by looking at a wireframe page. Each one
+// only rewrites the artboard slots it owns, so by the last screen the page is
+// showing every decision made before it. Motion is the one question whose answer
+// cannot be read on a handset, so it takes the frame alone.
+//
+// All five draw a board per surface. A structural answer is a claim about a kind
+// of page, and the four kinds are not the same shape: an app shell divides into
+// a rail, a working column, and a panel, a document is a rail and a measure, an
+// index is a run of entries. Repainting one landing page under four labels
+// showed the same page four times and asked the visitor to imagine the rest.
+//
+// Which board is showing is read off `data-surface`, the attribute the component
+// already publishes and the one the tab strip toggles, rather than a class per
+// screen per surface. Screen 06 takes a class because its scenes are written per
+// board; these four ask the same question of every board and only need to know
+// which anatomy is under them.
+const boards = [
+  { surface: 'persuade' },
+  { surface: 'operate' },
+  { surface: 'read' },
+  { surface: 'experience' },
+];
+
 const questions = [
   {
     id: '06',
@@ -59,6 +78,15 @@ const questions = [
     cta: 'Select motion energy',
     previewClass: 'picker-preview-motion',
     phone: false,
+    // The two surfaces this question is put to, and the only screen where a
+    // surface answers on a page of its own kind: an energy is demonstrated by
+    // watching a page use it, and a landing page and a portfolio use movement
+    // for different ends. Repainting one wireframe would show the same scene
+    // twice under two labels.
+    boards: [
+      { surface: 'persuade' },
+      { surface: 'experience', class: 'picker-preview-motion--index' },
+    ],
     options: [
       {
         value: 'restrained',
@@ -86,6 +114,7 @@ const questions = [
     legend: 'Layout structure',
     cta: 'Select layout structure',
     previewClass: 'picker-strategy-preview picker-preview-layout',
+    boards,
     options: [
       {
         value: 'simple-grid',
@@ -114,6 +143,7 @@ const questions = [
     legend: 'Boundary style',
     cta: 'Select boundary style',
     previewClass: 'picker-preview-boundaries',
+    boards,
     options: [
       {
         value: 'open-space',
@@ -148,6 +178,7 @@ const questions = [
     legend: 'Corner style',
     cta: 'Select corner style',
     previewClass: 'picker-preview-corners',
+    boards,
     options: [
       {
         value: 'sharp',
@@ -181,6 +212,7 @@ const questions = [
     legend: 'Depth style',
     cta: 'Select depth style',
     previewClass: 'picker-preview-depth',
+    boards,
     options: [
       {
         value: 'flat',
@@ -947,46 +979,46 @@ const questions = [
                   no editorial page would spend a heading level on. */}
               <div class="picker-scale-column">
                 <div class="picker-scale-specimen" data-scale-specimen aria-hidden="true">
-                  <p class="sp-h1">A generic display heading</p>
-                  <p class="sp-lede">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt.</p>
-                  <p class="sp-p">
+                  <p class="sp-h1" data-sp-label="H1">A generic display heading</p>
+                  <p class="sp-lede" data-sp-label="Lede">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt.</p>
+                  <p class="sp-p" data-sp-label="P">
                     Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo
                     consequat. Duis aute <em>irure dolor in reprehenderit</em> in voluptate velit esse cillum dolore eu
                     fugiat nulla pariatur, <u>excepteur sint occaecat</u> cupidatat non proident.
                   </p>
 
-                  <p class="sp-h2">A section heading</p>
-                  <p class="sp-p">
+                  <p class="sp-h2" data-sp-label="H2">A section heading</p>
+                  <p class="sp-p" data-sp-label="P">
                     Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium,
                     totam rem aperiam <strong>eaque ipsa quae</strong> ab illo inventore veritatis.
                   </p>
-                  <ul class="sp-list">
+                  <ul class="sp-list" data-sp-label="List">
                     <li>Lorem ipsum dolor sit amet, consectetur</li>
                     <li>Adipiscing elit, sed do eiusmod tempor incididunt ut labore</li>
                     <li>Magna aliqua ut enim ad minim veniam</li>
                   </ul>
 
-                  <blockquote class="sp-quote">
+                  <blockquote class="sp-quote" data-sp-label="Quote">
                     <p>Quis autem vel eum iure reprehenderit qui in ea voluptate velit esse quam nihil molestiae.</p>
                     <cite class="sp-cite">Attribution line</cite>
                   </blockquote>
 
-                  <p class="sp-h3">A subsection heading</p>
-                  <p class="sp-p">
+                  <p class="sp-h3" data-sp-label="H3">A subsection heading</p>
+                  <p class="sp-p" data-sp-label="P">
                     At vero eos et accusamus et iusto odio dignissimos ducimus, qui blanditiis praesentium voluptatum
                     deleniti atque, held together by <code class="sp-code">a run of inline code</code> mid sentence.
                   </p>
-                  <ol class="sp-list sp-list-ordered">
+                  <ol class="sp-list sp-list-ordered" data-sp-label="List">
                     <li>Nam libero tempore, cum soluta nobis</li>
                     <li>Eligendi optio cumque nihil impedit</li>
                     <li>Quo minus id quod maxime placeat</li>
                   </ol>
-                  <pre class="sp-pre"><code>function step(base, ratio, n) &#123;
+                  <pre class="sp-pre" data-sp-label="Code"><code>function step(base, ratio, n) &#123;
   return base * ratio ** n;
 &#125;</code></pre>
 
-                  <p class="sp-h4">A minor heading</p>
-                  <p class="sp-p">
+                  <p class="sp-h4" data-sp-label="H4">A minor heading</p>
+                  <p class="sp-p" data-sp-label="P">
                     Temporibus autem quibusdam et aut officiis debitis aut rerum necessitatibus saepe eveniet, ut et
                     voluptates repudiandae sint et molestiae non recusandae.
                   </p>
@@ -1105,11 +1137,15 @@ const questions = [
 
       <section class="picker-screen" data-screen="12" data-step="Review" aria-hidden="true" aria-labelledby="picker-finish-copy">
         <div class="picker-container">
-          <div class="picker-placeholder">
-            <p id="picker-finish-copy">Your visual direction is ready.</p>
-            <div class="picker-actions-stack">
-              <button class="ks-button ks-button-primary" type="submit">
-                Finish
+          <div class="picker-placeholder picker-finish">
+            <h2 id="picker-finish-copy" class="picker-question-title">Thank you &mdash; that&rsquo;s everything.</h2>
+            <p class="picker-finish-lede">We have all we need to build your design context document. Assembling it now.</p>
+            <div class="picker-finish-loader" data-doc-loader aria-hidden="true"><i></i></div>
+            <p class="picker-finish-status" data-doc-status role="status" aria-live="polite"></p>
+            <div class="picker-actions-stack" data-doc-error hidden>
+              <p class="picker-finish-error">Your answers could not be saved &mdash; the picker server may have closed.</p>
+              <button class="ks-button ks-button-primary" type="button" data-doc-retry>
+                Try again
                 <span class="ks-button-arrow" aria-hidden="true">
                   <svg viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square">
                     <path d="M0 4h14M10 0l4 4-4 4"></path>
@@ -1127,12 +1163,211 @@ const questions = [
           <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
         </div>
         <p class="picker-progress-label">
-          <span class="picker-progress-index"><b data-progress-index>1</b> / 11</span>
+          <span class="picker-progress-index"><b data-progress-index>1</b> / <span data-progress-total>11</span></span>
           <span class="picker-progress-name" data-progress-name></span>
         </p>
       </div>
     </form>
   </main>
+
+  {/* Design context document — hidden until the review screen saves the
+      answers. Mosaic, morph, and article vocabulary ported unchanged from
+      docs/design-context-categorization/design-context.html; the detail
+      templates start empty and are filled from the interview by
+      scripts/design-context.js. */}
+  <section class="dcx-shell" data-dcx-shell hidden aria-label="Design context categories">
+    <header class="dcx-masthead">
+      <span class="dcx-masthead-brand">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M5 2.5 L13.5 2.5 L5.5 21.5 L5 21.5 Q2.5 21.5 2.5 19 L2.5 5 Q2.5 2.5 5 2.5 Z"></path>
+          <path d="M16.5 2.5 L19 2.5 Q21.5 2.5 21.5 5 L21.5 19 Q21.5 21.5 19 21.5 L8.5 21.5 Z"></path>
+        </svg>
+        <span>Impeccable</span>
+      </span>
+      <span class="dcx-masthead-title" data-dcx-product>Design context</span>
+      <span class="dcx-masthead-note">Assembled from your interview &middot; answers saved</span>
+    </header>
+    <div class="dcx-grid">
+
+      <div class="dcx-badge" data-reveal style="--reveal-delay: 0.45s" aria-hidden="true">
+        <svg viewBox="0 0 24 24" focusable="false">
+          <path d="M5 2.5 L13.5 2.5 L5.5 21.5 L5 21.5 Q2.5 21.5 2.5 19 L2.5 5 Q2.5 2.5 5 2.5 Z"></path>
+          <path d="M16.5 2.5 L19 2.5 Q21.5 2.5 21.5 5 L21.5 19 Q21.5 21.5 19 21.5 L8.5 21.5 Z"></path>
+        </svg>
+      </div>
+
+      <button class="dcx-tile dcx-tile--audience" type="button" data-category="audience" data-name="Audience" data-reveal style="--reveal-delay: 0s" aria-label="Open Audience">
+        <span class="dcx-tile-viz" aria-hidden="true">
+          <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="dcx-viz-svg">
+            <circle cx="15" cy="14" r="4" stroke="var(--viz-ink)" class="vz-stroke" vector-effect="non-scaling-stroke"></circle>
+            <path d="M7 30c0-5 3.6-8 8-8s8 3 8 8" stroke="var(--viz-ink)" stroke-linecap="round" class="vz-stroke" vector-effect="non-scaling-stroke"></path>
+            <g class="anim-join">
+              <circle cx="28" cy="16" r="3.4" stroke="var(--viz-accent)" class="vz-stroke" vector-effect="non-scaling-stroke"></circle>
+              <path d="M21.5 30c0-4.4 3-7 6.5-7s6.5 2.6 6.5 7" stroke="var(--viz-accent)" stroke-linecap="round" class="anim-draw vz-stroke" vector-effect="non-scaling-stroke"></path>
+            </g>
+          </svg>
+        </span>
+        <h2 class="dcx-tile-title">Audience</h2>
+      </button>
+
+      <button class="dcx-tile dcx-tile--product" type="button" data-category="product" data-name="Product" data-reveal style="--reveal-delay: 0.05s" aria-label="Open Product">
+        <span class="dcx-tile-viz" aria-hidden="true">
+          <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="dcx-viz-svg">
+            <line x1="8" y1="13" x2="26" y2="13" stroke="var(--viz-ink)" stroke-linecap="round" class="vz-stroke" vector-effect="non-scaling-stroke"></line>
+            <line x1="8" y1="19" x2="30" y2="19" stroke="var(--viz-mist)" stroke-linecap="round" class="vz-stroke" vector-effect="non-scaling-stroke"></line>
+            <line x1="8" y1="25" x2="22" y2="25" stroke="var(--viz-accent)" stroke-linecap="round" class="vz-stroke" vector-effect="non-scaling-stroke"></line>
+            <line x1="26" y1="23" x2="26" y2="27" stroke="var(--viz-accent)" class="anim-blink vz-stroke" vector-effect="non-scaling-stroke"></line>
+          </svg>
+        </span>
+        <h2 class="dcx-tile-title">Product</h2>
+      </button>
+
+      <button class="dcx-tile dcx-tile--brand" type="button" data-category="brand" data-name="Brand" data-reveal style="--reveal-delay: 0.1s" aria-label="Open Brand">
+        <span class="dcx-tile-viz" aria-hidden="true">
+          <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="dcx-viz-svg">
+            <path d="M6 17 L34 17" stroke="var(--viz-mist)" class="vz-ghost" vector-effect="non-scaling-stroke"></path>
+            <path d="M12 10 L16 17 L20 33 M28 10 L24 17 L20 33" stroke="var(--viz-mist)" stroke-linejoin="round" class="vz-ghost" vector-effect="non-scaling-stroke"></path>
+            <path d="M12 10 L28 10 L34 17 L20 33 L6 17 Z" stroke="var(--viz-accent)" stroke-linejoin="round" class="anim-draw vz-stroke" vector-effect="non-scaling-stroke"></path>
+            <circle cx="20" cy="13.5" r="1.4" fill="var(--viz-accent)" class="anim-fade-in"></circle>
+          </svg>
+        </span>
+        <h2 class="dcx-tile-title">Brand</h2>
+      </button>
+
+      <button class="dcx-tile dcx-tile--color" type="button" data-category="color" data-name="Color" data-reveal style="--reveal-delay: 0.15s" aria-label="Open Color">
+        <span class="dcx-tile-viz" aria-hidden="true">
+          <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="dcx-viz-svg">
+            <circle cx="16" cy="20" r="8" stroke="var(--viz-ink)" class="anim-move-x vz-stroke" vector-effect="non-scaling-stroke"></circle>
+            <circle cx="24" cy="20" r="8" stroke="var(--viz-accent)" class="anim-move-x-opp anim-join vz-stroke" vector-effect="non-scaling-stroke"></circle>
+            <path d="M20 14.5C21.5 16 22.5 18 22.5 20C22.5 22 21.5 24 20 25.5C18.5 24 17.5 22 17.5 20C17.5 18 18.5 16 20 14.5Z" fill="var(--viz-accent)" class="anim-fade-in"></path>
+          </svg>
+        </span>
+        <h2 class="dcx-tile-title">Color</h2>
+      </button>
+
+      <button class="dcx-tile dcx-tile--typography" type="button" data-category="typography" data-name="Typography" data-reveal style="--reveal-delay: 0.2s" aria-label="Open Typography">
+        <span class="dcx-tile-viz" aria-hidden="true">
+          <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="dcx-viz-svg">
+            <path d="M10 30L20 10L30 30" stroke="var(--viz-mist)" stroke-linecap="round" stroke-linejoin="round" class="vz-ghost" vector-effect="non-scaling-stroke"></path>
+            <path d="M10 30L20 10L30 30" stroke="var(--viz-accent)" stroke-linecap="round" stroke-linejoin="round" class="anim-draw vz-stroke" vector-effect="non-scaling-stroke"></path>
+            <path d="M15 22H25" stroke="var(--viz-accent)" stroke-linecap="round" class="anim-draw-delay vz-stroke" vector-effect="non-scaling-stroke"></path>
+          </svg>
+        </span>
+        <h2 class="dcx-tile-title">Typography</h2>
+      </button>
+
+      <button class="dcx-tile dcx-tile--iconography" type="button" data-category="iconography" data-name="Iconography" data-reveal style="--reveal-delay: 0.25s" aria-label="Open Iconography">
+        <span class="dcx-tile-viz" aria-hidden="true">
+          <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="dcx-viz-svg">
+            <circle cx="14" cy="14" r="4.5" stroke="var(--viz-ink)" class="anim-pop anim-pop-1 vz-stroke" vector-effect="non-scaling-stroke"></circle>
+            <rect x="22" y="9.5" width="9" height="9" rx="1.5" stroke="var(--viz-ink)" class="anim-pop anim-pop-2 vz-stroke" vector-effect="non-scaling-stroke"></rect>
+            <path d="M14 22.5L18.5 30.5H9.5L14 22.5Z" stroke="var(--viz-ink)" stroke-linejoin="round" class="anim-pop anim-pop-3 vz-stroke" vector-effect="non-scaling-stroke"></path>
+            <path d="M26.5 22.5V30.5M22.5 26.5H30.5" stroke="var(--viz-accent)" stroke-linecap="round" class="anim-pop anim-pop-4 vz-stroke" vector-effect="non-scaling-stroke"></path>
+          </svg>
+        </span>
+        <h2 class="dcx-tile-title">Iconography</h2>
+      </button>
+
+      <button class="dcx-tile dcx-tile--material" type="button" data-category="material" data-name="Material" data-reveal style="--reveal-delay: 0.3s" aria-label="Open Material">
+        <span class="dcx-tile-viz" aria-hidden="true">
+          <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="dcx-viz-svg">
+            <rect x="5" y="10" width="30" height="18.5" stroke="var(--viz-mist)" class="vz-ghost" vector-effect="non-scaling-stroke"></rect>
+            <line x1="23.5" y1="10" x2="23.5" y2="28.5" stroke="var(--viz-mist)" class="vz-ghost" vector-effect="non-scaling-stroke"></line>
+            <line x1="23.5" y1="21.5" x2="35" y2="21.5" stroke="var(--viz-mist)" class="vz-ghost" vector-effect="non-scaling-stroke"></line>
+            <path d="M5 28.5C5 18.28 13.28 10 23.5 10C29.85 10 35 15.15 35 21.5C35 25.42 31.82 28.5 27.9 28.5" fill="none" stroke="var(--viz-accent)" stroke-linecap="round" class="anim-draw vz-stroke" vector-effect="non-scaling-stroke"></path>
+          </svg>
+        </span>
+        <h2 class="dcx-tile-title">Material</h2>
+      </button>
+
+      <button class="dcx-tile dcx-tile--interface" type="button" data-category="interface" data-name="Interface" data-reveal style="--reveal-delay: 0.35s" aria-label="Open Interface">
+        <span class="dcx-tile-viz" aria-hidden="true">
+          <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="dcx-viz-svg">
+            <rect x="10" y="14" width="20" height="12" rx="6" stroke="var(--viz-ink)" class="vz-stroke" vector-effect="non-scaling-stroke"></rect>
+            <circle cx="16" cy="20" r="4" fill="var(--viz-mist)" class="anim-toggle-move"></circle>
+          </svg>
+        </span>
+        <h2 class="dcx-tile-title">Interface</h2>
+      </button>
+
+    </div>
+  </section>
+
+  {/* Detail articles: empty shells filled per run by design-context.js. */}
+  <template id="dcx-detail-audience"></template>
+  <template id="dcx-detail-product"></template>
+  <template id="dcx-detail-brand"></template>
+  <template id="dcx-detail-color"></template>
+  <template id="dcx-detail-typography"></template>
+  <template id="dcx-detail-iconography"></template>
+  <template id="dcx-detail-material"></template>
+  <template id="dcx-detail-interface"></template>
+
+  {/* Expander shell: sidebar + topbar + main, cloned per open. */}
+  <template id="dcx-shell-template">
+    <div class="dcx-expander-inner">
+      <aside class="dcx-sidebar">
+        <a class="dcx-sidebar-brand" href="https://impeccable.style/" target="_blank" rel="noopener" aria-label="Impeccable home (opens the live site)">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 2.5 L13.5 2.5 L5.5 21.5 L5 21.5 Q2.5 21.5 2.5 19 L2.5 5 Q2.5 2.5 5 2.5 Z"></path>
+            <path d="M16.5 2.5 L19 2.5 Q21.5 2.5 21.5 5 L21.5 19 Q21.5 21.5 19 21.5 L8.5 21.5 Z"></path>
+          </svg>
+          <span class="dcx-sidebar-brand-name">Impeccable</span>
+        </a>
+        <nav class="dcx-nav" aria-label="Design context categories">
+          <span class="dcx-nav-label">Design context</span>
+          <ul class="dcx-nav-list">
+            <li data-category="audience"><a class="dcx-nav-link" href="#audience" data-dcx-nav="audience">Audience</a><div class="dcx-subnav"></div></li>
+            <li data-category="product"><a class="dcx-nav-link" href="#product" data-dcx-nav="product">Product</a><div class="dcx-subnav"></div></li>
+            <li data-category="brand"><a class="dcx-nav-link" href="#brand" data-dcx-nav="brand">Brand</a><div class="dcx-subnav"></div></li>
+            <li data-category="color"><a class="dcx-nav-link" href="#color" data-dcx-nav="color">Color</a><div class="dcx-subnav"></div></li>
+            <li data-category="typography"><a class="dcx-nav-link" href="#typography" data-dcx-nav="typography">Typography</a><div class="dcx-subnav"></div></li>
+            <li data-category="iconography"><a class="dcx-nav-link" href="#iconography" data-dcx-nav="iconography">Iconography</a><div class="dcx-subnav"></div></li>
+            <li data-category="material"><a class="dcx-nav-link" href="#material" data-dcx-nav="material">Material</a><div class="dcx-subnav"></div></li>
+            <li data-category="interface"><a class="dcx-nav-link" href="#interface" data-dcx-nav="interface">Interface</a><div class="dcx-subnav"></div></li>
+          </ul>
+        </nav>
+      </aside>
+      <div class="dcx-panel">
+        <header class="dcx-topbar">
+          <div class="dcx-current"></div>
+          <button class="dcx-request" type="button" data-dcx-request>Request a change</button>
+          <button class="dcx-close" type="button" aria-label="Close"></button>
+        </header>
+        <div class="dcx-main" tabindex="-1"></div>
+      </div>
+    </div>
+  </template>
+
+  {/* Edit-request modal: complex changes the document cannot apply itself
+      are written up here and queued for the agent over the doc session. */}
+  <dialog class="picker-modal dcx-request-modal" data-dcx-request-modal aria-labelledby="dcx-request-title">
+    <div class="picker-modal-inner">
+      <header class="picker-modal-head">
+        <h2 id="dcx-request-title">Request a change</h2>
+        <p data-dcx-request-lede>Describe the change; the agent applies it to the design document and the page updates here.</p>
+      </header>
+      <fieldset class="picker-modal-field">
+        <legend data-dcx-request-scope>Change</legend>
+        <label class="picker-modal-label" for="dcx-request-prompt">What should change?</label>
+        <textarea class="picker-modal-input dcx-request-prompt" id="dcx-request-prompt" rows="4" maxlength="4000"
+          placeholder="e.g. Swap the heading font for something with more contrast at display sizes."></textarea>
+        <div class="picker-modal-file-block" data-dcx-request-fonts hidden>
+          <label class="picker-modal-label" for="dcx-request-font-files">Font files (optional)</label>
+          <input class="picker-modal-file-input" id="dcx-request-font-files" type="file" multiple
+            accept=".woff2,.woff,.ttf,.otf" data-dcx-request-files />
+          <p class="picker-modal-or" data-dcx-request-upload-note></p>
+        </div>
+      </fieldset>
+      <footer class="picker-modal-actions">
+        <button class="picker-back" type="button" data-dcx-request-cancel>Cancel</button>
+        <button class="ks-button ks-button-primary" type="button" data-dcx-request-send>Send to the agent</button>
+      </footer>
+    </div>
+  </dialog>
+
+  {/* Live edit tray: every queued request with its status, fed by polling. */}
+  <div class="dcx-tray" data-dcx-tray hidden aria-live="polite"></div>
 
   <dialog class="picker-modal" data-font-modal aria-labelledby="picker-font-modal-title">
     <div class="picker-modal-inner">
@@ -1211,6 +1446,7 @@ const questions = [
 
   <script>
     import '../scripts/palette-picker.js';
+    import '../scripts/design-context.js';
 
     const $ = (selector, root = document) => root.querySelector(selector);
     const form = $('#picker-form');
@@ -1231,22 +1467,37 @@ const questions = [
     // Neither the start screen nor the review is a question, so the stepper
     // counts from the surfaces screen and fills on the last one, icons.
     // Review holds it full rather than counting past the end.
-    const STEPS = 11;
+    //
+    // A question no chosen surface takes is not a step either, so the count and
+    // the row of ticks come from the screens this run actually asks rather than
+    // from the markup: a docs-only run is ten questions long and says so.
     const progress = $('.picker-progress');
-    const setProgress = (index, name) => {
-      const step = Math.min(Math.max(index, 1), STEPS);
+    const track = $('.picker-progress-track');
+    const steps = () => screens.filter((screen, index) => (
+      index > 0 && index < screens.length - 1 && !screen.hasAttribute('data-skip')
+    ));
+    const setProgress = (target) => {
+      const list = steps();
+      const total = list.length;
+      const at = list.indexOf(target);
+      const step = at >= 0 ? at + 1 : (target === screens[0] ? 1 : total);
       progress.dataset.step = String(step);
+      progress.style.setProperty('--pk-steps', String(total));
+      [...track.children].forEach((tick, index) => tick.toggleAttribute('data-off', index >= total));
       $('[data-progress-index]').textContent = String(step);
-      $('[data-progress-name]').textContent = name || '';
+      $('[data-progress-total]').textContent = String(total);
+      $('[data-progress-name]').textContent = target.dataset.step || '';
     };
 
-    // The palette screen and the strategy screen are the one pair in the run
-    // that shows the same objects twice, so they are the pair whose change is
-    // worth animating: the four colors and the test page travel between the two
-    // positions instead of being redrawn. Everywhere else there is nothing to
-    // carry, and capturing a screen that is mid-animation reads worse than a
-    // plain swap does.
-    const MORPH = new Set(['02', '03']);
+    // The surfaces, palette, and strategy screens are the one stretch of the run
+    // that shows the same objects more than once, so they are where a change is
+    // worth animating: the test page travels from the leading surface tile into
+    // the palette panel and on to the strategy stage, and the four colors travel
+    // with it over that second step, instead of each being redrawn. Everywhere
+    // else there is nothing to carry, and capturing a screen that is
+    // mid-animation reads worse than a plain swap does. Only adjacent screens
+    // are ever swapped, so listing the three ids names exactly the two pairs.
+    const MORPH = new Set(['01b', '02', '03']);
     const morphs = (from, to) => (
       typeof document.startViewTransition === 'function'
       && !matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -1254,14 +1505,20 @@ const questions = [
       && MORPH.has(to?.dataset.screen)
     );
 
-    const goTo = (index) => {
-      const target = screens[index];
+    /* A question the run does not ask is not a screen the run has, so the step
+       carries on in the direction it was already travelling. That is what makes
+       Back from the screen after a skipped one land on the screen before it
+       rather than on the one nobody was shown. */
+    const goTo = (index, step = 1) => {
+      let at = index;
+      while (screens[at]?.hasAttribute('data-skip')) at += step;
+      const target = screens[at];
       if (!target) return;
       if (morphs(screens[current], target)) {
-        document.startViewTransition(() => swap(index));
+        document.startViewTransition(() => swap(at));
         return;
       }
-      swap(index);
+      swap(at);
     };
 
     const swap = (index) => {
@@ -1275,7 +1532,7 @@ const questions = [
       current = index;
       const id = target.dataset.screen;
       form.dataset.current = id;
-      setProgress(index, target.dataset.step);
+      setProgress(target);
       document.dispatchEvent(new CustomEvent('picker:screenchange', {
         detail: { screen: id },
       }));
@@ -1284,7 +1541,9 @@ const questions = [
 
     form.onclick = (e) => {
       const control = e.target.closest('[data-advance]');
-      if (control) goTo(current + (control.dataset.advance === 'prev' ? -1 : 1));
+      if (!control) return;
+      const step = control.dataset.advance === 'prev' ? -1 : 1;
+      goTo(current + step, step);
     };
 
     document.addEventListener('keydown', (e) => {
@@ -1309,19 +1568,10 @@ const questions = [
       items[index]?.focus();
     });
 
-    form.onsubmit = async (e) => {
-      e.preventDefault();
-      const answers = {};
-      for (const [name, value] of new FormData(form)) {
-        if (!(name in answers)) answers[name] = value;
-        else answers[name] = Array.isArray(answers[name]) ? [...answers[name], value] : [answers[name], value];
-      }
-      await fetch('/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(answers),
-      });
-    };
+    // Submission belongs to the review screen now: arriving on it triggers
+    // design-context.js's finish sequence (save, then reveal the design
+    // context document), so a stray native submit has nothing left to do.
+    form.onsubmit = (e) => e.preventDefault();
 
     copyButton.onclick = async () => {
       try {
@@ -1339,6 +1589,6 @@ const questions = [
     };
 
     form.dataset.current = screens[current].dataset.screen;
-    setProgress(current, screens[current].dataset.step);
+    setProgress(screens[current]);
   </script>
 </Picker>
