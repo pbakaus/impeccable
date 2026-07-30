@@ -13,11 +13,13 @@ const hint = $('[data-palette-hint]');
 const ringGuide = $('[data-ring-guide]');
 const loupe = $('[data-loupe]');
 let preview = $('.picker-preview');
-const typePreview = document.querySelector('[data-type-preview]');
+const typeStage = document.querySelector('[data-type-stage]');
+const typeBoards = [...document.querySelectorAll('[data-type-preview]')];
 const fontOptions = document.querySelector('[data-font-options]');
 const pairTemplate = document.querySelector('[data-pair-card]');
 const scaleOptions = document.querySelector('[data-scale-options]');
 const scaleSheet = document.querySelector('[data-scale-sheet]');
+const scaleSpecimen = document.querySelector('[data-scale-specimen]');
 const states = new Map();
 const canvases = new WeakMap();
 let cards = [];
@@ -31,11 +33,54 @@ let fontManifest;
 const LOREM = {
   sentence: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore.',
   paragraph: 'Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo.',
+  /* Two of them rather than one long one, because what the Read board has to
+     show is the texture of a block and the step between blocks, and a single
+     paragraph shows only the first. Their length is what the widest-setting
+     pair leaves room for at the smallest frame the card is drawn at. */
+  passages: [
+    'Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur sint occaecat cupidatat.',
+    'Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione.',
+  ],
+  note: 'Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque.',
+  caption: 'Lorem ipsum dolor sit amet, consectetur adipiscing.',
 };
 
 /* The desktop artboard sets three cards and the phone two, so a fourth would
    be words the agent writes and nobody ever reads. */
 const GALLERY_CARDS = 3;
+
+/* The words an interface supplies rather than the product: a tool's own rail,
+   the headings over its columns, the figures under them, and the two rows of a
+   settings panel. Kept here beside LOREM and for the same reason. What this
+   board has to prove is that the pair draws lining numerals that hold a column
+   and a semibold label that stays inside one, and both are properties of the
+   face. A column is also the tightest slot on any of the boards, so its words
+   cannot be left to whatever the run happens to be selling. */
+const APP = {
+  rail: ['Overview', 'Reports', 'Settings'],
+  columns: ['Item', 'Status', 'Amount'],
+  figures: ['1,284', '98.2%', '41'],
+  amounts: ['$12,400', '$3,860', '$9,215'],
+  panel: ['Preferences', 'Last 30 days'],
+  switches: ['Email digest', 'Compact rows'],
+};
+
+/* The same argument as APP, for the surface where the words belong to the
+   document rather than to the product. The rail lists sections of one page and
+   the crumb says where that page sits, neither of which the manifest's nav can
+   stand in for without the board reading as the same four words twice. */
+const DOCS = {
+  rail: ['Getting started', 'Install', 'Configuration', 'API reference'],
+  crumb: 'Docs / Getting started',
+  note: 'Note',
+};
+
+/* Same again for the index. The carousel's stops name parts of a body of work,
+   so the footer's links cannot stand in for them: the two lists sit a band
+   apart on the same board and would read as one list printed twice. */
+const INDEX = {
+  stops: ['Selected', 'Archive', 'Studio', 'Contact'],
+};
 
 const FALLBACK_FONTS = {
   version: 1,
@@ -290,14 +335,53 @@ function fillIndexed(root, selector, values) {
   });
 }
 
-function fillGallery(root, gallery) {
-  if (!root) return;
-  root.querySelectorAll('.ps-gallery-item').forEach((item, index) => {
-    const title = item.querySelector('[data-type-gallery-title]');
-    const meta = item.querySelector('[data-type-gallery-meta]');
-    if (title) title.textContent = gallery[index]?.title ?? '';
-    if (meta) meta.textContent = gallery[index]?.meta ?? '';
-  });
+/* One board's worth of copy. Every board is filled through the same hooks, so
+   a slot means the same thing wherever it appears: [data-type-gallery-title]
+   names an item whether the item is a card, a table row, or a piece of work,
+   and a board takes the slots its surface has and leaves the rest alone. The
+   desktop and the phone are filled separately because the indexed slots start
+   counting again on each. */
+function fillBoard(board, preview, specimen) {
+  const desktop = board.querySelector('.ps-desktop');
+  const phoneBody = board.querySelector('.ps-phone-body');
+  const phoneFooter = board.querySelector('.ps-phone-footer');
+  // A rail means the sections of a document on one board and the areas of a
+  // tool on the other, so it is the one slot whose words the surface decides.
+  const rail = board.dataset.surface === 'read' ? DOCS.rail : APP.rail;
+  const fill = (selector, value) => {
+    for (const node of board.querySelectorAll(selector)) node.textContent = value;
+  };
+  fill('[data-type-brand]', preview.brand);
+  fill('[data-type-nav-action]', preview.navAction);
+  fill('[data-type-menu-action]', preview.menuAction);
+  fill('[data-type-headline]', specimen.headline);
+  fill('[data-type-body]', LOREM.sentence);
+  fill('[data-type-cta-primary]', preview.ctaPrimary);
+  fill('[data-type-cta-secondary]', preview.ctaSecondary);
+  fill('[data-type-section-title]', preview.sectionTitle);
+  fill('[data-type-section-body]', LOREM.paragraph);
+  fill('[data-type-section-link]', preview.sectionLink);
+  fill('[data-type-footer-mark]', preview.footerMark);
+  fill('[data-type-note-label]', DOCS.note);
+  fill('[data-type-note-body]', LOREM.note);
+  fill('[data-type-crumb]', DOCS.crumb);
+  fill('[data-type-caption]', LOREM.caption);
+  for (const card of [desktop, phoneBody]) {
+    fillIndexed(card, '[data-type-nav]', preview.nav);
+    fillIndexed(card, '[data-type-proof]', preview.proof);
+    fillIndexed(card, '[data-type-gallery-title]', preview.gallery.map(({ title }) => title));
+    fillIndexed(card, '[data-type-gallery-meta]', preview.gallery.map(({ meta }) => meta));
+    fillIndexed(card, '[data-type-passage]', LOREM.passages);
+    fillIndexed(card, '[data-type-stop]', INDEX.stops);
+    fillIndexed(card, '[data-type-rail]', rail);
+    fillIndexed(card, '[data-type-column]', APP.columns);
+    fillIndexed(card, '[data-type-figure]', APP.figures);
+    fillIndexed(card, '[data-type-amount]', APP.amounts);
+    fillIndexed(card, '[data-type-panel]', APP.panel);
+    fillIndexed(card, '[data-type-switch]', APP.switches);
+  }
+  fillIndexed(desktop?.querySelector('.ps-footer'), '[data-type-footer-link]', preview.footerLinks);
+  fillIndexed(phoneFooter, '[data-type-footer-link]', preview.footerLinks);
 }
 
 function syncFontPair(pair) {
@@ -308,43 +392,14 @@ function syncFontPair(pair) {
     ...pair.preview,
   };
   const specimen = { ...manifest.specimen, ...pair.specimen };
-  const desktop = typePreview.querySelector('.ps-desktop');
-  const phoneBody = typePreview.querySelector('.ps-phone-body');
-  const phoneFooter = typePreview.querySelector('.ps-phone-footer');
-  // The scale sheet is set in the pair chosen here, so it travels with it.
-  for (const target of [typePreview, scaleSheet]) {
+  // Written once on the stage the boards share, and on screen 05's two preview
+  // columns, which are set in the pair chosen here so the faces travel with it.
+  for (const target of [typeStage, scaleSheet, scaleSpecimen]) {
     target.style.setProperty('--pt-heading', fontStack(pair.heading.family));
     target.style.setProperty('--pt-body', fontStack(pair.body.family));
     target.style.setProperty('--pt-heading-weight', pair.heading.weight);
   }
-  for (const node of document.querySelectorAll('[data-type-brand]')) node.textContent = preview.brand;
-  fillIndexed(desktop, '[data-type-nav]', preview.nav);
-  for (const node of document.querySelectorAll('[data-type-nav-action]')) node.textContent = preview.navAction;
-  for (const node of document.querySelectorAll('[data-type-menu-action]')) node.textContent = preview.menuAction;
-  for (const node of document.querySelectorAll('[data-type-headline]')) node.textContent = specimen.headline;
-  for (const node of document.querySelectorAll('[data-type-body]')) node.textContent = LOREM.sentence;
-  document.querySelectorAll('[data-type-cta-primary]').forEach((node) => {
-    node.textContent = preview.ctaPrimary;
-  });
-  document.querySelectorAll('[data-type-cta-secondary]').forEach((node) => {
-    node.textContent = preview.ctaSecondary;
-  });
-  fillIndexed(desktop, '[data-type-proof]', preview.proof);
-  fillIndexed(phoneBody, '[data-type-proof]', preview.proof);
-  document.querySelectorAll('[data-type-section-title]').forEach((node) => {
-    node.textContent = preview.sectionTitle;
-  });
-  for (const node of document.querySelectorAll('[data-type-section-body]')) node.textContent = LOREM.paragraph;
-  document.querySelectorAll('[data-type-section-link]').forEach((node) => {
-    node.textContent = preview.sectionLink;
-  });
-  fillGallery(desktop, preview.gallery);
-  fillGallery(phoneBody, preview.gallery);
-  fillIndexed(desktop.querySelector('.ps-footer'), '[data-type-footer-link]', preview.footerLinks);
-  fillIndexed(phoneFooter, '[data-type-footer-link]', preview.footerLinks);
-  document.querySelectorAll('[data-type-footer-mark]').forEach((node) => {
-    node.textContent = preview.footerMark;
-  });
+  for (const board of typeBoards) fillBoard(board, preview, specimen);
   document.querySelector('[name="font-heading"]').value = pair.heading.family;
   document.querySelector('[name="font-body"]').value = pair.body.family;
   document.querySelector('[name="font-heading-source"]').value = pair.heading.source || '';
@@ -391,6 +446,9 @@ function renderFontPairs(manifest, fallback) {
   manifest.pairs.forEach((pair, index) => addPairCard(pair, { checked: index === 0 }));
   loadFontStylesheet(manifest.pairs);
   syncFontPair(manifest.pairs[0]);
+  // The tab strip was built before the run had a pair to name, so it is told
+  // once the rows exist.
+  syncSurfaces();
   applyHoist();
 }
 
@@ -403,9 +461,13 @@ fontOptions.onchange = ({ target }) => {
 
 /* Scroll by whole rows so an option never ends up half in frame, and disable
    an arrow at the end it points to, since a live arrow that does nothing is
-   the reason the list looked unscrollable in the first place. */
+   the reason the list looked unscrollable in the first place.
+
+   Screen 05's specimen wears this too, and it has no rows: a page of prose is
+   paged by most of its own frame instead, which leaves a couple of lines of
+   overlap so the reader can find where they were. */
 function wireListScroll(list) {
-  const buttons = [...list.closest('.picker-type-rail').querySelectorAll('[data-list-scroll]')];
+  const buttons = [...list.closest('.picker-type-rail, .picker-scale-column').querySelectorAll('[data-list-scroll]')];
   const sync = () => {
     const room = list.scrollHeight - list.clientHeight;
     for (const button of buttons) {
@@ -416,7 +478,8 @@ function wireListScroll(list) {
   };
   for (const button of buttons) {
     button.onclick = () => {
-      const step = list.querySelector('.picker-strategy-option')?.offsetHeight || 100;
+      const step = list.querySelector('.picker-strategy-option')?.offsetHeight
+        || Math.round(list.clientHeight * 0.82);
       list.scrollBy({ top: step * Number(button.dataset.listScroll), behavior: 'smooth' });
     };
   }
@@ -546,20 +609,33 @@ typeRail.addEventListener('focusout', ({ relatedTarget }) => {
 /* Type scale.
 
    The numbers are the real ones: step n is 16px * ratio^n, and a Golden Ratio
-   H1 really is 287px. The specimen cannot be, because 287px of "This is the
-   Golden Ratio scale" is eight times the width of the sheet, and a sheet fitted
-   to that H1 would set its paragraph at 2px.
+   H1 really is 287px. The specimen cannot be, because 287px of "Golden Ratio"
+   is three times the width of the sheet, and a sheet fitted to that H1 would
+   set its paragraph at 2px.
 
    So the rendering compresses the exponent by half, which keeps every scale in
    its own character (a Minor Second sheet still reads as nearly flat, a Golden
    Ratio one as dramatic) while bringing the range from 18x down to about 4x.
    The measured fit below then scales the whole sheet if even that overflows.
-   The quoted px and rem stay untouched, which is the point of showing them. */
+   The quoted px and rem stay untouched, which is the point of showing them.
+
+   Both preview columns are set from these sizes. The sheet takes the measured
+   fit on top of them, because seven rows have to hold inside a box that cannot
+   grow; the reading column scrolls instead, so it sets the step values as they
+   come. That is the only place the two columns differ.
+
+   The sheet's sample is the scale's name and nothing more. A sentence there was
+   costing the sheet its size: the longest name inside "This is the ... scale"
+   ran to twice the width of a column shared three ways, so the fit halved every
+   step to hold it, and the scale with the longest name came out flatter than
+   the one below it. Running text belongs to the specimen column now. */
 const SCALE_BASE = 16;
 const SCALE_BODY_PX = 13;
 const SCALE_COMPRESSION = 0.5;
 const scaleRows = [...scaleSheet.querySelectorAll('[data-scale-row]')];
 const scaleRatioInput = document.querySelector('[name="type-scale-ratio"]');
+const checkedScale = () => scaleOptions.querySelector('input[name="type-scale"]:checked');
+const scaleRowInput = (node) => node?.closest('.picker-strategy-option')?.querySelector('input');
 
 const trimZeros = (value) => value.replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1');
 
@@ -580,29 +656,53 @@ function fitScaleSheet() {
   if (over > 1.001) scaleSheet.style.setProperty('--ts-fit', (1 / over).toFixed(4));
 }
 
-function syncTypeScale(input) {
+function drawTypeScale(input) {
   const ratio = Number(input.dataset.ratio);
   const name = input.dataset.scaleName;
   for (const row of scaleRows) {
     const step = Number(row.dataset.scaleRow);
     const px = SCALE_BASE * ratio ** step;
-    row.style.setProperty('--ts-size', (SCALE_BODY_PX * ratio ** (step * SCALE_COMPRESSION)).toFixed(3));
-    row.querySelector('[data-scale-sample]').textContent = `This is the ${name} scale`;
+    const rendered = (SCALE_BODY_PX * ratio ** (step * SCALE_COMPRESSION)).toFixed(3);
+    row.style.setProperty('--ts-size', rendered);
+    scaleSpecimen.style.setProperty(`--ts-step-${step}`, rendered);
+    row.querySelector('[data-scale-sample]').textContent = name;
     row.querySelector('[data-scale-px]').textContent = `${Math.round(px)}px`;
     row.querySelector('[data-scale-rem]').textContent = `${trimZeros((px / SCALE_BASE).toFixed(2))}rem`;
   }
-  scaleRatioInput.value = ratio.toFixed(3);
   fitScaleSheet();
 }
 
+/* The cursor previews and the click commits, the contract screens 03 and 11
+   already use. Drawing is everything the two columns show; committing is the
+   one line that records an answer, so a browsed row cannot leave one behind. */
+function commitTypeScale(input) {
+  drawTypeScale(input);
+  scaleRatioInput.value = Number(input.dataset.ratio).toFixed(3);
+}
+
+scaleOptions.addEventListener('pointerover', (event) => {
+  const input = scaleRowInput(event.target);
+  if (input) drawTypeScale(input);
+});
+scaleOptions.addEventListener('focusin', (event) => {
+  const input = scaleRowInput(event.target);
+  if (input) drawTypeScale(input);
+});
+const restScalePreview = restWhenIdle(scaleOptions, (focused) => {
+  drawTypeScale(scaleRowInput(focused) ?? checkedScale());
+});
+scaleOptions.addEventListener('pointerleave', restScalePreview);
+scaleOptions.addEventListener('focusout', restScalePreview);
 scaleOptions.onchange = ({ target }) => {
-  if (target.matches('input[name="type-scale"]')) syncTypeScale(target);
+  if (target.matches('input[name="type-scale"]')) commitTypeScale(target);
 };
+
+const syncSpecimenScroll = wireListScroll(scaleSpecimen);
 
 new ResizeObserver(fitScaleSheet).observe(scaleSheet);
 // Every face swap changes the width of the same string, fit included.
 document.fonts?.addEventListener('loadingdone', fitScaleSheet);
-syncTypeScale(scaleOptions.querySelector('input:checked'));
+commitTypeScale(checkedScale());
 
 /* Screen 11: the icon specimen. Every pack draws the same twenty-four concepts,
    so the sheet compares hands rather than catalogs. The drawings are vendored
@@ -1576,16 +1676,12 @@ document.addEventListener('picker:screenchange', (event) => {
   }
   // Coming back to the strategy screen from further along, where the palette may
   // have been reordered on the screen it was left on.
-  if (event.detail.screen === '03') {
-    paintStrategyBands();
-    paintStage();
-  } else {
-    /* Everywhere else previews the leading surface's answer, so the radio the
-       later screens read is parked there whenever 03 is off screen. Without
-       this the run would carry whichever surface was last on the tab, and a
-       strategy switched off for that surface would leave the answer empty. */
-    showSurface(chosenSurfaces()[0]?.value);
-  }
+  if (event.detail.screen === '03') paintStrategyBands();
+  // A per-surface question holds whatever tab it was left on while its own
+  // screen is up, and the rest follow it.
+  const leader = surfaceQuestions.find((question) => question.screen === event.detail.screen);
+  leader?.paint();
+  alignSurfaces(leader);
   // Arriving is the quietest moment there is, so the rail settles here even
   // if it is already in order: the chosen pair is the row you land on.
   if (event.detail.screen === '04') {
@@ -1602,12 +1698,23 @@ document.addEventListener('picker:screenchange', (event) => {
     });
   }
   // A hidden sheet measures zero, so the fit can only be resolved on arrival.
-  // The scroll waits a frame: the screen change focuses the first control after
+  // The rest waits a frame: the screen change focuses the first control after
   // this event, and that scrolls the list back to the top.
+  //
+  // It also puts focus on the first interval rather than the chosen one, and
+  // this list's preview reads focus twice: once to draw, and once to decide
+  // what to fall back to when the pointer leaves. Left alone, a visitor arrives
+  // to two columns set in an interval they never picked, and gets it again the
+  // first time they browse the list and come back. So the answer takes the
+  // focus, which is where a radio group's focus belongs anyway.
   if (event.detail.screen === '05') {
     fitScaleSheet();
+    const chosen = checkedScale();
     requestAnimationFrame(() => {
-      scaleOptions.querySelector('input:checked')?.parentElement.scrollIntoView({ block: 'center' });
+      chosen?.parentElement.scrollIntoView({ block: 'center' });
+      chosen?.focus({ preventScroll: true });
+      if (chosen) drawTypeScale(chosen);
+      syncSpecimenScroll();
     });
   }
   // The specimen is fetched the first time the screen is asked for, and the
@@ -1645,8 +1752,8 @@ const landingPreview = preview.cloneNode(true);
 let previewSource;
 
 function syncModePreview() {
-  // Screen 03 draws every chosen surface, not just the leading one, so it is
-  // rebuilt from here: every path that changes the tiles already runs this.
+  // The per-surface questions read the tiles rather than watch them, so they
+  // are rebuilt from here: every path that changes the tiles already runs this.
   syncSurfaces();
   const chosen = modeInputs.findIndex((input) => input.checked);
   // A tile drawn in something other than this component keeps the landing page,
@@ -1664,162 +1771,257 @@ function syncModePreview() {
   renderPreview();
 }
 
-/* Screen 03 colors the surfaces that were chosen rather than one fixed page,
-   and it colors each of them separately: the answer that suits the marketing
-   page rarely suits the tool it sells. Every chosen tile's drawing is mounted
-   on the stage, one is shown, and a tab in the frame's corner carries between
-   them when there is more than one to carry between. */
-const stage = document.querySelector('[data-strategy-stage]');
-const surfaceTabs = document.querySelector('[data-surface-tabs]');
-const strategyInputs = [...document.querySelectorAll('input[name="color-strategy"]')];
-const strategyRows = new Map(strategyInputs.map((input) => [input.value, input.closest('.picker-strategy-option')]));
+/* ============================================================
+   Questions answered once per surface.
 
-/* Why a strategy is out belongs to the strategy, not to the pairing, so it is
-   written once here rather than once per surface that rules it out. */
-const BLOCKED_BECAUSE = {
-  drenched: 'Too loud for a page people work in or read at length.',
-  'full-palette': 'Four colors on duty compete with the work on show.',
-};
+   Several screens ask the same shape of question: the answer that suits the
+   marketing page rarely suits the tool it sells, so it is asked once for each
+   surface chosen on 01b. A tab on the frame's corner carries between them, an
+   option a surface cannot take is turned off in place with the reason where
+   its description was, and every chosen surface leaves an answer whether or
+   not anyone ever opened its tab.
 
+   A screen opts in by rendering one tab strip and nothing else:
+
+     <div class="picker-surface-tabs" data-surface-tabs="<radio group name>"
+          data-surface-answered="colored {}"
+          data-surface-unanswered="no color strategy chosen yet" hidden>
+
+   inside the box that draws the frame, plus one disabled hidden field per
+   surface marked data-surface-field="<group>-<surface>". That field is where
+   the surface's answer is kept; whether it also carries a name, and so whether
+   the run records a key per surface or only the leading surface's choice, is
+   the question's own business. What each surface may take and where it
+   lands untouched are already on the tiles as data-allow-<group> and
+   data-default-<group>; why an option is out is on the option itself as
+   data-blocked-reason. All of that comes from data/surfaces.js.
+
+   data-surface-stage on the frame additionally mounts one drawing per chosen
+   surface, lifted from that surface's tile and painted with the committed
+   palette. Screen 03 is the only screen that wants that today. A screen that
+   draws its own per-surface variants instead marks each of them
+   data-surface="<surface>" in its own markup and leaves the attribute off; the
+   showing and hiding is the same work either way.
+   ============================================================ */
 const chosenSurfaces = () => modeInputs.filter((input) => input.checked);
 const surfaceInput = (value) => modeInputs.find((input) => input.value === value);
-const allowedFor = (value) => (surfaceInput(value)?.dataset.strategies ?? '').split(' ').filter(Boolean);
-const defaultFor = (value) => surfaceInput(value)?.dataset.strategyDefault ?? 'restrained';
-const strategyField = (value) => document.querySelector(`[data-surface-strategy="${value}"]`);
-const strategyTitle = (value) => strategyRows.get(value)?.querySelector('.picker-strategy-title').textContent ?? value;
-let activeSurface = null;
 
-/* One drawing per chosen surface, painted with the committed palette. All of
-   them stay mounted and one is shown, so a tab switch costs a hidden attribute
-   rather than a rebuild and the frame never blinks. */
-function syncSurfaces() {
-  if (!stage) return;
-  const chosen = chosenSurfaces();
-  for (const node of stage.querySelectorAll('[data-surface]')) node.remove();
-  for (const input of chosen) {
-    const source = modePreviews[modeInputs.indexOf(input)];
-    if (!source) continue;
-    const clone = source.cloneNode(true);
-    // Decorative here as on the tile, but the marker sits on the tile's
-    // wrapper rather than on the drawing, so it does not survive the lift.
-    clone.setAttribute('aria-hidden', 'true');
-    for (const node of [clone, ...clone.querySelectorAll('[id]')]) node.removeAttribute('id');
-    clone.dataset.surface = input.value;
-    stage.append(clone);
+function buildSurfaceQuestion(tabs) {
+  const name = tabs.dataset.surfaceTabs;
+  // The frame is the strip's own positioned ancestor, which is also the box a
+  // per-surface drawing has to land inside, so it is read off the DOM rather
+  // than named a second time in the markup.
+  const frame = tabs.parentElement;
+  const screen = tabs.closest('.picker-screen')?.dataset.screen;
+  const mounts = 'surfaceStage' in frame.dataset;
+  const flat = 'surfaceFlat' in tabs.dataset;
+  const properName = 'surfaceProperName' in tabs.dataset;
+  /* The rows are markup on every screen but the font one, where they are dealt
+     from fonts.json after this runs and can still be added to afterwards. So
+     the group is read when it is needed rather than captured once. */
+  const optionInputs = () => [...document.querySelectorAll(`input[name="${name}"]`)];
+  const rowOf = (value) => optionInputs().find((input) => input.value === value)?.closest('.picker-strategy-option');
+  // Read by attribute name rather than through dataset, so the group's own
+  // value is the lookup and no screen has to restate it in camel case. A
+  // question that rules nothing out carries no attribute at all, which is a
+  // different answer from an empty one and is kept apart from it here.
+  const allowedFor = (value) => {
+    const allow = surfaceInput(value)?.getAttribute(`data-allow-${name}`);
+    return allow == null ? null : new Set(allow.split(' ').filter(Boolean));
+  };
+  const defaultFor = (value) => surfaceInput(value)?.getAttribute(`data-default-${name}`) || optionInputs()[0]?.value;
+  const fieldFor = (value) => document.querySelector(`input[type="hidden"][data-surface-field="${name}-${value}"]`);
+  const titleOf = (value) => rowOf(value)?.querySelector('.picker-strategy-title')?.textContent ?? value;
+  let activeSurface = null;
+
+  /* One drawing per chosen surface. All of them stay mounted and one is shown,
+     so a tab switch costs a hidden attribute rather than a rebuild and the
+     frame never blinks. */
+  function mount(chosen) {
+    for (const node of frame.querySelectorAll('[data-surface]')) node.remove();
+    for (const input of chosen) {
+      const source = modePreviews[modeInputs.indexOf(input)];
+      if (!source) continue;
+      const clone = source.cloneNode(true);
+      // Decorative here as on the tile, but the marker sits on the tile's
+      // wrapper rather than on the drawing, so it does not survive the lift.
+      clone.setAttribute('aria-hidden', 'true');
+      for (const node of [clone, ...clone.querySelectorAll('[id]')]) node.removeAttribute('id');
+      clone.dataset.surface = input.value;
+      frame.append(clone);
+    }
+    paint();
   }
-  paintStage();
 
-  /* Every chosen surface leaves an answer whether or not it was ever opened,
-     so the field is filled with the default the moment the tile is chosen and
-     the tab reports it as unset until someone says otherwise. */
-  for (const input of modeInputs) {
-    const field = strategyField(input.value);
-    if (!field) continue;
-    field.disabled = !input.checked;
-    if (!input.checked) {
-      field.value = '';
-      delete field.dataset.chosen;
-    } else if (!field.value) {
-      field.value = defaultFor(input.value);
+  /* Painted once on the frame rather than on each drawing inside it, so the
+     strategy layer keeps a fixed reading of what was chosen and the drawings
+     themselves carry no inline color for it to argue with. */
+  function paint() {
+    if (mounts) syncCommittedPalette(frame, 'pkc');
+  }
+
+  function sync() {
+    const chosen = chosenSurfaces();
+    if (mounts) mount(chosen);
+
+    /* Every chosen surface leaves an answer whether or not it was ever opened,
+       so the field is filled with the default the moment the tile is chosen and
+       the tab reports it as unset until someone says otherwise. */
+    for (const input of modeInputs) {
+      const field = fieldFor(input.value);
+      if (!field) continue;
+      field.disabled = !input.checked;
+      if (!input.checked) {
+        field.value = '';
+        delete field.dataset.chosen;
+      } else if (!field.value) {
+        // The font screen's rows are dealt after this first runs, so a question
+        // with nothing to fall back on yet leaves the field to the sync that
+        // follows the fetch.
+        field.value = defaultFor(input.value) ?? '';
+      }
+    }
+
+    buildTabs(chosen);
+    show(chosen.some((input) => input.value === activeSurface) ? activeSurface : chosen[0]?.value);
+  }
+
+  /* One surface needs no tabs: the frame is already showing the only answer
+     there is. The dot is the whole report on state, filled once the surface has
+     been answered deliberately and hollow while it is still holding a default. */
+  function buildTabs(chosen) {
+    tabs.hidden = chosen.length < 2;
+    tabs.replaceChildren(...chosen.map((input) => {
+      const tab = document.createElement('button');
+      tab.type = 'button';
+      tab.className = 'picker-surface-tab';
+      tab.dataset.surfaceTab = input.value;
+      tab.innerHTML = '<span class="picker-surface-dot"></span>';
+      tab.append(input.dataset.surfaceLabel ?? input.value);
+      tab.onclick = () => choose(input.value);
+      return tab;
+    }));
+    markTabs();
+  }
+
+  function markTabs() {
+    for (const tab of tabs.children) {
+      const value = tab.dataset.surfaceTab;
+      const field = fieldFor(value);
+      const set = Boolean(field?.dataset.chosen);
+      const on = value === activeSurface;
+      tab.dataset.set = set ? 'yes' : 'no';
+      tab.setAttribute('aria-pressed', on ? 'true' : 'false');
+      tab.tabIndex = on ? 0 : -1;
+      const title = titleOf(field.value);
+      tab.setAttribute('aria-label', set
+        ? `${tab.textContent}, ${tabs.dataset.surfaceAnswered.replace('{}', properName ? title : title.toLowerCase())}`
+        : `${tab.textContent}, ${tabs.dataset.surfaceUnanswered}`);
     }
   }
 
-  buildTabs(chosen);
-  showSurface(chosen.some((input) => input.value === activeSurface) ? activeSurface : chosen[0]?.value);
-}
-
-/* Painted once on the frame rather than on each drawing inside it, so the
-   strategy layer keeps a fixed reading of what was chosen and the drawings
-   themselves carry no inline color for it to argue with. */
-function paintStage() {
-  syncCommittedPalette(stage, 'pkc');
-}
-
-/* One surface needs no tabs: the frame is already showing the only answer
-   there is. The dot is the whole report on state, filled once the surface has
-   been answered deliberately and hollow while it is still holding a default. */
-function buildTabs(chosen) {
-  if (!surfaceTabs) return;
-  surfaceTabs.hidden = chosen.length < 2;
-  surfaceTabs.replaceChildren(...chosen.map((input) => {
-    const tab = document.createElement('button');
-    tab.type = 'button';
-    tab.className = 'picker-surface-tab';
-    tab.dataset.surfaceTab = input.value;
-    tab.innerHTML = '<span class="picker-surface-dot"></span>';
-    tab.append(input.dataset.surfaceLabel ?? input.value);
-    tab.onclick = () => showSurface(input.value);
-    return tab;
-  }));
-  markTabs();
-}
-
-function markTabs() {
-  for (const tab of surfaceTabs?.children ?? []) {
-    const value = tab.dataset.surfaceTab;
-    const field = strategyField(value);
-    const set = Boolean(field?.dataset.chosen);
-    const on = value === activeSurface;
-    tab.dataset.set = set ? 'yes' : 'no';
-    tab.setAttribute('aria-pressed', on ? 'true' : 'false');
-    tab.tabIndex = on ? 0 : -1;
-    tab.setAttribute('aria-label', set
-      ? `${tab.textContent}, colored ${strategyTitle(field.value).toLowerCase()}`
-      : `${tab.textContent}, no color strategy chosen yet`);
-  }
-}
-
-function showSurface(value) {
-  if (!value || !stage) return;
-  activeSurface = value;
-  for (const clone of stage.querySelectorAll('[data-surface]')) {
-    clone.hidden = clone.dataset.surface !== value;
-  }
-  applyApplicability();
-  const field = strategyField(value);
-  const wanted = field?.value || defaultFor(value);
-  const input = strategyInputs.find((radio) => radio.value === wanted);
-  if (input) input.checked = true;
-  markTabs();
-}
-
-/* A strategy a surface cannot carry is left in place and turned off rather
-   than removed: the list keeps its shape as you move between surfaces, and the
-   row says why it is out instead of vanishing without a reason. */
-function applyApplicability() {
-  const allowed = new Set(allowedFor(activeSurface));
-  for (const [value, row] of strategyRows) {
-    if (!row) continue;
-    const ok = allowed.has(value);
-    const desc = row.querySelector('.picker-strategy-desc');
-    desc.dataset.copy ??= desc.textContent;
-    desc.textContent = ok ? desc.dataset.copy : BLOCKED_BECAUSE[value] ?? desc.dataset.copy;
-    row.classList.toggle('is-blocked', !ok);
-    row.querySelector('input').disabled = !ok;
-  }
-}
-
-for (const input of strategyInputs) {
-  input.addEventListener('change', () => {
-    const field = strategyField(activeSurface);
-    if (!input.checked || !field) return;
-    field.value = input.value;
-    field.dataset.chosen = 'yes';
+  function show(value) {
+    if (!value) return;
+    activeSurface = value;
+    for (const drawing of frame.querySelectorAll('[data-surface]')) {
+      drawing.hidden = drawing.dataset.surface !== value;
+    }
+    applyApplicability();
+    const field = fieldFor(value);
+    const wanted = field?.value || defaultFor(value);
+    const input = optionInputs().find((radio) => radio.value === wanted);
+    if (input) input.checked = true;
     markTabs();
+  }
+
+  /* A tab the visitor moved to leads: every other per-surface question follows
+     it, because the drawing on screen is painted from all of their answers at
+     once and a board shown on the Docs tab has to be colored with the answer
+     Docs was given. */
+  function choose(value) {
+    show(value);
+    alignSurfaces(api);
+  }
+
+  /* An option a surface cannot carry is left in place and turned off rather
+     than removed: the list keeps its shape as you move between surfaces, and
+     the row says why it is out instead of vanishing without a reason. */
+  function applyApplicability() {
+    const allowed = allowedFor(activeSurface);
+    for (const input of optionInputs()) {
+      const row = input.closest('.picker-strategy-option');
+      if (!row) continue;
+      const ok = !allowed || allowed.has(input.value);
+      const desc = row.querySelector('.picker-strategy-desc');
+      desc.dataset.copy ??= desc.textContent;
+      desc.textContent = ok ? desc.dataset.copy : row.dataset.blockedReason ?? desc.dataset.copy;
+      row.classList.toggle('is-blocked', !ok);
+      input.disabled = !ok;
+    }
+  }
+
+  /* Delegated rather than bound row by row, for the same reason the group is
+     read live: a pair uploaded halfway through the run has to answer into the
+     surface it was chosen on like any row the page was built with. */
+  document.addEventListener('change', ({ target }) => {
+    if (target?.name !== name || !target.checked) return;
+    record(target.value);
   });
+
+  /* A flat question leaves one answer, so a choice made on one tab is the
+     choice on every tab that can take it. Anything that rules it out keeps
+     what it had, which is the whole reason the fields are kept per surface on
+     a question that only writes one of them down. */
+  function record(value) {
+    const surfaces = flat ? chosenSurfaces().map((input) => input.value) : [activeSurface];
+    for (const surface of surfaces) {
+      const field = fieldFor(surface);
+      const allowed = allowedFor(surface);
+      if (!field || (allowed && !allowed.has(value))) continue;
+      field.value = value;
+      field.dataset.chosen = 'yes';
+    }
+    markTabs();
+  }
+
+  /* Arrow keys walk the group, which is the one thing a row of buttons owes a
+     keyboard once only the current tab is in the tab order. */
+  tabs.addEventListener('keydown', (event) => {
+    const step = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
+    if (!step) return;
+    const buttons = [...tabs.children];
+    const next = buttons[(buttons.findIndex((tab) => tab.dataset.surfaceTab === activeSurface) + step + buttons.length) % buttons.length];
+    event.preventDefault();
+    choose(next.dataset.surfaceTab);
+    next.focus();
+  });
+
+  /* A question that is off screen previews an answer it did not ask for, so
+     the radio the rest of the run reads is parked on whichever surface is
+     being looked at, and on the leading one when nothing on screen is showing
+     tabs. Without it the run would carry whichever surface was last on the tab,
+     and an option switched off for that surface would leave the answer empty. */
+  const park = (surface) => show(surface || chosenSurfaces()[0]?.value);
+
+  const api = { screen, sync, paint, park, active: () => activeSurface };
+  return api;
 }
 
-/* Arrow keys walk the group, which is the one thing a row of buttons owes a
-   keyboard once only the current tab is in the tab order. */
-surfaceTabs?.addEventListener('keydown', (event) => {
-  const step = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
-  if (!step) return;
-  const tabs = [...surfaceTabs.children];
-  const next = tabs[(tabs.findIndex((tab) => tab.dataset.surfaceTab === activeSurface) + step + tabs.length) % tabs.length];
-  event.preventDefault();
-  showSurface(next.dataset.surfaceTab);
-  next.focus();
-});
+const surfaceQuestions = [...document.querySelectorAll('[data-surface-tabs]')].map(buildSurfaceQuestion);
+
+/* One tab is showing at a time and every per-surface question reads it, so the
+   one whose screen is up owns it and the rest are moved to match. */
+function alignSurfaces(leader) {
+  for (const question of surfaceQuestions) {
+    if (question !== leader) question.park(leader?.active());
+  }
+}
+const syncSurfaces = () => {
+  for (const question of surfaceQuestions) question.sync();
+};
+const paintStage = () => {
+  for (const question of surfaceQuestions) question.paint();
+};
 
 for (const input of modeInputs) {
   input.addEventListener('change', () => {

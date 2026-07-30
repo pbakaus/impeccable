@@ -5,13 +5,10 @@
    this file lifts individual elements, and the two answers compose instead
    of arguing.
 
-   Two kinds of value, because a shadow and a tonal step are not the same
-   material. Cast shadows go in the --pvs-shadow-* slots and need something
-   solid under them, which is why the block at the bottom moves the card's
-   lift onto the picture inside it wherever the boundary answer left the card
-   transparent: a shadow around an invisible rectangle reads as a bug. Tonal
-   steps go in --pvs-tint-* and are painted as a ground, so they land on any
-   element whether or not it already has one.
+   Every answer here is a cast shadow. They go in the --pvs-shadow-* slots and
+   need something solid under them, which is why the block at the bottom moves
+   the card's lift onto the picture inside it wherever the boundary answer left
+   the card transparent: a shadow around an invisible rectangle reads as a bug.
 
    Shadows are sized for the artboard rather than for a real page. The frame
    is about a third of browser width, so a blur that would read as gentle at
@@ -23,41 +20,13 @@
    ============================================================ */
 
 /* ── Flat ────────────────────────────────────────────────────
-   One plane. Nothing casts, nothing steps. */
+   One plane. Nothing casts. */
 #picker-form:has(.picker-strategy-option:hover input[name="depth-style"][value="flat"]) .picker-preview-depth,
 :where(#picker-form:not(:has(.picker-strategy-option:hover input[name="depth-style"])):has(input[name="depth-style"][value="flat"]:checked)) [data-carry] {
   --pvs-shadow-chrome: none;
   --pvs-shadow-card: none;
   --pvs-shadow-control: none;
   --pvs-shadow-surface: none;
-  --pvs-tint-chrome: none;
-  --pvs-tint-card: none;
-  --pvs-tint-pad: 0px;
-}
-
-/* ── Layered ─────────────────────────────────────────────────
-   Two tonal steps off the ground, cards further up than chrome, and not one
-   shadow on the page.
-
-   A tonal step is only read as a step if some of it is visible, so this is the
-   one answer that asks for padding of its own. It is a floor rather than a
-   replacement: the boundary answer that already draws panels keeps its wider
-   inset. */
-#picker-form:has(.picker-strategy-option:hover input[name="depth-style"][value="layered"]) .picker-preview-depth,
-:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="depth-style"])):has(input[name="depth-style"][value="layered"]:checked)) [data-carry] {
-  --pvs-shadow-chrome: none;
-  --pvs-shadow-card: none;
-  --pvs-shadow-control: none;
-  --pvs-shadow-surface: none;
-  --pvs-tint-chrome: linear-gradient(
-    color-mix(in oklab, var(--pvs-ink) 6%, transparent),
-    color-mix(in oklab, var(--pvs-ink) 6%, transparent)
-  );
-  --pvs-tint-card: linear-gradient(
-    color-mix(in oklab, var(--pvs-ink) 12%, transparent),
-    color-mix(in oklab, var(--pvs-ink) 12%, transparent)
-  );
-  --pvs-tint-pad: 3.5%;
 }
 
 /* ── Soft lift ───────────────────────────────────────────────
@@ -71,9 +40,6 @@
     0 3px 7px rgb(0 0 0 / 0.14);
   --pvs-shadow-control: 0 1px 2px rgb(0 0 0 / 0.24);
   --pvs-shadow-surface: 0 2px 5px rgb(0 0 0 / 0.14);
-  --pvs-tint-chrome: none;
-  --pvs-tint-card: none;
-  --pvs-tint-pad: 0px;
 }
 
 /* ── Floating ────────────────────────────────────────────────
@@ -87,19 +53,6 @@
     0 9px 18px rgb(0 0 0 / 0.24);
   --pvs-shadow-control: 0 3px 6px rgb(0 0 0 / 0.32);
   --pvs-shadow-surface: 0 6px 14px rgb(0 0 0 / 0.22);
-  --pvs-tint-chrome: none;
-  --pvs-tint-card: none;
-  --pvs-tint-pad: 0px;
-}
-
-/* Tonal steps paint as a ground, over whatever ground the boundary answer
-   already chose. */
-[data-carry] .ps-gallery-item {
-  background-image: var(--pvs-tint-card, none);
-}
-
-[data-carry] :is(.ps-nav, .ps-footer, .ps-phone-top, .ps-phone-footer) {
-  background-image: var(--pvs-tint-chrome, none);
 }
 
 /* ── Where a cast shadow is allowed to land ──────────────────

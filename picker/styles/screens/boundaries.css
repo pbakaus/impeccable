@@ -105,15 +105,13 @@
 }
 
 /* Percentage padding resolves against the card's own width, so one value
-   holds at both artboard sizes instead of swamping the handset. The depth
-   answer can ask for an inset of its own (see --pvs-tint-pad in depth.css);
-   the wider of the two wins, so neither answer can undo the other. */
+   holds at both artboard sizes instead of swamping the handset. */
 [data-carry] .ps-gallery-item {
-  padding: max(var(--pvs-panel-pad, 0px), var(--pvs-tint-pad, 0px));
+  padding: var(--pvs-panel-pad, 0px);
 }
 
 /* The handset's card row is already the block closest to the footer, so it
    takes a shorter version of the same padding rather than growing into it. */
 [data-carry] .ps-phone-body .ps-gallery-item {
-  padding: calc(max(var(--pvs-panel-pad, 0px), var(--pvs-tint-pad, 0px)) * 0.5);
+  padding: calc(var(--pvs-panel-pad, 0px) * 0.5);
 }
