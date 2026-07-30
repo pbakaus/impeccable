@@ -42,6 +42,12 @@ const LOREM = {
     'Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione.',
   ],
   note: 'Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque.',
+  /* Short enough to set on one line at the handset's measure, so a list item
+     stays a list item there instead of becoming a third paragraph. */
+  items: [
+    'Excepteur sint occaecat',
+    'Non proident, sunt in culpa',
+  ],
   caption: 'Lorem ipsum dolor sit amet, consectetur adipiscing.',
 };
 
@@ -63,6 +69,12 @@ const APP = {
   amounts: ['$12,400', '$3,860', '$9,215'],
   panel: ['Preferences', 'Last 30 days'],
   switches: ['Email digest', 'Compact rows'],
+  chartTitle: 'Volume by channel',
+  /* One word each, because the label under a bar has the bar's own width and
+     nothing more: a category that wraps or truncates here is a fault in the
+     drawing rather than a report on the pair. The handset takes the first
+     three, which is why the widest of them comes early. */
+  lanes: ['Direct', 'Search', 'Social', 'Email', 'Other'],
 };
 
 /* The same argument as APP, for the surface where the words belong to the
@@ -328,6 +340,11 @@ function loadFontStylesheet(pairs) {
   document.head.append(link);
 }
 
+/* A board takes the slots its surface has and stops, so a list longer than the
+   slots is ordinary. The other direction is a fault in the markup, and it is
+   left blank here rather than hidden: a hidden slot would leave the board
+   drawing one item fewer than the composition its grid was measured at, and
+   the blank is what makes the miscount visible. */
 function fillIndexed(root, selector, values) {
   if (!root) return;
   root.querySelectorAll(selector).forEach((node, index) => {
@@ -366,14 +383,17 @@ function fillBoard(board, preview, specimen) {
   fill('[data-type-note-body]', LOREM.note);
   fill('[data-type-crumb]', DOCS.crumb);
   fill('[data-type-caption]', LOREM.caption);
+  fill('[data-type-chart-title]', APP.chartTitle);
   for (const card of [desktop, phoneBody]) {
     fillIndexed(card, '[data-type-nav]', preview.nav);
     fillIndexed(card, '[data-type-proof]', preview.proof);
     fillIndexed(card, '[data-type-gallery-title]', preview.gallery.map(({ title }) => title));
     fillIndexed(card, '[data-type-gallery-meta]', preview.gallery.map(({ meta }) => meta));
     fillIndexed(card, '[data-type-passage]', LOREM.passages);
+    fillIndexed(card, '[data-type-item]', LOREM.items);
     fillIndexed(card, '[data-type-stop]', INDEX.stops);
     fillIndexed(card, '[data-type-rail]', rail);
+    fillIndexed(card, '[data-type-lane]', APP.lanes);
     fillIndexed(card, '[data-type-column]', APP.columns);
     fillIndexed(card, '[data-type-figure]', APP.figures);
     fillIndexed(card, '[data-type-amount]', APP.amounts);
@@ -804,7 +824,12 @@ commitIconPack(checkedIconPack());
    Only a change of energy restarts it. Sliding the pointer across a row it is
    already previewing would otherwise keep the page in a permanent entrance. */
 const motionOptions = document.querySelector('[data-question="motion"] .picker-strategy-choices');
-const motionScene = document.querySelector('.picker-preview-motion');
+// One board per surface the question is put to. All of them are mounted and one
+// is shown, so the replay covers every board rather than the visible one: a
+// hidden board's timeline is cancelled by its own display: none and starts over
+// when its tab is opened, and the two must not disagree about which frame is
+// first.
+const motionScenes = [...document.querySelectorAll('.picker-preview-motion')];
 const checkedMotion = () => motionOptions.querySelector('input:checked').value;
 let motionShown;
 
@@ -813,51 +838,67 @@ function replayMotion(energy) {
   motionShown = energy;
   // The hover rules resolve on their own; this only puts the timeline back to
   // its first frame, pseudo-elements and all.
-  for (const animation of motionScene.getAnimations({ subtree: true })) {
-    animation.cancel();
-    animation.play();
+  for (const scene of motionScenes) {
+    for (const animation of scene.getAnimations({ subtree: true })) {
+      animation.cancel();
+      animation.play();
+    }
   }
 }
 
-/* The restrained scene's pointer route is written in container units, but the
-   nav bars space themselves in fixed pixels, so where a given bar sits as a
+/* Every scene's pointer route is written in container units, but the elements
+   it visits space themselves in fixed pixels, so where a given one sits as a
    fraction of the frame changes with the frame's size. The route is measured
    off the live layout instead: one custom property per stop, re-resolved
    whenever the frame resizes, so the pointer lands on the element that
-   reacts at every viewport. offsetLeft rather than getBoundingClientRect,
-   because the entrance animations translate the bands, and a route measured
-   mid-entrance would aim below the nav. */
-const motionDesk = motionScene.querySelector('.ps-desktop');
+   reacts at every viewport.
 
-function plotMotionRoute() {
-  if (!motionDesk.clientWidth) return;
-  // Summed up the offsetParent chain rather than read once: an element's
-  // offsets are relative to its nearest positioned ancestor, which for the
-  // buttons is not the frame.
-  const center = (el) => {
-    let x = el.offsetWidth / 2;
-    let y = el.offsetHeight / 2;
-    for (let node = el; node && node !== motionDesk; node = node.offsetParent) {
-      x += node.offsetLeft;
-      y += node.offsetTop;
+   The stops a board does not have are simply not set, which is what lets one
+   table serve both boards: the landing page's scenes visit its buttons and
+   cards, the portfolio's visit its plates and its carousel arrow, and neither
+   keyframe list names a property its own board cannot measure. */
+const MOTION_STOPS = {
+  '--mtr-nav1': '.ps-nav-bars i:nth-child(1)',
+  '--mtr-nav2': '.ps-nav-bars i:nth-child(2)',
+  '--mtr-cta1': '.ps-actions i:first-child',
+  '--mtr-cta2': '.ps-actions i:last-child',
+  '--mtr-card1': '.ps-gallery-item:nth-child(1) > i',
+  '--mxi-work1': '.ps-index-row:nth-of-type(1) > .ps-image',
+  '--mxi-work2': '.ps-index-row:nth-of-type(2) > .ps-image',
+  '--mxi-rail': '.ps-index-arrow--next',
+};
+
+function plotMotionRoute(scene = null) {
+  for (const board of scene ? [scene] : motionScenes) {
+    const desk = board.querySelector('.ps-desktop');
+    if (!desk?.clientWidth) continue;
+    // Summed up the offsetParent chain rather than read once: an element's
+    // offsets are relative to its nearest positioned ancestor, which for the
+    // buttons is not the frame.
+    const center = (el) => {
+      let x = el.offsetWidth / 2;
+      let y = el.offsetHeight / 2;
+      for (let node = el; node && node !== desk; node = node.offsetParent) {
+        x += node.offsetLeft;
+        y += node.offsetTop;
+      }
+      return { x: (x / desk.clientWidth) * 100, y: (y / desk.clientHeight) * 100 };
+    };
+    for (const [name, selector] of Object.entries(MOTION_STOPS)) {
+      const el = desk.querySelector(selector);
+      if (!el) continue;
+      const c = center(el);
+      board.style.setProperty(name, `${c.x.toFixed(2)}cqw ${c.y.toFixed(2)}cqh`);
     }
-    return { x: (x / motionDesk.clientWidth) * 100, y: (y / motionDesk.clientHeight) * 100 };
-  };
-  const stop = (name, el) => {
-    const c = center(el);
-    motionScene.style.setProperty(name, `${c.x.toFixed(2)}cqw ${c.y.toFixed(2)}cqh`);
-  };
-  const nav1 = motionDesk.querySelector('.ps-nav-bars i:nth-child(1)');
-  stop('--mtr-nav1', nav1);
-  stop('--mtr-nav2', motionDesk.querySelector('.ps-nav-bars i:nth-child(2)'));
-  stop('--mtr-cta1', motionDesk.querySelector('.ps-actions i:first-child'));
-  stop('--mtr-cta2', motionDesk.querySelector('.ps-actions i:last-child'));
-  stop('--mtr-card1', motionDesk.querySelector('.ps-gallery-item:nth-child(1) > i'));
-  // The entry and exit point: straight above the first nav item, off-frame.
-  motionScene.style.setProperty('--mtr-entry', `${center(nav1).x.toFixed(2)}cqw -8cqh`);
+    // The entry and exit point: straight above the first nav item, off-frame.
+    const nav1 = desk.querySelector('.ps-nav-bars i:nth-child(1)');
+    board.style.setProperty('--mtr-entry', `${center(nav1).x.toFixed(2)}cqw -8cqh`);
+  }
 }
 
-new ResizeObserver(plotMotionRoute).observe(motionDesk);
+for (const scene of motionScenes) {
+  new ResizeObserver(() => plotMotionRoute(scene)).observe(scene.querySelector('.ps-desktop'));
+}
 
 const motionRowValue = (node) => node?.closest('.picker-strategy-option')?.querySelector('input').value;
 
@@ -1318,6 +1359,7 @@ const moves = new WeakMap();
 // result has to be carried.
 const paletteBands = $('.picker-bands', panel);
 const strategyBands = document.querySelector('[data-band-scope="strategy"]');
+const strategyGrid = document.querySelector('.picker-screen[data-screen="03"] .picker-strategy-grid');
 const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 const bandNodes = (scope) => ROLES.map((role) => $(`[data-band="${role}"]`, scope));
 const gripNodes = (scope) => ROLES.map((role) => $(`[data-grip="${role}"]`, scope));
@@ -1434,6 +1476,35 @@ function paintStrategyBands() {
     $('output', band).textContent = committed[role];
   }
 }
+
+/* Everything screen 03 spends on something other than the answer: the block's
+   own padding, the question over the grid, and the gap between them. The grid
+   caps itself against what is left, so this is the number that decides whether
+   the screen fits the window.
+
+   Measured as the difference between the block and the grid inside it rather
+   than added up from the parts, because the parts are not knowable from here:
+   the question is one or two lines at a size that tracks the window's width. It
+   comes to between 259 and 312px across the laptop range. The literal in the
+   rule was 250, short by 9 to 62, and the screen paid the difference by running
+   past the fold. Nothing here reads the grid's height back into itself, so the
+   value settles on the first pass. */
+function fitStrategyColumn() {
+  const block = strategyGrid?.parentElement;
+  if (!block || !block.offsetParent) return;
+  const chrome = `${Math.ceil(
+    block.getBoundingClientRect().height - strategyGrid.getBoundingClientRect().height,
+  )}px`;
+  // Writing an unchanged value would still be a style change, and the resize it
+  // provokes is what turns a settling measurement into a loop.
+  if (block.style.getPropertyValue('--pk-chrome') === chrome) return;
+  block.style.setProperty('--pk-chrome', chrome);
+}
+
+/* The block's height is the only thing that can move what sits above the grid,
+   so it is what is watched: a question that reflowed to a second line and a
+   window that moved the padding clamp both arrive here. */
+if (strategyGrid) new ResizeObserver(fitStrategyColumn).observe(strategyGrid.parentElement);
 
 function reorderedSummary(from, to) {
   const { colors } = state();
@@ -1675,8 +1746,13 @@ document.addEventListener('picker:screenchange', (event) => {
     syncCommittedPalette(artboard);
   }
   // Coming back to the strategy screen from further along, where the palette may
-  // have been reordered on the screen it was left on.
-  if (event.detail.screen === '03') paintStrategyBands();
+  // have been reordered on the screen it was left on. A hidden block measures
+  // zero, so its budget is resolved on arrival for the same reason the scale
+  // sheet's fit is.
+  if (event.detail.screen === '03') {
+    paintStrategyBands();
+    fitStrategyColumn();
+  }
   // A per-surface question holds whatever tab it was left on while its own
   // screen is up, and the rest follow it.
   const leader = surfaceQuestions.find((question) => question.screen === event.detail.screen);
@@ -1745,9 +1821,8 @@ const syncModesNext = () => {
    First in tile order, not first clicked. A multi-select answer has no other
    stable primary, and click order would move the palette's test page around
    for reasons the visitor cannot see. */
-const modePreviews = modeInputs.map((input) => (
-  input.closest('.picker-mode-tile')?.querySelector('.picker-preview')
-));
+const modeTiles = modeInputs.map((input) => input.closest('.picker-mode-tile'));
+const modePreviews = modeTiles.map((tile) => tile?.querySelector('.picker-preview'));
 const landingPreview = preview.cloneNode(true);
 let previewSource;
 
@@ -1756,6 +1831,14 @@ function syncModePreview() {
   // are rebuilt from here: every path that changes the tiles already runs this.
   syncSurfaces();
   const chosen = modeInputs.findIndex((input) => input.checked);
+  /* Which tile leads is also what the stylesheet needs, to hang the view
+     transition's name on the one drawing screen 02 goes on to show. Marked
+     ahead of the early return below, so the answer never rests on whether the
+     drawing itself changed, and left off a tile whose drawing is not this
+     component, since nothing of that tile arrives on the next screen. */
+  modeTiles.forEach((tile, index) => {
+    tile?.toggleAttribute('data-lead', index === chosen && Boolean(modePreviews[index]));
+  });
   // A tile drawn in something other than this component keeps the landing page,
   // which is also the floor for the empty answer the continue button blocks.
   const source = (chosen === -1 ? null : modePreviews[chosen]) ?? landingPreview;
@@ -1787,7 +1870,7 @@ function syncModePreview() {
           data-surface-answered="colored {}"
           data-surface-unanswered="no color strategy chosen yet" hidden>
 
-   inside the box that draws the frame, plus one disabled hidden field per
+   inside the stage the frame is drawn on, plus one disabled hidden field per
    surface marked data-surface-field="<group>-<surface>". That field is where
    the surface's answer is kept; whether it also carries a name, and so whether
    the run records a key per surface or only the leading surface's choice, is
@@ -1795,6 +1878,14 @@ function syncModePreview() {
    lands untouched are already on the tiles as data-allow-<group> and
    data-default-<group>; why an option is out is on the option itself as
    data-blocked-reason. All of that comes from data/surfaces.js.
+
+   Which surfaces the question is put to at all is the set of fields it
+   rendered. A screen that leaves one out is asking nothing of that surface, so
+   its tab is never offered, its answer is never defaulted, and the bare key
+   falls to the leading surface that was asked. A screen every chosen surface
+   was left out of is not part of the run: it goes out of the form and the
+   navigation steps over it, because a key holding an answer nobody was asked
+   for reads downstream as a decision, and nothing can tell the two apart.
 
    data-surface-stage on the frame additionally mounts one drawing per chosen
    surface, lifted from that surface's tile and painted with the committed
@@ -1808,9 +1899,9 @@ const surfaceInput = (value) => modeInputs.find((input) => input.value === value
 
 function buildSurfaceQuestion(tabs) {
   const name = tabs.dataset.surfaceTabs;
-  // The frame is the strip's own positioned ancestor, which is also the box a
-  // per-surface drawing has to land inside, so it is read off the DOM rather
-  // than named a second time in the markup.
+  // The stage the strip sits on is also the box a per-surface drawing has to
+  // land inside, so it is read off the DOM rather than named a second time in
+  // the markup.
   const frame = tabs.parentElement;
   const screen = tabs.closest('.picker-screen')?.dataset.screen;
   const mounts = 'surfaceStage' in frame.dataset;
@@ -1832,6 +1923,14 @@ function buildSurfaceQuestion(tabs) {
   const defaultFor = (value) => surfaceInput(value)?.getAttribute(`data-default-${name}`) || optionInputs()[0]?.value;
   const fieldFor = (value) => document.querySelector(`input[type="hidden"][data-surface-field="${name}-${value}"]`);
   const titleOf = (value) => rowOf(value)?.querySelector('.picker-strategy-title')?.textContent ?? value;
+  // The fields are the scope: a surface with nowhere to leave an answer is one
+  // this question was never put to.
+  const applies = (value) => Boolean(fieldFor(value));
+  const applicable = () => chosenSurfaces().filter((input) => applies(input.value));
+  // A question every surface takes is asked on every run; only a scoped one can
+  // end up with nothing to ask.
+  const scoped = modeInputs.some((input) => !applies(input.value));
+  const host = tabs.closest('.picker-screen');
   let activeSurface = null;
 
   /* One drawing per chosen surface. All of them stay mounted and one is shown,
@@ -1861,7 +1960,15 @@ function buildSurfaceQuestion(tabs) {
   }
 
   function sync() {
-    const chosen = chosenSurfaces();
+    const chosen = applicable();
+    /* Nothing left to ask, so the screen leaves the run: marked for the
+       navigation to step over, and its group taken out of the form so no key
+       comes back for it. applyApplicability() re-enables the rows the moment a
+       surface that takes the question is chosen again. */
+    if (scoped) {
+      host?.toggleAttribute('data-skip', chosen.length === 0);
+      for (const input of optionInputs()) input.disabled = chosen.length === 0;
+    }
     if (mounts) mount(chosen);
 
     /* Every chosen surface leaves an answer whether or not it was ever opened,
@@ -1887,8 +1994,9 @@ function buildSurfaceQuestion(tabs) {
   }
 
   /* One surface needs no tabs: the frame is already showing the only answer
-     there is. The dot is the whole report on state, filled once the surface has
-     been answered deliberately and hollow while it is still holding a default. */
+     there is. A tab carries the surface it names and the dot that reports
+     whether that surface has been answered; which of the two states it is in is
+     markTabs()'s to write. */
   function buildTabs(chosen) {
     tabs.hidden = chosen.length < 2;
     tabs.replaceChildren(...chosen.map((input) => {
@@ -1904,19 +2012,30 @@ function buildSurfaceQuestion(tabs) {
     markTabs();
   }
 
+  /* The answer a tab reports is its own surface's field rather than the radio
+     on screen, which belongs to whichever tab is open. The dot says which kind
+     of answer it is: filled once someone chose it, hollow while it is still the
+     default the surface was given. The label says the answer itself, which the
+     tab no longer shows. */
   function markTabs() {
     for (const tab of tabs.children) {
       const value = tab.dataset.surfaceTab;
       const field = fieldFor(value);
       const set = Boolean(field?.dataset.chosen);
       const on = value === activeSurface;
+      const title = field.value ? titleOf(field.value) : '';
+      const name = tab.textContent;
       tab.dataset.set = set ? 'yes' : 'no';
       tab.setAttribute('aria-pressed', on ? 'true' : 'false');
       tab.tabIndex = on ? 0 : -1;
-      const title = titleOf(field.value);
-      tab.setAttribute('aria-label', set
-        ? `${tab.textContent}, ${tabs.dataset.surfaceAnswered.replace('{}', properName ? title : title.toLowerCase())}`
-        : `${tab.textContent}, ${tabs.dataset.surfaceUnanswered}`);
+      /* A screen with no rows dealt yet has no answer to report, which is a
+         different state from an answer nobody chose and is the one the
+         question's unanswered sentence was written for. */
+      const answered = title
+        && tabs.dataset.surfaceAnswered.replace('{}', properName ? title : title.toLowerCase());
+      tab.setAttribute('aria-label', title
+        ? `${name}, ${answered}${set ? '' : ' by default'}`
+        : `${name}, ${tabs.dataset.surfaceUnanswered}`);
     }
   }
 
@@ -1973,7 +2092,7 @@ function buildSurfaceQuestion(tabs) {
      what it had, which is the whole reason the fields are kept per surface on
      a question that only writes one of them down. */
   function record(value) {
-    const surfaces = flat ? chosenSurfaces().map((input) => input.value) : [activeSurface];
+    const surfaces = flat ? applicable().map((input) => input.value) : [activeSurface];
     for (const surface of surfaces) {
       const field = fieldFor(surface);
       const allowed = allowedFor(surface);
@@ -2000,8 +2119,14 @@ function buildSurfaceQuestion(tabs) {
      the radio the rest of the run reads is parked on whichever surface is
      being looked at, and on the leading one when nothing on screen is showing
      tabs. Without it the run would carry whichever surface was last on the tab,
-     and an option switched off for that surface would leave the answer empty. */
-  const park = (surface) => show(surface || chosenSurfaces()[0]?.value);
+     and an option switched off for that surface would leave the answer empty.
+
+     A surface this question was never put to cannot lead it, so the leading
+     surface overall is followed only where it was asked and the first surface
+     in tile order that was asked leads otherwise. That is the rule the bare key
+     is written by: a run of app UI plus a portfolio has app UI leading the
+     questions both surfaces answer, and the portfolio leading motion. */
+  const park = (surface) => show(applies(surface) ? surface : applicable()[0]?.value);
 
   const api = { screen, sync, paint, park, active: () => activeSurface };
   return api;

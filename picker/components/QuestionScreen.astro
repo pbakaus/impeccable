@@ -5,7 +5,7 @@
   as data and its design lives in its own stylesheet.
 */
 import Artboard from './Artboard.astro';
-import { SURFACE_MODES, SURFACE_ANSWERS, surfaceTabsAttrs } from '../data/surfaces.js';
+import { SURFACE_ANSWERS, surfacesAsked, surfaceTabsAttrs } from '../data/surfaces.js';
 
 interface Option {
   value: string;
@@ -14,6 +14,14 @@ interface Option {
   /* The sentence that stands in for the description on a surface this option
      does not suit. Present only on options some surface rules out. */
   blocked?: string;
+}
+
+/* A screen whose answer reads differently on each surface draws a board per
+   surface instead of repainting one, the arrangement the font screen already
+   uses. `class` is the modifier that board's own scene keys on. */
+interface Board {
+  surface: 'persuade' | 'operate' | 'read' | 'experience';
+  class?: string;
 }
 
 interface Props {
@@ -27,15 +35,21 @@ interface Props {
   options: Option[];
   previewClass: string;
   phone?: boolean;
+  boards?: Board[];
 }
 
-const { id, step, slug, name, title, legend, cta, options, previewClass, phone = true } = Astro.props;
+const { id, step, slug, name, title, legend, cta, options, previewClass, phone = true, boards } = Astro.props;
 const titleId = `picker-${slug}-title`;
 const artboardClass = phone ? previewClass : `${previewClass} picker-artboard--solo`;
 // A question listed in the matrix is answered once per chosen surface, which
 // buys it a tab strip on the frame and a field per surface to answer into.
 // Everything else about the screen is unchanged by opting in.
 const perSurface = SURFACE_ANSWERS[name];
+// Only the surfaces the question is put to. A surface with no field here is a
+// surface that was never asked, and that absence is the whole of how the script
+// and the final document know it.
+const asked = perSurface ? surfacesAsked(name) : [];
+const tabsAttrs = perSurface ? surfaceTabsAttrs(name) : null;
 ---
 
 <section class="picker-screen" data-screen={id} data-step={step} aria-hidden="true" aria-labelledby={titleId}>
@@ -67,7 +81,7 @@ const perSurface = SURFACE_ANSWERS[name];
               nobody opened still leaves one. A flat question keeps the same
               fields for the same reading and withholds the name, which is the
               whole of what a form submits. */}
-          {perSurface && SURFACE_MODES.map((mode) => (
+          {asked.map((mode) => (
             <input
               type="hidden"
               data-surface-field={`${name}-${mode}`}
@@ -77,16 +91,31 @@ const perSurface = SURFACE_ANSWERS[name];
           ))}
         </div>
 
+      {boards || tabsAttrs ? (
+        /* All of them mounted and one shown, so a tab switch costs a hidden
+           attribute rather than a rebuild. The stage is the box the strip takes
+           its row on, above the frame, which is why a screen with one board and
+           a strip is wrapped in it too. */
+        <div class="picker-board-stage">
+          {tabsAttrs && <div class="picker-surface-tabs" {...tabsAttrs} hidden></div>}
+          {(boards ?? [{} as Board]).map((board) => (
+            <Artboard
+              class={[artboardClass, board.class].filter(Boolean).join(' ')}
+              surface={board.surface}
+              phone={phone}
+              cursor={slug === 'motion'}
+              carry={slug !== 'motion'}
+            />
+          ))}
+        </div>
+      ) : (
         <Artboard
           class={artboardClass}
           phone={phone}
           cursor={slug === 'motion'}
           carry={slug !== 'motion'}
-        >
-          {perSurface && (
-            <div class="picker-surface-tabs" {...surfaceTabsAttrs(name)} hidden></div>
-          )}
-        </Artboard>
+        />
+      )}
       </div>
 
       <div class="picker-actions-stack">

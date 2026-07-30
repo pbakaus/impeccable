@@ -185,11 +185,21 @@ body.picker-page {
   view-transition-name: pk-band-neutral;
 }
 
-/* Both screens now judge their answer on the same drawing, so the pair the
-   transition carries is one component in two sizes: the frame grows out of the
-   palette screen's rather than dissolving into a different page. The hidden
-   surfaces are display: none and so are not rendered, which is what keeps the
-   name unique while every chosen surface stays mounted. */
+/* Three screens judge their answer on the same drawing, so what the transition
+   carries is one component in three sizes: it grows out of the surface tile
+   into the palette screen's panel, and again onto the strategy stage, rather
+   than dissolving into a different page at each step. The hidden surfaces are
+   display: none and so are not rendered, which is what keeps the name unique
+   while every chosen surface stays mounted.
+
+   On 01b the frame is named rather than the component inside it. The tile draws
+   that component at its canonical width under a scale transform, and a group
+   animating its own size as well as that transform counts the reduction twice.
+   The frame is the drawing's real box at tile scale and carries the same 16 / 7
+   the other two do, so the pair interpolates without distortion. Only the
+   leading tile is marked, which is both the drawing screen 02 goes on to show
+   and what keeps the name on one element. */
+.picker-screen[data-screen="01b"] .picker-mode-tile[data-lead] .picker-mode-preview,
 .picker-screen[data-screen="02"] .picker-preview,
 .picker-screen[data-screen="03"] .picker-strategy-stage > .picker-preview {
   view-transition-name: pk-test-page;
@@ -343,11 +353,16 @@ body.picker-page {
 
 /* Eleven steps hold the same total width five did: the row is a measure of
    how far along the interview is, and a wider one would start competing with
-   the question. The ticks divide whatever that width is. */
+   the question. The ticks divide whatever that width is.
+
+   Eleven is the ceiling rather than the count. A question no chosen surface
+   takes is not a step, so the navigation writes the run's own count here and
+   the ticks past it leave the grid: the row still measures the same distance,
+   divided between the questions this run is actually asked. */
 .picker-progress-track {
   width: 232px;
   display: grid;
-  grid-template-columns: repeat(11, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--pk-steps, 11), minmax(0, 1fr));
   gap: 5px;
 }
 
@@ -355,6 +370,10 @@ body.picker-page {
   height: 2px;
   background: var(--ks-rule);
   transition: background-color 260ms var(--ks-ease);
+}
+
+.picker-progress-track i[data-off] {
+  display: none;
 }
 
 .picker-progress[data-step="1"] .picker-progress-track i:nth-child(-n + 1),
@@ -2692,14 +2711,19 @@ body.picker-page {
    former 14px, which now also sets the air between the frame and the CTA.
 
    Everything this screen shows lives inside the grid, so what the grid may
-   spend is the whole distance between the heading and the fold. Set so that
-   800px of viewport is the last height where the rows still reach their 108
-   ceiling; under that the panel gives up row height and then, past its floor,
-   scrolls. --pk-column, which the later question screens still read, is
-   measured for a grid with the buttons underneath it and leaves this one 90px
-   short of what it now owns. */
+   spend is the window less whatever the block spends around it: the padding,
+   the question, and the gap under it. --pk-chrome is that sum, measured by
+   fitStrategyColumn() rather than counted here, because the question is one or
+   two lines at a size that tracks the window's width. The literal is the value
+   before the script has measured,
+   and it is the number this rule used to carry outright; at laptop heights it
+   was short enough that the screen ran past the fold.
+
+   --pk-column, which the later question screens still read, is measured for a
+   grid with the buttons underneath it and leaves this one 90px short of what it
+   now owns. */
 .picker-screen[data-screen="03"] .picker-strategy-grid {
-  --pk-fit: calc(100svh - 250px);
+  --pk-fit: calc(100svh - var(--pk-chrome, 250px));
   max-height: var(--pk-fit);
   grid-template-rows: minmax(0, 1fr) auto;
   row-gap: 14px;
@@ -2950,22 +2974,21 @@ body.picker-page {
   align-content: center;
 }
 
-/* The stage is the frame's own box: one row, and the tab strip taken out of the
-   flow so it can sit on the corner. It is the positioned ancestor that strip
-   measures itself against. */
+/* The stage is the frame's own box plus the strip over it: a row for the tab
+   strip and a row for the frame, so the strip's height is room the layout
+   reserved rather than room taken off the question above. */
 .picker-strategy-stage {
   min-width: 0;
-  position: relative;
   display: grid;
-  grid-template-rows: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .picker-strategy-stage > .picker-preview {
   /* Every chosen surface is mounted and all but one are display: none, so the
      row is named rather than left to auto-placement: a frame where two are
      briefly shown puts them on top of each other instead of stacking the stage
-     into a second row and taking the column past the choices' bottom edge. */
-  grid-row: 1;
+     into a third row and taking the column past the choices' bottom edge. */
+  grid-row: 2;
   /* The frame runs down to the bottom of the choices beside it, so it takes the
      row's height rather than the 16 / 7 it carries everywhere else. */
   aspect-ratio: auto;
@@ -2998,32 +3021,24 @@ body.picker-page {
 /* The group only appears with a second surface to switch to; a single surface
    is already the only thing the frame can be showing.
 
-   Out of the flow, docked on the frame's top right corner. A row of its own cost
-   the frame 65px of the height the choices beside it set, and cost it only when
-   more than one surface was chosen, so the drawing changed size with a decision
-   that has nothing to do with its size.
+   In the flow, on the stage's first row, right-aligned over the frame. The row
+   is what reserves the strip's height, so nothing downstream has to guess at it
+   and the question above keeps the gap every screen shares.
 
-   On the edge rather than inside it. Every drawing puts its nav across the
-   frame's top and the strip is taller than that band, so sitting inside covers
-   the one place the primary shows up as chrome. Outside it the strip also keeps
-   its own ground: raised lacquer and a hairline are read against the page, not
-   against a drawing repainted in whatever palette and strategy were chosen. The
-   2px is the join, and the z-index is what keeps it visible, since the drawings
-   raise plates of their own that would otherwise paint over it.
-
-   Screen 03 hangs the strip on its stage, which is already positioned because
-   it stacks a drawing per surface. A question screen has one drawing and hangs
-   it on the artboard, which is that screen's frame. */
-.picker-artboard:has(> .picker-surface-tabs) {
-  position: relative;
-}
-
+   On the edge rather than inside the frame. Every drawing puts its nav across
+   the frame's top and the strip is taller than that band, so sitting inside
+   covers the one place the primary shows up as chrome. Outside it the strip
+   also keeps its own ground: raised lacquer and a hairline are read against the
+   page, not against a drawing repainted in whatever palette and strategy were
+   chosen. The 1px pull is the join, landing the strip's bottom hairline on the
+   frame's top one, and the z-index is what keeps that edge visible, since the
+   drawings raise plates of their own that would otherwise paint over it. */
 .picker-surface-tabs {
-  position: absolute;
+  position: relative;
   z-index: 1;
-  top: 2px;
-  right: 0;
-  transform: translateY(-100%);
+  grid-row: 1;
+  justify-self: end;
+  margin-bottom: -1px;
   display: flex;
   gap: 2px;
   padding: 4px;
@@ -3036,18 +3051,24 @@ body.picker-page {
   display: none;
 }
 
+/* One line: the dot and the surface this tab names. The picker's chrome
+   control, the same 0.8rem on the same tracking as `.picker-type-custom`, since
+   a strip docked on a frame's corner names which drawing is showing and should
+   not read as the page's loudest button. */
 .picker-surface-tab {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  padding: 13px 22px;
+  padding: 9px 12px;
   color: var(--ks-text-muted);
   background: transparent;
   border: 0;
   border-radius: 2px;
   font-family: inherit;
-  font-size: 1.08rem;
-  line-height: 1.2;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  line-height: 1.15;
+  white-space: nowrap;
   cursor: pointer;
   transition:
     background-color 180ms var(--ks-ease),
@@ -3072,6 +3093,7 @@ body.picker-page {
 /* The whole report on state: filled once the surface has been answered
    deliberately, hollow while it is still carrying the default it was given. */
 .picker-surface-dot {
+  flex: none;
   width: 8px;
   height: 8px;
   border: 1px solid color-mix(in oklab, var(--ks-patina) 55%, transparent);
@@ -3689,10 +3711,19 @@ body.picker-page {
   height: 6px;
 }
 
+/* The picture is the one row here whose height is a share of the frame rather
+   than a count of what is in it, so it is the row that gives when the frame is
+   shorter than the page: the bars below it are drawn at fixed pixel heights and
+   do not shrink with the window. Capped at its share rather than set to it, so
+   a tall frame is unchanged and a short one takes the difference out of the
+   picture instead of pushing the card row through the footer. The card row asks
+   for its own height first and takes the leftover after: as a bare fraction it
+   was handed whatever the rows above had finished with, which on a short frame
+   was a third of what a card is. */
 .ps-phone-body {
   min-height: 0;
   display: grid;
-  grid-template-rows: 31% auto auto auto 34px auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 31%) auto auto auto 34px auto minmax(min-content, 1fr);
   gap: 6px;
   padding: 6%;
 }
@@ -3952,9 +3983,9 @@ body.picker-page {
 /* The frame's own box on the font screen. Every chosen surface gets a board and
    they are all mounted, so the row is named rather than left to auto-placement:
    four boards would otherwise stack into four rows and take the column past the
-   rail beside it. It is also the positioned ancestor the tab strip docks
-   against, and the node the chosen pair's faces are written to, which is how one
-   write sets all four boards. */
+   rail beside it. The tab strip takes the row above them, and the stage is also
+   the node the chosen pair's faces are written to, which is how one write sets
+   all four boards. */
 .picker-type-stage {
   /* The chosen pair is the run's answer rather than one board's, so the two
      faces are declared here and written here, and every board is set in them
@@ -3968,19 +3999,11 @@ body.picker-page {
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
-}
-
-/* The strip needs a positioned ancestor and the boards would rather not have
-   one: the stacking context shifts the rasterization of their plate edges by a
-   pixel. Nobody could see it, but a run with a single surface shows no strip and
-   has no reason to pay for one, so the position arrives with it. */
-.picker-type-stage:has(> .picker-surface-tabs:not([hidden])) {
-  position: relative;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .picker-type-stage > .picker-artboard {
-  grid-row: 1;
+  grid-row: 2;
   /* Both sides are named so the declared ratio has nothing left to decide. It
      still does the asking: with no height of its own the stage measures the
      ratio, which is what the row across from the rail is offered, and the taller
@@ -3995,6 +4018,23 @@ body.picker-page {
    display: grid outranks, so it is restated here. */
 .picker-artboard[hidden] {
   display: none;
+}
+
+/* The same box for a question screen that draws a board per surface, which is
+   screen 06 today. The font stage above carries the pair's two faces as well,
+   and that is the whole of the difference between them. */
+.picker-board-stage {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.picker-board-stage > .picker-artboard {
+  grid-row: 2;
+  width: 100%;
+  height: 100%;
 }
 
 /* The rail keeps the row height owned by the preview: the fieldset scrolls
@@ -4281,10 +4321,13 @@ body.picker-page {
    sizes: it reads the step values syncTypeScale computed for the sheet, so one
    scale cannot render two ways on one screen.
 
-   What it deliberately has none of is color and no chrome past the panel it
+   What it deliberately has none of is color, and no chrome past the panel it
    sits in. A palette here would ask screen 03's question again inside screen
    05's, and a specimen that has to be read past its own decoration is not
-   showing a type scale. */
+   showing a type scale. The annotation is held to the same rule: thirteen
+   accented marks on a colorless field were the brightest thing on the screen,
+   which put the loudest ink on the layer that is only there to be looked up.
+   Mono, faint, and out in the margin says annotation three times over. */
 .picker-scale-specimen {
   --pt-heading: var(--ks-font-display);
   --pt-body: var(--ks-font);
@@ -4293,12 +4336,26 @@ body.picker-page {
      at, so the air between components is measured in the scale being judged
      rather than against it. */
   --sp-rhythm: calc(var(--ts-step-0) * 1px);
+  /* The margin the annotation hangs in. Reserved as padding so a label can
+     never be measured against the line it names. Sized to the longest label
+     the column sets, five mono characters, plus enough slack that a fallback
+     mono face with wider glyphs still clears the panel edge. */
+  --sp-rail: 2.6rem;
+  --sp-rail-gap: 0.85rem;
+  --sp-pad: clamp(18px, 3.2%, 36px);
   min-width: 0;
   min-height: 0;
   display: grid;
   align-content: start;
-  gap: calc(var(--sp-rhythm) * 1.6);
-  padding: clamp(14px, 2.4%, 28px) clamp(18px, 3.2%, 36px);
+  /* Two intervals, not one. A page is read in sections, and a column set at a
+     single interval has none: the heading, its paragraph, and its list arrive
+     as three unrelated blocks, which is the one thing a specimen of a scale
+     must not say. Blocks inside a section sit close; the break before a
+     heading is the wide one. Both are counted in the base step, so the cadence
+     holds while every size in the column moves. */
+  gap: calc(var(--sp-rhythm) * 1.5);
+  padding-block: clamp(14px, 2.4%, 28px);
+  padding-inline: calc(var(--sp-pad) + var(--sp-rail) + var(--sp-rail-gap)) var(--sp-pad);
   background: var(--ks-lacquer-raised);
   color: var(--ks-text);
   border: 1px solid var(--ks-rule);
@@ -4346,6 +4403,15 @@ body.picker-page {
   min-height: 44px;
 }
 
+/* A grid item's automatic minimum is its min-content width, so one word of the
+   display heading at the widest ratio can hold this column open past the panel
+   and hand it a horizontal scrollbar. Zeroing that floor and letting the word
+   break keeps every overflow on the axis the column already scrolls. */
+.picker-scale-specimen > * {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
 /* Headings take the display face and running text the body face, which is the
    division screen 04 just committed to. */
 .picker-scale-specimen :is(.sp-h1, .sp-h2, .sp-h3, .sp-h4) {
@@ -4377,7 +4443,42 @@ body.picker-page {
 /* A heading belongs to what follows it, so the break in the column goes above
    it and not below. The column gap alone reads as a list of unrelated blocks. */
 .picker-scale-specimen :is(.sp-h2, .sp-h3, .sp-h4) {
-  margin-block-start: calc(var(--sp-rhythm) * 0.9);
+  margin-block-start: calc(var(--sp-rhythm) * 2.4);
+}
+
+/* Which component each block is, said in the annotation layer rather than in
+   the specimen: the mono face where the specimen is proportional, the same
+   faint ink the sheet's reference numbers take, and the smallest step the kit
+   labels anything at.
+
+   It hangs in the reserved margin instead of entering the block. A float or a
+   right inset both shorten the line box they share, and this column exists to
+   show how a ratio wraps: at the widest ratios a floated label was breaking
+   the display heading onto a third line and leaving one character alone on the
+   first, so the annotation was deciding the texture it was there to describe.
+   Out here it decides nothing, and thirteen marks that were ragged against
+   thirteen different line endings share one edge. */
+.picker-scale-specimen [data-sp-label] {
+  position: relative;
+}
+
+.picker-scale-specimen [data-sp-label]::before {
+  content: attr(data-sp-label);
+  position: absolute;
+  top: 0;
+  inset-inline-end: calc(100% + var(--sp-rail-gap));
+  color: var(--ks-text-faint);
+  font-family: var(--ks-mono);
+  font-size: var(--ks-type-eyebrow-size);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  line-height: 1.5;
+  text-transform: uppercase;
+  white-space: nowrap;
+  /* Trimmed so the label's cap, not its leading, is what lands on the block's
+     top edge. The blocks above and below it are set at whatever the ratio
+     dealt, so any alignment measured from a line box moves with the scale. */
+  text-box: trim-both cap alphabetic;
 }
 
 .picker-scale-specimen :is(.sp-lede, .sp-p, .sp-list, .sp-quote) {
@@ -5021,10 +5122,20 @@ body.picker-page {
    micro-copy sits one step below the body size, the headline two steps
    above it. The phone artboard re-bases the same ladder smaller, so both
    artboards stay on scale. A future type-scale step replaces the ratio;
-   until then the preview follows this one everywhere. */
-.picker-preview-type {
+   until then the preview follows this one everywhere.
+
+   The structural boards are on it too. They set no glyphs, but the app shell,
+   the document, and the index are drawn out of this ladder's spacing steps, and
+   a board that resolved none of them would drop every rule that reaches for one.
+   The ink slots below stay where they are: those exist because a bar and a
+   printed line need different contrast, and a structural board is all bars. */
+.picker-preview-type,
+[data-carry] {
   --pt-ratio: 1.618;
   --pt-base: clamp(0.72rem, 0.86vw, 0.84rem);
+}
+
+.picker-preview-type {
   /* Slot colors were mixed for bars, where a pale fill still reads as a
      shape. Once those bars carry glyphs the same mix disappears, so the type
      artboards re-derive every ink slot at reading contrast. The mix is taken
@@ -5063,7 +5174,9 @@ body.picker-page {
    numbers. The gutter is the one exception: it is a share of the frame,
    because a band's inset reads against the frame edge, not the type. */
 .picker-preview-type,
-.picker-preview-type .ps-phone {
+.picker-preview-type .ps-phone,
+[data-carry],
+[data-carry] .ps-phone {
   --pt-micro: max(0.62rem, calc(var(--pt-base) / var(--pt-ratio)));
   --pt-title: calc(var(--pt-base) * var(--pt-ratio));
   --pt-display: calc(var(--pt-base) * var(--pt-ratio) * var(--pt-ratio));
@@ -5080,6 +5193,22 @@ body.picker-page {
 
 .picker-preview-type .ps-phone {
   --ps-gutter: 6%;
+}
+
+/* On a structural board the band inset is the drawn field's own margin, and it is
+   a constant on purpose. What the layout answer moves on a shell, a document, or
+   an index is the proportion of their regions, and the margin is only there so
+   those regions can be checked against the field. Hung off the layout answer
+   instead, the balanced page would take the artboard's 5.5 and 3.2, and every
+   region edge would land three pixels shy of the line it was drawn to meet:
+   read as sloppiness on a tool, where on the landing page the same lean is the
+   answer being shown. */
+[data-carry] {
+  --ps-gutter: 6%;
+}
+
+[data-carry] .ps-phone {
+  --ps-gutter: var(--pvs-phone-gutter, 6%);
 }
 
 /* Centering a text box centers its em box, and every family puts its caps
@@ -5175,10 +5304,6 @@ body.picker-page {
   aspect-ratio: 1;
 }
 
-.picker-preview-type .ps-desktop .ps-gallery-item:nth-child(4) {
-  display: none;
-}
-
 /* Words set taller than bars, and the phone is the narrowest frame they have
    to fit. Its card row goes: nav, hero, proof and a section of running copy
    already show every face at both sizes, and the row that was left over is
@@ -5188,9 +5313,13 @@ body.picker-page {
    proof row at a fixed 34px was the one place a tall pair had nowhere to go.
    Whatever height is left over is spread between the sections rather than
    pooled under the last one, so a compact pair reads as a page with air in it
-   and a wide one closes up to its own gap without spilling past the frame. */
+   and a wide one closes up to its own gap without spilling past the frame.
+
+   The picture keeps a cap rather than a share, for the reason under the shared
+   phone body: it is the only row here that is not a count of its own contents,
+   so it is the row that gives first when the frame runs short. */
 .picker-preview-type .ps-phone-body {
-  grid-template-rows: 18% repeat(5, auto);
+  grid-template-rows: minmax(0, 18%) repeat(5, auto);
   gap: var(--ps-gap-sm);
   align-content: space-between;
   padding: var(--ps-band-y) var(--ps-gutter);
@@ -5205,6 +5334,30 @@ body.picker-page {
 
 .picker-preview-type .ps-phone-body .ps-actions {
   gap: var(--ps-gap-sm);
+}
+
+/* The two buttons divide the row rather than each asking for the width its own
+   label wants. A pair of labels nobody wrote to a length was setting the widest
+   line on the handset, and a nowrap line is a width the column has to find:
+   the row came out wider than the phone, and every band under it was drawn to
+   the row instead of to the frame.
+
+   Two even columns rather than two flexible children, because a flex item still
+   reports what its label wants when its container is asked for a minimum, and
+   the minimum is exactly what was overflowing here. A label longer than half the
+   row ends in an ellipsis; the clip margin is the house allowance for a
+   descender under text-box trimming. */
+.picker-preview-type .ps-phone-body .ps-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.picker-preview-type .ps-phone-body .ps-actions i {
+  min-width: 0;
+  padding-inline: 0.8em;
+  overflow: clip;
+  overflow-clip-margin: 0.4em;
+  text-overflow: ellipsis;
 }
 
 /* The band already sits inside the body's gutter; its own inset put it a
@@ -5228,6 +5381,26 @@ body.picker-page {
    the frame; every face the phone has to prove is already shown above. */
 .picker-preview-type .ps-phone-body .ps-gallery {
   display: none;
+}
+
+/* Asked of the board rather than the window, for the reason the docs and ops
+   boards are: the ladder floors while the frame keeps shrinking, so a short
+   frame holds fewer blocks at the same reading size. The ops and docs boards
+   name their own container over this one. */
+.picker-preview-type {
+  container-type: size;
+  container-name: ps-type-board;
+}
+
+/* Below this the handset is holding more sections than the frame has room for,
+   and the picture it takes them out of has already given everything it has. The
+   section pair is what goes, on the same terms as the card row above: its
+   heading face is the headline's and its body face is the lede's, both already
+   set on this page, and the desktop beside it keeps the section in full. */
+@container ps-type-board (height < 500px) {
+  .picker-preview-type .ps-phone-body .ps-editorial-copy {
+    display: none;
+  }
 }
 
 .pt-headline {
@@ -5273,7 +5446,8 @@ body.picker-page {
 
 /* Phone artboard type: the same ladder re-based to handset scale, held above
    the legibility floor rather than scaled straight down. */
-.picker-preview-type .ps-phone {
+.picker-preview-type .ps-phone,
+[data-carry] .ps-phone {
   --pt-base: clamp(0.66rem, 0.72vw, 0.74rem);
 }
 
@@ -5290,13 +5464,14 @@ body.picker-page {
 
    Overflow stays visible: a bar had to be kept inside its box, but a line of
    text hangs its descenders below the baseline, and the trimmed box ends at
-   the baseline. Hiding the overflow would cut the tail off every g and p.
+   the baseline. Hiding the overflow would cut the tail off every g and p, so
+   the proof label, which does have to truncate, clips with a margin instead.
 
-   The nowrap below is the default for a one-line label, and the proof and
-   card labels opt back out of it further down. Every selector in this list
-   is one class and one type, so those two rules win on source order. Adding
-   a more specific one here (a descendant pair, say) silently raises the whole
-   :is() above them and puts the clipping back. */
+   The nowrap below is the default for a one-line label, and the card labels
+   opt back out of it further down. Every selector in this list is one class
+   and one type, so the rules that override this one win on source order.
+   Adding a more specific one here (a descendant pair, say) silently raises
+   the whole :is() above them and puts the clipping back. */
 .picker-preview-type :is(
   .ps-nav-bars i,
   .ps-proof-item span,
@@ -5386,7 +5561,13 @@ body.picker-page {
    The label is centered by the box being cut to the glyphs, so this stays a
    block: a grid container has no line box of its own to trim. The filled
    button carries a transparent border so it resolves to the same height as
-   the outlined one sitting next to it. */
+   the outlined one sitting next to it.
+
+   The hero buttons are `<i>`, so the style is stated rather than inherited:
+   the slots that reset the UA italic in one shared list cannot take these two,
+   because that list also clears the background and the radius and a button is
+   the fill it sits on. The nav button beside them is a `div` and never had the
+   italic to lose, which is how the pair came to be set two ways. */
 .picker-preview-type .ps-nav-action,
 .picker-preview-type .ps-actions i {
   width: auto;
@@ -5397,6 +5578,7 @@ body.picker-page {
   color: var(--pvs-cta-text);
   font-family: var(--pt-body);
   font-size: var(--pt-micro);
+  font-style: normal;
   font-weight: 600;
   line-height: 1;
   text-align: center;
@@ -5472,12 +5654,18 @@ body.picker-page {
   background-color: var(--pvs-accent-d);
 }
 
-/* A wide display face wraps the label rather than losing the end of a word to
-   the cell edge with no sign it went missing. */
+/* A chip is one line. The columns are even and the row is read across, so the
+   label that ran long took a second line and set the whole band to two
+   heights at once. Clipped rather than hidden because the box above is trimmed
+   to the baseline: the clip margin is the room the tail of a g or a y needs,
+   and the ellipsis still lands on the inline edge. */
 .picker-preview-type .ps-proof-item span {
   min-width: 0;
+  overflow: clip;
+  overflow-clip-margin: 0.4em;
   color: var(--pvs-bars);
-  white-space: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Wraps rather than truncates: a section title is the product's own words and
@@ -5528,15 +5716,29 @@ body.picker-page {
    column for column: a rail, a working column, a settings panel, at the
    18.68 / 51.84 / rest the drawing already uses.
 
-   What it drops is what a chart is. A chart carries no glyphs, so a pair
-   cannot be judged on one, and the numbers it stood for can. What it refuses
-   to add is a display line: nothing on a dashboard is set at 35px, and a board
-   that opened with one would be recommending a pair for a page this surface
-   never has. The largest step here is the panel title, and the face doing the
-   most work is the body face between 10 and 12px.
+   What it refuses to add is a display line: nothing on a dashboard is set at
+   35px, and a board that opened with one would be recommending a pair for a
+   page this surface never has. The largest step here is the section title, and
+   the face doing the most work is the body face between 10 and 12px.
+
+   The chart is the one element on the board that is still mostly a drawing.
+   Its bars carry no glyphs and prove nothing about a pair, so they are held to
+   a share of the plot and are there for the two pieces of text they bracket:
+   the heading above them and the category labels below, which is the tightest
+   slot on any of the boards. Both are what a chart really costs a pairing.
    ============================================================ */
 .picker-preview-type--ops .ps-desktop {
   grid-template-rows: 9.4% minmax(0, 1fr) 8.3%;
+}
+
+/* The board is asked its own height, the way the docs board is, because that is
+   what the working column has to fit inside and it is not the window's: the
+   frame shrinks with the window while the type ladder floors, so a short frame
+   holds the same four blocks at a larger relative size. What a short frame
+   spends less on hangs off the query at the end of this section. */
+.picker-preview-type--ops {
+  container-type: size;
+  container-name: ps-ops-board;
 }
 
 .ps-ops {
@@ -5560,10 +5762,29 @@ body.picker-page {
   padding: var(--ps-band-y) calc(var(--pt-base) * 0.7);
 }
 
+/* The working column runs to the bottom of the band rather than stopping partway
+   down it: whatever a pair leaves over is spread between the four blocks instead
+   of pooling under the table, which is how the docs and portfolio boards already
+   fill. It takes no height gate, unlike the docs column, because the inset it
+   would spend on a tall frame is already there on every frame (this padding is
+   symmetric) and because `space-between` is `start` again the moment the free
+   space runs out, so a short frame keeps the drawing it has.
+ 
+   What it does not do is gain a block on a tall frame the way the docs column
+   gains its list. That column was short a structural element; this one draws the
+   four a dashboard is made of, so a fifth would be filling for its own sake. Its
+   table is also filled from the run's own item slots, and a row past their count
+   would come up blank.
+ 
+   `min-height: 0` for the same reason the docs column carries it: without it the
+   column takes its automatic minimum height from the table and grows past the
+   row, which pushes the footer out of the frame. Held to the band, the
+   widest-setting pair runs to the band's edge instead. */
 .ps-ops-main {
   min-width: 0;
+  min-height: 0;
   display: grid;
-  align-content: start;
+  align-content: space-between;
   gap: var(--ps-gap-lg);
   padding: var(--ps-band-y) calc(var(--pt-base) * 1.1);
 }
@@ -5576,7 +5797,8 @@ body.picker-page {
   .ps-ops-item b,
   .ps-ops-row b,
   .ps-ops-field b,
-  .ps-ops-switch b
+  .ps-ops-switch b,
+  .ps-ops-lanes b
 ) {
   min-width: 0;
   color: var(--pvs-bars);
@@ -5660,6 +5882,89 @@ body.picker-page {
   font-family: var(--pt-body);
   font-size: var(--pt-micro);
   line-height: 1.35;
+}
+
+.ps-ops-chart {
+  min-width: 0;
+  display: grid;
+  gap: var(--ps-gap-sm);
+}
+
+/* A chart title is a heading, so it takes the heading face, and it takes it at
+   the reading step rather than the title step: the section title above it is
+   already the largest thing on the board, and a second line at that size would
+   read as a second section. Two sizes of the same face is the useful thing here
+   anyway, because a display face that holds at 22px and falls apart at 13 is
+   exactly the fault this board exists to surface. */
+.ps-ops-chart-title {
+  color: var(--pvs-title);
+  font-family: var(--pt-heading);
+  font-size: var(--pt-base);
+  font-weight: var(--pt-heading-weight);
+  line-height: 1.3;
+  overflow-wrap: break-word;
+}
+
+/* The bars and the labels are two grids over one column structure, so a label
+   is under its own bar without either row measuring the other. Implicit columns
+   rather than a stated count, because the handset draws three of them and the
+   desktop five and neither should have to restate it here.
+
+   The axis is the plot's own bottom border, so the bars stand on it at every
+   width. Their height is a share of the plot rather than a value, which is what
+   keeps this a drawing of a chart: nothing here is a reading of data. */
+.ps-ops-plot,
+.ps-ops-lanes {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: calc(var(--pt-base) * 0.7);
+}
+
+.ps-ops-plot {
+  height: calc(var(--pt-base) * 5.5);
+  align-items: end;
+  border-bottom: 1px solid var(--pvs-rule);
+}
+
+/* The lanes that are not the leading one take the fill an unselected row takes,
+   which is the same slot the wireframe chart on the surface tile fills its bars
+   with. It is the one slot that stays a light step off the ground under every
+   strategy and moves only in hue, and five bars are an area where the board's
+   accents are points: at accent weight the chart would outrank the table it
+   sits above. */
+.ps-ops-plot > i {
+  height: var(--h);
+  background-color: var(--pvs-ghost);
+}
+
+/* The leading lane is the only bar a schematic chart has to say anything with,
+   so it takes the fill the board already spends on a chosen state: the open
+   rail plate and the switch that is on. Under Drenched that fill is the page's
+   own ink, which is the one reading of primary that stays visible when the
+   ground is the primary. */
+.ps-ops-plot > .ps-ops-bar--lead {
+  background-color: var(--pvs-cta);
+}
+
+/* Centered under the bar, and the one micro label on this board that is a
+   caption rather than a row: it has its bar's width and no more, which is why
+   the words it is filled with are single and short. */
+.picker-preview-type--ops .ps-ops-lanes b {
+  text-align: center;
+}
+
+/* Three columns over a handset's width come out square at the desktop's plot
+   height, and a square is a tile rather than a bar. The gap is spent on both
+   rows or the labels walk off the bars they name. */
+.picker-preview-type--ops .ps-phone-body :is(.ps-ops-plot, .ps-ops-lanes),
+[data-carry][data-surface="operate"] .ps-phone-body :is(.ps-ops-plot, .ps-ops-lanes) {
+  gap: calc(var(--pt-base) * 2);
+}
+
+.picker-preview-type--ops .ps-phone-body .ps-ops-plot,
+[data-carry][data-surface="operate"] .ps-phone-body .ps-ops-plot {
+  height: calc(var(--pt-base) * 7);
 }
 
 .ps-ops-table {
@@ -5779,19 +6084,67 @@ body.picker-page {
    cut to what they are and what they come to, and the two switches. The rail
    and the panel are chrome a phone gives to a drawer, and a drawer is not on
    screen. */
-.picker-preview-type--ops .ps-phone-body {
+/* The structural boards are on the same selectors from here down wherever the
+   rule is about the shape of the body rather than the setting of its words. A
+   handset holding four blocks of a tool holds them the same way whether they are
+   printed or drawn, and writing that twice is how two boards claiming to be the
+   same anatomy drift apart. */
+.picker-preview-type--ops .ps-phone-body,
+[data-carry][data-surface="operate"] .ps-phone-body {
   grid-template-rows: repeat(4, auto);
-  align-content: start;
+  align-content: space-between;
   gap: var(--ps-gap-md);
 }
 
-.picker-preview-type--ops .ps-phone-body .ps-ops-row {
+.picker-preview-type--ops .ps-phone-body .ps-ops-row,
+[data-carry][data-surface="operate"] .ps-phone-body .ps-ops-row {
   grid-template-columns: auto minmax(0, 1fr) auto;
 }
 
-.picker-preview-type--ops .ps-phone-body .ps-ops-panel {
+.picker-preview-type--ops .ps-phone-body .ps-ops-panel,
+[data-carry][data-surface="operate"] .ps-phone-body .ps-ops-panel {
   gap: 0;
   padding: 0;
+}
+
+/* A frame with less room than the drawing needs. The plot is the one block here
+   whose height is a count rather than its contents, so it is the block that
+   gives: the chart keeps its title, its bars, and its labels, and loses the air
+   between them, which is the reduction it already makes on the handset. The
+   column closes to the middle step at the same time.
+ 
+   Shortening rather than dropping, because a dashboard without its chart is the
+   one thing this board exists to show a pair against, and 1280 by 800 is a
+   laptop rather than an edge case. */
+@container ps-ops-board (height < 500px) {
+  .picker-preview-type--ops .ps-ops-main {
+    gap: var(--ps-gap-md);
+  }
+
+  .picker-preview-type--ops .ps-ops-plot {
+    height: calc(var(--pt-base) * 2.8);
+  }
+
+  .picker-preview-type--ops .ps-phone-body,
+  [data-carry][data-surface="operate"] .ps-phone-body {
+    gap: var(--ps-gap-sm);
+  }
+
+  .picker-preview-type--ops .ps-phone-body .ps-ops-plot,
+  [data-carry][data-surface="operate"] .ps-phone-body .ps-ops-plot {
+    height: calc(var(--pt-base) * 4.4);
+  }
+}
+
+/* The bottom of the range, where the ladder has floored and the frame is still
+   shrinking. The handset is the frame that runs out first, and the plot is the
+   block that gives on it for the same reason it gives above: four blocks at
+   their own heights and one whose height is a number. */
+@container ps-ops-board (height < 400px) {
+  .picker-preview-type--ops .ps-phone-body .ps-ops-plot,
+  [data-carry][data-surface="operate"] .ps-phone-body .ps-ops-plot {
+    height: calc(var(--pt-base) * 3.2);
+  }
 }
 
 /* ============================================================
@@ -5813,6 +6166,15 @@ body.picker-page {
    ============================================================ */
 .picker-preview-type--read .ps-desktop {
   grid-template-rows: 9.4% minmax(0, 1fr) 8.3%;
+}
+
+/* The board is asked its own height because that is what the document has to
+   fill, and it is not the window's: the frame shrinks with the window while
+   the type ladder floors, so a short frame holds fewer blocks at the same
+   reading size. Everything the fuller page needs hangs off the query below. */
+.picker-preview-type--read {
+  container-type: size;
+  container-name: ps-docs-board;
 }
 
 .ps-docs {
@@ -5869,6 +6231,10 @@ body.picker-page {
 
 .ps-docs-main {
   min-width: 0;
+  /* Without it the column takes its automatic minimum height from the copy and
+     grows past the row, which pushes the footer out of the frame. Held to the
+     band, the widest-setting pair runs to the band's edge instead. */
+  min-height: 0;
   display: grid;
   align-content: start;
   padding: var(--ps-band-y) 6% 0 calc(var(--pt-base) * 1.6);
@@ -5900,6 +6266,13 @@ body.picker-page {
   margin-top: calc(var(--pt-base) * 0.7);
 }
 
+/* A heading belongs to the passage under it, so that one step stays shorter
+   than the step between two passages. Left at the paragraph interval the
+   subsection floated between the block above it and the block below. */
+.picker-preview-type--read .ps-docs-sub + .ps-docs-para {
+  margin-top: calc(var(--pt-base) * 0.55);
+}
+
 .ps-docs-sub {
   margin-top: calc(var(--pt-base) * 1.5);
   color: var(--pvs-title);
@@ -5910,24 +6283,45 @@ body.picker-page {
   overflow-wrap: break-word;
 }
 
+/* The marker is the list's own, so it takes the ink the rail's markers take
+   rather than a drawn element that would have to be positioned against a line
+   whose height changes with the pair. Off until the frame is tall enough to
+   hold it, which is what the container query below decides. */
+.picker-preview-type--read .ps-docs-list {
+  display: none;
+  margin: calc(var(--pt-base) * 1.2) 0 0;
+  padding-left: calc(var(--pt-base) * 1.2);
+  color: var(--pvs-copy);
+  font-family: var(--pt-body);
+  font-size: var(--pt-base);
+  line-height: 1.55;
+}
+
+.picker-preview-type--read .ps-docs-list li {
+  max-width: 62ch;
+}
+
+.picker-preview-type--read .ps-docs-list li + li {
+  margin-top: calc(var(--pt-base) * 0.45);
+}
+
+.picker-preview-type--read .ps-docs-list li::marker {
+  color: var(--pvs-bars);
+}
+
 /* A callout is the one place a documentation page prints body copy on a ground
-   that is not the page, which is where a light body weight stops holding. */
-.ps-docs-note {
-  display: flex;
-  gap: calc(var(--pt-base) * 0.6);
+   that is not the page, which is where a light body weight stops holding.
+
+   The accent is the box's own border. It was a border plus a round marker sized
+   off the type scale, and the marker was a flex item with an auto height, so
+   the box it drew was the flex line rather than the circle it was declared as:
+   a stretched ellipse whose length changed with the callout, detached from the
+   edge by the padding. A border cannot leave its box or fall short of it. */
+.picker-preview-type--read .ps-docs-note {
   margin-top: calc(var(--pt-base) * 1.3);
   padding: calc(var(--pt-base) * 0.7) calc(var(--pt-base) * 0.9);
   background-color: var(--pvs-ghost);
-  border-left: calc(var(--pt-base) * 0.2) solid var(--pvs-accent-c);
-}
-
-.ps-docs-note-dot {
-  flex: none;
-  margin-top: calc(var(--pt-base) * 0.42);
-  width: calc(var(--pt-base) * 0.34);
-  aspect-ratio: 1;
-  background-color: var(--pvs-accent-c);
-  border-radius: 50%;
+  border-left: calc(var(--pt-base) * 0.25) solid var(--pvs-accent-c);
 }
 
 .ps-docs-note-copy {
@@ -5952,10 +6346,12 @@ body.picker-page {
 }
 
 /* The handset is the same document with the rail folded into a crumb, which is
-   how the drawing puts it too. One passage rather than two: past that the note
-   leaves the card. */
-.picker-preview-type--read .ps-phone-body {
-  grid-template-rows: repeat(5, auto);
+   how the drawing puts it too. One passage rather than two: the list is what
+   the width is spent on instead, and past that the note leaves the card. The
+   blocks carry the rhythm, so the gap stays at zero. */
+.picker-preview-type--read .ps-phone-body,
+[data-carry][data-surface="read"] .ps-phone-body {
+  grid-template-rows: repeat(6, auto);
   align-content: start;
   gap: 0;
 }
@@ -5980,14 +6376,57 @@ body.picker-page {
   margin-top: calc(var(--pt-base) * 2.1);
 }
 
+/* A frame with room for the whole page. The document runs to the bottom of the
+   band instead of stopping partway down it and leaving the footer standing on
+   white: the list arrives, the column takes an inset under it, and whatever a
+   pair leaves over is spread between the blocks rather than pooled under the
+   last one, which is how the landing and portfolio handsets already fill.
+
+   Below this the band and the reading size have pulled apart far enough that
+   the original five blocks are the page: the type ladder floors on a small
+   window while the frame keeps shrinking, so there is no slack to spread and
+   the sixth block would run into the footer. */
+@container ps-docs-board (height >= 545px) {
+  .picker-preview-type--read .ps-docs-main {
+    align-content: space-between;
+    padding-bottom: var(--ps-band-y);
+  }
+
+  .picker-preview-type--read .ps-docs-list {
+    display: block;
+  }
+
+  .picker-preview-type--read .ps-phone-body {
+    align-content: space-between;
+  }
+}
+
+/* Two steps further down, where the handset's five remaining blocks are already
+   more than the frame holds. The callout is the block that goes: it is an aside
+   to the passage above it rather than part of the document's own ladder, and
+   everything above it is either a heading level or the running text the pair is
+   judged on. */
+@container ps-docs-board (height < 440px) {
+  .picker-preview-type--read .ps-phone-body .ps-docs-note,
+  [data-carry][data-surface="read"] .ps-phone-body .ps-docs-note {
+    display: none;
+  }
+}
+
 /* ============================================================
    The Portfolio board.
 
    The sparsest of the four drawings, so it is the one that changes most. The
-   drawing staggers two plates and a carousel rail under them. Here the second
-   plate pays for a page title: the staggered pair proves nothing the single
-   row does not, and this is the one surface whose heading face is chosen to be
-   looked at rather than read past.
+   drawing staggers two plates and a carousel rail under them, and it keeps both
+   plates: this is also the one surface whose heading face is chosen to be looked
+   at rather than read past, so the page title is added above them rather than
+   paid for out of the second entry.
+
+   Both entry rows are an equal share of the band and the plate takes its row,
+   which is the construction the handset below already uses. That is what fills
+   the height: a plate held to its own ratio left the leftover pooled around one
+   centred row, and a band that has to hold whatever a pair's caption comes to
+   cannot be filled by a shape sized off its width.
 
    The tracked caption meta is deliberate and it is the only tracked label in
    the picker. An `experience` body face is asked to hold up letter-spaced and
@@ -6001,7 +6440,7 @@ body.picker-page {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr) auto;
   gap: var(--ps-gap-md);
   padding: var(--ps-band-y) var(--ps-gutter);
 }
@@ -6017,14 +6456,18 @@ body.picker-page {
   column-gap: 5.14%;
 }
 
-/* The plate keeps its own proportion rather than taking the row's height. A
-   frame that grew taller would otherwise stretch the work into a column, and
-   the room left over reads as the margin an index is hung in. */
-.ps-index-row > .ps-image {
-  height: auto;
-  max-height: 100%;
-  aspect-ratio: 4 / 3;
-  align-self: center;
+/* The plate changes sides on the second entry by placement, so both rows stay
+   one element order and the caption keeps reading after the work it names. */
+.ps-index-row--flip {
+  grid-template-columns: minmax(0, 1fr) 42%;
+}
+
+.ps-index-row--flip > .ps-image {
+  grid-area: 1 / 2;
+}
+
+.ps-index-row--flip > .ps-index-cap {
+  grid-area: 1 / 1;
 }
 
 .ps-index-cap {
@@ -6108,13 +6551,541 @@ body.picker-page {
 
 /* The handset drops the title and the rail and shows the work: two plates,
    each with the caption the desktop row carries. */
-.picker-preview-type--experience .ps-phone-body {
+.picker-preview-type--experience .ps-phone-body,
+[data-carry][data-surface="experience"] .ps-phone-body {
   grid-template-rows: minmax(0, 1fr) auto minmax(0, 1fr) auto;
   gap: var(--ps-gap-sm);
 }
 
-.picker-preview-type--experience .ps-phone-body .ps-index-cap {
+.picker-preview-type--experience .ps-phone-body .ps-index-cap,
+[data-carry][data-surface="experience"] .ps-phone-body .ps-index-cap {
   padding-top: 0;
+}
+
+/* ============================================================
+   The structural boards: the four bodies drawn as wireframes.
+
+   Screens 07 to 10 ask what a page is made of rather than what it is set in, and
+   they ask it of each surface the run chose. The three bodies above this were
+   built for the font screen, where every slot holds a printed line, and the font
+   screen is the only place a slot gets filled. So the same anatomy is drawn a
+   second way here: the tree, the class names, and the geometry are the ones
+   above, and what changes is that a slot is a bar.
+
+   Everything below is scoped to [data-carry], the attribute that marks a board
+   as one accumulating the structural answers. That is exactly screens 07 to 10,
+   so nothing here can reach the color screen's tiles, the font screen's
+   specimens, or the motion screen's scenes, all of which draw the same bodies
+   under their own terms.
+   ============================================================ */
+
+/* A single body between the chrome, so three bands rather than the landing
+   page's five. Declared on the row property rather than through --pvs-rows
+   because the layout answer owns that variable for the page it describes, and
+   the answer this board is showing must not be able to leave it with two empty
+   rows. The same construction the font screen's boards use. */
+[data-carry]:is([data-surface="operate"], [data-surface="read"], [data-surface="experience"]) .ps-desktop {
+  grid-template-rows: 9.4% minmax(0, 1fr) 8.3%;
+}
+
+/* ── A word, drawn ───────────────────────────────────────────
+   One declaration for every slot that holds a line of type upstairs. The height
+   ladder underneath is the type ladder read as thicknesses: a figure and a
+   heading are the two things on a tool you are meant to see from across a room,
+   a row cell and a rail label are the smallest marks the board makes, and a
+   running line sits between them. Widths are stated per slot, because a column
+   of bars all the same length is a table and not prose. */
+[data-carry] :is(
+  .ps-ops-title,
+  .ps-ops-item b,
+  .ps-ops-metric b,
+  .ps-ops-metric span,
+  .ps-ops-chart-title,
+  .ps-ops-lanes b,
+  .ps-ops-row b,
+  .ps-ops-panel-title,
+  .ps-ops-field b,
+  .ps-ops-switch b,
+  .ps-docs-item b,
+  .ps-docs-sub,
+  .ps-docs-crumb,
+  .ps-docs-list li,
+  .ps-docs-note-copy b,
+  .ps-docs-main .pt-headline i,
+  .ps-phone-body .pt-headline i,
+  .ps-docs-lede i,
+  .ps-docs-para i,
+  .ps-docs-note-copy > span i
+) {
+  display: block;
+  background-color: var(--pvs-bars);
+  border-radius: var(--pvs-radius-bar);
+}
+
+/* The two headings, at the two weights the ladder gives them. */
+[data-carry] :is(.ps-ops-title, .ps-docs-main .pt-headline i, .ps-phone-body .pt-headline i) {
+  height: calc(var(--pt-base) * 0.72);
+  background-color: var(--pvs-headline);
+}
+
+[data-carry] .ps-ops-title {
+  width: 38%;
+}
+
+[data-carry] :is(.ps-docs-sub, .ps-ops-chart-title, .ps-ops-panel-title) {
+  height: calc(var(--pt-base) * 0.5);
+  background-color: var(--pvs-title);
+}
+
+[data-carry] .ps-docs-sub {
+  width: 44%;
+}
+
+[data-carry] .ps-ops-chart-title {
+  width: 46%;
+}
+
+[data-carry] .ps-ops-panel-title {
+  width: 62%;
+}
+
+/* Running copy: a stack of lines with a short last one, so a passage reads as a
+   passage. The headline takes the same treatment at its own weight.
+
+   Each gap is the line-height the printed version sets, less the thickness of
+   the bar, so a stack of n bars stands exactly as tall as the n lines it replaces
+   and the block leaves the same room behind it. Guessing the gap instead is what
+   made these boards float apart in a band sized for text: a bar is a quarter the
+   height of the line it stands in for, and four blocks each short by that much
+   is a page of holes. */
+[data-carry] :is(.ps-docs-main, .ps-phone-body) .pt-headline {
+  display: grid;
+  gap: calc(var(--pt-base) * 1.3);
+  margin: 0;
+}
+
+[data-carry] :is(.ps-docs-main, .ps-phone-body) .pt-headline i:last-child {
+  width: 58%;
+}
+
+/* The steps between blocks are the printed board's own, restated because the
+   bars replace the elements those margins were declared on. Kept identical so a
+   document reads with the same rhythm whether it is set or drawn. */
+[data-carry] :is(.ps-docs-lede, .ps-docs-para) {
+  display: grid;
+  gap: calc(var(--pt-base) * 1.25);
+}
+
+[data-carry] .ps-docs-lede {
+  margin: calc(var(--pt-base) * 0.9) 0 0;
+}
+
+[data-carry] .ps-docs-para {
+  margin: calc(var(--pt-base) * 0.7) 0 0;
+}
+
+[data-carry] .ps-docs-sub + .ps-docs-para {
+  margin-top: calc(var(--pt-base) * 0.55);
+}
+
+[data-carry] .ps-docs-note-copy > span {
+  display: grid;
+  gap: calc(var(--pt-base) * 0.67);
+  margin: 0;
+}
+
+[data-carry] :is(.ps-docs-lede, .ps-docs-para) i {
+  height: calc(var(--pt-base) * 0.3);
+  background-color: var(--pvs-copy);
+}
+
+[data-carry] .ps-docs-lede i:last-child,
+[data-carry] .ps-docs-para i:last-child {
+  width: 62%;
+}
+
+[data-carry] .ps-docs-note-copy > span i {
+  height: calc(var(--pt-base) * 0.26);
+}
+
+[data-carry] .ps-docs-note-copy > span i:last-child {
+  width: 54%;
+}
+
+[data-carry] .ps-docs-note-copy b {
+  width: 42%;
+  height: calc(var(--pt-base) * 0.3);
+  background-color: var(--pvs-accent-c);
+}
+
+[data-carry] .ps-docs-crumb {
+  width: 46%;
+  height: calc(var(--pt-base) * 0.26);
+  margin-inline: auto;
+}
+
+/* A list item is one ragged line against its marker, and the marker is the
+   rail's own dot rather than a ::marker, which has no box a bar can stand on. */
+[data-carry] .ps-docs-list {
+  display: grid;
+  gap: calc(var(--pt-base) * 1.7);
+  margin: calc(var(--pt-base) * 1.2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+[data-carry] .ps-docs-note {
+  margin-top: calc(var(--pt-base) * 1.3);
+}
+
+[data-carry] .ps-docs-list li {
+  position: relative;
+  height: calc(var(--pt-base) * 0.3);
+  margin-left: calc(var(--pt-base) * 1.1);
+  background-color: var(--pvs-copy);
+}
+
+[data-carry] .ps-docs-list li:nth-child(2) {
+  width: 82%;
+}
+
+[data-carry] .ps-docs-list li::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: calc(var(--pt-base) * -1.1);
+  width: calc(var(--pt-base) * 0.3);
+  aspect-ratio: 1;
+  background-color: var(--pvs-accent-c);
+  border-radius: var(--pvs-radius-dot);
+}
+
+/* The tool's own labels. A rail item and a table cell are the smallest marks on
+   the board, and their lengths are staggered so neither column reads as a
+   ruled form. */
+[data-carry] :is(.ps-ops-item b, .ps-docs-item b, .ps-ops-lanes b, .ps-ops-row b, .ps-ops-field b, .ps-ops-switch b, .ps-ops-metric span) {
+  height: calc(var(--pt-base) * 0.26);
+}
+
+[data-carry] :is(.ps-ops-item, .ps-docs-item) b {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+[data-carry] .ps-ops-item b {
+  width: 74%;
+}
+
+/* The open plate is a fill, so the label on it takes the ink that fill was paired
+   with rather than the page's bar tone, which would be reading a light mark
+   against a dark ground and hoping. */
+[data-carry] .ps-ops-item--on b {
+  background-color: var(--pvs-cta-ink);
+}
+
+[data-carry] .ps-docs-item b {
+  width: 72%;
+}
+
+[data-carry] .ps-docs-item:nth-of-type(2) b {
+  width: 88%;
+}
+
+[data-carry] .ps-docs-item:nth-of-type(3) b {
+  width: 60%;
+}
+
+[data-carry] .ps-docs-item:nth-of-type(4) b {
+  width: 80%;
+}
+
+[data-carry] .ps-docs-item--on b {
+  background-color: var(--pvs-accent-c);
+}
+
+[data-carry] .ps-ops-item:nth-of-type(2) b {
+  width: 58%;
+}
+
+[data-carry] .ps-ops-item:nth-of-type(3) b {
+  width: 82%;
+}
+
+[data-carry] .ps-ops-metric b {
+  width: 56%;
+  height: calc(var(--pt-base) * 0.62);
+  background-color: var(--pvs-title);
+}
+
+[data-carry] .ps-ops-metric span {
+  width: 88%;
+}
+
+[data-carry] .ps-ops-lanes b {
+  width: 68%;
+  margin-inline: auto;
+}
+
+/* The row's outer tracks are sized by their contents, so a cell that carries no
+   words has to state the width the words would have taken. */
+[data-carry] .ps-ops-row b:first-of-type {
+  width: calc(var(--pt-base) * 4.4);
+  background-color: var(--pvs-title);
+}
+
+[data-carry] .ps-ops-row b:nth-of-type(2) {
+  width: calc(var(--pt-base) * 3);
+}
+
+[data-carry] .ps-ops-row b:last-of-type {
+  width: calc(var(--pt-base) * 2.2);
+  margin-left: auto;
+}
+
+[data-carry] .ps-ops-row--head b {
+  background-color: var(--pvs-copy);
+}
+
+[data-carry] .ps-ops-field b {
+  width: 64%;
+}
+
+[data-carry] .ps-ops-switch b {
+  width: 56%;
+}
+
+[data-carry] .ps-ops-switch:nth-of-type(3) b {
+  width: 70%;
+}
+
+/* ── The index, drawn ────────────────────────────────────────
+   The caption stand-ins the wireframe index already declares. They are styled
+   here rather than borrowed from the motion screen, whose copies are scoped to
+   its own scenes and carry the fixed pixel sizes those scenes animate. */
+[data-carry] :is(.ps-index-head, .ps-index-name, .ps-index-tag, .ps-index-lines b) {
+  display: block;
+  background-color: var(--pvs-bars);
+  border-radius: var(--pvs-radius-bar);
+}
+
+[data-carry] .ps-index-head {
+  width: 28%;
+  height: calc(var(--pt-base) * 0.72);
+  background-color: var(--pvs-headline);
+}
+
+[data-carry] .ps-index-name {
+  width: 68%;
+  height: calc(var(--pt-base) * 0.52);
+  background-color: var(--pvs-title);
+}
+
+[data-carry] .ps-index-tag {
+  width: 34%;
+  height: calc(var(--pt-base) * 0.24);
+}
+
+[data-carry] .ps-index-lines {
+  display: grid;
+  gap: calc(var(--pt-base) * 0.7);
+  margin-top: calc(var(--pt-base) * 0.3);
+}
+
+[data-carry] .ps-index-lines b {
+  width: 78%;
+  height: calc(var(--pt-base) * 0.26);
+  background-color: var(--pvs-copy);
+}
+
+[data-carry] .ps-index-lines b:last-child {
+  width: 52%;
+}
+
+[data-carry] .ps-index-track b {
+  width: calc(var(--pt-base) * 1.5);
+  height: calc(var(--pt-base) * 0.24);
+  background-color: var(--pvs-bars);
+  border-radius: var(--pvs-radius-bar);
+}
+
+[data-carry] .ps-index-stop--on {
+  background-color: var(--pvs-cta);
+}
+
+/* ── Shape and lift on the three bodies ──────────────────────
+   The corner and depth answers reach the landing page through the slots the
+   drawing has always read. These are the same slots on the parts the other
+   three bodies are made of, so one answer lands on every board.
+
+   Which slot a part takes is the part's own kind, not its size: a rail plate
+   and a switch are controls, a card and a callout are surfaces, and a bar
+   standing in for a line of text is never either, because at control radius it
+   stops reading as text and starts reading as a tag. */
+[data-carry] :is(.ps-ops-item, .ps-ops-field, .ps-ops-row) {
+  border-radius: var(--pvs-radius-control);
+}
+
+[data-carry] :is(.ps-ops-chart, .ps-ops-table, .ps-ops-panel, .ps-ops-rail, .ps-docs-note, .ps-docs-rail, .ps-index-cap) {
+  border-radius: var(--pvs-radius-surface);
+}
+
+/* A switch is the most control-shaped thing a tool has, so it is where this
+   answer reads hardest: fully round under Pill, and squared under Sharp, where a
+   drafted page should have no round control left on it. The knob follows the
+   track, because a square switch holding a circle is neither answer. Both were
+   fixed at 999px, which is the pill answer already given away. */
+[data-carry] :is(.ps-ops-toggle, .ps-ops-toggle::after) {
+  border-radius: var(--pvs-radius-control);
+}
+
+/* A bar stands on the axis, so only the two corners off it can take a radius.
+   Read off the surface slot rather than the control slot: a fully round bar at
+   Pill would be a lozenge floating over the baseline it is measured from. */
+[data-carry] .ps-ops-plot > i {
+  border-radius: var(--pvs-radius-surface) var(--pvs-radius-surface) 0 0;
+}
+
+/* Which of these actually carries a ground is the boundary answer's business, so
+   the depth screen withholds the lift where the answer left the box transparent.
+   The slots are wired here; the gating is in depth.css beside the answer that
+   knows it. */
+[data-carry] :is(.ps-ops-chart, .ps-ops-table, .ps-docs-note) {
+  box-shadow: var(--pvs-shadow-card);
+}
+
+[data-carry] :is(.ps-ops-item--on, .ps-ops-field, .ps-ops-toggle) {
+  box-shadow: var(--pvs-shadow-control);
+}
+
+[data-carry] :is(.ps-ops-rail, .ps-ops-panel, .ps-docs-rail) {
+  box-shadow: var(--pvs-shadow-surface);
+}
+
+/* ── The bands the answer divides ────────────────────────────
+   The layout answer's column tracks, per body. Every track is a whole number of
+   the field's columns, and the halves added on are the halves of a gutter that
+   put a region's dividing line down the middle of a gutter rather than against
+   one edge of it: a shell's regions abut and are told apart by a rule, where a
+   page's blocks are told apart by air. Defaults are the shape the drawing had
+   before the answer was asked, so a board is never left without one. */
+[data-carry] .ps-ops {
+  grid-template-columns: var(--pvs-shell-cols, calc(var(--pvs-w2, 15.3333%) + var(--pvs-gut, 1.6%) / 2) calc(var(--pvs-w7, 57.6667%) + var(--pvs-gut, 1.6%)) minmax(0, 1fr));
+  column-gap: 0;
+  padding-inline: var(--ps-gutter);
+}
+
+[data-carry] .ps-docs {
+  grid-template-columns: var(--pvs-measure-cols, calc(var(--pvs-w3, 23.8%) + var(--pvs-gut, 1.6%) / 2) minmax(0, 1fr));
+  padding-inline: var(--ps-gutter);
+}
+
+/* The metrics row is the shell's second reading of the answer: three equal
+   thirds under a strict grid, and the lead figure taking more than its
+   neighbours once the answer allows an emphasis. */
+[data-carry] .ps-ops-metrics {
+  grid-template-columns: var(--pvs-metric-cols, repeat(3, minmax(0, 1fr)));
+}
+
+[data-carry] .ps-index-row {
+  grid-template-columns: var(--pvs-entry-cols, var(--pvs-w6, 49.2%) minmax(0, 1fr));
+  column-gap: var(--pvs-gut, 1.6%);
+}
+
+[data-carry] .ps-index-row--flip {
+  grid-template-columns: var(--pvs-entry-flip-cols, minmax(0, 1fr) var(--pvs-w6, 49.2%));
+}
+
+/* The rail and the panel start on the page's margin like the nav's mark above
+   them, so their own inset is spent on the inside edge only and the dividing
+   line lands on the column line rather than a text inset past it. */
+[data-carry] .ps-ops-rail {
+  padding-left: 0;
+}
+
+[data-carry] .ps-ops-panel {
+  padding-right: 0;
+}
+
+[data-carry] .ps-docs-rail {
+  padding-left: 0;
+}
+
+/* The measure starts on the next column's own left edge, which is half a gutter
+   past the line the rail's rule stands on. A text inset chosen for looks would
+   put every line of the document a few points off the grid it is being checked
+   against, and this is the one screen where that is the fault on show. */
+[data-carry] .ps-docs-main {
+  padding-inline: calc(var(--pvs-gut, 1.6%) / 2) 0;
+}
+
+/* ── Filling the band ────────────────────────────────────────
+   The trap the docs board hit: a column holding less than its band pools all the
+   slack under the last block and leaves the footer standing on white. Bars are
+   shorter than the lines they stand in for, so these boards have more slack than
+   the specimens do, and every one of them spreads it between the blocks instead.
+
+   Under the query rather than always, and asked of the board's own height rather
+   than the window's, because the ladder floors on a small window while the frame
+   keeps shrinking: below this there is no slack to spread and forcing the spread
+   would push the last block through the footer. */
+[data-carry][data-surface="read"] {
+  container-type: size;
+  container-name: ps-docs-board;
+}
+
+[data-carry][data-surface="operate"] {
+  container-type: size;
+  container-name: ps-ops-board;
+}
+
+@container ps-docs-board (height >= 300px) {
+  [data-carry] .ps-docs-main {
+    align-content: space-between;
+    padding-bottom: var(--ps-band-y);
+  }
+
+  [data-carry] .ps-phone-body:has(.ps-docs-list) {
+    align-content: space-between;
+  }
+}
+
+/* The tool fills its pane differently from the document, and the difference is
+   real rather than a taste: a chart and a table are the two blocks on a
+   dashboard that are *given* their height rather than taking it from what is in
+   them, so the slack goes into them instead of into the gaps between blocks.
+   Spreading the gaps here left a shell whose four blocks floated apart with
+   nothing between them, which is the same emptiness the docs fix was chasing. */
+@container ps-ops-board (height >= 300px) {
+  [data-carry] .ps-ops-main {
+    grid-template-rows: auto auto minmax(0, 1fr) minmax(0, 1fr);
+    align-content: stretch;
+    padding-bottom: var(--ps-band-y);
+  }
+
+  [data-carry] .ps-ops-chart {
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+
+  [data-carry] .ps-ops-plot {
+    height: auto;
+    min-height: 0;
+  }
+
+  [data-carry] .ps-ops-table {
+    align-content: space-between;
+  }
+
+  /* Same reading on the handset: the plot is the block whose height is a count
+     rather than its contents, so it is the one that takes up the slack. */
+  [data-carry][data-surface="operate"] .ps-phone-body {
+    grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+    align-content: stretch;
+  }
+
+  [data-carry][data-surface="operate"] .ps-phone-body .ps-ops-plot {
+    height: auto;
+    min-height: 0;
+  }
 }
 
 .picker-palette-hint {
@@ -6140,6 +7111,73 @@ body.picker-page {
   justify-items: start;
   gap: 28px;
   color: var(--ks-text-muted);
+}
+
+/* Finish screen: the review copy plus the loader that covers the save and
+   the handoff into the design context document. */
+.picker-finish {
+  max-width: 560px;
+  gap: 18px;
+}
+
+.picker-finish-lede {
+  margin: 0;
+  color: var(--ks-text-muted);
+  font-size: 1.05rem;
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+.picker-finish-loader {
+  width: min(360px, 100%);
+  height: 2px;
+  margin-top: 10px;
+  background: color-mix(in oklab, var(--ks-text) 14%, transparent);
+  overflow: hidden;
+}
+
+.picker-finish-loader i {
+  display: block;
+  height: 100%;
+  width: 38%;
+  background: var(--ks-kinpaku);
+  animation: picker-finish-sweep 1.4s var(--ks-ease) infinite;
+}
+
+.picker-finish-loader[data-stalled] i {
+  animation-play-state: paused;
+  opacity: 0.35;
+}
+
+@keyframes picker-finish-sweep {
+  from { translate: -100% 0; }
+  to { translate: 380% 0; }
+}
+
+.picker-finish-status {
+  margin: 0;
+  min-height: 1.6em;
+  color: var(--ks-text-faint);
+  font-size: 0.84rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.picker-finish-error {
+  margin: 0;
+  color: var(--ks-text-muted);
+  font-size: 0.94rem;
+  line-height: 1.6;
+}
+
+/* The stack's own display beats the hidden attribute's UA rule, so the error
+   state needs the attribute spelled out. */
+.picker-finish [data-doc-error][hidden] {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .picker-finish-loader i { animation: none; translate: 0 0; width: 100%; opacity: 0.5; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -6,6 +6,8 @@
  */
 
 import http from 'node:http';
+import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { readFile, mkdir, stat, writeFile } from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
@@ -203,11 +205,19 @@ async function handleRequest(request, response) {
     await writeFile(answersPath, `${JSON.stringify(answers, null, 2)}\n`);
     completed = true;
     clearTimeout(timeout);
+
+    /* The document the review tab is about to reveal stays editable through a
+       detached sibling: it owns the edit endpoints on its own port, so this
+       process can still exit as the agent's completion signal. The tab learns
+       where to reach it from this response; the agent learns from
+       doc-session.json, which the sibling writes at boot. */
+    const doc = await spawnDocSession();
     response.once('finish', () => {
       console.log(`ANSWERS ${answersPath}`);
       server.close(() => process.exit(0));
+      server.closeAllConnections?.();
     });
-    sendJson(response, 200, { ok: true });
+    sendJson(response, 200, { ok: true, doc });
     return;
   }
 
@@ -273,6 +283,28 @@ async function handleRequest(request, response) {
 
   const assetPath = requestPath === '/' ? 'index.html' : requestPath.slice(1);
   await serveFile(response, pickerDir, assetPath);
+}
+
+async function spawnDocSession() {
+  try {
+    const docPort = await findOpenPort(port + 1);
+    const docToken = randomUUID();
+    const child = spawn(process.execPath, [
+      path.join(scriptDir, 'picker-doc-session.mjs'),
+      '--port', String(docPort),
+      '--timeout', String(options.timeoutMinutes),
+    ], {
+      cwd: process.cwd(),
+      detached: true,
+      stdio: 'ignore',
+      env: { ...process.env, IMPECCABLE_DOC_TOKEN: docToken },
+    });
+    child.unref();
+    return { base: `http://127.0.0.1:${docPort}`, token: docToken };
+  } catch {
+    /* The document still renders read-only; only the edit loop is lost. */
+    return null;
+  }
 }
 
 function stopWithoutSubmission(message) {

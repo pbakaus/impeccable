@@ -80,3 +80,42 @@
 #picker-form:not(:has(input[name="boundary-style"][value="surface-changes"]:checked)) [data-carry] :is(.ps-nav, .ps-phone-top) {
   box-shadow: none;
 }
+
+/* ── The same rule, on the three region bodies ────────────────
+   Each part is asked the same question the card above was: does the boundary
+   answer leave a ground under it. The answer differs part by part, because a
+   shell's regions, a document's callout, and an index's alternating band are
+   each filled by a different one of the four answers.
+
+   A rail and a document's rail take a ground only where sections are told apart
+   by tone, so that is the only answer they lift under. The side panel is filled
+   by that answer and by the card answer, so it lifts under both. */
+#picker-form:not(:has(input[name="boundary-style"][value="surface-changes"]:checked)) [data-carry] :is(.ps-ops-rail, .ps-docs-rail) {
+  box-shadow: none;
+}
+
+#picker-form:not(:has(input[name="boundary-style"][value="surface-changes"]:checked)):not(:has(input[name="boundary-style"][value="cards-and-panels"]:checked)) [data-carry] .ps-ops-panel {
+  box-shadow: none;
+}
+
+/* The chart and the table are containers only under the card answer. Under the
+   others the lift moves inward to the plot's bars, which are the one part of a
+   chart that is a surface in its own right, exactly as the landing page's card
+   hands its lift to the picture inside it. */
+#picker-form:not(:has(input[name="boundary-style"][value="cards-and-panels"]:checked)) [data-carry] :is(.ps-ops-chart, .ps-ops-table) {
+  box-shadow: none;
+}
+
+#picker-form:not(:has(input[name="boundary-style"][value="cards-and-panels"]:checked)) [data-carry] .ps-ops-plot > i {
+  box-shadow: var(--pvs-shadow-card);
+}
+
+/* The callout and the index's second entry are both filled by the tone answer
+   alone, so both are held to it. */
+#picker-form:not(:has(input[name="boundary-style"][value="surface-changes"]:checked)) [data-carry] .ps-docs-note {
+  box-shadow: none;
+}
+
+#picker-form:has(input[name="boundary-style"][value="surface-changes"]:checked) [data-carry] .ps-index-row--flip {
+  box-shadow: var(--pvs-shadow-card);
+}

@@ -115,3 +115,90 @@
 [data-carry] .ps-phone-body .ps-gallery-item {
   padding: calc(var(--pvs-panel-pad, 0px) * 0.5);
 }
+
+/* ── The three region bodies ──────────────────────────────────
+   A shell, a document, and an index are separated in different places from a
+   landing page, so the same four answers are spent on different parts. What is
+   shared is the material: the answers above set a hairline, a ground, or an edge,
+   and each body below reads the one it has a use for.
+
+   The dividing rules on these bodies were hardcoded hairlines, which is the
+   thing this screen is asking about. A shell with a permanent rule down its rail
+   answers Open space with a line still on screen. */
+[data-carry] :is(.ps-ops-rail, .ps-ops-main, .ps-docs-rail) {
+  border-right: var(--pvs-divider-w) solid var(--pvs-divider-c);
+}
+
+/* A table is a run of sections stacked, so the hairline answer rules it. The
+   plot's own baseline is not in here: an axis is part of the chart's drawing and
+   not a boundary between two things. */
+[data-carry] .ps-ops-table {
+  border-top: var(--pvs-divider-w) solid var(--pvs-divider-c);
+}
+
+[data-carry] .ps-ops-row + .ps-ops-row {
+  border-top: var(--pvs-divider-w) solid var(--pvs-divider-c);
+}
+
+[data-carry] .ps-index-row + .ps-index-row,
+[data-carry] .ps-index-rail {
+  border-top: var(--pvs-divider-w) solid var(--pvs-divider-c);
+}
+
+[data-carry] :is(.ps-index-row + .ps-index-row, .ps-index-rail) {
+  padding-top: calc(var(--pvs-divider-w) * 8);
+}
+
+/* Grounds. Each one fills its own region and stops at the page margin rather than
+   bleeding to the frame edge. That is the same claim the layout screen's header
+   makes about these boards: their regions sit on the page grid, so the rail's
+   ground starts where the rail starts, on the first column line. Reaching the
+   edge would need the margin restated as a share of a different box, and the two
+   percentages do not resolve against the same width, so the tone would land a
+   point or two off the very line the board is drawn to check. */
+[data-carry] :is(.ps-ops-rail, .ps-ops-panel, .ps-docs-rail) {
+  background-color: var(--pvs-band);
+}
+
+/* Alternating grounds are what a run of entries has instead of bands: the second
+   entry sits on a different tone from the first, and the boundary is where the
+   tone changes. */
+[data-carry] .ps-index-row--flip {
+  background-color: var(--pvs-band-alt);
+}
+
+/* A table's heading row is the one place on a shell where a change of ground
+   does the whole job a rule would have done. */
+[data-carry] .ps-ops-row--head {
+  background-color: var(--pvs-band-alt);
+}
+
+/* The callout is the document's only container, so it is where this screen's
+   answer lands. Its accent edge is not part of the answer: that is what marks
+   the block as a callout, and it stays under all three. */
+[data-carry] .ps-docs-note {
+  padding: calc(var(--pt-base) * 0.7) calc(var(--pt-base) * 0.9);
+  background-color: var(--pvs-band-alt);
+  border-left: calc(var(--pt-base) * 0.25) solid var(--pvs-accent-c);
+}
+
+/* Cards, on a tool. Offered to Persuade and Operate only, so a shell is the one
+   region body that draws it: the chart, the table, and the side panel become
+   objects on a ground, and the rules that had been dividing them go, because an
+   edge and a hairline saying the same thing twice is the fault the answer after
+   Open space is meant to avoid. */
+[data-carry] :is(.ps-ops-chart, .ps-ops-table, .ps-ops-panel) {
+  background-color: var(--pvs-panel);
+  border: var(--pvs-panel-edge-w) solid var(--pvs-panel-edge);
+}
+
+[data-carry] :is(.ps-ops-chart, .ps-ops-table) {
+  padding: var(--pvs-panel-pad, 0px);
+}
+
+/* An open rail plate is a state and reads as one already, so under the card
+   answer the rest of the rail joins it rather than the plate growing an edge. */
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked)) [data-carry] .ps-ops-item,
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="cards-and-panels"]) .picker-preview-boundaries .ps-ops-item {
+  background-color: var(--pvs-panel);
+}
