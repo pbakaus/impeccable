@@ -480,13 +480,11 @@ const hook = type ? '' : undefined;
         </div>
       </div>
       )}
-      <div class="ps-phone-footer">
-        {type ? (
-          <Fragment><i data-type-footer-link></i><i data-type-footer-link></i><i data-type-footer-link></i></Fragment>
-        ) : (
+      {!type && (
+        <div class="ps-phone-footer">
           <Fragment><i></i><i></i><i></i></Fragment>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )}
 

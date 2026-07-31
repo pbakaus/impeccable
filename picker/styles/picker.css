@@ -2723,54 +2723,15 @@ body.picker-page {
    grid with the buttons underneath it and leaves this one 90px short of what it
    now owns. */
 .picker-screen[data-screen="03"] .picker-strategy-grid {
-  --pk-fit: calc(100svh - var(--pk-chrome, 250px));
-  max-height: var(--pk-fit);
-  grid-template-rows: minmax(0, 1fr) auto;
-  row-gap: 14px;
+  max-height: calc(100svh - var(--pk-chrome, 346px));
 }
 
 .picker-screen[data-screen="03"] .picker-strategy-grid > .picker-type-rail {
-  grid-row: 1 / -1;
-  grid-template-rows: subgrid;
-  /* The rail is measured against the viewport rather than against the frame
-     beside it. The frame draws the chosen surface at that drawing's own ratio,
-     which is wider than the artboard this column used to hold, so matching its
-     height would spend the whole column on four rows of 78px.
-
-     The band no longer has to give on a short viewport: the row it sits in is
-     shared with the CTA stack, which is 90px whatever the viewport does, so
-     anything the band gave back would be spent on empty space beside the
-     buttons. */
-  --pk-band: 96px;
+  height: auto;
+  align-self: start;
+  grid-template-rows: auto auto auto;
 }
 
-/* These four rows are what the top row of the screen measures, and the frame
-   beside them takes whatever they come to, so this is also where the drawing's
-   height is decided.
-
-   Floored at 88px, which is the tallest option's two lines plus the air they
-   need to read as a paragraph rather than a block. Below that the row has no
-   padding left to give and the sentence is what gets cut, so past the floor the
-   panel is allowed to run past the budget and scroll instead. */
-.picker-screen[data-screen="03"] .picker-strategy-choices.picker-type-options {
-  /* The row formula below is the only cap this panel needs. The shared one
-     measures against the column budget alone, which on a short viewport asks
-     for less than the floor and clips the fourth option to reach it. */
-  max-height: none;
-  /* The row is the panel's own height at every size the budget clears, so
-     filling it costs nothing there and buys the scroll on the sizes where the
-     four rows have stopped fitting. */
-  align-self: stretch;
-  /* The 16 the rows do not get is the row the palette and the buttons share,
-     less the grid's own row gap and the panel's hairline. */
-  grid-auto-rows: max(88px, min(108px, calc((var(--pk-fit) - var(--pk-band) - 16px) / 4)));
-}
-
-/* Equal rows, sized by the tallest one's copy rather than by how many there
-   are. Stretching the tracks to the artboard's height instead makes a row on a
-   three-option screen half again as tall as the same row on a four-option one,
-   and the difference is spent on empty space under two lines of text. The
-   panel hugs the rows it has, so nothing draws an empty band underneath. */
 .picker-strategy-choices.picker-type-options {
   align-self: start;
   max-height: var(--pk-column);
@@ -2960,25 +2921,9 @@ body.picker-page {
    hold either way. Persuade is still drawn in pixels and sits loose in a frame
    this size.
    ============================================================ */
-.picker-strategy-subgrid {
-  min-width: 0;
-  grid-row: 1 / -1;
-  display: grid;
-  grid-template-rows: subgrid;
-}
-
-/* Centred on the frame rather than on the page, which is where the question was
-   answered. The row is sized for the palette across from it and the buttons come
-   to a few pixels less, so they take the middle of it. */
-.picker-strategy-subgrid > .picker-actions-stack {
-  align-content: center;
-}
-
-/* The stage is the frame's own box plus the strip over it: a row for the tab
-   strip and a row for the frame, so the strip's height is room the layout
-   reserved rather than room taken off the question above. */
 .picker-strategy-stage {
   min-width: 0;
+  min-height: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
 }
@@ -2992,6 +2937,8 @@ body.picker-page {
   /* The frame runs down to the bottom of the choices beside it, so it takes the
      row's height rather than the 16 / 7 it carries everywhere else. */
   aspect-ratio: auto;
+  width: 100%;
+  height: 100%;
 }
 
 /* The tiles and the palette screen show the drawing at a fraction of this
@@ -4381,8 +4328,8 @@ body.picker-page {
      heading is the wide one. Both are counted in the base step, so the cadence
      holds while every size in the column moves. */
   gap: calc(var(--sp-rhythm) * 1.5);
-  padding-block: clamp(14px, 2.4%, 28px);
-  padding-inline: calc(var(--sp-rail) + var(--sp-rail-gap) + 4px) 16px;
+  padding-block: calc(clamp(14px, 2.4%, 28px) + 10px) clamp(14px, 2.4%, 28px);
+  padding-inline: calc(var(--sp-rail) + var(--sp-rail-gap) + 8px) 16px;
   background: var(--ks-lacquer-raised);
   color: var(--ks-text);
   border: 1px solid var(--ks-rule);
@@ -5221,6 +5168,7 @@ body.picker-page {
 
 .picker-preview-type .ps-phone {
   --ps-gutter: 6%;
+  grid-template-rows: 7.2% 1fr;
 }
 
 /* On a structural board the band inset is the drawn field's own margin, and it is
@@ -5268,7 +5216,7 @@ body.picker-page {
 /* The pair is the subject and the image is a placeholder for one, so the copy
    takes the column and the image takes what it needs to read as a picture. */
 .picker-preview-type .ps-hero {
-  grid-template-columns: minmax(0, 1fr) 26%;
+  grid-template-columns: minmax(0, 1fr) 34%;
   gap: var(--ps-gap-lg);
   padding: var(--ps-band-y) var(--ps-gutter);
 }
@@ -5300,7 +5248,7 @@ body.picker-page {
    what centers in the band, so a pair that sets a shorter title does not leave
    the whole section sitting against the rule above it. */
 .picker-preview-type .ps-editorial {
-  grid-template-columns: minmax(0, 1fr) 38%;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: var(--ps-gap-lg);
   align-content: center;
   align-items: start;
@@ -5315,6 +5263,16 @@ body.picker-page {
   height: auto;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--ps-gap-md);
+  justify-items: center;
+}
+
+.picker-preview-type .ps-desktop .ps-gallery-item {
+  justify-items: center;
+  text-align: center;
+}
+
+.picker-preview-type .ps-desktop .ps-gallery-item span {
+  align-items: center;
 }
 
 /* The thumbnail stands in for a picture, not for the band: left to fill the
@@ -5330,6 +5288,10 @@ body.picker-page {
   width: 100%;
   max-width: calc(var(--pt-base) * 4);
   aspect-ratio: 1;
+}
+
+.picker-preview-type .ps-desktop .ps-gallery-item > i {
+  margin-inline: auto;
 }
 
 /* Words set taller than bars, and the phone is the narrowest frame they have
@@ -5359,6 +5321,65 @@ body.picker-page {
 
 .picker-preview-type[data-surface="persuade"] .ps-phone-body {
   grid-template-rows: repeat(5, auto);
+  gap: 0;
+  align-content: start;
+}
+
+.picker-preview-type[data-surface="persuade"] .ps-phone-body .pt-headline {
+  font-size: 26px;
+  line-height: 1.15;
+  margin-block-end: 8px;
+}
+
+.picker-preview-type[data-surface="persuade"] .ps-phone-body .pt-body {
+  margin-block-end: var(--ps-gap-md);
+}
+
+.picker-preview-type[data-surface="persuade"] .ps-phone-body .ps-actions {
+  margin-block-end: var(--ps-gap-lg);
+}
+
+.picker-preview-type[data-surface="persuade"] .ps-phone-body .ps-proof {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--ps-gap-md);
+  margin-block-end: var(--ps-gap-md);
+}
+
+.picker-preview-type[data-surface="persuade"] .ps-phone-body .ps-proof-divider,
+.picker-preview-type[data-surface="persuade"] .ps-phone-body .ps-proof-item:nth-of-type(2) {
+  display: none;
+}
+
+.picker-preview-type[data-surface="persuade"] .ps-phone-body .ps-proof-item:first-of-type {
+  grid-column: 2;
+  justify-content: center;
+}
+
+.picker-preview-type[data-surface="persuade"] .ps-phone-body .ps-proof::before,
+.picker-preview-type[data-surface="persuade"] .ps-phone-body .ps-proof::after {
+  content: "";
+  position: static;
+  width: 5px;
+  height: 5px;
+  background: none;
+  border-left: 1px solid color-mix(in oklab, var(--pvs-bars) 38%, transparent);
+  border-bottom: 1px solid color-mix(in oklab, var(--pvs-bars) 38%, transparent);
+  align-self: center;
+}
+
+.picker-preview-type[data-surface="persuade"] .ps-phone-body .ps-proof::before {
+  grid-column: 1;
+  transform: rotate(45deg);
+}
+
+.picker-preview-type[data-surface="persuade"] .ps-phone-body .ps-proof::after {
+  grid-column: 3;
+  transform: rotate(-135deg);
+}
+
+.picker-preview-type[data-surface="persuade"] .ps-phone-body .ps-editorial-copy {
+  gap: var(--ps-gap-xs);
 }
 
 /* One gap owns the spacing down the phone. The margins underneath it were a
@@ -5736,7 +5757,9 @@ body.picker-page {
 }
 
 .picker-preview-type .ps-gallery-item span {
-  gap: var(--ps-gap-xs);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 /* Card labels wrap instead of truncating: a two-line label still reads, and a
@@ -5745,10 +5768,18 @@ body.picker-page {
   overflow: visible;
   color: var(--pvs-bars);
   white-space: normal;
+  text-box: unset;
+  display: block;
 }
 
-.picker-preview-type .ps-gallery-item b:first-child {
+.picker-preview-type .ps-gallery-item b:first-child,
+.picker-preview-type .ps-gallery-item [data-type-gallery-title] {
   color: var(--pvs-title);
+  line-height: 1.38;
+}
+
+.picker-preview-type .ps-gallery-item b:last-child {
+  line-height: 1.45;
 }
 
 /* ============================================================
