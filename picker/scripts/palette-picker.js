@@ -51,6 +51,52 @@ const LOREM = {
   caption: 'Lorem ipsum dolor sit amet, consectetur adipiscing.',
 };
 
+/* Every word slot on the font boards, in lorem. A pair is judged on glyphs, and
+   product words pull the eye into reading the page instead of the setting, so
+   the type screen draws placeholder copy in every slot rather than only in the
+   running text. Titles are one word because the slot is one line wide. */
+const LOREM_PREVIEW = {
+  brand: 'Lo',
+  nav: ['Lorem', 'Ipsum', 'Dolor', 'Amet'],
+  navAction: 'Consectetur',
+  menuAction: 'Ipsum',
+  ctaPrimary: 'Lorem ipsum',
+  ctaSecondary: 'Dolor sit',
+  proof: ['Lorem ipsum dolor', 'Sit amet elit', 'Sed do eiusmod', 'Tempor incididunt'],
+  sectionTitle: 'Lorem ipsum dolor sit',
+  sectionLink: 'Consectetur adipiscing',
+  gallery: [
+    { title: 'Lorem', meta: 'Ipsum dolor' },
+    { title: 'Dolor', meta: 'Sit amet' },
+    { title: 'Eiusmod', meta: 'Tempor elit' },
+  ],
+  footerLinks: ['Lorem', 'Ipsum', 'Dolor', 'Amet'],
+  footerMark: '© Lorem ipsum',
+};
+
+const LOREM_SPECIMEN = { headline: 'Lorem ipsum dolor sit amet' };
+
+const LOREM_APP = {
+  rail: ['Lorem', 'Ipsum', 'Dolor'],
+  columns: ['Lorem', 'Ipsum', 'Dolor'],
+  figures: ['1,284', '98.2%', '41'],
+  amounts: ['$12,400', '$3,860', '$9,215'],
+  panel: ['Lorem ipsum', 'Dolor sit amet'],
+  switches: ['Lorem ipsum', 'Dolor sit'],
+  chartTitle: 'Lorem ipsum dolor',
+  lanes: ['Lorem', 'Ipsum', 'Dolor', 'Amet', 'Elit'],
+};
+
+const LOREM_DOCS = {
+  rail: ['Lorem ipsum', 'Dolor', 'Consectetur', 'Adipiscing elit'],
+  crumb: 'Lorem / Ipsum dolor',
+  note: 'Nota',
+};
+
+const LOREM_INDEX = {
+  stops: ['Lorem', 'Ipsum', 'Dolor', 'Amet'],
+};
+
 /* The desktop artboard sets three cards and the phone two, so a fourth would
    be words the agent writes and nobody ever reads. */
 const GALLERY_CARDS = 3;
@@ -358,13 +404,14 @@ function fillIndexed(root, selector, values) {
    and a board takes the slots its surface has and leaves the rest alone. The
    desktop and the phone are filled separately because the indexed slots start
    counting again on each. */
-function fillBoard(board, preview, specimen) {
+function fillBoard(board) {
+  const preview = LOREM_PREVIEW;
+  const specimen = LOREM_SPECIMEN;
   const desktop = board.querySelector('.ps-desktop');
   const phoneBody = board.querySelector('.ps-phone-body');
-  const phoneFooter = board.querySelector('.ps-phone-footer');
   // A rail means the sections of a document on one board and the areas of a
   // tool on the other, so it is the one slot whose words the surface decides.
-  const rail = board.dataset.surface === 'read' ? DOCS.rail : APP.rail;
+  const rail = board.dataset.surface === 'read' ? LOREM_DOCS.rail : LOREM_APP.rail;
   const fill = (selector, value) => {
     for (const node of board.querySelectorAll(selector)) node.textContent = value;
   };
@@ -379,11 +426,11 @@ function fillBoard(board, preview, specimen) {
   fill('[data-type-section-body]', LOREM.paragraph);
   fill('[data-type-section-link]', preview.sectionLink);
   fill('[data-type-footer-mark]', preview.footerMark);
-  fill('[data-type-note-label]', DOCS.note);
+  fill('[data-type-note-label]', LOREM_DOCS.note);
   fill('[data-type-note-body]', LOREM.note);
-  fill('[data-type-crumb]', DOCS.crumb);
+  fill('[data-type-crumb]', LOREM_DOCS.crumb);
   fill('[data-type-caption]', LOREM.caption);
-  fill('[data-type-chart-title]', APP.chartTitle);
+  fill('[data-type-chart-title]', LOREM_APP.chartTitle);
   for (const card of [desktop, phoneBody]) {
     fillIndexed(card, '[data-type-nav]', preview.nav);
     fillIndexed(card, '[data-type-proof]', preview.proof);
@@ -391,27 +438,19 @@ function fillBoard(board, preview, specimen) {
     fillIndexed(card, '[data-type-gallery-meta]', preview.gallery.map(({ meta }) => meta));
     fillIndexed(card, '[data-type-passage]', LOREM.passages);
     fillIndexed(card, '[data-type-item]', LOREM.items);
-    fillIndexed(card, '[data-type-stop]', INDEX.stops);
+    fillIndexed(card, '[data-type-stop]', LOREM_INDEX.stops);
     fillIndexed(card, '[data-type-rail]', rail);
-    fillIndexed(card, '[data-type-lane]', APP.lanes);
-    fillIndexed(card, '[data-type-column]', APP.columns);
-    fillIndexed(card, '[data-type-figure]', APP.figures);
-    fillIndexed(card, '[data-type-amount]', APP.amounts);
-    fillIndexed(card, '[data-type-panel]', APP.panel);
-    fillIndexed(card, '[data-type-switch]', APP.switches);
+    fillIndexed(card, '[data-type-lane]', LOREM_APP.lanes);
+    fillIndexed(card, '[data-type-column]', LOREM_APP.columns);
+    fillIndexed(card, '[data-type-figure]', LOREM_APP.figures);
+    fillIndexed(card, '[data-type-amount]', LOREM_APP.amounts);
+    fillIndexed(card, '[data-type-panel]', LOREM_APP.panel);
+    fillIndexed(card, '[data-type-switch]', LOREM_APP.switches);
   }
   fillIndexed(desktop?.querySelector('.ps-footer'), '[data-type-footer-link]', preview.footerLinks);
-  fillIndexed(phoneFooter, '[data-type-footer-link]', preview.footerLinks);
 }
 
 function syncFontPair(pair) {
-  const manifest = fontManifest;
-  const preview = {
-    ...FALLBACK_FONTS.preview,
-    ...manifest.preview,
-    ...pair.preview,
-  };
-  const specimen = { ...manifest.specimen, ...pair.specimen };
   // Written once on the stage the boards share, and on screen 05's two preview
   // columns, which are set in the pair chosen here so the faces travel with it.
   for (const target of [typeStage, scaleSheet, scaleSpecimen]) {
@@ -419,7 +458,7 @@ function syncFontPair(pair) {
     target.style.setProperty('--pt-body', fontStack(pair.body.family));
     target.style.setProperty('--pt-heading-weight', pair.heading.weight);
   }
-  for (const board of typeBoards) fillBoard(board, preview, specimen);
+  for (const board of typeBoards) fillBoard(board);
   document.querySelector('[name="font-heading"]').value = pair.heading.family;
   document.querySelector('[name="font-body"]').value = pair.body.family;
   document.querySelector('[name="font-heading-source"]').value = pair.heading.source || '';

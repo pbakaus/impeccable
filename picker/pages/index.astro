@@ -734,7 +734,7 @@ const questions = [
       <section class="picker-screen" data-screen="03" data-step="Color strategy" aria-hidden="true" aria-labelledby="picker-strategy-title">
         <div class="picker-container">
           <div class="picker-strategy">
-            <h2 id="picker-strategy-title" class="picker-question-title">How much color<br />should this design use?</h2>
+            <h2 id="picker-strategy-title" class="picker-question-title">How much color should this design use?</h2>
 
             <div class="picker-strategy-grid">
               <div class="picker-type-rail">
@@ -808,27 +808,21 @@ const questions = [
                 <p class="picker-band-status" data-reorder-status role="status" aria-live="polite"></p>
               </div>
 
-              <div class="picker-strategy-subgrid">
-                {/* The stage the chosen surfaces are drawn on. Its contents are
-                    lifted from the tiles on screen 01b, so it is filled by
-                    script. The clones land inside the stage, which is why the
-                    buttons are its sibling rather than its last child. */}
-                <div class="picker-strategy-stage" data-surface-stage>
+              <div class="picker-strategy-stage" data-surface-stage>
                   <div class="picker-surface-tabs" {...surfaceTabsAttrs('color-strategy')} hidden></div>
                 </div>
+            </div>
 
-                <div class="picker-actions-stack">
-                  <button class="ks-button ks-button-primary" type="button" data-advance="next">
-                    Select this strategy
-                    <span class="ks-button-arrow" aria-hidden="true">
-                      <svg viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square">
-                        <path d="M0 4h14M10 0l4 4-4 4"></path>
-                      </svg>
-                    </span>
-                  </button>
-                  <button class="picker-back" type="button" data-advance="prev">Back</button>
-                </div>
-              </div>
+            <div class="picker-actions-stack">
+              <button class="ks-button ks-button-primary" type="button" data-advance="next">
+                Select this strategy
+                <span class="ks-button-arrow" aria-hidden="true">
+                  <svg viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square">
+                    <path d="M0 4h14M10 0l4 4-4 4"></path>
+                  </svg>
+                </span>
+              </button>
+              <button class="picker-back" type="button" data-advance="prev">Back</button>
             </div>
           </div>
         </div>
