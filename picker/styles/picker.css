@@ -3888,14 +3888,32 @@ body.picker-page {
   .ps-gallery-item b,
   .ps-footer-links i,
   .ps-footer-mark,
-  .ps-phone-footer i
+  .ps-phone-footer i,
+  .ps-ops-rail,
+  .ps-ops-main,
+  .ps-ops-item,
+  .ps-ops-chart,
+  .ps-ops-table,
+  .ps-ops-row,
+  .ps-ops-panel,
+  .ps-ops-plot > i,
+  .ps-docs-rail,
+  .ps-docs-note,
+  .ps-index-row,
+  .ps-index-rail
 ) {
+  /* Width, margin, and padding ride along so the boundary answers morph rather
+     than snap: a hairline grows out of nothing, the proof band slides off the
+     page margins, and a card's padding opens instead of jumping. */
   transition:
     background-color 280ms var(--ks-ease),
     background-image 280ms var(--ks-ease),
     border-color 280ms var(--ks-ease),
+    border-width 280ms var(--ks-ease),
     border-radius 280ms var(--ks-ease),
-    box-shadow 280ms var(--ks-ease);
+    box-shadow 280ms var(--ks-ease),
+    margin 280ms var(--ks-ease),
+    padding 280ms var(--ks-ease);
 }
 
 .picker-preview-type :is(
@@ -7244,7 +7262,19 @@ body.picker-page {
     .ps-gallery-item b,
     .ps-footer-links i,
     .ps-footer-mark,
-    .ps-phone-footer i
+    .ps-phone-footer i,
+    .ps-ops-rail,
+    .ps-ops-main,
+    .ps-ops-item,
+    .ps-ops-chart,
+    .ps-ops-table,
+    .ps-ops-row,
+    .ps-ops-panel,
+    .ps-ops-plot > i,
+    .ps-docs-rail,
+    .ps-docs-note,
+    .ps-index-row,
+    .ps-index-rail
   ),
   .picker-preview-type :is(
     .ps-desktop,
