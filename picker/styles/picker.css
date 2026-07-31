@@ -3038,10 +3038,10 @@ body.picker-page {
   z-index: 1;
   grid-row: 1;
   justify-self: end;
-  margin-bottom: -1px;
+  margin-bottom: 16px;
   display: flex;
-  gap: 2px;
-  padding: 4px;
+  gap: 3px;
+  padding: 5px;
   background: var(--ks-lacquer-raised);
   border: 1px solid var(--ks-rule);
   border-radius: 2px;
@@ -3058,14 +3058,14 @@ body.picker-page {
 .picker-surface-tab {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
+  gap: 13px;
+  padding: 11px 15px;
   color: var(--ks-text-muted);
   background: transparent;
   border: 0;
   border-radius: 2px;
   font-family: inherit;
-  font-size: 0.8rem;
+  font-size: 1rem;
   letter-spacing: 0.04em;
   line-height: 1.15;
   white-space: nowrap;
@@ -3094,10 +3094,19 @@ body.picker-page {
    deliberately, hollow while it is still carrying the default it was given. */
 .picker-surface-dot {
   flex: none;
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border: 1px solid color-mix(in oklab, var(--ks-patina) 55%, transparent);
   border-radius: 50%;
+}
+
+/* The open tab's dot, checked the way a radio is. The plate behind the tab
+   already says which one is open, but a row of hollow dots reads as a row of
+   unanswered questions and the plate is too quiet to argue with it. Kept above
+   the fill so the answered report still outranks this on the open tab. */
+.picker-surface-tab[aria-pressed="true"] .picker-surface-dot {
+  border-color: var(--ks-patina);
+  background: radial-gradient(circle at center, var(--ks-patina) 2px, transparent 2px);
 }
 
 .picker-surface-tab[data-set="yes"] .picker-surface-dot {
@@ -4355,7 +4364,7 @@ body.picker-page {
      holds while every size in the column moves. */
   gap: calc(var(--sp-rhythm) * 1.5);
   padding-block: clamp(14px, 2.4%, 28px);
-  padding-inline: calc(var(--sp-pad) + var(--sp-rail) + var(--sp-rail-gap)) var(--sp-pad);
+  padding-inline: calc(var(--sp-rail) + var(--sp-rail-gap) + 4px) 16px;
   background: var(--ks-lacquer-raised);
   color: var(--ks-text);
   border: 1px solid var(--ks-rule);
@@ -4466,6 +4475,7 @@ body.picker-page {
   content: attr(data-sp-label);
   position: absolute;
   top: 0;
+  padding-top: 6px;
   inset-inline-end: calc(100% + var(--sp-rail-gap));
   color: var(--ks-text-faint);
   font-family: var(--ks-mono);
@@ -5524,7 +5534,7 @@ body.picker-page {
 .picker-preview-type .ps-nav {
   gap: var(--ps-gap-lg);
   align-content: center;
-  align-items: baseline;
+  align-items: center;
   padding-inline: var(--ps-gutter);
 }
 

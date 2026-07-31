@@ -20,10 +20,13 @@
    it is an instrument for this question, drawn only where it is asked.
 
    ── One instrument, four pages ──────────────────────────────
-   This screen now draws a board per surface: a landing page, an app shell, a
-   document, an index. The paragraph below used to end by saying the instrument
-   is the same one under all three answers and what moves is the page standing on
-   it. That reading is kept, and it decides how a surface is handled.
+   The question is put to the landing page and the index only (see
+   picker/data/surfaces.js), so those are the two boards this screen draws. The
+   answer is still one value for the run, so the shell and the document meet it
+   on the screens after this one, and their bodies are sized here. The paragraph
+   below used to end by saying the instrument is the same one under all three
+   answers and what moves is the page standing on it. That reading is kept, and
+   it decides how a surface is handled.
 
    The argument was never about answers in particular. It is that a measure must
    not be cut from the thing it is measuring, because then the thing and the
@@ -58,9 +61,8 @@
    regions abut and are told apart by a line. Both land on the drawn field, in
    the two different ways the drawn field can be met.
 
-   Freeform is offered to Persuade and Experience only (see
-   picker/data/surfaces.js). Operate and Read rule it out, so there is no
-   freeform shell and no freeform document here, and none is drawn.
+   Neither the shell nor the document is asked the question, so neither answers
+   freeform and neither has a freeform reading here. None is drawn.
    ============================================================ */
 
 /* ── The measure ─────────────────────────────────────────────
@@ -525,7 +527,7 @@
 }
 
 /* ── Freeform, on the index ──────────────────────────────────
-   Offered to Persuade and Experience only, so this is the one region body that
+   Asked of Persuade and Experience only, so this is the one region body that
    draws it. Same reading as the landing page's: the composition sits on the
    lines, and then one thing is granted permission to leave them. On an index
    that thing is the work itself, set down at a slight angle like a print laid on

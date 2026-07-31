@@ -49,16 +49,18 @@ const iconRows = iconPacks.packs.map((pack) => ({
 // showing every decision made before it. Motion is the one question whose answer
 // cannot be read on a handset, so it takes the frame alone.
 //
-// All five draw a board per surface. A structural answer is a claim about a kind
-// of page, and the four kinds are not the same shape: an app shell divides into
-// a rail, a working column, and a panel, a document is a rail and a measure, an
-// index is a run of entries. Repainting one landing page under four labels
-// showed the same page four times and asked the visitor to imagine the rest.
+// All five draw a board per surface they are put to, which is four on
+// boundaries, corners, and depth and a pair each on the two scoped questions,
+// motion and layout. A structural answer is a claim about a kind of page, and the
+// kinds are not the same shape: an app shell divides into a rail, a working
+// column, and a panel, a document is a rail and a measure, an index is a run of
+// entries. Repainting one landing page under four labels showed the same page
+// four times and asked the visitor to imagine the rest.
 //
 // Which board is showing is read off `data-surface`, the attribute the component
 // already publishes and the one the tab strip toggles, rather than a class per
 // screen per surface. Screen 06 takes a class because its scenes are written per
-// board; these four ask the same question of every board and only need to know
+// board; the rest ask the same question of every board and only need to know
 // which anatomy is under them.
 const boards = [
   { surface: 'persuade' },
@@ -114,7 +116,16 @@ const questions = [
     legend: 'Layout structure',
     cta: 'Select layout structure',
     previewClass: 'picker-strategy-preview picker-preview-layout',
-    boards,
+    // The two surfaces this question is put to, for the reason in
+    // data/surfaces.js: a landing page answers in the spans its hero and its
+    // card row take and a portfolio in how each entry splits between the work
+    // and its caption, where a shell and a document are composed by what they
+    // hold. The answer is one value all the same, and the boards on the screens
+    // after this one show it on all four pages.
+    boards: [
+      { surface: 'persuade' },
+      { surface: 'experience' },
+    ],
     options: [
       {
         value: 'simple-grid',
@@ -130,7 +141,6 @@ const questions = [
         value: 'freeform',
         title: 'Freeform',
         desc: 'Blocks step out of the grid and overlap where it pays off.',
-        blocked: 'Blocks that step out of the grid have to be found again on a page people work in or read at length.',
       },
     ],
   },
@@ -1470,7 +1480,8 @@ const questions = [
     //
     // A question no chosen surface takes is not a step either, so the count and
     // the row of ticks come from the screens this run actually asks rather than
-    // from the markup: a docs-only run is ten questions long and says so.
+    // from the markup: a docs-only run skips motion and layout, so it is nine
+    // questions long and says so.
     const progress = $('.picker-progress');
     const track = $('.picker-progress-track');
     const steps = () => screens.filter((screen, index) => (

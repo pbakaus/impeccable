@@ -28,19 +28,19 @@ export const SURFACE_MODES = ['persuade', 'operate', 'read', 'experience'];
     where the chosen option's own label goes, lowercased so it reads as part of
     the sentence around it. `properName` turns that off for a question whose
     options are named after something rather than described.
-  - `flat`, for a question the tabs exist to protect rather than to split. The
-    per-surface reading is still kept while the screen is open, so an option a
-    surface rules out cannot be the answer left behind, but only the leading
-    surface's choice is written down. A key per surface would promise whoever
-    reads the answers a distinction the run has nowhere to spend.
+  - `flat`, for a question whose tabs are there to look with rather than to
+    split. The per-surface reading is still kept while the screen is open, so an
+    option a surface rules out cannot be the answer left behind, but only the
+    leading surface's choice is written down. A key per surface would promise
+    whoever reads the answers a distinction the run has nowhere to spend.
 
   A question that leaves a surface out of `surfaces` is not asked of that
   surface at all, which is a stronger statement than withholding an option from
   it. Withholding says the surface would answer this badly; leaving it out says
   the surface has no stake in the question. So the tab strip only offers the
   surfaces the question names, and a run whose surfaces are all left out never
-  sees the screen and records no answer for it. Only motion is scoped that way
-  today; the rest name all four.
+  sees the screen and records no answer for it. Motion and layout are scoped
+  that way today; the rest name all four.
 
   Persuade is allowed everything on every question: earning attention is the
   whole job of the surface, and no answer here is too much for it. The other
@@ -92,10 +92,10 @@ export const SURFACE_ANSWERS = {
   },
 
   /*
-    The one question that is not put to every surface. Motion energy is a claim
-    on attention, and only two of the four surfaces are in a position to make
-    one: a landing page earning a decision and a portfolio presenting work. A
-    tool and a document are moved through rather than watched, and their motion
+    One of the two questions that are not put to every surface. Motion energy is
+    a claim on attention, and only two of the four surfaces are in a position to
+    make one: a landing page earning a decision and a portfolio presenting work.
+    A tool and a document are moved through rather than watched, and their motion
     follows from what the interface is doing rather than from a house style, so
     asking them would collect an answer nothing should act on. An app-UI-only or
     docs-only run therefore never reaches this screen.
@@ -118,30 +118,29 @@ export const SURFACE_ANSWERS = {
   },
 
   /*
-    Flat, and the tabs here are worth having anyway. The twelve-column ruler on
-    this screen describes a page, and it describes one whether the run ships a
-    dashboard or a gallery, so the answer stays one value that every screen
-    after it inherits. What the tabs buy is the chance to say that a surface
-    cannot take an answer before it is chosen for it.
+    The other question that is not put to every surface, and the only one that is
+    scoped and flat at once. How strict a layout feels is a claim about the
+    composition of the page itself, so it is asked of the two surfaces whose page
+    is the thing being looked at: one earning a decision, one presenting work. A
+    tool and a document are composed by what they have to hold instead, a rail
+    against a working column against a panel, one column at one measure, so the
+    question has nowhere to move on them and an answer taken there would be a
+    decision nobody made. An app-UI-only or docs-only run therefore never reaches
+    this screen either.
 
-    Freeform is out on the two surfaces you come back to. A block that has
-    left the grid is found by looking rather than by habit, and habit is what
-    a tool and a long document are read with: the sidebar was there last time,
-    the callout sat against the same measure a page ago. Persuade and the
-    portfolio keep it, because a page seen once has nothing to remember.
-
-    The two disciplined answers are kept by all four, even though the probe
-    showed them only a few points apart on a dashboard. What is being chosen
-    between them is which spans the page spends its columns on, and that is a
-    decision a tool makes as much as a landing page does; ruling one out for
-    being quiet would buy nothing.
-
-    Persuade lands on the aligned grid with breaks in it: a page earning a
-    decision needs one block to lead, and that is what the breaks are for.
-    The other three land on the even grid, for the reason each of them is
-    ruled by. A tool wants the layout predictable, a document is one column
-    and one rhythm, and a gallery hangs work square so the only irregular
+    Both surfaces that are asked can take all three answers, so nothing is
+    withheld and no option carries a reason. Their defaults differ: a page
+    earning a decision needs one block to lead, which is what the breaks in the
+    aligned grid are for, and a gallery hangs work square so the only irregular
     edges on the page are the work's own.
+
+    Flat, because one answer is all the run has to spend. The twelve-column ruler
+    on this screen describes a page, and it describes one whether the run ships a
+    dashboard or a gallery, so what the two of them leave is previewed on every
+    board the screens after it draw, the shell and the document included. A key
+    per surface would promise whoever reads the answers a distinction with
+    nowhere to land, and the tabs are left as a way of looking at the one answer
+    on both pages that asked for it.
   */
   'layout-structure': {
     tablist: 'Surface being laid out',
@@ -149,10 +148,8 @@ export const SURFACE_ANSWERS = {
     unanswered: 'no layout structure chosen yet',
     flat: true,
     surfaces: {
-      persuade: { allow: 'simple-grid balanced freeform', fallback: 'balanced' },
-      operate: { allow: 'simple-grid balanced', fallback: 'simple-grid' },
-      read: { allow: 'simple-grid balanced', fallback: 'simple-grid' },
-      experience: { allow: 'simple-grid balanced freeform', fallback: 'simple-grid' },
+      persuade: { fallback: 'balanced' },
+      experience: { fallback: 'simple-grid' },
     },
   },
 
