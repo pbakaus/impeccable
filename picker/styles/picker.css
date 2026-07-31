@@ -5263,7 +5263,10 @@ body.picker-page {
   height: auto;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--ps-gap-md);
-  justify-items: center;
+  /* The cards keep their column's width so the three squares are one size;
+     what centers is their contents, below. Shrinking the card to its label
+     handed each square a different width. */
+  justify-items: stretch;
 }
 
 .picker-preview-type .ps-desktop .ps-gallery-item {
@@ -5380,6 +5383,14 @@ body.picker-page {
 
 .picker-preview-type[data-surface="persuade"] .ps-phone-body .ps-editorial-copy {
   gap: var(--ps-gap-xs);
+}
+
+.picker-preview-type[data-surface="persuade"] .ps-phone-body .ps-editorial-copy strong {
+  font-size: calc(var(--pt-title) * 1.12);
+}
+
+.picker-preview-type[data-surface="persuade"] .ps-phone-body .pt-section-body {
+  font-size: var(--pt-base);
 }
 
 /* One gap owns the spacing down the phone. The margins underneath it were a
