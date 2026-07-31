@@ -90,6 +90,16 @@ function perSurface(name, surfaces) {
   });
 }
 
+/* A flat question keeps one answer rather than one per surface, and its fields
+   are still what says whether it was put at all: none of the chosen surfaces
+   holding one means the run never saw the screen. The leading applicable surface
+   owns the answer, which is the rule the bare key in answers.json is written by
+   too. */
+function flatAnswer(name, surfaces) {
+  const [leader] = perSurface(name, surfaces);
+  return leader ?? { value: '', title: '', desc: '' };
+}
+
 function takeSnapshot() {
   const surfaces = chosenSurfaces();
   const palette = ROLES.map((role) => ({
@@ -110,7 +120,7 @@ function takeSnapshot() {
     corners: perSurface('corner-style', surfaces),
     depth: perSurface('depth-style', surfaces),
     motion: perSurface('motion-energy', surfaces),
-    layout: { value: fieldValue('layout-structure'), ...optionCopy('layout-structure', fieldValue('layout-structure')) },
+    layout: flatAnswer('layout-structure', surfaces),
     fonts: {
       heading: fieldValue('font-heading'),
       body: fieldValue('font-body'),
@@ -479,8 +489,12 @@ function buildMaterial(s, name) {
       'The motion screen is shown for a landing page and a portfolio. This run has neither, so no motion energy was chosen and none is recorded.',
     )));
   }
+  /* Asked of the same two surfaces as movement, and left out on a run of
+     neither. Movement's own block above already says the screen was not part of
+     the run, so this one goes quiet rather than repeating it. */
   if (s.layout.value) {
-    parts.push(block('Layout structure', callout(s.layout.title, escapeHtml(s.layout.desc))));
+    parts.push(block('Layout structure', callout(s.layout.title, escapeHtml(s.layout.desc))
+      + note('Asked of the landing page and the portfolio, where the composition of the page is itself the decision. One answer is kept for the run, and every surface is drawn on it.')));
   }
   parts.push(block('Boundaries per surface', pickGrid(s.boundaries)
     + note('How sections separate on each surface.')));

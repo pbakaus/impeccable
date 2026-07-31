@@ -445,13 +445,15 @@ This seed writes a minimal frontmatter with `name` and `description` only; no co
   - **No `motion-energy` key at all**: the run has neither of those surfaces, so movement was never asked. Say nothing about it, and do not fill the gap from the interview's Q3 or from the register. The next Scan-mode run reads the real transitions out of the code.
 - **Colors**: the four roles with their picked hex, noting the cue they came from. `color-strategy` becomes the Named Rule. When surfaces differ (`color-strategy-<mode>` keys), state each surface's strategy and which surface leads (the bare key's owner).
 - **Typography**: the real pair by name, the pairing's character, and the type scale as a rule: `type-scale` names it, `type-scale-ratio` is the ratio (e.g. *"Major third: each heading step is 1.25x the last"*). Base size and exact steps stay `[resolved at implementation]`. A `font-heading-source` / `font-body-source` value means a user-provided font file; record where it lives.
-- **Layout**: `layout-structure` (how pages are composed) and `boundary-style` (how sections separate), per surface when the `-<mode>` keys differ. No invented grids beyond what the answer states.
+- **Layout**: `boundary-style` (how sections separate) per surface when the `-<mode>` keys differ, plus `layout-structure` (how pages are composed), which the questionnaire asks of a landing page and a portfolio only. No invented grids beyond what the answers state.
+  - `layout-structure` present: one bare key and no `-<mode>` keys, so state it as a rule for the whole product rather than per surface.
+  - **No `layout-structure` key at all**: the run has neither of those surfaces, so composition was never asked. Say nothing about how strict the grid is, and let `boundary-style` carry the section.
 - **Elevation & Depth**: `depth-style` per surface, stated directly; the questionnaire answered this, so do not re-infer it from motion energy.
 - **Shapes**: `corner-style` per surface.
 - **Components**: still omit; nothing exists yet.
 - **Do's and Don'ts**: the interview-only guidance, plus a Do fixing the icon source: every icon comes from the chosen pack (`icon-pack-name`, license, URL), no mixed sets.
 
-Per-surface answers come back for every chosen surface, defaults included, and a difference between surfaces is a decision the picker enforced, not an inconsistency to smooth over (the option lists differ per surface). Where all surfaces agree, state the answer once for the product. `motion-energy` is the one key that can be missing entirely, since only a landing page and a portfolio are asked about movement; [visual-cues.md](visual-cues.md) has the full contract.
+Per-surface answers come back for every chosen surface, defaults included, and a difference between surfaces is a decision the picker enforced, not an inconsistency to smooth over (the option lists differ per surface). Where all surfaces agree, state the answer once for the product. `motion-energy` and `layout-structure` are the two keys that can be missing entirely, since movement and composition are asked of a landing page and a portfolio only; [visual-cues.md](visual-cues.md) has the full contract.
 
 Both seeds skip the `.impeccable/design.json` sidecar: nothing to render yet. Real tokens for sizes, spacing, and components land on the next Scan-mode run.
 
