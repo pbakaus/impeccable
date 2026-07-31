@@ -5335,6 +5335,14 @@ body.picker-page {
   padding: var(--ps-band-y) var(--ps-gutter);
 }
 
+.picker-preview-type[data-surface="persuade"] .ps-phone-body > .ps-image {
+  display: none;
+}
+
+.picker-preview-type[data-surface="persuade"] .ps-phone-body {
+  grid-template-rows: repeat(5, auto);
+}
+
 /* One gap owns the spacing down the phone. The margins underneath it were a
    second, unrelated scale, and every element that carried one landed on a
    different interval from its neighbour. */
@@ -5514,12 +5522,19 @@ body.picker-page {
 /* Same construction as the nav: one baseline across the row, the row itself
    centered in the band, both edges on the shared gutter. */
 .picker-preview-type .ps-footer {
-  display: grid;
-  grid-template-columns: auto auto;
-  justify-content: space-between;
-  align-content: center;
-  align-items: baseline;
-  padding-inline: var(--ps-gutter);
+  display: none;
+}
+
+.picker-preview-type .ps-phone-footer {
+  display: none;
+}
+
+.picker-preview-type .ps-phone .pt-headline {
+  font-size: var(--pt-title);
+}
+
+.picker-preview-type .ps-phone-top .ps-brand-block {
+  font-size: var(--pt-micro);
 }
 
 .picker-preview-type .ps-footer-links {

@@ -593,9 +593,12 @@ function applyHoist({ force = false } = {}) {
   if (moved) flashHoisted(chosen);
 }
 
+/* Disabled: the reorder pulled the row the user had just clicked away from
+   where they left it, which reads as the list moving on its own. The rail now
+   keeps the order the pairs were dealt in and the checked state alone says
+   which one is chosen. */
 function requestHoist() {
-  hoistPending = true;
-  if (!railBusy()) applyHoist();
+  hoistPending = false;
 }
 
 function settleHoist() {
