@@ -148,7 +148,26 @@ function stripInlineYamlComment(s) {
 // reaches allowedFonts as '\"ibm plex sans' and never matches the same family
 // declared in CSS. Scanner instead of a regex: the escape set is small and the
 // backslash handling stays readable.
-const YAML_SIMPLE_ESCAPES = { n: '\n', r: '\r', t: '\t', '0': '\0', '"': '"', '\\': '\\', '/': '/' };
+// The full YAML 1.2 double-quote escape set (spec section 5.7).
+const YAML_SIMPLE_ESCAPES = {
+  '0': '\0',
+  a: '\x07',
+  b: '\b',
+  t: '\t',
+  n: '\n',
+  v: '\v',
+  f: '\f',
+  r: '\r',
+  e: '\x1b',
+  ' ': ' ',
+  '"': '"',
+  '/': '/',
+  '\\': '\\',
+  N: '\u0085',
+  _: '\u00a0',
+  L: '\u2028',
+  P: '\u2029',
+};
 const YAML_HEX_ESCAPE_LENGTHS = { x: 2, u: 4, U: 8 };
 
 function unescapeYamlDoubleQuoted(body) {

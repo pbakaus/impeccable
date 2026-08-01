@@ -315,6 +315,10 @@ typography:
     fontFamily: '"IBM Plex Mono", ui-monospace, monospace'
   accent:
     fontFamily: "S\\u00f6hne, sans-serif"
+  label:
+    fontFamily: "IBM\\ Plex\\ Serif, serif"
+  mono:
+    fontFamily: "Space\\_Grotesk, sans-serif"
 colors:
   accent: "\\x23b8422e"
 ---
@@ -325,10 +329,14 @@ colors:
     const loaded = loadDesignSystemForCwd(cwd);
     assert.deepEqual(
       [...loaded.allowedFonts].sort(),
-      ['archivo', 'ibm plex mono', 'ibm plex sans', 'söhne'],
+      ['archivo', 'ibm plex mono', 'ibm plex sans', 'ibm plex serif', 'space grotesk', 'söhne'],
     );
     assert.equal(isAllowedFont('ibm plex sans', loaded), true);
     assert.equal(isAllowedFont('ibm plex mono', loaded), true);
+    // Escaped space (\ ) and non-breaking space (\_) forms; NBSP collapses to
+    // a plain space in normalizeFontName, so the CSS declaration matches.
+    assert.equal(isAllowedFont('ibm plex serif', loaded), true);
+    assert.equal(isAllowedFont('space grotesk', loaded), true);
     assert.equal(isAllowedFont('comic sans ms', loaded), false);
     // \x escapes decode too: "\x23b8422e" is #b8422e.
     assert.equal(isAllowedColorRaw('#b8422e', loaded), true);
@@ -339,6 +347,8 @@ body { font-family: "IBM Plex Sans", system-ui, sans-serif; }
 code { font-family: "IBM Plex Mono", ui-monospace, monospace; }
 h1 { font-family: Archivo, system-ui, sans-serif; }
 em { font-family: "Söhne", sans-serif; color: #b8422e; }
+small { font-family: "IBM Plex Serif", serif; }
+pre { font-family: "Space Grotesk", sans-serif; }
 `, '/tmp/escaped-fonts.css', { designSystem: loaded });
     assert.deepEqual(findings, []);
   });
