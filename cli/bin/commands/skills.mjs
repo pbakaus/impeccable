@@ -9,7 +9,7 @@
  */
 
 import { execSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, statSync, lstatSync, unlinkSync, mkdirSync, writeFileSync, rmSync, rmdirSync, renameSync, createWriteStream, realpathSync, symlinkSync, readlinkSync, cpSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, lstatSync, unlinkSync, mkdirSync, writeFileSync, rmSync, rmdirSync, renameSync, createWriteStream, realpathSync, symlinkSync, readlinkSync, cpSync, copyFileSync } from 'node:fs';
 import { join, resolve, dirname, relative, isAbsolute, sep } from 'node:path';
 import { createInterface, emitKeypressEvents } from 'node:readline';
 import { fileURLToPath } from 'node:url';
@@ -1201,6 +1201,93 @@ function copyProviderSkills(bundleDir, root, targets, { scope } = {}) {
   return written;
 }
 
+/**
+ * Copy each target provider's compiled command variant from an extracted
+ * bundle into the project or global config dir. OpenCode 1.18.10 discovers
+ * custom commands from `{command,commands}/**.md` under any active config
+ * dir, so the install mirrors `copyProviderSkills`: project scope writes
+ * `<root>/<configDir>/commands/`, user scope writes
+ * `opencodeGlobalConfigDir(home)/commands` with the same
+ * `OPENCODE_CONFIG_DIR` → `$XDG_CONFIG_HOME/opencode` → `~/.config/opencode`
+ * precedence PR #417 established for skills.
+ *
+ * Migration guard: a pre-#406 global OpenCode install at
+ * `~/.opencode/commands/` is not scanned by OpenCode. After a global
+ * install, the commands just written are removed from the stranded
+ * legacy copy, sibling commands stay put, symlinked legacy dirs are
+ * skipped (deleting through a symlink would empty the real target), and
+ * a home-rooted git repo (`<configDir>/commands/` IS a project install)
+ * is left alone. Symmetric to `copyProviderSkills` at
+ * `skills.mjs:1168-1186`.
+ */
+// Map each tracked provider (`.claude`, `.opencode`, ...) to the on-disk
+// directory it ships to. Sourced from `scripts/lib/transformers/providers.js`
+// so a single config edit in the build keeps both in sync.
+const PROVIDER_CONFIG_DIRS = {
+  '.claude': '.claude',
+  '.cursor': '.cursor',
+  '.gemini': '.gemini',
+  '.codex': '.codex',
+  '.agents': '.agents',
+  '.agent': '.agent',
+  '.github': '.github',
+  '.grok': '.grok',
+  '.kiro': '.kiro',
+  '.opencode': '.opencode',
+  '.pi': '.pi',
+  '.qoder': '.qoder',
+  '.trae': '.trae',
+  '.trae-cn': '.trae-cn',
+  '.rovodev': '.rovodev',
+  '.vibe': '.vibe',
+};
+function providerConfigDir(provider) {
+  return PROVIDER_CONFIG_DIRS[provider] || provider.replace(/^\./, '.');
+}
+
+function copyProviderCommands(bundleDir, root, targets, { scope } = {}) {
+  let written = 0;
+  for (const target of targets) {
+    const providerEntry = PROVIDER_DIRS.includes(`.${target}`)
+      ? `.${target}`
+      : target;
+    const configDir = providerConfigDir(providerEntry);
+    const srcDir = join(bundleDir, providerEntry, 'commands');
+    if (!existsSync(srcDir)) continue;
+    const localCommandsDir = scope === 'user'
+      ? join(opencodeGlobalConfigDir(root), 'commands')
+      : join(root, configDir, 'commands');
+    mkdirSync(localCommandsDir, { recursive: true });
+    for (const entry of readdirSync(srcDir)) {
+      const src = join(srcDir, entry);
+      if (!statSync(src).isFile()) continue;
+      const dest = join(localCommandsDir, entry);
+      rmSync(dest, { recursive: true, force: true });
+      copyFileSync(src, dest);
+      written++;
+    }
+    if (scope === 'user' && providerEntry === '.opencode') {
+      const legacyDir = join(root, '.opencode', 'commands');
+      let migratable = false;
+      try {
+        migratable = existsSync(legacyDir)
+          && !lstatSync(legacyDir).isSymbolicLink()
+          && realpathSync(legacyDir) !== realpathSync(localCommandsDir)
+          && !existsSync(join(root, '.git'));
+      } catch { migratable = false; }
+      if (migratable) {
+        for (const entry of readdirSync(srcDir)) {
+          const src = join(srcDir, entry);
+          if (!statSync(src).isFile()) continue;
+          rmSync(join(legacyDir, entry), { recursive: true, force: true });
+        }
+        try { rmdirSync(legacyDir); } catch { /* not empty: siblings stay */ }
+      }
+    }
+  }
+  return written;
+}
+
 // Native subagent definitions that ship in the bundle next to a provider's
 // skills. GitHub Copilot's live at `.github/agents/impeccable-*.agent.md`:
 // project installs commit them at `<repo>/.github/agents/`, user-level
@@ -1873,6 +1960,7 @@ async function install(flags) {
   try {
     written = copyProviderSkills(bundleDir, installRoot, targets, { scope });
     agentResults = copyProviderAgents(bundleDir, installRoot, targets, { scope });
+    copyProviderCommands(bundleDir, installRoot, targets, { scope });
     hookTargets = wantHooks ? copyProviderHooks(bundleDir, hookRoot, targets, { force, skillRoot: installRoot }) : [];
   } catch (e) {
     rmSync(bundleDir, { recursive: true, force: true });
@@ -2144,6 +2232,7 @@ async function update(flags = []) {
 
     const updated = refreshProviderSkills(tmpDir, root, copyProviders, scope);
     reportProviderAgents(copyProviderAgents(tmpDir, root, copyProviders, { scope }));
+    copyProviderCommands(tmpDir, root, copyProviders, { scope });
     const wantHooks = installHooks && await decideHookInstall(root, providers, { yes });
     const hookTargets = wantHooks ? copyProviderHooks(tmpDir, root, providers, { force }) : [];
 
@@ -2179,6 +2268,7 @@ function copyDirSync(src, dest) {
 export {
   collectInstallDetections,
   copyProviderAgents,
+  copyProviderCommands,
   copyProviderHooks,
   copyProviderSkills,
   decideHookInstall,
@@ -2188,6 +2278,7 @@ export {
   linkProviderSkills,
   mergeHookManifests,
   migrateUnprefixImpeccable,
+  opencodeGlobalConfigDir,
   resolveInstallTargets,
   resolveLinkSource,
 };
