@@ -119,8 +119,10 @@ function stripInlineYamlComment(s) {
 // quotes without unescaping leaves them in place, so a nested font family like
 //   fontFamily: "\"IBM Plex Sans\", system-ui, sans-serif"
 // keeps its literal backslashes and never matches the same family in CSS.
+const YAML_SIMPLE_ESCAPES = { n: '\n', r: '\r', t: '\t', '0': '\0', '"': '"', '\\': '\\', '/': '/' };
+const YAML_HEX_ESCAPE_LENGTHS = { x: 2, u: 4, U: 8 };
+
 function unescapeYamlDoubleQuoted(body) {
-  const SIMPLE = { n: '\n', r: '\r', t: '\t', '0': '\0', '"': '"', '\\': '\\', '/': '/' };
   let out = '';
   for (let i = 0; i < body.length; i++) {
     const ch = body[i];
@@ -129,12 +131,24 @@ function unescapeYamlDoubleQuoted(body) {
       continue;
     }
     const next = body[i + 1];
-    if (Object.prototype.hasOwnProperty.call(SIMPLE, next)) {
-      out += SIMPLE[next];
+    if (Object.prototype.hasOwnProperty.call(YAML_SIMPLE_ESCAPES, next)) {
+      out += YAML_SIMPLE_ESCAPES[next];
       i++;
-    } else {
-      out += ch;
+      continue;
     }
+    // \xNN, \uNNNN, \UNNNNNNNN. Malformed or out-of-range sequences stay
+    // literal rather than corrupting the rest of the scalar.
+    const hexLen = YAML_HEX_ESCAPE_LENGTHS[next];
+    if (hexLen) {
+      const hex = body.slice(i + 2, i + 2 + hexLen);
+      const codePoint = hex.length === hexLen && /^[0-9a-fA-F]+$/.test(hex) ? parseInt(hex, 16) : -1;
+      if (codePoint >= 0 && codePoint <= 0x10ffff) {
+        out += String.fromCodePoint(codePoint);
+        i += 1 + hexLen;
+        continue;
+      }
+    }
+    out += ch;
   }
   return out;
 }

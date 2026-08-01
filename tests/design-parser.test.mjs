@@ -167,6 +167,33 @@ Prose.
     // instead of slicing it into an empty string.
     assert.equal(model.frontmatter.empty, '"');
   });
+
+  it('decodes hex and Unicode escapes in double-quoted scalars', () => {
+    const md = `---
+colors:
+  accent: "\\x23b8422e"
+typography:
+  accent:
+    fontFamily: "S\\u00f6hne, sans-serif"
+emoji: "\\U0001F44D"
+bad-hex: "\\xZZ nope"
+bad-range: "\\UFFFFFFFF nope"
+---
+
+# Design System: Hex Escapes
+
+## 1. Overview
+
+Prose.
+`;
+    const model = parseDesignMd(md);
+    assert.equal(model.frontmatter.colors.accent, '#b8422e');
+    assert.equal(model.frontmatter.typography.accent.fontFamily, 'Söhne, sans-serif');
+    assert.equal(model.frontmatter.emoji, '\u{1F44D}');
+    // Malformed or out-of-range sequences stay literal.
+    assert.equal(model.frontmatter['bad-hex'], '\\xZZ nope');
+    assert.equal(model.frontmatter['bad-range'], '\\UFFFFFFFF nope');
+  });
 });
 
 describe('parseDesignMd overview branch', () => {

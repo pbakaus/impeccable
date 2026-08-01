@@ -313,21 +313,32 @@ typography:
     fontFamily: "\\"IBM Plex Sans\\", system-ui, sans-serif"
   data:
     fontFamily: '"IBM Plex Mono", ui-monospace, monospace'
+  accent:
+    fontFamily: "S\\u00f6hne, sans-serif"
+colors:
+  accent: "\\x23b8422e"
 ---
 
 # Design System
 `);
 
     const loaded = loadDesignSystemForCwd(cwd);
-    assert.deepEqual([...loaded.allowedFonts].sort(), ['archivo', 'ibm plex mono', 'ibm plex sans']);
+    assert.deepEqual(
+      [...loaded.allowedFonts].sort(),
+      ['archivo', 'ibm plex mono', 'ibm plex sans', 'söhne'],
+    );
     assert.equal(isAllowedFont('ibm plex sans', loaded), true);
     assert.equal(isAllowedFont('ibm plex mono', loaded), true);
     assert.equal(isAllowedFont('comic sans ms', loaded), false);
+    // \x escapes decode too: "\x23b8422e" is #b8422e.
+    assert.equal(isAllowedColorRaw('#b8422e', loaded), true);
+    assert.equal(isAllowedColorRaw('#ff00aa', loaded), false);
 
     const findings = checkSourceDesignSystem(`
 body { font-family: "IBM Plex Sans", system-ui, sans-serif; }
 code { font-family: "IBM Plex Mono", ui-monospace, monospace; }
 h1 { font-family: Archivo, system-ui, sans-serif; }
+em { font-family: "Söhne", sans-serif; color: #b8422e; }
 `, '/tmp/escaped-fonts.css', { designSystem: loaded });
     assert.deepEqual(findings, []);
   });
