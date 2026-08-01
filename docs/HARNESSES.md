@@ -45,14 +45,14 @@ Fields marked with * are spec-standard. Others are provider extensions.
 | `license`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | `compatibility`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | `metadata`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| `allowed-tools`* | Yes | No | Ignored | No | No | Yes | No | Yes | Yes | Yes | Yes | Yes | Yes |
-| `user-invocable` | Yes | No | No | No | Yes | Yes | No | Yes | No | Yes | Yes | Yes | No |
-| `argument-hint` | Yes | No | No | No | Yes | Yes | No | Yes | No | Yes | Yes | No | No |
+| `allowed-tools`* | Yes | No | Ignored | No | No | Yes | No | No | Yes | Yes | Yes | Yes | Yes |
+| `user-invocable` | Yes | No | No | No | Yes | Yes | No | No | No | Yes | Yes | Yes | No |
+| `argument-hint` | Yes | No | No | No | Yes | Yes | No | No | No | Yes | Yes | No | No |
 | `disable-model-invocation` | Yes | Yes | No | No | Yes | Yes | No | Yes | Yes | TBD | TBD | No | No |
-| `model` | Yes | No | No | No | No | Yes | No | Yes | No | No | No | No | No |
+| `model` | Yes | No | No | No | No | Yes | No | No | No | No | No | No | No |
 | `effort` | Yes | No | No | No | No | Yes | No | No | No | No | No | No | No |
 | `context` | Yes | No | No | No | No | No | No | No | No | No | No | No | No |
-| `agent` | Yes | No | No | No | No | No | No | Yes | No | No | No | No | No |
+| `agent` | Yes | No | No | No | No | No | No | No | No | No | No | No | No |
 | `hooks` | Yes | No | No | Yes | No | Yes | No | No | No | No | No | No | No |
 
 Notes:
@@ -62,6 +62,7 @@ Notes:
 - Grok Build is Claude Code compatible with zero config: it also reads `.claude/skills/`, `.claude/settings.json` hooks, and Claude plugin layouts. Native paths are `.grok/skills/`, `.grok/hooks/*.json`, and `.grok/agents/`. Skill frontmatter supports `when-to-use` in addition to the fields above. Project hooks require `/hooks-trust` (or `--trust`). See https://docs.x.ai/build/features/skills-plugins-marketplaces and https://docs.x.ai/build/features/hooks.
 - Kiro recognizes `user-invocable` and `disable-model-invocation` per community reports but does not formally document them.
 - Antigravity supports standard Agent Skills spec frontmatter fields (`name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools`).
+- OpenCode 1.18.10 recognises only the spec subset on SKILL.md (`name`, `description`, `license`, `compatibility`, `metadata`). Claude-style extensions (`user-invocable`, `argument-hint`, `allowed-tools`, `model`, `agent`) are silently ignored; Impeccable still emits them today for other harnesses, but they have no effect in OpenCode. Use `commands/<name>.md` (see Placeholder / Variable Substitution below) for slash UX; OpenCode honours only `description`, `agent`, `model`, `variant`, `subtask` on command files.
 - Unknown fields are silently ignored by all harnesses.
 
 ## Hook surface used by Impeccable
@@ -130,6 +131,7 @@ Some harnesses have separate "custom commands" systems (distinct from skills) wi
 
 | Harness | Command system | Substitution syntax |
 |---------|---------------|-------------------|
+| OpenCode | `.opencode/commands/` (Markdown) | `$ARGUMENTS`, `$1`-`$N`, `` !`shell` ``, `@file` |
 | Gemini CLI | `.gemini/commands/` (TOML) | `{{args}}`, `!{shell}`, `@{file}` |
 | Codex CLI | `.codex/prompts/` | `$ARGNAME` |
 | OpenCode | `.opencode/commands/` | `$ARGUMENTS`, `$1`-`$N`, `` !`shell` `` |
