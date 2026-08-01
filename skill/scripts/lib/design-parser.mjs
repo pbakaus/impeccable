@@ -2,7 +2,7 @@
 // the live-mode design-system panel can render. Deterministic, dependency-free.
 //
 // Two-layer: YAML frontmatter (machine-readable tokens) + markdown body
-// (prose with six canonical H2 sections). When frontmatter is present, it's
+// (prose with eight canonical H2 sections). When frontmatter is present, it's
 // exposed on `model.frontmatter` alongside the prose-scraped sections;
 // consumers can prefer frontmatter values and fall back to prose.
 
@@ -10,7 +10,9 @@ const CANONICAL_SECTIONS = [
   'Overview',
   'Colors',
   'Typography',
+  'Layout',
   'Elevation',
+  'Shapes',
   'Components',
   "Do's and Don'ts",
 ];
@@ -601,6 +603,16 @@ function parseTypeBullet(bullet) {
   };
 }
 
+function extractGuidance(section) {
+  if (!section) return null;
+  const subs = splitSubsections(section.lines);
+  return {
+    subtitle: section.subtitle,
+    description: collectParagraphs(subs[0].lines).join(' ') || null,
+    rules: extractNamedRules(section.lines),
+  };
+}
+
 function extractElevation(section) {
   if (!section) return null;
   const subs = splitSubsections(section.lines);
@@ -795,11 +807,25 @@ function assessCoverage(model) {
       }
     : 'missing';
 
+  report.layout = model.layout
+    ? {
+        description: Boolean(model.layout.description),
+        rules: model.layout.rules.length,
+      }
+    : 'missing';
+
   report.elevation = model.elevation
     ? {
         shadows: model.elevation.shadows.length,
         rules: model.elevation.rules.length,
         description: Boolean(model.elevation.description),
+      }
+    : 'missing';
+
+  report.shapes = model.shapes
+    ? {
+        description: Boolean(model.shapes.description),
+        rules: model.shapes.rules.length,
       }
     : 'missing';
 
@@ -832,7 +858,9 @@ export function parseDesignMd(md) {
     overview: extractOverview(sections['Overview']),
     colors: extractColors(sections['Colors']),
     typography: extractTypography(sections['Typography']),
+    layout: extractGuidance(sections['Layout']),
     elevation: extractElevation(sections['Elevation']),
+    shapes: extractGuidance(sections['Shapes']),
     components: extractComponents(sections['Components']),
     dosDonts: extractDosDonts(sections["Do's and Don'ts"]),
   };

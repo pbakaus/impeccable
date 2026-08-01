@@ -1333,6 +1333,14 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
+  it('includes named rules from every canonical narrative section', () => {
+    assert.match(
+      SOURCE,
+      /function synthesizeNarrative\(parsed\)[\s\S]{0,900}?md\.colors\?\.rules[\s\S]{0,180}?md\.typography\?\.rules[\s\S]{0,180}?md\.layout\?\.rules[\s\S]{0,180}?md\.elevation\?\.rules[\s\S]{0,180}?md\.shapes\?\.rules/,
+      'the design panel must retain named rules from Layout and Shapes alongside the older canonical sections',
+    );
+  });
+
   it('editing focus timeout does not read a stale inline edit row', () => {
     assert.doesNotMatch(
       SOURCE,

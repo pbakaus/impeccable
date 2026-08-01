@@ -5,7 +5,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDesignMd } from '../skill/scripts/lib/design-parser.mjs';
+import { assessCoverage, parseDesignMd } from '../skill/scripts/lib/design-parser.mjs';
 
 describe('parseDesignMd frontmatter branch', () => {
   it('returns null frontmatter when the file has no YAML header', () => {
@@ -166,5 +166,86 @@ describe('parseDesignMd overview branch', () => {
       'Navigation controls remain visible when the viewport becomes narrow.',
     ]);
     assert.deepEqual(overview.philosophy, []);
+  });
+});
+
+describe('parseDesignMd canonical sections', () => {
+  it('preserves content and named rules from all eight canonical sections', () => {
+    const md = `# Design System: Complete
+
+## Overview
+
+**Creative North Star: "Structured clarity"**
+
+## Colors
+
+### Primary
+- **Ink** (#111111): Primary text.
+
+## Typography
+
+**Body Font:** Inter (with sans-serif)
+
+## Layout: Responsive rhythm
+
+Primary regions use a twelve-column grid that collapses to one column on narrow screens.
+
+### Named Rules
+**The Spatial Hierarchy Rule.** Primary content must remain visually dominant.
+
+## Elevation & Depth
+
+Surfaces use tonal layering instead of shadows.
+
+## Shapes
+
+Selected objects use a double outline and clipped corners.
+
+### The "Recognizable Silhouette" Rule
+Repeated geometry must remain recognizable without color.
+
+## Components
+
+### Button
+- **Primary:** Uses the accent color.
+
+## Do's and Don'ts
+
+### Do
+- Preserve the spatial hierarchy.
+
+### Don't
+- Flatten every surface.
+`;
+    const model = parseDesignMd(md);
+
+    assert.equal(model.layout.subtitle, 'Responsive rhythm');
+    assert.equal(
+      model.layout.description,
+      'Primary regions use a twelve-column grid that collapses to one column on narrow screens.',
+    );
+    assert.deepEqual(model.layout.rules, [{
+      name: 'The Spatial Hierarchy Rule',
+      body: 'Primary content must remain visually dominant.',
+    }]);
+    assert.equal(model.shapes.description, 'Selected objects use a double outline and clipped corners.');
+    assert.deepEqual(model.shapes.rules, [{
+      name: 'The Recognizable Silhouette Rule',
+      body: 'Repeated geometry must remain recognizable without color.',
+    }]);
+
+    const coverage = assessCoverage(model);
+    assert.deepEqual(Object.keys(coverage), [
+      'overview',
+      'colors',
+      'typography',
+      'layout',
+      'elevation',
+      'shapes',
+      'components',
+      'dosDonts',
+    ]);
+    assert.deepEqual(coverage.layout, { description: true, rules: 1 });
+    assert.deepEqual(coverage.shapes, { description: true, rules: 1 });
   });
 });
