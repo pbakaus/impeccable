@@ -142,6 +142,31 @@ Prose.
     assert.equal(model.frontmatter.colors['brand-gold'], '#d9a531');
     assert.equal(model.frontmatter.rounded['"2xl"'], undefined);
   });
+
+  it('unescapes quote escapes inside quoted scalars (issue #428)', () => {
+    const md = `---
+typography:
+  body:
+    fontFamily: "\\"IBM Plex Sans\\", system-ui, sans-serif"
+name: 'It''s quiet'
+empty: "
+---
+
+# Design System: Escaped
+
+## 1. Overview
+
+Prose.
+`;
+    const model = parseDesignMd(md);
+    // YAML double-quoted scalars process backslash escapes.
+    assert.equal(model.frontmatter.typography.body.fontFamily, '"IBM Plex Sans", system-ui, sans-serif');
+    // Single-quoted scalars escape the quote by doubling it.
+    assert.equal(model.frontmatter.name, "It's quiet");
+    // A lone quote satisfies startsWith and endsWith at once; keep it literal
+    // instead of slicing it into an empty string.
+    assert.equal(model.frontmatter.empty, '"');
+  });
 });
 
 describe('parseDesignMd overview branch', () => {

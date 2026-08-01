@@ -115,10 +115,38 @@ function stripInlineYamlComment(s) {
   return s;
 }
 
+// YAML double-quoted scalars process backslash escapes. Stripping the outer
+// quotes without unescaping leaves them in place, so a nested font family like
+//   fontFamily: "\"IBM Plex Sans\", system-ui, sans-serif"
+// keeps its literal backslashes and never matches the same family in CSS.
+function unescapeYamlDoubleQuoted(body) {
+  const SIMPLE = { n: '\n', r: '\r', t: '\t', '0': '\0', '"': '"', '\\': '\\', '/': '/' };
+  let out = '';
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (ch !== '\\' || i === body.length - 1) {
+      out += ch;
+      continue;
+    }
+    const next = body[i + 1];
+    if (Object.prototype.hasOwnProperty.call(SIMPLE, next)) {
+      out += SIMPLE[next];
+      i++;
+    } else {
+      out += ch;
+    }
+  }
+  return out;
+}
+
 function parseScalar(raw) {
   const s = raw.trim();
-  if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
-    return s.slice(1, -1);
+  if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) {
+    return unescapeYamlDoubleQuoted(s.slice(1, -1));
+  }
+  // Single-quoted YAML escapes only the quote itself, by doubling it.
+  if (s.length >= 2 && s.startsWith("'") && s.endsWith("'")) {
+    return s.slice(1, -1).split("''").join("'");
   }
   if (s === 'true') return true;
   if (s === 'false') return false;

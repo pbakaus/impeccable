@@ -297,6 +297,40 @@ rounded:
     assert.equal(isAllowedRadiusRaw('80px', loaded), true);
     assert.equal(isAllowedRadiusRaw('24px', loaded), true);
   });
+
+  it('unescapes YAML-escaped quotes around multi-word font families (issue #428)', () => {
+    // A YAML double-quoted scalar processes backslash escapes, so a stack that
+    // quotes a multi-word family the CSS way arrives as
+    //   fontFamily: "\"IBM Plex Sans\", system-ui, sans-serif"
+    // Before the fix the family reached allowedFonts as '\"ibm plex sans' and
+    // the rule flagged fonts DESIGN.md declares.
+    const cwd = mkTmp();
+    fs.writeFileSync(path.join(cwd, 'DESIGN.md'), `---
+typography:
+  display:
+    fontFamily: "Archivo, system-ui, sans-serif"
+  body:
+    fontFamily: "\\"IBM Plex Sans\\", system-ui, sans-serif"
+  data:
+    fontFamily: '"IBM Plex Mono", ui-monospace, monospace'
+---
+
+# Design System
+`);
+
+    const loaded = loadDesignSystemForCwd(cwd);
+    assert.deepEqual([...loaded.allowedFonts].sort(), ['archivo', 'ibm plex mono', 'ibm plex sans']);
+    assert.equal(isAllowedFont('ibm plex sans', loaded), true);
+    assert.equal(isAllowedFont('ibm plex mono', loaded), true);
+    assert.equal(isAllowedFont('comic sans ms', loaded), false);
+
+    const findings = checkSourceDesignSystem(`
+body { font-family: "IBM Plex Sans", system-ui, sans-serif; }
+code { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+h1 { font-family: Archivo, system-ui, sans-serif; }
+`, '/tmp/escaped-fonts.css', { designSystem: loaded });
+    assert.deepEqual(findings, []);
+  });
 });
 
 describe('checkSourceDesignSystem()', () => {
