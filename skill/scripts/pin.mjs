@@ -16,6 +16,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync } from 'node:fs';
 import { basename, join, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { homedir } from 'node:os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -136,13 +137,69 @@ $ARGUMENTS
 `;
 }
 
-function findOpencodeCommandsDir(projectRoot) {
-  const candidate = join(projectRoot, '.opencode', 'commands');
-  // Only pin when OpenCode is actually in use; the parent dir must hold the
-  // impeccable skill install (mirrors findHarnessDirs' guard).
-  return existsSync(join(projectRoot, '.opencode', 'skills', 'impeccable'))
-    ? candidate
-    : null;
+// OpenCode's user-scope config dir. Mirrors the CLI's opencodeGlobalConfigDir
+// precedence (OPENCODE_CONFIG_DIR → XDG_CONFIG_HOME/opencode →
+// ~/.config/opencode); duplicated here because this script ships inside the
+// installed skill and cannot import the CLI.
+function opencodeUserConfigDir() {
+  if (process.env.OPENCODE_CONFIG_DIR) return process.env.OPENCODE_CONFIG_DIR;
+  if (process.env.XDG_CONFIG_HOME) return join(process.env.XDG_CONFIG_HOME, 'opencode');
+  return join(homedir(), '.config', 'opencode');
+}
+
+/**
+ * Resolve every commands dir that should receive an OpenCode pin: the
+ * project-local dir when the project has the skill, plus the user config dir
+ * when Impeccable is installed globally (#406 layout). A user-scope skill is
+ * visible from every project, so its pinned commands belong next to it.
+ */
+function findOpencodeCommandsDirs(projectRoot) {
+  const dirs = [];
+  const seen = new Set();
+  const push = (commandsDir) => {
+    const key = resolve(commandsDir);
+    if (!seen.has(key)) {
+      seen.add(key);
+      dirs.push(commandsDir);
+    }
+  };
+  if (existsSync(join(projectRoot, '.opencode', 'skills', 'impeccable'))) {
+    push(join(projectRoot, '.opencode', 'commands'));
+  }
+  const userConfig = opencodeUserConfigDir();
+  if (existsSync(join(userConfig, 'skills', 'impeccable'))) {
+    push(join(userConfig, 'commands'));
+  }
+  return dirs;
+}
+
+function writePinnedOpencodeCommand(commandsDir, command, metadata) {
+  const commandFile = join(commandsDir, `impeccable-${command}.md`);
+  if (existsSync(commandFile)) {
+    const existing = readFileSync(commandFile, 'utf-8');
+    if (!existing.includes(OPENCODE_PIN_MARKER)) {
+      console.log(`  SKIP: ${commandFile} (non-pinned command already exists)`);
+      return false;
+    }
+  } else {
+    mkdirSync(commandsDir, { recursive: true });
+  }
+  writeFileSync(commandFile, generatePinnedOpencodeCommand(command, metadata));
+  console.log(`  + ${commandFile}`);
+  return true;
+}
+
+function removePinnedOpencodeCommand(commandsDir, command) {
+  const commandFile = join(commandsDir, `impeccable-${command}.md`);
+  if (!existsSync(commandFile)) return false;
+  const content = readFileSync(commandFile, 'utf-8');
+  if (!content.includes(OPENCODE_PIN_MARKER)) {
+    console.log(`  SKIP: ${commandFile} (not a pinned command)`);
+    return false;
+  }
+  rmSync(commandFile, { force: true });
+  console.log(`  - ${commandFile}`);
+  return true;
 }
 
 /**
@@ -151,8 +208,9 @@ function findOpencodeCommandsDir(projectRoot) {
 function pin(command, projectRoot) {
   const metadata = loadCommandMetadata();
   const harnessDirs = findHarnessDirs(projectRoot);
+  const opencodeCommandsDirs = findOpencodeCommandsDirs(projectRoot);
 
-  if (harnessDirs.length === 0) {
+  if (harnessDirs.length === 0 && opencodeCommandsDirs.length === 0) {
     console.log('No harness directories with impeccable installed found.');
     return false;
   }
@@ -186,25 +244,10 @@ function pin(command, projectRoot) {
     created++;
   }
 
-  // OpenCode: write a slash command bridge, not a skill shortcut.
-  const opencodeCommandsDir = findOpencodeCommandsDir(projectRoot);
-  if (opencodeCommandsDir) {
-    const commandFile = join(opencodeCommandsDir, `impeccable-${command}.md`);
-    if (existsSync(commandFile)) {
-      const existing = readFileSync(commandFile, 'utf-8');
-      if (!existing.includes(OPENCODE_PIN_MARKER)) {
-        console.log(`  SKIP: ${commandFile} (non-pinned command already exists)`);
-      } else {
-        writeFileSync(commandFile, generatePinnedOpencodeCommand(command, metadata));
-        console.log(`  + ${commandFile}`);
-        created++;
-      }
-    } else {
-      mkdirSync(opencodeCommandsDir, { recursive: true });
-      writeFileSync(commandFile, generatePinnedOpencodeCommand(command, metadata));
-      console.log(`  + ${commandFile}`);
-      created++;
-    }
+  // OpenCode: write a slash command bridge, not a skill shortcut. Covers both
+  // project installs and user-scope (global config) installs.
+  for (const commandsDir of opencodeCommandsDirs) {
+    if (writePinnedOpencodeCommand(commandsDir, command, metadata)) created++;
   }
 
   if (created > 0) {
@@ -245,20 +288,10 @@ function unpin(command, projectRoot) {
     removed++;
   }
 
-  // OpenCode: remove the pinned command file if it's one of ours.
-  const opencodeCommandsDir = findOpencodeCommandsDir(projectRoot);
-  if (opencodeCommandsDir) {
-    const commandFile = join(opencodeCommandsDir, `impeccable-${command}.md`);
-    if (existsSync(commandFile)) {
-      const content = readFileSync(commandFile, 'utf-8');
-      if (content.includes(OPENCODE_PIN_MARKER)) {
-        rmSync(commandFile, { force: true });
-        console.log(`  - ${commandFile}`);
-        removed++;
-      } else {
-        console.log(`  SKIP: ${commandFile} (not a pinned command)`);
-      }
-    }
+  // OpenCode: remove the pinned command file if it's one of ours, in every
+  // scope it could have been written to.
+  for (const commandsDir of findOpencodeCommandsDirs(projectRoot)) {
+    if (removePinnedOpencodeCommand(commandsDir, command)) removed++;
   }
 
   if (removed > 0) {
