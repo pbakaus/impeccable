@@ -11,7 +11,7 @@
  */
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
 import { execSync } from 'child_process';
-import { mkdtempSync, existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync, rmSync, lstatSync, realpathSync, readlinkSync, symlinkSync } from 'fs';
+import { mkdtempSync, existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync, rmSync, lstatSync, realpathSync, readlinkSync, symlinkSync, cpSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import {
@@ -1558,6 +1558,29 @@ describe('skills install/update: local universal bundle e2e', () => {
     expect(readFileSync(bridge, 'utf8')).toContain('impeccable bridge');
 
     rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('skills check from the home dir recognises a global OpenCode install as current', () => {
+    // Bugbot scenario: `skills check` runs scope-less, so a home-rooted run
+    // matches the GLOBAL skills dir via HOME_SKILLS_DIR_OVERRIDES. The command
+    // bridge must be resolved next to that matched skills dir, not at
+    // <home>/.opencode/commands. os.homedir() only honours HOME at process
+    // start, so this must run through the CLI subprocess, not in-process.
+    const home = mkdtempSync(join(tmpdir(), 'imp-test-check-home-'));
+    execSync('git init', { cwd: home });
+    const bundleRoot = createFakeUniversalBundle(home, ['.opencode']);
+    const configHome = mkdtempSync(join(tmpdir(), 'imp-test-check-config-'));
+    cpSync(join(bundleRoot, '.opencode', 'skills'), join(configHome, 'skills'), { recursive: true });
+    cpSync(join(bundleRoot, '.opencode', 'commands'), join(configHome, 'commands'), { recursive: true });
+
+    const output = run('skills check', {
+      cwd: home,
+      env: { ...process.env, HOME: home, OPENCODE_CONFIG_DIR: configHome, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+    expect(output).toContain('Skills are up to date');
+
+    rmSync(home, { recursive: true, force: true });
+    rmSync(configHome, { recursive: true, force: true });
   }, 15000);
 
   test('skills update leaves an intact command bridge and pinned siblings alone', () => {

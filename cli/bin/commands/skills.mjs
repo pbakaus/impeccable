@@ -681,10 +681,13 @@ function isUpToDate(root, providers, bundleDir, scope) {
     // missing or drifted must refresh, otherwise reinstall/update report
     // success while the slash command stays absent (#474 backfill). Only
     // bundle-shipped files are checked, so pinned or user commands never
-    // affect freshness.
+    // affect freshness. The commands dir sits next to the matched skills dir
+    // (project <root>/.opencode, user <config>, home-dir global override), so
+    // deriving it from localSkillsDir stays correct for every layout
+    // copyProviderCommands can write.
     const bundleCommandsDir = join(bundleDir, provider, 'commands');
     if (existsSync(bundleCommandsDir)) {
-      const localCommandsDir = providerCommandsDir(root, provider, scope);
+      const localCommandsDir = join(dirname(localSkillsDir), 'commands');
       for (const entry of readdirSync(bundleCommandsDir)) {
         const bundleFile = join(bundleCommandsDir, entry);
         if (!statSync(bundleFile).isFile()) continue;
