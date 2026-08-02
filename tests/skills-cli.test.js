@@ -106,6 +106,18 @@ function createFakeUniversalBundle(root, providers = ['.claude', '.agents', '.cu
       hooks: { PostToolUse: [{ matcher: 'apply_patch', hooks: [{ type: 'command', command: 'node ".codex/skills/impeccable/scripts/hook.mjs"' }] }] },
     }, null, 2));
   }
+  if (providers.includes('.opencode')) {
+    const commandsDir = join(bundleRoot, '.opencode', 'commands');
+    mkdirSync(commandsDir, { recursive: true });
+    writeFileSync(join(commandsDir, 'impeccable.md'), [
+      'description: Impeccable impeccable bridge',
+      'agent: build',
+      'subtask: true',
+      '',
+      'body impeccable',
+      '',
+    ].join('\n'));
+  }
   // Native subagent definitions, mirroring the build's provider agents output.
   if (providers.includes('.github')) {
     mkdirSync(join(bundleRoot, '.github', 'agents'), { recursive: true });
@@ -1464,6 +1476,76 @@ describe('skills install/update: local universal bundle e2e', () => {
     });
     expect(output).toContain('Skills are up to date');
     expect(readFileSync(join(tmp, '.cursor', 'hooks.json'), 'utf8')).toBe('{ malformed');
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('reinstall backfills a missing OpenCode command bridge when skills are current', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-reinstall-backfill-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.opencode']);
+    const env = { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot };
+
+    run('skills install -y --providers=opencode --no-hooks', { cwd: tmp, env });
+    const bridge = join(tmp, '.opencode', 'commands', 'impeccable.md');
+    expect(existsSync(bridge)).toBe(true);
+    rmSync(bridge);
+
+    const output = run('skills install -y --providers=opencode --no-hooks', { cwd: tmp, env });
+    expect(output).toContain('already installed');
+    expect(existsSync(bridge)).toBe(true);
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('skills update backfills a missing OpenCode command bridge when skills are current', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-update-backfill-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.opencode']);
+    const env = { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot };
+
+    run('skills install -y --providers=opencode --no-hooks', { cwd: tmp, env });
+    const bridge = join(tmp, '.opencode', 'commands', 'impeccable.md');
+    expect(existsSync(bridge)).toBe(true);
+    rmSync(bridge);
+
+    run('skills update -y --no-hooks', { cwd: tmp, env });
+    expect(existsSync(bridge)).toBe(true);
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('skills update restores a command bridge whose content drifted', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-update-drifted-bridge-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.opencode']);
+    const env = { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot };
+
+    run('skills install -y --providers=opencode --no-hooks', { cwd: tmp, env });
+    const bridge = join(tmp, '.opencode', 'commands', 'impeccable.md');
+    writeFileSync(bridge, 'user edit drift\n');
+
+    run('skills update -y --no-hooks', { cwd: tmp, env });
+    expect(readFileSync(bridge, 'utf8')).toContain('impeccable bridge');
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('skills update leaves an intact command bridge and pinned siblings alone', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-update-bridge-intact-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.opencode']);
+    const env = { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot };
+
+    run('skills install -y --providers=opencode --no-hooks', { cwd: tmp, env });
+    const bridge = join(tmp, '.opencode', 'commands', 'impeccable.md');
+    const pinned = join(tmp, '.opencode', 'commands', 'impeccable-audit.md');
+    writeFileSync(pinned, 'pinned by user\n');
+
+    const output = run('skills update -y --no-hooks', { cwd: tmp, env });
+    expect(output).toContain('Skills are up to date');
+    expect(readFileSync(bridge, 'utf8')).toContain('impeccable bridge');
+    expect(readFileSync(pinned, 'utf8')).toBe('pinned by user\n');
 
     rmSync(tmp, { recursive: true, force: true });
   }, 15000);

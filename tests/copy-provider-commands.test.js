@@ -25,6 +25,7 @@ import { tmpdir } from 'os';
 
 import {
   copyProviderCommands,
+  isUpToDate,
   opencodeGlobalConfigDir,
 } from '../cli/bin/commands/skills.mjs';
 
@@ -182,6 +183,102 @@ describe('copyProviderCommands', () => {
     try {
       const written = copyProviderCommands(bundle, project, ['claude'], { scope: 'project' });
       expect(written).toBe(0);
+    } finally {
+      rmSync(bundle, { recursive: true, force: true });
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('isUpToDate command awareness', () => {
+  function setupBundleWithSkill(bundleDir, providerName, { withCommands = true } = {}) {
+    const skillDir = path.join(bundleDir, providerName, 'skills', 'impeccable');
+    mkdirSync(path.join(skillDir, 'scripts'), { recursive: true });
+    writeFileSync(path.join(skillDir, 'SKILL.md'), '---\nname: impeccable\n---\nBundle skill.\n');
+    writeFileSync(path.join(skillDir, 'scripts', 'context.mjs'), 'console.log("bundle");\n');
+    if (withCommands) setupBundleWithCommand(bundleDir, providerName, ['impeccable']);
+  }
+
+  function mirrorBundleSkills(bundleDir, root, providerName) {
+    fs.cpSync(
+      path.join(bundleDir, providerName, 'skills'),
+      path.join(root, providerName, 'skills'),
+      { recursive: true },
+    );
+  }
+
+  function mirrorBundleCommands(bundleDir, root, providerName) {
+    fs.cpSync(
+      path.join(bundleDir, providerName, 'commands'),
+      path.join(root, providerName, 'commands'),
+      { recursive: true },
+    );
+  }
+
+  test('returns false when skills match but the command bridge is missing', () => {
+    const bundle = mkdtempSync(path.join(tmpdir(), 'imp-cmd-bundle-'));
+    const project = mkdtempSync(path.join(tmpdir(), 'imp-cmd-proj-'));
+    setupBundleWithSkill(bundle, '.opencode');
+    mirrorBundleSkills(bundle, project, '.opencode');
+    try {
+      expect(isUpToDate(project, ['.opencode'], bundle, 'project')).toBe(false);
+    } finally {
+      rmSync(bundle, { recursive: true, force: true });
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  test('returns true when skills and commands match the bundle', () => {
+    const bundle = mkdtempSync(path.join(tmpdir(), 'imp-cmd-bundle-'));
+    const project = mkdtempSync(path.join(tmpdir(), 'imp-cmd-proj-'));
+    setupBundleWithSkill(bundle, '.opencode');
+    mirrorBundleSkills(bundle, project, '.opencode');
+    mirrorBundleCommands(bundle, project, '.opencode');
+    try {
+      expect(isUpToDate(project, ['.opencode'], bundle, 'project')).toBe(true);
+    } finally {
+      rmSync(bundle, { recursive: true, force: true });
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  test('returns false when the command bridge content drifted', () => {
+    const bundle = mkdtempSync(path.join(tmpdir(), 'imp-cmd-bundle-'));
+    const project = mkdtempSync(path.join(tmpdir(), 'imp-cmd-proj-'));
+    setupBundleWithSkill(bundle, '.opencode');
+    mirrorBundleSkills(bundle, project, '.opencode');
+    mirrorBundleCommands(bundle, project, '.opencode');
+    writeFileSync(path.join(project, '.opencode', 'commands', 'impeccable.md'), 'user edit drift\n');
+    try {
+      expect(isUpToDate(project, ['.opencode'], bundle, 'project')).toBe(false);
+    } finally {
+      rmSync(bundle, { recursive: true, force: true });
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  test('ignores local-only command files such as pinned shortcuts', () => {
+    const bundle = mkdtempSync(path.join(tmpdir(), 'imp-cmd-bundle-'));
+    const project = mkdtempSync(path.join(tmpdir(), 'imp-cmd-proj-'));
+    setupBundleWithSkill(bundle, '.opencode');
+    mirrorBundleSkills(bundle, project, '.opencode');
+    mirrorBundleCommands(bundle, project, '.opencode');
+    writeFileSync(path.join(project, '.opencode', 'commands', 'impeccable-audit.md'), 'pinned\n');
+    try {
+      expect(isUpToDate(project, ['.opencode'], bundle, 'project')).toBe(true);
+    } finally {
+      rmSync(bundle, { recursive: true, force: true });
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  test('ignores providers whose bundle has no commands directory', () => {
+    const bundle = mkdtempSync(path.join(tmpdir(), 'imp-cmd-bundle-'));
+    const project = mkdtempSync(path.join(tmpdir(), 'imp-cmd-proj-'));
+    setupBundleWithSkill(bundle, '.opencode', { withCommands: false });
+    mirrorBundleSkills(bundle, project, '.opencode');
+    try {
+      expect(isUpToDate(project, ['.opencode'], bundle, 'project')).toBe(true);
     } finally {
       rmSync(bundle, { recursive: true, force: true });
       rmSync(project, { recursive: true, force: true });

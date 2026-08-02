@@ -675,6 +675,24 @@ function isUpToDate(root, providers, bundleDir, scope) {
         if (bundleHash !== localHash) return false;
       }
     }
+
+    // Provider command artifacts (e.g. OpenCode's commands/impeccable.md) are
+    // part of "current" too: an install whose skills match but whose bridge is
+    // missing or drifted must refresh, otherwise reinstall/update report
+    // success while the slash command stays absent (#474 backfill). Only
+    // bundle-shipped files are checked, so pinned or user commands never
+    // affect freshness.
+    const bundleCommandsDir = join(bundleDir, provider, 'commands');
+    if (existsSync(bundleCommandsDir)) {
+      const localCommandsDir = providerCommandsDir(root, provider, scope);
+      for (const entry of readdirSync(bundleCommandsDir)) {
+        const bundleFile = join(bundleCommandsDir, entry);
+        if (!statSync(bundleFile).isFile()) continue;
+        const localFile = join(localCommandsDir, entry);
+        if (!existsSync(localFile)) return false;
+        if (hashSkillFile(bundleFile) !== hashSkillFile(localFile)) return false;
+      }
+    }
   }
   return true;
 }
@@ -1245,18 +1263,24 @@ function providerConfigDir(provider) {
   return PROVIDER_CONFIG_DIRS[provider] || provider.replace(/^\./, '.');
 }
 
+// Local commands dir for a provider. Project installs land at
+// <root>/<configDir>/commands; user-scope OpenCode installs must target the
+// config dir OpenCode actually scans (OPENCODE_CONFIG_DIR → XDG → ~/.config).
+function providerCommandsDir(root, providerEntry, scope) {
+  return scope === 'user'
+    ? join(opencodeGlobalConfigDir(root), 'commands')
+    : join(root, providerConfigDir(providerEntry), 'commands');
+}
+
 function copyProviderCommands(bundleDir, root, targets, { scope } = {}) {
   let written = 0;
   for (const target of targets) {
     const providerEntry = PROVIDER_DIRS.includes(`.${target}`)
       ? `.${target}`
       : target;
-    const configDir = providerConfigDir(providerEntry);
     const srcDir = join(bundleDir, providerEntry, 'commands');
     if (!existsSync(srcDir)) continue;
-    const localCommandsDir = scope === 'user'
-      ? join(opencodeGlobalConfigDir(root), 'commands')
-      : join(root, configDir, 'commands');
+    const localCommandsDir = providerCommandsDir(root, providerEntry, scope);
     mkdirSync(localCommandsDir, { recursive: true });
     for (const entry of readdirSync(srcDir)) {
       const src = join(srcDir, entry);
@@ -1900,6 +1924,7 @@ async function install(flags) {
         migrateUnprefixImpeccable(installRoot, scope);
         updated = refreshProviderSkills(bundleDir, installRoot, copyTargets, scope);
         reportProviderAgents(copyProviderAgents(bundleDir, installRoot, copyTargets, { scope }));
+        copyProviderCommands(bundleDir, installRoot, copyTargets, { scope });
         const v = getSkillsVersion(installRoot, scope);
         console.log(`Updated ${updated} skill(s)${v ? ` to v${v}` : ''}.`);
       }
@@ -2275,6 +2300,7 @@ export {
   expectedHookDests,
   extractZip,
   formatInstallDetectionLines,
+  isUpToDate,
   linkProviderSkills,
   mergeHookManifests,
   migrateUnprefixImpeccable,
