@@ -134,6 +134,5 @@ Some harnesses have separate "custom commands" systems (distinct from skills) wi
 | OpenCode | `.opencode/commands/` (Markdown) | `$ARGUMENTS`, `$1`-`$N`, `` !`shell` ``, `@file` |
 | Gemini CLI | `.gemini/commands/` (TOML) | `{{args}}`, `!{shell}`, `@{file}` |
 | Codex CLI | `.codex/prompts/` | `$ARGNAME` |
-| OpenCode | `.opencode/commands/` | `$ARGUMENTS`, `$1`-`$N`, `` !`shell` `` |
 
 Our build system handles cross-provider placeholders at compile time via `replacePlaceholders()` for `{{model}}`, `{{config_file}}`, `{{ask_instruction}}`, and `{{available_commands}}`.
