@@ -19,6 +19,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { readSourceFiles, readPatterns, stashPerProjectArtifacts, restorePerProjectArtifacts } from './lib/utils.js';
+import { syncRootCommands } from './lib/root-commands-sync.mjs';
 import { createTransformer, PROVIDERS } from './lib/transformers/index.js';
 import { hooksJsonFor, buildClaudePluginHooksManifest } from './lib/transformers/hooks.js';
 import { createAllZips, createProviderZip } from './lib/zip.js';
@@ -573,6 +574,11 @@ async function build() {
       if (fs.existsSync(agentsSrc)) {
         copyDirSync(agentsSrc, agentsDest);
       }
+    }
+
+    const syncedCommands = syncRootCommands(DIST_DIR, ROOT_DIR, syncConfigs);
+    if (syncedCommands.length > 0) {
+      console.log(`📟 Synced provider commands to: ${syncedCommands.join(', ')}`);
     }
 
     const syncedHooks = syncRootHookManifests(ROOT_DIR);
