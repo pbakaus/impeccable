@@ -6,6 +6,9 @@
 // exposed on `model.frontmatter` alongside the prose-scraped sections;
 // consumers can prefer frontmatter values and fall back to prose.
 
+// Array order is also match precedence: matchCanonicalSection's keyword-contained
+// pass returns the first entry a heading contains, so reordering this changes
+// which section an ambiguous heading resolves to.
 const CANONICAL_SECTIONS = [
   'Overview',
   'Colors',
@@ -614,10 +617,8 @@ function extractGuidance(section) {
 }
 
 function extractElevation(section) {
-  if (!section) return null;
-  const subs = splitSubsections(section.lines);
-
-  const description = collectParagraphs(subs[0].lines).join(' ') || null;
+  const guidance = extractGuidance(section);
+  if (!guidance) return null;
 
   const shadows = [];
   const seen = new Set();
@@ -642,12 +643,7 @@ function extractElevation(section) {
     for (const inline of extractInlineShadows(b)) dedupe(inline);
   }
 
-  return {
-    subtitle: section.subtitle,
-    description,
-    shadows,
-    rules: extractNamedRules(section.lines),
-  };
+  return { ...guidance, shadows };
 }
 
 function extractInlineShadows(text) {
@@ -779,6 +775,15 @@ function extractDosDonts(section) {
 
 // ---------- Coverage assessment ----------
 
+// Sections whose model is description-plus-rules only (see extractGuidance).
+const guidanceCoverage = (guidance) =>
+  guidance
+    ? {
+        description: Boolean(guidance.description),
+        rules: guidance.rules.length,
+      }
+    : 'missing';
+
 function assessCoverage(model) {
   const report = {};
 
@@ -807,12 +812,7 @@ function assessCoverage(model) {
       }
     : 'missing';
 
-  report.layout = model.layout
-    ? {
-        description: Boolean(model.layout.description),
-        rules: model.layout.rules.length,
-      }
-    : 'missing';
+  report.layout = guidanceCoverage(model.layout);
 
   report.elevation = model.elevation
     ? {
@@ -822,12 +822,7 @@ function assessCoverage(model) {
       }
     : 'missing';
 
-  report.shapes = model.shapes
-    ? {
-        description: Boolean(model.shapes.description),
-        rules: model.shapes.rules.length,
-      }
-    : 'missing';
+  report.shapes = guidanceCoverage(model.shapes);
 
   report.components = model.components
     ? {

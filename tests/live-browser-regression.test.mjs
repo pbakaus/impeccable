@@ -1334,11 +1334,19 @@ describe('live-browser.js regression guards', () => {
   });
 
   it('includes named rules from every canonical narrative section', () => {
-    assert.match(
-      SOURCE,
-      /function synthesizeNarrative\(parsed\)[\s\S]{0,900}?md\.colors\?\.rules[\s\S]{0,180}?md\.typography\?\.rules[\s\S]{0,180}?md\.layout\?\.rules[\s\S]{0,180}?md\.elevation\?\.rules[\s\S]{0,180}?md\.shapes\?\.rules/,
-      'the design panel must retain named rules from Layout and Shapes alongside the older canonical sections',
-    );
+    const narrativeStart = SOURCE.indexOf('  function synthesizeNarrative(parsed) {');
+    const narrativeEnd = SOURCE.indexOf('\n  function renderColorTiles', narrativeStart);
+    assert.notEqual(narrativeStart, -1, 'synthesizeNarrative must exist');
+    assert.notEqual(narrativeEnd, -1, 'synthesizeNarrative must end before renderColorTiles');
+    const narrativeSource = SOURCE.slice(narrativeStart, narrativeEnd);
+
+    for (const section of ['colors', 'typography', 'layout', 'elevation', 'shapes']) {
+      assert.match(
+        narrativeSource,
+        new RegExp(`md\\.${section}\\?\\.rules[^\\n]*section: '${section}'`),
+        `the design panel must carry named rules tagged with their ${section} section`,
+      );
+    }
   });
 
   it('editing focus timeout does not read a stale inline edit row', () => {

@@ -235,6 +235,11 @@ Repeated geometry must remain recognizable without color.
     }]);
 
     const coverage = assessCoverage(model);
+    assert.deepEqual(
+      Object.entries(coverage).filter(([, v]) => v === 'missing').map(([k]) => k),
+      [],
+      'a section present in the markdown must not be reported as missing',
+    );
     assert.deepEqual(Object.keys(coverage), [
       'overview',
       'colors',
