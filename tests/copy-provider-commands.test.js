@@ -284,4 +284,23 @@ describe('isUpToDate command awareness', () => {
       rmSync(project, { recursive: true, force: true });
     }
   });
+
+  test('user scope resolves the commands dir via OPENCODE_CONFIG_DIR', () => {
+    const bundle = mkdtempSync(path.join(tmpdir(), 'imp-cmd-bundle-'));
+    const home = mkdtempSync(path.join(tmpdir(), 'imp-cmd-home-'));
+    const custom = mkdtempSync(path.join(tmpdir(), 'imp-cmd-custom-'));
+    setupBundleWithSkill(bundle, '.opencode');
+    process.env.OPENCODE_CONFIG_DIR = custom;
+    // User-scope OpenCode skills live at <config>/skills (HOME_SKILLS_DIR_OVERRIDES).
+    fs.cpSync(path.join(bundle, '.opencode', 'skills'), path.join(custom, 'skills'), { recursive: true });
+    try {
+      expect(isUpToDate(home, ['.opencode'], bundle, 'user')).toBe(false);
+      fs.cpSync(path.join(bundle, '.opencode', 'commands'), path.join(custom, 'commands'), { recursive: true });
+      expect(isUpToDate(home, ['.opencode'], bundle, 'user')).toBe(true);
+    } finally {
+      rmSync(bundle, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
+      rmSync(custom, { recursive: true, force: true });
+    }
+  });
 });

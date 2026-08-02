@@ -66,6 +66,18 @@ function createFakeLinkSource(root, providers = ['.claude']) {
   for (const provider of providers) {
     writeSkill(join(root, '.impeccable', 'dist', 'universal'), provider, 'impeccable');
   }
+  if (providers.includes('.opencode')) {
+    const commandsDir = join(root, '.impeccable', 'dist', 'universal', '.opencode', 'commands');
+    mkdirSync(commandsDir, { recursive: true });
+    writeFileSync(join(commandsDir, 'impeccable.md'), [
+      'description: Impeccable impeccable bridge',
+      'agent: build',
+      'subtask: true',
+      '',
+      'body impeccable',
+      '',
+    ].join('\n'));
+  }
 }
 
 function createFakeUniversalBundle(root, providers = ['.claude', '.agents', '.cursor']) {
@@ -477,6 +489,23 @@ describe('skills install: already-installed detection', () => {
 // ─── Submodule/link installs ────────────────────────────────────────────────
 
 describe('skills link: submodule installs', () => {
+  test('writes the OpenCode command bridge alongside linked skills', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-link-bridge-'));
+    execSync('git init', { cwd: tmp });
+    createFakeLinkSource(tmp, ['.opencode']);
+
+    const output = run('skills link --source=.impeccable --providers=opencode -y', { cwd: tmp });
+    expect(output).toContain('Linked impeccable into: .opencode');
+
+    const dest = join(tmp, '.opencode', 'skills', 'impeccable');
+    expect(lstatSync(dest).isSymbolicLink()).toBe(true);
+    const bridge = join(tmp, '.opencode', 'commands', 'impeccable.md');
+    expect(existsSync(bridge)).toBe(true);
+    expect(readFileSync(bridge, 'utf8')).toContain('impeccable bridge');
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
   test('creates relative skill symlinks from dist/universal', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'imp-test-link-'));
     execSync('git init', { cwd: tmp });

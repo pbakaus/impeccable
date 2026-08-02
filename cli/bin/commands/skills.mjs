@@ -1862,6 +1862,13 @@ async function link(flags) {
     process.exit(1);
   }
 
+  // Linked installs are excluded from install/update refreshes (overwriting a
+  // symlink would destroy the link), so this is the only path that can deliver
+  // the OpenCode command bridge to them. A copy, not a symlink: the bridge is
+  // static and OpenCode scans the real commands dir. No-ops when the source
+  // checkout has no built commands (e.g. dist/ not built yet).
+  copyProviderCommands(source.bundleRoot, root, targets, { scope: 'project' });
+
   const parts = [];
   if (result.linked > 0) parts.push(`${result.linked} linked`);
   if (result.already > 0) parts.push(`${result.already} already linked`);
