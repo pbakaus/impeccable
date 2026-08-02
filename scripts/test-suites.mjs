@@ -29,7 +29,7 @@ export const SUITES = {
       /^skill\/(SKILL\.src\.md|agents\/|reference\/|scripts\/(cleanup-deprecated|concept-seed|context|context-signals|critique-storage|design-parser|doctor|hook|impeccable-paths|is-generated|lib\/(artifact-schema|composition-catalog|concept-catalog|provider|staleness|staleness-deep|staleness-notice|surface-briefs|target-slug|template-extensions)|pin|surface-brief))/,
       /^README(\.npm)?\.md$/,
       /^cli\/bin\//,
-      /^tests\/(build|cleanup-deprecated|cli-args|cli-ignores|concept-seed|context|context-signals|critique-storage|design-parser|doctor|github-sheriff|hook|hook-build|impeccable-paths|openai-plugin|pin|skills-cli|staleness|surface-brief|target-args|template-extensions|test-suites|windows-path-fix|zip)\.test\.(js|mjs)$/,
+      /^tests\/(build|cleanup-deprecated|cli-args|cli-ignores|concept-seed|context|context-signals|copy-provider-commands|critique-storage|design-parser|doctor|github-sheriff|hook|hook-build|impeccable-paths|openai-plugin|pin|skills-cli|staleness|surface-brief|target-args|template-extensions|test-suites|windows-path-fix|zip)\.test\.(js|mjs)$/,
       /^tests\/lib\//,
     ],
     commands: [
@@ -38,12 +38,14 @@ export const SUITES = {
         files: [
           'tests/build.test.js',
           'tests/cli-ignores.test.js',
+          'tests/copy-provider-commands.test.js',
           'tests/windows-path-fix.test.js',
           'tests/lib/provider-blocks.test.js',
           'tests/lib/transformers/provider-blocks.test.js',
           'tests/lib/utils.test.js',
           'tests/lib/impeccable-config.test.js',
           'tests/lib/transformers/factory.test.js',
+          'tests/lib/transformers/opencode-commands.test.js',
           'tests/lib/transformers/providers.test.js',
           'tests/skills-cli.test.js',
           'tests/validate-plugin-versions.test.js',
