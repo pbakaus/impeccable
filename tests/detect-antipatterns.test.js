@@ -247,7 +247,14 @@ describe('detectText — broken images in source comments', () => {
 
     const findings = detectText(source, 'gallery.tsx');
 
-    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(3);
+    expect(findings
+      .filter(r => r.antipattern === 'broken-image')
+      .map(r => r.snippet)
+      .sort()).toEqual([
+      '<img alt="Missing source" />',
+      '<img src=""',
+      '<img src="#"',
+    ]);
   });
 
   test('keeps later JSX visible after a regex literal following return', () => {
@@ -272,10 +279,37 @@ describe('detectText — broken images in source comments', () => {
     expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(0);
   });
 
+  test('does not treat division after a postfix update as a regex literal', () => {
+    const source = [
+      'const ratio = count++ / divisor;',
+      '// <img src="" alt="Comment-only image" />',
+    ].join('\n');
+
+    const findings = detectText(source, 'gallery.tsx');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(0);
+  });
+
   test('keeps same-line JSX visible after bare URL text', () => {
     const source = '<p>https://example.com <img src="" alt="Empty source" /></p>';
 
     const findings = detectText(source, 'gallery.tsx');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(1);
+  });
+
+  test('keeps same-line JSX visible after a bare URL in a .js file', () => {
+    const source = '<p>https://example.com <img src="" alt="Empty source" /></p>';
+
+    const findings = detectText(source, 'gallery.js');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(1);
+  });
+
+  test('keeps same-line JSX visible after a protocol-relative URL', () => {
+    const source = '<p>//cdn.example.com/logo.svg <img src="" alt="Empty source" /></p>';
+
+    const findings = detectText(source, 'gallery.jsx');
 
     expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(1);
   });

@@ -136,7 +136,13 @@ function stripJsComments(content, options = {}) {
       continue;
     }
 
-    const jsxUrlSeparator = options.jsx && (output.endsWith('http:') || output.endsWith('https:'));
+    const jsxUrlSeparator = options.jsx && char === '/' && next === '/' &&
+      (output.endsWith('http:') ||
+        output.endsWith('https:') ||
+        (/<[A-Za-z][^>]*>[^<]*$/.test(output.slice(output.lastIndexOf('\n') + 1)) &&
+          /^[\w.-]+\.[A-Za-z]{2,}(?=[:/?#\s<]|$)/.test(content.slice(i + 2))));
+    const afterPostfixUpdate = (lastSignificant === '+' || lastSignificant === '-') &&
+      previousSignificant === lastSignificant;
     if (char === '/' && next === '/' && jsxUrlSeparator) {
       output += '//';
       i++;
@@ -165,7 +171,10 @@ function stripJsComments(content, options = {}) {
       }
     } else if (
       char === '/' &&
-      (!lastSignificant || /[=([{!?:;,&|+\-*%^~]/.test(lastSignificant) || (previousSignificant === '=' && lastSignificant === '>') || (currentWordPrefix !== '.' && REGEX_PREFIX_KEYWORDS.has(currentWord)))
+      (!lastSignificant ||
+        (/[=([{!?:;,&|+\-*%^~]/.test(lastSignificant) && !afterPostfixUpdate) ||
+        (previousSignificant === '=' && lastSignificant === '>') ||
+        (currentWordPrefix !== '.' && REGEX_PREFIX_KEYWORDS.has(currentWord)))
     ) {
       output += char;
       state = 'regex';
@@ -770,7 +779,7 @@ function detectText(content, filePath, options = {}) {
   const findings = [];
   const ext = extFromFilePath(filePath);
   const source = JS_SOURCE_EXTS.has(ext) ? stripJsComments(content, {
-    jsx: ext === '.jsx' || ext === '.tsx',
+    jsx: ext === '.js' || ext === '.jsx' || ext === '.tsx',
   }) : content;
   const lines = source.split('\n');
 
