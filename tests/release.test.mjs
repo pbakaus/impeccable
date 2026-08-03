@@ -111,7 +111,9 @@ describe('release.mjs guards', () => {
     for (const tag of git(workDir, 'tag').split('\n').filter(Boolean)) {
       git(workDir, 'tag', '-d', tag);
     }
-    for (const line of git(workDir, 'ls-remote', '--tags', 'origin').split('\n').filter(Boolean)) {
+    // --refs excludes the peeled `^{}` lines annotated tags produce, which
+    // are not deletable refs and would abort the cleanup.
+    for (const line of git(workDir, 'ls-remote', '--refs', '--tags', 'origin').split('\n').filter(Boolean)) {
       const ref = line.split('\t')[1];
       if (ref) git(workDir, 'push', 'origin', `:${ref}`);
     }
