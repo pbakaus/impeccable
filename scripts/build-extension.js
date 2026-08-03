@@ -19,36 +19,16 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { ANTIPATTERNS } from '../cli/engine/registry/antipatterns.mjs';
+import { bundleBrowserDetectorModules } from './lib/browser-detector-bundle.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const EXT_DIR = path.join(ROOT, 'extension');
 
-const BROWSER_MODULES = [
-  'cli/engine/shared/constants.mjs',
-  'cli/engine/registry/antipatterns.mjs',
-  'cli/engine/shared/color.mjs',
-  'cli/engine/shared/fonts.mjs',
-  'cli/engine/rules/checks.mjs',
-  'cli/engine/browser/injected/index.mjs',
-];
 const DETECTOR_OUTPUT = path.join(EXT_DIR, 'detector/detect.js');
 const AP_OUTPUT = path.join(EXT_DIR, 'detector/antipatterns.json');
 
-function browserSafeModule(relPath) {
-  let code = fs.readFileSync(path.join(ROOT, relPath), 'utf-8');
-  if (relPath === 'cli/engine/registry/antipatterns.mjs') {
-    const match = code.match(/const ANTIPATTERNS = \[[\s\S]*?\n\];/);
-    if (!match) throw new Error('Could not extract browser antipattern registry');
-    code = match[0];
-  }
-  code = code.replace(/^import[\s\S]*?;\n/gm, '');
-  code = code.replace(/^export\s+\{[^}]*\};\n?/gm, '');
-  code = code.replace(/^export\s+\{[\s\S]*?^};\n?/gm, '');
-  return `// --- ${relPath} ---\n${code.trim()}\n`;
-}
-
-const code = BROWSER_MODULES.map(browserSafeModule).join('\n');
+const code = bundleBrowserDetectorModules(ROOT);
 
 // --- 1. Build detector ---
 
