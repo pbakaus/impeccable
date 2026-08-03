@@ -42,7 +42,7 @@ function shouldRunPageAnalyzers(content, filePath) {
 }
 
 const JS_SOURCE_EXTS = new Set(['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs']);
-const REGEX_PREFIX_KEYWORDS = new Set(['await', 'case', 'delete', 'do', 'else', 'in', 'instanceof', 'new', 'return', 'throw', 'typeof', 'void', 'yield']);
+const REGEX_PREFIX_KEYWORDS = new Set(['await', 'case', 'default', 'delete', 'do', 'else', 'in', 'instanceof', 'new', 'return', 'throw', 'typeof', 'void', 'yield']);
 
 /**
  * Blank JavaScript comments without moving any following source. Regex
@@ -56,14 +56,23 @@ function stripJsComments(content, options = {}) {
   let previousSignificant = '';
   let currentWord = '';
   let currentWordPrefix = '';
+  let wordSeparated = false;
   let regexCharClass = false;
   const templateExpressionDepths = [];
 
   const recordSignificant = (char) => {
-    if (/\s/.test(char)) return;
+    if (/\s/.test(char)) {
+      wordSeparated = true;
+      return;
+    }
     const isWordChar = /[\w$]/.test(char);
-    if (isWordChar && !currentWord) currentWordPrefix = lastSignificant;
-    else if (!isWordChar) currentWordPrefix = '';
+    if (isWordChar && (wordSeparated || !currentWord)) {
+      currentWord = '';
+      currentWordPrefix = lastSignificant;
+    } else if (!isWordChar) {
+      currentWordPrefix = '';
+    }
+    wordSeparated = false;
     previousSignificant = lastSignificant;
     lastSignificant = char;
     currentWord = isWordChar ? currentWord + char : '';
@@ -139,7 +148,7 @@ function stripJsComments(content, options = {}) {
     const jsxUrlSeparator = options.jsx && char === '/' && next === '/' &&
       (output.endsWith('http:') ||
         output.endsWith('https:') ||
-        (/<[A-Za-z][^>]*>[^<]*$/.test(output.slice(output.lastIndexOf('\n') + 1)) &&
+        (/<[A-Za-z](?:[^>]*[^/])?>[^<]*$/.test(output.slice(output.lastIndexOf('\n') + 1)) &&
           /^[\w.-]+\.[A-Za-z]{2,}(?=[:/?#\s<]|$)/.test(content.slice(i + 2))));
     const afterPostfixUpdate = (lastSignificant === '+' || lastSignificant === '-') &&
       previousSignificant === lastSignificant;

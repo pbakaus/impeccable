@@ -268,6 +268,17 @@ describe('detectText — broken images in source comments', () => {
     expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(1);
   });
 
+  test('keeps later JSX visible after a regex literal following export default', () => {
+    const source = [
+      'export default /[/*]/;',
+      '<img src="" alt="Empty source" />',
+    ].join('\n');
+
+    const findings = detectText(source, 'gallery.tsx');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(1);
+  });
+
   test('does not treat a return-named property division as a regex literal', () => {
     const source = [
       'const ratio = obj.return / divisor;',
@@ -312,6 +323,14 @@ describe('detectText — broken images in source comments', () => {
     const findings = detectText(source, 'gallery.jsx');
 
     expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(1);
+  });
+
+  test('still strips a domain-like comment after self-closing JSX', () => {
+    const source = 'const card = <Card />; //cdn.example.com <img src="" alt="Comment-only image" />';
+
+    const findings = detectText(source, 'gallery.jsx');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(0);
   });
 });
 
