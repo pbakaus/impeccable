@@ -229,6 +229,7 @@ describe('detectText — broken images in source comments', () => {
       '// A regex before this comment must not expose its <img> example.',
       'const ratio = "width" / size;',
       '// Division after a string must not expose its <img> example.',
+      'const template = `value: ${/* <img src=""> */ fallback}`;',
       'export interface Props { imgClassName?: string }',
     ].join('\n');
 

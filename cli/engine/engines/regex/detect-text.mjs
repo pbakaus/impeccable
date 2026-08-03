@@ -54,6 +54,7 @@ function stripJsComments(content) {
   let lastSignificant = '';
   let previousSignificant = '';
   let regexCharClass = false;
+  const templateExpressionDepths = [];
 
   const recordSignificant = (char) => {
     if (/\s/.test(char)) return;
@@ -102,6 +103,16 @@ function stripJsComments(content) {
       continue;
     }
 
+    if (state === 'template' && char === '$' && next === '{') {
+      output += '${';
+      i++;
+      recordSignificant('$');
+      recordSignificant('{');
+      templateExpressionDepths.push(1);
+      state = 'code';
+      continue;
+    }
+
     if (state !== 'code') {
       output += char;
       if (char === '\\' && next) {
@@ -126,6 +137,19 @@ function stripJsComments(content) {
       output += '  ';
       i++;
       state = 'block-comment';
+    } else if (templateExpressionDepths.length && char === '{') {
+      output += char;
+      templateExpressionDepths[templateExpressionDepths.length - 1]++;
+      recordSignificant(char);
+    } else if (templateExpressionDepths.length && char === '}') {
+      output += char;
+      const depthIndex = templateExpressionDepths.length - 1;
+      templateExpressionDepths[depthIndex]--;
+      recordSignificant(char);
+      if (templateExpressionDepths[depthIndex] === 0) {
+        templateExpressionDepths.pop();
+        state = 'template';
+      }
     } else if (
       char === '/' &&
       (!lastSignificant || /[=([{!?:;,&|+\-*%^~]/.test(lastSignificant) || (previousSignificant === '=' && lastSignificant === '>'))
