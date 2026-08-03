@@ -191,6 +191,10 @@ function stripJsComments(content, options = {}) {
   return output;
 }
 
+function stripCssComments(content) {
+  return content.replace(/\/\*[\s\S]*?\*\//g, comment => comment.replace(/[^\n]/g, ' '));
+}
+
 function firstOverusedGoogleFont(text) {
   return extractGoogleFontFamilies(text).find(f => OVERUSED_FONTS.has(f)) || '';
 }
@@ -692,6 +696,14 @@ function extractCSSinJS(content, ext) {
   return blocks;
 }
 
+function stripCssInJsComments(content, ext) {
+  if (!CSS_IN_JS_EXTENSIONS.has(ext.toLowerCase())) return content;
+  return content.replace(
+    /(?:styled(?:\.\w+|\([^)]+\))|css)\s*`[\s\S]*?`/g,
+    block => stripCssComments(block),
+  );
+}
+
 function runRegexMatchers(lines, filePath, lineOffset = 0, blockContext = null, options = {}) {
   const { profile, phase = 'regex-matchers' } = options || {};
   const findings = [];
@@ -778,9 +790,10 @@ function detectText(content, filePath, options = {}) {
   const profile = options?.profile;
   const findings = [];
   const ext = extFromFilePath(filePath);
-  const source = JS_SOURCE_EXTS.has(ext) ? stripJsComments(content, {
+  const commentStrippedSource = JS_SOURCE_EXTS.has(ext) ? stripJsComments(content, {
     jsx: ext === '.js' || ext === '.jsx' || ext === '.tsx',
   }) : content;
+  const source = stripCssInJsComments(commentStrippedSource, ext);
   const lines = source.split('\n');
 
   // Run regex matchers on the full file content (catches Tailwind classes, inline styles)
@@ -851,16 +864,17 @@ function detectText(content, filePath, options = {}) {
       phase: 'extract',
       ruleId: 'css-in-js',
       target: filePath,
-    }, () => extractCSSinJS(content, ext))
-    : extractCSSinJS(content, ext);
+    }, () => extractCSSinJS(source, ext))
+    : extractCSSinJS(source, ext);
   for (const block of cssJsBlocks) {
-    const blockLines = block.content.split('\n');
+    const blockContent = stripCssComments(block.content);
+    const blockLines = blockContent.split('\n');
     findings.push(...runRegexMatchers(blockLines, filePath, block.startLine - 1, true, {
       profile,
       phase: 'css-in-js',
     }));
-    findings.push(...scanInsetStripeCss(block.content, filePath, block.startLine - 1));
-    findings.push(...pseudoStripeFindings(block.content, block.startLine - 1));
+    findings.push(...scanInsetStripeCss(blockContent, filePath, block.startLine - 1));
+    findings.push(...pseudoStripeFindings(blockContent, block.startLine - 1));
   }
 
   if (options?.designSystem) {

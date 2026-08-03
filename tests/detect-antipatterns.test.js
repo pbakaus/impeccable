@@ -2607,6 +2607,12 @@ describe('detectText -- CSS-in-JS', () => {
     const f = detectText(tsx, 'Card.tsx');
     expect(f.filter(r => r.antipattern === 'side-tab')).toHaveLength(0);
   });
+
+  test('does not scan CSS-in-JS comments as live rules', () => {
+    const tsx = "const style = css`\n  /* .card { border-left: 4px solid #3b82f6; border-radius: 8px; } */\n`;";
+    const f = detectText(tsx, 'Card.tsx');
+    expect(f.filter(r => r.antipattern === 'side-tab')).toHaveLength(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
