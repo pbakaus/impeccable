@@ -57,9 +57,11 @@ export const SURFACE_ANSWERS = {
     answered: 'colored {}',
     unanswered: 'no color strategy chosen yet',
     surfaces: {
-      persuade: { allow: 'restrained committed full-palette drenched', fallback: 'committed' },
-      operate: { allow: 'restrained committed full-palette', fallback: 'restrained' },
-      read: { allow: 'restrained committed full-palette', fallback: 'restrained' },
+      persuade: { allow: 'restrained committed full-palette drenched', fallback: 'full-palette' },
+      operate: { allow: 'restrained committed full-palette', fallback: 'full-palette' },
+      read: { allow: 'restrained committed full-palette', fallback: 'full-palette' },
+      // The one surface that cannot take four working colors, so it keeps the
+      // quietest answer its allow list has.
       experience: { allow: 'restrained committed drenched', fallback: 'restrained' },
     },
   },

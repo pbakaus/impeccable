@@ -3073,6 +3073,26 @@ body.picker-page {
   pointer-events: none;
 }
 
+/* The type boards under Restrained, which is the answer no strategy block
+   below rewrites. Left to the artboard's own defaults these slots sit on bone
+   and the near-neutral surface step, so the font screen drew a page the chosen
+   palette had never reached while the drawing on screen 03 kept its color under
+   the same answer. Restrained still means mostly neutral: the mixes stay on the
+   quiet end and the ground is untouched. Declared ahead of the strategy section
+   so the three answers that do rewrite these slots still win. */
+.picker-preview-type {
+  --pvs-ghost: color-mix(in oklab, var(--pv-primary) 14%, var(--pv-neutral));
+  --pvs-ghost-edge: color-mix(in oklab, var(--pv-primary) 42%, var(--pv-neutral));
+  --pvs-image: color-mix(in oklab, var(--pv-primary) 22%, var(--pv-neutral));
+  --pvs-image-a: color-mix(in oklab, var(--pv-primary) 26%, var(--pv-neutral));
+  --pvs-image-b: color-mix(in oklab, var(--pv-primary) 48%, var(--pv-neutral));
+  --pvs-image-edge: color-mix(in oklab, var(--pv-primary) 40%, var(--pv-neutral));
+  --pvs-accent-a: var(--pv-primary);
+  --pvs-accent-b: color-mix(in oklab, var(--pv-primary) 62%, var(--pv-neutral));
+  --pvs-accent-c: color-mix(in oklab, var(--pv-primary) 38%, var(--pv-neutral));
+  --pvs-accent-d: color-mix(in oklab, var(--pv-primary) 20%, var(--pv-neutral));
+}
+
 /* ============================================================
    The strategy, applied to the surface in the frame.
 
