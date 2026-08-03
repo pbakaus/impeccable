@@ -1329,25 +1329,38 @@ function hookScriptPathForProvider(skillRoot, provider) {
 // the agent. POSIX-shell form, consistent with the project's other hook
 // commands (e.g. the GitHub manifest's `$(git rev-parse ...)`).
 //
-// On Windows that guard is a hard failure, not a degraded one: Codex runs hook
-// commands through PowerShell, which rejects `[` at parse time ("Missing type
-// name after '['") before node ever starts, so the hook dies even when the
-// file exists (issue #452). No shell-level guard syntax parses in PowerShell,
-// cmd.exe, and sh alike, so a Windows install moves the existence check into
-// node itself: a `node -e` wrapper that exits 0 when the target is missing and
-// otherwise re-spawns node on it with inherited stdio, forwarding the hook's
-// exit code. Project hook manifests (.codex/hooks.json, .cursor/hooks.json)
-// are committable and can be consumed on a teammate's POSIX machine, so the
-// wrapper has to hold there too: it uses only characters that survive
-// PowerShell, cmd.exe (issue #445: shims re-parse through `cmd /C`, which
-// claims < > | & ^ % !), and sh double-quoting alike, with single quotes for
-// the inner string literals. Note PowerShell's `-Command` mode collapses any
-// nonzero native exit code to 1, which equally affects a bare `node "PATH"`;
-// the wrapper preserves exact codes wherever the shell does.
+// On Windows that guard is a hard failure, not a degraded one (issue #452).
+// Codex runs hook commands through COMSPEC (`cmd.exe /C`), where `[` is not a
+// command: the guard errors noisily and `||` then runs node even when the file
+// is missing, trading the silent no-op for a MODULE_NOT_FOUND crash. Two
+// remedies, by provider:
+//
+//   * Codex manifests support a `commandWindows` sibling that Codex 0.146.0+
+//     selects on Windows (`command_windows.unwrap_or(command)` in its hook
+//     discovery). rewriteHookCommandsForSkillRoot adds it with a cmd.exe
+//     `if exist` guard (form contributed and Windows-tested by @PatrickSys in
+//     issue #452; `exit /b` forwards node's errorlevel), so the same
+//     .codex/hooks.json is correct on every OS no matter where it was
+//     written, and `command` stays the plain POSIX guard.
+//   * Claude and Cursor manifests have no per-platform field, so a Windows
+//     install moves the existence check into node itself: a `node -e` wrapper
+//     that exits 0 when the target is missing and otherwise re-spawns node on
+//     it with inherited stdio, forwarding the hook's exit code. Cursor's
+//     hooks.json is committable and can be consumed on a teammate's POSIX
+//     machine, so the wrapper has to hold there too: it uses only characters
+//     that survive PowerShell, cmd.exe (issue #445: shims re-parse through
+//     `cmd /C`, which claims < > | & ^ % !), and sh double-quoting alike,
+//     with single quotes for the inner string literals.
 const WIN32_HOOK_GUARD_SCRIPT = "const p=process.argv[1];const f=require('fs');if(f.existsSync(p)){const r=require('child_process').spawnSync(process.execPath,[p],{stdio:'inherit'});process.exit(r.status===null?1:r.status);}";
 
-function guardHookCommand(quotedPath) {
-  if (process.platform === 'win32') {
+function windowsHookCommand(quotedPath) {
+  return `if exist ${quotedPath} (node ${quotedPath} & exit /b)`;
+}
+
+function guardHookCommand(quotedPath, provider) {
+  // `.agents` (Codex) keeps the POSIX form unconditionally: its Windows
+  // consumers read the commandWindows sibling instead.
+  if (provider !== '.agents' && process.platform === 'win32') {
     return `node -e "${WIN32_HOOK_GUARD_SCRIPT}" ${quotedPath}`;
   }
   return `[ ! -f ${quotedPath} ] || node ${quotedPath}`;
@@ -1362,25 +1375,24 @@ function guardHookCommand(quotedPath) {
 //   * otherwise — keep the bundle's own ${CLAUDE_PROJECT_DIR}-relative path,
 //     which correctly resolves for a project-scoped install.
 // Either way the command goes through guardHookCommand (POSIX shell guard, or
-// the shell-agnostic node -e guard when installing on Windows).
+// the shell-agnostic node -e guard when installing on Windows), and Codex hook
+// entries additionally get a `commandWindows` sibling for cmd.exe.
 function rewriteHookCommandsForSkillRoot(value, provider, { skillRoot, absolute }) {
   const hookScript = hookScriptPathForProvider(skillRoot, provider);
   // Providers we don't own a `node "PATH"` command hook for (.github, .grok)
   // carry their own portable command forms; leave them untouched.
   if (!hookScript) return value;
 
+  // Project-scope installs derive the provider's own project-relative path
+  // rather than trusting the bundle token, which for Codex points at
+  // `.codex/skills/...` while the CLI installs the skill at `.agents/skills/`.
+  const quotedPath = absolute
+    ? JSON.stringify(hookScript)
+    : JSON.stringify(hookScriptRelPathForProvider(provider));
+
   if (typeof value === 'string') {
     if (!valueHasImpeccableHookMarker(value)) return value;
-    let quotedPath;
-    if (absolute) {
-      quotedPath = JSON.stringify(hookScript);
-    } else {
-      // Project-scope install: derive the provider's own project-relative path
-      // rather than trusting the bundle token, which for Codex points at
-      // `.codex/skills/...` while the CLI installs the skill at `.agents/skills/`.
-      quotedPath = JSON.stringify(hookScriptRelPathForProvider(provider));
-    }
-    return guardHookCommand(quotedPath);
+    return guardHookCommand(quotedPath, provider);
   }
   if (Array.isArray(value)) {
     return value.map(item => rewriteHookCommandsForSkillRoot(item, provider, { skillRoot, absolute }));
@@ -1389,6 +1401,9 @@ function rewriteHookCommandsForSkillRoot(value, provider, { skillRoot, absolute 
     const next = {};
     for (const [key, child] of Object.entries(value)) {
       next[key] = rewriteHookCommandsForSkillRoot(child, provider, { skillRoot, absolute });
+    }
+    if (provider === '.agents' && typeof value.command === 'string' && valueHasImpeccableHookMarker(value.command)) {
+      next.commandWindows = windowsHookCommand(quotedPath);
     }
     return next;
   }
