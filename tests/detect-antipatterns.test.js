@@ -261,6 +261,17 @@ describe('detectText — broken images in source comments', () => {
     expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(1);
   });
 
+  test('does not treat a return-named property division as a regex literal', () => {
+    const source = [
+      'const ratio = obj.return / divisor;',
+      '// <img src="" alt="Comment-only image" />',
+    ].join('\n');
+
+    const findings = detectText(source, 'gallery.tsx');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(0);
+  });
+
   test('keeps same-line JSX visible after bare URL text', () => {
     const source = '<p>https://example.com <img src="" alt="Empty source" /></p>';
 

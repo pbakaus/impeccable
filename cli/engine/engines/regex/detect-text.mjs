@@ -55,14 +55,18 @@ function stripJsComments(content, options = {}) {
   let lastSignificant = '';
   let previousSignificant = '';
   let currentWord = '';
+  let currentWordPrefix = '';
   let regexCharClass = false;
   const templateExpressionDepths = [];
 
   const recordSignificant = (char) => {
     if (/\s/.test(char)) return;
+    const isWordChar = /[\w$]/.test(char);
+    if (isWordChar && !currentWord) currentWordPrefix = lastSignificant;
+    else if (!isWordChar) currentWordPrefix = '';
     previousSignificant = lastSignificant;
     lastSignificant = char;
-    currentWord = /[\w$]/.test(char) ? currentWord + char : '';
+    currentWord = isWordChar ? currentWord + char : '';
   };
 
   for (let i = 0; i < content.length; i++) {
@@ -161,7 +165,7 @@ function stripJsComments(content, options = {}) {
       }
     } else if (
       char === '/' &&
-      (!lastSignificant || /[=([{!?:;,&|+\-*%^~]/.test(lastSignificant) || (previousSignificant === '=' && lastSignificant === '>') || REGEX_PREFIX_KEYWORDS.has(currentWord))
+      (!lastSignificant || /[=([{!?:;,&|+\-*%^~]/.test(lastSignificant) || (previousSignificant === '=' && lastSignificant === '>') || (currentWordPrefix !== '.' && REGEX_PREFIX_KEYWORDS.has(currentWord)))
     ) {
       output += char;
       state = 'regex';
