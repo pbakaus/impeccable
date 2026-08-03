@@ -21,7 +21,10 @@
  *     works: an array of file paths loads zero agents, and a string or a
  *     directory entry fails the whole plugin.
  *   - Because omission means the files themselves are the only carrier, every
- *     agent in `skill/agents/` must have a shipped copy in `plugin/agents/`.
+ *     agent in `skill/agents/` that ships to claude-code must have its emitted
+ *     copy in `plugin/agents/`. The expected filename follows the build's emit
+ *     rules (`claude-name` / `name` frontmatter override the source basename,
+ *     and a `providers:` list may exclude claude-code entirely).
  *   - `skills` must keep the trailing-slash `./skills/` form (issue #86: the
  *     bare form fails to register slash commands).
  *
@@ -30,6 +33,7 @@
  */
 import fs from 'fs';
 import path from 'path';
+import { parseFrontmatter } from './utils.js';
 
 /**
  * Keys verified against a live Claude Code install (2026-08, Claude Code
@@ -52,6 +56,32 @@ export const KNOWN_LOADER_KEYS = [
 function listMarkdown(dir) {
   if (!fs.existsSync(dir)) return [];
   return fs.readdirSync(dir).filter((file) => file.endsWith('.md')).sort();
+}
+
+/**
+ * Which agent files the claude-code build actually emits, mirroring
+ * readSourceFiles (name and providers parsing) and the transformer factory
+ * (`${claudeName || name}.md`, providers gate). A drift between this and the
+ * build shows up as a false finding, so change them together.
+ */
+function expectedClaudeAgentFiles(rootDir) {
+  const agentsDir = path.join(rootDir, 'skill', 'agents');
+  const expected = [];
+  for (const sourceFile of listMarkdown(agentsDir)) {
+    const { frontmatter } = parseFrontmatter(
+      fs.readFileSync(path.join(agentsDir, sourceFile), 'utf-8'),
+    );
+    const providersRaw = frontmatter.providers;
+    const providers = Array.isArray(providersRaw)
+      ? providersRaw.map((p) => String(p).trim()).filter(Boolean)
+      : typeof providersRaw === 'string' && providersRaw.trim()
+        ? providersRaw.split(',').map((p) => p.trim()).filter(Boolean)
+        : null;
+    if (providers && !providers.includes('claude-code')) continue;
+    const name = frontmatter.name || path.basename(sourceFile, '.md');
+    expected.push({ sourceFile, shippedFile: `${frontmatter['claude-name'] || name}.md` });
+  }
+  return expected;
 }
 
 /**
@@ -116,15 +146,14 @@ export function collectPluginManifestFindings(rootDir) {
   }
 
   // With no `agents` key, shipped files are the only thing the loader sees.
-  const sourceAgents = listMarkdown(path.join(rootDir, 'skill', 'agents'));
   const shippedAgents = listMarkdown(path.join(rootDir, 'plugin', 'agents'));
-  for (const file of sourceAgents) {
-    if (!shippedAgents.includes(file)) {
+  for (const { sourceFile, shippedFile } of expectedClaudeAgentFiles(rootDir)) {
+    if (!shippedAgents.includes(shippedFile)) {
       findings.push({
-        relPath: `plugin/agents/${file}`,
+        relPath: `plugin/agents/${shippedFile}`,
         reason:
           'missing from the plugin subtree; auto-discovery relies on the shipped ' +
-          `file, so skill/agents/${file} would never load. Run \`bun run build:release\``,
+          `file, so skill/agents/${sourceFile} would never load. Run \`bun run build:release\``,
       });
     }
   }

@@ -41,8 +41,14 @@ function writeFixture(root, { manifest = GOOD_MANIFEST, sourceAgents = [], shipp
       typeof manifest === 'string' ? manifest : JSON.stringify(manifest, null, 2),
     );
   }
-  for (const file of sourceAgents) write(`skill/agents/${file}`, '---\nname: x\n---\nBody.\n');
-  for (const file of shippedAgents ?? sourceAgents) write(`plugin/agents/${file}`, '---\nname: x\n---\nBody.\n');
+  // Source agents may be plain filenames or { file, frontmatter } for tests
+  // that exercise the build's emit rules (claude-name, name, providers).
+  for (const agent of sourceAgents) {
+    const { file, frontmatter = '' } = typeof agent === 'string' ? { file: agent } : agent;
+    write(`skill/agents/${file}`, `---\n${frontmatter}${frontmatter ? '\n' : ''}description: t\n---\nBody.\n`);
+  }
+  const shipped = shippedAgents ?? sourceAgents.map((a) => (typeof a === 'string' ? a : a.file));
+  for (const file of shipped) write(`plugin/agents/${file}`, '---\ndescription: t\n---\nBody.\n');
 }
 
 describe('collectPluginManifestFindings', () => {
@@ -101,6 +107,45 @@ describe('collectPluginManifestFindings', () => {
     expect(findings).toHaveLength(1);
     expect(findings[0].relPath).toBe('plugin/agents/producer.md');
     expect(findings[0].reason).toMatch(/never load/);
+    expect(findings[0].reason).toMatch(/skill\/agents\/producer\.md/);
+  });
+
+  test('a claude-name rename expects the emitted filename, not the source basename', () => {
+    writeFixture(root, {
+      sourceAgents: [{ file: 'reviewer.md', frontmatter: 'claude-name: impeccable-reviewer' }],
+      shippedAgents: ['impeccable-reviewer.md'],
+    });
+    expect(collectPluginManifestFindings(root)).toEqual([]);
+  });
+
+  test('a claude-name rename that is not shipped is reported under the emitted filename', () => {
+    writeFixture(root, {
+      sourceAgents: [{ file: 'reviewer.md', frontmatter: 'claude-name: impeccable-reviewer' }],
+      shippedAgents: [],
+    });
+    const findings = collectPluginManifestFindings(root);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].relPath).toBe('plugin/agents/impeccable-reviewer.md');
+    expect(findings[0].reason).toMatch(/skill\/agents\/reviewer\.md/);
+  });
+
+  test('a frontmatter name overrides the source basename like the build does', () => {
+    writeFixture(root, {
+      sourceAgents: [{ file: 'reviewer.md', frontmatter: 'name: custom-reviewer' }],
+      shippedAgents: ['custom-reviewer.md'],
+    });
+    expect(collectPluginManifestFindings(root)).toEqual([]);
+  });
+
+  test('an agent whose providers list excludes claude-code owes no shipped copy', () => {
+    writeFixture(root, {
+      sourceAgents: [
+        { file: 'codex-only.md', frontmatter: 'providers: codex' },
+        'reviewer.md',
+      ],
+      shippedAgents: ['reviewer.md'],
+    });
+    expect(collectPluginManifestFindings(root)).toEqual([]);
   });
 
   test('reports every problem at once', () => {
