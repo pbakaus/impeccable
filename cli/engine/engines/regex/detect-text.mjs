@@ -45,6 +45,25 @@ const JS_SOURCE_EXTS = new Set(['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs']);
 const REGEX_PREFIX_KEYWORDS = new Set(['await', 'case', 'default', 'delete', 'do', 'else', 'in', 'instanceof', 'new', 'of', 'return', 'throw', 'typeof', 'void', 'yield']);
 const BLOCK_BRACE_PREFIX_KEYWORDS = new Set(['do', 'else', 'finally', 'try']);
 
+function isInsideOpeningJsxTag(source) {
+  const tagStart = source.lastIndexOf('<');
+  if (tagStart === -1 || !/^<[A-Za-z][\w.:-]*/.test(source.slice(tagStart))) return false;
+
+  let quote = '';
+  for (let cursor = tagStart + 1; cursor < source.length; cursor++) {
+    const char = source[cursor];
+    if (quote) {
+      if (char === '\\') cursor++;
+      else if (char === quote) quote = '';
+    } else if (char === "'" || char === '"') {
+      quote = char;
+    } else if (char === '>') {
+      return false;
+    }
+  }
+  return true;
+}
+
 /**
  * Blank JavaScript comments without moving any following source. Regex
  * findings keep their original line numbers, while prose examples inside
@@ -217,7 +236,8 @@ function stripJsComments(content, options = {}) {
     } else {
       output += char;
       const startsJsxExpression = options.jsx && char === '{' && jsxExpressionDepth === 0 &&
-        /<[A-Za-z](?:[^>]*[^/])?>[^<]*$/.test(output.slice(output.lastIndexOf('\n') + 1, -1));
+        (/<[A-Za-z](?:[^>]*[^/])?>[^<]*$/.test(output.slice(output.lastIndexOf('\n') + 1, -1)) ||
+          isInsideOpeningJsxTag(output.slice(0, -1)));
       if (char === '{') braceKinds.push(braceKind(startsJsxExpression));
       else if (char === '}') lastClosedBraceKind = braceKinds.pop() || '';
       if (char === '{' && (jsxExpressionDepth || startsJsxExpression)) jsxExpressionDepth++;
@@ -731,17 +751,57 @@ function findQuotedStringEnd(content, start, quote) {
   return -1;
 }
 
+function findRegexLiteralEnd(content, start) {
+  let inCharacterClass = false;
+  for (let cursor = start + 1; cursor < content.length; cursor++) {
+    const char = content[cursor];
+    if (char === '\\') {
+      cursor++;
+    } else if (char === '[') {
+      inCharacterClass = true;
+    } else if (char === ']') {
+      inCharacterClass = false;
+    } else if (char === '/' && !inCharacterClass) {
+      while (/[A-Za-z]/.test(content[cursor + 1] || '')) cursor++;
+      return cursor;
+    } else if (char === '\n' || char === '\r') {
+      return -1;
+    }
+  }
+  return -1;
+}
+
 function findTemplateExpressionEnd(content, start) {
   let depth = 1;
+  let lastSignificant = '';
+  let currentWord = '';
+  let currentWordPrefix = '';
+  let wordSeparated = false;
+
+  const recordSignificant = (char) => {
+    if (/\s/.test(char)) {
+      wordSeparated = true;
+      return;
+    }
+    const isWordChar = /[\w$]/.test(char);
+    if (isWordChar && (wordSeparated || !currentWord)) {
+      currentWord = '';
+      currentWordPrefix = lastSignificant;
+    } else if (!isWordChar) {
+      currentWordPrefix = '';
+    }
+    wordSeparated = false;
+    lastSignificant = char;
+    currentWord = isWordChar ? currentWord + char : '';
+  };
+
   for (let cursor = start; cursor < content.length; cursor++) {
     const char = content[cursor];
     const next = content[cursor + 1];
     if (char === "'" || char === '"') {
       cursor = findQuotedStringEnd(content, cursor, char);
       if (cursor === -1) return -1;
-    } else if (char === '`') {
-      cursor = findTemplateLiteralEnd(content, cursor);
-      if (cursor === -1) return -1;
+      recordSignificant(')');
     } else if (char === '/' && next === '/') {
       const lineEnd = content.indexOf('\n', cursor + 2);
       if (lineEnd === -1) return -1;
@@ -750,11 +810,28 @@ function findTemplateExpressionEnd(content, start) {
       const commentEnd = content.indexOf('*/', cursor + 2);
       if (commentEnd === -1) return -1;
       cursor = commentEnd + 1;
+    } else if (
+      char === '/' &&
+      (!lastSignificant ||
+        /[=([{!?:;,&|+\-*%^~<>]/.test(lastSignificant) ||
+        (currentWordPrefix !== '.' && REGEX_PREFIX_KEYWORDS.has(currentWord)))
+    ) {
+      cursor = findRegexLiteralEnd(content, cursor);
+      if (cursor === -1) return -1;
+      recordSignificant(')');
+    } else if (char === '`') {
+      cursor = findTemplateLiteralEnd(content, cursor);
+      if (cursor === -1) return -1;
+      recordSignificant(')');
     } else if (char === '{') {
       depth++;
+      recordSignificant(char);
     } else if (char === '}') {
       depth--;
       if (depth === 0) return cursor;
+      recordSignificant(char);
+    } else {
+      recordSignificant(char);
     }
   }
   return -1;
