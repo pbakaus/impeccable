@@ -39,6 +39,15 @@ interface Props {
     reaching back to the screens that came before them.
   */
   carry?: boolean;
+  /*
+    The layout screen's index board carries parts no other board draws: a
+    pagination rail on the handset, and the project rail and support row that
+    only the freeform answer places (layout-portfolio.css parks them until it
+    does). Mounted only where asked, because the motion screen reads the same
+    index body through :nth-of-type and an extra sibling would shift its
+    scenes.
+  */
+  portfolioExtras?: boolean;
 }
 
 const {
@@ -50,6 +59,7 @@ const {
   typeHook = false,
   cursor = false,
   carry = false,
+  portfolioExtras = false,
 } = Astro.props;
 const type = mode === 'type';
 const ops = surface === 'operate';
@@ -196,6 +206,9 @@ const hook = type ? '' : undefined;
          than glyphs. Same four bands as the set version below, drawn in bars:
          a page title, two staggered entries, and the carousel rail. */
       <div class="ps-index">
+        {portfolioExtras && (
+          <div class="ps-project-rail" aria-hidden="true"><i></i><i></i><i></i></div>
+        )}
         <i class="ps-index-head"></i>
         {[0, 1].map((n) => (
           <div class:list={['ps-index-row', n === 1 && 'ps-index-row--flip']}>
@@ -207,6 +220,12 @@ const hook = type ? '' : undefined;
             </div>
           </div>
         ))}
+        {portfolioExtras && (
+          <div class="ps-support" aria-hidden="true">
+            <div class="ps-image ps-support-image"></div>
+            <span class="ps-support-meta"><i></i><i></i><i></i></span>
+          </div>
+        )}
         <div class="ps-index-rail">
           <i class="ps-index-arrow"></i>
           <div class="ps-index-track">
@@ -411,6 +430,9 @@ const hook = type ? '' : undefined;
       <div class="ps-phone-body">
         {/* No page title here. At this width the display step would take the
             card, and what a handset shows of an index is the work. */}
+        {portfolioExtras && (
+          <div class="ps-phone-project-rail" aria-hidden="true"><i></i><i></i><i></i></div>
+        )}
         {[0, 1].map(() => (
           <Fragment>
             <div class="ps-image"></div>
@@ -431,6 +453,24 @@ const hook = type ? '' : undefined;
             </div>
           </Fragment>
         ))}
+        {portfolioExtras && (
+          <Fragment>
+            <div class="ps-support ps-phone-support" aria-hidden="true">
+              <div class="ps-image ps-support-image"></div>
+              <span class="ps-support-meta"><i></i><i></i><i></i></span>
+            </div>
+            {/* The desktop pagination rail restated at the foot of the stack. */}
+            <div class="ps-index-rail ps-phone-pagination">
+              <i class="ps-index-arrow"></i>
+              <div class="ps-index-track">
+                {[0, 1, 2, 3].map((n) => (
+                  <b class:list={[n === 0 && 'ps-index-stop--on']}></b>
+                ))}
+              </div>
+              <i class="ps-index-arrow ps-index-arrow--next"></i>
+            </div>
+          </Fragment>
+        )}
       </div>
       ) : (
       <div class="ps-phone-body">

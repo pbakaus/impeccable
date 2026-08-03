@@ -1,0 +1,733 @@
+/* ============================================================
+   Screen 07, the portfolio board.
+
+   The approved portfolio system for the layout question: structure reads
+   through proportion and placement rather than decorative effects, on a
+   shared material of paper ground, pale project fields, graphite skeleton
+   copy, sharp frames, and single-pixel rules. Simple grid is strict paired
+   rows with equal image measures, Balanced alternates wide images against
+   caption blocks as counterweights, and Freeform is a controlled editorial
+   gallery with one cropped lead, an upper portrait, and a full-width
+   support row.
+
+   This sheet is the layout screen's own reading of its experience board and
+   nothing else's: every selector is pinned to the board that carries
+   .picker-preview-layout, so the boundary, corner, and depth screens keep
+   drawing the index as the committed answers describe it.
+
+   ── Priority is a contract here ──────────────────────────────
+   Every declaration carries !important, and that is the mechanism that
+   makes this board render at all: the base rendition rules it replaces
+   live behind #picker-form:has(...) selectors, whose ID weight no
+   class-and-attribute selector can reach. The approved artwork was proven
+   against exactly this priority (the reference file's refinement sheet
+   with every declaration winning); dropping an !important here hands that
+   property back to layout.css or picker.css and the drawing visibly
+   breaks, which is how the headline bar and the squashed second row crept
+   into an earlier pass. Within the sheet the usual order rules still
+   decide, so the option sections lower down override the shared material
+   above them.
+
+   The scoping below still spends no specificity of its own: the screen
+   scope rides in :where(.picker-preview-layout) and the option state
+   rides in :where(hover-or-checked), so what wins against the base sheets
+   is the importance, never an accidental weight that other screens'
+   boards would then have to out-spec. Keep this import after depth.css in
+   Picker.astro all the same: custom-property declarations carry no
+   !important, and they resolve by source order against boundaries.css,
+   corners.css, and depth.css.
+
+   The two selectors inside each :where() are the shape screen 03
+   established: the hover preview, then the committed answer once no option
+   is under the pointer.
+   ============================================================ */
+
+/* ── The shared material ─────────────────────────────────────
+   One flat paper for ground and surface, no bands, hairline rules mixed
+   from the primary, and the chrome's own slots repointed at the same
+   ladder. Radii and shadows are pinned so the corner and depth screens'
+   committed defaults cannot reach this board while it is making a claim
+   about composition alone. */
+[data-surface="experience"]:where(.picker-preview-layout) {
+  --portfolio-paper: var(--pv-neutral);
+  --portfolio-pale: color-mix(in oklab, var(--pv-secondary) 24%, var(--portfolio-paper));
+  --portfolio-pale-deep: color-mix(in oklab, var(--pv-secondary) 34%, var(--portfolio-paper));
+  --portfolio-rule: color-mix(in oklab, var(--pv-primary) 13%, var(--portfolio-paper));
+  --portfolio-muted: color-mix(in oklab, var(--pv-primary) 18%, var(--portfolio-paper));
+  --pvs-ground: var(--portfolio-paper);
+  --pvs-surface: var(--portfolio-paper);
+  --pvs-band: transparent;
+  --pvs-band-top: transparent;
+  --pvs-band-alt: transparent;
+  --pvs-rule: var(--portfolio-rule);
+  --pvs-divider-c: var(--portfolio-rule);
+  --pvs-bars: var(--portfolio-muted);
+  --pvs-copy: color-mix(in oklab, var(--pv-primary) 20%, var(--portfolio-paper));
+  --pvs-title: var(--pv-primary);
+  --pvs-radius-frame: 2px;
+  --pvs-radius-frame-phone: 2px;
+  --pvs-radius-surface: 0;
+  --pvs-radius-control: 2px;
+  --pvs-radius-bar: 0;
+  --pvs-shadow-card: none;
+  --pvs-shadow-control: none;
+  --pvs-shadow-surface: none;
+  --pvs-shadow-chrome: none;
+}
+
+[data-surface="experience"]:where(.picker-preview-layout) .ps-desktop,
+[data-surface="experience"]:where(.picker-preview-layout) .ps-phone {
+  border-color: color-mix(in oklab, var(--portfolio-paper) 72%, var(--pv-primary)) !important;
+}
+
+[data-surface="experience"]:where(.picker-preview-layout) .ps-desktop {
+  grid-template-rows: 10.8% minmax(0, 1fr) 9.4% !important;
+}
+
+/* The twelve-column field goes. This board's three compositions are read
+   against each other rather than against the ruler, and the drawn lines
+   under a run of plates read as a fourth composition. */
+[data-surface="experience"]:where(.picker-preview-layout) .ps-desktop::before,
+[data-surface="experience"]:where(.picker-preview-layout) .ps-phone-body::before {
+  display: none !important;
+}
+
+[data-surface="experience"]:where(.picker-preview-layout) .ps-nav {
+  grid-template-columns: auto minmax(0, 1fr) auto !important;
+  padding-inline: 5.2% !important;
+  gap: 4% !important;
+}
+
+[data-surface="experience"]:where(.picker-preview-layout) .ps-nav-bars {
+  justify-content: flex-start !important;
+  gap: 5% !important;
+}
+
+[data-surface="experience"]:where(.picker-preview-layout) .ps-nav-bars i {
+  width: clamp(20px, 8%, 38px) !important;
+  opacity: 0.78 !important;
+}
+
+[data-surface="experience"]:where(.picker-preview-layout) .ps-nav-bars i:first-child {
+  background-color: var(--pv-primary) !important;
+}
+
+[data-surface="experience"]:where(.picker-preview-layout) .ps-nav-bars i:last-child,
+[data-surface="experience"]:where(.picker-preview-layout) .ps-footer-links i:last-child,
+[data-surface="experience"]:where(.picker-preview-layout) .ps-phone-footer i:last-child {
+  opacity: 0.52 !important;
+}
+
+[data-surface="experience"]:where(.picker-preview-layout) .ps-index-head {
+  display: none !important;
+}
+
+[data-surface="experience"]:where(.picker-preview-layout) .ps-index-cap {
+  align-content: center !important;
+  gap: calc(var(--pt-base) * 0.32) !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+}
+
+[data-surface="experience"]:where(.picker-preview-layout) .ps-index-name {
+  width: 64% !important;
+  height: calc(var(--pt-base) * 0.54) !important;
+  background-color: var(--pv-primary) !important;
+}
+
+[data-surface="experience"]:where(.picker-preview-layout) .ps-index-tag {
+  width: 30% !important;
+  height: calc(var(--pt-base) * 0.27) !important;
+  opacity: 0.72 !important;
+}
+
+[data-surface="experience"]:where(.picker-preview-layout) .ps-index-lines {
+  gap: calc(var(--pt-base) * 0.58) !important;
+  margin-top: calc(var(--pt-base) * 0.24) !important;
+}
+
+[data-surface="experience"]:where(.picker-preview-layout) .ps-index-lines b {
+  width: 74% !important;
+  opacity: 0.82 !important;
+}
+
+[data-surface="experience"]:where(.picker-preview-layout) .ps-index-lines b:last-child {
+  width: 50% !important;
+  opacity: 0.64 !important;
+}
+
+[data-surface="experience"]:where(.picker-preview-layout) .ps-image {
+  background: var(--portfolio-pale) !important;
+  border-color: color-mix(in oklab, var(--pv-secondary) 32%, var(--portfolio-paper)) !important;
+}
+
+[data-surface="experience"]:where(.picker-preview-layout) .ps-image::after {
+  background-color: color-mix(in oklab, var(--pv-primary) 42%, var(--portfolio-paper)) !important;
+}
+
+[data-surface="experience"]:where(.picker-preview-layout) .ps-index-rail {
+  border-top-color: var(--portfolio-rule) !important;
+  opacity: 0.82 !important;
+}
+
+[data-surface="experience"]:where(.picker-preview-layout) .ps-index-track {
+  gap: calc(var(--pt-base) * 1.18) !important;
+}
+
+[data-surface="experience"]:where(.picker-preview-layout) .ps-index-track b {
+  width: calc(var(--pt-base) * 1.62) !important;
+}
+
+[data-surface="experience"]:where(.picker-preview-layout) .ps-footer {
+  padding-inline: 5.7% !important;
+}
+
+[data-surface="experience"]:where(.picker-preview-layout) .ps-footer-links,
+[data-surface="experience"]:where(.picker-preview-layout) .ps-phone-footer {
+  opacity: 0.74 !important;
+}
+
+/* The off-grid marks, given a body on this board alone: a small primary
+   dot, resting invisible until an answer below spends it. */
+[data-surface="experience"]:where(.picker-preview-layout) .ps-scatter {
+  z-index: 3 !important;
+  position: absolute !important;
+  width: 7px !important;
+  aspect-ratio: 1 !important;
+  background: color-mix(in oklab, var(--pv-primary) 58%, var(--portfolio-paper)) !important;
+  border-radius: 50% !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+[data-surface="experience"]:where(.picker-preview-layout) .ps-phone {
+  grid-template-rows: 9.7% minmax(0, 1fr) 8.7% !important;
+}
+
+[data-surface="experience"]:where(.picker-preview-layout) .ps-phone-top,
+[data-surface="experience"]:where(.picker-preview-layout) .ps-phone-footer {
+  padding-inline: 7.2% !important;
+}
+
+[data-surface="experience"][data-carry]:where(.picker-preview-layout) .ps-phone-body {
+  gap: calc(var(--pt-base) * 0.52) !important;
+  padding: 6.4% 7.2% 5.8% !important;
+}
+
+[data-surface="experience"]:where(.picker-preview-layout) .ps-phone-body > .ps-image {
+  min-height: 0 !important;
+}
+
+[data-surface="experience"]:where(.picker-preview-layout) .ps-phone-body .ps-index-cap {
+  gap: calc(var(--pt-base) * 0.24) !important;
+  padding: calc(var(--pt-base) * 0.42) 0 calc(var(--pt-base) * 0.5) !important;
+}
+
+[data-surface="experience"]:where(.picker-preview-layout) .ps-phone-body .ps-index-name {
+  width: 58% !important;
+}
+
+[data-surface="experience"]:where(.picker-preview-layout) .ps-phone-body .ps-index-lines {
+  gap: calc(var(--pt-base) * 0.4) !important;
+  margin-top: calc(var(--pt-base) * 0.1) !important;
+}
+
+[data-surface="experience"]:where(.picker-preview-layout) .ps-phone-body .ps-index-lines b {
+  width: 72% !important;
+}
+
+[data-surface="experience"]:where(.picker-preview-layout) .ps-phone-body .ps-index-lines b:last-child {
+  width: 48% !important;
+}
+
+/* The handset's pagination, the desktop rail restated at the foot of the
+   stack. display is stated here because the part is mounted on this board
+   alone and arrives hidden by the guard below. */
+[data-surface="experience"]:where(.picker-preview-layout) .ps-phone-pagination {
+  display: flex !important;
+  align-self: end !important;
+  min-height: calc(var(--pt-base) * 1.8) !important;
+  margin-top: calc(var(--pt-base) * 0.35) !important;
+  padding-top: calc(var(--pt-base) * 0.8) !important;
+}
+
+/* ── The freeform-only parts, parked ─────────────────────────
+   The project rail and the support row are in the markup on every visit so
+   a hover costs an attribute rather than a rebuild, but only Freeform's
+   composition has a place for them. The other two answers must not show
+   them, so they arrive off and Freeform's own rules below turn them on. */
+.ps-project-rail,
+.ps-phone-project-rail,
+.ps-support {
+  display: none !important;
+}
+
+/* ── Simple grid: strict paired rows with equal image measures ── */
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="simple-grid"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="simple-grid"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-index {
+  gap: calc(var(--pt-base) * 1.15) !important;
+  padding: calc(var(--pt-base) * 2.05) 6.6% calc(var(--pt-base) * 1.15) !important;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="simple-grid"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="simple-grid"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-index-row {
+  grid-template-columns: 50.5% minmax(0, 1fr) !important;
+  column-gap: 4.8% !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="simple-grid"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="simple-grid"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-index-row--flip {
+  grid-template-columns: 50.5% minmax(0, 1fr) !important;
+  border-top-width: 1px !important;
+  border-top-style: solid !important;
+  border-top-color: var(--portfolio-rule) !important;
+  padding-top: 12px !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="simple-grid"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="simple-grid"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-index-row--flip > .ps-image {
+  grid-area: 1 / 1 !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="simple-grid"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="simple-grid"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-index-row--flip > .ps-index-cap {
+  grid-area: 1 / 2 !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="simple-grid"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="simple-grid"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-index-row > .ps-image,
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="simple-grid"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="simple-grid"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-phone-body > .ps-image {
+  background: var(--pv-primary) !important;
+  border-color: var(--pv-primary) !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="simple-grid"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="simple-grid"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-index-row > .ps-image::after,
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="simple-grid"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="simple-grid"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-phone-body > .ps-image::after {
+  background-color: color-mix(in oklab, var(--portfolio-paper) 84%, var(--pv-secondary)) !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="simple-grid"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="simple-grid"]:checked)
+) [data-surface="experience"][data-carry]:where(.picker-preview-layout) .ps-phone-body {
+  align-content: space-between !important;
+  padding-inline: 8.2% !important;
+  grid-template-rows: 86px 44px 86px 44px 28px !important;
+}
+
+/* ── Balanced: alternating wide images, captions as counterweights ── */
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="balanced"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="balanced"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) {
+  --portfolio-pale: color-mix(in oklab, var(--pv-secondary) 32%, var(--portfolio-paper));
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="balanced"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="balanced"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-index {
+  gap: calc(var(--pt-base) * 1.08) !important;
+  padding: calc(var(--pt-base) * 2.05) 5.4% calc(var(--pt-base) * 1.05) !important;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="balanced"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="balanced"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-index-row {
+  grid-template-columns: 47% minmax(0, 1fr) !important;
+  column-gap: 6.5% !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="balanced"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="balanced"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-index-row--flip {
+  grid-template-columns: minmax(0, 1fr) 47% !important;
+  border-top-width: 1px !important;
+  border-top-style: solid !important;
+  border-top-color: var(--portfolio-rule) !important;
+  padding-top: 12px !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="balanced"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="balanced"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-index-row--flip > .ps-image {
+  grid-area: 1 / 2 !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="balanced"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="balanced"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-index-row--flip > .ps-index-cap {
+  grid-area: 1 / 1 !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="balanced"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="balanced"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-scatter {
+  opacity: 0.72 !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="balanced"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="balanced"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-scatter--lead {
+  top: 15.5% !important;
+  right: 4.1% !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="balanced"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="balanced"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-scatter--trail {
+  top: 54.2% !important;
+  left: 4.8% !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="balanced"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="balanced"]:checked)
+) [data-surface="experience"][data-carry]:where(.picker-preview-layout) .ps-phone-body {
+  align-content: space-between !important;
+  grid-template-rows: 92px 44px 92px 44px 28px !important;
+}
+
+/* ── Freeform: a cropped lead, an upper portrait, a support row ── */
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) {
+  --portfolio-pale: color-mix(in oklab, var(--pv-secondary) 42%, var(--portfolio-paper));
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-index {
+  padding: 0 !important;
+  display: block !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-index-row {
+  position: absolute !important;
+  inset: 0 !important;
+  display: block !important;
+  border: 0 !important;
+  padding: 0 !important;
+  min-height: 0 !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-index-row > .ps-image {
+  position: absolute !important;
+  rotate: 0deg !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-index-row > .ps-index-cap {
+  position: absolute !important;
+  z-index: 2 !important;
+  translate: 0 !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-index-row:not(.ps-index-row--flip) > .ps-image {
+  top: 11% !important;
+  left: -0.4% !important;
+  width: 46.2% !important;
+  height: 68% !important;
+  background: var(--pv-primary) !important;
+  border-color: var(--pv-primary) !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-index-row:not(.ps-index-row--flip) > .ps-image::after {
+  background-color: color-mix(in oklab, var(--portfolio-paper) 84%, var(--pv-secondary)) !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-index-row:not(.ps-index-row--flip) > .ps-index-cap {
+  top: 30% !important;
+  left: 49% !important;
+  width: 19.5% !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-index-row--flip > .ps-image {
+  top: 4.7% !important;
+  left: 72.5% !important;
+  width: 23% !important;
+  height: 44.2% !important;
+  grid-area: auto !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-index-row--flip > .ps-index-cap {
+  top: 53.2% !important;
+  left: 72.5% !important;
+  width: 23% !important;
+  grid-area: auto !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-index > .ps-index-rail {
+  position: absolute !important;
+  z-index: 4 !important;
+  left: 11.9% !important;
+  bottom: 5.8% !important;
+  width: 35.3% !important;
+  padding-top: 0 !important;
+  border-top: 0 !important;
+}
+
+/* display is stated on the rail and the support because both are mounted
+   parked by the guard above. */
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-project-rail {
+  display: block !important;
+  z-index: 5 !important;
+  position: absolute !important;
+  top: -5.5% !important;
+  bottom: 6.7% !important;
+  left: 3.6% !important;
+  width: 1px !important;
+  background: var(--portfolio-muted) !important;
+  opacity: 0.72 !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-project-rail i {
+  position: absolute !important;
+  left: 50% !important;
+  width: 7px !important;
+  aspect-ratio: 1 !important;
+  background: var(--portfolio-muted) !important;
+  transform: translate(-50%, -50%) !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-project-rail i:first-child {
+  top: 0 !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-project-rail i:nth-child(2) {
+  top: 36% !important;
+  background: var(--portfolio-paper) !important;
+  border: 1px solid var(--portfolio-muted) !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-project-rail i:last-child {
+  top: 100% !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-support {
+  position: absolute !important;
+  z-index: 3 !important;
+  top: 76.5% !important;
+  left: 56% !important;
+  width: 40% !important;
+  height: 16.5% !important;
+  grid-template-columns: minmax(0, 2.18fr) minmax(0, 1fr) !important;
+  gap: 4.8% !important;
+  display: grid !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-support-meta {
+  align-content: center !important;
+  gap: calc(var(--pt-base) * 0.55) !important;
+  display: grid !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-support-meta i {
+  width: 74% !important;
+  height: calc(var(--pt-base) * 0.28) !important;
+  background: var(--portfolio-muted) !important;
+  display: block !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-support-meta i:first-child {
+  width: 66% !important;
+  height: calc(var(--pt-base) * 0.48) !important;
+  background: var(--pv-primary) !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-support-meta i:last-child {
+  width: 100% !important;
+  opacity: 0.72 !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-scatter {
+  opacity: 0.42 !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-scatter--lead {
+  top: 15.5% !important;
+  right: 5.4% !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-scatter--trail {
+  top: 53% !important;
+  left: 4.2% !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"][data-carry]:where(.picker-preview-layout) .ps-phone-body {
+  align-content: start !important;
+  gap: calc(var(--pt-base) * 0.48) !important;
+  padding-inline: 9% !important;
+  grid-template-rows: 10px 78px 42px 78px 42px 38px 24px !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-phone-project-rail {
+  align-items: center !important;
+  height: calc(var(--pt-base) * 1.05) !important;
+  display: flex !important;
+  position: relative !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-phone-project-rail::before {
+  content: "" !important;
+  position: absolute !important;
+  right: 0 !important;
+  left: 0 !important;
+  height: 1px !important;
+  background: var(--portfolio-rule) !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-phone-project-rail i {
+  z-index: 1 !important;
+  width: 6px !important;
+  aspect-ratio: 1 !important;
+  margin-right: 31% !important;
+  background: var(--portfolio-muted) !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-phone-project-rail i:nth-child(2) {
+  background: var(--pv-primary) !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-phone-support {
+  position: static !important;
+  width: 100% !important;
+  height: 38px !important;
+  margin-top: calc(var(--pt-base) * 0.25) !important;
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr) !important;
+  gap: 8% !important;
+}
+
+:where(
+  #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]),
+  #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)
+) [data-surface="experience"]:where(.picker-preview-layout) .ps-phone-support .ps-support-meta {
+  gap: calc(var(--pt-base) * 0.28) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-surface="experience"]:where(.picker-preview-layout) *,
+  [data-surface="experience"]:where(.picker-preview-layout) *::before,
+  [data-surface="experience"]:where(.picker-preview-layout) *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
