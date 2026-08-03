@@ -627,22 +627,18 @@ async function build() {
 
     const rootManifest = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, '.claude-plugin/plugin.json'), 'utf-8'));
     const claudeAgentsSrc = path.join(DIST_DIR, 'claude-code', '.claude', 'agents');
-    const pluginAgentEntries = fs.existsSync(claudeAgentsSrc)
-      ? fs.readdirSync(claudeAgentsSrc)
-          .filter(file => file.endsWith('.md'))
-          .sort()
-          .map(file => `./agents/${file}`)
-      : [];
     // Trailing slash on the skills path matches the documented schema in
     // code.claude.com/docs/en/plugins-reference. Issue #86 has 3 reporters
     // converging on "add trailing slash to fix slash commands not registering";
     // the docs schema example consistently uses `"./custom/skills/"` form.
     const pluginManifest = { ...rootManifest, skills: './skills/' };
-    if (pluginAgentEntries.length) {
-      pluginManifest.agents = pluginAgentEntries;
-    } else {
-      delete pluginManifest.agents;
-    }
+    // No `agents` key: Claude Code discovers agents/*.md by itself, and the
+    // identifier it uses is the file name. Declaring the key as an array of
+    // file paths makes it load ZERO agents, so the four shipped subagents were
+    // never reachable. The other plausible shapes are worse: a string, or an
+    // array containing a directory, and the whole plugin fails to load.
+    // Omitting the key is the only shape that works.
+    delete pluginManifest.agents;
     fs.mkdirSync(pluginManifestDir, { recursive: true });
     fs.writeFileSync(
       path.join(pluginManifestDir, 'plugin.json'),
