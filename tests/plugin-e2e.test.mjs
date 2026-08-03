@@ -1,6 +1,8 @@
 /**
- * Opt-in E2E: install the committed ./plugin subtree into a real Claude Code
- * and assert every shipped component actually loads.
+ * Plugin loader E2E: install the committed ./plugin subtree into a real
+ * Claude Code and assert every shipped component actually loads. Part of the
+ * default suite; the only external requirement is the claude CLI, and the
+ * suite skips cleanly when it is not on PATH.
  *
  * The unit-level shape guard (tests/validate-plugin-manifest.test.js) pins the
  * loader contract we KNOW about. This suite is the only thing that catches the

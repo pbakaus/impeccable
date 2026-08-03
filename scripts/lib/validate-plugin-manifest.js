@@ -73,6 +73,14 @@ export function collectPluginManifestFindings(rootDir) {
   } catch (err) {
     return [{ relPath: manifestRel, reason: `could not parse (${err.message})` }];
   }
+  // JSON.parse accepts null, strings, numbers, and arrays; the key checks
+  // below need a plain object, so anything else is a finding, not a crash.
+  if (manifest === null || typeof manifest !== 'object' || Array.isArray(manifest)) {
+    return [{
+      relPath: manifestRel,
+      reason: `manifest is ${Array.isArray(manifest) ? 'an array' : manifest === null ? 'null' : `a ${typeof manifest}`}, not a JSON object`,
+    }];
+  }
 
   const findings = [];
 

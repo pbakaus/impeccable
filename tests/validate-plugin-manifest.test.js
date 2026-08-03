@@ -124,6 +124,15 @@ describe('collectPluginManifestFindings', () => {
     expect(findings[0].reason).toMatch(/parse/);
   });
 
+  test('valid JSON that is not an object is a finding, not a thrown stack', () => {
+    for (const raw of ['null', '"impeccable"', '42', '["./agents/reviewer.md"]']) {
+      writeFixture(root, { manifest: raw });
+      const findings = collectPluginManifestFindings(root);
+      expect(findings).toHaveLength(1);
+      expect(findings[0].reason).toMatch(/not a JSON object/);
+    }
+  });
+
   test('KNOWN_LOADER_KEYS never re-admits agents', () => {
     expect(KNOWN_LOADER_KEYS).not.toContain('agents');
   });
