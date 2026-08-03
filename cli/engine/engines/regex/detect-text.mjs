@@ -690,12 +690,13 @@ function extractStyleBlocks(content, ext) {
 // ---------------------------------------------------------------------------
 
 const CSS_IN_JS_EXTENSIONS = new Set(['.js', '.ts', '.jsx', '.tsx']);
+const CSS_IN_JS_TAG_PATTERN = '(?:styled(?:\\.\\w+|\\([^)]+\\))|css)(?:\\s*<[^>\\n]+>)?';
 
 function extractCSSinJS(content, ext) {
   ext = ext.toLowerCase();
   if (!CSS_IN_JS_EXTENSIONS.has(ext)) return [];
   const blocks = [];
-  const re = /(?:styled(?:\.\w+|\([^)]+\))|css)\s*`([\s\S]*?)`/g;
+  const re = new RegExp(CSS_IN_JS_TAG_PATTERN + '\\s*`([\\s\\S]*?)`', 'g');
   let m;
   while ((m = re.exec(content)) !== null) {
     const before = content.substring(0, m.index);
@@ -708,7 +709,7 @@ function extractCSSinJS(content, ext) {
 function stripCssInJsComments(content, ext) {
   if (!CSS_IN_JS_EXTENSIONS.has(ext.toLowerCase())) return content;
   return content.replace(
-    /(?:styled(?:\.\w+|\([^)]+\))|css)\s*`[\s\S]*?`/g,
+    new RegExp(CSS_IN_JS_TAG_PATTERN + '\\s*`[\\s\\S]*?`', 'g'),
     block => stripCssComments(block),
   );
 }
