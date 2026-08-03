@@ -52,7 +52,14 @@ function stripJsComments(content) {
   let state = 'code';
   let output = '';
   let lastSignificant = '';
+  let previousSignificant = '';
   let regexCharClass = false;
+
+  const recordSignificant = (char) => {
+    if (/\s/.test(char)) return;
+    previousSignificant = lastSignificant;
+    lastSignificant = char;
+  };
 
   for (let i = 0; i < content.length; i++) {
     const char = content[i];
@@ -90,7 +97,7 @@ function stripJsComments(content) {
         regexCharClass = false;
       } else if (char === '/' && !regexCharClass) {
         state = 'code';
-        lastSignificant = '/';
+        recordSignificant('/');
       }
       continue;
     }
@@ -106,6 +113,7 @@ function stripJsComments(content) {
         (state === 'template' && char === '`')
       ) {
         state = 'code';
+        recordSignificant(char);
       }
       continue;
     }
@@ -120,14 +128,14 @@ function stripJsComments(content) {
       state = 'block-comment';
     } else if (
       char === '/' &&
-      (!lastSignificant || /[=([{!?:;,&|+\-*%^~]/.test(lastSignificant) || output.trimEnd().endsWith('=>'))
+      (!lastSignificant || /[=([{!?:;,&|+\-*%^~]/.test(lastSignificant) || (previousSignificant === '=' && lastSignificant === '>'))
     ) {
       output += char;
       state = 'regex';
       regexCharClass = false;
     } else {
       output += char;
-      if (!/\s/.test(char)) lastSignificant = char;
+      recordSignificant(char);
       if (char === "'") state = 'single-quote';
       else if (char === '"') state = 'double-quote';
       else if (char === '`') state = 'template';

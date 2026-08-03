@@ -227,6 +227,8 @@ describe('detectText — broken images in source comments', () => {
       ' */',
       'const quoteMatcher = /["\']/;',
       '// A regex before this comment must not expose its <img> example.',
+      'const ratio = "width" / size;',
+      '// Division after a string must not expose its <img> example.',
       'export interface Props { imgClassName?: string }',
     ].join('\n');
 
