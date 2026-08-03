@@ -56,6 +56,7 @@
     "test:live": "node scripts/run-tests.mjs live",
     "test:cli-e2e": "node scripts/run-tests.mjs cli-e2e",
     "test:cli-remote-e2e": "node scripts/run-tests.mjs cli-remote-e2e",
+    "test:plugin-e2e": "node scripts/run-tests.mjs plugin-e2e",
     "test:live-e2e": "node scripts/run-tests.mjs live-e2e",
     "test:live-e2e-accept-cleanup": "node scripts/run-tests.mjs live-e2e-accept-cleanup",
     "test:new-work-e2e": "node scripts/run-tests.mjs new-work-e2e",

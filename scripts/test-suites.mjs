@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const DEFAULT_SUITES = ['core', 'detector', 'live', 'framework'];
+export const DEFAULT_SUITES = ['core', 'detector', 'live', 'framework', 'plugin-e2e'];
 export const OPT_IN_SUITES = [
   'cli-remote-e2e',
   'live-e2e',
@@ -47,6 +47,7 @@ export const SUITES = {
           'tests/lib/transformers/providers.test.js',
           'tests/skills-cli.test.js',
           'tests/validate-plugin-versions.test.js',
+          'tests/validate-plugin-manifest.test.js',
         ],
       },
       {
@@ -209,6 +210,25 @@ export const SUITES = {
         runner: 'bun',
         env: { IMPECCABLE_CLI_REMOTE_E2E: '1' },
         files: ['tests/skills-cli.test.js'],
+      },
+    ],
+  },
+  'plugin-e2e': {
+    description: 'Install the committed ./plugin subtree into a real (sandboxed) Claude Code and assert skills, agents, and hooks all load. Skips when the claude CLI is not on PATH.',
+    triggers: [
+      ...COMMON_INFRA_PATTERNS,
+      /^plugin\//,
+      /^skill\/agents\//,
+      /^scripts\/build\.js$/,
+      /^scripts\/lib\/validate-plugin-manifest\.js$/,
+      /^tests\/plugin-e2e\.test\.mjs$/,
+    ],
+    commands: [
+      {
+        runner: 'node',
+        timeoutMs: 300000,
+        forceExit: true,
+        files: ['tests/plugin-e2e.test.mjs'],
       },
     ],
   },

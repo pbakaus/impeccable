@@ -136,12 +136,15 @@ This contribution was prepared by an AI agent that tried to ship unchecked vibes
 ## Testing
 
 ```bash
-bun run test                  # Default suite: unit + static framework fixtures
+bun run test                  # Default suite: unit + static framework fixtures + plugin loader E2E
 bun run test:live-e2e         # Opt-in: full-cycle live-mode E2E across framework fixtures
 bun run test:skill-behavior   # Opt-in: LLM-backed checks that the skill text actually drives the agent's setup flow
+bun run test:plugin-e2e       # Just the plugin loader E2E (also part of the default suite)
 ```
 
 Unit tests (build orchestration, detector logic) run via `bun test`. Fixture tests (jsdom-based HTML detection) run via `node --test` because bun is too slow with jsdom. The `test` script handles this split automatically.
+
+**Plugin loader E2E** (`tests/plugin-e2e.test.mjs`, in the default suite): installs the committed `./plugin` subtree into a real Claude Code, sandboxed via `CLAUDE_CONFIG_DIR` in a temp dir, and asserts the component inventory from `claude plugin details`: the skill parses, every `plugin/agents/*.md` is visible, hooks are discovered. This is the only check that catches loader-contract surprises the unit guards can't know about (PR #494 shipped an `agents` manifest key that silently loaded zero agents; `claude plugin validate` never flags plugin-manifest problems). Runs in about a second; skips cleanly when the `claude` CLI is not on PATH. The known contract itself (allowed manifest keys, no `agents` key, trailing-slash `skills` path, source agents shipped) is pinned deterministically by `scripts/lib/validate-plugin-manifest.js`, unit-tested in `tests/validate-plugin-manifest.test.js` and enforced as a `bun run build` gate. Never add a key to the generated plugin manifest without verifying it against a real install and extending `KNOWN_LOADER_KEYS`.
 
 **Important:** `tests/build.test.js` uses `spyOn(transformers, 'transformCursor')` with the named exports from `scripts/lib/transformers/index.js`. Those named exports (`transformCursor`, `transformClaudeCode`, etc.) are kept specifically for test spying, even though `build.js` itself uses `createTransformer + PROVIDERS` directly. **Do not delete them as "dead code"** — I made that mistake once and broke 8 tests.
 
