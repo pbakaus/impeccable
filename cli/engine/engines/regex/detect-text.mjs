@@ -54,10 +54,12 @@ function stripJsComments(content, options = {}) {
   let output = '';
   let lastSignificant = '';
   let previousSignificant = '';
+  let antePreviousSignificant = '';
   let currentWord = '';
   let currentWordPrefix = '';
   let wordSeparated = false;
   let regexCharClass = false;
+  let jsxExpressionDepth = 0;
   const templateExpressionDepths = [];
 
   const recordSignificant = (char) => {
@@ -73,6 +75,7 @@ function stripJsComments(content, options = {}) {
       currentWordPrefix = '';
     }
     wordSeparated = false;
+    antePreviousSignificant = previousSignificant;
     previousSignificant = lastSignificant;
     lastSignificant = char;
     currentWord = isWordChar ? currentWord + char : '';
@@ -125,6 +128,7 @@ function stripJsComments(content, options = {}) {
       recordSignificant('$');
       recordSignificant('{');
       templateExpressionDepths.push(1);
+      if (jsxExpressionDepth) jsxExpressionDepth++;
       state = 'code';
       continue;
     }
@@ -146,12 +150,14 @@ function stripJsComments(content, options = {}) {
     }
 
     const jsxUrlSeparator = options.jsx && char === '/' && next === '/' &&
+      jsxExpressionDepth === 0 &&
       (output.endsWith('http:') ||
         output.endsWith('https:') ||
         (/<[A-Za-z](?:[^>]*[^/])?>[^<]*$/.test(output.slice(output.lastIndexOf('\n') + 1)) &&
           /^[\w.-]+\.[A-Za-z]{2,}(?=[:/?#\s<]|$)/.test(content.slice(i + 2))));
     const afterPostfixUpdate = (lastSignificant === '+' || lastSignificant === '-') &&
-      previousSignificant === lastSignificant;
+      previousSignificant === lastSignificant &&
+      antePreviousSignificant !== lastSignificant;
     if (char === '/' && next === '/' && jsxUrlSeparator) {
       output += '//';
       i++;
@@ -168,11 +174,13 @@ function stripJsComments(content, options = {}) {
     } else if (templateExpressionDepths.length && char === '{') {
       output += char;
       templateExpressionDepths[templateExpressionDepths.length - 1]++;
+      if (jsxExpressionDepth) jsxExpressionDepth++;
       recordSignificant(char);
     } else if (templateExpressionDepths.length && char === '}') {
       output += char;
       const depthIndex = templateExpressionDepths.length - 1;
       templateExpressionDepths[depthIndex]--;
+      if (jsxExpressionDepth) jsxExpressionDepth--;
       recordSignificant(char);
       if (templateExpressionDepths[depthIndex] === 0) {
         templateExpressionDepths.pop();
@@ -190,6 +198,10 @@ function stripJsComments(content, options = {}) {
       regexCharClass = false;
     } else {
       output += char;
+      const startsJsxExpression = options.jsx && char === '{' && jsxExpressionDepth === 0 &&
+        /<[A-Za-z](?:[^>]*[^/])?>[^<]*$/.test(output.slice(output.lastIndexOf('\n') + 1, -1));
+      if (char === '{' && (jsxExpressionDepth || startsJsxExpression)) jsxExpressionDepth++;
+      else if (char === '}' && jsxExpressionDepth) jsxExpressionDepth--;
       recordSignificant(char);
       if (char === "'") state = 'single-quote';
       else if (char === '"') state = 'double-quote';
@@ -691,6 +703,58 @@ function extractStyleBlocks(content, ext) {
 
 const CSS_IN_JS_EXTENSIONS = new Set(['.js', '.ts', '.jsx', '.tsx']);
 
+function findQuotedStringEnd(content, start, quote) {
+  for (let cursor = start + 1; cursor < content.length; cursor++) {
+    if (content[cursor] === '\\') cursor++;
+    else if (content[cursor] === quote) return cursor;
+  }
+  return -1;
+}
+
+function findTemplateExpressionEnd(content, start) {
+  let depth = 1;
+  for (let cursor = start; cursor < content.length; cursor++) {
+    const char = content[cursor];
+    const next = content[cursor + 1];
+    if (char === "'" || char === '"') {
+      cursor = findQuotedStringEnd(content, cursor, char);
+      if (cursor === -1) return -1;
+    } else if (char === '`') {
+      cursor = findTemplateLiteralEnd(content, cursor);
+      if (cursor === -1) return -1;
+    } else if (char === '/' && next === '/') {
+      const lineEnd = content.indexOf('\n', cursor + 2);
+      if (lineEnd === -1) return -1;
+      cursor = lineEnd;
+    } else if (char === '/' && next === '*') {
+      const commentEnd = content.indexOf('*/', cursor + 2);
+      if (commentEnd === -1) return -1;
+      cursor = commentEnd + 1;
+    } else if (char === '{') {
+      depth++;
+    } else if (char === '}') {
+      depth--;
+      if (depth === 0) return cursor;
+    }
+  }
+  return -1;
+}
+
+function findTemplateLiteralEnd(content, start) {
+  for (let cursor = start + 1; cursor < content.length; cursor++) {
+    const char = content[cursor];
+    if (char === '\\') {
+      cursor++;
+    } else if (char === '`') {
+      return cursor;
+    } else if (char === '$' && content[cursor + 1] === '{') {
+      cursor = findTemplateExpressionEnd(content, cursor + 2);
+      if (cursor === -1) return -1;
+    }
+  }
+  return -1;
+}
+
 function findCSSinJSTemplates(content) {
   const templates = [];
   const tagRe = /\b(?:styled(?:\.\w+|\([^)]+\))|css)/g;
@@ -714,16 +778,8 @@ function findCSSinJSTemplates(content) {
 
     if (content[cursor] !== '`') continue;
     const contentStart = cursor + 1;
-    cursor = contentStart;
-    while (cursor < content.length) {
-      if (content[cursor] === '\\') {
-        cursor += 2;
-        continue;
-      }
-      if (content[cursor] === '`') break;
-      cursor++;
-    }
-    if (cursor >= content.length) continue;
+    cursor = findTemplateLiteralEnd(content, cursor);
+    if (cursor === -1) continue;
 
     templates.push({
       tagStart: match.index,

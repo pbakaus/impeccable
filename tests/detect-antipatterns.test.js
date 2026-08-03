@@ -301,6 +301,14 @@ describe('detectText — broken images in source comments', () => {
     expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(0);
   });
 
+  test('keeps a regex visible after a postfix update and binary operator', () => {
+    const source = 'let i = 0; const match = i++ + /[/*]/.test(value); <img src="" alt="Empty source" />';
+
+    const findings = detectText(source, 'gallery.tsx');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(1);
+  });
+
   test('keeps same-line JSX visible after bare URL text', () => {
     const source = '<p>https://example.com <img src="" alt="Empty source" /></p>';
 
@@ -327,6 +335,14 @@ describe('detectText — broken images in source comments', () => {
 
   test('still strips a domain-like comment after self-closing JSX', () => {
     const source = 'const card = <Card />; //cdn.example.com <img src="" alt="Comment-only image" />';
+
+    const findings = detectText(source, 'gallery.jsx');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(0);
+  });
+
+  test('strips a domain-like comment inside a JSX expression', () => {
+    const source = 'const card = <div>{value //cdn.example.com <img src="" alt="Comment-only image" />';
 
     const findings = detectText(source, 'gallery.jsx');
 
@@ -2502,6 +2518,13 @@ describe('extractCSSinJS', () => {
     expect(blocks.some(b => b.content.includes('border-left: 4px solid'))).toBe(true);
   });
 
+  test('extracts through nested template literals in interpolations', () => {
+    const tsx = "const Card = styled.div`\n  color: ${() => `var(--accent)`};\n  /* after interpolation */\n`;";
+    const blocks = extractCSSinJS(tsx, '.tsx');
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].content).toContain('after interpolation');
+  });
+
   test('extracts styled(Component) template literal', () => {
     const tsx = "const Box = styled(BaseBox)`\n  border-right: 5px solid #8b5cf6;\n`;";
     const blocks = extractCSSinJS(tsx, '.tsx');
@@ -2655,6 +2678,12 @@ describe('detectText -- CSS-in-JS', () => {
 
   test('does not scan comments in nested generic styled templates as live rules', () => {
     const tsx = "const Card = styled.div<Props<Foo>>`\n  /* .commented-only { border-left: 4px solid #3b82f6; border-radius: 8px; } */\n`;";
+    const f = detectText(tsx, 'Card.tsx');
+    expect(f.filter(r => r.antipattern === 'side-tab')).toHaveLength(0);
+  });
+
+  test('does not scan comments after nested interpolation templates as live rules', () => {
+    const tsx = "const Card = styled.div`\n  color: ${() => `var(--accent)`};\n  /* .commented-only { border-left: 4px solid #3b82f6; border-radius: 8px; } */\n`;";
     const f = detectText(tsx, 'Card.tsx');
     expect(f.filter(r => r.antipattern === 'side-tab')).toHaveLength(0);
   });
