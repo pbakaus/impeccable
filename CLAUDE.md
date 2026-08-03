@@ -144,6 +144,20 @@ bun run test:plugin-e2e       # Just the plugin loader E2E (also part of the def
 
 Unit tests (build orchestration, detector logic) run via `bun test`. Fixture tests (jsdom-based HTML detection) run via `node --test` because bun is too slow with jsdom. The `test` script handles this split automatically.
 
+### Which opt-in suite a change owes
+
+The default suite does not cover everything. When a change touches one of these areas, run the matching opt-in suite before shipping. The canonical mapping is the `triggers` lists in `scripts/test-suites.mjs`; this table mirrors it for the areas that need a manual run.
+
+| Area touched | Run | Cost |
+|---|---|---|
+| `skill/scripts/live-*.{mjs,js}`, `skill/scripts/live/**` | `bun run test:live-e2e` | ~2 min, real npm installs + dev servers, needs Playwright Chromium |
+| `live-accept` / `live-browser` / `live-server` / `live-wrap` / `live/sveltekit-adapter` | also `bun run test:live-e2e-accept-cleanup` | bills a provider API key |
+| `live/sveltekit-adapter.mjs`, `live/svelte-component.mjs` | `bun run test:live-svelte-adapter-deepseek` | bills DeepSeek |
+| `SKILL.src.md` Setup, `context.mjs`, Setup-adjacent reference files | `bun run test:skill-behavior` | ~5 min, bills all four provider keys |
+| `serve-question.mjs`, `generate-image.mjs`, `concept-seed.mjs` | `bun run test:new-work-e2e` | Playwright, offline, no API cost |
+| `cli/bin/commands/skills.mjs` | `bun run test:cli-remote-e2e` | hits impeccable.style |
+| `plugin/`, `skill/agents/`, `scripts/build.js`, plugin manifest validator | `bun run test:plugin-e2e` | ~1 s; already in the default suite, needs the `claude` CLI |
+
 **Plugin loader E2E** (`tests/plugin-e2e.test.mjs`, in the default suite): installs the committed `./plugin` subtree into a real Claude Code, sandboxed via `CLAUDE_CONFIG_DIR` in a temp dir, and asserts the component inventory from `claude plugin details`: the skill parses, every `plugin/agents/*.md` is visible, hooks are discovered. This is the only check that catches loader-contract surprises the unit guards can't know about (PR #494 shipped an `agents` manifest key that silently loaded zero agents; `claude plugin validate` never flags plugin-manifest problems). Runs in about a second; skips cleanly when the `claude` CLI is not on PATH. The known contract itself (allowed manifest keys, no `agents` key, trailing-slash `skills` path, source agents shipped) is pinned deterministically by `scripts/lib/validate-plugin-manifest.js`, unit-tested in `tests/validate-plugin-manifest.test.js` and enforced as a `bun run build` gate. Never add a key to the generated plugin manifest without verifying it against a real install and extending `KNOWN_LOADER_KEYS`.
 
 **Important:** `tests/build.test.js` uses `spyOn(transformers, 'transformCursor')` with the named exports from `scripts/lib/transformers/index.js`. Those named exports (`transformCursor`, `transformClaudeCode`, etc.) are kept specifically for test spying, even though `build.js` itself uses `createTransformer + PROVIDERS` directly. **Do not delete them as "dead code"** — I made that mistake once and broke 8 tests.
