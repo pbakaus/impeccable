@@ -41,6 +41,102 @@ function shouldRunPageAnalyzers(content, filePath) {
   return !ext || PAGE_ANALYZER_EXTS.has(ext);
 }
 
+const JS_SOURCE_EXTS = new Set(['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs']);
+
+/**
+ * Blank JavaScript comments without moving any following source. Regex
+ * findings keep their original line numbers, while prose examples inside
+ * comments cannot masquerade as rendered markup.
+ */
+function stripJsComments(content) {
+  let state = 'code';
+  let output = '';
+  let lastSignificant = '';
+  let regexCharClass = false;
+
+  for (let i = 0; i < content.length; i++) {
+    const char = content[i];
+    const next = content[i + 1];
+
+    if (state === 'line-comment') {
+      if (char === '\n') {
+        output += char;
+        state = 'code';
+      } else {
+        output += ' ';
+      }
+      continue;
+    }
+
+    if (state === 'block-comment') {
+      if (char === '*' && next === '/') {
+        output += '  ';
+        i++;
+        state = 'code';
+      } else {
+        output += char === '\n' ? '\n' : ' ';
+      }
+      continue;
+    }
+
+    if (state === 'regex') {
+      output += char;
+      if (char === '\\' && next) {
+        output += next;
+        i++;
+      } else if (char === '[') {
+        regexCharClass = true;
+      } else if (char === ']') {
+        regexCharClass = false;
+      } else if (char === '/' && !regexCharClass) {
+        state = 'code';
+        lastSignificant = '/';
+      }
+      continue;
+    }
+
+    if (state !== 'code') {
+      output += char;
+      if (char === '\\' && next) {
+        output += next;
+        i++;
+      } else if (
+        (state === 'single-quote' && char === "'") ||
+        (state === 'double-quote' && char === '"') ||
+        (state === 'template' && char === '`')
+      ) {
+        state = 'code';
+      }
+      continue;
+    }
+
+    if (char === '/' && next === '/') {
+      output += '  ';
+      i++;
+      state = 'line-comment';
+    } else if (char === '/' && next === '*') {
+      output += '  ';
+      i++;
+      state = 'block-comment';
+    } else if (
+      char === '/' &&
+      (!lastSignificant || /[=([{!?:;,&|+\-*%^~]/.test(lastSignificant) || output.trimEnd().endsWith('=>'))
+    ) {
+      output += char;
+      state = 'regex';
+      regexCharClass = false;
+    } else {
+      output += char;
+      if (!/\s/.test(char)) lastSignificant = char;
+      if (char === "'") state = 'single-quote';
+      else if (char === '"') state = 'double-quote';
+      else if (char === '`') state = 'template';
+    }
+  }
+
+  return output;
+}
+
 function firstOverusedGoogleFont(text) {
   return extractGoogleFontFamilies(text).find(f => OVERUSED_FONTS.has(f)) || '';
 }
@@ -627,8 +723,9 @@ function runTextContentAnalyzers(content, filePath, options = {}) {
 function detectText(content, filePath, options = {}) {
   const profile = options?.profile;
   const findings = [];
-  const lines = content.split('\n');
   const ext = extFromFilePath(filePath);
+  const source = JS_SOURCE_EXTS.has(ext) ? stripJsComments(content) : content;
+  const lines = source.split('\n');
 
   // Run regex matchers on the full file content (catches Tailwind classes, inline styles)
   // Enable block context for CSS files where related properties span multiple lines

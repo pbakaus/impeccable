@@ -217,6 +217,37 @@ describe('detectText — Tailwind side-tab', () => {
   });
 });
 
+describe('detectText — broken images in source comments', () => {
+  test('ignores img tags mentioned in JavaScript comments', () => {
+    const source = [
+      '/** Extra classes on the <img> itself. */',
+      '// Keep the original URL as an <img> fallback.',
+      '/*',
+      ' * This wrapper eventually renders an <img> element.',
+      ' */',
+      'const quoteMatcher = /["\']/;',
+      '// A regex before this comment must not expose its <img> example.',
+      'export interface Props { imgClassName?: string }',
+    ].join('\n');
+
+    const findings = detectText(source, 'image-wrapper.ts');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(0);
+  });
+
+  test('still detects real JSX img tags with no usable src', () => {
+    const source = [
+      '<img alt="Missing source" />',
+      '<img src="" alt="Empty source" />',
+      '<img src="#" alt="Placeholder source" />',
+    ].join('\n');
+
+    const findings = detectText(source, 'gallery.tsx');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(3);
+  });
+});
+
 describe('detectText — CSS borders', () => {
   test('detects border-left shorthand', () => {
     const f = detectText('.card { border-left: 4px solid #3b82f6; }', 'test.css');
