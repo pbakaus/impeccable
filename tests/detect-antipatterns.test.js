@@ -2594,6 +2594,20 @@ describe('extractCSSinJS', () => {
     expect(blocks[0].content).toContain('after interpolation');
   });
 
+  test('extracts through division after a postfix update in interpolations', () => {
+    const tsx = "const Card = styled.div`\n  width: ${i++ / divisor}px;\n  /* after interpolation */\n`;";
+    const blocks = extractCSSinJS(tsx, '.tsx');
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].content).toContain('after interpolation');
+  });
+
+  test('extracts through regex literals after statement blocks', () => {
+    const tsx = "const Card = styled.div`\n  color: ${() => { if (enabled) {} /`/.test(value); return 'red'; }};\n  /* after interpolation */\n`;";
+    const blocks = extractCSSinJS(tsx, '.tsx');
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].content).toContain('after interpolation');
+  });
+
   test('extracts styled(Component) template literal', () => {
     const tsx = "const Box = styled(BaseBox)`\n  border-right: 5px solid #8b5cf6;\n`;";
     const blocks = extractCSSinJS(tsx, '.tsx');
@@ -2759,6 +2773,12 @@ describe('detectText -- CSS-in-JS', () => {
 
   test('does not scan comments after interpolation regexes as live rules', () => {
     const tsx = "const Card = styled.div`\n  color: ${/`/.test(value) || /[{}]/.test(value)};\n  /* .commented-only { border-left: 4px solid #3b82f6; border-radius: 8px; } */\n`;";
+    const f = detectText(tsx, 'Card.tsx');
+    expect(f.filter(r => r.antipattern === 'side-tab')).toHaveLength(0);
+  });
+
+  test('does not scan comments after postfix division or block-following regexes', () => {
+    const tsx = "const Card = styled.div`\n  width: ${i++ / divisor}px;\n  color: ${() => { if (enabled) {} /`/.test(value); return 'red'; }};\n  /* .commented-only { border-left: 4px solid #3b82f6; border-radius: 8px; } */\n`;";
     const f = detectText(tsx, 'Card.tsx');
     expect(f.filter(r => r.antipattern === 'side-tab')).toHaveLength(0);
   });

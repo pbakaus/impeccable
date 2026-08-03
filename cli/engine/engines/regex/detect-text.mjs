@@ -774,9 +774,23 @@ function findRegexLiteralEnd(content, start) {
 function findTemplateExpressionEnd(content, start) {
   let depth = 1;
   let lastSignificant = '';
+  let previousSignificant = '';
+  let antePreviousSignificant = '';
   let currentWord = '';
   let currentWordPrefix = '';
   let wordSeparated = false;
+  let lastClosedBraceKind = '';
+  const braceKinds = [];
+
+  const braceKind = () => (
+    lastSignificant === ')' ||
+    lastSignificant === ';' ||
+    lastSignificant === '}' ||
+    (previousSignificant === '=' && lastSignificant === '>') ||
+    BLOCK_BRACE_PREFIX_KEYWORDS.has(currentWord)
+      ? 'block'
+      : 'expression'
+  );
 
   const recordSignificant = (char) => {
     if (/\s/.test(char)) {
@@ -791,6 +805,8 @@ function findTemplateExpressionEnd(content, start) {
       currentWordPrefix = '';
     }
     wordSeparated = false;
+    antePreviousSignificant = previousSignificant;
+    previousSignificant = lastSignificant;
     lastSignificant = char;
     currentWord = isWordChar ? currentWord + char : '';
   };
@@ -798,6 +814,9 @@ function findTemplateExpressionEnd(content, start) {
   for (let cursor = start; cursor < content.length; cursor++) {
     const char = content[cursor];
     const next = content[cursor + 1];
+    const afterPostfixUpdate = (lastSignificant === '+' || lastSignificant === '-') &&
+      previousSignificant === lastSignificant &&
+      antePreviousSignificant !== lastSignificant;
     if (char === "'" || char === '"') {
       cursor = findQuotedStringEnd(content, cursor, char);
       if (cursor === -1) return -1;
@@ -813,7 +832,9 @@ function findTemplateExpressionEnd(content, start) {
     } else if (
       char === '/' &&
       (!lastSignificant ||
-        /[=([{!?:;,&|+\-*%^~<>]/.test(lastSignificant) ||
+        (/[=([{!?:;,&|+\-*%^~<>]/.test(lastSignificant) && !afterPostfixUpdate) ||
+        (lastSignificant === '}' && lastClosedBraceKind === 'block') ||
+        (previousSignificant === '=' && lastSignificant === '>') ||
         (currentWordPrefix !== '.' && REGEX_PREFIX_KEYWORDS.has(currentWord)))
     ) {
       cursor = findRegexLiteralEnd(content, cursor);
@@ -825,10 +846,12 @@ function findTemplateExpressionEnd(content, start) {
       recordSignificant(')');
     } else if (char === '{') {
       depth++;
+      braceKinds.push(braceKind());
       recordSignificant(char);
     } else if (char === '}') {
       depth--;
       if (depth === 0) return cursor;
+      lastClosedBraceKind = braceKinds.pop() || '';
       recordSignificant(char);
     } else {
       recordSignificant(char);
