@@ -269,9 +269,16 @@ export function printPollEvent(event) {
   // Situational plumbing rides with the event itself: `_instructions` is the
   // authoritative next step, with real ids and paths substituted, so the
   // reference doc can stay lean and can never drift from script behavior.
-  if (event && typeof event === 'object' && !event._instructions) {
+  // Recomputed unconditionally: the locally derived value must always win over
+  // whatever arrived on the wire. The previous `!event._instructions` guard
+  // meant a page-supplied field both suppressed the real instructions and was
+  // handed to the agent as authoritative — and reference/live.md tells the
+  // agent this field outranks the document itself. Defence in depth: the
+  // server already strips it in enqueueEvent().
+  if (event && typeof event === 'object') {
     const instructions = instructionsForEvent(event, { scriptsPath: SELF_DIR });
     if (instructions) event._instructions = instructions;
+    else delete event._instructions;
   }
   console.log(JSON.stringify(event));
 }
