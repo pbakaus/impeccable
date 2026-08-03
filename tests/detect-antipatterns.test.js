@@ -249,6 +249,25 @@ describe('detectText — broken images in source comments', () => {
 
     expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(3);
   });
+
+  test('keeps later JSX visible after a regex literal following return', () => {
+    const source = [
+      'function matches(value) { return /[/*]/.test(value); }',
+      '<img src="" alt="Empty source" />',
+    ].join('\n');
+
+    const findings = detectText(source, 'gallery.tsx');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(1);
+  });
+
+  test('keeps same-line JSX visible after bare URL text', () => {
+    const source = '<p>https://example.com <img src="" alt="Empty source" /></p>';
+
+    const findings = detectText(source, 'gallery.tsx');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(1);
+  });
 });
 
 describe('detectText — CSS borders', () => {

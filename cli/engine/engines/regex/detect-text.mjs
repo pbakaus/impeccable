@@ -42,17 +42,19 @@ function shouldRunPageAnalyzers(content, filePath) {
 }
 
 const JS_SOURCE_EXTS = new Set(['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs']);
+const REGEX_PREFIX_KEYWORDS = new Set(['await', 'case', 'delete', 'do', 'else', 'in', 'instanceof', 'new', 'return', 'throw', 'typeof', 'void', 'yield']);
 
 /**
  * Blank JavaScript comments without moving any following source. Regex
  * findings keep their original line numbers, while prose examples inside
  * comments cannot masquerade as rendered markup.
  */
-function stripJsComments(content) {
+function stripJsComments(content, options = {}) {
   let state = 'code';
   let output = '';
   let lastSignificant = '';
   let previousSignificant = '';
+  let currentWord = '';
   let regexCharClass = false;
   const templateExpressionDepths = [];
 
@@ -60,6 +62,7 @@ function stripJsComments(content) {
     if (/\s/.test(char)) return;
     previousSignificant = lastSignificant;
     lastSignificant = char;
+    currentWord = /[\w$]/.test(char) ? currentWord + char : '';
   };
 
   for (let i = 0; i < content.length; i++) {
@@ -129,7 +132,13 @@ function stripJsComments(content) {
       continue;
     }
 
-    if (char === '/' && next === '/') {
+    const jsxUrlSeparator = options.jsx && (output.endsWith('http:') || output.endsWith('https:'));
+    if (char === '/' && next === '/' && jsxUrlSeparator) {
+      output += '//';
+      i++;
+      recordSignificant('/');
+      recordSignificant('/');
+    } else if (char === '/' && next === '/') {
       output += '  ';
       i++;
       state = 'line-comment';
@@ -152,7 +161,7 @@ function stripJsComments(content) {
       }
     } else if (
       char === '/' &&
-      (!lastSignificant || /[=([{!?:;,&|+\-*%^~]/.test(lastSignificant) || (previousSignificant === '=' && lastSignificant === '>'))
+      (!lastSignificant || /[=([{!?:;,&|+\-*%^~]/.test(lastSignificant) || (previousSignificant === '=' && lastSignificant === '>') || REGEX_PREFIX_KEYWORDS.has(currentWord))
     ) {
       output += char;
       state = 'regex';
@@ -756,7 +765,9 @@ function detectText(content, filePath, options = {}) {
   const profile = options?.profile;
   const findings = [];
   const ext = extFromFilePath(filePath);
-  const source = JS_SOURCE_EXTS.has(ext) ? stripJsComments(content) : content;
+  const source = JS_SOURCE_EXTS.has(ext) ? stripJsComments(content, {
+    jsx: ext === '.jsx' || ext === '.tsx',
+  }) : content;
   const lines = source.split('\n');
 
   // Run regex matchers on the full file content (catches Tailwind classes, inline styles)
