@@ -12,10 +12,11 @@
  * of those are invisible until the real loader reports its component
  * inventory, which is exactly what this suite asserts on.
  *
- * Isolation: every claude invocation runs with CLAUDE_CONFIG_DIR pointed at a
- * fresh temp dir, so the developer's real config, marketplaces, and installed
- * plugins are never touched. Requires the `claude` CLI on PATH; skips cleanly
- * otherwise.
+ * Isolation: every claude invocation runs with CLAUDE_CONFIG_DIR, HOME, and
+ * USERPROFILE all pointed into a fresh temp dir, so the developer's real
+ * config, marketplaces, and installed plugins are never touched even if the
+ * CLI derives a path from the home directory rather than CLAUDE_CONFIG_DIR.
+ * Requires the `claude` CLI on PATH; skips cleanly otherwise.
  *
  * Run with: bun run test:plugin-e2e
  */
@@ -54,12 +55,21 @@ describe('committed plugin subtree loads in a real Claude Code', { skip }, () =>
       timeout: 120000,
       // Neutral cwd so the repo's own .claude/ project config cannot leak in.
       cwd: workDir,
-      env: { ...process.env, CLAUDE_CONFIG_DIR: configDir },
+      // Belt and suspenders: CLAUDE_CONFIG_DIR is the documented isolation
+      // switch, but any path the CLI derives from the home directory instead
+      // must also land in the sandbox, so HOME/USERPROFILE point there too.
+      env: {
+        ...process.env,
+        CLAUDE_CONFIG_DIR: configDir,
+        HOME: workDir,
+        USERPROFILE: workDir,
+      },
     });
 
   before(() => {
     workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-plugin-e2e-'));
     configDir = path.join(workDir, 'claude-config');
+    fs.mkdirSync(configDir, { recursive: true });
     const marketplaceDir = path.join(workDir, 'marketplace');
     fs.mkdirSync(path.join(marketplaceDir, '.claude-plugin'), { recursive: true });
     fs.cpSync(PLUGIN_DIR, path.join(marketplaceDir, 'impeccable'), { recursive: true });
