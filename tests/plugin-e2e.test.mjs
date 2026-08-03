@@ -22,7 +22,7 @@
  */
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -33,9 +33,20 @@ const PLUGIN_DIR = path.join(REPO_ROOT, 'plugin');
 const MARKETPLACE_NAME = 'impeccable-e2e';
 const PLUGIN_REF = `impeccable@${MARKETPLACE_NAME}`;
 
+// On Windows the claude CLI is a .cmd shim, which Node refuses to spawn
+// without a shell, so commands there go through one with every argument
+// double-quoted (paths under %TEMP% routinely contain spaces). Elsewhere
+// execFileSync runs the binary directly with no quoting concerns.
+const IS_WINDOWS = process.platform === 'win32';
+const quoteForCmd = (arg) => `"${String(arg).replace(/"/g, '""')}"`;
+const runClaude = (args, opts) =>
+  IS_WINDOWS
+    ? execSync(['claude', ...args.map(quoteForCmd)].join(' '), opts)
+    : execFileSync('claude', args, opts);
+
 const claudeAvailable = (() => {
   try {
-    execFileSync('claude', ['--version'], { stdio: 'ignore', timeout: 30000 });
+    runClaude(['--version'], { stdio: 'ignore', timeout: 30000 });
     return true;
   } catch {
     return false;
@@ -50,7 +61,7 @@ describe('committed plugin subtree loads in a real Claude Code', { skip }, () =>
   let detailsOutput;
 
   const claude = (...args) =>
-    execFileSync('claude', args, {
+    runClaude(args, {
       encoding: 'utf-8',
       timeout: 120000,
       // Neutral cwd so the repo's own .claude/ project config cannot leak in.
