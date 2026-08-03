@@ -42,7 +42,8 @@ function shouldRunPageAnalyzers(content, filePath) {
 }
 
 const JS_SOURCE_EXTS = new Set(['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs']);
-const REGEX_PREFIX_KEYWORDS = new Set(['await', 'case', 'default', 'delete', 'do', 'else', 'in', 'instanceof', 'new', 'return', 'throw', 'typeof', 'void', 'yield']);
+const REGEX_PREFIX_KEYWORDS = new Set(['await', 'case', 'default', 'delete', 'do', 'else', 'in', 'instanceof', 'new', 'of', 'return', 'throw', 'typeof', 'void', 'yield']);
+const BLOCK_BRACE_PREFIX_KEYWORDS = new Set(['do', 'else', 'finally', 'try']);
 
 /**
  * Blank JavaScript comments without moving any following source. Regex
@@ -60,7 +61,20 @@ function stripJsComments(content, options = {}) {
   let wordSeparated = false;
   let regexCharClass = false;
   let jsxExpressionDepth = 0;
+  let lastClosedBraceKind = '';
+  const braceKinds = [];
   const templateExpressionDepths = [];
+
+  const braceKind = (startsJsxExpression = false) => (
+    !startsJsxExpression && (
+      !lastSignificant ||
+      lastSignificant === ')' ||
+      lastSignificant === ';' ||
+      lastSignificant === '}' ||
+      (previousSignificant === '=' && lastSignificant === '>') ||
+      BLOCK_BRACE_PREFIX_KEYWORDS.has(currentWord)
+    ) ? 'block' : 'expression'
+  );
 
   const recordSignificant = (char) => {
     if (/\s/.test(char)) {
@@ -128,6 +142,7 @@ function stripJsComments(content, options = {}) {
       recordSignificant('$');
       recordSignificant('{');
       templateExpressionDepths.push(1);
+      braceKinds.push('expression');
       if (jsxExpressionDepth) jsxExpressionDepth++;
       state = 'code';
       continue;
@@ -174,12 +189,14 @@ function stripJsComments(content, options = {}) {
     } else if (templateExpressionDepths.length && char === '{') {
       output += char;
       templateExpressionDepths[templateExpressionDepths.length - 1]++;
+      braceKinds.push(braceKind());
       if (jsxExpressionDepth) jsxExpressionDepth++;
       recordSignificant(char);
     } else if (templateExpressionDepths.length && char === '}') {
       output += char;
       const depthIndex = templateExpressionDepths.length - 1;
       templateExpressionDepths[depthIndex]--;
+      lastClosedBraceKind = braceKinds.pop() || '';
       if (jsxExpressionDepth) jsxExpressionDepth--;
       recordSignificant(char);
       if (templateExpressionDepths[depthIndex] === 0) {
@@ -189,7 +206,8 @@ function stripJsComments(content, options = {}) {
     } else if (
       char === '/' &&
       (!lastSignificant ||
-        (/[=([{!?:;,&|+\-*%^~]/.test(lastSignificant) && !afterPostfixUpdate) ||
+        (/[=([{!?:;,&|+\-*%^~<>]/.test(lastSignificant) && !afterPostfixUpdate) ||
+        (lastSignificant === '}' && lastClosedBraceKind === 'block') ||
         (previousSignificant === '=' && lastSignificant === '>') ||
         (currentWordPrefix !== '.' && REGEX_PREFIX_KEYWORDS.has(currentWord)))
     ) {
@@ -200,6 +218,8 @@ function stripJsComments(content, options = {}) {
       output += char;
       const startsJsxExpression = options.jsx && char === '{' && jsxExpressionDepth === 0 &&
         /<[A-Za-z](?:[^>]*[^/])?>[^<]*$/.test(output.slice(output.lastIndexOf('\n') + 1, -1));
+      if (char === '{') braceKinds.push(braceKind(startsJsxExpression));
+      else if (char === '}') lastClosedBraceKind = braceKinds.pop() || '';
       if (char === '{' && (jsxExpressionDepth || startsJsxExpression)) jsxExpressionDepth++;
       else if (char === '}' && jsxExpressionDepth) jsxExpressionDepth--;
       recordSignificant(char);
@@ -940,8 +960,8 @@ function detectText(content, filePath, options = {}) {
     phase: 'source',
     ruleId: 'codex-grid-background',
     target: filePath,
-  }, () => scanCssTextForGridBackground(content).map(hit => {
-    const line = content.substring(0, hit.index).split('\n').length;
+  }, () => scanCssTextForGridBackground(source).map(hit => {
+    const line = source.substring(0, hit.index).split('\n').length;
     return finding('codex-grid-background', filePath, hit.snippet, line);
   })));
 

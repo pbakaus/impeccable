@@ -309,6 +309,27 @@ describe('detectText — broken images in source comments', () => {
     expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(1);
   });
 
+  test('keeps regex literals visible after remaining prefix contexts', () => {
+    const sources = [
+      'for (const item of /[/*]/) {} <img src="" alt="After for-of" />',
+      'const match = value < /[/*]/.source; <img src="" alt="After comparison" />',
+      'if (ready) {} /[/*]/.test(value); <img src="" alt="After block" />',
+    ];
+
+    for (const source of sources) {
+      const findings = detectText(source, 'gallery.tsx');
+      expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(1);
+    }
+  });
+
+  test('keeps division after an object literal distinct from a regex', () => {
+    const source = 'const ratio = {} / divisor; // <img src="" alt="Comment-only image" />';
+
+    const findings = detectText(source, 'gallery.tsx');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(0);
+  });
+
   test('keeps same-line JSX visible after bare URL text', () => {
     const source = '<p>https://example.com <img src="" alt="Empty source" /></p>';
 
@@ -1693,6 +1714,39 @@ describe('codex-grid-background variants', () => {
     }`;
     const findings = detectText(css, 'timeline.css');
     expect(findings.filter(f => f.antipattern === 'codex-grid-background')).toHaveLength(0);
+  });
+
+  test('regex source engine ignores grids in JavaScript comments', () => {
+    const source = `/* .demo {
+      background-image:
+        linear-gradient(#eee 1px, transparent 1px),
+        linear-gradient(90deg, #eee 1px, transparent 1px);
+      background-size: 24px 24px;
+    } */`;
+    const findings = detectText(source, 'demo.ts');
+    expect(findings.filter(f => f.antipattern === 'codex-grid-background')).toHaveLength(0);
+  });
+
+  test('regex source engine ignores grids in CSS-in-JS comments', () => {
+    const source = `const Demo = styled.div\`
+      /* .demo { background-image:
+        linear-gradient(#eee 1px, transparent 1px),
+        linear-gradient(90deg, #eee 1px, transparent 1px);
+      background-size: 24px 24px; } */
+    \`;`;
+    const findings = detectText(source, 'demo.tsx');
+    expect(findings.filter(f => f.antipattern === 'codex-grid-background')).toHaveLength(0);
+  });
+
+  test('regex source engine still detects live CSS-in-JS grids', () => {
+    const source = `const Demo = styled.div\`
+      .demo { background-image:
+        linear-gradient(#eee 1px, transparent 1px),
+        linear-gradient(90deg, #eee 1px, transparent 1px);
+      background-size: 24px 24px; }
+    \`;`;
+    const findings = detectText(source, 'demo.tsx');
+    expect(findings.filter(f => f.antipattern === 'codex-grid-background')).toHaveLength(1);
   });
 });
 
