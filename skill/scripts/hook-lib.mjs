@@ -1483,9 +1483,19 @@ export function writeAuditLog(env, entry, cwd = process.cwd()) {
   // process cwd can differ from the project being edited.
   const baseCwd = entry && typeof entry.cwd === 'string' && entry.cwd ? entry.cwd : cwd;
   // Env wins; otherwise fall back to the unified config's hook.auditLog path.
+  // The two sources are NOT equally trusted: IMPECCABLE_HOOK_LOG is set by the
+  // person running the harness, while hook.auditLog is read from
+  // <project>/.impeccable/config.json — i.e. it ships with whatever repository
+  // you happen to open. Since this hook runs on every Edit/Write, an untrusted
+  // checkout could otherwise point it at an absolute or ~/ path and have the
+  // hook create directories and append lines anywhere the user can write.
   let target = env?.IMPECCABLE_HOOK_LOG;
+  let fromProjectConfig = false;
   if (!target || typeof target !== 'string') {
-    try { target = readConfig(baseCwd).auditLog; } catch { target = null; }
+    try {
+      target = readConfig(baseCwd).auditLog;
+      fromProjectConfig = true;
+    } catch { target = null; }
   }
   if (!target || typeof target !== 'string') return false;
   try {
@@ -1497,6 +1507,10 @@ export function writeAuditLog(env, entry, cwd = process.cwd()) {
     } else {
       expanded = path.resolve(baseCwd, target);
     }
+    // Project-supplied paths are contained to the project, using the same
+    // canonicalizing gate the scan passes use for reads. Env-supplied paths
+    // keep working anywhere, which is the point of the escape hatch.
+    if (fromProjectConfig && !isScanTargetInsideProject(expanded, baseCwd)) return false;
     fs.mkdirSync(path.dirname(expanded), { recursive: true });
     const line = JSON.stringify({ ts: new Date().toISOString(), ...entry }) + '\n';
     fs.appendFileSync(expanded, line);
