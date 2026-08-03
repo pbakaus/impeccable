@@ -690,28 +690,75 @@ function extractStyleBlocks(content, ext) {
 // ---------------------------------------------------------------------------
 
 const CSS_IN_JS_EXTENSIONS = new Set(['.js', '.ts', '.jsx', '.tsx']);
-const CSS_IN_JS_TAG_PATTERN = '(?:styled(?:\\.\\w+|\\([^)]+\\))|css)(?:\\s*<[^>\\n]+>)?';
+
+function findCSSinJSTemplates(content) {
+  const templates = [];
+  const tagRe = /\b(?:styled(?:\.\w+|\([^)]+\))|css)/g;
+  let match;
+  while ((match = tagRe.exec(content)) !== null) {
+    let cursor = match.index + match[0].length;
+    while (/\s/.test(content[cursor] || '')) cursor++;
+
+    if (content[cursor] === '<') {
+      let depth = 0;
+      while (cursor < content.length) {
+        const char = content[cursor];
+        if (char === '<') depth++;
+        else if (char === '>' && content[cursor - 1] !== '=') depth--;
+        cursor++;
+        if (depth === 0) break;
+      }
+      if (depth !== 0) continue;
+      while (/\s/.test(content[cursor] || '')) cursor++;
+    }
+
+    if (content[cursor] !== '`') continue;
+    const contentStart = cursor + 1;
+    cursor = contentStart;
+    while (cursor < content.length) {
+      if (content[cursor] === '\\') {
+        cursor += 2;
+        continue;
+      }
+      if (content[cursor] === '`') break;
+      cursor++;
+    }
+    if (cursor >= content.length) continue;
+
+    templates.push({
+      tagStart: match.index,
+      contentStart,
+      contentEnd: cursor,
+    });
+    tagRe.lastIndex = cursor + 1;
+  }
+  return templates;
+}
 
 function extractCSSinJS(content, ext) {
   ext = ext.toLowerCase();
   if (!CSS_IN_JS_EXTENSIONS.has(ext)) return [];
-  const blocks = [];
-  const re = new RegExp(CSS_IN_JS_TAG_PATTERN + '\\s*`([\\s\\S]*?)`', 'g');
-  let m;
-  while ((m = re.exec(content)) !== null) {
-    const before = content.substring(0, m.index);
+  return findCSSinJSTemplates(content).map((template) => {
+    const before = content.substring(0, template.tagStart);
     const startLine = before.split('\n').length;
-    blocks.push({ content: m[1], startLine });
-  }
-  return blocks;
+    return {
+      content: content.slice(template.contentStart, template.contentEnd),
+      startLine,
+    };
+  });
 }
 
 function stripCssInJsComments(content, ext) {
   if (!CSS_IN_JS_EXTENSIONS.has(ext.toLowerCase())) return content;
-  return content.replace(
-    new RegExp(CSS_IN_JS_TAG_PATTERN + '\\s*`[\\s\\S]*?`', 'g'),
-    block => stripCssComments(block),
-  );
+  const templates = findCSSinJSTemplates(content);
+  let output = '';
+  let cursor = 0;
+  for (const template of templates) {
+    output += content.slice(cursor, template.contentStart);
+    output += stripCssComments(content.slice(template.contentStart, template.contentEnd));
+    cursor = template.contentEnd;
+  }
+  return output + content.slice(cursor);
 }
 
 function runRegexMatchers(lines, filePath, lineOffset = 0, blockContext = null, options = {}) {
