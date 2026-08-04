@@ -2071,6 +2071,18 @@ describe('walkDir', () => {
     expect(SCANNABLE_EXTENSIONS.has('.sass')).toBe(true);
   });
 
+  test('finds Blade templates during directory scans', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-walk-'));
+    try {
+      const blade = path.join(tmp, 'resources', 'views', 'card.blade.php');
+      fs.mkdirSync(path.dirname(blade), { recursive: true });
+      fs.writeFileSync(blade, '<div class="bg-orange-900 text-gray-500">Card</div>');
+      expect(walkDir(tmp)).toContain(blade);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   test('finds scannable files', () => {
     const files = walkDir(FIXTURES);
     expect(files.length).toBeGreaterThanOrEqual(3);
