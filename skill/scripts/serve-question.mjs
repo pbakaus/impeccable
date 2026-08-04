@@ -567,8 +567,12 @@ function page() {
   .media-label { position: absolute; z-index: 2; left: 10px; bottom: 10px; margin: 0; font-family: var(--ks-mono); font-size: .5rem; letter-spacing: .2em; text-transform: uppercase; color: var(--ks-text); padding: 3px 8px 4px; background: oklch(7% 0.006 95 / 0.72); border: 1px solid var(--ks-rule); border-radius: 4px; backdrop-filter: blur(3px); }
   /* Art that never arrives collapses to the card's own palette (painted
      inline from its swatches) instead of sitting as a dark void wearing a
-     zoom cursor; the scrim keeps the label legible over saturated fields. */
-  .media.unavailable::after { content: ""; position: absolute; inset: 0; z-index: 1; background: oklch(10% 0.008 95 / 0.45); }
+     zoom cursor; the scrim keeps the label legible over saturated fields,
+     passes clicks through, and the flip chips stay above it. A card with no
+     palette falls back to the quiet graphite field. */
+  .media.unavailable { background: linear-gradient(100deg, var(--ks-graphite) 40%, var(--ks-graphite-2) 50%, var(--ks-graphite) 60%); }
+  .media.unavailable::after { content: ""; position: absolute; inset: 0; z-index: 1; background: oklch(10% 0.008 95 / 0.45); pointer-events: none; }
+  .media.unavailable .chips { z-index: 2; }
   /* A stand-in is honest about being one: dimmed, labeled, and replaced by
      the real sketch whenever it lands. */
   .media.stand-in img.sketch { filter: brightness(.72) saturate(.85); }
@@ -743,6 +747,7 @@ function page() {
     if (colors.length) m.style.background = 'linear-gradient(135deg, ' + colors.map((c, i) => c + ' ' + Math.round(i * 100 / colors.length) + '% ' + Math.round((i + 1) * 100 / colors.length) + '%').join(', ') + ')';
     m.querySelector('.media-label')?.remove();
     m.querySelector('.chip.expand')?.remove();
+    m.removeAttribute('title');
     img.remove();
     const label = document.createElement('p');
     label.className = 'media-label';
