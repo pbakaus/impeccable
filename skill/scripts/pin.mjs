@@ -152,8 +152,11 @@ function opencodeUserConfigDir() {
  * project-local dir when the project has the skill, plus the user config dir
  * when Impeccable is installed globally (#406 layout). A user-scope skill is
  * visible from every project, so its pinned commands belong next to it.
+ * With `forCleanup`, both commands dirs are included even when the skill is
+ * gone, so unpin can still reach a pin left behind by a removed install;
+ * removal stays safe because removePinnedOpencodeCommand is marker-guarded.
  */
-function findOpencodeCommandsDirs(projectRoot) {
+function findOpencodeCommandsDirs(projectRoot, { forCleanup = false } = {}) {
   const dirs = [];
   const seen = new Set();
   const push = (commandsDir) => {
@@ -163,11 +166,11 @@ function findOpencodeCommandsDirs(projectRoot) {
       dirs.push(commandsDir);
     }
   };
-  if (existsSync(join(projectRoot, '.opencode', 'skills', 'impeccable'))) {
+  if (forCleanup || existsSync(join(projectRoot, '.opencode', 'skills', 'impeccable'))) {
     push(join(projectRoot, '.opencode', 'commands'));
   }
   const userConfig = opencodeUserConfigDir();
-  if (existsSync(join(userConfig, 'skills', 'impeccable'))) {
+  if (forCleanup || existsSync(join(userConfig, 'skills', 'impeccable'))) {
     push(join(userConfig, 'commands'));
   }
   return dirs;
@@ -289,8 +292,9 @@ function unpin(command, projectRoot) {
   }
 
   // OpenCode: remove the pinned command file if it's one of ours, in every
-  // scope it could have been written to.
-  for (const commandsDir of findOpencodeCommandsDirs(projectRoot)) {
+  // scope it could have been written to — even when the skill itself is
+  // already gone, since removal is marker-guarded.
+  for (const commandsDir of findOpencodeCommandsDirs(projectRoot, { forCleanup: true })) {
     if (removePinnedOpencodeCommand(commandsDir, command)) removed++;
   }
 

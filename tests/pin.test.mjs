@@ -106,6 +106,39 @@ describe('pin command OpenCode target', () => {
     assert.equal(result.status, 0, result.stderr || result.stdout);
     assert.equal(fs.existsSync(commandPath), false);
   });
+
+  it('unpin cleans the project command after the skill was removed', () => {
+    spawnSync(process.execPath, [PIN_SCRIPT, 'pin', 'audit'], { cwd: project, encoding: 'utf8', env: cleanEnv() });
+    const commandPath = path.join(project, '.opencode', 'commands', 'impeccable-audit.md');
+    assert.ok(fs.existsSync(commandPath));
+
+    // Skill removed before unpin (e.g. uninstall): cleanup must still find the pin.
+    fs.rmSync(path.join(project, '.opencode', 'skills', 'impeccable'), { recursive: true, force: true });
+
+    const result = spawnSync(process.execPath, [PIN_SCRIPT, 'unpin', 'audit'], {
+      cwd: project,
+      encoding: 'utf8',
+      env: cleanEnv(),
+    });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.equal(fs.existsSync(commandPath), false, 'stale pin must be removed after skill removal');
+  });
+
+  it('unpin after skill removal leaves non-pinned user commands alone', () => {
+    const commandsDir = path.join(project, '.opencode', 'commands');
+    fs.mkdirSync(commandsDir, { recursive: true });
+    const commandPath = path.join(commandsDir, 'impeccable-audit.md');
+    fs.writeFileSync(commandPath, 'my own command, not a pin\n');
+    fs.rmSync(path.join(project, '.opencode', 'skills', 'impeccable'), { recursive: true, force: true });
+
+    const result = spawnSync(process.execPath, [PIN_SCRIPT, 'unpin', 'audit'], {
+      cwd: project,
+      encoding: 'utf8',
+      env: cleanEnv(),
+    });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.ok(fs.existsSync(commandPath), 'non-pinned user command must survive cleanup');
+  });
 });
 
 describe('pin command OpenCode user scope', () => {
@@ -164,6 +197,28 @@ describe('pin command OpenCode user scope', () => {
     });
     assert.equal(result.status, 0, result.stderr || result.stdout);
     assert.equal(fs.existsSync(commandPath), false);
+  });
+
+  it('unpin removes the user-scope pinned command after the global skill was removed', () => {
+    installUserScopeSkill();
+    spawnSync(process.execPath, [PIN_SCRIPT, 'pin', 'audit'], {
+      cwd: project,
+      encoding: 'utf8',
+      env: cleanEnv({ OPENCODE_CONFIG_DIR: config }),
+    });
+    const commandPath = path.join(config, 'commands', 'impeccable-audit.md');
+    assert.ok(fs.existsSync(commandPath));
+
+    // Global skill removed before unpin: cleanup must still find the pin.
+    fs.rmSync(path.join(config, 'skills', 'impeccable'), { recursive: true, force: true });
+
+    const result = spawnSync(process.execPath, [PIN_SCRIPT, 'unpin', 'audit'], {
+      cwd: project,
+      encoding: 'utf8',
+      env: cleanEnv({ OPENCODE_CONFIG_DIR: config }),
+    });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.equal(fs.existsSync(commandPath), false, 'stale user-scope pin must be removed after skill removal');
   });
 
   it('pins in both scopes when project and user installs coexist', () => {
