@@ -1241,38 +1241,13 @@ function copyProviderSkills(bundleDir, root, targets, { scope } = {}) {
  * is left alone. Symmetric to `copyProviderSkills` at
  * `skills.mjs:1168-1186`.
  */
-// Map each tracked provider (`.claude`, `.opencode`, ...) to the on-disk
-// directory it ships to. Sourced from `scripts/lib/transformers/providers.js`
-// so a single config edit in the build keeps both in sync.
-const PROVIDER_CONFIG_DIRS = {
-  '.claude': '.claude',
-  '.cursor': '.cursor',
-  '.gemini': '.gemini',
-  '.codex': '.codex',
-  '.agents': '.agents',
-  '.agent': '.agent',
-  '.github': '.github',
-  '.grok': '.grok',
-  '.kiro': '.kiro',
-  '.opencode': '.opencode',
-  '.pi': '.pi',
-  '.qoder': '.qoder',
-  '.trae': '.trae',
-  '.trae-cn': '.trae-cn',
-  '.rovodev': '.rovodev',
-  '.vibe': '.vibe',
-};
-function providerConfigDir(provider) {
-  return PROVIDER_CONFIG_DIRS[provider] || provider.replace(/^\./, '.');
-}
-
 // Local commands dir for a provider. Project installs land at
 // <root>/<configDir>/commands; user-scope OpenCode installs must target the
 // config dir OpenCode actually scans (OPENCODE_CONFIG_DIR → XDG → ~/.config).
 function providerCommandsDir(root, providerEntry, scope) {
   return scope === 'user'
     ? join(opencodeGlobalConfigDir(root), 'commands')
-    : join(root, providerConfigDir(providerEntry), 'commands');
+    : join(root, providerEntry.replace(/^\./, '.'), 'commands');
 }
 
 function copyProviderCommands(bundleDir, root, targets, { scope } = {}) {

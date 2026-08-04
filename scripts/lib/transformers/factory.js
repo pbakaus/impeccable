@@ -367,37 +367,25 @@ export function createTransformer(config) {
       }
     }
 
-    // Emit a slash-command bridge for harnesses that need an explicit user-invoked
-    // surface distinct from the skill. OpenCode 1.18.10 ignores Claude-style
-    // `user-invocable: true`, so we ship a sibling `commands/<name>.md` file that
-    // routes to the same skill via the skill tool. The schema is intentionally
-    // restricted to what OpenCode recognises (description, agent, model,
-    // variant, subtask); see opencode/packages/core/src/v1/config/command.ts:5-13.
-    // Body text is kept portable: `<skill-base-dir>` is a placeholder the LLM
-    // resolves from the skill tool's response, so the same file works for
-    // project (.opencode/skills/impeccable/) and global
-    // (~/.config/opencode/skills/impeccable/) installs (issue #406).
+    // Ship an explicit slash-command surface for OpenCode. OpenCode registers
+    // skill commands natively but its TUI autocomplete hides them by deliberate
+    // design (anomalyco/opencode#25439); this file also pins execution policy
+    // (agent: build, subtask: true) and routes through OpenCode's skill tool,
+    // which resolves the skill base dir for any install scope. Menu visibility
+    // is the only part contingent on OpenCode's design; the rest is intentional.
+    // Schema restricted to what OpenCode recognises (description, agent, model,
+    // variant, subtask).
     if (provider === 'opencode' && skills.length > 0) {
       const commandsDir = path.join(providerDir, `${configDir}/commands`);
       ensureDir(commandsDir);
       for (const skill of skills) {
-        const bridgeBody = `Call skill({ name: "${skill.name}" }) to load the \`${skill.name}\` skill, then follow the skill's \`Setup\` and \`Commands\` sections.
-
-Always run the skill's mandatory setup first:
-
-1. \`node <skill-base-dir>/scripts/context.mjs\` — \`<skill-base-dir>\` is the directory that contains the skill \`SKILL.md\`. Discover it from the \`skill\` tool's response, or fall back to the project's \`.opencode/skills/${skill.name}/\` or the global \`~/.config/opencode/skills/${skill.name}/\`.
-2. Load \`reference/routing.md\` from the skill to map sub-commands.
-3. If $ARGUMENTS is empty, present the context-aware menu described in \`routing.md\`; never auto-run a sub-command.
-4. Otherwise, treat $ARGUMENTS as the sub-command plus optional target, load the matching \`reference/<sub-command>.md\`, and follow it.
-
-The skill's \`allowed-tools\`, \`version\`, and \`argument-hint\` frontmatter fields are Claude-specific extensions and are silently ignored by OpenCode. Do not rely on them.
-`;
+        const bridgeBody = `Call skill({ name: "${skill.name}" }) and follow its \`Setup\` and \`Commands\` sections to handle $ARGUMENTS.\n`;
         const bridgeFrontmatter = generateYamlFrontmatter({
-          description: `${skill.description} (slash command bridge: load the skill and run $ARGUMENTS)`,
+          description: skill.description,
           agent: 'build',
           subtask: true,
         });
-        writeFile(path.join(commandsDir, `${skill.name}.md`), `${bridgeFrontmatter}\n\n${bridgeBody}`.replace(/\n+$/, '\n'));
+        writeFile(path.join(commandsDir, `${skill.name}.md`), `${bridgeFrontmatter}\n${bridgeBody}`.replace(/\n+$/, '\n'));
       }
     }
 

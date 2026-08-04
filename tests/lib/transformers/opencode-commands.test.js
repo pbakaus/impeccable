@@ -55,22 +55,24 @@ describe('opencode commands bridge', () => {
     }
   });
 
-  test('command description mirrors the skill description', () => {
+  test('command description mirrors the skill description exactly', () => {
     transform([SAMPLE_SKILL], TEST_DIR);
     const content = fs.readFileSync(COMMAND_PATH, 'utf-8');
     const fm = content.match(/^---\n([\s\S]*?)\n---/)[1];
-    expect(fm).toContain(`description: "${SAMPLE_SKILL.description}`);
+    const line = fm.split('\n').find(l => l.startsWith('description:'));
+    const value = line.slice('description:'.length).trim().replace(/^"(.*)"$/, '$1');
+    expect(value).toBe(SAMPLE_SKILL.description);
   });
 
-  test('command body instructs the agent to load the impeccable skill', () => {
+  test('command body delegates to the impeccable skill', () => {
     transform([SAMPLE_SKILL], TEST_DIR);
     const content = fs.readFileSync(COMMAND_PATH, 'utf-8');
     const body = content.replace(/^---\n[\s\S]*?\n---\n/, '');
     expect(body).toContain('skill({');
     expect(body).toContain("name: \"impeccable\"");
-    expect(body).toContain('context.mjs');
+    expect(body).toContain('Setup');
+    expect(body).toContain('Commands');
     expect(body).toContain('$ARGUMENTS');
-    expect(body).toContain('routing.md');
   });
 
   test('command declares agent: build and subtask: true', () => {
