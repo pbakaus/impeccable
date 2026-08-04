@@ -143,7 +143,7 @@ if (hasFlag('schema')) {
     title: 'Choose the visual world',
     question: 'The roll assigned Fillmore Handbill. Keep it, take an alternate, or re-roll.',
     options: [
-      { id: 'assigned', label: 'Fillmore Handbill', kicker: 'THE ROLL', lineage: '1966-71 Fillmore psychedelic handbills', thesis: 'The gig poster that treats every release like a one-night stand.', palette: ['#e8452c', '#f5d64c', '#1b2a52', '#f3ead8'], materials: ['letterpress', 'split-fountain ink'], viewport: 'A full-bleed dated bill with the product name in warped display type.', risk: 'Reads nostalgic when the type is set timidly.', sketch: '.impeccable/sketches/assigned.webp', hero: 'https://impeccable.style/worlds/cards/fillmore-handbill-hero.webp', board: 'https://impeccable.style/worlds/cards/fillmore-handbill.webp' },
+      { id: 'assigned', label: 'Fillmore Handbill', kicker: 'THE ROLL', lineage: '1966-71 Fillmore psychedelic handbills', thesis: 'The gig poster that treats every release like a one-night stand.', palette: ['#e8452c', '#f5d64c', '#1b2a52', '#f3ead8'], materials: ['letterpress', 'split-fountain ink'], viewport: 'A full-bleed dated bill with the product name in warped display type.', risk: 'Reads nostalgic when the type is set timidly.', sketch: '.impeccable/sketches/assigned.webp', hero: 'https://impeccable.style/worlds/cards/posters-covers-sleeves-fillmore-handbill-hero.webp', board: 'https://impeccable.style/worlds/cards/posters-covers-sleeves-fillmore-handbill.webp' },
       { id: 'challenger-teletext', label: 'Teletext Service', lineage: 'broadcast teletext magazines', thesis: 'The catalog as a broadcast index: pages, not sections.', case: 'Fuses cleanly: releases map to numbered pages.', sketch: '.impeccable/sketches/challenger-teletext.webp', hero: 'https://impeccable.style/worlds/cards/broadcast-programming-teletext-service-hero.webp' },
     ],
     reroll: true,
@@ -151,7 +151,7 @@ if (hasFlag('schema')) {
     canonCard: { label: 'The category standard', thesis: 'What this category ships, executed impeccably.', viewport: 'The arrangement a visitor expects, at full craft.', sketch: '.impeccable/sketches/canon.webp' },
     steer: true,
   }, null, 2));
-  console.log('\nOption ids return verbatim in ANSWER; "reroll" and "canon" are reserved. hero/board/sketch accept URLs or local paths; sketch slots may point at files that do not exist yet (serve first, generate after; the page polls until they land, so never block serving on generation). hero on a challenger is the inspiration it draws from and renders picture-in-picture beside the sketch, never as the promise of the build. canonCard renders the standing exit as a subordinate card with the same anatomy; without it, canon stays a quiet footer action. Include canon only for visual-direction rounds; never present it as your own recommendation. Keep thesis and each fact to one short sentence: the card front shows thesis, identity, and a two-line risk, while first viewport and the case read on the card back behind the Details chip, so long facts cost the reader a flip, not the page its scanability. Sketch aspect follows the surface: portrait at device viewport for native or mobile-first surfaces, landscape otherwise; the page adapts its cards to either.');
+  console.log('\nOption ids return verbatim in ANSWER; "reroll" and "canon" are reserved. hero/board/sketch accept URLs or local paths; sketch slots may point at files that do not exist yet (serve first, generate after; the page polls until they land, so never block serving on generation). hero on a challenger is the inspiration it draws from and renders picture-in-picture beside the sketch, never as the promise of the build. canonCard renders the standing exit as a subordinate card with the same anatomy; without it, canon stays a quiet footer action. Include canon only for visual-direction rounds; never present it as your own recommendation. Keep thesis and each fact to one short sentence: the card front shows thesis, identity, and a two-line risk, while first viewport and the case read on the card back behind the Details chip, so long facts cost the reader a flip, not the page its scanability. A card with no imagery at all has no back; its full read renders on the front, so a text-only round loses nothing. Sketch aspect follows the surface: portrait at device viewport for native or mobile-first surfaces, landscape otherwise; the page adapts its cards to either.');
   process.exit(0);
 }
 
@@ -321,7 +321,11 @@ function page() {
   // and material tags give a text-only direction an immediate identity that
   // no generation luck can distort.
   const fact = (label, value, cls = '') => value ? `<p class="fact${cls ? ` ${cls}` : ''}"><span class="fact-label">${label}</span>${esc(value)}</p>` : '';
-  const hasBack = (option) => Boolean(option.viewport || option.case || (option.boardSrc && option.heroSrc));
+  const hasMedia = (option) => Boolean(option.sketchSrc || option.heroSrc || option.boardSrc);
+  // The back exists to keep long facts off a card whose front is an image;
+  // a card with no art has no flip chip to reach it, so it gets no back and
+  // the full read lives on the front instead.
+  const hasBack = (option) => hasMedia(option) && Boolean(option.viewport || option.case || (option.boardSrc && option.heroSrc));
   const anatomy = (option) => {
     const rows = [];
     if (option.thesis) rows.push(`<p class="thesis">${esc(option.thesis)}</p>`);
@@ -336,7 +340,15 @@ function page() {
     // The front carries only what the choice needs: thesis, identity, and the
     // honest risk clamped to two lines. First viewport and the case read on
     // the card's back; once the sketch lands, the first viewport is a picture.
-    rows.push(fact('Risk', option.risk, 'clamp'));
+    // With no art there is no back, so the full read fills the room the
+    // image would have taken.
+    if (hasMedia(option)) {
+      rows.push(fact('Risk', option.risk, 'clamp'));
+    } else {
+      rows.push(fact('First viewport', option.viewport));
+      rows.push(fact('The case', option.case));
+      rows.push(fact('Risk', option.risk));
+    }
     if (!option.thesis && option.body) rows.push(`<p class="detail">${esc(option.body)}</p>`);
     else if (option.body && option.thesis && !hasBack(option)) rows.push(`<p class="detail more">${esc(option.body)}</p>`);
     return rows.join('\n            ');
@@ -362,8 +374,11 @@ function page() {
           </div>`;
     }
     if (option.heroSrc || option.boardSrc) {
-      return `<div class="media">
+      // Without a sketch the catalog art is the card's face; it stays a
+      // labeled reference so it never reads as the promise of the build.
+      return `<div class="media" title="Inspiration: the world this direction draws from. Your page will not look like this image.">
             <img src="${esc(option.heroSrc || option.boardSrc)}" alt="">
+            <p class="media-label">inspiration</p>
             <div class="chips">${expandChip}${details}</div>
           </div>`;
     }
@@ -547,6 +562,13 @@ function page() {
   .pip figcaption { position: absolute; left: 0; right: 0; bottom: 0; font-family: var(--ks-mono); font-size: .5rem; letter-spacing: .2em; text-transform: uppercase; color: var(--ks-text); text-align: center; padding: 3px 0 4px; background: oklch(7% 0.006 95 / 0.72); backdrop-filter: blur(3px); }
   .pip:hover { left: 0; bottom: 0; width: 100%; height: 100%; border-radius: 0; z-index: 3; }
   .sketch-note { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: var(--ks-mono); font-size: .66rem; letter-spacing: .22em; text-transform: uppercase; color: var(--ks-text-faint); }
+  /* Catalog art standing in for a sketchless card is a reference, and says so
+     on its face; the same pill later carries "artwork unavailable". */
+  .media-label { position: absolute; z-index: 2; left: 10px; bottom: 10px; margin: 0; font-family: var(--ks-mono); font-size: .5rem; letter-spacing: .2em; text-transform: uppercase; color: var(--ks-text); padding: 3px 8px 4px; background: oklch(7% 0.006 95 / 0.72); border: 1px solid var(--ks-rule); border-radius: 4px; backdrop-filter: blur(3px); }
+  /* Art that never arrives collapses to the card's own palette (painted
+     inline from its swatches) instead of sitting as a dark void wearing a
+     zoom cursor; the scrim keeps the label legible over saturated fields. */
+  .media.unavailable::after { content: ""; position: absolute; inset: 0; z-index: 1; background: oklch(10% 0.008 95 / 0.45); }
   /* A stand-in is honest about being one: dimmed, labeled, and replaced by
      the real sketch whenever it lands. */
   .media.stand-in img.sketch { filter: brightness(.72) saturate(.85); }
@@ -707,6 +729,35 @@ function page() {
       probe.src = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
     };
     tryLoad();
+  });
+
+  // A declared image that never loads (missing catalog asset, offline shell)
+  // must not sit as a dark void: the slot collapses to the card's own
+  // palette, labeled honestly, and the card competes on its facts. Sketch
+  // slots are excluded; their polling owns the wait.
+  const artFailed = (img) => {
+    const m = img.closest('.media');
+    if (!m || m.classList.contains('sketching') || m.classList.contains('unavailable')) return;
+    m.classList.add('unavailable');
+    const colors = [...(img.closest('.card')?.querySelectorAll('.swatches i') || [])].map(i => i.style.background).filter(Boolean);
+    if (colors.length) m.style.background = 'linear-gradient(135deg, ' + colors.map((c, i) => c + ' ' + Math.round(i * 100 / colors.length) + '% ' + Math.round((i + 1) * 100 / colors.length) + '%').join(', ') + ')';
+    m.querySelector('.media-label')?.remove();
+    m.querySelector('.chip.expand')?.remove();
+    img.remove();
+    const label = document.createElement('p');
+    label.className = 'media-label';
+    label.textContent = 'artwork unavailable';
+    m.appendChild(label);
+  };
+  document.querySelectorAll('.media:not(.sketching) > img').forEach(img => {
+    if (img.complete && img.naturalWidth === 0 && img.getAttribute('src')) artFailed(img);
+    else img.addEventListener('error', () => artFailed(img), { once: true });
+  });
+  // A broken inspiration PIP just leaves; nothing depends on it.
+  document.querySelectorAll('.pip img').forEach(img => {
+    const gone = () => img.closest('.pip')?.remove();
+    if (img.complete && img.naturalWidth === 0) gone();
+    else img.addEventListener('error', gone, { once: true });
   });
 
   // Inspiration PIP opens the full catalog card in the lightbox.
