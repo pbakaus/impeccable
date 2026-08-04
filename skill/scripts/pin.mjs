@@ -131,7 +131,7 @@ subtask: true
 
 ${OPENCODE_PIN_MARKER}
 
-Load the \`impeccable\` skill via the skill tool (name: "impeccable"), then run \`node <skill-base-dir>/scripts/context.mjs\`, then load \`reference/${command}.md\` and follow it.
+Load the \`impeccable\` skill via the skill tool (name: "impeccable"), then run \`node <skill-base-dir>/scripts/context.mjs\`, then load \`<skill-base-dir>/reference/${command}.md\` and follow it.
 
 $ARGUMENTS
 `;

@@ -86,6 +86,7 @@ describe('pin command OpenCode target', () => {
     assert.match(content, /---\ndescription:.*audit/);
     assert.match(content, /agent: build/);
     assert.match(content, /subtask: true/);
+    assert.match(content, /<skill-base-dir>\/reference\/audit\.md/);
     assert.doesNotMatch(content, /user-invocable:/);
     assert.doesNotMatch(content, /argument-hint:/);
 
