@@ -33,8 +33,9 @@ const HTML_EXTENSIONS = new Set(['.html', '.htm']);
 
 function hasScannableExtension(filename) {
   const lower = filename.toLowerCase();
+  if (SCANNABLE_EXTENSIONS.has(path.extname(lower))) return true;
   for (const ext of SCANNABLE_EXTENSIONS) {
-    if (lower.endsWith(ext)) return true;
+    if (ext.indexOf('.', 1) !== -1 && lower.endsWith(ext)) return true;
   }
   return false;
 }
@@ -202,6 +203,7 @@ export {
   SKIP_DIRS,
   SCANNABLE_EXTENSIONS,
   HTML_EXTENSIONS,
+  hasScannableExtension,
   walkDir,
   resolveImport,
   buildImportGraph,
