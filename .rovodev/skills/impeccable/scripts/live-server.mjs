@@ -873,7 +873,7 @@ function createRequestHandler({ detectScript, liveScriptParts }) {
     //                            { present, parsed, sidecar, hasMd, hasSidecar,
     //                              mdNewerThanJson, parseError?, sidecarError? }
     //                          - parsed: output of parseDesignMd (frontmatter
-    //                            + six canonical sections) when DESIGN.md exists.
+    //                            + the canonical sections) when DESIGN.md exists.
     //                          - sidecar: .impeccable/design.json contents when present.
     //                            Expected shape: schemaVersion 2, carrying
     //                            extensions + components + narrative.

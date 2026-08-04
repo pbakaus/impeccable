@@ -5,7 +5,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDesignMd } from '../skill/scripts/lib/design-parser.mjs';
+import { assessCoverage, parseDesignMd } from '../skill/scripts/lib/design-parser.mjs';
 
 describe('parseDesignMd frontmatter branch', () => {
   it('returns null frontmatter when the file has no YAML header', () => {
@@ -142,6 +142,65 @@ Prose.
     assert.equal(model.frontmatter.colors['brand-gold'], '#d9a531');
     assert.equal(model.frontmatter.rounded['"2xl"'], undefined);
   });
+
+  it('unescapes quote escapes inside quoted scalars (issue #428)', () => {
+    const md = `---
+typography:
+  body:
+    fontFamily: "\\"IBM Plex Sans\\", system-ui, sans-serif"
+name: 'It''s quiet'
+empty: "
+---
+
+# Design System: Escaped
+
+## 1. Overview
+
+Prose.
+`;
+    const model = parseDesignMd(md);
+    // YAML double-quoted scalars process backslash escapes.
+    assert.equal(model.frontmatter.typography.body.fontFamily, '"IBM Plex Sans", system-ui, sans-serif');
+    // Single-quoted scalars escape the quote by doubling it.
+    assert.equal(model.frontmatter.name, "It's quiet");
+    // A lone quote satisfies startsWith and endsWith at once; keep it literal
+    // instead of slicing it into an empty string.
+    assert.equal(model.frontmatter.empty, '"');
+  });
+
+  it('decodes hex, Unicode, and whitespace escapes in double-quoted scalars', () => {
+    const md = `---
+colors:
+  accent: "\\x23b8422e"
+typography:
+  accent:
+    fontFamily: "S\\u00f6hne, sans-serif"
+  label:
+    fontFamily: "IBM\\ Plex\\ Serif, serif"
+  mono:
+    fontFamily: "Space\\_Grotesk, sans-serif"
+emoji: "\\U0001F44D"
+bad-hex: "\\xZZ nope"
+bad-range: "\\UFFFFFFFF nope"
+---
+
+# Design System: Hex Escapes
+
+## 1. Overview
+
+Prose.
+`;
+    const model = parseDesignMd(md);
+    assert.equal(model.frontmatter.colors.accent, '#b8422e');
+    assert.equal(model.frontmatter.typography.accent.fontFamily, 'Söhne, sans-serif');
+    // \ (escaped space) and \_ (non-breaking space) are valid YAML escapes.
+    assert.equal(model.frontmatter.typography.label.fontFamily, 'IBM Plex Serif, serif');
+    assert.equal(model.frontmatter.typography.mono.fontFamily, 'Space\u00a0Grotesk, sans-serif');
+    assert.equal(model.frontmatter.emoji, '\u{1F44D}');
+    // Malformed or out-of-range sequences stay literal.
+    assert.equal(model.frontmatter['bad-hex'], '\\xZZ nope');
+    assert.equal(model.frontmatter['bad-range'], '\\UFFFFFFFF nope');
+  });
 });
 
 describe('parseDesignMd overview branch', () => {
@@ -166,5 +225,91 @@ describe('parseDesignMd overview branch', () => {
       'Navigation controls remain visible when the viewport becomes narrow.',
     ]);
     assert.deepEqual(overview.philosophy, []);
+  });
+});
+
+describe('parseDesignMd canonical sections', () => {
+  it('preserves content and named rules from all eight canonical sections', () => {
+    const md = `# Design System: Complete
+
+## Overview
+
+**Creative North Star: "Structured clarity"**
+
+## Colors
+
+### Primary
+- **Ink** (#111111): Primary text.
+
+## Typography
+
+**Body Font:** Inter (with sans-serif)
+
+## Layout: Responsive rhythm
+
+Primary regions use a twelve-column grid that collapses to one column on narrow screens.
+
+### Named Rules
+**The Spatial Hierarchy Rule.** Primary content must remain visually dominant.
+
+## Elevation & Depth
+
+Surfaces use tonal layering instead of shadows.
+
+## Shapes
+
+Selected objects use a double outline and clipped corners.
+
+### The "Recognizable Silhouette" Rule
+Repeated geometry must remain recognizable without color.
+
+## Components
+
+### Button
+- **Primary:** Uses the accent color.
+
+## Do's and Don'ts
+
+### Do
+- Preserve the spatial hierarchy.
+
+### Don't
+- Flatten every surface.
+`;
+    const model = parseDesignMd(md);
+
+    assert.equal(model.layout.subtitle, 'Responsive rhythm');
+    assert.equal(
+      model.layout.description,
+      'Primary regions use a twelve-column grid that collapses to one column on narrow screens.',
+    );
+    assert.deepEqual(model.layout.rules, [{
+      name: 'The Spatial Hierarchy Rule',
+      body: 'Primary content must remain visually dominant.',
+    }]);
+    assert.equal(model.shapes.description, 'Selected objects use a double outline and clipped corners.');
+    assert.deepEqual(model.shapes.rules, [{
+      name: 'The Recognizable Silhouette Rule',
+      body: 'Repeated geometry must remain recognizable without color.',
+    }]);
+
+    const coverage = assessCoverage(model);
+    assert.deepEqual(
+      Object.entries(coverage).filter(([, v]) => v === 'missing').map(([k]) => k),
+      [],
+      'a section present in the markdown must not be reported as missing',
+    );
+    assert.deepEqual(Object.keys(coverage), [
+      'overview',
+      'colors',
+      'typography',
+      'layout',
+      'elevation',
+      'shapes',
+      'components',
+      'dosDonts',
+    ]);
+    assert.deepEqual(coverage.layout, { description: true, rules: 1 });
+    assert.deepEqual(coverage.shapes, { description: true, rules: 1 });
   });
 });

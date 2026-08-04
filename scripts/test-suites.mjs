@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const DEFAULT_SUITES = ['core', 'detector', 'live', 'framework'];
+export const DEFAULT_SUITES = ['core', 'detector', 'live', 'framework', 'plugin-e2e'];
 export const OPT_IN_SUITES = [
   'cli-remote-e2e',
   'live-e2e',
@@ -29,8 +29,6 @@ export const SUITES = {
       /^skill\/(SKILL\.src\.md|agents\/|reference\/|scripts\/(cleanup-deprecated|concept-seed|context|context-signals|critique-storage|design-parser|doctor|hook|impeccable-paths|is-generated|lib\/(artifact-schema|composition-catalog|concept-catalog|provider|staleness|staleness-deep|staleness-notice|surface-briefs|target-slug|template-extensions)|pin|surface-brief))/,
       /^README(\.npm)?\.md$/,
       /^cli\/bin\//,
-      /^tests\/(build|cleanup-deprecated|cli-args|cli-ignores|concept-seed|context|context-signals|copy-provider-commands|critique-storage|design-parser|doctor|github-sheriff|hook|hook-build|impeccable-paths|openai-plugin|pin|root-commands-sync|skills-cli|staleness|surface-brief|target-args|template-extensions|test-suites|windows-path-fix|zip)\.test\.(js|mjs)$/,
-      /^tests\/lib\//,
     ],
     commands: [
       {
@@ -50,6 +48,7 @@ export const SUITES = {
           'tests/root-commands-sync.test.js',
           'tests/skills-cli.test.js',
           'tests/validate-plugin-versions.test.js',
+          'tests/validate-plugin-manifest.test.js',
         ],
       },
       {
@@ -69,6 +68,7 @@ export const SUITES = {
           'tests/impeccable-paths.test.mjs',
           'tests/openai-plugin.test.mjs',
           'tests/pin.test.mjs',
+          'tests/release.test.mjs',
           'tests/doctor.test.mjs',
           'tests/staleness.test.mjs',
           'tests/target-args.test.mjs',
@@ -89,8 +89,7 @@ export const SUITES = {
       /^extension\/(background|content|detector|devtools|popup|manifest\.json)/,
       /^scripts\/(benchmark-detector|build-browser-detector|build-extension)\.js$/,
       /^site\/(pages\/detector|public\/antipattern|data\/anti-patterns-catalog\.js)/,
-      /^tests\/design-system\.test\.mjs$/,
-      /^tests\/(detect-antipatterns|detect-cli-design-contamination|detect-url-launch|inline-ignores|extension-build|fixtures\/antipatterns)/,
+      /^tests\/fixtures\/antipatterns/,
     ],
     commands: [
       {
@@ -118,10 +117,11 @@ export const SUITES = {
     description: 'Fast live-mode unit and local-server integration tests, excluding full browser fixture sweeps.',
     triggers: [
       ...COMMON_INFRA_PATTERNS,
-      /^skill\/(reference\/live\.md|scripts\/(detect-csp|lib\/is-generated|lib\/template-extensions|live\/|live|live-|modern-screenshot|pin|palette))/,
+      // `palette` is deliberately absent: skill/scripts/palette.mjs has no
+      // test anywhere, and listing it here made edits run a suite that never
+      // touches it, which reads as coverage that does not exist.
+      /^skill\/(reference\/live\.md|scripts\/(detect-csp|lib\/is-generated|lib\/template-extensions|live\/|live|live-|modern-screenshot|pin))/,
       /^tests\/live-/,
-      /^tests\/live-e2e\/(agent|agents\/llm-agent|cli-options|preactions|session|steer|ui)\.mjs$/,
-      /^tests\/live-e2e\/agent-insert\.test\.mjs$/,
     ],
     commands: [
       {
@@ -212,6 +212,25 @@ export const SUITES = {
         runner: 'bun',
         env: { IMPECCABLE_CLI_REMOTE_E2E: '1' },
         files: ['tests/skills-cli.test.js'],
+      },
+    ],
+  },
+  'plugin-e2e': {
+    description: 'Install the committed ./plugin subtree into a real (sandboxed) Claude Code and assert skills, agents, and hooks all load. Skips when the claude CLI is not on PATH.',
+    triggers: [
+      ...COMMON_INFRA_PATTERNS,
+      /^plugin\//,
+      /^skill\/agents\//,
+      /^scripts\/build\.js$/,
+      /^scripts\/lib\/validate-plugin-manifest\.js$/,
+      /^tests\/plugin-e2e\.test\.mjs$/,
+    ],
+    commands: [
+      {
+        runner: 'node',
+        timeoutMs: 300000,
+        forceExit: true,
+        files: ['tests/plugin-e2e.test.mjs'],
       },
     ],
   },
@@ -321,6 +340,25 @@ export const SUITES = {
     ],
   },
 };
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Every suite must select itself when one of its own test files changes.
+// Generated from the files lists so the hand-written trigger patterns above
+// only carry source paths and fixture directories; before this, four test
+// files were registered in a suite that change-based CI could never select
+// by editing them (serve-question, ci-test-plan, both validate-plugin-*),
+// and tests/lib/detector-bundle.test.js triggered core while running in
+// detector. The meta-test in tests/test-suites.test.mjs pins this invariant.
+for (const suite of Object.values(SUITES)) {
+  const ownFiles = suite.commands.flatMap((command) => command.files);
+  suite.triggers = [
+    ...(suite.triggers ?? []),
+    ...ownFiles.map((file) => new RegExp(`^${escapeRegExp(file)}$`)),
+  ];
+}
 
 export function expandSuites(requested) {
   const names = requested.length === 0 ? ['default'] : requested;

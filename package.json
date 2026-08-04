@@ -24,7 +24,7 @@
     "url": "git+https://github.com/pbakaus/impeccable.git"
   },
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.18.0"
   },
   "type": "module",
   "bin": {
@@ -56,6 +56,7 @@
     "test:live": "node scripts/run-tests.mjs live",
     "test:cli-e2e": "node scripts/run-tests.mjs cli-e2e",
     "test:cli-remote-e2e": "node scripts/run-tests.mjs cli-remote-e2e",
+    "test:plugin-e2e": "node scripts/run-tests.mjs plugin-e2e",
     "test:live-e2e": "node scripts/run-tests.mjs live-e2e",
     "test:live-e2e-accept-cleanup": "node scripts/run-tests.mjs live-e2e-accept-cleanup",
     "test:new-work-e2e": "node scripts/run-tests.mjs new-work-e2e",
@@ -89,7 +90,7 @@
     "@ai-sdk/openai": "^4.0.7",
     "@anthropic-ai/claude-agent-sdk": "^0.3.165",
     "@anthropic-ai/sdk": "^0.115.0",
-    "@babel/parser": "^7.29.3",
+    "@babel/parser": "^8.0.4",
     "ai": "^7.0.14",
     "archiver": "^8.0.0",
     "playwright": "^1.59.1",

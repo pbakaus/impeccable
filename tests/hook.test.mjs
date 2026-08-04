@@ -60,6 +60,7 @@ import {
   resolveProjectPlatform,
   isNativePlatform,
   normalizeIgnoreValueEntries,
+  isScanTargetInsideProject,
 } from '../skill/scripts/hook-lib.mjs';
 import { normalizeIgnoreValueEntries as normalizeIgnoreValueEntriesCli } from '../cli/lib/impeccable-config.mjs';
 import { detectHtml, detectText } from '../cli/engine/detect-antipatterns.mjs';
@@ -155,6 +156,57 @@ describe('SENSITIVE_PATH / GENERATED_PATH', () => {
     ]) {
       assert.ok(!GENERATED_PATH.test(p), `unexpected generated: ${p}`);
     }
+  });
+});
+
+describe('isScanTargetInsideProject()', () => {
+  let root;
+  beforeEach(() => { root = mkTmp(); });
+  afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  it('accepts files under the project root and the root itself', () => {
+    const file = path.join(root, 'src', 'Card.tsx');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, 'noop');
+    assert.equal(isScanTargetInsideProject(file, root), true);
+    assert.equal(isScanTargetInsideProject(root, root), true);
+  });
+
+  it('rejects siblings, temp scratchpads, and empty inputs', () => {
+    const scratch = mkTmp();
+    try {
+      const outside = path.join(scratch, 'landing.html');
+      fs.writeFileSync(outside, '<h1>x</h1>');
+      assert.equal(isScanTargetInsideProject(outside, root), false);
+      assert.equal(isScanTargetInsideProject('', root), false);
+      assert.equal(isScanTargetInsideProject(outside, ''), false);
+    } finally {
+      fs.rmSync(scratch, { recursive: true, force: true });
+    }
+  });
+
+  it('treats symlinked and canonical forms of the same tree as one project', () => {
+    const real = path.join(root, 'real');
+    const link = path.join(root, 'link');
+    fs.mkdirSync(path.join(real, 'src'), { recursive: true });
+    fs.symlinkSync(real, link);
+    const file = path.join(real, 'src', 'Card.tsx');
+    fs.writeFileSync(file, 'noop');
+    assert.equal(isScanTargetInsideProject(file, link), true);
+    assert.equal(isScanTargetInsideProject(path.join(link, 'src', 'Card.tsx'), real), true);
+  });
+
+  it('classifies not-yet-written files by their nearest existing ancestor', () => {
+    // The before-edit hook gates proposed Writes, so the target often does
+    // not exist. Canonicalization must climb to an existing ancestor rather
+    // than bail, or a new file under a symlinked root would read as outside.
+    const real = path.join(root, 'real');
+    const link = path.join(root, 'link');
+    fs.mkdirSync(real, { recursive: true });
+    fs.symlinkSync(real, link);
+    assert.equal(isScanTargetInsideProject(path.join(link, 'src', 'New.tsx'), real), true);
+    assert.equal(isScanTargetInsideProject(path.join(real, 'deep', 'New.tsx'), link), true);
+    assert.equal(isScanTargetInsideProject(path.join(root, 'elsewhere', 'New.tsx'), real), false);
   });
 });
 
@@ -933,14 +985,88 @@ describe('hook-admin.mjs', () => {
     );
   });
 
+  it('ignore-file --local writes only the private detector config', () => {
+    const out = runAdmin(['ignore-file', '/abs/path/personal.html', '--local']);
+
+    assert.equal(fs.existsSync(getConfigPath(cwd)), false);
+    const local = JSON.parse(fs.readFileSync(getLocalConfigPath(cwd), 'utf-8')).detector;
+    assert.deepEqual(local.ignoreFiles, ['/abs/path/personal.html']);
+    assert.match(out, /local detector\.ignoreFiles/);
+  });
+
+  it('ignore-file --local preserves the local advisory-rule preference', () => {
+    fs.mkdirSync(path.dirname(getLocalConfigPath(cwd)), { recursive: true });
+    fs.writeFileSync(getLocalConfigPath(cwd), JSON.stringify({
+      detector: { advisoryRules: 'include' },
+    }));
+
+    runAdmin(['ignore-file', '/abs/path/personal.html', '--local']);
+
+    const local = JSON.parse(fs.readFileSync(getLocalConfigPath(cwd), 'utf-8')).detector;
+    assert.equal(local.advisoryRules, 'include');
+    assert.deepEqual(local.ignoreFiles, ['/abs/path/personal.html']);
+  });
+
+  for (const command of ['on', 'off']) {
+    it(`hooks ${command} migrates a legacy hook advisory-rule preference`, () => {
+      fs.mkdirSync(path.dirname(getConfigPath(cwd)), { recursive: true });
+      fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
+        hook: { advisoryRules: 'include' },
+      }));
+
+      runAdmin([command]);
+
+      const config = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8'));
+      assert.equal(config.hook.advisoryRules, undefined);
+      assert.equal(config.detector.advisoryRules, 'include');
+    });
+  }
+
+  it('hooks on keeps the canonical advisory-rule preference during legacy migration', () => {
+    fs.mkdirSync(path.dirname(getConfigPath(cwd)), { recursive: true });
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
+      hook: { advisoryRules: 'include' },
+      detector: {
+        advisoryRules: 'exclude',
+        extensions: [{ ext: '.blade.php', engine: 'html' }],
+      },
+    }));
+
+    runAdmin(['on']);
+
+    const config = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8'));
+    assert.equal(config.hook.advisoryRules, undefined);
+    assert.equal(config.detector.advisoryRules, 'exclude');
+    assert.deepEqual(config.detector.extensions, [{ ext: '.blade.php', engine: 'html' }]);
+  });
+
+  it('ignore-file refuses unsupported reasons and unknown flags', () => {
+    assert.throws(
+      () => runAdmin(['ignore-file', 'src/legacy/**', '--reason', 'machine-local path']),
+      /--reason is not supported for ignore-file/,
+    );
+    assert.throws(
+      () => runAdmin(['ignore-file', 'src/legacy/**', '--shard']),
+      /Unknown ignore-file flag: --shard/,
+    );
+    assert.equal(fs.existsSync(getConfigPath(cwd)), false);
+    assert.equal(fs.existsSync(getLocalConfigPath(cwd)), false);
+  });
+
   it('ignore-file writes shared config that suppresses a later hook run', async () => {
     const file = path.join(cwd, 'src/ConfirmedCard.html');
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, '<div style="border-left: 4px solid #7c3aed; border-radius: 16px; padding: 16px;">Card</div>');
 
+    fs.mkdirSync(path.dirname(getConfigPath(cwd)), { recursive: true });
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
+      detector: { extensions: [{ ext: '.blade.php', engine: 'html' }] },
+    }));
+
     runAdmin(['ignore-file', 'src/ConfirmedCard.html']);
 
     const shared = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8')).detector;
+    assert.deepEqual(shared.extensions, [{ ext: '.blade.php', engine: 'html' }]);
     assert.deepEqual(shared.ignoreFiles, ['src/ConfirmedCard.html']);
 
     const r = await runHook({
@@ -1536,6 +1662,49 @@ rounded:
       env: {}, cwd,
     });
     assert.equal(r.audit.skipped, 'sensitive');
+  });
+
+  it('rejects files outside the project, like harness scratchpads', async () => {
+    // Session cwd is a real project; the touched file is a throwaway HTML in
+    // a temp dir elsewhere. Findings against it would be judged with this
+    // project's config and DESIGN.md, so the scan must skip it entirely.
+    fs.writeFileSync(path.join(cwd, 'package.json'), '{"name":"proj"}');
+    const scratch = mkTmp();
+    try {
+      const file = path.join(scratch, 'id-test', 'landing.html');
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, '<h1>throwaway</h1>');
+      const det = fakeDetector([finding('side-tab', 1)]);
+      const r = await runHook({ stdinJson: JSON.stringify(eventFor(file)), env: {}, cwd, detector: det });
+      assert.equal(r.stdout, '');
+      assert.equal(r.audit.skipped, 'outside-project');
+      assert.ok(!fs.existsSync(path.join(cwd, '.impeccable')), 'out-of-project edit must not dirty the cache');
+    } finally {
+      fs.rmSync(scratch, { recursive: true, force: true });
+    }
+  });
+
+  it('still scans a file whose project root is reached through a symlinked cwd', async () => {
+    // macOS /tmp -> /private/tmp style: the session cwd is a symlink to the
+    // project while the tool reports the canonical file path. Containment
+    // compares canonical paths, so this is inside, not outside.
+    const real = path.join(cwd, 'realproj');
+    const link = path.join(cwd, 'proj-link');
+    fs.mkdirSync(path.join(real, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(real, 'package.json'), '{"name":"proj"}');
+    fs.symlinkSync(real, link);
+    const file = path.join(real, 'src', 'Card.tsx');
+    fs.writeFileSync(file, 'noop');
+    const event = {
+      session_id: 'sym-sid',
+      cwd: link,
+      hook_event_name: 'PostToolUse',
+      tool_name: 'Edit',
+      tool_input: { file_path: file },
+    };
+    const r = await runHook({ stdinJson: JSON.stringify(event), env: {}, cwd: link, detector: fakeDetector([]) });
+    assert.notEqual(r.audit.skipped, 'outside-project');
+    assert.match(r.stdout, /No deterministic design-quality issues found/);
   });
 
   it('rejects extensions outside the allowlist', async () => {
@@ -3346,6 +3515,29 @@ describe('runStopHook()', () => {
     assert.equal(r.exitCode, 0);
     assert.equal(r.stdout, '');
     assert.equal(r.audit.skipped, 'no-touched-files');
+  });
+
+  it('skips out-of-project files even when an older cache still lists them', async () => {
+    // Caches written before the containment gate can hold scratchpad paths.
+    // The deep pass re-checks containment instead of trusting the per-edit
+    // pass to have filtered them.
+    const sid = 'stop-outside';
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-scratch-'));
+    try {
+      const outside = path.join(scratch, 'landing.html');
+      fs.writeFileSync(outside, '<h1>throwaway</h1>');
+      persistCache(cwd, {
+        version: 1,
+        sessions: { [sid]: { updatedAt: Date.now(), files: { [outside]: { editCount: 1, findings: [] } } } },
+      });
+      const det = fakeDetector([finding('side-tab', 7)]);
+      const stop = await runStopHook({ stdinJson: JSON.stringify(stopEvent(sid)), env: {}, cwd, detector: det });
+      assert.equal(stop.stdout, '');
+      assert.equal(stop.audit.skipped, 'stop-clean');
+      assert.equal(stop.audit.scannedFiles, 0);
+    } finally {
+      fs.rmSync(scratch, { recursive: true, force: true });
+    }
   });
 
   it('a second Stop fire is silent: deep-pass findings are remembered', async () => {

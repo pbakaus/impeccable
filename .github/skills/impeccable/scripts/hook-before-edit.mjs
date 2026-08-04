@@ -23,6 +23,7 @@ import {
   designSystemOptions,
   filterFindings,
   isNativePlatform,
+  isScanTargetInsideProject,
   loadDetector,
   matchConfiguredExtension,
   matchesAnyGlob,
@@ -161,7 +162,7 @@ function replaceOnce(original, oldString, newString) {
 }
 
 function readExistingProjectFile(filePath, cwd) {
-  if (!isInsideProject(filePath, cwd)) return null;
+  if (!isScanTargetInsideProject(filePath, cwd)) return null;
   if (SENSITIVE_PATH.test(filePath) || GENERATED_PATH.test(filePath)) return null;
   try {
     const stat = fs.statSync(filePath);
@@ -232,7 +233,7 @@ function shellCopiedFileContent(command, cwd) {
   const source = shellCopyPaths(command)?.source;
   if (!source) return '';
   const sourcePath = path.isAbsolute(source) ? source : path.resolve(cwd, source);
-  if (!isInsideProject(sourcePath, cwd)) return '';
+  if (!isScanTargetInsideProject(sourcePath, cwd)) return '';
   if (SENSITIVE_PATH.test(sourcePath) || GENERATED_PATH.test(sourcePath)) return '';
   try {
     const stat = fs.statSync(sourcePath);
@@ -328,15 +329,6 @@ function relativePath(filePath, cwd) {
   }
 }
 
-function isInsideProject(filePath, cwd) {
-  try {
-    const rel = path.relative(cwd, filePath);
-    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
-  } catch {
-    return false;
-  }
-}
-
 // The static HTML engine reads its input from disk, but preToolUse only has
 // the proposed content. Stage it in a temp file so html-engine targets get the
 // same DOM-structural rules pre-write that runHook applies post-edit.
@@ -414,7 +406,7 @@ async function main() {
   };
 
   if (!filePath) return allow({ ...audit, skipped: 'no-file-path', durationMs: Date.now() - started });
-  if (!isInsideProject(filePath, cwd)) return allow({ ...audit, skipped: 'outside-project', durationMs: Date.now() - started });
+  if (!isScanTargetInsideProject(filePath, cwd)) return allow({ ...audit, skipped: 'outside-project', durationMs: Date.now() - started });
   if (SENSITIVE_PATH.test(filePath)) return allow({ ...audit, skipped: 'sensitive', durationMs: Date.now() - started });
   if (GENERATED_PATH.test(filePath)) return allow({ ...audit, skipped: 'generated', durationMs: Date.now() - started });
 

@@ -12,9 +12,10 @@
 - `bun run rebuild` - clean and rebuild everything from scratch without syncing tracked harness folders.
 - `bun run rebuild:release` - clean and rebuild everything, including tracked harness output sync.
 - `bun test tests/build.test.js` - run a focused Bun test.
-- `bun run test` - run the full Bun + Node test suite.
+- `bun run test` - run the full Bun + Node test suite (includes the plugin loader E2E, which installs the committed `plugin/` subtree into a sandboxed real Claude Code and skips cleanly when the `claude` CLI is absent).
 - `bun run test:live-e2e` - opt-in live-mode E2E against framework fixtures (~2 min; needs `npx playwright install chromium` once).
 - `bun run test:skill-behavior` - opt-in LLM-backed checks that the SKILL.md Setup flow actually drives the agent (runs claude-sonnet-5 / gpt-5.6-luna / gemini-3.5-flash / deepseek-v4-flash; needs `.env` with provider keys).
+- `bun run test:plugin-e2e` - just the plugin loader E2E, for fast iteration on `plugin/`, `skill/agents/`, or `scripts/build.js` changes.
 - `bun run build:browser` / `bun run build:extension` - rebuild browser-specific bundles.
 
 Run `bun run build` after changing anything in `skill/`, transformer code, or user-facing counts. It validates the generated distribution under `dist/` without touching tracked root harness outputs. Use `bun run build:release` only when intentionally refreshing generated provider permutations for release/main-sync or build-system work.
@@ -47,6 +48,8 @@ For changes to `skill/scripts/live-*.{mjs,js}` or `skill/scripts/live/**`, also 
 Set `IMPECCABLE_E2E_AGENT=llm` to swap the deterministic fake agent for an API-backed one (`tests/live-e2e/agents/llm-agent.mjs`). Claude Haiku 4.5 is the primary path whenever `ANTHROPIC_API_KEY` is set. DeepSeek V4 Flash is the secondary cheap fallback when only `DEEPSEEK_API_KEY` is set, and can be forced with `IMPECCABLE_E2E_LLM_PROVIDER=deepseek` or `bun run test:live-e2e -- --llm-provider=deepseek`; override either model via `IMPECCABLE_E2E_LLM_MODEL` or `--llm-model=<model>`. Tests skip cleanly when the selected provider key is unset. This path hits the API — use it for verification, not CI.
 
 For changes to `skill/SKILL.src.md`'s Setup section, `skill/scripts/context.mjs`, or any Setup-touching reference file (`init.md`, `document.md`, `brand.md`, `product.md`, sub-command refs), also run `bun run test:skill-behavior`. The suite spawns current real models (claude-sonnet-5, gpt-5.6-luna, gemini-3.5-flash, deepseek-v4-flash) with the source SKILL.md inlined as system prompt and a workspace-scoped tool set, then asserts on the tool-call trace. Provider keys live in repo-root `.env`; missing keys skip cleanly. Scope to one provider with `IMPECCABLE_SKILL_BEHAVIOR_MODELS=<id>`; add `IMPECCABLE_SKILL_BEHAVIOR_VERBOSE=1` to dump per-scenario traces. Baseline and per-scenario assertions live in `tests/skill-behavior/README.md`.
+
+Other area-to-suite obligations (the canonical mapping is the `triggers` lists in `scripts/test-suites.mjs`; CLAUDE.md carries the full table): `serve-question.mjs` / `generate-image.mjs` / `concept-seed.mjs` changes owe `bun run test:new-work-e2e` (Playwright, offline); `cli/bin/commands/skills.mjs` changes owe `bun run test:cli-remote-e2e` (hits impeccable.style); accept/browser/server/wrap or SvelteKit adapter changes owe `bun run test:live-e2e-accept-cleanup` (provider-billed), and Svelte adapter/component changes owe `bun run test:live-svelte-adapter-deepseek` (DeepSeek-billed).
 
 ## Anti-pattern detection rules
 

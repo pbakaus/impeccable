@@ -41,6 +41,221 @@ function shouldRunPageAnalyzers(content, filePath) {
   return !ext || PAGE_ANALYZER_EXTS.has(ext);
 }
 
+const JS_SOURCE_EXTS = new Set(['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs']);
+const REGEX_PREFIX_KEYWORDS = new Set(['await', 'case', 'default', 'delete', 'do', 'else', 'in', 'instanceof', 'new', 'of', 'return', 'throw', 'typeof', 'void', 'yield']);
+const BLOCK_BRACE_PREFIX_KEYWORDS = new Set(['do', 'else', 'finally', 'try']);
+
+function isInsideOpeningJsxTag(source) {
+  const tagStart = source.lastIndexOf('<');
+  if (tagStart === -1 || !/^<[A-Za-z][\w.:-]*/.test(source.slice(tagStart))) return false;
+
+  let quote = '';
+  for (let cursor = tagStart + 1; cursor < source.length; cursor++) {
+    const char = source[cursor];
+    if (quote) {
+      if (char === '\\') cursor++;
+      else if (char === quote) quote = '';
+    } else if (char === "'" || char === '"') {
+      quote = char;
+    } else if (char === '>') {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Blank JavaScript comments without moving any following source. Regex
+ * findings keep their original line numbers, while prose examples inside
+ * comments cannot masquerade as rendered markup.
+ */
+function stripJsComments(content, options = {}) {
+  let state = 'code';
+  let output = '';
+  let lastSignificant = '';
+  let previousSignificant = '';
+  let antePreviousSignificant = '';
+  let currentWord = '';
+  let currentWordPrefix = '';
+  let wordSeparated = false;
+  let regexCharClass = false;
+  let jsxExpressionDepth = 0;
+  let lastClosedBraceKind = '';
+  const braceKinds = [];
+  const templateExpressionDepths = [];
+
+  const braceKind = (startsJsxExpression = false) => (
+    !startsJsxExpression && (
+      !lastSignificant ||
+      lastSignificant === ')' ||
+      lastSignificant === ';' ||
+      lastSignificant === '}' ||
+      (previousSignificant === '=' && lastSignificant === '>') ||
+      BLOCK_BRACE_PREFIX_KEYWORDS.has(currentWord)
+    ) ? 'block' : 'expression'
+  );
+
+  const recordSignificant = (char) => {
+    if (/\s/.test(char)) {
+      wordSeparated = true;
+      return;
+    }
+    const isWordChar = /[\w$]/.test(char);
+    if (isWordChar && (wordSeparated || !currentWord)) {
+      currentWord = '';
+      currentWordPrefix = lastSignificant;
+    } else if (!isWordChar) {
+      currentWordPrefix = '';
+    }
+    wordSeparated = false;
+    antePreviousSignificant = previousSignificant;
+    previousSignificant = lastSignificant;
+    lastSignificant = char;
+    currentWord = isWordChar ? currentWord + char : '';
+  };
+
+  for (let i = 0; i < content.length; i++) {
+    const char = content[i];
+    const next = content[i + 1];
+
+    if (state === 'line-comment') {
+      if (char === '\n') {
+        output += char;
+        state = 'code';
+      } else {
+        output += ' ';
+      }
+      continue;
+    }
+
+    if (state === 'block-comment') {
+      if (char === '*' && next === '/') {
+        output += '  ';
+        i++;
+        state = 'code';
+      } else {
+        output += char === '\n' ? '\n' : ' ';
+      }
+      continue;
+    }
+
+    if (state === 'regex') {
+      output += char;
+      if (char === '\\' && next) {
+        output += next;
+        i++;
+      } else if (char === '[') {
+        regexCharClass = true;
+      } else if (char === ']') {
+        regexCharClass = false;
+      } else if (char === '/' && !regexCharClass) {
+        state = 'code';
+        recordSignificant('/');
+      }
+      continue;
+    }
+
+    if (state === 'template' && char === '$' && next === '{') {
+      output += '${';
+      i++;
+      recordSignificant('$');
+      recordSignificant('{');
+      templateExpressionDepths.push(1);
+      braceKinds.push('expression');
+      if (jsxExpressionDepth) jsxExpressionDepth++;
+      state = 'code';
+      continue;
+    }
+
+    if (state !== 'code') {
+      output += char;
+      if (char === '\\' && next) {
+        output += next;
+        i++;
+      } else if (
+        (state === 'single-quote' && char === "'") ||
+        (state === 'double-quote' && char === '"') ||
+        (state === 'template' && char === '`')
+      ) {
+        state = 'code';
+        recordSignificant(char);
+      }
+      continue;
+    }
+
+    const jsxUrlSeparator = options.jsx && char === '/' && next === '/' &&
+      jsxExpressionDepth === 0 &&
+      (output.endsWith('http:') ||
+        output.endsWith('https:') ||
+        (/<[A-Za-z](?:[^>]*[^/])?>[^<]*$/.test(output.slice(output.lastIndexOf('\n') + 1)) &&
+          /^[\w.-]+\.[A-Za-z]{2,}(?=[:/?#\s<]|$)/.test(content.slice(i + 2))));
+    const afterPostfixUpdate = (lastSignificant === '+' || lastSignificant === '-') &&
+      previousSignificant === lastSignificant &&
+      antePreviousSignificant !== lastSignificant;
+    if (char === '/' && next === '/' && jsxUrlSeparator) {
+      output += '//';
+      i++;
+      recordSignificant('/');
+      recordSignificant('/');
+    } else if (char === '/' && next === '/') {
+      output += '  ';
+      i++;
+      state = 'line-comment';
+    } else if (char === '/' && next === '*') {
+      output += '  ';
+      i++;
+      state = 'block-comment';
+    } else if (templateExpressionDepths.length && char === '{') {
+      output += char;
+      templateExpressionDepths[templateExpressionDepths.length - 1]++;
+      braceKinds.push(braceKind());
+      if (jsxExpressionDepth) jsxExpressionDepth++;
+      recordSignificant(char);
+    } else if (templateExpressionDepths.length && char === '}') {
+      output += char;
+      const depthIndex = templateExpressionDepths.length - 1;
+      templateExpressionDepths[depthIndex]--;
+      lastClosedBraceKind = braceKinds.pop() || '';
+      if (jsxExpressionDepth) jsxExpressionDepth--;
+      recordSignificant(char);
+      if (templateExpressionDepths[depthIndex] === 0) {
+        templateExpressionDepths.pop();
+        state = 'template';
+      }
+    } else if (
+      char === '/' &&
+      (!lastSignificant ||
+        (/[=([{!?:;,&|+\-*%^~<>]/.test(lastSignificant) && !afterPostfixUpdate) ||
+        (lastSignificant === '}' && lastClosedBraceKind === 'block') ||
+        (previousSignificant === '=' && lastSignificant === '>') ||
+        (currentWordPrefix !== '.' && REGEX_PREFIX_KEYWORDS.has(currentWord)))
+    ) {
+      output += char;
+      state = 'regex';
+      regexCharClass = false;
+    } else {
+      output += char;
+      const startsJsxExpression = options.jsx && char === '{' && jsxExpressionDepth === 0 &&
+        (/<[A-Za-z](?:[^>]*[^/])?>[^<]*$/.test(output.slice(output.lastIndexOf('\n') + 1, -1)) ||
+          isInsideOpeningJsxTag(output.slice(0, -1)));
+      if (char === '{') braceKinds.push(braceKind(startsJsxExpression));
+      else if (char === '}') lastClosedBraceKind = braceKinds.pop() || '';
+      if (char === '{' && (jsxExpressionDepth || startsJsxExpression)) jsxExpressionDepth++;
+      else if (char === '}' && jsxExpressionDepth) jsxExpressionDepth--;
+      recordSignificant(char);
+      if (char === "'") state = 'single-quote';
+      else if (char === '"') state = 'double-quote';
+      else if (char === '`') state = 'template';
+    }
+  }
+
+  return output;
+}
+
+function stripCssComments(content) {
+  return content.replace(/\/\*[\s\S]*?\*\//g, comment => comment.replace(/[^\n]/g, ' '));
+}
+
 function firstOverusedGoogleFont(text) {
   return extractGoogleFontFamilies(text).find(f => OVERUSED_FONTS.has(f)) || '';
 }
@@ -528,18 +743,198 @@ function extractStyleBlocks(content, ext) {
 
 const CSS_IN_JS_EXTENSIONS = new Set(['.js', '.ts', '.jsx', '.tsx']);
 
+function findQuotedStringEnd(content, start, quote) {
+  for (let cursor = start + 1; cursor < content.length; cursor++) {
+    if (content[cursor] === '\\') cursor++;
+    else if (content[cursor] === quote) return cursor;
+  }
+  return -1;
+}
+
+function findRegexLiteralEnd(content, start) {
+  let inCharacterClass = false;
+  for (let cursor = start + 1; cursor < content.length; cursor++) {
+    const char = content[cursor];
+    if (char === '\\') {
+      cursor++;
+    } else if (char === '[') {
+      inCharacterClass = true;
+    } else if (char === ']') {
+      inCharacterClass = false;
+    } else if (char === '/' && !inCharacterClass) {
+      while (/[A-Za-z]/.test(content[cursor + 1] || '')) cursor++;
+      return cursor;
+    } else if (char === '\n' || char === '\r') {
+      return -1;
+    }
+  }
+  return -1;
+}
+
+function findTemplateExpressionEnd(content, start) {
+  let depth = 1;
+  let lastSignificant = '';
+  let previousSignificant = '';
+  let antePreviousSignificant = '';
+  let currentWord = '';
+  let currentWordPrefix = '';
+  let wordSeparated = false;
+  let lastClosedBraceKind = '';
+  const braceKinds = [];
+
+  const braceKind = () => (
+    lastSignificant === ')' ||
+    lastSignificant === ';' ||
+    lastSignificant === '}' ||
+    (previousSignificant === '=' && lastSignificant === '>') ||
+    BLOCK_BRACE_PREFIX_KEYWORDS.has(currentWord)
+      ? 'block'
+      : 'expression'
+  );
+
+  const recordSignificant = (char) => {
+    if (/\s/.test(char)) {
+      wordSeparated = true;
+      return;
+    }
+    const isWordChar = /[\w$]/.test(char);
+    if (isWordChar && (wordSeparated || !currentWord)) {
+      currentWord = '';
+      currentWordPrefix = lastSignificant;
+    } else if (!isWordChar) {
+      currentWordPrefix = '';
+    }
+    wordSeparated = false;
+    antePreviousSignificant = previousSignificant;
+    previousSignificant = lastSignificant;
+    lastSignificant = char;
+    currentWord = isWordChar ? currentWord + char : '';
+  };
+
+  for (let cursor = start; cursor < content.length; cursor++) {
+    const char = content[cursor];
+    const next = content[cursor + 1];
+    const afterPostfixUpdate = (lastSignificant === '+' || lastSignificant === '-') &&
+      previousSignificant === lastSignificant &&
+      antePreviousSignificant !== lastSignificant;
+    if (char === "'" || char === '"') {
+      cursor = findQuotedStringEnd(content, cursor, char);
+      if (cursor === -1) return -1;
+      recordSignificant(')');
+    } else if (char === '/' && next === '/') {
+      const lineEnd = content.indexOf('\n', cursor + 2);
+      if (lineEnd === -1) return -1;
+      cursor = lineEnd;
+    } else if (char === '/' && next === '*') {
+      const commentEnd = content.indexOf('*/', cursor + 2);
+      if (commentEnd === -1) return -1;
+      cursor = commentEnd + 1;
+    } else if (
+      char === '/' &&
+      (!lastSignificant ||
+        (/[=([{!?:;,&|+\-*%^~<>]/.test(lastSignificant) && !afterPostfixUpdate) ||
+        (lastSignificant === '}' && lastClosedBraceKind === 'block') ||
+        (previousSignificant === '=' && lastSignificant === '>') ||
+        (currentWordPrefix !== '.' && REGEX_PREFIX_KEYWORDS.has(currentWord)))
+    ) {
+      cursor = findRegexLiteralEnd(content, cursor);
+      if (cursor === -1) return -1;
+      recordSignificant(')');
+    } else if (char === '`') {
+      cursor = findTemplateLiteralEnd(content, cursor);
+      if (cursor === -1) return -1;
+      recordSignificant(')');
+    } else if (char === '{') {
+      depth++;
+      braceKinds.push(braceKind());
+      recordSignificant(char);
+    } else if (char === '}') {
+      depth--;
+      if (depth === 0) return cursor;
+      lastClosedBraceKind = braceKinds.pop() || '';
+      recordSignificant(char);
+    } else {
+      recordSignificant(char);
+    }
+  }
+  return -1;
+}
+
+function findTemplateLiteralEnd(content, start) {
+  for (let cursor = start + 1; cursor < content.length; cursor++) {
+    const char = content[cursor];
+    if (char === '\\') {
+      cursor++;
+    } else if (char === '`') {
+      return cursor;
+    } else if (char === '$' && content[cursor + 1] === '{') {
+      cursor = findTemplateExpressionEnd(content, cursor + 2);
+      if (cursor === -1) return -1;
+    }
+  }
+  return -1;
+}
+
+function findCSSinJSTemplates(content) {
+  const templates = [];
+  const tagRe = /\b(?:styled(?:\.\w+|\([^)]+\))|css)/g;
+  let match;
+  while ((match = tagRe.exec(content)) !== null) {
+    let cursor = match.index + match[0].length;
+    while (/\s/.test(content[cursor] || '')) cursor++;
+
+    if (content[cursor] === '<') {
+      let depth = 0;
+      while (cursor < content.length) {
+        const char = content[cursor];
+        if (char === '<') depth++;
+        else if (char === '>' && content[cursor - 1] !== '=') depth--;
+        cursor++;
+        if (depth === 0) break;
+      }
+      if (depth !== 0) continue;
+      while (/\s/.test(content[cursor] || '')) cursor++;
+    }
+
+    if (content[cursor] !== '`') continue;
+    const contentStart = cursor + 1;
+    cursor = findTemplateLiteralEnd(content, cursor);
+    if (cursor === -1) continue;
+
+    templates.push({
+      tagStart: match.index,
+      contentStart,
+      contentEnd: cursor,
+    });
+    tagRe.lastIndex = cursor + 1;
+  }
+  return templates;
+}
+
 function extractCSSinJS(content, ext) {
   ext = ext.toLowerCase();
   if (!CSS_IN_JS_EXTENSIONS.has(ext)) return [];
-  const blocks = [];
-  const re = /(?:styled(?:\.\w+|\([^)]+\))|css)\s*`([\s\S]*?)`/g;
-  let m;
-  while ((m = re.exec(content)) !== null) {
-    const before = content.substring(0, m.index);
+  return findCSSinJSTemplates(content).map((template) => {
+    const before = content.substring(0, template.tagStart);
     const startLine = before.split('\n').length;
-    blocks.push({ content: m[1], startLine });
+    return {
+      content: content.slice(template.contentStart, template.contentEnd),
+      startLine,
+    };
+  });
+}
+
+function stripCssInJsComments(content, ext) {
+  if (!CSS_IN_JS_EXTENSIONS.has(ext.toLowerCase())) return content;
+  const templates = findCSSinJSTemplates(content);
+  let output = '';
+  let cursor = 0;
+  for (const template of templates) {
+    output += content.slice(cursor, template.contentStart);
+    output += stripCssComments(content.slice(template.contentStart, template.contentEnd));
+    cursor = template.contentEnd;
   }
-  return blocks;
+  return output + content.slice(cursor);
 }
 
 function runRegexMatchers(lines, filePath, lineOffset = 0, blockContext = null, options = {}) {
@@ -627,8 +1022,12 @@ function runTextContentAnalyzers(content, filePath, options = {}) {
 function detectText(content, filePath, options = {}) {
   const profile = options?.profile;
   const findings = [];
-  const lines = content.split('\n');
   const ext = extFromFilePath(filePath);
+  const commentStrippedSource = JS_SOURCE_EXTS.has(ext) ? stripJsComments(content, {
+    jsx: ext === '.js' || ext === '.jsx' || ext === '.tsx',
+  }) : content;
+  const source = stripCssInJsComments(commentStrippedSource, ext);
+  const lines = source.split('\n');
 
   // Run regex matchers on the full file content (catches Tailwind classes, inline styles)
   // Enable block context for CSS files where related properties span multiple lines
@@ -661,8 +1060,8 @@ function detectText(content, filePath, options = {}) {
     phase: 'source',
     ruleId: 'codex-grid-background',
     target: filePath,
-  }, () => scanCssTextForGridBackground(content).map(hit => {
-    const line = content.substring(0, hit.index).split('\n').length;
+  }, () => scanCssTextForGridBackground(source).map(hit => {
+    const line = source.substring(0, hit.index).split('\n').length;
     return finding('codex-grid-background', filePath, hit.snippet, line);
   })));
 
@@ -698,16 +1097,17 @@ function detectText(content, filePath, options = {}) {
       phase: 'extract',
       ruleId: 'css-in-js',
       target: filePath,
-    }, () => extractCSSinJS(content, ext))
-    : extractCSSinJS(content, ext);
+    }, () => extractCSSinJS(source, ext))
+    : extractCSSinJS(source, ext);
   for (const block of cssJsBlocks) {
-    const blockLines = block.content.split('\n');
+    const blockContent = stripCssComments(block.content);
+    const blockLines = blockContent.split('\n');
     findings.push(...runRegexMatchers(blockLines, filePath, block.startLine - 1, true, {
       profile,
       phase: 'css-in-js',
     }));
-    findings.push(...scanInsetStripeCss(block.content, filePath, block.startLine - 1));
-    findings.push(...pseudoStripeFindings(block.content, block.startLine - 1));
+    findings.push(...scanInsetStripeCss(blockContent, filePath, block.startLine - 1));
+    findings.push(...pseudoStripeFindings(blockContent, block.startLine - 1));
   }
 
   if (options?.designSystem) {

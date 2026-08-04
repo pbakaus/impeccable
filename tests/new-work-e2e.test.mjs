@@ -274,7 +274,10 @@ describe('new-work-e2e: serve-question decision page', () => {
     const payload = {
       title: 'Choose the visual world',
       options: [
-        { id: 'assigned', label: 'Text Only Direction', body: 'a grounded direction, no comp' },
+        {
+          id: 'assigned', label: 'Text Only Direction', body: 'a grounded direction, no comp',
+          viewport: 'A full-width ruled manifest with entries.', case: 'Grounded in the audience world.',
+        },
         { id: 'challenger-hero', label: 'Has A Card', hero },
       ],
       reroll: true, steer: true,
@@ -288,10 +291,78 @@ describe('new-work-e2e: serve-question decision page', () => {
       const textOnlyMedia = await page.$('.card[data-id="assigned"] .media');
       const heroMedia = await page.$('.card[data-id="challenger-hero"] .media');
       const textOnlyFace = await page.$('.card[data-id="assigned"] .face.text-only');
+      // No media means no back face to hide facts on: the full read renders
+      // on the front, where nothing else would have used the room.
+      const textOnlyBack = await page.$('.card[data-id="assigned"] .face.back');
+      const frontRead = await page.$eval('.card[data-id="assigned"] .face.front', (el) => el.textContent);
+      // Catalog art without a sketch is labeled as reference, never as the
+      // promise of the build.
+      const heroLabel = await page.$eval('.card[data-id="challenger-hero"] .media .media-label', (el) => el.textContent);
       await context.close();
       assert.equal(textOnlyMedia, null, 'text-only card has no .media region');
       assert.ok(textOnlyFace, 'text-only card carries the .text-only face class');
       assert.ok(heroMedia, 'the hero card still renders its .media region');
+      assert.equal(textOnlyBack, null, 'text-only card has no unreachable back face');
+      assert.match(frontRead, /First viewport/, 'text-only front carries the first viewport fact');
+      assert.match(frontRead, /The case/, 'text-only front carries the case fact');
+      assert.equal(heroLabel, 'inspiration', 'sketchless catalog art is labeled inspiration');
+    } finally {
+      await stopDaemon(cwd, key);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('(f) a hero that never loads collapses to a labeled palette field, not a dark void', async () => {
+    const cwd = makeWorkspace();
+    const key = 'brokenart';
+    const payload = {
+      title: 'Choose the visual world',
+      options: [
+        {
+          id: 'assigned', label: 'Broken Art Direction',
+          thesis: 'The art is gone but the direction is not.',
+          palette: ['#1a3a2e', '#f2ede2', '#c8452a'],
+          risk: 'None.',
+          viewport: 'A ruled manifest.', case: 'Back facts must stay reachable.',
+          // Port 1 refuses connections everywhere; the load fails offline
+          // and deterministically, like a retired catalog URL in the field.
+          hero: 'http://127.0.0.1:1/gone-hero.webp',
+        },
+        {
+          id: 'challenger-bare', label: 'No Palette Direction',
+          thesis: 'Broken art and no swatches to paint from.',
+          hero: 'http://127.0.0.1:1/gone-too.webp',
+        },
+      ],
+      reroll: true, steer: true,
+    };
+    const { url } = await startDaemon(cwd, payload, key);
+    try {
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      await page.goto(url, { waitUntil: 'load' });
+      await page.waitForSelector('.card[data-id="assigned"] .media.unavailable');
+      await page.waitForSelector('.card[data-id="challenger-bare"] .media.unavailable');
+      const imgGone = await page.$('.card[data-id="assigned"] .media img');
+      const label = await page.$eval('.card[data-id="assigned"] .media .media-label', (el) => el.textContent);
+      const field = await page.$eval('.card[data-id="assigned"] .media', (el) => el.style.background);
+      // The stale "Inspiration" tooltip goes with the art it described.
+      const title = await page.$eval('.card[data-id="assigned"] .media', (el) => el.getAttribute('title'));
+      // The scrim must not trap the flip controls: Details still flips.
+      await page.click('.card[data-id="assigned"] .chip.flip');
+      const flipped = await page.$('.card[data-id="assigned"].flipped');
+      // A palette-less card keeps the label and leans on the CSS graphite
+      // field instead of an inline gradient.
+      const bareLabel = await page.$eval('.card[data-id="challenger-bare"] .media .media-label', (el) => el.textContent);
+      const bareField = await page.$eval('.card[data-id="challenger-bare"] .media', (el) => el.style.background);
+      await context.close();
+      assert.equal(imgGone, null, 'the broken img is removed');
+      assert.equal(label, 'artwork unavailable', 'the slot says what happened');
+      assert.match(field, /linear-gradient/, 'the slot is painted from the card palette');
+      assert.equal(title, null, 'the inspiration tooltip is removed with the art');
+      assert.ok(flipped, 'the Details chip still flips the card under the scrim');
+      assert.equal(bareLabel, 'artwork unavailable', 'a palette-less slot still says what happened');
+      assert.equal(bareField, '', 'a palette-less slot takes the CSS fallback field, no inline gradient');
     } finally {
       await stopDaemon(cwd, key);
       rmSync(cwd, { recursive: true, force: true });

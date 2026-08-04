@@ -10,7 +10,7 @@
  *   node hook-admin.mjs off                            # set enabled: false
  *   node hook-admin.mjs ignore-rule <rule-id>          # append to ignoreRules
  *   node hook-admin.mjs ignore-rule overused-font --all-values
- *   node hook-admin.mjs ignore-file <glob>             # append to ignoreFiles
+ *   node hook-admin.mjs ignore-file <glob> [--shared|--local]   # append to ignoreFiles
  *   node hook-admin.mjs ignore-value <rule> <value>    # append to shared ignoreValues
  *   node hook-admin.mjs ignore-value <rule> <value> --local
  *   node hook-admin.mjs ignore-value <rule> "*" --file <glob>   # rule off in <glob> only
@@ -166,7 +166,7 @@ function readRawConfigFile(filePath) {
   }
 }
 
-const DETECTOR_CONFIG_KEYS = new Set(['ignoreRules', 'ignoreFiles', 'ignoreValues', 'designSystem']);
+const DETECTOR_CONFIG_KEYS = new Set(['ignoreRules', 'ignoreFiles', 'ignoreValues', 'designSystem', 'advisoryRules']);
 
 function hookSection(unified) {
   return unified && typeof unified === 'object' && !Array.isArray(unified) && unified.hook && typeof unified.hook === 'object' && !Array.isArray(unified.hook)
@@ -200,6 +200,15 @@ function stripDetectorKeys(raw) {
   return out;
 }
 
+function pickDetectorKeys(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (DETECTOR_CONFIG_KEYS.has(key)) out[key] = value;
+  }
+  return out;
+}
+
 // Write hook runtime config under `hook`, leaving detector filters in
 // `detector` and preserving sibling keys such as updateCheck.
 function writeHookConfig(cwd, hookConfig, opts = {}) {
@@ -207,10 +216,19 @@ function writeHookConfig(cwd, hookConfig, opts = {}) {
   if (opts.local) ensureHookGitExcludes(cwd);
   const existingRaw = readRawConfigFile(filePath).raw;
   const existing = existingRaw && typeof existingRaw === 'object' && !Array.isArray(existingRaw) ? existingRaw : {};
-  const existingHook = stripDetectorKeys(hookSection(existing));
+  const existingHookSection = hookSection(existing);
+  const existingHook = stripDetectorKeys(existingHookSection);
+  const legacyDetector = pickDetectorKeys(existingHookSection);
   // Merge over the existing hook object so fields the merge helpers don't manage
   // (consent, quiet, auditLog) survive an Impeccable hooks edit.
   const next = { ...existing, hook: { ...existingHook, ...hookConfig } };
+  if (Object.keys(legacyDetector).length > 0) {
+    const existingDetector = detectorSection(existing) || {};
+    next.detector = {
+      ...existingDetector,
+      ...mergeDetectorConfig(existingDetector, mergeDetectorConfig(legacyDetector)),
+    };
+  }
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, JSON.stringify(next, null, 2) + '\n');
   return filePath;
@@ -222,10 +240,14 @@ function writeDetectorConfig(cwd, detectorConfig, opts = {}) {
   const existingRaw = readRawConfigFile(filePath).raw;
   const existing = existingRaw && typeof existingRaw === 'object' && !Array.isArray(existingRaw) ? existingRaw : {};
   const nextHook = stripDetectorKeys(hookSection(existing));
-  const existingDetector = mergeDetectorConfig(detectorSection(existing));
+  const existingDetectorSection = detectorSection(existing) || {};
+  const existingDetector = mergeDetectorConfig(existingDetectorSection);
   const next = {
     ...existing,
-    detector: mergeDetectorConfig(detectorConfig, existingDetector),
+    detector: {
+      ...existingDetectorSection,
+      ...mergeDetectorConfig(detectorConfig, existingDetector),
+    },
   };
   if (Object.keys(nextHook).length > 0) next.hook = nextHook;
   else delete next.hook;
@@ -259,11 +281,17 @@ function mergeDetectorConfig(existing, seed = null) {
   if (seed?.designSystem && typeof seed.designSystem === 'object' && !Array.isArray(seed.designSystem)) {
     out.designSystem = { ...seed.designSystem };
   }
+  if (seed?.advisoryRules === 'include' || seed?.advisoryRules === 'exclude') {
+    out.advisoryRules = seed.advisoryRules;
+  }
   if (base.designSystem && typeof base.designSystem === 'object' && !Array.isArray(base.designSystem)) {
     out.designSystem = {
       ...(out.designSystem || {}),
       enabled: base.designSystem.enabled === false ? false : true,
     };
+  }
+  if (base.advisoryRules === 'include' || base.advisoryRules === 'exclude') {
+    out.advisoryRules = base.advisoryRules;
   }
   if (Array.isArray(base.ignoreRules)) {
     out.ignoreRules = Array.from(new Set([...out.ignoreRules, ...base.ignoreRules.map(String)]));
@@ -558,12 +586,44 @@ function addIgnoreRule(cwd, args) {
   return `Added "${rule}" to detector.ignoreRules. Current: ${config.ignoreRules.join(', ')}`;
 }
 
-function addIgnoreFile(cwd, glob) {
+function parseIgnoreFileArgs(args) {
+  const positionals = [];
+  let shared = false;
+  let local = false;
+
+  for (const raw of args) {
+    const arg = String(raw || '');
+    if (arg === '--shared') {
+      shared = true;
+    } else if (arg === '--local') {
+      local = true;
+    } else if (arg === '--reason' || arg.startsWith('--reason=')) {
+      throw new Error('--reason is not supported for ignore-file because detector.ignoreFiles stores globs only; use ignore-value when a documented rule-specific exception fits');
+    } else if (arg.startsWith('--')) {
+      throw new Error(`Unknown ignore-file flag: ${arg}`);
+    } else {
+      positionals.push(arg);
+    }
+  }
+
+  if (shared && local) throw new Error('Pass only one scope flag: --shared or --local');
+  if (positionals.length > 1) throw new Error('Pass exactly one glob to ignore-file');
+
+  return {
+    glob: positionals[0],
+    local,
+  };
+}
+
+function addIgnoreFile(cwd, args) {
+  const parsed = parseIgnoreFileArgs(args);
+  const glob = parsed.glob;
   if (!glob) throw new Error(`Pass a glob, e.g. ${IMPECCABLE_COMMAND} hooks ignore-file "src/legacy/**"`);
-  const config = mergeDetectorConfig(readRawDetectorConfig(cwd));
+  const config = mergeDetectorConfig(readRawDetectorConfig(cwd, { local: parsed.local }));
   if (!config.ignoreFiles.includes(glob)) config.ignoreFiles.push(glob);
-  writeDetectorConfig(cwd, config);
-  return `Added "${glob}" to detector.ignoreFiles. Current: ${config.ignoreFiles.join(', ')}`;
+  const target = writeDetectorConfig(cwd, config, { local: parsed.local });
+  const scope = parsed.local ? 'local detector.ignoreFiles' : 'shared detector.ignoreFiles';
+  return `Added "${glob}" to ${scope} (${path.relative(cwd, target) || target}). Current: ${config.ignoreFiles.join(', ')}`;
 }
 
 // An empty glob used to be dropped by filter(Boolean), so `--file=` reported
@@ -727,7 +787,7 @@ function main() {
       case 'on':     out = setEnabled(cwd, true); break;
       case 'off':    out = setEnabled(cwd, false); break;
       case 'ignore-rule': out = addIgnoreRule(cwd, rest); break;
-      case 'ignore-file': out = addIgnoreFile(cwd, rest[0]); break;
+      case 'ignore-file': out = addIgnoreFile(cwd, rest); break;
       case 'ignore-value': out = addIgnoreValue(cwd, rest); break;
       case 'reset':  out = reset(cwd); break;
     }

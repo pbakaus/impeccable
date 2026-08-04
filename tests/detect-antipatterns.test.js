@@ -217,6 +217,168 @@ describe('detectText — Tailwind side-tab', () => {
   });
 });
 
+describe('detectText — broken images in source comments', () => {
+  test('ignores img tags mentioned in JavaScript comments', () => {
+    const source = [
+      '/** Extra classes on the <img> itself. */',
+      '// Keep the original URL as an <img> fallback.',
+      '/*',
+      ' * This wrapper eventually renders an <img> element.',
+      ' */',
+      'const quoteMatcher = /["\']/;',
+      '// A regex before this comment must not expose its <img> example.',
+      'const ratio = "width" / size;',
+      '// Division after a string must not expose its <img> example.',
+      'const template = `value: ${/* <img src=""> */ fallback}`;',
+      'export interface Props { imgClassName?: string }',
+    ].join('\n');
+
+    const findings = detectText(source, 'image-wrapper.ts');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(0);
+  });
+
+  test('still detects real JSX img tags with no usable src', () => {
+    const source = [
+      '<img alt="Missing source" />',
+      '<img src="" alt="Empty source" />',
+      '<img src="#" alt="Placeholder source" />',
+    ].join('\n');
+
+    const findings = detectText(source, 'gallery.tsx');
+
+    expect(findings
+      .filter(r => r.antipattern === 'broken-image')
+      .map(r => r.snippet)
+      .sort()).toEqual([
+      '<img alt="Missing source" />',
+      '<img src=""',
+      '<img src="#"',
+    ]);
+  });
+
+  test('keeps later JSX visible after a regex literal following return', () => {
+    const source = [
+      'function matches(value) { return /[/*]/.test(value); }',
+      '<img src="" alt="Empty source" />',
+    ].join('\n');
+
+    const findings = detectText(source, 'gallery.tsx');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(1);
+  });
+
+  test('keeps later JSX visible after a regex literal following export default', () => {
+    const source = [
+      'export default /[/*]/;',
+      '<img src="" alt="Empty source" />',
+    ].join('\n');
+
+    const findings = detectText(source, 'gallery.tsx');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(1);
+  });
+
+  test('does not treat a return-named property division as a regex literal', () => {
+    const source = [
+      'const ratio = obj.return / divisor;',
+      '// <img src="" alt="Comment-only image" />',
+    ].join('\n');
+
+    const findings = detectText(source, 'gallery.tsx');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(0);
+  });
+
+  test('does not treat division after a postfix update as a regex literal', () => {
+    const source = [
+      'const ratio = count++ / divisor;',
+      '// <img src="" alt="Comment-only image" />',
+    ].join('\n');
+
+    const findings = detectText(source, 'gallery.tsx');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(0);
+  });
+
+  test('keeps a regex visible after a postfix update and binary operator', () => {
+    const source = 'let i = 0; const match = i++ + /[/*]/.test(value); <img src="" alt="Empty source" />';
+
+    const findings = detectText(source, 'gallery.tsx');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(1);
+  });
+
+  test('keeps regex literals visible after remaining prefix contexts', () => {
+    const sources = [
+      'for (const item of /[/*]/) {} <img src="" alt="After for-of" />',
+      'const match = value < /[/*]/.source; <img src="" alt="After comparison" />',
+      'if (ready) {} /[/*]/.test(value); <img src="" alt="After block" />',
+    ];
+
+    for (const source of sources) {
+      const findings = detectText(source, 'gallery.tsx');
+      expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(1);
+    }
+  });
+
+  test('keeps division after an object literal distinct from a regex', () => {
+    const source = 'const ratio = {} / divisor; // <img src="" alt="Comment-only image" />';
+
+    const findings = detectText(source, 'gallery.tsx');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(0);
+  });
+
+  test('keeps same-line JSX visible after bare URL text', () => {
+    const source = '<p>https://example.com <img src="" alt="Empty source" /></p>';
+
+    const findings = detectText(source, 'gallery.tsx');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(1);
+  });
+
+  test('keeps same-line JSX visible after a bare URL in a .js file', () => {
+    const source = '<p>https://example.com <img src="" alt="Empty source" /></p>';
+
+    const findings = detectText(source, 'gallery.js');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(1);
+  });
+
+  test('keeps same-line JSX visible after a protocol-relative URL', () => {
+    const source = '<p>//cdn.example.com/logo.svg <img src="" alt="Empty source" /></p>';
+
+    const findings = detectText(source, 'gallery.jsx');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(1);
+  });
+
+  test('still strips a domain-like comment after self-closing JSX', () => {
+    const source = 'const card = <Card />; //cdn.example.com <img src="" alt="Comment-only image" />';
+
+    const findings = detectText(source, 'gallery.jsx');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(0);
+  });
+
+  test('strips a domain-like comment inside a JSX expression', () => {
+    const source = 'const card = <div>{value //cdn.example.com <img src="" alt="Comment-only image" />';
+
+    const findings = detectText(source, 'gallery.jsx');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(0);
+  });
+
+  test('strips a domain-like comment inside a JSX attribute expression', () => {
+    const source = 'const card = <Card show={value > limit //cdn.example.com <img src="" alt="Comment-only image" />';
+
+    const findings = detectText(source, 'gallery.jsx');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(0);
+  });
+});
+
 describe('detectText — CSS borders', () => {
   test('detects border-left shorthand', () => {
     const f = detectText('.card { border-left: 4px solid #3b82f6; }', 'test.css');
@@ -1561,6 +1723,39 @@ describe('codex-grid-background variants', () => {
     const findings = detectText(css, 'timeline.css');
     expect(findings.filter(f => f.antipattern === 'codex-grid-background')).toHaveLength(0);
   });
+
+  test('regex source engine ignores grids in JavaScript comments', () => {
+    const source = `/* .demo {
+      background-image:
+        linear-gradient(#eee 1px, transparent 1px),
+        linear-gradient(90deg, #eee 1px, transparent 1px);
+      background-size: 24px 24px;
+    } */`;
+    const findings = detectText(source, 'demo.ts');
+    expect(findings.filter(f => f.antipattern === 'codex-grid-background')).toHaveLength(0);
+  });
+
+  test('regex source engine ignores grids in CSS-in-JS comments', () => {
+    const source = `const Demo = styled.div\`
+      /* .demo { background-image:
+        linear-gradient(#eee 1px, transparent 1px),
+        linear-gradient(90deg, #eee 1px, transparent 1px);
+      background-size: 24px 24px; } */
+    \`;`;
+    const findings = detectText(source, 'demo.tsx');
+    expect(findings.filter(f => f.antipattern === 'codex-grid-background')).toHaveLength(0);
+  });
+
+  test('regex source engine still detects live CSS-in-JS grids', () => {
+    const source = `const Demo = styled.div\`
+      .demo { background-image:
+        linear-gradient(#eee 1px, transparent 1px),
+        linear-gradient(90deg, #eee 1px, transparent 1px);
+      background-size: 24px 24px; }
+    \`;`;
+    const findings = detectText(source, 'demo.tsx');
+    expect(findings.filter(f => f.antipattern === 'codex-grid-background')).toHaveLength(1);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -2371,6 +2566,48 @@ describe('extractCSSinJS', () => {
     expect(blocks.some(b => b.content.includes('border-left: 4px solid'))).toBe(true);
   });
 
+  test('extracts a styled-components template with TypeScript props', () => {
+    const tsx = "const Card = styled.div<Props>`\n  border-left: 4px solid blue;\n`;";
+    const blocks = extractCSSinJS(tsx, '.tsx');
+    expect(blocks.length).toBeGreaterThanOrEqual(1);
+    expect(blocks.some(b => b.content.includes('border-left: 4px solid'))).toBe(true);
+  });
+
+  test('extracts a styled-components template with nested TypeScript props', () => {
+    const tsx = "const Card = styled.div<Props<Foo>>`\n  border-left: 4px solid blue;\n`;";
+    const blocks = extractCSSinJS(tsx, '.tsx');
+    expect(blocks.length).toBeGreaterThanOrEqual(1);
+    expect(blocks.some(b => b.content.includes('border-left: 4px solid'))).toBe(true);
+  });
+
+  test('extracts through nested template literals in interpolations', () => {
+    const tsx = "const Card = styled.div`\n  color: ${() => `var(--accent)`};\n  /* after interpolation */\n`;";
+    const blocks = extractCSSinJS(tsx, '.tsx');
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].content).toContain('after interpolation');
+  });
+
+  test('extracts through regex literals in interpolations', () => {
+    const tsx = "const Card = styled.div`\n  color: ${/`/.test(value) || /[{}]/.test(value)};\n  /* after interpolation */\n`;";
+    const blocks = extractCSSinJS(tsx, '.tsx');
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].content).toContain('after interpolation');
+  });
+
+  test('extracts through division after a postfix update in interpolations', () => {
+    const tsx = "const Card = styled.div`\n  width: ${i++ / divisor}px;\n  /* after interpolation */\n`;";
+    const blocks = extractCSSinJS(tsx, '.tsx');
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].content).toContain('after interpolation');
+  });
+
+  test('extracts through regex literals after statement blocks', () => {
+    const tsx = "const Card = styled.div`\n  color: ${() => { if (enabled) {} /`/.test(value); return 'red'; }};\n  /* after interpolation */\n`;";
+    const blocks = extractCSSinJS(tsx, '.tsx');
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].content).toContain('after interpolation');
+  });
+
   test('extracts styled(Component) template literal', () => {
     const tsx = "const Box = styled(BaseBox)`\n  border-right: 5px solid #8b5cf6;\n`;";
     const blocks = extractCSSinJS(tsx, '.tsx');
@@ -2506,6 +2743,42 @@ describe('detectText -- CSS-in-JS', () => {
 
   test('does not false-positive on clean CSS-in-JS', () => {
     const tsx = "const Card = styled.div`\n  border-radius: 12px;\n  padding: 24px;\n`;";
+    const f = detectText(tsx, 'Card.tsx');
+    expect(f.filter(r => r.antipattern === 'side-tab')).toHaveLength(0);
+  });
+
+  test('does not scan CSS-in-JS comments as live rules', () => {
+    const tsx = "const style = css`\n  /* .card { border-left: 4px solid #3b82f6; border-radius: 8px; } */\n`;";
+    const f = detectText(tsx, 'Card.tsx');
+    expect(f.filter(r => r.antipattern === 'side-tab')).toHaveLength(0);
+  });
+
+  test('does not scan comments in generic styled templates as live rules', () => {
+    const tsx = "const Card = styled.div<Props>`\n  /* .commented-only { border-left: 4px solid #3b82f6; border-radius: 8px; } */\n`;";
+    const f = detectText(tsx, 'Card.tsx');
+    expect(f.filter(r => r.antipattern === 'side-tab')).toHaveLength(0);
+  });
+
+  test('does not scan comments in nested generic styled templates as live rules', () => {
+    const tsx = "const Card = styled.div<Props<Foo>>`\n  /* .commented-only { border-left: 4px solid #3b82f6; border-radius: 8px; } */\n`;";
+    const f = detectText(tsx, 'Card.tsx');
+    expect(f.filter(r => r.antipattern === 'side-tab')).toHaveLength(0);
+  });
+
+  test('does not scan comments after nested interpolation templates as live rules', () => {
+    const tsx = "const Card = styled.div`\n  color: ${() => `var(--accent)`};\n  /* .commented-only { border-left: 4px solid #3b82f6; border-radius: 8px; } */\n`;";
+    const f = detectText(tsx, 'Card.tsx');
+    expect(f.filter(r => r.antipattern === 'side-tab')).toHaveLength(0);
+  });
+
+  test('does not scan comments after interpolation regexes as live rules', () => {
+    const tsx = "const Card = styled.div`\n  color: ${/`/.test(value) || /[{}]/.test(value)};\n  /* .commented-only { border-left: 4px solid #3b82f6; border-radius: 8px; } */\n`;";
+    const f = detectText(tsx, 'Card.tsx');
+    expect(f.filter(r => r.antipattern === 'side-tab')).toHaveLength(0);
+  });
+
+  test('does not scan comments after postfix division or block-following regexes', () => {
+    const tsx = "const Card = styled.div`\n  width: ${i++ / divisor}px;\n  color: ${() => { if (enabled) {} /`/.test(value); return 'red'; }};\n  /* .commented-only { border-left: 4px solid #3b82f6; border-radius: 8px; } */\n`;";
     const f = detectText(tsx, 'Card.tsx');
     expect(f.filter(r => r.antipattern === 'side-tab')).toHaveLength(0);
   });
@@ -2795,6 +3068,20 @@ describe('buildImportGraph', () => {
     const themeImports = graph.get(path.join(MF, 'theme.sass'));
     expect(themeImports).toBeDefined();
     expect(themeImports.has(path.join(MF, 'variables.sass'))).toBe(true);
+  });
+
+  test('resolves Sass @use and @forward', async () => {
+    await withStaticFixture({
+      'theme.scss': "@use './variables';\n@forward './tokens';\n",
+      'variables.scss': '$primary: rebeccapurple;\n',
+      'tokens.scss': '$spacing: 1rem;\n',
+    }, ({ dir }) => {
+      const theme = path.join(dir, 'theme.scss');
+      const variables = path.join(dir, 'variables.scss');
+      const tokens = path.join(dir, 'tokens.scss');
+      const graph = buildImportGraph([theme, variables, tokens]);
+      expect(graph.get(theme)).toEqual(new Set([variables, tokens]));
+    });
   });
 
   test('ignores bare/node_modules imports', () => {

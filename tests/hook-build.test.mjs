@@ -34,7 +34,7 @@ const ENGINES_NODE_MAJOR = parseInt(
   JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8')).engines.node.replace(/[^\d.]/g, ''),
   10,
 );
-const NODE_PROBE = `process.exit(parseInt(process.versions.node,10)>=${ENGINES_NODE_MAJOR}?0:1)`;
+const NODE_PROBE = `process.exit(Math.min(parseInt(process.versions.node,10),${ENGINES_NODE_MAJOR})===${ENGINES_NODE_MAJOR}?0:1)`;
 
 function expectCommand(command, expectedPath) {
   assert.equal(typeof command, 'string');
@@ -224,6 +224,14 @@ describe('hook manifest builders', () => {
         assert.ok(!command.includes('systemMessage'), `unexpected notice in ${command}`);
       }
     }
+  });
+
+  // Volta's Windows shims exec through `cmd /C`, which claims `<`, `>`, and
+  // newlines from the `node -e` payload, so the probe died before node ran and
+  // the guard read that as a missing runtime (volta-cli/volta#1791). Every
+  // command is asserted to carry NODE_PROBE above, so this covers them all.
+  it('keeps the runtime probe free of characters cmd.exe re-parses', () => {
+    assert.ok(!/[<>\n]/.test(NODE_PROBE), `cmd.exe-unsafe character in probe: ${NODE_PROBE}`);
   });
 
   it('routes supported hook builders and leaves other providers alone', () => {

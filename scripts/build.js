@@ -24,6 +24,7 @@ import { createTransformer, PROVIDERS } from './lib/transformers/index.js';
 import { hooksJsonFor, buildClaudePluginHooksManifest } from './lib/transformers/hooks.js';
 import { createAllZips, createProviderZip } from './lib/zip.js';
 import { collectPluginVersions } from './lib/validate-plugin-versions.js';
+import { collectPluginManifestFindings } from './lib/validate-plugin-manifest.js';
 import { stageOpenAIPlugin } from './lib/openai-plugin.js';
 import { ANTIPATTERNS } from '../cli/engine/registry/antipatterns.mjs';
 // Sub-page generation is now handled by Astro content collections.
@@ -139,6 +140,27 @@ function validatePluginVersions(rootDir) {
     console.log(`✓ Plugin/skill versions agree: ${source}`);
   }
   return total;
+}
+
+/**
+ * Guard against unverified plugin manifest shapes (PR #494). The pure check
+ * lives in ./lib/validate-plugin-manifest.js (so it's unit-tested directly);
+ * this wrapper owns the console output and the error count the build gates on.
+ */
+function validatePluginManifestShape(rootDir) {
+  const findings = collectPluginManifestFindings(rootDir);
+  for (const { relPath, reason } of findings) {
+    console.error(`  ❌ ${relPath}: ${reason}`);
+  }
+  if (findings.length > 0) {
+    console.error(
+      `\n❌ ${findings.length} plugin manifest shape problem(s). Every manifest key is a ` +
+      'claim about the Claude Code loader; see scripts/lib/validate-plugin-manifest.js (PR #494).',
+    );
+  } else {
+    console.log('✓ Plugin manifest shape matches the verified loader contract');
+  }
+  return findings.length;
 }
 
 function validateSkillFrontmatter(skills) {
@@ -633,22 +655,18 @@ async function build() {
 
     const rootManifest = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, '.claude-plugin/plugin.json'), 'utf-8'));
     const claudeAgentsSrc = path.join(DIST_DIR, 'claude-code', '.claude', 'agents');
-    const pluginAgentEntries = fs.existsSync(claudeAgentsSrc)
-      ? fs.readdirSync(claudeAgentsSrc)
-          .filter(file => file.endsWith('.md'))
-          .sort()
-          .map(file => `./agents/${file}`)
-      : [];
     // Trailing slash on the skills path matches the documented schema in
     // code.claude.com/docs/en/plugins-reference. Issue #86 has 3 reporters
     // converging on "add trailing slash to fix slash commands not registering";
     // the docs schema example consistently uses `"./custom/skills/"` form.
     const pluginManifest = { ...rootManifest, skills: './skills/' };
-    if (pluginAgentEntries.length) {
-      pluginManifest.agents = pluginAgentEntries;
-    } else {
-      delete pluginManifest.agents;
-    }
+    // No `agents` key: Claude Code discovers agents/*.md by itself, and the
+    // identifier it uses is the file name. Declaring the key as an array of
+    // file paths makes it load ZERO agents, so the four shipped subagents were
+    // never reachable. The other plausible shapes are worse: a string, or an
+    // array containing a directory, and the whole plugin fails to load.
+    // Omitting the key is the only shape that works.
+    delete pluginManifest.agents;
     fs.mkdirSync(pluginManifestDir, { recursive: true });
     fs.writeFileSync(
       path.join(pluginManifestDir, 'plugin.json'),
@@ -714,6 +732,10 @@ async function build() {
   // match root plugin.json so marketplace installs never ship a stale version.
   const versionErrors = validatePluginVersions(ROOT_DIR);
 
+  // Guard the generated plugin manifest's shape: a key the Claude Code loader
+  // does not honor (like the agents array, PR #494) ships silently broken.
+  const manifestShapeErrors = validatePluginManifestShape(ROOT_DIR);
+
   // Scan user-facing copy for AI tells (em dashes, marketing fluff, denylisted phrases)
   const proseErrors = validateProse(ROOT_DIR);
 
@@ -721,7 +743,7 @@ async function build() {
   // that has no technical reading. Hardening repetition is intentionally allowed.
   const skillProseErrors = validateSkillProse(ROOT_DIR);
 
-  if (countErrors > 0 || versionErrors > 0 || proseErrors > 0 || skillProseErrors > 0) {
+  if (countErrors > 0 || versionErrors > 0 || manifestShapeErrors > 0 || proseErrors > 0 || skillProseErrors > 0) {
     process.exit(1);
   }
 

@@ -31,6 +31,12 @@ const SCANNABLE_EXTENSIONS = new Set([
 
 const HTML_EXTENSIONS = new Set(['.html', '.htm']);
 
+const IMPORT_SPECIFIER_PATTERNS = [
+  /import\s+(?:[\s\S]*?from\s+)?['"]([^'"]+)['"]/g,
+  /@import\s+(?:url\(\s*)?['"]?([^'");\s]+)['"]?\s*\)?/g,
+  /@(?:use|forward)\s+['"]([^'"]+)['"]/g,
+];
+
 function walkDir(dir) {
   const files = [];
   let entries;
@@ -75,26 +81,11 @@ function buildImportGraph(files) {
     const dir = path.dirname(file);
     const imports = new Set();
 
-    // ES imports: import ... from '...' and import '...'
-    const esRe = /import\s+(?:[\s\S]*?from\s+)?['"]([^'"]+)['"]/g;
-    let m;
-    while ((m = esRe.exec(content)) !== null) {
-      const resolved = resolveImport(m[1], dir, fileSet);
-      if (resolved) imports.add(resolved);
-    }
-
-    // CSS @import
-    const cssRe = /@import\s+(?:url\(\s*)?['"]?([^'");\s]+)['"]?\s*\)?/g;
-    while ((m = cssRe.exec(content)) !== null) {
-      const resolved = resolveImport(m[1], dir, fileSet);
-      if (resolved) imports.add(resolved);
-    }
-
-    // SCSS @use / @forward
-    const scssRe = /@(?:use|forward)\s+['"]([^'"]+)['"]/g;
-    while ((m = scssRe.exec(content)) !== null) {
-      const resolved = resolveImport(m[1], dir, fileSet);
-      if (resolved) imports.add(resolved);
+    for (const pattern of IMPORT_SPECIFIER_PATTERNS) {
+      for (const match of content.matchAll(pattern)) {
+        const resolved = resolveImport(match[1], dir, fileSet);
+        if (resolved) imports.add(resolved);
+      }
     }
 
     graph.set(file, imports);

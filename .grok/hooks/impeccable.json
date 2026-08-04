@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ ! -f \".grok/skills/impeccable/scripts/hook.mjs\" ] || ! node -e \"process.exit(parseInt(process.versions.node,10)>=22?0:1)\" 2>/dev/null || node \".grok/skills/impeccable/scripts/hook.mjs\"",
+            "command": "[ ! -f \".grok/skills/impeccable/scripts/hook.mjs\" ] || ! node -e \"process.exit(Math.min(parseInt(process.versions.node,10),22)===22?0:1)\" 2>/dev/null || node \".grok/skills/impeccable/scripts/hook.mjs\"",
             "timeout": 5,
             "statusMessage": "Checking UI changes"
           }
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ ! -f \".grok/skills/impeccable/scripts/hook.mjs\" ] || ! node -e \"process.exit(parseInt(process.versions.node,10)>=22?0:1)\" 2>/dev/null || node \".grok/skills/impeccable/scripts/hook.mjs\"",
+            "command": "[ ! -f \".grok/skills/impeccable/scripts/hook.mjs\" ] || ! node -e \"process.exit(Math.min(parseInt(process.versions.node,10),22)===22?0:1)\" 2>/dev/null || node \".grok/skills/impeccable/scripts/hook.mjs\"",
             "timeout": 30,
             "statusMessage": "Design deep pass"
           }

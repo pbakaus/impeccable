@@ -11975,7 +11975,9 @@ void main() {
       rules: [
         ...(md.colors?.rules || []).map((r) => ({ ...r, section: 'colors' })),
         ...(md.typography?.rules || []).map((r) => ({ ...r, section: 'typography' })),
+        ...(md.layout?.rules || []).map((r) => ({ ...r, section: 'layout' })),
         ...(md.elevation?.rules || []).map((r) => ({ ...r, section: 'elevation' })),
+        ...(md.shapes?.rules || []).map((r) => ({ ...r, section: 'shapes' })),
       ],
       dos: md.dosDonts?.dos || [],
       donts: md.dosDonts?.donts || [],

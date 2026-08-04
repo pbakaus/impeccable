@@ -142,10 +142,73 @@ function stripInlineYamlComment(s) {
   return s;
 }
 
+// YAML double-quoted scalars process backslash escapes. Stripping the outer
+// quotes without unescaping leaves them in place, so a nested font family like
+//   fontFamily: "\"IBM Plex Sans\", system-ui, sans-serif"
+// reaches allowedFonts as '\"ibm plex sans' and never matches the same family
+// declared in CSS. Scanner instead of a regex: the escape set is small and the
+// backslash handling stays readable.
+// The full YAML 1.2 double-quote escape set (spec section 5.7).
+const YAML_SIMPLE_ESCAPES = {
+  '0': '\0',
+  a: '\x07',
+  b: '\b',
+  t: '\t',
+  n: '\n',
+  v: '\v',
+  f: '\f',
+  r: '\r',
+  e: '\x1b',
+  ' ': ' ',
+  '"': '"',
+  '/': '/',
+  '\\': '\\',
+  N: '\u0085',
+  _: '\u00a0',
+  L: '\u2028',
+  P: '\u2029',
+};
+const YAML_HEX_ESCAPE_LENGTHS = { x: 2, u: 4, U: 8 };
+
+function unescapeYamlDoubleQuoted(body) {
+  let out = '';
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (ch !== '\\' || i === body.length - 1) {
+      out += ch;
+      continue;
+    }
+    const next = body[i + 1];
+    if (Object.prototype.hasOwnProperty.call(YAML_SIMPLE_ESCAPES, next)) {
+      out += YAML_SIMPLE_ESCAPES[next];
+      i++;
+      continue;
+    }
+    // \xNN, \uNNNN, \UNNNNNNNN. Malformed or out-of-range sequences stay
+    // literal rather than corrupting the rest of the scalar.
+    const hexLen = YAML_HEX_ESCAPE_LENGTHS[next];
+    if (hexLen) {
+      const hex = body.slice(i + 2, i + 2 + hexLen);
+      const codePoint = hex.length === hexLen && /^[0-9a-fA-F]+$/.test(hex) ? parseInt(hex, 16) : -1;
+      if (codePoint >= 0 && codePoint <= 0x10ffff) {
+        out += String.fromCodePoint(codePoint);
+        i += 1 + hexLen;
+        continue;
+      }
+    }
+    out += ch;
+  }
+  return out;
+}
+
 function parseScalar(raw) {
   const s = raw.trim();
-  if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
-    return s.slice(1, -1);
+  if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) {
+    return unescapeYamlDoubleQuoted(s.slice(1, -1));
+  }
+  // Single-quoted YAML escapes only the quote itself, by doubling it.
+  if (s.length >= 2 && s.startsWith("'") && s.endsWith("'")) {
+    return s.slice(1, -1).split("''").join("'");
   }
   if (s === 'true') return true;
   if (s === 'false') return false;

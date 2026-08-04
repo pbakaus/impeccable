@@ -297,6 +297,61 @@ rounded:
     assert.equal(isAllowedRadiusRaw('80px', loaded), true);
     assert.equal(isAllowedRadiusRaw('24px', loaded), true);
   });
+
+  it('unescapes YAML-escaped quotes around multi-word font families (issue #428)', () => {
+    // A YAML double-quoted scalar processes backslash escapes, so a stack that
+    // quotes a multi-word family the CSS way arrives as
+    //   fontFamily: "\"IBM Plex Sans\", system-ui, sans-serif"
+    // Before the fix the family reached allowedFonts as '\"ibm plex sans' and
+    // the rule flagged fonts DESIGN.md declares.
+    const cwd = mkTmp();
+    fs.writeFileSync(path.join(cwd, 'DESIGN.md'), `---
+typography:
+  display:
+    fontFamily: "Archivo, system-ui, sans-serif"
+  body:
+    fontFamily: "\\"IBM Plex Sans\\", system-ui, sans-serif"
+  data:
+    fontFamily: '"IBM Plex Mono", ui-monospace, monospace'
+  accent:
+    fontFamily: "S\\u00f6hne, sans-serif"
+  label:
+    fontFamily: "IBM\\ Plex\\ Serif, serif"
+  mono:
+    fontFamily: "Space\\_Grotesk, sans-serif"
+colors:
+  accent: "\\x23b8422e"
+---
+
+# Design System
+`);
+
+    const loaded = loadDesignSystemForCwd(cwd);
+    assert.deepEqual(
+      [...loaded.allowedFonts].sort(),
+      ['archivo', 'ibm plex mono', 'ibm plex sans', 'ibm plex serif', 'space grotesk', 'söhne'],
+    );
+    assert.equal(isAllowedFont('ibm plex sans', loaded), true);
+    assert.equal(isAllowedFont('ibm plex mono', loaded), true);
+    // Escaped space (\ ) and non-breaking space (\_) forms; NBSP collapses to
+    // a plain space in normalizeFontName, so the CSS declaration matches.
+    assert.equal(isAllowedFont('ibm plex serif', loaded), true);
+    assert.equal(isAllowedFont('space grotesk', loaded), true);
+    assert.equal(isAllowedFont('comic sans ms', loaded), false);
+    // \x escapes decode too: "\x23b8422e" is #b8422e.
+    assert.equal(isAllowedColorRaw('#b8422e', loaded), true);
+    assert.equal(isAllowedColorRaw('#ff00aa', loaded), false);
+
+    const findings = checkSourceDesignSystem(`
+body { font-family: "IBM Plex Sans", system-ui, sans-serif; }
+code { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+h1 { font-family: Archivo, system-ui, sans-serif; }
+em { font-family: "Söhne", sans-serif; color: #b8422e; }
+small { font-family: "IBM Plex Serif", serif; }
+pre { font-family: "Space Grotesk", sans-serif; }
+`, '/tmp/escaped-fonts.css', { designSystem: loaded });
+    assert.deepEqual(findings, []);
+  });
 });
 
 describe('checkSourceDesignSystem()', () => {
