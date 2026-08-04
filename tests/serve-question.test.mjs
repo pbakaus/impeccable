@@ -5,6 +5,9 @@ import { writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { EventEmitter } from 'node:events';
+
+import { browserOpenCommand, openSystemBrowser } from '../skill/scripts/lib/open-system-browser.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SCRIPT = path.join(ROOT, 'skill', 'scripts', 'serve-question.mjs');
@@ -39,6 +42,24 @@ const PAYLOAD = {
 };
 
 describe('serve-question', () => {
+  it('opens Windows URLs through cmd.exe and reserves the start title argument', () => {
+    assert.deepEqual(
+      browserOpenCommand('http://127.0.0.1:1234/', { platform: 'win32', comspec: 'cmd.exe' }),
+      { command: 'cmd.exe', args: ['/c', 'start', '', 'http://127.0.0.1:1234/'] },
+    );
+  });
+
+  it('absorbs asynchronous system-opener failures after printing the URL', () => {
+    const child = new EventEmitter();
+    child.unref = () => {};
+    assert.equal(openSystemBrowser('http://127.0.0.1:1234/', {
+      platform: 'linux',
+      spawnImpl: () => child,
+    }), true);
+    assert.equal(child.listenerCount('error'), 1);
+    assert.doesNotThrow(() => child.emit('error', Object.assign(new Error('missing opener'), { code: 'ENOENT' })));
+  });
+
   it('serves the page, records the answer, prints ANSWER, exits 0', async () => {
     const { child, url, read } = await startServer(PAYLOAD);
     const html = await (await fetch(url)).text();

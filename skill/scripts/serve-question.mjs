@@ -79,6 +79,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { openSystemBrowser } from './lib/open-system-browser.mjs';
 
 function arg(name, fallback = null) {
   const i = process.argv.indexOf(`--${name}`);
@@ -976,8 +977,7 @@ server.listen(portArg, '127.0.0.1', () => {
     console.log('Waiting for the user to choose in the browser (Ctrl-C aborts)...');
   }
   if (!hasFlag('no-open')) {
-    const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
-    try { spawn(opener, [url], { stdio: 'ignore', detached: true }).unref(); } catch { /* URL printed anyway */ }
+    openSystemBrowser(url);
   }
   if (timeoutSec > 0) {
     setTimeout(() => {
