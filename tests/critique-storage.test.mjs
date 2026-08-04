@@ -5,7 +5,7 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -17,6 +17,7 @@ import {
   slugFromTarget,
   writeSnapshot,
   readLatestSnapshot,
+  readLatestSnapshotAcrossTargets,
   readTrend,
   nowFilenameStamp,
 } from '../skill/scripts/critique-storage.mjs';
@@ -111,6 +112,16 @@ describe('writeSnapshot + readLatestSnapshot', () => {
     writeSnapshot({ slug: 'index-astro', meta: { total_score: 30 }, body: 'new', cwd, now: new Date('2026-05-12T00:00:00Z') });
     const latest = readLatestSnapshot('index-astro', { cwd });
     assert.equal(latest.meta.total_score, 30);
+    assert.match(latest.body, /new/);
+  });
+
+  it('picks the newest snapshot across target slugs', () => {
+    writeSnapshot({ slug: 'home', meta: {}, body: 'old', cwd, now: new Date('2026-05-01T00:00:00Z') });
+    writeSnapshot({ slug: 'pricing', meta: {}, body: 'new', cwd, now: new Date('2026-05-12T00:00:00Z') });
+    writeFileSync(join(cwd, '.impeccable', 'critique', 'ignore.md'), '# Critique ignores\n');
+    writeFileSync(join(cwd, '.impeccable', 'critique', '9999-not-a-snapshot.md'), '# Draft\n');
+    const latest = readLatestSnapshotAcrossTargets({ cwd });
+    assert.equal(latest.meta.slug, 'pricing');
     assert.match(latest.body, /new/);
   });
 
