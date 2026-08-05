@@ -1173,8 +1173,19 @@ describe('renderTemplate()', () => {
 
 describe('writeAuditLog()', () => {
   let cwd;
-  beforeEach(() => { cwd = mkTmp(); });
-  afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
+  let savedHome;
+  beforeEach(() => {
+    cwd = mkTmp();
+    savedHome = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+  });
+  afterEach(() => {
+    // The JSON round-trip drops keys that were undefined, so a variable that did
+    // not exist before the test does not come back as the string "undefined".
+    delete process.env.HOME;
+    delete process.env.USERPROFILE;
+    Object.assign(process.env, JSON.parse(JSON.stringify(savedHome)));
+    fs.rmSync(cwd, { recursive: true, force: true });
+  });
 
   it('appends NDJSON when IMPECCABLE_HOOK_LOG is set', () => {
     const log = path.join(cwd, 'audit.ndjson');
@@ -1212,13 +1223,58 @@ describe('writeAuditLog()', () => {
 
   it('resolves config auditLog from entry.cwd (the event project root), not the fallback cwd', () => {
     const projectDir = path.join(cwd, 'project');
-    const log = path.join(cwd, 'event-cwd.ndjson');
+    // Inside the project: a configured destination outside it is refused now,
+    // so the fixture would no longer isolate which cwd the config was read from.
+    const log = path.join(projectDir, 'event-cwd.ndjson');
     fs.mkdirSync(path.join(projectDir, '.impeccable'), { recursive: true });
     fs.writeFileSync(path.join(projectDir, '.impeccable', 'config.json'),
       JSON.stringify({ hook: { auditLog: log } }));
     // The fallback cwd (root) has no config; entry.cwd points at the project.
     assert.equal(writeAuditLog({}, { event: 'PostToolUse', cwd: projectDir }, cwd), true);
     assert.equal(fs.existsSync(log), true);
+  });
+
+  it('refuses a configured destination that resolves outside the project root', () => {
+    const projectDir = path.join(cwd, 'project');
+    const outside = path.join(cwd, 'escaped.ndjson');
+    fs.mkdirSync(path.join(projectDir, '.impeccable'), { recursive: true });
+    fs.writeFileSync(path.join(projectDir, '.impeccable', 'config.json'),
+      JSON.stringify({ hook: { auditLog: outside } }));
+    assert.equal(writeAuditLog({}, { event: 'PostToolUse', cwd: projectDir }, cwd), false);
+    assert.equal(fs.existsSync(outside), false);
+  });
+
+  it('refuses a configured destination that escapes the project root with ..', () => {
+    const projectDir = path.join(cwd, 'project');
+    fs.mkdirSync(path.join(projectDir, '.impeccable'), { recursive: true });
+    fs.writeFileSync(path.join(projectDir, '.impeccable', 'config.json'),
+      JSON.stringify({ hook: { auditLog: '../traversed.ndjson' } }));
+    assert.equal(writeAuditLog({}, { event: 'PostToolUse', cwd: projectDir }, cwd), false);
+    assert.equal(fs.existsSync(path.join(cwd, 'traversed.ndjson')), false);
+  });
+
+  it('refuses a configured destination that expands into the home directory', () => {
+    const projectDir = path.join(cwd, 'project');
+    const fakeHome = path.join(cwd, 'home');
+    fs.mkdirSync(path.join(projectDir, '.impeccable'), { recursive: true });
+    fs.mkdirSync(fakeHome, { recursive: true });
+    fs.writeFileSync(path.join(projectDir, '.impeccable', 'config.json'),
+      JSON.stringify({ hook: { auditLog: '~/.ssh/hook.ndjson' } }));
+    process.env.HOME = fakeHome;
+    process.env.USERPROFILE = fakeHome;
+    assert.equal(writeAuditLog({}, { event: 'PostToolUse', cwd: projectDir }, cwd), false);
+    assert.equal(fs.existsSync(path.join(fakeHome, '.ssh')), false);
+  });
+
+  it('still honours IMPECCABLE_HOOK_LOG pointing outside the project', () => {
+    const projectDir = path.join(cwd, 'project');
+    const outside = path.join(cwd, 'operator.ndjson');
+    fs.mkdirSync(projectDir, { recursive: true });
+    assert.equal(
+      writeAuditLog({ IMPECCABLE_HOOK_LOG: outside }, { event: 'PostToolUse', cwd: projectDir }, cwd),
+      true,
+    );
+    assert.equal(fs.existsSync(outside), true);
   });
 
   it('resolves a relative auditLog path against the project root, not the process cwd', () => {
