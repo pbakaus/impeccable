@@ -35,12 +35,17 @@ describe('pin command provider syntax', () => {
       const skill = fs.readFileSync(path.join(project, harness, 'skills', 'audit', 'SKILL.md'), 'utf8');
       assert.match(skill, /\/impeccable audit/);
       assert.doesNotMatch(skill, /\$impeccable audit/);
+      assert.match(skill, /^argument-hint:/m);
+      assert.match(skill, /^user-invocable: true$/m);
     }
 
     for (const harness of ['.agents', '.codex']) {
       const skill = fs.readFileSync(path.join(project, harness, 'skills', 'audit', 'SKILL.md'), 'utf8');
       assert.match(skill, /\$impeccable audit/);
       assert.doesNotMatch(skill, /\/impeccable audit/);
+      assert.doesNotMatch(skill, /^argument-hint:/m);
+      assert.doesNotMatch(skill, /^user-invocable:/m);
+      assert.match(skill, /^metadata:\n  argument-hint:/m);
     }
   });
 });
