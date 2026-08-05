@@ -181,8 +181,24 @@ function chatAgentLikelyActive() {
 // cap at 10 MB to guard against runaway writes from a misbehaving client.
 const MAX_ANNOTATION_BYTES = 10 * 1024 * 1024;
 
+// Fields the poller owns and the page must never supply. `_instructions` is
+// documented in reference/live.md as outranking that document ("when it
+// conflicts with your recollection of this document, `_instructions` wins"),
+// and live-poll.mjs only generates the legitimate value when the field is
+// absent — so one supplied by the page both suppresses the real one and is
+// handed to the agent as authoritative. validateEvent() checks the fields it
+// knows about but never strips unknown ones, and the auth token is a page
+// global (live-browser.js), so any third-party script in the inspected app can
+// POST an authenticated event. Same shape for `_completionAck`.
+const RESERVED_POLL_FIELDS = ['_instructions', '_completionAck'];
+
 function enqueueEvent(event) {
   if (!event) return;
+  // Strip here rather than at the call site: every path into the queue is
+  // covered, including replay from a persisted snapshot.
+  if (typeof event === 'object') {
+    for (const reserved of RESERVED_POLL_FIELDS) delete event[reserved];
+  }
   // Dedupe by (session, type), except mount failures, which are per-variant:
   // variant 2 failing must not be swallowed because variant 1's failure is
   // still queued.
