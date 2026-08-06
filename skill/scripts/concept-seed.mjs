@@ -553,6 +553,13 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     process.exitCode = 1;
   }
   // A raced-out fetch may still hold a socket; exit explicitly so the CLI
-  // never lingers on a dead network path after output is written.
+  // never lingers on a dead network path after output is written. Destroy
+  // fetch's global undici dispatcher first: process.exit() with a live
+  // keep-alive socket trips a libuv assertion on Windows and aborts the
+  // process after a successful roll (nodejs/node#56645).
+  const dispatcher = globalThis[Symbol.for('undici.globalDispatcher.1')];
+  if (dispatcher && typeof dispatcher.destroy === 'function') {
+    try { await dispatcher.destroy(); } catch { /* exit regardless */ }
+  }
   process.exit(process.exitCode ?? 0);
 }
