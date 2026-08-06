@@ -305,6 +305,48 @@ describe('live-copy-edit-agent', () => {
     );
   });
 
+  it('passes large Claude prompts on stdin instead of argv', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'copy-agent-claude-stdin-'));
+    try {
+      const fakeClaude = path.join(tmp, 'claude');
+      fs.writeFileSync(fakeClaude, [
+        '#!/usr/bin/env node',
+        "let input = '';",
+        "process.stdin.setEncoding('utf8');",
+        "process.stdin.on('data', (chunk) => { input += chunk; });",
+        "process.stdin.on('end', () => {",
+        "  const promptLeakedToArgv = process.argv.slice(2).some((arg) => arg.includes('large-prompt-sentinel'));",
+        "  if (!input.includes('large-prompt-sentinel') || promptLeakedToArgv) process.exit(2);",
+        "  process.stdout.write(JSON.stringify({ status: 'done', appliedEntryIds: ['large'], files: [], notes: [] }));",
+        '});',
+        '',
+      ].join('\n'));
+      fs.chmodSync(fakeClaude, 0o755);
+
+      const result = await runCopyEditBatchAgent({
+        pageUrl: '/',
+        entries: [{
+          id: 'large',
+          pageUrl: '/',
+          ops: [{ originalText: 'Old', newText: `large-prompt-sentinel${'x'.repeat(1_100_000)}` }],
+        }],
+      }, {
+        provider: 'claude',
+        outDir: path.join(tmp, 'out'),
+        timeoutMs: 5_000,
+        env: {
+          ...process.env,
+          PATH: `${tmp}${path.delimiter}${process.env.PATH || ''}`,
+        },
+      });
+
+      assert.equal(result.status, 'done');
+      assert.deepEqual(result.appliedEntryIds, ['large']);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it('describeNoProviderError mentions starting impeccable live when chat is the missing piece', () => {
     const noChatPolling = describeNoProviderError({
       exists: () => false,

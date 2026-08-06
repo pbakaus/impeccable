@@ -470,12 +470,11 @@ function runClaude(prompt, { cwd, env, resultPath, logPath, timeoutMs = DEFAULT_
   if (env.IMPECCABLE_LIVE_COPY_AGENT_MODEL) {
     args.push('--model', env.IMPECCABLE_LIVE_COPY_AGENT_MODEL);
   }
-  args.push(prompt);
   // Forward env as-is so CLAUDE_CODE_OAUTH_TOKEN and ANTHROPIC_API_KEY flow
   // through. On macOS, `claude /login` stores creds in the Keychain, which a
   // non-TTY subprocess cannot read; setting CLAUDE_CODE_OAUTH_TOKEN (via
   // `claude setup-token`) is the supported headless auth path.
-  return runAgentProcess('claude', args, '', { cwd, env, logPath, timeoutMs, mirrorOutputPath: resultPath });
+  return runAgentProcess('claude', args, prompt, { cwd, env, logPath, timeoutMs, mirrorOutputPath: resultPath });
 }
 
 function runAgentProcess(command, args, stdin, { cwd, env, logPath, timeoutMs, mirrorOutputPath }) {
