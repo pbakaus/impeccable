@@ -154,6 +154,58 @@ describe('detectText — pseudo-element stripe fixtures (issue #394)', () => {
   });
 });
 
+describe('detectText — Tailwind stripe-child fixtures (issue #394)', () => {
+  // The side-tab silhouette drawn as a dedicated narrow child div
+  // (`w-1 shrink-0 bg-amber-500`) instead of a border. Cases are mapped by
+  // their distinct bg-* token, which the matcher includes in the snippet.
+  const SHOULD_FLAG_BG = ['bg-amber-500', 'bg-indigo-600', 'bg-rose-500', 'bg-emerald-500'];
+  const SHOULD_PASS_BG = [
+    'bg-teal-600',    // heading tick (explicit short height)
+    'bg-lime-500',    // status dot
+    'bg-gray-200',    // neutral divider
+    'bg-orange-500',  // not narrow
+    'bg-purple-500',  // fractional width
+    'bg-sky-500',     // aria-current selection marker
+    'bg-fuchsia-500', // chart bar with arbitrary height
+    'bg-cyan-500',    // max-w-1, not a width utility
+  ];
+
+  it('flags narrow chromatic stripe children, passes ticks, dots, and dividers', () => {
+    const filePath = path.join(FIXTURES, 'stripe-child.jsx');
+    const source = fs.readFileSync(filePath, 'utf8');
+    const findings = detectText(source, filePath).filter(r => r.antipattern === 'side-tab');
+    const snippets = findings.map(r => r.snippet || '').join(' | ');
+    for (const token of SHOULD_FLAG_BG) {
+      assert.match(snippets, new RegExp(token), `expected stripe child with ${token} to flag`);
+    }
+    for (const token of SHOULD_PASS_BG) {
+      assert.doesNotMatch(snippets, new RegExp(token), `${token} case should pass`);
+    }
+  });
+});
+
+describe('detectHtml — stripe-child element fixtures (issue #394)', () => {
+  // The same construction in plain HTML/CSS, caught by the static-html
+  // element rule. Cases are mapped by the stripe element's unique class,
+  // which classSelector puts in the snippet.
+  const SHOULD_FLAG = ['flag-flex-left', 'flag-flex-right', 'flag-abs-left', 'flag-abs-height', 'flag-oklch'];
+  const SHOULD_PASS = [
+    'pass-neutral', 'pass-hairline', 'pass-active', 'pass-alert',
+    'pass-tick', 'pass-wide', 'pass-text', 'pass-column-stripe', 'pass-middle',
+  ];
+
+  it('flags chromatic full-height stripe children only', async () => {
+    const f = await detectHtml(path.join(FIXTURES, 'stripe-child.html'));
+    const snippets = f.filter(r => r.antipattern === 'side-tab').map(r => r.snippet || '').join(' | ');
+    for (const cls of SHOULD_FLAG) {
+      assert.match(snippets, new RegExp(`\\.${cls}\\b`), `expected .${cls} to flag`);
+    }
+    for (const cls of SHOULD_PASS) {
+      assert.doesNotMatch(snippets, new RegExp(`\\.${cls}\\b`), `.${cls} should pass`);
+    }
+  });
+});
+
 describe('detectHtml — static HTML/CSS fixtures', () => {
   it('should-flag: catches border anti-patterns', async () => {
     const f = await detectHtml(path.join(FIXTURES, 'should-flag.html'));

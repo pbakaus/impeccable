@@ -350,6 +350,9 @@ function isNeutralBorderColor(str) {
   return isNeutralAuthoredColor(m[1]);
 }
 
+// Tailwind's chromatic palette families — everything except the gray ramps.
+const TAILWIND_CHROMATIC_BG_RE = /\bbg-(?:red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d+\b/;
+
 const REGEX_MATCHERS = [
   // --- Side-tab ---
   { id: 'side-tab', regex: /\bborder-[lrse]-(\d+)\b/g,
@@ -370,6 +373,17 @@ const REGEX_MATCHERS = [
   { id: 'side-tab', regex: /border(?:Left|Right)\s*[:=]\s*["'`](\d+)px\s+solid/g,
     test: (m) => +m[1] >= 3,
     fmt: (m) => m[0] },
+  // Stripe drawn as a dedicated narrow child (`w-1 shrink-0 bg-amber-500`,
+  // issue #394): a 2-12px Tailwind width utility next to a chromatic palette
+  // background. An explicit height utility means a tick, dot, or chart bar
+  // (only h-full/h-screen/h-auto keep the full-height stripe shape), and
+  // rounded-full means a dot; aria-current/selected marks a selected item.
+  { id: 'side-tab', regex: /(?<![\w-])w-(?:0\.5|1(?:\.5)?|2(?:\.5)?|3|\[(?:[2-9]|1[0-2])px\])(?![\w./-])/g,
+    test: (m, line) => TAILWIND_CHROMATIC_BG_RE.test(line)
+      && !/\bh-(?:px\b|\d|\[)/.test(line)
+      && !/\brounded-full\b/.test(line)
+      && !/aria-(?:current|selected)/i.test(line),
+    fmt: (m, line) => `${m[0]} + ${(line.match(TAILWIND_CHROMATIC_BG_RE) || ['bg-*'])[0]} stripe child` },
   // --- Border accent on rounded ---
   { id: 'border-accent-on-rounded', regex: /\bborder-[tb]-(\d+)\b/g,
     test: (m, line) => hasRounded(line) && +m[1] >= 1,

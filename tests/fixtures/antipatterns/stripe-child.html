@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Stripe-child side-tab fixture (issue #394)</title>
+<style>
+  /* Explicit pixel dimensions everywhere: jsdom does no layout. */
+  body { font-family: sans-serif; margin: 40px; }
+  .column { width: 480px; }
+  .card { display: flex; width: 400px; height: 100px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 16px; }
+  .card-body { padding: 16px; }
+  .card-body-grow { padding: 16px; flex: 1; }
+  .rel-card { position: relative; width: 400px; height: 100px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 16px; }
+
+  /* --- Should flag --- */
+  .flag-flex-left { width: 4px; background: #f59e0b; }
+  .flag-flex-right { width: 6px; background: #8b5cf6; }
+  .flag-abs-left { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: #ef4444; }
+  .flag-abs-height { position: absolute; right: 0; top: 0; height: 100%; width: 3px; background: rgb(16 185 129); }
+  .flag-oklch { width: 5px; background: oklch(0.7 0.19 48); }
+
+  /* --- Should pass --- */
+  .pass-neutral { width: 4px; background: #d1d5db; }
+  .pass-hairline { width: 1px; background: #f43f5e; }
+  .pass-active { width: 4px; background: #3b82f6; }
+  .pass-alert { width: 4px; background: #f59e0b; }
+  .pass-tick { width: 4px; height: 24px; background: #0ea5e9; }
+  .pass-wide { width: 200px; background: #fb923c; }
+  .pass-text { width: 8px; background: #a855f7; }
+  .pass-column-stripe { width: 4px; background: #10b981; }
+  .pass-middle { width: 4px; background: #e11d48; }
+  .column-card { display: flex; flex-direction: column; width: 400px; height: 100px; border: 1px solid #ddd; margin-bottom: 16px; }
+</style>
+</head>
+<body>
+<h1>Stripe-child constructions</h1>
+
+<div class="column">
+  <h2>Should flag</h2>
+
+  <h3>Flex first-child stripe (left)</h3>
+  <div class="card">
+    <div class="flag-flex-left"></div>
+    <div class="card-body">Deploy finished without warnings.</div>
+  </div>
+
+  <h3>Flex last-child stripe (right)</h3>
+  <div class="card">
+    <div class="card-body-grow">Queue paused by an operator.</div>
+    <div class="flag-flex-right"></div>
+  </div>
+
+  <h3>Absolute stripe pinned top/bottom</h3>
+  <div class="rel-card">
+    <div class="flag-abs-left"></div>
+    <div class="card-body">Nightly backup completed.</div>
+  </div>
+
+  <h3>Absolute stripe with height 100%</h3>
+  <div class="rel-card">
+    <div class="flag-abs-height"></div>
+    <div class="card-body">Two reviewers requested changes.</div>
+  </div>
+
+  <h3>Chromatic oklch stripe</h3>
+  <div class="card">
+    <div class="flag-oklch"></div>
+    <div class="card-body">Invoice sent to the billing contact.</div>
+  </div>
+</div>
+
+<div class="column">
+  <h2>Should pass</h2>
+
+  <h3>Neutral divider</h3>
+  <div class="card">
+    <div class="pass-neutral"></div>
+    <div class="card-body">Neutral gray edge, not an accent.</div>
+  </div>
+
+  <h3>Chromatic hairline</h3>
+  <div class="card">
+    <div class="pass-hairline"></div>
+    <div class="card-body">One pixel is a hairline, not a stripe.</div>
+  </div>
+
+  <h3>Selected-state marker</h3>
+  <div class="card active">
+    <div class="pass-active"></div>
+    <div class="card-body">Stripe marks the current item.</div>
+  </div>
+
+  <h3>Status callout</h3>
+  <div class="card" role="alert">
+    <div class="pass-alert"></div>
+    <div class="card-body">Severity accent on a live alert region.</div>
+  </div>
+
+  <h3>Short heading tick</h3>
+  <div class="card">
+    <div class="pass-tick"></div>
+    <div class="card-body">Fixed 24px height, does not span the card.</div>
+  </div>
+
+  <h3>Wide colored panel</h3>
+  <div class="card">
+    <div class="pass-wide"></div>
+    <div class="card-body">200px wide is a panel, not a stripe.</div>
+  </div>
+
+  <h3>Narrow element with text</h3>
+  <div class="card">
+    <div class="pass-text">i</div>
+    <div class="card-body">Content inside means it is not pure decor.</div>
+  </div>
+
+  <h3>Column-direction flex</h3>
+  <div class="column-card">
+    <div class="pass-column-stripe"></div>
+    <div class="card-body">Column flex does not stretch it to full height.</div>
+  </div>
+
+  <h3>Middle child</h3>
+  <div class="card">
+    <div class="card-body">Before.</div>
+    <div class="pass-middle"></div>
+    <div class="card-body">After.</div>
+  </div>
+</div>
+
+</body>
+</html>
