@@ -102,11 +102,13 @@ if (process.env.IMPECCABLE_QUESTION_DISABLED) {
 }
 // Headless self-detection, applied only where a browser is actually wanted.
 // --no-open means the caller opens the URL itself, and --wait / --stop /
-// --schema never open anything: --wait polls a daemon whose browser question
-// was already settled at --start, --stop kills one, --schema prints text. A
-// spurious exit 2 from those breaks the documented loop, which polls --wait
-// while it exits 3 and reads --schema before building a payload.
-const wantsBrowser = !hasFlag('no-open') && !hasFlag('wait') && !hasFlag('stop') && !hasFlag('schema');
+// --schema / --update never open anything: --wait polls a daemon whose
+// browser question was already settled at --start, --stop kills one,
+// --schema prints text, and --update hands the next round to a page that is
+// already open. A spurious exit 2 from those breaks the documented loop,
+// which polls --wait while it exits 3, reads --schema before building a
+// payload, and delivers re-rolled hands with --update.
+const wantsBrowser = !hasFlag('no-open') && !hasFlag('wait') && !hasFlag('stop') && !hasFlag('schema') && !hasFlag('update');
 if (wantsBrowser && !process.env.IMPECCABLE_QUESTION_FORCE) {
   const headless =
     process.env.CI ||
@@ -141,6 +143,10 @@ function printAnswer(raw) {
 
 const payloadPath = arg('payload');
 const timeoutSec = Number(arg('timeout', '900'));
+// How long the server (and the page's own delivery deadline) outlive the
+// last heartbeat; a zero, negative, or unparseable value takes the default.
+const idleGraceArg = Number(arg('idle-grace', '600'));
+const idleGraceMs = (Number.isFinite(idleGraceArg) && idleGraceArg > 0 ? idleGraceArg : 600) * 1000;
 const portArg = Number(arg('port', '0'));
 const QUESTION_DIR = path.join(process.cwd(), '.impeccable', 'questions');
 const stateFile = (key) => path.join(QUESTION_DIR, `${key}.state.json`);
@@ -918,7 +924,8 @@ function page() {
     // The wait must be able to end: a dead server rejects every tick and a
     // round nobody delivers stays ready:false forever, and both used to spin
     // the skeletons indefinitely. Distinguish them, say so, and offer a way
-    // out. The deadline matches the server's own idle grace.
+    // out. The delivery deadline is the server's own idle grace, so the page
+    // never gives up on a server that would still accept the hand.
     let poll;
     let misses = 0;
     const shuffleStart = Date.now();
@@ -932,7 +939,7 @@ function page() {
         const status = await (await fetch('/next-status')).json();
         misses = 0;
         if (status.ready) { clearInterval(poll); location.reload(); }
-        else if (Date.now() - shuffleStart > 600000) stall('The next hand never arrived. Check the agent session, then reload.');
+        else if (Date.now() - shuffleStart > ${idleGraceMs}) stall('The next hand never arrived. Check the agent session, then reload.');
       } catch {
         misses += 1;
         if (misses >= 8) stall('The question server went away. Ask the agent to restart it, or answer in the chat instead.');
@@ -1037,7 +1044,6 @@ server.listen(portArg, '127.0.0.1', () => {
   // page polling skeletons that could never resolve. Once the page beats,
   // the server's lifetime tracks the beats, and it exits only after the idle
   // grace passes with none, long enough to survive a closed laptop lid.
-  const idleGraceMs = Number(arg('idle-grace', '600')) * 1000;
   const startedAt = Date.now();
   if (timeoutSec > 0) {
     const lifetime = setInterval(() => {

@@ -137,6 +137,10 @@ describe('serve-question', () => {
     try {
       const waiting = await run(['--wait', '--key', 'hk', '--poll', '1']);
       assert.equal(waiting.code, 3, `--wait under CI must report WAITING, got ${waiting.code}: ${waiting.out}`);
+      // --update delivers a re-rolled hand to a page that is already open; a
+      // headless gate that eats it strands that page mid-shuffle (issue #469).
+      const updated = await run(['--update', '--key', 'hk', '--payload', payloadPath]);
+      assert.equal(updated.code, 0, `--update under CI must deliver, got ${updated.code}: ${updated.out}`);
     } finally {
       const stopped = await run(['--stop', '--key', 'hk']);
       assert.equal(stopped.code, 0, `--stop under CI must kill the daemon, got ${stopped.code}: ${stopped.out}`);
@@ -200,12 +204,12 @@ describe('serve-question', () => {
       child.stdout.on('data', (chunk) => { out += chunk; });
       child.on('exit', (code) => resolve({ code, out }));
     });
-    const started = await run(['--start', '--payload', payloadPath, '--no-open', '--key', 'life', '--timeout', '2', '--idle-grace', '3']);
+    const started = await run(['--start', '--payload', payloadPath, '--no-open', '--key', 'life', '--timeout', '3', '--idle-grace', '3']);
     assert.equal(started.code, 0, started.out);
     const url = started.out.match(/QUESTION URL: (\S+)/)?.[1];
     assert.ok(url, started.out);
-    // Beat well past the 2s timeout: the timer must not fire under a live page.
-    const beatUntil = Date.now() + 4500;
+    // Beat well past the 3s timeout: the timer must not fire under a live page.
+    const beatUntil = Date.now() + 5500;
     while (Date.now() < beatUntil) {
       await fetch(`${url}heartbeat`, { method: 'POST' });
       await new Promise((r) => setTimeout(r, 400));
@@ -213,9 +217,15 @@ describe('serve-question', () => {
     const alive = await fetch(url);
     assert.equal(alive.status, 200, 'the daemon outlives --timeout while the page heartbeats');
     // Then silence: the idle grace (3s here) plus the 2s check interval pass
-    // with no beat, and the daemon must exit rather than leak.
-    await new Promise((r) => setTimeout(r, 6500));
-    await assert.rejects(() => fetch(url), undefined, 'the daemon exits after the idle grace passes with no heartbeat');
+    // with no beat, and the daemon must exit rather than leak. Poll rather
+    // than sleep a fixed margin so a loaded runner cannot flake this.
+    const deadline = Date.now() + 12000;
+    let gone = false;
+    while (Date.now() < deadline && !gone) {
+      await new Promise((r) => setTimeout(r, 500));
+      try { await fetch(url); } catch { gone = true; }
+    }
+    assert.ok(gone, 'the daemon exits after the idle grace passes with no heartbeat');
   });
 
   it('a page that never opens still ends the daemon at --timeout', async () => {
