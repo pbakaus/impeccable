@@ -70,9 +70,16 @@
  *   --stop --key K               kill a daemonized question.
  *   --update --key K --payload F deliver the next hand after a re-roll: the
  *              live page swaps to loading cards when the user re-rolls, and
- *              reloads into this new payload the moment it lands.
+ *              reloads into this new payload the moment it lands. Always the
+ *              same key the round started with; a second --start serves a new
+ *              URL and strands the open tab on a hand that never arrives.
  *
- *   node serve-question.mjs --payload question.json [--timeout 900] [--no-open] [--port 0]
+ * --timeout bounds the wait for a page to arrive, never the user's decision:
+ * once the page heartbeats, the server lives while the page does, and exits
+ * only after --idle-grace seconds (default 600) pass with no beat, wide
+ * enough to survive a closed laptop lid mid-decision.
+ *
+ *   node serve-question.mjs --payload question.json [--timeout 900] [--idle-grace 600] [--no-open] [--port 0]
  */
 import http from 'node:http';
 import fs from 'node:fs';
@@ -219,8 +226,19 @@ if (hasFlag('update')) {
   const key = arg('key');
   if (!key || !payloadPath) { console.error('serve-question: --update needs --key and --payload'); process.exit(1); }
   JSON.parse(fs.readFileSync(payloadPath, 'utf8'));
-  try { process.kill(JSON.parse(fs.readFileSync(stateFile(key), 'utf8')).pid, 0); }
-  catch { console.error('serve-question: no live question server for that key'); process.exit(2); }
+  // Liveness mirrors --wait: a fresh page heartbeat is the primary proof, the
+  // kill probe is secondary, and EPERM means a sandbox blocked the signal,
+  // never a dead server. This is the documented re-roll delivery step, so a
+  // false "no live server" here strands the page mid-shuffle.
+  const live = (() => {
+    try {
+      const state = JSON.parse(fs.readFileSync(stateFile(key), 'utf8'));
+      if (state.lastBeat && Date.now() - state.lastBeat < 12000) return true;
+      try { process.kill(state.pid, 0); return true; }
+      catch (err) { return err.code === 'EPERM'; }
+    } catch { return false; }
+  })();
+  if (!live) { console.error('serve-question: no live question server for that key; the page it served is gone too. Re-present the round with --start and a fresh key, or fall back to the structured question tool.'); process.exit(2); }
   fs.copyFileSync(payloadPath, path.join(QUESTION_DIR, `${key}.next.json`));
   console.log('next round delivered; the page reloads itself');
   process.exit(0);
@@ -239,7 +257,8 @@ if (hasFlag('start')) {
   const logFd = fs.openSync(logFile, 'a');
   const child = spawn(process.execPath, [
     fileURLToPath(import.meta.url), '--payload', payloadPath, '--detached-serve', '--key', key,
-    '--timeout', String(timeoutSec), ...(hasFlag('open') ? [] : ['--no-open']),
+    '--timeout', String(timeoutSec), ...(arg('idle-grace') ? ['--idle-grace', arg('idle-grace')] : []),
+    ...(hasFlag('open') ? [] : ['--no-open']),
   ], { detached: true, stdio: ['ignore', logFd, logFd] });
   child.unref();
   fs.closeSync(logFd);
@@ -616,6 +635,8 @@ function page() {
   @keyframes shimmer { from { background-position: 120% 0; } to { background-position: -80% 0; } }
   @media (prefers-reduced-motion: reduce) { .shimmer, .card.skeleton .line { animation: none; } }
   .done { display: flex; flex-direction: column; align-items: center; gap: 1rem; padding: 7rem 1rem; font-family: var(--ks-font-display); font-size: 1.4rem; color: var(--ks-champagne); text-align: center; }
+  .stall { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 1.2rem; padding: 4.5rem 1rem; font-family: var(--ks-font-display); font-size: 1.4rem; color: var(--ks-champagne); text-align: center; }
+  .stall .choose { align-self: center; margin-top: 0; }
 </style>
 <div id="ambient" aria-hidden="true"></div>
 <div id="scrim" aria-hidden="true"></div>
@@ -652,8 +673,16 @@ function page() {
   const beat = () => { try { navigator.sendBeacon('/heartbeat'); } catch { fetch('/heartbeat', { method: 'POST' }); } };
   beat();
   setInterval(beat, 5000);
+  // A dead server must fail loudly: awaiting a rejected fetch here used to
+  // swallow the click and never print the confirmation, so the user believed
+  // a choice had landed that no one would ever collect.
   async function answer(optionId) {
-    await fetch('/answer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId, steer: steer() }) });
+    try {
+      await fetch('/answer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId, steer: steer() }) });
+    } catch {
+      document.body.innerHTML = '<div class="done">The question server went away before this choice could land.<br>Tell the agent your pick in the chat instead.</div>';
+      return;
+    }
     document.body.innerHTML = '<div class="done"><svg viewBox="0 0 24 24" width="38" height="38" fill="oklch(84% 0.19 80.46)" aria-hidden="true"><path d="M5 2.5 L13.5 2.5 L5.5 21.5 L5 21.5 Q2.5 21.5 2.5 19 L2.5 5 Q2.5 2.5 5 2.5 Z"/><path d="M16.5 2.5 L19 2.5 Q21.5 2.5 21.5 5 L21.5 19 Q21.5 21.5 19 21.5 L8.5 21.5 Z"/></svg>Choice recorded. The agent is resuming; you can close this tab.</div>';
   }
   document.querySelectorAll('button.choose').forEach(b => b.addEventListener('click', () => answer(b.dataset.id)));
@@ -863,7 +892,12 @@ function page() {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !lightbox.hidden) closeLightbox(); });
   document.getElementById('canon')?.addEventListener('click', () => answer('canon'));
   document.getElementById('reroll')?.addEventListener('click', async () => {
-    await fetch('/answer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: steer() }) });
+    try {
+      await fetch('/answer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: steer() }) });
+    } catch {
+      document.body.innerHTML = '<div class="done">The question server went away before this choice could land.<br>Tell the agent your pick in the chat instead.</div>';
+      return;
+    }
     const grid = document.querySelector('.grid');
     const cardsNow = [...grid.querySelectorAll('.card')];
     const g = grid.getBoundingClientRect();
@@ -881,11 +915,28 @@ function page() {
     const cardHeight = cardsNow[0] ? cardsNow[0].getBoundingClientRect().height : 0;
     grid.innerHTML = cardsNow.map(() => '<article class="card skeleton"' + (cardHeight ? ' style="height:' + cardHeight + 'px"' : '') + '><div class="card-inner"><div class="face front"><div class="media"><div class="shimmer"></div></div><div class="body"><div class="line tier w40"></div><div class="line title w70"></div><div class="line w90"></div><div class="line w80"></div><div class="line w60"></div><div class="line button"></div></div></div></div></article>').join('');
     document.getElementById('reroll')?.setAttribute('disabled', '');
-    const poll = setInterval(async () => {
+    // The wait must be able to end: a dead server rejects every tick and a
+    // round nobody delivers stays ready:false forever, and both used to spin
+    // the skeletons indefinitely. Distinguish them, say so, and offer a way
+    // out. The deadline matches the server's own idle grace.
+    let poll;
+    let misses = 0;
+    const shuffleStart = Date.now();
+    const stall = (message) => {
+      clearInterval(poll);
+      grid.innerHTML = '<div class="stall"><p>' + message + '</p><button type="button" class="choose">Reload</button></div>';
+      grid.querySelector('.stall .choose').addEventListener('click', () => location.reload());
+    };
+    poll = setInterval(async () => {
       try {
         const status = await (await fetch('/next-status')).json();
+        misses = 0;
         if (status.ready) { clearInterval(poll); location.reload(); }
-      } catch { /* server briefly busy */ }
+        else if (Date.now() - shuffleStart > 600000) stall('The next hand never arrived. Check the agent session, then reload.');
+      } catch {
+        misses += 1;
+        if (misses >= 8) stall('The question server went away. Ask the agent to restart it, or answer in the chat instead.');
+      }
     }, 1200);
   });
 </script>`;
@@ -903,6 +954,7 @@ const server = http.createServer((req, res) => {
   }
   if (req.method === 'POST' && req.url === '/heartbeat') {
     res.writeHead(204); res.end();
+    server.lastBeatSeen = Date.now();
     if (detachedKey) {
       const now = Date.now();
       if (!server.lastBeatWrite || now - server.lastBeatWrite > 4000) {
@@ -979,10 +1031,26 @@ server.listen(portArg, '127.0.0.1', () => {
   if (!hasFlag('no-open')) {
     openSystemBrowser(url);
   }
+  // The timeout bounds the wait for a page, never the user's decision: an
+  // absolute guillotine counted from start used to kill the server under a
+  // still-open tab (a slow re-rolled round easily outlived it), leaving the
+  // page polling skeletons that could never resolve. Once the page beats,
+  // the server's lifetime tracks the beats, and it exits only after the idle
+  // grace passes with none, long enough to survive a closed laptop lid.
+  const idleGraceMs = Number(arg('idle-grace', '600')) * 1000;
+  const startedAt = Date.now();
   if (timeoutSec > 0) {
-    setTimeout(() => {
-      console.log('serve-question: timed out with no answer');
-      process.exit(2);
-    }, timeoutSec * 1000).unref?.();
+    const lifetime = setInterval(() => {
+      if (!server.lastBeatSeen) {
+        if (Date.now() - startedAt > timeoutSec * 1000) {
+          console.log('serve-question: timed out with no answer');
+          process.exit(2);
+        }
+      } else if (Date.now() - server.lastBeatSeen > idleGraceMs) {
+        console.log('serve-question: the page stopped beating and never came back; exiting');
+        process.exit(2);
+      }
+    }, 2000);
+    lifetime.unref?.();
   }
 });

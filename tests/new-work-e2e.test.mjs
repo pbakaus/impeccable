@@ -368,6 +368,106 @@ describe('new-work-e2e: serve-question decision page', () => {
       rmSync(cwd, { recursive: true, force: true });
     }
   });
+
+  it('(g) a server that dies mid-shuffle stops the poll and names the failure', async () => {
+    const cwd = makeWorkspace();
+    const key = 'gonemid';
+    const payload = {
+      title: 'Choose the visual world',
+      options: [
+        { id: 'assigned', label: 'First Hand', kicker: 'THE ROLL' },
+        { id: 'challenger-a', label: 'Alt One' },
+      ],
+      reroll: true, steer: true,
+    };
+    const { url } = await startDaemon(cwd, payload, key);
+    const context = await browser.newContext();
+    try {
+      const page = await context.newPage();
+      await page.goto(url, { waitUntil: 'load' });
+      await page.click('#reroll');
+      await page.waitForSelector('.card.skeleton');
+      // Collect the re-roll answer, then kill the daemon out from under the
+      // still-open page: the poll must stop and say the server is gone
+      // instead of spinning skeletons forever.
+      const first = await waitLoop(cwd, key);
+      assert.match(first.out, /"optionId":"reroll"/);
+      await run(['--stop', '--key', key], cwd);
+      await page.waitForSelector('.stall', { timeout: 30000 });
+      const text = await page.$eval('.stall', (el) => el.textContent);
+      assert.match(text, /The question server went away/);
+      assert.ok(await page.$('.stall .choose'), 'a way out is offered');
+    } finally {
+      await context.close();
+      await stopDaemon(cwd, key);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('(h) a round nobody delivers stops the poll at the deadline and says so', async () => {
+    const cwd = makeWorkspace();
+    const key = 'nodeal';
+    const payload = {
+      title: 'Choose the visual world',
+      options: [{ id: 'assigned', label: 'First Hand', kicker: 'THE ROLL' }],
+      reroll: true, steer: true,
+    };
+    const { url } = await startDaemon(cwd, payload, key);
+    const context = await browser.newContext();
+    try {
+      const page = await context.newPage();
+      // Fake the page clock so the 10-minute delivery deadline is reachable;
+      // the server keeps its real clock, so its own idle grace never fires.
+      await page.clock.install();
+      await page.goto(url, { waitUntil: 'load' });
+      // Playwright actionability waits on rAF, which the fake clock owns, so
+      // dispatch the click directly.
+      await page.$eval('#reroll', (el) => el.click());
+      // Walk the fake clock forward past the fly-out settle and the deadline.
+      // page.$ runs over CDP, not in-page timers, so it stays safe to poll.
+      let stalled = null;
+      for (let i = 0; i < 40 && !stalled; i++) {
+        await page.clock.fastForward(20000);
+        await new Promise((r) => setTimeout(r, 100));
+        stalled = await page.$('.stall');
+      }
+      assert.ok(stalled, 'the poll stops at the deadline instead of spinning forever');
+      const text = await page.$eval('.stall', (el) => el.textContent);
+      assert.match(text, /The next hand never arrived/);
+      assert.ok(await page.$('.stall .choose'), 'a way out is offered');
+    } finally {
+      await context.close();
+      await stopDaemon(cwd, key);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('(i) Build this against a dead server fails loudly instead of confirming', async () => {
+    const cwd = makeWorkspace();
+    const key = 'deadpick';
+    const payload = {
+      title: 'Choose the visual world',
+      options: [{ id: 'assigned', label: 'First Hand', kicker: 'THE ROLL' }],
+      reroll: true, steer: true,
+    };
+    const { url } = await startDaemon(cwd, payload, key);
+    const context = await browser.newContext();
+    try {
+      const page = await context.newPage();
+      await page.goto(url, { waitUntil: 'load' });
+      await page.waitForSelector('button.choose');
+      await run(['--stop', '--key', key], cwd);
+      await page.click('button.choose');
+      await page.waitForSelector('.done', { timeout: 15000 });
+      const text = await page.$eval('.done', (el) => el.textContent);
+      assert.match(text, /went away before this choice could land/);
+      assert.doesNotMatch(text, /Choice recorded/);
+    } finally {
+      await context.close();
+      await stopDaemon(cwd, key);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
 });
 
 // --------------------------------------------------------------------------
