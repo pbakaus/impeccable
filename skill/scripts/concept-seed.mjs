@@ -357,7 +357,11 @@ export function renderConceptSeed({
   survive the current task plus navigation, quiet and dense content,
   interaction and state, and a substantially different future surface. In an
   attended run, present the assigned direction fully committed and offer
-  re-roll; never present a ranked lineup to choose from. Re-roll yourself only
+  re-roll. You may add ONE card for your top-ranked grounded candidate when
+  it is not the assigned direction, kicker MY PICK, with an honest risk line
+  naming its familiarity; one pick card, never a ranked lineup, and the pick
+  never takes the lead position. When the assignment IS your top candidate,
+  there is no pick card. Re-roll yourself only
   on named factual grounds, when the assignment cannot carry the product's
   truth or task; taste is never grounds.`
   : `After ordering the task's grounded structural candidates by resonance,
@@ -374,7 +378,16 @@ export function renderConceptSeed({
   conflicts. Weigh the fused result against the assigned direction on exactly
   two axes, audience identification and product clarity. Losing to strong
   grounded material is a valid outcome; beating a thin or tool-monoculture
-  list is the point. A fused challenger that wins both axes becomes the build.`
+  list is the point. A fused challenger that wins both axes becomes the build.
+  Close the weighing with a verdict per challenger, decided before any
+  borrowing is considered: wins (beats the assigned direction on both axes),
+  competitive (holds one axis), or declined (loses both). A declined
+  challenger is not spent: name the one discipline of its system the assigned
+  direction lacks, and raise the assigned direction to match before
+  presenting it. A donation transfers ambition and system discipline, never
+  the challenger's clothes; one world owns the page. Write each raise as its
+  own named line on the presented direction, and carry every verdict, kept
+  line, and raise into the decision page payload.`
   : `A challenger wins only when its fused result beats the grounded list on
   audience identification and product clarity. It may change task topology or
   interaction, but never the committed visual identity.`;
