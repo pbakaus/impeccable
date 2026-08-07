@@ -1490,8 +1490,9 @@ describe('skills install/update: local universal bundle e2e', () => {
     expect(output).toContain('Installed impeccable into: .cursor');
     expect(readFileSync(join(skillDir, 'SKILL.md'), 'utf8')).toContain('version: 9.9.9-local');
     expect(readFileSync(join(tmp, '.cursor', 'skills', 'impeccable', 'SKILL.md'), 'utf8')).toContain('version: 9.9.9-local');
-    // The freshly installed provider gets its hooks too.
+    // The freshly installed provider gets its hooks and agents too.
     expect(existsSync(join(tmp, '.cursor', 'hooks.json'))).toBe(true);
+    expect(existsSync(join(tmp, '.cursor', 'agents', 'impeccable-finish-reviewer.md'))).toBe(true);
 
     rmSync(tmp, { recursive: true, force: true });
   }, 15000);

@@ -1869,6 +1869,7 @@ async function install(flags) {
           process.exit(1);
         }
         console.log(`Installed impeccable into: ${missingSelectedTargets.join(', ')} (${scope === 'user' ? 'global' : 'project'})`);
+        reportProviderAgents(copyProviderAgents(bundleDir, installRoot, missingSelectedTargets, { scope }));
       }
 
       const writtenHookTargets = missingHookTargets.length > 0
