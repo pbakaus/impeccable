@@ -136,6 +136,44 @@ describe('detect CLI DESIGN.md resolution', () => {
     );
   });
 
+  it('treats a .git worktree file the same as a .git directory for the subpackage walk', () => {
+    // In a git worktree checkout, .git is a file, not a directory. It must
+    // still let the walk continue past the subpackage package.json.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-detect-wt-'));
+    tempRoots.push(root);
+    fs.writeFileSync(path.join(root, '.git'), 'gitdir: /nonexistent/worktrees/x\n');
+    fs.writeFileSync(path.join(root, 'DESIGN.md'), DESIGN_MD);
+    fs.mkdirSync(path.join(root, 'web'));
+    fs.writeFileSync(path.join(root, 'web', 'package.json'), '{"name":"web"}');
+    const page = path.join(root, 'web', 'page.html');
+    fs.writeFileSync(page, PAGE_HTML);
+
+    const findings = runDetect(projB.dir, [page]);
+    assert.ok(
+      fontFindingsFor(findings, page).some((f) => f.ignoreValue === 'verdana'),
+      'a worktree-style .git file must behave like a .git directory',
+    );
+  });
+
+  it('still stops at the repo boundary: a monorepo without DESIGN.md inherits nothing from cwd', () => {
+    // The walk continues past web/'s package.json but must stop at the .git
+    // root — it may never escape the repository and pick up cwd's DESIGN.md.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-detect-mono-bare-'));
+    tempRoots.push(root);
+    fs.mkdirSync(path.join(root, '.git'));
+    fs.mkdirSync(path.join(root, 'web'));
+    fs.writeFileSync(path.join(root, 'web', 'package.json'), '{"name":"web"}');
+    const page = path.join(root, 'web', 'page.html');
+    fs.writeFileSync(page, PAGE_HTML);
+
+    const findings = runDetect(projA.dir, [page]);
+    assert.equal(
+      fontFindingsFor(findings, page).length,
+      0,
+      'a design-less monorepo must not inherit the cwd project\'s DESIGN.md',
+    );
+  });
+
   it('falls back to no design system for a bare file with no project markers above it', () => {
     // A lone file whose directory has neither .git, package.json, nor .impeccable.
     const bareDir = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-detect-bare-'));
