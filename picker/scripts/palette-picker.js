@@ -2279,16 +2279,50 @@ function hubSurfaceRows(group) {
     }));
 }
 
-function hubLine(text, surface) {
+/* A summary row is a surface pill on the left and the value docked
+   right behind a patina dot, the same signal the surface tabs and the
+   option rows spend on a committed choice. The plain line survives
+   only for the skipped-card message. */
+function hubPlainLine(text) {
   const line = document.createElement('span');
   line.className = 'picker-hub-line';
-  if (surface) {
-    const name = document.createElement('b');
-    name.textContent = surface;
-    line.append(name);
-  }
   line.append(text);
   return line;
+}
+
+function hubRow(surfaceLabel, valueTitle, group, value) {
+  const entry = document.createElement('span');
+  entry.className = 'picker-hub-entry';
+  const pill = document.createElement('span');
+  pill.className = 'picker-hub-pill';
+  const label = document.createElement('span');
+  label.className = 'picker-hub-pill-label';
+  label.textContent = surfaceLabel;
+  const val = document.createElement('span');
+  val.className = 'picker-hub-value';
+  const dot = document.createElement('i');
+  dot.className = 'picker-hub-dot';
+  dot.setAttribute('aria-hidden', 'true');
+  val.append(dot, valueTitle);
+  pill.append(label, val);
+  const note = document.createElement('span');
+  note.className = 'picker-hub-note';
+  const why = value ? hubOptionDesc(group, value) : '';
+  note.textContent = why;
+  note.hidden = !why;
+  entry.append(pill, note);
+  return entry;
+}
+
+/* The one-line reason the current answer is a sound default, read off
+   the option row's own description so the hub never restates copy.
+   dataset.copy is read first because applyAllows swaps textContent for
+   a blocked reason on surfaces that rule the option out. */
+function hubOptionDesc(group, value) {
+  const input = document.querySelector(`input[name="${group}"][value="${value}"]`);
+  const desc = input?.closest('.picker-strategy-option')?.querySelector('.picker-strategy-desc');
+  if (!desc) return '';
+  return (desc.dataset.copy ?? desc.textContent).trim();
 }
 
 function renderHub() {
@@ -2304,7 +2338,7 @@ function renderHub() {
     cardNode.disabled = skipped;
     cardNode.setAttribute('aria-disabled', skipped ? 'true' : 'false');
     if (skipped) {
-      summary.replaceChildren(hubLine('Not asked of these surfaces'));
+      summary.replaceChildren(hubPlainLine('Not asked of these surfaces'));
       cardNode.classList.remove('is-edited');
       mark.hidden = true;
       continue;
@@ -2315,15 +2349,25 @@ function renderHub() {
     if (rows.length === 0) {
       const checked = document.querySelector(`input[name="${group}"]:checked`);
       edited = hubEdited.has(group);
-      lines = [hubLine(checked ? hubOptionTitle(group, checked.value) : '')];
+      lines = [hubRow(
+        'All surfaces',
+        checked ? hubOptionTitle(group, checked.value) : '',
+        group,
+        checked?.value,
+      )];
     } else {
       edited = rows.some((row) => row.chosen);
       if (rows.length > 1 && rows.every((row) => row.value === rows[0].value)) {
-        lines = [hubLine(`${hubOptionTitle(group, rows[0].value)} · all`)];
+        lines = [hubRow('All surfaces', hubOptionTitle(group, rows[0].value), group, rows[0].value)];
       } else if (rows.length === 1) {
-        lines = [hubLine(hubOptionTitle(group, rows[0].value))];
+        lines = [hubRow(hubSurfaceLabel(rows[0].mode), hubOptionTitle(group, rows[0].value), group, rows[0].value)];
       } else {
-        lines = rows.map((row) => hubLine(hubOptionTitle(group, row.value), hubSurfaceLabel(row.mode)));
+        lines = rows.map((row) => hubRow(
+          hubSurfaceLabel(row.mode),
+          hubOptionTitle(group, row.value),
+          group,
+          row.value,
+        ));
       }
     }
     summary.replaceChildren(...lines);

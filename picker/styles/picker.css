@@ -329,6 +329,7 @@ body.picker-page {
 .picker-shell:has(#picker-form[data-current="02"]) .picker-hero-art,
 .picker-shell:has(#picker-form[data-current="03"]) .picker-hero-art,
 .picker-shell:has(#picker-form[data-current="04"]) .picker-hero-art,
+.picker-shell:has(#picker-form[data-current="04b"]) .picker-hero-art,
 .picker-shell:has(#picker-form[data-current="05"]) .picker-hero-art,
 .picker-shell:has(#picker-form[data-current="06"]) .picker-hero-art,
 .picker-shell:has(#picker-form[data-current="07"]) .picker-hero-art,
@@ -4109,7 +4110,7 @@ body.picker-page {
   gap: clamp(12px, 2svh, 18px);
 }
 
-/* Screen 05 is the only question that carries a lede, and one sentence at
+/* Screen 05 and the configure hub carry a lede, and one sentence at
    caption size under a display headline reads as a footnote. Set above the
    body size instead, with the measure pulled in so the sentence breaks into
    two balanced lines rather than one long ruler. */
@@ -7566,6 +7567,11 @@ body.picker-page {
   padding-block: clamp(32px, 5svh, 48px) clamp(24px, 3.5svh, 48px);
 }
 
+.picker-hub .picker-question-lede {
+  max-width: 800px;
+  font-weight: 300;
+}
+
 .picker-hub-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -7581,10 +7587,11 @@ body.picker-page {
 }
 
 .picker-hub-card {
+  position: relative;
   display: grid;
-  gap: 10px;
+  gap: 16px;
   width: 100%;
-  padding: 20px 24px;
+  padding: 24px 28px;
   text-align: left;
   background: var(--ks-lacquer-raised);
   border: 1px solid var(--ks-rule);
@@ -7596,16 +7603,19 @@ body.picker-page {
 }
 
 .picker-hub-card:hover {
-  background: var(--ks-graphite);
-  border-color: var(--ks-kinpaku-deep);
+  border-color: color-mix(in oklab, var(--ks-patina) 45%, var(--ks-rule));
 }
 
 .picker-hub-card:focus-visible {
-  outline: 1px solid var(--ks-kinpaku);
-  outline-offset: 3px;
+  outline: 2px solid var(--ks-patina-deep);
+  outline-offset: -2px;
+  z-index: 1;
 }
 
 .picker-hub-eyebrow {
+  position: absolute;
+  top: 24px;
+  right: 28px;
   color: var(--ks-text-faint);
   font-size: var(--ks-type-eyebrow-size);
   font-weight: 500;
@@ -7616,31 +7626,29 @@ body.picker-page {
 .picker-hub-title {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  padding-right: 72px;
   color: var(--ks-champagne);
   font-size: var(--ks-type-title-size);
   font-weight: var(--ks-type-title-weight);
   line-height: var(--ks-type-title-line);
 }
 
-.picker-hub-chevron {
-  width: 16px;
-  height: 16px;
-  margin-left: auto;
+.picker-hub-arrow {
+  width: 14px;
+  height: 8px;
   flex: 0 0 auto;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.5;
   color: var(--ks-text-faint);
   transition: color 180ms var(--ks-ease), transform 180ms var(--ks-ease);
 }
 
-.picker-hub-card:hover .picker-hub-chevron {
-  color: var(--ks-kinpaku);
+.picker-hub-card:hover .picker-hub-arrow {
+  color: var(--ks-patina);
   transform: translateX(2px);
 }
 
 .picker-hub-mark {
+  margin-left: auto;
   padding: 2px 8px;
   border: 1px solid var(--ks-kinpaku-deep);
   color: var(--ks-kinpaku);
@@ -7652,20 +7660,64 @@ body.picker-page {
 
 .picker-hub-summary {
   display: grid;
-  gap: 6px;
+  gap: 14px;
   color: var(--ks-text-muted);
   font-size: 0.86rem;
   line-height: 1.5;
 }
 
-.picker-hub-line {
+.picker-hub-entry {
   display: grid;
-  gap: 2px;
+  gap: 8px;
 }
 
-.picker-hub-line b {
+.picker-hub-line {
+  display: block;
+}
+
+/* Surface pill wraps the label and the committed value; patina dot
+   plus the text mix mirror the surface tabs' answered state. */
+.picker-hub-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  max-width: 100%;
+  padding: 4px 9px;
   color: var(--ks-text-faint);
-  font-weight: 500;
+  font-size: 12.5px;
+  letter-spacing: 0.015em;
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+}
+
+.picker-hub-pill-label {
+  flex: 0 0 auto;
+}
+
+.picker-hub-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: color-mix(in oklab, var(--ks-patina) 85%, var(--ks-champagne));
+  text-align: right;
+}
+
+.picker-hub-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ks-patina);
+}
+
+/* Why this answer is a sound default, read off the option row's own
+   description by renderHub(). One note per answer row. */
+.picker-hub-note {
+  padding-inline: 2px;
+  color: var(--ks-text-faint);
+  font-size: 0.84rem;
+  line-height: 1.5;
 }
 
 /* A question no chosen surface takes: present so the menu keeps its
@@ -7681,7 +7733,7 @@ body.picker-page {
 .picker-hub-card.is-skipped .picker-hub-title,
 .picker-hub-card.is-skipped .picker-hub-eyebrow,
 .picker-hub-card.is-skipped .picker-hub-summary,
-.picker-hub-card.is-skipped .picker-hub-chevron {
+.picker-hub-card.is-skipped .picker-hub-arrow {
   color: var(--ks-text-mute-deep);
 }
 
