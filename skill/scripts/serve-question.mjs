@@ -933,11 +933,20 @@ function page() {
       clearInterval(poll);
       // A stalled page is an abandoned flow: keep heartbeating and the
       // daemon never reaches its idle grace, so --wait spins on WAITING
-      // forever. Go silent and let the server reclaim itself; Reload
-      // starts a fresh page with a fresh heartbeat.
+      // forever. Go silent and let the server reclaim itself. Reload must
+      // not undo that silence: an unconditional reload re-serves the same
+      // unresolved round and its fresh page beats again, so check for a
+      // delivered hand first and only reload when one exists.
       clearInterval(beatTimer);
       grid.innerHTML = '<div class="stall"><p>' + message + '</p><button type="button" class="choose">Reload</button></div>';
-      grid.querySelector('.stall .choose').addEventListener('click', () => location.reload());
+      grid.querySelector('.stall .choose').addEventListener('click', async () => {
+        try {
+          if ((await (await fetch('/next-status')).json()).ready) { location.reload(); return; }
+          grid.querySelector('.stall p').textContent = 'Still nothing to deal. Check the agent session, or answer in the chat instead.';
+        } catch {
+          grid.querySelector('.stall p').textContent = 'The question server went away. Ask the agent to restart it, or answer in the chat instead.';
+        }
+      });
     };
     poll = setInterval(async () => {
       try {

@@ -445,6 +445,40 @@ describe('new-work-e2e: serve-question decision page', () => {
       await page.clock.fastForward(60000);
       await new Promise((r) => setTimeout(r, 750));
       assert.equal(beats, beatsAtStall, 'no heartbeat fires after the stall, so the idle grace can reclaim the daemon');
+      // Reload must not revive the abandoned flow: with no hand delivered it
+      // stays on the silent stall screen and says so, rather than re-serving
+      // the unresolved round with a fresh heartbeat.
+      await page.$eval('.stall .choose', (el) => el.click());
+      // Poll over CDP, not in-page waiters: the fake clock owns rAF.
+      let msg = '';
+      for (let i = 0; i < 50 && !/Still nothing to deal/.test(msg); i++) {
+        await new Promise((r) => setTimeout(r, 100));
+        msg = await page.$eval('.stall p', (el) => el.textContent);
+      }
+      assert.match(msg, /Still nothing to deal/, 'the stall says a reload found nothing');
+      await page.clock.fastForward(30000);
+      await new Promise((r) => setTimeout(r, 500));
+      assert.equal(beats, beatsAtStall, 'a reload attempt with nothing to deal leaves the page silent');
+      // Once a hand actually lands, the same button reloads into it and the
+      // heartbeat legitimately resumes: a live round is not an abandoned flow.
+      const nextPayloadPath = path.join(cwd, 'next.json');
+      writeFileSync(nextPayloadPath, JSON.stringify({
+        title: 'Choose the visual world',
+        options: [{ id: 'assigned', label: 'Second Hand', kicker: 'RE-ROLLED' }],
+        reroll: true, steer: true,
+      }));
+      const updated = await run(['--update', '--key', key, '--payload', nextPayloadPath], cwd);
+      assert.equal(updated.code, 0, updated.out);
+      await page.$eval('.stall .choose', (el) => el.click());
+      let dealt = null;
+      for (let i = 0; i < 100 && !dealt; i++) {
+        await new Promise((r) => setTimeout(r, 100));
+        dealt = await page.$('button.choose');
+      }
+      assert.ok(dealt, 'reload with a delivered hand serves a playable round');
+      const label = await page.$eval('.card', (el) => el.textContent);
+      assert.match(label, /Second Hand/, 'reload with a delivered hand serves the new round');
+      assert.ok(beats > beatsAtStall, 'the heartbeat resumes on the re-dealt round');
     } finally {
       await context.close();
       await stopDaemon(cwd, key);
