@@ -861,6 +861,38 @@ function checkBorders(tag, widths, colors, radius, opts = {}) {
   return findings;
 }
 
+// Side-tab variant: the accent stripe drawn as a dedicated narrow child
+// element (`<div class="w-1 shrink-0 bg-amber-500" />`) instead of a border,
+// pseudo-element, or inset shadow (issue #394). The adapters establish the
+// geometry (a 2-12px empty child spanning its host's full height on the left
+// or right edge) and pass the measured facts here; this gate decides.
+function checkStripeChild(opts) {
+  const { selector, width, edge, bg, bgRaw } = opts;
+  if (!edge) return [];
+  if (!(width >= 2 && width <= 12)) return [];
+  if (!stripeChildBgIsChromatic(bg, bgRaw)) return [];
+  return [{ id: 'side-tab', snippet: `${selector} — ${Math.round(width)}px stripe child (${edge})` }];
+}
+
+// Neutral spellings for authored CSS. isNeutralColor only parses computed
+// function forms and deliberately reports unknown formats as chromatic, so
+// `background: black` on a divider would read as a colored stripe without
+// this keyword pass (same reasoning as isNeutralAuthoredColor in the regex
+// engine, which is not importable from here without a circular dependency).
+const STRIPE_NEUTRAL_KEYWORDS = new Set([
+  'transparent', 'currentcolor', 'inherit', 'unset', 'initial', 'none',
+  'black', 'white', 'gray', 'grey', 'silver',
+  'dimgray', 'dimgrey', 'darkgray', 'darkgrey', 'lightgray', 'lightgrey',
+  'gainsboro', 'whitesmoke',
+]);
+
+function stripeChildBgIsChromatic(bg, bgRaw) {
+  if (bg) return (bg.a ?? 1) > 0.1 && (Math.max(bg.r, bg.g, bg.b) - Math.min(bg.r, bg.g, bg.b)) >= 30;
+  const c = String(bgRaw || '').trim().toLowerCase();
+  if (!c || STRIPE_NEUTRAL_KEYWORDS.has(c)) return false;
+  return !isNeutralColor(c);
+}
+
 // Returns true if the given text is composed entirely of emoji characters
 // (plus whitespace / variation selectors). Emojis render as multicolor glyphs
 // regardless of CSS `color`, so contrast checks against the element's text
@@ -2747,6 +2779,42 @@ function checkElementPseudoStripeDOM(el) {
   return findings;
 }
 
+// Browser-side stripe-child check (issue #394): the same silhouette as the
+// pseudo-element stripe, but drawn with a real empty child element. Geometry
+// is the whole story here — a 2-12px-wide contentless div/span spanning
+// (nearly) its parent's full height and hugging its left or right edge is a
+// stripe regardless of whether flex, absolute positioning, or a grid put it
+// there. Gates mirror checkElementPseudoStripeDOM; exemptions stay narrow:
+// selection markers (isTabContextElement), live status regions
+// (isStatusContextElement), and hosts where a colored edge child has an
+// established meaning (progress, sliders, separators, tab strips).
+function checkElementStripeChildDOM(el) {
+  const tag = el.tagName.toLowerCase();
+  if (tag !== 'div' && tag !== 'span') return [];
+  const parent = el.parentElement;
+  if (!parent || parent === document.body || parent === document.documentElement) return [];
+  if (el.children.length > 0 || (el.textContent || '').trim()) return [];
+  if (el.closest?.('nav, blockquote, pre, table, button, a, select, progress, meter, [role="progressbar"], [role="slider"], [role="scrollbar"], [role="separator"], [role="tablist"]')) return [];
+  if (!isRenderedForBrowserRule(el)) return [];
+  if (isTabContextElement(el) || isStatusContextElement(el)) return [];
+  const rect = el.getBoundingClientRect();
+  const host = parent.getBoundingClientRect();
+  if (host.width < 40 || host.height < 20) return [];
+  // "Nearly" full height tolerates the floating variant that backs off each
+  // end by a small inset, same as the pseudo-element check.
+  if (!(rect.height >= host.height - 44 && rect.height >= host.height * 0.5)) return [];
+  const hugs = (a, b) => Math.abs(a - b) <= 3;
+  const edge = hugs(rect.left, host.left) ? 'left' : hugs(rect.right, host.right) ? 'right' : null;
+  const style = getComputedStyle(el);
+  return checkStripeChild({
+    selector: classSelector(el),
+    width: rect.width,
+    edge,
+    bg: parseRgb(style.backgroundColor) || parseAnyColor(style.backgroundColor),
+    bgRaw: style.backgroundColor,
+  });
+}
+
 // Full-cover surface pseudo (browser): a ::before/::after positioned
 // absolute/fixed whose box covers (nearly) the whole host and carries an
 // opaque background. That pseudo is the element's visible surface even
@@ -4586,6 +4654,60 @@ function checkElementIconTile(el, tag, window) {
     siblingBorderRadius: resolveBorderRadiusPx(sibling, sibStyle, sibWidth, window),
     hasIconChild: !!iconChild || hasInlineEmojiIcon,
     iconChildWidth: iconWidth,
+  });
+}
+
+// Static-engine stripe-child check (issue #394). jsdom does no layout, so
+// "spans the host's full height on one edge" has to be read from style
+// signals instead of rects. Two constructions carry the silhouette:
+//   A. a flex-row parent whose first/last child is the stripe — a flex child
+//      with no explicit height stretches to the row, so an unset/auto/100%
+//      height is the spanning signal, and child order picks the edge;
+//   B. an absolutely-positioned child pinned to one edge with height:100%
+//      or top:0 + bottom:0.
+// The width band, emptiness, chroma gate, and exemptions match the browser
+// adapter.
+function checkElementStripeChild(el, style, tag, window) {
+  if (tag !== 'div' && tag !== 'span') return [];
+  const parent = el.parentElement;
+  if (!parent) return [];
+  if ((el.children?.length || 0) > 0 || (el.textContent || '').trim()) return [];
+  if (el.closest?.('nav, blockquote, pre, table, button, a, select, progress, meter, [role="progressbar"], [role="slider"], [role="scrollbar"], [role="separator"], [role="tablist"]')) return [];
+  if (isTabContextElement(el) || isStatusContextElement(el)) return [];
+  const width = parseFloat(style.width) || 0;
+  const heightRaw = String(style.height || '').trim().toLowerCase();
+
+  let edge = null;
+  if (style.position === 'absolute' || style.position === 'fixed') {
+    const hugsOffset = (v) => Number.isFinite(v) && Math.abs(v) <= 2;
+    const top = parseFloat(style.top);
+    const bottom = parseFloat(style.bottom);
+    const spansHost = heightRaw === '100%' || (hugsOffset(top) && hugsOffset(bottom));
+    if (spansHost) {
+      const left = parseFloat(style.left);
+      const right = parseFloat(style.right);
+      edge = hugsOffset(left) ? 'left' : hugsOffset(right) ? 'right' : null;
+    }
+  } else {
+    const parentStyle = window.getComputedStyle(parent);
+    const flexRow = /flex/.test(String(parentStyle.display || ''))
+      && !/^column/.test(String(parentStyle.flexDirection || ''));
+    const stretches = !heightRaw || heightRaw === 'auto' || heightRaw === '100%';
+    const kids = parent.children || [];
+    // A lone child is a bar standing by itself, not the card-edge tell.
+    if (flexRow && stretches && kids.length >= 2) {
+      if (kids[0] === el) edge = 'left';
+      else if (kids[kids.length - 1] === el) edge = 'right';
+    }
+  }
+
+  const bgRaw = style.backgroundColor || '';
+  return checkStripeChild({
+    selector: classSelector(el),
+    width,
+    edge,
+    bg: parseRgb(bgRaw) || parseAnyColor(bgRaw),
+    bgRaw,
   });
 }
 
@@ -7744,6 +7866,7 @@ if (IS_BROWSER) {
       const findings = [
         ...checkElementBordersDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
         ...checkElementPseudoStripeDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
+        ...checkElementStripeChildDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
         ...checkElementColorsDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
         ...checkElementMotionDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
         ...checkElementGlowDOM(el).map(f => ({ type: f.id, detail: f.snippet })),

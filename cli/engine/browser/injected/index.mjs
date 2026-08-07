@@ -1486,6 +1486,7 @@ if (IS_BROWSER) {
       const findings = [
         ...checkElementBordersDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
         ...checkElementPseudoStripeDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
+        ...checkElementStripeChildDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
         ...checkElementColorsDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
         ...checkElementMotionDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
         ...checkElementGlowDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
