@@ -1,10 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   readConceptCatalog,
   validateConceptCatalog,
@@ -617,5 +618,98 @@ describe('init gate', () => {
       selectApprovedCompositions(args).map(p => p.id),
       selectApprovedCompositions(args).map(p => p.id)
     );
+  });
+});
+
+// The Windows abort in issue #504 (nodejs/node#56645) needs three things at
+// once: a successful roll over Node's undici-backed fetch, the keep-alive
+// socket that success leaves pooled, and the explicit process.exit at the end
+// of the CLI. The suite's other API test exercises only the unreachable-API
+// fallback, which leaves no pooled socket and so never walked the crashing
+// path. This one serves a real roll from a local server and asserts the CLI
+// destroys fetch's global dispatcher before exiting, so the teardown cannot
+// silently regress. The teardown is Node fetch internals, so the CLI is
+// spawned with node even when the suite itself runs under bun.
+describe('API roll path', () => {
+  const NODE = process.versions.bun ? 'node' : process.execPath;
+
+  const ROLL_PAYLOAD = {
+    poolRevision: 'api-test-rev',
+    approvedCount: 6,
+    catalogCount: 9,
+    challengers: [{
+      id: 'api-test-world',
+      form: 'a letterpress print shop, where type, ink, and impression organize the page',
+      spark: 'Deep impressions hold the central promise while loose sorts wait in the case.',
+      system: ['Palette/material: dense ink black bitten into soft cotton paper'],
+      webLeverage: 'Variable-font impression depth with a keyboard-readable page structure',
+    }],
+    compositions: [],
+  };
+
+  // Wraps the global dispatcher's destroy so the parent test can observe the
+  // CLI's exit teardown. The warmup fetch makes fetch install the dispatcher
+  // before the wrap, and parks a keep-alive socket in its pool, which is the
+  // exact state the Windows crash needs at exit.
+  const PRELOAD = [
+    "const KEY = Symbol.for('undici.globalDispatcher.1');",
+    'await fetch(`${process.env.IMPECCABLE_API_URL}/warmup`).then(r => r.arrayBuffer()).catch(() => {});',
+    'const dispatcher = globalThis[KEY];',
+    "if (dispatcher && typeof dispatcher.destroy === 'function') {",
+    '  const destroy = dispatcher.destroy.bind(dispatcher);',
+    '  dispatcher.destroy = (...args) => {',
+    "    process.stderr.write('DISPATCHER_DESTROY_CALLED\\n');",
+    '    return destroy(...args);',
+    '  };',
+    '}',
+    '',
+  ].join('\n');
+
+  it('resolves a successful roll and destroys the fetch dispatcher before the explicit exit', async () => {
+    const requests = [];
+    const server = createServer((req, res) => {
+      requests.push(req.url);
+      if (req.url.startsWith('/api/roll?')) {
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify(ROLL_PAYLOAD));
+        return;
+      }
+      res.statusCode = 404;
+      res.end('not found');
+    });
+    await new Promise(resolveListen => server.listen(0, '127.0.0.1', resolveListen));
+    try {
+      const dir = mkdtempSync(path.join(tmpdir(), 'concept-seed-api-'));
+      writeFileSync(path.join(dir, 'PRODUCT.md'), '# Test Product\n\n## Platform\n\nweb\n');
+      const preloadPath = path.join(dir, 'wrap-dispatcher.mjs');
+      writeFileSync(preloadPath, PRELOAD);
+      const result = await new Promise((resolveRun, rejectRun) => {
+        const child = spawn(NODE, [
+          '--import', pathToFileURL(preloadPath).href,
+          SCRIPT, '--scope', 'direction', '--mode', 'persuade', '--from', 'api-test',
+        ], {
+          cwd: dir,
+          env: {
+            ...process.env,
+            IMPECCABLE_CATALOG_DIR: '/nonexistent-catalog-dir',
+            IMPECCABLE_API_URL: `http://127.0.0.1:${server.address().port}/api`,
+          },
+        });
+        let stdout = '';
+        let stderr = '';
+        child.stdout.on('data', chunk => { stdout += chunk; });
+        child.stderr.on('data', chunk => { stderr += chunk; });
+        child.on('error', rejectRun);
+        child.on('close', status => resolveRun({ status, stdout, stderr }));
+      });
+      assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+      assert.equal(requests.some(url => url.startsWith('/api/roll?')), true, 'the CLI must hit the roll endpoint');
+      assert.match(result.stdout, /source: api/);
+      assert.match(result.stdout, /letterpress print shop/);
+      assert.match(result.stdout, /TELEMETRY:/);
+      assert.match(result.stderr, /DISPATCHER_DESTROY_CALLED/, 'the dispatcher must be destroyed before process.exit');
+    } finally {
+      server.close();
+    }
   });
 });
