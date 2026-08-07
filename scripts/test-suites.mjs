@@ -46,6 +46,7 @@ export const SUITES = {
           'tests/skills-cli.test.js',
           'tests/validate-plugin-versions.test.js',
           'tests/validate-plugin-manifest.test.js',
+          'tests/plugin-paths.test.js',
         ],
       },
       {
@@ -221,6 +222,7 @@ export const SUITES = {
       /^skill\/agents\//,
       /^scripts\/build\.js$/,
       /^scripts\/lib\/validate-plugin-manifest\.js$/,
+      /^scripts\/lib\/plugin-paths\.js$/,
       /^tests\/plugin-e2e\.test\.mjs$/,
     ],
     commands: [
