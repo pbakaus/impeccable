@@ -1926,7 +1926,7 @@ async function install(flags) {
   reportProviderAgents(agentResults);
   if (hookTargets.length > 0) console.log(`Installed hooks into: ${hookTargets.join(', ')}`);
 
-  console.log('\nDone! Run /impeccable init in your AI harness to set up design context.\n');
+  console.log('\nDone! Now type /impeccable init in your AI coding agent\'s chat (not in this terminal) to set up design context.\n');
 }
 
 // ─── skills update ────────────────────────────────────────────────────────────

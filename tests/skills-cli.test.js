@@ -719,6 +719,64 @@ describe('skills install/update: local universal bundle e2e', () => {
     rmSync(home, { recursive: true, force: true });
   }, 15000);
 
+  test('install completion says /impeccable init runs in the agent chat, not the terminal (#472)', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-install-472-msg-'));
+    const home = mkdtempSync(join(tmpdir(), 'imp-home-install-472-msg-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.claude']);
+
+    const output = run('install -y --providers=claude --no-hooks', {
+      cwd: tmp,
+      env: { ...process.env, HOME: home, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+
+    expect(output).toContain("type /impeccable init in your AI coding agent's chat (not in this terminal)");
+
+    rmSync(tmp, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }, 15000);
+
+  test('`impeccable init` in the shell points at the agent chat instead of "Unknown command" (#472)', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-init-472-'));
+
+    let error;
+    try {
+      run('init', { cwd: tmp, stdio: 'pipe' });
+    } catch (e) {
+      error = e;
+    }
+
+    expect(error).toBeDefined();
+    expect(error.status).toBe(1);
+    const stderr = String(error.stderr);
+    expect(stderr).toContain("Type /impeccable init in your AI coding agent's chat");
+    expect(stderr).not.toContain('Unknown command');
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('a real path named init still routes to detect, not the #472 guidance', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-init-path-472-'));
+    mkdirSync(join(tmp, 'init'), { recursive: true });
+    writeFileSync(join(tmp, 'init', 'page.html'), '<!doctype html><html><head><title>t</title></head><body><p>hello</p></body></html>\n');
+
+    // Detect exits 0 on a clean scan and 2 when findings surface; either way it
+    // must be the detector answering, not the init redirect. --json makes that
+    // positive: the detector always prints a JSON findings array.
+    let output = '';
+    try {
+      output = run('init --json', { cwd: tmp, stdio: 'pipe' });
+    } catch (e) {
+      output = `${e.stdout || ''}${e.stderr || ''}`;
+    }
+
+    expect(output.trim().startsWith('[')).toBe(true);
+    expect(output).not.toContain('is not a CLI command');
+    expect(output).not.toContain('Unknown command');
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 60000);
+
   test('formats detected harnesses as concise source-to-target rows', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'imp-test-detect-lines-'));
     const home = mkdtempSync(join(tmpdir(), 'imp-home-detect-lines-'));
