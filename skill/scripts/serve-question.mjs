@@ -62,7 +62,15 @@
  *                            // same anatomy (label, thesis, palette, sketch, ...);
  *                            // rendered last and visually subordinate. Without it,
  *                            // canon stays a quiet footer action.
- *   "steer": true            // adds a free-text steer field returned with any answer
+ *   "steer": true,           // adds a free-text steer field returned with any answer
+ *   "followup": true         // this round's pick is not terminal: the server
+ *                            // stays open awaiting --update with the next
+ *                            // round (detached mode only), the page shows a
+ *                            // loading hand instead of goodbye, and the
+ *                            // answer carries followup:true so --wait knows
+ *                            // to keep the table. Use it when a decision has
+ *                            // a known second half, e.g. direction first,
+ *                            // then the execution contract.
  * }
  *
  * Options render as large cards: the sketch leads when present, with the
@@ -147,6 +155,9 @@ function printAnswer(raw) {
     if (a.optionId === 'reroll' && a.register) {
       console.log(`REGISTER: the user steered the next hand to the ${a.register} register. Re-run concept-seed with the same key, the next --reroll round, and --register ${a.register}, then follow what it prints; the register is the user's steering, never yours to pre-select.`);
     }
+    if (a.followup && a.optionId !== 'reroll') {
+      console.log('FOLLOWUP OPEN: the table stays open and the page is showing a loading hand. Deliver the next round now with --update --key <key> --payload <file>, then collect it with --wait; never leave the page waiting on a round you have not sent.');
+    }
   } catch { /* raw answer */ }
 }
 
@@ -172,7 +183,7 @@ if (hasFlag('schema')) {
     canonCard: { label: 'The category standard', thesis: 'What this category ships, executed impeccably.', viewport: 'The arrangement a visitor expects, at full craft.', sketch: '.impeccable/sketches/canon.webp' },
     steer: true,
   }, null, 2));
-  console.log('\nOption ids return verbatim in ANSWER; "reroll" and "canon" are reserved. hero/board/sketch accept URLs or local paths; sketch slots may point at files that do not exist yet (serve first, generate after; the page polls until they land, so never block serving on generation). hero on a challenger is the inspiration it draws from and renders picture-in-picture beside the sketch, never as the promise of the build. verdict routes rendering: "wins" and "competitive" challengers keep full cards, "declined" ones render demoted after them (narrow, quiet, art as a labeled thumb, "Adopt anyway"), with their kept line on the front; the page reorders declined cards to the end on its own. raised on the assigned card renders each donation as a named raise line. Salience parity: when the assigned card declares no sketch (no image generation this round), catalog art on every card demotes to a labeled thumb, so what looks important is the verdict’s call, never rendering luck. canonCard renders the standing exit as a subordinate card with the same anatomy; without it, canon stays a quiet footer action. Include canon only for visual-direction rounds; never present it as your own recommendation. The pick card is a kicker convention, not a field: kicker "MY PICK" on your top-ranked grounded candidate, one at most, never in the lead slot. Keep thesis and each fact to one short sentence: the card front shows thesis, identity, and a two-line risk, while first viewport and the case read on the card back behind the Details chip, so long facts cost the reader a flip, not the page its scanability. A card with no imagery at all has no back; its full read renders on the front, so a text-only round loses nothing. Sketch aspect follows the surface: portrait at device viewport for native or mobile-first surfaces, landscape otherwise; the page adapts its cards to either. reroll accepts true or { "registers": ["safer", "bolder"] }: the register buttons steer the next hand along the familiar-to-bold axis, the answer carries "register", and you re-run concept-seed with --register <value> for the next round; offer the registers on direction rounds, and never pre-select one.');
+  console.log('\nOption ids return verbatim in ANSWER; "reroll" and "canon" are reserved. hero/board/sketch accept URLs or local paths; sketch slots may point at files that do not exist yet (serve first, generate after; the page polls until they land, so never block serving on generation). hero on a challenger is the inspiration it draws from and renders picture-in-picture beside the sketch, never as the promise of the build. verdict routes rendering: "wins" and "competitive" challengers keep full cards, "declined" ones render demoted after them (narrow, quiet, art as a labeled thumb, "Adopt anyway"), with their kept line on the front; the page reorders declined cards to the end on its own. raised on the assigned card renders each donation as a named raise line. Salience parity: when the assigned card declares no sketch (no image generation this round), catalog art on every card demotes to a labeled thumb, so what looks important is the verdict’s call, never rendering luck. canonCard renders the standing exit as a subordinate card with the same anatomy; without it, canon stays a quiet footer action. Include canon only for visual-direction rounds; never present it as your own recommendation. The pick card is a kicker convention, not a field: kicker "MY PICK" on your top-ranked grounded candidate, one at most, never in the lead slot. Keep thesis and each fact to one short sentence: the card front shows thesis, identity, and a two-line risk, while first viewport and the case read on the card back behind the Details chip, so long facts cost the reader a flip, not the page its scanability. A card with no imagery at all has no back; its full read renders on the front, so a text-only round loses nothing. Sketch aspect follows the surface: portrait at device viewport for native or mobile-first surfaces, landscape otherwise; the page adapts its cards to either. reroll accepts true or { "registers": ["safer", "bolder"] }: the register buttons steer the next hand along the familiar-to-bold axis, the answer carries "register", and you re-run concept-seed with --register <value> for the next round; offer the registers on direction rounds, and never pre-select one. followup: true keeps the table open after a pick for a second round via --update (direction first, then the execution contract); send the next payload immediately, the page is waiting on it.');
   process.exit(0);
 }
 
@@ -216,12 +227,16 @@ if (hasFlag('wait')) {
   if (!answered()) { console.log(`WAITING: no answer yet after ${pollSec}s; run --wait --key ${key} again`); process.exit(3); }
   const collected = fs.readFileSync(answerFile(key), 'utf8').trim();
   printAnswer(collected);
-  // A re-roll keeps the table open: the server stays alive awaiting --update,
-  // so only the answer file is consumed. Terminal choices clean up fully.
-  let isRerollAnswer = false;
-  try { isRerollAnswer = JSON.parse(collected).optionId === 'reroll'; } catch { /* treat as terminal */ }
+  // A re-roll or a followup-round pick keeps the table open: the server stays
+  // alive awaiting --update, so only the answer file is consumed. Terminal
+  // choices clean up fully.
+  let keepsTableOpen = false;
+  try {
+    const parsedAnswer = JSON.parse(collected);
+    keepsTableOpen = parsedAnswer.optionId === 'reroll' || parsedAnswer.followup === true;
+  } catch { /* treat as terminal */ }
   try { fs.rmSync(answerFile(key)); } catch { /* already gone */ }
-  if (!isRerollAnswer) { try { fs.rmSync(stateFile(key)); } catch { /* already gone */ } }
+  if (!keepsTableOpen) { try { fs.rmSync(stateFile(key)); } catch { /* already gone */ } }
   process.exit(0);
 }
 
@@ -737,11 +752,15 @@ function page() {
 </footer>
 <script>
   const steer = () => document.getElementById('steer')?.value || '';
+  // A followup round's pick keeps the tab: the next round arrives via
+  // --update, so the page shows the loading hand instead of goodbye.
+  const FOLLOWUP = ${payload.followup === true ? 'true' : 'false'};
   const beat = () => { try { navigator.sendBeacon('/heartbeat'); } catch { fetch('/heartbeat', { method: 'POST' }); } };
   beat();
   setInterval(beat, 5000);
   async function answer(optionId) {
     await fetch('/answer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId, steer: steer() }) });
+    if (FOLLOWUP) { await awaitNextRound(); return; }
     document.body.innerHTML = '<div class="done"><svg viewBox="0 0 24 24" width="38" height="38" fill="oklch(84% 0.19 80.46)" aria-hidden="true"><path d="M5 2.5 L13.5 2.5 L5.5 21.5 L5 21.5 Q2.5 21.5 2.5 19 L2.5 5 Q2.5 2.5 5 2.5 Z"/><path d="M16.5 2.5 L19 2.5 Q21.5 2.5 21.5 5 L21.5 19 Q21.5 21.5 19 21.5 L8.5 21.5 Z"/></svg>Choice recorded. The agent is resuming; you can close this tab.</div>';
   }
   document.querySelectorAll('button.choose').forEach(b => b.addEventListener('click', () => answer(b.dataset.id)));
@@ -952,6 +971,9 @@ function page() {
   document.getElementById('canon')?.addEventListener('click', () => answer('canon'));
   const dealAgain = async (register) => {
     await fetch('/answer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: steer(), ...(register ? { register } : {}) }) });
+    await awaitNextRound();
+  };
+  async function awaitNextRound() {
     const grid = document.querySelector('.grid');
     const cardsNow = [...grid.querySelectorAll('.card')];
     const g = grid.getBoundingClientRect();
@@ -975,7 +997,7 @@ function page() {
         if (status.ready) { clearInterval(poll); location.reload(); }
       } catch { /* server briefly busy */ }
     }, 1200);
-  };
+  }
   document.getElementById('reroll')?.addEventListener('click', () => dealAgain());
   document.getElementById('reroll-safer')?.addEventListener('click', () => dealAgain('safer'));
   document.getElementById('reroll-bolder')?.addEventListener('click', () => dealAgain('bolder'));
@@ -1035,23 +1057,29 @@ const server = http.createServer((req, res) => {
       let parsed = {};
       try { parsed = JSON.parse(body); } catch { /* empty steer */ }
       const chosen = options.find((o) => o.id === parsed.optionId);
+      const isReroll = parsed.optionId === 'reroll';
+      // A followup round's pick is not terminal: the table stays open for the
+      // next round (--update), exactly like a re-roll. Detached mode only;
+      // the blocking mode has no update channel, so its picks stay terminal.
+      const followupOpen = Boolean(detachedKey) && payload.followup === true && !isReroll;
       const answer = JSON.stringify({
         optionId: parsed.optionId ?? null,
         steer: parsed.steer ?? '',
-        ...(parsed.optionId === 'reroll' && (parsed.register === 'safer' || parsed.register === 'bolder') ? { register: parsed.register } : {}),
+        ...(isReroll && (parsed.register === 'safer' || parsed.register === 'bolder') ? { register: parsed.register } : {}),
+        ...(followupOpen ? { followup: true } : {}),
         ...(chosen?.hero || chosen?.board ? { hero: chosen.hero ?? null, board: chosen.board ?? null } : {}),
         ...(chosen?.sketch ? { sketch: chosen.sketch } : {}),
       });
-      const isReroll = parsed.optionId === 'reroll';
       if (detachedKey) {
         fs.mkdirSync(QUESTION_DIR, { recursive: true });
         fs.writeFileSync(answerFile(detachedKey), answer + '\n');
       } else {
         printAnswer(answer);
       }
-      // A re-roll in detached mode keeps the table open: the client shows a
-      // loading hand and reloads when --update delivers the next round.
-      if (!(isReroll && detachedKey)) setTimeout(() => process.exit(0), 150);
+      // A re-roll or followup pick in detached mode keeps the table open: the
+      // client shows a loading hand and reloads when --update delivers the
+      // next round.
+      if (!((isReroll || followupOpen) && detachedKey)) setTimeout(() => process.exit(0), 150);
     });
     return;
   }

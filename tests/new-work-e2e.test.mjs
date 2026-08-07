@@ -404,6 +404,67 @@ describe('new-work-e2e: serve-question decision page', () => {
     }
   });
 
+  it('(e4) followup keeps the table open: direction pick, then the execution-contract round', async () => {
+    const cwd = makeWorkspace();
+    const key = 'followup';
+    const directionRound = {
+      title: 'Choose the visual world',
+      options: [{ id: 'assigned', label: 'The Seedsman Catalog', kicker: 'THE ROLL' }],
+      reroll: true, steer: true,
+      followup: true,
+    };
+    const buildPathRound = {
+      title: 'How should it be built?',
+      question: 'Same direction, two execution contracts. Pick where the risk goes.',
+      options: [
+        { id: 'comp-led', label: 'Comp-led', kicker: 'BOLD', thesis: 'A first-viewport comp leads and the build matches it.', risk: 'Fix rounds expected; motion arrives last.' },
+        { id: 'code-led', label: 'Code-led', kicker: 'CRAFTED', thesis: 'Code authors the page; the boards calibrate it.', risk: 'Composition stays closer to convention.' },
+      ],
+    };
+    const { url } = await startDaemon(cwd, directionRound, key);
+    try {
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      await page.goto(url, { waitUntil: 'load' });
+      await page.waitForSelector('button.choose');
+      await page.click('.card[data-id="assigned"] .face.front button.choose');
+
+      // First answer: the direction. Not terminal, and it says so.
+      const first = await waitLoop(cwd, key);
+      assert.equal(first.code, 0, first.out);
+      const firstAnswer = JSON.parse(first.out.match(/ANSWER: (\{.*\})/)[1]);
+      assert.equal(firstAnswer.optionId, 'assigned');
+      assert.equal(firstAnswer.followup, true, 'the answer marks the table as still open');
+      assert.match(first.out, /FOLLOWUP OPEN:/, 'the directive tells the agent to send the next round');
+      assert.ok(existsSync(path.join(cwd, '.impeccable', 'questions', `${key}.state.json`)),
+        'server state file survives a followup pick');
+
+      // The page swapped to the loading hand instead of goodbye.
+      await page.waitForSelector('.card.skeleton');
+
+      // Deliver the execution-contract round; the page reloads into it.
+      const nextPayloadPath = path.join(cwd, 'build-path.json');
+      writeFileSync(nextPayloadPath, JSON.stringify(buildPathRound));
+      const updated = await run(['--update', '--key', key, '--payload', nextPayloadPath], cwd);
+      assert.equal(updated.code, 0, updated.out);
+      await page.waitForSelector('.card[data-id="code-led"]');
+      await page.click('.card[data-id="code-led"] .face.front button.choose');
+
+      // Second answer: terminal, table cleaned up.
+      const second = await waitLoop(cwd, key);
+      await context.close();
+      assert.equal(second.code, 0, second.out);
+      const secondAnswer = JSON.parse(second.out.match(/ANSWER: (\{.*\})/)[1]);
+      assert.equal(secondAnswer.optionId, 'code-led');
+      assert.equal(secondAnswer.followup, undefined, 'the build-path round is terminal');
+      assert.ok(!existsSync(path.join(cwd, '.impeccable', 'questions', `${key}.state.json`)),
+        'the terminal pick removes the server state file');
+    } finally {
+      await stopDaemon(cwd, key);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
   it('(f) a hero that never loads collapses to a labeled palette field, not a dark void', async () => {
     const cwd = makeWorkspace();
     const key = 'brokenart';
