@@ -558,6 +558,10 @@ function designSystemStartDir(targetPath, cwd = process.cwd()) {
 //   - A directory carrying a project marker (.git / package.json / .impeccable)
 //     but no DESIGN.md is a project BOUNDARY: the walk stops with no design
 //     system, so a sibling project never inherits a parent's or cwd's rules.
+//     Exception: a package.json nested inside a git repository marks a monorepo
+//     subpackage, not an independent project — the walk continues so a
+//     repo-root DESIGN.md still governs files under the subpackage. The walk
+//     can never escape the repo, because the .git directory itself stops it.
 //   - Reaching the home directory / filesystem root with neither means no
 //     design system at all — never process.cwd()'s.
 //
@@ -568,12 +572,35 @@ export function findDesignRoot(startDir) {
   const homeDir = path.resolve(os.homedir());
   while (true) {
     if (resolveDesignMdPath(dir)) return { dir, hasDesign: true };
-    if (PROJECT_ROOT_MARKERS.some((marker) => fs.existsSync(path.join(dir, marker)))) {
-      return { dir, hasDesign: false };
-    }
+    if (isProjectBoundary(dir)) return { dir, hasDesign: false };
     if (dir === homeDir) return null;
     const parent = path.dirname(dir);
     if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+// .git and .impeccable always mark a project root. package.json marks one only
+// outside a git repository: inside one it is a subpackage (e.g. web/ in a
+// monorepo) whose files are still governed by a design root higher in the same
+// repo.
+function isProjectBoundary(dir) {
+  if (PROJECT_ROOT_MARKERS.some(
+    (marker) => marker !== 'package.json' && fs.existsSync(path.join(dir, marker)),
+  )) {
+    return true;
+  }
+  return fs.existsSync(path.join(dir, 'package.json')) && !hasGitAncestor(path.dirname(dir));
+}
+
+// True when `startDir` or any ancestor contains a .git entry (a directory in a
+// normal checkout, a file in a git worktree — existsSync covers both).
+function hasGitAncestor(startDir) {
+  let dir = path.resolve(startDir);
+  while (true) {
+    if (fs.existsSync(path.join(dir, '.git'))) return true;
+    const parent = path.dirname(dir);
+    if (parent === dir) return false;
     dir = parent;
   }
 }

@@ -6,6 +6,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -388,6 +389,37 @@ describe('generated hook artifacts in repo', () => {
       const hookLib = await import(pathToFileURL(path.join(abs, 'hook-lib.mjs')));
       const detector = await hookLib.loadDetector();
       assert.equal(typeof detector.detectText, 'function');
+    }
+  });
+
+  it('bundled detectors resolve a repo-root DESIGN.md through a monorepo subpackage', async () => {
+    // The engine fix (findDesignRoot walking past a subpackage package.json
+    // inside a git repo) must ship in every generated detector bundle, or the
+    // packaged hook reports subpackage files clean instead of applying the
+    // repo-root DESIGN.md.
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-hook-monorepo-'));
+    try {
+      fs.mkdirSync(path.join(repo, '.git'));
+      fs.writeFileSync(path.join(repo, 'DESIGN.md'), '# Design System\n');
+      fs.writeFileSync(path.join(repo, 'package.json'), '{"name":"root"}');
+      const sub = path.join(repo, 'web', 'app', 'assets');
+      fs.mkdirSync(sub, { recursive: true });
+      fs.writeFileSync(path.join(repo, 'web', 'package.json'), '{"name":"web"}');
+
+      for (const scriptDir of [
+        '.claude/skills/impeccable/scripts',
+        '.cursor/skills/impeccable/scripts',
+        '.agents/skills/impeccable/scripts',
+        'plugin/skills/impeccable/scripts',
+      ]) {
+        const modPath = path.join(REPO_ROOT, scriptDir, 'detector', 'design-system.mjs');
+        const { findDesignRoot } = await import(pathToFileURL(modPath));
+        const found = findDesignRoot(sub);
+        assert.deepEqual(found, { dir: repo, hasDesign: true },
+          `${scriptDir} detector stops at the subpackage package.json - regenerate with bun run build:release`);
+      }
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
     }
   });
 });
