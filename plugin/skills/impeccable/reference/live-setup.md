@@ -45,7 +45,7 @@ On every boot the project is scanned for HTML files under common page roots (`pu
 If `config.cspChecked === true`, skip this whole section; the user was already asked once.
 
 ```bash
-node .claude/skills/impeccable/scripts/detect-csp.mjs
+node <skill-base-dir>/scripts/detect-csp.mjs
 ```
 
 Output `{ shape, signals }`; the shape names the *patch mechanism*, so one template covers many frameworks:
