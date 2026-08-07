@@ -10,7 +10,7 @@
  * gracefully when impeccable.style is unreachable.
  */
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import { mkdtempSync, existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync, rmSync, lstatSync, realpathSync, readlinkSync, symlinkSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -1615,6 +1615,71 @@ describe('copyProviderHooks: hook command path resolution (#399)', () => {
       expect(command).toContain(absolute);
       expect(command).not.toContain('${CLAUDE_PROJECT_DIR}');
       expect(command).toContain('[ ! -f ');
+    }
+    rmSync(tmp, { recursive: true, force: true });
+    rmSync(skillHome, { recursive: true, force: true });
+  });
+
+  test('single-quotes an absolute install path that embeds $(...), and the guard is inert under /bin/sh (#476)', () => {
+    // A hook command is re-executed by the harness on every edit. JSON.stringify
+    // is not shell quoting: an install path containing $(...) inside double
+    // quotes would run on each fire. The absolute POSIX form must be
+    // single-quoted so the substitution stays inert.
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-hook-split-'));
+    const skillHome = mkdtempSync(join(tmpdir(), 'imp-hook-$(touch pwned)-'));
+    const bundleDir = createProjectDirBundle(tmp);
+
+    copyProviderHooks(bundleDir, tmp, ['.claude'], { skillRoot: skillHome });
+
+    const raw = readFileSync(join(tmp, '.claude', 'settings.local.json'), 'utf8');
+    // The path appears single-quoted, never double-quoted (which would leave
+    // the substitution live for /bin/sh).
+    expect(raw).toContain(`'${skillHome}`);
+    expect(raw).not.toContain(`"${skillHome}`);
+
+    const commands = claudeHookCommands(join(tmp, '.claude', 'settings.local.json'));
+    expect(commands.length).toBeGreaterThan(0);
+    // End-to-end: actually run each generated guard under /bin/sh from a clean
+    // cwd. The hook script does not exist (skillHome is empty), so `[ ! -f ... ]`
+    // short-circuits and node never runs — and crucially the single-quoted
+    // $(touch pwned) must not execute. Prove it: no `pwned` file appears and the
+    // guard exits 0.
+    if (process.platform !== 'win32') {
+      const runCwd = mkdtempSync(join(tmpdir(), 'imp-hook-run-'));
+      for (const command of commands) {
+        expect(command).toContain('[ ! -f ');
+        expect(command).not.toMatch(/"[^"]*\$\(touch pwned\)/);
+        execFileSync('/bin/sh', ['-c', command], { cwd: runCwd, stdio: 'ignore' });
+      }
+      expect(existsSync(join(runCwd, 'pwned'))).toBe(false);
+      rmSync(runCwd, { recursive: true, force: true });
+    }
+    rmSync(tmp, { recursive: true, force: true });
+    rmSync(skillHome, { recursive: true, force: true });
+  });
+
+  test('the Windows hook form keeps a usable double-quoted absolute path (#533)', () => {
+    // cmd.exe does no $(...) substitution but treats single quotes as literal,
+    // so the Windows command form must keep the absolute path double-quoted or
+    // a space in the install path would split the argument. copyProviderHooks
+    // branches on process.platform, so drive it as win32 in-process.
+    const original = process.platform;
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-hook-win-'));
+    const skillHome = mkdtempSync(join(tmpdir(), 'imp-hook-win-home-'));
+    const bundleDir = createProjectDirBundle(tmp);
+    try {
+      Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+      copyProviderHooks(bundleDir, tmp, ['.claude'], { skillRoot: skillHome });
+    } finally {
+      Object.defineProperty(process, 'platform', { value: original, configurable: true });
+    }
+
+    const absolute = join(skillHome, '.claude', 'skills', 'impeccable', 'scripts', 'hook.mjs');
+    for (const command of claudeHookCommands(join(tmp, '.claude', 'settings.local.json'))) {
+      // Windows guard shape (node -e wrapper) with the absolute path double-quoted.
+      expect(command).toContain(`"${absolute}"`);
+      expect(command).not.toContain(`'${absolute}`);
+      expect(command).toContain('node -e');
     }
     rmSync(tmp, { recursive: true, force: true });
     rmSync(skillHome, { recursive: true, force: true });

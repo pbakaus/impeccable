@@ -1365,17 +1365,28 @@ function hookScriptPathForProvider(skillRoot, provider) {
 //     with single quotes for the inner string literals.
 const WIN32_HOOK_GUARD_SCRIPT = "const p=process.argv[1];const f=require('fs');if(f.existsSync(p)){const r=require('child_process').spawnSync(process.execPath,[p],{stdio:'inherit'});process.exit(r.status===null?1:r.status);}";
 
+// POSIX single-quote escaping. JSON.stringify is not shell quoting: inside
+// double quotes /bin/sh still expands $(...), backticks, and ${}, and this
+// string is baked into a hook manifest the harness re-executes on every edit,
+// so an install path embedding $(...) would run it repeatedly (issue #476).
+// Windows command forms keep double quotes: cmd.exe treats ' as a literal
+// character and performs no command substitution.
+function shSingleQuote(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
 function windowsHookCommand(quotedPath) {
   return `if exist ${quotedPath} (node ${quotedPath} & exit /b)`;
 }
 
+// `quotedPath` carries one pre-quoted form per target shell: { posix, win32 }.
 function guardHookCommand(quotedPath, provider) {
   // `.agents` (Codex) keeps the POSIX form unconditionally: its Windows
   // consumers read the commandWindows sibling instead.
   if (provider !== '.agents' && process.platform === 'win32') {
-    return `node -e "${WIN32_HOOK_GUARD_SCRIPT}" ${quotedPath}`;
+    return `node -e "${WIN32_HOOK_GUARD_SCRIPT}" ${quotedPath.win32}`;
   }
-  return `[ ! -f ${quotedPath} ] || node ${quotedPath}`;
+  return `[ ! -f ${quotedPath.posix} ] || node ${quotedPath.posix}`;
 }
 
 // Transform bundled hook commands for the actual install target:
@@ -1398,9 +1409,14 @@ function rewriteHookCommandsForSkillRoot(value, provider, { skillRoot, absolute 
   // Project-scope installs derive the provider's own project-relative path
   // rather than trusting the bundle token, which for Codex points at
   // `.codex/skills/...` while the CLI installs the skill at `.agents/skills/`.
+  // The absolute path comes from the install root (project dir or $HOME), so
+  // its POSIX form gets real single-quote escaping (issue #476). The relative
+  // form is a per-provider constant and stays double-quoted, because Claude's
+  // ${CLAUDE_PROJECT_DIR} token must keep expanding at hook time.
+  const relPath = hookScriptRelPathForProvider(provider);
   const quotedPath = absolute
-    ? JSON.stringify(hookScript)
-    : JSON.stringify(hookScriptRelPathForProvider(provider));
+    ? { posix: shSingleQuote(hookScript), win32: JSON.stringify(hookScript) }
+    : { posix: JSON.stringify(relPath), win32: JSON.stringify(relPath) };
 
   if (typeof value === 'string') {
     if (!valueHasImpeccableHookMarker(value)) return value;
@@ -1415,7 +1431,7 @@ function rewriteHookCommandsForSkillRoot(value, provider, { skillRoot, absolute 
       next[key] = rewriteHookCommandsForSkillRoot(child, provider, { skillRoot, absolute });
     }
     if (provider === '.agents' && typeof value.command === 'string' && valueHasImpeccableHookMarker(value.command)) {
-      next.commandWindows = windowsHookCommand(quotedPath);
+      next.commandWindows = windowsHookCommand(quotedPath.win32);
     }
     return next;
   }

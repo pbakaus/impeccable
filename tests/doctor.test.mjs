@@ -486,6 +486,29 @@ describe('checkHookInstallation', () => {
     );
   });
 
+  it('handles the #476 single-quoted absolute form (user-level installs)', () => {
+    // The shell-injection fix single-quotes the absolute POSIX path instead of
+    // JSON.stringify. The doctor's token parser must read the single-quoted
+    // form too, or it silently stops verifying every user-level install.
+    const abs = path.join(scratch, '.claude', 'skills', 'impeccable', 'scripts', 'hook.mjs');
+    const p = `'${abs}'`;
+    const guarded = `[ ! -f ${p} ] || node ${p}`;
+    write('.claude/settings.json', JSON.stringify({
+      hooks: { Stop: [{ hooks: [{ command: guarded }] }] },
+    }));
+    // absolute path missing → flagged
+    assert.deepEqual(
+      ids(checkHookInstallation({ projectRoot: scratch, repoRoot: scratch, providerId: 'claude-code' })),
+      ['hook-script-missing'],
+    );
+    // present → quiet
+    write('.claude/skills/impeccable/scripts/hook.mjs', '// hook\n');
+    assert.deepEqual(
+      checkHookInstallation({ projectRoot: scratch, repoRoot: scratch, providerId: 'claude-code' }),
+      [],
+    );
+  });
+
   it('never reports missing for the GitHub $(git rev-parse) form', () => {
     // Command substitution is not statically resolvable; a doctor must not
     // assert a negative it cannot verify.

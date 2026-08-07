@@ -1142,6 +1142,42 @@ describe('renderTemplate()', () => {
     assert.match(text, /\/impeccable hooks ignore-value bounce-easing bounce-ball --shared/);
   });
 
+  it('single-quotes a hostile font value so the suggestion cannot inject a shell command (#476)', () => {
+    // The suggested command comes straight from scanned file content. A
+    // double-quoted arg would leave $(...) live for whoever runs the
+    // suggestion; single quotes neutralize it.
+    const text = renderTemplate(
+      [finding('overused-font', 1, {
+        name: 'Overused font',
+        snippet: 'body { font-family: "$(touch pwned)", sans-serif; }',
+      })],
+      '/x/fonts.css', DEFAULT_CONFIG, { cwd: '/x' }
+    );
+    assert.match(text, /ignore-value overused-font '\$\(touch pwned\)' --shared/);
+    assert.doesNotMatch(text, /ignore-value overused-font "\$\(touch pwned\)"/);
+  });
+
+  it('quotes the --file path per platform: single quotes on POSIX, double quotes on Windows (#533)', () => {
+    // The suggested command is run on the same machine the hook fired on.
+    // POSIX needs single quotes so $(...) in a filename cannot execute; Windows
+    // cmd.exe treats single quotes as literal, so a path with spaces must stay
+    // double-quoted or the ignore scope is split at the space.
+    const original = process.platform;
+    const renderFor = (platform) => {
+      Object.defineProperty(process, 'platform', { value: platform, configurable: true });
+      try {
+        return renderTemplate(
+          [finding('side-tab', 1, { name: 'Side tab' })],
+          '/x/My Components/Card.tsx', DEFAULT_CONFIG, { cwd: '/x' }
+        );
+      } finally {
+        Object.defineProperty(process, 'platform', { value: original, configurable: true });
+      }
+    };
+    assert.match(renderFor('linux'), /--file 'My Components\/Card\.tsx'/);
+    assert.match(renderFor('win32'), /--file "My Components\/Card\.tsx"/);
+  });
+
   it('drops the L<line> prefix when line is 0', () => {
     const text = renderTemplate(
       [finding('side-tab', 0, { name: 'X' })],
