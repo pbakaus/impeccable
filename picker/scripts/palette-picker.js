@@ -1808,6 +1808,9 @@ scroller.addEventListener('scroll', () => {
 }, { passive: true });
 document.addEventListener('picker:screenchange', (event) => {
   activate(event.detail.screen === '02');
+  // The hub re-reads every answer on arrival, so an edit made on a
+  // question screen is on its card by the time the return lands.
+  if (event.detail.screen === '04b') renderHub();
   // Every artboard on the screen being shown, whatever question it belongs to,
   // gets the committed palette. The scale sheet is deliberately not one: it is
   // picker chrome in the picker's own theme, not a page in the user's palette.
@@ -2217,6 +2220,128 @@ const syncSurfaces = () => {
 const paintStage = () => {
   for (const question of surfaceQuestions) question.paint();
 };
+
+/* ============================================================
+   Screen 04b: the configure hub.
+
+   Seven questions remain after the font pair, and every one of
+   them already holds an answer: sync() pre-fills each per-surface
+   field with its surface's default the moment the tile is checked,
+   and the flat radios ship with a default checked. The hub reads
+   those answers back out of the DOM (hidden fields for per-surface
+   questions, the checked radio for flat ones), maps each value to
+   the title on its own option row, and marks the cards whose
+   answer a person actually picked. Nothing here writes an answer;
+   the cards are a reading of the form.
+   ============================================================ */
+const hubScreen = document.querySelector('.picker-screen[data-screen="04b"]');
+/* Card target screen mapped to the radio group that screen answers. */
+const HUB_GROUPS = {
+  '05': 'type-scale',
+  '06': 'motion-energy',
+  '07': 'layout-structure',
+  '08': 'boundary-style',
+  '09': 'corner-style',
+  '10': 'depth-style',
+  '11': 'icon-pack',
+};
+/* Type scale and icon set render no per-surface fields, so they have
+   no dataset.chosen. A change event on their group is the one signal
+   that a person picked rather than the markup default: programmatic
+   checks never fire it. */
+const hubEdited = new Set();
+document.addEventListener('change', ({ target }) => {
+  if (target?.name === 'type-scale' || target?.name === 'icon-pack') hubEdited.add(target.name);
+});
+
+const hubSurfaceLabel = (mode) => modeInputs.find((input) => input.value === mode)?.dataset.surfaceLabel ?? mode;
+
+/* The display title lives on the option row of the question's own
+   screen, so the hub never restates copy. The two dealt-data groups
+   carry their names as data attributes instead of a row label. */
+function hubOptionTitle(group, value) {
+  const input = document.querySelector(`input[name="${group}"][value="${value}"]`);
+  if (!input) return value;
+  if (input.dataset.scaleName) return `${input.dataset.scaleName} · ${input.dataset.ratio}`;
+  if (input.dataset.packName) return input.dataset.packName;
+  return input.closest('.picker-strategy-option')?.querySelector('.picker-strategy-title')?.textContent.trim() ?? value;
+}
+
+/* The enabled fields are exactly the chosen surfaces this question
+   was put to; sync() disables the rest and empties their values. */
+function hubSurfaceRows(group) {
+  return [...document.querySelectorAll(`input[type="hidden"][data-surface-field^="${group}-"]`)]
+    .filter((field) => !field.disabled && field.value)
+    .map((field) => ({
+      mode: field.dataset.surfaceField.slice(group.length + 1),
+      value: field.value,
+      chosen: field.dataset.chosen === 'yes',
+    }));
+}
+
+function hubLine(text, surface) {
+  const line = document.createElement('span');
+  line.className = 'picker-hub-line';
+  if (surface) {
+    const name = document.createElement('b');
+    name.textContent = surface;
+    line.append(name);
+  }
+  line.append(text);
+  return line;
+}
+
+function renderHub() {
+  if (!hubScreen) return;
+  for (const cardNode of hubScreen.querySelectorAll('.picker-hub-card')) {
+    const group = HUB_GROUPS[cardNode.dataset.hubTarget];
+    if (!group) continue;
+    const summary = cardNode.querySelector('[data-hub-summary]');
+    const mark = cardNode.querySelector('[data-hub-mark]');
+    const target = document.querySelector(`.picker-screen[data-screen="${cardNode.dataset.hubTarget}"]`);
+    const skipped = Boolean(target?.hasAttribute('data-skip'));
+    cardNode.classList.toggle('is-skipped', skipped);
+    cardNode.disabled = skipped;
+    cardNode.setAttribute('aria-disabled', skipped ? 'true' : 'false');
+    if (skipped) {
+      summary.replaceChildren(hubLine('Not asked of these surfaces'));
+      cardNode.classList.remove('is-edited');
+      mark.hidden = true;
+      continue;
+    }
+    const rows = hubSurfaceRows(group);
+    let edited;
+    let lines;
+    if (rows.length === 0) {
+      const checked = document.querySelector(`input[name="${group}"]:checked`);
+      edited = hubEdited.has(group);
+      lines = [hubLine(checked ? hubOptionTitle(group, checked.value) : '')];
+    } else {
+      edited = rows.some((row) => row.chosen);
+      if (rows.length > 1 && rows.every((row) => row.value === rows[0].value)) {
+        lines = [hubLine(`${hubOptionTitle(group, rows[0].value)} · all`)];
+      } else if (rows.length === 1) {
+        lines = [hubLine(hubOptionTitle(group, rows[0].value))];
+      } else {
+        lines = rows.map((row) => hubLine(hubOptionTitle(group, row.value), hubSurfaceLabel(row.mode)));
+      }
+    }
+    summary.replaceChildren(...lines);
+    cardNode.classList.toggle('is-edited', edited);
+    mark.hidden = !edited;
+  }
+}
+
+/* Cards and the finish CTA jump by screen id. The inline nav script
+   owns goTo(); it listens for this event, so no swap logic is
+   duplicated here. A disabled card never reaches this handler. */
+hubScreen?.addEventListener('click', (event) => {
+  const cardNode = event.target.closest('[data-hub-target]');
+  if (!cardNode || cardNode.disabled) return;
+  document.dispatchEvent(new CustomEvent('picker:goto', {
+    detail: { screen: cardNode.dataset.hubTarget },
+  }));
+});
 
 for (const input of modeInputs) {
   input.addEventListener('change', () => {

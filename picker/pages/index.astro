@@ -907,6 +907,99 @@ const questions = [
         </div>
       </section>
 
+      {/* Screen 04b: the configure hub. Every remaining question already
+          holds an answer (defaults are pre-filled the moment a surface tile
+          is checked), so the run can end here. The cards are skeletons;
+          summaries and edited marks are written by renderHub() in
+          scripts/palette-picker.js on every arrival. Placement is the
+          approved masonry: tall per-surface cards anchor the outer columns. */}
+      <section class="picker-screen" data-screen="04b" data-step="Configure" aria-hidden="true" aria-labelledby="picker-hub-title">
+        <div class="picker-container">
+          <div class="picker-hub">
+            <h2 id="picker-hub-title" class="picker-question-title">What else would you like to configure?</h2>
+
+            <div class="picker-hub-grid">
+              <div class="picker-hub-col">
+                <button class="picker-hub-card" type="button" data-hub-target="06" data-hub-category="material">
+                  <span class="picker-hub-eyebrow">Material</span>
+                  <span class="picker-hub-title">Motion
+                    <span class="picker-hub-mark" data-hub-mark hidden>Edited</span>
+                    <svg class="picker-hub-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="m7.5 4.5 5 5.5-5 5.5"></path></svg>
+                  </span>
+                  <span class="picker-hub-summary" data-hub-summary></span>
+                </button>
+                <button class="picker-hub-card" type="button" data-hub-target="09" data-hub-category="material">
+                  <span class="picker-hub-eyebrow">Material</span>
+                  <span class="picker-hub-title">Corners
+                    <span class="picker-hub-mark" data-hub-mark hidden>Edited</span>
+                    <svg class="picker-hub-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="m7.5 4.5 5 5.5-5 5.5"></path></svg>
+                  </span>
+                  <span class="picker-hub-summary" data-hub-summary></span>
+                </button>
+              </div>
+
+              <div class="picker-hub-col">
+                <button class="picker-hub-card" type="button" data-hub-target="05" data-hub-category="typography">
+                  <span class="picker-hub-eyebrow">Typography</span>
+                  <span class="picker-hub-title">Type scale
+                    <span class="picker-hub-mark" data-hub-mark hidden>Edited</span>
+                    <svg class="picker-hub-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="m7.5 4.5 5 5.5-5 5.5"></path></svg>
+                  </span>
+                  <span class="picker-hub-summary" data-hub-summary></span>
+                </button>
+                <button class="picker-hub-card" type="button" data-hub-target="11" data-hub-category="iconography">
+                  <span class="picker-hub-eyebrow">Iconography</span>
+                  <span class="picker-hub-title">Icon set
+                    <span class="picker-hub-mark" data-hub-mark hidden>Edited</span>
+                    <svg class="picker-hub-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="m7.5 4.5 5 5.5-5 5.5"></path></svg>
+                  </span>
+                  <span class="picker-hub-summary" data-hub-summary></span>
+                </button>
+                <button class="picker-hub-card" type="button" data-hub-target="08" data-hub-category="material">
+                  <span class="picker-hub-eyebrow">Material</span>
+                  <span class="picker-hub-title">Boundaries
+                    <span class="picker-hub-mark" data-hub-mark hidden>Edited</span>
+                    <svg class="picker-hub-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="m7.5 4.5 5 5.5-5 5.5"></path></svg>
+                  </span>
+                  <span class="picker-hub-summary" data-hub-summary></span>
+                </button>
+              </div>
+
+              <div class="picker-hub-col">
+                <button class="picker-hub-card" type="button" data-hub-target="07" data-hub-category="material">
+                  <span class="picker-hub-eyebrow">Material</span>
+                  <span class="picker-hub-title">Layout
+                    <span class="picker-hub-mark" data-hub-mark hidden>Edited</span>
+                    <svg class="picker-hub-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="m7.5 4.5 5 5.5-5 5.5"></path></svg>
+                  </span>
+                  <span class="picker-hub-summary" data-hub-summary></span>
+                </button>
+                <button class="picker-hub-card" type="button" data-hub-target="10" data-hub-category="material">
+                  <span class="picker-hub-eyebrow">Material</span>
+                  <span class="picker-hub-title">Depth
+                    <span class="picker-hub-mark" data-hub-mark hidden>Edited</span>
+                    <svg class="picker-hub-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="m7.5 4.5 5 5.5-5 5.5"></path></svg>
+                  </span>
+                  <span class="picker-hub-summary" data-hub-summary></span>
+                </button>
+              </div>
+            </div>
+
+            <div class="picker-actions-stack">
+              <button class="ks-button ks-button-primary" type="button" data-hub-finish data-hub-target="12">
+                Create my design context
+                <span class="ks-button-arrow" aria-hidden="true">
+                  <svg viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square">
+                    <path d="M0 4h14M10 0l4 4-4 4"></path>
+                  </svg>
+                </span>
+              </button>
+              <button class="picker-back" type="button" data-advance="prev">Back</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section class="picker-screen" data-screen="05" data-step="Type scale" aria-hidden="true" aria-labelledby="picker-scale-title">
         <div class="picker-container">
           <div class="picker-scale">
@@ -1164,10 +1257,10 @@ const questions = [
 
       <div class="picker-progress" aria-hidden="true">
         <div class="picker-progress-track">
-          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
         </div>
         <p class="picker-progress-label">
-          <span class="picker-progress-index"><b data-progress-index>1</b> / <span data-progress-total>11</span></span>
+          <span class="picker-progress-index"><b data-progress-index>1</b> / <span data-progress-total>12</span></span>
           <span class="picker-progress-name" data-progress-name></span>
         </p>
       </div>
@@ -1544,12 +1637,32 @@ const questions = [
       controls()[0]?.focus();
     };
 
+    /* Screens 05 through 11 are reachable only from the configure hub, so
+       both their CTA and their Back return there rather than to the DOM
+       neighbor. The hub itself and the review screen keep the ordinary
+       rule: Back on the hub is the font pair, Back on the review's error
+       box is the icons screen. */
+    const HUB_SCREEN = '04b';
+    const HUB_RETURNS = new Set(['05', '06', '07', '08', '09', '10', '11']);
+    const screenIndex = (id) => screens.findIndex((screen) => screen.dataset.screen === id);
+
     form.onclick = (e) => {
       const control = e.target.closest('[data-advance]');
       if (!control) return;
+      if (HUB_RETURNS.has(screens[current].dataset.screen)) {
+        goTo(screenIndex(HUB_SCREEN));
+        return;
+      }
       const step = control.dataset.advance === 'prev' ? -1 : 1;
       goTo(current + step, step);
     };
+
+    /* The hub's cards and its finish CTA jump by screen id. goTo() keeps
+       its skip rule, so a jump aimed at a skipped screen walks off it. */
+    document.addEventListener('picker:goto', (e) => {
+      const index = screenIndex(e.detail.screen);
+      if (index !== -1) goTo(index);
+    });
 
     document.addEventListener('keydown', (e) => {
       if (e.defaultPrevented) return;
