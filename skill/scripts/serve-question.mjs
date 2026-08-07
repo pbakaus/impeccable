@@ -295,12 +295,16 @@ else raw = fs.readFileSync(0, 'utf8');
 let payload;
 let options;
 let localImages = [];
+// True between a collected re-roll answer and the --update that replaces the
+// round: the window where GET / must serve the wait, not the answered cards.
+let awaitingNext = false;
 
 function loadRound(json) {
   const parsed = JSON.parse(json);
   if (!parsed || !Array.isArray(parsed.options) || parsed.options.length === 0) {
     throw new Error('payload needs an options array');
   }
+  awaitingNext = false;
   localImages = [];
   const imageSrc = (value) => {
     if (!value) return null;
@@ -339,7 +343,7 @@ const nextFile = () => detachedKey ? path.join(QUESTION_DIR, `${detachedKey}.nex
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-function page() {
+function page(waiting = false) {
   const flipChip = (label) => `<button type="button" class="chip flip" aria-label="Flip the card"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a8 8 0 1 1-8 8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M4 5.5V12h6.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><span>${label}</span></button>`;
   const expandChip = `<button type="button" class="chip expand" aria-label="Expand the image"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 15v5h-5M20 9V4h-5M4 15v5h5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
   // Structured anatomy: chips and one-line facts render when the payload
@@ -897,18 +901,12 @@ function page() {
   lightbox.addEventListener('click', closeLightbox);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !lightbox.hidden) closeLightbox(); });
   document.getElementById('canon')?.addEventListener('click', () => answer('canon'));
-  document.getElementById('reroll')?.addEventListener('click', async () => {
-    try {
-      await fetch('/answer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: steer() }) });
-    } catch {
-      document.body.innerHTML = '<div class="done">The question server went away before this choice could land.<br>Tell the agent your pick in the chat instead.</div>';
-      return;
-    }
+  async function enterShuffle(animate) {
     const grid = document.querySelector('.grid');
     const cardsNow = [...grid.querySelectorAll('.card')];
-    const g = grid.getBoundingClientRect();
-    const cx = g.left + g.width / 2, cy = g.top + g.height / 2;
-    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (animate && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      const g = grid.getBoundingClientRect();
+      const cx = g.left + g.width / 2, cy = g.top + g.height / 2;
       cardsNow.forEach((card, i) => {
         const r = card.getBoundingClientRect();
         card.style.transition = 'transform .5s cubic-bezier(.5,0,.75,0) ' + (i * 60) + 'ms, opacity .4s ease ' + (i * 60 + 120) + 'ms, filter .45s ease ' + (i * 60) + 'ms';
@@ -959,7 +957,21 @@ function page() {
         if (misses >= 8) stall('The question server went away. Ask the agent to restart it, or answer in the chat instead.');
       }
     }, 1200);
+  }
+  document.getElementById('reroll')?.addEventListener('click', async () => {
+    try {
+      await fetch('/answer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: steer() }) });
+    } catch {
+      document.body.innerHTML = '<div class="done">The question server went away before this choice could land.<br>Tell the agent your pick in the chat instead.</div>';
+      return;
+    }
+    enterShuffle(true);
   });
+  // A native refresh must not resurrect an answered round: while the server
+  // holds a collected re-roll with no replacement delivered, it serves the
+  // page in waiting mode and the refresh re-enters the same bounded wait,
+  // instead of showing dead cards whose heartbeat props the daemon forever.
+  ${waiting ? 'enterShuffle(false);' : ''}
 </script>`;
 }
 
@@ -970,7 +982,7 @@ const server = http.createServer((req, res) => {
       try { loadRound(fs.readFileSync(pending, 'utf8')); fs.rmSync(pending); } catch { /* keep current round */ }
     }
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-    res.end(page());
+    res.end(page(awaitingNext));
     return;
   }
   if (req.method === 'POST' && req.url === '/heartbeat') {
@@ -1024,6 +1036,7 @@ const server = http.createServer((req, res) => {
         ...(chosen?.sketch ? { sketch: chosen.sketch } : {}),
       });
       const isReroll = parsed.optionId === 'reroll';
+      awaitingNext = isReroll && Boolean(detachedKey);
       if (detachedKey) {
         fs.mkdirSync(QUESTION_DIR, { recursive: true });
         fs.writeFileSync(answerFile(detachedKey), answer + '\n');

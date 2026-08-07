@@ -459,6 +459,29 @@ describe('new-work-e2e: serve-question decision page', () => {
       await page.clock.fastForward(30000);
       await new Promise((r) => setTimeout(r, 500));
       assert.equal(beats, beatsAtStall, 'a reload attempt with nothing to deal leaves the page silent');
+      // A browser-native refresh bypasses the gated button entirely, so the
+      // server serves the page in waiting mode: the refresh re-enters the
+      // bounded shuffle wait (beating while it waits, like any live wait)
+      // rather than resurrecting the answered cards with an unbounded
+      // heartbeat -- and the deadline silences it all over again.
+      await page.reload({ waitUntil: 'load' });
+      let waitingAgain = null;
+      for (let i = 0; i < 50 && !waitingAgain; i++) {
+        await new Promise((r) => setTimeout(r, 100));
+        waitingAgain = await page.$('.card.skeleton');
+      }
+      assert.ok(waitingAgain, 'a native refresh mid re-roll re-enters the shuffle wait, not the answered round');
+      let restalled = null;
+      for (let i = 0; i < 40 && !restalled; i++) {
+        await page.clock.fastForward(20000);
+        await new Promise((r) => setTimeout(r, 100));
+        restalled = await page.$('.stall');
+      }
+      assert.ok(restalled, 'the refreshed wait still ends at the deadline');
+      const beatsAtSecondStall = beats;
+      await page.clock.fastForward(30000);
+      await new Promise((r) => setTimeout(r, 500));
+      assert.equal(beats, beatsAtSecondStall, 'the refreshed page goes silent again at its own deadline');
       // Once a hand actually lands, the same button reloads into it and the
       // heartbeat legitimately resumes: a live round is not an abandoned flow.
       const nextPayloadPath = path.join(cwd, 'next.json');
@@ -478,7 +501,7 @@ describe('new-work-e2e: serve-question decision page', () => {
       assert.ok(dealt, 'reload with a delivered hand serves a playable round');
       const label = await page.$eval('.card', (el) => el.textContent);
       assert.match(label, /Second Hand/, 'reload with a delivered hand serves the new round');
-      assert.ok(beats > beatsAtStall, 'the heartbeat resumes on the re-dealt round');
+      assert.ok(beats > beatsAtSecondStall, 'the heartbeat resumes on the re-dealt round');
     } finally {
       await context.close();
       await stopDaemon(cwd, key);

@@ -282,6 +282,42 @@ describe('serve-question', () => {
     assert.ok(gone, 'the idle grace applies under --timeout 0 once a page has beat');
   });
 
+  it('a refresh while a re-roll is outstanding re-enters the wait instead of re-serving the answered round', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'serve-question-'));
+    const payloadPath = path.join(dir, 'q.json');
+    writeFileSync(payloadPath, JSON.stringify(PAYLOAD));
+    const run = (args) => new Promise((resolve) => {
+      const child = spawn(process.execPath, [SCRIPT, ...args], { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] });
+      let out = '';
+      child.stdout.on('data', (chunk) => { out += chunk; });
+      child.on('exit', (code) => resolve({ code, out }));
+    });
+    const started = await run(['--start', '--payload', payloadPath, '--no-open', '--key', 'refresh', '--timeout', '30']);
+    assert.equal(started.code, 0, started.out);
+    const url = started.out.match(/QUESTION URL: (\S+)/)?.[1];
+    assert.ok(url, started.out);
+    try {
+      const before = await (await fetch(url)).text();
+      assert.ok(!before.includes('enterShuffle(false)'), 'a fresh round serves the normal page');
+      // A native refresh bypasses the page's own gated Reload button, so the
+      // serving decision has to live here: once a re-roll answer is collected
+      // and no replacement has landed, GET / re-enters the bounded shuffle
+      // wait instead of re-serving the answered cards.
+      await fetch(`${url}answer`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: '' }) });
+      const waitingPage = await (await fetch(url)).text();
+      assert.ok(waitingPage.includes('enterShuffle(false)'), 'a refresh mid re-roll re-enters the shuffle wait');
+      const nextPath = path.join(dir, 'next.json');
+      writeFileSync(nextPath, JSON.stringify({ ...PAYLOAD, title: 'Second round' }));
+      const updated = await run(['--update', '--key', 'refresh', '--payload', nextPath]);
+      assert.equal(updated.code, 0, updated.out);
+      const after = await (await fetch(url)).text();
+      assert.ok(after.includes('Second round'), 'the delivered hand is served');
+      assert.ok(!after.includes('enterShuffle(false)'), 'the wait ends once the hand lands');
+    } finally {
+      await run(['--stop', '--key', 'refresh']);
+    }
+  });
+
   it('--update trusts a fresh heartbeat over a failed kill probe, and still detects true death', async () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'serve-question-'));
     const qdir = path.join(dir, '.impeccable', 'questions');
