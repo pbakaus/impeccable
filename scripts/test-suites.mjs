@@ -68,6 +68,7 @@ export const SUITES = {
           'tests/release.test.mjs',
           'tests/doctor.test.mjs',
           'tests/staleness.test.mjs',
+          'tests/skill-reference.test.mjs',
           'tests/target-args.test.mjs',
           'tests/surface-brief.test.mjs',
           'tests/template-extensions.test.mjs',
