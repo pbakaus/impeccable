@@ -31,6 +31,16 @@
  *     recomputes what rounds 0..n-1 drew, excludes all of it, and rolls a
  *     fresh assigned index, challengers, and compositions. One base key therefore
  *     reproduces the entire chain of rounds.
+ *   - REGISTER (--register safer|bolder): the user's steering on the
+ *     familiar-to-bold axis, applied to a re-roll round. A register changes
+ *     only what this round instructs, never what it dealt: the same key and
+ *     reroll count reproduce the same deal whatever the register, so the
+ *     exclusion chain never forks. bolder presents the dealt foreign forms
+ *     as the whole hand (first-dealt leads, dice-assigned by deal order);
+ *     safer spends the dealt hand unseen and presents the familiar register,
+ *     the model's conventional grounded candidates plus the canon against
+ *     named competitors, the one sanctioned lineup of the model's own list.
+ *     Registers are user-requested, never pre-selected by the model.
  *   - RATINGS: the reviewer's approval ratings weight the challenger draw
  *     (3-star doubles the odds, 1-star sits out); the approved pool itself
  *     is unchanged.
@@ -41,6 +51,7 @@
  *   node scripts/concept-seed.mjs --scope surface --mode operate --grain flow
  *   node scripts/concept-seed.mjs --scope direction --candidate-count 6
  *   node scripts/concept-seed.mjs --scope direction --mode persuade --from <key> --reroll 1
+ *   node scripts/concept-seed.mjs --scope direction --mode persuade --from <key> --reroll 1 --register bolder
  *   node scripts/concept-seed.mjs --chosen <challenger-id> --from <key> --scope direction
  *
  * --grain names how much of the product is in play: product, flow, view, or
@@ -260,6 +271,7 @@ export function renderConceptSeed({
   scope = 'surface',
   key = process.env.IMPECCABLE_CONCEPT_SEED || crypto.randomBytes(4).toString('hex'),
   reroll = 0,
+  register = null,
   mode = null,
   grain = null,
   platform = null,
@@ -272,6 +284,15 @@ export function renderConceptSeed({
   }
   if (!Number.isInteger(reroll) || reroll < 0) {
     throw new Error('concept-seed: --reroll must be a non-negative integer');
+  }
+  if (register !== null && register !== 'safer' && register !== 'bolder') {
+    throw new Error('concept-seed: --register must be safer or bolder');
+  }
+  if (register !== null && reroll < 1) {
+    throw new Error('concept-seed: --register steers a re-roll round; pass --reroll <n> with it');
+  }
+  if (register !== null && scope !== 'direction') {
+    throw new Error('concept-seed: --register applies to direction rounds only');
   }
   if (mode !== null && !SEED_MODES.has(mode)) {
     throw new Error('concept-seed: --mode must be persuade, operate, read, or experience');
@@ -326,6 +347,7 @@ export function renderConceptSeed({
         scope,
         key,
         reroll,
+        register,
         mode,
         grain,
         platform,
@@ -412,8 +434,26 @@ Ambitious motion, spatial media, or interaction is welcome when it strengthens
 the product without weakening semantics, performance, or fallback behavior.`;
 
   if (!data) {
-    return `${scope.toUpperCase()} CONCEPT SEED (key: ${key}; mode: ${mode ?? 'unscoped'}; source: degraded; rerun with --scope ${scope}${mode ? ` --mode ${mode}` : ''} --from ${key}${reroll > 0 ? ` --reroll ${reroll}` : ''} --candidate-count ${candidateCount})
-ASSIGNED INDEX: ${buildIndex}
+    // A degraded roll can still serve the safer register, which needs no
+    // catalog at all; the bolder register is exactly the thing degradation
+    // took away, so it falls back to a plain grounded round, disclosed.
+    const degradedRegister = register === 'safer'
+      ? `SAFER REGISTER (user-requested): the assigned index is suspended this
+  round; the user picks. Present the familiar register: your remaining
+  grounded candidates from the conventional end, at most three, as full cards
+  with an honest risk line each, plus the canon executed against two or three
+  named competitors. This is the one sanctioned lineup of your own ranked
+  candidates; it exists only by this explicit request.
+`
+      : register === 'bolder'
+        ? `BOLDER REGISTER UNAVAILABLE: bolder deals foreign forms, and this roll ran
+  degraded with no catalog and no roll service, so there is nothing bold to
+  deal. Tell the user, then run this round as a plain grounded re-roll; the
+  assignment below applies.
+`
+        : '';
+    return `${scope.toUpperCase()} CONCEPT SEED (key: ${key}; mode: ${mode ?? 'unscoped'}; source: degraded; rerun with --scope ${scope}${mode ? ` --mode ${mode}` : ''} --from ${key}${reroll > 0 ? ` --reroll ${reroll}` : ''}${register ? ` --register ${register}` : ''} --candidate-count ${candidateCount})
+${degradedRegister}ASSIGNED INDEX: ${buildIndex}
   ${promotedInstruction}
   The assignment exists to refuse the model's ranking rut, never to outrank
   the user or the brief. Never expose assignment metadata in user-facing labels.
@@ -484,34 +524,62 @@ structure only, never a palette, typeface, or material. Treat them as serious
 rivals to your habitual layout, and keep only what makes this product clearer.${grainNote}\n`
     : '';
   const rerollBlock = reroll > 0
-    ? `RE-ROLL ROUND ${reroll}: every candidate presented in earlier rounds, grounded
-  and challenger alike, is eliminated and may not return reworded. Derive
+    ? `RE-ROLL ROUND ${reroll}${register ? ` (${register.toUpperCase()} REGISTER, user-requested)` : ''}: every candidate presented in earlier rounds, grounded
+  and challenger alike, is eliminated and may not return reworded.${register ? '' : ` Derive
   genuinely new grounded candidates from unexplored angles before judging
-  these fresh challengers.\n`
+  these fresh challengers.`}\n`
     : '';
+  // A register swaps the round's presentation, never its deal: the assigned
+  // index and challenger fetch stay identical so the chain reproduces, and
+  // only the instructions change.
+  const saferBlock = `SAFER REGISTER: the user asked for the familiar end of the spectrum, so this
+  round's dealt hand is spent unseen, stays excluded from future rounds, and
+  is not printed. The assigned index is suspended this round; the user picks. Present the familiar register: your remaining grounded
+  candidates from the conventional end, at most three, as full cards with an
+  honest risk line each, plus the canon executed against two or three named
+  competitors. This is the one sanctioned lineup of your own ranked
+  candidates; it exists only by this explicit request. When the user voices a
+  standing preference for it, record a brand commitment in PRODUCT.md.`;
+  const bolderBlock = `BOLDER REGISTER: the user asked for foreign forms at full commitment, so no
+  grounded direction is presented this round and the assigned index is
+  suspended. The hand is every dealt challenger below, each fused with the
+  product and presented as a full card; the FIRST dealt challenger leads, an
+  assignment by deal order, so the dice still choose. Verdicts and donations
+  apply between the challengers, weighed against the leader. The pick card
+  sits out; the canon stays, as always.`;
   const telemetryBlock = data.source === 'api'
     ? `TELEMETRY: if the resolved direction uses one of these challengers, rerun
   this script once with --chosen <challenger-id> --from ${key} --scope ${scope}${mode ? ` --mode ${mode}` : ''}
   after resolution. The ping is anonymous (chosen id only) and is skipped
   automatically when DO_NOT_TRACK or IMPECCABLE_NO_TELEMETRY is set.\n`
     : '';
-  return `${scope.toUpperCase()} CONCEPT SEED (key: ${key}; mode: ${mode ?? 'unscoped'}; source: ${data.source}; approved pool: ${data.poolRevision}; ${data.approvedCount}/${data.catalogCount} human-approved; rerun with --scope ${scope}${mode ? ` --mode ${mode}` : ''} --from ${key}${reroll > 0 ? ` --reroll ${reroll}` : ''} --candidate-count ${candidateCount} to reproduce this roll against this catalog revision)
-${rerollBlock}ASSIGNED INDEX: ${buildIndex}
+  const assignedBlock = register === null
+    ? `ASSIGNED INDEX: ${buildIndex}
   ${promotedInstruction}
   The assignment exists to refuse the model's ranking rut, never to outrank
-  the user or the brief. Never expose assignment metadata in user-facing labels.
-CHALLENGERS:
+  the user or the brief. Never expose assignment metadata in user-facing labels.`
+    : register === 'safer' ? saferBlock : bolderBlock;
+  const challengerSection = register === 'safer'
+    ? ''
+    : `CHALLENGERS:
 ${data.challengers.map(renderChallenger).join('\n')}
 ${compositionBlock}${challengerInstruction}
 When you can view images, open the QUALITY BAR board and hero for any
 challenger you weigh seriously and for the world you build. They exist as a
 craft bar, the finish level and commitment the build is expected to reach,
 never as a mockup to copy; your surface serves this product, not that render.
-${authorityInstruction}
+`;
+  const restated = register === null
+    ? `ASSIGNED INDEX (restated for truncated readers): ${buildIndex}. Build candidate
+${buildIndex} of your own grounded list; seed key ${key}.`
+    : `REGISTER (restated for truncated readers): ${register}, user-requested; the
+assigned index is suspended this round; seed key ${key}.`;
+  return `${scope.toUpperCase()} CONCEPT SEED (key: ${key}; mode: ${mode ?? 'unscoped'}; source: ${data.source}; approved pool: ${data.poolRevision}; ${data.approvedCount}/${data.catalogCount} human-approved; rerun with --scope ${scope}${mode ? ` --mode ${mode}` : ''} --from ${key}${reroll > 0 ? ` --reroll ${reroll}` : ''}${register ? ` --register ${register}` : ''} --candidate-count ${candidateCount} to reproduce this roll against this catalog revision)
+${rerollBlock}${assignedBlock}
+${challengerSection}${authorityInstruction}
 ${richnessInstruction}
 ${telemetryBlock}A user- or brief-pinned decision beats the roll, always.
-ASSIGNED INDEX (restated for truncated readers): ${buildIndex}. Build candidate
-${buildIndex} of your own grounded list; seed key ${key}.
+${restated}
 `;
 }
 
@@ -520,6 +588,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const fromIdx = args.indexOf('--from');
   const scopeIdx = args.indexOf('--scope');
   const rerollIdx = args.indexOf('--reroll');
+  const registerIdx = args.indexOf('--register');
   const modeIdx = args.indexOf('--mode');
   const grainIdx = args.indexOf('--grain');
   const platformIdx = args.indexOf('--platform');
@@ -555,6 +624,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
           ? args[fromIdx + 1]
           : (process.env.IMPECCABLE_CONCEPT_SEED || crypto.randomBytes(4).toString('hex')),
         reroll: rerollIdx !== -1 ? Number(args[rerollIdx + 1]) : 0,
+        register: registerIdx !== -1 ? args[registerIdx + 1] : null,
         mode: modeIdx !== -1 ? args[modeIdx + 1] : null,
         grain: grainIdx !== -1 ? args[grainIdx + 1] : null,
         platform: platformIdx !== -1 ? args[platformIdx + 1] : null,

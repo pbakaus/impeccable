@@ -251,6 +251,31 @@ describe('concept seed scopes', () => {
     assert.match(invalid.stderr, /non-negative integer/);
   });
 
+  it('registers steer the round presentation without changing the deal', () => {
+    const plain = run('direction', ['--reroll', '1']);
+    const bolder = run('direction', ['--reroll', '1', '--register', 'bolder']);
+    const safer = run('direction', ['--reroll', '1', '--register', 'safer']);
+    assert.equal(bolder.status, 0);
+    assert.equal(safer.status, 0);
+    // A register is presentation-only: the same key and reroll count deal the
+    // same challengers, so the exclusion chain never forks on register.
+    const dealtIds = (out) => [...out.matchAll(/SOURCE ID: ([a-z0-9-]+)/g)].map((m) => m[1]).sort();
+    assert.deepEqual(dealtIds(bolder.stdout), dealtIds(plain.stdout), 'bolder presents the same deal the plain round drew');
+    assert.match(bolder.stdout, /BOLDER REGISTER/);
+    assert.match(bolder.stdout, /FIRST dealt challenger leads/);
+    assert.match(bolder.stdout, /--register bolder/);
+    assert.doesNotMatch(bolder.stdout, /ASSIGNED INDEX:/);
+    assert.match(safer.stdout, /SAFER REGISTER/);
+    assert.match(safer.stdout, /sanctioned lineup/);
+    assert.doesNotMatch(safer.stdout, /^CHALLENGERS:/m, 'the safer round spends its hand unseen');
+    const invalidRegister = run('direction', ['--reroll', '1', '--register', 'wilder']);
+    assert.notEqual(invalidRegister.status, 0);
+    assert.match(invalidRegister.stderr, /must be safer or bolder/);
+    const noReroll = run('direction', ['--register', 'bolder']);
+    assert.notEqual(noReroll.status, 0);
+    assert.match(noReroll.stderr, /re-roll round/);
+  });
+
   it('filters challengers by strength per scope and falls back when a tier has no match', () => {
     const make = (id, tier, strength) => ({
       id,

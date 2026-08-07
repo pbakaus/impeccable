@@ -373,6 +373,37 @@ describe('new-work-e2e: serve-question decision page', () => {
     }
   });
 
+  it('(e3) register steers ride the re-roll: the bolder button answers with its register', async () => {
+    const cwd = makeWorkspace();
+    const key = 'registers';
+    const payload = {
+      title: 'Choose the visual world',
+      options: [{ id: 'assigned', label: 'The Seedsman Catalog', kicker: 'THE ROLL' }],
+      reroll: { registers: ['safer', 'bolder'] },
+      steer: true,
+    };
+    const { url } = await startDaemon(cwd, payload, key);
+    try {
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      await page.goto(url, { waitUntil: 'load' });
+      await page.waitForSelector('#reroll-bolder');
+      assert.ok(await page.$('#reroll-safer'), 'the safer steer renders');
+      assert.ok(await page.$('#reroll'), 'the plain re-roll stays between the registers');
+      await page.click('#reroll-bolder');
+      const collected = await waitLoop(cwd, key);
+      await context.close();
+      assert.equal(collected.code, 0, collected.out);
+      const answer = JSON.parse(collected.out.match(/ANSWER: (\{.*\})/)[1]);
+      assert.equal(answer.optionId, 'reroll');
+      assert.equal(answer.register, 'bolder', 'the answer names the requested register');
+      assert.match(collected.out, /REGISTER: .*bolder/, 'the register directive tells the agent to re-run the seed');
+    } finally {
+      await stopDaemon(cwd, key);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
   it('(f) a hero that never loads collapses to a labeled palette field, not a dark void', async () => {
     const cwd = makeWorkspace();
     const key = 'brokenart';
