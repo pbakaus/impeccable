@@ -115,6 +115,27 @@ describe('detect CLI DESIGN.md resolution', () => {
     );
   });
 
+  it('applies a repo-root DESIGN.md to a file under a monorepo subpackage boundary', () => {
+    // Monorepo shape: .git + DESIGN.md at the repo root, a web/ subpackage with
+    // its own package.json and no DESIGN.md. The subpackage boundary must not
+    // hide the repo root's design system from files under web/.
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-detect-mono-'));
+    tempRoots.push(repo);
+    fs.mkdirSync(path.join(repo, '.git'));
+    fs.writeFileSync(path.join(repo, 'package.json'), '{"name":"monorepo-root"}');
+    fs.writeFileSync(path.join(repo, 'DESIGN.md'), DESIGN_MD);
+    fs.mkdirSync(path.join(repo, 'web'));
+    fs.writeFileSync(path.join(repo, 'web', 'package.json'), '{"name":"web"}');
+    const page = path.join(repo, 'web', 'page.html');
+    fs.writeFileSync(page, PAGE_HTML);
+
+    const findings = runDetect(repo, [page]);
+    assert.ok(
+      fontFindingsFor(findings, page).some((f) => f.ignoreValue === 'verdana'),
+      'the repo-root DESIGN.md must govern files under the web/ subpackage',
+    );
+  });
+
   it('falls back to no design system for a bare file with no project markers above it', () => {
     // A lone file whose directory has neither .git, package.json, nor .impeccable.
     const bareDir = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-detect-bare-'));

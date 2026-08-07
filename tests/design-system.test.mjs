@@ -12,11 +12,13 @@ import path from 'node:path';
 import {
   checkSourceDesignSystem,
   collectStaticDesignSystemFindings,
+  findDesignRoot,
   isAllowedColorRaw,
   isAllowedFont,
   isAllowedRadiusRaw,
   isAllowedFontSizeRaw,
   loadDesignSystemForCwd,
+  loadDesignSystemForTarget,
   normalizeDesignSystem,
 } from '../cli/engine/design-system.mjs';
 
@@ -351,6 +353,89 @@ small { font-family: "IBM Plex Serif", serif; }
 pre { font-family: "Space Grotesk", sans-serif; }
 `, '/tmp/escaped-fonts.css', { designSystem: loaded });
     assert.deepEqual(findings, []);
+  });
+});
+
+describe('findDesignRoot()', () => {
+  const MINIMAL_DESIGN = `---
+typography:
+  body:
+    fontFamily: "Palatino, Georgia, serif"
+---
+# Design System
+`;
+
+  // A monorepo: repo-root DESIGN.md + .git, with a web/ subpackage carrying
+  // its own package.json but no DESIGN.md of its own.
+  function mkMonorepo({ gitAs = 'dir' } = {}) {
+    const repo = mkTmp();
+    if (gitAs === 'dir') fs.mkdirSync(path.join(repo, '.git'));
+    else fs.writeFileSync(path.join(repo, '.git'), 'gitdir: /elsewhere/.git/worktrees/x\n');
+    fs.writeFileSync(path.join(repo, 'DESIGN.md'), MINIMAL_DESIGN);
+    fs.writeFileSync(path.join(repo, 'package.json'), '{"name":"root"}');
+    const sub = path.join(repo, 'web', 'app', 'assets');
+    fs.mkdirSync(sub, { recursive: true });
+    fs.writeFileSync(path.join(repo, 'web', 'package.json'), '{"name":"web"}');
+    return { repo, sub };
+  }
+
+  it('walks past a subpackage package.json to the repo-root DESIGN.md (monorepo)', () => {
+    const { repo, sub } = mkMonorepo();
+    const found = findDesignRoot(sub);
+    assert.deepEqual(found, { dir: repo, hasDesign: true });
+  });
+
+  it('honors the repo-root DESIGN.md when .git is a worktree file, not a directory', () => {
+    const { repo, sub } = mkMonorepo({ gitAs: 'file' });
+    const found = findDesignRoot(sub);
+    assert.deepEqual(found, { dir: repo, hasDesign: true });
+  });
+
+  it('loadDesignSystemForTarget applies the repo-root DESIGN.md to a subpackage file', () => {
+    const { repo, sub } = mkMonorepo();
+    const target = path.join(sub, 'application.css');
+    fs.writeFileSync(target, '.card { font-family: Verdana, sans-serif; }');
+    const loaded = loadDesignSystemForTarget(target);
+    assert.equal(loaded?.present, true);
+    assert.equal(loaded.sourcePath, path.join(repo, 'DESIGN.md'));
+    assert.equal(isAllowedFont('verdana', loaded), false);
+  });
+
+  it('prefers a subpackage DESIGN.md over the repo root (nearest wins)', () => {
+    const { repo, sub } = mkMonorepo();
+    fs.writeFileSync(path.join(repo, 'web', 'DESIGN.md'), MINIMAL_DESIGN);
+    const found = findDesignRoot(sub);
+    assert.deepEqual(found, { dir: path.join(repo, 'web'), hasDesign: true });
+  });
+
+  it('still stops at a package.json boundary outside any git repo (sibling isolation)', () => {
+    // No .git anywhere above: package.json marks an independent project, so a
+    // DESIGN.md in a parent directory must NOT leak in.
+    const parent = mkTmp();
+    fs.writeFileSync(path.join(parent, 'DESIGN.md'), MINIMAL_DESIGN);
+    const project = path.join(parent, 'standalone');
+    fs.mkdirSync(project);
+    fs.writeFileSync(path.join(project, 'package.json'), '{"name":"standalone"}');
+    const found = findDesignRoot(project);
+    assert.deepEqual(found, { dir: project, hasDesign: false });
+  });
+
+  it('never crosses a .git boundary: a nested repo ignores the outer repo\'s DESIGN.md', () => {
+    const { repo } = mkMonorepo();
+    const inner = path.join(repo, 'vendor', 'other-repo');
+    fs.mkdirSync(inner, { recursive: true });
+    fs.mkdirSync(path.join(inner, '.git'));
+    fs.writeFileSync(path.join(inner, 'package.json'), '{"name":"other"}');
+    const found = findDesignRoot(inner);
+    assert.deepEqual(found, { dir: inner, hasDesign: false });
+  });
+
+  it('treats .impeccable as a hard boundary even inside a git repo', () => {
+    const { repo } = mkMonorepo();
+    const sub = path.join(repo, 'web');
+    fs.mkdirSync(path.join(sub, '.impeccable'), { recursive: true });
+    const found = findDesignRoot(sub);
+    assert.deepEqual(found, { dir: sub, hasDesign: false });
   });
 });
 
