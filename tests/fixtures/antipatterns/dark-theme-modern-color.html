@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dark theme, modern color syntax</title>
+<style>
+  /* A lacquer-black ground painted as a gradient in oklch, the shape that
+     floods dark themes with "on #ffffff" low-contrast false positives when
+     the detector cannot read the ground and assumes white. */
+  body {
+    margin: 0;
+    padding: 24px;
+    background: linear-gradient(oklch(0.07 0.006 95), oklch(0.11 0.008 95));
+    font-family: Georgia, serif;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  section {
+    padding: 24px;
+    margin-bottom: 24px;
+    width: 640px;
+  }
+
+  p { margin: 0 0 12px; font-size: 15px; }
+
+  /* Readable grounds, each written in a color syntax a real browser keeps
+     verbatim in getComputedStyle output. */
+  .panel-srgb    { background-color: color(srgb 0.1 0.11 0.12); }
+  .panel-mix     { background-color: color-mix(in srgb, white 6%, #0b0b0d); }
+  .panel-p3      { background-color: color(display-p3 0.07 0.07 0.08); }
+  .panel-lch     { background-color: lch(18 4 60); }
+  .panel-light   { background-color: color(srgb 0.98 0.97 0.95); }
+
+  /* A color space the detector does not model. Nested inside the light
+     panel so a detector that walks PAST the unreadable layer would measure
+     light text against the light section and invent a finding. */
+  .panel-unreadable { background-color: color(rec2020 0.05 0.05 0.05); padding: 20px; }
+
+  .text-light  { color: oklch(0.92 0.01 90); }
+  .text-dark   { color: color(srgb 0.1 0.11 0.12); }
+
+  .text-muted-ground { color: oklch(0.32 0.01 90); }
+  .text-dim-srgb     { color: color(srgb 0.28 0.28 0.3); }
+  .text-dim-p3       { color: color(display-p3 0.35 0.35 0.36); }
+  .text-dim-lch      { color: lch(35 3 60); }
+  .text-pale-light   { color: color(srgb 0.75 0.74 0.72); }
+</style>
+</head>
+<body>
+
+<h1 class="text-light">Should flag</h1>
+
+<section>
+  <p class="text-muted-ground">Flag Muted On Oklch Ground: charcoal body copy sitting straight on the lacquer gradient.</p>
+</section>
+
+<section class="panel-srgb">
+  <p class="text-dim-srgb">Flag Dim On Srgb Panel: slate copy on a near-black srgb surface.</p>
+</section>
+
+<section class="panel-p3">
+  <p class="text-dim-p3">Flag Dim On Display P3 Panel: slate copy on a near-black display-p3 surface.</p>
+</section>
+
+<section class="panel-lch">
+  <p class="text-dim-lch">Flag Dim On Lch Panel: warm gray copy on a warm near-black lch surface.</p>
+</section>
+
+<section class="panel-light">
+  <p class="text-pale-light">Flag Pale On Light Panel: bone copy on a bone-white srgb surface.</p>
+</section>
+
+<h1 class="text-light">Should pass</h1>
+
+<section>
+  <p class="text-light">Pass Light Text On Oklch Gradient Ground: warm ivory copy on the lacquer gradient, roughly 15:1.</p>
+</section>
+
+<section class="panel-srgb">
+  <p class="text-light">Pass Light Text On Srgb Panel: warm ivory copy on the near-black srgb surface.</p>
+</section>
+
+<section class="panel-mix">
+  <p class="text-light">Pass Light Text On Color Mix Panel: warm ivory copy on a surface a browser reports as color(srgb ...).</p>
+</section>
+
+<section class="panel-p3">
+  <p class="text-light">Pass Light Text On Display P3 Panel: warm ivory copy on the near-black display-p3 surface.</p>
+</section>
+
+<section class="panel-lch">
+  <p class="text-light">Pass Light Text On Lch Panel: warm ivory copy on the warm near-black lch surface.</p>
+</section>
+
+<section class="panel-light">
+  <p class="text-dark">Pass Dark Text On Light Panel: ink copy on the bone-white srgb surface.</p>
+  <div class="panel-unreadable">
+    <p class="text-light">Pass Unreadable Panel Inside Light Section: the ground is a color space the detector cannot read, so it must abstain instead of measuring against the light section or against white.</p>
+  </div>
+</section>
+
+</body>
+</html>

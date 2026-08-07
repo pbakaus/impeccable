@@ -11,14 +11,21 @@ import {
   isBrandFontOnOwnDomain,
 } from '../shared/constants.mjs';
 import {
+  CSS_NAMED_COLORS,
   colorToHex,
+  compositeColorOver,
   contrastRatio,
   getHue,
   hasChroma,
   isNeutralColor,
+  isNoPaintColorValue,
+  oklchToRgb,
+  parseAnyColor,
+  parseColorMix,
   parseGradientColors,
   parseRgb,
   relativeLuminance,
+  splitTopLevelCommas,
 } from '../shared/color.mjs';
 import { extractGoogleFontFamilies } from '../shared/fonts.mjs';
 
@@ -1670,7 +1677,19 @@ function readOwnBackgroundColor(el, computedStyle) {
   return bg;
 }
 
-function resolveBackground(el, win, customPropMap) {
+// Walk up for the surface the element's text is painted on.
+//
+// Returns { color, unresolved }:
+//   • color set          — the effective surface, overlays composited in.
+//   • unresolved: true   — a layer on the way up paints a color this parser
+//                          cannot read, so the surface is unknown. Callers
+//                          must SKIP their contrast checks. Guessing white
+//                          here is what flooded dark themes with false
+//                          "on #ffffff" findings: one abstention costs a
+//                          single finding, one wrong guess costs a hundred.
+//   • both null/false    — no solid color, but a gradient or image is in
+//                          play; callers fall back to its color stops.
+function resolveBackgroundInfo(el, win, customPropMap) {
   let current = el;
   // Translucent layers (0.1 < a < 1) found on the way down to an opaque
   // base. A browser composites these over the base; the old behavior
@@ -1718,30 +1737,30 @@ function resolveBackground(el, win, customPropMap) {
     }
 
     if (bg && bg.a > 0.1) {
-      if (bg.a >= 0.99) return flatten(bg);
+      if (bg.a >= 0.99) return { color: flatten(bg), unresolved: false };
       overlays.push(bg);
+    } else if (!bg && !isNoPaintColorValue(style.backgroundColor)) {
+      // This layer names a color we could not parse (a color space we do not
+      // model, an unresolved var(), a syntax newer than the parser). It may
+      // well be opaque, which would make every ancestor below it invisible —
+      // so the surface is unknown and the walk stops here rather than
+      // reporting an ancestor the visitor never sees.
+      return { color: null, unresolved: true };
     }
-    // No solid bg-color at this level. If THIS level has a gradient/url
-    // with no underlying solid color we can read:
-    //   • on body/html: assume white. Body-level gradients are almost
-    //     always decorative texture (paper grain, noise) on top of a
-    //     solid bg-color the page set via `background: var(--paper)`
-    //     shorthand — which jsdom can't decompose into bg-color. The
-    //     downstream gradient-stops fallback path produces catastrophic
-    //     false positives in this case (gradient noise stops have
-    //     accidental browns/blacks that look like card backgrounds).
-    //   • on other elements: bail to null and let the caller fall back
-    //     to gradient stops (gradient buttons / hero sections are real
-    //     bgs worth checking against).
-    if (hasGradientOrUrl) {
-      if (current.tagName === 'BODY' || current.tagName === 'HTML') {
-        return flatten({ r: 255, g: 255, b: 255, a: 1 });
-      }
-      return null;
-    }
+    // No solid bg-color at this level. A gradient or image at THIS level is
+    // the surface: hand the caller a null color so it falls back to the
+    // gradient's own stops (body grounds, gradient buttons, hero sections).
+    if (hasGradientOrUrl) return { color: null, unresolved: false };
     current = current.parentElement;
   }
-  return flatten({ r: 255, g: 255, b: 255, a: 1 });
+  // Every layer up to the document root was genuinely see-through, so the
+  // browser paints its default canvas. This is the ONLY case that earns the
+  // white assumption.
+  return { color: flatten({ r: 255, g: 255, b: 255, a: 1 }), unresolved: false };
+}
+
+function resolveBackground(el, win, customPropMap) {
+  return resolveBackgroundInfo(el, win, customPropMap).color;
 }
 
 // Walk parents looking for a gradient background and return its color stops.
@@ -1988,13 +2007,19 @@ function checkElementColorsDOM(el) {
   const style = getComputedStyle(el);
   const directText = [...el.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('');
   const hasDirectText = directText.trim().length > 0;
-  let effectiveBg = resolveBackground(el);
+  const bgInfo = resolveBackgroundInfo(el);
+  let effectiveBg = bgInfo.color;
+  // An unreadable surface anywhere up the chain: skip the gradient-stop
+  // fallback too, so nothing downstream measures against a ground we never
+  // resolved.
+  let surfaceUnresolved = bgInfo.unresolved;
   let ownBg = readOwnBackgroundColor(el, style);
   if (!ownBg || (ownBg.a ?? 1) <= 0.5) {
     const pseudoSurface = readPseudoSurfaceDOM(el, rect);
     if (pseudoSurface) {
       ownBg = pseudoSurface;
       effectiveBg = pseudoSurface;
+      surfaceUnresolved = false;
     }
   }
   return checkColors({
@@ -2006,8 +2031,8 @@ function checkElementColorsDOM(el) {
     // an oklch token near its own oklch background).
     textColor: parseRgb(style.color) || parseAnyColor(style.color),
     bgColor: ownBg,
-    effectiveBg,
-    effectiveBgStops: effectiveBg ? null : resolveGradientStops(el),
+    effectiveBg: surfaceUnresolved ? null : effectiveBg,
+    effectiveBgStops: surfaceUnresolved || effectiveBg ? null : resolveGradientStops(el),
     fontSize: parseFloat(style.fontSize) || 16,
     fontWeight: parseInt(style.fontWeight) || 400,
     hasDirectText,
@@ -2157,283 +2182,6 @@ function resolveVarRefs(raw, customPropMap, depth = 0) {
   });
 }
 
-// OKLCH → sRGB conversion (Björn Ottosson's matrices). L in 0..1 (or %),
-// C in 0..~0.4 typical, H in degrees. Returns clamped {r,g,b,a:1} in 0..255.
-// Needed because jsdom doesn't compute oklch() values — getComputedStyle
-// returns the literal "oklch(...)" string. Without this, the entire
-// Tailwind v4 color palette (which is OKLCH-based) is invisible to the
-// detector's contrast / color checks.
-function oklchToRgb(L, C, H) {
-  const hRad = (H * Math.PI) / 180;
-  return oklabToRgb(L, C * Math.cos(hRad), C * Math.sin(hRad));
-}
-
-function oklabToRgb(L, a, b) {
-  const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
-  const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
-  const s_ = L - 0.0894841775 * a - 1.2914855480 * b;
-  const lc = l_ * l_ * l_, mc = m_ * m_ * m_, sc = s_ * s_ * s_;
-  const rLin =  4.0767416621 * lc - 3.3077115913 * mc + 0.2309699292 * sc;
-  const gLin = -1.2684380046 * lc + 2.6097574011 * mc - 0.3413193965 * sc;
-  const bLin = -0.0041960863 * lc - 0.7034186147 * mc + 1.7076147010 * sc;
-  const enc = (x) => {
-    const c = Math.max(0, Math.min(1, x));
-    return c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
-  };
-  return {
-    r: Math.round(enc(rLin) * 255),
-    g: Math.round(enc(gLin) * 255),
-    b: Math.round(enc(bLin) * 255),
-    a: 1,
-  };
-}
-
-function hslToRgb(h, s, l) {
-  h = ((h % 360) + 360) % 360;
-  const c = (1 - Math.abs(2 * l - 1)) * s;
-  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
-  const m0 = l - c / 2;
-  const [r, g, b] =
-    h < 60 ? [c, x, 0] :
-    h < 120 ? [x, c, 0] :
-    h < 180 ? [0, c, x] :
-    h < 240 ? [0, x, c] :
-    h < 300 ? [x, 0, c] : [c, 0, x];
-  return {
-    r: Math.round((r + m0) * 255),
-    g: Math.round((g + m0) * 255),
-    b: Math.round((b + m0) * 255),
-    a: 1,
-  };
-}
-
-function hwbToRgb(h, w, bl) {
-  if (w + bl >= 1) {
-    const g = Math.round((w / (w + bl)) * 255);
-    return { r: g, g, b: g, a: 1 };
-  }
-  const base = hslToRgb(h, 1, 0.5);
-  const mix = (c) => Math.round(((c / 255) * (1 - w - bl) + w) * 255);
-  return { r: mix(base.r), g: mix(base.g), b: mix(base.b), a: 1 };
-}
-
-// Common CSS named colors — the handful that actually show up in generated
-// UIs, not the full 148-name spec list. Includes the achromatic names so a
-// named gray parses (and correctly reads as no-chroma) instead of being
-// treated as an unknown color.
-const CSS_NAMED_COLORS = {
-  black: { r: 0, g: 0, b: 0 },
-  white: { r: 255, g: 255, b: 255 },
-  gray: { r: 128, g: 128, b: 128 },
-  grey: { r: 128, g: 128, b: 128 },
-  silver: { r: 192, g: 192, b: 192 },
-  dimgray: { r: 105, g: 105, b: 105 },
-  darkgray: { r: 169, g: 169, b: 169 },
-  lightgray: { r: 211, g: 211, b: 211 },
-  gainsboro: { r: 220, g: 220, b: 220 },
-  whitesmoke: { r: 245, g: 245, b: 245 },
-  red: { r: 255, g: 0, b: 0 },
-  crimson: { r: 220, g: 20, b: 60 },
-  tomato: { r: 255, g: 99, b: 71 },
-  coral: { r: 255, g: 127, b: 80 },
-  salmon: { r: 250, g: 128, b: 114 },
-  orange: { r: 255, g: 165, b: 0 },
-  gold: { r: 255, g: 215, b: 0 },
-  yellow: { r: 255, g: 255, b: 0 },
-  olive: { r: 128, g: 128, b: 0 },
-  lime: { r: 0, g: 255, b: 0 },
-  green: { r: 0, g: 128, b: 0 },
-  teal: { r: 0, g: 128, b: 128 },
-  turquoise: { r: 64, g: 224, b: 208 },
-  cyan: { r: 0, g: 255, b: 255 },
-  aqua: { r: 0, g: 255, b: 255 },
-  skyblue: { r: 135, g: 206, b: 235 },
-  dodgerblue: { r: 30, g: 144, b: 255 },
-  blue: { r: 0, g: 0, b: 255 },
-  navy: { r: 0, g: 0, b: 128 },
-  indigo: { r: 75, g: 0, b: 130 },
-  rebeccapurple: { r: 102, g: 51, b: 153 },
-  purple: { r: 128, g: 0, b: 128 },
-  violet: { r: 238, g: 130, b: 238 },
-  orchid: { r: 218, g: 112, b: 214 },
-  magenta: { r: 255, g: 0, b: 255 },
-  fuchsia: { r: 255, g: 0, b: 255 },
-  hotpink: { r: 255, g: 105, b: 180 },
-  pink: { r: 255, g: 192, b: 203 },
-  maroon: { r: 128, g: 0, b: 0 },
-};
-
-// Split a string on top-level commas (ignoring commas nested in parens).
-function splitTopLevelCommas(str) {
-  const parts = [];
-  let depth = 0, start = 0;
-  for (let i = 0; i < str.length; i++) {
-    const ch = str[i];
-    if (ch === '(') depth++;
-    else if (ch === ')') depth = Math.max(0, depth - 1);
-    else if (ch === ',' && depth === 0) {
-      parts.push(str.slice(start, i).trim());
-      start = i + 1;
-    }
-  }
-  const tail = str.slice(start).trim();
-  if (tail) parts.push(tail);
-  return parts;
-}
-
-// Evaluate a CSS color-mix() expression to {r,g,b,a}. Returns null when
-// the expression can't be resolved (unresolved var(), unknown colors).
-//
-// Mixing is done with premultiplied alpha in sRGB regardless of the
-// declared interpolation space. That is exact for the dominant generated-UI
-// pattern — `color-mix(in oklab, <color> N%, transparent)` — where the
-// result is simply <color> at alpha N% in ANY rectangular space, and a
-// close-enough approximation for opaque-opaque mixes (the detector only
-// consumes these values for contrast/chroma thresholds, not for display).
-function parseColorMix(str) {
-  const m = String(str).trim().match(/^color-mix\(/i);
-  if (!m) return null;
-  // Balanced-paren capture of the arguments.
-  let depth = 0, end = -1;
-  const open = str.indexOf('(');
-  for (let i = open; i < str.length; i++) {
-    if (str[i] === '(') depth++;
-    else if (str[i] === ')') { depth--; if (depth === 0) { end = i; break; } }
-  }
-  if (end < 0) return null;
-  const args = splitTopLevelCommas(str.slice(open + 1, end));
-  if (args.length !== 3 || !/^in\s/i.test(args[0])) return null;
-
-  const parseComponent = (component) => {
-    // Percentage may lead or trail the color per spec.
-    let pct = null;
-    let colorStr = component;
-    const trail = component.match(/\s+([\d.]+)%$/);
-    const lead = component.match(/^([\d.]+)%\s+/);
-    if (trail) { pct = parseFloat(trail[1]); colorStr = component.slice(0, trail.index).trim(); }
-    else if (lead) { pct = parseFloat(lead[1]); colorStr = component.slice(lead[0].length).trim(); }
-    let color;
-    if (/^transparent$/i.test(colorStr)) color = { r: 0, g: 0, b: 0, a: 0 };
-    else color = parseAnyColor(colorStr);
-    if (!color) return null;
-    return { color, pct };
-  };
-
-  const c1 = parseComponent(args[1]);
-  const c2 = parseComponent(args[2]);
-  if (!c1 || !c2) return null;
-  let p1 = c1.pct, p2 = c2.pct;
-  if (p1 == null && p2 == null) { p1 = 50; p2 = 50; }
-  else if (p1 == null) p1 = 100 - p2;
-  else if (p2 == null) p2 = 100 - p1;
-  const sum = p1 + p2;
-  if (sum <= 0) return null;
-  // Per spec: weights normalize to sum; when sum < 100 the result alpha is
-  // additionally scaled by sum/100.
-  const w1 = p1 / sum, w2 = p2 / sum;
-  const alphaScale = sum < 100 ? sum / 100 : 1;
-  const a1 = c1.color.a ?? 1, a2 = c2.color.a ?? 1;
-  const a = (a1 * w1 + a2 * w2) * alphaScale;
-  if (a <= 0) return { r: 0, g: 0, b: 0, a: 0 };
-  const mix = (ch) => Math.round((c1.color[ch] * a1 * w1 + c2.color[ch] * a2 * w2) / (a1 * w1 + a2 * w2));
-  return { r: mix('r'), g: mix('g'), b: mix('b'), a: Math.min(1, a) };
-}
-
-// Composite a translucent color over an opaque(ish) base (simple
-// source-over in sRGB). Returns an opaque {r,g,b,a:1}.
-function compositeColorOver(top, base) {
-  const a = top.a ?? 1;
-  return {
-    r: Math.round(top.r * a + base.r * (1 - a)),
-    g: Math.round(top.g * a + base.g * (1 - a)),
-    b: Math.round(top.b * a + base.b * (1 - a)),
-    a: 1,
-  };
-}
-
-// Extended color parser: rgb/rgba/hex/oklch/oklab/hsl/hwb/color-mix/common
-// named colors. Returns null on no match. Use this when the input might be
-// any CSS color form; use plain parseRgb when you only expect computed rgb()
-// values from real browsers.
-function parseAnyColor(s) {
-  if (!s || typeof s !== 'string') return null;
-  const str = s.trim();
-  if (str === 'transparent' || str === 'currentcolor' || str === 'inherit') return null;
-  if (/^color-mix\(/i.test(str)) return parseColorMix(str);
-  let m;
-  m = str.match(/rgba?\(\s*(\d+(?:\.\d+)?)\s*,?\s*(\d+(?:\.\d+)?)\s*,?\s*(\d+(?:\.\d+)?)(?:\s*[,/]\s*([\d.]+))?\s*\)/);
-  if (m) return { r: Math.round(+m[1]), g: Math.round(+m[2]), b: Math.round(+m[3]), a: m[4] !== undefined ? +m[4] : 1 };
-  m = str.match(/^#([0-9a-f]{3,8})$/i);
-  if (m) {
-    const h = m[1];
-    if (h.length === 3 || h.length === 4) {
-      return {
-        r: parseInt(h[0] + h[0], 16),
-        g: parseInt(h[1] + h[1], 16),
-        b: parseInt(h[2] + h[2], 16),
-        a: h.length === 4 ? parseInt(h[3] + h[3], 16) / 255 : 1,
-      };
-    }
-    if (h.length === 6 || h.length === 8) {
-      return {
-        r: parseInt(h.slice(0, 2), 16),
-        g: parseInt(h.slice(2, 4), 16),
-        b: parseInt(h.slice(4, 6), 16),
-        a: h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1,
-      };
-    }
-  }
-  // OKLCH parser. Tailwind v4's CSS minifier squishes the space after
-  // `%` ("21.5%.02 50"), so the separator between L and C may be absent.
-  // Match L (with optional %), then C and H separated permissively.
-  m = str.match(/oklch\(\s*([\d.]+)(%?)\s*[\s,]*\s*([\d.]+)\s*[\s,]+\s*([-\d.]+)(?:deg)?(?:\s*\/\s*([\d.]+)(%)?)?\s*\)/i);
-  if (m) {
-    const Lnum = parseFloat(m[1]);
-    const L = m[2] === '%' ? Lnum / 100 : Lnum;
-    const rgb = oklchToRgb(L, parseFloat(m[3]), parseFloat(m[4]));
-    if (m[5] !== undefined) {
-      const alpha = parseFloat(m[5]);
-      rgb.a = m[6] === '%' ? alpha / 100 : alpha;
-    }
-    return rgb;
-  }
-  // OKLAB — a/b are signed axes; percentages map 100% → 0.4.
-  m = str.match(/oklab\(\s*([\d.]+)(%?)\s+(-?[\d.]+)(%?)\s+(-?[\d.]+)(%?)(?:\s*\/\s*([\d.]+)(%)?)?\s*\)/i);
-  if (m) {
-    const L = m[2] === '%' ? parseFloat(m[1]) / 100 : parseFloat(m[1]);
-    const a = m[4] === '%' ? parseFloat(m[3]) * 0.004 : parseFloat(m[3]);
-    const b = m[6] === '%' ? parseFloat(m[5]) * 0.004 : parseFloat(m[5]);
-    const rgb = oklabToRgb(L, a, b);
-    if (m[7] !== undefined) {
-      const alpha = parseFloat(m[7]);
-      rgb.a = m[8] === '%' ? alpha / 100 : alpha;
-    }
-    return rgb;
-  }
-  // HSL/HSLA — comma or space syntax, optional deg on hue.
-  m = str.match(/hsla?\(\s*(-?[\d.]+)(?:deg)?\s*[,\s]\s*([\d.]+)%\s*[,\s]\s*([\d.]+)%(?:\s*[,/]\s*([\d.]+)(%)?)?\s*\)/i);
-  if (m) {
-    const rgb = hslToRgb(parseFloat(m[1]), parseFloat(m[2]) / 100, parseFloat(m[3]) / 100);
-    if (m[4] !== undefined) {
-      const alpha = parseFloat(m[4]);
-      rgb.a = m[5] === '%' ? alpha / 100 : alpha;
-    }
-    return rgb;
-  }
-  // HWB — hue whiteness% blackness%.
-  m = str.match(/hwb\(\s*(-?[\d.]+)(?:deg)?\s+([\d.]+)%\s+([\d.]+)%(?:\s*\/\s*([\d.]+)(%)?)?\s*\)/i);
-  if (m) {
-    const rgb = hwbToRgb(parseFloat(m[1]), parseFloat(m[2]) / 100, parseFloat(m[3]) / 100);
-    if (m[4] !== undefined) {
-      const alpha = parseFloat(m[4]);
-      rgb.a = m[5] === '%' ? alpha / 100 : alpha;
-    }
-    return rgb;
-  }
-  const named = CSS_NAMED_COLORS[str.toLowerCase()];
-  if (named) return { ...named, a: 1 };
-  return null;
-}
 
 // Resolve var() refs in a color string (via customPropMap), then parse.
 // Returns null on any failure. Used in jsdom-mode paths where
@@ -3647,7 +3395,8 @@ function checkElementColors(el, style, tag, window, customPropMap, hasAnchorInhe
   const directText = [...el.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('');
   const hasDirectText = directText.trim().length > 0;
 
-  const effectiveBg = resolveBackground(el, window, customPropMap);
+  const bgInfo = resolveBackgroundInfo(el, window, customPropMap);
+  const effectiveBg = bgInfo.color;
   // jsdom returns literal "var(--X)" / "oklch(...)" for color, so plain
   // parseRgb misses Tailwind-tokenized text colors. Resolve through the
   // customPropMap first; fall back to parseRgb for vanilla rgb() pages.
@@ -3693,11 +3442,13 @@ function checkElementColors(el, style, tag, window, customPropMap, hasAnchorInhe
   // element itself has no usable own background, that pseudo is the real
   // surface for contrast purposes.
   let finalEffectiveBg = effectiveBg;
+  let surfaceUnresolved = bgInfo.unresolved;
   if ((!ownBg || (ownBg.a ?? 1) <= 0.5) && typeof window.getPseudoSurface === 'function') {
     const pseudoSurface = window.getPseudoSurface(el);
     if (pseudoSurface) {
       ownBg = pseudoSurface;
       finalEffectiveBg = pseudoSurface;
+      surfaceUnresolved = false;
     }
   }
 
@@ -3705,8 +3456,9 @@ function checkElementColors(el, style, tag, window, customPropMap, hasAnchorInhe
     tag,
     textColor,
     bgColor: ownBg,
-    effectiveBg: finalEffectiveBg,
-    effectiveBgStops: finalEffectiveBg ? null : resolveGradientStops(el, window, customPropMap),
+    // Unknown surface: hand the checks nothing rather than a guess.
+    effectiveBg: surfaceUnresolved ? null : finalEffectiveBg,
+    effectiveBgStops: surfaceUnresolved || finalEffectiveBg ? null : resolveGradientStops(el, window, customPropMap),
     fontSize: parseFloat(style.fontSize) || 16,
     fontWeight: parseInt(style.fontWeight) || 400,
     hasDirectText,
@@ -5497,6 +5249,7 @@ export {
   checkHtmlPatterns,
   readOwnBackgroundColor,
   resolveBackground,
+  resolveBackgroundInfo,
   resolveGradientStops,
   parseRadiusToPx,
   resolveBorderRadiusPx,

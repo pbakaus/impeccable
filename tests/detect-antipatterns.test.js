@@ -30,6 +30,7 @@ import {
   scanCssTextForRadialHalo,
   scanHtmlForShapeAssembledIllustration,
 } from '../cli/engine/rules/checks.mjs';
+import { parseGradientColors } from '../cli/engine/shared/color.mjs';
 
 const FIXTURES = path.join(import.meta.dir, 'fixtures', 'antipatterns');
 const SCRIPT = path.join(import.meta.dir, '..', 'cli', 'engine', 'detect-antipatterns.mjs');
@@ -1475,6 +1476,63 @@ describe('hover contrast + color-mix', () => {
     const c = parseAnyColor('color-mix(in oklab, oklch(0.625 0.205 33) 16%, transparent)');
     expect(c).not.toBeNull();
     expect(c.a).toBeCloseTo(0.16, 2);
+  });
+
+  // Every expected value below is what Chrome itself paints for that string
+  // (read back from a 1x1 canvas), so the parser is pinned to the browser it
+  // has to agree with rather than to my arithmetic.
+  describe('parseAnyColor — the color syntaxes a browser reports verbatim', () => {
+    const cases = [
+      ['oklch(0.84 0.19 80.46)', [255, 186, 0]],
+      ['oklch(84% 0.19 80.46)', [255, 186, 0]],
+      ['oklch(1 0 0)', [255, 255, 255]],
+      ['oklch(0 0 0)', [0, 0, 0]],
+      // Chroma far outside the sRGB gamut must clamp, never produce NaN.
+      ['oklch(0.62 0.4 30)', [255, 0, 0]],
+      ['color(srgb 0.1 0.11 0.12)', [26, 28, 31]],
+      // Chrome's serialization of a color-mix in srgb routinely lands outside
+      // 0..1 on one or more channels.
+      ['color(srgb 1.04084 0.728032 -0.213551)', [255, 186, 0]],
+      ['color(srgb-linear 0.5 0.5 0.5)', [188, 188, 188]],
+      ['color(display-p3 0.9 0.8 0.2)', [235, 203, 0]],
+      ['color(display-p3 1 0 0)', [255, 0, 0]],
+      ['lch(20 5 60)', [54, 47, 42]],
+      ['lab(50 40 -30)', [165, 91, 171]],
+      ['lab(100 0 0)', [255, 255, 255]],
+      ['lab(0 0 0)', [0, 0, 0]],
+    ];
+    for (const [input, [r, g, b]] of cases) {
+      test(`${input} -> rgb(${r}, ${g}, ${b})`, () => {
+        const c = parseAnyColor(input);
+        expect(c).not.toBeNull();
+        expect(Math.abs(c.r - r)).toBeLessThanOrEqual(1);
+        expect(Math.abs(c.g - g)).toBeLessThanOrEqual(1);
+        expect(Math.abs(c.b - b)).toBeLessThanOrEqual(1);
+        expect(c.a).toBe(1);
+      });
+    }
+
+    test('carries the alpha channel through color() and lch()', () => {
+      expect(parseAnyColor('color(srgb 0.1 0.11 0.12 / 0.4)').a).toBeCloseTo(0.4, 3);
+      expect(parseAnyColor('lch(20 5 60 / 25%)').a).toBeCloseTo(0.25, 3);
+    });
+
+    test('returns null for color spaces it does not model, so callers abstain', () => {
+      expect(parseAnyColor('color(rec2020 0.5 0.2 0.1)')).toBeNull();
+      expect(parseAnyColor('color(--custom-profile 0.2 0.3 0.4)')).toBeNull();
+    });
+  });
+
+  test('parseGradientColors reads stops written in modern color syntax', () => {
+    const stops = parseGradientColors('linear-gradient(oklch(0.07 0.006 95), oklch(0.11 0.008 95))');
+    expect(stops).toHaveLength(2);
+    expect(stops[0].r).toBeLessThan(10);
+    expect(stops[1].r).toBeLessThan(20);
+  });
+
+  test('parseGradientColors ignores the interpolation-space hint', () => {
+    const stops = parseGradientColors('linear-gradient(in oklab, rgb(0, 0, 0), rgb(255, 255, 255))');
+    expect(stops).toHaveLength(2);
   });
 
   test('checkHoverContrast flags a failing hover pair on a styled control', () => {

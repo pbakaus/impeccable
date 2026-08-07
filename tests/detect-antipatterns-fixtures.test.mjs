@@ -1366,3 +1366,51 @@ describe('detectHtml — CSS patterns in prose (css-in-prose fixtures)', () => {
     assert.ok(f.some(r => r.antipattern === 'ai-color-palette'), 'expected ai-color-palette');
   });
 });
+
+describe('detectHtml — dark themes written in modern color syntax', () => {
+  // A dark page whose ground and surfaces are written in oklch, color(srgb),
+  // color(display-p3), and lch. Backgrounds the parser cannot read must make
+  // the contrast checks abstain; assuming the browser default of white turns
+  // every light-on-dark line into a false "on #ffffff" finding.
+  const FLAG_PAIRS = [
+    // The ground is a two-stop oklch gradient; the check reports the worst
+    // stop, which for charcoal copy is the lighter one.
+    ['#35332d', '#050403'],  // Flag Muted On Oklch Ground
+    ['#47474d', '#1a1c1f'],  // Flag Dim On Srgb Panel
+    ['#59595c', '#121215'],  // Flag Dim On Display P3 Panel
+    ['#56514e', '#302b27'],  // Flag Dim On Lch Panel
+    ['#bfbdb8', '#faf7f2'],  // Flag Pale On Light Panel
+  ];
+
+  it('flags text that genuinely fails against a ground the parser can read', async () => {
+    const f = await detectHtml(path.join(FIXTURES, 'dark-theme-modern-color.html'));
+    const snippets = f.filter(r => r.antipattern === 'low-contrast').map(r => r.snippet || '');
+    for (const [text, bg] of FLAG_PAIRS) {
+      assert.ok(
+        snippets.some(s => s.includes(`text ${text}`) && s.includes(`on ${bg}`)),
+        `expected low-contrast for text ${text} on ${bg}, got: ${snippets.join('; ')}`,
+      );
+    }
+  });
+
+  it('never assumes white when the ground is unreadable', async () => {
+    const f = await detectHtml(path.join(FIXTURES, 'dark-theme-modern-color.html'));
+    const onWhite = f.filter(r => /on #ffffff/i.test(r.snippet || ''));
+    assert.equal(
+      onWhite.length, 0,
+      `no finding may claim a white ground on this page, got: ${onWhite.map(r => r.snippet).join('; ')}`,
+    );
+  });
+
+  it('light copy on readable dark surfaces stays quiet', async () => {
+    const f = await detectHtml(path.join(FIXTURES, 'dark-theme-modern-color.html'));
+    const pale = f.filter(r =>
+      (r.antipattern === 'low-contrast' || r.antipattern === 'gray-on-color') &&
+      /#e7e4dd/i.test(r.snippet || '')
+    );
+    assert.equal(
+      pale.length, 0,
+      `ivory copy on dark grounds must not flag, got: ${pale.map(r => r.snippet).join('; ')}`,
+    );
+  });
+});

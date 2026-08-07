@@ -948,4 +948,48 @@ describe('detectUrl — browser-only fixtures', () => {
       await detector.close();
     }
   });
+
+  // Only a real browser reproduces this one: Chrome keeps oklch(), lch(), and
+  // color(srgb ...) verbatim in getComputedStyle output, so a detector that
+  // cannot parse those reads every surface as unset, walks out of the page,
+  // and assumes the white canvas. On a dark theme that turns every light line
+  // into a false "on #ffffff" finding (two live scans of impeccable.style
+  // produced 95 and ~120 of them).
+  describe('dark themes written in modern color syntax', () => {
+    const FLAG_PAIRS = [
+      // Worst stop of the two-stop oklch ground.
+      ['#35332d', '#050403'],
+      ['#47474d', '#1a1c1f'],
+      ['#59595c', '#121215'],
+      ['#56514e', '#302b27'],
+      ['#bfbdb8', '#faf7f2'],
+    ];
+
+    it('reads oklch / color() / lch grounds and never assumes white', async () => {
+      const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/dark-theme-modern-color.html`, {
+        visualContrast: false,
+      });
+      const lowContrast = f.filter(r => r.antipattern === 'low-contrast');
+      const snippets = lowContrast.map(r => r.snippet || '');
+
+      const onWhite = snippets.filter(s => /on #ffffff/i.test(s));
+      assert.equal(
+        onWhite.length, 0,
+        `no finding may claim a white ground on this page, got: ${onWhite.join('; ')}`,
+      );
+
+      const pale = snippets.filter(s => /#e7e4dd/i.test(s));
+      assert.equal(
+        pale.length, 0,
+        `ivory copy on dark grounds must not flag, got: ${pale.join('; ')}`,
+      );
+
+      for (const [text, bg] of FLAG_PAIRS) {
+        assert.ok(
+          snippets.some(s => s.includes(`text ${text}`) && s.includes(`on ${bg}`)),
+          `expected low-contrast for text ${text} on ${bg}, got: ${snippets.join('; ')}`,
+        );
+      }
+    });
+  });
 });
