@@ -26,6 +26,7 @@ Last verified: 2026-04-28 (subagent landscape spot-checked 2026-06-28; Mistral V
 | Rovo Dev | https://support.atlassian.com/rovo/docs/extend-rovo-dev-cli-with-agent-skills |
 | Mistral Vibe | https://docs.mistral.ai/vibe/code/cli/skills |
 | Grok Build | https://docs.x.ai/build/features/skills-plugins-marketplaces |
+| Hermes Agent | https://hermes-agent.nousresearch.com/docs/ |
 | Antigravity | https://antigravity.google/docs/skills |
 
 ## Spec Compliance
@@ -38,28 +39,29 @@ Provider-specific extensions beyond the spec: `user-invocable`, `argument-hint`,
 
 Fields marked with * are spec-standard. Others are provider extensions.
 
-| Field | Claude Code | Cursor | Gemini | Codex | Copilot | Grok | Kiro | OpenCode | Pi | Qoder | Rovo Dev | Mistral Vibe | Antigravity |
-|-------|:-----------:|:------:|:------:|:-----:|:-------:|:----:|:----:|:--------:|:--:|:-----:|:--------:|:------------:|:-----------:|
-| `name`* | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| `description`* | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| `license`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| `compatibility`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| `metadata`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| `allowed-tools`* | Yes | No | Ignored | No | No | Yes | No | Yes | Yes | Yes | Yes | Yes | Yes |
-| `user-invocable` | Yes | No | No | No | Yes | Yes | No | Yes | No | Yes | Yes | Yes | No |
-| `argument-hint` | Yes | No | No | No | Yes | Yes | No | Yes | No | Yes | Yes | No | No |
-| `disable-model-invocation` | Yes | Yes | No | No | Yes | Yes | No | Yes | Yes | TBD | TBD | No | No |
-| `model` | Yes | No | No | No | No | Yes | No | Yes | No | No | No | No | No |
-| `effort` | Yes | No | No | No | No | Yes | No | No | No | No | No | No | No |
-| `context` | Yes | No | No | No | No | No | No | No | No | No | No | No | No |
-| `agent` | Yes | No | No | No | No | No | No | Yes | No | No | No | No | No |
-| `hooks` | Yes | No | No | Yes | No | Yes | No | No | No | No | No | No | No |
+| Field | Claude Code | Cursor | Gemini | Codex | Copilot | Grok | Hermes | Kiro | OpenCode | Pi | Qoder | Rovo Dev | Mistral Vibe | Antigravity |
+|-------|:-----------:|:------:|:------:|:-----:|:-------:|:----:|:------:|:----:|:--------:|:--:|:-----:|:--------:|:------------:|:-----------:|
+| `name`* | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| `description`* | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| `license`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| `compatibility`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| `metadata`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| `allowed-tools`* | Yes | No | Ignored | No | No | Yes | No | No | Yes | Yes | Yes | Yes | Yes | Yes |
+| `user-invocable` | Yes | No | No | No | Yes | Yes | No | No | Yes | No | Yes | Yes | Yes | No |
+| `argument-hint` | Yes | No | No | No | Yes | Yes | No | No | Yes | No | Yes | Yes | No | No |
+| `disable-model-invocation` | Yes | Yes | No | No | Yes | Yes | No | No | Yes | Yes | TBD | TBD | No | No |
+| `model` | Yes | No | No | No | No | Yes | No | No | Yes | No | No | No | No | No |
+| `effort` | Yes | No | No | No | No | Yes | No | No | No | No | No | No | No | No |
+| `context` | Yes | No | No | No | No | No | No | No | No | No | No | No | No | No |
+| `agent` | Yes | No | No | No | No | No | No | No | Yes | No | No | No | No | No |
+| `hooks` | Yes | No | No | Yes | No | Yes | No | No | No | No | No | No | No | No |
 
 Notes:
 - Gemini CLI validates only `name` and `description`; other spec fields are parsed but ignored.
 - Codex CLI uses a separate `agents/openai.yaml` sidecar for skill metadata (icons, branding, MCP tools, invocation control). Codex also auto-discovers subagents bundled inside an installed skill's `agents/` folder (TOML), which is how Impeccable ships its asset-producer. Standalone custom agents can still live under `.codex/agents/` or `~/.codex/agents/`, but Impeccable no longer installs anything there.
 - Codex CLI hooks ship under `[features].hooks = true` (still flagged), require `/hooks` trust ceremony per-update, and are disabled on Windows.
 - Grok Build is Claude Code compatible with zero config: it also reads `.claude/skills/`, `.claude/settings.json` hooks, and Claude plugin layouts. Native paths are `.grok/skills/`, `.grok/hooks/*.json`, and `.grok/agents/`. Skill frontmatter supports `when-to-use` in addition to the fields above. Project hooks require `/hooks-trust` (or `--trust`). See https://docs.x.ai/build/features/skills-plugins-marketplaces and https://docs.x.ai/build/features/hooks.
+- Hermes Agent reads the Agent Skills spec as-is. Spec-defined fields (`name`, `description`, `license`, `compatibility`, `metadata`) are parsed and stored; harness-specific extensions (`user-invocable`, `argument-hint`, `allowed-tools`, `disable-model-invocation`, `model`, `effort`, `context`, `agent`, `hooks`) are unknown keys and silently ignored. Hermes has no hook surface, no per-skill tool ACL, and no slash-command equivalent of `user-invocable` (skills are loaded via `/skill <name>` or auto-loaded; sub-commands like `/impeccable polish` are routed from the skill body, not declared in frontmatter). Hermes adds two frontmatter fields not in the spec: `platforms:` (OS filter; default = all) and `environments:` (relevance gate over `kanban`, `docker`, `s6`). Unknown fields are silently ignored.
 - Kiro recognizes `user-invocable` and `disable-model-invocation` per community reports but does not formally document them.
 - Antigravity supports standard Agent Skills spec frontmatter fields (`name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools`).
 - Unknown fields are silently ignored by all harnesses.
@@ -92,6 +94,7 @@ Notes:
 | Rovo Dev | `.rovodev/skills/` | `~/.rovodev/skills/` (user-level) |
 | Mistral Vibe | `.vibe/skills/` (project), `~/.vibe/skills/` (global) | `.agents/skills/` (project), `~/.agents/skills/` (global) |
 | Grok Build | `.grok/skills/` (project), `~/.grok/skills/` (global) | `.agents/skills/`, `.claude/skills/`, `.cursor/skills/` (Claude/Cursor compat, configurable) |
+| Hermes Agent | `.hermes/skills/` (project), `~/.hermes/skills/` (global) | `skills.external_dirs` config (no automatic `.agents/skills/` fallback) |
 | Antigravity | `.agent/skills/` (project), `~/.gemini/config/skills/` (global) | `.agents/skills/` (project), `~/.agents/skills/` (global) |
 
 All harnesses support the `{skill-name}/SKILL.md` directory structure with optional `reference/`, `scripts/`, and `assets/` subdirectories.
