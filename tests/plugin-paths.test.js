@@ -16,6 +16,7 @@ import path from 'path';
 import {
   rewritePluginMarkdown,
   rewritePluginMarkdownTree,
+  verifyPluginSkillRewrite,
   CLAUDE_PROJECT_SCRIPTS_PATH,
   PLUGIN_ALLOWED_TOOLS_RULE,
 } from '../scripts/lib/plugin-paths.js';
@@ -112,5 +113,54 @@ describe('rewritePluginMarkdownTree', () => {
 
   test('is a no-op on a missing directory', () => {
     expect(() => rewritePluginMarkdownTree(path.join(root, 'does-not-exist'))).not.toThrow();
+  });
+});
+
+describe('verifyPluginSkillRewrite', () => {
+  let root;
+
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-plugin-verify-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  const writeSkill = (contents) => {
+    const p = path.join(root, 'SKILL.md');
+    fs.writeFileSync(p, contents);
+    return p;
+  };
+
+  const goodSkill = [
+    'allowed-tools:',
+    '  - Bash(node .claude/skills/impeccable/scripts/*)',
+    '',
+    "1. Run `node .claude/skills/impeccable/scripts/context.mjs` once per session " +
+      "(if the runtime shows this skill's loaded base directory, run `node <skill-base-dir>/scripts/context.mjs`; " +
+      "keep cwd at the user's project).",
+  ].join('\n');
+
+  test('accepts a correctly rewritten SKILL.md', () => {
+    const p = writeSkill(rewritePluginMarkdown(goodSkill));
+    expect(() => verifyPluginSkillRewrite(p)).not.toThrow();
+  });
+
+  test('fails the build when the Setup parenthetical no longer matched', () => {
+    // Simulate SKILL.src.md rewording step 1: the parenthetical replacement
+    // no-ops, so the definition of <skill-base-dir> never lands.
+    const reworded = goodSkill.replace('if the runtime shows', 'when the runtime displays');
+    const p = writeSkill(rewritePluginMarkdown(reworded));
+    expect(() => verifyPluginSkillRewrite(p)).toThrow(/Setup step 1 parenthetical/);
+  });
+
+  test('fails the build when the allowed-tools rule no longer matched', () => {
+    const reworded = goodSkill.replace(
+      'Bash(node .claude/skills/impeccable/scripts/*)',
+      'Bash(node .claude/skills/impeccable/scripts/**)',
+    );
+    const p = writeSkill(rewritePluginMarkdown(reworded));
+    expect(() => verifyPluginSkillRewrite(p)).toThrow(/allowed-tools/);
   });
 });

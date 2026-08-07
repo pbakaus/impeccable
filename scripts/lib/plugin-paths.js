@@ -53,6 +53,31 @@ export function rewritePluginMarkdown(content) {
 }
 
 /**
+ * Fail the build when the copied SKILL.md no longer matches the rewrite.
+ * The parenthetical replacement keys on the exact Setup step 1 text; if
+ * SKILL.src.md rewords it, replaceAll silently no-ops and the plugin ships
+ * a redundant (but still correct) instruction. Loud beats redundant: the
+ * build stops here so plugin-paths.js gets updated alongside the source.
+ */
+export function verifyPluginSkillRewrite(skillMdPath) {
+  const content = fs.readFileSync(skillMdPath, 'utf-8');
+  if (!content.includes(SETUP_PLUGIN_TEXT)) {
+    throw new Error(
+      `Plugin rewrite drift: ${skillMdPath} is missing the <skill-base-dir> definition. ` +
+      "SKILL.src.md's Setup step 1 parenthetical no longer matches the replacement in " +
+      'scripts/lib/plugin-paths.js (issue #523); update SETUP_FALLBACK_TEXT to the new wording.',
+    );
+  }
+  if (!content.includes(PLUGIN_ALLOWED_TOOLS_RULE)) {
+    throw new Error(
+      `Plugin rewrite drift: ${skillMdPath} is missing the allowed-tools rule ` +
+      `${PLUGIN_ALLOWED_TOOLS_RULE}. SKILL.src.md's allowed-tools entry no longer matches the ` +
+      'replacement in scripts/lib/plugin-paths.js (issue #523).',
+    );
+  }
+}
+
+/**
  * Apply rewritePluginMarkdown to every .md file under dir, recursively.
  * Script files are left alone: the only project-relative paths in them
  * (hook-admin.mjs) install project-scoped hooks via ${CLAUDE_PROJECT_DIR},
