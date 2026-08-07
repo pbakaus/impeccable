@@ -7207,6 +7207,10 @@ body.picker-page {
   opacity: 0;
 }
 
+.picker-palette-hint.is-warning {
+  color: var(--ks-vermilion);
+}
+
 .picker-select {
   width: auto;
 }

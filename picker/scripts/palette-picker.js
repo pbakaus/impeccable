@@ -1,4 +1,4 @@
-import { contrastInk, contrastInkHex, formatOklch, hexToOklch, oklchToHex, readableOn, seedToRoles } from './color.js';
+import { contrastInk, contrastInkHex, formatOklch, hexToOklch, neutralContrastIssue, oklchToHex, readableOn, seedToRoles } from './color.js';
 
 const ROLES = ['primary', 'secondary', 'tertiary', 'neutral'];
 const screen = document.querySelector('[data-screen="02"]');
@@ -286,6 +286,7 @@ function renderPreview() {
   if (!cards.length) return;
   for (const role of ROLES) preview.style.setProperty(`--pv-${role}`, state().colors[role]);
   preview.style.setProperty('--pv-n-ink', contrastInk(state().colors.neutral));
+  syncNeutralWarning();
 }
 
 /* The prefix exists for the strategy stage, which needs the committed colors
@@ -1175,13 +1176,40 @@ function loadCustomFace({ heading, body }) {
   }
 }
 
-function setActiveRole(role) {
-  if (hint.textContent === hint.dataset[role]) return;
+/* The hint shows one of three things, in priority order: the neutral
+   contrast warning while the working neutral is bad, the hovered or edited
+   role's guidance, or the idle instruction. The warning wins so an edit that
+   breaks the neutral is reported at the moment it happens, and the role copy
+   comes back on its own the moment the neutral is fixed. */
+let hintRole = 'idle';
+let neutralWarning = null;
+
+function hintCopy() {
+  return neutralWarning ?? hint.dataset[hintRole] ?? hint.dataset.idle;
+}
+
+function paintHint() {
+  const wanted = hintCopy();
+  if (hint.textContent === wanted) {
+    hint.classList.toggle('is-warning', Boolean(neutralWarning));
+    return;
+  }
   hint.classList.add('is-changing');
   setTimeout(() => {
-    hint.textContent = hint.dataset[role];
+    hint.textContent = hintCopy();
+    hint.classList.toggle('is-warning', Boolean(neutralWarning));
     hint.classList.remove('is-changing');
   }, 90);
+}
+
+function setActiveRole(role) {
+  hintRole = role;
+  paintHint();
+}
+
+function syncNeutralWarning() {
+  neutralWarning = cards.length ? neutralContrastIssue(state().colors) : null;
+  paintHint();
 }
 
 function setColor(role, hex, detached = true) {
