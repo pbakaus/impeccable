@@ -419,6 +419,8 @@ describe('new-work-e2e: serve-question decision page', () => {
       // Fake the page clock so the 10-minute delivery deadline is reachable;
       // the server keeps its real clock, so its own idle grace never fires.
       await page.clock.install();
+      let beats = 0;
+      page.on('request', (r) => { if (r.url().endsWith('/heartbeat')) beats += 1; });
       await page.goto(url, { waitUntil: 'load' });
       // Playwright actionability waits on rAF, which the fake clock owns, so
       // dispatch the click directly.
@@ -435,6 +437,14 @@ describe('new-work-e2e: serve-question decision page', () => {
       const text = await page.$eval('.stall', (el) => el.textContent);
       assert.match(text, /The next hand never arrived/);
       assert.ok(await page.$('.stall .choose'), 'a way out is offered');
+      // The stalled page must also stop heartbeating: the beats are what keep
+      // the daemon alive, so a stalled tab left open used to hold it past its
+      // idle grace forever while --wait spun on WAITING.
+      assert.ok(beats > 0, 'the heartbeat counter observes beats before the stall');
+      const beatsAtStall = beats;
+      await page.clock.fastForward(60000);
+      await new Promise((r) => setTimeout(r, 750));
+      assert.equal(beats, beatsAtStall, 'no heartbeat fires after the stall, so the idle grace can reclaim the daemon');
     } finally {
       await context.close();
       await stopDaemon(cwd, key);

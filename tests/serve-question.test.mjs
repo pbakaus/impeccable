@@ -250,6 +250,38 @@ describe('serve-question', () => {
     assert.ok(gone, 'with no heartbeat ever, the daemon still exits at --timeout');
   });
 
+  it('--timeout 0 waits for a page forever, but a page that beat and went silent still ends the daemon', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'serve-question-'));
+    const payloadPath = path.join(dir, 'q.json');
+    writeFileSync(payloadPath, JSON.stringify(PAYLOAD));
+    const run = (args) => new Promise((resolve) => {
+      const child = spawn(process.execPath, [SCRIPT, ...args], { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] });
+      let out = '';
+      child.stdout.on('data', (chunk) => { out += chunk; });
+      child.on('exit', (code) => resolve({ code, out }));
+    });
+    const started = await run(['--start', '--payload', payloadPath, '--no-open', '--key', 'zero', '--timeout', '0', '--idle-grace', '3']);
+    assert.equal(started.code, 0, started.out);
+    const url = started.out.match(/QUESTION URL: (\S+)/)?.[1];
+    assert.ok(url, started.out);
+    // No page yet: --timeout 0 means wait indefinitely, so the daemon must
+    // survive well past where any small timeout would have fired.
+    await new Promise((r) => setTimeout(r, 3000));
+    const alive = await fetch(url);
+    assert.equal(alive.status, 200, 'with --timeout 0 and no page yet, the daemon keeps waiting');
+    // One beat, then silence: the idle grace must still reclaim the daemon.
+    // Before the fix, the whole lifetime check sat inside timeoutSec > 0 and
+    // a closed tab leaked this daemon forever.
+    await fetch(`${url}heartbeat`, { method: 'POST' });
+    const deadline = Date.now() + 12000;
+    let gone = false;
+    while (Date.now() < deadline && !gone) {
+      await new Promise((r) => setTimeout(r, 500));
+      try { await fetch(url); } catch { gone = true; }
+    }
+    assert.ok(gone, 'the idle grace applies under --timeout 0 once a page has beat');
+  });
+
   it('--update trusts a fresh heartbeat over a failed kill probe, and still detects true death', async () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'serve-question-'));
     const qdir = path.join(dir, '.impeccable', 'questions');

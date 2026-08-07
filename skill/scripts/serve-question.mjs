@@ -678,7 +678,7 @@ function page() {
   const steer = () => document.getElementById('steer')?.value || '';
   const beat = () => { try { navigator.sendBeacon('/heartbeat'); } catch { fetch('/heartbeat', { method: 'POST' }); } };
   beat();
-  setInterval(beat, 5000);
+  const beatTimer = setInterval(beat, 5000);
   // A dead server must fail loudly: awaiting a rejected fetch here used to
   // swallow the click and never print the confirmation, so the user believed
   // a choice had landed that no one would ever collect.
@@ -931,6 +931,11 @@ function page() {
     const shuffleStart = Date.now();
     const stall = (message) => {
       clearInterval(poll);
+      // A stalled page is an abandoned flow: keep heartbeating and the
+      // daemon never reaches its idle grace, so --wait spins on WAITING
+      // forever. Go silent and let the server reclaim itself; Reload
+      // starts a fresh page with a fresh heartbeat.
+      clearInterval(beatTimer);
       grid.innerHTML = '<div class="stall"><p>' + message + '</p><button type="button" class="choose">Reload</button></div>';
       grid.querySelector('.stall .choose').addEventListener('click', () => location.reload());
     };
@@ -1044,19 +1049,20 @@ server.listen(portArg, '127.0.0.1', () => {
   // page polling skeletons that could never resolve. Once the page beats,
   // the server's lifetime tracks the beats, and it exits only after the idle
   // grace passes with none, long enough to survive a closed laptop lid.
+  // --timeout 0 waits for a page forever, but the idle grace still applies
+  // once one has beat: a page that arrived and went silent is a closed tab,
+  // and no timeout setting should let that daemon leak.
   const startedAt = Date.now();
-  if (timeoutSec > 0) {
-    const lifetime = setInterval(() => {
-      if (!server.lastBeatSeen) {
-        if (Date.now() - startedAt > timeoutSec * 1000) {
-          console.log('serve-question: timed out with no answer');
-          process.exit(2);
-        }
-      } else if (Date.now() - server.lastBeatSeen > idleGraceMs) {
-        console.log('serve-question: the page stopped beating and never came back; exiting');
+  const lifetime = setInterval(() => {
+    if (!server.lastBeatSeen) {
+      if (timeoutSec > 0 && Date.now() - startedAt > timeoutSec * 1000) {
+        console.log('serve-question: timed out with no answer');
         process.exit(2);
       }
-    }, 2000);
-    lifetime.unref?.();
-  }
+    } else if (Date.now() - server.lastBeatSeen > idleGraceMs) {
+      console.log('serve-question: the page stopped beating and never came back; exiting');
+      process.exit(2);
+    }
+  }, 2000);
+  lifetime.unref?.();
 });
