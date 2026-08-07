@@ -1446,6 +1446,57 @@ describe('skills install/update: local universal bundle e2e', () => {
     rmSync(tmp, { recursive: true, force: true });
   }, 15000);
 
+  test('explicit --providers installs a missing provider without --force (#500)', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-explicit-missing-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.claude', '.cursor']);
+
+    // Seed an existing .claude install; .cursor has nothing yet.
+    const skillDir = join(tmp, '.claude', 'skills', 'impeccable');
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: impeccable\nversion: 9.9.9-local\n---\nSeeded install.\n');
+
+    const output = run('skills install -y --providers=cursor --no-hooks', {
+      cwd: tmp,
+      env: { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+
+    expect(output).toContain('Installed impeccable into: .cursor');
+    expect(readFileSync(join(tmp, '.cursor', 'skills', 'impeccable', 'SKILL.md'), 'utf8')).toContain('version: 9.9.9-local');
+    // The unselected .claude install is left alone.
+    expect(readFileSync(join(skillDir, 'SKILL.md'), 'utf8')).toContain('Seeded install.');
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('explicit --providers mixes per-target updates and fresh installs (#500)', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-explicit-mixed-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.claude', '.cursor']);
+
+    // Stale .claude install; .cursor has nothing yet.
+    const skillDir = join(tmp, '.claude', 'skills', 'impeccable');
+    mkdirSync(join(skillDir, 'scripts'), { recursive: true });
+    writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: impeccable\nstale: .claude\n---\nOld content.\n');
+    writeFileSync(join(skillDir, 'scripts', 'context.mjs'), 'console.log("old script");\n');
+
+    const output = run('skills install -y --providers=claude,cursor', {
+      cwd: tmp,
+      env: { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+
+    expect(output).toContain('already installed');
+    expect(output).toContain('Updated');
+    expect(output).toContain('Installed impeccable into: .cursor');
+    expect(readFileSync(join(skillDir, 'SKILL.md'), 'utf8')).toContain('version: 9.9.9-local');
+    expect(readFileSync(join(tmp, '.cursor', 'skills', 'impeccable', 'SKILL.md'), 'utf8')).toContain('version: 9.9.9-local');
+    // The freshly installed provider gets its hooks and agents too.
+    expect(existsSync(join(tmp, '.cursor', 'hooks.json'))).toBe(true);
+    expect(existsSync(join(tmp, '.cursor', 'agents', 'impeccable-finish-reviewer.md'))).toBe(true);
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
   test('skills update --no-hooks refreshes skills without touching malformed hook manifests', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'imp-test-update-no-hooks-'));
     execSync('git init', { cwd: tmp });

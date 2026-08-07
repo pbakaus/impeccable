@@ -1100,13 +1100,13 @@ async function chooseInstallScope(projectRoot, targets, detections, { yes, scope
 async function chooseInstallPlan(projectRoot, flags, { yes } = {}) {
   const providersValue = getFlagValue(flags, '--providers');
   const scopeValue = getInstallScopeValue(flags);
-  const { targets, detections } = await chooseInstallProviders(projectRoot, providersValue, { yes });
+  const { targets, detections, explicit } = await chooseInstallProviders(projectRoot, providersValue, { yes });
   if (targets.length === 0) {
     throw new Error('Could not determine a target harness folder.');
   }
   const scope = await chooseInstallScope(projectRoot, targets, detections, { yes, scopeValue });
   const installRoot = installRootForScope(scope, projectRoot);
-  return { targets, scope, installRoot, hookRoot: projectRoot, detections };
+  return { targets, scope, installRoot, hookRoot: projectRoot, detections, explicit };
 }
 
 /**
@@ -1812,16 +1812,23 @@ async function install(flags) {
     process.exit(1);
   }
 
-  const { targets, installRoot, hookRoot, scope } = plan;
+  const { targets, installRoot, hookRoot, scope, explicit } = plan;
   const existing = isAlreadyInstalled(installRoot, scope);
+  const installedTargets = existing ? findInstalledProviders(installRoot, scope) : [];
+  // An explicit --providers list is a per-target request: a selected provider
+  // with no install yet gets a fresh install instead of tripping the global
+  // "already installed" early exit (issue #500). When every selected provider
+  // is missing, skip the update branch entirely and take the fresh-install path.
+  const missingSelectedTargets = (existing && !force && explicit)
+    ? targets.filter(provider => !installedTargets.includes(provider))
+    : [];
 
-  if (existing && !force) {
+  if (existing && !force && missingSelectedTargets.length < targets.length) {
     console.log(`Impeccable skills are already installed (found in ${existing}/).`);
-    const installedTargets = findInstalledProviders(installRoot, scope);
     const selectedInstalledTargets = targets.filter(provider => installedTargets.includes(provider));
     const linkedTargets = findLinkedProviders(installRoot, selectedInstalledTargets, scope);
     const copyTargets = selectedInstalledTargets.filter(provider => !linkedTargets.includes(provider));
-    const hookTargets = selectedInstalledTargets;
+    const hookTargets = [...selectedInstalledTargets, ...missingSelectedTargets];
     const wantHooks = installHooks && await decideHookInstall(hookRoot, hookTargets, { yes });
     let bundleDir;
     try {
@@ -1836,11 +1843,11 @@ async function install(flags) {
         ? hookTargets.filter(provider => !hookInstalledForProvider(hookRoot, provider))
         : [];
       let updateCheckSkipped = false;
-      if (copyTargets.length > 0 || missingHookTargets.length > 0) {
+      if (copyTargets.length > 0 || missingHookTargets.length > 0 || missingSelectedTargets.length > 0) {
         try {
           bundleDir = await downloadAndExtractBundle();
         } catch (e) {
-          if (missingHookTargets.length > 0) throw e;
+          if (missingHookTargets.length > 0 || missingSelectedTargets.length > 0) throw e;
           updateCheckSkipped = true;
           console.log(`Could not check for skill updates: ${e.message}`);
         }
@@ -1854,6 +1861,17 @@ async function install(flags) {
         console.log(`Updated ${updated} skill(s)${v ? ` to v${v}` : ''}.`);
       }
 
+      let freshWritten = 0;
+      if (!updateCheckSkipped && missingSelectedTargets.length > 0) {
+        freshWritten = copyProviderSkills(bundleDir, installRoot, missingSelectedTargets, { scope });
+        if (freshWritten === 0) {
+          console.error(`Nothing was installed: the bundle had no variants for ${missingSelectedTargets.join(', ')}.`);
+          process.exit(1);
+        }
+        console.log(`Installed impeccable into: ${missingSelectedTargets.join(', ')} (${scope === 'user' ? 'global' : 'project'})`);
+        reportProviderAgents(copyProviderAgents(bundleDir, installRoot, missingSelectedTargets, { scope }));
+      }
+
       const writtenHookTargets = missingHookTargets.length > 0
         ? copyProviderHooks(bundleDir, hookRoot, missingHookTargets, { skillRoot: installRoot })
         : [];
@@ -1862,7 +1880,7 @@ async function install(flags) {
       if (updateCheckSkipped) {
         console.log('Existing skills were left unchanged.');
         console.log('Run with --force to reinstall.\n');
-      } else if (updated === 0 && writtenHookTargets.length === 0) {
+      } else if (updated === 0 && writtenHookTargets.length === 0 && freshWritten === 0) {
         const v = getSkillsVersion(installRoot, scope);
         console.log(`Skills are up to date${v ? ` (v${v})` : ''}.`);
         console.log('Run with --force to reinstall.\n');
