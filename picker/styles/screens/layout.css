@@ -147,14 +147,23 @@
   isolation: isolate;
 }
 
-.picker-preview-layout .ps-desktop::before {
+/* The field is one shared component, .ps-layout-grid, mounted by the
+   artboard as the first drawn part of every desktop and handset body on
+   this screen. An element rather than a pseudo so both bodies carry the
+   same instrument by construction, and so the marks sit over the section
+   bands rather than under the page: a line a band can bury is a ruler
+   that only measures the empty rows. */
+.picker-preview-layout .ps-layout-grid {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.picker-preview-layout .ps-desktop > .ps-layout-grid {
   --pvs-field-col: 6.8667%;
   --pvs-field-gut: 1.6%;
   --pvs-mark: calc(var(--pvs-field-col) + var(--pvs-field-gut) / 2);
 
-  content: "";
-  position: absolute;
-  z-index: -1;
   inset: 0 6%;
   background-image: repeating-linear-gradient(
     to right,
@@ -164,7 +173,6 @@
     transparent calc(var(--pvs-mark) + 0.5px)
       calc(var(--pvs-field-col) + var(--pvs-field-gut))
   );
-  pointer-events: none;
 }
 
 /* The handset has one column, so twelve bands would say nothing there. What
@@ -175,16 +183,16 @@
   isolation: isolate;
 }
 
-.picker-preview-layout .ps-phone-body::before {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  top: 0;
-  bottom: 0;
-  left: var(--pvs-phone-gutter, 6%);
-  right: var(--pvs-phone-gutter, 6%);
+.picker-preview-layout .ps-phone-body > .ps-layout-grid {
+  inset: 0 var(--pvs-phone-gutter, 6%);
   border-inline: 1px solid color-mix(in oklab, var(--pvs-ink) 5%, transparent);
-  pointer-events: none;
+}
+
+/* The magnifier is decoration on a board judging proportion, and it is the
+   one nav part that reads as an icon rather than a mass, so these abstract
+   studies leave it out. */
+.picker-preview-layout .ps-search {
+  display: none !important;
 }
 
 /* ── Simple grid ─────────────────────────────────────────────
@@ -363,6 +371,377 @@
 #picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout .ps-phone-body .ps-gallery,
 :where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout .ps-phone-body .ps-gallery {
   grid-template-columns: 1.5fr 0.9fr;
+}
+
+/* ── Freeform's card row: the gallery spill ──────────────────
+   On the landing page the drift is granted a second block: the card row
+   stops being four equal cells and becomes an index spill. One work leads
+   at double width and double height, two more answer it at their own sizes,
+   and each carries the hero's own image treatment, so the row reads as
+   three prints set down on the table rather than a product grid. The proof
+   band above gives up its four claims for the two entry marks that caption
+   the spill, and the section copy leaves the way it does on Simple grid:
+   the works are the section. This screen's persuade preview only; the
+   committed page keeps the disciplined row, because the spill is this
+   drawing's way of showing the permission, not a structure that travels. */
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"],
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] {
+  /* The proof band thins to a caption row and the freed height goes to the
+     spill, so the two bands trade rather than the page growing. */
+  --pvs-rows: 9.4% 48% 2.8% 31.8% 8%;
+}
+
+/* Two entry marks where the four claims were: one at the page's left
+   measure, one on the line the middle print hangs from. Both dots take the
+   page's own primary, the color the prints are drawn in. */
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-proof,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-proof {
+  grid-template-columns: 51.2% minmax(0, 1fr);
+  column-gap: 0;
+  padding-block: 0;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-desktop :is(.ps-proof-divider, .ps-proof-item:nth-of-type(3), .ps-proof-item:nth-of-type(4)),
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-desktop :is(.ps-proof-divider, .ps-proof-item:nth-of-type(3), .ps-proof-item:nth-of-type(4)) {
+  display: none;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-proof-item,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-proof-item {
+  gap: 9px;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-proof-item i,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-proof-item i {
+  background-color: var(--pvs-cta);
+}
+
+/* A mark's label is a phrase, not a fill: it stops well short of its
+   column instead of running to the next print's edge. */
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-proof-item span,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-proof-item span {
+  flex: none;
+  width: 27.6%;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-proof-item:nth-of-type(2) span,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-proof-item:nth-of-type(2) span {
+  width: 29%;
+}
+
+/* The section copy leaves and the spill takes the whole band, hung from
+   its top so the lead print's extra height reads downward. */
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-editorial,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-editorial {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  padding-block: 1.5% 0;
+  align-items: start;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-editorial-copy,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-editorial-copy {
+  display: none;
+}
+
+/* Five columns of the field for the lead, three for each of the others,
+   read off the drawn lines the way the hero's spans are. The fourth card
+   leaves: a spill is an uneven count or it is a grid again. */
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery {
+  grid-template-columns: 47.2% 24% minmax(0, 1fr);
+  gap: 4%;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:nth-child(4),
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:nth-child(4) {
+  display: none;
+}
+
+/* The plates take the hero's own image treatment, corner mark included:
+   the spill is made of the same prints the hero laid down, not the flat
+   category tiles of the disciplined answers. */
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-gallery-item > i,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-gallery-item > i {
+  position: relative;
+  background-color: var(--pvs-image);
+  background-image: linear-gradient(135deg, var(--pvs-image-a), var(--pvs-image-b));
+  border: 1px solid var(--pvs-image-edge);
+  box-shadow: var(--pvs-shadow-surface);
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-gallery-item > i::after,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-gallery-item > i::after {
+  content: "";
+  position: absolute;
+  top: 10%;
+  right: 5%;
+  width: clamp(6px, 1.1vw, 10px);
+  aspect-ratio: 1;
+  background-color: var(--pvs-accent-d);
+  border-radius: var(--pvs-radius-dot);
+}
+
+/* The two supporting prints stop at half the band and hold their captions
+   directly under themselves; the lead keeps the flexible row and so takes
+   the height the captions leave. */
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-desktop :is(.ps-gallery-item:nth-child(2), .ps-gallery-item:nth-child(3)),
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-desktop :is(.ps-gallery-item:nth-child(2), .ps-gallery-item:nth-child(3)) {
+  grid-template-rows: 46% auto;
+  align-content: start;
+}
+
+/* The third print is the quiet one, a wash of the ghost tint rather than
+   another full print, so the spill has a near-far rhythm. */
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:nth-child(3) > i,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:nth-child(3) > i {
+  background-color: var(--pvs-ghost);
+  background-image: none;
+  border-color: transparent;
+}
+
+/* Every caption closes on a short link dash in the page's primary, the
+   same mark the section copy's own link would have carried. */
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-gallery-item span::after,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-gallery-item span::after {
+  content: "";
+  display: block;
+  width: 33%;
+  height: 5px;
+  margin-top: 3px;
+  background-color: var(--pvs-cta);
+  border-radius: var(--pvs-radius-bar);
+}
+
+/* The lead print stops a step short of the band's foot, where the mock's
+   caption block ends. */
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:first-child,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:first-child {
+  margin-bottom: 6px;
+}
+
+/* The lead's caption runs in two columns under its width, the way a wide
+   print takes a two-column note; the dash returns to the first column. */
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:first-child span,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:first-child span {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 9.4%;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:first-child span::before,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:first-child span::before {
+  content: "";
+  display: block;
+  width: 94%;
+  height: 6px;
+  background-color: var(--pvs-bars);
+  border-radius: var(--pvs-radius-bar);
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:first-child b,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:first-child b {
+  width: 93%;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:first-child b:nth-of-type(2),
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:first-child b:nth-of-type(2) {
+  width: 77%;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:first-child b:nth-of-type(3),
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:first-child b:nth-of-type(3) {
+  width: 57%;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:first-child span::after,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:first-child span::after {
+  grid-column: 1;
+  width: 38%;
+}
+
+/* The supporting notes run at a tighter pitch than the lead's two-column
+   note, which is how the mock sets them. */
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-desktop :is(.ps-gallery-item:nth-child(2), .ps-gallery-item:nth-child(3)) span,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-desktop :is(.ps-gallery-item:nth-child(2), .ps-gallery-item:nth-child(3)) span {
+  gap: 5px;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-desktop :is(.ps-gallery-item:nth-child(2), .ps-gallery-item:nth-child(3)) span::after,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-desktop :is(.ps-gallery-item:nth-child(2), .ps-gallery-item:nth-child(3)) span::after {
+  margin-top: 2px;
+}
+
+/* The middle print's own line lengths. */
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:nth-child(2) b,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:nth-child(2) b {
+  width: 68%;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:nth-child(2) b:nth-of-type(2),
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:nth-child(2) b:nth-of-type(2) {
+  width: 89%;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:nth-child(2) b:nth-of-type(3),
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:nth-child(2) b:nth-of-type(3) {
+  width: 60%;
+}
+
+/* The quiet print keeps a two-line note. */
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:nth-child(3) b,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:nth-child(3) b {
+  width: 83%;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:nth-child(3) b:nth-of-type(2),
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:nth-child(3) b:nth-of-type(2) {
+  width: 72%;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:nth-child(3) b:nth-of-type(3),
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:nth-child(3) b:nth-of-type(3) {
+  display: none;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:nth-child(3) span::after,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-desktop .ps-gallery-item:nth-child(3) span::after {
+  width: 34%;
+}
+
+/* ── The spill on the handset ────────────────────────────────
+   One column, so the spill becomes a run of two entries down the page:
+   mark, print, note, dash, then the second entry at its own smaller size.
+   The second entry carries its own mark, drawn by the item because the
+   proof band above can only caption the first. */
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-proof,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-proof {
+  grid-template-columns: minmax(0, 1fr);
+  padding: 0;
+}
+
+/* The mark row gives back the height the two-item band needed, and the
+   run of two entries below takes it. */
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-phone-body,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-phone-body {
+  /* The hero keeps its capped share, so the top half of the page is the
+     one every other answer draws. The rows below tighten instead: the mark
+     row thins to the single dot it holds, and the stack's gap comes in a
+     point, which is the room the two-entry run needs at this frame. */
+  grid-template-rows: minmax(0, 31%) auto auto auto 14px auto minmax(min-content, 1fr);
+  gap: 5px;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-phone-body :is(.ps-proof-divider, .ps-proof-item:nth-of-type(2)),
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-phone-body :is(.ps-proof-divider, .ps-proof-item:nth-of-type(2)) {
+  display: none;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-proof-item span,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-proof-item span {
+  flex: none;
+  width: 29%;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-editorial-copy,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-editorial-copy {
+  display: none;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  margin-top: 0;
+}
+
+/* The lead print at full measure. */
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item:first-child,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item:first-child {
+  grid-template-rows: 46px auto;
+  gap: 6px;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item:first-child b,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item:first-child b {
+  width: 72%;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item:first-child b:nth-of-type(2),
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item:first-child b:nth-of-type(2) {
+  width: 51%;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item b:nth-of-type(3),
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item b:nth-of-type(3) {
+  display: none;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item span,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item span {
+  gap: 5px;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item span::after,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item span::after {
+  width: 24%;
+  height: 5px;
+  margin-top: 0;
+}
+
+/* The second entry: its own mark in the first row, then the quiet print
+   at a smaller measure, then the note. */
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item:nth-child(2),
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item:nth-child(2) {
+  margin-top: 8px;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto 25px auto;
+  gap: 4px 9px;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item:nth-child(2)::before,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item:nth-child(2)::before {
+  content: "";
+  grid-area: 1 / 1;
+  align-self: center;
+  width: 10px;
+  aspect-ratio: 1;
+  background-color: var(--pvs-cta);
+  border-radius: var(--pvs-radius-dot);
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item:nth-child(2)::after,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item:nth-child(2)::after {
+  content: "";
+  grid-area: 1 / 2;
+  align-self: center;
+  width: 23%;
+  height: 6px;
+  background-color: var(--pvs-bars);
+  border-radius: var(--pvs-radius-bar);
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item:nth-child(2) > i,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item:nth-child(2) > i {
+  grid-area: 2 / 1 / 3 / 3;
+  width: 69%;
+  background-color: var(--pvs-ghost);
+  background-image: none;
+  border-color: transparent;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item:nth-child(2) span,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item:nth-child(2) span {
+  grid-area: 3 / 1 / 4 / 3;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item:nth-child(2) b,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item:nth-child(2) b {
+  width: 54%;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item:nth-child(2) b:nth-of-type(2),
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item:nth-child(2) b:nth-of-type(2) {
+  width: 41%;
 }
 
 /* ── Freeform ────────────────────────────────────────────────
