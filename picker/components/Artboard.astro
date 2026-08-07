@@ -40,12 +40,15 @@ interface Props {
   */
   carry?: boolean;
   /*
-    The layout screen's index board carries parts no other board draws: a
-    pagination rail on the handset, and the project rail and support row that
-    only the freeform answer places (layout-portfolio.css parks them until it
-    does). Mounted only where asked, because the motion screen reads the same
-    index body through :nth-of-type and an extra sibling would shift its
-    scenes.
+    The layout screen's boards carry parts no other board draws: the shared
+    alignment-grid component on every desktop and handset body, and on the
+    index a pagination rail for the handset plus the project rail and support
+    row that only the freeform answer places (layout-portfolio.css parks them
+    until it does). The index projects also take the data-project-index and
+    data-project-tone hooks that screen's sheet keys plate placement and
+    image treatment on. Mounted only where asked, because the motion screen
+    reads the same index body through :nth-of-type and an extra sibling would
+    shift its scenes.
   */
   portfolioExtras?: boolean;
 }
@@ -81,6 +84,7 @@ const hook = type ? '' : undefined;
   aria-hidden="true"
 >
   <div class="ps-desktop">
+    {portfolioExtras && <div class="ps-layout-grid" aria-hidden="true"></div>}
     <div class="ps-nav">
       <div class="ps-nav-lede">
         {!type && <i class="ps-menu"></i>}
@@ -212,7 +216,11 @@ const hook = type ? '' : undefined;
         <i class="ps-index-head"></i>
         {[0, 1].map((n) => (
           <div class:list={['ps-index-row', n === 1 && 'ps-index-row--flip']}>
-            <div class="ps-image"></div>
+            <div
+              class="ps-image"
+              data-project-index={portfolioExtras ? String(n + 1) : undefined}
+              data-project-tone={portfolioExtras ? (n === 0 ? 'green' : 'light') : undefined}
+            ></div>
             <div class="ps-index-cap">
               <i class="ps-index-name"></i>
               <i class="ps-index-tag"></i>
@@ -222,7 +230,7 @@ const hook = type ? '' : undefined;
         ))}
         {portfolioExtras && (
           <div class="ps-support" aria-hidden="true">
-            <div class="ps-image ps-support-image"></div>
+            <div class="ps-image ps-support-image" data-project-tone="light"></div>
             <span class="ps-support-meta"><i></i><i></i><i></i></span>
           </div>
         )}
@@ -433,10 +441,18 @@ const hook = type ? '' : undefined;
         {portfolioExtras && (
           <div class="ps-phone-project-rail" aria-hidden="true"><i></i><i></i><i></i></div>
         )}
-        {[0, 1].map(() => (
+        {portfolioExtras && <div class="ps-layout-grid" aria-hidden="true"></div>}
+        {[0, 1].map((n) => (
           <Fragment>
-            <div class="ps-image"></div>
-            <div class="ps-index-cap">
+            <div
+              class="ps-image"
+              data-project-index={portfolioExtras ? String(n + 1) : undefined}
+              data-project-tone={portfolioExtras ? (n === 0 ? 'green' : 'light') : undefined}
+            ></div>
+            <div
+              class="ps-index-cap"
+              data-project-index={portfolioExtras ? String(n + 1) : undefined}
+            >
               {type ? (
                 <Fragment>
                   <strong class="ps-index-title" data-type-gallery-title></strong>
@@ -456,7 +472,7 @@ const hook = type ? '' : undefined;
         {portfolioExtras && (
           <Fragment>
             <div class="ps-support ps-phone-support" aria-hidden="true">
-              <div class="ps-image ps-support-image"></div>
+              <div class="ps-image ps-support-image" data-project-tone="light"></div>
               <span class="ps-support-meta"><i></i><i></i><i></i></span>
             </div>
             {/* The desktop pagination rail restated at the foot of the stack. */}
@@ -474,6 +490,7 @@ const hook = type ? '' : undefined;
       </div>
       ) : (
       <div class="ps-phone-body">
+        {portfolioExtras && <div class="ps-layout-grid" aria-hidden="true"></div>}
         <div class="ps-image"></div>
         {type ? (
           <Fragment>
