@@ -14,7 +14,7 @@ describe('skill reference authoring contracts', () => {
 
     assert.match(accessibility, /prefers-reduced-motion/);
     assert.match(accessibility, /intentional alternative/);
-    assert.match(accessibility, /not no motion/);
+    assert.match(accessibility, /not disabling all motion/);
     assert.match(verify, /reduced[- ]motion/i);
   });
 });

@@ -74,7 +74,7 @@ Keep content visible in the default state so failed scripts do not hide the page
 
 Respect autoplay and sound preferences. Any nonessential loop must stop when offscreen or hidden.
 
-Every web animation needs a `prefers-reduced-motion` path with an intentional alternative. Remove or reduce spatial movement while preserving opacity, color, and state transitions that carry meaning. Reduced motion means fewer and gentler animations, not no motion; feedback that confirms an action should remain legible.
+Every web animation needs a `prefers-reduced-motion` path with an intentional alternative. Remove or reduce spatial movement while preserving opacity, color, and state transitions that carry meaning. Reduced motion means fewer and gentler animations, not disabling all motion; feedback that confirms an action should remain legible.
 
 ## Verify
 
