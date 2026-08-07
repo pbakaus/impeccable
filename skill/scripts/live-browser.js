@@ -6203,6 +6203,47 @@
       return;
     }
     rememberSessionFileMeta({ file: filePath });
+    // JSX sources: if the framework already re-rendered the wrapper (Vite full
+    // reload / Fast Refresh), adopt the live DOM tree instead of replacing it
+    // with a DOMParser clone — a clone renders JSX {expressions} as literal
+    // text and detaches React from its own nodes (#454).
+    const jsxDomWrapper = /\.[cm]?[jt]sx$/i.test(String(filePath || ''))
+      ? document.querySelector('[data-impeccable-variants="' + sessionId + '"]')
+      : null;
+    if (jsxDomWrapper) {
+      const wrapper = jsxDomWrapper;
+      recoveryWaitingForAnchor = false;
+      if (pendingVariantAnchorRetryObserver) {
+        pendingVariantAnchorRetryObserver.disconnect();
+        pendingVariantAnchorRetryObserver = null;
+      }
+      const variants = wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])');
+      arrivedVariants = variants.length;
+      expectedVariants = parseInt(wrapper.dataset.impeccableVariantCount || arrivedVariants);
+      if (arrivedVariants <= 0) {
+        if (state === 'GENERATING' && !opts.generationCompleted) return;
+        recoverEmptyCycling('jsx-dom-adopt-empty');
+        return;
+      }
+      const previousVisibleVariant = currentSessionId === sessionId ? visibleVariant : 0;
+      const saved = loadSession();
+      const savedVisibleVariant = saved && saved.id === sessionId ? saved.visible : 0;
+      visibleVariant = previousVisibleVariant > 0 && previousVisibleVariant <= arrivedVariants
+        ? previousVisibleVariant
+        : (savedVisibleVariant > 0 && savedVisibleVariant <= arrivedVariants ? savedVisibleVariant : 1);
+      showVariantInDOM(sessionId, visibleVariant);
+      selectedElement = pickVariantContent(wrapper, visibleVariant) || wrapper.parentElement;
+      setLiveState('CYCLING');
+      hideShaderOverlay();
+      showOrUpdateCyclingBar();
+      disableInlineEdit();
+      refreshParamsPanel();
+      positionBar();
+      saveSession();
+      if (parameterGenerationState === 'loading') completeParameterPublication();
+      console.log('[impeccable] Adopted ' + arrivedVariants + ' variants from live DOM (JSX).');
+      return;
+    }
     const url = 'http://localhost:' + PORT + '/source?token=' + TOKEN + '&path=' + encodeURIComponent(filePath);
     fetch(url)
       .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
@@ -6210,14 +6251,41 @@
         const parser = new DOMParser();
         let srcWrapper = null;
 
-        // Full-file parse works for HTML/JSX; Astro/Vue sources need marker extraction.
-        const startMark = '<!-- impeccable-variants-start ' + sessionId + ' -->';
-        const endMark = '<!-- impeccable-variants-end ' + sessionId + ' -->';
-        const startIdx = html.indexOf(startMark);
-        const endIdx = html.indexOf(endMark);
-        const block = startIdx !== -1 && endIdx !== -1 && endIdx > startIdx
-          ? html.slice(startIdx + startMark.length, endIdx).trim()
-          : html;
+        // Marker comments differ by source syntax: HTML/Astro/Vue wrappers use
+        // <!-- ... -->, while JSX/TSX wrappers must use {/* ... */} (an HTML
+        // comment is invalid inside a JSX element tree), so scan for both.
+        // Never fall back to whole-file injection for JSX: raw JSX renders
+        // {expressions} and marker text as literal page content (#454).
+        const markerPairs = [
+          { open: '<!--', close: '-->' },
+          { open: '{/*', close: '*/}' },
+        ];
+        let block = null;
+        let jsxPairMatched = false;
+        for (const pair of markerPairs) {
+          const startMark = pair.open + ' impeccable-variants-start ' + sessionId + ' ' + pair.close;
+          const endMark = pair.open + ' impeccable-variants-end ' + sessionId + ' ' + pair.close;
+          const startIdx = html.indexOf(startMark);
+          const endIdx = html.indexOf(endMark);
+          if (startIdx !== -1 && endIdx > startIdx) {
+            block = html.slice(startIdx + startMark.length, endIdx).trim();
+            jsxPairMatched = pair.open === '{/*';
+            break;
+          }
+        }
+        if (jsxPairMatched && block) {
+          // JSX wrappers carry their markers INSIDE the wrapper div, so the
+          // extracted block lacks the wrapper element; synthesize it (#454).
+          block = '<div data-impeccable-variants="' + sessionId + '" style="display: contents">' + block + '</div>';
+        }
+        if (block == null) {
+          if (/\.[cm]?[jt]sx$/i.test(String(filePath || ''))) {
+            console.warn('[impeccable] JSX source has no variant markers; skipping raw-source injection (#454).');
+            block = '';
+          } else {
+            block = html;
+          }
+        }
         const doc = parser.parseFromString(normalizeSourceFallbackBlock(block, filePath), 'text/html');
         srcWrapper = doc.querySelector('[data-impeccable-variants="' + sessionId + '"]');
         if (!srcWrapper) {
@@ -6341,6 +6409,9 @@
   function normalizeSourceFallbackBlock(block, filePath) {
     if (!/\.[cm]?[jt]sx$/i.test(String(filePath || ''))) return block;
     return String(block)
+      // JSX comments ({/* ... */}) are not HTML comments; strip them so they
+      // don't render as literal text in the DOMParser preview (#454).
+      .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, '')
       .replace(
         /<style\b([^>]*)>\s*\{\s*`([\s\S]*?)`\s*\}\s*<\/style>/g,
         (_match, attrs, css) => '<style' + attrs + '>' + css + '</style>',
