@@ -757,8 +757,11 @@ function page() {
 <script>
   const steer = () => document.getElementById('steer')?.value || '';
   // A followup round's pick keeps the tab: the next round arrives via
-  // --update, so the page shows the loading hand instead of goodbye.
-  const FOLLOWUP = ${payload.followup === true ? 'true' : 'false'};
+  // --update, so the page shows the loading hand instead of goodbye. Detached
+  // mode only, and the page must agree with the server: a blocking server
+  // exits on any pick and has no update channel, so a followup payload there
+  // still gets the goodbye screen, never a loading hand nothing will resolve.
+  const FOLLOWUP = ${payload.followup === true && Boolean(detachedKey) ? 'true' : 'false'};
   const beat = () => { try { navigator.sendBeacon('/heartbeat'); } catch { fetch('/heartbeat', { method: 'POST' }); } };
   beat();
   setInterval(beat, 5000);

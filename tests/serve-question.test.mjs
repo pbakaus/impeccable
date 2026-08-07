@@ -208,11 +208,16 @@ describe('serve-question', () => {
       canon: true,
       canonCard: { label: 'The category standard', thesis: 'What the category ships.' },
       steer: true,
+      followup: true,
     };
     const { child, url, read } = await startServer(payload);
     const html = await (await fetch(url)).text();
     // Anatomy renders: chips, tags, fact labels, thesis.
     assert.match(html, /swatches/);
+    // A blocking server has no update channel, so even a followup payload
+    // must not arm the page's loading-hand path (detached mode arms it; the
+    // new-work e2e suite covers that side).
+    assert.match(html, /const FOLLOWUP = false/);
     assert.match(html, /background:#e8452c/);
     assert.match(html, /class="tag">letterpress/);
     assert.match(html, /The gig poster idea\./);
