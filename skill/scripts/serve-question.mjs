@@ -370,8 +370,11 @@ function page() {
   // the colorful thing. Declined cards are thumb-only regardless; the verdict
   // demoted them, and a full-bleed hero would promote them right back.
   const identityRound = !(options[0] && (options[0].sketchSrc || options[0].heroSrc || options[0].boardSrc));
-  const thumbOnly = (option) => !option.sketchSrc && Boolean(option.heroSrc || option.boardSrc) && (demoted(option) || identityRound);
-  const hasMedia = (option) => Boolean(option.sketchSrc || ((option.heroSrc || option.boardSrc) && !thumbOnly(option)));
+  // A declined card never renders a full media face, sketch included: even a
+  // declared sketch would buy back the salience the verdict took away.
+  const faceSketch = (option) => demoted(option) ? null : option.sketchSrc;
+  const thumbOnly = (option) => !faceSketch(option) && Boolean(option.heroSrc || option.boardSrc) && (demoted(option) || identityRound);
+  const hasMedia = (option) => Boolean(faceSketch(option) || ((option.heroSrc || option.boardSrc) && !thumbOnly(option)));
   // The back exists to keep long facts off a card whose front is an image;
   // a card with no art has no flip chip to reach it, so it gets no back and
   // the full read lives on the front instead.
@@ -430,9 +433,10 @@ function page() {
               <figcaption>inspiration</figcaption>
             </figure>` : '';
     const details = hasBack(option) ? flipChip('Details') : '';
-    // Thumb-only art renders inside the body via anatomy(), never as a face.
+    // Thumb-only art renders inside the body via anatomy(), never as a face,
+    // and a declined card's sketch slot is ignored outright.
     if (thumbOnly(option)) return '';
-    if (option.sketchSrc) {
+    if (faceSketch(option)) {
       return `<div class="media sketching" data-sketch="${esc(option.sketchSrc)}">
             <div class="shimmer"><span class="sketch-note">sketching&hellip;</span></div>
             <img class="sketch" alt="" hidden>

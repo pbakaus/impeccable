@@ -265,9 +265,32 @@ describe('concept seed scopes', () => {
     assert.match(bolder.stdout, /FIRST dealt challenger leads/);
     assert.match(bolder.stdout, /--register bolder/);
     assert.doesNotMatch(bolder.stdout, /ASSIGNED INDEX:/);
+    // The generic weighing instruction measures against the assigned
+    // direction, which a bolder round suspended; bolder weighs against the
+    // leader instead, and the contradiction must not ship.
+    assert.match(bolder.stdout, /against the fused LEADER/);
+    assert.doesNotMatch(bolder.stdout, /against the assigned direction/);
     assert.match(safer.stdout, /SAFER REGISTER/);
     assert.match(safer.stdout, /sanctioned lineup/);
     assert.doesNotMatch(safer.stdout, /^CHALLENGERS:/m, 'the safer round spends its hand unseen');
+    // Degraded safer must not contradict itself: "the user picks" and a
+    // mandatory numbered build order cannot share one output.
+    const degradedSafer = run('direction', ['--reroll', '1', '--register', 'safer'], {
+      IMPECCABLE_CATALOG_DIR: '/nonexistent-catalog-dir',
+      IMPECCABLE_API_URL: 'http://127.0.0.1:1',
+    });
+    assert.equal(degradedSafer.status, 0);
+    assert.match(degradedSafer.stdout, /source: degraded/);
+    assert.match(degradedSafer.stdout, /SAFER REGISTER/);
+    assert.doesNotMatch(degradedSafer.stdout, /ASSIGNED INDEX/, 'degraded safer suppresses the assignment machinery');
+    assert.doesNotMatch(degradedSafer.stdout, /Build candidate/, 'degraded safer mandates no numbered candidate');
+    const degradedBolder = run('direction', ['--reroll', '1', '--register', 'bolder'], {
+      IMPECCABLE_CATALOG_DIR: '/nonexistent-catalog-dir',
+      IMPECCABLE_API_URL: 'http://127.0.0.1:1',
+    });
+    assert.equal(degradedBolder.status, 0);
+    assert.match(degradedBolder.stdout, /BOLDER REGISTER UNAVAILABLE/);
+    assert.match(degradedBolder.stdout, /ASSIGNED INDEX: /, 'degraded bolder falls back to the plain grounded assignment');
     const invalidRegister = run('direction', ['--reroll', '1', '--register', 'wilder']);
     assert.notEqual(invalidRegister.status, 0);
     assert.match(invalidRegister.stderr, /must be safer or bolder/);

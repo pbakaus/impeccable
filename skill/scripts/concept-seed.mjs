@@ -435,24 +435,37 @@ the product without weakening semantics, performance, or fallback behavior.`;
 
   if (!data) {
     // A degraded roll can still serve the safer register, which needs no
-    // catalog at all; the bolder register is exactly the thing degradation
-    // took away, so it falls back to a plain grounded round, disclosed.
-    const degradedRegister = register === 'safer'
-      ? `SAFER REGISTER (user-requested): the assigned index is suspended this
-  round; the user picks. Present the familiar register: your remaining
-  grounded candidates from the conventional end, at most three, as full cards
-  with an honest risk line each, plus the canon executed against two or three
-  named competitors. This is the one sanctioned lineup of your own ranked
-  candidates; it exists only by this explicit request.
-`
-      : register === 'bolder'
-        ? `BOLDER REGISTER UNAVAILABLE: bolder deals foreign forms, and this roll ran
+    // catalog at all: the assignment machinery is suppressed entirely, the
+    // same as the non-degraded safer round, because emitting both "the user
+    // picks" and a mandatory numbered build order hands the model two
+    // contradicting instructions and the mandatory one tends to win. The
+    // bolder register is exactly the thing degradation took away, so it
+    // falls back to a plain grounded round, disclosed.
+    const degradedHeader = `${scope.toUpperCase()} CONCEPT SEED (key: ${key}; mode: ${mode ?? 'unscoped'}; source: degraded; rerun with --scope ${scope}${mode ? ` --mode ${mode}` : ''} --from ${key}${reroll > 0 ? ` --reroll ${reroll}` : ''}${register ? ` --register ${register}` : ''} --candidate-count ${candidateCount})`;
+    if (register === 'safer') {
+      return `${degradedHeader}
+SAFER REGISTER (user-requested): the assigned index is suspended this
+  round; the user picks, and no candidate is mandated. Present the familiar
+  register: your remaining grounded candidates from the conventional end, at
+  most three, as full cards with an honest risk line each, plus the canon
+  executed against two or three named competitors. This is the one sanctioned
+  lineup of your own ranked candidates; it exists only by this explicit
+  request. When the user voices a standing preference for it, record a brand
+  commitment in PRODUCT.md.
+${authorityInstruction}
+A user- or brief-pinned decision beats the roll, always.
+REGISTER (restated for truncated readers): safer, user-requested; the
+assigned index is suspended this round and the user picks; seed key ${key}.
+`;
+    }
+    const degradedRegister = register === 'bolder'
+      ? `BOLDER REGISTER UNAVAILABLE: bolder deals foreign forms, and this roll ran
   degraded with no catalog and no roll service, so there is nothing bold to
   deal. Tell the user, then run this round as a plain grounded re-roll; the
   assignment below applies.
 `
-        : '';
-    return `${scope.toUpperCase()} CONCEPT SEED (key: ${key}; mode: ${mode ?? 'unscoped'}; source: degraded; rerun with --scope ${scope}${mode ? ` --mode ${mode}` : ''} --from ${key}${reroll > 0 ? ` --reroll ${reroll}` : ''}${register ? ` --register ${register}` : ''} --candidate-count ${candidateCount})
+      : '';
+    return `${degradedHeader}
 ${degradedRegister}ASSIGNED INDEX: ${buildIndex}
   ${promotedInstruction}
   The assignment exists to refuse the model's ranking rut, never to outrank
@@ -559,11 +572,21 @@ rivals to your habitual layout, and keep only what makes this product clearer.${
   The assignment exists to refuse the model's ranking rut, never to outrank
   the user or the brief. Never expose assignment metadata in user-facing labels.`
     : register === 'safer' ? saferBlock : bolderBlock;
+  // A bolder round has no assigned grounded direction, so the generic
+  // weighing instruction (which measures against the assignment) would
+  // contradict the register; the bolder variant weighs against the leader.
+  const bolderChallengerInstruction = `Fuse each challenger before judging it: the challenger supplies the form
+  and its system grammar, the product supplies every fact, and clarity wins
+  conflicts. Weigh every fused challenger against the fused LEADER, the first
+  dealt, on exactly two axes, audience identification and product clarity;
+  verdicts and donations apply between the challengers, and one that beats
+  the leader on both axes presents as the hand's strongest alternate.`;
+  const roundChallengerInstruction = register === 'bolder' ? bolderChallengerInstruction : challengerInstruction;
   const challengerSection = register === 'safer'
     ? ''
     : `CHALLENGERS:
 ${data.challengers.map(renderChallenger).join('\n')}
-${compositionBlock}${challengerInstruction}
+${compositionBlock}${roundChallengerInstruction}
 When you can view images, open the QUALITY BAR board and hero for any
 challenger you weigh seriously and for the world you build. They exist as a
 craft bar, the finish level and commitment the build is expected to reach,
