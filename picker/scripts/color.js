@@ -112,3 +112,37 @@ export function readableOn(accent, ground, target = 4.5) {
   }
   return darker ? '#000000' : '#FFFFFF';
 }
+
+// Floors for judging the neutral on screen 02. The neutral paints the large
+// surfaces of every preview, so two pairs matter: the fixed swatch inks that
+// set text on it, and the primary fills that sit on it.
+const NEUTRAL_INK_FLOOR = 7;
+const NEUTRAL_PRIMARY_FLOOR = 3;
+
+/**
+ * One warning sentence when the palette's neutral will cause contrast
+ * trouble, or null when it is safe.
+ *
+ * Check 1: the better of the two fixed inks must reach 7:1 (the WCAG AAA
+ * body-text figure) on the neutral. The inks are near-black and near-white,
+ * so 4.5:1 is nearly impossible to fail; 7:1 is the floor that catches
+ * mid-tone neutrals which leave no headroom for muted and secondary text.
+ *
+ * Check 2: the primary must reach 3:1 (WCAG 1.4.11 non-text contrast)
+ * against the neutral, because primary button fills and accents sit directly
+ * on neutral surfaces and readableOn() only rescues text, never fills.
+ */
+export function neutralContrastIssue({ neutral, primary }) {
+  const surface = relativeLuminance(neutral);
+  const bestInk = Math.max(
+    ratio(INK_DARK_LUMINANCE, surface),
+    ratio(INK_LIGHT_LUMINANCE, surface),
+  );
+  if (bestInk < NEUTRAL_INK_FLOOR) {
+    return 'This neutral is a mid-tone: even the strongest text ink stays below 7:1 on it, so type will strain on every surface. Pick a near-white or near-black neutral.';
+  }
+  if (ratio(relativeLuminance(primary), surface) < NEUTRAL_PRIMARY_FLOOR) {
+    return 'Your primary sits under 3:1 against this neutral, so buttons and accents will blend into the surfaces behind them. Push the two further apart.';
+  }
+  return null;
+}

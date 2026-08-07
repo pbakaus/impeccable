@@ -328,6 +328,18 @@ test('picker color math round-trips sRGB and clips out-of-gamut OKLCH', async ()
   assert.equal(contrastInk('#8D7352'), 'var(--pk-ink-dark)');
 });
 
+test('neutral contrast issue flags mid-tones and low primary separation', async () => {
+  const { neutralContrastIssue } = await import(colorModule);
+  // The fixture cue palette: near-white neutral under a deep green primary.
+  assert.equal(neutralContrastIssue({ neutral: '#F2EFE8', primary: '#1E4A42' }), null);
+  // Near-black neutral under a light primary is the other healthy shape.
+  assert.equal(neutralContrastIssue({ neutral: '#141414', primary: '#E8C36A' }), null);
+  // A mid-tone neutral: neither fixed ink reaches 7:1 on it.
+  assert.match(neutralContrastIssue({ neutral: '#777777', primary: '#1E4A42' }) ?? '', /near-white or near-black/);
+  // A primary that melts into the neutral fails the 3:1 separation check.
+  assert.match(neutralContrastIssue({ neutral: '#F2EFE8', primary: '#E8E4DC' }) ?? '', /3:1/);
+});
+
 test('rejects raw, encoded, and double-encoded path traversal', async (t) => {
   const fixture = await createFixture();
   const server = await startPicker(fixture.cwd, ['--port', String(portBase + 20)]);
