@@ -340,6 +340,8 @@ describe('new-work-e2e: serve-question decision page', () => {
         { id: 'challenger-waxprint', label: 'Wax Print Market', verdict: 'competitive', hero: winnerHero },
       ],
       reroll: true, steer: true,
+      canon: true,
+      canonCard: { label: 'The category standard', thesis: 'What the category ships.' },
     };
     const { url } = await startDaemon(cwd, payload, key);
     try {
@@ -361,7 +363,7 @@ describe('new-work-e2e: serve-question decision page', () => {
       await context.close();
       assert.equal(collected.code, 0, collected.out);
       const answer = JSON.parse(collected.out.match(/ANSWER: (\{.*\})/)[1]);
-      assert.deepEqual(order, ['assigned', 'challenger-waxprint', 'challenger-deepsea'], 'declined cards reorder to the end');
+      assert.deepEqual(order, ['assigned', 'challenger-waxprint', 'canon', 'challenger-deepsea'], 'contenders, then the canon, then declined dead last');
       assert.ok(declinedCard, 'declined verdict adds the .declined card class');
       assert.equal(declinedMedia, null, 'declined catalog art never renders full-bleed');
       assert.ok(declinedThumb, 'declined catalog art rides as a labeled thumb');
