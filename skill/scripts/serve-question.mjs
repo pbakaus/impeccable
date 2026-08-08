@@ -174,16 +174,16 @@ if (hasFlag('schema')) {
     question: 'The roll assigned Fillmore Handbill. Keep it, take an alternate, or re-roll.',
     options: [
       { id: 'assigned', label: 'Fillmore Handbill', kicker: 'THE ROLL', lineage: '1966-71 Fillmore psychedelic handbills', thesis: 'The gig poster that treats every release like a one-night stand.', palette: ['#e8452c', '#f5d64c', '#1b2a52', '#f3ead8'], materials: ['letterpress', 'split-fountain ink'], viewport: 'A full-bleed dated bill with the product name in warped display type.', risk: 'Reads nostalgic when the type is set timidly.', raised: [{ from: 'challenger-microfiche', raise: 'The bill now owns its whole viewport as one continuous printed sheet.' }], sketch: '.impeccable/sketches/assigned.webp', hero: 'https://impeccable.style/worlds/cards/posters-covers-sleeves-fillmore-handbill-hero.webp', board: 'https://impeccable.style/worlds/cards/posters-covers-sleeves-fillmore-handbill.webp' },
-      { id: 'model-pick', label: 'The Broadside Ballad', kicker: 'MY PICK', lineage: 'street-sold ballad sheets', thesis: 'Every release printed as the day’s ballad sheet.', risk: 'Also the direction most runs in this category land on.', sketch: '.impeccable/sketches/model-pick.webp' },
-      { id: 'challenger-teletext', label: 'Teletext Service', verdict: 'competitive', lineage: 'broadcast teletext magazines', thesis: 'The catalog as a broadcast index: pages, not sections.', case: 'Fuses cleanly: releases map to numbered pages; loses narrowly on clarity.', sketch: '.impeccable/sketches/challenger-teletext.webp', hero: 'https://impeccable.style/worlds/cards/broadcast-programming-teletext-service-hero.webp' },
-      { id: 'challenger-microfiche', label: 'Microfiche Reader', verdict: 'declined', lineage: 'library microfiche stations', case: 'Fuses poorly: listeners do not identify with archival retrieval.', kept: 'Total environmental commitment.', hero: 'https://impeccable.style/worlds/cards/archives-microfiche-reader-hero.webp' },
+      { id: 'model-pick', label: 'The Broadside Ballad', kicker: 'MY PICK', lineage: 'street-sold ballad sheets', thesis: 'Every release printed as the day’s ballad sheet.', palette: ['#1f1c18', '#efe5d0', '#a33327'], materials: ['woodcut', 'rag paper'], viewport: 'One tall sheet, the newest release as today’s ballad.', risk: 'Also the direction most runs in this category land on.', sketch: '.impeccable/sketches/model-pick.webp' },
+      { id: 'challenger-teletext', label: 'Teletext Service', verdict: 'competitive', lineage: 'broadcast teletext magazines', thesis: 'The catalog as a broadcast index: pages, not sections.', palette: ['#0000c0', '#ffff00', '#00c000', '#ffffff'], materials: ['block mosaic', 'phosphor glow'], viewport: 'P100 index page, releases as numbered rows.', case: 'Fuses cleanly: releases map to numbered pages; loses narrowly on clarity.', risk: 'Reads retro-novelty when the grid is not strict.', sketch: '.impeccable/sketches/challenger-teletext.webp', hero: 'https://impeccable.style/worlds/cards/broadcast-programming-teletext-service-hero.webp' },
+      { id: 'challenger-microfiche', label: 'Microfiche Reader', verdict: 'declined', lineage: 'library microfiche stations', palette: ['#101418', '#9fb4c0'], materials: ['film grain', 'backlit glass'], case: 'Fuses poorly: listeners do not identify with archival retrieval.', kept: 'Total environmental commitment.', hero: 'https://impeccable.style/worlds/cards/archives-microfiche-reader-hero.webp' },
     ],
     reroll: { registers: ['safer', 'bolder'] },
     canon: true,
-    canonCard: { label: 'The category standard', thesis: 'What this category ships, executed impeccably.', viewport: 'The arrangement a visitor expects, at full craft.', sketch: '.impeccable/sketches/canon.webp' },
+    canonCard: { label: 'The category standard', thesis: 'What this category ships, executed impeccably.', palette: ['#ffffff', '#111827', '#2563eb'], materials: ['clean grid', 'product photography'], viewport: 'The arrangement a visitor expects, at full craft.', risk: 'Indistinguishable from the competition by design.', sketch: '.impeccable/sketches/canon.webp' },
     steer: true,
   }, null, 2));
-  console.log('\nOption ids return verbatim in ANSWER; "reroll" and "canon" are reserved. hero/board/sketch accept URLs or local paths; sketch slots may point at files that do not exist yet (serve first, generate after; the page polls until they land, so never block serving on generation). hero on a challenger is the inspiration it draws from and renders picture-in-picture beside the sketch, never as the promise of the build. verdict routes rendering: "wins" and "competitive" challengers keep full cards, "declined" ones render demoted after them (narrow, quiet, art as a labeled thumb, "Adopt anyway"), with their kept line on the front; the page reorders declined cards to the end on its own. raised on the assigned card renders each donation as a named raise line. Salience parity: when the assigned card declares no sketch (no image generation this round), catalog art on every card demotes to a labeled thumb, so what looks important is the verdict’s call, never rendering luck. canonCard renders the standing exit as a subordinate card with the same anatomy; without it, canon stays a quiet footer action. Include canon only for visual-direction rounds; never present it as your own recommendation. The pick card is a kicker convention, not a field: kicker "MY PICK" on your top-ranked grounded candidate, one at most, never in the lead slot. Keep thesis and each fact to one short sentence: the card front shows thesis, identity, and a two-line risk, while first viewport and the case read on the card back behind the Details chip, so long facts cost the reader a flip, not the page its scanability. A card with no imagery at all has no back; its full read renders on the front, so a text-only round loses nothing. Sketch aspect follows the surface: portrait at device viewport for native or mobile-first surfaces, landscape otherwise; the page adapts its cards to either. reroll accepts true or { "registers": ["safer", "bolder"] }: the register buttons steer the next hand along the familiar-to-bold axis, the answer carries "register", and you re-run concept-seed with --register <value> for the next round; offer the registers on direction rounds, and never pre-select one. followup: true keeps the table open after a pick for a second round via --update (direction first, then the execution contract); send the next payload immediately, the page is waiting on it.');
+  console.log('\nOption ids return verbatim in ANSWER; "reroll" and "canon" are reserved. hero/board/sketch accept URLs or local paths; sketch slots may point at files that do not exist yet (serve first, generate after; the page polls until they land, so never block serving on generation). hero on a challenger is the inspiration it draws from and renders picture-in-picture beside the sketch, never as the promise of the build. verdict routes rendering: "wins" and "competitive" challengers keep full cards, "declined" ones render demoted after them (narrow, quiet, art as a labeled thumb, "Adopt anyway"), with their kept line on the front; the page reorders declined cards to the end on its own. raised on the assigned card renders each donation as a named raise line. Salience parity: when the assigned card declares no sketch (no image generation this round), catalog art on every card demotes to a labeled thumb, so what looks important is the verdict’s call, never rendering luck. canonCard renders the standing exit as a subordinate card with the same anatomy; without it, canon stays a quiet footer action. Include canon only for visual-direction rounds; never present it as your own recommendation. The pick card is a kicker convention, not a field: kicker "MY PICK" on your top-ranked grounded candidate, one at most, never in the lead slot. Every card gets the full anatomy, challengers, canon, and declined included: thesis, palette, materials, viewport, risk; the seed already hands you each challenger’s system rules, so a card with no palette chips is an authoring gap, not a data gap. Keep thesis and each fact to one short sentence: the card front shows thesis, identity, and a two-line risk, while first viewport and the case read on the card back behind the Details chip, so long facts cost the reader a flip, not the page its scanability. A card with no imagery at all has no back; its full read renders on the front, so a text-only round loses nothing. Sketch aspect follows the surface: portrait at device viewport for native or mobile-first surfaces, landscape otherwise; the page adapts its cards to either. reroll accepts true or { "registers": ["safer", "bolder"] }: the register buttons steer the next hand along the familiar-to-bold axis, the answer carries "register", and you re-run concept-seed with --register <value> for the next round; offer the registers on direction rounds, and never pre-select one. followup: true keeps the table open after a pick for a second round via --update (direction first, then the execution contract); send the next payload immediately, the page is waiting on it.');
   process.exit(0);
 }
 
@@ -337,16 +337,19 @@ function loadRound(json) {
     sketchSrc: sketchSrc(option.sketch),
   });
   options = parsed.options.map(decorate);
-  // The verdict routes rendering: full cards first, declined cards demoted to
-  // the end of the deck in their own payload order. The reorder happens here
-  // so a payload that interleaves them still renders the weighing's shape.
+  // The verdict routes rendering: full cards first, then the canon, then the
+  // declined cards dead last in their own payload order. The reorder happens
+  // here so a payload that interleaves them still renders the weighing's
+  // shape, and the deck reads as a gradient of standing: contenders, the
+  // familiar door, then the demoted row.
   const declined = options.filter((o) => o.verdict === 'declined');
-  if (declined.length) options = [...options.filter((o) => o.verdict !== 'declined'), ...declined];
+  options = options.filter((o) => o.verdict !== 'declined');
   // The standing exit as a full card: same anatomy, reserved id, rendered
   // subordinate by the page. Without it, canon stays the quiet footer action.
   if (parsed.canonCard && typeof parsed.canonCard === 'object') {
     options = [...options, { ...decorate(parsed.canonCard), id: 'canon', isCanon: true }];
   }
+  options = [...options, ...declined];
 }
 try { loadRound(raw); } catch (error) { console.error(`serve-question: ${error.message}`); process.exit(1); }
 const detachedKey = hasFlag('detached-serve') ? arg('key') : null;
@@ -392,10 +395,20 @@ function page() {
     if (idBits.length) rows.push(`<div class="identity">${idBits.join('')}</div>`);
     // Donations from declined challengers render as named raise lines: the
     // assigned card arrives already raised by the hand it beat, and the raise
-    // is readable, because a raise nobody can read did not happen.
+    // is readable, because a raise nobody can read did not happen. One raise
+    // renders inline; several become a compact cycler (click advances), so a
+    // generous hand cannot blow the card out of proportion.
     if (Array.isArray(option.raised) && option.raised.length) {
       const nameOf = (id) => options.find((o) => o.id === id)?.label || String(id ?? '');
-      rows.push(`<div class="raises">${option.raised.slice(0, 4).map((r) => `<p class="raise"><span class="fact-label">Raised by ${esc(nameOf(r.from))}</span>${esc(r.raise || r.kept || '')}</p>`).join('')}</div>`);
+      const raiseLines = option.raised.slice(0, 6).map((r) => `<p class="raise"><span class="fact-label">Raised by ${esc(nameOf(r.from))}</span>${esc(r.raise || r.kept || '')}</p>`);
+      if (raiseLines.length > 1) {
+        rows.push(`<div class="raises raises-cycle" role="button" tabindex="0" title="Click to see the next raise">
+              <div class="raises-head"><span class="fact-label">Raised by the hand</span><span class="raises-count" data-raises-count>1/${raiseLines.length}</span></div>
+              ${raiseLines.join('')}
+            </div>`);
+      } else {
+        rows.push(`<div class="raises">${raiseLines[0]}</div>`);
+      }
     }
     // Demoted art stays reachable as a labeled thumb: the catalog world
     // explains where the direction comes from without buying it back the
@@ -660,7 +673,10 @@ function page() {
      and quieter, its catalog art rides as a labeled thumb in the body, and
      the action reads "Adopt anyway". Adoptable, never deleted: the demoted
      row is the hand's proof of judgment. */
-  .grid > .card.declined { flex: 0 0 clamp(15rem, 21vw, 21rem); }
+  /* Narrow AND short: without align-self the stretch default drags a thin
+     declined card to the tallest contender's height, a strange stilt of a
+     card beside the full hand. */
+  .grid > .card.declined { flex: 0 0 clamp(15rem, 21vw, 21rem); align-self: flex-start; }
   .card.declined .face { background: var(--ks-graphite); }
   .card.declined:hover .face { border-color: var(--ks-text-faint); }
   .card.declined h2 { font-size: 1rem; color: var(--ks-text); }
@@ -677,6 +693,17 @@ function page() {
   .raises { display: flex; flex-direction: column; gap: 4px; margin: 2px 0; }
   .raise { font-size: .78rem; color: var(--ks-text-muted); line-height: 1.45; border-left: 2px solid var(--ks-patina); padding-left: 8px; }
   .raise .fact-label { color: var(--ks-patina); }
+  /* Several raises cycle instead of stacking: one visible at a time, a
+     counter for the rest, the whole block advances on click. */
+  .raises-cycle { cursor: pointer; border-radius: 6px; }
+  .raises-cycle .raise { display: none; border-left: none; padding-left: 0; }
+  .raises-cycle .raise.active { display: block; }
+  .raises-cycle { border-left: 2px solid var(--ks-patina); padding-left: 8px; }
+  .raises-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .raises-head .fact-label { color: var(--ks-patina); }
+  .raises-count { font-family: var(--ks-mono); font-size: .58rem; letter-spacing: .14em; color: var(--ks-text-faint); }
+  .raises-count::after { content: " \\203A"; }
+  .raises-cycle:hover .raises-count { color: var(--ks-patina); }
   /* The standing exit as a card: present with full anatomy, never dressed as a
      contender. Graphite instead of kinpaku, and it never takes the lead ring. */
   .card.canon .face { border-color: var(--ks-rule); background: var(--ks-graphite); }
@@ -775,6 +802,21 @@ function page() {
     e.stopPropagation();
     b.closest('.card').classList.toggle('flipped');
   }));
+
+  // Raise cycler: click (or Enter) advances to the next donation.
+  document.querySelectorAll('.raises-cycle').forEach(cycle => {
+    const raises = [...cycle.querySelectorAll('.raise')];
+    const count = cycle.querySelector('[data-raises-count]');
+    let at = 0;
+    const show = () => {
+      raises.forEach((raise, i) => raise.classList.toggle('active', i === at));
+      if (count) count.textContent = (at + 1) + '/' + raises.length;
+    };
+    show();
+    const advance = (e) => { e.stopPropagation(); at = (at + 1) % raises.length; show(); };
+    cycle.addEventListener('click', advance);
+    cycle.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); advance(e); } });
+  });
 
   // Deal from the stack: cards begin piled at the grid's center, blurred,
   // then travel to their seats with a stagger.
