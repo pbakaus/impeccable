@@ -42,7 +42,7 @@
  *                                // raise lines under the identity row
  *       "risk": "one line: the honest risk",                      // optional
  *       "body": "fallback prose when the structured fields are absent",
- *       "sketch": ".impeccable/mocks/assigned.webp",  // optional; the card's
+ *       "sketch": ".impeccable/mocks/decision/assigned.webp",  // optional; the card's
  *                                // full-fidelity direction comp (the field
  *                                // keeps the sketch era's wire name). May not
  *                                // exist yet: the page shimmer-waits and
@@ -175,14 +175,14 @@ if (hasFlag('schema')) {
     title: 'Choose the visual world',
     question: 'The roll assigned Fillmore Handbill. Keep it, take an alternate, or re-roll.',
     options: [
-      { id: 'assigned', label: 'Fillmore Handbill', kicker: 'THE ROLL', lineage: '1966-71 Fillmore psychedelic handbills', thesis: 'The gig poster that treats every release like a one-night stand.', palette: ['#e8452c', '#f5d64c', '#1b2a52', '#f3ead8'], materials: ['letterpress', 'split-fountain ink'], viewport: 'A full-bleed dated bill with the product name in warped display type.', risk: 'Reads nostalgic when the type is set timidly.', raised: [{ from: 'challenger-microfiche', raise: 'The bill now owns its whole viewport as one continuous printed sheet.' }], sketch: '.impeccable/mocks/assigned.webp', hero: 'https://impeccable.style/worlds/cards/posters-covers-sleeves-fillmore-handbill-hero.webp', board: 'https://impeccable.style/worlds/cards/posters-covers-sleeves-fillmore-handbill.webp' },
-      { id: 'model-pick', label: 'The Broadside Ballad', kicker: 'MY PICK', lineage: 'street-sold ballad sheets', thesis: 'Every release printed as the day’s ballad sheet.', palette: ['#1f1c18', '#efe5d0', '#a33327'], materials: ['woodcut', 'rag paper'], viewport: 'One tall sheet, the newest release as today’s ballad.', risk: 'Also the direction most runs in this category land on.', sketch: '.impeccable/mocks/model-pick.webp' },
-      { id: 'challenger-teletext', label: 'Teletext Service', verdict: 'competitive', lineage: 'broadcast teletext magazines', thesis: 'The catalog as a broadcast index: pages, not sections.', palette: ['#0000c0', '#ffff00', '#00c000', '#ffffff'], materials: ['block mosaic', 'phosphor glow'], viewport: 'P100 index page, releases as numbered rows.', case: 'Fuses cleanly: releases map to numbered pages; loses narrowly on clarity.', risk: 'Reads retro-novelty when the grid is not strict.', sketch: '.impeccable/mocks/challenger-teletext.webp', hero: 'https://impeccable.style/worlds/cards/broadcast-programming-teletext-service-hero.webp' },
+      { id: 'assigned', label: 'Fillmore Handbill', kicker: 'THE ROLL', lineage: '1966-71 Fillmore psychedelic handbills', thesis: 'The gig poster that treats every release like a one-night stand.', palette: ['#e8452c', '#f5d64c', '#1b2a52', '#f3ead8'], materials: ['letterpress', 'split-fountain ink'], viewport: 'A full-bleed dated bill with the product name in warped display type.', risk: 'Reads nostalgic when the type is set timidly.', raised: [{ from: 'challenger-microfiche', raise: 'The bill now owns its whole viewport as one continuous printed sheet.' }], sketch: '.impeccable/mocks/decision/assigned.webp', hero: 'https://impeccable.style/worlds/cards/posters-covers-sleeves-fillmore-handbill-hero.webp', board: 'https://impeccable.style/worlds/cards/posters-covers-sleeves-fillmore-handbill.webp' },
+      { id: 'model-pick', label: 'The Broadside Ballad', kicker: 'MY PICK', lineage: 'street-sold ballad sheets', thesis: 'Every release printed as the day’s ballad sheet.', palette: ['#1f1c18', '#efe5d0', '#a33327'], materials: ['woodcut', 'rag paper'], viewport: 'One tall sheet, the newest release as today’s ballad.', risk: 'Also the direction most runs in this category land on.', sketch: '.impeccable/mocks/decision/model-pick.webp' },
+      { id: 'challenger-teletext', label: 'Teletext Service', verdict: 'competitive', lineage: 'broadcast teletext magazines', thesis: 'The catalog as a broadcast index: pages, not sections.', palette: ['#0000c0', '#ffff00', '#00c000', '#ffffff'], materials: ['block mosaic', 'phosphor glow'], viewport: 'P100 index page, releases as numbered rows.', case: 'Fuses cleanly: releases map to numbered pages; loses narrowly on clarity.', risk: 'Reads retro-novelty when the grid is not strict.', sketch: '.impeccable/mocks/decision/challenger-teletext.webp', hero: 'https://impeccable.style/worlds/cards/broadcast-programming-teletext-service-hero.webp' },
       { id: 'challenger-microfiche', label: 'Microfiche Reader', verdict: 'declined', lineage: 'library microfiche stations', palette: ['#101418', '#9fb4c0'], materials: ['film grain', 'backlit glass'], case: 'Fuses poorly: listeners do not identify with archival retrieval.', kept: 'Total environmental commitment.', hero: 'https://impeccable.style/worlds/cards/archives-microfiche-reader-hero.webp' },
     ],
     reroll: { registers: ['safer', 'bolder'] },
     canon: true,
-    canonCard: { label: 'The category standard', thesis: 'What this category ships, executed impeccably.', palette: ['#ffffff', '#111827', '#2563eb'], materials: ['clean grid', 'product photography'], viewport: 'The arrangement a visitor expects, at full craft.', risk: 'Indistinguishable from the competition by design.', sketch: '.impeccable/mocks/canon.webp' },
+    canonCard: { label: 'The category standard', thesis: 'What this category ships, executed impeccably.', palette: ['#ffffff', '#111827', '#2563eb'], materials: ['clean grid', 'product photography'], viewport: 'The arrangement a visitor expects, at full craft.', risk: 'Indistinguishable from the competition by design.', sketch: '.impeccable/mocks/decision/canon.webp' },
     steer: true,
   }, null, 2));
   console.log('\nOption ids return verbatim in ANSWER; "reroll" and "canon" are reserved. hero/board/sketch accept URLs or local paths; sketch slots may point at files that do not exist yet (serve first, generate after; the page polls until they land, so never block serving on generation). hero on a challenger is the inspiration it draws from and renders picture-in-picture beside the sketch, never as the promise of the build. verdict routes rendering: "wins" and "competitive" challengers keep full cards, "declined" ones render demoted after them (narrow, quiet, art as a labeled thumb, "Adopt anyway"), with their kept line on the front; the page reorders declined cards to the end on its own. raised on the assigned card renders each donation as a named raise line. Salience parity: when the assigned card declares no sketch (no image generation this round), catalog art on every card demotes to a labeled thumb, so what looks important is the verdict’s call, never rendering luck. canonCard renders the standing exit as a subordinate card with the same anatomy; without it, canon stays a quiet footer action. Include canon only for visual-direction rounds; never present it as your own recommendation. The pick card is a kicker convention, not a field: kicker "MY PICK" on your top-ranked grounded candidate, one at most, never in the lead slot. Every card gets the full anatomy, challengers, canon, and declined included: thesis, palette, materials, viewport, risk; the seed already hands you each challenger’s system rules, so a card with no palette chips is an authoring gap, not a data gap. Keep thesis and each fact to one short sentence: the card front shows thesis, identity, and a two-line risk, while first viewport and the case read on the card back behind the Details chip, so long facts cost the reader a flip, not the page its scanability. A card with no imagery at all has no back; its full read renders on the front, so a text-only round loses nothing. The sketch slot carries the card’s full-fidelity direction comp (the field keeps its wire name for compatibility). Comp aspect follows the surface: portrait at device viewport for native or mobile-first surfaces, landscape otherwise; the page adapts its cards to either. reroll accepts true or { "registers": ["safer", "bolder"] }: the register buttons steer the next hand along the familiar-to-bold axis, the answer carries "register", and you re-run concept-seed with --register <value> for the next round; offer the registers on direction rounds, and never pre-select one. followup: true keeps the table open after a pick for a second round via --update (direction first, then the execution contract); send the next payload immediately, the page is waiting on it.');
@@ -407,6 +407,7 @@ function page() {
         rows.push(`<div class="raises raises-cycle" role="button" tabindex="0" title="Click to see the next raise">
               <div class="raises-head"><span class="fact-label">Raised by the hand</span><span class="raises-count" data-raises-count>1/${raiseLines.length}</span></div>
               ${raiseLines.join('')}
+              <span class="sr-live" aria-live="polite"></span>
             </div>`);
       } else {
         rows.push(`<div class="raises">${raiseLines[0]}</div>`);
@@ -583,6 +584,10 @@ function page() {
     .nav.next { right: auto; left: 50%; top: auto; bottom: 6px; transform: translate(-50%, 0); }
     .fade-prev { top: 0; left: 0; right: 0; bottom: auto; width: auto; height: 72px; background: linear-gradient(180deg, var(--ks-lacquer), transparent); }
     .fade-next { top: auto; left: 0; right: 0; bottom: 0; width: auto; height: 72px; background: linear-gradient(0deg, var(--ks-lacquer), transparent); }
+    /* In the vertical deck the cross axis is horizontal: flex-start would
+       shrink a declined card to content WIDTH, not height, so it stretches
+       like every other card and its height is already its own. */
+    .grid > .card.declined { align-self: stretch; }
   }
   .card { position: relative; perspective: 1400px; transform: rotate(var(--fan, 0deg)); transition: transform .25s cubic-bezier(.16, 1, .3, 1); }
   .card:hover { transform: rotate(0deg) translateY(-4px); }
@@ -706,6 +711,7 @@ function page() {
   .raises-count { font-family: var(--ks-mono); font-size: .58rem; letter-spacing: .14em; color: var(--ks-text-faint); }
   .raises-count::after { content: " \\203A"; }
   .raises-cycle:hover .raises-count { color: var(--ks-patina); }
+  .sr-live { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
   /* The standing exit as a card: present with full anatomy, never dressed as a
      contender. Graphite instead of kinpaku, and it never takes the lead ring. */
   .card.canon .face { border-color: var(--ks-rule); background: var(--ks-graphite); }
@@ -810,12 +816,16 @@ function page() {
     const raises = [...cycle.querySelectorAll('.raise')];
     const count = cycle.querySelector('[data-raises-count]');
     let at = 0;
-    const show = () => {
+    const live = cycle.querySelector('.sr-live');
+    const show = (announce) => {
       raises.forEach((raise, i) => raise.classList.toggle('active', i === at));
       if (count) count.textContent = (at + 1) + '/' + raises.length;
+      // Screen readers hear the raise they just advanced to; the initial
+      // render stays quiet so page load does not narrate every card.
+      if (announce && live) live.textContent = 'Raise ' + (at + 1) + ' of ' + raises.length + ': ' + (raises[at]?.textContent || '');
     };
-    show();
-    const advance = (e) => { e.stopPropagation(); at = (at + 1) % raises.length; show(); };
+    show(false);
+    const advance = (e) => { e.stopPropagation(); at = (at + 1) % raises.length; show(true); };
     cycle.addEventListener('click', advance);
     cycle.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); advance(e); } });
   });
