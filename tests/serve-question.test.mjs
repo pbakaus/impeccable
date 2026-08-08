@@ -248,6 +248,6 @@ describe('serve-question', () => {
     const code = await new Promise((resolve) => child.on('exit', resolve));
     assert.equal(code, 0);
     assert.match(read(), /"sketch":/);
-    assert.match(read(), /CHOSEN SKETCH:/);
+    assert.match(read(), /CHOSEN COMP:/);
   });
 });
