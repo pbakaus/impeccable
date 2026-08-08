@@ -726,6 +726,8 @@ describe('agent bodies resolve placeholders on every surface that ships them', (
       'utf-8'
     );
     expect(codexToml).toContain('node .codex/skills/impeccable/scripts/embed-prompt.mjs');
-    expect(codexToml).toContain('ask GPT');
+    // The model name belongs to PROVIDER_PLACEHOLDERS and may change; what
+    // this pins is that {{model}} resolved to something.
+    expect(codexToml).toMatch(/and ask \S+\./);
   });
 });
