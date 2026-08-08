@@ -545,7 +545,12 @@ describe('init gate', () => {
     const calls = [];
     const realFetch = globalThis.fetch;
     globalThis.fetch = async (url, opts) => { calls.push(JSON.parse(opts.body)); return { ok: true }; };
+    // telemetryDisabled() honors DO_NOT_TRACK too, so a developer shell with
+    // it set must not fail the success-path assertions below.
+    const savedDnt = process.env.DO_NOT_TRACK;
+    const savedNoTelemetry = process.env.IMPECCABLE_NO_TELEMETRY;
     try {
+      delete process.env.DO_NOT_TRACK;
       process.env.IMPECCABLE_NO_TELEMETRY = '1';
       assert.equal(await pingChosen({ kind: 'assigned', key: 'k' }), false, 'opt-out wins over everything');
       delete process.env.IMPECCABLE_NO_TELEMETRY;
@@ -563,7 +568,10 @@ describe('init gate', () => {
       assert.equal(bodies[2].register, 'safer');
     } finally {
       globalThis.fetch = realFetch;
-      delete process.env.IMPECCABLE_NO_TELEMETRY;
+      if (savedDnt === undefined) delete process.env.DO_NOT_TRACK;
+      else process.env.DO_NOT_TRACK = savedDnt;
+      if (savedNoTelemetry === undefined) delete process.env.IMPECCABLE_NO_TELEMETRY;
+      else process.env.IMPECCABLE_NO_TELEMETRY = savedNoTelemetry;
     }
   });
 
