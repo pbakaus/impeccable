@@ -404,7 +404,7 @@ function page() {
       const nameOf = (id) => options.find((o) => o.id === id)?.label || String(id ?? '');
       const raiseLines = option.raised.slice(0, 6).map((r) => `<p class="raise"><span class="fact-label">Raised by ${esc(nameOf(r.from))}</span>${esc(r.raise || r.kept || '')}</p>`);
       if (raiseLines.length > 1) {
-        rows.push(`<div class="raises raises-cycle" role="button" tabindex="0" title="Click to see the next raise">
+        rows.push(`<div class="raises raises-cycle" role="button" tabindex="0" title="Click or press Enter to see the next raise" aria-label="Raised by the hand; activate to see the next raise">
               <div class="raises-head"><span class="fact-label">Raised by the hand</span><span class="raises-count" data-raises-count>1/${raiseLines.length}</span></div>
               ${raiseLines.join('')}
               <span class="sr-live" aria-live="polite"></span>
