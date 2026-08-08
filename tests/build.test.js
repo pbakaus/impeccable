@@ -647,3 +647,85 @@ describe('Cursor subagent generation', () => {
     expect(assetProducer).toContain('.cursor/skills/impeccable/scripts');
   });
 });
+
+// Regression guard for the gap that shipped literal `{{scripts_path}}` inside
+// the Codex dists' nested agent .toml: three separate code paths emit an agent
+// body, and one of them skipped placeholder substitution and rule-marker
+// stripping. Assert every surface, not just the one that was broken.
+describe('agent bodies resolve placeholders on every surface that ships them', () => {
+  const ROOT = process.cwd();
+  const AGENT_TEST_DIR = path.join(ROOT, 'test-tmp-agent-placeholders');
+  const DIST = path.join(AGENT_TEST_DIR, 'dist');
+
+  // [emitted file, the scripts path that provider installs to]
+  const SURFACES = [
+    // Nested Codex .toml: the skill install is the whole delivery for these.
+    ['codex/.codex/skills/impeccable/agents/impeccable_asset_producer.toml', '.codex/skills/impeccable/scripts'],
+    ['agents/.agents/skills/impeccable/agents/impeccable_asset_producer.toml', '.agents/skills/impeccable/scripts'],
+    // Native agent files.
+    ['claude-code/.claude/agents/impeccable-asset-producer.md', '.claude/skills/impeccable/scripts'],
+    ['github/.github/agents/impeccable-asset-producer.agent.md', '.github/skills/impeccable/scripts'],
+    ['grok/.grok/agents/impeccable-asset-producer.md', '.grok/skills/impeccable/scripts'],
+    // Degraded fallback reference generated from the same agent definition.
+    ['codex/.codex/skills/impeccable/reference/degraded/asset-producer.md', '.codex/skills/impeccable/scripts'],
+  ];
+
+  beforeEach(() => {
+    if (fs.existsSync(AGENT_TEST_DIR)) fs.rmSync(AGENT_TEST_DIR, { recursive: true, force: true });
+    fs.mkdirSync(AGENT_TEST_DIR, { recursive: true });
+    const { skills } = utils.readSourceFiles(ROOT);
+    transformers.transformCodex(skills, DIST);
+    transformers.transformAgents(skills, DIST);
+    transformers.transformClaudeCode(skills, DIST);
+    transformers.transformGitHub(skills, DIST);
+    transformers.transformGrok(skills, DIST);
+  });
+
+  afterEach(() => {
+    if (fs.existsSync(AGENT_TEST_DIR)) fs.rmSync(AGENT_TEST_DIR, { recursive: true, force: true });
+  });
+
+  test('the asset producer ships a runnable embed-prompt command, never the raw token', () => {
+    for (const [relPath, scriptsPath] of SURFACES) {
+      const content = fs.readFileSync(path.join(DIST, relPath), 'utf-8');
+      expect(content).toContain(`node ${scriptsPath}/embed-prompt.mjs`);
+      expect(content).not.toContain('{{scripts_path}}');
+    }
+  });
+
+  test('no emitted agent body carries an unresolved placeholder or a rule marker', () => {
+    const synthetic = {
+      name: 'impeccable',
+      description: 'synthetic',
+      body: 'Synthetic skill body.',
+      agents: [
+        {
+          name: 'impeccable-synthetic',
+          codexName: 'impeccable_synthetic',
+          description: 'synthetic agent',
+          body: 'Run `node {{scripts_path}}/embed-prompt.mjs` and ask {{model}}. <!-- rule:synthetic-marker -->',
+        },
+      ],
+    };
+    const synthDist = path.join(AGENT_TEST_DIR, 'synth');
+    transformers.transformCodex([synthetic], synthDist);
+    transformers.transformClaudeCode([synthetic], synthDist);
+
+    const emitted = [
+      'codex/.codex/skills/impeccable/agents/impeccable_synthetic.toml',
+      'codex/.codex/skills/impeccable/reference/degraded/synthetic.md',
+      'claude-code/.claude/agents/impeccable-synthetic.md',
+    ];
+    for (const relPath of emitted) {
+      const content = fs.readFileSync(path.join(synthDist, relPath), 'utf-8');
+      expect(content).not.toContain('{{');
+      expect(content).not.toMatch(/<!--\s*rule:/);
+    }
+    const codexToml = fs.readFileSync(
+      path.join(synthDist, 'codex/.codex/skills/impeccable/agents/impeccable_synthetic.toml'),
+      'utf-8'
+    );
+    expect(codexToml).toContain('node .codex/skills/impeccable/scripts/embed-prompt.mjs');
+    expect(codexToml).toContain('ask GPT');
+  });
+});
