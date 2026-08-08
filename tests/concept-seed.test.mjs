@@ -11,7 +11,7 @@ import {
   validateConceptEntry,
 } from '../skill/scripts/lib/concept-catalog.mjs';
 import { readCompositionCatalog } from '../skill/scripts/lib/composition-catalog.mjs';
-import { dealCompositions, renderChallenger, selectApprovedChallengers, selectApprovedComposition, selectApprovedCompositions } from '../skill/scripts/concept-seed.mjs';
+import { dealCompositions, pingChosen, renderChallenger, selectApprovedChallengers, selectApprovedComposition, selectApprovedCompositions } from '../skill/scripts/concept-seed.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SCRIPT = path.join(ROOT, 'skill', 'scripts', 'concept-seed.mjs');
@@ -529,6 +529,42 @@ describe('init gate', () => {
     });
     assert.equal(result.status, 0);
     assert.doesNotMatch(result.stdout, /NO_PRODUCT_MD/);
+    // --kind alone is a valid ping invocation (assigned/pick/canon outcomes
+    // have no catalog id) and is equally ungated.
+    const kindOnly = spawnSync(process.execPath, [SCRIPT, '--kind', 'assigned', '--from', 'gate-test'], {
+      cwd: dir,
+      encoding: 'utf-8',
+      env: { ...process.env, IMPECCABLE_CATALOG_DIR: FIXTURE_DIR, IMPECCABLE_NO_TELEMETRY: '1' },
+    });
+    assert.equal(kindOnly.status, 0);
+    assert.doesNotMatch(kindOnly.stdout, /NO_PRODUCT_MD/);
+    assert.match(kindOnly.stdout, /choice ping skipped/, 'telemetry-disabled kind ping reports skipped, not an error');
+  });
+
+  it('pingChosen validates kinds, requires ids only for challenger wins, and honors opt-out', async () => {
+    const calls = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url, opts) => { calls.push(JSON.parse(opts.body)); return { ok: true }; };
+    try {
+      process.env.IMPECCABLE_NO_TELEMETRY = '1';
+      assert.equal(await pingChosen({ kind: 'assigned', key: 'k' }), false, 'opt-out wins over everything');
+      delete process.env.IMPECCABLE_NO_TELEMETRY;
+      assert.equal(await pingChosen({ kind: 'assigned', key: 'k', scope: 'direction' }), true, 'kind-only ping for a non-challenger outcome');
+      assert.equal(await pingChosen({ kind: 'challenger', key: 'k' }), false, 'a challenger win without an id is not a ping');
+      assert.equal(await pingChosen({ kind: 'weird', chosenId: 'x', key: 'k' }), false, 'unknown kinds are dropped');
+      assert.equal(await pingChosen({ kind: 'assigned', register: 'wilder', key: 'k' }), false, 'unknown registers are dropped');
+      assert.equal(await pingChosen({ chosenId: 'legacy-id', key: 'k' }), true, 'legacy id-only shape stays valid');
+      assert.equal(await pingChosen({ kind: 'canon', register: 'safer', key: 'k' }), true, 'register rides along on a steered round');
+      const bodies = calls;
+      assert.equal(bodies[0].kind, 'assigned');
+      assert.equal(bodies[0].chosenId, undefined, 'no id field on kind-only pings');
+      assert.equal(bodies[1].chosenId, 'legacy-id');
+      assert.equal(bodies[1].kind, undefined, 'legacy pings carry no kind');
+      assert.equal(bodies[2].register, 'safer');
+    } finally {
+      globalThis.fetch = realFetch;
+      delete process.env.IMPECCABLE_NO_TELEMETRY;
+    }
   });
 
   // Mode eligibility on worlds. Before this, selectApprovedChallengers never
