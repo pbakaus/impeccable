@@ -31,6 +31,16 @@
  *     recomputes what rounds 0..n-1 drew, excludes all of it, and rolls a
  *     fresh assigned index, challengers, and compositions. One base key therefore
  *     reproduces the entire chain of rounds.
+ *   - REGISTER (--register safer|bolder): the user's steering on the
+ *     familiar-to-bold axis, applied to a re-roll round. A register changes
+ *     only what this round instructs, never what it dealt: the same key and
+ *     reroll count reproduce the same deal whatever the register, so the
+ *     exclusion chain never forks. bolder presents the dealt foreign forms
+ *     as the whole hand (first-dealt leads, dice-assigned by deal order);
+ *     safer spends the dealt hand unseen and presents the familiar register,
+ *     the model's conventional grounded candidates plus the canon against
+ *     named competitors, the one sanctioned lineup of the model's own list.
+ *     Registers are user-requested, never pre-selected by the model.
  *   - RATINGS: the reviewer's approval ratings weight the challenger draw
  *     (3-star doubles the odds, 1-star sits out); the approved pool itself
  *     is unchanged.
@@ -41,7 +51,9 @@
  *   node scripts/concept-seed.mjs --scope surface --mode operate --grain flow
  *   node scripts/concept-seed.mjs --scope direction --candidate-count 6
  *   node scripts/concept-seed.mjs --scope direction --mode persuade --from <key> --reroll 1
- *   node scripts/concept-seed.mjs --chosen <challenger-id> --from <key> --scope direction
+ *   node scripts/concept-seed.mjs --scope direction --mode persuade --from <key> --reroll 1 --register bolder
+ *   node scripts/concept-seed.mjs --chosen <challenger-id> --kind challenger --from <key> --scope direction
+ *   node scripts/concept-seed.mjs --kind assigned --from <key> --scope direction
  *
  * --grain names how much of the product is in play: product, flow, view, or
  * region. A docs site, an onboarding flow, a landing page and a data table are
@@ -62,8 +74,13 @@
  * Challenger data resolves in order: a local catalog directory (the private
  * service repo, evals, and tests set IMPECCABLE_CATALOG_DIR), then the roll
  * API at impeccable.style, then a degraded assignment-only seed when both are
- * unavailable. --chosen sends the anonymous choice ping for API-dealt rolls;
- * DO_NOT_TRACK or IMPECCABLE_NO_TELEMETRY disables it.
+ * unavailable. The anonymous choice ping fires once per resolved attended
+ * round on API-dealt rolls: --kind names which card class won (assigned,
+ * pick, challenger, canon) so share metrics have a denominator, --chosen
+ * carries the catalog id when a dealt challenger won, and --register rides
+ * along when the round came from a steered hand. Grounded candidates' names
+ * never leave the machine. DO_NOT_TRACK or IMPECCABLE_NO_TELEMETRY disables
+ * the ping entirely.
  *
  * Env vars:
  *   IMPECCABLE_CONCEPT_SEED — same as --from; for reproducible eval runs.
@@ -172,17 +189,35 @@ function telemetryDisabled() {
   return Boolean(process.env.IMPECCABLE_NO_TELEMETRY || process.env.DO_NOT_TRACK);
 }
 
-// Anonymous choice ping: records only that a dealt world was selected.
+// Anonymous choice ping: one per resolved attended direction round. kind
+// says which card class won (assigned / pick / challenger / canon), so
+// pick-share and canon-share have a denominator; chosenId rides along only
+// when a dealt catalog world won, and register only when the round came from
+// a steered hand. Grounded candidates' names never leave the machine: they
+// are derived from the user's project, so the ping carries the kind alone.
 // Fire-and-forget; never fails the caller.
-export async function pingChosen({ chosenId, key, scope, mode }) {
-  if (telemetryDisabled() || !chosenId) return false;
+const PING_KINDS = new Set(['assigned', 'pick', 'challenger', 'canon']);
+export async function pingChosen({ chosenId, key, scope, mode, kind, register }) {
+  if (telemetryDisabled()) return false;
+  if (kind && !PING_KINDS.has(kind)) return false;
+  if (register && register !== 'safer' && register !== 'bolder') return false;
+  // Legacy shape: a bare challenger id with no kind stays a valid ping.
+  if (!chosenId && !kind) return false;
+  if ((kind === 'challenger' || !kind) && !chosenId) return false;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), apiBudgetMs());
   try {
     await fetch(`${API_BASE}/chosen`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chosenId, key, scope, mode }),
+      body: JSON.stringify({
+        ...(chosenId ? { chosenId } : {}),
+        key,
+        scope,
+        mode,
+        ...(kind ? { kind } : {}),
+        ...(register ? { register } : {}),
+      }),
       signal: controller.signal,
     });
     return true;
@@ -260,6 +295,7 @@ export function renderConceptSeed({
   scope = 'surface',
   key = process.env.IMPECCABLE_CONCEPT_SEED || crypto.randomBytes(4).toString('hex'),
   reroll = 0,
+  register = null,
   mode = null,
   grain = null,
   platform = null,
@@ -272,6 +308,15 @@ export function renderConceptSeed({
   }
   if (!Number.isInteger(reroll) || reroll < 0) {
     throw new Error('concept-seed: --reroll must be a non-negative integer');
+  }
+  if (register !== null && register !== 'safer' && register !== 'bolder') {
+    throw new Error('concept-seed: --register must be safer or bolder');
+  }
+  if (register !== null && reroll < 1) {
+    throw new Error('concept-seed: --register steers a re-roll round; pass --reroll <n> with it');
+  }
+  if (register !== null && scope !== 'direction') {
+    throw new Error('concept-seed: --register applies to direction rounds only');
   }
   if (mode !== null && !SEED_MODES.has(mode)) {
     throw new Error('concept-seed: --mode must be persuade, operate, read, or experience');
@@ -326,6 +371,7 @@ export function renderConceptSeed({
         scope,
         key,
         reroll,
+        register,
         mode,
         grain,
         platform,
@@ -357,7 +403,11 @@ export function renderConceptSeed({
   survive the current task plus navigation, quiet and dense content,
   interaction and state, and a substantially different future surface. In an
   attended run, present the assigned direction fully committed and offer
-  re-roll; never present a ranked lineup to choose from. Re-roll yourself only
+  re-roll. You may add ONE card for your top-ranked grounded candidate when
+  it is not the assigned direction, kicker MY PICK, with an honest risk line
+  naming its familiarity; one pick card, never a ranked lineup, and the pick
+  never takes the lead position. When the assignment IS your top candidate,
+  there is no pick card. Re-roll yourself only
   on named factual grounds, when the assignment cannot carry the product's
   truth or task; taste is never grounds.`
   : `After ordering the task's grounded structural candidates by resonance,
@@ -374,7 +424,16 @@ export function renderConceptSeed({
   conflicts. Weigh the fused result against the assigned direction on exactly
   two axes, audience identification and product clarity. Losing to strong
   grounded material is a valid outcome; beating a thin or tool-monoculture
-  list is the point. A fused challenger that wins both axes becomes the build.`
+  list is the point. A fused challenger that wins both axes becomes the build.
+  Close the weighing with a verdict per challenger, decided before any
+  borrowing is considered: wins (beats the assigned direction on both axes),
+  competitive (holds one axis), or declined (loses both). A declined
+  challenger is not spent: name the one discipline of its system the assigned
+  direction lacks, and raise the assigned direction to match before
+  presenting it. A donation transfers ambition and system discipline, never
+  the challenger's clothes; one world owns the page. Write each raise as its
+  own named line on the presented direction, and carry every verdict, kept
+  line, and raise into the decision page payload.`
   : `A challenger wins only when its fused result beats the grounded list on
   audience identification and product clarity. It may change task topology or
   interaction, but never the committed visual identity.`;
@@ -399,8 +458,39 @@ Ambitious motion, spatial media, or interaction is welcome when it strengthens
 the product without weakening semantics, performance, or fallback behavior.`;
 
   if (!data) {
-    return `${scope.toUpperCase()} CONCEPT SEED (key: ${key}; mode: ${mode ?? 'unscoped'}; source: degraded; rerun with --scope ${scope}${mode ? ` --mode ${mode}` : ''} --from ${key}${reroll > 0 ? ` --reroll ${reroll}` : ''} --candidate-count ${candidateCount})
-ASSIGNED INDEX: ${buildIndex}
+    // A degraded roll can still serve the safer register, which needs no
+    // catalog at all: the assignment machinery is suppressed entirely, the
+    // same as the non-degraded safer round, because emitting both "the user
+    // picks" and a mandatory numbered build order hands the model two
+    // contradicting instructions and the mandatory one tends to win. The
+    // bolder register is exactly the thing degradation took away, so it
+    // falls back to a plain grounded round, disclosed.
+    const degradedHeader = `${scope.toUpperCase()} CONCEPT SEED (key: ${key}; mode: ${mode ?? 'unscoped'}; source: degraded; rerun with --scope ${scope}${mode ? ` --mode ${mode}` : ''} --from ${key}${reroll > 0 ? ` --reroll ${reroll}` : ''}${register ? ` --register ${register}` : ''} --candidate-count ${candidateCount})`;
+    if (register === 'safer') {
+      return `${degradedHeader}
+SAFER REGISTER (user-requested): the assigned index is suspended this
+  round; the user picks, and no candidate is mandated. Present the familiar
+  register: your remaining grounded candidates from the conventional end, at
+  most three, as full cards with an honest risk line each, plus the canon
+  executed against two or three named competitors. This is the one sanctioned
+  lineup of your own ranked candidates; it exists only by this explicit
+  request. When the user voices a standing preference for it, record a brand
+  commitment in PRODUCT.md.
+${authorityInstruction}
+A user- or brief-pinned decision beats the roll, always.
+REGISTER (restated for truncated readers): safer, user-requested; the
+assigned index is suspended this round and the user picks; seed key ${key}.
+`;
+    }
+    const degradedRegister = register === 'bolder'
+      ? `BOLDER REGISTER UNAVAILABLE: bolder deals foreign forms, and this roll ran
+  degraded with no catalog and no roll service, so there is nothing bold to
+  deal. Tell the user, then run this round as a plain grounded re-roll; the
+  assignment below applies.
+`
+      : '';
+    return `${degradedHeader}
+${degradedRegister}ASSIGNED INDEX: ${buildIndex}
   ${promotedInstruction}
   The assignment exists to refuse the model's ranking rut, never to outrank
   the user or the brief. Never expose assignment metadata in user-facing labels.
@@ -471,34 +561,76 @@ structure only, never a palette, typeface, or material. Treat them as serious
 rivals to your habitual layout, and keep only what makes this product clearer.${grainNote}\n`
     : '';
   const rerollBlock = reroll > 0
-    ? `RE-ROLL ROUND ${reroll}: every candidate presented in earlier rounds, grounded
-  and challenger alike, is eliminated and may not return reworded. Derive
+    ? `RE-ROLL ROUND ${reroll}${register ? ` (${register.toUpperCase()} REGISTER, user-requested)` : ''}: every candidate presented in earlier rounds, grounded
+  and challenger alike, is eliminated and may not return reworded.${register ? '' : ` Derive
   genuinely new grounded candidates from unexplored angles before judging
-  these fresh challengers.\n`
+  these fresh challengers.`}\n`
     : '';
+  // A register swaps the round's presentation, never its deal: the assigned
+  // index and challenger fetch stay identical so the chain reproduces, and
+  // only the instructions change.
+  const saferBlock = `SAFER REGISTER: the user asked for the familiar end of the spectrum, so this
+  round's dealt hand is spent unseen, stays excluded from future rounds, and
+  is not printed. The assigned index is suspended this round; the user picks. Present the familiar register: your remaining grounded
+  candidates from the conventional end, at most three, as full cards with an
+  honest risk line each, plus the canon executed against two or three named
+  competitors. This is the one sanctioned lineup of your own ranked
+  candidates; it exists only by this explicit request. When the user voices a
+  standing preference for it, record a brand commitment in PRODUCT.md.`;
+  const bolderBlock = `BOLDER REGISTER: the user asked for foreign forms at full commitment, so no
+  grounded direction is presented this round and the assigned index is
+  suspended. The hand is every dealt challenger below, each fused with the
+  product and presented as a full card; the FIRST dealt challenger leads, an
+  assignment by deal order, so the dice still choose. Verdicts and donations
+  apply between the challengers, weighed against the leader. The pick card
+  sits out; the canon stays, as always.`;
   const telemetryBlock = data.source === 'api'
-    ? `TELEMETRY: if the resolved direction uses one of these challengers, rerun
-  this script once with --chosen <challenger-id> --from ${key} --scope ${scope}${mode ? ` --mode ${mode}` : ''}
-  after resolution. The ping is anonymous (chosen id only) and is skipped
-  automatically when DO_NOT_TRACK or IMPECCABLE_NO_TELEMETRY is set.\n`
+    ? `TELEMETRY: after the user's choice resolves, rerun this script once with
+  --kind <assigned|pick|challenger|canon> --from ${key} --scope ${scope}${mode ? ` --mode ${mode}` : ''},
+  adding --chosen <challenger-id> when a dealt challenger won and keeping
+  --register <safer|bolder> when the resolved round came from a steered hand.
+  One ping per resolved attended round. The ping is anonymous, the card kind
+  plus the catalog id when one won; your grounded candidates' names never
+  leave the machine, and the ping is skipped automatically when DO_NOT_TRACK
+  or IMPECCABLE_NO_TELEMETRY is set.\n`
     : '';
-  return `${scope.toUpperCase()} CONCEPT SEED (key: ${key}; mode: ${mode ?? 'unscoped'}; source: ${data.source}; approved pool: ${data.poolRevision}; ${data.approvedCount}/${data.catalogCount} human-approved; rerun with --scope ${scope}${mode ? ` --mode ${mode}` : ''} --from ${key}${reroll > 0 ? ` --reroll ${reroll}` : ''} --candidate-count ${candidateCount} to reproduce this roll against this catalog revision)
-${rerollBlock}ASSIGNED INDEX: ${buildIndex}
+  const assignedBlock = register === null
+    ? `ASSIGNED INDEX: ${buildIndex}
   ${promotedInstruction}
   The assignment exists to refuse the model's ranking rut, never to outrank
-  the user or the brief. Never expose assignment metadata in user-facing labels.
-CHALLENGERS:
+  the user or the brief. Never expose assignment metadata in user-facing labels.`
+    : register === 'safer' ? saferBlock : bolderBlock;
+  // A bolder round has no assigned grounded direction, so the generic
+  // weighing instruction (which measures against the assignment) would
+  // contradict the register; the bolder variant weighs against the leader.
+  const bolderChallengerInstruction = `Fuse each challenger before judging it: the challenger supplies the form
+  and its system grammar, the product supplies every fact, and clarity wins
+  conflicts. Weigh every fused challenger against the fused LEADER, the first
+  dealt, on exactly two axes, audience identification and product clarity;
+  verdicts and donations apply between the challengers, and one that beats
+  the leader on both axes presents as the hand's strongest alternate.`;
+  const roundChallengerInstruction = register === 'bolder' ? bolderChallengerInstruction : challengerInstruction;
+  const challengerSection = register === 'safer'
+    ? ''
+    : `CHALLENGERS:
 ${data.challengers.map(renderChallenger).join('\n')}
-${compositionBlock}${challengerInstruction}
+${compositionBlock}${roundChallengerInstruction}
 When you can view images, open the QUALITY BAR board and hero for any
 challenger you weigh seriously and for the world you build. They exist as a
 craft bar, the finish level and commitment the build is expected to reach,
 never as a mockup to copy; your surface serves this product, not that render.
-${authorityInstruction}
+`;
+  const restated = register === null
+    ? `ASSIGNED INDEX (restated for truncated readers): ${buildIndex}. Build candidate
+${buildIndex} of your own grounded list; seed key ${key}.`
+    : `REGISTER (restated for truncated readers): ${register}, user-requested; the
+assigned index is suspended this round; seed key ${key}.`;
+  return `${scope.toUpperCase()} CONCEPT SEED (key: ${key}; mode: ${mode ?? 'unscoped'}; source: ${data.source}; approved pool: ${data.poolRevision}; ${data.approvedCount}/${data.catalogCount} human-approved; rerun with --scope ${scope}${mode ? ` --mode ${mode}` : ''} --from ${key}${reroll > 0 ? ` --reroll ${reroll}` : ''}${register ? ` --register ${register}` : ''} --candidate-count ${candidateCount} to reproduce this roll against this catalog revision)
+${rerollBlock}${assignedBlock}
+${challengerSection}${authorityInstruction}
 ${richnessInstruction}
 ${telemetryBlock}A user- or brief-pinned decision beats the roll, always.
-ASSIGNED INDEX (restated for truncated readers): ${buildIndex}. Build candidate
-${buildIndex} of your own grounded list; seed key ${key}.
+${restated}
 `;
 }
 
@@ -507,19 +639,25 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const fromIdx = args.indexOf('--from');
   const scopeIdx = args.indexOf('--scope');
   const rerollIdx = args.indexOf('--reroll');
+  const registerIdx = args.indexOf('--register');
   const modeIdx = args.indexOf('--mode');
   const grainIdx = args.indexOf('--grain');
   const platformIdx = args.indexOf('--platform');
   const candidateCountIdx = args.indexOf('--candidate-count');
   const chosenIdx = args.indexOf('--chosen');
+  const kindIdx = args.indexOf('--kind');
   try {
-    if (chosenIdx !== -1) {
+    if (chosenIdx !== -1 || kindIdx !== -1) {
       // Choice ping: always exits 0, telemetry must never fail a design flow.
+      // --kind alone pings a non-challenger outcome (assigned/pick/canon);
+      // --chosen alone stays the legacy challenger-win ping.
       const sent = await pingChosen({
-        chosenId: args[chosenIdx + 1],
+        chosenId: chosenIdx !== -1 ? args[chosenIdx + 1] : undefined,
         key: fromIdx !== -1 ? args[fromIdx + 1] : undefined,
         scope: scopeIdx !== -1 ? args[scopeIdx + 1] : undefined,
         mode: modeIdx !== -1 ? args[modeIdx + 1] : undefined,
+        kind: kindIdx !== -1 ? args[kindIdx + 1] : undefined,
+        register: registerIdx !== -1 ? args[registerIdx + 1] : undefined,
       });
       process.stdout.write(sent ? 'choice recorded\n' : 'choice ping skipped\n');
     } else {
@@ -542,6 +680,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
           ? args[fromIdx + 1]
           : (process.env.IMPECCABLE_CONCEPT_SEED || crypto.randomBytes(4).toString('hex')),
         reroll: rerollIdx !== -1 ? Number(args[rerollIdx + 1]) : 0,
+        register: registerIdx !== -1 ? args[registerIdx + 1] : null,
         mode: modeIdx !== -1 ? args[modeIdx + 1] : null,
         grain: grainIdx !== -1 ? args[grainIdx + 1] : null,
         platform: platformIdx !== -1 ? args[platformIdx + 1] : null,

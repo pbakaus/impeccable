@@ -11,7 +11,7 @@ import {
   validateConceptEntry,
 } from '../skill/scripts/lib/concept-catalog.mjs';
 import { readCompositionCatalog } from '../skill/scripts/lib/composition-catalog.mjs';
-import { dealCompositions, renderChallenger, selectApprovedChallengers, selectApprovedComposition, selectApprovedCompositions } from '../skill/scripts/concept-seed.mjs';
+import { dealCompositions, pingChosen, renderChallenger, selectApprovedChallengers, selectApprovedComposition, selectApprovedCompositions } from '../skill/scripts/concept-seed.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SCRIPT = path.join(ROOT, 'skill', 'scripts', 'concept-seed.mjs');
@@ -251,6 +251,54 @@ describe('concept seed scopes', () => {
     assert.match(invalid.stderr, /non-negative integer/);
   });
 
+  it('registers steer the round presentation without changing the deal', () => {
+    const plain = run('direction', ['--reroll', '1']);
+    const bolder = run('direction', ['--reroll', '1', '--register', 'bolder']);
+    const safer = run('direction', ['--reroll', '1', '--register', 'safer']);
+    assert.equal(bolder.status, 0);
+    assert.equal(safer.status, 0);
+    // A register is presentation-only: the same key and reroll count deal the
+    // same challengers, so the exclusion chain never forks on register.
+    const dealtIds = (out) => [...out.matchAll(/SOURCE ID: ([a-z0-9-]+)/g)].map((m) => m[1]).sort();
+    assert.deepEqual(dealtIds(bolder.stdout), dealtIds(plain.stdout), 'bolder presents the same deal the plain round drew');
+    assert.match(bolder.stdout, /BOLDER REGISTER/);
+    assert.match(bolder.stdout, /FIRST dealt challenger leads/);
+    assert.match(bolder.stdout, /--register bolder/);
+    assert.doesNotMatch(bolder.stdout, /ASSIGNED INDEX:/);
+    // The generic weighing instruction measures against the assigned
+    // direction, which a bolder round suspended; bolder weighs against the
+    // leader instead, and the contradiction must not ship.
+    assert.match(bolder.stdout, /against the fused LEADER/);
+    assert.doesNotMatch(bolder.stdout, /against the assigned direction/);
+    assert.match(safer.stdout, /SAFER REGISTER/);
+    assert.match(safer.stdout, /sanctioned lineup/);
+    assert.doesNotMatch(safer.stdout, /^CHALLENGERS:/m, 'the safer round spends its hand unseen');
+    // Degraded safer must not contradict itself: "the user picks" and a
+    // mandatory numbered build order cannot share one output.
+    const degradedSafer = run('direction', ['--reroll', '1', '--register', 'safer'], {
+      IMPECCABLE_CATALOG_DIR: '/nonexistent-catalog-dir',
+      IMPECCABLE_API_URL: 'http://127.0.0.1:1',
+    });
+    assert.equal(degradedSafer.status, 0);
+    assert.match(degradedSafer.stdout, /source: degraded/);
+    assert.match(degradedSafer.stdout, /SAFER REGISTER/);
+    assert.doesNotMatch(degradedSafer.stdout, /ASSIGNED INDEX/, 'degraded safer suppresses the assignment machinery');
+    assert.doesNotMatch(degradedSafer.stdout, /Build candidate/, 'degraded safer mandates no numbered candidate');
+    const degradedBolder = run('direction', ['--reroll', '1', '--register', 'bolder'], {
+      IMPECCABLE_CATALOG_DIR: '/nonexistent-catalog-dir',
+      IMPECCABLE_API_URL: 'http://127.0.0.1:1',
+    });
+    assert.equal(degradedBolder.status, 0);
+    assert.match(degradedBolder.stdout, /BOLDER REGISTER UNAVAILABLE/);
+    assert.match(degradedBolder.stdout, /ASSIGNED INDEX: /, 'degraded bolder falls back to the plain grounded assignment');
+    const invalidRegister = run('direction', ['--reroll', '1', '--register', 'wilder']);
+    assert.notEqual(invalidRegister.status, 0);
+    assert.match(invalidRegister.stderr, /must be safer or bolder/);
+    const noReroll = run('direction', ['--register', 'bolder']);
+    assert.notEqual(noReroll.status, 0);
+    assert.match(noReroll.stderr, /re-roll round/);
+  });
+
   it('filters challengers by strength per scope and falls back when a tier has no match', () => {
     const make = (id, tier, strength) => ({
       id,
@@ -481,6 +529,50 @@ describe('init gate', () => {
     });
     assert.equal(result.status, 0);
     assert.doesNotMatch(result.stdout, /NO_PRODUCT_MD/);
+    // --kind alone is a valid ping invocation (assigned/pick/canon outcomes
+    // have no catalog id) and is equally ungated.
+    const kindOnly = spawnSync(process.execPath, [SCRIPT, '--kind', 'assigned', '--from', 'gate-test'], {
+      cwd: dir,
+      encoding: 'utf-8',
+      env: { ...process.env, IMPECCABLE_CATALOG_DIR: FIXTURE_DIR, IMPECCABLE_NO_TELEMETRY: '1' },
+    });
+    assert.equal(kindOnly.status, 0);
+    assert.doesNotMatch(kindOnly.stdout, /NO_PRODUCT_MD/);
+    assert.match(kindOnly.stdout, /choice ping skipped/, 'telemetry-disabled kind ping reports skipped, not an error');
+  });
+
+  it('pingChosen validates kinds, requires ids only for challenger wins, and honors opt-out', async () => {
+    const calls = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url, opts) => { calls.push(JSON.parse(opts.body)); return { ok: true }; };
+    // telemetryDisabled() honors DO_NOT_TRACK too, so a developer shell with
+    // it set must not fail the success-path assertions below.
+    const savedDnt = process.env.DO_NOT_TRACK;
+    const savedNoTelemetry = process.env.IMPECCABLE_NO_TELEMETRY;
+    try {
+      delete process.env.DO_NOT_TRACK;
+      process.env.IMPECCABLE_NO_TELEMETRY = '1';
+      assert.equal(await pingChosen({ kind: 'assigned', key: 'k' }), false, 'opt-out wins over everything');
+      delete process.env.IMPECCABLE_NO_TELEMETRY;
+      assert.equal(await pingChosen({ kind: 'assigned', key: 'k', scope: 'direction' }), true, 'kind-only ping for a non-challenger outcome');
+      assert.equal(await pingChosen({ kind: 'challenger', key: 'k' }), false, 'a challenger win without an id is not a ping');
+      assert.equal(await pingChosen({ kind: 'weird', chosenId: 'x', key: 'k' }), false, 'unknown kinds are dropped');
+      assert.equal(await pingChosen({ kind: 'assigned', register: 'wilder', key: 'k' }), false, 'unknown registers are dropped');
+      assert.equal(await pingChosen({ chosenId: 'legacy-id', key: 'k' }), true, 'legacy id-only shape stays valid');
+      assert.equal(await pingChosen({ kind: 'canon', register: 'safer', key: 'k' }), true, 'register rides along on a steered round');
+      const bodies = calls;
+      assert.equal(bodies[0].kind, 'assigned');
+      assert.equal(bodies[0].chosenId, undefined, 'no id field on kind-only pings');
+      assert.equal(bodies[1].chosenId, 'legacy-id');
+      assert.equal(bodies[1].kind, undefined, 'legacy pings carry no kind');
+      assert.equal(bodies[2].register, 'safer');
+    } finally {
+      globalThis.fetch = realFetch;
+      if (savedDnt === undefined) delete process.env.DO_NOT_TRACK;
+      else process.env.DO_NOT_TRACK = savedDnt;
+      if (savedNoTelemetry === undefined) delete process.env.IMPECCABLE_NO_TELEMETRY;
+      else process.env.IMPECCABLE_NO_TELEMETRY = savedNoTelemetry;
+    }
   });
 
   // Mode eligibility on worlds. Before this, selectApprovedChallengers never
