@@ -47,5 +47,5 @@ Would a fluent iPhone user trust this app, or pause at off-spec controls? The te
 ## Verifying the build
 
 - **Screenshots come from the Simulator, never a browser.** Build and run, then capture with `xcrun simctl io booted screenshot <path>` (name the device instead of `booted` when several are running; `xcrun simctl list devices booted` shows them). Capture every device class the app ships to, at least one iPhone and, when iPad is a target, one iPad, and write the files where the review flow expects them. <!-- rule:ios-verify-simulator-capture -->
-- **Dark Mode and Dynamic Type belong in the pass.** `xcrun simctl ui booted appearance dark` flips appearance; a check at a large Dynamic Type size catches the truncation a fixed layout hides. <!-- rule:ios-verify-appearance-and-type -->
+- **Dark Mode and Dynamic Type belong in the pass.** `xcrun simctl ui booted appearance dark` flips appearance, naming the same device the capture named when several are booted; a check at a large Dynamic Type size catches the truncation a fixed layout hides. <!-- rule:ios-verify-appearance-and-type -->
 - **Simulators give breadth; posture, gestures, and performance need hardware.** Say which one produced the evidence. <!-- rule:ios-verify-hardware-honesty -->
