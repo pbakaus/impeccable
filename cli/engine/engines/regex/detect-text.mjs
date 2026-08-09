@@ -18,6 +18,71 @@ const hasBorderRadius = (line) => /border-radius/i.test(line);
 const isSafeElement = (line) => /<(?:blockquote|nav[\s>]|pre[\s>]|code[\s>]|a\s|input[\s>]|span[\s>])/i.test(line);
 
 
+/**
+ * Blank out comment bodies so the line matchers never read prose as markup.
+ *
+ * The line matchers scan raw source, so a comment that merely NAMES a tag is
+ * scanned as if it were that tag. A block comment explaining "the CDN answers
+ * 403 for an img loaded from another origin" reports `broken-image` in a file
+ * that contains no img element at all. Every matcher has the same exposure —
+ * documentation about markup gets read as markup.
+ *
+ * Comment bodies are replaced with spaces instead of removed, so byte offsets,
+ * line numbers and column math are unchanged. Reported lines stay correct and
+ * line-scoped inline ignores keep working.
+ *
+ * This is a small scanner rather than a regex on purpose: `"https://x"` has to
+ * survive. Stripping `//` with a regex would swallow the rest of that string
+ * and could HIDE a real finding, which is worse than the false positive being
+ * fixed. So the scan tracks strings and template literals, and only treats a
+ * line or block comment as a comment when it opens outside one.
+ */
+function maskComments(source) {
+  const out = source.split('');
+  const blank = (from, to) => {
+    for (let k = from; k < to && k < out.length; k++) if (out[k] !== '\n') out[k] = ' ';
+  };
+  let i = 0;
+  const n = source.length;
+  while (i < n) {
+    const c = source[i];
+    const d = source[i + 1];
+    if (c === '"' || c === "'" || c === '`') {
+      const quote = c;
+      i++;
+      while (i < n) {
+        if (source[i] === '\\') { i += 2; continue; }
+        if (source[i] === quote) { i++; break; }
+        i++;
+      }
+      continue;
+    }
+    if (c === '/' && d === '/') {
+      let j = i;
+      while (j < n && source[j] !== '\n') j++;
+      blank(i, j);
+      i = j;
+      continue;
+    }
+    if (c === '/' && d === '*') {
+      const end = source.indexOf('*/', i + 2);
+      const j = end === -1 ? n : end + 2;
+      blank(i, j);
+      i = j;
+      continue;
+    }
+    if (c === '<' && source.startsWith('<!--', i)) {
+      const end = source.indexOf('-->', i + 4);
+      const j = end === -1 ? n : end + 3;
+      blank(i, j);
+      i = j;
+      continue;
+    }
+    i++;
+  }
+  return out.join('');
+}
+
 /** Strip HTML to plain text — drops script/style/comments/tags so
  *  content-text analyzers don't false-positive on code or CSS. */
 function stripHtmlToText(html) {
@@ -1032,7 +1097,11 @@ function detectText(content, filePath, options = {}) {
   // Run regex matchers on the full file content (catches Tailwind classes, inline styles)
   // Enable block context for CSS files where related properties span multiple lines
   const cssLike = new Set(['.css', '.scss', '.sass', '.less']);
-  findings.push(...runRegexMatchers(lines, filePath, 0, cssLike.has(ext) || null, {
+  // Comments are blanked first: the matchers look for markup, and a comment
+  // that merely names a tag is prose. Masking keeps length and newlines, so
+  // every reported line number is still the real one.
+  const sourceLines = maskComments(content).split('\n');
+  findings.push(...runRegexMatchers(sourceLines, filePath, 0, cssLike.has(ext) || null, {
     profile,
     phase: 'source',
   }));
