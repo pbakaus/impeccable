@@ -19,7 +19,7 @@ Fix the cause at the narrowest correct level. Ask when a binding system principl
 
 ## 2. Gather the evidence
 
-Use the feature yourself at representative desktop and mobile sizes. Determine:
+Use the feature yourself at the surface's representative sizes: desktop and mobile on the web; on a native platform (`ios` / `android` / `adaptive`), the shipped device classes on the simulator, emulator, or hardware, captured per the platform reference's Verifying the build section. Determine:
 
 - whether the path is functionally complete;
 - the intended quality bar and time available;
@@ -86,10 +86,10 @@ Do not perfect one corner while leaving the rest below the same quality bar.
 
 Walk the complete path again with mouse, keyboard, and touch where applicable. Check:
 
-- mobile, intermediate, and wide layouts;
+- mobile, intermediate, and wide layouts (on native: phone and tablet size classes, both orientations where supported);
 - loading, empty, error, success, disabled, long-content, and missing-content states;
 - zoom, contrast, focus, semantics, and screen-reader names;
-- console errors, layout shift, interaction latency, image loading, and supported browsers;
+- console errors, layout shift, interaction latency, image loading, and supported browsers (on native: runtime warnings, dropped frames, and the supported OS versions);
 - agreement with DESIGN.md, neighboring features, and the user's scope.
 
 Follow the quality guidance supplied by `context.mjs` and hooks, then run any other relevant QA commands. Context requests a manual scan only when no automatic detector is active; never add another detector pass. Fix real defects and document only narrow intentional exceptions. A clean scan does not replace visual judgment.
