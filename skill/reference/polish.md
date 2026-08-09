@@ -86,10 +86,10 @@ Do not perfect one corner while leaving the rest below the same quality bar.
 
 Walk the complete path again with mouse, keyboard, and touch where applicable. Check:
 
-- mobile, intermediate, and wide layouts (on native: phone and tablet size classes, both orientations where supported);
+- mobile, intermediate, and wide layouts on the web; phone and tablet size classes in both supported orientations on native;
 - loading, empty, error, success, disabled, long-content, and missing-content states;
 - zoom, contrast, focus, semantics, and screen-reader names;
-- console errors, layout shift, interaction latency, image loading, and supported browsers (on native: runtime warnings, dropped frames, and the supported OS versions);
+- console errors, layout shift, interaction latency, and image loading everywhere; supported browsers on the web, supported OS versions and dropped frames on native;
 - agreement with DESIGN.md, neighboring features, and the user's scope.
 
 Follow the quality guidance supplied by `context.mjs` and hooks, then run any other relevant QA commands. Context requests a manual scan only when no automatic detector is active; never add another detector pass. Fix real defects and document only narrow intentional exceptions. A clean scan does not replace visual judgment.
