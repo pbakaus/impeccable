@@ -678,6 +678,10 @@ function enclosingCssSelector(cssText, index) {
   const prevClose = Math.max(cssText.lastIndexOf('}', open - 1), cssText.lastIndexOf(';', open - 1));
   const raw = cssText.slice(prevClose + 1, open).trim().replace(/\s+/g, ' ');
   if (!raw || raw.startsWith('@') || /^\d/.test(raw) || /[{}<>"]/.test(raw)) return null;
+  // Keyframe steps: percentage steps fail the digit test above, but `from`
+  // and `to` would read as (never-matching) type selectors and get a valid
+  // finding wrongly dropped by the zero-match rule downstream.
+  if (/^(?:from|to)(?:\s*,\s*(?:from|to))*$/i.test(raw)) return null;
   return raw;
 }
 
@@ -5330,7 +5334,9 @@ const OCCLUSION_TEXT_SKIP_TAGS = new Set(['script', 'style', 'noscript', 'templa
 // subsystem's territory, not the analytic walk's.
 function effectiveOpacityDOM(el) {
   let o = 1;
-  for (let cur = el; cur && cur.nodeType === 1 && cur !== document.body; cur = cur.parentElement) {
+  // Walk all the way through body and html: `body { opacity: 0 }` page-fade
+  // wrappers hide every descendant just as thoroughly as a local wrapper.
+  for (let cur = el; cur && cur.nodeType === 1; cur = cur.parentElement) {
     o *= parseFloat(getComputedStyle(cur).opacity || '1');
     if (o <= 0.02) return 0;
   }

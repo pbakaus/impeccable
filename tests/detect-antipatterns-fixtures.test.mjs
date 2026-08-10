@@ -245,7 +245,16 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
     // flag. The control and the container waived for a DIFFERENT rule must.
     const f = await detectHtml(path.join(FIXTURES, 'scoped-ignore.html'));
     const sideTabs = f.filter(r => r.antipattern === 'side-tab');
-    assert.equal(sideTabs.length, 2, `expected only the control and the other-rule case, got ${sideTabs.length}`);
+    const snippets = sideTabs.map(r => r.snippet || '').join('\n');
+    // Width-attributed cases: control 6, other-rule 8, sibling-waiver 12,
+    // misspelled-rule 5 flag; the five waived shapes must not.
+    for (const w of [5, 6, 8, 12]) {
+      assert.match(snippets, new RegExp(`border-left: ${w}px`), `flag case ${w}px missing:\n${snippets}`);
+    }
+    for (const w of [4, 7, 9, 10, 11]) {
+      assert.doesNotMatch(snippets, new RegExp(`border-left: ${w}px`), `waived case ${w}px must not flag:\n${snippets}`);
+    }
+    assert.equal(sideTabs.length, 4, `expected exactly the 4 flag cases, got ${sideTabs.length}:\n${snippets}`);
   });
 
   it('dark-gradient-ground: a gradient body ground is measured against its stops, never assumed white', async () => {

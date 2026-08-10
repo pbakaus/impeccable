@@ -253,6 +253,17 @@ async function detectHtml(filePath, options = {}) {
     for (const f of runPageCheck('html-patterns', () => checkHtmlPatterns(html, patternCorpora).filter(item =>
       item.id !== 'bounce-easing' && item.id !== 'layout-transition'
     ))) {
+      // Selector-backed page findings honor scoped waivers here too, matching
+      // the browser pass: resolve the selector and drop the finding when an
+      // ignoring ancestor covers a match. Unlike the browser, an unmatched
+      // selector keeps the finding — static scans see partial documents.
+      if (f.selector) {
+        let matches = null;
+        try {
+          matches = document.querySelectorAll(String(f.selector).replace(/::?[a-zA-Z-]+(\([^)]*\))?/g, '').trim());
+        } catch { matches = null; }
+        if (matches && matches.length > 0 && [...matches].every(el => scopedIgnoreActive(el, f.id))) continue;
+      }
       const item = finding(f.id, filePath, f.snippet);
       // Position-aware severity promotion: checks may attach a per-finding
       // severity (e.g. a pulsing dot inside a header/nav landmark) that

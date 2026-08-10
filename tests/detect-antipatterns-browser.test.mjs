@@ -120,8 +120,13 @@ describe('detectUrl — browser-only fixtures', () => {
     const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/image-backed-contrast.html`);
     const contrast = f.filter(r => r.antipattern === 'low-contrast');
     const snippets = contrast.map(r => r.snippet || '').join('\n');
-    assert.equal(contrast.length, 1, `expected exactly the white-on-light case, got ${contrast.length}:\n${snippets}`);
     assert.match(snippets, /browser contrast/, `expected a sampled (not analytic) finding:\n${snippets}`);
+    // The sampled finding carries the candidate's text, so each case
+    // attributes: the white-on-light specimen must be the one that flags,
+    // and the dark-ink control must stay clean.
+    assert.match(snippets, /White text on a near-white/, `flag case missing:\n${snippets}`);
+    assert.doesNotMatch(snippets, /Dark ink/, `pass case must not flag:\n${snippets}`);
+    assert.equal(contrast.length, 1, `expected exactly the white-on-light case, got ${contrast.length}:\n${snippets}`);
   });
 
   it('scoped-ignore: data-impeccable-ignore waives its subtree in the browser walk', async () => {
@@ -129,12 +134,26 @@ describe('detectUrl — browser-only fixtures', () => {
     // expectation — only the control and the other-rule-waived case flag.
     const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/scoped-ignore.html`, { visualContrast: false });
     const sideTabs = f.filter(r => r.antipattern === 'side-tab');
-    assert.equal(sideTabs.length, 2, `expected only the control and the other-rule case, got ${sideTabs.length}`);
+    const snippets = sideTabs.map(r => r.snippet || '').join('\n');
+    // Every case carries a unique border width, so each finding attributes to
+    // exactly one case: control 6, other-rule 8, sibling-waiver 12,
+    // misspelled-rule 5 must flag; the five waived shapes must not.
+    for (const w of ['5px', '6px', '8px', '12px']) {
+      assert.match(snippets, new RegExp(`border-left: ${w.replace('px', '')}px`), `flag case ${w} missing:\n${snippets}`);
+    }
+    for (const w of ['4px', '7px', '9px', '10px', '11px']) {
+      assert.doesNotMatch(snippets, new RegExp(`border-left: ${w.replace('px', '')}px`), `waived case ${w} must not flag:\n${snippets}`);
+    }
+    assert.equal(sideTabs.length, 4, `expected exactly the 4 flag cases, got ${sideTabs.length}:\n${snippets}`);
     // CSS-scan findings resolve their selectors against the live DOM: the
     // marquee track sits under a marquee waiver (suppressed), and the grid
     // rule's selector renders nowhere on this page (dropped).
     assert.equal(f.filter(r => r.antipattern === 'marquee').length, 0, 'waived marquee must not flag');
     assert.equal(f.filter(r => r.antipattern === 'codex-grid-background').length, 0, 'dead grid CSS must not flag in the browser');
+    // The overshoot bezier sits inside a keyframe `to` step: the selector
+    // extractor must refuse `to` (matches nothing) so the finding is RETAINED
+    // as page-level rather than wrongly dropped by the zero-match rule.
+    assert.ok(f.some(r => r.antipattern === 'bounce-easing'), 'keyframe-step bezier finding must survive selector extraction');
   });
 
   it('low-contrast: a gradient body ground with oklch stops is measured, never assumed white', async () => {

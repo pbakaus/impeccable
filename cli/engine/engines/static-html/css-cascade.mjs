@@ -226,6 +226,10 @@ const STATIC_INHERITED_PROPS = new Set([
   'color', 'fontFamily', 'fontSize', 'fontStyle', 'fontWeight', 'fontVariant',
   'lineHeight', 'letterSpacing', 'textTransform', 'textAlign', 'hyphens',
   'webkitHyphens',
+  // visibility inherits in real CSS, and the invisible-at-rest contrast skip
+  // relies on descendants of a hidden container computing as hidden. A child
+  // that declares `visibility: visible` still overrides the inherited value.
+  'visibility',
 ]);
 
 const STATIC_DEFAULT_STYLE = {
