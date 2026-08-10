@@ -119,12 +119,12 @@ Invoke ${commandPrefix}impeccable ${command}, passing along any arguments provid
 // (see docs/HARNESSES.md and opencode/packages/core/src/v1/config/command.ts),
 // so a pinned skill there shows up in `opencode debug skill` but never in the
 // slash menu. The fix is a sibling `commands/impeccable-<cmd>.md` that uses the
-// OpenCode command schema (description, agent, subtask). Body routes through
-// the parent bridge so /impeccable-<cmd> and /impeccable <cmd> end up
-// calling the same workflow.
+// OpenCode command schema (description, agent, subtask). Body loads the skill
+// via the skill tool and then the sub-command's reference file directly, so
+// /impeccable-<cmd> runs the same workflow /impeccable <cmd> routes to.
 const OPENCODE_PIN_MARKER = '<!-- impeccable-pinned-command -->';
 function generatePinnedOpencodeCommand(command, metadata) {
-  const desc = metadata[command]?.description || `Impeccable sub-command shortcut — runs the ${command} workflow via /impeccable.`;
+  const desc = metadata[command]?.description || `Impeccable sub-command shortcut; runs the ${command} workflow via /impeccable.`;
   return `---
 description: "${desc}"
 agent: build
@@ -133,7 +133,7 @@ subtask: true
 
 ${OPENCODE_PIN_MARKER}
 
-Load the \`impeccable\` skill via the skill tool (name: "impeccable"), then run \`node <skill-base-dir>/scripts/context.mjs\`, then load \`<skill-base-dir>/reference/${command}.md\` and follow it.
+Load the \`impeccable\` skill via the skill tool (name: "impeccable"), then run \`node <skill-base-dir>/scripts/context.mjs\`, then load \`<skill-base-dir>/reference/${command}.md\` and follow it. \`<skill-base-dir>\` is the skill's base directory as reported by the skill tool response; substitute the actual absolute path before running or reading anything.
 
 $ARGUMENTS
 `;
