@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { writeFileSync, mkdtempSync } from 'node:fs';
+import { writeFileSync, mkdtempSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -137,6 +137,10 @@ describe('serve-question', () => {
     try {
       const waiting = await run(['--wait', '--key', 'hk', '--poll', '1']);
       assert.equal(waiting.code, 3, `--wait under CI must report WAITING, got ${waiting.code}: ${waiting.out}`);
+      // --update delivers a re-rolled hand to a page that is already open; a
+      // headless gate that eats it strands that page mid-shuffle (issue #469).
+      const updated = await run(['--update', '--key', 'hk', '--payload', payloadPath]);
+      assert.equal(updated.code, 0, `--update under CI must deliver, got ${updated.code}: ${updated.out}`);
     } finally {
       const stopped = await run(['--stop', '--key', 'hk']);
       assert.equal(stopped.code, 0, `--stop under CI must kill the daemon, got ${stopped.code}: ${stopped.out}`);
@@ -188,6 +192,153 @@ describe('serve-question', () => {
       child.on('exit', resolve);
     });
     assert.equal(dead, 2, 'a truly missing process must still read as gone');
+  });
+
+  it('a heartbeating page keeps the daemon alive past --timeout; silence ends it after the idle grace', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'serve-question-'));
+    const payloadPath = path.join(dir, 'q.json');
+    writeFileSync(payloadPath, JSON.stringify(PAYLOAD));
+    const run = (args) => new Promise((resolve) => {
+      const child = spawn(process.execPath, [SCRIPT, ...args], { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] });
+      let out = '';
+      child.stdout.on('data', (chunk) => { out += chunk; });
+      child.on('exit', (code) => resolve({ code, out }));
+    });
+    const started = await run(['--start', '--payload', payloadPath, '--no-open', '--key', 'life', '--timeout', '3', '--idle-grace', '3']);
+    assert.equal(started.code, 0, started.out);
+    const url = started.out.match(/QUESTION URL: (\S+)/)?.[1];
+    assert.ok(url, started.out);
+    // Beat well past the 3s timeout: the timer must not fire under a live page.
+    const beatUntil = Date.now() + 5500;
+    while (Date.now() < beatUntil) {
+      await fetch(`${url}heartbeat`, { method: 'POST' });
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    const alive = await fetch(url);
+    assert.equal(alive.status, 200, 'the daemon outlives --timeout while the page heartbeats');
+    // Then silence: the idle grace (3s here) plus the 2s check interval pass
+    // with no beat, and the daemon must exit rather than leak. Poll rather
+    // than sleep a fixed margin so a loaded runner cannot flake this.
+    const deadline = Date.now() + 12000;
+    let gone = false;
+    while (Date.now() < deadline && !gone) {
+      await new Promise((r) => setTimeout(r, 500));
+      try { await fetch(url); } catch { gone = true; }
+    }
+    assert.ok(gone, 'the daemon exits after the idle grace passes with no heartbeat');
+  });
+
+  it('a page that never opens still ends the daemon at --timeout', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'serve-question-'));
+    const payloadPath = path.join(dir, 'q.json');
+    writeFileSync(payloadPath, JSON.stringify(PAYLOAD));
+    const run = (args) => new Promise((resolve) => {
+      const child = spawn(process.execPath, [SCRIPT, ...args], { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] });
+      let out = '';
+      child.stdout.on('data', (chunk) => { out += chunk; });
+      child.on('exit', (code) => resolve({ code, out }));
+    });
+    const started = await run(['--start', '--payload', payloadPath, '--no-open', '--key', 'leak', '--timeout', '1']);
+    assert.equal(started.code, 0, started.out);
+    const url = started.out.match(/QUESTION URL: (\S+)/)?.[1];
+    const deadline = Date.now() + 8000;
+    let gone = false;
+    while (Date.now() < deadline && !gone) {
+      await new Promise((r) => setTimeout(r, 500));
+      try { await fetch(url); } catch { gone = true; }
+    }
+    assert.ok(gone, 'with no heartbeat ever, the daemon still exits at --timeout');
+  });
+
+  it('--timeout 0 waits for a page forever, but a page that beat and went silent still ends the daemon', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'serve-question-'));
+    const payloadPath = path.join(dir, 'q.json');
+    writeFileSync(payloadPath, JSON.stringify(PAYLOAD));
+    const run = (args) => new Promise((resolve) => {
+      const child = spawn(process.execPath, [SCRIPT, ...args], { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] });
+      let out = '';
+      child.stdout.on('data', (chunk) => { out += chunk; });
+      child.on('exit', (code) => resolve({ code, out }));
+    });
+    const started = await run(['--start', '--payload', payloadPath, '--no-open', '--key', 'zero', '--timeout', '0', '--idle-grace', '3']);
+    assert.equal(started.code, 0, started.out);
+    const url = started.out.match(/QUESTION URL: (\S+)/)?.[1];
+    assert.ok(url, started.out);
+    // No page yet: --timeout 0 means wait indefinitely, so the daemon must
+    // survive well past where any small timeout would have fired.
+    await new Promise((r) => setTimeout(r, 3000));
+    const alive = await fetch(url);
+    assert.equal(alive.status, 200, 'with --timeout 0 and no page yet, the daemon keeps waiting');
+    // One beat, then silence: the idle grace must still reclaim the daemon.
+    // Before the fix, the whole lifetime check sat inside timeoutSec > 0 and
+    // a closed tab leaked this daemon forever.
+    await fetch(`${url}heartbeat`, { method: 'POST' });
+    const deadline = Date.now() + 12000;
+    let gone = false;
+    while (Date.now() < deadline && !gone) {
+      await new Promise((r) => setTimeout(r, 500));
+      try { await fetch(url); } catch { gone = true; }
+    }
+    assert.ok(gone, 'the idle grace applies under --timeout 0 once a page has beat');
+  });
+
+  it('a refresh while a re-roll is outstanding re-enters the wait instead of re-serving the answered round', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'serve-question-'));
+    const payloadPath = path.join(dir, 'q.json');
+    writeFileSync(payloadPath, JSON.stringify(PAYLOAD));
+    const run = (args) => new Promise((resolve) => {
+      const child = spawn(process.execPath, [SCRIPT, ...args], { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] });
+      let out = '';
+      child.stdout.on('data', (chunk) => { out += chunk; });
+      child.on('exit', (code) => resolve({ code, out }));
+    });
+    const started = await run(['--start', '--payload', payloadPath, '--no-open', '--key', 'refresh', '--timeout', '30']);
+    assert.equal(started.code, 0, started.out);
+    const url = started.out.match(/QUESTION URL: (\S+)/)?.[1];
+    assert.ok(url, started.out);
+    try {
+      const before = await (await fetch(url)).text();
+      assert.ok(!before.includes('awaitNextRound(false)'), 'a fresh round serves the normal page');
+      // A native refresh bypasses the page's own gated Reload button, so the
+      // serving decision has to live here: once a re-roll answer is collected
+      // and no replacement has landed, GET / re-enters the bounded shuffle
+      // wait instead of re-serving the answered cards.
+      await fetch(`${url}answer`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: '' }) });
+      const waitingPage = await (await fetch(url)).text();
+      assert.ok(waitingPage.includes('awaitNextRound(false)'), 'a refresh mid re-roll re-enters the shuffle wait');
+      const nextPath = path.join(dir, 'next.json');
+      writeFileSync(nextPath, JSON.stringify({ ...PAYLOAD, title: 'Second round' }));
+      const updated = await run(['--update', '--key', 'refresh', '--payload', nextPath]);
+      assert.equal(updated.code, 0, updated.out);
+      const after = await (await fetch(url)).text();
+      assert.ok(after.includes('Second round'), 'the delivered hand is served');
+      assert.ok(!after.includes('awaitNextRound(false)'), 'the wait ends once the hand lands');
+    } finally {
+      await run(['--stop', '--key', 'refresh']);
+    }
+  });
+
+  it('--update trusts a fresh heartbeat over a failed kill probe, and still detects true death', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'serve-question-'));
+    const qdir = path.join(dir, '.impeccable', 'questions');
+    const { mkdirSync } = await import('node:fs');
+    mkdirSync(qdir, { recursive: true });
+    const nextPath = path.join(dir, 'next.json');
+    writeFileSync(nextPath, JSON.stringify(PAYLOAD));
+    const run = (key) => new Promise((resolve) => {
+      const child = spawn(process.execPath, [SCRIPT, '--update', '--key', key, '--payload', nextPath], { cwd: dir, stdio: 'ignore' });
+      child.on('exit', resolve);
+    });
+    // Fresh heartbeat + a pid the sandbox cannot signal (pid 1 throws EPERM):
+    // --update is the documented re-roll delivery step, so a false "no live
+    // server" here strands the page mid-shuffle. Must deliver, exit 0.
+    writeFileSync(path.join(qdir, 'upbeat.state.json'), JSON.stringify({ pid: 1, port: 1, url: 'http://127.0.0.1:1/', lastBeat: Date.now() }));
+    assert.equal(await run('upbeat'), 0, 'fresh heartbeat must read as alive regardless of the kill probe');
+    assert.ok(existsSync(path.join(qdir, 'upbeat.next.json')), 'the next hand landed');
+    // Stale heartbeat + a genuinely dead pid: exit 2, nothing delivered.
+    writeFileSync(path.join(qdir, 'updead.state.json'), JSON.stringify({ pid: 999999999 >>> 8, port: 1, url: 'http://127.0.0.1:1/' }));
+    assert.equal(await run('updead'), 2, 'a truly missing process must still read as gone');
+    assert.ok(!existsSync(path.join(qdir, 'updead.next.json')), 'no hand is delivered to a dead server');
   });
 
   it('renders anatomy, streams late sketches, and returns the chosen sketch', async () => {
