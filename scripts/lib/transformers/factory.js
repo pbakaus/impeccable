@@ -176,6 +176,22 @@ function buildCursorAgent(agent, body) {
   return `${generateYamlFrontmatter(frontmatter)}\n${body.trim()}\n`;
 }
 
+/**
+ * Render an agent's markdown body for one provider.
+ *
+ * Every surface that ships an agent body (the degraded fallback reference, the
+ * Codex .toml nested inside the skill, and the native agent file) goes through
+ * here, so all three resolve provider blocks, {{placeholders}}, rule markers,
+ * and {{scripts_path}} the same way. The nested Codex .toml used to skip the
+ * last two and shipped `node {{scripts_path}}/embed-prompt.mjs` literally.
+ */
+function renderAgentBody(agent, { providerTags, placeholderKey, allSkillNames, scriptsPath }) {
+  let body = compileProviderBlocks(agent.body, providerTags);
+  body = replacePlaceholders(body, placeholderKey, [], allSkillNames);
+  body = stripRuleMarkers(body);
+  return body.replace(/\{\{scripts_path\}\}/g, scriptsPath);
+}
+
 function buildAgentFile(config, agent, body) {
   if (config.agentFormat === 'codex-toml') {
     return {
@@ -330,10 +346,7 @@ export function createTransformer(config) {
         ensureDir(degradedDir);
         for (const agent of skill.agents) {
           const role = agent.name.replace(/^impeccable-/, '');
-          let body = compileProviderBlocks(agent.body, providerTags);
-          body = replacePlaceholders(body, placeholderKey, [], allSkillNames);
-          body = stripRuleMarkers(body);
-          body = body.replace(/\{\{scripts_path\}\}/g, scriptsPath);
+          const body = renderAgentBody(agent, { providerTags, placeholderKey, allSkillNames, scriptsPath });
           const content = `${DEGRADED_PREAMBLE}\n\n${body.replace(/^\s+/, '')}`;
           writeFile(path.join(degradedDir, `${role}.md`), content);
           refCount++;
@@ -358,8 +371,7 @@ export function createTransformer(config) {
       if (CODEX_SKILL_PROVIDERS.has(provider)) {
         for (const agent of skill.agents || []) {
           if (agent.providers && !agent.providers.includes('codex')) continue;
-          let agentBody = compileProviderBlocks(agent.body, providerTags);
-          agentBody = replacePlaceholders(agentBody, placeholderKey, [], allSkillNames);
+          const agentBody = renderAgentBody(agent, { providerTags, placeholderKey, allSkillNames, scriptsPath });
           const filename = `${agent.codexName || agent.name.replace(/-/g, '_')}.toml`;
           ensureDir(path.join(skillDir, 'agents'));
           writeFile(path.join(skillDir, 'agents', filename), buildCodexAgent(agent, agentBody));
@@ -397,10 +409,7 @@ export function createTransformer(config) {
           // Agents can declare `providers: <list>` to limit which harnesses
           // they emit to. Default (no field) ships everywhere with agentFormat.
           if (agent.providers && !agent.providers.includes(provider)) continue;
-          let body = compileProviderBlocks(agent.body, providerTags);
-          body = replacePlaceholders(body, placeholderKey, [], allSkillNames);
-          body = stripRuleMarkers(body);
-          body = body.replace(/\{\{scripts_path\}\}/g, scriptsPath);
+          const body = renderAgentBody(agent, { providerTags, placeholderKey, allSkillNames, scriptsPath });
           const agentFile = buildAgentFile(config, agent, body);
           if (!agentFile) continue;
           ensureDir(agentsDir);

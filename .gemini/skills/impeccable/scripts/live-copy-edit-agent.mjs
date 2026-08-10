@@ -14,10 +14,12 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 
 const DEFAULT_TIMEOUT_MS = 60_000;
+const BATCH_OP_TEXT_LIMIT = 240;
 const require = createRequire(import.meta.url);
 
 export function buildCopyEditBatchPrompt(batch, { cwd = process.cwd() } = {}) {
-  const repairLines = batch?.repair ? [
+  const compactBatch = compactBatchForPrompt(batch);
+  const repairLines = compactBatch.repair ? [
     '',
     'Repair mode:',
     '- The previous Apply attempt changed source, but validation failed.',
@@ -28,7 +30,7 @@ export function buildCopyEditBatchPrompt(batch, { cwd = process.cwd() } = {}) {
     '- If failures or candidates show edited text is also a lookup key, update coupled count, animation, icon, image, asset, style, or metadata keys in the current source, or fail that entry without partial edits.',
     '- Keep failed and notes as arrays.',
     '- Return the same canonical JSON shape after repair.',
-    JSON.stringify(batch.repair, null, 2),
+    JSON.stringify(compactBatch.repair, null, 2),
   ] : [];
   return [
     'You are the Impeccable staged copy-edit batch applier.',
@@ -80,7 +82,7 @@ export function buildCopyEditBatchPrompt(batch, { cwd = process.cwd() } = {}) {
     ...repairLines,
     '',
     'Staged copy-edit batch:',
-    JSON.stringify(compactBatchForPrompt(batch), null, 2),
+    JSON.stringify(compactBatch, null, 2),
   ].join('\n');
 }
 
@@ -292,7 +294,7 @@ function readManualEditValidationScript(cwd) {
 function compactBatchForPrompt(batch) {
   return {
     pageUrl: batch?.pageUrl || null,
-    repair: batch?.repair || undefined,
+    repair: compactBatchRepair(batch?.repair),
     entries: (batch?.entries || []).map((entry) => ({
       id: entry.id,
       pageUrl: entry.pageUrl,
@@ -300,7 +302,71 @@ function compactBatchForPrompt(batch) {
       element: compactContextForBatch(entry.element),
       ops: (entry.ops || []).map(compactBatchOp),
     })),
-    candidates: batch?.candidates || [],
+    candidates: compactBatchCandidates(batch?.candidates),
+  };
+}
+
+function compactBatchRepair(repair) {
+  if (!repair || typeof repair !== 'object') return undefined;
+  return {
+    status: compactBatchString(repair.status),
+    attempt: normalizeOptionalBatchNumber(repair.attempt),
+    attempts: normalizeOptionalBatchNumber(repair.attempts),
+    maxAttempts: normalizeOptionalBatchNumber(repair.maxAttempts),
+    reason: compactBatchString(repair.reason),
+    transactionId: compactBatchString(repair.transactionId),
+    pageUrl: compactBatchString(repair.pageUrl),
+    failures: compactBatchDiagnostics(repair.failures),
+    files: compactBatchStringList(repair.files, 20),
+  };
+}
+
+function compactBatchDiagnostics(items, depth = 0) {
+  if (!Array.isArray(items)) return undefined;
+  return items.slice(0, 12).map((item) => ({
+    entryId: compactBatchString(item?.entryId || item?.id),
+    reason: compactBatchString(item?.reason || item?.kind),
+    detail: compactBatchString(item?.detail),
+    message: compactBatchString(item?.message),
+    file: compactBatchString(item?.file || item?.relativeFile),
+    line: normalizeOptionalBatchNumber(item?.line),
+    ref: compactBatchString(item?.ref),
+    marker: compactBatchString(item?.marker),
+    files: compactBatchStringList(item?.files, 8),
+    candidates: depth < 2 ? compactBatchSourceMatches(item?.candidates, 8) : undefined,
+    failures: depth < 2 ? compactBatchDiagnostics(item?.failures, depth + 1) : undefined,
+    checks: depth < 2 ? compactBatchDiagnostics(item?.checks, depth + 1) : undefined,
+  }));
+}
+
+function compactBatchCandidates(candidates) {
+  return (Array.isArray(candidates) ? candidates : [])
+    .slice(0, 24)
+    .map((candidate) => ({
+      entryId: compactBatchString(candidate?.entryId),
+      ref: compactBatchString(candidate?.ref),
+      sourceHint: compactBatchSourceMatch(candidate?.sourceHint),
+      textMatches: compactBatchSourceMatches(candidate?.textMatches, 8),
+      objectKeyMatches: compactBatchSourceMatches(candidate?.objectKeyMatches, 8),
+      contextTextMatches: compactBatchSourceMatches(candidate?.contextTextMatches, 8),
+      locatorMatches: compactBatchSourceMatches(candidate?.locatorMatches, 6),
+    }));
+}
+
+function compactBatchSourceMatches(matches, limit) {
+  if (!Array.isArray(matches)) return undefined;
+  return matches.slice(0, limit).map(compactBatchSourceMatch).filter(Boolean);
+}
+
+function compactBatchSourceMatch(match) {
+  if (!match || typeof match !== 'object') return null;
+  return {
+    file: compactBatchString(match.relativeFile || match.file),
+    line: normalizeBatchNumber(match.line),
+    column: normalizeBatchNumber(match.column),
+    kind: compactBatchString(match.kind),
+    reason: compactBatchString(match.reason || match.kind),
+    status: compactBatchString(match.status),
   };
 }
 
@@ -311,25 +377,77 @@ function compactBatchOp(op) {
     contextRef: op.contextRef,
     tag: op.tag,
     elementId: op.elementId,
-    classes: op.classes,
+    classes: compactBatchStringList(op.classes, 24),
     originalText: op.originalText,
     newText: op.newText,
     deleted: op.deleted === true || undefined,
-    sourceHint: op.sourceHint,
+    sourceHint: normalizeBatchSourceHint(op.sourceHint),
     leaf: compactContextForBatch(op.leaf),
-    nearbyEditableTexts: Array.isArray(op.nearbyEditableTexts) ? op.nearbyEditableTexts.slice(0, 8) : [],
+    nearbyEditableTexts: compactNearbyBatchTexts(op.nearbyEditableTexts),
     container: compactContextForBatch(op.container),
-    contextHints: Array.isArray(op.contextHints) ? op.contextHints.slice(0, 12) : [],
+    contextHints: compactBatchStringList(op.contextHints, 12),
   };
+}
+
+function normalizeBatchSourceHint(hint) {
+  if (!hint || typeof hint !== 'object') return null;
+  let line = normalizeBatchNumber(hint.line);
+  let column = normalizeBatchNumber(hint.column);
+  if ((line === null || column === null) && typeof hint.loc === 'string') {
+    const match = hint.loc.match(/^(\d+)(?::(\d+))?/);
+    if (match) {
+      line = Number(match[1]);
+      if (match[2]) column = Number(match[2]);
+    }
+  }
+  return {
+    file: compactBatchString(hint.file) || '',
+    loc: compactBatchString(hint.loc) || '',
+    line,
+    column,
+  };
+}
+
+function normalizeBatchNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function normalizeOptionalBatchNumber(value) {
+  const number = normalizeBatchNumber(value);
+  return number === null ? undefined : number;
+}
+
+function compactNearbyBatchTexts(items) {
+  return (Array.isArray(items) ? items : [])
+    .slice(0, 8)
+    .map((item) => typeof item === 'string' ? { text: truncate(item, BATCH_OP_TEXT_LIMIT) } : {
+      ref: compactBatchString(item?.ref),
+      tag: compactBatchString(item?.tag),
+      classes: compactBatchStringList(item?.classes, 24),
+      text: compactBatchString(item?.text),
+    });
+}
+
+function compactBatchStringList(items, limit) {
+  return (Array.isArray(items) ? items : [])
+    .slice(0, limit)
+    .filter((item) => typeof item === 'string')
+    .map((item) => truncate(item, BATCH_OP_TEXT_LIMIT));
+}
+
+function compactBatchString(value) {
+  return typeof value === 'string' ? truncate(value, BATCH_OP_TEXT_LIMIT) : undefined;
 }
 
 function compactContextForBatch(value) {
   if (!value || typeof value !== 'object') return value || null;
   return {
-    ref: value.ref,
-    tagName: value.tagName,
-    id: value.id,
-    classes: value.classes,
+    ref: compactBatchString(value.ref),
+    tagName: compactBatchString(value.tagName),
+    id: compactBatchString(value.id),
+    classes: compactBatchStringList(value.classes, 24),
     textContent: truncate(value.textContent, 900),
     outerHTML: truncate(stripLiveRuntimeHtml(value.outerHTML), 1800),
   };
@@ -470,12 +588,11 @@ function runClaude(prompt, { cwd, env, resultPath, logPath, timeoutMs = DEFAULT_
   if (env.IMPECCABLE_LIVE_COPY_AGENT_MODEL) {
     args.push('--model', env.IMPECCABLE_LIVE_COPY_AGENT_MODEL);
   }
-  args.push(prompt);
   // Forward env as-is so CLAUDE_CODE_OAUTH_TOKEN and ANTHROPIC_API_KEY flow
   // through. On macOS, `claude /login` stores creds in the Keychain, which a
   // non-TTY subprocess cannot read; setting CLAUDE_CODE_OAUTH_TOKEN (via
   // `claude setup-token`) is the supported headless auth path.
-  return runAgentProcess('claude', args, '', { cwd, env, logPath, timeoutMs, mirrorOutputPath: resultPath });
+  return runAgentProcess('claude', args, prompt, { cwd, env, logPath, timeoutMs, mirrorOutputPath: resultPath });
 }
 
 function runAgentProcess(command, args, stdin, { cwd, env, logPath, timeoutMs, mirrorOutputPath }) {

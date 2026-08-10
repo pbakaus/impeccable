@@ -1,5 +1,7 @@
 > **Additional context needed**: which section is the target, and what must stay untouched.
 
+An open direction round owns the word first: "bolder" said while a direction decision is on the table is the Bolder hand register steer, a fresh deal of foreign forms (see new-work.md), not this command. This command refines a surface whose world already shipped.
+
 "Bolder" is an amplification request, and almost always it is scoped to something that already exists. The surrounding page, its system, and its conventions are the given. Your job is to raise one part to the conviction the rest already implies, without rebuilding anything the brief did not name. The reflex answer, reaching for more effects, is the opposite of bold; reject it first.
 
 ## Scope is sovereign

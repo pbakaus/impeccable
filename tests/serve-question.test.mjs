@@ -5,6 +5,9 @@ import { writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { EventEmitter } from 'node:events';
+
+import { browserOpenCommand, openSystemBrowser } from '../skill/scripts/lib/open-system-browser.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SCRIPT = path.join(ROOT, 'skill', 'scripts', 'serve-question.mjs');
@@ -39,6 +42,24 @@ const PAYLOAD = {
 };
 
 describe('serve-question', () => {
+  it('opens Windows URLs through cmd.exe and reserves the start title argument', () => {
+    assert.deepEqual(
+      browserOpenCommand('http://127.0.0.1:1234/', { platform: 'win32', comspec: 'cmd.exe' }),
+      { command: 'cmd.exe', args: ['/c', 'start', '', 'http://127.0.0.1:1234/'] },
+    );
+  });
+
+  it('absorbs asynchronous system-opener failures after printing the URL', () => {
+    const child = new EventEmitter();
+    child.unref = () => {};
+    assert.equal(openSystemBrowser('http://127.0.0.1:1234/', {
+      platform: 'linux',
+      spawnImpl: () => child,
+    }), true);
+    assert.equal(child.listenerCount('error'), 1);
+    assert.doesNotThrow(() => child.emit('error', Object.assign(new Error('missing opener'), { code: 'ENOENT' })));
+  });
+
   it('serves the page, records the answer, prints ANSWER, exits 0', async () => {
     const { child, url, read } = await startServer(PAYLOAD);
     const html = await (await fetch(url)).text();
@@ -187,11 +208,16 @@ describe('serve-question', () => {
       canon: true,
       canonCard: { label: 'The category standard', thesis: 'What the category ships.' },
       steer: true,
+      followup: true,
     };
     const { child, url, read } = await startServer(payload);
     const html = await (await fetch(url)).text();
     // Anatomy renders: chips, tags, fact labels, thesis.
     assert.match(html, /swatches/);
+    // A blocking server has no update channel, so even a followup payload
+    // must not arm the page's loading-hand path (detached mode arms it; the
+    // new-work e2e suite covers that side).
+    assert.match(html, /const FOLLOWUP = false/);
     assert.match(html, /background:#e8452c/);
     assert.match(html, /class="tag">letterpress/);
     assert.match(html, /The gig poster idea\./);
@@ -222,6 +248,6 @@ describe('serve-question', () => {
     const code = await new Promise((resolve) => child.on('exit', resolve));
     assert.equal(code, 0);
     assert.match(read(), /"sketch":/);
-    assert.match(read(), /CHOSEN SKETCH:/);
+    assert.match(read(), /CHOSEN COMP:/);
   });
 });

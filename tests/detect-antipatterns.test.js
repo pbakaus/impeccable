@@ -6,7 +6,7 @@ import { spawnSync } from 'child_process';
 import {
   ANTIPATTERNS, checkElementBorders, checkElementMotion, checkElementGlow, isNeutralColor, isFullPage,
   detectText, detectHtml, extractStyleBlocks, extractCSSinJS,
-  walkDir, SCANNABLE_EXTENSIONS,
+  walkDir, hasScannableExtension, SCANNABLE_EXTENSIONS,
   buildImportGraph, resolveImport,
   detectFrameworkConfig, isPortListening, FRAMEWORK_CONFIGS,
 } from '../cli/engine/detect-antipatterns.mjs';
@@ -2071,10 +2071,32 @@ describe('walkDir', () => {
     expect(SCANNABLE_EXTENSIONS.has('.sass')).toBe(true);
   });
 
+  test('finds Blade templates during directory scans', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-walk-'));
+    try {
+      const blade = path.join(tmp, 'resources', 'views', 'card.blade.php');
+      const upperBlade = path.join(tmp, 'resources', 'views', 'hero.BLADE.PHP');
+      fs.mkdirSync(path.dirname(blade), { recursive: true });
+      fs.writeFileSync(blade, '<div class="bg-orange-900 text-gray-500">Card</div>');
+      fs.writeFileSync(upperBlade, '<div>Hero</div>');
+      expect(walkDir(tmp)).toEqual(expect.arrayContaining([blade, upperBlade]));
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('compound suffix matching does not broaden scans to module extensions', () => {
+    expect(hasScannableExtension('card.blade.php')).toBe(true);
+    expect(hasScannableExtension('card.BLADE.PHP')).toBe(true);
+    for (const file of ['next.config.mjs', 'vite.config.cjs', 'route.mts', 'route.cts']) {
+      expect(hasScannableExtension(file)).toBe(false);
+    }
+  });
+
   test('finds scannable files', () => {
     const files = walkDir(FIXTURES);
     expect(files.length).toBeGreaterThanOrEqual(3);
-    expect(files.every(f => SCANNABLE_EXTENSIONS.has(path.extname(f)))).toBe(true);
+    expect(files.every(hasScannableExtension)).toBe(true);
   });
 
   test('returns empty for nonexistent dir', () => {

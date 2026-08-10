@@ -26,10 +26,19 @@ const HIDDEN_SOURCE_DIRS = new Set(['.vitepress', '.vuepress', '.storybook']);
 const SCANNABLE_EXTENSIONS = new Set([
   '.html', '.htm', '.css', '.scss', '.sass', '.less',
   '.jsx', '.tsx', '.js', '.ts',
-  '.vue', '.svelte', '.astro',
+  '.vue', '.svelte', '.astro', '.blade.php',
 ]);
 
 const HTML_EXTENSIONS = new Set(['.html', '.htm']);
+
+function hasScannableExtension(filename) {
+  const lower = filename.toLowerCase();
+  if (SCANNABLE_EXTENSIONS.has(path.extname(lower))) return true;
+  for (const ext of SCANNABLE_EXTENSIONS) {
+    if (ext.indexOf('.', 1) !== -1 && lower.endsWith(ext)) return true;
+  }
+  return false;
+}
 
 const IMPORT_SPECIFIER_PATTERNS = [
   /import\s+(?:[\s\S]*?from\s+)?['"]([^'"]+)['"]/g,
@@ -46,7 +55,7 @@ function walkDir(dir) {
     if (entry.isDirectory() && entry.name.startsWith('.') && !HIDDEN_SOURCE_DIRS.has(entry.name)) continue;
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) files.push(...walkDir(full));
-    else if (SCANNABLE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) files.push(full);
+    else if (hasScannableExtension(entry.name)) files.push(full);
   }
   return files;
 }
@@ -194,6 +203,7 @@ export {
   SKIP_DIRS,
   SCANNABLE_EXTENSIONS,
   HTML_EXTENSIONS,
+  hasScannableExtension,
   walkDir,
   resolveImport,
   buildImportGraph,

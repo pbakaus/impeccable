@@ -13,7 +13,7 @@
  *      within the first ~300 characters — catches non-git projects.
  */
 
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -41,7 +41,10 @@ export function isGeneratedFile(filePath, options = {}) {
 
 function isGitIgnored(absPath, cwd) {
   try {
-    execSync(`git check-ignore --quiet ${JSON.stringify(absPath)}`, {
+    // argv form, never a shell: this runs on every file the live-mode source
+    // walk reaches, so a hostile filename embedding $(...) or backticks must
+    // not be interpretable (issue #476). JSON.stringify is not shell quoting.
+    execFileSync('git', ['check-ignore', '--quiet', absPath], {
       cwd,
       stdio: 'ignore',
     });

@@ -1121,13 +1121,13 @@ async function chooseInstallScope(projectRoot, targets, detections, { yes, scope
 async function chooseInstallPlan(projectRoot, flags, { yes } = {}) {
   const providersValue = getFlagValue(flags, '--providers');
   const scopeValue = getInstallScopeValue(flags);
-  const { targets, detections } = await chooseInstallProviders(projectRoot, providersValue, { yes });
+  const { targets, detections, explicit } = await chooseInstallProviders(projectRoot, providersValue, { yes });
   if (targets.length === 0) {
     throw new Error('Could not determine a target harness folder.');
   }
   const scope = await chooseInstallScope(projectRoot, targets, detections, { yes, scopeValue });
   const installRoot = installRootForScope(scope, projectRoot);
-  return { targets, scope, installRoot, hookRoot: projectRoot, detections };
+  return { targets, scope, installRoot, hookRoot: projectRoot, detections, explicit };
 }
 
 /**
@@ -1454,17 +1454,28 @@ function hookScriptPathForProvider(skillRoot, provider) {
 //     with single quotes for the inner string literals.
 const WIN32_HOOK_GUARD_SCRIPT = "const p=process.argv[1];const f=require('fs');if(f.existsSync(p)){const r=require('child_process').spawnSync(process.execPath,[p],{stdio:'inherit'});process.exit(r.status===null?1:r.status);}";
 
+// POSIX single-quote escaping. JSON.stringify is not shell quoting: inside
+// double quotes /bin/sh still expands $(...), backticks, and ${}, and this
+// string is baked into a hook manifest the harness re-executes on every edit,
+// so an install path embedding $(...) would run it repeatedly (issue #476).
+// Windows command forms keep double quotes: cmd.exe treats ' as a literal
+// character and performs no command substitution.
+function shSingleQuote(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
 function windowsHookCommand(quotedPath) {
   return `if exist ${quotedPath} (node ${quotedPath} & exit /b)`;
 }
 
+// `quotedPath` carries one pre-quoted form per target shell: { posix, win32 }.
 function guardHookCommand(quotedPath, provider) {
   // `.agents` (Codex) keeps the POSIX form unconditionally: its Windows
   // consumers read the commandWindows sibling instead.
   if (provider !== '.agents' && process.platform === 'win32') {
-    return `node -e "${WIN32_HOOK_GUARD_SCRIPT}" ${quotedPath}`;
+    return `node -e "${WIN32_HOOK_GUARD_SCRIPT}" ${quotedPath.win32}`;
   }
-  return `[ ! -f ${quotedPath} ] || node ${quotedPath}`;
+  return `[ ! -f ${quotedPath.posix} ] || node ${quotedPath.posix}`;
 }
 
 // Transform bundled hook commands for the actual install target:
@@ -1487,9 +1498,14 @@ function rewriteHookCommandsForSkillRoot(value, provider, { skillRoot, absolute 
   // Project-scope installs derive the provider's own project-relative path
   // rather than trusting the bundle token, which for Codex points at
   // `.codex/skills/...` while the CLI installs the skill at `.agents/skills/`.
+  // The absolute path comes from the install root (project dir or $HOME), so
+  // its POSIX form gets real single-quote escaping (issue #476). The relative
+  // form is a per-provider constant and stays double-quoted, because Claude's
+  // ${CLAUDE_PROJECT_DIR} token must keep expanding at hook time.
+  const relPath = hookScriptRelPathForProvider(provider);
   const quotedPath = absolute
-    ? JSON.stringify(hookScript)
-    : JSON.stringify(hookScriptRelPathForProvider(provider));
+    ? { posix: shSingleQuote(hookScript), win32: JSON.stringify(hookScript) }
+    : { posix: JSON.stringify(relPath), win32: JSON.stringify(relPath) };
 
   if (typeof value === 'string') {
     if (!valueHasImpeccableHookMarker(value)) return value;
@@ -1504,7 +1520,7 @@ function rewriteHookCommandsForSkillRoot(value, provider, { skillRoot, absolute 
       next[key] = rewriteHookCommandsForSkillRoot(child, provider, { skillRoot, absolute });
     }
     if (provider === '.agents' && typeof value.command === 'string' && valueHasImpeccableHookMarker(value.command)) {
-      next.commandWindows = windowsHookCommand(quotedPath);
+      next.commandWindows = windowsHookCommand(quotedPath.win32);
     }
     return next;
   }
@@ -1908,16 +1924,23 @@ async function install(flags) {
     process.exit(1);
   }
 
-  const { targets, installRoot, hookRoot, scope } = plan;
+  const { targets, installRoot, hookRoot, scope, explicit } = plan;
   const existing = isAlreadyInstalled(installRoot, scope);
+  const installedTargets = existing ? findInstalledProviders(installRoot, scope) : [];
+  // An explicit --providers list is a per-target request: a selected provider
+  // with no install yet gets a fresh install instead of tripping the global
+  // "already installed" early exit (issue #500). When every selected provider
+  // is missing, skip the update branch entirely and take the fresh-install path.
+  const missingSelectedTargets = (existing && !force && explicit)
+    ? targets.filter(provider => !installedTargets.includes(provider))
+    : [];
 
-  if (existing && !force) {
+  if (existing && !force && missingSelectedTargets.length < targets.length) {
     console.log(`Impeccable skills are already installed (found in ${existing}/).`);
-    const installedTargets = findInstalledProviders(installRoot, scope);
     const selectedInstalledTargets = targets.filter(provider => installedTargets.includes(provider));
     const linkedTargets = findLinkedProviders(installRoot, selectedInstalledTargets, scope);
     const copyTargets = selectedInstalledTargets.filter(provider => !linkedTargets.includes(provider));
-    const hookTargets = selectedInstalledTargets;
+    const hookTargets = [...selectedInstalledTargets, ...missingSelectedTargets];
     const wantHooks = installHooks && await decideHookInstall(hookRoot, hookTargets, { yes });
     let bundleDir;
     try {
@@ -1932,11 +1955,11 @@ async function install(flags) {
         ? hookTargets.filter(provider => !hookInstalledForProvider(hookRoot, provider))
         : [];
       let updateCheckSkipped = false;
-      if (copyTargets.length > 0 || missingHookTargets.length > 0) {
+      if (copyTargets.length > 0 || missingHookTargets.length > 0 || missingSelectedTargets.length > 0) {
         try {
           bundleDir = await downloadAndExtractBundle();
         } catch (e) {
-          if (missingHookTargets.length > 0) throw e;
+          if (missingHookTargets.length > 0 || missingSelectedTargets.length > 0) throw e;
           updateCheckSkipped = true;
           console.log(`Could not check for skill updates: ${e.message}`);
         }
@@ -1951,6 +1974,17 @@ async function install(flags) {
         console.log(`Updated ${updated} skill(s)${v ? ` to v${v}` : ''}.`);
       }
 
+      let freshWritten = 0;
+      if (!updateCheckSkipped && missingSelectedTargets.length > 0) {
+        freshWritten = copyProviderSkills(bundleDir, installRoot, missingSelectedTargets, { scope });
+        if (freshWritten === 0) {
+          console.error(`Nothing was installed: the bundle had no variants for ${missingSelectedTargets.join(', ')}.`);
+          process.exit(1);
+        }
+        console.log(`Installed impeccable into: ${missingSelectedTargets.join(', ')} (${scope === 'user' ? 'global' : 'project'})`);
+        reportProviderAgents(copyProviderAgents(bundleDir, installRoot, missingSelectedTargets, { scope }));
+      }
+
       const writtenHookTargets = missingHookTargets.length > 0
         ? copyProviderHooks(bundleDir, hookRoot, missingHookTargets, { skillRoot: installRoot })
         : [];
@@ -1959,7 +1993,7 @@ async function install(flags) {
       if (updateCheckSkipped) {
         console.log('Existing skills were left unchanged.');
         console.log('Run with --force to reinstall.\n');
-      } else if (updated === 0 && writtenHookTargets.length === 0) {
+      } else if (updated === 0 && writtenHookTargets.length === 0 && freshWritten === 0) {
         const v = getSkillsVersion(installRoot, scope);
         console.log(`Skills are up to date${v ? ` (v${v})` : ''}.`);
         console.log('Run with --force to reinstall.\n');
@@ -2024,7 +2058,7 @@ async function install(flags) {
   reportProviderAgents(agentResults);
   if (hookTargets.length > 0) console.log(`Installed hooks into: ${hookTargets.join(', ')}`);
 
-  console.log('\nDone! Run /impeccable init in your AI harness to set up design context.\n');
+  console.log('\nDone! Now type /impeccable init in your AI coding agent\'s chat (not in this terminal) to set up design context.\n');
 }
 
 // ─── skills update ────────────────────────────────────────────────────────────

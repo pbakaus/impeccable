@@ -10,7 +10,7 @@
  * gracefully when impeccable.style is unreachable.
  */
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import { mkdtempSync, existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync, rmSync, lstatSync, realpathSync, readlinkSync, symlinkSync, cpSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -760,6 +760,64 @@ describe('skills install/update: local universal bundle e2e', () => {
     rmSync(home, { recursive: true, force: true });
   }, 15000);
 
+  test('install completion says /impeccable init runs in the agent chat, not the terminal (#472)', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-install-472-msg-'));
+    const home = mkdtempSync(join(tmpdir(), 'imp-home-install-472-msg-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.claude']);
+
+    const output = run('install -y --providers=claude --no-hooks', {
+      cwd: tmp,
+      env: { ...process.env, HOME: home, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+
+    expect(output).toContain("type /impeccable init in your AI coding agent's chat (not in this terminal)");
+
+    rmSync(tmp, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }, 15000);
+
+  test('`impeccable init` in the shell points at the agent chat instead of "Unknown command" (#472)', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-init-472-'));
+
+    let error;
+    try {
+      run('init', { cwd: tmp, stdio: 'pipe' });
+    } catch (e) {
+      error = e;
+    }
+
+    expect(error).toBeDefined();
+    expect(error.status).toBe(1);
+    const stderr = String(error.stderr);
+    expect(stderr).toContain("Type /impeccable init in your AI coding agent's chat");
+    expect(stderr).not.toContain('Unknown command');
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('a real path named init still routes to detect, not the #472 guidance', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-init-path-472-'));
+    mkdirSync(join(tmp, 'init'), { recursive: true });
+    writeFileSync(join(tmp, 'init', 'page.html'), '<!doctype html><html><head><title>t</title></head><body><p>hello</p></body></html>\n');
+
+    // Detect exits 0 on a clean scan and 2 when findings surface; either way it
+    // must be the detector answering, not the init redirect. --json makes that
+    // positive: the detector always prints a JSON findings array.
+    let output = '';
+    try {
+      output = run('init --json', { cwd: tmp, stdio: 'pipe' });
+    } catch (e) {
+      output = `${e.stdout || ''}${e.stderr || ''}`;
+    }
+
+    expect(output.trim().startsWith('[')).toBe(true);
+    expect(output).not.toContain('is not a CLI command');
+    expect(output).not.toContain('Unknown command');
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 60000);
+
   test('formats detected harnesses as concise source-to-target rows', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'imp-test-detect-lines-'));
     const home = mkdtempSync(join(tmpdir(), 'imp-home-detect-lines-'));
@@ -1487,6 +1545,57 @@ describe('skills install/update: local universal bundle e2e', () => {
     rmSync(tmp, { recursive: true, force: true });
   }, 15000);
 
+  test('explicit --providers installs a missing provider without --force (#500)', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-explicit-missing-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.claude', '.cursor']);
+
+    // Seed an existing .claude install; .cursor has nothing yet.
+    const skillDir = join(tmp, '.claude', 'skills', 'impeccable');
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: impeccable\nversion: 9.9.9-local\n---\nSeeded install.\n');
+
+    const output = run('skills install -y --providers=cursor --no-hooks', {
+      cwd: tmp,
+      env: { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+
+    expect(output).toContain('Installed impeccable into: .cursor');
+    expect(readFileSync(join(tmp, '.cursor', 'skills', 'impeccable', 'SKILL.md'), 'utf8')).toContain('version: 9.9.9-local');
+    // The unselected .claude install is left alone.
+    expect(readFileSync(join(skillDir, 'SKILL.md'), 'utf8')).toContain('Seeded install.');
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('explicit --providers mixes per-target updates and fresh installs (#500)', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-explicit-mixed-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.claude', '.cursor']);
+
+    // Stale .claude install; .cursor has nothing yet.
+    const skillDir = join(tmp, '.claude', 'skills', 'impeccable');
+    mkdirSync(join(skillDir, 'scripts'), { recursive: true });
+    writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: impeccable\nstale: .claude\n---\nOld content.\n');
+    writeFileSync(join(skillDir, 'scripts', 'context.mjs'), 'console.log("old script");\n');
+
+    const output = run('skills install -y --providers=claude,cursor', {
+      cwd: tmp,
+      env: { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+
+    expect(output).toContain('already installed');
+    expect(output).toContain('Updated');
+    expect(output).toContain('Installed impeccable into: .cursor');
+    expect(readFileSync(join(skillDir, 'SKILL.md'), 'utf8')).toContain('version: 9.9.9-local');
+    expect(readFileSync(join(tmp, '.cursor', 'skills', 'impeccable', 'SKILL.md'), 'utf8')).toContain('version: 9.9.9-local');
+    // The freshly installed provider gets its hooks and agents too.
+    expect(existsSync(join(tmp, '.cursor', 'hooks.json'))).toBe(true);
+    expect(existsSync(join(tmp, '.cursor', 'agents', 'impeccable-finish-reviewer.md'))).toBe(true);
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
   test('skills update --no-hooks refreshes skills without touching malformed hook manifests', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'imp-test-update-no-hooks-'));
     execSync('git init', { cwd: tmp });
@@ -1749,6 +1858,71 @@ describe('copyProviderHooks: hook command path resolution (#399)', () => {
       expect(command).toContain(absolute);
       expect(command).not.toContain('${CLAUDE_PROJECT_DIR}');
       expect(command).toContain('[ ! -f ');
+    }
+    rmSync(tmp, { recursive: true, force: true });
+    rmSync(skillHome, { recursive: true, force: true });
+  });
+
+  test('single-quotes an absolute install path that embeds $(...), and the guard is inert under /bin/sh (#476)', () => {
+    // A hook command is re-executed by the harness on every edit. JSON.stringify
+    // is not shell quoting: an install path containing $(...) inside double
+    // quotes would run on each fire. The absolute POSIX form must be
+    // single-quoted so the substitution stays inert.
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-hook-split-'));
+    const skillHome = mkdtempSync(join(tmpdir(), 'imp-hook-$(touch pwned)-'));
+    const bundleDir = createProjectDirBundle(tmp);
+
+    copyProviderHooks(bundleDir, tmp, ['.claude'], { skillRoot: skillHome });
+
+    const raw = readFileSync(join(tmp, '.claude', 'settings.local.json'), 'utf8');
+    // The path appears single-quoted, never double-quoted (which would leave
+    // the substitution live for /bin/sh).
+    expect(raw).toContain(`'${skillHome}`);
+    expect(raw).not.toContain(`"${skillHome}`);
+
+    const commands = claudeHookCommands(join(tmp, '.claude', 'settings.local.json'));
+    expect(commands.length).toBeGreaterThan(0);
+    // End-to-end: actually run each generated guard under /bin/sh from a clean
+    // cwd. The hook script does not exist (skillHome is empty), so `[ ! -f ... ]`
+    // short-circuits and node never runs — and crucially the single-quoted
+    // $(touch pwned) must not execute. Prove it: no `pwned` file appears and the
+    // guard exits 0.
+    if (process.platform !== 'win32') {
+      const runCwd = mkdtempSync(join(tmpdir(), 'imp-hook-run-'));
+      for (const command of commands) {
+        expect(command).toContain('[ ! -f ');
+        expect(command).not.toMatch(/"[^"]*\$\(touch pwned\)/);
+        execFileSync('/bin/sh', ['-c', command], { cwd: runCwd, stdio: 'ignore' });
+      }
+      expect(existsSync(join(runCwd, 'pwned'))).toBe(false);
+      rmSync(runCwd, { recursive: true, force: true });
+    }
+    rmSync(tmp, { recursive: true, force: true });
+    rmSync(skillHome, { recursive: true, force: true });
+  });
+
+  test('the Windows hook form keeps a usable double-quoted absolute path (#533)', () => {
+    // cmd.exe does no $(...) substitution but treats single quotes as literal,
+    // so the Windows command form must keep the absolute path double-quoted or
+    // a space in the install path would split the argument. copyProviderHooks
+    // branches on process.platform, so drive it as win32 in-process.
+    const original = process.platform;
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-hook-win-'));
+    const skillHome = mkdtempSync(join(tmpdir(), 'imp-hook-win-home-'));
+    const bundleDir = createProjectDirBundle(tmp);
+    try {
+      Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+      copyProviderHooks(bundleDir, tmp, ['.claude'], { skillRoot: skillHome });
+    } finally {
+      Object.defineProperty(process, 'platform', { value: original, configurable: true });
+    }
+
+    const absolute = join(skillHome, '.claude', 'skills', 'impeccable', 'scripts', 'hook.mjs');
+    for (const command of claudeHookCommands(join(tmp, '.claude', 'settings.local.json'))) {
+      // Windows guard shape (node -e wrapper) with the absolute path double-quoted.
+      expect(command).toContain(`"${absolute}"`);
+      expect(command).not.toContain(`'${absolute}`);
+      expect(command).toContain('node -e');
     }
     rmSync(tmp, { recursive: true, force: true });
     rmSync(skillHome, { recursive: true, force: true });

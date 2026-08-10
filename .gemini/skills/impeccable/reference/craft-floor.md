@@ -12,6 +12,7 @@ Each of these is a check on the built result, not an intention. Run them togethe
 - **Type:** body measure 65–75ch, display max 6rem, tracking floor -0.04em, balanced headings, obvious scale and weight steps. Run the real copy at every breakpoint and fix what overflows.
 - **Motion:** one authored moment, not scattered effects and not one identical entrance on every section. Exponential ease-out from an already-visible default. Reach past transform and opacity: blur, backdrop-filter, clip-path, mask, and shadow belong to the palette when they stay smooth.
 - **States:** hover, disabled, loading, error, empty. Plus real content, working controls, responsive composition, keyboard focus.
+- **Browser surfaces:** the parts you did not draw still carry the design. Text selection, the caret, custom scrollbars, focus rings, underline offset, and the numerals in tabular data all ship with browser defaults that belong to no design system. Theme them from the palette. This is the cheapest signal that a page was built rather than assembled, and the one models skip most reliably.
 - **Copy:** the product's own language. Controls name their action; errors name the problem and the recovery.
 - **Coverage:** every brief requirement present and findable within seconds.
 

@@ -96,31 +96,38 @@ function* rank(items, input, idFor = item => item.id) {
     .map(entry => entry.item);
 }
 
-// Two independent exclusions, and either one is enough to hold a world back.
-// Rating grades quality: a 3-star earns a second ticket, a 1-star marginal keep
-// leaves the pool. Breadth says whether a world can serve an arbitrary build at
-// all, so a niche world leaves however good it is, keeping its approval for
-// direct briefs. Breadth was split out of rating because the only way to hold a
-// narrow world back used to be calling it marginal, which made "excellent but
-// narrow" unrecordable and corrupted ratings as a calibration signal.
+// Rating sets how many tickets a world holds; breadth decides whether it draws
+// at all. A niche world leaves the pool however good it is, keeping its approval
+// for direct briefs. Breadth was split out of rating because the only way to
+// hold a narrow world back used to be calling it marginal, which made "excellent
+// but narrow" unrecordable and corrupted ratings as a calibration signal.
+//
+// Two tickets for a 3-star, one for everything else, was too sharp. Measured
+// against the catalog as it stood: 3-star worlds absorbed 57% of the graphic
+// draw from 65 of 163 eligible worlds, 46% of atmosphere from 13 of 43, and
+// 75% of interaction from 15 of 25. The reviewer's complaint, that the same
+// worlds keep coming back, is what a rating multiplier does to a pool whose
+// thinnest tier holds 25 worlds.
+//
+// So a 3-star no longer outdraws a 2-star, and a 1-star draws at half rather
+// than not at all. A marginal keep is still worth showing sometimes: the
+// judgement it records is "narrow or unexceptional", not "wrong", and excluding
+// it entirely made a rating do a job breadth already does properly.
+const RATING_TICKETS = { 1: 1, 2: 2, 3: 2 };
+const ticketsForRating = rating => RATING_TICKETS[rating] ?? 2;
+
 function challengerTickets(pool) {
   return pool.flatMap(concept => {
-    const rating = concept.review?.rating;
-    if (rating === 1 || concept.review?.breadth === 'niche') return [];
-    return rating === 3
-      ? [{ concept, ticket: 0 }, { concept, ticket: 1 }]
-      : [{ concept, ticket: 0 }];
+    if (concept.review?.breadth === 'niche') return [];
+    return Array.from({ length: ticketsForRating(concept.review?.rating) },
+      (_, ticket) => ({ concept, ticket }));
   });
 }
 
 function compositionTickets(pool) {
-  return pool.flatMap(composition => {
-    const rating = composition.review?.rating;
-    if (rating === 1) return [];
-    return rating === 3
-      ? [{ composition, ticket: 0 }, { composition, ticket: 1 }]
-      : [{ composition, ticket: 0 }];
-  });
+  return pool.flatMap(composition => Array.from(
+    { length: ticketsForRating(composition.review?.rating) },
+    (_, ticket) => ({ composition, ticket })));
 }
 
 /**

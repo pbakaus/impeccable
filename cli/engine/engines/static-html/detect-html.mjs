@@ -138,9 +138,20 @@ async function detectHtml(filePath, options = {}) {
         domutils,
       };
     });
-  } catch {
-    return detectText(html, filePath, options);
+  } catch (err) {
+  if (!globalThis.__impeccableStaticHtmlWarned) {
+    globalThis.__impeccableStaticHtmlWarned = true;
+
+    process.stderr.write(
+  'impeccable detect: DEGRADED - HTML parser modules unavailable ' +
+  '(htmlparser2, css-select, css-tree, domutils).\n' +
+  'Falling back to regex matching. Custom properties, selector matching and computed ' +
+  'contrast are NOT evaluated; findings are an undercount, not a clean bill of health.\n'
+);
   }
+
+  return detectText(html, filePath, options);
+}
 
   const resolvedPath = path.resolve(filePath);
   const fileDir = path.dirname(resolvedPath);

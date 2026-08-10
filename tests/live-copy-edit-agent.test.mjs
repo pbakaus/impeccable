@@ -51,6 +51,124 @@ describe('live-copy-edit-agent', () => {
     assert.match(prompt, /Return ONLY JSON/);
   });
 
+  it('bounds and whitelists operation context in batch prompts', () => {
+    const huge = 'Z'.repeat(50_000);
+    const prompt = buildCopyEditBatchPrompt({
+      pageUrl: '/',
+      entries: [{
+        id: 'bounded',
+        pageUrl: '/',
+        ops: [{
+          classes: [huge],
+          originalText: 'Old',
+          newText: 'New',
+          sourceHint: {
+            file: 'src/App.jsx',
+            loc: '12:3',
+            nested: { payload: huge },
+          },
+          nearbyEditableTexts: [{
+            ref: 'body>main>span',
+            tag: 'span',
+            classes: ['label'],
+            text: huge,
+            extra: huge,
+          }],
+          contextHints: [huge],
+        }],
+      }],
+    });
+
+    const serializedBatch = prompt.split('Staged copy-edit batch:\n').pop();
+    const op = JSON.parse(serializedBatch).entries[0].ops[0];
+    assert.ok(prompt.length < 20_000, `expected compact prompt, got ${prompt.length} characters`);
+    assert.ok(op.classes[0].length < 400);
+    assert.deepEqual(op.sourceHint, {
+      file: 'src/App.jsx',
+      loc: '12:3',
+      line: 12,
+      column: 3,
+    });
+    assert.deepEqual(Object.keys(op.nearbyEditableTexts[0]).sort(), ['classes', 'ref', 'tag', 'text']);
+    assert.ok(op.nearbyEditableTexts[0].text.length < 400);
+    assert.ok(op.contextHints[0].length < 400);
+  });
+
+  it('bounds batch repair, candidate, and element context', () => {
+    const huge = 'Z'.repeat(250_000);
+    const prompt = buildCopyEditBatchPrompt({
+      pageUrl: '/',
+      repair: {
+        status: 'needs_decision',
+        attempt: 2,
+        maxAttempts: 3,
+        reason: 'source_verification_failed',
+        pageUrl: '/pricing',
+        transactionId: huge,
+        failures: [{
+          entryId: 'bounded',
+          message: huge,
+          candidates: [{ file: huge, line: 12, kind: 'text' }],
+          failures: [{ ref: huge, reason: huge }],
+          checks: [{ file: huge, reason: huge }],
+          extra: huge,
+        }],
+        files: [huge],
+        extra: huge,
+      },
+      entries: [{
+        id: 'bounded',
+        element: { ref: huge, tagName: huge, id: huge, classes: [huge], textContent: huge },
+        ops: [{
+          originalText: 'Old',
+          newText: 'New',
+          sourceHint: { file: 'src/App.jsx', line: null, column: null },
+        }],
+      }],
+      candidates: [{
+        entryId: 'bounded',
+        ref: huge,
+        sourceHint: { file: huge, line: null, extra: huge },
+        textMatches: [{ file: huge, reason: huge, extra: huge }],
+        extra: huge,
+      }],
+    });
+
+    const serializedBatch = prompt.split('Staged copy-edit batch:\n').pop();
+    const compact = JSON.parse(serializedBatch);
+    assert.ok(prompt.length < 25_000, `expected compact prompt, got ${prompt.length} characters`);
+    assert.deepEqual(Object.keys(compact.repair).sort(), [
+      'failures',
+      'files',
+      'attempt',
+      'maxAttempts',
+      'pageUrl',
+      'reason',
+      'status',
+      'transactionId',
+    ].sort());
+    assert.equal(compact.repair.attempt, 2);
+    assert.equal(compact.repair.reason, 'source_verification_failed');
+    assert.ok(compact.repair.transactionId.length < 400);
+    assert.ok(compact.repair.failures[0].message.length < 400);
+    assert.equal(compact.repair.failures[0].entryId, 'bounded');
+    assert.ok(compact.repair.failures[0].candidates[0].file.length < 400);
+    assert.ok(compact.repair.failures[0].failures[0].ref.length < 400);
+    assert.ok(compact.repair.failures[0].checks[0].file.length < 400);
+    assert.deepEqual(Object.keys(compact.candidates[0]).sort(), [
+      'entryId',
+      'ref',
+      'sourceHint',
+      'textMatches',
+    ]);
+    assert.ok(compact.candidates[0].ref.length < 400);
+    assert.ok(compact.candidates[0].sourceHint.file.length < 400);
+    assert.ok(compact.entries[0].element.ref.length < 400);
+    assert.ok(compact.entries[0].element.classes[0].length < 400);
+    assert.equal(compact.entries[0].ops[0].sourceHint.line, null);
+    assert.equal(compact.entries[0].ops[0].sourceHint.column, null);
+  });
+
   it('parses partial batch results', () => {
     assert.deepEqual(
       parseCopyEditBatchResult('{"status":"partial","appliedEntryIds":["a"],"failed":[{"entryId":"b","reason":"ambiguous"}],"files":["src/page.js"]}'),
@@ -303,6 +421,48 @@ describe('live-copy-edit-agent', () => {
       runCopyEditBatchAgent({ entries: [], candidates: [] }, { provider: 'chat' }),
       /chat provider requires applyBatchToSource/,
     );
+  });
+
+  it('passes large Claude prompts on stdin instead of argv', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'copy-agent-claude-stdin-'));
+    try {
+      const fakeClaude = path.join(tmp, 'claude');
+      fs.writeFileSync(fakeClaude, [
+        '#!/usr/bin/env node',
+        "let input = '';",
+        "process.stdin.setEncoding('utf8');",
+        "process.stdin.on('data', (chunk) => { input += chunk; });",
+        "process.stdin.on('end', () => {",
+        "  const promptLeakedToArgv = process.argv.slice(2).some((arg) => arg.includes('large-prompt-sentinel'));",
+        "  if (!input.includes('large-prompt-sentinel') || promptLeakedToArgv) process.exit(2);",
+        "  process.stdout.write(JSON.stringify({ status: 'done', appliedEntryIds: ['large'], files: [], notes: [] }));",
+        '});',
+        '',
+      ].join('\n'));
+      fs.chmodSync(fakeClaude, 0o755);
+
+      const result = await runCopyEditBatchAgent({
+        pageUrl: '/',
+        entries: [{
+          id: 'large',
+          pageUrl: '/',
+          ops: [{ originalText: 'Old', newText: `large-prompt-sentinel${'x'.repeat(1_100_000)}` }],
+        }],
+      }, {
+        provider: 'claude',
+        outDir: path.join(tmp, 'out'),
+        timeoutMs: 5_000,
+        env: {
+          ...process.env,
+          PATH: `${tmp}${path.delimiter}${process.env.PATH || ''}`,
+        },
+      });
+
+      assert.equal(result.status, 'done');
+      assert.deepEqual(result.appliedEntryIds, ['large']);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
   });
 
   it('describeNoProviderError mentions starting impeccable live when chat is the missing piece', () => {

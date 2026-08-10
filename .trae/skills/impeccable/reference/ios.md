@@ -43,3 +43,9 @@ Would a fluent iPhone user trust this app, or pause at off-spec controls? The te
 
 - **System transitions.** Push slides, sheets rise, dismiss reverses the entrance. Custom transitions that fight the navigation model disorient.
 - **Honor Reduce Motion.** Crossfade instead of parallax and large slides.
+
+## Verifying the build
+
+- **Screenshots come from the Simulator, never a browser.** Build and run, then capture with `xcrun simctl io booted screenshot <path>` (with several running, replace `booted` with the target's UDID from `xcrun simctl list devices booted`; display names can collide, the UDID never does). Capture every device class the app ships to, at least one iPhone and, when iPad is a target, one iPad, and write the files where the review flow expects them.
+- **Dark Mode and Dynamic Type belong in the pass.** `xcrun simctl ui booted appearance dark` flips appearance, reusing the capture's UDID when several are booted; a check at a large Dynamic Type size catches the truncation a fixed layout hides.
+- **Simulators give breadth; posture, gestures, and performance need hardware.** Say which one produced the evidence.

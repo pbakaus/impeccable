@@ -200,6 +200,17 @@ describe('live-server integration', () => {
     assert.deepEqual(injected, LIVE_COMMANDS);
   });
 
+  it('/live.js injects the canonical Live UI surface inventory', async () => {
+    // Same path as the vocabulary: live-browser.js is a classic script and
+    // cannot import live/ui-surfaces.mjs, so the served bundle must carry the
+    // module's list. Node consumers (including the impeccable-site Live UI lab)
+    // import the module, and this is what keeps the two the same list.
+    const { LIVE_UI_SURFACES } = await import('../skill/scripts/live/ui-surfaces.mjs');
+    const body = await (await fetch(`http://localhost:${server.port}/live.js?token=${server.token}`)).text();
+    const injected = JSON.parse(body.match(/window\.__IMPECCABLE_LIVE_UI_SURFACES__\s*=\s*(\[.*?\]);\n/s)[1]);
+    assert.deepEqual(injected, JSON.parse(JSON.stringify(LIVE_UI_SURFACES)));
+  });
+
   it('/status returns durable recovery state', async () => {
     await drainPolls(server);
     const eventRes = await fetch(`http://localhost:${server.port}/events`, {

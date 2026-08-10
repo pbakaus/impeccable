@@ -105,16 +105,24 @@ function parseFrontmatter(text) {
 }
 
 /**
- * Return all snapshot files for `slug`, sorted oldest → newest.
+ * Return snapshot files matching `suffix`, sorted oldest → newest.
  */
-function listSnapshotsForSlug(slug, cwd) {
+const SNAPSHOT_FILENAME = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z__.+\.md$/;
+
+function listSnapshots(suffix, cwd) {
   const dir = getCritiqueDir(cwd);
   if (!fs.existsSync(dir)) return [];
-  const suffix = `__${slug}.md`;
   return fs.readdirSync(dir)
-    .filter((f) => f.endsWith(suffix))
+    .filter((f) => SNAPSHOT_FILENAME.test(f) && f.endsWith(suffix))
     .sort()
     .map((f) => path.join(dir, f));
+}
+
+function readLatestSnapshotMatching(suffix, cwd) {
+  const filePath = listSnapshots(suffix, cwd).at(-1);
+  if (!filePath) return null;
+  const body = fs.readFileSync(filePath, 'utf-8');
+  return { path: filePath, body, meta: parseFrontmatter(body) };
 }
 
 /**
@@ -122,11 +130,12 @@ function listSnapshotsForSlug(slug, cwd) {
  * to find its fix backlog when the slug matches.
  */
 export function readLatestSnapshot(slug, { cwd = process.cwd() } = {}) {
-  const all = listSnapshotsForSlug(slug, cwd);
-  if (!all.length) return null;
-  const latest = all[all.length - 1];
-  const body = fs.readFileSync(latest, 'utf-8');
-  return { path: latest, body, meta: parseFrontmatter(body) };
+  return readLatestSnapshotMatching(`__${slug}.md`, cwd);
+}
+
+/** Return the most recent snapshot across all targets, or null. */
+export function readLatestSnapshotAcrossTargets({ cwd = process.cwd() } = {}) {
+  return readLatestSnapshotMatching('.md', cwd);
 }
 
 /**
@@ -134,7 +143,7 @@ export function readLatestSnapshot(slug, { cwd = process.cwd() } = {}) {
  * Critique appends a one-line trend to its output using this.
  */
 export function readTrend(slug, { limit = 5, cwd = process.cwd() } = {}) {
-  const all = listSnapshotsForSlug(slug, cwd);
+  const all = listSnapshots(`__${slug}.md`, cwd);
   const slice = all.slice(-limit);
   return slice.map((file) => parseFrontmatter(fs.readFileSync(file, 'utf-8')));
 }

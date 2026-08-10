@@ -1,17 +1,18 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   readConceptCatalog,
   validateConceptCatalog,
   validateConceptEntry,
 } from '../skill/scripts/lib/concept-catalog.mjs';
 import { readCompositionCatalog } from '../skill/scripts/lib/composition-catalog.mjs';
-import { dealCompositions, renderChallenger, selectApprovedChallengers, selectApprovedComposition, selectApprovedCompositions } from '../skill/scripts/concept-seed.mjs';
+import { dealCompositions, pingChosen, renderChallenger, selectApprovedChallengers, selectApprovedComposition, selectApprovedCompositions } from '../skill/scripts/concept-seed.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SCRIPT = path.join(ROOT, 'skill', 'scripts', 'concept-seed.mjs');
@@ -251,6 +252,54 @@ describe('concept seed scopes', () => {
     assert.match(invalid.stderr, /non-negative integer/);
   });
 
+  it('registers steer the round presentation without changing the deal', () => {
+    const plain = run('direction', ['--reroll', '1']);
+    const bolder = run('direction', ['--reroll', '1', '--register', 'bolder']);
+    const safer = run('direction', ['--reroll', '1', '--register', 'safer']);
+    assert.equal(bolder.status, 0);
+    assert.equal(safer.status, 0);
+    // A register is presentation-only: the same key and reroll count deal the
+    // same challengers, so the exclusion chain never forks on register.
+    const dealtIds = (out) => [...out.matchAll(/SOURCE ID: ([a-z0-9-]+)/g)].map((m) => m[1]).sort();
+    assert.deepEqual(dealtIds(bolder.stdout), dealtIds(plain.stdout), 'bolder presents the same deal the plain round drew');
+    assert.match(bolder.stdout, /BOLDER REGISTER/);
+    assert.match(bolder.stdout, /FIRST dealt challenger leads/);
+    assert.match(bolder.stdout, /--register bolder/);
+    assert.doesNotMatch(bolder.stdout, /ASSIGNED INDEX:/);
+    // The generic weighing instruction measures against the assigned
+    // direction, which a bolder round suspended; bolder weighs against the
+    // leader instead, and the contradiction must not ship.
+    assert.match(bolder.stdout, /against the fused LEADER/);
+    assert.doesNotMatch(bolder.stdout, /against the assigned direction/);
+    assert.match(safer.stdout, /SAFER REGISTER/);
+    assert.match(safer.stdout, /sanctioned lineup/);
+    assert.doesNotMatch(safer.stdout, /^CHALLENGERS:/m, 'the safer round spends its hand unseen');
+    // Degraded safer must not contradict itself: "the user picks" and a
+    // mandatory numbered build order cannot share one output.
+    const degradedSafer = run('direction', ['--reroll', '1', '--register', 'safer'], {
+      IMPECCABLE_CATALOG_DIR: '/nonexistent-catalog-dir',
+      IMPECCABLE_API_URL: 'http://127.0.0.1:1',
+    });
+    assert.equal(degradedSafer.status, 0);
+    assert.match(degradedSafer.stdout, /source: degraded/);
+    assert.match(degradedSafer.stdout, /SAFER REGISTER/);
+    assert.doesNotMatch(degradedSafer.stdout, /ASSIGNED INDEX/, 'degraded safer suppresses the assignment machinery');
+    assert.doesNotMatch(degradedSafer.stdout, /Build candidate/, 'degraded safer mandates no numbered candidate');
+    const degradedBolder = run('direction', ['--reroll', '1', '--register', 'bolder'], {
+      IMPECCABLE_CATALOG_DIR: '/nonexistent-catalog-dir',
+      IMPECCABLE_API_URL: 'http://127.0.0.1:1',
+    });
+    assert.equal(degradedBolder.status, 0);
+    assert.match(degradedBolder.stdout, /BOLDER REGISTER UNAVAILABLE/);
+    assert.match(degradedBolder.stdout, /ASSIGNED INDEX: /, 'degraded bolder falls back to the plain grounded assignment');
+    const invalidRegister = run('direction', ['--reroll', '1', '--register', 'wilder']);
+    assert.notEqual(invalidRegister.status, 0);
+    assert.match(invalidRegister.stderr, /must be safer or bolder/);
+    const noReroll = run('direction', ['--register', 'bolder']);
+    assert.notEqual(noReroll.status, 0);
+    assert.match(noReroll.stderr, /re-roll round/);
+  });
+
   it('filters challengers by strength per scope and falls back when a tier has no match', () => {
     const make = (id, tier, strength) => ({
       id,
@@ -314,11 +363,19 @@ describe('concept seed scopes', () => {
       const graphicFirst = picks.find(pick => pick.wellTier === 'graphic');
       counts[graphicFirst.id] += 1;
     }
-    assert.equal(counts.marginal, 0);
-    // Two tickets should put the flagship on top roughly twice as often as an
-    // unrated peer; a generous margin keeps the assertion deterministic-safe.
-    assert.equal(counts.flagship > counts['solid-b'] * 1.3, true,
-      `flagship ${counts.flagship} vs solid-b ${counts['solid-b']}`);
+    // A 1-star draws at half weight rather than not at all. Excluding it made a
+    // rating do the job breadth already does, and a marginal keep records
+    // "narrow or unexceptional" rather than "wrong".
+    assert.equal(counts.marginal > 0, true, `marginal ${counts.marginal} should draw`);
+    assert.equal(counts.marginal < counts['solid-b'], true,
+      `marginal ${counts.marginal} should draw below solid-b ${counts['solid-b']}`);
+
+    // A 3-star no longer outdraws a 2-star. The multiplier concentrated the
+    // draw hard on a thin pool: measured on the live catalog, 3-star worlds took
+    // 75% of the interaction draw from 15 of 25 eligible worlds.
+    const spread = Math.abs(counts.flagship - counts['solid-b']) / Math.max(counts.flagship, counts['solid-b']);
+    assert.equal(spread < 0.4, true,
+      `flagship ${counts.flagship} and solid-b ${counts['solid-b']} should draw comparably`);
 
     // A tier holding only 1-star approvals still yields challengers.
     const onlyMarginal = [
@@ -380,11 +437,15 @@ describe('concept seed scopes', () => {
       const picks = selectApprovedCompositions({ scope: 'direction', key: `stage-weight-${index}`, mode: 'persuade', sourceCompositions: pool, count: 1 });
       counts[picks[0].id] += 1;
     }
-    assert.equal(counts['marginal-stage'], 0, 'a 1-star composition keeps its approval but leaves the draw');
-    // Two tickets should put the flagship first roughly twice as often as the
-    // unrated peer; a generous margin keeps the assertion deterministic-safe.
-    assert.equal(counts['flagship-stage'] > counts['plain-stage'] * 1.3, true,
-      `flagship ${counts['flagship-stage']} vs plain ${counts['plain-stage']}`);
+    // Same weighting as challengers: a 1-star draws at half rather than not at
+    // all, and a 3-star no longer outdraws a 2-star.
+    assert.equal(counts['marginal-stage'] > 0, true, 'a 1-star composition still draws, at half weight');
+    assert.equal(counts['marginal-stage'] < counts['plain-stage'], true,
+      `marginal ${counts['marginal-stage']} should draw below plain ${counts['plain-stage']}`);
+    const stageSpread = Math.abs(counts['flagship-stage'] - counts['plain-stage'])
+      / Math.max(counts['flagship-stage'], counts['plain-stage']);
+    assert.equal(stageSpread < 0.4, true,
+      `flagship ${counts['flagship-stage']} and plain ${counts['plain-stage']} should draw comparably`);
 
     // A pool of nothing but 1-star keeps still yields compositions.
     const onlyMarginal = [
@@ -469,6 +530,50 @@ describe('init gate', () => {
     });
     assert.equal(result.status, 0);
     assert.doesNotMatch(result.stdout, /NO_PRODUCT_MD/);
+    // --kind alone is a valid ping invocation (assigned/pick/canon outcomes
+    // have no catalog id) and is equally ungated.
+    const kindOnly = spawnSync(process.execPath, [SCRIPT, '--kind', 'assigned', '--from', 'gate-test'], {
+      cwd: dir,
+      encoding: 'utf-8',
+      env: { ...process.env, IMPECCABLE_CATALOG_DIR: FIXTURE_DIR, IMPECCABLE_NO_TELEMETRY: '1' },
+    });
+    assert.equal(kindOnly.status, 0);
+    assert.doesNotMatch(kindOnly.stdout, /NO_PRODUCT_MD/);
+    assert.match(kindOnly.stdout, /choice ping skipped/, 'telemetry-disabled kind ping reports skipped, not an error');
+  });
+
+  it('pingChosen validates kinds, requires ids only for challenger wins, and honors opt-out', async () => {
+    const calls = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url, opts) => { calls.push(JSON.parse(opts.body)); return { ok: true }; };
+    // telemetryDisabled() honors DO_NOT_TRACK too, so a developer shell with
+    // it set must not fail the success-path assertions below.
+    const savedDnt = process.env.DO_NOT_TRACK;
+    const savedNoTelemetry = process.env.IMPECCABLE_NO_TELEMETRY;
+    try {
+      delete process.env.DO_NOT_TRACK;
+      process.env.IMPECCABLE_NO_TELEMETRY = '1';
+      assert.equal(await pingChosen({ kind: 'assigned', key: 'k' }), false, 'opt-out wins over everything');
+      delete process.env.IMPECCABLE_NO_TELEMETRY;
+      assert.equal(await pingChosen({ kind: 'assigned', key: 'k', scope: 'direction' }), true, 'kind-only ping for a non-challenger outcome');
+      assert.equal(await pingChosen({ kind: 'challenger', key: 'k' }), false, 'a challenger win without an id is not a ping');
+      assert.equal(await pingChosen({ kind: 'weird', chosenId: 'x', key: 'k' }), false, 'unknown kinds are dropped');
+      assert.equal(await pingChosen({ kind: 'assigned', register: 'wilder', key: 'k' }), false, 'unknown registers are dropped');
+      assert.equal(await pingChosen({ chosenId: 'legacy-id', key: 'k' }), true, 'legacy id-only shape stays valid');
+      assert.equal(await pingChosen({ kind: 'canon', register: 'safer', key: 'k' }), true, 'register rides along on a steered round');
+      const bodies = calls;
+      assert.equal(bodies[0].kind, 'assigned');
+      assert.equal(bodies[0].chosenId, undefined, 'no id field on kind-only pings');
+      assert.equal(bodies[1].chosenId, 'legacy-id');
+      assert.equal(bodies[1].kind, undefined, 'legacy pings carry no kind');
+      assert.equal(bodies[2].register, 'safer');
+    } finally {
+      globalThis.fetch = realFetch;
+      if (savedDnt === undefined) delete process.env.DO_NOT_TRACK;
+      else process.env.DO_NOT_TRACK = savedDnt;
+      if (savedNoTelemetry === undefined) delete process.env.IMPECCABLE_NO_TELEMETRY;
+      else process.env.IMPECCABLE_NO_TELEMETRY = savedNoTelemetry;
+    }
   });
 
   // Mode eligibility on worlds. Before this, selectApprovedChallengers never
@@ -605,5 +710,98 @@ describe('init gate', () => {
       selectApprovedCompositions(args).map(p => p.id),
       selectApprovedCompositions(args).map(p => p.id)
     );
+  });
+});
+
+// The Windows abort in issue #504 (nodejs/node#56645) needs three things at
+// once: a successful roll over Node's undici-backed fetch, the keep-alive
+// socket that success leaves pooled, and the explicit process.exit at the end
+// of the CLI. The suite's other API test exercises only the unreachable-API
+// fallback, which leaves no pooled socket and so never walked the crashing
+// path. This one serves a real roll from a local server and asserts the CLI
+// destroys fetch's global dispatcher before exiting, so the teardown cannot
+// silently regress. The teardown is Node fetch internals, so the CLI is
+// spawned with node even when the suite itself runs under bun.
+describe('API roll path', () => {
+  const NODE = process.versions.bun ? 'node' : process.execPath;
+
+  const ROLL_PAYLOAD = {
+    poolRevision: 'api-test-rev',
+    approvedCount: 6,
+    catalogCount: 9,
+    challengers: [{
+      id: 'api-test-world',
+      form: 'a letterpress print shop, where type, ink, and impression organize the page',
+      spark: 'Deep impressions hold the central promise while loose sorts wait in the case.',
+      system: ['Palette/material: dense ink black bitten into soft cotton paper'],
+      webLeverage: 'Variable-font impression depth with a keyboard-readable page structure',
+    }],
+    compositions: [],
+  };
+
+  // Wraps the global dispatcher's destroy so the parent test can observe the
+  // CLI's exit teardown. The warmup fetch makes fetch install the dispatcher
+  // before the wrap, and parks a keep-alive socket in its pool, which is the
+  // exact state the Windows crash needs at exit.
+  const PRELOAD = [
+    "const KEY = Symbol.for('undici.globalDispatcher.1');",
+    'await fetch(`${process.env.IMPECCABLE_API_URL}/warmup`).then(r => r.arrayBuffer()).catch(() => {});',
+    'const dispatcher = globalThis[KEY];',
+    "if (dispatcher && typeof dispatcher.destroy === 'function') {",
+    '  const destroy = dispatcher.destroy.bind(dispatcher);',
+    '  dispatcher.destroy = (...args) => {',
+    "    process.stderr.write('DISPATCHER_DESTROY_CALLED\\n');",
+    '    return destroy(...args);',
+    '  };',
+    '}',
+    '',
+  ].join('\n');
+
+  it('resolves a successful roll and destroys the fetch dispatcher before the explicit exit', async () => {
+    const requests = [];
+    const server = createServer((req, res) => {
+      requests.push(req.url);
+      if (req.url.startsWith('/api/roll?')) {
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify(ROLL_PAYLOAD));
+        return;
+      }
+      res.statusCode = 404;
+      res.end('not found');
+    });
+    await new Promise(resolveListen => server.listen(0, '127.0.0.1', resolveListen));
+    try {
+      const dir = mkdtempSync(path.join(tmpdir(), 'concept-seed-api-'));
+      writeFileSync(path.join(dir, 'PRODUCT.md'), '# Test Product\n\n## Platform\n\nweb\n');
+      const preloadPath = path.join(dir, 'wrap-dispatcher.mjs');
+      writeFileSync(preloadPath, PRELOAD);
+      const result = await new Promise((resolveRun, rejectRun) => {
+        const child = spawn(NODE, [
+          '--import', pathToFileURL(preloadPath).href,
+          SCRIPT, '--scope', 'direction', '--mode', 'persuade', '--from', 'api-test',
+        ], {
+          cwd: dir,
+          env: {
+            ...process.env,
+            IMPECCABLE_CATALOG_DIR: '/nonexistent-catalog-dir',
+            IMPECCABLE_API_URL: `http://127.0.0.1:${server.address().port}/api`,
+          },
+        });
+        let stdout = '';
+        let stderr = '';
+        child.stdout.on('data', chunk => { stdout += chunk; });
+        child.stderr.on('data', chunk => { stderr += chunk; });
+        child.on('error', rejectRun);
+        child.on('close', status => resolveRun({ status, stdout, stderr }));
+      });
+      assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+      assert.equal(requests.some(url => url.startsWith('/api/roll?')), true, 'the CLI must hit the roll endpoint');
+      assert.match(result.stdout, /source: api/);
+      assert.match(result.stdout, /letterpress print shop/);
+      assert.match(result.stdout, /TELEMETRY:/);
+      assert.match(result.stderr, /DISPATCHER_DESTROY_CALLED/, 'the dispatcher must be destroyed before process.exit');
+    } finally {
+      server.close();
+    }
   });
 });

@@ -109,6 +109,18 @@ export function validateConceptEntry(concept, { existingForms = new Map(), axes 
     || concept.tags.some(tag => typeof tag !== 'string' || !tag.trim())) {
     errors.push(`concept ${id} must have exactly three structural tags`);
   }
+  // The slop this world in particular is at risk of. Optional, because 541
+  // entries predate it and none of them are wrong for lacking it. A world built
+  // from posters is at risk of shouting and one built from instruments is at
+  // risk of dead greys; a global detector cannot know which, and the author can.
+  if (concept?.avoid !== undefined) {
+    if (!Array.isArray(concept.avoid)
+      || concept.avoid.length < 2
+      || concept.avoid.length > 3
+      || concept.avoid.some(item => typeof item !== 'string' || item.trim().length < 12 || item.trim().length > 160)) {
+      errors.push(`concept ${id} avoid must be two or three negations of 12–160 characters`);
+    }
+  }
   if (!Array.isArray(concept?.system)
     || concept.system.length !== SYSTEM_PREFIXES.length
     || concept.system.some(rule => typeof rule !== 'string' || rule.trim().length < 12 || rule.trim().length > 180)) {

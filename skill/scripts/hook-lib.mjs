@@ -1112,7 +1112,19 @@ function formatFindingIgnoreCommand(finding) {
 function quoteCommandArg(value) {
   const text = String(value || '').trim();
   if (/^[A-Za-z0-9._:-]+$/.test(text)) return text;
-  return `"${text.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+  // The suggestion is meant to be run on this same machine, so quote for its
+  // shell. POSIX /bin/sh still expands $(...), backticks, and ${} inside
+  // double quotes, and these values come from scanned file content (a
+  // font-family name) or a file path, so untrusted input must be
+  // single-quoted (issue #476). Windows cmd.exe performs no such command
+  // substitution, but it treats a single quote as a literal character rather
+  // than a grouping delimiter, so a value or path containing spaces has to
+  // stay double-quoted there (Greptile #533). Keep the pre-existing
+  // double-quote escaping on Windows so that path's behavior is unchanged.
+  if (process.platform === 'win32') {
+    return `"${text.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+  }
+  return `'${text.replace(/'/g, `'\\''`)}'`;
 }
 
 function relativize(filePath, cwd) {

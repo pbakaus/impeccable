@@ -206,10 +206,10 @@ function parseIgnoreColor(value) {
   if (rgb) {
     const parts = splitColorArgs(rgb[1]);
     if (parts.length < 3 || parts.length > 4) return null;
-    const r = parseRgbChannel(parts[0]);
-    const g = parseRgbChannel(parts[1]);
-    const b = parseRgbChannel(parts[2]);
-    const a = parts[3] === undefined ? 1 : parseAlphaChannel(parts[3]);
+    const r = parseColorChannel(parts[0], COLOR_CHANNEL_FORMATS.rgb);
+    const g = parseColorChannel(parts[1], COLOR_CHANNEL_FORMATS.rgb);
+    const b = parseColorChannel(parts[2], COLOR_CHANNEL_FORMATS.rgb);
+    const a = parts[3] === undefined ? 1 : parseColorChannel(parts[3], COLOR_CHANNEL_FORMATS.alpha);
     if ([r, g, b, a].some((v) => v === null)) return null;
     return { r, g, b, a };
   }
@@ -218,10 +218,10 @@ function parseIgnoreColor(value) {
   if (hsl) {
     const parts = splitColorArgs(hsl[1]);
     if (parts.length < 3 || parts.length > 4) return null;
-    const h = parseHueChannel(parts[0]);
-    const s = parsePercentChannel(parts[1]);
-    const l = parsePercentChannel(parts[2]);
-    const a = parts[3] === undefined ? 1 : parseAlphaChannel(parts[3]);
+    const h = parseColorChannel(parts[0], COLOR_CHANNEL_FORMATS.hue);
+    const s = parseColorChannel(parts[1], COLOR_CHANNEL_FORMATS.percent);
+    const l = parseColorChannel(parts[2], COLOR_CHANNEL_FORMATS.percent);
+    const a = parts[3] === undefined ? 1 : parseColorChannel(parts[3], COLOR_CHANNEL_FORMATS.alpha);
     if ([h, s, l, a].some((v) => v === null)) return null;
     return hslToRgb(h, s, l, a);
   }
@@ -230,18 +230,13 @@ function parseIgnoreColor(value) {
 }
 
 function parseHexIgnoreColor(hex) {
-  if (hex.length === 3 || hex.length === 4) {
-    const r = parseInt(hex[0] + hex[0], 16);
-    const g = parseInt(hex[1] + hex[1], 16);
-    const b = parseInt(hex[2] + hex[2], 16);
-    const a = hex.length === 4 ? parseInt(hex[3] + hex[3], 16) / 255 : 1;
-    return { r, g, b, a };
-  }
-  const r = parseInt(hex.slice(0, 2), 16);
-  const g = parseInt(hex.slice(2, 4), 16);
-  const b = parseInt(hex.slice(4, 6), 16);
-  const a = hex.length === 8 ? parseInt(hex.slice(6, 8), 16) / 255 : 1;
-  return { r, g, b, a };
+  const expanded = hex.length <= 4
+    ? [...hex].map((digit) => digit.repeat(2)).join('')
+    : hex;
+  const [r, g, b, alpha = 255] = expanded
+    .match(/../g)
+    .map((channel) => Number.parseInt(channel, 16));
+  return { r, g, b, a: alpha / 255 };
 }
 
 function splitColorArgs(body) {
@@ -259,47 +254,34 @@ function splitColorArgs(body) {
   return text.replace(/\s*\/\s*/g, ' / ').split(/\s+/).filter((part) => part && part !== '/');
 }
 
-function parseRgbChannel(raw) {
-  const text = String(raw || '').trim();
-  const match = text.match(/^(-?\d*\.?\d+)(%)?$/);
-  if (!match) return null;
-  const value = Number.parseFloat(match[1]);
-  if (!Number.isFinite(value)) return null;
-  const scaled = match[2] ? value * 2.55 : value;
-  if (scaled < 0 || scaled > 255) return null;
-  return Math.round(scaled);
-}
+const CSS_NUMBER_RE = /^(-?\d*\.?\d+)(%|deg|rad|turn|grad)?$/;
+const identity = (value) => value;
+const COLOR_CHANNEL_FORMATS = {
+  rgb: { units: { '': identity, '%': (value) => value * 2.55 }, min: 0, max: 255, round: true },
+  alpha: { units: { '': identity, '%': (value) => value / 100 }, min: 0, max: 1 },
+  hue: {
+    units: {
+      '': identity,
+      deg: identity,
+      rad: (value) => value * (180 / Math.PI),
+      turn: (value) => value * 360,
+      grad: (value) => value * 0.9,
+    },
+  },
+  percent: { units: { '%': (value) => value / 100 }, min: 0, max: 1 },
+};
 
-function parseAlphaChannel(raw) {
+function parseColorChannel(raw, { units, min = -Infinity, max = Infinity, round = false }) {
   const text = String(raw || '').trim();
-  const match = text.match(/^(-?\d*\.?\d+)(%)?$/);
+  const match = text.match(CSS_NUMBER_RE);
   if (!match) return null;
-  const value = Number.parseFloat(match[1]);
-  if (!Number.isFinite(value)) return null;
-  const alpha = match[2] ? value / 100 : value;
-  return alpha >= 0 && alpha <= 1 ? alpha : null;
-}
-
-function parseHueChannel(raw) {
-  const text = String(raw || '').trim();
-  const match = text.match(/^(-?\d*\.?\d+)(deg|rad|turn|grad)?$/);
-  if (!match) return null;
-  const value = Number.parseFloat(match[1]);
-  if (!Number.isFinite(value)) return null;
-  const unit = match[2] || 'deg';
-  if (unit === 'turn') return value * 360;
-  if (unit === 'rad') return value * (180 / Math.PI);
-  if (unit === 'grad') return value * 0.9;
-  return value;
-}
-
-function parsePercentChannel(raw) {
-  const text = String(raw || '').trim();
-  const match = text.match(/^(-?\d*\.?\d+)%$/);
-  if (!match) return null;
-  const value = Number.parseFloat(match[1]);
-  if (!Number.isFinite(value)) return null;
-  return value >= 0 && value <= 100 ? value / 100 : null;
+  const convert = units[match[2] || ''];
+  if (!convert) return null;
+  const number = Number.parseFloat(match[1]);
+  if (!Number.isFinite(number)) return null;
+  const value = convert(number);
+  if (value < min || value > max) return null;
+  return round ? Math.round(value) : value;
 }
 
 function hslToRgb(hue, saturation, lightness, alpha) {

@@ -244,7 +244,8 @@ const HOOK_MARKER = /skills\/impeccable\/scripts\/hook(?:-before-edit)?\.mjs/;
 //   * bundle-relative: node ".agents/.../hook.mjs"
 //   * legacy unquoted: node .claude/.../hook.mjs
 //   * guarded (#399):  [ ! -f "PATH" ] || node "PATH"   (PATH twice, identical)
-//   * absolute:        node "/Users/.../hook.mjs"        (user-level installs)
+//   * absolute (#476): [ ! -f 'PATH' ] || node 'PATH'   (single-quoted since
+//                      the shell-injection fix; older installs double-quote)
 //   * github portable: node "$(git rev-parse --show-toplevel)/.../hook.mjs"
 // A quoted path wins; the guard's two occurrences are identical, so the first
 // quoted match is the path. Otherwise fall back to the whitespace/metachar-
@@ -255,6 +256,12 @@ function hookScriptTokenFrom(command) {
   if (!HOOK_MARKER.test(str)) return null;
   const quoted = str.match(/"([^"]*skills\/impeccable\/scripts\/hook(?:-before-edit)?\.mjs)"/);
   if (quoted) return quoted[1];
+  // A path containing an apostrophe serializes as '\'' inside single quotes;
+  // no regex reassembles that, and the bare fallback would misread a fragment
+  // of it, so return null: the caller never asserts on a path it can't parse.
+  if (str.includes("'\\''")) return null;
+  const singleQuoted = str.match(/'([^']*skills\/impeccable\/scripts\/hook(?:-before-edit)?\.mjs)'/);
+  if (singleQuoted) return singleQuoted[1];
   const bare = str.match(/([^\s"'|&;()]*skills\/impeccable\/scripts\/hook(?:-before-edit)?\.mjs)/);
   return bare ? bare[1] : null;
 }

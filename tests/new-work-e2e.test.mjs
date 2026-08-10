@@ -267,7 +267,7 @@ describe('new-work-e2e: serve-question decision page', () => {
     }
   });
 
-  it('(e) an option with no hero renders a text-only card (no .media element)', async () => {
+  it('(e) a text-only assigned card caps every card at thumb imagery (salience parity)', async () => {
     const cwd = makeWorkspace();
     const key = 'textonly';
     const hero = makeFakeImage(cwd, 'has a hero', 'hero.png');
@@ -295,17 +295,175 @@ describe('new-work-e2e: serve-question decision page', () => {
       // on the front, where nothing else would have used the room.
       const textOnlyBack = await page.$('.card[data-id="assigned"] .face.back');
       const frontRead = await page.$eval('.card[data-id="assigned"] .face.front', (el) => el.textContent);
-      // Catalog art without a sketch is labeled as reference, never as the
-      // promise of the build.
-      const heroLabel = await page.$eval('.card[data-id="challenger-hero"] .media .media-label', (el) => el.textContent);
+      // Salience parity: with a text-only assigned card, a challenger's
+      // catalog art may not render as a full-bleed face beside it; it demotes
+      // to a labeled thumb in the body, so pretty pixels never outvote the
+      // weighing. The thumb stays labeled as reference, never as the promise
+      // of the build.
+      const heroThumbLabel = await page.$eval('.card[data-id="challenger-hero"] .inspo figcaption', (el) => el.textContent);
       await context.close();
       assert.equal(textOnlyMedia, null, 'text-only card has no .media region');
       assert.ok(textOnlyFace, 'text-only card carries the .text-only face class');
-      assert.ok(heroMedia, 'the hero card still renders its .media region');
+      assert.equal(heroMedia, null, 'parity demotes the challenger hero from a full-bleed face');
       assert.equal(textOnlyBack, null, 'text-only card has no unreachable back face');
       assert.match(frontRead, /First viewport/, 'text-only front carries the first viewport fact');
       assert.match(frontRead, /The case/, 'text-only front carries the case fact');
-      assert.equal(heroLabel, 'inspiration', 'sketchless catalog art is labeled inspiration');
+      assert.equal(heroThumbLabel, 'inspired by', 'demoted catalog art is a labeled thumb');
+    } finally {
+      await stopDaemon(cwd, key);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('(e2) verdicts route the deck: declined cards demote, reorder to the end, and stay adoptable', async () => {
+    const cwd = makeWorkspace();
+    const key = 'verdicts';
+    const hero = makeFakeImage(cwd, 'declined hero', 'declined-hero.png');
+    const winnerHero = makeFakeImage(cwd, 'winner hero', 'winner-hero.png');
+    const payload = {
+      title: 'Choose the visual world',
+      options: [
+        {
+          id: 'assigned', label: 'The Seedsman Catalog', kicker: 'THE ROLL', hero: winnerHero,
+          raised: [{ from: 'challenger-deepsea', raise: 'The catalog now owns its whole viewport.' }],
+        },
+        // Declined dealt before a competitive card on purpose: the page owns
+        // the reorder, so payload order cannot promote a demoted world.
+        {
+          id: 'challenger-deepsea', label: 'Deep Sea Survey', verdict: 'declined',
+          case: 'Fuses poorly: buyers do not identify with abyssal instrumentation.',
+          kept: 'Total environmental commitment.', hero,
+          // A stray sketch on a declined card must not re-promote it to a
+          // full media face; the renderer ignores it outright.
+          sketch: '.impeccable/sketches/challenger-deepsea.webp',
+        },
+        { id: 'challenger-waxprint', label: 'Wax Print Market', verdict: 'competitive', hero: winnerHero },
+      ],
+      reroll: true, steer: true,
+      canon: true,
+      canonCard: { label: 'The category standard', thesis: 'What the category ships.' },
+    };
+    const { url } = await startDaemon(cwd, payload, key);
+    try {
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      await page.goto(url, { waitUntil: 'load' });
+      await page.waitForSelector('button.choose');
+      const order = await page.$$eval('.card', (cards) => cards.map((c) => c.dataset.id));
+      const declinedCard = await page.$('.card.declined[data-id="challenger-deepsea"]');
+      const declinedMedia = await page.$('.card[data-id="challenger-deepsea"] .media');
+      const declinedThumb = await page.$('.card[data-id="challenger-deepsea"] .inspo');
+      const declinedFront = await page.$eval('.card[data-id="challenger-deepsea"] .face.front', (el) => el.textContent);
+      const declinedButton = await page.$eval('.card[data-id="challenger-deepsea"] .face.front button.choose', (el) => el.textContent);
+      const competitiveMedia = await page.$('.card[data-id="challenger-waxprint"] .media');
+      const raise = await page.$eval('.card[data-id="assigned"] .raise', (el) => el.textContent);
+      // A demoted card is still a real choice: adopting it must answer.
+      await page.click('.card[data-id="challenger-deepsea"] .face.front button.choose');
+      const collected = await waitLoop(cwd, key);
+      await context.close();
+      assert.equal(collected.code, 0, collected.out);
+      const answer = JSON.parse(collected.out.match(/ANSWER: (\{.*\})/)[1]);
+      assert.deepEqual(order, ['assigned', 'challenger-waxprint', 'canon', 'challenger-deepsea'], 'contenders, then the canon, then declined dead last');
+      assert.ok(declinedCard, 'declined verdict adds the .declined card class');
+      assert.equal(declinedMedia, null, 'declined catalog art never renders full-bleed');
+      assert.ok(declinedThumb, 'declined catalog art rides as a labeled thumb');
+      assert.match(declinedFront, /Kept/, 'the declined front carries its kept line');
+      assert.equal(declinedButton, 'Adopt anyway', 'the declined action is adopt, not build');
+      assert.ok(competitiveMedia, 'a competitive challenger keeps its full media face');
+      assert.match(raise, /Raised by Deep Sea Survey/, 'the assigned card names its donor');
+      assert.equal(answer.optionId, 'challenger-deepsea', 'adopting a declined card answers with its id');
+    } finally {
+      await stopDaemon(cwd, key);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('(e3) register steers ride the re-roll: the bolder button answers with its register', async () => {
+    const cwd = makeWorkspace();
+    const key = 'registers';
+    const payload = {
+      title: 'Choose the visual world',
+      options: [{ id: 'assigned', label: 'The Seedsman Catalog', kicker: 'THE ROLL' }],
+      reroll: { registers: ['safer', 'bolder'] },
+      steer: true,
+    };
+    const { url } = await startDaemon(cwd, payload, key);
+    try {
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      await page.goto(url, { waitUntil: 'load' });
+      await page.waitForSelector('#reroll-bolder');
+      assert.ok(await page.$('#reroll-safer'), 'the safer steer renders');
+      assert.ok(await page.$('#reroll'), 'the plain re-roll stays between the registers');
+      await page.click('#reroll-bolder');
+      const collected = await waitLoop(cwd, key);
+      await context.close();
+      assert.equal(collected.code, 0, collected.out);
+      const answer = JSON.parse(collected.out.match(/ANSWER: (\{.*\})/)[1]);
+      assert.equal(answer.optionId, 'reroll');
+      assert.equal(answer.register, 'bolder', 'the answer names the requested register');
+      assert.match(collected.out, /REGISTER: .*bolder/, 'the register directive tells the agent to re-run the seed');
+    } finally {
+      await stopDaemon(cwd, key);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('(e4) followup keeps the table open: direction pick, then the execution-contract round', async () => {
+    const cwd = makeWorkspace();
+    const key = 'followup';
+    const directionRound = {
+      title: 'Choose the visual world',
+      options: [{ id: 'assigned', label: 'The Seedsman Catalog', kicker: 'THE ROLL' }],
+      reroll: true, steer: true,
+      followup: true,
+    };
+    const buildPathRound = {
+      title: 'How should it be built?',
+      question: 'Same direction, two execution contracts. Pick where the risk goes.',
+      options: [
+        { id: 'comp-led', label: 'Comp-led', kicker: 'BOLD', thesis: 'A first-viewport comp leads and the build matches it.', risk: 'Fix rounds expected; motion arrives last.' },
+        { id: 'code-led', label: 'Code-led', kicker: 'CRAFTED', thesis: 'Code authors the page; the boards calibrate it.', risk: 'Composition stays closer to convention.' },
+      ],
+    };
+    const { url } = await startDaemon(cwd, directionRound, key);
+    try {
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      await page.goto(url, { waitUntil: 'load' });
+      await page.waitForSelector('button.choose');
+      await page.click('.card[data-id="assigned"] .face.front button.choose');
+
+      // First answer: the direction. Not terminal, and it says so.
+      const first = await waitLoop(cwd, key);
+      assert.equal(first.code, 0, first.out);
+      const firstAnswer = JSON.parse(first.out.match(/ANSWER: (\{.*\})/)[1]);
+      assert.equal(firstAnswer.optionId, 'assigned');
+      assert.equal(firstAnswer.followup, true, 'the answer marks the table as still open');
+      assert.match(first.out, /FOLLOWUP OPEN:/, 'the directive tells the agent to send the next round');
+      assert.ok(existsSync(path.join(cwd, '.impeccable', 'questions', `${key}.state.json`)),
+        'server state file survives a followup pick');
+
+      // The page swapped to the loading hand instead of goodbye.
+      await page.waitForSelector('.card.skeleton');
+
+      // Deliver the execution-contract round; the page reloads into it.
+      const nextPayloadPath = path.join(cwd, 'build-path.json');
+      writeFileSync(nextPayloadPath, JSON.stringify(buildPathRound));
+      const updated = await run(['--update', '--key', key, '--payload', nextPayloadPath], cwd);
+      assert.equal(updated.code, 0, updated.out);
+      await page.waitForSelector('.card[data-id="code-led"]');
+      await page.click('.card[data-id="code-led"] .face.front button.choose');
+
+      // Second answer: terminal, table cleaned up.
+      const second = await waitLoop(cwd, key);
+      await context.close();
+      assert.equal(second.code, 0, second.out);
+      const secondAnswer = JSON.parse(second.out.match(/ANSWER: (\{.*\})/)[1]);
+      assert.equal(secondAnswer.optionId, 'code-led');
+      assert.equal(secondAnswer.followup, undefined, 'the build-path round is terminal');
+      assert.ok(!existsSync(path.join(cwd, '.impeccable', 'questions', `${key}.state.json`)),
+        'the terminal pick removes the server state file');
     } finally {
       await stopDaemon(cwd, key);
       rmSync(cwd, { recursive: true, force: true });
