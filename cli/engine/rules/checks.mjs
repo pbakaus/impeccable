@@ -1743,24 +1743,23 @@ function resolveBackground(el, win, customPropMap) {
     //   • on other elements: bail to null and let the caller fall back
     //     to gradient stops (gradient buttons / hero sections are real
     //     bgs worth checking against).
-    if (hasGradientOrUrl) {
-      if (current.tagName === 'BODY' || current.tagName === 'HTML') {
-        // In a real browser the shorthand is always decomposed, so reaching
-        // here means the page ground truly is a gradient or image with no
-        // solid color under it. Assuming white turns every light-on-dark
-        // page into a wall of low-contrast false positives (a dark oklch
-        // body gradient produced ~120 "on #ffffff" findings on one site).
-        // Return null so the caller measures against the actual gradient
-        // stops, or skips when nothing is parseable — skipping beats a
-        // wrong ratio. The white assumption stays for the static engine,
-        // whose false-positive guards (texture gradients with noise stops
-        // over unresolvable token colors) were tuned against it; giving it
-        // the same null-return is its own validated change.
-        if (DETECTOR_IS_BROWSER) return null;
-        return flatten({ r: 255, g: 255, b: 255, a: 1 });
-      }
-      return null;
-    }
+    // A gradient or image with no solid color under it, at any level
+    // including body/html, means the visible ground is that layer itself.
+    // Return null so the caller measures against the actual gradient stops,
+    // or skips when nothing is parseable — skipping beats a wrong ratio.
+    //
+    // Body/html used to assume white here, a guard written for jsdom, which
+    // never decomposed the `background:` shorthand and so could not see the
+    // solid paper color a texture gradient usually sits on. It turned every
+    // light-on-dark page into a wall of low-contrast false positives (a dark
+    // oklch body gradient produced ~120 "on #ffffff" findings on one site).
+    // Both engines can see shorthand solids now — the browser natively, the
+    // static cascade via expandStaticDeclaration + var() resolution — so a
+    // missing solid is real, and the old failure case cannot recur: opaque
+    // stops fully cover any hidden solid (they ARE the ground), alpha stops
+    // composite over the resolved base or the white canvas default, and
+    // unresolvable stops drop rather than guess.
+    if (hasGradientOrUrl) return null;
     current = current.parentElement;
   }
   return flatten({ r: 255, g: 255, b: 255, a: 1 });

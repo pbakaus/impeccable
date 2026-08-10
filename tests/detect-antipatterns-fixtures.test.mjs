@@ -239,6 +239,23 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
     );
   });
 
+  it('dark-gradient-ground: a gradient body ground is measured against its stops, never assumed white', async () => {
+    // Static-engine twin of the browser test: the page ground is a dark oklch
+    // gradient set via `background:` shorthand on body (backgroundColor stays
+    // transparent). The old walk assumed white for any body-level gradient,
+    // flagging every light text at ~1.3:1 "on #ffffff" and missing the muted
+    // dark-gray true positives entirely. Stops must be measured instead, and
+    // the frosted translucent wash must composite over them.
+    const f = await detectHtml(path.join(FIXTURES, 'dark-gradient-ground.html'));
+    const contrast = f.filter(r => r.antipattern === 'low-contrast');
+    const snippets = contrast.map(r => r.snippet || '').join('\n');
+    assert.doesNotMatch(snippets, /on #ffffff/, `light-on-dark text was measured against an assumed white body:\n${snippets}`);
+    assert.match(snippets, /text #2e2e2e on /, `flag-muted-direct missing:\n${snippets}`);
+    assert.match(snippets, /text #333333 on /, `flag-muted-nested missing:\n${snippets}`);
+    assert.match(snippets, /text #d7d7d7 on #d/, `flag-light-on-frosted missing against the composited wash:\n${snippets}`);
+    assert.equal(contrast.length, 3, `expected exactly the 3 flag-column cases, got ${contrast.length}:\n${snippets}`);
+  });
+
   it('color: styled <a> and <button> with their own background get contrast checks', async () => {
     // SAFE_TAGS skips <a> and <button> by default to avoid noise on inline links
     // (text links inside paragraphs). When these elements are styled as buttons
