@@ -1671,20 +1671,21 @@ function readOwnBackgroundColor(el, computedStyle) {
 }
 
 // One element's background-color as the cascade walk sees it: computed style
-// first (with the modern-color fallback), then, in jsdom only, custom-prop
-// resolution and the inline-shorthand peek. Shared by resolveBackground and
-// resolveGradientStops so both walks read the same surfaces.
+// first (with the modern-color fallback), then, in static mode only,
+// custom-prop resolution and the inline-shorthand peek. Shared by
+// resolveBackground and resolveGradientStops so both walks read the same
+// surfaces.
 function readCascadeBackgroundColor(current, style, customPropMap) {
   let bg = parseRgb(style.backgroundColor) || parseAnyColor(style.backgroundColor);
   if (!DETECTOR_IS_BROWSER && (!bg || bg.a < 0.1)) {
-    // jsdom returns literal "var(--X)" / "oklch(...)" strings. Resolve
-    // through customPropMap so Tailwind v4 color tokens become RGB.
+    // The static engine can return literal "var(--X)" / "oklch(...)" strings.
+    // Resolve through customPropMap so Tailwind v4 color tokens become RGB.
     if (customPropMap) {
       bg = parseColorResolved(style.backgroundColor, customPropMap);
     }
     if (!bg || bg.a < 0.1) {
-      // Inline-style fallback. jsdom doesn't decompose background
-      // shorthand, so colors set via inline style are otherwise invisible.
+      // Inline-style fallback for colors the static cascade did not surface
+      // on backgroundColor.
       const rawStyle = current.getAttribute?.('style') || '';
       const bgMatch = rawStyle.match(/background(?:-color)?\s*:\s*([^;]+)/i);
       const inlineBg = bgMatch ? bgMatch[1].trim() : '';
@@ -1751,9 +1752,10 @@ function resolveBackground(el, win, customPropMap) {
         // body gradient produced ~120 "on #ffffff" findings on one site).
         // Return null so the caller measures against the actual gradient
         // stops, or skips when nothing is parseable — skipping beats a
-        // wrong ratio. The white assumption stays for jsdom, where the
-        // shorthand never decomposes and body gradients are almost always
-        // decorative texture over a hidden solid paper color.
+        // wrong ratio. The white assumption stays for the static engine,
+        // whose false-positive guards (texture gradients with noise stops
+        // over unresolvable token colors) were tuned against it; giving it
+        // the same null-return is its own validated change.
         if (DETECTOR_IS_BROWSER) return null;
         return flatten({ r: 255, g: 255, b: 255, a: 1 });
       }
@@ -1799,7 +1801,7 @@ function resolveGradientStops(el, win, customPropMap) {
       if (parsed.length > 0) stops = parsed;
     }
     if (!stops && !DETECTOR_IS_BROWSER) {
-      // jsdom doesn't decompose `background:` shorthand — peek at the raw inline style
+      // Static mode: peek at the raw inline style for gradients the cascade did not surface
       const rawStyle = current.getAttribute?.('style') || '';
       const bgMatch = rawStyle.match(/background(?:-image)?\s*:\s*([^;]+)/i);
       if (bgMatch && /gradient/i.test(bgMatch[1])) {
