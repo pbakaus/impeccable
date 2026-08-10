@@ -7591,7 +7591,10 @@ if (IS_BROWSER) {
   }
 
   async function analyzeVisualContrast(options = {}) {
-    const candidates = collectVisualContrastCandidates(options);
+    let candidates = collectVisualContrastCandidates(options);
+    if (options.imageOnly) {
+      candidates = candidates.filter(candidate => (candidate.reasons || []).includes('image background'));
+    }
     const results = [];
     const shouldScrollOffscreen = options.scrollOffscreen === true;
     const restoreScroll = { x: window.scrollX, y: window.scrollY };
@@ -8093,8 +8096,27 @@ if (IS_BROWSER) {
     };
   }
 
+  // Visual contrast has three modes. Explicit true runs the full sampled
+  // pass; explicit false disables it entirely (the deterministic-only mode
+  // the test suites use). Unset — the default overlay run — samples ONLY
+  // image-backed text: the one class the analytic walk deliberately skips,
+  // because a url() layer's pixels are unknowable without looking. In-page
+  // sampling draws the source image alone to a canvas (glyph ink never
+  // pollutes it), and a cross-origin image without CORS reports unresolved
+  // instead of guessing.
+  function visualContrastMode(options = {}) {
+    const explicit = typeof options.visualContrast === 'boolean'
+      ? options.visualContrast
+      : typeof window.__IMPECCABLE_CONFIG__?.visualContrast === 'boolean'
+        ? window.__IMPECCABLE_CONFIG__.visualContrast
+        : null;
+    if (explicit === true) return 'full';
+    if (explicit === false) return false;
+    return 'image-only';
+  }
+
   function shouldRunVisualContrast(options = {}) {
-    return options.visualContrast === true || window.__IMPECCABLE_CONFIG__?.visualContrast === true;
+    return visualContrastMode(options) !== false;
   }
 
   function visualContrastOptions(options = {}) {
@@ -8271,6 +8293,7 @@ if (IS_BROWSER) {
       return [];
     }
     const resolvedOptions = visualContrastOptions(options);
+    if (visualContrastMode(options) === 'image-only') resolvedOptions.imageOnly = true;
     const analyses = await analyzeVisualContrast(resolvedOptions);
     if (runtime.generation && runtime.generation !== scanGeneration) return analyses;
     lastVisualContrastAnalyses = analyses;

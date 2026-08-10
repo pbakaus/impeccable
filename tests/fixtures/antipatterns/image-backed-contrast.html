@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fixture: image-backed text sampled at the pixel level by default</title>
+<style>
+  body { margin: 0; padding: 40px; background: #17150f; font-family: Arial, sans-serif; }
+  /* A same-origin (data-URI) near-white image background. The analytic walk
+     cannot know its pixels, so the default overlay pass must sample the image
+     itself: white text on it fails, dark ink on it passes. */
+  .photo-panel {
+    width: 420px;
+    padding: 24px;
+    margin: 0 0 24px;
+    background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'><rect width='100' height='100' fill='%23f5f2ea'/></svg>") center / cover no-repeat;
+  }
+  .flag-white-on-light { color: #fdfdfd; font-size: 16px; line-height: 1.6; margin: 0; }
+  .pass-ink-on-light { color: #262421; font-size: 16px; line-height: 1.6; margin: 0; }
+</style>
+</head>
+<body>
+  <div class="photo-panel">
+    <p class="flag-white-on-light">White text on a near-white image background is unreadable, and only pixel sampling can prove it.</p>
+  </div>
+  <div class="photo-panel">
+    <p class="pass-ink-on-light">Dark ink on the same image background reads fine and must not flag.</p>
+  </div>
+</body>
+</html>

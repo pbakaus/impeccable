@@ -112,6 +112,18 @@ describe('detectUrl — browser-only fixtures', () => {
     }
   });
 
+  it('image-backed text: the default pass pixel-samples the image itself', async () => {
+    // No visualContrast option: this exercises the image-only DEFAULT mode.
+    // The analytic walk skips url()-backed text; the default visual pass
+    // draws the (same-origin data-URI) image to a canvas and samples real
+    // pixels — white-on-near-white flags, dark ink passes.
+    const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/image-backed-contrast.html`);
+    const contrast = f.filter(r => r.antipattern === 'low-contrast');
+    const snippets = contrast.map(r => r.snippet || '').join('\n');
+    assert.equal(contrast.length, 1, `expected exactly the white-on-light case, got ${contrast.length}:\n${snippets}`);
+    assert.match(snippets, /browser contrast/, `expected a sampled (not analytic) finding:\n${snippets}`);
+  });
+
   it('scoped-ignore: data-impeccable-ignore waives its subtree in the browser walk', async () => {
     // Browser twin of the static scoped-ignore test: same fixture, same
     // expectation — only the control and the other-rule-waived case flag.
