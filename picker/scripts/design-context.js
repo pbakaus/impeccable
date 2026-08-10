@@ -168,10 +168,10 @@ const defs = (items) => `
     <div class="dcx-def"><dt>${dt}</dt><dd>${dd}</dd></div>`).join('')}
   </dl>`;
 
-const callout = (name, body, accent = false) => `
+const callout = (name, body, accent = false, extra = '') => `
   <div class="dcx-callout${accent ? ' dcx-callout--accent' : ''}">
     <p class="dcx-callout-name">${escapeHtml(name)}</p>
-    <p>${body}</p>
+    <p>${body}</p>${extra}
   </div>`;
 
 const list = (items) => `
@@ -278,11 +278,28 @@ function buildAudience(s, name) {
   parts.push(block('Who they are', who.length
     ? defs(who)
     : fromChat('The primary and secondary user read was confirmed', '<code>PRODUCT.md &middot; Users</code>')));
-  if (audience.emotion) {
-    parts.push(block('Emotional state', callout('On arrival', escapeHtml(audience.emotion), true)));
+  /* Arrival-only context keeps the old single-callout block; a leaving line
+     widens it into the two-beat journey, side by side. */
+  if (audience.emotion || audience.leaving) {
+    const arrival = audience.emotion ? callout('On arrival', escapeHtml(audience.emotion), true) : '';
+    const leaving = audience.leaving ? callout('Leaving with', escapeHtml(audience.leaving), true) : '';
+    if (arrival && leaving) {
+      parts.push(block('Emotional journey', `<div class="dcx-callout-pair">${arrival}${leaving}</div>`));
+    } else {
+      parts.push(block(arrival ? 'Emotional state' : 'Emotional journey', arrival || leaving));
+    }
   }
-  if (Array.isArray(audience.needs) && audience.needs.length) {
-    parts.push(block('Needs', list(audience.needs.map(escapeHtml))));
+  /* Needs and trust triggers share a two-column row when both exist; either
+     alone keeps the full measure. The nested blocks keep their data-label,
+     which is what the expander subnav is built from. */
+  const needsBlock = Array.isArray(audience.needs) && audience.needs.length
+    ? block('Needs', list(audience.needs.map(escapeHtml))) : '';
+  const trustBlock = Array.isArray(audience.trust) && audience.trust.length
+    ? block('Trust triggers', list(audience.trust.map(escapeHtml))) : '';
+  if (needsBlock && trustBlock) parts.push(`<div class="dcx-cols">${needsBlock}${trustBlock}</div>`);
+  else if (needsBlock || trustBlock) parts.push(needsBlock || trustBlock);
+  if (Array.isArray(audience.inclusion) && audience.inclusion.length) {
+    parts.push(block('Who must not be excluded', list(audience.inclusion.map(escapeHtml))));
   }
   return parts.join('');
 }
@@ -301,12 +318,36 @@ function surfaceCards(s, body) {
     </article>`).join('')}</div>`;
 }
 
+/* Display labels for the PRODUCT.md platform value; an unrecognized value
+   renders as written rather than being dropped. */
+const PLATFORM_LABELS = { web: 'Web', ios: 'iOS', android: 'Android', adaptive: 'Adaptive' };
+
 function buildProduct(s, name) {
   const product = s.context?.product || {};
   const parts = [heading(2, 'Product', 'Purpose, surfaces, use cases, what must be clear first.', name)];
-  parts.push(block('Purpose', product.purpose
-    ? callout(product.name || name || 'This product', escapeHtml(product.purpose))
-    : fromChat('The purpose and success definition were confirmed', '<code>PRODUCT.md &middot; Product Purpose</code>')));
+  const purposeCallout = product.purpose
+    ? callout(product.name || name || 'This product', escapeHtml(product.purpose), false,
+        product.success ? `\n    <p class="dcx-callout-success">${escapeHtml(product.success)}</p>` : '')
+    : fromChat('The purpose and success definition were confirmed', '<code>PRODUCT.md &middot; Product Purpose</code>');
+  const platform = typeof product.platform === 'string' && product.platform.trim()
+    ? `<span class="dcx-chip dcx-platform-pill">${escapeHtml(PLATFORM_LABELS[product.platform.trim()] || product.platform.trim())}</span>`
+    : '';
+  parts.push(block('Purpose', platform
+    ? `<div class="dcx-purpose"><div class="dcx-purpose-main">${purposeCallout}</div>${platform}</div>`
+    : purposeCallout));
+  if (product.positioning && (product.positioning.not || product.positioning.this)) {
+    const cells = [
+      product.positioning.not && callout('Not this', escapeHtml(product.positioning.not)),
+      product.positioning.this && callout('This', escapeHtml(product.positioning.this), true),
+    ].filter(Boolean).join('');
+    parts.push(block('Positioning', `<div class="dcx-callout-pair">${cells}</div>`));
+  }
+  if (Array.isArray(product.clarities) && product.clarities.length) {
+    parts.push(block('What must be clear first', list(product.clarities.map(escapeHtml))));
+  }
+  if (product.operatingContext) {
+    parts.push(block('Operating context', `<p class="dcx-prose">${escapeHtml(product.operatingContext)}</p>`));
+  }
   parts.push(block('Surfaces', surfaceCards(s, (surface) => `
       <p class="dcx-surface-goal">${surface.goal ? escapeHtml(surface.goal) : ''}</p>
       ${surface.examples.length ? chips(surface.examples) : ''}`)
@@ -318,15 +359,38 @@ function buildBrand(s, name) {
   const brand = s.context?.brand || {};
   const interview = s.context?.interview || {};
   const parts = [heading(3, 'Brand', 'Identity, voice, references, taste boundaries.', name)];
+  /* Personality: the confirmed sentence when the agent passed it; the three
+     words alone over the pointer to the durable copy when only they arrived;
+     the plain pointer otherwise. */
   parts.push(block('Personality', brand.personality
     ? callout(brand.words?.join(' · ') || 'Voice', escapeHtml(brand.personality), true)
-    : fromChat('Three words, voice, and tone were confirmed', '<code>PRODUCT.md &middot; Brand Personality</code>')));
+    : (Array.isArray(brand.words) && brand.words.length
+      ? callout(brand.words.join(' · '), 'Three words, voice, and tone were confirmed in chat, before the browser questionnaire. <code>PRODUCT.md &middot; Brand Personality</code> is the durable copy.', true)
+      : fromChat('Three words, voice, and tone were confirmed', '<code>PRODUCT.md &middot; Brand Personality</code>'))));
+  if (Array.isArray(brand.commitments) && brand.commitments.length) {
+    parts.push(block('Commitments', list(brand.commitments.map(escapeHtml))));
+  }
   if (Array.isArray(interview.references) && interview.references.length) {
-    parts.push(block('Named references', chips(interview.references)
+    /* Q4 references arrive as plain strings from old cues.json files and as
+       { name, takeaway } objects from new ones; a mixed list renders each
+       entry in its own form. Strings stay the bare pills they were. */
+    const cards = interview.references.filter((ref) => ref && typeof ref === 'object' && ref.name);
+    const plain = interview.references.filter((ref) => typeof ref === 'string');
+    const inner = (cards.length ? `<div class="dcx-ref-cards">${cards.map((ref) => `
+      <article class="dcx-ref-card">
+        <h3 class="dcx-ref-name">${escapeHtml(ref.name)}</h3>${ref.takeaway ? `
+        <p class="dcx-ref-takeaway">${escapeHtml(ref.takeaway)}</p>` : ''}
+      </article>`).join('')}</div>` : '') + (plain.length ? chips(plain) : '');
+    parts.push(block('Named references', inner
       + note('Q4 of the seed interview: brands, products, printed objects &mdash; not adjectives.')));
   }
   if (interview.antiReference) {
-    parts.push(block('Anti-reference', callout('Not this', escapeHtml(interview.antiReference))
+    /* Q5 stays a bare string in old files and gains a why as { name, why }. */
+    const anti = typeof interview.antiReference === 'object'
+      ? callout('Not this', `<strong>${escapeHtml(interview.antiReference.name || '')}</strong>${
+          interview.antiReference.why ? ` &middot; ${escapeHtml(interview.antiReference.why)}` : ''}`)
+      : callout('Not this', escapeHtml(interview.antiReference));
+    parts.push(block('Anti-reference', anti
       + note('Q5 of the seed interview. A hard constraint on every palette and pair that followed.')));
   }
   if (Array.isArray(s.context?.assets) && s.context.assets.length) {

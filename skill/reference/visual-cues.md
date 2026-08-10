@@ -457,19 +457,41 @@ In the same write, add a top-level `context` object carrying the chat half of th
 
 ```json
 "context": {
-  "product": { "name": "[product name]", "purpose": "[one-sentence purpose from PRODUCT.md]" },
-  "audience": { "primary": "[who]", "secondary": "[who]", "emotion": "[emotional goal on landing]", "needs": ["[need]"] },
-  "brand": { "words": ["[word]"], "personality": "[one sentence from PRODUCT.md Brand Personality]" },
+  "product": {
+    "name": "[product name]",
+    "purpose": "[one-sentence purpose from PRODUCT.md]",
+    "success": "[the success definition from PRODUCT.md Product Purpose, one line]",
+    "platform": "[bare value from PRODUCT.md Platform: web, ios, android, or adaptive]",
+    "positioning": { "not": "[what it is not, from PRODUCT.md Positioning]", "this": "[what it is instead]" },
+    "clarities": ["[one line per item of PRODUCT.md's what-must-be-clear-first list]"],
+    "operatingContext": "[one line from PRODUCT.md Operating Context]"
+  },
+  "audience": {
+    "primary": "[who]", "secondary": "[who]",
+    "emotion": "[emotional goal on landing]",
+    "leaving": "[what they should leave with, from the purpose and success definition]",
+    "needs": ["[need]"],
+    "trust": ["[trust trigger, from PRODUCT.md Evidence on Hand and Users]"],
+    "inclusion": ["[who must not be excluded, from PRODUCT.md Accessibility and Inclusion]"]
+  },
+  "brand": {
+    "words": ["[word]"],
+    "personality": "[one sentence from PRODUCT.md Brand Personality]",
+    "commitments": ["[one line per commitment from PRODUCT.md Brand Commitments]"]
+  },
   "assets": ["[asset name: what Step 2 read off it]"],
   "interview": {
     "colorStrategy": "[Q1 pick]", "hueAnchor": "[Q1 anchor]",
     "typeDirection": "[Q2 pick]", "motionEnergy": "[Q3 pick]",
-    "references": ["[Q4, all three]"], "antiReference": "[Q5]"
+    "references": [{ "name": "[Q4 reference, one entry per name]", "takeaway": "[one clause: what this reference lends the design]" }],
+    "antiReference": { "name": "[Q5]", "why": "[one clause: why this is the wrong direction]" }
   }
 }
 ```
 
 Quote the user's answers, not paraphrases of them; the document labels interview fields as the questions they answered. A missing block renders as a pointer to where that truth lives (PRODUCT.md), so an old `cues.json` without `context` still produces a complete document.
+
+The optionality is field by field, and the document omits the block of any field that does not arrive, so fill a field only when its PRODUCT.md section or interview answer exists. A legacy PRODUCT.md without Positioning, Platform, Operating Context, or Brand Commitments yields a context without those fields, never an invented value. `product.clarities` carries PRODUCT.md's "What must be clear first" list under a shorter key. `interview.references` and `interview.antiReference` also accept their older shapes, plain strings, which render as the bare pills and single-name callout they always did.
 
 Five of the questions are then answered per surface rather than once for the whole run, because the answer that suits a marketing page rarely suits the tool it sells: `color-strategy`, `motion-energy` (how much movement there is), `boundary-style` (how sections are separated), `corner-style` (how round shapes are), and `depth-style` (how far off the page things sit). Each of the five comes back twice over. The bare key holds the leading surface's answer, which is the first chosen tile in tile order and the one every later screen previews. Alongside it is one `<key>-<mode>` key for every surface chosen, `<mode>` being `persuade`, `operate`, `read`, or `experience`. Surfaces the user never opened are included too, holding the default for their kind; a surface nobody chose returns nothing at all.
 

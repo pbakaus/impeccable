@@ -1186,21 +1186,27 @@ function setActiveRole(role) {
 }
 
 /* The contrast alert: a danger badge on the neutral swatch, with its
-   explanation in the sibling tooltip. Re-read from renderPreview() on
-   every render, so every path that can change which color sits in the
-   neutral slot (inputs, tints, rings, card switch, reset, reorder)
-   lands here. One block-level line per failed check, mid-tone first. */
+   explanation in the sibling tooltip. Both strips carry one. This strip's
+   badge is re-read from renderPreview() on every render, so every path
+   that can change which color sits in the neutral slot (inputs, tints,
+   rings, card switch, reset, reorder) lands here; the strategy strip's
+   badge is re-read by paintStrategyBands() against the committed fields
+   that strip is painted from. One block-level line per failed check,
+   mid-tone first. */
 const alertBadge = $('[data-contrast-alert]', panel);
 const alertTip = $('[data-contrast-tip]', panel);
 
-function syncNeutralAlert() {
-  const issues = cards.length ? neutralContrastIssue(state().colors) : [];
-  alertBadge.hidden = issues.length === 0;
-  alertTip.replaceChildren(...issues.map((text) => {
+function paintContrastAlert(badge, tip, issues) {
+  badge.hidden = issues.length === 0;
+  tip.replaceChildren(...issues.map((text) => {
     const line = document.createElement('span');
     line.textContent = text;
     return line;
   }));
+}
+
+function syncNeutralAlert() {
+  paintContrastAlert(alertBadge, alertTip, cards.length ? neutralContrastIssue(state().colors) : []);
 }
 
 function setColor(role, hex, detached = true) {
@@ -1526,7 +1532,14 @@ function recommitPalette() {
 
 /* The strategy screen's band is a reading of the committed palette rather than
    of the deck, which is also what makes it correct after a reorder on either
-   screen: both end in the fields this paints from. */
+   screen: both end in the fields this paints from. Its neutral carries the
+   same contrast alert the editable strip does, judged against the same
+   committed colors this strip is painted from, so a reorder made here that
+   drags a mid-tone into the neutral slot is reported here, on the swatch
+   the visitor just dropped. */
+const strategyAlertBadge = $('[data-contrast-alert]', strategyBands);
+const strategyAlertTip = $('[data-contrast-tip]', strategyBands);
+
 function paintStrategyBands() {
   const committed = roleMap((role) => $(`[name="palette-${role}"]`).value);
   if (Object.values(committed).some((hex) => !hex)) return;
@@ -1536,6 +1549,7 @@ function paintStrategyBands() {
     band.style.setProperty('--band-ink', contrastInk(committed[role]));
     $('output', band).textContent = committed[role];
   }
+  paintContrastAlert(strategyAlertBadge, strategyAlertTip, neutralContrastIssue(committed));
 }
 
 /* Everything screen 03 spends on something other than the answer: the block's

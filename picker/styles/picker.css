@@ -1235,6 +1235,26 @@ body.picker-page {
   height: 19px;
 }
 
+/* The compact band's contrast alert. The editable band parks the badge in
+   its free lower right corner; here that corner belongs to the hex readout,
+   so the badge mirrors the grip in the free upper right one. It ducks under
+   the grip (z-index 1 against the grip's 2) so the transient "Drag to
+   reorder" tip, which reads to the right of the grip, is not punched
+   through by the glyph while it shows. The explanation floats above the
+   strip: inside it the short band could not clear the badge, and the strip
+   is its block's last row, so the room is above. */
+.picker-bands--compact .picker-band-alert {
+  top: 3px;
+  right: 3px;
+  bottom: auto;
+  z-index: 1;
+}
+
+.picker-bands--compact .picker-band-alert-tip {
+  right: 3px;
+  bottom: calc(100% + 9px);
+}
+
 .picker-bands--compact .picker-band-foot {
   height: 30px;
 }

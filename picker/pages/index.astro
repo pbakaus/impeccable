@@ -805,6 +805,14 @@ const questions = [
                           </svg>
                         </button>
                         <output data-band-hex={role}>#000000</output>
+                        {role === 'neutral' && (
+                          <>
+                            <span class="picker-band-alert" data-contrast-alert role="img" tabindex="0" aria-label="Contrast warning" aria-describedby="picker-strategy-contrast-tip" hidden>
+                              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" fill-rule="evenodd" d="M12 2.5 22.5 20.5H1.5L12 2.5Z M11 9h2l-.3 5.4h-1.4L11 9Z M12 16.2a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Z"></path></svg>
+                            </span>
+                            <span class="picker-band-alert-tip" role="tooltip" id="picker-strategy-contrast-tip" data-contrast-tip></span>
+                          </>
+                        )}
                       </div>
                       <div class="picker-band-foot">
                         <h2>{label}</h2>

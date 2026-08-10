@@ -679,6 +679,90 @@ body.dcx-open { overflow: hidden; background: linear-gradient(180deg, var(--ks-l
 
 .dcx-callout--accent { border-color: var(--accent-line); background: var(--accent-wash); }
 
+/* ============================================================
+   Context enrichment: the success line, paired callouts, the
+   needs/trust columns, the platform pill, reference cards, and
+   the operating-context prose. Each rule exists for a block
+   that renders only when the agent passed the matching context
+   field; every value is a dcx or ks token already in this file.
+   ============================================================ */
+.dcx-callout p.dcx-callout-success {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--ks-rule);
+}
+
+/* Two callouts sharing a row: the emotional journey's arrival and
+   leaving beats, and positioning's not-this / this cells. */
+.dcx-callout-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+  gap: 12px;
+}
+
+/* Two sibling blocks sharing a row (needs beside trust triggers). The
+   children stay real .dcx-block elements so the subnav still finds them. */
+.dcx-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+  gap: 0 clamp(24px, 4vw, 48px);
+  align-items: start;
+}
+
+/* The purpose callout with the platform pill at its shoulder. */
+.dcx-purpose {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+}
+
+.dcx-platform-pill {
+  font-family: var(--ks-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+/* Named references as cards, the .dcx-pick anatomy with a takeaway. */
+.dcx-ref-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+  gap: clamp(14px, 2vw, 22px);
+}
+
+.dcx-ref-cards + .dcx-chips { margin-top: 12px; }
+
+.dcx-ref-card {
+  border: 1px solid var(--ks-rule);
+  background: var(--panel-bg);
+  padding: clamp(18px, 2.5vw, 26px);
+}
+
+.dcx-ref-name {
+  margin: 0 0 8px;
+  font-family: var(--ks-font-display);
+  font-weight: 300;
+  font-size: 1.3rem;
+  color: var(--ks-text);
+}
+
+.dcx-ref-takeaway {
+  margin: 0;
+  color: var(--ks-text-muted);
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+/* Operating context: one paragraph at reading measure. */
+.dcx-prose {
+  margin: 0;
+  max-width: 62ch;
+  color: var(--ks-text-muted);
+  font-size: 0.96rem;
+  line-height: 1.6;
+}
+
 /* Numbered principle list. */
 .dcx-principles {
   list-style: none;
