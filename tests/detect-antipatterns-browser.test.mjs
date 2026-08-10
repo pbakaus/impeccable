@@ -118,6 +118,11 @@ describe('detectUrl — browser-only fixtures', () => {
     const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/scoped-ignore.html`, { visualContrast: false });
     const sideTabs = f.filter(r => r.antipattern === 'side-tab');
     assert.equal(sideTabs.length, 2, `expected only the control and the other-rule case, got ${sideTabs.length}`);
+    // CSS-scan findings resolve their selectors against the live DOM: the
+    // marquee track sits under a marquee waiver (suppressed), and the grid
+    // rule's selector renders nowhere on this page (dropped).
+    assert.equal(f.filter(r => r.antipattern === 'marquee').length, 0, 'waived marquee must not flag');
+    assert.equal(f.filter(r => r.antipattern === 'codex-grid-background').length, 0, 'dead grid CSS must not flag in the browser');
   });
 
   it('low-contrast: a gradient body ground with oklch stops is measured, never assumed white', async () => {

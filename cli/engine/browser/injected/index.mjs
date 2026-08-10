@@ -1627,17 +1627,24 @@ if (IS_BROWSER) {
     for (const node of docClone.querySelectorAll('[id^="impeccable-live-"]')) {
       node.remove();
     }
-    // Regex findings that name a live selector can honor scoped ignores too:
-    // resolve the element and drop the finding when an ignoring ancestor
-    // covers it. Selector-less findings stay page-level.
+    // Regex findings that name a live selector resolve against the real DOM:
+    // pseudo-element/class segments are stripped (the host element is the
+    // anchor), a selector that matches nothing on this page drops the finding
+    // (the CSS ships here, but the pattern never renders — the live DOM is
+    // ground truth in the browser), and a match under a data-impeccable-ignore
+    // ancestor is waived. Selector-less findings stay page-level.
     const scopedHtmlFindings = checkHtmlPatterns(docClone.outerHTML).filter(f => {
       if (!f.selector) return true;
+      const query = String(f.selector).replace(/::?[a-zA-Z-]+(\([^)]*\))?/g, '').trim().replace(/,\s*(?=,|$)/g, '');
+      if (!query || /^[,\s]*$/.test(query)) return true;
+      let matches;
       try {
-        const target = document.querySelector(f.selector);
-        return !target || !scopedIgnoreActive(target, f.id);
+        matches = document.querySelectorAll(query);
       } catch {
         return true;
       }
+      if (matches.length === 0) return false;
+      return [...matches].some(el => !scopedIgnoreActive(el, f.id));
     });
     if (scopedHtmlFindings.length > 0) {
       const mapped = scopedHtmlFindings.map(f => {

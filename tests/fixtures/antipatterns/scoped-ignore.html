@@ -13,6 +13,21 @@
     border: 1px solid #ddd8d0;
     border-left: 6px solid #b8422e;
   }
+  /* Marquee specimen: keyframes + an infinite loop track. The section that
+     hosts it carries a marquee waiver; the CSS-scan finding must resolve the
+     selector to the live element and honor the ancestor attribute. */
+  @keyframes ticker-loop { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+  .quote-track { display: flex; width: max-content; animation: ticker-loop 80s linear infinite; }
+  .quote-track span { padding: 8px 16px; }
+  /* Dead grid CSS: this two-axis hairline grid selector matches nothing on
+     this page, so the browser pass must drop the codex-grid finding — the
+     pattern never renders here. */
+  .never-rendered-grid {
+    background:
+      linear-gradient(90deg, rgba(200,180,120,0.08) 1px, transparent 1px),
+      linear-gradient(180deg, rgba(200,180,120,0.08) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
 </style>
 </head>
 <body>
@@ -40,6 +55,11 @@
   <!-- Rule list including side-tab. -->
   <section data-impeccable-ignore="pulsing-dot, side-tab">
     <article class="tabbed pass-rule-list">side-tab appears in the comma list; must not flag.</article>
+  </section>
+  <!-- Live marquee inside a rule-scoped waiver: the CSS-scan marquee finding
+       resolves .quote-track to this element and is waived by the ancestor. -->
+  <section data-impeccable-ignore="marquee">
+    <div class="quote-track"><span>One voice.</span><span>Another voice.</span><span>One voice.</span><span>Another voice.</span></div>
   </section>
 </body>
 </html>

@@ -665,6 +665,22 @@ function cssTextHasDarkRootBg(content, customProps) {
   return false;
 }
 
+// Best-effort extraction of the CSS selector whose declaration block contains
+// the given index in raw CSS text. Lets CSS-text findings carry a live-DOM
+// anchor, so the browser pass can resolve scoped ignores against the actual
+// element and drop patterns that render nowhere on the page. Returns null for
+// @-rule preludes, keyframe steps, nested blocks, and anything that does not
+// read as a selector; those findings stay page-level.
+function enclosingCssSelector(cssText, index) {
+  if (!cssText || !Number.isFinite(index)) return null;
+  const open = cssText.lastIndexOf('{', index);
+  if (open === -1) return null;
+  const prevClose = Math.max(cssText.lastIndexOf('}', open - 1), cssText.lastIndexOf(';', open - 1));
+  const raw = cssText.slice(prevClose + 1, open).trim().replace(/\s+/g, ' ');
+  if (!raw || raw.startsWith('@') || /^\d/.test(raw) || /[{}<>"]/.test(raw)) return null;
+  return raw;
+}
+
 function scanCssTextForGlow(content) {
   const customProps = collectCssCustomProps(content);
   const hasDarkBg = cssTextHasDarkRootBg(content, customProps);
@@ -976,6 +992,7 @@ function scanCssTextForPseudoStripe(rawContent) {
       id: 'side-tab',
       snippet: `${selector} — absolute ${thicknessPx}px pseudo-element stripe (${edge}: 0)`,
       index: selectorStart,
+      selector,
     });
   }
   return findings;
@@ -1095,7 +1112,7 @@ function collectMarqueeKeyframes(content) {
 function scanCssTextForMarquee(content, markup = content) {
   const findings = [];
   if (/<marquee\b/i.test(markup)) {
-    findings.push({ id: 'marquee', snippet: '<marquee> element' });
+    findings.push({ id: 'marquee', snippet: '<marquee> element', selector: 'marquee' });
   }
   const marqueeKeyframes = collectMarqueeKeyframes(content);
   if (marqueeKeyframes.size === 0) return findings;
@@ -1110,7 +1127,7 @@ function scanCssTextForMarquee(content, markup = content) {
       const key = `${selector} ${name}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      findings.push({ id: 'marquee', snippet: `${selector} — infinite horizontal loop animation "${name}"` });
+      findings.push({ id: 'marquee', snippet: `${selector} — infinite horizontal loop animation "${name}"`, selector });
     }
   }
   return findings;
@@ -1481,8 +1498,10 @@ function checkHtmlPatterns(html, corpora) {
   const purpleHexRe = /#(?:7c3aed|8b5cf6|a855f7|9333ea|7e22ce|6d28d9|6366f1|764ba2|667eea)\b/gi;
   if (purpleHexRe.test(styleText)) {
     const purpleTextRe = /(?:(?:^|;)\s*color\s*:\s*(?:.*?)(?:#(?:7c3aed|8b5cf6|a855f7|9333ea|7e22ce|6d28d9))|gradient.*?#(?:7c3aed|8b5cf6|a855f7|764ba2|667eea))/gi;
-    if (purpleTextRe.test(styleText)) {
-      findings.push({ id: 'ai-color-palette', snippet: 'Purple/violet accent colors detected' });
+    purpleTextRe.lastIndex = 0;
+    const purpleMatch = purpleTextRe.exec(styleText);
+    if (purpleMatch) {
+      findings.push({ id: 'ai-color-palette', snippet: 'Purple/violet accent colors detected', selector: enclosingCssSelector(styleText, purpleMatch.index + 1) || undefined });
     }
   }
 
@@ -1601,18 +1620,21 @@ function checkHtmlPatterns(html, corpora) {
 
   const glowHits = scanCssTextForGlow(styleText);
   if (glowHits.length > 0) {
-    findings.push({ id: 'dark-glow', snippet: glowHits[0].snippet });
+    findings.push({ id: 'dark-glow', snippet: glowHits[0].snippet, selector: enclosingCssSelector(styleText, glowHits[0].index) || undefined });
   }
 
   // Radial-gradient background halo (gradient-drawn sibling of dark-glow)
   const haloHits = scanCssTextForRadialHalo(styleText);
   if (haloHits.length > 0) {
-    findings.push({ id: 'radial-halo', snippet: haloHits[0].snippet });
+    findings.push({ id: 'radial-halo', snippet: haloHits[0].snippet, selector: enclosingCssSelector(styleText, haloHits[0].index) || undefined });
   }
 
   // --- Generated-UI tells: repeating-gradient stripes ---
-  if (/repeating-(?:linear|radial|conic)-gradient\s*\(/i.test(styleText)) {
-    findings.push({ id: 'repeating-stripes-gradient', snippet: 'repeating-gradient decorative stripes' });
+  {
+    const stripesMatch = /repeating-(?:linear|radial|conic)-gradient\s*\(/i.exec(styleText);
+    if (stripesMatch) {
+      findings.push({ id: 'repeating-stripes-gradient', snippet: 'repeating-gradient decorative stripes', selector: enclosingCssSelector(styleText, stripesMatch.index) || undefined });
+    }
   }
 
   // --- Generated-UI tells: two-axis grid-line background ---
@@ -1630,7 +1652,7 @@ function checkHtmlPatterns(html, corpora) {
   // whole gradient layers.
   const gridHits = scanCssTextForGridBackground(styleText);
   if (gridHits.length > 0) {
-    findings.push({ id: 'codex-grid-background', snippet: gridHits[0].snippet });
+    findings.push({ id: 'codex-grid-background', snippet: gridHits[0].snippet, selector: enclosingCssSelector(styleText, gridHits[0].index) || undefined });
   }
 
   // --- Generated-copy tells: "X theater" framing copy ---
@@ -1650,8 +1672,11 @@ function checkHtmlPatterns(html, corpora) {
   // hover:rotate / hover:translate utility on an <img>. Each distinct
   // mechanism is its own finding.
   const imgHoverCss = /\bimg\b[^,{}]*:hover\b[^{}]*\{[^}]*\btransform\s*:\s*(?:scale|rotate|translate|matrix|skew)/i;
-  if (imgHoverCss.test(styleText)) {
-    findings.push({ id: 'image-hover-transform', snippet: 'img:hover { transform } rule' });
+  {
+    const imgHoverMatch = imgHoverCss.exec(styleText);
+    if (imgHoverMatch) {
+      findings.push({ id: 'image-hover-transform', snippet: 'img:hover { transform } rule', selector: enclosingCssSelector(styleText, imgHoverMatch.index + imgHoverMatch[0].indexOf('{') + 1) || undefined });
+    }
   }
   const imgTagRe = /<img\b[^>]*\bclass\s*=\s*"([^"]*)"/gi;
   let im;
