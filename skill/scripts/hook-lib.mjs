@@ -148,7 +148,7 @@ export function isAdvisoryFinding(finding) {
 }
 
 export const DEFAULT_CONFIG = Object.freeze({
-  enabled: true,
+  enabled: false,
   quiet: false,
   auditLog: null,
   designSystem: { enabled: true },
