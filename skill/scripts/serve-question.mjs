@@ -297,7 +297,13 @@ if (hasFlag('update')) {
     } catch { return false; }
   })();
   if (!live) { console.error('serve-question: no live question server for that key; the page it served is gone too. Re-present the round with --start and a fresh key, or fall back to the structured question tool.'); process.exit(2); }
-  fs.copyFileSync(payloadPath, path.join(QUESTION_DIR, `${key}.next.json`));
+  const deliveredFile = path.join(QUESTION_DIR, `${key}.next.json`);
+  fs.copyFileSync(payloadPath, deliveredFile);
+  // The file's mtime is the delivery clock --wait's grace reads: stamp it
+  // here, because a copy that preserves the source payload's older mtime
+  // would start the grace already spent.
+  const deliveredAt = new Date();
+  fs.utimesSync(deliveredFile, deliveredAt, deliveredAt);
   console.log('next round delivered; the page reloads itself');
   process.exit(0);
 }

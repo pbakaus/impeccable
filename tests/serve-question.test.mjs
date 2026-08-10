@@ -408,6 +408,10 @@ describe('serve-question', () => {
       writeFileSync(statePath, JSON.stringify(state));
       const nextPath = path.join(dir, 'next.json');
       writeFileSync(nextPath, JSON.stringify(PAYLOAD));
+      // The delivery clock must be --update's own stamp, never the source
+      // payload's: an old file delivered now still opens a full grace.
+      const staleSource = new Date(Date.now() - 60000);
+      utimesSync(nextPath, staleSource, staleSource);
       const updated = await run(['--update', '--key', 'silent', '--payload', nextPath]);
       assert.equal(updated.code, 0, updated.out);
       // Mid-delivery, the silence is the stall's, not a closed tab's: the
