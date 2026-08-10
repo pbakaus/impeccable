@@ -585,6 +585,25 @@ export function setHookConsent(root, value) {
 }
 
 /**
+ * The currently effective `hook.enabled` value, mirroring the runtime's own
+ * resolution order in hook-lib.mjs's readConfig() / context.mjs's
+ * hookEnabledAt() -- shared config.json first, then config.local.json
+ * overriding it when it also has an explicit key. Returns undefined when
+ * neither file has one (the runtime treats that as disabled per
+ * DEFAULT_CONFIG, issue #512).
+ */
+export function getHookEnabled(root) {
+  let enabled;
+  for (const filePath of [getConfigPath(root), getLocalConfigPath(root)]) {
+    const hook = hookSection(safeReadJson(filePath));
+    if (hook && Object.prototype.hasOwnProperty.call(hook, 'enabled')) {
+      enabled = hook.enabled !== false;
+    }
+  }
+  return enabled;
+}
+
+/**
  * Persist `hook.enabled` to the shared config.json, preserving any sibling
  * keys. Mirrors skill/scripts/hook-admin.mjs's setEnabled(cwd, true): the
  * hook runtime's DEFAULT_CONFIG.enabled defaults to false (absence of

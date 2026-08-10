@@ -17,7 +17,7 @@ import { get } from 'node:https';
 import { createHash } from 'node:crypto';
 import { tmpdir, homedir } from 'node:os';
 import { unzipSync } from 'fflate';
-import { getHookConsent, setHookConsent, setHookEnabled } from '../../lib/impeccable-config.mjs';
+import { getHookConsent, setHookConsent, setHookEnabled, getHookEnabled } from '../../lib/impeccable-config.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const API_BASE = 'https://impeccable.style';
@@ -1664,9 +1664,16 @@ const HOOK_EXPLAINER = [
 // -- never otherwise writes that key. Without it, an install done here wires
 // up manifests that never actually fire; idempotent to re-affirm on every run,
 // including for consent recorded before this fix existed.
+// The one thing it must never do is override an explicit `hooks off`: a
+// routine `skills install`/`update` run is not the user opting back in, so
+// `enable()` skips the write entirely when `enabled` is already explicitly
+// false, leaving a deliberate opt-out exactly as the user left it.
 async function decideHookInstall(root, targets, { yes } = {}) {
   if (targets.length === 0) return false;
-  const enable = () => { setHookEnabled(root, true); return true; };
+  const enable = () => {
+    if (getHookEnabled(root) !== false) setHookEnabled(root, true);
+    return true;
+  };
   const consent = getHookConsent(root);
   if (consent === 'declined') return false;
   if (consent === 'accepted') return enable();
