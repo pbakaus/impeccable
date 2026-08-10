@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { writeFileSync, mkdtempSync, existsSync } from 'node:fs';
+import { writeFileSync, readFileSync, rmSync, mkdtempSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -379,6 +379,48 @@ describe('serve-question', () => {
       assert.equal(status.ready, false, 'the unloadable hand left the disk');
     } finally {
       await run(['--stop', '--key', 'badhand']);
+    }
+  });
+
+  it('--wait does not conclude PAGE CLOSED while a delivered next hand sits unclaimed', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'serve-question-'));
+    const payloadPath = path.join(dir, 'q.json');
+    writeFileSync(payloadPath, JSON.stringify(PAYLOAD));
+    const run = (args) => new Promise((resolve) => {
+      const child = spawn(process.execPath, [SCRIPT, ...args], { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] });
+      let out = '';
+      child.stdout.on('data', (chunk) => { out += chunk; });
+      child.on('exit', (code) => resolve({ code, out }));
+    });
+    const started = await run(['--start', '--payload', payloadPath, '--no-open', '--key', 'silent', '--timeout', '30']);
+    assert.equal(started.code, 0, started.out);
+    const url = started.out.match(/QUESTION URL: (\S+)/)?.[1];
+    assert.ok(url, started.out);
+    try {
+      await fetch(`${url}answer`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: '' }) });
+      const collected = await run(['--wait', '--key', 'silent', '--poll', '2']);
+      assert.equal(collected.code, 0, collected.out);
+      // The stalled page went silent by design: fake a beat older than the
+      // 15s page-closed threshold, then deliver the hand late.
+      const statePath = path.join(dir, '.impeccable', 'questions', 'silent.state.json');
+      const state = JSON.parse(readFileSync(statePath, 'utf8'));
+      state.lastBeat = Date.now() - 20000;
+      writeFileSync(statePath, JSON.stringify(state));
+      const nextPath = path.join(dir, 'next.json');
+      writeFileSync(nextPath, JSON.stringify(PAYLOAD));
+      const updated = await run(['--update', '--key', 'silent', '--payload', nextPath]);
+      assert.equal(updated.code, 0, updated.out);
+      // Mid-delivery, the silence is the stall's, not a closed tab's: the
+      // page's watch reloads into the hand and beats again. --wait must keep
+      // waiting instead of routing the agent away from the open browser.
+      const waiting = await run(['--wait', '--key', 'silent', '--poll', '2']);
+      assert.equal(waiting.code, 3, `mid-delivery silence stays WAITING, got: ${waiting.out}`);
+      // With no hand pending, the same stale beat means the page really left.
+      rmSync(path.join(dir, '.impeccable', 'questions', 'silent.next.json'));
+      const closed = await run(['--wait', '--key', 'silent', '--poll', '5']);
+      assert.equal(closed.code, 4, closed.out);
+    } finally {
+      await run(['--stop', '--key', 'silent']);
     }
   });
 

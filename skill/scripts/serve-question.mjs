@@ -231,7 +231,11 @@ if (hasFlag('wait')) {
     }
     try {
       const state = JSON.parse(fs.readFileSync(stateFile(key), 'utf8'));
-      if (state.lastBeat && Date.now() - state.lastBeat > 15000) { sawClose = true; break; }
+      // A silent page is not a closed one while a delivered next hand sits
+      // unclaimed: a stalled page stops beating by design and reloads,
+      // beating again, the moment its watch sees the file.
+      const midDelivery = fs.existsSync(path.join(QUESTION_DIR, `${key}.next.json`));
+      if (!midDelivery && state.lastBeat && Date.now() - state.lastBeat > 15000) { sawClose = true; break; }
     } catch { /* state mid-write */ }
     await new Promise((r) => setTimeout(r, 1000));
   }
@@ -1111,6 +1115,13 @@ function page(waiting = false) {
       // them, and a click would renew the deadline the stall just enforced.
       clearInterval(beatTimer);
       document.querySelectorAll('.reroll-btn').forEach(b => b.setAttribute('disabled', ''));
+      // Silence is for heartbeats only: a hand delivered after the deadline
+      // must still land without a click, so a beat-free watch keeps checking
+      // and reloads into it. /next-status never beats, so the daemon's idle
+      // grace still reclaims a flow nobody resumes.
+      const watch = setInterval(async () => {
+        try { if ((await (await fetch('/next-status')).json()).ready) { clearInterval(watch); location.reload(); } } catch { /* server gone; the screen already says so */ }
+      }, 1500);
       grid.innerHTML = '<div class="stall"><p>' + message + '</p><button type="button" class="choose">Reload</button></div>';
       grid.querySelector('.stall .choose').addEventListener('click', async () => {
         try {

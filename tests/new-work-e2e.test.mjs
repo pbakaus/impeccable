@@ -640,8 +640,9 @@ describe('new-work-e2e: serve-question decision page', () => {
       await page.clock.fastForward(30000);
       await new Promise((r) => setTimeout(r, 500));
       assert.equal(beats, beatsAtSecondStall, 'the refreshed page goes silent again at its own deadline');
-      // Once a hand actually lands, the same button reloads into it and the
-      // heartbeat legitimately resumes: a live round is not an abandoned flow.
+      // Once a hand actually lands, the stalled page's beat-free watch deals
+      // it on its own, no click owed, and the heartbeat legitimately resumes:
+      // a live round is not an abandoned flow.
       const nextPayloadPath = path.join(cwd, 'next.json');
       writeFileSync(nextPayloadPath, JSON.stringify({
         title: 'Choose the visual world',
@@ -650,13 +651,13 @@ describe('new-work-e2e: serve-question decision page', () => {
       }));
       const updated = await run(['--update', '--key', key, '--payload', nextPayloadPath], cwd);
       assert.equal(updated.code, 0, updated.out);
-      await page.$eval('.stall .choose', (el) => el.click());
       let dealt = null;
-      for (let i = 0; i < 100 && !dealt; i++) {
+      for (let i = 0; i < 50 && !dealt; i++) {
+        await page.clock.fastForward(2000);
         await new Promise((r) => setTimeout(r, 100));
         dealt = await page.$('button.choose');
       }
-      assert.ok(dealt, 'reload with a delivered hand serves a playable round');
+      assert.ok(dealt, 'the stalled page notices the delivered hand on its own and deals it');
       const label = await page.$eval('.card', (el) => el.textContent);
       assert.match(label, /Second Hand/, 'reload with a delivered hand serves the new round');
       assert.ok(beats > beatsAtSecondStall, 'the heartbeat resumes on the re-dealt round');
