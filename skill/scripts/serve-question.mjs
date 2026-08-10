@@ -231,10 +231,15 @@ if (hasFlag('wait')) {
     }
     try {
       const state = JSON.parse(fs.readFileSync(stateFile(key), 'utf8'));
-      // A silent page is not a closed one while a delivered next hand sits
-      // unclaimed: a stalled page stops beating by design and reloads,
-      // beating again, the moment its watch sees the file.
-      const midDelivery = fs.existsSync(path.join(QUESTION_DIR, `${key}.next.json`));
+      // A silent page is not a closed one while a freshly delivered next
+      // hand sits unclaimed: a stalled page stops beating by design and its
+      // watch reloads, beating again, within seconds of the file landing.
+      // The suppression is age-bound because a closed tab never claims the
+      // hand: a file still there after the grace means no page is coming.
+      const midDelivery = (() => {
+        try { return Date.now() - fs.statSync(path.join(QUESTION_DIR, `${key}.next.json`)).mtimeMs < 10000; }
+        catch { return false; }
+      })();
       if (!midDelivery && state.lastBeat && Date.now() - state.lastBeat > 15000) { sawClose = true; break; }
     } catch { /* state mid-write */ }
     await new Promise((r) => setTimeout(r, 1000));

@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { writeFileSync, readFileSync, rmSync, mkdtempSync, existsSync } from 'node:fs';
+import { writeFileSync, readFileSync, rmSync, utimesSync, mkdtempSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -415,8 +415,15 @@ describe('serve-question', () => {
       // waiting instead of routing the agent away from the open browser.
       const waiting = await run(['--wait', '--key', 'silent', '--poll', '2']);
       assert.equal(waiting.code, 3, `mid-delivery silence stays WAITING, got: ${waiting.out}`);
-      // With no hand pending, the same stale beat means the page really left.
-      rmSync(path.join(dir, '.impeccable', 'questions', 'silent.next.json'));
+      // The suppression is age-bound: a hand nobody claimed within the grace
+      // means the page is gone, and the delivered file must not mask that.
+      const nextOnDisk = path.join(dir, '.impeccable', 'questions', 'silent.next.json');
+      const aged = new Date(Date.now() - 20000);
+      utimesSync(nextOnDisk, aged, aged);
+      const masked = await run(['--wait', '--key', 'silent', '--poll', '2']);
+      assert.equal(masked.code, 4, `an unclaimed stale delivery reads as a closed page, got: ${masked.out}`);
+      // With no hand pending at all, the same stale beat also means closed.
+      rmSync(nextOnDisk);
       const closed = await run(['--wait', '--key', 'silent', '--poll', '5']);
       assert.equal(closed.code, 4, closed.out);
     } finally {
