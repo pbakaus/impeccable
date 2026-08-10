@@ -968,6 +968,102 @@ describe('hook-admin.mjs', () => {
     assert.match(github.hooks.postToolUse[0].bash, /\.github\/skills\/impeccable\/scripts\/hook\.mjs/);
   });
 
+  it('reset prunes impeccable entries from an installed manifest, sibling entries survive', () => {
+    fs.mkdirSync(path.join(cwd, '.claude', 'skills', 'impeccable', 'scripts'), { recursive: true });
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({ hook: { enabled: false } }));
+    fs.writeFileSync(path.join(cwd, '.claude', 'settings.local.json'), JSON.stringify({
+      description: 'Impeccable design detector',
+      hooks: {
+        PostToolUse: [
+          { matcher: 'OtherTool', hooks: [{ type: 'command', command: 'node "./local-hook.mjs"' }] },
+          { matcher: 'Edit|Write|MultiEdit', hooks: [{ type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' }] },
+        ],
+        Stop: [{ type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' }],
+      },
+    }));
+
+    const out = runAdmin(['reset']);
+    assert.match(out, /Removed hook entries from: \.claude\./);
+
+    const claude = JSON.parse(fs.readFileSync(path.join(cwd, '.claude', 'settings.local.json'), 'utf-8'));
+    assert.equal(claude.hooks.PostToolUse.length, 1);
+    assert.match(claude.hooks.PostToolUse[0].hooks[0].command, /local-hook\.mjs/);
+    assert.equal(claude.hooks.Stop, undefined, 'the impeccable-only Stop array should be dropped entirely');
+  });
+
+  it('reset prunes all four provider manifests installed via `on`', () => {
+    for (const provider of ['.claude', '.agents', '.cursor', '.github']) {
+      fs.mkdirSync(path.join(cwd, provider, 'skills', 'impeccable', 'scripts'), { recursive: true });
+    }
+    runAdmin(['on']);
+    assert.match(fs.readFileSync(path.join(cwd, '.claude', 'settings.local.json'), 'utf-8'), /skills\/impeccable\/scripts\/hook\.mjs/);
+
+    const out = runAdmin(['reset']);
+    assert.match(out, /Removed hook entries from: \.claude, \.agents, \.cursor, \.github/);
+
+    assert.equal(fs.existsSync(path.join(cwd, '.claude', 'settings.local.json')), false, 'nothing else was in the manifest, so it is removed entirely');
+    assert.equal(fs.existsSync(path.join(cwd, '.codex', 'hooks.json')), false);
+    assert.equal(fs.existsSync(path.join(cwd, '.cursor', 'hooks.json')), false);
+    assert.equal(fs.existsSync(path.join(cwd, '.github', 'hooks', 'impeccable.json')), false);
+  });
+
+  it('reset with no manifests installed behaves exactly as before (config/cache only)', () => {
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({ hook: { enabled: false } }));
+
+    const out = runAdmin(['reset']);
+    assert.match(out, /Reset design hook config and cache/);
+    assert.doesNotMatch(out, /Removed hook entries from/);
+    assert.equal(fs.existsSync(getConfigPath(cwd)), false);
+  });
+
+  it('reset leaves a manifest with no impeccable marker byte-for-byte unchanged', () => {
+    fs.mkdirSync(path.join(cwd, '.claude'), { recursive: true });
+    const unrelated = JSON.stringify({
+      hooks: { PostToolUse: [{ matcher: 'OtherTool', hooks: [{ type: 'command', command: 'node "./unrelated.mjs"' }] }] },
+    });
+    fs.writeFileSync(path.join(cwd, '.claude', 'settings.local.json'), unrelated);
+
+    runAdmin(['reset']);
+
+    assert.equal(fs.readFileSync(path.join(cwd, '.claude', 'settings.local.json'), 'utf-8'), unrelated);
+  });
+
+  it('reset still prunes the manifest when the skill folder no longer exists (mid-uninstall)', () => {
+    // No .claude/skills/impeccable/ on disk -- simulates skill files already
+    // removed, manifest cleanup still pending. repairHookManifests()'s install
+    // path gates on the skill folder; reset()'s prune loop must not.
+    fs.mkdirSync(path.join(cwd, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(cwd, '.claude', 'settings.local.json'), JSON.stringify({
+      description: 'Impeccable design detector',
+      hooks: {
+        PostToolUse: [{ matcher: 'Edit|Write|MultiEdit', hooks: [{ type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' }] }],
+        Stop: [{ type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' }],
+      },
+    }));
+
+    const out = runAdmin(['reset']);
+    assert.match(out, /Removed hook entries from: \.claude\./);
+    assert.equal(fs.existsSync(path.join(cwd, '.claude', 'settings.local.json')), false);
+  });
+
+  it('full revocation survives reset -- on, off, reset, status ends disabled (issue #512 repro)', () => {
+    fs.mkdirSync(path.join(cwd, '.claude', 'skills', 'impeccable', 'scripts'), { recursive: true });
+    runAdmin(['on']);
+    runAdmin(['off']);
+
+    const beforeReset = runAdmin(['status']);
+    assert.match(beforeReset, /state:\s+disabled/);
+
+    runAdmin(['reset']);
+
+    assert.equal(fs.existsSync(getConfigPath(cwd)), false);
+    assert.equal(fs.existsSync(path.join(cwd, '.claude', 'settings.local.json')), false);
+    const afterReset = runAdmin(['status']);
+    assert.match(afterReset, /state:\s+disabled/);
+  });
+
   it('ignore-rule overused-font requires explicit broad suppression', () => {
     assert.throws(
       () => runAdmin(['ignore-rule', 'overused-font']),

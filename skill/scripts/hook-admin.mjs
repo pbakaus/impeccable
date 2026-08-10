@@ -765,9 +765,27 @@ function reset(cwd) {
       }
     } catch { /* ignore */ }
   }
-  return removed.length
-    ? `Reset design hook config and cache (removed: ${removed.join(', ')}).`
-    : 'No hook config or cache to remove. Already at defaults.';
+  // Manifests written by `hooks on` outlive config/cache removal (issue #512):
+  // with DEFAULT_CONFIG.enabled now false, a surviving manifest entry would
+  // still invoke a hook whose config no longer opts in. Prune every installed
+  // target regardless of whether its skill folder still exists on disk -- a
+  // reset mid-uninstall (skill files gone, manifest not yet cleaned) is
+  // exactly the case that most needs this, and pruneImpeccableHookFromManifest
+  // already no-ops safely on a missing or markerless file.
+  const prunedManifests = [];
+  for (const target of HOOK_MANIFEST_TARGETS) {
+    let prunedThisTarget = false;
+    for (const rel of [target.destRel, target.sharedDestRel].filter(Boolean)) {
+      if (pruneImpeccableHookFromManifest(path.join(cwd, rel))) prunedThisTarget = true;
+    }
+    if (prunedThisTarget) prunedManifests.push(target.provider);
+  }
+
+  const parts = [];
+  if (removed.length) parts.push(`Reset design hook config and cache (removed: ${removed.join(', ')}).`);
+  if (prunedManifests.length) parts.push(`Removed hook entries from: ${prunedManifests.join(', ')}.`);
+  if (!parts.length) return 'No hook config, cache, or manifest entries to remove. Already at defaults.';
+  return parts.join(' ');
 }
 
 function main() {
