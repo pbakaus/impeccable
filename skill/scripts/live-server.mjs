@@ -715,7 +715,7 @@ function createRequestHandler({ detectScript, liveScriptParts }) {
     if (req.method === 'OPTIONS') {
       // Private Network Access: Chrome inserts this preflight for any request
       // from a public or private page to a loopback target, independent of
-      // CORS mode -- including the plain <script src> live-browser.js uses to
+      // CORS mode, including the plain <script src> live-browser.js uses to
       // load /detect.js from a page under review at a real https origin. It
       // answers a different question than the Origin/token check above
       // ("may this network path be reached at all" vs. "may the response be
