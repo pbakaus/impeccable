@@ -2526,6 +2526,17 @@ function resolveBackground(el, win, customPropMap) {
     //     bgs worth checking against).
     if (hasGradientOrUrl) {
       if (current.tagName === 'BODY' || current.tagName === 'HTML') {
+        // In a real browser the shorthand is always decomposed, so reaching
+        // here means the page ground truly is a gradient or image with no
+        // solid color under it. Assuming white turns every light-on-dark
+        // page into a wall of low-contrast false positives (a dark oklch
+        // body gradient produced ~120 "on #ffffff" findings on one site).
+        // Return null so the caller measures against the actual gradient
+        // stops, or skips when nothing is parseable — skipping beats a
+        // wrong ratio. The white assumption stays for jsdom, where the
+        // shorthand never decomposes and body gradients are almost always
+        // decorative texture over a hidden solid paper color.
+        if (DETECTOR_IS_BROWSER) return null;
         return flatten({ r: 255, g: 255, b: 255, a: 1 });
       }
       return null;
@@ -2533,6 +2544,21 @@ function resolveBackground(el, win, customPropMap) {
     current = current.parentElement;
   }
   return flatten({ r: 255, g: 255, b: 255, a: 1 });
+}
+
+// parseGradientColors (shared) reads only the legacy serializations: rgb()
+// and hex stops. Browsers keep modern-space stops in computed backgroundImage
+// exactly as authored — `linear-gradient(oklch(7% 0.006 95), …)` stays oklch —
+// which is what every token-driven page produces. Route those through
+// parseAnyColor so a gradient ground is measurable rather than invisible.
+function parseGradientColorsModern(bgImage) {
+  if (!bgImage || !/gradient/i.test(bgImage)) return [];
+  const colors = parseGradientColors(bgImage);
+  for (const m of bgImage.matchAll(/(?:oklch|oklab|hsla?|hwb)\(\s*[^()]*\)/gi)) {
+    const c = parseAnyColor(m[0]);
+    if (c) colors.push(c);
+  }
+  return colors;
 }
 
 // Walk parents looking for a gradient background and return its color stops.
@@ -2545,7 +2571,7 @@ function resolveGradientStops(el, win, customPropMap) {
     const bgImage = style.backgroundImage || '';
     let stops = null;
     if (bgImage && bgImage !== 'none' && /gradient/i.test(bgImage)) {
-      const parsed = parseGradientColors(bgImage);
+      const parsed = parseGradientColorsModern(bgImage);
       if (parsed.length > 0) stops = parsed;
     }
     if (!stops && !DETECTOR_IS_BROWSER) {
@@ -2553,7 +2579,7 @@ function resolveGradientStops(el, win, customPropMap) {
       const rawStyle = current.getAttribute?.('style') || '';
       const bgMatch = rawStyle.match(/background(?:-image)?\s*:\s*([^;]+)/i);
       if (bgMatch && /gradient/i.test(bgMatch[1])) {
-        const parsed = parseGradientColors(bgMatch[1]);
+        const parsed = parseGradientColorsModern(bgMatch[1]);
         if (parsed.length > 0) stops = parsed;
       }
     }

@@ -112,6 +112,20 @@ describe('detectUrl — browser-only fixtures', () => {
     }
   });
 
+  it('low-contrast: a gradient body ground with oklch stops is measured, never assumed white', async () => {
+    // The impeccable.style FP class: `background: linear-gradient(oklch(7%…),
+    // oklch(4%…))` on body leaves backgroundColor transparent, and the old
+    // resolveBackground assumed white for any body-level gradient — turning
+    // every light-on-dark text on the page into a ~1.3:1 finding (~120 of
+    // them on one site). In a real browser, reaching that branch means the
+    // ground truly is the gradient, so its stops are the surface to measure.
+    const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/dark-gradient-ground.html`);
+    const contrast = f.filter(r => r.antipattern === 'low-contrast');
+    const snippets = contrast.map(r => r.snippet || '').join('\n');
+    assert.doesNotMatch(snippets, /on #ffffff/, `light-on-dark text was measured against an assumed white body:\n${snippets}`);
+    assert.equal(contrast.length, 1, `expected exactly the muted-ink case to flag, got ${contrast.length}:\n${snippets}`);
+  });
+
   it('shadowed form.id: a <form> with <input name="id"> does not crash the scan (issue #407)', async () => {
     // HTMLFormElement named-property shadowing makes form.id / form.className
     // return the child input element, whose .startsWith throws. Every Shopify

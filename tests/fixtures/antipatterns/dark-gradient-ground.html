@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fixture: gradient body ground, oklch stops (low-contrast)</title>
+<style>
+  /* The impeccable.style false-positive class: the page ground is a gradient
+     set via `background:` shorthand, so the body's computed backgroundColor
+     is transparent and the ground exists only as a backgroundImage whose
+     stops serialize in oklch. The detector must measure text against those
+     stops, never against an assumed white body. */
+  body {
+    margin: 0;
+    padding: 48px;
+    background: linear-gradient(180deg, oklch(7% 0.006 95), oklch(4% 0.004 95));
+    font-family: Arial, sans-serif;
+  }
+  .pass-hero-title {
+    width: 640px;
+    color: oklch(91% 0 0);
+    font-size: 48px;
+    margin: 0 0 16px;
+  }
+  .pass-hero-body {
+    width: 560px;
+    color: oklch(88% 0 0);
+    font-size: 16px;
+    line-height: 1.7;
+    margin: 0 0 32px;
+  }
+  .pass-on-raised {
+    width: 420px;
+    padding: 24px;
+    background: oklch(11% 0.006 95);
+    color: oklch(88% 0 0);
+    font-size: 15px;
+    margin: 0 0 32px;
+  }
+  .flag-muted-ink {
+    width: 560px;
+    color: oklch(30% 0 0);
+    font-size: 16px;
+    line-height: 1.7;
+    margin: 0;
+  }
+</style>
+</head>
+<body>
+  <h1 class="pass-hero-title">Light display text on the lacquer gradient</h1>
+  <p class="pass-hero-body">This paragraph sits directly on the body's dark gradient ground. Its near-white ink clears WCAG AA against both gradient stops by a wide margin, so a detector that measures the real ground must not flag it. A detector that assumes a white body flags it at about 1.3:1.</p>
+  <div class="pass-on-raised">Light text on a raised solid oklch surface between the text and the body gradient still resolves through the normal opaque-ancestor walk.</div>
+  <p class="flag-muted-ink">This muted dark-gray ink genuinely fails contrast against both stops of the dark gradient ground, which proves the gradient stops are being measured instead of the checks silently skipping.</p>
+</body>
+</html>
