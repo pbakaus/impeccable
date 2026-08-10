@@ -28,6 +28,7 @@ import {
   checkCreamPalette,
   checkHtmlPatterns,
   checkKickerAboveHeadingFromDoc,
+  scopedIgnoreActive,
   checkNumberedSectionLabelsFromDoc,
   checkPageLayout,
   checkPageQualityFromDoc,
@@ -182,6 +183,9 @@ async function detectHtml(filePath, options = {}) {
       const tag = el.tagName.toLowerCase();
       const style = window.getComputedStyle(el);
       for (const f of runElementCheck(rule.id, () => rule.run(el, tag, style, window, customPropMap))) {
+        // Element-scoped waivers: a data-impeccable-ignore ancestor suppresses
+        // matching findings for its subtree, same as the browser walk.
+        if (scopedIgnoreActive(el, f.id)) continue;
         findings.push(finding(f.id, filePath, f.snippet));
       }
     }

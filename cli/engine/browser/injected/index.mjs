@@ -1260,9 +1260,16 @@ if (IS_BROWSER) {
 
   function addBrowserFindings(groupMap, el, findings) {
     if (!findings || findings.length === 0) return;
+    // Element-scoped waivers: a data-impeccable-ignore ancestor suppresses
+    // matching findings for its whole subtree. Applied at this choke point so
+    // every per-element attribution (checks, layout, occlusion, rhythm)
+    // honors it; page-level findings attributed to <body> pass through
+    // untouched, since body has no ignoring ancestor.
+    const kept = findings.filter(f => !scopedIgnoreActive(el, f.type));
+    if (kept.length === 0) return;
     const existing = groupMap.get(el);
-    if (existing) existing.push(...findings);
-    else groupMap.set(el, [...findings]);
+    if (existing) existing.push(...kept);
+    else groupMap.set(el, [...kept]);
   }
 
   function browserFindingsFromMap(groupMap) {
@@ -1620,9 +1627,20 @@ if (IS_BROWSER) {
     for (const node of docClone.querySelectorAll('[id^="impeccable-live-"]')) {
       node.remove();
     }
-    const htmlPatternFindings = checkHtmlPatterns(docClone.outerHTML);
-    if (htmlPatternFindings.length > 0) {
-      const mapped = htmlPatternFindings.map(f => {
+    // Regex findings that name a live selector can honor scoped ignores too:
+    // resolve the element and drop the finding when an ignoring ancestor
+    // covers it. Selector-less findings stay page-level.
+    const scopedHtmlFindings = checkHtmlPatterns(docClone.outerHTML).filter(f => {
+      if (!f.selector) return true;
+      try {
+        const target = document.querySelector(f.selector);
+        return !target || !scopedIgnoreActive(target, f.id);
+      } catch {
+        return true;
+      }
+    });
+    if (scopedHtmlFindings.length > 0) {
+      const mapped = scopedHtmlFindings.map(f => {
         const item = { type: f.id, detail: f.snippet };
         if (f.severity) {
           item.severity = f.severity;

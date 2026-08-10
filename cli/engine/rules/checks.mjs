@@ -70,6 +70,34 @@ function checkBorders(tag, widths, colors, radius, opts = {}) {
   return findings;
 }
 
+// ─── Scoped ignores: data-impeccable-ignore ─────────────────────────────────
+//
+// An element-scoped waiver that travels with the markup: any element carrying
+// `data-impeccable-ignore="rule-a rule-b"` (or `*`, or an empty value, for
+// every rule) suppresses matching findings from itself and its entire subtree,
+// in every engine that walks elements — the browser overlay, the extension,
+// and the static scan. This is the DOM twin of the line-based
+// `impeccable-disable` comment directives, which the browser cannot apply (a
+// live DOM has no line numbers), and the generalization of the one-off
+// `data-impeccable-allow-kickers` opt-out.
+//
+// The intended use is curated exhibits: a page that documents anti-patterns by
+// example, or renders a deliberate "before" specimen, marks the container once
+// and every engine skips it while still scanning the page around it.
+function scopedIgnoreActive(el, ruleId) {
+  const rule = String(ruleId || '').toLowerCase();
+  let cur = el;
+  while (cur && cur.nodeType === 1) {
+    const attr = typeof cur.getAttribute === 'function' ? cur.getAttribute('data-impeccable-ignore') : null;
+    if (attr != null) {
+      const rules = String(attr).trim().toLowerCase().split(/[\s,]+/).filter(Boolean);
+      if (rules.length === 0 || rules.includes('*') || rules.includes(rule)) return true;
+    }
+    cur = cur.parentElement;
+  }
+  return false;
+}
+
 // Returns true if the given text is composed entirely of emoji characters
 // (plus whitespace / variation selectors). Emojis render as multicolor glyphs
 // regardless of CSS `color`, so contrast checks against the element's text
@@ -1794,6 +1822,13 @@ function resolveGradientStops(el, win, customPropMap) {
   while (current && current.nodeType === 1) {
     const style = DETECTOR_IS_BROWSER ? getComputedStyle(current) : win.getComputedStyle(current);
     const bgImage = style.backgroundImage || '';
+    // A url() layer anywhere in the stack — alone, or alongside a gradient in
+    // the same declaration (a translucent wash over a texture photo) — paints
+    // pixels the analytic walk cannot know. Measuring the gradient stops over
+    // the wrong base flagged dark ink sitting on a bright gold-leaf image at
+    // 2.6:1; skipping beats a wrong ratio, and the screenshot subsystem owns
+    // image-backed text.
+    if (bgImage && bgImage !== 'none' && /url\s*\(/i.test(bgImage)) return null;
     let stops = null;
     if (bgImage && bgImage !== 'none' && /gradient/i.test(bgImage)) {
       const parsed = parseGradientColorsModern(bgImage);
@@ -2044,6 +2079,10 @@ function checkElementColorsDOM(el) {
   const rect = el.getBoundingClientRect();
   if (rect.width < 10 || rect.height < 10) return [];
   const style = getComputedStyle(el);
+  // Invisible at rest: hidden scene variants (opacity-0 carousels, swap
+  // decks) are not user-visible, and measuring their inherited colors against
+  // whatever surface happens to sit behind the stack is noise, not audit.
+  if (style.visibility === 'hidden' || effectiveOpacityDOM(el) <= 0.02) return [];
   const directText = [...el.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('');
   const hasDirectText = directText.trim().length > 0;
   let effectiveBg = resolveBackground(el);
@@ -3704,6 +3743,14 @@ function checkElementBorders(tag, style, overrides, resolvedRadius, el = null) {
 }
 
 function checkElementColors(el, style, tag, window, customPropMap, hasAnchorInheritRule) {
+  // Invisible at rest, static twin of the browser walk's skip: opacity does
+  // not inherit, so walk ancestors multiplying declared opacity down.
+  if (style.visibility === 'hidden') return [];
+  let effOpacity = 1;
+  for (let cur = el; cur && cur.nodeType === 1 && effOpacity > 0.02; cur = cur.parentElement) {
+    effOpacity *= parseFloat(window.getComputedStyle(cur).opacity || '1');
+  }
+  if (effOpacity <= 0.02) return [];
   const directText = [...el.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('');
   const hasDirectText = directText.trim().length > 0;
 
@@ -5246,6 +5293,20 @@ function isPaintedForOcclusion(el) {
 // path is pure geometry and runs anywhere on the page.
 const OCCLUSION_TEXT_SKIP_TAGS = new Set(['script', 'style', 'noscript', 'template', 'title']);
 
+// An element whose effective opacity multiplies out to ~0 paints nothing at
+// rest: it is not user-visible, so visual findings on it (contrast, occlusion)
+// measure a state nobody sees. Browser-only — the walk needs live computed
+// styles. Cycling scenes that fade such elements in later are the screenshot
+// subsystem's territory, not the analytic walk's.
+function effectiveOpacityDOM(el) {
+  let o = 1;
+  for (let cur = el; cur && cur.nodeType === 1 && cur !== document.body; cur = cur.parentElement) {
+    o *= parseFloat(getComputedStyle(cur).opacity || '1');
+    if (o <= 0.02) return 0;
+  }
+  return o;
+}
+
 function checkTextOcclusionDOM() {
   const findings = [];
   const seenVictims = new Set();
@@ -5273,6 +5334,11 @@ function checkTextOcclusionDOM() {
     }
     return false;
   };
+  // The classic occluder shape this rules out is an opacity-0 interaction
+  // layer — a range scrubber stretched over a before/after comparison — which
+  // elementFromPoint still returns and whose UA background-color otherwise
+  // reads as an opaque box.
+  const effectiveOpacity = effectiveOpacityDOM;
 
   // Collect renderable text owners in / near the first viewport for the
   // elementFromPoint probe. SVG <text> counts too.
@@ -5285,6 +5351,7 @@ function checkTextOcclusionDOM() {
     const text = inSvg ? (el.textContent || '').trim() : elementDirectText(el);
     if (text.length < 2) continue;
     if (!isPaintedForOcclusion(el)) continue;
+    if (effectiveOpacity(el) <= 0.02) continue;
     let rect; try { rect = el.getBoundingClientRect(); } catch { continue; }
     if (rect.width < 6 || rect.height < 6) continue;
     // Viewport-bound probe: keep text whose box overlaps the live viewport.
@@ -5318,6 +5385,7 @@ function checkTextOcclusionDOM() {
         if (top === el || el.contains(top) || top.contains(el)) continue;
         const topCs = getComputedStyle(top);
         if (isFloated(topCs) || isMarqueeish(top, topCs) || isPinnedOverlay(top)) continue;
+        if (effectiveOpacity(top) <= 0.02) continue;
         const topTag = top.tagName.toLowerCase();
         // Text sitting under a raw image/video is contrast territory (deduped
         // against the pixel low-contrast rule); leave those alone here.
@@ -5528,6 +5596,7 @@ export {
   CSS_NAMED_COLORS,
   checkBorders,
   isEmojiOnlyText,
+  scopedIgnoreActive,
   checkColors,
   checkHoverContrast,
   checkElementHoverContrast,

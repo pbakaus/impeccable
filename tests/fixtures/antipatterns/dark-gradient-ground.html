@@ -78,6 +78,32 @@
     font-size: 15px;
     line-height: 1.6;
   }
+  .pass-image-backed {
+    width: 460px;
+    padding: 18px 22px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.2)), url("/fixtures/antipatterns/no-such-texture.png") center / cover;
+    color: oklch(15% 0.01 95);
+    font-size: 15px;
+    line-height: 1.6;
+  }
+  .pass-photo-panel {
+    width: 460px;
+    padding: 18px 22px;
+    background-image: url("/fixtures/antipatterns/no-such-photo.jpg");
+    color: oklch(20% 0 0);
+    font-size: 15px;
+    line-height: 1.6;
+  }
+  .pass-hidden-scene {
+    opacity: 0;
+    width: 560px;
+  }
+  .pass-hidden-scene p {
+    color: oklch(30% 0 0);
+    font-size: 16px;
+    line-height: 1.7;
+    margin: 0;
+  }
 </style>
 </head>
 <body>
@@ -93,5 +119,8 @@
     <p class="flag-muted-nested">Muted ink reached through a transparent wrapper still resolves to the body gradient and still fails against its stops.</p>
   </div>
   <div class="pass-hex-gradient">A non-body gradient with legacy hex stops keeps working through the original rgb/hex parser, and light text on it passes.</div>
+  <div class="pass-image-backed">Dark ink on a translucent wash over a texture image. The image pixels are unknowable to the analytic walk, so contrast must skip rather than composite the wash over the wrong base.</div>
+  <div class="pass-photo-panel">Dark ink on a photo-backed panel sitting over the dark body gradient. Walking past the photo to the gradient stops would wrongly flag this; the unmeasurable image layer must end the walk.</div>
+  <div class="pass-hidden-scene"><p>Muted ink inside an opacity-zero scene deck. Nobody sees this state, so the contrast checks must not measure it.</p></div>
 </body>
 </html>

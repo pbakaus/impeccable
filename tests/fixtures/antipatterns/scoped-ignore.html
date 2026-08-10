@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fixture: data-impeccable-ignore scoped waivers</title>
+<style>
+  body { margin: 0; padding: 40px; background: #faf8f4; font-family: Arial, sans-serif; color: #262421; }
+  .tabbed {
+    width: 420px;
+    padding: 16px 20px;
+    margin: 0 0 24px;
+    background: #ffffff;
+    border: 1px solid #ddd8d0;
+    border-left: 6px solid #b8422e;
+  }
+</style>
+</head>
+<body>
+  <!-- Control: no waiver anywhere above — must flag side-tab. -->
+  <article class="tabbed control-flags">The control case has a 6px side-tab accent border and no waiver, so the side-tab rule must flag it.</article>
+
+  <!-- Exact-rule waiver on the container: the whole subtree is exempt. -->
+  <section data-impeccable-ignore="side-tab">
+    <article class="tabbed pass-exact-rule">Inside a container waived for exactly side-tab; must not flag.</article>
+    <div>
+      <article class="tabbed pass-nested-depth">Two levels below the waiving container; the ancestor walk must still find it.</article>
+    </div>
+  </section>
+
+  <!-- Star waiver: every rule is exempt in the subtree. -->
+  <section data-impeccable-ignore="*">
+    <article class="tabbed pass-star">Inside a star-waived container; must not flag.</article>
+  </section>
+
+  <!-- Waiver for a different rule: side-tab still applies. -->
+  <section data-impeccable-ignore="pulsing-dot">
+    <article class="tabbed flags-other-rule-waived">The waiver names pulsing-dot, not side-tab, so this must still flag.</article>
+  </section>
+
+  <!-- Rule list including side-tab. -->
+  <section data-impeccable-ignore="pulsing-dot, side-tab">
+    <article class="tabbed pass-rule-list">side-tab appears in the comma list; must not flag.</article>
+  </section>
+</body>
+</html>

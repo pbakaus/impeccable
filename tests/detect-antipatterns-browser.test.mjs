@@ -112,6 +112,14 @@ describe('detectUrl — browser-only fixtures', () => {
     }
   });
 
+  it('scoped-ignore: data-impeccable-ignore waives its subtree in the browser walk', async () => {
+    // Browser twin of the static scoped-ignore test: same fixture, same
+    // expectation — only the control and the other-rule-waived case flag.
+    const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/scoped-ignore.html`, { visualContrast: false });
+    const sideTabs = f.filter(r => r.antipattern === 'side-tab');
+    assert.equal(sideTabs.length, 2, `expected only the control and the other-rule case, got ${sideTabs.length}`);
+  });
+
   it('low-contrast: a gradient body ground with oklch stops is measured, never assumed white', async () => {
     // The impeccable.style FP class: `background: linear-gradient(oklch(7%…),
     // oklch(4%…))` on body leaves backgroundColor transparent, and the old
@@ -400,7 +408,7 @@ describe('detectUrl — browser-only fixtures', () => {
     assert.match(snippets, /flag-box-text/, `opaque box painted over text should flag: ${snippets}`);
     assert.match(snippets, /flag-leak/, `inline element with leaked opaque padding should flag: ${snippets}`);
     assert.match(snippets, /flag-headline/, `headline overhanging an opaque card should flag: ${snippets}`);
-    for (const cls of ['pass-title', 'pass-eyebrow', 'pass-hero', 'cap', 'pass-under', 'pass-fixedbar']) {
+    for (const cls of ['pass-title', 'pass-eyebrow', 'pass-hero', 'cap', 'pass-under', 'pass-fixedbar', 'pass-scrubber']) {
       assert.doesNotMatch(snippets, new RegExp(cls), `".${cls}" must not flag: ${snippets}`);
     }
     assert.equal(hits.length, 3, `expected exactly 3 text-occlusion findings, got ${hits.length}: ${snippets}`);
