@@ -838,6 +838,28 @@ body.picker-page {
   background: var(--ks-lacquer-raised);
 }
 
+/* Tips on grips and tools sit outside their band's box. Grid paint order
+   otherwise buries them under the next swatch; the deck's stacked cards
+   can overlap the panel edge the same way. */
+.picker-band-item:has(.picker-band:is(:hover, :focus-within)),
+.picker-band-item:has(.picker-band[data-dragging]) {
+  position: relative;
+  z-index: 3;
+}
+
+.picker-band-item:has(.picker-band[data-dragging]) {
+  z-index: 6;
+}
+
+.picker-screen[data-screen="02"] .picker-palette-subgrid {
+  position: relative;
+  z-index: 2;
+}
+
+.picker-reset:is(:hover, :focus-visible) {
+  z-index: 5;
+}
+
 .picker-band {
   --band-color: var(--ks-graphite);
   --band-ink: var(--ks-champagne);
@@ -7556,7 +7578,7 @@ body.picker-page {
 
 /* ============================================================
    Screen 04b: the configure hub. Three packed columns of cards;
-   the tall per-surface cards (motion, layout) anchor the outer
+   the tall per-surface cards (motion, depth) anchor the outer
    tracks. Sharp corners and hairline rules, the same vocabulary
    as the option rows. Summaries are written by renderHub().
    ============================================================ */

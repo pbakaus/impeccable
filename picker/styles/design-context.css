@@ -35,65 +35,13 @@ body.is-locked { overflow: hidden; }
    but the document has its own stacked layout below 920px. */
 body.dcx-open .picker-shell { display: none; }
 body.dcx-open .picker-width-gate { display: none; }
-body.dcx-open { background: linear-gradient(180deg, var(--ks-lacquer), var(--ks-lacquer-deep)); }
+body.dcx-open { overflow: hidden; background: linear-gradient(180deg, var(--ks-lacquer), var(--ks-lacquer-deep)); }
 
 .dcx-shell {
-  min-height: 100svh;
-  background: linear-gradient(180deg, var(--ks-lacquer), var(--ks-lacquer-deep));
-}
-
-/* Masthead — the slot the prototype gave its site header, reduced to what
-   the picker owes: the mark, what this page is, and that the answers are
-   already on disk. */
-.dcx-masthead {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  padding: 18px clamp(14px, 2vw, 26px) 6px;
-}
-
-.dcx-masthead-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--ks-kinpaku);
-}
-
-.dcx-masthead-brand svg { width: 22px; height: 22px; fill: currentColor; flex-shrink: 0; }
-
-.dcx-masthead-brand span {
-  font-family: var(--ks-font-display);
-  font-weight: 400;
-  font-size: 1.02rem;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  line-height: 1;
-}
-
-.dcx-masthead-title {
-  flex: 1;
-  min-width: 0;
+  height: 100svh;
+  max-height: 100svh;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--ks-mono);
-  font-size: 0.7rem;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--ks-text-muted);
-}
-
-.dcx-masthead-note {
-  font-family: var(--ks-mono);
-  font-size: 0.7rem;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--ks-text-faint);
-  white-space: nowrap;
-}
-
-@media (max-width: 920px) {
-  .dcx-masthead-note { display: none; }
+  background: linear-gradient(180deg, var(--ks-lacquer), var(--ks-lacquer-deep));
 }
 
 .dcx-expander code {
@@ -111,15 +59,16 @@ body.dcx-open { background: linear-gradient(180deg, var(--ks-lacquer), var(--ks-
    ============================================================ */
 .dcx-shell {
   --dcx-gap: clamp(10px, 0.9vw, 14px);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
   padding: var(--dcx-gap) clamp(14px, 2vw, 26px) clamp(16px, 2.2vw, 28px);
 }
 
 .dcx-grid {
   position: relative;
-  /* The prototype budgeted 130px for the site header; the picker's masthead
-     is slimmer, so the grid keeps more of the viewport. */
-  height: calc(100svh - 96px);
-  min-height: 560px;
+  flex: 1 1 0;
+  min-height: 0;
   display: grid;
   grid-template-columns: repeat(18, minmax(0, 1fr));
   grid-template-rows: repeat(12, minmax(0, 1fr));

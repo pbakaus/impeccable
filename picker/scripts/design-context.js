@@ -548,8 +548,6 @@ function renderDocument() {
     const template = document.getElementById(`dcx-detail-${id}`);
     template.innerHTML = `<article class="dcx-article">${build(snapshot, name)}</article>`;
   }
-  const masthead = $('[data-dcx-product]');
-  if (masthead && name) masthead.textContent = `Design context — ${name}`;
   if (name) document.title = `Design context — ${name}`;
 }
 

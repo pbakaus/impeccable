@@ -2224,7 +2224,7 @@ const paintStage = () => {
 /* ============================================================
    Screen 04b: the configure hub.
 
-   Seven questions remain after the font pair, and every one of
+   Five questions remain after the layout screen, and every one of
    them already holds an answer: sync() pre-fills each per-surface
    field with its surface's default the moment the tile is checked,
    and the flat radios ship with a default checked. The hub reads
@@ -2237,21 +2237,19 @@ const paintStage = () => {
 const hubScreen = document.querySelector('.picker-screen[data-screen="04b"]');
 /* Card target screen mapped to the radio group that screen answers. */
 const HUB_GROUPS = {
-  '05': 'type-scale',
   '06': 'motion-energy',
-  '07': 'layout-structure',
   '08': 'boundary-style',
   '09': 'corner-style',
   '10': 'depth-style',
   '11': 'icon-pack',
 };
-/* Type scale and icon set render no per-surface fields, so they have
-   no dataset.chosen. A change event on their group is the one signal
+/* The icon set renders no per-surface fields, so it has no
+   dataset.chosen. A change event on its group is the one signal
    that a person picked rather than the markup default: programmatic
    checks never fire it. */
 const hubEdited = new Set();
 document.addEventListener('change', ({ target }) => {
-  if (target?.name === 'type-scale' || target?.name === 'icon-pack') hubEdited.add(target.name);
+  if (target?.name === 'icon-pack') hubEdited.add(target.name);
 });
 
 const hubSurfaceLabel = (mode) => modeInputs.find((input) => input.value === mode)?.dataset.surfaceLabel ?? mode;
@@ -2305,12 +2303,15 @@ function hubRow(surfaceLabel, valueTitle, group, value) {
   dot.setAttribute('aria-hidden', 'true');
   val.append(dot, valueTitle);
   pill.append(label, val);
-  const note = document.createElement('span');
-  note.className = 'picker-hub-note';
-  const why = value ? hubOptionDesc(group, value) : '';
-  note.textContent = why;
-  note.hidden = !why;
-  entry.append(pill, note);
+  entry.append(pill);
+  if (group !== 'icon-pack') {
+    const note = document.createElement('span');
+    note.className = 'picker-hub-note';
+    const why = value ? hubOptionDesc(group, value) : '';
+    note.textContent = why;
+    note.hidden = !why;
+    entry.append(note);
+  }
   return entry;
 }
 

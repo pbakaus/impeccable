@@ -907,104 +907,6 @@ const questions = [
         </div>
       </section>
 
-      {/* Screen 04b: the configure hub. Every remaining question already
-          holds an answer (defaults are pre-filled the moment a surface tile
-          is checked), so the run can end here. The cards are skeletons;
-          summaries and edited marks are written by renderHub() in
-          scripts/palette-picker.js on every arrival. Placement is the
-          approved masonry: tall per-surface cards anchor the outer columns. */}
-      <section class="picker-screen" data-screen="04b" data-step="Configure" aria-hidden="true" aria-labelledby="picker-hub-title">
-        <div class="picker-container">
-          <div class="picker-hub">
-            <div class="picker-question-head">
-              <h2 id="picker-hub-title" class="picker-question-title">What else would you like to configure?</h2>
-              <p class="picker-question-lede">
-                Every choice below already holds a sensible default for your surfaces. Open any card to adjust it, or create your design context right away.
-              </p>
-            </div>
-
-            <div class="picker-hub-grid">
-              <div class="picker-hub-col">
-                <button class="picker-hub-card" type="button" data-hub-target="06" data-hub-category="material">
-                  <span class="picker-hub-eyebrow">Material</span>
-                  <span class="picker-hub-title">Motion
-                    <svg class="picker-hub-arrow" viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M0 4h14M10 0l4 4-4 4"></path></svg>
-                    <span class="picker-hub-mark" data-hub-mark hidden>Edited</span>
-                  </span>
-                  <span class="picker-hub-summary" data-hub-summary></span>
-                </button>
-                <button class="picker-hub-card" type="button" data-hub-target="09" data-hub-category="material">
-                  <span class="picker-hub-eyebrow">Material</span>
-                  <span class="picker-hub-title">Corners
-                    <svg class="picker-hub-arrow" viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M0 4h14M10 0l4 4-4 4"></path></svg>
-                    <span class="picker-hub-mark" data-hub-mark hidden>Edited</span>
-                  </span>
-                  <span class="picker-hub-summary" data-hub-summary></span>
-                </button>
-              </div>
-
-              <div class="picker-hub-col">
-                <button class="picker-hub-card" type="button" data-hub-target="05" data-hub-category="typography">
-                  <span class="picker-hub-eyebrow">Typography</span>
-                  <span class="picker-hub-title">Type scale
-                    <svg class="picker-hub-arrow" viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M0 4h14M10 0l4 4-4 4"></path></svg>
-                    <span class="picker-hub-mark" data-hub-mark hidden>Edited</span>
-                  </span>
-                  <span class="picker-hub-summary" data-hub-summary></span>
-                </button>
-                <button class="picker-hub-card" type="button" data-hub-target="11" data-hub-category="iconography">
-                  <span class="picker-hub-eyebrow">Iconography</span>
-                  <span class="picker-hub-title">Icon set
-                    <svg class="picker-hub-arrow" viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M0 4h14M10 0l4 4-4 4"></path></svg>
-                    <span class="picker-hub-mark" data-hub-mark hidden>Edited</span>
-                  </span>
-                  <span class="picker-hub-summary" data-hub-summary></span>
-                </button>
-                <button class="picker-hub-card" type="button" data-hub-target="08" data-hub-category="material">
-                  <span class="picker-hub-eyebrow">Material</span>
-                  <span class="picker-hub-title">Boundaries
-                    <svg class="picker-hub-arrow" viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M0 4h14M10 0l4 4-4 4"></path></svg>
-                    <span class="picker-hub-mark" data-hub-mark hidden>Edited</span>
-                  </span>
-                  <span class="picker-hub-summary" data-hub-summary></span>
-                </button>
-              </div>
-
-              <div class="picker-hub-col">
-                <button class="picker-hub-card" type="button" data-hub-target="07" data-hub-category="material">
-                  <span class="picker-hub-eyebrow">Material</span>
-                  <span class="picker-hub-title">Layout
-                    <svg class="picker-hub-arrow" viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M0 4h14M10 0l4 4-4 4"></path></svg>
-                    <span class="picker-hub-mark" data-hub-mark hidden>Edited</span>
-                  </span>
-                  <span class="picker-hub-summary" data-hub-summary></span>
-                </button>
-                <button class="picker-hub-card" type="button" data-hub-target="10" data-hub-category="material">
-                  <span class="picker-hub-eyebrow">Material</span>
-                  <span class="picker-hub-title">Depth
-                    <svg class="picker-hub-arrow" viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M0 4h14M10 0l4 4-4 4"></path></svg>
-                    <span class="picker-hub-mark" data-hub-mark hidden>Edited</span>
-                  </span>
-                  <span class="picker-hub-summary" data-hub-summary></span>
-                </button>
-              </div>
-            </div>
-
-            <div class="picker-actions-stack">
-              <button class="ks-button ks-button-primary" type="button" data-hub-finish data-hub-target="12">
-                Create my design context
-                <span class="ks-button-arrow" aria-hidden="true">
-                  <svg viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square">
-                    <path d="M0 4h14M10 0l4 4-4 4"></path>
-                  </svg>
-                </span>
-              </button>
-              <button class="picker-back" type="button" data-advance="prev">Back</button>
-            </div>
-          </div>
-        </div>
-      </section>
-
       <section class="picker-screen" data-screen="05" data-step="Type scale" aria-hidden="true" aria-labelledby="picker-scale-title">
         <div class="picker-container">
           <div class="picker-scale">
@@ -1154,7 +1056,91 @@ const questions = [
         </div>
       </section>
 
-      {questions.map((question) => <QuestionScreen {...question} />)}
+      {questions.filter((question) => question.id === '07').map((question) => <QuestionScreen {...question} />)}
+
+      {/* Screen 04b: the configure hub. Every remaining question already
+          holds an answer (defaults are pre-filled the moment a surface tile
+          is checked), so the run can end here. The cards are skeletons;
+          summaries and edited marks are written by renderHub() in
+          scripts/palette-picker.js on every arrival. Placement is the
+          approved masonry: tall per-surface cards anchor the outer columns. */}
+      <section class="picker-screen" data-screen="04b" data-step="Configure" aria-hidden="true" aria-labelledby="picker-hub-title">
+        <div class="picker-container">
+          <div class="picker-hub">
+            <div class="picker-question-head">
+              <h2 id="picker-hub-title" class="picker-question-title">What else would you like to configure?</h2>
+              <p class="picker-question-lede">
+                Every choice below already holds a sensible default for your surfaces. Open any card to adjust it, or create your design context right away.
+              </p>
+            </div>
+
+            <div class="picker-hub-grid">
+              <div class="picker-hub-col">
+                <button class="picker-hub-card" type="button" data-hub-target="06" data-hub-category="material">
+                  <span class="picker-hub-eyebrow">Material</span>
+                  <span class="picker-hub-title">Motion
+                    <svg class="picker-hub-arrow" viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M0 4h14M10 0l4 4-4 4"></path></svg>
+                    <span class="picker-hub-mark" data-hub-mark hidden>Edited</span>
+                  </span>
+                  <span class="picker-hub-summary" data-hub-summary></span>
+                </button>
+                <button class="picker-hub-card" type="button" data-hub-target="08" data-hub-category="material">
+                  <span class="picker-hub-eyebrow">Material</span>
+                  <span class="picker-hub-title">Boundaries
+                    <svg class="picker-hub-arrow" viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M0 4h14M10 0l4 4-4 4"></path></svg>
+                    <span class="picker-hub-mark" data-hub-mark hidden>Edited</span>
+                  </span>
+                  <span class="picker-hub-summary" data-hub-summary></span>
+                </button>
+              </div>
+
+              <div class="picker-hub-col">
+                <button class="picker-hub-card" type="button" data-hub-target="11" data-hub-category="iconography">
+                  <span class="picker-hub-eyebrow">Iconography</span>
+                  <span class="picker-hub-title">Icon set
+                    <svg class="picker-hub-arrow" viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M0 4h14M10 0l4 4-4 4"></path></svg>
+                    <span class="picker-hub-mark" data-hub-mark hidden>Edited</span>
+                  </span>
+                  <span class="picker-hub-summary" data-hub-summary></span>
+                </button>
+                <button class="picker-hub-card" type="button" data-hub-target="09" data-hub-category="material">
+                  <span class="picker-hub-eyebrow">Material</span>
+                  <span class="picker-hub-title">Corners
+                    <svg class="picker-hub-arrow" viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M0 4h14M10 0l4 4-4 4"></path></svg>
+                    <span class="picker-hub-mark" data-hub-mark hidden>Edited</span>
+                  </span>
+                  <span class="picker-hub-summary" data-hub-summary></span>
+                </button>
+              </div>
+
+              <div class="picker-hub-col">
+                <button class="picker-hub-card" type="button" data-hub-target="10" data-hub-category="material">
+                  <span class="picker-hub-eyebrow">Material</span>
+                  <span class="picker-hub-title">Depth
+                    <svg class="picker-hub-arrow" viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M0 4h14M10 0l4 4-4 4"></path></svg>
+                    <span class="picker-hub-mark" data-hub-mark hidden>Edited</span>
+                  </span>
+                  <span class="picker-hub-summary" data-hub-summary></span>
+                </button>
+              </div>
+            </div>
+
+            <div class="picker-actions-stack">
+              <button class="ks-button ks-button-primary" type="button" data-hub-finish data-hub-target="12">
+                Create my design context
+                <span class="ks-button-arrow" aria-hidden="true">
+                  <svg viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square">
+                    <path d="M0 4h14M10 0l4 4-4 4"></path>
+                  </svg>
+                </span>
+              </button>
+              <button class="picker-back" type="button" data-advance="prev">Back</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {questions.filter((question) => question.id !== '07').map((question) => <QuestionScreen {...question} />)}
 
       <section class="picker-screen" data-screen="11" data-step="Icons" aria-hidden="true" aria-labelledby="picker-icons-title">
         <div class="picker-container">
@@ -1278,17 +1264,6 @@ const questions = [
       templates start empty and are filled from the interview by
       scripts/design-context.js. */}
   <section class="dcx-shell" data-dcx-shell hidden aria-label="Design context categories">
-    <header class="dcx-masthead">
-      <span class="dcx-masthead-brand">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M5 2.5 L13.5 2.5 L5.5 21.5 L5 21.5 Q2.5 21.5 2.5 19 L2.5 5 Q2.5 2.5 5 2.5 Z"></path>
-          <path d="M16.5 2.5 L19 2.5 Q21.5 2.5 21.5 5 L21.5 19 Q21.5 21.5 19 21.5 L8.5 21.5 Z"></path>
-        </svg>
-        <span>Impeccable</span>
-      </span>
-      <span class="dcx-masthead-title" data-dcx-product>Design context</span>
-      <span class="dcx-masthead-note">Assembled from your interview &middot; answers saved</span>
-    </header>
     <div class="dcx-grid">
 
       <div class="dcx-badge" data-reveal style="--reveal-delay: 0.45s" aria-hidden="true">
@@ -1642,13 +1617,15 @@ const questions = [
       controls()[0]?.focus();
     };
 
-    /* Screens 05 through 11 are reachable only from the configure hub, so
-       both their CTA and their Back return there rather than to the DOM
-       neighbor. The hub itself and the review screen keep the ordinary
-       rule: Back on the hub is the font pair, Back on the review's error
-       box is the icons screen. */
+    /* Motion, boundaries, corners, depth, and icons are reachable only
+       from the configure hub, so both their CTA and their Back return
+       there rather than to the DOM neighbor. Type scale (05) and layout
+       (07) sit on the linear path ahead of the hub and follow DOM order.
+       The hub itself and the review screen keep the ordinary rule: Back
+       on the hub is the layout screen (or type scale when layout is
+       skipped), Back on the review's error box is the icons screen. */
     const HUB_SCREEN = '04b';
-    const HUB_RETURNS = new Set(['05', '06', '07', '08', '09', '10', '11']);
+    const HUB_RETURNS = new Set(['06', '08', '09', '10', '11']);
     const screenIndex = (id) => screens.findIndex((screen) => screen.dataset.screen === id);
 
     form.onclick = (e) => {
