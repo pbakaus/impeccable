@@ -125,12 +125,16 @@ describe('detectUrl — browser-only fixtures', () => {
     const contrast = f.filter(r => r.antipattern === 'low-contrast');
     const snippets = contrast.map(r => r.snippet || '').join('\n');
     assert.doesNotMatch(snippets, /on #ffffff/, `light-on-dark text was measured against an assumed white body:\n${snippets}`);
-    // Flag column: muted ink on the ground, muted ink through a transparent
-    // wrapper, and light ink on a translucent light wash (which only fails
-    // once the wash is composited over the stops). Pass column: light text on
-    // the ground and on a raised solid, dark ink on the frosted wash (which
-    // only passes with the wash composited), and a legacy hex-stop gradient.
-    assert.equal(contrast.length, 3, `expected the 3 flag-column cases, got ${contrast.length}:\n${snippets}`);
+    // Each FLAG case is pinned to its full text-on-background signature (the
+    // hexes are the engine's own deterministic oklch conversions), so an
+    // offsetting miss and false positive cannot cancel out — in particular
+    // the frosted pair: flag-light-on-frosted must be measured against the
+    // COMPOSITED wash (#dcdbd8), never a raw dark stop, while count === 3
+    // proves no pass-column case (like pass-dark-on-frosted) flags instead.
+    assert.match(snippets, /text #2e2e2e on #010101/, `flag-muted-direct missing against the darker stop:\n${snippets}`);
+    assert.match(snippets, /text #333333 on #010101/, `flag-muted-nested missing against the darker stop:\n${snippets}`);
+    assert.match(snippets, /text #d7d7d7 on #dcdbd8/, `flag-light-on-frosted missing against the composited wash:\n${snippets}`);
+    assert.equal(contrast.length, 3, `expected exactly the 3 flag-column cases, got ${contrast.length}:\n${snippets}`);
   });
 
   it('shadowed form.id: a <form> with <input name="id"> does not crash the scan (issue #407)', async () => {
