@@ -331,13 +331,25 @@ test('picker color math round-trips sRGB and clips out-of-gamut OKLCH', async ()
 test('neutral contrast issue flags mid-tones and low primary separation', async () => {
   const { neutralContrastIssue } = await import(colorModule);
   // The fixture cue palette: near-white neutral under a deep green primary.
-  assert.equal(neutralContrastIssue({ neutral: '#F2EFE8', primary: '#1E4A42' }), null);
+  assert.deepEqual(neutralContrastIssue({ neutral: '#F2EFE8', primary: '#1E4A42' }), []);
   // Near-black neutral under a light primary is the other healthy shape.
-  assert.equal(neutralContrastIssue({ neutral: '#141414', primary: '#E8C36A' }), null);
-  // A mid-tone neutral: neither fixed ink reaches 7:1 on it.
-  assert.match(neutralContrastIssue({ neutral: '#777777', primary: '#1E4A42' }) ?? '', /near-white or near-black/);
-  // A primary that melts into the neutral fails the 3:1 separation check.
-  assert.match(neutralContrastIssue({ neutral: '#F2EFE8', primary: '#E8E4DC' }) ?? '', /3:1/);
+  assert.deepEqual(neutralContrastIssue({ neutral: '#141414', primary: '#E8C36A' }), []);
+  // A mid-tone neutral: neither fixed ink reaches 7:1 on it. The near-white
+  // primary keeps the separation check passing, so this is one line only.
+  assert.deepEqual(
+    neutralContrastIssue({ neutral: '#777777', primary: '#F5F2EA' }),
+    ['This background is too close to a middle gray, so text on it will be hard to read. Try a much lighter or much darker color.'],
+  );
+  // A primary that melts into a healthy near-white neutral: one line only.
+  assert.deepEqual(
+    neutralContrastIssue({ neutral: '#F2EFE8', primary: '#E8E4DC' }),
+    ['Your main color and this background are too similar, so buttons and cards will blend in. Try more difference between them.'],
+  );
+  // A mid-tone the primary also melts into reports both, mid-tone first.
+  const both = neutralContrastIssue({ neutral: '#777777', primary: '#8A8A8A' });
+  assert.equal(both.length, 2);
+  assert.match(both[0], /middle gray/);
+  assert.match(both[1], /too similar/);
 });
 
 test('rejects raw, encoded, and double-encoded path traversal', async (t) => {

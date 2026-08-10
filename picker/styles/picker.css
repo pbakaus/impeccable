@@ -219,7 +219,8 @@ body.picker-page {
   padding-inline: 56px;
 }
 
-.picker-screen[data-screen="01"] .picker-container {
+.picker-screen[data-screen="01"] .picker-container,
+.picker-screen[data-screen="12"] .picker-container {
   padding-inline: 75px;
 }
 
@@ -1047,6 +1048,101 @@ body.picker-page {
 /* The tip has said its piece by the time the band is moving, and under the
    pointer it would cover the color being placed. */
 .picker-band-grip[data-dragging].picker-tip::after {
+  opacity: 0;
+  transition: none;
+}
+
+/* The contrast alert. A small raised chip pinned to the neutral swatch's
+   free corner (grip top left, tools top right, hex readout bottom left),
+   shown by syncNeutralAlert() whenever the working neutral fails a check.
+   The chip borrows the tools' raised-surface vocabulary so the vermilion
+   glyph reads on any color the visitor picks. */
+.picker-band-alert {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 2;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  background: var(--ks-lacquer-raised);
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+  color: var(--ks-vermilion);
+  cursor: help;
+}
+
+/* display: grid beats the hidden attribute's UA rule, so the healthy
+   state needs the attribute spelled out. */
+.picker-band-alert[hidden] {
+  display: none;
+}
+
+.picker-band-alert svg {
+  width: 16px;
+  height: 16px;
+}
+
+.picker-band-alert:focus-visible {
+  outline: 2px solid var(--ks-patina);
+  outline-offset: 2px;
+}
+
+/* The badge's explanation. A real element rather than a .picker-tip
+   pseudo-element so it can carry role="tooltip", be named by
+   aria-describedby, and stack one line per issue. Right-aligned over the
+   badge because the neutral band is the strip's last column and a
+   centered tip would run off the panel; the arrow below points back at
+   the badge. Revealed by the badge's hover and keyboard focus only. */
+.picker-band-alert-tip {
+  position: absolute;
+  right: 6px;
+  bottom: 44px;
+  z-index: 12;
+  width: max-content;
+  max-width: 240px;
+  padding: 8px 10px;
+  display: grid;
+  gap: 6px;
+  opacity: 0;
+  background: var(--ks-lacquer-raised);
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+  color: var(--ks-text);
+  font-size: 0.76rem;
+  line-height: 1.35;
+  pointer-events: none;
+  transform: translateY(3px);
+  transition:
+    opacity 180ms var(--ks-ease),
+    transform 180ms var(--ks-ease);
+}
+
+.picker-band-alert-tip span {
+  display: block;
+}
+
+.picker-band-alert-tip::after {
+  content: "";
+  position: absolute;
+  right: 13px;
+  bottom: -5px;
+  width: 8px;
+  height: 8px;
+  background: var(--ks-lacquer-raised);
+  border-right: 1px solid var(--ks-rule);
+  border-bottom: 1px solid var(--ks-rule);
+  transform: rotate(45deg);
+}
+
+.picker-band-alert:is(:hover, :focus-visible) + .picker-band-alert-tip {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Same rule the grip's tip follows: nothing explains anything mid-drag. */
+.picker-band[data-dragging] .picker-band-alert-tip {
   opacity: 0;
   transition: none;
 }
@@ -7230,10 +7326,6 @@ body.picker-page {
   opacity: 0;
 }
 
-.picker-palette-hint.is-warning {
-  color: var(--ks-vermilion);
-}
-
 .picker-select {
   width: auto;
 }
@@ -7245,25 +7337,17 @@ body.picker-page {
   color: var(--ks-text-muted);
 }
 
-/* Finish screen: the review copy plus the loader that covers the save and
-   the handoff into the design context document. */
+/* Finish screen: the start-screen title treatment over the same hero art,
+   with a loader that spans the text block. */
 .picker-finish {
-  max-width: 560px;
-  gap: 18px;
-}
-
-.picker-finish-lede {
-  margin: 0;
-  color: var(--ks-text-muted);
-  font-size: 1.05rem;
-  line-height: 1.6;
-  text-wrap: pretty;
+  max-width: 620px;
+  gap: 28px;
+  color: var(--ks-champagne);
 }
 
 .picker-finish-loader {
-  width: min(360px, 100%);
+  width: 100%;
   height: 2px;
-  margin-top: 10px;
   background: color-mix(in oklab, var(--ks-text) 14%, transparent);
   overflow: hidden;
 }
@@ -7284,15 +7368,6 @@ body.picker-page {
 @keyframes picker-finish-sweep {
   from { translate: -100% 0; }
   to { translate: 380% 0; }
-}
-
-.picker-finish-status {
-  margin: 0;
-  min-height: 1.6em;
-  color: var(--ks-text-faint);
-  font-size: 0.84rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .picker-finish-error {
@@ -7323,6 +7398,7 @@ body.picker-page {
   .picker-icon-button,
   .picker-band-tools,
   .picker-tip::after,
+  .picker-band-alert-tip,
   .picker-palette-hint,
   .picker-strategy-option,
   .picker-artboard:not(.picker-preview-type) :is(

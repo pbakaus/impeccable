@@ -306,6 +306,25 @@ body.dcx-open { overflow: hidden; background: linear-gradient(180deg, var(--ks-l
 .anim-join { opacity: 0.25; transition: opacity 0.5s var(--ks-ease); }
 .dcx-tile:hover .anim-join { opacity: 1; }
 
+/* Typography: ink-only at rest; gold draws in on hover. */
+.dcx-tile--typography:not(:hover) .anim-join {
+  opacity: 0;
+}
+
+.dcx-tile--typography:not(:hover) :is(.anim-draw, .anim-draw-delay) {
+  animation: none;
+  stroke-dashoffset: var(--pl, 999px);
+}
+
+/* Material: wireframe reads quieter than full ink until hover. */
+.dcx-tile--material .dcx-viz-svg :is(rect, line).vz-stroke {
+  transition: stroke 220ms var(--ks-ease);
+}
+
+.dcx-tile--material:not(:hover) .dcx-viz-svg :is(rect, line).vz-stroke {
+  stroke: var(--viz-mist);
+}
+
 /* ============================================================
    Expander — tile-to-fullscreen morph
    ============================================================ */

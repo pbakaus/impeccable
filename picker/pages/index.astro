@@ -665,6 +665,14 @@ const questions = [
                           </button>
                         </div>
                         <input class="picker-native-color" type="color" value="#000000" data-color-input={role} tabindex="-1" aria-label={`Custom ${label} color`} />
+                        {role === 'neutral' && (
+                          <>
+                            <span class="picker-band-alert" data-contrast-alert role="img" tabindex="0" aria-label="Contrast warning" aria-describedby="picker-contrast-tip" hidden>
+                              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" fill-rule="evenodd" d="M12 2.5 22.5 20.5H1.5L12 2.5Z M11 9h2l-.3 5.4h-1.4L11 9Z M12 16.2a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Z"></path></svg>
+                            </span>
+                            <span class="picker-band-alert-tip" role="tooltip" id="picker-contrast-tip" data-contrast-tip></span>
+                          </>
+                        )}
                       </div>
                       <div class="picker-band-foot">
                         <h2>{label}</h2>
@@ -1226,10 +1234,8 @@ const questions = [
       <section class="picker-screen" data-screen="12" data-step="Review" aria-hidden="true" aria-labelledby="picker-finish-copy">
         <div class="picker-container">
           <div class="picker-placeholder picker-finish">
-            <h2 id="picker-finish-copy" class="picker-question-title">Thank you &mdash; that&rsquo;s everything.</h2>
-            <p class="picker-finish-lede">We have all we need to build your design context document. Assembling it now.</p>
+            <h2 id="picker-finish-copy" class="picker-title">Building your design context</h2>
             <div class="picker-finish-loader" data-doc-loader aria-hidden="true"><i></i></div>
-            <p class="picker-finish-status" data-doc-status role="status" aria-live="polite"></p>
             <div class="picker-actions-stack" data-doc-error hidden>
               <p class="picker-finish-error">Your answers could not be saved &mdash; the picker server may have closed.</p>
               <button class="ks-button ks-button-primary" type="button" data-doc-retry>
@@ -1303,7 +1309,7 @@ const questions = [
         <span class="dcx-tile-viz" aria-hidden="true">
           <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="dcx-viz-svg">
             <path d="M6 17 L34 17" stroke="var(--viz-mist)" class="vz-ghost" vector-effect="non-scaling-stroke"></path>
-            <path d="M12 10 L16 17 L20 33 M28 10 L24 17 L20 33" stroke="var(--viz-mist)" stroke-linejoin="round" class="vz-ghost" vector-effect="non-scaling-stroke"></path>
+            <path d="M12 10 L16 17 L20 33 M28 10 L24 17 L20 33" stroke="var(--viz-ink)" stroke-linejoin="round" class="vz-stroke" vector-effect="non-scaling-stroke"></path>
             <path d="M12 10 L28 10 L34 17 L20 33 L6 17 Z" stroke="var(--viz-accent)" stroke-linejoin="round" class="anim-draw anim-join vz-stroke" vector-effect="non-scaling-stroke"></path>
             <circle cx="20" cy="13.5" r="1.4" fill="var(--viz-accent)" class="anim-join"></circle>
           </svg>
@@ -1325,7 +1331,7 @@ const questions = [
       <button class="dcx-tile dcx-tile--typography" type="button" data-category="typography" data-name="Typography" data-reveal style="--reveal-delay: 0.2s" aria-label="Open Typography">
         <span class="dcx-tile-viz" aria-hidden="true">
           <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="dcx-viz-svg">
-            <path d="M10 30L20 10L30 30" stroke="var(--viz-mist)" stroke-linecap="round" stroke-linejoin="round" class="vz-ghost" vector-effect="non-scaling-stroke"></path>
+            <path d="M10 30L20 10L30 30" stroke="var(--viz-ink)" stroke-linecap="round" stroke-linejoin="round" class="vz-stroke" vector-effect="non-scaling-stroke"></path>
             <path d="M10 30L20 10L30 30" stroke="var(--viz-accent)" stroke-linecap="round" stroke-linejoin="round" class="anim-draw anim-join vz-stroke" vector-effect="non-scaling-stroke"></path>
             <path d="M15 22H25" stroke="var(--viz-accent)" stroke-linecap="round" class="anim-draw-delay anim-join vz-stroke" vector-effect="non-scaling-stroke"></path>
           </svg>
@@ -1348,9 +1354,9 @@ const questions = [
       <button class="dcx-tile dcx-tile--material" type="button" data-category="material" data-name="Material" data-reveal style="--reveal-delay: 0.3s" aria-label="Open Material">
         <span class="dcx-tile-viz" aria-hidden="true">
           <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="dcx-viz-svg">
-            <rect x="5" y="10" width="30" height="18.5" stroke="var(--viz-mist)" class="vz-ghost" vector-effect="non-scaling-stroke"></rect>
-            <line x1="23.5" y1="10" x2="23.5" y2="28.5" stroke="var(--viz-mist)" class="vz-ghost" vector-effect="non-scaling-stroke"></line>
-            <line x1="23.5" y1="21.5" x2="35" y2="21.5" stroke="var(--viz-mist)" class="vz-ghost" vector-effect="non-scaling-stroke"></line>
+            <rect x="5" y="10" width="30" height="18.5" stroke="var(--viz-ink)" class="vz-stroke" vector-effect="non-scaling-stroke"></rect>
+            <line x1="23.5" y1="10" x2="23.5" y2="28.5" stroke="var(--viz-ink)" class="vz-stroke" vector-effect="non-scaling-stroke"></line>
+            <line x1="23.5" y1="21.5" x2="35" y2="21.5" stroke="var(--viz-ink)" class="vz-stroke" vector-effect="non-scaling-stroke"></line>
             <path d="M5 28.5C5 18.28 13.28 10 23.5 10C29.85 10 35 15.15 35 21.5C35 25.42 31.82 28.5 27.9 28.5" fill="none" stroke="var(--viz-accent)" stroke-linecap="round" class="anim-draw anim-join vz-stroke" vector-effect="non-scaling-stroke"></path>
           </svg>
         </span>

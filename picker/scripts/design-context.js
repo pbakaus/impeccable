@@ -582,7 +582,6 @@ async function submitAnswers() {
 }
 
 async function finishSequence() {
-  const status = $('[data-doc-status]');
   const errorBox = $('[data-doc-error]');
   const loader = $('[data-doc-loader]');
   errorBox.hidden = true;
@@ -590,25 +589,13 @@ async function finishSequence() {
 
   renderDocument();
 
-  const stages = ['Saving your answers…', 'Assembling the categories…', 'Setting the type…'];
-  let stage = 0;
-  status.textContent = stages[0];
-  const ticker = setInterval(() => {
-    stage = Math.min(stage + 1, stages.length - 1);
-    status.textContent = stages[stage];
-  }, 900);
-
   try {
     /* The pause is real work plus a floor: the document is already built, but
        a reveal that beats the reader's blink reads as a broken redirect. */
     await Promise.all([submitAnswers(), wait(2400)]);
-    clearInterval(ticker);
-    status.textContent = 'Ready.';
     revealDocument();
   } catch {
-    clearInterval(ticker);
     loader.setAttribute('data-stalled', '');
-    status.textContent = '';
     errorBox.hidden = false;
   }
 }

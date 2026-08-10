@@ -120,8 +120,10 @@ const NEUTRAL_INK_FLOOR = 7;
 const NEUTRAL_PRIMARY_FLOOR = 3;
 
 /**
- * One warning sentence when the palette's neutral will cause contrast
- * trouble, or null when it is safe.
+ * Plain-language warnings when the palette's neutral will cause contrast
+ * trouble: an array with one line per failed check, empty when it is safe.
+ * The checks run independently, so a neutral that fails both reports both,
+ * mid-tone first.
  *
  * Check 1: the better of the two fixed inks must reach 7:1 (the WCAG AAA
  * body-text figure) on the neutral. The inks are near-black and near-white,
@@ -131,6 +133,9 @@ const NEUTRAL_PRIMARY_FLOOR = 3;
  * Check 2: the primary must reach 3:1 (WCAG 1.4.11 non-text contrast)
  * against the neutral, because primary button fills and accents sit directly
  * on neutral surfaces and readableOn() only rescues text, never fills.
+ *
+ * The strings are read by people configuring a palette, not by developers:
+ * no ratios, no standards names. Step 8's test matches on them.
  */
 export function neutralContrastIssue({ neutral, primary }) {
   const surface = relativeLuminance(neutral);
@@ -138,11 +143,12 @@ export function neutralContrastIssue({ neutral, primary }) {
     ratio(INK_DARK_LUMINANCE, surface),
     ratio(INK_LIGHT_LUMINANCE, surface),
   );
+  const issues = [];
   if (bestInk < NEUTRAL_INK_FLOOR) {
-    return 'This neutral is a mid-tone: even the strongest text ink stays below 7:1 on it, so type will strain on every surface. Pick a near-white or near-black neutral.';
+    issues.push('This background is too close to a middle gray, so text on it will be hard to read. Try a much lighter or much darker color.');
   }
   if (ratio(relativeLuminance(primary), surface) < NEUTRAL_PRIMARY_FLOOR) {
-    return 'Your primary sits under 3:1 against this neutral, so buttons and accents will blend into the surfaces behind them. Push the two further apart.';
+    issues.push('Your main color and this background are too similar, so buttons and cards will blend in. Try more difference between them.');
   }
-  return null;
+  return issues;
 }

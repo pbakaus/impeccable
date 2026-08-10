@@ -286,7 +286,7 @@ function renderPreview() {
   if (!cards.length) return;
   for (const role of ROLES) preview.style.setProperty(`--pv-${role}`, state().colors[role]);
   preview.style.setProperty('--pv-n-ink', contrastInk(state().colors.neutral));
-  syncNeutralWarning();
+  syncNeutralAlert();
 }
 
 /* The prefix exists for the strategy stage, which needs the committed colors
@@ -1176,40 +1176,31 @@ function loadCustomFace({ heading, body }) {
   }
 }
 
-/* The hint shows one of three things, in priority order: the neutral
-   contrast warning while the working neutral is bad, the hovered or edited
-   role's guidance, or the idle instruction. The warning wins so an edit that
-   breaks the neutral is reported at the moment it happens, and the role copy
-   comes back on its own the moment the neutral is fixed. */
-let hintRole = 'idle';
-let neutralWarning = null;
-
-function hintCopy() {
-  return neutralWarning ?? hint.dataset[hintRole] ?? hint.dataset.idle;
-}
-
-function paintHint() {
-  const wanted = hintCopy();
-  if (hint.textContent === wanted) {
-    hint.classList.toggle('is-warning', Boolean(neutralWarning));
-    return;
-  }
+function setActiveRole(role) {
+  if (hint.textContent === hint.dataset[role]) return;
   hint.classList.add('is-changing');
   setTimeout(() => {
-    hint.textContent = hintCopy();
-    hint.classList.toggle('is-warning', Boolean(neutralWarning));
+    hint.textContent = hint.dataset[role];
     hint.classList.remove('is-changing');
   }, 90);
 }
 
-function setActiveRole(role) {
-  hintRole = role;
-  paintHint();
-}
+/* The contrast alert: a danger badge on the neutral swatch, with its
+   explanation in the sibling tooltip. Re-read from renderPreview() on
+   every render, so every path that can change which color sits in the
+   neutral slot (inputs, tints, rings, card switch, reset, reorder)
+   lands here. One block-level line per failed check, mid-tone first. */
+const alertBadge = $('[data-contrast-alert]', panel);
+const alertTip = $('[data-contrast-tip]', panel);
 
-function syncNeutralWarning() {
-  neutralWarning = cards.length ? neutralContrastIssue(state().colors) : null;
-  paintHint();
+function syncNeutralAlert() {
+  const issues = cards.length ? neutralContrastIssue(state().colors) : [];
+  alertBadge.hidden = issues.length === 0;
+  alertTip.replaceChildren(...issues.map((text) => {
+    const line = document.createElement('span');
+    line.textContent = text;
+    return line;
+  }));
 }
 
 function setColor(role, hex, detached = true) {
