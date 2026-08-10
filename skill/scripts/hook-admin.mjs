@@ -857,7 +857,16 @@ function reset(cwd) {
   if (removed.length) parts.push(`Reset design hook config and cache (removed: ${removed.join(', ')}).`);
   if (prunedManifests.length) parts.push(`Removed hook entries from: ${prunedManifests.join(', ')}.`);
   if (stateFailures.length) parts.push(`Could not remove: ${stateFailures.join(', ')}.`);
-  if (manifestFailures.length) parts.push(`Could not prune manifests for: ${manifestFailures.join(', ')}.`);
+  if (manifestFailures.length) {
+    // A surviving manifest entry (permissions, disk full) means the exact
+    // artifact this fix set out to prune can still invoke a hook -- config
+    // has already been fully reset by this point, so an agent or human
+    // reading a bare success message would have no reason to expect that.
+    // Fatal for the same reason a config persistence failure is fatal above:
+    // this is not a partial success, it's an incomplete reset.
+    parts.push(`Could not prune manifests for: ${manifestFailures.join(', ')}.`);
+    throw new Error(parts.join(' '));
+  }
   if (!parts.length) return 'No hook config, cache, or manifest entries to remove. Already at defaults.';
   return parts.join(' ');
 }

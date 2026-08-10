@@ -1097,6 +1097,36 @@ describe('hook-admin.mjs', () => {
     }
   });
 
+  it('reset throws when a manifest cannot be pruned, even though config was already reset', () => {
+    // Greptile's second follow-up finding: config reset and manifest pruning
+    // are separate steps, and only config failures were fatal. A manifest
+    // surviving (permissions) after config was already cleared is still an
+    // incomplete reset -- the manifest is the exact artifact this whole fix
+    // exists to remove -- so it must exit non-zero too, not report success.
+    fs.mkdirSync(path.join(cwd, '.claude', 'skills', 'impeccable', 'scripts'), { recursive: true });
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({ hook: { enabled: false } }));
+    const manifestPath = path.join(cwd, '.claude', 'settings.local.json');
+    fs.writeFileSync(manifestPath, JSON.stringify({
+      hooks: {
+        PostToolUse: [
+          { matcher: 'OtherTool', hooks: [{ type: 'command', command: 'node "./local-hook.mjs"' }] },
+          { matcher: 'Edit', hooks: [{ type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' }] },
+        ],
+      },
+    }));
+    fs.chmodSync(manifestPath, 0o444);
+
+    try {
+      assert.throws(() => runAdmin(['reset']), /Could not prune manifests for: \.claude/);
+      // Fail-safe: config is disabled either way, even though the manifest
+      // pruning failure is what makes the overall command exit non-zero.
+      assert.equal(fs.existsSync(getConfigPath(cwd)), false, 'config was still fully reset even though manifest pruning failed');
+    } finally {
+      fs.chmodSync(manifestPath, 0o644);
+    }
+  });
+
   it('reset rolls back the shared config when the local config fails after it (partial-reset guard)', () => {
     // Greptile's follow-up finding: shared config.json succeeds, then
     // config.local.json fails -- reset() must not leave the shared file
