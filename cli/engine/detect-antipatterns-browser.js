@@ -2303,7 +2303,7 @@ function checkHtmlPatterns(html, corpora) {
     const start = Math.max(0, gm.index - 200);
     const context = styleText.substring(start, gm.index + gm[0].length + 200);
     if (/gradient/i.test(context)) {
-      findings.push({ id: 'gradient-text', snippet: 'background-clip: text + gradient' });
+      findings.push({ id: 'gradient-text', snippet: 'background-clip: text + gradient', selector: enclosingCssSelector(styleText, gm.index) || undefined });
       break;
     }
   }
@@ -2369,7 +2369,7 @@ function checkHtmlPatterns(html, corpora) {
     const animationToken = bounceMatch[1]
       .split(/[,\s]+/)
       .find((part) => /bounce|elastic|wobble|jiggle|spring/i.test(part));
-    findings.push({ id: 'bounce-easing', snippet: `animation: ${animationToken || bounceMatch[1].trim()}` });
+    findings.push({ id: 'bounce-easing', snippet: `animation: ${animationToken || bounceMatch[1].trim()}`, selector: enclosingCssSelector(styleText, bounceMatch.index) || undefined });
   }
 
   // Overshoot cubic-bezier
@@ -2378,7 +2378,7 @@ function checkHtmlPatterns(html, corpora) {
   while ((bm = bezierRe.exec(styleText)) !== null) {
     const y1 = parseFloat(bm[2]), y2 = parseFloat(bm[4]);
     if (y1 < -0.1 || y1 > 1.1 || y2 < -0.1 || y2 > 1.1) {
-      findings.push({ id: 'bounce-easing', snippet: `cubic-bezier(${bm[1]}, ${bm[2]}, ${bm[3]}, ${bm[4]})` });
+      findings.push({ id: 'bounce-easing', snippet: `cubic-bezier(${bm[1]}, ${bm[2]}, ${bm[3]}, ${bm[4]})`, selector: enclosingCssSelector(styleText, bm.index) || undefined });
       break;
     }
   }
