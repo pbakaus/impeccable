@@ -712,7 +712,26 @@ function createRequestHandler({ detectScript, liveScriptParts }) {
     }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+    if (req.method === 'OPTIONS') {
+      // Private Network Access: Chrome inserts this preflight for any request
+      // from a public or private page to a loopback target, independent of
+      // CORS mode -- including the plain <script src> live-browser.js uses to
+      // load /detect.js from a page under review at a real https origin. It
+      // answers a different question than the Origin/token check above
+      // ("may this network path be reached at all" vs. "may the response be
+      // read"), so granting it here does not loosen that check: routes that
+      // matter (/live.js, the POST endpoints) still enforce their own
+      // `?token=` regardless of this header, and /detect.js is already
+      // unauthenticated by design. Only emit it when the browser actually
+      // asked (Access-Control-Request-Private-Network: true), never blanket.
+      // https://developer.chrome.com/blog/private-network-access-preflight
+      if (req.headers['access-control-request-private-network'] === 'true') {
+        res.setHeader('Access-Control-Allow-Private-Network', 'true');
+      }
+      res.writeHead(204);
+      res.end();
+      return;
+    }
 
     const p = url.pathname;
 

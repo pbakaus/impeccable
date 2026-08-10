@@ -475,6 +475,40 @@ describe('live-server integration', () => {
     assert.equal(res.headers.get('access-control-allow-origin'), origin);
   });
 
+  it('CORS: Private Network Access preflight gets Access-Control-Allow-Private-Network', async () => {
+    // Chrome sends this preflight whenever a public or private page requests
+    // a loopback subresource, e.g. the <script src="http://localhost:PORT/detect.js">
+    // live-browser.js injects into a deployed https page under review. Without
+    // this header the browser refuses the request outright and the load hangs
+    // rather than erroring. This must work even for an origin that gets no
+    // Access-Control-Allow-Origin, since PNA gates network reachability, not
+    // response readability.
+    const deployed = 'https://example.com';
+    const preflight = await fetch(`http://localhost:${server.port}/detect.js`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: deployed,
+        'Access-Control-Request-Method': 'GET',
+        'Access-Control-Request-Private-Network': 'true',
+      },
+    });
+    assert.equal(preflight.status, 204);
+    assert.equal(preflight.headers.get('access-control-allow-private-network'), 'true');
+    // Untouched: an unauthorized origin still gets no ACAO, so a CORS-mode
+    // fetch still cannot read the response even though PNA now lets the
+    // request reach the server.
+    assert.equal(preflight.headers.get('access-control-allow-origin'), null);
+  });
+
+  it('CORS: a preflight that does not ask for PNA does not get the header', async () => {
+    const preflight = await fetch(`http://localhost:${server.port}/health`, {
+      method: 'OPTIONS',
+      headers: { Origin: 'https://example.com', 'Access-Control-Request-Method': 'GET' },
+    });
+    assert.equal(preflight.status, 204);
+    assert.equal(preflight.headers.get('access-control-allow-private-network'), null);
+  });
+
   it('/design-system.json reads DESIGN.md plus .impeccable/design.json', async () => {
     const tmp = mkdtempSync(join(tmpdir(), 'impeccable-design-system-'));
     let designServer;
