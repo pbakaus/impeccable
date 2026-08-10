@@ -8,25 +8,54 @@
      set via `background:` shorthand, so the body's computed backgroundColor
      is transparent and the ground exists only as a backgroundImage whose
      stops serialize in oklch. The detector must measure text against those
-     stops, never against an assumed white body. */
+     stops (composited under any translucent layers), never against an
+     assumed white body. */
   body {
     margin: 0;
     padding: 48px;
     background: linear-gradient(180deg, oklch(7% 0.006 95), oklch(4% 0.004 95));
     font-family: Arial, sans-serif;
   }
+  body > * { margin: 0 0 32px; }
+
+  /* ── Should flag ─────────────────────────────────────────────────── */
+  .flag-muted-direct {
+    width: 560px;
+    color: oklch(30% 0 0);
+    font-size: 16px;
+    line-height: 1.7;
+  }
+  .flag-muted-nested-wrapper { width: 560px; }
+  .flag-muted-nested {
+    color: oklch(32% 0 0);
+    font-size: 16px;
+    line-height: 1.7;
+    margin: 0;
+  }
+  .frosted-light {
+    width: 480px;
+    padding: 24px;
+    background: rgba(250, 249, 246, 0.88);
+    border-radius: 4px;
+  }
+  .flag-light-on-frosted {
+    color: oklch(88% 0 0);
+    font-size: 15px;
+    line-height: 1.6;
+    margin: 0;
+  }
+
+  /* ── Should pass ─────────────────────────────────────────────────── */
   .pass-hero-title {
     width: 640px;
     color: oklch(91% 0 0);
     font-size: 48px;
-    margin: 0 0 16px;
   }
   .pass-hero-body {
     width: 560px;
     color: oklch(88% 0 0);
     font-size: 16px;
     line-height: 1.7;
-    margin: 0 0 32px;
   }
   .pass-on-raised {
     width: 420px;
@@ -34,14 +63,20 @@
     background: oklch(11% 0.006 95);
     color: oklch(88% 0 0);
     font-size: 15px;
-    margin: 0 0 32px;
   }
-  .flag-muted-ink {
-    width: 560px;
-    color: oklch(30% 0 0);
-    font-size: 16px;
-    line-height: 1.7;
-    margin: 0;
+  .pass-dark-on-frosted {
+    color: oklch(15% 0.01 95);
+    font-size: 15px;
+    line-height: 1.6;
+    margin: 0 0 12px;
+  }
+  .pass-hex-gradient {
+    width: 520px;
+    padding: 24px;
+    background-image: linear-gradient(180deg, #14120f, #0a0908);
+    color: oklch(90% 0 0);
+    font-size: 15px;
+    line-height: 1.6;
   }
 </style>
 </head>
@@ -49,6 +84,14 @@
   <h1 class="pass-hero-title">Light display text on the lacquer gradient</h1>
   <p class="pass-hero-body">This paragraph sits directly on the body's dark gradient ground. Its near-white ink clears WCAG AA against both gradient stops by a wide margin, so a detector that measures the real ground must not flag it. A detector that assumes a white body flags it at about 1.3:1.</p>
   <div class="pass-on-raised">Light text on a raised solid oklch surface between the text and the body gradient still resolves through the normal opaque-ancestor walk.</div>
-  <p class="flag-muted-ink">This muted dark-gray ink genuinely fails contrast against both stops of the dark gradient ground, which proves the gradient stops are being measured instead of the checks silently skipping.</p>
+  <div class="frosted-light">
+    <p class="pass-dark-on-frosted">Dark ink on a translucent light wash over the dark gradient. The wash composites to a light surface, so this passes; measuring raw gradient stops would wrongly flag it.</p>
+    <p class="flag-light-on-frosted">Light ink on the same translucent light wash genuinely fails once the wash is composited over the stops; raw stops would wrongly pass it.</p>
+  </div>
+  <p class="flag-muted-direct">This muted dark-gray ink genuinely fails contrast against both stops of the dark gradient ground, which proves the gradient stops are being measured instead of the checks silently skipping.</p>
+  <div class="flag-muted-nested-wrapper">
+    <p class="flag-muted-nested">Muted ink reached through a transparent wrapper still resolves to the body gradient and still fails against its stops.</p>
+  </div>
+  <div class="pass-hex-gradient">A non-body gradient with legacy hex stops keeps working through the original rgb/hex parser, and light text on it passes.</div>
 </body>
 </html>
