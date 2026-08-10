@@ -743,16 +743,48 @@ function addIgnoreValue(cwd, args) {
   return `Added ${parsed.rule}=${parsed.value}${scopeSuffix} to ${scope} (${path.relative(cwd, target) || target}).`;
 }
 
+// Best-effort restore of files reset() already mutated, used when a later
+// step in the same reset() call fails. Never throws itself -- a restore
+// failure (the underlying disk problem persisting) is reported as part of
+// the original error, not swallowed, but must not mask it with a second
+// exception.
+function restoreConfigBackups(backups) {
+  const restoreFailures = [];
+  for (const { filePath, existed, content } of backups) {
+    try {
+      if (existed) {
+        fs.writeFileSync(filePath, content);
+      } else {
+        fs.unlinkSync(filePath);
+      }
+    } catch (err) {
+      restoreFailures.push(`${filePath} (${err.message || err})`);
+    }
+  }
+  return restoreFailures;
+}
+
 function reset(cwd) {
   const removed = [];
+  const configBackups = [];
   const configFailures = [];
   // Unified files may hold non-hook keys (e.g. updateCheck); strip only the
   // hook/detector subtrees and keep the rest, deleting the file only if nothing remains.
+  //
+  // Config + local config reset as one all-or-nothing step: back up each
+  // file's exact on-disk bytes before mutating it, so that if the second
+  // file fails after the first already succeeded, the first is rolled back
+  // rather than left reset while the second (which may still carry
+  // `hook.enabled: true`) is untouched -- a partial reset that is neither
+  // the old state nor the new one, and that manifest pruning below must
+  // never run against.
   for (const filePath of [getConfigPath(cwd), getLocalConfigPath(cwd)]) {
     try {
       const raw = readRawConfigFile(filePath).raw;
       if (!raw || typeof raw !== 'object' || Array.isArray(raw) || (!('hook' in raw) && !('detector' in raw))) continue;
       const { hook, detector, ...rest } = raw;
+      const existed = fs.existsSync(filePath);
+      configBackups.push({ filePath, existed, content: existed ? fs.readFileSync(filePath) : null });
       if (Object.keys(rest).length === 0) {
         fs.unlinkSync(filePath);
       } else {
@@ -760,25 +792,36 @@ function reset(cwd) {
       }
       removed.push(path.relative(cwd, filePath) || filePath);
     } catch (err) {
-      // A write/unlink failure here (permissions, disk full) must not be
-      // silently swallowed: this file may still carry `hook.enabled: true`,
-      // so pruning manifests below would leave `status` reporting enabled
-      // while nothing actually invokes the hook -- reset()'s own version of
-      // the exact config/manifest mismatch issue #512 was about.
       configFailures.push(`${path.relative(cwd, filePath) || filePath} (${err.message || err})`);
     }
   }
   if (configFailures.length) {
-    throw new Error(`Could not reset hook config, so leaving manifests untouched to avoid reporting a stale enabled state: ${configFailures.join(', ')}`);
+    // A write/unlink failure here (permissions, disk full) must not be
+    // silently swallowed: this file may still carry `hook.enabled: true`,
+    // so pruning manifests below would leave `status` reporting enabled
+    // while nothing actually invokes the hook -- reset()'s own version of
+    // the exact config/manifest mismatch issue #512 was about.
+    const restoreFailures = restoreConfigBackups(configBackups);
+    const restoreNote = restoreFailures.length
+      ? ` Additionally could not restore: ${restoreFailures.join(', ')}.`
+      : ' Restored to the prior state.';
+    throw new Error(`Could not reset hook config, so leaving manifests untouched to avoid reporting a stale enabled state: ${configFailures.join(', ')}.${restoreNote}`);
   }
-  // State files are wholly ours; delete outright.
+  // State files are wholly ours; delete outright. A failure here is reported
+  // (never silently dropped, matching config/manifest handling above) but is
+  // not fatal to the rest of reset() -- unlike config, the cache/pending
+  // files are internal bookkeeping `status` never reports on, so a stale one
+  // is inert, not misleading.
+  const stateFailures = [];
   for (const filePath of [getCachePath(cwd), getPendingPath(cwd)]) {
     try {
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
         removed.push(path.relative(cwd, filePath) || filePath);
       }
-    } catch { /* ignore */ }
+    } catch (err) {
+      stateFailures.push(`${path.relative(cwd, filePath) || filePath} (${err.message || err})`);
+    }
   }
   // Manifests written by `hooks on` outlive config/cache removal (issue #512):
   // with DEFAULT_CONFIG.enabled now false, a surviving manifest entry would
@@ -794,16 +837,27 @@ function reset(cwd) {
   // Pruning sharedDestRel would make a single developer's local `reset` rip
   // the hook out of a file the whole team shares, which is a materially
   // larger blast radius than the local revocation this fix is about.
+  //
+  // pruneImpeccableHookFromManifest's own writes are not internally
+  // try/caught, so one target failing (permissions) must not abort the
+  // remaining targets or crash uncaught with no report of what did succeed.
   const prunedManifests = [];
+  const manifestFailures = [];
   for (const target of HOOK_MANIFEST_TARGETS) {
-    if (pruneImpeccableHookFromManifest(path.join(cwd, target.destRel))) {
-      prunedManifests.push(target.provider);
+    try {
+      if (pruneImpeccableHookFromManifest(path.join(cwd, target.destRel))) {
+        prunedManifests.push(target.provider);
+      }
+    } catch (err) {
+      manifestFailures.push(`${target.provider} (${err.message || err})`);
     }
   }
 
   const parts = [];
   if (removed.length) parts.push(`Reset design hook config and cache (removed: ${removed.join(', ')}).`);
   if (prunedManifests.length) parts.push(`Removed hook entries from: ${prunedManifests.join(', ')}.`);
+  if (stateFailures.length) parts.push(`Could not remove: ${stateFailures.join(', ')}.`);
+  if (manifestFailures.length) parts.push(`Could not prune manifests for: ${manifestFailures.join(', ')}.`);
   if (!parts.length) return 'No hook config, cache, or manifest entries to remove. Already at defaults.';
   return parts.join(' ');
 }

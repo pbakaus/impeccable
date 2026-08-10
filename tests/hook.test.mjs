@@ -1097,6 +1097,35 @@ describe('hook-admin.mjs', () => {
     }
   });
 
+  it('reset rolls back the shared config when the local config fails after it (partial-reset guard)', () => {
+    // Greptile's follow-up finding: shared config.json succeeds, then
+    // config.local.json fails -- reset() must not leave the shared file
+    // reset while the local one (which may still carry hook.enabled: true)
+    // is untouched. That combination is neither the old state nor the new
+    // one, and cache/manifest cleanup must not run against it either.
+    fs.mkdirSync(path.join(cwd, '.claude', 'skills', 'impeccable', 'scripts'), { recursive: true });
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    const sharedPath = getConfigPath(cwd);
+    const localPath = getLocalConfigPath(cwd);
+    const sharedOriginal = JSON.stringify({ updateCheck: true, hook: { enabled: true } });
+    const localOriginal = JSON.stringify({ pinnedVersion: '1.0.0', hook: { consent: 'accepted' } });
+    fs.writeFileSync(sharedPath, sharedOriginal);
+    fs.writeFileSync(localPath, localOriginal);
+    fs.writeFileSync(path.join(cwd, '.claude', 'settings.local.json'), JSON.stringify({
+      hooks: { Stop: [{ type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' }] },
+    }));
+    fs.chmodSync(localPath, 0o444);
+
+    try {
+      assert.throws(() => runAdmin(['reset']), /Could not reset hook config/);
+      assert.equal(fs.readFileSync(sharedPath, 'utf-8'), sharedOriginal, 'shared config must be rolled back to its exact prior content, not left reset');
+      assert.equal(fs.readFileSync(localPath, 'utf-8'), localOriginal, 'local config is unchanged (its write never succeeded)');
+      assert.equal(fs.existsSync(path.join(cwd, '.claude', 'settings.local.json')), true, 'manifest must survive a rolled-back reset');
+    } finally {
+      fs.chmodSync(localPath, 0o644);
+    }
+  });
+
   it('full revocation survives reset -- on, off, reset, status ends disabled (issue #512 repro)', () => {
     fs.mkdirSync(path.join(cwd, '.claude', 'skills', 'impeccable', 'scripts'), { recursive: true });
     runAdmin(['on']);
