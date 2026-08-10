@@ -7682,8 +7682,9 @@ body.picker-page {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  width: fit-content;
   max-width: 100%;
-  padding: 4px 9px;
+  padding: 6px 9px;
   color: var(--ks-text-faint);
   font-size: 12.5px;
   letter-spacing: 0.015em;
