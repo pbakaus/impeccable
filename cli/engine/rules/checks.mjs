@@ -677,7 +677,7 @@ function enclosingCssSelector(cssText, index) {
   if (open === -1) return null;
   const prevClose = Math.max(cssText.lastIndexOf('}', open - 1), cssText.lastIndexOf(';', open - 1));
   const raw = cssText.slice(prevClose + 1, open).trim().replace(/\s+/g, ' ');
-  if (!raw || raw.startsWith('@') || /^\d/.test(raw) || /[{}<>"]/.test(raw)) return null;
+  if (!raw || raw.startsWith('@') || /^\d/.test(raw) || /[{}<]/.test(raw)) return null;
   // Keyframe steps: percentage steps fail the digit test above, but `from`
   // and `to` would read as (never-matching) type selectors and get a valid
   // finding wrongly dropped by the zero-match rule downstream.
@@ -1059,6 +1059,7 @@ function scanCssTextForInsetStripe(content) {
       findings.push({
         id: 'side-tab',
         snippet: `${selector} — inset box-shadow ${ay === 0 ? ax : ay}px stripe (${edge})`,
+        selector,
       });
       break;
     }

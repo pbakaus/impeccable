@@ -683,6 +683,10 @@ if (IS_BROWSER) {
 
       const reasons = collectVisualContrastReasons(el, style);
       if (reasons.length === 0) continue;
+      // Image-only mode filters here, inside the cap: gradient/opacity/filter
+      // candidates earlier in DOM order must not consume the budget and
+      // starve the url()-backed texts this mode exists to sample.
+      if (options.imageOnly && !reasons.includes('image background')) continue;
 
       const textColor = parseRgb(style.color);
       const fontSize = parseFloat(style.fontSize) || 16;
@@ -1175,10 +1179,8 @@ if (IS_BROWSER) {
   }
 
   async function analyzeVisualContrast(options = {}) {
-    let candidates = collectVisualContrastCandidates(options);
-    if (options.imageOnly) {
-      candidates = candidates.filter(candidate => (candidate.reasons || []).includes('image background'));
-    }
+    // imageOnly is enforced inside the collector, before the candidate cap.
+    const candidates = collectVisualContrastCandidates(options);
     const results = [];
     const shouldScrollOffscreen = options.scrollOffscreen === true;
     const restoreScroll = { x: window.scrollX, y: window.scrollY };

@@ -1468,7 +1468,7 @@ function enclosingCssSelector(cssText, index) {
   if (open === -1) return null;
   const prevClose = Math.max(cssText.lastIndexOf('}', open - 1), cssText.lastIndexOf(';', open - 1));
   const raw = cssText.slice(prevClose + 1, open).trim().replace(/\s+/g, ' ');
-  if (!raw || raw.startsWith('@') || /^\d/.test(raw) || /[{}<>"]/.test(raw)) return null;
+  if (!raw || raw.startsWith('@') || /^\d/.test(raw) || /[{}<]/.test(raw)) return null;
   // Keyframe steps: percentage steps fail the digit test above, but `from`
   // and `to` would read as (never-matching) type selectors and get a valid
   // finding wrongly dropped by the zero-match rule downstream.
@@ -1850,6 +1850,7 @@ function scanCssTextForInsetStripe(content) {
       findings.push({
         id: 'side-tab',
         snippet: `${selector} — inset box-shadow ${ay === 0 ? ax : ay}px stripe (${edge})`,
+        selector,
       });
       break;
     }
@@ -7105,6 +7106,10 @@ if (IS_BROWSER) {
 
       const reasons = collectVisualContrastReasons(el, style);
       if (reasons.length === 0) continue;
+      // Image-only mode filters here, inside the cap: gradient/opacity/filter
+      // candidates earlier in DOM order must not consume the budget and
+      // starve the url()-backed texts this mode exists to sample.
+      if (options.imageOnly && !reasons.includes('image background')) continue;
 
       const textColor = parseRgb(style.color);
       const fontSize = parseFloat(style.fontSize) || 16;
@@ -7597,10 +7602,8 @@ if (IS_BROWSER) {
   }
 
   async function analyzeVisualContrast(options = {}) {
-    let candidates = collectVisualContrastCandidates(options);
-    if (options.imageOnly) {
-      candidates = candidates.filter(candidate => (candidate.reasons || []).includes('image background'));
-    }
+    // imageOnly is enforced inside the collector, before the candidate cap.
+    const candidates = collectVisualContrastCandidates(options);
     const results = [];
     const shouldScrollOffscreen = options.scrollOffscreen === true;
     const restoreScroll = { x: window.scrollX, y: window.scrollY };

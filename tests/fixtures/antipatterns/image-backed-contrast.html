@@ -16,9 +16,31 @@
   }
   .flag-white-on-light { color: #fdfdfd; font-size: 16px; line-height: 1.6; margin: 0; }
   .pass-ink-on-light { color: #262421; font-size: 16px; line-height: 1.6; margin: 0; }
+  /* Fourteen gradient-backed decoys sit BEFORE the photo panels in DOM
+     order. They are visual-contrast candidates (gradient background) but not
+     image-backed; with the default 12-candidate cap they would starve the
+     image-only pass to zero unless the mode filters inside the collector.
+     Their ink is dark on a light gradient, so no analytic finding fires. */
+  .decoy { display: inline-block; padding: 4px 8px; margin: 0 4px 6px 0; background: linear-gradient(180deg, #f2efe6, #e8e4d8); color: #24211c; font-size: 12px; }
 </style>
 </head>
 <body>
+  <div><span class="decoy-row"></span>
+    <div class="decoy">Decoy 1</div>
+    <div class="decoy">Decoy 2</div>
+    <div class="decoy">Decoy 3</div>
+    <div class="decoy">Decoy 4</div>
+    <div class="decoy">Decoy 5</div>
+    <div class="decoy">Decoy 6</div>
+    <div class="decoy">Decoy 7</div>
+    <div class="decoy">Decoy 8</div>
+    <div class="decoy">Decoy 9</div>
+    <div class="decoy">Decoy 10</div>
+    <div class="decoy">Decoy 11</div>
+    <div class="decoy">Decoy 12</div>
+    <div class="decoy">Decoy 13</div>
+    <div class="decoy">Decoy 14</div>
+  </div>
   <div class="photo-panel">
     <p class="flag-white-on-light">White text on a near-white image background is unreadable, and only pixel sampling can prove it.</p>
   </div>

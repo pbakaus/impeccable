@@ -20,6 +20,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createBrowserDetector, detectUrl, normalizeDesignSystem } from '../cli/engine/detect-antipatterns.mjs';
+import { launchBrowser } from '../cli/engine/engines/browser/detect-url.mjs';
 import { filterDetectionFindings } from '../cli/lib/impeccable-config.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -112,21 +113,31 @@ describe('detectUrl — browser-only fixtures', () => {
     }
   });
 
-  it('image-backed text: the default pass pixel-samples the image itself', async () => {
-    // No visualContrast option: this exercises the image-only DEFAULT mode.
-    // The analytic walk skips url()-backed text; the default visual pass
-    // draws the (same-origin data-URI) image to a canvas and samples real
-    // pixels — white-on-near-white flags, dark ink passes.
-    const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/image-backed-contrast.html`);
-    const contrast = f.filter(r => r.antipattern === 'low-contrast');
-    const snippets = contrast.map(r => r.snippet || '').join('\n');
-    assert.match(snippets, /browser contrast/, `expected a sampled (not analytic) finding:\n${snippets}`);
-    // The sampled finding carries the candidate's text, so each case
-    // attributes: the white-on-light specimen must be the one that flags,
-    // and the dark-ink control must stay clean.
-    assert.match(snippets, /White text on a near-white/, `flag case missing:\n${snippets}`);
-    assert.doesNotMatch(snippets, /Dark ink/, `pass case must not flag:\n${snippets}`);
-    assert.equal(contrast.length, 1, `expected exactly the white-on-light case, got ${contrast.length}:\n${snippets}`);
+  it('image-backed text: the overlay default pass pixel-samples the image itself', async () => {
+    // Drives the OVERLAY entry (impeccableDetectAsync with default options),
+    // not detectUrl's Node-side full fallback — the image-only default mode
+    // lives in the injected bundle. Fourteen gradient decoys precede the
+    // panels: the image-only filter must apply inside the candidate cap, or
+    // they starve the pass and nothing gets sampled. The sampled finding
+    // carries the candidate's text, so the white-on-light specimen must be
+    // the one that flags and the dark-ink control must stay clean.
+    const puppeteer = await import('puppeteer');
+    const browser = await launchBrowser(puppeteer, { headless: true, args: process.env.CI ? ['--no-sandbox', '--disable-setuid-sandbox'] : [] });
+    try {
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1280, height: 800 });
+      await page.goto(`${baseUrl}/fixtures/antipatterns/image-backed-contrast.html`, { waitUntil: 'load' });
+      await page.addScriptTag({ path: path.join(ROOT, 'cli/engine/detect-antipatterns-browser.js') });
+      const groups = await page.evaluate(() => window.impeccableDetectAsync());
+      const contrast = groups.flatMap(g => (g.findings || []).filter(f => f.type === 'low-contrast').map(f => f.detail || f.snippet || ''));
+      const snippets = contrast.join('\n');
+      assert.match(snippets, /browser contrast/, `expected a sampled (not analytic) finding:\n${snippets}`);
+      assert.match(snippets, /White text on a near-white/, `flag case missing:\n${snippets}`);
+      assert.doesNotMatch(snippets, /Dark ink/, `pass case must not flag:\n${snippets}`);
+      assert.equal(contrast.length, 1, `expected exactly the white-on-light case, got ${contrast.length}:\n${snippets}`);
+    } finally {
+      await browser.close().catch(() => {});
+    }
   });
 
   it('scoped-ignore: data-impeccable-ignore waives its subtree in the browser walk', async () => {
