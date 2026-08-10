@@ -984,12 +984,33 @@ describe('hook-admin.mjs', () => {
     }));
 
     const out = runAdmin(['reset']);
+    assert.match(out, /Reset design hook config and cache \(removed:/);
     assert.match(out, /Removed hook entries from: \.claude\./);
 
     const claude = JSON.parse(fs.readFileSync(path.join(cwd, '.claude', 'settings.local.json'), 'utf-8'));
     assert.equal(claude.hooks.PostToolUse.length, 1);
     assert.match(claude.hooks.PostToolUse[0].hooks[0].command, /local-hook\.mjs/);
     assert.equal(claude.hooks.Stop, undefined, 'the impeccable-only Stop array should be dropped entirely');
+  });
+
+  it('reset never touches the shared/committed manifest, only the local one', () => {
+    // .claude/settings.json is the team-shared, typically version-controlled
+    // file; `on` only ever reads it (to decide whether the team already
+    // covers the install) and never writes it. reset() must honor the same
+    // write-scope asymmetry -- a single developer's local reset must not
+    // strip the team's committed hook entries.
+    fs.mkdirSync(path.join(cwd, '.claude', 'skills', 'impeccable', 'scripts'), { recursive: true });
+    const shared = JSON.stringify({
+      hooks: { PostToolUse: [{ matcher: 'Edit', hooks: [{ type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' }] }] },
+    });
+    fs.mkdirSync(path.join(cwd, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(cwd, '.claude', 'settings.json'), shared);
+    fs.writeFileSync(path.join(cwd, '.claude', 'settings.local.json'), shared);
+
+    runAdmin(['reset']);
+
+    assert.equal(fs.readFileSync(path.join(cwd, '.claude', 'settings.json'), 'utf-8'), shared, 'shared settings.json must survive reset untouched');
+    assert.equal(fs.existsSync(path.join(cwd, '.claude', 'settings.local.json')), false, 'the local settings.local.json is still pruned');
   });
 
   it('reset prunes all four provider manifests installed via `on`', () => {
@@ -1000,6 +1021,7 @@ describe('hook-admin.mjs', () => {
     assert.match(fs.readFileSync(path.join(cwd, '.claude', 'settings.local.json'), 'utf-8'), /skills\/impeccable\/scripts\/hook\.mjs/);
 
     const out = runAdmin(['reset']);
+    assert.match(out, /Reset design hook config and cache \(removed:/);
     assert.match(out, /Removed hook entries from: \.claude, \.agents, \.cursor, \.github/);
 
     assert.equal(fs.existsSync(path.join(cwd, '.claude', 'settings.local.json')), false, 'nothing else was in the manifest, so it is removed entirely');
@@ -1025,8 +1047,9 @@ describe('hook-admin.mjs', () => {
     });
     fs.writeFileSync(path.join(cwd, '.claude', 'settings.local.json'), unrelated);
 
-    runAdmin(['reset']);
+    const out = runAdmin(['reset']);
 
+    assert.match(out, /Already at defaults/);
     assert.equal(fs.readFileSync(path.join(cwd, '.claude', 'settings.local.json'), 'utf-8'), unrelated);
   });
 

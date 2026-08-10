@@ -259,7 +259,11 @@ function writeDetectorConfig(cwd, detectorConfig, opts = {}) {
 function mergeHookConfig(existing) {
   const base = existing && typeof existing === 'object' ? existing : {};
   return {
-    enabled: base.enabled === false ? false : true,
+    // Match DEFAULT_CONFIG.enabled (issue #512): absence of an explicit value
+    // means disabled, not enabled. setEnabled() overwrites this immediately
+    // for its own call site, but a future caller relying on this default
+    // alone must not silently re-arm.
+    enabled: base.enabled === true,
     limits: {
       maxFindings: Number.isFinite(base?.limits?.maxFindings) ? base.limits.maxFindings : DEFAULT_CONFIG.limits.maxFindings,
       maxChars: Number.isFinite(base?.limits?.maxChars) ? base.limits.maxChars : DEFAULT_CONFIG.limits.maxChars,
@@ -772,13 +776,18 @@ function reset(cwd) {
   // reset mid-uninstall (skill files gone, manifest not yet cleaned) is
   // exactly the case that most needs this, and pruneImpeccableHookFromManifest
   // already no-ops safely on a missing or markerless file.
+  //
+  // destRel only, never sharedDestRel: `on`/repairHookManifests() only ever
+  // reads sharedDestRel (e.g. a team-committed .claude/settings.json) to
+  // decide whether it already covers the install -- it never writes there.
+  // Pruning sharedDestRel would make a single developer's local `reset` rip
+  // the hook out of a file the whole team shares, which is a materially
+  // larger blast radius than the local revocation this fix is about.
   const prunedManifests = [];
   for (const target of HOOK_MANIFEST_TARGETS) {
-    let prunedThisTarget = false;
-    for (const rel of [target.destRel, target.sharedDestRel].filter(Boolean)) {
-      if (pruneImpeccableHookFromManifest(path.join(cwd, rel))) prunedThisTarget = true;
+    if (pruneImpeccableHookFromManifest(path.join(cwd, target.destRel))) {
+      prunedManifests.push(target.provider);
     }
-    if (prunedThisTarget) prunedManifests.push(target.provider);
   }
 
   const parts = [];
