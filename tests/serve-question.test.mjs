@@ -298,23 +298,87 @@ describe('serve-question', () => {
     assert.ok(url, started.out);
     try {
       const before = await (await fetch(url)).text();
-      assert.ok(!before.includes('awaitNextRound(false)'), 'a fresh round serves the normal page');
+      assert.ok(!before.includes('awaitNextRound(false,'), 'a fresh round serves the normal page');
       // A native refresh bypasses the page's own gated Reload button, so the
       // serving decision has to live here: once a re-roll answer is collected
       // and no replacement has landed, GET / re-enters the bounded shuffle
       // wait instead of re-serving the answered cards.
       await fetch(`${url}answer`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: '' }) });
       const waitingPage = await (await fetch(url)).text();
-      assert.ok(waitingPage.includes('awaitNextRound(false)'), 'a refresh mid re-roll re-enters the shuffle wait');
+      assert.ok(waitingPage.includes('awaitNextRound(false,'), 'a refresh mid re-roll re-enters the shuffle wait');
       const nextPath = path.join(dir, 'next.json');
       writeFileSync(nextPath, JSON.stringify({ ...PAYLOAD, title: 'Second round' }));
       const updated = await run(['--update', '--key', 'refresh', '--payload', nextPath]);
       assert.equal(updated.code, 0, updated.out);
       const after = await (await fetch(url)).text();
       assert.ok(after.includes('Second round'), 'the delivered hand is served');
-      assert.ok(!after.includes('awaitNextRound(false)'), 'the wait ends once the hand lands');
+      assert.ok(!after.includes('awaitNextRound(false,'), 'the wait ends once the hand lands');
     } finally {
       await run(['--stop', '--key', 'refresh']);
+    }
+  });
+
+  it('a refresh cannot renew the delivery deadline: the waiting page inherits what remains and serves stalled and silent once it is spent', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'serve-question-'));
+    const payloadPath = path.join(dir, 'q.json');
+    writeFileSync(payloadPath, JSON.stringify(PAYLOAD));
+    const run = (args) => new Promise((resolve) => {
+      const child = spawn(process.execPath, [SCRIPT, ...args], { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] });
+      let out = '';
+      child.stdout.on('data', (chunk) => { out += chunk; });
+      child.on('exit', (code) => resolve({ code, out }));
+    });
+    const started = await run(['--start', '--payload', payloadPath, '--no-open', '--key', 'deadline', '--timeout', '30', '--idle-grace', '3']);
+    assert.equal(started.code, 0, started.out);
+    const url = started.out.match(/QUESTION URL: (\S+)/)?.[1];
+    assert.ok(url, started.out);
+    try {
+      await fetch(`${url}answer`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: '' }) });
+      const fresh = await (await fetch(url)).text();
+      const budget = Number(fresh.match(/awaitNextRound\(false, (\d+)\);/)?.[1]);
+      assert.ok(budget > 0 && budget <= 3000, `the waiting page carries the remaining allowance, got ${budget}`);
+      assert.match(fresh, /^\s*beat\(\);\s*$/m, 'a live wait still heartbeats');
+      await new Promise((r) => setTimeout(r, 3500));
+      const spent = await (await fetch(url)).text();
+      assert.ok(spent.includes('awaitNextRound(false, 0);'), 'a refresh after the deadline gets no new allowance');
+      assert.ok(!/^\s*beat\(\);\s*$/m.test(spent), 'an expired wait never starts the heartbeat');
+    } finally {
+      await run(['--stop', '--key', 'deadline']);
+    }
+  });
+
+  it('an unloadable next hand fails at --update, and one already on disk is discarded instead of reload-looping', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'serve-question-'));
+    const payloadPath = path.join(dir, 'q.json');
+    writeFileSync(payloadPath, JSON.stringify(PAYLOAD));
+    const run = (args) => new Promise((resolve) => {
+      const child = spawn(process.execPath, [SCRIPT, ...args], { cwd: dir, stdio: ['ignore', 'pipe', 'pipe'] });
+      let out = '';
+      child.stdout.on('data', (chunk) => { out += chunk; });
+      child.stderr.on('data', (chunk) => { out += chunk; });
+      child.on('exit', (code) => resolve({ code, out }));
+    });
+    const started = await run(['--start', '--payload', payloadPath, '--no-open', '--key', 'badhand', '--timeout', '30']);
+    assert.equal(started.code, 0, started.out);
+    const url = started.out.match(/QUESTION URL: (\S+)/)?.[1];
+    assert.ok(url, started.out);
+    try {
+      const badPath = path.join(dir, 'bad.json');
+      writeFileSync(badPath, JSON.stringify({ title: 'No options' }));
+      const rejected = await run(['--update', '--key', 'badhand', '--payload', badPath]);
+      assert.equal(rejected.code, 1, rejected.out);
+      assert.match(rejected.out, /options array/, 'the sender hears why the hand was refused');
+      // A bad file that reaches the disk anyway must not trap the page:
+      // GET / discards it, so /next-status stops reporting a hand that can
+      // never render and the bounded wait resumes instead of reload-looping.
+      await fetch(`${url}answer`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: '' }) });
+      writeFileSync(path.join(dir, '.impeccable', 'questions', 'badhand.next.json'), JSON.stringify({ title: 'No options' }));
+      const page = await (await fetch(url)).text();
+      assert.ok(page.includes('awaitNextRound(false,'), 'the round stays in the wait');
+      const status = await (await fetch(`${url}next-status`)).json();
+      assert.equal(status.ready, false, 'the unloadable hand left the disk');
+    } finally {
+      await run(['--stop', '--key', 'badhand']);
     }
   });
 

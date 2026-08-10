@@ -268,7 +268,13 @@ if (hasFlag('stop')) {
 if (hasFlag('update')) {
   const key = arg('key');
   if (!key || !payloadPath) { console.error('serve-question: --update needs --key and --payload'); process.exit(1); }
-  JSON.parse(fs.readFileSync(payloadPath, 'utf8'));
+  // A hand the server cannot load must fail here, at the sender: delivered
+  // anyway, the page would see ready:true for a round that never renders.
+  const nextRound = JSON.parse(fs.readFileSync(payloadPath, 'utf8'));
+  if (!nextRound || !Array.isArray(nextRound.options) || nextRound.options.length === 0) {
+    console.error('serve-question: --update payload needs an options array; nothing was delivered. Fix the payload and rerun --update on the same key.');
+    process.exit(1);
+  }
   // Liveness mirrors --wait: a fresh page heartbeat is the primary proof, the
   // kill probe is secondary, and EPERM means a sandbox blocked the signal,
   // never a dead server. This is the documented re-roll delivery step, so a
@@ -334,15 +340,17 @@ let options;
 let localImages = [];
 // True between a collected re-roll or followup answer and the --update that
 // replaces the round: the window where GET / must serve the wait, not the
-// answered cards.
+// answered cards. The timestamp anchors the delivery deadline server-side,
+// so a native refresh re-enters the wait with the time already spent, never
+// with a fresh allowance.
 let awaitingNext = false;
+let awaitingNextSince = 0;
 
 function loadRound(json) {
   const parsed = JSON.parse(json);
   if (!parsed || !Array.isArray(parsed.options) || parsed.options.length === 0) {
     throw new Error('payload needs an options array');
   }
-  awaitingNext = false;
   localImages = [];
   const imageSrc = (value) => {
     if (!value) return null;
@@ -382,6 +390,9 @@ function loadRound(json) {
     options = [...options, { ...decorate(parsed.canonCard), id: 'canon', isCanon: true }];
   }
   options = [...options, ...declined];
+  // Last: a round that failed to load anywhere above must leave the waiting
+  // window open, never resurrect the answered cards.
+  awaitingNext = false;
 }
 try { loadRound(raw); } catch (error) { console.error(`serve-question: ${error.message}`); process.exit(1); }
 const detachedKey = hasFlag('detached-serve') ? arg('key') : null;
@@ -390,6 +401,10 @@ const nextFile = () => detachedKey ? path.join(QUESTION_DIR, `${detachedKey}.nex
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 function page(waiting = false) {
+  // The delivery deadline survives refreshes: a waiting page gets whatever
+  // remains of the original allowance, so reloading cannot renew it. Spent
+  // means the page renders already stalled and never starts a heartbeat.
+  const waitBudgetMs = waiting ? Math.max(0, awaitingNextSince + idleGraceMs - Date.now()) : idleGraceMs;
   const flipChip = (label) => `<button type="button" class="chip flip" aria-label="Flip the card"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a8 8 0 1 1-8 8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M4 5.5V12h6.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><span>${label}</span></button>`;
   const expandChip = `<button type="button" class="chip expand" aria-label="Expand the image"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 15v5h-5M20 9V4h-5M4 15v5h5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
   // Structured anatomy: chips and one-line facts render when the payload
@@ -830,7 +845,7 @@ function page(waiting = false) {
   // still gets the goodbye screen, never a loading hand nothing will resolve.
   const FOLLOWUP = ${payload.followup === true && Boolean(detachedKey) ? 'true' : 'false'};
   const beat = () => { try { navigator.sendBeacon('/heartbeat'); } catch { fetch('/heartbeat', { method: 'POST' }); } };
-  beat();
+  ${waiting && waitBudgetMs <= 0 ? '' : 'beat();'}
   const beatTimer = setInterval(beat, 5000);
   // A dead server must fail loudly: awaiting a rejected fetch here used to
   // swallow the click and never print the confirmation, so the user believed
@@ -1079,8 +1094,37 @@ function page(waiting = false) {
     }
     await awaitNextRound(true);
   };
-  async function awaitNextRound(animate) {
+  async function awaitNextRound(animate, budgetMs = ${idleGraceMs}) {
     const grid = document.querySelector('.grid');
+    let poll;
+    let misses = 0;
+    const shuffleStart = Date.now();
+    const stall = (message) => {
+      clearInterval(poll);
+      // A stalled page is an abandoned flow: keep heartbeating and the
+      // daemon never reaches its idle grace, so --wait spins on WAITING
+      // forever. Go silent and let the server reclaim itself. Reload must
+      // not undo that silence: an unconditional reload re-serves the same
+      // unresolved round and its fresh page beats again, so check for a
+      // delivered hand first and only reload when one exists. The re-roll
+      // buttons go too: a stalled page served already expired never disabled
+      // them, and a click would renew the deadline the stall just enforced.
+      clearInterval(beatTimer);
+      document.querySelectorAll('.reroll-btn').forEach(b => b.setAttribute('disabled', ''));
+      grid.innerHTML = '<div class="stall"><p>' + message + '</p><button type="button" class="choose">Reload</button></div>';
+      grid.querySelector('.stall .choose').addEventListener('click', async () => {
+        try {
+          if ((await (await fetch('/next-status')).json()).ready) { location.reload(); return; }
+          grid.querySelector('.stall p').textContent = 'Still nothing to deal. Check the agent session, or answer in the chat instead.';
+        } catch {
+          grid.querySelector('.stall p').textContent = 'The question server went away. Ask the agent to restart it, or answer in the chat instead.';
+        }
+      });
+    };
+    // A refresh that lands after the delivery deadline has nothing left to
+    // wait for: stall before the heartbeat timer's first tick can fire, so
+    // the served page stays silent.
+    if (budgetMs <= 0) { stall('The next hand never arrived. Check the agent session, then reload.'); return; }
     const cardsNow = [...grid.querySelectorAll('.card')];
     if (animate && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
       const g = grid.getBoundingClientRect();
@@ -1102,34 +1146,12 @@ function page(waiting = false) {
     // the skeletons indefinitely. Distinguish them, say so, and offer a way
     // out. The delivery deadline is the server's own idle grace, so the page
     // never gives up on a server that would still accept the hand.
-    let poll;
-    let misses = 0;
-    const shuffleStart = Date.now();
-    const stall = (message) => {
-      clearInterval(poll);
-      // A stalled page is an abandoned flow: keep heartbeating and the
-      // daemon never reaches its idle grace, so --wait spins on WAITING
-      // forever. Go silent and let the server reclaim itself. Reload must
-      // not undo that silence: an unconditional reload re-serves the same
-      // unresolved round and its fresh page beats again, so check for a
-      // delivered hand first and only reload when one exists.
-      clearInterval(beatTimer);
-      grid.innerHTML = '<div class="stall"><p>' + message + '</p><button type="button" class="choose">Reload</button></div>';
-      grid.querySelector('.stall .choose').addEventListener('click', async () => {
-        try {
-          if ((await (await fetch('/next-status')).json()).ready) { location.reload(); return; }
-          grid.querySelector('.stall p').textContent = 'Still nothing to deal. Check the agent session, or answer in the chat instead.';
-        } catch {
-          grid.querySelector('.stall p').textContent = 'The question server went away. Ask the agent to restart it, or answer in the chat instead.';
-        }
-      });
-    };
     poll = setInterval(async () => {
       try {
         const status = await (await fetch('/next-status')).json();
         misses = 0;
         if (status.ready) { clearInterval(poll); location.reload(); }
-        else if (Date.now() - shuffleStart > ${idleGraceMs}) stall('The next hand never arrived. Check the agent session, then reload.');
+        else if (Date.now() - shuffleStart > budgetMs) stall('The next hand never arrived. Check the agent session, then reload.');
       } catch {
         misses += 1;
         if (misses >= 8) stall('The question server went away. Ask the agent to restart it, or answer in the chat instead.');
@@ -1142,9 +1164,9 @@ function page(waiting = false) {
   // A native refresh must not resurrect an answered round: while the server
   // holds a collected re-roll or followup pick with no replacement delivered,
   // it serves the page in waiting mode and the refresh re-enters the same
-  // bounded wait, instead of showing dead cards whose heartbeat props the
-  // daemon forever.
-  ${waiting ? 'awaitNextRound(false);' : ''}
+  // bounded wait, with only the time the original deadline has left, instead
+  // of showing dead cards whose heartbeat props the daemon forever.
+  ${waiting ? `awaitNextRound(false, ${waitBudgetMs});` : ''}
 </script>`;
 }
 
@@ -1152,7 +1174,11 @@ const server = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/') {
     const pending = nextFile();
     if (pending && fs.existsSync(pending)) {
-      try { loadRound(fs.readFileSync(pending, 'utf8')); fs.rmSync(pending); } catch { /* keep current round */ }
+      // A next file the round cannot load has to leave the disk either way:
+      // kept, /next-status stays ready:true and the waiting page reloads
+      // into the same failure without bound.
+      try { loadRound(fs.readFileSync(pending, 'utf8')); } catch { /* keep current round */ }
+      try { fs.rmSync(pending); } catch { /* already gone */ }
     }
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     res.end(page(awaitingNext));
@@ -1216,6 +1242,7 @@ const server = http.createServer((req, res) => {
         ...(chosen?.sketch ? { sketch: chosen.sketch } : {}),
       });
       awaitingNext = (isReroll || followupOpen) && Boolean(detachedKey);
+      if (awaitingNext) awaitingNextSince = Date.now();
       if (detachedKey) {
         fs.mkdirSync(QUESTION_DIR, { recursive: true });
         fs.writeFileSync(answerFile(detachedKey), answer + '\n');
