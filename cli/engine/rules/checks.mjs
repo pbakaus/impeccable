@@ -4934,6 +4934,11 @@ function isRenderedForBrowserRule(el) {
 function checkElementTextOverflowDOM(el) {
   const tag = el.tagName.toLowerCase();
   if (TEXT_OVERFLOW_SKIP_TAGS.has(tag)) return [];
+  // scrollWidth/clientWidth are CSS box-model metrics; on SVG content Chrome
+  // returns arbitrary non-zero values for both (a <text> reported 78/48 while
+  // its rendered length sat comfortably inside its box), so the delta is
+  // noise, not overflow. SVG clips to its own viewport anyway.
+  if (el.namespaceURI === 'http://www.w3.org/2000/svg') return [];
   if (!isRenderedForBrowserRule(el)) return [];
   // Only the element that actually owns overflowing text — not its ancestors,
   // which inherit a wider scrollWidth from the spilling descendant.
