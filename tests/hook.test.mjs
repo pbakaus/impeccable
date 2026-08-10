@@ -1071,6 +1071,32 @@ describe('hook-admin.mjs', () => {
     assert.equal(fs.existsSync(path.join(cwd, '.claude', 'settings.local.json')), false);
   });
 
+  it('reset aborts before pruning manifests when config cannot be persisted', () => {
+    // A config rewrite failure (permissions, disk full) must not be silently
+    // swallowed while manifest pruning proceeds anyway -- that leaves `status`
+    // reporting enabled (the unwritten config) with no manifest left to fire
+    // it, reset()'s own version of the exact mismatch issue #512 fixed.
+    fs.mkdirSync(path.join(cwd, '.claude', 'skills', 'impeccable', 'scripts'), { recursive: true });
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    const configPath = getConfigPath(cwd);
+    // A sibling key (updateCheck) forces the writeFileSync branch instead of
+    // unlink, so a read-only file actually exercises the write failure.
+    fs.writeFileSync(configPath, JSON.stringify({ updateCheck: true, hook: { enabled: true } }));
+    fs.writeFileSync(path.join(cwd, '.claude', 'settings.local.json'), JSON.stringify({
+      hooks: { Stop: [{ type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' }] },
+    }));
+    fs.chmodSync(configPath, 0o444);
+
+    try {
+      assert.throws(() => runAdmin(['reset']), /Could not reset hook config/);
+      assert.equal(fs.existsSync(path.join(cwd, '.claude', 'settings.local.json')), true, 'manifest must survive when config reset failed');
+      const stillThere = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      assert.equal(stillThere.hook.enabled, true, 'the unwritable config is unchanged, still reporting enabled');
+    } finally {
+      fs.chmodSync(configPath, 0o644);
+    }
+  });
+
   it('full revocation survives reset -- on, off, reset, status ends disabled (issue #512 repro)', () => {
     fs.mkdirSync(path.join(cwd, '.claude', 'skills', 'impeccable', 'scripts'), { recursive: true });
     runAdmin(['on']);

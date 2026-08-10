@@ -1237,7 +1237,13 @@ function valueHasHookMarker(value) {
 
 function hookEnabledAt(root) {
   if (truthyEnv(process.env.IMPECCABLE_HOOK_DISABLED)) return false;
-  let enabled = true;
+  // Matches hook-lib.mjs's DEFAULT_CONFIG.enabled (issue #512): absence of an
+  // explicit `hook.enabled` key means disabled, not enabled. Getting this
+  // wrong here is doubly silent -- MANUAL_DETECTOR_REQUIRED (below) only
+  // fires when this function reports the hook inactive, so a stale `true`
+  // default would both skip the real hook (per hook-lib.mjs) AND suppress
+  // the fallback warning that would otherwise tell the agent to scan by hand.
+  let enabled = false;
   for (const name of ['.impeccable/config.json', '.impeccable/config.local.json']) {
     const raw = readJson(path.join(root, name));
     if (raw?.hook && Object.prototype.hasOwnProperty.call(raw.hook, 'enabled')) {

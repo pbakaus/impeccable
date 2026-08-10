@@ -1066,10 +1066,15 @@ describe('context.mjs CLI', () => {
 
     const project = path.join(scratch, 'project');
     fs.mkdirSync(path.join(project, '.codex'), { recursive: true });
+    fs.mkdirSync(path.join(project, '.impeccable'), { recursive: true });
     fs.writeFileSync(path.join(project, 'PRODUCT.md'), '# Acme\n');
     fs.writeFileSync(path.join(project, '.codex', 'hooks.json'), JSON.stringify({
       hooks: { Stop: [{ hooks: [{ command: 'node .agents/skills/impeccable/scripts/hook.mjs' }] }] },
     }));
+    // hookEnabledAt() defaults to disabled absent explicit consent (#512); a
+    // manifest alone -- with no config recording that consent -- is no
+    // longer sufficient to count the hook as active.
+    fs.writeFileSync(path.join(project, '.impeccable', 'config.json'), JSON.stringify({ hook: { enabled: true } }));
 
     const res = spawnSync(process.execPath, [path.join(scripts, 'context.mjs')], {
       cwd: project,
@@ -1097,10 +1102,13 @@ describe('context.mjs CLI', () => {
 
     const project = path.join(scratch, 'project');
     fs.mkdirSync(path.join(project, '.cursor'), { recursive: true });
+    fs.mkdirSync(path.join(project, '.impeccable'), { recursive: true });
     fs.writeFileSync(path.join(project, 'PRODUCT.md'), '# Acme\n');
     fs.writeFileSync(path.join(project, '.cursor', 'hooks.json'), JSON.stringify({
       hooks: { preToolUse: [{ command: 'node .cursor/skills/impeccable/scripts/hook-before-edit.mjs' }] },
     }));
+    // hookEnabledAt() defaults to disabled absent explicit consent (#512).
+    fs.writeFileSync(path.join(project, '.impeccable', 'config.json'), JSON.stringify({ hook: { enabled: true } }));
 
     const res = spawnSync(process.execPath, [path.join(scripts, 'context.mjs')], {
       cwd: project,

@@ -745,6 +745,7 @@ function addIgnoreValue(cwd, args) {
 
 function reset(cwd) {
   const removed = [];
+  const configFailures = [];
   // Unified files may hold non-hook keys (e.g. updateCheck); strip only the
   // hook/detector subtrees and keep the rest, deleting the file only if nothing remains.
   for (const filePath of [getConfigPath(cwd), getLocalConfigPath(cwd)]) {
@@ -758,7 +759,17 @@ function reset(cwd) {
         fs.writeFileSync(filePath, JSON.stringify(rest, null, 2) + '\n');
       }
       removed.push(path.relative(cwd, filePath) || filePath);
-    } catch { /* ignore */ }
+    } catch (err) {
+      // A write/unlink failure here (permissions, disk full) must not be
+      // silently swallowed: this file may still carry `hook.enabled: true`,
+      // so pruning manifests below would leave `status` reporting enabled
+      // while nothing actually invokes the hook -- reset()'s own version of
+      // the exact config/manifest mismatch issue #512 was about.
+      configFailures.push(`${path.relative(cwd, filePath) || filePath} (${err.message || err})`);
+    }
+  }
+  if (configFailures.length) {
+    throw new Error(`Could not reset hook config, so leaving manifests untouched to avoid reporting a stale enabled state: ${configFailures.join(', ')}`);
   }
   // State files are wholly ours; delete outright.
   for (const filePath of [getCachePath(cwd), getPendingPath(cwd)]) {
