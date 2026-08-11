@@ -408,6 +408,8 @@ const HOST_CSS = [
   '  gap: 36px 28px; }',
   'figure.cell { margin: 0; min-width: 0; }',
   'figure.cell figcaption { margin: 0 0 8px; font-size: 13px; letter-spacing: .02em; opacity: .85; }',
+  'figure.cell figcaption .cell-num { display: inline-block; min-width: 2.2em; margin-right: 4px;',
+  '  font-variant-numeric: tabular-nums; font-weight: 600; color: #c8b57c; opacity: 1; }',
   'figure.cell .scaler { position: relative; width: 100%; }',
   'figure.cell .clip { overflow: hidden; position: absolute; top: 0; left: 0; transform-origin: top left; }',
   'figure.cell iframe { display: block; border: 0; background: transparent; position: absolute; top: 0; left: 0; }',
@@ -451,7 +453,11 @@ async function main() {
     };
   }
 
-  const cells = CELL_LIST.map((cell) => ({ ...cell, externalHtml: externalInputs(cell) }));
+  const cells = CELL_LIST.map((cell, index) => ({
+    ...cell,
+    number: index + 1,
+    externalHtml: externalInputs(cell),
+  }));
 
   const payload = {
     viewport: capture.viewport,
@@ -497,12 +503,12 @@ async function main() {
   const sectionsHtml = SECTIONS.map((section) => {
     const dims = capture.sections[section.id].dims;
     const cellsHtml = cells.filter((cell) => cell.section === section.id).map((cell) => [
-      '<figure class="cell">',
-      '<figcaption>' + cell.caption + '</figcaption>',
+      '<figure class="cell" data-cell-num="' + cell.number + '">',
+      '<figcaption><span class="cell-num">' + cell.number + '</span> ' + cell.caption + '</figcaption>',
       '<div class="scaler" data-width="' + dims.width + '" data-height="' + dims.height + '">',
       '<div class="clip" style="width:' + dims.width + 'px;height:' + dims.height + 'px">',
-      '<iframe title="' + cell.caption.replace(/"/g, '&quot;') + '" data-cell="' + cell.id
-        + '" data-section="' + cell.section + '" scrolling="no" style="width:'
+      '<iframe title="' + cell.number + '. ' + cell.caption.replace(/"/g, '&quot;') + '" data-cell="' + cell.id
+        + '" data-cell-num="' + cell.number + '" data-section="' + cell.section + '" scrolling="no" style="width:'
         + capture.viewport.width + 'px;height:' + capture.viewport.height + 'px"></iframe>',
       '</div>',
       '</div>',
