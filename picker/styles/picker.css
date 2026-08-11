@@ -3105,8 +3105,55 @@ body.picker-page {
    any heavier stops being display type and becomes a slab. The nav is left out
    for the same kind of reason: it is the chrome all four cards share, and a
    visitor moving between tabs should not watch it change weight. */
-.picker-strategy-stage > .picker-preview:is(.picker-preview--ops, .picker-preview--docs, .picker-preview--gallery) .pv-desktop {
+.picker-strategy-stage > .picker-preview:is(.picker-preview--ops, .picker-preview--gallery) .pv-desktop {
   --pv-text: 1.35;
+}
+
+/* Docs wireframe counts run lighter than ops; the shared 1.35 step still reads
+   as hairlines beside the app UI on the same screen. Match ops legibility on
+   the stage for both desktop and phone. */
+.picker-strategy-stage > .picker-preview.picker-preview--docs {
+  --pv-text: 1.65;
+}
+
+.picker-strategy-stage > .picker-preview.picker-preview--docs .pd-item i {
+  width: calc(4.07 * var(--pv-x));
+}
+
+.picker-strategy-stage > .picker-preview.picker-preview--docs .pd-item span {
+  height: calc(1.53 * var(--pv-text) * var(--pv-x));
+}
+
+.picker-strategy-stage > .picker-preview.picker-preview--docs .pd-para i {
+  height: calc(1.35 * var(--pv-text) * var(--pv-x));
+}
+
+.picker-strategy-stage > .picker-preview.picker-preview--docs .pd-note-dot {
+  width: calc(4.07 * var(--pv-x));
+}
+
+.picker-strategy-stage > .picker-preview.picker-preview--docs .pd-note-lines i {
+  height: calc(1 * var(--pv-text) * var(--pv-x));
+}
+
+/* Phone body lines keep the authored pv-x counts; only desktop needed the extra
+   step because strategy stage boosts --pv-text on the preview root while the
+   phone overrides below still bypass it. Restate phone lines with the same
+   pv-text mix as desktop so the two artboards stay in proportion. */
+.picker-strategy-stage > .picker-preview.picker-preview--docs .pd-phone-body .pd-para i {
+  height: calc(1.37 * var(--pv-text) * var(--pv-x));
+}
+
+.picker-strategy-stage > .picker-preview.picker-preview--docs .pd-phone-body .pd-note-lines i {
+  height: calc(0.83 * var(--pv-text) * var(--pv-x));
+}
+
+.picker-strategy-stage > .picker-preview.picker-preview--docs .pd-phone-body .pd-heading {
+  height: calc(2.53 * var(--pv-text) * var(--pv-x));
+}
+
+.picker-strategy-stage > .picker-preview.picker-preview--docs .pd-phone-body .pd-note-dot {
+  width: calc(2.64 * var(--pv-text) * var(--pv-x));
 }
 
 /* One drawing is shown and the rest stay mounted, so switching costs an
