@@ -62,13 +62,13 @@ const LOREM_PREVIEW = {
   menuAction: 'Ipsum',
   ctaPrimary: 'Lorem ipsum',
   ctaSecondary: 'Dolor sit',
-  proof: ['Lorem ipsum dolor', 'Sit amet elit', 'Sed do eiusmod', 'Tempor incididunt'],
-  sectionTitle: 'Lorem ipsum dolor sit',
+  proof: ['Lorem ipsum dolor', 'Sit amet elit dolor', 'Sed do eiusmod', 'Tempor incididunt'],
+  sectionTitle: 'Lorem ipsum dolor',
   sectionLink: 'Consectetur adipiscing',
   gallery: [
-    { title: 'Lorem', meta: 'Ipsum dolor' },
-    { title: 'Dolor', meta: 'Sit amet' },
-    { title: 'Eiusmod', meta: 'Tempor elit' },
+    { title: 'Lorem ipsum dolor', meta: 'sit amet consectetur' },
+    { title: 'Dolor sit amet', meta: 'consectetur elit' },
+    { title: 'Eiusmod tempor', meta: 'sed do eiusmod' },
   ],
   footerLinks: ['Lorem', 'Ipsum', 'Dolor', 'Amet'],
   footerMark: '© Lorem ipsum',
@@ -424,7 +424,10 @@ function fillBoard(board) {
   fill('[data-type-cta-primary]', preview.ctaPrimary);
   fill('[data-type-cta-secondary]', preview.ctaSecondary);
   fill('[data-type-section-title]', preview.sectionTitle);
-  fill('[data-type-section-body]', LOREM.paragraph);
+  fill(
+    '[data-type-section-body]',
+    `${LOREM.paragraph} Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.`,
+  );
   fill('[data-type-section-link]', preview.sectionLink);
   fill('[data-type-footer-mark]', preview.footerMark);
   fill('[data-type-note-label]', LOREM_DOCS.note);
@@ -432,6 +435,13 @@ function fillBoard(board) {
   fill('[data-type-crumb]', LOREM_DOCS.crumb);
   fill('[data-type-caption]', LOREM.caption);
   fill('[data-type-chart-title]', LOREM_APP.chartTitle);
+  const fillGalleryCaptions = (root, items) => {
+    if (!root) return;
+    root.querySelectorAll('.ps-gallery-item [data-type-gallery-caption]').forEach((node, index) => {
+      const item = items[index];
+      if (item) node.textContent = `${item.title} ${item.meta}`;
+    });
+  };
   for (const card of [desktop, phoneBody]) {
     fillIndexed(card, '[data-type-nav]', preview.nav);
     fillIndexed(card, '[data-type-proof]', preview.proof);
@@ -447,6 +457,7 @@ function fillBoard(board) {
     fillIndexed(card, '[data-type-amount]', LOREM_APP.amounts);
     fillIndexed(card, '[data-type-panel]', LOREM_APP.panel);
     fillIndexed(card, '[data-type-switch]', LOREM_APP.switches);
+    fillGalleryCaptions(card, preview.gallery);
   }
   fillIndexed(desktop?.querySelector('.ps-footer'), '[data-type-footer-link]', preview.footerLinks);
 }

@@ -107,19 +107,72 @@ const DOCS_BOARD_CELLS = [
 ];
 
 const GALLERY_PREVIEW =
-  '#picker-form .picker-strategy-stage > .picker-preview.picker-preview--gallery';
+  '#picker-form .picker-strategy-stage > .picker-preview.picker-preview--gallery:not([hidden])';
+
+const LANDING_PREVIEW =
+  '#picker-form .picker-strategy-stage > .picker-preview[data-surface="persuade"]';
+
+function cellScope(screen, option) {
+  return (
+    'html[data-cell-screen="03"][data-cell-surface="' + screen + '"][data-cell-option="' + option + '"]'
+  );
+}
+
+function drenchedRestoreCss(scope, preview) {
+  return [
+    scope,
+    `${preview} {`,
+    '  --pv-secondary: var(--pkc-secondary) !important;',
+    '  --pv-tertiary: var(--pkc-tertiary) !important;',
+    '  --pv-bone: color-mix(in oklab, var(--pkc-p-ink) 55%, var(--pkc-primary)) !important;',
+    '  --pv-strong: var(--pkc-p-ink) !important;',
+    '  --pv-secondary-wash: color-mix(in oklab, var(--pkc-p-ink) 16%, var(--pkc-primary)) !important;',
+    '}',
+  ].join('\n');
+}
+
+function drenchedPanelCss(scope, preview, panel = '.pv-image') {
+  return [
+    scope,
+    `${preview} ${panel} {`,
+    '  background: linear-gradient(',
+    '    135deg,',
+    '    color-mix(in oklab, var(--pkc-p-ink) 16%, var(--pkc-primary)),',
+    '    color-mix(in oklab, var(--pkc-secondary) 34%, var(--pkc-primary))',
+    '  ) !important;',
+    '  border-color: color-mix(in oklab, var(--pkc-secondary) 52%, var(--pkc-primary)) !important;',
+    '}',
+    scope,
+    `${preview} ${panel}::after {`,
+    '  background: var(--pkc-tertiary) !important;',
+    '}',
+  ].join('\n');
+}
+
+const LANDING_DRENCHED_CSS = [
+  drenchedRestoreCss(cellScope('persuade', 'drenched'), LANDING_PREVIEW),
+  drenchedPanelCss(cellScope('persuade', 'drenched'), LANDING_PREVIEW + ' .pv-desktop'),
+  cellScope('persuade', 'drenched'),
+  `${LANDING_PREVIEW} .pv-desktop .pv-actions i:last-child {`,
+  '  border-color: color-mix(in oklab, var(--pkc-secondary) 68%, var(--pkc-p-ink)) !important;',
+  '  background: color-mix(in oklab, var(--pkc-secondary) 18%, var(--pkc-primary)) !important;',
+  '}',
+  cellScope('persuade', 'drenched'),
+  `${LANDING_PREVIEW} .pv-desktop .pv-nav-bars i:nth-child(2) {`,
+  '  background: color-mix(in oklab, var(--pkc-secondary) 72%, var(--pkc-p-ink)) !important;',
+  '}',
+].join('\n');
 
 function portfolioCapAvatarsCss(option, circle = 'neutral') {
-  const scope =
-    'html[data-cell-screen="03"][data-cell-surface="experience"][data-cell-option="' + option + '"]';
+  const scope = cellScope('experience', option);
   const capCircle =
     circle === 'drenched'
       ? [
-          '  border: 1px solid color-mix(in oklab, var(--pkc-p-ink) 40%, var(--pkc-primary));',
+          '  border: 1px solid color-mix(in oklab, var(--pkc-secondary) 58%, var(--pkc-primary));',
           '  background: linear-gradient(',
           '    135deg,',
-          '    color-mix(in oklab, var(--pkc-p-ink) 16%, var(--pkc-primary)),',
-          '    color-mix(in oklab, var(--pkc-p-ink) 28%, var(--pkc-primary))',
+          '    color-mix(in oklab, var(--pkc-secondary) 30%, var(--pkc-primary)),',
+          '    color-mix(in oklab, var(--pkc-p-ink) 20%, var(--pkc-primary))',
           '  );',
         ].join('\n')
       : circle === 'committed'
@@ -157,58 +210,259 @@ function portfolioCapAvatarsCss(option, circle = 'neutral') {
 }
 
 const PORTFOLIO_DRENCHED_COLOR_CSS = [
-  'html[data-cell-screen="03"][data-cell-surface="experience"][data-cell-option="drenched"]',
-  `${GALLERY_PREVIEW} {`,
-  '  --pv-secondary: var(--pkc-secondary) !important;',
-  '  --pv-tertiary: var(--pkc-tertiary) !important;',
-  '  --pv-bone: color-mix(in oklab, var(--pkc-p-ink) 55%, var(--pkc-primary)) !important;',
-  '  --pv-strong: var(--pkc-p-ink) !important;',
-  '  --pv-secondary-wash: color-mix(in oklab, var(--pkc-p-ink) 16%, var(--pkc-primary)) !important;',
+  drenchedRestoreCss(cellScope('experience', 'drenched'), GALLERY_PREVIEW),
+  drenchedPanelCss(cellScope('experience', 'drenched'), GALLERY_PREVIEW),
+  cellScope('experience', 'drenched'),
+  `${GALLERY_PREVIEW} .pg-track i:nth-child(2) {`,
+  '  background: color-mix(in oklab, var(--pkc-secondary) 78%, var(--pkc-p-ink)) !important;',
   '}',
-  'html[data-cell-screen="03"][data-cell-surface="experience"][data-cell-option="drenched"]',
-  `${GALLERY_PREVIEW} .pv-image {`,
-  '  background: linear-gradient(',
-  '    135deg,',
-  '    color-mix(in oklab, var(--pkc-p-ink) 16%, var(--pkc-primary)),',
-  '    color-mix(in oklab, var(--pkc-p-ink) 28%, var(--pkc-primary))',
-  '  ) !important;',
-  '  border-color: color-mix(in oklab, var(--pkc-p-ink) 40%, var(--pkc-primary)) !important;',
-  '}',
-  'html[data-cell-screen="03"][data-cell-surface="experience"][data-cell-option="drenched"]',
-  `${GALLERY_PREVIEW} .pv-image::after {`,
+  cellScope('experience', 'drenched'),
+  `${GALLERY_PREVIEW} .pg-cap-title {`,
   '  background: var(--pkc-tertiary) !important;',
   '}',
+  cellScope('experience', 'drenched'),
+  `${GALLERY_PREVIEW} .pv-nav-bars i:nth-child(2) {`,
+  '  background: color-mix(in oklab, var(--pkc-secondary) 72%, var(--pkc-p-ink)) !important;',
+  '}',
+  cellScope('experience', 'drenched'),
+  `${GALLERY_PREVIEW} .pv-tabbar i:nth-child(2) {`,
+  '  background: color-mix(in oklab, var(--pkc-secondary) 70%, var(--pkc-p-ink)) !important;',
+  '}',
+  cellScope('experience', 'drenched'),
+  `${GALLERY_PREVIEW} .pv-tabbar i:nth-child(3) {`,
+  '  background: color-mix(in oklab, var(--pkc-tertiary) 82%, var(--pkc-p-ink)) !important;',
+  '}',
 ].join('\n');
+
+const DOCS_QUOTE_RESTRAINED_CSS = [
+  cellScope('read', 'restrained'),
+  `${DOCS_PREVIEW}:not([hidden]) {`,
+  '  --pd-quote: var(--pd-ink) !important;',
+  '}',
+  cellScope('read', 'restrained'),
+  `${DOCS_PREVIEW}:not([hidden]) :is(.pd-note-dot, .pd-note-lines i) {`,
+  '  background: var(--pd-ink) !important;',
+  '}',
+].join('\n');
+
+const FONT_PAIR_NO_NAV_ACTION_CELLS = [
+  'font-pair--persuade--default',
+  'font-pair--operate--default',
+  'font-pair--read--default',
+];
+
+const FONT_PAIR_NO_NAV_ACTION_CSS = [
+  '#picker-form .picker-preview-type .ps-nav-action {',
+  '  display: none !important;',
+  '}',
+  '#picker-form .picker-preview-type .ps-nav-tail {',
+  '  display: none !important;',
+  '}',
+  '#picker-form .picker-preview-type .ps-nav {',
+  '  grid-template-columns: auto 1fr !important;',
+  '}',
+  '#picker-form .picker-preview-type {',
+  '  --pvs-cta-text: var(--pv-neutral) !important;',
+  '}',
+].join('\n');
+
+const FONT_PAIR_PERSUADE_HERO_IMAGE_CSS = [
+  '#picker-form .picker-preview-type .ps-hero {',
+  '  grid-template-columns: minmax(0, 1fr) 40% !important;',
+  '}',
+].join('\n');
+
+const FONT_PAIR_PERSUADE_GALLERY_CSS = [
+  '#picker-form .picker-preview-type .ps-gallery-item {',
+  '  gap: var(--ps-gap-xs) !important;',
+  '}',
+  '#picker-form .picker-preview-type .ps-gallery-item > i {',
+  '  max-width: none !important;',
+  '  aspect-ratio: 3 / 2 !important;',
+  '  border-radius: var(--pvs-radius-frame) !important;',
+  '}',
+  '#picker-form .picker-preview-type .ps-desktop .ps-gallery-item > i {',
+  '  margin-inline: 0 !important;',
+  '}',
+  '#picker-form .picker-preview-type .ps-gallery-item [data-type-gallery-caption] {',
+  '  color: var(--pvs-title) !important;',
+  '  font-size: var(--pt-micro) !important;',
+  '  line-height: 1.38 !important;',
+  '  display: -webkit-box !important;',
+  '  -webkit-box-orient: vertical !important;',
+  '  -webkit-line-clamp: 2 !important;',
+  '  overflow: hidden !important;',
+  '  text-wrap: balance !important;',
+  '  white-space: normal !important;',
+  '}',
+].join('\n');
+
+const FONT_PAIR_PERSUADE_GALLERY_JS = [
+  'var captions = [',
+  '  "Lorem ipsum dolor sit amet consectetur",',
+  '  "Dolor sit amet consectetur elit",',
+  '  "Eiusmod tempor sed do eiusmod",',
+  '];',
+  'doc.querySelectorAll(".ps-gallery-item").forEach(function (item, index) {',
+  '  var title = item.querySelector("[data-type-gallery-title]");',
+  '  var meta = item.querySelector("[data-type-gallery-meta]");',
+  '  var caption = item.querySelector("[data-type-gallery-caption]");',
+  '  var text = captions[index] || "";',
+  '  if (!text && title) {',
+  '    text = title.textContent.trim();',
+  '    if (meta) text = (text + " " + meta.textContent.trim()).trim();',
+  '  }',
+  '  if (!text) return;',
+  '  if (caption) {',
+  '    caption.textContent = text;',
+  '    return;',
+  '  }',
+  '  if (!title) return;',
+  '  title.removeAttribute("data-type-gallery-title");',
+  '  title.setAttribute("data-type-gallery-caption", "");',
+  '  title.textContent = text;',
+  '  if (meta) meta.remove();',
+  '});',
+].join(' ');
+
+const FONT_PAIR_OPERATE_OPS_CSS = [
+  '#picker-form .picker-preview-type--ops {',
+  '  --pvs-cta-text: var(--pv-neutral) !important;',
+  '}',
+  '#picker-form .picker-preview-type--ops .ps-ops-item--on {',
+  '  padding-block: calc(var(--pt-base) * 0.45) !important;',
+  '  padding-inline: calc(var(--pt-base) * 0.72) calc(var(--pt-base) * 0.58) !important;',
+  '}',
+  '#picker-form .picker-preview-type--ops .ps-ops-item--on b {',
+  '  color: var(--pv-neutral) !important;',
+  '}',
+  '#picker-form .picker-preview-type--ops .ps-ops-field {',
+  '  gap: calc(var(--pt-base) * 0.5) !important;',
+  '  padding-block: calc(var(--pt-base) * 0.52) !important;',
+  '  padding-inline: calc(var(--pt-base) * 0.68) calc(var(--pt-base) * 0.58) !important;',
+  '}',
+  '#picker-form .picker-preview-type--ops .ps-ops-field b {',
+  '  flex: 1 1 auto !important;',
+  '  line-height: 1.35 !important;',
+  '}',
+  '#picker-form .picker-preview-type--ops .ps-ops-chev {',
+  '  transform: translateY(-12%) rotate(45deg) !important;',
+  '  margin-inline-end: calc(var(--pt-base) * 0.08) !important;',
+  '}',
+  '#picker-form .picker-preview-type--ops .ps-ops-row--on {',
+  '  padding-inline: calc(var(--pt-base) * 0.68) calc(var(--pt-base) * 0.58) !important;',
+  '  border-radius: var(--pvs-radius-frame) !important;',
+  '}',
+].join('\n');
+
+const FONT_PAIR_PERSUADE_PHONE_SPACING_CSS = [
+  '#picker-form .picker-preview-type[data-surface="persuade"] .ps-phone-body {',
+  '  gap: var(--ps-gap-md) !important;',
+  '}',
+  '#picker-form .picker-preview-type[data-surface="persuade"] .ps-phone-body :is(.pt-headline, .pt-body, .ps-actions, .ps-proof) {',
+  '  margin-block-end: 0 !important;',
+  '}',
+  '#picker-form .picker-preview-type[data-surface="persuade"] .ps-phone-body .ps-editorial-copy {',
+  '  gap: var(--ps-gap-sm) !important;',
+  '}',
+].join('\n');
+
+const FONT_PAIR_READ_PHONE_SPACING_CSS = [
+  '#picker-form .picker-preview-type--read .ps-phone-body {',
+  '  gap: var(--ps-gap-md) !important;',
+  '}',
+  '#picker-form .picker-preview-type--read .ps-phone-body > * {',
+  '  margin-block: 0 !important;',
+  '}',
+  '#picker-form .picker-preview-type--read .ps-phone-body .ps-docs-sub + .ps-docs-para {',
+  '  margin-top: calc(var(--pt-base) * 0.45) !important;',
+  '}',
+  '#picker-form .picker-preview-type--read .ps-phone-body :is(.ps-docs-list, .ps-docs-note) {',
+  '  margin-top: 0 !important;',
+  '}',
+].join('\n');
+
+const FONT_PAIR_READ_DOCS_LAYOUT_CSS = [
+  '#picker-form .picker-preview-type--read .ps-docs {',
+  '  grid-template-columns: minmax(0, 21%) minmax(0, 1fr) !important;',
+  '}',
+  '#picker-form .picker-preview-type--read .ps-docs-rail {',
+  '  padding-inline-end: calc(var(--pt-base) * 0.35) !important;',
+  '}',
+  '#picker-form .picker-preview-type--read .ps-docs-main {',
+  '  padding: var(--ps-band-y) 5% 0 calc(var(--pt-base) * 0.8) !important;',
+  '}',
+].join('\n');
+
+const FONT_PAIR_READ_SECTION_TITLE_JS =
+  'doc.querySelectorAll("[data-type-section-title]").forEach(function (el) { if (el.textContent.trim() === "Lorem ipsum dolor sit") el.textContent = "Lorem ipsum dolor"; });';
 
 /** @type {{ id: string, cells: string[], css: string }[]} */
 const EXPERIMENTS = [
   {
+    id: 'font-pair-hide-nav-action',
+    cells: FONT_PAIR_NO_NAV_ACTION_CELLS,
+    css: FONT_PAIR_NO_NAV_ACTION_CSS,
+  },
+  {
+    id: 'font-pair-persuade-hero-image',
+    cells: ['font-pair--persuade--default'],
+    css: FONT_PAIR_PERSUADE_HERO_IMAGE_CSS,
+  },
+  {
+    id: 'font-pair-persuade-proof-copy',
+    cells: ['font-pair--persuade--default'],
+    js: 'var proofs = doc.querySelectorAll("[data-type-proof]"); if (proofs[1]) proofs[1].textContent = "Sit amet elit dolor";',
+  },
+  {
+    id: 'font-pair-persuade-editorial-copy',
+    cells: ['font-pair--persuade--default'],
+    js: [
+      'doc.querySelectorAll(".ps-editorial-copy > em[data-type-section-link]").forEach(function (el) { el.remove(); });',
+      'var merged = "Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.";',
+      'doc.querySelectorAll("[data-type-section-body]").forEach(function (p) {',
+      '  if (p.hasAttribute("data-type-section-body-2")) { p.remove(); return; }',
+      '  var second = p.nextElementSibling;',
+      '  if (second && second.hasAttribute("data-type-section-body-2")) {',
+      '    p.textContent = merged;',
+      '    second.remove();',
+      '    return;',
+      '  }',
+      '  p.textContent = merged;',
+      '});',
+    ].join(' '),
+  },
+  {
+    id: 'font-pair-persuade-gallery-cards',
+    cells: ['font-pair--persuade--default'],
+    css: FONT_PAIR_PERSUADE_GALLERY_CSS,
+    js: FONT_PAIR_PERSUADE_GALLERY_JS,
+  },
+  {
+    id: 'font-pair-persuade-phone-spacing',
+    cells: ['font-pair--persuade--default'],
+    css: FONT_PAIR_PERSUADE_PHONE_SPACING_CSS,
+  },
+  {
+    id: 'font-pair-read-phone-spacing',
+    cells: ['font-pair--read--default'],
+    css: FONT_PAIR_READ_PHONE_SPACING_CSS,
+  },
+  {
+    id: 'font-pair-read-docs-layout',
+    cells: ['font-pair--read--default'],
+    css: FONT_PAIR_READ_DOCS_LAYOUT_CSS,
+    js: FONT_PAIR_READ_SECTION_TITLE_JS,
+  },
+  {
+    id: 'font-pair-operate-ops-chrome',
+    cells: ['font-pair--operate--default'],
+    css: FONT_PAIR_OPERATE_OPS_CSS,
+  },
+  {
     id: 'landing-drenched-color-roles',
     cells: ['strategy--persuade--drenched'],
-    css: [
-      'html[data-cell-screen="03"][data-cell-surface="persuade"][data-cell-option="drenched"]',
-      '#picker-form .picker-strategy-stage > .picker-preview[data-surface="persuade"] {',
-      '  --pv-secondary: var(--pkc-secondary) !important;',
-      '  --pv-tertiary: var(--pkc-tertiary) !important;',
-      '  --pv-bone: color-mix(in oklab, var(--pkc-p-ink) 55%, var(--pkc-primary)) !important;',
-      '  --pv-strong: var(--pkc-p-ink) !important;',
-      '  --pv-secondary-wash: color-mix(in oklab, var(--pkc-p-ink) 16%, var(--pkc-primary)) !important;',
-      '}',
-      'html[data-cell-screen="03"][data-cell-surface="persuade"][data-cell-option="drenched"]',
-      '#picker-form .picker-strategy-stage > .picker-preview[data-surface="persuade"] .pv-image {',
-      '  background: linear-gradient(',
-      '    135deg,',
-      '    color-mix(in oklab, var(--pkc-p-ink) 16%, var(--pkc-primary)),',
-      '    color-mix(in oklab, var(--pkc-p-ink) 28%, var(--pkc-primary))',
-      '  ) !important;',
-      '  border-color: color-mix(in oklab, var(--pkc-p-ink) 40%, var(--pkc-primary)) !important;',
-      '}',
-      'html[data-cell-screen="03"][data-cell-surface="persuade"][data-cell-option="drenched"]',
-      '#picker-form .picker-strategy-stage > .picker-preview[data-surface="persuade"] .pv-actions i:last-child {',
-      '  border-color: color-mix(in oklab, var(--pkc-p-ink) 45%, var(--pkc-primary)) !important;',
-      '  background: color-mix(in oklab, var(--pkc-p-ink) 12%, var(--pkc-primary)) !important;',
-      '}',
-    ].join('\n'),
+    css: LANDING_DRENCHED_CSS,
   },
   {
     id: 'ops-committed-color-visibility',
@@ -248,6 +502,11 @@ const EXPERIMENTS = [
     ].join('\n'),
   },
   {
+    id: 'docs-restrained-quote-contrast',
+    cells: ['strategy--read--restrained'],
+    css: DOCS_QUOTE_RESTRAINED_CSS,
+  },
+  {
     id: 'docs-strategy-wireframe-weight',
     cells: [
       'strategy--read--restrained',
@@ -281,7 +540,7 @@ const EXPERIMENTS = [
 const experiment = String.raw`
 <script data-gallery-replica-experiment="strategy-fixes">
 (function () {
-  var specs = ${JSON.stringify(EXPERIMENTS.map(({ id, cells, css }) => ({ id, cells, css })))};
+  var specs = ${JSON.stringify(EXPERIMENTS.map(({ id, cells, css, js }) => ({ id, cells, css: css || '', js: js || '' })))};
 
   specs.forEach(function (spec) {
     spec.cells.forEach(function (cellId) {
@@ -292,12 +551,22 @@ const experiment = String.raw`
         var doc = frame.contentDocument;
         if (!doc || !doc.head) return;
 
-        var style = doc.querySelector('[data-experiment="' + spec.id + '"]');
-        if (!style) {
-          style = doc.createElement('style');
-          style.setAttribute('data-experiment', spec.id);
-          style.textContent = spec.css;
-          doc.head.appendChild(style);
+        if (spec.css) {
+          var style = doc.querySelector('[data-experiment="' + spec.id + '"]');
+          if (!style) {
+            style = doc.createElement('style');
+            style.setAttribute('data-experiment', spec.id);
+            style.textContent = spec.css;
+            doc.head.appendChild(style);
+          }
+        }
+
+        if (spec.js) {
+          try {
+            eval(spec.js);
+          } catch (err) {
+            console.warn('[gallery-replica] ' + spec.id + ':', err);
+          }
         }
       }
 
@@ -341,7 +610,7 @@ replica = replica.replace(
     + '<strong>16–18 Docs</strong> strategy wireframe weight, and '
     + '<strong>45–47 / 59–62 / 71–72 Docs</strong> board bar weight, and '
     + '<strong>19–21 Portfolio</strong> caption circles (desktop), '
-    + '<strong>21</strong> drenched color roles. '
+    + '<strong>12 / 21 Drenched</strong> full accent roles, '
     + 'Baseline: <a href="previews-gallery.html">previews-gallery.html</a>.</p>',
 );
 

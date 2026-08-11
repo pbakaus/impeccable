@@ -96,11 +96,13 @@ const hook = type ? '' : undefined;
       ) : (
         <div class="ps-nav-bars"><i></i><i></i><i></i><i></i></div>
       )}
-      <div class="ps-nav-tail">
-        {!type && <i class="ps-search"></i>}
-        <div class="ps-nav-action" data-type-nav-action={hook}></div>
-        {!type && <i class="ps-avatar"></i>}
-      </div>
+      {!type && (
+        <div class="ps-nav-tail">
+          <i class="ps-search"></i>
+          <div class="ps-nav-action" data-type-nav-action={hook}></div>
+          <i class="ps-avatar"></i>
+        </div>
+      )}
     </div>
     {ops ? (
       <div class="ps-ops">
@@ -315,7 +317,6 @@ const hook = type ? '' : undefined;
         {type
           ? <p class="pt-section-body" data-type-section-body></p>
           : <span><i></i><i></i></span>}
-        <em data-type-section-link={hook}></em>
       </div>
       {/* Three cards once the labels are words, four while they are bars. The
           type board sets three because a fourth column leaves the copy beside
@@ -328,7 +329,7 @@ const hook = type ? '' : undefined;
           <div class="ps-gallery-item">
             <i></i>
             {type
-              ? <span><b data-type-gallery-title></b><b data-type-gallery-meta></b></span>
+              ? <span><b data-type-gallery-caption></b></span>
               : <span><b></b><b></b><b></b></span>}
           </div>
         ))}
@@ -367,10 +368,12 @@ const hook = type ? '' : undefined;
           <div class="ps-brand-block" data-type-brand={hook}></div>
           {!type && <i class="ps-brand-word"></i>}
         </div>
-        <div class="ps-nav-tail">
-          <div class="ps-nav-action" data-type-menu-action={hook}></div>
-          {!type && <i class="ps-menu"></i>}
-        </div>
+        {!type && (
+          <div class="ps-nav-tail">
+            <div class="ps-nav-action" data-type-menu-action={hook}></div>
+            <i class="ps-menu"></i>
+          </div>
+        )}
       </div>
       {ops ? (
       <div class="ps-phone-body">
@@ -530,7 +533,7 @@ const hook = type ? '' : undefined;
             <div class="ps-gallery-item">
               <i></i>
               {type
-                ? <span><b data-type-gallery-title></b><b data-type-gallery-meta></b></span>
+                ? <span><b data-type-gallery-caption></b></span>
                 : <span><b></b><b></b></span>}
             </div>
           ))}

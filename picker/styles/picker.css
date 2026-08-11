@@ -2230,6 +2230,7 @@ body.picker-page {
    illustration and mapping its card box onto this one. */
 .picker-preview--docs {
   --pd-ink: var(--pv-bone);
+  --pd-quote: var(--pv-tertiary);
   --pd-strong: color-mix(in oklab, var(--pv-primary) 80%, var(--pv-strong));
   --pd-rule: color-mix(in oklab, var(--pv-neutral) 86%, var(--pv-n-ink));
 }
@@ -2351,7 +2352,7 @@ body.picker-page {
   align-self: start;
   width: calc(2.64 * var(--pv-x));
   aspect-ratio: 1;
-  background: var(--pv-tertiary);
+  background: var(--pd-quote);
   border-radius: 50%;
 }
 
@@ -2366,7 +2367,7 @@ body.picker-page {
 .pd-note-lines i {
   width: var(--w, 100%);
   height: calc(0.83 * var(--pv-text) * var(--pv-x));
-  background: var(--pv-tertiary);
+  background: var(--pd-quote);
   border-radius: 2px;
 }
 
@@ -3335,6 +3336,10 @@ body.picker-page {
   --pvs-accent-b: color-mix(in oklab, var(--pv-primary) 62%, var(--pv-neutral));
   --pvs-accent-c: color-mix(in oklab, var(--pv-primary) 38%, var(--pv-neutral));
   --pvs-accent-d: color-mix(in oklab, var(--pv-primary) 20%, var(--pv-neutral));
+  /* Primary fills label in the palette neutral; contrast-computed ink reads minty
+     on teal and fights the pair judgment this screen is for. Drenched overrides
+     below when the fill is page ink, not primary. */
+  --pvs-cta-text: var(--pv-neutral);
 }
 
 /* ============================================================
@@ -3371,6 +3376,13 @@ body.picker-page {
   --pv-t-on-t: var(--pkc-n-ink);
   --pv-t-on-n: color-mix(in oklab, var(--pkc-n-ink) 62%, var(--pkc-neutral));
   --pv-t-on-p: var(--pkc-p-ink);
+}
+
+/* Restrained stands tertiary down into the ground; on a lifted note surface that
+   is the same mix as the panel, so the quote reads through body ink instead. */
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="restrained"]) .picker-strategy-stage > .picker-preview.picker-preview--docs,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="restrained"]:checked) .picker-strategy-stage > .picker-preview.picker-preview--docs {
+  --pd-quote: var(--pd-ink);
 }
 
 /* Committed: one color doing all the work the other two were doing, and a
@@ -5480,7 +5492,7 @@ body.picker-page {
 /* The pair is the subject and the image is a placeholder for one, so the copy
    takes the column and the image takes what it needs to read as a picture. */
 .picker-preview-type .ps-hero {
-  grid-template-columns: minmax(0, 1fr) 34%;
+  grid-template-columns: minmax(0, 1fr) 40%;
   gap: var(--ps-gap-lg);
   padding: var(--ps-band-y) var(--ps-gutter);
 }
@@ -5547,18 +5559,19 @@ body.picker-page {
    the type scale keeps the three cards reading as a set of labels. */
 .picker-preview-type .ps-gallery-item {
   grid-template-rows: auto auto;
-  gap: var(--ps-gap-sm);
+  gap: var(--ps-gap-xs);
   align-content: start;
 }
 
 .picker-preview-type .ps-gallery-item > i {
   width: 100%;
-  max-width: calc(var(--pt-base) * 4);
-  aspect-ratio: 1;
+  max-width: none;
+  aspect-ratio: 3 / 2;
+  border-radius: var(--pvs-radius-frame);
 }
 
 .picker-preview-type .ps-desktop .ps-gallery-item > i {
-  margin-inline: auto;
+  margin-inline: 0;
 }
 
 /* Words set taller than bars, and the phone is the narrowest frame they have
@@ -5588,29 +5601,29 @@ body.picker-page {
 
 .picker-preview-type[data-surface="persuade"] .ps-phone-body {
   grid-template-rows: repeat(5, auto);
-  gap: 0;
+  gap: var(--ps-gap-md);
   align-content: start;
 }
 
 .picker-preview-type[data-surface="persuade"] .ps-phone-body .pt-headline {
   font-size: 26px;
   line-height: 1.15;
-  margin-block-end: 8px;
+  margin-block-end: 0;
 }
 
 .picker-preview-type[data-surface="persuade"] .ps-phone-body .pt-body {
-  margin-block-end: var(--ps-gap-md);
+  margin-block-end: 0;
 }
 
 .picker-preview-type[data-surface="persuade"] .ps-phone-body .ps-actions {
-  margin-block-end: var(--ps-gap-lg);
+  margin-block-end: 0;
 }
 
 .picker-preview-type[data-surface="persuade"] .ps-phone-body .ps-proof {
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   column-gap: var(--ps-gap-md);
-  margin-block-end: var(--ps-gap-md);
+  margin-block-end: 0;
 }
 
 .picker-preview-type[data-surface="persuade"] .ps-phone-body .ps-proof-divider,
@@ -5646,7 +5659,7 @@ body.picker-page {
 }
 
 .picker-preview-type[data-surface="persuade"] .ps-phone-body .ps-editorial-copy {
-  gap: var(--ps-gap-xs);
+  gap: var(--ps-gap-sm);
 }
 
 .picker-preview-type[data-surface="persuade"] .ps-phone-body .ps-editorial-copy strong {
@@ -5865,6 +5878,7 @@ body.picker-page {
   align-content: center;
   align-items: center;
   padding-inline: var(--ps-gutter);
+  grid-template-columns: auto 1fr;
 }
 
 .picker-preview-type .ps-nav-bars {
@@ -6047,14 +6061,15 @@ body.picker-page {
   display: block;
 }
 
-.picker-preview-type .ps-gallery-item b:first-child,
-.picker-preview-type .ps-gallery-item [data-type-gallery-title] {
+.picker-preview-type .ps-gallery-item [data-type-gallery-caption] {
   color: var(--pvs-title);
+  font-size: var(--pt-micro);
   line-height: 1.38;
-}
-
-.picker-preview-type .ps-gallery-item b:last-child {
-  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  text-wrap: balance;
 }
 
 /* ============================================================
@@ -6182,12 +6197,33 @@ body.picker-page {
 }
 
 .picker-preview-type--ops .ps-ops-item--on b {
-  color: var(--pvs-cta-text);
+  color: var(--pv-neutral);
   font-weight: 600;
 }
 
 .ps-ops-item--on > i {
   background-color: var(--pvs-cta-text);
+}
+
+.picker-preview-type--ops .ps-ops-item--on {
+  padding-block: calc(var(--pt-base) * 0.45);
+  padding-inline: calc(var(--pt-base) * 0.72) calc(var(--pt-base) * 0.58);
+}
+
+.picker-preview-type--ops .ps-ops-field {
+  gap: calc(var(--pt-base) * 0.5);
+  padding-block: calc(var(--pt-base) * 0.52);
+  padding-inline: calc(var(--pt-base) * 0.68) calc(var(--pt-base) * 0.58);
+}
+
+.picker-preview-type--ops .ps-ops-field b {
+  flex: 1 1 auto;
+  line-height: 1.35;
+}
+
+.picker-preview-type--ops .ps-ops-chev {
+  transform: translateY(-12%) rotate(45deg);
+  margin-inline-end: calc(var(--pt-base) * 0.08);
 }
 
 .ps-ops-title {
@@ -6359,6 +6395,11 @@ body.picker-page {
 
 .ps-ops-row--on {
   background-color: var(--pvs-ghost);
+}
+
+.picker-preview-type--ops .ps-ops-row--on {
+  padding-inline: calc(var(--pt-base) * 0.68) calc(var(--pt-base) * 0.58);
+  border-radius: var(--pvs-radius-frame);
 }
 
 /* A settings panel's heading is a UI label rather than a section title, so it
@@ -6542,6 +6583,14 @@ body.picker-page {
   border-right: 1px solid var(--pvs-rule);
 }
 
+.picker-preview-type--read .ps-docs {
+  grid-template-columns: minmax(0, 21%) minmax(0, 1fr);
+}
+
+.picker-preview-type--read .ps-docs-rail {
+  padding-inline-end: calc(var(--pt-base) * 0.35);
+}
+
 .ps-docs-item {
   min-width: 0;
   display: flex;
@@ -6587,6 +6636,10 @@ body.picker-page {
   display: grid;
   align-content: start;
   padding: var(--ps-band-y) 6% 0 calc(var(--pt-base) * 1.6);
+}
+
+.picker-preview-type--read .ps-docs-main {
+  padding: var(--ps-band-y) 5% 0 calc(var(--pt-base) * 0.8);
 }
 
 .picker-preview-type--read .ps-docs-main .pt-headline {
@@ -6694,17 +6747,6 @@ body.picker-page {
   line-height: 1.5;
 }
 
-/* The handset is the same document with the rail folded into a crumb, which is
-   how the drawing puts it too. One passage rather than two: the list is what
-   the width is spent on instead, and past that the note leaves the card. The
-   blocks carry the rhythm, so the gap stays at zero. */
-.picker-preview-type--read .ps-phone-body,
-[data-carry][data-surface="read"] .ps-phone-body {
-  grid-template-rows: repeat(6, auto);
-  align-content: start;
-  gap: 0;
-}
-
 .ps-docs-crumb {
   color: var(--pvs-bars);
   font-family: var(--pt-body);
@@ -6713,16 +6755,41 @@ body.picker-page {
   text-align: center;
 }
 
+/* The handset is the same document with the rail folded into a crumb, which is
+   how the drawing puts it too. One passage rather than two: the list is what
+   the width is spent on instead, and past that the note leaves the card. Row
+   gap carries the rhythm between blocks; the subsection keeps a shorter step
+   to the passage under it. */
+.picker-preview-type--read .ps-phone-body,
+[data-carry][data-surface="read"] .ps-phone-body {
+  grid-template-rows: repeat(6, auto);
+  align-content: start;
+  gap: var(--ps-gap-md);
+}
+
+.picker-preview-type--read .ps-phone-body > * {
+  margin-block: 0;
+}
+
 .picker-preview-type--read .ps-phone-body .pt-headline {
-  margin-top: calc(var(--pt-base) * 1);
+  margin-top: 0;
   font-size: var(--pt-title);
 }
 
-/* The phone re-bases the type ladder smaller, so the step that separates a
-   passage from the heading over it has to be restated against the new base or
-   the two run together. */
 .picker-preview-type--read .ps-phone-body .ps-docs-sub {
-  margin-top: calc(var(--pt-base) * 2.1);
+  margin-top: 0;
+}
+
+.picker-preview-type--read .ps-phone-body .ps-docs-sub + .ps-docs-para {
+  margin-top: calc(var(--pt-base) * 0.45);
+}
+
+.picker-preview-type--read .ps-phone-body .ps-docs-list {
+  margin-top: 0;
+}
+
+.picker-preview-type--read .ps-phone-body .ps-docs-note {
+  margin-top: 0;
 }
 
 /* A frame with room for the whole page. The document runs to the bottom of the
