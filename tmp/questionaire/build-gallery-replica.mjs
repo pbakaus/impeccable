@@ -51,6 +51,135 @@ const DOCS_WEIGHT_CSS = [
   '}',
 ].join('\n');
 
+const DOCS_CARRY_SCOPE =
+  'html[data-cell-surface="read"]:is([data-cell-screen="08"], [data-cell-screen="09"], [data-cell-screen="10"])';
+
+const DOCS_CARRY_ROOT = '[data-carry][data-surface="read"]';
+
+const DOCS_CARRY_WEIGHT_CSS = [
+  `${DOCS_CARRY_SCOPE} ${DOCS_CARRY_ROOT} {`,
+  '  --pvs-carry-weight: 1.65 !important;',
+  '}',
+  `${DOCS_CARRY_SCOPE} ${DOCS_CARRY_ROOT} .ps-docs-item > i {`,
+  '  width: calc(var(--pt-base) * 0.34 * var(--pvs-carry-weight)) !important;',
+  '}',
+  `${DOCS_CARRY_SCOPE} ${DOCS_CARRY_ROOT} :is(`,
+  '  .ps-docs-item b,',
+  '  .ps-docs-crumb,',
+  '  .ps-docs-note-copy b',
+  ') {',
+  '  height: calc(var(--pt-base) * 0.26 * var(--pvs-carry-weight)) !important;',
+  '}',
+  `${DOCS_CARRY_SCOPE} ${DOCS_CARRY_ROOT} :is(`,
+  '  .ps-docs-main .pt-headline i,',
+  '  .ps-phone-body .pt-headline i',
+  ') {',
+  '  height: calc(var(--pt-base) * 0.72 * var(--pvs-carry-weight)) !important;',
+  '}',
+  `${DOCS_CARRY_SCOPE} ${DOCS_CARRY_ROOT} .ps-docs-sub {`,
+  '  height: calc(var(--pt-base) * 0.5 * var(--pvs-carry-weight)) !important;',
+  '}',
+  `${DOCS_CARRY_SCOPE} ${DOCS_CARRY_ROOT} :is(`,
+  '  .ps-docs-lede i,',
+  '  .ps-docs-para i,',
+  '  .ps-docs-list li',
+  ') {',
+  '  height: calc(var(--pt-base) * 0.3 * var(--pvs-carry-weight)) !important;',
+  '}',
+  `${DOCS_CARRY_SCOPE} ${DOCS_CARRY_ROOT} .ps-docs-note-copy > span i {`,
+  '  height: calc(var(--pt-base) * 0.26 * var(--pvs-carry-weight)) !important;',
+  '}',
+  `${DOCS_CARRY_SCOPE} ${DOCS_CARRY_ROOT} .ps-docs-list li::before {`,
+  '  width: calc(var(--pt-base) * 0.3 * var(--pvs-carry-weight)) !important;',
+  '}',
+].join('\n');
+
+const DOCS_BOARD_CELLS = [
+  'boundaries--read--open-space',
+  'boundaries--read--thin-dividers',
+  'boundaries--read--surface-changes',
+  'corners--read--sharp',
+  'corners--read--slightly-soft',
+  'corners--read--friendly',
+  'corners--read--pill',
+  'depth--read--flat',
+  'depth--read--soft-lift',
+];
+
+const GALLERY_PREVIEW =
+  '#picker-form .picker-strategy-stage > .picker-preview.picker-preview--gallery';
+
+function portfolioCapAvatarsCss(option, circle = 'neutral') {
+  const scope =
+    'html[data-cell-screen="03"][data-cell-surface="experience"][data-cell-option="' + option + '"]';
+  const capCircle =
+    circle === 'drenched'
+      ? [
+          '  border: 1px solid color-mix(in oklab, var(--pkc-p-ink) 40%, var(--pkc-primary));',
+          '  background: linear-gradient(',
+          '    135deg,',
+          '    color-mix(in oklab, var(--pkc-p-ink) 16%, var(--pkc-primary)),',
+          '    color-mix(in oklab, var(--pkc-p-ink) 28%, var(--pkc-primary))',
+          '  );',
+        ].join('\n')
+      : circle === 'committed'
+        ? [
+            '  border: 1px solid color-mix(in oklab, var(--pkc-primary) 42%, var(--pkc-neutral));',
+            '  background: linear-gradient(',
+            '    135deg,',
+            '    color-mix(in oklab, var(--pkc-primary) 16%, var(--pkc-neutral)),',
+            '    color-mix(in oklab, var(--pkc-primary) 30%, var(--pkc-neutral))',
+            '  );',
+          ].join('\n')
+        : [
+            '  border: 1px solid color-mix(in oklab, var(--pv-secondary) 55%, var(--pv-neutral));',
+            '  background: linear-gradient(',
+            '    135deg,',
+            '    color-mix(in oklab, var(--pv-secondary) 24%, var(--pv-neutral)),',
+            '    color-mix(in oklab, var(--pv-secondary) 46%, var(--pv-neutral))',
+            '  );',
+          ].join('\n');
+
+  return [
+    `${scope} ${GALLERY_PREVIEW} .pv-desktop .pg-cap {`,
+    '  padding-top: 5.2cqh !important;',
+    '  gap: 2.6cqh !important;',
+    '}',
+    `${scope} ${GALLERY_PREVIEW} .pv-desktop .pg-cap::before {`,
+    '  content: "";',
+    '  display: block;',
+    '  width: calc(11.5 * var(--pv-x));',
+    '  aspect-ratio: 1;',
+    '  border-radius: 50%;',
+    capCircle,
+    '}',
+  ].join('\n');
+}
+
+const PORTFOLIO_DRENCHED_COLOR_CSS = [
+  'html[data-cell-screen="03"][data-cell-surface="experience"][data-cell-option="drenched"]',
+  `${GALLERY_PREVIEW} {`,
+  '  --pv-secondary: var(--pkc-secondary) !important;',
+  '  --pv-tertiary: var(--pkc-tertiary) !important;',
+  '  --pv-bone: color-mix(in oklab, var(--pkc-p-ink) 55%, var(--pkc-primary)) !important;',
+  '  --pv-strong: var(--pkc-p-ink) !important;',
+  '  --pv-secondary-wash: color-mix(in oklab, var(--pkc-p-ink) 16%, var(--pkc-primary)) !important;',
+  '}',
+  'html[data-cell-screen="03"][data-cell-surface="experience"][data-cell-option="drenched"]',
+  `${GALLERY_PREVIEW} .pv-image {`,
+  '  background: linear-gradient(',
+  '    135deg,',
+  '    color-mix(in oklab, var(--pkc-p-ink) 16%, var(--pkc-primary)),',
+  '    color-mix(in oklab, var(--pkc-p-ink) 28%, var(--pkc-primary))',
+  '  ) !important;',
+  '  border-color: color-mix(in oklab, var(--pkc-p-ink) 40%, var(--pkc-primary)) !important;',
+  '}',
+  'html[data-cell-screen="03"][data-cell-surface="experience"][data-cell-option="drenched"]',
+  `${GALLERY_PREVIEW} .pv-image::after {`,
+  '  background: var(--pkc-tertiary) !important;',
+  '}',
+].join('\n');
+
 /** @type {{ id: string, cells: string[], css: string }[]} */
 const EXPERIMENTS = [
   {
@@ -127,6 +256,26 @@ const EXPERIMENTS = [
     ],
     css: DOCS_WEIGHT_CSS,
   },
+  {
+    id: 'docs-board-carry-weight',
+    cells: DOCS_BOARD_CELLS,
+    css: DOCS_CARRY_WEIGHT_CSS,
+  },
+  {
+    id: 'portfolio-restrained-cap-avatars',
+    cells: ['strategy--experience--restrained'],
+    css: portfolioCapAvatarsCss('restrained', 'neutral'),
+  },
+  {
+    id: 'portfolio-committed-cap-avatars',
+    cells: ['strategy--experience--committed'],
+    css: portfolioCapAvatarsCss('committed', 'committed'),
+  },
+  {
+    id: 'portfolio-drenched-gallery',
+    cells: ['strategy--experience--drenched'],
+    css: PORTFOLIO_DRENCHED_COLOR_CSS + '\n' + portfolioCapAvatarsCss('drenched', 'drenched'),
+  },
 ];
 
 const experiment = String.raw`
@@ -188,8 +337,11 @@ replica = replica.replace(
   /<p class="note">Ground-truth extraction[\s\S]*?<\/p>/,
   '<p class="note">Replica of the ground-truth gallery with experiments on '
     + '<strong>12 Drenched</strong>, '
-    + '<strong>14–15 App UI</strong> color roles, and '
-    + '<strong>16–18 Docs</strong> wireframe weight. '
+    + '<strong>14–15 App UI</strong> color roles, '
+    + '<strong>16–18 Docs</strong> strategy wireframe weight, and '
+    + '<strong>45–47 / 59–62 / 71–72 Docs</strong> board bar weight, and '
+    + '<strong>19–21 Portfolio</strong> caption circles (desktop), '
+    + '<strong>21</strong> drenched color roles. '
     + 'Baseline: <a href="previews-gallery.html">previews-gallery.html</a>.</p>',
 );
 

@@ -3156,6 +3156,52 @@ body.picker-page {
   width: calc(2.64 * var(--pv-text) * var(--pv-x));
 }
 
+/* Board stage: the read artboard draws type as bars through [data-carry]. At
+   frame size those counts read as hairlines beside strategy's wireframe, which
+   carries its own step. Scale the bar ladder to match. */
+.picker-board-stage > [data-carry][data-surface="read"] {
+  --pvs-carry-weight: 1.65;
+}
+
+.picker-board-stage > [data-carry][data-surface="read"] .ps-docs-item > i {
+  width: calc(var(--pt-base) * 0.34 * var(--pvs-carry-weight));
+}
+
+.picker-board-stage > [data-carry][data-surface="read"] :is(
+  .ps-docs-item b,
+  .ps-docs-crumb,
+  .ps-docs-note-copy b
+) {
+  height: calc(var(--pt-base) * 0.26 * var(--pvs-carry-weight));
+}
+
+.picker-board-stage > [data-carry][data-surface="read"] :is(
+  .ps-docs-main .pt-headline i,
+  .ps-phone-body .pt-headline i
+) {
+  height: calc(var(--pt-base) * 0.72 * var(--pvs-carry-weight));
+}
+
+.picker-board-stage > [data-carry][data-surface="read"] .ps-docs-sub {
+  height: calc(var(--pt-base) * 0.5 * var(--pvs-carry-weight));
+}
+
+.picker-board-stage > [data-carry][data-surface="read"] :is(
+  .ps-docs-lede i,
+  .ps-docs-para i,
+  .ps-docs-list li
+) {
+  height: calc(var(--pt-base) * 0.3 * var(--pvs-carry-weight));
+}
+
+.picker-board-stage > [data-carry][data-surface="read"] .ps-docs-note-copy > span i {
+  height: calc(var(--pt-base) * 0.26 * var(--pvs-carry-weight));
+}
+
+.picker-board-stage > [data-carry][data-surface="read"] .ps-docs-list li::before {
+  width: calc(var(--pt-base) * 0.3 * var(--pvs-carry-weight));
+}
+
 /* One drawing is shown and the rest stay mounted, so switching costs an
    attribute rather than a rebuild. [hidden] is a display: none that the
    component's own display: grid outranks, so it is restated here. */
