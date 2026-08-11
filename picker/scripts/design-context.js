@@ -235,7 +235,7 @@ function paintCommitted(node) {
 
 /* Clone one questionnaire drawing into a dcx frame. Inline styles travel
    with the clone; ids do not (they would collide with the originals). */
-function proofHtml(source, { strategy = '', kind = 'board' } = {}) {
+function proofHtml(source, { strategy = '', kind = 'board', marks = null } = {}) {
   if (!source) return '';
   const clone = source.cloneNode(true);
   clone.hidden = false;
@@ -249,6 +249,15 @@ function proofHtml(source, { strategy = '', kind = 'board' } = {}) {
   wrap.className = `dcx-proof dcx-proof--${kind}`;
   wrap.setAttribute('aria-hidden', 'true');
   if (strategy) wrap.dataset.dcxStrategy = strategy;
+  /* Committed structural answers, restated on the frame. On the screens they
+     reach a carried artboard through checked inputs inside #picker-form,
+     which a clone in the document is outside of, so design-context.css
+     mirrors those bodies against these attributes instead. */
+  if (marks) {
+    for (const [key, value] of Object.entries(marks)) {
+      if (value) wrap.setAttribute(`data-dcx-${key}`, value);
+    }
+  }
   paintCommitted(wrap);
   wrap.appendChild(clone);
   return wrap.outerHTML;
@@ -260,6 +269,22 @@ function proofHtml(source, { strategy = '', kind = 'board' } = {}) {
 const surfaceBoard = (mode) => $(`[data-surface-stage] [data-surface="${mode}"]`);
 const surfaceTilePreview = (mode) => $(`input[name="surface-modes"][value="${mode}"]`)
   ?.closest('.picker-mode-tile')?.querySelector('.picker-preview');
+
+/* The boundaries screen keeps one carried ps artboard per surface, and by
+   that screen the drawing is the page as chosen so far. It is the clone
+   source for any proof that wants the whole material story on one page. */
+const carriedBoard = (mode) => $(`[data-question="boundaries"] .picker-artboard[data-surface="${mode}"]`);
+
+/* One surface's committed structural answers, as the data-dcx-* marks the
+   document stylesheet keys its mirrored bodies on. Layout is one answer for
+   the whole run, so every surface's frame carries the same value. */
+const materialMarks = (s, mode) => ({
+  surface: mode,
+  boundary: s.boundaries.find((entry) => entry.mode === mode)?.value || '',
+  corner: s.corners.find((entry) => entry.mode === mode)?.value || '',
+  depth: s.depth.find((entry) => entry.mode === mode)?.value || '',
+  layout: s.layout.value || '',
+});
 
 /* One line per surface for the per-surface questions, marking whether the
    user configured the surface or it kept the default for its kind. */
@@ -510,15 +535,27 @@ function buildTypography(s, name) {
 function buildIconography(s, name) {
   const parts = [heading(6, 'Iconography', 'Icon library, license, where it lives.', name)];
   if (s.icons.pack) {
-    const sheet = proofHtml($('[data-icon-sheet]'), { kind: 'icons' });
+    /* The glyphs are fetched when screen 11 first opens, so a fast run can
+       reach the document before any landed, and a failed fetch leaves only
+       an error line. A sheet with no icon cells proves nothing about the
+       hand, so it is dropped rather than framed. */
+    const sheetSource = $('[data-icon-sheet]');
+    const sheet = sheetSource?.querySelector('.picker-icon-cell') ? proofHtml(sheetSource, { kind: 'icons' }) : '';
     if (sheet) {
       parts.push(block('The hand', sheet
         + note(`${escapeHtml(s.icons.pack)}&rsquo;s canonical set, as the icons screen previewed it. One pack, one hand: no mixed sets.`)));
     }
+    /* The chosen radio's own row copy: the character note and the grid,
+       stroke, and license summary the screen showed beside the name. Read
+       off the DOM rather than kept twice, the optionCopy convention. */
+    const packLabel = form.querySelector('input[name="icon-pack"]:checked')?.closest('label');
+    const packNote = packLabel?.querySelector('.picker-strategy-desc')?.textContent.trim() || '';
+    const packMeta = packLabel?.querySelector('.picker-icon-meta')?.textContent.trim() || '';
     parts.push(block('Library', defs([
-      { dt: 'Pack', dd: `<strong>${escapeHtml(s.icons.pack)}</strong>` },
-      s.icons.license && { dt: 'License', dd: escapeHtml(s.icons.license) },
-      s.icons.url && { dt: 'Home', dd: `<a href="${escapeHtml(s.icons.url)}" target="_blank" rel="noopener">${escapeHtml(s.icons.url)}</a>` },
+      { dt: 'Pack', dd: `<strong>${escapeHtml(s.icons.pack)}</strong>${packMeta ? ` &middot; ${escapeHtml(packMeta)}` : ''}` },
+      packNote ? { dt: 'Why this hand', dd: escapeHtml(packNote) } : null,
+      s.icons.license ? { dt: 'License', dd: escapeHtml(s.icons.license) } : null,
+      s.icons.url ? { dt: 'Home', dd: `<a href="${escapeHtml(s.icons.url)}" target="_blank" rel="noopener">${escapeHtml(s.icons.url)}</a>` } : null,
     ].filter(Boolean)) + note('Chosen on the icons screen. The pack names the hand; stroke weight and metaphor rules resolve during implementation.')));
   } else {
     parts.push(block('Library', empty('No pack selected', 'The icons screen was not completed on this run.')));
@@ -538,12 +575,35 @@ const pickGrid = (entries) => `<div class="dcx-picks" data-count="${entries.leng
 function buildMaterial(s, name) {
   const interview = s.context?.interview || {};
   const parts = [heading(7, 'Material', 'Motion, layout structure, boundaries, corners, depth.', name)];
+  /* Every structural answer on one drawing per surface: the boundaries
+     screen's carried artboard, cloned with the surface's committed strategy
+     and material answers restated on its frame. A surface with no board in
+     the DOM drops its card rather than framing nothing. */
+  const proofCards = s.surfaces.map((surface) => {
+    const board = carriedBoard(surface.mode);
+    if (!board) return '';
+    return `
+    <article class="dcx-surface-card">
+      ${proofHtml(board, {
+        strategy: s.strategy.find((entry) => entry.mode === surface.mode)?.value || '',
+        kind: 'board',
+        marks: materialMarks(s, surface.mode),
+      })}
+      <div class="dcx-surface-copy">
+        <h3 class="dcx-surface-name">${escapeHtml(surface.label)}</h3>
+      </div>
+    </article>`;
+  }).filter(Boolean);
+  if (proofCards.length) {
+    parts.push(block('The page, as chosen', `<div class="dcx-surfaces" data-count="${proofCards.length}">${proofCards.join('')}</div>`
+      + note('Each surface&rsquo;s page anatomy carrying every structural answer below at once, the way the question screens accumulated them: color strategy, layout, boundaries, corners, depth.')));
+  }
   /* Movement is only asked of the two surfaces that make a claim on attention,
      so this list is one or two entries long and empty on a run of neither. An
      empty one says the question was never put, which is a different thing from
      a quiet answer and is worth saying out loud. */
   if (s.motion.length) {
-    parts.push(block('Motion per surface', surfaceDefs(s.motion)
+    parts.push(block('Motion per surface', pickGrid(s.motion)
       + note(interview.motionEnergy
         ? `The seed interview asked for <strong>${escapeHtml(interview.motionEnergy)}</strong>; the motion screen answered it per surface above.`
         : 'Asked of the landing page and the portfolio only. A tool and a document are moved through rather than watched, so their movement follows the interface rather than a house style.')));
@@ -571,22 +631,47 @@ function buildMaterial(s, name) {
 
 function buildInterface(s, name) {
   const parts = [heading(8, 'Interface', 'Per-surface decisions at a glance, component status.', name)];
-  const ASPECTS = [['Color strategy', 'strategy'], ['Boundaries', 'boundaries'], ['Corners', 'corners'], ['Depth', 'depth']];
-  parts.push(block('Decisions per surface', `<div class="dcx-surfaces" data-count="${s.surfaces.length}">${s.surfaces.map((surface) => `
+  parts.push(block('Decisions per surface', `<div class="dcx-surfaces" data-count="${s.surfaces.length}">${s.surfaces.map((surface) => {
+    const strategyValue = s.strategy.find((entry) => entry.mode === surface.mode)?.value || '';
+    const board = carriedBoard(surface.mode);
+    /* The matrix quotes every per-surface answer. A question this surface
+       was never asked reads Not asked rather than borrowing another
+       surface's answer; layout is one answer for the run and is quoted on
+       every card, the rule the Material page states. */
+    const rows = [
+      ['Color strategy', s.strategy.find((entry) => entry.mode === surface.mode)],
+      ['Boundaries', s.boundaries.find((entry) => entry.mode === surface.mode)],
+      ['Corners', s.corners.find((entry) => entry.mode === surface.mode)],
+      ['Depth', s.depth.find((entry) => entry.mode === surface.mode)],
+      ['Motion', s.motion.find((entry) => entry.mode === surface.mode)],
+      ['Layout', s.layout.value ? s.layout : undefined],
+    ];
+    return `
     <article class="dcx-surface-card">
-      ${proofHtml(surfaceBoard(surface.mode) || surfaceTilePreview(surface.mode), {
-        strategy: s.strategy.find((entry) => entry.mode === surface.mode)?.value || '',
-        kind: 'board',
-      })}
+      ${board
+        ? proofHtml(board, { strategy: strategyValue, kind: 'board', marks: materialMarks(s, surface.mode) })
+        : proofHtml(surfaceBoard(surface.mode) || surfaceTilePreview(surface.mode), { strategy: strategyValue, kind: 'board' })}
       <div class="dcx-surface-copy">
         <h3 class="dcx-surface-name">${escapeHtml(surface.label)}</h3>
-        <dl class="dcx-matrix">${ASPECTS.map(([label, key]) => {
-          const entry = s[key].find((item) => item.mode === surface.mode);
-          return `<div class="dcx-matrix-row"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(entry?.title || '—')}${entry && !entry.chosen ? ' <span class="dcx-default-mark">default</span>' : ''}</dd></div>`;
-        }).join('')}</dl>
+        <dl class="dcx-matrix">${rows.map(([label, entry]) => `
+          <div class="dcx-matrix-row"><dt>${escapeHtml(label)}</dt><dd>${entry ? escapeHtml(entry.title) : 'Not asked'}${entry && !entry.chosen ? ' <span class="dcx-default-mark">default</span>' : ''}</dd></div>`).join('')}</dl>
       </div>
-    </article>`).join('')}</div>`
-    + note('Each surface&rsquo;s artboard in its own color strategy, with the four per-surface answers beneath it.')));
+    </article>`;
+  }).join('')}</div>`
+    + note('Each surface&rsquo;s anatomy carrying its committed answers, with every per-surface decision beneath it.')));
+  /* The run's own tokens in one place: what the seed DESIGN.md frontmatter
+     will carry. Every row omits when its screen was not completed. */
+  const kit = [
+    s.fonts.heading ? { dt: 'Faces', dd: `<strong>${escapeHtml(s.fonts.heading)}</strong> for headings, <strong>${escapeHtml(s.fonts.body)}</strong> for body` } : null,
+    s.scale.ratio ? { dt: 'Type scale', dd: `<strong>${escapeHtml(s.scale.name)}</strong> &middot; ratio <code>${s.scale.ratio.toFixed(3)}</code> on a 16px base` } : null,
+    s.icons.pack ? { dt: 'Icons', dd: `<strong>${escapeHtml(s.icons.pack)}</strong>${s.icons.license ? ` &middot; ${escapeHtml(s.icons.license)}` : ''}` } : null,
+    s.palette.length ? { dt: 'Palette', dd: s.palette.map((entry) => `<code>${entry.hex}</code>`).join(' &middot; ') } : null,
+    s.layout.value ? { dt: 'Layout', dd: `<strong>${escapeHtml(s.layout.title)}</strong>, one answer for the run` } : null,
+  ].filter(Boolean);
+  if (kit.length) {
+    parts.push(block('The kit', defs(kit)
+      + note('The tokens the seed DESIGN.md will carry in its frontmatter, gathered from their own pages in this document.')));
+  }
   parts.push(block('Components', empty(
     'No component library seeded yet',
     'Components are documented on the first scan pass, once there is code to capture actual tokens and states from. Re-run <code>/impeccable document</code> then.',

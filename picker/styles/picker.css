@@ -1429,6 +1429,17 @@ body.picker-page {
   height: calc(5.58708 * var(--pv-x));
   background: var(--pv-primary);
   border-radius: 2px;
+  display: grid;
+  place-items: center;
+  color: var(--pv-neutral);
+}
+
+.pv-pill::after {
+  content: "";
+  width: calc(8.5 * var(--pv-x));
+  height: calc(1.3 * var(--pv-x));
+  background: currentColor;
+  border-radius: 2px;
 }
 
 /* The hero is a size container so the page it draws scales with the card rather
@@ -1951,7 +1962,7 @@ body.picker-page {
   flex: none;
   width: calc(6.92 * var(--pv-x));
   height: var(--h);
-  background: var(--po-wash);
+  background: var(--po-ink-soft);
 }
 
 .po-chart .po-peak {
@@ -2051,10 +2062,10 @@ body.picker-page {
 /* A square stood on its corner, two borders lit. Half of it falls outside the
    drawn chevron, so the margins are placing the tip rather than the box. */
 .po-chev {
-  align-self: start;
+  align-self: center;
   width: calc(2 * var(--pv-x));
   aspect-ratio: 1;
-  margin: calc(1.86 * var(--pv-x)) calc(3.14 * var(--pv-x)) 0 auto;
+  margin: 0 calc(3.14 * var(--pv-x)) 0 auto;
   border-right: 1px solid var(--po-ink);
   border-bottom: 1px solid var(--po-ink);
   transform: rotate(45deg);
@@ -2154,8 +2165,9 @@ body.picker-page {
 }
 
 .po-phone-body .po-chev {
+  align-self: center;
   width: calc(2.77 * var(--pv-x));
-  margin: calc(2.65 * var(--pv-x)) calc(5.03 * var(--pv-x)) 0 auto;
+  margin: 0 calc(5.03 * var(--pv-x)) 0 auto;
 }
 
 .po-prow {

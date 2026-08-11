@@ -1189,6 +1189,395 @@ body.dcx-open { overflow: hidden; background: linear-gradient(180deg, var(--ks-l
   --pv-tertiary: var(--pkc-tertiary);
   --pv-t-on-n: var(--pkc-t-on-p);
 }
+/* ============================================================
+   Material proofs: the structural screens' own artboards, cloned.
+
+   A .dcx-proof--board can also frame a ps artboard clone (the anatomy
+   screens 07 to 10 draw on), not just a tile drawing. On screen those
+   boards take every committed answer through checked inputs inside
+   #picker-form, which a clone in the document is outside of, so the frame
+   restates each answer as a data-dcx-* attribute and the bodies below are
+   verbatim copies of the committed bodies the screens set. Change a body
+   here and in its named source together. The palette rides two ways: the
+   screens paint all thirteen --pv-* slots inline on every artboard they
+   showed (inline styles travel with a clone), and for a board whose screen
+   the run never opened, the frame's --pkc-* paint reaches the clone
+   through the same six-slot map the tile clones above use, with the
+   artboard's own class defaults covering the contrast slots. */
+.dcx-proof--board > .picker-artboard {
+  --pv-primary: var(--pkc-primary, var(--ks-champagne));
+  --pv-secondary: var(--pkc-secondary, var(--ks-patina));
+  --pv-tertiary: var(--pkc-tertiary, var(--ks-kinpaku));
+  --pv-neutral: var(--pkc-neutral, var(--ks-lacquer-raised));
+  --pv-n-ink: var(--pkc-n-ink, var(--ks-champagne));
+  --pv-p-ink: var(--pkc-p-ink, var(--ks-champagne));
+}
+
+/* Two rules the clone loses with its data-surface attribute (proofHtml
+   strips it): the landing board's right-gutter chrome, and the handset
+   print's freeform cut, which rides --pvs-drift and stays a rectangle
+   under the other layout answers. The frame's data-dcx-surface carries
+   the surface instead. Sources: picker/styles/screens/layout.css, the
+   [data-carry][data-surface="persuade"] rules. */
+.dcx-proof--board[data-dcx-surface="persuade"] > .picker-artboard :is(.ps-nav, .ps-editorial, .ps-footer) {
+  padding-right: var(--pvs-gutter-end);
+}
+
+.dcx-proof--board[data-dcx-surface="persuade"] > .picker-artboard .ps-phone-body > .ps-image {
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--pvs-drift, 0) * 16%), 0 100%);
+}
+
+/* The strategy, restated for artboard clones: the [data-artboard] bodies
+   from picker.css. Restrained is the artboard's own defaults there and
+   stays bodiless here, exactly as the tile remaps above leave full
+   palette alone. */
+.dcx-proof--board[data-dcx-strategy="committed"] > .picker-artboard {
+  --pvs-headline: color-mix(in oklab, var(--pv-primary) 80%, var(--pv-strong));
+  --pvs-headline-text: var(--pv-p-on-n);
+  --pvs-eyebrow: var(--pv-primary);
+  --pvs-ghost: color-mix(in oklab, var(--pv-primary) 14%, var(--pv-neutral));
+  --pvs-ghost-edge: var(--pv-primary);
+  --pvs-image: var(--pv-primary);
+  --pvs-image-a: var(--pv-primary);
+  --pvs-image-b: color-mix(in oklab, var(--pv-primary) 72%, var(--pv-neutral));
+  --pvs-image-edge: var(--pv-primary);
+  --pvs-accent-a: var(--pv-primary);
+  --pvs-accent-b: color-mix(in oklab, var(--pv-primary) 70%, var(--pv-neutral));
+  --pvs-accent-c: var(--pv-primary);
+  --pvs-accent-d: color-mix(in oklab, var(--pv-primary) 18%, var(--pv-neutral));
+}
+
+.dcx-proof--board[data-dcx-strategy="full-palette"] > .picker-artboard {
+  --pvs-headline: color-mix(in oklab, var(--pv-primary) 80%, var(--pv-strong));
+  --pvs-headline-text: var(--pv-p-on-n);
+  --pvs-accent-text: var(--pv-t-on-n);
+  --pvs-eyebrow: var(--pv-tertiary);
+  --pvs-ghost: color-mix(in oklab, var(--pv-secondary) 18%, var(--pv-neutral));
+  --pvs-ghost-edge: var(--pv-secondary);
+  --pvs-image: var(--pv-primary);
+  --pvs-image-a: var(--pv-primary);
+  --pvs-image-b: color-mix(in oklab, var(--pv-secondary) 32%, var(--pv-primary));
+  --pvs-image-edge: var(--pv-primary);
+  --pvs-signal: var(--pv-tertiary);
+  --pvs-signal-ink: var(--pv-t-ink);
+  --pvs-signal-text: var(--pv-t-on-t);
+  --pvs-accent-a: var(--pv-secondary);
+  --pvs-accent-b: color-mix(in oklab, var(--pv-secondary) 42%, var(--pv-neutral));
+  --pvs-accent-c: var(--pv-primary);
+  --pvs-accent-d: var(--pv-tertiary);
+}
+
+.dcx-proof--board[data-dcx-strategy="drenched"] > .picker-artboard {
+  --pvs-ground: var(--pv-primary);
+  --pvs-ink: var(--pv-p-ink);
+  --pvs-surface: color-mix(in oklab, var(--pv-p-ink) 10%, var(--pv-primary));
+  --pvs-headline: var(--pv-p-ink);
+  --pvs-eyebrow: color-mix(in oklab, var(--pv-p-ink) 70%, var(--pv-primary));
+  --pvs-copy: color-mix(in oklab, var(--pv-p-ink) 55%, var(--pv-primary));
+  --pvs-title: var(--pv-p-ink);
+  --pvs-cta: var(--pv-p-ink);
+  --pvs-cta-ink: var(--pv-primary);
+  --pvs-cta-text: var(--pv-p-on-i);
+  --pvs-mark-text: var(--pv-p-ink);
+  --pvs-accent-text: var(--pv-t-on-p);
+  --pvs-copy-mix: 14%;
+  --pvs-bars-mix: 16%;
+  --pvs-ghost: color-mix(in oklab, var(--pv-p-ink) 22%, var(--pv-primary));
+  --pvs-ghost-edge: color-mix(in oklab, var(--pv-p-ink) 45%, var(--pv-primary));
+  --pvs-image: color-mix(in oklab, var(--pv-p-ink) 20%, var(--pv-primary));
+  --pvs-image-a: color-mix(in oklab, var(--pv-p-ink) 16%, var(--pv-primary));
+  --pvs-image-b: color-mix(in oklab, var(--pv-p-ink) 28%, var(--pv-primary));
+  --pvs-image-edge: color-mix(in oklab, var(--pv-p-ink) 40%, var(--pv-primary));
+  --pvs-signal: var(--pv-tertiary);
+  --pvs-signal-ink: var(--pv-t-ink);
+  --pvs-signal-text: var(--pv-t-on-t);
+  --pvs-bars: color-mix(in oklab, var(--pv-p-ink) 45%, var(--pv-primary));
+  --pvs-rule: color-mix(in oklab, var(--pv-p-ink) 28%, var(--pv-primary));
+  --pvs-accent-a: var(--pv-secondary);
+  --pvs-accent-b: var(--pv-tertiary);
+  --pvs-accent-c: color-mix(in oklab, var(--pv-p-ink) 30%, var(--pv-primary));
+  --pvs-accent-d: color-mix(in oklab, var(--pv-p-ink) 14%, var(--pv-primary));
+}
+
+/* Boundaries: the four committed bodies from styles/screens/boundaries.css. */
+.dcx-proof--board[data-dcx-boundary="open-space"] > .picker-artboard {
+  --pvs-divider-w: 0px;
+  --pvs-band: transparent;
+  --pvs-band-alt: transparent;
+  --pvs-band-top: transparent;
+  --pvs-panel: transparent;
+  --pvs-panel-edge-w: 0px;
+  --pvs-panel-pad: 0px;
+  --pvs-proof-inset: 0px;
+}
+
+.dcx-proof--board[data-dcx-boundary="thin-dividers"] > .picker-artboard {
+  --pvs-divider-w: 1px;
+  --pvs-divider-c: color-mix(in oklab, var(--pvs-ink) 24%, var(--pvs-ground));
+  --pvs-band: transparent;
+  --pvs-band-alt: transparent;
+  --pvs-band-top: transparent;
+  --pvs-panel: transparent;
+  --pvs-panel-edge-w: 0px;
+  --pvs-panel-pad: 0px;
+  --pvs-proof-inset: 0px;
+}
+
+.dcx-proof--board[data-dcx-boundary="surface-changes"] > .picker-artboard {
+  --pvs-divider-w: 0px;
+  --pvs-band: color-mix(in oklab, var(--pvs-ink) 7%, var(--pvs-ground));
+  --pvs-band-alt: color-mix(in oklab, var(--pvs-ink) 13%, var(--pvs-ground));
+  --pvs-band-top: color-mix(in oklab, var(--pvs-ink) 7%, var(--pvs-ground));
+  --pvs-panel: transparent;
+  --pvs-panel-edge-w: 0px;
+  --pvs-panel-pad: 0px;
+  --pvs-proof-inset: 0px;
+}
+
+.dcx-proof--board[data-dcx-boundary="cards-and-panels"] > .picker-artboard {
+  --pvs-divider-w: 0px;
+  --pvs-band: transparent;
+  --pvs-band-alt: color-mix(in oklab, var(--pvs-ink) 5%, var(--pvs-ground));
+  --pvs-band-top: transparent;
+  --pvs-panel: color-mix(in oklab, var(--pvs-ink) 5%, var(--pvs-ground));
+  --pvs-panel-edge: color-mix(in oklab, var(--pvs-ink) 20%, var(--pvs-ground));
+  --pvs-panel-edge-w: 1px;
+  --pvs-panel-pad: 5%;
+  --pvs-proof-inset: var(--pvs-gutter);
+}
+
+/* The open rail plate joins the card answer, as on the screen. */
+.dcx-proof--board[data-dcx-boundary="cards-and-panels"] > .picker-artboard .ps-ops-item {
+  background-color: var(--pvs-panel);
+}
+
+/* Corners: the four committed bodies from styles/screens/corners.css. */
+.dcx-proof--board[data-dcx-corner="sharp"] > .picker-artboard {
+  --pvs-radius-frame: 0px;
+  --pvs-radius-frame-phone: 0px;
+  --pvs-radius-surface: 0px;
+  --pvs-radius-control: 0px;
+  --pvs-radius-bar: 0px;
+}
+
+.dcx-proof--board[data-dcx-corner="slightly-soft"] > .picker-artboard {
+  --pvs-radius-frame: 4px;
+  --pvs-radius-frame-phone: 5px;
+  --pvs-radius-surface: 3px;
+  --pvs-radius-control: 3px;
+  --pvs-radius-bar: 2px;
+}
+
+.dcx-proof--board[data-dcx-corner="friendly"] > .picker-artboard {
+  --pvs-radius-frame: 7px;
+  --pvs-radius-frame-phone: 11px;
+  --pvs-radius-surface: 8px;
+  --pvs-radius-control: 8px;
+  --pvs-radius-bar: 3px;
+}
+
+.dcx-proof--board[data-dcx-corner="pill"] > .picker-artboard {
+  --pvs-radius-frame: 9px;
+  --pvs-radius-frame-phone: 15px;
+  --pvs-radius-surface: 12px;
+  --pvs-radius-control: 999px;
+  --pvs-radius-bar: 3px;
+}
+
+/* Depth: the three committed bodies from styles/screens/depth.css. */
+.dcx-proof--board[data-dcx-depth="flat"] > .picker-artboard {
+  --pvs-shadow-chrome: none;
+  --pvs-shadow-card: none;
+  --pvs-shadow-control: none;
+  --pvs-shadow-surface: none;
+}
+
+.dcx-proof--board[data-dcx-depth="soft-lift"] > .picker-artboard {
+  --pvs-shadow-chrome: 0 1px 2px rgb(0 0 0 / 0.1);
+  --pvs-shadow-card:
+    0 1px 1px rgb(0 0 0 / 0.15),
+    0 3px 7px rgb(0 0 0 / 0.14);
+  --pvs-shadow-control: 0 1px 2px rgb(0 0 0 / 0.24);
+  --pvs-shadow-surface: 0 2px 5px rgb(0 0 0 / 0.14);
+}
+
+.dcx-proof--board[data-dcx-depth="floating"] > .picker-artboard {
+  --pvs-shadow-chrome: 0 2px 6px rgb(0 0 0 / 0.16);
+  --pvs-shadow-card:
+    0 2px 3px rgb(0 0 0 / 0.2),
+    0 9px 18px rgb(0 0 0 / 0.24);
+  --pvs-shadow-control: 0 3px 6px rgb(0 0 0 / 0.32);
+  --pvs-shadow-surface: 0 6px 14px rgb(0 0 0 / 0.22);
+}
+
+/* Where a cast shadow is allowed to land, keyed to the boundary answer
+   exactly as depth.css keys it to the checked boundary input. */
+.dcx-proof--board[data-dcx-boundary="cards-and-panels"] > .picker-artboard :is(.ps-gallery-item, .ps-desktop > .ps-proof),
+.dcx-proof--board[data-dcx-boundary="surface-changes"] > .picker-artboard .ps-desktop > .ps-proof {
+  box-shadow: var(--pvs-shadow-card);
+}
+
+.dcx-proof--board:not([data-dcx-boundary="cards-and-panels"]) > .picker-artboard .ps-gallery-item {
+  box-shadow: none;
+}
+
+.dcx-proof--board:not([data-dcx-boundary="cards-and-panels"]) > .picker-artboard .ps-gallery-item > i {
+  box-shadow: var(--pvs-shadow-card);
+}
+
+.dcx-proof--board:not([data-dcx-boundary="surface-changes"]) > .picker-artboard :is(.ps-nav, .ps-phone-top) {
+  box-shadow: none;
+}
+
+.dcx-proof--board:not([data-dcx-boundary="surface-changes"]) > .picker-artboard :is(.ps-ops-rail, .ps-docs-rail) {
+  box-shadow: none;
+}
+
+.dcx-proof--board:not([data-dcx-boundary="surface-changes"]):not([data-dcx-boundary="cards-and-panels"]) > .picker-artboard .ps-ops-panel {
+  box-shadow: none;
+}
+
+.dcx-proof--board:not([data-dcx-boundary="cards-and-panels"]) > .picker-artboard :is(.ps-ops-chart, .ps-ops-table) {
+  box-shadow: none;
+}
+
+.dcx-proof--board:not([data-dcx-boundary="cards-and-panels"]) > .picker-artboard .ps-ops-plot > i {
+  box-shadow: var(--pvs-shadow-card);
+}
+
+.dcx-proof--board:not([data-dcx-boundary="surface-changes"]) > .picker-artboard .ps-docs-note {
+  box-shadow: none;
+}
+
+.dcx-proof--board[data-dcx-boundary="surface-changes"] > .picker-artboard .ps-index-row--flip {
+  box-shadow: var(--pvs-shadow-card);
+}
+
+/* Layout: the committed bodies from styles/screens/layout.css, the landing
+   measure and the region tracks folded into one body per answer (their
+   sources are two rules on the same committed selector). */
+.dcx-proof--board[data-dcx-layout="simple-grid"] > .picker-artboard {
+  --pvs-gutter: 6%;
+  --pvs-gutter-end: 6%;
+  --pvs-hero-cols: var(--pvs-w6) minmax(0, 1fr);
+  --pvs-hero-gap: var(--pvs-gut);
+  --pvs-editorial-cols: var(--pvs-w4) minmax(0, 1fr);
+  --pvs-editorial-gap: var(--pvs-gut);
+  --pvs-gallery-cols: repeat(4, minmax(0, 1fr));
+  --pvs-gallery-gap: calc(var(--pvs-gut) * 100 / 66.1333);
+  --pvs-section-align: start;
+  --pvs-rows: 9.4% 45.5% 9% 27.8% 8.3%;
+  --pvs-phone-gutter: 7%;
+  --pvs-phone-gallery-cols: 1fr 1fr;
+  --pvs-shell-cols:
+    calc(var(--pvs-w2) + var(--pvs-gut) / 2)
+    calc(var(--pvs-w7) + var(--pvs-gut))
+    minmax(0, 1fr);
+  --pvs-measure-cols:
+    calc(var(--pvs-w3) + var(--pvs-gut) / 2)
+    minmax(0, 1fr);
+  --pvs-metric-cols: repeat(3, minmax(0, 1fr));
+  --pvs-entry-cols: var(--pvs-w6) minmax(0, 1fr);
+  --pvs-entry-flip-cols: var(--pvs-w6) minmax(0, 1fr);
+}
+
+.dcx-proof--board[data-dcx-layout="simple-grid"] > .picker-artboard .ps-index-row--flip > .ps-image {
+  grid-area: 1 / 1;
+}
+
+.dcx-proof--board[data-dcx-layout="simple-grid"] > .picker-artboard .ps-index-row--flip > .ps-index-cap {
+  grid-area: 1 / 2;
+}
+
+.dcx-proof--board[data-dcx-layout="balanced"] > .picker-artboard {
+  --pvs-gutter: 6%;
+  --pvs-gutter-end: 6%;
+  --pvs-hero-cols: var(--pvs-w5) minmax(0, 1fr);
+  --pvs-hero-gap: var(--pvs-gut);
+  --pvs-editorial-cols: var(--pvs-w3) minmax(0, 1fr);
+  --pvs-editorial-gap: var(--pvs-gut);
+  --pvs-gallery-cols: 23.8fr 15.3333fr 15.3333fr 15.3333fr;
+  --pvs-gallery-gap: calc(var(--pvs-gut) * 100 / 74.6);
+  --pvs-section-align: center;
+  --pvs-rows: 9.4% 50.6% 9% 22.7% 8.3%;
+  --pvs-phone-gutter: 6%;
+  --pvs-phone-gallery-cols: 1.35fr 0.85fr;
+  --pvs-shell-cols:
+    calc(var(--pvs-w2) + var(--pvs-gut) / 2)
+    calc(var(--pvs-w8) + var(--pvs-gut))
+    minmax(0, 1fr);
+  --pvs-measure-cols:
+    calc(var(--pvs-w3) + var(--pvs-gut) / 2)
+    calc(var(--pvs-w6) + var(--pvs-gut))
+    minmax(0, 1fr);
+  --pvs-metric-cols: 1.45fr 1fr 1fr;
+  --pvs-entry-cols: var(--pvs-w7) minmax(0, 1fr);
+  --pvs-entry-flip-cols: minmax(0, 1fr) var(--pvs-w7);
+}
+
+.dcx-proof--board[data-dcx-layout="freeform"] > .picker-artboard {
+  --pvs-gutter: 6%;
+  --pvs-gutter-end: 6%;
+  --pvs-hero-cols: var(--pvs-w5) minmax(0, 1fr);
+  --pvs-hero-gap: var(--pvs-gut);
+  --pvs-editorial-cols: var(--pvs-w3) minmax(0, 1fr);
+  --pvs-editorial-gap: var(--pvs-gut);
+  --pvs-gallery-cols: repeat(4, minmax(0, 1fr));
+  --pvs-gallery-gap: calc(var(--pvs-gut) * 100 / 74.6);
+  --pvs-section-align: start;
+  --pvs-rows: 9.4% 48% 8.4% 26.2% 8%;
+  --pvs-phone-gutter: 6%;
+  --pvs-phone-gallery-cols: 1.5fr 0.9fr;
+  --pvs-drift: 1;
+  --pvs-entry-cols: var(--pvs-w7) minmax(0, 1fr);
+  --pvs-entry-flip-cols: minmax(0, 1fr) var(--pvs-w7);
+}
+
+/* Freeform's one move on the landing hero: the print cut loose of the
+   grid, with the copy holding the page's left measure. */
+.dcx-proof--board[data-dcx-layout="freeform"] > .picker-artboard .ps-desktop .ps-hero {
+  position: relative;
+  display: block;
+  padding: 0;
+}
+
+.dcx-proof--board[data-dcx-layout="freeform"] > .picker-artboard .ps-desktop .ps-hero > .ps-image {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  clip-path: polygon(40% 0, 100% 0, 100% 78%, 66% 84%);
+}
+
+.dcx-proof--board[data-dcx-layout="freeform"] > .picker-artboard .ps-desktop .ps-hero > .ps-hero-copy {
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+  width: 44%;
+  height: 100%;
+  align-content: center;
+  padding-left: var(--pvs-gutter, 6%);
+}
+
+/* Freeform on the index: the prints laid down askew with the caption
+   stepping onto the corner, the committed rules that are surface-scoped
+   on screen and read the frame's surface mark here. */
+.dcx-proof--board[data-dcx-layout="freeform"][data-dcx-surface="experience"] > .picker-artboard .ps-index-row > .ps-image {
+  rotate: -1.7deg;
+}
+
+.dcx-proof--board[data-dcx-layout="freeform"][data-dcx-surface="experience"] > .picker-artboard .ps-index-row--flip > .ps-image {
+  rotate: 1.4deg;
+}
+
+.dcx-proof--board[data-dcx-layout="freeform"][data-dcx-surface="experience"] > .picker-artboard .ps-index-cap {
+  position: relative;
+  z-index: 1;
+  translate: -9% 0;
+}
+
+.dcx-proof--board[data-dcx-layout="freeform"][data-dcx-surface="experience"] > .picker-artboard .ps-index-row--flip > .ps-index-cap {
+  translate: 9% 0;
+}
 
 /* The scale sheet and specimen size themselves against their rail on screen
    05; in the document they stand at natural height and full width. */
