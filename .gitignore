@@ -123,7 +123,8 @@ talks/
 .astro/
 
 # Local-only scratch for exploratory scripts, parked pages, and unused asset candidates.
-tmp/
+tmp/*
+!tmp/questionaire/
 
 # Isolated ablation staging (impeccable-evals copies the built staged skill here
 # per rule, removes one rule, points a worker at it). Throwaway; never committed.

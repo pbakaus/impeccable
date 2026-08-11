@@ -1,0 +1,9 @@
+# Allowlist only the gallery toolchain and HTML outputs; keep captures and diag local.
+*
+!.gitignore
+!build-gallery.mjs
+!build-gallery-replica.mjs
+!capture-previews.mjs
+!gallery-cells.mjs
+!previews-gallery.html
+!previews-gallery-improved.html
