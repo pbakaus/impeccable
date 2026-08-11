@@ -259,6 +259,7 @@ const hook = type ? '' : undefined;
           <div class:list={['ps-index-row', n === 1 && 'ps-index-row--flip']}>
             <div class="ps-image"></div>
             <div class="ps-index-cap">
+              <i class="ps-index-avatar" aria-hidden="true"></i>
               <strong class="ps-index-title" data-type-gallery-title></strong>
               <span class="ps-index-meta" data-type-gallery-meta></span>
               <span class="ps-index-note" data-type-caption></span>
@@ -458,6 +459,7 @@ const hook = type ? '' : undefined;
             >
               {type ? (
                 <Fragment>
+                  <i class="ps-index-avatar" aria-hidden="true"></i>
                   <strong class="ps-index-title" data-type-gallery-title></strong>
                   <span class="ps-index-meta" data-type-gallery-meta></span>
                   <span class="ps-index-note" data-type-caption></span>

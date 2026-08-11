@@ -6849,7 +6849,8 @@ body.picker-page {
    uppercased, and an instruction a specimen cannot test is decoration.
    ============================================================ */
 .picker-preview-type--experience .ps-desktop {
-  grid-template-rows: 9.4% minmax(0, 1fr) 8.3%;
+  /* Footer is hidden on type boards; a third row only buys empty band. */
+  grid-template-rows: 9.4% minmax(0, 1fr);
 }
 
 .ps-index {
@@ -6861,8 +6862,16 @@ body.picker-page {
   padding: var(--ps-band-y) var(--ps-gutter);
 }
 
+.picker-preview-type--experience .ps-index {
+  gap: var(--ps-gap-sm);
+}
+
 .picker-preview-type--experience .ps-index > .pt-headline {
-  max-width: 20ch;
+  max-width: none;
+  font-size: var(--pt-title);
+  letter-spacing: 0;
+  white-space: nowrap;
+  text-wrap: nowrap;
 }
 
 .ps-index-row {
@@ -6891,6 +6900,32 @@ body.picker-page {
   display: grid;
   align-content: center;
   gap: calc(var(--pt-base) * 0.35);
+}
+
+/* The strategy gallery's Portfolio captions carry a circular avatar above the
+   title on desktop; the type board repeats that mark so the font-pair preview
+   reads like cells 19–20 beside it. Handset captions stay text-only. */
+.picker-preview-type--experience .ps-desktop .ps-index-cap {
+  align-content: start;
+  gap: calc(var(--pt-base) * 0.42);
+}
+
+.picker-preview-type--experience .ps-index-avatar {
+  display: none;
+}
+
+.picker-preview-type--experience .ps-desktop .ps-index-avatar {
+  display: block;
+  width: calc(var(--pt-base) * 4.8);
+  margin-bottom: calc(var(--pt-base) * 0.12);
+  aspect-ratio: 1;
+  border: 1px solid color-mix(in oklab, var(--pv-secondary) 55%, var(--pv-neutral));
+  border-radius: 50%;
+  background: linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--pv-secondary) 24%, var(--pv-neutral)),
+    color-mix(in oklab, var(--pv-secondary) 46%, var(--pv-neutral))
+  );
 }
 
 .ps-index-title {
@@ -6962,7 +6997,11 @@ body.picker-page {
 }
 
 .picker-preview-type--experience .ps-index-stop--on {
-  color: var(--pvs-title);
+  padding: 0.55em 0.95em;
+  border-radius: var(--pvs-radius-bar);
+  background-color: var(--pvs-cta);
+  color: var(--pv-neutral);
+  font-weight: 600;
 }
 
 /* The handset drops the title and the rail and shows the work: two plates,

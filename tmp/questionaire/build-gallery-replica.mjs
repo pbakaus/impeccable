@@ -397,6 +397,70 @@ const FONT_PAIR_READ_DOCS_LAYOUT_CSS = [
 const FONT_PAIR_READ_SECTION_TITLE_JS =
   'doc.querySelectorAll("[data-type-section-title]").forEach(function (el) { if (el.textContent.trim() === "Lorem ipsum dolor sit") el.textContent = "Lorem ipsum dolor"; });';
 
+const FONT_PAIR_EXPERIENCE_CAP_AVATARS_CSS = [
+  '#picker-form .picker-preview-type--experience .ps-desktop .ps-index-cap {',
+  '  align-content: start !important;',
+  '}',
+  '#picker-form .picker-preview-type--experience .ps-index-avatar {',
+  '  display: none !important;',
+  '}',
+  '#picker-form .picker-preview-type--experience .ps-desktop .ps-index-avatar {',
+  '  display: block !important;',
+  '  width: calc(var(--pt-base) * 4.8) !important;',
+  '  aspect-ratio: 1 !important;',
+  '  border-radius: 50% !important;',
+  '  border: 1px solid color-mix(in oklab, var(--pv-secondary) 55%, var(--pv-neutral)) !important;',
+  '  background: linear-gradient(',
+  '    135deg,',
+  '    color-mix(in oklab, var(--pv-secondary) 24%, var(--pv-neutral)),',
+  '    color-mix(in oklab, var(--pv-secondary) 46%, var(--pv-neutral))',
+  '  ) !important;',
+  '}',
+].join('\n');
+
+const FONT_PAIR_EXPERIENCE_CAP_AVATARS_JS = [
+  'doc.querySelectorAll("#picker-form .picker-preview-type--experience .ps-desktop .ps-index-cap").forEach(function (cap) {',
+  '  if (cap.querySelector(".ps-index-avatar")) return;',
+  '  var avatar = doc.createElement("i");',
+  '  avatar.className = "ps-index-avatar";',
+  '  avatar.setAttribute("aria-hidden", "true");',
+  '  cap.insertBefore(avatar, cap.firstChild);',
+  '});',
+].join(' ');
+
+const FONT_PAIR_EXPERIENCE_LAYOUT_CSS = [
+  '#picker-form .picker-preview-type--experience .ps-desktop {',
+  '  grid-template-rows: 9.4% minmax(0, 1fr) !important;',
+  '}',
+  '#picker-form .picker-preview-type--experience .ps-index {',
+  '  gap: var(--ps-gap-sm) !important;',
+  '}',
+  '#picker-form .picker-preview-type--experience .ps-index > .pt-headline {',
+  '  max-width: none !important;',
+  '  font-size: var(--pt-title) !important;',
+  '  letter-spacing: 0 !important;',
+  '  white-space: nowrap !important;',
+  '  text-wrap: nowrap !important;',
+  '}',
+  '#picker-form .picker-preview-type--experience .ps-desktop .ps-index-cap {',
+  '  gap: calc(var(--pt-base) * 0.42) !important;',
+  '}',
+  '#picker-form .picker-preview-type--experience .ps-desktop .ps-index-avatar {',
+  '  margin-bottom: calc(var(--pt-base) * 0.12) !important;',
+  '}',
+  '#picker-form .picker-preview-type--experience .ps-index-stop--on {',
+  '  padding: 0.55em 0.95em !important;',
+  '  border-radius: var(--pvs-radius-bar) !important;',
+  '  background-color: var(--pvs-cta) !important;',
+  '  color: var(--pv-neutral) !important;',
+  '  font-weight: 600 !important;',
+  '}',
+  '#picker-form .picker-preview-type--experience .ps-footer,',
+  '#picker-form .picker-preview-type--experience .ps-phone-footer {',
+  '  display: none !important;',
+  '}',
+].join('\n');
+
 /** @type {{ id: string, cells: string[], css: string }[]} */
 const EXPERIMENTS = [
   {
@@ -453,6 +517,17 @@ const EXPERIMENTS = [
     cells: ['font-pair--read--default'],
     css: FONT_PAIR_READ_DOCS_LAYOUT_CSS,
     js: FONT_PAIR_READ_SECTION_TITLE_JS,
+  },
+  {
+    id: 'font-pair-experience-cap-avatars',
+    cells: ['font-pair--experience--default'],
+    css: FONT_PAIR_EXPERIENCE_CAP_AVATARS_CSS,
+    js: FONT_PAIR_EXPERIENCE_CAP_AVATARS_JS,
+  },
+  {
+    id: 'font-pair-experience-layout',
+    cells: ['font-pair--experience--default'],
+    css: FONT_PAIR_EXPERIENCE_LAYOUT_CSS,
   },
   {
     id: 'font-pair-operate-ops-chrome',
