@@ -131,19 +131,23 @@ ok('clean');
 
 if (cfg.buildCmd) {
   step(`Rebuilding outputs (${cfg.buildCmd})`);
-  const pickerOutput = component === 'skill'
-    ? path.join(repoRoot, 'skill/scripts/picker')
-    : null;
-  const pickerHashBefore = pickerOutput ? directoryHash(pickerOutput) : null;
-  execSync(cfg.buildCmd, { cwd: repoRoot, stdio: 'inherit' });
-  if (pickerHashBefore && directoryHash(pickerOutput) !== pickerHashBefore) {
-    fail(`Picker build output was stale. Run \`bun run build:picker\`, then re-run the release check.`);
+  if (dryRun) {
+    console.log(`  [dry-run] ${cfg.buildCmd}`);
+  } else {
+    const pickerOutput = component === 'skill'
+      ? path.join(repoRoot, 'skill/scripts/picker')
+      : null;
+    const pickerHashBefore = pickerOutput ? directoryHash(pickerOutput) : null;
+    execSync(cfg.buildCmd, { cwd: repoRoot, stdio: 'inherit' });
+    if (pickerHashBefore && directoryHash(pickerOutput) !== pickerHashBefore) {
+      fail(`Picker build output was stale. Run \`bun run build:picker\`, then re-run the release check.`);
+    }
+    const postBuild = run('git status --porcelain');
+    if (postBuild) {
+      fail(`Build produced uncommitted changes. Run \`${cfg.buildCmd}\`, commit the result, then re-run.\n${postBuild}`);
+    }
+    ok('build outputs match source');
   }
-  const postBuild = run('git status --porcelain');
-  if (postBuild) {
-    fail(`Build produced uncommitted changes. Run \`${cfg.buildCmd}\`, commit the result, then re-run.\n${postBuild}`);
-  }
-  ok('build outputs match source');
 }
 
 step('Checking HEAD is pushed to origin');
