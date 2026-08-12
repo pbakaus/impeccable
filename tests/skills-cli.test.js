@@ -11,7 +11,7 @@
  */
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
 import { execSync, execFileSync } from 'child_process';
-import { mkdtempSync, existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync, rmSync, lstatSync, realpathSync, readlinkSync, symlinkSync } from 'fs';
+import { mkdtempSync, existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync, rmSync, lstatSync, realpathSync, readlinkSync, symlinkSync, cpSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import {
@@ -66,6 +66,18 @@ function createFakeLinkSource(root, providers = ['.claude']) {
   for (const provider of providers) {
     writeSkill(join(root, '.impeccable', 'dist', 'universal'), provider, 'impeccable');
   }
+  if (providers.includes('.opencode')) {
+    const commandsDir = join(root, '.impeccable', 'dist', 'universal', '.opencode', 'commands');
+    mkdirSync(commandsDir, { recursive: true });
+    writeFileSync(join(commandsDir, 'impeccable.md'), [
+      'description: Impeccable impeccable bridge',
+      'agent: build',
+      'subtask: true',
+      '',
+      'body impeccable',
+      '',
+    ].join('\n'));
+  }
 }
 
 function createFakeUniversalBundle(root, providers = ['.claude', '.agents', '.cursor']) {
@@ -105,6 +117,18 @@ function createFakeUniversalBundle(root, providers = ['.claude', '.agents', '.cu
     writeFileSync(join(bundleRoot, '.codex', 'hooks.json'), JSON.stringify({
       hooks: { PostToolUse: [{ matcher: 'apply_patch', hooks: [{ type: 'command', command: 'node ".codex/skills/impeccable/scripts/hook.mjs"' }] }] },
     }, null, 2));
+  }
+  if (providers.includes('.opencode')) {
+    const commandsDir = join(bundleRoot, '.opencode', 'commands');
+    mkdirSync(commandsDir, { recursive: true });
+    writeFileSync(join(commandsDir, 'impeccable.md'), [
+      'description: Impeccable impeccable bridge',
+      'agent: build',
+      'subtask: true',
+      '',
+      'body impeccable',
+      '',
+    ].join('\n'));
   }
   // Native subagent definitions, mirroring the build's provider agents output.
   if (providers.includes('.github')) {
@@ -465,6 +489,23 @@ describe('skills install: already-installed detection', () => {
 // ─── Submodule/link installs ────────────────────────────────────────────────
 
 describe('skills link: submodule installs', () => {
+  test('writes the OpenCode command bridge alongside linked skills', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-link-bridge-'));
+    execSync('git init', { cwd: tmp });
+    createFakeLinkSource(tmp, ['.opencode']);
+
+    const output = run('skills link --source=.impeccable --providers=opencode -y', { cwd: tmp });
+    expect(output).toContain('Linked impeccable into: .opencode');
+
+    const dest = join(tmp, '.opencode', 'skills', 'impeccable');
+    expect(lstatSync(dest).isSymbolicLink()).toBe(true);
+    const bridge = join(tmp, '.opencode', 'commands', 'impeccable.md');
+    expect(existsSync(bridge)).toBe(true);
+    expect(readFileSync(bridge, 'utf8')).toContain('impeccable bridge');
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
   test('creates relative skill symlinks from dist/universal', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'imp-test-link-'));
     execSync('git init', { cwd: tmp });
@@ -1573,6 +1614,99 @@ describe('skills install/update: local universal bundle e2e', () => {
     });
     expect(output).toContain('Skills are up to date');
     expect(readFileSync(join(tmp, '.cursor', 'hooks.json'), 'utf8')).toBe('{ malformed');
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('reinstall backfills a missing OpenCode command bridge when skills are current', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-reinstall-backfill-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.opencode']);
+    const env = { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot };
+
+    run('skills install -y --providers=opencode --no-hooks', { cwd: tmp, env });
+    const bridge = join(tmp, '.opencode', 'commands', 'impeccable.md');
+    expect(existsSync(bridge)).toBe(true);
+    rmSync(bridge);
+
+    const output = run('skills install -y --providers=opencode --no-hooks', { cwd: tmp, env });
+    expect(output).toContain('already installed');
+    expect(existsSync(bridge)).toBe(true);
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('skills update backfills a missing OpenCode command bridge when skills are current', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-update-backfill-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.opencode']);
+    const env = { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot };
+
+    run('skills install -y --providers=opencode --no-hooks', { cwd: tmp, env });
+    const bridge = join(tmp, '.opencode', 'commands', 'impeccable.md');
+    expect(existsSync(bridge)).toBe(true);
+    rmSync(bridge);
+
+    run('skills update -y --no-hooks', { cwd: tmp, env });
+    expect(existsSync(bridge)).toBe(true);
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('skills update restores a command bridge whose content drifted', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-update-drifted-bridge-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.opencode']);
+    const env = { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot };
+
+    run('skills install -y --providers=opencode --no-hooks', { cwd: tmp, env });
+    const bridge = join(tmp, '.opencode', 'commands', 'impeccable.md');
+    writeFileSync(bridge, 'user edit drift\n');
+
+    run('skills update -y --no-hooks', { cwd: tmp, env });
+    expect(readFileSync(bridge, 'utf8')).toContain('impeccable bridge');
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('skills check from the home dir recognises a global OpenCode install as current', () => {
+    // Bugbot scenario: `skills check` runs scope-less, so a home-rooted run
+    // matches the GLOBAL skills dir via HOME_SKILLS_DIR_OVERRIDES. The command
+    // bridge must be resolved next to that matched skills dir, not at
+    // <home>/.opencode/commands. os.homedir() only honours HOME at process
+    // start, so this must run through the CLI subprocess, not in-process.
+    const home = mkdtempSync(join(tmpdir(), 'imp-test-check-home-'));
+    execSync('git init', { cwd: home });
+    const bundleRoot = createFakeUniversalBundle(home, ['.opencode']);
+    const configHome = mkdtempSync(join(tmpdir(), 'imp-test-check-config-'));
+    cpSync(join(bundleRoot, '.opencode', 'skills'), join(configHome, 'skills'), { recursive: true });
+    cpSync(join(bundleRoot, '.opencode', 'commands'), join(configHome, 'commands'), { recursive: true });
+
+    const output = run('skills check', {
+      cwd: home,
+      env: { ...process.env, HOME: home, OPENCODE_CONFIG_DIR: configHome, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+    expect(output).toContain('Skills are up to date');
+
+    rmSync(home, { recursive: true, force: true });
+    rmSync(configHome, { recursive: true, force: true });
+  }, 15000);
+
+  test('skills update leaves an intact command bridge and pinned siblings alone', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-update-bridge-intact-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.opencode']);
+    const env = { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot };
+
+    run('skills install -y --providers=opencode --no-hooks', { cwd: tmp, env });
+    const bridge = join(tmp, '.opencode', 'commands', 'impeccable.md');
+    const pinned = join(tmp, '.opencode', 'commands', 'impeccable-audit.md');
+    writeFileSync(pinned, 'pinned by user\n');
+
+    const output = run('skills update -y --no-hooks', { cwd: tmp, env });
+    expect(output).toContain('Skills are up to date');
+    expect(readFileSync(bridge, 'utf8')).toContain('impeccable bridge');
+    expect(readFileSync(pinned, 'utf8')).toBe('pinned by user\n');
 
     rmSync(tmp, { recursive: true, force: true });
   }, 15000);

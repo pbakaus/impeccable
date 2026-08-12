@@ -379,6 +379,28 @@ export function createTransformer(config) {
       }
     }
 
+    // Ship an explicit slash-command surface for OpenCode. OpenCode registers
+    // skill commands natively but its TUI autocomplete hides them by deliberate
+    // design (anomalyco/opencode#25439); this file also pins execution policy
+    // (agent: build, subtask: true) and routes through OpenCode's skill tool,
+    // which resolves the skill base dir for any install scope. Menu visibility
+    // is the only part contingent on OpenCode's design; the rest is intentional.
+    // Schema restricted to what OpenCode recognises (description, agent, model,
+    // variant, subtask).
+    if (provider === 'opencode' && skills.length > 0) {
+      const commandsDir = path.join(providerDir, `${configDir}/commands`);
+      ensureDir(commandsDir);
+      for (const skill of skills) {
+        const bridgeBody = `Call skill({ name: "${skill.name}" }) and follow its \`Setup\` and \`Commands\` sections to handle $ARGUMENTS.\n`;
+        const bridgeFrontmatter = generateYamlFrontmatter({
+          description: skill.description,
+          agent: 'build',
+          subtask: true,
+        });
+        writeFile(path.join(commandsDir, `${skill.name}.md`), `${bridgeFrontmatter}\n${bridgeBody}`.replace(/\n+$/, '\n'));
+      }
+    }
+
     if (config.agentFormat) {
       const agentsDir = path.join(providerDir, `${configDir}/agents`);
       for (const skill of skills) {

@@ -9,7 +9,7 @@
  */
 
 import { execSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, statSync, lstatSync, unlinkSync, mkdirSync, writeFileSync, rmSync, rmdirSync, renameSync, createWriteStream, realpathSync, symlinkSync, readlinkSync, cpSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, lstatSync, unlinkSync, mkdirSync, writeFileSync, rmSync, rmdirSync, renameSync, createWriteStream, realpathSync, symlinkSync, readlinkSync, cpSync, copyFileSync } from 'node:fs';
 import { join, resolve, dirname, relative, isAbsolute, sep } from 'node:path';
 import { createInterface, emitKeypressEvents } from 'node:readline';
 import { fileURLToPath } from 'node:url';
@@ -675,6 +675,27 @@ function isUpToDate(root, providers, bundleDir, scope) {
         if (bundleHash !== localHash) return false;
       }
     }
+
+    // Provider command artifacts (e.g. OpenCode's commands/impeccable.md) are
+    // part of "current" too: an install whose skills match but whose bridge is
+    // missing or drifted must refresh, otherwise reinstall/update report
+    // success while the slash command stays absent (#474 backfill). Only
+    // bundle-shipped files are checked, so pinned or user commands never
+    // affect freshness. The commands dir sits next to the matched skills dir
+    // (project <root>/.opencode, user <config>, home-dir global override), so
+    // deriving it from localSkillsDir stays correct for every layout
+    // copyProviderCommands can write.
+    const bundleCommandsDir = join(bundleDir, provider, 'commands');
+    if (existsSync(bundleCommandsDir)) {
+      const localCommandsDir = join(dirname(localSkillsDir), 'commands');
+      for (const entry of readdirSync(bundleCommandsDir)) {
+        const bundleFile = join(bundleCommandsDir, entry);
+        if (!statSync(bundleFile).isFile()) continue;
+        const localFile = join(localCommandsDir, entry);
+        if (!existsSync(localFile)) return false;
+        if (hashSkillFile(bundleFile) !== hashSkillFile(localFile)) return false;
+      }
+    }
   }
   return true;
 }
@@ -1195,6 +1216,74 @@ function copyProviderSkills(bundleDir, root, targets, { scope } = {}) {
           }
           try { rmdirSync(legacyDir); } catch { /* not empty: siblings stay */ }
         }
+      }
+    }
+  }
+  return written;
+}
+
+/**
+ * Copy each target provider's compiled command variant from an extracted
+ * bundle into the project or global config dir. OpenCode 1.18.10 discovers
+ * custom commands from `{command,commands}/**.md` under any active config
+ * dir, so the install mirrors `copyProviderSkills`: project scope writes
+ * `<root>/<configDir>/commands/`, user scope writes
+ * `opencodeGlobalConfigDir(home)/commands` with the same
+ * `OPENCODE_CONFIG_DIR` → `$XDG_CONFIG_HOME/opencode` → `~/.config/opencode`
+ * precedence PR #417 established for skills.
+ *
+ * Migration guard: a pre-#406 global OpenCode install at
+ * `~/.opencode/commands/` is not scanned by OpenCode. After a global
+ * install, the commands just written are removed from the stranded
+ * legacy copy, sibling commands stay put, symlinked legacy dirs are
+ * skipped (deleting through a symlink would empty the real target), and
+ * a home-rooted git repo (`<configDir>/commands/` IS a project install)
+ * is left alone. Symmetric to `copyProviderSkills` at
+ * `skills.mjs:1168-1186`.
+ */
+// Local commands dir for a provider. Project installs land at
+// <root>/<configDir>/commands; user-scope OpenCode installs must target the
+// config dir OpenCode actually scans (OPENCODE_CONFIG_DIR → XDG → ~/.config).
+function providerCommandsDir(root, providerEntry, scope) {
+  return scope === 'user'
+    ? join(opencodeGlobalConfigDir(root), 'commands')
+    : join(root, providerEntry.replace(/^\./, '.'), 'commands');
+}
+
+function copyProviderCommands(bundleDir, root, targets, { scope } = {}) {
+  let written = 0;
+  for (const target of targets) {
+    const providerEntry = PROVIDER_DIRS.includes(`.${target}`)
+      ? `.${target}`
+      : target;
+    const srcDir = join(bundleDir, providerEntry, 'commands');
+    if (!existsSync(srcDir)) continue;
+    const localCommandsDir = providerCommandsDir(root, providerEntry, scope);
+    mkdirSync(localCommandsDir, { recursive: true });
+    for (const entry of readdirSync(srcDir)) {
+      const src = join(srcDir, entry);
+      if (!statSync(src).isFile()) continue;
+      const dest = join(localCommandsDir, entry);
+      rmSync(dest, { recursive: true, force: true });
+      copyFileSync(src, dest);
+      written++;
+    }
+    if (scope === 'user' && providerEntry === '.opencode') {
+      const legacyDir = join(root, '.opencode', 'commands');
+      let migratable = false;
+      try {
+        migratable = existsSync(legacyDir)
+          && !lstatSync(legacyDir).isSymbolicLink()
+          && realpathSync(legacyDir) !== realpathSync(localCommandsDir)
+          && !existsSync(join(root, '.git'));
+      } catch { migratable = false; }
+      if (migratable) {
+        for (const entry of readdirSync(srcDir)) {
+          const src = join(srcDir, entry);
+          if (!statSync(src).isFile()) continue;
+          rmSync(join(legacyDir, entry), { recursive: true, force: true });
+        }
+        try { rmdirSync(legacyDir); } catch { /* not empty: siblings stay */ }
       }
     }
   }
@@ -1804,6 +1893,13 @@ async function link(flags) {
     process.exit(1);
   }
 
+  // Linked installs are excluded from install/update refreshes (overwriting a
+  // symlink would destroy the link), so this is the only path that can deliver
+  // the OpenCode command bridge to them. A copy, not a symlink: the bridge is
+  // static and OpenCode scans the real commands dir. No-ops when the source
+  // checkout has no built commands (e.g. dist/ not built yet).
+  copyProviderCommands(source.bundleRoot, root, targets, { scope: 'project' });
+
   const parts = [];
   if (result.linked > 0) parts.push(`${result.linked} linked`);
   if (result.already > 0) parts.push(`${result.already} already linked`);
@@ -1873,6 +1969,7 @@ async function install(flags) {
         migrateUnprefixImpeccable(installRoot, scope);
         updated = refreshProviderSkills(bundleDir, installRoot, copyTargets, scope);
         reportProviderAgents(copyProviderAgents(bundleDir, installRoot, copyTargets, { scope }));
+        copyProviderCommands(bundleDir, installRoot, copyTargets, { scope });
         const v = getSkillsVersion(installRoot, scope);
         console.log(`Updated ${updated} skill(s)${v ? ` to v${v}` : ''}.`);
       }
@@ -1944,6 +2041,7 @@ async function install(flags) {
   try {
     written = copyProviderSkills(bundleDir, installRoot, targets, { scope });
     agentResults = copyProviderAgents(bundleDir, installRoot, targets, { scope });
+    copyProviderCommands(bundleDir, installRoot, targets, { scope });
     hookTargets = wantHooks ? copyProviderHooks(bundleDir, hookRoot, targets, { force, skillRoot: installRoot }) : [];
   } catch (e) {
     rmSync(bundleDir, { recursive: true, force: true });
@@ -2215,6 +2313,7 @@ async function update(flags = []) {
 
     const updated = refreshProviderSkills(tmpDir, root, copyProviders, scope);
     reportProviderAgents(copyProviderAgents(tmpDir, root, copyProviders, { scope }));
+    copyProviderCommands(tmpDir, root, copyProviders, { scope });
     const wantHooks = installHooks && await decideHookInstall(root, providers, { yes });
     const hookTargets = wantHooks ? copyProviderHooks(tmpDir, root, providers, { force }) : [];
 
@@ -2250,15 +2349,18 @@ function copyDirSync(src, dest) {
 export {
   collectInstallDetections,
   copyProviderAgents,
+  copyProviderCommands,
   copyProviderHooks,
   copyProviderSkills,
   decideHookInstall,
   expectedHookDests,
   extractZip,
   formatInstallDetectionLines,
+  isUpToDate,
   linkProviderSkills,
   mergeHookManifests,
   migrateUnprefixImpeccable,
+  opencodeGlobalConfigDir,
   resolveInstallTargets,
   resolveLinkSource,
 };
