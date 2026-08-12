@@ -95,6 +95,8 @@ const LOREM_DOCS = {
 
 const LOREM_INDEX = {
   stops: ['Lorem', 'Ipsum', 'Dolor', 'Amet'],
+  caption:
+    'Lorem ipsum dolor sit amet,\nconsectetur adipiscing elit sed do eiusmod tempor.',
 };
 
 /* The desktop artboard sets three cards and the phone two, so a fourth would
@@ -433,7 +435,7 @@ function fillBoard(board) {
   fill('[data-type-note-label]', LOREM_DOCS.note);
   fill('[data-type-note-body]', LOREM.note);
   fill('[data-type-crumb]', LOREM_DOCS.crumb);
-  fill('[data-type-caption]', LOREM.caption);
+  fill('[data-type-caption]', LOREM_INDEX.caption);
   fill('[data-type-chart-title]', LOREM_APP.chartTitle);
   const fillGalleryCaptions = (root, items) => {
     if (!root) return;

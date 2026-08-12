@@ -18,13 +18,33 @@ const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const form = $('#picker-form');
 const shell = $('[data-dcx-shell]');
 
-/* Seed context (the chat half of the interview) rides in on cues.json as an
-   optional `context` block. Fetched at load, before the server can exit. */
+/* Seed context (the chat half of the interview) and the dealt palettes ride
+   in on cues.json. Fetched at load, before the server can exit: the context
+   block feeds the chat-sourced pages, and the palette map is what the
+   provenance tags compare committed values against. */
 let seedContext = null;
+let seedModes = null;
+let seedPalettes = null;
 fetch('/cues.json')
   .then((response) => (response.ok ? response.json() : null))
-  .then((data) => { seedContext = data?.context || null; })
+  .then((data) => {
+    seedContext = data?.context || null;
+    seedModes = Array.isArray(data?.modes) ? data.modes : null;
+    seedPalettes = data?.palette || null;
+  })
   .catch(() => {});
+
+/* The winning cue's dealt value for one role, read the way the deck's own
+   createState reads it in palette-picker.js: the pixel-snapped value when
+   the search landed, the planned hex otherwise, uppercased. A palette
+   source that is not a cue in cues.json (a seed-deck card, a custom
+   palette) has no entry here and returns nothing, which is what turns the
+   provenance tag off. */
+const seedHexFor = (source, role) => {
+  const slot = seedPalettes?.[source]?.[role];
+  if (!slot) return '';
+  return String(slot.snapped || slot.hex || '').toUpperCase();
+};
 
 /* ============================================================
    Snapshot — everything the document renders, read once.
@@ -32,6 +52,7 @@ fetch('/cues.json')
 
 const ROLES = ['primary', 'secondary', 'tertiary', 'neutral'];
 const SURFACE_ORDER = ['persuade', 'operate', 'read', 'experience'];
+const SURFACE_LABELS = { persuade: 'Landing page', operate: 'Tool', read: 'Docs', experience: 'Portfolio' };
 const PER_SURFACE = ['color-strategy', 'boundary-style', 'corner-style', 'depth-style'];
 
 const fieldValue = (name) => {
@@ -112,6 +133,7 @@ function takeSnapshot() {
 
   return {
     context: seedContext,
+    suggestedModes: seedModes,
     surfaces,
     palette,
     paletteSource: fieldValue('palette-source'),
@@ -176,6 +198,14 @@ const callout = (name, body, accent = false, extra = '') => `
 
 const list = (items) => `
   <ul class="dcx-list">${items.map((item) => `<li>${item}</li>`).join('')}</ul>`;
+
+const principlesList = (items) => `
+  <ol class="dcx-principles">${items.map((item) => {
+    if (item && typeof item === 'object' && item.title) {
+      return `<li><strong>${escapeHtml(item.title)}</strong>${item.detail ? ` &mdash; ${escapeHtml(item.detail)}` : ''}</li>`;
+    }
+    return `<li>${escapeHtml(item)}</li>`;
+  }).join('')}</ol>`;
 
 const chips = (items) => `
   <div class="dcx-chips">${items.map((item) => `<span class="dcx-chip dcx-chip--muted">${escapeHtml(item)}</span>`).join('')}</div>`;
@@ -333,14 +363,35 @@ function buildAudience(s, name) {
    drawing on top, dressed in the committed palette, then the label and goal
    the tile carried. */
 function surfaceCards(s, body) {
-  return `<div class="dcx-surfaces" data-count="${s.surfaces.length}">${s.surfaces.map((surface) => `
+  return `<div class="dcx-surfaces" data-count="${s.surfaces.length}">${s.surfaces.map((surface, index) => `
     <article class="dcx-surface-card">
       ${proofHtml(surfaceBoard(surface.mode) || surfaceTilePreview(surface.mode), { kind: 'board' })}
       <div class="dcx-surface-copy">
-        <h3 class="dcx-surface-name">${escapeHtml(surface.label)}</h3>
+        <h3 class="dcx-surface-name">${escapeHtml(surface.label)}${index === 0 ? ' <span class="dcx-default-mark">leading</span>' : ''}</h3>
         ${body(surface)}
       </div>
     </article>`).join('')}</div>`;
+}
+
+function surfaceProvenanceNote(s) {
+  if (!Array.isArray(s.suggestedModes) || !s.suggestedModes.length) return '';
+  const chosen = s.surfaces.map((surface) => surface.mode);
+  const suggestedSet = new Set(s.suggestedModes);
+  const chosenSet = new Set(chosen);
+  const label = (mode) => s.surfaces.find((surface) => surface.mode === mode)?.label
+    || SURFACE_LABELS[mode]
+    || mode;
+  const added = chosen.filter((mode) => !suggestedSet.has(mode));
+  const removed = s.suggestedModes.filter((mode) => !chosenSet.has(mode));
+  let tail = 'you kept the suggested set';
+  if (added.length && removed.length) {
+    tail = `you added ${added.map(label).join(', ')} and dropped ${removed.map(label).join(', ')}`;
+  } else if (added.length) {
+    tail = `you added ${added.map(label).join(', ')}`;
+  } else if (removed.length) {
+    tail = `you dropped ${removed.map(label).join(', ')}`;
+  }
+  return note(`Suggested from <code>PRODUCT.md</code>: ${s.suggestedModes.map(label).join(', ')}; ${tail}.`);
 }
 
 /* Display labels for the PRODUCT.md platform value; an unrecognized value
@@ -367,16 +418,27 @@ function buildProduct(s, name) {
     ].filter(Boolean).join('');
     parts.push(block('Positioning', `<div class="dcx-callout-pair">${cells}</div>`));
   }
+  if (product.conversion) {
+    parts.push(block('Primary conversion', callout('The one action', escapeHtml(product.conversion), true)));
+  }
   if (Array.isArray(product.clarities) && product.clarities.length) {
     parts.push(block('What must be clear first', list(product.clarities.map(escapeHtml))));
+  }
+  if (Array.isArray(product.principles) && product.principles.length) {
+    parts.push(block('Product principles', principlesList(product.principles)));
   }
   if (product.operatingContext) {
     parts.push(block('Operating context', `<p class="dcx-prose">${escapeHtml(product.operatingContext)}</p>`));
   }
-  parts.push(block('Surfaces', surfaceCards(s, (surface) => `
-      <p class="dcx-surface-goal">${surface.goal ? escapeHtml(surface.goal) : ''}</p>
-      ${surface.examples.length ? chips(surface.examples) : ''}`)
-    + note('Chosen on the questionnaire&rsquo;s first screen, drawn in the committed palette; every per-surface answer in this document is keyed to this set.')));
+  const surfaceMap = product.surfaces && typeof product.surfaces === 'object' ? product.surfaces : {};
+  parts.push(block('Surfaces', surfaceCards(s, (surface) => {
+    const specific = typeof surfaceMap[surface.mode] === 'string' ? surfaceMap[surface.mode].trim() : '';
+    return `
+      <p class="dcx-surface-goal">${escapeHtml(specific || surface.goal || '')}</p>
+      ${surface.examples.length ? chips(surface.examples) : ''}`;
+  })
+    + surfaceProvenanceNote(s)
+    + note('Chosen on the questionnaire&rsquo;s first screen, drawn in the committed palette; the leading surface owns every bare answer key in the sections that follow.')));
   return parts.join('');
 }
 
@@ -392,6 +454,26 @@ function buildBrand(s, name) {
     : (Array.isArray(brand.words) && brand.words.length
       ? callout(brand.words.join(' · '), 'Three words, voice, and tone were confirmed in chat, before the browser questionnaire. <code>PRODUCT.md &middot; Brand Personality</code> is the durable copy.', true)
       : fromChat('Three words, voice, and tone were confirmed', '<code>PRODUCT.md &middot; Brand Personality</code>'))));
+  /* Voice: say / not wording pairs the agent derived from Brand Personality
+     and Brand Commitments at cues-write time. Concrete lines to write with,
+     never adjectives, and no interview question stands behind the field.
+     Pairs missing either half are dropped rather than rendered lopsided. */
+  const voicePairs = (Array.isArray(brand.voice) ? brand.voice : [])
+    .filter((pair) => pair && typeof pair === 'object' && pair.say && pair.not);
+  if (voicePairs.length) {
+    parts.push(block('Voice', `<div class="dcx-voice">${voicePairs.map((pair) => `
+      <div class="dcx-voice-pair">
+        <div class="dcx-voice-cell dcx-voice-cell--say"><span class="dcx-voice-tag">Say</span><p>${escapeHtml(pair.say)}</p></div>
+        <div class="dcx-voice-cell dcx-voice-cell--not"><span class="dcx-voice-tag">Not</span><p>${escapeHtml(pair.not)}</p></div>
+      </div>`).join('')}</div>`
+      + note('Derived from Brand Personality and Brand Commitments in <code>PRODUCT.md</code>: wording to write with beside wording to refuse.')));
+  }
+  /* Principles: PRODUCT.md's own list, in the prototype's numbered anatomy,
+     folded into two columns. */
+  if (Array.isArray(brand.principles) && brand.principles.length) {
+    parts.push(block('Principles', `<ol class="dcx-principles dcx-principles--cols">${brand.principles.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</ol>`
+      + note('From <code>PRODUCT.md</code>&rsquo;s principles section; the durable copy lives there.')));
+  }
   if (Array.isArray(brand.commitments) && brand.commitments.length) {
     parts.push(block('Commitments', list(brand.commitments.map(escapeHtml))));
   }
@@ -449,25 +531,40 @@ function buildColor(s, name) {
       + note(`Committed on the palette screen${s.paletteSource ? ` from the <code>${escapeHtml(s.paletteSource)}</code> cue` : ''}, roles in the order you arranged them. Hover to fan; click to copy the hex.`)));
 
     /* One full-width band per role: the swatch at real size with both value
-       notations, the role's job, and a copy affordance. */
-    parts.push(block('Roles and values', `<div class="dcx-swatches">${s.palette.map((entry) => `
+       notations, the role's job, the ink that survives on it, where the value
+       came from, and a copy affordance. The provenance tag compares the
+       committed value against the winning cue's dealt value and stays away
+       when the source is not a cue; the ink chip is a pure derivation and
+       always renders. */
+    const colorContext = s.context?.color || {};
+    parts.push(block('Roles and values', `<div class="dcx-swatches">${s.palette.map((entry) => {
+      const inkHex = contrastInkHex(entry.hex);
+      const seedHex = seedHexFor(s.paletteSource, entry.role.toLowerCase());
+      const provenance = seedHex ? (seedHex === entry.hex ? 'as dealt' : 'edited') : '';
+      return `
       <div class="dcx-swatch" data-role="${entry.role.toLowerCase()}">
         <button class="dcx-swatch-chip" type="button" data-copy-color="${entry.hex}" data-color-name="${escapeHtml(entry.role)}"
           style="--swatch:${entry.hex}; --swatch-ink:${inkFor(entry.hex)};" aria-label="Copy ${escapeHtml(entry.role)} ${entry.hex}">
-          <span class="dcx-swatch-hex">${entry.hex}</span>
+          <span class="dcx-swatch-hex">${entry.hex}</span>${provenance ? `
+          <span class="dcx-swatch-provenance" data-provenance="${provenance === 'edited' ? 'edited' : 'as-dealt'}">${provenance}</span>` : ''}
           <span class="dcx-swatch-copy-hint">Copy</span>
         </button>
         <div class="dcx-swatch-meta">
           <h3>${escapeHtml(entry.role)}</h3>
           <p>${escapeHtml(ROLE_STORY[entry.role] || '')}</p>
           <code>${escapeHtml(formatOklch(entry.hex))}</code>
+          <span class="dcx-ink-pair"><span class="dcx-ink-tag">Ink</span><span class="dcx-ink-sample" style="--ink-ground:${entry.hex}; --ink-text:${inkHex};">${inkHex}</span></span>
           <span class="dcx-swatch-actions">
             <button class="dcx-edit" type="button" data-edit-color="${entry.role.toLowerCase()}">Edit color</button>
             <input class="dcx-native-color" type="color" value="${entry.hex}" data-color-input-for="${entry.role.toLowerCase()}"
               tabindex="-1" aria-label="Pick a new ${escapeHtml(entry.role)} color" />
           </span>
         </div>
-      </div>`).join('')}</div>`));
+      </div>`;
+    }).join('')}</div>`
+      + (Array.isArray(colorContext.assetLocks) && colorContext.assetLocks.length
+        ? note(`From the assets: ${colorContext.assetLocks.map(escapeHtml).join(' &middot; ')}.`)
+        : '')));
 
     /* Every chosen surface gets its artboard back, remapped by the strategy
        that surface answered with — the strategy screen's preview, kept. */

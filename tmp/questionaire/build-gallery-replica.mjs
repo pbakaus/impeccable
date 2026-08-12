@@ -397,16 +397,22 @@ const FONT_PAIR_READ_DOCS_LAYOUT_CSS = [
 const FONT_PAIR_READ_SECTION_TITLE_JS =
   'doc.querySelectorAll("[data-type-section-title]").forEach(function (el) { if (el.textContent.trim() === "Lorem ipsum dolor sit") el.textContent = "Lorem ipsum dolor"; });';
 
+const FONT_PAIR_READ_NOTA_CSS = [
+  '#picker-form .picker-preview-type--read .ps-docs-note-copy b {',
+  '  color: var(--pv-primary) !important;',
+  '}',
+].join('\n');
+
 const FONT_PAIR_EXPERIENCE_CAP_AVATARS_CSS = [
   '#picker-form .picker-preview-type--experience .ps-desktop .ps-index-cap {',
-  '  align-content: start !important;',
+  '  align-content: center !important;',
   '}',
   '#picker-form .picker-preview-type--experience .ps-index-avatar {',
   '  display: none !important;',
   '}',
   '#picker-form .picker-preview-type--experience .ps-desktop .ps-index-avatar {',
   '  display: block !important;',
-  '  width: calc(var(--pt-base) * 4.8) !important;',
+  '  width: calc(var(--pt-base) * 3.4) !important;',
   '  aspect-ratio: 1 !important;',
   '  border-radius: 50% !important;',
   '  border: 1px solid color-mix(in oklab, var(--pv-secondary) 55%, var(--pv-neutral)) !important;',
@@ -434,6 +440,10 @@ const FONT_PAIR_EXPERIENCE_LAYOUT_CSS = [
   '}',
   '#picker-form .picker-preview-type--experience .ps-index {',
   '  gap: var(--ps-gap-sm) !important;',
+  '  grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr) !important;',
+  '}',
+  '#picker-form .picker-preview-type--experience .ps-desktop :is(.ps-index-rail, .ps-index-meta, .ps-nav-action) {',
+  '  display: none !important;',
   '}',
   '#picker-form .picker-preview-type--experience .ps-index > .pt-headline {',
   '  max-width: none !important;',
@@ -443,23 +453,33 @@ const FONT_PAIR_EXPERIENCE_LAYOUT_CSS = [
   '  text-wrap: nowrap !important;',
   '}',
   '#picker-form .picker-preview-type--experience .ps-desktop .ps-index-cap {',
+  '  align-content: center !important;',
   '  gap: calc(var(--pt-base) * 0.42) !important;',
+  '}',
+  '#picker-form .picker-preview-type--experience .ps-desktop .ps-index-row--flip .ps-index-cap {',
+  '  padding-left: 20px !important;',
   '}',
   '#picker-form .picker-preview-type--experience .ps-desktop .ps-index-avatar {',
   '  margin-bottom: calc(var(--pt-base) * 0.12) !important;',
   '}',
-  '#picker-form .picker-preview-type--experience .ps-index-stop--on {',
-  '  padding: 0.55em 0.95em !important;',
-  '  border-radius: var(--pvs-radius-bar) !important;',
-  '  background-color: var(--pvs-cta) !important;',
-  '  color: var(--pv-neutral) !important;',
-  '  font-weight: 600 !important;',
+  '#picker-form .picker-preview-type--experience .ps-desktop .ps-index-note {',
+  '  font-size: 16px !important;',
+  '  white-space: pre-line !important;',
+  '}',
+  '#picker-form .picker-preview-type--experience .ps-phone-body .ps-index-cap {',
+  '  padding-inline: 10px !important;',
+  '}',
+  '#picker-form .picker-preview-type--experience .ps-phone :is(.ps-index-meta, .ps-nav-action) {',
+  '  display: none !important;',
   '}',
   '#picker-form .picker-preview-type--experience .ps-footer,',
   '#picker-form .picker-preview-type--experience .ps-phone-footer {',
   '  display: none !important;',
   '}',
 ].join('\n');
+
+const FONT_PAIR_EXPERIENCE_CAPTION_JS =
+  'doc.querySelectorAll("[data-type-caption]").forEach(function (el) { el.textContent = "Lorem ipsum dolor sit amet,\\nconsectetur adipiscing elit sed do eiusmod tempor."; });';
 
 /** @type {{ id: string, cells: string[], css: string }[]} */
 const EXPERIMENTS = [
@@ -519,6 +539,11 @@ const EXPERIMENTS = [
     js: FONT_PAIR_READ_SECTION_TITLE_JS,
   },
   {
+    id: 'font-pair-read-nota-color',
+    cells: ['font-pair--read--default'],
+    css: FONT_PAIR_READ_NOTA_CSS,
+  },
+  {
     id: 'font-pair-experience-cap-avatars',
     cells: ['font-pair--experience--default'],
     css: FONT_PAIR_EXPERIENCE_CAP_AVATARS_CSS,
@@ -528,6 +553,7 @@ const EXPERIMENTS = [
     id: 'font-pair-experience-layout',
     cells: ['font-pair--experience--default'],
     css: FONT_PAIR_EXPERIENCE_LAYOUT_CSS,
+    js: FONT_PAIR_EXPERIENCE_CAPTION_JS,
   },
   {
     id: 'font-pair-operate-ops-chrome',

@@ -464,6 +464,9 @@ In the same write, add a top-level `context` object carrying the chat half of th
     "platform": "[bare value from PRODUCT.md Platform: web, ios, android, or adaptive]",
     "positioning": { "not": "[what it is not, from PRODUCT.md Positioning]", "this": "[what it is instead]" },
     "clarities": ["[one line per item of PRODUCT.md's what-must-be-clear-first list]"],
+    "conversion": "[primary conversion from PRODUCT.md Product Purpose, bare action: book a consultation]",
+    "principles": [{ "title": "[principle name from PRODUCT.md Design Principles]", "detail": "[one clause: what it means for design]" }],
+    "surfaces": { "persuade": "[what this surface is for this product, one line]", "operate": "[...]", "read": "[...]", "experience": "[...]" },
     "operatingContext": "[one line from PRODUCT.md Operating Context]"
   },
   "audience": {
@@ -477,9 +480,12 @@ In the same write, add a top-level `context` object carrying the chat half of th
   "brand": {
     "words": ["[word]"],
     "personality": "[one sentence from PRODUCT.md Brand Personality]",
+    "principles": ["[one line per principle from PRODUCT.md Product Principles, or the legacy Design Principles heading]"],
+    "voice": [{ "say": "[a concrete line the product would write; 2 to 4 pairs, wording examples, never adjectives]", "not": "[the same message written the way the product refuses to sound]" }],
     "commitments": ["[one line per commitment from PRODUCT.md Brand Commitments]"]
   },
   "assets": ["[asset name: what Step 2 read off it]"],
+  "color": { "assetLocks": ["[one short color fact an asset fixes, e.g. Primary locked from the logo mark; only when an asset names one]"] },
   "interview": {
     "colorStrategy": "[Q1 pick]", "hueAnchor": "[Q1 anchor]",
     "typeDirection": "[Q2 pick]", "motionEnergy": "[Q3 pick]",
@@ -491,7 +497,9 @@ In the same write, add a top-level `context` object carrying the chat half of th
 
 Quote the user's answers, not paraphrases of them; the document labels interview fields as the questions they answered. A missing block renders as a pointer to where that truth lives (PRODUCT.md), so an old `cues.json` without `context` still produces a complete document.
 
-The optionality is field by field, and the document omits the block of any field that does not arrive, so fill a field only when its PRODUCT.md section or interview answer exists. A legacy PRODUCT.md without Positioning, Platform, Operating Context, or Brand Commitments yields a context without those fields, never an invented value. `product.clarities` carries PRODUCT.md's "What must be clear first" list under a shorter key. `interview.references` and `interview.antiReference` also accept their older shapes, plain strings, which render as the bare pills and single-name callout they always did.
+The optionality is field by field, and the document omits the block of any field that does not arrive, so fill a field only when its PRODUCT.md section or interview answer exists. A legacy PRODUCT.md without Positioning, Platform, Operating Context, or Brand Commitments yields a context without those fields, never an invented value. `product.clarities` carries PRODUCT.md's "What must be clear first" list under a shorter key. `product.conversion` names the single action the product most wants. `product.principles` carries PRODUCT.md's Design Principles, one `{ title, detail }` entry per line. `product.surfaces` maps each mode the run might choose to what that surface is for this product, not the generic tile copy. Only include keys for surfaces that exist in the product; the document reads the map for whichever surfaces the questionnaire chose. `interview.references` and `interview.antiReference` also accept their older shapes, plain strings, which render as the bare pills and single-name callout they always did.
+
+Three of the additions are derived at write time rather than asked: `brand.principles` copies the PRODUCT.md principles list (the current Product Principles heading or the legacy Design Principles one), `brand.voice` distills Brand Personality and Brand Commitments into two to four say / not pairs, each half a concrete line of wording the product would or would not publish, never an adjective, and `color.assetLocks` records color facts the provided assets fix (one short line each, written only when Step 2 actually read such a fact off an asset). None of the three adds an interview question, and all three are omitted rather than invented when their source is missing.
 
 Five of the questions are then answered per surface rather than once for the whole run, because the answer that suits a marketing page rarely suits the tool it sells: `color-strategy`, `motion-energy` (how much movement there is), `boundary-style` (how sections are separated), `corner-style` (how round shapes are), and `depth-style` (how far off the page things sit). Each of the five comes back twice over. The bare key holds the leading surface's answer, which is the first chosen tile in tile order and the one every later screen previews. Alongside it is one `<key>-<mode>` key for every surface chosen, `<mode>` being `persuade`, `operate`, `read`, or `experience`. Surfaces the user never opened are included too, holding the default for their kind; a surface nobody chose returns nothing at all.
 

@@ -794,6 +794,57 @@ body.dcx-open { overflow: hidden; background: linear-gradient(180deg, var(--ks-l
 
 .dcx-principles strong { color: var(--ks-champagne); font-weight: 600; }
 
+/* ============================================================
+   Brand voice and principles: the say / not wording pairs and
+   the two-column principles list. Rendered only when the agent
+   passed brand.voice or brand.principles; every value is a dcx
+   or ks token already in this file.
+   ============================================================ */
+.dcx-voice { display: grid; gap: 12px; }
+
+/* One pair per row: the line to write beside the line to refuse. */
+.dcx-voice-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+  gap: 12px;
+}
+
+.dcx-voice-cell {
+  border: 1px solid var(--ks-rule);
+  background: var(--panel-bg);
+  border-radius: 10px;
+  padding: 14px 18px;
+}
+
+.dcx-voice-cell--say { border-color: var(--accent-line); background: var(--accent-wash); }
+
+.dcx-voice-tag {
+  display: block;
+  margin-bottom: 6px;
+  font-family: var(--ks-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ks-text-faint);
+}
+
+.dcx-voice-cell p {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  color: var(--ks-text-muted);
+}
+
+.dcx-voice-cell--say p { color: var(--ks-text); }
+
+/* The numbered principle anatomy above, folded into two columns. The
+   counters keep DOM order, so the first row reads 01 then 02. */
+.dcx-principles--cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+  gap: 0 clamp(24px, 4vw, 48px);
+}
+
 /* Plain bullet list. */
 .dcx-list {
   list-style: none;
@@ -1732,6 +1783,48 @@ body.dcx-open { overflow: hidden; background: linear-gradient(180deg, var(--ks-l
   font-family: var(--ks-mono);
   font-size: 0.78rem;
   color: var(--ks-text-faint);
+}
+
+/* The ink that survives on this role, from the same contrast pick the
+   artboards use: the hex drawn in itself on a mini sample of the role
+   color. The sample is a span, not a code element, so the meta column's
+   code rule cannot outrank the sample's own colors. */
+.dcx-ink-pair {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.dcx-ink-tag {
+  font-family: var(--ks-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ks-text-faint);
+}
+
+.dcx-ink-sample {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border: 1px solid var(--ks-rule);
+  background: var(--ink-ground);
+  color: var(--ink-text);
+  font-family: var(--ks-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+}
+
+/* Where the committed value came from, at the hex's shoulder on the chip.
+   Inherits the chip's own contrast ink. */
+.dcx-swatch-provenance {
+  margin-left: auto;
+  font-family: var(--ks-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  opacity: 0.75;
 }
 
 /* ============================================================

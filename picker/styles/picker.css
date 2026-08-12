@@ -6733,7 +6733,7 @@ body.picker-page {
 }
 
 .picker-preview-type--read .ps-docs-note-copy b {
-  color: var(--pvs-accent-text);
+  color: var(--pv-primary);
   font-family: var(--pt-body);
   font-size: var(--pt-micro);
   font-weight: 600;
@@ -6864,6 +6864,11 @@ body.picker-page {
 
 .picker-preview-type--experience .ps-index {
   gap: var(--ps-gap-sm);
+  grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.picker-preview-type--experience .ps-desktop :is(.ps-index-rail, .ps-index-meta, .ps-nav-action) {
+  display: none;
 }
 
 .picker-preview-type--experience .ps-index > .pt-headline {
@@ -6906,8 +6911,12 @@ body.picker-page {
    title on desktop; the type board repeats that mark so the font-pair preview
    reads like cells 19–20 beside it. Handset captions stay text-only. */
 .picker-preview-type--experience .ps-desktop .ps-index-cap {
-  align-content: start;
+  align-content: center;
   gap: calc(var(--pt-base) * 0.42);
+}
+
+.picker-preview-type--experience .ps-desktop .ps-index-row--flip .ps-index-cap {
+  padding-left: 20px;
 }
 
 .picker-preview-type--experience .ps-index-avatar {
@@ -6916,7 +6925,7 @@ body.picker-page {
 
 .picker-preview-type--experience .ps-desktop .ps-index-avatar {
   display: block;
-  width: calc(var(--pt-base) * 4.8);
+  width: calc(var(--pt-base) * 3.4);
   margin-bottom: calc(var(--pt-base) * 0.12);
   aspect-ratio: 1;
   border: 1px solid color-mix(in oklab, var(--pv-secondary) 55%, var(--pv-neutral));
@@ -6952,8 +6961,16 @@ body.picker-page {
   margin-top: calc(var(--pt-base) * 0.3);
   color: var(--pvs-copy);
   font-family: var(--pt-body);
-  font-size: var(--pt-micro);
   line-height: 1.55;
+  white-space: pre-line;
+}
+
+.picker-preview-type--experience .ps-desktop .ps-index-note {
+  font-size: 16px;
+}
+
+.picker-preview-type--experience .ps-phone-body .ps-index-note {
+  font-size: var(--pt-micro);
 }
 
 .ps-index-rail {
@@ -7015,6 +7032,14 @@ body.picker-page {
 .picker-preview-type--experience .ps-phone-body .ps-index-cap,
 [data-carry][data-surface="experience"] .ps-phone-body .ps-index-cap {
   padding-top: 0;
+}
+
+.picker-preview-type--experience .ps-phone-body .ps-index-cap {
+  padding-inline: 10px;
+}
+
+.picker-preview-type--experience .ps-phone :is(.ps-index-meta, .ps-nav-action) {
+  display: none;
 }
 
 /* ============================================================
