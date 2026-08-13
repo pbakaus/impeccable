@@ -65,6 +65,10 @@ body.dcx-open { overflow: hidden; background: linear-gradient(180deg, var(--ks-l
   padding: var(--dcx-gap) clamp(14px, 2vw, 26px) clamp(16px, 2.2vw, 28px);
 }
 
+/* The author display above would defeat the hidden attribute the shell ships
+   with, leaving an invisible 100svh box under the questionnaire. */
+.dcx-shell[hidden] { display: none; }
+
 .dcx-grid {
   position: relative;
   flex: 1 1 0;

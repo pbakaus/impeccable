@@ -532,7 +532,9 @@ describe('init gate', () => {
   const gateRun = (cwd) => spawnSync(process.execPath, [SCRIPT, '--scope', 'direction', '--from', 'gate-test'], {
     cwd,
     encoding: 'utf-8',
-    env: { ...process.env, IMPECCABLE_CATALOG_DIR: FIXTURE_DIR, IMPECCABLE_CONTEXT_DIR: '' },
+    // Blank the escape hatch so a developer shell carrying it never turns
+    // the refusal assertions green for the wrong reason.
+    env: { ...process.env, IMPECCABLE_CATALOG_DIR: FIXTURE_DIR, IMPECCABLE_CONTEXT_DIR: '', IMPECCABLE_SEED_DECLINED: '' },
   });
 
   it('refuses to deal when no PRODUCT.md exists and routes to init', () => {
@@ -547,9 +549,73 @@ describe('init gate', () => {
   it('deals normally once PRODUCT.md exists', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'concept-seed-product-'));
     writeFileSync(path.join(dir, 'PRODUCT.md'), '# Test Product\n\n## Register\n\nbrand\n');
+    // DESIGN.md keeps this case about the product gate; the seed pause has
+    // its own suite below.
+    writeFileSync(path.join(dir, 'DESIGN.md'), '# Design\n\nEstablished world.\n');
     const result = gateRun(dir);
     assert.equal(result.status, 0);
     assert.doesNotMatch(result.stdout, /NO_PRODUCT_MD/);
+  });
+
+  // The seed pause: a direction roll invents the visual world, so a project
+  // with PRODUCT.md but no DESIGN.md gets the questionnaire offer before the
+  // deal. The refusal is mechanical because prose alone did not stop a real
+  // session from rolling straight after init.
+  const seedGateDir = (design = null) => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'concept-seed-seedgate-'));
+    writeFileSync(path.join(dir, 'PRODUCT.md'), '# Test Product\n\n## Platform\n\nweb\n');
+    if (design !== null) writeFileSync(path.join(dir, 'DESIGN.md'), design);
+    return dir;
+  };
+
+  it('refuses a direction roll with no DESIGN.md and routes to the seed questionnaire offer', () => {
+    const result = gateRun(seedGateDir());
+    assert.equal(result.status, 1);
+    assert.match(result.stdout, /NO_DESIGN_MD/);
+    assert.match(result.stdout, /document --seed/);
+    assert.match(result.stdout, /--seed-declined/);
+    assert.doesNotMatch(result.stdout, /ASSIGNED INDEX/);
+  });
+
+  it('deals a direction once --seed-declined records the user skip', () => {
+    const dir = seedGateDir();
+    const result = spawnSync(process.execPath, [SCRIPT, '--scope', 'direction', '--from', 'gate-test', '--seed-declined'], {
+      cwd: dir,
+      encoding: 'utf-8',
+      env: { ...process.env, IMPECCABLE_CATALOG_DIR: FIXTURE_DIR, IMPECCABLE_CONTEXT_DIR: '' },
+    });
+    assert.equal(result.status, 0);
+    assert.doesNotMatch(result.stdout, /NO_DESIGN_MD/);
+    assert.match(result.stdout, /ASSIGNED INDEX/);
+  });
+
+  it('honors IMPECCABLE_SEED_DECLINED=1 for harnesses that cannot thread the flag', () => {
+    const dir = seedGateDir();
+    const result = spawnSync(process.execPath, [SCRIPT, '--scope', 'direction', '--from', 'gate-test'], {
+      cwd: dir,
+      encoding: 'utf-8',
+      env: { ...process.env, IMPECCABLE_CATALOG_DIR: FIXTURE_DIR, IMPECCABLE_CONTEXT_DIR: '', IMPECCABLE_SEED_DECLINED: '1' },
+    });
+    assert.equal(result.status, 0);
+    assert.doesNotMatch(result.stdout, /NO_DESIGN_MD/);
+  });
+
+  it('treats a seed DESIGN.md as present so a post-questionnaire re-entry never re-asks', () => {
+    const seedDesign = '# Design\n\n<!-- SEED: established with the user before implementation; re-run /impeccable document once there\'s code to capture the actual tokens and components. -->\n';
+    const result = gateRun(seedGateDir(seedDesign));
+    assert.equal(result.status, 0);
+    assert.doesNotMatch(result.stdout, /NO_DESIGN_MD/);
+  });
+
+  it('never seed-gates a surface roll', () => {
+    const dir = seedGateDir();
+    const result = spawnSync(process.execPath, [SCRIPT, '--scope', 'surface', '--from', 'gate-test'], {
+      cwd: dir,
+      encoding: 'utf-8',
+      env: { ...process.env, IMPECCABLE_CATALOG_DIR: FIXTURE_DIR, IMPECCABLE_CONTEXT_DIR: '' },
+    });
+    assert.equal(result.status, 0);
+    assert.doesNotMatch(result.stdout, /NO_DESIGN_MD/);
   });
 
   it('never gates the choice ping', () => {
@@ -809,7 +875,7 @@ describe('API roll path', () => {
       const result = await new Promise((resolveRun, rejectRun) => {
         const child = spawn(NODE, [
           '--import', pathToFileURL(preloadPath).href,
-          SCRIPT, '--scope', 'direction', '--mode', 'persuade', '--from', 'api-test',
+          SCRIPT, '--scope', 'direction', '--mode', 'persuade', '--from', 'api-test', '--seed-declined',
         ], {
           cwd: dir,
           env: {
