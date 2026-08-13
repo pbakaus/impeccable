@@ -512,8 +512,12 @@ When more than one surface comes back, DESIGN.md says what each of them does wit
 
 Tell the user in one line that the visual cues are ready at `.impeccable/visual-cues/` (name the count), then run `node {{scripts_path}}/picker-server.mjs` from the project root as a foreground command and parse its `PICKER_URL` line.
 
-- **The harness has a browser tool**: open the URL with it and let the user drive. The tool is a viewport only; never drive the questionnaire yourself, because the answers are the user's.
-- **No browser tool**: tell the user *"The design picker is running at [URL]; open it in your browser and finish there."* Then wait on the foreground process.
+- **Cursor**: `browser_navigate` to the `PICKER_URL`; that is the in-IDE browser, where the questionnaire belongs. Do not skip this, and do not use the system opener while the tool works. The tab is the user's viewport only; never drive the questionnaire yourself, because the answers are the user's.
+- **Another harness with a browser tool**: open the URL with that tool, on the same viewport-only rule.
+- **No browser tool, or the tool call failed**: open the URL with the system opener (macOS `open`, Linux `xdg-open`), then tell the user in one line to finish in the opened tab.
+- **Even the opener failed**: tell the user *"The design picker is running at [URL]; open it in your browser and finish there."*
+
+Whichever branch ran, wait on the foreground process.
 
 The server process exiting is the completion signal; never poll or watch the answers file while it runs.
 
