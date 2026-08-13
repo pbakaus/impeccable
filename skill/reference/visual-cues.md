@@ -1,6 +1,6 @@
 # Visual Cues Pipeline
 
-Loaded by `{{command_prefix}}impeccable document` seed mode (Step 4) when image generation is available. Input: the five seed interview answers, the asset observations from seed Step 2, and PRODUCT.md. Output: cue images plus `cues.json` under `.impeccable/visual-cues/`, ready for the user to pick from by eye in a later round.
+Loaded by `{{command_prefix}}impeccable document` seed mode (Step 4) on the questionnaire path. Input: the seed interview's three named references and one anti-reference, the asset observations from seed Step 2, and PRODUCT.md. The chat interview asks no color, typography, or motion question on this path; the questionnaire and this pipeline own those decisions. Output: cue images plus `cues.json` under `.impeccable/visual-cues/`, ready for the user to pick from by eye in a later round.
 
 Tell the user once, before starting: *"Generating visual cues; this can take a minute or two."* Then work without narration. Chat carries no per-image commentary, no palette tables, no prompt dumps; the folder is the deliverable.
 
@@ -40,7 +40,7 @@ Subagents start without your context, so everything a specialist needs must reac
 Write one self-contained text block that a specialist with zero context can design from. Include, in full:
 
 - **The product**: from PRODUCT.md, what it is, sells, or shows; the audience; the positioning; the personality words.
-- **The interview**: Q1 color strategy and hue anchor, Q2 type direction, Q4 the three named references, Q5 the anti-reference. State that the anti-reference is a hard constraint on every palette.
+- **The interview**: the three named references and the anti-reference. State that the anti-reference is a hard constraint on every palette. There is no chat color strategy or hue anchor on this path; the territories (Step 2) own the color search.
 - **The assets**: the seed Step 2 observations (logo colors, recurring materials, photo moods).
 
 Label it `BRIEF PACKET`; it goes into the brief file once (Step 3), so every specialist designs from the identical packet. Do **not** add your own palette leanings to it: the personas do the leaning.
@@ -160,18 +160,18 @@ text, no watermark.
 
 ## Step 2: Carve the territories
 
-Split the brief's color space into six **territories**, one per persona. Each is a one-line claim with two halves: a scene ground (a mood, a moment, a positioning angle) and, always, a **hue ground** it closes on (a named hue register). A hue-silent territory does not constrain color: give six specialists scenic territories and one shared brief, and every one of them will resolve to the brief's hue anchor; the hue ground is what makes the palettes diverge, the scene ground is what makes the stories diverge. Example set for a florist: "the delivery run before the city wakes: cold blue-teal dawn", "the atelier after hours: lacquer near-black with amber", "the potting bench: warm terracotta and unbleached paper", "gallery restraint: paper-white with one ink accent", "market-stall abundance: saturated market greens", "the drying room: muted botanical earth and rose".
+Split the brief's color space into six **territories**, one per persona. Each is a one-line claim with two halves: a scene ground (a mood, a moment, a positioning angle) and, always, a **hue ground** it closes on (a named hue register). A hue-silent territory does not constrain color: give six specialists scenic territories and one shared brief, and every one of them will resolve to the product's one obvious hue; the hue ground is what makes the palettes diverge, the scene ground is what makes the stories diverge. Example set for a florist: "the delivery run before the city wakes: cold blue-teal dawn", "the atelier after hours: lacquer near-black with amber", "the potting bench: warm terracotta and unbleached paper", "gallery restraint: paper-white with one ink accent", "market-stall abundance: saturated market greens", "the drying room: muted botanical earth and rose".
 
 Hard rules:
 
 - **No two hue grounds share a hue family.** Six registers, six families.
-- **The Q1 hue anchor belongs to exactly one territory** (two only when the brief argues for it). Name its owner; Step 3 tells everyone else the anchor is off-limits. An anchor left unassigned is an anchor every persona obeys.
+- **A hue anchor exists only when an asset fixes one** (a logo's sampled color, a recurring moodboard hue from the seed Step 2 observations). When one exists it belongs to exactly one territory (two only when the brief argues for it). Name its owner; Step 3 tells everyone else the anchor is off-limits. An anchor left unassigned is an anchor every persona obeys. No asset anchor: no owner, and the map's anchor sentence is dropped.
 - **A territory claims colors, not lighting.** "Lacquer near-black with amber" means those hues, staged in bright, clear light like every other palette; the HERO PROMPT skeleton forbids dim renderings, and a dark-moment territory ("after hours", "dawn") does not override it.
-- The anti-reference (Q5) rules all six.
+- The anti-reference rules all six.
 
 Assign each territory to the persona whose method suits it best (the Naturalist takes the most material ground, the Dramaturge the most emotional, the Empath the one closest to the audience's state).
 
-Done when: six one-line territories exist, each closing on a hue ground, no two hue grounds in one family, the anchor owned by exactly one, each assigned to a persona.
+Done when: six one-line territories exist, each closing on a hue ground, no two hue grounds in one family, any asset-fixed anchor owned by exactly one, each assigned to a persona.
 
 ## Step 3: The wave (parallel)
 
@@ -195,10 +195,12 @@ TERRITORIES (your task names your row; every other row is off-limits)
 4. [persona name]: [territory line]
 5. [persona name]: [territory line]
 6. [persona name]: [territory line]
-The hue anchor ([the Q1 anchor]) belongs to row [N] alone. If that row
-is yours, carry it; otherwise your primary must live in a different
-hue family.
+The hue anchor ([the asset-fixed anchor]) belongs to row [N] alone. If
+that row is yours, carry it; otherwise your primary must live in a
+different hue family.
 ```
+
+The block's closing anchor sentence appears only when Step 2 named an asset-fixed anchor and its owner; with no anchor, end the block after row 6.
 
 SPECIALIST BRIEF body:
 
@@ -363,11 +365,10 @@ Run this pass yourself after compiling the cues and before launching the picker.
 
 Build the composition context from exactly these inputs:
 
-- **Q2 typography direction** from the seed interview. Treat it as the anchor; execute the direction instead of asking for it again.
-- **Q4's three named references** and **Q5's anti-reference**. The anti-reference is a hard constraint on every pair.
+- **The surface modes** this step names below. The interview asks no typography direction on this path, so the modes, the references, and the assets are the anchor; compose from them instead of asking for a direction.
+- **The three named references** and **the anti-reference** from the seed interview. The anti-reference is a hard constraint on every pair.
 - From PRODUCT.md, only `## Users`, `## Product Purpose`, `## Positioning`, and `## Brand Commitments`.
 - The seed Step 2 asset observations when they exist, with the logo's letterforms as the strongest evidence.
-- **Q1's hue anchor and color strategy** as mood only. Never use either to select a family.
 
 Do **not** read PRODUCT.md wholesale into this task or add any other section to the composition context. The chosen palette does not exist yet; the picker joins it to the pairs later.
 
@@ -388,8 +389,7 @@ Rank against the strictest surface in the set, never the loudest. Operate and re
 
 Compose six distinct territories, then resolve each into one heading and body pair:
 
-- Keep at least five pairs inside Q2's chosen direction, varied by classification and voice within it. No two pairs may share a heading family or read as the same voice.
-- Let the sixth bend the direction only when Q4, Q5, or asset letterforms argue for it, and name that reason in its `why`.
+- Spread the six across type directions that serve the surface set (serif display + sans body, single sans, display + mono, and their neighbours), each pair's voice argued from a named reference, an asset letterform, or a PRODUCT.md brand fact. No two pairs may share a heading family or read as the same voice.
 - Apply [new-work.md](new-work.md)'s `rule:skill-typo-reflex-faces` as the canonical denylist and subject-world test. A family the user named in the interview or supplied assets is the only exception.
 - Follow [typeset.md](typeset.md)'s workhorse discipline. Give the heading a point of view; give the body a real text face that stays legible at 15px and provides regular and bold weights. A display face in the body slot fails the pair. Where the surface set names `operate` or `read`, that 15px floor is not the test the body face has to pass: the sizes in those two entries above are.
 - Verify every family exists on Google Fonts under the exact current name. Spelling is part of correctness; use `Source Sans 3`, never a retired family name.
@@ -444,7 +444,7 @@ Write `.impeccable/visual-cues/fonts.json` with this shape:
 
 Write exactly six pair entries. Each role carries the single weight it needs; the picker also loads weight 700 for each body family. A per-pair `specimen` or `preview` override may replace the shared strings when the brand evidence warrants it.
 
-If Q2 is missing because the interview was skipped, say in one line that the typography set is direction-neutral, then compose all six from the four allowed PRODUCT.md sections alone. Still write the file.
+If the references are missing because the interview was skipped, say in one line that the typography set is composed from product truth alone, then compose all six from the four allowed PRODUCT.md sections. Still write the file.
 
 Parse the finished file as JSON and verify its version, specimen, preview (every field above), six unique ids, six unique heading families, role names, weights, and short `why` fields before continuing.
 
@@ -488,17 +488,15 @@ In the same write, add a top-level `context` object carrying the chat half of th
   "assets": ["[asset name: what Step 2 read off it]"],
   "color": { "assetLocks": ["[one short color fact an asset fixes, e.g. Primary locked from the logo mark; only when an asset names one]"] },
   "interview": {
-    "colorStrategy": "[Q1 pick]", "hueAnchor": "[Q1 anchor]",
-    "typeDirection": "[Q2 pick]", "motionEnergy": "[Q3 pick]",
-    "references": [{ "name": "[Q4 reference, one entry per name]", "takeaway": "[one clause: what this reference lends the design]" }],
-    "antiReference": { "name": "[Q5]", "why": "[one clause: why this is the wrong direction]" }
+    "references": [{ "name": "[interview reference, one entry per name]", "takeaway": "[one clause: what this reference lends the design]" }],
+    "antiReference": { "name": "[the interview's anti-reference]", "why": "[one clause: why this is the wrong direction]" }
   }
 }
 ```
 
 Quote the user's answers, not paraphrases of them; the document labels interview fields as the questions they answered. A missing block renders as a pointer to where that truth lives (PRODUCT.md), so an old `cues.json` without `context` still produces a complete document.
 
-The optionality is field by field, and the document omits the block of any field that does not arrive, so fill a field only when its PRODUCT.md section or interview answer exists. A legacy PRODUCT.md without Positioning, Platform, Operating Context, or Brand Commitments yields a context without those fields, never an invented value. `product.clarities` carries PRODUCT.md's "What must be clear first" list under a shorter key. `product.conversion` names the single action the product most wants. `product.principles` carries PRODUCT.md's Design Principles, one `{ title, detail }` entry per line. `product.surfaces` maps each mode the run might choose to what that surface is for this product, not the generic tile copy. Only include keys for surfaces that exist in the product; the document reads the map for whichever surfaces the questionnaire chose. `interview.references` and `interview.antiReference` also accept their older shapes, plain strings, which render as the bare pills and single-name callout they always did.
+The optionality is field by field, and the document omits the block of any field that does not arrive, so fill a field only when its PRODUCT.md section or interview answer exists. A legacy PRODUCT.md without Positioning, Platform, Operating Context, or Brand Commitments yields a context without those fields, never an invented value. `product.clarities` carries PRODUCT.md's "What must be clear first" list under a shorter key. `product.conversion` names the single action the product most wants. `product.principles` carries PRODUCT.md's Design Principles, one `{ title, detail }` entry per line. `product.surfaces` maps each mode the run might choose to what that surface is for this product, not the generic tile copy. Only include keys for surfaces that exist in the product; the document reads the map for whichever surfaces the questionnaire chose. `interview.references` and `interview.antiReference` also accept their older shapes, plain strings, which render as the bare pills and single-name callout they always did. Never write `interview.colorStrategy`, `interview.hueAnchor`, `interview.typeDirection`, or `interview.motionEnergy`: the chat interview does not ask those questions on this path, `answers.json` owns color, typography, and motion, and the document already renders its interview-direction blocks only when those keys arrive, so their absence reads as chat silence, not as a gap.
 
 Three of the additions are derived at write time rather than asked: `brand.principles` copies the PRODUCT.md principles list (the current Product Principles heading or the legacy Design Principles one), `brand.voice` distills Brand Personality and Brand Commitments into two to four say / not pairs, each half a concrete line of wording the product would or would not publish, never an adjective, and `color.assetLocks` records color facts the provided assets fix (one short line each, written only when Step 2 actually read such a fact off an asset). None of the three adds an interview question, and all three are omitted rather than invented when their source is missing.
 

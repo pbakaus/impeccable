@@ -74,7 +74,7 @@ If a `DESIGN.md` already exists, **do not silently overwrite it**. Show the user
 ## Two paths
 
 - **Scan mode** (default): the project has design tokens, components, or rendered output. Extract, then confirm descriptive language. Use when there's code to analyze.
-- **Seed mode**: the project is pre-implementation (fresh init, nothing built yet). Gather any existing brand assets, interview for five high-level answers, optionally generate visual cues and run the browser questionnaire, then write a seed DESIGN.md marked `<!-- SEED -->` that carries every decision the interview and the questionnaire made. Re-run in scan mode once there's code.
+- **Seed mode**: the project is pre-implementation (fresh init, nothing built yet). Decide first whether the browser questionnaire can run, gather any existing brand assets, interview in chat (three named references and one anti-reference when the questionnaire will run; five high-level answers when it will not), then write a seed DESIGN.md marked `<!-- SEED -->` that carries every decision the interview and the questionnaire made. Re-run in scan mode once there's code.
 
 Decide by scanning first (Scan mode Step 1). If the scan finds no tokens, no component files, and no rendered site, offer seed mode; don't silently switch. `/impeccable document --seed` forces seed mode on a pre-implementation project, but it does not authorize replacing coherent code: when an incumbent system exists, offer scan mode or route an explicit identity-replacement request through new-work.
 
@@ -354,9 +354,19 @@ For projects with no visual system to extract yet. Produces a minimal, user-chos
 
 PRODUCT.md is the prerequisite. If it is missing, load [init.md](init.md) and complete its product interview first. Do not create a visual identity without durable product context.
 
-### Step 1: Confirm seed mode and ask for assets
+### Step 1: Decide the path, confirm seed mode, and ask for assets
 
-Before interviewing: *"There's no existing visual system to scan. I'll ask five quick questions to seed a starter DESIGN.md. First: if you have any visual assets (a logo, reference or product images, moodboards), drop them in or point me at the files. They'll ground the questions in what you already have. You can re-run `/impeccable document` once there's code, to capture the real tokens and components. OK?"*
+The browser questionnaire asks color strategy and motion per surface and picks concrete typefaces and a type scale by eye, so whether it will run decides what the chat interview may ask. Decide the path **before the first question**, never after the interview:
+
+- **The harness has native image generation** (Codex's `image_gen`, an equivalent MCP tool, or similar): the questionnaire path; the cues are generated directly at Step 4, no setup needed. This branch wins even when `.impeccable/.env` already holds an `IMAGE_GEN_API_KEY` or an earlier run in another harness left a wrapper script behind; those are fallbacks for keyless harnesses, not the preferred path. A native tool that **cannot generate** (zero credits, failed auth) counts as absent: fall through to the next branch without asking, and mention the swap in the final report.
+- **No usable native path, key already in `.impeccable/.env`**: the questionnaire path, with no pause and no questions. Load [image-api.md](image-api.md) and use its shipped wrapper; it pre-answers everything this path has ever stopped to ask, including which provider the key belongs to.
+- **No usable native path, no key**: pause and {{ask_instruction}} whether the user wants generated visual cues to pick a palette by eye. *"I can generate a few small palette-and-mood images so you choose a direction visually instead of from descriptions. That needs an image-generation API key (FLUX and Google Nano Banana are supported out of the box; other providers work too), stored as `IMAGE_GEN_API_KEY` in `.impeccable/.env`. Add one, or skip straight to the chat interview?"* If a key arrives, write it to `.impeccable/.env` together with `IMAGE_GEN_PROVIDER` (`bfl` for FLUX, `gemini` for Nano Banana, the provider's own name for anything else; when the user does not say, let the wrapper infer it from the key). Confirm that file is listed in the project's `.gitignore` (add it if missing; a committed key is a leak), then load [image-api.md](image-api.md). Its shipped wrapper is the whole integration for the built-in providers; only a provider it does not know earns the project-local wrapper that file specifies. A key arriving makes this the questionnaire path.
+- **The user opts out, or no key arrives**: the interview-only path. The assets ask below, the five questions in Step 3, then Steps 5-6 from the interview alone.
+
+Then confirm seed mode and ask for assets, framed for the path:
+
+- **Questionnaire path**: *"There's no existing visual system to scan. You'll pick the visual direction by eye in a browser questionnaire; before I generate its options, three quick things. First: if you have any visual assets (a logo, reference or product images, moodboards), drop them in or point me at the files. They're extra context that makes the first DESIGN.md seed more accurate. You can re-run `/impeccable document` once there's code, to capture the real tokens and components. OK?"*
+- **Interview-only path**: *"There's no existing visual system to scan. I'll ask five quick questions to seed a starter DESIGN.md. First: if you have any visual assets (a logo, reference or product images, moodboards), drop them in or point me at the files. They'll ground the questions in what you already have. You can re-run `/impeccable document` once there's code, to capture the real tokens and components. OK?"*
 
 Also glance for assets already in the project (`assets/`, `public/`, `brand/`, image files at the root); name anything found so the user can confirm it's relevant. Assets are optional: one ask, then proceed with whatever arrived.
 
@@ -372,11 +382,18 @@ Look at every asset provided (attached in chat or a file path) and record what i
 
 These observations exist to sharpen Step 3. **No assets: skip straight to Step 3** with generic options.
 
-### Step 3: Five questions
+### Step 3: The interview
 
-Group into one `AskUserQuestion` interaction. Options must be concrete. When Step 2 produced observations, ground the options in them: offer the logo's sampled color as a hue anchor in Q1, a type direction that matches the letterforms in Q2, candidate named references drawn from the moodboard's era in Q4. The user should recognize their own material in the choices.
+Group each path's questions into one `AskUserQuestion` interaction. Options must be concrete. Keep skill vocabulary (seed, register, anti-reference) out of question text; ask for the thing in words the user would use. Ask like a magazine editor profiling the brand: curious and narrative, drawing out the feel the surface should carry.
 
-Keep skill vocabulary (seed, register, anti-reference) out of question text; ask for the thing in words the user would use. Ask like a magazine editor profiling the brand: curious and narrative, drawing out the feel the surface should carry.
+**Questionnaire path: two questions, nothing more.** With Step 1's assets ask these are the whole chat interview; the questionnaire asks everything else by eye.
+
+1. **Three named references.** Brands, products, printed objects. Not adjectives. When Step 2 produced observations, ground candidate names in them (references drawn from the moodboard's era).
+2. **One anti-reference.** What the product should NOT feel like. Also named.
+
+**Do not ask about color, typography, or motion here; the questionnaire owns them.** It asks color strategy and motion per surface and picks concrete typefaces and a type scale, so a chat answer would be asked again by eye and one of the two would be thrown away. Both answered, go straight to Step 4.
+
+**Interview-only path: five questions.** When Step 2 produced observations, ground the options in them: offer the logo's sampled color as a hue anchor in Q1, a type direction that matches the letterforms in Q2, candidate named references drawn from the moodboard's era in Q4. The user should recognize their own material in the choices.
 
 1. **Color strategy.** Pick one:
    - Restrained: tinted neutrals + one accent ≤10%
@@ -402,16 +419,11 @@ Keep skill vocabulary (seed, register, anti-reference) out of question text; ask
 
 5. **One anti-reference.** What it should NOT feel like. Also named.
 
-### Step 4: Visual cues (optional, capability-gated)
+### Step 4: Launch the questionnaire (questionnaire path only)
 
-Interview answers are words; a palette is easier picked by eye. Before writing the seed, branch on capability:
+**Interview-only path: skip this step.** Go to Step 5 and seed from the answers alone. Step 1 already settled the capability question; do not re-open it here.
 
-- **The harness has native image generation** (Codex's `image_gen`, an equivalent MCP tool, or similar): generate the cues directly; no setup needed. This branch wins even when `.impeccable/.env` already holds an `IMAGE_GEN_API_KEY` or an earlier run in another harness left a wrapper script behind; those are fallbacks for keyless harnesses, not the preferred path. A native tool that **cannot generate** (zero credits, failed auth) counts as absent: fall through to the next branch without asking, and mention the swap in the final report.
-- **No usable native path, key already in `.impeccable/.env`**: no pause, no questions. Load [image-api.md](image-api.md) and use its shipped wrapper; it pre-answers everything this path has ever stopped to ask, including which provider the key belongs to.
-- **No usable native path, no key**: pause and {{ask_instruction}} whether the user wants generated visual cues to pick a palette by eye. *"I can generate a few small palette-and-mood images so you choose a direction visually instead of from descriptions. That needs an image-generation API key (FLUX and Google Nano Banana are supported out of the box; other providers work too), stored as `IMAGE_GEN_API_KEY` in `.impeccable/.env`. Add one, or skip straight to the seed?"* If a key arrives, write it to `.impeccable/.env` together with `IMAGE_GEN_PROVIDER` (`bfl` for FLUX, `gemini` for Nano Banana, the provider's own name for anything else; when the user does not say, let the wrapper infer it from the key). Confirm that file is listed in the project's `.gitignore` (add it if missing; a committed key is a leak), then load [image-api.md](image-api.md). Its shipped wrapper is the whole integration for the built-in providers; only a provider it does not know earns the project-local wrapper that file specifies.
-- **The user opts out, or no key arrives**: go to Step 5 and seed from the answers alone.
-
-When generation is available, **stop and load [visual-cues.md](visual-cues.md)** and follow its pipeline; it owns everything from the one-line user announcement and the persona palette studio through generation, `cues.json`, and the picker pause. Do not restate its mechanics here or in chat. The picker's exit is the handoff: when the server exits 0 and `.impeccable/design-interview/answers.json` lands, come back here and run Steps 5-6 with that file in hand. When the user opted out of generation (or no key arrived), run Steps 5-6 immediately from the interview alone.
+On the questionnaire path, **stop and load [visual-cues.md](visual-cues.md)** and follow its pipeline; it owns everything from the one-line user announcement and the persona palette studio through generation, `cues.json`, and the picker pause. Do not restate its mechanics here or in chat. The picker's exit is the handoff: when the server exits 0 and `.impeccable/design-interview/answers.json` lands, come back here and run Steps 5-6 with that file in hand.
 
 ### Step 5: Write seed DESIGN.md
 
@@ -440,10 +452,10 @@ This seed writes a minimal frontmatter with `name` and `description` only; no co
 **Questionnaire seed** (`.impeccable/design-interview/answers.json` exists from this run). The user answered every screen by eye, so the seed carries their answers as decisions, not directions. Read the answers file plus the picked cue's palette entry in `.impeccable/visual-cues/cues.json` (`palette-source` names it), and map:
 
 - **Frontmatter**: `name` and `description`, plus real `colors` (the four `palette-*` hex values under descriptive slugs; these are picked, not sampled) and real `typography` (`font-heading` and `font-body` are exact family names; give each role its family and weight intent, leave sizes for implementation). Still no `rounded`, `spacing`, or `components`: the corner and spacing answers are qualitative, and nothing is built.
-- **Overview**: as the interview-only seed, plus name the chosen surfaces (`surface-modes`) and what each is for. Movement stays here, after the North Star, but the questionnaire asks it of a landing page and a portfolio only, so write what the keys support:
+- **Overview**: Creative North Star and philosophy phrased from the questionnaire's color-strategy and motion answers plus the chat references; reference the user's anti-reference directly. Name the chosen surfaces (`surface-modes`) and what each is for. Movement stays here, after the North Star, but the questionnaire asks it of a landing page and a portfolio only, so write what the keys support:
   - `motion-energy-<mode>` keys present, all agreeing: one philosophy sentence for the product, as before.
   - Keys present and disagreeing: one sentence per surface, named (*"The landing page moves on state change only; the portfolio stages entrances and drives sequences on scroll."*). The bare `motion-energy` is the leading one of the two.
-  - **No `motion-energy` key at all**: the run has neither of those surfaces, so movement was never asked. Say nothing about it, and do not fill the gap from the interview's Q3 or from the register. The next Scan-mode run reads the real transitions out of the code.
+  - **No `motion-energy` key at all**: the run has neither of those surfaces, so movement was never asked. Say nothing about it, and do not fill the gap from the register; this path's chat interview never asked about motion, so there is nothing to borrow. The next Scan-mode run reads the real transitions out of the code.
 - **Colors**: the four roles with their picked hex, noting the cue they came from. `color-strategy` becomes the Named Rule. When surfaces differ (`color-strategy-<mode>` keys), state each surface's strategy and which surface leads (the bare key's owner).
 - **Typography**: the real pair by name, the pairing's character, and the type scale as a rule: `type-scale` names it, `type-scale-ratio` is the ratio (e.g. *"Major third: each heading step is 1.25x the last"*). Base size and exact steps stay `[resolved at implementation]`. A `font-heading-source` / `font-body-source` value means a user-provided font file; record where it lives.
 - **Layout**: `boundary-style` (how sections separate) per surface when the `-<mode>` keys differ, plus `layout-structure` (how pages are composed), which the questionnaire asks of a landing page and a portfolio only. No invented grids beyond what the answers state.

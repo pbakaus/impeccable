@@ -2,7 +2,7 @@
 
 Loaded when a pipeline needs image generation and the harness has **no usable native tool**. It answers, upfront, every question an agent has historically stopped to ask on this path; with a funded key in place, a run through this file asks the user nothing and debugs nothing.
 
-**This file never overrides a working native tool.** A harness with native image generation skips this path entirely; the precedence rule lives where the path is picked ([visual-cues.md](visual-cues.md) Step 3, [document.md](document.md) seed Step 4), not here. One refinement to that rule: a native tool that **cannot generate** (zero credits, failed auth, disabled account) counts as absent. Fall through to this path silently and mention the swap in the final report; do not stop to ask which path to use. A stopped question costs hours when the user is away; the swap costs nothing.
+**This file never overrides a working native tool.** A harness with native image generation skips this path entirely; the precedence rule lives where the path is picked ([visual-cues.md](visual-cues.md) Step 3, [document.md](document.md) seed Step 1), not here. One refinement to that rule: a native tool that **cannot generate** (zero credits, failed auth, disabled account) counts as absent. Fall through to this path silently and mention the swap in the final report; do not stop to ask which path to use. A stopped question costs hours when the user is away; the swap costs nothing.
 
 ## The setup, already answered
 
