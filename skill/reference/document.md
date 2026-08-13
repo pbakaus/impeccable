@@ -64,6 +64,7 @@ Omit irrelevant sections rather than filling them with invented rules. Put respo
 ## When to run
 
 - New-work found a coherent incumbent visual system but no `DESIGN.md`.
+- New-work paused before its direction roll on a project with no `DESIGN.md` and the user accepted the seed questionnaire recommendation; run seed mode.
 - The first implementation of a new world is complete and its provisional decisions need to be carbonized.
 - An existing `DESIGN.md` is stale (the design has drifted).
 - Before a large redesign, to capture the current state as a reference.
