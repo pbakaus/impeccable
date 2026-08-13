@@ -30,9 +30,13 @@ after(() => {
 describe('detect CLI stdin file dispatch', () => {
   it('uses the static HTML engine for an HTML tool-input path', () => {
     const filePath = path.join(tempDir, 'page.html');
+    fs.writeFileSync(
+      path.join(tempDir, 'page.css'),
+      '.notice { border-left: 4px solid blue; border-radius: 12px; }',
+    );
     fs.writeFileSync(filePath, `
       <!doctype html>
-      <style>.notice { border-left: 4px solid blue; border-radius: 12px; }</style>
+      <link rel="stylesheet" href="./page.css">
       <div class="notice">Notice</div>
     `);
 
