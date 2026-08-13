@@ -142,6 +142,9 @@ const INDEX = {
   stops: ['Selected', 'Archive', 'Studio', 'Contact'],
 };
 
+/* Deliberately Latin faces with English copy, same as the constraint on
+   dealt pairs in visual-cues.md Step 6. TODO: lift both together when the
+   picker's previews learn non-Latin scripts and per-language font subsets. */
 const FALLBACK_FONTS = {
   version: 1,
   specimen: {
