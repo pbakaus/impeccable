@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, execSync } from 'node:child_process';
 import { writeFileSync, readFileSync, rmSync, utimesSync, mkdtempSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -248,6 +248,30 @@ describe('serve-question', () => {
       try { await fetch(url); } catch { gone = true; }
     }
     assert.ok(gone, 'with no heartbeat ever, the daemon still exits at --timeout');
+  });
+
+  it('an unparseable or negative --timeout takes the default instead of disarming the no-page exit', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'serve-question-'));
+    const payloadPath = path.join(dir, 'q.json');
+    writeFileSync(payloadPath, JSON.stringify(PAYLOAD));
+    const run = (args) => new Promise((resolve) => {
+      const child = spawn(process.execPath, [SCRIPT, ...args], { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] });
+      let out = '';
+      child.stdout.on('data', (chunk) => { out += chunk; });
+      child.on('exit', (code) => resolve({ code, out }));
+    });
+    // NaN used to flow into the lifetime timer, where timeoutSec > 0 is false
+    // and the no-page exit never fires: a daemon nothing would ever reclaim.
+    // The clamped value is observable in the detached daemon's own argv.
+    const started = await run(['--start', '--payload', payloadPath, '--no-open', '--key', 'clamp', '--timeout', 'bogus']);
+    assert.equal(started.code, 0, started.out);
+    try {
+      const state = JSON.parse(readFileSync(path.join(dir, '.impeccable', 'questions', 'clamp.state.json'), 'utf8'));
+      const argv = execSync(`ps -ww -o args= -p ${state.pid}`).toString();
+      assert.match(argv, /--timeout 900/, 'the daemon runs with the clamped default, not NaN');
+    } finally {
+      await run(['--stop', '--key', 'clamp']);
+    }
   });
 
   it('--timeout 0 waits for a page forever, but a page that beat and went silent still ends the daemon', async () => {

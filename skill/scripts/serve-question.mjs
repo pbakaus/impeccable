@@ -185,7 +185,11 @@ function printAnswer(raw) {
 }
 
 const payloadPath = arg('payload');
-const timeoutSec = Number(arg('timeout', '900'));
+// --timeout bounds only the wait for a page to open; 0 is the explicit
+// wait-forever. A negative or unparseable value takes the default, so a
+// typo cannot disarm the no-page exit and leak the daemon.
+const timeoutArg = Number(arg('timeout', '900'));
+const timeoutSec = Number.isFinite(timeoutArg) && timeoutArg >= 0 ? timeoutArg : 900;
 // How long the server (and the page's own delivery deadline) outlive the
 // last heartbeat; a zero, negative, or unparseable value takes the default.
 const idleGraceArg = Number(arg('idle-grace', '600'));
@@ -926,6 +930,7 @@ function page(waiting = false) {
      not a recommendation. */
   #canon { align-self: center; padding: 0 4px; font-family: var(--ks-mono); font-size: .66rem; letter-spacing: .08em; text-transform: uppercase; color: inherit; opacity: .45; background: transparent; border: none; border-bottom: 1px dotted currentColor; cursor: pointer; transition: opacity .2s ease; }
   #canon:hover { opacity: .85; }
+  #canon[disabled] { opacity: .18; cursor: default; }
   .card.skeleton .media { background: var(--ks-graphite); }
   .shimmer { width: 100%; height: 100%; background: linear-gradient(100deg, var(--ks-graphite) 35%, var(--ks-graphite-2) 50%, var(--ks-graphite) 65%); background-size: 220% 100%; animation: shimmer 1.4s linear infinite; }
   .card.skeleton .line { height: 11px; border-radius: 4px; background: linear-gradient(100deg, var(--ks-graphite) 35%, var(--ks-graphite-2) 50%, var(--ks-graphite) 65%); background-size: 220% 100%; animation: shimmer 1.4s linear infinite; }
@@ -1472,10 +1477,12 @@ ${buildPath?.toggle ? `<div id="bp-confirm" role="dialog" aria-modal="true" aria
       // not undo that silence: an unconditional reload re-serves the same
       // unresolved round and its fresh page beats again, so check for a
       // delivered hand first and only reload when one exists. The re-roll
-      // buttons go too: a stalled page served already expired never disabled
-      // them, and a click would renew the deadline the stall just enforced.
+      // buttons and the canon exit go too: a stalled page served already
+      // expired never disabled them, a re-roll would renew the deadline the
+      // stall just enforced, and a canon pick would overwrite a re-roll
+      // --wait already collected, closing the table under the agent.
       clearInterval(beatTimer);
-      document.querySelectorAll('.reroll-btn').forEach(b => b.setAttribute('disabled', ''));
+      document.querySelectorAll('.reroll-btn, #canon').forEach(b => b.setAttribute('disabled', ''));
       // Silence is for heartbeats only: a hand delivered after the deadline
       // must still land without a click, so a beat-free watch keeps checking
       // and reloads into it. /next-status never beats, so the daemon's idle
@@ -1512,7 +1519,9 @@ ${buildPath?.toggle ? `<div id="bp-confirm" role="dialog" aria-modal="true" aria
     }
     const cardHeight = cardsNow[0] ? cardsNow[0].getBoundingClientRect().height : 0;
     grid.innerHTML = cardsNow.map(() => '<article class="card skeleton"' + (cardHeight ? ' style="height:' + cardHeight + 'px"' : '') + '><div class="card-inner"><div class="face front"><div class="media"><div class="shimmer"></div></div><div class="body"><div class="line tier w40"></div><div class="line title w70"></div><div class="line w90"></div><div class="line w80"></div><div class="line w60"></div><div class="line button"></div></div></div></div></article>').join('');
-    document.querySelectorAll('.reroll-btn').forEach(b => b.setAttribute('disabled', ''));
+    // Canon goes quiet with the re-roll buttons: a pick posted mid-wait can
+    // never be collected once --wait has the re-roll, only close the table.
+    document.querySelectorAll('.reroll-btn, #canon').forEach(b => b.setAttribute('disabled', ''));
     // The wait must be able to end: a dead server rejects every tick and a
     // round nobody delivers stays ready:false forever, and both used to spin
     // the skeletons indefinitely. Distinguish them, say so, and offer a way

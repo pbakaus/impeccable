@@ -833,7 +833,7 @@ describe('new-work-e2e: serve-question decision page', () => {
     const payload = {
       title: 'Choose the visual world',
       options: [{ id: 'assigned', label: 'First Hand', kicker: 'THE ROLL' }],
-      reroll: true, steer: true,
+      reroll: true, steer: true, canon: true,
     };
     const { url } = await startDaemon(cwd, payload, key);
     const context = await browser.newContext();
@@ -860,6 +860,10 @@ describe('new-work-e2e: serve-question decision page', () => {
       const text = await page.$eval('.stall', (el) => el.textContent);
       assert.match(text, /The next hand never arrived/);
       assert.ok(await page.$('.stall .choose'), 'a way out is offered');
+      // The canon exit must go quiet with the re-roll buttons: --wait already
+      // consumed the re-roll, so a canon pick posted now could never be
+      // collected, only close the table under the agent.
+      assert.ok(await page.$eval('#canon', (el) => el.disabled), 'the canon exit is disabled on the stall screen');
       // The stalled page must also stop heartbeating: the beats are what keep
       // the daemon alive, so a stalled tab left open used to hold it past its
       // idle grace forever while --wait spun on WAITING.
@@ -894,6 +898,7 @@ describe('new-work-e2e: serve-question decision page', () => {
         waitingAgain = await page.$('.card.skeleton');
       }
       assert.ok(waitingAgain, 'a native refresh mid re-roll re-enters the shuffle wait, not the answered round');
+      assert.ok(await page.$eval('#canon', (el) => el.disabled), 'the refreshed waiting page serves the canon exit disabled too');
       let restalled = null;
       for (let i = 0; i < 40 && !restalled; i++) {
         await page.clock.fastForward(20000);
@@ -912,7 +917,7 @@ describe('new-work-e2e: serve-question decision page', () => {
       writeFileSync(nextPayloadPath, JSON.stringify({
         title: 'Choose the visual world',
         options: [{ id: 'assigned', label: 'Second Hand', kicker: 'RE-ROLLED' }],
-        reroll: true, steer: true,
+        reroll: true, steer: true, canon: true,
       }));
       const updated = await run(['--update', '--key', key, '--payload', nextPayloadPath], cwd);
       assert.equal(updated.code, 0, updated.out);
@@ -926,6 +931,7 @@ describe('new-work-e2e: serve-question decision page', () => {
       const label = await page.$eval('.card', (el) => el.textContent);
       assert.match(label, /Second Hand/, 'reload with a delivered hand serves the new round');
       assert.ok(beats > beatsAtSecondStall, 'the heartbeat resumes on the re-dealt round');
+      assert.ok(await page.$eval('#canon', (el) => !el.disabled), 'the dealt round serves the canon exit live again');
     } finally {
       await context.close();
       await stopDaemon(cwd, key);
