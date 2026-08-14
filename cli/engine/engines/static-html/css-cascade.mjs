@@ -835,10 +835,11 @@ class StaticElement {
     }
   }
   closest(selector) {
+    const matcher = this._doc.matcherFor(selector);
     let cur = this.node;
     while (cur && cur.type === 'tag') {
       try {
-        if (this._doc.is(cur, selector)) return this._doc.wrap(cur);
+        if (matcher(cur)) return this._doc.wrap(cur);
       } catch {
         return null;
       }
@@ -862,9 +863,10 @@ class StaticDocument {
     this.root = root;
     this.selectAll = modules.selectAll;
     this.selectOne = modules.selectOne;
-    this.is = modules.is;
+    this.compile = modules.compile;
     this.domutils = modules.domutils;
     this._wrappers = new WeakMap();
+    this._compiledSelectors = new Map();
     this._styleMap = new WeakMap();
     this._hoverStyleMap = new WeakMap();
     this._accentDashPseudo = new WeakSet();
@@ -881,6 +883,20 @@ class StaticDocument {
       this._wrappers.set(node, wrapped);
     }
     return wrapped;
+  }
+  matcherFor(selector) {
+    let matcher = this._compiledSelectors.get(selector);
+    if (!matcher) {
+      try {
+        matcher = this.compile(selector);
+      } catch (err) {
+        // Cache the failure as a rethrower so a bad selector still reaches
+        // closest()'s catch on every call, first and repeat alike.
+        matcher = () => { throw err; };
+      }
+      this._compiledSelectors.set(selector, matcher);
+    }
+    return matcher;
   }
   querySelectorAll(selector) {
     try {

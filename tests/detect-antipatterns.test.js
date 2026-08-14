@@ -10,6 +10,10 @@ import {
   buildImportGraph, resolveImport,
   detectFrameworkConfig, isPortListening, FRAMEWORK_CONFIGS,
 } from '../cli/engine/detect-antipatterns.mjs';
+import * as htmlparser2 from 'htmlparser2';
+import * as cssSelect from 'css-select';
+import * as domutils from 'domutils';
+import { StaticDocument } from '../cli/engine/engines/static-html/css-cascade.mjs';
 import { filterByScopes } from '../cli/engine/registry/antipatterns.mjs';
 import {
   checkColors,
@@ -1233,6 +1237,46 @@ describe('detectHtml — static HTML/CSS engine', () => {
       expect(ids).toContain('bounce-easing');
       expect(ids).toContain('layout-transition');
     });
+  });
+});
+
+describe('StaticDocument.closest — compiled selector cache', () => {
+  test('compiles each selector once per document', () => {
+    let compileCount = 0;
+    const compile = (sel) => {
+      compileCount++;
+      return cssSelect.compile(sel);
+    };
+    const root = htmlparser2.parseDocument(
+      '<html><body><div class="target-ancestor">' +
+      '<div><div><div><div><div><div><div><div><div><span>deep</span></div></div></div></div></div></div></div></div></div>' +
+      '</div><div><div><div><div><div><div><div><div><div><span>deep2</span></div></div></div></div></div></div></div></div></div></div></body></html>',
+    );
+    const doc = new StaticDocument(root, {
+      selectAll: cssSelect.selectAll,
+      selectOne: cssSelect.selectOne,
+      compile,
+      domutils,
+    });
+    const deep = doc.querySelectorAll('span')[0];
+    const deep2 = doc.querySelectorAll('span')[1];
+    expect(deep.closest('.target-ancestor').node.attribs.class).toBe('target-ancestor');
+    deep.closest('.target-ancestor');
+    deep2.closest('.target-ancestor');
+    expect(compileCount).toBe(1);
+  });
+
+  test('invalid selector returns null on repeat calls', () => {
+    const root = htmlparser2.parseDocument('<html><body><p>x</p></body></html>');
+    const doc = new StaticDocument(root, {
+      selectAll: cssSelect.selectAll,
+      selectOne: cssSelect.selectOne,
+      compile: cssSelect.compile,
+      domutils,
+    });
+    const p = doc.querySelector('p');
+    expect(p.closest('p:has-invalid(')).toBeNull();
+    expect(p.closest('p:has-invalid(')).toBeNull();
   });
 });
 
