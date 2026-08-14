@@ -1947,6 +1947,8 @@ rounded:
     const link = path.join(cwd, 'proj-link');
     fs.mkdirSync(path.join(real, 'src'), { recursive: true });
     fs.writeFileSync(path.join(real, 'package.json'), '{"name":"proj"}');
+    fs.mkdirSync(path.join(real, '.impeccable'), { recursive: true });
+    fs.writeFileSync(getConfigPath(real), JSON.stringify({ hook: { enabled: true } }));
     fs.symlinkSync(real, link);
     const file = path.join(real, 'src', 'Card.tsx');
     fs.writeFileSync(file, 'noop');
