@@ -242,5 +242,11 @@
     </div>
   </div>
   <script src="/js/detect-antipatterns-browser.js"></script>
+  <!-- SVG text: Chrome reports fake scrollWidth/clientWidth on SVG content;
+       the text-overflow rule must skip it (pass). -->
+  <svg class="svg-metrics-pass" viewBox="0 0 430 60" width="430" height="60" role="img" aria-label="diagram">
+    <rect x="6" y="10" width="96" height="40" rx="3" fill="none" stroke="#888"/>
+    <text x="54" y="35" text-anchor="middle" font-size="13">impeccable</text>
+  </svg>
 </body>
 </html>

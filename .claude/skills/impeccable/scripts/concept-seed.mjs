@@ -338,6 +338,20 @@ export function renderConceptSeed({
   };
   const indexSalt = reroll === 0 ? 'index' : `index:reroll-${reroll}`;
   const buildIndex = 3 + Math.floor(unit(indexSalt) * (candidateCount - 2)); // 3..candidateCount
+  // Surface scope deals a hand of three grounded structures: one card is not
+  // a choice, and the full ranked list would hand selection back to the
+  // model's taste. The dice pick all three; the primary index leads. The
+  // no-lineup rule stays direction-only, where it was written for worlds.
+  const dealtIndices = [buildIndex];
+  for (let draw = 0; scope === 'surface' && dealtIndices.length < Math.min(3, candidateCount); draw += 1) {
+    const idx = 1 + Math.floor(unit(`${indexSalt}:deal-${draw}`) * candidateCount);
+    if (!dealtIndices.includes(idx)) dealtIndices.push(idx);
+    if (draw > 64) { // hash repeats cannot stall the deal
+      for (let fill = 1; dealtIndices.length < Math.min(3, candidateCount); fill += 1) {
+        if (!dealtIndices.includes(fill)) dealtIndices.push(fill);
+      }
+    }
+  }
 
   // Local catalog first (private repo, evals, tests), then the roll API,
   // then a degraded assignment-only seed. The assigned index is pure local
@@ -404,19 +418,31 @@ export function renderConceptSeed({
   interaction and state, and a substantially different future surface. In an
   attended run, present the assigned direction fully committed and offer
   re-roll. You may add ONE card for your top-ranked grounded candidate when
-  it is not the assigned direction, kicker MY PICK, with an honest risk line
+  it is not the assigned direction, kicker IMPECCABLE’S PICK, with an honest risk line
   naming its familiarity; one pick card, never a ranked lineup, and the pick
   never takes the lead position. When the assignment IS your top candidate,
   there is no pick card. Re-roll yourself only
   on named factual grounds, when the assignment cannot carry the product's
   truth or task; taste is never grounds.`
   : `After ordering the task's grounded structural candidates by resonance,
-  build candidate ${buildIndex} of your own grounded list; the assignment never
-  points at a challenger. The assignment is the roll, not a suggestion.
-  In an attended run, present the assigned structure and offer re-roll; never
-  present a ranked lineup to choose from. Re-roll yourself only when the
-  assignment fails audience identification or product clarity on named
-  factual grounds.`;
+  deal candidates ${dealtIndices.join(', ')} of your own grounded list to the
+  table; index ${buildIndex} leads, and the deal never points at a challenger.
+  The deal is the roll, not a suggestion: the dice decide which structures
+  reach the user, so the ranking rut stays broken while the user still gets a
+  real choice, and the full ranked list stays yours. In an attended run,
+  present the three dealt structures as full cards of equal salience, the
+  lead carrying kicker THE ROLL, with steer and re-roll, and let the user
+  lock one in; the world is already settled, so this choice is composition.
+  Visualize every dealt card: with image generation available and a
+  comp-led default (.impeccable/config.json buildPath; the page toggle
+  handles the exception), declare a comp per card and generate after
+  serving, lead first; otherwise author each card's wireframe field (see
+  serve-question --schema) and the page draws the schematic. Carry the
+  recorded default in the payload as buildPath with toggle: true. Locking a card
+  approves its comp: a surface round that put three visualized structures on
+  the table replaces the three-option comp round in visualize.md. Re-roll
+  yourself only when every dealt structure fails audience identification or
+  product clarity on named factual grounds.`;
 
   const challengerInstruction = scope === 'direction'
     ? `Fuse each challenger before judging it: the challenger supplies the form
@@ -490,7 +516,7 @@ assigned index is suspended this round and the user picks; seed key ${key}.
 `
       : '';
     return `${degradedHeader}
-${degradedRegister}ASSIGNED INDEX: ${buildIndex}
+${degradedRegister}${scope === 'direction' ? `ASSIGNED INDEX: ${buildIndex}` : `DEALT INDICES: ${dealtIndices.join(', ')} (index ${buildIndex} leads)`}
   ${promotedInstruction}
   The assignment exists to refuse the model's ranking rut, never to outrank
   the user or the brief. Never expose assignment metadata in user-facing labels.
@@ -514,8 +540,11 @@ channel: when a browser can open, present the direction on the decision page
 the no-browser fallback.
 ${authorityInstruction}
 A user- or brief-pinned decision beats the roll, always.
-ASSIGNED INDEX (restated for truncated readers): ${buildIndex}. Build candidate
-${buildIndex} of your own grounded list; seed key ${key}.
+${scope === 'direction'
+    ? `ASSIGNED INDEX (restated for truncated readers): ${buildIndex}. Build candidate
+${buildIndex} of your own grounded list; seed key ${key}.`
+    : `DEALT INDICES (restated for truncated readers): ${dealtIndices.join(', ')}; index
+${buildIndex} leads. Present all three dealt structures; seed key ${key}.`}
 `;
   }
 
@@ -595,7 +624,7 @@ rivals to your habitual layout, and keep only what makes this product clearer.${
   or IMPECCABLE_NO_TELEMETRY is set.\n`
     : '';
   const assignedBlock = register === null
-    ? `ASSIGNED INDEX: ${buildIndex}
+    ? `${scope === 'direction' ? `ASSIGNED INDEX: ${buildIndex}` : `DEALT INDICES: ${dealtIndices.join(', ')} (index ${buildIndex} leads)`}
   ${promotedInstruction}
   The assignment exists to refuse the model's ranking rut, never to outrank
   the user or the brief. Never expose assignment metadata in user-facing labels.`
@@ -621,8 +650,11 @@ craft bar, the finish level and commitment the build is expected to reach,
 never as a mockup to copy; your surface serves this product, not that render.
 `;
   const restated = register === null
-    ? `ASSIGNED INDEX (restated for truncated readers): ${buildIndex}. Build candidate
+    ? (scope === 'direction'
+      ? `ASSIGNED INDEX (restated for truncated readers): ${buildIndex}. Build candidate
 ${buildIndex} of your own grounded list; seed key ${key}.`
+      : `DEALT INDICES (restated for truncated readers): ${dealtIndices.join(', ')}; index
+${buildIndex} leads. Present all three dealt structures; seed key ${key}.`)
     : `REGISTER (restated for truncated readers): ${register}, user-requested; the
 assigned index is suspended this round; seed key ${key}.`;
   return `${scope.toUpperCase()} CONCEPT SEED (key: ${key}; mode: ${mode ?? 'unscoped'}; source: ${data.source}; approved pool: ${data.poolRevision}; ${data.approvedCount}/${data.catalogCount} human-approved; rerun with --scope ${scope}${mode ? ` --mode ${mode}` : ''} --from ${key}${reroll > 0 ? ` --reroll ${reroll}` : ''}${register ? ` --register ${register}` : ''} --candidate-count ${candidateCount} to reproduce this roll against this catalog revision)

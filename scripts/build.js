@@ -372,6 +372,57 @@ function validateSkillProse(rootDir) {
 }
 
 /**
+ * Validate that every `{{ask_instruction}}` interpolation starts a sentence.
+ *
+ * The placeholder's per-provider values are complete capitalized sentences
+ * ("STOP and call the AskUserQuestion tool to clarify."), so a call site that
+ * splices it mid-sentence ships malformed guidance to every provider at once:
+ * `stop and STOP and call the AskUserQuestion tool to clarify. before expanding
+ * it`. Four reference files shipped exactly that before this gate existed, and
+ * a comment in PROVIDER_PLACEHOLDERS asking authors to keep the contract is
+ * what failed to prevent it.
+ *
+ * Returns the number of validation errors. Build fails if > 0.
+ */
+function validateAskInstructionSites(rootDir) {
+  const dir = path.join(rootDir, 'skill', 'reference');
+  const token = '{{ask_instruction}}';
+  let errors = 0;
+  let sites = 0;
+
+  if (!fs.existsSync(dir)) return 0;
+
+  for (const file of fs.readdirSync(dir)) {
+    if (path.extname(file) !== '.md') continue;
+    const rel = path.join('skill/reference', file);
+    fs.readFileSync(path.join(dir, file), 'utf-8')
+      .split('\n')
+      .forEach((line, i) => {
+        let idx = line.indexOf(token);
+        while (idx !== -1) {
+          sites++;
+          // Bold/italic markers may sit between the punctuation and the token.
+          const before = line.slice(0, idx).replace(/[*_`]+\s*$/, '').trimEnd();
+          if (before !== '' && !/[.!?:]$/.test(before)) {
+            console.error(`  ❌ ${rel}:${i + 1}: ${token} is spliced mid-sentence`);
+            console.error(`        ...${before.slice(-60)} ${token}`);
+            console.error(`        Provider values are full sentences. Start a new one.`);
+            errors++;
+          }
+          idx = line.indexOf(token, idx + 1);
+        }
+      });
+  }
+
+  if (errors === 0) {
+    console.log(`✓ ask_instruction call sites: ${sites} sentence-initial`);
+  } else {
+    console.error(`\n❌ ${errors} of ${sites} {{ask_instruction}} site(s) spliced mid-sentence.`);
+  }
+  return errors;
+}
+
+/**
  * Validate that every hand-authored HTML page carries the shared site header.
  * The partial is stamped with `<!-- site-header v1 -->` so drift is loud.
  *
@@ -491,6 +542,7 @@ This folder contains skills for all supported tools:
   .agent/     -> Antigravity
   .github/    -> GitHub Copilot
   .grok/      -> Grok Build
+  .hermes/    -> Hermes Agent
   .kiro/      -> Kiro
   .opencode/  -> OpenCode
   .pi/        -> Pi
@@ -737,7 +789,11 @@ async function build() {
   // that has no technical reading. Hardening repetition is intentionally allowed.
   const skillProseErrors = validateSkillProse(ROOT_DIR);
 
-  if (countErrors > 0 || versionErrors > 0 || manifestShapeErrors > 0 || proseErrors > 0 || skillProseErrors > 0) {
+  // Placeholder values are full sentences; a mid-sentence splice ships broken
+  // guidance to every provider at once.
+  const askSiteErrors = validateAskInstructionSites(ROOT_DIR);
+
+  if (countErrors > 0 || versionErrors > 0 || manifestShapeErrors > 0 || proseErrors > 0 || skillProseErrors > 0 || askSiteErrors > 0) {
     process.exit(1);
   }
 

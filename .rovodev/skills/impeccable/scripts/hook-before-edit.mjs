@@ -16,11 +16,15 @@ import path from 'node:path';
 
 import {
   ALLOWED_EXTS,
+  DEFAULT_CONFIG,
   EDIT_COUNT_THRESHOLD,
   GENERATED_PATH,
   SENSITIVE_PATH,
-  appendDesignSystemNote,
+  appendDesignSystemNoteOnce,
+  commitFooterShown,
+  designNoteReserve,
   designSystemOptions,
+  footerModeForSession,
   filterFindings,
   isNativePlatform,
   isScanTargetInsideProject,
@@ -345,13 +349,32 @@ async function detectProposedHtml(detector, content, filePath, scanOptions) {
   }
 }
 
-function cursorBlockMessage(findings, filePath, config, cwd) {
-  const rendered = renderTemplate(findings, filePath, config, { cwd });
-  const blocked = rendered.replace(
-    '[impeccable@1] Design hook findings requiring review',
-    '[impeccable@1] Impeccable design hook blocked this write before it landed. Design hook findings requiring review',
+// Cursor caps deny messages around 4000 chars. The cap feeds through the
+// renderer's clamp, which preserves the policy footer, rather than tail-
+// slicing the rendered text, which cut the footer off any message the
+// default 8000-char budget let past 4000.
+const CURSOR_DENY_LIMIT = 4000;
+const BLOCK_PREFIX = 'Impeccable design hook blocked this write before it landed. ';
+
+function cursorBlockMessage(findings, filePath, config, cwd, footerMode, reserveChars) {
+  const limits = config?.limits || DEFAULT_CONFIG.limits;
+  // Charge the prefix via reserveChars, not by subtracting from maxChars:
+  // renderTemplate's 500-char floor re-raises any maxChars pushed below it,
+  // un-charging a prefix subtracted from maxChars (Greptile P1 on PR #508).
+  // reserveChars comes off after the floor, so the prefix is charged at every
+  // config tier and the final prefixed message plus a pending staleness note
+  // fits the binding limit. Default-config output is byte-identical.
+  const budget = Math.min(
+    limits.maxChars || DEFAULT_CONFIG.limits.maxChars,
+    CURSOR_DENY_LIMIT,
   );
-  return blocked.length > 4000 ? `${blocked.slice(0, 3984)}\n...(truncated)` : blocked;
+  const rendered = renderTemplate(findings, filePath,
+    { ...config, limits: { ...limits, maxChars: budget } },
+    { cwd, footer: footerMode, reserveChars: (reserveChars || 0) + BLOCK_PREFIX.length });
+  return rendered.replace(
+    '[impeccable@1] Design hook findings requiring review',
+    `[impeccable@1] ${BLOCK_PREFIX}Design hook findings requiring review`,
+  );
 }
 
 function findingSignature(findings) {
@@ -468,9 +491,16 @@ async function main() {
     });
   }
 
-  const message = appendDesignSystemNote(cursorBlockMessage(filtered, filePath, config, cwd), scanOptions);
   const sessionId = event.session_id || event.conversation_id || 'unknown';
   const cache = readCache(cwd);
+  // Repeated denials for the same session repeat the findings, not the
+  // policy: the full footer emits once per session, the short form after.
+  const footerMode = footerModeForSession(cache, sessionId);
+  const message = appendDesignSystemNoteOnce(
+    cursorBlockMessage(filtered, filePath, config, cwd, footerMode, designNoteReserve(scanOptions, cache, sessionId)),
+    scanOptions, cache, sessionId, config,
+  );
+  commitFooterShown(cache, sessionId, message);
   const denial = bumpCursorDenial(cache, sessionId, filePath, filtered);
   persistCache(cwd, cache);
   if (denial.count > EDIT_COUNT_THRESHOLD) {

@@ -23,6 +23,7 @@ import {
   stampProductSchema,
 } from '../skill/scripts/lib/artifact-schema.mjs';
 import {
+  checkBuildPathUnset,
   checkConfig,
   checkDesignSidecar,
   checkNativePlatformEvidence,
@@ -316,6 +317,64 @@ describe('checkConfig', () => {
   it('ignores a malformed config rather than reporting it as drift', () => {
     write('.impeccable/config.json', '{ not json');
     assert.deepEqual(checkConfig({ projectRoot: scratch, repoRoot: scratch }), []);
+  });
+
+  it('accepts both build-path values', () => {
+    for (const value of ['comp', 'code']) {
+      write('.impeccable/config.json', JSON.stringify({ buildPath: value }));
+      assert.deepEqual(checkConfig({ projectRoot: scratch, repoRoot: scratch }), []);
+    }
+  });
+
+  it('flags a build-path value nothing reads', () => {
+    write('.impeccable/config.json', JSON.stringify({ buildPath: 'code-first' }));
+    const findings = checkConfig({ projectRoot: scratch, repoRoot: scratch });
+    assert.deepEqual(ids(findings), ['config-invalid-build-path']);
+    assert.match(findings[0].summary, /"code-first"/);
+  });
+});
+
+// ─── build path ────────────────────────────────────────────────────────────
+
+describe('checkBuildPathUnset', () => {
+  const args = () => ({ projectRoot: scratch, repoRoot: scratch, product: '# Product' });
+
+  it('flags a project that has done direction work and recorded nothing', () => {
+    fs.mkdirSync(path.join(scratch, '.impeccable', 'surfaces'), { recursive: true });
+    const findings = checkBuildPathUnset(args());
+    assert.deepEqual(ids(findings), ['config-build-path-unset']);
+    // The one precondition this module cannot see must reach the reader that can.
+    assert.match(findings[0].fix, /image generation/);
+  });
+
+  it('accepts decision mocks as the same evidence', () => {
+    fs.mkdirSync(path.join(scratch, '.impeccable', 'mocks', 'decision'), { recursive: true });
+    assert.deepEqual(ids(checkBuildPathUnset(args())), ['config-build-path-unset']);
+  });
+
+  it('stays silent on a project that has never done direction work', () => {
+    assert.deepEqual(checkBuildPathUnset(args()), []);
+  });
+
+  it('stays silent without a product record, where init already routes', () => {
+    fs.mkdirSync(path.join(scratch, '.impeccable', 'surfaces'), { recursive: true });
+    assert.deepEqual(checkBuildPathUnset({ ...args(), product: null }), []);
+  });
+
+  it('stays silent once a value is recorded, in either config file', () => {
+    fs.mkdirSync(path.join(scratch, '.impeccable', 'surfaces'), { recursive: true });
+    write('.impeccable/config.json', JSON.stringify({ buildPath: 'code' }));
+    assert.deepEqual(checkBuildPathUnset(args()), []);
+
+    fs.rmSync(path.join(scratch, '.impeccable', 'config.json'));
+    write('.impeccable/config.local.json', JSON.stringify({ buildPath: 'comp' }));
+    assert.deepEqual(checkBuildPathUnset(args()), []);
+  });
+
+  it('defers to the invalid-value finding rather than reporting the key twice', () => {
+    fs.mkdirSync(path.join(scratch, '.impeccable', 'surfaces'), { recursive: true });
+    write('.impeccable/config.json', JSON.stringify({ buildPath: 'comp-first' }));
+    assert.deepEqual(checkBuildPathUnset(args()), []);
   });
 });
 

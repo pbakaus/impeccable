@@ -23,7 +23,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const API_BASE = 'https://impeccable.style';
 
 // Provider folder names in project roots
-const PROVIDER_DIRS = ['.claude', '.cursor', '.gemini', '.agents', '.agent', '.github', '.grok', '.kiro', '.opencode', '.pi', '.qoder', '.trae', '.trae-cn', '.rovodev', '.vibe'];
+const PROVIDER_DIRS = ['.claude', '.cursor', '.gemini', '.agents', '.agent', '.github', '.grok', '.hermes', '.kiro', '.opencode', '.pi', '.qoder', '.trae', '.trae-cn', '.rovodev', '.vibe'];
 const PROVIDER_ALIASES = {
   agent: '.agent',
   agents: '.agents',
@@ -37,6 +37,7 @@ const PROVIDER_ALIASES = {
   github: '.github',
   grok: '.grok',
   'grok-build': '.grok',
+  hermes: '.hermes',
   xai: '.grok',
   kiro: '.kiro',
   opencode: '.opencode',
@@ -57,6 +58,7 @@ const PROVIDER_DISPLAY = {
   '.gemini': { name: 'Gemini CLI', input: 'gemini' },
   '.github': { name: 'GitHub Copilot', input: 'github' },
   '.grok': { name: 'Grok Build', input: 'grok' },
+  '.hermes': { name: 'Hermes Agent', input: 'hermes' },
   '.kiro': { name: 'Kiro', input: 'kiro' },
   '.opencode': { name: 'OpenCode', input: 'opencode' },
   '.pi': { name: 'Pi Coding Agent', input: 'pi' },
@@ -66,7 +68,7 @@ const PROVIDER_DISPLAY = {
   '.trae-cn': { name: 'Trae CN', input: 'trae-cn' },
   '.vibe': { name: 'Mistral Vibe', input: 'vibe' },
 };
-const PROVIDER_INPUT_ORDER = ['antigravity', 'claude', 'codex', 'cursor', 'gemini', 'github', 'grok', 'kiro', 'opencode', 'pi', 'qoder', 'trae', 'trae-cn', 'rovo-dev', 'vibe'];
+const PROVIDER_INPUT_ORDER = ['antigravity', 'claude', 'codex', 'cursor', 'gemini', 'github', 'grok', 'hermes', 'kiro', 'opencode', 'pi', 'qoder', 'trae', 'trae-cn', 'rovo-dev', 'vibe'];
 
 // OpenCode reads global skills from its config directory, not ~/.opencode:
 // $OPENCODE_CONFIG_DIR, else $XDG_CONFIG_HOME/opencode, else
@@ -78,14 +80,52 @@ function opencodeGlobalConfigDir(home) {
   return join(home, '.config', 'opencode');
 }
 
+// Hermes reads skills from `$HERMES_HOME/skills/`, where $HERMES_HOME defaults
+// to `~/.hermes` but is also set to a profile path (e.g.
+// `~/.hermes/profiles/forge`) when a non-default profile is active. Reading
+// the env var matters here at install time: writing to `~/.hermes/skills/`
+// from a profile-scoped Hermes invocation would land in the wrong profile
+// (the same cross-profile data-corruption class that the active_profile
+// fallback warning in hermes_constants.py exists to detect). Used by
+// HOME_SKILLS_DIR_OVERRIDES['.hermes'] only; GLOBAL_HARNESS_HINTS reads the
+// fixed `~/.hermes` location so detection doesn't leak the developer's real
+// HERMES_HOME into test output (test isolation).
+//
+// Ignore $HERMES_HOME when it doesn't sit under `home` (the caller-supplied
+// home dir, which tests inject via HOME=/tmp/...). Without this guard, an
+// inherited $HERMES_HOME=/home/<dev>/.hermes from the developer's shell leaks
+// into test output even when the test sets HOME=/tmp/imp-home-xxx: tests
+// expect ~/.hermes to live under their tmp home, not under the dev's real
+// home. The check uses `resolve()` on both sides so a symlinked test home
+// (e.g. /tmp -> /private/tmp on macOS) still compares correctly.
+function hermesGlobalHome(home) {
+  const envHome = process.env.HERMES_HOME;
+  if (envHome) {
+    try {
+      const resolvedEnv = resolve(envHome);
+      const resolvedHome = resolve(home);
+      // Honor HERMES_HOME only when it lives under the active home (real
+      // ~/.hermes or ~/.hermes/profiles/<name>). Cross-home inheritance is
+      // treated as not-set, so a test running under HOME=/tmp/... doesn't
+      // pick up the developer's real ~/.hermes.
+      if (resolvedEnv === resolvedHome || resolvedEnv.startsWith(resolvedHome + sep)) {
+        return resolvedEnv;
+      }
+    } catch {
+      // fall through to default
+    }
+  }
+  return join(home, '.hermes');
+}
+
 // Providers whose GLOBAL (home) skills dir is not `<provider>/skills`,
 // as a function of the home dir. Pi discovers global skills from
 // ~/.pi/agent/skills/ (issue #327); OpenCode from its config dir (issue
-// #406). Antigravity's global skills dir is ~/.gemini/config/skills/
-// (shared Gemini config location); project scope stays `.agent/skills`.
-// Project scope stays `<provider>/skills` for all of these.
+// #406); Hermes from $HERMES_HOME. Project scope stays `<provider>/skills`
+// for all three.
 const HOME_SKILLS_DIR_OVERRIDES = {
   '.agent': (home) => join(home, '.gemini', 'config', 'skills'),
+  '.hermes': (home) => join(hermesGlobalHome(home), 'skills'),
   '.pi': (home) => join(home, '.pi', 'agent', 'skills'),
   '.opencode': (home) => join(opencodeGlobalConfigDir(home), 'skills'),
 };
@@ -93,6 +133,14 @@ const HOME_SKILLS_DIR_OVERRIDES = {
 // When a project has no harness folder yet, infer the target from globally
 // installed harnesses (~/.claude, ~/.codex, ...). Codex reads skills from
 // .agents/skills, so ~/.codex maps to the .agents bundle variant.
+//
+// Hermes auto-detection uses the fixed `~/.hermes` location only. When a
+// non-default Hermes profile is active (HERMES_HOME points to a profile path),
+// the user is expected to be inside a Hermes invocation and can pass
+// --providers=hermes explicitly. Auto-detection from a non-default HERMES_HOME
+// would also defeat test isolation (tests inject HOME; HERMES_HOME leaks from
+// the parent process and would surface the developer's real ~/.hermes in
+// detection output). The install path honors $HERMES_HOME; detection does not.
 const GLOBAL_HARNESS_HINTS = [
   { home: '.agent', provider: '.agent' },
   // Antigravity nests under ~/.gemini/ too, so any of these also trips the
@@ -105,6 +153,7 @@ const GLOBAL_HARNESS_HINTS = [
   { home: '.cursor', provider: '.cursor' },
   { home: '.gemini', provider: '.gemini' },
   { home: '.grok', provider: '.grok' },
+  { home: '.hermes', provider: '.hermes' },
   { home: '.kiro', provider: '.kiro' },
   { home: '.opencode', provider: '.opencode' },
   // OpenCode's real global config dir (issue #406); the ~/.opencode entry
@@ -610,7 +659,7 @@ async function copyOrExtractLocalBundle(sourceValue) {
  */
 function normalizeForHash(content) {
   return content
-    .replace(/\.(claude|cursor|agents|agent|github|gemini|codex|grok|kiro|opencode|pi|qoder|trae|trae-cn|rovodev|vibe)\/skills\//g, '.PROVIDER/skills/');
+    .replace(/\.(claude|cursor|agents|agent|github|gemini|codex|grok|hermes|kiro|opencode|pi|qoder|trae|trae-cn|rovodev|vibe)\/skills\//g, '.PROVIDER/skills/');
 }
 
 function hashSkillFile(filePath) {
@@ -2256,6 +2305,8 @@ export {
   expectedHookDests,
   extractZip,
   formatInstallDetectionLines,
+  hermesGlobalHome,
+  HOME_SKILLS_DIR_OVERRIDES,
   linkProviderSkills,
   mergeHookManifests,
   migrateUnprefixImpeccable,

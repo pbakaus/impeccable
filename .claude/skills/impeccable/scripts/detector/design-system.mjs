@@ -14,6 +14,10 @@ const FALLBACK_DIRS = ['.agents/context', 'docs'];
 // boundaries; `.impeccable` is our own project marker.
 const PROJECT_ROOT_MARKERS = ['.git', 'package.json', '.impeccable'];
 const COLOR_CHANNEL_TOLERANCE = 6;
+// Shadow blacks at different alphas are different tokens (0.28 vs 0.55 is the
+// difference between a documented shadow and drift), so shadow matching cannot
+// reuse the r/g/b-only channel tolerance.
+const SHADOW_ALPHA_TOLERANCE = 0.02;
 const RADIUS_TOLERANCE_PX = 0.5;
 const FONT_SIZE_TOLERANCE_PX = 0.5;
 const FONT_SIZE_LITERAL_RE = /^-?[\d.]+(?:px|rem)$/;
@@ -474,6 +478,25 @@ function addSidecarRadii(out, sidecar) {
   }
 }
 
+// Sidecar `extensions.shadows` entries ({ name, value, purpose }) carry the
+// documented shadow vocabulary that Stitch's frontmatter schema can't hold.
+// Their colors go into a separate allowlist — NOT allowedColorKeys — because a
+// shadow black is only documented *as a shadow*: feeding it into the general
+// color allowlist would legalize #000 as a page ground (alpha is dropped from
+// colorKey), which is the hole issue #547 warns against.
+function addSidecarShadows(out, sidecar) {
+  const shadows = sidecar?.extensions?.shadows;
+  if (!Array.isArray(shadows)) return;
+
+  for (const entry of shadows) {
+    if (typeof entry?.value !== 'string') continue;
+    for (const match of entry.value.matchAll(CSS_COLOR_RE)) {
+      const parsed = parseDesignColor(match[0]);
+      if (parsed) out.allowedShadowColors.push({ color: parsed });
+    }
+  }
+}
+
 function normalizeDesignSystem(input = {}) {
   const frontmatter = input.frontmatter || {};
   const sidecar = input.sidecar || null;
@@ -486,6 +509,7 @@ function normalizeDesignSystem(input = {}) {
     allowedColorKeys: new Map(),
     allowedRadii: [],
     allowedFontSizes: [],
+    allowedShadowColors: [],
     hasPillRadius: false,
   };
 
@@ -495,6 +519,7 @@ function normalizeDesignSystem(input = {}) {
   addSidecarColors(out, sidecar);
   addRoundedScale(out, frontmatter.rounded);
   addSidecarRadii(out, sidecar);
+  addSidecarShadows(out, sidecar);
 
   out.hasFonts = out.allowedFonts.size > 0;
   out.hasColors = out.allowedColorKeys.size > 0;
@@ -614,6 +639,20 @@ function isAllowedColorRaw(raw, designSystem) {
   return false;
 }
 
+// A color is a documented shadow color only when both the r/g/b channels AND
+// the alpha match a sidecar shadow token's color. Alpha has to be compared
+// here because colorKey()/colorsClose() drop it, and a match on r/g/b alone
+// would let every black at every alpha through.
+function isAllowedShadowColorRaw(raw, designSystem) {
+  if (!designSystem?.allowedShadowColors?.length) return false;
+  const parsed = parseDesignColor(String(raw || '').trim().toLowerCase());
+  if (!parsed) return false;
+  return designSystem.allowedShadowColors.some(entry =>
+    colorsClose(parsed, entry.color) &&
+    Math.abs((parsed.a ?? 1) - (entry.color.a ?? 1)) <= SHADOW_ALPHA_TOLERANCE,
+  );
+}
+
 function isAllowedRadiusRaw(raw, designSystem) {
   if (!designSystem?.hasRadii) return true;
   const text = String(raw || '').trim().toLowerCase();
@@ -689,6 +728,40 @@ function isProbablyColorLiteral(line, match) {
   const jsColorKeyContext = /(?:^|[,{]\s*)(?:color|background|backgroundColor|borderColor|outlineColor|fill|stroke|boxShadow|textShadow)\s*[:=]\s*["'`]?[^"'`,}]*/i.test(before);
 
   return styleContext || cssFunctionContext || jsColorKeyContext;
+}
+
+// One complete `${...}` template interpolation. Its content may carry paired
+// quoted strings (function arguments, ternary branches) and one level of
+// braces (an object-literal argument, itself allowing paired quotes). Deeper
+// nesting would need a parser, so the regex deliberately fails safe there:
+// the context check misses and the finding fires — a false positive a waiver
+// can silence, never a leak.
+const QUOTED_STRING_SRC = `"[^"]*"|'[^']*'`;
+const INTERPOLATION_SRC =
+  `\\$\\{(?:${QUOTED_STRING_SRC}|\\{(?:${QUOTED_STRING_SRC}|[^{}"'\`])*\\}|[^{}"'\`])*\\}`;
+// The two shadow-context tails. Unlike jsColorKeyContext, the JS tail admits
+// commas: a multi-layer shadow string is comma-separated, and a later
+// property on the same line is still blocked because it sits past the
+// string's closing quote. Both tails admit complete interpolations; a bare
+// `}`, quote, or `;` still ends the context.
+const SHADOW_CSS_CONTEXT_RE = new RegExp(
+  `(?:^|[{\\s;"'\`(,])(?:box-shadow|text-shadow)\\s*:\\s*(?:${INTERPOLATION_SRC}|[^;{}"'\`])*$`, 'i',
+);
+const SHADOW_JS_CONTEXT_RE = new RegExp(
+  `(?:^|[,{]\\s*)(?:boxShadow|textShadow)\\s*[:=]\\s*["'\`]?(?:${INTERPOLATION_SRC}|[^"'\`}])*$`, 'i',
+);
+
+// True when the color literal sits inside a box-shadow / text-shadow value —
+// the only contexts where a documented shadow color is legal. Anchored to the
+// end of `before` (no ; } { or quote in between) so a shadow property earlier
+// on the line can't leak the allowance into a later declaration. Kept separate
+// from isProbablyColorLiteral(), which stays a boolean for its existing call
+// sites and deliberately discards which property matched.
+function isShadowPropertyContext(line, match) {
+  const index = match.index ?? -1;
+  if (index < 0) return false;
+  const before = line.slice(0, index);
+  return SHADOW_CSS_CONTEXT_RE.test(before) || SHADOW_JS_CONTEXT_RE.test(before);
 }
 
 function isInsideCssAttributeSelector(line, index) {
@@ -824,6 +897,7 @@ function checkSourceDesignSystem(content, filePath, options = {}) {
         if (!isProbablyColorLiteral(line, match)) continue;
         const raw = cssColorLabel(match[0]);
         if (isAllowedColorRaw(raw, designSystem)) continue;
+        if (isShadowPropertyContext(line, match) && isAllowedShadowColorRaw(raw, designSystem)) continue;
         findings.push(makeDesignFinding(
           'design-system-color',
           filePath,
@@ -1038,6 +1112,7 @@ export {
   loadDesignSystemForCwd,
   isAllowedFont,
   isAllowedColorRaw,
+  isAllowedShadowColorRaw,
   isAllowedRadiusRaw,
   isAllowedFontSizeRaw,
   checkSourceDesignSystem,

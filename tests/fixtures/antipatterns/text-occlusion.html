@@ -39,6 +39,12 @@
 
   /* ── PASS: fixed status bar over content at the fold ── */
   .pass-under { margin-top: 20px; font-size: 16px; }
+  /* Invisible interaction layer: an opacity-0 scrubber input stretched over
+     text, like a before/after comparison handle. It paints nothing, so it must
+     not read as an occluder despite its UA background-color. */
+  .pass-scrubber-wrap { position: relative; margin-top: 30px; height: 80px; }
+  .pass-scrubber-text { position: absolute; top: 20px; left: 10px; font-size: 20px; width: 320px; }
+  .pass-scrubber-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; z-index: 5; margin: 0; }
   .pass-fixedbar { position: fixed; left: 0; right: 0; bottom: 0; height: 40px; background: #b22;
     color: #fff; display: flex; align-items: center; padding: 0 16px; }
 </style>
@@ -77,5 +83,9 @@
     <p class="pass-under">Every span of every trace, kept on disk, no sampling ever applied here.</p>
   </section>
   <div class="pass-fixedbar">8/8 services up &middot; p99 1.20s &middot; retention infinite</div>
+    <div class="pass-scrubber-wrap">
+      <p class="pass-scrubber-text">Drag anywhere to compare versions</p>
+      <input class="pass-scrubber-input" type="range" min="0" max="100" value="50">
+    </div>
 </body>
 </html>

@@ -154,13 +154,19 @@ export function parseSvelteComponentFile(content) {
   return { markup, cssLines, styleBlock };
 }
 
+// A JSDoc `@type` directly before a destructuring declaration is JSDoc cast
+// syntax, and Svelte 5.50+ re-emits it onto the template's own declaration as
+// `var /** @type {...} */ (h1) = root()`, which does not parse. The browser's
+// import of the variant then fails with "Unexpected token '('" and the session
+// shows nothing. `@typedef` documents the same shape without being a cast.
+// tests/live-svelte-props-script.test.mjs compiles and parses what this emits.
 function buildPropsScript(contract) {
   if (contract.length === 0) {
-    return '<script>\n  /** @type {Record<string, never>} */\n  let {} = $props();\n</script>\n';
+    return '<script>\n  /** @typedef {Record<string, never>} Props */\n  let {} = $props();\n</script>\n';
   }
   const names = contract.map((c) => c.prop).join(', ');
   const typeFields = contract.map((c) => `    ${c.prop}: string;`).join('\n');
-  return `<script>\n  /** @type {{\n${typeFields}\n  }} */\n  let { ${names} } = $props();\n</script>\n`;
+  return `<script>\n  /** @typedef {{\n${typeFields}\n  }} Props */\n  let { ${names} } = $props();\n</script>\n`;
 }
 
 function buildVariantStub(variantNum, originalWithProps, contract) {
@@ -1111,6 +1117,24 @@ export function removeSvelteComponentSession(id, cwd = process.cwd()) {
  * seeded one) used to surface as a red Vite overlay in the user's page plus
  * a mount-failure round trip; bounced at publish time it is a private
  * agent-side fix with the exact file and line.
+ *
+ * What this deliberately does NOT prove is that the emitted module is valid
+ * JavaScript, and issue #580 was exactly that gap: valid .svelte source whose
+ * generated JS did not parse, so this check passed and the browser's import
+ * failed with "Unexpected token '('". Two reasons it cannot close the gap, both
+ * structural rather than oversights:
+ *
+ *   - `generate: false` produces no JS to inspect, and generating it here would
+ *     spend a full codegen per variant on the publish path.
+ *   - `loadSvelteCompiler` reaches the compiler through createRequire, which
+ *     Svelte's export map routes to a prebuilt CJS build. The dev server
+ *     imports `src/compiler` instead, and only that path uses the app's
+ *     installed printer (esrap). The two can disagree, so even a generated
+ *     check here would be checking a different compiler than the one whose
+ *     output the browser runs.
+ *
+ * tests/live-svelte-props-script.test.mjs covers the emitted JS, importing the
+ * compiler as ESM so it sees what the dev server sees.
  */
 export function compileCheckVariants(id, cwd = process.cwd()) {
   const manifest = findSvelteComponentManifest(id, cwd);

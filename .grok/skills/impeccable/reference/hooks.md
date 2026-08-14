@@ -48,14 +48,20 @@ The first argument is the action. Defaults to `status`.
 5. If `<action>` is `ignore-value`, `ignore-file`, or `ignore-rule`, just print the script output. The default scope is shared `.impeccable/config.json`; add `--local` only when the user explicitly asks for a private exception.
 6. If `<action>` is `status`, just print the script output. Do not add commentary unless the user asked a follow-up question.
 
-## Intentional findings
+## Triage findings
 
-The hook itself never writes ignore config. Persist an exception only after the user explicitly confirms the flagged issue is intentional, and always go through `hook-admin.mjs`.
+The hook itself never writes ignore config; every exception goes through `hook-admin.mjs`. Triage each finding into one of three outcomes:
+
+- **Real design problem**: fix it. Never add an ignore to skip a fix or to push a blocked write through.
+- **Confident false positive or sanctioned exception**: persist the narrowest ignore yourself and disclose it in your reply. The bar is evidence you can name: an intentional demo or fixture, documentation of bad design, literal or domain-appropriate motion (a ball that bounces), or a choice the user already confirmed. Put that evidence in `--reason` as `"<who decided: evidence>"`; write "user confirmed" only when the user actually did.
+- **Unsure**: leave the finding standing and ask the user in one line. Ask once; a one-line question costs less than the hook re-firing on every later edit.
+
+Self-serve stops at `ignore-value`. `ignore-file` and `ignore-rule` silence too much to add on your own judgment; ask the user first.
 
 Prefer the narrowest exception:
 
-- If the finding line shows an exact `ignore-value` command, run that command. This writes shared `.impeccable/config.json` by default.
-- For value-specific findings such as `overused-font` and `bounce-easing`, use `ignore-value` when the user confirms the specific value. Do not use `ignore-rule overused-font` for a specific font.
+- If the finding line shows an `ignore-value <rule> <value>` pair, pass it to `hook-admin.mjs ignore-value` with your `--reason`. This writes shared `.impeccable/config.json` by default.
+- For value-specific findings such as `overused-font` and `bounce-easing`, use `ignore-value` for the specific value. Do not use `ignore-rule overused-font` for a specific font.
 - If the finding has no value-specific command, such as `side-tab`, scope that one rule to the file: `ignore-value <id> "*" --file <path>`. Run `npx impeccable detect <path>` first to see what actually fires there.
 - Reach for `ignore-file <path>` only when the whole file is out of scope for design review: a fixture, a generated artifact, a deliberate slop demo. It silences every rule for that file permanently, including rules that have not been written yet. A real UI surface with one noisy rule wants the file-scoped value ignore above.
 - Use `ignore-rule <id>` only when the user asks to suppress that whole rule across the project. For broad overused-font suppression, use `ignore-rule overused-font --all-values` only when the user asks to ignore overused fonts generally.
@@ -67,10 +73,10 @@ Example value-specific exception:
 node .grok/skills/impeccable/scripts/hook-admin.mjs ignore-value overused-font Inter --shared --reason "User confirmed Inter is intentional"
 ```
 
-Example intentional motion exception:
+Example self-served exception, with the evidence named:
 
 ```bash
-node .grok/skills/impeccable/scripts/hook-admin.mjs ignore-value bounce-easing bounce-ball --shared --reason "User confirmed ball bounce animation is intentional"
+node .grok/skills/impeccable/scripts/hook-admin.mjs ignore-value bounce-easing bounce-ball --shared --reason "Agent: literal ball-bounce animation, bounce easing is the subject"
 ```
 
 Example whole-rule font exception:

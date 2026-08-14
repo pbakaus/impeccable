@@ -42,6 +42,18 @@
     .glow-text h4 { text-shadow: 0 0 12px #22d3ee; }
     /* Zero-offset chromatic halo is slop on light backgrounds too */
     .glow-light-oklch { box-shadow: 0 0 20px oklch(0.65 0.2 300 / 0.45); }
+    /* Unreadable surface: url() image ancestor. The zero-offset halo tell
+       holds on ANY background, so an unknown surface must not suppress it.
+       Both element loops must agree here (the browser adapter once returned
+       [] for the whole element on an unresolved surface). */
+    .photo-context { background-image: url('/fixtures/antipatterns/missing-photo.png'); padding: 16px; border-radius: 12px; }
+    .glow-photo-halo { box-shadow: 0 0 26px rgba(217, 70, 239, 0.5); }
+    /* Opaque gradient atop a url() layer: every stop is opaque, so the
+       gradient provably covers the image — the surface IS the dark
+       gradient, and the dark-background glow tell may score against it
+       (browser hunt; the static loop has no gradient hunt). */
+    .photo-opaque-grad { background: linear-gradient(#111827, #0b1220), url('/fixtures/antipatterns/missing-photo.png'); padding: 16px; border-radius: 12px; }
+    .glow-photo-opaque { box-shadow: 0 6px 22px rgba(249, 115, 22, 0.5); }
 
     /* ── PASS: same dark/light backgrounds, but neutral or no glow ── */
     .light-colored-shadow { box-shadow: 0 2px 4px rgba(59, 130, 246, 0.15); }
@@ -67,6 +79,15 @@
     .light-offset-colored { box-shadow: 0 8px 20px rgba(59, 130, 246, 0.25); }
     /* Achromatic zero-offset shadow: soft ambient elevation, stays legal */
     .light-soft-neutral { box-shadow: 0 0 24px rgba(0, 0, 0, 0.15); }
+    /* Offset chromatic shadow under the same unreadable url() surface:
+       the dark-background glow tell needs a surface we can read — abstain. */
+    .photo-offset-colored { box-shadow: 0 6px 20px rgba(16, 185, 129, 0.35); }
+    /* Translucent gradient atop a url() layer: the image shows through the
+       20% wash, so the real surface is a blend with unknowable pixels (a
+       white photo composites to ~#cccccc, not black). Averaging the wash
+       stops as if they were the surface scored this "dark" — abstain. */
+    .photo-translucent-grad { background: linear-gradient(rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.2)), url('/fixtures/antipatterns/missing-photo.png'); padding: 16px; border-radius: 12px; }
+    .photo-translucent-offset { box-shadow: 0 6px 22px rgba(244, 63, 94, 0.45); }
     /* Offset neutral text-shadow on dark card: legibility aid, not a glow */
     .dark-text-offset h4 { text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
   </style>
@@ -136,6 +157,22 @@
         <h4>Chromatic halo on light page</h4>
         <p>box-shadow: 0 0 20px oklch(0.65 0.2 300 / 0.45)</p>
       </div>
+
+      <h3>Zero-offset halo on unreadable (image) surface</h3>
+      <div class="photo-context">
+        <div class="card card-light glow-photo-halo">
+          <h4>Halo over photo background</h4>
+          <p>box-shadow: 0 0 26px rgba(217, 70, 239, 0.5)</p>
+        </div>
+      </div>
+
+      <h3>Colored glow under an opaque gradient over an image (browser)</h3>
+      <div class="photo-opaque-grad">
+        <div class="card card-dark glow-photo-opaque">
+          <h4>Opaque dark gradient covers the photo</h4>
+          <p>box-shadow: 0 6px 22px rgba(249, 115, 22, 0.5)</p>
+        </div>
+      </div>
     </div>
 
     <!-- ════════════════════════════════════════════════════════════
@@ -200,6 +237,22 @@
       <div class="card card-light light-soft-neutral">
         <h4>Soft neutral halo</h4>
         <p>Achromatic zero-offset shadow is ambient elevation.</p>
+      </div>
+
+      <h3>Offset chromatic shadow on unreadable (image) surface</h3>
+      <div class="photo-context">
+        <div class="card card-light photo-offset-colored">
+          <h4>Offset colored shadow over photo background</h4>
+          <p>Surface unknown, offset shadow — abstain, not flag.</p>
+        </div>
+      </div>
+
+      <h3>Offset chromatic shadow under a translucent gradient over an image</h3>
+      <div class="photo-translucent-grad">
+        <div class="card card-light photo-translucent-offset">
+          <h4>The wash blends with unknowable image pixels</h4>
+          <p>Surface unknown — abstain, never score the wash stops as dark.</p>
+        </div>
       </div>
 
       <h3>Neutral text-shadow on dark card</h3>

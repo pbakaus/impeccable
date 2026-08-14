@@ -10,6 +10,11 @@
  *
  *   node generate-image.mjs --prompt "..." --out mock.png [--size 1536x1024] [--quality medium]
  *   node generate-image.mjs --prompt-file prompt.txt --out mock.png
+ *   node generate-image.mjs --prompt "..." --out mock.png --ref screenshot.png [--ref more.png]
+ *
+ * --ref anchors generation on input image(s) via the edits endpoint: pass a
+ * captured screenshot of a representative existing page when comping a new
+ * surface for an established world, so the identity comes from the real UI.
  */
 import fs from 'node:fs';
 import zlib from 'node:zlib';
@@ -212,12 +217,44 @@ if (!prompt || !out) {
 }
 const size = arg('size', '1536x1024');
 const quality = arg('quality', 'medium');
+// Reference images (--ref, repeatable): route through the edits endpoint,
+// which accepts input images. This is how a comp for an established world
+// inherits the real UI's identity from a captured screenshot instead of a
+// prose paraphrase of it; the prompt then describes the NEW surface and the
+// reference carries palette, type, and component character.
+const refs = (() => {
+  const found = [];
+  for (let i = 0; i < process.argv.length; i += 1) {
+    if (process.argv[i] === '--ref' && process.argv[i + 1] && !process.argv[i + 1].startsWith('--')) found.push(process.argv[i + 1]);
+  }
+  return found;
+})();
 
-const response = await fetch('https://api.openai.com/v1/images/generations', {
-  method: 'POST',
-  headers: { Authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-  body: JSON.stringify({ model: 'gpt-image-2', prompt, size, quality, n: 1 }),
-});
+let response;
+if (refs.length) {
+  const form = new FormData();
+  form.append('model', 'gpt-image-2');
+  form.append('prompt', prompt);
+  form.append('size', size);
+  form.append('quality', quality);
+  form.append('n', '1');
+  for (const ref of refs) {
+    const bytes = fs.readFileSync(ref);
+    const type = ref.endsWith('.png') ? 'image/png' : ref.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
+    form.append('image[]', new Blob([bytes], { type }), ref.split('/').pop());
+  }
+  response = await fetch('https://api.openai.com/v1/images/edits', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${key}` },
+    body: form,
+  });
+} else {
+  response = await fetch('https://api.openai.com/v1/images/generations', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ model: 'gpt-image-2', prompt, size, quality, n: 1 }),
+  });
+}
 if (!response.ok) {
   console.error(`generate-image: API error ${response.status}: ${(await response.text()).slice(0, 300)}`);
   process.exit(1);
@@ -235,6 +272,6 @@ fs.writeFileSync(out, Buffer.from(b64, 'base64'));
 try {
   const { spawnSync } = await import('node:child_process');
   spawnSync(process.execPath, [new URL('./embed-prompt.mjs', import.meta.url).pathname, out, '--prompt', prompt], { stdio: 'ignore' });
-  fs.writeFileSync(`${out}.json`, JSON.stringify({ prompt, createdAt: new Date().toISOString(), tool: 'generate-image.mjs', model: 'gpt-image-2' }, null, 2));
+  fs.writeFileSync(`${out}.json`, JSON.stringify({ prompt, createdAt: new Date().toISOString(), tool: 'generate-image.mjs', model: 'gpt-image-2', ...(refs.length ? { refs } : {}) }, null, 2));
 } catch { /* embedding is best-effort */ }
 console.log(`IMAGE: ${out} (${size}, ${quality}, gpt-image-2, billed to your OpenAI key); prompt embedded + sidecar at ${out}.json`);

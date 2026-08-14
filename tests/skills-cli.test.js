@@ -1940,3 +1940,153 @@ describeRemote('skills install: production universal bundle download', () => {
     expect(skills).not.toContain('i-impeccable');
   }, 90000);
 });
+
+describe('hermesGlobalHome resolver (PR #521)', () => {
+  // hermesGlobalHome was added in PR #521 to honor $HERMES_HOME for
+  // profile-scoped installs. The original PR had a P1 bug at lines
+  // 105-111 of cli/bin/commands/skills.mjs: it called `path.resolve` and
+  // `path.sep` but the file only named-imports `resolve` and `sep` from
+  // `node:path`. The ReferenceError was swallowed by the catch block, so
+  // $HERMES_HOME was silently ignored and installs always landed in
+  // ~/.hermes regardless of the active profile.
+  //
+  // These tests exercise the real implementation (via the export
+  // added to the skills.mjs test surface), not a reimplementation.
+
+  // The resolver is internal to skills.mjs. It reads $HERMES_HOME and
+  // returns the home dir it should use for ~/.hermes/skills. We import
+  // it via the public test surface — see the export block at the bottom
+  // of skills.mjs.
+  let hermesGlobalHome;
+
+  beforeAll(async () => {
+    // Dynamic import so the test can use the same surface as the
+    // production code without forcing a re-export gymnastics on the
+    // rest of the test file.
+    const mod = await import('../cli/bin/commands/skills.mjs');
+    hermesGlobalHome = mod.hermesGlobalHome;
+  });
+
+  test('default (no HERMES_HOME) returns <home>/.hermes', () => {
+    // Use a fresh tmp HOME so the test never depends on the dev's real
+    // ~/.hermes leaking through. The `delete env.HERMES_HOME` happens
+    // in the caller; here we just verify the function honors an
+    // explicitly-unset env (process.env is set per test below).
+    const home = mkdtempSync(join(tmpdir(), 'imp-home-hermes-default-'));
+    try {
+      expect(hermesGlobalHome(home)).toBe(join(home, '.hermes'));
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('HERMES_HOME=<home>/.hermes is honored (default profile)', () => {
+    const home = mkdtempSync(join(tmpdir(), 'imp-home-hermes-real-'));
+    const prev = process.env.HERMES_HOME;
+    process.env.HERMES_HOME = join(home, '.hermes');
+    try {
+      // The resolver returns $HERMES_HOME (resolved) when it lives
+      // under the active home. Callers append 'skills'.
+      expect(hermesGlobalHome(home)).toBe(join(home, '.hermes'));
+    } finally {
+      if (prev === undefined) delete process.env.HERMES_HOME;
+      else process.env.HERMES_HOME = prev;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('HERMES_HOME=<home>/.hermes/profiles/forge is honored (active profile)', () => {
+    // The whole point of the resolver: a Hermes invocation with
+    // HERMES_HOME pointing at an active profile should install into
+    // that profile's skills dir, not the default ~/.hermes. The
+    // original bug had install/update/check landing in ~/.hermes for
+    // every profile, which is the cross-profile data-corruption class
+    // that hermes_constants.py's active_profile fallback warning is
+    // designed to detect.
+    const home = mkdtempSync(join(tmpdir(), 'imp-home-hermes-profile-'));
+    const prev = process.env.HERMES_HOME;
+    process.env.HERMES_HOME = join(home, '.hermes', 'profiles', 'forge');
+    try {
+      const resolved = hermesGlobalHome(home);
+      expect(resolved).toBe(join(home, '.hermes', 'profiles', 'forge'));
+      // And critically: it must NOT fall back to the default profile
+      // when an active profile is selected.
+      expect(resolved).not.toBe(join(home, '.hermes'));
+    } finally {
+      if (prev === undefined) delete process.env.HERMES_HOME;
+      else process.env.HERMES_HOME = prev;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('HERMES_HOME outside the active home is ignored (cross-home leakage guard)', () => {
+    // If the developer's shell has HERMES_HOME=/home/dev/.hermes and a
+    // test runs under HOME=/tmp/imp-home-xxx, the resolver must NOT
+    // pick up the dev's real ~/.hermes. Otherwise test output (and
+    // potentially writes) leak into the developer's working state.
+    // The cross-home guard turns the inherited HERMES_HOME into a
+    // not-set, so the resolver falls back to <home>/.hermes.
+    const home = mkdtempSync(join(tmpdir(), 'imp-home-hermes-xhome-'));
+    const otherHome = mkdtempSync(join(tmpdir(), 'imp-home-hermes-xhome-other-'));
+    const prev = process.env.HERMES_HOME;
+    process.env.HERMES_HOME = join(otherHome, '.hermes', 'profiles', 'main');
+    try {
+      // HERMES_HOME is set but it doesn't sit under `home`, so the
+      // resolver should treat it as not-set and return <home>/.hermes.
+      expect(hermesGlobalHome(home)).toBe(join(home, '.hermes'));
+    } finally {
+      if (prev === undefined) delete process.env.HERMES_HOME;
+      else process.env.HERMES_HOME = prev;
+      rmSync(home, { recursive: true, force: true });
+      rmSync(otherHome, { recursive: true, force: true });
+    }
+  });
+
+  test('HOME_SKILLS_DIR_OVERRIDES[".hermes"] returns <HERMES_HOME>/skills under an active profile', async () => {
+    // Integration check: the resolver is wired through the override
+    // map, so this is what the install path actually consumes. The
+    // import is cached across the suite (ESM module singleton), so
+    // the same `hermesGlobalHome` from the unit tests above applies
+    // here. We assert inside the async block so process.env is still
+    // set when the override function reads it (the unit-test version
+    // returns synchronously, but this one uses async import to share
+    // the module reference).
+    const home = mkdtempSync(join(tmpdir(), 'imp-home-hermes-override-'));
+    const prev = process.env.HERMES_HOME;
+    process.env.HERMES_HOME = join(home, '.hermes', 'profiles', 'savant');
+    try {
+      const mod = await import('../cli/bin/commands/skills.mjs');
+      const override = mod.HOME_SKILLS_DIR_OVERRIDES['.hermes'];
+      expect(override(home)).toBe(join(home, '.hermes', 'profiles', 'savant', 'skills'));
+    } finally {
+      if (prev === undefined) delete process.env.HERMES_HOME;
+      else process.env.HERMES_HOME = prev;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('end-to-end: --scope=user --providers=hermes with HERMES_HOME=profile lands in the active profile', () => {
+    // The full pipeline: drive the real CLI under a controlled HOME and
+    // HERMES_HOME. This catches any regression that breaks the wiring
+    // between hermesGlobalHome and the install path (e.g. if a future
+    // refactor moves the override out of HOME_SKILLS_DIR_OVERRIDES, or
+    // if copyProviderSkills stops reading from it).
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-hermes-e2e-'));
+    const home = mkdtempSync(join(tmpdir(), 'imp-home-hermes-e2e-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.hermes']);
+    const baseEnv = { ...process.env, HOME: home, IMPECCABLE_BUNDLE_PATH: bundleRoot };
+    delete baseEnv.HERMES_HOME;
+    const profileDir = join(home, '.hermes', 'profiles', 'forge');
+    const env = { ...baseEnv, HERMES_HOME: profileDir };
+
+    run('skills install -y --providers=hermes --scope=user --no-hooks', { cwd: tmp, env });
+
+    // Landed in the active profile, not the default ~/.hermes.
+    expect(existsSync(join(profileDir, 'skills', 'impeccable', 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(home, '.hermes', 'skills', 'impeccable', 'SKILL.md'))).toBe(false);
+
+    rmSync(tmp, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }, 20000);
+});

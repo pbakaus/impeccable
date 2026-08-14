@@ -37,6 +37,55 @@ body { background: var(--legacy-beige); color: #3c3833; font-family: Arial, sans
 <footer data-untouched="footer">Operational since 1987</footer>
 </body></html>`;
 
+// Deliberately broken enough that any honest critique lists three or more
+// Priority Issues, so the run cannot reach the "fewer than 3" skip branch by
+// merit. Low contrast, an icon-tile stack, a kicker over the heading, dead
+// hierarchy, and a placeholder CTA.
+const FLAWED_PAGE = `<!doctype html>
+<html><head><style>
+body { background:#f4f4f5; color:#b9b9c0; font-family: Arial, sans-serif; font-size:15px; }
+h1, h2, h3, p { font-size:15px; font-weight:400; margin:8px 0; }
+.tile { width:48px; height:48px; background:#e6e6ea; border-radius:12px; }
+.card { border:1px solid #e6e6ea; border-radius:12px; padding:16px; }
+</style></head><body>
+<main>
+  <p class="kicker">INTRODUCING</p>
+  <h1>Harbor Desk</h1>
+  <p>A platform that helps teams do more of what matters, faster.</p>
+  <section class="card"><div class="tile"></div><h3>Lightning Fast</h3><p>Blazing performance.</p></section>
+  <section class="card"><div class="tile"></div><h3>Rock Solid</h3><p>Enterprise grade.</p></section>
+  <section class="card"><div class="tile"></div><h3>Fully Secure</h3><p>Bank level security.</p></section>
+  <button style="background:#e6e6ea;color:#c9c9d0;border:none;padding:8px 12px">Learn More</button>
+</main>
+</body></html>`;
+
+/**
+ * Flatten assistant output into ordered parts.
+ *
+ * `generateText` only returns `text` for the FINAL step, which is empty when a
+ * turn ends on a tool call. Reading the report out of that field silently tests
+ * nothing. Walking responseMessages instead preserves emission order, which is
+ * the point: critique's invariant is that report prose precedes the question
+ * inside the message, since prose after a structured question is withheld until
+ * the user answers.
+ */
+function assistantParts(responseMessages) {
+  const parts = [];
+  for (const message of responseMessages) {
+    if (message.role !== 'assistant') continue;
+    const content = message.content;
+    if (typeof content === 'string') {
+      parts.push({ kind: 'text', value: content });
+      continue;
+    }
+    for (const part of content ?? []) {
+      if (part.type === 'text') parts.push({ kind: 'text', value: part.text ?? '' });
+      else if (part.type === 'tool-call') parts.push({ kind: 'tool', value: part.toolName ?? '' });
+    }
+  }
+  return parts;
+}
+
 function firstCall(trace, predicate) {
   return trace.toolCalls.findIndex(predicate);
 }
@@ -160,6 +209,56 @@ for (const modelId of resolveModelList()) {
         assert.match(artifact, /data-untouched="header"/);
         assert.match(artifact, /data-untouched="footer"/);
         assert.match(artifact, /id="case-study"/);
+      } finally {
+        cleanupWorkspace(workspace);
+      }
+    });
+
+    // Regression guard for the failure mode that shipped in PR #576: the report
+    // landed and the run then stopped, asking nothing and printing no skip
+    // line. The close is the deliverable's other half, so a critique that ends
+    // on the report is incomplete. Asserted on the trace rather than on prose
+    // because the model's own account of why it skipped is not evidence.
+    it('critique closes with the question or an explicit skip line', async () => {
+      const workspace = prepareWorkspace({
+        files: {
+          'PRODUCT.md': PRODUCT_MD_SAMPLE,
+          'DESIGN.md': DESIGN_MD_SAMPLE,
+          'current.html': FLAWED_PAGE,
+        },
+      });
+      try {
+        const { trace, responseMessages } = await runTurn({
+          workspace,
+          model,
+          userPrompt: '/impeccable critique current.html',
+          maxSteps: 30,
+        });
+        assert.ok(fileLoaded(trace, 'critique.md'), `critique.md was not loaded.\n${workflowTraceMessage(trace)}`);
+
+        const parts = assistantParts(responseMessages);
+        const allText = parts.filter((p) => p.kind === 'text').map((p) => p.value).join('\n');
+        const reportPattern = /priority issue|heuristic|design health/i;
+        assert.match(allText, reportPattern, `no report reached the user.\n${workflowTraceMessage(trace)}`);
+
+        const askIndex = parts.findIndex((p) => p.kind === 'tool' && p.value === 'ask_user_question');
+        const skipped = /Questions skipped:/i.test(allText);
+        assert.ok(
+          askIndex >= 0 || skipped,
+          `critique ended without the questions and without a "Questions skipped: <reason>" line.\n` +
+            `This is the PR #576 regression: the report is not the finish, the close is.\n${workflowTraceMessage(trace)}`,
+        );
+
+        // The ordering invariant. Only meaningful when a question was actually
+        // asked; a skip-line close has nothing to order against.
+        if (askIndex >= 0) {
+          const reportIndex = parts.findIndex((p) => p.kind === 'text' && reportPattern.test(p.value));
+          assert.ok(
+            reportIndex >= 0 && reportIndex < askIndex,
+            `the question was emitted before the report text, so the report stays hidden until the user answers.\n` +
+              `${workflowTraceMessage(trace)}`,
+          );
+        }
       } finally {
         cleanupWorkspace(workspace);
       }

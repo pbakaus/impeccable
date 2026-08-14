@@ -20,6 +20,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createBrowserDetector, detectUrl, normalizeDesignSystem } from '../cli/engine/detect-antipatterns.mjs';
+import { launchBrowser } from '../cli/engine/engines/browser/detect-url.mjs';
 import { filterDetectionFindings } from '../cli/lib/impeccable-config.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -110,6 +111,114 @@ describe('detectUrl — browser-only fixtures', () => {
     for (const cls of ['pass-same-bg-child', 'pass-marquee-shell', 'pass-inner-text-surface']) {
       assert.doesNotMatch(snippets, new RegExp(`"${cls}"`), `".${cls}" should not be flagged`);
     }
+  });
+
+  it('dark-glow: unreadable url() surface keeps zero-offset halos, abstains on offset chromatic shadows', async () => {
+    // Mirrors the static assertions in detect-antipatterns-fixtures.test.mjs.
+    // The browser adapter (checkElementGlowDOM) once returned [] for the
+    // whole element when the parent surface was unresolved, which also
+    // dropped zero-offset chromatic halos that need no background at all.
+    const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/glow.html`, { visualContrast: false });
+    const glow = f.filter(r => r.antipattern === 'dark-glow');
+    assert.ok(
+      glow.some(g => /Zero-offset box-shadow glow \(#d946ef\)/i.test(g.snippet || '')),
+      'expected zero-offset halo finding under unreadable image surface',
+    );
+    assert.equal(
+      glow.filter(g => /#10b981/i.test(g.snippet || '')).length, 0,
+      'offset chromatic shadow on unknown surface must not be scored',
+    );
+    // Gradient-over-image split: an opaque gradient provably covers the
+    // image, so the dark-background tell may score against its stops; a
+    // translucent wash blends with unknowable pixels (a white photo under a
+    // 20% black wash paints ~#cccccc, not black), so the walk abstains.
+    assert.ok(
+      glow.some(g => /Colored box-shadow glow \(#f97316\) on dark background/i.test(g.snippet || '')),
+      'expected colored-glow finding under a provably opaque gradient over an image',
+    );
+    assert.equal(
+      glow.filter(g => /#f43f5e/i.test(g.snippet || '')).length, 0,
+      'offset chromatic shadow under a translucent wash over an image must abstain',
+    );
+  });
+
+  it('image-backed text: the overlay default pass pixel-samples the image itself', async () => {
+    // Drives the OVERLAY entry (impeccableDetectAsync with default options),
+    // not detectUrl's Node-side full fallback — the image-only default mode
+    // lives in the injected bundle. Fourteen gradient decoys precede the
+    // panels: the image-only filter must apply inside the candidate cap, or
+    // they starve the pass and nothing gets sampled. The sampled finding
+    // carries the candidate's text, so the white-on-light specimen must be
+    // the one that flags and the dark-ink control must stay clean.
+    const puppeteer = await import('puppeteer');
+    const browser = await launchBrowser(puppeteer, { headless: true, args: process.env.CI ? ['--no-sandbox', '--disable-setuid-sandbox'] : [] });
+    try {
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1280, height: 800 });
+      await page.goto(`${baseUrl}/fixtures/antipatterns/image-backed-contrast.html`, { waitUntil: 'load' });
+      await page.addScriptTag({ path: path.join(ROOT, 'cli/engine/detect-antipatterns-browser.js') });
+      const groups = await page.evaluate(() => window.impeccableDetectAsync());
+      const contrast = groups.flatMap(g => (g.findings || []).filter(f => f.type === 'low-contrast').map(f => f.detail || f.snippet || ''));
+      const snippets = contrast.join('\n');
+      assert.match(snippets, /browser contrast/, `expected a sampled (not analytic) finding:\n${snippets}`);
+      assert.match(snippets, /White text on a near-white/, `flag case missing:\n${snippets}`);
+      assert.doesNotMatch(snippets, /Dark ink/, `pass case must not flag:\n${snippets}`);
+      assert.equal(contrast.length, 1, `expected exactly the white-on-light case, got ${contrast.length}:\n${snippets}`);
+    } finally {
+      await browser.close().catch(() => {});
+    }
+  });
+
+  it('scoped-ignore: data-impeccable-ignore waives its subtree in the browser walk', async () => {
+    // Browser twin of the static scoped-ignore test: same fixture, same
+    // expectation — only the control and the other-rule-waived case flag.
+    const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/scoped-ignore.html`, { visualContrast: false });
+    const sideTabs = f.filter(r => r.antipattern === 'side-tab');
+    const snippets = sideTabs.map(r => r.snippet || '').join('\n');
+    // Every case carries a unique border width, so each finding attributes to
+    // exactly one case: control 6, other-rule 8, sibling-waiver 12,
+    // misspelled-rule 5 must flag; the five waived shapes must not.
+    for (const w of ['5px', '6px', '8px', '12px']) {
+      assert.match(snippets, new RegExp(`border-left: ${w.replace('px', '')}px`), `flag case ${w} missing:\n${snippets}`);
+    }
+    for (const w of ['4px', '7px', '9px', '10px', '11px']) {
+      assert.doesNotMatch(snippets, new RegExp(`border-left: ${w.replace('px', '')}px`), `waived case ${w} must not flag:\n${snippets}`);
+    }
+    assert.equal(sideTabs.length, 4, `expected exactly the 4 flag cases, got ${sideTabs.length}:\n${snippets}`);
+    // CSS-scan findings resolve their selectors against the live DOM: the
+    // marquee track sits under a marquee waiver (suppressed), and the grid
+    // rule's selector renders nowhere on this page (dropped).
+    assert.equal(f.filter(r => r.antipattern === 'marquee').length, 0, 'waived marquee must not flag');
+    assert.equal(f.filter(r => r.antipattern === 'codex-grid-background').length, 0, 'dead grid CSS must not flag in the browser');
+    // The overshoot bezier sits inside a keyframe `to` step: the selector
+    // extractor must refuse `to` (matches nothing) so the finding is RETAINED
+    // as page-level rather than wrongly dropped by the zero-match rule.
+    assert.ok(f.some(r => r.antipattern === 'bounce-easing'), 'keyframe-step bezier finding must survive selector extraction');
+  });
+
+  it('low-contrast: a gradient body ground with oklch stops is measured, never assumed white', async () => {
+    // The impeccable.style FP class: `background: linear-gradient(oklch(7%…),
+    // oklch(4%…))` on body leaves backgroundColor transparent, and the old
+    // resolveBackground assumed white for any body-level gradient — turning
+    // every light-on-dark text on the page into a ~1.3:1 finding (~120 of
+    // them on one site). In a real browser, reaching that branch means the
+    // ground truly is the gradient, so its stops are the surface to measure.
+    // visualContrast: false scopes this to the DOM resolution path under test;
+    // the screenshot sampler is a separate subsystem with its own coverage.
+    const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/dark-gradient-ground.html`, { visualContrast: false });
+    const contrast = f.filter(r => r.antipattern === 'low-contrast');
+    const snippets = contrast.map(r => r.snippet || '').join('\n');
+    assert.doesNotMatch(snippets, /on #ffffff/, `light-on-dark text was measured against an assumed white body:\n${snippets}`);
+    // Each FLAG case is pinned to its full text-on-background signature (the
+    // hexes are the engine's own deterministic oklch conversions), so an
+    // offsetting miss and false positive cannot cancel out — in particular
+    // the frosted pair: flag-light-on-frosted must be measured against the
+    // COMPOSITED wash (#dcdbd8), never a raw dark stop, while count === 3
+    // proves no pass-column case (like pass-dark-on-frosted) flags instead.
+    assert.match(snippets, /text #2e2e2e on #010101/, `flag-muted-direct missing against the darker stop:\n${snippets}`);
+    assert.match(snippets, /text #333333 on #010101/, `flag-muted-nested missing against the darker stop:\n${snippets}`);
+    assert.match(snippets, /text #d7d7d7 on #dcdbd8/, `flag-light-on-frosted missing against the composited wash:\n${snippets}`);
+    assert.equal(contrast.length, 3, `expected exactly the 3 flag-column cases, got ${contrast.length}:\n${snippets}`);
   });
 
   it('shadowed form.id: a <form> with <input name="id"> does not crash the scan (issue #407)', async () => {
@@ -375,7 +484,7 @@ describe('detectUrl — browser-only fixtures', () => {
     assert.match(snippets, /flag-box-text/, `opaque box painted over text should flag: ${snippets}`);
     assert.match(snippets, /flag-leak/, `inline element with leaked opaque padding should flag: ${snippets}`);
     assert.match(snippets, /flag-headline/, `headline overhanging an opaque card should flag: ${snippets}`);
-    for (const cls of ['pass-title', 'pass-eyebrow', 'pass-hero', 'cap', 'pass-under', 'pass-fixedbar']) {
+    for (const cls of ['pass-title', 'pass-eyebrow', 'pass-hero', 'cap', 'pass-under', 'pass-fixedbar', 'pass-scrubber']) {
       assert.doesNotMatch(snippets, new RegExp(cls), `".${cls}" must not flag: ${snippets}`);
     }
     assert.equal(hits.length, 3, `expected exactly 3 text-occlusion findings, got ${hits.length}: ${snippets}`);
@@ -947,5 +1056,61 @@ describe('detectUrl — browser-only fixtures', () => {
     } finally {
       await detector.close();
     }
+  });
+
+  // Only a real browser reproduces this one: Chrome keeps oklch(), lch(), and
+  // color(srgb ...) verbatim in getComputedStyle output, so a detector that
+  // cannot parse those reads every surface as unset, walks out of the page,
+  // and assumes the white canvas. On a dark theme that turns every light line
+  // into a false "on #ffffff" finding (two live scans of impeccable.style
+  // produced 95 and ~120 of them).
+  describe('dark themes written in modern color syntax', () => {
+    const FLAG_PAIRS = [
+      // Worst stop of the two-stop oklch ground.
+      ['#35332d', '#050403'],
+      ['#47474d', '#1a1c1f'],
+      ['#59595c', '#121215'],
+      ['#56514e', '#302b27'],
+      ['#bfbdb8', '#faf7f2'],
+      // Chrome resolves inherit / currentcolor before getComputedStyle
+      // output, so these two must flag natively as well.
+      ['#c7c4bf', '#faf7f2'],
+      ['#bfbdb8', '#f0ede8'],
+    ];
+
+    it('reads oklch / color() / lch grounds and never assumes white', async () => {
+      const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/dark-theme-modern-color.html`, {
+        visualContrast: false,
+      });
+      const lowContrast = f.filter(r => r.antipattern === 'low-contrast');
+      const snippets = lowContrast.map(r => r.snippet || '');
+
+      const onWhite = snippets.filter(s => /on #ffffff/i.test(s));
+      assert.equal(
+        onWhite.length, 0,
+        `no finding may claim a white ground on this page, got: ${onWhite.join('; ')}`,
+      );
+
+      const pale = snippets.filter(s => /#e7e4dd/i.test(s));
+      assert.equal(
+        pale.length, 0,
+        `ivory copy on dark grounds must not flag, got: ${pale.join('; ')}`,
+      );
+
+      for (const [text, bg] of FLAG_PAIRS) {
+        assert.ok(
+          snippets.some(s => s.includes(`text ${text}`) && s.includes(`on ${bg}`)),
+          `expected low-contrast for text ${text} on ${bg}, got: ${snippets.join('; ')}`,
+        );
+      }
+
+      // `url(...), linear-gradient(red, blue)` paints the image on top; no
+      // finding may measure against the occluded gradient's stops.
+      const hidden = f.filter(r => /#ff0000|#0000ff/i.test(r.snippet || ''));
+      assert.equal(
+        hidden.length, 0,
+        `no finding may reference the occluded gradient's stops, got: ${hidden.map(r => r.snippet).join('; ')}`,
+      );
+    });
   });
 });

@@ -50,6 +50,7 @@ import {
   coLocatedStylesheets,
   runHook,
   runStopHook,
+  commitFooterShown,
   IMMEDIATE_TIER_RULES,
   splitFindingsByTier,
   perEditTieringActive,
@@ -1093,59 +1094,96 @@ describe('renderTemplate()', () => {
     const text = renderTemplate(findings, '/x/Card.tsx', DEFAULT_CONFIG, { cwd: '/x' });
     assert.ok(text.startsWith(`${ENVELOPE_PREFIX} Design hook findings requiring review in Card.tsx (12 issue(s)):`));
     assert.match(text, /\.\.\. and 7 more \(see \/impeccable audit\)\./);
-    // Exactly 5 finding lines.
-    const lines = text.split('\n').filter((l) => l.startsWith('- '));
+    // Exactly 5 finding lines. The footer's triage bullets also start with
+    // "- ", so count only lines carrying a rule id.
+    const lines = text.split('\n').filter((l) => /^- L\d+ \[/.test(l));
     assert.equal(lines.length, 5);
     assert.ok(text.length <= DEFAULT_CONFIG.limits.maxChars);
   });
 
-  it('emits a directive footer (imperative + judgment clause + confirmed ignore guidance)', () => {
-    // Steers the model: imperative "handle", explicit context judgment
-    // before editing, and "acknowledge" so the user sees the resolution
-    // in the chat reply. See `directiveFooter()` in hook-lib.mjs for
-    // the rationale.
+  it('emits a directive footer (triage branches + executable self-serve ignore + honest provenance)', () => {
+    // Steers the model: imperative triage into fix / suppress-and-disclose /
+    // ask, a runnable hook-admin.mjs path for the self-served ignore, and the
+    // provenance rule for --reason. See `directiveFooter()` in hook-lib.mjs
+    // for the rationale.
     const text = renderTemplate(
       [finding('side-tab', 1, { name: 'X' })],
       '/x/Card.tsx', DEFAULT_CONFIG, { cwd: '/x' }
     );
-    assert.match(text, /Handle these before finalizing/);
-    assert.match(text, /fix findings that are real design problems/);
-    assert.match(text, /classify contextually intentional findings as false positives/);
-    assert.match(text, /Use context judgment before editing/);
-    assert.match(text, /not automatically a defect/);
+    assert.match(text, /Triage each finding/);
+    assert.match(text, /what you fixed, what you suppressed, and what you left standing/);
+    assert.match(text, /Real design problem: fix it\. Keep intentional design as designed\./);
+    assert.match(text, /Confident false positive or sanctioned exception/);
     assert.match(text, /literal or domain-appropriate motion/);
-    assert.match(text, /Do not change intentional design just to satisfy the hook/);
-    assert.match(text, /Suppress a finding only after the user explicitly confirms it is intentional/);
-    assert.match(text, /do not silence a real finding with an inline ignore comment/);
-    assert.match(text, /inline `impeccable-disable <rule>` comment only when the waiver must travel with a file/);
-    assert.match(text, /ignore-value \.\.\. --shared/);
-    assert.match(text, /ignore-rule overused-font --all-values/);
-    assert.match(text, /\/impeccable hooks ignore-file Card\.tsx/);
-    assert.match(text, /ignore-rule <id>/);
-    assert.match(text, /\/impeccable audit/);
+    assert.match(text, /persist the narrowest ignore yourself and disclose it/);
+    // quoteCommandArg quotes the hook-admin.mjs path per platform (single
+    // quotes on POSIX, double on Windows; #533), so match either close quote.
+    assert.match(text, /hook-admin\.mjs['"] ignore-value <rule> "<value>" --reason "<who decided: evidence>"/);
+    assert.match(text, /Write "user confirmed" in a reason only when the user did/);
+    assert.match(text, /Unsure: leave it as is and ask the user in one line/);
+    assert.match(text, /Self-serve ends at ignore-value/);
+    assert.match(text, /never add an ignore to push a blocked write through/);
+    assert.match(text, /Full suppression ladder: \/impeccable hooks/);
   });
 
-  it('shows the exact value-specific command for overused-font findings', () => {
+  it('renders the one-line short footer when opts.footer is "short"', () => {
+    const text = renderTemplate(
+      [finding('side-tab', 1, { name: 'X' })],
+      '/x/Card.tsx', DEFAULT_CONFIG, { cwd: '/x', footer: 'short' }
+    );
+    assert.match(text, /Triage per the session policy/);
+    // The short form names the tool without the absolute path; the runnable
+    // invocation lives only in the session's first (full) footer. The quoted
+    // path would render as `node '...'` on POSIX or `node "..."` on Windows,
+    // so reject both.
+    assert.match(text, /`hook-admin\.mjs ignore-value`/);
+    assert.doesNotMatch(text, /node ['"]/);
+    assert.match(text, /unsure, ask in one line/);
+    assert.doesNotMatch(text, /Triage each finding/);
+    assert.doesNotMatch(text, /Self-serve ends at ignore-value/);
+  });
+
+  it('dedupes rule descriptions within one emission, keeping per-line ignore hints', () => {
+    const desc = 'Long registry description that should appear once.';
+    const text = renderTemplate(
+      [
+        finding('overused-font', 2, { name: 'Overused font', description: desc, snippet: 'font-family: "Roboto"' }),
+        finding('overused-font', 9, { name: 'Overused font', description: desc, snippet: 'font-family: "Inter"' }),
+      ],
+      '/x/fonts.css', DEFAULT_CONFIG, { cwd: '/x' }
+    );
+    const occurrences = text.split(desc).length - 1;
+    assert.equal(occurrences, 1);
+    // The repeat keeps the rule id, name, and its own value-specific hint.
+    assert.match(text, /- L9 \[overused-font\] Overused font\. If intentional: `ignore-value overused-font Inter`\./);
+    assert.match(text, /`ignore-value overused-font Roboto`/);
+  });
+
+  it('shows the value-specific ignore hint for overused-font findings', () => {
     const text = renderTemplate(
       [finding('overused-font', 1, { name: 'Overused font', snippet: 'body { font-family: "Roboto", sans-serif; }' })],
       '/x/fonts.css', DEFAULT_CONFIG, { cwd: '/x' }
     );
-    assert.match(text, /\/impeccable hooks ignore-value overused-font Roboto --shared/);
-    assert.match(text, /ignore-rule overused-font --all-values/);
+    // The line carries just the rule/value pair; the runnable hook-admin.mjs
+    // prefix and the --reason contract are stated once in the footer.
+    assert.match(text, /If intentional: `ignore-value overused-font Roboto`\./);
   });
 
-  it('shows the exact value-specific command for bounce-easing findings', () => {
+  it('shows the value-specific ignore hint for bounce-easing findings', () => {
     const text = renderTemplate(
       [finding('bounce-easing', 1, { name: 'Bounce or elastic easing', snippet: 'animation: bounce-ball' })],
       '/x/main.css', DEFAULT_CONFIG, { cwd: '/x' }
     );
-    assert.match(text, /\/impeccable hooks ignore-value bounce-easing bounce-ball --shared/);
+    assert.match(text, /If intentional: `ignore-value bounce-easing bounce-ball`\./);
   });
 
   it('single-quotes a hostile font value so the suggestion cannot inject a shell command (#476)', () => {
-    // The suggested command comes straight from scanned file content. A
-    // double-quoted arg would leave $(...) live for whoever runs the
-    // suggestion; single quotes neutralize it.
+    // The suggested pair comes straight from scanned file content. A
+    // double-quoted arg would leave $(...) live for whoever pastes it into
+    // the footer's hook-admin.mjs command; single quotes neutralize it. The
+    // hint format is now the bare `ignore-value <rule> '<value>'` pair (the
+    // runnable command prefix, --shared/--reason contract live in the
+    // footer), but the value still goes through quoteCommandArg.
     const text = renderTemplate(
       [finding('overused-font', 1, {
         name: 'Overused font',
@@ -1153,29 +1191,55 @@ describe('renderTemplate()', () => {
       })],
       '/x/fonts.css', DEFAULT_CONFIG, { cwd: '/x' }
     );
-    assert.match(text, /ignore-value overused-font '\$\(touch pwned\)' --shared/);
+    assert.match(text, /ignore-value overused-font '\$\(touch pwned\)'/);
     assert.doesNotMatch(text, /ignore-value overused-font "\$\(touch pwned\)"/);
   });
 
-  it('quotes the --file path per platform: single quotes on POSIX, double quotes on Windows (#533)', () => {
-    // The suggested command is run on the same machine the hook fired on.
-    // POSIX needs single quotes so $(...) in a filename cannot execute; Windows
-    // cmd.exe treats single quotes as literal, so a path with spaces must stay
-    // double-quoted or the ignore scope is split at the space.
+  it('quotes a hint value per platform: single quotes on POSIX, double quotes on Windows (#533)', () => {
+    // #533 originally targeted the footer's concrete `--file <path>`
+    // suggestion; directiveFooter() now carries only literal placeholders
+    // (`--file <path>`), so that surface is gone. The quoting-sensitive
+    // surface that remains user-visible is the per-finding ignore hint,
+    // whose value comes straight from scanned file content and is meant to
+    // be pasted into the footer's command on this same machine. POSIX needs
+    // single quotes so $(...) cannot execute; Windows cmd.exe treats single
+    // quotes as literal, so a value with spaces must stay double-quoted or
+    // the ignore scope is split at the space.
     const original = process.platform;
     const renderFor = (platform) => {
       Object.defineProperty(process, 'platform', { value: platform, configurable: true });
       try {
         return renderTemplate(
-          [finding('side-tab', 1, { name: 'Side tab' })],
-          '/x/My Components/Card.tsx', DEFAULT_CONFIG, { cwd: '/x' }
+          [finding('overused-font', 1, {
+            name: 'Overused font',
+            snippet: 'h1 { font-family: "Space Grotesk Var", sans-serif; }',
+          })],
+          '/x/fonts.css', DEFAULT_CONFIG, { cwd: '/x' }
         );
       } finally {
         Object.defineProperty(process, 'platform', { value: original, configurable: true });
       }
     };
-    assert.match(renderFor('linux'), /--file 'My Components\/Card\.tsx'/);
-    assert.match(renderFor('win32'), /--file "My Components\/Card\.tsx"/);
+    assert.match(renderFor('linux'), /ignore-value overused-font 'Space Grotesk Var'/);
+    assert.match(renderFor('win32'), /ignore-value overused-font "Space Grotesk Var"/);
+  });
+
+  it('keeps the policy footer when reserveChars presses against the 500-char floor', () => {
+    // Bugbot on PR #508: the note reservation used to be subtracted after
+    // the 500-char floor, so the clamp could run at ~366 chars, below the
+    // budget clampLastLine assumes safe, and the hard tail slice cut the
+    // policy footer. The reserve now comes off before the floor; when the
+    // floor wins, the note defers instead.
+    const config = { ...DEFAULT_CONFIG, limits: { ...DEFAULT_CONFIG.limits, maxChars: 500 } };
+    const longPath = `/x/${'deeply-nested/'.repeat(6)}Component.tsx`;
+    const text = renderTemplate(
+      Array.from({ length: 6 }, (_, i) =>
+        finding('side-tab', i + 1, { name: 'Side tab', description: 'Colored side border.' })),
+      longPath, config, { cwd: '/x', reserveChars: 134 }
+    );
+    assert.ok(text.length <= 500, `stays inside the floored budget (got ${text.length})`);
+    assert.match(text, /unsure, ask in one line\.$/);
+    assert.doesNotMatch(text, /…$/);
   });
 
   it('drops the L<line> prefix when line is 0', () => {
@@ -1204,6 +1268,32 @@ describe('renderTemplate()', () => {
       { ...DEFAULT_CONFIG, limits: { maxFindings: 5, maxChars: 500 } },
       { cwd: '/x' });
     assert.ok(text.length <= 500);
+  });
+
+  it('keeps a policy footer when the clamp cuts down to one finding line', () => {
+    // At the minimum budget the full footer cannot fit beside a long finding,
+    // so the clamp clips the finding line and downgrades to the short policy
+    // instead of slicing the footer off the tail.
+    const huge = [finding('side-tab', 1, { name: 'X', description: 'y'.repeat(2000) })];
+    const text = renderTemplate(huge, '/x/a.tsx',
+      { ...DEFAULT_CONFIG, limits: { maxFindings: 5, maxChars: 500 } },
+      { cwd: '/x' });
+    assert.ok(text.length <= 500);
+    assert.match(text, /\[side-tab\]/, 'the finding is still identified');
+    assert.match(text, /Triage per the session policy/, 'a clamped emission still carries the policy');
+  });
+
+  it('keeps findings that fit beside the short policy instead of dropping them for the full one', () => {
+    const findings = [1, 2, 3].map((line) =>
+      finding('side-tab', line, { name: 'X', description: 'short issue' }));
+    const text = renderTemplate(findings, '/x/a.tsx',
+      { ...DEFAULT_CONFIG, limits: { maxFindings: 5, maxChars: 500 } },
+      { cwd: '/x' });
+    assert.ok(text.length <= 500);
+    assert.match(text, /- L1 /);
+    assert.match(text, /- L2 /);
+    assert.match(text, /- L3 /, 'all findings survive; the clamp must not drop lines chasing the full policy');
+    assert.match(text, /Triage per the session policy/);
   });
 });
 
@@ -1609,7 +1699,7 @@ rounded:
     });
     assert.match(withDesign.stdout, /Design hook findings requiring review/);
     assert.match(withDesign.stdout, /design-system-font/);
-    assert.match(withDesign.stdout, /ignore-value design-system-font Poppins --shared/);
+    assert.match(withDesign.stdout, /If intentional: `ignore-value design-system-font Poppins`/);
   });
 
   it('respects detector.designSystem.enabled=false', async () => {
@@ -2190,6 +2280,116 @@ describe('runHook() — the session cache tracks the current scan', () => {
     const r2 = await run(file, det);
     assert.equal(r2.audit.kind, 'pending');
     assert.match(r2.stdout, /Still has 1 finding\(s\)/);
+  });
+});
+
+describe('runHook() — session-scoped notices', () => {
+  let cwd;
+  beforeEach(() => {
+    cwd = mkTmp();
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+  });
+  afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+  const event = (file, sessionId = 'sid-1') => JSON.stringify({
+    session_id: sessionId, cwd, hook_event_name: 'PostToolUse',
+    tool_name: 'Edit', tool_input: { file_path: file },
+  });
+
+  it('emits the full directive footer once per session, then the short reminder', async () => {
+    const a = path.join(cwd, 'a.css');
+    const b = path.join(cwd, 'b.css');
+    fs.writeFileSync(a, 'noop');
+    fs.writeFileSync(b, 'noop');
+    const det = fakeDetector([finding('tiny-text', 1, { name: 'Tiny text' })]);
+
+    const r1 = await runHook({ stdinJson: event(a), env: {}, cwd, detector: det });
+    assert.match(r1.stdout, /Triage each finding/, 'first fresh emission carries the full policy');
+
+    const r2 = await runHook({ stdinJson: event(b), env: {}, cwd, detector: det });
+    assert.match(r2.stdout, /Triage per the session policy/);
+    assert.doesNotMatch(r2.stdout, /Triage each finding/, 'repeat emissions carry the short reminder');
+
+    // A new session pays the full policy again.
+    const r3 = await runHook({ stdinJson: event(a, 'sid-2'), env: {}, cwd, detector: det });
+    assert.match(r3.stdout, /Triage each finding/);
+  });
+
+  it('mentions the DESIGN.md staleness note once per session', async () => {
+    const a = path.join(cwd, 'a.css');
+    const b = path.join(cwd, 'b.css');
+    fs.writeFileSync(a, 'noop');
+    fs.writeFileSync(b, 'noop');
+    const det = {
+      ...fakeDetector([finding('tiny-text', 1, { name: 'Tiny text' })]),
+      loadDesignSystemForCwd: () => ({ present: true, mdNewerThanJson: true }),
+    };
+
+    const r1 = await runHook({ stdinJson: event(a), env: {}, cwd, detector: det });
+    assert.match(r1.stdout, /DESIGN\.md is newer than \.impeccable\/design\.json/);
+
+    const r2 = await runHook({ stdinJson: event(b), env: {}, cwd, detector: det });
+    assert.ok(r2.audit.emitted, 'second file still emits findings');
+    assert.doesNotMatch(r2.stdout, /DESIGN\.md is newer/, 'the staleness note does not repeat within a session');
+  });
+
+  it('delivers the staleness note inside the budget on a full first emission', async () => {
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
+      hook: { limits: { maxChars: 500 } },
+    }));
+    const a = path.join(cwd, 'a.css');
+    const b = path.join(cwd, 'b.css');
+    fs.writeFileSync(a, 'noop');
+    fs.writeFileSync(b, 'noop');
+    const det = {
+      ...fakeDetector([finding('tiny-text', 1, { name: 'Tiny text', description: 'y'.repeat(600) })]),
+      loadDesignSystemForCwd: () => ({ present: true, mdNewerThanJson: true }),
+    };
+
+    // A finding this long would fill the whole budget; the renderer must
+    // reserve room so the note still lands without busting maxChars.
+    const r1 = await runHook({ stdinJson: event(a), env: {}, cwd, detector: det });
+    const ctx1 = JSON.parse(r1.stdout).hookSpecificOutput.additionalContext;
+    assert.ok(ctx1.length <= 500, `final emission honors maxChars (got ${ctx1.length})`);
+    assert.match(ctx1, /DESIGN\.md is newer/, 'the note is delivered on the first emission, not deferred past it');
+
+    const r2 = await runHook({ stdinJson: event(b), env: {}, cwd, detector: det });
+    const ctx2 = JSON.parse(r2.stdout).hookSpecificOutput.additionalContext;
+    assert.doesNotMatch(ctx2, /DESIGN\.md is newer/, 'one mention per session');
+  });
+
+  it('keeps the full-footer flag unspent when the clamp downgrades the footer', async () => {
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
+      hook: { limits: { maxChars: 500 } },
+    }));
+    const a = path.join(cwd, 'a.css');
+    fs.writeFileSync(a, 'noop');
+    const det = fakeDetector([finding('tiny-text', 1, { name: 'Tiny text', description: 'y'.repeat(600) })]);
+
+    // 500 chars cannot hold the full policy, so the emission carries the
+    // short form. The session must not be marked as having seen the full
+    // footer it never received.
+    const r1 = await runHook({ stdinJson: event(a), env: {}, cwd, detector: det });
+    assert.match(r1.stdout, /Triage per the session policy/);
+    assert.doesNotMatch(r1.stdout, /Triage each finding/);
+    const cache = readCache(cwd);
+    assert.ok(!cache.sessions['sid-1'].footerShown, 'a downgraded footer does not spend the session flag');
+  });
+
+  it('commits the footer flag only for the complete full policy, not its opening words', () => {
+    const cache = { version: 1, sessions: {} };
+    const full = renderTemplate(
+      [finding('tiny-text', 1, { name: 'Tiny text' })],
+      '/x/a.css', DEFAULT_CONFIG, { cwd: '/x' },
+    );
+
+    // A tail truncation can spare "Triage each finding" while cutting the
+    // policy body. That must not count as delivered.
+    commitFooterShown(cache, 'sid-1', full.slice(0, full.length - 40));
+    assert.ok(!cache.sessions['sid-1']?.footerShown, 'a truncated policy must not spend the flag');
+
+    commitFooterShown(cache, 'sid-1', full);
+    assert.ok(cache.sessions['sid-1'].footerShown, 'the intact policy commits the flag');
   });
 });
 
@@ -2998,12 +3198,79 @@ describe('Cursor hook scripts', () => {
     assert.equal(payload.permission, 'deny');
     assert.match(payload.user_message, /blocked this write/);
     assert.match(payload.user_message, /side-tab/);
-    assert.match(payload.agent_message, /Handle these before finalizing/);
+    assert.match(payload.agent_message, /Triage each finding/);
+    assert.match(payload.agent_message, /Full suppression ladder/, 'the deny message carries the complete policy, not a truncated head');
+    assert.ok(payload.agent_message.length <= 4000, 'the deny message respects the Cursor cap');
 
     const entries = fs.readFileSync(logPath, 'utf-8').trim().split('\n').map((line) => JSON.parse(line));
     assert.equal(entries[0].event, 'preToolUse');
     assert.equal(entries[0].blocked, true);
     assert.equal(entries[0].blockedFindings, 1);
+  });
+
+  it('preToolUse delivers the stale-sidecar note within a 500-char budget (PR #508)', () => {
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
+      hook: { limits: { maxChars: 500 } },
+    }));
+
+    const designMd = path.join(cwd, 'DESIGN.md');
+    const sidecarPath = path.join(cwd, '.impeccable', 'design.json');
+    fs.writeFileSync(designMd, `---
+typography:
+  body:
+    fontFamily: "IBM Plex Sans, Arial, sans-serif"
+colors:
+  ink: "#241f1a"
+rounded:
+  "2xl": "80px"
+---
+
+# Design System
+`);
+    fs.writeFileSync(sidecarPath, JSON.stringify({
+      extensions: {
+        colorMeta: {
+          accent: {
+            canonical: '#b8422e',
+            tonalRamp: ['#d55a42'],
+          },
+        },
+        roundedMeta: {
+          lg: { canonical: '24px' },
+        },
+      },
+    }));
+    const past = new Date(Date.now() - 10000);
+    fs.utimesSync(sidecarPath, past, past);
+
+    const filePath = path.join(cwd, 'src/Card.html');
+    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-before-edit.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'preToolUse',
+        session_id: 'sid-508',
+        cwd,
+        tool_name: 'Write',
+        tool_input: {
+          file_path: filePath,
+          content: `
+            <style>
+              .card { border-left: 4px solid #7c3aed; border-radius: 16px; }
+            </style>
+            <div class="card">Hello</div>
+          `,
+        },
+      }),
+      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
+      encoding: 'utf-8',
+    });
+
+    const payload = JSON.parse(out);
+    assert.equal(payload.permission, 'deny');
+    assert.match(payload.agent_message, /DESIGN\.md is newer/);
+    assert.ok(payload.agent_message.length <= 500, `deny message length ${payload.agent_message.length} exceeds 500-char budget`);
+    assert.equal(readCache(cwd).sessions['sid-508'].designNoteShown, true);
   });
 
   it('preToolUse allows writes with findings when the project platform is native', () => {
@@ -3544,6 +3811,26 @@ describe('runStopHook()', () => {
     assert.match(out.hookSpecificOutput.additionalContext, /side-tab/);
     assert.doesNotMatch(out.hookSpecificOutput.additionalContext, /dark-glow/);
     assert.equal(stop.emission.kind, 'stop-deep-pass');
+  });
+
+  it('keeps a policy footer when the grouped Stop render is clamped to the minimum budget', async () => {
+    const sid = 'stop-clamp';
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({ hook: { limits: { maxChars: 500 } } }));
+    const a = write('src/A.tsx', 'noop');
+    const b = write('src/B.tsx', 'noop');
+    const det = fakeDetector([finding('side-tab', 1, { name: 'X', description: 'y'.repeat(2000) })]);
+
+    // Two touched files with deferred findings so the Stop pass groups them.
+    await runHook({ stdinJson: JSON.stringify(editEvent(a, sid)), env: {}, cwd, detector: det });
+    await runHook({ stdinJson: JSON.stringify(editEvent(b, sid)), env: {}, cwd, detector: det });
+
+    const stop = await runStopHook({ stdinJson: JSON.stringify(stopEvent(sid)), env: {}, cwd, detector: det });
+    assert.equal(stop.audit.emitted, true);
+    const ctx = JSON.parse(stop.stdout).hookSpecificOutput.additionalContext;
+    assert.ok(ctx.length <= 500, `grouped emission honors maxChars (got ${ctx.length})`);
+    assert.match(ctx, /Triage per the session policy/, 'a clamped grouped emission still carries the policy');
+    assert.match(ctx, /\[side-tab\]/, 'a clamped grouped emission keeps finding detail, not just a file header');
   });
 
   it('exits silent and fast when the session touched no UI files', async () => {
