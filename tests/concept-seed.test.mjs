@@ -579,7 +579,9 @@ describe('init gate', () => {
 
   it('deals a direction once --seed-declined records the user skip', () => {
     const dir = seedGateDir();
-    const result = spawnSync(process.execPath, [SCRIPT, '--scope', 'direction', '--from', 'gate-test', '--seed-declined'], {
+    // The flag carries evidence: the user's verbatim skip answer. A bare
+    // flag refuses (covered by the refusal test above).
+    const result = spawnSync(process.execPath, [SCRIPT, '--scope', 'direction', '--from', 'gate-test', '--seed-declined=Skip it, just roll a direction now.'], {
       cwd: dir,
       encoding: 'utf-8',
       env: { ...process.env, IMPECCABLE_CATALOG_DIR: FIXTURE_DIR, IMPECCABLE_CONTEXT_DIR: '' },
@@ -875,7 +877,8 @@ describe('API roll path', () => {
       const result = await new Promise((resolveRun, rejectRun) => {
         const child = spawn(NODE, [
           '--import', pathToFileURL(preloadPath).href,
-          SCRIPT, '--scope', 'direction', '--mode', 'persuade', '--from', 'api-test', '--seed-declined',
+          SCRIPT, '--scope', 'direction', '--mode', 'persuade', '--from', 'api-test',
+          '--seed-declined=Skip it, just roll a direction now.',
         ], {
           cwd: dir,
           env: {
