@@ -5,6 +5,7 @@
 //   node embed-prompt.mjs <image> --prompt "the prompt text"
 //   node embed-prompt.mjs <image> --prompt-file prompt.txt
 //   node embed-prompt.mjs <image> --read
+//   node embed-prompt.mjs --scan <dir...>   # list rasters missing a prompt; exit 3 when any
 //
 // Formats: PNG (tEXt chunk, keyword "impeccable:prompt"), JPEG (COM segment).
 // WebP and anything else fall back to a `<image>.json` sidecar; --read checks
@@ -21,7 +22,48 @@ const KEYWORD = 'impeccable:prompt';
 const args = process.argv.slice(2);
 const file = args.find(a => !a.startsWith('--'));
 const readMode = args.includes('--read');
+const scanMode = args.includes('--scan');
 const argOf = (name) => { const i = args.indexOf(name); return i !== -1 ? args[i + 1] : null; };
+
+function promptOf(imagePath) {
+  const b = fs.readFileSync(imagePath);
+  let prompt = null;
+  if (b.length > 8 && b.readUInt32BE(0) === 0x89504e47) prompt = readPngText(b);
+  else if (b.length > 3 && b[0] === 0xff && b[1] === 0xd8) prompt = readJpegCom(b);
+  if (prompt == null && fs.existsSync(`${imagePath}.json`)) {
+    try { prompt = JSON.parse(fs.readFileSync(`${imagePath}.json`, 'utf8')).prompt ?? null; } catch { /* stays null */ }
+  }
+  return prompt;
+}
+
+if (scanMode) {
+  const targets = args.filter(a => !a.startsWith('--'));
+  if (targets.length === 0) { console.error('embed-prompt: --scan needs at least one directory'); process.exit(1); }
+  const RASTER = /\.(png|jpe?g|webp)$/i;
+  const rasters = [];
+  const walk = (p, isRoot) => {
+    const stat = fs.statSync(p);
+    if (stat.isDirectory()) {
+      const base = p.replace(/\/+$/, '').split('/').pop();
+      // Skip installed deps and hidden dirs found during the walk, but honor a
+      // hidden dir the caller passed explicitly (e.g. .impeccable/mocks).
+      if (!isRoot && (base === 'node_modules' || base.startsWith('.'))) return;
+      for (const entry of fs.readdirSync(p)) walk(`${p.replace(/\/+$/, '')}/${entry}`, false);
+    } else if (RASTER.test(p)) {
+      rasters.push(p);
+    }
+  };
+  for (const target of targets) {
+    if (!fs.existsSync(target)) { console.error(`embed-prompt: no such path ${target}`); process.exit(1); }
+    walk(target, true);
+  }
+  let missing = 0;
+  for (const raster of rasters) {
+    if (promptOf(raster) == null) { console.log(`MISSING: ${raster}`); missing++; }
+  }
+  console.log(`SCAN: ${rasters.length} raster${rasters.length === 1 ? '' : 's'}, ${missing} missing`);
+  process.exit(missing > 0 ? 3 : 0);
+}
 
 if (!file || !fs.existsSync(file)) { console.error('embed-prompt: image file required'); process.exit(1); }
 

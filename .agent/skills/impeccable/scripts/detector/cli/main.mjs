@@ -105,6 +105,13 @@ function formatFindings(findings, jsonMode) {
 // `optionsFor` maps a local path to scan options carrying that path's own
 // project design system (or base options when null). Falls back to a plain
 // object so direct/legacy callers still work.
+async function detectLocalFile(filePath, options) {
+  if (HTML_EXTENSIONS.has(path.extname(filePath).toLowerCase())) {
+    return detectHtml(filePath, options);
+  }
+  return detectText(fs.readFileSync(filePath, 'utf-8'), filePath, options);
+}
+
 async function handleStdin(optionsFor = () => ({})) {
   const resolve = typeof optionsFor === 'function' ? optionsFor : () => optionsFor;
   const chunks = [];
@@ -114,9 +121,7 @@ async function handleStdin(optionsFor = () => ({})) {
     const parsed = JSON.parse(input);
     const fp = parsed?.tool_input?.file_path;
     if (fp && fs.existsSync(fp)) {
-      const options = resolve(fp);
-      return HTML_EXTENSIONS.has(path.extname(fp).toLowerCase())
-        ? detectHtml(fp, options) : detectText(fs.readFileSync(fp, 'utf-8'), fp, options);
+      return detectLocalFile(fp, resolve(fp));
     }
   } catch { /* not JSON */ }
   return detectText(input, '<stdin>', resolve(null));
@@ -374,16 +379,10 @@ async function detectCli() {
           }
 
           for (const file of files) {
-            const ext = path.extname(file).toLowerCase();
             // Each file resolves its own project design system (cached by root),
             // so a scan spanning sibling projects applies the right rules per file.
             const fileOptions = scanOptionsFor(file);
-            let fileFindings;
-            if (HTML_EXTENSIONS.has(ext)) {
-              fileFindings = await detectHtml(file, fileOptions);
-            } else {
-              fileFindings = detectText(fs.readFileSync(file, 'utf-8'), file, fileOptions);
-            }
+            const fileFindings = await detectLocalFile(file, fileOptions);
             // Annotate findings with import context
             const importers = importedByMap.get(file);
             if (importers && importers.size > 0) {
@@ -396,13 +395,8 @@ async function detectCli() {
           }
         } else if (stat.isFile()) {
           if (shouldIgnoreDetectionFile(resolved, process.cwd(), detectionConfig)) continue;
-          const ext = path.extname(resolved).toLowerCase();
           const fileOptions = scanOptionsFor(resolved);
-          if (HTML_EXTENSIONS.has(ext)) {
-            allFindings.push(...await detectHtml(resolved, fileOptions));
-          } else {
-            allFindings.push(...detectText(fs.readFileSync(resolved, 'utf-8'), resolved, fileOptions));
-          }
+          allFindings.push(...await detectLocalFile(resolved, fileOptions));
         }
       }
     } finally {
