@@ -271,8 +271,11 @@ if (hasFlag('wait')) {
       // The suppression is age-bound because a closed tab never claims the
       // hand: a file still there after the grace means no page is coming.
       const midDelivery = (() => {
-        try { return Date.now() - fs.statSync(path.join(QUESTION_DIR, `${key}.next.json`)).mtimeMs < NEXT_CLAIM_GRACE_MS; }
-        catch { return false; }
+        try { if (Date.now() - fs.statSync(path.join(QUESTION_DIR, `${key}.next.json`)).mtimeMs < NEXT_CLAIM_GRACE_MS) return true; }
+        catch { /* nothing delivered */ }
+        // The claim deletes that file before the reloaded page can beat: the
+        // claim stamp the server persisted covers the same bounded gap.
+        return Boolean(state.claimedAt) && Date.now() - state.claimedAt < NEXT_CLAIM_GRACE_MS;
       })();
       if (!midDelivery && state.lastBeat && Date.now() - state.lastBeat > 15000) { sawClose = true; break; }
     } catch { /* state mid-write */ }
@@ -1574,8 +1577,17 @@ const server = http.createServer((req, res) => {
       try { fs.rmSync(pending); } catch { /* already gone */ }
       // The claim consumes the file the idle-exit hold reads, and the
       // reloading page cannot beat until it has parsed: stamp the claim so
-      // the same bounded grace covers the gap between them.
+      // the same bounded grace covers the gap between them. Persisted too,
+      // because --wait watches the same gap from outside this process and
+      // would otherwise read the stale beat as a closed page.
       server.lastClaimAt = Date.now();
+      if (detachedKey) {
+        try {
+          const state = JSON.parse(fs.readFileSync(stateFile(detachedKey), 'utf8'));
+          state.claimedAt = server.lastClaimAt;
+          fs.writeFileSync(stateFile(detachedKey), JSON.stringify(state));
+        } catch { /* state file recreated on next beat */ }
+      }
     }
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     res.end(page(awaitingNext));

@@ -506,6 +506,51 @@ describe('serve-question', () => {
     }
   });
 
+  it('a claimed hand\'s reload gap must not read as a closed page', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'serve-question-'));
+    const payloadPath = path.join(dir, 'q.json');
+    writeFileSync(payloadPath, JSON.stringify(PAYLOAD));
+    const run = (args) => new Promise((resolve) => {
+      const child = spawn(process.execPath, [SCRIPT, ...args], { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] });
+      let out = '';
+      child.stdout.on('data', (chunk) => { out += chunk; });
+      child.on('exit', (code) => resolve({ code, out }));
+    });
+    const started = await run(['--start', '--payload', payloadPath, '--no-open', '--key', 'claimgap', '--timeout', '30']);
+    assert.equal(started.code, 0, started.out);
+    const url = started.out.match(/QUESTION URL: (\S+)/)?.[1];
+    assert.ok(url, started.out);
+    try {
+      await fetch(`${url}answer`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: '' }) });
+      const collected = await run(['--wait', '--key', 'claimgap', '--poll', '2']);
+      assert.equal(collected.code, 0, collected.out);
+      const statePath = path.join(dir, '.impeccable', 'questions', 'claimgap.state.json');
+      const state = JSON.parse(readFileSync(statePath, 'utf8'));
+      state.lastBeat = Date.now() - 20000;
+      writeFileSync(statePath, JSON.stringify(state));
+      const nextPath = path.join(dir, 'next.json');
+      writeFileSync(nextPath, JSON.stringify({ ...PAYLOAD, title: 'Claimed round' }));
+      const updated = await run(['--update', '--key', 'claimgap', '--payload', nextPath]);
+      assert.equal(updated.code, 0, updated.out);
+      // The claim deletes the next file --wait's mid-delivery grace watches,
+      // and the reloading page has not beat yet: --wait used to read the
+      // stale beat as PAGE CLOSED while the daemon served the dealt round.
+      const served = await (await fetch(url)).text();
+      assert.ok(served.includes('Claimed round'), 'the GET claims the delivered hand');
+      const waiting = await run(['--wait', '--key', 'claimgap', '--poll', '2']);
+      assert.equal(waiting.code, 3, `the claim gap stays WAITING, got: ${waiting.out}`);
+      // Bounded like the delivery grace: a claim nobody followed with a beat
+      // still reads as the closed page it is.
+      const aged = JSON.parse(readFileSync(statePath, 'utf8'));
+      aged.claimedAt = Date.now() - 20000;
+      writeFileSync(statePath, JSON.stringify(aged));
+      const closed = await run(['--wait', '--key', 'claimgap', '--poll', '2']);
+      assert.equal(closed.code, 4, `a claim nobody resumed reads as closed, got: ${closed.out}`);
+    } finally {
+      await run(['--stop', '--key', 'claimgap']);
+    }
+  });
+
   it('--update trusts a fresh heartbeat over a failed kill probe, and still detects true death', async () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'serve-question-'));
     const qdir = path.join(dir, '.impeccable', 'questions');
