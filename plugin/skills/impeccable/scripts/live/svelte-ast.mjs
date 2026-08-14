@@ -933,9 +933,17 @@ function collectFreeIdentifierRanges(node, scopes, emit) {
  * Build the preview component's script block from a v2 contract, with
  * defaults that keep an unhydrated mount rendering instead of crashing.
  */
+// `/** @type {...} */` directly before a destructuring declaration is also
+// JSDoc's cast syntax, and Svelte 5.50+ re-emits the annotation in cast form
+// onto the template's own declaration: `var /** @type {...} */ (h1) = root()`.
+// That is a syntax error, so the browser's dynamic import of the variant dies
+// with "Unexpected token '('" and nothing renders. `@typedef` carries the same
+// shape without being a cast. Keep it a typedef;
+// tests/live-svelte-props-script.test.mjs compiles what these builders emit
+// and parses the result.
 export function buildPropsScriptV2(contract) {
   if (!contract || contract.length === 0) {
-    return '<script>\n  /** @type {Record<string, never>} */\n  let {} = $props();\n</script>\n';
+    return '<script>\n  /** @typedef {Record<string, never>} Props */\n  let {} = $props();\n</script>\n';
   }
   const defaults = {
     text: "''",
@@ -957,5 +965,5 @@ export function buildPropsScriptV2(contract) {
   const typeFields = contract
     .map((c) => `    ${c.prop}?: ${types[c.kind] ?? 'string'};`)
     .join('\n');
-  return `<script>\n  /** @type {{\n${typeFields}\n  }} */\n  let { ${names} } = $props();\n</script>\n`;
+  return `<script>\n  /** @typedef {{\n${typeFields}\n  }} Props */\n  let { ${names} } = $props();\n</script>\n`;
 }

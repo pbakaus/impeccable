@@ -1013,14 +1013,22 @@ async function fetchLatestSkillVersion() {
   }
 }
 
+// Two instructions used to sit in one directive: ask, and "if they agree, run
+// it". Nothing gated the second on an answer, and the same sentence said to
+// continue without waiting, so a run that could never establish agreement was
+// still spelled out as the next command. The offer stays; the command leaves
+// this turn entirely, because installing over the skill mid-session changes
+// files the session is reading and only takes effect in the next one anyway.
 function buildUpdateDirective(localVersion, latestVersion) {
   return (
     `UPDATE_AVAILABLE: A newer Impeccable skill is available ` +
     `(installed v${localVersion}, latest v${latestVersion}). ` +
-    `Before continuing, ask the user once: "A newer Impeccable (v${latestVersion}) is available. ` +
+    `Mention it once, in this form: "A newer Impeccable (v${latestVersion}) is available. ` +
     `Update now? It runs \`npx impeccable update\`." ` +
-    `If they agree, run \`npx impeccable update\` (the update applies to the next session, not this one). ` +
-    `Either way, continue the current task without waiting, and do not raise this again.`
+    `Do not run \`npx impeccable update\` in this turn, whatever the user answers: it rewrites the skill files ` +
+    `this session is reading, and the update only takes effect in the next session, so there is nothing to gain now. ` +
+    `Run it in a later turn, only after the user has asked for it in their own words. ` +
+    `Continue the current task now without waiting, and do not raise this again.`
   );
 }
 
@@ -1142,7 +1150,7 @@ async function cli() {
     parts.push(buildResolvedContextDirective(ctx, cliOptions, { targetExists }));
     appendDetectorFallback(parts, ctx);
     appendImageGenDirective(parts);
-    appendBuildPathDirective(parts);
+    appendBuildPathDirective(parts, ctx);
     appendAutonomyCounterDirective(parts);
     appendSubagentAuthorizationDirective(parts);
     if (shouldWarnMissingTarget(ctx, targetProvided, targetExists)) {
@@ -1162,7 +1170,7 @@ async function cli() {
   parts.push(buildResolvedContextDirective(ctx, cliOptions, { targetExists }));
   appendDetectorFallback(parts, ctx);
   appendImageGenDirective(parts);
-  appendBuildPathDirective(parts);
+  appendBuildPathDirective(parts, ctx);
   appendAutonomyCounterDirective(parts);
   appendSubagentAuthorizationDirective(parts);
   if (shouldWarnMissingTarget(ctx, targetProvided, targetExists)) {
@@ -1271,17 +1279,51 @@ function automaticHookMode(ctx) {
 }
 
 
-// Build-path preference: a workflow setting (comp-led vs code-led), read
-// here so every session starts knowing it without a file hunt. Absence
-// stays silent; new-work's own default applies, and the decision page
-// toggle can flip the value for a single session.
-function appendBuildPathDirective(parts) {
-  try {
-    const settings = JSON.parse(fs.readFileSync(path.join(process.cwd(), '.impeccable', 'settings.json'), 'utf8'));
-    if (settings.buildPath === 'comp' || settings.buildPath === 'code') {
-      parts.push(`BUILD_PATH_DEFAULT: ${settings.buildPath} (from .impeccable/settings.json). Author direction and surface rounds with this as buildPath.value and toggle: true; a flip on the page binds that session only and is never written back to settings.`);
+// Build-path preference: a workflow setting (comp-led vs code-led), read here
+// so every session starts knowing it without a file hunt. It rides the unified
+// config beside the hook and detector settings, and the gitignored local file
+// wins, because whether a machine has an image tool is a property of that
+// machine, not of the team's committed default. Absence stays silent;
+// new-work's own default applies, and the decision page toggle can flip the
+// value for a single session.
+function readBuildPathAt(root) {
+  let value = null;
+  let source = null;
+  for (const name of ['config.json', 'config.local.json']) {
+    const raw = readJson(path.join(root, '.impeccable', name));
+    if (raw?.buildPath === 'comp' || raw?.buildPath === 'code') {
+      value = raw.buildPath;
+      source = `.impeccable/${name}`;
     }
-  } catch { /* no settings file */ }
+  }
+  return value ? { value, source } : null;
+}
+
+// Roots in precedence order, nearest first: the resolved project decides, and
+// the repo root is the fallback a monorepo commits once for every app in it.
+// `checkBuildPathUnset` reads exactly these two, and the pair has to match:
+// when they disagree the finding goes silent because a value exists while the
+// directive never names it, which is the one combination nobody can debug.
+//
+// The invoking directory is deliberately not in the chain. With `--target`
+// selecting another workspace, cwd is the caller's app, not the target's, and
+// letting it rank above the repo root hands one workspace another's workflow.
+// It stands in only when no project resolved at all.
+function appendBuildPathDirective(parts, ctx) {
+  const roots = [...new Set(
+    [ctx?.projectRoot || process.cwd(), ctx?.repoRoot].filter(Boolean).map((root) => path.resolve(root)),
+  )];
+  for (const root of roots) {
+    const found = readBuildPathAt(root);
+    if (!found) continue;
+    // "Never written back" is scoped by the fact that this directive exists at
+    // all: it is emitted only where a value is already recorded, which is the
+    // case where a flip really is session-only. Saying so inline because the
+    // bare absolute reads as a rule that overrides new-work's one-time offer,
+    // which is exactly how the same wording misfired in serve-question.
+    parts.push(`BUILD_PATH_DEFAULT: ${found.value} (from ${found.source}). Author direction and surface rounds with this as buildPath.value and toggle: true; a flip on the page binds that session only and is never written back, because a default is already recorded here. New-work's one-time offer to record a flipped value applies only where no default exists, which is why you are not seeing this line on those projects.`);
+    return;
+  }
 }
 
 // Image generation availability: harness-native tools always win, but when the

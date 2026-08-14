@@ -170,51 +170,35 @@ Output (JSON):
   }
 
   if (svelteComponentManifest) {
-    if (isDiscard) {
-      let result;
-      try {
-        result = withSourceLockSync(
-          path.resolve(process.cwd(), svelteComponentManifest.sourceFile),
-          'discard:' + id,
-          () => {
-            removeSvelteComponentSession(id, process.cwd());
-            return { handled: true };
-          },
-          { waitMs: ACCEPT_LOCK_WAIT_MS },
-        );
-      } catch (err) {
-        result = operationFailure(err);
-      }
-      emitResult({
-        ...result,
-        file: svelteComponentManifest.sourceFile,
-        carbonize: false,
-        previewMode: 'svelte-component',
-        componentDir: svelteComponentManifest.componentDir,
-      });
-      return;
-    }
-
-    let result;
-    try {
-      result = withSourceLockSync(
-        path.resolve(process.cwd(), svelteComponentManifest.sourceFile),
-        'accept:' + id,
-        () => inlineSvelteComponentAccept(
+    const { sourceFile, componentDir } = svelteComponentManifest;
+    const resultContext = {
+      file: sourceFile,
+      ...(isDiscard ? { carbonize: false } : { sourceFile }),
+      previewMode: 'svelte-component',
+      componentDir,
+    };
+    const runOperation = isDiscard
+      ? () => {
+          removeSvelteComponentSession(id, process.cwd());
+          return { handled: true, ...resultContext };
+        }
+      : () => inlineSvelteComponentAccept(
           svelteComponentManifest,
           variantNum,
           paramValues,
           process.cwd(),
-        ),
+        );
+
+    let result;
+    try {
+      result = withSourceLockSync(
+        path.resolve(process.cwd(), sourceFile),
+        requestedOperation + ':' + id,
+        runOperation,
         { waitMs: ACCEPT_LOCK_WAIT_MS },
       );
     } catch (err) {
-      result = operationFailure(err, {
-        file: svelteComponentManifest.sourceFile,
-        sourceFile: svelteComponentManifest.sourceFile,
-        previewMode: 'svelte-component',
-        componentDir: svelteComponentManifest.componentDir,
-      });
+      result = operationFailure(err, resultContext);
     }
     if (result.carbonize) {
       result.todo = 'REQUIRED before next poll: carbonize cleanup in ' + result.file + '. See reference/live.md "Required after accept".';

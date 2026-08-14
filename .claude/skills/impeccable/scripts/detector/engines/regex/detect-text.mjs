@@ -425,25 +425,28 @@ const REGEX_MATCHERS = [
     },
     fmt: (m) => `cubic-bezier(${m[1]}, ${m[2]}, ${m[3]}, ${m[4]})` },
   // --- Layout property transition ---
-  { id: 'layout-transition', regex: /transition\s*:\s*([^;{}]+)/gi,
+  // JSX inline style objects use comma-delimited quoted values, not semicolons (issue #548).
+  { id: 'layout-transition', regex: /transition\s*:\s*(?:(['"])((?:(?!\1)[^\\]|\\.)*)\1|([^;{}]+))/gi,
     test: (m) => {
-      const val = m[1].toLowerCase();
+      const val = (m[2] ?? m[3] ?? '').toLowerCase();
       if (/\ball\b/.test(val)) return false;
       return /\b(?:(?:max|min)-)?(?:width|height)\b|\bpadding\b|\bmargin\b/.test(val);
     },
     fmt: (m) => {
-      const found = m[1].match(/\b(?:(?:max|min)-)?(?:width|height)\b|\bpadding(?:-(?:top|right|bottom|left))?\b|\bmargin(?:-(?:top|right|bottom|left))?\b/gi);
-      return `transition: ${found ? found.join(', ') : m[1].trim()}`;
+      const raw = m[2] ?? m[3] ?? '';
+      const found = raw.match(/\b(?:(?:max|min)-)?(?:width|height)\b|\bpadding(?:-(?:top|right|bottom|left))?\b|\bmargin(?:-(?:top|right|bottom|left))?\b/gi);
+      return `transition: ${found ? found.join(', ') : raw.trim()}`;
     } },
-  { id: 'layout-transition', regex: /transition-property\s*:\s*([^;{}]+)/gi,
+  { id: 'layout-transition', regex: /transition-property\s*:\s*(?:(['"])((?:(?!\1)[^\\]|\\.)*)\1|([^;{}]+))/gi,
     test: (m) => {
-      const val = m[1].toLowerCase();
+      const val = (m[2] ?? m[3] ?? '').toLowerCase();
       if (/\ball\b/.test(val)) return false;
       return /\b(?:(?:max|min)-)?(?:width|height)\b|\bpadding\b|\bmargin\b/.test(val);
     },
     fmt: (m) => {
-      const found = m[1].match(/\b(?:(?:max|min)-)?(?:width|height)\b|\bpadding(?:-(?:top|right|bottom|left))?\b|\bmargin(?:-(?:top|right|bottom|left))?\b/gi);
-      return `transition-property: ${found ? found.join(', ') : m[1].trim()}`;
+      const raw = m[2] ?? m[3] ?? '';
+      const found = raw.match(/\b(?:(?:max|min)-)?(?:width|height)\b|\bpadding(?:-(?:top|right|bottom|left))?\b|\bmargin(?:-(?:top|right|bottom|left))?\b/gi);
+      return `transition-property: ${found ? found.join(', ') : raw.trim()}`;
     } },
   // --- Broken image: src="" or src="#" or src=" " ---
   { id: 'broken-image', regex: /<img\b[^>]*?\bsrc\s*=\s*(?:""|''|"\s+"|'\s+'|"#"|'#')/gi,

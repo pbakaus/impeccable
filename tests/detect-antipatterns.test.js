@@ -854,6 +854,26 @@ describe('detectText — motion', () => {
     const f = detectText('.btn { transition: opacity 0.2s ease; }', 'test.css');
     expect(f.filter(r => r.antipattern === 'layout-transition')).toHaveLength(0);
   });
+
+  test('passes JSX quoted paint-only transition with later layout prop', () => {
+    const f = detectText("<div style={{ transition: 'border-color 200ms ease', height: '100%' }} />", 'test.jsx');
+    expect(f.filter(r => r.antipattern === 'layout-transition')).toHaveLength(0);
+  });
+
+  test('passes JSX grid-template-rows transition with later padding and width', () => {
+    const f = detectText("<div style={{ transition: 'grid-template-rows 0.32s ease', paddingLeft: '23px', width: '100%' }} />", 'test.jsx');
+    expect(f.filter(r => r.antipattern === 'layout-transition')).toHaveLength(0);
+  });
+
+  test('detects JSX quoted width transition', () => {
+    const f = detectText("<div style={{ transition: 'width 0.3s ease' }} />", 'test.jsx');
+    expect(f.some(r => r.antipattern === 'layout-transition')).toBe(true);
+  });
+
+  test('skips JSX quoted transition: all', () => {
+    const f = detectText("<div style={{ transition: 'all 0.3s ease' }} />", 'test.jsx');
+    expect(f.filter(r => r.antipattern === 'layout-transition')).toHaveLength(0);
+  });
 });
 
 // ---------------------------------------------------------------------------

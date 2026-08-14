@@ -68,7 +68,7 @@ Omit irrelevant sections rather than filling them with invented rules. Put respo
 - An existing `DESIGN.md` is stale (the design has drifted).
 - Before a large redesign, to capture the current state as a reference.
 
-If a `DESIGN.md` already exists, **do not silently overwrite it**. Show the user the existing file and ask the user directly to clarify what you cannot infer. whether to refresh, overwrite, or merge.
+If a `DESIGN.md` already exists, **do not silently overwrite it**. Show the user the existing file first. Ask the user directly to clarify what you cannot infer. The choice is refresh, overwrite, or merge.
 
 ## Two paths
 

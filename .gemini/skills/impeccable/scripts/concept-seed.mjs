@@ -434,7 +434,7 @@ export function renderConceptSeed({
   lead carrying kicker THE ROLL, with steer and re-roll, and let the user
   lock one in; the world is already settled, so this choice is composition.
   Visualize every dealt card: with image generation available and a
-  comp-led default (.impeccable/settings.json buildPath; the page toggle
+  comp-led default (.impeccable/config.json buildPath; the page toggle
   handles the exception), declare a comp per card and generate after
   serving, lead first; otherwise author each card's wireframe field (see
   serve-question --schema) and the page draws the schematic. Carry the

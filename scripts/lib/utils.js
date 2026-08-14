@@ -465,31 +465,35 @@ export const PROVIDER_PLACEHOLDERS = {
   'cursor': {
     model: 'the model',
     config_file: '.cursorrules',
-    ask_instruction: 'ask the user directly to clarify what you cannot infer.',
+    ask_instruction: 'Ask the user directly to clarify what you cannot infer.',
     command_prefix: '/'
   },
   'gemini': {
     model: 'Gemini',
     config_file: 'GEMINI.md',
-    ask_instruction: 'ask the user directly to clarify what you cannot infer.',
+    ask_instruction: 'Ask the user directly to clarify what you cannot infer.',
     command_prefix: '/'
   },
   'codex': {
     model: 'GPT',
     config_file: 'AGENTS.md',
+    // Each value is a complete capitalized sentence, because every
+    // {{ask_instruction}} call site is sentence-initial. That is enforced by
+    // validateAskInstructionSites() in scripts/build.js, not left to authors:
+    // four reference files had already spliced the placeholder mid-sentence.
     ask_instruction: "STOP and use Codex's structured user-input/question tool when available; if unavailable, ask directly in chat to clarify what you cannot infer.",
     command_prefix: '$'
   },
   'agents': {
     model: 'the model',
     config_file: '.github/copilot-instructions.md',
-    ask_instruction: 'ask the user directly to clarify what you cannot infer.',
+    ask_instruction: 'Ask the user directly to clarify what you cannot infer.',
     command_prefix: '/'
   },
   'kiro': {
     model: 'Claude',
     config_file: '.kiro/settings.json',
-    ask_instruction: 'ask the user directly to clarify what you cannot infer.',
+    ask_instruction: 'Ask the user directly to clarify what you cannot infer.',
     command_prefix: '/'
   },
   opencode: {
@@ -501,31 +505,31 @@ export const PROVIDER_PLACEHOLDERS = {
   'pi': {
     model: 'the model',
     config_file: 'AGENTS.md',
-    ask_instruction: 'ask the user directly to clarify what you cannot infer.',
+    ask_instruction: 'Ask the user directly to clarify what you cannot infer.',
     command_prefix: '/'
   },
   'qoder': {
     model: 'the model',
     config_file: 'AGENTS.md',
-    ask_instruction: 'ask the user directly to clarify what you cannot infer.',
+    ask_instruction: 'Ask the user directly to clarify what you cannot infer.',
     command_prefix: '/'
   },
   'trae': {
     model: 'the model',
     config_file: 'RULES.md',
-    ask_instruction: 'ask the user directly to clarify what you cannot infer.',
+    ask_instruction: 'Ask the user directly to clarify what you cannot infer.',
     command_prefix: '/'
   },
   'rovo-dev': {
     model: 'Rovo Dev',
     config_file: 'AGENTS.md',
-    ask_instruction: 'ask the user directly to clarify what you cannot infer.',
+    ask_instruction: 'Ask the user directly to clarify what you cannot infer.',
     command_prefix: '/'
   },
   'vibe': {
     model: 'Mistral',
     config_file: 'AGENTS.md',
-    ask_instruction: 'ask the user directly to clarify what you cannot infer.',
+    ask_instruction: 'Ask the user directly to clarify what you cannot infer.',
     command_prefix: '/'
   },
   'grok': {
@@ -537,7 +541,7 @@ export const PROVIDER_PLACEHOLDERS = {
   'antigravity': {
     model: 'Gemini',
     config_file: 'AGENTS.md',
-    ask_instruction: 'ask the user directly to clarify what you cannot infer.',
+    ask_instruction: 'Ask the user directly to clarify what you cannot infer.',
     command_prefix: '/'
   },
   'hermes': {
@@ -546,7 +550,7 @@ export const PROVIDER_PLACEHOLDERS = {
     // for harnesses without a vendor-fixed assistant name.
     model: 'the model',
     config_file: 'AGENTS.md',
-    ask_instruction: 'ask the user directly to clarify what you cannot infer.',
+    ask_instruction: 'Ask the user directly to clarify what you cannot infer.',
     command_prefix: '/'
   }
 };

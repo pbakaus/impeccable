@@ -315,6 +315,95 @@ describe('new-work-e2e: serve-question decision page', () => {
     }
   });
 
+  it('(e1) a missing comp without inspiration settles into a complete text-only card', async () => {
+    const cwd = makeWorkspace();
+    const key = 'missing-comp';
+    const board = makeFakeImage(cwd, 'board fallback', 'board-fallback.png');
+    const payload = {
+      title: 'Choose the visual world',
+      options: [
+        {
+          id: 'assigned', label: 'Shotengai Chalkboard', kicker: 'THE ROLL',
+          thesis: 'A hand-lettered neighborhood noticeboard.',
+          body: 'Program notes explain how the board changes through the day.',
+          palette: ['#18251d', '#f2e8cb'], materials: ['chalk', 'painted timber'],
+          viewport: 'The daily program fills a ruled community board.',
+          case: 'The audience already reads this visual language.',
+          risk: 'Can become nostalgic if the type loses discipline.',
+          comp: path.join(cwd, '.impeccable', 'mocks', 'decision', 'missing.webp'),
+        },
+        {
+          id: 'kept-only', label: 'Kept Line Only',
+          kept: 'Keep the hand-painted timetable as the organizing device.',
+          comp: path.join(cwd, '.impeccable', 'mocks', 'decision', 'kept-missing.webp'),
+        },
+        {
+          id: 'body-only', label: 'Body Line Only',
+          thesis: 'A compact neighborhood notice.',
+          body: 'Body copy must remain present exactly once.',
+          comp: path.join(cwd, '.impeccable', 'mocks', 'decision', 'body-missing.webp'),
+        },
+        {
+          id: 'plain-body', label: 'Plain Body',
+          body: 'Plain body follows the promoted facts.',
+          viewport: 'A compact neighborhood notice fills the first viewport.',
+          comp: path.join(cwd, '.impeccable', 'mocks', 'decision', 'plain-body-missing.webp'),
+        },
+        {
+          id: 'board-only', label: 'Board Fallback',
+          board,
+          comp: path.join(cwd, '.impeccable', 'mocks', 'decision', 'board-missing.webp'),
+        },
+      ],
+      reroll: true,
+      steer: true,
+    };
+    const { url } = await startDaemon(cwd, payload, key);
+    try {
+      const context = await browser.newContext();
+      await context.addInitScript(() => {
+        const realNow = Date.now.bind(Date);
+        let offset = 0;
+        Date.now = () => realNow() + offset;
+        window.__advanceDecisionClock = (ms) => { offset += ms; };
+      });
+      const page = await context.newPage();
+      await page.goto(url, { waitUntil: 'load' });
+      await page.waitForSelector('.card[data-id="assigned"] .media.comp-pending');
+
+      await page.evaluate(() => window.__advanceDecisionClock(241000));
+      await page.waitForFunction(() => ['assigned', 'kept-only', 'body-only', 'plain-body'].every((id) =>
+        !document.querySelector(`.card[data-id="${id}"] .media`)), null, { timeout: 6000 });
+      await page.waitForSelector('.card[data-id="board-only"] .media.stand-in');
+
+      const faceClass = await page.getAttribute('.card[data-id="assigned"] .face.front', 'class');
+      const back = await page.$('.card[data-id="assigned"] .face.back');
+      const frontRead = await page.$eval('.card[data-id="assigned"] .face.front', (el) => el.textContent);
+      const keptOnlyRead = await page.$eval('.card[data-id="kept-only"] .face.front', (el) => el.textContent);
+      const bodyOnlyRead = await page.$eval('.card[data-id="body-only"] .face.front', (el) => el.textContent);
+      const plainBodyOrder = await page.$$eval('.card[data-id="plain-body"] .body > .fact, .card[data-id="plain-body"] .body > .detail',
+        (els) => els.map((el) => el.className));
+      const boardFallbackLabel = await page.$eval('.card[data-id="board-only"] .stand-in-label', (el) => el.textContent);
+      await context.close();
+
+      assert.match(faceClass, /text-only/, 'the settled card uses the text-only layout');
+      assert.equal(back, null, 'the settled card has no unreachable back face');
+      assert.match(frontRead, /First viewport/, 'the full first-viewport fact moves to the front');
+      assert.match(frontRead, /The case/, 'the full case moves to the front');
+      assert.match(frontRead, /Risk/, 'the risk remains readable after the media collapses');
+      assert.match(frontRead, /Program notes explain/, 'thesis-linked body prose moves off the removed back face');
+      assert.match(keptOnlyRead, /Keep the hand-painted timetable/, 'kept-only content survives without a back face');
+      assert.equal(bodyOnlyRead.match(/Body copy must remain present exactly once\./g)?.length, 1,
+        'body prose already on a no-back front is not duplicated');
+      assert.deepEqual(plainBodyOrder, ['fact', 'detail'],
+        'thesis-less body prose follows the facts promoted from the missing comp');
+      assert.equal(boardFallbackLabel, 'inspiration · comp pending', 'board-only art remains as the labeled fallback');
+    } finally {
+      await stopDaemon(cwd, key);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
   it('(e2) verdicts route the deck: declined cards demote, reorder to the end, and stay adoptable', async () => {
     const cwd = makeWorkspace();
     const key = 'verdicts';
@@ -514,6 +603,92 @@ describe('new-work-e2e: serve-question decision page', () => {
       assert.equal(answer.buildPath, 'comp', 'the answer carries the flipped path');
       assert.equal(answer.buildPathFlipped, true, 'the answer marks the flip');
       assert.match(collected.out, /BUILD PATH: comp \(flipped/, 'the directive states session-only scope');
+    } finally {
+      await stopDaemon(cwd, key);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  // The flip used to be tested only on a wireframe card, where the schematic
+  // is hidden and a fresh slot inserted. A card carrying catalog art instead
+  // took the other branch: the inspiration stayed the face and the comp slot
+  // was inserted below it, so the card showed two stacked images. Comp-first
+  // demotes the inspiration to the corner, and a flip has to reach the same
+  // shape a comp-first render would have served.
+  it('(f2) flipping to comp demotes an inspiration face to the corner instead of stacking a second slot', async () => {
+    const cwd = makeWorkspace();
+    const key = 'flipinspo';
+    const hero = makeFakeImage(cwd, 'catalog inspiration', 'inspo.png');
+    const payload = {
+      title: 'Choose the visual world',
+      buildPath: { value: 'code', toggle: true },
+      options: [
+        {
+          id: 'assigned', label: 'The Ledger Spine', kicker: 'THE ROLL', hero,
+          comp: '.impeccable/mocks/decision/assigned.webp',
+          viewport: 'A ruled masthead over a dense grid.', risk: 'Reads editorial.',
+        },
+      ],
+    };
+    const { url } = await startDaemon(cwd, payload, key);
+    try {
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      await page.goto(url, { waitUntil: 'load' });
+
+      const front = '.card[data-id="assigned"] .face.front';
+      // Code-led: the catalog art is the face, labeled so it never reads as a promise.
+      assert.equal(await page.$$eval(`${front} .media`, (els) => els.length), 1, 'one media slot before the flip');
+      assert.ok(await page.$(`${front} .media .media-label`), 'the inspiration face is labeled');
+      assert.equal(await page.$(`${front} .pip`), null, 'no corner inspiration while code-led');
+
+      await page.click('.bp-opt[data-bp="comp"]');
+      await page.waitForSelector('#bp-confirm:not([hidden])');
+      await page.click('#bp-confirm [data-confirm]');
+      await page.waitForSelector(`${front} .media.comp-pending`);
+
+      // The whole point: one slot, not two.
+      assert.equal(await page.$$eval(`${front} .media`, (els) => els.length), 1,
+        'the flip converts the inspiration slot rather than stacking a second one');
+      assert.ok(await page.$(`${front} .media.comp-pending .pip img`), 'the inspiration moved into the corner');
+      assert.equal(await page.$(`${front} .media > .media-label`), null, 'it is no longer presented as the face');
+      assert.ok(await page.$(`${front} .media .chip.expand`), 'the converted slot keeps its expand affordance');
+
+      const flipped = await waitLoop(cwd, key, { poll: 10 });
+      assert.match(flipped.out, /BUILD PATH FLIPPED: comp/);
+
+      // A comp that streams in must be openable. The zoom handlers used to be
+      // bound once at deal time, so anything built by the flip was inert.
+      mkdirSync(path.join(cwd, '.impeccable', 'mocks', 'decision'), { recursive: true });
+      makeFakeImage(path.join(cwd, '.impeccable', 'mocks', 'decision'), 'ledger spine comp', 'assigned.webp');
+      await page.waitForSelector(`${front} .media img.comp:not([hidden])`, { timeout: 15000 });
+      await page.click(`${front} .media .chip.expand`);
+      await page.waitForSelector('#lightbox:not([hidden])');
+      const compSrc = await page.$eval('#lightbox img', (img) => img.getAttribute('src'));
+      assert.ok(compSrc, 'the streamed-in comp opens full screen');
+      await page.click('#lightbox');
+      await page.waitForSelector('#lightbox', { state: 'hidden' });
+
+      // The corner inspiration opens the catalog art, not the comp behind it.
+      // Both zoom targets are delegated to document, where stopPropagation
+      // cannot stop a sibling listener, so split handlers let the media one
+      // overwrite the lightbox the pip had just filled.
+      const cornerSrc = await page.$eval(`${front} .media .pip img`, (img) => img.getAttribute('src'));
+      await page.click(`${front} .media .pip`);
+      await page.waitForSelector('#lightbox:not([hidden])');
+      const pipSrc = await page.$eval('#lightbox img', (img) => img.getAttribute('src'));
+      assert.notEqual(pipSrc, compSrc, 'the corner opens the inspiration, not the comp');
+      assert.equal(pipSrc, cornerSrc, 'and it is exactly the art in the corner');
+      await page.click('#lightbox');
+      await page.waitForSelector('#lightbox', { state: 'hidden' });
+
+      // Flipping back keeps a comp that already landed, by design, and must
+      // still leave exactly one slot. exitComp is synchronous, so there is
+      // nothing to wait for.
+      await page.click('.bp-opt[data-bp="code"]');
+      assert.equal(await page.$$eval(`${front} .media`, (els) => els.length), 1, 'still one slot after flipping back');
+      assert.ok(await page.$(`${front} .media img.comp:not([hidden])`), 'the landed comp survives the flip back');
+      await context.close();
     } finally {
       await stopDaemon(cwd, key);
       rmSync(cwd, { recursive: true, force: true });
