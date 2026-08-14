@@ -335,6 +335,12 @@ describe('serve-question', () => {
       await new Promise((r) => setTimeout(r, 3000));
       const served = await (await fetch(url)).text();
       assert.ok(served.includes('Late round'), 'past the idle deadline, the daemon survives its claim window and deals the delivered hand');
+      // The claim itself must hold the daemon too: that GET deleted the next
+      // file before any page could beat, so a lifetime tick in the gap used
+      // to exit under the hand just claimed.
+      await new Promise((r) => setTimeout(r, 2500));
+      const alive = await fetch(url);
+      assert.equal(alive.status, 200, 'the daemon survives the claim-to-first-beat gap');
     } finally {
       await run(['--stop', '--key', 'latehand']);
     }

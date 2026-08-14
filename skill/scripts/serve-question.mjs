@@ -1572,6 +1572,10 @@ const server = http.createServer((req, res) => {
       // into the same failure without bound.
       try { loadRound(fs.readFileSync(pending, 'utf8')); } catch { /* keep current round */ }
       try { fs.rmSync(pending); } catch { /* already gone */ }
+      // The claim consumes the file the idle-exit hold reads, and the
+      // reloading page cannot beat until it has parsed: stamp the claim so
+      // the same bounded grace covers the gap between them.
+      server.lastClaimAt = Date.now();
     }
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     res.end(page(awaitingNext));
@@ -1709,11 +1713,14 @@ server.listen(portArg, '127.0.0.1', () => {
       // A hand delivered moments before this deadline still gets its claim
       // window: the stalled page's watch reloads into it and beats again
       // within seconds, while a file unclaimed past the grace means no page
-      // is coming back (the same verdict --wait reads from its age).
+      // is coming back (the same verdict --wait reads from its age). The
+      // claim itself holds the daemon too: GET / deletes the file before the
+      // reloaded page can beat, so a tick in that gap must not exit under
+      // the hand just claimed.
       const pending = nextFile();
       let deliveredAt = 0;
       if (pending) { try { deliveredAt = fs.statSync(pending).mtimeMs; } catch { /* nothing delivered */ } }
-      if (Date.now() - deliveredAt > NEXT_CLAIM_GRACE_MS) {
+      if (Date.now() - Math.max(deliveredAt, server.lastClaimAt || 0) > NEXT_CLAIM_GRACE_MS) {
         console.log('serve-question: the page stopped beating and never came back; exiting');
         process.exit(2);
       }
