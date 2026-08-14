@@ -306,6 +306,40 @@ describe('serve-question', () => {
     assert.ok(gone, 'the idle grace applies under --timeout 0 once a page has beat');
   });
 
+  it('a hand delivered just before the idle deadline holds the daemon for its claim window', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'serve-question-'));
+    const payloadPath = path.join(dir, 'q.json');
+    writeFileSync(payloadPath, JSON.stringify(PAYLOAD));
+    const run = (args) => new Promise((resolve) => {
+      const child = spawn(process.execPath, [SCRIPT, ...args], { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] });
+      let out = '';
+      child.stdout.on('data', (chunk) => { out += chunk; });
+      child.on('exit', (code) => resolve({ code, out }));
+    });
+    const started = await run(['--start', '--payload', payloadPath, '--no-open', '--key', 'latehand', '--timeout', '30', '--idle-grace', '3']);
+    assert.equal(started.code, 0, started.out);
+    const url = started.out.match(/QUESTION URL: (\S+)/)?.[1];
+    assert.ok(url, started.out);
+    try {
+      await fetch(`${url}heartbeat`, { method: 'POST' });
+      await fetch(`${url}answer`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: '' }) });
+      // Go silent like a stalled page until just before the 3s idle
+      // deadline, then deliver: the daemon used to exit before the page's
+      // watch could claim the hand, orphaning a delivery --update had
+      // already confirmed.
+      await new Promise((r) => setTimeout(r, 2500));
+      const nextPath = path.join(dir, 'next.json');
+      writeFileSync(nextPath, JSON.stringify({ ...PAYLOAD, title: 'Late round' }));
+      const updated = await run(['--update', '--key', 'latehand', '--payload', nextPath]);
+      assert.equal(updated.code, 0, updated.out);
+      await new Promise((r) => setTimeout(r, 3000));
+      const served = await (await fetch(url)).text();
+      assert.ok(served.includes('Late round'), 'past the idle deadline, the daemon survives its claim window and deals the delivered hand');
+    } finally {
+      await run(['--stop', '--key', 'latehand']);
+    }
+  });
+
   it('a refresh while a re-roll is outstanding re-enters the wait instead of re-serving the answered round', async () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'serve-question-'));
     const payloadPath = path.join(dir, 'q.json');

@@ -194,6 +194,11 @@ const timeoutSec = Number.isFinite(timeoutArg) && timeoutArg >= 0 ? timeoutArg :
 // last heartbeat; a zero, negative, or unparseable value takes the default.
 const idleGraceArg = Number(arg('idle-grace', '600'));
 const idleGraceMs = (Number.isFinite(idleGraceArg) && idleGraceArg > 0 ? idleGraceArg : 600) * 1000;
+// How long a delivered next hand may sit unclaimed before it means no page
+// is coming back: --wait reads it to keep a stalled page from counting as
+// closed mid-delivery, and the daemon reads it to survive until the page's
+// watch claims a hand delivered moments before the idle deadline.
+const NEXT_CLAIM_GRACE_MS = 10000;
 const portArg = Number(arg('port', '0'));
 const QUESTION_DIR = path.join(process.cwd(), '.impeccable', 'questions');
 const stateFile = (key) => path.join(QUESTION_DIR, `${key}.state.json`);
@@ -266,7 +271,7 @@ if (hasFlag('wait')) {
       // The suppression is age-bound because a closed tab never claims the
       // hand: a file still there after the grace means no page is coming.
       const midDelivery = (() => {
-        try { return Date.now() - fs.statSync(path.join(QUESTION_DIR, `${key}.next.json`)).mtimeMs < 10000; }
+        try { return Date.now() - fs.statSync(path.join(QUESTION_DIR, `${key}.next.json`)).mtimeMs < NEXT_CLAIM_GRACE_MS; }
         catch { return false; }
       })();
       if (!midDelivery && state.lastBeat && Date.now() - state.lastBeat > 15000) { sawClose = true; break; }
@@ -1701,8 +1706,17 @@ server.listen(portArg, '127.0.0.1', () => {
         process.exit(2);
       }
     } else if (Date.now() - server.lastBeatSeen > idleGraceMs) {
-      console.log('serve-question: the page stopped beating and never came back; exiting');
-      process.exit(2);
+      // A hand delivered moments before this deadline still gets its claim
+      // window: the stalled page's watch reloads into it and beats again
+      // within seconds, while a file unclaimed past the grace means no page
+      // is coming back (the same verdict --wait reads from its age).
+      const pending = nextFile();
+      let deliveredAt = 0;
+      if (pending) { try { deliveredAt = fs.statSync(pending).mtimeMs; } catch { /* nothing delivered */ } }
+      if (Date.now() - deliveredAt > NEXT_CLAIM_GRACE_MS) {
+        console.log('serve-question: the page stopped beating and never came back; exiting');
+        process.exit(2);
+      }
     }
   }, 2000);
   lifetime.unref?.();
