@@ -166,9 +166,20 @@ if (headerIdx === -1) {
 // Notes are the entry's bullet list. Scoping to <ul class="cf-items">
 // skips the optional lead paragraph, before/after figure, and stat row
 // that the headline release (v3.5.0) carries, so release notes stay clean.
+//
+// The search is bounded to this entry's own </article>. Unbounded, a version
+// whose list carried any other class was silently skipped and the NEXT
+// entry's bullets shipped as its release notes: every v4.0.x skill release
+// went out carrying v4.0.0's notes that way, and nothing failed. A mismatch
+// now stops the release instead of publishing another version's words.
+const articleEnd = changelogHtml.indexOf('</article>', headerIdx);
 const listStart = changelogHtml.indexOf('<ul class="cf-items">', headerIdx);
 const listEnd = changelogHtml.indexOf('</ul>', listStart);
 if (listStart === -1 || listEnd === -1) fail('Changelog entry markup is malformed.');
+if (articleEnd !== -1 && listStart > articleEnd) {
+  fail(`The changelog entry for "${cfg.changelogLabel}${version}" has no <ul class="cf-items"> of its own. `
+    + 'Its bullets are in a list this script cannot read, and the next entry\'s notes would ship instead.');
+}
 const entryHtml = changelogHtml.slice(listStart, listEnd + '</ul>'.length);
 
 const notes = htmlToMarkdown(entryHtml);
