@@ -362,6 +362,13 @@ describe('serve-question', () => {
       const budget = Number(fresh.match(/awaitNextRound\(false, (\d+)\);/)?.[1]);
       assert.ok(budget > 0 && budget <= 3000, `the waiting page carries the remaining allowance, got ${budget}`);
       assert.match(fresh, /^\s*beat\(\);\s*$/m, 'a live wait still heartbeats');
+      // A duplicate answer must not restamp the deadline either: the page's
+      // click-time disable can race a second click, so the server keeps the
+      // first stamp instead of renewing the allowance.
+      await new Promise((r) => setTimeout(r, 1200));
+      await fetch(`${url}answer`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: '' }) });
+      const restamped = Number((await (await fetch(url)).text()).match(/awaitNextRound\(false, (\d+)\);/)?.[1]);
+      assert.ok(restamped > 0 && restamped < 2500, `a duplicate re-roll does not renew the allowance, got ${restamped}`);
       await new Promise((r) => setTimeout(r, 3500));
       const spent = await (await fetch(url)).text();
       assert.ok(spent.includes('awaitNextRound(false, 0);'), 'a refresh after the deadline gets no new allowance');

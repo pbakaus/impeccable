@@ -848,6 +848,11 @@ describe('new-work-e2e: serve-question decision page', () => {
       // Playwright actionability waits on rAF, which the fake clock owns, so
       // dispatch the click directly.
       await page.$eval('#reroll', (el) => el.click());
+      // The controls must go quiet at the click itself: the POST round-trip
+      // plus the fly-out used to leave them live, and a second click posted
+      // another re-roll that renewed the delivery deadline.
+      assert.ok(await page.$eval('#reroll', (el) => el.disabled), 'the re-roll goes quiet at the click, not after the fly-out');
+      assert.ok(await page.$eval('#canon', (el) => el.disabled), 'the canon exit goes quiet at the click too');
       // Walk the fake clock forward past the fly-out settle and the deadline.
       // page.$ runs over CDP, not in-page timers, so it stays safe to poll.
       let stalled = null;

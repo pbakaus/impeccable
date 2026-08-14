@@ -1018,6 +1018,9 @@ ${buildPath?.toggle ? `<div id="bp-confirm" role="dialog" aria-modal="true" aria
   // swallow the click and never print the confirmation, so the user believed
   // a choice had landed that no one would ever collect.
   async function answer(optionId) {
+    // Quiet at the click: a re-roll or canon posted while this pick's POST
+    // is in flight would overwrite the answer being collected.
+    document.querySelectorAll('.reroll-btn, #canon').forEach(b => b.setAttribute('disabled', ''));
     try {
       await fetch('/answer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId, steer: steer() }) });
     } catch {
@@ -1456,6 +1459,10 @@ ${buildPath?.toggle ? `<div id="bp-confirm" role="dialog" aria-modal="true" aria
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !lightbox.hidden) closeLightbox(); });
   document.getElementById('canon')?.addEventListener('click', () => answer('canon'));
   const dealAgain = async (register) => {
+    // Quiet at the click, not after the fly-out: the POST round-trip plus
+    // the 700ms animation was a window where a second click posted another
+    // re-roll and renewed the delivery deadline.
+    document.querySelectorAll('.reroll-btn, #canon').forEach(b => b.setAttribute('disabled', ''));
     try {
       await fetch('/answer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: steer(), ...(register ? { register } : {}) }) });
     } catch {
@@ -1643,8 +1650,11 @@ const server = http.createServer((req, res) => {
         ...((chosen?.comp ?? chosen?.sketch) ? { comp: chosen.comp ?? chosen.sketch } : {}),
         ...(liveBuildPath && !isReroll ? { buildPath: liveBuildPath, buildPathFlipped: liveBuildPath !== (buildPathDefault?.value ?? null) } : {}),
       });
+      // The delivery deadline is single-issue: a duplicate answer racing the
+      // page's disable must not restamp the allowance already inherited.
+      const wasAwaiting = awaitingNext;
       awaitingNext = (isReroll || followupOpen) && Boolean(detachedKey);
-      if (awaitingNext) awaitingNextSince = Date.now();
+      if (awaitingNext && !wasAwaiting) awaitingNextSince = Date.now();
       if (detachedKey) {
         fs.mkdirSync(QUESTION_DIR, { recursive: true });
         fs.writeFileSync(answerFile(detachedKey), answer + '\n');
