@@ -494,6 +494,26 @@ describe('IMPECCABLE_CACHE_ROOT relocates hook state (issue #422)', () => {
     assert.equal(getLocalConfigPath(cwd), path.join(cwd, '.impeccable', 'config.local.json'));
   });
 
+  it('expands a leading ~/ against the home dir, like IMPECCABLE_HOOK_LOG', () => {
+    const savedHome = process.env.HOME;
+    const savedProfile = process.env.USERPROFILE;
+    try {
+      process.env.HOME = cacheRoot;
+      delete process.env.USERPROFILE;
+      process.env.IMPECCABLE_CACHE_ROOT = '~/impeccable-state';
+      const slug = path.resolve(cwd).replace(/[:\\/.]/g, '-');
+      assert.equal(
+        getCachePath(cwd),
+        path.join(cacheRoot, 'impeccable-state', slug, 'hook.cache.json'),
+      );
+    } finally {
+      if (savedHome === undefined) delete process.env.HOME;
+      else process.env.HOME = savedHome;
+      if (savedProfile === undefined) delete process.env.USERPROFILE;
+      else process.env.USERPROFILE = savedProfile;
+    }
+  });
+
   it('persistCache round-trips through the redirect dir and leaves the project root clean', () => {
     process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
     const cache = readCache(cwd);

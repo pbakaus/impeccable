@@ -220,12 +220,17 @@ export function getLocalConfigPath(cwd) {
 // disposable state relocates.
 // Read from process.env (not runHook's injected env): the cache root is a
 // machine-scoped setting like CURSOR_PROJECT_DIR, not a per-invocation
-// switch. Trim guards against stray whitespace in env files; resolving both
-// sides makes the slug deterministic when callers hand in a trailing
-// separator or unnormalized cwd.
+// switch. Trim guards against stray whitespace in env files; `~/` expands to
+// the home dir (settings/env files hand it to Node unexpanded — same
+// treatment IMPECCABLE_HOOK_LOG gets in writeAuditLog); resolving both sides
+// makes the slug deterministic when callers hand in a trailing separator or
+// unnormalized cwd.
 function hookStateDir(cwd) {
   const raw = process.env.IMPECCABLE_CACHE_ROOT;
-  const root = typeof raw === 'string' ? raw.trim() : '';
+  let root = typeof raw === 'string' ? raw.trim() : '';
+  if (root.startsWith('~/') || root.startsWith('~\\') || root === '~') {
+    root = path.join(process.env.HOME || process.env.USERPROFILE || '.', root.slice(2));
+  }
   if (root) {
     const slug = path.resolve(String(cwd)).replace(/[:\\/.]/g, '-');
     return path.join(path.resolve(root), slug);
