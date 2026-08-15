@@ -456,11 +456,36 @@ describe('IMPECCABLE_CACHE_ROOT relocates hook state (issue #422)', () => {
     assert.equal(getPendingPath(cwd), path.join(cacheRoot, slug, 'hook.pending.json'));
   });
 
-  it('slug maps colons, slashes, backslashes, and dots to hyphens', () => {
+  it('slug maps separators, colons, and dots to hyphens', () => {
     process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
-    const cachePath = getCachePath('C:\\work\\my.app/sub');
-    const slugDir = path.basename(path.dirname(cachePath));
-    assert.equal(slugDir, 'C--work-my-app-sub');
+    const proj = path.join(cwd, 'my.app', 'v2');
+    const slugDir = path.basename(path.dirname(getCachePath(proj)));
+    assert.doesNotMatch(slugDir, /[:\\/.]/, 'no path-significant chars survive');
+    assert.ok(slugDir.endsWith('my-app-v2'), `dots and separators map to hyphens (got ${slugDir})`);
+  });
+
+  it('trailing separators and relative segments slug to the same dir', () => {
+    process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
+    const canonical = getCachePath(cwd);
+    assert.equal(getCachePath(cwd + path.sep), canonical);
+    assert.equal(getCachePath(path.join(cwd, 'sub', '..')), canonical);
+  });
+
+  it('trims stray whitespace from the env value', () => {
+    process.env.IMPECCABLE_CACHE_ROOT = `  ${cacheRoot}  `;
+    const slug = path.resolve(cwd).replace(/[:\\/.]/g, '-');
+    assert.equal(getCachePath(cwd), path.join(cacheRoot, slug, 'hook.cache.json'));
+  });
+
+  it('persistCache degrades gracefully when the cache root is unusable', () => {
+    // Point the root at an existing FILE so mkdir of the slug dir must fail.
+    const blocker = path.join(cacheRoot, 'not-a-dir');
+    fs.writeFileSync(blocker, 'x');
+    process.env.IMPECCABLE_CACHE_ROOT = blocker;
+    const cache = readCache(cwd);
+    bumpEditCount(cache, 'sid-1', '/x/a.tsx');
+    assert.equal(persistCache(cwd, cache), false, 'returns false instead of throwing');
+    assert.equal(fs.existsSync(path.join(cwd, '.impeccable')), false);
   });
 
   it('config paths stay project-local even when the redirect is active', () => {
@@ -481,6 +506,79 @@ describe('IMPECCABLE_CACHE_ROOT relocates hook state (issue #422)', () => {
 
     const reloaded = readCache(cwd);
     assert.equal(reloaded.sessions['sid-1'].files['/x/a.tsx'].editCount, 1);
+  });
+
+  function redirectEventFor(file, sessionId = 'redir-sid') {
+    return {
+      session_id: sessionId,
+      cwd,
+      hook_event_name: 'PostToolUse',
+      tool_name: 'Edit',
+      tool_input: { file_path: file },
+    };
+  }
+
+  function writeProjectFile(rel, body) {
+    const abs = path.join(cwd, rel);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, body);
+    return abs;
+  }
+
+  it('runHook end-to-end: findings persist under the redirect root, project root stays clean', async () => {
+    process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
+    const file = writeProjectFile('src/Card.tsx', 'noop');
+    const det = fakeDetector([finding('text-overflow', 1)]);
+
+    const first = await runHook({
+      stdinJson: JSON.stringify(redirectEventFor(file)),
+      env: {}, cwd, detector: det,
+    });
+    assert.match(first.stdout, /Design hook findings requiring review/);
+    assert.equal(fs.existsSync(path.join(cwd, '.impeccable')), false, 'no project-local footprint');
+    assert.equal(fs.existsSync(getCachePath(cwd)), true, 'cache lands under the redirect root');
+
+    // Session dedup still works across runs through the redirected cache.
+    const second = await runHook({
+      stdinJson: JSON.stringify(redirectEventFor(file)),
+      env: {}, cwd, detector: det,
+    });
+    assert.doesNotMatch(second.stdout, /Design hook findings requiring review/);
+    assert.match(second.stdout, /flagged earlier this session/);
+  });
+
+  it('runHook end-to-end: clean edits keep persisting editCount once redirected state exists', async () => {
+    process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
+    const file = writeProjectFile('src/Card.tsx', 'noop');
+
+    // Earn the footprint (in the redirect dir) with a real finding first.
+    await runHook({
+      stdinJson: JSON.stringify(redirectEventFor(file)),
+      env: {}, cwd, detector: fakeDetector([finding('text-overflow', 1)]),
+    });
+    assert.equal(fs.existsSync(getCachePath(cwd)), true);
+
+    // A clean follow-up edit must still persist its editCount bump — the
+    // opted-in check has to see the redirected cache, not just `<cwd>/.impeccable/`.
+    await runHook({
+      stdinJson: JSON.stringify(redirectEventFor(file)),
+      env: {}, cwd, detector: fakeDetector([]),
+    });
+    const cache = readCache(cwd);
+    assert.equal(cache.sessions['redir-sid'].files[file].editCount, 2);
+    assert.equal(fs.existsSync(path.join(cwd, '.impeccable')), false, 'project root still clean');
+  });
+
+  it('runHook end-to-end: a no-footprint clean edit writes nothing anywhere (gates hold under redirect)', async () => {
+    process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
+    const file = writeProjectFile('src/Card.tsx', 'noop');
+    const r = await runHook({
+      stdinJson: JSON.stringify(redirectEventFor(file)),
+      env: {}, cwd, detector: fakeDetector([]),
+    });
+    assert.match(r.stdout, /No deterministic design-quality issues found/);
+    assert.equal(fs.existsSync(path.join(cwd, '.impeccable')), false);
+    assert.equal(fs.existsSync(getCachePath(cwd)), false, 'redirect root also stays empty');
   });
 });
 

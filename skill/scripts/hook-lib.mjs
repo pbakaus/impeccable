@@ -218,11 +218,17 @@ export function getLocalConfigPath(cwd) {
 // artifacts (issue #422). User-authored config (config.json,
 // config.local.json, design.json) deliberately stays project-local — only
 // disposable state relocates.
+// Read from process.env (not runHook's injected env): the cache root is a
+// machine-scoped setting like CURSOR_PROJECT_DIR, not a per-invocation
+// switch. Trim guards against stray whitespace in env files; resolving both
+// sides makes the slug deterministic when callers hand in a trailing
+// separator or unnormalized cwd.
 function hookStateDir(cwd) {
-  const root = process.env.IMPECCABLE_CACHE_ROOT;
-  if (root && typeof root === 'string' && root.trim()) {
-    const slug = String(cwd).replace(/[:\\/.]/g, '-');
-    return path.join(root, slug);
+  const raw = process.env.IMPECCABLE_CACHE_ROOT;
+  const root = typeof raw === 'string' ? raw.trim() : '';
+  if (root) {
+    const slug = path.resolve(String(cwd)).replace(/[:\\/.]/g, '-');
+    return path.join(path.resolve(root), slug);
   }
   return path.join(cwd, '.impeccable');
 }
@@ -2072,8 +2078,13 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
     // touched-file list for the Stop deep pass, and an already-present
     // `.impeccable/` dir marks a project that opted in. A non-UI edit, or a
     // clean UI edit in a project with no Impeccable footprint, must be a
-    // no-op on disk (issues #344, #305).
-    if (deferredTotal > 0 || (cacheDirty && fs.existsSync(path.join(projectCwd, '.impeccable')))) {
+    // no-op on disk (issues #344, #305). An existing cache file also counts
+    // as opted in: under IMPECCABLE_CACHE_ROOT (issue #422) state lives
+    // outside the project, so the project dir alone can't carry the marker —
+    // without this, clean-edit editCount bumps would stop persisting the
+    // moment state relocates. Under stock paths the cache sits inside
+    // `.impeccable/`, so the extra check changes nothing there.
+    if (deferredTotal > 0 || (cacheDirty && (fs.existsSync(path.join(projectCwd, '.impeccable')) || fs.existsSync(getCachePath(projectCwd))))) {
       persistCache(projectCwd, cache);
     }
 
