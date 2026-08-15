@@ -24,6 +24,8 @@ import {
   truthy,
   getConfigPath,
   getLocalConfigPath,
+  getCachePath,
+  getPendingPath,
   ensureHookGitExcludes,
   readConfig,
   readCache,
@@ -65,6 +67,12 @@ import {
 } from '../skill/scripts/hook-lib.mjs';
 import { normalizeIgnoreValueEntries as normalizeIgnoreValueEntriesCli } from '../cli/lib/impeccable-config.mjs';
 import { detectHtml, detectText } from '../cli/engine/detect-antipatterns.mjs';
+
+// Hook state paths are env-sensitive: an ambient IMPECCABLE_CACHE_ROOT (a
+// developer using the redirect locally) would relocate cache/pending out of
+// the tmp projects and break stock-path assertions. Clear it up front; the
+// dedicated issue-#422 suite sets and restores it explicitly.
+delete process.env.IMPECCABLE_CACHE_ROOT;
 
 function mkTmp() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-hook-'));
@@ -411,6 +419,68 @@ describe('readCache / persistCache / bumpEditCount', () => {
     assert.equal(Object.keys(reloaded.sessions).length, 8);
     assert.ok(reloaded.sessions['sid-9'], 'newest preserved');
     assert.ok(!reloaded.sessions['sid-0'], 'oldest gc-ed');
+  });
+});
+
+describe('IMPECCABLE_CACHE_ROOT relocates hook state (issue #422)', () => {
+  let cwd;
+  let cacheRoot;
+  let savedEnv;
+  beforeEach(() => {
+    cwd = mkTmp();
+    cacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-cache-root-'));
+    savedEnv = process.env.IMPECCABLE_CACHE_ROOT;
+  });
+  afterEach(() => {
+    if (savedEnv === undefined) delete process.env.IMPECCABLE_CACHE_ROOT;
+    else process.env.IMPECCABLE_CACHE_ROOT = savedEnv;
+    fs.rmSync(cwd, { recursive: true, force: true });
+    fs.rmSync(cacheRoot, { recursive: true, force: true });
+  });
+
+  it('keeps hook state project-local when the env var is unset', () => {
+    delete process.env.IMPECCABLE_CACHE_ROOT;
+    assert.equal(getCachePath(cwd), path.join(cwd, '.impeccable', 'hook.cache.json'));
+    assert.equal(getPendingPath(cwd), path.join(cwd, '.impeccable', 'hook.pending.json'));
+  });
+
+  it('treats a blank env var as unset', () => {
+    process.env.IMPECCABLE_CACHE_ROOT = '   ';
+    assert.equal(getCachePath(cwd), path.join(cwd, '.impeccable', 'hook.cache.json'));
+  });
+
+  it('relocates cache and pending under a per-project slug dir', () => {
+    process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
+    const slug = String(cwd).replace(/[:\\/.]/g, '-');
+    assert.equal(getCachePath(cwd), path.join(cacheRoot, slug, 'hook.cache.json'));
+    assert.equal(getPendingPath(cwd), path.join(cacheRoot, slug, 'hook.pending.json'));
+  });
+
+  it('slug maps colons, slashes, backslashes, and dots to hyphens', () => {
+    process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
+    const cachePath = getCachePath('C:\\work\\my.app/sub');
+    const slugDir = path.basename(path.dirname(cachePath));
+    assert.equal(slugDir, 'C--work-my-app-sub');
+  });
+
+  it('config paths stay project-local even when the redirect is active', () => {
+    process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
+    assert.equal(getConfigPath(cwd), path.join(cwd, '.impeccable', 'config.json'));
+    assert.equal(getLocalConfigPath(cwd), path.join(cwd, '.impeccable', 'config.local.json'));
+  });
+
+  it('persistCache round-trips through the redirect dir and leaves the project root clean', () => {
+    process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
+    const cache = readCache(cwd);
+    bumpEditCount(cache, 'sid-1', '/x/a.tsx');
+    assert.equal(persistCache(cwd, cache), true);
+
+    assert.equal(fs.existsSync(path.join(cwd, '.impeccable')), false, 'project root untouched');
+    const slug = String(cwd).replace(/[:\\/.]/g, '-');
+    assert.equal(fs.existsSync(path.join(cacheRoot, slug, 'hook.cache.json')), true);
+
+    const reloaded = readCache(cwd);
+    assert.equal(reloaded.sessions['sid-1'].files['/x/a.tsx'].editCount, 1);
   });
 });
 

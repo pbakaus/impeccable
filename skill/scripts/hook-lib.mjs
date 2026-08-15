@@ -210,12 +210,29 @@ export function getLocalConfigPath(cwd) {
   return path.join(cwd, '.impeccable', 'config.local.json');
 }
 
+// Where mutable hook state (cache + pending) lives. Defaults to the
+// project-local `.impeccable/` dir. When IMPECCABLE_CACHE_ROOT is set, state
+// relocates to a per-project subdirectory of that root instead, keyed by a
+// slug of the project path (`[:\\/.]` → `-`, mirroring Claude Code's
+// `~/.claude/projects/` convention), so project roots stay free of tool
+// artifacts (issue #422). User-authored config (config.json,
+// config.local.json, design.json) deliberately stays project-local — only
+// disposable state relocates.
+function hookStateDir(cwd) {
+  const root = process.env.IMPECCABLE_CACHE_ROOT;
+  if (root && typeof root === 'string' && root.trim()) {
+    const slug = String(cwd).replace(/[:\\/.]/g, '-');
+    return path.join(root, slug);
+  }
+  return path.join(cwd, '.impeccable');
+}
+
 export function getCachePath(cwd) {
-  return path.join(cwd, '.impeccable', 'hook.cache.json');
+  return path.join(hookStateDir(cwd), 'hook.cache.json');
 }
 
 export function getPendingPath(cwd) {
-  return path.join(cwd, '.impeccable', 'hook.pending.json');
+  return path.join(hookStateDir(cwd), 'hook.pending.json');
 }
 
 export function resolveProjectCwd(event, fallback = process.cwd()) {
