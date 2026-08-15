@@ -9,6 +9,7 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -449,19 +450,40 @@ describe('IMPECCABLE_CACHE_ROOT relocates hook state (issue #422)', () => {
     assert.equal(getCachePath(cwd), path.join(cwd, '.impeccable', 'hook.cache.json'));
   });
 
+  // Mirrors hookStateDir's slug formula: readable separator-mapped path plus
+  // an 8-hex sha256 disambiguator.
+  function slugFor(p) {
+    const resolved = path.resolve(p);
+    const readable = resolved.replace(/[:\\/.]/g, '-');
+    const digest = crypto.createHash('sha256').update(resolved).digest('hex').slice(0, 8);
+    return `${readable}-${digest}`;
+  }
+
   it('relocates cache and pending under a per-project slug dir', () => {
     process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
-    const slug = String(cwd).replace(/[:\\/.]/g, '-');
-    assert.equal(getCachePath(cwd), path.join(cacheRoot, slug, 'hook.cache.json'));
-    assert.equal(getPendingPath(cwd), path.join(cacheRoot, slug, 'hook.pending.json'));
+    assert.equal(getCachePath(cwd), path.join(cacheRoot, slugFor(cwd), 'hook.cache.json'));
+    assert.equal(getPendingPath(cwd), path.join(cacheRoot, slugFor(cwd), 'hook.pending.json'));
   });
 
-  it('slug maps separators, colons, and dots to hyphens', () => {
+  it('slug maps separators, colons, and dots to hyphens, with a digest suffix', () => {
     process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
     const proj = path.join(cwd, 'my.app', 'v2');
     const slugDir = path.basename(path.dirname(getCachePath(proj)));
     assert.doesNotMatch(slugDir, /[:\\/.]/, 'no path-significant chars survive');
-    assert.ok(slugDir.endsWith('my-app-v2'), `dots and separators map to hyphens (got ${slugDir})`);
+    assert.match(slugDir, /my-app-v2-[0-9a-f]{8}$/, `readable slug + 8-hex digest (got ${slugDir})`);
+  });
+
+  it('distinct projects whose readable slugs collide get distinct state dirs', () => {
+    process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
+    const dotted = path.join(cwd, 'my.app');
+    const dashed = path.join(cwd, 'my-app');
+    // Readable part is identical for both...
+    assert.equal(
+      path.resolve(dotted).replace(/[:\\/.]/g, '-'),
+      path.resolve(dashed).replace(/[:\\/.]/g, '-'),
+    );
+    // ...but the digest keeps their hook state apart.
+    assert.notEqual(path.dirname(getCachePath(dotted)), path.dirname(getCachePath(dashed)));
   });
 
   it('trailing separators and relative segments slug to the same dir', () => {
@@ -473,8 +495,7 @@ describe('IMPECCABLE_CACHE_ROOT relocates hook state (issue #422)', () => {
 
   it('trims stray whitespace from the env value', () => {
     process.env.IMPECCABLE_CACHE_ROOT = `  ${cacheRoot}  `;
-    const slug = path.resolve(cwd).replace(/[:\\/.]/g, '-');
-    assert.equal(getCachePath(cwd), path.join(cacheRoot, slug, 'hook.cache.json'));
+    assert.equal(getCachePath(cwd), path.join(cacheRoot, slugFor(cwd), 'hook.cache.json'));
   });
 
   it('persistCache degrades gracefully when the cache root is unusable', () => {
@@ -494,24 +515,14 @@ describe('IMPECCABLE_CACHE_ROOT relocates hook state (issue #422)', () => {
     assert.equal(getLocalConfigPath(cwd), path.join(cwd, '.impeccable', 'config.local.json'));
   });
 
-  it('expands a leading ~/ against the home dir, like IMPECCABLE_HOOK_LOG', () => {
-    const savedHome = process.env.HOME;
-    const savedProfile = process.env.USERPROFILE;
-    try {
-      process.env.HOME = cacheRoot;
-      delete process.env.USERPROFILE;
-      process.env.IMPECCABLE_CACHE_ROOT = '~/impeccable-state';
-      const slug = path.resolve(cwd).replace(/[:\\/.]/g, '-');
-      assert.equal(
-        getCachePath(cwd),
-        path.join(cacheRoot, 'impeccable-state', slug, 'hook.cache.json'),
-      );
-    } finally {
-      if (savedHome === undefined) delete process.env.HOME;
-      else process.env.HOME = savedHome;
-      if (savedProfile === undefined) delete process.env.USERPROFILE;
-      else process.env.USERPROFILE = savedProfile;
-    }
+  it('expands a leading ~/ against os.homedir()', () => {
+    // Property check without duplicating the expansion: the tilde form must
+    // resolve identically to the explicit homedir-joined form.
+    process.env.IMPECCABLE_CACHE_ROOT = path.join(os.homedir(), 'impeccable-state');
+    const explicit = getCachePath(cwd);
+    process.env.IMPECCABLE_CACHE_ROOT = '~/impeccable-state';
+    assert.equal(getCachePath(cwd), explicit);
+    assert.ok(explicit.startsWith(os.homedir()), 'anchored under the home dir');
   });
 
   it('persistCache round-trips through the redirect dir and leaves the project root clean', () => {
@@ -521,8 +532,7 @@ describe('IMPECCABLE_CACHE_ROOT relocates hook state (issue #422)', () => {
     assert.equal(persistCache(cwd, cache), true);
 
     assert.equal(fs.existsSync(path.join(cwd, '.impeccable')), false, 'project root untouched');
-    const slug = String(cwd).replace(/[:\\/.]/g, '-');
-    assert.equal(fs.existsSync(path.join(cacheRoot, slug, 'hook.cache.json')), true);
+    assert.equal(fs.existsSync(path.join(cacheRoot, slugFor(cwd), 'hook.cache.json')), true);
 
     const reloaded = readCache(cwd);
     assert.equal(reloaded.sessions['sid-1'].files['/x/a.tsx'].editCount, 1);

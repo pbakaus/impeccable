@@ -43,6 +43,7 @@
  *   `cli/engine/detect-antipatterns.mjs` (running from source).
  */
 
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -220,20 +221,29 @@ export function getLocalConfigPath(cwd) {
 // disposable state relocates.
 // Read from process.env (not runHook's injected env): the cache root is a
 // machine-scoped setting like CURSOR_PROJECT_DIR, not a per-invocation
-// switch. Trim guards against stray whitespace in env files; `~/` expands to
-// the home dir (settings/env files hand it to Node unexpanded — same
-// treatment IMPECCABLE_HOOK_LOG gets in writeAuditLog); resolving both sides
-// makes the slug deterministic when callers hand in a trailing separator or
-// unnormalized cwd.
+// switch. Trim guards against stray whitespace in env files; `~/` (or the
+// Windows `~\` spelling) expands via os.homedir(), and when no home dir can
+// be determined the expansion is rejected — state falls back to the
+// project-local default rather than anchoring under the hook process's cwd.
+// Resolving both sides makes the slug deterministic when callers hand in a
+// trailing separator or unnormalized cwd. The slug is the readable
+// separator-mapped path PLUS an 8-hex sha256 of the resolved path: the
+// readable part alone is lossy (`/x/my.app` and `/x/my-app` would both map
+// to `-x-my-app` and share state), so the digest disambiguates while keeping
+// the dir name human-scannable.
 function hookStateDir(cwd) {
   const raw = process.env.IMPECCABLE_CACHE_ROOT;
   let root = typeof raw === 'string' ? raw.trim() : '';
   if (root.startsWith('~/') || root.startsWith('~\\') || root === '~') {
-    root = path.join(process.env.HOME || process.env.USERPROFILE || '.', root.slice(2));
+    let home = '';
+    try { home = os.homedir() || ''; } catch { home = ''; }
+    root = home ? path.join(home, root.slice(2)) : '';
   }
   if (root) {
-    const slug = path.resolve(String(cwd)).replace(/[:\\/.]/g, '-');
-    return path.join(path.resolve(root), slug);
+    const resolved = path.resolve(String(cwd));
+    const slug = resolved.replace(/[:\\/.]/g, '-');
+    const digest = crypto.createHash('sha256').update(resolved).digest('hex').slice(0, 8);
+    return path.join(path.resolve(root), `${slug}-${digest}`);
   }
   return path.join(cwd, '.impeccable');
 }
