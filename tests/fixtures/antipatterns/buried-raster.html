@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Buried raster fixture</title>
+<style>
+  /* FLAG: a produced texture applied under a near-opaque wash; the wash ships, the texture does not */
+  .paper-wash { width: 800px; height: 400px; background-image: linear-gradient(rgba(240,237,226,0.96), rgba(240,237,226,0.96)), url(assets/manual-paper.png); }
+  /* FLAG: same, layered order reversed in a comma list with the wash first at 0.95 */
+  .paper-wash-b { width: 800px; height: 400px; background: linear-gradient(0deg, rgba(255,255,255,.95), rgba(255,255,255,.95)), url("assets/bone-paper-texture.png") center/cover; }
+  /* FLAG: raster at near-zero opacity via the opacity property */
+  .grain { width: 800px; height: 400px; background-image: url(assets/carbon-paper-texture.png); opacity: 0.04; }
+  /* FLAG: <img> at near-zero opacity */
+  .ghost-img { opacity: 0.05; }
+
+  /* PASS: a legible tint over a photo (hero darkening) */
+  .hero-tint { width: 800px; height: 400px; background-image: linear-gradient(rgba(0,0,0,0.45), rgba(0,0,0,0.45)), url(assets/hero.jpg); }
+  /* PASS: texture at readable opacity */
+  .grain-visible { width: 800px; height: 400px; background-image: url(assets/paper.png); opacity: 0.6; }
+  /* PASS: gradient-only background, no raster to bury */
+  .flat { width: 800px; height: 400px; background-image: linear-gradient(rgba(240,237,226,0.96), rgba(240,237,226,0.96)); }
+  /* PASS: multiply blend keeps the material visible even under a strong color */
+  .blend { width: 800px; height: 400px; background-image: linear-gradient(#f0ede2, #f0ede2), url(assets/paper.png); background-blend-mode: multiply; }
+  /* PASS: opacity on a container that has no raster */
+  .faint-text { opacity: 0.05; }
+</style>
+</head>
+<body>
+  <section class="paper-wash">Paper wash</section>
+  <section class="paper-wash-b">Paper wash b</section>
+  <section class="grain">Grain</section>
+  <img class="ghost-img" src="assets/vellum.png" alt="Ghost img" width="400" height="300">
+  <section class="hero-tint">Hero tint</section>
+  <section class="grain-visible">Grain visible</section>
+  <section class="flat">Flat</section>
+  <section class="blend">Blend</section>
+  <p class="faint-text">Faint text</p>
+</body>
+</html>

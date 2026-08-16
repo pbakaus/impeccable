@@ -1530,3 +1530,32 @@ describe('detectHtml — dark themes written in modern color syntax', () => {
     );
   });
 });
+
+describe('detectHtml — organic-clip-path', () => {
+  const SHOULD_FLAG = ['polygon() with 18 vertices', 'polygon() with 21 vertices', 'path() with 6 curve segments'];
+  it('flags organic polygon/path clips and passes geometric clips', async () => {
+    const f = await detectHtml(path.join(FIXTURES, 'organic-clip-path.html'));
+    const hits = f.filter(r => r.antipattern === 'organic-clip-path');
+    // arch (18), blob (21), silhouette path, inline blob (21)
+    assert.equal(hits.length, 4, hits.map(h => h.snippet).join('\n'));
+    for (const text of SHOULD_FLAG) {
+      assert.ok(hits.some(h => (h.snippet || '').includes(text)), `expected a finding containing "${text}"`);
+    }
+    // geometric clips never mention themselves
+    for (const h of hits) assert.doesNotMatch(h.snippet, /with [5-9] vertices/);
+  });
+});
+
+describe('detectHtml — buried-raster', () => {
+  it('flags rasters under near-opaque washes and at near-zero opacity, passes tints, blends, and visible textures', async () => {
+    const f = await detectHtml(path.join(FIXTURES, 'buried-raster.html'));
+    const hits = f.filter(r => r.antipattern === 'buried-raster');
+    const snippets = hits.map(h => h.snippet || '');
+    assert.equal(snippets.filter(s => /near-opaque gradient wash/.test(s)).length, 2, snippets.join('\n'));
+    assert.ok(snippets.some(s => /raster background at opacity 0.04 "Grain"/.test(s)), snippets.join('\n'));
+    assert.ok(snippets.some(s => /<img> at opacity 0.05 "Ghost img"/.test(s)), snippets.join('\n'));
+    assert.equal(hits.length, 4, snippets.join('\n'));
+    // the passing shapes never appear
+    assert.ok(!snippets.some(s => /hero\.jpg|opacity 0\.6|multiply|Faint text/.test(s)));
+  });
+});

@@ -15,8 +15,21 @@
  * --ref anchors generation on input image(s) via the edits endpoint: pass a
  * captured screenshot of a representative existing page when comping a new
  * surface for an established world, so the identity comes from the real UI.
+ *
+ *   node generate-image.mjs --plate <region-id> [--spec .impeccable/build/spec.json] [--quality high]
+ *
+ * --plate produces a shipping raster for one raster region of the measured
+ * comp spec (comp-spec.mjs): it crops the region from the approved comp,
+ * sends the crop as the reference with the spec's plate prompt (plus any
+ * --prompt you add), picks the closest supported output size to the region's
+ * aspect, writes the result to the region's `plate` path, embeds the prompt,
+ * and scores the plate against the comp crop with comp-diff so a plate that
+ * does not read as the region is reported (and, with --min, refused) here,
+ * before it lands on the page. In IMPECCABLE_IMAGE_GEN_FAKE mode the plate is
+ * the crop itself at 2x, so offline pipelines can walk the plate gate.
  */
 import fs from 'node:fs';
+import path from 'node:path';
 import zlib from 'node:zlib';
 
 function arg(name, fallback = null) {
@@ -186,6 +199,63 @@ function parseSize(sizeStr) {
   return [Number(m[1]), Number(m[2])];
 }
 
+// ---------------------------------------------------------------------------
+// Plate mode: one raster region of the measured spec -> a shipping plate.
+// ---------------------------------------------------------------------------
+const plateId = arg('plate');
+let plateCtx = null;
+if (plateId) {
+  const { loadSpec, platePrompt, SPEC_PATH } = await import('./comp-spec.mjs');
+  const { decodePng, encodePng } = await import('./lib/png.mjs');
+  const { crop, resize } = await import('./lib/raster.mjs');
+  const specPath = arg('spec', SPEC_PATH);
+  const spec = loadSpec(specPath);
+  if (!spec) { console.error(`generate-image: no spec at ${specPath}; run comp-spec.mjs first`); process.exit(1); }
+  const region = spec.regions.find((r) => r.id === plateId);
+  if (!region) { console.error(`generate-image: no region ${plateId} in ${specPath}; ids: ${spec.regions.map((r) => r.id).join(', ')}`); process.exit(1); }
+  if (region.medium !== 'raster') { console.error(`generate-image: region ${plateId} is ${region.medium}, not a plate; set its kind to plate|image|texture in the regions file`); process.exit(1); }
+  let comp;
+  try { comp = decodePng(fs.readFileSync(spec.comp)); } catch (e) { console.error(`generate-image: cannot read comp ${spec.comp}: ${e.message}`); process.exit(1); }
+  const ref = crop(comp, region.px.x, region.px.y, region.px.w, region.px.h);
+  const refPath = path.join(path.dirname(specPath), 'crops', `${region.id}.png`);
+  fs.mkdirSync(path.dirname(refPath), { recursive: true });
+  fs.writeFileSync(refPath, encodePng(ref, { text: { 'impeccable:crop-of': `${spec.comp}#${region.id}` } }));
+  const out = arg('out', region.plate);
+  fs.mkdirSync(path.dirname(out), { recursive: true });
+  // closest supported size to the region's aspect; the page crops the rest with object-fit
+  const aspect = region.px.w / region.px.h;
+  const size = arg('size') || (aspect > 1.2 ? '1536x1024' : aspect < 0.83 ? '1024x1536' : '1024x1024');
+  const extra = arg('prompt') || (arg('prompt-file') ? fs.readFileSync(arg('prompt-file'), 'utf8') : '');
+  const prompt = [platePrompt(spec, region), extra].filter(Boolean).join(' ');
+  plateCtx = { spec, specPath, region, ref, refPath, out, size, prompt, comp, encodePng, resize };
+  if (process.env.IMPECCABLE_IMAGE_GEN_FAKE) {
+    const up = resize(ref, ref.width * 2, ref.height * 2);
+    fs.writeFileSync(out, encodePng(up, { text: { 'impeccable:prompt': prompt } }));
+    fs.writeFileSync(`${out}.json`, JSON.stringify({ prompt, createdAt: new Date().toISOString(), tool: 'generate-image.mjs', model: 'fake', plate: region.id, refs: [refPath] }, null, 2));
+    console.log(`PLATE: ${out} (${up.width}x${up.height}, fake 2x crop of region ${region.id}, $0.00, no API call)`);
+    process.exit(0);
+  }
+  // fall through to the real call below with the crop as the single --ref
+}
+
+async function scorePlate(ctx, outFile) {
+  try {
+    const { compare } = await import('./comp-diff.mjs');
+    const { decodePng } = await import('./lib/png.mjs');
+    const plate = decodePng(fs.readFileSync(outFile));
+    // a plate ships under object-fit: cover, so score it the way it will show
+    const res = compare({ comp: ctx.ref, build: plate, align: 'cover', kind: ctx.region.kind });
+    const s = res.whole;
+    const min = arg('min') ? parseFloat(arg('min')) : null;
+    const line = `PLATE-SCORE ${ctx.region.id} ${(s.overall * 100).toFixed(0)}% against the comp region (structure ${(s.structure * 100).toFixed(0)}%, color ${(s.color * 100).toFixed(0)}%, detail ${(s.detail * 100).toFixed(0)}%)`;
+    console.log(line);
+    if (s.overall < 0.5) console.log(`PLATE-WARN the plate does not read as region ${ctx.region.id}; open ${outFile} beside ${ctx.refPath} and regenerate with a stricter prompt (or pass a different --ref) before building on it.`);
+    if (min != null && s.overall < min) { console.log(`PLATE-REJECTED below --min ${(min * 100).toFixed(0)}%`); process.exit(3); }
+  } catch (e) {
+    console.log(`PLATE-SCORE unavailable: ${e.message}`);
+  }
+}
+
 if (process.env.IMPECCABLE_IMAGE_GEN_FAKE) {
   const fakePromptFile = arg('prompt-file');
   const fakePrompt = fakePromptFile ? fs.readFileSync(fakePromptFile, 'utf8') : arg('prompt');
@@ -209,21 +279,21 @@ if (!key) {
   process.exit(1);
 }
 const promptFile = arg('prompt-file');
-const prompt = promptFile ? fs.readFileSync(promptFile, 'utf8') : arg('prompt');
-const out = arg('out');
+const prompt = plateCtx ? plateCtx.prompt : (promptFile ? fs.readFileSync(promptFile, 'utf8') : arg('prompt'));
+const out = plateCtx ? plateCtx.out : arg('out');
 if (!prompt || !out) {
   console.error('generate-image: --prompt (or --prompt-file) and --out are required.');
   process.exit(1);
 }
-const size = arg('size', '1536x1024');
-const quality = arg('quality', 'medium');
+const size = plateCtx ? plateCtx.size : arg('size', '1536x1024');
+const quality = arg('quality', plateCtx ? 'high' : 'medium');
 // Reference images (--ref, repeatable): route through the edits endpoint,
 // which accepts input images. This is how a comp for an established world
 // inherits the real UI's identity from a captured screenshot instead of a
 // prose paraphrase of it; the prompt then describes the NEW surface and the
 // reference carries palette, type, and component character.
 const refs = (() => {
-  const found = [];
+  const found = plateCtx ? [plateCtx.refPath] : [];
   for (let i = 0; i < process.argv.length; i += 1) {
     if (process.argv[i] === '--ref' && process.argv[i + 1] && !process.argv[i + 1].startsWith('--')) found.push(process.argv[i + 1]);
   }
@@ -275,3 +345,4 @@ try {
   fs.writeFileSync(`${out}.json`, JSON.stringify({ prompt, createdAt: new Date().toISOString(), tool: 'generate-image.mjs', model: 'gpt-image-2', ...(refs.length ? { refs } : {}) }, null, 2));
 } catch { /* embedding is best-effort */ }
 console.log(`IMAGE: ${out} (${size}, ${quality}, gpt-image-2, billed to your OpenAI key); prompt embedded + sidecar at ${out}.json`);
+if (plateCtx) await scorePlate(plateCtx, out);

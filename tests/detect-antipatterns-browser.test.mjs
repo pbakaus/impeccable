@@ -1114,3 +1114,20 @@ describe('detectUrl — browser-only fixtures', () => {
     });
   });
 });
+
+describe('detectUrl — comp-fidelity rules (browser adapter parity)', () => {
+  it('organic-clip-path fires in the browser on the same fixture', async () => {
+    const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/organic-clip-path.html`, { visualContrast: false });
+    const hits = f.filter(r => r.antipattern === 'organic-clip-path');
+    assert.equal(hits.length, 4, hits.map(h => h.snippet).join('\n'));
+  });
+
+  it('buried-raster fires in the browser for washes and near-zero opacity', async () => {
+    const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/buried-raster.html`, { visualContrast: false });
+    const snippets = f.filter(r => r.antipattern === 'buried-raster').map(h => h.snippet || '');
+    assert.equal(snippets.filter(s => /near-opaque gradient wash/.test(s)).length, 2, snippets.join('\n'));
+    assert.ok(snippets.some(s => /raster background at opacity 0.04/.test(s)), snippets.join('\n'));
+    assert.ok(snippets.some(s => /<img> at opacity 0.05/.test(s)), snippets.join('\n'));
+    assert.ok(!snippets.some(s => /hero\.jpg|opacity 0\.6|Faint text/.test(s)));
+  });
+});
