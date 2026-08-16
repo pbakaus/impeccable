@@ -127,7 +127,7 @@ export function getProviderOptions(modelId) {
  * its own floor:
  *   IMPECCABLE_SKILL_BEHAVIOR_MODELS=gpt-5.6-luna,deepseek-v4-flash
  */
-export const DEFAULT_MODELS = ['claude-sonnet-5', 'gpt-5.6-terra', 'gemini-3.6-flash'];
+export const DEFAULT_MODELS = ['claude-sonnet-5', 'gpt-5.6-terra', 'gemini-3.7-flash'];
 
 export function resolveModelList() {
   const override = process.env.IMPECCABLE_SKILL_BEHAVIOR_MODELS;

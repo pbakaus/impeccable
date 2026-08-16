@@ -90,6 +90,12 @@ Against the current default lineup, two cells are the known floor:
 `redesign replaces DESIGN` is flaky on every model, and `critique closes` is
 flaky on gemini-3.6-flash. A regression is a failure beyond those two.
 
+The google slot in `DEFAULT_MODELS` moved to `gemini-3.7-flash` on 2026-08-15.
+Every gemini cell in the tables below was measured on 3.6-flash (or 3.5-flash
+where marked), and per the cross-version rule further down, those results are
+unmeasured on 3.7, not inherited. Re-run the sweep on the next Setup or routing
+change and update the tables to the new column.
+
 **Read any failure against the clock before calling it behavior.** The suite ran
 at a 300s per-test timeout until 2026-08-13, and for the workflow-contract
 scenarios that cap was below the runtime of a correct run. `initialized natural
