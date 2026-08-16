@@ -13,7 +13,7 @@ Three kinds of drift travel under "out of date". Keep them apart:
 ## Step 1: Run the pass
 
 ```
-node .claude/skills/impeccable/scripts/doctor.mjs --json
+node "<skill-base-dir>/scripts/doctor.mjs" --json
 ```
 
 Add `--target <path>` when the user named a workspace, file, or route in a monorepo. Without it the report describes the repo root, and in a monorepo that is often the wrong project.
@@ -26,7 +26,7 @@ An empty `findings` array is the good outcome. Say so in one line and stop.
 
 The severity says what should happen, not how bad it is.
 
-- **`auto`** carries no decision. Run `node .claude/skills/impeccable/scripts/doctor.mjs --fix` once to apply these, then report what it moved in one line. Do not ask permission first, and do not ask about them afterward.
+- **`auto`** carries no decision. Run `node "<skill-base-dir>/scripts/doctor.mjs" --fix` once to apply these, then report what it moved in one line. Do not ask permission first, and do not ask about them afterward.
 - **`mention`** needs the user to know but not to decide anything now. State each one in a sentence with its offered fix.
 - **`route`** needs a specific command. Name the command and the gap it would close. Run it only if the user asks in this turn; `init` and `document` are conversations, not repairs you perform unattended.
 
