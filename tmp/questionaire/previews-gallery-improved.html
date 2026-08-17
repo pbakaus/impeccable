@@ -1123,7 +1123,7 @@ Array.prototype.forEach.call(document.querySelectorAll('.scaler'), function (sca
 </script>
 <script data-gallery-replica-experiment="previews-38-41-proof-spacing">
 (function () {
-  ['38', '39', '40', '41'].forEach(function (cellNum) {
+  ['38', '39', '40', '41', '51', '52', '53', '54'].forEach(function (cellNum) {
     var frame = document.querySelector('iframe[data-cell-num="' + cellNum + '"]');
     if (!frame) return;
 
@@ -1271,7 +1271,7 @@ Array.prototype.forEach.call(document.querySelectorAll('.scaler'), function (sca
     '/* Depth additions. Flat is the base; the other answers lift only solid, meaningful objects. */',
     'html[data-derived-section="depth"][data-derived-option="flat"] { --derived-shadow-chrome: none; --derived-shadow-card: none; --derived-shadow-control: none; --derived-shadow-surface: none; }',
     'html[data-derived-section="depth"][data-derived-option="soft-lift"] { --derived-shadow-chrome: 0 1px 2px rgb(0 0 0 / 0.1); --derived-shadow-card: 0 1px 1px rgb(0 0 0 / 0.15), 0 3px 7px rgb(0 0 0 / 0.14); --derived-shadow-control: 0 1px 2px rgb(0 0 0 / 0.24); --derived-shadow-surface: 0 2px 5px rgb(0 0 0 / 0.14); }',
-    'html[data-derived-section="depth"][data-derived-option="floating"] { --derived-shadow-chrome: 0 2px 6px rgb(0 0 0 / 0.16); --derived-shadow-card: 0 2px 3px rgb(0 0 0 / 0.2), 0 9px 18px rgb(0 0 0 / 0.24); --derived-shadow-control: 0 3px 6px rgb(0 0 0 / 0.32); --derived-shadow-surface: 0 6px 14px rgb(0 0 0 / 0.22); }',
+    'html[data-derived-section="depth"][data-derived-option="floating"] { --derived-shadow-chrome: 0 1px 3px rgb(0 0 0 / 0.1); --derived-shadow-card: 0 4px 8px rgb(0 0 0 / 0.14); --derived-shadow-control: 0 2px 4px rgb(0 0 0 / 0.12); --derived-shadow-surface: 0 4px 8px rgb(0 0 0 / 0.14); }',
     'html[data-derived-section="depth"] :is(.pv-nav, .pv-phone-top) { box-shadow: var(--derived-shadow-chrome) !important; }',
     'html[data-derived-section="depth"] :is(.pv-pill, .pv-actions i, .po-item--on, .po-field, .po-toggle) { box-shadow: var(--derived-shadow-control) !important; }',
     'html[data-derived-section="depth"] :is(.pv-image, .pv-mini-card, .pd-note) { box-shadow: var(--derived-shadow-card) !important; }',
