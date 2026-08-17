@@ -1068,6 +1068,13 @@ Array.prototype.forEach.call(document.querySelectorAll('.scaler'), function (sca
         ':where(#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="simple-grid"]), #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="simple-grid"]:checked)) [data-surface="experience"]:where(.picker-preview-layout) .ps-phone-body::after { content: none !important; display: none !important; }',
         ':where(#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]), #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)) [data-surface="experience"]:where(.picker-preview-layout) .ps-phone-body::after { content: none !important; display: none !important; }',
         ':where(#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="balanced"]), #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="balanced"]:checked)) [data-surface="experience"]:where(.picker-preview-layout) .ps-phone-body::after { content: none !important; display: none !important; }',
+        '.ps-index-rail { display: none !important; }',
+        'html[data-cell-option="balanced"] .ps-desktop .ps-scatter.ps-scatter--trail { display: none !important; }',
+        'html[data-cell-option="freeform"] .ps-phone-project-rail { display: none !important; }',
+        'html[data-cell-option="freeform"] .ps-phone .ps-index-cap { gap: 8px !important; }',
+        'html[data-cell-option="freeform"] .ps-support.ps-phone-support { margin-top: 10px !important; }',
+        'html[data-cell-option="freeform"] .ps-desktop .ps-index-cap { gap: 6px !important; }',
+        'html[data-cell-option="freeform"] .ps-desktop .ps-index-lines { gap: 6px !important; }',
         '[data-surface="experience"]:where(.picker-preview-layout) .ps-index-lines { background-color: transparent !important; }',
         '[data-surface="experience"]:where(.picker-preview-layout) .ps-index-lines b { background-color: var(--pvs-bars) !important; }',
       ].join('\n');
@@ -1086,16 +1093,28 @@ Array.prototype.forEach.call(document.querySelectorAll('.scaler'), function (sca
 
   function apply() {
     var doc = frame.contentDocument;
-    if (!doc || !doc.head || doc.querySelector('[data-experiment="preview-34-hide-proof"]')) return;
-    var style = doc.createElement('style');
-    style.setAttribute('data-experiment', 'preview-34-hide-proof');
-    style.textContent = [
+    if (!doc || !doc.head) return;
+    var style = doc.querySelector('[data-experiment="preview-34-hide-proof"]');
+    if (!style) {
+      style = doc.createElement('style');
+      style.setAttribute('data-experiment', 'preview-34-hide-proof');
+      style.textContent = [
+      '*, *::before, *::after { box-shadow: none !important; text-shadow: none !important; }',
       '.ps-proof { display: none !important; }',
       '.ps-phone .ps-gallery { margin-top: 15px !important; }',
+      '.ps-phone .ps-gallery-item:last-child { margin-top: 14px !important; }',
       '.ps-phone .ps-gallery-item:nth-child(2) > i { margin-top: 0 !important; box-shadow: none !important; }',
-      'html > body > main > form > section > div > div > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(2) > div:nth-of-type(1) > i { min-height: 100px !important; }',
-    ].join('\n');
-    doc.head.appendChild(style);
+      '.picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item:nth-child(2)::before, .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item:nth-child(2)::after { content: none !important; display: none !important; }',
+      ].join('\n');
+      doc.head.appendChild(style);
+    }
+
+    var editorial = doc.querySelector('.ps-desktop .ps-editorial');
+    if (editorial && !doc.querySelector('[data-preview-34-editorial-spacer]')) {
+      var spacer = doc.createElement('div');
+      spacer.setAttribute('data-preview-34-editorial-spacer', '');
+      editorial.parentNode.insertBefore(spacer, editorial);
+    }
   }
 
   frame.addEventListener('load', apply);
