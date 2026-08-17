@@ -80,15 +80,16 @@ const NODE_MAJOR_FLOOR = 22;
 // a machine that had a supported one (volta-cli/volta#1791). Newlines break the
 // same way, so this payload also has to stay on one line.
 const NODE_PROBE = `node -e "process.exit(Math.min(parseInt(process.versions.node,10),${NODE_MAJOR_FLOOR})===${NODE_MAJOR_FLOOR}?0:1)" 2>/dev/null`;
-const guardedNode = (hookPath, notice = '') => {
+const guardedNode = (hookPath, notice = '', harness = '') => {
   const probe = notice
     ? `! { ${NODE_PROBE} || { ${notice}; exit 0; }; }`
     : `! ${NODE_PROBE}`;
-  return `[ ! -f "${hookPath}" ] || ${probe} || node "${hookPath}"`;
+  const harnessEnv = harness ? `IMPECCABLE_HOOK_HARNESS=${harness} ` : '';
+  return `[ ! -f "${hookPath}" ] || ${probe} || ${harnessEnv}node "${hookPath}"`;
 };
 
-function buildClaudeCompatibleHooks(matcher, hookPath, notice = '') {
-  const command = guardedNode(hookPath, notice);
+function buildClaudeCompatibleHooks(matcher, hookPath, notice = '', harness = '') {
+  const command = guardedNode(hookPath, notice, harness);
   return {
     PostToolUse: [
       {
@@ -171,6 +172,7 @@ export function buildCodexPluginHooksManifest() {
       'Edit|Write|apply_patch',
       CODEX_PLUGIN_HOOK,
       SYSTEM_MESSAGE_NOTICE,
+      'codex',
     ),
   };
 }
@@ -185,6 +187,7 @@ export function buildCodexHooksManifest(skillDir = '.codex') {
       'Edit|Write|apply_patch',
       hookPath,
       SYSTEM_MESSAGE_NOTICE,
+      'codex',
     ),
   };
 }

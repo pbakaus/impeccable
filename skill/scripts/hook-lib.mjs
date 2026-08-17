@@ -1251,7 +1251,7 @@ export function resolveHarness(env = {}, event = null) {
   const explicit = env?.IMPECCABLE_HOOK_HARNESS;
   if (explicit === 'cursor') return 'cursor';
   if (explicit === 'github') return 'github';
-  if (explicit === 'claude' || explicit === 'codex') return 'claude';
+  if (explicit === 'claude' || explicit === 'codex') return explicit;
   // GitHub Copilot's postToolUse event uses camelCase `toolName`/`toolArgs` and
   // has no `tool_name`/`tool_input`. That shape is the discriminator.
   if (event && typeof event === 'object'
@@ -2163,8 +2163,8 @@ export const STOP_MAX_FILES = 20;
  *   { exitCode, stdout, audit, emission? }
  *
  * Never throws; exits silent (and fast) when the session touched no UI
- * files. Output uses the Stop hookSpecificOutput channel: additionalContext
- * is delivered to the model and the conversation continues so it can act.
+ * files. Output uses the active harness's Stop continuation channel so the
+ * findings are delivered to the model and the conversation continues.
  */
 export async function runStopHook({ stdinJson, env = {}, cwd = process.cwd(), now = Date.now, detector } = {}) {
   const audit = { ts: new Date(now()).toISOString(), event: 'Stop' };
@@ -2336,6 +2336,11 @@ export function payload(text, eventName = 'PostToolUse', harness = 'claude') {
   // `additionalContext` string (alongside an optional `modifiedResult`).
   if (harness === 'github') {
     return JSON.stringify({ additionalContext: text });
+  }
+  // Codex shares Claude Code's PostToolUse additional-context shape, but its
+  // Stop contract requires a top-level blocking decision and reason.
+  if (harness === 'codex' && eventName === 'Stop') {
+    return JSON.stringify({ decision: 'block', reason: text });
   }
   return JSON.stringify({
     hookSpecificOutput: { hookEventName: eventName, additionalContext: text },

@@ -43,7 +43,7 @@ function expectCommand(command, expectedPath) {
   // probe. GitHub's portable `$(git rev-parse)` form is guarded too, so it
   // lands in the same branch.
   if (command.startsWith('[ ! -f "')) {
-    assert.match(command, /\|\| node "/);
+    assert.match(command, /\|\| (?:IMPECCABLE_HOOK_HARNESS=codex )?node "/);
     assert.ok(command.includes(NODE_PROBE), `missing runtime probe in ${command}`);
   } else {
     assert.match(command, /^node "|^bash -c|\$\(git rev-parse/);
@@ -103,6 +103,7 @@ describe('hook manifest builders', () => {
     assert.equal(handler.timeout, 5);
     assert.equal(handler.statusMessage, 'Checking UI changes');
     expectCommand(handler.command, '.codex/skills/impeccable/scripts/hook.mjs');
+    assert.ok(handler.command.includes('IMPECCABLE_HOOK_HARNESS=codex'));
     assert.ok(!handler.command.includes('git rev-parse --show-toplevel'));
     assert.ok(!handler.command.includes('${PLUGIN_ROOT}'));
     assert.equal(manifest.hooks.SessionStart, undefined);
@@ -112,6 +113,7 @@ describe('hook manifest builders', () => {
     const stop = manifest.hooks.Stop[0].hooks[0];
     assert.equal(stop.timeout, 30);
     expectCommand(stop.command, '.codex/skills/impeccable/scripts/hook.mjs');
+    assert.ok(stop.command.includes('IMPECCABLE_HOOK_HARNESS=codex'));
   });
 
   it('derives the Codex hook payload path from the install dir', () => {
@@ -222,6 +224,19 @@ describe('hook manifest builders', () => {
     for (const manifest of probeOnly) {
       for (const command of manifestCommands(manifest)) {
         assert.ok(!command.includes('systemMessage'), `unexpected notice in ${command}`);
+      }
+    }
+  });
+
+  it('marks only Codex hook commands with the Codex harness', () => {
+    for (const manifest of [buildCodexHooksManifest(), buildCodexPluginHooksManifest()]) {
+      for (const command of manifestCommands(manifest)) {
+        assert.ok(command.includes('IMPECCABLE_HOOK_HARNESS=codex'));
+      }
+    }
+    for (const manifest of [buildClaudeSettingsManifest(), buildClaudePluginHooksManifest()]) {
+      for (const command of manifestCommands(manifest)) {
+        assert.ok(!command.includes('IMPECCABLE_HOOK_HARNESS=codex'));
       }
     }
   });
