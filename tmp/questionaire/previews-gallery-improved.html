@@ -1151,5 +1151,138 @@ Array.prototype.forEach.call(document.querySelectorAll('.scaler'), function (sca
   });
 })();
 </script>
+<script data-gallery-replica-experiment="derived-base-property-previews">
+(function () {
+  var targetNumbers = new Set([
+    42, 43, 44, 45, 46, 47, 48, 49, 50,
+    55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65,
+    66, 67, 68, 69, 70, 71, 72, 73, 74, 75,
+  ]);
+  var baseCellId = {
+    persuade: 'strategy--persuade--drenched',
+    operate: 'strategy--operate--restrained',
+    read: 'strategy--read--restrained',
+    experience: 'strategy--experience--restrained',
+  };
+  var cellsById = {};
+  PAYLOAD.cells.forEach(function (cell) { cellsById[cell.id] = cell; });
+
+  var derivedCss = [
+    '.picker-preview {',
+    '  --derived-rule: color-mix(in oklab, var(--pv-strong) 24%, var(--pv-neutral));',
+    '  --derived-band: color-mix(in oklab, var(--pv-strong) 7%, var(--pv-neutral));',
+    '  --derived-band-alt: color-mix(in oklab, var(--pv-strong) 13%, var(--pv-neutral));',
+    '  --derived-panel: color-mix(in oklab, var(--pv-strong) 5%, var(--pv-neutral));',
+    '  --derived-panel-edge: color-mix(in oklab, var(--pv-strong) 20%, var(--pv-neutral));',
+    '}',
+    '.picker-strategy-stage { height: 492.21875px !important; }',
+
+    '/* Preserve the locked base-specific treatments. */',
+    'html[data-derived-base="persuade"] .picker-strategy-stage > .picker-preview[data-surface="persuade"] {',
+    '  --pv-secondary: var(--pkc-secondary) !important;',
+    '  --pv-tertiary: var(--pkc-tertiary) !important;',
+    '  --pv-bone: color-mix(in oklab, var(--pkc-p-ink) 55%, var(--pkc-primary)) !important;',
+    '  --pv-strong: var(--pkc-p-ink) !important;',
+    '  --pv-secondary-wash: color-mix(in oklab, var(--pkc-p-ink) 16%, var(--pkc-primary)) !important;',
+    '}',
+    'html[data-derived-base="persuade"] .picker-preview[data-surface="persuade"] .pv-desktop .pv-image {',
+    '  background: linear-gradient(135deg, color-mix(in oklab, var(--pkc-p-ink) 16%, var(--pkc-primary)), color-mix(in oklab, var(--pkc-secondary) 34%, var(--pkc-primary))) !important;',
+    '  border-color: color-mix(in oklab, var(--pkc-secondary) 52%, var(--pkc-primary)) !important;',
+    '}',
+    'html[data-derived-base="persuade"] .picker-preview[data-surface="persuade"] .pv-desktop .pv-image::after { background: var(--pkc-tertiary) !important; }',
+    'html[data-derived-base="persuade"] .picker-preview[data-surface="persuade"] .pv-desktop .pv-actions i:last-child {',
+    '  border-color: color-mix(in oklab, var(--pkc-secondary) 68%, var(--pkc-p-ink)) !important;',
+    '  background: color-mix(in oklab, var(--pkc-secondary) 18%, var(--pkc-primary)) !important;',
+    '}',
+    'html[data-derived-base="persuade"] .picker-preview[data-surface="persuade"] .pv-desktop .pv-nav-bars i:nth-child(2) {',
+    '  background: color-mix(in oklab, var(--pkc-secondary) 72%, var(--pkc-p-ink)) !important;',
+    '}',
+    'html[data-derived-base="read"] .picker-preview--docs { --pd-quote: var(--pd-ink) !important; }',
+    'html[data-derived-base="read"] .picker-preview--docs :is(.pd-note-dot, .pd-note-lines i) { background: var(--pd-ink) !important; }',
+    'html[data-derived-base="experience"] .picker-preview--gallery .pv-desktop .pg-cap { padding-top: 5.2cqh !important; gap: 2.6cqh !important; }',
+    'html[data-derived-base="experience"] .picker-preview--gallery .pv-desktop .pg-cap::before {',
+    '  content: "";',
+    '  display: block;',
+    '  width: calc(11.5 * var(--pv-x));',
+    '  aspect-ratio: 1;',
+    '  border: 1px solid color-mix(in oklab, var(--pv-secondary) 55%, var(--pv-neutral));',
+    '  border-radius: 50%;',
+    '  background: linear-gradient(135deg, color-mix(in oklab, var(--pv-secondary) 24%, var(--pv-neutral)), color-mix(in oklab, var(--pv-secondary) 46%, var(--pv-neutral)));',
+    '}',
+
+    '/* Boundary additions: the base geometry stays fixed; only separation changes. */',
+    'html[data-derived-section="boundaries"][data-derived-option="open-space"] :is(.picker-preview--ops .pv-nav, .picker-preview--docs .pv-nav, .po-side, .po-main, .pd-side) { border-color: transparent !important; }',
+    'html[data-derived-section="boundaries"][data-derived-option="open-space"] :is(.po-divider, .pg-row--flip, .pg-rail) { border-color: transparent !important; box-shadow: none !important; }',
+    'html[data-derived-section="boundaries"][data-derived-option="open-space"] .po-divider { background: transparent !important; }',
+
+    'html[data-derived-section="boundaries"][data-derived-option="thin-dividers"] :is(.picker-preview--ops .pv-nav, .picker-preview--docs .pv-nav, .picker-preview--gallery .pv-nav) { border-bottom: 1px solid var(--derived-rule) !important; }',
+    'html[data-derived-section="boundaries"][data-derived-option="thin-dividers"] :is(.po-side, .po-main, .pd-side) { border-right: 1px solid var(--derived-rule) !important; }',
+    'html[data-derived-section="boundaries"][data-derived-option="thin-dividers"] .po-divider { background: var(--derived-rule) !important; }',
+    'html[data-derived-section="boundaries"][data-derived-option="thin-dividers"] .po-row + .po-row { box-shadow: inset 0 1px 0 var(--derived-rule); }',
+    'html[data-derived-section="boundaries"][data-derived-option="thin-dividers"] .pg-row--flip { box-shadow: inset 0 1px 0 var(--derived-rule); }',
+    'html[data-derived-section="boundaries"][data-derived-option="thin-dividers"] .pg-rail { border-top: 1px solid var(--derived-rule); }',
+
+    'html[data-derived-section="boundaries"][data-derived-option="surface-changes"] :is(.picker-preview--ops .pv-nav, .picker-preview--docs .pv-nav, .picker-preview--gallery .pv-nav, .po-side, .po-main, .pd-side) { border-color: transparent !important; }',
+    'html[data-derived-section="boundaries"][data-derived-option="surface-changes"] :is(.pv-nav, .pv-phone-top, .pv-tabbar) { background: var(--derived-band) !important; }',
+    'html[data-derived-section="boundaries"][data-derived-option="surface-changes"] :is(.po-side, .po-panel, .pd-side) { background: var(--derived-band) !important; }',
+    'html[data-derived-section="boundaries"][data-derived-option="surface-changes"] :is(.pd-note, .pg-row--flip) { background: var(--derived-band-alt) !important; }',
+    'html[data-derived-section="boundaries"][data-derived-option="surface-changes"] .po-divider { background: transparent !important; }',
+
+    'html[data-derived-section="boundaries"][data-derived-option="cards-and-panels"] :is(.picker-preview--ops .pv-nav, .po-side, .po-main) { border-color: transparent !important; }',
+    'html[data-derived-section="boundaries"][data-derived-option="cards-and-panels"] .po-divider { background: transparent !important; }',
+    'html[data-derived-section="boundaries"][data-derived-option="cards-and-panels"] :is(.po-side, .po-chart, .po-rows, .po-panel, .po-phone-body .po-chart, .po-phone-body .po-field, .po-phone-body .po-prow) {',
+    '  background: var(--derived-panel) !important;',
+    '  border: 1px solid var(--derived-panel-edge) !important;',
+    '  border-radius: 3px;',
+    '}',
+    'html[data-derived-section="boundaries"][data-derived-option="cards-and-panels"] .po-chart { padding-inline: calc(3 * var(--pv-x)); }',
+    'html[data-derived-section="boundaries"][data-derived-option="cards-and-panels"] .po-rows { padding-inline: calc(2 * var(--pv-x)); }',
+
+    '/* Corner additions. Dots remain dots while frames, surfaces, controls, and text bars take the selected radius. */',
+    'html[data-derived-section="corners"][data-derived-option="sharp"] { --derived-frame-radius: 0px; --derived-phone-radius: 0px; --derived-surface-radius: 0px; --derived-control-radius: 0px; --derived-bar-radius: 0px; }',
+    'html[data-derived-section="corners"][data-derived-option="slightly-soft"] { --derived-frame-radius: 4px; --derived-phone-radius: 5px; --derived-surface-radius: 3px; --derived-control-radius: 3px; --derived-bar-radius: 2px; }',
+    'html[data-derived-section="corners"][data-derived-option="friendly"] { --derived-frame-radius: 7px; --derived-phone-radius: 11px; --derived-surface-radius: 8px; --derived-control-radius: 8px; --derived-bar-radius: 3px; }',
+    'html[data-derived-section="corners"][data-derived-option="pill"] { --derived-frame-radius: 9px; --derived-phone-radius: 15px; --derived-surface-radius: 12px; --derived-control-radius: 999px; --derived-bar-radius: 3px; }',
+    'html[data-derived-section="corners"] .pv-desktop { border-radius: var(--derived-frame-radius) !important; }',
+    'html[data-derived-section="corners"] .pv-phone { border-radius: var(--derived-phone-radius) !important; }',
+    'html[data-derived-section="corners"] :is(.pv-image, .pv-mini-card, .po-chart, .po-rows, .po-panel, .pg-row) { border-radius: var(--derived-surface-radius) !important; }',
+    'html[data-derived-section="corners"] .pd-note { border-radius: 0 var(--derived-surface-radius) var(--derived-surface-radius) 0 !important; }',
+    'html[data-derived-section="corners"] :is(.pv-pill, .pv-actions i, .po-item--on, .po-field, .po-row, .po-toggle) { border-radius: var(--derived-control-radius) !important; }',
+    'html[data-derived-section="corners"] .po-toggle::after { border-radius: var(--derived-control-radius) !important; }',
+    'html[data-derived-section="corners"] :is(.pv-nav-bars i, .pv-pill::after, .pv-eyebrow, .pv-headline i, .pv-copy-bar, .po-line, .po-cell, .po-heading, .po-label, .pd-item span, .pd-heading, .pd-para i, .pd-note-lines i, .pg-cap i, .pg-track i) { border-radius: var(--derived-bar-radius) !important; }',
+
+    '/* Depth additions. Flat is the base; the other answers lift only solid, meaningful objects. */',
+    'html[data-derived-section="depth"][data-derived-option="flat"] { --derived-shadow-chrome: none; --derived-shadow-card: none; --derived-shadow-control: none; --derived-shadow-surface: none; }',
+    'html[data-derived-section="depth"][data-derived-option="soft-lift"] { --derived-shadow-chrome: 0 1px 2px rgb(0 0 0 / 0.1); --derived-shadow-card: 0 1px 1px rgb(0 0 0 / 0.15), 0 3px 7px rgb(0 0 0 / 0.14); --derived-shadow-control: 0 1px 2px rgb(0 0 0 / 0.24); --derived-shadow-surface: 0 2px 5px rgb(0 0 0 / 0.14); }',
+    'html[data-derived-section="depth"][data-derived-option="floating"] { --derived-shadow-chrome: 0 2px 6px rgb(0 0 0 / 0.16); --derived-shadow-card: 0 2px 3px rgb(0 0 0 / 0.2), 0 9px 18px rgb(0 0 0 / 0.24); --derived-shadow-control: 0 3px 6px rgb(0 0 0 / 0.32); --derived-shadow-surface: 0 6px 14px rgb(0 0 0 / 0.22); }',
+    'html[data-derived-section="depth"] :is(.pv-nav, .pv-phone-top) { box-shadow: var(--derived-shadow-chrome) !important; }',
+    'html[data-derived-section="depth"] :is(.pv-pill, .pv-actions i, .po-item--on, .po-field, .po-toggle) { box-shadow: var(--derived-shadow-control) !important; }',
+    'html[data-derived-section="depth"] :is(.pv-image, .pv-mini-card, .pd-note) { box-shadow: var(--derived-shadow-card) !important; }',
+    'html[data-derived-section="depth"] .pg-cap::before { box-shadow: var(--derived-shadow-card) !important; }',
+    'html[data-derived-section="depth"] :is(.po-chart i, .po-side, .po-panel) { box-shadow: var(--derived-shadow-surface) !important; }',
+  ].join('\n');
+
+  function buildDerivedDoc(target) {
+    var base = cellsById[baseCellId[target.surface]];
+    var doc = buildDoc(base);
+    var marker = [
+      ' data-derived-cell="' + target.number + '"',
+      ' data-derived-base="' + target.surface + '"',
+      ' data-derived-section="' + target.section + '"',
+      ' data-derived-option="' + target.option + '"',
+    ].join('');
+    doc = doc.replace('<html lang="en" class="dark"', '<html lang="en" class="dark"' + marker);
+    doc = doc.replace('</head>', '<style data-origin="derived-base-property-previews">' + derivedCss + '</style></head>');
+    return doc;
+  }
+
+  PAYLOAD.cells.forEach(function (cell) {
+    if (!targetNumbers.has(cell.number)) return;
+    var frame = document.querySelector('iframe[data-cell-num="' + cell.number + '"]');
+    if (!frame) return;
+    frame.srcdoc = buildDerivedDoc(cell);
+  });
+})();
+</script>
 </body>
 </html>
