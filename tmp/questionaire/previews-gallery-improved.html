@@ -1135,7 +1135,8 @@ Array.prototype.forEach.call(document.querySelectorAll('.scaler'), function (sca
       style.textContent = [
         '*, *::before, *::after { box-shadow: none !important; text-shadow: none !important; }',
         '.ps-desktop .ps-proof { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }',
-        '.ps-phone .ps-proof { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; margin-top: 10px !important; }',
+        '.ps-phone .ps-proof { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; position: relative; top: 10px; }',
+        '.ps-phone .ps-editorial-copy { margin-top: 16px !important; }',
         '.ps-desktop .ps-proof-item { padding-right: 24px !important; }',
         '.ps-proof-divider { display: none !important; }',
       ].join('\n');
