@@ -1251,7 +1251,8 @@ export function resolveHarness(env = {}, event = null) {
   const explicit = env?.IMPECCABLE_HOOK_HARNESS;
   if (explicit === 'cursor') return 'cursor';
   if (explicit === 'github') return 'github';
-  if (explicit === 'claude' || explicit === 'codex') return explicit;
+  if (explicit === 'claude') return 'claude';
+  if (explicit === 'codex') return 'codex';
   // GitHub Copilot's postToolUse event uses camelCase `toolName`/`toolArgs` and
   // has no `tool_name`/`tool_input`. That shape is the discriminator.
   if (event && typeof event === 'object'
