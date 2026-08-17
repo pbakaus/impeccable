@@ -70,8 +70,8 @@ figure.cell iframe { display: block; border: 0; background: transparent; positio
 <div class="grid" style="--cell-min:419px">
 <figure class="cell" data-cell-num="1">
 <figcaption><span class="cell-num">1</span> Selected: Landing page</figcaption>
-<div class="scaler" data-width="419" data-height="285.890625">
-<div class="clip" style="width:419px;height:285.890625px">
+<div class="scaler" data-width="419" data-height="300">
+<div class="clip" style="width:419px;height:300px">
 <iframe title="1. Selected: Landing page" data-cell="surfaces--persuade--default" data-cell-num="1" data-section="surfaces" scrolling="no" style="width:1600px;height:1000px"></iframe>
 </div>
 </div>
@@ -969,6 +969,31 @@ Array.prototype.forEach.call(document.querySelectorAll('.scaler'), function (sca
       apply();
     });
   });
+})();
+</script>
+<script data-gallery-replica-experiment="preview-25-type-tuning">
+(function () {
+  var frame = document.querySelector('iframe[data-cell-num="25"]');
+  if (!frame) return;
+
+  function apply() {
+    var doc = frame.contentDocument;
+    if (!doc || !doc.head) return;
+    var style = doc.querySelector('[data-experiment="preview-25-type-tuning"]');
+    if (!style) {
+      style = doc.createElement('style');
+      style.setAttribute('data-experiment', 'preview-25-type-tuning');
+      style.textContent = [
+        '#picker-form .picker-preview-type--experience .ps-desktop .ps-index-note { line-height: 1.33 !important; }',
+        '#picker-form .picker-preview-type--experience .ps-desktop .ps-index-title { font-size: 20px !important; }',
+        '#picker-form .picker-preview-type--experience .ps-phone :is(.ps-nav-tail, .ps-index-meta) { display: none !important; }',
+      ].join('\n');
+      doc.head.appendChild(style);
+    }
+  }
+
+  frame.addEventListener('load', apply);
+  apply();
 })();
 </script>
 </body>
