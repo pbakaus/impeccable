@@ -984,12 +984,118 @@ Array.prototype.forEach.call(document.querySelectorAll('.scaler'), function (sca
       style = doc.createElement('style');
       style.setAttribute('data-experiment', 'preview-25-type-tuning');
       style.textContent = [
-        '#picker-form .picker-preview-type--experience .ps-desktop .ps-index-note { line-height: 1.33 !important; }',
+        '#picker-form .picker-preview-type--experience .ps-desktop .ps-index-cap { gap: 0 !important; }',
+        '#picker-form .picker-preview-type--experience .ps-desktop .ps-index-avatar { margin-bottom: 10px !important; }',
+        '#picker-form .picker-preview-type--experience .ps-desktop .ps-index-note { line-height: 1.33 !important; margin-top: 2px !important; }',
         '#picker-form .picker-preview-type--experience .ps-desktop .ps-index-title { font-size: 20px !important; }',
         '#picker-form .picker-preview-type--experience .ps-phone :is(.ps-nav-tail, .ps-index-meta) { display: none !important; }',
       ].join('\n');
       doc.head.appendChild(style);
     }
+  }
+
+  frame.addEventListener('load', apply);
+  apply();
+})();
+</script>
+<script data-gallery-replica-experiment="previews-35-37-index-lines">
+(function () {
+  document.querySelectorAll('iframe[data-cell-num="35"], iframe[data-cell-num="36"], iframe[data-cell-num="37"]').forEach(function (frame) {
+    function apply() {
+      var doc = frame.contentDocument;
+      if (!doc || !doc.head) return;
+      var style = doc.querySelector('[data-experiment="previews-35-37-index-lines"]');
+      if (!style) {
+        style = doc.createElement('style');
+        style.setAttribute('data-experiment', 'previews-35-37-index-lines');
+        style.textContent = '.ps-index-lines { background-color: var(--pvs-bars) !important; }';
+        doc.head.appendChild(style);
+      }
+    }
+
+    frame.addEventListener('load', apply);
+    apply();
+  });
+})();
+</script>
+<script data-gallery-replica-experiment="previews-35-37-index-lines">
+(function () {
+  document.querySelectorAll('iframe[data-cell-num="35"], iframe[data-cell-num="36"], iframe[data-cell-num="37"]').forEach(function (frame) {
+    function apply() {
+      var doc = frame.contentDocument;
+      if (!doc || !doc.head) return;
+      if (doc.querySelector('[data-experiment="previews-35-37-index-lines"]')) return;
+      var style = doc.createElement('style');
+      style.setAttribute('data-experiment', 'previews-35-37-index-lines');
+      style.textContent = '.ps-index-lines { color: var(--pvs-bars) !important; }';
+      doc.head.appendChild(style);
+    }
+    frame.addEventListener('load', apply);
+    apply();
+  });
+})();
+</script>
+<script data-gallery-replica-experiment="previews-35-37-index-lines-color">
+(function () {
+  document.querySelectorAll('iframe[data-cell-num="35"], iframe[data-cell-num="36"], iframe[data-cell-num="37"]').forEach(function (frame) {
+    function apply() {
+      var doc = frame.contentDocument;
+      if (!doc || !doc.head) return;
+      if (doc.querySelector('[data-experiment="previews-35-37-index-lines-color"]')) return;
+      var style = doc.createElement('style');
+      style.setAttribute('data-experiment', 'previews-35-37-index-lines-color');
+      style.textContent = '.ps-index-lines > b { color: var(--pvs-bars) !important; }';
+      doc.head.appendChild(style);
+    }
+
+    frame.addEventListener('load', apply);
+    apply();
+  });
+})();
+</script>
+<script data-gallery-replica-experiment="previews-35-37-index-bars">
+(function () {
+  ['35', '36', '37'].forEach(function (cellNum) {
+    var frame = document.querySelector('iframe[data-cell-num="' + cellNum + '"]');
+    if (!frame) return;
+
+    function apply() {
+      var doc = frame.contentDocument;
+      if (!doc || !doc.head || doc.querySelector('[data-experiment="previews-35-37-index-bars"]')) return;
+      var style = doc.createElement('style');
+      style.setAttribute('data-experiment', 'previews-35-37-index-bars');
+      style.textContent = [
+        ':where(#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="simple-grid"]), #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="simple-grid"]:checked)) [data-surface="experience"]:where(.picker-preview-layout) .ps-phone-body::after { content: none !important; display: none !important; }',
+        ':where(#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]), #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)) [data-surface="experience"]:where(.picker-preview-layout) .ps-phone-body::after { content: none !important; display: none !important; }',
+        ':where(#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="balanced"]), #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="balanced"]:checked)) [data-surface="experience"]:where(.picker-preview-layout) .ps-phone-body::after { content: none !important; display: none !important; }',
+        '[data-surface="experience"]:where(.picker-preview-layout) .ps-index-lines { background-color: transparent !important; }',
+        '[data-surface="experience"]:where(.picker-preview-layout) .ps-index-lines b { background-color: var(--pvs-bars) !important; }',
+      ].join('\n');
+      doc.head.appendChild(style);
+    }
+
+    frame.addEventListener('load', apply);
+    apply();
+  });
+})();
+</script>
+<script data-gallery-replica-experiment="preview-34-hide-proof">
+(function () {
+  var frame = document.querySelector('iframe[data-cell-num="34"]');
+  if (!frame) return;
+
+  function apply() {
+    var doc = frame.contentDocument;
+    if (!doc || !doc.head || doc.querySelector('[data-experiment="preview-34-hide-proof"]')) return;
+    var style = doc.createElement('style');
+    style.setAttribute('data-experiment', 'preview-34-hide-proof');
+    style.textContent = [
+      '.ps-proof { display: none !important; }',
+      '.ps-phone .ps-gallery { margin-top: 15px !important; }',
+      '.ps-phone .ps-gallery-item:nth-child(2) > i { margin-top: 0 !important; box-shadow: none !important; }',
+      'html > body > main > form > section > div > div > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(2) > div:nth-of-type(1) > i { min-height: 100px !important; }',
+    ].join('\n');
+    doc.head.appendChild(style);
   }
 
   frame.addEventListener('load', apply);
