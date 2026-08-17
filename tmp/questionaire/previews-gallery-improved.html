@@ -1136,6 +1136,7 @@ Array.prototype.forEach.call(document.querySelectorAll('.scaler'), function (sca
         '*, *::before, *::after { box-shadow: none !important; text-shadow: none !important; }',
         cellNum === '40' || cellNum === '41' ? '.ps-proof { background-color: color-mix(in oklab, var(--pvs-band-alt) 65%, white) !important; }\n.ps-footer { background-color: color-mix(in oklab, var(--pvs-band) 65%, white) !important; }' : '',
         cellNum === '40' ? '.ps-phone .ps-proof { column-gap: 16px !important; padding-right: var(--pvs-gutter) !important; }' : '',
+        cellNum === '41' ? '.ps-gallery-item { background: transparent !important; }' : '',
         '.ps-desktop .ps-proof { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }',
         '.ps-phone .ps-proof { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; position: relative; top: 10px; }',
         '.ps-phone .ps-editorial-copy { margin-top: 16px !important; }',
