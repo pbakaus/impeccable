@@ -1121,5 +1121,31 @@ Array.prototype.forEach.call(document.querySelectorAll('.scaler'), function (sca
   apply();
 })();
 </script>
+<script data-gallery-replica-experiment="previews-38-41-proof-spacing">
+(function () {
+  ['38', '39', '40', '41'].forEach(function (cellNum) {
+    var frame = document.querySelector('iframe[data-cell-num="' + cellNum + '"]');
+    if (!frame) return;
+
+    function apply() {
+      var doc = frame.contentDocument;
+      if (!doc || !doc.head || doc.querySelector('[data-experiment="previews-38-41-proof-spacing"]')) return;
+      var style = doc.createElement('style');
+      style.setAttribute('data-experiment', 'previews-38-41-proof-spacing');
+      style.textContent = [
+        '*, *::before, *::after { box-shadow: none !important; text-shadow: none !important; }',
+        '.ps-desktop .ps-proof { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }',
+        '.ps-phone .ps-proof { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; margin-top: 10px !important; }',
+        '.ps-desktop .ps-proof-item { padding-right: 24px !important; }',
+        '.ps-proof-divider { display: none !important; }',
+      ].join('\n');
+      doc.head.appendChild(style);
+    }
+
+    frame.addEventListener('load', apply);
+    apply();
+  });
+})();
+</script>
 </body>
 </html>
