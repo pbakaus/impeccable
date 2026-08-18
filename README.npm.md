@@ -1,43 +1,44 @@
 # Impeccable CLI
 
-Detect UI anti-patterns and design quality issues from the command line. Scans HTML, CSS, JSX, TSX, Vue, and Svelte files for 61 deterministic rules, including AI-generated UI tells, accessibility violations, and general design quality problems.
+Detect UI anti-patterns and design quality issues from the command line, and install the Impeccable design skill into your AI coding harness. The detector scans HTML, CSS, JSX, TSX, Vue, and Svelte files for 59 deterministic rules, including AI-generated UI tells, accessibility violations, and general design quality problems.
+
+The npm package is a small launcher. It runs the `impeccable` engine binary for your platform, installed alongside it as an optional dependency (`@impeccable/cli-<os>-<arch>`), and falls back to a per-user cache or a one-time download when that package is missing.
 
 ## Quick Start
 
 ```bash
 # Install skills into your AI harness (Claude, Cursor, Gemini, etc.)
-npx impeccable skills install
+npx impeccable install
 
 # Non-interactive install for a specific scope
-npx impeccable skills install -y --providers=claude,codex --scope=project
+npx impeccable install -y --providers=claude,codex --scope=project
 
 # First command to run inside your AI harness
 /impeccable init
 
 # Update skills to the latest version
-npx impeccable skills update
+npx impeccable update
 
 # Install or update skills without hook manifests
-npx impeccable skills install --no-hooks
+npx impeccable install --no-hooks
 
 # Link skills from a Git submodule checkout
-npx impeccable skills link --source=.impeccable --providers=claude,cursor
+npx impeccable link --source=.impeccable --providers=claude,cursor
 
 # List all available commands
-npx impeccable skills help
+npx impeccable help
 
 # Scan files or directories for anti-patterns
 npx impeccable detect src/
 
-# Scan a live URL (requires Puppeteer)
+# Scan a live URL (uses an installed Chrome, Chromium, or Edge)
 npx impeccable detect https://example.com
 
 # JSON output for CI/tooling
 npx impeccable detect --json src/
-
-# Deprecated compatibility flag; full scan still runs
-npx impeccable detect --fast src/
 ```
+
+`npx impeccable skills <command>` is the legacy namespace and still works.
 
 ## What It Detects
 
@@ -68,16 +69,17 @@ npx impeccable detect --fast src/
 ```
 impeccable detect [options] [file-or-dir-or-url...]
 
-  --fast    Regex-only mode (skip jsdom, faster but less accurate)
-  --json    Output findings as JSON
-  --help    Show help
+  --json      Output findings as JSON
+  --scope     Only report rules in a design domain (type, layout)
+  --help      Show help
 ```
 
 ## Requirements
 
-- Node.js 22.18+
-- `jsdom` (included as dependency, used for HTML scanning)
-- `puppeteer` (optional, only needed for URL scanning)
+- Node.js 22.18+ to run `npx impeccable`. The engine itself is a self-contained binary and needs no runtime; the skill installed into your harness calls it directly.
+- For URL scans, an installed Chrome, Chromium, or Edge (set `IMPECCABLE_BROWSER` to point at one).
+
+Binary lookup order: `IMPECCABLE_BIN`, the platform package, `~/.impeccable/bin/<version>/`, then a download of the pinned version into that cache. Set `IMPECCABLE_BIN` to a local build to skip all of that.
 
 ## Part of Impeccable
 

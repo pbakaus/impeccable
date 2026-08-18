@@ -1,0 +1,17 @@
+{
+  "name": "@impeccable/cli-linux-x64",
+  "version": "0.0.0-engine",
+  "description": "impeccable engine binary for linux-x64. Installed as an optional dependency of the impeccable npm package; do not depend on it directly.",
+  "license": "SEE LICENSE IN LICENSE",
+  "homepage": "https://impeccable.style",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pbakaus/impeccable.git"
+  },
+  "os": ["linux"],
+  "cpu": ["x64"],
+  "files": ["bin/", "LICENSE"],
+  "bin": {
+    "impeccable-linux-x64": "bin/impeccable"
+  }
+}

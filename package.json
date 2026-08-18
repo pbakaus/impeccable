@@ -30,13 +30,8 @@
   "bin": {
     "impeccable": "cli/bin/cli.js"
   },
-  "main": "./cli/engine/detect-antipatterns.mjs",
-  "exports": {
-    ".": "./cli/engine/detect-antipatterns.mjs",
-    "./browser": "./cli/engine/detect-antipatterns-browser.js"
-  },
   "files": [
-    "cli/",
+    "cli/bin/",
     "LICENSE"
   ],
   "scripts": {
@@ -72,16 +67,12 @@
     "release:cli": "node scripts/release.mjs cli",
     "release:ext": "node scripts/release.mjs extension"
   },
-  "dependencies": {
-    "css-select": "^7.0.0",
-    "css-tree": "^3.2.1",
-    "domutils": "^4.0.2",
-    "fflate": "^0.8.3",
-    "htmlparser2": "^12.0.0",
-    "marked": "^18.0.5"
-  },
   "optionalDependencies": {
-    "puppeteer": "^25.1.0"
+    "@impeccable/cli-darwin-arm64": "0.1.0",
+    "@impeccable/cli-darwin-x64": "0.1.0",
+    "@impeccable/cli-linux-x64": "0.1.0",
+    "@impeccable/cli-linux-arm64": "0.1.0",
+    "@impeccable/cli-windows-x64": "0.1.0"
   },
   "devDependencies": {
     "@ai-sdk/anthropic": "^4.0.7",
@@ -93,6 +84,7 @@
     "ai": "^7.0.14",
     "archiver": "^8.0.0",
     "playwright": "^1.59.1",
+    "puppeteer": "^25.1.0",
     "svelte": "^5",
     "zod": "^4.3.6"
   }
