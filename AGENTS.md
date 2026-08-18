@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-`skill/` is the source of truth for the Impeccable skill: `SKILL.src.md`, `reference/`, `scripts/`, and `agents/`. Build logic lives in `scripts/`, with provider configs in `scripts/lib/transformers/`. The CLI and anti-pattern detector live in `cli/`, the browser extension in `extension/`, the Astro website in `site/`, Cloudflare Pages Functions in `functions/`, and regression coverage in `tests/` with fixtures under `tests/fixtures/`. `dist/` and `build/` are generated and gitignored. The root harness folders (`.agents/`, `.claude/`, `.cursor/`, etc.) and `plugin/` are generated distribution artifacts that are tracked for direct repo installs, not hand-authored source.
+`skill/` is the source of truth for the Impeccable skill: `SKILL.src.md`, `reference/`, `scripts/`, and `agents/`. `skill/scripts/` holds the launcher (`impeccable`, `impeccable.cmd`), the pinned engine `VERSION`, `command-metadata.json`, and the in-page live-mode JS; every skill verb (`{{scripts_path}}/impeccable <verb>`) runs in the engine binary, which is built in a separate repo and pinned by the root `ENGINE_VERSION` file. Build logic lives in `scripts/`, with provider configs in `scripts/lib/transformers/`. `cli/` is the npm shim that runs the same binary, the browser extension lives in `extension/`, and regression coverage in `tests/` with fixtures under `tests/fixtures/` and the behavior goldens under `tests/oracle/`. `dist/` and `build/` are generated and gitignored. The root harness folders (`.agents/`, `.claude/`, `.cursor/`, etc.) and `plugin/` are generated distribution artifacts that are tracked for direct repo installs, not hand-authored source.
 
 ## Build, Test, and Development Commands
 
@@ -12,11 +12,12 @@
 - `bun run rebuild` - clean and rebuild everything from scratch without syncing tracked harness folders.
 - `bun run rebuild:release` - clean and rebuild everything, including tracked harness output sync.
 - `bun test tests/build.test.js` - run a focused Bun test.
-- `bun run test` - run the full Bun + Node test suite (includes the plugin loader E2E, which installs the committed `plugin/` subtree into a sandboxed real Claude Code and skips cleanly when the `claude` CLI is absent).
+- `bun run fetch:engine` - download the pinned engine binary for this machine into `skill/scripts/bin/<os>-<arch>/` (or set `IMPECCABLE_BIN` to a local build). The oracle and framework suites skip without it.
+- `bun run test` - run the full Bun + Node test suite (includes the oracle replay against the engine binary and the plugin loader E2E, which installs the committed `plugin/` subtree into a sandboxed real Claude Code and skips cleanly when the `claude` CLI is absent).
 - `bun run test:live-e2e` - opt-in live-mode E2E against framework fixtures (~2 min; needs `npx playwright install chromium` once).
 - `bun run test:skill-behavior` - opt-in LLM-backed checks that the SKILL.md Setup flow actually drives the agent (runs claude-sonnet-5 / gpt-5.6-luna / gemini-3.5-flash / deepseek-v4-flash; needs `.env` with provider keys).
 - `bun run test:plugin-e2e` - just the plugin loader E2E, for fast iteration on `plugin/`, `skill/agents/`, or `scripts/build.js` changes.
-- `bun run build:browser` / `bun run build:extension` - rebuild browser-specific bundles.
+- `bun run build:extension` - rebuild the extension bundle (`build:browser` is a no-op stub; the in-page bundle comes from the engine repo).
 
 Run `bun run build` after changing anything in `skill/`, transformer code, or user-facing counts. It validates the generated distribution under `dist/` without touching tracked root harness outputs. Use `bun run build:release` only when intentionally refreshing generated provider permutations for release/main-sync or build-system work.
 
@@ -32,39 +33,27 @@ Some repo workflows need to run outside the sandbox in the desktop app:
 
 - GitHub SSH operations that depend on the 1Password SSH agent, such as `gh pr checkout`, may fail in the sandbox with `sign_and_send_pubkey` or no 1Password approval prompt. Rerun them outside the sandbox instead of falling back to unrelated workarounds.
 - `bun run build:release` rewrites committed harness directories such as `.agents/skills/`. In the sandbox, Bun can hit filesystem errors while removing/recreating those trees (for example `EFAULT` on `.agents/skills`). Rerun the release build outside the sandbox before treating it as a real build failure.
-- Puppeteer/headless-Chrome tests, especially `node --test tests/detect-antipatterns-browser.test.mjs` and the browser portion of `bun run test`, can hang in the sandbox while launching Chrome. Run them outside the sandbox for authoritative results.
-- The jsdom fixture suite is intentionally run with Node, not Bun: use `node --test tests/detect-antipatterns-fixtures.test.mjs` or the `bun run test` script. A direct `bun test tests/detect-antipatterns-fixtures.test.mjs` can time out and is not the supported signal.
+- The oracle and framework suites spawn the engine binary many times; run them with Node (`node --test tests/oracle.test.mjs`), which is what `bun run test` does.
 
 ## Coding Style & Naming Conventions
 
-Use ESM, semicolons, and the existing two-space indentation style in JS, HTML, and CSS. Prefer small, single-purpose modules over large abstractions. Keep filenames descriptive and lowercase with hyphens where needed; skill entrypoints stay as `SKILL.md`, helper scripts use `.js` or `.mjs`. In source frontmatter, use clear kebab-case names and concise descriptions. There is no dedicated formatter or linter configured here, so match surrounding code closely.
+Use ESM, semicolons, and the existing two-space indentation style in JS, HTML, and CSS. Prefer small, single-purpose modules over large abstractions. Keep filenames descriptive and lowercase with hyphens where needed; skill entrypoints stay as `SKILL.md`, build and test helpers use `.js` or `.mjs`. In source frontmatter, use clear kebab-case names and concise descriptions. There is no dedicated formatter or linter configured here, so match surrounding code closely.
 
 ## Testing Guidelines
 
 Tests use Bun’s test runner plus Node’s built-in `--test`. Name tests `*.test.js` or `*.test.mjs` and place new fixtures near the behavior they cover, usually under `tests/fixtures/`. Prefer targeted test runs while iterating, then finish with `bun run test`. If you change generated outputs or provider transforms, verify both source parsing and at least one affected provider path in `dist/`.
 
-For changes to `skill/scripts/live-*.{mjs,js}` or `skill/scripts/live/**`, also run `bun run test:live-e2e` (kept out of the default suite because it does real `npm install` per fixture and boots framework dev servers). Scope to one fixture with `IMPECCABLE_E2E_ONLY=<fixture-name>` while iterating; pass `IMPECCABLE_E2E_DEBUG=1` for page-DOM and dev-server-log dumps on failure. Schema and authoring guide for new fixtures live in `tests/framework-fixtures/README.md`.
+For changes to the live-mode page JS (`skill/scripts/live-browser*.js`) or an `ENGINE_VERSION` bump, also run `bun run test:live-e2e` (kept out of the default suite because it does real `npm install` per fixture and boots framework dev servers). Scope to one fixture with `IMPECCABLE_E2E_ONLY=<fixture-name>` while iterating; pass `IMPECCABLE_E2E_DEBUG=1` for page-DOM and dev-server-log dumps on failure. Schema and authoring guide for new fixtures live in `tests/framework-fixtures/README.md`.
 
 Set `IMPECCABLE_E2E_AGENT=llm` to swap the deterministic fake agent for an API-backed one (`tests/live-e2e/agents/llm-agent.mjs`). Claude Haiku 4.5 is the primary path whenever `ANTHROPIC_API_KEY` is set. DeepSeek V4 Flash is the secondary cheap fallback when only `DEEPSEEK_API_KEY` is set, and can be forced with `IMPECCABLE_E2E_LLM_PROVIDER=deepseek` or `bun run test:live-e2e -- --llm-provider=deepseek`; override either model via `IMPECCABLE_E2E_LLM_MODEL` or `--llm-model=<model>`. Tests skip cleanly when the selected provider key is unset. This path hits the API — use it for verification, not CI.
 
-For changes to `skill/SKILL.src.md`'s Setup section, `skill/scripts/context.mjs`, or any Setup-touching reference file (`init.md`, `document.md`, `brand.md`, `product.md`, sub-command refs), also run `bun run test:skill-behavior`. The suite spawns current real models (claude-sonnet-5, gpt-5.6-luna, gemini-3.5-flash, deepseek-v4-flash) with the source SKILL.md inlined as system prompt and a workspace-scoped tool set, then asserts on the tool-call trace. Provider keys live in repo-root `.env`; missing keys skip cleanly. Scope to one provider with `IMPECCABLE_SKILL_BEHAVIOR_MODELS=<id>`; add `IMPECCABLE_SKILL_BEHAVIOR_VERBOSE=1` to dump per-scenario traces. Baseline and per-scenario assertions live in `tests/skill-behavior/README.md`.
+For changes to `skill/SKILL.src.md`'s Setup section or any Setup-touching reference file (`init.md`, `document.md`, `brand.md`, `product.md`, sub-command refs), also run `bun run test:skill-behavior`. The suite spawns current real models (claude-sonnet-5, gpt-5.6-luna, gemini-3.5-flash, deepseek-v4-flash) with the source SKILL.md inlined as system prompt and a workspace-scoped tool set, then asserts on the tool-call trace. Provider keys live in repo-root `.env`; missing keys skip cleanly. Scope to one provider with `IMPECCABLE_SKILL_BEHAVIOR_MODELS=<id>`; add `IMPECCABLE_SKILL_BEHAVIOR_VERBOSE=1` to dump per-scenario traces. Baseline and per-scenario assertions live in `tests/skill-behavior/README.md`.
 
-Other area-to-suite obligations (the canonical mapping is the `triggers` lists in `scripts/test-suites.mjs`; CLAUDE.md carries the full table): `serve-question.mjs` / `generate-image.mjs` / `concept-seed.mjs` changes owe `bun run test:new-work-e2e` (Playwright, offline); `cli/bin/commands/skills.mjs` changes owe `bun run test:cli-remote-e2e` (hits impeccable.style); accept/browser/server/wrap or SvelteKit adapter changes owe `bun run test:live-e2e-accept-cleanup` (provider-billed), and Svelte adapter/component changes owe `bun run test:live-svelte-adapter-deepseek` (DeepSeek-billed).
+Other area-to-suite obligations (the canonical mapping is the `triggers` lists in `scripts/test-suites.mjs`; CLAUDE.md carries the full table): an `ENGINE_VERSION` bump owes `bun run test:new-work-e2e` (Playwright, offline), `bun run test:live-e2e-accept-cleanup` (provider-billed), and `bun run test:live-svelte-adapter-deepseek` (DeepSeek-billed) on top of the default run.
 
 ## Anti-pattern detection rules
 
-`cli/engine/detect-antipatterns.mjs` is the source of truth for the rule engine. It feeds the CLI, the site overlay (`cli/engine/detect-antipatterns-browser.js`, regenerated by `bun run build:browser`), the Chrome extension (`extension/detector/`, regenerated by `bun run build:extension`), and the homepage `DETECTION_COUNT` in `site/public/js/generated/counts.js` (regenerated by `bun run build`). After any rule change run all three builds plus `bun run test` so nothing drifts.
-
-TDD order is non-negotiable:
-
-1. Add a fixture at `tests/fixtures/antipatterns/{rule-id}.html` with two columns (should-flag / should-pass), each case identified by a unique heading. ≥4 flag cases and ≥5 false-positive shapes. **Use explicit pixel dimensions in CSS** — jsdom does no layout.
-2. Add a failing test in `tests/detect-antipatterns-fixtures.test.mjs` using the snippet-substring pattern (regex `/"([^"]+)"/` against `SHOULD_FLAG` / `SHOULD_PASS` lists).
-3. Add the rule entry to the `ANTIPATTERNS` array (`id`, `category` = `slop` or `quality`, `name`, `description`, optional `skillSection` / `skillGuideline`).
-4. Implement a pure `checkXxx(opts)` returning `[{ id, snippet }]` — no DOM access inside.
-5. Add two adapters that wrap the pure check: `checkElementXxxDOM(el)` for the browser (`getComputedStyle` + `getBoundingClientRect`) and `checkElementXxx(el, tag, window)` for jsdom (`parseFloat(style.width)` instead of layout). Wire **both** adapters into **both** element loops in `cli/engine/detect-antipatterns.mjs` (browser loop ~line 1837, jsdom loop in `detectHtml` ~line 2058). Forgetting one is the most common mistake.
-6. Verify on a live page at `http://localhost:4321/fixtures/antipatterns/{rule-id}.html` and on the homepage. The two adapter paths can disagree.
-
-Conventions: wrap the identifying heading text in straight double quotes inside snippets so the fixture test can extract it. jsdom-specific helpers `resolveBackground()`, `resolveGradientStops()`, and `parseGradientColors()` exist because `background:` shorthand isn't decomposed and computed colors aren't normalized in jsdom — use them. Reference rules to copy from: `side-tab` (border), `low-contrast` (color+gradient), `icon-tile-stack` (sibling relationship), `flat-type-hierarchy` (page-level).
+The rule engine lives in the engine repo, not here. What this repo owns is the behavior contract: `docs/CLI-CONTRACT.md` describes every verb, `tests/oracle/` holds the recorded goldens and replays them against the binary (`tests/oracle.test.mjs`), and `tests/fixtures/antipatterns/*.html` are the fixtures those goldens scan. A rule change lands in the engine, then here as a new oracle case (`node tests/oracle/record.mjs --bin <prefix>`, golden reviewed by hand) and, when it introduces new design guidance, an edit to `skill/SKILL.src.md` or `skill/reference/*.md`. Rule counts quoted in `README.md` and `README.npm.md` are checked by the build against `extension/detector/antipatterns.json` when that vendored file is present.
 
 ## Commit & Pull Request Guidelines
 
@@ -88,4 +77,4 @@ Tags are per-component because the three components ship independently: `skill-v
 
 ## Contributor Notes
 
-Do not edit generated provider files directly unless you are intentionally patching generated output as part of a build-system change. Prefer fixing the root source in `skill/`, `scripts/`, or `cli/`, then regenerate artifacts for validation. Stage generated harness artifacts only for release/main-sync or build-system work.
+Do not edit generated provider files directly unless you are intentionally patching generated output as part of a build-system change. Prefer fixing the root source in `skill/`, `scripts/`, or `cli/` (or the engine repo for verb behavior), then regenerate artifacts for validation. Stage generated harness artifacts only for release/main-sync or build-system work.

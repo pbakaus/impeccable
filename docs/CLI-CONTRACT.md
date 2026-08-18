@@ -5,9 +5,13 @@ inputs, stdout and stderr byte for byte, exit codes, files written, network.
 This is the specification an alternate implementation of the scripts has to
 meet; `tests/oracle/` records goldens against it and replays them.
 
-Verb names are the binary's subcommands. Today each verb is a script under
-`skill/scripts/` or a `cli/bin` subcommand; the mapping is `JS_VERBS` in
-`tests/oracle/lib.mjs`.
+Verb names are the binary's subcommands. Each verb was a script under
+`skill/scripts/` or a `cli/bin` subcommand when this contract was recorded;
+the mapping is `JS_VERBS` in `tests/oracle/lib.mjs`, and file references below
+name those scripts as the source the contract was read from. Since the
+launcher swap the skill invokes every verb as `{{scripts_path}}/impeccable
+<verb>` and the scripts are gone from the tree; the contract stands as
+written.
 
 Quoted strings, regexes, and JSON in this document are verbatim from the
 source, including any em dashes inside user-facing messages; do not "fix" them.
