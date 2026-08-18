@@ -392,7 +392,7 @@ describe('generated hook artifacts in repo', { skip: SYNCED ? false : 'generated
       }
       assert.ok(fs.existsSync(path.join(abs, 'impeccable.cmd')), `impeccable.cmd missing in ${scriptDir}`);
       assert.ok(fs.existsSync(path.join(abs, 'VERSION')), `VERSION missing in ${scriptDir}`);
-      assert.equal(fs.existsSync(path.join(abs, 'bin')), false, `${scriptDir} must stay launcher-only in git; binaries ship only in release zips`);
+      assert.equal(fs.existsSync(path.join(abs, 'bin')), false, `${scriptDir} must stay launcher-only in git; binaries ship only in IMPECCABLE_BUNDLE_ENGINE=1 release zips`);
       const stray = fs.readdirSync(abs).filter((f) => f.endsWith('.mjs') || f === 'detector' || f === 'lib');
       assert.deepEqual(stray, [], `Node-era files still in ${scriptDir}`);
     }
