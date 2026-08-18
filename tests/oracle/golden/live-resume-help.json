@@ -1,5 +1,5 @@
 {
-  "stdout": "Usage: node live-resume.mjs [--id SESSION_ID]\n\nPrint the active durable session checkpoint and the next safe agent action.\n",
+  "stdout": "Usage: impeccable live-resume [--id SESSION_ID]\n\nPrint the active durable session checkpoint and the next safe agent action.\n",
   "stderr": "",
   "exit": 0,
   "signal": null,

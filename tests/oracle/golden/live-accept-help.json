@@ -1,5 +1,5 @@
 {
-  "stdout": "Usage: node live-accept.mjs [options]\n\nDeterministic accept/discard for live variant sessions.\n\nModes:\n  --discard          Remove variants, restore original\n  --variant N        Accept variant N, discard the rest\n\nRequired:\n  --id SESSION_ID    Session ID of the variant wrapper\n\nOptions:\n  --page-url URL     Current browser page URL; scopes staged copy-edit cleanup\n  --defer-source-write\n                     Deprecated compatibility flag. Svelte component accepts\n                     now write the real source immediately.\n\nOutput (JSON):\n  { handled, file, carbonize }\n",
+  "stdout": "Usage: impeccable live-accept [options]\n\nDeterministic accept/discard for live variant sessions.\n\nModes:\n  --discard          Remove variants, restore original\n  --variant N        Accept variant N, discard the rest\n\nRequired:\n  --id SESSION_ID    Session ID of the variant wrapper\n\nOptions:\n  --page-url URL     Current browser page URL; scopes staged copy-edit cleanup\n  --defer-source-write\n                     Deprecated compatibility flag. Svelte component accepts\n                     now write the real source immediately.\n\nOutput (JSON):\n  { handled, file, carbonize }\n",
   "stderr": "",
   "exit": 0,
   "signal": null,

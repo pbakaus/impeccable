@@ -1,5 +1,5 @@
 {
-  "stdout": "Usage: node live-commit-manual-edits.mjs [--page-url=<url>] [--provider=auto|codex|claude|mock]\n",
+  "stdout": "Usage: impeccable live-commit-manual-edits [--page-url=<url>] [--provider=auto|codex|claude|mock]\n",
   "stderr": "",
   "exit": 0,
   "signal": null,

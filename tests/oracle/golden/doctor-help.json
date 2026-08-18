@@ -1,5 +1,5 @@
 {
-  "stdout": "Usage: node doctor.mjs [--json] [--fix] [--target <path>]\n\nReport drift between this project's Impeccable artifacts and what the\ninstalled version reads: PRODUCT.md, DESIGN.md and its sidecar,\n.impeccable/config.json, surface briefs, and the design hook.\n\n  --json           Emit findings as JSON.\n  --fix            Apply the mechanical migrations (severity \"auto\") only.\n  --target <path>  Select a workspace in a monorepo.\n",
+  "stdout": "Usage: impeccable doctor [--json] [--fix] [--target <path>]\n\nReport drift between this project's Impeccable artifacts and what the\ninstalled version reads: PRODUCT.md, DESIGN.md and its sidecar,\n.impeccable/config.json, surface briefs, and the design hook.\n\n  --json           Emit findings as JSON.\n  --fix            Apply the mechanical migrations (severity \"auto\") only.\n  --target <path>  Select a workspace in a monorepo.\n",
   "stderr": "",
   "exit": 0,
   "signal": null,

@@ -23,6 +23,15 @@ if (impl === 'bin' && !bin) {
   process.exit(2);
 }
 if (impl === 'bin') process.env.IMPECCABLE_BIN = bin;
+if (impl === 'js') {
+  const { existsSync } = await import('node:fs');
+  const { REPO_ROOT } = await import('./lib.mjs');
+  if (!existsSync(new URL('../../skill/scripts/context.mjs', import.meta.url))) {
+    process.stderr.write('record.mjs: the JS scripts are no longer in the tree; use --bin to record from the engine binary.\n');
+    process.exit(1);
+  }
+  void REPO_ROOT;
+}
 const prefix = argv.find(a => !a.startsWith('--')) || '';
 const cases = (await allCases()).filter(c => c.id.startsWith(prefix));
 let n = 0;

@@ -1,5 +1,5 @@
 {
-  "stdout": "{\n  \"liveServer\": null,\n  \"activeSessions\": [],\n  \"render\": [],\n  \"recoveryHint\": \"Start live-server.mjs to requeue pending durable events, then run live-poll.mjs.\"\n}\n",
+  "stdout": "{\n  \"liveServer\": null,\n  \"activeSessions\": [],\n  \"render\": [],\n  \"recoveryHint\": \"Start <IMPECCABLE> live-server to requeue pending durable events, then run <IMPECCABLE> live-poll.\"\n}\n",
   "stderr": "",
   "exit": 0,
   "signal": null,

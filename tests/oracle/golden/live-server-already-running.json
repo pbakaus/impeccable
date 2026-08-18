@@ -1,6 +1,6 @@
 {
   "stdout": "",
-  "stderr": "Live server already running on port 65531 (pid <PID>).\nStop it first with: node live-server.mjs stop\n",
+  "stderr": "Live server already running on port 65531 (pid <PID>).\nStop it first with: <IMPECCABLE> live-server stop\n",
   "exit": 1,
   "signal": null,
   "files": {

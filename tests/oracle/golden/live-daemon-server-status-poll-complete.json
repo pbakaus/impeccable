@@ -9,12 +9,12 @@
     },
     {
       "stdout": "",
-      "stderr": "Live server already running on port <PORT> (pid <PID>).\nStop it first with: node live-server.mjs stop\n",
+      "stderr": "Live server already running on port <PORT> (pid <PID>).\nStop it first with: <IMPECCABLE> live-server stop\n",
       "exit": 1,
       "signal": null
     },
     {
-      "stdout": "{\n  \"liveServer\": {\n    \"status\": \"ok\",\n    \"port\": <PORT>,\n    \"connectedClients\": 0,\n    \"agentPolling\": false,\n    \"pendingEvents\": [\n      {\n        \"id\": \"ab12cd34\",\n        \"type\": \"generate\",\n        \"leased\": false,\n        \"leaseUntil\": null\n      }\n    ]\n  },\n  \"activeSessions\": [\n    {\n      \"id\": \"ab12cd34\",\n      \"phase\": \"generate_requested\",\n      \"pageUrl\": \"/\",\n      \"sourceFile\": null,\n      \"previewFile\": null,\n      \"previewMode\": null,\n      \"expectedVariants\": 3,\n      \"arrivedVariants\": 0,\n      \"visibleVariant\": null,\n      \"checkpointRevision\": 0,\n      \"browserCheckpointRevision\": 0,\n      \"publicationCheckpointRevision\": 0,\n      \"paramValues\": {},\n      \"generationPhase\": null,\n      \"generationCompletedAt\": null,\n      \"generationCanceled\": false,\n      \"cancelReason\": null,\n      \"mountedVariants\": [],\n      \"mountFailures\": [],\n      \"renderState\": null\n    }\n  ],\n  \"render\": [\n    {\n      \"id\": \"ab12cd34\",\n      \"renderState\": null,\n      \"mountedVariants\": [],\n      \"mountFailures\": []\n    }\n  ],\n  \"recoveryHint\": \"Run live-poll.mjs to continue pending work, or live-complete.mjs --id <session> after manual cleanup.\"\n}\n",
+      "stdout": "{\n  \"liveServer\": {\n    \"status\": \"ok\",\n    \"port\": <PORT>,\n    \"connectedClients\": 0,\n    \"agentPolling\": false,\n    \"pendingEvents\": [\n      {\n        \"id\": \"ab12cd34\",\n        \"type\": \"generate\",\n        \"leased\": false,\n        \"leaseUntil\": null\n      }\n    ]\n  },\n  \"activeSessions\": [\n    {\n      \"id\": \"ab12cd34\",\n      \"phase\": \"generate_requested\",\n      \"pageUrl\": \"/\",\n      \"sourceFile\": null,\n      \"previewFile\": null,\n      \"previewMode\": null,\n      \"expectedVariants\": 3,\n      \"arrivedVariants\": 0,\n      \"visibleVariant\": null,\n      \"checkpointRevision\": 0,\n      \"browserCheckpointRevision\": 0,\n      \"publicationCheckpointRevision\": 0,\n      \"paramValues\": {},\n      \"generationPhase\": null,\n      \"generationCompletedAt\": null,\n      \"generationCanceled\": false,\n      \"cancelReason\": null,\n      \"mountedVariants\": [],\n      \"mountFailures\": [],\n      \"renderState\": null\n    }\n  ],\n  \"render\": [\n    {\n      \"id\": \"ab12cd34\",\n      \"renderState\": null,\n      \"mountedVariants\": [],\n      \"mountFailures\": []\n    }\n  ],\n  \"recoveryHint\": \"Run <IMPECCABLE> live-poll to continue pending work, or <IMPECCABLE> live-complete --id <session> after manual cleanup.\"\n}\n",
       "stderr": "",
       "exit": 0,
       "signal": null
@@ -62,7 +62,7 @@
       "signal": null
     },
     {
-      "stdout": "{\n  \"liveServer\": {\n    \"status\": \"ok\",\n    \"port\": <PORT>,\n    \"connectedClients\": 0,\n    \"agentPolling\": false,\n    \"pendingEvents\": []\n  },\n  \"activeSessions\": [],\n  \"render\": [],\n  \"recoveryHint\": \"Run live-poll.mjs to continue pending work, or live-complete.mjs --id <session> after manual cleanup.\"\n}\n",
+      "stdout": "{\n  \"liveServer\": {\n    \"status\": \"ok\",\n    \"port\": <PORT>,\n    \"connectedClients\": 0,\n    \"agentPolling\": false,\n    \"pendingEvents\": []\n  },\n  \"activeSessions\": [],\n  \"render\": [],\n  \"recoveryHint\": \"Run <IMPECCABLE> live-poll to continue pending work, or <IMPECCABLE> live-complete --id <session> after manual cleanup.\"\n}\n",
       "stderr": "",
       "exit": 0,
       "signal": null
@@ -74,7 +74,7 @@
       "signal": null
     },
     {
-      "stdout": "{\n  \"liveServer\": null,\n  \"activeSessions\": [],\n  \"render\": [],\n  \"recoveryHint\": \"Start live-server.mjs to requeue pending durable events, then run live-poll.mjs.\"\n}\n",
+      "stdout": "{\n  \"liveServer\": null,\n  \"activeSessions\": [],\n  \"render\": [],\n  \"recoveryHint\": \"Start <IMPECCABLE> live-server to requeue pending durable events, then run <IMPECCABLE> live-poll.\"\n}\n",
       "stderr": "",
       "exit": 0,
       "signal": null
@@ -88,7 +88,7 @@
   },
   "daemon": [
     {
-      "stdout": "\nImpeccable live server running on http://localhost:<PORT>\nToken: <UUID>\n\nScript: http://localhost:<PORT>/live.js\nInject: managed by live-inject.mjs; Astro source tags use is:inline automatically.\nStop:   node live-server.mjs stop\n",
+      "stdout": "\nImpeccable live server running on http://localhost:<PORT>\nToken: <UUID>\n\nScript: http://localhost:<PORT>/live.js\nInject: managed by impeccable live-inject; Astro source tags use is:inline automatically.\nStop:   impeccable live-server stop\n",
       "stderr": ""
     }
   ]

@@ -1,5 +1,5 @@
 {
-  "stdout": "Usage: node pin.mjs <pin|unpin> <command>\n\nAvailable commands: craft, init, extract, document, shape, critique, audit, polish, bolder, quieter, distill, harden, onboard, live, animate, colorize, typeset, layout, delight, overdrive, clarify, adapt, optimize\n",
+  "stdout": "Usage: impeccable pin <pin|unpin> <command>\n\nAvailable commands: craft, init, extract, document, shape, critique, audit, polish, bolder, quieter, distill, harden, onboard, live, animate, colorize, typeset, layout, delight, overdrive, clarify, adapt, optimize\n",
   "stderr": "",
   "exit": 1,
   "signal": null,

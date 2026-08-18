@@ -1,5 +1,5 @@
 {
-  "stdout": "Usage: node live-discard-manual-edits.mjs [--page-url=<url>]\n",
+  "stdout": "Usage: impeccable live-discard-manual-edits [--page-url=<url>]\n",
   "stderr": "",
   "exit": 0,
   "signal": null,
