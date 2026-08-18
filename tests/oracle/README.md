@@ -55,3 +55,35 @@ Not covered on purpose: `palette` with no `--id` / `--from` / env seed (random),
 `concept-seed` against the live roll API, `generate-image` real mode,
 `serve-question --start` / blocking mode (opens a browser and binds a port),
 and unhandled-exception paths whose stack traces carry Node line numbers.
+
+## Live-mode cases (`cases/live-*.mjs`, workspaces `live-*`)
+
+Helpers live in `live-helpers.mjs` (staged journals, buffers, wrapped source
+files with the fake-agent variant block, a `.git` FILE pointing at a non-repo
+gitdir so roots resolution sees a git boundary while `git check-ignore` exits
+128 everywhere and the ignore block lands in the snapshotable
+`.gitfake/info/exclude`). Svelte component preview cases symlink this repo's
+`node_modules/svelte` into the staged app, exactly like the unit tests.
+
+Harness additions made for live:
+
+- `steps[]` entries may carry their own `setup(ws)` (run right before that
+  step) and `daemon: true` with `readyFile` / `readyTimeoutMs`: the verb is
+  spawned detached, the harness waits for the ready file, later steps run
+  against it, and teardown SIGTERMs (then SIGKILLs) it. Its stdout/stderr land
+  in the golden as `daemon: [{stdout, stderr}]`.
+- `normalize: [[regexSource, flags, replacement], ...]` on a case applies extra
+  masks to that case only. Live uses it for the dynamic helper port
+  (`localhost:<PORT>`, `"port": <PORT>`), lease and phase stamps (`<EPOCH>`),
+  and float durations (`<N>`).
+- Global masks added: `"pid": <PID>` / `(pid <PID>)` and UUID tokens `<UUID>`.
+- `snapshotFiles` walks `node_modules/.impeccable-live` (the Svelte preview
+  tree) and nothing else under `node_modules`.
+
+Deliberately not covered here (rely on `tests/live-e2e`): the browser
+handshake and `/live.js` bundle, SSE, generate/accept round-trips through a
+real browser, `variant_mount_failed` republish, manual-edit chat routing and
+the codex/claude subprocess providers, Svelte revision-dir publishing, and
+`live.mjs`'s dev-server-dependent flows. Lock-file names hash the absolute
+source path, so lock cases do not snapshot `.impeccable/live/locks/`.
+`live-poll-*-connection-refused` assumes nothing listens on 127.0.0.1:65531.

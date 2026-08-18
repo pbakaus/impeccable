@@ -1,0 +1,10 @@
+{
+  "stdout": "",
+  "stderr": "{\"error\":\"element_ambiguous\",\"fallback\":\"agent-driven\",\"file\":\"src/cards.html\",\"candidates\":[{\"startLine\":4,\"endLine\":4},{\"startLine\":8,\"endLine\":8},{\"startLine\":12,\"endLine\":12}],\"hint\":\"Multiple source elements match both classes/tag and textContent. Pass --element-id, a more specific --text, or write the wrapper manually. See \\\"Handle fallback\\\" in live.md.\"}\n",
+  "exit": 1,
+  "signal": null,
+  "files": {
+    ".impeccable/live/config.json": "{\n  \"files\": [\"index.html\", \"public/**/*.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n",
+    "src/cards.html": "<section class=\"cards\">\n  <div class=\"card\">\n    <h3 class=\"card-title\">Alpha card</h3>\n    <p class=\"card-body\">First card body copy.</p>\n  </div>\n  <div class=\"card\">\n    <h3 class=\"card-title\">Beta card</h3>\n    <p class=\"card-body\">Second card body copy.</p>\n  </div>\n  <div class=\"card\">\n    <h3 class=\"card-title\">Gamma card</h3>\n    <p class=\"card-body\">Third card body copy.</p>\n  </div>\n</section>\n"
+  }
+}

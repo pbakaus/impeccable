@@ -1,0 +1,10 @@
+{
+  "stdout": "",
+  "stderr": "--data must be valid JSON: Expected property name or '}' in JSON at position 1 (line 1 column 2)\n",
+  "exit": 1,
+  "signal": null,
+  "files": {
+    ".impeccable/live/config.json": "{\n  \"files\": [\"index.html\", \"public/**/*.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n",
+    ".impeccable/live/server.json": "{\"pid\":<PID>,\"port\":65531,\"token\":\"oracle-token\"}"
+  }
+}

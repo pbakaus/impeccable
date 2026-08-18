@@ -1,0 +1,9 @@
+{
+  "stdout": "",
+  "stderr": "{\"error\":\"Found file but could not locate element in src/cards.html. Searched for: hero-title\"}\n",
+  "exit": 1,
+  "signal": null,
+  "files": {
+    ".impeccable/live/config.json": "{\n  \"files\": [\"index.html\", \"public/**/*.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n"
+  }
+}

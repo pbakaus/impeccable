@@ -1,0 +1,30 @@
+{
+  "steps": [
+    {
+      "stdout": "{\n  \"ok\": true,\n  \"serverPort\": <PORT>,\n  \"serverToken\": \"<UUID>\",\n  \"pageFiles\": [\n    \"index.html\",\n    \"public/no-body.html\",\n    \"public/docs/guide.html\"\n  ],\n  \"liveConfigPath\": \"<WS>/.impeccable/live/config.json\",\n  \"configDrift\": {\n    \"orphans\": [\n      \"src/cards.html\"\n    ],\n    \"orphanCount\": 1,\n    \"hint\": \"1 HTML file(s) exist but aren't in config.files. Consider adding them, or use a glob pattern like \\\"public/**/*.html\\\".\"\n  },\n  \"targetPath\": null,\n  \"projectRoot\": \"<WS>\",\n  \"repoRoot\": \"<WS>\",\n  \"roots\": {\n    \"version\": 1,\n    \"appRoot\": \"<WS>\",\n    \"repoRoot\": \"<WS>\",\n    \"contextRoot\": \"<WS>\",\n    \"sessionRoot\": \"<WS>/.impeccable/live\",\n    \"productPath\": \"<WS>/PRODUCT.md\",\n    \"designPath\": \"<WS>/DESIGN.md\",\n    \"resolvedFrom\": \"cwd\"\n  },\n  \"hasProduct\": true,\n  \"product\": \"<!-- impeccable:product-schema 2 -->\\n# Product\\n\\n## What it is\\nA fixture app used by the oracle harness for live mode.\\n\\n## Platform\\nweb\\n\",\n  \"productPath\": \"PRODUCT.md\",\n  \"hasDesign\": true,\n  \"design\": \"---\\nname: Oracle Live Fixture\\ndescription: A one-page fixture set in plain type on paper-white surfaces.\\ncolors:\\n  ink: \\\"#142720\\\"\\n  paper: \\\"#ffffff\\\"\\ntypography:\\n  body:\\n    fontFamily: \\\"system-ui, sans-serif\\\"\\n    fontWeight: 400\\n    lineHeight: 1.5\\n---\\n\",\n  \"designPath\": \"DESIGN.md\",\n  \"hasSurfaceBrief\": false,\n  \"surfaceBrief\": null,\n  \"surfaceBriefPath\": null,\n  \"_instructions\": \"Open the app URL that serves a pageFiles entry (never serverPort; that is the helper). Then start the poll loop per your harness policy in live.md and re-run <IMPECCABLE> live-poll immediately after every event or reply. Every event carries _instructions: follow them; they are the authoritative next step with real ids and paths filled in. A poll that is running is a poll you are SERVICING: never announce you are waiting and idle your turn; stay on the exec session until it returns an event, and never end a turn while a poll is outstanding.\"\n}\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "{\"ok\":true,\"config\":{\"files\":[\"index.html\",\"public/**/*.html\"],\"insertBefore\":\"</body>\",\"commentSyntax\":\"html\"},\"path\":\"<WS>/.impeccable/live/config.json\"}\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "Stopped live server on port <PORT>.\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    }
+  ],
+  "files": {
+    ".gitignore": "# impeccable-live-ignore-start\n.impeccable/hook.cache.json\n.impeccable/hook.pending.json\n.impeccable/config.local.json\n.impeccable/live/server.json\n.impeccable/live/roots.json\n.impeccable/live/app-root.json\n.impeccable/live/inject-journal.json\n.impeccable/live/sessions/\n.impeccable/live/previews/\n.impeccable/live/annotations/\n.impeccable/live/artifacts/\n.impeccable/live/accept-receipts/\n.impeccable/live/locks/\n.impeccable/live/cache/\n.impeccable/live/manual-edit-apply-transaction.json\n.impeccable/live/manual-edit-events.jsonl\n.impeccable/live/manual-edit-evidence/\n.impeccable/live/pending-manual-edits.json\n.impeccable/live/deferred-svelte-component-accepts.json\n.impeccable-live.json\n.impeccable-live/\napp/.impeccable-live/\nsrc/.impeccable-live/\nnode_modules/.impeccable-live/\nsrc/lib/impeccable/ImpeccableLiveRoot.svelte\nsrc/lib/impeccable/__runtime.js\nsrc/lib/impeccable/[0-9a-f]*/\nplugins/impeccable-live.client.ts\napp/plugins/impeccable-live.client.ts\nsrc/plugins/impeccable-live.client.ts\n# impeccable-live-ignore-end\n",
+    ".impeccable/live/config.json": "{\n  \"files\": [\"index.html\", \"public/**/*.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n",
+    ".impeccable/live/roots.json": "{\n  \"version\": 1,\n  \"appRoot\": \"<WS>\",\n  \"repoRoot\": \"<WS>\",\n  \"contextRoot\": \"<WS>\",\n  \"sessionRoot\": \"<WS>/.impeccable/live\",\n  \"productPath\": \"<WS>/PRODUCT.md\",\n  \"designPath\": \"<WS>/DESIGN.md\",\n  \"resolvedFrom\": \"cwd\"\n}",
+    "index.html": "<!DOCTYPE html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <title>Oracle Live HTML Fixture</title>\n    <style>\n      .hero-title { font-size: 2rem; }\n      .hero-hook { color: #555; }\n    </style>\n  </head>\n  <body>\n    <main class=\"page\">\n      <h1 id=\"hero\" class=\"hero-title\">Oracle Fixture</h1>\n      <p class=\"hero-hook\">Minimal static page for oracle live-mode goldens.</p>\n      <section id=\"features\" class=\"feature-grid\">\n        <article class=\"feature-card\">One</article>\n        <article class=\"feature-card\">Two</article>\n      </section>\n      <aside class=\"side-note\">\n        <h2 class=\"note-title\">Aside</h2>\n        <p>Nested content.</p>\n      </aside>\n    </main>\n  </body>\n</html>\n",
+    "public/docs/guide.html": "<!DOCTYPE html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <title>Guide</title>\n  </head>\n  <body>\n    <article class=\"doc\">\n      <h1 class=\"doc-title\">Guide</h1>\n      <p class=\"doc-lead\">A second page covered by the config glob.</p>\n    </article>\n  </body>\n</html>\n",
+    "public/no-body.html": "<!DOCTYPE html>\n<html lang=\"en\">\n  <head><title>No body tag</title></head>\n  <p class=\"orphan\">This file has no closing body tag.</p>\n</html>\n"
+  }
+}

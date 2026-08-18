@@ -1,0 +1,10 @@
+{
+  "stdout": "{\n  \"active\": true,\n  \"snapshot\": {\n    \"id\": \"zz99zz99\",\n    \"phase\": \"new\",\n    \"pageUrl\": null,\n    \"sourceFile\": null,\n    \"previewFile\": null,\n    \"previewMode\": null,\n    \"expectedVariants\": 0,\n    \"arrivedVariants\": 0,\n    \"visibleVariant\": null,\n    \"paramValues\": {},\n    \"pendingEventSeq\": null,\n    \"pendingEvent\": null,\n    \"deliveryLease\": null,\n    \"checkpointRevision\": 0,\n    \"browserCheckpointRevision\": 0,\n    \"publicationCheckpointRevision\": 0,\n    \"activeOwner\": null,\n    \"sourceMarkers\": {},\n    \"fallbackMode\": null,\n    \"generationPhase\": null,\n    \"generationCompletedAt\": null,\n    \"generationTimings\": {},\n    \"variantPlan\": null,\n    \"generationCanceled\": false,\n    \"generationCanceledAt\": null,\n    \"cancelReason\": null,\n    \"annotationArtifacts\": [],\n    \"mountedVariants\": [],\n    \"mountFailures\": [],\n    \"renderState\": null,\n    \"diagnostics\": [],\n    \"updatedAt\": null\n  },\n  \"pendingEvent\": null,\n  \"render\": {\n    \"renderState\": null,\n    \"mountedVariants\": [],\n    \"mountFailures\": []\n  },\n  \"nextAction\": \"Inspect zz99zz99; no pending agent event is currently queued.\"\n}\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".impeccable/live/config.json": "{\n  \"files\": [\"index.html\", \"public/**/*.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n",
+    ".impeccable/live/sessions/ab12cd34.jsonl": "{\"seq\":1,\"id\":\"ab12cd34\",\"type\":\"generate\",\"ts\":\"<ISO>\",\"event\":{\"id\":\"ab12cd34\",\"type\":\"generate\",\"action\":\"bolder\",\"count\":3,\"pageUrl\":\"/\",\"element\":{\"tagName\":\"h1\",\"id\":\"hero\",\"classes\":[\"hero-title\"],\"textContent\":\"Oracle Fixture\",\"outerHTML\":\"<h1 id=\\\"hero\\\" class=\\\"hero-title\\\">Oracle Fixture</h1>\"},\"clientSentAt\":1754042400000}}\n{\"seq\":2,\"id\":\"ab12cd34\",\"type\":\"agent_phase\",\"ts\":\"<ISO>\",\"event\":{\"id\":\"ab12cd34\",\"type\":\"agent_phase\",\"phase\":\"picked_up\",\"at\": <EPOCH>}}\n"
+  }
+}

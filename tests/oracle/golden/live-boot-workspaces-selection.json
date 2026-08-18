@@ -1,0 +1,7 @@
+{
+  "stdout": "{\n  \"ok\": false,\n  \"error\": \"target_selection_required\",\n  \"targetPath\": null,\n  \"projectRoot\": \"<WS>\",\n  \"repoRoot\": \"<WS>\",\n  \"targetCandidates\": [\n    {\n      \"name\": \"admin\",\n      \"path\": \"apps/admin\",\n      \"targetExample\": \"apps/admin\",\n      \"productStatus\": \"inherited\",\n      \"productPath\": \"PRODUCT.md\",\n      \"designStatus\": \"inherited\",\n      \"designPath\": \"DESIGN.md\"\n    },\n    {\n      \"name\": \"web\",\n      \"path\": \"apps/web\",\n      \"targetExample\": \"apps/web/src/App.jsx\",\n      \"productStatus\": \"inherited\",\n      \"productPath\": \"PRODUCT.md\",\n      \"designStatus\": \"inherited\",\n      \"designPath\": \"DESIGN.md\"\n    }\n  ],\n  \"hint\": \"Ask the user which app Impeccable should use, then rerun live from that child app cwd. Use --target <path> only as a fallback or explicit path diagnostic.\"\n}\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

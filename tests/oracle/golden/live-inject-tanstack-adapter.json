@@ -1,0 +1,28 @@
+{
+  "steps": [
+    {
+      "stdout": "{\"ok\":true,\"port\":8412,\"adapter\":\"tanstack-start\",\"gitIgnore\":{\"file\":\".gitignore\",\"mode\":\"gitignore\",\"changed\":true,\"patterns\":[\".impeccable/hook.cache.json\",\".impeccable/hook.pending.json\",\".impeccable/config.local.json\",\".impeccable/live/server.json\",\".impeccable/live/roots.json\",\".impeccable/live/app-root.json\",\".impeccable/live/inject-journal.json\",\".impeccable/live/sessions/\",\".impeccable/live/previews/\",\".impeccable/live/annotations/\",\".impeccable/live/artifacts/\",\".impeccable/live/accept-receipts/\",\".impeccable/live/locks/\",\".impeccable/live/cache/\",\".impeccable/live/manual-edit-apply-transaction.json\",\".impeccable/live/manual-edit-events.jsonl\",\".impeccable/live/manual-edit-evidence/\",\".impeccable/live/pending-manual-edits.json\",\".impeccable/live/deferred-svelte-component-accepts.json\",\".impeccable-live.json\",\".impeccable-live/\",\"app/.impeccable-live/\",\"src/.impeccable-live/\",\"node_modules/.impeccable-live/\",\"src/lib/impeccable/ImpeccableLiveRoot.svelte\",\"src/lib/impeccable/__runtime.js\",\"src/lib/impeccable/[0-9a-f]*/\",\"plugins/impeccable-live.client.ts\",\"app/plugins/impeccable-live.client.ts\",\"src/plugins/impeccable-live.client.ts\",\"src/impeccable/ImpeccableLiveRoot.tsx\"]},\"results\":[{\"file\":\"src/routes/__root.tsx\",\"adapter\":\"tanstack-start\",\"inserted\":true,\"componentFile\":\"src/impeccable/ImpeccableLiveRoot.tsx\",\"devOnly\":true}]}\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "{\"ok\":true,\"port\":8412,\"adapter\":\"tanstack-start\",\"gitIgnore\":{\"file\":\".gitignore\",\"mode\":\"gitignore\",\"changed\":false,\"patterns\":[\".impeccable/hook.cache.json\",\".impeccable/hook.pending.json\",\".impeccable/config.local.json\",\".impeccable/live/server.json\",\".impeccable/live/roots.json\",\".impeccable/live/app-root.json\",\".impeccable/live/inject-journal.json\",\".impeccable/live/sessions/\",\".impeccable/live/previews/\",\".impeccable/live/annotations/\",\".impeccable/live/artifacts/\",\".impeccable/live/accept-receipts/\",\".impeccable/live/locks/\",\".impeccable/live/cache/\",\".impeccable/live/manual-edit-apply-transaction.json\",\".impeccable/live/manual-edit-events.jsonl\",\".impeccable/live/manual-edit-evidence/\",\".impeccable/live/pending-manual-edits.json\",\".impeccable/live/deferred-svelte-component-accepts.json\",\".impeccable-live.json\",\".impeccable-live/\",\"app/.impeccable-live/\",\"src/.impeccable-live/\",\"node_modules/.impeccable-live/\",\"src/lib/impeccable/ImpeccableLiveRoot.svelte\",\"src/lib/impeccable/__runtime.js\",\"src/lib/impeccable/[0-9a-f]*/\",\"plugins/impeccable-live.client.ts\",\"app/plugins/impeccable-live.client.ts\",\"src/plugins/impeccable-live.client.ts\",\"src/impeccable/ImpeccableLiveRoot.tsx\"]},\"results\":[{\"file\":\"src/routes/__root.tsx\",\"adapter\":\"tanstack-start\",\"inserted\":false,\"componentFile\":\"src/impeccable/ImpeccableLiveRoot.tsx\",\"devOnly\":true}]}\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "{\"ok\":true,\"adapter\":\"tanstack-start\",\"results\":[{\"file\":\"src/routes/__root.tsx\",\"adapter\":\"tanstack-start\",\"removed\":true,\"componentFile\":\"src/impeccable/ImpeccableLiveRoot.tsx\"}]}\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    }
+  ],
+  "files": {
+    ".gitignore": "# impeccable-live-ignore-start\n.impeccable/hook.cache.json\n.impeccable/hook.pending.json\n.impeccable/config.local.json\n.impeccable/live/server.json\n.impeccable/live/roots.json\n.impeccable/live/app-root.json\n.impeccable/live/inject-journal.json\n.impeccable/live/sessions/\n.impeccable/live/previews/\n.impeccable/live/annotations/\n.impeccable/live/artifacts/\n.impeccable/live/accept-receipts/\n.impeccable/live/locks/\n.impeccable/live/cache/\n.impeccable/live/manual-edit-apply-transaction.json\n.impeccable/live/manual-edit-events.jsonl\n.impeccable/live/manual-edit-evidence/\n.impeccable/live/pending-manual-edits.json\n.impeccable/live/deferred-svelte-component-accepts.json\n.impeccable-live.json\n.impeccable-live/\napp/.impeccable-live/\nsrc/.impeccable-live/\nnode_modules/.impeccable-live/\nsrc/lib/impeccable/ImpeccableLiveRoot.svelte\nsrc/lib/impeccable/__runtime.js\nsrc/lib/impeccable/[0-9a-f]*/\nplugins/impeccable-live.client.ts\napp/plugins/impeccable-live.client.ts\nsrc/plugins/impeccable-live.client.ts\nsrc/impeccable/ImpeccableLiveRoot.tsx\n# impeccable-live-ignore-end\n",
+    ".impeccable/live/config.json": "{\n  \"files\": [\"src/routes/__root.tsx\"],\n  \"insertBefore\": \"<Scripts\",\n  \"commentSyntax\": \"jsx\"\n}\n",
+    "src/routes/__root.tsx": "import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router';\n\nexport const Route = createRootRoute({\n  head: () => ({\n    meta: [\n      { charSet: 'utf-8' },\n      { title: 'TanStack Start Fixture' },\n    ],\n  }),\n  shellComponent: RootDocument,\n});\n\nfunction RootDocument({ children }: { children: React.ReactNode }) {\n  return (\n    <html lang=\"en\">\n      <head>\n        <HeadContent />\n      </head>\n      <body>\n        {children}\n        <Scripts />\n      </body>\n    </html>\n  );\n}\n",
+    "src/routes/index.tsx": "import { createFileRoute } from '@tanstack/react-router';\n\nexport const Route = createFileRoute('/')({\n  component: Home,\n});\n\nfunction Home() {\n  return (\n    <main className=\"page\">\n      <h1 className=\"hero-title\">Start Home Hero</h1>\n      <p className=\"hero-hook\">Server-rendered by TanStack Start.</p>\n    </main>\n  );\n}\n"
+  }
+}

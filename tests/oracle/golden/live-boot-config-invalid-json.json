@@ -1,0 +1,10 @@
+{
+  "stdout": "{\"ok\":false,\"error\":\"config_invalid\",\"message\":\"Expected property name or '}' in JSON at position 2 (line 1 column 3)\",\"path\":\"<WS>/.impeccable/live/config.json\",\"targetPath\":null,\"projectRoot\":\"<WS>\",\"repoRoot\":\"<WS>\"}\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".impeccable/live/config.json": "{ nope",
+    ".impeccable/live/roots.json": "{\n  \"version\": 1,\n  \"appRoot\": \"<WS>\",\n  \"repoRoot\": \"<WS>\",\n  \"contextRoot\": \"<WS>\",\n  \"sessionRoot\": \"<WS>/.impeccable/live\",\n  \"productPath\": \"<WS>/PRODUCT.md\",\n  \"designPath\": \"<WS>/DESIGN.md\",\n  \"resolvedFrom\": \"cwd\"\n}"
+  }
+}

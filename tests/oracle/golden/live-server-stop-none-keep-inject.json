@@ -1,0 +1,9 @@
+{
+  "stdout": "No running live server found.\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".impeccable/live/config.json": "{\n  \"files\": [\"index.html\", \"public/**/*.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n"
+  }
+}

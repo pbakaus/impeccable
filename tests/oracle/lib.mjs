@@ -13,7 +13,8 @@
  *   - cwd: subpath inside the staged workspace (default '.')
  *   - files: globs (relative to staged workspace) to snapshot after the run
  *   - args may contain <WS> and <REPO> placeholders
- *   - steps: multi-step cases share one staged workspace; a step may set
+ *   - steps: multi-step cases share one staged workspace; a step may carry
+ *     its own setup(ws) (run right before that step) and may set
  *     `daemon: true` to spawn its verb detached (see runDaemonStep) so later
  *     steps run against a live process; the daemon is killed after the last
  *     step and its captured output lands in the golden as `daemon`.
@@ -119,7 +120,7 @@ export function normalize(text, { ws, home = os.homedir() }) {
   // the `timestamp:` frontmatter it writes.
   out = out.replace(/\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z/g, '<STAMP>');
   // Hook audit entries carry wall-clock durations.
-  out = out.replace(/"durationMs":\s*\d+/g, '"durationMs": <MS>');
+  out = out.replace(/"durationMs":\s*\d+(?:\.\d+)?/g, '"durationMs": <MS>');
   // ISO timestamps and epoch millis are run-dependent.
   out = out.replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z/g, '<ISO>');
   out = out.replace(/"(updatedAt|createdAt|checkedAt|lastCheck|lastChecked|timestamp|ts|mtimeMs|mtime|startedAt|endedAt)":\s*\d{10,}/g, '"$1": <EPOCH>');
@@ -214,6 +215,9 @@ export function runCase(c, { impl = 'js', bin = process.env.IMPECCABLE_BIN } = {
     try {
       for (const step of steps) {
         const merged = { ...c, ...step, verb: step.verb || c.verb };
+        // A step-level setup stages state between verbs (e.g. the agent's
+        // variant files between wrap and accept).
+        if (c.steps && typeof step.setup === 'function') step.setup(ws);
         if (step.daemon) {
           daemons.push(runDaemonStep(merged, { impl, bin, ws, isolatedHome }));
           results.push({ stdout: '', stderr: '', status: null, signal: null, daemon: true });

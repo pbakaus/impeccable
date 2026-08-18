@@ -1,0 +1,13 @@
+{
+  "stdout": "{\"handled\":true,\"file\":\"src/App.jsx\",\"carbonize\":false}\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".impeccable/live/accept-receipts/ab12cd34.json": "{\n  \"id\": \"ab12cd34\",\n  \"operation\": \"discard\",\n  \"variantId\": null,\n  \"result\": {\n    \"handled\": true,\n    \"file\": \"src/App.jsx\",\n    \"carbonize\": false\n  },\n  \"completedAt\": \"<ISO>\"\n}\n",
+    ".impeccable/live/config.json": "{\n  \"files\": [\"index.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n",
+    "src/App.jsx": "export default function App() {\n  return (\n    <main className=\"page\">\n\n      <h1 className=\"hero-title\">Vite Fixture</h1>\n\n      <p className=\"hero-hook\">Minimal React tree for oracle live-mode goldens.</p>\n      <section id=\"features\" className=\"feature-grid\">\n        <article className=\"feature-card\">One</article>\n        <article className=\"feature-card\">Two</article>\n      </section>\n      <ul className=\"item-list\">\n        {items.map((item) => (\n          <li key={item.id} className=\"item-row\">{item.title}</li>\n        ))}\n      </ul>\n    </main>\n  );\n}\n\nconst items = [\n  { id: 1, title: 'First' },\n  { id: 2, title: 'Second' },\n];\n",
+    "src/main.jsx": "import { createRoot } from 'react-dom/client';\nimport App from './App.jsx';\n\ncreateRoot(document.getElementById('root')).render(<App />);\n",
+    "src/Panel.tsx": "type PanelProps = { title: string; children?: React.ReactNode };\n\nexport function Panel({ title, children }: PanelProps) {\n  return (\n    <section className=\"panel\">\n      <header className=\"panel-header\">\n        <h2 className=\"panel-title\">{title}</h2>\n      </header>\n      <div className=\"panel-body\">{children}</div>\n    </section>\n  );\n}\n"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "steps": [
+    {
+      "stdout": "{\"ok\":true,\"port\":8412,\"adapter\":\"sveltekit\",\"gitIgnore\":{\"file\":\".gitignore\",\"mode\":\"gitignore\",\"changed\":true,\"patterns\":[\".impeccable/hook.cache.json\",\".impeccable/hook.pending.json\",\".impeccable/config.local.json\",\".impeccable/live/server.json\",\".impeccable/live/roots.json\",\".impeccable/live/app-root.json\",\".impeccable/live/inject-journal.json\",\".impeccable/live/sessions/\",\".impeccable/live/previews/\",\".impeccable/live/annotations/\",\".impeccable/live/artifacts/\",\".impeccable/live/accept-receipts/\",\".impeccable/live/locks/\",\".impeccable/live/cache/\",\".impeccable/live/manual-edit-apply-transaction.json\",\".impeccable/live/manual-edit-events.jsonl\",\".impeccable/live/manual-edit-evidence/\",\".impeccable/live/pending-manual-edits.json\",\".impeccable/live/deferred-svelte-component-accepts.json\",\".impeccable-live.json\",\".impeccable-live/\",\"app/.impeccable-live/\",\"src/.impeccable-live/\",\"node_modules/.impeccable-live/\",\"src/lib/impeccable/ImpeccableLiveRoot.svelte\",\"src/lib/impeccable/__runtime.js\",\"src/lib/impeccable/[0-9a-f]*/\",\"plugins/impeccable-live.client.ts\",\"app/plugins/impeccable-live.client.ts\",\"src/plugins/impeccable-live.client.ts\"]},\"results\":[{\"file\":\"src/routes/+layout.svelte\",\"adapter\":\"sveltekit\",\"inserted\":true,\"appHtmlUntouched\":true,\"rootComponent\":\"src/lib/impeccable/ImpeccableLiveRoot.svelte\"}]}\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "{\"ok\":true,\"port\":8412,\"adapter\":\"sveltekit\",\"gitIgnore\":{\"file\":\".gitignore\",\"mode\":\"gitignore\",\"changed\":false,\"patterns\":[\".impeccable/hook.cache.json\",\".impeccable/hook.pending.json\",\".impeccable/config.local.json\",\".impeccable/live/server.json\",\".impeccable/live/roots.json\",\".impeccable/live/app-root.json\",\".impeccable/live/inject-journal.json\",\".impeccable/live/sessions/\",\".impeccable/live/previews/\",\".impeccable/live/annotations/\",\".impeccable/live/artifacts/\",\".impeccable/live/accept-receipts/\",\".impeccable/live/locks/\",\".impeccable/live/cache/\",\".impeccable/live/manual-edit-apply-transaction.json\",\".impeccable/live/manual-edit-events.jsonl\",\".impeccable/live/manual-edit-evidence/\",\".impeccable/live/pending-manual-edits.json\",\".impeccable/live/deferred-svelte-component-accepts.json\",\".impeccable-live.json\",\".impeccable-live/\",\"app/.impeccable-live/\",\"src/.impeccable-live/\",\"node_modules/.impeccable-live/\",\"src/lib/impeccable/ImpeccableLiveRoot.svelte\",\"src/lib/impeccable/__runtime.js\",\"src/lib/impeccable/[0-9a-f]*/\",\"plugins/impeccable-live.client.ts\",\"app/plugins/impeccable-live.client.ts\",\"src/plugins/impeccable-live.client.ts\"]},\"results\":[{\"file\":\"src/routes/+layout.svelte\",\"adapter\":\"sveltekit\",\"inserted\":false,\"appHtmlUntouched\":true,\"rootComponent\":\"src/lib/impeccable/ImpeccableLiveRoot.svelte\"}]}\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "{\"ok\":true,\"adapter\":\"sveltekit\",\"results\":[{\"file\":\"src/routes/+layout.svelte\",\"adapter\":\"sveltekit\",\"removed\":true,\"appHtmlUntouched\":true,\"rootComponent\":\"src/lib/impeccable/ImpeccableLiveRoot.svelte\"}]}\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "{\"ok\":true,\"adapter\":\"sveltekit\",\"results\":[{\"file\":\"src/routes/+layout.svelte\",\"adapter\":\"sveltekit\",\"removed\":false,\"appHtmlUntouched\":true,\"rootComponent\":\"src/lib/impeccable/ImpeccableLiveRoot.svelte\"}]}\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    }
+  ],
+  "files": {
+    ".gitignore": "# impeccable-live-ignore-start\n.impeccable/hook.cache.json\n.impeccable/hook.pending.json\n.impeccable/config.local.json\n.impeccable/live/server.json\n.impeccable/live/roots.json\n.impeccable/live/app-root.json\n.impeccable/live/inject-journal.json\n.impeccable/live/sessions/\n.impeccable/live/previews/\n.impeccable/live/annotations/\n.impeccable/live/artifacts/\n.impeccable/live/accept-receipts/\n.impeccable/live/locks/\n.impeccable/live/cache/\n.impeccable/live/manual-edit-apply-transaction.json\n.impeccable/live/manual-edit-events.jsonl\n.impeccable/live/manual-edit-evidence/\n.impeccable/live/pending-manual-edits.json\n.impeccable/live/deferred-svelte-component-accepts.json\n.impeccable-live.json\n.impeccable-live/\napp/.impeccable-live/\nsrc/.impeccable-live/\nnode_modules/.impeccable-live/\nsrc/lib/impeccable/ImpeccableLiveRoot.svelte\nsrc/lib/impeccable/__runtime.js\nsrc/lib/impeccable/[0-9a-f]*/\nplugins/impeccable-live.client.ts\napp/plugins/impeccable-live.client.ts\nsrc/plugins/impeccable-live.client.ts\n# impeccable-live-ignore-end\n",
+    ".impeccable/live/config.json": "{\n  \"files\": [\"src/app.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n",
+    "src/app.html": "<!DOCTYPE html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\" />\n    <title>SvelteKit Fixture</title>\n    %sveltekit.head%\n  </head>\n  <body data-sveltekit-preload-data=\"hover\">\n    <div style=\"display: contents\">%sveltekit.body%</div>\n  </body>\n</html>\n",
+    "src/routes/+layout.svelte": "<script>\n  let { children } = $props();\n</script>\n\n{@render children?.()}\n",
+    "src/routes/+page.svelte": "<script>\n  let title = 'SvelteKit Fixture';\n  let expenses = [\n    { id: 1, label: 'Coffee', amount: 3 },\n    { id: 2, label: 'Lunch', amount: 12 },\n  ];\n</script>\n\n<main class=\"page\">\n  <h1 class=\"hero-title\">{title}</h1>\n  <p class=\"hero-hook\">Minimal SvelteKit route for oracle live-mode goldens.</p>\n  <ul class=\"expense-list\">\n    {#each expenses as expense (expense.id)}\n      <li class=\"expense-row\">{expense.label}: {expense.amount}</li>\n    {/each}\n  </ul>\n  <section id=\"features\" class=\"feature-grid\">\n    <article class=\"feature-card\">One</article>\n    <article class=\"feature-card\">Two</article>\n  </section>\n</main>\n\n<style>\n  .hero-title { font-size: 2rem; }\n  .expense-list { list-style: none; padding: 0; }\n  .expense-row { padding: 4px 0; }\n</style>\n"
+  }
+}

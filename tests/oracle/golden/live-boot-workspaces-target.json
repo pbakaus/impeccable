@@ -1,0 +1,10 @@
+{
+  "stdout": "{\"ok\":false,\"error\":\"config_missing\",\"path\":\"<WS>/apps/web/.impeccable/live/config.json\",\"targetPath\":\"apps/web\",\"projectRoot\":\"<WS>/apps/web\",\"repoRoot\":\"<WS>\"}\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".impeccable/live/app-root.json": "{\"version\":2,\"appRoots\":[{\"appRoot\":\"<WS>/apps/web\",\"bootedAt\":\"<ISO>\"}]}",
+    "apps/web/.impeccable/live/roots.json": "{\n  \"version\": 1,\n  \"appRoot\": \"<WS>/apps/web\",\n  \"repoRoot\": \"<WS>\",\n  \"contextRoot\": \"<WS>\",\n  \"sessionRoot\": \"<WS>/apps/web/.impeccable/live\",\n  \"productPath\": \"<WS>/PRODUCT.md\",\n  \"designPath\": \"<WS>/DESIGN.md\",\n  \"resolvedFrom\": \"target:apps/web\"\n}"
+  }
+}

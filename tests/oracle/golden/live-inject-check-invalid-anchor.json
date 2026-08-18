@@ -1,0 +1,7 @@
+{
+  "stdout": "{\"ok\":false,\"error\":\"config_invalid\",\"message\":\"config.insertBefore or config.insertAfter (string) required\",\"path\":\"<WS>/.impeccable/live/config.json\"}\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

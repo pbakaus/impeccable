@@ -1,0 +1,7 @@
+{
+  "stdout": "No running live server found.\n",
+  "stderr": "{\"ok\":false,\"error\":\"config_missing\",\"path\":\"<WS>/.impeccable/live/config.json\"}\nNote: could not remove live script tag ({\"ok\":false,\"error\":\"config_missing\",\"path\":\"<WS>/.impeccable/live/config.json\"})\n",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

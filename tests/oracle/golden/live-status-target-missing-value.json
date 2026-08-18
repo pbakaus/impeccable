@@ -1,0 +1,9 @@
+{
+  "stdout": "",
+  "stderr": "[impeccable live] --target requires a path value (use --target <path> or --target=<path>)\n",
+  "exit": 1,
+  "signal": null,
+  "files": {
+    ".impeccable/live/config.json": "{\n  \"files\": [\"index.html\", \"public/**/*.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n"
+  }
+}

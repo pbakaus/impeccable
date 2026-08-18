@@ -1,0 +1,7 @@
+{
+  "stdout": "Usage: node live.mjs\n\nPrepare everything for live variant mode in a single command:\n  - Checks .impeccable/live/config.json (required, created once per project)\n  - Starts (or reuses) the live server in the background\n  - Injects the browser script tag\n  - Reads PRODUCT.md / DESIGN.md for project context\n  - Prepares the harness-native foreground/background poll loop\n  - In monorepos, choose a child app first; --target <path> is the fallback/manual path\n\nOn success, prints a JSON blob with:\n  { ok, serverPort, serverToken, pageFiles, projectRoot, repoRoot, targetPath, productPath, designPath }\n\nOn target_selection_required, prints:\n  { ok: false, error: \"target_selection_required\", targetCandidates }\n\nOn config_missing, prints:\n  { ok: false, error: \"config_missing\", configPath, hint }\n\nThe agent should then:\n  1. If target_selection_required, ask which app to use and rerun from that child cwd\n  2. If config_missing, create the config and re-run this script\n  3. Optionally open the project's dev/preview URL in the browser (see reference/live.md—not serverPort)\n  4. Enter the poll loop: node live-poll.mjs\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

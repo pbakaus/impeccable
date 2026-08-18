@@ -1,0 +1,10 @@
+{
+  "stdout": "",
+  "stderr": "{\"error\":\"element_ambiguous\",\"fallback\":\"agent-driven\",\"reason\":\"rendered_text_not_in_source\",\"file\":\"src/cards.html\",\"candidates\":[{\"startLine\":2,\"endLine\":5},{\"startLine\":6,\"endLine\":9},{\"startLine\":10,\"endLine\":13}],\"hint\":\"Rendered text does not occur in any matching source branch. The element may use dynamic props or expressions; inspect the candidates and wrap the intended instance manually.\"}\n",
+  "exit": 1,
+  "signal": null,
+  "files": {
+    ".impeccable/live/config.json": "{\n  \"files\": [\"index.html\", \"public/**/*.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n",
+    "src/cards.html": "<section class=\"cards\">\n  <div class=\"card\">\n    <h3 class=\"card-title\">Alpha card</h3>\n    <p class=\"card-body\">First card body copy.</p>\n  </div>\n  <div class=\"card\">\n    <h3 class=\"card-title\">Beta card</h3>\n    <p class=\"card-body\">Second card body copy.</p>\n  </div>\n  <div class=\"card\">\n    <h3 class=\"card-title\">Gamma card</h3>\n    <p class=\"card-body\">Third card body copy.</p>\n  </div>\n</section>\n"
+  }
+}

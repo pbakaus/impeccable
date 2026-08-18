@@ -1,0 +1,10 @@
+{
+  "stdout": "",
+  "stderr": "Live server already running on port 65531 (pid <PID>).\nStop it first with: node live-server.mjs stop\n",
+  "exit": 1,
+  "signal": null,
+  "files": {
+    ".impeccable/live/config.json": "{\n  \"files\": [\"index.html\", \"public/**/*.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n",
+    ".impeccable/live/server.json": "{\"pid\":<PID>,\"port\":65531,\"token\":\"oracle-token\"}"
+  }
+}

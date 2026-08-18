@@ -1,0 +1,9 @@
+{
+  "stdout": "Usage: impeccable wrap [options]\n\nFind an element in source and wrap it in a variant container.\n\nRequired:\n  --id ID            Session ID for the variant wrapper\n  --count N          Number of expected variants (1-8)\n\nElement identification (at least one required):\n  --element-id ID    HTML id attribute of the element\n  --classes A,B,C    Comma- or space-separated CSS class names\n  --tag TAG          Tag name (div, section, etc.)\n  --query TEXT       Fallback: raw text to search for\n\nOptional:\n  --file PATH        Source file to search in (skips auto-detection)\n  --text TEXT        Picked element's textContent. Used to disambiguate when\n                     classes/tag match multiple sibling elements (e.g. a list\n                     of <Card>s with the same className). Pass the first ~80\n                     chars of event.element.textContent.\n  --page-url URL     Current page URL. Required when pending manual edits may\n                     affect the picked source block. Pending edits are filtered\n                     to this page so an edit on /a doesn't bleed into /b.\n  --help             Show this help message\n\nOutput (JSON):\n  { file, startLine, endLine, insertLine, commentSyntax }\n\nThe agent should insert variant HTML at insertLine.\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".impeccable/live/config.json": "{\n  \"files\": [\"index.html\", \"public/**/*.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n"
+  }
+}

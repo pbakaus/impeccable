@@ -1,0 +1,7 @@
+{
+  "stdout": "{\"ok\":true,\"config\":{\"files\":[\"index.html\",\"public/**/*.html\"],\"insertBefore\":\"</body>\",\"commentSyntax\":\"html\"},\"path\":\"<WS>/.impeccable/live/config.json\"}\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

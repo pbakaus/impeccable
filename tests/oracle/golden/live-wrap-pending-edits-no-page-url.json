@@ -1,0 +1,11 @@
+{
+  "stdout": "",
+  "stderr": "{\"error\":\"missing_page_url_with_pending_edits\",\"pendingEntries\":1,\"hint\":\"Pending manual edits may affect the selected source block. Pass --page-url=$event.pageUrl so the wrap block reflects the user's staged DOM.\"}\n",
+  "exit": 1,
+  "signal": null,
+  "files": {
+    ".impeccable/live/config.json": "{\n  \"files\": [\"index.html\", \"public/**/*.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n",
+    ".impeccable/live/pending-manual-edits.json": "{\n  \"version\": 1,\n  \"entries\": [\n    {\n      \"id\": \"e1\",\n      \"pageUrl\": \"/\",\n      \"element\": {\n        \"tagName\": \"p\"\n      },\n      \"ops\": [\n        {\n          \"ref\": \"main>p.hero-hook\",\n          \"tag\": \"p\",\n          \"originalText\": \"Minimal static page for oracle live-mode goldens.\",\n          \"newText\": \"Edited hook copy.\"\n        }\n      ],\n      \"stagedAt\": \"<ISO>\"\n    }\n  ]\n}\n",
+    "index.html": "<!DOCTYPE html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <title>Oracle Live HTML Fixture</title>\n    <style>\n      .hero-title { font-size: 2rem; }\n      .hero-hook { color: #555; }\n    </style>\n  </head>\n  <body>\n    <main class=\"page\">\n      <h1 id=\"hero\" class=\"hero-title\">Oracle Fixture</h1>\n      <p class=\"hero-hook\">Minimal static page for oracle live-mode goldens.</p>\n      <section id=\"features\" class=\"feature-grid\">\n        <article class=\"feature-card\">One</article>\n        <article class=\"feature-card\">Two</article>\n      </section>\n      <aside class=\"side-note\">\n        <h2 class=\"note-title\">Aside</h2>\n        <p>Nested content.</p>\n      </aside>\n    </main>\n  </body>\n</html>\n"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "stdout": "{\"ok\":false,\"error\":\"config_missing\",\"path\":\"<WS>/.impeccable/live/config.json\"}\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

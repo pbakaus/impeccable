@@ -1,0 +1,7 @@
+{
+  "stdout": "{\n  \"ok\": false,\n  \"error\": \"context_missing\",\n  \"missing\": [\n    \"PRODUCT.md\",\n    \"DESIGN.md\"\n  ],\n  \"nextCommand\": \"init\",\n  \"targetPath\": null,\n  \"projectRoot\": \"<WS>/website\",\n  \"repoRoot\": \"<WS>/website\",\n  \"productPath\": null,\n  \"designPath\": null\n}\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

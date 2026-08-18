@@ -1,0 +1,9 @@
+{
+  "stdout": "Usage: node live-insert.mjs [options]\n\nFind an anchor element in source and splice an insert-variant wrapper.\n\nRequired:\n  --id ID            Session ID for the variant wrapper\n  --count N          Number of expected variants (1-8)\n  --position POS     before | after (relative to the anchor element)\n\nElement identification (at least one required):\n  --element-id ID    HTML id attribute of the anchor element\n  --classes A,B,C    Comma-separated CSS class names\n  --tag TAG          Tag name (div, section, etc.)\n  --query TEXT       Fallback: raw text to search for\n\nOptional:\n  --file PATH        Source file to search in (skips auto-detection)\n  --text TEXT        Anchor textContent for disambiguation (~80 chars)\n\nOutput (JSON):\n  { mode: \"insert\", file, position, insertLine, commentSyntax, styleMode, styleTag, cssAuthoring }\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".impeccable/live/config.json": "{\n  \"files\": [\"index.html\", \"public/**/*.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n"
+  }
+}

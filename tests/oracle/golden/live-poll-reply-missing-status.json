@@ -1,0 +1,10 @@
+{
+  "stdout": "",
+  "stderr": "Usage: <IMPECCABLE> live-poll --reply <id> <status> [--file path] [--data '<json>'] [message]\nMissing reply status after event id \"ab12cd34\".\n",
+  "exit": 1,
+  "signal": null,
+  "files": {
+    ".impeccable/live/config.json": "{\n  \"files\": [\"index.html\", \"public/**/*.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n",
+    ".impeccable/live/server.json": "{\"pid\":<PID>,\"port\":65531,\"token\":\"oracle-token\"}"
+  }
+}

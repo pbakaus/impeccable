@@ -1,0 +1,9 @@
+{
+  "stdout": "Usage: impeccable poll [options]\n\nWait for a browser event from the live variant server, or reply to one.\n\nModes:\n  poll                             Block until a browser event arrives, print JSON, exit\n  poll --stream                    Keep polling; print one JSON line per event (see live.md)\n  poll --reply <id> done           Reply \"done\" to event <id> (replace or insert generate)\n  poll --reply <id> steer_done     Reply after handling a steer event (unlocks Steer bar)\n  poll --reply <id> error \"msg\"    Reply with an error message\n  poll --reply <id> done --data '<json>'\n                                   Reply with a structured JSON result (manual_edit_apply)\n\nOptions:\n  --timeout=MS        One-shot poll timeout in ms (default: 600000). Ignored in --stream mode\n  --types=A,B         Lease only these event types\n  --ack-timeout=MS    Stream mode: max wait for --reply after generate/steer (default: 600000)\n  --file PATH         Attach a source file path to the reply (generate/steer flow)\n  --data JSON         Attach a JSON result object to the reply (manual_edit_apply flow). Must be valid JSON\n  --help              Show this help message\n\nHarness note:\n  Default one-shot mode is the primary contract, including Codex foreground polling.\n  Claude Code may run it as a background task; Cursor uses a background terminal with exit notification.\n  --stream is retained for harnesses with measured, reliable incremental stdout.\n  Do not use --stream on Cursor.\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".impeccable/live/config.json": "{\n  \"files\": [\"index.html\", \"public/**/*.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n"
+  }
+}

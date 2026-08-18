@@ -1,0 +1,9 @@
+{
+  "stdout": "",
+  "stderr": "{\"error\":\"element_not_in_source\",\"fallback\":\"agent-driven\",\"hint\":\"See \\\"Handle fallback\\\" in live.md.\"}\n",
+  "exit": 1,
+  "signal": null,
+  "files": {
+    ".impeccable/live/config.json": "{\n  \"files\": [\"index.html\", \"public/**/*.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n"
+  }
+}

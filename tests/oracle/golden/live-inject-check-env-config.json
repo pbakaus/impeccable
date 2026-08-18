@@ -1,0 +1,7 @@
+{
+  "stdout": "{\"ok\":true,\"config\":{\"files\":[\"public/docs/guide.html\"],\"insertAfter\":\"<body>\",\"commentSyntax\":\"html\"},\"path\":\"<WS>/alt.json\"}\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

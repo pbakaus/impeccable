@@ -1,0 +1,14 @@
+{
+  "stdout": "{\"applied\":[{\"id\":\"e1\",\"ref\":\"main>h1\",\"originalText\":\"Oracle Fixture\",\"newText\":\"Oracle Fixture, renamed\"},{\"id\":\"e2\",\"ref\":\"main>p\",\"originalText\":\"Minimal static page for oracle live-mode goldens.\",\"newText\":\"A tighter hook.\"},{\"id\":\"e2\",\"ref\":\"aside>p\",\"originalText\":\"Nested content.\",\"newText\":\"Nested copy.\"}],\"failed\":[],\"files\":[\"index.html\"],\"cleared\":3,\"count\":3,\"pageUrl\":\"/\",\"warnings\":[],\"notes\":[\"oracle mock\"],\"totalCount\":1,\"perPage\":{\"/docs/guide\":1}}\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".impeccable/live/config.json": "{\n  \"files\": [\"index.html\", \"public/**/*.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n",
+    ".impeccable/live/pending-manual-edits.json": "{\n  \"version\": 1,\n  \"entries\": [\n    {\n      \"id\": \"e3\",\n      \"pageUrl\": \"/docs/guide\",\n      \"element\": {\n        \"tagName\": \"h1\",\n        \"classes\": [\n          \"hero-title\"\n        ]\n      },\n      \"ops\": [\n        {\n          \"ref\": \"article>p\",\n          \"tag\": \"p\",\n          \"originalText\": \"A second page covered by the config glob.\",\n          \"newText\": \"Second page lead.\"\n        }\n      ],\n      \"stagedAt\": \"<ISO>\"\n    }\n  ]\n}",
+    "index.html": "<!DOCTYPE html>\n<html lang=\"en\">\n  <body>\n    <main class=\"page\">\n      <h1 id=\"hero\" class=\"hero-title\">Oracle Fixture, renamed</h1>\n      <p class=\"hero-hook\">A tighter hook.</p>\n      <aside class=\"side-note\"><p>Nested copy.</p></aside>\n    </main>\n  </body>\n</html>\n",
+    "public/docs/guide.html": "<!DOCTYPE html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <title>Guide</title>\n  </head>\n  <body>\n    <article class=\"doc\">\n      <h1 class=\"doc-title\">Guide</h1>\n      <p class=\"doc-lead\">A second page covered by the config glob.</p>\n    </article>\n  </body>\n</html>\n",
+    "public/no-body.html": "<!DOCTYPE html>\n<html lang=\"en\">\n  <head><title>No body tag</title></head>\n  <p class=\"orphan\">This file has no closing body tag.</p>\n</html>\n",
+    "src/cards.html": "<section class=\"cards\">\n  <div class=\"card\">\n    <h3 class=\"card-title\">Alpha card</h3>\n    <p class=\"card-body\">First card body copy.</p>\n  </div>\n  <div class=\"card\">\n    <h3 class=\"card-title\">Beta card</h3>\n    <p class=\"card-body\">Second card body copy.</p>\n  </div>\n  <div class=\"card\">\n    <h3 class=\"card-title\">Gamma card</h3>\n    <p class=\"card-body\">Third card body copy.</p>\n  </div>\n</section>\n"
+  }
+}

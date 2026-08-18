@@ -1,0 +1,9 @@
+{
+  "stdout": "",
+  "stderr": "{\"error\":\"file_is_generated\",\"fallback\":\"agent-driven\",\"file\":\"dist/generated.html\",\"hint\":\"Explicit --file points at a generated file. Writing here gets wiped by the next build. See \\\"Handle fallback\\\" in live.md.\"}\n",
+  "exit": 1,
+  "signal": null,
+  "files": {
+    ".impeccable/live/config.json": "{\n  \"files\": [\"index.html\", \"public/**/*.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n"
+  }
+}

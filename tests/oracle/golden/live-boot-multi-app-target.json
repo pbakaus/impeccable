@@ -1,0 +1,11 @@
+{
+  "stdout": "{\"ok\":false,\"error\":\"config_missing\",\"path\":\"<WS>/admin/.impeccable/live/config.json\",\"targetPath\":\"admin\",\"projectRoot\":\"<WS>/admin\",\"repoRoot\":\"<WS>\"}\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".impeccable/live/app-root.json": "{\"version\":2,\"appRoots\":[{\"appRoot\":\"<WS>/admin\",\"bootedAt\":\"<ISO>\"}]}",
+    "admin/.impeccable/live/roots.json": "{\n  \"version\": 1,\n  \"appRoot\": \"<WS>/admin\",\n  \"repoRoot\": \"<WS>\",\n  \"contextRoot\": \"<WS>\",\n  \"sessionRoot\": \"<WS>/admin/.impeccable/live\",\n  \"productPath\": \"<WS>/PRODUCT.md\",\n  \"designPath\": \"<WS>/DESIGN.md\",\n  \"resolvedFrom\": \"target:admin\"\n}",
+    "website/.impeccable/live/config.json": "{\n  \"files\": [\"index.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n"
+  }
+}

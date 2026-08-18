@@ -1,0 +1,10 @@
+{
+  "stdout": "{\"ok\":false,\"error\":\"config_invalid\",\"message\":\"config.commentSyntax must be 'html' or 'jsx'\",\"path\":\"<WS>/.impeccable/live/config.json\",\"targetPath\":null,\"projectRoot\":\"<WS>\",\"repoRoot\":\"<WS>\"}\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".impeccable/live/config.json": "{\"files\":[\"index.html\"],\"insertBefore\":\"</body>\",\"commentSyntax\":\"vue\"}",
+    ".impeccable/live/roots.json": "{\n  \"version\": 1,\n  \"appRoot\": \"<WS>\",\n  \"repoRoot\": \"<WS>\",\n  \"contextRoot\": \"<WS>\",\n  \"sessionRoot\": \"<WS>/.impeccable/live\",\n  \"productPath\": \"<WS>/PRODUCT.md\",\n  \"designPath\": \"<WS>/DESIGN.md\",\n  \"resolvedFrom\": \"cwd\"\n}"
+  }
+}

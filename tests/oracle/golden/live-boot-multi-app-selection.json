@@ -1,0 +1,7 @@
+{
+  "stdout": "{\n  \"ok\": false,\n  \"error\": \"target_selection_required\",\n  \"targetCandidates\": [\n    {\n      \"name\": \"admin\",\n      \"path\": \"admin\"\n    },\n    {\n      \"name\": \"website\",\n      \"path\": \"website\"\n    }\n  ],\n  \"hint\": \"Several apps with a dev-server config exist. Ask the user which one to use, then rerun with --target <path into that app>.\"\n}\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

@@ -1,0 +1,11 @@
+{
+  "stdout": "",
+  "stderr": "{\"error\":\"manual_edit_buffer_apply_failed\",\"pendingOps\":[{\"entryId\":\"e1\",\"ref\":\"section>div>p\",\"originalText\":\"card body copy.\",\"reason\":\"ambiguous_or_unmatched_pending_edit\"}],\"hint\":\"A staged copy edit appears to affect the selected source block, but could not be applied unambiguously to the wrap original. Apply or discard copy edits first, or write the wrapper manually.\"}\n",
+  "exit": 1,
+  "signal": null,
+  "files": {
+    ".impeccable/live/config.json": "{\n  \"files\": [\"index.html\", \"public/**/*.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n",
+    ".impeccable/live/pending-manual-edits.json": "{\n  \"version\": 1,\n  \"entries\": [\n    {\n      \"id\": \"e1\",\n      \"pageUrl\": \"/\",\n      \"element\": {\n        \"tagName\": \"p\"\n      },\n      \"ops\": [\n        {\n          \"ref\": \"section>div>p\",\n          \"tag\": \"p\",\n          \"originalText\": \"card body copy.\",\n          \"newText\": \"card body text.\"\n        }\n      ],\n      \"stagedAt\": \"<ISO>\"\n    }\n  ]\n}\n",
+    "src/cards.html": "<section class=\"cards\">\n  <div class=\"card\">\n    <h3 class=\"card-title\">Alpha card</h3>\n    <p class=\"card-body\">First card body copy.</p>\n  </div>\n  <div class=\"card\">\n    <h3 class=\"card-title\">Beta card</h3>\n    <p class=\"card-body\">Second card body copy.</p>\n  </div>\n  <div class=\"card\">\n    <h3 class=\"card-title\">Gamma card</h3>\n    <p class=\"card-body\">Third card body copy.</p>\n  </div>\n</section>\n"
+  }
+}
