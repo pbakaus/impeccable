@@ -1,0 +1,7 @@
+{
+  "stdout": "DIRECTION CONCEPT SEED (key: oracle-key-1; mode: unscoped; source: degraded; rerun with --scope direction --from oracle-key-1 --reroll 1 --register safer --candidate-count 7)\nSAFER REGISTER (user-requested): the assigned index is suspended this\n  round; the user picks, and no candidate is mandated. Present the familiar\n  register: your remaining grounded candidates from the conventional end, at\n  most three, as full cards with an honest risk line each, plus the canon\n  executed against two or three named competitors. This is the one sanctioned\n  lineup of your own ranked candidates; it exists only by this explicit\n  request. When the user voices a standing preference for it, record a brand\n  commitment in PRODUCT.md.\nPRODUCT.md and explicit incumbent brand commitments constrain every direction.\nThe seed never chooses exact colors, fonts, tokens, or a user preference, and\nit never permits the world and first surface to be selected independently.\nA user- or brief-pinned decision beats the roll, always.\nREGISTER (restated for truncated readers): safer, user-requested; the\nassigned index is suspended this round and the user picks; seed key oracle-key-1.\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

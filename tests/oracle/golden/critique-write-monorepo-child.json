@@ -1,0 +1,23 @@
+{
+  "steps": [
+    {
+      "stdout": "<WS>/apps/a/.impeccable/critique/<STAMP>__src-app-tsx.md\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "---\ntimestamp: <STAMP>\nslug: src-app-tsx\n---\nChild critique.\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "",
+      "stderr": "",
+      "exit": 2,
+      "signal": null
+    }
+  ],
+  "files": {}
+}

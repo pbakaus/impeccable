@@ -1,0 +1,14 @@
+{
+  "buildPath": "fast",
+  "theme": "dark",
+  "detector": {
+    "ignoreRules": [
+      "gradient-text",
+      "not-a-real-rule"
+    ],
+    "ignoreFiles": [
+      "src/vendor/missing.css"
+    ],
+    "mode": "strict"
+  }
+}

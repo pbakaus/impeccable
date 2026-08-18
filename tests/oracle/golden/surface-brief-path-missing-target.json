@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "surface brief path requires a concrete target\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

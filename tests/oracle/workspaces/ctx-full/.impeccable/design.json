@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 2,
+  "source": "DESIGN.md",
+  "tokens": {
+    "colors": {
+      "ink": "#111111",
+      "paper": "#fbf7ef",
+      "accent": "#1a4d8f"
+    }
+  }
+}

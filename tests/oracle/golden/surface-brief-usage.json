@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "usage: surface-brief.mjs <path|list|read|write> [target] [body-file] [related-target ...]\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

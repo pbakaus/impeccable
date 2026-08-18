@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "serve-question: --wait needs --key\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "Unknown action: toggle. Use 'pin' or 'unpin'.\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

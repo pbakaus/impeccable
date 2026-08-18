@@ -1,0 +1,7 @@
+{
+  "stdout": "Impeccable doctor: <WS>\nMonorepo, repo root <WS>.\n\nworth saying (1):\n  workspace-context-inherited\n    1 of 2 workspace(s) inherit the repo-root PRODUCT.md: `apps/b`. Inheritance is intended; whether one record truthfully describes these apps is not something this check can tell.\n    → Ask the user whether the inherited record describes each app. Where it does not, `init` in that workspace writes a child PRODUCT.md that overrides it.\n\nWorkspaces:\n  apps/a  product: child  design: child  platform: web\n  apps/b  product: inherited  design: inherited  platform: web\n\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

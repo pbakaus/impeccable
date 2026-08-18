@@ -1,0 +1,9 @@
+{
+  "stdout": "ANSWER: {\"optionId\":\"canon\",\"steer\":\"\",\"followup\":true,\"buildPath\":\"code\",\"buildPathFlipped\":true}\nCANON CHOSEN: the user picked the category standard on purpose. Ask once for two or three products this should sit alongside; their craft level becomes the quality bar. Execute the canon at full commitment, conventions embraced without irony or smuggled quirk.\nFOLLOWUP OPEN: the table stays open and the page is showing a loading hand. Deliver the next round now with --update --key <key> --payload <file>, then collect it with --wait; never leave the page waiting on a round you have not sent.\nBUILD PATH: code (flipped on the page, so it binds this session only, and the page never writes it back; the sole exception is new-work’s one-time offer, on a project that had no recorded default at all, which asks after the round closes and writes the answer to .impeccable/config.json). Code-led: no comp is owed; a comp that already rendered rides at the finish review as the critique reference, and the ambition lives in the direction contract.\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".impeccable/questions/k1.state.json": "{\"pid\":<PID>,\"port\":1,\"url\":\"http://127.0.0.1:1/\"}"
+  }
+}

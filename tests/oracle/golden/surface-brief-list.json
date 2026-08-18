@@ -1,0 +1,7 @@
+{
+  "stdout": "[\n  {\n    \"slug\": \"route-pricing\",\n    \"path\": \".impeccable/surfaces/route-pricing.md\",\n    \"primaryTarget\": \"route:/pricing\",\n    \"relatedTargets\": []\n  },\n  {\n    \"slug\": \"src-pages-index-astro\",\n    \"path\": \".impeccable/surfaces/src-pages-index-astro.md\",\n    \"primaryTarget\": \"src/pages/index.astro\",\n    \"relatedTargets\": [\n      \"src/components/Hero.astro\"\n    ]\n  }\n]\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

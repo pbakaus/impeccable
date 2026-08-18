@@ -1,0 +1,9 @@
+{
+  "stdout": "PAGE CLOSED: the question page went away without an answer; re-present, reopen the URL, or fall back to the structured question tool\n",
+  "stderr": "",
+  "exit": 4,
+  "signal": null,
+  "files": {
+    ".impeccable/questions/k1.state.json": "{\"pid\":<PID>,\"port\":1,\"url\":\"http://127.0.0.1:1/\",\"lastBeat\":1000}"
+  }
+}

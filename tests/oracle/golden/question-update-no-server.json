@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "serve-question: no live question server for that key; the page it served is gone too. Re-present the round with --start and a fresh key, or fall back to the structured question tool.\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

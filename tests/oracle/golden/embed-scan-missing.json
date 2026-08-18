@@ -1,0 +1,7 @@
+{
+  "stdout": "MISSING: assets/a.png\nMISSING: assets/b.jpg\nMISSING: assets/c.webp\nMISSING: assets/nested/d.jpeg\nSCAN: 4 rasters, 4 missing\n",
+  "stderr": "",
+  "exit": 3,
+  "signal": null,
+  "files": {}
+}

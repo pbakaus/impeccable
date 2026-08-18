@@ -1,0 +1,7 @@
+{
+  "stdout": "MISSING: assets/.hidden/e.png\nSCAN: 1 raster, 1 missing\n",
+  "stderr": "",
+  "exit": 3,
+  "signal": null,
+  "files": {}
+}

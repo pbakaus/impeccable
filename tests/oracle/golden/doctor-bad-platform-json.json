@@ -1,0 +1,7 @@
+{
+  "stdout": "{\n  \"projectRoot\": \"<WS>\",\n  \"repoRoot\": \"<WS>\",\n  \"isMonorepo\": false,\n  \"productPath\": \"PRODUCT.md\",\n  \"designPath\": null,\n  \"platform\": null,\n  \"ruleRegistryAvailable\": true,\n  \"findings\": [\n    {\n      \"id\": \"platform-native-evidence\",\n      \"artifact\": \"PRODUCT.md\",\n      \"path\": \"PRODUCT.md\",\n      \"severity\": \"mention\",\n      \"summary\": \"PRODUCT.md has no `## Platform` section, so the project resolves to web, but the project carries a Flutter pubspec.yaml. Web guidance is being applied to a native codebase, and the iOS and Android references never load.\",\n      \"fix\": \"Ask the user whether `## Platform` should be `adaptive`. If it should, write the value and load the matching native reference before designing.\"\n    }\n  ],\n  \"workspaces\": []\n}\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

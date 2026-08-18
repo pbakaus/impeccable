@@ -1,0 +1,9 @@
+{
+  "stdout": "IMAGE: x.svg (400x300, fake synthetic comp, $0.00, no API call)\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    "x.svg": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"400\" height=\"300\" viewBox=\"0 0 400 300\">\n  <defs><linearGradient id=\"g\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"1\"><stop offset=\"0%\" stop-color=\"#81dab6\"/><stop offset=\"100%\" stop-color=\"#3951c6\"/></linearGradient></defs>\n  <rect width=\"400\" height=\"300\" fill=\"url(#g)\"/>\n  <rect x=\"0\" y=\"0\" width=\"400\" height=\"300\" fill=\"#000000\" fill-opacity=\"0.22\"/>\n  <text x=\"200\" y=\"139\" font-family=\"Helvetica, Arial, sans-serif\" font-size=\"17\" fill=\"#ffffff\" text-anchor=\"middle\" dominant-baseline=\"middle\">Prompt from</text><text x=\"200\" y=\"161\" font-family=\"Helvetica, Arial, sans-serif\" font-size=\"17\" fill=\"#ffffff\" text-anchor=\"middle\" dominant-baseline=\"middle\">file wins.</text>\n  <rect x=\"305\" y=\"281\" width=\"95\" height=\"19\" fill=\"#000000\" fill-opacity=\"0.55\"/>\n  <text x=\"352\" y=\"291\" font-family=\"Helvetica, Arial, sans-serif\" font-size=\"7\" letter-spacing=\"2\" fill=\"#ffffff\" text-anchor=\"middle\" dominant-baseline=\"middle\">SYNTHETIC COMP</text>\n</svg>\n"
+  }
+}

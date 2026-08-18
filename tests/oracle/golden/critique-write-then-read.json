@@ -1,0 +1,41 @@
+{
+  "steps": [
+    {
+      "stdout": "<WS>/.impeccable/critique/<STAMP>__src-app-tsx.md\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "---\ntotal_score: 81\np0_count: 0\np1_count: 2\ntarget: src/App.tsx\nnote: \"ratio 3:1 #hero\"\nslug: src-app-tsx\ntimestamp: <STAMP>\n---\n# Critique\n\nScore 81/100.\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "<WS>/.impeccable/critique/<STAMP>__src-app-tsx.md\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "---\ntimestamp: <STAMP>\nslug: src-app-tsx\n---\nSecond pass.\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "[\n  {\n    \"timestamp\": \"<STAMP>\",\n    \"slug\": \"src-app-tsx\"\n  }\n]\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "[\n  {\n    \"timestamp\": \"<STAMP>\",\n    \"slug\": \"src-app-tsx\"\n  }\n]\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    }
+  ],
+  "files": {}
+}

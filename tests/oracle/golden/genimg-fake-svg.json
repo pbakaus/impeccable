@@ -1,0 +1,9 @@
+{
+  "stdout": "IMAGE: comps/hero.svg (800x500, fake synthetic comp, $0.00, no API call)\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    "comps/hero.svg": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"800\" height=\"500\" viewBox=\"0 0 800 500\">\n  <defs><linearGradient id=\"g\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"1\"><stop offset=\"0%\" stop-color=\"#ca49c6\"/><stop offset=\"100%\" stop-color=\"#a5cd51\"/></linearGradient></defs>\n  <rect width=\"800\" height=\"500\" fill=\"url(#g)\"/>\n  <rect x=\"0\" y=\"0\" width=\"800\" height=\"500\" fill=\"#000000\" fill-opacity=\"0.22\"/>\n  <text x=\"400\" y=\"186\" font-family=\"Helvetica, Arial, sans-serif\" font-size=\"33\" fill=\"#ffffff\" text-anchor=\"middle\" dominant-baseline=\"middle\">A warm editorial hero for a</text><text x=\"400\" y=\"229\" font-family=\"Helvetica, Arial, sans-serif\" font-size=\"33\" fill=\"#ffffff\" text-anchor=\"middle\" dominant-baseline=\"middle\">note-taking app, paper</text><text x=\"400\" y=\"271\" font-family=\"Helvetica, Arial, sans-serif\" font-size=\"33\" fill=\"#ffffff\" text-anchor=\"middle\" dominant-baseline=\"middle\">texture, ink type, one blue</text><text x=\"400\" y=\"314\" font-family=\"Helvetica, Arial, sans-serif\" font-size=\"33\" fill=\"#ffffff\" text-anchor=\"middle\" dominant-baseline=\"middle\">accent, wide composition.</text>\n  <rect x=\"610\" y=\"469\" width=\"190\" height=\"31\" fill=\"#000000\" fill-opacity=\"0.55\"/>\n  <text x=\"705\" y=\"484\" font-family=\"Helvetica, Arial, sans-serif\" font-size=\"13\" letter-spacing=\"2\" fill=\"#ffffff\" text-anchor=\"middle\" dominant-baseline=\"middle\">SYNTHETIC COMP</text>\n</svg>\n"
+  }
+}

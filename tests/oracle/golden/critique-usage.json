@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "usage: critique-storage.mjs <slug|write|latest|trend> [args]\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

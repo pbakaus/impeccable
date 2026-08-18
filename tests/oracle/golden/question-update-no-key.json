@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "serve-question: --update needs --key and --payload\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

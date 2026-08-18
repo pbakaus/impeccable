@@ -1,0 +1,39 @@
+{
+  "steps": [
+    {
+      "stdout": ".impeccable/surfaces/src-pages-about-astro.md\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "---\nversion: 1\nslug: \"src-pages-about-astro\"\nprimary_target: \"src/pages/about.astro\"\nrelated_targets: [\"src/components/Team.astro\"]\n---\n\n# Surface brief: About\n\n## Mode\nRead\n\nTell the story.\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "[\n  {\n    \"slug\": \"route-pricing\",\n    \"path\": \".impeccable/surfaces/route-pricing.md\",\n    \"primaryTarget\": \"route:/pricing\",\n    \"relatedTargets\": []\n  },\n  {\n    \"slug\": \"src-pages-about-astro\",\n    \"path\": \".impeccable/surfaces/src-pages-about-astro.md\",\n    \"primaryTarget\": \"src/pages/about.astro\",\n    \"relatedTargets\": [\n      \"src/components/Team.astro\"\n    ]\n  },\n  {\n    \"slug\": \"src-pages-index-astro\",\n    \"path\": \".impeccable/surfaces/src-pages-index-astro.md\",\n    \"primaryTarget\": \"src/pages/index.astro\",\n    \"relatedTargets\": [\n      \"src/components/Hero.astro\"\n    ]\n  }\n]\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": ".impeccable/surfaces/src-pages-about-astro.md\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "",
+      "stderr": "[\n  {\n    \"slug\": \"route-pricing\",\n    \"path\": \".impeccable/surfaces/route-pricing.md\",\n    \"primaryTarget\": \"route:/pricing\",\n    \"relatedTargets\": []\n  },\n  {\n    \"slug\": \"src-pages-about-astro\",\n    \"path\": \".impeccable/surfaces/src-pages-about-astro.md\",\n    \"primaryTarget\": \"src/pages/about.astro\",\n    \"relatedTargets\": []\n  },\n  {\n    \"slug\": \"src-pages-index-astro\",\n    \"path\": \".impeccable/surfaces/src-pages-index-astro.md\",\n    \"primaryTarget\": \"src/pages/index.astro\",\n    \"relatedTargets\": [\n      \"src/components/Hero.astro\"\n    ]\n  }\n]\n",
+      "exit": 2,
+      "signal": null
+    }
+  ],
+  "files": {
+    ".impeccable/surfaces/route-pricing.md": "---\nversion: 1\nslug: \"route-pricing\"\nprimary_target: \"route:/pricing\"\nrelated_targets: []\n---\n\n# Surface brief: Pricing\n\n## Mode\nPersuade\n\n## Product strategy\nMake the middle tier the obvious pick.\n",
+    ".impeccable/surfaces/src-pages-about-astro.md": "---\nversion: 1\nslug: \"src-pages-about-astro\"\nprimary_target: \"src/pages/about.astro\"\nrelated_targets: []\n---\n\n# Surface brief: About\n\n## Mode\nRead\n\nTell the story.\n",
+    ".impeccable/surfaces/src-pages-index-astro.md": "---\nversion: 1\nslug: \"src-pages-index-astro\"\nprimary_target: \"src/pages/index.astro\"\nrelated_targets: [\"src/components/Hero.astro\"]\n---\n\n# Surface brief: Home\n\n## Mode\nPersuade\n\n## Product strategy\nGet a visitor to install the product.\n"
+  }
+}

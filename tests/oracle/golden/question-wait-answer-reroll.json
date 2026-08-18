@@ -1,0 +1,9 @@
+{
+  "stdout": "ANSWER: {\"optionId\":\"reroll\",\"steer\":\"\",\"register\":\"bolder\"}\nREGISTER: the user steered the next hand to the bolder register. Re-run concept-seed with the same key, the next --reroll round, and --register bolder, then follow what it prints; the register is the user's steering, never yours to pre-select.\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".impeccable/questions/k1.state.json": "{\"pid\":<PID>,\"port\":1,\"url\":\"http://127.0.0.1:1/\"}"
+  }
+}

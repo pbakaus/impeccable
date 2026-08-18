@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "concept-seed: --grain must be one of product, flow, view, region\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

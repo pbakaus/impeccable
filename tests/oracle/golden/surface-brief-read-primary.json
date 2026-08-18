@@ -1,0 +1,7 @@
+{
+  "stdout": "---\nversion: 1\nslug: \"src-pages-index-astro\"\nprimary_target: \"src/pages/index.astro\"\nrelated_targets: [\"src/components/Hero.astro\"]\n---\n\n# Surface brief: Home\n\n## Mode\nPersuade\n\n## Product strategy\nGet a visitor to install the product.\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

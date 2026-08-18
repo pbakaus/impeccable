@@ -1,0 +1,7 @@
+{
+  "stdout": "serve-question: the question server is gone with no answer. This is a server failure, not a user decision: restart it with --start and the same payload, reopen the URL for the user, and wait again. Never proceed without their choice while their browser session is open.\n",
+  "stderr": "",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

@@ -1,0 +1,31 @@
+{
+  "steps": [
+    {
+      "stdout": "EMBEDDED: assets/a.png (png tEXt, 37 chars)\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "A warm editorial hero, paper and ink.\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "EMBEDDED: assets/a.png (png tEXt, 16 chars)\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "Replaced prompt.\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    }
+  ],
+  "files": {
+    "assets/a.png": "<binary 115 bytes>"
+  }
+}

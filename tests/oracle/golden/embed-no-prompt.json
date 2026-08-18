@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "embed-prompt: --prompt or --prompt-file required\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

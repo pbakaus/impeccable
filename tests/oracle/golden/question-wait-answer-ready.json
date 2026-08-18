@@ -1,0 +1,7 @@
+{
+  "stdout": "ANSWER: {\"optionId\":\"a\",\"steer\":\"keep the type\",\"hero\":\"https://x/hero.webp\",\"comp\":\".impeccable/mocks/decision/a.webp\",\"buildPath\":\"comp\",\"buildPathFlipped\":false}\nCHOSEN CARD: open the chosen world's board and hero images now, before any code. When your harness only reads files, or runs sandboxed, download them INTO the workspace and open the relative path; a sandboxed viewer rejects absolute paths outside it. They set the craft bar the build must reach.\nCHOSEN COMP: the decision comp at that path is compositional option one. On a comp-led build the comp round adds two variations beside it; on a code-led build it returns at the finish review as the critique reference. Never regenerate it from scratch.\nBUILD PATH: comp (the round’s recorded default). Comp-led: the chosen card’s comp is law; generate it before building when it does not exist yet, and the finish review audits the build against it.\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

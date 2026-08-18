@@ -1,0 +1,7 @@
+{
+  "stdout": "{\n  \"projectRoot\": \"<WS>/apps/a\",\n  \"repoRoot\": \"<WS>\",\n  \"isMonorepo\": true,\n  \"productPath\": \"PRODUCT.md\",\n  \"designPath\": \"DESIGN.md\",\n  \"platform\": \"web\",\n  \"ruleRegistryAvailable\": true,\n  \"findings\": [\n    {\n      \"id\": \"config-project-roots-match-nothing\",\n      \"artifact\": \"config.json\",\n      \"path\": \".impeccable/config.json\",\n      \"severity\": \"mention\",\n      \"summary\": \"`projectRoots` declares `apps/*`, but no directory matches any of them, so the repo root is being treated as the active project.\",\n      \"fix\": \"Report the patterns and ask which directories they should name. A renamed workspace folder is the usual cause.\"\n    }\n  ],\n  \"workspaces\": []\n}\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

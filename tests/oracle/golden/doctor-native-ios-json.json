@@ -1,0 +1,7 @@
+{
+  "stdout": "{\n  \"projectRoot\": \"<WS>\",\n  \"repoRoot\": \"<WS>\",\n  \"isMonorepo\": false,\n  \"productPath\": \"PRODUCT.md\",\n  \"designPath\": null,\n  \"platform\": \"ios\",\n  \"ruleRegistryAvailable\": true,\n  \"findings\": [],\n  \"workspaces\": []\n}\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

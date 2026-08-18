@@ -1,0 +1,9 @@
+{
+  "stdout": "IMAGE: hero.svg (1536x1024, fake synthetic comp, $0.00, no API call)\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    "hero.svg": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1536\" height=\"1024\" viewBox=\"0 0 1536 1024\">\n  <defs><linearGradient id=\"g\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"1\"><stop offset=\"0%\" stop-color=\"#a28d2f\"/><stop offset=\"50%\" stop-color=\"#79d0d8\"/><stop offset=\"100%\" stop-color=\"#b23486\"/></linearGradient></defs>\n  <rect width=\"1536\" height=\"1024\" fill=\"url(#g)\"/>\n  <rect x=\"0\" y=\"0\" width=\"1536\" height=\"1024\" fill=\"#000000\" fill-opacity=\"0.22\"/>\n  <text x=\"768\" y=\"512\" font-family=\"Helvetica, Arial, sans-serif\" font-size=\"64\" fill=\"#ffffff\" text-anchor=\"middle\" dominant-baseline=\"middle\">Short.</text>\n  <rect x=\"1170\" y=\"960\" width=\"366\" height=\"64\" fill=\"#000000\" fill-opacity=\"0.55\"/>\n  <text x=\"1353\" y=\"992\" font-family=\"Helvetica, Arial, sans-serif\" font-size=\"26\" letter-spacing=\"2\" fill=\"#ffffff\" text-anchor=\"middle\" dominant-baseline=\"middle\">SYNTHETIC COMP</text>\n</svg>\n"
+  }
+}

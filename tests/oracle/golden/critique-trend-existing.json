@@ -1,0 +1,7 @@
+{
+  "stdout": "[\n  {\n    \"total_score\": 72,\n    \"p0_count\": 1,\n    \"p1_count\": 3,\n    \"target\": \"src/pages/index.astro\",\n    \"timestamp\": \"<ISO>\",\n    \"slug\": \"src-pages-index-astro\"\n  }\n]\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

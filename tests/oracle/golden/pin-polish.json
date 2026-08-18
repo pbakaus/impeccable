@@ -1,0 +1,15 @@
+{
+  "stdout": "  + <WS>/.claude/skills/polish\n  + <WS>/.cursor/skills/polish\n  + <WS>/.agents/skills/polish\n\nPinned 'polish' as a standalone shortcut in 3 location(s).\nUse the pinned command directly in each harness.\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".agents/skills/impeccable/SKILL.md": "---\nname: impeccable\ndescription: fixture\n---\n",
+    ".agents/skills/polish/SKILL.md": "---\nname: polish\ndescription: \"Performs a final quality pass fixing alignment, spacing, consistency, and micro-detail issues before shipping. Use when the user mentions polish, finishing touches, pre-launch review, something looks off, or wants to go from good to great.\"\nmetadata:\n  argument-hint: \"[target]\"\n---\n\n<!-- impeccable-pinned-skill -->\n\nThis is a pinned shortcut for `$impeccable polish`.\n\nInvoke $impeccable polish, passing along any arguments provided here, and follow its instructions.\n",
+    ".claude/skills/audit/SKILL.md": "---\nname: audit\ndescription: a user-authored audit skill\n---\nNot pinned.\n",
+    ".claude/skills/impeccable/SKILL.md": "---\nname: impeccable\ndescription: fixture\n---\n",
+    ".claude/skills/polish/SKILL.md": "---\nname: polish\ndescription: \"Performs a final quality pass fixing alignment, spacing, consistency, and micro-detail issues before shipping. Use when the user mentions polish, finishing touches, pre-launch review, something looks off, or wants to go from good to great.\"\nargument-hint: \"[target]\"\nuser-invocable: true\n---\n\n<!-- impeccable-pinned-skill -->\n\nThis is a pinned shortcut for `/impeccable polish`.\n\nInvoke /impeccable polish, passing along any arguments provided here, and follow its instructions.\n",
+    ".cursor/skills/impeccable/SKILL.md": "---\nname: impeccable\ndescription: fixture\n---\n",
+    ".cursor/skills/polish/SKILL.md": "---\nname: polish\ndescription: \"Performs a final quality pass fixing alignment, spacing, consistency, and micro-detail issues before shipping. Use when the user mentions polish, finishing touches, pre-launch review, something looks off, or wants to go from good to great.\"\nargument-hint: \"[target]\"\nuser-invocable: true\n---\n\n<!-- impeccable-pinned-skill -->\n\nThis is a pinned shortcut for `/impeccable polish`.\n\nInvoke /impeccable polish, passing along any arguments provided here, and follow its instructions.\n"
+  }
+}

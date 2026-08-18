@@ -1,0 +1,7 @@
+{
+  "stdout": "Impeccable doctor: <WS>\n\nworth saying (2):\n  config-unknown-keys  [.impeccable/config.local.json]\n    .impeccable/config.local.json has top-level key(s) nothing reads: `nope`. Recognized keys are `hook`, `detector`, `updateCheck`, `stalenessCheck`, `projectRoots`, `buildPath`, `$schema`, `version`.\n    → Report the exact keys to the user. A near-miss of a real key is a setting that has never applied.\n  config-invalid-build-path  [.impeccable/config.local.json]\n    .impeccable/config.local.json sets `buildPath` to \"maybe\", which nothing reads. The values are `comp` and `code`.\n    → Report the value. An unread `buildPath` does not fall back to the other path; it falls back to the default, so a project meaning `code` has been building comp-led.\n\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

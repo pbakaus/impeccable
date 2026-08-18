@@ -1,0 +1,14 @@
+{
+  "stdout": "  SKIP: <WS>/.claude/skills/audit (non-pinned skill already exists)\n  + <WS>/.cursor/skills/audit\n  + <WS>/.agents/skills/audit\n\nPinned 'audit' as a standalone shortcut in 2 location(s).\nUse the pinned command directly in each harness.\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".agents/skills/audit/SKILL.md": "---\nname: audit\ndescription: \"Run technical quality checks across accessibility, performance, theming, responsive design, and anti-patterns. Generates a scored report with P0-P3 severity ratings and actionable plan. Use when the user wants an accessibility check, performance audit, or technical quality review.\"\nmetadata:\n  argument-hint: \"[area (feature, page, component...)]\"\n---\n\n<!-- impeccable-pinned-skill -->\n\nThis is a pinned shortcut for `$impeccable audit`.\n\nInvoke $impeccable audit, passing along any arguments provided here, and follow its instructions.\n",
+    ".agents/skills/impeccable/SKILL.md": "---\nname: impeccable\ndescription: fixture\n---\n",
+    ".claude/skills/audit/SKILL.md": "---\nname: audit\ndescription: a user-authored audit skill\n---\nNot pinned.\n",
+    ".claude/skills/impeccable/SKILL.md": "---\nname: impeccable\ndescription: fixture\n---\n",
+    ".cursor/skills/audit/SKILL.md": "---\nname: audit\ndescription: \"Run technical quality checks across accessibility, performance, theming, responsive design, and anti-patterns. Generates a scored report with P0-P3 severity ratings and actionable plan. Use when the user wants an accessibility check, performance audit, or technical quality review.\"\nargument-hint: \"[area (feature, page, component...)]\"\nuser-invocable: true\n---\n\n<!-- impeccable-pinned-skill -->\n\nThis is a pinned shortcut for `/impeccable audit`.\n\nInvoke /impeccable audit, passing along any arguments provided here, and follow its instructions.\n",
+    ".cursor/skills/impeccable/SKILL.md": "---\nname: impeccable\ndescription: fixture\n---\n"
+  }
+}

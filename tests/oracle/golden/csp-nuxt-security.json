@@ -1,0 +1,7 @@
+{
+  "stdout": "{\n  \"shape\": \"append-arrays\",\n  \"signals\": [\n    \"nuxt.config.ts\"\n  ]\n}\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

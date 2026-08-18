@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "ENOENT: no such file or directory, open '<WS>/nope.md'\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

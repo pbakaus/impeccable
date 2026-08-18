@@ -1,0 +1,10 @@
+:root {
+  --color-ink: #111111;
+  --color-paper: #fbf7ef;
+  --color-accent: #1a4d8f;
+  --font-body: Palatino, Georgia, serif;
+  --space-1: 4px;
+  --space-2: 8px;
+}
+body { color: var(--color-ink); background: var(--color-paper); font-family: var(--font-body); }
+a { color: var(--color-accent); }

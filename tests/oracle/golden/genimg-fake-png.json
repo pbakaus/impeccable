@@ -1,0 +1,19 @@
+{
+  "steps": [
+    {
+      "stdout": "IMAGE: comps/dash.png (640x400, fake synthetic comp, $0.00, no API call)\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "",
+      "stderr": "embed-prompt: no embedded prompt found\n",
+      "exit": 2,
+      "signal": null
+    }
+  ],
+  "files": {
+    "comps/dash.png": "<binary 1399 bytes>"
+  }
+}

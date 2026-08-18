@@ -1,0 +1,9 @@
+{
+  "stdout": ".impeccable/surfaces/example-com-pricing.md\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".impeccable/surfaces/example-com-pricing.md": "---\nversion: 1\nslug: \"example-com-pricing\"\nprimary_target: \"https://example.com/pricing\"\nrelated_targets: []\n---\n\nURL brief.\n"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "stdout": "Impeccable doctor: <WS>\n\nautomatic (1):\n  legacy-live-state  [.impeccable-live]\n    Live-mode state sits in retired location(s): `.impeccable-live`. Current live mode writes under `.impeccable/live/`.\n    → These are read only through backward-compatible fallbacks and are safe to delete once no live session is running. No user decision is needed.\n\nApplied nothing.\nLeft alone:\n  legacy-live-state: delete by hand once no live session is running\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

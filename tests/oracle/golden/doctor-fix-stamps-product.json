@@ -1,0 +1,19 @@
+{
+  "steps": [
+    {
+      "stdout": "Impeccable doctor: <WS>\n\nNo drift found. Every artifact matches what this version reads.\nApplied:\n  Stamped PRODUCT.md as product-schema 1.\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "Impeccable doctor: <WS>\n\nNo drift found. Every artifact matches what this version reads.\nApplied nothing.\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    }
+  ],
+  "files": {
+    "PRODUCT.md": "# Unstamped\n\n<!-- impeccable:product-schema 1 -->\n\n## Platform\n\nweb\n\n## Positioning\nHas a v4 section but no stamp.\n"
+  }
+}

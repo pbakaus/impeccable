@@ -1,0 +1,7 @@
+{
+  "stdout": "Impeccable doctor: <WS>\n\nworth saying (1):\n  platform-native-evidence  [PRODUCT.md]\n    PRODUCT.md has no `## Platform` section, so the project resolves to web, but the project carries a Flutter pubspec.yaml. Web guidance is being applied to a native codebase, and the iOS and Android references never load.\n    → Ask the user whether `## Platform` should be `adaptive`. If it should, write the value and load the matching native reference before designing.\n\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

@@ -1,0 +1,9 @@
+{
+  "stdout": "apps/b/.impeccable/surfaces/apps-b-src-app-tsx.md\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    "apps/b/.impeccable/surfaces/apps-b-src-app-tsx.md": "---\nversion: 1\nslug: \"apps-b-src-app-tsx\"\nprimary_target: \"apps/b/src/App.tsx\"\nrelated_targets: []\n---\n\nChild brief.\n"
+  }
+}

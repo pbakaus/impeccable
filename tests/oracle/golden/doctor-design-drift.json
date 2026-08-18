@@ -1,0 +1,7 @@
+{
+  "stdout": "{\n  \"projectRoot\": \"<WS>\",\n  \"repoRoot\": \"<WS>\",\n  \"isMonorepo\": false,\n  \"productPath\": \"PRODUCT.md\",\n  \"designPath\": \"DESIGN.md\",\n  \"platform\": \"web\",\n  \"ruleRegistryAvailable\": true,\n  \"findings\": [\n    {\n      \"id\": \"design-md-drift\",\n      \"artifact\": \"DESIGN.md\",\n      \"path\": \"DESIGN.md\",\n      \"severity\": \"route\",\n      \"summary\": \"26 commits have touched src since DESIGN.md was last edited (2026-01-02). This counts commits, not contradictions: it says the document is worth re-reading, not that it is wrong.\",\n      \"fix\": \"Read DESIGN.md against the current tokens and components before trusting it as authority. If it has genuinely drifted, `document` regenerates it from the code.\"\n    }\n  ],\n  \"workspaces\": []\n}\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

@@ -1,0 +1,7 @@
+{
+  "stdout": "NO_PRODUCT_MD: the dice stay in the cup until product truth exists. Complete the init ask round and write PRODUCT.md first (reference/init.md), then re-run this exact command. Challengers fuse their form with facts from PRODUCT.md; without it every direction is ungrounded.\n",
+  "stderr": "",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

@@ -1,0 +1,9 @@
+{
+  "stdout": ".impeccable/surfaces/route.md\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".impeccable/surfaces/route.md": "---\nversion: 1\nslug: \"route\"\nprimary_target: \"route:/\"\nrelated_targets: [\"route:/home\"]\n---\n\nRoot route brief.\n"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "generate-image: --prompt (or --prompt-file) and --out are required.\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

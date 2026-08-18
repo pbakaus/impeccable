@@ -1,0 +1,9 @@
+{
+  "stdout": "",
+  "stderr": "embed-prompt: malformed PNG\n",
+  "exit": 1,
+  "signal": null,
+  "files": {
+    "assets/bad.png": "�PNG\r\n\u001a\ngarbage-not-chunks"
+  }
+}

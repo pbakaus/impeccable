@@ -1,0 +1,10 @@
+{
+  "stdout": "  + <WS>/.codex/skills/shape\n\nPinned 'shape' as a standalone shortcut in 1 location(s).\nUse the pinned command directly in each harness.\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".codex/skills/i-impeccable/SKILL.md": "---\nname: i-impeccable\n---\n",
+    ".codex/skills/shape/SKILL.md": "---\nname: shape\ndescription: \"Plan UX and UI before code. Runs a required multi-round discovery interview, uses visual probes when available, and produces a user-confirmed design brief for implementation.\"\nmetadata:\n  argument-hint: \"[feature to shape]\"\n---\n\n<!-- impeccable-pinned-skill -->\n\nThis is a pinned shortcut for `$impeccable shape`.\n\nInvoke $impeccable shape, passing along any arguments provided here, and follow its instructions.\n"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "stdout": "  + <WS>/.claude/skills/live\n  + <WS>/.cursor/skills/live\n  + <WS>/.agents/skills/live\n\nPinned 'live' as a standalone shortcut in 3 location(s).\nUse the pinned command directly in each harness.\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".agents/skills/impeccable/SKILL.md": "---\nname: impeccable\ndescription: fixture\n---\n",
+    ".agents/skills/live/SKILL.md": "---\nname: live\ndescription: \"Interactive live variant mode. Select elements in the browser, pick a design action, and get AI-generated HTML+CSS variants hot-swapped via HMR. Requires a running dev server. Use when you want to visually experiment with design alternatives in real time.\"\nmetadata:\n  argument-hint: \"[target]\"\n---\n\n<!-- impeccable-pinned-skill -->\n\nThis is a pinned shortcut for `$impeccable live`.\n\nInvoke $impeccable live, passing along any arguments provided here, and follow its instructions.\n",
+    ".claude/skills/audit/SKILL.md": "---\nname: audit\ndescription: a user-authored audit skill\n---\nNot pinned.\n",
+    ".claude/skills/impeccable/SKILL.md": "---\nname: impeccable\ndescription: fixture\n---\n",
+    ".claude/skills/live/SKILL.md": "---\nname: live\ndescription: \"Interactive live variant mode. Select elements in the browser, pick a design action, and get AI-generated HTML+CSS variants hot-swapped via HMR. Requires a running dev server. Use when you want to visually experiment with design alternatives in real time.\"\nargument-hint: \"[target]\"\nuser-invocable: true\n---\n\n<!-- impeccable-pinned-skill -->\n\nThis is a pinned shortcut for `/impeccable live`.\n\nInvoke /impeccable live, passing along any arguments provided here, and follow its instructions.\n",
+    ".cursor/skills/impeccable/SKILL.md": "---\nname: impeccable\ndescription: fixture\n---\n",
+    ".cursor/skills/live/SKILL.md": "---\nname: live\ndescription: \"Interactive live variant mode. Select elements in the browser, pick a design action, and get AI-generated HTML+CSS variants hot-swapped via HMR. Requires a running dev server. Use when you want to visually experiment with design alternatives in real time.\"\nargument-hint: \"[target]\"\nuser-invocable: true\n---\n\n<!-- impeccable-pinned-skill -->\n\nThis is a pinned shortcut for `/impeccable live`.\n\nInvoke /impeccable live, passing along any arguments provided here, and follow its instructions.\n"
+  }
+}

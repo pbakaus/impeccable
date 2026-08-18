@@ -1,0 +1,7 @@
+{
+  "stdout": "{\n  \"setup\": {\n    \"hasProduct\": true,\n    \"productPath\": \"PRODUCT.md\",\n    \"hasDesign\": false,\n    \"designPath\": null,\n    \"hasCode\": true,\n    \"platform\": \"ios\"\n  },\n  \"critique\": {\n    \"latest\": null\n  },\n  \"git\": {\n    \"isRepo\": false,\n    \"branch\": null,\n    \"base\": null,\n    \"changedFiles\": [],\n    \"changedCount\": 0\n  },\n  \"devServer\": <DEV_SERVER_PROBE>,\n  \"scan\": {\n    \"targets\": [\n      \".\"\n    ],\n    \"via\": \"root\"\n  }\n}\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

@@ -1,0 +1,7 @@
+{
+  "stdout": "{\n  \"projectRoot\": \"<WS>\",\n  \"repoRoot\": \"<WS>\",\n  \"isMonorepo\": false,\n  \"productPath\": \"PRODUCT.md\",\n  \"designPath\": \"DESIGN.md\",\n  \"platform\": \"web\",\n  \"ruleRegistryAvailable\": true,\n  \"findings\": [\n    {\n      \"id\": \"design-sidecar-stale\",\n      \"artifact\": \"design.json\",\n      \"path\": \".impeccable/design.json\",\n      \"severity\": \"mention\",\n      \"summary\": \"DESIGN.md was edited after .impeccable/design.json was generated, so the sidecar's ramps, shadows, motion tokens, and component snippets may contradict it.\",\n      \"fix\": \"Offer `document` to refresh the sidecar, preserving DESIGN.md.\"\n    }\n  ],\n  \"workspaces\": []\n}\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

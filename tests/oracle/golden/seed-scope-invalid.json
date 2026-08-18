@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "concept-seed: --scope must be direction or surface\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

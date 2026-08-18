@@ -1,0 +1,26 @@
+{
+  "steps": [
+    {
+      "stdout": "",
+      "stderr": "embed-prompt: no embedded prompt found\n",
+      "exit": 2,
+      "signal": null
+    },
+    {
+      "stdout": "EMBEDDED: assets/c.webp.json (sidecar fallback for this format)\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "Sidecar prompt.\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    }
+  ],
+  "files": {
+    "assets/c.webp": "RIFF....WEBPVP8 ",
+    "assets/c.webp.json": "{\n  \"prompt\": \"Sidecar prompt.\",\n  \"createdAt\": \"<ISO>\"\n}"
+  }
+}

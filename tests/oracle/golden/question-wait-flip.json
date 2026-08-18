@@ -1,0 +1,9 @@
+{
+  "stdout": "BUILD PATH FLIPPED: comp (for this session only; never write it to settings). The table is still open and the page shows shimmer where the images will land: generate each open card’s comp into its declared path now, lead first, then collect the answer with --wait again. A card whose comp already exists needs nothing.\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".impeccable/questions/k1.state.json": "{\"pid\":<PID>,\"port\":1,\"url\":\"http://127.0.0.1:1/\"}"
+  }
+}

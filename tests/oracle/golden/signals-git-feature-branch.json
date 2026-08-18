@@ -1,0 +1,7 @@
+{
+  "stdout": "{\n  \"setup\": {\n    \"hasProduct\": true,\n    \"productPath\": \"PRODUCT.md\",\n    \"hasDesign\": false,\n    \"designPath\": null,\n    \"hasCode\": true,\n    \"platform\": \"web\"\n  },\n  \"critique\": {\n    \"latest\": null\n  },\n  \"git\": {\n    \"isRepo\": true,\n    \"branch\": \"feature/hero\",\n    \"base\": \"main\",\n    \"changedFiles\": [\n      \"src/App.tsx\",\n      \"src/util.ts\"\n    ],\n    \"changedCount\": 2\n  },\n  \"devServer\": <DEV_SERVER_PROBE>,\n  \"scan\": {\n    \"targets\": [\n      \"src/App.tsx\",\n      \"src/util.ts\"\n    ],\n    \"via\": \"git-changes\"\n  }\n}\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}
