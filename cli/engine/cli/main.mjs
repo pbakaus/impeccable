@@ -423,10 +423,14 @@ async function detectCli() {
       }
     }
     else process.stderr.write(formatFindings(allFindings, false) + '\n');
-    process.exit(primary.length > 0 ? 2 : 0);
+    // Set the exit code instead of calling process.exit(): a piped stdout is
+    // written asynchronously, and exiting right after a large write truncates
+    // the JSON at the pipe buffer boundary (~64 KiB).
+    process.exitCode = primary.length > 0 ? 2 : 0;
+    return;
   }
   if (jsonMode) process.stdout.write('[]\n');
-  process.exit(0);
+  process.exitCode = 0;
 }
 
 export { formatFindings, handleStdin, confirm, printUsage, detectCli };
