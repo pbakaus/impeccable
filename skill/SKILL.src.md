@@ -5,7 +5,7 @@ argument-hint: "[{{command_hint}}] [target]"
 user-invocable: true
 allowed-tools:
   - Bash(npx impeccable *)
-  - Bash(node {{scripts_path}}/*)
+  - Bash({{scripts_path}}/impeccable *)
 license: Apache 2.0
 ---
 
@@ -18,7 +18,7 @@ Core principles:
 
 ## Setup
 
-1. Run `node <skill-base-dir>/scripts/context.mjs` once per session, where `<skill-base-dir>` is the loaded base directory the runtime reports for this skill; keep cwd at the user's project. That base directory resolves every `node {{scripts_path}}/...` command in this skill and its references, and `{{scripts_path}}` is the fallback only when the runtime reports no base directory. Pass a named source file or route as `--target <path>`. It loads PRODUCT.md, DESIGN.md, the matching surface brief, and native-platform guidance when applicable; follow its directives and do not rerun it. <!-- rule:skill-setup-context -->
+1. Run `<skill-base-dir>/scripts/impeccable context` once per session, where `<skill-base-dir>` is the loaded base directory the runtime reports for this skill; keep cwd at the user's project. That base directory resolves every `{{scripts_path}}/impeccable <verb>` command in this skill and its references, and `{{scripts_path}}` is the fallback only when the runtime reports no base directory. On a Windows shell without `sh`, call `{{scripts_path}}/impeccable.cmd` instead. The launcher runs a self-contained binary that ships next to it or is downloaded once on first run; no Node or other runtime is required. Pass a named source file or route as `--target <path>`. It loads PRODUCT.md, DESIGN.md, the matching surface brief, and native-platform guidance when applicable; follow its directives and do not rerun it. <!-- rule:skill-setup-context -->
 2. Before acting, load the one playbook that owns the request: the Commands table's reference for an explicit or clearly implied sub-command, or [reference/new-work.md](reference/new-work.md) for a new surface or replacement visual world. Then inspect the target and at least one representative source of incumbent visual truth (tokens, theme, CSS, component, or asset) before editing. <!-- rule:skill-setup-command-ref --> <!-- rule:skill-setup-read-project -->
 3. After analysis and direction are resolved, load [reference/craft-floor.md](reference/craft-floor.md) immediately before editing UI. It carries the quality floor, the absolute bans, and the reflexes no detector catches. Do not load it for planning-only work. <!-- rule:skill-craft-floor-load -->
 
@@ -71,12 +71,12 @@ Routing: <!-- rule:skill-routing -->
 
 - **No argument:** read [routing.md](reference/routing.md) and present its context-aware menu; never auto-run a command.
 - **Explicit or clearly implied command:** load its reference (native variant on native platforms) and follow it. Ask once if two commands fit.
-- **Otherwise:** treat the request as general design work. Missing PRODUCT.md routes a new surface or replacement world through init, then new-work; a narrow refinement of existing code proceeds on the incumbent implementation as context.mjs directs, offering init afterward rather than blocking on it.
+- **Otherwise:** treat the request as general design work. Missing PRODUCT.md routes a new surface or replacement world through init, then new-work; a narrow refinement of existing code proceeds on the incumbent implementation as `impeccable context` directs, offering init afterward rather than blocking on it.
 - `teach` aliases `init`. `craft` is a deprecated alias for ordinary new-work and adds nothing. `shape` owns task discovery, then enters new-work only for visual-world and surface-concept decisions.
 
-After init writes PRODUCT.md, resume without rerunning `context.mjs`; init loads the native platform reference itself when the platform it recorded is `ios`, `android`, or `adaptive`.
+After init writes PRODUCT.md, resume without rerunning `impeccable context`; init loads the native platform reference itself when the platform it recorded is `ios`, `android`, or `adaptive`.
 
-**Pin / Unpin:** `node {{scripts_path}}/pin.mjs <pin|unpin> <command>` creates or removes a standalone `{{command_prefix}}<command>` shortcut. Report the script's result concisely; relay stderr verbatim on error.
+**Pin / Unpin:** `{{scripts_path}}/impeccable pin <pin|unpin> <command>` creates or removes a standalone `{{command_prefix}}<command>` shortcut. Report the script's result concisely; relay stderr verbatim on error.
 
 **Hooks:** `{{command_prefix}}impeccable hooks <on|off|status|ignore-rule|ignore-file|ignore-value|reset>` manages the design detector hook for this project (auto-runs the detector after UI file edits and surfaces findings). Load [reference/hooks.md](reference/hooks.md) when the user invokes it with any argument.
 

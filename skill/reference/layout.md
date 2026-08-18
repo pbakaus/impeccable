@@ -25,7 +25,7 @@ When a sub-agent tool is available and permitted, run these independently; other
 2. **Mechanical scan:** run:
 
 ```bash
-node {{scripts_path}}/detect.mjs --json --scope layout [target files or dirs]
+{{scripts_path}}/impeccable detect --json --scope layout [target files or dirs]
 ```
 
 Also inspect arbitrary spacing, overflow, stacking, and container behavior the detector cannot resolve. Keep mechanical evidence out of the first assessment, then synthesize both passes before editing. A clean scan cannot prove hierarchy or rhythm.

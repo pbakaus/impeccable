@@ -32,7 +32,7 @@ Expect a self-contained handoff with:
 - The current event `batch`.
 - Optional `evidencePath`.
 
-The user already clicked Apply. Do not ask what to do. Do not discard edits. Do not run `live-poll.mjs`, `live-commit-manual-edits.mjs`, or any live server endpoint. Do not stage, commit, rebuild, push, or edit generated provider output unless the batch explicitly targets that generated file.
+The user already clicked Apply. Do not ask what to do. Do not discard edits. Do not run `impeccable live-poll`, `impeccable live-commit-manual-edits`, or any live server endpoint. Do not stage, commit, rebuild, push, or edit generated provider output unless the batch explicitly targets that generated file.
 
 ## Workflow
 
