@@ -90,6 +90,11 @@ export function stageWorkspace(name) {
 export function normalize(text, { ws, home = os.homedir() }) {
   if (typeof text !== 'string') return text;
   let out = text;
+  // The binary's own path first: it may sit under $HOME or the repo.
+  if (process.env.IMPECCABLE_BIN) {
+    const bin = process.env.IMPECCABLE_BIN;
+    for (const form of [`'${bin}'`, `"${bin}"`, bin]) out = out.split(form).join('<IMPECCABLE>');
+  }
   let wsReal = null;
   try { wsReal = ws ? fs.realpathSync(ws) : null; } catch { /* staged dir already gone */ }
   for (const [needle, tag] of [
@@ -104,10 +109,6 @@ export function normalize(text, { ws, home = os.homedir() }) {
   // Self-referential command lines: the JS prints "node <scripts>/<verb>.mjs", the
   // binary prints "<bin> <verb>". Both collapse to "<IMPECCABLE> <verb>".
   out = out.replace(/node ['"]?<REPO>\/skill\/scripts\/([a-z-]+)\.mjs['"]?/g, (m, v) => `<IMPECCABLE> ${v === 'context-signals' ? 'signals' : v === 'hook-admin' ? 'hooks' : v}`);
-  if (process.env.IMPECCABLE_BIN) {
-    const bin = process.env.IMPECCABLE_BIN;
-    for (const form of [`'${bin}'`, `"${bin}"`, bin]) out = out.split(form).join('<IMPECCABLE>');
-  }
   // context.mjs probes `which cwebp/sips/magick/ffmpeg`; the set found is a
   // property of the recording machine, not of the implementation.
   out = out.replace(/IMAGE_TOOLS: available image converters on this machine: [^.]*\. Use the first suitable one; never probe again this session\./g, 'IMAGE_TOOLS: <IMAGE_TOOLS_PROBE>');
@@ -270,6 +271,8 @@ function buildInvocation(c, { impl, bin, ws, isolatedHome }) {
     IMPECCABLE_NO_TELEMETRY: '1',
     DO_NOT_TRACK: '1',
     ...(c.isolateHome === false ? {} : { HOME: isolatedHome, USERPROFILE: isolatedHome }),
+    // What the launcher exports for the binary (see launcher/impeccable in the engine repo).
+    ...(impl === 'bin' ? { IMPECCABLE_SKILL_DIR: path.join(REPO_ROOT, 'skill'), IMPECCABLE_SELF: bin } : {}),
     ...Object.fromEntries(Object.entries(c.env || {}).map(([k, v]) => [k, v == null ? v : sub(v)])),
   };
   for (const [k, v] of Object.entries(env)) if (v == null) delete env[k];
