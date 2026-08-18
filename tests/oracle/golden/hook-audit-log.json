@@ -4,7 +4,7 @@
   "exit": 0,
   "signal": null,
   "files": {
-    ".impeccable/audit.ndjson": "{\"ts\":\"<ISO>\",\"event\":\"PostToolUse\",\"harness\":\"claude\",\"cwd\":\"<WS>\",\"session\":\"s1\",\"tool\":\"Edit\",\"file\":\"<WS>/src/components/Card.module.css\",\"ext\":\".css\",\"editCount\":1,\"findings\":2,\"freshFindings\":1,\"deferred\":1,\"emitted\":true,\"freshFiles\":1,\"chars\":1250,\"durationMs\": <MS>}\n",
+    ".impeccable/audit.ndjson": "{\"ts\":\"<ISO>\",\"event\":\"PostToolUse\",\"harness\":\"claude\",\"cwd\":\"<WS>\",\"session\":\"s1\",\"tool\":\"Edit\",\"file\":\"<WS>/src/components/Card.module.css\",\"ext\":\".css\",\"editCount\":1,\"findings\":2,\"freshFindings\":1,\"deferred\":1,\"emitted\":true,\"freshFiles\":1,\"chars\": <N>,\"durationMs\": <MS>}\n",
     ".impeccable/hook.cache.json": "{\"version\":1,\"sessions\":{\"s1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/src/components/Card.module.css\":{\"editCount\":1,\"findings\":[\"gradient-text:2\"]}},\"footerShown\":true}}}"
   }
 }

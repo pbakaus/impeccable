@@ -90,7 +90,16 @@ export function stageWorkspace(name) {
 export function normalize(text, { ws, home = os.homedir() }) {
   if (typeof text !== 'string') return text;
   let out = text;
-  // The binary's own path first: it may sit under $HOME or the repo.
+  // The hook footer embeds the admin command: JS prints "node '<scripts>/hook-admin.mjs'",
+  // the binary prints "'<bin>' hooks". Both collapse to <HOOK_ADMIN_CMD>. This must run
+  // before the generic binary-path mask below.
+  out = out.replace(/node '[^']*\/hook-admin\.mjs'/g, '<HOOK_ADMIN_CMD>');
+  out = out.replace(/node "[^"]*\/hook-admin\.mjs"/g, '<HOOK_ADMIN_CMD>');
+  out = out.replace(/'[^']*\/impeccable(?:\.exe)?' hooks/g, '<HOOK_ADMIN_CMD>');
+  out = out.replace(/"[^"]*\\impeccable(?:\.exe)?" hooks/g, '<HOOK_ADMIN_CMD>');
+  // Audit entries record the rendered message length, which includes that command's path.
+  out = out.replace(/"chars":\s*\d+/g, '"chars": <N>');
+  // The binary's own path: it may sit under $HOME or the repo.
   if (process.env.IMPECCABLE_BIN) {
     const bin = process.env.IMPECCABLE_BIN;
     for (const form of [`'${bin}'`, `"${bin}"`, bin]) out = out.split(form).join('<IMPECCABLE>');
@@ -102,10 +111,6 @@ export function normalize(text, { ws, home = os.homedir() }) {
   ]) {
     if (needle) out = out.split(needle).join(tag);
   }
-  // The hook footer embeds the admin command's own path; both runtimes name it differently.
-  out = out.replace(/node '[^']*\/hook-admin\.mjs'/g, '<HOOK_ADMIN_CMD>');
-  out = out.replace(/node "[^"]*\/hook-admin\.mjs"/g, '<HOOK_ADMIN_CMD>');
-  out = out.replace(/'[^']*\/impeccable(?:\.exe)?' hooks/g, '<HOOK_ADMIN_CMD> hooks');
   // Self-referential command lines: the JS prints "node <scripts>/<verb>.mjs", the
   // binary prints "<bin> <verb>". Both collapse to "<IMPECCABLE> <verb>".
   out = out.replace(/node ['"]?<REPO>\/skill\/scripts\/([a-z-]+)\.mjs['"]?/g, (m, v) => `<IMPECCABLE> ${v === 'context-signals' ? 'signals' : v === 'hook-admin' ? 'hooks' : v}`);
