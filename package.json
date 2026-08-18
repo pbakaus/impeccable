@@ -65,8 +65,6 @@
     "test:skill-behavior": "node scripts/run-tests.mjs skill-behavior",
     "test:live-svelte-adapter-deepseek": "node scripts/run-tests.mjs live-svelte-adapter-deepseek",
     "smoke:hooks": "node scripts/smoke-provider-hooks.mjs",
-    "bench:detector": "node scripts/benchmark-detector.mjs",
-    "bench:detector:browser": "node scripts/benchmark-detector.mjs --browser",
     "audit": "bun audit --audit-level=moderate",
     "prepack": "cp README.md README.repo.md && cp README.npm.md README.md",
     "postpack": "cp README.repo.md README.md && rm README.repo.md",

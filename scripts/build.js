@@ -32,7 +32,7 @@ import {
   verifyPluginAgentRewrite,
 } from './lib/plugin-paths.js';
 import { stageOpenAIPlugin } from './lib/openai-plugin.js';
-import { ANTIPATTERNS } from '../cli/engine/registry/antipatterns.mjs';
+import { ENGINE_TARGETS, binaryName, main as fetchEngineMain, readEngineVersion } from './fetch-engine.mjs';
 // Sub-page generation is now handled by Astro content collections.
 
 /**
@@ -60,8 +60,12 @@ function generateCounts(rootDir, skills, buildDir) {
     commandCount = activeCommands.length;
   }
 
-  // Count detection rules from the detector registry.
-  const detectionCount = new Set(ANTIPATTERNS.map(rule => rule.id)).size;
+  // Count detection rules from the engine's rule registry as vendored by
+  // build:extension (extension/detector/antipatterns.json). The registry
+  // lives in the engine repo now, so when that file is absent (fresh
+  // checkout, no extension build) the detection-count check is skipped
+  // rather than guessed.
+  const detectionCount = readDetectionRuleCount(rootDir);
 
   // Validate counts in key files
   const filesToCheck = [
@@ -99,7 +103,7 @@ function generateCounts(rootDir, skills, buildDir) {
     // qualified "issues" both evaded the old pattern, which is how five
     // stale counts shipped while the validator reported clean.
     const detectPattern = /\b(\d+)\s+(deterministic\s+)?(detector\s+)?(checks|patterns|rules|detections|issues)\b/gi;
-    for (const match of strippedContent.matchAll(detectPattern)) {
+    for (const match of detectionCount == null ? [] : strippedContent.matchAll(detectPattern)) {
       const num = parseInt(match[1]);
       if (match[4] === 'issues' && !match[2]) continue; // plain "issues" is prose, not a count claim
       if (num !== detectionCount && num > 10) { // ignore small numbers like "3 patterns"
@@ -113,8 +117,19 @@ function generateCounts(rootDir, skills, buildDir) {
     console.error(`\n❌ ${errors} stale count reference(s) found. Update them to match source of truth.`);
   }
 
-  console.log(`✓ Generated counts: ${commandCount} commands, ${detectionCount} detection rules`);
+  console.log(`✓ Generated counts: ${commandCount} commands, ${detectionCount == null ? 'detection rules unchecked (no extension/detector/antipatterns.json)' : `${detectionCount} detection rules`}`);
   return errors;
+}
+
+function readDetectionRuleCount(rootDir) {
+  const registry = path.join(rootDir, 'extension', 'detector', 'antipatterns.json');
+  if (!fs.existsSync(registry)) return null;
+  try {
+    const rules = JSON.parse(fs.readFileSync(registry, 'utf-8'));
+    return new Set((Array.isArray(rules) ? rules : []).map(rule => rule.id)).size || null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -496,6 +511,54 @@ function syncRootHookManifests(rootDir) {
   return synced;
 }
 
+/**
+ * Every skill copy in dist gets the engine binaries the launcher looks for
+ * (`scripts/bin/<os>-<arch>/impeccable[.exe]`), so the release zips are
+ * self-contained for installs without egress. Called only in release mode,
+ * and only after the root harness dirs and ./plugin have been synced from
+ * dist: those are git-delivered and must stay launcher-only (the binaries
+ * are gitignored and the launcher downloads them on first run).
+ *
+ * Source: skill/scripts/bin/, filled by scripts/fetch-engine.mjs --all. A
+ * target that could not be fetched is reported and left out; the launcher
+ * covers it at run time.
+ */
+async function stageEngineBinaries(rootDir, distDir) {
+  await fetchEngineMain(['--all', '--lenient']);
+  const binRoot = path.join(rootDir, 'skill', 'scripts', 'bin');
+  const present = ENGINE_TARGETS.filter(t => fs.existsSync(path.join(binRoot, t, binaryName(t))));
+  const missing = ENGINE_TARGETS.filter(t => !present.includes(t));
+  if (present.length === 0) {
+    console.warn(`⚠️  No engine binaries for v${readEngineVersion(rootDir)}; zips ship launcher-only (the launcher downloads on first run).`);
+    return;
+  }
+  let copies = 0;
+  for (const { provider, configDir } of Object.values(PROVIDERS)) {
+    const scriptsDir = path.join(distDir, provider, configDir, 'skills', 'impeccable', 'scripts');
+    if (!fs.existsSync(scriptsDir)) continue;
+    for (const target of present) {
+      const src = path.join(binRoot, target, binaryName(target));
+      const dest = path.join(scriptsDir, 'bin', target, binaryName(target));
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.copyFileSync(src, dest);
+      fs.chmodSync(dest, 0o755);
+      copies++;
+    }
+  }
+  console.log(`✓ Staged engine v${readEngineVersion(rootDir)} binaries into dist (${present.join(', ')}; ${copies} copies)${missing.length ? `; missing: ${missing.join(', ')}` : ''}`);
+}
+
+function syncEngineVersionFile(rootDir) {
+  const version = readEngineVersion(rootDir);
+  if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) {
+    throw new Error(`ENGINE_VERSION must be a semver string, got "${version}"`);
+  }
+  const dest = path.join(rootDir, 'skill', 'scripts', 'VERSION');
+  const current = fs.existsSync(dest) ? fs.readFileSync(dest, 'utf-8') : null;
+  if (current !== `${version}\n`) fs.writeFileSync(dest, `${version}\n`);
+  console.log(`✓ Engine pinned at v${version} (skill/scripts/VERSION)`);
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
@@ -590,6 +653,10 @@ async function build() {
 
   const buildDir = path.join(ROOT_DIR, 'build');
 
+  // The launcher reads scripts/VERSION to know which engine release to run
+  // or download; the root ENGINE_VERSION file is the source of truth for it.
+  syncEngineVersionFile(ROOT_DIR);
+
   // Read source files (unified skills architecture)
   const { skills } = readSourceFiles(ROOT_DIR);
   const patterns = readPatterns(ROOT_DIR);
@@ -610,13 +677,6 @@ async function build() {
     const transform = createTransformer(config);
     transform(skills, DIST_DIR, { skillsVersion });
   }
-
-  // Assemble universal directory
-  assembleUniversal(DIST_DIR);
-
-  // Create ZIP bundles (individual + universal)
-  await createAllZips(DIST_DIR);
-
 
   if (BUILD_OPTIONS.syncRootOutputs) {
     // Copy all provider outputs to project root for direct GitHub installs and
@@ -793,6 +853,22 @@ async function build() {
   // upload ZIP and local preview directory cannot drift behind provider output.
   const openAiPluginRoot = stageOpenAIPlugin(ROOT_DIR, DIST_DIR);
   await createProviderZip(openAiPluginRoot, DIST_DIR, 'openai-plugin');
+
+  // Release builds ship the engine binaries inside every dist skill copy so
+  // universal.zip is self-contained. This runs after the root harness dirs,
+  // ./plugin, and the OpenAI plugin were staged from dist: git-delivered
+  // trees stay launcher-only.
+  // IMPECCABLE_BUNDLE_ENGINE=0 keeps the release zip launcher-only (the size
+  // grows by roughly 4 MB per target per provider copy otherwise).
+  if (BUILD_OPTIONS.syncRootOutputs && process.env.IMPECCABLE_BUNDLE_ENGINE !== '0') {
+    await stageEngineBinaries(ROOT_DIR, DIST_DIR);
+  }
+
+  // Assemble universal directory
+  assembleUniversal(DIST_DIR);
+
+  // Create ZIP bundles (universal)
+  await createAllZips(DIST_DIR);
 
   // Generate authoritative counts and validate references
   const countErrors = generateCounts(ROOT_DIR, skills, buildDir);

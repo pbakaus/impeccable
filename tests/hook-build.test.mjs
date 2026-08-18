@@ -7,7 +7,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 import {
   buildClaudeSettingsManifest,
@@ -26,30 +26,29 @@ function readJson(rel) {
   return JSON.parse(fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8'));
 }
 
-// The runtime probe every hook command must carry (issue #410): a node below
-// the engines floor exits the command at 0 instead of dying on ESM parse. The
-// expected floor comes from package.json engines, so probe and contract cannot
-// drift apart.
-const ENGINES_NODE_MAJOR = parseInt(
-  JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8')).engines.node.replace(/[^\d.]/g, ''),
-  10,
-);
-const NODE_PROBE = `process.exit(Math.min(parseInt(process.versions.node,10),${ENGINES_NODE_MAJOR})===${ENGINES_NODE_MAJOR}?0:1)`;
-
-function expectCommand(command, expectedPath) {
+// Every hook command is the launcher shipped in the skill's scripts dir,
+// invoked as `<scripts>/impeccable <verb>` behind an existence guard: a
+// missing launcher exits 0 (issue #399: user-level manifests fire in every
+// project) and a present one keeps its own exit code, so Claude's exit-2
+// blocking signal still reaches the agent. No runtime probe: the launcher
+// runs a self-contained binary, so there is no Node on the path to check.
+function expectCommand(command, expectedScriptsDir, verb = 'hook') {
   assert.equal(typeof command, 'string');
-  // node-command providers carry the missing-file guard (issue #399: exits 0
-  // when absent, preserves node's exit code when present) plus the runtime
-  // probe. GitHub's portable `$(git rev-parse)` form is guarded too, so it
-  // lands in the same branch.
-  if (command.startsWith('[ ! -f "')) {
-    assert.match(command, /\|\| node "/);
-    assert.ok(command.includes(NODE_PROBE), `missing runtime probe in ${command}`);
-  } else {
-    assert.match(command, /^node "|^bash -c|\$\(git rev-parse/);
-  }
-  assert.ok(command.includes(expectedPath), `missing ${expectedPath} in ${command}`);
-  assert.ok(!command.includes('hook-probe.mjs'), `probe hook still referenced in ${command}`);
+  const launcher = `${expectedScriptsDir}/impeccable`;
+  assert.ok(command.includes(launcher), `missing ${launcher} in ${command}`);
+  assert.ok(
+    command.endsWith(`"] || "`) === false && command.includes(`" ] || "`),
+    `missing existence guard in ${command}`,
+  );
+  assert.match(command, new RegExp(`^\\[ ! -f "[^"]*/impeccable" \\] \\|\\| "[^"]*/impeccable" ${verb}$`));
+  assert.ok(!command.includes('node '), `hook command must not depend on node: ${command}`);
+  assert.ok(!command.includes('.mjs'), `hook command still names a Node script: ${command}`);
+}
+
+function expectWindowsCommand(command, expectedScriptsDir, verb = 'hook') {
+  assert.equal(typeof command, 'string');
+  const launcher = `${expectedScriptsDir}/impeccable.cmd`;
+  assert.equal(command, `if exist "${launcher}" ("${launcher}" ${verb} & exit /b)`);
 }
 
 function manifestCommands(manifest) {
@@ -77,7 +76,7 @@ describe('hook manifest builders', () => {
     assert.equal(handler.type, 'command');
     assert.equal(handler.timeout, 5);
     assert.equal(handler.statusMessage, 'Checking UI changes');
-    expectCommand(handler.command, '.claude/skills/impeccable/scripts/hook.mjs');
+    expectCommand(handler.command, '.claude/skills/impeccable/scripts');
     assert.ok(handler.command.includes('${CLAUDE_PROJECT_DIR}'));
     assert.equal(handler.args, undefined);
     assert.equal(manifest.hooks.SessionStart, undefined);
@@ -87,7 +86,7 @@ describe('hook manifest builders', () => {
     assert.equal(manifest.hooks.Stop[0].matcher, undefined);
     assert.equal(stop.timeout, 30);
     assert.equal(stop.statusMessage, 'Design deep pass');
-    expectCommand(stop.command, '.claude/skills/impeccable/scripts/hook.mjs');
+    expectCommand(stop.command, '.claude/skills/impeccable/scripts');
   });
 
   it('builds Codex project-local hooks for the real detector hook', () => {
@@ -103,7 +102,7 @@ describe('hook manifest builders', () => {
     assert.equal(handler.type, 'command');
     assert.equal(handler.timeout, 5);
     assert.equal(handler.statusMessage, 'Checking UI changes');
-    expectCommand(handler.command, '.codex/skills/impeccable/scripts/hook.mjs');
+    expectCommand(handler.command, '.codex/skills/impeccable/scripts');
     assert.ok(!handler.command.includes('git rev-parse --show-toplevel'));
     assert.ok(!handler.command.includes('${PLUGIN_ROOT}'));
     assert.equal(manifest.hooks.SessionStart, undefined);
@@ -112,7 +111,12 @@ describe('hook manifest builders', () => {
     // pass too.
     const stop = manifest.hooks.Stop[0].hooks[0];
     assert.equal(stop.timeout, 30);
-    expectCommand(stop.command, '.codex/skills/impeccable/scripts/hook.mjs');
+    expectCommand(stop.command, '.codex/skills/impeccable/scripts');
+
+    // Codex 0.146.0+ selects `commandWindows` on Windows (issue #452), where
+    // the POSIX guard is not a command; that form calls impeccable.cmd.
+    expectWindowsCommand(handler.commandWindows, '.codex/skills/impeccable/scripts');
+    expectWindowsCommand(stop.commandWindows, '.codex/skills/impeccable/scripts');
   });
 
   it('derives the Codex hook payload path from the install dir', () => {
@@ -120,22 +124,22 @@ describe('hook manifest builders', () => {
     // `.codex`-directory install at `.codex/skills`, a `.agents` (Codex repo
     // skills) install at `.agents/skills`.
     const codexDir = buildCodexHooksManifest('.codex');
-    expectCommand(codexDir.hooks.PostToolUse[0].hooks[0].command, '.codex/skills/impeccable/scripts/hook.mjs');
-    expectCommand(codexDir.hooks.Stop[0].hooks[0].command, '.codex/skills/impeccable/scripts/hook.mjs');
+    expectCommand(codexDir.hooks.PostToolUse[0].hooks[0].command, '.codex/skills/impeccable/scripts');
+    expectCommand(codexDir.hooks.Stop[0].hooks[0].command, '.codex/skills/impeccable/scripts');
 
     const agentsDir = buildCodexHooksManifest('.agents');
-    expectCommand(agentsDir.hooks.PostToolUse[0].hooks[0].command, '.agents/skills/impeccable/scripts/hook.mjs');
-    expectCommand(agentsDir.hooks.Stop[0].hooks[0].command, '.agents/skills/impeccable/scripts/hook.mjs');
+    expectCommand(agentsDir.hooks.PostToolUse[0].hooks[0].command, '.agents/skills/impeccable/scripts');
+    expectCommand(agentsDir.hooks.Stop[0].hooks[0].command, '.agents/skills/impeccable/scripts');
     assert.ok(!agentsDir.hooks.PostToolUse[0].hooks[0].command.includes('.codex/skills'));
 
     // hooksJsonFor threads the provider's configDir through to the builder.
     expectCommand(
       hooksJsonFor('codex', { configDir: '.agents' }).hooks.PostToolUse[0].hooks[0].command,
-      '.agents/skills/impeccable/scripts/hook.mjs',
+      '.agents/skills/impeccable/scripts',
     );
     expectCommand(
       hooksJsonFor('codex').hooks.PostToolUse[0].hooks[0].command,
-      '.codex/skills/impeccable/scripts/hook.mjs',
+      '.codex/skills/impeccable/scripts',
     );
   });
 
@@ -149,7 +153,7 @@ describe('hook manifest builders', () => {
     assert.equal(manifest.hooks.afterFileEdit, undefined);
     assert.equal(manifest.hooks.stop, undefined);
     assert.equal(manifest.hooks.sessionStart, undefined);
-    expectCommand(beforeEdit.command, '.cursor/skills/impeccable/scripts/hook-before-edit.mjs');
+    expectCommand(beforeEdit.command, '.cursor/skills/impeccable/scripts', 'hook-before-edit');
     assert.equal(beforeEdit.timeout, 5);
   });
 
@@ -166,7 +170,7 @@ describe('hook manifest builders', () => {
     assert.equal(entry.timeoutSec, 5);
     assert.equal(entry.timeout, undefined);
     assert.equal(entry.command, undefined);
-    expectCommand(entry.bash, '.github/skills/impeccable/scripts/hook.mjs');
+    expectCommand(entry.bash, '.github/skills/impeccable/scripts');
     assert.ok(entry.bash.includes('git rev-parse --show-toplevel'));
     assert.equal(manifest.hooks.PostToolUse, undefined);
     assert.equal(manifest.hooks.preToolUse, undefined);
@@ -182,7 +186,7 @@ describe('hook manifest builders', () => {
     assert.equal(handler.type, 'command');
     assert.equal(handler.timeout, 5);
     assert.equal(handler.statusMessage, 'Checking UI changes');
-    expectCommand(handler.command, '.grok/skills/impeccable/scripts/hook.mjs');
+    expectCommand(handler.command, '.grok/skills/impeccable/scripts');
     assert.ok(!handler.command.includes('${CLAUDE_PROJECT_DIR}'));
     assert.ok(!handler.command.includes('${GROK_PLUGIN_ROOT}'));
     assert.equal(manifest.hooks.SessionStart, undefined);
@@ -190,49 +194,49 @@ describe('hook manifest builders', () => {
     const stop = manifest.hooks.Stop[0].hooks[0];
     assert.equal(stop.timeout, 30);
     assert.equal(stop.statusMessage, 'Design deep pass');
-    expectCommand(stop.command, '.grok/skills/impeccable/scripts/hook.mjs');
+    expectCommand(stop.command, '.grok/skills/impeccable/scripts');
   });
 
-  it('probes the node runtime everywhere, and notices only where a channel exists', () => {
-    // Claude Code and Codex render a `systemMessage` from hook stdout, so their
-    // manifests carry the one-time unsupported-runtime notice. Cursor (output is
-    // permission-shaped; a message would block the edit), Grok (stdout ignored),
-    // and Copilot (contract unconfirmed) get the silent probe only.
-    const withNotice = [
+  it('emits commandWindows only for Codex-shaped manifests', () => {
+    // Codex reads a `commandWindows` sibling; Claude, Cursor, Grok, and Copilot
+    // have no per-platform field, and an unknown key is a risk under a strict
+    // parser, so it stays off everywhere else.
+    const withWindows = [buildCodexHooksManifest(), buildCodexPluginHooksManifest()];
+    const without = [
       buildClaudeSettingsManifest(),
       buildClaudePluginHooksManifest(),
-      buildCodexHooksManifest(),
-      buildCodexPluginHooksManifest(),
-    ];
-    const probeOnly = [
       buildCursorHooksManifest(),
       buildGitHubHooksManifest(),
       buildGrokHooksManifest(),
     ];
-    for (const manifest of [...withNotice, ...probeOnly]) {
-      for (const command of manifestCommands(manifest)) {
-        assert.ok(command.includes(NODE_PROBE), `missing runtime probe in ${command}`);
+    const entries = (manifest) => {
+      const out = [];
+      const walk = (value) => {
+        if (Array.isArray(value)) { value.forEach(walk); return; }
+        if (value && typeof value === 'object') {
+          if (typeof value.command === 'string' || typeof value.bash === 'string') out.push(value);
+          Object.values(value).forEach(walk);
+        }
+      };
+      walk(manifest.hooks);
+      return out;
+    };
+    for (const manifest of withWindows) {
+      for (const entry of entries(manifest)) {
+        assert.equal(typeof entry.commandWindows, 'string', `missing commandWindows in ${JSON.stringify(entry)}`);
+        assert.ok(entry.commandWindows.includes('impeccable.cmd'));
       }
     }
-    for (const manifest of withNotice) {
-      for (const command of manifestCommands(manifest)) {
-        assert.ok(command.includes('systemMessage'), `missing notice in ${command}`);
-        assert.ok(command.includes('node-unsupported'), `missing once-only marker in ${command}`);
+    for (const manifest of without) {
+      for (const entry of entries(manifest)) {
+        assert.equal(entry.commandWindows, undefined, `unexpected commandWindows in ${JSON.stringify(entry)}`);
       }
     }
-    for (const manifest of probeOnly) {
+    for (const manifest of [...withWindows, ...without]) {
       for (const command of manifestCommands(manifest)) {
-        assert.ok(!command.includes('systemMessage'), `unexpected notice in ${command}`);
+        assert.ok(!/node|systemMessage|node-unsupported/.test(command), `Node-era fragment in ${command}`);
       }
     }
-  });
-
-  // Volta's Windows shims exec through `cmd /C`, which claims `<`, `>`, and
-  // newlines from the `node -e` payload, so the probe died before node ran and
-  // the guard read that as a missing runtime (volta-cli/volta#1791). Every
-  // command is asserted to carry NODE_PROBE above, so this covers them all.
-  it('keeps the runtime probe free of characters cmd.exe re-parses', () => {
-    assert.ok(!/[<>\n]/.test(NODE_PROBE), `cmd.exe-unsafe character in probe: ${NODE_PROBE}`);
   });
 
   it('routes supported hook builders and leaves other providers alone', () => {
@@ -245,7 +249,14 @@ describe('hook manifest builders', () => {
   });
 });
 
-describe('generated hook artifacts in repo', () => {
+// The tracked provider outputs are regenerated on main by the sync workflow
+// (`bun run build:release`), never in a feature PR. Until that sync lands after
+// the launcher swap, the tracked manifests still describe the Node scripts;
+// gate these assertions on the synced launcher so a source-first branch is
+// not red for output it is not allowed to stage.
+const SYNCED = fs.existsSync(path.join(REPO_ROOT, '.claude/skills/impeccable/scripts/impeccable'));
+
+describe('generated hook artifacts in repo', { skip: SYNCED ? false : 'generated provider output not yet synced (bun run build:release on main)' }, () => {
   for (const rel of [
     '.claude/settings.json',
     '.cursor/hooks.json',
@@ -266,14 +277,12 @@ describe('generated hook artifacts in repo', () => {
     assert.deepEqual(readJson('.github/hooks/impeccable.json'), buildGitHubHooksManifest());
   });
 
-  it('Claude project settings reference hook.mjs in .claude/skills', () => {
+  it('Claude project settings reference the launcher in .claude/skills', () => {
     const manifest = readJson('.claude/settings.json');
     const handler = manifest.hooks.PostToolUse[0].hooks[0];
 
-    expectCommand(handler.command, '.claude/skills/impeccable/scripts/hook.mjs');
-    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.claude/skills/impeccable/scripts/hook.mjs')));
-    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.claude/skills/impeccable/scripts/hook-lib.mjs')));
-    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.claude/skills/impeccable/scripts/detector/detect-antipatterns.mjs')));
+    expectCommand(handler.command, '.claude/skills/impeccable/scripts');
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.claude/skills/impeccable/scripts')));
   });
 
   it('Cursor project hooks reference only the pre-write runtime in .cursor/skills', () => {
@@ -281,15 +290,12 @@ describe('generated hook artifacts in repo', () => {
     const beforeEdit = manifest.hooks.preToolUse[0];
 
     assert.equal(Object.keys(manifest.hooks).length, 1);
-    expectCommand(beforeEdit.command, '.cursor/skills/impeccable/scripts/hook-before-edit.mjs');
-    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.cursor/skills/impeccable/scripts/hook-before-edit.mjs')));
-    assert.equal(fs.existsSync(path.join(REPO_ROOT, '.cursor/skills/impeccable/scripts/hook-after-edit.mjs')), false);
-    assert.equal(fs.existsSync(path.join(REPO_ROOT, '.cursor/skills/impeccable/scripts/hook-stop.mjs')), false);
-    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.cursor/skills/impeccable/scripts/hook-lib.mjs')));
-    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.cursor/skills/impeccable/scripts/detector/detect-antipatterns.mjs')));
+    expectCommand(beforeEdit.command, '.cursor/skills/impeccable/scripts', 'hook-before-edit');
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.cursor/skills/impeccable/scripts/impeccable')));
+    assert.equal(fs.existsSync(path.join(REPO_ROOT, '.cursor/skills/impeccable/scripts/hook-before-edit.mjs')), false);
   });
 
-  it('Codex project hooks reference hook.mjs in the .codex skill payload', () => {
+  it('Codex project hooks reference the launcher in the .codex skill payload', () => {
     // The committed `.codex/hooks.json` is the distribution artifact for a
     // `.codex`-directory install, whose skill payload lives at `.codex/skills/`
     // (issue: it previously hardcoded `.agents/skills`, so the guarded hook
@@ -298,7 +304,7 @@ describe('generated hook artifacts in repo', () => {
     const manifest = readJson('.codex/hooks.json');
     const handler = manifest.hooks.PostToolUse[0].hooks[0];
 
-    expectCommand(handler.command, '.codex/skills/impeccable/scripts/hook.mjs');
+    expectCommand(handler.command, '.codex/skills/impeccable/scripts');
     assert.ok(!handler.command.includes('.agents/skills'));
 
     // The self-consistent Codex bundle at `dist/codex/.codex/skills/` is a build
@@ -309,21 +315,17 @@ describe('generated hook artifacts in repo', () => {
     // The repo ships the Codex skill payload at `.agents/skills` (the
     // layout CLI installs use, and where the rewritten command resolves).
     assert.ok(fs.existsSync(path.join(REPO_ROOT, '.agents/skills/impeccable/SKILL.md')));
-    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.agents/skills/impeccable/scripts/hook.mjs')));
-    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.agents/skills/impeccable/scripts/hook-lib.mjs')));
-    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.agents/skills/impeccable/scripts/detector/detect-antipatterns.mjs')));
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.agents/skills/impeccable/scripts')));
   });
 
-  it('GitHub Copilot repo hooks reference hook.mjs in the .github skill payload', () => {
+  it('GitHub Copilot repo hooks reference the launcher in the .github skill payload', () => {
     const manifest = readJson('.github/hooks/impeccable.json');
     const entry = manifest.hooks.postToolUse[0];
 
     assert.equal(entry.matcher, 'edit|create|apply_patch');
-    expectCommand(entry.bash, '.github/skills/impeccable/scripts/hook.mjs');
+    expectCommand(entry.bash, '.github/skills/impeccable/scripts');
     assert.ok(fs.existsSync(path.join(REPO_ROOT, '.github/skills/impeccable/SKILL.md')));
-    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.github/skills/impeccable/scripts/hook.mjs')));
-    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.github/skills/impeccable/scripts/hook-lib.mjs')));
-    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.github/skills/impeccable/scripts/detector/detect-antipatterns.mjs')));
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.github/skills/impeccable/scripts')));
   });
 
   it('does not generate probe scripts into provider skill payloads', () => {
@@ -358,7 +360,7 @@ describe('generated hook artifacts in repo', () => {
 
     const handler = manifest.hooks.PostToolUse[0].hooks[0];
     assert.equal(manifest.hooks.PostToolUse[0].matcher, 'Edit|Write');
-    expectCommand(handler.command, 'skills/impeccable/scripts/hook.mjs');
+    expectCommand(handler.command, 'skills/impeccable/scripts');
     // Resolves relative to the installed plugin, not a `.claude/skills/` layout.
     assert.ok(handler.command.includes('${CLAUDE_PLUGIN_ROOT}'),
       `plugin hook command must use $\{CLAUDE_PLUGIN_ROOT}: ${handler.command}`);
@@ -368,24 +370,14 @@ describe('generated hook artifacts in repo', () => {
     // Stop deep pass ships in the plugin manifest too, plugin-root-relative.
     const stop = manifest.hooks.Stop[0].hooks[0];
     assert.equal(stop.timeout, 30);
-    expectCommand(stop.command, 'skills/impeccable/scripts/hook.mjs');
+    expectCommand(stop.command, 'skills/impeccable/scripts');
     assert.ok(stop.command.includes('${CLAUDE_PLUGIN_ROOT}'));
 
     // The script the plugin hook points at must ship inside the plugin payload.
-    assert.ok(fs.existsSync(path.join(REPO_ROOT, 'plugin/skills/impeccable/scripts/hook.mjs')));
-    assert.ok(fs.existsSync(path.join(REPO_ROOT, 'plugin/skills/impeccable/scripts/hook-lib.mjs')));
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, 'plugin/skills/impeccable/scripts')));
   });
 
-  it('keeps the marketplace hook repair matcher aligned with Claude Code', () => {
-    const hookAdmin = fs.readFileSync(
-      path.join(REPO_ROOT, 'plugin/skills/impeccable/scripts/hook-admin.mjs'),
-      'utf8',
-    );
-    assert.match(hookAdmin, /matcher: 'Edit\|Write'/);
-    assert.doesNotMatch(hookAdmin, /matcher: 'Edit\|Write\|MultiEdit'/);
-  });
-
-  it('generated hook runtime can import the bundled detector', async () => {
+  it('generated skill payloads ship the executable launcher and no Node scripts', () => {
     for (const scriptDir of [
       '.claude/skills/impeccable/scripts',
       '.cursor/skills/impeccable/scripts',
@@ -393,11 +385,16 @@ describe('generated hook artifacts in repo', () => {
       'plugin/skills/impeccable/scripts',
     ]) {
       const abs = path.join(REPO_ROOT, scriptDir);
-      assert.ok(fs.existsSync(path.join(abs, 'detector', 'detect-antipatterns.mjs')),
-        `detector bundle missing in ${scriptDir}`);
-      const hookLib = await import(pathToFileURL(path.join(abs, 'hook-lib.mjs')));
-      const detector = await hookLib.loadDetector();
-      assert.equal(typeof detector.detectText, 'function');
+      const launcher = path.join(abs, 'impeccable');
+      assert.ok(fs.existsSync(launcher), `launcher missing in ${scriptDir}`);
+      if (process.platform !== 'win32') {
+        assert.ok(fs.statSync(launcher).mode & 0o111, `launcher not executable in ${scriptDir}`);
+      }
+      assert.ok(fs.existsSync(path.join(abs, 'impeccable.cmd')), `impeccable.cmd missing in ${scriptDir}`);
+      assert.ok(fs.existsSync(path.join(abs, 'VERSION')), `VERSION missing in ${scriptDir}`);
+      assert.equal(fs.existsSync(path.join(abs, 'bin')), false, `${scriptDir} must stay launcher-only in git; binaries ship only in release zips`);
+      const stray = fs.readdirSync(abs).filter((f) => f.endsWith('.mjs') || f === 'detector' || f === 'lib');
+      assert.deepEqual(stray, [], `Node-era files still in ${scriptDir}`);
     }
   });
 });

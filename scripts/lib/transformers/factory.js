@@ -1,3 +1,4 @@
+import fs from 'fs';
 import path from 'path';
 import {
   cleanDir,
@@ -359,7 +360,12 @@ export function createTransformer(config) {
         ensureDir(scriptsOutDir);
         for (const script of skill.scripts) {
           const scriptContent = replaceScriptProviderMarker(script.content, placeholderKey, provider);
-          writeFile(path.join(scriptsOutDir, script.name), scriptContent);
+          const outPath = path.join(scriptsOutDir, script.name);
+          writeFile(outPath, scriptContent);
+          // The launcher must stay executable in every provider copy; a
+          // plain write would drop the bit and `impeccable context` would
+          // fail with EACCES on the first session.
+          if (script.mode) fs.chmodSync(outPath, script.mode);
           scriptCount++;
         }
       }

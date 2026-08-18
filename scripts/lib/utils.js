@@ -9,18 +9,11 @@ import path from 'path';
 //   New installs write project config at .impeccable/live/config.json instead.
 export const PER_PROJECT_SCRIPT_ARTIFACTS = new Set(['config.json']);
 
-const DETECTOR_BUNDLE_DIR = 'cli/engine';
-
-// Detector source files that live OUTSIDE `cli/engine` but are imported by the
-// bundled engine. `cli/engine/cli/main.mjs` imports `../../lib/impeccable-config.mjs`,
-// which in the source CLI resolves to `cli/lib/impeccable-config.mjs`. The detector
-// bundle copies `cli/engine/**` to `scripts/detector/**`, so from the bundled
-// `scripts/detector/cli/main.mjs` that same `../../lib/...` import resolves to
-// `scripts/lib/impeccable-config.mjs`. Copy the dependency there or the bundled
-// detector fails at import time with "Cannot find module .../lib/impeccable-config.mjs".
-const DETECTOR_EXTERNAL_DEPS = [
-  { src: 'cli/lib/impeccable-config.mjs', dest: 'lib/impeccable-config.mjs' },
-];
+// Platform binaries under `scripts/bin/<os>-<arch>/` are fetched per machine
+// (scripts/fetch-engine.mjs) and never part of the source skill read: the
+// release build stages them into provider output separately, and the launcher
+// downloads them on first run when they are absent.
+export const SKILL_BINARY_DIR = 'bin';
 
 // Walk the harness-dir skill tree and return any per-project script
 // artifacts found, ready for restoration after a full sync rm+recopy.
@@ -52,46 +45,6 @@ export function restorePerProjectArtifacts(rootDir, stashed) {
   }
 }
 
-function readDetectorBundleScripts(rootDir) {
-  const detectorDir = path.join(rootDir, DETECTOR_BUNDLE_DIR);
-  if (!fs.existsSync(detectorDir)) return [];
-
-  const scripts = [];
-  const walk = (dir) => {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const entryPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        walk(entryPath);
-        continue;
-      }
-      if (!entry.isFile()) continue;
-      const relPath = path.relative(detectorDir, entryPath).split(path.sep).join('/');
-      scripts.push({
-        name: `detector/${relPath}`,
-        content: fs.readFileSync(entryPath, 'utf-8'),
-        filePath: entryPath,
-        generated: true,
-      });
-    }
-  };
-  walk(detectorDir);
-
-  // Pull in engine dependencies that live outside the bundle dir so the
-  // generated detector is self-contained (see DETECTOR_EXTERNAL_DEPS).
-  for (const { src, dest } of DETECTOR_EXTERNAL_DEPS) {
-    const srcPath = path.join(rootDir, src);
-    if (!fs.existsSync(srcPath)) continue;
-    scripts.push({
-      name: dest,
-      content: fs.readFileSync(srcPath, 'utf-8'),
-      filePath: srcPath,
-      generated: true,
-    });
-  }
-
-  return scripts;
-}
-
 function readSkillScripts(scriptsDir) {
   const scripts = [];
 
@@ -102,6 +55,7 @@ function readSkillScripts(scriptsDir) {
     for (const entry of entries) {
       const entryPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
+        if (dir === scriptsDir && entry.name === SKILL_BINARY_DIR) continue;
         walk(entryPath);
         continue;
       }
@@ -109,10 +63,13 @@ function readSkillScripts(scriptsDir) {
       if (PER_PROJECT_SCRIPT_ARTIFACTS.has(entry.name)) continue;
 
       const relPath = path.relative(scriptsDir, entryPath).split(path.sep).join('/');
+      // `mode` travels with the entry so the launcher keeps its executable
+      // bit in every provider copy (see writeScriptFile in the transformer).
       scripts.push({
         name: relPath,
         content: fs.readFileSync(entryPath, 'utf-8'),
         filePath: entryPath,
+        mode: fs.statSync(entryPath).mode & 0o777,
       });
     }
   };
@@ -242,8 +199,8 @@ export function readFilesRecursive(dir, fileList = []) {
  * The source manifest is `SKILL.src.md`, NOT `SKILL.md`, on purpose: the
  * `vercel-labs/skills` CLI discovers a skill by finding a literal `SKILL.md`
  * and copies that directory verbatim. If `skill/SKILL.md` existed, `npx skills`
- * would install the UNCOMPILED source (unresolved `{{placeholders}}`, no vendored
- * detector). Naming it `SKILL.src.md` hides it from discovery so the CLI falls
+ * would install the UNCOMPILED source (unresolved `{{placeholders}}` and
+ * `{{scripts_path}}`). Naming it `SKILL.src.md` hides it from discovery so the CLI falls
  * through to a compiled harness dir (`.agents/skills/impeccable`) instead.
  */
 export function readSourceFiles(rootDir) {
@@ -280,7 +237,6 @@ export function readSourceFiles(rootDir) {
   if (fs.existsSync(scriptsDir)) {
     scripts.push(...readSkillScripts(scriptsDir));
   }
-  scripts.push(...readDetectorBundleScripts(rootDir));
 
   const agents = [];
   const agentsDir = path.join(skillDir, 'agents');
@@ -676,13 +632,15 @@ export function replacePlaceholders(content, provider, commandNames = [], allSki
 
   // Replace `/skillname` invocations with the correct command prefix for this provider
   // (e.g., `/normalize` → `$normalize` for Codex). Require the slash to be
-  // outside a path or URL so `.github/hooks/impeccable.json` and
-  // `.codex/skills/impeccable` remain untouched.
+  // outside a path or URL so `.github/hooks/impeccable.json`,
+  // `.codex/skills/impeccable`, and the launcher invocation
+  // `{{scripts_path}}/impeccable <verb>` (a `}}`-preceded path segment,
+  // resolved after this pass) remain untouched.
   if (cmdPrefix !== '/' && allSkillNames.length > 0) {
     const sorted = [...allSkillNames].sort((a, b) => b.length - a.length);
     for (const name of sorted) {
       result = result.replace(
-        new RegExp(`(?<![a-zA-Z0-9_./-])\\/(?=${escapeRegex(name)}(?:[^a-zA-Z0-9_-]|$))`, 'g'),
+        new RegExp(`(?<![a-zA-Z0-9_./}>-])\\/(?=${escapeRegex(name)}(?:[^a-zA-Z0-9_-]|$))`, 'g'),
         cmdPrefix
       );
     }
@@ -695,9 +653,10 @@ export function replacePlaceholders(content, provider, commandNames = [], allSki
  * Render the one explicit provider marker allowed in executable skill scripts.
  *
  * Do not run replacePlaceholders() across JavaScript source: slash-command
- * heuristics can collide with regex literals and runtime paths. Scripts import
- * their command prefix from lib/provider.mjs, whose declaration is replaced
- * here by an exact string match.
+ * heuristics can collide with regex literals and runtime paths. Only exact
+ * marker lines are replaced. The shipped scripts today (the launcher and the
+ * page JS) carry no marker; the binary derives its provider from its install
+ * path or IMPECCABLE_PROVIDER_ID at run time.
  */
 export function replaceScriptProviderMarker(content, provider, buildProvider = provider) {
   const placeholders = PROVIDER_PLACEHOLDERS[provider] || PROVIDER_PLACEHOLDERS.cursor;

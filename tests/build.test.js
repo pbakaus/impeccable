@@ -374,65 +374,38 @@ Please audit {{target}} for technical quality. Ask {{model}} for help.`;
   });
 });
 
-// Resolve a relative import specifier against the importer's bundle-relative
-// path, mirroring Node ESM resolution against the set of bundled script names.
-// Returns the matching bundled name, or null if nothing resolves.
-function resolveBundledImport(importerName, specifier, names) {
-  const dirParts = importerName.split('/').slice(0, -1);
-  const parts = dirParts.concat(specifier.split('/'));
-  const resolved = [];
-  for (const part of parts) {
-    if (part === '' || part === '.') continue;
-    if (part === '..') { resolved.pop(); continue; }
-    resolved.push(part);
-  }
-  const base = resolved.join('/');
-  // ESM needs an explicit extension, but be tolerant of extensionless and
-  // index specifiers so the check tracks real module-resolution behavior.
-  const candidates = [base, `${base}.mjs`, `${base}.js`, `${base}/index.mjs`, `${base}/index.js`];
-  return candidates.find((c) => names.has(c)) || null;
-}
-
-// Regression guard for issue #254: the bundled detector imported
-// `../../lib/impeccable-config.mjs`, a file that lives outside `cli/engine` and
-// was never copied into the bundle, so `/impeccable critique` crashed with
-// "Cannot find module .../lib/impeccable-config.mjs". This walks every bundled
-// script and asserts each relative import resolves to another bundled file, so
-// any future out-of-bundle dependency fails the build instead of the user.
-describe('bundled skill scripts are self-contained', () => {
+// The skill's scripts dir ships the launcher, its Windows twin, the pinned
+// engine VERSION, the page JS, and command-metadata.json. Nothing else: the
+// verbs live in the engine binary the launcher runs, and platform binaries
+// (scripts/bin/) are fetched per machine, never read as source.
+describe('skill scripts payload', () => {
   const ROOT_DIR = process.cwd();
   const { skills } = utils.readSourceFiles(ROOT_DIR);
   const scripts = skills[0]?.scripts ?? [];
-  const jsScripts = scripts.filter((s) => /\.(mjs|js)$/.test(s.name));
   const names = new Set(scripts.map((s) => s.name));
 
-  // Static `import ... from '...'` and re-export `export ... from '...'` only;
-  // dynamic `import()` of computed paths (e.g. detect.mjs) is out of scope.
-  const importRe = /(?:^|[\s;])(?:import|export)\b[^'"`]*?\bfrom\s*['"]([^'"]+)['"]/g;
-
-  // Drop comments first so an example like `// import ... from '...'` in a
-  // doc comment (detector/node/file-system.mjs has one) isn't read as a real import.
-  const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-
-  test('the detector bundle includes its config dependency', () => {
-    expect(names.has('lib/impeccable-config.mjs')).toBe(true);
+  test('ships the launcher, VERSION, page JS, and command metadata', () => {
+    for (const expected of [
+      'impeccable', 'impeccable.cmd', 'VERSION', 'command-metadata.json',
+      'live-browser.js', 'live-browser-dom.js', 'live-browser-session.js', 'modern-screenshot.umd.js',
+    ]) {
+      expect(names.has(expected)).toBe(true);
+    }
   });
 
-  test('every relative import resolves to a bundled file', () => {
-    const broken = [];
-    for (const script of jsScripts) {
-      const source = stripComments(script.content);
-      importRe.lastIndex = 0;
-      let match;
-      while ((match = importRe.exec(source)) !== null) {
-        const specifier = match[1];
-        if (!specifier.startsWith('.')) continue; // bare/node specifiers
-        if (!resolveBundledImport(script.name, specifier, names)) {
-          broken.push(`${script.name} -> ${specifier}`);
-        }
-      }
-    }
-    expect(broken).toEqual([]);
+  test('ships no Node entry points and no bundled detector', () => {
+    expect([...names].filter((n) => n.endsWith('.mjs') || n.startsWith('detector/') || n.startsWith('lib/'))).toEqual([]);
+  });
+
+  test('never reads platform binaries as source', () => {
+    expect([...names].filter((n) => n.startsWith('bin/'))).toEqual([]);
+  });
+
+  test('the launcher is executable and VERSION matches ENGINE_VERSION', () => {
+    const launcher = scripts.find((s) => s.name === 'impeccable');
+    expect(launcher.mode & 0o111).not.toBe(0);
+    const version = scripts.find((s) => s.name === 'VERSION');
+    expect(version.content.trim()).toBe(fs.readFileSync(path.join(ROOT_DIR, 'ENGINE_VERSION'), 'utf-8').trim());
   });
 });
 
@@ -688,7 +661,7 @@ describe('agent bodies resolve placeholders on every surface that ships them', (
   test('the asset producer ships a runnable embed-prompt command, never the raw token', () => {
     for (const [relPath, scriptsPath] of SURFACES) {
       const content = fs.readFileSync(path.join(DIST, relPath), 'utf-8');
-      expect(content).toContain(`node ${scriptsPath}/embed-prompt.mjs`);
+      expect(content).toContain(`${scriptsPath}/impeccable embed-prompt`);
       expect(content).not.toContain('{{scripts_path}}');
     }
   });
@@ -703,7 +676,7 @@ describe('agent bodies resolve placeholders on every surface that ships them', (
           name: 'impeccable-synthetic',
           codexName: 'impeccable_synthetic',
           description: 'synthetic agent',
-          body: 'Run `node {{scripts_path}}/embed-prompt.mjs` and ask {{model}}. <!-- rule:synthetic-marker -->',
+          body: 'Run `{{scripts_path}}/impeccable embed-prompt` and ask {{model}}. <!-- rule:synthetic-marker -->',
         },
       ],
     };
@@ -725,7 +698,7 @@ describe('agent bodies resolve placeholders on every surface that ships them', (
       path.join(synthDist, 'codex/.codex/skills/impeccable/agents/impeccable_synthetic.toml'),
       'utf-8'
     );
-    expect(codexToml).toContain('node .codex/skills/impeccable/scripts/embed-prompt.mjs');
+    expect(codexToml).toContain('.codex/skills/impeccable/scripts/impeccable embed-prompt');
     // The model name belongs to PROVIDER_PLACEHOLDERS and may change; what
     // this pins is that {{model}} resolved to something.
     expect(codexToml).toMatch(/and ask \S+\./);
