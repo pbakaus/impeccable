@@ -4,13 +4,18 @@
  * Composes:
  *   - tmp staging (clones the fixture, git init, writes the inject config)
  *   - npm install (the fixture's runtime.install command)
- *   - live-server.mjs --background (returns {pid, port, token})
- *   - live-inject.mjs --port (patches the framework HTML entry)
- *     ...or, for a fixture declaring runtime.appDir, one live.mjs boot from
- *     the repo root that resolves the app, starts the server, and injects
+ *   - `impeccable live-server --background` (returns {pid, port, token})
+ *   - `impeccable live-inject --port` (patches the framework HTML entry)
+ *     ...or, for a fixture declaring runtime.appDir, one `impeccable live`
+ *     boot from the repo root that resolves the app, starts the server, and
+ *     injects
  *   - the fixture's framework dev server (vite, vite dev, npx vite, ...)
  *   - Playwright Chromium page
  *   - the fake-agent poll loop (in this same node process)
+ *
+ * Every verb runs through the engine binary resolved by tests/lib/engine-bin.mjs
+ * (IMPECCABLE_BIN or skill/scripts/bin/<os>-<arch>/); the suite skips when
+ * none is present.
  *
  * Returns handles + a single `teardown()` that cleans them all up in order.
  */
@@ -22,13 +27,34 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { runAgentLoop } from './agent.mjs';
+import { ENGINE_MISSING_MESSAGE, engineEnv, findEngineBinary } from '../lib/engine-bin.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..', '..');
 const SCRIPTS_DIR = join(REPO_ROOT, 'skill', 'scripts');
 const FIXTURES_DIR = join(REPO_ROOT, 'tests', 'framework-fixtures');
+const ENGINE_BIN = findEngineBinary();
 
-export { SCRIPTS_DIR, FIXTURES_DIR, REPO_ROOT };
+export { SCRIPTS_DIR, FIXTURES_DIR, REPO_ROOT, ENGINE_BIN, ENGINE_MISSING_MESSAGE };
+
+/** The engine binary, or a thrown error naming how to get one. */
+export function requireEngineBin() {
+  if (!ENGINE_BIN) throw new Error(ENGINE_MISSING_MESSAGE);
+  return ENGINE_BIN;
+}
+
+/**
+ * Run one engine verb synchronously from `cwd` and return its stdout, the
+ * way an agent shell would (`impeccable <verb> ...`).
+ */
+export function runEngineSync(verb, args, { cwd, stdio, env } = {}) {
+  return execFileSync(requireEngineBin(), [verb, ...args], {
+    cwd,
+    encoding: 'utf-8',
+    ...(stdio ? { stdio } : {}),
+    env: engineEnv(requireEngineBin(), env || {}),
+  });
+}
 
 // ---------------------------------------------------------------------------
 // App directory
@@ -118,11 +144,7 @@ function addNpmInstallDefaults(cmd, args) {
 // ---------------------------------------------------------------------------
 
 export function startLiveServer(tmp) {
-  const out = execFileSync(
-    process.execPath,
-    [join(SCRIPTS_DIR, 'live-server.mjs'), '--background'],
-    { cwd: tmp, encoding: 'utf-8' },
-  );
+  const out = runEngineSync('live-server', ['--background'], { cwd: tmp });
   const jsonLine = out.trim().split('\n').filter(Boolean).pop();
   const info = JSON.parse(jsonLine);
   if (!info.port || !info.pid) {
@@ -132,61 +154,45 @@ export function startLiveServer(tmp) {
 }
 
 /**
- * Full live boot through `live.mjs`, the entry point a real agent runs.
+ * Full live boot through `impeccable live`, the entry point a real agent runs.
  *
  * Used by fixtures whose app is not at the repo root: `cwd` is the repo root,
- * and live.mjs is the step that resolves the roots, persists the manifest and
- * pointer, starts the server under the app, and injects the script tag there.
- * Returns the parsed live.mjs payload plus the {pid, port, token} the rest of
- * the session needs.
+ * and the boot verb is the step that resolves the roots, persists the manifest
+ * and pointer, starts the server under the app, and injects the script tag
+ * there. Returns the parsed boot payload plus the {pid, port, token} the rest
+ * of the session needs.
  */
 export function runLiveBoot(cwd, appRoot) {
-  const out = execFileSync(
-    process.execPath,
-    [join(SCRIPTS_DIR, 'live.mjs')],
-    { cwd, encoding: 'utf-8' },
-  );
+  const out = runEngineSync('live', [], { cwd });
   let boot;
   try {
     boot = JSON.parse(out.trim());
   } catch {
-    throw new Error('live.mjs returned unparseable output:\n' + out);
+    throw new Error('impeccable live returned unparseable output:\n' + out);
   }
-  if (!boot.ok) throw new Error('live.mjs boot failed: ' + JSON.stringify(boot));
+  if (!boot.ok) throw new Error('impeccable live boot failed: ' + JSON.stringify(boot));
 
   let pid = null;
   try {
     pid = JSON.parse(readFileSync(join(appRoot, '.impeccable', 'live', 'server.json'), 'utf-8')).pid;
   } catch { /* reported below */ }
   if (!pid || !boot.serverPort) {
-    throw new Error('live.mjs boot produced no reachable server: ' + JSON.stringify(boot));
+    throw new Error('impeccable live boot produced no reachable server: ' + JSON.stringify(boot));
   }
   return { boot, live: { pid, port: boot.serverPort, token: boot.serverToken } };
 }
 
 export function stopLiveServer(tmp) {
   try {
-    execFileSync(
-      process.execPath,
-      [join(SCRIPTS_DIR, 'live-server.mjs'), 'stop', '--keep-inject'],
-      { cwd: tmp, stdio: 'ignore' },
-    );
+    runEngineSync('live-server', ['stop', '--keep-inject'], { cwd: tmp, stdio: 'ignore' });
   } catch { /* already gone */ }
 }
 
 export function runInject(tmp, port, token) {
-  const out = execFileSync(
-    process.execPath,
-    [
-      join(SCRIPTS_DIR, 'live-inject.mjs'),
-      '--port', String(port),
-      ...(token ? ['--token', String(token)] : []),
-    ],
-    {
-      cwd: tmp,
-      encoding: 'utf-8',
-      env: { ...process.env },
-    },
+  const out = runEngineSync(
+    'live-inject',
+    ['--port', String(port), ...(token ? ['--token', String(token)] : [])],
+    { cwd: tmp },
   );
   const last = out.trim().split('\n').filter(Boolean).pop();
   return JSON.parse(last);
@@ -345,7 +351,7 @@ export async function bootFixtureSession({
 
   try {
     const startedAt = Date.now();
-    if (prepareTmp) await prepareTmp({ tmp, appRoot, fixture, scriptsDir: SCRIPTS_DIR, trace, log });
+    if (prepareTmp) await prepareTmp({ tmp, appRoot, fixture, engineBin: requireEngineBin(), scriptsDir: SCRIPTS_DIR, trace, log });
     trace('setup.install.start', { fixture: name });
     log(`installing deps`);
     runInstall(appRoot, runtime.install);
@@ -356,14 +362,15 @@ export async function bootFixtureSession({
     trace('setup.live_server.start', { fixture: name });
     if (appDir) {
       // The whole point of an appDir fixture: boot from the repo root and let
-      // live.mjs find the app, so the run proves root resolution rather than
-      // assuming it. live.mjs starts the server and injects in one step.
-      log(`booting live.mjs from the repo root (app is ${appDir}/)`);
+      // `impeccable live` find the app, so the run proves root resolution
+      // rather than assuming it. The boot verb starts the server and injects
+      // in one step.
+      log(`booting impeccable live from the repo root (app is ${appDir}/)`);
       const booted = runLiveBoot(tmp, appRoot);
       liveBoot = booted.boot;
       live = booted.live;
       trace('setup.live_server.end', { fixture: name, port: live.port, appRoot: liveBoot.roots?.appRoot });
-      log(`live.mjs booted on ${live.port} (appRoot=${liveBoot.roots?.appRoot}) in ${formatDuration(Date.now() - liveStartedAt)}`);
+      log(`impeccable live booted on ${live.port} (appRoot=${liveBoot.roots?.appRoot}) in ${formatDuration(Date.now() - liveStartedAt)}`);
     } else {
       log(`starting live-server`);
       live = startLiveServer(tmp);
@@ -373,7 +380,7 @@ export async function bootFixtureSession({
 
     if (startWorker) {
       trace('setup.worker.start', { fixture: name });
-      externalWorker = await startWorker({ tmp, appRoot, fixture, scriptsDir: SCRIPTS_DIR, live, trace, log });
+      externalWorker = await startWorker({ tmp, appRoot, fixture, engineBin: requireEngineBin(), scriptsDir: SCRIPTS_DIR, live, trace, log });
       trace('setup.worker.end', { fixture: name });
     }
 
@@ -387,7 +394,7 @@ export async function bootFixtureSession({
       log(`live-inject complete in ${formatDuration(Date.now() - injectStartedAt)}`);
     } else {
       trace('setup.inject.end', { fixture: name, files: liveBoot.pageFiles || [] });
-      log(`live.mjs injected into ${(liveBoot.pageFiles || []).join(', ') || '(nothing)'}`);
+      log(`impeccable live injected into ${(liveBoot.pageFiles || []).join(', ') || '(nothing)'}`);
     }
 
     const devStartedAt = Date.now();
@@ -403,7 +410,7 @@ export async function bootFixtureSession({
       agentAbort = new AbortController();
       const loopOptions = {
         tmp: appRoot,
-        scriptsDir: SCRIPTS_DIR,
+        engineBin: requireEngineBin(),
         port: live.port,
         token: live.token,
         agent,

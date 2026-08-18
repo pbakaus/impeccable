@@ -32,7 +32,7 @@ import {
   FAKE_VARIANT_FONT_WEIGHTS,
 } from './live-e2e/agent.mjs';
 import { createLlmAgent, resolveLlmAgentConfig } from './live-e2e/agents/llm-agent.mjs';
-import { bootFixtureSession, FIXTURES_DIR } from './live-e2e/session.mjs';
+import { bootFixtureSession, ENGINE_BIN, ENGINE_MISSING_MESSAGE, FIXTURES_DIR, runEngineSync } from './live-e2e/session.mjs';
 import {
   assertApplyDockVisible,
   assertApplyDockLoading,
@@ -173,6 +173,9 @@ function isBenignConsoleError(entry) {
 
 before(async () => {
   if (fixtures.length === 0) return;
+  // The whole sweep drives engine verbs; without a binary there is nothing to
+  // test, and a silent skip would read as coverage.
+  if (!ENGINE_BIN) throw new Error(ENGINE_MISSING_MESSAGE);
   try {
     playwright = await import('playwright');
   } catch (err) {
@@ -1685,11 +1688,10 @@ function maybeWrapMalformedAckProbe(agent, scenario, probeState, t) {
       probeState.applyCalls = (probeState.applyCalls || 0) + 1;
       const sourceFile = firstExpectedSourceFile(scenario) || 'src/App.jsx';
       try {
-        execFileSync(
-          process.execPath,
-          [join(context.scriptsDir, 'live-poll.mjs'), '--reply', 'done', '--file', sourceFile],
-          { cwd: context.tmp, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] },
-        );
+        runEngineSync('live-poll', ['--reply', 'done', '--file', sourceFile], {
+          cwd: context.tmp,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
         assert.fail('malformed manual Apply ack unexpectedly succeeded');
       } catch (err) {
         const output = [err.stdout, err.stderr, err.message].filter(Boolean).join('\n');

@@ -1,6 +1,6 @@
 # Framework fixtures
 
-Representative project shapes for exercising live mode against different framework conventions. Each fixture is a small directory tree that the test harness copies into a temp git repo, then drives `live-inject.mjs`, `live-wrap.mjs`, `live-accept.mjs`, and `lib/is-generated.mjs` against.
+Representative project shapes for exercising live mode against different framework conventions. Each fixture is a small directory tree that the test harness copies into a temp git repo, then drives the engine binary's `live-inject`, `live-wrap`, `live-accept`, and `detect-csp` verbs against (via `tests/lib/engine-bin.mjs`: `IMPECCABLE_BIN` or `skill/scripts/bin/<os>-<arch>/`, filled by `bun run fetch:engine`; the sweeps skip without a binary).
 
 Fixtures can also opt into a **runtime E2E** pass that actually installs dependencies, boots the framework dev server, and drives a Playwright browser to verify the live handshake. See the `runtime` block below.
 
@@ -96,11 +96,11 @@ Fixtures can also opt into a **runtime E2E** pass that actually installs depende
 
 The `expectedAfter` file lives alongside `fixture.json` (not inside `files/`) and is a human/agent-review reference — tests don't auto-apply the patch.
 
-The `runtime` block is optional. Fixtures without it only run the static unit checks (is-generated, inject, wrap, csp-detect). Fixtures *with* it additionally run the E2E suite in `tests/live-e2e.test.mjs` (`bun run test:live-e2e`), which:
+The `runtime` block is optional. Fixtures without it only run the static checks in `tests/framework-fixtures.test.mjs` (inject, wrap, csp-detect). Fixtures *with* it additionally run the E2E suite in `tests/live-e2e.test.mjs` (`bun run test:live-e2e`), which:
 
 1. Stages the fixture into a tmp repo.
 2. Runs `runtime.install` to install real deps.
-3. Starts `live-server.mjs --background` and runs `live-inject.mjs --port` against it.
+3. Starts `impeccable live-server --background` and runs `impeccable live-inject --port` against it.
 4. Spawns `runtime.devCommand` and scrapes the port from stdout using `runtime.readyPattern` (the first capture group must be the port).
 5. Opens Playwright Chromium at the dev URL and asserts `window.__IMPECCABLE_LIVE_INIT__ === true` (the browser-side handshake oracle) within `runtime.readyTimeoutMs`.
 6. Runs a **Steer smoke** step (unless `runtime.steer === false`): submit a message in the global Steer bar, wait for the fake agent to reply `steer_done`, assert the bar unlocks and a `data-impeccable-steer` marker lands in source + DOM. Then continues with pick → Go → cycle → accept.
@@ -113,7 +113,7 @@ Optional, defaults to `.`. Set it when the served app is **not** the repo root, 
 - stages `files/` and runs `git init` at the tmp root, as always;
 - writes `.impeccable/live/config.json` under `<tmp>/<appDir>/`, and treats every fixture-relative path in `fixture.json` (`steer.sourceFile`, manual-edit `expectedSourceFile`, and so on) as relative to that app dir;
 - runs `runtime.install` and `runtime.devCommand` with the app dir as cwd;
-- boots through `live.mjs` **from the tmp root** instead of calling `live-server.mjs` and `live-inject.mjs` directly, so the run exercises root resolution (`skill/scripts/live/roots.mjs`) rather than assuming it. The parsed `live.mjs` payload is exposed as `session.liveBoot`, and `tests/live-e2e.test.mjs` asserts on `roots.appRoot`, `roots.contextRoot`, the persisted `roots.json`, and the repo-root pointer.
+- boots through `impeccable live` **from the tmp root** instead of calling `live-server` and `live-inject` directly, so the run exercises the engine's root resolution rather than assuming it. The parsed boot payload is exposed as `session.liveBoot`, and `tests/live-e2e.test.mjs` asserts on `roots.appRoot`, `roots.contextRoot`, the persisted `roots.json`, and the repo-root pointer.
 
 The session object carries both paths: `session.tmp` is the repo root (use it for git and for artifact capture) and `session.appRoot` is the app. They are the same directory for every fixture without `appDir`.
 

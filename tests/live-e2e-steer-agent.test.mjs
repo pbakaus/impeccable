@@ -9,12 +9,12 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { addSteerMarkerToSource, createFakeAgent, findSteerTargetFile, runAgentLoop, STEER_MARKER_ATTR } from './live-e2e/agent.mjs';
-import { stageFixture, startLiveServer, stopLiveServer, FIXTURES_DIR } from './live-e2e/session.mjs';
-import { SCRIPTS_DIR } from './live-e2e/session.mjs';
+import { stageFixture, startLiveServer, stopLiveServer, ENGINE_BIN, ENGINE_MISSING_MESSAGE, FIXTURES_DIR } from './live-e2e/session.mjs';
 
 const FIXTURE_NAME = 'vite8-react-plain';
 
-describe('live-e2e steer agent handler', () => {
+// The loop drives live-server and live-poll through the engine binary.
+describe('live-e2e steer agent handler', { skip: ENGINE_BIN ? false : ENGINE_MISSING_MESSAGE }, () => {
   let tmp;
   let live;
   let abort;
@@ -27,7 +27,7 @@ describe('live-e2e steer agent handler', () => {
     abort = new AbortController();
     loopDone = runAgentLoop({
       tmp,
-      scriptsDir: SCRIPTS_DIR,
+      engineBin: ENGINE_BIN,
       port: live.port,
       token: live.token,
       agent: createFakeAgent(),
