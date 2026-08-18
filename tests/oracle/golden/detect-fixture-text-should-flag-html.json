@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/should-flag.html\n  [side-tab] border-left: 4px + border-radius: 0.375px\n    → Thick colored border on one side of a card — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it entirely.\n  [side-tab] border-right: 5px + border-radius: 0.375px\n    → Thick colored border on one side of a card — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it entirely.\n  [side-tab] border-left: 3px + border-radius: 0.375px\n    → Thick colored border on one side of a card — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it entirely.\n  [side-tab] border-right: 6px + border-radius: 0.375px\n    → Thick colored border on one side of a card — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it entirely.\n  [border-accent-on-rounded] border-top: 4px + border-radius: 12px\n    → Thick accent border on a rounded card — the border clashes with the rounded corners. Remove the border or the border-radius.\n  [border-accent-on-rounded] border-bottom: 3px + border-radius: 12px\n    → Thick accent border on a rounded card — the border clashes with the rounded corners. Remove the border or the border-radius.\n  [side-tab] border-left: 4px + border-radius: 12px\n    → Thick colored border on one side of a card — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it entirely.\n\n7 anti-patterns found.\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

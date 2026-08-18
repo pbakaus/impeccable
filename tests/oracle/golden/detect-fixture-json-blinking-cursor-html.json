@@ -1,0 +1,7 @@
+{
+  "stdout": "[\n  {\n    \"antipattern\": \"pulsing-dot\",\n    \"name\": \"Pulsing status dot\",\n    \"description\": \"Small pulsing status dots simulate liveness decoratively. Reserve pulse animation for indicators tied to genuinely live, changing data; a static indicator with clear labeling is honest and calmer.\",\n    \"severity\": \"warning\",\n    \"category\": \"slop\",\n    \"file\": \"<REPO>/tests/fixtures/antipatterns/blinking-cursor.html\",\n    \"line\": 0,\n    \"snippet\": \".pass-round-dot — 8x8px dot with infinite \\\"blink-anim\\\" animation\"\n  }\n]\n",
+  "stderr": "",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

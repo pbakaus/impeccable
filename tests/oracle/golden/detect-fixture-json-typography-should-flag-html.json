@@ -1,0 +1,7 @@
+{
+  "stdout": "[\n  {\n    \"antipattern\": \"overused-font\",\n    \"name\": \"Overused font\",\n    \"description\": \"Inter, Roboto, Fraunces, Geist, Plus Jakarta Sans, and Space Grotesk are used on so many sites they no longer feel distinctive. Each new wave of AI-generated UIs converges on the same handful of faces. Choose a face that gives your interface personality.\",\n    \"severity\": \"warning\",\n    \"category\": \"slop\",\n    \"file\": \"<REPO>/tests/fixtures/antipatterns/typography-should-flag.html\",\n    \"line\": 0,\n    \"snippet\": \"Primary font: inter\"\n  },\n  {\n    \"antipattern\": \"flat-type-hierarchy\",\n    \"name\": \"Flat type hierarchy\",\n    \"description\": \"Font sizes are too close together — no clear visual hierarchy. Use fewer sizes with more contrast (aim for at least a 1.25 ratio between steps).\",\n    \"severity\": \"warning\",\n    \"category\": \"slop\",\n    \"file\": \"<REPO>/tests/fixtures/antipatterns/typography-should-flag.html\",\n    \"line\": 0,\n    \"snippet\": \"Sizes: 13px, 14px, 15px, 16px, 18px (ratio 1.4:1)\"\n  }\n]\n",
+  "stderr": "",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

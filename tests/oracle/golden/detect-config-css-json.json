@@ -1,0 +1,7 @@
+{
+  "stdout": "[\n  {\n    \"antipattern\": \"bounce-easing\",\n    \"name\": \"Bounce or elastic easing\",\n    \"description\": \"Bounce and elastic easing feel dated and tacky. Real objects decelerate smoothly — use exponential easing (ease-out-quart/quint/expo) instead.\",\n    \"severity\": \"warning\",\n    \"category\": \"slop\",\n    \"file\": \"<WS>/src/styles.css\",\n    \"line\": 1,\n    \"snippet\": \"cubic-bezier(0.68, -0.55, 0.265, 1.55)\"\n  },\n  {\n    \"antipattern\": \"design-system-color\",\n    \"name\": \"Color outside DESIGN.md\",\n    \"description\": \"A literal color is outside the DESIGN.md palette and sidecar tonal ramps. This may be legitimate, but it should be an intentional design-system addition rather than drift.\",\n    \"severity\": \"advisory\",\n    \"category\": \"quality\",\n    \"file\": \"<WS>/src/styles.css\",\n    \"line\": 2,\n    \"snippet\": \"Undocumented color rgba(99, 102, 241, 0.6) is outside DESIGN.md colors\",\n    \"ignoreValue\": \"rgba(99, 102, 241, 0.6)\"\n  }\n]\n",
+  "stderr": "",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

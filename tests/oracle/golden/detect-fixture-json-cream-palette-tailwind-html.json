@@ -1,0 +1,7 @@
+{
+  "stdout": "[\n  {\n    \"antipattern\": \"cream-palette\",\n    \"name\": \"Cream / beige palette\",\n    \"description\": \"A warm cream or beige page background has become the default \\\"tasteful\\\" AI surface, reached for by reflex. Choose a background that comes from a deliberate palette, not the safe warm off-white.\",\n    \"severity\": \"warning\",\n    \"category\": \"slop\",\n    \"file\": \"<REPO>/tests/fixtures/antipatterns/cream-palette-tailwind.html\",\n    \"line\": 0,\n    \"snippet\": \"cream/beige page background (Tailwind bg-amber-50)\"\n  }\n]\n",
+  "stderr": "",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

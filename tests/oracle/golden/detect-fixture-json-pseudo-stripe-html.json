@@ -1,0 +1,7 @@
+{
+  "stdout": "[\n  {\n    \"antipattern\": \"side-tab\",\n    \"name\": \"Side-tab accent border\",\n    \"description\": \"Thick colored border on one side of a card — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it entirely.\",\n    \"severity\": \"warning\",\n    \"category\": \"slop\",\n    \"file\": \"<REPO>/tests/fixtures/antipatterns/pseudo-stripe.html\",\n    \"line\": 0,\n    \"snippet\": \".card-stripe::before — absolute 5px pseudo-element stripe (left: 0)\"\n  },\n  {\n    \"antipattern\": \"side-tab\",\n    \"name\": \"Side-tab accent border\",\n    \"description\": \"Thick colored border on one side of a card — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it entirely.\",\n    \"severity\": \"warning\",\n    \"category\": \"slop\",\n    \"file\": \"<REPO>/tests/fixtures/antipatterns/pseudo-stripe.html\",\n    \"line\": 0,\n    \"snippet\": \".row-stripe::after — absolute 4px pseudo-element stripe (right: 0)\"\n  }\n]\n",
+  "stderr": "",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

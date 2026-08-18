@@ -1,0 +1,7 @@
+{
+  "stdout": "Usage: impeccable <command> [options]\n\nCommands:\n  detect [file-or-dir-or-url...]   Scan for UI anti-patterns and design quality issues\n  ignores                          Manage detector ignore rules, files, and values\n  help                             List all available skills and commands\n  install                          Install impeccable skills into your project or global harness\n  link                             Symlink skills from a local checkout or submodule\n  update                           Update skills to the latest version\n  check                            Check if skill updates are available\n\nOptions:\n  --help       Show this help message\n  --version    Show version number\n\nCompatibility:\n  impeccable skills <command>       Legacy namespace; still supported.\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

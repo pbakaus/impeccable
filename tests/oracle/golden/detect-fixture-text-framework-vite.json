@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "\nVite project detected (vite.config.ts).\nStart the dev server and scan via URL for best results:\n  npx impeccable detect http://localhost:8080\n\n\n<REPO>/tests/fixtures/antipatterns/framework-vite/main.tsx\n  line 5: [side-tab] border-l-4\n    → Thick colored border on one side of a card — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it entirely.\n\n1 anti-pattern found.\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/typography.html\n  [tight-leading] line-height 1.05x (need >=1.3)\n    → Line height below 1.3x the font size makes multi-line text hard to read. Use 1.5 to 1.7 for body text so lines have room to breathe.\n  [tiny-text] 10px body text\n    → Body text below 12px is hard to read, especially on high-DPI screens. Use at least 14px for body content, 16px is ideal.\n  [all-caps-body] text-transform: uppercase on 159 chars of body text\n    → Long passages in uppercase are hard to read. We recognize words by shape (ascenders and descenders), which all-caps removes. Reserve uppercase for short labels and headings.\n  [wide-tracking] letter-spacing: 0.08em on body text\n    → Letter spacing above 0.05em on body text disrupts natural character groupings and slows reading. Reserve wide tracking for short uppercase labels only.\n  [justified-text] text-align: justify without hyphens: auto\n    → Justified text without hyphenation creates uneven word spacing (\"rivers of white\"). Use text-align: left for body text, or enable hyphens: auto if you must justify.\n  [overused-font] Primary font: inter\n    → Inter, Roboto, Fraunces, Geist, Plus Jakarta Sans, and Space Grotesk are used on so many sites they no longer feel distinctive. Each new wave of AI-generated UIs converges on the same handful of faces. Choose a face that gives your interface personality.\n\n6 anti-patterns found.\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

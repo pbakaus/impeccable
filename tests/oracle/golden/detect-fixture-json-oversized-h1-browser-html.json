@@ -1,0 +1,7 @@
+{
+  "stdout": "[\n  {\n    \"antipattern\": \"oversized-h1\",\n    \"name\": \"Oversized hero headline\",\n    \"description\": \"A full-sentence headline set at display size ends up dominating the viewport, leaving no room for anything else above the fold. A punchy one- or two-word headline at that size is fine — the problem is a long headline blown up too large. Set long headlines smaller, or tighten the copy.\",\n    \"severity\": \"warning\",\n    \"category\": \"slop\",\n    \"file\": \"<REPO>/tests/fixtures/antipatterns/oversized-h1-browser.html\",\n    \"line\": 0,\n    \"snippet\": \"104px h1, 82 chars \\\"A sweeping product headline that sprawls across the whole vi\\\"\"\n  },\n  {\n    \"antipattern\": \"oversized-h1\",\n    \"name\": \"Oversized hero headline\",\n    \"description\": \"A full-sentence headline set at display size ends up dominating the viewport, leaving no room for anything else above the fold. A punchy one- or two-word headline at that size is fine — the problem is a long headline blown up too large. Set long headlines smaller, or tighten the copy.\",\n    \"severity\": \"warning\",\n    \"category\": \"slop\",\n    \"file\": \"<REPO>/tests/fixtures/antipatterns/oversized-h1-browser.html\",\n    \"line\": 0,\n    \"snippet\": \"83px h1, 41 chars \\\"The missing design vocabulary for agents.\\\"\"\n  }\n]\n",
+  "stderr": "",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

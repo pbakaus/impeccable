@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/pseudo-stripe.css\n  line 16: [side-tab] .card[data-case=\"Inset Shorthand Left Edge\"]::before — absolute 4px pseudo-element stripe (left: 0)\n    → Thick colored border on one side of a card — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it entirely.\n  line 25: [side-tab] .card[data-case=\"Longhand Left Edge\"]::before — absolute 4px pseudo-element stripe (left: 0)\n    → Thick colored border on one side of a card — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it entirely.\n  line 36: [side-tab] .card[data-case=\"Bottom Edge\"]::after — absolute 4px pseudo-element stripe (bottom: 0)\n    → Thick colored border on one side of a card — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it entirely.\n  line 47: [side-tab] .card[data-case=\"Full Height Right Edge\"]::before — absolute 3px pseudo-element stripe (right: 0)\n    → Thick colored border on one side of a card — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it entirely.\n\n4 anti-patterns found.\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

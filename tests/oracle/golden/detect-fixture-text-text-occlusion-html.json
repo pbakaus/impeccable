@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/text-occlusion.html\n  [low-contrast] 1.0:1 (need 3:1) — text #ffffff on #ffffff\n    → Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.\n  [all-caps-body] text-transform: uppercase on 32 chars of body text\n    → Long passages in uppercase are hard to read. We recognize words by shape (ascenders and descenders), which all-caps removes. Reserve uppercase for short labels and headings.\n  [kicker-above-heading] kicker \"Family Italian on the waterfront\" above h1 \"Trattoria da Nonna Lucia\"\n    → A tiny tracked uppercase or small-caps label sitting as its own block directly above a heading is banned outright, repeated or not. Generated kickers never earn their place: the heading carries its own weight. Delete the label and let the heading speak; if the words matter, work them into the heading or the body.\n\n3 anti-patterns found.\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

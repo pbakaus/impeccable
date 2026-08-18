@@ -1,0 +1,7 @@
+{
+  "stdout": "[\n  {\n    \"antipattern\": \"repeated-container-text\",\n    \"name\": \"Same text repeated inside one container\",\n    \"description\": \"The same literal text rendered three or more times in structurally different spots inside a single card or panel is redundant messaging — usually a status or label wired into every slot of a template. Say it once, in the slot where it matters most.\",\n    \"severity\": \"warning\",\n    \"category\": \"quality\",\n    \"file\": \"<REPO>/tests/fixtures/antipatterns/repeated-container-text.html\",\n    \"line\": 0,\n    \"snippet\": \"\\\"Suspended\\\" rendered 3× in distinct spots inside div.card\"\n  },\n  {\n    \"antipattern\": \"repeated-container-text\",\n    \"name\": \"Same text repeated inside one container\",\n    \"description\": \"The same literal text rendered three or more times in structurally different spots inside a single card or panel is redundant messaging — usually a status or label wired into every slot of a template. Say it once, in the slot where it matters most.\",\n    \"severity\": \"warning\",\n    \"category\": \"quality\",\n    \"file\": \"<REPO>/tests/fixtures/antipatterns/repeated-container-text.html\",\n    \"line\": 0,\n    \"snippet\": \"\\\"Unavailable\\\" rendered 4× in distinct spots inside div.shadow-card\"\n  }\n]\n",
+  "stderr": "",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

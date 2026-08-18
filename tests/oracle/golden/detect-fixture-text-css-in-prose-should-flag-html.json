@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/css-in-prose-should-flag.html\n  [gradient-text] background-clip: text + gradient\n    → Gradient text is decorative rather than meaningful — a common AI tell, especially on headings and metrics. Use solid colors for text.\n  [gradient-text] background-clip: text + gradient\n    → Gradient text is decorative rather than meaningful — a common AI tell, especially on headings and metrics. Use solid colors for text.\n  [gradient-text] bg-clip-text + bg-gradient (Tailwind)\n    → Gradient text is decorative rather than meaningful — a common AI tell, especially on headings and metrics. Use solid colors for text.\n  [ai-color-palette] Purple/violet gradient (Tailwind)\n    → Purple/violet gradients and cyan-on-dark are the most recognizable tells of AI-generated UIs. Choose a distinctive, intentional palette.\n  [ai-color-palette] Purple/violet accent colors detected\n    → Purple/violet gradients and cyan-on-dark are the most recognizable tells of AI-generated UIs. Choose a distinctive, intentional palette.\n  [gradient-text] background-clip: text + gradient\n    → Gradient text is decorative rather than meaningful — a common AI tell, especially on headings and metrics. Use solid colors for text.\n  [gradient-text] bg-clip-text + bg-gradient (Tailwind)\n    → Gradient text is decorative rather than meaningful — a common AI tell, especially on headings and metrics. Use solid colors for text.\n\n7 anti-patterns found.\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

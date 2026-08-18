@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/jsx-should-flag.jsx\n  line 8: [side-tab] border-l-4\n    → Thick colored border on one side of a card — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it entirely.\n  line 35: [side-tab] borderLeft: '4px solid\n    → Thick colored border on one side of a card — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it entirely.\n  line 22: [gradient-text] bg-clip-text + bg-gradient\n    → Gradient text is decorative rather than meaningful — a common AI tell, especially on headings and metrics. Use solid colors for text.\n  line 10: [ai-color-palette] text-purple-500 on heading\n    → Purple/violet gradients and cyan-on-dark are the most recognizable tells of AI-generated UIs. Choose a distinctive, intentional palette.\n  line 22: [ai-color-palette] from-purple-400 gradient\n    → Purple/violet gradients and cyan-on-dark are the most recognizable tells of AI-generated UIs. Choose a distinctive, intentional palette.\n  line 50: [bounce-easing] animate-bounce (Tailwind)\n    → Bounce and elastic easing feel dated and tacky. Real objects decelerate smoothly — use exponential easing (ease-out-quart/quint/expo) instead.\n  line 51: [layout-transition] transition: width\n    → Animating width, height, padding, or margin causes layout thrash and janky performance. Use transform and opacity instead, or grid-template-rows for height animations.\n\n7 anti-patterns found.\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

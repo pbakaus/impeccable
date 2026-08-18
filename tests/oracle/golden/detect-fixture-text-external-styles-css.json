@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/external-styles.css\n  line 8: [side-tab] border-left: 4px solid #3b82f6\n    → Thick colored border on one side of a card — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it entirely.\n  line 17: [border-accent-on-rounded] border-top: 3px solid\n    → Thick accent border on a rounded card — the border clashes with the rounded corners. Remove the border or the border-radius.\n  line 49: [border-accent-on-rounded] border-top: 4px solid\n    → Thick accent border on a rounded card — the border clashes with the rounded corners. Remove the border or the border-radius.\n  line 23: [overused-font] font-family: 'Inter\n    → Inter, Roboto, Fraunces, Geist, Plus Jakarta Sans, and Space Grotesk are used on so many sites they no longer feel distinctive. Each new wave of AI-generated UIs converges on the same handful of faces. Choose a face that gives your interface personality.\n\n4 anti-patterns found.\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

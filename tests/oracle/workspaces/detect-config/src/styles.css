@@ -1,0 +1,4 @@
+.hero { transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55); }
+.glow { box-shadow: 0 0 40px rgba(99, 102, 241, 0.6); }
+/* impeccable-disable-next-line bounce-easing: intentional bounce */
+.bounce { animation-timing-function: cubic-bezier(0.68, -0.55, 0.265, 1.55); }

@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/pulsing-dot.html\n  [pulsing-dot] .live-dot — 7x7px dot with infinite \"pulse\" animation\n    → Small pulsing status dots simulate liveness decoratively. Reserve pulse animation for indicators tied to genuinely live, changing data; a static indicator with clear labeling is honest and calmer.\n  [pulsing-dot] .status .dot — 8x8px dot with infinite \"ripple\" animation\n    → Small pulsing status dots simulate liveness decoratively. Reserve pulse animation for indicators tied to genuinely live, changing data; a static indicator with clear labeling is honest and calmer.\n  [pulsing-dot] .beacon — 10x10px dot with infinite \"pulse\" animation\n    → Small pulsing status dots simulate liveness decoratively. Reserve pulse animation for indicators tied to genuinely live, changing data; a static indicator with clear labeling is honest and calmer.\n  [pulsing-dot] .rec-mark — 10x10px dot with infinite \"pulse\" animation in header/nav\n    → Small pulsing status dots simulate liveness decoratively. Reserve pulse animation for indicators tied to genuinely live, changing data; a static indicator with clear labeling is honest and calmer.\n  [pulsing-dot] animate-ping on tiny rounded-full element\n    → Small pulsing status dots simulate liveness decoratively. Reserve pulse animation for indicators tied to genuinely live, changing data; a static indicator with clear labeling is honest and calmer.\n\n5 anti-patterns found.\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

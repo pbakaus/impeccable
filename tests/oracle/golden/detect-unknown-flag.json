@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/blinking-cursor.html\n  line 20: [design-system-color] Undocumented color #33d17a is outside DESIGN.md colors\n    → A literal color is outside the DESIGN.md palette and sidecar tonal ramps. This may be legitimate, but it should be an intentional design-system addition rather than drift.\n  line 58: [design-system-color] Undocumented color #999 is outside DESIGN.md colors\n    → A literal color is outside the DESIGN.md palette and sidecar tonal ramps. This may be legitimate, but it should be an intentional design-system addition rather than drift.\n  [pulsing-dot] .pass-round-dot — 8x8px dot with infinite \"blink-anim\" animation\n    → Small pulsing status dots simulate liveness decoratively. Reserve pulse animation for indicators tied to genuinely live, changing data; a static indicator with clear labeling is honest and calmer.\n\n3 anti-patterns found.\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

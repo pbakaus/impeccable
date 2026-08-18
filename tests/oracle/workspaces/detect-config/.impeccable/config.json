@@ -1,0 +1,7 @@
+{
+  "detector": {
+    "ignoreRules": ["pulsing-dot"],
+    "ignoreFiles": ["src/vendor/**"],
+    "ignoreValues": [{ "rule": "overused-font", "value": "Inter" }]
+  }
+}

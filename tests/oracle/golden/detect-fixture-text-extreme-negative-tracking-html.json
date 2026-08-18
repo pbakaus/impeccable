@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/extreme-negative-tracking.html\n  [extreme-negative-tracking] letter-spacing: -0.06em — \"Tracking crushed em paragraph copy that \"\n    → Letter-spacing pulled tighter than the point where characters keep their own shapes costs legibility. Tighten display type optically, not destructively.\n  [extreme-negative-tracking] letter-spacing: -0.06em — \"Tracking crushed pixels heading line\"\n    → Letter-spacing pulled tighter than the point where characters keep their own shapes costs legibility. Tighten display type optically, not destructively.\n  [extreme-negative-tracking] letter-spacing: -0.07em — \"Tracking crushed heading variant text\"\n    → Letter-spacing pulled tighter than the point where characters keep their own shapes costs legibility. Tighten display type optically, not destructively.\n\n3 anti-patterns found.\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}
