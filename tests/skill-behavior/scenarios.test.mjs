@@ -23,6 +23,8 @@ import {
   readsMatching,
   fileLoaded,
   summarizeTrace,
+  ENGINE_BIN,
+  ENGINE_MISSING_MESSAGE,
 } from './harness.mjs';
 import { detectProvider, getModel, hasKey, resolveModelList, PROVIDERS } from './providers.mjs';
 import {
@@ -86,6 +88,10 @@ for (const modelId of resolveModelList()) {
       it(`skipped — ${PROVIDERS[provider].envKey} is unset`, { skip: true }, () => {});
       return;
     }
+    if (!ENGINE_BIN) {
+      it(`skipped — ${ENGINE_MISSING_MESSAGE}`, { skip: true }, () => {});
+      return;
+    }
     const model = getModel(modelId);
     // Gemini Flash tends to inspect one file at a time, while the production
     // Anthropic/OpenAI models batch setup reads and then begin implementation.
@@ -104,10 +110,10 @@ for (const modelId of resolveModelList()) {
           maxSteps: setupMaxSteps,
         });
         logTrace('S1', 'no-context', modelId, trace, { textSample: text.slice(0, 400) });
-        const loadCalls = bashCommandsMatching(trace, 'context.mjs');
+        const loadCalls = bashCommandsMatching(trace, 'impeccable context');
         assert.ok(
           loadCalls.length >= 1,
-          `expected agent to run context.mjs at least once; got ${loadCalls.length}.\n` +
+          `expected agent to run impeccable context at least once; got ${loadCalls.length}.\n` +
             `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
         assert.ok(
@@ -137,10 +143,10 @@ for (const modelId of resolveModelList()) {
           maxSteps: setupMaxSteps,
         });
         logTrace('S2', 'product-only', modelId, trace, { textSample: text.slice(0, 400) });
-        const loadCalls = bashCommandsMatching(trace, 'context.mjs');
+        const loadCalls = bashCommandsMatching(trace, 'impeccable context');
         assert.ok(
           loadCalls.length >= 1 && loadCalls.length <= 3,
-          `expected 1-3 context.mjs invocations; got ${loadCalls.length}.\n` +
+          `expected 1-3 impeccable context invocations; got ${loadCalls.length}.\n` +
             `bashCommands: ${JSON.stringify(trace.bashCommands, null, 2)}`,
         );
         assert.ok(
@@ -165,10 +171,10 @@ for (const modelId of resolveModelList()) {
           maxSteps: setupMaxSteps,
         });
         logTrace('S3', 'product-and-design', modelId, trace, { textSample: text.slice(0, 400) });
-        const loadCalls = bashCommandsMatching(trace, 'context.mjs');
+        const loadCalls = bashCommandsMatching(trace, 'impeccable context');
         assert.ok(
           loadCalls.length >= 1 && loadCalls.length <= 3,
-          `expected 1-3 context.mjs invocations; got ${loadCalls.length}.\n` +
+          `expected 1-3 impeccable context invocations; got ${loadCalls.length}.\n` +
             `bashCommands: ${JSON.stringify(trace.bashCommands, null, 2)}`,
         );
         assert.ok(
@@ -177,7 +183,7 @@ for (const modelId of resolveModelList()) {
             `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
         // The skill tells the agent to also familiarize with the existing
-        // design system. DESIGN.md is bundled in context.mjs output, but
+        // design system. DESIGN.md is bundled in impeccable context output, but
         // exploring CSS / tokens / theme files or a directory listing
         // also counts.
         const designSignal =
@@ -200,7 +206,7 @@ for (const modelId of resolveModelList()) {
         files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE, 'DESIGN.md': DESIGN_MD_SAMPLE },
       });
       try {
-        // Turn 1: prime the conversation so context.mjs gets run and its
+        // Turn 1: prime the conversation so impeccable context gets run and its
         // output enters the message history.
         const turn1 = await runTurn({
           workspace,
@@ -209,10 +215,10 @@ for (const modelId of resolveModelList()) {
           maxSteps: setupMaxSteps,
         });
         logTrace('S4-T1', 'primer', modelId, turn1.trace, { textSample: turn1.text.slice(0, 200) });
-        const turn1Loads = bashCommandsMatching(turn1.trace, 'context.mjs');
+        const turn1Loads = bashCommandsMatching(turn1.trace, 'impeccable context');
         assert.ok(
           turn1Loads.length >= 1,
-          `primer turn should have run context.mjs. bash: ${JSON.stringify(turn1.trace.bashCommands, null, 2)}`,
+          `primer turn should have run impeccable context. bash: ${JSON.stringify(turn1.trace.bashCommands, null, 2)}`,
         );
 
         // Turn 2: the real ask. The skill says "skip if you've already
@@ -225,11 +231,11 @@ for (const modelId of resolveModelList()) {
           maxSteps: setupMaxSteps,
         });
         logTrace('S4-T2', 'follow-up', modelId, turn2.trace, { textSample: turn2.text.slice(0, 400) });
-        const turn2Loads = bashCommandsMatching(turn2.trace, 'context.mjs');
+        const turn2Loads = bashCommandsMatching(turn2.trace, 'impeccable context');
         assert.equal(
           turn2Loads.length,
           0,
-          `agent re-ran context.mjs on turn 2 despite it being in prior conversation. ` +
+          `agent re-ran impeccable context on turn 2 despite it being in prior conversation. ` +
             `bashCommands: ${JSON.stringify(turn2.trace.bashCommands, null, 2)}`,
         );
       } finally {
@@ -249,10 +255,10 @@ for (const modelId of resolveModelList()) {
           maxSteps: setupMaxSteps,
         });
         logTrace('S5', 'legacy-product', modelId, trace, { textSample: text.slice(0, 400) });
-        const loadCalls = bashCommandsMatching(trace, 'context.mjs');
+        const loadCalls = bashCommandsMatching(trace, 'impeccable context');
         assert.ok(
           loadCalls.length >= 1,
-          `expected context.mjs invocation; got ${loadCalls.length}.\n` +
+          `expected impeccable context invocation; got ${loadCalls.length}.\n` +
             `bashCommands: ${JSON.stringify(trace.bashCommands, null, 2)}`,
         );
         assert.ok(fileLoaded(trace, 'new-work.md'),
@@ -350,13 +356,13 @@ for (const modelId of resolveModelList()) {
     });
 
     it('scenario 9: update-available directive is surfaced, never auto-run', async () => {
-      // context.mjs reads a newer version from its (seeded) cache and appends
+      // impeccable context reads a newer version from its (seeded) cache and appends
       // an UPDATE_AVAILABLE directive to the boot output. The agent must
       // surface it and keep working, but must NOT run `npx impeccable update`
       // on its own — modifying installed files mid-session without
       // consent is the exact failure this guards against.
       //
-      // `skillVersion` forces copy-mode so context.mjs has a SKILL.md sibling
+      // `skillVersion` forces copy-mode so impeccable context has a SKILL.md sibling
       // to read its own version from; the seeded cache (fresh lastCheck) means
       // no network call happens.
       const workspace = prepareWorkspace({
@@ -379,14 +385,14 @@ for (const modelId of resolveModelList()) {
 
         // Boot ran, so the directive entered the agent's view.
         assert.ok(
-          bashCommandsMatching(trace, 'context.mjs').length >= 1,
-          `expected agent to run context.mjs. bash: ${JSON.stringify(trace.bashCommands, null, 2)}`,
+          bashCommandsMatching(trace, 'impeccable context').length >= 1,
+          `expected agent to run impeccable context. bash: ${JSON.stringify(trace.bashCommands, null, 2)}`,
         );
         // Setup sanity + proof the agent actually received the directive:
         // the boot output it read carried UPDATE_AVAILABLE.
         assert.ok(
           trace.bashOutputs.some((o) => o.includes('UPDATE_AVAILABLE')),
-          `context.mjs should have emitted UPDATE_AVAILABLE (a newer version is cached).\n` +
+          `impeccable context should have emitted UPDATE_AVAILABLE (a newer version is cached).\n` +
             `bashOutputs: ${JSON.stringify(trace.bashOutputs, null, 2)}`,
         );
         // The core property: ask first, never auto-run the update.
@@ -421,8 +427,8 @@ for (const modelId of resolveModelList()) {
         logTrace('S10', 'scoped-no-product', modelId, trace, { textSample: text.slice(0, 400) });
         // Boot still runs.
         assert.ok(
-          bashCommandsMatching(trace, 'context.mjs').length >= 1,
-          `expected agent to run context.mjs at least once.\n` +
+          bashCommandsMatching(trace, 'impeccable context').length >= 1,
+          `expected agent to run impeccable context at least once.\n` +
             `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
         // It must load the scoped command's own reference and get on with it.
@@ -458,8 +464,8 @@ for (const modelId of resolveModelList()) {
         });
         logTrace('S11', 'shape-no-context', modelId, trace, { textSample: text.slice(0, 400) });
         assert.ok(
-          bashCommandsMatching(trace, 'context.mjs').length >= 1,
-          `expected agent to run context.mjs at least once.\n` +
+          bashCommandsMatching(trace, 'impeccable context').length >= 1,
+          `expected agent to run impeccable context at least once.\n` +
             `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
         assert.ok(
@@ -483,8 +489,8 @@ for (const modelId of resolveModelList()) {
         });
         logTrace('S12', 'natural-build-no-context', modelId, trace, { textSample: text.slice(0, 400) });
         assert.ok(
-          bashCommandsMatching(trace, 'context.mjs').length >= 1,
-          `expected agent to run context.mjs at least once.\n` +
+          bashCommandsMatching(trace, 'impeccable context').length >= 1,
+          `expected agent to run impeccable context at least once.\n` +
             `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
         assert.ok(
@@ -510,8 +516,8 @@ for (const modelId of resolveModelList()) {
         });
         logTrace('S13', 'teach-no-context', modelId, trace, { textSample: text.slice(0, 400) });
         assert.ok(
-          bashCommandsMatching(trace, 'context.mjs').length >= 1,
-          `expected agent to run context.mjs at least once.\n` +
+          bashCommandsMatching(trace, 'impeccable context').length >= 1,
+          `expected agent to run impeccable context at least once.\n` +
             `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
         const initLoaded =
@@ -528,7 +534,7 @@ for (const modelId of resolveModelList()) {
     });
 
     it('scenario 14: native iOS project (context loads ios.md)', async () => {
-      // PRODUCT.md sets `## Platform` to `ios`. context.mjs now reads and emits
+      // PRODUCT.md sets `## Platform` to `ios`. impeccable context now reads and emits
       // reference/ios.md itself, so native guidance enters the conversation
       // without relying on a second model-directed file read.
       const workspace = prepareWorkspace({
@@ -542,16 +548,16 @@ for (const modelId of resolveModelList()) {
           maxSteps: provider === 'google' ? 8 : 6,
         });
         logTrace('S14', 'native-ios', modelId, trace, { textSample: text.slice(0, 400) });
-        const loadCalls = bashCommandsMatching(trace, 'context.mjs');
+        const loadCalls = bashCommandsMatching(trace, 'impeccable context');
         assert.ok(
           loadCalls.length >= 1,
-          `expected agent to run context.mjs at least once; got ${loadCalls.length}.\n` +
+          `expected agent to run impeccable context at least once; got ${loadCalls.length}.\n` +
             `bashCommands: ${JSON.stringify(trace.bashCommands, null, 2)}`,
         );
         // Proof the native reference itself entered the agent's view.
         assert.ok(
           trace.bashOutputs.some((o) => /# NATIVE PLATFORM REFERENCE: IOS \(reference\/ios\.md\)/.test(o)),
-          `context.mjs should have emitted reference/ios.md content (platform is ios).\n` +
+          `impeccable context should have emitted reference/ios.md content (platform is ios).\n` +
             `bashOutputs: ${JSON.stringify(trace.bashOutputs, null, 2)}`,
         );
       } finally {
@@ -578,8 +584,8 @@ for (const modelId of resolveModelList()) {
         });
         logTrace('S15', 'native-audit-variant', modelId, trace, { textSample: text.slice(0, 400) });
         assert.ok(
-          bashCommandsMatching(trace, 'context.mjs').length >= 1,
-          `expected agent to run context.mjs at least once.\n` +
+          bashCommandsMatching(trace, 'impeccable context').length >= 1,
+          `expected agent to run impeccable context at least once.\n` +
             `bashCommands: ${JSON.stringify(trace.bashCommands, null, 2)}`,
         );
         assert.ok(

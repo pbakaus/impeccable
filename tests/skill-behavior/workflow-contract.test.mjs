@@ -13,6 +13,8 @@ import {
   runTurn,
   fileLoaded,
   summarizeTrace,
+  ENGINE_BIN,
+  ENGINE_MISSING_MESSAGE,
 } from './harness.mjs';
 import { detectProvider, getModel, hasKey, resolveModelList, PROVIDERS } from './providers.mjs';
 import { PRODUCT_MD_SAMPLE, DESIGN_MD_SAMPLE } from './fixtures.mjs';
@@ -105,6 +107,10 @@ for (const modelId of resolveModelList()) {
   describe(`skill workflow contract :: ${modelId}`, () => {
     if (!keyPresent) {
       it(`skipped — ${PROVIDERS[provider].envKey} is unset`, { skip: true }, () => {});
+      return;
+    }
+    if (!ENGINE_BIN) {
+      it(`skipped — ${ENGINE_MISSING_MESSAGE}`, { skip: true }, () => {});
       return;
     }
     const model = getModel(modelId);

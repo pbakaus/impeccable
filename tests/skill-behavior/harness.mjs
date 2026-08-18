@@ -4,8 +4,8 @@
  * Each scenario:
  *   1. Creates a temp workspace.
  *   2. Symlinks the real .claude/skills/impeccable into the workspace so
- *      scripts (context.mjs, etc.) resolve from the canonical path
- *      the skill references.
+ *      the launcher (`scripts/impeccable`) resolves from the canonical path
+ *      the skill references, and points it at an engine binary.
  *   3. Optionally writes PRODUCT.md / DESIGN.md fixtures.
  *   4. Inlines SKILL.md as the system prompt (placeholders stripped to
  *      neutral values so the same body works for all providers).
@@ -27,6 +27,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { getProviderOptions } from './providers.mjs';
+import { ENGINE_MISSING_MESSAGE, findEngineBinary } from '../lib/engine-bin.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
@@ -98,10 +99,18 @@ export const SKILL_BODY = loadSkillBody();
  *   their content.
  * - `files` lets the test seed PRODUCT.md / DESIGN.md (or anything else).
  * - `skillVersion` switches from symlink to a real COPY of the skill dir and
- *   writes a `SKILL.md` carrying that version. context.mjs reads its own
- *   version from that sibling file, so this is required for any scenario that
- *   exercises the update-check path (the source dir has only SKILL.src.md).
+ *   writes a `SKILL.md` carrying that version. `impeccable context` reads its
+ *   own version from that sibling file, so this is required for any scenario
+ *   that exercises the update-check path (the source dir has only SKILL.src.md).
+ *
+ * The launcher in the staged scripts dir needs an engine binary. Every bash
+ * call the agent makes gets `IMPECCABLE_BIN` (tests/lib/engine-bin.mjs:
+ * `IMPECCABLE_BIN` or `skill/scripts/bin/<os>-<arch>/`), which the launcher
+ * honors first, so the symlink and copy modes both work without a download.
  */
+export const ENGINE_BIN = findEngineBinary();
+export { ENGINE_MISSING_MESSAGE };
+
 export function prepareWorkspace({ files = {}, skillVersion = null } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-skill-test-'));
   const skillDest = path.join(dir, '.claude', 'skills', 'impeccable');
@@ -145,7 +154,10 @@ function safeResolve(root, userPath) {
 
 function execBash(workspace, command, timeoutMs = 20_000, extraEnv = {}) {
   return new Promise((resolve) => {
-    const proc = spawn('bash', ['-lc', command], { cwd: workspace, env: { ...process.env, ...extraEnv } });
+    const proc = spawn('bash', ['-lc', command], {
+      cwd: workspace,
+      env: { ...process.env, ...(ENGINE_BIN ? { IMPECCABLE_BIN: ENGINE_BIN } : {}), ...extraEnv },
+    });
     let stdout = '';
     let stderr = '';
     const truncatedFlag = { val: false };
@@ -231,7 +243,7 @@ export function makeTools(workspace, extraEnv = {}, simulatedUser = {}) {
   const tools = {
     bash: tool({
       description:
-        'Run a bash command in the workspace root. Use this to invoke skill scripts (e.g. `node .claude/skills/impeccable/scripts/context.mjs`).',
+        'Run a bash command in the workspace root. Use this to invoke skill commands (e.g. `.claude/skills/impeccable/scripts/impeccable context`).',
       inputSchema: z.object({
         command: z.string().describe('The bash command to execute.'),
       }),
