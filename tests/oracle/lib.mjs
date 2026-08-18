@@ -95,6 +95,13 @@ export function normalize(text, { ws, home = os.homedir() }) {
   out = out.replace(/node '[^']*\/hook-admin\.mjs'/g, '<HOOK_ADMIN_CMD>');
   out = out.replace(/node "[^"]*\/hook-admin\.mjs"/g, '<HOOK_ADMIN_CMD>');
   out = out.replace(/'[^']*\/impeccable(?:\.exe)?' hooks/g, '<HOOK_ADMIN_CMD> hooks');
+  // Self-referential command lines: the JS prints "node <scripts>/<verb>.mjs", the
+  // binary prints "<bin> <verb>". Both collapse to "<IMPECCABLE> <verb>".
+  out = out.replace(/node ['"]?<REPO>\/skill\/scripts\/([a-z-]+)\.mjs['"]?/g, (m, v) => `<IMPECCABLE> ${v === 'context-signals' ? 'signals' : v === 'hook-admin' ? 'hooks' : v}`);
+  if (process.env.IMPECCABLE_BIN) {
+    const bin = process.env.IMPECCABLE_BIN;
+    for (const form of [`'${bin}'`, `"${bin}"`, bin]) out = out.split(form).join('<IMPECCABLE>');
+  }
   // ISO timestamps and epoch millis are run-dependent.
   out = out.replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z/g, '<ISO>');
   out = out.replace(/"(updatedAt|createdAt|checkedAt|lastCheck|lastChecked|timestamp|ts|mtimeMs|mtime|startedAt|endedAt)":\s*\d{10,}/g, '"$1": <EPOCH>');
