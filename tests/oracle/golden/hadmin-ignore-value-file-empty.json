@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "Error: --file requires a non-empty glob\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

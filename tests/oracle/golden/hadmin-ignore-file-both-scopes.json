@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "Error: Pass only one scope flag: --shared or --local\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

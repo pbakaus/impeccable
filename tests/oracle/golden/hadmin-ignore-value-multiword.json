@@ -1,0 +1,9 @@
+{
+  "stdout": "Added overused-font=space grotesk to shared detector.ignoreValues (.impeccable/config.json).\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".impeccable/config.json": "{\n  \"detector\": {\n    \"ignoreRules\": [],\n    \"ignoreFiles\": [],\n    \"ignoreValues\": [\n      {\n        \"rule\": \"overused-font\",\n        \"value\": \"space grotesk\",\n        \"createdAt\": \"<ISO>\",\n        \"reason\": \"user confirmed: brand\"\n      }\n    ]\n  }\n}\n"
+  }
+}

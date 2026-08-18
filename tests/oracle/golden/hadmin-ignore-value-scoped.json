@@ -1,0 +1,9 @@
+{
+  "stdout": "Added design-system-font-size=* scoped to src/a.js, src/z.js to shared detector.ignoreValues (.impeccable/config.json).\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".impeccable/config.json": "{\n  \"detector\": {\n    \"ignoreRules\": [],\n    \"ignoreFiles\": [],\n    \"ignoreValues\": [\n      {\n        \"rule\": \"design-system-font-size\",\n        \"value\": \"*\",\n        \"files\": [\n          \"src/a.js\",\n          \"src/z.js\"\n        ],\n        \"createdAt\": \"<ISO>\"\n      }\n    ]\n  }\n}\n"
+  }
+}

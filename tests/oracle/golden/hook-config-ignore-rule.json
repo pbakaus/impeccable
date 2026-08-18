@@ -1,0 +1,10 @@
+{
+  "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"[impeccable@1] Design hook scanned src/components/Card.module.css. No deterministic design-quality issues found. That does not mean the design is good: keep following the project design system and the impeccable skill guidance.\"}}",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".impeccable/config.json": "{\n  \"detector\": {\n    \"ignoreRules\": [\n      \"gradient-text\"\n    ]\n  }\n}\n",
+    ".impeccable/hook.cache.json": "{\"version\":1,\"sessions\":{\"s1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/src/components/Card.module.css\":{\"editCount\":1,\"findings\":[],\"cleanAcked\":true}}}}}"
+  }
+}

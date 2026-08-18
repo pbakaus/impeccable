@@ -1,0 +1,25 @@
+{
+  "steps": [
+    {
+      "stdout": "Added overused-font=inter to shared detector.ignoreValues (.impeccable/config.json).\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "Added overused-font=inter to shared detector.ignoreValues (.impeccable/config.json).\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "Impeccable design hook\n  state:        enabled\n  shared file:  .impeccable/config.json\n  local file:   .impeccable/config.local.json (not present)\n  ignoreRules:  (none)\n  ignoreFiles:  (none)\n  ignoreValues: overused-font=inter\n  maxFindings:  5\n  maxChars:     8000\n  env override: unset\n  cache file:   .impeccable/hook.cache.json (not present)\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    }
+  ],
+  "files": {
+    ".impeccable/config.json": "{\n  \"detector\": {\n    \"ignoreRules\": [],\n    \"ignoreFiles\": [],\n    \"ignoreValues\": [\n      {\n        \"rule\": \"overused-font\",\n        \"value\": \"inter\",\n        \"createdAt\": \"<ISO>\",\n        \"reason\": \"second\"\n      }\n    ]\n  }\n}\n"
+  }
+}

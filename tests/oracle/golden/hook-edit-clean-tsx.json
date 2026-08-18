@@ -1,0 +1,7 @@
+{
+  "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"[impeccable@1] Design hook scanned src/components/Clean.tsx. No deterministic design-quality issues found. That does not mean the design is good: keep following the project design system and the impeccable skill guidance.\"}}",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

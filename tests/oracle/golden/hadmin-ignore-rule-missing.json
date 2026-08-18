@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "Error: Pass a rule id, e.g. /impeccable hooks ignore-rule side-tab\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

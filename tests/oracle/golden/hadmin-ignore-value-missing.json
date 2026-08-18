@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "Error: Pass a rule id and value, e.g. /impeccable hooks ignore-value overused-font Inter\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

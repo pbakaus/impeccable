@@ -1,0 +1,25 @@
+{
+  "steps": [
+    {
+      "stdout": "Impeccable design hook\n  state:        enabled\n  shared file:  .impeccable/config.json\n  local file:   .impeccable/config.local.json (not present)\n  ignoreRules:  legacy-rule\n  ignoreFiles:  (none)\n  ignoreValues: (none)\n  maxFindings:  5\n  maxChars:     8000\n  env override: unset\n  cache file:   .impeccable/hook.cache.json (not present)\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "Added \"side-tab\" to detector.ignoreRules. Current: legacy-rule, side-tab\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "Impeccable design hook\n  state:        enabled\n  shared file:  .impeccable/config.json\n  local file:   .impeccable/config.local.json (not present)\n  ignoreRules:  legacy-rule, side-tab\n  ignoreFiles:  (none)\n  ignoreValues: (none)\n  maxFindings:  5\n  maxChars:     8000\n  env override: unset\n  cache file:   .impeccable/hook.cache.json (not present)\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    }
+  ],
+  "files": {
+    ".impeccable/config.json": "{\n  \"hook\": {\n    \"enabled\": true,\n    \"quiet\": true,\n    \"consent\": \"accepted\"\n  },\n  \"other\": {\n    \"keep\": 1\n  },\n  \"detector\": {\n    \"ignoreRules\": [\n      \"legacy-rule\",\n      \"side-tab\"\n    ],\n    \"ignoreFiles\": [],\n    \"ignoreValues\": [],\n    \"advisoryRules\": \"include\"\n  }\n}\n"
+  }
+}

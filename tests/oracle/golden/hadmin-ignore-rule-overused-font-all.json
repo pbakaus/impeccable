@@ -1,0 +1,9 @@
+{
+  "stdout": "Added \"overused-font\" to detector.ignoreRules. Current: overused-font\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".impeccable/config.json": "{\n  \"detector\": {\n    \"ignoreRules\": [\n      \"overused-font\"\n    ],\n    \"ignoreFiles\": [],\n    \"ignoreValues\": []\n  }\n}\n"
+  }
+}

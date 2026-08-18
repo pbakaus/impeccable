@@ -1,0 +1,7 @@
+{
+  "stdout": "Impeccable design hook\n  state:        enabled\n  shared file:  .impeccable/config.json (using defaults; file not present)\n  local file:   .impeccable/config.local.json (not present)\n  ignoreRules:  (none)\n  ignoreFiles:  (none)\n  ignoreValues: (none)\n  maxFindings:  5\n  maxChars:     8000\n  env override: unset\n  cache file:   .impeccable/hook.cache.json (not present)\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

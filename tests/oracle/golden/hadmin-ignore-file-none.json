@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "Error: Pass a glob, e.g. /impeccable hooks ignore-file \"src/legacy/**\"\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

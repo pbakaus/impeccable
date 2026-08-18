@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "Error: Wildcard value ignores must be scoped with --file <glob>, e.g. /impeccable hooks ignore-value design-system-font-size \"*\" --file \"src/widget.js\". To suppress the rule project-wide use /impeccable hooks ignore-rule overused-font --all-values.\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

@@ -13,6 +13,7 @@ for (const c of cases) {
   const res = runCase(c, { impl: 'js' });
   writeGolden(c.id, res);
   n++;
-  process.stdout.write(`recorded ${c.id} (exit ${res.exit}, ${res.stdout.length}b out, ${Object.keys(res.files).length} files)\n`);
+  const head = res.steps ? `${res.steps.length} steps, exits ${res.steps.map(s => s.exit).join('/')}` : `exit ${res.exit}, ${res.stdout.length}b out`;
+  process.stdout.write(`recorded ${c.id} (${head}, ${Object.keys(res.files).length} files)\n`);
 }
 process.stdout.write(`\n${n} goldens written\n`);

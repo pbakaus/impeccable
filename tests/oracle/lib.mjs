@@ -91,6 +91,10 @@ export function normalize(text, { ws, home = os.homedir() }) {
   ]) {
     if (needle) out = out.split(needle).join(tag);
   }
+  // The hook footer embeds the admin command's own path; both runtimes name it differently.
+  out = out.replace(/node '[^']*\/hook-admin\.mjs'/g, '<HOOK_ADMIN_CMD>');
+  out = out.replace(/node "[^"]*\/hook-admin\.mjs"/g, '<HOOK_ADMIN_CMD>');
+  out = out.replace(/'[^']*\/impeccable(?:\.exe)?' hooks/g, '<HOOK_ADMIN_CMD> hooks');
   // ISO timestamps and epoch millis are run-dependent.
   out = out.replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z/g, '<ISO>');
   out = out.replace(/"(updatedAt|createdAt|checkedAt|lastCheck|lastChecked|timestamp|ts|mtimeMs|mtime|startedAt|endedAt)":\s*\d{10,}/g, '"$1": <EPOCH>');
@@ -146,46 +150,59 @@ function isProbablyText(buf) {
 export function runCase(c, { impl = 'js', bin = process.env.IMPECCABLE_BIN } = {}) {
   const ws = stageWorkspace(c.workspace);
   try {
-    const cwd = path.join(ws, c.cwd || '.');
-    let argv;
-    if (impl === 'js') {
-      const base = JS_VERBS[c.verb];
-      if (!base) throw new Error(`no JS invocation for verb ${c.verb}`);
-      argv = [...base];
-    } else {
-      if (!bin) throw new Error('IMPECCABLE_BIN not set');
-      argv = binArgv(bin, c.verb);
-    }
-    const args = (c.args || []).map(a => String(a).replaceAll('<WS>', ws).replaceAll('<REPO>', REPO_ROOT));
-    argv.push(...args);
     const isolatedHome = path.join(ws, '.oracle-home');
-    const env = {
-      ...process.env,
-      NO_COLOR: '1',
-      FORCE_COLOR: '0',
-      IMPECCABLE_NO_UPDATE_CHECK: '1',
-      IMPECCABLE_NO_TELEMETRY: '1',
-      DO_NOT_TRACK: '1',
-      ...(c.isolateHome === false ? {} : { HOME: isolatedHome, USERPROFILE: isolatedHome }),
-      ...(c.env || {}),
-    };
     if (c.isolateHome !== false) fs.mkdirSync(isolatedHome, { recursive: true });
-    const res = spawnSync(argv[0], argv.slice(1), {
-      cwd, env, input: c.stdin ?? '', encoding: 'utf8', timeout: c.timeoutMs || 60_000,
-      windowsHide: true, maxBuffer: 64 * 1024 * 1024,
-    });
+    if (typeof c.setup === 'function') c.setup(ws);
+    const steps = c.steps || [c];
+    const results = [];
+    for (const step of steps) {
+      results.push(runStep({ ...c, ...step, verb: step.verb || c.verb }, { impl, bin, ws, isolatedHome }));
+    }
     const files = snapshotFiles(ws, c.files);
     const ctx = { ws };
-    return {
-      stdout: normalize(res.stdout ?? '', ctx),
-      stderr: normalize(res.stderr ?? '', ctx),
-      exit: res.status,
-      signal: res.signal || null,
-      files: Object.fromEntries(Object.entries(files).map(([k, v]) => [k, normalize(v, ctx)])),
-    };
+    const norm = (r) => ({
+      stdout: normalize(r.stdout ?? '', ctx),
+      stderr: normalize(r.stderr ?? '', ctx),
+      exit: r.status,
+      signal: r.signal || null,
+    });
+    const filesNorm = Object.fromEntries(Object.entries(files).map(([k, v]) => [k, normalize(v, ctx)]));
+    if (c.steps) return { steps: results.map(norm), files: filesNorm };
+    return { ...norm(results[0]), files: filesNorm };
   } finally {
     fs.rmSync(ws, { recursive: true, force: true });
   }
+}
+
+function runStep(c, { impl, bin, ws, isolatedHome }) {
+  const cwd = path.join(ws, c.cwd || '.');
+  let argv;
+  if (impl === 'js') {
+    const base = JS_VERBS[c.verb];
+    if (!base) throw new Error(`no JS invocation for verb ${c.verb}`);
+    argv = [...base];
+  } else {
+    if (!bin) throw new Error('IMPECCABLE_BIN not set');
+    argv = binArgv(bin, c.verb);
+  }
+  const sub = (v) => String(v).replaceAll('<WS>', ws).replaceAll('<REPO>', REPO_ROOT);
+  argv.push(...(c.args || []).map(sub));
+  const env = {
+    ...process.env,
+    NO_COLOR: '1',
+    FORCE_COLOR: '0',
+    IMPECCABLE_NO_UPDATE_CHECK: '1',
+    IMPECCABLE_NO_TELEMETRY: '1',
+    DO_NOT_TRACK: '1',
+    ...(c.isolateHome === false ? {} : { HOME: isolatedHome, USERPROFILE: isolatedHome }),
+    ...Object.fromEntries(Object.entries(c.env || {}).map(([k, v]) => [k, v == null ? v : sub(v)])),
+  };
+  for (const [k, v] of Object.entries(env)) if (v == null) delete env[k];
+  const stdin = typeof c.stdin === 'string' ? sub(c.stdin) : c.stdin != null ? sub(JSON.stringify(c.stdin)) : '';
+  return spawnSync(argv[0], argv.slice(1), {
+    cwd, env, input: stdin, encoding: 'utf8', timeout: c.timeoutMs || 60_000,
+    windowsHide: true, maxBuffer: 64 * 1024 * 1024,
+  });
 }
 
 export function goldenPath(id) {
@@ -206,6 +223,15 @@ export function readGolden(id) {
 /** Return a list of human-readable differences, empty if equal. */
 export function diffResults(golden, actual) {
   const diffs = [];
+  if (golden.steps || actual.steps) {
+    const g = golden.steps || [], a = actual.steps || [];
+    if (g.length !== a.length) diffs.push(`steps: expected ${g.length}, got ${a.length}`);
+    for (let i = 0; i < Math.min(g.length, a.length); i++) {
+      for (const d of diffResults({ ...g[i], files: {} }, { ...a[i], files: {} })) diffs.push(`step ${i + 1} ${d}`);
+    }
+    for (const d of diffResults({ files: golden.files, exit: 0, signal: null, stdout: '', stderr: '' }, { files: actual.files, exit: 0, signal: null, stdout: '', stderr: '' })) diffs.push(d);
+    return diffs;
+  }
   for (const k of ['exit', 'signal']) {
     if (golden[k] !== actual[k]) diffs.push(`${k}: expected ${golden[k]}, got ${actual[k]}`);
   }

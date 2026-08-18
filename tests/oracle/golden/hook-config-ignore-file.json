@@ -1,0 +1,9 @@
+{
+  "stdout": "",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".impeccable/config.json": "{\n  \"detector\": {\n    \"ignoreFiles\": [\n      \"src/components/**\"\n    ]\n  }\n}\n"
+  }
+}

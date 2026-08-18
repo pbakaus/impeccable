@@ -1,0 +1,9 @@
+{
+  "stdout": "Added \"src/legacy/**\" to shared detector.ignoreFiles (.impeccable/config.json). Current: src/legacy/**\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".impeccable/config.json": "{\n  \"detector\": {\n    \"ignoreRules\": [],\n    \"ignoreFiles\": [\n      \"src/legacy/**\"\n    ],\n    \"ignoreValues\": []\n  }\n}\n"
+  }
+}

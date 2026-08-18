@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "Error: --reason is not supported for ignore-file because detector.ignoreFiles stores globs only; use ignore-value when a documented rule-specific exception fits\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}
