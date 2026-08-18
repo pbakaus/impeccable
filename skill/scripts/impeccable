@@ -1,0 +1,95 @@
+#!/bin/sh
+# Impeccable launcher. Runs the platform binary shipped next to this script:
+#   <this dir>/bin/<os>-<arch>/impeccable
+# Order: $IMPECCABLE_BIN, the sibling binary, ~/.impeccable/bin/impeccable,
+# then `impeccable` on PATH (the npm shim). Never needs Node.
+set -eu
+
+if [ -n "${IMPECCABLE_BIN:-}" ] && [ -x "${IMPECCABLE_BIN}" ]; then
+  exec "${IMPECCABLE_BIN}" "$@"
+fi
+
+dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+# What the binary needs to know about its home: the skill directory (for
+# reference/*.md and command-metadata.json) and how to name itself in the
+# commands it prints.
+: "${IMPECCABLE_SKILL_DIR:=$(CDPATH= cd -- "$dir/.." && pwd)}"
+: "${IMPECCABLE_SELF:=$0}"
+export IMPECCABLE_SKILL_DIR IMPECCABLE_SELF
+
+case "$(uname -s 2>/dev/null || echo unknown)" in
+  Darwin) os=darwin ;;
+  Linux) os=linux ;;
+  MINGW*|MSYS*|CYGWIN*|Windows_NT) os=windows ;;
+  *) os=unknown ;;
+esac
+case "$(uname -m 2>/dev/null || echo unknown)" in
+  arm64|aarch64) arch=arm64 ;;
+  x86_64|amd64) arch=x64 ;;
+  *) arch=unknown ;;
+esac
+
+bin="$dir/bin/$os-$arch/impeccable"
+[ "$os" = windows ] && bin="$bin.exe"
+
+if [ -x "$bin" ]; then
+  exec "$bin" "$@"
+fi
+if [ -f "$bin" ]; then
+  # Lost the executable bit in transit (zip extraction, some copiers).
+  chmod +x "$bin" 2>/dev/null && exec "$bin" "$@"
+fi
+if [ -x "${HOME:-/nonexistent}/.impeccable/bin/impeccable" ]; then
+  exec "${HOME}/.impeccable/bin/impeccable" "$@"
+fi
+# Version-pinned user cache, filled by the download below or by `impeccable update`.
+version=""
+[ -f "$dir/VERSION" ] && version=$(tr -d '[:space:]' < "$dir/VERSION")
+cache_root="${IMPECCABLE_HOME:-${HOME:-/nonexistent}/.impeccable}"
+cached="$cache_root/bin/$version/impeccable"
+if [ -n "$version" ] && [ -x "$cached" ]; then
+  exec "$cached" "$@"
+fi
+if command -v impeccable >/dev/null 2>&1; then
+  exec impeccable "$@"
+fi
+
+# Last resort: fetch this version's binary for the current platform from the
+# public release channel into the user cache. Needs network; sandboxes without
+# egress preinstall the binary on PATH instead.
+if [ -n "$version" ] && [ "$os" != unknown ] && [ "$arch" != unknown ]; then
+  base="${IMPECCABLE_DOWNLOAD_BASE:-https://github.com/renaissance-geek-inc/impeccable-dist/releases/download}"
+  asset="impeccable-$os-$arch"
+  [ "$os" = windows ] && asset="$asset.exe"
+  url="$base/v$version/$asset"
+  tmp="$cache_root/bin/$version/.impeccable.part.$$"
+  mkdir -p "$cache_root/bin/$version" 2>/dev/null
+  fetched=0
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL --retry 2 -o "$tmp" "$url" 2>/dev/null && fetched=1
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -O "$tmp" "$url" 2>/dev/null && fetched=1
+  fi
+  if [ "$fetched" = 1 ]; then
+    if command -v curl >/dev/null 2>&1 && curl -fsSL -o "$tmp.sha256" "$url.sha256" 2>/dev/null; then
+      expected=$(cut -d' ' -f1 < "$tmp.sha256")
+      actual=""
+      if command -v shasum >/dev/null 2>&1; then actual=$(shasum -a 256 "$tmp" | cut -d' ' -f1)
+      elif command -v sha256sum >/dev/null 2>&1; then actual=$(sha256sum "$tmp" | cut -d' ' -f1); fi
+      if [ -n "$actual" ] && [ "$actual" != "$expected" ]; then
+        rm -f "$tmp" "$tmp.sha256"
+        echo "impeccable: checksum mismatch downloading $url" >&2
+        exit 127
+      fi
+      rm -f "$tmp.sha256"
+    fi
+    chmod +x "$tmp" 2>/dev/null
+    mv -f "$tmp" "$cached" && exec "$cached" "$@"
+  fi
+  rm -f "$tmp" 2>/dev/null
+fi
+
+echo "impeccable: no binary for $os-$arch found (looked in $bin, $cached, PATH)." >&2
+echo "Install one: npm i -g impeccable, or download impeccable-$os-$arch from https://github.com/renaissance-geek-inc/impeccable-dist/releases into $cache_root/bin/$version/impeccable" >&2
+exit 127

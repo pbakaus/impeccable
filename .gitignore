@@ -83,6 +83,11 @@ src/lib/impeccable/__runtime.js
 # Extension build artifacts
 extension/detector/
 
+# Engine binaries: fetched per platform (scripts/fetch-engine.mjs), never tracked.
+# The launcher next to them (skill/scripts/impeccable) is the tracked file.
+skill/scripts/bin/
+**/skills/impeccable/scripts/bin/
+
 # Legacy design context (pre-v3.1, auto-migrated to PRODUCT.md by load-context.mjs)
 .impeccable.md
 # Note: PRODUCT.md and DESIGN.md are INTENTIONALLY tracked in this repo —
@@ -129,4 +134,3 @@ tmp/
 # PNGs, the old card backup). The canonical generator is `bun run og-image`
 # (scripts/generate-og-image.js); this dir is throwaway and safe to delete.
 .og-build/
-tests/oracle/vectors/calls/

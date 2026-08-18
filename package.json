@@ -46,6 +46,7 @@
     "build:release": "bun run build:skills:release && mkdir -p build/_data && rm -rf build/_data/dist && cp -R dist build/_data/dist",
     "build:browser": "node scripts/build-browser-detector.js",
     "build:extension": "node scripts/build-extension.js",
+    "fetch:engine": "node scripts/fetch-engine.mjs",
     "clean": "rm -rf dist build",
     "rebuild": "bun run clean && bun run build",
     "rebuild:release": "bun run clean && bun run build:release",
