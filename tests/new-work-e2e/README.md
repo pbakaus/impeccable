@@ -30,8 +30,12 @@ serve-question protocol output:
   different palettes.
 
 The concept-seed direction roll (challengers, `ASSIGNED INDEX`, the no
-PRODUCT.md gate) is already covered by `tests/concept-seed.test.mjs` and is not
-repeated here.
+PRODUCT.md gate) is pinned by the oracle corpus (`tests/oracle`, the `seed-*`
+cases) and is not repeated here.
+
+Both verbs run through the engine binary (`impeccable serve-question`,
+`impeccable generate-image`) resolved by `tests/lib/engine-bin.mjs`:
+`IMPECCABLE_BIN` or `skill/scripts/bin/<os>-<arch>/` (`bun run fetch:engine`).
 
 ## Pieces
 
@@ -41,7 +45,7 @@ repeated here.
   `{"reroll":true,"steer":"warmer"}`, `{"pick":"challenger-*"}`,
   `{"canon":true}`, `{"close":true}`. The deterministic tier passes an
   already-launched browser in; the CLI launches its own Chromium.
-- `IMPECCABLE_IMAGE_GEN_FAKE=1` switches `skill/scripts/generate-image.mjs` to
+- `IMPECCABLE_IMAGE_GEN_FAKE=1` switches `impeccable generate-image` to
   the offline stand-in: no OpenAI call, no key, a `$0.00` cost line, and a
   deterministic image (SVG for `.svg` out with the wrapped prompt text and a
   `SYNTHETIC COMP` label; a valid palette-stripe PNG otherwise, with the prompt
