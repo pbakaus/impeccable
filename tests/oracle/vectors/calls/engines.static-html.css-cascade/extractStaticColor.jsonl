@@ -1,0 +1,301 @@
+{"args":["#111"],"result":"#111"}
+{"args":["#33d17a"],"result":"#33d17a"}
+{"args":["#eee"],"result":"#eee"}
+{"args":["#444"],"result":"#444"}
+{"args":["2px"],"result":""}
+{"args":["solid"],"result":""}
+{"args":["#999"],"result":"#999"}
+{"args":["#222"],"result":"#222"}
+{"args":["#fff"],"result":"#fff"}
+{"args":["#fef3c7"],"result":"#fef3c7"}
+{"args":["#f5f5f5"],"result":"#f5f5f5"}
+{"args":["#e5e7eb"],"result":"#e5e7eb"}
+{"args":["#f8fafc"],"result":"#f8fafc"}
+{"args":["#fdfdfd"],"result":"#fdfdfd"}
+{"args":["4px"],"result":""}
+{"args":["#2563eb"],"result":"#2563eb"}
+{"args":["5px"],"result":""}
+{"args":["#dc2626"],"result":"#dc2626"}
+{"args":["#0f766e"],"result":"#0f766e"}
+{"args":["#7c3aed"],"result":"#7c3aed"}
+{"args":["3px"],"result":""}
+{"args":["#ea580c"],"result":"#ea580c"}
+{"args":["#141820"],"result":"#141820"}
+{"args":["#38bdf8"],"result":"#38bdf8"}
+{"args":["1px"],"result":""}
+{"args":["#cbd5e1"],"result":"#cbd5e1"}
+{"args":["#d1d5db"],"result":"#d1d5db"}
+{"args":["16px"],"result":""}
+{"args":["#161a22"],"result":"#161a22"}
+{"args":["#334155"],"result":"#334155"}
+{"args":["#ddd"],"result":"#ddd"}
+{"args":["#e5f0ff"],"result":"#e5f0ff"}
+{"args":[""],"result":""}
+{"args":["rgba(255,255,255,.86)"],"result":"rgba(255,255,255,.86)"}
+{"args":["none"],"result":""}
+{"args":["0"],"result":""}
+{"args":["#fafafa"],"result":"#fafafa"}
+{"args":["rgb(28,30,38)"],"result":"rgb(28,30,38)"}
+{"args":["rgb(246,242,244)"],"result":"rgb(246,242,244)"}
+{"args":["#0f0f11"],"result":"#0f0f11"}
+{"args":["#000000"],"result":"#000000"}
+{"args":["rgb(59, 130, 246)"],"result":"rgb(59, 130, 246)"}
+{"args":["rgb(16, 185, 129)"],"result":"rgb(16, 185, 129)"}
+{"args":["white"],"result":"white"}
+{"args":["rgb(30, 30, 30)"],"result":"rgb(30, 30, 30)"}
+{"args":["black"],"result":"black"}
+{"args":["rgb(26, 26, 30)"],"result":"rgb(26, 26, 30)"}
+{"args":["rgb(250, 250, 252)"],"result":"rgb(250, 250, 252)"}
+{"args":["#ffffff"],"result":"#ffffff"}
+{"args":["rgb(30, 64, 175)"],"result":"rgb(30, 64, 175)"}
+{"args":["rgba(0,0,0,0.03)"],"result":"rgba(0,0,0,0.03)"}
+{"args":["rgba(0,0,0,0)"],"result":"rgba(0,0,0,0)"}
+{"args":["rgba(0,0,0,0.5)"],"result":"rgba(0,0,0,0.5)"}
+{"args":["#ffe4e6"],"result":"#ffe4e6"}
+{"args":["#1a1a1a"],"result":"#1a1a1a"}
+{"args":["#e2e8f0"],"result":"#e2e8f0"}
+{"args":["#f1f5f9"],"result":"#f1f5f9"}
+{"args":["#1e293b"],"result":"#1e293b"}
+{"args":["#f5f5f7"],"result":"#f5f5f7"}
+{"args":["#dbeafe"],"result":"#dbeafe"}
+{"args":["#eef2f7"],"result":"#eef2f7"}
+{"args":["#3b82f6"],"result":"#3b82f6"}
+{"args":["#f5efe2"],"result":"#f5efe2"}
+{"args":["#fdfcf9"],"result":"#fdfcf9"}
+{"args":["#f1efe9"],"result":"#f1efe9"}
+{"args":["rgba(250,249,246,0.88)"],"result":"rgba(250,249,246,0.88)"}
+{"args":["oklch(11%0.006 95)"],"result":"oklch(11%0.006 95)"}
+{"args":["#f7f4ee"],"result":"#f7f4ee"}
+{"args":["#d4c7b9"],"result":"#d4c7b9"}
+{"args":["#f2f2f4"],"result":"#f2f2f4"}
+{"args":["#e4e4e8"],"result":"#e4e4e8"}
+{"args":["#f3f3f3"],"result":"#f3f3f3"}
+{"args":["#fffbe6"],"result":"#fffbe6"}
+{"args":["#d4a017"],"result":"#d4a017"}
+{"args":["#fde68a"],"result":"#fde68a"}
+{"args":["transparent"],"result":"transparent"}
+{"args":["#94a3b8"],"result":"#94a3b8"}
+{"args":["#172033"],"result":"#172033"}
+{"args":["#23304a"],"result":"#23304a"}
+{"args":["rgba(255,255,255,0.16)"],"result":"rgba(255,255,255,0.16)"}
+{"args":["#0f172a"],"result":"#0f172a"}
+{"args":["#111827"],"result":"#111827"}
+{"args":["#f9fafb"],"result":"#f9fafb"}
+{"args":["#1f2937"],"result":"#1f2937"}
+{"args":["#6b7280"],"result":"#6b7280"}
+{"args":["rgba(148, 163, 184, 0.16)"],"result":"rgba(148, 163, 184, 0.16)"}
+{"args":["oklch(78% 0 0 / 0.16)"],"result":"oklch(78% 0 0 / 0.16)"}
+{"args":["#f4f4f4"],"result":"#f4f4f4"}
+{"args":["#ececec"],"result":"#ececec"}
+{"args":["#f59e0b"],"result":"#f59e0b"}
+{"args":["#ddd6fe"],"result":"#ddd6fe"}
+{"args":["#93c5fd"],"result":"#93c5fd"}
+{"args":["#17150f"],"result":"#17150f"}
+{"args":["#f6f2ec"],"result":"#f6f2ec"}
+{"args":["#c9bfb2"],"result":"#c9bfb2"}
+{"args":["#fffaf3"],"result":"#fffaf3"}
+{"args":["#d8cec0"],"result":"#d8cec0"}
+{"args":["#eff6ff"],"result":"#eff6ff"}
+{"args":["#fca5a5"],"result":"#fca5a5"}
+{"args":["#b91c1c"],"result":"#b91c1c"}
+{"args":["#ef4444"],"result":"#ef4444"}
+{"args":["rgba(239,68,68,0.1)"],"result":"rgba(239,68,68,0.1)"}
+{"args":["#22c55e"],"result":"#22c55e"}
+{"args":["rgba(34,197,94,0.1)"],"result":"rgba(34,197,94,0.1)"}
+{"args":["#fffbeb"],"result":"#fffbeb"}
+{"args":["#8b5cf6"],"result":"#8b5cf6"}
+{"args":["oklch(100%0 0)"],"result":"oklch(100%0 0)"}
+{"args":["oklch(65%0.12 250)"],"result":"oklch(65%0.12 250)"}
+{"args":["oklch(80%0.05 250)"],"result":"oklch(80%0.05 250)"}
+{"args":["oklch(75%0.15 45)"],"result":"oklch(75%0.15 45)"}
+{"args":["oklch(98%0.01 60)"],"result":"oklch(98%0.01 60)"}
+{"args":["oklch(75%0.18 45)"],"result":"oklch(75%0.18 45)"}
+{"args":["oklab(60%0.1 0.15)"],"result":"oklab(60%0.1 0.15)"}
+{"args":["lch(55%60 250)"],"result":"lch(55%60 250)"}
+{"args":["lab(50%40-30)"],"result":"lab(50%40-30)"}
+{"args":["var(--brand)"],"result":"var(--brand)"}
+{"args":["var(--line)"],"result":"var(--line)"}
+{"args":["var(--warn)"],"result":"var(--warn)"}
+{"args":["var(--terracotta)"],"result":"var(--terracotta)"}
+{"args":["oklch(80%0 0)"],"result":"oklch(80%0 0)"}
+{"args":["oklch(75%0.01 250)"],"result":"oklch(75%0.01 250)"}
+{"args":["lab(50%0 0)"],"result":"lab(50%0 0)"}
+{"args":["lch(50%0 0)"],"result":"lch(50%0 0)"}
+{"args":["oklch(92%0 0/0.12)"],"result":"oklch(92%0 0/0.12)"}
+{"args":["#f6f6f6"],"result":"#f6f6f6"}
+{"args":["purple"],"result":"purple"}
+{"args":["rebeccapurple"],"result":"rebeccapurple"}
+{"args":["crimson"],"result":"crimson"}
+{"args":["teal"],"result":"teal"}
+{"args":["6px"],"result":""}
+{"args":["var(--accent)"],"result":"var(--accent)"}
+{"args":["dimgray"],"result":"dimgray"}
+{"args":["gainsboro"],"result":"gainsboro"}
+{"args":["7px"],"result":""}
+{"args":["#12213a"],"result":"#12213a"}
+{"args":["#e8b84b"],"result":"#e8b84b"}
+{"args":["#e5a93f"],"result":"#e5a93f"}
+{"args":["var(--v3bg)"],"result":"var(--v3bg)"}
+{"args":["#eab04a"],"result":"#eab04a"}
+{"args":["rgb(240 178 74/0.85)"],"result":"rgb(240 178 74/0.85)"}
+{"args":["oklch(0.82 0.15 75)"],"result":"oklch(0.82 0.15 75)"}
+{"args":["#d4d4d4"],"result":"#d4d4d4"}
+{"args":["#d7d0c2"],"result":"#d7d0c2"}
+{"args":["dashed"],"result":""}
+{"args":["#f3f4f6"],"result":"#f3f4f6"}
+{"args":["#0b0d13"],"result":"#0b0d13"}
+{"args":["#f5f5f4"],"result":"#f5f5f4"}
+{"args":["#d6d3d1"],"result":"#d6d3d1"}
+{"args":["#eeeeee"],"result":"#eeeeee"}
+{"args":["#faf8f4"],"result":"#faf8f4"}
+{"args":["#ddd8d0"],"result":"#ddd8d0"}
+{"args":["#b8422e"],"result":"#b8422e"}
+{"args":["#f472b6"],"result":"#f472b6"}
+{"args":["#10b981"],"result":"#10b981"}
+{"args":["#374151"],"result":"#374151"}
+{"args":["#6366f1"],"result":"#6366f1"}
+{"args":["#1f7a3d"],"result":"#1f7a3d"}
+{"args":["#2f8543"],"result":"#2f8543"}
+{"args":["#14202b"],"result":"#14202b"}
+{"args":["#f4f5f7"],"result":"#f4f5f7"}
+{"args":["#b22"],"result":"#b22"}
+{"args":["var(--paper)"],"result":"var(--paper)"}
+{"args":["#1a1d24"],"result":"#1a1d24"}
+{"args":["#f5f2ea"],"result":"#f5f2ea"}
+{"args":["#f9fafb"],"result":"#f9fafb"}
+{"args":["1px"],"result":""}
+{"args":["solid"],"result":""}
+{"args":["#e5e7eb"],"result":"#e5e7eb"}
+{"args":["white"],"result":"white"}
+{"args":["4px"],"result":""}
+{"args":["#3b82f6"],"result":"#3b82f6"}
+{"args":["5px"],"result":""}
+{"args":["#8b5cf6"],"result":"#8b5cf6"}
+{"args":["3px"],"result":""}
+{"args":["#1f2937"],"result":"#1f2937"}
+{"args":["#f472b6"],"result":"#f472b6"}
+{"args":["#dbeafe"],"result":"#dbeafe"}
+{"args":["2px"],"result":""}
+{"args":["#10b981"],"result":"#10b981"}
+{"args":["#374151"],"result":"#374151"}
+{"args":["#111827"],"result":"#111827"}
+{"args":["#6366f1"],"result":"#6366f1"}
+{"args":["#1e293b"],"result":"#1e293b"}
+{"args":["#f8fafc"],"result":"#f8fafc"}
+{"args":["#fdfdfd"],"result":"#fdfdfd"}
+{"args":["#2563eb"],"result":"#2563eb"}
+{"args":["#dc2626"],"result":"#dc2626"}
+{"args":["#0f766e"],"result":"#0f766e"}
+{"args":["#7c3aed"],"result":"#7c3aed"}
+{"args":["#ea580c"],"result":"#ea580c"}
+{"args":["#141820"],"result":"#141820"}
+{"args":["#38bdf8"],"result":"#38bdf8"}
+{"args":["#cbd5e1"],"result":"#cbd5e1"}
+{"args":["#d1d5db"],"result":"#d1d5db"}
+{"args":["16px"],"result":""}
+{"args":["#161a22"],"result":"#161a22"}
+{"args":["#334155"],"result":"#334155"}
+{"args":["#fafafa"],"result":"#fafafa"}
+{"args":["0"],"result":""}
+{"args":["rgb(28,30,38)"],"result":"rgb(28,30,38)"}
+{"args":["rgb(246,242,244)"],"result":"rgb(246,242,244)"}
+{"args":["none"],"result":""}
+{"args":[""],"result":""}
+{"args":["#0f0f11"],"result":"#0f0f11"}
+{"args":["#000000"],"result":"#000000"}
+{"args":["rgb(59, 130, 246)"],"result":"rgb(59, 130, 246)"}
+{"args":["rgb(16, 185, 129)"],"result":"rgb(16, 185, 129)"}
+{"args":["rgb(30, 30, 30)"],"result":"rgb(30, 30, 30)"}
+{"args":["black"],"result":"black"}
+{"args":["rgb(26, 26, 30)"],"result":"rgb(26, 26, 30)"}
+{"args":["rgb(250, 250, 252)"],"result":"rgb(250, 250, 252)"}
+{"args":["#ffffff"],"result":"#ffffff"}
+{"args":["rgb(30, 64, 175)"],"result":"rgb(30, 64, 175)"}
+{"args":["rgba(0,0,0,0.03)"],"result":"rgba(0,0,0,0.03)"}
+{"args":["rgba(0,0,0,0)"],"result":"rgba(0,0,0,0)"}
+{"args":["rgba(0,0,0,0.5)"],"result":"rgba(0,0,0,0.5)"}
+{"args":["#ffe4e6"],"result":"#ffe4e6"}
+{"args":["#1a1a1a"],"result":"#1a1a1a"}
+{"args":["#faf8f4"],"result":"#faf8f4"}
+{"args":["#ddd8d0"],"result":"#ddd8d0"}
+{"args":["6px"],"result":""}
+{"args":["#b8422e"],"result":"#b8422e"}
+{"args":["rgba(250,249,246,0.88)"],"result":"rgba(250,249,246,0.88)"}
+{"args":["oklch(11%0.006 95)"],"result":"oklch(11%0.006 95)"}
+{"args":["transparent"],"result":"transparent"}
+{"args":["#eff6ff"],"result":"#eff6ff"}
+{"args":["#fca5a5"],"result":"#fca5a5"}
+{"args":["#b91c1c"],"result":"#b91c1c"}
+{"args":["#ef4444"],"result":"#ef4444"}
+{"args":["rgba(239,68,68,0.1)"],"result":"rgba(239,68,68,0.1)"}
+{"args":["#22c55e"],"result":"#22c55e"}
+{"args":["rgba(34,197,94,0.1)"],"result":"rgba(34,197,94,0.1)"}
+{"args":["#f59e0b"],"result":"#f59e0b"}
+{"args":["#fffbeb"],"result":"#fffbeb"}
+{"args":["oklch(100%0 0)"],"result":"oklch(100%0 0)"}
+{"args":["oklch(65%0.12 250)"],"result":"oklch(65%0.12 250)"}
+{"args":["oklch(80%0.05 250)"],"result":"oklch(80%0.05 250)"}
+{"args":["oklch(75%0.15 45)"],"result":"oklch(75%0.15 45)"}
+{"args":["oklch(98%0.01 60)"],"result":"oklch(98%0.01 60)"}
+{"args":["oklch(75%0.18 45)"],"result":"oklch(75%0.18 45)"}
+{"args":["oklab(60%0.1 0.15)"],"result":"oklab(60%0.1 0.15)"}
+{"args":["lch(55%60 250)"],"result":"lch(55%60 250)"}
+{"args":["lab(50%40-30)"],"result":"lab(50%40-30)"}
+{"args":["var(--brand)"],"result":"var(--brand)"}
+{"args":["var(--line)"],"result":"var(--line)"}
+{"args":["var(--warn)"],"result":"var(--warn)"}
+{"args":["var(--terracotta)"],"result":"var(--terracotta)"}
+{"args":["oklch(80%0 0)"],"result":"oklch(80%0 0)"}
+{"args":["oklch(75%0.01 250)"],"result":"oklch(75%0.01 250)"}
+{"args":["lab(50%0 0)"],"result":"lab(50%0 0)"}
+{"args":["lch(50%0 0)"],"result":"lch(50%0 0)"}
+{"args":["oklch(92%0 0/0.12)"],"result":"oklch(92%0 0/0.12)"}
+{"args":["#f6f6f6"],"result":"#f6f6f6"}
+{"args":["purple"],"result":"purple"}
+{"args":["rebeccapurple"],"result":"rebeccapurple"}
+{"args":["crimson"],"result":"crimson"}
+{"args":["teal"],"result":"teal"}
+{"args":["var(--accent)"],"result":"var(--accent)"}
+{"args":["dimgray"],"result":"dimgray"}
+{"args":["gainsboro"],"result":"gainsboro"}
+{"args":["7px"],"result":""}
+{"args":["#f7f4ee"],"result":"#f7f4ee"}
+{"args":["#d4c7b9"],"result":"#d4c7b9"}
+{"args":["#d7d0c2"],"result":"#d7d0c2"}
+{"args":["#d4d4d4"],"result":"#d4d4d4"}
+{"args":["#f5f5f4"],"result":"#f5f5f4"}
+{"args":["#d6d3d1"],"result":"#d6d3d1"}
+{"args":["#eeeeee"],"result":"#eeeeee"}
+{"args":["#e2e8f0"],"result":"#e2e8f0"}
+{"args":["#fff"],"result":"#fff"}
+{"args":["#f1f5f9"],"result":"#f1f5f9"}
+{"args":["#ddd6fe"],"result":"#ddd6fe"}
+{"args":["#93c5fd"],"result":"#93c5fd"}
+{"args":["#0b0d13"],"result":"#0b0d13"}
+{"args":["#f6f2ec"],"result":"#f6f2ec"}
+{"args":["#c9bfb2"],"result":"#c9bfb2"}
+{"args":["#fffaf3"],"result":"#fffaf3"}
+{"args":["#d8cec0"],"result":"#d8cec0"}
+{"args":["#6b7280"],"result":"#6b7280"}
+{"args":["#fffbe6"],"result":"#fffbe6"}
+{"args":["#d4a017"],"result":"#d4a017"}
+{"args":["#fef3c7"],"result":"#fef3c7"}
+{"args":["#fde68a"],"result":"#fde68a"}
+{"args":["#94a3b8"],"result":"#94a3b8"}
+{"args":["#f5f5f7"],"result":"#f5f5f7"}
+{"args":["#eef2f7"],"result":"#eef2f7"}
+{"args":["#172033"],"result":"#172033"}
+{"args":["#23304a"],"result":"#23304a"}
+{"args":["rgba(255,255,255,0.16)"],"result":"rgba(255,255,255,0.16)"}
+{"args":["#0f172a"],"result":"#0f172a"}
+{"args":["#ddd"],"result":"#ddd"}
+{"args":["#222"],"result":"#222"}
+{"args":["#e5f0ff"],"result":"#e5f0ff"}
+{"args":["rgba(255,255,255,.86)"],"result":"rgba(255,255,255,.86)"}
+{"args":["#111"],"result":"#111"}
+{"args":["#f5f5f5"],"result":"#f5f5f5"}
+{"args":["#f5efe2"],"result":"#f5efe2"}
+{"args":["rgba(148, 163, 184, 0.16)"],"result":"rgba(148, 163, 184, 0.16)"}
+{"args":["oklch(78% 0 0 / 0.16)"],"result":"oklch(78% 0 0 / 0.16)"}
+{"args":["#fdfcf9"],"result":"#fdfcf9"}
+{"args":["#f1efe9"],"result":"#f1efe9"}

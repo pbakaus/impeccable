@@ -1,0 +1,187 @@
+{"args":[{"tag":"html","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"head","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"meta","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"title","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"style","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"body","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"div","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"h1","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"p","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"span","transitionProperty":"","animationName":"blink-anim","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"span","transitionProperty":"","animationName":"flicker","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"span","transitionProperty":"","animationName":"caret-blink","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"span","transitionProperty":"","animationName":"spin","timingFunctions":"linear","classList":""}],"result":[]}
+{"args":[{"tag":"ul","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"li","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"h2","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"span","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"nav","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"header","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"section","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"script","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"h3","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"button","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"a","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"pre","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"code","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"input","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"aside","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"strong","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"main","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"h4","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"article","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"img","transitionProperty":"transform","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"img","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"svg","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"polyline","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"path","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"circle","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"line","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"blockquote","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"em","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"form","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"label","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"figure","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"figcaption","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"ol","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"h5","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"select","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"option","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"textarea","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"table","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"thead","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"tr","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"th","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"tbody","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"td","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"link","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"div","transitionProperty":"","animationName":"bounce-keyframe","timingFunctions":"","classList":""}],"result":[{"id":"bounce-easing","snippet":"animation: bounce-keyframe"}]}
+{"args":[{"tag":"div","transitionProperty":"transform","animationName":"","timingFunctions":"cubic-bezier(0.68,-0.55,0.265,1.55)","classList":""}],"result":[{"id":"bounce-easing","snippet":"cubic-bezier(0.68, -0.55, 0.265, 1.55)"}]}
+{"args":[{"tag":"div","transitionProperty":"width","animationName":"","timingFunctions":"ease","classList":""}],"result":[{"id":"layout-transition","snippet":"transition: width"}]}
+{"args":[{"tag":"div","transitionProperty":"height","animationName":"","timingFunctions":"ease-out","classList":""}],"result":[{"id":"layout-transition","snippet":"transition: height"}]}
+{"args":[{"tag":"div","transitionProperty":"padding","animationName":"","timingFunctions":"linear","classList":""}],"result":[{"id":"layout-transition","snippet":"transition: padding"}]}
+{"args":[{"tag":"div","transitionProperty":"margin","animationName":"","timingFunctions":"ease-in","classList":""}],"result":[{"id":"layout-transition","snippet":"transition: margin"}]}
+{"args":[{"tag":"div","transitionProperty":"max-height","animationName":"","timingFunctions":"ease","classList":""}],"result":[{"id":"layout-transition","snippet":"transition: max-height"}]}
+{"args":[{"tag":"div","transitionProperty":"width, height","animationName":"","timingFunctions":"ease, ease","classList":""}],"result":[{"id":"layout-transition","snippet":"transition: width, height"}]}
+{"args":[{"tag":"div","transitionProperty":"width, opacity","animationName":"","timingFunctions":"ease, ease","classList":""}],"result":[{"id":"layout-transition","snippet":"transition: width"}]}
+{"args":[{"tag":"div","transitionProperty":"width","animationName":"","timingFunctions":"","classList":""}],"result":[{"id":"layout-transition","snippet":"transition: width"}]}
+{"args":[{"tag":"div","transitionProperty":"","animationName":"fade-in-keyframe","timingFunctions":"cubic-bezier(0.16,1,0.3,1)","classList":""}],"result":[]}
+{"args":[{"tag":"div","transitionProperty":"transform","animationName":"","timingFunctions":"cubic-bezier(0.25,1,0.5,1)","classList":""}],"result":[]}
+{"args":[{"tag":"div","transitionProperty":"transform","animationName":"","timingFunctions":"cubic-bezier(0.16,1,0.3,1)","classList":""}],"result":[]}
+{"args":[{"tag":"div","transitionProperty":"transform","animationName":"","timingFunctions":"ease-out","classList":""}],"result":[]}
+{"args":[{"tag":"div","transitionProperty":"opacity","animationName":"","timingFunctions":"ease","classList":""}],"result":[]}
+{"args":[{"tag":"div","transitionProperty":"color, background-color","animationName":"","timingFunctions":"ease, ease","classList":""}],"result":[]}
+{"args":[{"tag":"div","transitionProperty":"box-shadow","animationName":"","timingFunctions":"ease","classList":""}],"result":[]}
+{"args":[{"tag":"div","transitionProperty":"all","animationName":"","timingFunctions":"ease","classList":""}],"result":[]}
+{"args":[{"tag":"div","transitionProperty":"transform, opacity, box-shadow","animationName":"","timingFunctions":"ease, ease, ease","classList":""}],"result":[]}
+{"args":[{"tag":"noscript","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"details","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"summary","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"span","transitionProperty":"","animationName":"pulse","timingFunctions":"ease-in-out","classList":""}],"result":[]}
+{"args":[{"tag":"span","transitionProperty":"","animationName":"pulse","timingFunctions":"ease-out","classList":""}],"result":[]}
+{"args":[{"tag":"i","transitionProperty":"","animationName":"ripple","timingFunctions":"linear","classList":""}],"result":[]}
+{"args":[{"tag":"span","transitionProperty":"","animationName":"pulse","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"span","transitionProperty":"","animationName":"pulse-ring","timingFunctions":"linear","classList":""}],"result":[]}
+{"args":[{"tag":"div","transitionProperty":"","animationName":"pulse","timingFunctions":"ease-in-out","classList":""}],"result":[]}
+{"args":[{"tag":"rect","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"text","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"template","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"section","transitionProperty":"opacity, transform","animationName":"","timingFunctions":"ease-out, ease-out","classList":""}],"result":[]}
+{"args":[{"tag":"div","transitionProperty":"","animationName":"ticker-loop","timingFunctions":"linear","classList":""}],"result":[]}
+{"args":[{"tag":"polygon","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"ellipse","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"defs","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"pattern","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"footer","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"sup","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"sub","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"html","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"head","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"style","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"body","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"p","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"div","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"span","transitionProperty":"","animationName":"blink","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"html","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"head","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"style","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"body","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"p","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"html","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"head","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"meta","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"title","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"script","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"style","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"body","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"h1","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"p","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"h2","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"div","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"h3","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"span","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"section","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"link","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"a","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"button","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"pre","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"code","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"article","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"div","transitionProperty":"","animationName":"ticker-loop","timingFunctions":"linear","classList":""}],"result":[]}
+{"args":[{"tag":"blockquote","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"nav","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"label","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"input","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"table","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"thead","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"tr","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"th","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"tbody","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"td","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"strong","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"form","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"aside","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"main","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"svg","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"path","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"ol","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"li","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"em","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"polyline","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"circle","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"line","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"footer","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"sup","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"sub","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"noscript","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"rect","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"text","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"h4","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"h5","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"select","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"option","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"textarea","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"figure","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"figcaption","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"div","transitionProperty":"","animationName":"bounce-keyframe","timingFunctions":"","classList":""}],"result":[{"id":"bounce-easing","snippet":"animation: bounce-keyframe"}]}
+{"args":[{"tag":"div","transitionProperty":"transform","animationName":"","timingFunctions":"cubic-bezier(0.68,-0.55,0.265,1.55)","classList":""}],"result":[{"id":"bounce-easing","snippet":"cubic-bezier(0.68, -0.55, 0.265, 1.55)"}]}
+{"args":[{"tag":"div","transitionProperty":"width","animationName":"","timingFunctions":"ease","classList":""}],"result":[{"id":"layout-transition","snippet":"transition: width"}]}
+{"args":[{"tag":"div","transitionProperty":"height","animationName":"","timingFunctions":"ease-out","classList":""}],"result":[{"id":"layout-transition","snippet":"transition: height"}]}
+{"args":[{"tag":"div","transitionProperty":"padding","animationName":"","timingFunctions":"linear","classList":""}],"result":[{"id":"layout-transition","snippet":"transition: padding"}]}
+{"args":[{"tag":"div","transitionProperty":"margin","animationName":"","timingFunctions":"ease-in","classList":""}],"result":[{"id":"layout-transition","snippet":"transition: margin"}]}
+{"args":[{"tag":"div","transitionProperty":"max-height","animationName":"","timingFunctions":"ease","classList":""}],"result":[{"id":"layout-transition","snippet":"transition: max-height"}]}
+{"args":[{"tag":"div","transitionProperty":"width, height","animationName":"","timingFunctions":"ease, ease","classList":""}],"result":[{"id":"layout-transition","snippet":"transition: width, height"}]}
+{"args":[{"tag":"div","transitionProperty":"width, opacity","animationName":"","timingFunctions":"ease, ease","classList":""}],"result":[{"id":"layout-transition","snippet":"transition: width"}]}
+{"args":[{"tag":"div","transitionProperty":"width","animationName":"","timingFunctions":"","classList":""}],"result":[{"id":"layout-transition","snippet":"transition: width"}]}
+{"args":[{"tag":"div","transitionProperty":"","animationName":"fade-in-keyframe","timingFunctions":"cubic-bezier(0.16,1,0.3,1)","classList":""}],"result":[]}
+{"args":[{"tag":"div","transitionProperty":"transform","animationName":"","timingFunctions":"cubic-bezier(0.25,1,0.5,1)","classList":""}],"result":[]}
+{"args":[{"tag":"div","transitionProperty":"transform","animationName":"","timingFunctions":"cubic-bezier(0.16,1,0.3,1)","classList":""}],"result":[]}
+{"args":[{"tag":"div","transitionProperty":"transform","animationName":"","timingFunctions":"ease-out","classList":""}],"result":[]}
+{"args":[{"tag":"div","transitionProperty":"opacity","animationName":"","timingFunctions":"ease","classList":""}],"result":[]}
+{"args":[{"tag":"div","transitionProperty":"color, background-color","animationName":"","timingFunctions":"ease, ease","classList":""}],"result":[]}
+{"args":[{"tag":"div","transitionProperty":"box-shadow","animationName":"","timingFunctions":"ease","classList":""}],"result":[]}
+{"args":[{"tag":"div","transitionProperty":"all","animationName":"","timingFunctions":"ease","classList":""}],"result":[]}
+{"args":[{"tag":"div","transitionProperty":"transform, opacity, box-shadow","animationName":"","timingFunctions":"ease, ease, ease","classList":""}],"result":[]}
+{"args":[{"tag":"ul","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"img","transitionProperty":"transform","animationName":"","timingFunctions":"","classList":""}],"result":[]}
+{"args":[{"tag":"img","transitionProperty":"","animationName":"","timingFunctions":"","classList":""}],"result":[]}

@@ -1,0 +1,1667 @@
+{"args":["0",{"$map":[]}],"result":"0"}
+{"args":["monospace,monospace",{"$map":[]}],"result":"monospace,monospace"}
+{"args":["16px",{"$map":[]}],"result":"16px"}
+{"args":["40px",{"$map":[]}],"result":"40px"}
+{"args":["24px",{"$map":[]}],"result":"24px"}
+{"args":["#111",{"$map":[]}],"result":"#111"}
+{"args":["#eee",{"$map":[]}],"result":"#eee"}
+{"args":["600px",{"$map":[]}],"result":"600px"}
+{"args":["inline-block",{"$map":[]}],"result":"inline-block"}
+{"args":["10px",{"$map":[]}],"result":"10px"}
+{"args":["18px",{"$map":[]}],"result":"18px"}
+{"args":["#33d17a",{"$map":[]}],"result":"#33d17a"}
+{"args":["blink-anim",{"$map":[]}],"result":"blink-anim"}
+{"args":["flicker",{"$map":[]}],"result":"flicker"}
+{"args":["12px",{"$map":[]}],"result":"12px"}
+{"args":["3px",{"$map":[]}],"result":"3px"}
+{"args":["caret-blink",{"$map":[]}],"result":"caret-blink"}
+{"args":["8px",{"$map":[]}],"result":"8px"}
+{"args":["50%",{"$map":[]}],"result":"50%"}
+{"args":["2px",{"$map":[]}],"result":"2px"}
+{"args":["#333",{"$map":[]}],"result":"#333"}
+{"args":["#999",{"$map":[]}],"result":"#999"}
+{"args":["spin",{"$map":[]}],"result":"spin"}
+{"args":["linear",{"$map":[]}],"result":"linear"}
+{"args":["200px",{"$map":[]}],"result":"200px"}
+{"args":["90px",{"$map":[]}],"result":"90px"}
+{"args":["#222",{"$map":[]}],"result":"#222"}
+{"args":["#444",{"$map":[]}],"result":"#444"}
+{"args":["1400px",{"$map":[]}],"result":"1400px"}
+{"args":["",{"$map":[]}],"result":""}
+{"args":["14px",{"$map":[]}],"result":"14px"}
+{"args":["1.5",{"$map":[]}],"result":"1.5"}
+{"args":["system-ui,sans-serif",{"$map":[]}],"result":"system-ui,sans-serif"}
+{"args":["#fff",{"$map":[]}],"result":"#fff"}
+{"args":["relative",{"$map":[]}],"result":"relative"}
+{"args":["-50vw",{"$map":[]}],"result":"-50vw"}
+{"args":["100vw",{"$map":[]}],"result":"100vw"}
+{"args":["grid",{"$map":[]}],"result":"grid"}
+{"args":["auto",{"$map":[]}],"result":"auto"}
+{"args":["600",{"$map":[]}],"result":"600"}
+{"args":["1",{"$map":[]}],"result":"1"}
+{"args":["system-ui",{"$map":[]}],"result":"system-ui"}
+{"args":["uppercase",{"$map":[]}],"result":"uppercase"}
+{"args":["0.05em",{"$map":[]}],"result":"0.05em"}
+{"args":["#475569",{"$map":[]}],"result":"#475569"}
+{"args":["block",{"$map":[]}],"result":"block"}
+{"args":["#64748b",{"$map":[]}],"result":"#64748b"}
+{"args":["4px",{"$map":[]}],"result":"4px"}
+{"args":["italic",{"$map":[]}],"result":"italic"}
+{"args":["32px",{"$map":[]}],"result":"32px"}
+{"args":["#f5f5f5",{"$map":[]}],"result":"#f5f5f5"}
+{"args":["#e5e7eb",{"$map":[]}],"result":"#e5e7eb"}
+{"args":["#fef3c7",{"$map":[]}],"result":"#fef3c7"}
+{"args":["#f8fafc",{"$map":[]}],"result":"#f8fafc"}
+{"args":["#111827",{"$map":[]}],"result":"#111827"}
+{"args":["34px",{"$map":[]}],"result":"34px"}
+{"args":["1.05",{"$map":[]}],"result":"1.05"}
+{"args":["720",{"$map":[]}],"result":"720"}
+{"args":["#4b5563",{"$map":[]}],"result":"#4b5563"}
+{"args":["13px",{"$map":[]}],"result":"13px"}
+{"args":["760",{"$map":[]}],"result":"760"}
+{"args":["0.08em",{"$map":[]}],"result":"0.08em"}
+{"args":["#fdfdfd",{"$map":[]}],"result":"#fdfdfd"}
+{"args":["0 1px 2px rgba(15,23,42,0.06)",{"$map":[]}],"result":"0 1px 2px rgba(15,23,42,0.06)"}
+{"args":["#2563eb",{"$map":[]}],"result":"#2563eb"}
+{"args":["15px",{"$map":[]}],"result":"15px"}
+{"args":["1.25",{"$map":[]}],"result":"1.25"}
+{"args":["5px",{"$map":[]}],"result":"5px"}
+{"args":["#dc2626",{"$map":[]}],"result":"#dc2626"}
+{"args":["#0f766e",{"$map":[]}],"result":"#0f766e"}
+{"args":["#7c3aed",{"$map":[]}],"result":"#7c3aed"}
+{"args":["#ea580c",{"$map":[]}],"result":"#ea580c"}
+{"args":["#141820",{"$map":[]}],"result":"#141820"}
+{"args":["#f4f7fb",{"$map":[]}],"result":"#f4f7fb"}
+{"args":["#38bdf8",{"$map":[]}],"result":"#38bdf8"}
+{"args":["#cbd5e1",{"$map":[]}],"result":"#cbd5e1"}
+{"args":["1px",{"$map":[]}],"result":"1px"}
+{"args":["#d1d5db",{"$map":[]}],"result":"#d1d5db"}
+{"args":["#161a22",{"$map":[]}],"result":"#161a22"}
+{"args":["#334155",{"$map":[]}],"result":"#334155"}
+{"args":["0 1px 2px rgba(15, 23, 42, 0.06)",{"$map":[]}],"result":"0 1px 2px rgba(15, 23, 42, 0.06)"}
+{"args":["#1a1a1a",{"$map":[]}],"result":"#1a1a1a"}
+{"args":["120px",{"$map":[]}],"result":"120px"}
+{"args":["#ddd",{"$map":[]}],"result":"#ddd"}
+{"args":["hidden",{"$map":[]}],"result":"hidden"}
+{"args":["absolute",{"$map":[]}],"result":"absolute"}
+{"args":["100%",{"$map":[]}],"result":"100%"}
+{"args":["220px",{"$map":[]}],"result":"220px"}
+{"args":["clip",{"$map":[]}],"result":"clip"}
+{"args":["-34px",{"$map":[]}],"result":"-34px"}
+{"args":["160px",{"$map":[]}],"result":"160px"}
+{"args":["28px",{"$map":[]}],"result":"28px"}
+{"args":["180px",{"$map":[]}],"result":"180px"}
+{"args":["static",{"$map":[]}],"result":"static"}
+{"args":["visible",{"$map":[]}],"result":"visible"}
+{"args":["36px",{"$map":[]}],"result":"36px"}
+{"args":["#e5f0ff",{"$map":[]}],"result":"#e5f0ff"}
+{"args":["52px",{"$map":[]}],"result":"52px"}
+{"args":["linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent)",{"$map":[]}],"result":"linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent)"}
+{"args":["-18px",{"$map":[]}],"result":"-18px"}
+{"args":["linear-gradient(135deg,#b7d7ff,#486aa3)",{"$map":[]}],"result":"linear-gradient(135deg,#b7d7ff,#486aa3)"}
+{"args":["rgba(255,255,255,.86)",{"$map":[]}],"result":"rgba(255,255,255,.86)"}
+{"args":["rgba(0, 0, 0, 0)",{"$map":[]}],"result":"rgba(0, 0, 0, 0)"}
+{"args":["none",{"$map":[]}],"result":"none"}
+{"args":["left",{"$map":[]}],"result":"left"}
+{"args":["linear-gradient(90deg, transparent, rgba(255,255,255,.6), transparent)",{"$map":[]}],"result":"linear-gradient(90deg, transparent, rgba(255,255,255,.6), transparent)"}
+{"args":["linear-gradient(135deg, #b7d7ff, #486aa3)",{"$map":[]}],"result":"linear-gradient(135deg, #b7d7ff, #486aa3)"}
+{"args":["#e8e2d6",{"$map":[]}],"result":"#e8e2d6"}
+{"args":["system-ui,sans-serif",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"system-ui,sans-serif"}
+{"args":["#fafafa",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#fafafa"}
+{"args":["24px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"24px"}
+{"args":["0",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"0"}
+{"args":["#1a1a1a",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#1a1a1a"}
+{"args":["grid",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"grid"}
+{"args":["auto",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"auto"}
+{"args":["14px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"14px"}
+{"args":["uppercase",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"uppercase"}
+{"args":["0.05em",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"0.05em"}
+{"args":["16px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"16px"}
+{"args":["#475569",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#475569"}
+{"args":["11px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"11px"}
+{"args":["8px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"8px"}
+{"args":["#64748b",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#64748b"}
+{"args":["10px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"10px"}
+{"args":["#000000",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#000000"}
+{"args":["white",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"white"}
+{"args":["rgb(59, 130, 246)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(59, 130, 246)"}
+{"args":["rgb(150, 150, 150)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(150, 150, 150)"}
+{"args":["rgb(16, 185, 129)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(16, 185, 129)"}
+{"args":["rgb(180, 180, 180)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(180, 180, 180)"}
+{"args":["rgb(200, 200, 200)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(200, 200, 200)"}
+{"args":["rgb(30, 30, 30)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(30, 30, 30)"}
+{"args":["rgb(80, 80, 80)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(80, 80, 80)"}
+{"args":["linear-gradient(180deg, #3b82f6 0%, #8b5cf6 100%)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"linear-gradient(180deg, #3b82f6 0%, #8b5cf6 100%)"}
+{"args":["#808080",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#808080"}
+{"args":["32px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"32px"}
+{"args":["800",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"800"}
+{"args":["#666666",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#666666"}
+{"args":["1.5rem",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"1.5rem"}
+{"args":["linear-gradient(135deg, #667eea, #764ba2)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"linear-gradient(135deg, #667eea, #764ba2)"}
+{"args":["text",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"text"}
+{"args":["rgb(139, 92, 246)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(139, 92, 246)"}
+{"args":["rgb(31,26,21)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(31,26,21)"}
+{"args":["rgb(91,79,68)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(91,79,68)"}
+{"args":["inline-block",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"inline-block"}
+{"args":["9px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"9px"}
+{"args":["18px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"18px"}
+{"args":["999px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"999px"}
+{"args":["500",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"500"}
+{"args":["rgb(55,65,81)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(55,65,81)"}
+{"args":["rgb(108,114,128)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(108,114,128)"}
+{"args":["20px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"20px"}
+{"args":["rgb(182,50,45)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(182,50,45)"}
+{"args":["rgb(92,84,73)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(92,84,73)"}
+{"args":["700",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"700"}
+{"args":["2px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"2px"}
+{"args":["black",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"black"}
+{"args":["rgb(156, 163, 175)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(156, 163, 175)"}
+{"args":["rgb(168, 85, 247)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(168, 85, 247)"}
+{"args":["linear-gradient(to right, rgb(168, 85, 247), rgb(99, 102, 241))",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"linear-gradient(to right, rgb(168, 85, 247), rgb(99, 102, 241))"}
+{"args":["currentcolor",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"currentcolor"}
+{"args":["#e8e2d6",{"$map":[["--fixture-bone","#e8e2d6"]]},1],"result":"#e8e2d6"}
+{"args":["var(--fixture-bone)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#e8e2d6"}
+{"args":["#cfc9bd",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#cfc9bd"}
+{"args":["rgb(26, 26, 30)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(26, 26, 30)"}
+{"args":["rgb(240, 240, 245)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(240, 240, 245)"}
+{"args":["rgb(250, 250, 252)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(250, 250, 252)"}
+{"args":["rgb(20, 20, 25)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(20, 20, 25)"}
+{"args":["#ffffff",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#ffffff"}
+{"args":["#111827",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#111827"}
+{"args":["rgb(30, 64, 175)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(30, 64, 175)"}
+{"args":["rgb(5, 46, 32)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(5, 46, 32)"}
+{"args":["1.25rem",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"1.25rem"}
+{"args":["rgb(220, 38, 38)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(220, 38, 38)"}
+{"args":["rgb(180, 83, 9)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(180, 83, 9)"}
+{"args":["url('data:image/png",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"url('data:image/png"}
+{"args":["rgb(255, 255, 255)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(255, 255, 255)"}
+{"args":["rgba(0,0,0,0.03)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgba(0,0,0,0.03)"}
+{"args":["rgba(0,0,0,0)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgba(0,0,0,0)"}
+{"args":["rgba(0,0,0,0.5)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgba(0,0,0,0.5)"}
+{"args":["rgb(170,170,170)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(170,170,170)"}
+{"args":["rgb(20,20,25)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(20,20,25)"}
+{"args":["rgb(245,240,232)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(245,240,232)"}
+{"args":["rgb(150,60,55)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(150,60,55)"}
+{"args":["1px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"1px"}
+{"args":["4px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"4px"}
+{"args":["rgb(28,30,38)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(28,30,38)"}
+{"args":["rgb(230,232,237)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(230,232,237)"}
+{"args":["12px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"12px"}
+{"args":["rgba(0, 0, 0, 0)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgba(0, 0, 0, 0)"}
+{"args":["3px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"3px"}
+{"args":["none",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"none"}
+{"args":["linear-gradient(135deg,#6d8cff 0%,#a78bfa 50%,#6d8cff 100%)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"linear-gradient(135deg,#6d8cff 0%,#a78bfa 50%,#6d8cff 100%)"}
+{"args":["#e8e6e3",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#e8e6e3"}
+{"args":["40px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"40px"}
+{"args":["#0f0f11",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#0f0f11"}
+{"args":["linear-gradient(160deg,rgba(52,192,168,0.09) 0%,#141419 65%)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"linear-gradient(160deg,rgba(52,192,168,0.09) 0%,#141419 65%)"}
+{"args":["#8e8c89",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#8e8c89"}
+{"args":["linear-gradient(160deg,color-mix(in oklab,oklch(90%0.02 95) 16%,transparent) 0%,#141419 65%)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"linear-gradient(160deg,color-mix(in oklab,oklch(90%0.02 95) 16%,transparent) 0%,#141419 65%)"}
+{"args":["#ded9cf",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#ded9cf"}
+{"args":["#3a352c",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#3a352c"}
+{"args":["var(--fixture-undefined-token)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"var(--fixture-undefined-token)"}
+{"args":["#efe9dd",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#efe9dd"}
+{"args":["#ffe4e6",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#ffe4e6"}
+{"args":["rgb(28, 30, 38)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(28, 30, 38)"}
+{"args":["rgb(246, 242, 244)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(246, 242, 244)"}
+{"args":["linear-gradient(135deg, #6d8cff 0%, #a78bfa 50%, #6d8cff 100%)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"linear-gradient(135deg, #6d8cff 0%, #a78bfa 50%, #6d8cff 100%)"}
+{"args":["linear-gradient(160deg, rgba(52,192,168,0.09) 0%, #141419 65%)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"linear-gradient(160deg, rgba(52,192,168,0.09) 0%, #141419 65%)"}
+{"args":["linear-gradient(160deg, color-mix(in oklab, oklch(90% 0.02 95) 16%, transparent) 0%, #141419 65%)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"linear-gradient(160deg, color-mix(in oklab, oklch(90% 0.02 95) 16%, transparent) 0%, #141419 65%)"}
+{"args":["#fafafa",{"$map":[]}],"result":"#fafafa"}
+{"args":["#0f172a",{"$map":[]}],"result":"#0f172a"}
+{"args":["white",{"$map":[]}],"result":"white"}
+{"args":["#e2e8f0",{"$map":[]}],"result":"#e2e8f0"}
+{"args":["6px",{"$map":[]}],"result":"6px"}
+{"args":["#f1f5f9",{"$map":[]}],"result":"#f1f5f9"}
+{"args":["1.2",{"$map":[]}],"result":"1.2"}
+{"args":["700",{"$map":[]}],"result":"700"}
+{"args":["#1e293b",{"$map":[]}],"result":"#1e293b"}
+{"args":["ui-monospace,monospace",{"$map":[]}],"result":"ui-monospace,monospace"}
+{"args":["ui-monospace,SFMono-Regular,monospace",{"$map":[]}],"result":"ui-monospace,SFMono-Regular,monospace"}
+{"args":["1.625",{"$map":[]}],"result":"1.625"}
+{"args":["#f5f5f7",{"$map":[]}],"result":"#f5f5f7"}
+{"args":["11px",{"$map":[]}],"result":"11px"}
+{"args":["1.6",{"$map":[]}],"result":"1.6"}
+{"args":["#dbeafe",{"$map":[]}],"result":"#dbeafe"}
+{"args":["#1e40af",{"$map":[]}],"result":"#1e40af"}
+{"args":["999px",{"$map":[]}],"result":"999px"}
+{"args":["#92400e",{"$map":[]}],"result":"#92400e"}
+{"args":["500",{"$map":[]}],"result":"500"}
+{"args":["2",{"$map":[]}],"result":"2"}
+{"args":["0.3em",{"$map":[]}],"result":"0.3em"}
+{"args":["0.5em",{"$map":[]}],"result":"0.5em"}
+{"args":["#eef2f7",{"$map":[]}],"result":"#eef2f7"}
+{"args":["#3b82f6",{"$map":[]}],"result":"#3b82f6"}
+{"args":["20px",{"$map":[]}],"result":"20px"}
+{"args":["#f5efe2",{"$map":[]}],"result":"#f5efe2"}
+{"args":["#2a2622",{"$map":[]}],"result":"#2a2622"}
+{"args":["Georgia,serif",{"$map":[]}],"result":"Georgia,serif"}
+{"args":["#fdfcf9",{"$map":[]}],"result":"#fdfcf9"}
+{"args":["#1f2933",{"$map":[]}],"result":"#1f2933"}
+{"args":["linear-gradient(135deg,#7c3aed,#a855f7)",{"$map":[]}],"result":"linear-gradient(135deg,#7c3aed,#a855f7)"}
+{"args":["text",{"$map":[]}],"result":"text"}
+{"args":["44px",{"$map":[]}],"result":"44px"}
+{"args":["linear-gradient(90deg, #667eea, #764ba2)",{"$map":[]}],"result":"linear-gradient(90deg, #667eea, #764ba2)"}
+{"args":["Georgia,\"Iowan Old Style\",serif",{"$map":[]}],"result":"Georgia,\"Iowan Old Style\",serif"}
+{"args":["\"SF Mono\",ui-monospace,monospace",{"$map":[]}],"result":"\"SF Mono\",ui-monospace,monospace"}
+{"args":["#f1efe9",{"$map":[]}],"result":"#f1efe9"}
+{"args":["48px",{"$map":[]}],"result":"48px"}
+{"args":["linear-gradient(180deg,oklch(7%0.006 95),oklch(4%0.004 95))",{"$map":[]}],"result":"linear-gradient(180deg,oklch(7%0.006 95),oklch(4%0.004 95))"}
+{"args":["Arial,sans-serif",{"$map":[]}],"result":"Arial,sans-serif"}
+{"args":["640px",{"$map":[]}],"result":"640px"}
+{"args":["oklch(91%0 0)",{"$map":[]}],"result":"oklch(91%0 0)"}
+{"args":["560px",{"$map":[]}],"result":"560px"}
+{"args":["oklch(88%0 0)",{"$map":[]}],"result":"oklch(88%0 0)"}
+{"args":["1.7",{"$map":[]}],"result":"1.7"}
+{"args":["420px",{"$map":[]}],"result":"420px"}
+{"args":["oklch(11%0.006 95)",{"$map":[]}],"result":"oklch(11%0.006 95)"}
+{"args":["480px",{"$map":[]}],"result":"480px"}
+{"args":["rgba(250,249,246,0.88)",{"$map":[]}],"result":"rgba(250,249,246,0.88)"}
+{"args":["oklch(15%0.01 95)",{"$map":[]}],"result":"oklch(15%0.01 95)"}
+{"args":["oklch(30%0 0)",{"$map":[]}],"result":"oklch(30%0 0)"}
+{"args":["oklch(32%0 0)",{"$map":[]}],"result":"oklch(32%0 0)"}
+{"args":["520px",{"$map":[]}],"result":"520px"}
+{"args":["linear-gradient(180deg,#14120f,#0a0908)",{"$map":[]}],"result":"linear-gradient(180deg,#14120f,#0a0908)"}
+{"args":["oklch(90%0 0)",{"$map":[]}],"result":"oklch(90%0 0)"}
+{"args":["460px",{"$map":[]}],"result":"460px"}
+{"args":["22px",{"$map":[]}],"result":"22px"}
+{"args":["linear-gradient(180deg,rgba(255,255,255,0.3),rgba(255,255,255,0.2)),url(/fixtures/antipatterns/no-such-texture.png)center/cover",{"$map":[]}],"result":"linear-gradient(180deg,rgba(255,255,255,0.3),rgba(255,255,255,0.2)),url(/fixtures/antipatterns/no-such-texture.png)center/cover"}
+{"args":["url(/fixtures/antipatterns/no-such-photo.jpg)",{"$map":[]}],"result":"url(/fixtures/antipatterns/no-such-photo.jpg)"}
+{"args":["oklch(20%0 0)",{"$map":[]}],"result":"oklch(20%0 0)"}
+{"args":["linear-gradient(180deg, oklch(7% 0.006 95), oklch(4% 0.004 95))",{"$map":[]}],"result":"linear-gradient(180deg, oklch(7% 0.006 95), oklch(4% 0.004 95))"}
+{"args":["` shorthand, so the body's computed backgroundColor\n     is transparent and the ground exists only as a backgroundImage whose\n     stops serialize in oklch. The detector must measure text against those\n     stops (composited under any translucent layers), never against an\n     assumed white body. */\n  body",{"$map":[]}],"result":"` shorthand, so the body's computed backgroundColor\n     is transparent and the ground exists only as a backgroundImage whose\n     stops serialize in oklch. The detector must measure text against those\n     stops (composited under any translucent layers), never against an\n     assumed white body. */\n  body"}
+{"args":["rgba(250, 249, 246, 0.88)",{"$map":[]}],"result":"rgba(250, 249, 246, 0.88)"}
+{"args":["oklch(11% 0.006 95)",{"$map":[]}],"result":"oklch(11% 0.006 95)"}
+{"args":["linear-gradient(180deg, #14120f, #0a0908)",{"$map":[]}],"result":"linear-gradient(180deg, #14120f, #0a0908)"}
+{"args":["linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.2)), url(\"/fixtures/antipatterns/no-such-texture.png\") center / cover",{"$map":[]}],"result":"linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.2)), url(\"/fixtures/antipatterns/no-such-texture.png\") center / cover"}
+{"args":["url(\"/fixtures/antipatterns/no-such-photo.jpg\")",{"$map":[]}],"result":"url(\"/fixtures/antipatterns/no-such-photo.jpg\")"}
+{"args":["linear-gradient(oklch(0.07 0.006 95),oklch(0.11 0.008 95))",{"$map":[]}],"result":"linear-gradient(oklch(0.07 0.006 95),oklch(0.11 0.008 95))"}
+{"args":["oklch(0.92 0.01 90)",{"$map":[]}],"result":"oklch(0.92 0.01 90)"}
+{"args":["oklch(0.32 0.01 90)",{"$map":[]}],"result":"oklch(0.32 0.01 90)"}
+{"args":["color(srgb 0.1 0.11 0.12)",{"$map":[]}],"result":"color(srgb 0.1 0.11 0.12)"}
+{"args":["color(srgb 0.28 0.28 0.3)",{"$map":[]}],"result":"color(srgb 0.28 0.28 0.3)"}
+{"args":["color(display-p3 0.07 0.07 0.08)",{"$map":[]}],"result":"color(display-p3 0.07 0.07 0.08)"}
+{"args":["color(display-p3 0.35 0.35 0.36)",{"$map":[]}],"result":"color(display-p3 0.35 0.35 0.36)"}
+{"args":["lch(18 4 60)",{"$map":[]}],"result":"lch(18 4 60)"}
+{"args":["lch(35 3 60)",{"$map":[]}],"result":"lch(35 3 60)"}
+{"args":["color(srgb 0.98 0.97 0.95)",{"$map":[]}],"result":"color(srgb 0.98 0.97 0.95)"}
+{"args":["color(srgb 0.75 0.74 0.72)",{"$map":[]}],"result":"color(srgb 0.75 0.74 0.72)"}
+{"args":["inherit",{"$map":[]}],"result":"inherit"}
+{"args":["color(srgb 0.78 0.77 0.75)",{"$map":[]}],"result":"color(srgb 0.78 0.77 0.75)"}
+{"args":["currentcolor",{"$map":[]}],"result":"currentcolor"}
+{"args":["color(srgb 0.94 0.93 0.91)",{"$map":[]}],"result":"color(srgb 0.94 0.93 0.91)"}
+{"args":["color-mix(in srgb,white 6%,#0b0b0d)",{"$map":[]}],"result":"color-mix(in srgb,white 6%,#0b0b0d)"}
+{"args":["color(rec2020 0.05 0.05 0.05)",{"$map":[]}],"result":"color(rec2020 0.05 0.05 0.05)"}
+{"args":["url(opaque-panel.png),linear-gradient(#ff0000,#0000ff)",{"$map":[]}],"result":"url(opaque-panel.png),linear-gradient(#ff0000,#0000ff)"}
+{"args":["linear-gradient(oklch(0.07 0.006 95), oklch(0.11 0.008 95))",{"$map":[]}],"result":"linear-gradient(oklch(0.07 0.006 95), oklch(0.11 0.008 95))"}
+{"args":["url(\"opaque-panel.png\"), linear-gradient(#ff0000, #0000ff)",{"$map":[]}],"result":"url(\"opaque-panel.png\"), linear-gradient(#ff0000, #0000ff)"}
+{"args":["#b8422e",{"$map":[]}],"result":"#b8422e"}
+{"args":["#f7f4ee",{"$map":[["--brand-accent","#b8422e"]]}],"result":"#f7f4ee"}
+{"args":["#241f1a",{"$map":[["--brand-accent","#b8422e"]]}],"result":"#241f1a"}
+{"args":["\"IBM Plex Sans\",Arial,sans-serif",{"$map":[["--brand-accent","#b8422e"]]}],"result":"\"IBM Plex Sans\",Arial,sans-serif"}
+{"args":["24px",{"$map":[["--brand-accent","#b8422e"]]}],"result":"24px"}
+{"args":["0",{"$map":[["--brand-accent","#b8422e"]]}],"result":"0"}
+{"args":["16px",{"$map":[["--brand-accent","#b8422e"]]}],"result":"16px"}
+{"args":["12px",{"$map":[["--brand-accent","#b8422e"]]}],"result":"12px"}
+{"args":["14px",{"$map":[["--brand-accent","#b8422e"]]}],"result":"14px"}
+{"args":["8px",{"$map":[["--brand-accent","#b8422e"]]}],"result":"8px"}
+{"args":["1px",{"$map":[["--brand-accent","#b8422e"]]}],"result":"1px"}
+{"args":["#d4c7b9",{"$map":[["--brand-accent","#b8422e"]]}],"result":"#d4c7b9"}
+{"args":["1.45",{"$map":[["--brand-accent","#b8422e"]]}],"result":"1.45"}
+{"args":["700",{"$map":[["--brand-accent","#b8422e"]]}],"result":"700"}
+{"args":["#ffffff",{"$map":[["--brand-accent","#b8422e"]]}],"result":"#ffffff"}
+{"args":["\"Poppins\",sans-serif",{"$map":[["--brand-accent","#b8422e"]]}],"result":"\"Poppins\",sans-serif"}
+{"args":["#ff00aa",{"$map":[["--brand-accent","#b8422e"]]}],"result":"#ff00aa"}
+{"args":["rgb(20,180,220)",{"$map":[["--brand-accent","#b8422e"]]}],"result":"rgb(20,180,220)"}
+{"args":["#00a982",{"$map":[["--brand-accent","#b8422e"]]}],"result":"#00a982"}
+{"args":["18px",{"$map":[["--brand-accent","#b8422e"]]}],"result":"18px"}
+{"args":["12.5px",{"$map":[["--brand-accent","#b8422e"]]}],"result":"12.5px"}
+{"args":["\"Avenir Next\",Georgia,serif",{"$map":[["--brand-accent","#b8422e"]]}],"result":"\"Avenir Next\",Georgia,serif"}
+{"args":["1rem",{"$map":[["--brand-accent","#b8422e"]]}],"result":"1rem"}
+{"args":["1.2em",{"$map":[["--brand-accent","#b8422e"]]}],"result":"1.2em"}
+{"args":["ui-sans-serif,system-ui,sans-serif",{"$map":[["--brand-accent","#b8422e"]]}],"result":"ui-sans-serif,system-ui,sans-serif"}
+{"args":["#b8422e",{"$map":[["--brand-accent","#b8422e"]]},1],"result":"#b8422e"}
+{"args":["var(--brand-accent)",{"$map":[["--brand-accent","#b8422e"]]}],"result":"#b8422e"}
+{"args":["rgba(184,66,46,0.45)",{"$map":[["--brand-accent","#b8422e"]]}],"result":"rgba(184,66,46,0.45)"}
+{"args":["#bb442f",{"$map":[["--brand-accent","#b8422e"]]}],"result":"#bb442f"}
+{"args":["#d55a42",{"$map":[["--brand-accent","#b8422e"]]}],"result":"#d55a42"}
+{"args":["50%",{"$map":[["--brand-accent","#b8422e"]]}],"result":"50%"}
+{"args":["32px",{"$map":[["--brand-accent","#b8422e"]]}],"result":"32px"}
+{"args":["100px",{"$map":[["--brand-accent","#b8422e"]]}],"result":"100px"}
+{"args":["999px",{"$map":[["--brand-accent","#b8422e"]]}],"result":"999px"}
+{"args":["#f2f2f4",{"$map":[]}],"result":"#f2f2f4"}
+{"args":["flex",{"$map":[]}],"result":"flex"}
+{"args":["#e4e4e8",{"$map":[]}],"result":"#e4e4e8"}
+{"args":["620px",{"$map":[]}],"result":"620px"}
+{"args":["588px",{"$map":[]}],"result":"588px"}
+{"args":["568px",{"$map":[]}],"result":"568px"}
+{"args":["260px",{"$map":[]}],"result":"260px"}
+{"args":["-0.06em",{"$map":[]}],"result":"-0.06em"}
+{"args":["-4px",{"$map":[]}],"result":"-4px"}
+{"args":["64px",{"$map":[]}],"result":"64px"}
+{"args":["-0.07em",{"$map":[]}],"result":"-0.07em"}
+{"args":["-0.02em",{"$map":[]}],"result":"-0.02em"}
+{"args":["72px",{"$map":[]}],"result":"72px"}
+{"args":["normal",{"$map":[]}],"result":"normal"}
+{"args":["1600px",{"$map":[]}],"result":"1600px"}
+{"args":["#f3f3f3",{"$map":[]}],"result":"#f3f3f3"}
+{"args":["0.06em",{"$map":[]}],"result":"0.06em"}
+{"args":["#fffbe6",{"$map":[]}],"result":"#fffbe6"}
+{"args":["#d4a017",{"$map":[]}],"result":"#d4a017"}
+{"args":["0.18em",{"$map":[]}],"result":"0.18em"}
+{"args":["#8b6914",{"$map":[]}],"result":"#8b6914"}
+{"args":["#78350f",{"$map":[]}],"result":"#78350f"}
+{"args":["#fde68a",{"$map":[]}],"result":"#fde68a"}
+{"args":["transparent",{"$map":[]}],"result":"transparent"}
+{"args":["#94a3b8",{"$map":[]}],"result":"#94a3b8"}
+{"args":["solid",{"$map":[]}],"result":"solid"}
+{"args":["0px",{"$map":[]}],"result":"0px"}
+{"args":["80px",{"$map":[]}],"result":"80px"}
+{"args":["linear-gradient(135deg,#cbd5e1,#94a3b8)",{"$map":[]}],"result":"linear-gradient(135deg,#cbd5e1,#94a3b8)"}
+{"args":["#172033",{"$map":[]}],"result":"#172033"}
+{"args":["max-content",{"$map":[]}],"result":"max-content"}
+{"args":["#23304a",{"$map":[]}],"result":"#23304a"}
+{"args":["rgba(255,255,255,0.16)",{"$map":[]}],"result":"rgba(255,255,255,0.16)"}
+{"args":["linear-gradient(135deg, #cbd5e1, #94a3b8)",{"$map":[]}],"result":"linear-gradient(135deg, #cbd5e1, #94a3b8)"}
+{"args":["transform",{"$map":[]}],"result":"transform"}
+{"args":["oklch(0.78 0.14 155)",{"$map":[]}],"result":"oklch(0.78 0.14 155)"}
+{"args":["system-ui,sans-serif",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"system-ui,sans-serif"}
+{"args":["#f9fafb",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"#f9fafb"}
+{"args":["24px",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"24px"}
+{"args":["0",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0"}
+{"args":["grid",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"grid"}
+{"args":["auto",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"auto"}
+{"args":["14px",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"14px"}
+{"args":["uppercase",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"uppercase"}
+{"args":["0.05em",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0.05em"}
+{"args":["16px",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"16px"}
+{"args":["#475569",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"#475569"}
+{"args":["11px",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"11px"}
+{"args":["8px",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"8px"}
+{"args":["#64748b",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"#64748b"}
+{"args":["#111827",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"#111827"}
+{"args":["12px",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"12px"}
+{"args":["10px",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"10px"}
+{"args":["#1f2937",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"#1f2937"}
+{"args":["0 0 20px rgba(59,130,246,0.4)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 20px rgba(59,130,246,0.4)"}
+{"args":["600",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"600"}
+{"args":["13px",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"13px"}
+{"args":["4px",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"4px"}
+{"args":["#cbd5e1",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"#cbd5e1"}
+{"args":["0 0 25px rgba(139,92,246,0.35)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 25px rgba(139,92,246,0.35)"}
+{"args":["0 0 15px rgba(6,182,212,0.5)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 15px rgba(6,182,212,0.5)"}
+{"args":["0 4px 6px rgba(0,0,0,0.3),0 0 30px rgba(168,85,247,0.3)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 4px 6px rgba(0,0,0,0.3),0 0 30px rgba(168,85,247,0.3)"}
+{"args":["0 0 20px rgba(236, 72, 153, 0.5)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 20px rgba(236, 72, 153, 0.5)"}
+{"args":["0 0 18px oklch(0.72 0.15 195/0.5)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 18px oklch(0.72 0.15 195/0.5)"}
+{"args":["0 0 16px #3b82f6",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 16px #3b82f6"}
+{"args":["0 0 22px hsl(280,80%,60%)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 22px hsl(280,80%,60%)"}
+{"args":["oklch(0.78 0.14 155)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]},1],"result":"oklch(0.78 0.14 155)"}
+{"args":["0 0 10px var(--fixture-glow)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 10px oklch(0.78 0.14 155)"}
+{"args":["0 0 12px #22d3ee",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 12px #22d3ee"}
+{"args":["white",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"white"}
+{"args":["0 0 20px oklch(0.65 0.2 300/0.45)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 20px oklch(0.65 0.2 300/0.45)"}
+{"args":["#0f172a",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"#0f172a"}
+{"args":["url(/fixtures/antipatterns/missing-photo.png)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"url(/fixtures/antipatterns/missing-photo.png)"}
+{"args":["0 0 26px rgba(217,70,239,0.5)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 26px rgba(217,70,239,0.5)"}
+{"args":["linear-gradient(#111827,#0b1220),url(/fixtures/antipatterns/missing-photo.png)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"linear-gradient(#111827,#0b1220),url(/fixtures/antipatterns/missing-photo.png)"}
+{"args":["0 6px 22px rgba(249,115,22,0.5)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 6px 22px rgba(249,115,22,0.5)"}
+{"args":["0 2px 4px rgba(59,130,246,0.15)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 2px 4px rgba(59,130,246,0.15)"}
+{"args":["0 4px 12px rgba(0,0,0,0.4)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 4px 12px rgba(0,0,0,0.4)"}
+{"args":["0 0 0 3px rgba(59,130,246,0.5)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 0 3px rgba(59,130,246,0.5)"}
+{"args":["0 1px 3px rgba(59,130,246,0.2)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 1px 3px rgba(59,130,246,0.2)"}
+{"args":["0 1px 3px rgba(0,0,0,0.3)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 1px 3px rgba(0,0,0,0.3)"}
+{"args":["0 4px 6px -1px rgba(0,0,0,0.4)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 4px 6px -1px rgba(0,0,0,0.4)"}
+{"args":["0 10px 25px -5px rgba(0,0,0,0.5)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 10px 25px -5px rgba(0,0,0,0.5)"}
+{"args":["inset 0 2px 4px rgba(0,0,0,0.3)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"inset 0 2px 4px rgba(0,0,0,0.3)"}
+{"args":["0 4px 6px rgba(0,0,0,0.3),0 1px 3px rgba(0,0,0,0.2)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 4px 6px rgba(0,0,0,0.3),0 1px 3px rgba(0,0,0,0.2)"}
+{"args":["#6b7280",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"#6b7280"}
+{"args":["0 2px 4px rgba(59,130,246,0.3)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 2px 4px rgba(59,130,246,0.3)"}
+{"args":["#ffffff",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"#ffffff"}
+{"args":["0 8px 20px rgba(59,130,246,0.25)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 8px 20px rgba(59,130,246,0.25)"}
+{"args":["0 0 24px rgba(0,0,0,0.15)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 24px rgba(0,0,0,0.15)"}
+{"args":["0 6px 20px rgba(16,185,129,0.35)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 6px 20px rgba(16,185,129,0.35)"}
+{"args":["linear-gradient(rgba(0,0,0,0.2),rgba(0,0,0,0.2)),url(/fixtures/antipatterns/missing-photo.png)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"linear-gradient(rgba(0,0,0,0.2),rgba(0,0,0,0.2)),url(/fixtures/antipatterns/missing-photo.png)"}
+{"args":["0 6px 22px rgba(244,63,94,0.45)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 6px 22px rgba(244,63,94,0.45)"}
+{"args":["0 1px 2px rgba(0,0,0,0.6)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 1px 2px rgba(0,0,0,0.6)"}
+{"args":["0 1px 3px rgba(0,0,0,0.1)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 1px 3px rgba(0,0,0,0.1)"}
+{"args":["0 4px 6px -1px rgba(0,0,0,0.1)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 4px 6px -1px rgba(0,0,0,0.1)"}
+{"args":["0 10px 30px -5px rgba(0,0,0,0.15)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 10px 30px -5px rgba(0,0,0,0.15)"}
+{"args":["",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":""}
+{"args":["inset 0 2px 4px rgba(0, 0, 0, 0.3)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"inset 0 2px 4px rgba(0, 0, 0, 0.3)"}
+{"args":["0 0 20px rgba(59, 130, 246, 0.4)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 20px rgba(59, 130, 246, 0.4)"}
+{"args":["0 0 25px rgba(139, 92, 246, 0.35)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 25px rgba(139, 92, 246, 0.35)"}
+{"args":["0 0 15px rgba(6, 182, 212, 0.5)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 15px rgba(6, 182, 212, 0.5)"}
+{"args":["0 4px 6px rgba(0, 0, 0, 0.3), 0 0 30px rgba(168, 85, 247, 0.3)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 4px 6px rgba(0, 0, 0, 0.3), 0 0 30px rgba(168, 85, 247, 0.3)"}
+{"args":["0 0 18px oklch(0.72 0.15 195 / 0.5)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 18px oklch(0.72 0.15 195 / 0.5)"}
+{"args":["0 0 22px hsl(280, 80%, 60%)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 22px hsl(280, 80%, 60%)"}
+{"args":["0 0 20px oklch(0.65 0.2 300 / 0.45)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 20px oklch(0.65 0.2 300 / 0.45)"}
+{"args":["0 0 26px rgba(217, 70, 239, 0.5)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 26px rgba(217, 70, 239, 0.5)"}
+{"args":["0 6px 22px rgba(249, 115, 22, 0.5)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 6px 22px rgba(249, 115, 22, 0.5)"}
+{"args":["0 2px 4px rgba(59, 130, 246, 0.15)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 2px 4px rgba(59, 130, 246, 0.15)"}
+{"args":["0 4px 12px rgba(0, 0, 0, 0.4)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 4px 12px rgba(0, 0, 0, 0.4)"}
+{"args":["0 0 0 3px rgba(59, 130, 246, 0.5)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 0 3px rgba(59, 130, 246, 0.5)"}
+{"args":["0 1px 3px rgba(59, 130, 246, 0.2)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 1px 3px rgba(59, 130, 246, 0.2)"}
+{"args":["0 1px 3px rgba(0, 0, 0, 0.3)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 1px 3px rgba(0, 0, 0, 0.3)"}
+{"args":["0 4px 6px -1px rgba(0, 0, 0, 0.4)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 4px 6px -1px rgba(0, 0, 0, 0.4)"}
+{"args":["0 10px 25px -5px rgba(0, 0, 0, 0.5)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 10px 25px -5px rgba(0, 0, 0, 0.5)"}
+{"args":["0 4px 6px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.2)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 4px 6px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.2)"}
+{"args":["0 1px 3px rgba(0, 0, 0, 0.1)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 1px 3px rgba(0, 0, 0, 0.1)"}
+{"args":["0 4px 6px -1px rgba(0, 0, 0, 0.1)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 4px 6px -1px rgba(0, 0, 0, 0.1)"}
+{"args":["0 10px 30px -5px rgba(0, 0, 0, 0.15)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 10px 30px -5px rgba(0, 0, 0, 0.15)"}
+{"args":["0 2px 4px rgba(59, 130, 246, 0.3)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 2px 4px rgba(59, 130, 246, 0.3)"}
+{"args":["0 8px 20px rgba(59, 130, 246, 0.25)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 8px 20px rgba(59, 130, 246, 0.25)"}
+{"args":["0 0 24px rgba(0, 0, 0, 0.15)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 24px rgba(0, 0, 0, 0.15)"}
+{"args":["0 6px 20px rgba(16, 185, 129, 0.35)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 6px 20px rgba(16, 185, 129, 0.35)"}
+{"args":["0 6px 22px rgba(244, 63, 94, 0.45)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 6px 22px rgba(244, 63, 94, 0.45)"}
+{"args":["0 1px 2px rgba(0, 0, 0, 0.6)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 1px 2px rgba(0, 0, 0, 0.6)"}
+{"args":["url('/fixtures/antipatterns/missing-photo.png')",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"url('/fixtures/antipatterns/missing-photo.png')"}
+{"args":["linear-gradient(#111827, #0b1220), url('/fixtures/antipatterns/missing-photo.png')",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"linear-gradient(#111827, #0b1220), url('/fixtures/antipatterns/missing-photo.png')"}
+{"args":["a real drop\n       shadow, not a halo — must NOT flag under the zero-offset rule.\n       (Element path",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"a real drop\n       shadow, not a halo — must NOT flag under the zero-offset rule.\n       (Element path"}
+{"args":["linear-gradient(rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.2)), url('/fixtures/antipatterns/missing-photo.png')",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"linear-gradient(rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.2)), url('/fixtures/antipatterns/missing-photo.png')"}
+{"args":["0 0 24px rgba(0,0,0,0.18)",{"$map":[]}],"result":"0 0 24px rgba(0,0,0,0.18)"}
+{"args":["repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px)",{"$map":[]}],"result":"repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px)"}
+{"args":["linear-gradient(90deg, oklch(96% 0.012 82 / 0.055) 1px, transparent 1px), linear-gradient(180deg, oklch(96% 0.012 82 / 0.05) 1px, transparent 1px)",{"$map":[]}],"result":"linear-gradient(90deg, oklch(96% 0.012 82 / 0.055) 1px, transparent 1px), linear-gradient(180deg, oklch(96% 0.012 82 / 0.05) 1px, transparent 1px)"}
+{"args":["0 1px 4px rgba(0,0,0,0.08)",{"$map":[]}],"result":"0 1px 4px rgba(0,0,0,0.08)"}
+{"args":["rgba(148, 163, 184, 0.16)",{"$map":[]}],"result":"rgba(148, 163, 184, 0.16)"}
+{"args":["0 18px 48px -16px rgba(15, 23, 42, 0.18)",{"$map":[]}],"result":"0 18px 48px -16px rgba(15, 23, 42, 0.18)"}
+{"args":["oklch(78% 0 0 / 0.16)",{"$map":[]}],"result":"oklch(78% 0 0 / 0.16)"}
+{"args":["0 16px 36px -12px oklch(2% 0.004 95 / 0.18)",{"$map":[]}],"result":"0 16px 36px -12px oklch(2% 0.004 95 / 0.18)"}
+{"args":["linear-gradient(180deg, #f3f4f6, #ffffff)",{"$map":[]}],"result":"linear-gradient(180deg, #f3f4f6, #ffffff)"}
+{"args":["linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)",{"$map":[]}],"result":"linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"}
+{"args":["linear-gradient(90deg, #f3f4f6, #e5e7eb), linear-gradient(180deg, #eef2ff, #ffffff)",{"$map":[]}],"result":"linear-gradient(90deg, #f3f4f6, #e5e7eb), linear-gradient(180deg, #eef2ff, #ffffff)"}
+{"args":["linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px), linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)",{"$map":[]}],"result":"linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px), linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"}
+{"args":["linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)",{"$map":[]}],"result":"linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"}
+{"args":["0 0 24px rgba(0,0,0,0.18)\"\nstyle=\"background: repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px)\"\nstyle=\"background: linear-gradient(90deg, oklch(96% 0.012 82 / 0.055) 1px, transparent 1px), linear-gradient(180deg, oklch(96% 0.012 82 / 0.05) 1px, transparent 1px)",{"$map":[]}],"result":"0 0 24px rgba(0,0,0,0.18)\"\nstyle=\"background: repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px)\"\nstyle=\"background: linear-gradient(90deg, oklch(96% 0.012 82 / 0.055) 1px, transparent 1px), linear-gradient(180deg, oklch(96% 0.012 82 / 0.05) 1px, transparent 1px)"}
+{"args":["0 1px 4px rgba(0,0,0,0.08)\"\nstyle=\"border: 1px solid rgba(148, 163, 184, 0.16)",{"$map":[]}],"result":"0 1px 4px rgba(0,0,0,0.08)\"\nstyle=\"border: 1px solid rgba(148, 163, 184, 0.16)"}
+{"args":["0 18px 48px -16px rgba(15, 23, 42, 0.18)\"\nstyle=\"border: 1px solid oklch(78% 0 0 / 0.16)",{"$map":[]}],"result":"0 18px 48px -16px rgba(15, 23, 42, 0.18)\"\nstyle=\"border: 1px solid oklch(78% 0 0 / 0.16)"}
+{"args":["0 16px 36px -12px oklch(2% 0.004 95 / 0.18)\"\nstyle=\"background: linear-gradient(180deg, #f3f4f6, #ffffff)\"\nstyle=\"background: linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)",{"$map":[]}],"result":"0 16px 36px -12px oklch(2% 0.004 95 / 0.18)\"\nstyle=\"background: linear-gradient(180deg, #f3f4f6, #ffffff)\"\nstyle=\"background: linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"}
+{"args":["720px",{"$map":[]}],"result":"720px"}
+{"args":["0.1em",{"$map":[]}],"result":"0.1em"}
+{"args":["0 1px 4px rgba(0,0,0,0.2)",{"$map":[]}],"result":"0 1px 4px rgba(0,0,0,0.2)"}
+{"args":["#f4f4f4",{"$map":[]}],"result":"#f4f4f4"}
+{"args":["320px",{"$map":[]}],"result":"320px"}
+{"args":["#ececec",{"$map":[]}],"result":"#ececec"}
+{"args":["0.15em",{"$map":[]}],"result":"0.15em"}
+{"args":["\"Inter\",sans-serif",{"$map":[]}],"result":"\"Inter\",sans-serif"}
+{"args":["88px",{"$map":[]}],"result":"88px"}
+{"args":["0.16em",{"$map":[]}],"result":"0.16em"}
+{"args":["0.14em",{"$map":[]}],"result":"0.14em"}
+{"args":["#b45309",{"$map":[]}],"result":"#b45309"}
+{"args":["\"Roboto\",ui-sans-serif,system-ui,sans-serif",{"$map":[]}],"result":"\"Roboto\",ui-sans-serif,system-ui,sans-serif"}
+{"args":["linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%)",{"$map":[]}],"result":"linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%)"}
+{"args":["#ffffff",{"$map":[]}],"result":"#ffffff"}
+{"args":["96px",{"$map":[]}],"result":"96px"}
+{"args":["linear-gradient(135deg,#8b5cf6,#a855f7)",{"$map":[]}],"result":"linear-gradient(135deg,#8b5cf6,#a855f7)"}
+{"args":["#f59e0b",{"$map":[]}],"result":"#f59e0b"}
+{"args":["112px",{"$map":[]}],"result":"112px"}
+{"args":["#ddd6fe",{"$map":[]}],"result":"#ddd6fe"}
+{"args":["#93c5fd",{"$map":[]}],"result":"#93c5fd"}
+{"args":["#17150f",{"$map":[]}],"result":"#17150f"}
+{"args":["linear-gradient(180deg,#f2efe6,#e8e4d8)",{"$map":[]}],"result":"linear-gradient(180deg,#f2efe6,#e8e4d8)"}
+{"args":["#24211c",{"$map":[]}],"result":"#24211c"}
+{"args":["url(data:image/svg+xml;utf8,<svg\\ xmlns=\\'http://www.w3.org/2000/svg\\'\\ width=\\'100\\'\\ height=\\'100\\'><rect\\ width=\\'100\\'\\ height=\\'100\\'\\ fill=\\'%23f5f2ea\\'/></svg>)center/cover no-repeat",{"$map":[]}],"result":"url(data:image/svg+xml;utf8,<svg\\ xmlns=\\'http://www.w3.org/2000/svg\\'\\ width=\\'100\\'\\ height=\\'100\\'><rect\\ width=\\'100\\'\\ height=\\'100\\'\\ fill=\\'%23f5f2ea\\'/></svg>)center/cover no-repeat"}
+{"args":["#262421",{"$map":[]}],"result":"#262421"}
+{"args":["url(\"data:image/svg+xml",{"$map":[]}],"result":"url(\"data:image/svg+xml"}
+{"args":["linear-gradient(180deg, #f2efe6, #e8e4d8)",{"$map":[]}],"result":"linear-gradient(180deg, #f2efe6, #e8e4d8)"}
+{"args":["\"Fraunces\",Georgia,serif",{"$map":[]}],"result":"\"Fraunces\",Georgia,serif"}
+{"args":["400",{"$map":[]}],"result":"400"}
+{"args":["\"Recoleta\",serif",{"$map":[]}],"result":"\"Recoleta\",serif"}
+{"args":["\"Playfair Display\",serif",{"$map":[]}],"result":"\"Playfair Display\",serif"}
+{"args":["\"CustomSerifFace\",serif",{"$map":[]}],"result":"\"CustomSerifFace\",serif"}
+{"args":["56px",{"$map":[]}],"result":"56px"}
+{"args":["\"Karla\",sans-serif",{"$map":[]}],"result":"\"Karla\",sans-serif"}
+{"args":["#f6f2ec",{"$map":[]}],"result":"#f6f2ec"}
+{"args":["#171411",{"$map":[]}],"result":"#171411"}
+{"args":["#c9bfb2",{"$map":[]}],"result":"#c9bfb2"}
+{"args":["38px",{"$map":[]}],"result":"38px"}
+{"args":["#fffaf3",{"$map":[]}],"result":"#fffaf3"}
+{"args":["240px",{"$map":[]}],"result":"240px"}
+{"args":["0.11em",{"$map":[]}],"result":"0.11em"}
+{"args":["#5b5046",{"$map":[]}],"result":"#5b5046"}
+{"args":["30px",{"$map":[]}],"result":"30px"}
+{"args":["26px",{"$map":[]}],"result":"26px"}
+{"args":["0.12em",{"$map":[]}],"result":"0.12em"}
+{"args":["small-caps",{"$map":[]}],"result":"small-caps"}
+{"args":["#d8cec0",{"$map":[]}],"result":"#d8cec0"}
+{"args":["46px",{"$map":[]}],"result":"46px"}
+{"args":["70px",{"$map":[]}],"result":"70px"}
+{"args":["#f9fafb",{"$map":[]}],"result":"#f9fafb"}
+{"args":["0 2px 8px rgba(0,0,0,0.1)",{"$map":[]}],"result":"0 2px 8px rgba(0,0,0,0.1)"}
+{"args":["1.5rem",{"$map":[]}],"result":"1.5rem"}
+{"args":["1rem",{"$map":[]}],"result":"1rem"}
+{"args":["0.75rem",{"$map":[]}],"result":"0.75rem"}
+{"args":["0 1px 3px rgba(0,0,0,0.08)",{"$map":[]}],"result":"0 1px 3px rgba(0,0,0,0.08)"}
+{"args":["0.875rem",{"$map":[]}],"result":"0.875rem"}
+{"args":["#6b7280",{"$map":[]}],"result":"#6b7280"}
+{"args":["2rem",{"$map":[]}],"result":"2rem"}
+{"args":["0.5rem",{"$map":[]}],"result":"0.5rem"}
+{"args":["1.125rem",{"$map":[]}],"result":"1.125rem"}
+{"args":["#1d4ed8",{"$map":[]}],"result":"#1d4ed8"}
+{"args":["#eff6ff",{"$map":[]}],"result":"#eff6ff"}
+{"args":["0.25rem",{"$map":[]}],"result":"0.25rem"}
+{"args":["#fca5a5",{"$map":[]}],"result":"#fca5a5"}
+{"args":["#b91c1c",{"$map":[]}],"result":"#b91c1c"}
+{"args":["-2.05rem",{"$map":[]}],"result":"-2.05rem"}
+{"args":["0.125rem",{"$map":[]}],"result":"0.125rem"}
+{"args":["0.8125rem",{"$map":[]}],"result":"0.8125rem"}
+{"args":["#ef4444",{"$map":[]}],"result":"#ef4444"}
+{"args":["rgba(239,68,68,0.1)",{"$map":[]}],"result":"rgba(239,68,68,0.1)"}
+{"args":["#22c55e",{"$map":[]}],"result":"#22c55e"}
+{"args":["rgba(34,197,94,0.1)",{"$map":[]}],"result":"rgba(34,197,94,0.1)"}
+{"args":["calc(3px + 0.75rem)",{"$map":[]}],"result":"calc(3px + 0.75rem)"}
+{"args":["1.25rem",{"$map":[]}],"result":"1.25rem"}
+{"args":["right",{"$map":[]}],"result":"right"}
+{"args":["#fffbeb",{"$map":[]}],"result":"#fffbeb"}
+{"args":["#d97706",{"$map":[]}],"result":"#d97706"}
+{"args":["0 1px 3px rgba(0,0,0,0.1)",{"$map":[]}],"result":"0 1px 3px rgba(0,0,0,0.1)"}
+{"args":["#8b5cf6",{"$map":[]}],"result":"#8b5cf6"}
+{"args":["#87a8ff",{"$map":[]}],"result":"#87a8ff"}
+{"args":["#8a6a2f",{"$map":[["--brand","#87a8ff"]]}],"result":"#8a6a2f"}
+{"args":["#aa674d",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"]]}],"result":"#aa674d"}
+{"args":["#e5e7eb",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"]]}],"result":"#e5e7eb"}
+{"args":["#f3f4f6",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"]]}],"result":"#f3f4f6"}
+{"args":["system-ui,sans-serif",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"system-ui,sans-serif"}
+{"args":["0",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"0"}
+{"args":["24px",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"24px"}
+{"args":["#fafafa",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"#fafafa"}
+{"args":["grid",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"grid"}
+{"args":["auto",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"auto"}
+{"args":["14px",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"14px"}
+{"args":["uppercase",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"uppercase"}
+{"args":["0.05em",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"0.05em"}
+{"args":["16px",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"16px"}
+{"args":["#475569",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"#475569"}
+{"args":["12px",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"12px"}
+{"args":["400px",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"400px"}
+{"args":["oklch(100%0 0)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"oklch(100%0 0)"}
+{"args":["4px",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"4px"}
+{"args":["3px",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"3px"}
+{"args":["oklch(65%0.12 250)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"oklch(65%0.12 250)"}
+{"args":["13px",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"13px"}
+{"args":["#64748b",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"#64748b"}
+{"args":["1px",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"1px"}
+{"args":["oklch(80%0.05 250)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"oklch(80%0.05 250)"}
+{"args":["oklch(75%0.15 45)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"oklch(75%0.15 45)"}
+{"args":["oklch(98%0.01 60)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"oklch(98%0.01 60)"}
+{"args":["oklch(75%0.18 45)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"oklch(75%0.18 45)"}
+{"args":["#ffffff",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"#ffffff"}
+{"args":["6px",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"6px"}
+{"args":["oklab(60%0.1 0.15)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"oklab(60%0.1 0.15)"}
+{"args":["lch(55%60 250)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"lch(55%60 250)"}
+{"args":["lab(50%40-30)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"lab(50%40-30)"}
+{"args":["block",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"block"}
+{"args":["#3b82f6",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"#3b82f6"}
+{"args":["5px",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"5px"}
+{"args":["#87a8ff",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]},1],"result":"#87a8ff"}
+{"args":["var(--brand)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"#87a8ff"}
+{"args":["#e5e7eb",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]},1],"result":"#e5e7eb"}
+{"args":["var(--line)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"#e5e7eb"}
+{"args":["#8a6a2f",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]},1],"result":"#8a6a2f"}
+{"args":["var(--warn)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"#8a6a2f"}
+{"args":["#aa674d",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]},1],"result":"#aa674d"}
+{"args":["var(--terracotta)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"#aa674d"}
+{"args":["oklch(80%0 0)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"oklch(80%0 0)"}
+{"args":["oklch(75%0.01 250)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"oklch(75%0.01 250)"}
+{"args":["lab(50%0 0)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"lab(50%0 0)"}
+{"args":["lch(50%0 0)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"lch(50%0 0)"}
+{"args":["500",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"500"}
+{"args":["#374151",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"#374151"}
+{"args":["8px",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"8px"}
+{"args":["#e5e7eb",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"#e5e7eb"}
+{"args":["#6b7280",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"#6b7280"}
+{"args":["oklch(92%0 0/0.12)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"oklch(92%0 0/0.12)"}
+{"args":["bounce-keyframe",{"$map":[]}],"result":"bounce-keyframe"}
+{"args":["cubic-bezier(0.68,-0.55,0.265,1.55)",{"$map":[]}],"result":"cubic-bezier(0.68,-0.55,0.265,1.55)"}
+{"args":["width",{"$map":[]}],"result":"width"}
+{"args":["ease",{"$map":[]}],"result":"ease"}
+{"args":["height",{"$map":[]}],"result":"height"}
+{"args":["ease-out",{"$map":[]}],"result":"ease-out"}
+{"args":["padding",{"$map":[]}],"result":"padding"}
+{"args":["margin",{"$map":[]}],"result":"margin"}
+{"args":["ease-in",{"$map":[]}],"result":"ease-in"}
+{"args":["max-height",{"$map":[]}],"result":"max-height"}
+{"args":["width, height",{"$map":[]}],"result":"width, height"}
+{"args":["ease, ease",{"$map":[]}],"result":"ease, ease"}
+{"args":["width, opacity",{"$map":[]}],"result":"width, opacity"}
+{"args":["fade-in-keyframe",{"$map":[]}],"result":"fade-in-keyframe"}
+{"args":["cubic-bezier(0.16,1,0.3,1)",{"$map":[]}],"result":"cubic-bezier(0.16,1,0.3,1)"}
+{"args":["cubic-bezier(0.25,1,0.5,1)",{"$map":[]}],"result":"cubic-bezier(0.25,1,0.5,1)"}
+{"args":["opacity",{"$map":[]}],"result":"opacity"}
+{"args":["color, background-color",{"$map":[]}],"result":"color, background-color"}
+{"args":["box-shadow",{"$map":[]}],"result":"box-shadow"}
+{"args":["all",{"$map":[]}],"result":"all"}
+{"args":["transform, opacity, box-shadow",{"$map":[]}],"result":"transform, opacity, box-shadow"}
+{"args":["ease, ease, ease",{"$map":[]}],"result":"ease, ease, ease"}
+{"args":["orange",{"$map":[]}],"result":"orange"}
+{"args":["system-ui,sans-serif",{"$map":[["--accent","orange"]]}],"result":"system-ui,sans-serif"}
+{"args":["0",{"$map":[["--accent","orange"]]}],"result":"0"}
+{"args":["24px",{"$map":[["--accent","orange"]]}],"result":"24px"}
+{"args":["#fafafa",{"$map":[["--accent","orange"]]}],"result":"#fafafa"}
+{"args":["grid",{"$map":[["--accent","orange"]]}],"result":"grid"}
+{"args":["auto",{"$map":[["--accent","orange"]]}],"result":"auto"}
+{"args":["14px",{"$map":[["--accent","orange"]]}],"result":"14px"}
+{"args":["uppercase",{"$map":[["--accent","orange"]]}],"result":"uppercase"}
+{"args":["0.05em",{"$map":[["--accent","orange"]]}],"result":"0.05em"}
+{"args":["16px",{"$map":[["--accent","orange"]]}],"result":"16px"}
+{"args":["#475569",{"$map":[["--accent","orange"]]}],"result":"#475569"}
+{"args":["400px",{"$map":[["--accent","orange"]]}],"result":"400px"}
+{"args":["#f6f6f6",{"$map":[["--accent","orange"]]}],"result":"#f6f6f6"}
+{"args":["4px",{"$map":[["--accent","orange"]]}],"result":"4px"}
+{"args":["purple",{"$map":[["--accent","orange"]]}],"result":"purple"}
+{"args":["8px",{"$map":[["--accent","orange"]]}],"result":"8px"}
+{"args":["13px",{"$map":[["--accent","orange"]]}],"result":"13px"}
+{"args":["#64748b",{"$map":[["--accent","orange"]]}],"result":"#64748b"}
+{"args":["12px",{"$map":[["--accent","orange"]]}],"result":"12px"}
+{"args":["#ffffff",{"$map":[["--accent","orange"]]}],"result":"#ffffff"}
+{"args":["5px",{"$map":[["--accent","orange"]]}],"result":"5px"}
+{"args":["rebeccapurple",{"$map":[["--accent","orange"]]}],"result":"rebeccapurple"}
+{"args":["crimson",{"$map":[["--accent","orange"]]}],"result":"crimson"}
+{"args":["3px",{"$map":[["--accent","orange"]]}],"result":"3px"}
+{"args":["teal",{"$map":[["--accent","orange"]]}],"result":"teal"}
+{"args":["6px",{"$map":[["--accent","orange"]]}],"result":"6px"}
+{"args":["orange",{"$map":[["--accent","orange"]]},1],"result":"orange"}
+{"args":["var(--accent)",{"$map":[["--accent","orange"]]}],"result":"orange"}
+{"args":["7px",{"$map":[["--accent","orange"]]}],"result":"7px"}
+{"args":["dimgray",{"$map":[["--accent","orange"]]}],"result":"dimgray"}
+{"args":["gainsboro",{"$map":[["--accent","orange"]]}],"result":"gainsboro"}
+{"args":["black",{"$map":[["--accent","orange"]]}],"result":"black"}
+{"args":["1px",{"$map":[["--accent","orange"]]}],"result":"1px"}
+{"args":["",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":""}
+{"args":["#efb352",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"#efb352"}
+{"args":["#f0b64e",{"$map":[]}],"result":"#f0b64e"}
+{"args":["#cfd9e9",{"$map":[["--v3bg","#f0b64e"]]}],"result":"#cfd9e9"}
+{"args":["0",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"0"}
+{"args":["Georgia,serif",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"Georgia,serif"}
+{"args":["#1c2430",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"#1c2430"}
+{"args":["#ffffff",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"#ffffff"}
+{"args":["flex",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"flex"}
+{"args":["1rem",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"1rem"}
+{"args":["2rem",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"2rem"}
+{"args":["#12213a",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"#12213a"}
+{"args":["#ccd8ea",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"#ccd8ea"}
+{"args":["#f4f7fb",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"#f4f7fb"}
+{"args":["700",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"700"}
+{"args":["0.9rem",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"0.9rem"}
+{"args":["#b7c6de",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"#b7c6de"}
+{"args":["inline-block",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"inline-block"}
+{"args":["0.6em",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"0.6em"}
+{"args":["1.1em",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"1.1em"}
+{"args":["6px",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"6px"}
+{"args":["600",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"600"}
+{"args":["#e8b84b",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"#e8b84b"}
+{"args":["#c9d6ea",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"#c9d6ea"}
+{"args":["#e5a93f",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"#e5a93f"}
+{"args":["#cfd9e9",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]},1],"result":"#cfd9e9"}
+{"args":["var(--v3fg)",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"#cfd9e9"}
+{"args":["#f0b64e",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]},1],"result":"#f0b64e"}
+{"args":["var(--v3bg)",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"#f0b64e"}
+{"args":["#d3dcec",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"#d3dcec"}
+{"args":["linear-gradient(90deg,#f2b854,#e8a83e)",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"linear-gradient(90deg,#f2b854,#e8a83e)"}
+{"args":["#d0daea",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"#d0daea"}
+{"args":["relative",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"relative"}
+{"args":["transparent",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"transparent"}
+{"args":["#eab04a",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"#eab04a"}
+{"args":["#d2dcec",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"#d2dcec"}
+{"args":["rgb(240 178 74/0.85)",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"rgb(240 178 74/0.85)"}
+{"args":["oklch(0.80 0.05 258)",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"oklch(0.80 0.05 258)"}
+{"args":["oklch(0.82 0.15 75)",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"oklch(0.82 0.15 75)"}
+{"args":["#d5deed",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"#d5deed"}
+{"args":["url(data:image/gif;base64,R0lGODlhAQABAIAAAP7uSwAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==)",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"url(data:image/gif;base64,R0lGODlhAQABAIAAAP7uSwAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==)"}
+{"args":["4rem",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"4rem"}
+{"args":["2.4rem",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"2.4rem"}
+{"args":["1.6",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"1.6"}
+{"args":["rgb(240 178 74 / 0.85)",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"rgb(240 178 74 / 0.85)"}
+{"args":["url(\"data:image/gif",{"$map":[["--v3bg","#f0b64e"],["--v3fg","#cfd9e9"]]}],"result":"url(\"data:image/gif"}
+{"args":["9px",{"$map":[]}],"result":"9px"}
+{"args":["#222222",{"$map":[]}],"result":"#222222"}
+{"args":["monospace",{"$map":[]}],"result":"monospace"}
+{"args":["#666666",{"$map":[]}],"result":"#666666"}
+{"args":["#d4d4d4",{"$map":[]}],"result":"#d4d4d4"}
+{"args":["#d7d0c2",{"$map":[]}],"result":"#d7d0c2"}
+{"args":["1.1",{"$map":[]}],"result":"1.1"}
+{"args":["ui-monospace,SFMono-Regular,Menlo,monospace",{"$map":[]}],"result":"ui-monospace,SFMono-Regular,Menlo,monospace"}
+{"args":["#7c5c00",{"$map":[]}],"result":"#7c5c00"}
+{"args":["2.5rem",{"$map":[]}],"result":"2.5rem"}
+{"args":["#f3f4f6",{"$map":[]}],"result":"#f3f4f6"}
+{"args":["#374151",{"$map":[]}],"result":"#374151"}
+{"args":["1.4",{"$map":[]}],"result":"1.4"}
+{"args":["100px",{"$map":[]}],"result":"100px"}
+{"args":["sticky",{"$map":[]}],"result":"sticky"}
+{"args":["#1f2937",{"$map":[]}],"result":"#1f2937"}
+{"args":["fixed",{"$map":[]}],"result":"fixed"}
+{"args":["60px",{"$map":[]}],"result":"60px"}
+{"args":["-1rem",{"$map":[]}],"result":"-1rem"}
+{"args":["linear-gradient(135deg,#8b5cf6,#6366f1)",{"$map":[]}],"result":"linear-gradient(135deg,#8b5cf6,#6366f1)"}
+{"args":["150px",{"$map":[]}],"result":"150px"}
+{"args":["-20px",{"$map":[]}],"result":"-20px"}
+{"args":["50px",{"$map":[]}],"result":"50px"}
+{"args":["0 8px 8px 0",{"$map":[]}],"result":"0 8px 8px 0"}
+{"args":["linear-gradient(135deg, #8b5cf6, #6366f1)",{"$map":[]}],"result":"linear-gradient(135deg, #8b5cf6, #6366f1)"}
+{"args":["1.04",{"$map":[]}],"result":"1.04"}
+{"args":["104px",{"$map":[]}],"result":"104px"}
+{"args":["83px",{"$map":[]}],"result":"83px"}
+{"args":["168px",{"$map":[]}],"result":"168px"}
+{"args":["'Inter', sans-serif",{"$map":[]}],"result":"'Inter', sans-serif"}
+{"args":["4px",{"$map":[["--stripe-fixture-neutral","#e5e7eb"]]}],"result":"4px"}
+{"args":["",{"$map":[["--stripe-fixture-neutral","#e5e7eb"]]}],"result":""}
+{"args":["0",{"$map":[["--stripe-fixture-neutral","#e5e7eb"]]}],"result":"0"}
+{"args":["#7c3aed",{"$map":[["--stripe-fixture-neutral","#e5e7eb"]]}],"result":"#7c3aed"}
+{"args":["var(--accent)",{"$map":[["--stripe-fixture-neutral","#e5e7eb"]]}],"result":"var(--accent)"}
+{"args":["#f43f5e",{"$map":[["--stripe-fixture-neutral","#e5e7eb"]]}],"result":"#f43f5e"}
+{"args":["3px",{"$map":[["--stripe-fixture-neutral","#e5e7eb"]]}],"result":"3px"}
+{"args":["100%",{"$map":[["--stripe-fixture-neutral","#e5e7eb"]]}],"result":"100%"}
+{"args":["oklch(60% 0.2 300)",{"$map":[["--stripe-fixture-neutral","#e5e7eb"]]}],"result":"oklch(60% 0.2 300)"}
+{"args":["#e5e7eb",{"$map":[["--stripe-fixture-neutral","#e5e7eb"]]},1],"result":"#e5e7eb"}
+{"args":["var(--stripe-fixture-neutral)",{"$map":[["--stripe-fixture-neutral","#e5e7eb"]]}],"result":"#e5e7eb"}
+{"args":["24px",{"$map":[["--stripe-fixture-neutral","#e5e7eb"]]}],"result":"24px"}
+{"args":["1px",{"$map":[["--stripe-fixture-neutral","#e5e7eb"]]}],"result":"1px"}
+{"args":["12px",{"$map":[["--stripe-fixture-neutral","#e5e7eb"]]}],"result":"12px"}
+{"args":["5px",{"$map":[["--ok","oklch(0.78 0.145 155)"],["--line","rgba(0, 0, 0, 0.08)"]]}],"result":"5px"}
+{"args":["",{"$map":[["--ok","oklch(0.78 0.145 155)"],["--line","rgba(0, 0, 0, 0.08)"]]}],"result":""}
+{"args":["4px",{"$map":[["--ok","oklch(0.78 0.145 155)"],["--line","rgba(0, 0, 0, 0.08)"]]}],"result":"4px"}
+{"args":["1px",{"$map":[["--ok","oklch(0.78 0.145 155)"],["--line","rgba(0, 0, 0, 0.08)"]]}],"result":"1px"}
+{"args":["10px",{"$map":[["--ok","oklch(0.78 0.145 155)"],["--line","rgba(0, 0, 0, 0.08)"]]}],"result":"10px"}
+{"args":["40px",{"$map":[["--ok","oklch(0.78 0.145 155)"],["--line","rgba(0, 0, 0, 0.08)"]]}],"result":"40px"}
+{"args":["6px",{"$map":[["--ok","oklch(0.78 0.145 155)"],["--line","rgba(0, 0, 0, 0.08)"]]}],"result":"6px"}
+{"args":["3px",{"$map":[["--ok","oklch(0.78 0.145 155)"],["--line","rgba(0, 0, 0, 0.08)"]]}],"result":"3px"}
+{"args":["oklch(0.78 0.145 155)",{"$map":[]}],"result":"oklch(0.78 0.145 155)"}
+{"args":["rgba(0, 0, 0, 0.08)",{"$map":[["--ok","oklch(0.78 0.145 155)"]]}],"result":"rgba(0, 0, 0, 0.08)"}
+{"args":["relative",{"$map":[["--ok","oklch(0.78 0.145 155)"],["--line","rgba(0, 0, 0, 0.08)"]]}],"result":"relative"}
+{"args":["12px",{"$map":[["--ok","oklch(0.78 0.145 155)"],["--line","rgba(0, 0, 0, 0.08)"]]}],"result":"12px"}
+{"args":["0",{"$map":[["--ok","oklch(0.78 0.145 155)"],["--line","rgba(0, 0, 0, 0.08)"]]}],"result":"0"}
+{"args":["oklch(0.78 0.145 155)",{"$map":[["--ok","oklch(0.78 0.145 155)"],["--line","rgba(0, 0, 0, 0.08)"]]},1],"result":"oklch(0.78 0.145 155)"}
+{"args":["var(--ok)",{"$map":[["--ok","oklch(0.78 0.145 155)"],["--line","rgba(0, 0, 0, 0.08)"]]}],"result":"oklch(0.78 0.145 155)"}
+{"args":["#3b82f6",{"$map":[["--ok","oklch(0.78 0.145 155)"],["--line","rgba(0, 0, 0, 0.08)"]]}],"result":"#3b82f6"}
+{"args":["rgb(210, 210, 214)",{"$map":[["--ok","oklch(0.78 0.145 155)"],["--line","rgba(0, 0, 0, 0.08)"]]}],"result":"rgb(210, 210, 214)"}
+{"args":["2px",{"$map":[["--ok","oklch(0.78 0.145 155)"],["--line","rgba(0, 0, 0, 0.08)"]]}],"result":"2px"}
+{"args":["10px",{"$map":[["--dot","8px"]]}],"result":"10px"}
+{"args":["50%",{"$map":[["--dot","8px"]]}],"result":"50%"}
+{"args":["#dc2626",{"$map":[["--dot","8px"]]}],"result":"#dc2626"}
+{"args":["pulse",{"$map":[["--dot","8px"]]}],"result":"pulse"}
+{"args":["ease-in-out",{"$map":[["--dot","8px"]]}],"result":"ease-in-out"}
+{"args":["7px",{"$map":[["--dot","8px"]]}],"result":"7px"}
+{"args":["#22c55e",{"$map":[["--dot","8px"]]}],"result":"#22c55e"}
+{"args":["ease-out",{"$map":[["--dot","8px"]]}],"result":"ease-out"}
+{"args":["8px",{"$map":[["--dot","8px"]]},1],"result":"8px"}
+{"args":["var(--dot)",{"$map":[["--dot","8px"]]}],"result":"8px"}
+{"args":["999px",{"$map":[["--dot","8px"]]}],"result":"999px"}
+{"args":["#ef4444",{"$map":[["--dot","8px"]]}],"result":"#ef4444"}
+{"args":["ripple",{"$map":[["--dot","8px"]]}],"result":"ripple"}
+{"args":["linear",{"$map":[["--dot","8px"]]}],"result":"linear"}
+{"args":["#f59e0b",{"$map":[["--dot","8px"]]}],"result":"#f59e0b"}
+{"args":["14px",{"$map":[["--dot","8px"]]}],"result":"14px"}
+{"args":["2px",{"$map":[["--dot","8px"]]}],"result":"2px"}
+{"args":["#3b82f6",{"$map":[["--dot","8px"]]}],"result":"#3b82f6"}
+{"args":["#e5e7eb",{"$map":[["--dot","8px"]]}],"result":"#e5e7eb"}
+{"args":["spin",{"$map":[["--dot","8px"]]}],"result":"spin"}
+{"args":["8px",{"$map":[["--dot","8px"]]}],"result":"8px"}
+{"args":["pulse-ring",{"$map":[["--dot","8px"]]}],"result":"pulse-ring"}
+{"args":["240px",{"$map":[["--dot","8px"]]}],"result":"240px"}
+{"args":["120px",{"$map":[["--dot","8px"]]}],"result":"120px"}
+{"args":["16px",{"$map":[["--dot","8px"]]}],"result":"16px"}
+{"args":["12px",{"$map":[["--dot","8px"]]}],"result":"12px"}
+{"args":["0 0 0 0 rgba(239, 68, 68, 0.4)",{"$map":[["--dot","8px"]]}],"result":"0 0 0 0 rgba(239, 68, 68, 0.4)"}
+{"args":["0 0 0 6px rgba(239, 68, 68, 0)",{"$map":[["--dot","8px"]]}],"result":"0 0 0 6px rgba(239, 68, 68, 0)"}
+{"args":["1.0",{"$map":[]}],"result":"1.0"}
+{"args":["justify",{"$map":[]}],"result":"justify"}
+{"args":["ui-monospace,SFMono-Regular,Menlo,Consolas,monospace",{"$map":[]}],"result":"ui-monospace,SFMono-Regular,Menlo,Consolas,monospace"}
+{"args":["10.8px",{"$map":[]}],"result":"10.8px"}
+{"args":["11.84px",{"$map":[]}],"result":"11.84px"}
+{"args":["#0b0d13",{"$map":[]}],"result":"#0b0d13"}
+{"args":["#e6e6e6",{"$map":[]}],"result":"#e6e6e6"}
+{"args":["360px",{"$map":[]}],"result":"360px"}
+{"args":["radial-gradient(circle at 52% 38%,rgba(80,111,255,0.26),transparent 44%)",{"$map":[]}],"result":"radial-gradient(circle at 52% 38%,rgba(80,111,255,0.26),transparent 44%)"}
+{"args":["900px",{"$map":[]}],"result":"900px"}
+{"args":["radial-gradient(circle,rgba(139,92,246,0.30),transparent 60%)",{"$map":[]}],"result":"radial-gradient(circle,rgba(139,92,246,0.30),transparent 60%)"}
+{"args":["760px",{"$map":[]}],"result":"760px"}
+{"args":["radial-gradient(ellipse at top,rgba(34,211,238,0.22),transparent 70%)",{"$map":[]}],"result":"radial-gradient(ellipse at top,rgba(34,211,238,0.22),transparent 70%)"}
+{"args":["400px",{"$map":[]}],"result":"400px"}
+{"args":["radial-gradient(circle,rgba(255,90,120,0.28) 0%,rgba(255,90,120,0.12) 45%,transparent 75%)",{"$map":[]}],"result":"radial-gradient(circle,rgba(255,90,120,0.28) 0%,rgba(255,90,120,0.12) 45%,transparent 75%)"}
+{"args":["700px",{"$map":[]}],"result":"700px"}
+{"args":["radial-gradient(circle,#506fff3d,transparent 50%)",{"$map":[]}],"result":"radial-gradient(circle,#506fff3d,transparent 50%)"}
+{"args":["800px",{"$map":[]}],"result":"800px"}
+{"args":["radial-gradient(circle,#1e3a8a,#0f172a)",{"$map":[]}],"result":"radial-gradient(circle,#1e3a8a,#0f172a)"}
+{"args":["radial-gradient(circle,rgba(80,111,255,0.30),transparent)",{"$map":[]}],"result":"radial-gradient(circle,rgba(80,111,255,0.30),transparent)"}
+{"args":["radial-gradient(circle,rgba(255,196,64,0.35),transparent 70%)",{"$map":[]}],"result":"radial-gradient(circle,rgba(255,196,64,0.35),transparent 70%)"}
+{"args":["radial-gradient(circle,rgba(0,0,0,0.40),transparent 80%)",{"$map":[]}],"result":"radial-gradient(circle,rgba(0,0,0,0.40),transparent 80%)"}
+{"args":["820px",{"$map":[]}],"result":"820px"}
+{"args":["540px",{"$map":[]}],"result":"540px"}
+{"args":["radial-gradient(ellipse,rgba(255,255,255,0.35),transparent 70%)",{"$map":[]}],"result":"radial-gradient(ellipse,rgba(255,255,255,0.35),transparent 70%)"}
+{"args":["radial-gradient(circle,#ff0080 0%,#7928ca 45%,#0070f3 100%)",{"$map":[]}],"result":"radial-gradient(circle,#ff0080 0%,#7928ca 45%,#0070f3 100%)"}
+{"args":["780px",{"$map":[]}],"result":"780px"}
+{"args":["500px",{"$map":[]}],"result":"500px"}
+{"args":["radial-gradient(circle,rgba(255,0,128,0.90) 0%,rgba(121,40,202,0.85) 50%,transparent)",{"$map":[]}],"result":"radial-gradient(circle,rgba(255,0,128,0.90) 0%,rgba(121,40,202,0.85) 50%,transparent)"}
+{"args":["radial-gradient(circle,rgba(80,111,255,0.85),transparent)",{"$map":[]}],"result":"radial-gradient(circle,rgba(80,111,255,0.85),transparent)"}
+{"args":["linear-gradient(120deg,rgba(80,111,255,0.28),transparent 60%)",{"$map":[]}],"result":"linear-gradient(120deg,rgba(80,111,255,0.28),transparent 60%)"}
+{"args":["radial-gradient(circle at 52% 38%, rgba(80,111,255,0.26), transparent 44%)",{"$map":[]}],"result":"radial-gradient(circle at 52% 38%, rgba(80,111,255,0.26), transparent 44%)"}
+{"args":["radial-gradient(circle, rgba(139,92,246,0.30), transparent 60%)",{"$map":[]}],"result":"radial-gradient(circle, rgba(139,92,246,0.30), transparent 60%)"}
+{"args":["radial-gradient(ellipse at top, rgba(34,211,238,0.22), transparent 70%)",{"$map":[]}],"result":"radial-gradient(ellipse at top, rgba(34,211,238,0.22), transparent 70%)"}
+{"args":["radial-gradient(circle, rgba(255,90,120,0.28) 0%, rgba(255,90,120,0.12) 45%, transparent 75%)",{"$map":[]}],"result":"radial-gradient(circle, rgba(255,90,120,0.28) 0%, rgba(255,90,120,0.12) 45%, transparent 75%)"}
+{"args":["radial-gradient(circle, #506fff3d, transparent 50%)",{"$map":[]}],"result":"radial-gradient(circle, #506fff3d, transparent 50%)"}
+{"args":["radial-gradient(circle, #1e3a8a, #0f172a)",{"$map":[]}],"result":"radial-gradient(circle, #1e3a8a, #0f172a)"}
+{"args":["radial-gradient(circle, rgba(80,111,255,0.30), transparent)",{"$map":[]}],"result":"radial-gradient(circle, rgba(80,111,255,0.30), transparent)"}
+{"args":["radial-gradient(circle, rgba(255,196,64,0.35), transparent 70%)",{"$map":[]}],"result":"radial-gradient(circle, rgba(255,196,64,0.35), transparent 70%)"}
+{"args":["radial-gradient(circle, rgba(0,0,0,0.40), transparent 80%)",{"$map":[]}],"result":"radial-gradient(circle, rgba(0,0,0,0.40), transparent 80%)"}
+{"args":["radial-gradient(ellipse, rgba(255,255,255,0.35), transparent 70%)",{"$map":[]}],"result":"radial-gradient(ellipse, rgba(255,255,255,0.35), transparent 70%)"}
+{"args":["radial-gradient(circle, #ff0080 0%, #7928ca 45%, #0070f3 100%)",{"$map":[]}],"result":"radial-gradient(circle, #ff0080 0%, #7928ca 45%, #0070f3 100%)"}
+{"args":["radial-gradient(circle, rgba(255,0,128,0.90) 0%, rgba(121,40,202,0.85) 50%, transparent)",{"$map":[]}],"result":"radial-gradient(circle, rgba(255,0,128,0.90) 0%, rgba(121,40,202,0.85) 50%, transparent)"}
+{"args":["radial-gradient(circle, rgba(80,111,255,0.85), transparent)",{"$map":[]}],"result":"radial-gradient(circle, rgba(80,111,255,0.85), transparent)"}
+{"args":["linear-gradient(120deg, rgba(80,111,255,0.28), transparent 60%)",{"$map":[]}],"result":"linear-gradient(120deg, rgba(80,111,255,0.28), transparent 60%)"}
+{"args":["#f5f5f4",{"$map":[]}],"result":"#f5f5f4"}
+{"args":["#d6d3d1",{"$map":[]}],"result":"#d6d3d1"}
+{"args":["0 2px 8px rgba(0,0,0,0.12)",{"$map":[]}],"result":"0 2px 8px rgba(0,0,0,0.12)"}
+{"args":["#57534e",{"$map":[]}],"result":"#57534e"}
+{"args":["#eeeeee",{"$map":[]}],"result":"#eeeeee"}
+{"args":["0 2px 8px rgba(0, 0, 0, 0.12)",{"$map":[]}],"result":"0 2px 8px rgba(0, 0, 0, 0.12)"}
+{"args":["opacity, transform",{"$map":[]}],"result":"opacity, transform"}
+{"args":["ease-out, ease-out",{"$map":[]}],"result":"ease-out, ease-out"}
+{"args":["#faf8f4",{"$map":[]}],"result":"#faf8f4"}
+{"args":["#ddd8d0",{"$map":[]}],"result":"#ddd8d0"}
+{"args":["7px",{"$map":[]}],"result":"7px"}
+{"args":["ticker-loop",{"$map":[]}],"result":"ticker-loop"}
+{"args":["0.375rem",{"$map":[]}],"result":"0.375rem"}
+{"args":["#10b981",{"$map":[]}],"result":"#10b981"}
+{"args":["#f472b6",{"$map":[]}],"result":"#f472b6"}
+{"args":["#9ca3af",{"$map":[]}],"result":"#9ca3af"}
+{"args":["9999px",{"$map":[]}],"result":"9999px"}
+{"args":["#6366f1",{"$map":[]}],"result":"#6366f1"}
+{"args":["0 4px 6px rgba(0,0,0,0.3)",{"$map":[]}],"result":"0 4px 6px rgba(0,0,0,0.3)"}
+{"args":["300px",{"$map":[]}],"result":"300px"}
+{"args":["#1f7a3d",{"$map":[]}],"result":"#1f7a3d"}
+{"args":["inline",{"$map":[]}],"result":"inline"}
+{"args":["#2f8543",{"$map":[]}],"result":"#2f8543"}
+{"args":["#14202b",{"$map":[]}],"result":"#14202b"}
+{"args":["800",{"$map":[]}],"result":"800"}
+{"args":["#b22",{"$map":[]}],"result":"#b22"}
+{"args":["#f4f5f7",{"$map":[]}],"result":"#f4f5f7"}
+{"args":["0 2px 8px rgba(0,0,0,.08)",{"$map":[]}],"result":"0 2px 8px rgba(0,0,0,.08)"}
+{"args":[".1em",{"$map":[]}],"result":".1em"}
+{"args":["#a33",{"$map":[]}],"result":"#a33"}
+{"args":[".9",{"$map":[]}],"result":".9"}
+{"args":["linear-gradient(transparent,rgba(0,0,0,.6))",{"$map":[]}],"result":"linear-gradient(transparent,rgba(0,0,0,.6))"}
+{"args":["linear-gradient(transparent, rgba(0,0,0,.6))",{"$map":[]}],"result":"linear-gradient(transparent, rgba(0,0,0,.6))"}
+{"args":["-1px",{"$map":[]}],"result":"-1px"}
+{"args":["\"Karla\",system-ui,sans-serif",{"$map":[]}],"result":"\"Karla\",system-ui,sans-serif"}
+{"args":["\"Newsreader\",Georgia,serif",{"$map":[]}],"result":"\"Newsreader\",Georgia,serif"}
+{"args":["0.98",{"$map":[]}],"result":"0.98"}
+{"args":["1.08",{"$map":[]}],"result":"1.08"}
+{"args":["1.15",{"$map":[]}],"result":"1.15"}
+{"args":["0.6em",{"$map":[]}],"result":"0.6em"}
+{"args":["#f7f3ee",{"$map":[]}],"result":"#f7f3ee"}
+{"args":["#171717",{"$map":[["--paper","#f7f3ee"]]}],"result":"#171717"}
+{"args":["#566174",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"]]}],"result":"#566174"}
+{"args":["0",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"0"}
+{"args":["32px",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"32px"}
+{"args":["#f7f3ee",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]},1],"result":"#f7f3ee"}
+{"args":["var(--paper)",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"#f7f3ee"}
+{"args":["#171717",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]},1],"result":"#171717"}
+{"args":["var(--ink)",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"#171717"}
+{"args":["system-ui,sans-serif",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"system-ui,sans-serif"}
+{"args":["grid",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"grid"}
+{"args":["auto",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"auto"}
+{"args":["2px",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"2px"}
+{"args":["#566174",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]},1],"result":"#566174"}
+{"args":["var(--muted)",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"#566174"}
+{"args":["13px",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"13px"}
+{"args":["700",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"700"}
+{"args":["0.08em",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"0.08em"}
+{"args":["1.4",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"1.4"}
+{"args":["uppercase",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"uppercase"}
+{"args":["relative",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"relative"}
+{"args":["28px",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"28px"}
+{"args":["8px",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"8px"}
+{"args":["hidden",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"hidden"}
+{"args":["url(data:image/svg+xml,%3Csvg\\ xmlns=\\'http://www.w3.org/2000/svg\\'\\ viewBox=\\'0\\ 0\\ 420\\ 240\\'%3E%3Crect\\ width=\\'420\\'\\ height=\\'240\\'\\ fill=\\'%23ece8df\\'/%3E%3Ccircle\\ cx=\\'308\\'\\ cy=\\'58\\'\\ r=\\'132\\'\\ fill=\\'%23faf7f0\\'/%3E%3Cpath\\ d=\\'M0\\ 186c52-22\\ 92-26\\ 142-8s98\\ 18\\ 148-8\\ 92-22\\ 130\\ 0v70H0z\\'\\ fill=\\'%23f5efe4\\'/%3E%3C/svg%3E)",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"url(data:image/svg+xml,%3Csvg\\ xmlns=\\'http://www.w3.org/2000/svg\\'\\ viewBox=\\'0\\ 0\\ 420\\ 240\\'%3E%3Crect\\ width=\\'420\\'\\ height=\\'240\\'\\ fill=\\'%23ece8df\\'/%3E%3Ccircle\\ cx=\\'308\\'\\ cy=\\'58\\'\\ r=\\'132\\'\\ fill=\\'%23faf7f0\\'/%3E%3Cpath\\ d=\\'M0\\ 186c52-22\\ 92-26\\ 142-8s98\\ 18\\ 148-8\\ 92-22\\ 130\\ 0v70H0z\\'\\ fill=\\'%23f5efe4\\'/%3E%3C/svg%3E)"}
+{"args":["18px",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"18px"}
+{"args":["1.45",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"1.45"}
+{"args":["rgb(255, 255, 255)",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"rgb(255, 255, 255)"}
+{"args":["url(data:image/svg+xml,%3Csvg\\ xmlns=\\'http://www.w3.org/2000/svg\\'\\ viewBox=\\'0\\ 0\\ 420\\ 240\\'%3E%3Crect\\ width=\\'420\\'\\ height=\\'240\\'\\ fill=\\'%23191b20\\'/%3E%3Ccircle\\ cx=\\'316\\'\\ cy=\\'50\\'\\ r=\\'132\\'\\ fill=\\'%232d3440\\'/%3E%3Cpath\\ d=\\'M0\\ 182c70-48\\ 138-42\\ 204-6s128\\ 24\\ 216-58v122H0z\\'\\ fill=\\'%23101318\\'/%3E%3C/svg%3E)",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"url(data:image/svg+xml,%3Csvg\\ xmlns=\\'http://www.w3.org/2000/svg\\'\\ viewBox=\\'0\\ 0\\ 420\\ 240\\'%3E%3Crect\\ width=\\'420\\'\\ height=\\'240\\'\\ fill=\\'%23191b20\\'/%3E%3Ccircle\\ cx=\\'316\\'\\ cy=\\'50\\'\\ r=\\'132\\'\\ fill=\\'%232d3440\\'/%3E%3Cpath\\ d=\\'M0\\ 182c70-48\\ 138-42\\ 204-6s128\\ 24\\ 216-58v122H0z\\'\\ fill=\\'%23101318\\'/%3E%3C/svg%3E)"}
+{"args":["rgb(28, 30, 35)",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"rgb(28, 30, 35)"}
+{"args":["url(data:image/svg+xml,%3Csvg\\ xmlns=\\'http://www.w3.org/2000/svg\\'\\ viewBox=\\'0\\ 0\\ 420\\ 240\\'%3E%3Crect\\ width=\\'420\\'\\ height=\\'240\\'\\ fill=\\'%23edf2f7\\'/%3E%3Cg\\ fill=\\'%23f8fafc\\'%3E%3Ccircle\\ cx=\\'60\\'\\ cy=\\'64\\'\\ r=\\'42\\'/%3E%3Ccircle\\ cx=\\'182\\'\\ cy=\\'142\\'\\ r=\\'58\\'/%3E%3Ccircle\\ cx=\\'336\\'\\ cy=\\'84\\'\\ r=\\'74\\'/%3E%3C/g%3E%3Cg\\ stroke=\\'%23dbe4ef\\'\\ stroke-width=\\'14\\'\\ opacity=\\'.55\\'%3E%3Cpath\\ d=\\'M-20\\ 220C74\\ 112\\ 150\\ 94\\ 232\\ 164s138\\ 46\\ 214-62\\'\\ fill=\\'none\\'/%3E%3C/g%3E%3C/svg%3E)",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"url(data:image/svg+xml,%3Csvg\\ xmlns=\\'http://www.w3.org/2000/svg\\'\\ viewBox=\\'0\\ 0\\ 420\\ 240\\'%3E%3Crect\\ width=\\'420\\'\\ height=\\'240\\'\\ fill=\\'%23edf2f7\\'/%3E%3Cg\\ fill=\\'%23f8fafc\\'%3E%3Ccircle\\ cx=\\'60\\'\\ cy=\\'64\\'\\ r=\\'42\\'/%3E%3Ccircle\\ cx=\\'182\\'\\ cy=\\'142\\'\\ r=\\'58\\'/%3E%3Ccircle\\ cx=\\'336\\'\\ cy=\\'84\\'\\ r=\\'74\\'/%3E%3C/g%3E%3Cg\\ stroke=\\'%23dbe4ef\\'\\ stroke-width=\\'14\\'\\ opacity=\\'.55\\'%3E%3Cpath\\ d=\\'M-20\\ 220C74\\ 112\\ 150\\ 94\\ 232\\ 164s138\\ 46\\ 214-62\\'\\ fill=\\'none\\'/%3E%3C/g%3E%3C/svg%3E)"}
+{"args":["rgba(255, 255, 255, 0.72)",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"rgba(255, 255, 255, 0.72)"}
+{"args":["url(data:image/svg+xml,%3Csvg\\ xmlns=\\'http://www.w3.org/2000/svg\\'\\ viewBox=\\'0\\ 0\\ 420\\ 240\\'%3E%3Crect\\ width=\\'420\\'\\ height=\\'240\\'\\ fill=\\'%23b9c4cf\\'/%3E%3Cpath\\ d=\\'M0\\ 52c74-28\\ 138-22\\ 194\\ 18s124\\ 38\\ 226-28v198H0z\\'\\ fill=\\'%23cbd3dc\\'/%3E%3Ccircle\\ cx=\\'82\\'\\ cy=\\'176\\'\\ r=\\'68\\'\\ fill=\\'%23aeb8c4\\'/%3E%3C/svg%3E)",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"url(data:image/svg+xml,%3Csvg\\ xmlns=\\'http://www.w3.org/2000/svg\\'\\ viewBox=\\'0\\ 0\\ 420\\ 240\\'%3E%3Crect\\ width=\\'420\\'\\ height=\\'240\\'\\ fill=\\'%23b9c4cf\\'/%3E%3Cpath\\ d=\\'M0\\ 52c74-28\\ 138-22\\ 194\\ 18s124\\ 38\\ 226-28v198H0z\\'\\ fill=\\'%23cbd3dc\\'/%3E%3Ccircle\\ cx=\\'82\\'\\ cy=\\'176\\'\\ r=\\'68\\'\\ fill=\\'%23aeb8c4\\'/%3E%3C/svg%3E)"}
+{"args":["rgb(138, 146, 156)",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"rgb(138, 146, 156)"}
+{"args":["rgb(250, 247, 239)",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"rgb(250, 247, 239)"}
+{"args":["rgb(31, 35, 42)",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"rgb(31, 35, 42)"}
+{"args":["#1a1d24",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"#1a1d24"}
+{"args":["absolute",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"absolute"}
+{"args":["100%",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"100%"}
+{"args":["rgb(246, 242, 232)",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"rgb(246, 242, 232)"}
+{"args":["#f5f2ea",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"#f5f2ea"}
+{"args":["block",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"block"}
+{"args":["rgb(35, 31, 27)",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"rgb(35, 31, 27)"}
+{"args":["url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 420 240'%3E%3Crect width='420' height='240' fill='%23ece8df'/%3E%3Ccircle cx='308' cy='58' r='132' fill='%23faf7f0'/%3E%3Cpath d='M0 186c52-22 92-26 142-8s98 18 148-8 92-22 130 0v70H0z' fill='%23f5efe4'/%3E%3C/svg%3E\")",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 420 240'%3E%3Crect width='420' height='240' fill='%23ece8df'/%3E%3Ccircle cx='308' cy='58' r='132' fill='%23faf7f0'/%3E%3Cpath d='M0 186c52-22 92-26 142-8s98 18 148-8 92-22 130 0v70H0z' fill='%23f5efe4'/%3E%3C/svg%3E\")"}
+{"args":["url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 420 240'%3E%3Crect width='420' height='240' fill='%23edf2f7'/%3E%3Cg fill='%23f8fafc'%3E%3Ccircle cx='60' cy='64' r='42'/%3E%3Ccircle cx='182' cy='142' r='58'/%3E%3Ccircle cx='336' cy='84' r='74'/%3E%3C/g%3E%3Cg stroke='%23dbe4ef' stroke-width='14' opacity='.55'%3E%3Cpath d='M-20 220C74 112 150 94 232 164s138 46 214-62' fill='none'/%3E%3C/g%3E%3C/svg%3E\")",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 420 240'%3E%3Crect width='420' height='240' fill='%23edf2f7'/%3E%3Cg fill='%23f8fafc'%3E%3Ccircle cx='60' cy='64' r='42'/%3E%3Ccircle cx='182' cy='142' r='58'/%3E%3Ccircle cx='336' cy='84' r='74'/%3E%3C/g%3E%3Cg stroke='%23dbe4ef' stroke-width='14' opacity='.55'%3E%3Cpath d='M-20 220C74 112 150 94 232 164s138 46 214-62' fill='none'/%3E%3C/g%3E%3C/svg%3E\")"}
+{"args":["url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 420 240'%3E%3Crect width='420' height='240' fill='%23b9c4cf'/%3E%3Cpath d='M0 52c74-28 138-22 194 18s124 38 226-28v198H0z' fill='%23cbd3dc'/%3E%3Ccircle cx='82' cy='176' r='68' fill='%23aeb8c4'/%3E%3C/svg%3E\")",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 420 240'%3E%3Crect width='420' height='240' fill='%23b9c4cf'/%3E%3Cpath d='M0 52c74-28 138-22 194 18s124 38 226-28v198H0z' fill='%23cbd3dc'/%3E%3Ccircle cx='82' cy='176' r='68' fill='%23aeb8c4'/%3E%3C/svg%3E\")"}
+{"args":["url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 420 240'%3E%3Crect width='420' height='240' fill='%23191b20'/%3E%3Ccircle cx='316' cy='50' r='132' fill='%232d3440'/%3E%3Cpath d='M0 182c70-48 138-42 204-6s128 24 216-58v122H0z' fill='%23101318'/%3E%3C/svg%3E\")",{"$map":[["--paper","#f7f3ee"],["--ink","#171717"],["--muted","#566174"]]}],"result":"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 420 240'%3E%3Crect width='420' height='240' fill='%23191b20'/%3E%3Ccircle cx='316' cy='50' r='132' fill='%232d3440'/%3E%3Cpath d='M0 182c70-48 138-42 204-6s128 24 216-58v122H0z' fill='%23101318'/%3E%3C/svg%3E\")"}
+{"args":["#ff00aa",{"$map":[]}],"result":"#ff00aa"}
+{"args":["Verdana",{"$map":[]}],"result":"Verdana"}
+{"args":["Verdana,sans-serif",{"$map":[]}],"result":"Verdana,sans-serif"}
+{"args":["Inter,sans-serif",{"$map":[]}],"result":"Inter,sans-serif"}
+{"args":["8px",{"$map":[]}],"result":"8px"}
+{"args":["50%",{"$map":[]}],"result":"50%"}
+{"args":["blink",{"$map":[]}],"result":"blink"}
+{"args":["#ff00aa",{"$map":[]}],"result":"#ff00aa"}
+{"args":["Verdana",{"$map":[]}],"result":"Verdana"}
+{"args":["4px",{"$map":[["--stripe-fixture-neutral","#e5e7eb"]]}],"result":"4px"}
+{"args":["",{"$map":[["--stripe-fixture-neutral","#e5e7eb"]]}],"result":""}
+{"args":["0",{"$map":[["--stripe-fixture-neutral","#e5e7eb"]]}],"result":"0"}
+{"args":["#7c3aed",{"$map":[["--stripe-fixture-neutral","#e5e7eb"]]}],"result":"#7c3aed"}
+{"args":["var(--accent)",{"$map":[["--stripe-fixture-neutral","#e5e7eb"]]}],"result":"var(--accent)"}
+{"args":["#f43f5e",{"$map":[["--stripe-fixture-neutral","#e5e7eb"]]}],"result":"#f43f5e"}
+{"args":["3px",{"$map":[["--stripe-fixture-neutral","#e5e7eb"]]}],"result":"3px"}
+{"args":["100%",{"$map":[["--stripe-fixture-neutral","#e5e7eb"]]}],"result":"100%"}
+{"args":["oklch(60% 0.2 300)",{"$map":[["--stripe-fixture-neutral","#e5e7eb"]]}],"result":"oklch(60% 0.2 300)"}
+{"args":["#e5e7eb",{"$map":[["--stripe-fixture-neutral","#e5e7eb"]]},1],"result":"#e5e7eb"}
+{"args":["var(--stripe-fixture-neutral)",{"$map":[["--stripe-fixture-neutral","#e5e7eb"]]}],"result":"#e5e7eb"}
+{"args":["24px",{"$map":[["--stripe-fixture-neutral","#e5e7eb"]]}],"result":"24px"}
+{"args":["1px",{"$map":[["--stripe-fixture-neutral","#e5e7eb"]]}],"result":"1px"}
+{"args":["12px",{"$map":[["--stripe-fixture-neutral","#e5e7eb"]]}],"result":"12px"}
+{"args":["4px",{"$map":[]}],"result":"4px"}
+{"args":["",{"$map":[]}],"result":""}
+{"args":["0",{"$map":[]}],"result":"0"}
+{"args":["#7c3aed",{"$map":[]}],"result":"#7c3aed"}
+{"args":["1px",{"$map":[]}],"result":"1px"}
+{"args":["system-ui,sans-serif",{"$map":[]}],"result":"system-ui,sans-serif"}
+{"args":["#f9fafb",{"$map":[]}],"result":"#f9fafb"}
+{"args":["2rem",{"$map":[]}],"result":"2rem"}
+{"args":["0.5rem",{"$map":[]}],"result":"0.5rem"}
+{"args":["#6b7280",{"$map":[]}],"result":"#6b7280"}
+{"args":["0.875rem",{"$map":[]}],"result":"0.875rem"}
+{"args":["2.5rem",{"$map":[]}],"result":"2.5rem"}
+{"args":["0.75rem",{"$map":[]}],"result":"0.75rem"}
+{"args":["#4b5563",{"$map":[]}],"result":"#4b5563"}
+{"args":["#e5e7eb",{"$map":[]}],"result":"#e5e7eb"}
+{"args":["uppercase",{"$map":[]}],"result":"uppercase"}
+{"args":["0.08em",{"$map":[]}],"result":"0.08em"}
+{"args":["grid",{"$map":[]}],"result":"grid"}
+{"args":["white",{"$map":[]}],"result":"white"}
+{"args":["1rem",{"$map":[]}],"result":"1rem"}
+{"args":["0.375rem",{"$map":[]}],"result":"0.375rem"}
+{"args":["0 1px 3px rgba(0,0,0,0.1)",{"$map":[]}],"result":"0 1px 3px rgba(0,0,0,0.1)"}
+{"args":["#3b82f6",{"$map":[]}],"result":"#3b82f6"}
+{"args":["600",{"$map":[]}],"result":"600"}
+{"args":["#111827",{"$map":[]}],"result":"#111827"}
+{"args":["0.8125rem",{"$map":[]}],"result":"0.8125rem"}
+{"args":["0.25rem",{"$map":[]}],"result":"0.25rem"}
+{"args":["5px",{"$map":[]}],"result":"5px"}
+{"args":["#8b5cf6",{"$map":[]}],"result":"#8b5cf6"}
+{"args":["3px",{"$map":[]}],"result":"3px"}
+{"args":["#10b981",{"$map":[]}],"result":"#10b981"}
+{"args":["6px",{"$map":[]}],"result":"6px"}
+{"args":["#ef4444",{"$map":[]}],"result":"#ef4444"}
+{"args":["12px",{"$map":[]}],"result":"12px"}
+{"args":["#1f2937",{"$map":[]}],"result":"#1f2937"}
+{"args":["#f472b6",{"$map":[]}],"result":"#f472b6"}
+{"args":["#9ca3af",{"$map":[]}],"result":"#9ca3af"}
+{"args":["1.5rem",{"$map":[]}],"result":"1.5rem"}
+{"args":["1.125rem",{"$map":[]}],"result":"1.125rem"}
+{"args":["2px",{"$map":[]}],"result":"2px"}
+{"args":["inline-block",{"$map":[]}],"result":"inline-block"}
+{"args":["0.125rem",{"$map":[]}],"result":"0.125rem"}
+{"args":["9999px",{"$map":[]}],"result":"9999px"}
+{"args":["#dbeafe",{"$map":[]}],"result":"#dbeafe"}
+{"args":["#1d4ed8",{"$map":[]}],"result":"#1d4ed8"}
+{"args":["#374151",{"$map":[]}],"result":"#374151"}
+{"args":["#6366f1",{"$map":[]}],"result":"#6366f1"}
+{"args":["#1e293b",{"$map":[]}],"result":"#1e293b"}
+{"args":["0 4px 6px rgba(0,0,0,0.3)",{"$map":[]}],"result":"0 4px 6px rgba(0,0,0,0.3)"}
+{"args":["#94a3b8",{"$map":[]}],"result":"#94a3b8"}
+{"args":["24px",{"$map":[]}],"result":"24px"}
+{"args":["#f8fafc",{"$map":[]}],"result":"#f8fafc"}
+{"args":["14px",{"$map":[]}],"result":"14px"}
+{"args":["1.5",{"$map":[]}],"result":"1.5"}
+{"args":["auto",{"$map":[]}],"result":"auto"}
+{"args":["8px",{"$map":[]}],"result":"8px"}
+{"args":["34px",{"$map":[]}],"result":"34px"}
+{"args":["1.05",{"$map":[]}],"result":"1.05"}
+{"args":["720",{"$map":[]}],"result":"720"}
+{"args":["#475569",{"$map":[]}],"result":"#475569"}
+{"args":["13px",{"$map":[]}],"result":"13px"}
+{"args":["760",{"$map":[]}],"result":"760"}
+{"args":["16px",{"$map":[]}],"result":"16px"}
+{"args":["#fdfdfd",{"$map":[]}],"result":"#fdfdfd"}
+{"args":["0 1px 2px rgba(15,23,42,0.06)",{"$map":[]}],"result":"0 1px 2px rgba(15,23,42,0.06)"}
+{"args":["#2563eb",{"$map":[]}],"result":"#2563eb"}
+{"args":["10px",{"$map":[]}],"result":"10px"}
+{"args":["15px",{"$map":[]}],"result":"15px"}
+{"args":["1.25",{"$map":[]}],"result":"1.25"}
+{"args":["#dc2626",{"$map":[]}],"result":"#dc2626"}
+{"args":["#0f766e",{"$map":[]}],"result":"#0f766e"}
+{"args":["#ea580c",{"$map":[]}],"result":"#ea580c"}
+{"args":["#141820",{"$map":[]}],"result":"#141820"}
+{"args":["#f4f7fb",{"$map":[]}],"result":"#f4f7fb"}
+{"args":["#38bdf8",{"$map":[]}],"result":"#38bdf8"}
+{"args":["#cbd5e1",{"$map":[]}],"result":"#cbd5e1"}
+{"args":["#d1d5db",{"$map":[]}],"result":"#d1d5db"}
+{"args":["#161a22",{"$map":[]}],"result":"#161a22"}
+{"args":["#334155",{"$map":[]}],"result":"#334155"}
+{"args":["0 1px 2px rgba(15, 23, 42, 0.06)",{"$map":[]}],"result":"0 1px 2px rgba(15, 23, 42, 0.06)"}
+{"args":["'Inter', sans-serif",{"$map":[]}],"result":"'Inter', sans-serif"}
+{"args":["#e8e2d6",{"$map":[]}],"result":"#e8e2d6"}
+{"args":["system-ui,sans-serif",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"system-ui,sans-serif"}
+{"args":["#fafafa",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#fafafa"}
+{"args":["24px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"24px"}
+{"args":["0",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"0"}
+{"args":["#1a1a1a",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#1a1a1a"}
+{"args":["grid",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"grid"}
+{"args":["auto",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"auto"}
+{"args":["14px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"14px"}
+{"args":["uppercase",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"uppercase"}
+{"args":["0.05em",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"0.05em"}
+{"args":["16px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"16px"}
+{"args":["#475569",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#475569"}
+{"args":["11px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"11px"}
+{"args":["8px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"8px"}
+{"args":["#64748b",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#64748b"}
+{"args":["10px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"10px"}
+{"args":["#000000",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#000000"}
+{"args":["white",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"white"}
+{"args":["rgb(59, 130, 246)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(59, 130, 246)"}
+{"args":["rgb(150, 150, 150)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(150, 150, 150)"}
+{"args":["rgb(16, 185, 129)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(16, 185, 129)"}
+{"args":["rgb(180, 180, 180)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(180, 180, 180)"}
+{"args":["rgb(200, 200, 200)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(200, 200, 200)"}
+{"args":["rgb(30, 30, 30)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(30, 30, 30)"}
+{"args":["rgb(80, 80, 80)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(80, 80, 80)"}
+{"args":["linear-gradient(180deg, #3b82f6 0%, #8b5cf6 100%)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"linear-gradient(180deg, #3b82f6 0%, #8b5cf6 100%)"}
+{"args":["#808080",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#808080"}
+{"args":["32px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"32px"}
+{"args":["800",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"800"}
+{"args":["#666666",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#666666"}
+{"args":["1.5rem",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"1.5rem"}
+{"args":["linear-gradient(135deg, #667eea, #764ba2)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"linear-gradient(135deg, #667eea, #764ba2)"}
+{"args":["text",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"text"}
+{"args":["rgb(139, 92, 246)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(139, 92, 246)"}
+{"args":["rgb(31,26,21)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(31,26,21)"}
+{"args":["rgb(91,79,68)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(91,79,68)"}
+{"args":["inline-block",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"inline-block"}
+{"args":["9px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"9px"}
+{"args":["18px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"18px"}
+{"args":["999px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"999px"}
+{"args":["500",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"500"}
+{"args":["rgb(55,65,81)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(55,65,81)"}
+{"args":["rgb(108,114,128)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(108,114,128)"}
+{"args":["20px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"20px"}
+{"args":["rgb(182,50,45)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(182,50,45)"}
+{"args":["rgb(92,84,73)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(92,84,73)"}
+{"args":["700",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"700"}
+{"args":["2px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"2px"}
+{"args":["black",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"black"}
+{"args":["rgb(156, 163, 175)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(156, 163, 175)"}
+{"args":["rgb(168, 85, 247)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(168, 85, 247)"}
+{"args":["linear-gradient(to right, rgb(168, 85, 247), rgb(99, 102, 241))",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"linear-gradient(to right, rgb(168, 85, 247), rgb(99, 102, 241))"}
+{"args":["currentcolor",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"currentcolor"}
+{"args":["#e8e2d6",{"$map":[["--fixture-bone","#e8e2d6"]]},1],"result":"#e8e2d6"}
+{"args":["var(--fixture-bone)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#e8e2d6"}
+{"args":["#cfc9bd",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#cfc9bd"}
+{"args":["rgb(26, 26, 30)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(26, 26, 30)"}
+{"args":["rgb(240, 240, 245)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(240, 240, 245)"}
+{"args":["rgb(250, 250, 252)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(250, 250, 252)"}
+{"args":["rgb(20, 20, 25)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(20, 20, 25)"}
+{"args":["#ffffff",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#ffffff"}
+{"args":["#111827",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#111827"}
+{"args":["rgb(30, 64, 175)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(30, 64, 175)"}
+{"args":["rgb(5, 46, 32)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(5, 46, 32)"}
+{"args":["1.25rem",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"1.25rem"}
+{"args":["rgb(220, 38, 38)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(220, 38, 38)"}
+{"args":["rgb(180, 83, 9)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(180, 83, 9)"}
+{"args":["url('data:image/png",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"url('data:image/png"}
+{"args":["rgb(255, 255, 255)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(255, 255, 255)"}
+{"args":["rgba(0,0,0,0.03)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgba(0,0,0,0.03)"}
+{"args":["rgba(0,0,0,0)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgba(0,0,0,0)"}
+{"args":["rgba(0,0,0,0.5)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgba(0,0,0,0.5)"}
+{"args":["rgb(170,170,170)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(170,170,170)"}
+{"args":["rgb(20,20,25)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(20,20,25)"}
+{"args":["rgb(245,240,232)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(245,240,232)"}
+{"args":["rgb(150,60,55)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(150,60,55)"}
+{"args":["1px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"1px"}
+{"args":["4px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"4px"}
+{"args":["rgb(28,30,38)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(28,30,38)"}
+{"args":["rgb(230,232,237)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(230,232,237)"}
+{"args":["12px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"12px"}
+{"args":["rgba(0, 0, 0, 0)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgba(0, 0, 0, 0)"}
+{"args":["3px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"3px"}
+{"args":["none",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"none"}
+{"args":["linear-gradient(135deg,#6d8cff 0%,#a78bfa 50%,#6d8cff 100%)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"linear-gradient(135deg,#6d8cff 0%,#a78bfa 50%,#6d8cff 100%)"}
+{"args":["#e8e6e3",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#e8e6e3"}
+{"args":["40px",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"40px"}
+{"args":["#0f0f11",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#0f0f11"}
+{"args":["linear-gradient(160deg,rgba(52,192,168,0.09) 0%,#141419 65%)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"linear-gradient(160deg,rgba(52,192,168,0.09) 0%,#141419 65%)"}
+{"args":["#8e8c89",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#8e8c89"}
+{"args":["linear-gradient(160deg,color-mix(in oklab,oklch(90%0.02 95) 16%,transparent) 0%,#141419 65%)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"linear-gradient(160deg,color-mix(in oklab,oklch(90%0.02 95) 16%,transparent) 0%,#141419 65%)"}
+{"args":["#ded9cf",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#ded9cf"}
+{"args":["#3a352c",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#3a352c"}
+{"args":["var(--fixture-undefined-token)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"var(--fixture-undefined-token)"}
+{"args":["#efe9dd",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#efe9dd"}
+{"args":["#ffe4e6",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"#ffe4e6"}
+{"args":["rgb(28, 30, 38)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(28, 30, 38)"}
+{"args":["rgb(246, 242, 244)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"rgb(246, 242, 244)"}
+{"args":["linear-gradient(135deg, #6d8cff 0%, #a78bfa 50%, #6d8cff 100%)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"linear-gradient(135deg, #6d8cff 0%, #a78bfa 50%, #6d8cff 100%)"}
+{"args":["linear-gradient(160deg, rgba(52,192,168,0.09) 0%, #141419 65%)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"linear-gradient(160deg, rgba(52,192,168,0.09) 0%, #141419 65%)"}
+{"args":["linear-gradient(160deg, color-mix(in oklab, oklch(90% 0.02 95) 16%, transparent) 0%, #141419 65%)",{"$map":[["--fixture-bone","#e8e2d6"]]}],"result":"linear-gradient(160deg, color-mix(in oklab, oklch(90% 0.02 95) 16%, transparent) 0%, #141419 65%)"}
+{"args":["40px",{"$map":[]}],"result":"40px"}
+{"args":["#faf8f4",{"$map":[]}],"result":"#faf8f4"}
+{"args":["Arial,sans-serif",{"$map":[]}],"result":"Arial,sans-serif"}
+{"args":["#262421",{"$map":[]}],"result":"#262421"}
+{"args":["420px",{"$map":[]}],"result":"420px"}
+{"args":["20px",{"$map":[]}],"result":"20px"}
+{"args":["#ffffff",{"$map":[]}],"result":"#ffffff"}
+{"args":["#ddd8d0",{"$map":[]}],"result":"#ddd8d0"}
+{"args":["#b8422e",{"$map":[]}],"result":"#b8422e"}
+{"args":["7px",{"$map":[]}],"result":"7px"}
+{"args":["9px",{"$map":[]}],"result":"9px"}
+{"args":["11px",{"$map":[]}],"result":"11px"}
+{"args":["flex",{"$map":[]}],"result":"flex"}
+{"args":["max-content",{"$map":[]}],"result":"max-content"}
+{"args":["ticker-loop",{"$map":[]}],"result":"ticker-loop"}
+{"args":["linear",{"$map":[]}],"result":"linear"}
+{"args":["48px",{"$map":[]}],"result":"48px"}
+{"args":["linear-gradient(180deg,oklch(7%0.006 95),oklch(4%0.004 95))",{"$map":[]}],"result":"linear-gradient(180deg,oklch(7%0.006 95),oklch(4%0.004 95))"}
+{"args":["32px",{"$map":[]}],"result":"32px"}
+{"args":["640px",{"$map":[]}],"result":"640px"}
+{"args":["oklch(91%0 0)",{"$map":[]}],"result":"oklch(91%0 0)"}
+{"args":["560px",{"$map":[]}],"result":"560px"}
+{"args":["oklch(88%0 0)",{"$map":[]}],"result":"oklch(88%0 0)"}
+{"args":["1.7",{"$map":[]}],"result":"1.7"}
+{"args":["oklch(11%0.006 95)",{"$map":[]}],"result":"oklch(11%0.006 95)"}
+{"args":["480px",{"$map":[]}],"result":"480px"}
+{"args":["rgba(250,249,246,0.88)",{"$map":[]}],"result":"rgba(250,249,246,0.88)"}
+{"args":["oklch(15%0.01 95)",{"$map":[]}],"result":"oklch(15%0.01 95)"}
+{"args":["1.6",{"$map":[]}],"result":"1.6"}
+{"args":["oklch(30%0 0)",{"$map":[]}],"result":"oklch(30%0 0)"}
+{"args":["oklch(32%0 0)",{"$map":[]}],"result":"oklch(32%0 0)"}
+{"args":["520px",{"$map":[]}],"result":"520px"}
+{"args":["linear-gradient(180deg,#14120f,#0a0908)",{"$map":[]}],"result":"linear-gradient(180deg,#14120f,#0a0908)"}
+{"args":["oklch(90%0 0)",{"$map":[]}],"result":"oklch(90%0 0)"}
+{"args":["460px",{"$map":[]}],"result":"460px"}
+{"args":["18px",{"$map":[]}],"result":"18px"}
+{"args":["22px",{"$map":[]}],"result":"22px"}
+{"args":["linear-gradient(180deg,rgba(255,255,255,0.3),rgba(255,255,255,0.2)),url(/fixtures/antipatterns/no-such-texture.png)center/cover",{"$map":[]}],"result":"linear-gradient(180deg,rgba(255,255,255,0.3),rgba(255,255,255,0.2)),url(/fixtures/antipatterns/no-such-texture.png)center/cover"}
+{"args":["url(/fixtures/antipatterns/no-such-photo.jpg)",{"$map":[]}],"result":"url(/fixtures/antipatterns/no-such-photo.jpg)"}
+{"args":["oklch(20%0 0)",{"$map":[]}],"result":"oklch(20%0 0)"}
+{"args":["linear-gradient(180deg, oklch(7% 0.006 95), oklch(4% 0.004 95))",{"$map":[]}],"result":"linear-gradient(180deg, oklch(7% 0.006 95), oklch(4% 0.004 95))"}
+{"args":["` shorthand, so the body's computed backgroundColor\n     is transparent and the ground exists only as a backgroundImage whose\n     stops serialize in oklch. The detector must measure text against those\n     stops (composited under any translucent layers), never against an\n     assumed white body. */\n  body",{"$map":[]}],"result":"` shorthand, so the body's computed backgroundColor\n     is transparent and the ground exists only as a backgroundImage whose\n     stops serialize in oklch. The detector must measure text against those\n     stops (composited under any translucent layers), never against an\n     assumed white body. */\n  body"}
+{"args":["rgba(250, 249, 246, 0.88)",{"$map":[]}],"result":"rgba(250, 249, 246, 0.88)"}
+{"args":["oklch(11% 0.006 95)",{"$map":[]}],"result":"oklch(11% 0.006 95)"}
+{"args":["linear-gradient(180deg, #14120f, #0a0908)",{"$map":[]}],"result":"linear-gradient(180deg, #14120f, #0a0908)"}
+{"args":["linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.2)), url(\"/fixtures/antipatterns/no-such-texture.png\") center / cover",{"$map":[]}],"result":"linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.2)), url(\"/fixtures/antipatterns/no-such-texture.png\") center / cover"}
+{"args":["url(\"/fixtures/antipatterns/no-such-photo.jpg\")",{"$map":[]}],"result":"url(\"/fixtures/antipatterns/no-such-photo.jpg\")"}
+{"args":["italic",{"$map":[]}],"result":"italic"}
+{"args":["200px",{"$map":[]}],"result":"200px"}
+{"args":["hidden",{"$map":[]}],"result":"hidden"}
+{"args":["block",{"$map":[]}],"result":"block"}
+{"args":["transparent",{"$map":[]}],"result":"transparent"}
+{"args":["#eff6ff",{"$map":[]}],"result":"#eff6ff"}
+{"args":["500",{"$map":[]}],"result":"500"}
+{"args":["100%",{"$map":[]}],"result":"100%"}
+{"args":["#fca5a5",{"$map":[]}],"result":"#fca5a5"}
+{"args":["#b91c1c",{"$map":[]}],"result":"#b91c1c"}
+{"args":["none",{"$map":[]}],"result":"none"}
+{"args":["relative",{"$map":[]}],"result":"relative"}
+{"args":["absolute",{"$map":[]}],"result":"absolute"}
+{"args":["-2.05rem",{"$map":[]}],"result":"-2.05rem"}
+{"args":["50%",{"$map":[]}],"result":"50%"}
+{"args":["#e2e8f0",{"$map":[]}],"result":"#e2e8f0"}
+{"args":["rgba(239,68,68,0.1)",{"$map":[]}],"result":"rgba(239,68,68,0.1)"}
+{"args":["#22c55e",{"$map":[]}],"result":"#22c55e"}
+{"args":["rgba(34,197,94,0.1)",{"$map":[]}],"result":"rgba(34,197,94,0.1)"}
+{"args":["calc(3px + 0.75rem)",{"$map":[]}],"result":"calc(3px + 0.75rem)"}
+{"args":["1.25rem",{"$map":[]}],"result":"1.25rem"}
+{"args":["rgba(0, 0, 0, 0)",{"$map":[]}],"result":"rgba(0, 0, 0, 0)"}
+{"args":["left",{"$map":[]}],"result":"left"}
+{"args":["right",{"$map":[]}],"result":"right"}
+{"args":["#f59e0b",{"$map":[]}],"result":"#f59e0b"}
+{"args":["#fffbeb",{"$map":[]}],"result":"#fffbeb"}
+{"args":["#92400e",{"$map":[]}],"result":"#92400e"}
+{"args":["#d97706",{"$map":[]}],"result":"#d97706"}
+{"args":["#87a8ff",{"$map":[]}],"result":"#87a8ff"}
+{"args":["#8a6a2f",{"$map":[["--brand","#87a8ff"]]}],"result":"#8a6a2f"}
+{"args":["#aa674d",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"]]}],"result":"#aa674d"}
+{"args":["#e5e7eb",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"]]}],"result":"#e5e7eb"}
+{"args":["#f3f4f6",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"]]}],"result":"#f3f4f6"}
+{"args":["system-ui,sans-serif",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"system-ui,sans-serif"}
+{"args":["0",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"0"}
+{"args":["24px",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"24px"}
+{"args":["#fafafa",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"#fafafa"}
+{"args":["grid",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"grid"}
+{"args":["auto",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"auto"}
+{"args":["14px",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"14px"}
+{"args":["uppercase",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"uppercase"}
+{"args":["0.05em",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"0.05em"}
+{"args":["16px",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"16px"}
+{"args":["#475569",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"#475569"}
+{"args":["12px",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"12px"}
+{"args":["400px",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"400px"}
+{"args":["oklch(100%0 0)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"oklch(100%0 0)"}
+{"args":["4px",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"4px"}
+{"args":["3px",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"3px"}
+{"args":["oklch(65%0.12 250)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"oklch(65%0.12 250)"}
+{"args":["13px",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"13px"}
+{"args":["#64748b",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"#64748b"}
+{"args":["1px",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"1px"}
+{"args":["oklch(80%0.05 250)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"oklch(80%0.05 250)"}
+{"args":["oklch(75%0.15 45)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"oklch(75%0.15 45)"}
+{"args":["oklch(98%0.01 60)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"oklch(98%0.01 60)"}
+{"args":["oklch(75%0.18 45)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"oklch(75%0.18 45)"}
+{"args":["#ffffff",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"#ffffff"}
+{"args":["6px",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"6px"}
+{"args":["oklab(60%0.1 0.15)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"oklab(60%0.1 0.15)"}
+{"args":["lch(55%60 250)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"lch(55%60 250)"}
+{"args":["lab(50%40-30)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"lab(50%40-30)"}
+{"args":["block",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"block"}
+{"args":["#3b82f6",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"#3b82f6"}
+{"args":["5px",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"5px"}
+{"args":["#87a8ff",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]},1],"result":"#87a8ff"}
+{"args":["var(--brand)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"#87a8ff"}
+{"args":["#e5e7eb",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]},1],"result":"#e5e7eb"}
+{"args":["var(--line)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"#e5e7eb"}
+{"args":["#8a6a2f",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]},1],"result":"#8a6a2f"}
+{"args":["var(--warn)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"#8a6a2f"}
+{"args":["#aa674d",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]},1],"result":"#aa674d"}
+{"args":["var(--terracotta)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"#aa674d"}
+{"args":["oklch(80%0 0)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"oklch(80%0 0)"}
+{"args":["oklch(75%0.01 250)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"oklch(75%0.01 250)"}
+{"args":["lab(50%0 0)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"lab(50%0 0)"}
+{"args":["lch(50%0 0)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"lch(50%0 0)"}
+{"args":["500",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"500"}
+{"args":["#374151",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"#374151"}
+{"args":["8px",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"8px"}
+{"args":["#e5e7eb",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"#e5e7eb"}
+{"args":["#6b7280",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"#6b7280"}
+{"args":["oklch(92%0 0/0.12)",{"$map":[["--brand","#87a8ff"],["--warn","#8a6a2f"],["--terracotta","#aa674d"],["--line","#e5e7eb"],["--rule","#f3f4f6"]]}],"result":"oklch(92%0 0/0.12)"}
+{"args":["orange",{"$map":[]}],"result":"orange"}
+{"args":["system-ui,sans-serif",{"$map":[["--accent","orange"]]}],"result":"system-ui,sans-serif"}
+{"args":["0",{"$map":[["--accent","orange"]]}],"result":"0"}
+{"args":["24px",{"$map":[["--accent","orange"]]}],"result":"24px"}
+{"args":["#fafafa",{"$map":[["--accent","orange"]]}],"result":"#fafafa"}
+{"args":["grid",{"$map":[["--accent","orange"]]}],"result":"grid"}
+{"args":["auto",{"$map":[["--accent","orange"]]}],"result":"auto"}
+{"args":["14px",{"$map":[["--accent","orange"]]}],"result":"14px"}
+{"args":["uppercase",{"$map":[["--accent","orange"]]}],"result":"uppercase"}
+{"args":["0.05em",{"$map":[["--accent","orange"]]}],"result":"0.05em"}
+{"args":["16px",{"$map":[["--accent","orange"]]}],"result":"16px"}
+{"args":["#475569",{"$map":[["--accent","orange"]]}],"result":"#475569"}
+{"args":["400px",{"$map":[["--accent","orange"]]}],"result":"400px"}
+{"args":["#f6f6f6",{"$map":[["--accent","orange"]]}],"result":"#f6f6f6"}
+{"args":["4px",{"$map":[["--accent","orange"]]}],"result":"4px"}
+{"args":["purple",{"$map":[["--accent","orange"]]}],"result":"purple"}
+{"args":["8px",{"$map":[["--accent","orange"]]}],"result":"8px"}
+{"args":["13px",{"$map":[["--accent","orange"]]}],"result":"13px"}
+{"args":["#64748b",{"$map":[["--accent","orange"]]}],"result":"#64748b"}
+{"args":["12px",{"$map":[["--accent","orange"]]}],"result":"12px"}
+{"args":["#ffffff",{"$map":[["--accent","orange"]]}],"result":"#ffffff"}
+{"args":["5px",{"$map":[["--accent","orange"]]}],"result":"5px"}
+{"args":["rebeccapurple",{"$map":[["--accent","orange"]]}],"result":"rebeccapurple"}
+{"args":["crimson",{"$map":[["--accent","orange"]]}],"result":"crimson"}
+{"args":["3px",{"$map":[["--accent","orange"]]}],"result":"3px"}
+{"args":["teal",{"$map":[["--accent","orange"]]}],"result":"teal"}
+{"args":["6px",{"$map":[["--accent","orange"]]}],"result":"6px"}
+{"args":["orange",{"$map":[["--accent","orange"]]},1],"result":"orange"}
+{"args":["var(--accent)",{"$map":[["--accent","orange"]]}],"result":"orange"}
+{"args":["7px",{"$map":[["--accent","orange"]]}],"result":"7px"}
+{"args":["dimgray",{"$map":[["--accent","orange"]]}],"result":"dimgray"}
+{"args":["gainsboro",{"$map":[["--accent","orange"]]}],"result":"gainsboro"}
+{"args":["black",{"$map":[["--accent","orange"]]}],"result":"black"}
+{"args":["1px",{"$map":[["--accent","orange"]]}],"result":"1px"}
+{"args":["\"Inter\",sans-serif",{"$map":[]}],"result":"\"Inter\",sans-serif"}
+{"args":["700",{"$map":[]}],"result":"700"}
+{"args":["1.2",{"$map":[]}],"result":"1.2"}
+{"args":["justify",{"$map":[]}],"result":"justify"}
+{"args":["\"Newsreader\",Georgia,serif",{"$map":[]}],"result":"\"Newsreader\",Georgia,serif"}
+{"args":["0.98",{"$map":[]}],"result":"0.98"}
+{"args":["\"Karla\",system-ui,sans-serif",{"$map":[]}],"result":"\"Karla\",system-ui,sans-serif"}
+{"args":["30px",{"$map":[]}],"result":"30px"}
+{"args":["1.08",{"$map":[]}],"result":"1.08"}
+{"args":["1.15",{"$map":[]}],"result":"1.15"}
+{"args":["#f7f4ee",{"$map":[["--brand-accent","#b8422e"]]}],"result":"#f7f4ee"}
+{"args":["#241f1a",{"$map":[["--brand-accent","#b8422e"]]}],"result":"#241f1a"}
+{"args":["\"IBM Plex Sans\",Arial,sans-serif",{"$map":[["--brand-accent","#b8422e"]]}],"result":"\"IBM Plex Sans\",Arial,sans-serif"}
+{"args":["24px",{"$map":[["--brand-accent","#b8422e"]]}],"result":"24px"}
+{"args":["0",{"$map":[["--brand-accent","#b8422e"]]}],"result":"0"}
+{"args":["16px",{"$map":[["--brand-accent","#b8422e"]]}],"result":"16px"}
+{"args":["12px",{"$map":[["--brand-accent","#b8422e"]]}],"result":"12px"}
+{"args":["14px",{"$map":[["--brand-accent","#b8422e"]]}],"result":"14px"}
+{"args":["8px",{"$map":[["--brand-accent","#b8422e"]]}],"result":"8px"}
+{"args":["1px",{"$map":[["--brand-accent","#b8422e"]]}],"result":"1px"}
+{"args":["#d4c7b9",{"$map":[["--brand-accent","#b8422e"]]}],"result":"#d4c7b9"}
+{"args":["1.45",{"$map":[["--brand-accent","#b8422e"]]}],"result":"1.45"}
+{"args":["700",{"$map":[["--brand-accent","#b8422e"]]}],"result":"700"}
+{"args":["#ffffff",{"$map":[["--brand-accent","#b8422e"]]}],"result":"#ffffff"}
+{"args":["\"Poppins\",sans-serif",{"$map":[["--brand-accent","#b8422e"]]}],"result":"\"Poppins\",sans-serif"}
+{"args":["#ff00aa",{"$map":[["--brand-accent","#b8422e"]]}],"result":"#ff00aa"}
+{"args":["rgb(20,180,220)",{"$map":[["--brand-accent","#b8422e"]]}],"result":"rgb(20,180,220)"}
+{"args":["#00a982",{"$map":[["--brand-accent","#b8422e"]]}],"result":"#00a982"}
+{"args":["18px",{"$map":[["--brand-accent","#b8422e"]]}],"result":"18px"}
+{"args":["12.5px",{"$map":[["--brand-accent","#b8422e"]]}],"result":"12.5px"}
+{"args":["\"Avenir Next\",Georgia,serif",{"$map":[["--brand-accent","#b8422e"]]}],"result":"\"Avenir Next\",Georgia,serif"}
+{"args":["1rem",{"$map":[["--brand-accent","#b8422e"]]}],"result":"1rem"}
+{"args":["1.2em",{"$map":[["--brand-accent","#b8422e"]]}],"result":"1.2em"}
+{"args":["ui-sans-serif,system-ui,sans-serif",{"$map":[["--brand-accent","#b8422e"]]}],"result":"ui-sans-serif,system-ui,sans-serif"}
+{"args":["#b8422e",{"$map":[["--brand-accent","#b8422e"]]},1],"result":"#b8422e"}
+{"args":["var(--brand-accent)",{"$map":[["--brand-accent","#b8422e"]]}],"result":"#b8422e"}
+{"args":["rgba(184,66,46,0.45)",{"$map":[["--brand-accent","#b8422e"]]}],"result":"rgba(184,66,46,0.45)"}
+{"args":["#bb442f",{"$map":[["--brand-accent","#b8422e"]]}],"result":"#bb442f"}
+{"args":["#d55a42",{"$map":[["--brand-accent","#b8422e"]]}],"result":"#d55a42"}
+{"args":["50%",{"$map":[["--brand-accent","#b8422e"]]}],"result":"50%"}
+{"args":["32px",{"$map":[["--brand-accent","#b8422e"]]}],"result":"32px"}
+{"args":["100px",{"$map":[["--brand-accent","#b8422e"]]}],"result":"100px"}
+{"args":["999px",{"$map":[["--brand-accent","#b8422e"]]}],"result":"999px"}
+{"args":["#d7d0c2",{"$map":[]}],"result":"#d7d0c2"}
+{"args":["1.1",{"$map":[]}],"result":"1.1"}
+{"args":["ui-monospace,SFMono-Regular,Menlo,monospace",{"$map":[]}],"result":"ui-monospace,SFMono-Regular,Menlo,monospace"}
+{"args":["#7c5c00",{"$map":[]}],"result":"#7c5c00"}
+{"args":["Georgia,serif",{"$map":[]}],"result":"Georgia,serif"}
+{"args":["#222222",{"$map":[]}],"result":"#222222"}
+{"args":["monospace",{"$map":[]}],"result":"monospace"}
+{"args":["#b45309",{"$map":[]}],"result":"#b45309"}
+{"args":["28px",{"$map":[]}],"result":"28px"}
+{"args":["400",{"$map":[]}],"result":"400"}
+{"args":["#666666",{"$map":[]}],"result":"#666666"}
+{"args":["#d4d4d4",{"$map":[]}],"result":"#d4d4d4"}
+{"args":["#f5f5f4",{"$map":[]}],"result":"#f5f5f4"}
+{"args":["#d6d3d1",{"$map":[]}],"result":"#d6d3d1"}
+{"args":["360px",{"$map":[]}],"result":"360px"}
+{"args":["0 2px 8px rgba(0,0,0,0.12)",{"$map":[]}],"result":"0 2px 8px rgba(0,0,0,0.12)"}
+{"args":["#57534e",{"$map":[]}],"result":"#57534e"}
+{"args":["#eeeeee",{"$map":[]}],"result":"#eeeeee"}
+{"args":["0 2px 8px rgba(0, 0, 0, 0.12)",{"$map":[]}],"result":"0 2px 8px rgba(0, 0, 0, 0.12)"}
+{"args":["0.05em",{"$map":[]}],"result":"0.05em"}
+{"args":["#fff",{"$map":[]}],"result":"#fff"}
+{"args":["80px",{"$map":[]}],"result":"80px"}
+{"args":["linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%)",{"$map":[]}],"result":"linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%)"}
+{"args":["#0f172a",{"$map":[]}],"result":"#0f172a"}
+{"args":["#64748b",{"$map":[]}],"result":"#64748b"}
+{"args":["64px",{"$map":[]}],"result":"64px"}
+{"args":["72px",{"$map":[]}],"result":"72px"}
+{"args":["96px",{"$map":[]}],"result":"96px"}
+{"args":["#f1f5f9",{"$map":[]}],"result":"#f1f5f9"}
+{"args":["linear-gradient(135deg,#8b5cf6,#a855f7)",{"$map":[]}],"result":"linear-gradient(135deg,#8b5cf6,#a855f7)"}
+{"args":["112px",{"$map":[]}],"result":"112px"}
+{"args":["#ddd6fe",{"$map":[]}],"result":"#ddd6fe"}
+{"args":["#93c5fd",{"$map":[]}],"result":"#93c5fd"}
+{"args":["#0b0d13",{"$map":[]}],"result":"#0b0d13"}
+{"args":["#e6e6e6",{"$map":[]}],"result":"#e6e6e6"}
+{"args":["radial-gradient(circle at 52% 38%,rgba(80,111,255,0.26),transparent 44%)",{"$map":[]}],"result":"radial-gradient(circle at 52% 38%,rgba(80,111,255,0.26),transparent 44%)"}
+{"args":["900px",{"$map":[]}],"result":"900px"}
+{"args":["600px",{"$map":[]}],"result":"600px"}
+{"args":["radial-gradient(circle,rgba(139,92,246,0.30),transparent 60%)",{"$map":[]}],"result":"radial-gradient(circle,rgba(139,92,246,0.30),transparent 60%)"}
+{"args":["760px",{"$map":[]}],"result":"760px"}
+{"args":["radial-gradient(ellipse at top,rgba(34,211,238,0.22),transparent 70%)",{"$map":[]}],"result":"radial-gradient(ellipse at top,rgba(34,211,238,0.22),transparent 70%)"}
+{"args":["400px",{"$map":[]}],"result":"400px"}
+{"args":["radial-gradient(circle,rgba(255,90,120,0.28) 0%,rgba(255,90,120,0.12) 45%,transparent 75%)",{"$map":[]}],"result":"radial-gradient(circle,rgba(255,90,120,0.28) 0%,rgba(255,90,120,0.12) 45%,transparent 75%)"}
+{"args":["700px",{"$map":[]}],"result":"700px"}
+{"args":["radial-gradient(circle,#506fff3d,transparent 50%)",{"$map":[]}],"result":"radial-gradient(circle,#506fff3d,transparent 50%)"}
+{"args":["800px",{"$map":[]}],"result":"800px"}
+{"args":["radial-gradient(circle,#1e3a8a,#0f172a)",{"$map":[]}],"result":"radial-gradient(circle,#1e3a8a,#0f172a)"}
+{"args":["radial-gradient(circle,rgba(80,111,255,0.30),transparent)",{"$map":[]}],"result":"radial-gradient(circle,rgba(80,111,255,0.30),transparent)"}
+{"args":["radial-gradient(circle,rgba(255,196,64,0.35),transparent 70%)",{"$map":[]}],"result":"radial-gradient(circle,rgba(255,196,64,0.35),transparent 70%)"}
+{"args":["radial-gradient(circle,rgba(0,0,0,0.40),transparent 80%)",{"$map":[]}],"result":"radial-gradient(circle,rgba(0,0,0,0.40),transparent 80%)"}
+{"args":["820px",{"$map":[]}],"result":"820px"}
+{"args":["540px",{"$map":[]}],"result":"540px"}
+{"args":["radial-gradient(ellipse,rgba(255,255,255,0.35),transparent 70%)",{"$map":[]}],"result":"radial-gradient(ellipse,rgba(255,255,255,0.35),transparent 70%)"}
+{"args":["radial-gradient(circle,#ff0080 0%,#7928ca 45%,#0070f3 100%)",{"$map":[]}],"result":"radial-gradient(circle,#ff0080 0%,#7928ca 45%,#0070f3 100%)"}
+{"args":["780px",{"$map":[]}],"result":"780px"}
+{"args":["500px",{"$map":[]}],"result":"500px"}
+{"args":["radial-gradient(circle,rgba(255,0,128,0.90) 0%,rgba(121,40,202,0.85) 50%,transparent)",{"$map":[]}],"result":"radial-gradient(circle,rgba(255,0,128,0.90) 0%,rgba(121,40,202,0.85) 50%,transparent)"}
+{"args":["radial-gradient(circle,rgba(80,111,255,0.85),transparent)",{"$map":[]}],"result":"radial-gradient(circle,rgba(80,111,255,0.85),transparent)"}
+{"args":["linear-gradient(120deg,rgba(80,111,255,0.28),transparent 60%)",{"$map":[]}],"result":"linear-gradient(120deg,rgba(80,111,255,0.28),transparent 60%)"}
+{"args":["radial-gradient(circle at 52% 38%, rgba(80,111,255,0.26), transparent 44%)",{"$map":[]}],"result":"radial-gradient(circle at 52% 38%, rgba(80,111,255,0.26), transparent 44%)"}
+{"args":["radial-gradient(circle, rgba(139,92,246,0.30), transparent 60%)",{"$map":[]}],"result":"radial-gradient(circle, rgba(139,92,246,0.30), transparent 60%)"}
+{"args":["radial-gradient(ellipse at top, rgba(34,211,238,0.22), transparent 70%)",{"$map":[]}],"result":"radial-gradient(ellipse at top, rgba(34,211,238,0.22), transparent 70%)"}
+{"args":["radial-gradient(circle, rgba(255,90,120,0.28) 0%, rgba(255,90,120,0.12) 45%, transparent 75%)",{"$map":[]}],"result":"radial-gradient(circle, rgba(255,90,120,0.28) 0%, rgba(255,90,120,0.12) 45%, transparent 75%)"}
+{"args":["radial-gradient(circle, #506fff3d, transparent 50%)",{"$map":[]}],"result":"radial-gradient(circle, #506fff3d, transparent 50%)"}
+{"args":["radial-gradient(circle, #1e3a8a, #0f172a)",{"$map":[]}],"result":"radial-gradient(circle, #1e3a8a, #0f172a)"}
+{"args":["radial-gradient(circle, rgba(80,111,255,0.30), transparent)",{"$map":[]}],"result":"radial-gradient(circle, rgba(80,111,255,0.30), transparent)"}
+{"args":["radial-gradient(circle, rgba(255,196,64,0.35), transparent 70%)",{"$map":[]}],"result":"radial-gradient(circle, rgba(255,196,64,0.35), transparent 70%)"}
+{"args":["radial-gradient(circle, rgba(0,0,0,0.40), transparent 80%)",{"$map":[]}],"result":"radial-gradient(circle, rgba(0,0,0,0.40), transparent 80%)"}
+{"args":["radial-gradient(ellipse, rgba(255,255,255,0.35), transparent 70%)",{"$map":[]}],"result":"radial-gradient(ellipse, rgba(255,255,255,0.35), transparent 70%)"}
+{"args":["radial-gradient(circle, #ff0080 0%, #7928ca 45%, #0070f3 100%)",{"$map":[]}],"result":"radial-gradient(circle, #ff0080 0%, #7928ca 45%, #0070f3 100%)"}
+{"args":["radial-gradient(circle, rgba(255,0,128,0.90) 0%, rgba(121,40,202,0.85) 50%, transparent)",{"$map":[]}],"result":"radial-gradient(circle, rgba(255,0,128,0.90) 0%, rgba(121,40,202,0.85) 50%, transparent)"}
+{"args":["radial-gradient(circle, rgba(80,111,255,0.85), transparent)",{"$map":[]}],"result":"radial-gradient(circle, rgba(80,111,255,0.85), transparent)"}
+{"args":["linear-gradient(120deg, rgba(80,111,255,0.28), transparent 60%)",{"$map":[]}],"result":"linear-gradient(120deg, rgba(80,111,255,0.28), transparent 60%)"}
+{"args":["120px",{"$map":[]}],"result":"120px"}
+{"args":["0.12em",{"$map":[]}],"result":"0.12em"}
+{"args":["0.6em",{"$map":[]}],"result":"0.6em"}
+{"args":["#fafafa",{"$map":[]}],"result":"#fafafa"}
+{"args":["1.0",{"$map":[]}],"result":"1.0"}
+{"args":["0.15em",{"$map":[]}],"result":"0.15em"}
+{"args":["0.1em",{"$map":[]}],"result":"0.1em"}
+{"args":["ui-monospace,SFMono-Regular,Menlo,Consolas,monospace",{"$map":[]}],"result":"ui-monospace,SFMono-Regular,Menlo,Consolas,monospace"}
+{"args":["10.8px",{"$map":[]}],"result":"10.8px"}
+{"args":["11.84px",{"$map":[]}],"result":"11.84px"}
+{"args":["0 2px 8px rgba(0,0,0,0.1)",{"$map":[]}],"result":"0 2px 8px rgba(0,0,0,0.1)"}
+{"args":["0 1px 3px rgba(0,0,0,0.08)",{"$map":[]}],"result":"0 1px 3px rgba(0,0,0,0.08)"}
+{"args":["\"Fraunces\",Georgia,serif",{"$map":[]}],"result":"\"Fraunces\",Georgia,serif"}
+{"args":["88px",{"$map":[]}],"result":"88px"}
+{"args":["\"Recoleta\",serif",{"$map":[]}],"result":"\"Recoleta\",serif"}
+{"args":["\"Playfair Display\",serif",{"$map":[]}],"result":"\"Playfair Display\",serif"}
+{"args":["\"CustomSerifFace\",serif",{"$map":[]}],"result":"\"CustomSerifFace\",serif"}
+{"args":["56px",{"$map":[]}],"result":"56px"}
+{"args":["\"Karla\",sans-serif",{"$map":[]}],"result":"\"Karla\",sans-serif"}
+{"args":["normal",{"$map":[]}],"result":"normal"}
+{"args":["0.16em",{"$map":[]}],"result":"0.16em"}
+{"args":["0.14em",{"$map":[]}],"result":"0.14em"}
+{"args":["999px",{"$map":[]}],"result":"999px"}
+{"args":["0.18em",{"$map":[]}],"result":"0.18em"}
+{"args":["#f6f2ec",{"$map":[]}],"result":"#f6f2ec"}
+{"args":["#171411",{"$map":[]}],"result":"#171411"}
+{"args":["#c9bfb2",{"$map":[]}],"result":"#c9bfb2"}
+{"args":["38px",{"$map":[]}],"result":"38px"}
+{"args":["#fffaf3",{"$map":[]}],"result":"#fffaf3"}
+{"args":["240px",{"$map":[]}],"result":"240px"}
+{"args":["0.11em",{"$map":[]}],"result":"0.11em"}
+{"args":["#5b5046",{"$map":[]}],"result":"#5b5046"}
+{"args":["26px",{"$map":[]}],"result":"26px"}
+{"args":["small-caps",{"$map":[]}],"result":"small-caps"}
+{"args":["#d8cec0",{"$map":[]}],"result":"#d8cec0"}
+{"args":["220px",{"$map":[]}],"result":"220px"}
+{"args":["46px",{"$map":[]}],"result":"46px"}
+{"args":["70px",{"$map":[]}],"result":"70px"}
+{"args":["bounce-keyframe",{"$map":[]}],"result":"bounce-keyframe"}
+{"args":["transform",{"$map":[]}],"result":"transform"}
+{"args":["cubic-bezier(0.68,-0.55,0.265,1.55)",{"$map":[]}],"result":"cubic-bezier(0.68,-0.55,0.265,1.55)"}
+{"args":["width",{"$map":[]}],"result":"width"}
+{"args":["ease",{"$map":[]}],"result":"ease"}
+{"args":["height",{"$map":[]}],"result":"height"}
+{"args":["ease-out",{"$map":[]}],"result":"ease-out"}
+{"args":["padding",{"$map":[]}],"result":"padding"}
+{"args":["margin",{"$map":[]}],"result":"margin"}
+{"args":["ease-in",{"$map":[]}],"result":"ease-in"}
+{"args":["max-height",{"$map":[]}],"result":"max-height"}
+{"args":["width, height",{"$map":[]}],"result":"width, height"}
+{"args":["ease, ease",{"$map":[]}],"result":"ease, ease"}
+{"args":["width, opacity",{"$map":[]}],"result":"width, opacity"}
+{"args":["fade-in-keyframe",{"$map":[]}],"result":"fade-in-keyframe"}
+{"args":["cubic-bezier(0.16,1,0.3,1)",{"$map":[]}],"result":"cubic-bezier(0.16,1,0.3,1)"}
+{"args":["cubic-bezier(0.25,1,0.5,1)",{"$map":[]}],"result":"cubic-bezier(0.25,1,0.5,1)"}
+{"args":["opacity",{"$map":[]}],"result":"opacity"}
+{"args":["color, background-color",{"$map":[]}],"result":"color, background-color"}
+{"args":["box-shadow",{"$map":[]}],"result":"box-shadow"}
+{"args":["all",{"$map":[]}],"result":"all"}
+{"args":["transform, opacity, box-shadow",{"$map":[]}],"result":"transform, opacity, box-shadow"}
+{"args":["ease, ease, ease",{"$map":[]}],"result":"ease, ease, ease"}
+{"args":["oklch(0.78 0.14 155)",{"$map":[]}],"result":"oklch(0.78 0.14 155)"}
+{"args":["system-ui,sans-serif",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"system-ui,sans-serif"}
+{"args":["#f9fafb",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"#f9fafb"}
+{"args":["24px",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"24px"}
+{"args":["0",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0"}
+{"args":["grid",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"grid"}
+{"args":["auto",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"auto"}
+{"args":["14px",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"14px"}
+{"args":["uppercase",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"uppercase"}
+{"args":["0.05em",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0.05em"}
+{"args":["16px",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"16px"}
+{"args":["#475569",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"#475569"}
+{"args":["11px",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"11px"}
+{"args":["8px",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"8px"}
+{"args":["#64748b",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"#64748b"}
+{"args":["#111827",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"#111827"}
+{"args":["12px",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"12px"}
+{"args":["10px",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"10px"}
+{"args":["#1f2937",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"#1f2937"}
+{"args":["0 0 20px rgba(59,130,246,0.4)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 20px rgba(59,130,246,0.4)"}
+{"args":["600",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"600"}
+{"args":["13px",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"13px"}
+{"args":["4px",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"4px"}
+{"args":["#cbd5e1",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"#cbd5e1"}
+{"args":["0 0 25px rgba(139,92,246,0.35)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 25px rgba(139,92,246,0.35)"}
+{"args":["0 0 15px rgba(6,182,212,0.5)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 15px rgba(6,182,212,0.5)"}
+{"args":["0 4px 6px rgba(0,0,0,0.3),0 0 30px rgba(168,85,247,0.3)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 4px 6px rgba(0,0,0,0.3),0 0 30px rgba(168,85,247,0.3)"}
+{"args":["0 0 20px rgba(236, 72, 153, 0.5)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 20px rgba(236, 72, 153, 0.5)"}
+{"args":["0 0 18px oklch(0.72 0.15 195/0.5)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 18px oklch(0.72 0.15 195/0.5)"}
+{"args":["0 0 16px #3b82f6",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 16px #3b82f6"}
+{"args":["0 0 22px hsl(280,80%,60%)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 22px hsl(280,80%,60%)"}
+{"args":["oklch(0.78 0.14 155)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]},1],"result":"oklch(0.78 0.14 155)"}
+{"args":["0 0 10px var(--fixture-glow)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 10px oklch(0.78 0.14 155)"}
+{"args":["0 0 12px #22d3ee",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 12px #22d3ee"}
+{"args":["white",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"white"}
+{"args":["0 0 20px oklch(0.65 0.2 300/0.45)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 20px oklch(0.65 0.2 300/0.45)"}
+{"args":["#0f172a",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"#0f172a"}
+{"args":["url(/fixtures/antipatterns/missing-photo.png)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"url(/fixtures/antipatterns/missing-photo.png)"}
+{"args":["0 0 26px rgba(217,70,239,0.5)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 26px rgba(217,70,239,0.5)"}
+{"args":["linear-gradient(#111827,#0b1220),url(/fixtures/antipatterns/missing-photo.png)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"linear-gradient(#111827,#0b1220),url(/fixtures/antipatterns/missing-photo.png)"}
+{"args":["0 6px 22px rgba(249,115,22,0.5)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 6px 22px rgba(249,115,22,0.5)"}
+{"args":["0 2px 4px rgba(59,130,246,0.15)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 2px 4px rgba(59,130,246,0.15)"}
+{"args":["0 4px 12px rgba(0,0,0,0.4)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 4px 12px rgba(0,0,0,0.4)"}
+{"args":["0 0 0 3px rgba(59,130,246,0.5)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 0 3px rgba(59,130,246,0.5)"}
+{"args":["0 1px 3px rgba(59,130,246,0.2)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 1px 3px rgba(59,130,246,0.2)"}
+{"args":["0 1px 3px rgba(0,0,0,0.3)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 1px 3px rgba(0,0,0,0.3)"}
+{"args":["0 4px 6px -1px rgba(0,0,0,0.4)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 4px 6px -1px rgba(0,0,0,0.4)"}
+{"args":["0 10px 25px -5px rgba(0,0,0,0.5)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 10px 25px -5px rgba(0,0,0,0.5)"}
+{"args":["inset 0 2px 4px rgba(0,0,0,0.3)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"inset 0 2px 4px rgba(0,0,0,0.3)"}
+{"args":["0 4px 6px rgba(0,0,0,0.3),0 1px 3px rgba(0,0,0,0.2)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 4px 6px rgba(0,0,0,0.3),0 1px 3px rgba(0,0,0,0.2)"}
+{"args":["#6b7280",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"#6b7280"}
+{"args":["0 2px 4px rgba(59,130,246,0.3)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 2px 4px rgba(59,130,246,0.3)"}
+{"args":["#ffffff",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"#ffffff"}
+{"args":["0 8px 20px rgba(59,130,246,0.25)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 8px 20px rgba(59,130,246,0.25)"}
+{"args":["0 0 24px rgba(0,0,0,0.15)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 24px rgba(0,0,0,0.15)"}
+{"args":["0 6px 20px rgba(16,185,129,0.35)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 6px 20px rgba(16,185,129,0.35)"}
+{"args":["linear-gradient(rgba(0,0,0,0.2),rgba(0,0,0,0.2)),url(/fixtures/antipatterns/missing-photo.png)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"linear-gradient(rgba(0,0,0,0.2),rgba(0,0,0,0.2)),url(/fixtures/antipatterns/missing-photo.png)"}
+{"args":["0 6px 22px rgba(244,63,94,0.45)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 6px 22px rgba(244,63,94,0.45)"}
+{"args":["0 1px 2px rgba(0,0,0,0.6)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 1px 2px rgba(0,0,0,0.6)"}
+{"args":["0 1px 3px rgba(0,0,0,0.1)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 1px 3px rgba(0,0,0,0.1)"}
+{"args":["0 4px 6px -1px rgba(0,0,0,0.1)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 4px 6px -1px rgba(0,0,0,0.1)"}
+{"args":["0 10px 30px -5px rgba(0,0,0,0.15)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 10px 30px -5px rgba(0,0,0,0.15)"}
+{"args":["",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":""}
+{"args":["inset 0 2px 4px rgba(0, 0, 0, 0.3)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"inset 0 2px 4px rgba(0, 0, 0, 0.3)"}
+{"args":["0 0 20px rgba(59, 130, 246, 0.4)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 20px rgba(59, 130, 246, 0.4)"}
+{"args":["0 0 25px rgba(139, 92, 246, 0.35)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 25px rgba(139, 92, 246, 0.35)"}
+{"args":["0 0 15px rgba(6, 182, 212, 0.5)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 15px rgba(6, 182, 212, 0.5)"}
+{"args":["0 4px 6px rgba(0, 0, 0, 0.3), 0 0 30px rgba(168, 85, 247, 0.3)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 4px 6px rgba(0, 0, 0, 0.3), 0 0 30px rgba(168, 85, 247, 0.3)"}
+{"args":["0 0 18px oklch(0.72 0.15 195 / 0.5)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 18px oklch(0.72 0.15 195 / 0.5)"}
+{"args":["0 0 22px hsl(280, 80%, 60%)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 22px hsl(280, 80%, 60%)"}
+{"args":["0 0 20px oklch(0.65 0.2 300 / 0.45)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 20px oklch(0.65 0.2 300 / 0.45)"}
+{"args":["0 0 26px rgba(217, 70, 239, 0.5)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 26px rgba(217, 70, 239, 0.5)"}
+{"args":["0 6px 22px rgba(249, 115, 22, 0.5)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 6px 22px rgba(249, 115, 22, 0.5)"}
+{"args":["0 2px 4px rgba(59, 130, 246, 0.15)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 2px 4px rgba(59, 130, 246, 0.15)"}
+{"args":["0 4px 12px rgba(0, 0, 0, 0.4)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 4px 12px rgba(0, 0, 0, 0.4)"}
+{"args":["0 0 0 3px rgba(59, 130, 246, 0.5)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 0 3px rgba(59, 130, 246, 0.5)"}
+{"args":["0 1px 3px rgba(59, 130, 246, 0.2)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 1px 3px rgba(59, 130, 246, 0.2)"}
+{"args":["0 1px 3px rgba(0, 0, 0, 0.3)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 1px 3px rgba(0, 0, 0, 0.3)"}
+{"args":["0 4px 6px -1px rgba(0, 0, 0, 0.4)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 4px 6px -1px rgba(0, 0, 0, 0.4)"}
+{"args":["0 10px 25px -5px rgba(0, 0, 0, 0.5)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 10px 25px -5px rgba(0, 0, 0, 0.5)"}
+{"args":["0 4px 6px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.2)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 4px 6px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.2)"}
+{"args":["0 1px 3px rgba(0, 0, 0, 0.1)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 1px 3px rgba(0, 0, 0, 0.1)"}
+{"args":["0 4px 6px -1px rgba(0, 0, 0, 0.1)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 4px 6px -1px rgba(0, 0, 0, 0.1)"}
+{"args":["0 10px 30px -5px rgba(0, 0, 0, 0.15)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 10px 30px -5px rgba(0, 0, 0, 0.15)"}
+{"args":["0 2px 4px rgba(59, 130, 246, 0.3)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 2px 4px rgba(59, 130, 246, 0.3)"}
+{"args":["0 8px 20px rgba(59, 130, 246, 0.25)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 8px 20px rgba(59, 130, 246, 0.25)"}
+{"args":["0 0 24px rgba(0, 0, 0, 0.15)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 0 24px rgba(0, 0, 0, 0.15)"}
+{"args":["0 6px 20px rgba(16, 185, 129, 0.35)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 6px 20px rgba(16, 185, 129, 0.35)"}
+{"args":["0 6px 22px rgba(244, 63, 94, 0.45)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 6px 22px rgba(244, 63, 94, 0.45)"}
+{"args":["0 1px 2px rgba(0, 0, 0, 0.6)",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"0 1px 2px rgba(0, 0, 0, 0.6)"}
+{"args":["url('/fixtures/antipatterns/missing-photo.png')",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"url('/fixtures/antipatterns/missing-photo.png')"}
+{"args":["linear-gradient(#111827, #0b1220), url('/fixtures/antipatterns/missing-photo.png')",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"linear-gradient(#111827, #0b1220), url('/fixtures/antipatterns/missing-photo.png')"}
+{"args":["a real drop\n       shadow, not a halo — must NOT flag under the zero-offset rule.\n       (Element path",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"a real drop\n       shadow, not a halo — must NOT flag under the zero-offset rule.\n       (Element path"}
+{"args":["linear-gradient(rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.2)), url('/fixtures/antipatterns/missing-photo.png')",{"$map":[["--fixture-glow","oklch(0.78 0.14 155)"]]}],"result":"linear-gradient(rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.2)), url('/fixtures/antipatterns/missing-photo.png')"}
+{"args":["0.06em",{"$map":[]}],"result":"0.06em"}
+{"args":["#fffbe6",{"$map":[]}],"result":"#fffbe6"}
+{"args":["#d4a017",{"$map":[]}],"result":"#d4a017"}
+{"args":["ui-monospace,monospace",{"$map":[]}],"result":"ui-monospace,monospace"}
+{"args":["#8b6914",{"$map":[]}],"result":"#8b6914"}
+{"args":["#fef3c7",{"$map":[]}],"result":"#fef3c7"}
+{"args":["#78350f",{"$map":[]}],"result":"#78350f"}
+{"args":["#fde68a",{"$map":[]}],"result":"#fde68a"}
+{"args":["solid",{"$map":[]}],"result":"solid"}
+{"args":["0px",{"$map":[]}],"result":"0px"}
+{"args":["#f5f5f7",{"$map":[]}],"result":"#f5f5f7"}
+{"args":["linear-gradient(135deg,#cbd5e1,#94a3b8)",{"$map":[]}],"result":"linear-gradient(135deg,#cbd5e1,#94a3b8)"}
+{"args":["#eef2f7",{"$map":[]}],"result":"#eef2f7"}
+{"args":["#172033",{"$map":[]}],"result":"#172033"}
+{"args":["#23304a",{"$map":[]}],"result":"#23304a"}
+{"args":["rgba(255,255,255,0.16)",{"$map":[]}],"result":"rgba(255,255,255,0.16)"}
+{"args":["linear-gradient(135deg, #cbd5e1, #94a3b8)",{"$map":[]}],"result":"linear-gradient(135deg, #cbd5e1, #94a3b8)"}
+{"args":["#1a1a1a",{"$map":[]}],"result":"#1a1a1a"}
+{"args":["168px",{"$map":[]}],"result":"168px"}
+{"args":["-0.06em",{"$map":[]}],"result":"-0.06em"}
+{"args":["-4px",{"$map":[]}],"result":"-4px"}
+{"args":["-0.07em",{"$map":[]}],"result":"-0.07em"}
+{"args":["-0.02em",{"$map":[]}],"result":"-0.02em"}
+{"args":["#ddd",{"$map":[]}],"result":"#ddd"}
+{"args":["#222",{"$map":[]}],"result":"#222"}
+{"args":["clip",{"$map":[]}],"result":"clip"}
+{"args":["-34px",{"$map":[]}],"result":"-34px"}
+{"args":["160px",{"$map":[]}],"result":"160px"}
+{"args":["180px",{"$map":[]}],"result":"180px"}
+{"args":["static",{"$map":[]}],"result":"static"}
+{"args":["visible",{"$map":[]}],"result":"visible"}
+{"args":["36px",{"$map":[]}],"result":"36px"}
+{"args":["#e5f0ff",{"$map":[]}],"result":"#e5f0ff"}
+{"args":["52px",{"$map":[]}],"result":"52px"}
+{"args":["#111",{"$map":[]}],"result":"#111"}
+{"args":["linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent)",{"$map":[]}],"result":"linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent)"}
+{"args":["-18px",{"$map":[]}],"result":"-18px"}
+{"args":["linear-gradient(135deg,#b7d7ff,#486aa3)",{"$map":[]}],"result":"linear-gradient(135deg,#b7d7ff,#486aa3)"}
+{"args":["rgba(255,255,255,.86)",{"$map":[]}],"result":"rgba(255,255,255,.86)"}
+{"args":["#f5f5f5",{"$map":[]}],"result":"#f5f5f5"}
+{"args":["linear-gradient(90deg, transparent, rgba(255,255,255,.6), transparent)",{"$map":[]}],"result":"linear-gradient(90deg, transparent, rgba(255,255,255,.6), transparent)"}
+{"args":["linear-gradient(135deg, #b7d7ff, #486aa3)",{"$map":[]}],"result":"linear-gradient(135deg, #b7d7ff, #486aa3)"}
+{"args":["#f5efe2",{"$map":[]}],"result":"#f5efe2"}
+{"args":["#2a2622",{"$map":[]}],"result":"#2a2622"}
+{"args":["0 0 24px rgba(0,0,0,0.18)",{"$map":[]}],"result":"0 0 24px rgba(0,0,0,0.18)"}
+{"args":["repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px)",{"$map":[]}],"result":"repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px)"}
+{"args":["linear-gradient(90deg, oklch(96% 0.012 82 / 0.055) 1px, transparent 1px), linear-gradient(180deg, oklch(96% 0.012 82 / 0.05) 1px, transparent 1px)",{"$map":[]}],"result":"linear-gradient(90deg, oklch(96% 0.012 82 / 0.055) 1px, transparent 1px), linear-gradient(180deg, oklch(96% 0.012 82 / 0.05) 1px, transparent 1px)"}
+{"args":["0 1px 4px rgba(0,0,0,0.08)",{"$map":[]}],"result":"0 1px 4px rgba(0,0,0,0.08)"}
+{"args":["rgba(148, 163, 184, 0.16)",{"$map":[]}],"result":"rgba(148, 163, 184, 0.16)"}
+{"args":["0 18px 48px -16px rgba(15, 23, 42, 0.18)",{"$map":[]}],"result":"0 18px 48px -16px rgba(15, 23, 42, 0.18)"}
+{"args":["oklch(78% 0 0 / 0.16)",{"$map":[]}],"result":"oklch(78% 0 0 / 0.16)"}
+{"args":["0 16px 36px -12px oklch(2% 0.004 95 / 0.18)",{"$map":[]}],"result":"0 16px 36px -12px oklch(2% 0.004 95 / 0.18)"}
+{"args":["linear-gradient(180deg, #f3f4f6, #ffffff)",{"$map":[]}],"result":"linear-gradient(180deg, #f3f4f6, #ffffff)"}
+{"args":["linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)",{"$map":[]}],"result":"linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"}
+{"args":["linear-gradient(90deg, #f3f4f6, #e5e7eb), linear-gradient(180deg, #eef2ff, #ffffff)",{"$map":[]}],"result":"linear-gradient(90deg, #f3f4f6, #e5e7eb), linear-gradient(180deg, #eef2ff, #ffffff)"}
+{"args":["linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px), linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)",{"$map":[]}],"result":"linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px), linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"}
+{"args":["linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)",{"$map":[]}],"result":"linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"}
+{"args":["0 0 24px rgba(0,0,0,0.18)\"\nstyle=\"background: repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px)\"\nstyle=\"background: linear-gradient(90deg, oklch(96% 0.012 82 / 0.055) 1px, transparent 1px), linear-gradient(180deg, oklch(96% 0.012 82 / 0.05) 1px, transparent 1px)",{"$map":[]}],"result":"0 0 24px rgba(0,0,0,0.18)\"\nstyle=\"background: repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px)\"\nstyle=\"background: linear-gradient(90deg, oklch(96% 0.012 82 / 0.055) 1px, transparent 1px), linear-gradient(180deg, oklch(96% 0.012 82 / 0.05) 1px, transparent 1px)"}
+{"args":["0 1px 4px rgba(0,0,0,0.08)\"\nstyle=\"border: 1px solid rgba(148, 163, 184, 0.16)",{"$map":[]}],"result":"0 1px 4px rgba(0,0,0,0.08)\"\nstyle=\"border: 1px solid rgba(148, 163, 184, 0.16)"}
+{"args":["0 18px 48px -16px rgba(15, 23, 42, 0.18)\"\nstyle=\"border: 1px solid oklch(78% 0 0 / 0.16)",{"$map":[]}],"result":"0 18px 48px -16px rgba(15, 23, 42, 0.18)\"\nstyle=\"border: 1px solid oklch(78% 0 0 / 0.16)"}
+{"args":["0 16px 36px -12px oklch(2% 0.004 95 / 0.18)\"\nstyle=\"background: linear-gradient(180deg, #f3f4f6, #ffffff)\"\nstyle=\"background: linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)",{"$map":[]}],"result":"0 16px 36px -12px oklch(2% 0.004 95 / 0.18)\"\nstyle=\"background: linear-gradient(180deg, #f3f4f6, #ffffff)\"\nstyle=\"background: linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"}
+{"args":["Georgia,\"Iowan Old Style\",serif",{"$map":[]}],"result":"Georgia,\"Iowan Old Style\",serif"}
+{"args":["#1f2933",{"$map":[]}],"result":"#1f2933"}
+{"args":["#fdfcf9",{"$map":[]}],"result":"#fdfcf9"}
+{"args":["\"SF Mono\",ui-monospace,monospace",{"$map":[]}],"result":"\"SF Mono\",ui-monospace,monospace"}
+{"args":["#f1efe9",{"$map":[]}],"result":"#f1efe9"}
+{"args":["linear-gradient(135deg,#7c3aed,#a855f7)",{"$map":[]}],"result":"linear-gradient(135deg,#7c3aed,#a855f7)"}
+{"args":["text",{"$map":[]}],"result":"text"}
+{"args":["44px",{"$map":[]}],"result":"44px"}
+{"args":["linear-gradient(90deg, #667eea, #764ba2)",{"$map":[]}],"result":"linear-gradient(90deg, #667eea, #764ba2)"}
+{"args":["linear-gradient(oklch(0.07 0.006 95),oklch(0.11 0.008 95))",{"$map":[]}],"result":"linear-gradient(oklch(0.07 0.006 95),oklch(0.11 0.008 95))"}
+{"args":["oklch(0.92 0.01 90)",{"$map":[]}],"result":"oklch(0.92 0.01 90)"}
+{"args":["oklch(0.32 0.01 90)",{"$map":[]}],"result":"oklch(0.32 0.01 90)"}
+{"args":["color(srgb 0.1 0.11 0.12)",{"$map":[]}],"result":"color(srgb 0.1 0.11 0.12)"}
+{"args":["color(srgb 0.28 0.28 0.3)",{"$map":[]}],"result":"color(srgb 0.28 0.28 0.3)"}
+{"args":["color(display-p3 0.07 0.07 0.08)",{"$map":[]}],"result":"color(display-p3 0.07 0.07 0.08)"}
+{"args":["color(display-p3 0.35 0.35 0.36)",{"$map":[]}],"result":"color(display-p3 0.35 0.35 0.36)"}
+{"args":["lch(18 4 60)",{"$map":[]}],"result":"lch(18 4 60)"}
+{"args":["lch(35 3 60)",{"$map":[]}],"result":"lch(35 3 60)"}
+{"args":["color(srgb 0.98 0.97 0.95)",{"$map":[]}],"result":"color(srgb 0.98 0.97 0.95)"}
+{"args":["color(srgb 0.75 0.74 0.72)",{"$map":[]}],"result":"color(srgb 0.75 0.74 0.72)"}
+{"args":["inherit",{"$map":[]}],"result":"inherit"}
+{"args":["color(srgb 0.78 0.77 0.75)",{"$map":[]}],"result":"color(srgb 0.78 0.77 0.75)"}
+{"args":["currentcolor",{"$map":[]}],"result":"currentcolor"}
+{"args":["color(srgb 0.94 0.93 0.91)",{"$map":[]}],"result":"color(srgb 0.94 0.93 0.91)"}
+{"args":["color-mix(in srgb,white 6%,#0b0b0d)",{"$map":[]}],"result":"color-mix(in srgb,white 6%,#0b0b0d)"}
+{"args":["color(rec2020 0.05 0.05 0.05)",{"$map":[]}],"result":"color(rec2020 0.05 0.05 0.05)"}
+{"args":["url(opaque-panel.png),linear-gradient(#ff0000,#0000ff)",{"$map":[]}],"result":"url(opaque-panel.png),linear-gradient(#ff0000,#0000ff)"}
+{"args":["linear-gradient(oklch(0.07 0.006 95), oklch(0.11 0.008 95))",{"$map":[]}],"result":"linear-gradient(oklch(0.07 0.006 95), oklch(0.11 0.008 95))"}
+{"args":["url(\"opaque-panel.png\"), linear-gradient(#ff0000, #0000ff)",{"$map":[]}],"result":"url(\"opaque-panel.png\"), linear-gradient(#ff0000, #0000ff)"}

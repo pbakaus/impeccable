@@ -1,0 +1,1812 @@
+{"args":["margin","0"],"result":[["marginTop","0"],["marginRight","0"],["marginBottom","0"],["marginLeft","0"]]}
+{"args":["padding","0"],"result":[["paddingTop","0"],["paddingRight","0"],["paddingBottom","0"],["paddingLeft","0"]]}
+{"args":["box-sizing","border-box"],"result":[]}
+{"args":["font-family","monospace,monospace"],"result":[["fontFamily","monospace,monospace"]]}
+{"args":["font-size","16px"],"result":[["fontSize","16px"]]}
+{"args":["padding","40px"],"result":[["paddingTop","40px"],["paddingRight","40px"],["paddingBottom","40px"],["paddingLeft","40px"]]}
+{"args":["background","#111"],"result":[["backgroundColor","#111"]]}
+{"args":["color","#eee"],"result":[["color","#eee"]]}
+{"args":["padding","24px"],"result":[["paddingTop","24px"],["paddingRight","24px"],["paddingBottom","24px"],["paddingLeft","24px"]]}
+{"args":["width","600px"],"result":[["width","600px"]]}
+{"args":["display","inline-block"],"result":[["display","inline-block"]]}
+{"args":["width","10px"],"result":[["width","10px"]]}
+{"args":["height","18px"],"result":[["height","18px"]]}
+{"args":["background","#33d17a"],"result":[["backgroundColor","#33d17a"]]}
+{"args":["vertical-align","text-bottom"],"result":[]}
+{"args":["animation","blink-anim 1.1s steps(1) infinite"],"result":[["animationName","blink-anim"]]}
+{"args":["animation","flicker 1s steps(2) infinite"],"result":[["animationName","flicker"]]}
+{"args":["width","12px"],"result":[["width","12px"]]}
+{"args":["height","3px"],"result":[["height","3px"]]}
+{"args":["background","#eee"],"result":[["backgroundColor","#eee"]]}
+{"args":["vertical-align","baseline"],"result":[]}
+{"args":["animation","caret-blink 0.9s steps(1) infinite"],"result":[["animationName","caret-blink"]]}
+{"args":["background","#444"],"result":[["backgroundColor","#444"]]}
+{"args":["animation","blink-anim 1s steps(1) infinite"],"result":[["animationName","blink-anim"]]}
+{"args":["width","8px"],"result":[["width","8px"]]}
+{"args":["height","8px"],"result":[["height","8px"]]}
+{"args":["border-radius","50%"],"result":[["borderRadius","50%"]]}
+{"args":["animation","blink-anim 2s steps(1) infinite"],"result":[["animationName","blink-anim"]]}
+{"args":["width","16px"],"result":[["width","16px"]]}
+{"args":["height","16px"],"result":[["height","16px"]]}
+{"args":["border","2px solid #999"],"result":[["borderTopWidth","2px"],["borderTopColor","#999"],["borderRightWidth","2px"],["borderRightColor","#999"],["borderBottomWidth","2px"],["borderBottomColor","#999"],["borderLeftWidth","2px"],["borderLeftColor","#999"]]}
+{"args":["border-top-color","#333"],"result":[["borderTopColor","#333"]]}
+{"args":["animation","spin 1s linear infinite"],"result":[["animationName","spin"],["animationTimingFunction","linear"]]}
+{"args":["width","200px"],"result":[["width","200px"]]}
+{"args":["height","90px"],"result":[["height","90px"]]}
+{"args":["background","#222"],"result":[["backgroundColor","#222"]]}
+{"args":["height","1400px"],"result":[["height","1400px"]]}
+{"args":["margin-top","24px"],"result":[["marginTop","24px"]]}
+{"args":["font","14px/1.5 system-ui,sans-serif"],"result":[["fontSize","14px"],["lineHeight","1.5"],["fontFamily","system-ui,sans-serif"]]}
+{"args":["color","#111"],"result":[["color","#111"]]}
+{"args":["background","#fff"],"result":[["backgroundColor","#fff"]]}
+{"args":["display","grid"],"result":[["display","grid"]]}
+{"args":["grid-template-columns","1fr 1fr"],"result":[]}
+{"args":["gap","32px"],"result":[]}
+{"args":["max-width","1400px"],"result":[]}
+{"args":["margin","0 auto"],"result":[["marginTop","0"],["marginRight","auto"],["marginBottom","0"],["marginLeft","auto"]]}
+{"args":["font","600 14px/1 system-ui"],"result":[["fontWeight","600"],["fontSize","14px"],["lineHeight","1"],["fontFamily","system-ui"]]}
+{"args":["text-transform","uppercase"],"result":[["textTransform","uppercase"]]}
+{"args":["letter-spacing","0.05em"],"result":[["letterSpacing","0.05em"]]}
+{"args":["margin","0 0 16px"],"result":[["marginTop","0"],["marginRight","0"],["marginBottom","16px"],["marginLeft","0"]]}
+{"args":["color","#475569"],"result":[["color","#475569"]]}
+{"args":["display","block"],"result":[["display","block"]]}
+{"args":["font-size","12px"],"result":[["fontSize","12px"]]}
+{"args":["color","#64748b"],"result":[["color","#64748b"]]}
+{"args":["margin","16px 0 4px"],"result":[["marginTop","16px"],["marginRight","0"],["marginBottom","4px"],["marginLeft","0"]]}
+{"args":["font-style","italic"],"result":[["fontStyle","italic"]]}
+{"args":["max-width","720px"],"result":[]}
+{"args":["padding","16px 32px"],"result":[["paddingTop","16px"],["paddingRight","32px"],["paddingBottom","16px"],["paddingLeft","32px"]]}
+{"args":["background","#fef3c7"],"result":[["backgroundColor","#fef3c7"]]}
+{"args":["padding","24px 16px"],"result":[["paddingTop","24px"],["paddingRight","16px"],["paddingBottom","24px"],["paddingLeft","16px"]]}
+{"args":["padding","12px 24px"],"result":[["paddingTop","12px"],["paddingRight","24px"],["paddingBottom","12px"],["paddingLeft","24px"]]}
+{"args":["background","#f5f5f5"],"result":[["backgroundColor","#f5f5f5"]]}
+{"args":["background","#e5e7eb"],"result":[["backgroundColor","#e5e7eb"]]}
+{"args":["position","relative"],"result":[["position","relative"]]}
+{"args":["left","50%"],"result":[["left","50%"]]}
+{"args":["right","50%"],"result":[["right","50%"]]}
+{"args":["margin-left","-50vw"],"result":[["marginLeft","-50vw"]]}
+{"args":["margin-right","-50vw"],"result":[["marginRight","-50vw"]]}
+{"args":["width","100vw"],"result":[["width","100vw"]]}
+{"args":["list-style-position","inside"],"result":[]}
+{"args":["background","#f8fafc"],"result":[["backgroundColor","#f8fafc"]]}
+{"args":["color","#111827"],"result":[["color","#111827"]]}
+{"args":["max-width","1180px"],"result":[]}
+{"args":["margin","0 auto 8px"],"result":[["marginTop","0"],["marginRight","auto"],["marginBottom","8px"],["marginLeft","auto"]]}
+{"args":["font-size","34px"],"result":[["fontSize","34px"]]}
+{"args":["line-height","1.05"],"result":[["lineHeight","1.05"]]}
+{"args":["font-weight","720"],"result":[["fontWeight","720"]]}
+{"args":["margin","0 auto 24px"],"result":[["marginTop","0"],["marginRight","auto"],["marginBottom","24px"],["marginLeft","auto"]]}
+{"args":["color","#4b5563"],"result":[["color","#4b5563"]]}
+{"args":["grid-template-columns","minmax(0,1fr) minmax(0,1fr)"],"result":[]}
+{"args":["margin","0 0 14px"],"result":[["marginTop","0"],["marginRight","0"],["marginBottom","14px"],["marginLeft","0"]]}
+{"args":["font-size","13px"],"result":[["fontSize","13px"]]}
+{"args":["font-weight","760"],"result":[["fontWeight","760"]]}
+{"args":["letter-spacing","0.08em"],"result":[["letterSpacing","0.08em"]]}
+{"args":["padding","16px"],"result":[["paddingTop","16px"],["paddingRight","16px"],["paddingBottom","16px"],["paddingLeft","16px"]]}
+{"args":["background","#fdfdfd"],"result":[["backgroundColor","#fdfdfd"]]}
+{"args":["box-shadow","0 1px 2px rgba(15,23,42,0.06)"],"result":[["boxShadow","0 1px 2px rgba(15,23,42,0.06)"]]}
+{"args":["margin","0 0 4px"],"result":[["marginTop","0"],["marginRight","0"],["marginBottom","4px"],["marginLeft","0"]]}
+{"args":["font-size","15px"],"result":[["fontSize","15px"]]}
+{"args":["line-height","1.25"],"result":[["lineHeight","1.25"]]}
+{"args":["border-left","4px solid #2563eb"],"result":[["borderLeftWidth","4px"],["borderLeftColor","#2563eb"]]}
+{"args":["border-radius","10px"],"result":[["borderRadius","10px"]]}
+{"args":["border-right","5px solid #dc2626"],"result":[["borderRightWidth","5px"],["borderRightColor","#dc2626"]]}
+{"args":["border-left","4px solid #0f766e"],"result":[["borderLeftWidth","4px"],["borderLeftColor","#0f766e"]]}
+{"args":["border-top","4px solid #7c3aed"],"result":[["borderTopWidth","4px"],["borderTopColor","#7c3aed"]]}
+{"args":["border-bottom","3px solid #ea580c"],"result":[["borderBottomWidth","3px"],["borderBottomColor","#ea580c"]]}
+{"args":["background","#141820"],"result":[["backgroundColor","#141820"]]}
+{"args":["color","#f4f7fb"],"result":[["color","#f4f7fb"]]}
+{"args":["border-left","4px solid #38bdf8"],"result":[["borderLeftWidth","4px"],["borderLeftColor","#38bdf8"]]}
+{"args":["color","#cbd5e1"],"result":[["color","#cbd5e1"]]}
+{"args":["border","1px solid #cbd5e1"],"result":[["borderTopWidth","1px"],["borderTopColor","#cbd5e1"],["borderRightWidth","1px"],["borderRightColor","#cbd5e1"],["borderBottomWidth","1px"],["borderBottomColor","#cbd5e1"],["borderLeftWidth","1px"],["borderLeftColor","#cbd5e1"]]}
+{"args":["border-left","4px solid #d1d5db"],"result":[["borderLeftWidth","4px"],["borderLeftColor","#d1d5db"]]}
+{"args":["border-left","1px solid #2563eb"],"result":[["borderLeftWidth","1px"],["borderLeftColor","#2563eb"]]}
+{"args":["border-radius","0"],"result":[["borderRadius","0"]]}
+{"args":["border-bottom","3px solid #2563eb"],"result":[["borderBottomWidth","3px"],["borderBottomColor","#2563eb"]]}
+{"args":["border-top","16px solid #7c3aed"],"result":[["borderTopWidth","16px"],["borderTopColor","#7c3aed"]]}
+{"args":["background","#161a22"],"result":[["backgroundColor","#161a22"]]}
+{"args":["border","1px solid #334155"],"result":[["borderTopWidth","1px"],["borderTopColor","#334155"],["borderRightWidth","1px"],["borderRightColor","#334155"],["borderBottomWidth","1px"],["borderBottomColor","#334155"],["borderLeftWidth","1px"],["borderLeftColor","#334155"]]}
+{"args":["font-family","system-ui,sans-serif"],"result":[["fontFamily","system-ui,sans-serif"]]}
+{"args":["color","#1a1a1a"],"result":[["color","#1a1a1a"]]}
+{"args":["gap","24px"],"result":[]}
+{"args":["height","120px"],"result":[["height","120px"]]}
+{"args":["margin","0 0 24px"],"result":[["marginTop","0"],["marginRight","0"],["marginBottom","24px"],["marginLeft","0"]]}
+{"args":["border","1px solid #ddd"],"result":[["borderTopWidth","1px"],["borderTopColor","#ddd"],["borderRightWidth","1px"],["borderRightColor","#ddd"],["borderBottomWidth","1px"],["borderBottomColor","#ddd"],["borderLeftWidth","1px"],["borderLeftColor","#ddd"]]}
+{"args":["position","absolute"],"result":[["position","absolute"]]}
+{"args":["top","100%"],"result":[["top","100%"]]}
+{"args":["left","0"],"result":[["left","0"]]}
+{"args":["width","220px"],"result":[["width","220px"]]}
+{"args":["color","#fff"],"result":[["color","#fff"]]}
+{"args":["padding","8px"],"result":[["paddingTop","8px"],["paddingRight","8px"],["paddingBottom","8px"],["paddingLeft","8px"]]}
+{"args":["top","-34px"],"result":[["top","-34px"]]}
+{"args":["left","16px"],"result":[["left","16px"]]}
+{"args":["width","160px"],"result":[["width","160px"]]}
+{"args":["top","28px"],"result":[["top","28px"]]}
+{"args":["left","100%"],"result":[["left","100%"]]}
+{"args":["width","180px"],"result":[["width","180px"]]}
+{"args":["top","10px"],"result":[["top","10px"]]}
+{"args":["right","10px"],"result":[["right","10px"]]}
+{"args":["width","36px"],"result":[["width","36px"]]}
+{"args":["height","24px"],"result":[["height","24px"]]}
+{"args":["background","#e5f0ff"],"result":[["backgroundColor","#e5f0ff"]]}
+{"args":["inset","0"],"result":[["inset","0"]]}
+{"args":["background","linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent)"],"result":[["backgroundImage","linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent)"]]}
+{"args":["inset","-18px"],"result":[["inset","-18px"]]}
+{"args":["background","linear-gradient(135deg,#b7d7ff,#486aa3)"],"result":[["backgroundImage","linear-gradient(135deg,#b7d7ff,#486aa3)"]]}
+{"args":["left","12px"],"result":[["left","12px"]]}
+{"args":["right","12px"],"result":[["right","12px"]]}
+{"args":["bottom","12px"],"result":[["bottom","12px"]]}
+{"args":["min-height","28px"],"result":[]}
+{"args":["background","rgba(255,255,255,.86)"],"result":[["backgroundColor","rgba(255,255,255,.86)"]]}
+{"args":["overflow","hidden"],"result":[["overflow","hidden"]]}
+{"args":["height","52px"],"result":[["height","52px"]]}
+{"args":["width","100%"],"result":[["width","100%"]]}
+{"args":["height","100%"],"result":[["height","100%"]]}
+{"args":["background","none"],"result":[["backgroundColor","rgba(0, 0, 0, 0)"],["backgroundImage","none"]]}
+{"args":["border","0"],"result":[]}
+{"args":["text-align","left"],"result":[["textAlign","left"]]}
+{"args":["top","0"],"result":[["top","0"]]}
+{"args":["overflow","clip"],"result":[["overflow","clip"]]}
+{"args":["position","static"],"result":[["position","static"]]}
+{"args":["overflow","visible"],"result":[["overflow","visible"]]}
+{"args":["overflow","auto"],"result":[["overflow","auto"]]}
+{"args":["background","#fafafa"],"result":[["backgroundColor","#fafafa"]]}
+{"args":["max-width","1200px"],"result":[]}
+{"args":["font-size","14px"],"result":[["fontSize","14px"]]}
+{"args":["font-size","11px"],"result":[["fontSize","11px"]]}
+{"args":["margin","24px 0 8px"],"result":[["marginTop","24px"],["marginRight","0"],["marginBottom","8px"],["marginLeft","0"]]}
+{"args":["padding","14px 16px"],"result":[["paddingTop","14px"],["paddingRight","16px"],["paddingBottom","14px"],["paddingLeft","16px"]]}
+{"args":["margin-bottom","10px"],"result":[["marginBottom","10px"]]}
+{"args":["background-color","rgb(31,26,21)"],"result":[["backgroundColor","rgb(31,26,21)"]]}
+{"args":["color","rgb(91,79,68)"],"result":[["color","rgb(91,79,68)"]]}
+{"args":["padding","9px 18px"],"result":[["paddingTop","9px"],["paddingRight","18px"],["paddingBottom","9px"],["paddingLeft","18px"]]}
+{"args":["border-radius","999px"],"result":[["borderRadius","999px"]]}
+{"args":["font-weight","500"],"result":[["fontWeight","500"]]}
+{"args":["text-decoration","none"],"result":[]}
+{"args":["background-color","rgb(55,65,81)"],"result":[["backgroundColor","rgb(55,65,81)"]]}
+{"args":["color","rgb(108,114,128)"],"result":[["color","rgb(108,114,128)"]]}
+{"args":["padding","10px 20px"],"result":[["paddingTop","10px"],["paddingRight","20px"],["paddingBottom","10px"],["paddingLeft","20px"]]}
+{"args":["border-radius","8px"],"result":[["borderRadius","8px"]]}
+{"args":["background-color","rgb(20,20,25)"],"result":[["backgroundColor","rgb(20,20,25)"]]}
+{"args":["color","rgb(245,240,232)"],"result":[["color","rgb(245,240,232)"]]}
+{"args":["color","rgb(170,170,170)"],"result":[["color","rgb(170,170,170)"]]}
+{"args":["background-color","rgb(182,50,45)"],"result":[["backgroundColor","rgb(182,50,45)"]]}
+{"args":["color","rgb(92,84,73)"],"result":[["color","rgb(92,84,73)"]]}
+{"args":["font-weight","700"],"result":[["fontWeight","700"]]}
+{"args":["padding","2px 8px"],"result":[["paddingTop","2px"],["paddingRight","8px"],["paddingBottom","2px"],["paddingLeft","8px"]]}
+{"args":["border-radius","2px"],"result":[["borderRadius","2px"]]}
+{"args":["color","rgb(150,60,55)"],"result":[["color","rgb(150,60,55)"]]}
+{"args":["font-size","8px"],"result":[["fontSize","8px"]]}
+{"args":["padding","1px 4px"],"result":[["paddingTop","1px"],["paddingRight","4px"],["paddingBottom","1px"],["paddingLeft","4px"]]}
+{"args":["background","rgb(28,30,38)"],"result":[["backgroundColor","rgb(28,30,38)"]]}
+{"args":["color","rgb(230,232,237)"],"result":[["color","rgb(230,232,237)"]]}
+{"args":["padding","12px"],"result":[["paddingTop","12px"],["paddingRight","12px"],["paddingBottom","12px"],["paddingLeft","12px"]]}
+{"args":["background","rgb(246,242,244)"],"result":[["backgroundColor","rgb(246,242,244)"]]}
+{"args":["border-radius","3px"],"result":[["borderRadius","3px"]]}
+{"args":["background","linear-gradient(135deg,#6d8cff 0%,#a78bfa 50%,#6d8cff 100%)"],"result":[["backgroundImage","linear-gradient(135deg,#6d8cff 0%,#a78bfa 50%,#6d8cff 100%)"]]}
+{"args":["-webkit-background-clip","text"],"result":[["webkitBackgroundClip","text"]]}
+{"args":["background-clip","text"],"result":[["backgroundClip","text"]]}
+{"args":["-webkit-text-fill-color","transparent"],"result":[]}
+{"args":["color","#e8e6e3"],"result":[["color","#e8e6e3"]]}
+{"args":["font-size","40px"],"result":[["fontSize","40px"]]}
+{"args":["font-weight","800"],"result":[["fontWeight","800"]]}
+{"args":["background","#0f0f11"],"result":[["backgroundColor","#0f0f11"]]}
+{"args":["background","linear-gradient(160deg,rgba(52,192,168,0.09) 0%,#141419 65%)"],"result":[["backgroundImage","linear-gradient(160deg,rgba(52,192,168,0.09) 0%,#141419 65%)"]]}
+{"args":["padding","20px"],"result":[["paddingTop","20px"],["paddingRight","20px"],["paddingBottom","20px"],["paddingLeft","20px"]]}
+{"args":["font-size","18px"],"result":[["fontSize","18px"]]}
+{"args":["color","#8e8c89"],"result":[["color","#8e8c89"]]}
+{"args":["background","linear-gradient(160deg,color-mix(in oklab,oklch(90%0.02 95) 16%,transparent) 0%,#141419 65%)"],"result":[["backgroundImage","linear-gradient(160deg,color-mix(in oklab,oklch(90%0.02 95) 16%,transparent) 0%,#141419 65%)"]]}
+{"args":["color","#ded9cf"],"result":[["color","#ded9cf"]]}
+{"args":["--fixture-bone","#e8e2d6"],"result":[["--fixture-bone","#e8e2d6"]]}
+{"args":["background-color","currentcolor"],"result":[["backgroundColor","currentcolor"]]}
+{"args":["color","var(--fixture-bone)"],"result":[["color","var(--fixture-bone)"]]}
+{"args":["color","#cfc9bd"],"result":[["color","#cfc9bd"]]}
+{"args":["color","#3a352c"],"result":[["color","#3a352c"]]}
+{"args":["color","var(--fixture-undefined-token)"],"result":[["color","var(--fixture-undefined-token)"]]}
+{"args":["color","#efe9dd"],"result":[["color","#efe9dd"]]}
+{"args":["background","#000000"],"result":[["backgroundColor","#000000"]]}
+{"args":["color","white"],"result":[["color","white"]]}
+{"args":["background","rgb(59, 130, 246)"],"result":[["backgroundColor","rgb(59, 130, 246)"]]}
+{"args":["color","rgb(150, 150, 150)"],"result":[["color","rgb(150, 150, 150)"]]}
+{"args":["background","rgb(16, 185, 129)"],"result":[["backgroundColor","rgb(16, 185, 129)"]]}
+{"args":["color","rgb(180, 180, 180)"],"result":[["color","rgb(180, 180, 180)"]]}
+{"args":["background","white"],"result":[["backgroundColor","white"]]}
+{"args":["color","rgb(200, 200, 200)"],"result":[["color","rgb(200, 200, 200)"]]}
+{"args":["background","rgb(30, 30, 30)"],"result":[["backgroundColor","rgb(30, 30, 30)"]]}
+{"args":["color","rgb(80, 80, 80)"],"result":[["color","rgb(80, 80, 80)"]]}
+{"args":["background","linear-gradient(180deg, #3b82f6 0%, #8b5cf6 100%)"],"result":[["backgroundImage","linear-gradient(180deg, #3b82f6 0%, #8b5cf6 100%)"]]}
+{"args":["color","#808080"],"result":[["color","#808080"]]}
+{"args":["font-size","32px"],"result":[["fontSize","32px"]]}
+{"args":["color","#666666"],"result":[["color","#666666"]]}
+{"args":["background","linear-gradient(135deg, #667eea, #764ba2)"],"result":[["backgroundImage","linear-gradient(135deg, #667eea, #764ba2)"]]}
+{"args":["font-size","1.5rem"],"result":[["fontSize","1.5rem"]]}
+{"args":["color","rgb(139, 92, 246)"],"result":[["color","rgb(139, 92, 246)"]]}
+{"args":["background","black"],"result":[["backgroundColor","black"]]}
+{"args":["color","rgb(156, 163, 175)"],"result":[["color","rgb(156, 163, 175)"]]}
+{"args":["color","rgb(168, 85, 247)"],"result":[["color","rgb(168, 85, 247)"]]}
+{"args":["background","linear-gradient(to right, rgb(168, 85, 247), rgb(99, 102, 241))"],"result":[["backgroundImage","linear-gradient(to right, rgb(168, 85, 247), rgb(99, 102, 241))"]]}
+{"args":["background","rgb(26, 26, 30)"],"result":[["backgroundColor","rgb(26, 26, 30)"]]}
+{"args":["color","rgb(240, 240, 245)"],"result":[["color","rgb(240, 240, 245)"]]}
+{"args":["background","rgb(250, 250, 252)"],"result":[["backgroundColor","rgb(250, 250, 252)"]]}
+{"args":["color","rgb(20, 20, 25)"],"result":[["color","rgb(20, 20, 25)"]]}
+{"args":["background","#ffffff"],"result":[["backgroundColor","#ffffff"]]}
+{"args":["background","rgb(30, 64, 175)"],"result":[["backgroundColor","rgb(30, 64, 175)"]]}
+{"args":["color","rgb(5, 46, 32)"],"result":[["color","rgb(5, 46, 32)"]]}
+{"args":["color","rgb(220, 38, 38)"],"result":[["color","rgb(220, 38, 38)"]]}
+{"args":["font-size","1.25rem"],"result":[["fontSize","1.25rem"]]}
+{"args":["color","rgb(180, 83, 9)"],"result":[["color","rgb(180, 83, 9)"]]}
+{"args":["margin","8px 0 0"],"result":[["marginTop","8px"],["marginRight","0"],["marginBottom","0"],["marginLeft","0"]]}
+{"args":["background-image","url('data:image/png"],"result":[["backgroundImage","url('data:image/png"]]}
+{"args":["background-size","cover"],"result":[]}
+{"args":["color","rgb(255, 255, 255)"],"result":[["color","rgb(255, 255, 255)"]]}
+{"args":["background","rgba(0,0,0,0.03)"],"result":[["backgroundColor","rgba(0,0,0,0.03)"]]}
+{"args":["background","rgba(0,0,0,0)"],"result":[["backgroundColor","rgba(0,0,0,0)"]]}
+{"args":["background","rgba(0,0,0,0.5)"],"result":[["backgroundColor","rgba(0,0,0,0.5)"]]}
+{"args":["background","#ffe4e6"],"result":[["backgroundColor","#ffe4e6"]]}
+{"args":["color","#ffe4e6"],"result":[["color","#ffe4e6"]]}
+{"args":["font-size","24px"],"result":[["fontSize","24px"]]}
+{"args":["background","#1a1a1a"],"result":[["backgroundColor","#1a1a1a"]]}
+{"args":["color","#0f172a"],"result":[["color","#0f172a"]]}
+{"args":["line-height","1.5"],"result":[["lineHeight","1.5"]]}
+{"args":["margin","28px 0 10px"],"result":[["marginTop","28px"],["marginRight","0"],["marginBottom","10px"],["marginLeft","0"]]}
+{"args":["margin-bottom","14px"],"result":[["marginBottom","14px"]]}
+{"args":["border","1px solid #e2e8f0"],"result":[["borderTopWidth","1px"],["borderTopColor","#e2e8f0"],["borderRightWidth","1px"],["borderRightColor","#e2e8f0"],["borderBottomWidth","1px"],["borderBottomColor","#e2e8f0"],["borderLeftWidth","1px"],["borderLeftColor","#e2e8f0"]]}
+{"args":["margin-bottom","8px"],"result":[["marginBottom","8px"]]}
+{"args":["padding","4px"],"result":[["paddingTop","4px"],["paddingRight","4px"],["paddingBottom","4px"],["paddingLeft","4px"]]}
+{"args":["border","1px solid #d1d5db"],"result":[["borderTopWidth","1px"],["borderTopColor","#d1d5db"],["borderRightWidth","1px"],["borderRightColor","#d1d5db"],["borderBottomWidth","1px"],["borderBottomColor","#d1d5db"],["borderLeftWidth","1px"],["borderLeftColor","#d1d5db"]]}
+{"args":["border-radius","6px"],"result":[["borderRadius","6px"]]}
+{"args":["padding","2px"],"result":[["paddingTop","2px"],["paddingRight","2px"],["paddingBottom","2px"],["paddingLeft","2px"]]}
+{"args":["background","#f1f5f9"],"result":[["backgroundColor","#f1f5f9"]]}
+{"args":["padding","1px 16px"],"result":[["paddingTop","1px"],["paddingRight","16px"],["paddingBottom","1px"],["paddingLeft","16px"]]}
+{"args":["padding","12px 4px"],"result":[["paddingTop","12px"],["paddingRight","4px"],["paddingBottom","12px"],["paddingLeft","4px"]]}
+{"args":["font-weight","600"],"result":[["fontWeight","600"]]}
+{"args":["line-height","1.2"],"result":[["lineHeight","1.2"]]}
+{"args":["padding","6px 16px"],"result":[["paddingTop","6px"],["paddingRight","16px"],["paddingBottom","6px"],["paddingLeft","16px"]]}
+{"args":["background","#1e293b"],"result":[["backgroundColor","#1e293b"]]}
+{"args":["color","#e2e8f0"],"result":[["color","#e2e8f0"]]}
+{"args":["font-family","ui-monospace,monospace"],"result":[["fontFamily","ui-monospace,monospace"]]}
+{"args":["font-family","ui-monospace,SFMono-Regular,monospace"],"result":[["fontFamily","ui-monospace,SFMono-Regular,monospace"]]}
+{"args":["line-height","1.625"],"result":[["lineHeight","1.625"]]}
+{"args":["background","#f5f5f7"],"result":[["backgroundColor","#f5f5f7"]]}
+{"args":["padding","6px 14px"],"result":[["paddingTop","6px"],["paddingRight","14px"],["paddingBottom","6px"],["paddingLeft","14px"]]}
+{"args":["white-space","nowrap"],"result":[]}
+{"args":["line-height","1.6"],"result":[["lineHeight","1.6"]]}
+{"args":["padding","4px 8px"],"result":[["paddingTop","4px"],["paddingRight","8px"],["paddingBottom","4px"],["paddingLeft","8px"]]}
+{"args":["background","#dbeafe"],"result":[["backgroundColor","#dbeafe"]]}
+{"args":["color","#1e40af"],"result":[["color","#1e40af"]]}
+{"args":["padding","4px 10px"],"result":[["paddingTop","4px"],["paddingRight","10px"],["paddingBottom","4px"],["paddingLeft","10px"]]}
+{"args":["color","#92400e"],"result":[["color","#92400e"]]}
+{"args":["border-radius","4px"],"result":[["borderRadius","4px"]]}
+{"args":["line-height","2"],"result":[["lineHeight","2"]]}
+{"args":["padding","0.3em 0.5em"],"result":[["paddingTop","0.3em"],["paddingRight","0.5em"],["paddingBottom","0.3em"],["paddingLeft","0.5em"]]}
+{"args":["background","#eef2f7"],"result":[["backgroundColor","#eef2f7"]]}
+{"args":["padding","8px 16px"],"result":[["paddingTop","8px"],["paddingRight","16px"],["paddingBottom","8px"],["paddingLeft","16px"]]}
+{"args":["background","#3b82f6"],"result":[["backgroundColor","#3b82f6"]]}
+{"args":["cursor","pointer"],"result":[]}
+{"args":["padding","8px 12px"],"result":[["paddingTop","8px"],["paddingRight","12px"],["paddingBottom","8px"],["paddingLeft","12px"]]}
+{"args":["padding","20px 32px"],"result":[["paddingTop","20px"],["paddingRight","32px"],["paddingBottom","20px"],["paddingLeft","32px"]]}
+{"args":["background","#f5efe2"],"result":[["backgroundColor","#f5efe2"]]}
+{"args":["color","#2a2622"],"result":[["color","#2a2622"]]}
+{"args":["font-family","Georgia,serif"],"result":[["fontFamily","Georgia,serif"]]}
+{"args":["max-width","60ch"],"result":[]}
+{"args":["padding","40px 24px"],"result":[["paddingTop","40px"],["paddingRight","24px"],["paddingBottom","40px"],["paddingLeft","24px"]]}
+{"args":["background","#fdfcf9"],"result":[["backgroundColor","#fdfcf9"]]}
+{"args":["color","#1f2933"],"result":[["color","#1f2933"]]}
+{"args":["background","linear-gradient(135deg,#7c3aed,#a855f7)"],"result":[["backgroundImage","linear-gradient(135deg,#7c3aed,#a855f7)"]]}
+{"args":["font-size","44px"],"result":[["fontSize","44px"]]}
+{"args":["background","linear-gradient(90deg, #667eea, #764ba2)"],"result":[["backgroundImage","linear-gradient(90deg, #667eea, #764ba2)"]]}
+{"args":["font-size","28px"],"result":[["fontSize","28px"]]}
+{"args":["font-family","Georgia,\"Iowan Old Style\",serif"],"result":[["fontFamily","Georgia,\"Iowan Old Style\",serif"]]}
+{"args":["padding","32px 24px 40px"],"result":[["paddingTop","32px"],["paddingRight","24px"],["paddingBottom","40px"],["paddingLeft","24px"]]}
+{"args":["margin","0 0 12px"],"result":[["marginTop","0"],["marginRight","0"],["marginBottom","12px"],["marginLeft","0"]]}
+{"args":["font-size","20px"],"result":[["fontSize","20px"]]}
+{"args":["margin","28px 0 8px"],"result":[["marginTop","28px"],["marginRight","0"],["marginBottom","8px"],["marginLeft","0"]]}
+{"args":["max-width","640px"],"result":[]}
+{"args":["background","#f1efe9"],"result":[["backgroundColor","#f1efe9"]]}
+{"args":["overflow-x","auto"],"result":[["overflowX","auto"]]}
+{"args":["font-family","\"SF Mono\",ui-monospace,monospace"],"result":[["fontFamily","\"SF Mono\",ui-monospace,monospace"]]}
+{"args":["padding","48px"],"result":[["paddingTop","48px"],["paddingRight","48px"],["paddingBottom","48px"],["paddingLeft","48px"]]}
+{"args":["background","linear-gradient(180deg,oklch(7%0.006 95),oklch(4%0.004 95))"],"result":[["backgroundImage","linear-gradient(180deg,oklch(7%0.006 95),oklch(4%0.004 95))"]]}
+{"args":["font-family","Arial,sans-serif"],"result":[["fontFamily","Arial,sans-serif"]]}
+{"args":["margin","0 0 32px"],"result":[["marginTop","0"],["marginRight","0"],["marginBottom","32px"],["marginLeft","0"]]}
+{"args":["width","560px"],"result":[["width","560px"]]}
+{"args":["color","oklch(30%0 0)"],"result":[["color","oklch(30%0 0)"]]}
+{"args":["line-height","1.7"],"result":[["lineHeight","1.7"]]}
+{"args":["color","oklch(32%0 0)"],"result":[["color","oklch(32%0 0)"]]}
+{"args":["width","480px"],"result":[["width","480px"]]}
+{"args":["background","rgba(250,249,246,0.88)"],"result":[["backgroundColor","rgba(250,249,246,0.88)"]]}
+{"args":["color","oklch(88%0 0)"],"result":[["color","oklch(88%0 0)"]]}
+{"args":["width","640px"],"result":[["width","640px"]]}
+{"args":["color","oklch(91%0 0)"],"result":[["color","oklch(91%0 0)"]]}
+{"args":["font-size","48px"],"result":[["fontSize","48px"]]}
+{"args":["width","420px"],"result":[["width","420px"]]}
+{"args":["background","oklch(11%0.006 95)"],"result":[["backgroundColor","oklch(11%0.006 95)"]]}
+{"args":["color","oklch(15%0.01 95)"],"result":[["color","oklch(15%0.01 95)"]]}
+{"args":["width","520px"],"result":[["width","520px"]]}
+{"args":["background-image","linear-gradient(180deg,#14120f,#0a0908)"],"result":[["backgroundImage","linear-gradient(180deg,#14120f,#0a0908)"]]}
+{"args":["color","oklch(90%0 0)"],"result":[["color","oklch(90%0 0)"]]}
+{"args":["width","460px"],"result":[["width","460px"]]}
+{"args":["padding","18px 22px"],"result":[["paddingTop","18px"],["paddingRight","22px"],["paddingBottom","18px"],["paddingLeft","22px"]]}
+{"args":["background","linear-gradient(180deg,rgba(255,255,255,0.3),rgba(255,255,255,0.2)),url(/fixtures/antipatterns/no-such-texture.png)center/cover"],"result":[["backgroundImage","linear-gradient(180deg,rgba(255,255,255,0.3),rgba(255,255,255,0.2)),url(/fixtures/antipatterns/no-such-texture.png)center/cover"]]}
+{"args":["background-image","url(/fixtures/antipatterns/no-such-photo.jpg)"],"result":[["backgroundImage","url(/fixtures/antipatterns/no-such-photo.jpg)"]]}
+{"args":["color","oklch(20%0 0)"],"result":[["color","oklch(20%0 0)"]]}
+{"args":["opacity","0"],"result":[["opacity","0"]]}
+{"args":["background","linear-gradient(oklch(0.07 0.006 95),oklch(0.11 0.008 95))"],"result":[["backgroundImage","linear-gradient(oklch(0.07 0.006 95),oklch(0.11 0.008 95))"]]}
+{"args":["margin-bottom","24px"],"result":[["marginBottom","24px"]]}
+{"args":["background-color","color(srgb 0.1 0.11 0.12)"],"result":[["backgroundColor","color(srgb 0.1 0.11 0.12)"]]}
+{"args":["background-color","color-mix(in srgb,white 6%,#0b0b0d)"],"result":[["backgroundColor","color-mix(in srgb,white 6%,#0b0b0d)"]]}
+{"args":["background-color","color(display-p3 0.07 0.07 0.08)"],"result":[["backgroundColor","color(display-p3 0.07 0.07 0.08)"]]}
+{"args":["background-color","lch(18 4 60)"],"result":[["backgroundColor","lch(18 4 60)"]]}
+{"args":["background-color","color(srgb 0.98 0.97 0.95)"],"result":[["backgroundColor","color(srgb 0.98 0.97 0.95)"]]}
+{"args":["background-color","color(rec2020 0.05 0.05 0.05)"],"result":[["backgroundColor","color(rec2020 0.05 0.05 0.05)"]]}
+{"args":["background-image","url(opaque-panel.png),linear-gradient(#ff0000,#0000ff)"],"result":[["backgroundImage","url(opaque-panel.png),linear-gradient(#ff0000,#0000ff)"]]}
+{"args":["background-color","inherit"],"result":[["backgroundColor","inherit"]]}
+{"args":["color","color(srgb 0.94 0.93 0.91)"],"result":[["color","color(srgb 0.94 0.93 0.91)"]]}
+{"args":["color","color(srgb 0.78 0.77 0.75)"],"result":[["color","color(srgb 0.78 0.77 0.75)"]]}
+{"args":["color","oklch(0.92 0.01 90)"],"result":[["color","oklch(0.92 0.01 90)"]]}
+{"args":["color","color(srgb 0.1 0.11 0.12)"],"result":[["color","color(srgb 0.1 0.11 0.12)"]]}
+{"args":["color","oklch(0.32 0.01 90)"],"result":[["color","oklch(0.32 0.01 90)"]]}
+{"args":["color","color(srgb 0.28 0.28 0.3)"],"result":[["color","color(srgb 0.28 0.28 0.3)"]]}
+{"args":["color","color(display-p3 0.35 0.35 0.36)"],"result":[["color","color(display-p3 0.35 0.35 0.36)"]]}
+{"args":["color","lch(35 3 60)"],"result":[["color","lch(35 3 60)"]]}
+{"args":["color","color(srgb 0.75 0.74 0.72)"],"result":[["color","color(srgb 0.75 0.74 0.72)"]]}
+{"args":["--brand-accent","#b8422e"],"result":[["--brand-accent","#b8422e"]]}
+{"args":["background","#f7f4ee"],"result":[["backgroundColor","#f7f4ee"]]}
+{"args":["color","#241f1a"],"result":[["color","#241f1a"]]}
+{"args":["font-family","\"IBM Plex Sans\",Arial,sans-serif"],"result":[["fontFamily","\"IBM Plex Sans\",Arial,sans-serif"]]}
+{"args":["border","1px solid #d4c7b9"],"result":[["borderTopWidth","1px"],["borderTopColor","#d4c7b9"],["borderRightWidth","1px"],["borderRightColor","#d4c7b9"],["borderBottomWidth","1px"],["borderBottomColor","#d4c7b9"],["borderLeftWidth","1px"],["borderLeftColor","#d4c7b9"]]}
+{"args":["padding","12px 14px"],"result":[["paddingTop","12px"],["paddingRight","14px"],["paddingBottom","12px"],["paddingLeft","14px"]]}
+{"args":["line-height","1.45"],"result":[["lineHeight","1.45"]]}
+{"args":["font-family","\"Poppins\",sans-serif"],"result":[["fontFamily","\"Poppins\",sans-serif"]]}
+{"args":["color","#ff00aa"],"result":[["color","#ff00aa"]]}
+{"args":["background-color","rgb(20,180,220)"],"result":[["backgroundColor","rgb(20,180,220)"]]}
+{"args":["border-color","#00a982"],"result":[["borderTopColor","#00a982"],["borderRightColor","#00a982"],["borderBottomColor","#00a982"],["borderLeftColor","#00a982"]]}
+{"args":["border-radius","18px"],"result":[["borderRadius","18px"]]}
+{"args":["font-size","12.5px"],"result":[["fontSize","12.5px"]]}
+{"args":["font-family","\"Avenir Next\",Georgia,serif"],"result":[["fontFamily","\"Avenir Next\",Georgia,serif"]]}
+{"args":["font-size","1rem"],"result":[["fontSize","1rem"]]}
+{"args":["font-size","1.2em"],"result":[["fontSize","1.2em"]]}
+{"args":["font-family","ui-sans-serif,system-ui,sans-serif"],"result":[["fontFamily","ui-sans-serif,system-ui,sans-serif"]]}
+{"args":["color","var(--brand-accent)"],"result":[["color","var(--brand-accent)"]]}
+{"args":["color","rgba(184,66,46,0.45)"],"result":[["color","rgba(184,66,46,0.45)"]]}
+{"args":["color","#bb442f"],"result":[["color","#bb442f"]]}
+{"args":["color","#d55a42"],"result":[["color","#d55a42"]]}
+{"args":["border-radius","32px"],"result":[["borderRadius","32px"]]}
+{"args":["border-radius","100px"],"result":[["borderRadius","100px"]]}
+{"args":["background","#f2f2f4"],"result":[["backgroundColor","#f2f2f4"]]}
+{"args":["padding","16px 24px 0"],"result":[["paddingTop","16px"],["paddingRight","24px"],["paddingBottom","0"],["paddingLeft","24px"]]}
+{"args":["margin","8px 24px 24px"],"result":[["marginTop","8px"],["marginRight","24px"],["marginBottom","24px"],["marginLeft","24px"]]}
+{"args":["display","flex"],"result":[["display","flex"]]}
+{"args":["scroll-snap-type","x mandatory"],"result":[]}
+{"args":["background","#e4e4e8"],"result":[["backgroundColor","#e4e4e8"]]}
+{"args":["flex","0 0 auto"],"result":[]}
+{"args":["scroll-snap-align","start"],"result":[]}
+{"args":["margin-bottom","12px"],"result":[["marginBottom","12px"]]}
+{"args":["width","620px"],"result":[["width","620px"]]}
+{"args":["margin-left","16px"],"result":[["marginLeft","16px"]]}
+{"args":["width","588px"],"result":[["width","588px"]]}
+{"args":["width","568px"],"result":[["width","568px"]]}
+{"args":["gap","12px"],"result":[]}
+{"args":["padding","12px 0 12px 16px"],"result":[["paddingTop","12px"],["paddingRight","0"],["paddingBottom","12px"],["paddingLeft","16px"]]}
+{"args":["width","260px"],"result":[["width","260px"]]}
+{"args":["margin","0 0 20px"],"result":[["marginTop","0"],["marginRight","0"],["marginBottom","20px"],["marginLeft","0"]]}
+{"args":["letter-spacing","-0.06em"],"result":[["letterSpacing","-0.06em"]]}
+{"args":["letter-spacing","-4px"],"result":[["letterSpacing","-4px"]]}
+{"args":["font-size","64px"],"result":[["fontSize","64px"]]}
+{"args":["letter-spacing","-0.07em"],"result":[["letterSpacing","-0.07em"]]}
+{"args":["letter-spacing","-0.02em"],"result":[["letterSpacing","-0.02em"]]}
+{"args":["font-size","72px"],"result":[["fontSize","72px"]]}
+{"args":["letter-spacing","normal"],"result":[["letterSpacing","normal"]]}
+{"args":["grid-template-columns","1.4fr 1fr"],"result":[]}
+{"args":["gap","40px"],"result":[]}
+{"args":["margin-bottom","16px"],"result":[["marginBottom","16px"]]}
+{"args":["height","1600px"],"result":[["height","1600px"]]}
+{"args":["background","#f3f3f3"],"result":[["backgroundColor","#f3f3f3"]]}
+{"args":["font-size","22px"],"result":[["fontSize","22px"]]}
+{"args":["letter-spacing","0.06em"],"result":[["letterSpacing","0.06em"]]}
+{"args":["padding","28px 0 0"],"result":[["paddingTop","28px"],["paddingRight","0"],["paddingBottom","0"],["paddingLeft","0"]]}
+{"args":["background","#fffbe6"],"result":[["backgroundColor","#fffbe6"]]}
+{"args":["border","1px solid #d4a017"],"result":[["borderTopWidth","1px"],["borderTopColor","#d4a017"],["borderRightWidth","1px"],["borderRightColor","#d4a017"],["borderBottomWidth","1px"],["borderBottomColor","#d4a017"],["borderLeftWidth","1px"],["borderLeftColor","#d4a017"]]}
+{"args":["flex-direction","column"],"result":[]}
+{"args":["gap","10px"],"result":[]}
+{"args":["letter-spacing","0.18em"],"result":[["letterSpacing","0.18em"]]}
+{"args":["color","#8b6914"],"result":[["color","#8b6914"]]}
+{"args":["flex-wrap","wrap"],"result":[]}
+{"args":["gap","8px"],"result":[]}
+{"args":["list-style","none"],"result":[]}
+{"args":["padding","6px 12px"],"result":[["paddingTop","6px"],["paddingRight","12px"],["paddingBottom","6px"],["paddingLeft","12px"]]}
+{"args":["color","#78350f"],"result":[["color","#78350f"]]}
+{"args":["margin","4px 0 0"],"result":[["marginTop","4px"],["marginRight","0"],["marginBottom","0"],["marginLeft","0"]]}
+{"args":["background","#fde68a"],"result":[["backgroundColor","#fde68a"]]}
+{"args":["background","transparent"],"result":[["backgroundColor","transparent"]]}
+{"args":["outline","2px solid #94a3b8"],"result":[["outlineWidth","2px"],["outlineColor","#94a3b8"],["outlineStyle","solid"]]}
+{"args":["outline-offset","0"],"result":[]}
+{"args":["padding","12px 16px 12px 0"],"result":[["paddingTop","12px"],["paddingRight","16px"],["paddingBottom","12px"],["paddingLeft","0"]]}
+{"args":["outline","0"],"result":[["outlineWidth","0px"]]}
+{"args":["padding","24px 0 0"],"result":[["paddingTop","24px"],["paddingRight","0"],["paddingBottom","0"],["paddingLeft","0"]]}
+{"args":["border-top","1px solid #cbd5e1"],"result":[["borderTopWidth","1px"],["borderTopColor","#cbd5e1"]]}
+{"args":["padding","18px 20px"],"result":[["paddingTop","18px"],["paddingRight","20px"],["paddingBottom","18px"],["paddingLeft","20px"]]}
+{"args":["padding","14px 18px"],"result":[["paddingTop","14px"],["paddingRight","18px"],["paddingBottom","14px"],["paddingLeft","18px"]]}
+{"args":["height","80px"],"result":[["height","80px"]]}
+{"args":["background","linear-gradient(135deg,#cbd5e1,#94a3b8)"],"result":[["backgroundImage","linear-gradient(135deg,#cbd5e1,#94a3b8)"]]}
+{"args":["margin","16px 18px 4px"],"result":[["marginTop","16px"],["marginRight","18px"],["marginBottom","4px"],["marginLeft","18px"]]}
+{"args":["margin","0 18px 16px"],"result":[["marginTop","0"],["marginRight","18px"],["marginBottom","16px"],["marginLeft","18px"]]}
+{"args":["margin","18px"],"result":[["marginTop","18px"],["marginRight","18px"],["marginBottom","18px"],["marginLeft","18px"]]}
+{"args":["background","#172033"],"result":[["backgroundColor","#172033"]]}
+{"args":["width","max-content"],"result":[["width","max-content"]]}
+{"args":["padding","14px"],"result":[["paddingTop","14px"],["paddingRight","14px"],["paddingBottom","14px"],["paddingLeft","14px"]]}
+{"args":["background","#23304a"],"result":[["backgroundColor","#23304a"]]}
+{"args":["border","1px solid rgba(255,255,255,0.16)"],"result":[["borderTopWidth","1px"],["borderTopColor","rgba(255,255,255,0.16)"],["borderRightWidth","1px"],["borderRightColor","rgba(255,255,255,0.16)"],["borderBottomWidth","1px"],["borderBottomColor","rgba(255,255,255,0.16)"],["borderLeftWidth","1px"],["borderLeftColor","rgba(255,255,255,0.16)"]]}
+{"args":["background","#0f172a"],"result":[["backgroundColor","#0f172a"]]}
+{"args":["gap","6px"],"result":[]}
+{"args":["min-height","92px"],"result":[]}
+{"args":["background","#111827"],"result":[["backgroundColor","#111827"]]}
+{"args":["background","#ddd"],"result":[["backgroundColor","#ddd"]]}
+{"args":["transition","transform 0.3s"],"result":[["transitionProperty","transform"]]}
+{"args":["transform","scale(1.05)"],"result":[]}
+{"args":["transform","translateY(-4px)"],"result":[]}
+{"args":["background","#f9fafb"],"result":[["backgroundColor","#f9fafb"]]}
+{"args":["border-radius","12px"],"result":[["borderRadius","12px"]]}
+{"args":["background","#1f2937"],"result":[["backgroundColor","#1f2937"]]}
+{"args":["color","#f9fafb"],"result":[["color","#f9fafb"]]}
+{"args":["box-shadow","0 0 20px rgba(59,130,246,0.4)"],"result":[["boxShadow","0 0 20px rgba(59,130,246,0.4)"]]}
+{"args":["box-shadow","0 0 25px rgba(139,92,246,0.35)"],"result":[["boxShadow","0 0 25px rgba(139,92,246,0.35)"]]}
+{"args":["box-shadow","0 0 15px rgba(6,182,212,0.5)"],"result":[["boxShadow","0 0 15px rgba(6,182,212,0.5)"]]}
+{"args":["box-shadow","0 4px 6px rgba(0,0,0,0.3),0 0 30px rgba(168,85,247,0.3)"],"result":[["boxShadow","0 4px 6px rgba(0,0,0,0.3),0 0 30px rgba(168,85,247,0.3)"]]}
+{"args":["--fixture-glow","oklch(0.78 0.14 155)"],"result":[["--fixture-glow","oklch(0.78 0.14 155)"]]}
+{"args":["box-shadow","0 0 18px oklch(0.72 0.15 195/0.5)"],"result":[["boxShadow","0 0 18px oklch(0.72 0.15 195/0.5)"]]}
+{"args":["box-shadow","0 0 16px #3b82f6"],"result":[["boxShadow","0 0 16px #3b82f6"]]}
+{"args":["box-shadow","0 0 22px hsl(280,80%,60%)"],"result":[["boxShadow","0 0 22px hsl(280,80%,60%)"]]}
+{"args":["box-shadow","0 0 10px var(--fixture-glow)"],"result":[["boxShadow","0 0 10px var(--fixture-glow)"]]}
+{"args":["text-shadow","0 0 12px #22d3ee"],"result":[["textShadow","0 0 12px #22d3ee"]]}
+{"args":["box-shadow","0 0 20px oklch(0.65 0.2 300/0.45)"],"result":[["boxShadow","0 0 20px oklch(0.65 0.2 300/0.45)"]]}
+{"args":["background-image","url(/fixtures/antipatterns/missing-photo.png)"],"result":[["backgroundImage","url(/fixtures/antipatterns/missing-photo.png)"]]}
+{"args":["box-shadow","0 0 26px rgba(217,70,239,0.5)"],"result":[["boxShadow","0 0 26px rgba(217,70,239,0.5)"]]}
+{"args":["background","linear-gradient(#111827,#0b1220),url(/fixtures/antipatterns/missing-photo.png)"],"result":[["backgroundImage","linear-gradient(#111827,#0b1220),url(/fixtures/antipatterns/missing-photo.png)"]]}
+{"args":["box-shadow","0 6px 22px rgba(249,115,22,0.5)"],"result":[["boxShadow","0 6px 22px rgba(249,115,22,0.5)"]]}
+{"args":["box-shadow","0 2px 4px rgba(59,130,246,0.15)"],"result":[["boxShadow","0 2px 4px rgba(59,130,246,0.15)"]]}
+{"args":["box-shadow","0 4px 12px rgba(0,0,0,0.4)"],"result":[["boxShadow","0 4px 12px rgba(0,0,0,0.4)"]]}
+{"args":["box-shadow","0 0 0 3px rgba(59,130,246,0.5)"],"result":[["boxShadow","0 0 0 3px rgba(59,130,246,0.5)"]]}
+{"args":["box-shadow","0 1px 3px rgba(59,130,246,0.2)"],"result":[["boxShadow","0 1px 3px rgba(59,130,246,0.2)"]]}
+{"args":["box-shadow","0 1px 3px rgba(0,0,0,0.3)"],"result":[["boxShadow","0 1px 3px rgba(0,0,0,0.3)"]]}
+{"args":["box-shadow","0 4px 6px -1px rgba(0,0,0,0.4)"],"result":[["boxShadow","0 4px 6px -1px rgba(0,0,0,0.4)"]]}
+{"args":["box-shadow","0 10px 25px -5px rgba(0,0,0,0.5)"],"result":[["boxShadow","0 10px 25px -5px rgba(0,0,0,0.5)"]]}
+{"args":["box-shadow","inset 0 2px 4px rgba(0,0,0,0.3)"],"result":[["boxShadow","inset 0 2px 4px rgba(0,0,0,0.3)"]]}
+{"args":["box-shadow","0 4px 6px rgba(0,0,0,0.3),0 1px 3px rgba(0,0,0,0.2)"],"result":[["boxShadow","0 4px 6px rgba(0,0,0,0.3),0 1px 3px rgba(0,0,0,0.2)"]]}
+{"args":["box-shadow","0 1px 3px rgba(0,0,0,0.1)"],"result":[["boxShadow","0 1px 3px rgba(0,0,0,0.1)"]]}
+{"args":["box-shadow","0 4px 6px -1px rgba(0,0,0,0.1)"],"result":[["boxShadow","0 4px 6px -1px rgba(0,0,0,0.1)"]]}
+{"args":["box-shadow","0 10px 30px -5px rgba(0,0,0,0.15)"],"result":[["boxShadow","0 10px 30px -5px rgba(0,0,0,0.15)"]]}
+{"args":["background","#6b7280"],"result":[["backgroundColor","#6b7280"]]}
+{"args":["color","#ffffff"],"result":[["color","#ffffff"]]}
+{"args":["box-shadow","0 2px 4px rgba(59,130,246,0.3)"],"result":[["boxShadow","0 2px 4px rgba(59,130,246,0.3)"]]}
+{"args":["box-shadow","0 8px 20px rgba(59,130,246,0.25)"],"result":[["boxShadow","0 8px 20px rgba(59,130,246,0.25)"]]}
+{"args":["box-shadow","0 0 24px rgba(0,0,0,0.15)"],"result":[["boxShadow","0 0 24px rgba(0,0,0,0.15)"]]}
+{"args":["box-shadow","0 6px 20px rgba(16,185,129,0.35)"],"result":[["boxShadow","0 6px 20px rgba(16,185,129,0.35)"]]}
+{"args":["background","linear-gradient(rgba(0,0,0,0.2),rgba(0,0,0,0.2)),url(/fixtures/antipatterns/missing-photo.png)"],"result":[["backgroundImage","linear-gradient(rgba(0,0,0,0.2),rgba(0,0,0,0.2)),url(/fixtures/antipatterns/missing-photo.png)"]]}
+{"args":["box-shadow","0 6px 22px rgba(244,63,94,0.45)"],"result":[["boxShadow","0 6px 22px rgba(244,63,94,0.45)"]]}
+{"args":["text-shadow","0 1px 2px rgba(0,0,0,0.6)"],"result":[["textShadow","0 1px 2px rgba(0,0,0,0.6)"]]}
+{"args":["box-shadow","0 0 20px rgba(236, 72, 153, 0.5)"],"result":[["boxShadow","0 0 20px rgba(236, 72, 153, 0.5)"]]}
+{"args":["border","1px solid #e5e7eb"],"result":[["borderTopWidth","1px"],["borderTopColor","#e5e7eb"],["borderRightWidth","1px"],["borderRightColor","#e5e7eb"],["borderBottomWidth","1px"],["borderBottomColor","#e5e7eb"],["borderLeftWidth","1px"],["borderLeftColor","#e5e7eb"]]}
+{"args":["box-shadow","0 0 24px rgba(0,0,0,0.18)"],"result":[["boxShadow","0 0 24px rgba(0,0,0,0.18)"]]}
+{"args":["background","repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px)"],"result":[["backgroundImage","repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px)"]]}
+{"args":["background","linear-gradient(90deg, oklch(96% 0.012 82 / 0.055) 1px, transparent 1px), linear-gradient(180deg, oklch(96% 0.012 82 / 0.05) 1px, transparent 1px)"],"result":[["backgroundImage","linear-gradient(90deg, oklch(96% 0.012 82 / 0.055) 1px, transparent 1px), linear-gradient(180deg, oklch(96% 0.012 82 / 0.05) 1px, transparent 1px)"]]}
+{"args":["background-size","78px 78px, 78px 78px"],"result":[]}
+{"args":["box-shadow","0 1px 4px rgba(0,0,0,0.08)"],"result":[["boxShadow","0 1px 4px rgba(0,0,0,0.08)"]]}
+{"args":["border","1px solid rgba(148, 163, 184, 0.16)"],"result":[["borderTopWidth","1px"],["borderTopColor","rgba(148, 163, 184, 0.16)"],["borderRightWidth","1px"],["borderRightColor","rgba(148, 163, 184, 0.16)"],["borderBottomWidth","1px"],["borderBottomColor","rgba(148, 163, 184, 0.16)"],["borderLeftWidth","1px"],["borderLeftColor","rgba(148, 163, 184, 0.16)"]]}
+{"args":["box-shadow","0 18px 48px -16px rgba(15, 23, 42, 0.18)"],"result":[["boxShadow","0 18px 48px -16px rgba(15, 23, 42, 0.18)"]]}
+{"args":["border","1px solid oklch(78% 0 0 / 0.16)"],"result":[["borderTopWidth","1px"],["borderTopColor","oklch(78% 0 0 / 0.16)"],["borderRightWidth","1px"],["borderRightColor","oklch(78% 0 0 / 0.16)"],["borderBottomWidth","1px"],["borderBottomColor","oklch(78% 0 0 / 0.16)"],["borderLeftWidth","1px"],["borderLeftColor","oklch(78% 0 0 / 0.16)"]]}
+{"args":["box-shadow","0 16px 36px -12px oklch(2% 0.004 95 / 0.18)"],"result":[["boxShadow","0 16px 36px -12px oklch(2% 0.004 95 / 0.18)"]]}
+{"args":["background","linear-gradient(180deg, #f3f4f6, #ffffff)"],"result":[["backgroundImage","linear-gradient(180deg, #f3f4f6, #ffffff)"]]}
+{"args":["background","linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"],"result":[["backgroundImage","linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"]]}
+{"args":["background-size","100% 32px"],"result":[]}
+{"args":["background","linear-gradient(90deg, #f3f4f6, #e5e7eb), linear-gradient(180deg, #eef2ff, #ffffff)"],"result":[["backgroundImage","linear-gradient(90deg, #f3f4f6, #e5e7eb), linear-gradient(180deg, #eef2ff, #ffffff)"]]}
+{"args":["background","linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px), linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"],"result":[["backgroundImage","linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px), linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"]]}
+{"args":["background","linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"],"result":[["backgroundImage","linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"]]}
+{"args":["background-size","32px 32px"],"result":[]}
+{"args":["mask-image","linear-gradient(180deg, #000 1px, transparent 1px)"],"result":[]}
+{"args":["width","720px"],"result":[["width","720px"]]}
+{"args":["margin","0 0 40px"],"result":[["marginTop","0"],["marginRight","0"],["marginBottom","40px"],["marginLeft","0"]]}
+{"args":["margin","64px 0 16px"],"result":[["marginTop","64px"],["marginRight","0"],["marginBottom","16px"],["marginLeft","0"]]}
+{"args":["margin","20px 0 24px"],"result":[["marginTop","20px"],["marginRight","0"],["marginBottom","24px"],["marginLeft","0"]]}
+{"args":["letter-spacing","0.1em"],"result":[["letterSpacing","0.1em"]]}
+{"args":["margin","72px 0 8px"],"result":[["marginTop","72px"],["marginRight","0"],["marginBottom","8px"],["marginLeft","0"]]}
+{"args":["box-shadow","0 1px 4px rgba(0,0,0,0.2)"],"result":[["boxShadow","0 1px 4px rgba(0,0,0,0.2)"]]}
+{"args":["background","#f4f4f4"],"result":[["backgroundColor","#f4f4f4"]]}
+{"args":["margin","48px 0"],"result":[["marginTop","48px"],["marginRight","0"],["marginBottom","48px"],["marginLeft","0"]]}
+{"args":["width","320px"],"result":[["width","320px"]]}
+{"args":["background","#ececec"],"result":[["backgroundColor","#ececec"]]}
+{"args":["padding","8px 0 32px"],"result":[["paddingTop","8px"],["paddingRight","0"],["paddingBottom","32px"],["paddingLeft","0"]]}
+{"args":["margin-top","8px"],"result":[["marginTop","8px"]]}
+{"args":["margin-bottom","32px"],"result":[["marginBottom","32px"]]}
+{"args":["margin","12px 0 0"],"result":[["marginTop","12px"],["marginRight","0"],["marginBottom","0"],["marginLeft","0"]]}
+{"args":["font-family","\"Inter\",sans-serif"],"result":[["fontFamily","\"Inter\",sans-serif"]]}
+{"args":["font-size","88px"],"result":[["fontSize","88px"]]}
+{"args":["letter-spacing","0.15em"],"result":[["letterSpacing","0.15em"]]}
+{"args":["letter-spacing","0.16em"],"result":[["letterSpacing","0.16em"]]}
+{"args":["letter-spacing","0.14em"],"result":[["letterSpacing","0.14em"]]}
+{"args":["color","#334155"],"result":[["color","#334155"]]}
+{"args":["padding","4px 12px"],"result":[["paddingTop","4px"],["paddingRight","12px"],["paddingBottom","4px"],["paddingLeft","12px"]]}
+{"args":["color","#b45309"],"result":[["color","#b45309"]]}
+{"args":["color","#94a3b8"],"result":[["color","#94a3b8"]]}
+{"args":["margin","0 0 8px"],"result":[["marginTop","0"],["marginRight","0"],["marginBottom","8px"],["marginLeft","0"]]}
+{"args":["margin-top","32px"],"result":[["marginTop","32px"]]}
+{"args":["font-family","\"Roboto\",ui-sans-serif,system-ui,sans-serif"],"result":[["fontFamily","\"Roboto\",ui-sans-serif,system-ui,sans-serif"]]}
+{"args":["max-width","62ch"],"result":[]}
+{"args":["max-width","960px"],"result":[]}
+{"args":["width","80px"],"result":[["width","80px"]]}
+{"args":["border-radius","20px"],"result":[["borderRadius","20px"]]}
+{"args":["background","linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%)"],"result":[["backgroundImage","linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%)"]]}
+{"args":["align-items","center"],"result":[]}
+{"args":["justify-content","center"],"result":[]}
+{"args":["width","64px"],"result":[["width","64px"]]}
+{"args":["height","64px"],"result":[["height","64px"]]}
+{"args":["border-radius","16px"],"result":[["borderRadius","16px"]]}
+{"args":["width","72px"],"result":[["width","72px"]]}
+{"args":["height","72px"],"result":[["height","72px"]]}
+{"args":["width","96px"],"result":[["width","96px"]]}
+{"args":["height","96px"],"result":[["height","96px"]]}
+{"args":["border-radius","24px"],"result":[["borderRadius","24px"]]}
+{"args":["width","48px"],"result":[["width","48px"]]}
+{"args":["height","48px"],"result":[["height","48px"]]}
+{"args":["background","linear-gradient(135deg,#8b5cf6,#a855f7)"],"result":[["backgroundImage","linear-gradient(135deg,#8b5cf6,#a855f7)"]]}
+{"args":["background","#f59e0b"],"result":[["backgroundColor","#f59e0b"]]}
+{"args":["height","112px"],"result":[["height","112px"]]}
+{"args":["background","#cbd5e1"],"result":[["backgroundColor","#cbd5e1"]]}
+{"args":["background","#ddd6fe"],"result":[["backgroundColor","#ddd6fe"]]}
+{"args":["flex-shrink","0"],"result":[]}
+{"args":["margin-top","0"],"result":[["marginTop","0"]]}
+{"args":["width","24px"],"result":[["width","24px"]]}
+{"args":["background","#93c5fd"],"result":[["backgroundColor","#93c5fd"]]}
+{"args":["height","200px"],"result":[["height","200px"]]}
+{"args":["background","#17150f"],"result":[["backgroundColor","#17150f"]]}
+{"args":["background","url(data:image/svg+xml;utf8,<svg\\ xmlns=\\'http://www.w3.org/2000/svg\\'\\ width=\\'100\\'\\ height=\\'100\\'><rect\\ width=\\'100\\'\\ height=\\'100\\'\\ fill=\\'%23f5f2ea\\'/></svg>)center/cover no-repeat"],"result":[["backgroundImage","url(data:image/svg+xml;utf8,<svg\\ xmlns=\\'http://www.w3.org/2000/svg\\'\\ width=\\'100\\'\\ height=\\'100\\'><rect\\ width=\\'100\\'\\ height=\\'100\\'\\ fill=\\'%23f5f2ea\\'/></svg>)center/cover no-repeat"]]}
+{"args":["color","#fdfdfd"],"result":[["color","#fdfdfd"]]}
+{"args":["color","#262421"],"result":[["color","#262421"]]}
+{"args":["margin","0 4px 6px 0"],"result":[["marginTop","0"],["marginRight","4px"],["marginBottom","6px"],["marginLeft","0"]]}
+{"args":["background","linear-gradient(180deg,#f2efe6,#e8e4d8)"],"result":[["backgroundImage","linear-gradient(180deg,#f2efe6,#e8e4d8)"]]}
+{"args":["color","#24211c"],"result":[["color","#24211c"]]}
+{"args":["font-family","\"Fraunces\",Georgia,serif"],"result":[["fontFamily","\"Fraunces\",Georgia,serif"]]}
+{"args":["font-weight","400"],"result":[["fontWeight","400"]]}
+{"args":["font-family","\"Recoleta\",serif"],"result":[["fontFamily","\"Recoleta\",serif"]]}
+{"args":["font-family","\"Playfair Display\",serif"],"result":[["fontFamily","\"Playfair Display\",serif"]]}
+{"args":["font-family","\"CustomSerifFace\",serif"],"result":[["fontFamily","\"CustomSerifFace\",serif"]]}
+{"args":["font-size","56px"],"result":[["fontSize","56px"]]}
+{"args":["font-family","\"Karla\",sans-serif"],"result":[["fontFamily","\"Karla\",sans-serif"]]}
+{"args":["font-style","normal"],"result":[["fontStyle","normal"]]}
+{"args":["background","#f6f2ec"],"result":[["backgroundColor","#f6f2ec"]]}
+{"args":["color","#171411"],"result":[["color","#171411"]]}
+{"args":["padding","32px"],"result":[["paddingTop","32px"],["paddingRight","32px"],["paddingBottom","32px"],["paddingLeft","32px"]]}
+{"args":["min-width","0"],"result":[]}
+{"args":["border","1px solid #c9bfb2"],"result":[["borderTopWidth","1px"],["borderTopColor","#c9bfb2"],["borderRightWidth","1px"],["borderRightColor","#c9bfb2"],["borderBottomWidth","1px"],["borderBottomColor","#c9bfb2"],["borderLeftWidth","1px"],["borderLeftColor","#c9bfb2"]]}
+{"args":["min-height","120px"],"result":[]}
+{"args":["background","#fffaf3"],"result":[["backgroundColor","#fffaf3"]]}
+{"args":["width","240px"],"result":[["width","240px"]]}
+{"args":["min-height","16px"],"result":[]}
+{"args":["line-height","16px"],"result":[["lineHeight","16px"]]}
+{"args":["letter-spacing","0.11em"],"result":[["letterSpacing","0.11em"]]}
+{"args":["color","#5b5046"],"result":[["color","#5b5046"]]}
+{"args":["letter-spacing","0.12em"],"result":[["letterSpacing","0.12em"]]}
+{"args":["font-variant","small-caps"],"result":[["fontVariant","small-caps"]]}
+{"args":["line-height","38px"],"result":[["lineHeight","38px"]]}
+{"args":["line-height","30px"],"result":[["lineHeight","30px"]]}
+{"args":["line-height","26px"],"result":[["lineHeight","26px"]]}
+{"args":["line-height","34px"],"result":[["lineHeight","34px"]]}
+{"args":["line-height","70px"],"result":[["lineHeight","70px"]]}
+{"args":["letter-spacing","2px"],"result":[["letterSpacing","2px"]]}
+{"args":["line-height","24px"],"result":[["lineHeight","24px"]]}
+{"args":["border","1px solid #d8cec0"],"result":[["borderTopWidth","1px"],["borderTopColor","#d8cec0"],["borderRightWidth","1px"],["borderRightColor","#d8cec0"],["borderBottomWidth","1px"],["borderBottomColor","#d8cec0"],["borderLeftWidth","1px"],["borderLeftColor","#d8cec0"]]}
+{"args":["min-height","80px"],"result":[]}
+{"args":["grid-template-columns","repeat(2,minmax(0,1fr))"],"result":[]}
+{"args":["min-height","100px"],"result":[]}
+{"args":["line-height","46px"],"result":[["lineHeight","46px"]]}
+{"args":["height","40px"],"result":[["height","40px"]]}
+{"args":["max-width","1280px"],"result":[]}
+{"args":["box-shadow","0 2px 8px rgba(0,0,0,0.1)"],"result":[["boxShadow","0 2px 8px rgba(0,0,0,0.1)"]]}
+{"args":["padding","1.5rem"],"result":[["paddingTop","1.5rem"],["paddingRight","1.5rem"],["paddingBottom","1.5rem"],["paddingLeft","1.5rem"]]}
+{"args":["margin-bottom","1rem"],"result":[["marginBottom","1rem"]]}
+{"args":["margin-bottom","0.75rem"],"result":[["marginBottom","0.75rem"]]}
+{"args":["box-shadow","0 1px 3px rgba(0,0,0,0.08)"],"result":[["boxShadow","0 1px 3px rgba(0,0,0,0.08)"]]}
+{"args":["padding","1rem"],"result":[["paddingTop","1rem"],["paddingRight","1rem"],["paddingBottom","1rem"],["paddingLeft","1rem"]]}
+{"args":["font-size","0.875rem"],"result":[["fontSize","0.875rem"]]}
+{"args":["color","#6b7280"],"result":[["color","#6b7280"]]}
+{"args":["padding","2rem"],"result":[["paddingTop","2rem"],["paddingRight","2rem"],["paddingBottom","2rem"],["paddingLeft","2rem"]]}
+{"args":["margin-bottom","0.5rem"],"result":[["marginBottom","0.5rem"]]}
+{"args":["font-size","1.125rem"],"result":[["fontSize","1.125rem"]]}
+{"args":["margin","2rem 0 0.75rem"],"result":[["marginTop","2rem"],["marginRight","0"],["marginBottom","0.75rem"],["marginLeft","0"]]}
+{"args":["max-width","36rem"],"result":[]}
+{"args":["margin-bottom","1.5rem"],"result":[["marginBottom","1.5rem"]]}
+{"args":["margin-bottom","2rem"],"result":[["marginBottom","2rem"]]}
+{"args":["padding-left","1rem"],"result":[["paddingLeft","1rem"]]}
+{"args":["padding","0.75rem 1rem"],"result":[["paddingTop","0.75rem"],["paddingRight","1rem"],["paddingBottom","0.75rem"],["paddingLeft","1rem"]]}
+{"args":["border-left","3px solid transparent"],"result":[["borderLeftWidth","3px"],["borderLeftColor","transparent"]]}
+{"args":["color","#1d4ed8"],"result":[["color","#1d4ed8"]]}
+{"args":["border-left","3px solid #3b82f6"],"result":[["borderLeftWidth","3px"],["borderLeftColor","#3b82f6"]]}
+{"args":["background","#eff6ff"],"result":[["backgroundColor","#eff6ff"]]}
+{"args":["margin-bottom","0.25rem"],"result":[["marginBottom","0.25rem"]]}
+{"args":["padding","0.5rem 0.75rem"],"result":[["paddingTop","0.5rem"],["paddingRight","0.75rem"],["paddingBottom","0.5rem"],["paddingLeft","0.75rem"]]}
+{"args":["border","1px solid #fca5a5"],"result":[["borderTopWidth","1px"],["borderTopColor","#fca5a5"],["borderRightWidth","1px"],["borderRightColor","#fca5a5"],["borderBottomWidth","1px"],["borderBottomColor","#fca5a5"],["borderLeftWidth","1px"],["borderLeftColor","#fca5a5"]]}
+{"args":["border-left","3px solid #b91c1c"],"result":[["borderLeftWidth","3px"],["borderLeftColor","#b91c1c"]]}
+{"args":["outline","none"],"result":[["outlineStyle","none"]]}
+{"args":["color","#b91c1c"],"result":[["color","#b91c1c"]]}
+{"args":["font-size","0.75rem"],"result":[["fontSize","0.75rem"]]}
+{"args":["margin-top","0.25rem"],"result":[["marginTop","0.25rem"]]}
+{"args":["border-left","3px solid #e5e7eb"],"result":[["borderLeftWidth","3px"],["borderLeftColor","#e5e7eb"]]}
+{"args":["padding-left","1.5rem"],"result":[["paddingLeft","1.5rem"]]}
+{"args":["margin-left","0.75rem"],"result":[["marginLeft","0.75rem"]]}
+{"args":["padding-bottom","1.5rem"],"result":[["paddingBottom","1.5rem"]]}
+{"args":["left","-2.05rem"],"result":[["left","-2.05rem"]]}
+{"args":["top","0.125rem"],"result":[["top","0.125rem"]]}
+{"args":["height","10px"],"result":[["height","10px"]]}
+{"args":["border","2px solid white"],"result":[["borderTopWidth","2px"],["borderTopColor","white"],["borderRightWidth","2px"],["borderRightColor","white"],["borderBottomWidth","2px"],["borderBottomColor","white"],["borderLeftWidth","2px"],["borderLeftColor","white"]]}
+{"args":["margin","0.125rem 0 0"],"result":[["marginTop","0.125rem"],["marginRight","0"],["marginBottom","0"],["marginLeft","0"]]}
+{"args":["background","#d1d5db"],"result":[["backgroundColor","#d1d5db"]]}
+{"args":["font-size","0.8125rem"],"result":[["fontSize","0.8125rem"]]}
+{"args":["border-left","3px solid #ef4444"],"result":[["borderLeftWidth","3px"],["borderLeftColor","#ef4444"]]}
+{"args":["padding-left","0.75rem"],"result":[["paddingLeft","0.75rem"]]}
+{"args":["background","rgba(239,68,68,0.1)"],"result":[["backgroundColor","rgba(239,68,68,0.1)"]]}
+{"args":["border-left","3px solid #22c55e"],"result":[["borderLeftWidth","3px"],["borderLeftColor","#22c55e"]]}
+{"args":["background","rgba(34,197,94,0.1)"],"result":[["backgroundColor","rgba(34,197,94,0.1)"]]}
+{"args":["padding-left","calc(3px + 0.75rem)"],"result":[["paddingLeft","calc(3px + 0.75rem)"]]}
+{"args":["border-bottom","1px solid #e5e7eb"],"result":[["borderBottomWidth","1px"],["borderBottomColor","#e5e7eb"]]}
+{"args":["padding","0.75rem 1.25rem"],"result":[["paddingTop","0.75rem"],["paddingRight","1.25rem"],["paddingBottom","0.75rem"],["paddingLeft","1.25rem"]]}
+{"args":["border","none"],"result":[]}
+{"args":["border-bottom","2px solid #3b82f6"],"result":[["borderBottomWidth","2px"],["borderBottomColor","#3b82f6"]]}
+{"args":["border-bottom","2px solid transparent"],"result":[["borderBottomWidth","2px"],["borderBottomColor","transparent"]]}
+{"args":["border-collapse","collapse"],"result":[]}
+{"args":["padding","0.5rem"],"result":[["paddingTop","0.5rem"],["paddingRight","0.5rem"],["paddingBottom","0.5rem"],["paddingLeft","0.5rem"]]}
+{"args":["border-bottom","2px solid #111827"],"result":[["borderBottomWidth","2px"],["borderBottomColor","#111827"]]}
+{"args":["text-align","right"],"result":[["textAlign","right"]]}
+{"args":["border","1px solid #f59e0b"],"result":[["borderTopWidth","1px"],["borderTopColor","#f59e0b"],["borderRightWidth","1px"],["borderRightColor","#f59e0b"],["borderBottomWidth","1px"],["borderBottomColor","#f59e0b"],["borderLeftWidth","1px"],["borderLeftColor","#f59e0b"]]}
+{"args":["background","#fffbeb"],"result":[["backgroundColor","#fffbeb"]]}
+{"args":["color","#d97706"],"result":[["color","#d97706"]]}
+{"args":["max-width","1080px"],"result":[]}
+{"args":["gap","14px"],"result":[]}
+{"args":["border-left","4px solid #3b82f6"],"result":[["borderLeftWidth","4px"],["borderLeftColor","#3b82f6"]]}
+{"args":["border-top","3px solid #8b5cf6"],"result":[["borderTopWidth","3px"],["borderTopColor","#8b5cf6"]]}
+{"args":["border-top","4px solid #8b5cf6"],"result":[["borderTopWidth","4px"],["borderTopColor","#8b5cf6"]]}
+{"args":["--brand","#87a8ff"],"result":[["--brand","#87a8ff"]]}
+{"args":["--warn","#8a6a2f"],"result":[["--warn","#8a6a2f"]]}
+{"args":["--terracotta","#aa674d"],"result":[["--terracotta","#aa674d"]]}
+{"args":["--line","#e5e7eb"],"result":[["--line","#e5e7eb"]]}
+{"args":["--rule","#f3f4f6"],"result":[["--rule","#f3f4f6"]]}
+{"args":["max-width","1120px"],"result":[]}
+{"args":["padding","12px 16px"],"result":[["paddingTop","12px"],["paddingRight","16px"],["paddingBottom","12px"],["paddingLeft","16px"]]}
+{"args":["width","400px"],"result":[["width","400px"]]}
+{"args":["background","oklch(100%0 0)"],"result":[["backgroundColor","oklch(100%0 0)"]]}
+{"args":["border-left","3px solid oklch(65%0.12 250)"],"result":[["borderLeftWidth","3px"],["borderLeftColor","oklch(65%0.12 250)"]]}
+{"args":["border","1px solid oklch(80%0.05 250)"],"result":[["borderTopWidth","1px"],["borderTopColor","oklch(80%0.05 250)"],["borderRightWidth","1px"],["borderRightColor","oklch(80%0.05 250)"],["borderBottomWidth","1px"],["borderBottomColor","oklch(80%0.05 250)"],["borderLeftWidth","1px"],["borderLeftColor","oklch(80%0.05 250)"]]}
+{"args":["border-left","4px solid oklch(75%0.15 45)"],"result":[["borderLeftWidth","4px"],["borderLeftColor","oklch(75%0.15 45)"]]}
+{"args":["background","oklch(98%0.01 60)"],"result":[["backgroundColor","oklch(98%0.01 60)"]]}
+{"args":["border-left","4px solid oklch(75%0.18 45)"],"result":[["borderLeftWidth","4px"],["borderLeftColor","oklch(75%0.18 45)"]]}
+{"args":["border-left","4px solid oklab(60%0.1 0.15)"],"result":[["borderLeftWidth","4px"],["borderLeftColor","oklab(60%0.1 0.15)"]]}
+{"args":["border-left","4px solid lch(55%60 250)"],"result":[["borderLeftWidth","4px"],["borderLeftColor","lch(55%60 250)"]]}
+{"args":["border-left","4px solid lab(50%40-30)"],"result":[["borderLeftWidth","4px"],["borderLeftColor","lab(50%40-30)"]]}
+{"args":["grid-template-columns","auto 1fr"],"result":[]}
+{"args":["border-left","5px solid var(--brand)"],"result":[["borderLeftWidth","5px"],["borderLeftColor","var(--brand)"]]}
+{"args":["border","1px solid var(--line)"],"result":[["borderTopWidth","1px"],["borderTopColor","var(--line)"],["borderRightWidth","1px"],["borderRightColor","var(--line)"],["borderBottomWidth","1px"],["borderBottomColor","var(--line)"],["borderLeftWidth","1px"],["borderLeftColor","var(--line)"]]}
+{"args":["border-left","4px solid var(--warn)"],"result":[["borderLeftWidth","4px"],["borderLeftColor","var(--warn)"]]}
+{"args":["border-right","4px solid var(--terracotta)"],"result":[["borderRightWidth","4px"],["borderRightColor","var(--terracotta)"]]}
+{"args":["border-left","4px solid var(--brand)"],"result":[["borderLeftWidth","4px"],["borderLeftColor","var(--brand)"]]}
+{"args":["border-left","3px solid oklch(80%0 0)"],"result":[["borderLeftWidth","3px"],["borderLeftColor","oklch(80%0 0)"]]}
+{"args":["border-left","3px solid oklch(75%0.01 250)"],"result":[["borderLeftWidth","3px"],["borderLeftColor","oklch(75%0.01 250)"]]}
+{"args":["border","3px solid oklch(65%0.12 250)"],"result":[["borderTopWidth","3px"],["borderTopColor","oklch(65%0.12 250)"],["borderRightWidth","3px"],["borderRightColor","oklch(65%0.12 250)"],["borderBottomWidth","3px"],["borderBottomColor","oklch(65%0.12 250)"],["borderLeftWidth","3px"],["borderLeftColor","oklch(65%0.12 250)"]]}
+{"args":["border-left","1px solid oklch(65%0.12 250)"],"result":[["borderLeftWidth","1px"],["borderLeftColor","oklch(65%0.12 250)"]]}
+{"args":["border-left","3px solid lab(50%0 0)"],"result":[["borderLeftWidth","3px"],["borderLeftColor","lab(50%0 0)"]]}
+{"args":["border-left","3px solid lch(50%0 0)"],"result":[["borderLeftWidth","3px"],["borderLeftColor","lch(50%0 0)"]]}
+{"args":["color","#374151"],"result":[["color","#374151"]]}
+{"args":["margin-right","8px"],"result":[["marginRight","8px"]]}
+{"args":["border-left","1px solid #3b82f6"],"result":[["borderLeftWidth","1px"],["borderLeftColor","#3b82f6"]]}
+{"args":["border-left","3px solid var(--line)"],"result":[["borderLeftWidth","3px"],["borderLeftColor","var(--line)"]]}
+{"args":["border-left","1px solid var(--brand)"],"result":[["borderLeftWidth","1px"],["borderLeftColor","var(--brand)"]]}
+{"args":["border","3px solid var(--brand)"],"result":[["borderTopWidth","3px"],["borderTopColor","var(--brand)"],["borderRightWidth","3px"],["borderRightColor","var(--brand)"],["borderBottomWidth","3px"],["borderBottomColor","var(--brand)"],["borderLeftWidth","3px"],["borderLeftColor","var(--brand)"]]}
+{"args":["border-right","1px solid oklch(92%0 0/0.12)"],"result":[["borderRightWidth","1px"],["borderRightColor","oklch(92%0 0/0.12)"]]}
+{"args":["animation","bounce-keyframe 1s infinite"],"result":[["animationName","bounce-keyframe"]]}
+{"args":["transition","transform 0.5s cubic-bezier(0.68,-0.55,0.265,1.55)"],"result":[["transitionProperty","transform"],["transitionTimingFunction","cubic-bezier(0.68,-0.55,0.265,1.55)"]]}
+{"args":["transition","width 0.3s ease"],"result":[["transitionProperty","width"],["transitionTimingFunction","ease"]]}
+{"args":["transition","height 0.4s ease-out"],"result":[["transitionProperty","height"],["transitionTimingFunction","ease-out"]]}
+{"args":["transition","padding 0.2s linear"],"result":[["transitionProperty","padding"],["transitionTimingFunction","linear"]]}
+{"args":["transition","margin 0.3s ease-in"],"result":[["transitionProperty","margin"],["transitionTimingFunction","ease-in"]]}
+{"args":["transition","max-height 0.5s ease"],"result":[["transitionProperty","max-height"],["transitionTimingFunction","ease"]]}
+{"args":["transition","width 0.3s ease,height 0.3s ease"],"result":[["transitionProperty","width, height"],["transitionTimingFunction","ease, ease"]]}
+{"args":["transition","width 0.3s ease,opacity 0.3s ease"],"result":[["transitionProperty","width, opacity"],["transitionTimingFunction","ease, ease"]]}
+{"args":["transition-property","width"],"result":[["transitionProperty","width"]]}
+{"args":["transition-duration","0.3s"],"result":[]}
+{"args":["animation","fade-in-keyframe 0.4s cubic-bezier(0.16,1,0.3,1)"],"result":[["animationName","fade-in-keyframe"],["animationTimingFunction","cubic-bezier(0.16,1,0.3,1)"]]}
+{"args":["transition","transform 0.4s cubic-bezier(0.25,1,0.5,1)"],"result":[["transitionProperty","transform"],["transitionTimingFunction","cubic-bezier(0.25,1,0.5,1)"]]}
+{"args":["transition","transform 0.5s cubic-bezier(0.16,1,0.3,1)"],"result":[["transitionProperty","transform"],["transitionTimingFunction","cubic-bezier(0.16,1,0.3,1)"]]}
+{"args":["transition","transform 0.3s ease-out"],"result":[["transitionProperty","transform"],["transitionTimingFunction","ease-out"]]}
+{"args":["transition","opacity 0.2s ease"],"result":[["transitionProperty","opacity"],["transitionTimingFunction","ease"]]}
+{"args":["transition","color 0.15s ease,background-color 0.15s ease"],"result":[["transitionProperty","color, background-color"],["transitionTimingFunction","ease, ease"]]}
+{"args":["transition","box-shadow 0.2s ease"],"result":[["transitionProperty","box-shadow"],["transitionTimingFunction","ease"]]}
+{"args":["transition","all 0.3s ease"],"result":[["transitionProperty","all"],["transitionTimingFunction","ease"]]}
+{"args":["transition","transform 0.3s ease,opacity 0.3s ease,box-shadow 0.2s ease"],"result":[["transitionProperty","transform, opacity, box-shadow"],["transitionTimingFunction","ease, ease, ease"]]}
+{"args":["--accent","orange"],"result":[["--accent","orange"]]}
+{"args":["background","#f6f6f6"],"result":[["backgroundColor","#f6f6f6"]]}
+{"args":["border-left","4px solid purple"],"result":[["borderLeftWidth","4px"],["borderLeftColor","purple"]]}
+{"args":["border-left","5px solid rebeccapurple"],"result":[["borderLeftWidth","5px"],["borderLeftColor","rebeccapurple"]]}
+{"args":["border-top","4px solid crimson"],"result":[["borderTopWidth","4px"],["borderTopColor","crimson"]]}
+{"args":["border-left","3px solid teal"],"result":[["borderLeftWidth","3px"],["borderLeftColor","teal"]]}
+{"args":["border-left","6px solid var(--accent)"],"result":[["borderLeftWidth","6px"],["borderLeftColor","var(--accent)"]]}
+{"args":["border-left","4px solid dimgray"],"result":[["borderLeftWidth","4px"],["borderLeftColor","dimgray"]]}
+{"args":["border-left","3px solid gainsboro"],"result":[["borderLeftWidth","3px"],["borderLeftColor","gainsboro"]]}
+{"args":["border-left","4px solid black"],"result":[["borderLeftWidth","4px"],["borderLeftColor","black"]]}
+{"args":["border-left","1px solid purple"],"result":[["borderLeftWidth","1px"],["borderLeftColor","purple"]]}
+{"args":["border","3px solid purple"],"result":[["borderTopWidth","3px"],["borderTopColor","purple"],["borderRightWidth","3px"],["borderRightColor","purple"],["borderBottomWidth","3px"],["borderBottomColor","purple"],["borderLeftWidth","3px"],["borderLeftColor","purple"]]}
+{"args":["border-left","7px solid purple"],"result":[["borderLeftWidth","7px"],["borderLeftColor","purple"]]}
+{"args":["--v3bg","#f0b64e"],"result":[["--v3bg","#f0b64e"]]}
+{"args":["--v3fg","#cfd9e9"],"result":[["--v3fg","#cfd9e9"]]}
+{"args":["color","#1c2430"],"result":[["color","#1c2430"]]}
+{"args":["gap","2rem"],"result":[]}
+{"args":["padding","1rem 2rem"],"result":[["paddingTop","1rem"],["paddingRight","2rem"],["paddingBottom","1rem"],["paddingLeft","2rem"]]}
+{"args":["background","#12213a"],"result":[["backgroundColor","#12213a"]]}
+{"args":["gap","1.5rem"],"result":[]}
+{"args":["font-size","0.9rem"],"result":[["fontSize","0.9rem"]]}
+{"args":["padding","0.6em 1.1em"],"result":[["paddingTop","0.6em"],["paddingRight","1.1em"],["paddingBottom","0.6em"],["paddingLeft","1.1em"]]}
+{"args":["background","#e8b84b"],"result":[["backgroundColor","#e8b84b"]]}
+{"args":["color","#c9d6ea"],"result":[["color","#c9d6ea"]]}
+{"args":["color","#b7c6de"],"result":[["color","#b7c6de"]]}
+{"args":["background","#e5a93f"],"result":[["backgroundColor","#e5a93f"]]}
+{"args":["color","#26313f"],"result":[["color","#26313f"]]}
+{"args":["background","var(--v3bg)"],"result":[["backgroundColor","var(--v3bg)"]]}
+{"args":["color","var(--v3fg)"],"result":[["color","var(--v3fg)"]]}
+{"args":["background","linear-gradient(90deg,#f2b854,#e8a83e)"],"result":[["backgroundImage","linear-gradient(90deg,#f2b854,#e8a83e)"]]}
+{"args":["color","#d3dcec"],"result":[["color","#d3dcec"]]}
+{"args":["color","#d0daea"],"result":[["color","#d0daea"]]}
+{"args":["color","#ccd8ea"],"result":[["color","#ccd8ea"]]}
+{"args":["background","#eab04a"],"result":[["backgroundColor","#eab04a"]]}
+{"args":["background","rgb(240 178 74/0.85)"],"result":[["backgroundColor","rgb(240 178 74/0.85)"]]}
+{"args":["color","#d2dcec"],"result":[["color","#d2dcec"]]}
+{"args":["background","oklch(0.82 0.15 75)"],"result":[["backgroundColor","oklch(0.82 0.15 75)"]]}
+{"args":["color","oklch(0.80 0.05 258)"],"result":[["color","oklch(0.80 0.05 258)"]]}
+{"args":["background-image","url(data:image/gif;base64,R0lGODlhAQABAIAAAP7uSwAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==)"],"result":[["backgroundImage","url(data:image/gif;base64,R0lGODlhAQABAIAAAP7uSwAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==)"]]}
+{"args":["color","#d5deed"],"result":[["color","#d5deed"]]}
+{"args":["padding","4rem 2rem"],"result":[["paddingTop","4rem"],["paddingRight","2rem"],["paddingBottom","4rem"],["paddingLeft","2rem"]]}
+{"args":["font-size","2.4rem"],"result":[["fontSize","2.4rem"]]}
+{"args":["margin","0 0 1rem"],"result":[["marginTop","0"],["marginRight","0"],["marginBottom","1rem"],["marginLeft","0"]]}
+{"args":["font-size","10px"],"result":[["fontSize","10px"]]}
+{"args":["font-size","9px"],"result":[["fontSize","9px"]]}
+{"args":["display","none"],"result":[["display","none"]]}
+{"args":["visibility","hidden"],"result":[["visibility","hidden"]]}
+{"args":["color","#222222"],"result":[["color","#222222"]]}
+{"args":["margin","0 0 10px"],"result":[["marginTop","0"],["marginRight","0"],["marginBottom","10px"],["marginLeft","0"]]}
+{"args":["margin-bottom","48px"],"result":[["marginBottom","48px"]]}
+{"args":["font-family","monospace"],"result":[["fontFamily","monospace"]]}
+{"args":["letter-spacing","0"],"result":[["letterSpacing","0"]]}
+{"args":["border","1px solid #d4d4d4"],"result":[["borderTopWidth","1px"],["borderTopColor","#d4d4d4"],["borderRightWidth","1px"],["borderRightColor","#d4d4d4"],["borderBottomWidth","1px"],["borderBottomColor","#d4d4d4"],["borderLeftWidth","1px"],["borderLeftColor","#d4d4d4"]]}
+{"args":["margin","0 0 18px"],"result":[["marginTop","0"],["marginRight","0"],["marginBottom","18px"],["marginLeft","0"]]}
+{"args":["border","1px solid #d7d0c2"],"result":[["borderTopWidth","1px"],["borderTopColor","#d7d0c2"],["borderRightWidth","1px"],["borderRightColor","#d7d0c2"],["borderBottomWidth","1px"],["borderBottomColor","#d7d0c2"],["borderLeftWidth","1px"],["borderLeftColor","#d7d0c2"]]}
+{"args":["font","700 12px/1.1 ui-monospace,SFMono-Regular,Menlo,monospace"],"result":[["fontWeight","700"],["fontSize","12px"],["lineHeight","1.1"],["fontFamily","ui-monospace,SFMono-Regular,Menlo,monospace"]]}
+{"args":["color","#7c5c00"],"result":[["color","#7c5c00"]]}
+{"args":["max-width","900px"],"result":[]}
+{"args":["font-size","2rem"],"result":[["fontSize","2rem"]]}
+{"args":["margin","2.5rem 0 0.75rem"],"result":[["marginTop","2.5rem"],["marginRight","0"],["marginBottom","0.75rem"],["marginLeft","0"]]}
+{"args":["padding-bottom","0.5rem"],"result":[["paddingBottom","0.5rem"]]}
+{"args":["border","1px dashed #d1d5db"],"result":[["borderTopWidth","1px"],["borderTopColor","#d1d5db"],["borderRightWidth","1px"],["borderRightColor","#d1d5db"],["borderBottomWidth","1px"],["borderBottomColor","#d1d5db"],["borderLeftWidth","1px"],["borderLeftColor","#d1d5db"]]}
+{"args":["transform","translateY(0)"],"result":[]}
+{"args":["background","#f3f4f6"],"result":[["backgroundColor","#f3f4f6"]]}
+{"args":["transform","rotate(0deg)"],"result":[]}
+{"args":["transform","scale(1)"],"result":[]}
+{"args":["transform","translateX(0)"],"result":[]}
+{"args":["overflow-y","auto"],"result":[["overflowY","auto"]]}
+{"args":["position","sticky"],"result":[["position","sticky"]]}
+{"args":["padding","0.5rem 1rem"],"result":[["paddingTop","0.5rem"],["paddingRight","1rem"],["paddingBottom","0.5rem"],["paddingLeft","1rem"]]}
+{"args":["z-index","10"],"result":[]}
+{"args":["height","60px"],"result":[["height","60px"]]}
+{"args":["top","20px"],"result":[["top","20px"]]}
+{"args":["left","40px"],"result":[["left","40px"]]}
+{"args":["bottom","10px"],"result":[["bottom","10px"]]}
+{"args":["place-items","center"],"result":[]}
+{"args":["will-change","transform"],"result":[]}
+{"args":["contain","layout"],"result":[]}
+{"args":["filter","brightness(1)"],"result":[]}
+{"args":["backdrop-filter","blur(0px)"],"result":[]}
+{"args":["margin-top","-1rem"],"result":[["marginTop","-1rem"]]}
+{"args":["margin-left","-1rem"],"result":[["marginLeft","-1rem"]]}
+{"args":["line-height","1.4"],"result":[["lineHeight","1.4"]]}
+{"args":["padding","3px"],"result":[["paddingTop","3px"],["paddingRight","3px"],["paddingBottom","3px"],["paddingLeft","3px"]]}
+{"args":["background","linear-gradient(135deg,#8b5cf6,#6366f1)"],"result":[["backgroundImage","linear-gradient(135deg,#8b5cf6,#6366f1)"]]}
+{"args":["border-left","4px solid #8b5cf6"],"result":[["borderLeftWidth","4px"],["borderLeftColor","#8b5cf6"]]}
+{"args":["border-radius","0 8px 8px 0"],"result":[["borderRadius","0 8px 8px 0"]]}
+{"args":["height","100px"],"result":[["height","100px"]]}
+{"args":["bottom","8px"],"result":[["bottom","8px"]]}
+{"args":["right","8px"],"result":[["right","8px"]]}
+{"args":["position","fixed"],"result":[["position","fixed"]]}
+{"args":["bottom","0"],"result":[["bottom","0"]]}
+{"args":["right","0"],"result":[["right","0"]]}
+{"args":["z-index","50"],"result":[]}
+{"args":["height","30px"],"result":[["height","30px"]]}
+{"args":["padding-top","2rem"],"result":[["paddingTop","2rem"]]}
+{"args":["top","-1rem"],"result":[["top","-1rem"]]}
+{"args":["height","150px"],"result":[["height","150px"]]}
+{"args":["left","10px"],"result":[["left","10px"]]}
+{"args":["bottom","-20px"],"result":[["bottom","-20px"]]}
+{"args":["left","50px"],"result":[["left","50px"]]}
+{"args":["gap","48px"],"result":[]}
+{"args":["line-height","1.04"],"result":[["lineHeight","1.04"]]}
+{"args":["max-width","1040px"],"result":[]}
+{"args":["font-size","104px"],"result":[["fontSize","104px"]]}
+{"args":["font-size","83px"],"result":[["fontSize","83px"]]}
+{"args":["font-size","96px"],"result":[["fontSize","96px"]]}
+{"args":["font-size","80px"],"result":[["fontSize","80px"]]}
+{"args":["font-size","168px"],"result":[["fontSize","168px"]]}
+{"args":["font-size","120px"],"result":[["fontSize","120px"]]}
+{"args":["font-family","'Inter', sans-serif"],"result":[["fontFamily","'Inter', sans-serif"]]}
+{"args":["--ok","oklch(0.78 0.145 155)"],"result":[["--ok","oklch(0.78 0.145 155)"]]}
+{"args":["--line","rgba(0, 0, 0, 0.08)"],"result":[["--line","rgba(0, 0, 0, 0.08)"]]}
+{"args":["--dot","8px"],"result":[["--dot","8px"]]}
+{"args":["width","7px"],"result":[["width","7px"]]}
+{"args":["height","7px"],"result":[["height","7px"]]}
+{"args":["background","#22c55e"],"result":[["backgroundColor","#22c55e"]]}
+{"args":["animation","pulse 2.4s ease-out infinite"],"result":[["animationName","pulse"],["animationTimingFunction","ease-out"]]}
+{"args":["width","var(--dot)"],"result":[["width","var(--dot)"]]}
+{"args":["height","var(--dot)"],"result":[["height","var(--dot)"]]}
+{"args":["background","#ef4444"],"result":[["backgroundColor","#ef4444"]]}
+{"args":["animation","ripple 1.8s linear infinite"],"result":[["animationName","ripple"],["animationTimingFunction","linear"]]}
+{"args":["animation-name","pulse"],"result":[["animationName","pulse"]]}
+{"args":["animation-duration","2s"],"result":[]}
+{"args":["animation-iteration-count","infinite"],"result":[]}
+{"args":["width","14px"],"result":[["width","14px"]]}
+{"args":["height","14px"],"result":[["height","14px"]]}
+{"args":["border","2px solid #e5e7eb"],"result":[["borderTopWidth","2px"],["borderTopColor","#e5e7eb"],["borderRightWidth","2px"],["borderRightColor","#e5e7eb"],["borderBottomWidth","2px"],["borderBottomColor","#e5e7eb"],["borderLeftWidth","2px"],["borderLeftColor","#e5e7eb"]]}
+{"args":["border-top-color","#3b82f6"],"result":[["borderTopColor","#3b82f6"]]}
+{"args":["animation","spin 0.8s linear infinite"],"result":[["animationName","spin"],["animationTimingFunction","linear"]]}
+{"args":["animation","pulse-ring 1s linear infinite"],"result":[["animationName","pulse-ring"],["animationTimingFunction","linear"]]}
+{"args":["animation","pulse 3s ease-in-out infinite"],"result":[["animationName","pulse"],["animationTimingFunction","ease-in-out"]]}
+{"args":["animation","pulse 0.6s ease-out 3"],"result":[["animationName","pulse"],["animationTimingFunction","ease-out"]]}
+{"args":["height","12px"],"result":[["height","12px"]]}
+{"args":["animation","pulse 2s infinite"],"result":[["animationName","pulse"]]}
+{"args":["background","#dc2626"],"result":[["backgroundColor","#dc2626"]]}
+{"args":["animation","pulse 2.4s ease-in-out infinite"],"result":[["animationName","pulse"],["animationTimingFunction","ease-in-out"]]}
+{"args":["animation","none"],"result":[]}
+{"args":["margin-bottom","6px"],"result":[["marginBottom","6px"]]}
+{"args":["line-height","1.0"],"result":[["lineHeight","1.0"]]}
+{"args":["max-width","40em"],"result":[]}
+{"args":["text-align","justify"],"result":[["textAlign","justify"]]}
+{"args":["max-width","30em"],"result":[]}
+{"args":["max-width","65ch"],"result":[]}
+{"args":["hyphens","auto"],"result":[["hyphens","auto"]]}
+{"args":["-webkit-hyphens","auto"],"result":[["webkitHyphens","auto"]]}
+{"args":["font-family","ui-monospace,SFMono-Regular,Menlo,Consolas,monospace"],"result":[["fontFamily","ui-monospace,SFMono-Regular,Menlo,Consolas,monospace"]]}
+{"args":["font-size","10.8px"],"result":[["fontSize","10.8px"]]}
+{"args":["font-size","11.84px"],"result":[["fontSize","11.84px"]]}
+{"args":["background","#0b0d13"],"result":[["backgroundColor","#0b0d13"]]}
+{"args":["color","#e6e6e6"],"result":[["color","#e6e6e6"]]}
+{"args":["width","360px"],"result":[["width","360px"]]}
+{"args":["height","560px"],"result":[["height","560px"]]}
+{"args":["background","radial-gradient(circle at 52% 38%,rgba(80,111,255,0.26),transparent 44%)"],"result":[["backgroundImage","radial-gradient(circle at 52% 38%,rgba(80,111,255,0.26),transparent 44%)"]]}
+{"args":["width","900px"],"result":[["width","900px"]]}
+{"args":["height","600px"],"result":[["height","600px"]]}
+{"args":["background-image","radial-gradient(circle,rgba(139,92,246,0.30),transparent 60%)"],"result":[["backgroundImage","radial-gradient(circle,rgba(139,92,246,0.30),transparent 60%)"]]}
+{"args":["width","760px"],"result":[["width","760px"]]}
+{"args":["height","480px"],"result":[["height","480px"]]}
+{"args":["background","radial-gradient(ellipse at top,rgba(34,211,238,0.22),transparent 70%)"],"result":[["backgroundImage","radial-gradient(ellipse at top,rgba(34,211,238,0.22),transparent 70%)"]]}
+{"args":["height","400px"],"result":[["height","400px"]]}
+{"args":["background","radial-gradient(circle,rgba(255,90,120,0.28) 0%,rgba(255,90,120,0.12) 45%,transparent 75%)"],"result":[["backgroundImage","radial-gradient(circle,rgba(255,90,120,0.28) 0%,rgba(255,90,120,0.12) 45%,transparent 75%)"]]}
+{"args":["width","700px"],"result":[["width","700px"]]}
+{"args":["height","460px"],"result":[["height","460px"]]}
+{"args":["background","radial-gradient(circle,#506fff3d,transparent 50%)"],"result":[["backgroundImage","radial-gradient(circle,#506fff3d,transparent 50%)"]]}
+{"args":["width","800px"],"result":[["width","800px"]]}
+{"args":["height","520px"],"result":[["height","520px"]]}
+{"args":["background","radial-gradient(circle,#1e3a8a,#0f172a)"],"result":[["backgroundImage","radial-gradient(circle,#1e3a8a,#0f172a)"]]}
+{"args":["width","40px"],"result":[["width","40px"]]}
+{"args":["background","radial-gradient(circle,rgba(80,111,255,0.30),transparent)"],"result":[["backgroundImage","radial-gradient(circle,rgba(80,111,255,0.30),transparent)"]]}
+{"args":["background","radial-gradient(circle,rgba(255,196,64,0.35),transparent 70%)"],"result":[["backgroundImage","radial-gradient(circle,rgba(255,196,64,0.35),transparent 70%)"]]}
+{"args":["background","radial-gradient(circle,rgba(0,0,0,0.40),transparent 80%)"],"result":[["backgroundImage","radial-gradient(circle,rgba(0,0,0,0.40),transparent 80%)"]]}
+{"args":["width","820px"],"result":[["width","820px"]]}
+{"args":["height","540px"],"result":[["height","540px"]]}
+{"args":["background","radial-gradient(ellipse,rgba(255,255,255,0.35),transparent 70%)"],"result":[["backgroundImage","radial-gradient(ellipse,rgba(255,255,255,0.35),transparent 70%)"]]}
+{"args":["background","radial-gradient(circle,#ff0080 0%,#7928ca 45%,#0070f3 100%)"],"result":[["backgroundImage","radial-gradient(circle,#ff0080 0%,#7928ca 45%,#0070f3 100%)"]]}
+{"args":["width","780px"],"result":[["width","780px"]]}
+{"args":["height","500px"],"result":[["height","500px"]]}
+{"args":["background","radial-gradient(circle,rgba(255,0,128,0.90) 0%,rgba(121,40,202,0.85) 50%,transparent)"],"result":[["backgroundImage","radial-gradient(circle,rgba(255,0,128,0.90) 0%,rgba(121,40,202,0.85) 50%,transparent)"]]}
+{"args":["background","radial-gradient(circle,rgba(80,111,255,0.85),transparent)"],"result":[["backgroundImage","radial-gradient(circle,rgba(80,111,255,0.85),transparent)"]]}
+{"args":["background","linear-gradient(120deg,rgba(80,111,255,0.28),transparent 60%)"],"result":[["backgroundImage","linear-gradient(120deg,rgba(80,111,255,0.28),transparent 60%)"]]}
+{"args":["background","#f5f5f4"],"result":[["backgroundColor","#f5f5f4"]]}
+{"args":["border","1px solid #d6d3d1"],"result":[["borderTopWidth","1px"],["borderTopColor","#d6d3d1"],["borderRightWidth","1px"],["borderRightColor","#d6d3d1"],["borderBottomWidth","1px"],["borderBottomColor","#d6d3d1"],["borderLeftWidth","1px"],["borderLeftColor","#d6d3d1"]]}
+{"args":["box-shadow","0 2px 8px rgba(0,0,0,0.12)"],"result":[["boxShadow","0 2px 8px rgba(0,0,0,0.12)"]]}
+{"args":["font-size","30px"],"result":[["fontSize","30px"]]}
+{"args":["padding","6px 0"],"result":[["paddingTop","6px"],["paddingRight","0"],["paddingBottom","6px"],["paddingLeft","0"]]}
+{"args":["border-bottom","1px solid #eeeeee"],"result":[["borderBottomWidth","1px"],["borderBottomColor","#eeeeee"]]}
+{"args":["color","#57534e"],"result":[["color","#57534e"]]}
+{"args":["padding","6px 10px"],"result":[["paddingTop","6px"],["paddingRight","10px"],["paddingBottom","6px"],["paddingLeft","10px"]]}
+{"args":["scroll-behavior","smooth"],"result":[]}
+{"args":["padding","32px 24px"],"result":[["paddingTop","32px"],["paddingRight","24px"],["paddingBottom","32px"],["paddingLeft","24px"]]}
+{"args":["margin","0 0 480px"],"result":[["marginTop","0"],["marginRight","0"],["marginBottom","480px"],["marginLeft","0"]]}
+{"args":["transform","translateY(14px)"],"result":[]}
+{"args":["transition","opacity 0.4s ease-out,transform 0.4s ease-out"],"result":[["transitionProperty","opacity, transform"],["transitionTimingFunction","ease-out, ease-out"]]}
+{"args":["background","#faf8f4"],"result":[["backgroundColor","#faf8f4"]]}
+{"args":["padding","16px 20px"],"result":[["paddingTop","16px"],["paddingRight","20px"],["paddingBottom","16px"],["paddingLeft","20px"]]}
+{"args":["border","1px solid #ddd8d0"],"result":[["borderTopWidth","1px"],["borderTopColor","#ddd8d0"],["borderRightWidth","1px"],["borderRightColor","#ddd8d0"],["borderBottomWidth","1px"],["borderBottomColor","#ddd8d0"],["borderLeftWidth","1px"],["borderLeftColor","#ddd8d0"]]}
+{"args":["border-left","6px solid #b8422e"],"result":[["borderLeftWidth","6px"],["borderLeftColor","#b8422e"]]}
+{"args":["border-left-width","4px"],"result":[["borderLeftWidth","4px"]]}
+{"args":["border-left-width","5px"],"result":[["borderLeftWidth","5px"]]}
+{"args":["border-left-width","7px"],"result":[["borderLeftWidth","7px"]]}
+{"args":["border-left-width","8px"],"result":[["borderLeftWidth","8px"]]}
+{"args":["border-left-width","9px"],"result":[["borderLeftWidth","9px"]]}
+{"args":["border-left-width","10px"],"result":[["borderLeftWidth","10px"]]}
+{"args":["border-left-width","11px"],"result":[["borderLeftWidth","11px"]]}
+{"args":["border-left-width","12px"],"result":[["borderLeftWidth","12px"]]}
+{"args":["animation","ticker-loop 80s linear infinite"],"result":[["animationName","ticker-loop"],["animationTimingFunction","linear"]]}
+{"args":["margin-top","16px"],"result":[["marginTop","16px"]]}
+{"args":["margin","8px 0 4px"],"result":[["marginTop","8px"],["marginRight","0"],["marginBottom","4px"],["marginLeft","0"]]}
+{"args":["gap","1rem"],"result":[]}
+{"args":["max-width","28rem"],"result":[]}
+{"args":["border-radius","0.375rem"],"result":[["borderRadius","0.375rem"]]}
+{"args":["border-right","5px solid #8b5cf6"],"result":[["borderRightWidth","5px"],["borderRightColor","#8b5cf6"]]}
+{"args":["border-left-width","3px"],"result":[["borderLeftWidth","3px"]]}
+{"args":["border-left-style","solid"],"result":[]}
+{"args":["border-left-color","#10b981"],"result":[["borderLeftColor","#10b981"]]}
+{"args":["border-right-width","6px"],"result":[["borderRightWidth","6px"]]}
+{"args":["border-right-style","solid"],"result":[]}
+{"args":["border-right-color","#ef4444"],"result":[["borderRightColor","#ef4444"]]}
+{"args":["border-top","4px solid #3b82f6"],"result":[["borderTopWidth","4px"],["borderTopColor","#3b82f6"]]}
+{"args":["border-bottom","3px solid #8b5cf6"],"result":[["borderBottomWidth","3px"],["borderBottomColor","#8b5cf6"]]}
+{"args":["border-left","4px solid #f472b6"],"result":[["borderLeftWidth","4px"],["borderLeftColor","#f472b6"]]}
+{"args":["color","#9ca3af"],"result":[["color","#9ca3af"]]}
+{"args":["border-radius","0.5rem"],"result":[["borderRadius","0.5rem"]]}
+{"args":["padding","0.125rem 0.5rem"],"result":[["paddingTop","0.125rem"],["paddingRight","0.5rem"],["paddingBottom","0.125rem"],["paddingLeft","0.5rem"]]}
+{"args":["border-radius","9999px"],"result":[["borderRadius","9999px"]]}
+{"args":["border-right","2px solid #8b5cf6"],"result":[["borderRightWidth","2px"],["borderRightColor","#8b5cf6"]]}
+{"args":["border-top","1px solid #3b82f6"],"result":[["borderTopWidth","1px"],["borderTopColor","#3b82f6"]]}
+{"args":["border-bottom","2px solid #10b981"],"result":[["borderBottomWidth","2px"],["borderBottomColor","#10b981"]]}
+{"args":["border-left","1px solid #10b981"],"result":[["borderLeftWidth","1px"],["borderLeftColor","#10b981"]]}
+{"args":["border","1px solid #374151"],"result":[["borderTopWidth","1px"],["borderTopColor","#374151"],["borderRightWidth","1px"],["borderRightColor","#374151"],["borderBottomWidth","1px"],["borderBottomColor","#374151"],["borderLeftWidth","1px"],["borderLeftColor","#374151"]]}
+{"args":["border-bottom","2px solid #6366f1"],"result":[["borderBottomWidth","2px"],["borderBottomColor","#6366f1"]]}
+{"args":["box-shadow","0 4px 6px rgba(0,0,0,0.3)"],"result":[["boxShadow","0 4px 6px rgba(0,0,0,0.3)"]]}
+{"args":["top","40px"],"result":[["top","40px"]]}
+{"args":["width","300px"],"result":[["width","300px"]]}
+{"args":["top","30px"],"result":[["top","30px"]]}
+{"args":["left","30px"],"result":[["left","30px"]]}
+{"args":["background","#1f7a3d"],"result":[["backgroundColor","#1f7a3d"]]}
+{"args":["z-index","5"],"result":[]}
+{"args":["margin-top","30px"],"result":[["marginTop","30px"]]}
+{"args":["display","inline"],"result":[["display","inline"]]}
+{"args":["background","#2f8543"],"result":[["backgroundColor","#2f8543"]]}
+{"args":["padding","36px"],"result":[["paddingTop","36px"],["paddingRight","36px"],["paddingBottom","36px"],["paddingLeft","36px"]]}
+{"args":["background","#14202b"],"result":[["backgroundColor","#14202b"]]}
+{"args":["height","220px"],"result":[["height","220px"]]}
+{"args":["color","#b22"],"result":[["color","#b22"]]}
+{"args":["left","700px"],"result":[["left","700px"]]}
+{"args":["height","180px"],"result":[["height","180px"]]}
+{"args":["background","#f4f5f7"],"result":[["backgroundColor","#f4f5f7"]]}
+{"args":["box-shadow","0 2px 8px rgba(0,0,0,.08)"],"result":[["boxShadow","0 2px 8px rgba(0,0,0,.08)"]]}
+{"args":["margin-top","40px"],"result":[["marginTop","40px"]]}
+{"args":["letter-spacing",".1em"],"result":[["letterSpacing",".1em"]]}
+{"args":["color","#a33"],"result":[["color","#a33"]]}
+{"args":["line-height",".9"],"result":[["lineHeight",".9"]]}
+{"args":["object-fit","cover"],"result":[]}
+{"args":["background","linear-gradient(transparent,rgba(0,0,0,.6))"],"result":[["backgroundImage","linear-gradient(transparent,rgba(0,0,0,.6))"]]}
+{"args":["bottom","16px"],"result":[["bottom","16px"]]}
+{"args":["z-index","2"],"result":[]}
+{"args":["margin-top","20px"],"result":[["marginTop","20px"]]}
+{"args":["background","#b22"],"result":[["backgroundColor","#b22"]]}
+{"args":["padding","0 16px"],"result":[["paddingTop","0"],["paddingRight","16px"],["paddingBottom","0"],["paddingLeft","16px"]]}
+{"args":["align-items","start"],"result":[]}
+{"args":["width","1px"],"result":[["width","1px"]]}
+{"args":["height","1px"],"result":[["height","1px"]]}
+{"args":["margin","-1px"],"result":[["marginTop","-1px"],["marginRight","-1px"],["marginBottom","-1px"],["marginLeft","-1px"]]}
+{"args":["border-width","0"],"result":[["borderTopWidth","0"],["borderRightWidth","0"],["borderBottomWidth","0"],["borderLeftWidth","0"]]}
+{"args":["clip-path","inset(50%)"],"result":[]}
+{"args":["clip","rect(0,0,0,0)"],"result":[]}
+{"args":["clip","auto"],"result":[]}
+{"args":["height","20px"],"result":[["height","20px"]]}
+{"args":["pointer-events","none"],"result":[]}
+{"args":["width","120px"],"result":[["width","120px"]]}
+{"args":["font-family","\"Karla\",system-ui,sans-serif"],"result":[["fontFamily","\"Karla\",system-ui,sans-serif"]]}
+{"args":["font-family","\"Newsreader\",Georgia,serif"],"result":[["fontFamily","\"Newsreader\",Georgia,serif"]]}
+{"args":["font","16px/1.5 system-ui,sans-serif"],"result":[["fontSize","16px"],["lineHeight","1.5"],["fontFamily","system-ui,sans-serif"]]}
+{"args":["padding","22px"],"result":[["paddingTop","22px"],["paddingRight","22px"],["paddingBottom","22px"],["paddingLeft","22px"]]}
+{"args":["line-height","0.98"],"result":[["lineHeight","0.98"]]}
+{"args":["margin","32px 0 10px"],"result":[["marginTop","32px"],["marginRight","0"],["marginBottom","10px"],["marginLeft","0"]]}
+{"args":["line-height","1.08"],"result":[["lineHeight","1.08"]]}
+{"args":["margin","22px 0 6px"],"result":[["marginTop","22px"],["marginRight","0"],["marginBottom","6px"],["marginLeft","0"]]}
+{"args":["line-height","1.15"],"result":[["lineHeight","1.15"]]}
+{"args":["vertical-align","top"],"result":[]}
+{"args":["clip","rect(0 0 0 0)"],"result":[]}
+{"args":["font-size","4px"],"result":[["fontSize","4px"]]}
+{"args":["font-size","0.6em"],"result":[["fontSize","0.6em"]]}
+{"args":["--paper","#f7f3ee"],"result":[["--paper","#f7f3ee"]]}
+{"args":["--ink","#171717"],"result":[["--ink","#171717"]]}
+{"args":["--muted","#566174"],"result":[["--muted","#566174"]]}
+{"args":["background","var(--paper)"],"result":[["backgroundColor","var(--paper)"]]}
+{"args":["color","var(--ink)"],"result":[["color","var(--ink)"]]}
+{"args":["max-width","980px"],"result":[]}
+{"args":["margin","0 0 2px"],"result":[["marginTop","0"],["marginRight","0"],["marginBottom","2px"],["marginLeft","0"]]}
+{"args":["color","var(--muted)"],"result":[["color","var(--muted)"]]}
+{"args":["align-content","end"],"result":[]}
+{"args":["min-height","180px"],"result":[]}
+{"args":["padding","28px"],"result":[["paddingTop","28px"],["paddingRight","28px"],["paddingBottom","28px"],["paddingLeft","28px"]]}
+{"args":["background-position","center"],"result":[]}
+{"args":["z-index","1"],"result":[]}
+{"args":["max-width","28ch"],"result":[]}
+{"args":["background-image","url(data:image/svg+xml,%3Csvg\\ xmlns=\\'http://www.w3.org/2000/svg\\'\\ viewBox=\\'0\\ 0\\ 420\\ 240\\'%3E%3Crect\\ width=\\'420\\'\\ height=\\'240\\'\\ fill=\\'%23ece8df\\'/%3E%3Ccircle\\ cx=\\'308\\'\\ cy=\\'58\\'\\ r=\\'132\\'\\ fill=\\'%23faf7f0\\'/%3E%3Cpath\\ d=\\'M0\\ 186c52-22\\ 92-26\\ 142-8s98\\ 18\\ 148-8\\ 92-22\\ 130\\ 0v70H0z\\'\\ fill=\\'%23f5efe4\\'/%3E%3C/svg%3E)"],"result":[["backgroundImage","url(data:image/svg+xml,%3Csvg\\ xmlns=\\'http://www.w3.org/2000/svg\\'\\ viewBox=\\'0\\ 0\\ 420\\ 240\\'%3E%3Crect\\ width=\\'420\\'\\ height=\\'240\\'\\ fill=\\'%23ece8df\\'/%3E%3Ccircle\\ cx=\\'308\\'\\ cy=\\'58\\'\\ r=\\'132\\'\\ fill=\\'%23faf7f0\\'/%3E%3Cpath\\ d=\\'M0\\ 186c52-22\\ 92-26\\ 142-8s98\\ 18\\ 148-8\\ 92-22\\ 130\\ 0v70H0z\\'\\ fill=\\'%23f5efe4\\'/%3E%3C/svg%3E)"]]}
+{"args":["background-image","url(data:image/svg+xml,%3Csvg\\ xmlns=\\'http://www.w3.org/2000/svg\\'\\ viewBox=\\'0\\ 0\\ 420\\ 240\\'%3E%3Crect\\ width=\\'420\\'\\ height=\\'240\\'\\ fill=\\'%23edf2f7\\'/%3E%3Cg\\ fill=\\'%23f8fafc\\'%3E%3Ccircle\\ cx=\\'60\\'\\ cy=\\'64\\'\\ r=\\'42\\'/%3E%3Ccircle\\ cx=\\'182\\'\\ cy=\\'142\\'\\ r=\\'58\\'/%3E%3Ccircle\\ cx=\\'336\\'\\ cy=\\'84\\'\\ r=\\'74\\'/%3E%3C/g%3E%3Cg\\ stroke=\\'%23dbe4ef\\'\\ stroke-width=\\'14\\'\\ opacity=\\'.55\\'%3E%3Cpath\\ d=\\'M-20\\ 220C74\\ 112\\ 150\\ 94\\ 232\\ 164s138\\ 46\\ 214-62\\'\\ fill=\\'none\\'/%3E%3C/g%3E%3C/svg%3E)"],"result":[["backgroundImage","url(data:image/svg+xml,%3Csvg\\ xmlns=\\'http://www.w3.org/2000/svg\\'\\ viewBox=\\'0\\ 0\\ 420\\ 240\\'%3E%3Crect\\ width=\\'420\\'\\ height=\\'240\\'\\ fill=\\'%23edf2f7\\'/%3E%3Cg\\ fill=\\'%23f8fafc\\'%3E%3Ccircle\\ cx=\\'60\\'\\ cy=\\'64\\'\\ r=\\'42\\'/%3E%3Ccircle\\ cx=\\'182\\'\\ cy=\\'142\\'\\ r=\\'58\\'/%3E%3Ccircle\\ cx=\\'336\\'\\ cy=\\'84\\'\\ r=\\'74\\'/%3E%3C/g%3E%3Cg\\ stroke=\\'%23dbe4ef\\'\\ stroke-width=\\'14\\'\\ opacity=\\'.55\\'%3E%3Cpath\\ d=\\'M-20\\ 220C74\\ 112\\ 150\\ 94\\ 232\\ 164s138\\ 46\\ 214-62\\'\\ fill=\\'none\\'/%3E%3C/g%3E%3C/svg%3E)"]]}
+{"args":["background-image","url(data:image/svg+xml,%3Csvg\\ xmlns=\\'http://www.w3.org/2000/svg\\'\\ viewBox=\\'0\\ 0\\ 420\\ 240\\'%3E%3Crect\\ width=\\'420\\'\\ height=\\'240\\'\\ fill=\\'%23b9c4cf\\'/%3E%3Cpath\\ d=\\'M0\\ 52c74-28\\ 138-22\\ 194\\ 18s124\\ 38\\ 226-28v198H0z\\'\\ fill=\\'%23cbd3dc\\'/%3E%3Ccircle\\ cx=\\'82\\'\\ cy=\\'176\\'\\ r=\\'68\\'\\ fill=\\'%23aeb8c4\\'/%3E%3C/svg%3E)"],"result":[["backgroundImage","url(data:image/svg+xml,%3Csvg\\ xmlns=\\'http://www.w3.org/2000/svg\\'\\ viewBox=\\'0\\ 0\\ 420\\ 240\\'%3E%3Crect\\ width=\\'420\\'\\ height=\\'240\\'\\ fill=\\'%23b9c4cf\\'/%3E%3Cpath\\ d=\\'M0\\ 52c74-28\\ 138-22\\ 194\\ 18s124\\ 38\\ 226-28v198H0z\\'\\ fill=\\'%23cbd3dc\\'/%3E%3Ccircle\\ cx=\\'82\\'\\ cy=\\'176\\'\\ r=\\'68\\'\\ fill=\\'%23aeb8c4\\'/%3E%3C/svg%3E)"]]}
+{"args":["background-image","url(data:image/svg+xml,%3Csvg\\ xmlns=\\'http://www.w3.org/2000/svg\\'\\ viewBox=\\'0\\ 0\\ 420\\ 240\\'%3E%3Crect\\ width=\\'420\\'\\ height=\\'240\\'\\ fill=\\'%23191b20\\'/%3E%3Ccircle\\ cx=\\'316\\'\\ cy=\\'50\\'\\ r=\\'132\\'\\ fill=\\'%232d3440\\'/%3E%3Cpath\\ d=\\'M0\\ 182c70-48\\ 138-42\\ 204-6s128\\ 24\\ 216-58v122H0z\\'\\ fill=\\'%23101318\\'/%3E%3C/svg%3E)"],"result":[["backgroundImage","url(data:image/svg+xml,%3Csvg\\ xmlns=\\'http://www.w3.org/2000/svg\\'\\ viewBox=\\'0\\ 0\\ 420\\ 240\\'%3E%3Crect\\ width=\\'420\\'\\ height=\\'240\\'\\ fill=\\'%23191b20\\'/%3E%3Ccircle\\ cx=\\'316\\'\\ cy=\\'50\\'\\ r=\\'132\\'\\ fill=\\'%232d3440\\'/%3E%3Cpath\\ d=\\'M0\\ 182c70-48\\ 138-42\\ 204-6s128\\ 24\\ 216-58v122H0z\\'\\ fill=\\'%23101318\\'/%3E%3C/svg%3E)"]]}
+{"args":["isolation","isolate"],"result":[]}
+{"args":["background","#1a1d24"],"result":[["backgroundColor","#1a1d24"]]}
+{"args":["background","#f5f2ea"],"result":[["backgroundColor","#f5f2ea"]]}
+{"args":["z-index","0"],"result":[]}
+{"args":["color","rgb(28, 30, 35)"],"result":[["color","rgb(28, 30, 35)"]]}
+{"args":["color","rgba(255, 255, 255, 0.72)"],"result":[["color","rgba(255, 255, 255, 0.72)"]]}
+{"args":["color","rgb(138, 146, 156)"],"result":[["color","rgb(138, 146, 156)"]]}
+{"args":["color","rgb(250, 247, 239)"],"result":[["color","rgb(250, 247, 239)"]]}
+{"args":["color","rgb(31, 35, 42)"],"result":[["color","rgb(31, 35, 42)"]]}
+{"args":["color","rgb(246, 242, 232)"],"result":[["color","rgb(246, 242, 232)"]]}
+{"args":["color","rgb(35, 31, 27)"],"result":[["color","rgb(35, 31, 27)"]]}
+{"args":["color","#ff00aa"],"result":[["color","#ff00aa"]]}
+{"args":["font-family","Verdana"],"result":[["fontFamily","Verdana"]]}
+{"args":["font-family","Verdana,sans-serif"],"result":[["fontFamily","Verdana,sans-serif"]]}
+{"args":["font-family","Inter,sans-serif"],"result":[["fontFamily","Inter,sans-serif"]]}
+{"args":["width","8px"],"result":[["width","8px"]]}
+{"args":["height","8px"],"result":[["height","8px"]]}
+{"args":["border-radius","50%"],"result":[["borderRadius","50%"]]}
+{"args":["animation","blink 1s infinite"],"result":[["animationName","blink"]]}
+{"args":["color","#ff00aa"],"result":[["color","#ff00aa"]]}
+{"args":["font-family","Verdana"],"result":[["fontFamily","Verdana"]]}
+{"args":["font-family","system-ui,sans-serif"],"result":[["fontFamily","system-ui,sans-serif"]]}
+{"args":["background","#f9fafb"],"result":[["backgroundColor","#f9fafb"]]}
+{"args":["padding","2rem"],"result":[["paddingTop","2rem"],["paddingRight","2rem"],["paddingBottom","2rem"],["paddingLeft","2rem"]]}
+{"args":["font-size","2rem"],"result":[["fontSize","2rem"]]}
+{"args":["margin-bottom","0.5rem"],"result":[["marginBottom","0.5rem"]]}
+{"args":["font-size","0.875rem"],"result":[["fontSize","0.875rem"]]}
+{"args":["margin","2.5rem 0 0.75rem"],"result":[["marginTop","2.5rem"],["marginRight","0"],["marginBottom","0.75rem"],["marginLeft","0"]]}
+{"args":["color","#4b5563"],"result":[["color","#4b5563"]]}
+{"args":["border-bottom","1px solid #e5e7eb"],"result":[["borderBottomWidth","1px"],["borderBottomColor","#e5e7eb"]]}
+{"args":["padding-bottom","0.5rem"],"result":[["paddingBottom","0.5rem"]]}
+{"args":["text-transform","uppercase"],"result":[["textTransform","uppercase"]]}
+{"args":["letter-spacing","0.08em"],"result":[["letterSpacing","0.08em"]]}
+{"args":["color","#6b7280"],"result":[["color","#6b7280"]]}
+{"args":["margin-bottom","2rem"],"result":[["marginBottom","2rem"]]}
+{"args":["max-width","36rem"],"result":[]}
+{"args":["display","grid"],"result":[["display","grid"]]}
+{"args":["gap","1rem"],"result":[]}
+{"args":["max-width","28rem"],"result":[]}
+{"args":["background","white"],"result":[["backgroundColor","white"]]}
+{"args":["padding","1rem"],"result":[["paddingTop","1rem"],["paddingRight","1rem"],["paddingBottom","1rem"],["paddingLeft","1rem"]]}
+{"args":["border-radius","0.375rem"],"result":[["borderRadius","0.375rem"]]}
+{"args":["box-shadow","0 1px 3px rgba(0,0,0,0.1)"],"result":[["boxShadow","0 1px 3px rgba(0,0,0,0.1)"]]}
+{"args":["font-weight","600"],"result":[["fontWeight","600"]]}
+{"args":["color","#111827"],"result":[["color","#111827"]]}
+{"args":["font-size","0.8125rem"],"result":[["fontSize","0.8125rem"]]}
+{"args":["margin-top","0.25rem"],"result":[["marginTop","0.25rem"]]}
+{"args":["border-left","4px solid #3b82f6"],"result":[["borderLeftWidth","4px"],["borderLeftColor","#3b82f6"]]}
+{"args":["border-right","5px solid #8b5cf6"],"result":[["borderRightWidth","5px"],["borderRightColor","#8b5cf6"]]}
+{"args":["border-left-width","3px"],"result":[["borderLeftWidth","3px"]]}
+{"args":["border-left-style","solid"],"result":[]}
+{"args":["border-left-color","#10b981"],"result":[["borderLeftColor","#10b981"]]}
+{"args":["border-right-width","6px"],"result":[["borderRightWidth","6px"]]}
+{"args":["border-right-style","solid"],"result":[]}
+{"args":["border-right-color","#ef4444"],"result":[["borderRightColor","#ef4444"]]}
+{"args":["border-radius","12px"],"result":[["borderRadius","12px"]]}
+{"args":["border-top","4px solid #3b82f6"],"result":[["borderTopWidth","4px"],["borderTopColor","#3b82f6"]]}
+{"args":["border-bottom","3px solid #8b5cf6"],"result":[["borderBottomWidth","3px"],["borderBottomColor","#8b5cf6"]]}
+{"args":["background","#1f2937"],"result":[["backgroundColor","#1f2937"]]}
+{"args":["border-left","4px solid #f472b6"],"result":[["borderLeftWidth","4px"],["borderLeftColor","#f472b6"]]}
+{"args":["color","white"],"result":[["color","white"]]}
+{"args":["color","#9ca3af"],"result":[["color","#9ca3af"]]}
+{"args":["font-size","1.5rem"],"result":[["fontSize","1.5rem"]]}
+{"args":["font-size","1.125rem"],"result":[["fontSize","1.125rem"]]}
+{"args":["padding","1.5rem"],"result":[["paddingTop","1.5rem"],["paddingRight","1.5rem"],["paddingBottom","1.5rem"],["paddingLeft","1.5rem"]]}
+{"args":["border-radius","0.5rem"],"result":[["borderRadius","0.5rem"]]}
+{"args":["margin-bottom","1rem"],"result":[["marginBottom","1rem"]]}
+{"args":["display","inline-block"],"result":[["display","inline-block"]]}
+{"args":["font-size","0.75rem"],"result":[["fontSize","0.75rem"]]}
+{"args":["padding","0.125rem 0.5rem"],"result":[["paddingTop","0.125rem"],["paddingRight","0.5rem"],["paddingBottom","0.125rem"],["paddingLeft","0.5rem"]]}
+{"args":["border-radius","9999px"],"result":[["borderRadius","9999px"]]}
+{"args":["background","#dbeafe"],"result":[["backgroundColor","#dbeafe"]]}
+{"args":["color","#1d4ed8"],"result":[["color","#1d4ed8"]]}
+{"args":["border-left","1px solid #3b82f6"],"result":[["borderLeftWidth","1px"],["borderLeftColor","#3b82f6"]]}
+{"args":["border-right","2px solid #8b5cf6"],"result":[["borderRightWidth","2px"],["borderRightColor","#8b5cf6"]]}
+{"args":["border","1px solid #e5e7eb"],"result":[["borderTopWidth","1px"],["borderTopColor","#e5e7eb"],["borderRightWidth","1px"],["borderRightColor","#e5e7eb"],["borderBottomWidth","1px"],["borderBottomColor","#e5e7eb"],["borderLeftWidth","1px"],["borderLeftColor","#e5e7eb"]]}
+{"args":["border-top","1px solid #3b82f6"],"result":[["borderTopWidth","1px"],["borderTopColor","#3b82f6"]]}
+{"args":["border-bottom","2px solid #10b981"],"result":[["borderBottomWidth","2px"],["borderBottomColor","#10b981"]]}
+{"args":["border-left","1px solid #10b981"],"result":[["borderLeftWidth","1px"],["borderLeftColor","#10b981"]]}
+{"args":["border","1px solid #374151"],"result":[["borderTopWidth","1px"],["borderTopColor","#374151"],["borderRightWidth","1px"],["borderRightColor","#374151"],["borderBottomWidth","1px"],["borderBottomColor","#374151"],["borderLeftWidth","1px"],["borderLeftColor","#374151"]]}
+{"args":["background","#111827"],"result":[["backgroundColor","#111827"]]}
+{"args":["border-bottom","2px solid #6366f1"],"result":[["borderBottomWidth","2px"],["borderBottomColor","#6366f1"]]}
+{"args":["background","#1e293b"],"result":[["backgroundColor","#1e293b"]]}
+{"args":["box-shadow","0 4px 6px rgba(0,0,0,0.3)"],"result":[["boxShadow","0 4px 6px rgba(0,0,0,0.3)"]]}
+{"args":["color","#94a3b8"],"result":[["color","#94a3b8"]]}
+{"args":["margin","0"],"result":[["marginTop","0"],["marginRight","0"],["marginBottom","0"],["marginLeft","0"]]}
+{"args":["padding","24px"],"result":[["paddingTop","24px"],["paddingRight","24px"],["paddingBottom","24px"],["paddingLeft","24px"]]}
+{"args":["background","#f8fafc"],"result":[["backgroundColor","#f8fafc"]]}
+{"args":["font","14px/1.5 system-ui,sans-serif"],"result":[["fontSize","14px"],["lineHeight","1.5"],["fontFamily","system-ui,sans-serif"]]}
+{"args":["max-width","1180px"],"result":[]}
+{"args":["margin","0 auto 8px"],"result":[["marginTop","0"],["marginRight","auto"],["marginBottom","8px"],["marginLeft","auto"]]}
+{"args":["font-size","34px"],"result":[["fontSize","34px"]]}
+{"args":["line-height","1.05"],"result":[["lineHeight","1.05"]]}
+{"args":["font-weight","720"],"result":[["fontWeight","720"]]}
+{"args":["margin","0 auto 24px"],"result":[["marginTop","0"],["marginRight","auto"],["marginBottom","24px"],["marginLeft","auto"]]}
+{"args":["grid-template-columns","minmax(0,1fr) minmax(0,1fr)"],"result":[]}
+{"args":["gap","32px"],"result":[]}
+{"args":["margin","0 auto"],"result":[["marginTop","0"],["marginRight","auto"],["marginBottom","0"],["marginLeft","auto"]]}
+{"args":["margin","0 0 14px"],"result":[["marginTop","0"],["marginRight","0"],["marginBottom","14px"],["marginLeft","0"]]}
+{"args":["color","#475569"],"result":[["color","#475569"]]}
+{"args":["font-size","13px"],"result":[["fontSize","13px"]]}
+{"args":["font-weight","760"],"result":[["fontWeight","760"]]}
+{"args":["padding","16px"],"result":[["paddingTop","16px"],["paddingRight","16px"],["paddingBottom","16px"],["paddingLeft","16px"]]}
+{"args":["background","#fdfdfd"],"result":[["backgroundColor","#fdfdfd"]]}
+{"args":["box-shadow","0 1px 2px rgba(15,23,42,0.06)"],"result":[["boxShadow","0 1px 2px rgba(15,23,42,0.06)"]]}
+{"args":["margin","0 0 4px"],"result":[["marginTop","0"],["marginRight","0"],["marginBottom","4px"],["marginLeft","0"]]}
+{"args":["font-size","15px"],"result":[["fontSize","15px"]]}
+{"args":["line-height","1.25"],"result":[["lineHeight","1.25"]]}
+{"args":["border-left","4px solid #2563eb"],"result":[["borderLeftWidth","4px"],["borderLeftColor","#2563eb"]]}
+{"args":["border-radius","10px"],"result":[["borderRadius","10px"]]}
+{"args":["border-right","5px solid #dc2626"],"result":[["borderRightWidth","5px"],["borderRightColor","#dc2626"]]}
+{"args":["border-left","4px solid #0f766e"],"result":[["borderLeftWidth","4px"],["borderLeftColor","#0f766e"]]}
+{"args":["border-top","4px solid #7c3aed"],"result":[["borderTopWidth","4px"],["borderTopColor","#7c3aed"]]}
+{"args":["border-bottom","3px solid #ea580c"],"result":[["borderBottomWidth","3px"],["borderBottomColor","#ea580c"]]}
+{"args":["background","#141820"],"result":[["backgroundColor","#141820"]]}
+{"args":["color","#f4f7fb"],"result":[["color","#f4f7fb"]]}
+{"args":["border-left","4px solid #38bdf8"],"result":[["borderLeftWidth","4px"],["borderLeftColor","#38bdf8"]]}
+{"args":["color","#cbd5e1"],"result":[["color","#cbd5e1"]]}
+{"args":["border","1px solid #cbd5e1"],"result":[["borderTopWidth","1px"],["borderTopColor","#cbd5e1"],["borderRightWidth","1px"],["borderRightColor","#cbd5e1"],["borderBottomWidth","1px"],["borderBottomColor","#cbd5e1"],["borderLeftWidth","1px"],["borderLeftColor","#cbd5e1"]]}
+{"args":["border-left","4px solid #d1d5db"],"result":[["borderLeftWidth","4px"],["borderLeftColor","#d1d5db"]]}
+{"args":["border-left","1px solid #2563eb"],"result":[["borderLeftWidth","1px"],["borderLeftColor","#2563eb"]]}
+{"args":["border-radius","0"],"result":[["borderRadius","0"]]}
+{"args":["border-bottom","3px solid #2563eb"],"result":[["borderBottomWidth","3px"],["borderBottomColor","#2563eb"]]}
+{"args":["border-top","16px solid #7c3aed"],"result":[["borderTopWidth","16px"],["borderTopColor","#7c3aed"]]}
+{"args":["background","#161a22"],"result":[["backgroundColor","#161a22"]]}
+{"args":["border","1px solid #334155"],"result":[["borderTopWidth","1px"],["borderTopColor","#334155"],["borderRightWidth","1px"],["borderRightColor","#334155"],["borderBottomWidth","1px"],["borderBottomColor","#334155"],["borderLeftWidth","1px"],["borderLeftColor","#334155"]]}
+{"args":["max-width","1080px"],"result":[]}
+{"args":["gap","14px"],"result":[]}
+{"args":["border-top","3px solid #8b5cf6"],"result":[["borderTopWidth","3px"],["borderTopColor","#8b5cf6"]]}
+{"args":["border-top","4px solid #8b5cf6"],"result":[["borderTopWidth","4px"],["borderTopColor","#8b5cf6"]]}
+{"args":["font-family","'Inter', sans-serif"],"result":[["fontFamily","'Inter', sans-serif"]]}
+{"args":["font-size","14px"],"result":[["fontSize","14px"]]}
+{"args":["border-radius","8px"],"result":[["borderRadius","8px"]]}
+{"args":["font-size","16px"],"result":[["fontSize","16px"]]}
+{"args":["background","#fafafa"],"result":[["backgroundColor","#fafafa"]]}
+{"args":["color","#1a1a1a"],"result":[["color","#1a1a1a"]]}
+{"args":["grid-template-columns","1fr 1fr"],"result":[]}
+{"args":["max-width","1200px"],"result":[]}
+{"args":["letter-spacing","0.05em"],"result":[["letterSpacing","0.05em"]]}
+{"args":["margin","0 0 16px"],"result":[["marginTop","0"],["marginRight","0"],["marginBottom","16px"],["marginLeft","0"]]}
+{"args":["font-size","11px"],"result":[["fontSize","11px"]]}
+{"args":["margin","24px 0 8px"],"result":[["marginTop","24px"],["marginRight","0"],["marginBottom","8px"],["marginLeft","0"]]}
+{"args":["color","#64748b"],"result":[["color","#64748b"]]}
+{"args":["padding","14px 16px"],"result":[["paddingTop","14px"],["paddingRight","16px"],["paddingBottom","14px"],["paddingLeft","16px"]]}
+{"args":["margin-bottom","10px"],"result":[["marginBottom","10px"]]}
+{"args":["background-color","rgb(31,26,21)"],"result":[["backgroundColor","rgb(31,26,21)"]]}
+{"args":["color","rgb(91,79,68)"],"result":[["color","rgb(91,79,68)"]]}
+{"args":["padding","9px 18px"],"result":[["paddingTop","9px"],["paddingRight","18px"],["paddingBottom","9px"],["paddingLeft","18px"]]}
+{"args":["border-radius","999px"],"result":[["borderRadius","999px"]]}
+{"args":["font-weight","500"],"result":[["fontWeight","500"]]}
+{"args":["text-decoration","none"],"result":[]}
+{"args":["background-color","rgb(55,65,81)"],"result":[["backgroundColor","rgb(55,65,81)"]]}
+{"args":["color","rgb(108,114,128)"],"result":[["color","rgb(108,114,128)"]]}
+{"args":["padding","10px 20px"],"result":[["paddingTop","10px"],["paddingRight","20px"],["paddingBottom","10px"],["paddingLeft","20px"]]}
+{"args":["border","0"],"result":[]}
+{"args":["background-color","rgb(20,20,25)"],"result":[["backgroundColor","rgb(20,20,25)"]]}
+{"args":["color","rgb(245,240,232)"],"result":[["color","rgb(245,240,232)"]]}
+{"args":["color","rgb(170,170,170)"],"result":[["color","rgb(170,170,170)"]]}
+{"args":["background-color","rgb(182,50,45)"],"result":[["backgroundColor","rgb(182,50,45)"]]}
+{"args":["color","rgb(92,84,73)"],"result":[["color","rgb(92,84,73)"]]}
+{"args":["font-weight","700"],"result":[["fontWeight","700"]]}
+{"args":["padding","2px 8px"],"result":[["paddingTop","2px"],["paddingRight","8px"],["paddingBottom","2px"],["paddingLeft","8px"]]}
+{"args":["border-radius","2px"],"result":[["borderRadius","2px"]]}
+{"args":["color","rgb(150,60,55)"],"result":[["color","rgb(150,60,55)"]]}
+{"args":["font-size","8px"],"result":[["fontSize","8px"]]}
+{"args":["padding","1px 4px"],"result":[["paddingTop","1px"],["paddingRight","4px"],["paddingBottom","1px"],["paddingLeft","4px"]]}
+{"args":["background","rgb(28,30,38)"],"result":[["backgroundColor","rgb(28,30,38)"]]}
+{"args":["color","rgb(230,232,237)"],"result":[["color","rgb(230,232,237)"]]}
+{"args":["padding","12px"],"result":[["paddingTop","12px"],["paddingRight","12px"],["paddingBottom","12px"],["paddingLeft","12px"]]}
+{"args":["background","rgb(246,242,244)"],"result":[["backgroundColor","rgb(246,242,244)"]]}
+{"args":["border-radius","3px"],"result":[["borderRadius","3px"]]}
+{"args":["background","none"],"result":[["backgroundColor","rgba(0, 0, 0, 0)"],["backgroundImage","none"]]}
+{"args":["background","linear-gradient(135deg,#6d8cff 0%,#a78bfa 50%,#6d8cff 100%)"],"result":[["backgroundImage","linear-gradient(135deg,#6d8cff 0%,#a78bfa 50%,#6d8cff 100%)"]]}
+{"args":["-webkit-background-clip","text"],"result":[["webkitBackgroundClip","text"]]}
+{"args":["background-clip","text"],"result":[["backgroundClip","text"]]}
+{"args":["-webkit-text-fill-color","transparent"],"result":[]}
+{"args":["color","#e8e6e3"],"result":[["color","#e8e6e3"]]}
+{"args":["font-size","40px"],"result":[["fontSize","40px"]]}
+{"args":["font-weight","800"],"result":[["fontWeight","800"]]}
+{"args":["background","#0f0f11"],"result":[["backgroundColor","#0f0f11"]]}
+{"args":["background","linear-gradient(160deg,rgba(52,192,168,0.09) 0%,#141419 65%)"],"result":[["backgroundImage","linear-gradient(160deg,rgba(52,192,168,0.09) 0%,#141419 65%)"]]}
+{"args":["padding","20px"],"result":[["paddingTop","20px"],["paddingRight","20px"],["paddingBottom","20px"],["paddingLeft","20px"]]}
+{"args":["font-size","18px"],"result":[["fontSize","18px"]]}
+{"args":["color","#8e8c89"],"result":[["color","#8e8c89"]]}
+{"args":["background","linear-gradient(160deg,color-mix(in oklab,oklch(90%0.02 95) 16%,transparent) 0%,#141419 65%)"],"result":[["backgroundImage","linear-gradient(160deg,color-mix(in oklab,oklch(90%0.02 95) 16%,transparent) 0%,#141419 65%)"]]}
+{"args":["color","#ded9cf"],"result":[["color","#ded9cf"]]}
+{"args":["--fixture-bone","#e8e2d6"],"result":[["--fixture-bone","#e8e2d6"]]}
+{"args":["background-color","currentcolor"],"result":[["backgroundColor","currentcolor"]]}
+{"args":["color","var(--fixture-bone)"],"result":[["color","var(--fixture-bone)"]]}
+{"args":["color","#cfc9bd"],"result":[["color","#cfc9bd"]]}
+{"args":["color","#3a352c"],"result":[["color","#3a352c"]]}
+{"args":["color","var(--fixture-undefined-token)"],"result":[["color","var(--fixture-undefined-token)"]]}
+{"args":["color","#efe9dd"],"result":[["color","#efe9dd"]]}
+{"args":["background","#000000"],"result":[["backgroundColor","#000000"]]}
+{"args":["background","rgb(59, 130, 246)"],"result":[["backgroundColor","rgb(59, 130, 246)"]]}
+{"args":["color","rgb(150, 150, 150)"],"result":[["color","rgb(150, 150, 150)"]]}
+{"args":["background","rgb(16, 185, 129)"],"result":[["backgroundColor","rgb(16, 185, 129)"]]}
+{"args":["color","rgb(180, 180, 180)"],"result":[["color","rgb(180, 180, 180)"]]}
+{"args":["color","rgb(200, 200, 200)"],"result":[["color","rgb(200, 200, 200)"]]}
+{"args":["background","rgb(30, 30, 30)"],"result":[["backgroundColor","rgb(30, 30, 30)"]]}
+{"args":["color","rgb(80, 80, 80)"],"result":[["color","rgb(80, 80, 80)"]]}
+{"args":["background","linear-gradient(180deg, #3b82f6 0%, #8b5cf6 100%)"],"result":[["backgroundImage","linear-gradient(180deg, #3b82f6 0%, #8b5cf6 100%)"]]}
+{"args":["color","#808080"],"result":[["color","#808080"]]}
+{"args":["font-size","32px"],"result":[["fontSize","32px"]]}
+{"args":["color","#666666"],"result":[["color","#666666"]]}
+{"args":["background","linear-gradient(135deg, #667eea, #764ba2)"],"result":[["backgroundImage","linear-gradient(135deg, #667eea, #764ba2)"]]}
+{"args":["color","rgb(139, 92, 246)"],"result":[["color","rgb(139, 92, 246)"]]}
+{"args":["background","black"],"result":[["backgroundColor","black"]]}
+{"args":["color","rgb(156, 163, 175)"],"result":[["color","rgb(156, 163, 175)"]]}
+{"args":["color","rgb(168, 85, 247)"],"result":[["color","rgb(168, 85, 247)"]]}
+{"args":["background","linear-gradient(to right, rgb(168, 85, 247), rgb(99, 102, 241))"],"result":[["backgroundImage","linear-gradient(to right, rgb(168, 85, 247), rgb(99, 102, 241))"]]}
+{"args":["background","rgb(26, 26, 30)"],"result":[["backgroundColor","rgb(26, 26, 30)"]]}
+{"args":["color","rgb(240, 240, 245)"],"result":[["color","rgb(240, 240, 245)"]]}
+{"args":["background","rgb(250, 250, 252)"],"result":[["backgroundColor","rgb(250, 250, 252)"]]}
+{"args":["color","rgb(20, 20, 25)"],"result":[["color","rgb(20, 20, 25)"]]}
+{"args":["background","#ffffff"],"result":[["backgroundColor","#ffffff"]]}
+{"args":["background","rgb(30, 64, 175)"],"result":[["backgroundColor","rgb(30, 64, 175)"]]}
+{"args":["color","rgb(5, 46, 32)"],"result":[["color","rgb(5, 46, 32)"]]}
+{"args":["color","rgb(220, 38, 38)"],"result":[["color","rgb(220, 38, 38)"]]}
+{"args":["font-size","1.25rem"],"result":[["fontSize","1.25rem"]]}
+{"args":["color","rgb(180, 83, 9)"],"result":[["color","rgb(180, 83, 9)"]]}
+{"args":["margin","8px 0 0"],"result":[["marginTop","8px"],["marginRight","0"],["marginBottom","0"],["marginLeft","0"]]}
+{"args":["background-image","url('data:image/png"],"result":[["backgroundImage","url('data:image/png"]]}
+{"args":["background-size","cover"],"result":[]}
+{"args":["color","rgb(255, 255, 255)"],"result":[["color","rgb(255, 255, 255)"]]}
+{"args":["background","rgba(0,0,0,0.03)"],"result":[["backgroundColor","rgba(0,0,0,0.03)"]]}
+{"args":["background","rgba(0,0,0,0)"],"result":[["backgroundColor","rgba(0,0,0,0)"]]}
+{"args":["background","rgba(0,0,0,0.5)"],"result":[["backgroundColor","rgba(0,0,0,0.5)"]]}
+{"args":["background","#ffe4e6"],"result":[["backgroundColor","#ffe4e6"]]}
+{"args":["color","#ffe4e6"],"result":[["color","#ffe4e6"]]}
+{"args":["font-size","24px"],"result":[["fontSize","24px"]]}
+{"args":["background","#1a1a1a"],"result":[["backgroundColor","#1a1a1a"]]}
+{"args":["padding","40px"],"result":[["paddingTop","40px"],["paddingRight","40px"],["paddingBottom","40px"],["paddingLeft","40px"]]}
+{"args":["background","#faf8f4"],"result":[["backgroundColor","#faf8f4"]]}
+{"args":["font-family","Arial,sans-serif"],"result":[["fontFamily","Arial,sans-serif"]]}
+{"args":["color","#262421"],"result":[["color","#262421"]]}
+{"args":["width","420px"],"result":[["width","420px"]]}
+{"args":["padding","16px 20px"],"result":[["paddingTop","16px"],["paddingRight","20px"],["paddingBottom","16px"],["paddingLeft","20px"]]}
+{"args":["margin","0 0 24px"],"result":[["marginTop","0"],["marginRight","0"],["marginBottom","24px"],["marginLeft","0"]]}
+{"args":["border","1px solid #ddd8d0"],"result":[["borderTopWidth","1px"],["borderTopColor","#ddd8d0"],["borderRightWidth","1px"],["borderRightColor","#ddd8d0"],["borderBottomWidth","1px"],["borderBottomColor","#ddd8d0"],["borderLeftWidth","1px"],["borderLeftColor","#ddd8d0"]]}
+{"args":["border-left","6px solid #b8422e"],"result":[["borderLeftWidth","6px"],["borderLeftColor","#b8422e"]]}
+{"args":["border-left-width","4px"],"result":[["borderLeftWidth","4px"]]}
+{"args":["border-left-width","5px"],"result":[["borderLeftWidth","5px"]]}
+{"args":["border-left-width","7px"],"result":[["borderLeftWidth","7px"]]}
+{"args":["border-left-width","8px"],"result":[["borderLeftWidth","8px"]]}
+{"args":["border-left-width","9px"],"result":[["borderLeftWidth","9px"]]}
+{"args":["border-left-width","10px"],"result":[["borderLeftWidth","10px"]]}
+{"args":["border-left-width","11px"],"result":[["borderLeftWidth","11px"]]}
+{"args":["border-left-width","12px"],"result":[["borderLeftWidth","12px"]]}
+{"args":["display","flex"],"result":[["display","flex"]]}
+{"args":["width","max-content"],"result":[["width","max-content"]]}
+{"args":["animation","ticker-loop 80s linear infinite"],"result":[["animationName","ticker-loop"],["animationTimingFunction","linear"]]}
+{"args":["padding","8px 16px"],"result":[["paddingTop","8px"],["paddingRight","16px"],["paddingBottom","8px"],["paddingLeft","16px"]]}
+{"args":["padding","48px"],"result":[["paddingTop","48px"],["paddingRight","48px"],["paddingBottom","48px"],["paddingLeft","48px"]]}
+{"args":["background","linear-gradient(180deg,oklch(7%0.006 95),oklch(4%0.004 95))"],"result":[["backgroundImage","linear-gradient(180deg,oklch(7%0.006 95),oklch(4%0.004 95))"]]}
+{"args":["margin","0 0 32px"],"result":[["marginTop","0"],["marginRight","0"],["marginBottom","32px"],["marginLeft","0"]]}
+{"args":["width","560px"],"result":[["width","560px"]]}
+{"args":["color","oklch(30%0 0)"],"result":[["color","oklch(30%0 0)"]]}
+{"args":["line-height","1.7"],"result":[["lineHeight","1.7"]]}
+{"args":["color","oklch(32%0 0)"],"result":[["color","oklch(32%0 0)"]]}
+{"args":["width","480px"],"result":[["width","480px"]]}
+{"args":["background","rgba(250,249,246,0.88)"],"result":[["backgroundColor","rgba(250,249,246,0.88)"]]}
+{"args":["border-radius","4px"],"result":[["borderRadius","4px"]]}
+{"args":["color","oklch(88%0 0)"],"result":[["color","oklch(88%0 0)"]]}
+{"args":["line-height","1.6"],"result":[["lineHeight","1.6"]]}
+{"args":["width","640px"],"result":[["width","640px"]]}
+{"args":["color","oklch(91%0 0)"],"result":[["color","oklch(91%0 0)"]]}
+{"args":["font-size","48px"],"result":[["fontSize","48px"]]}
+{"args":["background","oklch(11%0.006 95)"],"result":[["backgroundColor","oklch(11%0.006 95)"]]}
+{"args":["color","oklch(15%0.01 95)"],"result":[["color","oklch(15%0.01 95)"]]}
+{"args":["margin","0 0 12px"],"result":[["marginTop","0"],["marginRight","0"],["marginBottom","12px"],["marginLeft","0"]]}
+{"args":["width","520px"],"result":[["width","520px"]]}
+{"args":["background-image","linear-gradient(180deg,#14120f,#0a0908)"],"result":[["backgroundImage","linear-gradient(180deg,#14120f,#0a0908)"]]}
+{"args":["color","oklch(90%0 0)"],"result":[["color","oklch(90%0 0)"]]}
+{"args":["width","460px"],"result":[["width","460px"]]}
+{"args":["padding","18px 22px"],"result":[["paddingTop","18px"],["paddingRight","22px"],["paddingBottom","18px"],["paddingLeft","22px"]]}
+{"args":["background","linear-gradient(180deg,rgba(255,255,255,0.3),rgba(255,255,255,0.2)),url(/fixtures/antipatterns/no-such-texture.png)center/cover"],"result":[["backgroundImage","linear-gradient(180deg,rgba(255,255,255,0.3),rgba(255,255,255,0.2)),url(/fixtures/antipatterns/no-such-texture.png)center/cover"]]}
+{"args":["background-image","url(/fixtures/antipatterns/no-such-photo.jpg)"],"result":[["backgroundImage","url(/fixtures/antipatterns/no-such-photo.jpg)"]]}
+{"args":["color","oklch(20%0 0)"],"result":[["color","oklch(20%0 0)"]]}
+{"args":["opacity","0"],"result":[["opacity","0"]]}
+{"args":["margin","2rem 0 0.75rem"],"result":[["marginTop","2rem"],["marginRight","0"],["marginBottom","0.75rem"],["marginLeft","0"]]}
+{"args":["margin-bottom","1.5rem"],"result":[["marginBottom","1.5rem"]]}
+{"args":["padding-left","1rem"],"result":[["paddingLeft","1rem"]]}
+{"args":["font-style","italic"],"result":[["fontStyle","italic"]]}
+{"args":["width","200px"],"result":[["width","200px"]]}
+{"args":["overflow","hidden"],"result":[["overflow","hidden"]]}
+{"args":["display","block"],"result":[["display","block"]]}
+{"args":["padding","0.75rem 1rem"],"result":[["paddingTop","0.75rem"],["paddingRight","1rem"],["paddingBottom","0.75rem"],["paddingLeft","1rem"]]}
+{"args":["border-left","3px solid transparent"],"result":[["borderLeftWidth","3px"],["borderLeftColor","transparent"]]}
+{"args":["border-left","3px solid #3b82f6"],"result":[["borderLeftWidth","3px"],["borderLeftColor","#3b82f6"]]}
+{"args":["background","#eff6ff"],"result":[["backgroundColor","#eff6ff"]]}
+{"args":["margin-bottom","0.25rem"],"result":[["marginBottom","0.25rem"]]}
+{"args":["width","100%"],"result":[["width","100%"]]}
+{"args":["padding","0.5rem 0.75rem"],"result":[["paddingTop","0.5rem"],["paddingRight","0.75rem"],["paddingBottom","0.5rem"],["paddingLeft","0.75rem"]]}
+{"args":["border","1px solid #fca5a5"],"result":[["borderTopWidth","1px"],["borderTopColor","#fca5a5"],["borderRightWidth","1px"],["borderRightColor","#fca5a5"],["borderBottomWidth","1px"],["borderBottomColor","#fca5a5"],["borderLeftWidth","1px"],["borderLeftColor","#fca5a5"]]}
+{"args":["border-left","3px solid #b91c1c"],"result":[["borderLeftWidth","3px"],["borderLeftColor","#b91c1c"]]}
+{"args":["border-radius","6px"],"result":[["borderRadius","6px"]]}
+{"args":["outline","none"],"result":[["outlineStyle","none"]]}
+{"args":["color","#b91c1c"],"result":[["color","#b91c1c"]]}
+{"args":["border-left","3px solid #e5e7eb"],"result":[["borderLeftWidth","3px"],["borderLeftColor","#e5e7eb"]]}
+{"args":["padding-left","1.5rem"],"result":[["paddingLeft","1.5rem"]]}
+{"args":["margin-left","0.75rem"],"result":[["marginLeft","0.75rem"]]}
+{"args":["position","relative"],"result":[["position","relative"]]}
+{"args":["padding-bottom","1.5rem"],"result":[["paddingBottom","1.5rem"]]}
+{"args":["position","absolute"],"result":[["position","absolute"]]}
+{"args":["left","-2.05rem"],"result":[["left","-2.05rem"]]}
+{"args":["top","0.125rem"],"result":[["top","0.125rem"]]}
+{"args":["width","10px"],"result":[["width","10px"]]}
+{"args":["height","10px"],"result":[["height","10px"]]}
+{"args":["border-radius","50%"],"result":[["borderRadius","50%"]]}
+{"args":["background","#3b82f6"],"result":[["backgroundColor","#3b82f6"]]}
+{"args":["border","2px solid white"],"result":[["borderTopWidth","2px"],["borderTopColor","white"],["borderRightWidth","2px"],["borderRightColor","white"],["borderBottomWidth","2px"],["borderBottomColor","white"],["borderLeftWidth","2px"],["borderLeftColor","white"]]}
+{"args":["margin","0.125rem 0 0"],"result":[["marginTop","0.125rem"],["marginRight","0"],["marginBottom","0"],["marginLeft","0"]]}
+{"args":["background","#d1d5db"],"result":[["backgroundColor","#d1d5db"]]}
+{"args":["color","#e2e8f0"],"result":[["color","#e2e8f0"]]}
+{"args":["overflow-x","auto"],"result":[["overflowX","auto"]]}
+{"args":["border-left","3px solid #ef4444"],"result":[["borderLeftWidth","3px"],["borderLeftColor","#ef4444"]]}
+{"args":["padding-left","0.75rem"],"result":[["paddingLeft","0.75rem"]]}
+{"args":["background","rgba(239,68,68,0.1)"],"result":[["backgroundColor","rgba(239,68,68,0.1)"]]}
+{"args":["border-left","3px solid #22c55e"],"result":[["borderLeftWidth","3px"],["borderLeftColor","#22c55e"]]}
+{"args":["background","rgba(34,197,94,0.1)"],"result":[["backgroundColor","rgba(34,197,94,0.1)"]]}
+{"args":["padding-left","calc(3px + 0.75rem)"],"result":[["paddingLeft","calc(3px + 0.75rem)"]]}
+{"args":["padding","0.75rem 1.25rem"],"result":[["paddingTop","0.75rem"],["paddingRight","1.25rem"],["paddingBottom","0.75rem"],["paddingLeft","1.25rem"]]}
+{"args":["border","none"],"result":[]}
+{"args":["border-bottom","2px solid #3b82f6"],"result":[["borderBottomWidth","2px"],["borderBottomColor","#3b82f6"]]}
+{"args":["cursor","pointer"],"result":[]}
+{"args":["border-bottom","2px solid transparent"],"result":[["borderBottomWidth","2px"],["borderBottomColor","transparent"]]}
+{"args":["border-collapse","collapse"],"result":[]}
+{"args":["text-align","left"],"result":[["textAlign","left"]]}
+{"args":["padding","0.5rem"],"result":[["paddingTop","0.5rem"],["paddingRight","0.5rem"],["paddingBottom","0.5rem"],["paddingLeft","0.5rem"]]}
+{"args":["border-bottom","2px solid #111827"],"result":[["borderBottomWidth","2px"],["borderBottomColor","#111827"]]}
+{"args":["text-align","right"],"result":[["textAlign","right"]]}
+{"args":["border","1px solid #f59e0b"],"result":[["borderTopWidth","1px"],["borderTopColor","#f59e0b"],["borderRightWidth","1px"],["borderRightColor","#f59e0b"],["borderBottomWidth","1px"],["borderBottomColor","#f59e0b"],["borderLeftWidth","1px"],["borderLeftColor","#f59e0b"]]}
+{"args":["background","#fffbeb"],"result":[["backgroundColor","#fffbeb"]]}
+{"args":["color","#92400e"],"result":[["color","#92400e"]]}
+{"args":["color","#d97706"],"result":[["color","#d97706"]]}
+{"args":["--brand","#87a8ff"],"result":[["--brand","#87a8ff"]]}
+{"args":["--warn","#8a6a2f"],"result":[["--warn","#8a6a2f"]]}
+{"args":["--terracotta","#aa674d"],"result":[["--terracotta","#aa674d"]]}
+{"args":["--line","#e5e7eb"],"result":[["--line","#e5e7eb"]]}
+{"args":["--rule","#f3f4f6"],"result":[["--rule","#f3f4f6"]]}
+{"args":["max-width","1120px"],"result":[]}
+{"args":["padding","12px 16px"],"result":[["paddingTop","12px"],["paddingRight","16px"],["paddingBottom","12px"],["paddingLeft","16px"]]}
+{"args":["margin-bottom","16px"],"result":[["marginBottom","16px"]]}
+{"args":["width","400px"],"result":[["width","400px"]]}
+{"args":["background","oklch(100%0 0)"],"result":[["backgroundColor","oklch(100%0 0)"]]}
+{"args":["border-left","3px solid oklch(65%0.12 250)"],"result":[["borderLeftWidth","3px"],["borderLeftColor","oklch(65%0.12 250)"]]}
+{"args":["border","1px solid oklch(80%0.05 250)"],"result":[["borderTopWidth","1px"],["borderTopColor","oklch(80%0.05 250)"],["borderRightWidth","1px"],["borderRightColor","oklch(80%0.05 250)"],["borderBottomWidth","1px"],["borderBottomColor","oklch(80%0.05 250)"],["borderLeftWidth","1px"],["borderLeftColor","oklch(80%0.05 250)"]]}
+{"args":["border-left","4px solid oklch(75%0.15 45)"],"result":[["borderLeftWidth","4px"],["borderLeftColor","oklch(75%0.15 45)"]]}
+{"args":["background","oklch(98%0.01 60)"],"result":[["backgroundColor","oklch(98%0.01 60)"]]}
+{"args":["border-left","4px solid oklch(75%0.18 45)"],"result":[["borderLeftWidth","4px"],["borderLeftColor","oklch(75%0.18 45)"]]}
+{"args":["border-left","4px solid oklab(60%0.1 0.15)"],"result":[["borderLeftWidth","4px"],["borderLeftColor","oklab(60%0.1 0.15)"]]}
+{"args":["border-left","4px solid lch(55%60 250)"],"result":[["borderLeftWidth","4px"],["borderLeftColor","lch(55%60 250)"]]}
+{"args":["border-left","4px solid lab(50%40-30)"],"result":[["borderLeftWidth","4px"],["borderLeftColor","lab(50%40-30)"]]}
+{"args":["grid-template-columns","auto 1fr"],"result":[]}
+{"args":["border-left","5px solid var(--brand)"],"result":[["borderLeftWidth","5px"],["borderLeftColor","var(--brand)"]]}
+{"args":["border","1px solid var(--line)"],"result":[["borderTopWidth","1px"],["borderTopColor","var(--line)"],["borderRightWidth","1px"],["borderRightColor","var(--line)"],["borderBottomWidth","1px"],["borderBottomColor","var(--line)"],["borderLeftWidth","1px"],["borderLeftColor","var(--line)"]]}
+{"args":["border-left","4px solid var(--warn)"],"result":[["borderLeftWidth","4px"],["borderLeftColor","var(--warn)"]]}
+{"args":["border-right","4px solid var(--terracotta)"],"result":[["borderRightWidth","4px"],["borderRightColor","var(--terracotta)"]]}
+{"args":["border-left","4px solid var(--brand)"],"result":[["borderLeftWidth","4px"],["borderLeftColor","var(--brand)"]]}
+{"args":["border-left","3px solid oklch(80%0 0)"],"result":[["borderLeftWidth","3px"],["borderLeftColor","oklch(80%0 0)"]]}
+{"args":["border-left","3px solid oklch(75%0.01 250)"],"result":[["borderLeftWidth","3px"],["borderLeftColor","oklch(75%0.01 250)"]]}
+{"args":["border","3px solid oklch(65%0.12 250)"],"result":[["borderTopWidth","3px"],["borderTopColor","oklch(65%0.12 250)"],["borderRightWidth","3px"],["borderRightColor","oklch(65%0.12 250)"],["borderBottomWidth","3px"],["borderBottomColor","oklch(65%0.12 250)"],["borderLeftWidth","3px"],["borderLeftColor","oklch(65%0.12 250)"]]}
+{"args":["border-left","1px solid oklch(65%0.12 250)"],"result":[["borderLeftWidth","1px"],["borderLeftColor","oklch(65%0.12 250)"]]}
+{"args":["border-left","3px solid lab(50%0 0)"],"result":[["borderLeftWidth","3px"],["borderLeftColor","lab(50%0 0)"]]}
+{"args":["border-left","3px solid lch(50%0 0)"],"result":[["borderLeftWidth","3px"],["borderLeftColor","lch(50%0 0)"]]}
+{"args":["color","#374151"],"result":[["color","#374151"]]}
+{"args":["padding","8px"],"result":[["paddingTop","8px"],["paddingRight","8px"],["paddingBottom","8px"],["paddingLeft","8px"]]}
+{"args":["margin-right","8px"],"result":[["marginRight","8px"]]}
+{"args":["border-left","3px solid var(--line)"],"result":[["borderLeftWidth","3px"],["borderLeftColor","var(--line)"]]}
+{"args":["border-left","1px solid var(--brand)"],"result":[["borderLeftWidth","1px"],["borderLeftColor","var(--brand)"]]}
+{"args":["border","3px solid var(--brand)"],"result":[["borderTopWidth","3px"],["borderTopColor","var(--brand)"],["borderRightWidth","3px"],["borderRightColor","var(--brand)"],["borderBottomWidth","3px"],["borderBottomColor","var(--brand)"],["borderLeftWidth","3px"],["borderLeftColor","var(--brand)"]]}
+{"args":["border-right","1px solid oklch(92%0 0/0.12)"],"result":[["borderRightWidth","1px"],["borderRightColor","oklch(92%0 0/0.12)"]]}
+{"args":["--accent","orange"],"result":[["--accent","orange"]]}
+{"args":["background","#f6f6f6"],"result":[["backgroundColor","#f6f6f6"]]}
+{"args":["border-left","4px solid purple"],"result":[["borderLeftWidth","4px"],["borderLeftColor","purple"]]}
+{"args":["border-left","5px solid rebeccapurple"],"result":[["borderLeftWidth","5px"],["borderLeftColor","rebeccapurple"]]}
+{"args":["border-top","4px solid crimson"],"result":[["borderTopWidth","4px"],["borderTopColor","crimson"]]}
+{"args":["border-left","3px solid teal"],"result":[["borderLeftWidth","3px"],["borderLeftColor","teal"]]}
+{"args":["border-left","6px solid var(--accent)"],"result":[["borderLeftWidth","6px"],["borderLeftColor","var(--accent)"]]}
+{"args":["border-left","4px solid dimgray"],"result":[["borderLeftWidth","4px"],["borderLeftColor","dimgray"]]}
+{"args":["border-left","3px solid gainsboro"],"result":[["borderLeftWidth","3px"],["borderLeftColor","gainsboro"]]}
+{"args":["border-left","4px solid black"],"result":[["borderLeftWidth","4px"],["borderLeftColor","black"]]}
+{"args":["border-left","1px solid purple"],"result":[["borderLeftWidth","1px"],["borderLeftColor","purple"]]}
+{"args":["border","3px solid purple"],"result":[["borderTopWidth","3px"],["borderTopColor","purple"],["borderRightWidth","3px"],["borderRightColor","purple"],["borderBottomWidth","3px"],["borderBottomColor","purple"],["borderLeftWidth","3px"],["borderLeftColor","purple"]]}
+{"args":["border-left","7px solid purple"],"result":[["borderLeftWidth","7px"],["borderLeftColor","purple"]]}
+{"args":["font-family","\"Inter\",sans-serif"],"result":[["fontFamily","\"Inter\",sans-serif"]]}
+{"args":["font","16px/1.5 system-ui,sans-serif"],"result":[["fontSize","16px"],["lineHeight","1.5"],["fontFamily","system-ui,sans-serif"]]}
+{"args":["min-width","0"],"result":[]}
+{"args":["padding","22px"],"result":[["paddingTop","22px"],["paddingRight","22px"],["paddingBottom","22px"],["paddingLeft","22px"]]}
+{"args":["margin","0 0 8px"],"result":[["marginTop","0"],["marginRight","0"],["marginBottom","8px"],["marginLeft","0"]]}
+{"args":["line-height","1.2"],"result":[["lineHeight","1.2"]]}
+{"args":["margin","0 0 10px"],"result":[["marginTop","0"],["marginRight","0"],["marginBottom","10px"],["marginLeft","0"]]}
+{"args":["font-size","10px"],"result":[["fontSize","10px"]]}
+{"args":["text-align","justify"],"result":[["textAlign","justify"]]}
+{"args":["font-family","\"Newsreader\",Georgia,serif"],"result":[["fontFamily","\"Newsreader\",Georgia,serif"]]}
+{"args":["line-height","0.98"],"result":[["lineHeight","0.98"]]}
+{"args":["margin","32px 0 10px"],"result":[["marginTop","32px"],["marginRight","0"],["marginBottom","10px"],["marginLeft","0"]]}
+{"args":["font-size","30px"],"result":[["fontSize","30px"]]}
+{"args":["line-height","1.08"],"result":[["lineHeight","1.08"]]}
+{"args":["font-family","\"Karla\",system-ui,sans-serif"],"result":[["fontFamily","\"Karla\",system-ui,sans-serif"]]}
+{"args":["margin","22px 0 6px"],"result":[["marginTop","22px"],["marginRight","0"],["marginBottom","6px"],["marginLeft","0"]]}
+{"args":["font-size","22px"],"result":[["fontSize","22px"]]}
+{"args":["line-height","1.15"],"result":[["lineHeight","1.15"]]}
+{"args":["font-size","12px"],"result":[["fontSize","12px"]]}
+{"args":["--brand-accent","#b8422e"],"result":[["--brand-accent","#b8422e"]]}
+{"args":["background","#f7f4ee"],"result":[["backgroundColor","#f7f4ee"]]}
+{"args":["color","#241f1a"],"result":[["color","#241f1a"]]}
+{"args":["font-family","\"IBM Plex Sans\",Arial,sans-serif"],"result":[["fontFamily","\"IBM Plex Sans\",Arial,sans-serif"]]}
+{"args":["border","1px solid #d4c7b9"],"result":[["borderTopWidth","1px"],["borderTopColor","#d4c7b9"],["borderRightWidth","1px"],["borderRightColor","#d4c7b9"],["borderBottomWidth","1px"],["borderBottomColor","#d4c7b9"],["borderLeftWidth","1px"],["borderLeftColor","#d4c7b9"]]}
+{"args":["padding","12px 14px"],"result":[["paddingTop","12px"],["paddingRight","14px"],["paddingBottom","12px"],["paddingLeft","14px"]]}
+{"args":["line-height","1.45"],"result":[["lineHeight","1.45"]]}
+{"args":["font-family","\"Poppins\",sans-serif"],"result":[["fontFamily","\"Poppins\",sans-serif"]]}
+{"args":["color","#ff00aa"],"result":[["color","#ff00aa"]]}
+{"args":["background-color","rgb(20,180,220)"],"result":[["backgroundColor","rgb(20,180,220)"]]}
+{"args":["border-color","#00a982"],"result":[["borderTopColor","#00a982"],["borderRightColor","#00a982"],["borderBottomColor","#00a982"],["borderLeftColor","#00a982"]]}
+{"args":["border-radius","18px"],"result":[["borderRadius","18px"]]}
+{"args":["font-size","12.5px"],"result":[["fontSize","12.5px"]]}
+{"args":["font-family","\"Avenir Next\",Georgia,serif"],"result":[["fontFamily","\"Avenir Next\",Georgia,serif"]]}
+{"args":["font-size","1rem"],"result":[["fontSize","1rem"]]}
+{"args":["font-size","1.2em"],"result":[["fontSize","1.2em"]]}
+{"args":["font-family","ui-sans-serif,system-ui,sans-serif"],"result":[["fontFamily","ui-sans-serif,system-ui,sans-serif"]]}
+{"args":["color","var(--brand-accent)"],"result":[["color","var(--brand-accent)"]]}
+{"args":["color","rgba(184,66,46,0.45)"],"result":[["color","rgba(184,66,46,0.45)"]]}
+{"args":["color","#bb442f"],"result":[["color","#bb442f"]]}
+{"args":["color","#d55a42"],"result":[["color","#d55a42"]]}
+{"args":["border-radius","32px"],"result":[["borderRadius","32px"]]}
+{"args":["border-radius","100px"],"result":[["borderRadius","100px"]]}
+{"args":["margin","0 0 18px"],"result":[["marginTop","0"],["marginRight","0"],["marginBottom","18px"],["marginLeft","0"]]}
+{"args":["border","1px solid #d7d0c2"],"result":[["borderTopWidth","1px"],["borderTopColor","#d7d0c2"],["borderRightWidth","1px"],["borderRightColor","#d7d0c2"],["borderBottomWidth","1px"],["borderBottomColor","#d7d0c2"],["borderLeftWidth","1px"],["borderLeftColor","#d7d0c2"]]}
+{"args":["font","700 12px/1.1 ui-monospace,SFMono-Regular,Menlo,monospace"],"result":[["fontWeight","700"],["fontSize","12px"],["lineHeight","1.1"],["fontFamily","ui-monospace,SFMono-Regular,Menlo,monospace"]]}
+{"args":["color","#7c5c00"],"result":[["color","#7c5c00"]]}
+{"args":["font-family","Georgia,serif"],"result":[["fontFamily","Georgia,serif"]]}
+{"args":["color","#222222"],"result":[["color","#222222"]]}
+{"args":["font-size","28px"],"result":[["fontSize","28px"]]}
+{"args":["margin-bottom","48px"],"result":[["marginBottom","48px"]]}
+{"args":["font-family","monospace"],"result":[["fontFamily","monospace"]]}
+{"args":["color","#b45309"],"result":[["color","#b45309"]]}
+{"args":["margin-bottom","8px"],"result":[["marginBottom","8px"]]}
+{"args":["letter-spacing","2px"],"result":[["letterSpacing","2px"]]}
+{"args":["font-weight","400"],"result":[["fontWeight","400"]]}
+{"args":["letter-spacing","0"],"result":[["letterSpacing","0"]]}
+{"args":["border","1px solid #d4d4d4"],"result":[["borderTopWidth","1px"],["borderTopColor","#d4d4d4"],["borderRightWidth","1px"],["borderRightColor","#d4d4d4"],["borderBottomWidth","1px"],["borderBottomColor","#d4d4d4"],["borderLeftWidth","1px"],["borderLeftColor","#d4d4d4"]]}
+{"args":["background","#f5f5f4"],"result":[["backgroundColor","#f5f5f4"]]}
+{"args":["border","1px solid #d6d3d1"],"result":[["borderTopWidth","1px"],["borderTopColor","#d6d3d1"],["borderRightWidth","1px"],["borderRightColor","#d6d3d1"],["borderBottomWidth","1px"],["borderBottomColor","#d6d3d1"],["borderLeftWidth","1px"],["borderLeftColor","#d6d3d1"]]}
+{"args":["width","360px"],"result":[["width","360px"]]}
+{"args":["margin-bottom","32px"],"result":[["marginBottom","32px"]]}
+{"args":["box-shadow","0 2px 8px rgba(0,0,0,0.12)"],"result":[["boxShadow","0 2px 8px rgba(0,0,0,0.12)"]]}
+{"args":["padding","6px 0"],"result":[["paddingTop","6px"],["paddingRight","0"],["paddingBottom","6px"],["paddingLeft","0"]]}
+{"args":["border-bottom","1px solid #eeeeee"],"result":[["borderBottomWidth","1px"],["borderBottomColor","#eeeeee"]]}
+{"args":["color","#57534e"],"result":[["color","#57534e"]]}
+{"args":["padding","6px 10px"],"result":[["paddingTop","6px"],["paddingRight","10px"],["paddingBottom","6px"],["paddingLeft","10px"]]}
+{"args":["max-width","960px"],"result":[]}
+{"args":["margin-bottom","24px"],"result":[["marginBottom","24px"]]}
+{"args":["border","1px solid #e2e8f0"],"result":[["borderTopWidth","1px"],["borderTopColor","#e2e8f0"],["borderRightWidth","1px"],["borderRightColor","#e2e8f0"],["borderBottomWidth","1px"],["borderBottomColor","#e2e8f0"],["borderLeftWidth","1px"],["borderLeftColor","#e2e8f0"]]}
+{"args":["background","#fff"],"result":[["backgroundColor","#fff"]]}
+{"args":["color","#0f172a"],"result":[["color","#0f172a"]]}
+{"args":["width","80px"],"result":[["width","80px"]]}
+{"args":["height","80px"],"result":[["height","80px"]]}
+{"args":["border-radius","20px"],"result":[["borderRadius","20px"]]}
+{"args":["background","linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%)"],"result":[["backgroundImage","linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%)"]]}
+{"args":["align-items","center"],"result":[]}
+{"args":["justify-content","center"],"result":[]}
+{"args":["width","64px"],"result":[["width","64px"]]}
+{"args":["height","64px"],"result":[["height","64px"]]}
+{"args":["border-radius","16px"],"result":[["borderRadius","16px"]]}
+{"args":["width","72px"],"result":[["width","72px"]]}
+{"args":["height","72px"],"result":[["height","72px"]]}
+{"args":["width","96px"],"result":[["width","96px"]]}
+{"args":["height","96px"],"result":[["height","96px"]]}
+{"args":["border-radius","24px"],"result":[["borderRadius","24px"]]}
+{"args":["background","#f1f5f9"],"result":[["backgroundColor","#f1f5f9"]]}
+{"args":["width","48px"],"result":[["width","48px"]]}
+{"args":["height","48px"],"result":[["height","48px"]]}
+{"args":["background","linear-gradient(135deg,#8b5cf6,#a855f7)"],"result":[["backgroundImage","linear-gradient(135deg,#8b5cf6,#a855f7)"]]}
+{"args":["background","#f59e0b"],"result":[["backgroundColor","#f59e0b"]]}
+{"args":["height","112px"],"result":[["height","112px"]]}
+{"args":["background","#cbd5e1"],"result":[["backgroundColor","#cbd5e1"]]}
+{"args":["gap","12px"],"result":[]}
+{"args":["background","#ddd6fe"],"result":[["backgroundColor","#ddd6fe"]]}
+{"args":["flex-shrink","0"],"result":[]}
+{"args":["margin-top","0"],"result":[["marginTop","0"]]}
+{"args":["width","24px"],"result":[["width","24px"]]}
+{"args":["height","24px"],"result":[["height","24px"]]}
+{"args":["background","#93c5fd"],"result":[["backgroundColor","#93c5fd"]]}
+{"args":["height","200px"],"result":[["height","200px"]]}
+{"args":["background","#0b0d13"],"result":[["backgroundColor","#0b0d13"]]}
+{"args":["flex-wrap","wrap"],"result":[]}
+{"args":["gap","24px"],"result":[]}
+{"args":["color","#e6e6e6"],"result":[["color","#e6e6e6"]]}
+{"args":["height","560px"],"result":[["height","560px"]]}
+{"args":["background","radial-gradient(circle at 52% 38%,rgba(80,111,255,0.26),transparent 44%)"],"result":[["backgroundImage","radial-gradient(circle at 52% 38%,rgba(80,111,255,0.26),transparent 44%)"]]}
+{"args":["width","900px"],"result":[["width","900px"]]}
+{"args":["height","600px"],"result":[["height","600px"]]}
+{"args":["background-image","radial-gradient(circle,rgba(139,92,246,0.30),transparent 60%)"],"result":[["backgroundImage","radial-gradient(circle,rgba(139,92,246,0.30),transparent 60%)"]]}
+{"args":["width","760px"],"result":[["width","760px"]]}
+{"args":["height","480px"],"result":[["height","480px"]]}
+{"args":["background","radial-gradient(ellipse at top,rgba(34,211,238,0.22),transparent 70%)"],"result":[["backgroundImage","radial-gradient(ellipse at top,rgba(34,211,238,0.22),transparent 70%)"]]}
+{"args":["height","400px"],"result":[["height","400px"]]}
+{"args":["background","radial-gradient(circle,rgba(255,90,120,0.28) 0%,rgba(255,90,120,0.12) 45%,transparent 75%)"],"result":[["backgroundImage","radial-gradient(circle,rgba(255,90,120,0.28) 0%,rgba(255,90,120,0.12) 45%,transparent 75%)"]]}
+{"args":["width","700px"],"result":[["width","700px"]]}
+{"args":["height","460px"],"result":[["height","460px"]]}
+{"args":["background","radial-gradient(circle,#506fff3d,transparent 50%)"],"result":[["backgroundImage","radial-gradient(circle,#506fff3d,transparent 50%)"]]}
+{"args":["width","800px"],"result":[["width","800px"]]}
+{"args":["height","520px"],"result":[["height","520px"]]}
+{"args":["background","radial-gradient(circle,#1e3a8a,#0f172a)"],"result":[["backgroundImage","radial-gradient(circle,#1e3a8a,#0f172a)"]]}
+{"args":["width","40px"],"result":[["width","40px"]]}
+{"args":["height","40px"],"result":[["height","40px"]]}
+{"args":["background","radial-gradient(circle,rgba(80,111,255,0.30),transparent)"],"result":[["backgroundImage","radial-gradient(circle,rgba(80,111,255,0.30),transparent)"]]}
+{"args":["background","radial-gradient(circle,rgba(255,196,64,0.35),transparent 70%)"],"result":[["backgroundImage","radial-gradient(circle,rgba(255,196,64,0.35),transparent 70%)"]]}
+{"args":["background","radial-gradient(circle,rgba(0,0,0,0.40),transparent 80%)"],"result":[["backgroundImage","radial-gradient(circle,rgba(0,0,0,0.40),transparent 80%)"]]}
+{"args":["width","820px"],"result":[["width","820px"]]}
+{"args":["height","540px"],"result":[["height","540px"]]}
+{"args":["background","radial-gradient(ellipse,rgba(255,255,255,0.35),transparent 70%)"],"result":[["backgroundImage","radial-gradient(ellipse,rgba(255,255,255,0.35),transparent 70%)"]]}
+{"args":["background","radial-gradient(circle,#ff0080 0%,#7928ca 45%,#0070f3 100%)"],"result":[["backgroundImage","radial-gradient(circle,#ff0080 0%,#7928ca 45%,#0070f3 100%)"]]}
+{"args":["width","780px"],"result":[["width","780px"]]}
+{"args":["height","500px"],"result":[["height","500px"]]}
+{"args":["background","radial-gradient(circle,rgba(255,0,128,0.90) 0%,rgba(121,40,202,0.85) 50%,transparent)"],"result":[["backgroundImage","radial-gradient(circle,rgba(255,0,128,0.90) 0%,rgba(121,40,202,0.85) 50%,transparent)"]]}
+{"args":["background","radial-gradient(circle,rgba(80,111,255,0.85),transparent)"],"result":[["backgroundImage","radial-gradient(circle,rgba(80,111,255,0.85),transparent)"]]}
+{"args":["background","linear-gradient(120deg,rgba(80,111,255,0.28),transparent 60%)"],"result":[["backgroundImage","linear-gradient(120deg,rgba(80,111,255,0.28),transparent 60%)"]]}
+{"args":["vertical-align","top"],"result":[]}
+{"args":["font-size","9px"],"result":[["fontSize","9px"]]}
+{"args":["width","120px"],"result":[["width","120px"]]}
+{"args":["letter-spacing","0.12em"],"result":[["letterSpacing","0.12em"]]}
+{"args":["line-height","1.5"],"result":[["lineHeight","1.5"]]}
+{"args":["width","1px"],"result":[["width","1px"]]}
+{"args":["height","1px"],"result":[["height","1px"]]}
+{"args":["clip","rect(0 0 0 0)"],"result":[]}
+{"args":["font-size","4px"],"result":[["fontSize","4px"]]}
+{"args":["font-size","20px"],"result":[["fontSize","20px"]]}
+{"args":["font-size","0.6em"],"result":[["fontSize","0.6em"]]}
+{"args":["display","none"],"result":[["display","none"]]}
+{"args":["visibility","hidden"],"result":[["visibility","hidden"]]}
+{"args":["max-width","1280px"],"result":[]}
+{"args":["margin-bottom","6px"],"result":[["marginBottom","6px"]]}
+{"args":["line-height","1.0"],"result":[["lineHeight","1.0"]]}
+{"args":["max-width","40em"],"result":[]}
+{"args":["max-width","30em"],"result":[]}
+{"args":["letter-spacing","0.15em"],"result":[["letterSpacing","0.15em"]]}
+{"args":["max-width","65ch"],"result":[]}
+{"args":["hyphens","auto"],"result":[["hyphens","auto"]]}
+{"args":["-webkit-hyphens","auto"],"result":[["webkitHyphens","auto"]]}
+{"args":["letter-spacing","0.1em"],"result":[["letterSpacing","0.1em"]]}
+{"args":["font-family","ui-monospace,SFMono-Regular,Menlo,Consolas,monospace"],"result":[["fontFamily","ui-monospace,SFMono-Regular,Menlo,Consolas,monospace"]]}
+{"args":["font-size","10.8px"],"result":[["fontSize","10.8px"]]}
+{"args":["font-size","11.84px"],"result":[["fontSize","11.84px"]]}
+{"args":["box-shadow","0 2px 8px rgba(0,0,0,0.1)"],"result":[["boxShadow","0 2px 8px rgba(0,0,0,0.1)"]]}
+{"args":["margin-bottom","0.75rem"],"result":[["marginBottom","0.75rem"]]}
+{"args":["box-shadow","0 1px 3px rgba(0,0,0,0.08)"],"result":[["boxShadow","0 1px 3px rgba(0,0,0,0.08)"]]}
+{"args":["margin","12px 0 0"],"result":[["marginTop","12px"],["marginRight","0"],["marginBottom","0"],["marginLeft","0"]]}
+{"args":["font-family","\"Fraunces\",Georgia,serif"],"result":[["fontFamily","\"Fraunces\",Georgia,serif"]]}
+{"args":["font-size","88px"],"result":[["fontSize","88px"]]}
+{"args":["font-family","\"Recoleta\",serif"],"result":[["fontFamily","\"Recoleta\",serif"]]}
+{"args":["font-size","64px"],"result":[["fontSize","64px"]]}
+{"args":["font-family","\"Playfair Display\",serif"],"result":[["fontFamily","\"Playfair Display\",serif"]]}
+{"args":["font-size","72px"],"result":[["fontSize","72px"]]}
+{"args":["font-family","\"CustomSerifFace\",serif"],"result":[["fontFamily","\"CustomSerifFace\",serif"]]}
+{"args":["font-size","56px"],"result":[["fontSize","56px"]]}
+{"args":["font-family","\"Karla\",sans-serif"],"result":[["fontFamily","\"Karla\",sans-serif"]]}
+{"args":["font-style","normal"],"result":[["fontStyle","normal"]]}
+{"args":["color","#334155"],"result":[["color","#334155"]]}
+{"args":["letter-spacing","0.16em"],"result":[["letterSpacing","0.16em"]]}
+{"args":["letter-spacing","0.14em"],"result":[["letterSpacing","0.14em"]]}
+{"args":["padding","4px 12px"],"result":[["paddingTop","4px"],["paddingRight","12px"],["paddingBottom","4px"],["paddingLeft","12px"]]}
+{"args":["letter-spacing","0.18em"],"result":[["letterSpacing","0.18em"]]}
+{"args":["letter-spacing","normal"],"result":[["letterSpacing","normal"]]}
+{"args":["margin-top","32px"],"result":[["marginTop","32px"]]}
+{"args":["background","#f6f2ec"],"result":[["backgroundColor","#f6f2ec"]]}
+{"args":["color","#171411"],"result":[["color","#171411"]]}
+{"args":["padding","32px"],"result":[["paddingTop","32px"],["paddingRight","32px"],["paddingBottom","32px"],["paddingLeft","32px"]]}
+{"args":["border","1px solid #c9bfb2"],"result":[["borderTopWidth","1px"],["borderTopColor","#c9bfb2"],["borderRightWidth","1px"],["borderRightColor","#c9bfb2"],["borderBottomWidth","1px"],["borderBottomColor","#c9bfb2"],["borderLeftWidth","1px"],["borderLeftColor","#c9bfb2"]]}
+{"args":["min-height","120px"],"result":[]}
+{"args":["background","#fffaf3"],"result":[["backgroundColor","#fffaf3"]]}
+{"args":["width","240px"],"result":[["width","240px"]]}
+{"args":["min-height","16px"],"result":[]}
+{"args":["line-height","16px"],"result":[["lineHeight","16px"]]}
+{"args":["letter-spacing","0.11em"],"result":[["letterSpacing","0.11em"]]}
+{"args":["color","#5b5046"],"result":[["color","#5b5046"]]}
+{"args":["font-variant","small-caps"],"result":[["fontVariant","small-caps"]]}
+{"args":["line-height","38px"],"result":[["lineHeight","38px"]]}
+{"args":["line-height","30px"],"result":[["lineHeight","30px"]]}
+{"args":["line-height","26px"],"result":[["lineHeight","26px"]]}
+{"args":["line-height","34px"],"result":[["lineHeight","34px"]]}
+{"args":["line-height","70px"],"result":[["lineHeight","70px"]]}
+{"args":["line-height","24px"],"result":[["lineHeight","24px"]]}
+{"args":["border","1px solid #d8cec0"],"result":[["borderTopWidth","1px"],["borderTopColor","#d8cec0"],["borderRightWidth","1px"],["borderRightColor","#d8cec0"],["borderBottomWidth","1px"],["borderBottomColor","#d8cec0"],["borderLeftWidth","1px"],["borderLeftColor","#d8cec0"]]}
+{"args":["min-height","80px"],"result":[]}
+{"args":["grid-template-columns","repeat(2,minmax(0,1fr))"],"result":[]}
+{"args":["min-height","100px"],"result":[]}
+{"args":["line-height","46px"],"result":[["lineHeight","46px"]]}
+{"args":["width","220px"],"result":[["width","220px"]]}
+{"args":["margin","4px 0 0"],"result":[["marginTop","4px"],["marginRight","0"],["marginBottom","0"],["marginLeft","0"]]}
+{"args":["animation","bounce-keyframe 1s infinite"],"result":[["animationName","bounce-keyframe"]]}
+{"args":["transition","transform 0.5s cubic-bezier(0.68,-0.55,0.265,1.55)"],"result":[["transitionProperty","transform"],["transitionTimingFunction","cubic-bezier(0.68,-0.55,0.265,1.55)"]]}
+{"args":["transition","width 0.3s ease"],"result":[["transitionProperty","width"],["transitionTimingFunction","ease"]]}
+{"args":["transition","height 0.4s ease-out"],"result":[["transitionProperty","height"],["transitionTimingFunction","ease-out"]]}
+{"args":["transition","padding 0.2s linear"],"result":[["transitionProperty","padding"],["transitionTimingFunction","linear"]]}
+{"args":["transition","margin 0.3s ease-in"],"result":[["transitionProperty","margin"],["transitionTimingFunction","ease-in"]]}
+{"args":["transition","max-height 0.5s ease"],"result":[["transitionProperty","max-height"],["transitionTimingFunction","ease"]]}
+{"args":["transition","width 0.3s ease,height 0.3s ease"],"result":[["transitionProperty","width, height"],["transitionTimingFunction","ease, ease"]]}
+{"args":["transition","width 0.3s ease,opacity 0.3s ease"],"result":[["transitionProperty","width, opacity"],["transitionTimingFunction","ease, ease"]]}
+{"args":["transition-property","width"],"result":[["transitionProperty","width"]]}
+{"args":["transition-duration","0.3s"],"result":[]}
+{"args":["animation","fade-in-keyframe 0.4s cubic-bezier(0.16,1,0.3,1)"],"result":[["animationName","fade-in-keyframe"],["animationTimingFunction","cubic-bezier(0.16,1,0.3,1)"]]}
+{"args":["transition","transform 0.4s cubic-bezier(0.25,1,0.5,1)"],"result":[["transitionProperty","transform"],["transitionTimingFunction","cubic-bezier(0.25,1,0.5,1)"]]}
+{"args":["transition","transform 0.5s cubic-bezier(0.16,1,0.3,1)"],"result":[["transitionProperty","transform"],["transitionTimingFunction","cubic-bezier(0.16,1,0.3,1)"]]}
+{"args":["transition","transform 0.3s ease-out"],"result":[["transitionProperty","transform"],["transitionTimingFunction","ease-out"]]}
+{"args":["transition","opacity 0.2s ease"],"result":[["transitionProperty","opacity"],["transitionTimingFunction","ease"]]}
+{"args":["transition","color 0.15s ease,background-color 0.15s ease"],"result":[["transitionProperty","color, background-color"],["transitionTimingFunction","ease, ease"]]}
+{"args":["transition","box-shadow 0.2s ease"],"result":[["transitionProperty","box-shadow"],["transitionTimingFunction","ease"]]}
+{"args":["transition","all 0.3s ease"],"result":[["transitionProperty","all"],["transitionTimingFunction","ease"]]}
+{"args":["transition","transform 0.3s ease,opacity 0.3s ease,box-shadow 0.2s ease"],"result":[["transitionProperty","transform, opacity, box-shadow"],["transitionTimingFunction","ease, ease, ease"]]}
+{"args":["color","#f9fafb"],"result":[["color","#f9fafb"]]}
+{"args":["box-shadow","0 0 20px rgba(59,130,246,0.4)"],"result":[["boxShadow","0 0 20px rgba(59,130,246,0.4)"]]}
+{"args":["box-shadow","0 0 25px rgba(139,92,246,0.35)"],"result":[["boxShadow","0 0 25px rgba(139,92,246,0.35)"]]}
+{"args":["box-shadow","0 0 15px rgba(6,182,212,0.5)"],"result":[["boxShadow","0 0 15px rgba(6,182,212,0.5)"]]}
+{"args":["box-shadow","0 4px 6px rgba(0,0,0,0.3),0 0 30px rgba(168,85,247,0.3)"],"result":[["boxShadow","0 4px 6px rgba(0,0,0,0.3),0 0 30px rgba(168,85,247,0.3)"]]}
+{"args":["--fixture-glow","oklch(0.78 0.14 155)"],"result":[["--fixture-glow","oklch(0.78 0.14 155)"]]}
+{"args":["box-shadow","0 0 18px oklch(0.72 0.15 195/0.5)"],"result":[["boxShadow","0 0 18px oklch(0.72 0.15 195/0.5)"]]}
+{"args":["box-shadow","0 0 16px #3b82f6"],"result":[["boxShadow","0 0 16px #3b82f6"]]}
+{"args":["box-shadow","0 0 22px hsl(280,80%,60%)"],"result":[["boxShadow","0 0 22px hsl(280,80%,60%)"]]}
+{"args":["box-shadow","0 0 10px var(--fixture-glow)"],"result":[["boxShadow","0 0 10px var(--fixture-glow)"]]}
+{"args":["text-shadow","0 0 12px #22d3ee"],"result":[["textShadow","0 0 12px #22d3ee"]]}
+{"args":["box-shadow","0 0 20px oklch(0.65 0.2 300/0.45)"],"result":[["boxShadow","0 0 20px oklch(0.65 0.2 300/0.45)"]]}
+{"args":["background-image","url(/fixtures/antipatterns/missing-photo.png)"],"result":[["backgroundImage","url(/fixtures/antipatterns/missing-photo.png)"]]}
+{"args":["box-shadow","0 0 26px rgba(217,70,239,0.5)"],"result":[["boxShadow","0 0 26px rgba(217,70,239,0.5)"]]}
+{"args":["background","linear-gradient(#111827,#0b1220),url(/fixtures/antipatterns/missing-photo.png)"],"result":[["backgroundImage","linear-gradient(#111827,#0b1220),url(/fixtures/antipatterns/missing-photo.png)"]]}
+{"args":["box-shadow","0 6px 22px rgba(249,115,22,0.5)"],"result":[["boxShadow","0 6px 22px rgba(249,115,22,0.5)"]]}
+{"args":["box-shadow","0 2px 4px rgba(59,130,246,0.15)"],"result":[["boxShadow","0 2px 4px rgba(59,130,246,0.15)"]]}
+{"args":["box-shadow","0 4px 12px rgba(0,0,0,0.4)"],"result":[["boxShadow","0 4px 12px rgba(0,0,0,0.4)"]]}
+{"args":["box-shadow","0 0 0 3px rgba(59,130,246,0.5)"],"result":[["boxShadow","0 0 0 3px rgba(59,130,246,0.5)"]]}
+{"args":["box-shadow","0 1px 3px rgba(59,130,246,0.2)"],"result":[["boxShadow","0 1px 3px rgba(59,130,246,0.2)"]]}
+{"args":["box-shadow","0 1px 3px rgba(0,0,0,0.3)"],"result":[["boxShadow","0 1px 3px rgba(0,0,0,0.3)"]]}
+{"args":["box-shadow","0 4px 6px -1px rgba(0,0,0,0.4)"],"result":[["boxShadow","0 4px 6px -1px rgba(0,0,0,0.4)"]]}
+{"args":["box-shadow","0 10px 25px -5px rgba(0,0,0,0.5)"],"result":[["boxShadow","0 10px 25px -5px rgba(0,0,0,0.5)"]]}
+{"args":["box-shadow","inset 0 2px 4px rgba(0,0,0,0.3)"],"result":[["boxShadow","inset 0 2px 4px rgba(0,0,0,0.3)"]]}
+{"args":["box-shadow","0 4px 6px rgba(0,0,0,0.3),0 1px 3px rgba(0,0,0,0.2)"],"result":[["boxShadow","0 4px 6px rgba(0,0,0,0.3),0 1px 3px rgba(0,0,0,0.2)"]]}
+{"args":["box-shadow","0 4px 6px -1px rgba(0,0,0,0.1)"],"result":[["boxShadow","0 4px 6px -1px rgba(0,0,0,0.1)"]]}
+{"args":["box-shadow","0 10px 30px -5px rgba(0,0,0,0.15)"],"result":[["boxShadow","0 10px 30px -5px rgba(0,0,0,0.15)"]]}
+{"args":["background","#6b7280"],"result":[["backgroundColor","#6b7280"]]}
+{"args":["color","#ffffff"],"result":[["color","#ffffff"]]}
+{"args":["box-shadow","0 2px 4px rgba(59,130,246,0.3)"],"result":[["boxShadow","0 2px 4px rgba(59,130,246,0.3)"]]}
+{"args":["box-shadow","0 8px 20px rgba(59,130,246,0.25)"],"result":[["boxShadow","0 8px 20px rgba(59,130,246,0.25)"]]}
+{"args":["box-shadow","0 0 24px rgba(0,0,0,0.15)"],"result":[["boxShadow","0 0 24px rgba(0,0,0,0.15)"]]}
+{"args":["box-shadow","0 6px 20px rgba(16,185,129,0.35)"],"result":[["boxShadow","0 6px 20px rgba(16,185,129,0.35)"]]}
+{"args":["background","linear-gradient(rgba(0,0,0,0.2),rgba(0,0,0,0.2)),url(/fixtures/antipatterns/missing-photo.png)"],"result":[["backgroundImage","linear-gradient(rgba(0,0,0,0.2),rgba(0,0,0,0.2)),url(/fixtures/antipatterns/missing-photo.png)"]]}
+{"args":["box-shadow","0 6px 22px rgba(244,63,94,0.45)"],"result":[["boxShadow","0 6px 22px rgba(244,63,94,0.45)"]]}
+{"args":["text-shadow","0 1px 2px rgba(0,0,0,0.6)"],"result":[["textShadow","0 1px 2px rgba(0,0,0,0.6)"]]}
+{"args":["box-shadow","0 0 20px rgba(236, 72, 153, 0.5)"],"result":[["boxShadow","0 0 20px rgba(236, 72, 153, 0.5)"]]}
+{"args":["max-width","1400px"],"result":[]}
+{"args":["letter-spacing","0.06em"],"result":[["letterSpacing","0.06em"]]}
+{"args":["margin","28px 0 10px"],"result":[["marginTop","28px"],["marginRight","0"],["marginBottom","10px"],["marginLeft","0"]]}
+{"args":["margin-bottom","14px"],"result":[["marginBottom","14px"]]}
+{"args":["max-width","60ch"],"result":[]}
+{"args":["padding","28px 0 0"],"result":[["paddingTop","28px"],["paddingRight","0"],["paddingBottom","0"],["paddingLeft","0"]]}
+{"args":["background","#fffbe6"],"result":[["backgroundColor","#fffbe6"]]}
+{"args":["border","1px solid #d4a017"],"result":[["borderTopWidth","1px"],["borderTopColor","#d4a017"],["borderRightWidth","1px"],["borderRightColor","#d4a017"],["borderBottomWidth","1px"],["borderBottomColor","#d4a017"],["borderLeftWidth","1px"],["borderLeftColor","#d4a017"]]}
+{"args":["flex-direction","column"],"result":[]}
+{"args":["gap","10px"],"result":[]}
+{"args":["font-family","ui-monospace,monospace"],"result":[["fontFamily","ui-monospace,monospace"]]}
+{"args":["color","#8b6914"],"result":[["color","#8b6914"]]}
+{"args":["gap","8px"],"result":[]}
+{"args":["list-style","none"],"result":[]}
+{"args":["padding","0"],"result":[["paddingTop","0"],["paddingRight","0"],["paddingBottom","0"],["paddingLeft","0"]]}
+{"args":["padding","6px 12px"],"result":[["paddingTop","6px"],["paddingRight","12px"],["paddingBottom","6px"],["paddingLeft","12px"]]}
+{"args":["background","#fef3c7"],"result":[["backgroundColor","#fef3c7"]]}
+{"args":["color","#78350f"],"result":[["color","#78350f"]]}
+{"args":["background","#fde68a"],"result":[["backgroundColor","#fde68a"]]}
+{"args":["background","transparent"],"result":[["backgroundColor","transparent"]]}
+{"args":["outline","2px solid #94a3b8"],"result":[["outlineWidth","2px"],["outlineColor","#94a3b8"],["outlineStyle","solid"]]}
+{"args":["outline-offset","0"],"result":[]}
+{"args":["padding","12px 16px 12px 0"],"result":[["paddingTop","12px"],["paddingRight","16px"],["paddingBottom","12px"],["paddingLeft","0"]]}
+{"args":["outline","0"],"result":[["outlineWidth","0px"]]}
+{"args":["background","#f5f5f7"],"result":[["backgroundColor","#f5f5f7"]]}
+{"args":["padding","24px 0 0"],"result":[["paddingTop","24px"],["paddingRight","0"],["paddingBottom","0"],["paddingLeft","0"]]}
+{"args":["border-top","1px solid #cbd5e1"],"result":[["borderTopWidth","1px"],["borderTopColor","#cbd5e1"]]}
+{"args":["padding","18px 20px"],"result":[["paddingTop","18px"],["paddingRight","20px"],["paddingBottom","18px"],["paddingLeft","20px"]]}
+{"args":["padding","14px 18px"],"result":[["paddingTop","14px"],["paddingRight","18px"],["paddingBottom","14px"],["paddingLeft","18px"]]}
+{"args":["background","linear-gradient(135deg,#cbd5e1,#94a3b8)"],"result":[["backgroundImage","linear-gradient(135deg,#cbd5e1,#94a3b8)"]]}
+{"args":["margin","16px 18px 4px"],"result":[["marginTop","16px"],["marginRight","18px"],["marginBottom","4px"],["marginLeft","18px"]]}
+{"args":["margin","0 18px 16px"],"result":[["marginTop","0"],["marginRight","18px"],["marginBottom","16px"],["marginLeft","18px"]]}
+{"args":["margin","18px"],"result":[["marginTop","18px"],["marginRight","18px"],["marginBottom","18px"],["marginLeft","18px"]]}
+{"args":["background","#eef2f7"],"result":[["backgroundColor","#eef2f7"]]}
+{"args":["background","#172033"],"result":[["backgroundColor","#172033"]]}
+{"args":["padding","14px"],"result":[["paddingTop","14px"],["paddingRight","14px"],["paddingBottom","14px"],["paddingLeft","14px"]]}
+{"args":["background","#23304a"],"result":[["backgroundColor","#23304a"]]}
+{"args":["border","1px solid rgba(255,255,255,0.16)"],"result":[["borderTopWidth","1px"],["borderTopColor","rgba(255,255,255,0.16)"],["borderRightWidth","1px"],["borderRightColor","rgba(255,255,255,0.16)"],["borderBottomWidth","1px"],["borderBottomColor","rgba(255,255,255,0.16)"],["borderLeftWidth","1px"],["borderLeftColor","rgba(255,255,255,0.16)"]]}
+{"args":["background","#0f172a"],"result":[["backgroundColor","#0f172a"]]}
+{"args":["gap","6px"],"result":[]}
+{"args":["min-height","92px"],"result":[]}
+{"args":["font-size","96px"],"result":[["fontSize","96px"]]}
+{"args":["font-size","80px"],"result":[["fontSize","80px"]]}
+{"args":["font-size","168px"],"result":[["fontSize","168px"]]}
+{"args":["font-size","120px"],"result":[["fontSize","120px"]]}
+{"args":["margin","0 0 20px"],"result":[["marginTop","0"],["marginRight","0"],["marginBottom","20px"],["marginLeft","0"]]}
+{"args":["letter-spacing","-0.06em"],"result":[["letterSpacing","-0.06em"]]}
+{"args":["letter-spacing","-4px"],"result":[["letterSpacing","-4px"]]}
+{"args":["letter-spacing","-0.07em"],"result":[["letterSpacing","-0.07em"]]}
+{"args":["letter-spacing","-0.02em"],"result":[["letterSpacing","-0.02em"]]}
+{"args":["height","120px"],"result":[["height","120px"]]}
+{"args":["border","1px solid #ddd"],"result":[["borderTopWidth","1px"],["borderTopColor","#ddd"],["borderRightWidth","1px"],["borderRightColor","#ddd"],["borderBottomWidth","1px"],["borderBottomColor","#ddd"],["borderLeftWidth","1px"],["borderLeftColor","#ddd"]]}
+{"args":["top","100%"],"result":[["top","100%"]]}
+{"args":["left","0"],"result":[["left","0"]]}
+{"args":["background","#222"],"result":[["backgroundColor","#222"]]}
+{"args":["color","#fff"],"result":[["color","#fff"]]}
+{"args":["top","-34px"],"result":[["top","-34px"]]}
+{"args":["left","16px"],"result":[["left","16px"]]}
+{"args":["width","160px"],"result":[["width","160px"]]}
+{"args":["top","28px"],"result":[["top","28px"]]}
+{"args":["left","100%"],"result":[["left","100%"]]}
+{"args":["width","180px"],"result":[["width","180px"]]}
+{"args":["top","10px"],"result":[["top","10px"]]}
+{"args":["right","10px"],"result":[["right","10px"]]}
+{"args":["width","36px"],"result":[["width","36px"]]}
+{"args":["background","#e5f0ff"],"result":[["backgroundColor","#e5f0ff"]]}
+{"args":["inset","0"],"result":[["inset","0"]]}
+{"args":["background","linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent)"],"result":[["backgroundImage","linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent)"]]}
+{"args":["inset","-18px"],"result":[["inset","-18px"]]}
+{"args":["background","linear-gradient(135deg,#b7d7ff,#486aa3)"],"result":[["backgroundImage","linear-gradient(135deg,#b7d7ff,#486aa3)"]]}
+{"args":["left","12px"],"result":[["left","12px"]]}
+{"args":["right","12px"],"result":[["right","12px"]]}
+{"args":["bottom","12px"],"result":[["bottom","12px"]]}
+{"args":["min-height","28px"],"result":[]}
+{"args":["background","rgba(255,255,255,.86)"],"result":[["backgroundColor","rgba(255,255,255,.86)"]]}
+{"args":["height","52px"],"result":[["height","52px"]]}
+{"args":["background","#111"],"result":[["backgroundColor","#111"]]}
+{"args":["height","100%"],"result":[["height","100%"]]}
+{"args":["background","#f5f5f5"],"result":[["backgroundColor","#f5f5f5"]]}
+{"args":["top","0"],"result":[["top","0"]]}
+{"args":["left","50%"],"result":[["left","50%"]]}
+{"args":["overflow","clip"],"result":[["overflow","clip"]]}
+{"args":["position","static"],"result":[["position","static"]]}
+{"args":["overflow","visible"],"result":[["overflow","visible"]]}
+{"args":["overflow","auto"],"result":[["overflow","auto"]]}
+{"args":["background","#f5efe2"],"result":[["backgroundColor","#f5efe2"]]}
+{"args":["color","#2a2622"],"result":[["color","#2a2622"]]}
+{"args":["box-shadow","0 0 24px rgba(0,0,0,0.18)"],"result":[["boxShadow","0 0 24px rgba(0,0,0,0.18)"]]}
+{"args":["background","repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px)"],"result":[["backgroundImage","repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px)"]]}
+{"args":["background","linear-gradient(90deg, oklch(96% 0.012 82 / 0.055) 1px, transparent 1px), linear-gradient(180deg, oklch(96% 0.012 82 / 0.05) 1px, transparent 1px)"],"result":[["backgroundImage","linear-gradient(90deg, oklch(96% 0.012 82 / 0.055) 1px, transparent 1px), linear-gradient(180deg, oklch(96% 0.012 82 / 0.05) 1px, transparent 1px)"]]}
+{"args":["background-size","78px 78px, 78px 78px"],"result":[]}
+{"args":["box-shadow","0 1px 4px rgba(0,0,0,0.08)"],"result":[["boxShadow","0 1px 4px rgba(0,0,0,0.08)"]]}
+{"args":["border","1px solid rgba(148, 163, 184, 0.16)"],"result":[["borderTopWidth","1px"],["borderTopColor","rgba(148, 163, 184, 0.16)"],["borderRightWidth","1px"],["borderRightColor","rgba(148, 163, 184, 0.16)"],["borderBottomWidth","1px"],["borderBottomColor","rgba(148, 163, 184, 0.16)"],["borderLeftWidth","1px"],["borderLeftColor","rgba(148, 163, 184, 0.16)"]]}
+{"args":["box-shadow","0 18px 48px -16px rgba(15, 23, 42, 0.18)"],"result":[["boxShadow","0 18px 48px -16px rgba(15, 23, 42, 0.18)"]]}
+{"args":["border","1px solid oklch(78% 0 0 / 0.16)"],"result":[["borderTopWidth","1px"],["borderTopColor","oklch(78% 0 0 / 0.16)"],["borderRightWidth","1px"],["borderRightColor","oklch(78% 0 0 / 0.16)"],["borderBottomWidth","1px"],["borderBottomColor","oklch(78% 0 0 / 0.16)"],["borderLeftWidth","1px"],["borderLeftColor","oklch(78% 0 0 / 0.16)"]]}
+{"args":["box-shadow","0 16px 36px -12px oklch(2% 0.004 95 / 0.18)"],"result":[["boxShadow","0 16px 36px -12px oklch(2% 0.004 95 / 0.18)"]]}
+{"args":["background","linear-gradient(180deg, #f3f4f6, #ffffff)"],"result":[["backgroundImage","linear-gradient(180deg, #f3f4f6, #ffffff)"]]}
+{"args":["background","linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"],"result":[["backgroundImage","linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"]]}
+{"args":["background-size","100% 32px"],"result":[]}
+{"args":["background","linear-gradient(90deg, #f3f4f6, #e5e7eb), linear-gradient(180deg, #eef2ff, #ffffff)"],"result":[["backgroundImage","linear-gradient(90deg, #f3f4f6, #e5e7eb), linear-gradient(180deg, #eef2ff, #ffffff)"]]}
+{"args":["background","linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px), linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"],"result":[["backgroundImage","linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px), linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"]]}
+{"args":["background","linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"],"result":[["backgroundImage","linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"]]}
+{"args":["background-size","32px 32px"],"result":[]}
+{"args":["mask-image","linear-gradient(180deg, #000 1px, transparent 1px)"],"result":[]}
+{"args":["background","#ddd"],"result":[["backgroundColor","#ddd"]]}
+{"args":["transition","transform 0.3s"],"result":[["transitionProperty","transform"]]}
+{"args":["transform","scale(1.05)"],"result":[]}
+{"args":["transform","translateY(-4px)"],"result":[]}
+{"args":["font-family","Georgia,\"Iowan Old Style\",serif"],"result":[["fontFamily","Georgia,\"Iowan Old Style\",serif"]]}
+{"args":["padding","32px 24px 40px"],"result":[["paddingTop","32px"],["paddingRight","24px"],["paddingBottom","40px"],["paddingLeft","24px"]]}
+{"args":["color","#1f2933"],"result":[["color","#1f2933"]]}
+{"args":["background","#fdfcf9"],"result":[["backgroundColor","#fdfcf9"]]}
+{"args":["margin","28px 0 8px"],"result":[["marginTop","28px"],["marginRight","0"],["marginBottom","8px"],["marginLeft","0"]]}
+{"args":["max-width","640px"],"result":[]}
+{"args":["background","#f1efe9"],"result":[["backgroundColor","#f1efe9"]]}
+{"args":["font-family","\"SF Mono\",ui-monospace,monospace"],"result":[["fontFamily","\"SF Mono\",ui-monospace,monospace"]]}
+{"args":["padding","40px 24px"],"result":[["paddingTop","40px"],["paddingRight","24px"],["paddingBottom","40px"],["paddingLeft","24px"]]}
+{"args":["background","linear-gradient(135deg,#7c3aed,#a855f7)"],"result":[["backgroundImage","linear-gradient(135deg,#7c3aed,#a855f7)"]]}
+{"args":["font-size","44px"],"result":[["fontSize","44px"]]}
+{"args":["background","linear-gradient(90deg, #667eea, #764ba2)"],"result":[["backgroundImage","linear-gradient(90deg, #667eea, #764ba2)"]]}
+{"args":["background","linear-gradient(oklch(0.07 0.006 95),oklch(0.11 0.008 95))"],"result":[["backgroundImage","linear-gradient(oklch(0.07 0.006 95),oklch(0.11 0.008 95))"]]}
+{"args":["background-color","color(srgb 0.1 0.11 0.12)"],"result":[["backgroundColor","color(srgb 0.1 0.11 0.12)"]]}
+{"args":["background-color","color-mix(in srgb,white 6%,#0b0b0d)"],"result":[["backgroundColor","color-mix(in srgb,white 6%,#0b0b0d)"]]}
+{"args":["background-color","color(display-p3 0.07 0.07 0.08)"],"result":[["backgroundColor","color(display-p3 0.07 0.07 0.08)"]]}
+{"args":["background-color","lch(18 4 60)"],"result":[["backgroundColor","lch(18 4 60)"]]}
+{"args":["background-color","color(srgb 0.98 0.97 0.95)"],"result":[["backgroundColor","color(srgb 0.98 0.97 0.95)"]]}
+{"args":["background-color","color(rec2020 0.05 0.05 0.05)"],"result":[["backgroundColor","color(rec2020 0.05 0.05 0.05)"]]}
+{"args":["background-image","url(opaque-panel.png),linear-gradient(#ff0000,#0000ff)"],"result":[["backgroundImage","url(opaque-panel.png),linear-gradient(#ff0000,#0000ff)"]]}
+{"args":["background-color","inherit"],"result":[["backgroundColor","inherit"]]}
+{"args":["color","color(srgb 0.94 0.93 0.91)"],"result":[["color","color(srgb 0.94 0.93 0.91)"]]}
+{"args":["color","color(srgb 0.78 0.77 0.75)"],"result":[["color","color(srgb 0.78 0.77 0.75)"]]}
+{"args":["color","oklch(0.92 0.01 90)"],"result":[["color","oklch(0.92 0.01 90)"]]}
+{"args":["color","color(srgb 0.1 0.11 0.12)"],"result":[["color","color(srgb 0.1 0.11 0.12)"]]}
+{"args":["color","oklch(0.32 0.01 90)"],"result":[["color","oklch(0.32 0.01 90)"]]}
+{"args":["color","color(srgb 0.28 0.28 0.3)"],"result":[["color","color(srgb 0.28 0.28 0.3)"]]}
+{"args":["color","color(display-p3 0.35 0.35 0.36)"],"result":[["color","color(display-p3 0.35 0.35 0.36)"]]}
+{"args":["color","lch(35 3 60)"],"result":[["color","lch(35 3 60)"]]}
+{"args":["color","color(srgb 0.75 0.74 0.72)"],"result":[["color","color(srgb 0.75 0.74 0.72)"]]}

@@ -1,0 +1,22 @@
+{"args":[{"totalChars":2688,"hiddenChars":0,"hiddenSamples":[]}],"result":[]}
+{"args":[{"totalChars":2872,"hiddenChars":0,"hiddenSamples":[]}],"result":[]}
+{"args":[{"totalChars":2921,"hiddenChars":0,"hiddenSamples":[]}],"result":[]}
+{"args":[{"totalChars":654,"hiddenChars":0,"hiddenSamples":[]}],"result":[]}
+{"args":[{"totalChars":1659,"hiddenChars":112,"hiddenSamples":["Muted ink inside an opacity-zero scene d"]}],"result":[]}
+{"args":[{"totalChars":55,"hiddenChars":0,"hiddenSamples":[]}],"result":[]}
+{"args":[{"totalChars":3607,"hiddenChars":0,"hiddenSamples":[]}],"result":[]}
+{"args":[{"totalChars":559,"hiddenChars":0,"hiddenSamples":[]}],"result":[]}
+{"args":[{"totalChars":714,"hiddenChars":0,"hiddenSamples":[]}],"result":[]}
+{"args":[{"totalChars":148,"hiddenChars":0,"hiddenSamples":[]}],"result":[]}
+{"args":[{"totalChars":1710,"hiddenChars":0,"hiddenSamples":[]}],"result":[]}
+{"args":[{"totalChars":194,"hiddenChars":0,"hiddenSamples":[]}],"result":[]}
+{"args":[{"totalChars":919,"hiddenChars":0,"hiddenSamples":[]}],"result":[]}
+{"args":[{"totalChars":2234,"hiddenChars":0,"hiddenSamples":[]}],"result":[]}
+{"args":[{"totalChars":1087,"hiddenChars":77,"hiddenSamples":["An inactive carousel slide can contain l"]}],"result":[]}
+{"args":[{"totalChars":929,"hiddenChars":746,"hiddenSamples":["First hidden section","This block waits for an IntersectionObse","Second hidden section"]}],"result":[{"id":"content-hidden-at-rest","snippet":"80% of page text (746 of 929 chars) stays at opacity 0 / visibility hidden after reveal handlers ran (e.g. \"First hidden section\")"}]}
+{"args":[{"totalChars":1026,"hiddenChars":0,"hiddenSamples":[]}],"result":[]}
+{"args":[{"totalChars":611,"hiddenChars":0,"hiddenSamples":[]}],"result":[]}
+{"args":[{"totalChars":412,"hiddenChars":0,"hiddenSamples":[]}],"result":[]}
+{"args":[{"totalChars":544,"hiddenChars":0,"hiddenSamples":[]}],"result":[]}
+{"args":[{"totalChars":551,"hiddenChars":0,"hiddenSamples":[]}],"result":[]}
+{"args":[{"totalChars":1515,"hiddenChars":0,"hiddenSamples":[]}],"result":[]}

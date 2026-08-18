@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const DEFAULT_SUITES = ['core', 'detector', 'live', 'framework', 'plugin-e2e'];
+export const DEFAULT_SUITES = ['core', 'oracle', 'detector', 'live', 'framework', 'plugin-e2e'];
 export const OPT_IN_SUITES = [
   'cli-remote-e2e',
   'live-e2e',
@@ -22,11 +22,12 @@ const COMMON_INFRA_PATTERNS = [
 
 export const SUITES = {
   core: {
-    description: 'Build, provider transforms, CLI helpers, context, and storage unit tests.',
+    description: 'Build, provider transforms, hook manifests, plugin validators, and prose gates.',
     triggers: [
       ...COMMON_INFRA_PATTERNS,
-      /^scripts\/(?!benchmark-detector|build-browser-detector|build-extension)/,
-      /^skill\/(SKILL\.src\.md|agents\/|reference\/|scripts\/(cleanup-deprecated|comp-diff|comp-spec|build-phase|font-match|data\/font-index|concept-seed|generate-image|context|context-signals|critique-storage|design-parser|doctor|hook|impeccable-paths|is-generated|lib\/(artifact-schema|png|raster|image-metrics|font-fingerprint|font-index|hero-checks|composition-catalog|concept-catalog|provider|staleness|staleness-deep|staleness-notice|surface-briefs|target-slug|template-extensions)|pin|surface-brief))/,
+      /^scripts\/(?!build-browser-detector|build-extension)/,
+      /^skill\/(SKILL\.src\.md|agents\/|reference\/|scripts\/)/,
+      /^ENGINE_VERSION$/,
       /^README(\.npm)?\.md$/,
       /^cli\/bin\//,
     ],
@@ -35,15 +36,11 @@ export const SUITES = {
         runner: 'bun',
         files: [
           'tests/build.test.js',
-          'tests/cli-ignores.test.js',
-          'tests/windows-path-fix.test.js',
           'tests/lib/provider-blocks.test.js',
           'tests/lib/transformers/provider-blocks.test.js',
           'tests/lib/utils.test.js',
-          'tests/lib/impeccable-config.test.js',
           'tests/lib/transformers/factory.test.js',
           'tests/lib/transformers/providers.test.js',
-          'tests/skills-cli.test.js',
           'tests/validate-plugin-versions.test.js',
           'tests/validate-plugin-manifest.test.js',
           'tests/plugin-paths.test.js',
@@ -52,147 +49,89 @@ export const SUITES = {
       {
         runner: 'node',
         files: [
-          'tests/ci-test-plan.test.mjs',
-          'tests/cli-args.test.mjs',
-          'tests/concept-seed.test.mjs',
-          'tests/generate-image-embed.test.mjs',
-          'tests/comp-diff.test.mjs',
           'tests/build-phase.test.mjs',
+          'tests/ci-test-plan.test.mjs',
+          'tests/comp-diff.test.mjs',
           'tests/font-match.test.mjs',
-          'tests/hero-checks.test.mjs',
-          'tests/serve-question.test.mjs',
-          'tests/context.test.mjs',
-          'tests/context-signals.test.mjs',
-          'tests/critique-storage.test.mjs',
-          'tests/design-parser.test.mjs',
           'tests/github-sheriff.test.mjs',
+          'tests/hero-checks.test.mjs',
           'tests/hook-build.test.mjs',
-          'tests/hook.test.mjs',
-          'tests/impeccable-paths.test.mjs',
           'tests/openai-plugin.test.mjs',
-          'tests/pin.test.mjs',
           'tests/release.test.mjs',
-          'tests/doctor.test.mjs',
-          'tests/staleness.test.mjs',
           'tests/skill-reference.test.mjs',
           'tests/readme-gitignore.test.mjs',
-          'tests/target-args.test.mjs',
-          'tests/surface-brief.test.mjs',
-          'tests/template-extensions.test.mjs',
           'tests/test-suites.test.mjs',
-          'tests/zip.test.mjs',
         ],
+      },
+    ],
+  },
+  // The verbs live in the engine binary; this repo pins its behavior with the
+  // oracle goldens (tests/oracle) and drives its live-mode verbs over the
+  // framework fixtures. Both skip when no binary is present (bun run
+  // fetch:engine, or IMPECCABLE_BIN).
+  oracle: {
+    description: 'Oracle corpus replay against the engine binary; skips without a binary.',
+    triggers: [
+      ...COMMON_INFRA_PATTERNS,
+      /^ENGINE_VERSION$/,
+      /^tests\/oracle\//,
+      /^tests\/fixtures\//,
+      /^tests\/lib\/engine-bin\.mjs$/,
+      /^skill\/(reference\/|scripts\/)/,
+    ],
+    commands: [
+      {
+        runner: 'node',
+        timeoutMs: 900000,
+        files: ['tests/oracle.test.mjs'],
       },
     ],
   },
   detector: {
-    description: 'Anti-pattern detector tests across text, jsdom fixtures, and Puppeteer browser paths.',
-    needsPuppeteer: true,
+    description: 'Extension packaging checks (the detector engine itself is tested in the engine repo and by the oracle).',
     triggers: [
       ...COMMON_INFRA_PATTERNS,
-      /^cli\/engine\//,
       /^extension\/(background|content|detector|devtools|popup|manifest\.json)/,
-      /^scripts\/(benchmark-detector|build-browser-detector|build-extension)\.js$/,
-      /^site\/(pages\/detector|public\/antipattern|data\/anti-patterns-catalog\.js)/,
-      /^tests\/fixtures\/antipatterns/,
+      /^scripts\/(build-browser-detector|build-extension)\.js$/,
     ],
     commands: [
       {
-        runner: 'bun',
-        files: [
-          'tests/detect-antipatterns.test.js',
-          'tests/detect-url-launch.test.mjs',
-          'tests/inline-ignores.test.mjs',
-          'tests/lib/detector-bundle.test.js',
-        ],
-      },
-      {
         runner: 'node',
-        files: [
-          'tests/extension-build.test.mjs',
-          'tests/design-system.test.mjs',
-          'tests/detect-antipatterns-fixtures.test.mjs',
-          'tests/detect-antipatterns-browser.test.mjs',
-          'tests/detect-cli-design-contamination.test.mjs',
-          'tests/detect-cli-design-monorepo.test.mjs',
-          'tests/detect-cli-stdin-dispatch.test.mjs',
-        ],
+        files: ['tests/extension-build.test.mjs'],
       },
     ],
   },
   live: {
-    description: 'Fast live-mode unit and local-server integration tests, excluding full browser fixture sweeps.',
+    description: 'Live-mode reference contract checks plus the live-e2e helper units (agent output, CLI options, LLM agent parsing, steer loop against the binary); the live verbs themselves are covered by the oracle and framework suites.',
     triggers: [
       ...COMMON_INFRA_PATTERNS,
-      // `palette` is deliberately absent: skill/scripts/palette.mjs has no
-      // test anywhere, and listing it here made edits run a suite that never
-      // touches it, which reads as coverage that does not exist.
-      /^skill\/(reference\/live\.md|scripts\/(detect-csp|lib\/is-generated|lib\/template-extensions|live\/|live|live-|modern-screenshot|pin))/,
-      /^tests\/live-/,
+      /^skill\/(reference\/live\.md|scripts\/live-browser)/,
+      /^tests\/live-e2e\//,
+      /^tests\/lib\/engine-bin\.mjs$/,
     ],
     commands: [
       {
         runner: 'node',
         files: [
-          'tests/live-accept.test.mjs',
-          'tests/live-accept-css.test.mjs',
-          'tests/live-accept-scrub.test.mjs',
-          'tests/live-browser-dom.test.mjs',
+          'tests/live-reference.test.mjs',
           'tests/live-browser-ignores.test.mjs',
-          'tests/live-browser-script-parts.test.mjs',
-          'tests/live-browser-regression.test.mjs',
-          'tests/live-browser-session.test.mjs',
-          'tests/live-browser-source.test.mjs',
-          'tests/live-commit-manual-edits.test.mjs',
-          'tests/live-completion.test.mjs',
-          'tests/live-copy-edit-agent.test.mjs',
-          'tests/live-discard-manual-edits.test.mjs',
           'tests/live-e2e-agent-output.test.mjs',
           'tests/live-e2e-cli-options.test.mjs',
           'tests/live-e2e-llm-agent.test.mjs',
           'tests/live-e2e-steer-agent.test.mjs',
           'tests/live-e2e/agent-insert.test.mjs',
-          'tests/live-event-validation.test.mjs',
-          'tests/live-frameworks.test.mjs',
-          'tests/live-generation-preflight.test.mjs',
-          'tests/live-inject.test.mjs',
-          'tests/live-insert.test.mjs',
-          'tests/live-insert-ui.test.mjs',
-          'tests/live-manual-edits-buffer.test.mjs',
-          'tests/live-poll.test.mjs',
-          'tests/live-project-ignores.test.mjs',
-          'tests/live-poll-lanes.test.mjs',
-          'tests/live-poll-stream.test.mjs',
-          'tests/live-recovery-commands.test.mjs',
-          'tests/live-reference.test.mjs',
-          'tests/live-roots.test.mjs',
-          'tests/live-server.test.mjs',
-          'tests/live-session-store.test.mjs',
-          'tests/live-source-lock.test.mjs',
-          'tests/live-source-search.test.mjs',
-          'tests/live-svelte-ast.test.mjs',
-          'tests/live-svelte-component-accept.test.mjs',
-          'tests/live-svelte-props-script.test.mjs',
-          'tests/live-tanstack-adapter.test.mjs',
-          'tests/live-target-context.test.mjs',
-          'tests/live-ui-surfaces.test.mjs',
-          'tests/live-wrap.test.mjs',
-          'tests/live-wrap-buffer-aware.test.mjs',
         ],
       },
     ],
   },
   framework: {
-    description: 'Framework fixture coverage for live injection, CSP, generated-file detection, and wrapping.',
+    description: 'Framework fixture coverage for live injection, CSP detection, and wrapping through the engine binary; skips without a binary.',
     triggers: [
       ...COMMON_INFRA_PATTERNS,
+      /^ENGINE_VERSION$/,
       /^tests\/framework-fixtures/,
       /^tests\/framework-fixtures\.test\.mjs$/,
-      /^skill\/scripts\/(detect-csp|live-inject|live-wrap)\.mjs$/,
-      /^skill\/scripts\/lib\/is-generated\.mjs$/,
-      /^skill\/scripts\/lib\/template-extensions\.mjs$/,
-      /^skill\/scripts\/live\/(source-search|sveltekit-adapter|tanstack-adapter)\.mjs$/,
-      /^skill\/scripts\/live\/frameworks\//,
+      /^tests\/lib\/engine-bin\.mjs$/,
     ],
     commands: [
       {
@@ -201,30 +140,14 @@ export const SUITES = {
       },
     ],
   },
-  'cli-e2e': {
-    description: 'Deterministic CLI install/update tests against a local universal bundle.',
-    commands: [
-      {
-        runner: 'bun',
-        files: ['tests/skills-cli.test.js'],
-      },
-    ],
-  },
+  // `impeccable install/update/check` and their remote smoke moved into the
+  // engine binary and its repo; the deterministic coverage here is the oracle
+  // corpus. The lane name stays so ci.yml and package.json keep resolving.
   'cli-remote-e2e': {
-    description: 'Remote CLI install/update smoke tests against impeccable.style.',
+    description: 'Remote CLI install/update smoke (moved to the engine repo; no tests here).',
     optIn: true,
-    triggers: [
-      ...COMMON_INFRA_PATTERNS,
-      /^cli\/bin\/commands\/skills\.mjs$/,
-      /^tests\/skills-cli\.test\.js$/,
-    ],
-    commands: [
-      {
-        runner: 'bun',
-        env: { IMPECCABLE_CLI_REMOTE_E2E: '1' },
-        files: ['tests/skills-cli.test.js'],
-      },
-    ],
+    triggers: [...COMMON_INFRA_PATTERNS],
+    commands: [],
   },
   'plugin-e2e': {
     description: 'Install the committed ./plugin subtree into a real (sandboxed) Claude Code and assert skills, agents, and hooks all load. Skips when the claude CLI is not on PATH.',
@@ -234,7 +157,6 @@ export const SUITES = {
       /^skill\/agents\//,
       /^scripts\/build\.js$/,
       /^scripts\/lib\/validate-plugin-manifest\.js$/,
-      /^scripts\/lib\/plugin-paths\.js$/,
       /^tests\/plugin-e2e\.test\.mjs$/,
     ],
     commands: [
@@ -252,7 +174,8 @@ export const SUITES = {
     needsPlaywright: true,
     triggers: [
       ...COMMON_INFRA_PATTERNS,
-      /^skill\/scripts\/live/,
+      /^skill\/scripts\/live-browser/,
+      /^ENGINE_VERSION$/,
       /^tests\/framework-fixtures/,
       /^tests\/live-e2e(\.test\.mjs|\/)/,
     ],
@@ -271,7 +194,7 @@ export const SUITES = {
     needsPlaywright: true,
     triggers: [
       ...COMMON_INFRA_PATTERNS,
-      /^skill\/scripts\/(serve-question|generate-image|concept-seed)\.mjs$/,
+      /^ENGINE_VERSION$/,
       /^tests\/new-work-e2e(\.test\.mjs|\/)/,
     ],
     commands: [
@@ -289,8 +212,7 @@ export const SUITES = {
     needsPlaywright: true,
     triggers: [
       ...COMMON_INFRA_PATTERNS,
-      /^skill\/scripts\/(live-accept|live-browser|live-server|live-wrap)\.mjs$/,
-      /^skill\/scripts\/live\/sveltekit-adapter\.mjs$/,
+      /^ENGINE_VERSION$/,
       /^tests\/live-e2e-accept-cleanup-regression\.test\.mjs$/,
       /^tests\/live-e2e\//,
     ],
@@ -318,7 +240,7 @@ export const SUITES = {
       ...COMMON_INFRA_PATTERNS,
       /^skill\/SKILL\.src\.md$/,
       /^skill\/reference\/(init|document|brand|product|shape|craft|audit|polish|live)\.md$/,
-      /^skill\/scripts\/(context|context-signals|detect|detect-csp)\.mjs$/,
+      /^ENGINE_VERSION$/,
       /^tests\/skill-behavior\//,
     ],
     commands: [
@@ -346,8 +268,7 @@ export const SUITES = {
     needsPlaywright: true,
     triggers: [
       ...COMMON_INFRA_PATTERNS,
-      /^skill\/scripts\/(live-server|live-wrap)\.mjs$/,
-      /^skill\/scripts\/live\/(sveltekit-adapter|svelte-component)\.mjs$/,
+      /^ENGINE_VERSION$/,
       /^tests\/framework-fixtures\/vite8-sveltekit-stateful\//,
       /^tests\/live-svelte-adapter-deepseek\.test\.mjs$/,
     ],

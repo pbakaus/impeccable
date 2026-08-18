@@ -1,0 +1,7 @@
+{"args":["14px/1.5 system-ui,sans-serif"],"result":[["fontSize","14px"],["lineHeight","1.5"],["fontFamily","system-ui,sans-serif"]]}
+{"args":["600 14px/1 system-ui"],"result":[["fontWeight","600"],["fontSize","14px"],["lineHeight","1"],["fontFamily","system-ui"]]}
+{"args":["700 12px/1.1 ui-monospace,SFMono-Regular,Menlo,monospace"],"result":[["fontWeight","700"],["fontSize","12px"],["lineHeight","1.1"],["fontFamily","ui-monospace,SFMono-Regular,Menlo,monospace"]]}
+{"args":["16px/1.5 system-ui,sans-serif"],"result":[["fontSize","16px"],["lineHeight","1.5"],["fontFamily","system-ui,sans-serif"]]}
+{"args":["14px/1.5 system-ui,sans-serif"],"result":[["fontSize","14px"],["lineHeight","1.5"],["fontFamily","system-ui,sans-serif"]]}
+{"args":["16px/1.5 system-ui,sans-serif"],"result":[["fontSize","16px"],["lineHeight","1.5"],["fontFamily","system-ui,sans-serif"]]}
+{"args":["700 12px/1.1 ui-monospace,SFMono-Regular,Menlo,monospace"],"result":[["fontWeight","700"],["fontSize","12px"],["lineHeight","1.1"],["fontFamily","ui-monospace,SFMono-Regular,Menlo,monospace"]]}

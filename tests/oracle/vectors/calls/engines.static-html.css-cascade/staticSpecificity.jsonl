@@ -1,0 +1,1150 @@
+{"args":["*"],"result":[0,0,0]}
+{"args":["body"],"result":[0,0,1]}
+{"args":[".hero"],"result":[0,1,0]}
+{"args":[".terminal"],"result":[0,1,0]}
+{"args":[".flag-block-cursor"],"result":[0,1,0]}
+{"args":[".flag-glyph-cursor"],"result":[0,1,0]}
+{"args":[".flag-underscore-cursor"],"result":[0,1,0]}
+{"args":[".pass-below-fold-cursor"],"result":[0,1,0]}
+{"args":[".pass-editable-cursor"],"result":[0,1,0]}
+{"args":[".pass-textbox-cursor"],"result":[0,1,0]}
+{"args":[".pass-round-dot"],"result":[0,1,0]}
+{"args":[".pass-spinner"],"result":[0,1,0]}
+{"args":[".pass-blinking-word"],"result":[0,1,0]}
+{"args":[".pass-blinking-panel"],"result":[0,1,0]}
+{"args":[".spacer"],"result":[0,1,0]}
+{"args":[".grid"],"result":[0,1,0]}
+{"args":[".col h2"],"result":[0,1,1]}
+{"args":[".case-label"],"result":[0,1,0]}
+{"args":[".container-good"],"result":[0,1,0]}
+{"args":[".container-tight"],"result":[0,1,0]}
+{"args":[".full-bleed-section"],"result":[0,1,0]}
+{"args":["nav.site-nav"],"result":[0,1,1]}
+{"args":["header.banner"],"result":[0,1,1]}
+{"args":[".flag-fullwidth-p"],"result":[0,1,0]}
+{"args":[".escape"],"result":[0,1,0]}
+{"args":[".edge-list"],"result":[0,1,0]}
+{"args":[".edge-list li"],"result":[0,1,1]}
+{"args":["h1"],"result":[0,0,1]}
+{"args":[".intro"],"result":[0,1,0]}
+{"args":[".case"],"result":[0,1,0]}
+{"args":[".case h3"],"result":[0,1,1]}
+{"args":[".case p"],"result":[0,1,1]}
+{"args":[".flag-left"],"result":[0,1,0]}
+{"args":[".flag-right"],"result":[0,1,0]}
+{"args":[".flag-left-plain"],"result":[0,1,0]}
+{"args":[".flag-top"],"result":[0,1,0]}
+{"args":[".flag-bottom"],"result":[0,1,0]}
+{"args":[".flag-dark"],"result":[0,1,0]}
+{"args":[".flag-dark p"],"result":[0,1,1]}
+{"args":[".pass-full-border"],"result":[0,1,0]}
+{"args":[".pass-neutral-side"],"result":[0,1,0]}
+{"args":[".pass-thin-side"],"result":[0,1,0]}
+{"args":[".pass-status-alert"],"result":[0,1,0]}
+{"args":[".flag-square-top"],"result":[0,1,0]}
+{"args":[".flag-square-bottom"],"result":[0,1,0]}
+{"args":[".pass-tab-underline"],"result":[0,1,0]}
+{"args":[".pass-thick-band"],"result":[0,1,0]}
+{"args":[".pass-dark-uniform"],"result":[0,1,0]}
+{"args":[".pass-dark-uniform p"],"result":[0,1,1]}
+{"args":[".cols"],"result":[0,1,0]}
+{"args":[".col"],"result":[0,1,0]}
+{"args":[".box"],"result":[0,1,0]}
+{"args":[".pop"],"result":[0,1,0]}
+{"args":[".tip-negative"],"result":[0,1,0]}
+{"args":[".flyout"],"result":[0,1,0]}
+{"args":[".contained-badge"],"result":[0,1,0]}
+{"args":[".button-shine"],"result":[0,1,0]}
+{"args":[".crop-photo"],"result":[0,1,0]}
+{"args":[".inside-overlay"],"result":[0,1,0]}
+{"args":[".pass-hidden-button"],"result":[0,1,0]}
+{"args":[".pass-carousel-viewport"],"result":[0,1,0]}
+{"args":[".pass-fisheye-list"],"result":[0,1,0]}
+{"args":[".pass-split-container"],"result":[0,1,0]}
+{"args":[".carousel-slide-next"],"result":[0,1,0]}
+{"args":[".fisheye-next-item"],"result":[0,1,0]}
+{"args":[".split-after-panel"],"result":[0,1,0]}
+{"args":[".col h3"],"result":[0,1,1]}
+{"args":[".card"],"result":[0,1,0]}
+{"args":[".styled-pill-low"],"result":[0,1,0]}
+{"args":[".low-contrast-button"],"result":[0,1,0]}
+{"args":[".good-pill-high"],"result":[0,1,0]}
+{"args":[".inline-link-low"],"result":[0,1,0]}
+{"args":[".chip-sev-low"],"result":[0,1,0]}
+{"args":[".chip-ok-high"],"result":[0,1,0]}
+{"args":[".chip-sub9-low"],"result":[0,1,0]}
+{"args":[".panel-reset"],"result":[0,1,0]}
+{"args":[".panel-reset code"],"result":[0,1,1]}
+{"args":[".panel-reset pre code"],"result":[0,1,2]}
+{"args":[".ox-grad-text"],"result":[0,1,0]}
+{"args":[".ox-dark-wrap"],"result":[0,1,0]}
+{"args":[".ox-glow"],"result":[0,1,0]}
+{"args":[".ox-glow p"],"result":[0,1,1]}
+{"args":[".ox-glow .muted"],"result":[0,2,0]}
+{"args":[".mix-dark-wrap"],"result":[0,1,0]}
+{"args":[".mix-glow"],"result":[0,1,0]}
+{"args":[".mix-glow p"],"result":[0,1,1]}
+{"args":[":root"],"result":[0,1,0]}
+{"args":[".currentcolor-surface"],"result":[0,1,0]}
+{"args":[".currentcolor-low-text"],"result":[0,1,0]}
+{"args":[".currentcolor-good-text"],"result":[0,1,0]}
+{"args":[".currentcolor-unknown"],"result":[0,1,0]}
+{"args":[".currentcolor-unknown p"],"result":[0,1,1]}
+{"args":[".flag-card-4"],"result":[0,1,0]}
+{"args":[".flag-card-2"],"result":[0,1,0]}
+{"args":[".flag-card-bg4"],"result":[0,1,0]}
+{"args":[".flag-asym-v"],"result":[0,1,0]}
+{"args":[".flag-asym-h"],"result":[0,1,0]}
+{"args":[".flag-heading-tight"],"result":[0,1,0]}
+{"args":[".flag-hero-tight"],"result":[0,1,0]}
+{"args":[".flag-pre-tight"],"result":[0,1,0]}
+{"args":[".pass-cmd"],"result":[0,1,0]}
+{"args":[".pass-cmd::before"],"result":[0,2,0]}
+{"args":[".pass-badge"],"result":[0,1,0]}
+{"args":[".pass-chip"],"result":[0,1,0]}
+{"args":[".pass-inline-code-chip"],"result":[0,1,0]}
+{"args":[".pass-card-min"],"result":[0,1,0]}
+{"args":[".pass-card-good"],"result":[0,1,0]}
+{"args":[".pass-card-large"],"result":[0,1,0]}
+{"args":[".pass-pre-min"],"result":[0,1,0]}
+{"args":[".pass-pre-good"],"result":[0,1,0]}
+{"args":[".pass-button-std"],"result":[0,1,0]}
+{"args":[".pass-input-std"],"result":[0,1,0]}
+{"args":[".pass-heading-good"],"result":[0,1,0]}
+{"args":[".pass-hero-good"],"result":[0,1,0]}
+{"args":["p"],"result":[0,0,1]}
+{"args":[".gradient-heading"],"result":[0,1,0]}
+{"args":["h2"],"result":[0,0,1]}
+{"args":["pre"],"result":[0,0,1]}
+{"args":["code"],"result":[0,0,1]}
+{"args":["body>*"],"result":[0,0,1]}
+{"args":[".flag-muted-direct"],"result":[0,1,0]}
+{"args":[".flag-muted-nested-wrapper"],"result":[0,1,0]}
+{"args":[".flag-muted-nested"],"result":[0,1,0]}
+{"args":[".frosted-light"],"result":[0,1,0]}
+{"args":[".flag-light-on-frosted"],"result":[0,1,0]}
+{"args":[".pass-hero-title"],"result":[0,1,0]}
+{"args":[".pass-hero-body"],"result":[0,1,0]}
+{"args":[".pass-on-raised"],"result":[0,1,0]}
+{"args":[".pass-dark-on-frosted"],"result":[0,1,0]}
+{"args":[".pass-hex-gradient"],"result":[0,1,0]}
+{"args":[".pass-image-backed"],"result":[0,1,0]}
+{"args":[".pass-photo-panel"],"result":[0,1,0]}
+{"args":[".pass-hidden-scene"],"result":[0,1,0]}
+{"args":[".pass-hidden-scene p"],"result":[0,1,1]}
+{"args":["section"],"result":[0,0,1]}
+{"args":[".panel-srgb"],"result":[0,1,0]}
+{"args":[".panel-mix"],"result":[0,1,0]}
+{"args":[".panel-p3"],"result":[0,1,0]}
+{"args":[".panel-lch"],"result":[0,1,0]}
+{"args":[".panel-light"],"result":[0,1,0]}
+{"args":[".panel-unreadable"],"result":[0,1,0]}
+{"args":[".panel-image-over-gradient"],"result":[0,1,0]}
+{"args":[".panel-inherit"],"result":[0,1,0]}
+{"args":[".panel-current"],"result":[0,1,0]}
+{"args":[".text-pale-2"],"result":[0,1,0]}
+{"args":[".text-light"],"result":[0,1,0]}
+{"args":[".text-dark"],"result":[0,1,0]}
+{"args":[".text-muted-ground"],"result":[0,1,0]}
+{"args":[".text-dim-srgb"],"result":[0,1,0]}
+{"args":[".text-dim-p3"],"result":[0,1,0]}
+{"args":[".text-dim-lch"],"result":[0,1,0]}
+{"args":[".text-pale-light"],"result":[0,1,0]}
+{"args":[".design-system-fixture"],"result":[0,1,0]}
+{"args":[".fixture-note"],"result":[0,1,0]}
+{"args":[".fixture-note strong"],"result":[0,1,1]}
+{"args":[".flag-font"],"result":[0,1,0]}
+{"args":[".flag-color"],"result":[0,1,0]}
+{"args":[".flag-background"],"result":[0,1,0]}
+{"args":[".flag-border"],"result":[0,1,0]}
+{"args":[".flag-radius"],"result":[0,1,0]}
+{"args":[".flag-font-size"],"result":[0,1,0]}
+{"args":[".pass-display-font"],"result":[0,1,0]}
+{"args":[".pass-rem-font-size"],"result":[0,1,0]}
+{"args":[".pass-relative-font-size"],"result":[0,1,0]}
+{"args":[".pass-generic-font"],"result":[0,1,0]}
+{"args":[".pass-token-color"],"result":[0,1,0]}
+{"args":[".pass-alpha-color"],"result":[0,1,0]}
+{"args":[".pass-close-color"],"result":[0,1,0]}
+{"args":[".pass-ramp-color"],"result":[0,1,0]}
+{"args":[".pass-zero-radius"],"result":[0,1,0]}
+{"args":[".pass-percent-radius"],"result":[0,1,0]}
+{"args":[".pass-scale-radius"],"result":[0,1,0]}
+{"args":[".pass-mid-pill-radius"],"result":[0,1,0]}
+{"args":[".pass-pill-radius"],"result":[0,1,0]}
+{"args":[".scroller"],"result":[0,1,0]}
+{"args":[".panel"],"result":[0,1,0]}
+{"args":[".plain"],"result":[0,1,0]}
+{"args":[".flag-pager .panel-wide"],"result":[0,2,0]}
+{"args":[".flag-pager .panel-wide .card"],"result":[0,3,0]}
+{"args":[".flag-pager .panel-ok"],"result":[0,2,0]}
+{"args":[".flag-pager .panel-ok .card"],"result":[0,3,0]}
+{"args":[".pass-even .panel"],"result":[0,2,0]}
+{"args":[".pass-even .card"],"result":[0,2,0]}
+{"args":[".pass-peek"],"result":[0,1,0]}
+{"args":[".pass-peek .card"],"result":[0,2,0]}
+{"args":[".pass-plain .panel"],"result":[0,2,0]}
+{"args":[".pass-plain .plain"],"result":[0,2,0]}
+{"args":[".flag"],"result":[0,1,0]}
+{"args":[".flag .short"],"result":[0,2,0]}
+{"args":[".flag .short h1"],"result":[0,2,1]}
+{"args":[".flag .tall .filler"],"result":[0,3,0]}
+{"args":[".pass-balanced"],"result":[0,1,0]}
+{"args":[".pass-balanced .col"],"result":[0,2,0]}
+{"args":[".pass-hero"],"result":[0,1,0]}
+{"args":[".pass-hero .art"],"result":[0,2,0]}
+{"args":[".flag-frameworks"],"result":[0,1,0]}
+{"args":[".flag-frameworks-label"],"result":[0,1,0]}
+{"args":[".flag-frameworks-list"],"result":[0,1,0]}
+{"args":[".flag-frameworks-list li"],"result":[0,1,1]}
+{"args":[".flag-card-borders"],"result":[0,1,0]}
+{"args":[".flag-card-borders h4"],"result":[0,1,1]}
+{"args":[".flag-card-borders p"],"result":[0,1,1]}
+{"args":[".flag-bg-only"],"result":[0,1,0]}
+{"args":[".flag-bg-only h4"],"result":[0,1,1]}
+{"args":[".flag-bg-only p"],"result":[0,1,1]}
+{"args":[".flag-outline-only"],"result":[0,1,0]}
+{"args":[".flag-outline-only h4"],"result":[0,1,1]}
+{"args":[".flag-outline-only p"],"result":[0,1,1]}
+{"args":[".flag-asym-leftflush"],"result":[0,1,0]}
+{"args":[".flag-asym-leftflush h4"],"result":[0,1,1]}
+{"args":[".flag-asym-leftflush p"],"result":[0,1,1]}
+{"args":[".pass-no-boundary"],"result":[0,1,0]}
+{"args":[".pass-no-boundary-label"],"result":[0,1,0]}
+{"args":[".pass-no-boundary-list"],"result":[0,1,0]}
+{"args":[".pass-no-boundary-list li"],"result":[0,1,1]}
+{"args":[".pass-top-rule"],"result":[0,1,0]}
+{"args":[".pass-top-rule-label"],"result":[0,1,0]}
+{"args":[".pass-top-rule-list"],"result":[0,1,0]}
+{"args":[".pass-top-rule-list li"],"result":[0,1,1]}
+{"args":[".pass-bordered-padded"],"result":[0,1,0]}
+{"args":[".pass-bordered-padded h4"],"result":[0,1,1]}
+{"args":[".pass-bordered-padded p"],"result":[0,1,1]}
+{"args":[".pass-bg-padded"],"result":[0,1,0]}
+{"args":[".pass-bg-padded h4"],"result":[0,1,1]}
+{"args":[".pass-bg-padded p"],"result":[0,1,1]}
+{"args":[".pass-outline-padded"],"result":[0,1,0]}
+{"args":[".pass-outline-padded h4"],"result":[0,1,1]}
+{"args":[".pass-outline-padded p"],"result":[0,1,1]}
+{"args":[".pass-image-only"],"result":[0,1,0]}
+{"args":[".pass-image-only .placeholder-img"],"result":[0,2,0]}
+{"args":[".pass-margin-inset"],"result":[0,1,0]}
+{"args":[".pass-margin-inset h4"],"result":[0,1,1]}
+{"args":[".pass-margin-inset p"],"result":[0,1,1]}
+{"args":[".pass-inner-shell"],"result":[0,1,0]}
+{"args":[".pass-inner-shell .inner-shell"],"result":[0,2,0]}
+{"args":[".pass-inner-shell h4"],"result":[0,1,1]}
+{"args":[".pass-inner-shell p"],"result":[0,1,1]}
+{"args":[".pass-same-bg-parent"],"result":[0,1,0]}
+{"args":[".pass-same-bg-child"],"result":[0,1,0]}
+{"args":[".pass-same-bg-child h4"],"result":[0,1,1]}
+{"args":[".pass-same-bg-child p"],"result":[0,1,1]}
+{"args":[".pass-marquee-shell"],"result":[0,1,0]}
+{"args":[".pass-marquee-track"],"result":[0,1,0]}
+{"args":[".pass-marquee-card"],"result":[0,1,0]}
+{"args":[".pass-marquee-card p"],"result":[0,1,1]}
+{"args":[".pass-inner-text-surface"],"result":[0,1,0]}
+{"args":[".pass-inner-text-surface-window"],"result":[0,1,0]}
+{"args":[".pass-inner-text-surface-window p"],"result":[0,1,1]}
+{"args":["img"],"result":[0,0,1]}
+{"args":[".flag-css-hover img"],"result":[0,1,1]}
+{"args":[".flag-css-hover img:hover"],"result":[0,2,1]}
+{"args":[".card:hover"],"result":[0,2,0]}
+{"args":[".dark-context"],"result":[0,1,0]}
+{"args":[".dark-context+.dark-context"],"result":[0,2,0]}
+{"args":[".card h4"],"result":[0,1,1]}
+{"args":[".card p"],"result":[0,1,1]}
+{"args":[".card-dark"],"result":[0,1,0]}
+{"args":[".card-dark h4"],"result":[0,1,1]}
+{"args":[".card-dark p"],"result":[0,1,1]}
+{"args":[".card-light"],"result":[0,1,0]}
+{"args":[".card-light h4"],"result":[0,1,1]}
+{"args":[".card-light p"],"result":[0,1,1]}
+{"args":[".glow-blue"],"result":[0,1,0]}
+{"args":[".glow-purple"],"result":[0,1,0]}
+{"args":[".glow-cyan"],"result":[0,1,0]}
+{"args":[".glow-multi"],"result":[0,1,0]}
+{"args":[".glow-oklch"],"result":[0,1,0]}
+{"args":[".glow-hex"],"result":[0,1,0]}
+{"args":[".glow-hsl"],"result":[0,1,0]}
+{"args":[".glow-var"],"result":[0,1,0]}
+{"args":[".glow-text h4"],"result":[0,1,1]}
+{"args":[".glow-light-oklch"],"result":[0,1,0]}
+{"args":[".photo-context"],"result":[0,1,0]}
+{"args":[".glow-photo-halo"],"result":[0,1,0]}
+{"args":[".photo-opaque-grad"],"result":[0,1,0]}
+{"args":[".glow-photo-opaque"],"result":[0,1,0]}
+{"args":[".light-colored-shadow"],"result":[0,1,0]}
+{"args":[".dark-normal-shadow"],"result":[0,1,0]}
+{"args":[".dark-focus-ring"],"result":[0,1,0]}
+{"args":[".dark-subtle-shadow"],"result":[0,1,0]}
+{"args":[".dark-elevated-sm"],"result":[0,1,0]}
+{"args":[".dark-elevated-md"],"result":[0,1,0]}
+{"args":[".dark-elevated-lg"],"result":[0,1,0]}
+{"args":[".dark-elevated-inset"],"result":[0,1,0]}
+{"args":[".dark-elevated-multi"],"result":[0,1,0]}
+{"args":[".elevated-sm-light"],"result":[0,1,0]}
+{"args":[".elevated-md-light"],"result":[0,1,0]}
+{"args":[".elevated-warm-light"],"result":[0,1,0]}
+{"args":[".card-medium"],"result":[0,1,0]}
+{"args":[".card-medium h4"],"result":[0,1,1]}
+{"args":[".card-medium p"],"result":[0,1,1]}
+{"args":[".medium-gray-shadow"],"result":[0,1,0]}
+{"args":[".light-offset-colored"],"result":[0,1,0]}
+{"args":[".light-soft-neutral"],"result":[0,1,0]}
+{"args":[".photo-offset-colored"],"result":[0,1,0]}
+{"args":[".photo-translucent-grad"],"result":[0,1,0]}
+{"args":[".photo-translucent-offset"],"result":[0,1,0]}
+{"args":[".dark-text-offset h4"],"result":[0,1,1]}
+{"args":[".stripes"],"result":[0,1,0]}
+{"args":["h3"],"result":[0,0,1]}
+{"args":[".flag-crowded"],"result":[0,1,0]}
+{"args":[".flag-crowded+p"],"result":[0,1,1]}
+{"args":[".pass-generous"],"result":[0,1,0]}
+{"args":[".pass-near-equal"],"result":[0,1,0]}
+{"args":[".pass-eyebrow-label"],"result":[0,1,0]}
+{"args":[".pass-eyebrow-heading"],"result":[0,1,0]}
+{"args":[".pass-card"],"result":[0,1,0]}
+{"args":[".pass-card h3"],"result":[0,1,1]}
+{"args":[".pass-band"],"result":[0,1,0]}
+{"args":[".pass-band h2"],"result":[0,1,1]}
+{"args":[".col h2.col-label"],"result":[0,2,1]}
+{"args":[".case h1"],"result":[0,1,1]}
+{"args":[".eyebrow-classic"],"result":[0,1,0]}
+{"args":[".eyebrow-span"],"result":[0,1,0]}
+{"args":[".eyebrow-pill"],"result":[0,1,0]}
+{"args":[".eyebrow-already-uppercase"],"result":[0,1,0]}
+{"args":[".pass-eyebrow-no-tracking"],"result":[0,1,0]}
+{"args":[".pass-body-heading"],"result":[0,1,0]}
+{"args":[".pass-card-caption"],"result":[0,1,0]}
+{"args":[".pass-bare-hero"],"result":[0,1,0]}
+{"args":[".pass-h2-above-h1"],"result":[0,1,0]}
+{"args":[".pass-long-uppercase"],"result":[0,1,0]}
+{"args":["main"],"result":[0,0,1]}
+{"args":[".icon-pastel"],"result":[0,1,0]}
+{"args":[".icon-solid"],"result":[0,1,0]}
+{"args":[".icon-white"],"result":[0,1,0]}
+{"args":[".icon-large"],"result":[0,1,0]}
+{"args":[".icon-emoji"],"result":[0,1,0]}
+{"args":[".avatar-round"],"result":[0,1,0]}
+{"args":[".thumb-wide"],"result":[0,1,0]}
+{"args":[".inline-row"],"result":[0,1,0]}
+{"args":[".inline-row .icon-inline"],"result":[0,2,0]}
+{"args":[".no-icon h3"],"result":[0,1,1]}
+{"args":[".icon-tiny"],"result":[0,1,0]}
+{"args":[".img-huge"],"result":[0,1,0]}
+{"args":[".photo-panel"],"result":[0,1,0]}
+{"args":[".flag-white-on-light"],"result":[0,1,0]}
+{"args":[".pass-ink-on-light"],"result":[0,1,0]}
+{"args":[".decoy"],"result":[0,1,0]}
+{"args":[".hero-fraunces"],"result":[0,1,0]}
+{"args":[".hero-recoleta"],"result":[0,1,0]}
+{"args":[".hero-playfair"],"result":[0,1,0]}
+{"args":[".hero-unknown-serif"],"result":[0,1,0]}
+{"args":[".pass-sans-italic"],"result":[0,1,0]}
+{"args":[".pass-roman-serif"],"result":[0,1,0]}
+{"args":[".pass-pull-quote"],"result":[0,1,0]}
+{"args":[".pass-roman-h1-em-italic"],"result":[0,1,0]}
+{"args":[".pass-roman-h1-em-italic em"],"result":[0,1,1]}
+{"args":[".pass-italic-serif-32"],"result":[0,1,0]}
+{"args":[".pass-h1-sans-roman"],"result":[0,1,0]}
+{"args":[".kicker"],"result":[0,1,0]}
+{"args":[".pass-kicker"],"result":[0,1,0]}
+{"args":[".pass-kicker-caps"],"result":[0,1,0]}
+{"args":[".tight-tracked-kicker"],"result":[0,1,0]}
+{"args":[".smallcaps-kicker"],"result":[0,1,0]}
+{"args":[".untracked-caps"],"result":[0,1,0]}
+{"args":["h4"],"result":[0,0,1]}
+{"args":[".role-heading"],"result":[0,1,0]}
+{"args":[".hero-h1"],"result":[0,1,0]}
+{"args":[".hero-eyebrow"],"result":[0,1,0]}
+{"args":["label"],"result":[0,0,1]}
+{"args":["figcaption"],"result":[0,0,1]}
+{"args":["a"],"result":[0,0,1]}
+{"args":["li"],"result":[0,0,1]}
+{"args":["nav"],"result":[0,0,1]}
+{"args":["form"],"result":[0,0,1]}
+{"args":["figure"],"result":[0,0,1]}
+{"args":["ol"],"result":[0,0,1]}
+{"args":[".card-grid"],"result":[0,1,0]}
+{"args":[".suite-card"],"result":[0,1,0]}
+{"args":[".taxonomy-label"],"result":[0,1,0]}
+{"args":[".suite-card h3"],"result":[0,1,1]}
+{"args":[".stat"],"result":[0,1,0]}
+{"args":[".stat h3"],"result":[0,1,1]}
+{"args":[".hidden-mockup"],"result":[0,1,0]}
+{"args":[".mockup-hero"],"result":[0,1,0]}
+{"args":[".mockup-hero h2"],"result":[0,1,1]}
+{"args":[".demo"],"result":[0,1,0]}
+{"args":["p.intro"],"result":[0,1,1]}
+{"args":[".cards"],"result":[0,1,0]}
+{"args":[".cards p"],"result":[0,1,1]}
+{"args":[".external-side-tab"],"result":[0,1,0]}
+{"args":[".external-top-accent"],"result":[0,1,0]}
+{"args":[".external-inter"],"result":[0,1,0]}
+{"args":[".external-clean"],"result":[0,1,0]}
+{"args":[".external-neutral-side"],"result":[0,1,0]}
+{"args":[".external-square-top"],"result":[0,1,0]}
+{"args":["#flag-oklch-1"],"result":[1,0,0]}
+{"args":["#flag-oklch-2"],"result":[1,0,0]}
+{"args":["#flag-oklch-3"],"result":[1,0,0]}
+{"args":["#flag-oklab-1"],"result":[1,0,0]}
+{"args":["#flag-lch-1"],"result":[1,0,0]}
+{"args":["#flag-lab-1"],"result":[1,0,0]}
+{"args":["label#flag-label-oklch"],"result":[1,0,1]}
+{"args":["label#flag-label-rgb"],"result":[1,0,1]}
+{"args":["#flag-var-shorthand"],"result":[1,0,0]}
+{"args":["#flag-var-mixed"],"result":[1,0,0]}
+{"args":["#flag-var-right"],"result":[1,0,0]}
+{"args":["label#flag-label-var"],"result":[1,0,1]}
+{"args":["#pass-oklch-neutral"],"result":[1,0,0]}
+{"args":["#pass-oklch-nearneutral"],"result":[1,0,0]}
+{"args":["#pass-oklch-allsides"],"result":[1,0,0]}
+{"args":["#pass-oklch-thin"],"result":[1,0,0]}
+{"args":["#pass-lab-neutral"],"result":[1,0,0]}
+{"args":["#pass-lch-neutral"],"result":[1,0,0]}
+{"args":["label#pass-label-plain"],"result":[1,0,1]}
+{"args":["label#pass-label-neutral-border"],"result":[1,0,1]}
+{"args":["label#pass-label-inline"],"result":[1,0,1]}
+{"args":["label#pass-label-thin"],"result":[1,0,1]}
+{"args":["#pass-var-neutral"],"result":[1,0,0]}
+{"args":["#pass-var-thin"],"result":[1,0,0]}
+{"args":["#pass-var-allsides"],"result":[1,0,0]}
+{"args":["#pass-oklch-neutral-right-divider"],"result":[1,0,0]}
+{"args":[".demo h4"],"result":[0,1,1]}
+{"args":[".demo p"],"result":[0,1,1]}
+{"args":[".bounce-animation"],"result":[0,1,0]}
+{"args":[".elastic-transition"],"result":[0,1,0]}
+{"args":[".width-transition"],"result":[0,1,0]}
+{"args":[".height-transition"],"result":[0,1,0]}
+{"args":[".padding-transition"],"result":[0,1,0]}
+{"args":[".margin-transition"],"result":[0,1,0]}
+{"args":[".max-height-transition"],"result":[0,1,0]}
+{"args":[".multi-layout-transition"],"result":[0,1,0]}
+{"args":[".mixed-transition"],"result":[0,1,0]}
+{"args":[".transition-property-width"],"result":[0,1,0]}
+{"args":[".fade-in-good"],"result":[0,1,0]}
+{"args":[".ease-out-quart"],"result":[0,1,0]}
+{"args":[".ease-out-expo"],"result":[0,1,0]}
+{"args":[".transform-transition"],"result":[0,1,0]}
+{"args":[".opacity-transition"],"result":[0,1,0]}
+{"args":[".color-transition"],"result":[0,1,0]}
+{"args":[".shadow-transition"],"result":[0,1,0]}
+{"args":[".all-transition"],"result":[0,1,0]}
+{"args":[".multi-safe-transition"],"result":[0,1,0]}
+{"args":["#flag-named-purple"],"result":[1,0,0]}
+{"args":["#flag-named-rebecca"],"result":[1,0,0]}
+{"args":["#flag-named-crimson-top"],"result":[1,0,0]}
+{"args":["#flag-named-teal"],"result":[1,0,0]}
+{"args":["#flag-named-var"],"result":[1,0,0]}
+{"args":["#pass-named-dimgray"],"result":[1,0,0]}
+{"args":["#pass-named-gainsboro"],"result":[1,0,0]}
+{"args":["#pass-named-black"],"result":[1,0,0]}
+{"args":["#pass-named-thin"],"result":[1,0,0]}
+{"args":["#pass-named-allsides"],"result":[1,0,0]}
+{"args":["header"],"result":[0,0,1]}
+{"args":[".nav"],"result":[0,1,0]}
+{"args":[".nav a"],"result":[0,1,1]}
+{"args":[".cta"],"result":[0,1,0]}
+{"args":["a.cta.v1"],"result":[0,2,1]}
+{"args":[".v2"],"result":[0,1,0]}
+{"args":["a.cta.v3"],"result":[0,2,1]}
+{"args":["a.cta.v4"],"result":[0,2,1]}
+{"args":["a.cta.v5"],"result":[0,2,1]}
+{"args":[".v5::before"],"result":[0,2,0]}
+{"args":[".v6"],"result":[0,1,0]}
+{"args":["a.cta.v7"],"result":[0,2,1]}
+{"args":["a.cta.v8"],"result":[0,2,1]}
+{"args":["a.cta.v9"],"result":[0,2,1]}
+{"args":[".rendered-body"],"result":[0,1,0]}
+{"args":[".rendered-nav-link"],"result":[0,1,0]}
+{"args":[".none-block"],"result":[0,1,0]}
+{"args":[".hidden-block"],"result":[0,1,0]}
+{"args":[".column"],"result":[0,1,0]}
+{"args":[".sec-index"],"result":[0,1,0]}
+{"args":[".sec-index-micro"],"result":[0,1,0]}
+{"args":[".big-index"],"result":[0,1,0]}
+{"args":[".plain-note"],"result":[0,1,0]}
+{"args":[".step-label"],"result":[0,1,0]}
+{"args":[".fixture-grid"],"result":[0,1,0]}
+{"args":[".marker"],"result":[0,1,0]}
+{"args":[".code-like::before"],"result":[0,2,0]}
+{"args":[".scenario"],"result":[0,1,0]}
+{"args":[".scenario-label"],"result":[0,1,0]}
+{"args":[".transform-container"],"result":[0,1,0]}
+{"args":[".transform-rotate"],"result":[0,1,0]}
+{"args":[".transform-scale"],"result":[0,1,0]}
+{"args":[".transform-nested-outer"],"result":[0,1,0]}
+{"args":[".transform-nested-inner"],"result":[0,1,0]}
+{"args":["details"],"result":[0,0,1]}
+{"args":["summary"],"result":[0,0,1]}
+{"args":[".sticky-container"],"result":[0,1,0]}
+{"args":[".sticky-header"],"result":[0,1,0]}
+{"args":[".sticky-content"],"result":[0,1,0]}
+{"args":[".overflow-hidden-container"],"result":[0,1,0]}
+{"args":[".relative-offset"],"result":[0,1,0]}
+{"args":[".absolute-container"],"result":[0,1,0]}
+{"args":[".absolute-child"],"result":[0,1,0]}
+{"args":[".flex-center"],"result":[0,1,0]}
+{"args":[".grid-center"],"result":[0,1,0]}
+{"args":[".will-change-container"],"result":[0,1,0]}
+{"args":[".contain-container"],"result":[0,1,0]}
+{"args":[".filter-container"],"result":[0,1,0]}
+{"args":[".backdrop-filter-container"],"result":[0,1,0]}
+{"args":[".negative-margin-container"],"result":[0,1,0]}
+{"args":[".negative-margin-child"],"result":[0,1,0]}
+{"args":[".tiny"],"result":[0,1,0]}
+{"args":[".cramped-box"],"result":[0,1,0]}
+{"args":[".ai-btn"],"result":[0,1,0]}
+{"args":[".side-tab-card"],"result":[0,1,0]}
+{"args":[".flag-dominating-h1"],"result":[0,1,0]}
+{"args":[".pass-contained-large-h1"],"result":[0,1,0]}
+{"args":[".card-stripe"],"result":[0,1,0]}
+{"args":[".card-stripe::before"],"result":[0,2,0]}
+{"args":[".row-stripe"],"result":[0,1,0]}
+{"args":[".row-stripe::after"],"result":[0,2,0]}
+{"args":[".col+.col::before"],"result":[0,3,0]}
+{"args":[".timeline::before"],"result":[0,2,0]}
+{"args":["blockquote::before"],"result":[0,1,1]}
+{"args":[".switch::before"],"result":[0,2,0]}
+{"args":[".panel::before"],"result":[0,2,0]}
+{"args":[".heading::after"],"result":[0,2,0]}
+{"args":[".live-dot"],"result":[0,1,0]}
+{"args":[".status .dot"],"result":[0,2,0]}
+{"args":[".beacon"],"result":[0,1,0]}
+{"args":[".spinner"],"result":[0,1,0]}
+{"args":[".fake-pulse"],"result":[0,1,0]}
+{"args":[".breathing-card"],"result":[0,1,0]}
+{"args":[".nudge"],"result":[0,1,0]}
+{"args":[".square-badge"],"result":[0,1,0]}
+{"args":[".rec-mark"],"result":[0,1,0]}
+{"args":[".long-lines"],"result":[0,1,0]}
+{"args":[".tight-leading"],"result":[0,1,0]}
+{"args":[".tiny-text"],"result":[0,1,0]}
+{"args":[".tiny-text-11"],"result":[0,1,0]}
+{"args":[".justified-no-hyphens"],"result":[0,1,0]}
+{"args":[".all-caps-body"],"result":[0,1,0]}
+{"args":[".wide-tracking-body"],"result":[0,1,0]}
+{"args":[".good-measure"],"result":[0,1,0]}
+{"args":[".good-leading"],"result":[0,1,0]}
+{"args":[".good-text-size"],"result":[0,1,0]}
+{"args":[".justified-with-hyphens"],"result":[0,1,0]}
+{"args":[".label-caps"],"result":[0,1,0]}
+{"args":[".label-tracking"],"result":[0,1,0]}
+{"args":[".mock-terminal-title"],"result":[0,1,0]}
+{"args":[".mock-terminal-meta"],"result":[0,1,0]}
+{"args":[".mock-diff-line"],"result":[0,1,0]}
+{"args":[".flag-hero-blue"],"result":[0,1,0]}
+{"args":[".flag-section-violet"],"result":[0,1,0]}
+{"args":[".flag-overlay-cyan"],"result":[0,1,0]}
+{"args":[".flag-two-stop-rose"],"result":[0,1,0]}
+{"args":[".flag-hex-alpha"],"result":[0,1,0]}
+{"args":[".pass-opaque-bg"],"result":[0,1,0]}
+{"args":[".pass-avatar-light"],"result":[0,1,0]}
+{"args":[".pass-neutral-vignette"],"result":[0,1,0]}
+{"args":[".pass-white-vignette"],"result":[0,1,0]}
+{"args":[".pass-rich-composition"],"result":[0,1,0]}
+{"args":[".pass-rich-transparent"],"result":[0,1,0]}
+{"args":[".pass-opaque-center"],"result":[0,1,0]}
+{"args":[".pass-linear-wash"],"result":[0,1,0]}
+{"args":[".shadow-card"],"result":[0,1,0]}
+{"args":[".big-word"],"result":[0,1,0]}
+{"args":[".tag"],"result":[0,1,0]}
+{"args":[".row"],"result":[0,1,0]}
+{"args":[".status"],"result":[0,1,0]}
+{"args":["td"],"result":[0,0,1]}
+{"args":["th"],"result":[0,0,1]}
+{"args":["html"],"result":[0,0,1]}
+{"args":[".reveal"],"result":[0,1,0]}
+{"args":[".reveal.in-view"],"result":[0,2,0]}
+{"args":[".menu"],"result":[0,1,0]}
+{"args":[".tabbed"],"result":[0,1,0]}
+{"args":[".w4"],"result":[0,1,0]}
+{"args":[".w5"],"result":[0,1,0]}
+{"args":[".w7"],"result":[0,1,0]}
+{"args":[".w8"],"result":[0,1,0]}
+{"args":[".w9"],"result":[0,1,0]}
+{"args":[".w10"],"result":[0,1,0]}
+{"args":[".w11"],"result":[0,1,0]}
+{"args":[".w12"],"result":[0,1,0]}
+{"args":[".quote-track"],"result":[0,1,0]}
+{"args":[".quote-track span"],"result":[0,1,1]}
+{"args":[".never-rendered-grid"],"result":[0,1,0]}
+{"args":[".product"],"result":[0,1,0]}
+{"args":[".price"],"result":[0,1,0]}
+{"args":[".add-to-cart"],"result":[0,1,0]}
+{"args":["select"],"result":[0,0,1]}
+{"args":["input[type=\"number\"]"],"result":[0,1,1]}
+{"args":[".card h3"],"result":[0,1,1]}
+{"args":[".card-shorthand-left"],"result":[0,1,0]}
+{"args":[".card-shorthand-right"],"result":[0,1,0]}
+{"args":[".card-longhand-left"],"result":[0,1,0]}
+{"args":[".card-longhand-right"],"result":[0,1,0]}
+{"args":[".card-css-top"],"result":[0,1,0]}
+{"args":[".card-css-bottom"],"result":[0,1,0]}
+{"args":[".section"],"result":[0,1,0]}
+{"args":[".card-rounded"],"result":[0,1,0]}
+{"args":[".card-rounded h3"],"result":[0,1,1]}
+{"args":[".card-rounded p"],"result":[0,1,1]}
+{"args":[".card-flat"],"result":[0,1,0]}
+{"args":[".badge"],"result":[0,1,0]}
+{"args":[".thin-left"],"result":[0,1,0]}
+{"args":[".thin-right"],"result":[0,1,0]}
+{"args":[".flag-box-wrap"],"result":[0,1,0]}
+{"args":[".flag-box-text"],"result":[0,1,0]}
+{"args":[".flag-box-cover"],"result":[0,1,0]}
+{"args":[".flag-leak-host"],"result":[0,1,0]}
+{"args":[".flag-leak"],"result":[0,1,0]}
+{"args":[".flag-leak-card"],"result":[0,1,0]}
+{"args":[".flag-hero"],"result":[0,1,0]}
+{"args":[".flag-headline"],"result":[0,1,0]}
+{"args":[".flag-card"],"result":[0,1,0]}
+{"args":[".pass-stack"],"result":[0,1,0]}
+{"args":[".pass-eyebrow"],"result":[0,1,0]}
+{"args":[".pass-title"],"result":[0,1,0]}
+{"args":[".pass-hero img"],"result":[0,1,1]}
+{"args":[".pass-hero .scrim"],"result":[0,2,0]}
+{"args":[".pass-hero .cap"],"result":[0,2,0]}
+{"args":[".pass-under"],"result":[0,1,0]}
+{"args":[".pass-scrubber-wrap"],"result":[0,1,0]}
+{"args":[".pass-scrubber-text"],"result":[0,1,0]}
+{"args":[".pass-scrubber-input"],"result":[0,1,0]}
+{"args":[".pass-fixedbar"],"result":[0,1,0]}
+{"args":[".sr-only"],"result":[0,1,0]}
+{"args":[".sr-only-clip-path"],"result":[0,1,0]}
+{"args":[".sr-only-legacy-clip"],"result":[0,1,0]}
+{"args":[".sr-only-tiny-hidden"],"result":[0,1,0]}
+{"args":[".sr-only-clipped-wide"],"result":[0,1,0]}
+{"args":[".hidden-slide"],"result":[0,1,0]}
+{"args":[".hidden-slide .pass-hidden-slide-overflow"],"result":[0,2,0]}
+{"args":[".caption"],"result":[0,1,0]}
+{"args":[".col-label"],"result":[0,1,0]}
+{"args":[".flag-type"],"result":[0,1,0]}
+{"args":[".flag-type h1"],"result":[0,1,1]}
+{"args":[".flag-type h2"],"result":[0,1,1]}
+{"args":[".flag-type h3"],"result":[0,1,1]}
+{"args":[".flag-type p"],"result":[0,1,1]}
+{"args":[".flag-type .caption"],"result":[0,2,0]}
+{"args":[".flag-type .tight-leading-demo"],"result":[0,2,0]}
+{"args":[".flag-type .tiny-body-demo"],"result":[0,2,0]}
+{"args":[".flag-type .caps-body-demo"],"result":[0,2,0]}
+{"args":[".flag-type .tracked-body-demo"],"result":[0,2,0]}
+{"args":[".flag-type .justified-body-demo"],"result":[0,2,0]}
+{"args":[".pass-type"],"result":[0,1,0]}
+{"args":[".pass-type h1"],"result":[0,1,1]}
+{"args":[".pass-type h2"],"result":[0,1,1]}
+{"args":[".pass-type h3"],"result":[0,1,1]}
+{"args":[".pass-type p"],"result":[0,1,1]}
+{"args":[".pass-type .caption"],"result":[0,2,0]}
+{"args":[".nav-link"],"result":[0,1,0]}
+{"args":[".category"],"result":[0,1,0]}
+{"args":[".meta"],"result":[0,1,0]}
+{"args":[".btn-small"],"result":[0,1,0]}
+{"args":[".cell-small"],"result":[0,1,0]}
+{"args":[".caps-label"],"result":[0,1,0]}
+{"args":[".footer-link"],"result":[0,1,0]}
+{"args":[".legal"],"result":[0,1,0]}
+{"args":[".sup-marker"],"result":[0,1,0]}
+{"args":[".sub-marker"],"result":[0,1,0]}
+{"args":[".em-parent"],"result":[0,1,0]}
+{"args":[".em-child"],"result":[0,1,0]}
+{"args":[".mock-terminal"],"result":[0,1,0]}
+{"args":[".term-line"],"result":[0,1,0]}
+{"args":[".normal-link"],"result":[0,1,0]}
+{"args":[".column>h2"],"result":[0,1,1]}
+{"args":[".image-card"],"result":[0,1,0]}
+{"args":[".image-card p"],"result":[0,1,1]}
+{"args":[".light-image"],"result":[0,1,0]}
+{"args":[".pale-pattern"],"result":[0,1,0]}
+{"args":[".mist-image"],"result":[0,1,0]}
+{"args":[".dark-image"],"result":[0,1,0]}
+{"args":[".underlay"],"result":[0,1,0]}
+{"args":[".underlay.light-shell"],"result":[0,2,0]}
+{"args":[".underlay img"],"result":[0,1,1]}
+{"args":[".underlay svg"],"result":[0,1,1]}
+{"args":[".faint"],"result":[0,1,0]}
+{"args":[".brand"],"result":[0,1,0]}
+{"args":[".also"],"result":[0,1,0]}
+{"args":[".card"],"result":[0,1,0]}
+{"args":[".dot"],"result":[0,1,0]}
+{"args":[".off"],"result":[0,1,0]}
+{"args":[".faint"],"result":[0,1,0]}
+{"args":[".brand"],"result":[0,1,0]}
+{"args":[".also"],"result":[0,1,0]}
+{"args":["body"],"result":[0,0,1]}
+{"args":["h1"],"result":[0,0,1]}
+{"args":["h2"],"result":[0,0,1]}
+{"args":["p.intro"],"result":[0,1,1]}
+{"args":[".cards"],"result":[0,1,0]}
+{"args":[".card"],"result":[0,1,0]}
+{"args":[".card h3"],"result":[0,1,1]}
+{"args":[".card p"],"result":[0,1,1]}
+{"args":[".card-shorthand-left"],"result":[0,1,0]}
+{"args":[".card-shorthand-right"],"result":[0,1,0]}
+{"args":[".card-longhand-left"],"result":[0,1,0]}
+{"args":[".card-longhand-right"],"result":[0,1,0]}
+{"args":[".card-css-top"],"result":[0,1,0]}
+{"args":[".card-css-bottom"],"result":[0,1,0]}
+{"args":[".section"],"result":[0,1,0]}
+{"args":[".card-rounded"],"result":[0,1,0]}
+{"args":[".card-rounded h3"],"result":[0,1,1]}
+{"args":[".card-rounded p"],"result":[0,1,1]}
+{"args":[".card-flat"],"result":[0,1,0]}
+{"args":[".badge"],"result":[0,1,0]}
+{"args":[".thin-left"],"result":[0,1,0]}
+{"args":[".thin-right"],"result":[0,1,0]}
+{"args":[".intro"],"result":[0,1,0]}
+{"args":[".grid"],"result":[0,1,0]}
+{"args":[".col h2"],"result":[0,1,1]}
+{"args":[".case"],"result":[0,1,0]}
+{"args":[".case h3"],"result":[0,1,1]}
+{"args":[".case p"],"result":[0,1,1]}
+{"args":[".flag-left"],"result":[0,1,0]}
+{"args":[".flag-right"],"result":[0,1,0]}
+{"args":[".flag-left-plain"],"result":[0,1,0]}
+{"args":[".flag-top"],"result":[0,1,0]}
+{"args":[".flag-bottom"],"result":[0,1,0]}
+{"args":[".flag-dark"],"result":[0,1,0]}
+{"args":[".flag-dark p"],"result":[0,1,1]}
+{"args":[".pass-full-border"],"result":[0,1,0]}
+{"args":[".pass-neutral-side"],"result":[0,1,0]}
+{"args":[".pass-thin-side"],"result":[0,1,0]}
+{"args":[".pass-status-alert"],"result":[0,1,0]}
+{"args":[".flag-square-top"],"result":[0,1,0]}
+{"args":[".flag-square-bottom"],"result":[0,1,0]}
+{"args":[".pass-tab-underline"],"result":[0,1,0]}
+{"args":[".pass-thick-band"],"result":[0,1,0]}
+{"args":[".pass-dark-uniform"],"result":[0,1,0]}
+{"args":[".pass-dark-uniform p"],"result":[0,1,1]}
+{"args":["h3"],"result":[0,0,1]}
+{"args":[".cards p"],"result":[0,1,1]}
+{"args":[".external-side-tab"],"result":[0,1,0]}
+{"args":[".external-top-accent"],"result":[0,1,0]}
+{"args":[".external-inter"],"result":[0,1,0]}
+{"args":[".external-clean"],"result":[0,1,0]}
+{"args":[".external-neutral-side"],"result":[0,1,0]}
+{"args":[".external-square-top"],"result":[0,1,0]}
+{"args":[".col h3"],"result":[0,1,1]}
+{"args":[".styled-pill-low"],"result":[0,1,0]}
+{"args":[".low-contrast-button"],"result":[0,1,0]}
+{"args":[".good-pill-high"],"result":[0,1,0]}
+{"args":[".inline-link-low"],"result":[0,1,0]}
+{"args":[".chip-sev-low"],"result":[0,1,0]}
+{"args":[".chip-ok-high"],"result":[0,1,0]}
+{"args":[".chip-sub9-low"],"result":[0,1,0]}
+{"args":[".panel-reset"],"result":[0,1,0]}
+{"args":[".panel-reset code"],"result":[0,1,1]}
+{"args":[".panel-reset pre code"],"result":[0,1,2]}
+{"args":[".ox-grad-text"],"result":[0,1,0]}
+{"args":[".ox-dark-wrap"],"result":[0,1,0]}
+{"args":[".ox-glow"],"result":[0,1,0]}
+{"args":[".ox-glow p"],"result":[0,1,1]}
+{"args":[".ox-glow .muted"],"result":[0,2,0]}
+{"args":[".mix-dark-wrap"],"result":[0,1,0]}
+{"args":[".mix-glow"],"result":[0,1,0]}
+{"args":[".mix-glow p"],"result":[0,1,1]}
+{"args":[":root"],"result":[0,1,0]}
+{"args":[".currentcolor-surface"],"result":[0,1,0]}
+{"args":[".currentcolor-low-text"],"result":[0,1,0]}
+{"args":[".currentcolor-good-text"],"result":[0,1,0]}
+{"args":[".currentcolor-unknown"],"result":[0,1,0]}
+{"args":[".currentcolor-unknown p"],"result":[0,1,1]}
+{"args":[".tabbed"],"result":[0,1,0]}
+{"args":[".w4"],"result":[0,1,0]}
+{"args":[".w5"],"result":[0,1,0]}
+{"args":[".w7"],"result":[0,1,0]}
+{"args":[".w8"],"result":[0,1,0]}
+{"args":[".w9"],"result":[0,1,0]}
+{"args":[".w10"],"result":[0,1,0]}
+{"args":[".w11"],"result":[0,1,0]}
+{"args":[".w12"],"result":[0,1,0]}
+{"args":[".quote-track"],"result":[0,1,0]}
+{"args":[".quote-track span"],"result":[0,1,1]}
+{"args":[".never-rendered-grid"],"result":[0,1,0]}
+{"args":["body>*"],"result":[0,0,1]}
+{"args":[".flag-muted-direct"],"result":[0,1,0]}
+{"args":[".flag-muted-nested-wrapper"],"result":[0,1,0]}
+{"args":[".flag-muted-nested"],"result":[0,1,0]}
+{"args":[".frosted-light"],"result":[0,1,0]}
+{"args":[".flag-light-on-frosted"],"result":[0,1,0]}
+{"args":[".pass-hero-title"],"result":[0,1,0]}
+{"args":[".pass-hero-body"],"result":[0,1,0]}
+{"args":[".pass-on-raised"],"result":[0,1,0]}
+{"args":[".pass-dark-on-frosted"],"result":[0,1,0]}
+{"args":[".pass-hex-gradient"],"result":[0,1,0]}
+{"args":[".pass-image-backed"],"result":[0,1,0]}
+{"args":[".pass-photo-panel"],"result":[0,1,0]}
+{"args":[".pass-hidden-scene"],"result":[0,1,0]}
+{"args":[".pass-hidden-scene p"],"result":[0,1,1]}
+{"args":[".demo"],"result":[0,1,0]}
+{"args":["#flag-oklch-1"],"result":[1,0,0]}
+{"args":["#flag-oklch-2"],"result":[1,0,0]}
+{"args":["#flag-oklch-3"],"result":[1,0,0]}
+{"args":["#flag-oklab-1"],"result":[1,0,0]}
+{"args":["#flag-lch-1"],"result":[1,0,0]}
+{"args":["#flag-lab-1"],"result":[1,0,0]}
+{"args":["label#flag-label-oklch"],"result":[1,0,1]}
+{"args":["label#flag-label-rgb"],"result":[1,0,1]}
+{"args":["#flag-var-shorthand"],"result":[1,0,0]}
+{"args":["#flag-var-mixed"],"result":[1,0,0]}
+{"args":["#flag-var-right"],"result":[1,0,0]}
+{"args":["label#flag-label-var"],"result":[1,0,1]}
+{"args":["#pass-oklch-neutral"],"result":[1,0,0]}
+{"args":["#pass-oklch-nearneutral"],"result":[1,0,0]}
+{"args":["#pass-oklch-allsides"],"result":[1,0,0]}
+{"args":["#pass-oklch-thin"],"result":[1,0,0]}
+{"args":["#pass-lab-neutral"],"result":[1,0,0]}
+{"args":["#pass-lch-neutral"],"result":[1,0,0]}
+{"args":["label#pass-label-plain"],"result":[1,0,1]}
+{"args":["label#pass-label-neutral-border"],"result":[1,0,1]}
+{"args":["label#pass-label-inline"],"result":[1,0,1]}
+{"args":["label#pass-label-thin"],"result":[1,0,1]}
+{"args":["#pass-var-neutral"],"result":[1,0,0]}
+{"args":["#pass-var-thin"],"result":[1,0,0]}
+{"args":["#pass-var-allsides"],"result":[1,0,0]}
+{"args":["#pass-oklch-neutral-right-divider"],"result":[1,0,0]}
+{"args":["#flag-named-purple"],"result":[1,0,0]}
+{"args":["#flag-named-rebecca"],"result":[1,0,0]}
+{"args":["#flag-named-crimson-top"],"result":[1,0,0]}
+{"args":["#flag-named-teal"],"result":[1,0,0]}
+{"args":["#flag-named-var"],"result":[1,0,0]}
+{"args":["#pass-named-dimgray"],"result":[1,0,0]}
+{"args":["#pass-named-gainsboro"],"result":[1,0,0]}
+{"args":["#pass-named-black"],"result":[1,0,0]}
+{"args":["#pass-named-thin"],"result":[1,0,0]}
+{"args":["#pass-named-allsides"],"result":[1,0,0]}
+{"args":["p"],"result":[0,0,1]}
+{"args":[".caption"],"result":[0,1,0]}
+{"args":[".col"],"result":[0,1,0]}
+{"args":[".col-label"],"result":[0,1,0]}
+{"args":[".flag-type"],"result":[0,1,0]}
+{"args":[".flag-type h1"],"result":[0,1,1]}
+{"args":[".flag-type h2"],"result":[0,1,1]}
+{"args":[".flag-type h3"],"result":[0,1,1]}
+{"args":[".flag-type p"],"result":[0,1,1]}
+{"args":[".flag-type .caption"],"result":[0,2,0]}
+{"args":[".flag-type .tight-leading-demo"],"result":[0,2,0]}
+{"args":[".flag-type .tiny-body-demo"],"result":[0,2,0]}
+{"args":[".flag-type .caps-body-demo"],"result":[0,2,0]}
+{"args":[".flag-type .tracked-body-demo"],"result":[0,2,0]}
+{"args":[".flag-type .justified-body-demo"],"result":[0,2,0]}
+{"args":[".pass-type"],"result":[0,1,0]}
+{"args":[".pass-type h1"],"result":[0,1,1]}
+{"args":[".pass-type h2"],"result":[0,1,1]}
+{"args":[".pass-type h3"],"result":[0,1,1]}
+{"args":[".pass-type p"],"result":[0,1,1]}
+{"args":[".pass-type .caption"],"result":[0,2,0]}
+{"args":[".design-system-fixture"],"result":[0,1,0]}
+{"args":[".fixture-note"],"result":[0,1,0]}
+{"args":[".fixture-note strong"],"result":[0,1,1]}
+{"args":[".flag-font"],"result":[0,1,0]}
+{"args":[".flag-color"],"result":[0,1,0]}
+{"args":[".flag-background"],"result":[0,1,0]}
+{"args":[".flag-border"],"result":[0,1,0]}
+{"args":[".flag-radius"],"result":[0,1,0]}
+{"args":[".flag-font-size"],"result":[0,1,0]}
+{"args":[".pass-display-font"],"result":[0,1,0]}
+{"args":[".pass-rem-font-size"],"result":[0,1,0]}
+{"args":[".pass-relative-font-size"],"result":[0,1,0]}
+{"args":[".pass-generic-font"],"result":[0,1,0]}
+{"args":[".pass-token-color"],"result":[0,1,0]}
+{"args":[".pass-alpha-color"],"result":[0,1,0]}
+{"args":[".pass-close-color"],"result":[0,1,0]}
+{"args":[".pass-ramp-color"],"result":[0,1,0]}
+{"args":[".pass-zero-radius"],"result":[0,1,0]}
+{"args":[".pass-percent-radius"],"result":[0,1,0]}
+{"args":[".pass-scale-radius"],"result":[0,1,0]}
+{"args":[".pass-mid-pill-radius"],"result":[0,1,0]}
+{"args":[".pass-pill-radius"],"result":[0,1,0]}
+{"args":[".fixture-grid"],"result":[0,1,0]}
+{"args":[".marker"],"result":[0,1,0]}
+{"args":[".code-like::before"],"result":[0,2,0]}
+{"args":[".column"],"result":[0,1,0]}
+{"args":["section"],"result":[0,0,1]}
+{"args":[".sec-index"],"result":[0,1,0]}
+{"args":[".sec-index-micro"],"result":[0,1,0]}
+{"args":[".big-index"],"result":[0,1,0]}
+{"args":[".plain-note"],"result":[0,1,0]}
+{"args":[".step-label"],"result":[0,1,0]}
+{"args":[".shadow-card"],"result":[0,1,0]}
+{"args":[".big-word"],"result":[0,1,0]}
+{"args":[".tag"],"result":[0,1,0]}
+{"args":[".row"],"result":[0,1,0]}
+{"args":[".status"],"result":[0,1,0]}
+{"args":["td"],"result":[0,0,1]}
+{"args":["th"],"result":[0,0,1]}
+{"args":[".icon-pastel"],"result":[0,1,0]}
+{"args":[".icon-solid"],"result":[0,1,0]}
+{"args":[".icon-white"],"result":[0,1,0]}
+{"args":[".icon-large"],"result":[0,1,0]}
+{"args":[".icon-emoji"],"result":[0,1,0]}
+{"args":[".avatar-round"],"result":[0,1,0]}
+{"args":[".thumb-wide"],"result":[0,1,0]}
+{"args":[".inline-row"],"result":[0,1,0]}
+{"args":[".inline-row .icon-inline"],"result":[0,2,0]}
+{"args":[".no-icon h3"],"result":[0,1,1]}
+{"args":[".icon-tiny"],"result":[0,1,0]}
+{"args":[".img-huge"],"result":[0,1,0]}
+{"args":[".flag-hero-blue"],"result":[0,1,0]}
+{"args":[".flag-section-violet"],"result":[0,1,0]}
+{"args":[".flag-overlay-cyan"],"result":[0,1,0]}
+{"args":[".flag-two-stop-rose"],"result":[0,1,0]}
+{"args":[".flag-hex-alpha"],"result":[0,1,0]}
+{"args":[".pass-opaque-bg"],"result":[0,1,0]}
+{"args":[".pass-badge"],"result":[0,1,0]}
+{"args":[".pass-avatar-light"],"result":[0,1,0]}
+{"args":[".pass-neutral-vignette"],"result":[0,1,0]}
+{"args":[".pass-white-vignette"],"result":[0,1,0]}
+{"args":[".pass-rich-composition"],"result":[0,1,0]}
+{"args":[".pass-rich-transparent"],"result":[0,1,0]}
+{"args":[".pass-opaque-center"],"result":[0,1,0]}
+{"args":[".pass-linear-wash"],"result":[0,1,0]}
+{"args":[".nav-link"],"result":[0,1,0]}
+{"args":[".category"],"result":[0,1,0]}
+{"args":[".meta"],"result":[0,1,0]}
+{"args":[".btn-small"],"result":[0,1,0]}
+{"args":[".cell-small"],"result":[0,1,0]}
+{"args":[".caps-label"],"result":[0,1,0]}
+{"args":[".footer-link"],"result":[0,1,0]}
+{"args":[".legal"],"result":[0,1,0]}
+{"args":[".sr-only"],"result":[0,1,0]}
+{"args":[".sup-marker"],"result":[0,1,0]}
+{"args":[".sub-marker"],"result":[0,1,0]}
+{"args":[".em-parent"],"result":[0,1,0]}
+{"args":[".em-child"],"result":[0,1,0]}
+{"args":[".mock-terminal"],"result":[0,1,0]}
+{"args":[".term-line"],"result":[0,1,0]}
+{"args":[".normal-link"],"result":[0,1,0]}
+{"args":[".rendered-body"],"result":[0,1,0]}
+{"args":[".rendered-nav-link"],"result":[0,1,0]}
+{"args":[".none-block"],"result":[0,1,0]}
+{"args":[".hidden-block"],"result":[0,1,0]}
+{"args":[".case-label"],"result":[0,1,0]}
+{"args":[".long-lines"],"result":[0,1,0]}
+{"args":[".tight-leading"],"result":[0,1,0]}
+{"args":[".tiny-text"],"result":[0,1,0]}
+{"args":[".tiny-text-11"],"result":[0,1,0]}
+{"args":[".justified-no-hyphens"],"result":[0,1,0]}
+{"args":[".all-caps-body"],"result":[0,1,0]}
+{"args":[".wide-tracking-body"],"result":[0,1,0]}
+{"args":[".good-measure"],"result":[0,1,0]}
+{"args":[".good-leading"],"result":[0,1,0]}
+{"args":[".good-text-size"],"result":[0,1,0]}
+{"args":[".justified-with-hyphens"],"result":[0,1,0]}
+{"args":[".label-caps"],"result":[0,1,0]}
+{"args":[".label-tracking"],"result":[0,1,0]}
+{"args":[".mock-terminal-title"],"result":[0,1,0]}
+{"args":[".mock-terminal-meta"],"result":[0,1,0]}
+{"args":[".mock-diff-line"],"result":[0,1,0]}
+{"args":[".col h2.col-label"],"result":[0,2,1]}
+{"args":[".hero-fraunces"],"result":[0,1,0]}
+{"args":[".hero-recoleta"],"result":[0,1,0]}
+{"args":[".hero-playfair"],"result":[0,1,0]}
+{"args":[".hero-unknown-serif"],"result":[0,1,0]}
+{"args":[".pass-sans-italic"],"result":[0,1,0]}
+{"args":[".pass-roman-serif"],"result":[0,1,0]}
+{"args":[".pass-pull-quote"],"result":[0,1,0]}
+{"args":[".pass-roman-h1-em-italic"],"result":[0,1,0]}
+{"args":[".pass-roman-h1-em-italic em"],"result":[0,1,1]}
+{"args":[".pass-italic-serif-32"],"result":[0,1,0]}
+{"args":[".pass-h1-sans-roman"],"result":[0,1,0]}
+{"args":[".case h1"],"result":[0,1,1]}
+{"args":[".hero"],"result":[0,1,0]}
+{"args":[".eyebrow-classic"],"result":[0,1,0]}
+{"args":[".eyebrow-span"],"result":[0,1,0]}
+{"args":[".eyebrow-pill"],"result":[0,1,0]}
+{"args":[".eyebrow-already-uppercase"],"result":[0,1,0]}
+{"args":[".pass-eyebrow-no-tracking"],"result":[0,1,0]}
+{"args":[".pass-body-heading"],"result":[0,1,0]}
+{"args":[".pass-card-caption"],"result":[0,1,0]}
+{"args":[".pass-bare-hero"],"result":[0,1,0]}
+{"args":[".pass-h2-above-h1"],"result":[0,1,0]}
+{"args":[".pass-long-uppercase"],"result":[0,1,0]}
+{"args":["main"],"result":[0,0,1]}
+{"args":[".kicker"],"result":[0,1,0]}
+{"args":[".pass-kicker"],"result":[0,1,0]}
+{"args":[".pass-kicker-caps"],"result":[0,1,0]}
+{"args":[".tight-tracked-kicker"],"result":[0,1,0]}
+{"args":[".smallcaps-kicker"],"result":[0,1,0]}
+{"args":[".untracked-caps"],"result":[0,1,0]}
+{"args":["h4"],"result":[0,0,1]}
+{"args":[".role-heading"],"result":[0,1,0]}
+{"args":[".hero-h1"],"result":[0,1,0]}
+{"args":[".hero-eyebrow"],"result":[0,1,0]}
+{"args":["label"],"result":[0,0,1]}
+{"args":["figcaption"],"result":[0,0,1]}
+{"args":["a"],"result":[0,0,1]}
+{"args":["li"],"result":[0,0,1]}
+{"args":["nav"],"result":[0,0,1]}
+{"args":["form"],"result":[0,0,1]}
+{"args":["figure"],"result":[0,0,1]}
+{"args":["ol"],"result":[0,0,1]}
+{"args":[".card-grid"],"result":[0,1,0]}
+{"args":[".suite-card"],"result":[0,1,0]}
+{"args":[".taxonomy-label"],"result":[0,1,0]}
+{"args":[".suite-card h3"],"result":[0,1,1]}
+{"args":[".stat"],"result":[0,1,0]}
+{"args":[".stat h3"],"result":[0,1,1]}
+{"args":[".hidden-mockup"],"result":[0,1,0]}
+{"args":[".mockup-hero"],"result":[0,1,0]}
+{"args":[".mockup-hero h2"],"result":[0,1,1]}
+{"args":[".demo h4"],"result":[0,1,1]}
+{"args":[".demo p"],"result":[0,1,1]}
+{"args":[".bounce-animation"],"result":[0,1,0]}
+{"args":[".elastic-transition"],"result":[0,1,0]}
+{"args":[".width-transition"],"result":[0,1,0]}
+{"args":[".height-transition"],"result":[0,1,0]}
+{"args":[".padding-transition"],"result":[0,1,0]}
+{"args":[".margin-transition"],"result":[0,1,0]}
+{"args":[".max-height-transition"],"result":[0,1,0]}
+{"args":[".multi-layout-transition"],"result":[0,1,0]}
+{"args":[".mixed-transition"],"result":[0,1,0]}
+{"args":[".transition-property-width"],"result":[0,1,0]}
+{"args":[".fade-in-good"],"result":[0,1,0]}
+{"args":[".ease-out-quart"],"result":[0,1,0]}
+{"args":[".ease-out-expo"],"result":[0,1,0]}
+{"args":[".transform-transition"],"result":[0,1,0]}
+{"args":[".opacity-transition"],"result":[0,1,0]}
+{"args":[".color-transition"],"result":[0,1,0]}
+{"args":[".shadow-transition"],"result":[0,1,0]}
+{"args":[".all-transition"],"result":[0,1,0]}
+{"args":[".multi-safe-transition"],"result":[0,1,0]}
+{"args":[".dark-context"],"result":[0,1,0]}
+{"args":[".dark-context+.dark-context"],"result":[0,2,0]}
+{"args":[".card h4"],"result":[0,1,1]}
+{"args":[".card-dark"],"result":[0,1,0]}
+{"args":[".card-dark h4"],"result":[0,1,1]}
+{"args":[".card-dark p"],"result":[0,1,1]}
+{"args":[".card-light"],"result":[0,1,0]}
+{"args":[".card-light h4"],"result":[0,1,1]}
+{"args":[".card-light p"],"result":[0,1,1]}
+{"args":[".glow-blue"],"result":[0,1,0]}
+{"args":[".glow-purple"],"result":[0,1,0]}
+{"args":[".glow-cyan"],"result":[0,1,0]}
+{"args":[".glow-multi"],"result":[0,1,0]}
+{"args":[".glow-oklch"],"result":[0,1,0]}
+{"args":[".glow-hex"],"result":[0,1,0]}
+{"args":[".glow-hsl"],"result":[0,1,0]}
+{"args":[".glow-var"],"result":[0,1,0]}
+{"args":[".glow-text h4"],"result":[0,1,1]}
+{"args":[".glow-light-oklch"],"result":[0,1,0]}
+{"args":[".photo-context"],"result":[0,1,0]}
+{"args":[".glow-photo-halo"],"result":[0,1,0]}
+{"args":[".photo-opaque-grad"],"result":[0,1,0]}
+{"args":[".glow-photo-opaque"],"result":[0,1,0]}
+{"args":[".light-colored-shadow"],"result":[0,1,0]}
+{"args":[".dark-normal-shadow"],"result":[0,1,0]}
+{"args":[".dark-focus-ring"],"result":[0,1,0]}
+{"args":[".dark-subtle-shadow"],"result":[0,1,0]}
+{"args":[".dark-elevated-sm"],"result":[0,1,0]}
+{"args":[".dark-elevated-md"],"result":[0,1,0]}
+{"args":[".dark-elevated-lg"],"result":[0,1,0]}
+{"args":[".dark-elevated-inset"],"result":[0,1,0]}
+{"args":[".dark-elevated-multi"],"result":[0,1,0]}
+{"args":[".elevated-sm-light"],"result":[0,1,0]}
+{"args":[".elevated-md-light"],"result":[0,1,0]}
+{"args":[".elevated-warm-light"],"result":[0,1,0]}
+{"args":[".card-medium"],"result":[0,1,0]}
+{"args":[".card-medium h4"],"result":[0,1,1]}
+{"args":[".card-medium p"],"result":[0,1,1]}
+{"args":[".medium-gray-shadow"],"result":[0,1,0]}
+{"args":[".light-offset-colored"],"result":[0,1,0]}
+{"args":[".light-soft-neutral"],"result":[0,1,0]}
+{"args":[".photo-offset-colored"],"result":[0,1,0]}
+{"args":[".photo-translucent-grad"],"result":[0,1,0]}
+{"args":[".photo-translucent-offset"],"result":[0,1,0]}
+{"args":[".dark-text-offset h4"],"result":[0,1,1]}
+{"args":[".flag-frameworks"],"result":[0,1,0]}
+{"args":[".flag-frameworks-label"],"result":[0,1,0]}
+{"args":[".flag-frameworks-list"],"result":[0,1,0]}
+{"args":[".flag-frameworks-list li"],"result":[0,1,1]}
+{"args":[".flag-card-borders"],"result":[0,1,0]}
+{"args":[".flag-card-borders h4"],"result":[0,1,1]}
+{"args":[".flag-card-borders p"],"result":[0,1,1]}
+{"args":[".flag-bg-only"],"result":[0,1,0]}
+{"args":[".flag-bg-only h4"],"result":[0,1,1]}
+{"args":[".flag-bg-only p"],"result":[0,1,1]}
+{"args":[".flag-outline-only"],"result":[0,1,0]}
+{"args":[".flag-outline-only h4"],"result":[0,1,1]}
+{"args":[".flag-outline-only p"],"result":[0,1,1]}
+{"args":[".flag-asym-leftflush"],"result":[0,1,0]}
+{"args":[".flag-asym-leftflush h4"],"result":[0,1,1]}
+{"args":[".flag-asym-leftflush p"],"result":[0,1,1]}
+{"args":[".pass-no-boundary"],"result":[0,1,0]}
+{"args":[".pass-no-boundary-label"],"result":[0,1,0]}
+{"args":[".pass-no-boundary-list"],"result":[0,1,0]}
+{"args":[".pass-no-boundary-list li"],"result":[0,1,1]}
+{"args":[".pass-top-rule"],"result":[0,1,0]}
+{"args":[".pass-top-rule-label"],"result":[0,1,0]}
+{"args":[".pass-top-rule-list"],"result":[0,1,0]}
+{"args":[".pass-top-rule-list li"],"result":[0,1,1]}
+{"args":[".pass-bordered-padded"],"result":[0,1,0]}
+{"args":[".pass-bordered-padded h4"],"result":[0,1,1]}
+{"args":[".pass-bordered-padded p"],"result":[0,1,1]}
+{"args":[".pass-bg-padded"],"result":[0,1,0]}
+{"args":[".pass-bg-padded h4"],"result":[0,1,1]}
+{"args":[".pass-bg-padded p"],"result":[0,1,1]}
+{"args":[".pass-outline-padded"],"result":[0,1,0]}
+{"args":[".pass-outline-padded h4"],"result":[0,1,1]}
+{"args":[".pass-outline-padded p"],"result":[0,1,1]}
+{"args":[".pass-image-only"],"result":[0,1,0]}
+{"args":[".pass-image-only .placeholder-img"],"result":[0,2,0]}
+{"args":[".pass-margin-inset"],"result":[0,1,0]}
+{"args":[".pass-margin-inset h4"],"result":[0,1,1]}
+{"args":[".pass-margin-inset p"],"result":[0,1,1]}
+{"args":[".pass-inner-shell"],"result":[0,1,0]}
+{"args":[".pass-inner-shell .inner-shell"],"result":[0,2,0]}
+{"args":[".pass-inner-shell h4"],"result":[0,1,1]}
+{"args":[".pass-inner-shell p"],"result":[0,1,1]}
+{"args":[".pass-same-bg-parent"],"result":[0,1,0]}
+{"args":[".pass-same-bg-child"],"result":[0,1,0]}
+{"args":[".pass-same-bg-child h4"],"result":[0,1,1]}
+{"args":[".pass-same-bg-child p"],"result":[0,1,1]}
+{"args":[".pass-marquee-shell"],"result":[0,1,0]}
+{"args":[".pass-marquee-track"],"result":[0,1,0]}
+{"args":[".pass-marquee-card"],"result":[0,1,0]}
+{"args":[".pass-marquee-card p"],"result":[0,1,1]}
+{"args":[".pass-inner-text-surface"],"result":[0,1,0]}
+{"args":[".pass-inner-text-surface-window"],"result":[0,1,0]}
+{"args":[".pass-inner-text-surface-window p"],"result":[0,1,1]}
+{"args":[".cols"],"result":[0,1,0]}
+{"args":[".box"],"result":[0,1,0]}
+{"args":[".pop"],"result":[0,1,0]}
+{"args":[".tip-negative"],"result":[0,1,0]}
+{"args":[".flyout"],"result":[0,1,0]}
+{"args":[".contained-badge"],"result":[0,1,0]}
+{"args":[".button-shine"],"result":[0,1,0]}
+{"args":[".crop-photo"],"result":[0,1,0]}
+{"args":[".inside-overlay"],"result":[0,1,0]}
+{"args":[".pass-hidden-button"],"result":[0,1,0]}
+{"args":[".pass-carousel-viewport"],"result":[0,1,0]}
+{"args":[".pass-fisheye-list"],"result":[0,1,0]}
+{"args":[".pass-split-container"],"result":[0,1,0]}
+{"args":[".carousel-slide-next"],"result":[0,1,0]}
+{"args":[".fisheye-next-item"],"result":[0,1,0]}
+{"args":[".split-after-panel"],"result":[0,1,0]}
+{"args":[".stripes"],"result":[0,1,0]}
+{"args":["img"],"result":[0,0,1]}
+{"args":[".flag-css-hover img"],"result":[0,1,1]}
+{"args":[".flag-css-hover img:hover"],"result":[0,2,1]}
+{"args":[".card:hover"],"result":[0,2,0]}
+{"args":["pre"],"result":[0,0,1]}
+{"args":["code"],"result":[0,0,1]}
+{"args":[".gradient-heading"],"result":[0,1,0]}
+{"args":[".panel-srgb"],"result":[0,1,0]}
+{"args":[".panel-mix"],"result":[0,1,0]}
+{"args":[".panel-p3"],"result":[0,1,0]}
+{"args":[".panel-lch"],"result":[0,1,0]}
+{"args":[".panel-light"],"result":[0,1,0]}
+{"args":[".panel-unreadable"],"result":[0,1,0]}
+{"args":[".panel-image-over-gradient"],"result":[0,1,0]}
+{"args":[".panel-inherit"],"result":[0,1,0]}
+{"args":[".panel-current"],"result":[0,1,0]}
+{"args":[".text-pale-2"],"result":[0,1,0]}
+{"args":[".text-light"],"result":[0,1,0]}
+{"args":[".text-dark"],"result":[0,1,0]}
+{"args":[".text-muted-ground"],"result":[0,1,0]}
+{"args":[".text-dim-srgb"],"result":[0,1,0]}
+{"args":[".text-dim-p3"],"result":[0,1,0]}
+{"args":[".text-dim-lch"],"result":[0,1,0]}
+{"args":[".text-pale-light"],"result":[0,1,0]}

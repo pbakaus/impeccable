@@ -23,10 +23,10 @@ describe('ci-test-plan', () => {
     assert.equal(outputs.live_svelte_adapter_deepseek, 'false');
   });
 
-  it('routes detector changes to detector tests only', () => {
+  it('routes extension changes to detector tests only', () => {
     const outputs = runPlan({
       GITHUB_EVENT_NAME: 'pull_request',
-      CI_CHANGED_FILES: 'cli/engine/detect-antipatterns.mjs',
+      CI_CHANGED_FILES: 'extension/manifest.json',
     });
 
     assert.equal(outputs.detector, 'true');
@@ -34,13 +34,13 @@ describe('ci-test-plan', () => {
     assert.equal(outputs.framework, 'false');
   });
 
-  it('routes live server changes to live unit and full live E2E lanes', () => {
+  it('routes an engine version bump to every binary-driven lane', () => {
     const outputs = runPlan({
       GITHUB_EVENT_NAME: 'pull_request',
-      CI_CHANGED_FILES: 'skill/scripts/live-server.mjs',
+      CI_CHANGED_FILES: 'ENGINE_VERSION',
     });
 
-    assert.equal(outputs.live, 'true');
+    assert.equal(outputs.framework, 'true');
     assert.equal(outputs.live_e2e, 'true');
     assert.equal(outputs.live_e2e_accept_cleanup, 'true');
     assert.equal(outputs.live_svelte_adapter_deepseek, 'true');

@@ -1,0 +1,35 @@
+{"args":["transform 0.3s"],"result":{"property":"transform","timing":""}}
+{"args":["transform 0.5s cubic-bezier(0.68,-0.55,0.265,1.55)"],"result":{"property":"transform","timing":"cubic-bezier(0.68,-0.55,0.265,1.55)"}}
+{"args":["width 0.3s ease"],"result":{"property":"width","timing":"ease"}}
+{"args":["height 0.4s ease-out"],"result":{"property":"height","timing":"ease-out"}}
+{"args":["padding 0.2s linear"],"result":{"property":"padding","timing":"linear"}}
+{"args":["margin 0.3s ease-in"],"result":{"property":"margin","timing":"ease-in"}}
+{"args":["max-height 0.5s ease"],"result":{"property":"max-height","timing":"ease"}}
+{"args":["width 0.3s ease,height 0.3s ease"],"result":{"property":"width, height","timing":"ease, ease"}}
+{"args":["width 0.3s ease,opacity 0.3s ease"],"result":{"property":"width, opacity","timing":"ease, ease"}}
+{"args":["transform 0.4s cubic-bezier(0.25,1,0.5,1)"],"result":{"property":"transform","timing":"cubic-bezier(0.25,1,0.5,1)"}}
+{"args":["transform 0.5s cubic-bezier(0.16,1,0.3,1)"],"result":{"property":"transform","timing":"cubic-bezier(0.16,1,0.3,1)"}}
+{"args":["transform 0.3s ease-out"],"result":{"property":"transform","timing":"ease-out"}}
+{"args":["opacity 0.2s ease"],"result":{"property":"opacity","timing":"ease"}}
+{"args":["color 0.15s ease,background-color 0.15s ease"],"result":{"property":"color, background-color","timing":"ease, ease"}}
+{"args":["box-shadow 0.2s ease"],"result":{"property":"box-shadow","timing":"ease"}}
+{"args":["all 0.3s ease"],"result":{"property":"all","timing":"ease"}}
+{"args":["transform 0.3s ease,opacity 0.3s ease,box-shadow 0.2s ease"],"result":{"property":"transform, opacity, box-shadow","timing":"ease, ease, ease"}}
+{"args":["opacity 0.4s ease-out,transform 0.4s ease-out"],"result":{"property":"opacity, transform","timing":"ease-out, ease-out"}}
+{"args":["transform 0.5s cubic-bezier(0.68,-0.55,0.265,1.55)"],"result":{"property":"transform","timing":"cubic-bezier(0.68,-0.55,0.265,1.55)"}}
+{"args":["width 0.3s ease"],"result":{"property":"width","timing":"ease"}}
+{"args":["height 0.4s ease-out"],"result":{"property":"height","timing":"ease-out"}}
+{"args":["padding 0.2s linear"],"result":{"property":"padding","timing":"linear"}}
+{"args":["margin 0.3s ease-in"],"result":{"property":"margin","timing":"ease-in"}}
+{"args":["max-height 0.5s ease"],"result":{"property":"max-height","timing":"ease"}}
+{"args":["width 0.3s ease,height 0.3s ease"],"result":{"property":"width, height","timing":"ease, ease"}}
+{"args":["width 0.3s ease,opacity 0.3s ease"],"result":{"property":"width, opacity","timing":"ease, ease"}}
+{"args":["transform 0.4s cubic-bezier(0.25,1,0.5,1)"],"result":{"property":"transform","timing":"cubic-bezier(0.25,1,0.5,1)"}}
+{"args":["transform 0.5s cubic-bezier(0.16,1,0.3,1)"],"result":{"property":"transform","timing":"cubic-bezier(0.16,1,0.3,1)"}}
+{"args":["transform 0.3s ease-out"],"result":{"property":"transform","timing":"ease-out"}}
+{"args":["opacity 0.2s ease"],"result":{"property":"opacity","timing":"ease"}}
+{"args":["color 0.15s ease,background-color 0.15s ease"],"result":{"property":"color, background-color","timing":"ease, ease"}}
+{"args":["box-shadow 0.2s ease"],"result":{"property":"box-shadow","timing":"ease"}}
+{"args":["all 0.3s ease"],"result":{"property":"all","timing":"ease"}}
+{"args":["transform 0.3s ease,opacity 0.3s ease,box-shadow 0.2s ease"],"result":{"property":"transform, opacity, box-shadow","timing":"ease, ease, ease"}}
+{"args":["transform 0.3s"],"result":{"property":"transform","timing":""}}

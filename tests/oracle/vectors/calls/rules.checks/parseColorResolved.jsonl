@@ -1,0 +1,8 @@
+{"args":["rgba(0,0,0,0.03)",null],"result":{"r":0,"g":0,"b":0,"a":0.03}}
+{"args":["rgba(0,0,0,0)",null],"result":{"r":0,"g":0,"b":0,"a":0}}
+{"args":["var(--fixture-undefined-token)",null],"result":null}
+{"args":["none",null],"result":null}
+{"args":["rgba(0,0,0,0.03)",null],"result":{"r":0,"g":0,"b":0,"a":0.03}}
+{"args":["rgba(0,0,0,0)",null],"result":{"r":0,"g":0,"b":0,"a":0}}
+{"args":["var(--fixture-undefined-token)",null],"result":null}
+{"args":["none",null],"result":null}

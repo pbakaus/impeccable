@@ -4,19 +4,35 @@
 implementation and captures stdout, stderr, exit code, and named files, with
 machine-specific paths and timestamps normalized.
 
-- `record.mjs` writes goldens from the JS scripts (`skill/scripts`, `cli/bin`).
+- The goldens are **frozen JS behavior**: they were recorded from the Node
+  scripts (`skill/scripts`, `cli/bin`) before those left the tree with the
+  launcher swap, plus the reviewed deltas in `DELTAS.md`. They are the
+  behavior contract the engine binary is held to.
+- `record.mjs --bin` (with `$IMPECCABLE_BIN` or `--bin=/path`) writes goldens
+  from the binary, for new cases or a delta a review accepted. Plain
+  `record.mjs` still targets the JS scripts and only works on a checkout that
+  has them (history before the swap).
 - `run.mjs` replays the corpus against `$IMPECCABLE_BIN` (or `--js` for a
-  self-check) and diffs. Byte-equal is the bar; `DELTAS.md` lists reviewed
-  exceptions.
+  self-check on a pre-swap checkout) and diffs. Byte-equal is the bar;
+  `DELTAS.md` lists reviewed exceptions.
+- `tests/oracle.test.mjs` runs `run.mjs` under `bun run test` and skips when
+  no binary is found (`IMPECCABLE_BIN` or `skill/scripts/bin/<os>-<arch>/`,
+  filled by `bun run fetch:engine`).
 - `cases/*.mjs` define the corpus (default export: array or async function
   returning an array). `workspaces/` holds project fixtures that are copied to
   a temp dir per run, so cases can write freely.
 
 Adding a case: append to the matching `cases/*.mjs`, run
-`node tests/oracle/record.mjs <prefix>`, commit the golden.
+`node tests/oracle/record.mjs --bin <prefix>`, review the golden by hand
+(the binary is now the recorder, so a bug in it would be frozen too), commit
+the golden.
 
 Verb names are the binary's subcommands. `cli-help` and `cli-version` map to
-`impeccable --help` / `--version`.
+`impeccable --help` / `--version`. `lib.mjs` still carries the `JS_VERBS`
+table that maps each verb to the script it was recorded from.
+
+`vectors/` holds the function-level vectors recorded from the JS engine's pure
+functions; see `vectors/README.md`.
 
 ## Corpus files
 

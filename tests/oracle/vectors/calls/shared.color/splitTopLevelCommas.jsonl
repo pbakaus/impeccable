@@ -1,0 +1,154 @@
+{"args":["linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent)"],"result":["linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent)"]}
+{"args":["linear-gradient(135deg,#b7d7ff,#486aa3)"],"result":["linear-gradient(135deg,#b7d7ff,#486aa3)"]}
+{"args":["linear-gradient(180deg, #3b82f6 0%, #8b5cf6 100%)"],"result":["linear-gradient(180deg, #3b82f6 0%, #8b5cf6 100%)"]}
+{"args":["linear-gradient(135deg, #667eea, #764ba2)"],"result":["linear-gradient(135deg, #667eea, #764ba2)"]}
+{"args":["linear-gradient(to right, rgb(168, 85, 247), rgb(99, 102, 241))"],"result":["linear-gradient(to right, rgb(168, 85, 247), rgb(99, 102, 241))"]}
+{"args":["url('data:image/png"],"result":["url('data:image/png"]}
+{"args":["linear-gradient(135deg,#6d8cff 0%,#a78bfa 50%,#6d8cff 100%)"],"result":["linear-gradient(135deg,#6d8cff 0%,#a78bfa 50%,#6d8cff 100%)"]}
+{"args":["linear-gradient(160deg,rgba(52,192,168,0.09) 0%,#141419 65%)"],"result":["linear-gradient(160deg,rgba(52,192,168,0.09) 0%,#141419 65%)"]}
+{"args":["linear-gradient(160deg,color-mix(in oklab,oklch(90%0.02 95) 16%,transparent) 0%,#141419 65%)"],"result":["linear-gradient(160deg,color-mix(in oklab,oklch(90%0.02 95) 16%,transparent) 0%,#141419 65%)"]}
+{"args":["in oklab,oklch(90%0.02 95) 16%,transparent"],"result":["in oklab","oklch(90%0.02 95) 16%","transparent"]}
+{"args":["linear-gradient(135deg,#7c3aed,#a855f7)"],"result":["linear-gradient(135deg,#7c3aed,#a855f7)"]}
+{"args":["linear-gradient(90deg, #667eea, #764ba2)"],"result":["linear-gradient(90deg, #667eea, #764ba2)"]}
+{"args":["linear-gradient(180deg,oklch(7%0.006 95),oklch(4%0.004 95))"],"result":["linear-gradient(180deg,oklch(7%0.006 95),oklch(4%0.004 95))"]}
+{"args":["linear-gradient(180deg,#14120f,#0a0908)"],"result":["linear-gradient(180deg,#14120f,#0a0908)"]}
+{"args":["linear-gradient(180deg,rgba(255,255,255,0.3),rgba(255,255,255,0.2)),url(/fixtures/antipatterns/no-such-texture.png)center/cover"],"result":["linear-gradient(180deg,rgba(255,255,255,0.3),rgba(255,255,255,0.2))","url(/fixtures/antipatterns/no-such-texture.png)center/cover"]}
+{"args":["url(/fixtures/antipatterns/no-such-photo.jpg)"],"result":["url(/fixtures/antipatterns/no-such-photo.jpg)"]}
+{"args":["in srgb,white 6%,#0b0b0d"],"result":["in srgb","white 6%","#0b0b0d"]}
+{"args":["linear-gradient(oklch(0.07 0.006 95),oklch(0.11 0.008 95))"],"result":["linear-gradient(oklch(0.07 0.006 95),oklch(0.11 0.008 95))"]}
+{"args":["url(opaque-panel.png),linear-gradient(#ff0000,#0000ff)"],"result":["url(opaque-panel.png)","linear-gradient(#ff0000,#0000ff)"]}
+{"args":["linear-gradient(135deg,#cbd5e1,#94a3b8)"],"result":["linear-gradient(135deg,#cbd5e1,#94a3b8)"]}
+{"args":["url(/fixtures/antipatterns/missing-photo.png)"],"result":["url(/fixtures/antipatterns/missing-photo.png)"]}
+{"args":["linear-gradient(#111827,#0b1220),url(/fixtures/antipatterns/missing-photo.png)"],"result":["linear-gradient(#111827,#0b1220)","url(/fixtures/antipatterns/missing-photo.png)"]}
+{"args":["linear-gradient(rgba(0,0,0,0.2),rgba(0,0,0,0.2)),url(/fixtures/antipatterns/missing-photo.png)"],"result":["linear-gradient(rgba(0,0,0,0.2),rgba(0,0,0,0.2))","url(/fixtures/antipatterns/missing-photo.png)"]}
+{"args":["repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px)"],"result":["repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px)"]}
+{"args":["linear-gradient(90deg, oklch(96% 0.012 82 / 0.055) 1px, transparent 1px), linear-gradient(180deg, oklch(96% 0.012 82 / 0.05) 1px, transparent 1px)"],"result":["linear-gradient(90deg, oklch(96% 0.012 82 / 0.055) 1px, transparent 1px)","linear-gradient(180deg, oklch(96% 0.012 82 / 0.05) 1px, transparent 1px)"]}
+{"args":["linear-gradient(180deg, #f3f4f6, #ffffff)"],"result":["linear-gradient(180deg, #f3f4f6, #ffffff)"]}
+{"args":["linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"],"result":["linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"]}
+{"args":["linear-gradient(90deg, #f3f4f6, #e5e7eb), linear-gradient(180deg, #eef2ff, #ffffff)"],"result":["linear-gradient(90deg, #f3f4f6, #e5e7eb)","linear-gradient(180deg, #eef2ff, #ffffff)"]}
+{"args":["linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px), linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"],"result":["linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)","linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"]}
+{"args":["linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"],"result":["linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"]}
+{"args":["linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%)"],"result":["linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%)"]}
+{"args":["linear-gradient(135deg,#8b5cf6,#a855f7)"],"result":["linear-gradient(135deg,#8b5cf6,#a855f7)"]}
+{"args":["linear-gradient(180deg,#f2efe6,#e8e4d8)"],"result":["linear-gradient(180deg,#f2efe6,#e8e4d8)"]}
+{"args":["url(data:image/svg+xml;utf8,<svg\\ xmlns=\\'http://www.w3.org/2000/svg\\'\\ width=\\'100\\'\\ height=\\'100\\'><rect\\ width=\\'100\\'\\ height=\\'100\\'\\ fill=\\'%23f5f2ea\\'/></svg>)center/cover no-repeat"],"result":["url(data:image/svg+xml;utf8,<svg\\ xmlns=\\'http://www.w3.org/2000/svg\\'\\ width=\\'100\\'\\ height=\\'100\\'><rect\\ width=\\'100\\'\\ height=\\'100\\'\\ fill=\\'%23f5f2ea\\'/></svg>)center/cover no-repeat"]}
+{"args":["linear-gradient(90deg,#f2b854,#e8a83e)"],"result":["linear-gradient(90deg,#f2b854,#e8a83e)"]}
+{"args":["url(data:image/gif;base64,R0lGODlhAQABAIAAAP7uSwAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==)"],"result":["url(data:image/gif;base64,R0lGODlhAQABAIAAAP7uSwAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==)"]}
+{"args":["linear-gradient(135deg,#8b5cf6,#6366f1)"],"result":["linear-gradient(135deg,#8b5cf6,#6366f1)"]}
+{"args":["radial-gradient(circle at 52% 38%,rgba(80,111,255,0.26),transparent 44%)"],"result":["radial-gradient(circle at 52% 38%,rgba(80,111,255,0.26),transparent 44%)"]}
+{"args":["radial-gradient(circle,rgba(139,92,246,0.30),transparent 60%)"],"result":["radial-gradient(circle,rgba(139,92,246,0.30),transparent 60%)"]}
+{"args":["radial-gradient(ellipse at top,rgba(34,211,238,0.22),transparent 70%)"],"result":["radial-gradient(ellipse at top,rgba(34,211,238,0.22),transparent 70%)"]}
+{"args":["radial-gradient(circle,rgba(255,90,120,0.28) 0%,rgba(255,90,120,0.12) 45%,transparent 75%)"],"result":["radial-gradient(circle,rgba(255,90,120,0.28) 0%,rgba(255,90,120,0.12) 45%,transparent 75%)"]}
+{"args":["radial-gradient(circle,#506fff3d,transparent 50%)"],"result":["radial-gradient(circle,#506fff3d,transparent 50%)"]}
+{"args":["radial-gradient(circle,#1e3a8a,#0f172a)"],"result":["radial-gradient(circle,#1e3a8a,#0f172a)"]}
+{"args":["radial-gradient(circle,rgba(80,111,255,0.30),transparent)"],"result":["radial-gradient(circle,rgba(80,111,255,0.30),transparent)"]}
+{"args":["radial-gradient(circle,rgba(255,196,64,0.35),transparent 70%)"],"result":["radial-gradient(circle,rgba(255,196,64,0.35),transparent 70%)"]}
+{"args":["radial-gradient(circle,rgba(0,0,0,0.40),transparent 80%)"],"result":["radial-gradient(circle,rgba(0,0,0,0.40),transparent 80%)"]}
+{"args":["radial-gradient(ellipse,rgba(255,255,255,0.35),transparent 70%)"],"result":["radial-gradient(ellipse,rgba(255,255,255,0.35),transparent 70%)"]}
+{"args":["radial-gradient(circle,#ff0080 0%,#7928ca 45%,#0070f3 100%)"],"result":["radial-gradient(circle,#ff0080 0%,#7928ca 45%,#0070f3 100%)"]}
+{"args":["radial-gradient(circle,rgba(255,0,128,0.90) 0%,rgba(121,40,202,0.85) 50%,transparent)"],"result":["radial-gradient(circle,rgba(255,0,128,0.90) 0%,rgba(121,40,202,0.85) 50%,transparent)"]}
+{"args":["radial-gradient(circle,rgba(80,111,255,0.85),transparent)"],"result":["radial-gradient(circle,rgba(80,111,255,0.85),transparent)"]}
+{"args":["linear-gradient(120deg,rgba(80,111,255,0.28),transparent 60%)"],"result":["linear-gradient(120deg,rgba(80,111,255,0.28),transparent 60%)"]}
+{"args":["circle at 52% 38%,rgba(80,111,255,0.26),transparent 44%"],"result":["circle at 52% 38%","rgba(80,111,255,0.26)","transparent 44%"]}
+{"args":["circle,rgba(139,92,246,0.30),transparent 60%"],"result":["circle","rgba(139,92,246,0.30)","transparent 60%"]}
+{"args":["ellipse at top,rgba(34,211,238,0.22),transparent 70%"],"result":["ellipse at top","rgba(34,211,238,0.22)","transparent 70%"]}
+{"args":["circle,rgba(255,90,120,0.28) 0%,rgba(255,90,120,0.12) 45%,transparent 75%"],"result":["circle","rgba(255,90,120,0.28) 0%","rgba(255,90,120,0.12) 45%","transparent 75%"]}
+{"args":["circle,#506fff3d,transparent 50%"],"result":["circle","#506fff3d","transparent 50%"]}
+{"args":["circle,#1e3a8a,#0f172a"],"result":["circle","#1e3a8a","#0f172a"]}
+{"args":["circle,rgba(80,111,255,0.30),transparent"],"result":["circle","rgba(80,111,255,0.30)","transparent"]}
+{"args":["circle,rgba(255,196,64,0.35),transparent 70%"],"result":["circle","rgba(255,196,64,0.35)","transparent 70%"]}
+{"args":["circle,rgba(0,0,0,0.40),transparent 80%"],"result":["circle","rgba(0,0,0,0.40)","transparent 80%"]}
+{"args":["ellipse,rgba(255,255,255,0.35),transparent 70%"],"result":["ellipse","rgba(255,255,255,0.35)","transparent 70%"]}
+{"args":["circle,#ff0080 0%,#7928ca 45%,#0070f3 100%"],"result":["circle","#ff0080 0%","#7928ca 45%","#0070f3 100%"]}
+{"args":["circle,rgba(255,0,128,0.90) 0%,rgba(121,40,202,0.85) 50%,transparent"],"result":["circle","rgba(255,0,128,0.90) 0%","rgba(121,40,202,0.85) 50%","transparent"]}
+{"args":["circle,rgba(80,111,255,0.85),transparent"],"result":["circle","rgba(80,111,255,0.85)","transparent"]}
+{"args":["circle at 52% 38%, rgba(80,111,255,0.26), transparent 44%"],"result":["circle at 52% 38%","rgba(80,111,255,0.26)","transparent 44%"]}
+{"args":["circle, rgba(139,92,246,0.30), transparent 60%"],"result":["circle","rgba(139,92,246,0.30)","transparent 60%"]}
+{"args":["ellipse at top, rgba(34,211,238,0.22), transparent 70%"],"result":["ellipse at top","rgba(34,211,238,0.22)","transparent 70%"]}
+{"args":["circle, rgba(255,90,120,0.28) 0%, rgba(255,90,120,0.12) 45%, transparent 75%"],"result":["circle","rgba(255,90,120,0.28) 0%","rgba(255,90,120,0.12) 45%","transparent 75%"]}
+{"args":["circle, #506fff3d, transparent 50%"],"result":["circle","#506fff3d","transparent 50%"]}
+{"args":["circle, #1e3a8a, #0f172a"],"result":["circle","#1e3a8a","#0f172a"]}
+{"args":["circle, rgba(80,111,255,0.30), transparent"],"result":["circle","rgba(80,111,255,0.30)","transparent"]}
+{"args":["circle, rgba(255,196,64,0.35), transparent 70%"],"result":["circle","rgba(255,196,64,0.35)","transparent 70%"]}
+{"args":["circle, rgba(0,0,0,0.40), transparent 80%"],"result":["circle","rgba(0,0,0,0.40)","transparent 80%"]}
+{"args":["ellipse, rgba(255,255,255,0.35), transparent 70%"],"result":["ellipse","rgba(255,255,255,0.35)","transparent 70%"]}
+{"args":["circle, #ff0080 0%, #7928ca 45%, #0070f3 100%"],"result":["circle","#ff0080 0%","#7928ca 45%","#0070f3 100%"]}
+{"args":["circle, rgba(255,0,128,0.90) 0%, rgba(121,40,202,0.85) 50%, transparent"],"result":["circle","rgba(255,0,128,0.90) 0%","rgba(121,40,202,0.85) 50%","transparent"]}
+{"args":["circle, rgba(80,111,255,0.85), transparent"],"result":["circle","rgba(80,111,255,0.85)","transparent"]}
+{"args":["linear-gradient(transparent,rgba(0,0,0,.6))"],"result":["linear-gradient(transparent,rgba(0,0,0,.6))"]}
+{"args":["url(data:image/svg+xml,%3Csvg\\ xmlns=\\'http://www.w3.org/2000/svg\\'\\ viewBox=\\'0\\ 0\\ 420\\ 240\\'%3E%3Crect\\ width=\\'420\\'\\ height=\\'240\\'\\ fill=\\'%23ece8df\\'/%3E%3Ccircle\\ cx=\\'308\\'\\ cy=\\'58\\'\\ r=\\'132\\'\\ fill=\\'%23faf7f0\\'/%3E%3Cpath\\ d=\\'M0\\ 186c52-22\\ 92-26\\ 142-8s98\\ 18\\ 148-8\\ 92-22\\ 130\\ 0v70H0z\\'\\ fill=\\'%23f5efe4\\'/%3E%3C/svg%3E)"],"result":["url(data:image/svg+xml,%3Csvg\\ xmlns=\\'http://www.w3.org/2000/svg\\'\\ viewBox=\\'0\\ 0\\ 420\\ 240\\'%3E%3Crect\\ width=\\'420\\'\\ height=\\'240\\'\\ fill=\\'%23ece8df\\'/%3E%3Ccircle\\ cx=\\'308\\'\\ cy=\\'58\\'\\ r=\\'132\\'\\ fill=\\'%23faf7f0\\'/%3E%3Cpath\\ d=\\'M0\\ 186c52-22\\ 92-26\\ 142-8s98\\ 18\\ 148-8\\ 92-22\\ 130\\ 0v70H0z\\'\\ fill=\\'%23f5efe4\\'/%3E%3C/svg%3E)"]}
+{"args":["url(data:image/svg+xml,%3Csvg\\ xmlns=\\'http://www.w3.org/2000/svg\\'\\ viewBox=\\'0\\ 0\\ 420\\ 240\\'%3E%3Crect\\ width=\\'420\\'\\ height=\\'240\\'\\ fill=\\'%23191b20\\'/%3E%3Ccircle\\ cx=\\'316\\'\\ cy=\\'50\\'\\ r=\\'132\\'\\ fill=\\'%232d3440\\'/%3E%3Cpath\\ d=\\'M0\\ 182c70-48\\ 138-42\\ 204-6s128\\ 24\\ 216-58v122H0z\\'\\ fill=\\'%23101318\\'/%3E%3C/svg%3E)"],"result":["url(data:image/svg+xml,%3Csvg\\ xmlns=\\'http://www.w3.org/2000/svg\\'\\ viewBox=\\'0\\ 0\\ 420\\ 240\\'%3E%3Crect\\ width=\\'420\\'\\ height=\\'240\\'\\ fill=\\'%23191b20\\'/%3E%3Ccircle\\ cx=\\'316\\'\\ cy=\\'50\\'\\ r=\\'132\\'\\ fill=\\'%232d3440\\'/%3E%3Cpath\\ d=\\'M0\\ 182c70-48\\ 138-42\\ 204-6s128\\ 24\\ 216-58v122H0z\\'\\ fill=\\'%23101318\\'/%3E%3C/svg%3E)"]}
+{"args":["url(data:image/svg+xml,%3Csvg\\ xmlns=\\'http://www.w3.org/2000/svg\\'\\ viewBox=\\'0\\ 0\\ 420\\ 240\\'%3E%3Crect\\ width=\\'420\\'\\ height=\\'240\\'\\ fill=\\'%23edf2f7\\'/%3E%3Cg\\ fill=\\'%23f8fafc\\'%3E%3Ccircle\\ cx=\\'60\\'\\ cy=\\'64\\'\\ r=\\'42\\'/%3E%3Ccircle\\ cx=\\'182\\'\\ cy=\\'142\\'\\ r=\\'58\\'/%3E%3Ccircle\\ cx=\\'336\\'\\ cy=\\'84\\'\\ r=\\'74\\'/%3E%3C/g%3E%3Cg\\ stroke=\\'%23dbe4ef\\'\\ stroke-width=\\'14\\'\\ opacity=\\'.55\\'%3E%3Cpath\\ d=\\'M-20\\ 220C74\\ 112\\ 150\\ 94\\ 232\\ 164s138\\ 46\\ 214-62\\'\\ fill=\\'none\\'/%3E%3C/g%3E%3C/svg%3E)"],"result":["url(data:image/svg+xml,%3Csvg\\ xmlns=\\'http://www.w3.org/2000/svg\\'\\ viewBox=\\'0\\ 0\\ 420\\ 240\\'%3E%3Crect\\ width=\\'420\\'\\ height=\\'240\\'\\ fill=\\'%23edf2f7\\'/%3E%3Cg\\ fill=\\'%23f8fafc\\'%3E%3Ccircle\\ cx=\\'60\\'\\ cy=\\'64\\'\\ r=\\'42\\'/%3E%3Ccircle\\ cx=\\'182\\'\\ cy=\\'142\\'\\ r=\\'58\\'/%3E%3Ccircle\\ cx=\\'336\\'\\ cy=\\'84\\'\\ r=\\'74\\'/%3E%3C/g%3E%3Cg\\ stroke=\\'%23dbe4ef\\'\\ stroke-width=\\'14\\'\\ opacity=\\'.55\\'%3E%3Cpath\\ d=\\'M-20\\ 220C74\\ 112\\ 150\\ 94\\ 232\\ 164s138\\ 46\\ 214-62\\'\\ fill=\\'none\\'/%3E%3C/g%3E%3C/svg%3E)"]}
+{"args":["url(data:image/svg+xml,%3Csvg\\ xmlns=\\'http://www.w3.org/2000/svg\\'\\ viewBox=\\'0\\ 0\\ 420\\ 240\\'%3E%3Crect\\ width=\\'420\\'\\ height=\\'240\\'\\ fill=\\'%23b9c4cf\\'/%3E%3Cpath\\ d=\\'M0\\ 52c74-28\\ 138-22\\ 194\\ 18s124\\ 38\\ 226-28v198H0z\\'\\ fill=\\'%23cbd3dc\\'/%3E%3Ccircle\\ cx=\\'82\\'\\ cy=\\'176\\'\\ r=\\'68\\'\\ fill=\\'%23aeb8c4\\'/%3E%3C/svg%3E)"],"result":["url(data:image/svg+xml,%3Csvg\\ xmlns=\\'http://www.w3.org/2000/svg\\'\\ viewBox=\\'0\\ 0\\ 420\\ 240\\'%3E%3Crect\\ width=\\'420\\'\\ height=\\'240\\'\\ fill=\\'%23b9c4cf\\'/%3E%3Cpath\\ d=\\'M0\\ 52c74-28\\ 138-22\\ 194\\ 18s124\\ 38\\ 226-28v198H0z\\'\\ fill=\\'%23cbd3dc\\'/%3E%3Ccircle\\ cx=\\'82\\'\\ cy=\\'176\\'\\ r=\\'68\\'\\ fill=\\'%23aeb8c4\\'/%3E%3C/svg%3E)"]}
+{"args":["linear-gradient(180deg, #3b82f6 0%, #8b5cf6 100%)"],"result":["linear-gradient(180deg, #3b82f6 0%, #8b5cf6 100%)"]}
+{"args":["linear-gradient(135deg, #667eea, #764ba2)"],"result":["linear-gradient(135deg, #667eea, #764ba2)"]}
+{"args":["linear-gradient(to right, rgb(168, 85, 247), rgb(99, 102, 241))"],"result":["linear-gradient(to right, rgb(168, 85, 247), rgb(99, 102, 241))"]}
+{"args":["url('data:image/png"],"result":["url('data:image/png"]}
+{"args":["linear-gradient(135deg,#6d8cff 0%,#a78bfa 50%,#6d8cff 100%)"],"result":["linear-gradient(135deg,#6d8cff 0%,#a78bfa 50%,#6d8cff 100%)"]}
+{"args":["linear-gradient(160deg,rgba(52,192,168,0.09) 0%,#141419 65%)"],"result":["linear-gradient(160deg,rgba(52,192,168,0.09) 0%,#141419 65%)"]}
+{"args":["linear-gradient(160deg,color-mix(in oklab,oklch(90%0.02 95) 16%,transparent) 0%,#141419 65%)"],"result":["linear-gradient(160deg,color-mix(in oklab,oklch(90%0.02 95) 16%,transparent) 0%,#141419 65%)"]}
+{"args":["in oklab,oklch(90%0.02 95) 16%,transparent"],"result":["in oklab","oklch(90%0.02 95) 16%","transparent"]}
+{"args":["linear-gradient(180deg,oklch(7%0.006 95),oklch(4%0.004 95))"],"result":["linear-gradient(180deg,oklch(7%0.006 95),oklch(4%0.004 95))"]}
+{"args":["linear-gradient(180deg,#14120f,#0a0908)"],"result":["linear-gradient(180deg,#14120f,#0a0908)"]}
+{"args":["linear-gradient(180deg,rgba(255,255,255,0.3),rgba(255,255,255,0.2)),url(/fixtures/antipatterns/no-such-texture.png)center/cover"],"result":["linear-gradient(180deg,rgba(255,255,255,0.3),rgba(255,255,255,0.2))","url(/fixtures/antipatterns/no-such-texture.png)center/cover"]}
+{"args":["url(/fixtures/antipatterns/no-such-photo.jpg)"],"result":["url(/fixtures/antipatterns/no-such-photo.jpg)"]}
+{"args":["linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%)"],"result":["linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%)"]}
+{"args":["linear-gradient(135deg,#8b5cf6,#a855f7)"],"result":["linear-gradient(135deg,#8b5cf6,#a855f7)"]}
+{"args":["radial-gradient(circle at 52% 38%,rgba(80,111,255,0.26),transparent 44%)"],"result":["radial-gradient(circle at 52% 38%,rgba(80,111,255,0.26),transparent 44%)"]}
+{"args":["radial-gradient(circle,rgba(139,92,246,0.30),transparent 60%)"],"result":["radial-gradient(circle,rgba(139,92,246,0.30),transparent 60%)"]}
+{"args":["radial-gradient(ellipse at top,rgba(34,211,238,0.22),transparent 70%)"],"result":["radial-gradient(ellipse at top,rgba(34,211,238,0.22),transparent 70%)"]}
+{"args":["radial-gradient(circle,rgba(255,90,120,0.28) 0%,rgba(255,90,120,0.12) 45%,transparent 75%)"],"result":["radial-gradient(circle,rgba(255,90,120,0.28) 0%,rgba(255,90,120,0.12) 45%,transparent 75%)"]}
+{"args":["radial-gradient(circle,#506fff3d,transparent 50%)"],"result":["radial-gradient(circle,#506fff3d,transparent 50%)"]}
+{"args":["radial-gradient(circle,#1e3a8a,#0f172a)"],"result":["radial-gradient(circle,#1e3a8a,#0f172a)"]}
+{"args":["radial-gradient(circle,rgba(80,111,255,0.30),transparent)"],"result":["radial-gradient(circle,rgba(80,111,255,0.30),transparent)"]}
+{"args":["radial-gradient(circle,rgba(255,196,64,0.35),transparent 70%)"],"result":["radial-gradient(circle,rgba(255,196,64,0.35),transparent 70%)"]}
+{"args":["radial-gradient(circle,rgba(0,0,0,0.40),transparent 80%)"],"result":["radial-gradient(circle,rgba(0,0,0,0.40),transparent 80%)"]}
+{"args":["radial-gradient(ellipse,rgba(255,255,255,0.35),transparent 70%)"],"result":["radial-gradient(ellipse,rgba(255,255,255,0.35),transparent 70%)"]}
+{"args":["radial-gradient(circle,#ff0080 0%,#7928ca 45%,#0070f3 100%)"],"result":["radial-gradient(circle,#ff0080 0%,#7928ca 45%,#0070f3 100%)"]}
+{"args":["radial-gradient(circle,rgba(255,0,128,0.90) 0%,rgba(121,40,202,0.85) 50%,transparent)"],"result":["radial-gradient(circle,rgba(255,0,128,0.90) 0%,rgba(121,40,202,0.85) 50%,transparent)"]}
+{"args":["radial-gradient(circle,rgba(80,111,255,0.85),transparent)"],"result":["radial-gradient(circle,rgba(80,111,255,0.85),transparent)"]}
+{"args":["linear-gradient(120deg,rgba(80,111,255,0.28),transparent 60%)"],"result":["linear-gradient(120deg,rgba(80,111,255,0.28),transparent 60%)"]}
+{"args":["circle at 52% 38%,rgba(80,111,255,0.26),transparent 44%"],"result":["circle at 52% 38%","rgba(80,111,255,0.26)","transparent 44%"]}
+{"args":["circle,rgba(139,92,246,0.30),transparent 60%"],"result":["circle","rgba(139,92,246,0.30)","transparent 60%"]}
+{"args":["ellipse at top,rgba(34,211,238,0.22),transparent 70%"],"result":["ellipse at top","rgba(34,211,238,0.22)","transparent 70%"]}
+{"args":["circle,rgba(255,90,120,0.28) 0%,rgba(255,90,120,0.12) 45%,transparent 75%"],"result":["circle","rgba(255,90,120,0.28) 0%","rgba(255,90,120,0.12) 45%","transparent 75%"]}
+{"args":["circle,#506fff3d,transparent 50%"],"result":["circle","#506fff3d","transparent 50%"]}
+{"args":["circle,#1e3a8a,#0f172a"],"result":["circle","#1e3a8a","#0f172a"]}
+{"args":["circle,rgba(80,111,255,0.30),transparent"],"result":["circle","rgba(80,111,255,0.30)","transparent"]}
+{"args":["circle,rgba(255,196,64,0.35),transparent 70%"],"result":["circle","rgba(255,196,64,0.35)","transparent 70%"]}
+{"args":["circle,rgba(0,0,0,0.40),transparent 80%"],"result":["circle","rgba(0,0,0,0.40)","transparent 80%"]}
+{"args":["ellipse,rgba(255,255,255,0.35),transparent 70%"],"result":["ellipse","rgba(255,255,255,0.35)","transparent 70%"]}
+{"args":["circle,#ff0080 0%,#7928ca 45%,#0070f3 100%"],"result":["circle","#ff0080 0%","#7928ca 45%","#0070f3 100%"]}
+{"args":["circle,rgba(255,0,128,0.90) 0%,rgba(121,40,202,0.85) 50%,transparent"],"result":["circle","rgba(255,0,128,0.90) 0%","rgba(121,40,202,0.85) 50%","transparent"]}
+{"args":["circle,rgba(80,111,255,0.85),transparent"],"result":["circle","rgba(80,111,255,0.85)","transparent"]}
+{"args":["circle at 52% 38%, rgba(80,111,255,0.26), transparent 44%"],"result":["circle at 52% 38%","rgba(80,111,255,0.26)","transparent 44%"]}
+{"args":["circle, rgba(139,92,246,0.30), transparent 60%"],"result":["circle","rgba(139,92,246,0.30)","transparent 60%"]}
+{"args":["ellipse at top, rgba(34,211,238,0.22), transparent 70%"],"result":["ellipse at top","rgba(34,211,238,0.22)","transparent 70%"]}
+{"args":["circle, rgba(255,90,120,0.28) 0%, rgba(255,90,120,0.12) 45%, transparent 75%"],"result":["circle","rgba(255,90,120,0.28) 0%","rgba(255,90,120,0.12) 45%","transparent 75%"]}
+{"args":["circle, #506fff3d, transparent 50%"],"result":["circle","#506fff3d","transparent 50%"]}
+{"args":["circle, #1e3a8a, #0f172a"],"result":["circle","#1e3a8a","#0f172a"]}
+{"args":["circle, rgba(80,111,255,0.30), transparent"],"result":["circle","rgba(80,111,255,0.30)","transparent"]}
+{"args":["circle, rgba(255,196,64,0.35), transparent 70%"],"result":["circle","rgba(255,196,64,0.35)","transparent 70%"]}
+{"args":["circle, rgba(0,0,0,0.40), transparent 80%"],"result":["circle","rgba(0,0,0,0.40)","transparent 80%"]}
+{"args":["ellipse, rgba(255,255,255,0.35), transparent 70%"],"result":["ellipse","rgba(255,255,255,0.35)","transparent 70%"]}
+{"args":["circle, #ff0080 0%, #7928ca 45%, #0070f3 100%"],"result":["circle","#ff0080 0%","#7928ca 45%","#0070f3 100%"]}
+{"args":["circle, rgba(255,0,128,0.90) 0%, rgba(121,40,202,0.85) 50%, transparent"],"result":["circle","rgba(255,0,128,0.90) 0%","rgba(121,40,202,0.85) 50%","transparent"]}
+{"args":["circle, rgba(80,111,255,0.85), transparent"],"result":["circle","rgba(80,111,255,0.85)","transparent"]}
+{"args":["url(/fixtures/antipatterns/missing-photo.png)"],"result":["url(/fixtures/antipatterns/missing-photo.png)"]}
+{"args":["linear-gradient(#111827,#0b1220),url(/fixtures/antipatterns/missing-photo.png)"],"result":["linear-gradient(#111827,#0b1220)","url(/fixtures/antipatterns/missing-photo.png)"]}
+{"args":["linear-gradient(rgba(0,0,0,0.2),rgba(0,0,0,0.2)),url(/fixtures/antipatterns/missing-photo.png)"],"result":["linear-gradient(rgba(0,0,0,0.2),rgba(0,0,0,0.2))","url(/fixtures/antipatterns/missing-photo.png)"]}
+{"args":["linear-gradient(135deg,#cbd5e1,#94a3b8)"],"result":["linear-gradient(135deg,#cbd5e1,#94a3b8)"]}
+{"args":["linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent)"],"result":["linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent)"]}
+{"args":["linear-gradient(135deg,#b7d7ff,#486aa3)"],"result":["linear-gradient(135deg,#b7d7ff,#486aa3)"]}
+{"args":["repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px)"],"result":["repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px)"]}
+{"args":["linear-gradient(90deg, oklch(96% 0.012 82 / 0.055) 1px, transparent 1px), linear-gradient(180deg, oklch(96% 0.012 82 / 0.05) 1px, transparent 1px)"],"result":["linear-gradient(90deg, oklch(96% 0.012 82 / 0.055) 1px, transparent 1px)","linear-gradient(180deg, oklch(96% 0.012 82 / 0.05) 1px, transparent 1px)"]}
+{"args":["linear-gradient(180deg, #f3f4f6, #ffffff)"],"result":["linear-gradient(180deg, #f3f4f6, #ffffff)"]}
+{"args":["linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"],"result":["linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"]}
+{"args":["linear-gradient(90deg, #f3f4f6, #e5e7eb), linear-gradient(180deg, #eef2ff, #ffffff)"],"result":["linear-gradient(90deg, #f3f4f6, #e5e7eb)","linear-gradient(180deg, #eef2ff, #ffffff)"]}
+{"args":["linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px), linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"],"result":["linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)","linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"]}
+{"args":["linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"],"result":["linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"]}
+{"args":["linear-gradient(135deg,#7c3aed,#a855f7)"],"result":["linear-gradient(135deg,#7c3aed,#a855f7)"]}
+{"args":["linear-gradient(90deg, #667eea, #764ba2)"],"result":["linear-gradient(90deg, #667eea, #764ba2)"]}
+{"args":["in srgb,white 6%,#0b0b0d"],"result":["in srgb","white 6%","#0b0b0d"]}
+{"args":["linear-gradient(oklch(0.07 0.006 95),oklch(0.11 0.008 95))"],"result":["linear-gradient(oklch(0.07 0.006 95),oklch(0.11 0.008 95))"]}
+{"args":["url(opaque-panel.png),linear-gradient(#ff0000,#0000ff)"],"result":["url(opaque-panel.png)","linear-gradient(#ff0000,#0000ff)"]}

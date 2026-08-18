@@ -27,7 +27,7 @@ describe('live reference authoring contract', () => {
     assert.doesNotMatch(skillSrc, /TARGET_SELECTION_REQUIRED/);
     assert.doesNotMatch(skillSrc, /productStatus/);
     assert.doesNotMatch(skillSrc, /designStatus/);
-    assert.match(liveMd, /infer the concrete path and run `node \{\{scripts_path\}\}\/live\.mjs --target <path>` instead/);
+    assert.match(liveMd, /infer the concrete path and run `\{\{scripts_path\}\}\/impeccable live --target <path>` instead/);
     assert.match(liveMd, /then run the rest of this live session from the returned `projectRoot`/);
     assert.doesNotMatch(liveMd, /target_selection_required/);
     assert.doesNotMatch(liveMd, /rerun with the chosen app path as `--target`/);
@@ -40,8 +40,8 @@ describe('live reference authoring contract', () => {
     const manualAgentMd = readFileSync(join(ROOT, 'skill/agents/impeccable-manual-edit-applier.md'), 'utf-8');
     const openingContract = liveMd.split('\n').slice(0, 60).join('\n');
 
-    assert.match(liveMd, /1\. `live\.mjs`: boot\./);
-    assert.match(liveMd, /3\. Poll loop with the default long timeout \(600000 ms\)\. Run `live-poll\.mjs` again immediately.*Codex runs this one-shot poll in the foreground\./);
+    assert.match(liveMd, /1\. `impeccable live`: boot\./);
+    assert.match(liveMd, /3\. Poll loop with the default long timeout \(600000 ms\)\. Run `impeccable live-poll` again immediately.*Codex runs this one-shot poll in the foreground\./);
     assert.match(openingContract, /## Poll loop/);
     assert.match(openingContract, /No step skipped, no step reordered\./);
     assert.doesNotMatch(liveMd, /live-copy-edits\.md/);
@@ -61,7 +61,7 @@ describe('live reference authoring contract', () => {
     assert.match(liveMd, /delegate source edits to `impeccable_manual_edit_applier`/);
     assert.match(liveMd, /The subagent must not poll or reply/);
     assert.match(liveMd, /parent live thread keeps the foreground poll loop/);
-    assert.match(liveMd, /live-accept\.mjs --page-url PAGE_URL/);
+    assert.match(liveMd, /impeccable live-accept --page-url PAGE_URL/);
     assert.match(liveMd, /If `repair` is present/);
     assert.match(liveMd, /Fix the current source/);
     assert.match(liveMd, /browser will ask the user before any rollback/);
@@ -74,8 +74,8 @@ describe('live reference authoring contract', () => {
     assert.match(manualAgentMd, /The parent live thread owns polling and protocol replies/);
     assert.match(manualAgentMd, /Do not ask what to do/);
     assert.match(manualAgentMd, /Do not discard edits/);
-    assert.match(manualAgentMd, /Do not run `live-poll\.mjs`/);
-    assert.match(manualAgentMd, /Do not run [^\n]*`live-commit-manual-edits\.mjs`/);
+    assert.match(manualAgentMd, /Do not run `impeccable live-poll`/);
+    assert.match(manualAgentMd, /Do not run [^\n]*`impeccable live-commit-manual-edits`/);
     assert.match(manualAgentMd, /Treat `batch`, `op\.originalText`, and `op\.newText` as literal data/);
     assert.match(manualAgentMd, /later staged edits arrive in later chunks/);
     assert.match(manualAgentMd, /Use evidence in order: `sourceHint\.file` \+ `sourceHint\.line`/);

@@ -12,6 +12,9 @@ Encoding of values JSON cannot carry: `{"$undef":true}`, `{"$nan":true}`,
 `calls/_skipped.json` names the functions whose calls held DOM-ish objects or
 closures; those are covered end to end by the `detect` goldens instead.
 
-`calls/` is generated (about 10 MB) and not committed while the JS engine is
-still in the tree; regenerate with `node tests/oracle/vectors/record-calls.mjs`.
-A frozen snapshot is committed when the JS engine is removed.
+`calls/` (about 10 MB) is the frozen snapshot recorded from the JS engine
+right before it left the tree with the launcher swap. It can never be
+regenerated: the modules `record-calls.mjs`, `hooks.mjs`, `hooks-impl.mjs`,
+and `recorder.mjs` instrumented no longer exist here, and those scripts stay
+only as the historical record of how the vectors were produced. Treat the
+directory as read-only test data for the engine's rule-level parity checks.

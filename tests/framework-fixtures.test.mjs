@@ -1,10 +1,13 @@
 /**
- * Drives live-mode scripts against representative framework project shapes.
+ * Drives the live-mode verbs of the engine binary against representative
+ * framework project shapes.
  *
  * Each fixture under tests/framework-fixtures/ is a small project tree with a
- * fixture.json that declares the inject config + expected is-generated and
- * wrap outcomes. The harness copies the fixture into a tmp git repo, applies
- * the fixture's gitignore, and runs the live scripts against it.
+ * fixture.json that declares the inject config + expected CSP and wrap
+ * outcomes. The harness copies the fixture into a tmp git repo, applies the
+ * fixture's gitignore, and runs `impeccable live-inject`, `live-wrap`, and
+ * `detect-csp` against it. Skips when no engine binary is available (see
+ * tests/lib/engine-bin.mjs).
  *
  * Run with: node --test tests/framework-fixtures.test.mjs
  */
@@ -17,13 +20,12 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { isGeneratedFile } from '../skill/scripts/lib/is-generated.mjs';
-import { detectCsp } from '../skill/scripts/detect-csp.mjs';
+import { ENGINE_MISSING_MESSAGE, engineEnv, findEngineBinary } from './lib/engine-bin.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SCRIPTS_DIR = join(__dirname, '..', 'skill', 'scripts');
 const REPO_ROOT = join(__dirname, '..');
 const FIXTURES_DIR = join(__dirname, 'framework-fixtures');
+const ENGINE_BIN = findEngineBinary();
 
 function listFixtures() {
   return readdirSync(FIXTURES_DIR, { withFileTypes: true })
@@ -72,12 +74,12 @@ function stageFixture(name) {
   return { tmp, fixture };
 }
 
-function runScript(script, args, opts = {}) {
+function runVerb(verb, args, opts = {}) {
   try {
-    return execFileSync('node', [join(SCRIPTS_DIR, script), ...args], {
+    return execFileSync(ENGINE_BIN, [verb, ...args], {
       encoding: 'utf-8',
       cwd: opts.cwd,
-      env: { ...process.env, ...(opts.env || {}) },
+      env: engineEnv(ENGINE_BIN, opts.env || {}),
     });
   } catch (err) {
     return { error: err.stdout?.toString() || '' , stderr: err.stderr?.toString() || '' };
@@ -89,7 +91,7 @@ function runScript(script, args, opts = {}) {
 // ---------------------------------------------------------------------------
 
 for (const name of listFixtures()) {
-  describe(`fixture · ${name}`, () => {
+  describe(`fixture · ${name}`, { skip: ENGINE_BIN ? false : ENGINE_MISSING_MESSAGE }, () => {
     it('loads fixture.json and has expected tree', () => {
       const { tmp, fixture } = stageFixture(name);
       try {
@@ -102,32 +104,10 @@ for (const name of listFixtures()) {
       }
     });
 
-    it('is-generated classifies files correctly', () => {
-      const { tmp, fixture } = stageFixture(name);
-      try {
-        for (const rel of fixture.sourceFiles || []) {
-          assert.equal(
-            isGeneratedFile(rel, { cwd: tmp }),
-            false,
-            `${rel} should classify as source`
-          );
-        }
-        for (const rel of fixture.generatedFiles || []) {
-          assert.equal(
-            isGeneratedFile(rel, { cwd: tmp }),
-            true,
-            `${rel} should classify as generated`
-          );
-        }
-      } finally {
-        rmSync(tmp, { recursive: true, force: true });
-      }
-    });
-
     it('live-inject --port adds the script tag to every config file', () => {
       const { tmp } = stageFixture(name);
       try {
-        const out = runScript('live-inject.mjs', ['--port', '9999'], { cwd: tmp });
+        const out = runVerb('live-inject', ['--port', '9999'], { cwd: tmp });
         const result = JSON.parse(typeof out === 'string' ? out : out.error);
         assert.equal(result.ok, true, 'inject succeeded');
         assert.equal(result.gitIgnore?.mode, 'git-info-exclude', 'live runtime ignores are installed locally');
@@ -201,8 +181,8 @@ for (const name of listFixtures()) {
     it('live-inject --remove strips the script tag cleanly', () => {
       const { tmp } = stageFixture(name);
       try {
-        runScript('live-inject.mjs', ['--port', '9999'], { cwd: tmp });
-        const out = runScript('live-inject.mjs', ['--remove'], { cwd: tmp });
+        runVerb('live-inject', ['--port', '9999'], { cwd: tmp });
+        const out = runVerb('live-inject', ['--remove'], { cwd: tmp });
         const result = JSON.parse(typeof out === 'string' ? out : out.error);
         assert.equal(result.ok, true, 'remove succeeded');
         if (result.adapter === 'sveltekit') {
@@ -241,7 +221,7 @@ for (const name of listFixtures()) {
       const { tmp, fixture } = stageFixture(name);
       try {
         const expected = fixture.csp?.shape ?? null;
-        const result = detectCsp(tmp);
+        const result = JSON.parse(runVerb('detect-csp', [], { cwd: tmp }));
         assert.equal(
           result.shape,
           expected,
@@ -262,7 +242,7 @@ for (const name of listFixtures()) {
           if (wc.args.tag) flags.push('--tag', wc.args.tag);
           flags.push('--id', `wraptest${i}`, '--count', '3');
 
-          const out = runScript('live-wrap.mjs', flags, { cwd: tmp });
+          const out = runVerb('live-wrap', flags, { cwd: tmp });
           const payload = typeof out === 'string' ? out : (out.error || out.stderr);
           const parsed = JSON.parse(payload.trim().split('\n').pop());
 

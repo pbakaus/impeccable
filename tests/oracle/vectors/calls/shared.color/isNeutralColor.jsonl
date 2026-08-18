@@ -1,0 +1,121 @@
+{"args":["oklch(65% 0.18 250)"],"result":false}
+{"args":["rgb(37, 99, 235)"],"result":false}
+{"args":["rgb(220, 38, 38)"],"result":false}
+{"args":["rgb(15, 118, 110)"],"result":false}
+{"args":["rgb(124, 58, 237)"],"result":false}
+{"args":["rgb(234, 88, 12)"],"result":false}
+{"args":["rgb(56, 189, 248)"],"result":false}
+{"args":["rgb(203, 213, 225)"],"result":true}
+{"args":["rgb(209, 213, 219)"],"result":true}
+{"args":["rgb(51, 65, 85)"],"result":false}
+{"args":["rgb(221, 221, 221)"],"result":true}
+{"args":["rgb(226, 232, 240)"],"result":true}
+{"args":["rgb(212, 199, 185)"],"result":true}
+{"args":["rgb(0, 169, 130)"],"result":false}
+{"args":["rgb(212, 160, 23)"],"result":false}
+{"args":["rgba(255, 255, 255, 0.16)"],"result":true}
+{"args":["rgb(229, 231, 235)"],"result":true}
+{"args":["rgba(148, 163, 184, 0.16)"],"result":false}
+{"args":["oklch(78% 0 0 / 0.16)"],"result":true}
+{"args":["rgb(201, 191, 178)"],"result":true}
+{"args":["rgb(216, 206, 192)"],"result":true}
+{"args":["rgb(255, 255, 255)"],"result":true}
+{"args":["rgb(245, 158, 11)"],"result":false}
+{"args":["rgb(59, 130, 246)"],"result":false}
+{"args":["rgb(139, 92, 246)"],"result":false}
+{"args":["oklch(65%0.12 250)"],"result":false}
+{"args":["oklch(80%0.05 250)"],"result":false}
+{"args":["oklch(75%0.15 45)"],"result":false}
+{"args":["oklch(75%0.18 45)"],"result":false}
+{"args":["oklab(60%0.1 0.15)"],"result":false}
+{"args":["lch(55%60 250)"],"result":false}
+{"args":["lab(50%40-30)"],"result":false}
+{"args":["rgb(135, 168, 255)"],"result":false}
+{"args":["rgb(138, 106, 47)"],"result":false}
+{"args":["rgb(170, 103, 77)"],"result":false}
+{"args":["oklch(80%0 0)"],"result":true}
+{"args":["oklch(75%0.01 250)"],"result":true}
+{"args":["lab(50%0 0)"],"result":true}
+{"args":["lch(50%0 0)"],"result":true}
+{"args":["oklch(92%0 0/0.12)"],"result":true}
+{"args":["rgb(128, 0, 128)"],"result":false}
+{"args":["rgb(102, 51, 153)"],"result":false}
+{"args":["rgb(220, 20, 60)"],"result":false}
+{"args":["rgb(0, 128, 128)"],"result":false}
+{"args":["rgb(255, 165, 0)"],"result":false}
+{"args":["rgb(105, 105, 105)"],"result":true}
+{"args":["rgb(220, 220, 220)"],"result":true}
+{"args":["rgb(0, 0, 0)"],"result":true}
+{"args":["rgb(212, 212, 212)"],"result":true}
+{"args":["rgb(215, 208, 194)"],"result":true}
+{"args":["rgb(214, 211, 209)"],"result":true}
+{"args":["rgb(238, 238, 238)"],"result":true}
+{"args":["rgb(221, 216, 208)"],"result":true}
+{"args":["rgb(184, 66, 46)"],"result":false}
+{"args":["rgb(16, 185, 129)"],"result":false}
+{"args":["rgb(239, 68, 68)"],"result":false}
+{"args":["rgb(244, 114, 182)"],"result":false}
+{"args":["rgb(55, 65, 81)"],"result":true}
+{"args":["rgb(99, 102, 241)"],"result":false}
+{"args":["oklch(65% 0.18 250)"],"result":false}
+{"args":["rgb(229, 231, 235)"],"result":true}
+{"args":["rgb(59, 130, 246)"],"result":false}
+{"args":["rgb(139, 92, 246)"],"result":false}
+{"args":["rgb(16, 185, 129)"],"result":false}
+{"args":["rgb(239, 68, 68)"],"result":false}
+{"args":["rgb(244, 114, 182)"],"result":false}
+{"args":["rgb(55, 65, 81)"],"result":true}
+{"args":["rgb(99, 102, 241)"],"result":false}
+{"args":["rgb(37, 99, 235)"],"result":false}
+{"args":["rgb(220, 38, 38)"],"result":false}
+{"args":["rgb(15, 118, 110)"],"result":false}
+{"args":["rgb(124, 58, 237)"],"result":false}
+{"args":["rgb(234, 88, 12)"],"result":false}
+{"args":["rgb(56, 189, 248)"],"result":false}
+{"args":["rgb(203, 213, 225)"],"result":true}
+{"args":["rgb(209, 213, 219)"],"result":true}
+{"args":["rgb(51, 65, 85)"],"result":false}
+{"args":["rgb(221, 216, 208)"],"result":true}
+{"args":["rgb(184, 66, 46)"],"result":false}
+{"args":["rgb(255, 255, 255)"],"result":true}
+{"args":["rgb(245, 158, 11)"],"result":false}
+{"args":["oklch(65%0.12 250)"],"result":false}
+{"args":["oklch(80%0.05 250)"],"result":false}
+{"args":["oklch(75%0.15 45)"],"result":false}
+{"args":["oklch(75%0.18 45)"],"result":false}
+{"args":["oklab(60%0.1 0.15)"],"result":false}
+{"args":["lch(55%60 250)"],"result":false}
+{"args":["lab(50%40-30)"],"result":false}
+{"args":["rgb(135, 168, 255)"],"result":false}
+{"args":["rgb(138, 106, 47)"],"result":false}
+{"args":["rgb(170, 103, 77)"],"result":false}
+{"args":["oklch(80%0 0)"],"result":true}
+{"args":["oklch(75%0.01 250)"],"result":true}
+{"args":["lab(50%0 0)"],"result":true}
+{"args":["lch(50%0 0)"],"result":true}
+{"args":["oklch(92%0 0/0.12)"],"result":true}
+{"args":["rgb(128, 0, 128)"],"result":false}
+{"args":["rgb(102, 51, 153)"],"result":false}
+{"args":["rgb(220, 20, 60)"],"result":false}
+{"args":["rgb(0, 128, 128)"],"result":false}
+{"args":["rgb(255, 165, 0)"],"result":false}
+{"args":["rgb(105, 105, 105)"],"result":true}
+{"args":["rgb(220, 220, 220)"],"result":true}
+{"args":["rgb(0, 0, 0)"],"result":true}
+{"args":["oklch(65% 0.12 250)"],"result":false}
+{"args":["oklch(92% 0 0 / 0.12)"],"result":true}
+{"args":["oklch(80% 0 0)"],"result":true}
+{"args":["rgb(212, 199, 185)"],"result":true}
+{"args":["rgb(0, 169, 130)"],"result":false}
+{"args":["rgb(215, 208, 194)"],"result":true}
+{"args":["rgb(212, 212, 212)"],"result":true}
+{"args":["rgb(214, 211, 209)"],"result":true}
+{"args":["rgb(238, 238, 238)"],"result":true}
+{"args":["rgb(226, 232, 240)"],"result":true}
+{"args":["rgb(201, 191, 178)"],"result":true}
+{"args":["rgb(216, 206, 192)"],"result":true}
+{"args":["rgb(212, 160, 23)"],"result":false}
+{"args":["rgba(255, 255, 255, 0.16)"],"result":true}
+{"args":["rgb(221, 221, 221)"],"result":true}
+{"args":["rgba(148, 163, 184, 0.16)"],"result":false}
+{"args":["oklch(78% 0 0 / 0.16)"],"result":true}

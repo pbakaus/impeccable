@@ -1,0 +1,4 @@
+{"args":["color-mix(in oklab,oklch(90%0.02 95) 16%,transparent)"],"result":{"r":226,"g":222,"b":208,"a":0.16}}
+{"args":["color-mix(in srgb,white 6%,#0b0b0d)"],"result":{"r":26,"g":26,"b":28,"a":1}}
+{"args":["color-mix(in oklab,oklch(90%0.02 95) 16%,transparent)"],"result":{"r":226,"g":222,"b":208,"a":0.16}}
+{"args":["color-mix(in srgb,white 6%,#0b0b0d)"],"result":{"r":26,"g":26,"b":28,"a":1}}

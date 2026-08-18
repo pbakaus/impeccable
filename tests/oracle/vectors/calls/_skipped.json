@@ -1,0 +1,125 @@
+{
+  "engines.static-html.css-cascade/collectStaticCssText": {
+    "instance:Document": 120
+  },
+  "engines.static-html.css-cascade/collectStaticCssRules": {
+    "function": 120
+  },
+  "engines.static-html.css-cascade/applyStaticDeclaration": {
+    "instance:Element": 18758
+  },
+  "engines.static-html.css-cascade/makeStaticStyle": {
+    "function": 7920
+  },
+  "engines.static-html.css-cascade/normalizeStaticCssValue": {
+    "function": 31844
+  },
+  "engines.static-html.css-cascade/buildStaticStyleMap": {
+    "instance:Document": 120
+  },
+  "engines.static-html.css-cascade/buildStaticWindow": {
+    "instance:StaticDocument": 120
+  },
+  "rules.checks/resolveBorderRadiusPx": {
+    "instance:StaticElement": 11436
+  },
+  "rules.checks/checkElementBorders": {
+    "function": 5957
+  },
+  "rules.checks/resolveBackgroundInfo": {
+    "instance:StaticElement": 11985
+  },
+  "rules.checks/readOwnBackgroundColor": {
+    "instance:StaticElement": 6078
+  },
+  "rules.checks/checkElementColors": {
+    "instance:StaticElement": 5957
+  },
+  "rules.checks/checkElementHoverContrast": {
+    "instance:StaticElement": 5957
+  },
+  "rules.checks/resolveBackground": {
+    "instance:StaticElement": 6055
+  },
+  "rules.checks/checkElementGlow": {
+    "function": 5957
+  },
+  "rules.checks/checkElementMotion": {
+    "function": 5957
+  },
+  "rules.checks/checkElementIconTile": {
+    "instance:StaticElement": 1293
+  },
+  "rules.checks/checkElementItalicSerif": {
+    "instance:StaticElement": 429
+  },
+  "rules.checks/checkElementHeroEyebrow": {
+    "instance:StaticElement": 159
+  },
+  "rules.checks/resolveFontSizePx": {
+    "instance:StaticElement": 6116
+  },
+  "rules.checks/checkQuality": {
+    "instance:StaticElement": 5957
+  },
+  "rules.checks/checkElementQuality": {
+    "instance:StaticElement": 5957
+  },
+  "rules.checks/checkElementOversizedH1": {
+    "instance:StaticElement": 159
+  },
+  "rules.checks/checkClippedOverflow": {
+    "instance:StaticElement": 5957
+  },
+  "rules.checks/checkElementClippedOverflow": {
+    "instance:StaticElement": 5957
+  },
+  "rules.checks/checkElementGptBorderShadow": {
+    "instance:StaticElement": 5957
+  },
+  "rules.checks/checkElementRadialSpotlight": {
+    "instance:StaticElement": 5957
+  },
+  "rules.checks/collectKickerCandidates": {
+    "instance:StaticDocument": 116
+  },
+  "rules.checks/checkKickerAboveHeadingFromDoc": {
+    "instance:StaticDocument": 116
+  },
+  "rules.checks/collectNumberedSectionLabelCandidates": {
+    "instance:StaticDocument": 116
+  },
+  "rules.checks/checkNumberedSectionLabelsFromDoc": {
+    "instance:StaticDocument": 116
+  },
+  "rules.checks/isRepeatedTextContainer": {
+    "function": 1830
+  },
+  "rules.checks/collectRepeatedContainerTextFindings": {
+    "instance:StaticDocument": 116
+  },
+  "rules.checks/checkRepeatedContainerTextFromDoc": {
+    "instance:StaticDocument": 116
+  },
+  "rules.checks/isCardLike": {
+    "instance:StaticElement": 6713
+  },
+  "rules.checks/checkPageLayout": {
+    "instance:StaticDocument": 116
+  },
+  "rules.checks/checkCreamPalette": {
+    "instance:StaticDocument": 116
+  },
+  "rules.checks/checkPageQualityFromDoc": {
+    "instance:StaticDocument": 116
+  },
+  "rules.checks/scopedIgnoreActive": {
+    "instance:StaticElement": 771
+  },
+  "rules.checks/cleanInlineText": {
+    "instance:StaticElement": 1518
+  },
+  "rules.checks/resolveGradientStops": {
+    "instance:StaticElement": 290
+  }
+}

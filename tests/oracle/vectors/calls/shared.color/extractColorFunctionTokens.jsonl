@@ -1,0 +1,84 @@
+{"args":["linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent)"],"result":["rgba(255,255,255,.6)"]}
+{"args":["linear-gradient(135deg,#b7d7ff,#486aa3)"],"result":[]}
+{"args":["linear-gradient(180deg, #3b82f6 0%, #8b5cf6 100%)"],"result":[]}
+{"args":["linear-gradient(135deg, #667eea, #764ba2)"],"result":[]}
+{"args":["linear-gradient(to right, rgb(168, 85, 247), rgb(99, 102, 241))"],"result":["rgb(168, 85, 247)","rgb(99, 102, 241)"]}
+{"args":["linear-gradient(135deg,#6d8cff 0%,#a78bfa 50%,#6d8cff 100%)"],"result":[]}
+{"args":["linear-gradient(160deg,rgba(52,192,168,0.09) 0%,#141419 65%)"],"result":["rgba(52,192,168,0.09)"]}
+{"args":["linear-gradient(160deg,color-mix(in oklab,oklch(90%0.02 95) 16%,transparent) 0%,#141419 65%)"],"result":["color-mix(in oklab,oklch(90%0.02 95) 16%,transparent)"]}
+{"args":["linear-gradient(135deg,#7c3aed,#a855f7)"],"result":[]}
+{"args":["linear-gradient(90deg, #667eea, #764ba2)"],"result":[]}
+{"args":["linear-gradient(180deg,oklch(7%0.006 95),oklch(4%0.004 95))"],"result":["oklch(7%0.006 95)","oklch(4%0.004 95)"]}
+{"args":["linear-gradient(180deg,#14120f,#0a0908)"],"result":[]}
+{"args":["linear-gradient(180deg,rgba(255,255,255,0.3),rgba(255,255,255,0.2))"],"result":["rgba(255,255,255,0.3)","rgba(255,255,255,0.2)"]}
+{"args":["linear-gradient(oklch(0.07 0.006 95),oklch(0.11 0.008 95))"],"result":["oklch(0.07 0.006 95)","oklch(0.11 0.008 95)"]}
+{"args":["linear-gradient(135deg,#cbd5e1,#94a3b8)"],"result":[]}
+{"args":["linear-gradient(#111827,#0b1220)"],"result":[]}
+{"args":["linear-gradient(rgba(0,0,0,0.2),rgba(0,0,0,0.2))"],"result":["rgba(0,0,0,0.2)","rgba(0,0,0,0.2)"]}
+{"args":["repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px)"],"result":[]}
+{"args":["linear-gradient(90deg, oklch(96% 0.012 82 / 0.055) 1px, transparent 1px), linear-gradient(180deg, oklch(96% 0.012 82 / 0.05) 1px, transparent 1px)"],"result":["oklch(96% 0.012 82 / 0.055)","oklch(96% 0.012 82 / 0.05)"]}
+{"args":["linear-gradient(180deg, #f3f4f6, #ffffff)"],"result":[]}
+{"args":["linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"],"result":["rgba(15, 23, 42, 0.06)"]}
+{"args":["linear-gradient(90deg, #f3f4f6, #e5e7eb), linear-gradient(180deg, #eef2ff, #ffffff)"],"result":[]}
+{"args":["linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px), linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"],"result":["rgba(15, 23, 42, 0.06)","rgba(15, 23, 42, 0.06)"]}
+{"args":["linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"],"result":["rgba(15, 23, 42, 0.06)"]}
+{"args":["linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%)"],"result":[]}
+{"args":["linear-gradient(135deg,#8b5cf6,#a855f7)"],"result":[]}
+{"args":["linear-gradient(180deg,#f2efe6,#e8e4d8)"],"result":[]}
+{"args":["linear-gradient(90deg,#f2b854,#e8a83e)"],"result":[]}
+{"args":["linear-gradient(135deg,#8b5cf6,#6366f1)"],"result":[]}
+{"args":["radial-gradient(circle at 52% 38%,rgba(80,111,255,0.26),transparent 44%)"],"result":["rgba(80,111,255,0.26)"]}
+{"args":["radial-gradient(circle,rgba(139,92,246,0.30),transparent 60%)"],"result":["rgba(139,92,246,0.30)"]}
+{"args":["radial-gradient(ellipse at top,rgba(34,211,238,0.22),transparent 70%)"],"result":["rgba(34,211,238,0.22)"]}
+{"args":["radial-gradient(circle,rgba(255,90,120,0.28) 0%,rgba(255,90,120,0.12) 45%,transparent 75%)"],"result":["rgba(255,90,120,0.28)","rgba(255,90,120,0.12)"]}
+{"args":["radial-gradient(circle,#506fff3d,transparent 50%)"],"result":[]}
+{"args":["radial-gradient(circle,#1e3a8a,#0f172a)"],"result":[]}
+{"args":["radial-gradient(circle,rgba(80,111,255,0.30),transparent)"],"result":["rgba(80,111,255,0.30)"]}
+{"args":["radial-gradient(circle,rgba(255,196,64,0.35),transparent 70%)"],"result":["rgba(255,196,64,0.35)"]}
+{"args":["radial-gradient(circle,rgba(0,0,0,0.40),transparent 80%)"],"result":["rgba(0,0,0,0.40)"]}
+{"args":["radial-gradient(ellipse,rgba(255,255,255,0.35),transparent 70%)"],"result":["rgba(255,255,255,0.35)"]}
+{"args":["radial-gradient(circle,#ff0080 0%,#7928ca 45%,#0070f3 100%)"],"result":[]}
+{"args":["radial-gradient(circle,rgba(255,0,128,0.90) 0%,rgba(121,40,202,0.85) 50%,transparent)"],"result":["rgba(255,0,128,0.90)","rgba(121,40,202,0.85)"]}
+{"args":["radial-gradient(circle,rgba(80,111,255,0.85),transparent)"],"result":["rgba(80,111,255,0.85)"]}
+{"args":["linear-gradient(120deg,rgba(80,111,255,0.28),transparent 60%)"],"result":["rgba(80,111,255,0.28)"]}
+{"args":["linear-gradient(transparent,rgba(0,0,0,.6))"],"result":["rgba(0,0,0,.6)"]}
+{"args":["linear-gradient(180deg, #3b82f6 0%, #8b5cf6 100%)"],"result":[]}
+{"args":["linear-gradient(135deg, #667eea, #764ba2)"],"result":[]}
+{"args":["linear-gradient(to right, rgb(168, 85, 247), rgb(99, 102, 241))"],"result":["rgb(168, 85, 247)","rgb(99, 102, 241)"]}
+{"args":["linear-gradient(135deg,#6d8cff 0%,#a78bfa 50%,#6d8cff 100%)"],"result":[]}
+{"args":["linear-gradient(160deg,rgba(52,192,168,0.09) 0%,#141419 65%)"],"result":["rgba(52,192,168,0.09)"]}
+{"args":["linear-gradient(160deg,color-mix(in oklab,oklch(90%0.02 95) 16%,transparent) 0%,#141419 65%)"],"result":["color-mix(in oklab,oklch(90%0.02 95) 16%,transparent)"]}
+{"args":["linear-gradient(180deg,oklch(7%0.006 95),oklch(4%0.004 95))"],"result":["oklch(7%0.006 95)","oklch(4%0.004 95)"]}
+{"args":["linear-gradient(180deg,#14120f,#0a0908)"],"result":[]}
+{"args":["linear-gradient(180deg,rgba(255,255,255,0.3),rgba(255,255,255,0.2))"],"result":["rgba(255,255,255,0.3)","rgba(255,255,255,0.2)"]}
+{"args":["linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%)"],"result":[]}
+{"args":["linear-gradient(135deg,#8b5cf6,#a855f7)"],"result":[]}
+{"args":["radial-gradient(circle at 52% 38%,rgba(80,111,255,0.26),transparent 44%)"],"result":["rgba(80,111,255,0.26)"]}
+{"args":["radial-gradient(circle,rgba(139,92,246,0.30),transparent 60%)"],"result":["rgba(139,92,246,0.30)"]}
+{"args":["radial-gradient(ellipse at top,rgba(34,211,238,0.22),transparent 70%)"],"result":["rgba(34,211,238,0.22)"]}
+{"args":["radial-gradient(circle,rgba(255,90,120,0.28) 0%,rgba(255,90,120,0.12) 45%,transparent 75%)"],"result":["rgba(255,90,120,0.28)","rgba(255,90,120,0.12)"]}
+{"args":["radial-gradient(circle,#506fff3d,transparent 50%)"],"result":[]}
+{"args":["radial-gradient(circle,#1e3a8a,#0f172a)"],"result":[]}
+{"args":["radial-gradient(circle,rgba(80,111,255,0.30),transparent)"],"result":["rgba(80,111,255,0.30)"]}
+{"args":["radial-gradient(circle,rgba(255,196,64,0.35),transparent 70%)"],"result":["rgba(255,196,64,0.35)"]}
+{"args":["radial-gradient(circle,rgba(0,0,0,0.40),transparent 80%)"],"result":["rgba(0,0,0,0.40)"]}
+{"args":["radial-gradient(ellipse,rgba(255,255,255,0.35),transparent 70%)"],"result":["rgba(255,255,255,0.35)"]}
+{"args":["radial-gradient(circle,#ff0080 0%,#7928ca 45%,#0070f3 100%)"],"result":[]}
+{"args":["radial-gradient(circle,rgba(255,0,128,0.90) 0%,rgba(121,40,202,0.85) 50%,transparent)"],"result":["rgba(255,0,128,0.90)","rgba(121,40,202,0.85)"]}
+{"args":["radial-gradient(circle,rgba(80,111,255,0.85),transparent)"],"result":["rgba(80,111,255,0.85)"]}
+{"args":["linear-gradient(120deg,rgba(80,111,255,0.28),transparent 60%)"],"result":["rgba(80,111,255,0.28)"]}
+{"args":["linear-gradient(#111827,#0b1220)"],"result":[]}
+{"args":["linear-gradient(rgba(0,0,0,0.2),rgba(0,0,0,0.2))"],"result":["rgba(0,0,0,0.2)","rgba(0,0,0,0.2)"]}
+{"args":["linear-gradient(135deg,#cbd5e1,#94a3b8)"],"result":[]}
+{"args":["linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent)"],"result":["rgba(255,255,255,.6)"]}
+{"args":["linear-gradient(135deg,#b7d7ff,#486aa3)"],"result":[]}
+{"args":["repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px)"],"result":[]}
+{"args":["linear-gradient(90deg, oklch(96% 0.012 82 / 0.055) 1px, transparent 1px), linear-gradient(180deg, oklch(96% 0.012 82 / 0.05) 1px, transparent 1px)"],"result":["oklch(96% 0.012 82 / 0.055)","oklch(96% 0.012 82 / 0.05)"]}
+{"args":["linear-gradient(180deg, #f3f4f6, #ffffff)"],"result":[]}
+{"args":["linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"],"result":["rgba(15, 23, 42, 0.06)"]}
+{"args":["linear-gradient(90deg, #f3f4f6, #e5e7eb), linear-gradient(180deg, #eef2ff, #ffffff)"],"result":[]}
+{"args":["linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px), linear-gradient(180deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"],"result":["rgba(15, 23, 42, 0.06)","rgba(15, 23, 42, 0.06)"]}
+{"args":["linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px)"],"result":["rgba(15, 23, 42, 0.06)"]}
+{"args":["linear-gradient(135deg,#7c3aed,#a855f7)"],"result":[]}
+{"args":["linear-gradient(90deg, #667eea, #764ba2)"],"result":[]}
+{"args":["linear-gradient(oklch(0.07 0.006 95),oklch(0.11 0.008 95))"],"result":["oklch(0.07 0.006 95)","oklch(0.11 0.008 95)"]}
