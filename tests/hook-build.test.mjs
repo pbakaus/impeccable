@@ -36,11 +36,11 @@ function expectCommand(command, expectedScriptsDir, verb = 'hook') {
   assert.equal(typeof command, 'string');
   const launcher = `${expectedScriptsDir}/impeccable`;
   assert.ok(command.includes(launcher), `missing ${launcher} in ${command}`);
-  assert.ok(
-    command.endsWith(`"] || "`) === false && command.includes(`" ] || "`),
-    `missing existence guard in ${command}`,
+  assert.match(
+    command,
+    new RegExp(`^\\[ ! -f "[^"]*/impeccable" \\] \\|\\| "[^"]*/impeccable" ${verb}$`),
+    `missing existence guard around the launcher in ${command}`,
   );
-  assert.match(command, new RegExp(`^\\[ ! -f "[^"]*/impeccable" \\] \\|\\| "[^"]*/impeccable" ${verb}$`));
   assert.ok(!command.includes('node '), `hook command must not depend on node: ${command}`);
   assert.ok(!command.includes('.mjs'), `hook command still names a Node script: ${command}`);
 }
