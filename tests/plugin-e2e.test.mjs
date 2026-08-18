@@ -18,6 +18,14 @@
  * CLI derives a path from the home directory rather than CLAUDE_CONFIG_DIR.
  * Requires the `claude` CLI on PATH; skips cleanly otherwise.
  *
+ * The subtree under test is whatever git holds at ./plugin, which the sync
+ * workflow regenerates on main (`bun run build:release`). Between the launcher
+ * swap landing and that sync, ./plugin still ships the Node-era scripts; the
+ * loader inventory asserted here is unaffected either way (the launcher layout
+ * was verified against a local `bun run build:release` before the swap
+ * merged), and tests/hook-build.test.mjs gates its launcher-path assertions on
+ * the synced output.
+ *
  * Run with: bun run test:plugin-e2e
  */
 import { describe, it, before, after } from 'node:test';
