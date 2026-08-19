@@ -950,6 +950,7 @@ describe('hook-admin.mjs', () => {
 
     const codex = fs.readFileSync(path.join(cwd, '.codex', 'hooks.json'), 'utf-8');
     assert.match(codex, /\.agents\/skills\/impeccable\/scripts\/hook\.mjs/);
+    assert.equal(codex.split('IMPECCABLE_HOOK_HARNESS=codex').length - 1, 2);
     const cursor = fs.readFileSync(path.join(cwd, '.cursor', 'hooks.json'), 'utf-8');
     assert.match(cursor, /\.cursor\/skills\/impeccable\/scripts\/hook-before-edit\.mjs/);
     const github = JSON.parse(fs.readFileSync(path.join(cwd, '.github', 'hooks', 'impeccable.json'), 'utf-8'));

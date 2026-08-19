@@ -106,14 +106,14 @@ const HOOK_MANIFEST_TARGETS = [
             hooks: [
               {
                 type: 'command',
-                command: 'node ".agents/skills/impeccable/scripts/hook.mjs"',
+                command: 'IMPECCABLE_HOOK_HARNESS=codex node ".agents/skills/impeccable/scripts/hook.mjs"',
                 timeout: TIMEOUT_SECONDS,
                 statusMessage: STATUS_MESSAGE,
               },
             ],
           },
         ],
-        Stop: [stopManifestEntry('node ".agents/skills/impeccable/scripts/hook.mjs"')],
+        Stop: [stopManifestEntry('IMPECCABLE_HOOK_HARNESS=codex node ".agents/skills/impeccable/scripts/hook.mjs"')],
       },
     }),
   },
