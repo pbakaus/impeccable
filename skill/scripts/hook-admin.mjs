@@ -55,12 +55,13 @@ const STATUS_MESSAGE = 'Checking UI changes';
 const STOP_TIMEOUT_SECONDS = 30;
 const STOP_STATUS_MESSAGE = 'Design deep pass';
 
-function stopManifestEntry(command) {
+function stopManifestEntry(command, commandWindows) {
   return {
     hooks: [
       {
         type: 'command',
         command,
+        ...(commandWindows ? { commandWindows } : {}),
         timeout: STOP_TIMEOUT_SECONDS,
         statusMessage: STOP_STATUS_MESSAGE,
       },
@@ -107,13 +108,17 @@ const HOOK_MANIFEST_TARGETS = [
               {
                 type: 'command',
                 command: 'IMPECCABLE_HOOK_HARNESS=codex node ".agents/skills/impeccable/scripts/hook.mjs"',
+                commandWindows: 'set "IMPECCABLE_HOOK_HARNESS=codex" & node ".agents/skills/impeccable/scripts/hook.mjs"',
                 timeout: TIMEOUT_SECONDS,
                 statusMessage: STATUS_MESSAGE,
               },
             ],
           },
         ],
-        Stop: [stopManifestEntry('IMPECCABLE_HOOK_HARNESS=codex node ".agents/skills/impeccable/scripts/hook.mjs"')],
+        Stop: [stopManifestEntry(
+          'IMPECCABLE_HOOK_HARNESS=codex node ".agents/skills/impeccable/scripts/hook.mjs"',
+          'set "IMPECCABLE_HOOK_HARNESS=codex" & node ".agents/skills/impeccable/scripts/hook.mjs"',
+        )],
       },
     }),
   },

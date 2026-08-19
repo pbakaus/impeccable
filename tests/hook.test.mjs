@@ -948,9 +948,21 @@ describe('hook-admin.mjs', () => {
     assert.equal(claude.split('skills/impeccable/scripts/hook.mjs').length - 1, 2);
     assert.match(claude, /"Stop"/);
 
-    const codex = fs.readFileSync(path.join(cwd, '.codex', 'hooks.json'), 'utf-8');
-    assert.match(codex, /\.agents\/skills\/impeccable\/scripts\/hook\.mjs/);
-    assert.equal(codex.split('IMPECCABLE_HOOK_HARNESS=codex').length - 1, 2);
+    const codex = JSON.parse(fs.readFileSync(path.join(cwd, '.codex', 'hooks.json'), 'utf-8'));
+    const codexHooks = [
+      codex.hooks.PostToolUse[0].hooks[0],
+      codex.hooks.Stop[0].hooks[0],
+    ];
+    for (const hook of codexHooks) {
+      assert.equal(
+        hook.command,
+        'IMPECCABLE_HOOK_HARNESS=codex node ".agents/skills/impeccable/scripts/hook.mjs"',
+      );
+      assert.equal(
+        hook.commandWindows,
+        'set "IMPECCABLE_HOOK_HARNESS=codex" & node ".agents/skills/impeccable/scripts/hook.mjs"',
+      );
+    }
     const cursor = fs.readFileSync(path.join(cwd, '.cursor', 'hooks.json'), 'utf-8');
     assert.match(cursor, /\.cursor\/skills\/impeccable\/scripts\/hook-before-edit\.mjs/);
     const github = JSON.parse(fs.readFileSync(path.join(cwd, '.github', 'hooks', 'impeccable.json'), 'utf-8'));
