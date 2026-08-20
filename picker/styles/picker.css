@@ -3117,6 +3117,14 @@ body.picker-page {
   --pv-text: 1.65;
 }
 
+/* The docs viewports keep the stage's own 1.35 desktop step and the phone's
+   authored 1, which is what the weight factors below were measured against.
+   Pushing 1.65 down to both viewports instead multiplied every bar a second
+   time and the read cells drew a fifth heavier than the gallery. */
+.picker-strategy-stage > .picker-preview.picker-preview--docs .pv-desktop {
+  --pv-text: 1.35;
+}
+
 .picker-strategy-stage > .picker-preview.picker-preview--docs .pd-item i {
   width: calc(4.07 * var(--pv-x));
 }
@@ -3384,6 +3392,195 @@ body.picker-page {
 #picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="restrained"]:checked) .picker-strategy-stage > .picker-preview.picker-preview--docs {
   --pd-quote: var(--pd-ink);
 }
+
+/* Gallery parity (plan-18): restrained docs note dot and note lines read
+   through body ink, the other half of the quote-contrast fix above. */
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="restrained"]) .picker-strategy-stage > .picker-preview.picker-preview--docs :is(.pd-note-dot, .pd-note-lines i),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="restrained"]:checked) .picker-strategy-stage > .picker-preview.picker-preview--docs :is(.pd-note-dot, .pd-note-lines i) {
+  background: var(--pd-ink);
+}
+
+/* Gallery parity (plan-18): drenched landing color roles. */
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="drenched"]) .picker-strategy-stage > .picker-preview[data-surface="persuade"],
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="drenched"]:checked) .picker-strategy-stage > .picker-preview[data-surface="persuade"] {
+  --pv-secondary: var(--pkc-secondary);
+  --pv-tertiary: var(--pkc-tertiary);
+  --pv-bone: color-mix(in oklab, var(--pkc-p-ink) 55%, var(--pkc-primary));
+  --pv-strong: var(--pkc-p-ink);
+  --pv-secondary-wash: color-mix(in oklab, var(--pkc-p-ink) 16%, var(--pkc-primary));
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="drenched"]) .picker-strategy-stage > .picker-preview[data-surface="persuade"] .pv-desktop .pv-image,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="drenched"]:checked) .picker-strategy-stage > .picker-preview[data-surface="persuade"] .pv-desktop .pv-image {
+  background: linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--pkc-p-ink) 16%, var(--pkc-primary)),
+    color-mix(in oklab, var(--pkc-secondary) 34%, var(--pkc-primary))
+  );
+  border-color: color-mix(in oklab, var(--pkc-secondary) 52%, var(--pkc-primary));
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="drenched"]) .picker-strategy-stage > .picker-preview[data-surface="persuade"] .pv-desktop .pv-image::after,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="drenched"]:checked) .picker-strategy-stage > .picker-preview[data-surface="persuade"] .pv-desktop .pv-image::after {
+  background: var(--pkc-tertiary);
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="drenched"]) .picker-strategy-stage > .picker-preview[data-surface="persuade"] .pv-desktop .pv-actions i:last-child,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="drenched"]:checked) .picker-strategy-stage > .picker-preview[data-surface="persuade"] .pv-desktop .pv-actions i:last-child {
+  border-color: color-mix(in oklab, var(--pkc-secondary) 68%, var(--pkc-p-ink));
+  background: color-mix(in oklab, var(--pkc-secondary) 18%, var(--pkc-primary));
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="drenched"]) .picker-strategy-stage > .picker-preview[data-surface="persuade"] .pv-desktop .pv-nav-bars i:nth-child(2),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="drenched"]:checked) .picker-strategy-stage > .picker-preview[data-surface="persuade"] .pv-desktop .pv-nav-bars i:nth-child(2) {
+  background: color-mix(in oklab, var(--pkc-secondary) 72%, var(--pkc-p-ink));
+}
+
+/* Gallery parity (plan-18): committed ops wash and neutral visibility. */
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="committed"]) .picker-strategy-stage > .picker-preview.picker-preview--ops,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="committed"]:checked) .picker-strategy-stage > .picker-preview.picker-preview--ops {
+  --pv-neutral: color-mix(in oklab, var(--pkc-neutral) 84%, var(--pkc-primary));
+  --po-wash: color-mix(in oklab, var(--pkc-primary) 24%, var(--pkc-neutral));
+}
+
+/* Gallery parity (plan-18): full-palette ops color roles. */
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="full-palette"]) .picker-strategy-stage > .picker-preview.picker-preview--ops,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="full-palette"]:checked) .picker-strategy-stage > .picker-preview.picker-preview--ops {
+  --po-wash: color-mix(in oklab, var(--pkc-secondary) 22%, var(--pkc-neutral));
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="full-palette"]) .picker-strategy-stage > .picker-preview.picker-preview--ops .po-row--on .po-dot,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="full-palette"]:checked) .picker-strategy-stage > .picker-preview.picker-preview--ops .po-row--on .po-dot {
+  background: var(--pkc-tertiary);
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="full-palette"]) .picker-strategy-stage > .picker-preview.picker-preview--ops .po-field,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="full-palette"]:checked) .picker-strategy-stage > .picker-preview.picker-preview--ops .po-field {
+  border-color: var(--pkc-secondary);
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="full-palette"]) .picker-strategy-stage > .picker-preview.picker-preview--ops .po-chart i:nth-child(2),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="full-palette"]:checked) .picker-strategy-stage > .picker-preview.picker-preview--ops .po-chart i:nth-child(2) {
+  background: color-mix(in oklab, var(--pkc-secondary) 78%, var(--pkc-neutral));
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="full-palette"]) .picker-strategy-stage > .picker-preview.picker-preview--ops .po-chart i:nth-child(3),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="full-palette"]:checked) .picker-strategy-stage > .picker-preview.picker-preview--ops .po-chart i:nth-child(3) {
+  background: color-mix(in oklab, var(--pkc-tertiary) 68%, var(--pkc-neutral));
+}
+
+/* Gallery parity (plan-18): portfolio cap avatars per strategy. */
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="restrained"]) .picker-strategy-stage > .picker-preview.picker-preview--gallery:not([hidden]) .pv-desktop .pg-cap,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="restrained"]:checked) .picker-strategy-stage > .picker-preview.picker-preview--gallery:not([hidden]) .pv-desktop .pg-cap,
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="committed"]) .picker-strategy-stage > .picker-preview.picker-preview--gallery:not([hidden]) .pv-desktop .pg-cap,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="committed"]:checked) .picker-strategy-stage > .picker-preview.picker-preview--gallery:not([hidden]) .pv-desktop .pg-cap,
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="drenched"]) .picker-strategy-stage > .picker-preview.picker-preview--gallery:not([hidden]) .pv-desktop .pg-cap,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="drenched"]:checked) .picker-strategy-stage > .picker-preview.picker-preview--gallery:not([hidden]) .pv-desktop .pg-cap {
+  padding-top: 5.2cqh;
+  gap: 2.6cqh;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="restrained"]) .picker-strategy-stage > .picker-preview.picker-preview--gallery:not([hidden]) .pv-desktop .pg-cap::before,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="restrained"]:checked) .picker-strategy-stage > .picker-preview.picker-preview--gallery:not([hidden]) .pv-desktop .pg-cap::before {
+  content: "";
+  display: block;
+  width: calc(11.5 * var(--pv-x));
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 1px solid color-mix(in oklab, var(--pv-secondary) 55%, var(--pv-neutral));
+  background: linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--pv-secondary) 24%, var(--pv-neutral)),
+    color-mix(in oklab, var(--pv-secondary) 46%, var(--pv-neutral))
+  );
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="committed"]) .picker-strategy-stage > .picker-preview.picker-preview--gallery:not([hidden]) .pv-desktop .pg-cap::before,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="committed"]:checked) .picker-strategy-stage > .picker-preview.picker-preview--gallery:not([hidden]) .pv-desktop .pg-cap::before {
+  content: "";
+  display: block;
+  width: calc(11.5 * var(--pv-x));
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 1px solid color-mix(in oklab, var(--pkc-primary) 42%, var(--pkc-neutral));
+  background: linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--pkc-primary) 16%, var(--pkc-neutral)),
+    color-mix(in oklab, var(--pkc-primary) 30%, var(--pkc-neutral))
+  );
+}
+
+/* Gallery parity (plan-18): drenched portfolio color roles. */
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="drenched"]) .picker-strategy-stage > .picker-preview.picker-preview--gallery:not([hidden]),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="drenched"]:checked) .picker-strategy-stage > .picker-preview.picker-preview--gallery:not([hidden]) {
+  --pv-secondary: var(--pkc-secondary);
+  --pv-tertiary: var(--pkc-tertiary);
+  --pv-bone: color-mix(in oklab, var(--pkc-p-ink) 55%, var(--pkc-primary));
+  --pv-strong: var(--pkc-p-ink);
+  --pv-secondary-wash: color-mix(in oklab, var(--pkc-p-ink) 16%, var(--pkc-primary));
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="drenched"]) .picker-strategy-stage > .picker-preview.picker-preview--gallery:not([hidden]) .pv-image,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="drenched"]:checked) .picker-strategy-stage > .picker-preview.picker-preview--gallery:not([hidden]) .pv-image {
+  background: linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--pkc-p-ink) 16%, var(--pkc-primary)),
+    color-mix(in oklab, var(--pkc-secondary) 34%, var(--pkc-primary))
+  );
+  border-color: color-mix(in oklab, var(--pkc-secondary) 52%, var(--pkc-primary));
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="drenched"]) .picker-strategy-stage > .picker-preview.picker-preview--gallery:not([hidden]) .pv-image::after,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="drenched"]:checked) .picker-strategy-stage > .picker-preview.picker-preview--gallery:not([hidden]) .pv-image::after {
+  background: var(--pkc-tertiary);
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="drenched"]) .picker-strategy-stage > .picker-preview.picker-preview--gallery:not([hidden]) .pg-track i:nth-child(2),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="drenched"]:checked) .picker-strategy-stage > .picker-preview.picker-preview--gallery:not([hidden]) .pg-track i:nth-child(2) {
+  background: color-mix(in oklab, var(--pkc-secondary) 78%, var(--pkc-p-ink));
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="drenched"]) .picker-strategy-stage > .picker-preview.picker-preview--gallery:not([hidden]) .pg-cap-title,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="drenched"]:checked) .picker-strategy-stage > .picker-preview.picker-preview--gallery:not([hidden]) .pg-cap-title {
+  background: var(--pkc-tertiary);
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="drenched"]) .picker-strategy-stage > .picker-preview.picker-preview--gallery:not([hidden]) .pv-nav-bars i:nth-child(2),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="drenched"]:checked) .picker-strategy-stage > .picker-preview.picker-preview--gallery:not([hidden]) .pv-nav-bars i:nth-child(2) {
+  background: color-mix(in oklab, var(--pkc-secondary) 72%, var(--pkc-p-ink));
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="drenched"]) .picker-strategy-stage > .picker-preview.picker-preview--gallery:not([hidden]) .pv-tabbar i:nth-child(2),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="drenched"]:checked) .picker-strategy-stage > .picker-preview.picker-preview--gallery:not([hidden]) .pv-tabbar i:nth-child(2) {
+  background: color-mix(in oklab, var(--pkc-secondary) 70%, var(--pkc-p-ink));
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="drenched"]) .picker-strategy-stage > .picker-preview.picker-preview--gallery:not([hidden]) .pv-tabbar i:nth-child(3),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="drenched"]:checked) .picker-strategy-stage > .picker-preview.picker-preview--gallery:not([hidden]) .pv-tabbar i:nth-child(3) {
+  background: color-mix(in oklab, var(--pkc-tertiary) 82%, var(--pkc-p-ink));
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="color-strategy"][value="drenched"]) .picker-strategy-stage > .picker-preview.picker-preview--gallery:not([hidden]) .pv-desktop .pg-cap::before,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="color-strategy"])):has(input[name="color-strategy"][value="drenched"]:checked) .picker-strategy-stage > .picker-preview.picker-preview--gallery:not([hidden]) .pv-desktop .pg-cap::before {
+  content: "";
+  display: block;
+  width: calc(11.5 * var(--pv-x));
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 1px solid color-mix(in oklab, var(--pkc-secondary) 58%, var(--pkc-primary));
+  background: linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--pkc-secondary) 30%, var(--pkc-primary)),
+    color-mix(in oklab, var(--pkc-p-ink) 20%, var(--pkc-primary))
+  );
+}
+
+/* Gallery parity (plan-18): experience font-pair board type tuning. */
+#picker-form .picker-preview-type--experience .ps-desktop .ps-index-cap { gap: 0; }
+#picker-form .picker-preview-type--experience .ps-desktop .ps-index-avatar { margin-bottom: 10px; }
+#picker-form .picker-preview-type--experience .ps-desktop .ps-index-note { line-height: 1.33; margin-top: 2px; }
+#picker-form .picker-preview-type--experience .ps-desktop .ps-index-title { font-size: 20px; }
+#picker-form .picker-preview-type--experience .ps-phone :is(.ps-nav-tail, .ps-index-meta) { display: none; }
 
 /* Committed: one color doing all the work the other two were doing, and a
    trace of it in the paper as well. Without the paper, a surface whose accents
@@ -5440,6 +5637,20 @@ body.picker-page {
 
 .picker-preview-type {
   --ps-gutter: 5.5%;
+}
+
+/* Gallery parity (plan-18): font-pair hides the nav CTA on persuade, operate,
+   and read; experience keeps its index rail action. */
+.picker-preview-type:not(.picker-preview-type--experience) :is(.ps-nav-action, .ps-nav-tail) {
+  display: none !important;
+}
+
+/* The editorial link line is drawn on every board except the type board, which
+   sets that copy in words and has no room for a third line. Deleting the
+   element instead took the line off the boundaries, corners and layout boards
+   too, where the gallery still draws it. */
+.picker-preview-type .ps-editorial-copy > em[data-type-section-link] {
+  display: none;
 }
 
 .picker-preview-type .ps-phone {

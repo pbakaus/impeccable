@@ -2258,3 +2258,24 @@
     transition-duration: 0.001ms !important;
   }
 }
+
+/* Gallery parity (plan-18): index lines read as bars through their inner b,
+   the rail hides, and the freeform index tightens. Ported from the gallery's
+   previews-35-37 experiment blocks; applies to the layout screen's experience
+   board for every option, exactly as the gallery applies it to cells 35-37. */
+[data-surface="experience"]:where(.picker-preview-layout) .ps-index-rail { display: none !important; }
+[data-surface="experience"]:where(.picker-preview-layout) .ps-index-lines { background-color: transparent !important; }
+[data-surface="experience"]:where(.picker-preview-layout) .ps-index-lines b { background-color: var(--pvs-bars) !important; }
+[data-surface="experience"]:where(.picker-preview-layout) .ps-index-lines > b { color: var(--pvs-bars) !important; }
+
+:where(#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="simple-grid"]), #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="simple-grid"]:checked)) [data-surface="experience"]:where(.picker-preview-layout) .ps-phone-body::after { content: none !important; display: none !important; }
+:where(#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]), #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)) [data-surface="experience"]:where(.picker-preview-layout) .ps-phone-body::after { content: none !important; display: none !important; }
+:where(#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="balanced"]), #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="balanced"]:checked)) [data-surface="experience"]:where(.picker-preview-layout) .ps-phone-body::after { content: none !important; display: none !important; }
+
+:where(#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="balanced"]), #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="balanced"]:checked)) [data-surface="experience"]:where(.picker-preview-layout) .ps-desktop .ps-scatter.ps-scatter--trail { display: none !important; }
+
+:where(#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]), #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)) [data-surface="experience"]:where(.picker-preview-layout) .ps-phone-project-rail { display: none !important; }
+:where(#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]), #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)) [data-surface="experience"]:where(.picker-preview-layout) .ps-phone .ps-index-cap { gap: 8px !important; }
+:where(#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]), #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)) [data-surface="experience"]:where(.picker-preview-layout) .ps-support.ps-phone-support { margin-top: 10px !important; }
+:where(#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]), #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)) [data-surface="experience"]:where(.picker-preview-layout) .ps-desktop .ps-index-cap { gap: 6px !important; }
+:where(#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]), #picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked)) [data-surface="experience"]:where(.picker-preview-layout) .ps-desktop .ps-index-lines { gap: 6px !important; }

@@ -86,8 +86,12 @@ const questions = [
     // for different ends. Repainting one wireframe would show the same scene
     // twice under two labels.
     boards: [
-      { surface: 'persuade' },
-      { surface: 'experience', class: 'picker-preview-motion--index' },
+      { surface: 'persuade', cell: 'persuade-restrained' },
+      { surface: 'persuade', cell: 'persuade-responsive' },
+      { surface: 'persuade', cell: 'persuade-choreographed' },
+      { surface: 'experience', class: 'picker-preview-motion--index', cell: 'experience-restrained' },
+      { surface: 'experience', class: 'picker-preview-motion--index', cell: 'experience-responsive' },
+      { surface: 'experience', class: 'picker-preview-motion--index', cell: 'experience-choreographed' },
     ],
     options: [
       {
@@ -153,7 +157,8 @@ const questions = [
     legend: 'Boundary style',
     cta: 'Select boundary style',
     previewClass: 'picker-preview-boundaries',
-    boards,
+    derived: true,
+    boards: [{ surface: 'persuade' }],
     options: [
       {
         value: 'open-space',
@@ -188,7 +193,8 @@ const questions = [
     legend: 'Corner style',
     cta: 'Select corner style',
     previewClass: 'picker-preview-corners',
-    boards,
+    derived: true,
+    boards: [{ surface: 'persuade' }],
     options: [
       {
         value: 'sharp',
@@ -222,7 +228,8 @@ const questions = [
     legend: 'Depth style',
     cta: 'Select depth style',
     previewClass: 'picker-preview-depth',
-    boards,
+    derived: true,
+    boards: [],
     options: [
       {
         value: 'flat',

@@ -59,3 +59,23 @@
   --pvs-radius-control: 999px;
   --pvs-radius-bar: 3px;
 }
+
+/* Corner radii on the derived clones. Dots remain dots while frames,
+   surfaces, controls, and text bars take the selected radius. Ported from
+   the gallery derived sheet; values match the artboard radius ramp above. */
+#picker-form:has(.picker-strategy-option:hover input[name="corner-style"][value="sharp"]) .picker-screen[data-screen="09"] .picker-board-stage,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="corner-style"])):has(input[name="corner-style"][value="sharp"]:checked) .picker-screen[data-screen="09"] .picker-board-stage { --derived-frame-radius: 0px; --derived-phone-radius: 0px; --derived-surface-radius: 0px; --derived-control-radius: 0px; --derived-bar-radius: 0px; }
+#picker-form:has(.picker-strategy-option:hover input[name="corner-style"][value="slightly-soft"]) .picker-screen[data-screen="09"] .picker-board-stage,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="corner-style"])):has(input[name="corner-style"][value="slightly-soft"]:checked) .picker-screen[data-screen="09"] .picker-board-stage { --derived-frame-radius: 4px; --derived-phone-radius: 5px; --derived-surface-radius: 3px; --derived-control-radius: 3px; --derived-bar-radius: 2px; }
+#picker-form:has(.picker-strategy-option:hover input[name="corner-style"][value="friendly"]) .picker-screen[data-screen="09"] .picker-board-stage,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="corner-style"])):has(input[name="corner-style"][value="friendly"]:checked) .picker-screen[data-screen="09"] .picker-board-stage { --derived-frame-radius: 7px; --derived-phone-radius: 11px; --derived-surface-radius: 8px; --derived-control-radius: 8px; --derived-bar-radius: 3px; }
+#picker-form:has(.picker-strategy-option:hover input[name="corner-style"][value="pill"]) .picker-screen[data-screen="09"] .picker-board-stage,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="corner-style"])):has(input[name="corner-style"][value="pill"]:checked) .picker-screen[data-screen="09"] .picker-board-stage { --derived-frame-radius: 9px; --derived-phone-radius: 15px; --derived-surface-radius: 12px; --derived-control-radius: 999px; --derived-bar-radius: 3px; }
+
+.picker-screen[data-screen="09"] .picker-board-stage > .picker-preview .pv-desktop { border-radius: var(--derived-frame-radius) !important; }
+.picker-screen[data-screen="09"] .picker-board-stage > .picker-preview .pv-phone { border-radius: var(--derived-phone-radius) !important; }
+.picker-screen[data-screen="09"] .picker-board-stage > .picker-preview :is(.pv-image, .pv-mini-card, .po-chart, .po-rows, .po-panel, .pg-row) { border-radius: var(--derived-surface-radius) !important; }
+.picker-screen[data-screen="09"] .picker-board-stage > .picker-preview .pd-note { border-radius: 0 var(--derived-surface-radius) var(--derived-surface-radius) 0 !important; }
+.picker-screen[data-screen="09"] .picker-board-stage > .picker-preview :is(.pv-pill, .pv-actions i, .po-item--on, .po-field, .po-row, .po-toggle) { border-radius: var(--derived-control-radius) !important; }
+.picker-screen[data-screen="09"] .picker-board-stage > .picker-preview .po-toggle::after { border-radius: var(--derived-control-radius) !important; }
+.picker-screen[data-screen="09"] .picker-board-stage > .picker-preview :is(.pv-nav-bars i, .pv-pill::after, .pv-eyebrow, .pv-headline i, .pv-copy-bar, .po-line, .po-cell, .po-heading, .po-label, .pd-item span, .pd-heading, .pd-para i, .pd-note-lines i, .pg-cap i, .pg-track i) { border-radius: var(--derived-bar-radius) !important; }

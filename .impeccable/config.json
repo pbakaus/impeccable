@@ -42,6 +42,15 @@
         ],
         "createdAt": "2026-07-30T13:11:54.730Z",
         "reason": "Runtime font loader: builds a Google Fonts URL from the family the agent/user chose in the questionnaire; no literal face is being introduced"
+      },
+      {
+        "rule": "bounce-easing",
+        "value": "cubic-bezier(.34, 1.56, .64, 1)",
+        "files": [
+          "picker/scripts/palette-picker.js"
+        ],
+        "createdAt": "2026-08-20T02:53:58.453Z",
+        "reason": "plan-18 step 10c: byte-exact port from tmp/motion-previews-premium.html installChoreographedPremium spring stagger"
       }
     ]
   },

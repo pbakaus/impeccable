@@ -465,6 +465,71 @@ function fillBoard(board) {
     fillGalleryCaptions(card, preview.gallery);
   }
   fillIndexed(desktop?.querySelector('.ps-footer'), '[data-type-footer-link]', preview.footerLinks);
+  applyFontPairGalleryParity(board);
+}
+
+/* Gallery parity (plan-18): font-pair cells match the strategy-fixes JS blocks
+   in previews-gallery-improved.html for persuade editorial merge, gallery
+   captions, read title trim, and experience cap avatars. */
+function applyFontPairGalleryParity(board) {
+  const surface = board.dataset.surface;
+  if (surface === 'persuade') {
+    board.querySelectorAll('.ps-editorial-copy > em[data-type-section-link]').forEach((el) => el.remove());
+    const merged =
+      'Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.';
+    board.querySelectorAll('[data-type-section-body]').forEach((p) => {
+      if (p.hasAttribute('data-type-section-body-2')) {
+        p.remove();
+        return;
+      }
+      const second = p.nextElementSibling;
+      if (second?.hasAttribute('data-type-section-body-2')) {
+        p.textContent = merged;
+        second.remove();
+        return;
+      }
+      p.textContent = merged;
+    });
+    const captions = [
+      'Lorem ipsum dolor sit amet consectetur',
+      'Dolor sit amet consectetur elit',
+      'Eiusmod tempor sed do eiusmod',
+    ];
+    board.querySelectorAll('.ps-gallery-item').forEach((item, index) => {
+      const text = captions[index];
+      if (!text) return;
+      const caption = item.querySelector('[data-type-gallery-caption]');
+      if (caption) {
+        caption.textContent = text;
+        return;
+      }
+      const title = item.querySelector('[data-type-gallery-title]');
+      const meta = item.querySelector('[data-type-gallery-meta]');
+      if (!title) return;
+      title.removeAttribute('data-type-gallery-title');
+      title.setAttribute('data-type-gallery-caption', '');
+      title.textContent = text;
+      meta?.remove();
+    });
+  }
+  if (surface === 'read') {
+    board.querySelectorAll('[data-type-section-title]').forEach((el) => {
+      if (el.textContent.trim() === 'Lorem ipsum dolor sit') el.textContent = 'Lorem ipsum dolor';
+    });
+  }
+  if (surface === 'experience') {
+    board.querySelectorAll('[data-type-caption]').forEach((el) => {
+      el.textContent =
+        'Lorem ipsum dolor sit amet,\nconsectetur adipiscing elit sed do eiusmod tempor.';
+    });
+    board.querySelectorAll('.ps-desktop .ps-index-cap').forEach((cap) => {
+      if (cap.querySelector('.ps-index-avatar')) return;
+      const avatar = document.createElement('i');
+      avatar.className = 'ps-index-avatar';
+      avatar.setAttribute('aria-hidden', 'true');
+      cap.insertBefore(avatar, cap.firstChild);
+    });
+  }
 }
 
 function syncFontPair(pair) {
@@ -883,6 +948,55 @@ commitIconPack(checkedIconPack());
    Only a change of energy restarts it. Sliding the pointer across a row it is
    already previewing would otherwise keep the page in a permanent entrance. */
 const motionOptions = document.querySelector('[data-question="motion"] .picker-strategy-choices');
+/* Gallery parity: the premium motion previews are not drawn on this screen's
+   own artboards. tmp/motion-previews-premium.html shapes the landing board the
+   way preview 33 is shaped and hands it a phone, and swaps the portfolio board
+   for preview 48's gallery drawing, then layers the animation overrides on top.
+   Every one of those overrides addresses that markup, so the boards are rebuilt
+   here before anything else reads them. Both strings are lifted verbatim from
+   that file by tmp/plan18-verify/port-motion-boards.mjs. */
+const PREVIEW_33_PHONE_HTML = '<div class="ps-phone"><div class="ps-phone-top"><div class="ps-nav-lede"><div class="ps-brand-block"></div><i class="ps-brand-word"></i></div><div class="ps-nav-tail"><div class="ps-nav-action"></div><i class="ps-menu"></i></div></div><div class="ps-phone-body"><div class="ps-layout-grid" aria-hidden="true"></div><div class="ps-image"></div><div class="ps-headline"><i></i><i></i></div><div class="ps-copy"><i></i><i></i></div><div class="ps-actions"><i></i><i></i></div><div class="ps-proof"><div class="ps-proof-item"><i></i><span class="ps-proof-lines"><b></b><b></b></span></div><i class="ps-proof-divider" aria-hidden="true"></i><div class="ps-proof-item"><i></i><span class="ps-proof-lines"><b></b><b></b></span></div></div><div class="ps-editorial-copy"><strong></strong><span><i></i><i></i></span></div><div class="ps-gallery"><div class="ps-gallery-item"><i></i><span><b></b><b></b></span></div><div class="ps-gallery-item"><i></i><span><b></b><b></b></span></div></div></div><div class="ps-phone-footer"><i></i><i></i><i></i></div></div>';
+const PREVIEW_48_PORTFOLIO_HTML = '<span class="picker-preview picker-preview--gallery picker-preview-motion picker-preview-motion--index" aria-hidden="true" data-surface="experience" hidden><span class="pv-desktop"><span class="pv-nav"><span class="pv-logo"></span><span class="pv-nav-bars"><i></i><i></i><i></i></span><span class="pv-pill"></span></span><span class="pg-body"><span class="pg-row"><span class="pv-image"></span><span class="pg-cap"><i class="pg-cap-title" style="--w:33.61%"></i><i></i><i style="--w:65.3%"></i></span></span><span class="pg-row pg-row--flip"><span class="pg-cap"><i class="pg-cap-title" style="--w:36.64%"></i><i></i><i style="--w:66.07%"></i></span><span class="pv-image"></span></span><span class="pg-rail"><i class="pg-arrow"></i><span class="pg-track"><i class="pg-track-on" style="--w: 20.31"></i><i style="--w: 9.14"></i><i style="--w: 8.98"></i><i style="--w: 12.44"></i></span><i class="pg-arrow pg-arrow--next"></i></span></span><i class="ps-cursor" data-cursor aria-hidden="true"></i></span><span class="pv-phone"><span class="pv-phone-top"><span class="pv-logo"></span><span class="pv-avatar"></span></span><span class="pg-phone-body"><span class="pv-image"></span><span class="pg-cap"><i class="pg-cap-title" style="--w:30.18%"></i><i style="--w:79.68%"></i><i style="--w:55.6%"></i></span><span class="pv-image"></span><span class="pg-cap"><i class="pg-cap-title" style="--w:30.18%"></i><i style="--w:79.68%"></i><i style="--w:55.6%"></i></span></span><span class="pv-tabbar"><i></i><i></i><i></i></span></span></span>';
+
+function rebuildPremiumMotionBoards() {
+  for (const board of document.querySelectorAll('.picker-preview-motion[data-motion-cell]')) {
+    if (board.dataset.surface === 'persuade') {
+      const desktop = board.querySelector('.ps-desktop');
+      if (!desktop) continue;
+      /* Solo is the one-column framing this screen used while the board had no
+         phone; preview 33's two columns come back with it. */
+      board.classList.remove('picker-artboard--solo');
+      board.classList.add('picker-strategy-preview', 'picker-preview-layout');
+      board.setAttribute('data-carry', '');
+      if (!desktop.querySelector(':scope > .ps-layout-grid')) {
+        desktop.insertAdjacentHTML('afterbegin', '<div class="ps-layout-grid" aria-hidden="true"></div>');
+      }
+      if (!board.querySelector(':scope > .ps-phone')) {
+        board.insertAdjacentHTML('beforeend', PREVIEW_33_PHONE_HTML);
+      }
+      continue;
+    }
+    if (board.dataset.surface !== 'experience') continue;
+    const template = document.createElement('template');
+    template.innerHTML = PREVIEW_48_PORTFOLIO_HTML;
+    const gallery = template.content.firstElementChild;
+    if (!gallery) continue;
+    /* Everything but the class list moves across: the cell key and the tab
+       state are the board's identity downstream, and data-artboard is what
+       keeps the palette painter writing --pv-* onto it. The premium file gets
+       those same values from the inline style its capture baked in; here they
+       are painted at runtime, which is the whole point of the live boards.
+       The class list does NOT move: preview 48 is a .picker-preview drawing,
+       not an artboard, and picker-artboard would restyle it. */
+    for (const attr of board.attributes) {
+      if (attr.name === 'class') continue;
+      gallery.setAttribute(attr.name, attr.value);
+    }
+    board.replaceWith(gallery);
+  }
+}
+rebuildPremiumMotionBoards();
+
 // One board per surface the question is put to. All of them are mounted and one
 // is shown, so the replay covers every board rather than the visible one: a
 // hidden board's timeline is cancelled by its own display: none and starts over
@@ -902,6 +1016,10 @@ function replayMotion(energy) {
       animation.cancel();
       animation.play();
     }
+    /* A premium scene that runs its own sequencer parks its restart on the
+       board, because a scene whose animations were replayed under a sequencer
+       still holding an earlier step would draw two moments at once. */
+    scene.__replayMotion?.();
   }
 }
 
@@ -917,19 +1035,19 @@ function replayMotion(energy) {
    cards, the portfolio's visit its plates and its carousel arrow, and neither
    keyframe list names a property its own board cannot measure. */
 const MOTION_STOPS = {
-  '--mtr-nav1': '.ps-nav-bars i:nth-child(1)',
-  '--mtr-nav2': '.ps-nav-bars i:nth-child(2)',
+  '--mtr-nav1': '.ps-nav-bars i:nth-child(1), .pv-nav-bars i:nth-child(1)',
+  '--mtr-nav2': '.ps-nav-bars i:nth-child(2), .pv-nav-bars i:nth-child(2)',
   '--mtr-cta1': '.ps-actions i:first-child',
   '--mtr-cta2': '.ps-actions i:last-child',
   '--mtr-card1': '.ps-gallery-item:nth-child(1) > i',
-  '--mxi-work1': '.ps-index-row:nth-of-type(1) > .ps-image',
-  '--mxi-work2': '.ps-index-row:nth-of-type(2) > .ps-image',
-  '--mxi-rail': '.ps-index-arrow--next',
+  '--mxi-work1': '.ps-index-row:nth-of-type(1) > .ps-image, .pg-row:nth-of-type(1) > .pv-image',
+  '--mxi-work2': '.ps-index-row:nth-of-type(2) > .ps-image, .pg-row:nth-of-type(2) > .pv-image',
+  '--mxi-rail': '.ps-index-arrow--next, .pg-arrow--next',
 };
 
 function plotMotionRoute(scene = null) {
   for (const board of scene ? [scene] : motionScenes) {
-    const desk = board.querySelector('.ps-desktop');
+    const desk = board.querySelector('.ps-desktop, .pv-desktop');
     if (!desk?.clientWidth) continue;
     // Summed up the offsetParent chain rather than read once: an element's
     // offsets are relative to its nearest positioned ancestor, which for the
@@ -950,13 +1068,13 @@ function plotMotionRoute(scene = null) {
       board.style.setProperty(name, `${c.x.toFixed(2)}cqw ${c.y.toFixed(2)}cqh`);
     }
     // The entry and exit point: straight above the first nav item, off-frame.
-    const nav1 = desk.querySelector('.ps-nav-bars i:nth-child(1)');
-    board.style.setProperty('--mtr-entry', `${center(nav1).x.toFixed(2)}cqw -8cqh`);
+    const nav1 = desk.querySelector('.ps-nav-bars i:nth-child(1), .pv-nav-bars i:nth-child(1)');
+    if (nav1) board.style.setProperty('--mtr-entry', `${center(nav1).x.toFixed(2)}cqw -8cqh`);
   }
 }
 
 for (const scene of motionScenes) {
-  new ResizeObserver(() => plotMotionRoute(scene)).observe(scene.querySelector('.ps-desktop'));
+  new ResizeObserver(() => plotMotionRoute(scene)).observe(scene.querySelector('.ps-desktop, .pv-desktop'));
 }
 
 const motionRowValue = (node) => node?.closest('.picker-strategy-option')?.querySelector('input').value;
@@ -977,6 +1095,2833 @@ motionOptions.addEventListener('focusout', restMotionPreview);
 motionOptions.addEventListener('change', ({ target }) => {
   if (target.matches('input[name="motion-energy"]')) replayMotion(target.value);
 });
+
+/* Premium motion overrides: ported from tmp/motion-previews-premium.html,
+   which is the source of truth for these six cells. Each installer was written
+   against an iframe holding one (surface, option) page, so boardScope() gives
+   it the same world inside the live document: element queries resolve inside
+   the board, style and DOM creation go to the real document. Colors, timings,
+   easings and keyframes are byte-exact from that file; only the selector scope
+   is rewritten, by tmp/plan18-verify/port-motion2.mjs. */
+function boardScope(board) {
+  return {
+    head: document.head,
+    documentElement: document.documentElement,
+    createElement: (tag) => document.createElement(tag),
+    getElementById: (id) => document.getElementById(id),
+    /* The premium selectors sometimes name the board itself, which a plain
+       descendant query inside the board can never answer. */
+    querySelector: (sel) => (board.matches(sel) ? board : board.querySelector(sel)),
+    querySelectorAll: (sel) => (board.matches(sel) ? [board] : board.querySelectorAll(sel)),
+  };
+}
+
+function installPremiumMotion() {
+  /* motionBoard rather than board: several installers declare their own
+     const board inside their body, and a shared name would put the guard
+     above it in that binding's temporal dead zone. */
+  for (const motionBoard of document.querySelectorAll('.picker-preview-motion[data-motion-cell]')) {
+    const doc = boardScope(motionBoard);
+    const win = window;
+    const cell = motionBoard.dataset.motionCell;
+
+    const installPerfectCursorLoop = () => {
+        if (!doc?.head) return;
+        if (motionBoard.hasAttribute('data-premium-restrained-landing-perfect-loop')) return;
+        motionBoard.setAttribute('data-premium-restrained-landing-perfect-loop', '');
+
+        const style = doc.createElement('style');
+        style.id = 'restrained-landing-perfect-loop';
+        style.textContent = `
+          .picker-preview-motion[data-motion-cell="persuade-restrained"] .ps-cursor {
+            animation: 3.8s ease-in-out infinite mtr-path-perfect-loop !important;
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-restrained"] .ps-nav-bars i:nth-child(2),
+          .picker-preview-motion[data-motion-cell="persuade-restrained"] .ps-nav-bars i:nth-child(2)::before,
+          .picker-preview-motion[data-motion-cell="persuade-restrained"] .ps-nav-bars i:nth-child(2)::after,
+          .picker-preview-motion[data-motion-cell="persuade-restrained"] .ps-actions i:last-child {
+            animation: none !important;
+          }
+
+          /* Cursor movement matched to the Responsive cell: ease-in-out glide
+             with ~0.4s hops between stops (the old timing was linear with a
+             1.25s nav-to-CTA crawl inherited from the original 5-stop path). */
+          @keyframes mtr-path-perfect-loop {
+            0%, 22% {
+              translate: var(--mtr-nav1, 64.8cqw 4.8cqh);
+            }
+            32.5%, 47.5% {
+              translate: var(--mtr-cta1, 10.3cqw 48.4cqh);
+            }
+            58%, 85% {
+              translate: var(--mtr-email, 17.8cqw 84.2cqh);
+            }
+            100% {
+              translate: var(--mtr-nav1, 64.8cqw 4.8cqh);
+            }
+          }
+
+          /* The captured hover states are synced to the old path percentages;
+             re-declare them against the retimed dwells (last definition wins). */
+          @keyframes mtr-nav-1 {
+            0%, 21.99% { background-color: var(--pvs-cta); }
+            22%, 100% { background-color: var(--pvs-bars); }
+          }
+          @keyframes mtr-drop-1 {
+            0%, 3.99% { opacity: 0; }
+            4%, 18.99% { opacity: 1; }
+            19%, 100% { opacity: 0; }
+          }
+          @keyframes mtr-cta-primary {
+            0%, 32.49% { background-color: var(--pvs-cta); box-shadow: inset 0 0 0 0 var(--pvs-cta); }
+            32.5%, 47.49% { background-color: var(--pvs-ghost); box-shadow: inset 0 0 0 1.5px var(--pvs-cta); }
+            47.5%, 100% { background-color: var(--pvs-cta); box-shadow: inset 0 0 0 0 var(--pvs-cta); }
+          }
+
+          /* Hover color change on the email capture button while the cursor
+             dwells on it, mirroring the captured instant-flip hover pattern. */
+          .picker-preview-motion[data-motion-cell="persuade-restrained"] .ps-editorial-copy > em {
+            animation:
+              mt-in-4 var(--mt) var(--mt-ease) infinite,
+              mtr-email-hover 3.8s linear infinite !important;
+          }
+          .picker-preview-motion[data-motion-cell="persuade-restrained"] .ps-editorial-copy > em::after {
+            animation: mtr-email-hover-icon 3.8s linear infinite;
+          }
+          @keyframes mtr-email-hover {
+            0%, 57.99% { background-color: var(--pvs-ghost); }
+            58%, 84.99% { background-color: var(--pvs-cta); }
+            85%, 100% { background-color: var(--pvs-ghost); }
+          }
+          @keyframes mtr-email-hover-icon {
+            0%, 57.99% { background-color: var(--pvs-cta); }
+            58%, 84.99% { background-color: var(--pvs-cta-text); }
+            85%, 100% { background-color: var(--pvs-cta); }
+          }
+
+          @media (prefers-reduced-motion: reduce) {
+            .picker-preview-motion[data-motion-cell="persuade-restrained"] .ps-cursor {
+              animation: none !important;
+              translate: var(--mtr-nav1, 64.8cqw 4.8cqh) !important;
+            }
+            .picker-preview-motion[data-motion-cell="persuade-restrained"] .ps-editorial-copy > em,
+            .picker-preview-motion[data-motion-cell="persuade-restrained"] .ps-editorial-copy > em::after {
+              animation: none !important;
+            }
+          }
+        `;
+        if (!doc.getElementById(style.id)) doc.head.appendChild(style);
+      }
+
+    const installResponsiveLandingCorrections = () => {
+        if (!doc?.head) return;
+        if (motionBoard.hasAttribute('data-premium-responsive-landing-corrections')) return;
+        motionBoard.setAttribute('data-premium-responsive-landing-corrections', '');
+
+        const style = doc.createElement('style');
+        style.id = 'responsive-landing-corrections';
+        style.textContent = `
+          /* Keep the Preview 33 layout continuously present. The shared motion
+             entrance loops were restarting underneath the responsive interaction
+             and briefly collapsing most of the desktop and phone content. */
+          .picker-preview-motion[data-motion-cell="persuade-responsive"] :is(
+            .ps-nav,
+            .ps-hero-copy > *,
+            .ps-hero > .ps-image,
+            .ps-proof-item,
+            .ps-editorial-copy > strong,
+            .ps-editorial-copy > span,
+            .ps-gallery,
+            .ps-footer
+          ) {
+            animation: none !important;
+            opacity: 1 !important;
+            clip-path: none !important;
+            translate: none !important;
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-cursor {
+            animation: 4.2s ease-in-out infinite mtv-path-perfect-loop !important;
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-gallery-item:first-child > i::after {
+            top: 50% !important;
+            bottom: auto !important;
+            transform: translateY(-50%);
+          }
+
+          @keyframes mtv-path-perfect-loop {
+            0%, 25% {
+              translate: var(--mtr-nav1, 64.8cqw 4.8cqh);
+            }
+            34.52%, 50% {
+              translate: var(--mtr-cta1, 10.3cqw 48.4cqh);
+            }
+            60.71%, 83.33% {
+              translate: var(--mtr-email, 17.8cqw 84.2cqh);
+            }
+            100% {
+              translate: var(--mtr-nav1, 64.8cqw 4.8cqh);
+            }
+          }
+
+          @media (prefers-reduced-motion: reduce) {
+            .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-cursor {
+              animation: none !important;
+              translate: var(--mtr-nav1, 64.8cqw 4.8cqh) !important;
+            }
+          }
+        `;
+        if (!doc.getElementById(style.id)) doc.head.appendChild(style);
+      }
+
+    const installChoreographedPremium = () => {
+        if (!doc?.head) return;
+        if (motionBoard.hasAttribute('data-premium-choreographed-landing-premium')) return;
+        motionBoard.setAttribute('data-premium-choreographed-landing-premium', '');
+
+        const style = doc.createElement('style');
+        style.id = 'choreographed-landing-premium';
+        style.textContent = `
+          /* Premium pass: the page is fully present for the whole loop; motion is
+             carried by light, focus, and filters instead of staged reveals. All
+             reveal keyframes are re-declared empty (last definition wins), which
+             leaves their elements at their natural resting styles. */
+          @keyframes mtc-curtain {}
+          @keyframes mtc-nav {}
+          @keyframes mtc-eyebrow {}
+          @keyframes mtc-headline-1 {}
+          @keyframes mtc-headline-2 {}
+          @keyframes mtc-copy-1 {}
+          @keyframes mtc-copy-2 {}
+          @keyframes mtc-copy-3 {}
+          @keyframes mtc-actions {}
+          @keyframes mtc-dot {}
+          @keyframes mtc-pdot {}
+          @keyframes mtc-pline {}
+          @keyframes mtc-pdiv {}
+          @keyframes mtc-ed-title {}
+          @keyframes mtc-ed-line-1 {}
+          @keyframes mtc-ed-line-2 {}
+          @keyframes mtc-ed-dash {}
+          @keyframes mtc-g-img-1 {}
+          @keyframes mtc-g-lab-1 {}
+          @keyframes mtc-g-lab-2 {}
+          @keyframes mtc-g-lab-3 {}
+          @keyframes mtc-g-lab-4 {}
+          @keyframes mtc-footer {}
+
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-desktop::after {
+            animation: none !important;
+            opacity: 0 !important;
+          }
+
+          /* The reveals ended on the visible state; with the reveal keyframes
+             emptied, the elements' hidden base styles (clip-path insets,
+             opacity 0, small translates) must be overridden to their resting
+             visible state. Pseudo-elements are excluded so the hover/tint
+             choreography keeps animating. */
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] :is(
+            .ps-nav, .ps-nav-bars i,
+            .ps-headline i, .ps-copy i,
+            .ps-proof *, .ps-footer, .ps-footer *,
+            .ps-gallery, .ps-gallery-item, .ps-gallery-item > i,
+            .ps-gallery-item span, .ps-gallery-item span b,
+            .ps-brand, .ps-brand i
+          ) {
+            opacity: 1 !important;
+            clip-path: none !important;
+            translate: none !important;
+            scale: none !important;
+          }
+
+          /* The proof dots' reveal ended on the CTA color; without the reveal
+             they must rest there. */
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-proof-item i {
+            background-color: var(--pvs-cta);
+          }
+
+          /* Cursor route: a closed circuit that ends exactly where it starts.
+             CTA (glow) -> gallery card (tint) -> email capture (submit story) ->
+             hero (light pass) -> back to the CTA. */
+          @keyframes mtc-path {
+            0%, 14% { translate: var(--mtr-cta1, 12.9cqw 49.2cqh); }
+            22%, 36% { translate: var(--mtr-card1, 43.5cqw 75.8cqh); }
+            44%, 62% { translate: var(--mtr-email, 17.8cqw 84.2cqh); }
+            70%, 84% { translate: 72.8cqw 34.9cqh; }
+            100% { translate: var(--mtr-cta1, 12.9cqw 49.2cqh); }
+          }
+
+          /* Specular sweep over the hero image: an ambient opening pass, then a
+             second pass while the cursor rests on the hero. */
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-hero > .ps-image::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            pointer-events: none;
+            background-image: linear-gradient(115deg,
+              transparent 42%,
+              color-mix(in oklab, var(--pvs-ground) 30%, transparent) 50%,
+              transparent 58%);
+            background-size: 320% 100%;
+            background-repeat: no-repeat;
+            background-position: 115% 0;
+            animation: 5.6s linear infinite mtc-hero-sheen;
+          }
+          @keyframes mtc-hero-sheen {
+            0% { background-position: 115% 0; animation-timing-function: cubic-bezier(.45, 0, .25, 1); }
+            14%, 67.99% { background-position: -15% 0; }
+            68% { background-position: 115% 0; animation-timing-function: cubic-bezier(.45, 0, .25, 1); }
+            84%, 100% { background-position: -15% 0; }
+          }
+
+          /* CTA glow bloom while the cursor dwells on the filled button. */
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-actions i:first-child {
+            animation: 5.6s linear infinite mtc-cta-glow !important;
+          }
+          @keyframes mtc-cta-glow {
+            0%, 0.8% { filter: drop-shadow(0 0 0 transparent) brightness(1); animation-timing-function: cubic-bezier(.16, 1, .3, 1); }
+            2.5%, 12.5% { filter: drop-shadow(0 4px 11px color-mix(in oklab, var(--pvs-cta) 72%, transparent)) brightness(1.14); animation-timing-function: cubic-bezier(.16, 1, .3, 1); }
+            17%, 100% { filter: drop-shadow(0 0 0 transparent) brightness(1); }
+          }
+
+          /* Card hover: the tint fades in cleanly (no wipe, no blur), slightly
+             translucent so the artwork shades it. */
+          @keyframes mtc-tint {
+            0%, 21.5% { opacity: 0; clip-path: inset(0); animation-timing-function: cubic-bezier(.16, 1, .3, 1); }
+            24.5%, 34.5% { opacity: .92; clip-path: inset(0); animation-timing-function: cubic-bezier(.16, 1, .3, 1); }
+            38.5%, 100% { opacity: 0; clip-path: inset(0); }
+          }
+          @keyframes mtc-label {
+            0%, 23% { background-color: var(--pvs-bars); width: 76%; animation-timing-function: cubic-bezier(.16, 1, .3, 1); }
+            26%, 34.5% { background-color: var(--pvs-cta); width: 84%; animation-timing-function: cubic-bezier(.16, 1, .3, 1); }
+            38.5%, 100% { background-color: var(--pvs-bars); width: 76%; }
+          }
+          @keyframes mtc-chev {
+            0%, 24% { opacity: 0; translate: -6px; }
+            26.5% { opacity: 1; translate: -6px; animation-timing-function: cubic-bezier(.16, 1, .3, 1); }
+            30%, 34.5% { opacity: 1; translate: 0; }
+            38%, 100% { opacity: 0; translate: 0; }
+          }
+
+          /* Hero lift while the cursor and the light pass rest on it (no blur). */
+          @keyframes mtc-image {
+            0%, 70% { filter: saturate(1) brightness(1); animation-timing-function: cubic-bezier(.16, 1, .3, 1); }
+            74%, 84% { filter: saturate(1.1) brightness(1.03); animation-timing-function: cubic-bezier(.16, 1, .3, 1); }
+            90%, 100% { filter: saturate(1) brightness(1); }
+          }
+          @keyframes mtc-g-img-2 {}
+          @keyframes mtc-g-img-3 {}
+          @keyframes mtc-g-img-4 {}
+
+          /* Email capture submit story, timed to the cursor's 44-62% dwell:
+             press, click ring, the paper plane pulls back and launches on an
+             arc with a sharp two-ghost trail, the button fills while a sonar
+             ring radiates, the field line clears, the check pops with an
+             overshoot, then everything settles back before the loop wraps. */
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-editorial-copy > em {
+            transform-origin: 50% 50% !important;
+            animation: mtc-email-btn 5.6s linear infinite !important;
+          }
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-editorial-copy > em::after {
+            animation: mtc-email-flight 5.6s linear infinite !important;
+          }
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-editorial-copy > em::before {
+            animation: mtc-email-check 5.6s linear infinite !important;
+          }
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-editorial-copy > span i:last-child {
+            transform-origin: 0 50%;
+            animation: mtc-email-line 5.6s linear infinite !important;
+          }
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-cursor::after {
+            animation: mtc-email-click 5.6s linear infinite !important;
+          }
+          @keyframes mtc-email-btn {
+            0%, 44.6% { scale: 1; background-color: var(--pvs-ghost); box-shadow: inset 0 0 0 1px var(--pvs-cta), 0 0 0 0 transparent; animation-timing-function: cubic-bezier(.16, 1, .3, 1); }
+            45.6% { scale: .93; animation-timing-function: cubic-bezier(.16, 1, .3, 1); }
+            47.4% { scale: 1; background-color: var(--pvs-ghost); }
+            48.2% { box-shadow: inset 0 0 0 1px var(--pvs-cta), 0 0 0 0 color-mix(in oklab, var(--pvs-cta) 50%, transparent); }
+            50.5% { background-color: var(--pvs-cta); }
+            56% { box-shadow: inset 0 0 0 1px var(--pvs-cta), 0 0 0 12px transparent; }
+            76% { background-color: var(--pvs-cta); }
+            82%, 100% { scale: 1; background-color: var(--pvs-ghost); box-shadow: inset 0 0 0 1px var(--pvs-cta), 0 0 0 12px transparent; }
+          }
+          @keyframes mtc-email-flight {
+            0%, 46% { opacity: 1; transform: translate(-50%, -50%) rotate(0deg); background-color: var(--pvs-cta); filter: drop-shadow(0 0 0 transparent) drop-shadow(0 0 0 transparent); }
+            47.2% { transform: translate(-64%, -34%) rotate(9deg); background-color: var(--pvs-cta); animation-timing-function: cubic-bezier(.5, 0, .8, .4); }
+            49.4% { opacity: 1; transform: translate(calc(-50% + 30px), calc(-50% - 12px)) rotate(-16deg); background-color: var(--pvs-cta-text); filter: drop-shadow(-6px 3px 0 color-mix(in oklab, var(--pvs-cta-text) 45%, transparent)) drop-shadow(-12px 6px 0 color-mix(in oklab, var(--pvs-cta-text) 18%, transparent)); animation-timing-function: cubic-bezier(.2, .6, .4, 1); }
+            52.5% { opacity: 0; transform: translate(calc(-50% + 78px), calc(-50% - 16px)) rotate(-4deg); background-color: var(--pvs-cta-text); filter: drop-shadow(-6px 3px 0 transparent) drop-shadow(-12px 6px 0 transparent); }
+            52.6%, 80% { opacity: 0; transform: translate(-50%, -50%) rotate(0deg); background-color: var(--pvs-cta); filter: drop-shadow(0 0 0 transparent) drop-shadow(0 0 0 transparent); }
+            85%, 100% { opacity: 1; transform: translate(-50%, -50%) rotate(0deg); }
+          }
+          @keyframes mtc-email-check {
+            0%, 50.5% { opacity: 0; transform: translate(calc(-50% - 14px), -62%) rotate(45deg) scale(.5); animation-timing-function: cubic-bezier(.34, 1.56, .64, 1); }
+            55% { opacity: 1; transform: translate(calc(-50% - 14px), -62%) rotate(45deg) scale(1.12); }
+            57.5%, 74% { opacity: 1; transform: translate(calc(-50% - 14px), -62%) rotate(45deg) scale(1); }
+            80%, 100% { opacity: 0; transform: translate(calc(-50% - 14px), -62%) rotate(45deg) scale(.5); }
+          }
+          @keyframes mtc-email-line {
+            0%, 48.5% { scale: 1 1; animation-timing-function: cubic-bezier(.16, 1, .3, 1); }
+            53%, 78% { scale: 0 1; }
+            84%, 100% { scale: 1 1; }
+          }
+          @keyframes mtc-email-click {
+            0%, 44.4% { opacity: 0; scale: .35; }
+            44.9% { opacity: .55; scale: .35; }
+            47.6%, 100% { opacity: 0; scale: 1.5; }
+          }
+
+          @media (prefers-reduced-motion: reduce) {
+            .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-cursor {
+              animation: none !important;
+              translate: var(--mtr-cta1, 12.9cqw 49.2cqh) !important;
+            }
+            .picker-preview-motion[data-motion-cell="persuade-choreographed"] :is(
+              .ps-hero > .ps-image,
+              .ps-actions i:first-child,
+              .ps-gallery-item > i,
+              .ps-gallery-item:first-child span b:first-child,
+              .ps-editorial-copy > em,
+              .ps-editorial-copy > span i:last-child
+            ),
+            .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-hero > .ps-image::before,
+            .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-gallery-item:first-child > i::before,
+            .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-gallery-item:first-child > i::after,
+            .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-editorial-copy > em::before,
+            .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-editorial-copy > em::after,
+            .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-cursor::after {
+              animation: none !important;
+            }
+          }
+        `;
+        if (!doc.getElementById(style.id)) doc.head.appendChild(style);
+
+        /* Preview 28 now has one continuous motion story: the five-part Motion
+           OSS Hero stagger, followed by a push-scroll into a three-card pricing
+           comparison. This final sheet cancels every inherited cursor, hover,
+           reveal, sheen, email, and ambient animation; the Web Animations sequence
+           below owns the complete scene. */
+        const staggerStyle = doc.createElement('style');
+        staggerStyle.id = 'choreographed-hero-stagger-only';
+        staggerStyle.textContent = `
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"],
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] *,
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] *::before,
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] *::after {
+            animation: none !important;
+            transition: none !important;
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-desktop::after {
+            opacity: 0 !important;
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-cursor {
+            opacity: 0 !important;
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-hero > .ps-image::before {
+            content: none !important;
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-editorial-copy > em::before {
+            opacity: 0 !important;
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] :is(
+            .ps-eyebrow,
+            .ps-headline,
+            .ps-copy,
+            .ps-actions,
+            .ps-proof
+          ) {
+            opacity: 1;
+            filter: none;
+            transform: none;
+            clip-path: none !important;
+            translate: none !important;
+            scale: none !important;
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-choreo-viewport {
+            z-index: 1;
+            min-width: 0;
+            min-height: 0;
+            height: 90.6%;
+            overflow: hidden;
+            position: absolute;
+            inset: 9.4% 0 auto;
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-nav {
+            z-index: 3;
+            position: relative;
+            background-color: var(--pvs-ground);
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-choreo-track {
+            display: grid;
+            grid-template-rows: repeat(2, minmax(0, 1fr));
+            width: 100%;
+            height: 200%;
+            min-height: 0;
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-choreo-page {
+            display: grid;
+            grid-template-rows: 50.6fr 9fr 22.7fr 8.3fr;
+            min-width: 0;
+            min-height: 0;
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-choreo-page > .ps-proof {
+            margin-inline: var(--pvs-proof-inset, 0px);
+            border: var(--pvs-panel-edge-w) solid var(--pvs-panel-edge);
+            border-radius: var(--pvs-radius-surface);
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-page {
+            --ps-pricing-accent-muted: #607272;
+            --ps-pricing-accent-dark: #0b3f3f;
+            box-sizing: border-box;
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            align-items: center;
+            gap: 4%;
+            min-width: 0;
+            min-height: 0;
+            padding: 0 7.9%;
+            background-color: var(--pvs-ground);
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-card {
+            --ps-pricing-accent: var(--ps-pricing-accent-dark);
+            box-sizing: border-box;
+            display: grid;
+            grid-template-rows: auto auto 1px minmax(0, 1fr) auto;
+            gap: 4cqh;
+            align-self: center;
+            width: 100%;
+            height: 50.8cqh;
+            min-width: 0;
+            min-height: 0;
+            padding: 5cqh 1.3cqw 2.4cqh;
+            overflow: hidden;
+            background-color: var(--pvs-ground);
+            border: 1px solid var(--ps-pricing-accent);
+            border-radius: var(--pvs-radius-surface);
+            translate: 0 -3cqh;
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-card:nth-child(1) {
+            --ps-pricing-accent: var(--ps-pricing-accent-muted);
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-card:nth-child(n + 2) {
+            border-width: 2px;
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-tier,
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-price > *,
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-features > i,
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-action {
+            display: block;
+            border-radius: var(--pvs-radius-bar);
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-tier {
+            justify-self: center;
+            width: 32%;
+            height: 2cqh;
+            background-color: var(--ps-pricing-accent);
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-price {
+            display: grid;
+            justify-items: center;
+            gap: 2.6cqh;
+            min-width: 0;
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-price > b {
+            width: 54%;
+            height: 4.9cqh;
+            background-color: var(--ps-pricing-accent);
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-price > i {
+            width: 33%;
+            height: .9cqh;
+            background-color: var(--pvs-bars);
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-divider {
+            display: block;
+            justify-self: center;
+            width: 90%;
+            height: 1px;
+            background-color: var(--pvs-bars);
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-features {
+            display: grid;
+            align-content: center;
+            gap: 2.5cqh;
+            min-height: 0;
+            padding-inline: 1.5cqw;
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-features > i {
+            display: flex;
+            align-items: center;
+            gap: 1.2cqw;
+            width: 100%;
+            height: auto;
+            background-color: transparent;
+            border-radius: 0;
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-features > i::before {
+            content: "";
+            flex: none;
+            width: 2cqh;
+            height: 2cqh;
+            background-color: var(--ps-pricing-accent);
+            border-radius: var(--pvs-radius-dot);
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-features > i::after {
+            content: "";
+            width: var(--pricing-feature-width, 70%);
+            height: .9cqh;
+            background-color: var(--pvs-bars);
+            border-radius: var(--pvs-radius-bar);
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-features > i:nth-child(2) {
+            --pricing-feature-width: 70%;
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-features > i:nth-child(3) {
+            --pricing-feature-width: 70%;
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-action {
+            width: 100%;
+            height: 5.1cqh;
+            background-color: var(--ps-pricing-accent);
+            border-radius: var(--pvs-radius-control);
+          }
+
+          @media (prefers-reduced-motion: reduce) {
+            .picker-preview-motion[data-motion-cell="persuade-choreographed"] :is(
+              .ps-eyebrow,
+              .ps-headline,
+              .ps-copy,
+              .ps-actions,
+              .ps-proof
+            ) {
+              opacity: 1 !important;
+              filter: none !important;
+              transform: none !important;
+            }
+
+            .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-choreo-track {
+              transform: translateY(-50%) !important;
+            }
+
+            .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-nav {
+              opacity: 0 !important;
+              filter: none !important;
+              transform: none !important;
+            }
+
+            .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-card {
+              opacity: 1 !important;
+              filter: none !important;
+              clip-path: none !important;
+              transform: none !important;
+            }
+          }
+        `;
+        if (!doc.getElementById(staggerStyle.id)) doc.head.appendChild(staggerStyle);
+
+        /* Chrome can leave this board unpainted after the style lands when the
+           browser starts slowly (large profile): styles compute correctly but
+           nothing paints, and the state sticks until any real style mutation.
+           Nudge the sheet a few times after install to dislodge it; harmless
+           when the paint was fine. */
+
+        const board = doc.querySelector(
+          '.picker-preview-motion[data-surface="persuade"]'
+        );
+        const desktop = board?.querySelector('.ps-desktop');
+
+        if (desktop && !desktop.querySelector(':scope > .ps-choreo-viewport')) {
+          const viewport = doc.createElement('div');
+          const track = doc.createElement('div');
+          const firstPage = doc.createElement('div');
+          const pricingPage = doc.createElement('div');
+
+          viewport.className = 'ps-choreo-viewport';
+          track.className = 'ps-choreo-track';
+          firstPage.className = 'ps-choreo-page';
+          pricingPage.className = 'ps-pricing-page';
+          pricingPage.setAttribute('aria-hidden', 'true');
+          pricingPage.innerHTML = Array.from({ length: 3 }, () =>
+            '<div class="ps-pricing-card">' +
+              '<i class="ps-pricing-tier"></i>' +
+              '<span class="ps-pricing-price"><b></b><i></i></span>' +
+              '<i class="ps-pricing-divider"></i>' +
+              '<span class="ps-pricing-features"><i></i><i></i><i></i></span>' +
+              '<em class="ps-pricing-action"></em>' +
+            '</div>'
+          ).join('');
+
+          [
+            desktop.querySelector(':scope > .ps-hero'),
+            desktop.querySelector(':scope > .ps-proof'),
+            desktop.querySelector(':scope > .ps-editorial'),
+            desktop.querySelector(':scope > .ps-footer')
+          ].filter(Boolean).forEach((section) => firstPage.appendChild(section));
+
+          track.append(firstPage, pricingPage);
+          viewport.appendChild(track);
+          desktop.querySelector(':scope > .ps-nav')
+            ?.insertAdjacentElement('afterend', viewport);
+        }
+
+        const groupSelectors = [
+          [
+            '.ps-desktop .ps-eyebrow',
+            '.ps-desktop .ps-headline',
+            '.ps-desktop .ps-copy',
+            '.ps-desktop .ps-actions',
+            '.ps-desktop .ps-proof'
+          ],
+          [
+            '.ps-phone-body > .ps-headline',
+            '.ps-phone-body > .ps-copy',
+            '.ps-phone-body > .ps-actions',
+            '.ps-phone-body > .ps-proof'
+          ]
+        ];
+
+        const makeSpringFrames = () => {
+          const stiffness = 120;
+          const damping = 20;
+          const mass = 1;
+          const duration = 1050;
+          const steps = 72;
+          const naturalFrequency = Math.sqrt(stiffness / mass);
+          const dampingRatio = damping / (2 * Math.sqrt(stiffness * mass));
+          const dampedFrequency = naturalFrequency * Math.sqrt(1 - dampingRatio ** 2);
+
+          return Array.from({ length: steps + 1 }, (_, index) => {
+            const offset = index / steps;
+            const seconds = (duration * offset) / 1000;
+            const displacement = index === steps ? 0 :
+              Math.exp(-dampingRatio * naturalFrequency * seconds) *
+              (
+                Math.cos(dampedFrequency * seconds) +
+                (dampingRatio * naturalFrequency / dampedFrequency) *
+                Math.sin(dampedFrequency * seconds)
+              );
+            const progress = Math.max(0, Math.min(1, 1 - displacement));
+
+            return {
+              offset,
+              opacity: Number(progress.toFixed(4)),
+              filter: `blur(${(4 * (1 - progress)).toFixed(3)}px)`,
+              transform: `translateY(${(40 * displacement).toFixed(3)}px)`
+            };
+          });
+        };
+
+        const motionPreference = win.matchMedia('(prefers-reduced-motion: reduce)');
+
+        if (
+          board &&
+          win.Element?.prototype.animate &&
+          !motionPreference.matches
+        ) {
+          const sequenceAnimations = [];
+          const springFrames = makeSpringFrames();
+          for (const selectors of groupSelectors) {
+            selectors
+              .map((selector) => board.querySelector(selector))
+              .filter(Boolean)
+              .forEach((element, index) => {
+                sequenceAnimations.push(
+                  element.animate(springFrames, {
+                    duration: 1050,
+                    delay: index * 100,
+                    easing: 'linear',
+                    fill: 'both'
+                  })
+                );
+              });
+          }
+
+          const sequenceDuration = 7200;
+          const scrollDownStart = 1750;
+          const scrollDownEnd = 2850;
+          const scrollUpStart = 5400;
+          const scrollUpEnd = 6500;
+          const sequenceOffset = (milliseconds) =>
+            milliseconds / sequenceDuration;
+
+          const track = board.querySelector('.ps-choreo-track');
+          if (track) {
+            sequenceAnimations.push(
+              track.animate(
+                [
+                  { offset: 0, transform: 'translateY(0)' },
+                  {
+                    offset: sequenceOffset(scrollDownStart),
+                    transform: 'translateY(0)',
+                    easing: 'cubic-bezier(.65, 0, .35, 1)'
+                  },
+                  {
+                    offset: sequenceOffset(scrollDownEnd),
+                    transform: 'translateY(-50%)'
+                  },
+                  {
+                    offset: sequenceOffset(scrollUpStart),
+                    transform: 'translateY(-50%)',
+                    easing: 'cubic-bezier(.65, 0, .35, 1)'
+                  },
+                  {
+                    offset: sequenceOffset(scrollUpEnd),
+                    transform: 'translateY(0)'
+                  },
+                  { offset: 1, transform: 'translateY(0)' }
+                ],
+                {
+                  duration: sequenceDuration,
+                  easing: 'linear',
+                  fill: 'both'
+                }
+              )
+            );
+          }
+
+          const nav = board.querySelector('.ps-desktop > .ps-nav');
+          if (nav) {
+            sequenceAnimations.push(
+              nav.animate(
+                [
+                  {
+                    offset: 0,
+                    opacity: 1,
+                    filter: 'blur(0px)',
+                    transform: 'translateY(0px)'
+                  },
+                  {
+                    offset: sequenceOffset(scrollDownStart),
+                    opacity: 1,
+                    filter: 'blur(0px)',
+                    transform: 'translateY(0px)',
+                    easing: 'cubic-bezier(.4, 0, 1, 1)'
+                  },
+                  {
+                    offset: sequenceOffset(2200),
+                    opacity: 0,
+                    filter: 'blur(4px)',
+                    transform: 'translateY(-10px)'
+                  },
+                  {
+                    offset: sequenceOffset(scrollUpStart),
+                    opacity: 0,
+                    filter: 'blur(4px)',
+                    transform: 'translateY(-10px)',
+                    easing: 'cubic-bezier(.16, 1, .3, 1)'
+                  },
+                  {
+                    offset: sequenceOffset(5850),
+                    opacity: 1,
+                    filter: 'blur(0px)',
+                    transform: 'translateY(0px)'
+                  },
+                  {
+                    offset: 1,
+                    opacity: 1,
+                    filter: 'blur(0px)',
+                    transform: 'translateY(0px)'
+                  }
+                ],
+                {
+                  duration: sequenceDuration,
+                  easing: 'linear',
+                  fill: 'both'
+                }
+              )
+            );
+          }
+
+          const pricingRevealFrames = {
+            left: [
+              {
+                opacity: 0.12,
+                filter: 'blur(8px)',
+                clipPath: 'inset(0 100% 0 0)',
+                transform: 'translateX(-64px) scale(.985)'
+              },
+              {
+                opacity: 1,
+                filter: 'blur(0px)',
+                clipPath: 'inset(0)',
+                transform: 'translateX(0px) scale(1)'
+              }
+            ],
+            center: [
+              {
+                opacity: 0.12,
+                filter: 'blur(7px)',
+                clipPath: 'inset(0 49%)',
+                transform: 'scale(.96)'
+              },
+              {
+                opacity: 1,
+                filter: 'blur(0px)',
+                clipPath: 'inset(0)',
+                transform: 'scale(1)'
+              }
+            ],
+            right: [
+              {
+                opacity: 0.12,
+                filter: 'blur(8px)',
+                clipPath: 'inset(0 0 0 100%)',
+                transform: 'translateX(64px) scale(.985)'
+              },
+              {
+                opacity: 1,
+                filter: 'blur(0px)',
+                clipPath: 'inset(0)',
+                transform: 'translateX(0px) scale(1)'
+              }
+            ]
+          };
+          const pricingReveals = [
+            ['.ps-pricing-card:nth-child(1)', 'left', 2140],
+            ['.ps-pricing-card:nth-child(2)', 'center', 2280],
+            ['.ps-pricing-card:nth-child(3)', 'right', 2420]
+          ];
+
+          for (const [selector, kind, delay] of pricingReveals) {
+            const card = board.querySelector(selector);
+            if (!card) continue;
+            sequenceAnimations.push(
+              card.animate(pricingRevealFrames[kind], {
+                duration: 720,
+                delay,
+                easing: 'cubic-bezier(.16, 1, .3, 1)',
+                fill: 'both'
+              })
+            );
+          }
+
+          const restartSequence = () => {
+            if (motionPreference.matches) {
+              sequenceAnimations.forEach((animation) => animation.cancel());
+              return;
+            }
+            sequenceAnimations.forEach((animation) => {
+              animation.pause();
+              animation.currentTime = 0;
+              animation.play();
+            });
+          };
+
+          motionBoard.__replayMotion = restartSequence;
+
+          motionPreference.addEventListener('change', ({ matches }) => {
+            if (matches) {
+              sequenceAnimations.forEach((animation) => animation.cancel());
+            } else {
+              restartSequence();
+            }
+          });
+
+          win.addEventListener('pagehide', () => {
+            sequenceAnimations.forEach((animation) => animation.cancel());
+          });
+        }
+
+        let nudges = 0;
+        const nudge = () => {
+          if (!style.isConnected || nudges >= 3) return;
+          nudges += 1;
+          style.textContent += '\n.imp-paint-nudge-' + nudges + ' { --imp-nudge: ' + nudges + '; }';
+          if (nudges < 3) win.setTimeout(nudge, 700 * nudges);
+        };
+        win.requestAnimationFrame(() => win.requestAnimationFrame(nudge));
+      }
+
+    const installEmailCapture = () => {
+        if (!doc?.head) return;
+        if (motionBoard.hasAttribute('data-premium-landing-email-capture')) return;
+        motionBoard.setAttribute('data-premium-landing-email-capture', '');
+
+        const style = doc.createElement('style');
+        style.id = 'landing-email-capture';
+        style.textContent = `
+          .picker-preview-motion[data-surface="persuade"] .ps-desktop .ps-editorial-copy {
+            grid-template-columns: minmax(0, 1fr) !important;
+            grid-template-rows: auto 20px 20px !important;
+            align-items: center !important;
+            column-gap: 0 !important;
+            row-gap: 5px !important;
+          }
+
+          .picker-preview-motion[data-surface="persuade"] .ps-desktop .ps-editorial-copy > strong {
+            grid-column: 1 / -1;
+            width: 58% !important;
+            height: 7px !important;
+            background-color: var(--pvs-bars) !important;
+          }
+
+          .picker-preview-motion[data-surface="persuade"] .ps-desktop .ps-editorial-copy > span {
+            box-sizing: border-box;
+            grid-column: 1;
+            grid-row: 2;
+            display: flex !important;
+            align-items: center;
+            gap: 5px !important;
+            min-width: 0;
+            height: 20px;
+            padding: 0 7px;
+            border-radius: var(--pvs-radius-control);
+            box-shadow: inset 0 0 0 1px var(--pvs-bars);
+          }
+
+          .picker-preview-motion[data-surface="persuade"] .ps-desktop .ps-editorial-copy > span i:first-child {
+            box-sizing: border-box;
+            flex: 0 0 auto;
+            width: 6px !important;
+            height: 6px !important;
+            border: 1px solid var(--pvs-bars);
+            border-radius: 50%;
+            background: transparent !important;
+          }
+
+          .picker-preview-motion[data-surface="persuade"] .ps-desktop .ps-editorial-copy > span i:last-child {
+            flex: 0 1 56%;
+            width: 56% !important;
+            height: 3px !important;
+            border-radius: var(--pvs-radius-bar);
+          }
+
+          .picker-preview-motion[data-surface="persuade"] .ps-desktop .ps-editorial-copy > em {
+            box-sizing: border-box;
+            grid-column: 1;
+            grid-row: 3;
+            position: relative;
+            width: 100% !important;
+            height: 20px !important;
+            margin: 0 !important;
+            border-radius: var(--pvs-radius-control);
+            background-color: var(--pvs-ghost);
+            box-shadow: inset 0 0 0 1px var(--pvs-cta);
+            transform-origin: 50% 50%;
+          }
+
+          .picker-preview-motion[data-surface="persuade"] .ps-desktop .ps-editorial-copy > em::after,
+          .picker-preview-motion[data-surface="persuade"] .ps-desktop .ps-editorial-copy > em::before {
+            content: "";
+            box-sizing: border-box;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            pointer-events: none;
+          }
+
+          .picker-preview-motion[data-surface="persuade"] .ps-desktop .ps-editorial-copy > em::after {
+            width: 10px;
+            height: 8px;
+            background-color: var(--pvs-cta);
+            clip-path: polygon(0 0, 100% 50%, 0 100%, 22% 59%, 68% 50%, 22% 41%);
+            transform: translate(-50%, -50%);
+          }
+
+          .picker-preview-motion[data-surface="persuade"] .ps-desktop .ps-editorial-copy > em::before {
+            width: 5px;
+            height: 8px;
+            border-right: 1.5px solid var(--pvs-cta-text);
+            border-bottom: 1.5px solid var(--pvs-cta-text);
+            opacity: 0;
+            transform: translate(-50%, -62%) rotate(45deg) scale(.7);
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-gallery-item:first-child > i,
+          .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-gallery-item:first-child span b:first-child,
+          .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-gallery-item:first-child > i::after {
+            animation: none !important;
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-gallery-item:first-child > i::after {
+            opacity: 0 !important;
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-editorial-copy > em {
+            animation:
+              mt-in-4 var(--mt) var(--mt-ease) infinite,
+              mtv-email-submit 4.2s linear infinite !important;
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-editorial-copy > em::after {
+            animation: mtv-email-send 4.2s linear infinite;
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-editorial-copy > em::before {
+            animation: mtv-email-check 4.2s linear infinite;
+          }
+
+          .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-cursor::after {
+            animation: mtv-email-click 4.2s linear infinite !important;
+          }
+
+          /* The cursor path keyframes (mtr-/mtv-path-perfect-loop) are owned by
+             the per-cell correction styles; do not redefine them here. */
+
+          @keyframes mtv-email-submit {
+            0%, 63% {
+              background-color: var(--pvs-ghost);
+              box-shadow: inset 0 0 0 1px var(--pvs-cta);
+              scale: 1;
+            }
+            65% {
+              background-color: var(--pvs-ghost);
+              box-shadow: inset 0 0 0 1px var(--pvs-cta);
+              scale: .9;
+            }
+            69%, 83.33% {
+              background-color: var(--pvs-cta);
+              box-shadow: var(--pvs-shadow-control);
+              scale: 1;
+            }
+            88%, 100% {
+              background-color: var(--pvs-ghost);
+              box-shadow: inset 0 0 0 1px var(--pvs-cta);
+              scale: 1;
+            }
+          }
+
+          @keyframes mtv-email-send {
+            0%, 63% {
+              opacity: 1;
+              transform: translate(-50%, -50%) scale(1);
+            }
+            66%, 84% {
+              opacity: 0;
+              transform: translate(-18%, -50%) scale(.72);
+            }
+            88%, 100% {
+              opacity: 1;
+              transform: translate(-50%, -50%) scale(1);
+            }
+          }
+
+          @keyframes mtv-email-check {
+            0%, 66% {
+              opacity: 0;
+              transform: translate(-50%, -62%) rotate(45deg) scale(.7);
+            }
+            69%, 83.33% {
+              opacity: 1;
+              transform: translate(-50%, -62%) rotate(45deg) scale(1);
+            }
+            88%, 100% {
+              opacity: 0;
+              transform: translate(-50%, -62%) rotate(45deg) scale(.7);
+            }
+          }
+
+          @keyframes mtv-email-click {
+            0%, 63.5% {
+              opacity: 0;
+              scale: .35;
+            }
+            64% {
+              opacity: .55;
+              scale: .35;
+            }
+            67%, 100% {
+              opacity: 0;
+              scale: 1.5;
+            }
+          }
+
+          @media (prefers-reduced-motion: reduce) {
+            .picker-preview-motion[data-surface="persuade"] .ps-editorial-copy > em,
+            .picker-preview-motion[data-surface="persuade"] .ps-editorial-copy > em::before,
+            .picker-preview-motion[data-surface="persuade"] .ps-editorial-copy > em::after {
+              animation: none !important;
+            }
+          }
+        `;
+        if (!doc.getElementById(style.id)) doc.head.appendChild(style);
+
+        const getEmailTarget = () => doc.querySelector(
+          '.picker-preview-motion[data-surface="persuade"] .ps-desktop .ps-editorial-copy > em'
+        );
+
+        const plotEmailTarget = () => {
+          const target = getEmailTarget();
+          const board = target?.closest('.picker-preview-motion');
+          const desk = target?.closest('.ps-desktop');
+          const cursor = board?.querySelector('.ps-cursor');
+          if (!board || !desk || !target || !cursor) return;
+
+          const deskRect = desk.getBoundingClientRect();
+          const targetRect = target.getBoundingClientRect();
+          if (!desk.clientWidth || !desk.clientHeight) return;
+
+          const deskStyle = win.getComputedStyle(desk);
+          const iconStyle = win.getComputedStyle(target, '::after');
+          const cursorStyle = win.getComputedStyle(cursor);
+          const borderLeft = parseFloat(deskStyle.borderLeftWidth) || 0;
+          const borderTop = parseFloat(deskStyle.borderTopWidth) || 0;
+          const resolveInset = (value, size) => {
+            const amount = parseFloat(value);
+            if (!Number.isFinite(amount)) return size / 2;
+            return value.trim().endsWith('%') ? (amount / 100) * size : amount;
+          };
+          const iconX = resolveInset(iconStyle.left, targetRect.width);
+          const iconY = resolveInset(iconStyle.top, targetRect.height);
+          const cursorWidth = parseFloat(cursorStyle.width) || cursor.offsetWidth;
+          const cursorHeight = parseFloat(cursorStyle.height) || cursor.offsetHeight;
+          const cursorScale = Math.min(cursorWidth / 14, cursorHeight / 20);
+          // The SVG's geometric apex sits at (1,1)*scale, but its white outline
+          // disappears against the light button, so the eye reads the black wedge
+          // (which starts ~1px right and ~2px below the apex) as the tip. Aim
+          // that visible wedge at the icon center instead of the apex.
+          const cursorHotspotX = cursorScale * 2.2;
+          const cursorHotspotY = cursorScale * 3.9;
+          const x = ((targetRect.left - deskRect.left - borderLeft + iconX - cursorHotspotX) / desk.clientWidth) * 100;
+          const y = ((targetRect.top - deskRect.top - borderTop + iconY - cursorHotspotY) / desk.clientHeight) * 100;
+          board.style.setProperty('--mtr-email', `${x.toFixed(2)}cqw ${y.toFixed(2)}cqh`);
+        };
+
+        win.requestAnimationFrame(() => {
+          plotEmailTarget();
+          win.requestAnimationFrame(plotEmailTarget);
+        });
+
+        const emailTarget = getEmailTarget();
+        const desk = emailTarget?.closest('.ps-desktop');
+        if (desk && win.ResizeObserver) {
+          const observer = new win.ResizeObserver(plotEmailTarget);
+          observer.observe(desk);
+          motionBoard.__emailCaptureObserver = observer;
+        }
+      }
+
+    const installPortfolioFixes = () => {
+        if (!doc?.head) return;
+        if (motionBoard.hasAttribute('data-premium-portfolio-motion-fixes')) return;
+        motionBoard.setAttribute('data-premium-portfolio-motion-fixes', '');
+
+        const style = doc.createElement('style');
+        style.id = 'portfolio-motion-fixes';
+        style.textContent = `
+          /* ============================================================
+             A. Preview 48's rendered gallery topology. Its desktop artifact
+             leads; the phone is a static supporting adaptation. The current
+             palette remains mapped through the existing --pv-* properties.
+             ============================================================ */
+          .picker-preview-motion[data-surface="experience"] {
+            --pvs-title: var(--pg-ink);
+            --pvs-cta: var(--pv-primary);
+            --pvs-bars: var(--pg-ink);
+            --pvs-accent-d: var(--pv-primary);
+            --pvs-ink: var(--pv-n-ink);
+            grid-row: 2;
+            width: 100%;
+            height: 100%;
+            aspect-ratio: auto;
+          }
+          .picker-preview-motion[data-surface="experience"] .pv-desktop {
+            --pv-text: 1.35;
+            position: relative;
+            container-type: size;
+          }
+          .picker-preview-motion[data-surface="experience"] .pv-desktop .pv-pill {
+            color: var(--pv-neutral);
+            display: grid;
+            place-items: center;
+          }
+          .picker-preview-motion[data-surface="experience"] .pv-desktop .pv-pill::after {
+            content: "";
+            width: calc(8.5 * var(--pv-x));
+            height: calc(1.3 * var(--pv-x));
+            background: currentColor;
+            border-radius: 2px;
+          }
+          .picker-preview-motion[data-surface="experience"] .pv-desktop .pg-cap {
+            padding-top: 5.2cqh !important;
+            gap: 2.6cqh !important;
+          }
+          .picker-preview-motion[data-surface="experience"] .pv-desktop .pg-cap::before {
+            content: "";
+            display: block;
+            width: calc(11.5 * var(--pv-x));
+            aspect-ratio: 1;
+            border: 1px solid color-mix(in oklab, var(--pv-secondary) 55%, var(--pv-neutral));
+            border-radius: 50%;
+            background: linear-gradient(
+              135deg,
+              color-mix(in oklab, var(--pv-secondary) 24%, var(--pv-neutral)),
+              color-mix(in oklab, var(--pv-secondary) 46%, var(--pv-neutral))
+            );
+          }
+          .picker-preview-motion[data-surface="experience"] :is(.pg-row--flip, .pg-rail) {
+            border-color: transparent !important;
+            box-shadow: none !important;
+          }
+
+          /* Existing motion is remapped onto Preview 48's desktop-only hooks. */
+          .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pv-nav-bars i:first-child {
+            animation: 3.8s linear infinite mtr-nav-1;
+          }
+          .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pg-row:first-child .pg-cap-title {
+            animation: 3.8s linear infinite mxr-name-1;
+          }
+          .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pg-row:first-child > .pv-image::after {
+            animation: 3.8s linear infinite mxr-mark-1;
+          }
+          .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pg-row:nth-child(2) .pg-cap-title {
+            animation: 3.8s linear infinite mxr-name-2;
+          }
+          .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pg-row:nth-child(2) > .pv-image::after {
+            animation: 3.8s linear infinite mxr-mark-2;
+          }
+
+          .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pv-nav-bars i:first-child {
+            animation: 4.2s linear infinite mxv-nav-1;
+          }
+          .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-row:first-child .pg-cap-title {
+            animation: 4.2s linear infinite mxv-name;
+          }
+          .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-row:first-child > .pv-image::after {
+            animation: 4.2s linear infinite mxv-mark;
+          }
+          .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-arrow--next {
+            animation: 4.2s linear infinite mxv-arrow;
+          }
+          .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-track {
+            animation: 4.2s linear infinite mxv-track;
+          }
+          .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-track i:first-child {
+            animation: 4.2s linear infinite mxv-stop-off;
+          }
+          .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-track i:nth-child(2) {
+            animation: 4.2s linear infinite mxv-stop-on;
+          }
+
+          /* Choreographed keeps every project visible. Focus travels through the
+             existing image, caption, marker, and pagination controls with bounded
+             blur and transform motion; no component is revealed from opacity 0. */
+          .picker-preview-motion[data-motion-cell="experience-choreographed"] .ps-cursor {
+            animation: 5.6s linear infinite pgc-path !important;
+          }
+          .picker-preview-motion[data-motion-cell="experience-choreographed"] .ps-cursor::after {
+            animation: none !important;
+            opacity: 0 !important;
+          }
+          .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pv-nav-bars i:first-child {
+            animation: 5.6s linear infinite pgc-nav;
+          }
+          .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-row:first-child > .pv-image {
+            transform-origin: 50% 50%;
+            animation: 5.6s linear infinite pgc-image-1;
+          }
+          .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-row:first-child .pg-cap {
+            animation: 5.6s linear infinite pgc-cap-1;
+          }
+          .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-row:first-child .pg-cap-title {
+            animation: 5.6s linear infinite pgc-name-1;
+          }
+          .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-row:first-child > .pv-image::after {
+            animation: 5.6s linear infinite pgc-mark-1;
+          }
+          .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-arrow--next {
+            animation: 5.6s linear infinite pgc-arrow;
+          }
+          .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-track i:first-child {
+            animation: 5.6s linear infinite pgc-stop-off;
+          }
+          .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-track i:nth-child(2) {
+            animation: 5.6s linear infinite pgc-stop-on;
+          }
+          .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-row:nth-child(2) > .pv-image {
+            transform-origin: 50% 50%;
+            animation: 5.6s linear infinite pgc-image-2;
+          }
+          .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-row:nth-child(2) .pg-cap {
+            animation: 5.6s linear infinite pgc-cap-2;
+          }
+          .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-row:nth-child(2) .pg-cap-title {
+            animation: 5.6s linear infinite pgc-name-2;
+          }
+          .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-row:nth-child(2) > .pv-image::after {
+            animation: 5.6s linear infinite pgc-mark-2;
+          }
+
+          /* ============================================================
+             B. Restrained cell (3.8s linear cycle).
+             New route: entry -> nav1 (one nav hover only) -> work1 -> work2 -> exit.
+             The -tip variables are set by plotIndexTips() below; fallbacks
+             are the precomputed tip-compensated stops.
+             ============================================================ */
+          @keyframes mxr-path {
+            0% { translate: var(--mtr-entry, 62.73cqw -8cqh); }
+            9.21%, 30% { translate: var(--mxi-nav1-tip, 62.4cqw 3.9cqh); }
+            45%, 62% { translate: var(--mxi-work1-tip, 24.5cqw 33.8cqh); }
+            72%, 88% { translate: var(--mxi-work2-tip, 77.3cqw 66.8cqh); }
+            96.5%, 100% { translate: var(--mtr-entry, 62.73cqw -8cqh); }
+          }
+          /* Nav 1 highlight + dropdown follow the longer nav dwell. */
+          @keyframes mtr-nav-1 {
+            0%, 9.2% { background-color: var(--pvs-bars); }
+            9.21%, 29.99% { background-color: var(--pvs-cta); }
+            30%, 100% { background-color: var(--pvs-bars); }
+          }
+          @keyframes mtr-drop-1 {
+            0%, 9.2% { opacity: 0; }
+            9.21%, 29.99% { opacity: 1; }
+            30%, 100% { opacity: 0; }
+          }
+          /* Nav 2 never hovers: pin its highlight and dropdown to rest. */
+          @keyframes mtr-nav-2 {
+            0%, 100% { background-color: var(--pvs-bars); }
+          }
+          @keyframes mtr-drop-2 {
+            0%, 100% { opacity: 0; }
+          }
+          /* Work-row hovers retimed to the new dwells (45-62 and 72-88).
+             Name bars keep Preview 48's ink at rest and use the existing primary
+             only while the cursor is actually over that project. */
+          @keyframes mxr-name-1 {
+            0%, 44.99% { background-color: var(--pg-ink); }
+            45%, 61.99% { background-color: var(--pv-primary); }
+            62%, 100% { background-color: var(--pg-ink); }
+          }
+          @keyframes mxr-mark-1 {
+            0%, 44.99% { background-color: var(--pvs-accent-d); scale: 1; }
+            45%, 61.99% { background-color: var(--pvs-cta); scale: 1.4; }
+            62%, 100% { background-color: var(--pvs-accent-d); scale: 1; }
+          }
+          @keyframes mxr-name-2 {
+            0%, 71.99% { background-color: var(--pg-ink); }
+            72%, 87.99% { background-color: var(--pv-primary); }
+            88%, 100% { background-color: var(--pg-ink); }
+          }
+          @keyframes mxr-mark-2 {
+            0%, 71.99% { background-color: var(--pvs-accent-d); scale: 1; }
+            72%, 87.99% { background-color: var(--pvs-cta); scale: 1.4; }
+            88%, 100% { background-color: var(--pvs-accent-d); scale: 1; }
+          }
+
+          /* ============================================================
+             C. Responsive cell (4.2s cycle). Ground nav/work windows are
+             kept (their companion animations already align); the rail
+             dwell is extended to 86% so the click -> slide -> swap story
+             completes while the cursor is still on the arrow.
+             ============================================================ */
+          @keyframes mxv-path {
+            0% { translate: var(--mtr-entry, 62.73cqw -8cqh); }
+            5.95%, 25% { translate: var(--mxi-nav1-tip, 62.4cqw 3.9cqh); }
+            34.52%, 50% { translate: var(--mxi-work1-tip, 24.5cqw 33.8cqh); }
+            60.71%, 86% { translate: var(--mxi-rail-tip, 96.0cqw 85.4cqh); }
+            92%, 99.99% { translate: 32cqw 115cqh; }
+            100% { translate: var(--mtr-entry, 62.73cqw -8cqh); }
+          }
+          @keyframes mxv-nav-1 {
+            0%, 5.94% { background-color: var(--pvs-bars); }
+            5.95%, 24.99% { background-color: var(--pvs-cta); }
+            25%, 100% { background-color: var(--pvs-bars); }
+          }
+          /* Name bar: same window as ground mxv-name, new rest color. */
+          @keyframes mxv-name {
+            0%, 34.51% { background-color: var(--pg-ink); animation-timing-function: cubic-bezier(.16, 1, .3, 1); }
+            38.33%, 50% { background-color: var(--pv-primary); }
+            52.86%, 100% { background-color: var(--pg-ink); }
+          }
+          /* Pagination advances AFTER the click ring (click at ~63%,
+             slide + swap 66.5 -> 70). */
+          @keyframes mxv-track {
+            0%, 66.49% { translate: 0; animation-timing-function: cubic-bezier(.16, 1, .3, 1); }
+            70%, 99.99% { translate: -6px; }
+            100% { translate: 0; }
+          }
+          @keyframes mxv-stop-off {
+            0%, 66.49% { background-color: var(--pvs-cta); animation-timing-function: cubic-bezier(.16, 1, .3, 1); }
+            70%, 99.99% { background-color: var(--pvs-bars); }
+            100% { background-color: var(--pvs-cta); }
+          }
+          @keyframes mxv-stop-on {
+            0%, 66.49% { background-color: var(--pvs-bars); animation-timing-function: cubic-bezier(.16, 1, .3, 1); }
+            70%, 99.99% { background-color: var(--pvs-cta); }
+            100% { background-color: var(--pvs-bars); }
+          }
+
+          /* ============================================================
+             D. Choreographed cell (5.6s cycle). A closed cursor circuit and
+             non-destructive focus choreography. Every element remains visible.
+             ============================================================ */
+          @keyframes pgc-path {
+            0%, 14% { translate: var(--mxi-nav1-tip, 62.4cqw 3.9cqh); }
+            22%, 38% { translate: var(--mxi-work1-tip, 24.5cqw 33.8cqh); }
+            48%, 64% { translate: var(--mxi-rail-tip, 96cqw 85.4cqh); }
+            74%, 88% { translate: var(--mxi-work2-tip, 77.3cqw 66.8cqh); }
+            100% { translate: var(--mxi-nav1-tip, 62.4cqw 3.9cqh); }
+          }
+          @keyframes pgc-nav {
+            0%, 14% { background-color: var(--pv-primary); }
+            18%, 100% { background-color: var(--pg-ink); }
+          }
+          @keyframes pgc-image-1 {
+            0%, 18% { filter: blur(0) saturate(1); scale: 1; clip-path: inset(0); }
+            22% { filter: blur(.8px) saturate(.98); scale: 1.006; clip-path: inset(0); animation-timing-function: cubic-bezier(.16, 1, .3, 1); }
+            28%, 36% { filter: blur(0) saturate(1.04); scale: 1.012; clip-path: inset(0); }
+            42%, 100% { filter: blur(0) saturate(1); scale: 1; clip-path: inset(0); }
+          }
+          @keyframes pgc-cap-1 {
+            0%, 18% { filter: blur(0); translate: 0 0; opacity: 1; }
+            22% { filter: blur(.7px); translate: 0 1.5px; opacity: 1; animation-timing-function: cubic-bezier(.16, 1, .3, 1); }
+            28%, 36% { filter: blur(0); translate: 0 0; opacity: 1; }
+            42%, 100% { filter: blur(0); translate: 0 0; opacity: 1; }
+          }
+          @keyframes pgc-name-1 {
+            0%, 21.99% { background-color: var(--pg-ink); }
+            28%, 36% { background-color: var(--pv-primary); }
+            42%, 100% { background-color: var(--pg-ink); }
+          }
+          @keyframes pgc-mark-1 {
+            0%, 21.99% { scale: 1; }
+            28%, 36% { scale: 1.35; }
+            42%, 100% { scale: 1; }
+          }
+          @keyframes pgc-arrow {
+            0%, 47.99% { translate: 0; filter: blur(0); }
+            53%, 60% { translate: 1.5px 0; filter: blur(0); animation-timing-function: cubic-bezier(.16, 1, .3, 1); }
+            66%, 100% { translate: 0; filter: blur(0); }
+          }
+          @keyframes pgc-stop-off {
+            0%, 52% { background-color: var(--pv-primary); scale: 1; }
+            58%, 64% { background-color: var(--pg-ink); scale: .82; }
+            70%, 100% { background-color: var(--pv-primary); scale: 1; }
+          }
+          @keyframes pgc-stop-on {
+            0%, 52% { background-color: var(--pg-ink); scale: 1; }
+            58%, 64% { background-color: var(--pv-primary); scale: 1.18; }
+            70%, 100% { background-color: var(--pg-ink); scale: 1; }
+          }
+          @keyframes pgc-image-2 {
+            0%, 70% { filter: blur(0) saturate(1); scale: 1; clip-path: inset(0); }
+            74% { filter: blur(.8px) saturate(.98); scale: 1.006; clip-path: inset(0); animation-timing-function: cubic-bezier(.16, 1, .3, 1); }
+            80%, 88% { filter: blur(0) saturate(1.04); scale: 1.012; clip-path: inset(0); }
+            94%, 100% { filter: blur(0) saturate(1); scale: 1; clip-path: inset(0); }
+          }
+          @keyframes pgc-cap-2 {
+            0%, 70% { filter: blur(0); translate: 0 0; opacity: 1; }
+            74% { filter: blur(.7px); translate: 0 1.5px; opacity: 1; animation-timing-function: cubic-bezier(.16, 1, .3, 1); }
+            80%, 88% { filter: blur(0); translate: 0 0; opacity: 1; }
+            94%, 100% { filter: blur(0); translate: 0 0; opacity: 1; }
+          }
+          @keyframes pgc-name-2 {
+            0%, 73.99% { background-color: var(--pg-ink); }
+            80%, 88% { background-color: var(--pv-primary); }
+            94%, 100% { background-color: var(--pg-ink); }
+          }
+          @keyframes pgc-mark-2 {
+            0%, 73.99% { scale: 1; }
+            80%, 88% { scale: 1.35; }
+            94%, 100% { scale: 1; }
+          }
+
+          /* ============================================================
+             E. Click ring. Restrained starts from a quiet default here; its
+             modal sequence below owns the two intentional clicks. Responsive
+             clicks once on the next-arrow before pagination advances.
+             (Keyframes are document-global, so the per-cell split lives in
+             these scoped assignment rules.)
+             ============================================================ */
+          .picker-preview-motion[data-motion-cell="experience-restrained"] .ps-cursor::after {
+            animation: none;
+            opacity: 0;
+          }
+          .picker-preview-motion[data-motion-cell="experience-responsive"] .ps-cursor::after {
+            animation: 4.2s linear infinite mxi-rail-click !important;
+          }
+          @keyframes mxi-rail-click {
+            0%, 62.49% { opacity: 0; scale: .35; }
+            62.9% { opacity: .55; scale: .35; }
+            65.3% { opacity: 0; scale: 1.5; }
+            100% { opacity: 0; scale: 1.5; }
+          }
+
+          @media (prefers-reduced-motion: reduce) {
+            .picker-preview-motion[data-surface="experience"] .ps-cursor::after {
+              animation: none !important;
+              opacity: 0 !important;
+            }
+            .picker-preview-motion[data-surface="experience"] .pv-desktop :is(
+              .pv-nav-bars i,
+              .pv-image,
+              .pv-image::before,
+              .pv-image::after,
+              .pg-cap,
+              .pg-cap-title,
+              .pg-arrow,
+              .pg-track,
+              .pg-track i
+            ) {
+              animation: none !important;
+              opacity: 1 !important;
+              clip-path: none !important;
+              filter: none !important;
+              translate: none !important;
+              scale: 1 !important;
+            }
+            .picker-preview-motion[data-motion-cell="experience-choreographed"] .ps-cursor {
+              animation: none !important;
+              translate: var(--mxi-nav1-tip, 62.4cqw 3.9cqh) !important;
+            }
+          }
+        `;
+        if (!doc.getElementById(style.id)) doc.head.appendChild(style);
+
+        if (cell.slice(cell.indexOf('-') + 1) === 'restrained') {
+          const loopStyle = doc.createElement('style');
+          loopStyle.id = 'restrained-portfolio-perfect-loop';
+          loopStyle.textContent = `
+            /* Preview 29's whole story is one closed interaction loop:
+               nav dropdown -> first gallery image -> modal -> close -> nav. */
+            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pv-nav {
+              position: relative;
+              z-index: 3;
+            }
+            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pv-nav-bars i:first-child {
+              position: relative;
+              animation: 4s linear infinite mxr-modal-nav !important;
+            }
+            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pv-nav-bars i:first-child::after {
+              content: "";
+              box-sizing: border-box;
+              width: 64px;
+              height: 54px;
+              position: absolute;
+              z-index: 4;
+              top: calc(100% + 8px);
+              left: -10px;
+              transform-origin: top;
+              pointer-events: none;
+              border: 1.5px solid var(--pv-primary);
+              border-radius: 2px;
+              background: var(--pv-neutral);
+              opacity: 0;
+              animation: 4s linear infinite mxr-modal-dropdown;
+            }
+            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pv-nav-bars i:first-child::before {
+              content: "";
+              width: 41px;
+              height: 31px;
+              position: absolute;
+              z-index: 5;
+              top: calc(100% + 18.5px);
+              left: 1.5px;
+              pointer-events: none;
+              background-image:
+                linear-gradient(var(--pg-ink), var(--pg-ink)),
+                linear-gradient(var(--pg-ink), var(--pg-ink)),
+                linear-gradient(var(--pg-ink), var(--pg-ink));
+              background-position: 0 0, 0 13px, 0 26px;
+              background-repeat: no-repeat;
+              background-size: 78% 5px, 92% 5px, 64% 5px;
+              opacity: 0;
+              animation: 4s linear infinite mxr-modal-dropdown;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .ps-cursor {
+              z-index: 15;
+              animation: 4s cubic-bezier(.16, 1, .3, 1) infinite mxr-modal-path !important;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .ps-cursor::after {
+              left: -7.95px !important;
+              top: -7.95px !important;
+              animation: 4s linear infinite mxr-modal-click !important;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pg-row .pg-cap-title,
+            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pg-row > .pv-image::after {
+              animation: none !important;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pg-row .pg-cap-title {
+              background-color: var(--pg-ink) !important;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-scene {
+              display: block;
+              position: absolute;
+              z-index: 8;
+              inset: 0;
+              overflow: hidden;
+              pointer-events: none;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-backdrop {
+              display: block;
+              position: absolute;
+              inset: 0;
+              background: color-mix(in oklab, var(--pv-neutral) 52%, transparent);
+              opacity: 0;
+              -webkit-backdrop-filter: blur(0);
+              backdrop-filter: blur(0);
+              animation: 4s linear infinite mxr-modal-backdrop;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-surface {
+              display: block;
+              box-sizing: border-box;
+              position: absolute;
+              inset: 13cqh 12cqw 12cqh;
+              overflow: hidden;
+              padding: 7cqh 4cqw 4.2cqh;
+              border: 1px solid color-mix(in oklab, var(--pv-secondary) 58%, var(--pv-neutral));
+              background: var(--pv-neutral);
+              opacity: 0;
+              animation: 4s linear infinite mxr-modal-surface;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-close {
+              display: grid;
+              place-items: center;
+              box-sizing: border-box;
+              width: 4cqw;
+              aspect-ratio: 1;
+              position: absolute;
+              z-index: 2;
+              top: 2.3cqh;
+              right: 1.8cqw;
+              border: 0;
+              background: transparent;
+              box-shadow: none;
+              color: var(--pv-primary);
+              animation: 4s linear infinite mxr-modal-close-press;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-close::before,
+            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-close::after {
+              content: "";
+              width: 48%;
+              height: 1px;
+              position: absolute;
+              left: 50%;
+              top: 50%;
+              translate: -50% -50%;
+              background: currentColor;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-close::before {
+              rotate: 45deg;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-close::after {
+              rotate: -45deg;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-bento {
+              display: grid;
+              width: 100%;
+              height: 100%;
+              grid-template-columns: 1.2fr .8fr .8fr;
+              grid-template-rows: 1fr 1fr;
+              gap: 2.1cqw;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-image {
+              display: block !important;
+              width: 100% !important;
+              height: 100% !important;
+              min-width: 0;
+              min-height: 0;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-image--hero {
+              grid-row: 1 / 3;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-image--wide {
+              grid-column: 2 / 4;
+            }
+
+            @keyframes mxr-modal-path {
+              0%, 6% {
+                translate: var(--mxi-nav1-tip, 69.15cqw 5.47cqh);
+              }
+              18%, 25.5% {
+                translate: var(--mxi-work1-tip, 33cqw 29.74cqh);
+              }
+              38%, 76% {
+                translate: var(--mxr-modal-close-tip, 83.88cqw 17.95cqh);
+              }
+              88.5%, 100% {
+                translate: var(--mxi-nav1-tip, 69.15cqw 5.47cqh);
+              }
+            }
+
+            @keyframes mxr-modal-nav {
+              0%, 6% { background-color: var(--pvs-cta); }
+              9%, 85.5% { background-color: var(--pvs-bars); }
+              88.5%, 100% { background-color: var(--pvs-cta); }
+            }
+
+            @keyframes mxr-modal-dropdown {
+              0%, 6% { opacity: 1; }
+              9%, 85.5% { opacity: 0; }
+              88.5%, 100% { opacity: 1; }
+            }
+
+            @keyframes mxr-modal-click {
+              0%, 20.99% { opacity: 0; scale: .35; }
+              21% { opacity: .55; scale: .35; }
+              25.5% { opacity: 0; scale: 1.5; }
+              25.51%, 71.49% { opacity: 0; scale: .35; }
+              71.5% { opacity: .55; scale: .35; }
+              76% { opacity: 0; scale: 1.5; }
+              76.01%, 100% { opacity: 0; scale: .35; }
+            }
+
+            @keyframes mxr-modal-backdrop {
+              0%, 25.49% {
+                opacity: 0;
+                -webkit-backdrop-filter: blur(0);
+                backdrop-filter: blur(0);
+              }
+              25.5% {
+                opacity: 0;
+                -webkit-backdrop-filter: blur(0);
+                backdrop-filter: blur(0);
+                animation-timing-function: cubic-bezier(.16, 1, .3, 1);
+              }
+              38%, 75.99% {
+                opacity: 1;
+                -webkit-backdrop-filter: blur(3px);
+                backdrop-filter: blur(3px);
+              }
+              76% {
+                opacity: 1;
+                -webkit-backdrop-filter: blur(3px);
+                backdrop-filter: blur(3px);
+                animation-timing-function: cubic-bezier(.4, 0, 1, 1);
+              }
+              86%, 100% {
+                opacity: 0;
+                -webkit-backdrop-filter: blur(0);
+                backdrop-filter: blur(0);
+              }
+            }
+
+            @keyframes mxr-modal-surface {
+              0%, 25.49% {
+                opacity: 0;
+                clip-path: inset(9% 7% 9% 7%);
+                filter: blur(7px);
+                scale: 1;
+              }
+              25.5% {
+                opacity: 0;
+                clip-path: inset(9% 7% 9% 7%);
+                filter: blur(7px);
+                scale: 1;
+                animation-timing-function: cubic-bezier(.16, 1, .3, 1);
+              }
+              38%, 75.99% {
+                opacity: 1;
+                clip-path: inset(0);
+                filter: blur(0);
+                scale: 1;
+              }
+              76% {
+                opacity: 1;
+                clip-path: inset(0);
+                filter: blur(0);
+                scale: 1;
+                animation-timing-function: cubic-bezier(.4, 0, 1, 1);
+              }
+              86% {
+                opacity: 0;
+                clip-path: inset(3%);
+                filter: blur(4px);
+                scale: 1;
+              }
+              86.01%, 100% {
+                opacity: 0;
+                clip-path: inset(9% 7% 9% 7%);
+                filter: blur(7px);
+                scale: 1;
+              }
+            }
+
+            @keyframes mxr-modal-close-press {
+              0%, 71.49% { scale: 1; }
+              73.25% { scale: .82; }
+              76%, 100% { scale: 1; }
+            }
+
+            @media (prefers-reduced-motion: reduce) {
+              .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pv-nav-bars i:first-child::before,
+              .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pv-nav-bars i:first-child::after {
+                animation: none !important;
+                opacity: 1 !important;
+                scale: 1 !important;
+              }
+
+              .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .ps-cursor::after {
+                animation: none !important;
+                opacity: 0 !important;
+                scale: 1 0 !important;
+              }
+
+              .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pv-nav-bars i:first-child,
+              .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .ps-cursor {
+                animation: none !important;
+              }
+
+              .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pv-nav-bars i:first-child {
+                background-color: var(--pvs-cta) !important;
+              }
+
+              .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .ps-cursor {
+                translate: var(--mxi-nav1-tip, 62.4cqw 3.9cqh) !important;
+              }
+
+              .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-scene {
+                display: none !important;
+              }
+            }
+          `;
+
+          const board = doc.querySelector('.picker-preview-motion--index');
+          const desktop = board?.querySelector('.pv-desktop');
+
+          if (desktop && !desktop.querySelector('.mxr-modal-scene')) {
+            desktop.insertAdjacentHTML(
+              'beforeend',
+              '<span class="mxr-modal-scene" aria-hidden="true">' +
+                '<span class="mxr-modal-backdrop"></span>' +
+                '<span class="mxr-modal-surface">' +
+                  '<i class="mxr-modal-close"></i>' +
+                  '<span class="mxr-modal-bento">' +
+                    '<i class="pv-image mxr-modal-image mxr-modal-image--hero"></i>' +
+                    '<i class="pv-image mxr-modal-image mxr-modal-image--wide"></i>' +
+                    '<i class="pv-image mxr-modal-image"></i>' +
+                    '<i class="pv-image mxr-modal-image"></i>' +
+                  '</span>' +
+                '</span>' +
+              '</span>'
+            );
+          }
+
+          if (!doc.getElementById(loopStyle.id)) doc.head.appendChild(loopStyle);
+        }
+
+        if (cell.slice(cell.indexOf('-') + 1) === 'responsive') {
+          const loopStyle = doc.createElement('style');
+          loopStyle.id = 'responsive-portfolio-perfect-loop';
+          loopStyle.textContent = `
+            /* Preview 30 keeps preview 27's responsive dropdown, then follows
+               one focused interaction: first gallery image -> modal -> close. */
+            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pv-nav {
+              position: relative;
+              z-index: 3;
+            }
+            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pv-nav-bars i:first-child {
+              position: relative;
+              animation: 4.2s linear infinite mxv-modal-nav !important;
+            }
+            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pv-nav-bars i:first-child::after {
+              content: "";
+              box-sizing: border-box;
+              width: 64px;
+              height: 54px;
+              position: absolute;
+              z-index: 4;
+              top: calc(100% + 8px);
+              left: -10px;
+              transform-origin: top;
+              pointer-events: none;
+              border: 1.5px solid var(--pv-primary);
+              border-radius: 2px;
+              background: var(--pv-neutral);
+              opacity: 0;
+              animation: 4.2s linear infinite mxv-drop-panel;
+            }
+            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pv-nav-bars i:first-child::before {
+              content: "";
+              width: 41px;
+              height: 31px;
+              position: absolute;
+              z-index: 5;
+              top: calc(100% + 18.5px);
+              left: 1.5px;
+              pointer-events: none;
+              background-image:
+                linear-gradient(var(--pg-ink), var(--pg-ink)),
+                linear-gradient(var(--pg-ink), var(--pg-ink)),
+                linear-gradient(var(--pg-ink), var(--pg-ink));
+              background-position: 0 -6px, 0 7px, 0 20px;
+              background-repeat: no-repeat;
+              background-size: 78% 5px, 92% 5px, 64% 5px;
+              opacity: 0;
+              animation: 4.2s linear infinite mxv-drop-rows;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .ps-cursor {
+              z-index: 15;
+              animation: 4.2s linear infinite mxv-modal-path !important;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .ps-cursor::after {
+              left: -7.95px !important;
+              top: -7.95px !important;
+              animation: 4.2s linear infinite mxv-modal-click !important;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-row .pg-cap-title,
+            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-row > .pv-image::after,
+            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-arrow--next,
+            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-track,
+            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-track i {
+              animation: none !important;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-row .pg-cap-title {
+              background-color: var(--pg-ink) !important;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-track {
+              translate: 0 !important;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-track i:first-child {
+              background-color: var(--pvs-cta) !important;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-track i:not(:first-child) {
+              background-color: var(--pvs-bars) !important;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-scene {
+              display: block;
+              position: absolute;
+              z-index: 8;
+              inset: 0;
+              overflow: hidden;
+              pointer-events: none;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-backdrop {
+              display: block;
+              position: absolute;
+              inset: 0;
+              background: color-mix(in oklab, var(--pv-neutral) 52%, transparent);
+              opacity: 0;
+              -webkit-backdrop-filter: blur(0);
+              backdrop-filter: blur(0);
+              animation: 4.2s linear infinite mxv-modal-backdrop;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-surface {
+              display: block;
+              box-sizing: border-box;
+              position: absolute;
+              inset: 13cqh 12cqw 12cqh;
+              overflow: hidden;
+              padding: 7cqh 4cqw 4.2cqh;
+              border: 1px solid color-mix(in oklab, var(--pv-secondary) 58%, var(--pv-neutral));
+              background: var(--pv-neutral);
+              opacity: 0;
+              animation: 4.2s linear infinite mxv-modal-surface;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-close {
+              display: grid;
+              place-items: center;
+              box-sizing: border-box;
+              width: 4cqw;
+              aspect-ratio: 1;
+              position: absolute;
+              z-index: 2;
+              top: 2.3cqh;
+              right: 1.8cqw;
+              border: 0;
+              background: transparent;
+              box-shadow: none;
+              color: var(--pv-primary);
+              animation: 4.2s linear infinite mxv-modal-close-press;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-close::before,
+            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-close::after {
+              content: "";
+              width: 48%;
+              height: 1px;
+              position: absolute;
+              left: 50%;
+              top: 50%;
+              translate: -50% -50%;
+              background: currentColor;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-close::before {
+              rotate: 45deg;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-close::after {
+              rotate: -45deg;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-bento {
+              display: grid;
+              width: 100%;
+              height: 100%;
+              grid-template-columns: 1.2fr .8fr .8fr;
+              grid-template-rows: 1fr 1fr;
+              gap: 2.1cqw;
+              opacity: 0;
+              filter: blur(10px);
+              translate: 0 4cqh;
+              animation: 4.2s linear infinite mxv-modal-content;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-image {
+              display: block !important;
+              width: 100% !important;
+              height: 100% !important;
+              min-width: 0;
+              min-height: 0;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-image--hero {
+              grid-row: 1 / 3;
+            }
+
+            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-image--wide {
+              grid-column: 2 / 4;
+            }
+
+            @keyframes mxv-modal-path {
+              0%, 25% {
+                translate: var(--mxi-nav1-tip, 69.15cqw 5.47cqh);
+                animation-timing-function: cubic-bezier(.16, 1, .3, 1);
+              }
+              34.52%, 43% {
+                translate: var(--mxi-work1-tip, 33cqw 29.74cqh);
+                animation-timing-function: cubic-bezier(.16, 1, .3, 1);
+              }
+              60%, 84% {
+                translate: var(--mxv-modal-close-tip, 83.88cqw 17.95cqh);
+                animation-timing-function: cubic-bezier(.16, 1, .3, 1);
+              }
+              94%, 100% {
+                translate: var(--mxi-nav1-tip, 69.15cqw 5.47cqh);
+              }
+            }
+
+            @keyframes mxv-modal-nav {
+              0%, 5.95% {
+                background-color: var(--pvs-bars);
+                animation-timing-function: cubic-bezier(.16, 1, .3, 1);
+              }
+              8.81%, 25% { background-color: var(--pvs-cta); }
+              27.86%, 100% { background-color: var(--pvs-bars); }
+            }
+
+            @keyframes mxv-drop-panel {
+              0%, 5.94% { opacity: 0; scale: 1 0; }
+              5.95% {
+                opacity: 1;
+                scale: 1 0;
+                animation-timing-function: cubic-bezier(.16, 1, .3, 1);
+              }
+              10.24%, 25% { opacity: 1; scale: 1; }
+              27.85% { opacity: 1; scale: 1 0; }
+              27.86%, 100% { opacity: 0; scale: 1 0; }
+            }
+            @keyframes mxv-drop-rows {
+              0%, 5.95% {
+                opacity: 0;
+                background-position: 0 -6px, 0 7px, 0 20px;
+              }
+              7.14% {
+                opacity: .25;
+                background-position: 0 -4.5px, 0 7px, 0 20px;
+              }
+              8.33% {
+                opacity: .5;
+                background-position: 0 -3px, 0 8.5px, 0 20px;
+              }
+              10.71% {
+                opacity: 1;
+                background-position: 0 0, 0 11.5px, 0 23px;
+              }
+              11.9% {
+                opacity: 1;
+                background-position: 0 0, 0 13px, 0 24.5px;
+              }
+              13.1%, 25% {
+                opacity: 1;
+                background-position: 0 0, 0 13px, 0 26px;
+              }
+              27.86%, 100% {
+                opacity: 0;
+                background-position: 0 -6px, 0 7px, 0 20px;
+              }
+            }
+
+            @keyframes mxv-modal-click {
+              0%, 39.99% { opacity: 0; scale: .35; }
+              40% { opacity: .55; scale: .35; }
+              43% { opacity: 0; scale: 1.5; }
+              43.01%, 71.99% { opacity: 0; scale: .35; }
+              72% { opacity: .55; scale: .35; }
+              75% { opacity: 0; scale: 1.5; }
+              75.01%, 100% { opacity: 0; scale: .35; }
+            }
+
+            @keyframes mxv-modal-backdrop {
+              0%, 42.99% {
+                opacity: 0;
+                -webkit-backdrop-filter: blur(0);
+                backdrop-filter: blur(0);
+              }
+              43% {
+                opacity: 0;
+                -webkit-backdrop-filter: blur(0);
+                backdrop-filter: blur(0);
+                animation-timing-function: cubic-bezier(.22, .72, .2, 1);
+              }
+              55%, 74.99% {
+                opacity: 1;
+                -webkit-backdrop-filter: blur(3px);
+                backdrop-filter: blur(3px);
+              }
+              75% {
+                opacity: 1;
+                -webkit-backdrop-filter: blur(3px);
+                backdrop-filter: blur(3px);
+                animation-timing-function: cubic-bezier(.4, 0, 1, 1);
+              }
+              82%, 100% {
+                opacity: 0;
+                -webkit-backdrop-filter: blur(0);
+                backdrop-filter: blur(0);
+              }
+            }
+
+            @keyframes mxv-modal-surface {
+              0%, 42.99% {
+                opacity: 0;
+                clip-path: inset(0 0 100% 0);
+                filter: blur(7px);
+                scale: 1;
+              }
+              43% {
+                opacity: 0;
+                clip-path: inset(0 0 100% 0);
+                filter: blur(10px);
+                scale: 1;
+                animation-timing-function: cubic-bezier(.22, .72, .2, 1);
+              }
+              60%, 74.99% {
+                opacity: 1;
+                clip-path: inset(0);
+                filter: blur(0);
+                scale: 1;
+              }
+              75% {
+                opacity: 1;
+                clip-path: inset(0);
+                filter: blur(0);
+                scale: 1;
+                animation-timing-function: cubic-bezier(.4, 0, 1, 1);
+              }
+              82% {
+                opacity: 0;
+                clip-path: inset(0 0 14% 0);
+                filter: blur(4px);
+                scale: 1;
+              }
+              82.01%, 100% {
+                opacity: 0;
+                clip-path: inset(0 0 100% 0);
+                filter: blur(10px);
+                scale: 1;
+              }
+            }
+
+            @keyframes mxv-modal-content {
+              0%, 46.99% {
+                opacity: 0;
+                filter: blur(10px);
+                translate: 0 4cqh;
+              }
+              47% {
+                opacity: 0;
+                filter: blur(10px);
+                translate: 0 4cqh;
+                animation-timing-function: cubic-bezier(.16, 1, .3, 1);
+              }
+              61%, 74.99% {
+                opacity: 1;
+                filter: blur(0);
+                translate: 0 0;
+              }
+              75% {
+                opacity: 1;
+                filter: blur(0);
+                translate: 0 0;
+                animation-timing-function: cubic-bezier(.4, 0, 1, 1);
+              }
+              81.5% {
+                opacity: 0;
+                filter: blur(4px);
+                translate: 0 -1cqh;
+              }
+              81.51%, 100% {
+                opacity: 0;
+                filter: blur(10px);
+                translate: 0 4cqh;
+              }
+            }
+
+            @keyframes mxv-modal-close-press {
+              0%, 52.99% {
+                opacity: 0;
+                filter: blur(4px);
+                scale: 1;
+              }
+              53% {
+                opacity: 0;
+                filter: blur(4px);
+                scale: 1;
+                animation-timing-function: cubic-bezier(.16, 1, .3, 1);
+              }
+              60%, 71.99% {
+                opacity: 1;
+                filter: blur(0);
+                scale: 1;
+              }
+              73.5% {
+                opacity: 1;
+                filter: blur(0);
+                scale: .82;
+              }
+              75% {
+                opacity: 1;
+                filter: blur(0);
+                scale: 1;
+                animation-timing-function: cubic-bezier(.4, 0, 1, 1);
+              }
+              82% {
+                opacity: 0;
+                filter: blur(3px);
+                scale: 1;
+              }
+              82.01%, 100% {
+                opacity: 0;
+                filter: blur(4px);
+                scale: 1;
+              }
+            }
+
+            @media (prefers-reduced-motion: reduce) {
+              .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pv-nav-bars i:first-child::before,
+              .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pv-nav-bars i:first-child::after {
+                animation: none !important;
+                opacity: 0 !important;
+                scale: 1 0 !important;
+              }
+
+              .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .ps-cursor::after {
+                animation: none !important;
+                opacity: 0 !important;
+                scale: 1 0 !important;
+              }
+
+              .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pv-nav-bars i:first-child,
+              .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .ps-cursor {
+                animation: none !important;
+              }
+
+              .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pv-nav-bars i:first-child {
+                background-color: var(--pvs-bars) !important;
+              }
+
+              .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .ps-cursor {
+                translate: var(--mxi-nav1-tip, 69.15cqw 5.47cqh) !important;
+              }
+
+              .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-scene {
+                display: none !important;
+              }
+
+              .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-backdrop,
+              .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-surface,
+              .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-bento,
+              .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-close {
+                animation: none !important;
+              }
+            }
+          `;
+
+          const board = doc.querySelector('.picker-preview-motion--index');
+          const desktop = board?.querySelector('.pv-desktop');
+
+          if (desktop && !desktop.querySelector('.mxv-modal-scene')) {
+            desktop.insertAdjacentHTML(
+              'beforeend',
+              '<span class="mxv-modal-scene" aria-hidden="true">' +
+                '<span class="mxv-modal-backdrop"></span>' +
+                '<span class="mxv-modal-surface">' +
+                  '<i class="mxv-modal-close"></i>' +
+                  '<span class="mxv-modal-bento">' +
+                    '<i class="pv-image mxv-modal-image mxv-modal-image--hero"></i>' +
+                    '<i class="pv-image mxv-modal-image mxv-modal-image--wide"></i>' +
+                    '<i class="pv-image mxv-modal-image"></i>' +
+                    '<i class="pv-image mxv-modal-image"></i>' +
+                  '</span>' +
+                '</span>' +
+              '</span>'
+            );
+          }
+
+          if (!doc.getElementById(loopStyle.id)) doc.head.appendChild(loopStyle);
+        }
+
+        if (cell.slice(cell.indexOf('-') + 1) === 'choreographed') {
+        /* Preview 31 opens with the same Motion OSS Hero stagger as preview 28,
+           scrolls to a second gallery page, holds, and returns before replaying.
+           Newly entering work unmasks and deblurs in artifact-first order while
+           the fixed navigation preserves continuity. */
+        const staggerStyle = doc.createElement('style');
+        staggerStyle.id = 'choreographed-portfolio-stagger-only';
+        staggerStyle.textContent = `
+          .picker-preview-motion[data-motion-cell="experience-choreographed"],
+          .picker-preview-motion[data-motion-cell="experience-choreographed"] *,
+          .picker-preview-motion[data-motion-cell="experience-choreographed"] *::before,
+          .picker-preview-motion[data-motion-cell="experience-choreographed"] *::after {
+            animation: none !important;
+            transition: none !important;
+          }
+
+          .picker-preview-motion[data-motion-cell="experience-choreographed"] .ps-cursor,
+          .picker-preview-motion[data-motion-cell="experience-choreographed"] .ps-cursor::after {
+            opacity: 0 !important;
+          }
+
+          .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-row--scroll-one {
+            margin-top: 12cqh;
+          }
+
+          .picker-preview-motion[data-motion-cell="experience-choreographed"] :is(
+            .pv-desktop .pg-row:first-child > .pv-image,
+            .pv-desktop .pg-row:first-child > .pg-cap,
+            .pv-desktop .pg-row:nth-child(2) > .pv-image,
+            .pv-desktop .pg-row:nth-child(2) > .pg-cap,
+            .pg-phone-body > .pv-image:nth-child(1),
+            .pg-phone-body > .pg-cap:nth-child(2),
+            .pg-phone-body > .pv-image:nth-child(3),
+            .pg-phone-body > .pg-cap:nth-child(4),
+            .pv-tabbar
+          ) {
+            opacity: 1;
+            filter: none;
+            transform: none;
+            clip-path: none !important;
+            translate: none !important;
+            scale: 1 !important;
+          }
+
+          @media (prefers-reduced-motion: reduce) {
+            .picker-preview-motion[data-motion-cell="experience-choreographed"] :is(
+              .pv-desktop .pg-row:first-child > .pv-image,
+              .pv-desktop .pg-row:first-child > .pg-cap,
+              .pv-desktop .pg-row:nth-child(2) > .pv-image,
+              .pv-desktop .pg-row:nth-child(2) > .pg-cap,
+              .pg-phone-body > .pv-image:nth-child(1),
+              .pg-phone-body > .pg-cap:nth-child(2),
+              .pg-phone-body > .pv-image:nth-child(3),
+              .pg-phone-body > .pg-cap:nth-child(4),
+              .pv-tabbar
+            ) {
+              opacity: 1 !important;
+              filter: none !important;
+              transform: none !important;
+            }
+          }
+        `;
+        if (!doc.getElementById(staggerStyle.id)) doc.head.appendChild(staggerStyle);
+
+        const board = doc.querySelector('.picker-preview-motion--index');
+        const desktopBody = board?.querySelector('.pv-desktop .pg-body');
+        const phoneBody = board?.querySelector('.pv-phone .pg-phone-body');
+
+        desktopBody
+          ?.querySelectorAll(':scope > .pg-rail')
+          .forEach((rail) => rail.remove());
+
+        if (desktopBody && !desktopBody.querySelector('.pg-row--scroll-one')) {
+          desktopBody.insertAdjacentHTML(
+            'beforeend',
+            '<span class="pg-row pg-row--more pg-row--scroll-one">' +
+              '<span class="pv-image"></span>' +
+              '<span class="pg-cap">' +
+                '<i class="pg-cap-title" style="--w:31.4%"></i>' +
+                '<i></i>' +
+                '<i style="--w:61.8%"></i>' +
+              '</span>' +
+            '</span>' +
+            '<span class="pg-row pg-row--flip pg-row--more pg-row--scroll-two">' +
+              '<span class="pg-cap">' +
+                '<i class="pg-cap-title" style="--w:38.2%"></i>' +
+                '<i></i>' +
+                '<i style="--w:59.4%"></i>' +
+              '</span>' +
+              '<span class="pv-image"></span>' +
+            '</span>'
+          );
+        }
+
+        if (phoneBody && !phoneBody.querySelector('.pg-phone-more-start')) {
+          phoneBody.insertAdjacentHTML(
+            'beforeend',
+            '<span class="pv-image pg-phone-more pg-phone-more-start"></span>' +
+            '<span class="pg-cap pg-phone-more pg-phone-more-copy-one">' +
+              '<i class="pg-cap-title" style="--w:34.2%"></i>' +
+              '<i style="--w:74.6%"></i>' +
+              '<i style="--w:51.8%"></i>' +
+            '</span>' +
+            '<span class="pv-image pg-phone-more pg-phone-more-image-two"></span>' +
+            '<span class="pg-cap pg-phone-more pg-phone-more-copy-two">' +
+              '<i class="pg-cap-title" style="--w:28.8%"></i>' +
+              '<i style="--w:82.4%"></i>' +
+              '<i style="--w:58.2%"></i>' +
+            '</span>'
+          );
+        }
+
+        const groupSelectors = [
+          [
+            '.pv-desktop .pg-row:first-child > .pv-image',
+            '.pv-desktop .pg-row:first-child > .pg-cap',
+            '.pv-desktop .pg-row:nth-child(2) > .pv-image',
+            '.pv-desktop .pg-row:nth-child(2) > .pg-cap'
+          ],
+          [
+            '.pg-phone-body > .pv-image:nth-child(1)',
+            '.pg-phone-body > .pg-cap:nth-child(2)',
+            '.pg-phone-body > .pv-image:nth-child(3)',
+            '.pg-phone-body > .pg-cap:nth-child(4)',
+            '.pv-tabbar'
+          ]
+        ];
+
+        const makePortfolioSpringFrames = () => {
+          const stiffness = 120;
+          const damping = 20;
+          const mass = 1;
+          const duration = 1050;
+          const steps = 72;
+          const naturalFrequency = Math.sqrt(stiffness / mass);
+          const dampingRatio = damping / (2 * Math.sqrt(stiffness * mass));
+          const dampedFrequency = naturalFrequency * Math.sqrt(1 - dampingRatio ** 2);
+
+          return Array.from({ length: steps + 1 }, (_, index) => {
+            const offset = index / steps;
+            const seconds = (duration * offset) / 1000;
+            const displacement = index === steps ? 0 :
+              Math.exp(-dampingRatio * naturalFrequency * seconds) *
+              (
+                Math.cos(dampedFrequency * seconds) +
+                (dampingRatio * naturalFrequency / dampedFrequency) *
+                Math.sin(dampedFrequency * seconds)
+              );
+            const progress = Math.max(0, Math.min(1, 1 - displacement));
+
+            return {
+              offset,
+              opacity: Number(progress.toFixed(4)),
+              filter: `blur(${(4 * (1 - progress)).toFixed(3)}px)`,
+              transform: `translateY(${(40 * displacement).toFixed(3)}px)`
+            };
+          });
+        };
+
+        const scrollRevealFrames = {
+          imageFromLeft: [
+            {
+              opacity: 0.12,
+              filter: 'blur(9px)',
+              clipPath: 'inset(0 100% 0 0)',
+              transform: 'translateX(-72px) scale(1.025)'
+            },
+            {
+              opacity: 1,
+              filter: 'blur(0px)',
+              clipPath: 'inset(0)',
+              transform: 'translateX(0px) scale(1)'
+            }
+          ],
+          copyFromRight: [
+            {
+              opacity: 0,
+              filter: 'blur(5px)',
+              clipPath: 'inset(0 0 0 100%)',
+              transform: 'translateX(44px)'
+            },
+            {
+              opacity: 1,
+              filter: 'blur(0px)',
+              clipPath: 'inset(0)',
+              transform: 'translateX(0px)'
+            }
+          ],
+          imageFromRight: [
+            {
+              opacity: 0.12,
+              filter: 'blur(9px)',
+              clipPath: 'inset(0 0 0 100%)',
+              transform: 'translateX(72px) scale(1.025)'
+            },
+            {
+              opacity: 1,
+              filter: 'blur(0px)',
+              clipPath: 'inset(0)',
+              transform: 'translateX(0px) scale(1)'
+            }
+          ],
+          copyFromLeft: [
+            {
+              opacity: 0,
+              filter: 'blur(5px)',
+              clipPath: 'inset(0 100% 0 0)',
+              transform: 'translateX(-44px)'
+            },
+            {
+              opacity: 1,
+              filter: 'blur(0px)',
+              clipPath: 'inset(0)',
+              transform: 'translateX(0px)'
+            }
+          ]
+        };
+
+        const motionPreference = win.matchMedia('(prefers-reduced-motion: reduce)');
+
+        if (
+          board &&
+          win.Element?.prototype.animate &&
+          !motionPreference.matches
+        ) {
+          const sequenceAnimations = [];
+          const springFrames = makePortfolioSpringFrames();
+          for (const selectors of groupSelectors) {
+            selectors
+              .map((selector) => board.querySelector(selector))
+              .filter(Boolean)
+              .forEach((element, index) => {
+                sequenceAnimations.push(
+                  element.animate(springFrames, {
+                    duration: 1050,
+                    delay: index * 100,
+                    easing: 'linear',
+                    fill: 'both'
+                  })
+                );
+              });
+          }
+
+          const sequenceDuration = 7200;
+          const scrollDownStart = 1750;
+          const scrollDownEnd = 2850;
+          const scrollUpStart = 5400;
+          const scrollUpEnd = 6500;
+          const sequenceOffset = (milliseconds) =>
+            milliseconds / sequenceDuration;
+
+          const animateScrollPage = (track, firstItem, nextItem) => {
+            if (!track || !firstItem || !nextItem) return;
+            const distance = nextItem.offsetTop - firstItem.offsetTop;
+            if (!(distance > 0)) return;
+            sequenceAnimations.push(
+              track.animate(
+                [
+                  { offset: 0, transform: 'translateY(0px)' },
+                  {
+                    offset: sequenceOffset(scrollDownStart),
+                    transform: 'translateY(0px)',
+                    easing: 'cubic-bezier(.65, 0, .35, 1)'
+                  },
+                  {
+                    offset: sequenceOffset(scrollDownEnd),
+                    transform: `translateY(${-distance}px)`
+                  },
+                  {
+                    offset: sequenceOffset(scrollUpStart),
+                    transform: `translateY(${-distance}px)`,
+                    easing: 'cubic-bezier(.65, 0, .35, 1)'
+                  },
+                  {
+                    offset: sequenceOffset(scrollUpEnd),
+                    transform: 'translateY(0px)'
+                  },
+                  { offset: 1, transform: 'translateY(0px)' }
+                ],
+                {
+                  duration: sequenceDuration,
+                  easing: 'linear',
+                  fill: 'both'
+                }
+              )
+            );
+          };
+
+          animateScrollPage(
+            desktopBody,
+            desktopBody?.querySelector(':scope > .pg-row:first-child'),
+            desktopBody?.querySelector(':scope > .pg-row--scroll-one')
+          );
+          animateScrollPage(
+            phoneBody,
+            phoneBody?.querySelector(':scope > .pv-image:first-child'),
+            phoneBody?.querySelector(':scope > .pg-phone-more-start')
+          );
+
+          const scrollReveals = [
+            ['.pv-desktop .pg-row--scroll-one > .pv-image', 'imageFromLeft', 2020],
+            ['.pv-desktop .pg-row--scroll-one > .pg-cap', 'copyFromRight', 2160],
+            ['.pv-desktop .pg-row--scroll-two > .pv-image', 'imageFromRight', 2400],
+            ['.pv-desktop .pg-row--scroll-two > .pg-cap', 'copyFromLeft', 2540],
+            ['.pv-phone .pg-phone-more-start', 'imageFromLeft', 2020],
+            ['.pv-phone .pg-phone-more-copy-one', 'copyFromRight', 2160],
+            ['.pv-phone .pg-phone-more-image-two', 'imageFromRight', 2400],
+            ['.pv-phone .pg-phone-more-copy-two', 'copyFromLeft', 2540]
+          ];
+
+          for (const [selector, kind, delay] of scrollReveals) {
+            const element = board.querySelector(selector);
+            if (!element) continue;
+            sequenceAnimations.push(
+              element.animate(scrollRevealFrames[kind], {
+                duration: kind.startsWith('image') ? 720 : 620,
+                delay,
+                easing: 'cubic-bezier(.16, 1, .3, 1)',
+                fill: 'both'
+              })
+            );
+          }
+
+          const restartSequence = () => {
+            if (motionPreference.matches) {
+              sequenceAnimations.forEach((animation) => animation.cancel());
+              return;
+            }
+            sequenceAnimations.forEach((animation) => {
+              animation.pause();
+              animation.currentTime = 0;
+              animation.play();
+            });
+          };
+
+          motionBoard.__replayMotion = restartSequence;
+
+          motionPreference.addEventListener('change', ({ matches }) => {
+            if (matches) {
+              sequenceAnimations.forEach((animation) => animation.cancel());
+            } else {
+              restartSequence();
+            }
+          });
+
+          win.addEventListener('pagehide', () => {
+            sequenceAnimations.forEach((animation) => animation.cancel());
+          });
+        }
+        }
+
+        /* Plot tip-compensated cursor stops. Previews 29 and 30 aim the actual
+           SVG apex at M1 1; the older index motions retain their existing
+           empirical hotspot. Aim the visible point at each target center,
+           not the cursor box itself. */
+        const plotIndexTips = () => {
+          for (const board of doc.querySelectorAll('.picker-preview-motion--index')) {
+            const desk = board.querySelector('.pv-desktop');
+            const cursor = board.querySelector('.ps-cursor');
+            if (!desk?.clientWidth || !desk.clientHeight || !cursor) continue;
+            const deskRect = desk.getBoundingClientRect();
+            const deskStyle = win.getComputedStyle(desk);
+            const borderLeft = parseFloat(deskStyle.borderLeftWidth) || 0;
+            const borderRight = parseFloat(deskStyle.borderRightWidth) || 0;
+            const borderTop = parseFloat(deskStyle.borderTopWidth) || 0;
+            const borderBottom = parseFloat(deskStyle.borderBottomWidth) || 0;
+            const contentWidth = deskRect.width - borderLeft - borderRight;
+            const contentHeight = deskRect.height - borderTop - borderBottom;
+            const cursorStyle = win.getComputedStyle(cursor);
+            const cursorWidth = parseFloat(cursorStyle.width) || cursor.offsetWidth;
+            const cursorHeight = parseFloat(cursorStyle.height) || cursor.offsetHeight;
+            const cursorScale = Math.min(cursorWidth / 14, cursorHeight / 20);
+            const usesTrueApex = ['restrained', 'responsive']
+              .includes(cell.slice(cell.indexOf('-') + 1));
+            const hotspotX = cursorScale * (usesTrueApex ? 1 : 2.2);
+            const hotspotY = cursorScale * (usesTrueApex ? 1 : 3.9);
+            const put = (name, selector) => {
+              const el = desk.querySelector(selector);
+              if (!el) return;
+              const r = el.getBoundingClientRect();
+              const x = ((r.left + r.width / 2 - deskRect.left - borderLeft - hotspotX) / contentWidth) * 100;
+              const y = ((r.top + r.height / 2 - deskRect.top - borderTop - hotspotY) / contentHeight) * 100;
+              board.style.setProperty(name, x.toFixed(2) + 'cqw ' + y.toFixed(2) + 'cqh');
+            };
+            put('--mxi-nav1-tip', '.pv-nav-bars i:nth-child(1)');
+            put('--mxi-work1-tip', '.pg-row:nth-of-type(1) > .pv-image');
+            put('--mxi-work2-tip', '.pg-row:nth-of-type(2) > .pv-image');
+            put('--mxi-rail-tip', '.pg-arrow--next');
+            put('--mxr-modal-close-tip', '.mxr-modal-close');
+            put('--mxv-modal-close-tip', '.mxv-modal-close');
+          }
+        };
+
+        win.requestAnimationFrame(() => {
+          plotIndexTips();
+          win.requestAnimationFrame(plotIndexTips);
+        });
+
+        const desk = doc.querySelector('.pv-desktop');
+        if (desk && win.ResizeObserver) {
+          const observer = new win.ResizeObserver(plotIndexTips);
+          observer.observe(desk);
+          motionBoard.__portfolioTipObserver = observer;
+        }
+      }
+
+    if (cell === 'persuade-restrained') installPerfectCursorLoop();
+    if (cell === 'persuade-responsive') installResponsiveLandingCorrections();
+    if (cell === 'persuade-choreographed') installChoreographedPremium();
+    if (cell.startsWith('persuade-')) installEmailCapture();
+    if (cell.startsWith('experience-')) installPortfolioFixes();
+  }
+}
+installPremiumMotion();
+
 
 /* Custom fonts. A URL is carried through as-is; an uploaded face is handed to
    the server, which stores the bytes and returns the path the answers record.
@@ -2031,8 +4976,9 @@ function buildSurfaceQuestion(tabs) {
      so a tab switch costs a hidden attribute rather than a rebuild and the
      frame never blinks. */
   function mount(chosen) {
-    for (const node of frame.querySelectorAll('[data-surface]')) node.remove();
+    for (const node of frame.querySelectorAll('[data-surface]:not([data-artboard])')) node.remove();
     for (const input of chosen) {
+      if (frame.querySelector(`[data-artboard][data-surface="${input.value}"]`)) continue;
       const source = modePreviews[modeInputs.indexOf(input)];
       if (!source) continue;
       const clone = source.cloneNode(true);
@@ -2418,9 +5364,18 @@ function hubProof(source, marks = null) {
   return wrap;
 }
 
-const hubQuestionBoard = (screen, mode) => document.querySelector(
-  `.picker-screen[data-screen="${screen}"] .picker-artboard[data-surface="${mode}"]`,
-);
+const hubQuestionBoard = (screen, mode) => {
+  const boards = [...document.querySelectorAll(
+    `.picker-screen[data-screen="${screen}"] .picker-board-stage > :is(.picker-artboard, .picker-preview)[data-surface="${mode}"]`,
+  )];
+  if (boards.length < 2) return boards[0] ?? null;
+  /* The motion screen boards one drawing per surface and option and shows the
+     one the answer names. Taking the first would hand the card a board the
+     option rules keep hidden, which is a card with an empty frame in it. */
+  const group = document.querySelector(`.picker-screen[data-screen="${screen}"] [data-surface-tabs]`)?.dataset.surfaceTabs;
+  const answer = group && document.querySelector(`input[type="hidden"][data-surface-field="${group}-${mode}"]`)?.value;
+  return boards.find((board) => board.dataset.motionCell === `${mode}-${answer}`) ?? boards[0];
+};
 
 /* The preview and its tab strip for one card. The active tab carries
    the patina dot and the surface's answer, so the choice reads without

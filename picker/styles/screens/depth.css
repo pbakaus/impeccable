@@ -119,3 +119,54 @@
 #picker-form:has(input[name="boundary-style"][value="surface-changes"]:checked) [data-carry] .ps-index-row--flip {
   box-shadow: var(--pvs-shadow-card);
 }
+
+/* Depth additions on derived clones. Flat is the base; the other answers
+   lift only solid, meaningful objects. Ported from the gallery derived
+   sheet; shadow alphas stay literal because they are shadows, not palette
+   roles. */
+#picker-form:has(.picker-strategy-option:hover input[name="depth-style"][value="flat"]) .picker-screen[data-screen="10"] .picker-board-stage,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="depth-style"])):has(input[name="depth-style"][value="flat"]:checked) .picker-screen[data-screen="10"] .picker-board-stage { --derived-shadow-chrome: none; --derived-shadow-card: none; --derived-shadow-control: none; --derived-shadow-surface: none; }
+#picker-form:has(.picker-strategy-option:hover input[name="depth-style"][value="soft-lift"]) .picker-screen[data-screen="10"] .picker-board-stage,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="depth-style"])):has(input[name="depth-style"][value="soft-lift"]:checked) .picker-screen[data-screen="10"] .picker-board-stage { --derived-shadow-chrome: 0 1px 2px rgb(0 0 0 / 0.08); --derived-shadow-card: 0 2px 4px rgb(0 0 0 / 0.1); --derived-shadow-control: 0 1px 2px rgb(0 0 0 / 0.1); --derived-shadow-surface: 0 2px 4px rgb(0 0 0 / 0.1); }
+#picker-form:has(.picker-strategy-option:hover input[name="depth-style"][value="floating"]) .picker-screen[data-screen="10"] .picker-board-stage,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="depth-style"])):has(input[name="depth-style"][value="floating"]:checked) .picker-screen[data-screen="10"] .picker-board-stage { --derived-shadow-chrome: 0 1px 3px rgb(0 0 0 / 0.1); --derived-shadow-card: 0 4px 8px rgb(0 0 0 / 0.14); --derived-shadow-control: 0 2px 4px rgb(0 0 0 / 0.12); --derived-shadow-surface: 0 4px 8px rgb(0 0 0 / 0.14); }
+
+.picker-screen[data-screen="10"] .picker-board-stage > .picker-preview :is(.pv-nav, .pv-phone-top) { box-shadow: var(--derived-shadow-chrome) !important; }
+.picker-screen[data-screen="10"] .picker-board-stage > .picker-preview :is(.pv-pill, .pv-actions i, .po-item--on, .po-field, .po-toggle) { box-shadow: var(--derived-shadow-control) !important; }
+.picker-screen[data-screen="10"] .picker-board-stage > .picker-preview :is(.pv-image, .pv-mini-card, .pd-note) { box-shadow: var(--derived-shadow-card) !important; }
+.picker-screen[data-screen="10"] .picker-board-stage > .picker-preview .pg-cap::before { box-shadow: var(--derived-shadow-card) !important; }
+.picker-screen[data-screen="10"] .picker-board-stage > .picker-preview :is(.po-chart i, .po-side, .po-panel) { box-shadow: var(--derived-shadow-surface) !important; }
+
+/* Depth persuade rides the drenched base, the gallery's baseCellId lock.
+   The role swap has to land before the persuade-specific secondary locks,
+   or the ground stays light and every derived depth cell misses by a mile. */
+.picker-screen[data-screen="10"] .picker-board-stage > .picker-preview[data-surface="persuade"] {
+  --pv-neutral: var(--pkc-primary);
+  --pv-n-ink: var(--pkc-p-ink);
+  --pv-primary: var(--pkc-p-ink);
+  --pv-p-ink: var(--pkc-primary);
+  --pv-p-on-n: var(--pkc-p-ink);
+  --pv-p-on-p: var(--pkc-primary);
+  --pv-t-on-n: var(--pkc-t-on-p);
+  --pv-secondary: var(--pkc-secondary);
+  --pv-tertiary: var(--pkc-tertiary);
+  --pv-bone: color-mix(in oklab, var(--pkc-p-ink) 55%, var(--pkc-primary));
+  --pv-strong: var(--pkc-p-ink);
+  --pv-secondary-wash: color-mix(in oklab, var(--pkc-p-ink) 16%, var(--pkc-primary));
+}
+
+.picker-screen[data-screen="10"] .picker-board-stage > .picker-preview[data-surface="persuade"] .pv-desktop .pv-image {
+  background: linear-gradient(135deg, color-mix(in oklab, var(--pkc-p-ink) 16%, var(--pkc-primary)), color-mix(in oklab, var(--pkc-secondary) 34%, var(--pkc-primary))) !important;
+  border-color: color-mix(in oklab, var(--pkc-secondary) 52%, var(--pkc-primary)) !important;
+}
+
+.picker-screen[data-screen="10"] .picker-board-stage > .picker-preview[data-surface="persuade"] .pv-desktop .pv-image::after { background: var(--pkc-tertiary) !important; }
+
+.picker-screen[data-screen="10"] .picker-board-stage > .picker-preview[data-surface="persuade"] .pv-desktop .pv-actions i:last-child {
+  border-color: color-mix(in oklab, var(--pkc-secondary) 68%, var(--pkc-p-ink)) !important;
+  background: color-mix(in oklab, var(--pkc-secondary) 18%, var(--pkc-primary)) !important;
+}
+
+.picker-screen[data-screen="10"] .picker-board-stage > .picker-preview[data-surface="persuade"] .pv-desktop .pv-nav-bars i:nth-child(2) {
+  background: color-mix(in oklab, var(--pkc-secondary) 72%, var(--pkc-p-ink)) !important;
+}

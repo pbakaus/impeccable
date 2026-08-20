@@ -946,3 +946,60 @@
 :where(#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"]))):has(input[name="layout-structure"][value="freeform"]:checked) [data-carry][data-surface="experience"] .ps-index-row--flip > .ps-index-cap {
   translate: 9% 0;
 }
+
+/* Gallery parity (plan-18): freeform landing hides the proof strip, retimes
+   the phone gallery, and opens a spacer row before the desktop editorial.
+   Ported from the gallery's preview-34-hide-proof block; keyed to freeform so
+   simple-grid and balanced keep today's rendition. */
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"],
+#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] {
+  --pls-spacer: 1;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] :is(*, *::before, *::after),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] :is(*, *::before, *::after) {
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-proof,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-proof {
+  display: none !important;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-phone .ps-gallery,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-phone .ps-gallery {
+  margin-top: 15px !important;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-phone .ps-gallery-item:last-child,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-phone .ps-gallery-item:last-child {
+  margin-top: 14px !important;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-phone .ps-gallery-item:nth-child(2) > i,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-phone .ps-gallery-item:nth-child(2) > i {
+  margin-top: 0 !important;
+  box-shadow: none !important;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item:nth-child(2)::before,
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item:nth-child(2)::after,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item:nth-child(2)::before,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] .ps-phone-body .ps-gallery-item:nth-child(2)::after {
+  content: none !important;
+  display: none !important;
+}
+
+/* Artboard.astro stamps the spacer on every persuade board, so the default
+   hide has to be unscoped. Keyed to the layout preview it left a 5px grid row
+   standing on the motion, boundaries, corners and font-pair boards, which
+   pushed their editorial and footer rows off the gallery reference. */
+[data-layout-editorial-spacer] {
+  display: none;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="layout-structure"][value="freeform"]) .picker-preview-layout[data-surface="persuade"] [data-layout-editorial-spacer],
+#picker-form:not(:has(.picker-strategy-option:hover input[name="layout-structure"])):has(input[name="layout-structure"][value="freeform"]:checked) .picker-preview-layout[data-surface="persuade"] [data-layout-editorial-spacer] {
+  display: block;
+}

@@ -2326,3 +2326,340 @@ body.dcx-live .dcx-request { display: inline-flex; }
     transform: none;
   }
 }
+
+/* Derived-clone mirrors (plan-18): screens 08, 09 and 10 now board strategy
+   -preview clones, and a proof or hub clone of one leaves the #picker-form
+   scope its rendition rules key on. These restate the derived sheet against
+   the dcx marks, the same contract the artboard mirrors above follow. */
+/* ==== Derived stage (plan-18): screens 08, 09, 10 mount strategy-preview
+   clones for the surfaces the gallery derives. Geometry mirrors the artboard
+   footprint; colors are locked to the restrained base for operate, read and
+   experience clones, matching the gallery's baseCellId map. ==== */
+.dcx-proof--board > .picker-preview {
+  grid-row: 2;
+  aspect-ratio: 1.865 / 1;
+  width: 100%;
+  --pv-primary: var(--pkc-primary, var(--ks-champagne));
+  --pv-secondary: var(--pkc-secondary, var(--ks-patina));
+  --pv-tertiary: var(--pkc-tertiary, var(--ks-kinpaku));
+  --pv-neutral: var(--pkc-neutral, var(--ks-lacquer-raised));
+  --pv-n-ink: var(--pkc-n-ink, var(--ks-champagne));
+  --pv-p-ink: var(--pkc-p-ink, var(--ks-champagne));
+  --derived-rule: color-mix(in oklab, var(--pv-strong) 24%, var(--pv-neutral));
+  --derived-band: color-mix(in oklab, var(--pv-strong) 7%, var(--pv-neutral));
+  --derived-band-alt: color-mix(in oklab, var(--pv-strong) 13%, var(--pv-neutral));
+  --derived-panel: color-mix(in oklab, var(--pv-strong) 5%, var(--pv-neutral));
+  --derived-panel-edge: color-mix(in oklab, var(--pv-strong) 20%, var(--pv-neutral));
+}
+
+/* Restrained lock for the non-persuade clones, mirrored from the strategy
+   remap so the derived boards hold the gallery's base regardless of the
+   run's strategy answer. */
+.dcx-proof--board > .picker-preview:not([data-surface="persuade"]) {
+  --pv-secondary: color-mix(in oklab, var(--pkc-neutral) 78%, var(--pkc-n-ink));
+  --pv-tertiary: color-mix(in oklab, var(--pkc-neutral) 86%, var(--pkc-n-ink));
+  --pv-t-ink: var(--pkc-n-ink);
+  --pv-t-on-t: var(--pkc-n-ink);
+  --pv-t-on-n: color-mix(in oklab, var(--pkc-n-ink) 62%, var(--pkc-neutral));
+  --pv-t-on-p: var(--pkc-p-ink);
+}
+
+.dcx-proof--board > .picker-preview.picker-preview--docs {
+  --pd-quote: var(--pd-ink);
+}
+
+.dcx-proof--board > .picker-preview.picker-preview--docs :is(.pd-note-dot, .pd-note-lines i) {
+  background: var(--pd-ink);
+}
+
+/* Wireframe weights, from the dry-run against the gallery's derived cells. */
+.dcx-proof--board > .picker-preview:is(.picker-preview--ops, .picker-preview--gallery) .pv-desktop {
+  --pv-text: 1.35;
+}
+
+.dcx-proof--board > .picker-preview.picker-preview--docs {
+  --pv-text: 1.65;
+}
+
+.dcx-proof--board > .picker-preview.picker-preview--docs .pd-item i { width: calc(4.07 * var(--pv-x)); }
+.dcx-proof--board > .picker-preview.picker-preview--docs .pd-item span { height: calc(1.53 * var(--pv-text) * var(--pv-x)); }
+.dcx-proof--board > .picker-preview.picker-preview--docs .pd-para i { height: calc(1.35 * var(--pv-text) * var(--pv-x)); }
+.dcx-proof--board > .picker-preview.picker-preview--docs .pd-note-dot { width: calc(4.07 * var(--pv-x)); }
+.dcx-proof--board > .picker-preview.picker-preview--docs .pd-note-lines i { height: calc(1 * var(--pv-text) * var(--pv-x)); }
+.dcx-proof--board > .picker-preview.picker-preview--docs .pd-phone-body .pd-para i { height: calc(1.37 * var(--pv-text) * var(--pv-x)); }
+.dcx-proof--board > .picker-preview.picker-preview--docs .pd-phone-body .pd-note-lines i { height: calc(0.83 * var(--pv-text) * var(--pv-x)); }
+.dcx-proof--board > .picker-preview.picker-preview--docs .pd-phone-body .pd-heading { height: calc(2.53 * var(--pv-text) * var(--pv-x)); }
+.dcx-proof--board > .picker-preview.picker-preview--docs .pd-phone-body .pd-note-dot { width: calc(2.64 * var(--pv-text) * var(--pv-x)); }
+
+/* Experience cap avatars on derived boards, from the gallery derived sheet. */
+.dcx-proof--board > .picker-preview--gallery .pv-desktop .pg-cap { padding-top: 5.2cqh; gap: 2.6cqh; }
+.dcx-proof--board > .picker-preview--gallery .pv-desktop .pg-cap::before {
+  content: "";
+  display: block;
+  width: calc(11.5 * var(--pv-x));
+  aspect-ratio: 1;
+  border: 1px solid color-mix(in oklab, var(--pv-secondary) 55%, var(--pv-neutral));
+  border-radius: 50%;
+  background: linear-gradient(135deg, color-mix(in oklab, var(--pv-secondary) 24%, var(--pv-neutral)), color-mix(in oklab, var(--pv-secondary) 46%, var(--pv-neutral)));
+}
+
+/* Phone field chevron alignment on ops clones, from the gallery derived sheet
+   (cells 44 and 55-58; the corners screen applies it under every option). */
+:is(.picker-screen[data-screen="09"], .picker-screen[data-screen="10"]) .picker-board-stage > .picker-preview .pv-phone .po-field > .po-chev { align-self: center; transform: translateY(-25%) rotate(45deg); }
+
+/* Boundary additions on derived clones: the base geometry stays fixed; only
+   separation changes. Ported from the gallery derived sheet. */
+.dcx-proof--board[data-dcx-boundary="open-space"] > .picker-preview :is(.pv-nav, .po-side, .po-main, .pd-side),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="open-space"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.pv-nav, .po-side, .po-main, .pd-side) {
+  border-color: transparent !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="open-space"] > .picker-preview :is(.po-divider, .pg-row--flip, .pg-rail),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="open-space"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.po-divider, .pg-row--flip, .pg-rail) {
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="open-space"] > .picker-preview .po-divider,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="open-space"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview .po-divider {
+  background: transparent !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="thin-dividers"] > .picker-preview:is(.picker-preview--ops, .picker-preview--docs, .picker-preview--gallery) .pv-nav,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview:is(.picker-preview--ops, .picker-preview--docs, .picker-preview--gallery) .pv-nav {
+  border-bottom: 1px solid var(--derived-rule) !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="thin-dividers"] > .picker-preview :is(.po-side, .po-main, .pd-side),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.po-side, .po-main, .pd-side) {
+  border-right: 1px solid var(--derived-rule) !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="thin-dividers"] > .picker-preview .po-divider,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview .po-divider {
+  background: var(--derived-rule) !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="thin-dividers"] > .picker-preview .po-row + .po-row,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview .po-row + .po-row {
+  box-shadow: inset 0 1px 0 var(--derived-rule);
+}
+
+.dcx-proof--board[data-dcx-boundary="thin-dividers"] > .picker-preview:not([data-surface="experience"]) .pg-row--flip,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview:not([data-surface="experience"]) .pg-row--flip {
+  box-shadow: inset 0 1px 0 var(--derived-rule);
+}
+
+.dcx-proof--board[data-dcx-boundary="thin-dividers"] > .picker-preview:not([data-surface="experience"]) .pg-rail,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview:not([data-surface="experience"]) .pg-rail {
+  border-top: 1px solid var(--derived-rule);
+}
+
+/* Cell 49: experience thin-dividers redraws its flip row and phone image
+   separations by pseudo-element rules. */
+.dcx-proof--board[data-dcx-boundary="thin-dividers"] > .picker-preview[data-surface="experience"] .pg-row--flip,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-row--flip {
+  position: relative;
+  margin-top: 10cqh !important;
+  box-shadow: none !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="thin-dividers"] > .picker-preview[data-surface="experience"] .pg-row--flip::before,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-row--flip::before {
+  content: "";
+  position: absolute;
+  top: -5cqh;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: var(--derived-rule);
+}
+
+.dcx-proof--board[data-dcx-boundary="thin-dividers"] > .picker-preview[data-surface="experience"] .pg-rail,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-rail {
+  border-top: 0 !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="thin-dividers"] > .picker-preview[data-surface="experience"] .pg-phone-body > .pg-cap + .pv-image,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-phone-body > .pg-cap + .pv-image {
+  margin-top: 8cqh !important;
+  overflow: visible;
+}
+
+.dcx-proof--board[data-dcx-boundary="thin-dividers"] > .picker-preview[data-surface="experience"] .pg-phone-body > .pg-cap + .pv-image::before,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-phone-body > .pg-cap + .pv-image::before {
+  content: "";
+  position: absolute;
+  top: -4cqh;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: var(--derived-rule);
+}
+
+/* Cell 50: experience surface-changes. */
+.dcx-proof--board[data-dcx-boundary="surface-changes"] > .picker-preview[data-surface="experience"] .pg-row--flip,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-row--flip {
+  margin-top: 5cqh !important;
+  padding-block: 5cqh !important;
+  box-shadow: none !important;
+  background: color-mix(in oklab, var(--derived-band-alt) 60%, white 40%) !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="surface-changes"] > .picker-preview[data-surface="experience"] .pg-phone-body > .pg-cap + .pv-image,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-phone-body > .pg-cap + .pv-image {
+  margin-top: 8cqh !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="surface-changes"] > .picker-preview[data-surface="experience"] .pg-phone-body,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-phone-body {
+  background: linear-gradient(to bottom, transparent 0 50%, color-mix(in oklab, var(--derived-band-alt) 60%, white 40%) 50% 100%) !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="surface-changes"] > .picker-preview[data-surface="experience"] .pv-phone .pv-tabbar,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pv-phone .pv-tabbar {
+  background: color-mix(in oklab, var(--derived-band-alt) 60%, white 40%) !important;
+}
+
+/* Surface changes on every derived clone. */
+.dcx-proof--board[data-dcx-boundary="surface-changes"] > .picker-preview :is(.pv-nav, .po-side, .po-main, .pd-side),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.pv-nav, .po-side, .po-main, .pd-side) {
+  border-color: transparent !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="surface-changes"] > .picker-preview :is(.pv-nav, .pv-phone-top, .pv-tabbar),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.pv-nav, .pv-phone-top, .pv-tabbar) {
+  background: var(--derived-band) !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="surface-changes"] > .picker-preview :is(.po-side, .po-panel, .pd-side),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.po-side, .po-panel, .pd-side) {
+  background: var(--derived-band) !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="surface-changes"] > .picker-preview:not([data-surface="experience"]) :is(.pd-note, .pg-row--flip),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview:not([data-surface="experience"]) :is(.pd-note, .pg-row--flip) {
+  background: var(--derived-band-alt) !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="surface-changes"] > .picker-preview .po-divider,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview .po-divider {
+  background: transparent !important;
+}
+
+/* Cards and panels. */
+.dcx-proof--board[data-dcx-boundary="cards-and-panels"] > .picker-preview :is(.pv-nav, .po-side, .po-main),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.pv-nav, .po-side, .po-main) {
+  border-color: transparent !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="cards-and-panels"] > .picker-preview .po-divider,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview .po-divider {
+  background: transparent !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="cards-and-panels"] > .picker-preview :is(.po-side, .po-chart, .po-rows, .po-panel, .po-phone-body .po-chart, .po-phone-body .po-field, .po-phone-body .po-prow),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.po-side, .po-chart, .po-rows, .po-panel, .po-phone-body .po-chart, .po-phone-body .po-field, .po-phone-body .po-prow) {
+  background: var(--derived-panel) !important;
+  border: 1px solid var(--derived-panel-edge) !important;
+  border-radius: 3px;
+}
+
+.dcx-proof--board[data-dcx-boundary="cards-and-panels"] > .picker-preview .po-chart,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview .po-chart {
+  padding-inline: calc(3 * var(--pv-x));
+}
+
+/* Cell 44: operate cards-and-panels details. */
+.dcx-proof--board[data-dcx-boundary="cards-and-panels"] > .picker-preview[data-surface="operate"] .pv-desktop .po-chart,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="operate"] .pv-desktop .po-chart {
+  padding: calc(3 * var(--pv-x)) calc(5 * var(--pv-x)) !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="cards-and-panels"] > .picker-preview[data-surface="operate"] .pv-phone .po-toggle,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="operate"] .pv-phone .po-toggle {
+  margin-left: auto !important;
+  margin-right: 12px !important;
+  padding-right: 12px !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="cards-and-panels"] > .picker-preview[data-surface="operate"] .pv-phone .po-prow,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="operate"] .pv-phone .po-prow {
+  padding-left: 12px !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="cards-and-panels"] > .picker-preview[data-surface="operate"] .pv-phone .po-field > .po-chev,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="operate"] .pv-phone .po-field > .po-chev {
+  align-self: center !important;
+  transform: translateY(-25%) rotate(45deg) !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="cards-and-panels"] > .picker-preview .po-rows,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview .po-rows {
+  padding-inline: calc(2 * var(--pv-x));
+}
+
+
+/* Corner radii on the derived clones. Dots remain dots while frames,
+   surfaces, controls, and text bars take the selected radius. Ported from
+   the gallery derived sheet; values match the artboard radius ramp above. */
+.dcx-proof--board[data-dcx-corner="sharp"],
+#picker-form:not(:has(.picker-strategy-option:hover input[name="corner-style"])):has(input[name="corner-style"][value="sharp"]:checked) .dcx-proof--board { --derived-frame-radius: 0px; --derived-phone-radius: 0px; --derived-surface-radius: 0px; --derived-control-radius: 0px; --derived-bar-radius: 0px; }
+.dcx-proof--board[data-dcx-corner="slightly-soft"],
+#picker-form:not(:has(.picker-strategy-option:hover input[name="corner-style"])):has(input[name="corner-style"][value="slightly-soft"]:checked) .dcx-proof--board { --derived-frame-radius: 4px; --derived-phone-radius: 5px; --derived-surface-radius: 3px; --derived-control-radius: 3px; --derived-bar-radius: 2px; }
+.dcx-proof--board[data-dcx-corner="friendly"],
+#picker-form:not(:has(.picker-strategy-option:hover input[name="corner-style"])):has(input[name="corner-style"][value="friendly"]:checked) .dcx-proof--board { --derived-frame-radius: 7px; --derived-phone-radius: 11px; --derived-surface-radius: 8px; --derived-control-radius: 8px; --derived-bar-radius: 3px; }
+.dcx-proof--board[data-dcx-corner="pill"],
+#picker-form:not(:has(.picker-strategy-option:hover input[name="corner-style"])):has(input[name="corner-style"][value="pill"]:checked) .dcx-proof--board { --derived-frame-radius: 9px; --derived-phone-radius: 15px; --derived-surface-radius: 12px; --derived-control-radius: 999px; --derived-bar-radius: 3px; }
+
+.dcx-proof--board > .picker-preview .pv-desktop { border-radius: var(--derived-frame-radius) !important; }
+.dcx-proof--board > .picker-preview .pv-phone { border-radius: var(--derived-phone-radius) !important; }
+.dcx-proof--board > .picker-preview :is(.pv-image, .pv-mini-card, .po-chart, .po-rows, .po-panel, .pg-row) { border-radius: var(--derived-surface-radius) !important; }
+.dcx-proof--board > .picker-preview .pd-note { border-radius: 0 var(--derived-surface-radius) var(--derived-surface-radius) 0 !important; }
+.dcx-proof--board > .picker-preview :is(.pv-pill, .pv-actions i, .po-item--on, .po-field, .po-row, .po-toggle) { border-radius: var(--derived-control-radius) !important; }
+.dcx-proof--board > .picker-preview .po-toggle::after { border-radius: var(--derived-control-radius) !important; }
+.dcx-proof--board > .picker-preview :is(.pv-nav-bars i, .pv-pill::after, .pv-eyebrow, .pv-headline i, .pv-copy-bar, .po-line, .po-cell, .po-heading, .po-label, .pd-item span, .pd-heading, .pd-para i, .pd-note-lines i, .pg-cap i, .pg-track i) { border-radius: var(--derived-bar-radius) !important; }
+
+
+/* Depth additions on derived clones. Flat is the base; the other answers
+   lift only solid, meaningful objects. Ported from the gallery derived
+   sheet; shadow alphas stay literal because they are shadows, not palette
+   roles. */
+.dcx-proof--board[data-dcx-depth="flat"],
+#picker-form:not(:has(.picker-strategy-option:hover input[name="depth-style"])):has(input[name="depth-style"][value="flat"]:checked) .dcx-proof--board { --derived-shadow-chrome: none; --derived-shadow-card: none; --derived-shadow-control: none; --derived-shadow-surface: none; }
+.dcx-proof--board[data-dcx-depth="soft-lift"],
+#picker-form:not(:has(.picker-strategy-option:hover input[name="depth-style"])):has(input[name="depth-style"][value="soft-lift"]:checked) .dcx-proof--board { --derived-shadow-chrome: 0 1px 2px rgb(0 0 0 / 0.08); --derived-shadow-card: 0 2px 4px rgb(0 0 0 / 0.1); --derived-shadow-control: 0 1px 2px rgb(0 0 0 / 0.1); --derived-shadow-surface: 0 2px 4px rgb(0 0 0 / 0.1); }
+.dcx-proof--board[data-dcx-depth="floating"],
+#picker-form:not(:has(.picker-strategy-option:hover input[name="depth-style"])):has(input[name="depth-style"][value="floating"]:checked) .dcx-proof--board { --derived-shadow-chrome: 0 1px 3px rgb(0 0 0 / 0.1); --derived-shadow-card: 0 4px 8px rgb(0 0 0 / 0.14); --derived-shadow-control: 0 2px 4px rgb(0 0 0 / 0.12); --derived-shadow-surface: 0 4px 8px rgb(0 0 0 / 0.14); }
+
+.dcx-proof--board > .picker-preview :is(.pv-nav, .pv-phone-top) { box-shadow: var(--derived-shadow-chrome) !important; }
+.dcx-proof--board > .picker-preview :is(.pv-pill, .pv-actions i, .po-item--on, .po-field, .po-toggle) { box-shadow: var(--derived-shadow-control) !important; }
+.dcx-proof--board > .picker-preview :is(.pv-image, .pv-mini-card, .pd-note) { box-shadow: var(--derived-shadow-card) !important; }
+.dcx-proof--board > .picker-preview .pg-cap::before { box-shadow: var(--derived-shadow-card) !important; }
+.dcx-proof--board > .picker-preview :is(.po-chart i, .po-side, .po-panel) { box-shadow: var(--derived-shadow-surface) !important; }
+
+/* Depth persuade rides the drenched base, the gallery's baseCellId lock. */
+.dcx-proof--board > .picker-preview[data-surface="persuade"] {
+  --pv-secondary: var(--pkc-secondary);
+  --pv-tertiary: var(--pkc-tertiary);
+  --pv-bone: color-mix(in oklab, var(--pkc-p-ink) 55%, var(--pkc-primary));
+  --pv-strong: var(--pkc-p-ink);
+  --pv-secondary-wash: color-mix(in oklab, var(--pkc-p-ink) 16%, var(--pkc-primary));
+}
+
+.dcx-proof--board > .picker-preview[data-surface="persuade"] .pv-desktop .pv-image {
+  background: linear-gradient(135deg, color-mix(in oklab, var(--pkc-p-ink) 16%, var(--pkc-primary)), color-mix(in oklab, var(--pkc-secondary) 34%, var(--pkc-primary))) !important;
+  border-color: color-mix(in oklab, var(--pkc-secondary) 52%, var(--pkc-primary)) !important;
+}
+
+.dcx-proof--board > .picker-preview[data-surface="persuade"] .pv-desktop .pv-image::after { background: var(--pkc-tertiary) !important; }
+
+.dcx-proof--board > .picker-preview[data-surface="persuade"] .pv-desktop .pv-actions i:last-child {
+  border-color: color-mix(in oklab, var(--pkc-secondary) 68%, var(--pkc-p-ink)) !important;
+  background: color-mix(in oklab, var(--pkc-secondary) 18%, var(--pkc-primary)) !important;
+}
+
+.dcx-proof--board > .picker-preview[data-surface="persuade"] .pv-desktop .pv-nav-bars i:nth-child(2) {
+  background: color-mix(in oklab, var(--pkc-secondary) 72%, var(--pkc-p-ink)) !important;
+}
+

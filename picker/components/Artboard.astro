@@ -51,6 +51,7 @@ interface Props {
     shift its scenes.
   */
   portfolioExtras?: boolean;
+  motionCell?: string;
 }
 
 const {
@@ -63,6 +64,7 @@ const {
   cursor = false,
   carry = false,
   portfolioExtras = false,
+  motionCell,
 } = Astro.props;
 const type = mode === 'type';
 const ops = surface === 'operate';
@@ -78,6 +80,7 @@ const hook = type ? '' : undefined;
   class={classes}
   data-artboard=""
   data-surface={surface}
+  data-motion-cell={motionCell}
   data-carry={carry ? '' : undefined}
   data-strategy-preview={strategyHook ? '' : undefined}
   data-type-preview={typeHook ? '' : undefined}
@@ -312,12 +315,14 @@ const hook = type ? '' : undefined;
         </Fragment>
       ))}
     </div>
+    <div class="ps-layout-editorial-spacer" data-layout-editorial-spacer aria-hidden="true"></div>
     <div class="ps-editorial">
       <div class="ps-editorial-copy">
         <strong data-type-section-title={hook}></strong>
         {type
           ? <p class="pt-section-body" data-type-section-body></p>
           : <span><i></i><i></i></span>}
+        <em data-type-section-link={hook}></em>
       </div>
       {/* Three cards once the labels are words, four while they are bars. The
           type board sets three because a fourth column leaves the copy beside

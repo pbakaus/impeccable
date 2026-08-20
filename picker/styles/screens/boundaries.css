@@ -202,3 +202,330 @@
 #picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="cards-and-panels"]) .picker-preview-boundaries .ps-ops-item {
   background-color: var(--pvs-panel);
 }
+
+/* Gallery parity (plan-18): the persuade artboard kept on the boundaries and
+   corners screens flattens its shadows and re-grids the proof strip, ported
+   from the gallery's previews-38-41-proof-spacing block. Scoped to the two
+   screens' own stages; document proofs and hub clones keep carried shadows
+   through the dcx mirrors. */
+:is(.picker-screen[data-screen="08"], .picker-screen[data-screen="09"]) .picker-board-stage > [data-artboard][data-surface="persuade"] :is(*, *::before, *::after) {
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+:is(.picker-screen[data-screen="08"], .picker-screen[data-screen="09"]) .picker-board-stage > [data-artboard][data-surface="persuade"] .ps-desktop .ps-proof {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+}
+
+:is(.picker-screen[data-screen="08"], .picker-screen[data-screen="09"]) .picker-board-stage > [data-artboard][data-surface="persuade"] .ps-phone .ps-proof {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  position: relative;
+  top: 10px;
+}
+
+:is(.picker-screen[data-screen="08"], .picker-screen[data-screen="09"]) .picker-board-stage > [data-artboard][data-surface="persuade"] .ps-phone .ps-editorial-copy {
+  margin-top: 16px !important;
+}
+
+:is(.picker-screen[data-screen="08"], .picker-screen[data-screen="09"]) .picker-board-stage > [data-artboard][data-surface="persuade"] .ps-desktop .ps-proof-item {
+  padding-right: 24px !important;
+}
+
+:is(.picker-screen[data-screen="08"], .picker-screen[data-screen="09"]) .picker-board-stage > [data-artboard][data-surface="persuade"] .ps-proof-divider {
+  display: none !important;
+}
+
+/* Cells 40 and 41 only: band washes under surface-changes, and both band
+   rules under cards-and-panels, exactly the gallery's cellNum conditionals. */
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="surface-changes"]) .picker-screen[data-screen="08"] .picker-board-stage > [data-artboard][data-surface="persuade"] .ps-proof,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > [data-artboard][data-surface="persuade"] .ps-proof,
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="cards-and-panels"]) .picker-screen[data-screen="08"] .picker-board-stage > [data-artboard][data-surface="persuade"] .ps-proof,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > [data-artboard][data-surface="persuade"] .ps-proof {
+  background-color: color-mix(in oklab, var(--pvs-band-alt) 65%, white) !important;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="surface-changes"]) .picker-screen[data-screen="08"] .picker-board-stage > [data-artboard][data-surface="persuade"] .ps-footer,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > [data-artboard][data-surface="persuade"] .ps-footer,
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="cards-and-panels"]) .picker-screen[data-screen="08"] .picker-board-stage > [data-artboard][data-surface="persuade"] .ps-footer,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > [data-artboard][data-surface="persuade"] .ps-footer {
+  background-color: color-mix(in oklab, var(--pvs-band) 65%, white) !important;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="surface-changes"]) .picker-screen[data-screen="08"] .picker-board-stage > [data-artboard][data-surface="persuade"] .ps-phone .ps-proof,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > [data-artboard][data-surface="persuade"] .ps-phone .ps-proof {
+  column-gap: 16px !important;
+  padding-right: var(--pvs-gutter) !important;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="cards-and-panels"]) .picker-screen[data-screen="08"] .picker-board-stage > [data-artboard][data-surface="persuade"] .ps-gallery-item,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > [data-artboard][data-surface="persuade"] .ps-gallery-item {
+  background: transparent !important;
+}
+
+/* ==== Derived stage (plan-18): screens 08, 09, 10 mount strategy-preview
+   clones for the surfaces the gallery derives. Geometry mirrors the artboard
+   footprint; colors are locked to the restrained base for operate, read and
+   experience clones, matching the gallery's baseCellId map. ==== */
+:is(.picker-screen[data-screen="08"], .picker-screen[data-screen="09"], .picker-screen[data-screen="10"]) .picker-board-stage > .picker-preview {
+  grid-row: 2;
+  aspect-ratio: 1.865 / 1;
+  width: 100%;
+  --pv-primary: var(--pkc-primary, var(--ks-champagne));
+  --pv-secondary: var(--pkc-secondary, var(--ks-patina));
+  --pv-tertiary: var(--pkc-tertiary, var(--ks-kinpaku));
+  --pv-neutral: var(--pkc-neutral, var(--ks-lacquer-raised));
+  --pv-n-ink: var(--pkc-n-ink, var(--ks-champagne));
+  --pv-p-ink: var(--pkc-p-ink, var(--ks-champagne));
+  --derived-rule: color-mix(in oklab, var(--pv-strong) 24%, var(--pv-neutral));
+  --derived-band: color-mix(in oklab, var(--pv-strong) 7%, var(--pv-neutral));
+  --derived-band-alt: color-mix(in oklab, var(--pv-strong) 13%, var(--pv-neutral));
+  --derived-panel: color-mix(in oklab, var(--pv-strong) 5%, var(--pv-neutral));
+  --derived-panel-edge: color-mix(in oklab, var(--pv-strong) 20%, var(--pv-neutral));
+}
+
+/* Restrained lock for the non-persuade clones, mirrored from the strategy
+   remap so the derived boards hold the gallery's base regardless of the
+   run's strategy answer. */
+:is(.picker-screen[data-screen="08"], .picker-screen[data-screen="09"], .picker-screen[data-screen="10"]) .picker-board-stage > .picker-preview:not([data-surface="persuade"]) {
+  --pv-secondary: color-mix(in oklab, var(--pkc-neutral) 78%, var(--pkc-n-ink));
+  --pv-tertiary: color-mix(in oklab, var(--pkc-neutral) 86%, var(--pkc-n-ink));
+  --pv-t-ink: var(--pkc-n-ink);
+  --pv-t-on-t: var(--pkc-n-ink);
+  --pv-t-on-n: color-mix(in oklab, var(--pkc-n-ink) 62%, var(--pkc-neutral));
+  --pv-t-on-p: var(--pkc-p-ink);
+}
+
+:is(.picker-screen[data-screen="08"], .picker-screen[data-screen="09"], .picker-screen[data-screen="10"]) .picker-board-stage > .picker-preview.picker-preview--docs {
+  --pd-quote: var(--pd-ink);
+}
+
+:is(.picker-screen[data-screen="08"], .picker-screen[data-screen="09"], .picker-screen[data-screen="10"]) .picker-board-stage > .picker-preview.picker-preview--docs :is(.pd-note-dot, .pd-note-lines i) {
+  background: var(--pd-ink);
+}
+
+/* Wireframe weights. The gallery derives these boards from the strategy
+   stage, so the ops, docs and portfolio clones carry that stage's 1.35 desktop
+   step and nothing else; their bar geometry stays the authored base. */
+:is(.picker-screen[data-screen="08"], .picker-screen[data-screen="09"], .picker-screen[data-screen="10"]) .picker-board-stage > .picker-preview:is(.picker-preview--ops, .picker-preview--docs, .picker-preview--gallery) .pv-desktop {
+  --pv-text: 1.35;
+}
+
+/* Boundaries read (gallery cells 45 to 47) is the one derived group the
+   gallery reweights: both viewports step to 1.65 and the rail dot and note dot
+   widen. Corners read and depth read draw at the base weight. */
+.picker-screen[data-screen="08"] .picker-board-stage > .picker-preview.picker-preview--docs :is(.pv-desktop, .pv-phone) {
+  --pv-text: 1.65;
+}
+
+.picker-screen[data-screen="08"] .picker-board-stage > .picker-preview.picker-preview--docs .pd-item i { width: calc(4.07 * var(--pv-x)); }
+.picker-screen[data-screen="08"] .picker-board-stage > .picker-preview.picker-preview--docs .pd-note-dot { width: calc(4.07 * var(--pv-x)); }
+
+/* Experience cap avatars on derived boards, from the gallery derived sheet. */
+:is(.picker-screen[data-screen="08"], .picker-screen[data-screen="09"], .picker-screen[data-screen="10"]) .picker-board-stage > .picker-preview--gallery .pv-desktop .pg-cap { padding-top: 5.2cqh; gap: 2.6cqh; }
+:is(.picker-screen[data-screen="08"], .picker-screen[data-screen="09"], .picker-screen[data-screen="10"]) .picker-board-stage > .picker-preview--gallery .pv-desktop .pg-cap::before {
+  content: "";
+  display: block;
+  width: calc(11.5 * var(--pv-x));
+  aspect-ratio: 1;
+  border: 1px solid color-mix(in oklab, var(--pv-secondary) 55%, var(--pv-neutral));
+  border-radius: 50%;
+  background: linear-gradient(135deg, color-mix(in oklab, var(--pv-secondary) 24%, var(--pv-neutral)), color-mix(in oklab, var(--pv-secondary) 46%, var(--pv-neutral)));
+}
+
+/* Phone field chevron alignment on ops clones, from the gallery derived sheet
+   (cells 44 and 55-58; the corners screen applies it under every option). */
+:is(.picker-screen[data-screen="09"], .picker-screen[data-screen="10"]) .picker-board-stage > .picker-preview .pv-phone .po-field > .po-chev { align-self: center; transform: translateY(-25%) rotate(45deg); }
+
+/* Boundary additions on derived clones: the base geometry stays fixed; only
+   separation changes. Ported from the gallery derived sheet. */
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="open-space"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.pv-nav, .po-side, .po-main, .pd-side),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="open-space"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.pv-nav, .po-side, .po-main, .pd-side) {
+  border-color: transparent !important;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="open-space"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.po-divider, .pg-row--flip, .pg-rail),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="open-space"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.po-divider, .pg-row--flip, .pg-rail) {
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="open-space"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview .po-divider,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="open-space"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview .po-divider {
+  background: transparent !important;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="thin-dividers"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview:is(.picker-preview--ops, .picker-preview--docs, .picker-preview--gallery) .pv-nav,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview:is(.picker-preview--ops, .picker-preview--docs, .picker-preview--gallery) .pv-nav {
+  border-bottom: 1px solid var(--derived-rule) !important;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="thin-dividers"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.po-side, .po-main, .pd-side),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.po-side, .po-main, .pd-side) {
+  border-right: 1px solid var(--derived-rule) !important;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="thin-dividers"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview .po-divider,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview .po-divider {
+  background: var(--derived-rule) !important;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="thin-dividers"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview .po-row + .po-row,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview .po-row + .po-row {
+  box-shadow: inset 0 1px 0 var(--derived-rule);
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="thin-dividers"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview:not([data-surface="experience"]) .pg-row--flip,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview:not([data-surface="experience"]) .pg-row--flip {
+  box-shadow: inset 0 1px 0 var(--derived-rule);
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="thin-dividers"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview:not([data-surface="experience"]) .pg-rail,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview:not([data-surface="experience"]) .pg-rail {
+  border-top: 1px solid var(--derived-rule);
+}
+
+/* Cell 49: experience thin-dividers redraws its flip row and phone image
+   separations by pseudo-element rules. */
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="thin-dividers"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-row--flip,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-row--flip {
+  position: relative;
+  margin-top: 10cqh !important;
+  box-shadow: none !important;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="thin-dividers"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-row--flip::before,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-row--flip::before {
+  content: "";
+  position: absolute;
+  top: -5cqh;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: var(--derived-rule);
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="thin-dividers"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-rail,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-rail,
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="surface-changes"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-rail,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-rail {
+  border-top: 0 !important;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="thin-dividers"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-phone-body > .pg-cap + .pv-image,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-phone-body > .pg-cap + .pv-image {
+  margin-top: 8cqh !important;
+  overflow: visible;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="thin-dividers"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-phone-body > .pg-cap + .pv-image::before,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-phone-body > .pg-cap + .pv-image::before {
+  content: "";
+  position: absolute;
+  top: -4cqh;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: var(--derived-rule);
+}
+
+/* Cell 50: experience surface-changes. */
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="surface-changes"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-row--flip,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-row--flip {
+  margin-top: 5cqh !important;
+  padding-block: 5cqh !important;
+  box-shadow: none !important;
+  background: color-mix(in oklab, var(--derived-band-alt) 60%, white 40%) !important;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="surface-changes"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-phone-body > .pg-cap + .pv-image,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-phone-body > .pg-cap + .pv-image {
+  margin-top: 8cqh !important;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="surface-changes"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-phone-body,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-phone-body {
+  background: linear-gradient(to bottom, transparent 0 50%, color-mix(in oklab, var(--derived-band-alt) 60%, white 40%) 50% 100%) !important;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="surface-changes"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pv-phone .pv-tabbar,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pv-phone .pv-tabbar {
+  background: color-mix(in oklab, var(--derived-band-alt) 60%, white 40%) !important;
+}
+
+/* Surface changes on every derived clone. */
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="surface-changes"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.pv-nav, .po-side, .po-main, .pd-side),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.pv-nav, .po-side, .po-main, .pd-side) {
+  border-color: transparent !important;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="surface-changes"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.pv-nav, .pv-phone-top, .pv-tabbar),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.pv-nav, .pv-phone-top, .pv-tabbar) {
+  background: var(--derived-band) !important;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="surface-changes"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.po-side, .po-panel, .pd-side),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.po-side, .po-panel, .pd-side) {
+  background: var(--derived-band) !important;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="surface-changes"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview:not([data-surface="experience"]) :is(.pd-note, .pg-row--flip),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview:not([data-surface="experience"]) :is(.pd-note, .pg-row--flip) {
+  background: var(--derived-band-alt) !important;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="surface-changes"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview .po-divider,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview .po-divider {
+  background: transparent !important;
+}
+
+/* Cards and panels. */
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="cards-and-panels"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.pv-nav, .po-side, .po-main),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.pv-nav, .po-side, .po-main) {
+  border-color: transparent !important;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="cards-and-panels"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview .po-divider,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview .po-divider {
+  background: transparent !important;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="cards-and-panels"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.po-side, .po-chart, .po-rows, .po-panel, .po-phone-body .po-chart, .po-phone-body .po-field, .po-phone-body .po-prow),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.po-side, .po-chart, .po-rows, .po-panel, .po-phone-body .po-chart, .po-phone-body .po-field, .po-phone-body .po-prow) {
+  background: var(--derived-panel) !important;
+  border: 1px solid var(--derived-panel-edge) !important;
+  border-radius: 3px;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="cards-and-panels"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview .po-chart,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview .po-chart {
+  padding-inline: calc(3 * var(--pv-x));
+}
+
+/* Cell 44: operate cards-and-panels details. */
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="cards-and-panels"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="operate"] .pv-desktop .po-chart,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="operate"] .pv-desktop .po-chart {
+  padding: calc(3 * var(--pv-x)) calc(5 * var(--pv-x)) !important;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="cards-and-panels"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="operate"] .pv-phone .po-toggle,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="operate"] .pv-phone .po-toggle {
+  margin-left: auto !important;
+  margin-right: 12px !important;
+  padding-right: 12px !important;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="cards-and-panels"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="operate"] .pv-phone .po-prow,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="operate"] .pv-phone .po-prow {
+  padding-left: 12px !important;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="cards-and-panels"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="operate"] .pv-phone .po-field > .po-chev,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="operate"] .pv-phone .po-field > .po-chev {
+  align-self: center !important;
+  transform: translateY(-25%) rotate(45deg) !important;
+}
+
+#picker-form:has(.picker-strategy-option:hover input[name="boundary-style"][value="cards-and-panels"]) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview .po-rows,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview .po-rows {
+  padding-inline: calc(2 * var(--pv-x));
+}

@@ -338,7 +338,7 @@ const surfaceTilePreview = (mode) => $(`input[name="surface-modes"][value="${mod
 /* The boundaries screen keeps one carried ps artboard per surface, and by
    that screen the drawing is the page as chosen so far. It is the clone
    source for any proof that wants the whole material story on one page. */
-const carriedBoard = (mode) => $(`[data-question="boundaries"] .picker-artboard[data-surface="${mode}"]`);
+const carriedBoard = (mode) => $(`[data-question="boundaries"] .picker-board-stage > :is(.picker-artboard, .picker-preview)[data-surface="${mode}"]`);
 
 /* One surface's committed structural answers, as the data-dcx-* marks the
    document stylesheet keys its mirrored bodies on. Layout is one answer for

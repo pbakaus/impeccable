@@ -1892,3 +1892,53 @@
     scale: 1.4;
   }
 }
+
+/* Premium motion cells (plan-18): one board per (surface, option). The tab
+   strip keeps toggling [hidden] by surface; these rules pick the option
+   within the visible surface. */
+.picker-preview-motion[data-motion-cell] { display: none; }
+
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="restrained"]) .picker-preview-motion[data-motion-cell$="-restrained"]:not([hidden]),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="restrained"]:checked) .picker-preview-motion[data-motion-cell$="-restrained"]:not([hidden]),
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="responsive"]) .picker-preview-motion[data-motion-cell$="-responsive"]:not([hidden]),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="responsive"]:checked) .picker-preview-motion[data-motion-cell$="-responsive"]:not([hidden]),
+#picker-form:has(.picker-strategy-option:hover input[name="motion-energy"][value="choreographed"]) .picker-preview-motion[data-motion-cell$="-choreographed"]:not([hidden]),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="motion-energy"])):has(input[name="motion-energy"][value="choreographed"]:checked) .picker-preview-motion[data-motion-cell$="-choreographed"]:not([hidden]) {
+  display: grid;
+}
+
+/* ==== Rebuilt motion boards ====
+   tmp/motion-previews-premium.html is the source of truth for these six cells,
+   and it draws them on rebuilt boards: the landing board takes preview 33's
+   shape and a phone, the portfolio board becomes preview 48's gallery drawing.
+   These are that file's two layered sheets, scoped to the motion boards so the
+   layout screen's own boards keep their rendition. */
+
+/* landing-layout-grid-corrections: the field is mounted for preview 33's
+   structure and then not drawn, and the section bands lose their rules. */
+.picker-preview-motion.picker-preview-layout[data-surface="persuade"] .ps-layout-grid {
+  display: none !important;
+}
+
+.picker-preview-motion.picker-preview-layout[data-surface="persuade"] .ps-desktop::before,
+.picker-preview-motion.picker-preview-layout[data-surface="persuade"] .ps-phone-body::before {
+  content: none !important;
+}
+
+/* desktop-only-previews: the scenes are authored for the desktop artifact, so
+   the handset holds its column and stays out of the picture. */
+.picker-preview-motion.picker-preview-layout[data-surface="persuade"] > .ps-phone,
+.picker-preview-motion.picker-preview--gallery[data-surface="experience"] > .pv-phone {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+/* The premium sheet pins the rebuilt portfolio board to its stage with
+   height: 100%, which the extraction file can do because it forces the stage
+   to 918 by 492.21875. The live stage sizes to the board instead, so the
+   footprint is stated as the artboard ratio this drawing replaces, which
+   resolves to the same box at that width and still tracks a resize. */
+.picker-board-stage > .picker-preview-motion[data-surface="experience"] {
+  aspect-ratio: 1.865 / 1;
+  height: auto;
+}
