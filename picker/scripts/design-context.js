@@ -25,12 +25,14 @@ const shell = $('[data-dcx-shell]');
 let seedContext = null;
 let seedModes = null;
 let seedPalettes = null;
+let seedCues = null;
 fetch('/cues.json')
   .then((response) => (response.ok ? response.json() : null))
   .then((data) => {
     seedContext = data?.context || null;
     seedModes = Array.isArray(data?.modes) ? data.modes : null;
     seedPalettes = data?.palette || null;
+    seedCues = Array.isArray(data?.cues) ? data.cues : null;
   })
   .catch(() => {});
 
@@ -134,6 +136,7 @@ function takeSnapshot() {
   return {
     context: seedContext,
     suggestedModes: seedModes,
+    cueSlugs: seedCues,
     surfaces,
     palette,
     paletteSource: fieldValue('palette-source'),
@@ -225,6 +228,38 @@ const fromChat = (what, home) => empty(
   'Captured in chat',
   `${what} in chat, before the browser questionnaire. ${home} is the durable copy.`,
 );
+
+/* Staged brand-asset files are served by the picker server before submit and
+   by the doc session after it: the picker process exits when the submit
+   response lands, and article images only load when a detail view opens,
+   which is always after that. docSession is assigned before any render that
+   can reach the live DOM (startDocSession re-renders the templates). */
+const brandAssetSrc = (file) => (docSession
+  ? `${docSession.base}/brand-assets/${encodeURIComponent(file)}?token=${encodeURIComponent(docSession.token)}`
+  : `/brand-assets/${encodeURIComponent(file)}`);
+
+/* Cue and asset images load after their innerHTML render. The load pass
+   stamps the cue frame with the image's natural size, which is the space
+   the cues.json sample coordinates live in (the same division the picker's
+   own ring placement does); the error pass hides the broken entry so a
+   missing file never leaves a dead image in an article. Capture phase,
+   because load and error do not bubble. */
+document.addEventListener('load', (event) => {
+  const image = event.target;
+  if (!(image instanceof HTMLImageElement) || !('dcxCueImg' in image.dataset)) return;
+  const frame = image.closest('.dcx-cue-frame');
+  if (!frame) return;
+  frame.style.setProperty('--cue-w', String(image.naturalWidth || 1));
+  frame.style.setProperty('--cue-h', String(image.naturalHeight || 1));
+  frame.dataset.loaded = 'yes';
+}, true);
+
+document.addEventListener('error', (event) => {
+  const image = event.target;
+  if (!(image instanceof HTMLImageElement)) return;
+  const casualty = image.closest('[data-dcx-hide-on-error]');
+  if (casualty) casualty.hidden = true;
+}, true);
 
 /* Readable ink for a fan panel, from the swatch's own luminance. */
 function inkFor(hex) {
@@ -500,8 +535,49 @@ function buildBrand(s, name) {
     parts.push(block('Anti-reference', anti
       + note('Q5 of the seed interview. A hard constraint on every palette and pair that followed.')));
   }
-  if (Array.isArray(s.context?.assets) && s.context.assets.length) {
-    parts.push(block('Assets provided', list(s.context.assets.map(escapeHtml))
+  /* Assets: an object entry carries a staged file under
+     .impeccable/design-interview/assets/ and renders as an image; a plain
+     string keeps the text line it always had. A logo is proofed on two
+     chips, the committed primary and the committed neutral, so a colored
+     and a quiet ground are judged at once; boards and references get a
+     wide frame. A file that fails to load hides its own entry (the
+     delegated error listener), never the article. */
+  const assets = Array.isArray(s.context?.assets) ? s.context.assets : [];
+  const isFileAsset = (entry) => Boolean(entry) && typeof entry === 'object'
+    && typeof entry.file === 'string' && entry.file;
+  const fileAssets = assets.filter(isFileAsset);
+  const textAssets = assets.filter((entry) => !isFileAsset(entry));
+  const logos = fileAssets.filter((entry) => entry.kind === 'logo');
+  const boards = fileAssets.filter((entry) => entry.kind !== 'logo');
+  const assetCaption = (entry) => `
+      <figcaption class="dcx-asset-caption">
+        <code>${escapeHtml(entry.file)}</code>${entry.note ? `
+        <p>${escapeHtml(entry.note)}</p>` : ''}
+      </figcaption>`;
+  const chipHex = (roleName) => s.palette.find((entry) => entry.role === roleName)?.hex || '';
+  if (logos.length) {
+    parts.push(block('Marks', `<div class="dcx-marks">${logos.map((entry) => `
+      <figure class="dcx-mark" data-dcx-hide-on-error>
+        <div class="dcx-mark-pair">
+          <span class="dcx-mark-chip"${chipHex('Primary') ? ` style="--chip-ground:${chipHex('Primary')};"` : ''}><img src="${brandAssetSrc(entry.file)}" alt="${escapeHtml(entry.file)} on the primary color" /></span>
+          <span class="dcx-mark-chip"${chipHex('Neutral') ? ` style="--chip-ground:${chipHex('Neutral')};"` : ''}><img src="${brandAssetSrc(entry.file)}" alt="${escapeHtml(entry.file)} on the neutral color" /></span>
+        </div>
+        ${assetCaption(entry)}
+      </figure>`).join('')}</div>`
+      + note('Provided marks proofed on the committed primary and neutral grounds. The files are staged in <code>.impeccable/design-interview/assets/</code>.')));
+  }
+  if (boards.length) {
+    parts.push(block('Boards and references', `<div class="dcx-boards">${boards.map((entry) => `
+      <figure class="dcx-board" data-dcx-hide-on-error>
+        <span class="dcx-board-frame"><img src="${brandAssetSrc(entry.file)}" alt="${escapeHtml(entry.file)}" loading="lazy" /></span>
+        ${assetCaption(entry)}
+      </figure>`).join('')}</div>`
+      + note('Boards and reference images provided in chat, staged in <code>.impeccable/design-interview/assets/</code>.')));
+  }
+  if (textAssets.length) {
+    parts.push(block('Assets provided', list(textAssets.map((entry) => escapeHtml(
+      typeof entry === 'string' ? entry : (entry.note || entry.file || ''),
+    )))
       + note('Gathered before the interview; the questions were grounded in what they showed.')));
   }
   return parts.join('');
@@ -519,6 +595,50 @@ const ROLE_STORY = {
 function buildColor(s, name) {
   const interview = s.context?.interview || {};
   const parts = [heading(4, 'Color', 'Palette, roles, per-surface strategy, copyable values.', name)];
+  /* The chosen cue: the image the palette was sampled from, its four sample
+     points marked at the cues.json coordinates in each role's dealt color,
+     and the rest of the generated set dimmed below. Skipped without ceremony
+     when the palette came from a seed deck or a custom pick rather than a
+     cue, or when the run had no cues at all. */
+  const cueSlugs = Array.isArray(s.cueSlugs) ? s.cueSlugs : [];
+  const chosenCue = cueSlugs.includes(s.paletteSource) ? s.paletteSource : '';
+  if (chosenCue && s.palette.length) {
+    const cuePalette = seedPalettes?.[chosenCue] || {};
+    const dots = ROLES.map((role) => {
+      const slot = cuePalette[role];
+      if (!slot || !Array.isArray(slot.at) || slot.at.length !== 2) return '';
+      const fill = String(slot.snapped || slot.hex || '');
+      return `<span class="dcx-cue-dot" data-role="${role}" style="--at-x:${Number(slot.at[0]) || 0}; --at-y:${Number(slot.at[1]) || 0};${fill ? ` --dot-fill:${escapeHtml(fill)};` : ''}"></span>`;
+    }).join('');
+    const roleRows = s.palette.map((entry) => `
+      <div class="dcx-cue-role">
+        <span class="dcx-cue-role-dot" style="--dot-fill:${entry.hex};"></span>
+        <span class="dcx-cue-role-name">${escapeHtml(entry.role)}</span>
+        <code>${entry.hex}</code>
+        <code>${escapeHtml(formatOklch(entry.hex))}</code>
+      </div>`).join('');
+    parts.push(block('The cue', `<div class="dcx-cue" data-dcx-hide-on-error>
+        <figure class="dcx-cue-frame">
+          <img data-dcx-cue-img src="/cues/${encodeURIComponent(chosenCue)}.png" alt="The chosen visual cue, ${escapeHtml(chosenCue)}" />
+          ${dots}
+        </figure>
+        <div class="dcx-cue-card">
+          <span class="dcx-cue-tag">Chosen cue</span>
+          <h3 class="dcx-cue-name">${escapeHtml(chosenCue)}</h3>
+          ${roleRows}
+        </div>
+      </div>`
+      + note('The image the palette was sampled from, each role&rsquo;s sample point marked in its dealt color. The values beside it are the committed ones, which move when a role is edited after sampling.')));
+    const others = cueSlugs.filter((slug) => slug !== chosenCue);
+    if (others.length) {
+      parts.push(block('Also generated', `<div class="dcx-cue-strip">${others.map((slug) => `
+        <figure class="dcx-cue-thumb" data-dcx-hide-on-error>
+          <img src="/cues/${encodeURIComponent(slug)}.png" alt="" loading="lazy" />
+          <figcaption>${escapeHtml(slug)}</figcaption>
+        </figure>`).join('')}</div>`
+        + note('The directions not taken, kept on disk in <code>.impeccable/visual-cues/</code>.')));
+    }
+  }
   if (s.palette.length) {
     const step = 100 / (s.palette.length + 1);
     const fan = s.palette.map((entry, index) => `
@@ -1166,6 +1286,10 @@ const docLive = () => Boolean(docSession);
 function startDocSession(doc) {
   docSession = doc;
   document.body.classList.add('dcx-live');
+  /* Rebuild the templates with this session's URLs: brand-asset images can
+     only load through the session, because the picker server exits right
+     after submit and article images fetch after that exit. */
+  refreshDocument();
   schedulePoll(1500);
 }
 

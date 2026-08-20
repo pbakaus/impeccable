@@ -380,6 +380,8 @@ Look at every asset provided (attached in chat or a file path) and record what i
 - **Reference / product images**: density, palette, type feel; what the user is drawn to.
 - **Moodboards**: recurring hues, textures, era, register cues.
 
+On the questionnaire path, the files themselves also feed the design context document the picker shows after the last question. When the user provided actual files (a logo, a mood board, a reference image), copy each one into `.impeccable/design-interview/assets/`, keeping its filename. Record every staged file for Step 4's cues write: it becomes an object entry in `cues.json` `context.assets`, `{ "file": "<filename>", "kind": "logo" | "moodboard" | "reference", "note": "<one-line observation>" }`, where the note is what this step read off it. An observation with no file behind it stays a plain string entry, as before. On the interview-only path, stage nothing; the observations feed the questions and the seed alone.
+
 These observations exist to sharpen Step 3. **No assets: skip straight to Step 3** with generic options.
 
 ### Step 3: The interview
@@ -456,7 +458,7 @@ This seed writes a minimal frontmatter with `name` and `description` only; no co
   - `motion-energy-<mode>` keys present, all agreeing: one philosophy sentence for the product, as before.
   - Keys present and disagreeing: one sentence per surface, named (*"The landing page moves on state change only; the portfolio stages entrances and drives sequences on scroll."*). The bare `motion-energy` is the leading one of the two.
   - **No `motion-energy` key at all**: the run has neither of those surfaces, so movement was never asked. Say nothing about it, and do not fill the gap from the register; this path's chat interview never asked about motion, so there is nothing to borrow. The next Scan-mode run reads the real transitions out of the code.
-- **Colors**: the four roles with their picked hex, noting the cue they came from. `color-strategy` becomes the Named Rule. When surfaces differ (`color-strategy-<mode>` keys), state each surface's strategy and which surface leads (the bare key's owner).
+- **Colors**: the four roles with their picked hex, noting the cue they came from. Name the chosen cue by its slug, and note that the unpicked cue images stay in `.impeccable/visual-cues/` for later art direction. `color-strategy` becomes the Named Rule. When surfaces differ (`color-strategy-<mode>` keys), state each surface's strategy and which surface leads (the bare key's owner).
 - **Typography**: the real pair by name, the pairing's character, and the type scale as a rule: `type-scale` names it, `type-scale-ratio` is the ratio (e.g. *"Major third: each heading step is 1.25x the last"*). Base size and exact steps stay `[resolved at implementation]`. A `font-heading-source` / `font-body-source` value means a user-provided font file; record where it lives.
 - **Layout**: `boundary-style` (how sections separate) per surface when the `-<mode>` keys differ, plus `layout-structure` (how pages are composed), which the questionnaire asks of a landing page and a portfolio only. No invented grids beyond what the answers state.
   - `layout-structure` present: one bare key and no `-<mode>` keys, so state it as a rule for the whole product rather than per surface.

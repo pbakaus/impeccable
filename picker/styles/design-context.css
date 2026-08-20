@@ -1654,6 +1654,13 @@ body.dcx-open { overflow: hidden; background: linear-gradient(180deg, var(--ks-l
   background: transparent;
 }
 
+/* On screen 11 the field's rows stretch into the rail's fixed height; at the
+   sheet's natural height here they would collapse to the glyph's own box, so
+   the square proportion the slide showed is restated per cell. */
+.dcx-proof--icons .picker-icon-cell {
+  aspect-ratio: 1;
+}
+
 /* ============================================================
    Surface cards — the tile anatomy, kept.
    ============================================================ */
@@ -1707,6 +1714,198 @@ body.dcx-open { overflow: hidden; background: linear-gradient(180deg, var(--ks-l
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ks-text-faint);
+}
+
+/* ============================================================
+   The chosen cue and the brand-asset gallery.
+
+   .dcx-cue shows the image the palette was sampled from. The
+   sample dots arrive with source-image pixel coordinates
+   (cues.json palette[slug][role].at); the load listener stamps
+   the image's natural size on the frame, and the calc division
+   below keeps each dot glued to its pixel at any rendered width.
+   .dcx-cue-strip is the unpicked cues, dimmed, not interactive.
+   .dcx-marks proofs a provided logo on the committed primary and
+   neutral grounds; .dcx-boards frames boards and references wide.
+   ============================================================ */
+.dcx-cue {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: clamp(16px, 2.5vw, 30px);
+  align-items: start;
+}
+
+@media (max-width: 760px) {
+  .dcx-cue { grid-template-columns: minmax(0, 1fr); }
+}
+
+.dcx-cue-frame {
+  position: relative;
+  margin: 0;
+  border: 1px solid var(--ks-rule);
+  background: var(--panel-bg);
+}
+
+.dcx-cue-frame img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.dcx-cue-dot {
+  position: absolute;
+  left: calc(var(--at-x, 0) / var(--cue-w, 1024) * 100%);
+  top: calc(var(--at-y, 0) / var(--cue-h, 1024) * 100%);
+  width: 16px;
+  height: 16px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--dot-fill, var(--accent));
+  border: 2px solid var(--ks-champagne);
+  box-shadow: 0 1px 6px var(--shadow-color);
+  transition: opacity 0.3s var(--ks-ease);
+}
+
+.dcx-cue-frame:not([data-loaded="yes"]) .dcx-cue-dot { opacity: 0; }
+
+.dcx-cue-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: clamp(14px, 2vw, 22px);
+  border: 1px solid var(--ks-rule);
+  background: var(--panel-bg);
+}
+
+.dcx-cue-tag {
+  font-family: var(--ks-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ks-text-faint);
+}
+
+.dcx-cue-name {
+  margin: 0 0 4px;
+  font-family: var(--ks-font-display);
+  font-weight: 300;
+  font-size: 1.45rem;
+  color: var(--ks-text);
+}
+
+.dcx-cue-role {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.dcx-cue-role-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--dot-fill, var(--accent));
+  border: 1px solid var(--ks-rule);
+}
+
+.dcx-cue-role-name {
+  color: var(--ks-text-muted);
+  font-size: 0.9rem;
+}
+
+.dcx-cue-role code {
+  font-family: var(--ks-mono);
+  font-size: 0.78rem;
+  color: var(--ks-text-faint);
+  white-space: nowrap;
+}
+
+.dcx-cue-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 14px;
+}
+
+.dcx-cue-thumb {
+  margin: 0;
+  opacity: 0.6;
+  filter: saturate(0.7);
+}
+
+.dcx-cue-thumb img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--ks-rule);
+}
+
+.dcx-cue-thumb figcaption {
+  margin-top: 6px;
+  font-family: var(--ks-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  color: var(--ks-text-faint);
+}
+
+.dcx-marks,
+.dcx-boards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+  gap: clamp(16px, 2.5vw, 24px);
+}
+
+.dcx-mark { margin: 0; }
+
+.dcx-mark-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.dcx-mark-chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 128px;
+  padding: 18px;
+  border: 1px solid var(--ks-rule);
+  background: var(--chip-ground, var(--ks-lacquer-raised));
+}
+
+.dcx-mark-chip img {
+  display: block;
+  max-width: 70%;
+  max-height: 88px;
+}
+
+.dcx-board { margin: 0; }
+
+.dcx-board-frame {
+  display: block;
+  border: 1px solid var(--ks-rule);
+  background: var(--panel-bg);
+}
+
+.dcx-board-frame img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.dcx-asset-caption { margin-top: 8px; }
+
+.dcx-asset-caption code {
+  font-family: var(--ks-mono);
+  font-size: 0.78rem;
+  color: var(--ks-text-faint);
+}
+
+.dcx-asset-caption p {
+  margin: 4px 0 0;
+  max-width: 52ch;
+  color: var(--ks-text-muted);
+  font-size: 0.9rem;
+  line-height: 1.55;
 }
 
 /* ============================================================

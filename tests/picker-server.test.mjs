@@ -287,6 +287,43 @@ test('fonts endpoint returns 404 when fonts.json is absent', async (t) => {
   assert.deepEqual(await response.json(), { error: 'Not found' });
 });
 
+test('serves staged brand assets, 404s missing files, and rejects traversal', async (t) => {
+  const fixture = await createFixture();
+  const assetsDir = path.join(fixture.cwd, '.impeccable/design-interview/assets');
+  await mkdir(assetsDir, { recursive: true });
+  await writeFile(
+    path.join(assetsDir, 'mark.svg'),
+    '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><circle cx="40" cy="40" r="26" fill="#175558"/></svg>',
+  );
+  // A sibling secret one directory up; traversal attempts aim at it.
+  await writeFile(
+    path.join(fixture.cwd, '.impeccable/design-interview/answers.json'),
+    '{"secret":true}\n',
+  );
+  const server = await startPicker(fixture.cwd, ['--port', String(portBase + 30)]);
+  await cleanup(t, fixture, server);
+
+  const ok = await fetch(`${server.url}/brand-assets/mark.svg`);
+  assert.equal(ok.status, 200);
+  assert.match(ok.headers.get('content-type'), /^image\/svg\+xml/);
+  assert.match(ok.headers.get('cache-control') || '', /max-age/);
+  assert.match(await ok.text(), /<svg/);
+
+  assert.equal((await fetch(`${server.url}/brand-assets/missing.png`)).status, 404);
+  // Right directory, wrong extension: .json is not a brand-asset type.
+  assert.equal((await fetch(`${server.url}/brand-assets/notes.json`)).status, 404);
+
+  // fetch() collapses dot segments before sending, so raw sockets carry the
+  // traversal attempts, the same technique the existing traversal test uses.
+  for (const attempt of [
+    '/brand-assets/../answers.json',
+    '/brand-assets/%2e%2e/answers.json',
+    '/brand-assets/..%2Fanswers.json',
+  ]) {
+    assert.ok([400, 404].includes(await rawGet(server.url, attempt)), attempt);
+  }
+});
+
 test('palette CLI still prints a seed', () => {
   const output = execFileSync(process.execPath, [paletteScript], {
     cwd: root,

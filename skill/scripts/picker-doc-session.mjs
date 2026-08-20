@@ -36,10 +36,19 @@ const answersPath = path.join(interviewDir, 'answers.json');
 const sessionPath = path.join(interviewDir, 'doc-session.json');
 const ledgerPath = path.join(interviewDir, 'doc-edits.jsonl');
 const fontsDir = path.join(interviewDir, 'fonts');
+const brandAssetsDir = path.join(interviewDir, 'assets');
 const designPath = path.resolve(process.cwd(), 'DESIGN.md');
 
 const MAX_BODY_BYTES = 1024 * 1024;
 const FONT_EXTENSIONS = new Set(['.woff2', '.woff', '.ttf', '.otf']);
+const BRAND_ASSET_MIME = new Map([
+  ['.svg', 'image/svg+xml'],
+  ['.png', 'image/png'],
+  ['.jpg', 'image/jpeg'],
+  ['.jpeg', 'image/jpeg'],
+  ['.webp', 'image/webp'],
+  ['.gif', 'image/gif'],
+]);
 const ROLES = new Set(['primary', 'secondary', 'tertiary', 'neutral']);
 const REQUEST_KINDS = new Set(['font', 'freeform']);
 /* Long polls are sliced under common proxy/undici header timeouts, the same
@@ -248,6 +257,42 @@ async function handleRequest(request, response) {
     await mkdir(fontsDir, { recursive: true });
     await writeFile(path.join(fontsDir, name), Buffer.concat(chunks));
     sendJson(response, 200, { ok: true, path: path.join('.impeccable/design-interview/fonts', name) });
+    return;
+  }
+
+  /* Brand-asset images for the document's Brand article. The picker server
+     serves the same directory while it lives; it exits on submit, and the
+     article's images load after that, so the tab fetches them from here
+     with the session token on the query string, the same rule as the
+     sibling GET routes. Filenames only, extension-gated, one directory. */
+  if (request.method === 'GET' && requestPath.startsWith('/brand-assets/')) {
+    if (url.searchParams.get('token') !== token) throw httpError(403, 'Bad token');
+    let assetName;
+    try {
+      assetName = decodeURIComponent(requestPath.slice('/brand-assets/'.length));
+    } catch {
+      throw httpError(400, 'Invalid path');
+    }
+    const extension = path.extname(assetName).toLowerCase();
+    const filePath = path.resolve(brandAssetsDir, assetName);
+    if (!assetName || assetName !== path.basename(assetName)
+      || !BRAND_ASSET_MIME.has(extension)
+      || path.relative(brandAssetsDir, filePath).startsWith('..')) {
+      throw httpError(404, 'Not found');
+    }
+    let body;
+    try {
+      body = await readFile(filePath);
+    } catch {
+      throw httpError(404, 'Not found');
+    }
+    response.writeHead(200, {
+      'Content-Type': BRAND_ASSET_MIME.get(extension),
+      'Content-Length': body.length,
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'max-age=86400',
+    });
+    response.end(body);
     return;
   }
 

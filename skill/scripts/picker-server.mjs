@@ -17,13 +17,18 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const pickerDir = path.join(scriptDir, 'picker');
 const answersPath = path.resolve(process.cwd(), '.impeccable/design-interview/answers.json');
 const fontsDir = path.resolve(process.cwd(), '.impeccable/design-interview/fonts');
+const brandAssetsDir = path.resolve(process.cwd(), '.impeccable/design-interview/assets');
 const MAX_BODY_BYTES = 1024 * 1024;
 const FONT_EXTENSIONS = new Set(['.woff2', '.woff', '.ttf', '.otf']);
+const BRAND_ASSET_EXTENSIONS = ['.svg', '.png', '.jpg', '.jpeg', '.webp', '.gif'];
 const MIME = new Map([
   ['.html', 'text/html; charset=utf-8'],
   ['.css', 'text/css; charset=utf-8'],
   ['.js', 'text/javascript; charset=utf-8'],
   ['.jpg', 'image/jpeg'],
+  ['.jpeg', 'image/jpeg'],
+  ['.webp', 'image/webp'],
+  ['.gif', 'image/gif'],
   ['.png', 'image/png'],
   ['.svg', 'image/svg+xml'],
   ['.json', 'application/json; charset=utf-8'],
@@ -267,9 +272,28 @@ async function handleRequest(request, response) {
       sendJson(response, 404, { error: 'Not found' });
       return;
     }
+    // Cue images are re-requested by the design context document after this
+    // process has exited (article content only enters the live DOM after
+    // submit), so they must be servable from the browser's cache.
+    response.setHeader('Cache-Control', 'max-age=86400');
     await serveFile(response, options.cuesDir, cueName, ['.png']);
     return;
   }
+  /* Brand-asset files the agent staged from the chat interview (logos, mood
+     boards, reference images), displayed by the design context document.
+     Read-only, one directory, filenames only. The /assets/ prefix is taken
+     by the picker's own static files, hence the distinct name. */
+  if (requestPath.startsWith('/brand-assets/')) {
+    const assetName = requestPath.slice('/brand-assets/'.length);
+    if (!assetName || assetName.includes('/')) {
+      sendJson(response, 404, { error: 'Not found' });
+      return;
+    }
+    response.setHeader('Cache-Control', 'max-age=86400');
+    await serveFile(response, brandAssetsDir, assetName, BRAND_ASSET_EXTENSIONS);
+    return;
+  }
+
   // Uploaded faces are read back so the specimen can render in them.
   if (requestPath.startsWith('/fonts/')) {
     const fontName = requestPath.slice('/fonts/'.length);
