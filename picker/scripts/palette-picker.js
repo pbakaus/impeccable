@@ -5257,15 +5257,6 @@ const HUB_GROUPS = {
   '10': 'depth-style',
   '11': 'icon-pack',
 };
-/* The icon set renders no per-surface fields, so it has no
-   dataset.chosen. A change event on its group is the one signal
-   that a person picked rather than the markup default: programmatic
-   checks never fire it. */
-const hubEdited = new Set();
-document.addEventListener('change', ({ target }) => {
-  if (target?.name === 'icon-pack') hubEdited.add(target.name);
-});
-
 const hubSurfaceLabel = (mode) => modeInputs.find((input) => input.value === mode)?.dataset.surfaceLabel ?? mode;
 
 /* The display title lives on the option row of the question's own
@@ -5291,42 +5282,13 @@ function hubSurfaceRows(group) {
     }));
 }
 
-/* A summary row is a surface pill on the left and the value docked
-   right behind a patina dot, the same signal the surface tabs and the
-   option rows spend on a committed choice. The plain line survives
-   only for the skipped-card message. */
+/* The only line the renderer still builds by hand: the skipped-card
+   message, which stands in for the note. */
 function hubPlainLine(text) {
   const line = document.createElement('span');
   line.className = 'picker-hub-line';
   line.append(text);
   return line;
-}
-
-function hubRow(surfaceLabel, valueTitle, group, value) {
-  const entry = document.createElement('span');
-  entry.className = 'picker-hub-entry';
-  const pill = document.createElement('span');
-  pill.className = 'picker-hub-pill';
-  const label = document.createElement('span');
-  label.className = 'picker-hub-pill-label';
-  label.textContent = surfaceLabel;
-  const val = document.createElement('span');
-  val.className = 'picker-hub-value';
-  const dot = document.createElement('i');
-  dot.className = 'picker-hub-dot';
-  dot.setAttribute('aria-hidden', 'true');
-  val.append(dot, valueTitle);
-  pill.append(label, val);
-  entry.append(pill);
-  if (group !== 'icon-pack') {
-    const note = document.createElement('span');
-    note.className = 'picker-hub-note';
-    const why = value ? hubOptionDesc(group, value) : '';
-    note.textContent = why;
-    note.hidden = !why;
-    entry.append(note);
-  }
-  return entry;
 }
 
 /* The one-line reason the current answer is a sound default, read off
@@ -5424,18 +5386,37 @@ const hubQuestionBoard = (screen, mode) => {
   return boards.find((board) => board.dataset.motionCell === `${mode}-${answer}`) ?? boards[0];
 };
 
-/* The preview and its tab strip for one card. The active tab carries
-   the patina dot and the surface's answer, so the choice reads without
-   hovering; the tooltip carries the summary rows. */
-function renderHubPreview(cardNode, rows) {
+/* CSS cannot divide one length by another to reach the unitless number
+   scale() needs, so that number is measured here: the clone's own desktop
+   pane, read unscaled through offsetWidth, against the frame it has to
+   sit in. The frame is one fixed shape for every card, so the pane is
+   fitted rather than stretched to it and centred in whichever direction
+   it falls short. The handset beside the pane lands outside the frame,
+   which is the crop. */
+function fitHubPreview(cardNode) {
   const previewSlot = cardNode.querySelector('[data-hub-preview]');
-  const tabsSlot = cardNode.querySelector('[data-hub-tabs]');
-  const screen = cardNode.dataset.hubTarget;
-  const group = HUB_GROUPS[screen];
+  if (!previewSlot || previewSlot.classList.contains('picker-hub-preview--icons')) return;
+  const proof = previewSlot.firstElementChild;
+  const pane = proof?.querySelector('.ps-desktop, .pv-desktop') ?? proof?.firstElementChild;
+  const width = previewSlot.clientWidth;
+  const height = previewSlot.clientHeight;
+  if (!width || !height || !pane?.offsetWidth || !pane.offsetHeight) return;
+  const scale = Math.min(width / pane.offsetWidth, height / pane.offsetHeight);
+  cardNode.style.setProperty('--pk-hub-scale', scale);
+  cardNode.style.setProperty('--pk-hub-x', `${(width - pane.offsetWidth * scale) / 2}px`);
+  cardNode.style.setProperty('--pk-hub-y', `${(height - pane.offsetHeight * scale) / 2}px`);
+}
+
+/* One card's miniature, for the surface the slider is parked on. */
+function renderHubPreview(cardNode, screen, group, mode) {
+  const previewSlot = cardNode.querySelector('[data-hub-preview]');
+  previewSlot.classList.toggle('picker-hub-preview--icons', group === 'icon-pack');
   if (group === 'icon-pack') {
-    tabsSlot.hidden = true;
-    tabsSlot.replaceChildren();
-    previewSlot.replaceChildren(hubProof(iconSheet));
+    /* The 16px row alone. A pack is chosen for interface work and that row
+       is the same glyphs at the size they will be read at, so it is the
+       specimen worth showing; the magnified field above it on screen 11 is
+       a reading this card has no room for and no need of. */
+    previewSlot.replaceChildren(hubProof(iconStrip));
     /* The glyphs are fetched on screen 11's first arrival, which a run
        that stops at the hub never makes; fetch them here and re-render
        once. The empty marker is the failed state, which must not refetch
@@ -5445,14 +5426,9 @@ function renderHubPreview(cardNode, rows) {
     }
     return;
   }
-  const modes = rows.map((row) => row.mode);
-  const mode = modes.includes(cardNode.dataset.hubSurface) ? cardNode.dataset.hubSurface : modes[0];
-  cardNode.dataset.hubSurface = mode ?? '';
   const board = mode ? hubQuestionBoard(screen, mode) : null;
   if (!board) {
     previewSlot.replaceChildren();
-    tabsSlot.hidden = true;
-    tabsSlot.replaceChildren();
     return;
   }
   if (group === 'motion-energy') {
@@ -5462,82 +5438,62 @@ function renderHubPreview(cardNode, rows) {
     previewSlot.replaceChildren(proof);
     /* The route stops are measured off the clone's own layout, exactly
        what screen 06 does for the originals on arrival. */
-    requestAnimationFrame(() => plotMotionRoute(proof.firstChild));
+    requestAnimationFrame(() => {
+      plotMotionRoute(proof.firstChild);
+      fitHubPreview(cardNode);
+    });
   } else {
     previewSlot.replaceChildren(hubProof(board, hubPreviewMarks(mode)));
   }
-  tabsSlot.hidden = rows.length === 0;
-  tabsSlot.replaceChildren(...rows.map((row) => {
-    const tab = document.createElement('span');
-    tab.className = 'picker-hub-tab';
-    tab.dataset.hubTab = row.mode;
-    const dot = document.createElement('i');
-    dot.className = 'picker-hub-tab-dot';
-    dot.setAttribute('aria-hidden', 'true');
-    tab.append(dot, hubSurfaceLabel(row.mode));
-    if (row.mode === mode) {
-      tab.dataset.on = '';
-      const value = document.createElement('span');
-      value.className = 'picker-hub-tab-value';
-      value.textContent = hubOptionTitle(group, row.value);
-      tab.append(value);
-    }
-    return tab;
-  }));
+  fitHubPreview(cardNode);
 }
 
+/* A card reads top to bottom: the question's name, a miniature of its own
+   board, the line saying what the current answer does, and the control
+   that walks the surfaces. One surface is shown at a time, so the note and
+   the label both speak for whichever one the slider is parked on. */
 function renderHubCard(cardNode) {
-  const group = HUB_GROUPS[cardNode.dataset.hubTarget];
+  const opener = cardNode.querySelector('[data-hub-target]');
+  const screen = opener?.dataset.hubTarget;
+  const group = HUB_GROUPS[screen];
   if (!group) return;
-  const summary = cardNode.querySelector('[data-hub-summary]');
-  const mark = cardNode.querySelector('[data-hub-mark]');
   const previewSlot = cardNode.querySelector('[data-hub-preview]');
-  const tabsSlot = cardNode.querySelector('[data-hub-tabs]');
-  const target = document.querySelector(`.picker-screen[data-screen="${cardNode.dataset.hubTarget}"]`);
+  const note = cardNode.querySelector('[data-hub-note]');
+  const slider = cardNode.querySelector('[data-hub-slider]');
+  const label = cardNode.querySelector('[data-hub-slider-label]');
+  const target = document.querySelector(`.picker-screen[data-screen="${screen}"]`);
   const skipped = Boolean(target?.hasAttribute('data-skip'));
   cardNode.classList.toggle('is-skipped', skipped);
-  cardNode.disabled = skipped;
-  cardNode.setAttribute('aria-disabled', skipped ? 'true' : 'false');
+  opener.disabled = skipped;
+  opener.setAttribute('aria-disabled', skipped ? 'true' : 'false');
   if (skipped) {
-    summary.replaceChildren();
-    previewSlot.replaceChildren(hubPlainLine('Not asked of these surfaces'));
-    tabsSlot.hidden = true;
-    tabsSlot.replaceChildren();
-    cardNode.classList.remove('is-edited');
-    mark.hidden = true;
+    previewSlot.replaceChildren();
+    note.replaceChildren(hubPlainLine('Not asked of these surfaces'));
+    note.hidden = false;
+    slider.hidden = true;
     return;
   }
   const rows = hubSurfaceRows(group);
-  let edited;
-  let lines;
-  if (rows.length === 0) {
-    const checked = document.querySelector(`input[name="${group}"]:checked`);
-    edited = hubEdited.has(group);
-    lines = [hubRow(
-      'All surfaces',
-      checked ? hubOptionTitle(group, checked.value) : '',
-      group,
-      checked?.value,
-    )];
-  } else {
-    edited = rows.some((row) => row.chosen);
-    if (rows.length > 1 && rows.every((row) => row.value === rows[0].value)) {
-      lines = [hubRow('All surfaces', hubOptionTitle(group, rows[0].value), group, rows[0].value)];
-    } else if (rows.length === 1) {
-      lines = [hubRow(hubSurfaceLabel(rows[0].mode), hubOptionTitle(group, rows[0].value), group, rows[0].value)];
-    } else {
-      lines = rows.map((row) => hubRow(
-        hubSurfaceLabel(row.mode),
-        hubOptionTitle(group, row.value),
-        group,
-        row.value,
-      ));
-    }
-  }
-  summary.replaceChildren(...lines);
-  cardNode.classList.toggle('is-edited', edited);
-  mark.hidden = !edited;
-  renderHubPreview(cardNode, rows);
+  const modes = rows.map((row) => row.mode);
+  const mode = modes.includes(cardNode.dataset.hubSurface) ? cardNode.dataset.hubSurface : modes[0];
+  cardNode.dataset.hubSurface = mode ?? '';
+  /* A flat question answers for the whole run, so its value comes off the
+     checked radio and it has no surfaces to walk. */
+  const value = mode
+    ? rows.find((row) => row.mode === mode)?.value
+    : document.querySelector(`input[name="${group}"]:checked`)?.value;
+  const why = value ? hubOptionDesc(group, value) : '';
+  note.textContent = why;
+  note.hidden = !why;
+  const answer = document.createElement('span');
+  answer.className = 'picker-hub-slider-value';
+  answer.textContent = value ? hubOptionTitle(group, value) : '';
+  label.replaceChildren(...(mode ? [`${hubSurfaceLabel(mode)} · `, answer] : [answer]));
+  slider.hidden = false;
+  /* One surface is not a trip, so the chevrons stand down and the strip
+     stays as the answer's label. */
+  for (const step of slider.querySelectorAll('[data-hub-step]')) step.hidden = modes.length < 2;
+  renderHubPreview(cardNode, screen, group, mode);
 }
 
 function renderHub() {
@@ -5545,49 +5501,51 @@ function renderHub() {
   for (const cardNode of hubScreen.querySelectorAll('.picker-hub-card')) renderHubCard(cardNode);
 }
 
-/* The tooltip floats above the card and flips below when the card sits
-   too near the viewport top to hold it; when neither side holds the
-   whole panel, the roomier side takes it. Measured when the pointer or
-   focus arrives, before the reveal transition starts; the tip is
-   opacity-hidden rather than display-hidden, so its height is real. */
-function placeHubTip(cardNode) {
-  const tip = cardNode.querySelector('[data-hub-tip]');
-  if (!tip) return;
-  const rect = cardNode.getBoundingClientRect();
-  const need = tip.offsetHeight + 20;
-  const above = rect.top;
-  const below = window.innerHeight - rect.bottom;
-  cardNode.dataset.tipAt = (above >= need || above >= below) ? 'above' : 'below';
+function stepHubSurface(cardNode, step) {
+  const opener = cardNode?.querySelector('[data-hub-target]');
+  const group = HUB_GROUPS[opener?.dataset.hubTarget];
+  if (!group) return;
+  const modes = hubSurfaceRows(group).map((row) => row.mode);
+  if (modes.length < 2) return;
+  const at = modes.indexOf(cardNode.dataset.hubSurface);
+  cardNode.dataset.hubSurface = modes[(at + step + modes.length) % modes.length];
+  renderHubCard(cardNode);
 }
-hubScreen?.addEventListener('pointerover', (event) => {
-  const cardNode = event.target.closest('.picker-hub-card');
-  if (cardNode) placeHubTip(cardNode);
-});
-hubScreen?.addEventListener('focusin', (event) => {
-  const cardNode = event.target.closest('.picker-hub-card');
-  if (cardNode) placeHubTip(cardNode);
-});
 
 /* Cards and the finish CTA jump by screen id. The inline nav script
    owns goTo(); it listens for this event, so no swap logic is
-   duplicated here. A disabled card never reaches this handler. A mini
-   tab hit re-clones its own card instead and never travels: the card
-   click must stay the jump to the question. */
+   duplicated here. A step button is a sibling of the opener rather than
+   a child of it, so walking the surfaces never travels to the question
+   and needs nothing stopped. */
 hubScreen?.addEventListener('click', (event) => {
-  const tab = event.target.closest('[data-hub-tab]');
-  if (tab) {
-    event.stopPropagation();
-    const cardNode = tab.closest('.picker-hub-card');
-    cardNode.dataset.hubSurface = tab.dataset.hubTab;
-    renderHubCard(cardNode);
+  const step = event.target.closest('[data-hub-step]');
+  if (step) {
+    stepHubSurface(step.closest('.picker-hub-card'), Number(step.dataset.hubStep));
     return;
   }
-  const cardNode = event.target.closest('[data-hub-target]');
-  if (!cardNode || cardNode.disabled) return;
+  const opener = event.target.closest('[data-hub-target]');
+  if (!opener || opener.disabled) return;
   document.dispatchEvent(new CustomEvent('picker:goto', {
-    detail: { screen: cardNode.dataset.hubTarget },
+    detail: { screen: opener.dataset.hubTarget },
   }));
 });
+
+/* Arrow keys walk the surfaces too: a control that reads as a slider owes
+   a keyboard the same trip its chevrons offer a pointer. */
+hubScreen?.addEventListener('keydown', (event) => {
+  const step = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
+  if (!step || !event.target.closest('[data-hub-slider]')) return;
+  event.preventDefault();
+  stepHubSurface(event.target.closest('.picker-hub-card'), step);
+});
+
+/* The grid flips to one full-width column at the narrow breakpoint, and a
+   scale measured against the three-column width would stay behind. */
+if (hubScreen && window.ResizeObserver) {
+  new ResizeObserver(() => {
+    for (const cardNode of hubScreen.querySelectorAll('.picker-hub-card')) fitHubPreview(cardNode);
+  }).observe(hubScreen);
+}
 
 for (const input of modeInputs) {
   input.addEventListener('change', () => {

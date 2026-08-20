@@ -8120,12 +8120,14 @@ body.picker-page {
 }
 
 /* ============================================================
-   Screen 04b: the configure hub. Five near-uniform preview cards
-   flow a three-column grid, three over two; the column wrappers
-   are display: contents so the markup's masonry grouping costs
-   nothing. Sharp corners and hairline rules, the same vocabulary
-   as the option rows. Previews, tabs, and the tooltip's summary
-   rows are written by renderHub().
+   Screen 04b: the configure hub. Five preview cards flow a
+   three-column grid, three over two; the column wrappers are
+   display: contents so the markup's grouping costs nothing.
+   Every card reads top to bottom and centred: the question's
+   name, a miniature of its own board, the one line saying what
+   the current answer does, and the control that walks the
+   surfaces. Sharp corners and hairline rules, the same
+   vocabulary as the option rows.
    ============================================================ */
 .picker-hub {
   display: grid;
@@ -8139,29 +8141,43 @@ body.picker-page {
   font-weight: 300;
 }
 
+/* Six tracks so a card can take two of them: three across the top, and
+   the remaining pair centred underneath by starting one track in. */
 .picker-hub-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 14px;
   align-items: stretch;
   width: min(100%, 1080px);
 }
 
-.picker-hub-col {
-  display: contents;
+.picker-hub-card {
+  grid-column: span 2;
 }
 
+.picker-hub-card:nth-child(4) {
+  grid-column: 2 / span 2;
+}
+
+/* Every card lays its four parts on the same four rows of the grid, so a
+   two-line note on one card and a one-line note on its neighbour still
+   leave both titles on one line, both previews on the next, and both
+   sliders on the last. Centring each card's own stack instead let the
+   taller stack start higher, which is what pushed Corners' title above
+   Depth's. */
 .picker-hub-card {
   position: relative;
+  grid-row: span 4;
   display: grid;
-  gap: 16px;
+  grid-template-rows: subgrid;
+  align-items: center;
+  justify-items: center;
   width: 100%;
-  padding: 24px 28px;
-  text-align: left;
+  padding: 22px 20px;
+  text-align: center;
   background: var(--ks-lacquer-raised);
   border: 1px solid var(--ks-rule);
   border-radius: 0;
-  cursor: pointer;
   transition:
     background-color 180ms var(--ks-ease),
     border-color 180ms var(--ks-ease);
@@ -8171,28 +8187,34 @@ body.picker-page {
   border-color: color-mix(in oklab, var(--ks-patina) 45%, var(--ks-rule));
 }
 
-.picker-hub-card:focus-visible {
-  outline: 2px solid var(--ks-patina-deep);
-  outline-offset: -2px;
-  z-index: 1;
+/* The title is the control, and its stretched pseudo-element carries
+   the whole card's click without wrapping it. A card that wrapped its
+   contents in a button could not hold the slider's own buttons, which
+   is why the surfaces used to be spans no keyboard could reach. */
+.picker-hub-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-family: var(--ks-font);
+  cursor: pointer;
 }
 
-.picker-hub-eyebrow {
+.picker-hub-open::after {
+  content: "";
   position: absolute;
-  top: 24px;
-  right: 28px;
-  color: var(--ks-text-faint);
-  font-size: var(--ks-type-eyebrow-size);
-  font-weight: 500;
-  letter-spacing: var(--ks-type-eyebrow-track);
-  text-transform: uppercase;
+  inset: 0;
+}
+
+.picker-hub-open:focus-visible {
+  outline: 2px solid var(--ks-patina-deep);
+  outline-offset: -2px;
 }
 
 .picker-hub-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-right: 72px;
   color: var(--ks-champagne);
   font-size: var(--ks-type-title-size);
   font-weight: var(--ks-type-title-weight);
@@ -8212,121 +8234,125 @@ body.picker-page {
   transform: translateX(2px);
 }
 
-.picker-hub-mark {
-  margin-left: auto;
-  padding: 2px 8px;
-  border: 1px solid var(--ks-kinpaku-deep);
-  color: var(--ks-kinpaku);
-  font-size: var(--ks-type-eyebrow-size);
-  font-weight: 500;
-  letter-spacing: var(--ks-type-eyebrow-track);
-  text-transform: uppercase;
-}
-
-.picker-hub-summary {
-  display: grid;
-  gap: 14px;
-  color: var(--ks-text-muted);
-  font-size: 0.86rem;
+/* Why the current answer is a sound default, read off the option
+   row's own description by renderHubCard(). */
+/* Top of its row rather than centred in it: the row is as tall as the
+   longest note in the band, and a shorter one centred there would drop
+   its first line below its neighbour's. */
+.picker-hub-note {
+  align-self: start;
+  max-width: 34ch;
+  color: var(--ks-text-faint);
+  font-size: 0.84rem;
   line-height: 1.5;
 }
 
-.picker-hub-entry {
-  display: grid;
-  gap: 8px;
+.picker-hub-note[hidden] {
+  display: none;
 }
 
 .picker-hub-line {
   display: block;
 }
 
-/* Surface pill wraps the label and the committed value; patina dot
-   plus the text mix mirror the surface tabs' answered state. */
-.picker-hub-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  width: fit-content;
-  max-width: 100%;
-  padding: 6px 9px;
-  color: var(--ks-text-faint);
-  font-size: 12.5px;
-  letter-spacing: 0.015em;
-  border: 1px solid var(--ks-rule);
-  border-radius: 2px;
-}
-
-.picker-hub-pill-label {
-  flex: 0 0 auto;
-}
-
-.picker-hub-value {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: color-mix(in oklab, var(--ks-patina) 85%, var(--ks-champagne));
-  text-align: right;
-}
-
-.picker-hub-dot {
-  flex: 0 0 auto;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--ks-patina);
-}
-
-/* Why this answer is a sound default, read off the option row's own
-   description by renderHub(). One note per answer row. */
-.picker-hub-note {
-  padding-inline: 2px;
-  color: var(--ks-text-faint);
-  font-size: 0.84rem;
-  line-height: 1.5;
-}
-
-/* The card body: a clone of the question's own artboard, written by
-   renderHubPreview(). The frame borrows design-context.css's
-   .dcx-proof--board hooks for the committed bodies, so no rendition
-   rule is restated here. Pointer events stay off: everything inside
-   the card except a mini tab is the jump to the question. */
+/* The board is authored at 918px wide and mixes fixed pixels,
+   viewport clamps, and container queries keyed to absolute height, so
+   reflowing it into a card crushes it: the layout shrinks and the
+   drawn detail does not. Laid out at its natural width it resolves
+   exactly as it does on its own screen, and one transform shrinks the
+   finished picture. The frame crops to the desktop pane, so the
+   handset beside it falls outside. renderHubCard() measures the pane
+   and writes the scale and the ratio; the fallbacks below are the
+   four-surface geometry, so the frame is never wrong-shaped even for
+   the frame before the measurement lands. */
 .picker-hub-preview {
+  position: relative;
   display: block;
+  width: 100%;
+  /* A miniature, never a magnification: past the pane's own width the
+     frame would blow the board up bigger than the screen it came from
+     ever draws it. The cap only bites in the single-column collapse. */
+  max-width: 560px;
+  /* One shape for all five. The desktop panes differ by about a percent
+     between the artboard and the derived drawings, and measuring each
+     card's own pane made five frames of five heights. The pane is fitted
+     inside this box instead, so the cards line up. */
+  aspect-ratio: 1.34;
+  overflow: hidden;
+  background: var(--ks-lacquer);
+  border: 1px solid var(--ks-rule);
   pointer-events: none;
+}
+
+.picker-hub-preview > .picker-hub-proof {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--pk-hub-natural, 918px);
+  transform: translate(var(--pk-hub-x, 0px), var(--pk-hub-y, 0px)) scale(var(--pk-hub-scale, 0.32));
+  transform-origin: top left;
+}
+
+/* The icon sheet takes the same frame as the boards beside it, filled by
+   a grid of its own glyphs. They stay a hard 16px, which is the size a
+   pack is chosen to be read at and the reason this one preview is drawn
+   rather than scaled; the room between them is the frame's, not theirs. */
+.picker-hub-preview--icons > .picker-hub-proof {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  transform: none;
+}
+
+.picker-hub-preview--icons .picker-icon-strip-row {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-auto-rows: minmax(0, 1fr);
+  place-items: center;
+  gap: 0;
+  height: 100%;
+  padding: 10px 8px;
+  color: var(--ks-text-muted);
 }
 
 .picker-hub-proof {
   display: block;
 }
 
-/* The mini tab strip: the surface-tab vocabulary at card scale. Spans
-   rather than buttons because the card itself is one, and a button
-   cannot hold another. */
-.picker-hub-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 3px;
-  width: fit-content;
+/* One surface at a time, the chevrons wrapped around the surface and
+   the answer it holds. The strip keeps the surface tabs' vocabulary,
+   and it sits above the stretched opener so its buttons take their
+   own clicks. */
+.picker-hub-slider {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   max-width: 100%;
+  /* A card with nothing to walk stands its chevrons down, and the strip
+     would shrink to the label and sit lower than the strips beside it.
+     The height is the one with chevrons in it. */
+  min-height: 34px;
   padding: 3px;
   background: var(--ks-lacquer-raised);
   border: 1px solid var(--ks-rule);
   border-radius: 2px;
 }
 
-.picker-hub-tabs[hidden] {
+.picker-hub-slider[hidden] {
   display: none;
 }
 
-.picker-hub-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
+.picker-hub-step {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
   color: var(--ks-text-muted);
-  font-size: 12.5px;
-  letter-spacing: 0.015em;
+  background: none;
+  border: 0;
   border-radius: 2px;
   cursor: pointer;
   transition:
@@ -8334,99 +8360,43 @@ body.picker-page {
     color 180ms var(--ks-ease);
 }
 
-.picker-hub-tab:hover {
+.picker-hub-step:hover {
   color: var(--ks-champagne);
-  background: color-mix(in oklab, var(--ks-patina) 9%, var(--ks-lacquer-raised));
+  background: color-mix(in oklab, var(--ks-patina) 12%, var(--ks-lacquer-raised));
 }
 
-.picker-hub-tab[data-on] {
-  color: var(--ks-champagne);
-  background: color-mix(in oklab, var(--ks-patina) 14%, var(--ks-lacquer-raised));
+.picker-hub-step:focus-visible {
+  outline: 2px solid var(--ks-patina-deep);
+  outline-offset: -2px;
 }
 
-/* The same report the full-size strip's dot gives: filled on the tab
-   being previewed, hollow on the rest. */
-.picker-hub-tab-dot {
-  flex: none;
-  width: 7px;
-  height: 7px;
-  border: 1px solid color-mix(in oklab, var(--ks-patina) 55%, transparent);
-  border-radius: 50%;
+.picker-hub-step[hidden] {
+  display: none;
 }
 
-.picker-hub-tab[data-on] .picker-hub-tab-dot {
-  background: var(--ks-patina);
-  border-color: var(--ks-patina);
+.picker-hub-step svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: square;
 }
 
-.picker-hub-tab-value {
+.picker-hub-slider-label {
+  padding-inline: 8px;
+  color: var(--ks-text-muted);
+  font-size: 12.5px;
+  letter-spacing: 0.015em;
+}
+
+.picker-hub-slider-value {
   color: color-mix(in oklab, var(--ks-patina) 85%, var(--ks-champagne));
 }
 
-/* The summary rows' new home: a floating panel on the card's own
-   hover and focus, the contrast alert tip's pattern at card width.
-   Above by default; placeHubTip() flips it below when the card sits
-   too near the viewport top. The hovered card rises over its
-   neighbours so the panel is never clipped by the masonry. */
-.picker-hub-card:is(:hover, :focus-within) {
-  z-index: 3;
-}
-
-.picker-hub-tip {
-  position: absolute;
-  left: -1px;
-  right: -1px;
-  bottom: calc(100% + 10px);
-  z-index: 12;
-  padding: 16px 18px;
-  display: grid;
-  gap: 14px;
-  opacity: 0;
-  background: var(--ks-lacquer-raised);
-  border: 1px solid var(--ks-rule);
-  border-radius: 2px;
-  pointer-events: none;
-  transform: translateY(3px);
-  transition:
-    opacity 180ms var(--ks-ease),
-    transform 180ms var(--ks-ease);
-}
-
-.picker-hub-tip::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  bottom: -5px;
-  width: 8px;
-  height: 8px;
-  background: var(--ks-lacquer-raised);
-  border-right: 1px solid var(--ks-rule);
-  border-bottom: 1px solid var(--ks-rule);
-  transform: translateX(-50%) rotate(45deg);
-}
-
-.picker-hub-card[data-tip-at="below"] .picker-hub-tip {
-  top: calc(100% + 10px);
-  bottom: auto;
-  transform: translateY(-3px);
-}
-
-.picker-hub-card[data-tip-at="below"] .picker-hub-tip::after {
-  top: -5px;
-  bottom: auto;
-  border: 0;
-  border-left: 1px solid var(--ks-rule);
-  border-top: 1px solid var(--ks-rule);
-}
-
-.picker-hub-card:not(.is-skipped):is(:hover, :focus-within) .picker-hub-tip {
-  opacity: 1;
-  transform: translateY(0);
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .picker-hub-tip,
-  .picker-hub-tab {
+  .picker-hub-step,
+  .picker-hub-arrow {
     transition: none;
   }
 }
@@ -8442,8 +8412,7 @@ body.picker-page {
 }
 
 .picker-hub-card.is-skipped .picker-hub-title,
-.picker-hub-card.is-skipped .picker-hub-eyebrow,
-.picker-hub-card.is-skipped .picker-hub-summary,
+.picker-hub-card.is-skipped .picker-hub-note,
 .picker-hub-card.is-skipped .picker-hub-arrow {
   color: var(--ks-text-mute-deep);
 }
@@ -8454,5 +8423,11 @@ body.picker-page {
 @media (max-width: 1199px) {
   .picker-hub-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* One track, so the two-track spans and the centring offset both go. */
+  .picker-hub-card,
+  .picker-hub-card:nth-child(4) {
+    grid-column: auto;
   }
 }
