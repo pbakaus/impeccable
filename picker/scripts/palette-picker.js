@@ -974,6 +974,10 @@ function rebuildPremiumMotionBoards() {
       if (!board.querySelector(':scope > .ps-phone')) {
         board.insertAdjacentHTML('beforeend', PREVIEW_33_PHONE_HTML);
       }
+      /* The capture predates the layout spacer, so the reference tree does not
+         carry it. It draws nothing either way, but leaving it in offsets every
+         later sibling's child index against the reference. */
+      desktop.querySelector(':scope > [data-layout-editorial-spacer]')?.remove();
       continue;
     }
     if (board.dataset.surface !== 'experience') continue;
@@ -1117,6 +1121,7 @@ function boardScope(board) {
 }
 
 function installPremiumMotion() {
+  const jobs = [];
   /* motionBoard rather than board: several installers declare their own
      const board inside their body, and a shared name would put the guard
      above it in that binding's temporal dead zone. */
@@ -1133,14 +1138,14 @@ function installPremiumMotion() {
         const style = doc.createElement('style');
         style.id = 'restrained-landing-perfect-loop';
         style.textContent = `
-          .picker-preview-motion[data-motion-cell="persuade-restrained"] .ps-cursor {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-restrained"] .ps-cursor {
             animation: 3.8s ease-in-out infinite mtr-path-perfect-loop !important;
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-restrained"] .ps-nav-bars i:nth-child(2),
-          .picker-preview-motion[data-motion-cell="persuade-restrained"] .ps-nav-bars i:nth-child(2)::before,
-          .picker-preview-motion[data-motion-cell="persuade-restrained"] .ps-nav-bars i:nth-child(2)::after,
-          .picker-preview-motion[data-motion-cell="persuade-restrained"] .ps-actions i:last-child {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-restrained"] .ps-nav-bars i:nth-child(2),
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-restrained"] .ps-nav-bars i:nth-child(2)::before,
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-restrained"] .ps-nav-bars i:nth-child(2)::after,
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-restrained"] .ps-actions i:last-child {
             animation: none !important;
           }
 
@@ -1181,12 +1186,12 @@ function installPremiumMotion() {
 
           /* Hover color change on the email capture button while the cursor
              dwells on it, mirroring the captured instant-flip hover pattern. */
-          .picker-preview-motion[data-motion-cell="persuade-restrained"] .ps-editorial-copy > em {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-restrained"] .ps-editorial-copy > em {
             animation:
               mt-in-4 var(--mt) var(--mt-ease) infinite,
               mtr-email-hover 3.8s linear infinite !important;
           }
-          .picker-preview-motion[data-motion-cell="persuade-restrained"] .ps-editorial-copy > em::after {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-restrained"] .ps-editorial-copy > em::after {
             animation: mtr-email-hover-icon 3.8s linear infinite;
           }
           @keyframes mtr-email-hover {
@@ -1201,12 +1206,12 @@ function installPremiumMotion() {
           }
 
           @media (prefers-reduced-motion: reduce) {
-            .picker-preview-motion[data-motion-cell="persuade-restrained"] .ps-cursor {
+            #picker-form .picker-preview-motion[data-motion-cell="persuade-restrained"] .ps-cursor {
               animation: none !important;
               translate: var(--mtr-nav1, 64.8cqw 4.8cqh) !important;
             }
-            .picker-preview-motion[data-motion-cell="persuade-restrained"] .ps-editorial-copy > em,
-            .picker-preview-motion[data-motion-cell="persuade-restrained"] .ps-editorial-copy > em::after {
+            #picker-form .picker-preview-motion[data-motion-cell="persuade-restrained"] .ps-editorial-copy > em,
+            #picker-form .picker-preview-motion[data-motion-cell="persuade-restrained"] .ps-editorial-copy > em::after {
               animation: none !important;
             }
           }
@@ -1225,7 +1230,7 @@ function installPremiumMotion() {
           /* Keep the Preview 33 layout continuously present. The shared motion
              entrance loops were restarting underneath the responsive interaction
              and briefly collapsing most of the desktop and phone content. */
-          .picker-preview-motion[data-motion-cell="persuade-responsive"] :is(
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-responsive"] :is(
             .ps-nav,
             .ps-hero-copy > *,
             .ps-hero > .ps-image,
@@ -1241,11 +1246,11 @@ function installPremiumMotion() {
             translate: none !important;
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-cursor {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-cursor {
             animation: 4.2s ease-in-out infinite mtv-path-perfect-loop !important;
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-gallery-item:first-child > i::after {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-gallery-item:first-child > i::after {
             top: 50% !important;
             bottom: auto !important;
             transform: translateY(-50%);
@@ -1267,7 +1272,7 @@ function installPremiumMotion() {
           }
 
           @media (prefers-reduced-motion: reduce) {
-            .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-cursor {
+            #picker-form .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-cursor {
               animation: none !important;
               translate: var(--mtr-nav1, 64.8cqw 4.8cqh) !important;
             }
@@ -1312,7 +1317,7 @@ function installPremiumMotion() {
           @keyframes mtc-g-lab-4 {}
           @keyframes mtc-footer {}
 
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-desktop::after {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-desktop::after {
             animation: none !important;
             opacity: 0 !important;
           }
@@ -1322,7 +1327,7 @@ function installPremiumMotion() {
              opacity 0, small translates) must be overridden to their resting
              visible state. Pseudo-elements are excluded so the hover/tint
              choreography keeps animating. */
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] :is(
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] :is(
             .ps-nav, .ps-nav-bars i,
             .ps-headline i, .ps-copy i,
             .ps-proof *, .ps-footer, .ps-footer *,
@@ -1338,7 +1343,7 @@ function installPremiumMotion() {
 
           /* The proof dots' reveal ended on the CTA color; without the reveal
              they must rest there. */
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-proof-item i {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-proof-item i {
             background-color: var(--pvs-cta);
           }
 
@@ -1355,7 +1360,7 @@ function installPremiumMotion() {
 
           /* Specular sweep over the hero image: an ambient opening pass, then a
              second pass while the cursor rests on the hero. */
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-hero > .ps-image::before {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-hero > .ps-image::before {
             content: "";
             position: absolute;
             inset: 0;
@@ -1378,7 +1383,7 @@ function installPremiumMotion() {
           }
 
           /* CTA glow bloom while the cursor dwells on the filled button. */
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-actions i:first-child {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-actions i:first-child {
             animation: 5.6s linear infinite mtc-cta-glow !important;
           }
           @keyframes mtc-cta-glow {
@@ -1421,21 +1426,21 @@ function installPremiumMotion() {
              arc with a sharp two-ghost trail, the button fills while a sonar
              ring radiates, the field line clears, the check pops with an
              overshoot, then everything settles back before the loop wraps. */
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-editorial-copy > em {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-editorial-copy > em {
             transform-origin: 50% 50% !important;
             animation: mtc-email-btn 5.6s linear infinite !important;
           }
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-editorial-copy > em::after {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-editorial-copy > em::after {
             animation: mtc-email-flight 5.6s linear infinite !important;
           }
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-editorial-copy > em::before {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-editorial-copy > em::before {
             animation: mtc-email-check 5.6s linear infinite !important;
           }
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-editorial-copy > span i:last-child {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-editorial-copy > span i:last-child {
             transform-origin: 0 50%;
             animation: mtc-email-line 5.6s linear infinite !important;
           }
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-cursor::after {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-cursor::after {
             animation: mtc-email-click 5.6s linear infinite !important;
           }
           @keyframes mtc-email-btn {
@@ -1474,11 +1479,11 @@ function installPremiumMotion() {
           }
 
           @media (prefers-reduced-motion: reduce) {
-            .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-cursor {
+            #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-cursor {
               animation: none !important;
               translate: var(--mtr-cta1, 12.9cqw 49.2cqh) !important;
             }
-            .picker-preview-motion[data-motion-cell="persuade-choreographed"] :is(
+            #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] :is(
               .ps-hero > .ps-image,
               .ps-actions i:first-child,
               .ps-gallery-item > i,
@@ -1486,12 +1491,12 @@ function installPremiumMotion() {
               .ps-editorial-copy > em,
               .ps-editorial-copy > span i:last-child
             ),
-            .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-hero > .ps-image::before,
-            .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-gallery-item:first-child > i::before,
-            .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-gallery-item:first-child > i::after,
-            .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-editorial-copy > em::before,
-            .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-editorial-copy > em::after,
-            .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-cursor::after {
+            #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-hero > .ps-image::before,
+            #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-gallery-item:first-child > i::before,
+            #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-gallery-item:first-child > i::after,
+            #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-editorial-copy > em::before,
+            #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-editorial-copy > em::after,
+            #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-cursor::after {
               animation: none !important;
             }
           }
@@ -1506,31 +1511,31 @@ function installPremiumMotion() {
         const staggerStyle = doc.createElement('style');
         staggerStyle.id = 'choreographed-hero-stagger-only';
         staggerStyle.textContent = `
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"],
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] *,
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] *::before,
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] *::after {
+          #picker-form#picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"],
+          #picker-form#picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] *,
+          #picker-form#picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] *::before,
+          #picker-form#picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] *::after {
             animation: none !important;
             transition: none !important;
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-desktop::after {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-desktop::after {
             opacity: 0 !important;
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-cursor {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-cursor {
             opacity: 0 !important;
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-hero > .ps-image::before {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-hero > .ps-image::before {
             content: none !important;
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-editorial-copy > em::before {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-editorial-copy > em::before {
             opacity: 0 !important;
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] :is(
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] :is(
             .ps-eyebrow,
             .ps-headline,
             .ps-copy,
@@ -1545,7 +1550,7 @@ function installPremiumMotion() {
             scale: none !important;
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-choreo-viewport {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-choreo-viewport {
             z-index: 1;
             min-width: 0;
             min-height: 0;
@@ -1555,13 +1560,13 @@ function installPremiumMotion() {
             inset: 9.4% 0 auto;
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-nav {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-nav {
             z-index: 3;
             position: relative;
             background-color: var(--pvs-ground);
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-choreo-track {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-choreo-track {
             display: grid;
             grid-template-rows: repeat(2, minmax(0, 1fr));
             width: 100%;
@@ -1569,20 +1574,20 @@ function installPremiumMotion() {
             min-height: 0;
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-choreo-page {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-choreo-page {
             display: grid;
             grid-template-rows: 50.6fr 9fr 22.7fr 8.3fr;
             min-width: 0;
             min-height: 0;
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-choreo-page > .ps-proof {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-choreo-page > .ps-proof {
             margin-inline: var(--pvs-proof-inset, 0px);
             border: var(--pvs-panel-edge-w) solid var(--pvs-panel-edge);
             border-radius: var(--pvs-radius-surface);
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-page {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-page {
             --ps-pricing-accent-muted: #607272;
             --ps-pricing-accent-dark: #0b3f3f;
             box-sizing: border-box;
@@ -1596,7 +1601,7 @@ function installPremiumMotion() {
             background-color: var(--pvs-ground);
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-card {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-card {
             --ps-pricing-accent: var(--ps-pricing-accent-dark);
             box-sizing: border-box;
             display: grid;
@@ -1615,49 +1620,49 @@ function installPremiumMotion() {
             translate: 0 -3cqh;
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-card:nth-child(1) {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-card:nth-child(1) {
             --ps-pricing-accent: var(--ps-pricing-accent-muted);
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-card:nth-child(n + 2) {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-card:nth-child(n + 2) {
             border-width: 2px;
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-tier,
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-price > *,
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-features > i,
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-action {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-tier,
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-price > *,
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-features > i,
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-action {
             display: block;
             border-radius: var(--pvs-radius-bar);
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-tier {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-tier {
             justify-self: center;
             width: 32%;
             height: 2cqh;
             background-color: var(--ps-pricing-accent);
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-price {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-price {
             display: grid;
             justify-items: center;
             gap: 2.6cqh;
             min-width: 0;
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-price > b {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-price > b {
             width: 54%;
             height: 4.9cqh;
             background-color: var(--ps-pricing-accent);
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-price > i {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-price > i {
             width: 33%;
             height: .9cqh;
             background-color: var(--pvs-bars);
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-divider {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-divider {
             display: block;
             justify-self: center;
             width: 90%;
@@ -1665,7 +1670,7 @@ function installPremiumMotion() {
             background-color: var(--pvs-bars);
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-features {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-features {
             display: grid;
             align-content: center;
             gap: 2.5cqh;
@@ -1673,7 +1678,7 @@ function installPremiumMotion() {
             padding-inline: 1.5cqw;
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-features > i {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-features > i {
             display: flex;
             align-items: center;
             gap: 1.2cqw;
@@ -1683,7 +1688,7 @@ function installPremiumMotion() {
             border-radius: 0;
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-features > i::before {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-features > i::before {
             content: "";
             flex: none;
             width: 2cqh;
@@ -1692,7 +1697,7 @@ function installPremiumMotion() {
             border-radius: var(--pvs-radius-dot);
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-features > i::after {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-features > i::after {
             content: "";
             width: var(--pricing-feature-width, 70%);
             height: .9cqh;
@@ -1700,15 +1705,15 @@ function installPremiumMotion() {
             border-radius: var(--pvs-radius-bar);
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-features > i:nth-child(2) {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-features > i:nth-child(2) {
             --pricing-feature-width: 70%;
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-features > i:nth-child(3) {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-features > i:nth-child(3) {
             --pricing-feature-width: 70%;
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-action {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-action {
             width: 100%;
             height: 5.1cqh;
             background-color: var(--ps-pricing-accent);
@@ -1716,7 +1721,7 @@ function installPremiumMotion() {
           }
 
           @media (prefers-reduced-motion: reduce) {
-            .picker-preview-motion[data-motion-cell="persuade-choreographed"] :is(
+            #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] :is(
               .ps-eyebrow,
               .ps-headline,
               .ps-copy,
@@ -1728,17 +1733,17 @@ function installPremiumMotion() {
               transform: none !important;
             }
 
-            .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-choreo-track {
+            #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-choreo-track {
               transform: translateY(-50%) !important;
             }
 
-            .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-nav {
+            #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-nav {
               opacity: 0 !important;
               filter: none !important;
               transform: none !important;
             }
 
-            .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-card {
+            #picker-form .picker-preview-motion[data-motion-cell="persuade-choreographed"] .ps-pricing-card {
               opacity: 1 !important;
               filter: none !important;
               clip-path: none !important;
@@ -2156,31 +2161,31 @@ function installPremiumMotion() {
             transform: translate(-50%, -62%) rotate(45deg) scale(.7);
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-gallery-item:first-child > i,
-          .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-gallery-item:first-child span b:first-child,
-          .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-gallery-item:first-child > i::after {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-gallery-item:first-child > i,
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-gallery-item:first-child span b:first-child,
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-gallery-item:first-child > i::after {
             animation: none !important;
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-gallery-item:first-child > i::after {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-gallery-item:first-child > i::after {
             opacity: 0 !important;
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-editorial-copy > em {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-editorial-copy > em {
             animation:
               mt-in-4 var(--mt) var(--mt-ease) infinite,
               mtv-email-submit 4.2s linear infinite !important;
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-editorial-copy > em::after {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-editorial-copy > em::after {
             animation: mtv-email-send 4.2s linear infinite;
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-editorial-copy > em::before {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-editorial-copy > em::before {
             animation: mtv-email-check 4.2s linear infinite;
           }
 
-          .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-cursor::after {
+          #picker-form .picker-preview-motion[data-motion-cell="persuade-responsive"] .ps-cursor::after {
             animation: mtv-email-click 4.2s linear infinite !important;
           }
 
@@ -2256,9 +2261,9 @@ function installPremiumMotion() {
           }
 
           @media (prefers-reduced-motion: reduce) {
-            .picker-preview-motion[data-surface="persuade"] .ps-editorial-copy > em,
-            .picker-preview-motion[data-surface="persuade"] .ps-editorial-copy > em::before,
-            .picker-preview-motion[data-surface="persuade"] .ps-editorial-copy > em::after {
+            #picker-form .picker-preview-motion[data-surface="persuade"] .ps-editorial-copy > em,
+            #picker-form .picker-preview-motion[data-surface="persuade"] .ps-editorial-copy > em::before,
+            #picker-form .picker-preview-motion[data-surface="persuade"] .ps-editorial-copy > em::after {
               animation: none !important;
             }
           }
@@ -2333,7 +2338,7 @@ function installPremiumMotion() {
              leads; the phone is a static supporting adaptation. The current
              palette remains mapped through the existing --pv-* properties.
              ============================================================ */
-          .picker-preview-motion[data-surface="experience"] {
+          #picker-form .picker-preview-motion[data-surface="experience"] {
             --pvs-title: var(--pg-ink);
             --pvs-cta: var(--pv-primary);
             --pvs-bars: var(--pg-ink);
@@ -2344,28 +2349,28 @@ function installPremiumMotion() {
             height: 100%;
             aspect-ratio: auto;
           }
-          .picker-preview-motion[data-surface="experience"] .pv-desktop {
+          #picker-form .picker-preview-motion[data-surface="experience"] .pv-desktop {
             --pv-text: 1.35;
             position: relative;
             container-type: size;
           }
-          .picker-preview-motion[data-surface="experience"] .pv-desktop .pv-pill {
+          #picker-form .picker-preview-motion[data-surface="experience"] .pv-desktop .pv-pill {
             color: var(--pv-neutral);
             display: grid;
             place-items: center;
           }
-          .picker-preview-motion[data-surface="experience"] .pv-desktop .pv-pill::after {
+          #picker-form .picker-preview-motion[data-surface="experience"] .pv-desktop .pv-pill::after {
             content: "";
             width: calc(8.5 * var(--pv-x));
             height: calc(1.3 * var(--pv-x));
             background: currentColor;
             border-radius: 2px;
           }
-          .picker-preview-motion[data-surface="experience"] .pv-desktop .pg-cap {
+          #picker-form .picker-preview-motion[data-surface="experience"] .pv-desktop .pg-cap {
             padding-top: 5.2cqh !important;
             gap: 2.6cqh !important;
           }
-          .picker-preview-motion[data-surface="experience"] .pv-desktop .pg-cap::before {
+          #picker-form .picker-preview-motion[data-surface="experience"] .pv-desktop .pg-cap::before {
             content: "";
             display: block;
             width: calc(11.5 * var(--pv-x));
@@ -2378,96 +2383,96 @@ function installPremiumMotion() {
               color-mix(in oklab, var(--pv-secondary) 46%, var(--pv-neutral))
             );
           }
-          .picker-preview-motion[data-surface="experience"] :is(.pg-row--flip, .pg-rail) {
+          #picker-form .picker-preview-motion[data-surface="experience"] :is(.pg-row--flip, .pg-rail) {
             border-color: transparent !important;
             box-shadow: none !important;
           }
 
           /* Existing motion is remapped onto Preview 48's desktop-only hooks. */
-          .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pv-nav-bars i:first-child {
-            animation: 3.8s linear infinite mtr-nav-1;
+          #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pv-nav-bars i:first-child {
+            animation: 3.8s linear infinite mtr-nav-1--portfolio;
           }
-          .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pg-row:first-child .pg-cap-title {
+          #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pg-row:first-child .pg-cap-title {
             animation: 3.8s linear infinite mxr-name-1;
           }
-          .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pg-row:first-child > .pv-image::after {
+          #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pg-row:first-child > .pv-image::after {
             animation: 3.8s linear infinite mxr-mark-1;
           }
-          .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pg-row:nth-child(2) .pg-cap-title {
+          #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pg-row:nth-child(2) .pg-cap-title {
             animation: 3.8s linear infinite mxr-name-2;
           }
-          .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pg-row:nth-child(2) > .pv-image::after {
+          #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pg-row:nth-child(2) > .pv-image::after {
             animation: 3.8s linear infinite mxr-mark-2;
           }
 
-          .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pv-nav-bars i:first-child {
+          #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pv-nav-bars i:first-child {
             animation: 4.2s linear infinite mxv-nav-1;
           }
-          .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-row:first-child .pg-cap-title {
+          #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-row:first-child .pg-cap-title {
             animation: 4.2s linear infinite mxv-name;
           }
-          .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-row:first-child > .pv-image::after {
+          #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-row:first-child > .pv-image::after {
             animation: 4.2s linear infinite mxv-mark;
           }
-          .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-arrow--next {
+          #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-arrow--next {
             animation: 4.2s linear infinite mxv-arrow;
           }
-          .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-track {
+          #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-track {
             animation: 4.2s linear infinite mxv-track;
           }
-          .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-track i:first-child {
+          #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-track i:first-child {
             animation: 4.2s linear infinite mxv-stop-off;
           }
-          .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-track i:nth-child(2) {
+          #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-track i:nth-child(2) {
             animation: 4.2s linear infinite mxv-stop-on;
           }
 
           /* Choreographed keeps every project visible. Focus travels through the
              existing image, caption, marker, and pagination controls with bounded
              blur and transform motion; no component is revealed from opacity 0. */
-          .picker-preview-motion[data-motion-cell="experience-choreographed"] .ps-cursor {
+          #picker-form .picker-preview-motion[data-motion-cell="experience-choreographed"] .ps-cursor {
             animation: 5.6s linear infinite pgc-path !important;
           }
-          .picker-preview-motion[data-motion-cell="experience-choreographed"] .ps-cursor::after {
+          #picker-form .picker-preview-motion[data-motion-cell="experience-choreographed"] .ps-cursor::after {
             animation: none !important;
             opacity: 0 !important;
           }
-          .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pv-nav-bars i:first-child {
+          #picker-form .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pv-nav-bars i:first-child {
             animation: 5.6s linear infinite pgc-nav;
           }
-          .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-row:first-child > .pv-image {
+          #picker-form .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-row:first-child > .pv-image {
             transform-origin: 50% 50%;
             animation: 5.6s linear infinite pgc-image-1;
           }
-          .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-row:first-child .pg-cap {
+          #picker-form .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-row:first-child .pg-cap {
             animation: 5.6s linear infinite pgc-cap-1;
           }
-          .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-row:first-child .pg-cap-title {
+          #picker-form .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-row:first-child .pg-cap-title {
             animation: 5.6s linear infinite pgc-name-1;
           }
-          .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-row:first-child > .pv-image::after {
+          #picker-form .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-row:first-child > .pv-image::after {
             animation: 5.6s linear infinite pgc-mark-1;
           }
-          .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-arrow--next {
+          #picker-form .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-arrow--next {
             animation: 5.6s linear infinite pgc-arrow;
           }
-          .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-track i:first-child {
+          #picker-form .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-track i:first-child {
             animation: 5.6s linear infinite pgc-stop-off;
           }
-          .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-track i:nth-child(2) {
+          #picker-form .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-track i:nth-child(2) {
             animation: 5.6s linear infinite pgc-stop-on;
           }
-          .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-row:nth-child(2) > .pv-image {
+          #picker-form .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-row:nth-child(2) > .pv-image {
             transform-origin: 50% 50%;
             animation: 5.6s linear infinite pgc-image-2;
           }
-          .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-row:nth-child(2) .pg-cap {
+          #picker-form .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-row:nth-child(2) .pg-cap {
             animation: 5.6s linear infinite pgc-cap-2;
           }
-          .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-row:nth-child(2) .pg-cap-title {
+          #picker-form .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-row:nth-child(2) .pg-cap-title {
             animation: 5.6s linear infinite pgc-name-2;
           }
-          .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-row:nth-child(2) > .pv-image::after {
+          #picker-form .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-row:nth-child(2) > .pv-image::after {
             animation: 5.6s linear infinite pgc-mark-2;
           }
 
@@ -2485,12 +2490,12 @@ function installPremiumMotion() {
             96.5%, 100% { translate: var(--mtr-entry, 62.73cqw -8cqh); }
           }
           /* Nav 1 highlight + dropdown follow the longer nav dwell. */
-          @keyframes mtr-nav-1 {
+          @keyframes mtr-nav-1--portfolio {
             0%, 9.2% { background-color: var(--pvs-bars); }
             9.21%, 29.99% { background-color: var(--pvs-cta); }
             30%, 100% { background-color: var(--pvs-bars); }
           }
-          @keyframes mtr-drop-1 {
+          @keyframes mtr-drop-1--portfolio {
             0%, 9.2% { opacity: 0; }
             9.21%, 29.99% { opacity: 1; }
             30%, 100% { opacity: 0; }
@@ -2651,11 +2656,11 @@ function installPremiumMotion() {
              (Keyframes are document-global, so the per-cell split lives in
              these scoped assignment rules.)
              ============================================================ */
-          .picker-preview-motion[data-motion-cell="experience-restrained"] .ps-cursor::after {
+          #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .ps-cursor::after {
             animation: none;
             opacity: 0;
           }
-          .picker-preview-motion[data-motion-cell="experience-responsive"] .ps-cursor::after {
+          #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .ps-cursor::after {
             animation: 4.2s linear infinite mxi-rail-click !important;
           }
           @keyframes mxi-rail-click {
@@ -2666,11 +2671,11 @@ function installPremiumMotion() {
           }
 
           @media (prefers-reduced-motion: reduce) {
-            .picker-preview-motion[data-surface="experience"] .ps-cursor::after {
+            #picker-form .picker-preview-motion[data-surface="experience"] .ps-cursor::after {
               animation: none !important;
               opacity: 0 !important;
             }
-            .picker-preview-motion[data-surface="experience"] .pv-desktop :is(
+            #picker-form .picker-preview-motion[data-surface="experience"] .pv-desktop :is(
               .pv-nav-bars i,
               .pv-image,
               .pv-image::before,
@@ -2688,7 +2693,7 @@ function installPremiumMotion() {
               translate: none !important;
               scale: 1 !important;
             }
-            .picker-preview-motion[data-motion-cell="experience-choreographed"] .ps-cursor {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-choreographed"] .ps-cursor {
               animation: none !important;
               translate: var(--mxi-nav1-tip, 62.4cqw 3.9cqh) !important;
             }
@@ -2702,15 +2707,15 @@ function installPremiumMotion() {
           loopStyle.textContent = `
             /* Preview 29's whole story is one closed interaction loop:
                nav dropdown -> first gallery image -> modal -> close -> nav. */
-            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pv-nav {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pv-nav {
               position: relative;
               z-index: 3;
             }
-            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pv-nav-bars i:first-child {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pv-nav-bars i:first-child {
               position: relative;
               animation: 4s linear infinite mxr-modal-nav !important;
             }
-            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pv-nav-bars i:first-child::after {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pv-nav-bars i:first-child::after {
               content: "";
               box-sizing: border-box;
               width: 64px;
@@ -2727,7 +2732,7 @@ function installPremiumMotion() {
               opacity: 0;
               animation: 4s linear infinite mxr-modal-dropdown;
             }
-            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pv-nav-bars i:first-child::before {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pv-nav-bars i:first-child::before {
               content: "";
               width: 41px;
               height: 31px;
@@ -2747,27 +2752,27 @@ function installPremiumMotion() {
               animation: 4s linear infinite mxr-modal-dropdown;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .ps-cursor {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .ps-cursor {
               z-index: 15;
               animation: 4s cubic-bezier(.16, 1, .3, 1) infinite mxr-modal-path !important;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .ps-cursor::after {
+            #picker-form#picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .ps-cursor::after {
               left: -7.95px !important;
               top: -7.95px !important;
               animation: 4s linear infinite mxr-modal-click !important;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pg-row .pg-cap-title,
-            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pg-row > .pv-image::after {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pg-row .pg-cap-title,
+            #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pg-row > .pv-image::after {
               animation: none !important;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pg-row .pg-cap-title {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pg-row .pg-cap-title {
               background-color: var(--pg-ink) !important;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-scene {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-scene {
               display: block;
               position: absolute;
               z-index: 8;
@@ -2776,7 +2781,7 @@ function installPremiumMotion() {
               pointer-events: none;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-backdrop {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-backdrop {
               display: block;
               position: absolute;
               inset: 0;
@@ -2787,7 +2792,7 @@ function installPremiumMotion() {
               animation: 4s linear infinite mxr-modal-backdrop;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-surface {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-surface {
               display: block;
               box-sizing: border-box;
               position: absolute;
@@ -2800,7 +2805,7 @@ function installPremiumMotion() {
               animation: 4s linear infinite mxr-modal-surface;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-close {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-close {
               display: grid;
               place-items: center;
               box-sizing: border-box;
@@ -2817,8 +2822,8 @@ function installPremiumMotion() {
               animation: 4s linear infinite mxr-modal-close-press;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-close::before,
-            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-close::after {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-close::before,
+            #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-close::after {
               content: "";
               width: 48%;
               height: 1px;
@@ -2829,15 +2834,15 @@ function installPremiumMotion() {
               background: currentColor;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-close::before {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-close::before {
               rotate: 45deg;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-close::after {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-close::after {
               rotate: -45deg;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-bento {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-bento {
               display: grid;
               width: 100%;
               height: 100%;
@@ -2846,7 +2851,7 @@ function installPremiumMotion() {
               gap: 2.1cqw;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-image {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-image {
               display: block !important;
               width: 100% !important;
               height: 100% !important;
@@ -2854,11 +2859,11 @@ function installPremiumMotion() {
               min-height: 0;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-image--hero {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-image--hero {
               grid-row: 1 / 3;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-image--wide {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-image--wide {
               grid-column: 2 / 4;
             }
 
@@ -2977,33 +2982,33 @@ function installPremiumMotion() {
             }
 
             @media (prefers-reduced-motion: reduce) {
-              .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pv-nav-bars i:first-child::before,
-              .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pv-nav-bars i:first-child::after {
+              #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pv-nav-bars i:first-child::before,
+              #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pv-nav-bars i:first-child::after {
                 animation: none !important;
                 opacity: 1 !important;
                 scale: 1 !important;
               }
 
-              .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .ps-cursor::after {
+              #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .ps-cursor::after {
                 animation: none !important;
                 opacity: 0 !important;
                 scale: 1 0 !important;
               }
 
-              .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pv-nav-bars i:first-child,
-              .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .ps-cursor {
+              #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pv-nav-bars i:first-child,
+              #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .ps-cursor {
                 animation: none !important;
               }
 
-              .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pv-nav-bars i:first-child {
+              #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .pv-nav-bars i:first-child {
                 background-color: var(--pvs-cta) !important;
               }
 
-              .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .ps-cursor {
+              #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .ps-cursor {
                 translate: var(--mxi-nav1-tip, 62.4cqw 3.9cqh) !important;
               }
 
-              .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-scene {
+              #picker-form .picker-preview-motion[data-motion-cell="experience-restrained"] .pv-desktop .mxr-modal-scene {
                 display: none !important;
               }
             }
@@ -3039,15 +3044,15 @@ function installPremiumMotion() {
           loopStyle.textContent = `
             /* Preview 30 keeps preview 27's responsive dropdown, then follows
                one focused interaction: first gallery image -> modal -> close. */
-            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pv-nav {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pv-nav {
               position: relative;
               z-index: 3;
             }
-            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pv-nav-bars i:first-child {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pv-nav-bars i:first-child {
               position: relative;
               animation: 4.2s linear infinite mxv-modal-nav !important;
             }
-            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pv-nav-bars i:first-child::after {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pv-nav-bars i:first-child::after {
               content: "";
               box-sizing: border-box;
               width: 64px;
@@ -3064,7 +3069,7 @@ function installPremiumMotion() {
               opacity: 0;
               animation: 4.2s linear infinite mxv-drop-panel;
             }
-            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pv-nav-bars i:first-child::before {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pv-nav-bars i:first-child::before {
               content: "";
               width: 41px;
               height: 31px;
@@ -3084,42 +3089,42 @@ function installPremiumMotion() {
               animation: 4.2s linear infinite mxv-drop-rows;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .ps-cursor {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .ps-cursor {
               z-index: 15;
               animation: 4.2s linear infinite mxv-modal-path !important;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .ps-cursor::after {
+            #picker-form#picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .ps-cursor::after {
               left: -7.95px !important;
               top: -7.95px !important;
               animation: 4.2s linear infinite mxv-modal-click !important;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-row .pg-cap-title,
-            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-row > .pv-image::after,
-            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-arrow--next,
-            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-track,
-            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-track i {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-row .pg-cap-title,
+            #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-row > .pv-image::after,
+            #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-arrow--next,
+            #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-track,
+            #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-track i {
               animation: none !important;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-row .pg-cap-title {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-row .pg-cap-title {
               background-color: var(--pg-ink) !important;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-track {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-track {
               translate: 0 !important;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-track i:first-child {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-track i:first-child {
               background-color: var(--pvs-cta) !important;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-track i:not(:first-child) {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pg-track i:not(:first-child) {
               background-color: var(--pvs-bars) !important;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-scene {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-scene {
               display: block;
               position: absolute;
               z-index: 8;
@@ -3128,7 +3133,7 @@ function installPremiumMotion() {
               pointer-events: none;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-backdrop {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-backdrop {
               display: block;
               position: absolute;
               inset: 0;
@@ -3139,7 +3144,7 @@ function installPremiumMotion() {
               animation: 4.2s linear infinite mxv-modal-backdrop;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-surface {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-surface {
               display: block;
               box-sizing: border-box;
               position: absolute;
@@ -3152,7 +3157,7 @@ function installPremiumMotion() {
               animation: 4.2s linear infinite mxv-modal-surface;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-close {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-close {
               display: grid;
               place-items: center;
               box-sizing: border-box;
@@ -3169,8 +3174,8 @@ function installPremiumMotion() {
               animation: 4.2s linear infinite mxv-modal-close-press;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-close::before,
-            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-close::after {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-close::before,
+            #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-close::after {
               content: "";
               width: 48%;
               height: 1px;
@@ -3181,15 +3186,15 @@ function installPremiumMotion() {
               background: currentColor;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-close::before {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-close::before {
               rotate: 45deg;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-close::after {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-close::after {
               rotate: -45deg;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-bento {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-bento {
               display: grid;
               width: 100%;
               height: 100%;
@@ -3202,7 +3207,7 @@ function installPremiumMotion() {
               animation: 4.2s linear infinite mxv-modal-content;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-image {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-image {
               display: block !important;
               width: 100% !important;
               height: 100% !important;
@@ -3210,11 +3215,11 @@ function installPremiumMotion() {
               min-height: 0;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-image--hero {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-image--hero {
               grid-row: 1 / 3;
             }
 
-            .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-image--wide {
+            #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-image--wide {
               grid-column: 2 / 4;
             }
 
@@ -3444,40 +3449,40 @@ function installPremiumMotion() {
             }
 
             @media (prefers-reduced-motion: reduce) {
-              .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pv-nav-bars i:first-child::before,
-              .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pv-nav-bars i:first-child::after {
+              #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pv-nav-bars i:first-child::before,
+              #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pv-nav-bars i:first-child::after {
                 animation: none !important;
                 opacity: 0 !important;
                 scale: 1 0 !important;
               }
 
-              .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .ps-cursor::after {
+              #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .ps-cursor::after {
                 animation: none !important;
                 opacity: 0 !important;
                 scale: 1 0 !important;
               }
 
-              .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pv-nav-bars i:first-child,
-              .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .ps-cursor {
+              #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pv-nav-bars i:first-child,
+              #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .ps-cursor {
                 animation: none !important;
               }
 
-              .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pv-nav-bars i:first-child {
+              #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .pv-nav-bars i:first-child {
                 background-color: var(--pvs-bars) !important;
               }
 
-              .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .ps-cursor {
+              #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .ps-cursor {
                 translate: var(--mxi-nav1-tip, 69.15cqw 5.47cqh) !important;
               }
 
-              .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-scene {
+              #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-scene {
                 display: none !important;
               }
 
-              .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-backdrop,
-              .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-surface,
-              .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-bento,
-              .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-close {
+              #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-backdrop,
+              #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-surface,
+              #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-bento,
+              #picker-form .picker-preview-motion[data-motion-cell="experience-responsive"] .pv-desktop .mxv-modal-close {
                 animation: none !important;
               }
             }
@@ -3515,24 +3520,24 @@ function installPremiumMotion() {
         const staggerStyle = doc.createElement('style');
         staggerStyle.id = 'choreographed-portfolio-stagger-only';
         staggerStyle.textContent = `
-          .picker-preview-motion[data-motion-cell="experience-choreographed"],
-          .picker-preview-motion[data-motion-cell="experience-choreographed"] *,
-          .picker-preview-motion[data-motion-cell="experience-choreographed"] *::before,
-          .picker-preview-motion[data-motion-cell="experience-choreographed"] *::after {
+          #picker-form#picker-form .picker-preview-motion[data-motion-cell="experience-choreographed"],
+          #picker-form#picker-form .picker-preview-motion[data-motion-cell="experience-choreographed"] *,
+          #picker-form#picker-form .picker-preview-motion[data-motion-cell="experience-choreographed"] *::before,
+          #picker-form#picker-form .picker-preview-motion[data-motion-cell="experience-choreographed"] *::after {
             animation: none !important;
             transition: none !important;
           }
 
-          .picker-preview-motion[data-motion-cell="experience-choreographed"] .ps-cursor,
-          .picker-preview-motion[data-motion-cell="experience-choreographed"] .ps-cursor::after {
+          #picker-form .picker-preview-motion[data-motion-cell="experience-choreographed"] .ps-cursor,
+          #picker-form .picker-preview-motion[data-motion-cell="experience-choreographed"] .ps-cursor::after {
             opacity: 0 !important;
           }
 
-          .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-row--scroll-one {
+          #picker-form .picker-preview-motion[data-motion-cell="experience-choreographed"] .pv-desktop .pg-row--scroll-one {
             margin-top: 12cqh;
           }
 
-          .picker-preview-motion[data-motion-cell="experience-choreographed"] :is(
+          #picker-form .picker-preview-motion[data-motion-cell="experience-choreographed"] :is(
             .pv-desktop .pg-row:first-child > .pv-image,
             .pv-desktop .pg-row:first-child > .pg-cap,
             .pv-desktop .pg-row:nth-child(2) > .pv-image,
@@ -3552,7 +3557,7 @@ function installPremiumMotion() {
           }
 
           @media (prefers-reduced-motion: reduce) {
-            .picker-preview-motion[data-motion-cell="experience-choreographed"] :is(
+            #picker-form .picker-preview-motion[data-motion-cell="experience-choreographed"] :is(
               .pv-desktop .pg-row:first-child > .pv-image,
               .pv-desktop .pg-row:first-child > .pg-cap,
               .pv-desktop .pg-row:nth-child(2) > .pv-image,
@@ -3913,14 +3918,55 @@ function installPremiumMotion() {
         }
       }
 
-    if (cell === 'persuade-restrained') installPerfectCursorLoop();
-    if (cell === 'persuade-responsive') installResponsiveLandingCorrections();
-    if (cell === 'persuade-choreographed') installChoreographedPremium();
-    if (cell.startsWith('persuade-')) installEmailCapture();
-    if (cell.startsWith('experience-')) installPortfolioFixes();
+    jobs.push({ cell, board: motionBoard, installPerfectCursorLoop, installResponsiveLandingCorrections, installChoreographedPremium, installEmailCapture, installPortfolioFixes });
   }
+
+  /* An installer that measures the board has to run with that board, and only
+     that board, holding the stage: the portfolio scroll reads offsetTop deltas,
+     and six boards sharing the stage at once gave it 324px where its own cell
+     measures 408. */
+  const onlyShown = (target) => {
+    const saved = jobs.map(({ board }) => [board, board.getAttribute('style')]);
+    for (const { board } of jobs) board.style.setProperty('display', board === target ? 'grid' : 'none', 'important');
+    return () => {
+      for (const [board, style] of saved) {
+        if (style === null) board.removeAttribute('style');
+        else board.setAttribute('style', style);
+      }
+    };
+  };
+  const run = (job, install) => {
+    const restore = onlyShown(job.board);
+    try { install(); } finally { restore(); }
+  };
+
+  /* The extraction file runs each installer across all of its cells before it
+     runs the next one, and every cell's sheet order and DOM state follows from
+     that. Installing board by board instead put the email sheet ahead of the
+     choreographed ones, which is a different cascade and a different DOM for
+     the choreographed cell to restructure. */
+  for (const job of jobs) if (job.cell === 'persuade-restrained') run(job, job.installPerfectCursorLoop);
+  for (const job of jobs) if (job.cell === 'persuade-responsive') run(job, job.installResponsiveLandingCorrections);
+  for (const job of jobs) if (job.cell === 'persuade-choreographed') run(job, job.installChoreographedPremium);
+  for (const job of jobs) if (job.cell.startsWith('persuade-')) run(job, job.installEmailCapture);
+  for (const job of jobs) if (job.cell.startsWith('experience-')) run(job, job.installPortfolioFixes);
 }
-installPremiumMotion();
+
+/* The extraction file draws each cell in its own iframe, laid out from the
+   moment it loads, so an installer that measures the board gets real numbers.
+   Here the boards sit on a screen that has not been shown yet, where every
+   measurement is zero and the portfolio scroll is skipped outright. The install
+   waits for that screen, then runs once, in the file's own order. */
+let premiumMotionInstalled = false;
+function ensurePremiumMotion() {
+  if (premiumMotionInstalled) return;
+  const stage = document.querySelector('.picker-screen[data-screen="06"] .picker-board-stage');
+  const boards = stage ? [...stage.querySelectorAll('.picker-preview-motion[data-motion-cell]')] : [];
+  if (!boards.length || !boards.some((board) => board.getBoundingClientRect().width > 0)) return;
+  premiumMotionInstalled = true;
+  installPremiumMotion();
+}
+/* premium-motion-end */
 
 
 /* Custom fonts. A URL is carried through as-is; an uploaded face is handed to
@@ -4807,6 +4853,7 @@ document.addEventListener('picker:screenchange', (event) => {
   // frame after the one that revealed it, not on the frame that asked.
   if (event.detail.screen === '06') {
     requestAnimationFrame(() => {
+      ensurePremiumMotion();
       plotMotionRoute();
       motionShown = null;
       replayMotion(checkedMotion());

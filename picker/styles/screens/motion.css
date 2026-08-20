@@ -1938,7 +1938,14 @@
    to 918 by 492.21875. The live stage sizes to the board instead, so the
    footprint is stated as the artboard ratio this drawing replaces, which
    resolves to the same box at that width and still tracks a resize. */
-.picker-board-stage > .picker-preview-motion[data-surface="experience"] {
+#picker-form .picker-board-stage > .picker-preview-motion[data-surface="experience"] {
   aspect-ratio: 1.865 / 1;
   height: auto;
+}
+
+/* The rebuilt landing board carries picker-preview-layout, which brings the
+   layout screen's rule that drops the nav magnifier. The extraction file's
+   boards draw it, so the motion boards keep it. */
+.picker-preview-motion.picker-preview-layout .ps-search {
+  display: inline !important;
 }
