@@ -1077,9 +1077,10 @@ const questions = [
       {/* Screen 04b: the configure hub. Every remaining question already
           holds an answer (defaults are pre-filled the moment a surface tile
           is checked), so the run can end here. The cards are skeletons;
-          summaries and edited marks are written by renderHub() in
-          scripts/palette-picker.js on every arrival. Placement is the
-          approved masonry: tall per-surface cards anchor the outer columns. */}
+          previews, tabs, tooltip summaries, and edited marks are written by
+          renderHub() in scripts/palette-picker.js on every arrival. The
+          column wrappers are display: contents, so the five near-uniform
+          cards flow the grid three over two. */}
       <section class="picker-screen" data-screen="04b" data-step="Configure" aria-hidden="true" aria-labelledby="picker-hub-title">
         <div class="picker-container">
           <div class="picker-hub">
@@ -1092,51 +1093,71 @@ const questions = [
 
             <div class="picker-hub-grid">
               <div class="picker-hub-col">
-                <button class="picker-hub-card" type="button" data-hub-target="06" data-hub-category="material">
+                <button class="picker-hub-card" type="button" data-hub-target="06" data-hub-category="material" aria-describedby="picker-hub-tip-06">
                   <span class="picker-hub-eyebrow">Material</span>
                   <span class="picker-hub-title">Motion
                     <svg class="picker-hub-arrow" viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M0 4h14M10 0l4 4-4 4"></path></svg>
                     <span class="picker-hub-mark" data-hub-mark hidden>Edited</span>
                   </span>
-                  <span class="picker-hub-summary" data-hub-summary></span>
+                  <span class="picker-hub-preview" data-hub-preview aria-hidden="true"></span>
+                  <span class="picker-hub-tabs" data-hub-tabs hidden></span>
+                  <span class="picker-hub-tip" role="tooltip" id="picker-hub-tip-06" data-hub-tip>
+                    <span class="picker-hub-summary" data-hub-summary></span>
+                  </span>
                 </button>
-                <button class="picker-hub-card" type="button" data-hub-target="08" data-hub-category="material">
+                <button class="picker-hub-card" type="button" data-hub-target="08" data-hub-category="material" aria-describedby="picker-hub-tip-08">
                   <span class="picker-hub-eyebrow">Material</span>
                   <span class="picker-hub-title">Boundaries
                     <svg class="picker-hub-arrow" viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M0 4h14M10 0l4 4-4 4"></path></svg>
                     <span class="picker-hub-mark" data-hub-mark hidden>Edited</span>
                   </span>
-                  <span class="picker-hub-summary" data-hub-summary></span>
+                  <span class="picker-hub-preview" data-hub-preview aria-hidden="true"></span>
+                  <span class="picker-hub-tabs" data-hub-tabs hidden></span>
+                  <span class="picker-hub-tip" role="tooltip" id="picker-hub-tip-08" data-hub-tip>
+                    <span class="picker-hub-summary" data-hub-summary></span>
+                  </span>
                 </button>
               </div>
 
               <div class="picker-hub-col">
-                <button class="picker-hub-card" type="button" data-hub-target="11" data-hub-category="iconography">
+                <button class="picker-hub-card" type="button" data-hub-target="11" data-hub-category="iconography" aria-describedby="picker-hub-tip-11">
                   <span class="picker-hub-eyebrow">Iconography</span>
                   <span class="picker-hub-title">Icon set
                     <svg class="picker-hub-arrow" viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M0 4h14M10 0l4 4-4 4"></path></svg>
                     <span class="picker-hub-mark" data-hub-mark hidden>Edited</span>
                   </span>
-                  <span class="picker-hub-summary" data-hub-summary></span>
+                  <span class="picker-hub-preview" data-hub-preview aria-hidden="true"></span>
+                  <span class="picker-hub-tabs" data-hub-tabs hidden></span>
+                  <span class="picker-hub-tip" role="tooltip" id="picker-hub-tip-11" data-hub-tip>
+                    <span class="picker-hub-summary" data-hub-summary></span>
+                  </span>
                 </button>
-                <button class="picker-hub-card" type="button" data-hub-target="09" data-hub-category="material">
+                <button class="picker-hub-card" type="button" data-hub-target="09" data-hub-category="material" aria-describedby="picker-hub-tip-09">
                   <span class="picker-hub-eyebrow">Material</span>
                   <span class="picker-hub-title">Corners
                     <svg class="picker-hub-arrow" viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M0 4h14M10 0l4 4-4 4"></path></svg>
                     <span class="picker-hub-mark" data-hub-mark hidden>Edited</span>
                   </span>
-                  <span class="picker-hub-summary" data-hub-summary></span>
+                  <span class="picker-hub-preview" data-hub-preview aria-hidden="true"></span>
+                  <span class="picker-hub-tabs" data-hub-tabs hidden></span>
+                  <span class="picker-hub-tip" role="tooltip" id="picker-hub-tip-09" data-hub-tip>
+                    <span class="picker-hub-summary" data-hub-summary></span>
+                  </span>
                 </button>
               </div>
 
               <div class="picker-hub-col">
-                <button class="picker-hub-card" type="button" data-hub-target="10" data-hub-category="material">
+                <button class="picker-hub-card" type="button" data-hub-target="10" data-hub-category="material" aria-describedby="picker-hub-tip-10">
                   <span class="picker-hub-eyebrow">Material</span>
                   <span class="picker-hub-title">Depth
                     <svg class="picker-hub-arrow" viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M0 4h14M10 0l4 4-4 4"></path></svg>
                     <span class="picker-hub-mark" data-hub-mark hidden>Edited</span>
                   </span>
-                  <span class="picker-hub-summary" data-hub-summary></span>
+                  <span class="picker-hub-preview" data-hub-preview aria-hidden="true"></span>
+                  <span class="picker-hub-tabs" data-hub-tabs hidden></span>
+                  <span class="picker-hub-tip" role="tooltip" id="picker-hub-tip-10" data-hub-tip>
+                    <span class="picker-hub-summary" data-hub-summary></span>
+                  </span>
                 </button>
               </div>
             </div>

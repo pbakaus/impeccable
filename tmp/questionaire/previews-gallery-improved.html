@@ -292,7 +292,7 @@ figure.cell iframe { display: block; border: 0; background: transparent; positio
 <figcaption><span class="cell-num">26</span> Selected: Landing page + Restrained</figcaption>
 <div class="scaler" data-width="918" data-height="492.21875">
 <div class="clip" style="width:918px;height:492.21875px">
-<iframe title="26. Selected: Landing page + Restrained" data-cell="motion--persuade--restrained" data-cell-num="26" data-section="motion" scrolling="no" style="width:1600px;height:1000px"></iframe>
+<iframe title="26. Selected: Landing page + Restrained" data-cell="motion--persuade--restrained" data-cell-num="26" data-section="motion" data-premium-motion scrolling="no" style="width:1600px;height:1000px"></iframe>
 </div>
 </div>
 </figure>
@@ -300,7 +300,7 @@ figure.cell iframe { display: block; border: 0; background: transparent; positio
 <figcaption><span class="cell-num">27</span> Selected: Landing page + Responsive</figcaption>
 <div class="scaler" data-width="918" data-height="492.21875">
 <div class="clip" style="width:918px;height:492.21875px">
-<iframe title="27. Selected: Landing page + Responsive" data-cell="motion--persuade--responsive" data-cell-num="27" data-section="motion" scrolling="no" style="width:1600px;height:1000px"></iframe>
+<iframe title="27. Selected: Landing page + Responsive" data-cell="motion--persuade--responsive" data-cell-num="27" data-section="motion" data-premium-motion scrolling="no" style="width:1600px;height:1000px"></iframe>
 </div>
 </div>
 </figure>
@@ -308,7 +308,7 @@ figure.cell iframe { display: block; border: 0; background: transparent; positio
 <figcaption><span class="cell-num">28</span> Selected: Landing page + Choreographed</figcaption>
 <div class="scaler" data-width="918" data-height="492.21875">
 <div class="clip" style="width:918px;height:492.21875px">
-<iframe title="28. Selected: Landing page + Choreographed" data-cell="motion--persuade--choreographed" data-cell-num="28" data-section="motion" scrolling="no" style="width:1600px;height:1000px"></iframe>
+<iframe title="28. Selected: Landing page + Choreographed" data-cell="motion--persuade--choreographed" data-cell-num="28" data-section="motion" data-premium-motion scrolling="no" style="width:1600px;height:1000px"></iframe>
 </div>
 </div>
 </figure>
@@ -316,7 +316,7 @@ figure.cell iframe { display: block; border: 0; background: transparent; positio
 <figcaption><span class="cell-num">29</span> Selected: Portfolio + Restrained</figcaption>
 <div class="scaler" data-width="918" data-height="492.21875">
 <div class="clip" style="width:918px;height:492.21875px">
-<iframe title="29. Selected: Portfolio + Restrained" data-cell="motion--experience--restrained" data-cell-num="29" data-section="motion" scrolling="no" style="width:1600px;height:1000px"></iframe>
+<iframe title="29. Selected: Portfolio + Restrained" data-cell="motion--experience--restrained" data-cell-num="29" data-section="motion" data-premium-motion scrolling="no" style="width:1600px;height:1000px"></iframe>
 </div>
 </div>
 </figure>
@@ -324,7 +324,7 @@ figure.cell iframe { display: block; border: 0; background: transparent; positio
 <figcaption><span class="cell-num">30</span> Selected: Portfolio + Responsive</figcaption>
 <div class="scaler" data-width="918" data-height="492.21875">
 <div class="clip" style="width:918px;height:492.21875px">
-<iframe title="30. Selected: Portfolio + Responsive" data-cell="motion--experience--responsive" data-cell-num="30" data-section="motion" scrolling="no" style="width:1600px;height:1000px"></iframe>
+<iframe title="30. Selected: Portfolio + Responsive" data-cell="motion--experience--responsive" data-cell-num="30" data-section="motion" data-premium-motion scrolling="no" style="width:1600px;height:1000px"></iframe>
 </div>
 </div>
 </figure>
@@ -332,7 +332,7 @@ figure.cell iframe { display: block; border: 0; background: transparent; positio
 <figcaption><span class="cell-num">31</span> Selected: Portfolio + Choreographed</figcaption>
 <div class="scaler" data-width="918" data-height="492.21875">
 <div class="clip" style="width:918px;height:492.21875px">
-<iframe title="31. Selected: Portfolio + Choreographed" data-cell="motion--experience--choreographed" data-cell-num="31" data-section="motion" scrolling="no" style="width:1600px;height:1000px"></iframe>
+<iframe title="31. Selected: Portfolio + Choreographed" data-cell="motion--experience--choreographed" data-cell-num="31" data-section="motion" data-premium-motion scrolling="no" style="width:1600px;height:1000px"></iframe>
 </div>
 </div>
 </figure>
@@ -855,6 +855,7 @@ function paletteVars() {
   };
 }
 function applyToFrame(iframe) {
+  if (iframe.hasAttribute('data-premium-motion')) return;
   var win = iframe.contentWindow;
   if (!win || !win.__applyPalette) return;
   win.__applyPalette(paletteVars());
@@ -873,6 +874,11 @@ var cellById = {};
 PAYLOAD.cells.forEach(function (cell) { cellById[cell.id] = cell; });
 Array.prototype.forEach.call(document.querySelectorAll('iframe[data-cell]'), function (iframe) {
   var cell = cellById[iframe.getAttribute('data-cell')];
+  var cellNumber = Number(iframe.getAttribute('data-cell-num'));
+  if (iframe.hasAttribute('data-premium-motion')) {
+    iframe.src = '../motion-previews-premium.html?embed=' + cellNumber;
+    return;
+  }
   iframe.addEventListener('load', function () { applyToFrame(iframe); });
   iframe.srcdoc = buildDoc(cell);
   if (cell.section === 'motion') {
@@ -1297,6 +1303,7 @@ Array.prototype.forEach.call(document.querySelectorAll('.scaler'), function (sca
     if (!targetNumbers.has(cell.number)) return;
     var frame = document.querySelector('iframe[data-cell-num="' + cell.number + '"]');
     if (!frame) return;
+    if (frame.hasAttribute('data-premium-motion')) return;
     frame.srcdoc = buildDerivedDoc(cell);
   });
 })();

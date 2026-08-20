@@ -2347,61 +2347,239 @@ function hubOptionDesc(group, value) {
   return (desc.dataset.copy ?? desc.textContent).trim();
 }
 
+/* ============================================================
+   Hub previews: each card's body is a clone of its question's own
+   artboard, painted with the committed palette and the previewed
+   surface's answers.
+
+   The material clones borrow design-context.css's proof frame: the
+   committed bodies there key off data-dcx-* attributes on the frame
+   because a clone cannot ride the #picker-form:has() selectors its
+   original took its rendition from once the answer has to differ per
+   card. The stylesheet is already on this page, so nothing is
+   restated. The motion clone is the one exception: its scenes exist
+   only as #picker-form:has() rules with no dcx mirror, so it keeps
+   its scene classes, stays keyed to the live motion-energy radio,
+   and the renderer parks that radio on the previewed surface's
+   answer the same way the question screens park it. The keyframes
+   are infinite, so the clone loops on its own; the hover-restart
+   wiring never reaches it (replayMotion holds the boards it listed
+   at load, and screen 06's hover rows are display: none here).
+   ============================================================ */
+const HUB_PREVIEW_MARK_GROUPS = {
+  strategy: 'color-strategy',
+  boundary: 'boundary-style',
+  corner: 'corner-style',
+  depth: 'depth-style',
+  layout: 'layout-structure',
+};
+
+/* One surface's committed structural answers, read off the same hidden
+   fields the summary rows read; the checked radio covers a flat group
+   whose field this surface never rendered. */
+function hubPreviewMarks(mode) {
+  const marks = { surface: mode };
+  for (const [mark, group] of Object.entries(HUB_PREVIEW_MARK_GROUPS)) {
+    marks[mark] = document.querySelector(`input[type="hidden"][data-surface-field="${group}-${mode}"]`)?.value
+      || document.querySelector(`input[name="${group}"]:checked`)?.value || '';
+  }
+  return marks;
+}
+
+/* Clone one question's mounted artboard into a proof frame, the same
+   lift design-context.js's proofHtml performs: ids do not survive (they
+   would collide with the originals), the surface attribute moves to the
+   frame, and the committed palette is painted on the frame under the
+   --pkc-* names the dcx bodies read. */
+function hubProof(source, marks = null) {
+  const wrap = document.createElement('span');
+  wrap.className = 'picker-hub-proof';
+  if (marks) {
+    wrap.classList.add('dcx-proof--board');
+    for (const [key, value] of Object.entries(marks)) {
+      if (value) wrap.setAttribute(`data-dcx-${key}`, value);
+    }
+    syncCommittedPalette(wrap, 'pkc');
+  }
+  const clone = source.cloneNode(true);
+  clone.hidden = false;
+  clone.removeAttribute('data-surface');
+  for (const node of [clone, ...clone.querySelectorAll('[id]')]) node.removeAttribute('id');
+  /* The icon sheet's lookup hooks must not survive either: the hub card
+     sits before screen 11 in the DOM, so a clone still carrying them
+     would shadow the originals for every later querySelector, including
+     the document's own icon proof. */
+  for (const node of [clone, ...clone.querySelectorAll('[data-icon-field], [data-icon-strip]')]) {
+    node.removeAttribute('data-icon-sheet');
+    node.removeAttribute('data-icon-field');
+    node.removeAttribute('data-icon-strip');
+  }
+  wrap.append(clone);
+  return wrap;
+}
+
+const hubQuestionBoard = (screen, mode) => document.querySelector(
+  `.picker-screen[data-screen="${screen}"] .picker-artboard[data-surface="${mode}"]`,
+);
+
+/* The preview and its tab strip for one card. The active tab carries
+   the patina dot and the surface's answer, so the choice reads without
+   hovering; the tooltip carries the summary rows. */
+function renderHubPreview(cardNode, rows) {
+  const previewSlot = cardNode.querySelector('[data-hub-preview]');
+  const tabsSlot = cardNode.querySelector('[data-hub-tabs]');
+  const screen = cardNode.dataset.hubTarget;
+  const group = HUB_GROUPS[screen];
+  if (group === 'icon-pack') {
+    tabsSlot.hidden = true;
+    tabsSlot.replaceChildren();
+    previewSlot.replaceChildren(hubProof(iconSheet));
+    /* The glyphs are fetched on screen 11's first arrival, which a run
+       that stops at the hub never makes; fetch them here and re-render
+       once. The empty marker is the failed state, which must not refetch
+       on every arrival. */
+    if (!iconField.querySelector('.picker-icon-cell') && !('empty' in iconField.dataset)) {
+      loadIconPacks().then(renderHub);
+    }
+    return;
+  }
+  const modes = rows.map((row) => row.mode);
+  const mode = modes.includes(cardNode.dataset.hubSurface) ? cardNode.dataset.hubSurface : modes[0];
+  cardNode.dataset.hubSurface = mode ?? '';
+  const board = mode ? hubQuestionBoard(screen, mode) : null;
+  if (!board) {
+    previewSlot.replaceChildren();
+    tabsSlot.hidden = true;
+    tabsSlot.replaceChildren();
+    return;
+  }
+  if (group === 'motion-energy') {
+    surfaceQuestions.find((question) => question.screen === screen)?.park(mode);
+    const proof = hubProof(board);
+    syncCommittedPalette(proof.firstChild);
+    previewSlot.replaceChildren(proof);
+    /* The route stops are measured off the clone's own layout, exactly
+       what screen 06 does for the originals on arrival. */
+    requestAnimationFrame(() => plotMotionRoute(proof.firstChild));
+  } else {
+    previewSlot.replaceChildren(hubProof(board, hubPreviewMarks(mode)));
+  }
+  tabsSlot.hidden = rows.length === 0;
+  tabsSlot.replaceChildren(...rows.map((row) => {
+    const tab = document.createElement('span');
+    tab.className = 'picker-hub-tab';
+    tab.dataset.hubTab = row.mode;
+    const dot = document.createElement('i');
+    dot.className = 'picker-hub-tab-dot';
+    dot.setAttribute('aria-hidden', 'true');
+    tab.append(dot, hubSurfaceLabel(row.mode));
+    if (row.mode === mode) {
+      tab.dataset.on = '';
+      const value = document.createElement('span');
+      value.className = 'picker-hub-tab-value';
+      value.textContent = hubOptionTitle(group, row.value);
+      tab.append(value);
+    }
+    return tab;
+  }));
+}
+
+function renderHubCard(cardNode) {
+  const group = HUB_GROUPS[cardNode.dataset.hubTarget];
+  if (!group) return;
+  const summary = cardNode.querySelector('[data-hub-summary]');
+  const mark = cardNode.querySelector('[data-hub-mark]');
+  const previewSlot = cardNode.querySelector('[data-hub-preview]');
+  const tabsSlot = cardNode.querySelector('[data-hub-tabs]');
+  const target = document.querySelector(`.picker-screen[data-screen="${cardNode.dataset.hubTarget}"]`);
+  const skipped = Boolean(target?.hasAttribute('data-skip'));
+  cardNode.classList.toggle('is-skipped', skipped);
+  cardNode.disabled = skipped;
+  cardNode.setAttribute('aria-disabled', skipped ? 'true' : 'false');
+  if (skipped) {
+    summary.replaceChildren();
+    previewSlot.replaceChildren(hubPlainLine('Not asked of these surfaces'));
+    tabsSlot.hidden = true;
+    tabsSlot.replaceChildren();
+    cardNode.classList.remove('is-edited');
+    mark.hidden = true;
+    return;
+  }
+  const rows = hubSurfaceRows(group);
+  let edited;
+  let lines;
+  if (rows.length === 0) {
+    const checked = document.querySelector(`input[name="${group}"]:checked`);
+    edited = hubEdited.has(group);
+    lines = [hubRow(
+      'All surfaces',
+      checked ? hubOptionTitle(group, checked.value) : '',
+      group,
+      checked?.value,
+    )];
+  } else {
+    edited = rows.some((row) => row.chosen);
+    if (rows.length > 1 && rows.every((row) => row.value === rows[0].value)) {
+      lines = [hubRow('All surfaces', hubOptionTitle(group, rows[0].value), group, rows[0].value)];
+    } else if (rows.length === 1) {
+      lines = [hubRow(hubSurfaceLabel(rows[0].mode), hubOptionTitle(group, rows[0].value), group, rows[0].value)];
+    } else {
+      lines = rows.map((row) => hubRow(
+        hubSurfaceLabel(row.mode),
+        hubOptionTitle(group, row.value),
+        group,
+        row.value,
+      ));
+    }
+  }
+  summary.replaceChildren(...lines);
+  cardNode.classList.toggle('is-edited', edited);
+  mark.hidden = !edited;
+  renderHubPreview(cardNode, rows);
+}
+
 function renderHub() {
   if (!hubScreen) return;
-  for (const cardNode of hubScreen.querySelectorAll('.picker-hub-card')) {
-    const group = HUB_GROUPS[cardNode.dataset.hubTarget];
-    if (!group) continue;
-    const summary = cardNode.querySelector('[data-hub-summary]');
-    const mark = cardNode.querySelector('[data-hub-mark]');
-    const target = document.querySelector(`.picker-screen[data-screen="${cardNode.dataset.hubTarget}"]`);
-    const skipped = Boolean(target?.hasAttribute('data-skip'));
-    cardNode.classList.toggle('is-skipped', skipped);
-    cardNode.disabled = skipped;
-    cardNode.setAttribute('aria-disabled', skipped ? 'true' : 'false');
-    if (skipped) {
-      summary.replaceChildren(hubPlainLine('Not asked of these surfaces'));
-      cardNode.classList.remove('is-edited');
-      mark.hidden = true;
-      continue;
-    }
-    const rows = hubSurfaceRows(group);
-    let edited;
-    let lines;
-    if (rows.length === 0) {
-      const checked = document.querySelector(`input[name="${group}"]:checked`);
-      edited = hubEdited.has(group);
-      lines = [hubRow(
-        'All surfaces',
-        checked ? hubOptionTitle(group, checked.value) : '',
-        group,
-        checked?.value,
-      )];
-    } else {
-      edited = rows.some((row) => row.chosen);
-      if (rows.length > 1 && rows.every((row) => row.value === rows[0].value)) {
-        lines = [hubRow('All surfaces', hubOptionTitle(group, rows[0].value), group, rows[0].value)];
-      } else if (rows.length === 1) {
-        lines = [hubRow(hubSurfaceLabel(rows[0].mode), hubOptionTitle(group, rows[0].value), group, rows[0].value)];
-      } else {
-        lines = rows.map((row) => hubRow(
-          hubSurfaceLabel(row.mode),
-          hubOptionTitle(group, row.value),
-          group,
-          row.value,
-        ));
-      }
-    }
-    summary.replaceChildren(...lines);
-    cardNode.classList.toggle('is-edited', edited);
-    mark.hidden = !edited;
-  }
+  for (const cardNode of hubScreen.querySelectorAll('.picker-hub-card')) renderHubCard(cardNode);
 }
+
+/* The tooltip floats above the card and flips below when the card sits
+   too near the viewport top to hold it; when neither side holds the
+   whole panel, the roomier side takes it. Measured when the pointer or
+   focus arrives, before the reveal transition starts; the tip is
+   opacity-hidden rather than display-hidden, so its height is real. */
+function placeHubTip(cardNode) {
+  const tip = cardNode.querySelector('[data-hub-tip]');
+  if (!tip) return;
+  const rect = cardNode.getBoundingClientRect();
+  const need = tip.offsetHeight + 20;
+  const above = rect.top;
+  const below = window.innerHeight - rect.bottom;
+  cardNode.dataset.tipAt = (above >= need || above >= below) ? 'above' : 'below';
+}
+hubScreen?.addEventListener('pointerover', (event) => {
+  const cardNode = event.target.closest('.picker-hub-card');
+  if (cardNode) placeHubTip(cardNode);
+});
+hubScreen?.addEventListener('focusin', (event) => {
+  const cardNode = event.target.closest('.picker-hub-card');
+  if (cardNode) placeHubTip(cardNode);
+});
 
 /* Cards and the finish CTA jump by screen id. The inline nav script
    owns goTo(); it listens for this event, so no swap logic is
-   duplicated here. A disabled card never reaches this handler. */
+   duplicated here. A disabled card never reaches this handler. A mini
+   tab hit re-clones its own card instead and never travels: the card
+   click must stay the jump to the question. */
 hubScreen?.addEventListener('click', (event) => {
+  const tab = event.target.closest('[data-hub-tab]');
+  if (tab) {
+    event.stopPropagation();
+    const cardNode = tab.closest('.picker-hub-card');
+    cardNode.dataset.hubSurface = tab.dataset.hubTab;
+    renderHubCard(cardNode);
+    return;
+  }
   const cardNode = event.target.closest('[data-hub-target]');
   if (!cardNode || cardNode.disabled) return;
   document.dispatchEvent(new CustomEvent('picker:goto', {

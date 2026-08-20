@@ -7909,10 +7909,12 @@ body.picker-page {
 }
 
 /* ============================================================
-   Screen 04b: the configure hub. Three packed columns of cards;
-   the tall per-surface cards (motion, depth) anchor the outer
-   tracks. Sharp corners and hairline rules, the same vocabulary
-   as the option rows. Summaries are written by renderHub().
+   Screen 04b: the configure hub. Five near-uniform preview cards
+   flow a three-column grid, three over two; the column wrappers
+   are display: contents so the markup's masonry grouping costs
+   nothing. Sharp corners and hairline rules, the same vocabulary
+   as the option rows. Previews, tabs, and the tooltip's summary
+   rows are written by renderHub().
    ============================================================ */
 .picker-hub {
   display: grid;
@@ -7930,14 +7932,12 @@ body.picker-page {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
-  align-items: start;
+  align-items: stretch;
   width: min(100%, 1080px);
 }
 
 .picker-hub-col {
-  display: grid;
-  gap: 14px;
-  align-content: start;
+  display: contents;
 }
 
 .picker-hub-card {
@@ -8073,6 +8073,151 @@ body.picker-page {
   color: var(--ks-text-faint);
   font-size: 0.84rem;
   line-height: 1.5;
+}
+
+/* The card body: a clone of the question's own artboard, written by
+   renderHubPreview(). The frame borrows design-context.css's
+   .dcx-proof--board hooks for the committed bodies, so no rendition
+   rule is restated here. Pointer events stay off: everything inside
+   the card except a mini tab is the jump to the question. */
+.picker-hub-preview {
+  display: block;
+  pointer-events: none;
+}
+
+.picker-hub-proof {
+  display: block;
+}
+
+/* The mini tab strip: the surface-tab vocabulary at card scale. Spans
+   rather than buttons because the card itself is one, and a button
+   cannot hold another. */
+.picker-hub-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 3px;
+  background: var(--ks-lacquer-raised);
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+}
+
+.picker-hub-tabs[hidden] {
+  display: none;
+}
+
+.picker-hub-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  color: var(--ks-text-muted);
+  font-size: 12.5px;
+  letter-spacing: 0.015em;
+  border-radius: 2px;
+  cursor: pointer;
+  transition:
+    background-color 180ms var(--ks-ease),
+    color 180ms var(--ks-ease);
+}
+
+.picker-hub-tab:hover {
+  color: var(--ks-champagne);
+  background: color-mix(in oklab, var(--ks-patina) 9%, var(--ks-lacquer-raised));
+}
+
+.picker-hub-tab[data-on] {
+  color: var(--ks-champagne);
+  background: color-mix(in oklab, var(--ks-patina) 14%, var(--ks-lacquer-raised));
+}
+
+/* The same report the full-size strip's dot gives: filled on the tab
+   being previewed, hollow on the rest. */
+.picker-hub-tab-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border: 1px solid color-mix(in oklab, var(--ks-patina) 55%, transparent);
+  border-radius: 50%;
+}
+
+.picker-hub-tab[data-on] .picker-hub-tab-dot {
+  background: var(--ks-patina);
+  border-color: var(--ks-patina);
+}
+
+.picker-hub-tab-value {
+  color: color-mix(in oklab, var(--ks-patina) 85%, var(--ks-champagne));
+}
+
+/* The summary rows' new home: a floating panel on the card's own
+   hover and focus, the contrast alert tip's pattern at card width.
+   Above by default; placeHubTip() flips it below when the card sits
+   too near the viewport top. The hovered card rises over its
+   neighbours so the panel is never clipped by the masonry. */
+.picker-hub-card:is(:hover, :focus-within) {
+  z-index: 3;
+}
+
+.picker-hub-tip {
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  bottom: calc(100% + 10px);
+  z-index: 12;
+  padding: 16px 18px;
+  display: grid;
+  gap: 14px;
+  opacity: 0;
+  background: var(--ks-lacquer-raised);
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+  pointer-events: none;
+  transform: translateY(3px);
+  transition:
+    opacity 180ms var(--ks-ease),
+    transform 180ms var(--ks-ease);
+}
+
+.picker-hub-tip::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  width: 8px;
+  height: 8px;
+  background: var(--ks-lacquer-raised);
+  border-right: 1px solid var(--ks-rule);
+  border-bottom: 1px solid var(--ks-rule);
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.picker-hub-card[data-tip-at="below"] .picker-hub-tip {
+  top: calc(100% + 10px);
+  bottom: auto;
+  transform: translateY(-3px);
+}
+
+.picker-hub-card[data-tip-at="below"] .picker-hub-tip::after {
+  top: -5px;
+  bottom: auto;
+  border: 0;
+  border-left: 1px solid var(--ks-rule);
+  border-top: 1px solid var(--ks-rule);
+}
+
+.picker-hub-card:not(.is-skipped):is(:hover, :focus-within) .picker-hub-tip {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .picker-hub-tip,
+  .picker-hub-tab {
+    transition: none;
+  }
 }
 
 /* A question no chosen surface takes: present so the menu keeps its
