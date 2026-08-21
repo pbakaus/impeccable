@@ -1,0 +1,138 @@
+---
+/*
+  One question, one artboard: the shape screens 03 onward all share. A screen
+  that only remaps artboard slots needs nothing of its own here, so it arrives
+  as data and its design lives in its own stylesheet.
+*/
+import Artboard from './Artboard.astro';
+import { SURFACE_ANSWERS, surfacesAsked, surfaceTabsAttrs } from '../data/surfaces.js';
+
+interface Option {
+  value: string;
+  title: string;
+  desc: string;
+  /* The sentence that stands in for the description on a surface this option
+     does not suit. Present only on options some surface rules out. */
+  blocked?: string;
+}
+
+/* A screen whose answer reads differently on each surface draws a board per
+   surface instead of repainting one, the arrangement the font screen already
+   uses. `class` is the modifier that board's own scene keys on. */
+interface Board {
+  surface: 'persuade' | 'operate' | 'read' | 'experience';
+  class?: string;
+  cell?: string;
+}
+
+interface Props {
+  id: string;
+  step: string;
+  slug: string;
+  name: string;
+  title: string;
+  legend: string;
+  cta: string;
+  options: Option[];
+  previewClass: string;
+  phone?: boolean;
+  boards?: Board[];
+  derived?: boolean;
+}
+
+const { id, step, slug, name, title, legend, cta, options, previewClass, phone = true, boards, derived = false } = Astro.props;
+const titleId = `picker-${slug}-title`;
+const artboardClass = phone ? previewClass : `${previewClass} picker-artboard--solo`;
+// A question listed in the matrix is answered once per chosen surface, which
+// buys it a tab strip on the frame and a field per surface to answer into.
+// Everything else about the screen is unchanged by opting in.
+const perSurface = SURFACE_ANSWERS[name];
+// Only the surfaces the question is put to. A surface with no field here is a
+// surface that was never asked, and that absence is the whole of how the script
+// and the final document know it.
+const asked = perSurface ? surfacesAsked(name) : [];
+const tabsAttrs = perSurface ? surfaceTabsAttrs(name) : null;
+---
+
+<section class="picker-screen" data-screen={id} data-step={step} aria-hidden="true" aria-labelledby={titleId}>
+  <div class="picker-container">
+    <div class="picker-strategy" data-question={slug}>
+      <h2 id={titleId} class="picker-question-title">{title}</h2>
+
+      <div class="picker-strategy-grid">
+        <div class="picker-type-rail">
+          <fieldset
+            class="picker-strategy-options picker-strategy-choices picker-type-options"
+            style={`--pk-choices:${options.length}`}
+          >
+            <legend>{legend}</legend>
+
+            {options.map((option, index) => (
+              <label class="picker-strategy-option" data-blocked-reason={option.blocked}>
+                <input type="radio" name={name} value={option.value} checked={index === 0} />
+                <span class="picker-strategy-copy">
+                  <span class="picker-strategy-title">{option.title}</span>
+                  <span class="picker-strategy-desc">{option.desc}</span>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+
+          {/* One field per surface, disabled until its tile is chosen, so a
+              surface nobody asked for stays out of the answers and a surface
+              nobody opened still leaves one. A flat question keeps the same
+              fields for the same reading and withholds the name, which is the
+              whole of what a form submits. */}
+          {asked.map((mode) => (
+            <input
+              type="hidden"
+              data-surface-field={`${name}-${mode}`}
+              name={perSurface.flat ? undefined : `${name}-${mode}`}
+              disabled
+            />
+          ))}
+        </div>
+
+      {boards || tabsAttrs ? (
+        /* All of them mounted and one shown, so a tab switch costs a hidden
+           attribute rather than a rebuild. The stage is the box the strip takes
+           its row on, above the frame, which is why a screen with one board and
+           a strip is wrapped in it too. */
+        <div class="picker-board-stage" data-surface-stage={derived ? '' : undefined}>
+          {tabsAttrs && <div class="picker-surface-tabs" {...tabsAttrs} hidden></div>}
+          {(boards ?? [{} as Board]).map((board) => (
+            <Artboard
+              class={[artboardClass, board.class].filter(Boolean).join(' ')}
+              surface={board.surface}
+              motionCell={board.cell}
+              phone={phone}
+              cursor={slug === 'motion'}
+              carry={slug !== 'motion'}
+              portfolioExtras={slug === 'layout'}
+            />
+          ))}
+        </div>
+      ) : (
+        <Artboard
+          class={artboardClass}
+          phone={phone}
+          cursor={slug === 'motion'}
+          carry={slug !== 'motion'}
+        />
+      )}
+      </div>
+
+      <div class="picker-actions-stack">
+        <button class="ks-button ks-button-primary" type="button" data-advance="next">
+          {cta}
+          <span class="ks-button-arrow" aria-hidden="true">
+            <svg viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square">
+              <path d="M0 4h14M10 0l4 4-4 4"></path>
+            </svg>
+          </span>
+        </button>
+        <button class="picker-back" type="button" data-advance="prev">Back</button>
+      </div>
+    </div>
+  </div>
+</section>

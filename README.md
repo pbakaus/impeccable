@@ -1,6 +1,6 @@
 # Impeccable
 
-Design guidance for AI coding agents. 1 skill, 23 commands, live browser iteration, and 59 deterministic detector rules for AI-generated frontend design.
+Design guidance for AI coding agents. 1 skill, 24 commands, live browser iteration, and 59 deterministic detector rules for AI-generated frontend design.
 
 > **Quick start:** From your project root, run `npx impeccable install`, then run `/impeccable init` inside your AI coding tool. Full docs: [impeccable.style](https://impeccable.style).
 
@@ -12,7 +12,7 @@ Every model trained on the same SaaS templates. Skip the guidance and you get th
 
 Impeccable adds:
 - **One setup flow.** `/impeccable init` writes `PRODUCT.md` and offers `DESIGN.md`, so later commands know the audience, brand/product lane, voice, anti-references, colors, type, and components.
-- **23 commands.** A shared design vocabulary with your AI: `polish`, `audit`, `critique`, `distill`, `animate`, `bolder`, `quieter`, and more.
+- **24 commands.** A shared design vocabulary with your AI: `polish`, `audit`, `critique`, `distill`, `animate`, `bolder`, `quieter`, and more.
 - **59 deterministic detector rules** plus LLM-only critique checks. The CLI and browser extension run the deterministic rules with no LLM and no API key.
 
 ## What's Included
@@ -33,7 +33,7 @@ Start every new project with:
 
 `init` asks whether the surface is brand (marketing, landing, portfolio) or product (app UI, dashboard, tool), then writes design context that every later command reads.
 
-### 23 Commands
+### 24 Commands
 
 All commands are accessed through `/impeccable`:
 
@@ -43,6 +43,7 @@ All commands are accessed through `/impeccable`:
 | `/impeccable init` | One-time setup: gather design context, write PRODUCT.md and DESIGN.md, configure live mode, recommend next steps |
 | `/impeccable document` | Generate root DESIGN.md from existing project code |
 | `/impeccable extract` | Pull reusable components and tokens into the design system |
+| `/impeccable design-context` | Reopen, revise, export, or import the design interview and its design context document |
 | `/impeccable shape` | Plan UX/UI before writing code |
 | `/impeccable critique` | UX design review: hierarchy, clarity, emotional resonance |
 | `/impeccable audit` | Run technical quality checks (a11y, performance, responsive) |

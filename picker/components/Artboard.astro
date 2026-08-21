@@ -1,0 +1,559 @@
+---
+/*
+  The wireframe landing page every option screen previews its answer on. One
+  copy so a change to the page's anatomy lands on every screen at once.
+
+  mode: 'bars' fills the hero with bar stacks, which is what a screen judging
+  color, layout, or depth needs. 'type' swaps them for real text elements and
+  adds the data-type-* hooks the font screen writes specimen copy into; that
+  screen is judging glyphs, so bars would tell it nothing.
+
+  Every body is drawn both ways for the same reason. The slots stay one tree and
+  one set of class names; what changes is whether a slot holds a data-type-*
+  hook or the bars that stand in for the words. Only the font screen's boards are
+  filled, so a hook on any other board would promise copy that never arrives,
+  and a paragraph is a stack of bars rather than one because the block a
+  structural answer acts on is the shape of the passage, not a single line.
+
+  phone: false drops the handset and leaves the desktop artboard alone in the
+  frame, for a screen whose answer only reads at desktop width.
+*/
+interface Props {
+  mode?: 'bars' | 'type';
+  /*
+    Which surface the board draws. The chrome and the frame are shared and only
+    the two bodies change, the same arrangement the four wireframes on the
+    surface question already use, so a change to the nav lands on all of them at
+    once. Named boards are the ones the font screen switches between.
+  */
+  surface?: 'persuade' | 'operate' | 'read' | 'experience';
+  phone?: boolean;
+  class?: string;
+  strategyHook?: boolean;
+  typeHook?: boolean;
+  cursor?: boolean;
+  /*
+    Marks an artboard as one that accumulates the structural answers. The
+    committed layout, boundary, corner, and depth selectors key on it, which is
+    how each screen shows the page as decided so far without those answers
+    reaching back to the screens that came before them.
+  */
+  carry?: boolean;
+  /*
+    The layout screen's boards carry parts no other board draws: the shared
+    alignment-grid component on every desktop and handset body, and on the
+    index a pagination rail for the handset plus the project rail and support
+    row that only the freeform answer places (layout-portfolio.css parks them
+    until it does). The index projects also take the data-project-index and
+    data-project-tone hooks that screen's sheet keys plate placement and
+    image treatment on. Mounted only where asked, because the motion screen
+    reads the same index body through :nth-of-type and an extra sibling would
+    shift its scenes.
+  */
+  portfolioExtras?: boolean;
+  motionCell?: string;
+}
+
+const {
+  mode = 'bars',
+  surface,
+  phone = true,
+  class: className = '',
+  strategyHook = false,
+  typeHook = false,
+  cursor = false,
+  carry = false,
+  portfolioExtras = false,
+  motionCell,
+} = Astro.props;
+const type = mode === 'type';
+const ops = surface === 'operate';
+const docs = surface === 'read';
+const index = surface === 'experience';
+const classes = ['picker-artboard', className].filter(Boolean).join(' ');
+// Empty string renders the bare attribute the font screen's selectors expect;
+// undefined drops it entirely on the other screens.
+const hook = type ? '' : undefined;
+---
+
+<div
+  class={classes}
+  data-artboard=""
+  data-surface={surface}
+  data-motion-cell={motionCell}
+  data-carry={carry ? '' : undefined}
+  data-strategy-preview={strategyHook ? '' : undefined}
+  data-type-preview={typeHook ? '' : undefined}
+  aria-hidden="true"
+>
+  <div class="ps-desktop">
+    {portfolioExtras && <div class="ps-layout-grid" aria-hidden="true"></div>}
+    <div class="ps-nav">
+      <div class="ps-nav-lede">
+        {!type && <i class="ps-menu"></i>}
+        <div class="ps-brand-block" data-type-brand={hook}></div>
+        {!type && <i class="ps-brand-word"></i>}
+      </div>
+      {type ? (
+        <div class="ps-nav-bars"><i data-type-nav></i><i data-type-nav></i><i data-type-nav></i><i data-type-nav></i></div>
+      ) : (
+        <div class="ps-nav-bars"><i></i><i></i><i></i><i></i></div>
+      )}
+      {!type && (
+        <div class="ps-nav-tail">
+          <i class="ps-search"></i>
+          <div class="ps-nav-action" data-type-nav-action={hook}></div>
+          <i class="ps-avatar"></i>
+        </div>
+      )}
+    </div>
+    {ops ? (
+      <div class="ps-ops">
+        {/* The rail is where a tool keeps its navigation, so it carries the
+            longest run of micro labels on any board. The open one is a filled
+            plate rather than a recolor: a selection is a state, not a word. */}
+        <div class="ps-ops-rail">
+          {[0, 1, 2].map((n) => (
+            <span class:list={['ps-ops-item', n === 1 && 'ps-ops-item--on']}>
+              <i></i><b data-type-rail={hook}></b>
+            </span>
+          ))}
+        </div>
+        <div class="ps-ops-main">
+          <strong class="ps-ops-title" data-type-section-title={hook}></strong>
+          <div class="ps-ops-metrics">
+            {[0, 1, 2].map(() => (
+              <span class="ps-ops-metric">
+                <b data-type-figure={hook}></b>
+                <span data-type-proof={hook}></span>
+              </span>
+            ))}
+          </div>
+          {/* A chart is the one thing a dashboard has that no other surface
+              does, and it sets two kinds of text a pair has to be judged on
+              together: a heading over a plot, and a row of category labels
+              sitting under it at the smallest step on the board. The bars
+              themselves stay schematic, drawn as a share of the plot rather
+              than from numbers, because what is being chosen here is a pair
+              and not a reading of the data. */}
+          <div class="ps-ops-chart">
+            <b class="ps-ops-chart-title" data-type-chart-title={hook}></b>
+            <div class="ps-ops-plot">
+              {[46, 66, 100, 58, 44].map((h, n) => (
+                <i class:list={[n === 2 && 'ps-ops-bar--lead']} style={`--h: ${h}%`}></i>
+              ))}
+            </div>
+            <div class="ps-ops-lanes">
+              {[0, 1, 2, 3, 4].map(() => <b data-type-lane={hook}></b>)}
+            </div>
+          </div>
+          <div class="ps-ops-table">
+            <span class="ps-ops-row ps-ops-row--head">
+              <i></i>
+              <b data-type-column={hook}></b><b data-type-column={hook}></b><b data-type-column={hook}></b>
+            </span>
+            {[0, 1, 2].map((n) => (
+              <span class:list={['ps-ops-row', n === 1 && 'ps-ops-row--on']}>
+                <i></i>
+                <b data-type-gallery-title={hook}></b>
+                <b data-type-gallery-meta={hook}></b>
+                <b data-type-amount={hook}></b>
+              </span>
+            ))}
+          </div>
+        </div>
+        <div class="ps-ops-panel">
+          <b class="ps-ops-panel-title" data-type-panel={hook}></b>
+          <span class="ps-ops-field"><b data-type-panel={hook}></b><i class="ps-ops-chev"></i></span>
+          {[0, 1].map((n) => (
+            <span class="ps-ops-switch">
+              <b data-type-switch={hook}></b>
+              <i class:list={['ps-ops-toggle', n === 0 && 'ps-ops-toggle--on']}></i>
+            </span>
+          ))}
+        </div>
+      </div>
+    ) : docs ? (
+      <div class="ps-docs">
+        {/* The rail names sections of one document rather than pages of a site,
+            which is why it cannot take the nav's words: the two would read as
+            the same list drawn twice. */}
+        <div class="ps-docs-rail">
+          {[0, 1, 2, 3].map((n) => (
+            <span class:list={['ps-docs-item', n === 1 && 'ps-docs-item--on']}>
+              <i></i><b data-type-rail={hook}></b>
+            </span>
+          ))}
+        </div>
+        {/* Two heading levels and the passages between them. A documentation
+            page is the one surface where the relationship between a page title
+            and the heading under it is visible at a glance, so the board shows
+            both rather than the single heading the drawing carries. */}
+        <div class="ps-docs-main">
+          <h2 class="pt-headline" data-type-headline={hook}>{!type && <Fragment><i></i><i></i></Fragment>}</h2>
+          <p class="ps-docs-lede" data-type-body={hook}>{!type && [0, 1].map(() => <i></i>)}</p>
+          <strong class="ps-docs-sub" data-type-section-title={hook}></strong>
+          <p class="ps-docs-para" data-type-passage={hook}>{!type && [0, 1, 2].map(() => <i></i>)}</p>
+          <p class="ps-docs-para" data-type-passage={hook}>{!type && [0, 1, 2].map(() => <i></i>)}</p>
+          {/* Prose, a list, and a callout are what a documentation page is
+              made of, and the board carried two of the three. The list is
+              also the only setting here that asks the body face to hold a
+              short ragged line against a marker. */}
+          <ul class="ps-docs-list">
+            {[0, 1].map(() => <li data-type-item={hook}></li>)}
+          </ul>
+          <div class="ps-docs-note">
+            <span class="ps-docs-note-copy">
+              <b data-type-note-label={hook}></b>
+              <span data-type-note-body={hook}>{!type && [0, 1].map(() => <i></i>)}</span>
+            </span>
+          </div>
+        </div>
+      </div>
+    ) : index && !type ? (
+      /* The index as a wireframe, for the screen that judges movement rather
+         than glyphs. Same four bands as the set version below, drawn in bars:
+         a page title, two staggered entries, and the carousel rail. */
+      <div class="ps-index">
+        {portfolioExtras && (
+          <div class="ps-project-rail" aria-hidden="true"><i></i><i></i><i></i></div>
+        )}
+        <i class="ps-index-head"></i>
+        {[0, 1].map((n) => (
+          <div class:list={['ps-index-row', n === 1 && 'ps-index-row--flip']}>
+            <div
+              class="ps-image"
+              data-project-index={portfolioExtras ? String(n + 1) : undefined}
+              data-project-tone={portfolioExtras ? (n === 0 ? 'green' : 'light') : undefined}
+            ></div>
+            <div class="ps-index-cap">
+              <i class="ps-index-name"></i>
+              <i class="ps-index-tag"></i>
+              <span class="ps-index-lines"><b></b><b></b></span>
+            </div>
+          </div>
+        ))}
+        {portfolioExtras && (
+          <div class="ps-support" aria-hidden="true">
+            <div class="ps-image ps-support-image" data-project-tone="light"></div>
+            <span class="ps-support-meta"><i></i><i></i><i></i></span>
+          </div>
+        )}
+        <div class="ps-index-rail">
+          <i class="ps-index-arrow"></i>
+          <div class="ps-index-track">
+            {[0, 1, 2, 3].map((n) => (
+              <b class:list={[n === 0 && 'ps-index-stop--on']}></b>
+            ))}
+          </div>
+          <i class="ps-index-arrow ps-index-arrow--next"></i>
+        </div>
+      </div>
+    ) : index ? (
+      <div class="ps-index">
+        {/* The page title the drawing has no room for, over the two staggered
+            entries it draws. The second entry is what the handset shows too,
+            and it is the one that proves the caption ladder repeats: a pair set
+            on an index is read down a run of entries rather than at one of
+            them. Alternating the plate keeps the run from collapsing into a
+            single column at a width that has room for two. */}
+        <h2 class="pt-headline" data-type-headline></h2>
+        {[0, 1].map((n) => (
+          <div class:list={['ps-index-row', n === 1 && 'ps-index-row--flip']}>
+            <div class="ps-image"></div>
+            <div class="ps-index-cap">
+              <i class="ps-index-avatar" aria-hidden="true"></i>
+              <strong class="ps-index-title" data-type-gallery-title></strong>
+              <span class="ps-index-meta" data-type-gallery-meta></span>
+              <span class="ps-index-note" data-type-caption></span>
+            </div>
+          </div>
+        ))}
+        {/* The chevrons stay shapes because an arrow is not a word. The track's
+            segments are, so they are set: a carousel's stops are named. */}
+        <div class="ps-index-rail">
+          <i class="ps-index-arrow"></i>
+          <div class="ps-index-track">
+            {[0, 1, 2, 3].map((n) => (
+              <b class:list={[n === 0 && 'ps-index-stop--on']} data-type-stop></b>
+            ))}
+          </div>
+          <i class="ps-index-arrow ps-index-arrow--next"></i>
+        </div>
+      </div>
+    ) : (
+    <Fragment>
+    <div class="ps-hero">
+      <div class="ps-hero-copy">
+        {type ? (
+          <Fragment>
+            <h2 class="pt-headline" data-type-headline></h2>
+            <p class="pt-body" data-type-body></p>
+            <div class="ps-actions"><i data-type-cta-primary></i><i data-type-cta-secondary></i></div>
+          </Fragment>
+        ) : (
+          <Fragment>
+            <div class="ps-eyebrow"></div>
+            <div class="ps-headline"><i></i><i></i></div>
+            <div class="ps-copy"><i></i><i></i><i></i></div>
+            <div class="ps-actions"><i></i><i></i></div>
+          </Fragment>
+        )}
+      </div>
+      <div class="ps-image"></div>
+    </div>
+    <div class="ps-proof">
+      {[0, 1, 2, 3].map((n) => (
+        <Fragment>
+          {n > 0 && <i class="ps-proof-divider" aria-hidden="true"></i>}
+          <div class="ps-proof-item">
+            <i></i>
+            {type
+              ? <span data-type-proof></span>
+              : <span class="ps-proof-lines"><b></b><b></b></span>}
+          </div>
+        </Fragment>
+      ))}
+    </div>
+    <div class="ps-layout-editorial-spacer" data-layout-editorial-spacer aria-hidden="true"></div>
+    <div class="ps-editorial">
+      <div class="ps-editorial-copy">
+        <strong data-type-section-title={hook}></strong>
+        {type
+          ? <p class="pt-section-body" data-type-section-body></p>
+          : <span><i></i><i></i></span>}
+        <em data-type-section-link={hook}></em>
+      </div>
+      {/* Three cards once the labels are words, four while they are bars. The
+          type board sets three because a fourth column leaves the copy beside
+          it under the width the widest pairing needs, and the preview copy is
+          written to that count: a fourth card here would draw a picture with
+          no caption under it. The bar composition is measured at four by the
+          layout screens, so it keeps them. */}
+      <div class="ps-gallery">
+        {(type ? [0, 1, 2] : [0, 1, 2, 3]).map(() => (
+          <div class="ps-gallery-item">
+            <i></i>
+            {type
+              ? <span><b data-type-gallery-caption></b></span>
+              : <span><b></b><b></b><b></b></span>}
+          </div>
+        ))}
+      </div>
+    </div>
+    </Fragment>
+    )}
+    <div class="ps-footer">
+      {type ? (
+        <div class="ps-footer-links"><i data-type-footer-link></i><i data-type-footer-link></i><i data-type-footer-link></i><i data-type-footer-link></i></div>
+      ) : (
+        <div class="ps-footer-links"><i></i><i></i><i></i><i></i></div>
+      )}
+      <div class="ps-footer-mark" data-type-footer-mark={hook}></div>
+    </div>
+    {/*
+      Off-grid marks, drawn only where the page has already left the field:
+      opacity rides --pvs-drift, so on the disciplined answers they are
+      rendered and invisible and the answers that pay for them are the ones
+      that asked. Absolute, so the desktop grid still has exactly its five
+      declared rows.
+    */}
+    {!type && (
+      <Fragment>
+        <i class="ps-scatter ps-scatter--lead" aria-hidden="true"></i>
+        <i class="ps-scatter ps-scatter--trail" aria-hidden="true"></i>
+      </Fragment>
+    )}
+    {cursor && <i class="ps-cursor" data-cursor aria-hidden="true"></i>}
+  </div>
+
+  {phone && (
+    <div class="ps-phone">
+      <div class="ps-phone-top">
+        <div class="ps-nav-lede">
+          <div class="ps-brand-block" data-type-brand={hook}></div>
+          {!type && <i class="ps-brand-word"></i>}
+        </div>
+        {!type && (
+          <div class="ps-nav-tail">
+            <div class="ps-nav-action" data-type-menu-action={hook}></div>
+            <i class="ps-menu"></i>
+          </div>
+        )}
+      </div>
+      {ops ? (
+      <div class="ps-phone-body">
+        <strong class="ps-ops-title" data-type-section-title={hook}></strong>
+        <span class="ps-ops-metric">
+          <b data-type-figure={hook}></b>
+          <span data-type-proof={hook}></span>
+        </span>
+        {/* Three lanes rather than five. The handset keeps the leading one, so
+            the emphasis stays on the same lane the desktop board marks, and it
+            drops the tail: five labels at this width would either collide or
+            be set under the floor this preview is allowed to reach. */}
+        <div class="ps-ops-chart">
+          <b class="ps-ops-chart-title" data-type-chart-title={hook}></b>
+          <div class="ps-ops-plot">
+            {[52, 74, 100].map((h, n) => (
+              <i class:list={[n === 2 && 'ps-ops-bar--lead']} style={`--h: ${h}%`}></i>
+            ))}
+          </div>
+          <div class="ps-ops-lanes">
+            {[0, 1, 2].map(() => <b data-type-lane={hook}></b>)}
+          </div>
+        </div>
+        {/* The table has nowhere to put four columns at this width, so it
+            collapses to the two cells that carry the row: what it is and what
+            it comes to. */}
+        <div class="ps-ops-table">
+          {[0, 1, 2].map((n) => (
+            <span class:list={['ps-ops-row', n === 1 && 'ps-ops-row--on']}>
+              <i></i>
+              <b data-type-gallery-title={hook}></b>
+              <b data-type-amount={hook}></b>
+            </span>
+          ))}
+        </div>
+        <div class="ps-ops-panel">
+          {[0, 1].map((n) => (
+            <span class="ps-ops-switch">
+              <b data-type-switch={hook}></b>
+              <i class:list={['ps-ops-toggle', n === 0 && 'ps-ops-toggle--on']}></i>
+            </span>
+          ))}
+        </div>
+      </div>
+      ) : docs ? (
+      <div class="ps-phone-body">
+        {/* The crumb is the drawing's, and it is a phone element there because
+            the rail it stands in for has nowhere to go at this width. */}
+        <span class="ps-docs-crumb" data-type-crumb={hook}></span>
+        <h2 class="pt-headline" data-type-headline={hook}>{!type && <Fragment><i></i><i></i></Fragment>}</h2>
+        <p class="ps-docs-lede" data-type-body={hook}>{!type && [0, 1].map(() => <i></i>)}</p>
+        <strong class="ps-docs-sub" data-type-section-title={hook}></strong>
+        <p class="ps-docs-para" data-type-passage={hook}>{!type && [0, 1, 2].map(() => <i></i>)}</p>
+        <ul class="ps-docs-list">
+          {[0, 1].map(() => <li data-type-item={hook}></li>)}
+        </ul>
+        <div class="ps-docs-note">
+          <span class="ps-docs-note-copy">
+            <b data-type-note-label={hook}></b>
+            <span data-type-note-body={hook}>{!type && [0, 1].map(() => <i></i>)}</span>
+          </span>
+        </div>
+      </div>
+      ) : index ? (
+      <div class="ps-phone-body">
+        {/* No page title here. At this width the display step would take the
+            card, and what a handset shows of an index is the work. */}
+        {portfolioExtras && (
+          <div class="ps-phone-project-rail" aria-hidden="true"><i></i><i></i><i></i></div>
+        )}
+        {portfolioExtras && <div class="ps-layout-grid" aria-hidden="true"></div>}
+        {[0, 1].map((n) => (
+          <Fragment>
+            <div
+              class="ps-image"
+              data-project-index={portfolioExtras ? String(n + 1) : undefined}
+              data-project-tone={portfolioExtras ? (n === 0 ? 'green' : 'light') : undefined}
+            ></div>
+            <div
+              class="ps-index-cap"
+              data-project-index={portfolioExtras ? String(n + 1) : undefined}
+            >
+              {type ? (
+                <Fragment>
+                  <i class="ps-index-avatar" aria-hidden="true"></i>
+                  <strong class="ps-index-title" data-type-gallery-title></strong>
+                  <span class="ps-index-meta" data-type-gallery-meta></span>
+                  <span class="ps-index-note" data-type-caption></span>
+                </Fragment>
+              ) : (
+                <Fragment>
+                  <i class="ps-index-name"></i>
+                  <i class="ps-index-tag"></i>
+                  <span class="ps-index-lines"><b></b><b></b></span>
+                </Fragment>
+              )}
+            </div>
+          </Fragment>
+        ))}
+        {portfolioExtras && (
+          <Fragment>
+            <div class="ps-support ps-phone-support" aria-hidden="true">
+              <div class="ps-image ps-support-image" data-project-tone="light"></div>
+              <span class="ps-support-meta"><i></i><i></i><i></i></span>
+            </div>
+            {/* The desktop pagination rail restated at the foot of the stack. */}
+            <div class="ps-index-rail ps-phone-pagination">
+              <i class="ps-index-arrow"></i>
+              <div class="ps-index-track">
+                {[0, 1, 2, 3].map((n) => (
+                  <b class:list={[n === 0 && 'ps-index-stop--on']}></b>
+                ))}
+              </div>
+              <i class="ps-index-arrow ps-index-arrow--next"></i>
+            </div>
+          </Fragment>
+        )}
+      </div>
+      ) : (
+      <div class="ps-phone-body">
+        {portfolioExtras && <div class="ps-layout-grid" aria-hidden="true"></div>}
+        <div class="ps-image"></div>
+        {type ? (
+          <Fragment>
+            <h2 class="pt-headline" data-type-headline></h2>
+            <p class="pt-body" data-type-body></p>
+          </Fragment>
+        ) : (
+          <Fragment>
+            <div class="ps-headline"><i></i><i></i></div>
+            <div class="ps-copy"><i></i><i></i></div>
+          </Fragment>
+        )}
+        <div class="ps-actions">
+          <i data-type-cta-primary={hook}></i><i data-type-cta-secondary={hook}></i>
+        </div>
+        <div class="ps-proof">
+          {[0, 1].map((n) => (
+            <Fragment>
+              {n > 0 && <i class="ps-proof-divider" aria-hidden="true"></i>}
+              <div class="ps-proof-item">
+                <i></i>
+                {type
+                  ? <span data-type-proof></span>
+                  : <span class="ps-proof-lines"><b></b><b></b></span>}
+              </div>
+            </Fragment>
+          ))}
+        </div>
+        <div class="ps-editorial-copy">
+          <strong data-type-section-title={hook}></strong>
+          {type
+            ? <p class="pt-section-body" data-type-section-body></p>
+            : <span><i></i><i></i></span>}
+        </div>
+        <div class="ps-gallery">
+          {[0, 1].map(() => (
+            <div class="ps-gallery-item">
+              <i></i>
+              {type
+                ? <span><b data-type-gallery-caption></b></span>
+                : <span><b></b><b></b></span>}
+            </div>
+          ))}
+        </div>
+      </div>
+      )}
+      {!type && (
+        <div class="ps-phone-footer">
+          <Fragment><i></i><i></i><i></i></Fragment>
+        </div>
+      )}
+    </div>
+  )}
+
+  <slot />
+</div>

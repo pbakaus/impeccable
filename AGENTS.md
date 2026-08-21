@@ -64,6 +64,8 @@ TDD order is non-negotiable:
 5. Add two adapters that wrap the pure check: `checkElementXxxDOM(el)` for the browser (`getComputedStyle` + `getBoundingClientRect`) and `checkElementXxx(el, tag, window)` for jsdom (`parseFloat(style.width)` instead of layout). Wire **both** adapters into **both** element loops in `cli/engine/detect-antipatterns.mjs` (browser loop ~line 1837, jsdom loop in `detectHtml` ~line 2058). Forgetting one is the most common mistake.
 6. Verify on a live page at `http://localhost:4321/fixtures/antipatterns/{rule-id}.html` and on the homepage. The two adapter paths can disagree.
 
+To scan the browser questionnaire, use `node cli/bin/cli.js detect skill/scripts/picker/` after `bun run build:picker`. Name the directory, never `index.html` on its own: the page links its stylesheet, so a page-only scan reads none of the picker's CSS. The baseline and the reason each accepted finding stands are in CLAUDE.md's **Picker anti-pattern gate**.
+
 Conventions: wrap the identifying heading text in straight double quotes inside snippets so the fixture test can extract it. jsdom-specific helpers `resolveBackground()`, `resolveGradientStops()`, and `parseGradientColors()` exist because `background:` shorthand isn't decomposed and computed colors aren't normalized in jsdom — use them. Reference rules to copy from: `side-tab` (border), `low-contrast` (color+gradient), `icon-tile-stack` (sibling relationship), `flat-type-hierarchy` (page-level).
 
 ## Commit & Pull Request Guidelines

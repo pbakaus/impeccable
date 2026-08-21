@@ -1,0 +1,172 @@
+/* ============================================================
+   Screen 10: depth style.
+
+   How far off the page an element sits. Boundaries fills section grounds;
+   this file lifts individual elements, and the two answers compose instead
+   of arguing.
+
+   Every answer here is a cast shadow. They go in the --pvs-shadow-* slots and
+   need something solid under them, which is why the block at the bottom moves
+   the card's lift onto the picture inside it wherever the boundary answer left
+   the card transparent: a shadow around an invisible rectangle reads as a bug.
+
+   Shadows are sized for the artboard rather than for a real page. The frame
+   is about a third of browser width, so a blur that would read as gentle at
+   full size disappears here; the offsets and blurs below are already scaled.
+
+   They are also black rather than mixed from the artboard's ink. Ink follows
+   the ground, so on a drenched page an ink shadow turns pale and the lift
+   comes out as a glow. Light falls the same way whatever color the page is.
+   ============================================================ */
+
+/* ── Flat ────────────────────────────────────────────────────
+   One plane. Nothing casts. */
+#picker-form:has(.picker-strategy-option:hover input[name="depth-style"][value="flat"]) .picker-preview-depth,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="depth-style"])):has(input[name="depth-style"][value="flat"]:checked)) [data-carry] {
+  --pvs-shadow-chrome: none;
+  --pvs-shadow-card: none;
+  --pvs-shadow-control: none;
+  --pvs-shadow-surface: none;
+}
+
+/* ── Soft lift ───────────────────────────────────────────────
+   Cards and controls come off the page by a millimetre. Two shadows on the
+   cards: a tight one for the contact edge, a wider one for the ambient. */
+#picker-form:has(.picker-strategy-option:hover input[name="depth-style"][value="soft-lift"]) .picker-preview-depth,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="depth-style"])):has(input[name="depth-style"][value="soft-lift"]:checked)) [data-carry] {
+  --pvs-shadow-chrome: 0 1px 2px rgb(0 0 0 / 0.1);
+  --pvs-shadow-card:
+    0 1px 1px rgb(0 0 0 / 0.15),
+    0 3px 7px rgb(0 0 0 / 0.14);
+  --pvs-shadow-control: 0 1px 2px rgb(0 0 0 / 0.24);
+  --pvs-shadow-surface: 0 2px 5px rgb(0 0 0 / 0.14);
+}
+
+/* ── Floating ────────────────────────────────────────────────
+   A clear gap between the panels and the page. Offsets grow faster than
+   blurs, so the lift reads as height rather than as fog. */
+#picker-form:has(.picker-strategy-option:hover input[name="depth-style"][value="floating"]) .picker-preview-depth,
+:where(#picker-form:not(:has(.picker-strategy-option:hover input[name="depth-style"])):has(input[name="depth-style"][value="floating"]:checked)) [data-carry] {
+  --pvs-shadow-chrome: 0 2px 6px rgb(0 0 0 / 0.16);
+  --pvs-shadow-card:
+    0 2px 3px rgb(0 0 0 / 0.2),
+    0 9px 18px rgb(0 0 0 / 0.24);
+  --pvs-shadow-control: 0 3px 6px rgb(0 0 0 / 0.32);
+  --pvs-shadow-surface: 0 6px 14px rgb(0 0 0 / 0.22);
+}
+
+/* ── Where a cast shadow is allowed to land ──────────────────
+   Only off something solid. Under the two boundary answers that give the
+   card and the proof band a ground, the section itself lifts. Under the two
+   that leave them transparent, the lift moves inward to the picture, which
+   is the only part of the card that is a surface in its own right. */
+#picker-form:has(input[name="boundary-style"][value="cards-and-panels"]:checked) [data-carry] :is(.ps-gallery-item, .ps-desktop > .ps-proof),
+#picker-form:has(input[name="boundary-style"][value="surface-changes"]:checked) [data-carry] .ps-desktop > .ps-proof {
+  box-shadow: var(--pvs-shadow-card);
+}
+
+#picker-form:not(:has(input[name="boundary-style"][value="cards-and-panels"]:checked)) [data-carry] .ps-gallery-item {
+  box-shadow: none;
+}
+
+#picker-form:not(:has(input[name="boundary-style"][value="cards-and-panels"]:checked)) [data-carry] .ps-gallery-item > i {
+  box-shadow: var(--pvs-shadow-card);
+}
+
+/* Chrome is a ground only under the surface answer, so that is the only one
+   where the bar at the top of the page casts. The footers are left out: a
+   footer's shadow would fall out of the frame and be clipped away, so the
+   only trace of it would be a hard line. */
+#picker-form:not(:has(input[name="boundary-style"][value="surface-changes"]:checked)) [data-carry] :is(.ps-nav, .ps-phone-top) {
+  box-shadow: none;
+}
+
+/* ── The same rule, on the three region bodies ────────────────
+   Each part is asked the same question the card above was: does the boundary
+   answer leave a ground under it. The answer differs part by part, because a
+   shell's regions, a document's callout, and an index's alternating band are
+   each filled by a different one of the four answers.
+
+   A rail and a document's rail take a ground only where sections are told apart
+   by tone, so that is the only answer they lift under. The side panel is filled
+   by that answer and by the card answer, so it lifts under both. */
+#picker-form:not(:has(input[name="boundary-style"][value="surface-changes"]:checked)) [data-carry] :is(.ps-ops-rail, .ps-docs-rail) {
+  box-shadow: none;
+}
+
+#picker-form:not(:has(input[name="boundary-style"][value="surface-changes"]:checked)):not(:has(input[name="boundary-style"][value="cards-and-panels"]:checked)) [data-carry] .ps-ops-panel {
+  box-shadow: none;
+}
+
+/* The chart and the table are containers only under the card answer. Under the
+   others the lift moves inward to the plot's bars, which are the one part of a
+   chart that is a surface in its own right, exactly as the landing page's card
+   hands its lift to the picture inside it. */
+#picker-form:not(:has(input[name="boundary-style"][value="cards-and-panels"]:checked)) [data-carry] :is(.ps-ops-chart, .ps-ops-table) {
+  box-shadow: none;
+}
+
+#picker-form:not(:has(input[name="boundary-style"][value="cards-and-panels"]:checked)) [data-carry] .ps-ops-plot > i {
+  box-shadow: var(--pvs-shadow-card);
+}
+
+/* The callout and the index's second entry are both filled by the tone answer
+   alone, so both are held to it. */
+#picker-form:not(:has(input[name="boundary-style"][value="surface-changes"]:checked)) [data-carry] .ps-docs-note {
+  box-shadow: none;
+}
+
+#picker-form:has(input[name="boundary-style"][value="surface-changes"]:checked) [data-carry] .ps-index-row--flip {
+  box-shadow: var(--pvs-shadow-card);
+}
+
+/* Depth additions on derived clones. Flat is the base; the other answers
+   lift only solid, meaningful objects. Ported from the gallery derived
+   sheet; shadow alphas stay literal because they are shadows, not palette
+   roles. */
+#picker-form:has(.picker-strategy-option:hover input[name="depth-style"][value="flat"]) .picker-screen[data-screen="10"] .picker-board-stage,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="depth-style"])):has(input[name="depth-style"][value="flat"]:checked) .picker-screen[data-screen="10"] .picker-board-stage { --derived-shadow-chrome: none; --derived-shadow-card: none; --derived-shadow-control: none; --derived-shadow-surface: none; }
+#picker-form:has(.picker-strategy-option:hover input[name="depth-style"][value="soft-lift"]) .picker-screen[data-screen="10"] .picker-board-stage,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="depth-style"])):has(input[name="depth-style"][value="soft-lift"]:checked) .picker-screen[data-screen="10"] .picker-board-stage { --derived-shadow-chrome: 0 1px 2px rgb(0 0 0 / 0.08); --derived-shadow-card: 0 2px 4px rgb(0 0 0 / 0.1); --derived-shadow-control: 0 1px 2px rgb(0 0 0 / 0.1); --derived-shadow-surface: 0 2px 4px rgb(0 0 0 / 0.1); }
+#picker-form:has(.picker-strategy-option:hover input[name="depth-style"][value="floating"]) .picker-screen[data-screen="10"] .picker-board-stage,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="depth-style"])):has(input[name="depth-style"][value="floating"]:checked) .picker-screen[data-screen="10"] .picker-board-stage { --derived-shadow-chrome: 0 1px 3px rgb(0 0 0 / 0.1); --derived-shadow-card: 0 4px 8px rgb(0 0 0 / 0.14); --derived-shadow-control: 0 2px 4px rgb(0 0 0 / 0.12); --derived-shadow-surface: 0 4px 8px rgb(0 0 0 / 0.14); }
+
+.picker-screen[data-screen="10"] .picker-board-stage > .picker-preview :is(.pv-nav, .pv-phone-top) { box-shadow: var(--derived-shadow-chrome) !important; }
+.picker-screen[data-screen="10"] .picker-board-stage > .picker-preview :is(.pv-pill, .pv-actions i, .po-item--on, .po-field, .po-toggle) { box-shadow: var(--derived-shadow-control) !important; }
+.picker-screen[data-screen="10"] .picker-board-stage > .picker-preview :is(.pv-image, .pv-mini-card, .pd-note) { box-shadow: var(--derived-shadow-card) !important; }
+.picker-screen[data-screen="10"] .picker-board-stage > .picker-preview .pg-cap::before { box-shadow: var(--derived-shadow-card) !important; }
+.picker-screen[data-screen="10"] .picker-board-stage > .picker-preview :is(.po-chart i, .po-side, .po-panel) { box-shadow: var(--derived-shadow-surface) !important; }
+
+/* Depth persuade rides the drenched base, the gallery's baseCellId lock.
+   The role swap has to land before the persuade-specific secondary locks,
+   or the ground stays light and every derived depth cell misses by a mile. */
+.picker-screen[data-screen="10"] .picker-board-stage > .picker-preview[data-surface="persuade"] {
+  --pv-neutral: var(--pkc-primary);
+  --pv-n-ink: var(--pkc-p-ink);
+  --pv-primary: var(--pkc-p-ink);
+  --pv-p-ink: var(--pkc-primary);
+  --pv-p-on-n: var(--pkc-p-ink);
+  --pv-p-on-p: var(--pkc-primary);
+  --pv-t-on-n: var(--pkc-t-on-p);
+  --pv-secondary: var(--pkc-secondary);
+  --pv-tertiary: var(--pkc-tertiary);
+  --pv-bone: color-mix(in oklab, var(--pkc-p-ink) 55%, var(--pkc-primary));
+  --pv-strong: var(--pkc-p-ink);
+  --pv-secondary-wash: color-mix(in oklab, var(--pkc-p-ink) 16%, var(--pkc-primary));
+}
+
+.picker-screen[data-screen="10"] .picker-board-stage > .picker-preview[data-surface="persuade"] .pv-desktop .pv-image {
+  background: linear-gradient(135deg, color-mix(in oklab, var(--pkc-p-ink) 16%, var(--pkc-primary)), color-mix(in oklab, var(--pkc-secondary) 34%, var(--pkc-primary))) !important;
+  border-color: color-mix(in oklab, var(--pkc-secondary) 52%, var(--pkc-primary)) !important;
+}
+
+.picker-screen[data-screen="10"] .picker-board-stage > .picker-preview[data-surface="persuade"] .pv-desktop .pv-image::after { background: var(--pkc-tertiary) !important; }
+
+.picker-screen[data-screen="10"] .picker-board-stage > .picker-preview[data-surface="persuade"] .pv-desktop .pv-actions i:last-child {
+  border-color: color-mix(in oklab, var(--pkc-secondary) 68%, var(--pkc-p-ink)) !important;
+  background: color-mix(in oklab, var(--pkc-secondary) 18%, var(--pkc-primary)) !important;
+}
+
+.picker-screen[data-screen="10"] .picker-board-stage > .picker-preview[data-surface="persuade"] .pv-desktop .pv-nav-bars i:nth-child(2) {
+  background: color-mix(in oklab, var(--pkc-secondary) 72%, var(--pkc-p-ink)) !important;
+}

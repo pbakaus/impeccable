@@ -1,0 +1,2766 @@
+/* ============================================================
+   Design context document — ported from
+   docs/design-context-categorization/design-context.html.
+   The mosaic landing, tile-to-fullscreen morph, sidebar shell,
+   and article vocabulary are the prototype's; only the theme
+   plumbing changed (picker vendors the kinpaku tokens and runs
+   dark-only, so the light remaps and the standalone token copy
+   are gone). Section vars scope to the doc's own roots.
+   ============================================================ */
+.dcx-shell,
+.dcx-expander {
+  --accent:        var(--ks-kinpaku);
+  --accent-hover:  var(--ks-kinpaku-pale);
+  --accent-wash:   oklch(78% 0.12 82 / 0.1);
+  --accent-line:   oklch(78% 0.12 82 / 0.32);
+  --panel-bg:        oklch(11% 0.006 95);
+  --shadow-color:    oklch(0% 0 0 / 0.4);
+
+  --viz-ink:    var(--ks-text);
+  --viz-mist:   oklch(78% 0 0 / 0.3);
+  --viz-accent: var(--ks-kinpaku);
+
+  font-family: var(--ks-font);
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--ks-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+body.is-locked { overflow: hidden; }
+
+/* The document takes the page over: the picker's shell (form, progress,
+   hero art) leaves the flow entirely, and the mosaic becomes the page.
+   The width gate stands down too: the questionnaire needs a wide viewport,
+   but the document has its own stacked layout below 920px. */
+body.dcx-open .picker-shell { display: none; }
+body.dcx-open .picker-width-gate { display: none; }
+body.dcx-open { overflow: hidden; background: linear-gradient(180deg, var(--ks-lacquer), var(--ks-lacquer-deep)); }
+
+.dcx-shell {
+  height: 100svh;
+  max-height: 100svh;
+  overflow: hidden;
+  background: linear-gradient(180deg, var(--ks-lacquer), var(--ks-lacquer-deep));
+}
+
+.dcx-expander code {
+  font-family: var(--ks-mono);
+  font-size: 0.82em;
+  color: var(--ks-code-fg);
+  background: var(--ks-code-bg);
+  border-radius: 3px;
+  padding: 0.14em 0.4em;
+  white-space: nowrap;
+}
+
+/* ============================================================
+   Mosaic landing
+   ============================================================ */
+.dcx-shell {
+  --dcx-gap: clamp(10px, 0.9vw, 14px);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  padding: var(--dcx-gap) clamp(14px, 2vw, 26px) clamp(16px, 2.2vw, 28px);
+}
+
+/* The author display above would defeat the hidden attribute the shell ships
+   with, leaving an invisible 100svh box under the questionnaire. */
+.dcx-shell[hidden] { display: none; }
+
+.dcx-grid {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(18, minmax(0, 1fr));
+  grid-template-rows: repeat(12, minmax(0, 1fr));
+  gap: var(--dcx-gap);
+}
+
+.dcx-tile--product     { grid-column: 1 / 5;   grid-row: 1 / 7;   --vz-delay: -1.1s; }
+.dcx-tile--brand       { grid-column: 5 / 11;  grid-row: 1 / 6;   --vz-delay: -1.9s; }
+.dcx-tile--audience    { grid-column: 11 / 15; grid-row: 1 / 7;   --vz-delay: -0.4s; }
+.dcx-tile--typography  { grid-column: 15 / 19; grid-row: 1 / 6;   --vz-delay: -2.6s; }
+.dcx-tile--color       { grid-column: 5 / 10;  grid-row: 6 / 13;  --vz-delay: -0.7s; }
+.dcx-tile--iconography { grid-column: 1 / 5;   grid-row: 7 / 13;  --vz-delay: -1.3s; }
+.dcx-tile--interface   { grid-column: 10 / 15; grid-row: 7 / 13;  --vz-delay: -1.6s; }
+.dcx-tile--material    { grid-column: 15 / 19; grid-row: 6 / 13;  --vz-delay: -3.2s; }
+
+.dcx-tile {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: clamp(12px, 1.6vw, 24px);
+  min-width: 0;
+  min-height: 0;
+  padding: clamp(18px, 2.2vw, 36px);
+  background: var(--panel-bg);
+  border: 1px solid var(--ks-rule);
+  border-radius: 8px;
+  overflow: hidden;
+  color: var(--ks-champagne);
+  cursor: pointer;
+  text-align: left;
+  isolation: isolate;
+  container-type: inline-size;
+  font-family: inherit;
+  transition:
+    transform 220ms var(--ks-ease),
+    border-color 220ms var(--ks-ease),
+    background 220ms var(--ks-ease);
+}
+
+/* Hover follows the kit's pagination treatment: the surface stays put,
+   only the border (and title) take the accent. */
+.dcx-tile:hover,
+.dcx-tile:focus-visible {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  outline: none;
+}
+
+.dcx-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* Staggered reveal on load — the homepage foundation-grid treatment. */
+.dcx-tile[data-reveal],
+.dcx-badge[data-reveal] {
+  opacity: 0;
+  transform: translateY(30px);
+  transition:
+    opacity 0.8s var(--ks-ease),
+    transform 0.8s var(--ks-ease);
+  transition-delay: var(--reveal-delay, 0s);
+}
+
+.dcx-badge[data-reveal] { transform: translateY(0) scale(0.6); }
+
+.dcx-tile[data-reveal].revealed {
+  opacity: 1;
+  transform: translateY(0);
+  /* Hand hover transforms back to the fast transition once revealed. */
+  transition:
+    transform 220ms var(--ks-ease),
+    border-color 220ms var(--ks-ease),
+    background 220ms var(--ks-ease),
+    opacity 0.8s var(--ks-ease);
+  transition-delay: 0s;
+}
+
+.dcx-badge[data-reveal].revealed {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.dcx-tile-title {
+  position: relative;
+  z-index: 2;
+  margin: 0;
+  font-family: var(--ks-font-display);
+  font-size: clamp(2.3rem, 4.8vw, 4.4rem);
+  font-weight: 100;
+  line-height: 1.02;
+  letter-spacing: 0.01em;
+  color: inherit;
+  text-wrap: balance;
+  transition: color 220ms var(--ks-ease);
+}
+
+.dcx-tile:hover .dcx-tile-title,
+.dcx-tile:focus-visible .dcx-tile-title { color: var(--accent); }
+
+.dcx-tile--typography .dcx-tile-title,
+.dcx-tile--iconography .dcx-tile-title {
+  font-size: min(clamp(2.3rem, 4.8vw, 4.4rem), 20cqw);
+}
+
+/* Center mark on the gutter seam — the bare glyph in kinpaku gold,
+   inset by the same gap the mosaic tiles use. The padding ring is
+   painted page-background so it reads as seam, not as a frame. */
+.dcx-badge {
+  position: relative;
+  z-index: 0;
+  grid-column: 10 / 11;
+  grid-row: 6 / 7;
+  width: clamp(82px, 7vw, 118px);
+  height: clamp(82px, 7vw, 118px);
+  display: grid;
+  place-items: center;
+  align-self: center;
+  justify-self: center;
+  padding: var(--dcx-gap);
+  background: var(--ks-lacquer);
+  /* glyph corner radius (~9% of the box) plus the gap, so the ring hugs the mark */
+  border-radius: calc(9% + var(--dcx-gap));
+  color: var(--ks-kinpaku);
+  pointer-events: none;
+}
+
+.dcx-badge svg { width: 100%; height: 100%; display: block; fill: currentColor; }
+
+/* ============================================================
+   Tile vignettes — foundation-card animation system.
+   The title renders first; the vignette sits below it and scales
+   to fill whatever space the tile has left.
+   ============================================================ */
+.dcx-tile-title { order: 1; }
+
+.dcx-tile-viz {
+  order: 2;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--viz-ink);
+}
+
+.dcx-viz-svg {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+/* Every vignette stroke uses vector-effect: non-scaling-stroke, so the
+   line weight is a fixed pixel value no matter how large the tile lets
+   the SVG scale. One thinness across all eight tiles. */
+.dcx-viz-svg .vz-stroke { stroke-width: 3.5px; }
+.dcx-viz-svg .vz-ghost  { stroke-width: 2.5px; }
+
+@media (max-width: 920px) {
+  .dcx-viz-svg .vz-stroke { stroke-width: 1.5px; }
+  .dcx-viz-svg .vz-ghost  { stroke-width: 1px; }
+}
+
+/* Draw (Typography, Material, Brand, Audience figure).
+   Same draw-breathe / draw-in choreography as the impeccable homepage.
+   The homepage uses stroke-dasharray: 100 in user units, but with
+   vector-effect: non-scaling-stroke Chromium measures dashes in screen
+   pixels, so a fixed 100 chops scaled-up paths into segments. A script
+   sets --pl on each vignette SVG to "100 user units in screen px" and
+   the dash keyframes work from that, giving the exact site animation
+   at any tile size. */
+.anim-draw {
+  stroke-dasharray: var(--pl, 999px);
+  stroke-dashoffset: var(--pl, 999px);
+  animation: draw-breathe 4s ease-in-out var(--vz-delay, 0s) infinite;
+}
+.dcx-tile:hover .anim-draw { animation: draw-in 0.8s var(--ks-ease) forwards; }
+.anim-draw-delay {
+  stroke-dasharray: var(--pl, 999px);
+  stroke-dashoffset: var(--pl, 999px);
+}
+.dcx-tile:hover .anim-draw-delay { animation: draw-in 1s var(--ks-ease) 0.2s forwards; }
+@keyframes draw-breathe {
+  0%, 100% { stroke-dashoffset: var(--pl, 999px); }
+  50% { stroke-dashoffset: calc(var(--pl, 999px) * 0.4); }
+}
+@keyframes draw-in {
+  from { stroke-dashoffset: var(--pl, 999px); }
+  to   { stroke-dashoffset: 0px; }
+}
+
+/* Color venn (breathing pulse, spread on hover) */
+.anim-move-x { animation: pulse-x 3s ease-in-out var(--vz-delay, 0s) infinite; }
+.dcx-tile:hover .anim-move-x { animation: spread-x 0.6s ease-in-out forwards; }
+.anim-move-x-opp { animation: pulse-x-opp 3s ease-in-out var(--vz-delay, 0s) infinite; }
+.dcx-tile:hover .anim-move-x-opp { animation: spread-x-opp 0.6s ease-in-out forwards; }
+.anim-fade-in { opacity: 0; transition: opacity 0.6s ease-in-out; }
+.dcx-tile:hover .anim-fade-in { opacity: 1; }
+@keyframes pulse-x { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(1.5px); } }
+@keyframes pulse-x-opp { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-1.5px); } }
+@keyframes spread-x { from { transform: translateX(0); } to { transform: translateX(4px); } }
+@keyframes spread-x-opp { from { transform: translateX(0); } to { transform: translateX(-4px); } }
+
+/* Interface toggle (gentle drift, full snap on hover) */
+.anim-toggle-move { animation: toggle-drift 3s ease-in-out var(--vz-delay, 0s) infinite; }
+.dcx-tile:hover .anim-toggle-move { animation: toggle-snap 0.35s ease-in-out forwards; }
+@keyframes toggle-drift { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(2px); } }
+@keyframes toggle-snap {
+  from { transform: translateX(0); fill: var(--viz-mist); }
+  to   { transform: translateX(8px); fill: var(--viz-accent); }
+}
+
+/* Product pitch lines (cursor always blinks) */
+.anim-blink { animation: blink-key 1s step-end var(--vz-delay, 0s) infinite; }
+@keyframes blink-key { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+/* Iconography glyph grid. At rest the four glyphs brighten one by one on
+   a shared 4.8s cycle (1.2s apart). Opacity only — scaling the glyphs
+   blurs the strokes into a halo and makes them balloon. Hovering kills
+   the cycle and lights all four with a small stagger. */
+.anim-pop {
+  opacity: 0.35;
+  transition: opacity 0.35s var(--ks-ease);
+  animation: pop-glow 4.8s ease-in-out infinite;
+}
+.anim-pop-1 { transition-delay: 0s;    animation-delay: calc(var(--vz-delay, 0s) + 0s); }
+.anim-pop-2 { transition-delay: 0.07s; animation-delay: calc(var(--vz-delay, 0s) + 1.2s); }
+.anim-pop-3 { transition-delay: 0.14s; animation-delay: calc(var(--vz-delay, 0s) + 2.4s); }
+.anim-pop-4 { transition-delay: 0.21s; animation-delay: calc(var(--vz-delay, 0s) + 3.6s); }
+.dcx-tile:hover .anim-pop { animation: none; opacity: 1; }
+@keyframes pop-glow {
+  0%, 25%, 100% { opacity: 0.35; }
+  10% { opacity: 1; }
+}
+
+/* Audience second figure joins on hover */
+.anim-join { opacity: 0.25; transition: opacity 0.5s var(--ks-ease); }
+.dcx-tile:hover .anim-join { opacity: 1; }
+
+/* Typography: ink-only at rest; gold draws in on hover. */
+.dcx-tile--typography:not(:hover) .anim-join {
+  opacity: 0;
+}
+
+.dcx-tile--typography:not(:hover) :is(.anim-draw, .anim-draw-delay) {
+  animation: none;
+  stroke-dashoffset: var(--pl, 999px);
+}
+
+/* Material: wireframe reads quieter than full ink until hover. */
+.dcx-tile--material .dcx-viz-svg :is(rect, line).vz-stroke {
+  transition: stroke 220ms var(--ks-ease);
+}
+
+.dcx-tile--material:not(:hover) .dcx-viz-svg :is(rect, line).vz-stroke {
+  stroke: var(--viz-mist);
+}
+
+/* ============================================================
+   Expander — tile-to-fullscreen morph
+   ============================================================ */
+.dcx-expander {
+  position: fixed;
+  z-index: 500;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--ks-lacquer);
+  color: var(--ks-text);
+  box-shadow: 0 18px 46px var(--shadow-color);
+  transition:
+    top 520ms var(--ks-ease),
+    left 520ms var(--ks-ease),
+    width 520ms var(--ks-ease),
+    height 520ms var(--ks-ease),
+    border-radius 520ms var(--ks-ease);
+}
+
+.dcx-expander.is-full {
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100svh !important;
+  border-radius: 0;
+}
+
+.dcx-expander-inner {
+  width: 100%;
+  height: 100svh;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 264px minmax(0, 1fr);
+  opacity: 0;
+  transform: translateY(44px);
+  transition: opacity 420ms var(--ks-ease), transform 520ms var(--ks-ease);
+  transition-delay: 260ms;
+}
+
+.dcx-expander.is-ready .dcx-expander-inner { opacity: 1; transform: translateY(0); }
+
+/* ============================================================
+   Expander sidebar — DocsSidebar visual language
+   ============================================================ */
+.dcx-sidebar {
+  min-height: 0;
+  overflow: hidden auto;
+  padding: 26px 22px 32px;
+  border-right: 1px solid var(--ks-rule);
+  background: var(--ks-lacquer-deep);
+  scrollbar-width: thin;
+  scrollbar-color: var(--ks-rule) transparent;
+}
+
+.dcx-sidebar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 28px;
+  color: var(--ks-kinpaku);
+  text-decoration: none;
+}
+
+
+.dcx-sidebar-brand svg { width: 26px; height: 26px; fill: currentColor; flex-shrink: 0; }
+
+.dcx-sidebar-brand-name {
+  font-family: var(--ks-font-display);
+  font-weight: 400;
+  font-size: 1.02rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  line-height: 1;
+  -webkit-font-smoothing: auto;
+}
+
+.dcx-nav-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 10px;
+  padding-left: 14px;
+}
+
+.dcx-nav-list { list-style: none; padding: 0; margin: 0; }
+.dcx-nav-list li { margin: 0; }
+
+.dcx-nav-link {
+  display: block;
+  width: 100%;
+  padding: 5px 0 5px 12px;
+  border: 0;
+  border-left: 2px solid transparent;
+  background: transparent;
+  font-family: var(--ks-font);
+  font-size: 0.94rem;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--ks-text);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 160ms var(--ks-ease), border-color 160ms var(--ks-ease);
+}
+
+.dcx-nav-link:hover,
+.dcx-nav-link:focus-visible { color: var(--accent-hover); outline: none; }
+
+.dcx-nav-link[aria-current="page"] {
+  color: var(--accent);
+  font-weight: 600;
+  border-left-color: var(--accent);
+}
+
+.dcx-subnav { display: none; padding: 2px 0 8px 24px; }
+
+.dcx-nav-list li.is-active .dcx-subnav {
+  display: grid;
+  gap: 2px;
+  animation: subnav-in 180ms var(--ks-ease) both;
+}
+
+@keyframes subnav-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.dcx-sub-link {
+  display: block;
+  width: 100%;
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
+  font-family: var(--ks-font);
+  font-size: 0.85rem;
+  color: var(--ks-text-muted);
+  text-align: left;
+  cursor: pointer;
+  transition: color 160ms var(--ks-ease);
+}
+
+.dcx-sub-link:hover,
+.dcx-sub-link:focus-visible { color: var(--accent-hover); outline: none; }
+
+/* ============================================================
+   Expander topbar + main
+   ============================================================ */
+.dcx-panel {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 64px minmax(0, 1fr);
+}
+
+.dcx-topbar {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 clamp(22px, 4vw, 48px);
+  border-bottom: 1px solid var(--ks-rule);
+}
+
+.dcx-current {
+  min-width: 0;
+  font-family: var(--ks-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ks-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dcx-close {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--ks-rule);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ks-text);
+  cursor: pointer;
+  transition:
+    color 160ms var(--ks-ease),
+    border-color 160ms var(--ks-ease),
+    transform 220ms var(--ks-ease);
+}
+
+.dcx-close:hover,
+.dcx-close:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent-line);
+  transform: rotate(90deg);
+  outline: none;
+}
+
+.dcx-close::before,
+.dcx-close::after {
+  content: "";
+  grid-area: 1 / 1;
+  width: 16px;
+  height: 1.5px;
+  background: currentColor;
+}
+
+.dcx-close::before { transform: rotate(45deg); }
+.dcx-close::after  { transform: rotate(-45deg); }
+
+.dcx-main {
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ks-rule) transparent;
+}
+
+.dcx-main:focus { outline: none; }
+
+/* ============================================================
+   Article
+   ============================================================ */
+/* Wide enough for the questionnaire's own drawings to breathe; running text
+   holds its measure through the caps on lede, defs, and callouts below. */
+.dcx-article {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: clamp(36px, 5vw, 64px) clamp(22px, 4vw, 56px) 110px;
+}
+
+.dcx-eyebrow {
+  display: block;
+  font-family: var(--ks-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 16px;
+}
+
+.dcx-title {
+  margin: 0 0 18px;
+  font-family: var(--ks-font-display);
+  font-weight: 100;
+  font-size: clamp(3rem, 6vw, 5.2rem);
+  line-height: 1.02;
+  letter-spacing: -0.01em;
+  color: var(--ks-kinpaku);
+  text-wrap: balance;
+}
+
+
+.dcx-lede {
+  margin: 0;
+  max-width: 56ch;
+  font-size: 1.08rem;
+  line-height: 1.65;
+  color: var(--ks-text);
+}
+
+.dcx-block { margin-top: clamp(34px, 5vw, 52px); }
+
+.dcx-block-label {
+  display: block;
+  font-family: var(--ks-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ks-text-faint);
+  margin-bottom: 14px;
+}
+
+/* Definition rows: term + description. */
+.dcx-defs { border-top: 1px solid var(--ks-rule); }
+
+.dcx-def {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.44fr) minmax(0, 1fr);
+  gap: 6px 26px;
+  align-items: baseline;
+  padding: 15px 0;
+  border-bottom: 1px solid var(--ks-rule);
+}
+
+.dcx-def dt {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--ks-champagne);
+}
+
+.dcx-def dd {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--ks-text-muted);
+}
+
+/* Chips. */
+.dcx-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.dcx-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 13px;
+  border: 1px solid var(--accent-line);
+  border-radius: 999px;
+  background: var(--accent-wash);
+  color: var(--accent-hover);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+
+.dcx-chip--muted {
+  border-color: var(--ks-rule);
+  background: transparent;
+  color: var(--ks-text-muted);
+}
+
+/* Callout card (north star, named rules). */
+.dcx-callout {
+  padding: clamp(20px, 3vw, 30px);
+  border: 1px solid var(--ks-rule);
+  border-radius: 10px;
+  background: var(--panel-bg);
+}
+
+.dcx-callout + .dcx-callout { margin-top: 12px; }
+
+.dcx-callout-name {
+  margin: 0 0 8px;
+  font-size: 1.02rem;
+  font-weight: 600;
+  color: var(--ks-champagne);
+}
+
+.dcx-callout p:not(.dcx-callout-name) {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  color: var(--ks-text-muted);
+}
+
+.dcx-callout--accent { border-color: var(--accent-line); background: var(--accent-wash); }
+
+/* ============================================================
+   Context enrichment: the success line, paired callouts, the
+   needs/trust columns, the platform pill, reference cards, and
+   the operating-context prose. Each rule exists for a block
+   that renders only when the agent passed the matching context
+   field; every value is a dcx or ks token already in this file.
+   ============================================================ */
+.dcx-callout p.dcx-callout-success {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--ks-rule);
+}
+
+/* Two callouts sharing a row: the emotional journey's arrival and
+   leaving beats, and positioning's not-this / this cells. */
+.dcx-callout-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+  gap: 12px;
+}
+
+/* Two sibling blocks sharing a row (needs beside trust triggers). The
+   children stay real .dcx-block elements so the subnav still finds them. */
+.dcx-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+  gap: 0 clamp(24px, 4vw, 48px);
+  align-items: start;
+}
+
+/* The purpose callout with the platform pill at its shoulder. */
+.dcx-purpose {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+}
+
+.dcx-platform-pill {
+  font-family: var(--ks-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+/* Named references as cards, the .dcx-pick anatomy with a takeaway. */
+.dcx-ref-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+  gap: clamp(14px, 2vw, 22px);
+}
+
+.dcx-ref-cards + .dcx-chips { margin-top: 12px; }
+
+.dcx-ref-card {
+  border: 1px solid var(--ks-rule);
+  background: var(--panel-bg);
+  padding: clamp(18px, 2.5vw, 26px);
+}
+
+.dcx-ref-name {
+  margin: 0 0 8px;
+  font-family: var(--ks-font-display);
+  font-weight: 300;
+  font-size: 1.3rem;
+  color: var(--ks-text);
+}
+
+.dcx-ref-takeaway {
+  margin: 0;
+  color: var(--ks-text-muted);
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+/* Operating context: one paragraph at reading measure. */
+.dcx-prose {
+  margin: 0;
+  max-width: 62ch;
+  color: var(--ks-text-muted);
+  font-size: 0.96rem;
+  line-height: 1.6;
+}
+
+/* Numbered principle list. */
+.dcx-principles {
+  list-style: none;
+  counter-reset: principle;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--ks-rule);
+}
+
+.dcx-principles li {
+  counter-increment: principle;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 20px;
+  align-items: baseline;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--ks-rule);
+  font-size: 0.94rem;
+  line-height: 1.55;
+  color: var(--ks-text-muted);
+}
+
+.dcx-principles li::before {
+  content: counter(principle, decimal-leading-zero);
+  font-family: var(--ks-mono);
+  font-size: 0.78rem;
+  color: var(--accent);
+}
+
+.dcx-principles strong { color: var(--ks-champagne); font-weight: 600; }
+
+/* ============================================================
+   Brand voice and principles: the say / not wording pairs and
+   the two-column principles list. Rendered only when the agent
+   passed brand.voice or brand.principles; every value is a dcx
+   or ks token already in this file.
+   ============================================================ */
+.dcx-voice { display: grid; gap: 12px; }
+
+/* One pair per row: the line to write beside the line to refuse. */
+.dcx-voice-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+  gap: 12px;
+}
+
+.dcx-voice-cell {
+  border: 1px solid var(--ks-rule);
+  background: var(--panel-bg);
+  border-radius: 10px;
+  padding: 14px 18px;
+}
+
+.dcx-voice-cell--say { border-color: var(--accent-line); background: var(--accent-wash); }
+
+.dcx-voice-tag {
+  display: block;
+  margin-bottom: 6px;
+  font-family: var(--ks-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ks-text-faint);
+}
+
+.dcx-voice-cell p {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  color: var(--ks-text-muted);
+}
+
+.dcx-voice-cell--say p { color: var(--ks-text); }
+
+/* The numbered principle anatomy above, folded into two columns. The
+   counters keep DOM order, so the first row reads 01 then 02. */
+.dcx-principles--cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+  gap: 0 clamp(24px, 4vw, 48px);
+}
+
+/* Plain bullet list. */
+.dcx-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 9px;
+}
+
+.dcx-list li {
+  position: relative;
+  padding-left: 20px;
+  font-size: 0.94rem;
+  line-height: 1.55;
+  color: var(--ks-text-muted);
+}
+
+.dcx-list li::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 0.62em;
+  width: 7px;
+  height: 1.5px;
+  background: var(--accent);
+}
+
+.dcx-list strong { color: var(--ks-champagne); font-weight: 600; }
+
+/* Swatch fan (Color) — hover fans up, click copies. */
+.dcx-fan {
+  position: relative;
+  height: clamp(150px, 16vw, 195px);
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: 10px 10px 0 0;
+}
+
+.dcx-fan::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  z-index: 30;
+  height: 1px;
+  background: var(--ks-rule);
+  pointer-events: none;
+}
+
+.dcx-fan-panel {
+  position: absolute;
+  inset-block: 0;
+  left: var(--panel-left);
+  z-index: var(--panel-z);
+  width: var(--panel-width, 40%);
+  border: 0;
+  border-radius: 22px 22px 0 0;
+  padding: 0;
+  background: var(--panel-swatch);
+  box-shadow: inset 0 0 0 1px oklch(78% 0 0 / 0.14);
+  color: var(--panel-ink);
+  cursor: copy;
+  text-align: left;
+  transform: translate3d(0, 58%, 0);
+  transform-origin: 50% 100%;
+  transition:
+    transform 740ms cubic-bezier(0.16, 1, 0.3, 1),
+    filter 460ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+.dcx-fan.is-engaged .dcx-fan-panel { transform: translate3d(0, 54%, 0); }
+.dcx-fan.is-engaged .dcx-fan-panel.is-neighbor { transform: translate3d(0, 48%, 0); }
+
+.dcx-fan.is-engaged .dcx-fan-panel.is-active,
+.dcx-fan-panel:focus-visible,
+.dcx-fan-panel.is-copied {
+  outline: none;
+  filter: saturate(1.04);
+  transform: translate3d(0, 10%, 0) rotate(-0.48deg);
+}
+
+.dcx-fan-info {
+  position: absolute;
+  top: clamp(20px, 2.6vw, 34px);
+  left: clamp(20px, 2.6vw, 34px);
+  right: clamp(20px, 2.6vw, 34px);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 320ms var(--ks-ease), transform 420ms var(--ks-ease);
+  pointer-events: none;
+}
+
+.dcx-fan-panel.is-active .dcx-fan-info,
+.dcx-fan-panel:focus-visible .dcx-fan-info,
+.dcx-fan-panel.is-copied .dcx-fan-info { opacity: 1; transform: translateY(0); }
+
+.dcx-fan-name {
+  margin: 0;
+  font-family: var(--ks-font);
+  font-size: clamp(0.95rem, 1.6vw, 1.3rem);
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.dcx-fan-value {
+  margin: 0;
+  flex: 0 0 auto;
+  font-family: var(--ks-mono);
+  font-size: clamp(0.6rem, 1vw, 0.72rem);
+  letter-spacing: 0.04em;
+  opacity: 0.82;
+}
+
+.dcx-fan-note {
+  margin: 10px 0 0;
+  font-size: 0.8rem;
+  color: var(--ks-text-faint);
+}
+
+/* Type specimen (Typography) — set in the project's real faces. */
+.dcx-specimen {
+  display: grid;
+  gap: 18px;
+  padding: clamp(24px, 3.4vw, 40px);
+  border: 1px solid var(--ks-rule);
+  border-radius: 10px;
+  background: var(--panel-bg);
+}
+
+.dcx-specimen-display {
+  margin: 0;
+  font-family: "Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", Georgia, serif;
+  font-weight: 400;
+  font-size: clamp(2.2rem, 4.6vw, 3.6rem);
+  line-height: 1.15;
+  color: var(--ks-champagne);
+  text-wrap: balance;
+}
+
+.dcx-specimen-body {
+  margin: 0;
+  max-width: 62ch;
+  font-family: "Source Sans 3", system-ui, sans-serif;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--ks-text-muted);
+}
+
+.dcx-specimen-label {
+  margin: 0;
+  font-family: "Source Sans 3", system-ui, sans-serif;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ks-text-faint);
+}
+
+/* Radius samples (Material). */
+.dcx-radius-row { display: flex; flex-wrap: wrap; gap: 18px; }
+
+.dcx-radius-sample { display: grid; gap: 8px; justify-items: center; }
+
+.dcx-radius-box {
+  width: 76px;
+  height: 76px;
+  border: 1.5px solid var(--accent-line);
+  background: var(--accent-wash);
+}
+
+.dcx-radius-caption {
+  font-family: var(--ks-mono);
+  font-size: 0.68rem;
+  color: var(--ks-text-muted);
+}
+
+/* Spacing scale bars (Material). */
+.dcx-space-rows { display: grid; gap: 8px; }
+
+.dcx-space-row {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr) 84px;
+  align-items: center;
+  gap: 14px;
+}
+
+.dcx-space-name,
+.dcx-space-value {
+  font-family: var(--ks-mono);
+  font-size: 0.7rem;
+  color: var(--ks-text-muted);
+}
+
+.dcx-space-value { text-align: right; color: var(--ks-text-faint); }
+
+.dcx-space-bar {
+  height: 12px;
+  width: var(--bar, 20%);
+  min-width: 6px;
+  border-radius: 3px;
+  background: var(--accent-wash);
+  border: 1px solid var(--accent-line);
+}
+
+/* Empty state (Iconography). */
+.dcx-empty {
+  padding: clamp(26px, 4vw, 40px);
+  border: 1px dashed var(--ks-rule);
+  border-radius: 10px;
+  text-align: left;
+}
+
+.dcx-empty-title {
+  margin: 0 0 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--ks-champagne);
+}
+
+.dcx-empty p:not(.dcx-empty-title) {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  color: var(--ks-text-muted);
+}
+
+/* ============================================================
+   Responsive fallback
+   ============================================================ */
+@media (max-width: 920px) {
+  .dcx-shell { padding: 10px; }
+
+  .dcx-grid {
+    height: auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .dcx-tile {
+    grid-column: auto;
+    grid-row: auto;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto;
+    align-items: center;
+    align-content: center;
+    gap: 16px;
+    min-height: clamp(72px, 9svh, 104px);
+    padding: 16px 20px;
+  }
+
+  /* Compact row: title left, small vignette right. */
+  .dcx-tile-viz { width: 44px; height: 44px; }
+
+  .dcx-tile-title,
+  .dcx-tile--typography .dcx-tile-title,
+  .dcx-tile--iconography .dcx-tile-title {
+    font-size: clamp(1.9rem, 8vw, 2.6rem);
+  }
+
+  .dcx-tile--product     { order: 1; }
+  .dcx-tile--audience    { order: 2; }
+  .dcx-tile--brand       { order: 3; }
+  .dcx-tile--color       { order: 4; }
+  .dcx-tile--typography  { order: 5; }
+  .dcx-tile--iconography { order: 6; }
+  .dcx-tile--material    { order: 7; }
+  .dcx-tile--interface   { order: 8; }
+
+  .dcx-badge { display: none; }
+
+  .dcx-expander-inner {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .dcx-sidebar {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--ks-rule);
+    overflow: hidden;
+  }
+
+  .dcx-sidebar-brand { margin: 0; }
+  .dcx-sidebar-brand-name { display: none; }
+  .dcx-nav-label { display: none; }
+
+  .dcx-nav { min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .dcx-nav::-webkit-scrollbar { display: none; }
+  .dcx-nav-list { display: flex; gap: 4px; }
+
+  .dcx-nav-link {
+    width: auto;
+    padding: 8px 10px;
+    border-left: 0;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+  }
+
+  .dcx-nav-link[aria-current="page"] {
+    border-left-color: transparent;
+    border-bottom-color: var(--accent);
+  }
+
+  .dcx-nav-list li.is-active .dcx-subnav { display: none; }
+
+  .dcx-panel { grid-template-rows: 56px minmax(0, 1fr); }
+  .dcx-topbar { padding: 0 16px; }
+  .dcx-article { padding: 30px 18px 84px; }
+
+  .dcx-def { grid-template-columns: 1fr; gap: 4px; }
+
+  .dcx-fan { height: 210px; }
+
+  .dcx-fan-info {
+    top: 18px; left: 16px; right: 16px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .dcx-space-row { grid-template-columns: 58px minmax(0, 1fr) 70px; }
+}
+
+/* ============================================================
+   Borrowed proofs — questionnaire drawings inside the document.
+
+   A .dcx-proof frames a clone of a drawing the questionnaire
+   painted: a surface's dual artboard, the type scale sheet, the
+   long-form specimen, the icon grid. The clone arrives with its
+   inline variables; the frame supplies the context selectors the
+   originals took from their screens.
+   ============================================================ */
+.dcx-proof {
+  border: 1px solid var(--ks-rule);
+  background: var(--panel-bg);
+  padding: clamp(14px, 2vw, 22px);
+}
+
+/* The strategy stage's base mapping, restated for clones that live outside
+   it: the artboard reads the committed palette painted on the frame. */
+.dcx-proof--board > .picker-preview {
+  --pv-primary: var(--pkc-primary, var(--ks-champagne));
+  --pv-secondary: var(--pkc-secondary, var(--ks-patina));
+  --pv-tertiary: var(--pkc-tertiary, var(--ks-kinpaku));
+  --pv-neutral: var(--pkc-neutral, var(--ks-lacquer-raised));
+  --pv-n-ink: var(--pkc-n-ink, var(--ks-champagne));
+  --pv-p-ink: var(--pkc-p-ink, var(--ks-champagne));
+}
+
+/* The three strategy remaps, mirrored from picker.css's strategy stage.
+   There they key off hover and checked state inside #picker-form; here the
+   answer is settled, so a data attribute on the frame carries it. Change the
+   remap bodies in both places together. */
+.dcx-proof--board[data-dcx-strategy="restrained"] > .picker-preview {
+  --pv-secondary: color-mix(in oklab, var(--pkc-neutral) 78%, var(--pkc-n-ink));
+  --pv-tertiary: color-mix(in oklab, var(--pkc-neutral) 86%, var(--pkc-n-ink));
+  --pv-t-ink: var(--pkc-n-ink);
+  --pv-t-on-t: var(--pkc-n-ink);
+  --pv-t-on-n: color-mix(in oklab, var(--pkc-n-ink) 62%, var(--pkc-neutral));
+  --pv-t-on-p: var(--pkc-p-ink);
+}
+
+.dcx-proof--board[data-dcx-strategy="committed"] > .picker-preview {
+  --pv-neutral: color-mix(in oklab, var(--pkc-neutral) 95%, var(--pkc-primary));
+  --pv-secondary: var(--pkc-primary);
+  --pv-tertiary: var(--pkc-primary);
+  --pv-t-ink: var(--pkc-p-ink);
+  --pv-t-on-t: var(--pkc-p-on-p);
+  --pv-t-on-n: var(--pkc-p-on-n);
+  --pv-t-on-p: var(--pkc-p-on-p);
+}
+
+.dcx-proof--board[data-dcx-strategy="drenched"] > .picker-preview {
+  --pv-neutral: var(--pkc-primary);
+  --pv-n-ink: var(--pkc-p-ink);
+  --pv-primary: var(--pkc-p-ink);
+  --pv-p-ink: var(--pkc-primary);
+  --pv-p-on-n: var(--pkc-p-ink);
+  --pv-p-on-p: var(--pkc-primary);
+  --pv-secondary: var(--pkc-tertiary);
+  --pv-tertiary: var(--pkc-tertiary);
+  --pv-t-on-n: var(--pkc-t-on-p);
+}
+/* ============================================================
+   Material proofs: the structural screens' own artboards, cloned.
+
+   A .dcx-proof--board can also frame a ps artboard clone (the anatomy
+   screens 07 to 10 draw on), not just a tile drawing. On screen those
+   boards take every committed answer through checked inputs inside
+   #picker-form, which a clone in the document is outside of, so the frame
+   restates each answer as a data-dcx-* attribute and the bodies below are
+   verbatim copies of the committed bodies the screens set. Change a body
+   here and in its named source together. The palette rides two ways: the
+   screens paint all thirteen --pv-* slots inline on every artboard they
+   showed (inline styles travel with a clone), and for a board whose screen
+   the run never opened, the frame's --pkc-* paint reaches the clone
+   through the same six-slot map the tile clones above use, with the
+   artboard's own class defaults covering the contrast slots. */
+.dcx-proof--board > .picker-artboard {
+  --pv-primary: var(--pkc-primary, var(--ks-champagne));
+  --pv-secondary: var(--pkc-secondary, var(--ks-patina));
+  --pv-tertiary: var(--pkc-tertiary, var(--ks-kinpaku));
+  --pv-neutral: var(--pkc-neutral, var(--ks-lacquer-raised));
+  --pv-n-ink: var(--pkc-n-ink, var(--ks-champagne));
+  --pv-p-ink: var(--pkc-p-ink, var(--ks-champagne));
+}
+
+/* Two rules the clone loses with its data-surface attribute (proofHtml
+   strips it): the landing board's right-gutter chrome, and the handset
+   print's freeform cut, which rides --pvs-drift and stays a rectangle
+   under the other layout answers. The frame's data-dcx-surface carries
+   the surface instead. Sources: picker/styles/screens/layout.css, the
+   [data-carry][data-surface="persuade"] rules. */
+.dcx-proof--board[data-dcx-surface="persuade"] > .picker-artboard :is(.ps-nav, .ps-editorial, .ps-footer) {
+  padding-right: var(--pvs-gutter-end);
+}
+
+.dcx-proof--board[data-dcx-surface="persuade"] > .picker-artboard .ps-phone-body > .ps-image {
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--pvs-drift, 0) * 16%), 0 100%);
+}
+
+/* The strategy, restated for artboard clones: the [data-artboard] bodies
+   from picker.css. Restrained is the artboard's own defaults there and
+   stays bodiless here, exactly as the tile remaps above leave full
+   palette alone. */
+.dcx-proof--board[data-dcx-strategy="committed"] > .picker-artboard {
+  --pvs-headline: color-mix(in oklab, var(--pv-primary) 80%, var(--pv-strong));
+  --pvs-headline-text: var(--pv-p-on-n);
+  --pvs-eyebrow: var(--pv-primary);
+  --pvs-ghost: color-mix(in oklab, var(--pv-primary) 14%, var(--pv-neutral));
+  --pvs-ghost-edge: var(--pv-primary);
+  --pvs-image: var(--pv-primary);
+  --pvs-image-a: var(--pv-primary);
+  --pvs-image-b: color-mix(in oklab, var(--pv-primary) 72%, var(--pv-neutral));
+  --pvs-image-edge: var(--pv-primary);
+  --pvs-accent-a: var(--pv-primary);
+  --pvs-accent-b: color-mix(in oklab, var(--pv-primary) 70%, var(--pv-neutral));
+  --pvs-accent-c: var(--pv-primary);
+  --pvs-accent-d: color-mix(in oklab, var(--pv-primary) 18%, var(--pv-neutral));
+}
+
+.dcx-proof--board[data-dcx-strategy="full-palette"] > .picker-artboard {
+  --pvs-headline: color-mix(in oklab, var(--pv-primary) 80%, var(--pv-strong));
+  --pvs-headline-text: var(--pv-p-on-n);
+  --pvs-accent-text: var(--pv-t-on-n);
+  --pvs-eyebrow: var(--pv-tertiary);
+  --pvs-ghost: color-mix(in oklab, var(--pv-secondary) 18%, var(--pv-neutral));
+  --pvs-ghost-edge: var(--pv-secondary);
+  --pvs-image: var(--pv-primary);
+  --pvs-image-a: var(--pv-primary);
+  --pvs-image-b: color-mix(in oklab, var(--pv-secondary) 32%, var(--pv-primary));
+  --pvs-image-edge: var(--pv-primary);
+  --pvs-signal: var(--pv-tertiary);
+  --pvs-signal-ink: var(--pv-t-ink);
+  --pvs-signal-text: var(--pv-t-on-t);
+  --pvs-accent-a: var(--pv-secondary);
+  --pvs-accent-b: color-mix(in oklab, var(--pv-secondary) 42%, var(--pv-neutral));
+  --pvs-accent-c: var(--pv-primary);
+  --pvs-accent-d: var(--pv-tertiary);
+}
+
+.dcx-proof--board[data-dcx-strategy="drenched"] > .picker-artboard {
+  --pvs-ground: var(--pv-primary);
+  --pvs-ink: var(--pv-p-ink);
+  --pvs-surface: color-mix(in oklab, var(--pv-p-ink) 10%, var(--pv-primary));
+  --pvs-headline: var(--pv-p-ink);
+  --pvs-eyebrow: color-mix(in oklab, var(--pv-p-ink) 70%, var(--pv-primary));
+  --pvs-copy: color-mix(in oklab, var(--pv-p-ink) 55%, var(--pv-primary));
+  --pvs-title: var(--pv-p-ink);
+  --pvs-cta: var(--pv-p-ink);
+  --pvs-cta-ink: var(--pv-primary);
+  --pvs-cta-text: var(--pv-p-on-i);
+  --pvs-mark-text: var(--pv-p-ink);
+  --pvs-accent-text: var(--pv-t-on-p);
+  --pvs-copy-mix: 14%;
+  --pvs-bars-mix: 16%;
+  --pvs-ghost: color-mix(in oklab, var(--pv-p-ink) 22%, var(--pv-primary));
+  --pvs-ghost-edge: color-mix(in oklab, var(--pv-p-ink) 45%, var(--pv-primary));
+  --pvs-image: color-mix(in oklab, var(--pv-p-ink) 20%, var(--pv-primary));
+  --pvs-image-a: color-mix(in oklab, var(--pv-p-ink) 16%, var(--pv-primary));
+  --pvs-image-b: color-mix(in oklab, var(--pv-p-ink) 28%, var(--pv-primary));
+  --pvs-image-edge: color-mix(in oklab, var(--pv-p-ink) 40%, var(--pv-primary));
+  --pvs-signal: var(--pv-tertiary);
+  --pvs-signal-ink: var(--pv-t-ink);
+  --pvs-signal-text: var(--pv-t-on-t);
+  --pvs-bars: color-mix(in oklab, var(--pv-p-ink) 45%, var(--pv-primary));
+  --pvs-rule: color-mix(in oklab, var(--pv-p-ink) 28%, var(--pv-primary));
+  --pvs-accent-a: var(--pv-secondary);
+  --pvs-accent-b: var(--pv-tertiary);
+  --pvs-accent-c: color-mix(in oklab, var(--pv-p-ink) 30%, var(--pv-primary));
+  --pvs-accent-d: color-mix(in oklab, var(--pv-p-ink) 14%, var(--pv-primary));
+}
+
+/* Boundaries: the four committed bodies from styles/screens/boundaries.css. */
+.dcx-proof--board[data-dcx-boundary="open-space"] > .picker-artboard {
+  --pvs-divider-w: 0px;
+  --pvs-band: transparent;
+  --pvs-band-alt: transparent;
+  --pvs-band-top: transparent;
+  --pvs-panel: transparent;
+  --pvs-panel-edge-w: 0px;
+  --pvs-panel-pad: 0px;
+  --pvs-proof-inset: 0px;
+}
+
+.dcx-proof--board[data-dcx-boundary="thin-dividers"] > .picker-artboard {
+  --pvs-divider-w: 1px;
+  --pvs-divider-c: color-mix(in oklab, var(--pvs-ink) 24%, var(--pvs-ground));
+  --pvs-band: transparent;
+  --pvs-band-alt: transparent;
+  --pvs-band-top: transparent;
+  --pvs-panel: transparent;
+  --pvs-panel-edge-w: 0px;
+  --pvs-panel-pad: 0px;
+  --pvs-proof-inset: 0px;
+}
+
+.dcx-proof--board[data-dcx-boundary="surface-changes"] > .picker-artboard {
+  --pvs-divider-w: 0px;
+  --pvs-band: color-mix(in oklab, var(--pvs-ink) 7%, var(--pvs-ground));
+  --pvs-band-alt: color-mix(in oklab, var(--pvs-ink) 13%, var(--pvs-ground));
+  --pvs-band-top: color-mix(in oklab, var(--pvs-ink) 7%, var(--pvs-ground));
+  --pvs-panel: transparent;
+  --pvs-panel-edge-w: 0px;
+  --pvs-panel-pad: 0px;
+  --pvs-proof-inset: 0px;
+}
+
+.dcx-proof--board[data-dcx-boundary="cards-and-panels"] > .picker-artboard {
+  --pvs-divider-w: 0px;
+  --pvs-band: transparent;
+  --pvs-band-alt: color-mix(in oklab, var(--pvs-ink) 5%, var(--pvs-ground));
+  --pvs-band-top: transparent;
+  --pvs-panel: color-mix(in oklab, var(--pvs-ink) 5%, var(--pvs-ground));
+  --pvs-panel-edge: color-mix(in oklab, var(--pvs-ink) 20%, var(--pvs-ground));
+  --pvs-panel-edge-w: 1px;
+  --pvs-panel-pad: 5%;
+  --pvs-proof-inset: var(--pvs-gutter);
+}
+
+/* The open rail plate joins the card answer, as on the screen. */
+.dcx-proof--board[data-dcx-boundary="cards-and-panels"] > .picker-artboard .ps-ops-item {
+  background-color: var(--pvs-panel);
+}
+
+/* Corners: the four committed bodies from styles/screens/corners.css. */
+.dcx-proof--board[data-dcx-corner="sharp"] > .picker-artboard {
+  --pvs-radius-frame: 0px;
+  --pvs-radius-frame-phone: 0px;
+  --pvs-radius-surface: 0px;
+  --pvs-radius-control: 0px;
+  --pvs-radius-bar: 0px;
+}
+
+.dcx-proof--board[data-dcx-corner="slightly-soft"] > .picker-artboard {
+  --pvs-radius-frame: 4px;
+  --pvs-radius-frame-phone: 5px;
+  --pvs-radius-surface: 3px;
+  --pvs-radius-control: 3px;
+  --pvs-radius-bar: 2px;
+}
+
+.dcx-proof--board[data-dcx-corner="friendly"] > .picker-artboard {
+  --pvs-radius-frame: 7px;
+  --pvs-radius-frame-phone: 11px;
+  --pvs-radius-surface: 8px;
+  --pvs-radius-control: 8px;
+  --pvs-radius-bar: 3px;
+}
+
+.dcx-proof--board[data-dcx-corner="pill"] > .picker-artboard {
+  --pvs-radius-frame: 9px;
+  --pvs-radius-frame-phone: 15px;
+  --pvs-radius-surface: 12px;
+  --pvs-radius-control: 999px;
+  --pvs-radius-bar: 3px;
+}
+
+/* Depth: the three committed bodies from styles/screens/depth.css. */
+.dcx-proof--board[data-dcx-depth="flat"] > .picker-artboard {
+  --pvs-shadow-chrome: none;
+  --pvs-shadow-card: none;
+  --pvs-shadow-control: none;
+  --pvs-shadow-surface: none;
+}
+
+.dcx-proof--board[data-dcx-depth="soft-lift"] > .picker-artboard {
+  --pvs-shadow-chrome: 0 1px 2px rgb(0 0 0 / 0.1);
+  --pvs-shadow-card:
+    0 1px 1px rgb(0 0 0 / 0.15),
+    0 3px 7px rgb(0 0 0 / 0.14);
+  --pvs-shadow-control: 0 1px 2px rgb(0 0 0 / 0.24);
+  --pvs-shadow-surface: 0 2px 5px rgb(0 0 0 / 0.14);
+}
+
+.dcx-proof--board[data-dcx-depth="floating"] > .picker-artboard {
+  --pvs-shadow-chrome: 0 2px 6px rgb(0 0 0 / 0.16);
+  --pvs-shadow-card:
+    0 2px 3px rgb(0 0 0 / 0.2),
+    0 9px 18px rgb(0 0 0 / 0.24);
+  --pvs-shadow-control: 0 3px 6px rgb(0 0 0 / 0.32);
+  --pvs-shadow-surface: 0 6px 14px rgb(0 0 0 / 0.22);
+}
+
+/* Where a cast shadow is allowed to land, keyed to the boundary answer
+   exactly as depth.css keys it to the checked boundary input. */
+.dcx-proof--board[data-dcx-boundary="cards-and-panels"] > .picker-artboard :is(.ps-gallery-item, .ps-desktop > .ps-proof),
+.dcx-proof--board[data-dcx-boundary="surface-changes"] > .picker-artboard .ps-desktop > .ps-proof {
+  box-shadow: var(--pvs-shadow-card);
+}
+
+.dcx-proof--board:not([data-dcx-boundary="cards-and-panels"]) > .picker-artboard .ps-gallery-item {
+  box-shadow: none;
+}
+
+.dcx-proof--board:not([data-dcx-boundary="cards-and-panels"]) > .picker-artboard .ps-gallery-item > i {
+  box-shadow: var(--pvs-shadow-card);
+}
+
+.dcx-proof--board:not([data-dcx-boundary="surface-changes"]) > .picker-artboard :is(.ps-nav, .ps-phone-top) {
+  box-shadow: none;
+}
+
+.dcx-proof--board:not([data-dcx-boundary="surface-changes"]) > .picker-artboard :is(.ps-ops-rail, .ps-docs-rail) {
+  box-shadow: none;
+}
+
+.dcx-proof--board:not([data-dcx-boundary="surface-changes"]):not([data-dcx-boundary="cards-and-panels"]) > .picker-artboard .ps-ops-panel {
+  box-shadow: none;
+}
+
+.dcx-proof--board:not([data-dcx-boundary="cards-and-panels"]) > .picker-artboard :is(.ps-ops-chart, .ps-ops-table) {
+  box-shadow: none;
+}
+
+.dcx-proof--board:not([data-dcx-boundary="cards-and-panels"]) > .picker-artboard .ps-ops-plot > i {
+  box-shadow: var(--pvs-shadow-card);
+}
+
+.dcx-proof--board:not([data-dcx-boundary="surface-changes"]) > .picker-artboard .ps-docs-note {
+  box-shadow: none;
+}
+
+.dcx-proof--board[data-dcx-boundary="surface-changes"] > .picker-artboard .ps-index-row--flip {
+  box-shadow: var(--pvs-shadow-card);
+}
+
+/* Layout: the committed bodies from styles/screens/layout.css, the landing
+   measure and the region tracks folded into one body per answer (their
+   sources are two rules on the same committed selector). */
+.dcx-proof--board[data-dcx-layout="simple-grid"] > .picker-artboard {
+  --pvs-gutter: 6%;
+  --pvs-gutter-end: 6%;
+  --pvs-hero-cols: var(--pvs-w6) minmax(0, 1fr);
+  --pvs-hero-gap: var(--pvs-gut);
+  --pvs-editorial-cols: var(--pvs-w4) minmax(0, 1fr);
+  --pvs-editorial-gap: var(--pvs-gut);
+  --pvs-gallery-cols: repeat(4, minmax(0, 1fr));
+  --pvs-gallery-gap: calc(var(--pvs-gut) * 100 / 66.1333);
+  --pvs-section-align: start;
+  --pvs-rows: 9.4% 45.5% 9% 27.8% 8.3%;
+  --pvs-phone-gutter: 7%;
+  --pvs-phone-gallery-cols: 1fr 1fr;
+  --pvs-shell-cols:
+    calc(var(--pvs-w2) + var(--pvs-gut) / 2)
+    calc(var(--pvs-w7) + var(--pvs-gut))
+    minmax(0, 1fr);
+  --pvs-measure-cols:
+    calc(var(--pvs-w3) + var(--pvs-gut) / 2)
+    minmax(0, 1fr);
+  --pvs-metric-cols: repeat(3, minmax(0, 1fr));
+  --pvs-entry-cols: var(--pvs-w6) minmax(0, 1fr);
+  --pvs-entry-flip-cols: var(--pvs-w6) minmax(0, 1fr);
+}
+
+.dcx-proof--board[data-dcx-layout="simple-grid"] > .picker-artboard .ps-index-row--flip > .ps-image {
+  grid-area: 1 / 1;
+}
+
+.dcx-proof--board[data-dcx-layout="simple-grid"] > .picker-artboard .ps-index-row--flip > .ps-index-cap {
+  grid-area: 1 / 2;
+}
+
+.dcx-proof--board[data-dcx-layout="balanced"] > .picker-artboard {
+  --pvs-gutter: 6%;
+  --pvs-gutter-end: 6%;
+  --pvs-hero-cols: var(--pvs-w5) minmax(0, 1fr);
+  --pvs-hero-gap: var(--pvs-gut);
+  --pvs-editorial-cols: var(--pvs-w3) minmax(0, 1fr);
+  --pvs-editorial-gap: var(--pvs-gut);
+  --pvs-gallery-cols: 23.8fr 15.3333fr 15.3333fr 15.3333fr;
+  --pvs-gallery-gap: calc(var(--pvs-gut) * 100 / 74.6);
+  --pvs-section-align: center;
+  --pvs-rows: 9.4% 50.6% 9% 22.7% 8.3%;
+  --pvs-phone-gutter: 6%;
+  --pvs-phone-gallery-cols: 1.35fr 0.85fr;
+  --pvs-shell-cols:
+    calc(var(--pvs-w2) + var(--pvs-gut) / 2)
+    calc(var(--pvs-w8) + var(--pvs-gut))
+    minmax(0, 1fr);
+  --pvs-measure-cols:
+    calc(var(--pvs-w3) + var(--pvs-gut) / 2)
+    calc(var(--pvs-w6) + var(--pvs-gut))
+    minmax(0, 1fr);
+  --pvs-metric-cols: 1.45fr 1fr 1fr;
+  --pvs-entry-cols: var(--pvs-w7) minmax(0, 1fr);
+  --pvs-entry-flip-cols: minmax(0, 1fr) var(--pvs-w7);
+}
+
+.dcx-proof--board[data-dcx-layout="freeform"] > .picker-artboard {
+  --pvs-gutter: 6%;
+  --pvs-gutter-end: 6%;
+  --pvs-hero-cols: var(--pvs-w5) minmax(0, 1fr);
+  --pvs-hero-gap: var(--pvs-gut);
+  --pvs-editorial-cols: var(--pvs-w3) minmax(0, 1fr);
+  --pvs-editorial-gap: var(--pvs-gut);
+  --pvs-gallery-cols: repeat(4, minmax(0, 1fr));
+  --pvs-gallery-gap: calc(var(--pvs-gut) * 100 / 74.6);
+  --pvs-section-align: start;
+  --pvs-rows: 9.4% 48% 8.4% 26.2% 8%;
+  --pvs-phone-gutter: 6%;
+  --pvs-phone-gallery-cols: 1.5fr 0.9fr;
+  --pvs-drift: 1;
+  --pvs-entry-cols: var(--pvs-w7) minmax(0, 1fr);
+  --pvs-entry-flip-cols: minmax(0, 1fr) var(--pvs-w7);
+}
+
+/* Freeform's one move on the landing hero: the print cut loose of the
+   grid, with the copy holding the page's left measure. */
+.dcx-proof--board[data-dcx-layout="freeform"] > .picker-artboard .ps-desktop .ps-hero {
+  position: relative;
+  display: block;
+  padding: 0;
+}
+
+.dcx-proof--board[data-dcx-layout="freeform"] > .picker-artboard .ps-desktop .ps-hero > .ps-image {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  clip-path: polygon(40% 0, 100% 0, 100% 78%, 66% 84%);
+}
+
+.dcx-proof--board[data-dcx-layout="freeform"] > .picker-artboard .ps-desktop .ps-hero > .ps-hero-copy {
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+  width: 44%;
+  height: 100%;
+  align-content: center;
+  padding-left: var(--pvs-gutter, 6%);
+}
+
+/* Freeform on the index: the prints laid down askew with the caption
+   stepping onto the corner, the committed rules that are surface-scoped
+   on screen and read the frame's surface mark here. */
+.dcx-proof--board[data-dcx-layout="freeform"][data-dcx-surface="experience"] > .picker-artboard .ps-index-row > .ps-image {
+  rotate: -1.7deg;
+}
+
+.dcx-proof--board[data-dcx-layout="freeform"][data-dcx-surface="experience"] > .picker-artboard .ps-index-row--flip > .ps-image {
+  rotate: 1.4deg;
+}
+
+.dcx-proof--board[data-dcx-layout="freeform"][data-dcx-surface="experience"] > .picker-artboard .ps-index-cap {
+  position: relative;
+  z-index: 1;
+  translate: -9% 0;
+}
+
+.dcx-proof--board[data-dcx-layout="freeform"][data-dcx-surface="experience"] > .picker-artboard .ps-index-row--flip > .ps-index-cap {
+  translate: 9% 0;
+}
+
+/* The scale sheet and specimen size themselves against their rail on screen
+   05; in the document they stand at natural height and full width. */
+.dcx-proof--scale > .picker-scale-sheet {
+  grid-template-rows: none;
+  height: auto;
+  row-gap: 10px;
+}
+
+.dcx-proof--specimen > .picker-scale-specimen {
+  height: auto;
+  max-height: none;
+  overflow: visible;
+}
+
+.dcx-proof--icons > .picker-icon-sheet {
+  height: auto;
+  border: 0;
+  background: transparent;
+}
+
+/* On screen 11 the field's rows stretch into the rail's fixed height; at the
+   sheet's natural height here they would collapse to the glyph's own box, so
+   the square proportion the slide showed is restated per cell. */
+.dcx-proof--icons .picker-icon-cell {
+  aspect-ratio: 1;
+}
+
+/* ============================================================
+   Surface cards — the tile anatomy, kept.
+   ============================================================ */
+.dcx-surfaces {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(440px, 100%), 1fr));
+  gap: clamp(18px, 2.5vw, 28px);
+}
+
+.dcx-surfaces[data-count="1"] { grid-template-columns: minmax(0, 1fr); }
+
+.dcx-surface-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.dcx-surface-copy { padding: 0 2px; }
+
+.dcx-surface-name {
+  margin: 0 0 8px;
+  font-family: var(--ks-font-display);
+  font-weight: 300;
+  font-size: 1.45rem;
+  letter-spacing: 0.01em;
+  color: var(--ks-text);
+}
+
+.dcx-surface-name em {
+  font-style: normal;
+  color: var(--accent);
+}
+
+.dcx-surface-goal {
+  margin: 0 0 12px;
+  max-width: 52ch;
+  color: var(--ks-text-muted);
+  font-size: 0.94rem;
+  line-height: 1.6;
+}
+
+.dcx-default-mark {
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--ks-rule);
+  font-family: var(--ks-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ks-text-faint);
+}
+
+/* ============================================================
+   The chosen cue and the brand-asset gallery.
+
+   .dcx-cue shows the image the palette was sampled from. The
+   sample dots arrive with source-image pixel coordinates
+   (cues.json palette[slug][role].at); the load listener stamps
+   the image's natural size on the frame, and the calc division
+   below keeps each dot glued to its pixel at any rendered width.
+   .dcx-cue-strip is the unpicked cues, dimmed, not interactive.
+   .dcx-marks proofs a provided logo on the committed primary and
+   neutral grounds; .dcx-boards frames boards and references wide.
+   ============================================================ */
+.dcx-cue {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: clamp(16px, 2.5vw, 30px);
+  align-items: start;
+}
+
+@media (max-width: 760px) {
+  .dcx-cue { grid-template-columns: minmax(0, 1fr); }
+}
+
+.dcx-cue-frame {
+  position: relative;
+  margin: 0;
+  border: 1px solid var(--ks-rule);
+  background: var(--panel-bg);
+}
+
+.dcx-cue-frame img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.dcx-cue-dot {
+  position: absolute;
+  left: calc(var(--at-x, 0) / var(--cue-w, 1024) * 100%);
+  top: calc(var(--at-y, 0) / var(--cue-h, 1024) * 100%);
+  width: 16px;
+  height: 16px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--dot-fill, var(--accent));
+  border: 2px solid var(--ks-champagne);
+  box-shadow: 0 1px 6px var(--shadow-color);
+  transition: opacity 0.3s var(--ks-ease);
+}
+
+.dcx-cue-frame:not([data-loaded="yes"]) .dcx-cue-dot { opacity: 0; }
+
+.dcx-cue-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: clamp(14px, 2vw, 22px);
+  border: 1px solid var(--ks-rule);
+  background: var(--panel-bg);
+}
+
+.dcx-cue-tag {
+  font-family: var(--ks-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ks-text-faint);
+}
+
+.dcx-cue-name {
+  margin: 0 0 4px;
+  font-family: var(--ks-font-display);
+  font-weight: 300;
+  font-size: 1.45rem;
+  color: var(--ks-text);
+}
+
+.dcx-cue-role {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.dcx-cue-role-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--dot-fill, var(--accent));
+  border: 1px solid var(--ks-rule);
+}
+
+.dcx-cue-role-name {
+  color: var(--ks-text-muted);
+  font-size: 0.9rem;
+}
+
+.dcx-cue-role code {
+  font-family: var(--ks-mono);
+  font-size: 0.78rem;
+  color: var(--ks-text-faint);
+  white-space: nowrap;
+}
+
+.dcx-cue-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 14px;
+}
+
+.dcx-cue-thumb {
+  margin: 0;
+  opacity: 0.6;
+  filter: saturate(0.7);
+}
+
+.dcx-cue-thumb img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--ks-rule);
+}
+
+.dcx-cue-thumb figcaption {
+  margin-top: 6px;
+  font-family: var(--ks-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  color: var(--ks-text-faint);
+}
+
+.dcx-marks,
+.dcx-boards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+  gap: clamp(16px, 2.5vw, 24px);
+}
+
+.dcx-mark { margin: 0; }
+
+.dcx-mark-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.dcx-mark-chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 128px;
+  padding: 18px;
+  border: 1px solid var(--ks-rule);
+  background: var(--chip-ground, var(--ks-lacquer-raised));
+}
+
+.dcx-mark-chip img {
+  display: block;
+  max-width: 70%;
+  max-height: 88px;
+}
+
+.dcx-board { margin: 0; }
+
+.dcx-board-frame {
+  display: block;
+  border: 1px solid var(--ks-rule);
+  background: var(--panel-bg);
+}
+
+.dcx-board-frame img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.dcx-asset-caption { margin-top: 8px; }
+
+.dcx-asset-caption code {
+  font-family: var(--ks-mono);
+  font-size: 0.78rem;
+  color: var(--ks-text-faint);
+}
+
+.dcx-asset-caption p {
+  margin: 4px 0 0;
+  max-width: 52ch;
+  color: var(--ks-text-muted);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+/* ============================================================
+   Swatch board — each role at real size, both notations.
+   ============================================================ */
+.dcx-swatches {
+  display: grid;
+  gap: clamp(14px, 2vw, 20px);
+}
+
+.dcx-swatch {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: clamp(16px, 2.5vw, 30px);
+  align-items: center;
+}
+
+.dcx-swatch-chip {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  min-height: 128px;
+  padding: 14px 16px;
+  border: 1px solid var(--ks-rule);
+  background: var(--swatch);
+  color: var(--swatch-ink);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition: transform 0.25s var(--ks-ease);
+}
+
+.dcx-swatch-chip:hover { transform: translateY(-2px); }
+
+.dcx-swatch-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.dcx-swatch-hex {
+  font-family: var(--ks-mono);
+  font-size: 0.88rem;
+  letter-spacing: 0.08em;
+}
+
+.dcx-swatch-copy-hint {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  font-family: var(--ks-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  opacity: 0;
+  transition: opacity 0.2s var(--ks-ease);
+}
+
+.dcx-swatch-chip:hover .dcx-swatch-copy-hint,
+.dcx-swatch-chip:focus-visible .dcx-swatch-copy-hint { opacity: 0.85; }
+
+.dcx-swatch-meta h3 {
+  margin: 0 0 6px;
+  font-family: var(--ks-font-display);
+  font-weight: 300;
+  font-size: 1.3rem;
+  color: var(--ks-text);
+}
+
+.dcx-swatch-meta p {
+  margin: 0 0 8px;
+  max-width: 40ch;
+  color: var(--ks-text-muted);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.dcx-swatch-meta code {
+  font-family: var(--ks-mono);
+  font-size: 0.78rem;
+  color: var(--ks-text-faint);
+}
+
+/* The ink that survives on this role, from the same contrast pick the
+   artboards use: the hex drawn in itself on a mini sample of the role
+   color. The sample is a span, not a code element, so the meta column's
+   code rule cannot outrank the sample's own colors. */
+.dcx-ink-pair {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.dcx-ink-tag {
+  font-family: var(--ks-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ks-text-faint);
+}
+
+.dcx-ink-sample {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border: 1px solid var(--ks-rule);
+  background: var(--ink-ground);
+  color: var(--ink-text);
+  font-family: var(--ks-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+}
+
+/* Where the committed value came from, at the hex's shoulder on the chip.
+   Inherits the chip's own contrast ink. */
+.dcx-swatch-provenance {
+  margin-left: auto;
+  font-family: var(--ks-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+/* ============================================================
+   Font pair — the fonttrio anatomy from the font screen.
+   ============================================================ */
+.dcx-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+  gap: clamp(16px, 2.5vw, 26px);
+}
+
+.dcx-pair-card {
+  border: 1px solid var(--ks-rule);
+  background: var(--panel-bg);
+  padding: clamp(20px, 3vw, 32px);
+}
+
+.dcx-pair-role {
+  display: block;
+  font-family: var(--ks-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ks-text-faint);
+  margin-bottom: 14px;
+}
+
+.dcx-pair-name {
+  margin: 0;
+  font-size: clamp(2.1rem, 4vw, 3.2rem);
+  line-height: 1.1;
+  color: var(--ks-text);
+  text-wrap: balance;
+}
+
+.dcx-pair-source {
+  display: inline-block;
+  margin-top: 12px;
+  font-family: var(--ks-mono);
+  font-size: 0.74rem;
+  color: var(--ks-text-faint);
+}
+
+.dcx-pair-why {
+  margin: 18px 0 0;
+  max-width: 62ch;
+  font-size: 1.02rem;
+  line-height: 1.65;
+  color: var(--ks-text-muted);
+}
+
+.dcx-scale-head {
+  margin: 0 0 16px;
+  max-width: 62ch;
+  color: var(--ks-text-muted);
+  font-size: 0.96rem;
+  line-height: 1.6;
+}
+
+.dcx-scale-head strong { color: var(--ks-text); font-weight: 500; }
+
+/* ============================================================
+   Pick grid — one card per surface for the material questions.
+   ============================================================ */
+.dcx-picks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+  gap: clamp(14px, 2vw, 22px);
+}
+
+.dcx-pick {
+  border: 1px solid var(--ks-rule);
+  background: var(--panel-bg);
+  padding: clamp(18px, 2.5vw, 26px);
+}
+
+.dcx-pick-surface {
+  display: block;
+  font-family: var(--ks-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ks-text-faint);
+  margin-bottom: 12px;
+}
+
+.dcx-pick-title {
+  margin: 0 0 8px;
+  font-family: var(--ks-font-display);
+  font-weight: 300;
+  font-size: 1.5rem;
+  color: var(--ks-text);
+}
+
+.dcx-pick-desc {
+  margin: 0;
+  color: var(--ks-text-muted);
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+/* ============================================================
+   Decision matrix — the Interface category's per-surface recap.
+   ============================================================ */
+.dcx-matrix {
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.dcx-matrix-row {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid color-mix(in oklab, var(--ks-rule) 60%, transparent);
+}
+
+.dcx-matrix-row dt {
+  font-family: var(--ks-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ks-text-faint);
+  align-self: center;
+}
+
+.dcx-matrix-row dd {
+  margin: 0;
+  color: var(--ks-text);
+  font-size: 0.95rem;
+}
+
+@media (max-width: 920px) {
+  .dcx-swatch { grid-template-columns: 1fr; }
+  .dcx-matrix-row { grid-template-columns: 110px minmax(0, 1fr); }
+}
+
+/* ============================================================
+   Live editing — affordances appear once the edit session is up
+   (body.dcx-live), and stand down when it goes away.
+   ============================================================ */
+.dcx-edit,
+.dcx-request {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border: 1px solid var(--ks-rule);
+  background: transparent;
+  color: var(--ks-text-muted);
+  font-family: var(--ks-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 0.2s var(--ks-ease), border-color 0.2s var(--ks-ease);
+}
+
+body.dcx-live .dcx-edit,
+body.dcx-live .dcx-request { display: inline-flex; }
+
+.dcx-edit:hover,
+.dcx-request:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.dcx-edit:focus-visible,
+.dcx-request:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.dcx-swatch-actions {
+  position: relative;
+  display: block;
+  margin-top: 12px;
+}
+
+/* Same trick as the palette screen's custom-color input: present for the
+   picker dialog, invisible to layout. */
+.dcx-native-color {
+  position: absolute;
+  inset: auto auto 0 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  border: 0;
+  padding: 0;
+}
+
+.dcx-pair-why + .dcx-edit { margin-top: 18px; }
+
+.dcx-topbar .dcx-request { margin-left: auto; margin-right: 14px; }
+
+/* The topbar is a grid of current + close today; let the request button sit
+   between them without re-authoring the bar. */
+.dcx-topbar { display: flex; align-items: center; }
+.dcx-topbar .dcx-current { flex: 1; min-width: 0; }
+
+/* ============================================================
+   Request tray — queued work and its status, bottom right.
+   ============================================================ */
+/* Editable values read as text until the pointer is over them, so an article
+   stays a document rather than a form. A staged one keeps a mark, because the
+   count on the bar has to be attributable to something on the page. */
+.dcx-editable {
+  border-radius: 2px;
+  outline-offset: 3px;
+}
+
+body.dcx-live .dcx-editable:hover {
+  box-shadow: inset 0 -1px 0 var(--ks-rule);
+  cursor: text;
+}
+
+body.dcx-live .dcx-editable:focus {
+  outline: 1px solid var(--ks-kinpaku);
+  background: oklch(78% 0.12 82 / 0.1);
+}
+
+body.dcx-live .dcx-editable[data-dcx-dirty] {
+  box-shadow: inset 0 -1px 0 var(--ks-kinpaku);
+}
+
+/* Sits above the tray, sharing its column so the two never overlap. */
+.dcx-savebar {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  /* Above the fullscreen expander: editing happens inside an open article, so
+     the control that saves it cannot sit behind the article. */
+  z-index: 620;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(340px, calc(100vw - 44px));
+}
+
+.dcx-savebar[hidden] { display: none; }
+
+/* The bar owns the corner and the tray stacks above it. A plain sibling
+   selector does the arithmetic, so neither has to know the other is there. */
+.dcx-savebar:not([hidden]) ~ .dcx-tray {
+  bottom: 78px;
+}
+
+.dcx-savebar-apply {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border: 1px solid var(--ks-kinpaku);
+  background: var(--ks-kinpaku);
+  color: var(--ks-kinpaku-ink);
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dcx-savebar-apply:hover { filter: brightness(1.08); }
+.dcx-savebar-apply:disabled { cursor: wait; filter: brightness(0.94); }
+
+.dcx-savebar-count {
+  padding: 2px 8px;
+  background: oklch(4% 0.004 95 / 0.18);
+  font-family: var(--ks-font-mono, ui-monospace, monospace);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.dcx-savebar-count[hidden] { display: none; }
+
+.dcx-savebar-discard {
+  padding: 12px 12px;
+  border: 1px solid var(--ks-rule);
+  background: var(--ks-lacquer);
+  color: var(--ks-text-muted);
+  font-family: inherit;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.dcx-savebar-discard:hover { color: var(--ks-text); }
+.dcx-savebar-discard:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* The bar arriving is the one moment it has to be noticed. */
+@keyframes dcx-savebar-in {
+  0% { transform: scale(0.9); opacity: 0; }
+  60% { transform: scale(1.04); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.dcx-savebar[data-just-appeared] {
+  animation: dcx-savebar-in 460ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dcx-tray {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  /* Same reason as the save bar: what the agent is doing has to stay readable
+     while an article is open, which is when the asking happens. */
+  z-index: 600;
+  display: grid;
+  gap: 10px;
+  width: min(340px, calc(100vw - 44px));
+}
+
+.dcx-tray[hidden] { display: none; }
+
+.dcx-tray-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 12px 14px;
+  border: 1px solid var(--ks-rule);
+  background: var(--panel-bg);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.35);
+}
+
+.dcx-tray-dot {
+  width: 9px;
+  height: 9px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--ks-text-faint);
+}
+
+.dcx-tray-item[data-status="pending"] .dcx-tray-dot { background: var(--ks-text-muted); }
+
+.dcx-tray-item[data-status="working"] .dcx-tray-dot {
+  background: var(--accent);
+  animation: dcx-tray-pulse 1.2s ease-in-out infinite;
+}
+
+.dcx-tray-item[data-status="done"] .dcx-tray-dot { background: var(--ks-patina, #7ba98f); }
+.dcx-tray-item[data-status="error"] .dcx-tray-dot,
+.dcx-tray-item[data-status="offline"] .dcx-tray-dot { background: #c26d5a; }
+
+@keyframes dcx-tray-pulse {
+  50% { opacity: 0.35; }
+}
+
+.dcx-tray-prompt {
+  margin: 0 0 3px;
+  font-size: 0.86rem;
+  line-height: 1.4;
+  color: var(--ks-text);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.dcx-tray-note {
+  margin: 0;
+  font-family: var(--ks-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ks-text-faint);
+}
+
+/* ============================================================
+   Request modal — rides the picker's modal shell.
+   ============================================================ */
+.dcx-request-modal .dcx-request-prompt {
+  width: 100%;
+  resize: vertical;
+  min-height: 96px;
+}
+
+/* ============================================================
+   Reduced motion
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  [class^="dcx-"], [class^="dcx-"]::before, [class^="dcx-"]::after,
+  [class*=" dcx-"], [class*=" dcx-"]::before, [class*=" dcx-"]::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+  }
+
+  .dcx-tile[data-reveal],
+  .dcx-badge[data-reveal] {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Derived-clone mirrors (plan-18): screens 08, 09 and 10 now board strategy
+   -preview clones, and a proof or hub clone of one leaves the #picker-form
+   scope its rendition rules key on. These restate the derived sheet against
+   the dcx marks, the same contract the artboard mirrors above follow. */
+/* ==== Derived stage (plan-18): screens 08, 09, 10 mount strategy-preview
+   clones for the surfaces the gallery derives. Geometry mirrors the artboard
+   footprint; colors are locked to the restrained base for operate, read and
+   experience clones, matching the gallery's baseCellId map. ==== */
+.dcx-proof--board > .picker-preview {
+  grid-row: 2;
+  aspect-ratio: 1.865 / 1;
+  width: 100%;
+  --pv-primary: var(--pkc-primary, var(--ks-champagne));
+  --pv-secondary: var(--pkc-secondary, var(--ks-patina));
+  --pv-tertiary: var(--pkc-tertiary, var(--ks-kinpaku));
+  --pv-neutral: var(--pkc-neutral, var(--ks-lacquer-raised));
+  --pv-n-ink: var(--pkc-n-ink, var(--ks-champagne));
+  --pv-p-ink: var(--pkc-p-ink, var(--ks-champagne));
+  --derived-rule: color-mix(in oklab, var(--pv-strong) 24%, var(--pv-neutral));
+  --derived-band: color-mix(in oklab, var(--pv-strong) 7%, var(--pv-neutral));
+  --derived-band-alt: color-mix(in oklab, var(--pv-strong) 13%, var(--pv-neutral));
+  --derived-panel: color-mix(in oklab, var(--pv-strong) 5%, var(--pv-neutral));
+  --derived-panel-edge: color-mix(in oklab, var(--pv-strong) 20%, var(--pv-neutral));
+}
+
+/* Restrained lock for the non-persuade clones, mirrored from the strategy
+   remap so the derived boards hold the gallery's base regardless of the
+   run's strategy answer. */
+.dcx-proof--board > .picker-preview:not([data-surface="persuade"]) {
+  --pv-secondary: color-mix(in oklab, var(--pkc-neutral) 78%, var(--pkc-n-ink));
+  --pv-tertiary: color-mix(in oklab, var(--pkc-neutral) 86%, var(--pkc-n-ink));
+  --pv-t-ink: var(--pkc-n-ink);
+  --pv-t-on-t: var(--pkc-n-ink);
+  --pv-t-on-n: color-mix(in oklab, var(--pkc-n-ink) 62%, var(--pkc-neutral));
+  --pv-t-on-p: var(--pkc-p-ink);
+}
+
+.dcx-proof--board > .picker-preview.picker-preview--docs {
+  --pd-quote: var(--pd-ink);
+}
+
+.dcx-proof--board > .picker-preview.picker-preview--docs :is(.pd-note-dot, .pd-note-lines i) {
+  background: var(--pd-ink);
+}
+
+/* Wireframe weights, from the dry-run against the gallery's derived cells. */
+.dcx-proof--board > .picker-preview:is(.picker-preview--ops, .picker-preview--gallery) .pv-desktop {
+  --pv-text: 1.35;
+}
+
+.dcx-proof--board > .picker-preview.picker-preview--docs {
+  --pv-text: 1.65;
+}
+
+.dcx-proof--board > .picker-preview.picker-preview--docs .pd-item i { width: calc(4.07 * var(--pv-x)); }
+.dcx-proof--board > .picker-preview.picker-preview--docs .pd-item span { height: calc(1.53 * var(--pv-text) * var(--pv-x)); }
+.dcx-proof--board > .picker-preview.picker-preview--docs .pd-para i { height: calc(1.35 * var(--pv-text) * var(--pv-x)); }
+.dcx-proof--board > .picker-preview.picker-preview--docs .pd-note-dot { width: calc(4.07 * var(--pv-x)); }
+.dcx-proof--board > .picker-preview.picker-preview--docs .pd-note-lines i { height: calc(1 * var(--pv-text) * var(--pv-x)); }
+.dcx-proof--board > .picker-preview.picker-preview--docs .pd-phone-body .pd-para i { height: calc(1.37 * var(--pv-text) * var(--pv-x)); }
+.dcx-proof--board > .picker-preview.picker-preview--docs .pd-phone-body .pd-note-lines i { height: calc(0.83 * var(--pv-text) * var(--pv-x)); }
+.dcx-proof--board > .picker-preview.picker-preview--docs .pd-phone-body .pd-heading { height: calc(2.53 * var(--pv-text) * var(--pv-x)); }
+.dcx-proof--board > .picker-preview.picker-preview--docs .pd-phone-body .pd-note-dot { width: calc(2.64 * var(--pv-text) * var(--pv-x)); }
+
+/* Experience cap avatars on derived boards, from the gallery derived sheet. */
+.dcx-proof--board > .picker-preview--gallery .pv-desktop .pg-cap { padding-top: 5.2cqh; gap: 2.6cqh; }
+.dcx-proof--board > .picker-preview--gallery .pv-desktop .pg-cap::before {
+  content: "";
+  display: block;
+  width: calc(11.5 * var(--pv-x));
+  aspect-ratio: 1;
+  border: 1px solid color-mix(in oklab, var(--pv-secondary) 55%, var(--pv-neutral));
+  border-radius: 50%;
+  background: linear-gradient(135deg, color-mix(in oklab, var(--pv-secondary) 24%, var(--pv-neutral)), color-mix(in oklab, var(--pv-secondary) 46%, var(--pv-neutral)));
+}
+
+/* Phone field chevron alignment on ops clones, from the gallery derived sheet
+   (cells 44 and 55-58; the corners screen applies it under every option). */
+:is(.picker-screen[data-screen="09"], .picker-screen[data-screen="10"]) .picker-board-stage > .picker-preview .pv-phone .po-field > .po-chev { align-self: center; transform: translateY(-25%) rotate(45deg); }
+
+/* Boundary additions on derived clones: the base geometry stays fixed; only
+   separation changes. Ported from the gallery derived sheet. */
+.dcx-proof--board[data-dcx-boundary="open-space"] > .picker-preview :is(.pv-nav, .po-side, .po-main, .pd-side),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="open-space"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.pv-nav, .po-side, .po-main, .pd-side) {
+  border-color: transparent !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="open-space"] > .picker-preview :is(.po-divider, .pg-row--flip, .pg-rail),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="open-space"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.po-divider, .pg-row--flip, .pg-rail) {
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="open-space"] > .picker-preview .po-divider,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="open-space"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview .po-divider {
+  background: transparent !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="thin-dividers"] > .picker-preview:is(.picker-preview--ops, .picker-preview--docs, .picker-preview--gallery) .pv-nav,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview:is(.picker-preview--ops, .picker-preview--docs, .picker-preview--gallery) .pv-nav {
+  border-bottom: 1px solid var(--derived-rule) !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="thin-dividers"] > .picker-preview :is(.po-side, .po-main, .pd-side),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.po-side, .po-main, .pd-side) {
+  border-right: 1px solid var(--derived-rule) !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="thin-dividers"] > .picker-preview .po-divider,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview .po-divider {
+  background: var(--derived-rule) !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="thin-dividers"] > .picker-preview .po-row + .po-row,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview .po-row + .po-row {
+  box-shadow: inset 0 1px 0 var(--derived-rule);
+}
+
+.dcx-proof--board[data-dcx-boundary="thin-dividers"] > .picker-preview:not([data-surface="experience"]) .pg-row--flip,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview:not([data-surface="experience"]) .pg-row--flip {
+  box-shadow: inset 0 1px 0 var(--derived-rule);
+}
+
+.dcx-proof--board[data-dcx-boundary="thin-dividers"] > .picker-preview:not([data-surface="experience"]) .pg-rail,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview:not([data-surface="experience"]) .pg-rail {
+  border-top: 1px solid var(--derived-rule);
+}
+
+/* Cell 49: experience thin-dividers redraws its flip row and phone image
+   separations by pseudo-element rules. */
+.dcx-proof--board[data-dcx-boundary="thin-dividers"] > .picker-preview[data-surface="experience"] .pg-row--flip,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-row--flip {
+  position: relative;
+  margin-top: 10cqh !important;
+  box-shadow: none !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="thin-dividers"] > .picker-preview[data-surface="experience"] .pg-row--flip::before,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-row--flip::before {
+  content: "";
+  position: absolute;
+  top: -5cqh;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: var(--derived-rule);
+}
+
+.dcx-proof--board[data-dcx-boundary="thin-dividers"] > .picker-preview[data-surface="experience"] .pg-rail,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-rail {
+  border-top: 0 !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="thin-dividers"] > .picker-preview[data-surface="experience"] .pg-phone-body > .pg-cap + .pv-image,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-phone-body > .pg-cap + .pv-image {
+  margin-top: 8cqh !important;
+  overflow: visible;
+}
+
+.dcx-proof--board[data-dcx-boundary="thin-dividers"] > .picker-preview[data-surface="experience"] .pg-phone-body > .pg-cap + .pv-image::before,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="thin-dividers"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-phone-body > .pg-cap + .pv-image::before {
+  content: "";
+  position: absolute;
+  top: -4cqh;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: var(--derived-rule);
+}
+
+/* Cell 50: experience surface-changes. */
+.dcx-proof--board[data-dcx-boundary="surface-changes"] > .picker-preview[data-surface="experience"] .pg-row--flip,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-row--flip {
+  margin-top: 5cqh !important;
+  padding-block: 5cqh !important;
+  box-shadow: none !important;
+  background: color-mix(in oklab, var(--derived-band-alt) 60%, white 40%) !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="surface-changes"] > .picker-preview[data-surface="experience"] .pg-phone-body > .pg-cap + .pv-image,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-phone-body > .pg-cap + .pv-image {
+  margin-top: 8cqh !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="surface-changes"] > .picker-preview[data-surface="experience"] .pg-phone-body,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pg-phone-body {
+  background: linear-gradient(to bottom, transparent 0 50%, color-mix(in oklab, var(--derived-band-alt) 60%, white 40%) 50% 100%) !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="surface-changes"] > .picker-preview[data-surface="experience"] .pv-phone .pv-tabbar,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="experience"] .pv-phone .pv-tabbar {
+  background: color-mix(in oklab, var(--derived-band-alt) 60%, white 40%) !important;
+}
+
+/* Surface changes on every derived clone. */
+.dcx-proof--board[data-dcx-boundary="surface-changes"] > .picker-preview :is(.pv-nav, .po-side, .po-main, .pd-side),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.pv-nav, .po-side, .po-main, .pd-side) {
+  border-color: transparent !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="surface-changes"] > .picker-preview :is(.pv-nav, .pv-phone-top, .pv-tabbar),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.pv-nav, .pv-phone-top, .pv-tabbar) {
+  background: var(--derived-band) !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="surface-changes"] > .picker-preview :is(.po-side, .po-panel, .pd-side),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.po-side, .po-panel, .pd-side) {
+  background: var(--derived-band) !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="surface-changes"] > .picker-preview:not([data-surface="experience"]) :is(.pd-note, .pg-row--flip),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview:not([data-surface="experience"]) :is(.pd-note, .pg-row--flip) {
+  background: var(--derived-band-alt) !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="surface-changes"] > .picker-preview .po-divider,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="surface-changes"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview .po-divider {
+  background: transparent !important;
+}
+
+/* Cards and panels. */
+.dcx-proof--board[data-dcx-boundary="cards-and-panels"] > .picker-preview :is(.pv-nav, .po-side, .po-main),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.pv-nav, .po-side, .po-main) {
+  border-color: transparent !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="cards-and-panels"] > .picker-preview .po-divider,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview .po-divider {
+  background: transparent !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="cards-and-panels"] > .picker-preview :is(.po-side, .po-chart, .po-rows, .po-panel, .po-phone-body .po-chart, .po-phone-body .po-field, .po-phone-body .po-prow),
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview :is(.po-side, .po-chart, .po-rows, .po-panel, .po-phone-body .po-chart, .po-phone-body .po-field, .po-phone-body .po-prow) {
+  background: var(--derived-panel) !important;
+  border: 1px solid var(--derived-panel-edge) !important;
+  border-radius: 3px;
+}
+
+.dcx-proof--board[data-dcx-boundary="cards-and-panels"] > .picker-preview .po-chart,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview .po-chart {
+  padding-inline: calc(3 * var(--pv-x));
+}
+
+/* Cell 44: operate cards-and-panels details. */
+.dcx-proof--board[data-dcx-boundary="cards-and-panels"] > .picker-preview[data-surface="operate"] .pv-desktop .po-chart,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="operate"] .pv-desktop .po-chart {
+  padding: calc(3 * var(--pv-x)) calc(5 * var(--pv-x)) !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="cards-and-panels"] > .picker-preview[data-surface="operate"] .pv-phone .po-toggle,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="operate"] .pv-phone .po-toggle {
+  margin-left: auto !important;
+  margin-right: 12px !important;
+  padding-right: 12px !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="cards-and-panels"] > .picker-preview[data-surface="operate"] .pv-phone .po-prow,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="operate"] .pv-phone .po-prow {
+  padding-left: 12px !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="cards-and-panels"] > .picker-preview[data-surface="operate"] .pv-phone .po-field > .po-chev,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview[data-surface="operate"] .pv-phone .po-field > .po-chev {
+  align-self: center !important;
+  transform: translateY(-25%) rotate(45deg) !important;
+}
+
+.dcx-proof--board[data-dcx-boundary="cards-and-panels"] > .picker-preview .po-rows,
+#picker-form:not(:has(.picker-strategy-option:hover input[name="boundary-style"])):has(input[name="boundary-style"][value="cards-and-panels"]:checked) .picker-screen[data-screen="08"] .picker-board-stage > .picker-preview .po-rows {
+  padding-inline: calc(2 * var(--pv-x));
+}
+
+
+/* Corner radii on the derived clones. Dots remain dots while frames,
+   surfaces, controls, and text bars take the selected radius. Ported from
+   the gallery derived sheet; values match the artboard radius ramp above. */
+.dcx-proof--board[data-dcx-corner="sharp"],
+#picker-form:not(:has(.picker-strategy-option:hover input[name="corner-style"])):has(input[name="corner-style"][value="sharp"]:checked) .dcx-proof--board { --derived-frame-radius: 0px; --derived-phone-radius: 0px; --derived-surface-radius: 0px; --derived-control-radius: 0px; --derived-bar-radius: 0px; }
+.dcx-proof--board[data-dcx-corner="slightly-soft"],
+#picker-form:not(:has(.picker-strategy-option:hover input[name="corner-style"])):has(input[name="corner-style"][value="slightly-soft"]:checked) .dcx-proof--board { --derived-frame-radius: 4px; --derived-phone-radius: 5px; --derived-surface-radius: 3px; --derived-control-radius: 3px; --derived-bar-radius: 2px; }
+.dcx-proof--board[data-dcx-corner="friendly"],
+#picker-form:not(:has(.picker-strategy-option:hover input[name="corner-style"])):has(input[name="corner-style"][value="friendly"]:checked) .dcx-proof--board { --derived-frame-radius: 7px; --derived-phone-radius: 11px; --derived-surface-radius: 8px; --derived-control-radius: 8px; --derived-bar-radius: 3px; }
+.dcx-proof--board[data-dcx-corner="pill"],
+#picker-form:not(:has(.picker-strategy-option:hover input[name="corner-style"])):has(input[name="corner-style"][value="pill"]:checked) .dcx-proof--board { --derived-frame-radius: 9px; --derived-phone-radius: 15px; --derived-surface-radius: 12px; --derived-control-radius: 999px; --derived-bar-radius: 3px; }
+
+.dcx-proof--board > .picker-preview .pv-desktop { border-radius: var(--derived-frame-radius) !important; }
+.dcx-proof--board > .picker-preview .pv-phone { border-radius: var(--derived-phone-radius) !important; }
+.dcx-proof--board > .picker-preview :is(.pv-image, .pv-mini-card, .po-chart, .po-rows, .po-panel, .pg-row) { border-radius: var(--derived-surface-radius) !important; }
+.dcx-proof--board > .picker-preview .pd-note { border-radius: 0 var(--derived-surface-radius) var(--derived-surface-radius) 0 !important; }
+.dcx-proof--board > .picker-preview :is(.pv-pill, .pv-actions i, .po-item--on, .po-field, .po-row, .po-toggle) { border-radius: var(--derived-control-radius) !important; }
+.dcx-proof--board > .picker-preview .po-toggle::after { border-radius: var(--derived-control-radius) !important; }
+.dcx-proof--board > .picker-preview :is(.pv-nav-bars i, .pv-pill::after, .pv-eyebrow, .pv-headline i, .pv-copy-bar, .po-line, .po-cell, .po-heading, .po-label, .pd-item span, .pd-heading, .pd-para i, .pd-note-lines i, .pg-cap i, .pg-track i) { border-radius: var(--derived-bar-radius) !important; }
+
+
+/* Depth additions on derived clones. Flat is the base; the other answers
+   lift only solid, meaningful objects. Ported from the gallery derived
+   sheet; shadow alphas stay literal because they are shadows, not palette
+   roles. */
+.dcx-proof--board[data-dcx-depth="flat"],
+#picker-form:not(:has(.picker-strategy-option:hover input[name="depth-style"])):has(input[name="depth-style"][value="flat"]:checked) .dcx-proof--board { --derived-shadow-chrome: none; --derived-shadow-card: none; --derived-shadow-control: none; --derived-shadow-surface: none; }
+.dcx-proof--board[data-dcx-depth="soft-lift"],
+#picker-form:not(:has(.picker-strategy-option:hover input[name="depth-style"])):has(input[name="depth-style"][value="soft-lift"]:checked) .dcx-proof--board { --derived-shadow-chrome: 0 1px 2px rgb(0 0 0 / 0.08); --derived-shadow-card: 0 2px 4px rgb(0 0 0 / 0.1); --derived-shadow-control: 0 1px 2px rgb(0 0 0 / 0.1); --derived-shadow-surface: 0 2px 4px rgb(0 0 0 / 0.1); }
+.dcx-proof--board[data-dcx-depth="floating"],
+#picker-form:not(:has(.picker-strategy-option:hover input[name="depth-style"])):has(input[name="depth-style"][value="floating"]:checked) .dcx-proof--board { --derived-shadow-chrome: 0 1px 3px rgb(0 0 0 / 0.1); --derived-shadow-card: 0 4px 8px rgb(0 0 0 / 0.14); --derived-shadow-control: 0 2px 4px rgb(0 0 0 / 0.12); --derived-shadow-surface: 0 4px 8px rgb(0 0 0 / 0.14); }
+
+.dcx-proof--board > .picker-preview :is(.pv-nav, .pv-phone-top) { box-shadow: var(--derived-shadow-chrome) !important; }
+.dcx-proof--board > .picker-preview :is(.pv-pill, .pv-actions i, .po-item--on, .po-field, .po-toggle) { box-shadow: var(--derived-shadow-control) !important; }
+.dcx-proof--board > .picker-preview :is(.pv-image, .pv-mini-card, .pd-note) { box-shadow: var(--derived-shadow-card) !important; }
+.dcx-proof--board > .picker-preview .pg-cap::before { box-shadow: var(--derived-shadow-card) !important; }
+.dcx-proof--board > .picker-preview :is(.po-chart i, .po-side, .po-panel) { box-shadow: var(--derived-shadow-surface) !important; }
+
+/* Depth persuade rides the drenched base, the gallery's baseCellId lock. */
+.dcx-proof--board > .picker-preview[data-surface="persuade"] {
+  --pv-secondary: var(--pkc-secondary);
+  --pv-tertiary: var(--pkc-tertiary);
+  --pv-bone: color-mix(in oklab, var(--pkc-p-ink) 55%, var(--pkc-primary));
+  --pv-strong: var(--pkc-p-ink);
+  --pv-secondary-wash: color-mix(in oklab, var(--pkc-p-ink) 16%, var(--pkc-primary));
+}
+
+.dcx-proof--board > .picker-preview[data-surface="persuade"] .pv-desktop .pv-image {
+  background: linear-gradient(135deg, color-mix(in oklab, var(--pkc-p-ink) 16%, var(--pkc-primary)), color-mix(in oklab, var(--pkc-secondary) 34%, var(--pkc-primary))) !important;
+  border-color: color-mix(in oklab, var(--pkc-secondary) 52%, var(--pkc-primary)) !important;
+}
+
+.dcx-proof--board > .picker-preview[data-surface="persuade"] .pv-desktop .pv-image::after { background: var(--pkc-tertiary) !important; }
+
+.dcx-proof--board > .picker-preview[data-surface="persuade"] .pv-desktop .pv-actions i:last-child {
+  border-color: color-mix(in oklab, var(--pkc-secondary) 68%, var(--pkc-p-ink)) !important;
+  background: color-mix(in oklab, var(--pkc-secondary) 18%, var(--pkc-primary)) !important;
+}
+
+.dcx-proof--board > .picker-preview[data-surface="persuade"] .pv-desktop .pv-nav-bars i:nth-child(2) {
+  background: color-mix(in oklab, var(--pkc-secondary) 72%, var(--pkc-p-ink)) !important;
+}
+

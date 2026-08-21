@@ -1,0 +1,47 @@
+---
+import '../styles/picker.css';
+// Loaded after the shared sheet so a screen's own answers win on source order
+// as well as specificity. One file per question, each owning only the slots
+// its options rewrite.
+import '../styles/screens/motion.css';
+import '../styles/screens/layout.css';
+import '../styles/screens/boundaries.css';
+import '../styles/screens/corners.css';
+import '../styles/screens/depth.css';
+// The layout screen's portfolio board, loaded after the three sheets above on
+// purpose: it pins that board's material against their committed defaults by
+// winning ties on source order. The header of the file has the argument.
+import '../styles/screens/layout-portfolio.css';
+// The design context document that replaces the picker after submission.
+import '../styles/design-context.css';
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title = 'Impeccable design interview',
+  description = 'Choose the design direction your agent will use.',
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="description" content={description} />
+    <title>{title}</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Albert+Sans:wght@300;400;500;600;700&family=Alumni+Sans:wght@100;300;400;500;600;700&display=swap" rel="stylesheet" />
+  </head>
+  <!-- Declared here, not in picker.css, so Vite leaves the path alone. It is
+       server-absolute because a url() inside var() resolves against the
+       stylesheet that consumes it, which lives one directory down. -->
+  <body class="picker-page" style="--pk-foil: url('/assets/kinpaku-gold-leaf.jpg')">
+    <slot />
+  </body>
+</html>

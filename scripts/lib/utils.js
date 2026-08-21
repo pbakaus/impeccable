@@ -109,9 +109,11 @@ function readSkillScripts(scriptsDir) {
       if (PER_PROJECT_SCRIPT_ARTIFACTS.has(entry.name)) continue;
 
       const relPath = path.relative(scriptsDir, entryPath).split(path.sep).join('/');
+      const isBinary = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.woff', '.woff2']
+        .includes(path.extname(entry.name).toLowerCase());
       scripts.push({
         name: relPath,
-        content: fs.readFileSync(entryPath, 'utf-8'),
+        content: fs.readFileSync(entryPath, isBinary ? undefined : 'utf-8'),
         filePath: entryPath,
       });
     }
@@ -636,7 +638,8 @@ const EXCLUDED_FROM_SUGGESTIONS = new Set([
 // These are the commands that audit/critique/etc. reference when suggesting next steps.
 const IMPECCABLE_SUB_COMMANDS = [
   'adapt', 'animate', 'audit', 'bolder', 'clarify', 'colorize',
-  'critique', 'delight', 'distill', 'document', 'harden', 'layout',
+  'critique',
+  'design-context', 'delight', 'distill', 'document', 'harden', 'layout',
   'onboard', 'optimize', 'overdrive', 'polish', 'quieter', 'shape', 'typeset',
 ];
 
@@ -693,6 +696,7 @@ export function replacePlaceholders(content, provider, commandNames = [], allSki
  * here by an exact string match.
  */
 export function replaceScriptProviderMarker(content, provider, buildProvider = provider) {
+  if (Buffer.isBuffer(content)) return content;
   const placeholders = PROVIDER_PLACEHOLDERS[provider] || PROVIDER_PLACEHOLDERS.cursor;
   const commandPrefix = placeholders.command_prefix || '/';
   const prefixMarker = "export const IMPECCABLE_COMMAND_PREFIX = '/'; // @impeccable-provider-command-prefix";
