@@ -1444,6 +1444,35 @@ rounded:
     };
   }
 
+  it('stands down while live-mode preview scaffolding is in the file', async () => {
+    // Field-tested failure: a live session writes the variants wrapper into
+    // source, the hook fires on that edit, and the agent starts "fixing"
+    // preview findings mid-session (including redesigning variants to appease
+    // the detector). While live markers are present the file belongs to the
+    // session; live-complete's verification owns quality on it.
+    const wrapped = writeFixture(
+      'src/Pricing.tsx',
+      '<div data-impeccable-variants="abc12345" data-impeccable-variant-count="3">\n'
+      + '<div data-impeccable-variant="1"><h1>x</h1></div>\n'
+      + '</div>\n',
+    );
+    const det = fakeDetector([finding('text-overflow', 1, { name: 'Content overflow' })]);
+    const r1 = await runHook({ stdinJson: JSON.stringify(eventFor(wrapped)), env: {}, cwd, detector: det });
+    assert.equal(r1.exitCode, 0);
+    assert.equal(r1.audit.skipped, 'live-preview');
+    assert.doesNotMatch(r1.stdout || '', /Design hook findings/);
+
+    // The carbonize block (accepted, cleanup still owed) stands down the same
+    // way until the markers are rewritten out.
+    const carbonized = writeFixture(
+      'src/Accepted.tsx',
+      '<!-- impeccable-carbonize-start abc12345 -->\n<style>.x{}</style>\n<!-- impeccable-carbonize-end abc12345 -->\n',
+    );
+    const r2 = await runHook({ stdinJson: JSON.stringify(eventFor(carbonized)), env: {}, cwd, detector: det });
+    assert.equal(r2.audit.skipped, 'live-preview');
+    assert.doesNotMatch(r2.stdout || '', /Design hook findings/);
+  });
+
   it('emits findings on first fire, then a pending-ack on subsequent dedup hits', async () => {
     // The "no silent fires" policy turns the previously-silent dedup hit
     // into a pending re-nudge that keeps the unresolved finding in the
@@ -3206,6 +3235,61 @@ describe('Cursor hook scripts', () => {
     assert.equal(entries[0].event, 'preToolUse');
     assert.equal(entries[0].blocked, true);
     assert.equal(entries[0].blockedFindings, 1);
+  });
+
+  it('preToolUse stands down on live-mode preview scaffolding instead of denying it', () => {
+    const logPath = path.join(cwd, 'hook.ndjson');
+    const filePath = path.join(cwd, 'src/Pricing.html');
+
+    // The proposed write introduces the variants wrapper AND content the
+    // detector would otherwise deny (a side-tab border). The marker must win:
+    // previews are temporary, and live-complete owns the file's final state.
+    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-before-edit.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'preToolUse',
+        cwd,
+        tool_name: 'Write',
+        tool_input: {
+          file_path: filePath,
+          content: `
+            <div data-impeccable-variants="abc12345" data-impeccable-variant-count="3" style="display: contents">
+              <div data-impeccable-variant="1">
+                <div class="card" style="border-left: 4px solid #7c3aed; border-radius: 16px;">Hello</div>
+              </div>
+            </div>
+          `,
+        },
+      }),
+      env: { ...process.env, IMPECCABLE_HOOK_LOG: logPath },
+      encoding: 'utf-8',
+    });
+    const payload = JSON.parse(out);
+    assert.equal(payload.permission, 'allow');
+    const entries = fs.readFileSync(logPath, 'utf-8').trim().split('\n').map((line) => JSON.parse(line));
+    assert.equal(entries[0].skipped, 'live-preview');
+
+    // A fragment edit to a file that already carries the wrapper stands down
+    // the same way, even when the fragment itself has no marker in it.
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, '<div data-impeccable-variants="abc12345"><div data-impeccable-variant="1"><h1>x</h1></div></div>');
+    const out2 = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-before-edit.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'preToolUse',
+        cwd,
+        tool_name: 'Edit',
+        tool_input: {
+          file_path: filePath,
+          old_string: '<h1>x</h1>',
+          new_string: '<h1 style="border-left: 4px solid #7c3aed; border-radius: 16px;">x</h1>',
+        },
+      }),
+      env: { ...process.env, IMPECCABLE_HOOK_LOG: logPath },
+      encoding: 'utf-8',
+    });
+    const payload2 = JSON.parse(out2);
+    assert.equal(payload2.permission, 'allow');
   });
 
   it('preToolUse delivers the stale-sidecar note within a 500-char budget (PR #508)', () => {

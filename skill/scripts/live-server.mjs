@@ -35,6 +35,7 @@ import { selectAvailablePendingEvent } from './live/poll-lanes.mjs';
 import { createManualEditRoutes } from './live/manual-edit-routes.mjs';
 import {
   LIVE_COMMANDS,
+  VISUAL_ACTIONS,
   VARIANT_PROGRESS_CHECKPOINT_REASONS as VARIANT_PROGRESS_CHECKPOINT_REASON_LIST,
 } from './live/vocabulary.mjs';
 import {
@@ -91,6 +92,9 @@ function resolveProjectContext() {
 }
 const DEFAULT_POLL_TIMEOUT = 600_000;   // 10 min — agent re-polls on timeout anyway
 const SSE_HEARTBEAT_INTERVAL = 30_000;  // keepalive ping every 30s
+// Browser must answer an agent_target push within this window. The env
+// override exists for tests; real sessions keep the default.
+const AGENT_TARGET_TIMEOUT_MS = Number(process.env.IMPECCABLE_AGENT_TARGET_TIMEOUT_MS || '') || 15_000;
 
 // The browser events allowed to mint a NEW session journal. `generate` starts
 // a variant session at Go; `steer` mints its own request id. Every other
@@ -144,6 +148,9 @@ const state = {
   // a poll to be parked at the exact moment we dispatch.
   lastPollAt: 0,
   timedOutApplyIds: new Map(),
+  // Held-open POST /agent-target responses, keyed by targetId. Each entry is
+  // { res, timer }; resolved by POST /agent-target-result or its timeout.
+  pendingAgentTargets: new Map(),
 };
 
 const CHAT_POLL_FRESHNESS_MS = 60_000;
@@ -611,6 +618,129 @@ function recordManualEditActivity(type, details = {}) {
   }
   broadcast(entry);
   return entry;
+}
+
+// ---------------------------------------------------------------------------
+// Agent-initiated element targeting (the `generate` command)
+// ---------------------------------------------------------------------------
+//
+// POST /agent-target lets the AGENT start a variant session: the server pushes
+// an `agent_target` SSE message, the overlay resolves the selector, scrolls to
+// the element, enters the same picked state a user click produces, and fires
+// the normal Go pipeline. The HTTP response is held open until the overlay
+// POSTs /agent-target-result (or the timeout fires), so the CLI gets a
+// synchronous verdict. Modeled on recordManualEditActivity: a direct
+// broadcast outside the /poll reply envelope and outside the session journal.
+// No session exists until the browser's own generate event creates one.
+
+function validateAgentTargetRequest(msg) {
+  if (typeof msg.selector !== 'string' || !msg.selector.trim()) return 'agent_target: selector is required';
+  if (msg.selector.length > 1000) return 'agent_target: selector too long';
+  if (!msg.action || !VISUAL_ACTIONS.includes(msg.action)) {
+    return 'agent_target: invalid action (valid: ' + VISUAL_ACTIONS.join(', ') + ')';
+  }
+  if (!Number.isInteger(msg.count) || msg.count < 1 || msg.count > 8) return 'agent_target: count must be 1-8';
+  if (msg.text !== undefined && (typeof msg.text !== 'string' || msg.text.length > 500)) {
+    return 'agent_target: text must be a string of at most 500 chars';
+  }
+  if (msg.index !== undefined && (!Number.isInteger(msg.index) || msg.index < 1)) {
+    return 'agent_target: index must be a positive integer (1-based)';
+  }
+  if (msg.prompt !== undefined && (typeof msg.prompt !== 'string' || msg.prompt.length > 2000)) {
+    return 'agent_target: prompt must be a string of at most 2000 chars';
+  }
+  if (msg.dryRun !== undefined && typeof msg.dryRun !== 'boolean') {
+    return 'agent_target: dryRun must be a boolean';
+  }
+  return null;
+}
+
+function resolveAgentTarget(targetId, result) {
+  const entry = state.pendingAgentTargets.get(targetId);
+  if (!entry) return false;
+  state.pendingAgentTargets.delete(targetId);
+  clearTimeout(entry.timer);
+  try {
+    entry.res.writeHead(200, { 'Content-Type': 'application/json' });
+    entry.res.end(JSON.stringify({ targetId, ...result }));
+  } catch { /* CLI gone; nothing to deliver to */ }
+  return true;
+}
+
+function handleAgentTargetPost(req, res) {
+  let body = '';
+  req.on('data', (c) => { body += c; });
+  req.on('end', () => {
+    let msg;
+    try { msg = JSON.parse(body); } catch {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid JSON' }));
+      return;
+    }
+    if (msg.token !== state.token) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Unauthorized' }));
+      return;
+    }
+    const error = validateAgentTargetRequest(msg);
+    if (error) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error }));
+      return;
+    }
+    if (state.sseClients.size === 0) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'no_browser_connected' }));
+      return;
+    }
+    const targetId = randomUUID().replace(/-/g, '').slice(0, 8);
+    const timer = setTimeout(() => {
+      resolveAgentTarget(targetId, {
+        ok: false,
+        error: 'browser_timeout',
+        timeoutMs: AGENT_TARGET_TIMEOUT_MS,
+      });
+    }, AGENT_TARGET_TIMEOUT_MS);
+    state.pendingAgentTargets.set(targetId, { res, timer });
+    broadcast({
+      type: 'agent_target',
+      targetId,
+      selector: msg.selector,
+      ...(msg.text ? { text: msg.text } : {}),
+      ...(Number.isInteger(msg.index) ? { index: msg.index } : {}),
+      action: msg.action,
+      count: msg.count,
+      ...(msg.prompt ? { prompt: msg.prompt } : {}),
+      ...(msg.dryRun ? { dryRun: true } : {}),
+    });
+  });
+}
+
+function handleAgentTargetResultPost(req, res) {
+  let body = '';
+  req.on('data', (c) => { body += c; });
+  req.on('end', () => {
+    let msg;
+    try { msg = JSON.parse(body); } catch {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid JSON' }));
+      return;
+    }
+    if (msg.token !== state.token) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Unauthorized' }));
+      return;
+    }
+    const { token: _token, targetId, ...result } = msg;
+    if (typeof targetId !== 'string' || !targetId) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'agent_target_result: missing targetId' }));
+      return;
+    }
+    const delivered = resolveAgentTarget(targetId, result);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, delivered }));
+  });
 }
 
 function getManualEditStatus() {
@@ -1094,6 +1224,16 @@ function createRequestHandler({ detectScript, liveScriptParts }) {
       return;
     }
 
+    // --- Agent-initiated targeting (the `generate` command) ---
+    if (p === '/agent-target' && req.method === 'POST') {
+      handleAgentTargetPost(req, res);
+      return;
+    }
+    if (p === '/agent-target-result' && req.method === 'POST') {
+      handleAgentTargetResultPost(req, res);
+      return;
+    }
+
     // --- Stop ---
     if (p === '/stop') {
       const token = url.searchParams.get('token');
@@ -1443,6 +1583,9 @@ function shutdown() {
   state.sseClients.clear();
   for (const poll of state.pendingPolls) poll.resolve({ type: 'exit' });
   state.pendingPolls.length = 0;
+  for (const targetId of [...state.pendingAgentTargets.keys()]) {
+    resolveAgentTarget(targetId, { ok: false, error: 'server_stopping' });
+  }
   if (httpServer) httpServer.close();
   process.exit(0);
 }

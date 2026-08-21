@@ -1,0 +1,40 @@
+{
+  "name": "Vite 8 + React + pricing cards below the fold (agent-initiated target)",
+  "config": {
+    "files": ["index.html"],
+    "insertBefore": "</body>",
+    "commentSyntax": "html"
+  },
+  "sourceFiles": ["index.html", "src/App.jsx", "src/main.jsx", "src/styles.css", "vite.config.js"],
+  "generatedFiles": [],
+  "wrapCases": [
+    {
+      "name": "wraps the below-the-fold pricing title in source JSX",
+      "args": { "classes": "pricing-title", "tag": "h2" },
+      "expectedFile": "src/App.jsx"
+    }
+  ],
+  "runtime": {
+    "styling": "plain-css",
+    "install": ["npm", "install", "--no-audit", "--no-fund", "--loglevel=error"],
+    "devCommand": ["npx", "vite", "--host", "127.0.0.1"],
+    "readyPattern": "Local:\\s+https?://[^:]+:(\\d+)",
+    "readyTimeoutMs": 120000,
+    "steer": false,
+    "pickSelector": "h2.pricing-title",
+    "acceptedSourcePattern": "<h2[^>]*(class|className)=\"[^\"]*\\bpricing-title\\b",
+    "assertSourceContains": ["{tier.name}"],
+    "agentTargetScenario": {
+      "selector": "h2.pricing-title",
+      "action": "bolder",
+      "count": 3,
+      "minScrollY": 300,
+      "ambiguousSelector": ".pricing-card",
+      "missSelector": ".does-not-exist"
+    },
+    "probe": {
+      "expectLiveInit": true,
+      "expectConsoleClean": true
+    }
+  }
+}

@@ -66,6 +66,7 @@ Choose the mode from the requested surface, not the product, and persist it only
 | `adapt [target]` | Fix | Adapt for different devices and screen sizes | [reference/adapt.md](reference/adapt.md) · native: [reference/adapt.native.md](reference/adapt.native.md) |
 | `optimize [target]` | Fix | Diagnose and fix UI performance | [reference/optimize.md](reference/optimize.md) |
 | `live` | Iterate | Visual variant mode: pick elements in the browser, generate alternatives | [reference/live.md](reference/live.md) |
+| `generate [n] [action] [element]` | Iterate | Generate variants of a named element in the live browser, no manual picking | [reference/generate.md](reference/generate.md) |
 
 Routing: <!-- rule:skill-routing -->
 

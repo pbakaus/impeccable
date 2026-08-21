@@ -91,6 +91,15 @@ export const SENSITIVE_PATH = new RegExp([
 // `generated-utils.ts` or `CodeGenerator.tsx` still get scanned.
 export const GENERATED_PATH = /(?:\.generated\.[a-z]+$|\.d\.ts$|\.min\.[a-z]+$|[/\\]node_modules[/\\]|[/\\]generated[/\\]|[/\\](?:dist|build|out|\.next|\.cache|coverage)[/\\]|[/\\]?[^/\\]+\.lock(?:\.json)?$)/i;
 
+// Live variant sessions stitch temporary preview scaffolding into real source:
+// the variants wrapper, per-variant divs, inline preview CSS, and the
+// carbonize block. All of it is rewritten at accept and removed by carbonize
+// cleanup, so detector findings against it are noise that derails the session
+// (the agent starts "fixing" previews mid-cycle). The hook stands down for a
+// file while any live-mode marker is present; live-complete's accept
+// verification owns quality on that file until the markers are gone.
+export const LIVE_PREVIEW_MARKERS = /data-impeccable-variants=|impeccable-carbonize-start/;
+
 export const TRUTHY = /^(1|true|yes|on)$/i;
 
 // ── Two-tier rule surfacing ──────────────────────────────────────────────
@@ -1920,6 +1929,10 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
       }
 
       const content = fs.readFileSync(filePath, 'utf-8');
+      if (LIVE_PREVIEW_MARKERS.test(content)) {
+        lastSkip = 'live-preview';
+        continue;
+      }
       let findings;
       let detectorThrew = false;
       const useHtmlEngine = configuredExt
@@ -2259,6 +2272,7 @@ export async function runStopHook({ stdinJson, env = {}, cwd = process.cwd(), no
       scanned += 1;
       let content = '';
       try { content = fs.readFileSync(filePath, 'utf-8'); } catch { continue; }
+      if (LIVE_PREVIEW_MARKERS.test(content)) continue;
 
       let findings;
       const useHtmlEngine = configuredExt

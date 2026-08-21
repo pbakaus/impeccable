@@ -32,7 +32,7 @@ import {
   FAKE_VARIANT_FONT_WEIGHTS,
 } from './live-e2e/agent.mjs';
 import { createLlmAgent, resolveLlmAgentConfig } from './live-e2e/agents/llm-agent.mjs';
-import { bootFixtureSession, FIXTURES_DIR } from './live-e2e/session.mjs';
+import { bootFixtureSession, FIXTURES_DIR, SCRIPTS_DIR } from './live-e2e/session.mjs';
 import {
   assertApplyDockVisible,
   assertApplyDockLoading,
@@ -808,6 +808,115 @@ for (const { name, fixture } of fixtures) {
     }
 
     // -----------------------------------------------------------------
+    // Agent-initiated targeting (the `generate` command). The agent names
+    // the element over the live-generate CLI; the overlay resolves the
+    // selector, scrolls to it, enters the picked state, and fires Go with
+    // no user click. Everything downstream (generate event, variants,
+    // cycling, accept, carbonize) is the standard pipeline, so the second
+    // half of this test reuses the core helpers unchanged.
+    // -----------------------------------------------------------------
+    if (shouldRunScenario('agent-target') && fixture.runtime.agentTargetScenario) {
+      it('agent-initiated target scrolls, picks, and generates without a user click', liveE2eTestOptions, async (t) => {
+        if (!canRunFakeAgentScenario(t)) return;
+        const scenario = fixture.runtime.agentTargetScenario;
+        const session = await bootFixtureSession({
+          name,
+          fixture,
+          browser,
+          agent: createFakeAgent(),
+          wrapTarget: wrapTargetFromPickedElement,
+          atomicDelayMs,
+          log: (m) => t.diagnostic(m),
+        });
+        const { page, appRoot, teardown } = session;
+        try {
+          await waitForHandshake(page);
+
+          // Failure contracts first; none of these may start a session.
+          const miss = runLiveGenerate(appRoot, { selector: scenario.missSelector, action: scenario.action });
+          assert.equal(miss.ok, false);
+          assert.equal(miss.error, 'no_match');
+
+          const ambiguous = runLiveGenerate(appRoot, { selector: scenario.ambiguousSelector, action: scenario.action });
+          assert.equal(ambiguous.ok, false);
+          assert.equal(ambiguous.error, 'ambiguous');
+          assert.ok(ambiguous.matchCount >= 2, 'ambiguous reports the match count');
+          assert.ok(
+            Array.isArray(ambiguous.candidates) && ambiguous.candidates.length >= 2,
+            'ambiguous lists candidate descriptors',
+          );
+
+          const dry = runLiveGenerate(appRoot, {
+            selector: scenario.selector,
+            action: scenario.action,
+            'dry-run': true,
+          });
+          assert.equal(dry.ok, true, `dry-run resolved: ${JSON.stringify(dry)}`);
+          assert.equal(dry.dryRun, true);
+          assert.equal(dry.matchCount, 1);
+
+          const noSession = await page.evaluate(() => window.__IMPECCABLE_LIVE_CHROME_CORE__.debugState());
+          assert.equal(noSession.currentSessionId, null, 'failed and dry-run targets start no session');
+          assert.equal(await page.evaluate(() => Math.round(window.scrollY)), 0, 'page has not scrolled yet');
+
+          // The happy path: resolve, scroll, pick, Go.
+          t.diagnostic(`Agent-targeting ${scenario.selector} (${scenario.action} x${scenario.count || 3})`);
+          const res = runLiveGenerate(appRoot, {
+            selector: scenario.selector,
+            action: scenario.action,
+            count: scenario.count || 3,
+          });
+          assert.equal(res.ok, true, `live-generate succeeded: ${JSON.stringify(res)}`);
+          assert.match(res.sessionId, /^[0-9a-f]{8}$/, 'a session id came back');
+          assert.equal(res.action, scenario.action);
+
+          const scrolled = await page.evaluate(() => Math.round(window.scrollY));
+          assert.ok(
+            scrolled >= (scenario.minScrollY || 100),
+            `browser scrolled to the target (scrollY=${scrolled})`,
+          );
+          const dbg = await page.evaluate(() => window.__IMPECCABLE_LIVE_CHROME_CORE__.debugState());
+          assert.equal(dbg.currentSessionId, res.sessionId, 'overlay session matches the CLI result');
+
+          // A second target while the session is mid-flight must refuse.
+          const busy = runLiveGenerate(appRoot, { selector: scenario.selector, action: scenario.action });
+          assert.equal(busy.ok, false);
+          assert.equal(busy.error, 'busy');
+
+          await waitForCyclingRobust(page, 3, { agentMode: 'fake', log: (m) => t.diagnostic(m) });
+          const sourceFile = await locateSessionFile(appRoot);
+          assert.ok(sourceFile, 'the variants wrapper landed in a source file');
+
+          await cycleToVariant(page, 2, 3);
+          t.diagnostic('Accepting variant 2');
+          await clickAccept(page, { expectedVariant: 2 });
+          await waitForBarHidden(page);
+          const final = await waitForSourceClean(sourceFile, 20_000, {});
+          assert.match(
+            final,
+            new RegExp(fixture.runtime.acceptedSourcePattern),
+            'accepted source element survives',
+          );
+          for (const needle of fixture.runtime.assertSourceContains || []) {
+            assert.ok(final.includes(needle), `source still contains ${JSON.stringify(needle)} after accept`);
+          }
+          assert.doesNotMatch(final, /data-impeccable-variants="/, 'variants wrapper removed');
+          assert.doesNotMatch(final, /impeccable-carbonize-start/, 'carbonize block rewritten');
+
+          // The overlay is reusable after accept: a fresh dry-run resolves.
+          const post = runLiveGenerate(appRoot, {
+            selector: scenario.selector,
+            action: scenario.action,
+            'dry-run': true,
+          });
+          assert.equal(post.ok, true, 'a new target resolves after accept');
+        } finally {
+          await teardownAndResetBrowser(teardown);
+        }
+      });
+    }
+
+    // -----------------------------------------------------------------
     // Failure injection for component previews.
     // -----------------------------------------------------------------
     if (fixture.runtime.componentFailureScenarios) {
@@ -1344,6 +1453,27 @@ for (const { name, fixture } of fixtures) {
  * content (exact CSS values, exact font weights). An LLM agent legitimately
  * produces neither, so they only run against the fake agent.
  */
+/**
+ * Run the live-generate CLI (agent-initiated targeting) against a staged
+ * fixture and parse its JSON verdict. The CLI exits 1 for every ok:false
+ * outcome, so the JSON is read from the thrown error's stdout in that case.
+ */
+function runLiveGenerate(appRoot, flags) {
+  const args = [join(SCRIPTS_DIR, 'live-generate.mjs')];
+  for (const [key, value] of Object.entries(flags)) {
+    if (value === true) args.push(`--${key}`);
+    else if (value !== undefined && value !== null) args.push(`--${key}`, String(value));
+  }
+  let stdout;
+  try {
+    stdout = execFileSync(process.execPath, args, { cwd: appRoot, encoding: 'utf-8' });
+  } catch (err) {
+    stdout = err.stdout || '';
+    if (!stdout.trim()) throw err;
+  }
+  return JSON.parse(stdout);
+}
+
 function canRunFakeAgentScenario(t) {
   if (manualOnly || process.env.IMPECCABLE_E2E_MANUAL_SCENARIO) {
     t.skip('manual scenario filter is active');

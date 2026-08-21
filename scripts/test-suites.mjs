@@ -129,6 +129,7 @@ export const SUITES = {
           'tests/live-accept.test.mjs',
           'tests/live-accept-css.test.mjs',
           'tests/live-accept-scrub.test.mjs',
+          'tests/live-agent-target.test.mjs',
           'tests/live-browser-dom.test.mjs',
           'tests/live-browser-script-parts.test.mjs',
           'tests/live-browser-regression.test.mjs',
