@@ -103,9 +103,19 @@ function createFakeUniversalBundle(root, providers = ['.claude', '.agents', '.cu
     mkdirSync(join(bundleRoot, '.codex'), { recursive: true });
     // Mirror production: the Codex bundle's `.codex/hooks.json` targets its own
     // `.codex/skills` payload. The CLI installs the skill at `.agents/skills`, so
-    // the installer must rewrite this command to `.agents/skills` (see below).
+    // the installer must rewrite this command to `.agents/skills` while retaining
+    // the explicit Codex harness selector (see below).
     writeFileSync(join(bundleRoot, '.codex', 'hooks.json'), JSON.stringify({
-      hooks: { PostToolUse: [{ matcher: 'apply_patch', hooks: [{ type: 'command', command: 'node ".codex/skills/impeccable/scripts/hook.mjs"' }] }] },
+      hooks: {
+        PostToolUse: [{ matcher: 'apply_patch', hooks: [{
+          type: 'command',
+          command: 'IMPECCABLE_HOOK_HARNESS=codex node ".codex/skills/impeccable/scripts/hook.mjs"',
+        }] }],
+        Stop: [{ hooks: [{
+          type: 'command',
+          command: 'IMPECCABLE_HOOK_HARNESS=codex node ".codex/skills/impeccable/scripts/hook.mjs"',
+        }] }],
+      },
     }, null, 2));
   }
   // Native subagent definitions, mirroring the build's provider agents output.
@@ -122,6 +132,19 @@ function createFakeUniversalBundle(root, providers = ['.claude', '.agents', '.cu
       '---\nname: impeccable-finish-reviewer\ndescription: Reviews a finished build.\nmodel: inherit\nreadonly: true\nis_background: false\n---\nCursor reviewer body.\n');
   }
   return bundleRoot;
+}
+
+function expectCodexHookCommands(manifestPath, expectedSkillPath) {
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  const handlers = Object.values(manifest.hooks).flatMap(entries =>
+    entries.flatMap(entry => entry.hooks || []));
+  expect(handlers.length).toBeGreaterThan(0);
+  for (const handler of handlers) {
+    expect(handler.command).toContain('IMPECCABLE_HOOK_HARNESS=codex');
+    expect(handler.command).toContain(expectedSkillPath);
+    expect(handler.commandWindows).toContain('set "IMPECCABLE_HOOK_HARNESS=codex"');
+    expect(handler.commandWindows).toContain(expectedSkillPath);
+  }
 }
 
 /**
@@ -476,6 +499,27 @@ describe('skills install: already-installed detection', () => {
     expect(output).toContain('already installed');
     expect(output).toContain('Installed hooks into: .claude');
     expect(existsSync(join(tmp, '.claude', 'settings.local.json'))).toBe(true);
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('repairs missing Codex hooks without dropping the harness selector', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-repair-codex-hooks-'));
+    execSync('git init', { cwd: tmp });
+    createFakeSkills(tmp, ['impeccable'], ['.agents']);
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.agents']);
+
+    const output = run('skills install -y --providers=codex', {
+      cwd: tmp,
+      env: { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+
+    expect(output).toContain('already installed');
+    expect(output).toContain('Installed hooks into: .agents');
+    expectCodexHookCommands(
+      join(tmp, '.codex', 'hooks.json'),
+      '.agents/skills/impeccable/scripts/hook.mjs',
+    );
 
     rmSync(tmp, { recursive: true, force: true });
   }, 15000);
@@ -928,6 +972,10 @@ describe('skills install/update: local universal bundle e2e', () => {
     const codexHooks = readFileSync(join(tmp, '.codex', 'hooks.json'), 'utf8');
     expect(codexHooks).toContain('.agents/skills/impeccable/scripts/hook.mjs');
     expect(codexHooks).not.toContain('.codex/skills/impeccable/scripts/hook.mjs');
+    expectCodexHookCommands(
+      join(tmp, '.codex', 'hooks.json'),
+      '.agents/skills/impeccable/scripts/hook.mjs',
+    );
 
     rmSync(tmp, { recursive: true, force: true });
   }, 15000);
@@ -1140,6 +1188,10 @@ describe('skills install/update: local universal bundle e2e', () => {
     expect(readFileSync(join(tmp, '.claude', 'settings.local.json'), 'utf8')).toContain(join(home, '.claude', 'skills', 'impeccable', 'scripts', 'hook.mjs'));
     expect(readFileSync(join(tmp, '.codex', 'hooks.json'), 'utf8')).toContain(join(home, '.agents', 'skills', 'impeccable', 'scripts', 'hook.mjs'));
     expect(readFileSync(join(tmp, '.cursor', 'hooks.json'), 'utf8')).toContain(join(home, '.cursor', 'skills', 'impeccable', 'scripts', 'hook-before-edit.mjs'));
+    expectCodexHookCommands(
+      join(tmp, '.codex', 'hooks.json'),
+      join(home, '.agents', 'skills', 'impeccable', 'scripts', 'hook.mjs'),
+    );
 
     rmSync(tmp, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });
@@ -1511,6 +1563,31 @@ describe('skills install/update: local universal bundle e2e', () => {
     expect(content).toContain('version: 9.9.9-local');
     expect(existsSync(join(skillDir, 'scripts', 'context.mjs'))).toBe(true);
     expect(existsSync(join(tmp, '.claude', 'settings.local.json'))).toBe(true);
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('skills update preserves the Codex harness selector in rewritten hooks', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-codex-update-hooks-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.agents']);
+    const env = { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot };
+
+    run('skills install -y --providers=codex', { cwd: tmp, env });
+    writeFileSync(join(tmp, '.agents', 'skills', 'impeccable', 'SKILL.md'), [
+      '---',
+      'name: impeccable',
+      'version: 0.0.1-stale',
+      '---',
+      'stale',
+    ].join('\n'));
+
+    const output = run('skills update -y', { cwd: tmp, env });
+    expect(output).toContain('Updated 1 skill(s) to v9.9.9-local.');
+    expectCodexHookCommands(
+      join(tmp, '.codex', 'hooks.json'),
+      '.agents/skills/impeccable/scripts/hook.mjs',
+    );
 
     rmSync(tmp, { recursive: true, force: true });
   }, 15000);

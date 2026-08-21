@@ -1451,8 +1451,11 @@ function shSingleQuote(value) {
   return `'${String(value).replace(/'/g, `'\\''`)}'`;
 }
 
-function windowsHookCommand(quotedPath) {
-  return `if exist ${quotedPath} (node ${quotedPath} & exit /b)`;
+function windowsHookCommand(quotedPath, provider) {
+  const harnessEnv = provider === '.agents'
+    ? 'set "IMPECCABLE_HOOK_HARNESS=codex" & '
+    : '';
+  return `if exist ${quotedPath} (${harnessEnv}node ${quotedPath} & exit /b)`;
 }
 
 // `quotedPath` carries one pre-quoted form per target shell: { posix, win32 }.
@@ -1462,7 +1465,8 @@ function guardHookCommand(quotedPath, provider) {
   if (provider !== '.agents' && process.platform === 'win32') {
     return `node -e "${WIN32_HOOK_GUARD_SCRIPT}" ${quotedPath.win32}`;
   }
-  return `[ ! -f ${quotedPath.posix} ] || node ${quotedPath.posix}`;
+  const harnessEnv = provider === '.agents' ? 'IMPECCABLE_HOOK_HARNESS=codex ' : '';
+  return `[ ! -f ${quotedPath.posix} ] || ${harnessEnv}node ${quotedPath.posix}`;
 }
 
 // Transform bundled hook commands for the actual install target:
@@ -1507,7 +1511,7 @@ function rewriteHookCommandsForSkillRoot(value, provider, { skillRoot, absolute 
       next[key] = rewriteHookCommandsForSkillRoot(child, provider, { skillRoot, absolute });
     }
     if (provider === '.agents' && typeof value.command === 'string' && valueHasImpeccableHookMarker(value.command)) {
-      next.commandWindows = windowsHookCommand(quotedPath.win32);
+      next.commandWindows = windowsHookCommand(quotedPath.win32, provider);
     }
     return next;
   }

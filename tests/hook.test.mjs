@@ -953,8 +953,21 @@ describe('hook-admin.mjs', () => {
     assert.ok(impeccableGroup, 'repaired Claude settings should contain the Impeccable PostToolUse group');
     assert.equal(impeccableGroup.matcher, 'Edit|Write');
 
-    const codex = fs.readFileSync(path.join(cwd, '.codex', 'hooks.json'), 'utf-8');
-    assert.match(codex, /\.agents\/skills\/impeccable\/scripts\/hook\.mjs/);
+    const codex = JSON.parse(fs.readFileSync(path.join(cwd, '.codex', 'hooks.json'), 'utf-8'));
+    const codexHooks = [
+      codex.hooks.PostToolUse[0].hooks[0],
+      codex.hooks.Stop[0].hooks[0],
+    ];
+    for (const hook of codexHooks) {
+      assert.equal(
+        hook.command,
+        'IMPECCABLE_HOOK_HARNESS=codex node ".agents/skills/impeccable/scripts/hook.mjs"',
+      );
+      assert.equal(
+        hook.commandWindows,
+        'set "IMPECCABLE_HOOK_HARNESS=codex" & node ".agents/skills/impeccable/scripts/hook.mjs"',
+      );
+    }
     const cursor = fs.readFileSync(path.join(cwd, '.cursor', 'hooks.json'), 'utf-8');
     assert.match(cursor, /\.cursor\/skills\/impeccable\/scripts\/hook-before-edit\.mjs/);
     const github = JSON.parse(fs.readFileSync(path.join(cwd, '.github', 'hooks', 'impeccable.json'), 'utf-8'));
@@ -1365,9 +1378,26 @@ describe('writeAuditLog()', () => {
 });
 
 describe('payload()', () => {
-  it('produces hookSpecificOutput for Claude/Codex', () => {
+  it('produces hookSpecificOutput for Claude PostToolUse', () => {
     const obj = JSON.parse(payload('hello'));
     assert.equal(obj.hookSpecificOutput.hookEventName, 'PostToolUse');
+    assert.equal(obj.hookSpecificOutput.additionalContext, 'hello');
+  });
+
+  it('keeps Codex PostToolUse on the Claude-compatible context channel', () => {
+    const obj = JSON.parse(payload('hello', 'PostToolUse', 'codex'));
+    assert.equal(obj.hookSpecificOutput.hookEventName, 'PostToolUse');
+    assert.equal(obj.hookSpecificOutput.additionalContext, 'hello');
+  });
+
+  it('produces a blocking decision for Codex Stop', () => {
+    const obj = JSON.parse(payload('hello', 'Stop', 'codex'));
+    assert.deepEqual(obj, { decision: 'block', reason: 'hello' });
+  });
+
+  it('keeps Claude Stop on the additional-context channel', () => {
+    const obj = JSON.parse(payload('hello', 'Stop', 'claude'));
+    assert.equal(obj.hookSpecificOutput.hookEventName, 'Stop');
     assert.equal(obj.hookSpecificOutput.additionalContext, 'hello');
   });
 
@@ -2712,6 +2742,7 @@ describe('resolveTargetFiles()', () => {
 describe('resolveHarness() / normalizeHookEvent()', () => {
   it('routes explicit env and Cursor conversation_id to cursor harness', () => {
     assert.equal(resolveHarness({ IMPECCABLE_HOOK_HARNESS: 'cursor' }), 'cursor');
+    assert.equal(resolveHarness({ IMPECCABLE_HOOK_HARNESS: 'codex' }), 'codex');
     assert.equal(resolveHarness({}, { conversation_id: 'c1' }), 'cursor');
     assert.equal(resolveHarness({}), 'claude');
   });
@@ -3816,6 +3847,28 @@ describe('runStopHook()', () => {
     assert.match(out.hookSpecificOutput.additionalContext, /side-tab/);
     assert.doesNotMatch(out.hookSpecificOutput.additionalContext, /dark-glow/);
     assert.equal(stop.emission.kind, 'stop-deep-pass');
+  });
+
+  it('emits Codex Stop findings as a blocking decision', async () => {
+    const sid = 'stop-codex';
+    write('package.json', '{}');
+    const file = write('src/Card.tsx', 'noop');
+    const det = fakeDetector([finding('marketing-buzzword', 3)]);
+    const env = { IMPECCABLE_HOOK_HARNESS: 'codex' };
+
+    const edit = await runHook({ stdinJson: JSON.stringify(editEvent(file, sid)), env, cwd, detector: det });
+    assert.equal(edit.audit.harness, 'codex');
+    assert.equal(edit.audit.cwd, cwd);
+    assert.equal(edit.audit.deferred, 1);
+    const stop = await runStopHook({ stdinJson: JSON.stringify(stopEvent(sid)), env, cwd, detector: det });
+
+    assert.equal(stop.exitCode, 0);
+    assert.equal(stop.audit.harness, 'codex');
+    assert.equal(stop.audit.emitted, true, JSON.stringify(stop.audit));
+    const out = JSON.parse(stop.stdout);
+    assert.equal(out.decision, 'block');
+    assert.match(out.reason, /marketing-buzzword/);
+    assert.equal(out.hookSpecificOutput, undefined);
   });
 
   it('keeps a policy footer when the grouped Stop render is clamped to the minimum budget', async () => {

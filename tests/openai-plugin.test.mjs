@@ -89,6 +89,8 @@ describe('OpenAI plugin staging', () => {
     assert.equal(manifest.interface.category, 'Creativity');
     assert.deepEqual(hooks, buildCodexPluginHooksManifest());
     assert.match(hooks.hooks.PostToolUse[0].hooks[0].command, /\$\{PLUGIN_ROOT\}/);
+    assert.match(hooks.hooks.PostToolUse[0].hooks[0].command, /IMPECCABLE_HOOK_HARNESS=codex/);
+    assert.match(hooks.hooks.Stop[0].hooks[0].command, /IMPECCABLE_HOOK_HARNESS=codex/);
     assert.doesNotMatch(hooks.hooks.PostToolUse[0].hooks[0].command, /CLAUDE_PLUGIN_ROOT/);
   });
 });
