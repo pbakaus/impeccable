@@ -65,6 +65,10 @@ Thumbs.db
 .impeccable/.env
 # Generated visual-cue images + cues.json (document seed Step 4).
 .impeccable/visual-cues/
+# The design-context store itself is the user's own record and is trackable;
+# only its session state and its generated exports stay local.
+.impeccable/design-context/runtime/
+.impeccable/design-context/exports/
 **/.impeccable/hook.pending.json
 .impeccable/provider-smoke/
 src/__impeccable_provider_smoke_*.html

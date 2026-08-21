@@ -272,6 +272,31 @@ body.picker-page {
   text-wrap: balance;
 }
 
+/* Shown only when a previous run was restored into the form. The body carries
+   which kind, so the note and its two readings are one element rather than a
+   branch in script. */
+.picker-restored-note {
+  margin: 0;
+  color: var(--ks-text-muted);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+[data-restored-draft],
+[data-restored-submitted] {
+  display: none;
+}
+
+body[data-hydrated='draft'] .picker-restored-note,
+body[data-hydrated='submitted'] .picker-restored-note {
+  display: block;
+}
+
+body[data-hydrated='draft'] [data-restored-draft],
+body[data-hydrated='submitted'] [data-restored-submitted] {
+  display: inline;
+}
+
 .picker-actions {
   display: flex;
   flex-wrap: wrap;

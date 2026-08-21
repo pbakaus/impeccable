@@ -380,7 +380,7 @@ Look at every asset provided (attached in chat or a file path) and record what i
 - **Reference / product images**: density, palette, type feel; what the user is drawn to.
 - **Moodboards**: recurring hues, textures, era, register cues.
 
-On the questionnaire path, the files themselves also feed the design context document the picker shows after the last question. When the user provided actual files (a logo, a mood board, a reference image), copy each one into `.impeccable/design-interview/assets/`, keeping its filename. Record every staged file for Step 4's cues write: it becomes an object entry in `cues.json` `context.assets`, `{ "file": "<filename>", "kind": "logo" | "moodboard" | "reference", "note": "<one-line observation>" }`, where the note is what this step read off it. An observation with no file behind it stays a plain string entry, as before. On the interview-only path, stage nothing; the observations feed the questions and the seed alone.
+On the questionnaire path, the files themselves also feed the design context document the picker shows after the last question. When the user provided actual files (a logo, a mood board, a reference image), copy each one into `.impeccable/design-context/assets/`, keeping its filename. Record every staged file for Step 4's context write: it becomes an object entry in `context.json` `context.assets`, `{ "file": "<filename>", "kind": "logo" | "moodboard" | "reference", "note": "<one-line observation>" }`, where the note is what this step read off it. An observation with no file behind it stays a plain string entry, as before. On the interview-only path, stage nothing; the observations feed the questions and the seed alone.
 
 These observations exist to sharpen Step 3. **No assets: skip straight to Step 3** with generic options.
 
@@ -425,7 +425,7 @@ Group each path's questions into one `AskUserQuestion` interaction. Options must
 
 **Interview-only path: skip this step.** Go to Step 5 and seed from the answers alone. Step 1 already settled the capability question; do not re-open it here.
 
-On the questionnaire path, **stop and load [visual-cues.md](visual-cues.md)** and follow its pipeline; it owns everything from the one-line user announcement and the persona palette studio through generation, `cues.json`, and the picker pause. Do not restate its mechanics here or in chat. The picker's exit is the handoff: when the server exits 0 and `.impeccable/design-interview/answers.json` lands, come back here and run Steps 5-6 with that file in hand.
+On the questionnaire path, **stop and load [visual-cues.md](visual-cues.md)** and follow its pipeline; it owns everything from the one-line user announcement and the persona palette studio through generation, `cues.json`, and the picker pause. Do not restate its mechanics here or in chat. The picker's exit is the handoff: when the server exits 0 and `.impeccable/design-context/answers.json` lands, come back here and run Steps 5-6 with that file in hand.
 
 ### Step 5: Write seed DESIGN.md
 
@@ -451,7 +451,7 @@ Mark the file as a seed with this comment as the first line of the markdown body
 
 This seed writes a minimal frontmatter with `name` and `description` only; no colors, typography, rounded, spacing, or components yet.
 
-**Questionnaire seed** (`.impeccable/design-interview/answers.json` exists from this run). The user answered every screen by eye, so the seed carries their answers as decisions, not directions. Read the answers file plus the picked cue's palette entry in `.impeccable/visual-cues/cues.json` (`palette-source` names it), and map:
+**Questionnaire seed** (`.impeccable/design-context/answers.json` exists from this run). The user answered every screen by eye, so the seed carries their answers as decisions, not directions. Read the answers file plus the picked cue's palette entry in `.impeccable/visual-cues/cues.json` (`palette-source` names it), and map:
 
 - **Frontmatter**: `name` and `description`, plus real `colors` (the four `palette-*` hex values under descriptive slugs; these are picked, not sampled) and real `typography` (`font-heading` and `font-body` are exact family names; give each role its family and weight intent, leave sizes for implementation). Derive the two text inks and record them under `colors` too: one near-black and one near-white, the pair the picker's previews already set their text in over these exact surfaces, each holding 4.5:1 against the grounds it will carry copy on, so a builder needing body-text contrast finds ink in the system instead of inventing a fifth color. Still no `rounded`, `spacing`, or `components`: the corner and spacing answers are qualitative, and nothing is built.
 - **Overview**: Creative North Star and philosophy phrased from the questionnaire's color-strategy and motion answers plus the chat references; reference the user's anti-reference directly. Name the chosen surfaces (`surface-modes`) and what each is for. Movement stays here, after the North Star, but the questionnaire asks it of a landing page and a portfolio only, so write what the keys support:
@@ -476,10 +476,11 @@ Both seeds skip the `.impeccable/design.json` sidecar: nothing to render yet. Re
 
 1. Show the seed DESIGN.md. Call out that it is a seed (the marker is the literal commitment).
 2. Tell the user: "Re-run `/impeccable document` once you have some code. That pass will extract real tokens and generate the sidecar."
+3. On the questionnaire path, add one line: the interview is kept, and `{{command_prefix}}impeccable design-context` reopens the document, re-runs the questionnaire over these answers, or writes the context out for another tool. See [design-context.md](design-context.md).
 
 Your own write is the freshest source; no reload needed.
 
-When the questionnaire ran, the confirm is not the end of the turn: the design context document in the user's tab is live for edits through the session the picker forked. Follow the document edit loop in [visual-cues.md](visual-cues.md): poll, apply `edit_request`s to this same DESIGN.md, reply. A color the user changed in the tab before your seed write is already in `answers.json`; one changed after lands in DESIGN.md without you (the session swaps the hex itself, journaled in `.impeccable/design-interview/doc-edits.jsonl` for the name-reconciliation pass at exit).
+When the questionnaire ran, the confirm is not the end of the turn: the design context document in the user's tab is live for edits through the session the picker forked. Follow the document edit loop in [visual-cues.md](visual-cues.md): poll, apply `edit_request`s to this same DESIGN.md, reply. A color the user changed in the tab before your seed write is already in `answers.json`; one changed after arrives as a `save_batch` event, its value already in the store and its description in DESIGN.md yours to bring in line.
 
 ## Style guidelines
 

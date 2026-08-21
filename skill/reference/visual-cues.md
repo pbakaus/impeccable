@@ -376,7 +376,7 @@ Do **not** read PRODUCT.md wholesale into this task or add any other section to 
 
 A pair that carries a landing page can fail a dashboard outright. The landing page asks the heading face for a six-word line at 40px and up; the dashboard asks the body face for a 12px column label sitting next to a number. Suggest fonts without knowing which of those is on the table and you are guessing at the only question that separates the shortlists.
 
-So decide first what this product is made of, from PRODUCT.md and the codebase, using the four surface kinds the picker's first question offers: `persuade` (landing, marketing, pricing), `operate` (app UI, dashboards, admin, settings), `read` (docs, articles, guides, changelogs), `experience` (portfolios, galleries, showcases). Name every kind the product already implies, not the one it leads with: a tool with a marketing site and a documentation site is `operate, read, persuade`. This is the same set Step 7 writes into `cues.json` as `modes`, so make the judgment once, here, and carry it. No clear signal anywhere leaves the set at `persuade` alone.
+So decide first what this product is made of, from PRODUCT.md and the codebase, using the four surface kinds the picker's first question offers: `persuade` (landing, marketing, pricing), `operate` (app UI, dashboards, admin, settings), `read` (docs, articles, guides, changelogs), `experience` (portfolios, galleries, showcases). Name every kind the product already implies, not the one it leads with: a tool with a marketing site and a documentation site is `operate, read, persuade`. This is the same set Step 7 writes into `context.json` as `modes`, so make the judgment once, here, and carry it. No clear signal anywhere leaves the set at `persuade` alone.
 
 What each surface asks of a pair:
 
@@ -452,9 +452,9 @@ Done when: `fonts.json` is parseable, contains exactly six ranked pairs, every f
 
 ## Step 7: Launch the picker
 
-Before launching, write the surface set from Step 6 into `cues.json` as a top-level `modes` array: any of `persuade`, `operate`, `read`, `experience`. Do not re-derive it; the font pairs were composed against that reading, and a second judgment here would hand the user tiles the shortlist never answered to. The picker's first question pre-checks those tiles as its starting point; the user corrects the set by hand, and the final selection returns in the answers as `surface-modes`. Omit the field when the product gave no clear signal; the picker then starts from `persuade` alone.
+Before launching, write the surface set from Step 6 into `.impeccable/design-context/context.json` as a top-level `modes` array: any of `persuade`, `operate`, `read`, `experience`. Do not re-derive it; the font pairs were composed against that reading, and a second judgment here would hand the user tiles the shortlist never answered to. The picker's first question pre-checks those tiles as its starting point; the user corrects the set by hand, and the final selection returns in the answers as `surface-modes`. Omit the field when the product gave no clear signal; the picker then starts from `persuade` alone.
 
-In the same write, add a top-level `context` object carrying the chat half of the run, because after the last question the picker shows the user a design context document assembled from everything the interview learned, and the browser only knows what it asked itself. Every field is optional and the document renders whatever arrives, so fill what the run actually established and leave out the rest:
+In the same write, add a top-level `context` object carrying the chat half of the run. The whole file is `{ "schemaVersion": 1, "modes": [...], "context": {...} }`, and it is the store's copy of what chat learned, because after the last question the picker shows the user a design context document assembled from everything the interview learned, and the browser only knows what it asked itself. Every field is optional and the document renders whatever arrives, so fill what the run actually established and leave out the rest:
 
 ```json
 "context": {
@@ -487,7 +487,7 @@ In the same write, add a top-level `context` object carrying the chat half of th
   },
   "assets": [
     "[asset name: what Step 2 read off it; a plain string when no file was provided]",
-    { "file": "[filename staged in .impeccable/design-interview/assets/]", "kind": "[logo, moodboard, or reference]", "note": "[the one-line Step 2 observation for this file]" }
+    { "file": "[filename staged in .impeccable/design-context/assets/]", "kind": "[logo, moodboard, or reference]", "note": "[the one-line Step 2 observation for this file]" }
   ],
   "color": { "assetLocks": ["[one short color fact an asset fixes, e.g. Primary locked from the logo mark; only when an asset names one]"] },
   "interview": {
@@ -497,9 +497,9 @@ In the same write, add a top-level `context` object carrying the chat half of th
 }
 ```
 
-Quote the user's answers, not paraphrases of them; the document labels interview fields as the questions they answered. A missing block renders as a pointer to where that truth lives (PRODUCT.md), so an old `cues.json` without `context` still produces a complete document.
+Quote the user's answers, not paraphrases of them; the document labels interview fields as the questions they answered. A missing block renders as a pointer to where that truth lives (PRODUCT.md), so a run with no `context.json` at all still produces a complete document. The document reads each field from `context.json` first and falls back to a legacy `cues.json` that still carries it.
 
-The optionality is field by field, and the document omits the block of any field that does not arrive, so fill a field only when its PRODUCT.md section or interview answer exists. A legacy PRODUCT.md without Positioning, Platform, Operating Context, or Brand Commitments yields a context without those fields, never an invented value. `product.clarities` carries PRODUCT.md's "What must be clear first" list under a shorter key. `product.conversion` names the single action the product most wants. `product.principles` carries PRODUCT.md's Design Principles, one `{ title, detail }` entry per line. `product.surfaces` maps each mode the run might choose to what that surface is for this product, not the generic tile copy. Only include keys for surfaces that exist in the product; the document reads the map for whichever surfaces the questionnaire chose. `interview.references` and `interview.antiReference` also accept their older shapes, plain strings, which render as the bare pills and single-name callout they always did. Never write `interview.colorStrategy`, `interview.hueAnchor`, `interview.typeDirection`, or `interview.motionEnergy`: the chat interview does not ask those questions on this path, `answers.json` owns color, typography, and motion, and the document already renders its interview-direction blocks only when those keys arrive, so their absence reads as chat silence, not as a gap. `assets` mixes both shapes in one list: a file the user actually provided is staged under `.impeccable/design-interview/assets/` (seed Step 2 owns the copy) and written as the object form, which the document renders as an image (a `logo` proofed on the committed primary and neutral grounds, a `moodboard` or `reference` in a wide frame, the note under it); a words-only observation stays the plain string it always was.
+The optionality is field by field, and the document omits the block of any field that does not arrive, so fill a field only when its PRODUCT.md section or interview answer exists. A legacy PRODUCT.md without Positioning, Platform, Operating Context, or Brand Commitments yields a context without those fields, never an invented value. `product.clarities` carries PRODUCT.md's "What must be clear first" list under a shorter key. `product.conversion` names the single action the product most wants. `product.principles` carries PRODUCT.md's Design Principles, one `{ title, detail }` entry per line. `product.surfaces` maps each mode the run might choose to what that surface is for this product, not the generic tile copy. Only include keys for surfaces that exist in the product; the document reads the map for whichever surfaces the questionnaire chose. `interview.references` and `interview.antiReference` also accept their older shapes, plain strings, which render as the bare pills and single-name callout they always did. Never write `interview.colorStrategy`, `interview.hueAnchor`, `interview.typeDirection`, or `interview.motionEnergy`: the chat interview does not ask those questions on this path, `answers.json` owns color, typography, and motion, and the document already renders its interview-direction blocks only when those keys arrive, so their absence reads as chat silence, not as a gap. `assets` mixes both shapes in one list: a file the user actually provided is staged under `.impeccable/design-context/assets/` (seed Step 2 owns the copy) and written as the object form, which the document renders as an image (a `logo` proofed on the committed primary and neutral grounds, a `moodboard` or `reference` in a wide frame, the note under it); a words-only observation stays the plain string it always was.
 
 Three of the additions are derived at write time rather than asked: `brand.principles` copies the PRODUCT.md principles list (the current Product Principles heading or the legacy Design Principles one), `brand.voice` distills Brand Personality and Brand Commitments into two to four say / not pairs, each half a concrete line of wording the product would or would not publish, never an adjective, and `color.assetLocks` records color facts the provided assets fix (one short line each, written only when Step 2 actually read such a fact off an asset). None of the three adds an interview question, and all three are omitted rather than invented when their source is missing.
 
@@ -522,6 +522,8 @@ Tell the user in one line that the visual cues are ready at `.impeccable/visual-
 
 Whichever branch ran, wait on the foreground process.
 
+A relaunch on a project that has already been through this arrives with the previous answers filled in, and resumes an unfinished run from its own draft; `--fresh` starts blank. [design-context.md](design-context.md) owns that path.
+
 The server process exiting is the completion signal; never poll or watch the answers file while it runs.
 
 - **Exit 0**: read the `ANSWERS` path, tell the user the answers were received in one line, then return to [document.md](document.md) Steps 5-6 and write the seed DESIGN.md from that file (its questionnaire-seed mapping owns which key lands where). Do not show or describe the cues or ask for a pick in chat; the picker already settled the pick. The user's tab is meanwhile showing the design context document the picker built from the run, and that document is now a working surface: on submit the server forked a detached edit session (`picker-doc-session.mjs`) that keeps the tab connected. After the seed DESIGN.md is written, enter the edit loop below.
@@ -531,8 +533,9 @@ The server process exiting is the completion signal; never poll or watch the ans
 
 The revealed document is editable in place, on live mode's division of labor:
 
-- **Simple edits never reach you.** A palette color change is applied by the session process itself: it rewrites `answers.json`, swaps the old hex for the new one across DESIGN.md, and journals the change to `.impeccable/design-interview/doc-edits.jsonl`. If the color edit landed before your seed write, the answers file you seed from already carries it.
-- **Complex edits queue for you.** Font changes (including uploaded faces, saved under `.impeccable/design-interview/fonts/`) and freeform asks arrive as `edit_request` events.
+- **Field edits are applied before you hear about them.** A palette color or a line of product truth is staged in the page, and pressing Apply sends the batch to the session, which writes every value into the store and journals it. What reaches you is the prose those values leave stale: a `save_batch` event naming each change and the document it is owed in.
+- **Asks in words queue for you from the start.** Font changes (including uploaded faces, saved under `.impeccable/design-context/fonts/`) and freeform requests arrive as `edit_request` events, because there is no value to apply until you decide what it should be.
+- **The session is the only writer of the store while it runs.** Never write `answers.json` or `context.json` yourself during the loop; attach the values to your reply instead (below) and let the session apply them. DESIGN.md and PRODUCT.md are yours.
 
 After writing the seed DESIGN.md, tell the user in one line that the document in their tab is live for edits, then poll:
 
@@ -542,14 +545,16 @@ node {{scripts_path}}/picker-doc-poll.mjs
 
 One-shot, exactly like live mode's poll: it blocks until one event and prints it as JSON. Run it on live mode's harness policy: on Claude Code as a background task; on Cursor as a one-shot poll in a background terminal with notify on `"type":"(edit_request|exit)"`; on Codex as a yielded foreground exec; elsewhere one-shot foreground. Never `--timeout` it short.
 
-- `{"type":"edit_request", "id", "kind", "prompt", "category", "payload"}`: do the work. Apply the change to DESIGN.md (and `answers.json` where a questionnaire key names the same fact, so the tab re-renders it), move any uploaded font files where the project keeps assets, then reply and poll again:
+- `{"type":"edit_request", "id", "kind", "prompt", "category", "payload"}`: do the work. Apply the change to DESIGN.md, move any uploaded font files where the project keeps assets, then reply and poll again. Where a questionnaire key names the same fact, attach it rather than writing it, so the tab re-renders it and one process stays in charge of the store:
 
   ```
   node {{scripts_path}}/picker-doc-poll.mjs --reply <id> done "One line the user sees in the tab"
+  node {{scripts_path}}/picker-doc-poll.mjs --reply <id> done "Swapped the pair" --answers '{"font-heading":"Fraunces"}'
   ```
 
   Reply `error` with a reason when the ask cannot be applied; reply `retry` to put it back in the queue untouched.
+- `{"type":"save_batch", "id", "changes", "downstream", "replyCommand"}`: the values are already in the store, so do not apply them again. Read `downstream` and bring each named document in line: `design-md` items are values DESIGN.md states (swap the value, and rename a color whose description no longer fits it), `product-md` items are product truth PRODUCT.md owns. Then reply with the command the event carries. A document that does not exist yet, or a value the document already carries, is success: reply `done`. Reply `error` only when a document exists and cannot be edited.
 - `{"type":"timeout"}`: nothing arrived in the budget; poll again.
-- `{"type":"exit"}`: the session ended (tab closed or timed out). Before moving on, read `doc-edits.jsonl` and reconcile any prose the deterministic edits left stale: a swapped hex whose descriptive color name in DESIGN.md no longer matches its value gets a fresh name. Then stop polling; the loop is over.
+- `{"type":"exit"}`: the session ended (tab closed or timed out). Before moving on, read `runtime/journal.jsonl` for `change` entries you never saw a `save_batch` for, which is what a session that died mid-save leaves behind, and reconcile the prose around them. Then stop polling; the loop is over.
 
 The user may keep working in chat while the document sits open; treat an `edit_request` like any other user instruction, just delivered through the tab.

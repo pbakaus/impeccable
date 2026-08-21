@@ -3,9 +3,9 @@
   the skill's modes, and the questions that are answered once for each of them.
 
   Values travel as `surface-modes` (multi-select) from screen 01b; the agent
-  pre-checks what PRODUCT.md suggests via cues.json, and the visitor corrects
-  it. Persuade is the markup default so the answer can never arrive empty on
-  runs whose cues carry no hint.
+  pre-checks what PRODUCT.md suggests via the design-context store's
+  context.json, and the visitor corrects it. Persuade is the markup default so
+  the answer can never arrive empty on runs that carry no hint.
 */
 export const SURFACE_MODES = ['persuade', 'operate', 'read', 'experience'];
 

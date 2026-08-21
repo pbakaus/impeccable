@@ -7,20 +7,28 @@
  * own pre-scanned port with CORS open to the picker origin, and it mediates
  * three parties the way the live server does, scaled down to polling:
  *
- *   browser  --POST /doc/edit-----------> applied here (simple edits)
+ *   browser  --POST /doc/save----------> applied to the store, batch queued
  *   browser  --POST /doc/request-------> queue --GET /doc/poll--> agent
  *   agent    --POST /doc/reply---------> queue status + version bump
- *   browser  --GET  /doc/state (poll)--> { version, requests } -> re-render
+ *   browser  --GET  /doc/state (poll)--> { version, requests, batch } -> re-read
  *
- * Simple edits (a palette color) are deterministic: this process rewrites
- * answers.json and swaps the value in DESIGN.md itself, no model involved.
- * Anything needing judgment queues for the agent, which long-polls through
+ * Edits made in the document stage in the browser and arrive here as one batch.
+ * Applying them is deterministic and belongs to this process: each change names
+ * a field, the field names a place in the store, and the value is written
+ * there. What reaches the agent afterwards is the reconciliation the store
+ * cannot do for itself, the prose in DESIGN.md and PRODUCT.md that describes
+ * those values. Anything needing judgment up front, a font change or a freeform
+ * ask, queues for the agent the same way, and it long-polls through
  * picker-doc-poll.mjs exactly like live mode's live-poll.mjs.
  *
- * Session discovery for the agent CLI: .impeccable/design-interview/
- * doc-session.json { pid, port, token }. Removed on exit. Every applied
- * simple edit is journaled to doc-edits.jsonl in the same directory so the
- * agent can reconcile prose (a renamed color's description) at session end.
+ * This process is the only writer of the store while it runs; the agent's own
+ * follow-on values ride in on its reply. That is what keeps a save and an
+ * agent working at the same time from overwriting each other.
+ *
+ * Session discovery for the agent CLI: .impeccable/design-context/runtime/
+ * session.json { pid, port, token }. Removed on exit. Every applied change is
+ * journaled to runtime/journal.jsonl beside it, so a session that dies with a
+ * batch outstanding re-offers it and the agent can reconcile prose at the end.
  *
  * Usage (spawned by picker-server.mjs, not by hand):
  *   node picker-doc-session.mjs --port 8501 --timeout 60
@@ -30,14 +38,15 @@
 import http from 'node:http';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { fontRelativePath, migrate, paths, readJsonSoft, writeJsonAtomic } from './design-context/store.mjs';
+import { createSaveRoutes } from './design-context/session-routes.mjs';
 
-const interviewDir = path.resolve(process.cwd(), '.impeccable/design-interview');
-const answersPath = path.join(interviewDir, 'answers.json');
-const sessionPath = path.join(interviewDir, 'doc-session.json');
-const ledgerPath = path.join(interviewDir, 'doc-edits.jsonl');
-const fontsDir = path.join(interviewDir, 'fonts');
-const brandAssetsDir = path.join(interviewDir, 'assets');
-const designPath = path.resolve(process.cwd(), 'DESIGN.md');
+const store = paths(process.cwd());
+const answersPath = store.answersJson;
+const contextPath = store.contextJson;
+const sessionPath = store.sessionJson;
+const fontsDir = store.fontsDir;
+const brandAssetsDir = store.assetsDir;
 
 const MAX_BODY_BYTES = 1024 * 1024;
 const FONT_EXTENSIONS = new Set(['.woff2', '.woff', '.ttf', '.otf']);
@@ -49,7 +58,6 @@ const BRAND_ASSET_MIME = new Map([
   ['.webp', 'image/webp'],
   ['.gif', 'image/gif'],
 ]);
-const ROLES = new Set(['primary', 'secondary', 'tertiary', 'neutral']);
 const REQUEST_KINDS = new Set(['font', 'freeform']);
 /* Long polls are sliced under common proxy/undici header timeouts, the same
    270s ceiling live-poll uses. */
@@ -78,6 +86,10 @@ if (!port || !token) {
 let version = 1;
 let requestSeq = 0;
 const requests = [];
+/* The save flow lives in its own module; this shell keeps the server, the
+   timers, and the token. Every applied save bumps the same version the tab
+   polls, so the document re-reads itself without a second signal. */
+const saves = createSaveRoutes({ onChange: () => { bumpVersion(); wakeParkedPolls(); } });
 let lastBrowserSeen = Date.now();
 let adopted = false;
 const parkedPolls = [];
@@ -123,51 +135,8 @@ const summarize = (entry) => ({
   message: entry.message || '',
 });
 
-async function appendLedger(entry) {
-  await mkdir(interviewDir, { recursive: true });
-  await writeFile(ledgerPath, `${JSON.stringify({ at: new Date().toISOString(), ...entry })}\n`, { flag: 'a' });
-}
-
 /* ============================================================
-   Simple edits — deterministic, applied here.
-   ============================================================ */
-
-async function applyColorEdit({ role, value }) {
-  if (!ROLES.has(role)) throw httpError(400, 'Unknown palette role');
-  if (!/^#[0-9a-fA-F]{6}$/.test(value || '')) throw httpError(400, 'Value must be a #rrggbb hex color');
-  const hex = value.toUpperCase();
-
-  const answers = JSON.parse(await readFile(answersPath, 'utf8'));
-  const previous = String(answers[`palette-${role}`] || '').toUpperCase();
-  answers[`palette-${role}`] = hex;
-  await writeFile(answersPath, `${JSON.stringify(answers, null, 2)}\n`);
-
-  /* DESIGN.md may not exist yet (the agent writes the seed while the user
-     reads the document); the answers file is the source it will seed from,
-     so an early edit is already carried. */
-  let designTouched = false;
-  if (previous && previous !== hex) {
-    try {
-      const source = await readFile(designPath, 'utf8');
-      /* A hex value is regex-safe: a literal # and hex digits. */
-      const swapped = source.replace(new RegExp(previous, 'gi'), hex);
-      if (swapped !== source) {
-        await writeFile(designPath, swapped);
-        designTouched = true;
-      }
-    } catch {
-      /* No DESIGN.md yet. */
-    }
-  }
-
-  await appendLedger({ type: 'color', role, from: previous, to: hex, designTouched });
-  return { role, from: previous, to: hex, designTouched };
-}
-
-const SIMPLE_EDITS = { color: applyColorEdit };
-
-/* ============================================================
-   Complex edits — queued for the agent.
+   Requests that need judgment, queued for the agent.
    ============================================================ */
 
 function wakeParkedPolls() {
@@ -196,6 +165,14 @@ async function handleDocPoll(response, query) {
       entry.status = 'working';
       bumpVersion();
       sendJson(response, 200, { type: 'edit_request', ...summarize(entry), payload: entry.payload });
+      return;
+    }
+    /* The values are already in the store; what is handed over is the prose
+       still owed to DESIGN.md and PRODUCT.md. The reply command travels with
+       the event so the instruction cannot drift from the contract. */
+    const batch = saves.takeBatchEvent((id) => `node picker-doc-poll.mjs --reply ${id} done "One line the user sees in the tab"`);
+    if (batch) {
+      sendJson(response, 200, batch);
       return;
     }
     const remaining = deadline - Date.now();
@@ -256,7 +233,7 @@ async function handleRequest(request, response) {
     }
     await mkdir(fontsDir, { recursive: true });
     await writeFile(path.join(fontsDir, name), Buffer.concat(chunks));
-    sendJson(response, 200, { ok: true, path: path.join('.impeccable/design-interview/fonts', name) });
+    sendJson(response, 200, { ok: true, path: fontRelativePath(name) });
     return;
   }
 
@@ -305,6 +282,7 @@ async function handleRequest(request, response) {
       version,
       requests: requests.map(summarize),
       agentWaiting: parkedPolls.length > 0,
+      batch: saves.summary(),
     });
     return;
   }
@@ -313,6 +291,24 @@ async function handleRequest(request, response) {
     if (url.searchParams.get('token') !== token) throw httpError(403, 'Bad token');
     const answers = JSON.parse(await readFile(answersPath, 'utf8'));
     sendJson(response, 200, { ok: true, version, answers });
+    return;
+  }
+
+  /* The chat half of the run, read fresh so an agent's rewrite reaches the tab. */
+  if (request.method === 'GET' && requestPath === '/doc/context') {
+    if (url.searchParams.get('token') !== token) throw httpError(403, 'Bad token');
+    let stored = null;
+    try {
+      stored = JSON.parse(await readFile(contextPath, 'utf8'));
+    } catch {
+      /* A run whose chat half was never recorded still has a document. */
+    }
+    sendJson(response, 200, {
+      ok: true,
+      version,
+      modes: stored?.modes ?? null,
+      context: stored?.context ?? null,
+    });
     return;
   }
 
@@ -326,12 +322,11 @@ async function handleRequest(request, response) {
   const body = await readJsonBody(request);
   if (body.token !== token) throw httpError(403, 'Bad token');
 
-  if (requestPath === '/doc/edit') {
-    const apply = SIMPLE_EDITS[body.kind];
-    if (!apply) throw httpError(400, `No simple edit named ${String(body.kind)}; complex changes go through /doc/request`);
-    const applied = await apply(body);
-    bumpVersion();
-    sendJson(response, 200, { ok: true, version, applied });
+  /* Everything staged in the document arrives at once. Applying is this
+     process's job; reconciling the prose around it is the agent's. */
+  if (requestPath === '/doc/save') {
+    const applied = await saves.save(body);
+    sendJson(response, 200, { ok: true, version, ...applied });
     return;
   }
 
@@ -357,11 +352,18 @@ async function handleRequest(request, response) {
   }
 
   if (requestPath === '/doc/reply') {
+    // A save and a request are both replied to here, told apart by the id.
+    if (saves.hasPending() && String(body.id || '').startsWith('batch-')) {
+      const result = await saves.reply(body);
+      sendJson(response, 200, { ok: true, version, ...result });
+      return;
+    }
     const entry = requests.find((item) => item.id === body.id);
     if (!entry) throw httpError(404, 'Unknown request id');
     if (!['done', 'error', 'retry'].includes(body.status)) throw httpError(400, 'status must be done, error, or retry');
     entry.status = body.status === 'retry' ? 'pending' : body.status;
     entry.message = String(body.message || '');
+    saves.noteRequest(entry.id, entry.status);
     bumpVersion();
     if (entry.status === 'pending') wakeParkedPolls();
     sendJson(response, 200, { ok: true, version });
@@ -372,8 +374,8 @@ async function handleRequest(request, response) {
 }
 
 server.listen(port, '127.0.0.1', async () => {
-  await mkdir(interviewDir, { recursive: true });
-  await writeFile(sessionPath, `${JSON.stringify({ pid: process.pid, port, token }, null, 2)}\n`);
+  await migrate(process.cwd());
+  await writeJsonAtomic(sessionPath, { pid: process.pid, port, token });
 });
 
 server.on('error', () => process.exit(1));
@@ -390,7 +392,13 @@ async function shutdown() {
   clearInterval(reaper);
   clearTimeout(ceiling);
   wakeParkedPolls();
-  await rm(sessionPath, { force: true }).catch(() => {});
+  /* Only if it is still ours. A session that outlived its tab can be shutting
+     down at the moment a newer one writes the same path, and taking the file
+     with it would leave the live session undiscoverable. */
+  const recorded = await readJsonSoft(sessionPath);
+  if (!recorded || recorded.pid === process.pid) {
+    await rm(sessionPath, { force: true }).catch(() => {});
+  }
   server.close(() => process.exit(0));
   server.closeAllConnections?.();
   setTimeout(() => process.exit(0), 1_000).unref();

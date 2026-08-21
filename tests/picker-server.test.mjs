@@ -87,7 +87,7 @@ before(() => {
   });
 });
 
-async function createFixture({ fonts = true } = {}) {
+async function createFixture({ fonts = true, context = null } = {}) {
   const cwd = await realpath(await mkdtemp(path.join(tmpdir(), 'impeccable-picker-')));
   const cuesDir = path.join(cwd, '.impeccable/visual-cues');
   await mkdir(cuesDir, { recursive: true });
@@ -102,7 +102,12 @@ async function createFixture({ fonts = true } = {}) {
       `${JSON.stringify(fontManifestFixture)}\n`,
     );
   }
-  return { cwd, cuesDir };
+  const storeDir = path.join(cwd, '.impeccable/design-context');
+  if (context) {
+    await mkdir(storeDir, { recursive: true });
+    await writeFile(path.join(storeDir, 'context.json'), `${JSON.stringify(context)}\n`);
+  }
+  return { cwd, cuesDir, storeDir };
 }
 
 async function startPicker(cwd, args = []) {
@@ -256,13 +261,13 @@ test('serves picker and cues, writes submission, prints answers, and exits 0', a
 
   const answersPath = path.join(
     fixture.cwd,
-    '.impeccable/design-interview/answers.json',
+    '.impeccable/design-context/answers.json',
   );
   assert.deepEqual(JSON.parse(await readFile(answersPath, 'utf8')), answers);
   assert.match(server.stdout(), new RegExp(`ANSWERS ${answersPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
 
   // Reap the doc session so the fixture directory can be removed.
-  const sessionPath = path.join(fixture.cwd, '.impeccable/design-interview/doc-session.json');
+  const sessionPath = path.join(fixture.cwd, '.impeccable/design-context/runtime/session.json');
   for (let attempt = 0; attempt < 20; attempt += 1) {
     try {
       const session = JSON.parse(await readFile(sessionPath, 'utf8'));
@@ -289,7 +294,7 @@ test('fonts endpoint returns 404 when fonts.json is absent', async (t) => {
 
 test('serves staged brand assets, 404s missing files, and rejects traversal', async (t) => {
   const fixture = await createFixture();
-  const assetsDir = path.join(fixture.cwd, '.impeccable/design-interview/assets');
+  const assetsDir = path.join(fixture.cwd, '.impeccable/design-context/assets');
   await mkdir(assetsDir, { recursive: true });
   await writeFile(
     path.join(assetsDir, 'mark.svg'),
@@ -297,7 +302,7 @@ test('serves staged brand assets, 404s missing files, and rejects traversal', as
   );
   // A sibling secret one directory up; traversal attempts aim at it.
   await writeFile(
-    path.join(fixture.cwd, '.impeccable/design-interview/answers.json'),
+    path.join(fixture.cwd, '.impeccable/design-context/answers.json'),
     '{"secret":true}\n',
   );
   const server = await startPicker(fixture.cwd, ['--port', String(portBase + 30)]);
@@ -322,6 +327,128 @@ test('serves staged brand assets, 404s missing files, and rejects traversal', as
   ]) {
     assert.ok([400, 404].includes(await rawGet(server.url, attempt)), attempt);
   }
+});
+
+test('serves the stored context and the chosen cue, both cacheable', async (t) => {
+  const contextFixture = {
+    schemaVersion: 1,
+    modes: ['persuade', 'read'],
+    context: { product: { name: 'Hanazono' } },
+  };
+  const fixture = await createFixture({ context: contextFixture });
+  const server = await startPicker(fixture.cwd, ['--port', String(portBase + 50)]);
+  await cleanup(t, fixture, server);
+
+  const contextResponse = await fetch(`${server.url}/context.json`);
+  assert.equal(contextResponse.status, 200);
+  assert.match(contextResponse.headers.get('cache-control') || '', /max-age/);
+  assert.deepEqual(await contextResponse.json(), contextFixture);
+
+  // Nothing has been submitted, so the store carries no chosen cue yet.
+  assert.equal((await fetch(`${server.url}/cue.png`)).status, 404);
+
+  const exitPromise = waitForExit(server.processHandle);
+  await fetch(`${server.url}/submit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ 'palette-source': 'hero-01' }),
+  });
+  assert.equal((await exitPromise)[0], 0);
+
+  // Submit copies the picked hero into the store, so the document can render
+  // it after this server is gone and after the workspace is cleaned.
+  const stored = await readFile(path.join(fixture.storeDir, 'cue.png'), 'utf8');
+  assert.equal(stored, 'fake-png');
+});
+
+test('a palette that names no cue leaves the store without one', async (t) => {
+  const fixture = await createFixture();
+  const server = await startPicker(fixture.cwd, ['--port', String(portBase + 60)]);
+  await cleanup(t, fixture, server);
+
+  const exitPromise = waitForExit(server.processHandle);
+  await fetch(`${server.url}/submit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ 'palette-source': 'seed-042' }),
+  });
+  assert.equal((await exitPromise)[0], 0);
+
+  assert.equal(existsSync(path.join(fixture.storeDir, 'cue.png')), false);
+  assert.ok(existsSync(path.join(fixture.storeDir, 'answers.json')));
+});
+
+test('migrate carries a pre-store project across and repeats harmlessly', async () => {
+  const store = await import(pathToFileURL(path.join(root, 'skill/scripts/design-context/store.mjs')).href);
+  const cwd = await realpath(await mkdtemp(path.join(tmpdir(), 'impeccable-migrate-')));
+  const legacy = path.join(cwd, '.impeccable/design-interview');
+  await mkdir(path.join(legacy, 'assets'), { recursive: true });
+  await mkdir(path.join(legacy, 'fonts'), { recursive: true });
+  await mkdir(path.join(cwd, '.impeccable/visual-cues'), { recursive: true });
+  await writeFile(
+    path.join(legacy, 'answers.json'),
+    `${JSON.stringify({
+      'palette-primary': '#1E4A42',
+      'font-heading-source': '.impeccable/design-interview/fonts/Display.woff2',
+    })}\n`,
+  );
+  await writeFile(path.join(legacy, 'doc-edits.jsonl'), '{"at":"2026-01-01T00:00:00.000Z","type":"color"}\n');
+  await writeFile(path.join(legacy, 'assets/mark.svg'), '<svg/>');
+  await writeFile(path.join(legacy, 'fonts/Display.woff2'), 'font-bytes');
+  await writeFile(
+    path.join(cwd, '.impeccable/visual-cues/cues.json'),
+    `${JSON.stringify({ cues: ['hero-01'], palette: {}, modes: ['read'], context: { product: { name: 'Old' } } })}\n`,
+  );
+
+  assert.deepEqual(await store.migrate(cwd), { migrated: true, deferred: false });
+  const target = store.paths(cwd);
+  assert.ok(existsSync(target.answersJson));
+  assert.ok(existsSync(target.journalJsonl));
+  assert.equal(await readFile(path.join(target.assetsDir, 'mark.svg'), 'utf8'), '<svg/>');
+  assert.equal(await readFile(path.join(target.fontsDir, 'Display.woff2'), 'utf8'), 'font-bytes');
+  assert.equal(existsSync(legacy), false);
+
+  // The uploaded-face path travelled inside the answers themselves.
+  const answers = JSON.parse(await readFile(target.answersJson, 'utf8'));
+  assert.equal(answers['font-heading-source'], '.impeccable/design-context/fonts/Display.woff2');
+
+  // The chat half moves out of the cue manifest, which keeps its own data.
+  assert.deepEqual(JSON.parse(await readFile(target.contextJson, 'utf8')), {
+    schemaVersion: 1,
+    modes: ['read'],
+    context: { product: { name: 'Old' } },
+  });
+  const cues = JSON.parse(await readFile(target.cuesJson, 'utf8'));
+  assert.deepEqual(cues.cues, ['hero-01']);
+
+  // A legacy line carries no seq, so it can never move the counter.
+  assert.equal(store.replayJournal(cwd).lastSeq, 0);
+
+  // Second pass: nothing left to move, nothing damaged.
+  assert.deepEqual(await store.migrate(cwd), { migrated: false, deferred: false });
+  assert.ok(existsSync(target.answersJson));
+
+  await rm(cwd, { recursive: true, force: true });
+});
+
+test('migrate defers while a pre-store session is still alive', async () => {
+  const store = await import(pathToFileURL(path.join(root, 'skill/scripts/design-context/store.mjs')).href);
+  const cwd = await realpath(await mkdtemp(path.join(tmpdir(), 'impeccable-migrate-live-')));
+  const legacy = path.join(cwd, '.impeccable/design-interview');
+  await mkdir(legacy, { recursive: true });
+  await writeFile(path.join(legacy, 'answers.json'), '{"palette-primary":"#1E4A42"}\n');
+  // This process is the liveness proof: a session of the old shape holds the
+  // old paths in its own constants, so moving files under it would strand it.
+  await writeFile(
+    path.join(legacy, 'doc-session.json'),
+    `${JSON.stringify({ pid: process.pid, port: 1, token: 'x' })}\n`,
+  );
+
+  assert.deepEqual(await store.migrate(cwd), { migrated: false, deferred: true });
+  assert.ok(existsSync(path.join(legacy, 'answers.json')));
+  assert.equal(existsSync(store.paths(cwd).answersJson), false);
+
+  await rm(cwd, { recursive: true, force: true });
 });
 
 test('palette CLI still prints a seed', () => {

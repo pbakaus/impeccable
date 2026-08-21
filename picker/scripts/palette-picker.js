@@ -1,4 +1,6 @@
 import { contrastInk, contrastInkHex, formatOklch, hexToOklch, neutralContrastIssue, oklchToHex, readableOn, seedToRoles } from './color.js';
+import { getBoot, markHydrated } from './boot.js';
+import { hydrateAnswers } from './hydrate.js';
 
 const ROLES = ['primary', 'secondary', 'tertiary', 'neutral'];
 const screen = document.querySelector('[data-screen="02"]');
@@ -901,7 +903,10 @@ function commitIconPack(input) {
   paintIconPack(input.value);
 }
 
-function loadIconPacks() {
+/* Exported because a document opened on its own never visits the icon screen,
+   and the sheet it clones is drawn by this fetch. Memoized, so the two callers
+   cost one request. */
+export function loadIconPacks() {
   iconRequest ??= fetch('/icon-packs.json')
     .then((response) => (response.ok ? response.json() : Promise.reject()))
     .then((data) => {
@@ -4806,6 +4811,20 @@ $('[data-select-palette]').addEventListener('click', panel.onclick);
 
 $('[data-deck-prev]').onclick = () => browse(current - 1);
 $('[data-deck-next]').onclick = () => browse(current + 1);
+
+/* The deck's position IS the scroll offset: the listener below reads the card
+   back out of it on every scroll. A card selected while the screen was hidden
+   therefore has to leave the scroller parked on its own snap point, or the
+   visitor's first scroll would compute its way back to the first card. Hidden
+   elements measure zero, so this reports whether it could do its job and runs
+   again when the screen is first shown. */
+function syncDeckScroll() {
+  const height = points.firstElementChild?.offsetHeight || 0;
+  if (!height) return false;
+  const wanted = current * height;
+  if (Math.abs(scroller.scrollTop - wanted) > 1) scroller.scrollTop = wanted;
+  return true;
+}
 scroller.addEventListener('scroll', () => {
   const height = points.firstElementChild?.offsetHeight || 1;
   const next = Math.min(cards.length - 1, Math.round(scroller.scrollTop / height));
@@ -4820,6 +4839,8 @@ scroller.addEventListener('scroll', () => {
 }, { passive: true });
 document.addEventListener('picker:screenchange', (event) => {
   activate(event.detail.screen === '02');
+  // A restored card could not be scrolled to while the screen had no size.
+  if (event.detail.screen === '02') syncDeckScroll();
   // The hub re-reads every answer on arrival, so an edit made on a
   // question screen is on its card by the time the return lands.
   if (event.detail.screen === '04b') renderHub();
@@ -4982,6 +5003,21 @@ function syncModePreview() {
    ============================================================ */
 const chosenSurfaces = () => modeInputs.filter((input) => input.checked);
 const surfaceInput = (value) => modeInputs.find((input) => input.value === value);
+
+/* Which per-surface answers a person actually opened, carried in the form so a
+   later run can restore the distinction. Every chosen surface leaves an answer
+   whether or not it was ever looked at, so the value alone cannot say whether
+   a default was confirmed or merely inherited, and the document says which.
+   Derived from the fields on every write rather than tracked alongside them,
+   which is the only version that cannot drift. */
+const chosenField = document.querySelector('input[name="_chosen"]');
+function syncChosenField() {
+  if (!chosenField) return;
+  const keys = [...document.querySelectorAll('input[type="hidden"][data-surface-field][data-chosen="yes"]')]
+    .filter((field) => !field.disabled)
+    .map((field) => field.dataset.surfaceField);
+  chosenField.value = JSON.stringify(keys);
+}
 
 function buildSurfaceQuestion(tabs) {
   const name = tabs.dataset.surfaceTabs;
@@ -5188,6 +5224,7 @@ function buildSurfaceQuestion(tabs) {
       field.dataset.chosen = 'yes';
     }
     markTabs();
+    syncChosenField();
   }
 
   /* Arrow keys walk the group, which is the one thing a row of buttons owes a
@@ -5230,6 +5267,7 @@ function alignSurfaces(leader) {
 }
 const syncSurfaces = () => {
   for (const question of surfaceQuestions) question.sync();
+  syncChosenField();
 };
 const paintStage = () => {
   for (const question of surfaceQuestions) question.paint();
@@ -5558,12 +5596,19 @@ syncModePreview();
 
 try {
   const get = (url) => fetch(url).then((response) => response.ok ? response.json() : Promise.reject());
-  const [cueData, seedData] = await Promise.all([get('/cues.json'), get('/palettes.json')]);
-  // The agent's reading of PRODUCT.md arrives as cues.modes and pre-checks
-  // the surface tiles. Applied only when it names at least one real tile, so
-  // a bad hint cannot uncheck everything.
-  if (Array.isArray(cueData.modes)) {
-    const wanted = new Set(cueData.modes);
+  const [cueData, seedData, storedContext] = await Promise.all([
+    get('/cues.json'),
+    get('/palettes.json'),
+    // Absent on a run that predates the store, so this one may not reject.
+    fetch('/context.json').then((response) => (response.ok ? response.json() : null)).catch(() => null),
+  ]);
+  // The agent's reading of PRODUCT.md arrives as modes and pre-checks the
+  // surface tiles: from the design-context store when it carries them, from
+  // the cue manifest otherwise. Applied only when it names at least one real
+  // tile, so a bad hint cannot uncheck everything.
+  const hintedModes = Array.isArray(storedContext?.modes) ? storedContext.modes : cueData.modes;
+  if (Array.isArray(hintedModes)) {
+    const wanted = new Set(hintedModes);
     if (modeInputs.some((input) => wanted.has(input.value))) {
       for (const input of modeInputs) input.checked = wanted.has(input.value);
       syncModesNext();
@@ -5597,3 +5642,31 @@ try {
   // The built-in pairs keep older and incomplete runs moving.
 }
 renderFontPairs(manifest, usingFallback);
+
+/* Everything the run can be restored into now exists: the deck is built, the
+   pairs are dealt, and every per-surface field holds its default. A previous
+   run, or one walked away from, is written over that. */
+const boot = await getBoot();
+try {
+  hydrateAnswers(boot.prior, {
+    modeInputs,
+    syncModes: () => { syncModesNext(); syncModePreview(); },
+    states,
+    cards,
+    setCurrent: (index) => { current = index; },
+    render,
+    syncDeckScroll,
+    fontManifest: () => fontManifest,
+    pairNodes: () => [...pairOrder],
+    addPairCard,
+    removePairCard,
+    loadCustomFace,
+    syncFontPair,
+    applyHoist,
+    syncChosenField,
+  });
+} catch {
+  /* A restore that cannot complete must not cost the visitor the run; the
+     questionnaire's own defaults are still standing behind it. */
+}
+markHydrated(boot.prior ? boot.priorSource : null);

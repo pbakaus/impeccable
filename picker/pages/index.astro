@@ -257,6 +257,11 @@ const questions = [
     <div class="picker-hero-art" style="background-image: url('assets/hero-dark.jpg')" aria-hidden="true"></div>
 
     <form id="picker-form">
+      {/* Which per-surface answers were actually opened. Every chosen surface
+          leaves an answer either way, so the value alone cannot tell a
+          confirmed default from an inherited one, and the design context
+          document says which. Filled by the questionnaire as it runs. */}
+      <input type="hidden" name="_chosen" value="[]" />
       <section class="picker-screen" data-screen="01" data-active aria-labelledby="picker-start-title">
         <div class="picker-container">
           <div class="picker-start">
@@ -271,6 +276,13 @@ const questions = [
             </div>
 
             <h1 id="picker-start-title" class="picker-title">Let's build your<br />design system.</h1>
+
+            {/* Shown only when the boot contract restored a run; the body
+                attribute the restore sets is what reveals it. */}
+            <p class="picker-restored-note" data-restored-note hidden>
+              <span data-restored-draft>Resuming your unfinished run. Every answer you had is loaded.</span>
+              <span data-restored-submitted>Your previous answers are loaded. Walk through to revise them.</span>
+            </p>
 
             <div class="picker-actions">
               <button class="ks-button ks-button-primary" type="button" data-advance="next">
@@ -1503,6 +1515,16 @@ const questions = [
   </dialog>
 
   {/* Live edit tray: every queued request with its status, fed by polling. */}
+  {/* Edits stage in the page and are written in one go, so the bar says what
+      is waiting and where pressing it lands. Hidden until something is. */}
+  <div class="dcx-savebar" data-dcx-savebar hidden>
+    <button class="dcx-savebar-apply" type="button" data-dcx-apply>
+      <span data-dcx-apply-label>Apply changes</span>
+      <span class="dcx-savebar-count" data-dcx-apply-count>0</span>
+    </button>
+    <button class="dcx-savebar-discard" type="button" data-dcx-discard>Discard</button>
+  </div>
+
   <div class="dcx-tray" data-dcx-tray hidden aria-live="polite"></div>
 
   <dialog class="picker-modal" data-font-modal aria-labelledby="picker-font-modal-title">

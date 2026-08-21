@@ -27,7 +27,7 @@ export const SUITES = {
       ...COMMON_INFRA_PATTERNS,
       /^picker\//,
       /^scripts\/(?!benchmark-detector|build-browser-detector|build-extension)/,
-      /^skill\/(SKILL\.src\.md|agents\/|reference\/|scripts\/(cleanup-deprecated|comp-diff|comp-spec|build-phase|font-match|data\/font-index|concept-seed|generate-image|context|context-signals|critique-storage|design-parser|doctor|hook|impeccable-paths|is-generated|lib\/(artifact-schema|png|raster|image-metrics|font-fingerprint|font-index|hero-checks|composition-catalog|concept-catalog|provider|staleness|staleness-deep|staleness-notice|surface-briefs|target-slug|template-extensions)|picker|pin|surface-brief))/,
+      /^skill\/(SKILL\.src\.md|agents\/|reference\/|scripts\/(cleanup-deprecated|comp-diff|comp-spec|build-phase|font-match|data\/font-index|concept-seed|generate-image|context|context-signals|critique-storage|design-context|design-parser|doctor|hook|impeccable-paths|is-generated|lib\/(artifact-schema|png|raster|image-metrics|font-fingerprint|font-index|hero-checks|composition-catalog|concept-catalog|provider|staleness|staleness-deep|staleness-notice|surface-briefs|target-slug|template-extensions)|picker|pin|surface-brief))/,
       /^README(\.npm)?\.md$/,
       /^cli\/bin\//,
     ],

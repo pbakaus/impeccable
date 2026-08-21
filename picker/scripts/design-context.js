@@ -1,16 +1,22 @@
-/* Design context document — the questionnaire's final act.
+/* Design context document, the questionnaire's final act and its own surface.
  *
- * When the run reaches the review screen this module saves the answers, then
+ * When a run reaches the review screen this module saves the answers, then
  * swaps the picker for the eight-category design context document. The mosaic
  * landing, tile-to-fullscreen morph, sidebar shell, and article vocabulary are
  * ported unchanged from docs/design-context-categorization/design-context.html;
  * what changed is the content: the prototype rendered one example project, this
  * renders the interview that just ended. Everything is assembled client-side
  * before the POST resolves, because the server's exit on /submit is the
- * completion signal the agent waits on — after it there is nothing to fetch.
+ * completion signal the agent waits on, and after it there is nothing to fetch.
+ *
+ * The document is also openable on its own, long after that run. The boot
+ * contract says which of the two this page is, and document mode renders from
+ * the design-context store with no submit involved.
  */
 
 import { contrastInk, contrastInkHex, formatOklch, readableOn } from './color.js';
+import { getBoot, hydrationReady } from './boot.js';
+import { loadIconPacks } from './palette-picker.js';
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -18,23 +24,37 @@ const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const form = $('#picker-form');
 const shell = $('[data-dcx-shell]');
 
-/* Seed context (the chat half of the interview) and the dealt palettes ride
-   in on cues.json. Fetched at load, before the server can exit: the context
-   block feeds the chat-sourced pages, and the palette map is what the
-   provenance tags compare committed values against. */
+/* Seed context (the chat half of the interview) lives in the design-context
+   store; the dealt palettes stay with the cues that generated them. Both are
+   fetched at load, before the server can exit: the context block feeds the
+   chat-sourced pages, and the palette map is what the provenance tags compare
+   committed values against. Both promises are kept rather than discarded,
+   because a document opened directly renders from them instead of waiting on
+   a submit that never comes. */
 let seedContext = null;
 let seedModes = null;
 let seedPalettes = null;
 let seedCues = null;
-fetch('/cues.json')
+
+const getJson = (url) => fetch(url)
   .then((response) => (response.ok ? response.json() : null))
-  .then((data) => {
-    seedContext = data?.context || null;
-    seedModes = Array.isArray(data?.modes) ? data.modes : null;
-    seedPalettes = data?.palette || null;
-    seedCues = Array.isArray(data?.cues) ? data.cues : null;
-  })
-  .catch(() => {});
+  .catch(() => null);
+
+const cuesReady = getJson('/cues.json').then((data) => {
+  seedPalettes = data?.palette || null;
+  seedCues = Array.isArray(data?.cues) ? data.cues : null;
+  return data;
+});
+
+/* Field by field, not file by file: a store written before a field existed,
+   or one carrying only half a run, still falls back to whatever the cue
+   manifest kept from the release that wrote it. */
+const contextReady = Promise.all([getJson('/context.json'), cuesReady])
+  .then(([stored, cues]) => {
+    seedContext = stored?.context ?? cues?.context ?? null;
+    const modes = Array.isArray(stored?.modes) ? stored.modes : cues?.modes;
+    seedModes = Array.isArray(modes) ? modes : null;
+  });
 
 /* The winning cue's dealt value for one role, read the way the deck's own
    createState reads it in palette-picker.js: the pixel-snapped value when
@@ -42,6 +62,17 @@ fetch('/cues.json')
    source that is not a cue in cues.json (a seed-deck card, a custom
    palette) has no entry here and returns nothing, which is what turns the
    provenance tag off. */
+/* Which of the two surfaces this page is. Set before the document renders in
+   document mode, read by the parts of it that differ. */
+let docMode = false;
+
+/* The submit flow renders before the server has exited but reveals after, and
+   the store's copy of the cue is made during that submit: a URL first requested
+   after the exit would find nothing serving it. The cue the questionnaire
+   already displayed is in the browser's cache, so that run keeps reading it
+   from the workspace, and only a document opened later reads the store copy. */
+const cueImageSrc = (slug) => (docMode ? '/cue.png' : `/cues/${encodeURIComponent(slug)}.png`);
+
 const seedHexFor = (source, role) => {
   const slot = seedPalettes?.[source]?.[role];
   if (!slot) return '';
@@ -221,6 +252,16 @@ const empty = (title, body) => `
 
 const note = (text) => `<p class="dcx-fan-note">${text}</p>`;
 
+/* A value the document lets a person change in place.
+
+   The binding id is the whole address: the session resolves it to a file and
+   a path, so nothing on this side has to know where the text lives. The
+   original travels with it because an edit reports what it replaced, and a
+   field edited twice still has to report the value the store started from.
+   Editing itself is switched on after render, and only where a session can
+   accept it. */
+const editable = (bindingId, text) => `<span class="dcx-editable" data-dcx-binding="${escapeHtml(bindingId)}" data-dcx-original="${escapeHtml(text)}">${escapeHtml(text)}</span>`;
+
 /* Chat-round material renders when the agent passed it along, and says where
    it lives when it did not — an interview that skipped a question is a fact
    the document reports, not a gap it papers over. */
@@ -362,8 +403,8 @@ function buildAudience(s, name) {
   const audience = s.context?.audience || {};
   const parts = [heading(1, 'Audience', 'Who it is for, emotional state, needs, trust triggers.', name)];
   const who = [
-    audience.primary && { dt: 'Primary', dd: escapeHtml(audience.primary) },
-    audience.secondary && { dt: 'Secondary', dd: escapeHtml(audience.secondary) },
+    audience.primary && { dt: 'Primary', dd: editable('audience.primary', audience.primary) },
+    audience.secondary && { dt: 'Secondary', dd: editable('audience.secondary', audience.secondary) },
   ].filter(Boolean);
   parts.push(block('Who they are', who.length
     ? defs(who)
@@ -371,8 +412,8 @@ function buildAudience(s, name) {
   /* Arrival-only context keeps the old single-callout block; a leaving line
      widens it into the two-beat journey, side by side. */
   if (audience.emotion || audience.leaving) {
-    const arrival = audience.emotion ? callout('On arrival', escapeHtml(audience.emotion), true) : '';
-    const leaving = audience.leaving ? callout('Leaving with', escapeHtml(audience.leaving), true) : '';
+    const arrival = audience.emotion ? callout('On arrival', editable('audience.emotion', audience.emotion), true) : '';
+    const leaving = audience.leaving ? callout('Leaving with', editable('audience.leaving', audience.leaving), true) : '';
     if (arrival && leaving) {
       parts.push(block('Emotional journey', `<div class="dcx-callout-pair">${arrival}${leaving}</div>`));
     } else {
@@ -437,7 +478,7 @@ function buildProduct(s, name) {
   const product = s.context?.product || {};
   const parts = [heading(2, 'Product', 'Purpose, surfaces, use cases, what must be clear first.', name)];
   const purposeCallout = product.purpose
-    ? callout(product.name || name || 'This product', escapeHtml(product.purpose), false,
+    ? callout(product.name || name || 'This product', editable('product.purpose', product.purpose), false,
         product.success ? `\n    <p class="dcx-callout-success">${escapeHtml(product.success)}</p>` : '')
     : fromChat('The purpose and success definition were confirmed', '<code>PRODUCT.md &middot; Product Purpose</code>');
   const platform = typeof product.platform === 'string' && product.platform.trim()
@@ -448,8 +489,8 @@ function buildProduct(s, name) {
     : purposeCallout));
   if (product.positioning && (product.positioning.not || product.positioning.this)) {
     const cells = [
-      product.positioning.not && callout('Not this', escapeHtml(product.positioning.not)),
-      product.positioning.this && callout('This', escapeHtml(product.positioning.this), true),
+      product.positioning.not && callout('Not this', editable('product.positioning.not', product.positioning.not)),
+      product.positioning.this && callout('This', editable('product.positioning.this', product.positioning.this), true),
     ].filter(Boolean).join('');
     parts.push(block('Positioning', `<div class="dcx-callout-pair">${cells}</div>`));
   }
@@ -485,7 +526,7 @@ function buildBrand(s, name) {
      words alone over the pointer to the durable copy when only they arrived;
      the plain pointer otherwise. */
   parts.push(block('Personality', brand.personality
-    ? callout(brand.words?.join(' · ') || 'Voice', escapeHtml(brand.personality), true)
+    ? callout(brand.words?.join(' · ') || 'Voice', editable('brand.personality', brand.personality), true)
     : (Array.isArray(brand.words) && brand.words.length
       ? callout(brand.words.join(' · '), 'Three words, voice, and tone were confirmed in chat, before the browser questionnaire. <code>PRODUCT.md &middot; Brand Personality</code> is the durable copy.', true)
       : fromChat('Three words, voice, and tone were confirmed', '<code>PRODUCT.md &middot; Brand Personality</code>'))));
@@ -536,7 +577,7 @@ function buildBrand(s, name) {
       + note('Q5 of the seed interview. A hard constraint on every palette and pair that followed.')));
   }
   /* Assets: an object entry carries a staged file under
-     .impeccable/design-interview/assets/ and renders as an image; a plain
+     .impeccable/design-context/assets/ and renders as an image; a plain
      string keeps the text line it always had. A logo is proofed on two
      chips, the committed primary and the committed neutral, so a colored
      and a quiet ground are judged at once; boards and references get a
@@ -564,7 +605,7 @@ function buildBrand(s, name) {
         </div>
         ${assetCaption(entry)}
       </figure>`).join('')}</div>`
-      + note('Provided marks proofed on the committed primary and neutral grounds. The files are staged in <code>.impeccable/design-interview/assets/</code>.')));
+      + note('Provided marks proofed on the committed primary and neutral grounds. The files are staged in <code>.impeccable/design-context/assets/</code>.')));
   }
   if (boards.length) {
     parts.push(block('Boards and references', `<div class="dcx-boards">${boards.map((entry) => `
@@ -572,7 +613,7 @@ function buildBrand(s, name) {
         <span class="dcx-board-frame"><img src="${brandAssetSrc(entry.file)}" alt="${escapeHtml(entry.file)}" loading="lazy" /></span>
         ${assetCaption(entry)}
       </figure>`).join('')}</div>`
-      + note('Boards and reference images provided in chat, staged in <code>.impeccable/design-interview/assets/</code>.')));
+      + note('Boards and reference images provided in chat, staged in <code>.impeccable/design-context/assets/</code>.')));
   }
   if (textAssets.length) {
     parts.push(block('Assets provided', list(textAssets.map((entry) => escapeHtml(
@@ -599,9 +640,20 @@ function buildColor(s, name) {
      points marked at the cues.json coordinates in each role's dealt color,
      and the rest of the generated set dimmed below. Skipped without ceremony
      when the palette came from a seed deck or a custom pick rather than a
-     cue, or when the run had no cues at all. */
+     cue, or when the run had no cues at all.
+
+     The image itself comes from the store, where the submit put a copy of the
+     one that was picked, so a document reopened after the generation workspace
+     was cleaned still has its cue. The workspace only has to still be there
+     for the sample dots and the directions not taken. */
   const cueSlugs = Array.isArray(s.cueSlugs) ? s.cueSlugs : [];
-  const chosenCue = cueSlugs.includes(s.paletteSource) ? s.paletteSource : '';
+  /* A document opened on its own reads the cue out of the store, so the
+     generation workspace no longer has to still list it. A palette that never
+     came from a cue has no copy there either, and the whole block hides itself
+     when the image fails, which is the same answer arrived at later. */
+  const chosenCue = s.paletteSource && (docMode || cueSlugs.includes(s.paletteSource))
+    ? s.paletteSource
+    : '';
   if (chosenCue && s.palette.length) {
     const cuePalette = seedPalettes?.[chosenCue] || {};
     const dots = ROLES.map((role) => {
@@ -619,7 +671,7 @@ function buildColor(s, name) {
       </div>`).join('');
     parts.push(block('The cue', `<div class="dcx-cue" data-dcx-hide-on-error>
         <figure class="dcx-cue-frame">
-          <img data-dcx-cue-img src="/cues/${encodeURIComponent(chosenCue)}.png" alt="The chosen visual cue, ${escapeHtml(chosenCue)}" />
+          <img data-dcx-cue-img src="${cueImageSrc(chosenCue)}" alt="The chosen visual cue, ${escapeHtml(chosenCue)}" />
           ${dots}
         </figure>
         <div class="dcx-cue-card">
@@ -973,6 +1025,46 @@ document.addEventListener('picker:screenchange', ({ detail }) => {
   finishSequence();
 });
 
+/* Document mode: the run already happened, so the document renders from the
+   store instead of waiting on a submit that will never come.
+
+   Everything it reads has to be in hand before the first render, because
+   nothing re-renders it afterwards on its own: the version the tab compares
+   against and the version a fresh session starts at are both 1, so a render
+   that raced its own data would stay wrong until an edit moved the number.
+   That means the context and cue fetches, the restored form, and the icon
+   sheet, which the questionnaire otherwise fetches only when its screen is
+   reached and whose absence quietly drops a block from the document. */
+getBoot().then(async (boot) => {
+  if (boot.mode !== 'doc') return;
+  docMode = true;
+  // Nothing here submits, and there is no half-finished run to save.
+  finished = true;
+  await Promise.all([cuesReady, contextReady, hydrationReady, loadIconPacks().catch(() => {})]);
+  if (boot.doc?.base && boot.doc?.token) startDocSession(boot.doc);
+  renderDocument();
+  revealDocument();
+});
+
+/* A run walked away from is a run that can be resumed: the whole form goes to
+   the server after every screen, so closing the tab costs the visitor nothing
+   but the trip. Debounced because arrow keys can walk several screens faster
+   than a request completes, and dropped silently on failure, since a draft the
+   server never took is only the resume that will not happen. */
+let draftTimer;
+document.addEventListener('picker:screenchange', () => {
+  if (finished) return;
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(() => {
+    if (finished) return;
+    fetch('/autosave', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(collectAnswers()),
+    }).catch(() => {});
+  }, 500);
+});
+
 $('[data-doc-retry]')?.addEventListener('click', finishSequence);
 
 /* ============================================================
@@ -1320,8 +1412,16 @@ async function pollDocState() {
     renderTray();
     if (state.version !== docVersion) {
       docVersion = state.version;
-      await adoptAnswers();
+      /* Something moved on disk: a save of this tab's own, a request the
+         agent finished, or a value it settled while doing either. Re-read
+         both halves of the store and rebuild, including the article that is
+         open, since the templates alone are not what anyone is looking at. */
+      await adoptStoreState();
+      const openScroll = current?.expander?.querySelector('.dcx-main')?.scrollTop ?? 0;
       refreshDocument();
+      const main = current?.expander?.querySelector('.dcx-main');
+      if (main) main.scrollTop = openScroll;
+      markEditables();
     }
     schedulePoll(2000);
   } catch {
@@ -1367,12 +1467,102 @@ function ensureFace(family) {
   document.head.appendChild(link);
 }
 
+/* The chat half moves too: an agent reconciling a batch can rewrite a purpose
+   line, and the document is where that has to show up. Assigned onto the same
+   variables the boot fetch fills, so every builder reads the new values. */
+async function adoptContext() {
+  const response = await fetch(`${docSession.base}/doc/context?token=${encodeURIComponent(docSession.token)}`);
+  if (!response.ok) return;
+  const payload = await response.json();
+  if (payload.context && typeof payload.context === 'object') seedContext = payload.context;
+  if (Array.isArray(payload.modes)) seedModes = payload.modes;
+}
+
+const adoptStoreState = () => Promise.all([adoptAnswers(), adoptContext()]);
+
 function refreshDocument() {
   renderDocument();
   if (current) renderCategory(current.id, current.expander, false);
+  markEditables();
 }
 
-/* ---------- Simple edits: palette colors ---------- */
+/* ---------- Staged edits: the pending ledger and the save bar ----------
+
+   Edits land in the page immediately and on disk deliberately. That split is
+   what lets a person try three changes and keep two: until Apply, nothing has
+   been written, and the document is only showing what it would look like.
+
+   The ledger keys on the binding id and keeps the FIRST original it saw, so a
+   field edited three times still reports the value the store actually holds.
+   ------------------------------------------------------------------------ */
+
+const staged = new Map();
+/* One-off cards in the tray, for outcomes that are not a queued request. */
+const trayNotes = [];
+const saveBar = $('[data-dcx-savebar]');
+let applying = false;
+let wasShowing = false;
+
+function stage(bindingId, from, to) {
+  if (!bindingId) return;
+  const existing = staged.get(bindingId);
+  if (to === (existing ? existing.from : from)) staged.delete(bindingId);
+  else staged.set(bindingId, { from: existing ? existing.from : from, to });
+  renderSaveBar();
+}
+
+function renderSaveBar() {
+  if (!saveBar) return;
+  const count = staged.size;
+  saveBar.hidden = !count || !docLive();
+  saveBar.toggleAttribute('data-applying', applying);
+  if (saveBar.hidden) return;
+  const label = $('[data-dcx-apply-label]', saveBar);
+  const counter = $('[data-dcx-apply-count]', saveBar);
+  label.textContent = applying ? 'Applying' : `Apply ${count === 1 ? 'change' : 'changes'}`;
+  counter.textContent = String(count);
+  counter.hidden = applying;
+  $('[data-dcx-apply]', saveBar).disabled = applying;
+  $('[data-dcx-discard]', saveBar).disabled = applying;
+  $('[data-dcx-apply]', saveBar).setAttribute(
+    'aria-label',
+    `Apply ${count} ${count === 1 ? 'change' : 'changes'} to the design context`,
+  );
+  if (!wasShowing) {
+    saveBar.setAttribute('data-just-appeared', '');
+    setTimeout(() => saveBar.removeAttribute('data-just-appeared'), 700);
+  }
+  wasShowing = true;
+}
+
+/* Editing is offered only where it can be accepted, and re-armed after every
+   render because the article is rebuilt rather than patched. */
+function markEditables() {
+  const live = docLive() && !applying;
+  for (const node of $$('[data-dcx-binding]')) {
+    node.contentEditable = live ? 'plaintext-only' : 'false';
+    const id = node.dataset.dcxBinding;
+    const pendingValue = staged.get(id)?.to;
+    // A re-render rebuilt this element from the store, so anything staged
+    // against it has to be written back on: the bar still counts it.
+    if (pendingValue !== undefined && node.textContent !== pendingValue) {
+      node.textContent = pendingValue;
+    }
+    node.toggleAttribute('data-dcx-dirty', pendingValue !== undefined);
+  }
+  renderSaveBar();
+}
+
+/* plaintext-only keeps pasted markup out; this is the second half of that,
+   because a browser without the mode still allows rich text. */
+document.addEventListener('input', (event) => {
+  const node = event.target.closest?.('[data-dcx-binding]');
+  if (!node) return;
+  stage(node.dataset.dcxBinding, node.dataset.dcxOriginal ?? '', node.textContent.trim());
+  node.toggleAttribute('data-dcx-dirty', staged.has(node.dataset.dcxBinding));
+});
+
+/* ---------- Palette swatches stage like everything else ---------- */
 
 document.addEventListener('click', (event) => {
   const button = event.target.closest('[data-edit-color]');
@@ -1384,22 +1574,59 @@ document.addEventListener('click', (event) => {
 document.addEventListener('change', (event) => {
   const input = event.target.closest?.('[data-color-input-for]');
   if (!input) return;
-  applyColorEdit(input.dataset.colorInputFor, input.value.toUpperCase());
+  stageColorEdit(input.dataset.colorInputFor, input.value.toUpperCase());
 });
 
-async function applyColorEdit(role, hex) {
+function stageColorEdit(role, hex) {
   const field = form.elements[`palette-${role}`];
   if (!field || field.value.toUpperCase() === hex) return;
+  const previous = field.value.toUpperCase();
   field.value = hex;
   refreshDocument();
-  if (!docLive()) return;
+  stage(`palette.${role}`, previous, hex);
+}
+
+/* ---------- Apply and discard ---------- */
+
+$('[data-dcx-apply]')?.addEventListener('click', async () => {
+  if (!staged.size || applying || !docLive()) return;
+  const count = staged.size;
+  if (!window.confirm(`Apply ${count} ${count === 1 ? 'change' : 'changes'} to the design context?`)) return;
+
+  const changes = [...staged].map(([bindingId, { from, to }]) => ({ bindingId, from, to }));
+  applying = true;
+  markEditables();
   try {
-    const result = await docPost('/doc/edit', { kind: 'color', role, value: hex });
+    const result = await docPost('/doc/save', { changes });
     docVersion = result.version;
-  } catch {
-    setDocOnline(false);
-    renderTray();
+    staged.clear();
+    trayNote(`Applied ${count} ${count === 1 ? 'change' : 'changes'}`, 'done');
+  } catch (error) {
+    trayNote('Those changes could not be saved. They are still here.', 'error');
+  } finally {
+    applying = false;
+    markEditables();
   }
+});
+
+$('[data-dcx-discard]')?.addEventListener('click', async () => {
+  if (!staged.size || applying) return;
+  const count = staged.size;
+  if (!window.confirm(`Discard ${count} ${count === 1 ? 'change' : 'changes'}?`)) return;
+  staged.clear();
+  // The store is the rollback: re-reading it puts every field back.
+  await adoptStoreState();
+  refreshDocument();
+  markEditables();
+});
+
+function trayNote(message, status) {
+  trayNotes.push({ id: `note-${trayNotes.length}`, status, message });
+  renderTray();
+  setTimeout(() => {
+    trayNotes.shift();
+    renderTray();
+  }, 6000);
 }
 
 /* ---------- Complex edits: the request modal ---------- */
@@ -1465,12 +1692,18 @@ const TRAY_LABELS = {
 };
 
 function renderTray() {
+  /* Notes are transient outcomes of a save; requests are work the agent owes. */
   if (!tray) return;
   const items = trayRequests.slice(-4);
   const offline = docSession && !docOnline;
-  tray.hidden = !offline && items.length === 0;
+  tray.hidden = !offline && items.length === 0 && trayNotes.length === 0;
   tray.innerHTML = [
     offline ? '<div class="dcx-tray-item" data-status="offline"><span class="dcx-tray-dot"></span><div><p class="dcx-tray-prompt">Edit session offline</p><p class="dcx-tray-note">Changes stay in this tab; reconnecting&hellip;</p></div></div>' : '',
+    ...trayNotes.map((entry) => `
+      <div class="dcx-tray-item" data-status="${escapeHtml(entry.status)}">
+        <span class="dcx-tray-dot"></span>
+        <div><p class="dcx-tray-prompt">${escapeHtml(entry.message)}</p></div>
+      </div>`),
     ...items.map((entry) => `
       <div class="dcx-tray-item" data-status="${escapeHtml(entry.status)}">
         <span class="dcx-tray-dot"></span>
