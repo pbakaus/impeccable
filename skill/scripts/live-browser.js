@@ -6911,6 +6911,160 @@
   }
 
   //
+  // ------------------------------------------------------------------
+  // Agent-initiated targeting (the `generate` command). The agent names an
+  // element by CSS selector over POST /agent-target; the server pushes an
+  // `agent_target` SSE message here. The overlay resolves the selector,
+  // scrolls the element into view, enters the same picked state a user
+  // click produces, and fires the normal Go pipeline, so everything
+  // downstream (generate event, variants, cycling, accept) is unchanged.
+  // The verdict goes back through POST /agent-target-result, which resolves
+  // the agent's held-open CLI call.
+
+  function postAgentTargetResult(targetId, result) {
+    fetch('http://localhost:' + PORT + '/agent-target-result?token=' + TOKEN, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: TOKEN, targetId, ...result }),
+    }).catch(() => { /* server gone; nothing to report to */ });
+  }
+
+  function describeAgentTargetCandidate(el) {
+    return {
+      tag: el.tagName.toLowerCase(),
+      id: el.id || null,
+      classes: [...el.classList].filter((c) => !c.startsWith('impeccable-')),
+      text: (el.textContent || '').trim().slice(0, 80),
+    };
+  }
+
+  function resolveAgentTargetElement(msg) {
+    let matched;
+    try {
+      matched = [...document.querySelectorAll(msg.selector)];
+    } catch {
+      return { error: { ok: false, error: 'invalid_selector', selector: msg.selector } };
+    }
+    let candidates = matched.filter((el) => pickable(el));
+    if (msg.text) {
+      const needle = String(msg.text).toLowerCase();
+      candidates = candidates.filter((el) => (el.textContent || '').toLowerCase().includes(needle));
+    }
+    if (candidates.length === 0) {
+      return {
+        error: {
+          ok: false,
+          error: 'no_match',
+          selector: msg.selector,
+          matchCount: 0,
+          // How many nodes the raw selector hit before the pickable/text
+          // filters: distinguishes a wrong selector from an unpickable match.
+          rawMatchCount: matched.length,
+        },
+      };
+    }
+    if (Number.isInteger(msg.index)) {
+      const el = candidates[msg.index - 1];
+      if (!el) {
+        return { error: { ok: false, error: 'index_out_of_range', selector: msg.selector, matchCount: candidates.length } };
+      }
+      return { el, matchCount: candidates.length };
+    }
+    if (candidates.length > 1) {
+      return {
+        error: {
+          ok: false,
+          error: 'ambiguous',
+          selector: msg.selector,
+          matchCount: candidates.length,
+          candidates: candidates.slice(0, 8).map(describeAgentTargetCandidate),
+        },
+      };
+    }
+    return { el: candidates[0], matchCount: 1 };
+  }
+
+  function scrollAgentTargetIntoView(el, done) {
+    const rect = el.getBoundingClientRect();
+    if (rect.top >= 0 && rect.bottom <= window.innerHeight) { done(); return; }
+    let settled = false;
+    let fallback = null;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      removeEventListener('scrollend', finish, true);
+      if (fallback) clearTimeout(fallback);
+      done();
+    };
+    // scrollend where supported; a timer covers engines without it and the
+    // no-movement case (element already at its final resting position).
+    addEventListener('scrollend', finish, true);
+    fallback = setTimeout(finish, 1200);
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+
+  function handleAgentTarget(msg) {
+    if (!msg || typeof msg.targetId !== 'string') return;
+    // Only the tab the user is looking at may act; a hidden tab firing Go
+    // would race the visible one on the same session store.
+    if (document.hidden) return;
+    const reply = (result) => postAgentTargetResult(msg.targetId, result);
+    if (pendingApplyInFlight) {
+      reply({ ok: false, error: 'busy', state, reason: 'manual_apply_in_flight' });
+      return;
+    }
+    if (state !== 'IDLE' && state !== 'PICKING' && state !== 'CONFIGURING') {
+      reply({ ok: false, error: 'busy', state });
+      return;
+    }
+    const resolved = resolveAgentTargetElement(msg);
+    if (resolved.error) { reply(resolved.error); return; }
+    const el = resolved.el;
+    if (msg.dryRun) {
+      reply({
+        ok: true,
+        dryRun: true,
+        matchCount: resolved.matchCount,
+        element: describeAgentTargetCandidate(el),
+      });
+      return;
+    }
+    scrollAgentTargetIntoView(el, () => {
+      // Mirror of the user-click pick entry in handleClick, minus the
+      // pick-mode gate (the agent's intent replaces the toggle).
+      selectedElement = el;
+      setLiveState('CONFIGURING');
+      showHighlight(selectedElement);
+      clearAnnotations();
+      showAnnotOverlay(selectedElement);
+      showBar('configure');
+      renderEditBadge(hasTextRows(selectedElement) ? 'idle' : 'hidden');
+      startScrollTracking();
+      maybePrefetchPage();
+      maybeWarnConditionalAncestor(selectedElement);
+      // Preset what the agent asked for, then fire the same Go a user press
+      // fires. handleGo reads exactly these inputs.
+      selectedAction = msg.action;
+      selectedCount = msg.count;
+      const input = uiGetById(PREFIX + '-input');
+      if (input) input.value = msg.prompt || '';
+      updateBarContent('configure');
+      handleGo();
+      if (state === 'GENERATING' && currentSessionId) {
+        reply({
+          ok: true,
+          matchCount: resolved.matchCount,
+          sessionId: currentSessionId,
+          action: msg.action,
+          count: msg.count,
+          element: describeAgentTargetCandidate(el),
+        });
+      } else {
+        reply({ ok: false, error: 'go_failed', state });
+      }
+    });
+  }
+
   // SSE (server→browser) + fetch POST (browser→server)
   // Zero-dependency replacement for WebSocket.
   //
@@ -6944,6 +7098,9 @@
           break;
         case 'agent_polling':
           syncAgentPollingUi(!!msg.connected);
+          break;
+        case 'agent_target':
+          handleAgentTarget(msg);
           break;
         case 'agent_phase':
           if (msg.id === currentSessionId && (state === 'GENERATING' || state === 'CYCLING')) {

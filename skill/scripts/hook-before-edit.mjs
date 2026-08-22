@@ -28,6 +28,7 @@ import {
   filterFindings,
   isNativePlatform,
   isScanTargetInsideProject,
+  LIVE_PREVIEW_MARKERS,
   loadDetector,
   matchConfiguredExtension,
   matchesAnyGlob,
@@ -52,6 +53,14 @@ async function readStdin() {
 function done(payload = null) {
   if (payload) process.stdout.write(JSON.stringify(payload));
   process.exit(0);
+}
+
+function fileHasLivePreviewMarkers(filePath) {
+  try {
+    return LIVE_PREVIEW_MARKERS.test(fs.readFileSync(filePath, 'utf-8'));
+  } catch {
+    return false;
+  }
 }
 
 function allow(extra = {}, payload = {}) {
@@ -447,6 +456,17 @@ async function main() {
   }
   const content = typeof contentResult === 'string' ? contentResult : '';
   if (!content) return allow({ ...audit, skipped: 'no-proposed-content', durationMs: Date.now() - started });
+
+  // A live variant session owns files carrying preview scaffolding (see
+  // LIVE_PREVIEW_MARKERS in hook-lib). Check the proposed content AND the
+  // file on disk: the very first variants write introduces the markers, and
+  // later fragment edits (variant CSS tweaks) touch a file that already
+  // carries them. Nagging here derails the session mid-cycle and pushes
+  // agents into shell-heredoc rewrites to dodge the gate; live-complete
+  // verifies the file once the accepted variant is permanent.
+  if (LIVE_PREVIEW_MARKERS.test(content) || fileHasLivePreviewMarkers(filePath)) {
+    return allow({ ...audit, skipped: 'live-preview', durationMs: Date.now() - started });
+  }
 
   if (config.enabled === false) return allow({ ...audit, skipped: 'config-disabled', durationMs: Date.now() - started });
 

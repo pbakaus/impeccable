@@ -32,7 +32,7 @@ const CODEX_HARNESSES = new Set(['.codex', '.agents']);
 const VALID_COMMANDS = [
   'craft', 'init', 'extract', 'document', 'shape',
   'critique', 'audit',
-  'polish', 'bolder', 'quieter', 'distill', 'harden', 'onboard', 'live',
+  'polish', 'bolder', 'quieter', 'distill', 'harden', 'onboard', 'live', 'generate',
   'animate', 'colorize', 'typeset', 'layout', 'delight', 'overdrive',
   'clarify', 'adapt', 'optimize',
 ];
