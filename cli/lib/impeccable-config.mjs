@@ -584,6 +584,44 @@ export function setHookConsent(root, value) {
   return filePath;
 }
 
+/**
+ * The currently effective `hook.enabled` value, mirroring the runtime's own
+ * resolution order in hook-lib.mjs's readConfig() / context.mjs's
+ * hookEnabledAt() -- shared config.json first, then config.local.json
+ * overriding it when it also has an explicit key. Returns undefined when
+ * neither file has one (the runtime treats that as disabled per
+ * DEFAULT_CONFIG, issue #512).
+ */
+export function getHookEnabled(root) {
+  let enabled;
+  for (const filePath of [getConfigPath(root), getLocalConfigPath(root)]) {
+    const hook = hookSection(safeReadJson(filePath));
+    if (hook && Object.prototype.hasOwnProperty.call(hook, 'enabled')) {
+      enabled = hook.enabled !== false;
+    }
+  }
+  return enabled;
+}
+
+/**
+ * Persist `hook.enabled` to the shared config.json, preserving any sibling
+ * keys. Mirrors skill/scripts/hook-admin.mjs's setEnabled(cwd, true): the
+ * hook runtime's DEFAULT_CONFIG.enabled defaults to false (absence of
+ * consent must not mean "on"), so this CLI install path -- the only other
+ * place manifests get written -- must explicitly opt in, or an install done
+ * through `npx impeccable skills install` would wire up manifests that never
+ * actually fire.
+ */
+export function setHookEnabled(root, value) {
+  const filePath = getConfigPath(root);
+  const existing = safeReadJson(filePath) || {};
+  const hook = hookSection(existing) || {};
+  const next = { ...existing, hook: { ...hook, enabled: value } };
+  mkdirSync(dirname(filePath), { recursive: true });
+  writeFileSync(filePath, `${JSON.stringify(next, null, 2)}\n`);
+  return filePath;
+}
+
 const EXCLUDE_OPEN = '# impeccable-config-ignore-start';
 const EXCLUDE_CLOSE = '# impeccable-config-ignore-end';
 const EXCLUDE_PATTERNS = ['.impeccable/config.local.json'];

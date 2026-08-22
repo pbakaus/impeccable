@@ -70,6 +70,17 @@ function mkTmp() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-hook-'));
 }
 
+// DEFAULT_CONFIG.enabled defaults to false (issue #512: absence of consent
+// must not mean "on"). Suites that exercise runHook()/runStopHook() detection
+// logic rather than the enabled/disabled gate itself need an explicit
+// enabled config so a bare mkTmp() cwd doesn't short-circuit to 'config-disabled'.
+function mkEnabledTmp() {
+  const cwd = mkTmp();
+  fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+  fs.writeFileSync(getConfigPath(cwd), JSON.stringify({ hook: { enabled: true } }));
+  return cwd;
+}
+
 function fakeDetector(findings) {
   return {
     detectText: () => findings,
@@ -217,8 +228,9 @@ describe('readConfig()', () => {
   afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
 
   it('returns defaults when file missing', () => {
+    // Issue #512: absence of consent must not mean "on".
     const cfg = readConfig(cwd);
-    assert.equal(cfg.enabled, true);
+    assert.equal(cfg.enabled, false);
     assert.equal(cfg.limits.maxFindings, DEFAULT_CONFIG.limits.maxFindings);
   });
 
@@ -290,7 +302,7 @@ describe('readConfig()', () => {
     fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
     fs.writeFileSync(getConfigPath(cwd), '{ not json');
     const cfg = readConfig(cwd);
-    assert.equal(cfg.enabled, true);
+    assert.equal(cfg.enabled, false);
   });
 
   it('ignores malformed local config while preserving valid shared config', () => {
@@ -962,6 +974,210 @@ describe('hook-admin.mjs', () => {
     assert.match(github.hooks.postToolUse[0].bash, /\.github\/skills\/impeccable\/scripts\/hook\.mjs/);
   });
 
+  it('reset prunes impeccable entries from an installed manifest, sibling entries survive', () => {
+    fs.mkdirSync(path.join(cwd, '.claude', 'skills', 'impeccable', 'scripts'), { recursive: true });
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({ hook: { enabled: false } }));
+    fs.writeFileSync(path.join(cwd, '.claude', 'settings.local.json'), JSON.stringify({
+      description: 'Impeccable design detector',
+      hooks: {
+        PostToolUse: [
+          { matcher: 'OtherTool', hooks: [{ type: 'command', command: 'node "./local-hook.mjs"' }] },
+          { matcher: 'Edit|Write|MultiEdit', hooks: [{ type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' }] },
+        ],
+        Stop: [{ type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' }],
+      },
+    }));
+
+    const out = runAdmin(['reset']);
+    assert.match(out, /Reset design hook config and cache \(removed:/);
+    assert.match(out, /Removed hook entries from: \.claude\./);
+
+    const claude = JSON.parse(fs.readFileSync(path.join(cwd, '.claude', 'settings.local.json'), 'utf-8'));
+    assert.equal(claude.hooks.PostToolUse.length, 1);
+    assert.match(claude.hooks.PostToolUse[0].hooks[0].command, /local-hook\.mjs/);
+    assert.equal(claude.hooks.Stop, undefined, 'the impeccable-only Stop array should be dropped entirely');
+  });
+
+  it('reset never touches the shared/committed manifest, only the local one', () => {
+    // .claude/settings.json is the team-shared, typically version-controlled
+    // file; `on` only ever reads it (to decide whether the team already
+    // covers the install) and never writes it. reset() must honor the same
+    // write-scope asymmetry -- a single developer's local reset must not
+    // strip the team's committed hook entries.
+    fs.mkdirSync(path.join(cwd, '.claude', 'skills', 'impeccable', 'scripts'), { recursive: true });
+    const shared = JSON.stringify({
+      hooks: { PostToolUse: [{ matcher: 'Edit', hooks: [{ type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' }] }] },
+    });
+    fs.mkdirSync(path.join(cwd, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(cwd, '.claude', 'settings.json'), shared);
+    fs.writeFileSync(path.join(cwd, '.claude', 'settings.local.json'), shared);
+
+    runAdmin(['reset']);
+
+    assert.equal(fs.readFileSync(path.join(cwd, '.claude', 'settings.json'), 'utf-8'), shared, 'shared settings.json must survive reset untouched');
+    assert.equal(fs.existsSync(path.join(cwd, '.claude', 'settings.local.json')), false, 'the local settings.local.json is still pruned');
+  });
+
+  it('reset prunes all four provider manifests installed via `on`', () => {
+    for (const provider of ['.claude', '.agents', '.cursor', '.github']) {
+      fs.mkdirSync(path.join(cwd, provider, 'skills', 'impeccable', 'scripts'), { recursive: true });
+    }
+    runAdmin(['on']);
+    assert.match(fs.readFileSync(path.join(cwd, '.claude', 'settings.local.json'), 'utf-8'), /skills\/impeccable\/scripts\/hook\.mjs/);
+
+    const out = runAdmin(['reset']);
+    assert.match(out, /Reset design hook config and cache \(removed:/);
+    assert.match(out, /Removed hook entries from: \.claude, \.agents, \.cursor, \.github/);
+
+    assert.equal(fs.existsSync(path.join(cwd, '.claude', 'settings.local.json')), false, 'nothing else was in the manifest, so it is removed entirely');
+    assert.equal(fs.existsSync(path.join(cwd, '.codex', 'hooks.json')), false);
+    assert.equal(fs.existsSync(path.join(cwd, '.cursor', 'hooks.json')), false);
+    assert.equal(fs.existsSync(path.join(cwd, '.github', 'hooks', 'impeccable.json')), false);
+  });
+
+  it('reset with no manifests installed behaves exactly as before (config/cache only)', () => {
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({ hook: { enabled: false } }));
+
+    const out = runAdmin(['reset']);
+    assert.match(out, /Reset design hook config and cache/);
+    assert.doesNotMatch(out, /Removed hook entries from/);
+    assert.equal(fs.existsSync(getConfigPath(cwd)), false);
+  });
+
+  it('reset leaves a manifest with no impeccable marker byte-for-byte unchanged', () => {
+    fs.mkdirSync(path.join(cwd, '.claude'), { recursive: true });
+    const unrelated = JSON.stringify({
+      hooks: { PostToolUse: [{ matcher: 'OtherTool', hooks: [{ type: 'command', command: 'node "./unrelated.mjs"' }] }] },
+    });
+    fs.writeFileSync(path.join(cwd, '.claude', 'settings.local.json'), unrelated);
+
+    const out = runAdmin(['reset']);
+
+    assert.match(out, /Already at defaults/);
+    assert.equal(fs.readFileSync(path.join(cwd, '.claude', 'settings.local.json'), 'utf-8'), unrelated);
+  });
+
+  it('reset still prunes the manifest when the skill folder no longer exists (mid-uninstall)', () => {
+    // No .claude/skills/impeccable/ on disk -- simulates skill files already
+    // removed, manifest cleanup still pending. repairHookManifests()'s install
+    // path gates on the skill folder; reset()'s prune loop must not.
+    fs.mkdirSync(path.join(cwd, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(cwd, '.claude', 'settings.local.json'), JSON.stringify({
+      description: 'Impeccable design detector',
+      hooks: {
+        PostToolUse: [{ matcher: 'Edit|Write|MultiEdit', hooks: [{ type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' }] }],
+        Stop: [{ type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' }],
+      },
+    }));
+
+    const out = runAdmin(['reset']);
+    assert.match(out, /Removed hook entries from: \.claude\./);
+    assert.equal(fs.existsSync(path.join(cwd, '.claude', 'settings.local.json')), false);
+  });
+
+  it('reset aborts before pruning manifests when config cannot be persisted', () => {
+    // A config rewrite failure (permissions, disk full) must not be silently
+    // swallowed while manifest pruning proceeds anyway -- that leaves `status`
+    // reporting enabled (the unwritten config) with no manifest left to fire
+    // it, reset()'s own version of the exact mismatch issue #512 fixed.
+    fs.mkdirSync(path.join(cwd, '.claude', 'skills', 'impeccable', 'scripts'), { recursive: true });
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    const configPath = getConfigPath(cwd);
+    // A sibling key (updateCheck) forces the writeFileSync branch instead of
+    // unlink, so a read-only file actually exercises the write failure.
+    fs.writeFileSync(configPath, JSON.stringify({ updateCheck: true, hook: { enabled: true } }));
+    fs.writeFileSync(path.join(cwd, '.claude', 'settings.local.json'), JSON.stringify({
+      hooks: { Stop: [{ type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' }] },
+    }));
+    fs.chmodSync(configPath, 0o444);
+
+    try {
+      assert.throws(() => runAdmin(['reset']), /Could not reset hook config/);
+      assert.equal(fs.existsSync(path.join(cwd, '.claude', 'settings.local.json')), true, 'manifest must survive when config reset failed');
+      const stillThere = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      assert.equal(stillThere.hook.enabled, true, 'the unwritable config is unchanged, still reporting enabled');
+    } finally {
+      fs.chmodSync(configPath, 0o644);
+    }
+  });
+
+  it('reset throws when a manifest cannot be pruned, even though config was already reset', () => {
+    // Greptile's second follow-up finding: config reset and manifest pruning
+    // are separate steps, and only config failures were fatal. A manifest
+    // surviving (permissions) after config was already cleared is still an
+    // incomplete reset -- the manifest is the exact artifact this whole fix
+    // exists to remove -- so it must exit non-zero too, not report success.
+    fs.mkdirSync(path.join(cwd, '.claude', 'skills', 'impeccable', 'scripts'), { recursive: true });
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({ hook: { enabled: false } }));
+    const manifestPath = path.join(cwd, '.claude', 'settings.local.json');
+    fs.writeFileSync(manifestPath, JSON.stringify({
+      hooks: {
+        PostToolUse: [
+          { matcher: 'OtherTool', hooks: [{ type: 'command', command: 'node "./local-hook.mjs"' }] },
+          { matcher: 'Edit', hooks: [{ type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' }] },
+        ],
+      },
+    }));
+    fs.chmodSync(manifestPath, 0o444);
+
+    try {
+      assert.throws(() => runAdmin(['reset']), /Could not prune manifests for: \.claude/);
+      // Fail-safe: config is disabled either way, even though the manifest
+      // pruning failure is what makes the overall command exit non-zero.
+      assert.equal(fs.existsSync(getConfigPath(cwd)), false, 'config was still fully reset even though manifest pruning failed');
+    } finally {
+      fs.chmodSync(manifestPath, 0o644);
+    }
+  });
+
+  it('reset rolls back the shared config when the local config fails after it (partial-reset guard)', () => {
+    // Greptile's follow-up finding: shared config.json succeeds, then
+    // config.local.json fails -- reset() must not leave the shared file
+    // reset while the local one (which may still carry hook.enabled: true)
+    // is untouched. That combination is neither the old state nor the new
+    // one, and cache/manifest cleanup must not run against it either.
+    fs.mkdirSync(path.join(cwd, '.claude', 'skills', 'impeccable', 'scripts'), { recursive: true });
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    const sharedPath = getConfigPath(cwd);
+    const localPath = getLocalConfigPath(cwd);
+    const sharedOriginal = JSON.stringify({ updateCheck: true, hook: { enabled: true } });
+    const localOriginal = JSON.stringify({ pinnedVersion: '1.0.0', hook: { consent: 'accepted' } });
+    fs.writeFileSync(sharedPath, sharedOriginal);
+    fs.writeFileSync(localPath, localOriginal);
+    fs.writeFileSync(path.join(cwd, '.claude', 'settings.local.json'), JSON.stringify({
+      hooks: { Stop: [{ type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' }] },
+    }));
+    fs.chmodSync(localPath, 0o444);
+
+    try {
+      assert.throws(() => runAdmin(['reset']), /Could not reset hook config/);
+      assert.equal(fs.readFileSync(sharedPath, 'utf-8'), sharedOriginal, 'shared config must be rolled back to its exact prior content, not left reset');
+      assert.equal(fs.readFileSync(localPath, 'utf-8'), localOriginal, 'local config is unchanged (its write never succeeded)');
+      assert.equal(fs.existsSync(path.join(cwd, '.claude', 'settings.local.json')), true, 'manifest must survive a rolled-back reset');
+    } finally {
+      fs.chmodSync(localPath, 0o644);
+    }
+  });
+
+  it('full revocation survives reset -- on, off, reset, status ends disabled (issue #512 repro)', () => {
+    fs.mkdirSync(path.join(cwd, '.claude', 'skills', 'impeccable', 'scripts'), { recursive: true });
+    runAdmin(['on']);
+    runAdmin(['off']);
+
+    const beforeReset = runAdmin(['status']);
+    assert.match(beforeReset, /state:\s+disabled/);
+
+    runAdmin(['reset']);
+
+    assert.equal(fs.existsSync(getConfigPath(cwd)), false);
+    assert.equal(fs.existsSync(path.join(cwd, '.claude', 'settings.local.json')), false);
+    const afterReset = runAdmin(['status']);
+    assert.match(afterReset, /state:\s+disabled/);
+  });
+
   it('ignore-rule overused-font requires explicit broad suppression', () => {
     assert.throws(
       () => runAdmin(['ignore-rule', 'overused-font']),
@@ -1066,6 +1282,7 @@ describe('hook-admin.mjs', () => {
 
     fs.mkdirSync(path.dirname(getConfigPath(cwd)), { recursive: true });
     fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
+      hook: { enabled: true },
       detector: { extensions: [{ ext: '.blade.php', engine: 'html' }] },
     }));
 
@@ -1387,7 +1604,7 @@ describe('payload()', () => {
 
 describe('runHook()', () => {
   let cwd;
-  beforeEach(() => { cwd = mkTmp(); });
+  beforeEach(() => { cwd = mkEnabledTmp(); });
   afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
 
   function eventFor(file, sessionId = 'sid-1') {
@@ -1598,7 +1815,7 @@ rounded:
 
   it('config quiet:true suppresses the clean ack like the env switch', async () => {
     fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
-    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({ hook: { quiet: true } }));
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({ hook: { enabled: true, quiet: true } }));
     const file = writeFixture('src/Quiet.tsx', 'noop');
     const r = await runHook({
       stdinJson: JSON.stringify(eventFor(file)),
@@ -1711,6 +1928,7 @@ rounded:
     writeDesignMd();
     fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
     fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
+      hook: { enabled: true },
       detector: { designSystem: { enabled: false } },
     }));
     const file = writeFixture('src/Card.tsx', '.card { font-family: "Poppins", sans-serif; }');
@@ -1730,6 +1948,7 @@ rounded:
     writeDesignMd();
     fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
     fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
+      hook: { enabled: true },
       detector: {
         ignoreValues: [
           { rule: 'design-system-font', value: 'Poppins' },
@@ -1809,7 +2028,7 @@ rounded:
       const r = await runHook({ stdinJson: JSON.stringify(eventFor(file)), env: {}, cwd, detector: det });
       assert.equal(r.stdout, '');
       assert.equal(r.audit.skipped, 'outside-project');
-      assert.ok(!fs.existsSync(path.join(cwd, '.impeccable')), 'out-of-project edit must not dirty the cache');
+      assert.ok(!fs.existsSync(path.join(cwd, '.impeccable', 'hook.cache.json')), 'out-of-project edit must not dirty the cache');
     } finally {
       fs.rmSync(scratch, { recursive: true, force: true });
     }
@@ -1823,6 +2042,8 @@ rounded:
     const link = path.join(cwd, 'proj-link');
     fs.mkdirSync(path.join(real, 'src'), { recursive: true });
     fs.writeFileSync(path.join(real, 'package.json'), '{"name":"proj"}');
+    fs.mkdirSync(path.join(real, '.impeccable'), { recursive: true });
+    fs.writeFileSync(getConfigPath(real), JSON.stringify({ hook: { enabled: true } }));
     fs.symlinkSync(real, link);
     const file = path.join(real, 'src', 'Card.tsx');
     fs.writeFileSync(file, 'noop');
@@ -1848,6 +2069,7 @@ rounded:
     const file = writeFixture('src/legacy/Foo.tsx', 'noop');
     fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
     fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
+      hook: { enabled: true },
       detector: { ignoreFiles: ['src/legacy/**'] },
     }));
     const det = fakeDetector([finding('side-tab', 1)]);
@@ -1933,7 +2155,7 @@ rounded:
     // The fixture's finding (side-tab) sits in the deferred tier, so restore
     // the full per-edit rule set for this test via the config override.
     fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
-    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({ hook: { perEditRules: 'all' } }));
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({ hook: { enabled: true, perEditRules: 'all' } }));
     const file = writeFixture('index.html', [
       '<!doctype html>',
       '<html><body>',
@@ -1957,7 +2179,7 @@ rounded:
     // overused-font is deferred-tier; use the perEditRules override so the
     // per-edit pass surfaces it here.
     fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
-    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({ hook: { perEditRules: 'all' } }));
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({ hook: { enabled: true, perEditRules: 'all' } }));
     const flagged = writeFixture('src/Flagged.tsx', 'const css = "font-family: Inter";');
     const flaggedRun = await runHook({
       stdinJson: JSON.stringify(eventFor(flagged)), env: {}, cwd, detector: { detectHtml, detectText },
@@ -1989,12 +2211,14 @@ rounded:
 });
 
 describe('runHook() — cache write gating (issues #344, #305)', () => {
-  // The hook must be a no-op on disk in projects that never earned an
-  // `.impeccable/` footprint: skipped files never dirty the cache, and a
-  // dirty cache is only persisted when there are fresh findings or the
-  // project already opted in (an `.impeccable/` dir exists).
+  // The hook must not persist a cache footprint for skipped files: fresh
+  // findings are the only thing that earns a `hook.cache.json` write. cwd
+  // uses mkEnabledTmp() (issue #512: enabled defaults to false, so a config
+  // file consenting to the hook is now a precondition, not itself evidence
+  // of a footprint) — assertions below check the cache file specifically,
+  // not the whole `.impeccable/` directory.
   let cwd;
-  beforeEach(() => { cwd = mkTmp(); });
+  beforeEach(() => { cwd = mkEnabledTmp(); });
   afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
 
   function eventFor(file, sessionId = 'gate-sid') {
@@ -2021,27 +2245,17 @@ describe('runHook() — cache write gating (issues #344, #305)', () => {
       env: {}, cwd, detector: fakeDetector([finding('side-tab', 1)]),
     });
     assert.equal(r.audit.skipped, 'extension');
-    assert.ok(!fs.existsSync(path.join(cwd, '.impeccable')), '.impeccable should not exist');
+    assert.ok(!fs.existsSync(path.join(cwd, '.impeccable', 'hook.cache.json')), 'no cache should be written');
   });
 
-  it('clean UI edit in a project with no footprint does not create .impeccable/, still acks', async () => {
-    const file = write('src/Card.tsx', 'noop');
-    const r = await runHook({
-      stdinJson: JSON.stringify(eventFor(file)),
-      env: {}, cwd, detector: fakeDetector([]),
-    });
-    assert.match(r.stdout, /No deterministic design-quality issues found/);
-    assert.ok(!fs.existsSync(path.join(cwd, '.impeccable')), '.impeccable should not exist');
-  });
-
-  it('detector-missing path does not create .impeccable/', async () => {
+  it('detector-missing path does not create a cache footprint', async () => {
     const file = write('src/Card.tsx', 'noop');
     const r = await runHook({
       stdinJson: JSON.stringify(eventFor(file)),
       env: {}, cwd, detector: {},
     });
     assert.equal(r.audit.skipped, 'detector-missing');
-    assert.ok(!fs.existsSync(path.join(cwd, '.impeccable')), '.impeccable should not exist');
+    assert.ok(!fs.existsSync(path.join(cwd, '.impeccable', 'hook.cache.json')), 'no cache should be written');
   });
 
   it('fresh findings create the cache, and dedup works on the next run', async () => {
@@ -2067,9 +2281,17 @@ describe('runHook() — cache write gating (issues #344, #305)', () => {
 
   it('umbrella launch keys the cache to the edited file\'s project root', async () => {
     // cwd is the umbrella: no .git / package.json / .impeccable of its own.
+    // `.impeccable/` is itself a project-root marker (resolveCacheCwd), so the
+    // shared beforeEach's mkEnabledTmp() config would wrongly make the umbrella
+    // look like a project root and short-circuit the climb to `child`. Undo it
+    // here and put the enabling config where the hook will actually look:
+    // the child project resolveCacheCwd climbs to.
+    fs.rmSync(path.join(cwd, '.impeccable'), { recursive: true, force: true });
     write('app/package.json', '{"name":"child"}');
     const file = write('app/src/Card.tsx', 'noop');
     const child = path.join(cwd, 'app');
+    fs.mkdirSync(path.join(child, '.impeccable'), { recursive: true });
+    fs.writeFileSync(path.join(child, '.impeccable', 'config.json'), JSON.stringify({ hook: { enabled: true } }));
     const r = await runHook({
       stdinJson: JSON.stringify(eventFor(file)),
       env: {}, cwd, detector: fakeDetector([finding('text-overflow', 1)]),
@@ -2083,10 +2305,7 @@ describe('runHook() — cache write gating (issues #344, #305)', () => {
 
 describe('runHook() — oversized files', () => {
   let cwd;
-  beforeEach(() => {
-    cwd = mkTmp();
-    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
-  });
+  beforeEach(() => { cwd = mkEnabledTmp(); });
   afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
 
   const event = (file) => JSON.stringify({
@@ -2183,7 +2402,7 @@ describe('runHook() — oversized files', () => {
 
   it('honors a configured limits.maxFileBytes', async () => {
     fs.writeFileSync(path.join(cwd, '.impeccable', 'config.json'), JSON.stringify({
-      hook: { limits: { maxFileBytes: 1024 } },
+      hook: { enabled: true, limits: { maxFileBytes: 1024 } },
     }));
     const file = path.join(cwd, 'small.css');
     fs.writeFileSync(file, `/* ${'x'.repeat(4096)} */`);
@@ -2197,10 +2416,7 @@ describe('runHook() — oversized files', () => {
 
 describe('runHook() — the session cache tracks the current scan', () => {
   let cwd;
-  beforeEach(() => {
-    cwd = mkTmp();
-    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
-  });
+  beforeEach(() => { cwd = mkEnabledTmp(); });
   afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
 
   function eventFor(file, sessionId = 'sid-1') {
@@ -2400,10 +2616,7 @@ describe('runHook() — session-scoped notices', () => {
 
 describe('runHook() — clean-ack noise', () => {
   let cwd;
-  beforeEach(() => {
-    cwd = mkTmp();
-    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
-  });
+  beforeEach(() => { cwd = mkEnabledTmp(); });
   afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
 
   const event = (file, sessionId = 'sid-1') => JSON.stringify({
@@ -2876,7 +3089,7 @@ describe('expandScanTargets()', () => {
 
 describe('runHook() — co-located stylesheet scan', () => {
   let cwd;
-  beforeEach(() => { cwd = mkTmp(); });
+  beforeEach(() => { cwd = mkEnabledTmp(); });
   afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
 
   function write(rel, body) {
@@ -3062,7 +3275,7 @@ describe('runHook() — events without file_path', () => {
 
 describe('runHook() — configured template extensions (issue #316)', () => {
   let cwd;
-  beforeEach(() => { cwd = mkTmp(); });
+  beforeEach(() => { cwd = mkEnabledTmp(); });
   afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
 
   function eventFor(file) {
@@ -3084,7 +3297,9 @@ describe('runHook() — configured template extensions (issue #316)', () => {
 
   function writeExtensionsConfig(extensions) {
     fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
-    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({ detector: { extensions } }));
+    // Full overwrite of the config mkEnabledTmp() wrote — carry `hook.enabled`
+    // forward so this doesn't fall back to the new disabled-by-default (#512).
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({ hook: { enabled: true }, detector: { extensions } }));
   }
 
   function recordingDetector(findings = []) {
@@ -3172,7 +3387,7 @@ describe('resolveProjectPlatform() / isNativePlatform()', () => {
 
 describe('Cursor hook scripts', () => {
   let cwd;
-  beforeEach(() => { cwd = mkTmp(); });
+  beforeEach(() => { cwd = mkEnabledTmp(); });
   afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
 
   it('preToolUse denies proposed writes with detector findings before they land', () => {
@@ -3350,6 +3565,7 @@ rounded:
     // With a detector.extensions entry the same proposed write is scanned and denied.
     fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
     fs.writeFileSync(path.join(cwd, '.impeccable', 'config.json'), JSON.stringify({
+      hook: { enabled: true },
       detector: { extensions: [{ ext: '.blade.php' }] },
     }));
     const payload = JSON.parse(run());
@@ -3365,6 +3581,7 @@ rounded:
     const filePath = path.join(cwd, 'resources/views/hero.blade.php');
     fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
     fs.writeFileSync(path.join(cwd, '.impeccable', 'config.json'), JSON.stringify({
+      hook: { enabled: true },
       detector: { extensions: [{ ext: '.blade.php' }] },
     }));
 
@@ -3609,7 +3826,7 @@ rounded:
 
 describe('runHook() — emission enrichment', () => {
   let cwd;
-  beforeEach(() => { cwd = mkTmp(); });
+  beforeEach(() => { cwd = mkEnabledTmp(); });
   afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
 
   function write(rel, content) {
@@ -3642,7 +3859,7 @@ describe('runHook() — per-edit tiering', () => {
   // The per-edit pass surfaces only IMMEDIATE_TIER_RULES; everything else is
   // deferred to the Stop deep pass. See hook-lib.mjs for the tier rationale.
   let cwd;
-  beforeEach(() => { cwd = mkTmp(); });
+  beforeEach(() => { cwd = mkEnabledTmp(); });
   afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
 
   function eventFor(file, sessionId = 'tier-sid') {
@@ -3714,7 +3931,7 @@ describe('runHook() — per-edit tiering', () => {
 
   it('config hook.perEditRules:"all" restores the full per-edit rule set', async () => {
     fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
-    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({ hook: { perEditRules: 'all' } }));
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({ hook: { enabled: true, perEditRules: 'all' } }));
     const file = write('src/Card.tsx', 'noop');
     const det = fakeDetector([finding('marketing-buzzword', 2)]);
     const r = await runHook({ stdinJson: JSON.stringify(eventFor(file, 'tier-all')), env: {}, cwd, detector: det });
@@ -3750,7 +3967,7 @@ describe('runHook() — per-edit tiering', () => {
   it('includes advisory findings per edit when detector.advisoryRules is "include"', async () => {
     fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
     fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
-      hook: { perEditRules: 'all' },
+      hook: { enabled: true, perEditRules: 'all' },
       detector: { advisoryRules: 'include' },
     }));
     const file = write('src/Copy.tsx', 'noop');
@@ -3763,7 +3980,7 @@ describe('runHook() — per-edit tiering', () => {
 
 describe('runStopHook()', () => {
   let cwd;
-  beforeEach(() => { cwd = mkTmp(); });
+  beforeEach(() => { cwd = mkEnabledTmp(); });
   afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
 
   function write(rel, body) {
@@ -3886,6 +4103,7 @@ describe('runStopHook()', () => {
     const sid = 'stop-ignored';
     fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
     fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
+      hook: { enabled: true },
       detector: { ignoreRules: ['marketing-buzzword'] },
     }));
     const file = write('src/Card.tsx', 'noop');
@@ -3914,6 +4132,7 @@ describe('runStopHook()', () => {
     const sid = 'stop-advisory-include';
     fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
     fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
+      hook: { enabled: true },
       detector: { advisoryRules: 'include' },
     }));
     const file = write('src/Card.tsx', 'noop');

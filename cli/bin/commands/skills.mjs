@@ -17,7 +17,7 @@ import { get } from 'node:https';
 import { createHash } from 'node:crypto';
 import { tmpdir, homedir } from 'node:os';
 import { unzipSync } from 'fflate';
-import { getHookConsent, setHookConsent } from '../../lib/impeccable-config.mjs';
+import { getHookConsent, setHookConsent, setHookEnabled, getHookEnabled } from '../../lib/impeccable-config.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const API_BASE = 'https://impeccable.style';
@@ -1735,24 +1735,38 @@ const HOOK_EXPLAINER = [
 // first time, records the answer in .impeccable/config.local.json, and never
 // re-asks: a recorded decision or an already-installed hook short-circuits, and
 // non-interactive runs keep the historical install-by-default behavior.
+// Every `true` return also affirms `hook.enabled: true` in the shared
+// config.json (issue #512): the hook runtime's DEFAULT_CONFIG.enabled
+// defaults to false, and this install path -- unlike `/impeccable hooks on`
+// -- never otherwise writes that key. Without it, an install done here wires
+// up manifests that never actually fire; idempotent to re-affirm on every run,
+// including for consent recorded before this fix existed.
+// The one thing it must never do is override an explicit `hooks off`: a
+// routine `skills install`/`update` run is not the user opting back in, so
+// `enable()` skips the write entirely when `enabled` is already explicitly
+// false, leaving a deliberate opt-out exactly as the user left it.
 async function decideHookInstall(root, targets, { yes } = {}) {
   if (targets.length === 0) return false;
+  const enable = () => {
+    if (getHookEnabled(root) !== false) setHookEnabled(root, true);
+    return true;
+  };
   const consent = getHookConsent(root);
   if (consent === 'declined') return false;
-  if (consent === 'accepted') return true;
+  if (consent === 'accepted') return enable();
   // Existing hook users (hook already wired up) are never nagged.
   if (targets.length > 0 && targets.every(provider => hookInstalledForProvider(root, provider))) {
-    return true;
+    return enable();
   }
   // Undecided and not yet installed. Non-interactive (-y or no TTY) keeps the
   // historical default-on behavior without recording a (re-promptable) decision.
-  if (yes || !process.stdin.isTTY) return true;
+  if (yes || !process.stdin.isTTY) return enable();
 
   process.stdout.write(HOOK_EXPLAINER);
   const ans = await ask('Install the design hook? (Y/n) ');
   const accepted = !(ans === 'n' || ans === 'no');
   setHookConsent(root, accepted ? 'accepted' : 'declined');
-  return accepted;
+  return accepted ? enable() : false;
 }
 
 function resolveLinkSource(sourceValue, root) {

@@ -1470,6 +1470,39 @@ describe('skills install/update: local universal bundle e2e', () => {
     rmSync(tmp, { recursive: true, force: true });
   }, 15000);
 
+  test('does not re-enable a hook the user explicitly turned off (#512 follow-up)', async () => {
+    // consent and enabled are tracked on separate paths (consent by this CLI
+    // install flow, enabled by `/impeccable hooks on|off`), so a user who
+    // accepted the hook long ago and later ran `hooks off` has
+    // consent:'accepted' alongside enabled:false. A routine `skills
+    // install`/`update` run is not the user opting back in.
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-enable-guard-'));
+    execSync('git init', { cwd: tmp });
+    mkdirSync(join(tmp, '.impeccable'), { recursive: true });
+    writeFileSync(join(tmp, '.impeccable', 'config.json'), JSON.stringify({ hook: { consent: 'accepted', enabled: false } }));
+
+    const wantHooks = await decideHookInstall(tmp, ['claude'], { yes: true });
+
+    expect(wantHooks).toBe(true); // manifests still get wired up / updated
+    const config = JSON.parse(readFileSync(join(tmp, '.impeccable', 'config.json'), 'utf8'));
+    expect(config.hook.enabled).toBe(false); // but the explicit opt-out survives
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('affirms hook.enabled:true on a fresh install with no prior explicit state', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-enable-fresh-'));
+    execSync('git init', { cwd: tmp });
+
+    const wantHooks = await decideHookInstall(tmp, ['claude'], { yes: true });
+
+    expect(wantHooks).toBe(true);
+    const config = JSON.parse(readFileSync(join(tmp, '.impeccable', 'config.json'), 'utf8'));
+    expect(config.hook.enabled).toBe(true);
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
   test('--no-hooks installs skills without hook manifests', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'imp-test-local-no-hooks-'));
     execSync('git init', { cwd: tmp });
