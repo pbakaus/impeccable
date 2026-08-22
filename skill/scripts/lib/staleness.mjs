@@ -488,41 +488,46 @@ export function describeWorkspaceContext(candidates = []) {
 // ─── Tier 1 orchestration ──────────────────────────────────────────────────
 
 /**
- * Everything a boot can afford. `ctx` is the loadContext result; `extras`
- * carries values the caller already computed so nothing is recomputed here.
+ * Everything a boot can afford, grouped by artifact so deeper reports can
+ * interleave their own checks without rebuilding this policy. `ctx` is the
+ * loadContext result; `extras` carries values the caller already computed so
+ * nothing is recomputed here.
  */
-export function collectBootFindings(ctx, extras = {}) {
-  if (!ctx) return [];
+export function collectBootFindingGroups(ctx, extras = {}) {
+  if (!ctx) return {};
   const projectRoot = ctx.projectRoot || process.cwd();
-  const absProductPath = extras.absProductPath || null;
   const absDesignPath = extras.absDesignPath || null;
 
-  return [
-    ...checkProduct(ctx.product, ctx.productPath || 'PRODUCT.md'),
+  return {
+    product: checkProduct(ctx.product, ctx.productPath || 'PRODUCT.md'),
     // Only checked once a PRODUCT.md exists. Without one the boot already
     // emits NO_PRODUCT_MD and routes into init, which asks for the platform
     // directly; a second signal saying the same thing is noise.
-    ...(ctx.product
+    nativePlatform: ctx.product
       ? checkNativePlatformEvidence({
           projectRoot,
           platform: ctx.platform,
           product: ctx.product,
           productPath: ctx.productPath,
         })
-      : []),
-    ...checkDesignSidecar({
+      : [],
+    designSidecar: checkDesignSidecar({
       designPath: absDesignPath,
       sidecarCandidates: extras.sidecarCandidates || [],
       projectRoot,
     }),
-    ...checkConfig({ projectRoot, repoRoot: ctx.repoRoot }),
-    ...checkBuildPathUnset({ projectRoot, repoRoot: ctx.repoRoot, product: ctx.product }),
-    ...checkSurfaceBriefs({ candidates: ctx.surfaceBriefCandidates, projectRoot }),
-    ...(extras.projectRootPatterns
+    config: checkConfig({ projectRoot, repoRoot: ctx.repoRoot }),
+    buildPath: checkBuildPathUnset({ projectRoot, repoRoot: ctx.repoRoot, product: ctx.product }),
+    surfaceBriefs: checkSurfaceBriefs({ candidates: ctx.surfaceBriefCandidates, projectRoot }),
+    projectRoots: extras.projectRootPatterns
       ? checkProjectRoots({
           patterns: extras.projectRootPatterns,
           candidates: extras.targetCandidates || [],
         })
-      : []),
-  ];
+      : [],
+  };
+}
+
+export function collectBootFindings(ctx, extras = {}) {
+  return Object.values(collectBootFindingGroups(ctx, extras)).flat();
 }
