@@ -1032,6 +1032,15 @@ describe('live-browser.js regression guards', () => {
       /case 'variant_progress':[\s\S]{0,120}?if \(msg\.publicationKind === 'params'\) parameterGenerationState = 'loading';/,
       'a params-only publication must mark Tune controls loading even though the variant count is unchanged',
     );
+    assert.match(
+      SOURCE,
+      /function completeParameterGenerationIfReady\(\) \{[\s\S]{0,240}?arrivedVariants < expectedVariants[\s\S]{0,160}?parameterGenerationState === 'pending'[\s\S]{0,120}?completeParameterPublication\(\);/,
+      'the completed variants publication must resolve pending Tune controls even when no params publication follows',
+    );
+    assert.ok(
+      (SOURCE.match(/completeParameterGenerationIfReady\(\);/g) || []).length >= 4,
+      'every DOM, source, and component-preview completion path must resolve pending Tune controls',
+    );
     assert.match(SOURCE, /revisionDomain: 'browser'/, 'browser checkpoints must use their own revision domain');
   });
 

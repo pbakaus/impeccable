@@ -145,9 +145,9 @@ const DEVIN_PROJECT_HOOK = '${DEVIN_PROJECT_DIR}/.devin/skills/impeccable/script
 
 export function buildClaudeSettingsManifest() {
   return {
-    description: 'Impeccable design detector: immediate-tier checks after Edit/Write/MultiEdit on UI files, full-rule deep pass on Stop.',
+    description: 'Impeccable design detector: immediate-tier checks after Edit/Write on UI files, full-rule deep pass on Stop.',
     hooks: buildClaudeCompatibleHooks(
-      'Edit|Write|MultiEdit',
+      'Edit|Write',
       CLAUDE_PROJECT_HOOK,
       SYSTEM_MESSAGE_NOTICE,
     ),
@@ -163,7 +163,7 @@ export function buildClaudeSettingsManifest() {
 export function buildClaudePluginHooksManifest() {
   return {
     hooks: buildClaudeCompatibleHooks(
-      'Edit|Write|MultiEdit',
+      'Edit|Write',
       CLAUDE_PLUGIN_HOOK,
       SYSTEM_MESSAGE_NOTICE,
     ),

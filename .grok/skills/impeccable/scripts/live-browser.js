@@ -4902,6 +4902,13 @@
     saveSession();
   }
 
+  function completeParameterGenerationIfReady() {
+    if (expectedVariants <= 0 || arrivedVariants < expectedVariants) return;
+    if (parameterGenerationState === 'pending' || parameterGenerationState === 'loading') {
+      completeParameterPublication();
+    }
+  }
+
   function toggleTunePopover() {
     if (pendingApplyInFlight) { showManualApplyBusyToast(); return; }
     if (tuneOpen) { closeTunePopover(); return; }
@@ -5796,7 +5803,7 @@
         setLiveState('CYCLING');
         showOrUpdateCyclingBar();
         saveSession();
-        if (parameterGenerationState === 'loading') completeParameterPublication();
+        completeParameterGenerationIfReady();
         return;
       }
 
@@ -5884,7 +5891,7 @@
       refreshParamsPanel();
       positionBar();
       saveSession();
-      if (parameterGenerationState === 'loading') completeParameterPublication();
+      completeParameterGenerationIfReady();
       console.log('[impeccable] Mounted ' + arrivedVariants + ' ' + manifest.framework + ' component variants.');
     } catch (err) {
       console.error('[impeccable] Failed to mount component-preview variants:', err);
@@ -6329,7 +6336,7 @@
         refreshParamsPanel();
         positionBar();
         saveSession();
-        if (parameterGenerationState === 'loading') completeParameterPublication();
+        completeParameterGenerationIfReady();
         console.log('[impeccable] Injected ' + arrivedVariants + ' variants from source file.');
       })
       .catch(err => {
@@ -6836,6 +6843,7 @@
 
       const expected = parseInt(wrapper.dataset.impeccableVariantCount || '0');
       if (expected > 0) expectedVariants = expected;
+      completeParameterGenerationIfReady();
 
       if (arrivedVariants > 0) {
         setLiveState('CYCLING');

@@ -947,6 +947,11 @@ describe('hook-admin.mjs', () => {
     // impeccable entry must have been stripped, not accumulated.
     assert.equal(claude.split('skills/impeccable/scripts/hook.mjs').length - 1, 2);
     assert.match(claude, /"Stop"/);
+    const claudeManifest = JSON.parse(claude);
+    const impeccableGroup = claudeManifest.hooks.PostToolUse.find((group) =>
+      group.hooks?.some((hook) => hook.command?.includes('skills/impeccable/scripts/hook.mjs')));
+    assert.ok(impeccableGroup, 'repaired Claude settings should contain the Impeccable PostToolUse group');
+    assert.equal(impeccableGroup.matcher, 'Edit|Write');
 
     const codex = fs.readFileSync(path.join(cwd, '.codex', 'hooks.json'), 'utf-8');
     assert.match(codex, /\.agents\/skills\/impeccable\/scripts\/hook\.mjs/);
