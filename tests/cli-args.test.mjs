@@ -6,8 +6,15 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { boolFlag, parseArgs, positiveIntFlag, resolveEnum, toCamel } from '../scripts/lib/cli-args.mjs';
+
+const PROVIDER_SMOKE_SCRIPT = fileURLToPath(new URL('../scripts/smoke-provider-hooks.mjs', import.meta.url));
 
 describe('parseArgs', () => {
   it('reads space-separated values', () => {
@@ -123,5 +130,46 @@ describe('resolveEnum', () => {
       () => resolveEnum('progresive', ['atomic', 'progressive'], 'atomic', '--delivery'),
       /--delivery must be one of atomic, progressive/,
     );
+  });
+});
+
+describe('provider hook smoke CLI', () => {
+  it('prints help without requiring a target repository', () => {
+    const result = spawnSync(process.execPath, [PROVIDER_SMOKE_SCRIPT, '--help'], { encoding: 'utf8' });
+
+    assert.equal(result.status, 0);
+    assert.match(result.stdout, /^Usage: bun run smoke:hooks/);
+    assert.match(result.stdout, /target repo must be explicit/);
+    assert.equal(result.stderr, '');
+  });
+
+  it('fails with the same usage guidance when the target repository is omitted', () => {
+    const result = spawnSync(process.execPath, [PROVIDER_SMOKE_SCRIPT], { encoding: 'utf8' });
+
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, '');
+    assert.match(result.stderr, /^Usage: bun run smoke:hooks/);
+    assert.match(result.stderr, /target repo must be explicit/);
+  });
+
+  it('preserves the legacy string sentinel for value-less options', () => {
+    const cases = [
+      { args: ['--repo'], error: /target repo does not exist: .*\/true/ },
+      { args: ['--repo', '.', '--bundle'], error: /universal bundle does not exist: .*\/true/ },
+      { args: ['--repo', '.', '--bundle', './missing.zip', '--providers'], error: /universal bundle does not exist: .*\/missing\.zip/ },
+    ];
+
+    for (const { args, error } of cases) {
+      const cwd = mkdtempSync(join(tmpdir(), 'impeccable-provider-smoke-cli-'));
+      try {
+        const result = spawnSync(process.execPath, [PROVIDER_SMOKE_SCRIPT, ...args], { cwd, encoding: 'utf8' });
+
+        assert.equal(result.status, 1);
+        assert.doesNotMatch(result.stderr, /TypeError/);
+        assert.match(result.stderr, error);
+      } finally {
+        rmSync(cwd, { recursive: true, force: true });
+      }
+    }
   });
 });
