@@ -231,7 +231,10 @@ describe('review regressions: multi-app pointer', () => {
         setTimeout(() => reject(new Error('responder never became ready')), 5000);
       });
       try {
-        write(repo, 'siteA/.impeccable/live/server.json', JSON.stringify({ pid: process.pid, port: livePort, token: 't' }));
+        // server.json records the RESPONDER's own pid (process that actually
+        // listens): the identity probe asserts pid liveness AND authenticated
+        // /status from the same process, so the pid must match the listener.
+        write(repo, 'siteA/.impeccable/live/server.json', JSON.stringify({ pid: responder.pid, port: livePort, token: 't' }));
         write(repo, 'siteB/.impeccable/live/server.json', JSON.stringify({ pid: 999999999, port: 2, token: 't' }));
 
         const resolved = resolveLiveRoots(repo);
