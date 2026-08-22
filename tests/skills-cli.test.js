@@ -615,6 +615,61 @@ describe('skills link: submodule installs', () => {
     rmSync(tmp, { recursive: true, force: true });
   }, 15000);
 
+  test('maps devin and windsurf provider aliases to their install folders', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-link-devin-'));
+    execSync('git init', { cwd: tmp });
+    createFakeLinkSource(tmp, ['.devin', '.windsurf']);
+
+    // stderr merged so the double-load warning is observable.
+    const output = execSync(`node ${CLI} skills link --source=.impeccable --providers=devin,windsurf -y 2>&1`, { cwd: tmp, encoding: 'utf8', timeout: 60000 });
+
+    expect(lstatSync(join(tmp, '.devin', 'skills', 'impeccable')).isSymbolicLink()).toBe(true);
+    expect(lstatSync(join(tmp, '.windsurf', 'skills', 'impeccable')).isSymbolicLink()).toBe(true);
+    expect(output).toContain('both `devin` (.devin) and `windsurf` (.windsurf) are targeted');
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  // Devin CLI global skills resolve through the XDG override (#harness-provider-devin).
+  test('global install writes Devin CLI skills to ~/.config/devin/skills', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-scope-user-devin-'));
+    const home = mkdtempSync(join(tmpdir(), 'imp-home-scope-user-devin-'));
+    execSync('git init', { cwd: tmp });
+    mkdirSync(join(home, '.devin'), { recursive: true });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.devin']);
+    const env = { ...process.env, HOME: home, IMPECCABLE_BUNDLE_PATH: bundleRoot };
+    delete env.APPDATA;
+    delete env.XDG_CONFIG_HOME;
+
+    const output = run('skills install -y --scope=global --no-hooks', { cwd: tmp, env });
+
+    expect(output).toContain('Installed impeccable into: .devin (global)');
+    expect(existsSync(join(home, '.config', 'devin', 'skills', 'impeccable', 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(home, '.devin', 'skills', 'impeccable'))).toBe(false);
+
+    rmSync(tmp, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }, 15000);
+
+  test('project install from the bundle materializes .devin and .windsurf', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-install-devin-'));
+    const home = mkdtempSync(join(tmpdir(), 'imp-home-install-devin-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.devin', '.windsurf']);
+
+    const output = run('skills install -y --no-hooks --providers=devin,devin-legacy', {
+      cwd: tmp,
+      env: { ...process.env, HOME: home, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+
+    expect(output).toContain('Installed impeccable into: .devin, .windsurf (project)');
+    expect(existsSync(join(tmp, '.devin', 'skills', 'impeccable', 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(tmp, '.windsurf', 'skills', 'impeccable', 'SKILL.md'))).toBe(true);
+
+    rmSync(tmp, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }, 15000);
+
   test('maps grok and grok-build provider aliases to .grok', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'imp-test-link-grok-'));
     execSync('git init', { cwd: tmp });
@@ -1116,6 +1171,29 @@ describe('skills install/update: local universal bundle e2e', () => {
     expect(output).toContain('Installed impeccable into: .claude, .agents (project)');
     expect(existsSync(join(tmp, '.claude', 'skills', 'impeccable', 'SKILL.md'))).toBe(true);
     expect(existsSync(join(tmp, '.agents', 'skills', 'impeccable', 'SKILL.md'))).toBe(true);
+
+    rmSync(tmp, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }, 15000);
+
+  test('harness prompt offers devin and windsurf among the choices', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-interactive-devin-'));
+    const home = mkdtempSync(join(tmpdir(), 'imp-home-interactive-devin-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.devin']);
+
+    const output = run('skills install --no-hooks', {
+      cwd: tmp,
+      input: 'devin\nproject\n\n',
+      env: { ...process.env, HOME: home, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+
+    const choices = output.match(/Select harnesses \(comma-separated: ([^)]+)\)/);
+    expect(choices).not.toBeNull();
+    expect(choices[1].split(', ')).toContain('devin');
+    expect(choices[1].split(', ')).toContain('windsurf');
+    expect(output).toContain('Installed impeccable into: .devin (project)');
+    expect(existsSync(join(tmp, '.devin', 'skills', 'impeccable', 'SKILL.md'))).toBe(true);
 
     rmSync(tmp, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });

@@ -15,6 +15,7 @@ import {
   buildCodexHooksManifest,
   buildCodexPluginHooksManifest,
   buildCursorHooksManifest,
+  buildDevinHooksManifest,
   buildGitHubHooksManifest,
   buildGrokHooksManifest,
   hooksJsonFor,
@@ -172,6 +173,26 @@ describe('hook manifest builders', () => {
     assert.equal(manifest.hooks.preToolUse, undefined);
   });
 
+  it('builds Devin CLI project hooks for the real detector hook', () => {
+    const manifest = buildDevinHooksManifest();
+    const group = manifest.hooks.PostToolUse[0];
+    const handler = group.hooks[0];
+
+    // Claude-compatible bare file (no wrapper key, no top-level description),
+    // lowercase Devin tool names plus Claude-style names on import.
+    assert.equal(group.matcher, 'edit|write|Edit|Write|MultiEdit');
+    assert.equal(manifest.description, undefined);
+    assert.equal(handler.type, 'command');
+    assert.equal(handler.timeout, 5);
+    assert.equal(handler.statusMessage, 'Checking UI changes');
+    expectCommand(handler.command, '.devin/skills/impeccable/scripts/hook.mjs');
+    assert.ok(handler.command.includes('${DEVIN_PROJECT_DIR}'));
+
+    const stop = manifest.hooks.Stop[0].hooks[0];
+    assert.equal(stop.timeout, 30);
+    expectCommand(stop.command, '.devin/skills/impeccable/scripts/hook.mjs');
+  });
+
   it('builds Grok Build project hooks for the real detector hook', () => {
     const manifest = buildGrokHooksManifest();
     const group = manifest.hooks.PostToolUse[0];
@@ -197,7 +218,8 @@ describe('hook manifest builders', () => {
     // Claude Code and Codex render a `systemMessage` from hook stdout, so their
     // manifests carry the one-time unsupported-runtime notice. Cursor (output is
     // permission-shaped; a message would block the edit), Grok (stdout ignored),
-    // and Copilot (contract unconfirmed) get the silent probe only.
+    // Copilot (contract unconfirmed), and Devin (contract is decision-shaped;
+    // `systemMessage` is not documented) get the silent probe only.
     const withNotice = [
       buildClaudeSettingsManifest(),
       buildClaudePluginHooksManifest(),
@@ -206,6 +228,7 @@ describe('hook manifest builders', () => {
     ];
     const probeOnly = [
       buildCursorHooksManifest(),
+      buildDevinHooksManifest(),
       buildGitHubHooksManifest(),
       buildGrokHooksManifest(),
     ];
@@ -239,6 +262,7 @@ describe('hook manifest builders', () => {
     assert.ok(hooksJsonFor('claude'));
     assert.ok(hooksJsonFor('codex'));
     assert.ok(hooksJsonFor('cursor'));
+    assert.ok(hooksJsonFor('devin'));
     assert.ok(hooksJsonFor('github'));
     assert.ok(hooksJsonFor('grok'));
     assert.equal(hooksJsonFor('gemini'), null);

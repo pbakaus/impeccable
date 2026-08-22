@@ -317,18 +317,22 @@ function hasLiveServer(appRoot) {
   // signal is IDENTITY: the helper answers its authenticated /status
   // endpoint with the token server.json records; nothing else on that port
   // can. The probe is a spawned node one-liner so it works identically on
-  // every platform.
+  // every platform. A single attempt can miss under saturated CI load (the
+  // child may be scheduled late), so the probe retries a bounded number of
+  // times within one overall deadline before conceding "not the helper".
   if (Number.isInteger(port) && port > 0 && token) {
-    try {
-      execFileSync(process.execPath, ['-e', [
-        "const req = require('node:http').get({ host: '127.0.0.1', port: Number(process.argv[1]), path: '/status?token=' + encodeURIComponent(process.argv[2]), timeout: 1200 }, (res) => { res.resume(); process.exit(res.statusCode === 200 ? 0 : 1); });",
-        "req.on('timeout', () => { req.destroy(); process.exit(1); });",
-        "req.on('error', () => process.exit(1));",
-      ].join(''), String(port), token], { timeout: 4000, stdio: 'ignore' });
-      return true;
-    } catch {
-      return false;
+    const ATTEMPTS = 3;
+    for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
+      try {
+        execFileSync(process.execPath, ['-e', [
+          "const req = require('node:http').get({ host: '127.0.0.1', port: Number(process.argv[1]), path: '/status?token=' + encodeURIComponent(process.argv[2]), timeout: 1200 }, (res) => { res.resume(); process.exit(res.statusCode === 200 ? 0 : 1); });",
+          "req.on('timeout', () => { req.destroy(); process.exit(1); });",
+          "req.on('error', () => process.exit(1));",
+        ].join(''), String(port), token], { timeout: 4000, stdio: 'ignore' });
+        return true;
+      } catch { /* try again within the bounded attempt budget */ }
     }
+    return false;
   }
   // Every server.json this codebase has ever written records port + token
   // (see writeLiveServerInfo). A record without them is malformed or foreign

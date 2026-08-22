@@ -516,6 +516,55 @@ describe('degraded-mode fallback reference generation', () => {
   });
 });
 
+describe('Devin provider builds', () => {
+  const ROOT = process.cwd();
+  const DEVIN_TEST_DIR = path.join(ROOT, 'test-tmp-devin');
+  const DIST = path.join(DEVIN_TEST_DIR, 'dist');
+
+  beforeEach(() => {
+    if (fs.existsSync(DEVIN_TEST_DIR)) fs.rmSync(DEVIN_TEST_DIR, { recursive: true, force: true });
+    fs.mkdirSync(DEVIN_TEST_DIR, { recursive: true });
+    const { skills } = utils.readSourceFiles(ROOT);
+    transformers.transformDevin(skills, DIST);
+    transformers.transformDevinLegacy(skills, DIST);
+  });
+
+  afterEach(() => {
+    if (fs.existsSync(DEVIN_TEST_DIR)) fs.rmSync(DEVIN_TEST_DIR, { recursive: true, force: true });
+  });
+
+  test('skills, references, and scripts land in both .devin and .windsurf', () => {
+    for (const [provider, configDir] of [
+      ['devin', '.devin'],
+      ['devin-legacy', '.windsurf'],
+    ]) {
+      const skillDir = path.join(DIST, provider, configDir, 'skills', 'impeccable');
+      expect(fs.existsSync(path.join(skillDir, 'SKILL.md'))).toBe(true);
+      expect(fs.existsSync(path.join(skillDir, 'reference'))).toBe(true);
+      expect(fs.existsSync(path.join(skillDir, 'scripts'))).toBe(true);
+    }
+  });
+
+  test('Claude-format subagent files land in .devin/agents but not .windsurf', () => {
+    const devinAgents = path.join(DIST, 'devin', '.devin', 'agents');
+    expect(fs.readdirSync(devinAgents).sort()).toEqual([
+      'impeccable-asset-producer.md',
+      'impeccable-documenter.md',
+      'impeccable-finish-reviewer.md',
+      'impeccable-manual-edit-applier.md',
+    ]);
+    expect(fs.existsSync(path.join(DIST, 'devin-legacy', '.windsurf', 'agents'))).toBe(false);
+  });
+
+  test('hook manifest lands only in .devin with the DEVIN_PROJECT_DIR env var', () => {
+    const manifestPath = path.join(DIST, 'devin', '.devin', 'hooks.v1.json');
+    expect(fs.existsSync(manifestPath)).toBe(true);
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+    expect(manifest.hooks.PostToolUse[0].hooks[0].command).toContain('${DEVIN_PROJECT_DIR}');
+    expect(fs.existsSync(path.join(DIST, 'devin-legacy', '.windsurf', 'hooks.v1.json'))).toBe(false);
+  });
+});
+
 describe('GitHub Copilot custom agent generation', () => {
   const ROOT = process.cwd();
   const COPILOT_TEST_DIR = path.join(ROOT, 'test-tmp-copilot-agents');

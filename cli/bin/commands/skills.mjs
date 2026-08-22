@@ -23,7 +23,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const API_BASE = 'https://impeccable.style';
 
 // Provider folder names in project roots
-const PROVIDER_DIRS = ['.claude', '.cursor', '.gemini', '.agents', '.agent', '.github', '.grok', '.hermes', '.kiro', '.opencode', '.pi', '.qoder', '.trae', '.trae-cn', '.rovodev', '.vibe'];
+const PROVIDER_DIRS = ['.claude', '.cursor', '.devin', '.gemini', '.agents', '.agent', '.github', '.grok', '.hermes', '.kiro', '.opencode', '.pi', '.qoder', '.trae', '.trae-cn', '.rovodev', '.vibe', '.windsurf'];
 const PROVIDER_ALIASES = {
   agent: '.agent',
   agents: '.agents',
@@ -33,6 +33,10 @@ const PROVIDER_ALIASES = {
   codex: '.agents',
   copilot: '.github',
   cursor: '.cursor',
+  devin: '.devin',
+  'devin-cli': '.devin',
+  'devin-legacy': '.windsurf',
+  'devin-desktop': '.windsurf',
   gemini: '.gemini',
   github: '.github',
   grok: '.grok',
@@ -48,6 +52,7 @@ const PROVIDER_ALIASES = {
   trae: '.trae',
   'trae-cn': '.trae-cn',
   vibe: '.vibe',
+  windsurf: '.windsurf',
 };
 
 const PROVIDER_DISPLAY = {
@@ -55,6 +60,7 @@ const PROVIDER_DISPLAY = {
   '.agents': { name: 'Codex CLI', input: 'codex' },
   '.claude': { name: 'Claude Code', input: 'claude' },
   '.cursor': { name: 'Cursor', input: 'cursor' },
+  '.devin': { name: 'Devin CLI', input: 'devin' },
   '.gemini': { name: 'Gemini CLI', input: 'gemini' },
   '.github': { name: 'GitHub Copilot', input: 'github' },
   '.grok': { name: 'Grok Build', input: 'grok' },
@@ -67,8 +73,9 @@ const PROVIDER_DISPLAY = {
   '.trae': { name: 'Trae', input: 'trae' },
   '.trae-cn': { name: 'Trae CN', input: 'trae-cn' },
   '.vibe': { name: 'Mistral Vibe', input: 'vibe' },
+  '.windsurf': { name: 'Devin (ex-Windsurf Desktop)', input: 'windsurf' },
 };
-const PROVIDER_INPUT_ORDER = ['antigravity', 'claude', 'codex', 'cursor', 'gemini', 'github', 'grok', 'hermes', 'kiro', 'opencode', 'pi', 'qoder', 'trae', 'trae-cn', 'rovo-dev', 'vibe'];
+const PROVIDER_INPUT_ORDER = ['antigravity', 'claude', 'codex', 'cursor', 'devin', 'gemini', 'github', 'grok', 'hermes', 'kiro', 'opencode', 'pi', 'qoder', 'trae', 'trae-cn', 'rovo-dev', 'vibe', 'windsurf'];
 
 // OpenCode reads global skills from its config directory, not ~/.opencode:
 // $OPENCODE_CONFIG_DIR, else $XDG_CONFIG_HOME/opencode, else
@@ -118,16 +125,31 @@ function hermesGlobalHome(home) {
   return join(home, '.hermes');
 }
 
+// Devin CLI reads global skills from its XDG config dir: $XDG_CONFIG_HOME/devin,
+// else ~/.config/devin. On Windows the harness uses %APPDATA%\devin, which this
+// override approximates via the APPDATA env var when set. Same reasoning as
+// opencodeGlobalConfigDir above. See docs.devin.ai/cli/extensibility/skills.
+function devinGlobalConfigDir(home) {
+  if (process.platform === 'win32' && process.env.APPDATA) {
+    return join(process.env.APPDATA, 'devin');
+  }
+  if (process.env.XDG_CONFIG_HOME) return join(process.env.XDG_CONFIG_HOME, 'devin');
+  return join(home, '.config', 'devin');
+}
+
 // Providers whose GLOBAL (home) skills dir is not `<provider>/skills`,
 // as a function of the home dir. Pi discovers global skills from
 // ~/.pi/agent/skills/ (issue #327); OpenCode from its config dir (issue
-// #406); Hermes from $HERMES_HOME. Project scope stays `<provider>/skills`
-// for all three.
+// #406); Hermes from $HERMES_HOME; Devin from its XDG config dir; and the
+// legacy Windsurf path from the Codeium channel dir. Project scope stays
+// `<provider>/skills` for all of them.
 const HOME_SKILLS_DIR_OVERRIDES = {
   '.agent': (home) => join(home, '.gemini', 'config', 'skills'),
+  '.devin': (home) => join(devinGlobalConfigDir(home), 'skills'),
   '.hermes': (home) => join(hermesGlobalHome(home), 'skills'),
   '.pi': (home) => join(home, '.pi', 'agent', 'skills'),
   '.opencode': (home) => join(opencodeGlobalConfigDir(home), 'skills'),
+  '.windsurf': (home) => join(home, '.codeium', 'windsurf', 'skills'),
 };
 
 // When a project has no harness folder yet, infer the target from globally
@@ -151,6 +173,14 @@ const GLOBAL_HARNESS_HINTS = [
   { home: '.claude', provider: '.claude' },
   { home: '.codex', provider: '.agents' },
   { home: '.cursor', provider: '.cursor' },
+  // Devin CLI roots (flat ~/.devin) and its real XDG config dir, plus the
+  // legacy Windsurf folder and the Codeium channel dirs Devin imports.
+  { home: '.devin', provider: '.devin' },
+  { resolve: devinGlobalConfigDir, provider: '.devin' },
+  { home: '.windsurf', provider: '.windsurf' },
+  { home: '.codeium/windsurf', provider: '.windsurf' },
+  { home: '.codeium/windsurf-next', provider: '.windsurf' },
+  { home: '.codeium/windsurf-insiders', provider: '.windsurf' },
   { home: '.gemini', provider: '.gemini' },
   { home: '.grok', provider: '.grok' },
   { home: '.hermes', provider: '.hermes' },
@@ -1149,10 +1179,26 @@ async function chooseInstallScope(projectRoot, targets, detections, { yes, scope
   return scope;
 }
 
+// Devin imports legacy `.windsurf` files automatically (read_config_from
+// defaults both `windsurf` and `claude` to true). Installing Impeccable into
+// both `.devin` and `.windsurf` in the same project makes Devin load the
+// same skill twice. Warn once per install run regardless of how the targets
+// were chosen (explicit `--providers=` or interactive prompts).
+function warnDevinDoubleLoad(targets) {
+  if (targets.includes('.devin') && targets.includes('.windsurf')) {
+    console.error(
+      'Warning: both `devin` (.devin) and `windsurf` (.windsurf) are targeted. '
+      + 'Devin CLI imports `.windsurf` automatically, so the skill would load twice. '
+      + 'Pick one — prefer `devin`.'
+    );
+  }
+}
+
 async function chooseInstallPlan(projectRoot, flags, { yes } = {}) {
   const providersValue = getFlagValue(flags, '--providers');
   const scopeValue = getInstallScopeValue(flags);
   const { targets, detections, explicit } = await chooseInstallProviders(projectRoot, providersValue, { yes });
+  warnDevinDoubleLoad(targets);
   if (targets.length === 0) {
     throw new Error('Could not determine a target harness folder.');
   }
@@ -1854,6 +1900,7 @@ async function link(flags) {
   }
 
   const targets = resolveInstallTargets(root, providersValue);
+  warnDevinDoubleLoad(targets);
   if (targets.length === 0) {
     console.error('Could not determine a target harness folder.');
     console.error('Pass one explicitly, e.g. --providers=claude,cursor');

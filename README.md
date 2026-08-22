@@ -124,7 +124,7 @@ git add .gitmodules .impeccable .claude .cursor
 git commit -m "Add Impeccable skills"
 ```
 
-Use the providers your project needs, for example `claude`, `cursor`, `gemini`, `codex`, `github`, `grok`, `opencode`, `pi`, `qoder`, `trae`, `trae-cn`, `rovo-dev`, or `vibe`. The command links individual skill folders from `.impeccable/dist/universal/` and leaves existing real skill directories untouched unless you pass `--force`.
+Use the providers your project needs, for example `claude`, `cursor`, `devin`, `gemini`, `codex`, `github`, `grok`, `opencode`, `pi`, `qoder`, `trae`, `trae-cn`, `rovo-dev`, `vibe`, or `windsurf`. The command links individual skill folders from `.impeccable/dist/universal/` and leaves existing real skill directories untouched unless you pass `--force`.
 
 To update later:
 
@@ -280,6 +280,26 @@ mkdir -p ~/.gemini/config/skills
 cp -r dist/antigravity/.agent/skills/* ~/.gemini/config/skills/
 ```
 
+**Devin CLI:**
+```bash
+# Project-specific (also installs subagents and the design hook)
+cp -r dist/devin/.devin your-project/
+
+# Or global (applies to all projects)
+mkdir -p ~/.config/devin/skills
+cp -r dist/devin/.devin/skills/* ~/.config/devin/skills/
+```
+
+> On Windows, the global path is `%APPDATA%\devin\skills\`. Prefer `npx impeccable install --providers=devin` so the scoped copy lands where your checkout expects.
+
+**Devin (ex-Windsurf Desktop):**
+```bash
+# Legacy path for projects still on `.windsurf`
+cp -r dist/devin-legacy/.windsurf your-project/
+```
+
+> Devin CLI imports `.windsurf` automatically, so if you also have `.devin` installed, pick one provider: `devin`. The legacy variant ships skills only (no subagents or hook).
+
 ## Usage
 
 Once installed, every command runs through the single `/impeccable` skill:
@@ -411,6 +431,7 @@ Full detector docs: [impeccable.style/docs/detector](https://impeccable.style/do
 
 - [Cursor](https://cursor.com)
 - [Claude Code](https://claude.ai/code)
+- [Devin CLI](https://docs.devin.ai/cli) (and the ex-Windsurf Desktop legacy path)
 - [GitHub Copilot](https://github.com/features/copilot)
 - [Gemini CLI](https://github.com/google-gemini/gemini-cli)
 - [Codex CLI](https://github.com/openai/codex)
