@@ -382,6 +382,228 @@ describe('detectText — broken images in source comments', () => {
 
     expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(0);
   });
+
+  test('ignores img tags in Astro style block comments', () => {
+    const source = [
+      '---',
+      'const title = "Hero";',
+      '---',
+      '<style>',
+      '  /*',
+      '   * Example markup: <img src="">',
+      '   */',
+      '  .hero { color: red; }',
+      '</style>',
+    ].join('\n');
+
+    const findings = detectText(source, 'hero.astro');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(0);
+  });
+
+  test('ignores img tags in Astro HTML comments', () => {
+    const source = [
+      '---',
+      'const title = "Hero";',
+      '---',
+      '<!-- <img src="" alt="Comment-only image" /> -->',
+      '<img src="/logo.png" alt="Logo" />',
+    ].join('\n');
+
+    const findings = detectText(source, 'hero.astro');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(0);
+  });
+
+  test('ignores img tags in Astro frontmatter line comments', () => {
+    const source = [
+      '---',
+      '// <img src="" alt="Comment-only image" />',
+      'const site = "https://example.com";',
+      '---',
+      '<img src="/logo.png" alt="Logo" />',
+    ].join('\n');
+
+    const findings = detectText(source, 'hero.astro');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(0);
+  });
+
+  test('ignores img tags in CSS block comments', () => {
+    const source = [
+      '/*',
+      ' * Example markup: <img src="">',
+      ' */',
+      '.hero { color: red; }',
+    ].join('\n');
+
+    const findings = detectText(source, 'hero.css');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(0);
+  });
+
+  test('still detects real img tags after an HTML comment in Astro', () => {
+    const source = [
+      '---',
+      'const title = "Hero";',
+      '---',
+      '<!-- decorative only -->',
+      '<img src="" alt="Empty source" />',
+    ].join('\n');
+
+    const findings = detectText(source, 'hero.astro');
+
+    const broken = findings.filter(r => r.antipattern === 'broken-image');
+    expect(broken).toHaveLength(1);
+    expect(broken[0].line).toBe(5);
+  });
+
+  test('does not blank https URLs in Astro frontmatter', () => {
+    const source = [
+      '---',
+      'const site = "https://example.com/logo.png";',
+      '---',
+      '<img src="" alt="Empty source" />',
+    ].join('\n');
+
+    const findings = detectText(source, 'hero.astro');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(1);
+  });
+
+  test('keeps same-line img visible after a bare https URL in Astro markup', () => {
+    const source = '<p>https://example.com <img src="" alt="Empty source" /></p>';
+
+    const findings = detectText(source, 'hero.astro');
+
+    expect(findings.filter(r => r.antipattern === 'broken-image')).toHaveLength(1);
+  });
+
+  test('preserves line numbers after comment blanking in Astro', () => {
+    const source = [
+      '---',
+      'const title = "Hero";',
+      '---',
+      '<!-- <img src="" alt="Comment-only image" /> -->',
+      '<p>Intro copy</p>',
+      '<img src="" alt="Empty source" />',
+    ].join('\n');
+
+    const findings = detectText(source, 'hero.astro');
+
+    const broken = findings.filter(r => r.antipattern === 'broken-image');
+    expect(broken).toHaveLength(1);
+    expect(broken[0].line).toBe(6);
+  });
+
+  test('does not treat comment markers inside script strings as markup comments', () => {
+    const htmlDelimiters = [
+      '<script>const open = "<!--";</script>',
+      '<img>',
+      '<script>const close = "-->";</script>',
+    ].join('\n');
+    const cssDelimiters = [
+      '<script>const open = "/*";</script>',
+      '<img>',
+      '<script>const close = "*/";</script>',
+    ].join('\n');
+
+    for (const filePath of ['hero.astro', 'hero.vue', 'hero.svelte']) {
+      expect(detectText(htmlDelimiters, filePath).filter(r => r.antipattern === 'broken-image')).toHaveLength(1);
+      expect(detectText(cssDelimiters, filePath).filter(r => r.antipattern === 'broken-image')).toHaveLength(1);
+    }
+  });
+
+  test('ignores preprocessor line comments in stylesheets', () => {
+    const source = '// font-family: Inter\n.hero { color: red; }';
+
+    for (const filePath of ['hero.scss', 'hero.sass', 'hero.less']) {
+      expect(detectText(source, filePath).filter(r => r.antipattern === 'overused-font')).toHaveLength(0);
+    }
+  });
+
+  test('still detects live font-family after a preprocessor line comment', () => {
+    const source = '// skip this\n.hero { font-family: Inter; }';
+
+    const findings = detectText(source, 'hero.scss').filter(r => r.antipattern === 'overused-font');
+    expect(findings).toHaveLength(1);
+    expect(findings[0].line).toBe(2);
+  });
+
+  test('does not blank https URLs in SCSS', () => {
+    const source = '.hero { background: url(https://example.com/i.png); }\n.hero { font-family: Inter; }';
+
+    const findings = detectText(source, 'hero.scss').filter(r => r.antipattern === 'overused-font');
+    expect(findings).toHaveLength(1);
+    expect(findings[0].line).toBe(2);
+  });
+
+  test('ignores frontmatter comments after a --- line inside a template literal', () => {
+    const source = [
+      '---',
+      'const md = `',
+      '---',
+      '`;',
+      '// <img src="" alt="Comment-only image" />',
+      '---',
+      '<div>ok</div>',
+    ].join('\n');
+
+    expect(detectText(source, 'hero.astro').filter(r => r.antipattern === 'broken-image')).toHaveLength(0);
+  });
+
+  test('ignores preprocessor line comments in component style blocks', () => {
+    const source = [
+      '<style lang="scss">',
+      '// font-family: Inter',
+      '.hero { color: red; }',
+      '</style>',
+    ].join('\n');
+
+    for (const filePath of ['hero.astro', 'hero.vue', 'hero.svelte']) {
+      expect(detectText(source, filePath).filter(r => r.antipattern === 'overused-font')).toHaveLength(0);
+    }
+  });
+
+  test('still detects live font-family after a style-block line comment', () => {
+    const source = [
+      '<style lang="scss">',
+      '// skip this',
+      '.hero { font-family: Inter; }',
+      '</style>',
+    ].join('\n');
+
+    const findings = detectText(source, 'hero.vue').filter(r => r.antipattern === 'overused-font');
+    expect(findings).toHaveLength(1);
+    expect(findings[0].line).toBe(3);
+  });
+
+  test('ignores frontmatter comments after a regex literal that contains quotes', () => {
+    const source = [
+      '---',
+      'const re = /["\']/;',
+      '// <img src="" alt="Comment-only image" />',
+      '---',
+      '<div>ok</div>',
+    ].join('\n');
+
+    expect(detectText(source, 'hero.astro').filter(r => r.antipattern === 'broken-image')).toHaveLength(0);
+  });
+
+  test('keeps live font-family after a protocol-relative URL in SCSS', () => {
+    const sources = [
+      '.hero { background: url( //cdn.example.com/i.png); font-family: Inter; }',
+      '.hero { background: url(#{$prefix}//cdn.example.com/i.png); font-family: Inter; }',
+    ];
+
+    for (const source of sources) {
+      expect(detectText(source, 'hero.scss').filter(r => r.antipattern === 'overused-font')).toHaveLength(1);
+    }
+    expect(detectText(
+      '.hero { background: url(@{prefix}//cdn.example.com/i.png); font-family: Inter; }',
+      'hero.less',
+    ).filter(r => r.antipattern === 'overused-font')).toHaveLength(1);
+  });
 });
 
 describe('detectText — CSS borders', () => {
