@@ -1806,16 +1806,44 @@ describe('codex-grid-background variants', () => {
     expect(grids(css)).toHaveLength(1);
   });
 
-  test('flags single-axis hairline tiled by a px pair cell', () => {
+  test('keeps single-axis hairline tiled by a px pair cell legal', () => {
     const css = `body { background: linear-gradient(90deg, rgba(23,25,24,.035) 1px, transparent 1px) 0 0 / 40px 40px, #f4f1ea; }`;
-    const f = grids(css);
-    expect(f).toHaveLength(1);
-    expect(f[0].snippet).toContain('line-field');
+    expect(grids(css)).toHaveLength(0);
   });
 
   test('keeps percent-tiled single hairlines (data-viz track rules) legal', () => {
     const css = `.span-track { background-image: linear-gradient(90deg, #303532 1px, transparent 1px); background-size: 25% 100%; }`;
     expect(grids(css)).toHaveLength(0);
+  });
+
+  test('keeps 1D dashed dot rules legal', () => {
+    const css = `.dot-rule {
+      height: 5px;
+      background-image: linear-gradient(90deg, rgba(255,255,255,.75) 5px, transparent 5px);
+      background-size: 10px 5px;
+      background-repeat: repeat-x;
+    }`;
+    expect(grids(css)).toHaveLength(0);
+  });
+
+  test('keeps 1D progress rails with dash-period px pair tiles legal', () => {
+    const css = `.progress-rail {
+      background-image: linear-gradient(90deg, #eee 1px, transparent 1px);
+      background-size: 8px 4px;
+      background-repeat: repeat-x;
+    }`;
+    expect(grids(css)).toHaveLength(0);
+  });
+
+  test('regex source engine keeps 1D dot rules legal', () => {
+    const css = `.dot-rule {
+      height: 5px;
+      background-image: linear-gradient(90deg, rgba(255,255,255,.75) 5px, transparent 5px);
+      background-size: 10px 5px;
+      background-repeat: repeat-x;
+    }`;
+    const findings = detectText(css, 'dot-rule.css');
+    expect(findings.filter(f => f.antipattern === 'codex-grid-background')).toHaveLength(0);
   });
 
   test('classic two-axis background-size form still flags', () => {

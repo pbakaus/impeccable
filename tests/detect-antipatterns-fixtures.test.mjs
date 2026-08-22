@@ -1278,6 +1278,14 @@ describe('detectHtml — generated-UI tells', () => {
     }
   });
 
+  it('codex-grid-background: 1D dashed rules and px-pair line-fields stay legal', async () => {
+    const f = await detectHtml(path.join(FIXTURES, 'codex-grid-1d-pass.html'));
+    assert.equal(
+      f.filter(r => r.antipattern === 'codex-grid-background').length, 0,
+      `1D tiled hairlines must not flag, got: ${f.filter(r => r.antipattern === 'codex-grid-background').map(r => r.snippet).join('; ')}`,
+    );
+  });
+
   it('gemini-tells: both flag cases surface by default and pass cases stay legal', async () => {
     const findings = await detectHtml(path.join(FIXTURES, 'gemini-tells.html'));
     // Two flag cases: a CSS img:hover{transform} rule and a Tailwind hover:scale on <img>.
