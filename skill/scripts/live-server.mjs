@@ -181,8 +181,16 @@ function chatAgentLikelyActive() {
 // cap at 10 MB to guard against runaway writes from a misbehaving client.
 const MAX_ANNOTATION_BYTES = 10 * 1024 * 1024;
 
+const POLLER_OWNED_EVENT_FIELDS = ['_instructions', '_completionAck', '_acceptResult'];
+
+function stripPollerOwnedEventFields(event) {
+  if (!event || typeof event !== 'object') return;
+  for (const key of POLLER_OWNED_EVENT_FIELDS) delete event[key];
+}
+
 function enqueueEvent(event) {
   if (!event) return;
+  stripPollerOwnedEventFields(event);
   // Dedupe by (session, type), except mount failures, which are per-variant:
   // variant 2 failing must not be swallowed because variant 1's failure is
   // still queued.
@@ -1026,6 +1034,7 @@ function createRequestHandler({ detectScript, liveScriptParts }) {
           res.end(JSON.stringify({ error }));
           return;
         }
+        stripPollerOwnedEventFields(msg);
         if (msg.type === 'agent_phase') {
           recordAgentPhase(msg.id, msg.phase, {
             ...(Number.isFinite(msg.durationMs) ? { durationMs: msg.durationMs } : {}),
