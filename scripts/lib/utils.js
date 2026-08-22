@@ -562,6 +562,8 @@ export const PROVIDER_BLOCK_TAGS = new Set([
   'claude-code',
   'codex',
   'cursor',
+  'devin',
+  'devin-legacy',
   'gemini',
   'github',
   'grok',

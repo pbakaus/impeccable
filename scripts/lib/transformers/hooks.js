@@ -8,6 +8,7 @@
  *      - Codex:       `.codex/hooks.json`
  *      - Cursor:      `.cursor/hooks.json`
  *      - Grok Build:  `.grok/hooks/impeccable.json`
+ *      - Devin CLI:   `.devin/hooks.v1.json`     (${DEVIN_PROJECT_DIR}-relative)
  *
  * 2. Claude Code plugin package (the marketplace / `/plugin install` path):
  *      - `plugin/hooks/hooks.json`              (${CLAUDE_PLUGIN_ROOT}-relative)
@@ -134,6 +135,13 @@ const GITHUB_PROJECT_HOOK = '$(git rev-parse --show-toplevel)/.github/skills/imp
 // Grok project hooks are relative to the git/workspace root. Claude tool names
 // in the matcher (Edit|Write|MultiEdit) alias to Grok's search_replace family.
 const GROK_PROJECT_HOOK = '.grok/skills/impeccable/scripts/hook.mjs';
+// Devin CLI sets DEVIN_PROJECT_DIR to the project root for every hook event
+// (docs.devin.ai/cli/extensibility/hooks/overview). The env var name is
+// fixed by the harness, so the emitted command can stay relative-safe the
+// same way CLAUDE_PROJECT_DIR commands are. Devin's tool names are
+// lowercase (`edit`, `write`) but Claude-style names are matched too, since
+// Devin also imports Claude-format configs.
+const DEVIN_PROJECT_HOOK = '${DEVIN_PROJECT_DIR}/.devin/skills/impeccable/scripts/hook.mjs';
 
 export function buildClaudeSettingsManifest() {
   return {
@@ -241,6 +249,23 @@ export function buildGrokHooksManifest() {
   };
 }
 
+// Devin CLI reads project hooks from `.devin/hooks.v1.json` as a standalone
+// bare file (no wrapper key, and no top-level `description` -- Devin's
+// parser rejects unknown fields like Codex's does). Its documented output
+// contract is `decision` / `hookSpecificOutput`; `systemMessage` is not part
+// of it, so the node-unsupported probe runs without a notice payload, same
+// as Cursor/Grok. Claude and lowercase tool names both appear in Devin's
+// matcher, since Devin also imports Claude-format tool naming on import.
+// https://docs.devin.ai/cli/extensibility/hooks/overview
+export function buildDevinHooksManifest() {
+  return {
+    hooks: buildClaudeCompatibleHooks(
+      'edit|write|Edit|Write|MultiEdit',
+      DEVIN_PROJECT_HOOK,
+    ),
+  };
+}
+
 export function hooksJsonFor(provider, options = {}) {
   switch (provider) {
     case 'claude':
@@ -249,6 +274,8 @@ export function hooksJsonFor(provider, options = {}) {
       return buildCodexHooksManifest(options.configDir || '.codex');
     case 'cursor':
       return buildCursorHooksManifest();
+    case 'devin':
+      return buildDevinHooksManifest();
     case 'github':
       return buildGitHubHooksManifest();
     case 'grok':

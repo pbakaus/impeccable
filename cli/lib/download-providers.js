@@ -10,6 +10,8 @@ export const FILE_DOWNLOAD_PROVIDER_CONFIG_DIRS = Object.freeze({
   codex: '.codex',
   agents: '.agents',
   antigravity: '.agent',
+  devin: '.devin',
+  'devin-legacy': '.windsurf',
   github: '.github',
   grok: '.grok',
   hermes: '.hermes',

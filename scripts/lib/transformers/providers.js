@@ -176,4 +176,35 @@ export const PROVIDERS = {
     // no writeOpenAIMetadata. See hermes-agent/SKILL.md "Skills" section.
     frontmatterFields: ['license', 'compatibility', 'metadata'],
   },
+  // Devin CLI (ex-Windsurf engine, bundled with Devin Desktop). Claude-format
+  // skills plus Claude-format subagents (Devin imports `tools` from the
+  // Claude agent frontmatter, per docs.devin.ai/cli/subagents) and a
+  // Claude-format hook manifest at the standalone `hooks.v1.json` path.
+  // placeholderProvider 'agents' matches Devin's `.agents/skills`
+  // compatibility, so setup text matches the Codex repo-skills variant.
+  devin: {
+    provider: 'devin',
+    providerTags: ['devin'],
+    configDir: '.devin',
+    displayName: 'Devin CLI',
+    placeholderProvider: 'agents',
+    frontmatterFields: ['user-invocable', 'argument-hint', 'license', 'compatibility', 'metadata', 'allowed-tools'],
+    agentFormat: 'claude-md',
+    emitHooks: 'devin',
+    // Devin discovers project hooks at `.devin/hooks.v1.json` (a standalone
+    // file, not the `hooks` key inside `.devin/config.json`).
+    hooksManifestRel: 'hooks.v1.json',
+  },
+  // Devin legacy path for users still on `.windsurf/` (the pre-Devin-product
+  // Windsurf folder). Skills only: Devin Desktop is a CLI-bundled surface,
+  // and legacy Windsurf files do not support hooks or subagents in the same
+  // format.
+  'devin-legacy': {
+    provider: 'devin-legacy',
+    providerTags: ['devin-legacy', 'devin'],
+    configDir: '.windsurf',
+    displayName: 'Devin (ex-Windsurf Desktop)',
+    placeholderProvider: 'agents',
+    frontmatterFields: ['license', 'compatibility', 'metadata'],
+  },
 };

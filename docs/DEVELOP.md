@@ -92,7 +92,7 @@ scripts/
 
 ### Adding a New Provider
 
-1. Add a placeholder config to `PROVIDER_PLACEHOLDERS` in `scripts/lib/utils.js`:
+1. Optionally, add a placeholder config to `PROVIDER_PLACEHOLDERS` in `scripts/lib/utils.js` (or skip this and set `placeholderProvider` to an existing key like `agents`, the way `trae-cn` and `devin-legacy` do):
    ```javascript
    'my-provider': {
      model: 'MyModel',
@@ -111,6 +111,7 @@ scripts/
      frontmatterFields: ['user-invocable', 'argument-hint', 'license'],
    }
    ```
+   Subagent emission (`agentFormat`) and hook manifests (`emitHooks`) are opt-in. See the `devin` entry for a provider that combines both.
 
 3. Run `bun run build` -- the provider is automatically picked up by the build loop.
 

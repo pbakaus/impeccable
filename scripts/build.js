@@ -551,6 +551,8 @@ This folder contains skills for all supported tools:
   .rovodev/   -> Rovo Dev
   .vibe/      -> Mistral Vibe
   .qoder/     -> Qoder
+  .devin/     -> Devin CLI
+  .windsurf/  -> Devin (ex-Windsurf Desktop)
 
 To install, copy the relevant folder(s) into your project root.
 For Codex, repo and user skill installs come from .agents/skills.
@@ -614,7 +616,10 @@ async function build() {
     // Copy all provider outputs to project root for direct GitHub installs and
     // submodule users. `.codex/` is intentionally excluded: Codex no longer
     // consumes that layout; keep generated Codex bundles under dist/ only.
-    const syncConfigs = Object.values(PROVIDERS).filter(({ configDir }) => configDir !== '.codex');
+    // `.windsurf/` is excluded too: it is Devin's legacy path, and the tracked
+    // root is reserved for the primary `.devin` build while the legacy variant
+    // ships only via the download/universal bundle.
+    const syncConfigs = Object.values(PROVIDERS).filter(({ configDir }) => configDir !== '.codex' && configDir !== '.windsurf');
 
     for (const { provider, configDir } of syncConfigs) {
       const skillsSrc = path.join(DIST_DIR, provider, configDir, 'skills');

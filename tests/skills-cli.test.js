@@ -529,6 +529,42 @@ describe('skills link: submodule installs', () => {
     rmSync(tmp, { recursive: true, force: true });
   }, 15000);
 
+  test('maps devin and windsurf provider aliases to their install folders', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-link-devin-'));
+    execSync('git init', { cwd: tmp });
+    createFakeLinkSource(tmp, ['.devin', '.windsurf']);
+
+    // stderr merged so the double-load warning is observable.
+    const output = execSync(`node ${CLI} skills link --source=.impeccable --providers=devin,windsurf -y 2>&1`, { cwd: tmp, encoding: 'utf8', timeout: 60000 });
+
+    expect(lstatSync(join(tmp, '.devin', 'skills', 'impeccable')).isSymbolicLink()).toBe(true);
+    expect(lstatSync(join(tmp, '.windsurf', 'skills', 'impeccable')).isSymbolicLink()).toBe(true);
+    expect(output).toContain('both `devin` (.devin) and `windsurf` (.windsurf) are targeted');
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  // Devin CLI global skills resolve through the XDG override (#harness-provider-devin).
+  test('global install writes Devin CLI skills to ~/.config/devin/skills', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-scope-user-devin-'));
+    const home = mkdtempSync(join(tmpdir(), 'imp-home-scope-user-devin-'));
+    execSync('git init', { cwd: tmp });
+    mkdirSync(join(home, '.devin'), { recursive: true });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.devin']);
+    const env = { ...process.env, HOME: home, IMPECCABLE_BUNDLE_PATH: bundleRoot };
+    delete env.APPDATA;
+    delete env.XDG_CONFIG_HOME;
+
+    const output = run('skills install -y --scope=global --no-hooks', { cwd: tmp, env });
+
+    expect(output).toContain('Installed impeccable into: .devin (global)');
+    expect(existsSync(join(home, '.config', 'devin', 'skills', 'impeccable', 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(home, '.devin', 'skills', 'impeccable'))).toBe(false);
+
+    rmSync(tmp, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }, 15000);
+
   test('maps grok and grok-build provider aliases to .grok', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'imp-test-link-grok-'));
     execSync('git init', { cwd: tmp });
