@@ -626,7 +626,7 @@ if (IS_BROWSER) {
       if (currentStyle.filter && currentStyle.filter !== 'none') reasons.add('filter');
       if (currentStyle.backdropFilter && currentStyle.backdropFilter !== 'none') reasons.add('backdrop filter');
 
-      const solidBg = parseRgb(currentStyle.backgroundColor);
+      const solidBg = parseRgb(currentStyle.backgroundColor) || parseAnyColor(currentStyle.backgroundColor);
       if (solidBg && solidBg.a >= 0.95 && (!bgImage || bgImage === 'none')) break;
       current = current.parentElement;
     }
@@ -688,7 +688,7 @@ if (IS_BROWSER) {
       // starve the url()-backed texts this mode exists to sample.
       if (options.imageOnly && !reasons.includes('image background')) continue;
 
-      const textColor = parseRgb(style.color);
+      const textColor = parseRgb(style.color) || parseAnyColor(style.color);
       const fontSize = parseFloat(style.fontSize) || 16;
       const fontWeight = parseInt(style.fontWeight) || 400;
       const isLargeText = fontSize >= WCAG_LARGE_TEXT_PX || (fontSize >= WCAG_LARGE_BOLD_TEXT_PX && fontWeight >= 700);
@@ -985,7 +985,7 @@ if (IS_BROWSER) {
         return sample;
       }
     }
-    const bg = parseRgb(style.backgroundColor);
+    const bg = parseRgb(style.backgroundColor) || parseAnyColor(style.backgroundColor);
     if (bg && bg.a > 0.05) return { status: 'sampled', color: bg, method: 'solid-background' };
     return { status: 'unresolved', reason: 'no readable background' };
   }
@@ -1115,7 +1115,7 @@ if (IS_BROWSER) {
     }
 
     const style = getComputedStyle(el);
-    const textColor = parseRgb(style.color) || candidate.textColor;
+    const textColor = parseRgb(style.color) || parseAnyColor(style.color) || candidate.textColor;
     if (!textColor) return { ...candidate, status: 'unresolved', confidence: 'none', reason: 'unreadable text color' };
 
     const rect = getDirectTextRect(el) || el.getBoundingClientRect();

@@ -221,6 +221,19 @@ describe('detectUrl — browser-only fixtures', () => {
     assert.equal(contrast.length, 3, `expected exactly the 3 flag-column cases, got ${contrast.length}:\n${snippets}`);
   });
 
+  it('ai-color-palette: oklch neon text flags the should-flag column only', async () => {
+    const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/oklch-neon-text.html`, { visualContrast: false });
+    const neon = f.filter(r =>
+      r.antipattern === 'ai-color-palette' && /neon text on dark background/i.test(r.snippet || '')
+    );
+    assert.equal(
+      neon.length,
+      1,
+      `expected exactly 1 oklch neon-text finding, got ${neon.length}: ${JSON.stringify(f.map(r => r.snippet))}`,
+    );
+    assert.match(neon[0].snippet || '', /Cyan neon text on dark background/i);
+  });
+
   it('shadowed form.id: a <form> with <input name="id"> does not crash the scan (issue #407)', async () => {
     // HTMLFormElement named-property shadowing makes form.id / form.className
     // return the child input element, whose .startsWith throws. Every Shopify
