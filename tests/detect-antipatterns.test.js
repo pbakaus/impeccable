@@ -1599,6 +1599,32 @@ describe('hover contrast + color-mix', () => {
     expect(stops).toHaveLength(2);
   });
 
+  test('parseGradientColors resolves color-mix stops without leaking nested hex', () => {
+    const stops = parseGradientColors('linear-gradient(135deg, color-mix(in srgb, #2d5a4a 92%, #000), color-mix(in srgb, #1a3d32 90%, #000))');
+    expect(stops).toHaveLength(2);
+    expect(stops[0]).toEqual({ r: 41, g: 83, b: 68, a: 1 });
+    expect(stops[1]).toEqual({ r: 23, g: 55, b: 45, a: 1 });
+  });
+
+  test('parseGradientColors does not leak nested hex when color-mix has var()', () => {
+    const stops = parseGradientColors('linear-gradient(135deg, color-mix(in srgb, var(--brand) 92%, #000), color-mix(in srgb, var(--brand-deep) 90%, #000))');
+    expect(stops).toEqual([]);
+  });
+
+  test('parseGradientColors still collects sibling bare hex stops beside color-mix', () => {
+    const stops = parseGradientColors('linear-gradient(color-mix(in srgb, #2d5a4a 92%, #000), #ffffff)');
+    expect(stops).toHaveLength(2);
+    expect(stops[0]).toEqual({ r: 41, g: 83, b: 68, a: 1 });
+    expect(stops[1]).toEqual({ r: 255, g: 255, b: 255, a: 1 });
+  });
+
+  test('parseGradientColors still reads bare hex gradient stops', () => {
+    const stops = parseGradientColors('linear-gradient(#2d5a4a, #000)');
+    expect(stops).toHaveLength(2);
+    expect(stops[0]).toEqual({ r: 45, g: 90, b: 74, a: 1 });
+    expect(stops[1]).toEqual({ r: 0, g: 0, b: 0, a: 1 });
+  });
+
   test('checkHoverContrast flags a failing hover pair on a styled control', () => {
     const f = checkHoverContrast({
       tag: 'a',

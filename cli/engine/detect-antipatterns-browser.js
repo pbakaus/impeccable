@@ -773,14 +773,22 @@ function extractColorFunctionTokens(value) {
 function parseGradientColors(bgImage) {
   if (!bgImage || !bgImage.includes('gradient')) return [];
   const colors = [];
+  const tokenSpans = [];
+  let from = 0;
   // Stops arrive in whatever syntax the author wrote and the browser kept.
   // A dark ground painted as `linear-gradient(oklch(...), oklch(...))` used
   // to read as a gradient with no stops at all.
   for (const token of extractColorFunctionTokens(bgImage)) {
+    const start = bgImage.indexOf(token, from);
+    if (start < 0) break;
+    tokenSpans.push({ start, end: start + token.length });
+    from = start + token.length;
     const c = parseAnyColor(token);
     if (c) colors.push(c);
   }
   for (const m of bgImage.matchAll(/#([0-9a-f]{6}|[0-9a-f]{3})\b/gi)) {
+    // Nested hex inside color-mix is an ingredient, not a stop (issue #578).
+    if (tokenSpans.some(s => m.index >= s.start && m.index < s.end)) continue;
     const h = m[1];
     if (h.length === 6) {
       colors.push({ r: parseInt(h.slice(0,2),16), g: parseInt(h.slice(2,4),16), b: parseInt(h.slice(4,6),16), a: 1 });
