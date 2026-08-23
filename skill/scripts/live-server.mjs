@@ -22,6 +22,7 @@ import net from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { parseDesignMd } from './lib/design-parser.mjs';
 import { loadContext } from './context.mjs';
+import { readConfig as readHookConfig } from './hook-lib.mjs';
 import {
   assembleLiveBrowserScript,
   assertLiveBrowserScriptParts,
@@ -45,6 +46,7 @@ import {
   readLiveServerInfo,
   removeLiveServerInfo,
   resolveDesignSidecarPath,
+  resolveLiveConfigPath,
   writeLiveServerInfo,
 } from './lib/impeccable-paths.mjs';
 import { countByPage as countPendingByPage } from './live/manual-edits-buffer.mjs';
@@ -686,6 +688,51 @@ function isLoopbackOrigin(origin) {
 // HTTP request handler
 // ---------------------------------------------------------------------------
 
+// Project detector waivers for the browser overlay (issue #639). The CLI and
+// the edit hook filter findings through .impeccable/config.json; the overlay
+// scans in the browser, so the same config rides along in the /live.js
+// prelude and live-browser-ignores.js applies it per page at scan time.
+function readProjectDetectorIgnores() {
+  // readConfig merges config.json with the gitignored config.local.json and
+  // type-checks both, exactly as the edit hook reads the same pair.
+  const config = readHookConfig(process.cwd());
+  return {
+    ignoreRules: Array.isArray(config.ignoreRules) ? config.ignoreRules : [],
+    // Serve only what the browser matches on; createdAt/reason stay local.
+    ignoreValues: (Array.isArray(config.ignoreValues) ? config.ignoreValues : []).map((entry) => ({
+      rule: entry.rule,
+      value: entry.value,
+      ...(Array.isArray(entry.files) && entry.files.length > 0 ? { files: entry.files } : {}),
+    })),
+    roots: readLiveServedRoots(),
+  };
+}
+
+// Where the served pages live inside the project. Ignore globs are
+// project-relative and the browser only knows its URL path, so it needs the
+// prefix; the inject config's own `files` globs are the authority on it.
+// Deriving it from the ignore globs instead fails silently: one entry scoped
+// to prototype/library/** would lend prototype/library/ as a candidate prefix
+// to every page, and that rule would suppress site-wide.
+function readLiveServedRoots() {
+  try {
+    const configPath = resolveLiveConfigPath({ cwd: process.cwd(), scriptsDir: __dirname });
+    const live = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    const files = Array.isArray(live?.files) ? live.files : [];
+    return [...new Set(files
+      .filter((glob) => typeof glob === 'string' && glob)
+      .map((glob) => {
+        const wildcardAt = glob.search(/[*?{]/);
+        const head = wildcardAt === -1 ? glob : glob.slice(0, wildcardAt);
+        const cut = head.lastIndexOf('/');
+        return cut > -1 ? head.slice(0, cut + 1) : '';
+      }))];
+  } catch {
+    // No readable inject config: the browser matches URL paths as-is.
+    return [];
+  }
+}
+
 function createRequestHandler({ detectScript, liveScriptParts }) {
   return (req, res) => {
     const url = new URL(req.url, `http://localhost:${state.port}`);
@@ -746,6 +793,9 @@ function createRequestHandler({ detectScript, liveScriptParts }) {
         commandPrefix: IMPECCABLE_COMMAND_PREFIX,
         appRoot: process.cwd(),
         parts,
+        // Read per request rather than cached, so editing the config and
+        // reloading the tab is enough to pick up a new waiver.
+        projectIgnores: readProjectDetectorIgnores(),
       });
       res.writeHead(200, {
         'Content-Type': 'application/javascript',

@@ -981,6 +981,120 @@ describe('detectUrl — browser-only fixtures', () => {
     }
   });
 
+  it('extension mode suppresses disabledValues entries from scan config', async () => {
+    // The live overlay resolves .impeccable ignoreValues per page and sends
+    // the survivors as config.disabledValues (issue #639); the detector must
+    // filter them where the findings are assembled, since the overlay draws
+    // its own markers from the collected findings.
+    const normalized = normalizeDesignSystem({
+      frontmatter: {
+        typography: {
+          display: { fontFamily: 'Avenir Next, Georgia, serif' },
+          body: { fontFamily: 'IBM Plex Sans, Arial, sans-serif' },
+        },
+        colors: {
+          ink: '#241f1a',
+          paper: '#f7f4ee',
+          surface: '#ffffff',
+          accent: '#b8422e',
+          border: '#d4c7b9',
+        },
+        rounded: {
+          sm: '4px',
+          md: '8px',
+          '"2xl"': '32px',
+          full: '999px',
+        },
+      },
+    });
+    // The JSON-safe payload shape the extension panel and detectUrl inject as
+    // __IMPECCABLE_CONFIG__.designSystem (serializeDesignSystemForBrowser in
+    // cli/engine/engines/browser/detect-url.mjs).
+    const designSystem = {
+      present: true,
+      hasFonts: normalized.hasFonts === true,
+      allowedFonts: Array.from(normalized.allowedFonts || []),
+      hasColors: normalized.hasColors === true,
+      allowedColors: Array.from(normalized.allowedColorKeys?.values?.() || [])
+        .map(entry => entry?.color)
+        .filter(color => color && Number.isFinite(color.r) && Number.isFinite(color.g) && Number.isFinite(color.b))
+        .map(color => ({ r: color.r, g: color.g, b: color.b })),
+      hasRadii: normalized.hasRadii === true,
+      allowedRadii: (normalized.allowedRadii || [])
+        .map(entry => Number(entry?.px))
+        .filter(px => Number.isFinite(px)),
+      hasPillRadius: normalized.hasPillRadius === true,
+    };
+    const puppeteer = await import('puppeteer');
+    const browser = await puppeteer.default.launch({
+      headless: true,
+      args: process.env.CI ? ['--no-sandbox', '--disable-setuid-sandbox'] : [],
+    });
+    try {
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1280, height: 800 });
+      await page.goto(`${baseUrl}/fixtures/antipatterns/design-system.html`, { waitUntil: 'load' });
+      const browserScript = fs.readFileSync(path.join(ROOT, 'cli/engine/detect-antipatterns-browser.js'), 'utf-8');
+      await page.evaluate(() => {
+        document.documentElement.dataset.impeccableExtension = 'true';
+        window.__impeccableMessages = [];
+        window.addEventListener('message', event => {
+          if (event.source !== window || !event.data?.source?.startsWith('impeccable-')) return;
+          window.__impeccableMessages.push(event.data);
+        });
+      });
+      await page.evaluate(browserScript);
+      const scan = (scanId, disabledValues) => page.evaluate(async (config) => {
+        window.postMessage({ source: 'impeccable-command', action: 'scan', config }, '*');
+        const deadline = Date.now() + 2000;
+        while (
+          Date.now() < deadline &&
+          !window.__impeccableMessages.some(message =>
+            message.source === 'impeccable-results' && message.scanId === config.scanId)
+        ) {
+          await new Promise(resolve => setTimeout(resolve, 25));
+        }
+        const resultMessage = window.__impeccableMessages.find(message =>
+          message.source === 'impeccable-results' && message.scanId === config.scanId);
+        const flat = (resultMessage?.findings || []).flatMap(group => group.findings || []);
+        return {
+          total: flat.length,
+          colors: flat.filter(finding => finding.type === 'design-system-color').length,
+          fonts: flat
+            .filter(finding => finding.type === 'design-system-font')
+            .map(finding => finding.ignoreValue || ''),
+        };
+      }, { scanId, visualContrast: false, designSystem, ...(disabledValues ? { disabledValues } : {}) });
+
+      const unfiltered = await scan('scan-dv-1');
+      assert.ok(
+        unfiltered.fonts.some(value => /poppins/i.test(value)),
+        `expected an undocumented poppins font finding, got: ${JSON.stringify(unfiltered)}`,
+      );
+
+      const filtered = await scan('scan-dv-2', [{ rule: 'design-system-font', value: 'poppins' }]);
+      assert.equal(
+        filtered.fonts.some(value => /poppins/i.test(value)),
+        false,
+        `expected the poppins waiver to suppress its finding, got: ${JSON.stringify(filtered)}`,
+      );
+      const waivedCount = unfiltered.fonts.filter(value => /poppins/i.test(value)).length;
+      assert.equal(
+        filtered.total,
+        unfiltered.total - waivedCount,
+        `expected exactly the waived findings to disappear, got: ${JSON.stringify({ unfiltered, filtered })}`,
+      );
+      assert.equal(
+        filtered.colors,
+        unfiltered.colors,
+        `expected unrelated design-system findings to survive, got: ${JSON.stringify({ unfiltered, filtered })}`,
+      );
+      await page.close();
+    } finally {
+      await browser.close().catch(() => {});
+    }
+  });
+
   it('browser API: impeccableDetect is pure, impeccableScan decorates', async () => {
     const puppeteer = await import('puppeteer');
     const browser = await puppeteer.default.launch({

@@ -714,8 +714,13 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
-      /function requestDetectScan\(\)[\s\S]{0,240}?const scanId = String\(\+\+detectScanSeq\);[\s\S]{0,80}?activeDetectScanId = scanId;[\s\S]{0,160}?config: \{ scanId \}/,
-      'Detect scans must send a fresh scan id to the detector',
+      /function requestDetectScan\(\)[\s\S]{0,240}?const scanId = String\(\+\+detectScanSeq\);[\s\S]{0,80}?activeDetectScanId = scanId;[\s\S]{0,1400}?config: \{ scanId, disabledRules: ignores\.disabledRules, disabledValues: ignores\.disabledValues \}/,
+      'Detect scans must send a fresh scan id plus the resolved project waivers to the detector',
+    );
+    assert.match(
+      SOURCE,
+      /typeof ignoresApi\?\.resolveDetectIgnores === 'function'[\s\S]{0,300}?: \{ disabledRules: \[\], disabledValues: \[\] \}/,
+      'a cached live.js without the ignores resolver part must still scan, just unfiltered',
     );
     assert.match(
       SOURCE,

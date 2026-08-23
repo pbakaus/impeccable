@@ -11143,10 +11143,24 @@ void main() {
     const scanId = String(++detectScanSeq);
     activeDetectScanId = scanId;
     pendingDetectScanId = scanId;
+    // Send the project's detector waivers with the scan so the overlay
+    // filters the same findings the CLI and the edit hook do (issue #639).
+    // live-browser-ignores.js resolves .impeccable config for this page:
+    // ignoreRules suppress outright, wildcard ignoreValues suppress their
+    // rule in the files they name, and the rest match on the finding's own
+    // value inside the detector. Guarded so a stale cached live.js without
+    // the resolver part still scans, just unfiltered as before.
+    const ignoresApi = window.__IMPECCABLE_LIVE_IGNORES__;
+    const ignores = typeof ignoresApi?.resolveDetectIgnores === 'function'
+      ? ignoresApi.resolveDetectIgnores({
+        ignores: window.__IMPECCABLE_PROJECT_IGNORES__,
+        pathname: location.pathname,
+      })
+      : { disabledRules: [], disabledValues: [] };
     window.postMessage({
       source: 'impeccable-command',
       action: 'scan',
-      config: { scanId },
+      config: { scanId, disabledRules: ignores.disabledRules, disabledValues: ignores.disabledValues },
     }, '*');
   }
 
