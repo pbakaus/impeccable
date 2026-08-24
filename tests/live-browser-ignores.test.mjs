@@ -183,6 +183,37 @@ describe('live-browser-ignores resolver', () => {
     assert.deepEqual(out.disabledRules, ['dark-glow']);
   });
 
+  it('does not apply a waiver scoped to one root when several roots could serve the URL', () => {
+    // With src/**/*.html and public/**/*.html both configured, /foo.html
+    // could be served from either root. A waiver naming only src/foo.html
+    // must not hide a finding on a page actually served from
+    // public/foo.html; ambiguity resolves to showing the finding.
+    const ignores = {
+      roots: ['src/', 'public/'],
+      ignoreValues: [
+        { rule: 'dark-glow', value: '*', files: ['src/foo.html'] },
+        { rule: 'gradient-text', value: 'teal', files: ['src/foo.html'] },
+      ],
+    };
+    const out = resolve({ ignores, pathname: '/foo.html' });
+    assert.deepEqual(out, EMPTY);
+  });
+
+  it('applies a scoped waiver under several roots when every identity matches', () => {
+    const ignores = {
+      roots: ['src/', 'public/'],
+      ignoreValues: [
+        // Two globs covering both identities.
+        { rule: 'dark-glow', value: '*', files: ['src/foo.html', 'public/foo.html'] },
+        // A bare-path glob holds whichever root serves the page.
+        { rule: 'em-dash-overuse', value: '*', files: ['foo.html'] },
+        { rule: 'gradient-text', value: '*', files: ['**/foo.html'] },
+      ],
+    };
+    const out = resolve({ ignores, pathname: '/foo.html' });
+    assert.deepEqual(out.disabledRules.sort(), ['dark-glow', 'em-dash-overuse', 'gradient-text']);
+  });
+
   it('survives malformed roots and percent-escapes without throwing', () => {
     const out = resolve({
       ignores: {

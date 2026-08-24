@@ -89,6 +89,13 @@
   // Each prefixed path also contributes its slash suffixes, mirroring
   // findingMatchesScopedIgnoreFile in cli/lib/impeccable-config.mjs (which
   // matches globs against every path suffix of the finding's file).
+  //
+  // With several roots configured, one URL has several possible identities
+  // and the browser cannot tell which root actually serves it. The rooted
+  // groups are therefore kept separate: matchesScope treats a root-prefixed
+  // match as valid only when it holds under every root, so a waiver scoped
+  // to src/foo.html never hides a finding on a page served from
+  // public/foo.html. With a single root this reduces to plain matching.
   function pageCandidates(pathname, roots) {
     let pagePath = String(pathname || '');
     try {
@@ -101,33 +108,39 @@
     // name files. Without this, /news/ never matches prototype/news/index.html.
     if (pagePath === '' || pagePath.endsWith('/')) pagePath += 'index.html';
 
-    const prefixes = [''];
+    const suffixesOf = (fullPath) => {
+      const parts = fullPath.split('/').filter(Boolean);
+      const out = [];
+      for (let i = 0; i < parts.length; i++) {
+        out.push(parts.slice(i).join('/'));
+      }
+      return out;
+    };
+
+    const rooted = [];
     for (const entry of Array.isArray(roots) ? roots : []) {
       if (typeof entry !== 'string') continue;
-      prefixes.push(entry === '' || entry.endsWith('/') ? entry : entry + '/');
+      const prefix = entry === '' || entry.endsWith('/') ? entry : entry + '/';
+      rooted.push(suffixesOf(prefix + pagePath));
     }
-
-    const candidates = new Set();
-    for (const prefix of prefixes) {
-      const full = prefix + pagePath;
-      const parts = full.split('/').filter(Boolean);
-      for (let i = 0; i < parts.length; i++) {
-        candidates.add(parts.slice(i).join('/'));
-      }
-    }
-    return [...candidates];
+    return { bare: suffixesOf(pagePath), rooted };
   }
 
   function matchesScope(globs, candidates) {
-    return globs.some((glob) => {
-      let re;
+    const regexes = [];
+    for (const glob of globs) {
       try {
-        re = globToRegex(String(glob));
+        regexes.push(globToRegex(String(glob)));
       } catch {
-        return false;
+        // Malformed glob: skip it, as matchesAnyGlob does in the CLI.
       }
-      return candidates.some((candidate) => re.test(candidate));
-    });
+    }
+    if (regexes.length === 0) return false;
+    const hits = (paths) => paths.some((path) => regexes.some((re) => re.test(path)));
+    // Matches on the URL path itself hold whichever root serves the page.
+    if (hits(candidates.bare)) return true;
+    // Root-prefixed matches only hold if no possible identity disagrees.
+    return candidates.rooted.length > 0 && candidates.rooted.every(hits);
   }
 
   /**
