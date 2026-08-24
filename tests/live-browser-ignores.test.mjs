@@ -1,10 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 
-const REPO_ROOT = process.cwd();
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SCRIPT = join(REPO_ROOT, 'skill/scripts/live-browser-ignores.js');
 
 // Evaluated in the test realm (not a vm context) so the arrays the resolver
@@ -183,35 +184,46 @@ describe('live-browser-ignores resolver', () => {
     assert.deepEqual(out.disabledRules, ['dark-glow']);
   });
 
-  it('does not apply a waiver scoped to one root when several roots could serve the URL', () => {
-    // With src/**/*.html and public/**/*.html both configured, /foo.html
-    // could be served from either root. A waiver naming only src/foo.html
-    // must not hide a finding on a page actually served from
-    // public/foo.html; ambiguity resolves to showing the finding.
+  it('asserts no prefix when the configured roots share no common ancestor', () => {
+    // With src/**/*.html and public/**/*.html both configured, no single
+    // document root maps /foo.html to a unique project file, so no prefix
+    // is asserted. A waiver naming src/foo.html must not hide a finding on
+    // a page served from public/foo.html; ambiguity resolves to showing
+    // the finding. Bare-path spellings still apply whichever root serves it.
     const ignores = {
       roots: ['src/', 'public/'],
       ignoreValues: [
         { rule: 'dark-glow', value: '*', files: ['src/foo.html'] },
-        { rule: 'gradient-text', value: 'teal', files: ['src/foo.html'] },
-      ],
-    };
-    const out = resolve({ ignores, pathname: '/foo.html' });
-    assert.deepEqual(out, EMPTY);
-  });
-
-  it('applies a scoped waiver under several roots when every identity matches', () => {
-    const ignores = {
-      roots: ['src/', 'public/'],
-      ignoreValues: [
-        // Two globs covering both identities.
-        { rule: 'dark-glow', value: '*', files: ['src/foo.html', 'public/foo.html'] },
-        // A bare-path glob holds whichever root serves the page.
+        { rule: 'clipped-overflow-container', value: '*', files: ['src/foo.html', 'public/foo.html'] },
         { rule: 'em-dash-overuse', value: '*', files: ['foo.html'] },
         { rule: 'gradient-text', value: '*', files: ['**/foo.html'] },
       ],
     };
     const out = resolve({ ignores, pathname: '/foo.html' });
-    assert.deepEqual(out.disabledRules.sort(), ['dark-glow', 'em-dash-overuse', 'gradient-text']);
+    assert.deepEqual(out.disabledRules.sort(), ['em-dash-overuse', 'gradient-text']);
+  });
+
+  it('reduces nested roots to their common ancestor so normal waivers keep applying', () => {
+    // Globs at two depths in one tree (prototype/*.html plus
+    // prototype/library/**/*.html) derive the prefixes prototype/ and
+    // prototype/library/. Those are not alternative identities: one server
+    // serves both, so the document root sits at their common ancestor and
+    // a project-relative waiver like prototype/index.html must apply.
+    const ignores = {
+      roots: ['prototype/', 'prototype/library/'],
+      ignoreValues: [
+        { rule: 'dark-glow', value: '*', files: ['prototype/index.html'] },
+        { rule: 'em-dash-overuse', value: '*', files: ['prototype/library/**'] },
+      ],
+    };
+    assert.deepEqual(
+      resolve({ ignores, pathname: '/index.html' }).disabledRules,
+      ['dark-glow'],
+    );
+    assert.deepEqual(
+      resolve({ ignores, pathname: '/library/buttons.html' }).disabledRules,
+      ['em-dash-overuse'],
+    );
   });
 
   it('survives malformed roots and percent-escapes without throwing', () => {
