@@ -1013,6 +1013,27 @@ async function fetchLatestSkillVersion() {
   }
 }
 
+// Destroy fetch's global undici dispatcher before process.exit(): a live
+// keep-alive socket trips a libuv assertion on Windows/Node 24 after a
+// successful boot (nodejs/node#56645, issue #573).
+async function destroyFetchDispatcher() {
+  const dispatcher = globalThis[Symbol.for('undici.globalDispatcher.1')];
+  if (dispatcher && typeof dispatcher.destroy === 'function') {
+    try { await dispatcher.destroy(); } catch { /* exit regardless */ }
+  }
+}
+
+// Drain the boot payload before process.exit(): a live pipe that has not
+// flushed yet is truncated when Node tears down (issue #573 review). Then
+// close fetch so Windows teardown does not abort on the keep-alive socket.
+async function finishCli(output) {
+  await new Promise((resolve) => {
+    process.stdout.write(output, () => resolve());
+  });
+  await destroyFetchDispatcher();
+  process.exit(0);
+}
+
 // Two instructions used to sit in one directive: ask, and "if they agree, run
 // it". Nothing gated the second on an answer, and the same sentence said to
 // continue without waiting, so a run that could never establish agreement was
@@ -1159,8 +1180,7 @@ async function cli() {
     appendImageToolsDirective(parts);
     appendStalenessDirective(parts, ctx, cliOptions);
     if (updateDirective) parts.push(updateDirective);
-    process.stdout.write(parts.join('\n\n---\n\n') + '\n');
-    process.exit(0);
+    await finishCli(parts.join('\n\n---\n\n') + '\n');
   }
   const parts = [`# PRODUCT.md\n\n${ctx.product.trim()}`];
   if (ctx.hasDesign) {
@@ -1206,7 +1226,7 @@ async function cli() {
     }
   }
   if (updateDirective) parts.push(updateDirective);
-  process.stdout.write(parts.join('\n\n---\n\n') + '\n');
+  await finishCli(parts.join('\n\n---\n\n') + '\n');
 }
 
 function parseCliOptions(args) {

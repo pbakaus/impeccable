@@ -721,20 +721,19 @@ function scanCssTextForGlow(content) {
   return results;
 }
 
-// Decorative grid or line-field backgrounds drawn with hairline
+// Decorative two-axis grid backgrounds drawn with hairline
 // linear-gradient layers tiled by a fixed pixel cell. Shared by the HTML
 // pattern pass and the regex source engine so standalone CSS, component
 // styles, and inline styles receive the same coverage. Both signals must
 // co-occur in one declaration block; unrelated rules must not add up across
-// the file. Returns [{ index, snippet }], capped at one finding per source to
-// match the page-level HTML check's existing behavior.
+// the file. A single hairline is a line, divider, or rail, not a grid, even
+// when tiled by a 2D px cell. Returns [{ index, snippet }], capped at one
+// finding per source to match the page-level HTML check's existing behavior.
 function scanCssTextForGridBackground(content) {
   const hairlineRe = /\b\d{1,3}px\s*,\s*transparent\s+\d{1,3}px/gi;
   const invertedHairlineRe = /transparent\s+calc\(100%\s*-\s*\d{1,3}px\)/gi;
   const sizeDeclPxRe = /background-size\s*:[^;{}"']*\b\d{1,3}px\b/i;
-  const sizeDeclPxPairRe = /background-size\s*:[^;{}"']*\b\d{1,3}px\s+\d{1,3}px/i;
   const shorthandPxAnyRe = /\/\s*\d{1,3}px\b/;
-  const shorthandPxPairRe = /\/\s*\d{1,3}px\s+\d{1,3}px/;
   const bgDeclRe = /\bbackground(?:-image)?\s*:\s*([^;{}"']*)/gi;
   const blockRe = /\{([^{}]*)\}|style\s*=\s*"([^"]*)"|style\s*=\s*'([^']*)'/gi;
   let blk;
@@ -751,13 +750,10 @@ function scanCssTextForGridBackground(content) {
     }
     if (hairlineCount === 0) continue;
     const hasPxCell = sizeDeclPxRe.test(block) || shorthandPxAnyRe.test(bgJoined);
-    const hasPxPairCell = sizeDeclPxPairRe.test(block) || shorthandPxPairRe.test(bgJoined);
-    if ((hairlineCount >= 2 && hasPxCell) || hasPxPairCell) {
+    if (hairlineCount >= 2 && hasPxCell) {
       return [{
         index: blk.index,
-        snippet: hairlineCount >= 2
-          ? 'two-axis grid-line gradient background'
-          : 'px-tiled hairline line-field background',
+        snippet: 'two-axis grid-line gradient background',
       }];
     }
   }
@@ -2752,7 +2748,7 @@ function checkElementAIPaletteDOM(el) {
   }
 
   // Check for neon text (vivid cyan/purple color on dark background)
-  const textColor = parseRgb(style.color);
+  const textColor = parseRgb(style.color) || parseAnyColor(style.color);
   if (textColor && hasChroma(textColor, 80)) {
     const hue = getHue(textColor);
     const isAIPalette = (hue >= 160 && hue <= 200) || (hue >= 260 && hue <= 310);

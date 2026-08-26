@@ -13,6 +13,11 @@ const FALLBACK_DIRS = ['.agents/context', 'docs'];
 // CLI can't import (separate tree). `.git` and `package.json` are the common
 // boundaries; `.impeccable` is our own project marker.
 const PROJECT_ROOT_MARKERS = ['.git', 'package.json', '.impeccable'];
+// Monorepo-root recognition, mirroring context.mjs's isMonorepoRoot: declared
+// workspace globs (package.json `workspaces`, pnpm-workspace.yaml `packages:`)
+// or a marker file beside apps/ or packages/ children.
+const MONOREPO_MARKER_FILES = ['pnpm-workspace.yaml', 'turbo.json', 'nx.json', 'lerna.json'];
+const MONOREPO_FALLBACK_PROJECT_DIRS = ['apps', 'packages'];
 const COLOR_CHANNEL_TOLERANCE = 6;
 // Shadow blacks at different alphas are different tokens (0.28 vs 0.55 is the
 // difference between a documented shadow and drift), so shadow matching cannot
@@ -575,14 +580,179 @@ function designSystemStartDir(targetPath, cwd = process.cwd()) {
   }
 }
 
+// Same two groups as context.mjs's readProjectPatternGroups: Impeccable
+// projectRoots govern any path they match (positive or negated); package-manager
+// globs only apply to paths the Impeccable group does not match.
+function readWorkspacePatternGroups(dir) {
+  const impeccable = [];
+  for (const name of ['config.json', 'config.local.json']) {
+    const roots = safeReadJson(path.join(dir, '.impeccable', name))?.projectRoots;
+    if (Array.isArray(roots)) {
+      impeccable.push(...roots.filter(entry => typeof entry === 'string' && entry.trim()).map(entry => entry.trim()));
+    }
+  }
+  const pkg = [];
+  const workspaces = safeReadJson(path.join(dir, 'package.json'))?.workspaces;
+  if (Array.isArray(workspaces)) pkg.push(...workspaces);
+  else if (Array.isArray(workspaces?.packages)) pkg.push(...workspaces.packages);
+  const lernaPackages = safeReadJson(path.join(dir, 'lerna.json'))?.packages;
+  if (Array.isArray(lernaPackages)) pkg.push(...lernaPackages);
+  try {
+    let inPackages = false;
+    for (const line of fs.readFileSync(path.join(dir, 'pnpm-workspace.yaml'), 'utf-8').split(/\r?\n/)) {
+      const trimmed = stripInlineYamlComment(line).trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const flow = trimmed.match(/^packages:\s*\[(.*)\]\s*$/);
+      if (flow) {
+        pkg.push(...flow[1].split(',').map(entry => entry.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean));
+        break;
+      }
+      if (/^packages:\s*$/.test(trimmed)) { inPackages = true; continue; }
+      if (!inPackages) continue;
+      const item = trimmed.match(/^-\s*(.+)$/);
+      if (item) pkg.push(item[1].trim().replace(/^['"]|['"]$/g, ''));
+      else if (/^[A-Za-z0-9_-]+:\s*/.test(trimmed)) break;
+    }
+  } catch { /* no pnpm-workspace.yaml */ }
+  return [impeccable, pkg];
+}
+
+function readWorkspacePatterns(dir) {
+  return readWorkspacePatternGroups(dir).flat();
+}
+
+function isMonorepoRoot(dir) {
+  if (readWorkspacePatterns(dir).some(pattern => !String(pattern).trim().startsWith('!'))) return true;
+  if (!MONOREPO_MARKER_FILES.some(file => fs.existsSync(path.join(dir, file)))) return false;
+  return MONOREPO_FALLBACK_PROJECT_DIRS.some(name => {
+    try {
+      return fs.readdirSync(path.join(dir, name), { withFileTypes: true }).some(entry => entry.isDirectory());
+    } catch {
+      return false;
+    }
+  });
+}
+
+function monorepoOwnsPath(root, boundaryDir) {
+  const rel = path.relative(root, boundaryDir);
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return false;
+  const relSegments = rel.split(path.sep).filter(Boolean);
+
+  function normalizeWorkspacePattern(pattern) {
+    return String(pattern || '')
+      .trim()
+      .replace(/^['"]|['"]$/g, '')
+      .replace(/^\.\//, '')
+      .replace(/\/+$/, '');
+  }
+
+  function escapeRegExp(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function segmentMatches(patternSegment, relSegment) {
+    if (patternSegment === '*') return true;
+    if (!patternSegment.includes('*')) return patternSegment === relSegment;
+    const re = new RegExp(`^${escapeRegExp(patternSegment).replace(/\\\*/g, '[^/]*')}$`);
+    return re.test(relSegment);
+  }
+
+  function matchGlobSegments(patternSegments, relSegments) {
+    function rec(pi, ri) {
+      if (pi === patternSegments.length) return ri === relSegments.length;
+      if (patternSegments[pi] === '**') {
+        if (pi === patternSegments.length - 1) return true;
+        for (let k = ri; k <= relSegments.length; k++) {
+          if (rec(pi + 1, k)) return true;
+        }
+        return false;
+      }
+      if (ri >= relSegments.length) return false;
+      if (!segmentMatches(patternSegments[pi], relSegments[ri])) return false;
+      return rec(pi + 1, ri + 1);
+    }
+    return rec(0, 0);
+  }
+
+  // Negations like !packages/excluded must also cover nested dirs under that path.
+  function matchesNegation(pattern) {
+    const patternSegments = normalizeWorkspacePattern(pattern).split('/').filter(Boolean);
+    if (!patternSegments.length) return false;
+    if (patternSegments.includes('**')) return matchGlobSegments(patternSegments, relSegments);
+    if (relSegments.length < patternSegments.length) return false;
+    for (let i = 0; i < patternSegments.length; i++) {
+      if (!segmentMatches(patternSegments[i], relSegments[i])) return false;
+    }
+    return true;
+  }
+
+  // Positive globs identify workspace packages at exact depth (`*` is a direct
+  // child). A nested package.json under that package is still owned: the
+  // ancestor directory of glob length must itself be a package.
+  function positiveOwns(pattern) {
+    const patternSegments = normalizeWorkspacePattern(pattern).split('/').filter(Boolean);
+    if (!patternSegments.length) return false;
+    if (patternSegments.includes('**')) return matchGlobSegments(patternSegments, relSegments);
+    if (relSegments.length < patternSegments.length) return false;
+    for (let i = 0; i < patternSegments.length; i++) {
+      if (!segmentMatches(patternSegments[i], relSegments[i])) return false;
+    }
+    if (relSegments.length === patternSegments.length) return true;
+    const ancestorDir = path.join(root, ...relSegments.slice(0, patternSegments.length));
+    return fs.existsSync(path.join(ancestorDir, 'package.json'));
+  }
+
+  function groupOwns(rawPatterns) {
+    const patterns = rawPatterns.map(normalizeWorkspacePattern).filter(Boolean);
+    if (!patterns.length) return null;
+    const excluded = patterns.some((pattern) => (
+      pattern.startsWith('!') && matchesNegation(pattern.slice(1))
+    ));
+    const included = patterns.filter((pattern) => !pattern.startsWith('!')).some(positiveOwns);
+    if (!excluded && !included) return null;
+    if (excluded) return false;
+    return true;
+  }
+
+  const [impeccable, pkg] = readWorkspacePatternGroups(root);
+  const fromImpeccable = groupOwns(impeccable);
+  if (fromImpeccable !== null) return fromImpeccable;
+  const fromPkg = groupOwns(pkg);
+  if (fromPkg !== null) return fromPkg;
+  if ([...impeccable, ...pkg].some((pattern) => !normalizeWorkspacePattern(pattern).startsWith('!'))) {
+    return false;
+  }
+  return relSegments.length >= 2 && MONOREPO_FALLBACK_PROJECT_DIRS.includes(relSegments[0]);
+}
+
+// Both forms of the home directory. The walk compares path strings, and a
+// symlinked home (e.g. /home -> /var/home) never string-matches the physical
+// paths a cwd-resolved target produces, which would let the post-boundary walk
+// sail through $HOME and inherit from it.
+function homeDirForms() {
+  const homeDir = path.resolve(os.homedir());
+  const forms = new Set([homeDir]);
+  try {
+    forms.add(fs.realpathSync(homeDir));
+  } catch { /* keep the logical form only */ }
+  return forms;
+}
+
 // Walk up from `startDir` to the directory that governs the target's design
 // system, mirroring skill/scripts/context.mjs's project-boundary semantics:
 //
 //   - A directory carrying a DESIGN.md (directly or in a fallback dir) IS the
 //     design root — that's where the rules live.
 //   - A directory carrying a project marker (.git / package.json / .impeccable)
-//     but no DESIGN.md is a project BOUNDARY: the walk stops with no design
-//     system, so a sibling project never inherits a parent's or cwd's rules.
+//     but no DESIGN.md is a project BOUNDARY. A nested package.json inherits
+//     the ancestor DESIGN.md only when that ancestor's workspace declarations
+//     include the path (negations win; a nested package under a matched
+//     workspace still inherits). Marker-only roots (turbo/nx/lerna/pnpm
+//     with no globs) still own apps/<name> and packages/<name>. A stray nested
+//     package that matches no glob does not inherit. This is detect's
+//     contamination contract, not skill-context's repoRoot fallback for
+//     excluded paths. A nested separate repository (.git with no workspace
+//     declaration) still inherits nothing (issue #570).
 //   - Reaching the home directory / filesystem root with neither means no
 //     design system at all — never process.cwd()'s.
 //
@@ -590,15 +760,33 @@ function designSystemStartDir(targetPath, cwd = process.cwd()) {
 // runs out. This is the fix for cross-project contamination.
 export function findDesignRoot(startDir) {
   let dir = path.resolve(startDir);
-  const homeDir = path.resolve(os.homedir());
+  const homeDirs = homeDirForms();
+  let boundary = null;
   while (true) {
-    if (resolveDesignMdPath(dir)) return { dir, hasDesign: true };
-    if (PROJECT_ROOT_MARKERS.some((marker) => fs.existsSync(path.join(dir, marker)))) {
-      return { dir, hasDesign: false };
+    if (!boundary && resolveDesignMdPath(dir)) return { dir, hasDesign: true };
+    if (boundary) {
+      // Past the boundary the walk only looks for the monorepo root that owns
+      // the workspace path (workspace globs including negations, or marker-only
+      // apps/packages fallback). Monorepo-root before .git, same order as
+      // context.mjs: a workspace root carrying its own .git is still recognized,
+      // while a .git that declares no workspaces is a separate repository and
+      // stops the walk with nothing inherited. The home directory is never an
+      // owning root, same as context.mjs's findMonorepoRoot, which stops at
+      // homeDir before its monorepo check.
+      if (!homeDirs.has(dir) && isMonorepoRoot(dir)) {
+        if (monorepoOwnsPath(dir, boundary.dir)) return { dir, hasDesign: !!resolveDesignMdPath(dir) };
+        return boundary;
+      }
+      if (fs.existsSync(path.join(dir, '.git'))) return boundary;
+    } else if (PROJECT_ROOT_MARKERS.some((marker) => fs.existsSync(path.join(dir, marker)))) {
+      boundary = { dir, hasDesign: false };
+      // A boundary that is itself a monorepo root, or a separate repository
+      // with its own .git, inherits nothing from above.
+      if (isMonorepoRoot(dir) || fs.existsSync(path.join(dir, '.git'))) return boundary;
     }
-    if (dir === homeDir) return null;
+    if (homeDirs.has(dir)) return boundary;
     const parent = path.dirname(dir);
-    if (parent === dir) return null;
+    if (parent === dir) return boundary;
     dir = parent;
   }
 }

@@ -773,14 +773,22 @@ function extractColorFunctionTokens(value) {
 function parseGradientColors(bgImage) {
   if (!bgImage || !bgImage.includes('gradient')) return [];
   const colors = [];
+  const tokenSpans = [];
+  let from = 0;
   // Stops arrive in whatever syntax the author wrote and the browser kept.
   // A dark ground painted as `linear-gradient(oklch(...), oklch(...))` used
   // to read as a gradient with no stops at all.
   for (const token of extractColorFunctionTokens(bgImage)) {
+    const start = bgImage.indexOf(token, from);
+    if (start < 0) break;
+    tokenSpans.push({ start, end: start + token.length });
+    from = start + token.length;
     const c = parseAnyColor(token);
     if (c) colors.push(c);
   }
   for (const m of bgImage.matchAll(/#([0-9a-f]{6}|[0-9a-f]{3})\b/gi)) {
+    // Nested hex inside color-mix is an ingredient, not a stop (issue #578).
+    if (tokenSpans.some(s => m.index >= s.start && m.index < s.end)) continue;
     const h = m[1];
     if (h.length === 6) {
       colors.push({ r: parseInt(h.slice(0,2),16), g: parseInt(h.slice(2,4),16), b: parseInt(h.slice(4,6),16), a: 1 });
@@ -1955,20 +1963,19 @@ function scanCssTextForGlow(content) {
   return results;
 }
 
-// Decorative grid or line-field backgrounds drawn with hairline
+// Decorative two-axis grid backgrounds drawn with hairline
 // linear-gradient layers tiled by a fixed pixel cell. Shared by the HTML
 // pattern pass and the regex source engine so standalone CSS, component
 // styles, and inline styles receive the same coverage. Both signals must
 // co-occur in one declaration block; unrelated rules must not add up across
-// the file. Returns [{ index, snippet }], capped at one finding per source to
-// match the page-level HTML check's existing behavior.
+// the file. A single hairline is a line, divider, or rail, not a grid, even
+// when tiled by a 2D px cell. Returns [{ index, snippet }], capped at one
+// finding per source to match the page-level HTML check's existing behavior.
 function scanCssTextForGridBackground(content) {
   const hairlineRe = /\b\d{1,3}px\s*,\s*transparent\s+\d{1,3}px/gi;
   const invertedHairlineRe = /transparent\s+calc\(100%\s*-\s*\d{1,3}px\)/gi;
   const sizeDeclPxRe = /background-size\s*:[^;{}"']*\b\d{1,3}px\b/i;
-  const sizeDeclPxPairRe = /background-size\s*:[^;{}"']*\b\d{1,3}px\s+\d{1,3}px/i;
   const shorthandPxAnyRe = /\/\s*\d{1,3}px\b/;
-  const shorthandPxPairRe = /\/\s*\d{1,3}px\s+\d{1,3}px/;
   const bgDeclRe = /\bbackground(?:-image)?\s*:\s*([^;{}"']*)/gi;
   const blockRe = /\{([^{}]*)\}|style\s*=\s*"([^"]*)"|style\s*=\s*'([^']*)'/gi;
   let blk;
@@ -1985,13 +1992,10 @@ function scanCssTextForGridBackground(content) {
     }
     if (hairlineCount === 0) continue;
     const hasPxCell = sizeDeclPxRe.test(block) || shorthandPxAnyRe.test(bgJoined);
-    const hasPxPairCell = sizeDeclPxPairRe.test(block) || shorthandPxPairRe.test(bgJoined);
-    if ((hairlineCount >= 2 && hasPxCell) || hasPxPairCell) {
+    if (hairlineCount >= 2 && hasPxCell) {
       return [{
         index: blk.index,
-        snippet: hairlineCount >= 2
-          ? 'two-axis grid-line gradient background'
-          : 'px-tiled hairline line-field background',
+        snippet: 'two-axis grid-line gradient background',
       }];
     }
   }
@@ -3986,7 +3990,7 @@ function checkElementAIPaletteDOM(el) {
   }
 
   // Check for neon text (vivid cyan/purple color on dark background)
-  const textColor = parseRgb(style.color);
+  const textColor = parseRgb(style.color) || parseAnyColor(style.color);
   if (textColor && hasChroma(textColor, 80)) {
     const hue = getHue(textColor);
     const isAIPalette = (hue >= 160 && hue <= 200) || (hue >= 260 && hue <= 310);
@@ -7281,7 +7285,7 @@ if (IS_BROWSER) {
       if (currentStyle.filter && currentStyle.filter !== 'none') reasons.add('filter');
       if (currentStyle.backdropFilter && currentStyle.backdropFilter !== 'none') reasons.add('backdrop filter');
 
-      const solidBg = parseRgb(currentStyle.backgroundColor);
+      const solidBg = parseRgb(currentStyle.backgroundColor) || parseAnyColor(currentStyle.backgroundColor);
       if (solidBg && solidBg.a >= 0.95 && (!bgImage || bgImage === 'none')) break;
       current = current.parentElement;
     }
@@ -7343,7 +7347,7 @@ if (IS_BROWSER) {
       // starve the url()-backed texts this mode exists to sample.
       if (options.imageOnly && !reasons.includes('image background')) continue;
 
-      const textColor = parseRgb(style.color);
+      const textColor = parseRgb(style.color) || parseAnyColor(style.color);
       const fontSize = parseFloat(style.fontSize) || 16;
       const fontWeight = parseInt(style.fontWeight) || 400;
       const isLargeText = fontSize >= WCAG_LARGE_TEXT_PX || (fontSize >= WCAG_LARGE_BOLD_TEXT_PX && fontWeight >= 700);
@@ -7640,7 +7644,7 @@ if (IS_BROWSER) {
         return sample;
       }
     }
-    const bg = parseRgb(style.backgroundColor);
+    const bg = parseRgb(style.backgroundColor) || parseAnyColor(style.backgroundColor);
     if (bg && bg.a > 0.05) return { status: 'sampled', color: bg, method: 'solid-background' };
     return { status: 'unresolved', reason: 'no readable background' };
   }
@@ -7770,7 +7774,7 @@ if (IS_BROWSER) {
     }
 
     const style = getComputedStyle(el);
-    const textColor = parseRgb(style.color) || candidate.textColor;
+    const textColor = parseRgb(style.color) || parseAnyColor(style.color) || candidate.textColor;
     if (!textColor) return { ...candidate, status: 'unresolved', confidence: 'none', reason: 'unreadable text color' };
 
     const rect = getDirectTextRect(el) || el.getBoundingClientRect();

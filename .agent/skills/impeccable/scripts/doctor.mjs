@@ -33,13 +33,8 @@ import {
   stampProductSchema,
 } from './lib/artifact-schema.mjs';
 import {
-  checkBuildPathUnset,
-  checkConfig,
-  checkDesignSidecar,
+  collectBootFindingGroups,
   checkNativePlatformEvidence,
-  checkProduct,
-  checkProjectRoots,
-  checkSurfaceBriefs,
   designSidecarCandidatesFor,
 } from './lib/staleness.mjs';
 import {
@@ -106,34 +101,30 @@ async function collect(cwd, targetOptions) {
     extractPlatform,
     readFile: safeRead,
   });
+  const bootFindings = collectBootFindingGroups(ctx, {
+    absDesignPath,
+    sidecarCandidates,
+    projectRootPatterns: readProjectRootPatterns(ctx.repoRoot),
+    targetCandidates: workspaceCandidates,
+  });
 
   const findings = [
-    ...checkProduct(ctx.product, ctx.productPath || 'PRODUCT.md'),
-    ...(ctx.product
-      ? checkNativePlatformEvidence({
-          projectRoot,
-          platform: ctx.platform,
-          product: ctx.product,
-          productPath: ctx.productPath,
-        })
-      : []),
-    ...checkDesignSidecar({ designPath: absDesignPath, sidecarCandidates, projectRoot }),
+    ...bootFindings.product,
+    ...bootFindings.nativePlatform,
+    ...bootFindings.designSidecar,
     ...checkDesignDrift({ designPath: absDesignPath, projectRoot }),
     ...checkDesignCoverage({ design: ctx.design, designPath: ctx.designPath, parseDesignMd }),
-    ...checkConfig({ projectRoot, repoRoot: ctx.repoRoot }),
-    ...checkBuildPathUnset({ projectRoot, repoRoot: ctx.repoRoot, product: ctx.product }),
+    ...bootFindings.config,
+    ...bootFindings.buildPath,
     ...checkDetectorIgnores({ projectRoot, knownRuleIds }),
-    ...checkSurfaceBriefs({ candidates: ctx.surfaceBriefCandidates, projectRoot }),
+    ...bootFindings.surfaceBriefs,
     ...checkHookInstallation({
       projectRoot,
       repoRoot: ctx.repoRoot,
       providerId: IMPECCABLE_PROVIDER_ID,
     }),
     ...checkLegacyLiveState({ projectRoot }),
-    ...checkProjectRoots({
-      patterns: readProjectRootPatterns(ctx.repoRoot),
-      candidates: workspaceCandidates,
-    }),
+    ...bootFindings.projectRoots,
     ...workspaceResult.findings,
   ];
 

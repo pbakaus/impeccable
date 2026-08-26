@@ -134,7 +134,7 @@ async function detectHtml(filePath, options = {}) {
         parseDocument: htmlparser2.parseDocument,
         selectAll: cssSelect.selectAll,
         selectOne: cssSelect.selectOne,
-        is: cssSelect.is,
+        compile: cssSelect.compile,
         csstree,
         domutils,
       };
