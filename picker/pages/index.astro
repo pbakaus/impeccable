@@ -1515,16 +1515,6 @@ const questions = [
   </dialog>
 
   {/* Live edit tray: every queued request with its status, fed by polling. */}
-  {/* Edits stage in the page and are written in one go, so the bar says what
-      is waiting and where pressing it lands. Hidden until something is. */}
-  <div class="dcx-savebar" data-dcx-savebar hidden>
-    <button class="dcx-savebar-apply" type="button" data-dcx-apply>
-      <span data-dcx-apply-label>Apply changes</span>
-      <span class="dcx-savebar-count" data-dcx-apply-count>0</span>
-    </button>
-    <button class="dcx-savebar-discard" type="button" data-dcx-discard>Discard</button>
-  </div>
-
   <div class="dcx-tray" data-dcx-tray hidden aria-live="polite"></div>
 
   <dialog class="picker-modal" data-font-modal aria-labelledby="picker-font-modal-title">
@@ -1603,6 +1593,14 @@ const questions = [
   </aside>
 
   <script>
+    // The document engine loads first: it renames two category tiles at module
+    // init and owns tile clicks in the capture phase, so it must be installed
+    // before the data layer reads the tiles.
+    import '../scripts/dcx/dcx-document.js';
+    import '../scripts/dcx/dcx-audience.js';
+    import '../scripts/dcx/dcx-hooks.js';
+    import '../scripts/dcx/dcx-detail.js';
+    import '../scripts/dcx/dcx-rail.js';
     import '../scripts/palette-picker.js';
     import '../scripts/design-context.js';
 

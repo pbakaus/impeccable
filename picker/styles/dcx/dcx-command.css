@@ -1,0 +1,165 @@
+/* Compact command-copy control, matched to the homepage Get started treatment. */
+
+.dcx-command-copy {
+  --dcx-command-accent: var(--ks-kinpaku);
+  --dcx-command-ground: var(--ks-code-block-bg, var(--ks-lacquer-deep));
+  --dcx-command-ink: var(--ks-code-block-fg, var(--ks-text));
+  --dcx-command-copy-border: var(--ks-rule);
+  --dcx-command-copy-hover: oklch(77% 0.14 82 / 0.08);
+
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  min-height: 52px;
+  padding: 9px 9px 9px 18px;
+  border: 1px solid var(--dcx-command-accent);
+  border-radius: 2px;
+  background: var(--dcx-command-ground);
+}
+
+.dcx-command-copy__prompt {
+  flex: none;
+  color: var(--dcx-command-accent);
+  font: 500 1.125rem/1 var(--ks-mono);
+  user-select: none;
+}
+
+.dcx-command-copy > code {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  overflow-x: auto;
+  border: 0;
+  background: transparent;
+  color: var(--dcx-command-ink);
+  font: 400 0.98rem/1.35 var(--ks-mono);
+  letter-spacing: 0;
+  scrollbar-width: thin;
+  user-select: all;
+  white-space: nowrap;
+}
+
+.dcx-command-copy__button {
+  position: relative;
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--dcx-command-copy-border);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--dcx-command-accent);
+  cursor: pointer;
+  transition:
+    background-color 180ms var(--ks-ease),
+    border-color 180ms var(--ks-ease),
+    color 180ms var(--ks-ease),
+    transform 120ms var(--ks-ease);
+}
+
+.dcx-command-copy__button:hover,
+.dcx-command-copy__button.copied {
+  border-color: currentColor;
+  background: var(--dcx-command-copy-hover);
+}
+
+.dcx-command-copy__button:active {
+  transform: scale(0.96);
+}
+
+.dcx-command-copy__button:focus-visible {
+  outline: 2px solid var(--ks-patina);
+  outline-offset: 4px;
+}
+
+.dcx-command-copy__button svg {
+  grid-area: 1 / 1;
+  fill: none;
+  stroke: currentColor;
+  transition:
+    opacity 140ms var(--ks-ease),
+    transform 180ms var(--ks-ease);
+}
+
+.dcx-command-copy__copy-icon {
+  width: 14px;
+  height: 14px;
+  opacity: 1;
+  stroke-width: 1.6;
+  transform: scale(1);
+}
+
+.dcx-command-copy__check-icon {
+  width: 16px;
+  height: 16px;
+  opacity: 0;
+  stroke-width: 2.1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transform: scale(0.86);
+}
+
+.dcx-command-copy__check-icon path {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+}
+
+.dcx-command-copy__button.copied .dcx-command-copy__copy-icon {
+  opacity: 0;
+  transform: scale(0.82);
+}
+
+.dcx-command-copy__button.copied .dcx-command-copy__check-icon {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.dcx-command-copy__button.copied .dcx-command-copy__check-icon path {
+  animation: dcx-command-check-draw 260ms var(--ks-ease) forwards;
+}
+
+.dcx-command-copy__label,
+.dcx-command-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  border: 0;
+  white-space: nowrap;
+}
+
+@keyframes dcx-command-check-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+@media (max-width: 520px) {
+  .dcx-command-copy {
+    gap: 10px;
+    padding: 9px 8px 9px 14px;
+  }
+
+  .dcx-command-copy > code {
+    font-size: 0.72rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dcx-command-copy__button,
+  .dcx-command-copy__button svg {
+    transition: none;
+  }
+
+  .dcx-command-copy__button.copied .dcx-command-copy__check-icon path {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+}

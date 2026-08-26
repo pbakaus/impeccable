@@ -48,6 +48,7 @@ export const SUITES = {
           'tests/validate-plugin-versions.test.js',
           'tests/validate-plugin-manifest.test.js',
           'tests/plugin-paths.test.js',
+          'tests/hook-rule-presentation.test.js',
         ],
       },
       {

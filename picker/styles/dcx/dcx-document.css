@@ -1,0 +1,50 @@
+/* Continuous expanded document. The opening category grid is intentionally untouched. */
+
+.dcx-main[data-dcx-continuous="true"] {
+  overflow-x: hidden;
+}
+
+.dcx-document-title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.dcx-main[data-dcx-continuous="true"] > .dcx-document-article {
+  box-sizing: border-box;
+  scroll-margin-top: 18px;
+}
+
+.dcx-main[data-dcx-continuous="true"] > .dcx-document-article + .dcx-document-article {
+  border-top: 1px solid var(--ks-rule);
+  margin-top: clamp(48px, 6vw, 80px);
+  padding-top: clamp(36px, 5vw, 64px);
+}
+
+.dcx-expander[data-dcx-document="true"] .dcx-sub-link {
+  text-decoration: none;
+}
+
+.dcx-expander[data-dcx-document="true"] .dcx-nav-link[aria-expanded="true"] {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+@media (max-width: 920px) {
+  .dcx-main[data-dcx-continuous="true"] > .dcx-document-article + .dcx-document-article {
+    margin-top: 42px;
+    padding-top: 30px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dcx-main[data-dcx-continuous="true"] {
+    scroll-behavior: auto;
+  }
+}

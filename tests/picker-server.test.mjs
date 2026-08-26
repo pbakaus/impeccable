@@ -552,3 +552,63 @@ test('timeout exits 2 with one stderr line', async (t) => {
   assert.equal((await waitForExit(server.processHandle))[0], 2);
   assert.equal(server.stderr().trim(), 'Picker timed out without a submission.');
 });
+
+/* The doc session serves the design context document's own images after the
+   picker server has exited on submit. The route is token-gated, read-only, and
+   contained, but unlike /brand-assets/ it must reach into subdirectories,
+   because the vendored files sit per category. */
+test('doc session serves picker assets, token-gated and contained', async (t) => {
+  const fixture = await createFixture();
+  const sessionScript = path.join(root, 'skill/scripts/picker-doc-session.mjs');
+  const builtAsset = path.join(root, 'skill/scripts/picker/assets/audience/needs-foil.png');
+  /* skill/scripts/picker/ is gitignored build output, so a fresh clone has no
+     assets to serve. The gate for this work always builds first; here the
+     happy-path reads skip rather than fail on a tree that never built. */
+  const built = existsSync(builtAsset);
+
+  const child = spawn(process.execPath, [sessionScript, '--port', String(portBase + 60)], {
+    cwd: fixture.cwd,
+    env: { ...process.env, IMPECCABLE_DOC_TOKEN: 't-assets' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  try {
+    const sessionFile = path.join(fixture.cwd, '.impeccable/design-context/runtime/session.json');
+    let session = null;
+    for (let attempt = 0; attempt < 100 && !session; attempt += 1) {
+      if (existsSync(sessionFile)) session = JSON.parse(await readFile(sessionFile, 'utf8'));
+      else await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.ok(session?.port, 'the session never recorded its port');
+    const base = `http://127.0.0.1:${session.port}`;
+
+    if (built) {
+      const ok = await fetch(`${base}/assets/audience/needs-foil.png?token=t-assets`);
+      assert.equal(ok.status, 200);
+      assert.equal(ok.headers.get('content-type'), 'image/png');
+      assert.ok((await ok.arrayBuffer()).byteLength > 0, 'served an empty body');
+
+      // Subdirectories deeper than one level resolve too.
+      const nested = await fetch(`${base}/assets/brand/placeholders/hanazono-primary-mark.png?token=t-assets`);
+      assert.equal(nested.status, 200);
+    } else {
+      t.diagnostic('skipping the served-file assertions: run `bun run build:picker` to cover them');
+    }
+
+    // The gate and the containment hold whether or not the tree has been built.
+    assert.equal((await fetch(`${base}/assets/audience/needs-foil.png?token=wrong`)).status, 403);
+    assert.equal((await fetch(`${base}/assets/audience/needs-foil.png`)).status, 403);
+    assert.equal((await fetch(`${base}/assets/..%2Fpicker-server.mjs?token=t-assets`)).status, 404);
+    assert.equal((await fetch(`${base}/assets/../picker-server.mjs?token=t-assets`)).status, 404);
+    /* An extension the route DOES allow, on a real file outside the assets
+       directory: only the containment check can turn this one away, so it is
+       the case that actually tests it. */
+    assert.equal((await fetch(`${base}/assets/../favicon.svg?token=t-assets`)).status, 404);
+    assert.equal((await fetch(`${base}/assets/..%2F..%2F..%2F..%2Fpicker/assets/favicon.svg?token=t-assets`)).status, 404);
+    assert.equal((await fetch(`${base}/assets/audience/needs-foil.txt?token=t-assets`)).status, 404);
+    assert.equal((await fetch(`${base}/assets/?token=t-assets`)).status, 404);
+  } finally {
+    child.kill('SIGTERM');
+    await rm(fixture.cwd, { recursive: true, force: true });
+  }
+});

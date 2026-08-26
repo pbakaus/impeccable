@@ -1,13 +1,15 @@
 /* Design context document, the questionnaire's final act and its own surface.
  *
- * When a run reaches the review screen this module saves the answers, then
- * swaps the picker for the eight-category design context document. The mosaic
- * landing, tile-to-fullscreen morph, sidebar shell, and article vocabulary are
- * ported unchanged from docs/design-context-categorization/design-context.html;
- * what changed is the content: the prototype rendered one example project, this
- * renders the interview that just ended. Everything is assembled client-side
- * before the POST resolves, because the server's exit on /submit is the
- * completion signal the agent waits on, and after it there is nothing to fetch.
+ * This module is the document's data layer. It reads the finished interview,
+ * builds each category's article into the #dcx-detail-* templates, reveals the
+ * tile shell, and keeps the live edit session. What it no longer owns is the
+ * presentation: the mosaic morph, sidebar, scroll-spy, and section styling are
+ * the engine's, in scripts/dcx/, ported from the standalone design context
+ * demo. It mounts those same templates as one continuous document.
+ *
+ * Everything is assembled client-side before the POST resolves, because the
+ * server's exit on /submit is the completion signal the agent waits on, and
+ * after it there is nothing to fetch.
  *
  * The document is also openable on its own, long after that run. The boot
  * contract says which of the two this page is, and document mode renders from
@@ -252,16 +254,6 @@ const empty = (title, body) => `
 
 const note = (text) => `<p class="dcx-fan-note">${text}</p>`;
 
-/* A value the document lets a person change in place.
-
-   The binding id is the whole address: the session resolves it to a file and
-   a path, so nothing on this side has to know where the text lives. The
-   original travels with it because an edit reports what it replaced, and a
-   field edited twice still has to report the value the store started from.
-   Editing itself is switched on after render, and only where a session can
-   accept it. */
-const editable = (bindingId, text) => `<span class="dcx-editable" data-dcx-binding="${escapeHtml(bindingId)}" data-dcx-original="${escapeHtml(text)}">${escapeHtml(text)}</span>`;
-
 /* Chat-round material renders when the agent passed it along, and says where
    it lives when it did not — an interview that skipped a question is a fact
    the document reports, not a gap it papers over. */
@@ -403,8 +395,8 @@ function buildAudience(s, name) {
   const audience = s.context?.audience || {};
   const parts = [heading(1, 'Audience', 'Who it is for, emotional state, needs, trust triggers.', name)];
   const who = [
-    audience.primary && { dt: 'Primary', dd: editable('audience.primary', audience.primary) },
-    audience.secondary && { dt: 'Secondary', dd: editable('audience.secondary', audience.secondary) },
+    audience.primary && { dt: 'Primary', dd: escapeHtml(audience.primary) },
+    audience.secondary && { dt: 'Secondary', dd: escapeHtml(audience.secondary) },
   ].filter(Boolean);
   parts.push(block('Who they are', who.length
     ? defs(who)
@@ -412,8 +404,8 @@ function buildAudience(s, name) {
   /* Arrival-only context keeps the old single-callout block; a leaving line
      widens it into the two-beat journey, side by side. */
   if (audience.emotion || audience.leaving) {
-    const arrival = audience.emotion ? callout('On arrival', editable('audience.emotion', audience.emotion), true) : '';
-    const leaving = audience.leaving ? callout('Leaving with', editable('audience.leaving', audience.leaving), true) : '';
+    const arrival = audience.emotion ? callout('On arrival', escapeHtml(audience.emotion), true) : '';
+    const leaving = audience.leaving ? callout('Leaving with', escapeHtml(audience.leaving), true) : '';
     if (arrival && leaving) {
       parts.push(block('Emotional journey', `<div class="dcx-callout-pair">${arrival}${leaving}</div>`));
     } else {
@@ -478,7 +470,7 @@ function buildProduct(s, name) {
   const product = s.context?.product || {};
   const parts = [heading(2, 'Product', 'Purpose, surfaces, use cases, what must be clear first.', name)];
   const purposeCallout = product.purpose
-    ? callout(product.name || name || 'This product', editable('product.purpose', product.purpose), false,
+    ? callout(product.name || name || 'This product', escapeHtml(product.purpose), false,
         product.success ? `\n    <p class="dcx-callout-success">${escapeHtml(product.success)}</p>` : '')
     : fromChat('The purpose and success definition were confirmed', '<code>PRODUCT.md &middot; Product Purpose</code>');
   const platform = typeof product.platform === 'string' && product.platform.trim()
@@ -489,8 +481,8 @@ function buildProduct(s, name) {
     : purposeCallout));
   if (product.positioning && (product.positioning.not || product.positioning.this)) {
     const cells = [
-      product.positioning.not && callout('Not this', editable('product.positioning.not', product.positioning.not)),
-      product.positioning.this && callout('This', editable('product.positioning.this', product.positioning.this), true),
+      product.positioning.not && callout('Not this', escapeHtml(product.positioning.not)),
+      product.positioning.this && callout('This', escapeHtml(product.positioning.this), true),
     ].filter(Boolean).join('');
     parts.push(block('Positioning', `<div class="dcx-callout-pair">${cells}</div>`));
   }
@@ -526,7 +518,7 @@ function buildBrand(s, name) {
      words alone over the pointer to the durable copy when only they arrived;
      the plain pointer otherwise. */
   parts.push(block('Personality', brand.personality
-    ? callout(brand.words?.join(' · ') || 'Voice', editable('brand.personality', brand.personality), true)
+    ? callout(brand.words?.join(' · ') || 'Voice', escapeHtml(brand.personality), true)
     : (Array.isArray(brand.words) && brand.words.length
       ? callout(brand.words.join(' · '), 'Three words, voice, and tone were confirmed in chat, before the browser questionnaire. <code>PRODUCT.md &middot; Brand Personality</code> is the durable copy.', true)
       : fromChat('Three words, voice, and tone were confirmed', '<code>PRODUCT.md &middot; Brand Personality</code>'))));
@@ -726,11 +718,6 @@ function buildColor(s, name) {
           <p>${escapeHtml(ROLE_STORY[entry.role] || '')}</p>
           <code>${escapeHtml(formatOklch(entry.hex))}</code>
           <span class="dcx-ink-pair"><span class="dcx-ink-tag">Ink</span><span class="dcx-ink-sample" style="--ink-ground:${entry.hex}; --ink-text:${inkHex};">${inkHex}</span></span>
-          <span class="dcx-swatch-actions">
-            <button class="dcx-edit" type="button" data-edit-color="${entry.role.toLowerCase()}">Edit color</button>
-            <input class="dcx-native-color" type="color" value="${entry.hex}" data-color-input-for="${entry.role.toLowerCase()}"
-              tabindex="-1" aria-label="Pick a new ${escapeHtml(entry.role)} color" />
-          </span>
         </div>
       </div>`;
     }).join('')}</div>`
@@ -959,8 +946,23 @@ const BUILDERS = {
   interface: buildInterface,
 };
 
+/* What each chosen surface is, in the document's own register. The new document
+   replaces the material article's preview boards with these definitions
+   (dcx-detail.js reads window.dcxSurfaceDefs); persuade and experience carry the
+   standalone demo's sentences verbatim. */
+const MODE_DEFS = {
+  persuade: 'A public-facing page that introduces the experience and guides visitors toward its primary action.',
+  operate: 'A working surface for completing tasks, where familiar patterns and a predictable layout come first.',
+  read: 'A reading surface for understanding, where type, structure, and pacing carry the page.',
+  experience: 'A project-led page for presenting selected work, its context, and its outcomes.',
+};
+
 function renderDocument() {
   const snapshot = takeSnapshot();
+  window.dcxSurfaceDefs = snapshot.surfaces.map((surface) => ({
+    label: surface.label,
+    description: MODE_DEFS[surface.mode] || surface.goal || '',
+  }));
   const name = snapshot.context?.product?.name || '';
   for (const [id, build] of Object.entries(BUILDERS)) {
     const template = document.getElementById(`dcx-detail-${id}`);
@@ -1068,23 +1070,19 @@ document.addEventListener('picker:screenchange', () => {
 $('[data-doc-retry]')?.addEventListener('click', finishSequence);
 
 /* ============================================================
-   Reveal + expander — ported from the prototype. The morph,
-   subnav, hash routing, fan, and stroke sizing are its code;
-   only the theme toggle and site header went (the picker has
-   neither).
+   Reveal — the shell's own entrance, and the stroke sizing its
+   tile vignettes need. The document itself (morph, sidebar,
+   scroll-spy, hash routing) is the engine's, in scripts/dcx/.
    ============================================================ */
 
-const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-const MORPH_MS = reduceMotion ? 0 : 540;
-const READY_MS = reduceMotion ? 0 : 260;
-
-const tiles = $$('.dcx-tile');
-const names = {};
-tiles.forEach((tile) => { names[tile.dataset.category] = tile.dataset.name; });
-const shellTemplate = document.getElementById('dcx-shell-template');
-
-let current = null;
 let revealed = false;
+
+/* The mounted document is the new engine's (picker/scripts/dcx/dcx-document.js);
+   these are the two facts the data layer still needs from it. */
+const dcxCurrentCategory = () => document.querySelector('.dcx-expander[data-dcx-document]')?.dataset.dcxCurrentCategory
+  || window.dcxDocument?.currentCategory()
+  || '';
+const dcxCategoryLabel = (category) => $(`.dcx-tile[data-category="${category}"]`)?.dataset.name || 'Design context';
 
 function revealDocument() {
   revealed = true;
@@ -1097,212 +1095,7 @@ function revealDocument() {
       sizeDrawStrokes();
     });
   });
-  const initial = location.hash.replace('#', '');
-  if (initial && initial in names) {
-    window.setTimeout(() => openCategory(initial, false), 120);
-  }
 }
-
-function copyText(value) {
-  if (navigator.clipboard?.writeText) {
-    return navigator.clipboard.writeText(value).catch(() => fallbackCopy(value));
-  }
-  fallbackCopy(value);
-  return Promise.resolve();
-}
-
-function fallbackCopy(value) {
-  const field = document.createElement('textarea');
-  field.value = value;
-  field.setAttribute('readonly', '');
-  field.style.position = 'fixed';
-  field.style.opacity = '0';
-  document.body.appendChild(field);
-  field.select();
-  document.execCommand('copy');
-  field.remove();
-}
-
-function initFan(root) {
-  $$('.dcx-fan', root).forEach((fan) => {
-    const panels = $$('.dcx-fan-panel', fan);
-    if (!panels.length) return;
-
-    function setActive(index) {
-      fan.classList.add('is-engaged');
-      panels.forEach((panel, i) => {
-        panel.classList.toggle('is-active', i === index);
-        panel.classList.toggle('is-neighbor', Math.abs(i - index) === 1);
-      });
-    }
-
-    function clearActive() {
-      fan.classList.remove('is-engaged');
-      panels.forEach((panel) => panel.classList.remove('is-active', 'is-neighbor'));
-    }
-
-    fan.addEventListener('mousemove', (event) => {
-      const rect = fan.getBoundingClientRect();
-      const progress = Math.min(0.999, Math.max(0, (event.clientX - rect.left) / rect.width));
-      let active = 0;
-      panels.forEach((panel, i) => {
-        const left = parseFloat(panel.style.getPropertyValue('--panel-left')) / 100;
-        if (progress >= left) active = i;
-      });
-      setActive(active);
-    });
-    fan.addEventListener('mouseleave', clearActive);
-
-    panels.forEach((panel, i) => {
-      panel.addEventListener('focus', () => setActive(i));
-      panel.addEventListener('blur', () => {
-        if (!fan.matches(':focus-within')) clearActive();
-      });
-      panel.addEventListener('click', () => {
-        const value = panel.dataset.copyColor;
-        if (!value) return;
-        copyText(value);
-        const label = panel.querySelector('.dcx-fan-name');
-        const original = panel.dataset.colorName || 'Color';
-        panel.classList.add('is-copied');
-        if (label) label.textContent = 'Copied!';
-        window.clearTimeout(panel._copyTimer);
-        panel._copyTimer = window.setTimeout(() => {
-          panel.classList.remove('is-copied');
-          if (label) label.textContent = original;
-        }, 900);
-      });
-    });
-  });
-}
-
-function buildSubnav(expander, activeId) {
-  $$('.dcx-nav-list li', expander).forEach((li) => {
-    const isActive = li.dataset.category === activeId;
-    li.classList.toggle('is-active', isActive);
-    const subnav = li.querySelector('.dcx-subnav');
-    if (!subnav) return;
-    subnav.innerHTML = '';
-    if (!isActive) return;
-    $$('.dcx-main .dcx-block[data-label]', expander).forEach((blockEl, i) => {
-      const btn = document.createElement('button');
-      btn.className = 'dcx-sub-link';
-      btn.type = 'button';
-      btn.textContent = blockEl.dataset.label.replace(/&amp;/g, '&');
-      btn.setAttribute('data-dcx-subsection', String(i));
-      subnav.appendChild(btn);
-    });
-  });
-  $$('.dcx-nav-link', expander).forEach((link) => {
-    if (link.dataset.dcxNav === activeId) link.setAttribute('aria-current', 'page');
-    else link.removeAttribute('aria-current');
-  });
-}
-
-function scrollToBlock(expander, index) {
-  const blocks = $$('.dcx-main .dcx-block[data-label]', expander);
-  const target = blocks[Number(index)];
-  if (!target) return;
-  const main = expander.querySelector('.dcx-main');
-  const top = target.getBoundingClientRect().top - main.getBoundingClientRect().top + main.scrollTop - 18;
-  main.scrollTo({ top: Math.max(0, top), behavior: reduceMotion ? 'auto' : 'smooth' });
-}
-
-function renderCategory(id, expander, updateHash) {
-  const template = document.getElementById(`dcx-detail-${id}`);
-  if (!template) return;
-
-  expander.querySelector('.dcx-current').textContent = names[id] || id;
-
-  const main = expander.querySelector('.dcx-main');
-  main.innerHTML = '';
-  main.appendChild(template.content.cloneNode(true));
-  main.scrollTop = 0;
-  initFan(main);
-
-  if (current) {
-    const tile = $(`.dcx-tile--${id}`);
-    current.id = id;
-    current.tile = tile;
-    current.rect = tile.getBoundingClientRect();
-  }
-
-  buildSubnav(expander, id);
-  if (updateHash) history.pushState({ category: id }, '', `#${id}`);
-}
-
-function openCategory(id, updateHash) {
-  if (!(id in names)) return;
-  if (current && current.id === id) return;
-  closeCategory(false);
-
-  const tile = $(`.dcx-tile--${id}`);
-  if (!tile) return;
-
-  const rect = tile.getBoundingClientRect();
-  const expander = document.createElement('section');
-  expander.className = 'dcx-expander';
-  expander.setAttribute('role', 'dialog');
-  expander.setAttribute('aria-modal', 'true');
-  expander.setAttribute('aria-label', `${names[id]} details`);
-  expander.style.top = `${rect.top}px`;
-  expander.style.left = `${rect.left}px`;
-  expander.style.width = `${rect.width}px`;
-  expander.style.height = `${rect.height}px`;
-
-  expander.appendChild(shellTemplate.content.cloneNode(true));
-  document.body.appendChild(expander);
-  document.body.classList.add('is-locked');
-  current = { id: null, expander, tile, rect, opener: tile };
-  renderCategory(id, expander, false);
-  current.id = id;
-
-  requestAnimationFrame(() => {
-    expander.classList.add('is-full');
-    window.setTimeout(() => {
-      expander.classList.add('is-ready');
-      expander.querySelector('.dcx-close')?.focus({ preventScroll: true });
-    }, READY_MS);
-  });
-
-  expander.querySelector('.dcx-close').addEventListener('click', () => closeCategory(true));
-
-  expander.querySelector('.dcx-nav').addEventListener('click', (event) => {
-    const subLink = event.target.closest('[data-dcx-subsection]');
-    if (subLink) {
-      scrollToBlock(expander, subLink.getAttribute('data-dcx-subsection'));
-      return;
-    }
-    const navLink = event.target.closest('[data-dcx-nav]');
-    if (!navLink) return;
-    event.preventDefault();
-    if (current && navLink.dataset.dcxNav === current.id) return;
-    renderCategory(navLink.dataset.dcxNav, expander, true);
-  });
-
-  if (updateHash) history.pushState({ category: id }, '', `#${id}`);
-}
-
-function closeCategory(updateHash) {
-  if (!current) return;
-  const { expander, rect, opener } = current;
-  expander.classList.remove('is-ready', 'is-full');
-  expander.style.top = `${rect.top}px`;
-  expander.style.left = `${rect.left}px`;
-  expander.style.width = `${rect.width}px`;
-  expander.style.height = `${rect.height}px`;
-  window.setTimeout(() => {
-    expander.remove();
-    document.body.classList.remove('is-locked');
-  }, MORPH_MS);
-  current = null;
-  if (opener) opener.focus({ preventScroll: true });
-  if (updateHash && location.hash) history.pushState(null, '', location.pathname + location.search);
-}
-
-tiles.forEach((tile) => {
-  tile.addEventListener('click', () => openCategory(tile.dataset.category, true));
-});
 
 /* Vignette draw animations use the homepage's stroke-dasharray: 100
    (user units), but non-scaling-stroke makes Chromium measure dashes in
@@ -1330,39 +1123,18 @@ window.addEventListener('resize', () => {
   drawResizeTimer = window.setTimeout(() => { if (revealed) sizeDrawStrokes(); }, 150);
 });
 
-document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && revealed) closeCategory(true);
-});
-
-window.addEventListener('popstate', () => {
-  if (!revealed) return;
-  const id = location.hash.replace('#', '');
-  if (id && id in names) {
-    if (current) renderCategory(id, current.expander, false);
-    else openCategory(id, false);
-  } else {
-    closeCategory(false);
-  }
-});
-
 /* ============================================================
    Live edit session — the document as a working surface.
 
    The picker server forks a doc-session sibling on submit and hands
-   this tab its address and token. From then on the document is
-   editable through two paths:
-
-   - Simple edits (a palette color) POST /doc/edit and the session
-     applies them itself: answers.json and DESIGN.md are rewritten by
-     a deterministic function, no model in the loop.
-   - Anything needing judgment (fonts, freeform asks) POSTs
-     /doc/request; the agent long-polls the queue, does the work, and
-     replies. The tray shows each request move pending -> working ->
-     done.
+   this tab its address and token. A change the reader wants goes to
+   the agent as a request: POST /doc/request, the agent long-polls the
+   queue, does the work, and replies. The tray shows each request move
+   pending -> working -> done.
 
    The tab learns about the outside world the way live mode's browser
    does, scaled to polling: /doc/state every couple of seconds, and a
-   version bump means re-fetch answers.json and re-render.
+   version bump means re-read the store and rebuild.
    ============================================================ */
 
 let docSession = null;
@@ -1377,6 +1149,9 @@ const docLive = () => Boolean(docSession);
 
 function startDocSession(doc) {
   docSession = doc;
+  /* The dcx modules build their image URLs through dcxAsset(), which routes via
+     the session from the moment one exists — before the first refresh below. */
+  window.dcxDocSession = doc;
   document.body.classList.add('dcx-live');
   /* Rebuild the templates with this session's URLs: brand-asset images can
      only load through the session, because the picker server exits right
@@ -1412,16 +1187,12 @@ async function pollDocState() {
     renderTray();
     if (state.version !== docVersion) {
       docVersion = state.version;
-      /* Something moved on disk: a save of this tab's own, a request the
-         agent finished, or a value it settled while doing either. Re-read
-         both halves of the store and rebuild, including the article that is
-         open, since the templates alone are not what anyone is looking at. */
+      /* Something moved on disk: a request the agent finished, or a value it
+         settled while doing so. Re-read both halves of the store and rebuild;
+         the document engine re-mounts the open document and holds the reader's
+         scroll position. */
       await adoptStoreState();
-      const openScroll = current?.expander?.querySelector('.dcx-main')?.scrollTop ?? 0;
       refreshDocument();
-      const main = current?.expander?.querySelector('.dcx-main');
-      if (main) main.scrollTop = openScroll;
-      markEditables();
     }
     schedulePoll(2000);
   } catch {
@@ -1482,151 +1253,7 @@ const adoptStoreState = () => Promise.all([adoptAnswers(), adoptContext()]);
 
 function refreshDocument() {
   renderDocument();
-  if (current) renderCategory(current.id, current.expander, false);
-  markEditables();
-}
-
-/* ---------- Staged edits: the pending ledger and the save bar ----------
-
-   Edits land in the page immediately and on disk deliberately. That split is
-   what lets a person try three changes and keep two: until Apply, nothing has
-   been written, and the document is only showing what it would look like.
-
-   The ledger keys on the binding id and keeps the FIRST original it saw, so a
-   field edited three times still reports the value the store actually holds.
-   ------------------------------------------------------------------------ */
-
-const staged = new Map();
-/* One-off cards in the tray, for outcomes that are not a queued request. */
-const trayNotes = [];
-const saveBar = $('[data-dcx-savebar]');
-let applying = false;
-let wasShowing = false;
-
-function stage(bindingId, from, to) {
-  if (!bindingId) return;
-  const existing = staged.get(bindingId);
-  if (to === (existing ? existing.from : from)) staged.delete(bindingId);
-  else staged.set(bindingId, { from: existing ? existing.from : from, to });
-  renderSaveBar();
-}
-
-function renderSaveBar() {
-  if (!saveBar) return;
-  const count = staged.size;
-  saveBar.hidden = !count || !docLive();
-  saveBar.toggleAttribute('data-applying', applying);
-  if (saveBar.hidden) return;
-  const label = $('[data-dcx-apply-label]', saveBar);
-  const counter = $('[data-dcx-apply-count]', saveBar);
-  label.textContent = applying ? 'Applying' : `Apply ${count === 1 ? 'change' : 'changes'}`;
-  counter.textContent = String(count);
-  counter.hidden = applying;
-  $('[data-dcx-apply]', saveBar).disabled = applying;
-  $('[data-dcx-discard]', saveBar).disabled = applying;
-  $('[data-dcx-apply]', saveBar).setAttribute(
-    'aria-label',
-    `Apply ${count} ${count === 1 ? 'change' : 'changes'} to the design context`,
-  );
-  if (!wasShowing) {
-    saveBar.setAttribute('data-just-appeared', '');
-    setTimeout(() => saveBar.removeAttribute('data-just-appeared'), 700);
-  }
-  wasShowing = true;
-}
-
-/* Editing is offered only where it can be accepted, and re-armed after every
-   render because the article is rebuilt rather than patched. */
-function markEditables() {
-  const live = docLive() && !applying;
-  for (const node of $$('[data-dcx-binding]')) {
-    node.contentEditable = live ? 'plaintext-only' : 'false';
-    const id = node.dataset.dcxBinding;
-    const pendingValue = staged.get(id)?.to;
-    // A re-render rebuilt this element from the store, so anything staged
-    // against it has to be written back on: the bar still counts it.
-    if (pendingValue !== undefined && node.textContent !== pendingValue) {
-      node.textContent = pendingValue;
-    }
-    node.toggleAttribute('data-dcx-dirty', pendingValue !== undefined);
-  }
-  renderSaveBar();
-}
-
-/* plaintext-only keeps pasted markup out; this is the second half of that,
-   because a browser without the mode still allows rich text. */
-document.addEventListener('input', (event) => {
-  const node = event.target.closest?.('[data-dcx-binding]');
-  if (!node) return;
-  stage(node.dataset.dcxBinding, node.dataset.dcxOriginal ?? '', node.textContent.trim());
-  node.toggleAttribute('data-dcx-dirty', staged.has(node.dataset.dcxBinding));
-});
-
-/* ---------- Palette swatches stage like everything else ---------- */
-
-document.addEventListener('click', (event) => {
-  const button = event.target.closest('[data-edit-color]');
-  if (!button) return;
-  const input = button.parentElement.querySelector(`[data-color-input-for="${button.dataset.editColor}"]`);
-  input?.click();
-});
-
-document.addEventListener('change', (event) => {
-  const input = event.target.closest?.('[data-color-input-for]');
-  if (!input) return;
-  stageColorEdit(input.dataset.colorInputFor, input.value.toUpperCase());
-});
-
-function stageColorEdit(role, hex) {
-  const field = form.elements[`palette-${role}`];
-  if (!field || field.value.toUpperCase() === hex) return;
-  const previous = field.value.toUpperCase();
-  field.value = hex;
-  refreshDocument();
-  stage(`palette.${role}`, previous, hex);
-}
-
-/* ---------- Apply and discard ---------- */
-
-$('[data-dcx-apply]')?.addEventListener('click', async () => {
-  if (!staged.size || applying || !docLive()) return;
-  const count = staged.size;
-  if (!window.confirm(`Apply ${count} ${count === 1 ? 'change' : 'changes'} to the design context?`)) return;
-
-  const changes = [...staged].map(([bindingId, { from, to }]) => ({ bindingId, from, to }));
-  applying = true;
-  markEditables();
-  try {
-    const result = await docPost('/doc/save', { changes });
-    docVersion = result.version;
-    staged.clear();
-    trayNote(`Applied ${count} ${count === 1 ? 'change' : 'changes'}`, 'done');
-  } catch (error) {
-    trayNote('Those changes could not be saved. They are still here.', 'error');
-  } finally {
-    applying = false;
-    markEditables();
-  }
-});
-
-$('[data-dcx-discard]')?.addEventListener('click', async () => {
-  if (!staged.size || applying) return;
-  const count = staged.size;
-  if (!window.confirm(`Discard ${count} ${count === 1 ? 'change' : 'changes'}?`)) return;
-  staged.clear();
-  // The store is the rollback: re-reading it puts every field back.
-  await adoptStoreState();
-  refreshDocument();
-  markEditables();
-});
-
-function trayNote(message, status) {
-  trayNotes.push({ id: `note-${trayNotes.length}`, status, message });
-  renderTray();
-  setTimeout(() => {
-    trayNotes.shift();
-    renderTray();
-  }, 6000);
+  window.dcxDocument?.remount();
 }
 
 /* ---------- Complex edits: the request modal ---------- */
@@ -1637,9 +1264,10 @@ document.addEventListener('click', (event) => {
   const trigger = event.target.closest('[data-dcx-request], [data-dcx-request-kind]');
   if (!trigger || !requestModal) return;
   requestKind = trigger.dataset.dcxRequestKind || 'freeform';
-  const category = current ? names[current.id] : 'Design context';
+  const category = dcxCurrentCategory();
+  const scopeName = category ? dcxCategoryLabel(category) : 'Design context';
   $('[data-dcx-request-scope]', requestModal).textContent = requestKind === 'font'
-    ? 'Typography change' : `${category} change`;
+    ? 'Typography change' : `${scopeName} change`;
   $('[data-dcx-request-fonts]', requestModal).hidden = requestKind !== 'font';
   const prompt = $('.dcx-request-prompt', requestModal);
   prompt.value = '';
@@ -1669,7 +1297,7 @@ $('[data-dcx-request-send]', requestModal)?.addEventListener('click', async () =
     const result = await docPost('/doc/request', {
       kind: requestKind,
       prompt,
-      category: current ? current.id : '',
+      category: dcxCurrentCategory(),
       payload: uploaded.length ? { fonts: uploaded } : {},
     });
     docVersion = result.version;
@@ -1692,18 +1320,13 @@ const TRAY_LABELS = {
 };
 
 function renderTray() {
-  /* Notes are transient outcomes of a save; requests are work the agent owes. */
+  /* One card per request: work the agent owes, and how far along it is. */
   if (!tray) return;
   const items = trayRequests.slice(-4);
   const offline = docSession && !docOnline;
-  tray.hidden = !offline && items.length === 0 && trayNotes.length === 0;
+  tray.hidden = !offline && items.length === 0;
   tray.innerHTML = [
     offline ? '<div class="dcx-tray-item" data-status="offline"><span class="dcx-tray-dot"></span><div><p class="dcx-tray-prompt">Edit session offline</p><p class="dcx-tray-note">Changes stay in this tab; reconnecting&hellip;</p></div></div>' : '',
-    ...trayNotes.map((entry) => `
-      <div class="dcx-tray-item" data-status="${escapeHtml(entry.status)}">
-        <span class="dcx-tray-dot"></span>
-        <div><p class="dcx-tray-prompt">${escapeHtml(entry.message)}</p></div>
-      </div>`),
     ...items.map((entry) => `
       <div class="dcx-tray-item" data-status="${escapeHtml(entry.status)}">
         <span class="dcx-tray-dot"></span>

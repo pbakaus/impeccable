@@ -14,6 +14,18 @@ import '../styles/screens/depth.css';
 import '../styles/screens/layout-portfolio.css';
 // The design context document that replaces the picker after submission.
 import '../styles/design-context.css';
+// The lean design context document, ported from the standalone demo. Order
+// mirrors the demo page's stylesheet order so the cascade lands identically;
+// command and settings sit where dcx-document.css used to @import them.
+import '../styles/dcx/dcx-audience.css';
+import '../styles/dcx/dcx-detail.css';
+import '../styles/dcx/dcx-components.css';
+import '../styles/dcx/dcx-hierarchy.css';
+import '../styles/dcx/dcx-command.css';
+import '../styles/dcx/dcx-settings.css';
+import '../styles/dcx/dcx-document.css';
+import '../styles/dcx/dcx-rail.css';
+import '../styles/dcx/dcx-hooks.css';
 
 interface Props {
   title?: string;

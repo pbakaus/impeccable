@@ -1,0 +1,205 @@
+/* Audience detail treatment shared with demos/audience-scroll/docs.html. */
+
+.dcx-audience {
+  --dcx-audience-icon-size: 100px;
+}
+
+.dcx-audience > .dcx-audience-hero {
+  margin-bottom: clamp(48px, 6vw, 76px);
+}
+
+.dcx-audience .dcx-audience-section {
+  margin-top: 0;
+  margin-bottom: clamp(48px, 6vw, 76px);
+  scroll-margin-top: 18px;
+}
+
+.dcx-audience .dcx-audience-section:last-child {
+  margin-bottom: 0;
+}
+
+.dcx-audience .dcx-audience-section-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--dcx-audience-icon-size);
+  gap: clamp(24px, 4vw, 44px);
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.dcx-audience .dcx-audience-section-heading {
+  min-width: 0;
+}
+
+.dcx-audience .dcx-audience-section-title {
+  margin: 0;
+  color: var(--ks-champagne);
+  font-family: var(--ks-font);
+  font-size: 1.5rem;
+  font-weight: 650;
+  letter-spacing: 0;
+  line-height: 1.25;
+  text-wrap: balance;
+}
+
+.dcx-audience .dcx-audience-section-lede {
+  max-width: 52ch;
+  margin: 10px 0 0;
+  color: var(--ks-text-muted);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.dcx-audience .dcx-audience-section-icon {
+  width: var(--dcx-audience-icon-size);
+  height: var(--dcx-audience-icon-size);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.dcx-audience .dcx-audience-section-icon img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.dcx-audience .dcx-audience-section--people .dcx-defs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  border-top: 0;
+}
+
+.dcx-audience .dcx-audience-section--people .dcx-def {
+  display: block;
+  min-width: 0;
+  padding: 18px 20px 20px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--panel-bg);
+}
+
+.dcx-audience .dcx-audience-section--people .dcx-def dt {
+  color: var(--ks-champagne);
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.dcx-audience .dcx-audience-section--people .dcx-def dd {
+  margin-top: 9px;
+  color: var(--ks-text-muted);
+  font-size: 0.92rem;
+  line-height: 1.58;
+  text-wrap: pretty;
+}
+
+.dcx-audience .dcx-audience-journey {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.dcx-audience .dcx-audience-journey .dcx-callout {
+  min-width: 0;
+  padding: 18px 20px 20px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--panel-bg);
+}
+
+.dcx-audience .dcx-audience-journey .dcx-callout + .dcx-callout {
+  margin-top: 0;
+}
+
+.dcx-audience .dcx-audience-journey-arrow {
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  font-family: var(--ks-mono);
+  font-size: 1rem;
+}
+
+.dcx-audience .dcx-audience-list {
+  counter-reset: dcx-audience-item;
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dcx-audience .dcx-audience-list li {
+  counter-increment: dcx-audience-item;
+  position: static;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 12px;
+  align-items: baseline;
+  min-width: 0;
+  padding: 18px 20px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--panel-bg);
+  color: var(--ks-text);
+  font-size: 0.96rem;
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+.dcx-audience .dcx-audience-list li::before {
+  content: counter(dcx-audience-item, decimal-leading-zero);
+  position: static;
+  width: auto;
+  height: auto;
+  background: transparent;
+  color: var(--accent);
+  font-family: var(--ks-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+}
+
+@media (max-width: 620px) {
+  .dcx-audience .dcx-audience-section-head {
+    gap: 18px;
+  }
+
+  .dcx-audience .dcx-audience-section--people .dcx-defs,
+  .dcx-audience .dcx-audience-journey {
+    grid-template-columns: 1fr;
+  }
+
+  .dcx-audience .dcx-audience-journey-arrow {
+    height: 22px;
+    justify-content: start;
+    padding-left: 20px;
+    transform: rotate(90deg);
+  }
+}
+
+@media (max-width: 430px) {
+  .dcx-audience .dcx-audience-section-head {
+    gap: 14px;
+  }
+
+  .dcx-audience .dcx-audience-section-title {
+    font-size: 1.3rem;
+  }
+
+  .dcx-audience .dcx-audience-list li {
+    grid-template-columns: 26px minmax(0, 1fr);
+    padding: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dcx-audience *,
+  .dcx-audience *::before,
+  .dcx-audience *::after {
+    transition-duration: 0.001ms !important;
+    transition-delay: 0ms !important;
+  }
+}

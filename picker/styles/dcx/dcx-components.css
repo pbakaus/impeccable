@@ -1,0 +1,501 @@
+/* A visual component inventory: specimens first, documentation chrome kept quiet. */
+
+.dcx-detail-article--components .dcx-component-stack {
+  display: grid;
+  gap: clamp(42px, 5vw, 64px);
+  min-width: 0;
+}
+
+.dcx-detail-article--components .dcx-component-example {
+  min-width: 0;
+  margin: 0;
+}
+
+.dcx-detail-article--components .dcx-component-example > figcaption {
+  margin: 0 0 14px;
+}
+
+.dcx-detail-article--components .dcx-component-example h4 {
+  margin: 0;
+  color: var(--ks-champagne);
+  font-family: var(--ks-font);
+  font-size: 1.08rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.dcx-detail-article--components .dcx-component-canvas {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: clamp(230px, 27vw, 300px);
+  padding: clamp(30px, 5vw, 58px);
+  border: 1px solid var(--ks-rule);
+  border-radius: 8px;
+  background: var(--ks-lacquer-deep);
+}
+
+.dcx-detail-article--components .dcx-component-canvas--center {
+  display: grid;
+  place-items: center;
+}
+
+.dcx-detail-article--components .dcx-component-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  max-width: 100%;
+}
+
+.dcx-detail-article--components .dcx-component-row--baseline {
+  align-items: baseline;
+}
+
+.dcx-detail-article--components .dcx-demo-button {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 44px;
+  padding: 0 20px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--ks-champagne);
+  font-family: var(--ks-font);
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.dcx-detail-article--components .dcx-demo-button svg,
+.dcx-detail-article--components .dcx-demo-icon-button svg,
+.dcx-detail-article--components .dcx-demo-input svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.dcx-detail-article--components .dcx-demo-button--primary {
+  border-color: var(--ks-kinpaku);
+  background: var(--ks-kinpaku);
+  color: var(--ks-lacquer-deep);
+}
+
+.dcx-detail-article--components .dcx-demo-button--secondary {
+  border-color: var(--ks-graphite-2);
+  background: var(--ks-graphite-2);
+  color: var(--ks-champagne);
+}
+
+.dcx-detail-article--components .dcx-demo-button--tertiary {
+  border-color: color-mix(in oklch, var(--ks-patina) 55%, var(--ks-rule));
+  background: color-mix(in oklch, var(--ks-patina) 13%, transparent);
+  color: var(--ks-patina-pale);
+}
+
+.dcx-detail-article--components .dcx-demo-button--outline {
+  border-color: var(--ks-rule);
+  background: transparent;
+  color: var(--ks-champagne);
+}
+
+.dcx-detail-article--components .dcx-demo-button--ghost {
+  padding-inline: 12px;
+  background: transparent;
+  color: var(--ks-text);
+}
+
+.dcx-detail-article--components .dcx-demo-button--danger {
+  border-color: var(--ks-vermilion);
+  background: var(--ks-vermilion);
+  color: var(--ks-champagne);
+}
+
+.dcx-detail-article--components .dcx-demo-button--danger-soft {
+  border-color: transparent;
+  background: color-mix(in oklch, var(--ks-vermilion) 20%, transparent);
+  color: color-mix(in oklch, var(--ks-vermilion) 74%, var(--ks-champagne));
+}
+
+.dcx-detail-article--components .dcx-demo-button--small {
+  min-height: 36px;
+  padding-inline: 16px;
+  font-size: 0.78rem;
+}
+
+.dcx-detail-article--components .dcx-demo-button--large {
+  min-height: 54px;
+  padding-inline: 26px;
+  font-size: 0.96rem;
+}
+
+.dcx-detail-article--components .dcx-demo-icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  color: var(--ks-champagne);
+}
+
+.dcx-detail-article--components .dcx-demo-icon-button--secondary {
+  background: var(--ks-graphite-2);
+}
+
+.dcx-detail-article--components .dcx-demo-icon-button--outline {
+  border-color: var(--ks-rule);
+  color: var(--ks-patina);
+}
+
+.dcx-detail-article--components .dcx-demo-icon-button--danger {
+  background: var(--ks-vermilion);
+}
+
+.dcx-detail-article--components .dcx-demo-button--loading {
+  opacity: 0.72;
+}
+
+.dcx-detail-article--components .dcx-demo-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid color-mix(in oklch, var(--ks-lacquer-deep) 35%, transparent);
+  border-top-color: var(--ks-lacquer-deep);
+  border-radius: 50%;
+  animation: dcx-component-spin 900ms linear infinite;
+}
+
+@keyframes dcx-component-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.dcx-detail-article--components .dcx-component-canvas--fields,
+.dcx-detail-article--components .dcx-component-canvas--cards {
+  display: grid;
+  place-items: center;
+}
+
+.dcx-detail-article--components .dcx-component-demo-grid {
+  display: grid;
+  align-items: stretch;
+  width: min(100%, 900px);
+  min-width: 0;
+  gap: clamp(16px, 2.2vw, 22px);
+}
+
+.dcx-detail-article--components .dcx-component-demo-grid--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dcx-detail-article--components .dcx-component-demo-grid--two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.dcx-detail-article--components .dcx-component-demo-grid--single {
+  grid-template-columns: minmax(0, 1fr);
+  width: min(100%, 680px);
+}
+
+.dcx-detail-article--components .dcx-component-demo-grid--baseline {
+  align-items: end;
+}
+
+.dcx-detail-article--components .dcx-demo-field {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dcx-detail-article--components .dcx-demo-field-label {
+  color: var(--ks-text-muted);
+  font-family: var(--ks-font);
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.dcx-detail-article--components .dcx-demo-input {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--ks-rule);
+  border-radius: 3px;
+  background: var(--ks-lacquer-raised);
+  color: var(--ks-champagne);
+  font-family: var(--ks-font);
+  font-size: 0.88rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.dcx-detail-article--components .dcx-demo-input.is-placeholder {
+  color: var(--ks-text-mute-deep);
+}
+
+.dcx-detail-article--components .dcx-demo-field small {
+  color: var(--ks-text-muted);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.dcx-detail-article--components .dcx-demo-field.is-invalid .dcx-demo-input {
+  border-color: var(--ks-vermilion);
+}
+
+.dcx-detail-article--components .dcx-demo-field.is-invalid small {
+  color: color-mix(in oklch, var(--ks-vermilion) 76%, var(--ks-champagne));
+}
+
+.dcx-detail-article--components .dcx-demo-field--small .dcx-demo-input {
+  min-height: 38px;
+  font-size: 0.78rem;
+}
+
+.dcx-detail-article--components .dcx-demo-field--large .dcx-demo-input {
+  min-height: 58px;
+  font-size: 0.96rem;
+}
+
+.dcx-detail-article--components .dcx-demo-input--affix {
+  gap: 10px;
+}
+
+.dcx-detail-article--components .dcx-demo-input--affix > span {
+  flex: none;
+  color: var(--ks-patina);
+  font-family: var(--ks-mono);
+  font-size: 0.74rem;
+}
+
+.dcx-detail-article--components .dcx-demo-input--suffix {
+  justify-content: space-between;
+}
+
+.dcx-detail-article--components .dcx-demo-input--textarea {
+  align-items: flex-start;
+  min-height: 132px;
+  padding-block: 14px;
+  line-height: 1.6;
+}
+
+.dcx-detail-article--components .dcx-showcase-card {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 268px;
+  overflow: hidden;
+  border: 1px solid var(--ks-rule);
+  border-radius: 8px;
+  background: var(--panel-bg);
+}
+
+.dcx-detail-article--components .dcx-showcase-card-body {
+  box-sizing: border-box;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  padding: clamp(20px, 2.6vw, 28px);
+}
+
+.dcx-detail-article--components .dcx-showcase-card h5 {
+  margin: 14px 0 8px;
+  color: var(--ks-champagne);
+  font-family: var(--ks-font);
+  font-size: 1.04rem;
+  font-weight: 600;
+  line-height: 1.38;
+}
+
+.dcx-detail-article--components .dcx-showcase-card p,
+.dcx-detail-article--components .dcx-showcase-card blockquote {
+  margin: 0;
+  color: var(--ks-text);
+  font-family: var(--ks-font);
+  font-size: 0.88rem;
+  line-height: 1.62;
+  text-wrap: pretty;
+}
+
+.dcx-detail-article--components .dcx-showcase-card blockquote {
+  margin-top: 24px;
+  color: var(--ks-champagne);
+  font-size: 1.02rem;
+}
+
+.dcx-detail-article--components .dcx-showcase-card-meta {
+  margin-top: auto;
+  padding-top: 22px;
+  color: var(--ks-text-muted);
+  font-family: var(--ks-mono);
+  font-size: 0.7rem;
+}
+
+.dcx-detail-article--components .dcx-showcase-card dl {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  margin: 10px 0 0;
+}
+
+.dcx-detail-article--components .dcx-showcase-card dl > div {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.dcx-detail-article--components .dcx-showcase-card dt {
+  color: var(--ks-text-faint);
+  font-family: var(--ks-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dcx-detail-article--components .dcx-showcase-card dd {
+  margin: 0;
+  color: var(--ks-text);
+  font-size: 0.82rem;
+}
+
+.dcx-detail-article--components .dcx-showcase-card-link {
+  margin-top: auto;
+  padding-top: 22px;
+  color: var(--ks-patina);
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.dcx-detail-article--components .dcx-showcase-card--media img {
+  width: 100%;
+  height: clamp(190px, 23vw, 240px);
+  object-fit: cover;
+  object-position: 50% 38%;
+}
+
+.dcx-detail-article--components .dcx-showcase-card--media-close img {
+  object-position: 50% 66%;
+}
+
+.dcx-detail-article--components .dcx-component-canvas--single-card {
+  min-height: clamp(300px, 34vw, 380px);
+}
+
+.dcx-detail-article--components .dcx-showcase-card--horizontal {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.85fr) minmax(0, 1.15fr);
+  width: min(100%, 780px);
+  min-height: 290px;
+}
+
+.dcx-detail-article--components .dcx-showcase-card--horizontal > img {
+  width: 100%;
+  height: 100%;
+  min-height: 290px;
+  object-fit: cover;
+  object-position: 50% 42%;
+}
+
+.dcx-detail-article--components .dcx-showcase-card--action .dcx-showcase-card-body {
+  min-height: 286px;
+}
+
+.dcx-detail-article--components .dcx-showcase-card--action .dcx-demo-button {
+  margin-top: auto;
+}
+
+@media (max-width: 1020px) {
+  .dcx-detail-article--components .dcx-component-demo-grid--three {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dcx-detail-article--components .dcx-component-demo-grid--three > :last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .dcx-detail-article--components .dcx-component-stack {
+    gap: 36px;
+  }
+
+  .dcx-detail-article--components .dcx-component-canvas {
+    min-height: 210px;
+    padding: 24px 20px;
+  }
+
+  .dcx-detail-article--components .dcx-component-demo-grid--three,
+  .dcx-detail-article--components .dcx-component-demo-grid--two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dcx-detail-article--components .dcx-component-demo-grid--three > :last-child:nth-child(odd) {
+    grid-column: auto;
+  }
+
+  .dcx-detail-article--components .dcx-showcase-card--horizontal {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dcx-detail-article--components .dcx-showcase-card--horizontal > img {
+    height: 230px;
+    min-height: 0;
+  }
+}
+
+.dcx-detail-article--components .dcx-component-kind {
+  color: var(--ks-text-faint);
+  font-family: var(--ks-mono);
+  font-size: 0.66rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  line-height: 1.45;
+  text-transform: uppercase;
+}
+
+.dcx-detail-article--components .dcx-components-command {
+  box-sizing: border-box;
+  display: grid;
+  gap: 12px;
+  width: min(100%, 620px);
+  min-width: 0;
+  margin-top: clamp(28px, 3.5vw, 40px);
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.dcx-detail-article--components .dcx-components-command-copy h4 {
+  margin: 0 0 6px;
+  color: var(--ks-champagne);
+  font-family: var(--ks-font);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.dcx-detail-article--components .dcx-components-command-copy p {
+  max-width: 54ch;
+  margin: 0;
+  color: var(--ks-text-muted);
+  font-size: 0.86rem;
+  line-height: 1.55;
+}

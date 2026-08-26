@@ -2202,25 +2202,6 @@ body.dcx-live .dcx-request { display: inline-flex; }
   outline-offset: 2px;
 }
 
-.dcx-swatch-actions {
-  position: relative;
-  display: block;
-  margin-top: 12px;
-}
-
-/* Same trick as the palette screen's custom-color input: present for the
-   picker dialog, invisible to layout. */
-.dcx-native-color {
-  position: absolute;
-  inset: auto auto 0 0;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
-  border: 0;
-  padding: 0;
-}
-
 .dcx-pair-why + .dcx-edit { margin-top: 18px; }
 
 .dcx-topbar .dcx-request { margin-left: auto; margin-right: 14px; }
@@ -2233,110 +2214,11 @@ body.dcx-live .dcx-request { display: inline-flex; }
 /* ============================================================
    Request tray — queued work and its status, bottom right.
    ============================================================ */
-/* Editable values read as text until the pointer is over them, so an article
-   stays a document rather than a form. A staged one keeps a mark, because the
-   count on the bar has to be attributable to something on the page. */
-.dcx-editable {
-  border-radius: 2px;
-  outline-offset: 3px;
-}
-
-body.dcx-live .dcx-editable:hover {
-  box-shadow: inset 0 -1px 0 var(--ks-rule);
-  cursor: text;
-}
-
-body.dcx-live .dcx-editable:focus {
-  outline: 1px solid var(--ks-kinpaku);
-  background: oklch(78% 0.12 82 / 0.1);
-}
-
-body.dcx-live .dcx-editable[data-dcx-dirty] {
-  box-shadow: inset 0 -1px 0 var(--ks-kinpaku);
-}
-
-/* Sits above the tray, sharing its column so the two never overlap. */
-.dcx-savebar {
-  position: fixed;
-  right: 22px;
-  bottom: 22px;
-  /* Above the fullscreen expander: editing happens inside an open article, so
-     the control that saves it cannot sit behind the article. */
-  z-index: 620;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: min(340px, calc(100vw - 44px));
-}
-
-.dcx-savebar[hidden] { display: none; }
-
-/* The bar owns the corner and the tray stacks above it. A plain sibling
-   selector does the arithmetic, so neither has to know the other is there. */
-.dcx-savebar:not([hidden]) ~ .dcx-tray {
-  bottom: 78px;
-}
-
-.dcx-savebar-apply {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  flex: 1;
-  justify-content: space-between;
-  padding: 12px 14px;
-  border: 1px solid var(--ks-kinpaku);
-  background: var(--ks-kinpaku);
-  color: var(--ks-kinpaku-ink);
-  font-family: inherit;
-  font-size: 0.82rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.dcx-savebar-apply:hover { filter: brightness(1.08); }
-.dcx-savebar-apply:disabled { cursor: wait; filter: brightness(0.94); }
-
-.dcx-savebar-count {
-  padding: 2px 8px;
-  background: oklch(4% 0.004 95 / 0.18);
-  font-family: var(--ks-font-mono, ui-monospace, monospace);
-  font-size: 0.72rem;
-  font-weight: 700;
-}
-
-.dcx-savebar-count[hidden] { display: none; }
-
-.dcx-savebar-discard {
-  padding: 12px 12px;
-  border: 1px solid var(--ks-rule);
-  background: var(--ks-lacquer);
-  color: var(--ks-text-muted);
-  font-family: inherit;
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  cursor: pointer;
-}
-
-.dcx-savebar-discard:hover { color: var(--ks-text); }
-.dcx-savebar-discard:disabled { opacity: 0.5; cursor: not-allowed; }
-
-/* The bar arriving is the one moment it has to be noticed. */
-@keyframes dcx-savebar-in {
-  0% { transform: scale(0.9); opacity: 0; }
-  60% { transform: scale(1.04); opacity: 1; }
-  100% { transform: scale(1); opacity: 1; }
-}
-
-.dcx-savebar[data-just-appeared] {
-  animation: dcx-savebar-in 460ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
 .dcx-tray {
   position: fixed;
   right: 22px;
   bottom: 22px;
-  /* Same reason as the save bar: what the agent is doing has to stay readable
+  /* Above the open document: what the agent is doing has to stay readable
      while an article is open, which is when the asking happens. */
   z-index: 600;
   display: grid;

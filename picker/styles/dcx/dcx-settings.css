@@ -1,0 +1,267 @@
+.dcx-topbar-actions {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.dcx-topbar-actions .dcx-request {
+  margin: 0 4px 0 0;
+}
+
+.dcx-topbar-actions .dcx-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.dcx-settings-trigger,
+.dcx-settings-close {
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--ks-rule);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ks-text);
+  cursor: pointer;
+  display: grid;
+  flex: none;
+  place-items: center;
+  transition:
+    color 160ms var(--ks-ease),
+    border-color 160ms var(--ks-ease),
+    transform 220ms var(--ks-ease);
+}
+
+.dcx-settings-trigger svg,
+.dcx-settings-close svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.45;
+}
+
+.dcx-settings-trigger:hover,
+.dcx-settings-trigger:focus-visible,
+.dcx-settings-close:hover,
+.dcx-settings-close:focus-visible {
+  border-color: var(--accent-line);
+  color: var(--accent);
+  outline: none;
+}
+
+.dcx-settings-trigger:hover svg,
+.dcx-settings-trigger:focus-visible svg {
+  transform: rotate(24deg);
+}
+
+.dcx-settings-trigger svg {
+  transition: transform 260ms var(--ks-ease);
+}
+
+.dcx-settings-close:hover,
+.dcx-settings-close:focus-visible {
+  transform: rotate(90deg);
+}
+
+.dcx-settings-trigger:focus-visible,
+.dcx-settings-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.dcx-settings-modal {
+  width: min(680px, calc(100vw - 24px));
+  max-width: none;
+  max-height: calc(100svh - 24px);
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--ks-rule);
+  border-radius: 6px;
+  background: var(--ks-lacquer);
+  color: var(--ks-text);
+  box-shadow: 0 32px 90px oklch(0% 0 0 / 0.64);
+  opacity: 0;
+  transform: translateY(12px) scale(0.985);
+  transition:
+    opacity 180ms ease,
+    transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dcx-settings-modal::backdrop {
+  background: oklch(0% 0 0 / 0);
+  backdrop-filter: blur(0);
+  transition:
+    background-color 180ms ease,
+    backdrop-filter 240ms ease;
+}
+
+.dcx-settings-modal.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.dcx-settings-modal.is-visible::backdrop {
+  background: oklch(0% 0 0 / 0.76);
+  backdrop-filter: blur(5px);
+}
+
+.dcx-settings-panel {
+  box-sizing: border-box;
+  min-width: 0;
+  padding: clamp(24px, 3vw, 30px);
+}
+
+.dcx-settings-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 24px;
+  padding-bottom: clamp(20px, 2.6vw, 26px);
+}
+
+.dcx-settings-head h2 {
+  margin: 0;
+  color: var(--ks-champagne);
+  font-family: var(--ks-font);
+  font-size: clamp(1.45rem, 2.6vw, 1.75rem);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+}
+
+.dcx-settings-head p {
+  max-width: 52ch;
+  margin: 10px 0 0;
+  color: var(--ks-text-muted);
+  font-size: 0.94rem;
+  line-height: 1.6;
+}
+
+.dcx-settings-commands {
+  display: grid;
+  gap: 20px;
+  margin: 0;
+  padding-top: 24px;
+  border-top: 1px solid var(--ks-rule);
+}
+
+.dcx-settings-modal .dcx-command-copy {
+  border-color: var(--ks-rule);
+}
+
+.dcx-settings-command {
+  display: grid;
+  gap: 12px;
+  padding: 0 0 20px;
+  border-bottom: 1px solid var(--ks-rule);
+}
+
+.dcx-settings-command-copy {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+
+.dcx-settings-command h3 {
+  margin: 0;
+  color: var(--ks-champagne);
+  font-family: var(--ks-font);
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.dcx-settings-command p {
+  margin: 0;
+  color: var(--ks-text-muted);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.dcx-settings-command:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+@media (max-height: 820px) {
+  .dcx-settings-panel {
+    padding-block: 18px;
+  }
+
+  .dcx-settings-head {
+    padding-bottom: 16px;
+  }
+
+  .dcx-settings-head p {
+    margin-top: 6px;
+    line-height: 1.45;
+  }
+
+  .dcx-settings-commands {
+    gap: 12px;
+    padding-top: 16px;
+  }
+
+  .dcx-settings-command {
+    gap: 8px;
+    padding-bottom: 12px;
+  }
+
+  .dcx-settings-command-copy {
+    gap: 2px;
+  }
+}
+
+@media (max-width: 620px) {
+  .dcx-topbar-actions {
+    gap: 8px;
+  }
+
+  .dcx-settings-modal {
+    width: calc(100vw - 24px);
+    max-height: calc(100svh - 24px);
+    border-radius: 4px;
+  }
+
+  .dcx-settings-panel {
+    padding: 22px 20px 18px;
+  }
+
+  .dcx-settings-head {
+    gap: 18px;
+    padding-bottom: 22px;
+  }
+
+  .dcx-settings-head h2 {
+    font-size: 1.4rem;
+  }
+
+  .dcx-settings-head p {
+    font-size: 0.88rem;
+  }
+
+  .dcx-settings-command {
+    padding-bottom: 18px;
+  }
+
+  .dcx-settings-command-copy {
+    gap: 5px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dcx-settings-modal,
+  .dcx-settings-modal::backdrop,
+  .dcx-settings-trigger,
+  .dcx-settings-trigger svg,
+  .dcx-settings-close {
+    transition: none;
+  }
+}

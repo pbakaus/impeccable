@@ -12,6 +12,12 @@
  *   agent    --POST /doc/reply---------> queue status + version bump
  *   browser  --GET  /doc/state (poll)--> { version, requests, batch } -> re-read
  *
+ * It also serves the document's own images: GET /brand-assets/* for what the
+ * user supplied, GET /assets/* for the ones the picker ships. Both are
+ * token-gated and read-only. They are here rather than on the picker server
+ * because article images load when a view opens, which is always after the
+ * picker has exited.
+ *
  * Edits made in the document stage in the browser and arrive here as one batch.
  * Applying them is deterministic and belongs to this process: each change names
  * a field, the field names a place in the store, and the value is written
@@ -38,6 +44,7 @@
 import http from 'node:http';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { fontRelativePath, migrate, paths, readJsonSoft, writeJsonAtomic } from './design-context/store.mjs';
 import { createSaveRoutes } from './design-context/session-routes.mjs';
 
@@ -47,6 +54,10 @@ const contextPath = store.contextJson;
 const sessionPath = store.sessionJson;
 const fontsDir = store.fontsDir;
 const brandAssetsDir = store.assetsDir;
+/* The built picker beside this script: the document's own images (section
+   foils, rail textures, placeholder brand assets) are served from here after
+   the submit-flow picker server has exited. Read-only, image types only. */
+const pickerAssetsDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'picker', 'assets');
 
 const MAX_BODY_BYTES = 1024 * 1024;
 const FONT_EXTENSIONS = new Set(['.woff2', '.woff', '.ttf', '.otf']);
@@ -57,6 +68,13 @@ const BRAND_ASSET_MIME = new Map([
   ['.jpeg', 'image/jpeg'],
   ['.webp', 'image/webp'],
   ['.gif', 'image/gif'],
+]);
+const PICKER_ASSET_MIME = new Map([
+  ['.png', 'image/png'],
+  ['.jpg', 'image/jpeg'],
+  ['.jpeg', 'image/jpeg'],
+  ['.webp', 'image/webp'],
+  ['.svg', 'image/svg+xml'],
 ]);
 const REQUEST_KINDS = new Set(['font', 'freeform']);
 /* Long polls are sliced under common proxy/undici header timeouts, the same
@@ -265,6 +283,45 @@ async function handleRequest(request, response) {
     }
     response.writeHead(200, {
       'Content-Type': BRAND_ASSET_MIME.get(extension),
+      'Content-Length': body.length,
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'max-age=86400',
+    });
+    response.end(body);
+    return;
+  }
+
+  /* The document's own static images, for the tab that outlives the picker
+     server: the submit flow exits on /submit, and article images only load when
+     a view opens, which is always after that. Same trust model as the route
+     above, token-gated and read-only, but contained rather than flat, because
+     the vendored files sit in per-category subdirectories. */
+  if (request.method === 'GET' && requestPath.startsWith('/assets/')) {
+    if (url.searchParams.get('token') !== token) throw httpError(403, 'Bad token');
+    let assetPath;
+    try {
+      assetPath = decodeURIComponent(requestPath.slice('/assets/'.length));
+    } catch {
+      throw httpError(400, 'Invalid path');
+    }
+    const extension = path.extname(assetPath).toLowerCase();
+    const filePath = path.resolve(pickerAssetsDir, assetPath);
+    const contained = path.relative(pickerAssetsDir, filePath);
+    if (!assetPath
+      || assetPath.includes('\0')
+      || !PICKER_ASSET_MIME.has(extension)
+      || contained.startsWith('..')
+      || path.isAbsolute(contained)) {
+      throw httpError(404, 'Not found');
+    }
+    let body;
+    try {
+      body = await readFile(filePath);
+    } catch {
+      throw httpError(404, 'Not found');
+    }
+    response.writeHead(200, {
+      'Content-Type': PICKER_ASSET_MIME.get(extension),
       'Content-Length': body.length,
       'Access-Control-Allow-Origin': '*',
       'Cache-Control': 'max-age=86400',

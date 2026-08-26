@@ -1,0 +1,136 @@
+/* Shared information hierarchy for every Design Context article.
+   Labels identify a field; values carry the decision; supporting copy explains it. */
+
+.dcx-expander {
+  --dcx-hierarchy-title: var(--ks-champagne);
+  --dcx-hierarchy-value: var(--ks-text);
+  --dcx-hierarchy-support: var(--ks-text-muted);
+  --dcx-hierarchy-label: var(--ks-text-faint);
+  --dcx-hierarchy-label-size: 0.68rem;
+  --dcx-hierarchy-value-size: 0.96rem;
+}
+
+/* Definition lists: labels recede, committed values lead. */
+.dcx-detail-article .dcx-detail-defs .dcx-def dt,
+.dcx-audience .dcx-audience-section--people .dcx-def dt {
+  color: var(--dcx-hierarchy-label);
+  font-family: var(--ks-mono);
+  font-size: var(--dcx-hierarchy-label-size);
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  line-height: 1.45;
+  text-transform: uppercase;
+}
+
+.dcx-detail-article .dcx-detail-defs .dcx-def dd,
+.dcx-audience .dcx-audience-section--people .dcx-def dd {
+  margin-top: 9px;
+  color: var(--dcx-hierarchy-value);
+  font-size: var(--dcx-hierarchy-value-size);
+  font-weight: 400;
+  line-height: 1.6;
+}
+
+.dcx-detail-article .dcx-detail-defs .dcx-def dd strong {
+  color: inherit;
+  font-weight: 600;
+}
+
+/* The prose inside a decision component is content, not metadata. */
+.dcx-detail-article .dcx-callout > p:not(.dcx-callout-name),
+.dcx-audience .dcx-callout > p:not(.dcx-callout-name),
+.dcx-detail-article .dcx-principles li,
+.dcx-detail-article .dcx-voice-cell > p,
+.dcx-detail-article .dcx-ref-takeaway,
+.dcx-detail-article .dcx-surface-goal,
+.dcx-detail-article .dcx-swatch-meta > p,
+.dcx-detail-article .dcx-scale-head,
+.dcx-detail-article .dcx-specimen-body,
+.dcx-detail-article .dcx-pick-desc,
+.dcx-detail-article .dcx-asset-caption > p,
+.dcx-detail-article .dcx-prose {
+  color: var(--dcx-hierarchy-value);
+}
+
+/* These callout headings describe the field; the following paragraph is the answer. */
+.dcx-audience .dcx-audience-journey .dcx-callout-name,
+.dcx-detail-article .dcx-detail-section--positioning .dcx-callout-name,
+.dcx-detail-article .dcx-detail-section--primary-conversion .dcx-callout-name,
+.dcx-detail-article .dcx-detail-section--anti-reference .dcx-callout-name {
+  margin-bottom: 9px;
+  color: var(--dcx-hierarchy-label);
+  font-family: var(--ks-mono);
+  font-size: var(--dcx-hierarchy-label-size);
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  line-height: 1.45;
+  text-transform: uppercase;
+}
+
+.dcx-audience .dcx-audience-journey .dcx-callout-name + p,
+.dcx-detail-article .dcx-detail-section--positioning .dcx-callout-name + p,
+.dcx-detail-article .dcx-detail-section--primary-conversion .dcx-callout-name + p,
+.dcx-detail-article .dcx-detail-section--anti-reference .dcx-callout-name + p {
+  color: var(--dcx-hierarchy-value);
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.6;
+}
+
+/* Preserve prominent answer titles inside components. */
+.dcx-detail-article :is(
+  .dcx-detail-principle-copy strong,
+  .dcx-ref-name,
+  .dcx-surface-name,
+  .dcx-pair-name,
+  .dcx-pick-title,
+  .dcx-empty-title
+) {
+  color: var(--dcx-hierarchy-title);
+}
+
+.dcx-detail-article .dcx-ref-name {
+  font-family: var(--ks-font);
+}
+
+/* In the palette, the role is the label and the hex is the committed value. */
+.dcx-detail-article--color .dcx-cue-band-label {
+  color: var(--dcx-hierarchy-label);
+  font-family: var(--ks-mono);
+  font-size: var(--dcx-hierarchy-label-size);
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.dcx-detail-article--color .dcx-cue-band-value {
+  font-size: clamp(0.7rem, 1vw, 0.78rem);
+  font-weight: 600;
+}
+
+/* Type-scale rows follow the same label / value / supporting-value order. */
+.dcx-detail-article--typography .ts-sample {
+  color: var(--ks-champagne) !important;
+}
+
+.dcx-detail-article--typography .ts-tag {
+  color: var(--dcx-hierarchy-label);
+  font-family: var(--ks-mono);
+  font-size: 16px !important;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+}
+
+.dcx-detail-article--typography .ts-values {
+  gap: 12px;
+}
+
+.dcx-detail-article--typography .ts-values b {
+  color: var(--dcx-hierarchy-value);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.dcx-detail-article--typography .ts-values i {
+  color: var(--dcx-hierarchy-support);
+}
