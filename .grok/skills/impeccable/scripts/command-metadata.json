@@ -90,9 +90,5 @@
   "typeset": {
     "description": "Improves typography by fixing font choices, hierarchy, sizing, weight, and readability so text feels intentional. Use when the user mentions fonts, type, readability, text hierarchy, sizing looks off, or wants more polished, intentional typography.",
     "argumentHint": "[target]"
-  },
-  "design-context": {
-    "description": "Reopen, revise, export, or import the design interview and its design context document",
-    "argumentHint": "[open|edit|export|import] [bundle-file]"
   }
 }
