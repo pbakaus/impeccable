@@ -40,7 +40,7 @@ function paeth(a, b, c) {
   return c;
 }
 
-export function decodePng(buf) {
+function decodePng(buf) {
   if (!buf.subarray(0, 8).equals(PNG_SIG)) throw new Error('not a PNG file');
   // Walk the chunk stream: each chunk is [4-byte length][4-byte type][data][4-byte crc].
   // IHDR carries the header fields; IDAT is the (possibly multi-chunk)
@@ -306,8 +306,8 @@ function main() {
 }
 
 // Only auto-run when invoked directly (`node visual-cues.mjs ...`), not
-// when another module imports its exports (decodePng, etc.), e.g. from a
-// test file. import.meta.url is Node's realpath of the entry file, so
+// when another module imports it. import.meta.url is Node's realpath of
+// the entry file, so
 // argv[1] must be realpath'd too, not just path.resolve'd: a skill
 // installed via symlink (the standard `skills link`/install path) makes
 // argv[1] the symlink path, which never equality-matches the resolved

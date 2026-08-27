@@ -24,8 +24,8 @@ import {
   SCHEMA_VERSION,
 } from './store.mjs';
 
-export const BUNDLE_KIND = 'impeccable-design-context';
-export const BUNDLE_SCHEMA = 1;
+const BUNDLE_KIND = 'impeccable-design-context';
+const BUNDLE_SCHEMA = 1;
 
 const MAX_FILE_BYTES = 1024 * 1024;
 const MAX_BUNDLE_BYTES = 20 * 1024 * 1024;
@@ -88,7 +88,7 @@ async function collectFiles(cwd, { includeAssets = true } = {}) {
   return { files, skipped };
 }
 
-export async function buildBundle(cwd, { includeAssets = true, now = new Date() } = {}) {
+async function buildBundle(cwd, { includeAssets = true, now = new Date() } = {}) {
   const target = paths(cwd);
   const answers = await readAnswers(cwd);
   if (!answers) throw new Error('No design interview found. Run /impeccable document to create one.');
@@ -154,7 +154,7 @@ function perSurfaceTable(answers, surfaces) {
 }
 
 /** One document a reader, or another tool, can follow without this toolchain. */
-export function renderMarkdown(bundle) {
+function renderMarkdown(bundle) {
   const context = bundle.context?.context || {};
   const answers = bundle.answers || {};
   const name = bundle.product?.name || 'This product';

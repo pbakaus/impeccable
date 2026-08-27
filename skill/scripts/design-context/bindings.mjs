@@ -14,7 +14,7 @@
  * reader is the prose around it.
  */
 
-export const BINDINGS = {
+const BINDINGS = {
   'palette.primary': { file: 'answers', path: 'palette-primary', kind: 'color', downstream: 'design-md' },
   'palette.secondary': { file: 'answers', path: 'palette-secondary', kind: 'color', downstream: 'design-md' },
   'palette.tertiary': { file: 'answers', path: 'palette-tertiary', kind: 'color', downstream: 'design-md' },

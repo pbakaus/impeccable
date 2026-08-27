@@ -50,7 +50,6 @@ const LOREM = {
     'Excepteur sint occaecat',
     'Non proident, sunt in culpa',
   ],
-  caption: 'Lorem ipsum dolor sit amet, consectetur adipiscing.',
 };
 
 /* Every word slot on the font boards, in lorem. A pair is judged on glyphs, and
@@ -104,45 +103,6 @@ const LOREM_INDEX = {
 /* The desktop artboard sets three cards and the phone two, so a fourth would
    be words the agent writes and nobody ever reads. */
 const GALLERY_CARDS = 3;
-
-/* The words an interface supplies rather than the product: a tool's own rail,
-   the headings over its columns, the figures under them, and the two rows of a
-   settings panel. Kept here beside LOREM and for the same reason. What this
-   board has to prove is that the pair draws lining numerals that hold a column
-   and a semibold label that stays inside one, and both are properties of the
-   face. A column is also the tightest slot on any of the boards, so its words
-   cannot be left to whatever the run happens to be selling. */
-const APP = {
-  rail: ['Overview', 'Reports', 'Settings'],
-  columns: ['Item', 'Status', 'Amount'],
-  figures: ['1,284', '98.2%', '41'],
-  amounts: ['$12,400', '$3,860', '$9,215'],
-  panel: ['Preferences', 'Last 30 days'],
-  switches: ['Email digest', 'Compact rows'],
-  chartTitle: 'Volume by channel',
-  /* One word each, because the label under a bar has the bar's own width and
-     nothing more: a category that wraps or truncates here is a fault in the
-     drawing rather than a report on the pair. The handset takes the first
-     three, which is why the widest of them comes early. */
-  lanes: ['Direct', 'Search', 'Social', 'Email', 'Other'],
-};
-
-/* The same argument as APP, for the surface where the words belong to the
-   document rather than to the product. The rail lists sections of one page and
-   the crumb says where that page sits, neither of which the manifest's nav can
-   stand in for without the board reading as the same four words twice. */
-const DOCS = {
-  rail: ['Getting started', 'Install', 'Configuration', 'API reference'],
-  crumb: 'Docs / Getting started',
-  note: 'Note',
-};
-
-/* Same again for the index. The carousel's stops name parts of a body of work,
-   so the footer's links cannot stand in for them: the two lists sit a band
-   apart on the same board and would read as one list printed twice. */
-const INDEX = {
-  stops: ['Selected', 'Archive', 'Studio', 'Contact'],
-};
 
 /* Deliberately Latin faces with English copy, same as the constraint on
    dealt pairs in visual-cues.md Step 6. TODO: lift both together when the
@@ -599,7 +559,6 @@ fontOptions.onchange = ({ target }) => {
   if (!target.matches('input[name="font-pair"]')) return;
   const pair = fontManifest.pairs.find(({ id }) => id === target.value);
   if (pair) syncFontPair(pair);
-  requestHoist();
 };
 
 /* Scroll by whole rows so an option never ends up half in frame, and disable
@@ -652,31 +611,13 @@ function restWhenIdle(list, rest) {
   };
 }
 
-/* The chosen pair takes the top of the rail, so the answer is the first thing
-   the list shows and the rest keep their dealt order underneath it.
-
-   The move is not made at the moment of choosing, and that is the whole
-   design. Reordering under a live cursor drags the row the user just clicked
-   out from under the pointer and parks a different pair where the next click
-   is already aimed. Reordering on a radio group's arrow keys is worse: every
-   press both moves focus and commits, so a list that re-sorts per press
-   re-sorts between presses and the group cannot be crossed at all.
-
-   So the rail reorders only while nobody is working it. A selection sets the
-   request; the pointer leaving, or focus leaving, spends it. Arriving on the
-   screen spends it too, which is the backstop if a settle is ever missed. */
-const typeRail = fontOptions.closest('.picker-type-rail');
-const RAIL_NAV_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', ' ']);
-let hoistPending = false;
-let pointerInRail = false;
-let keyboardInRail = false;
+/* The chosen pair takes the top of the rail only at quiet moments: arriving
+   on the screen, or a dialog closing over it. Reordering live on selection
+   was removed, because it drags the row the user just clicked out from under
+   the pointer and, on a radio group's arrow keys, re-sorts the list between
+   presses; between arrivals the rail keeps the order the pairs were dealt in
+   and the checked state alone says which one is chosen. */
 let hoistFlash;
-
-/* :hover covers the one case the pointer events miss: the cursor already
-   resting where the rail appears, which fires no enter of its own. */
-const railBusy = () => pointerInRail
-  || typeRail.matches(':hover')
-  || (keyboardInRail && typeRail.contains(document.activeElement));
 
 /* Nothing is under the cursor when the rows move, so the move itself needs no
    transition to be readable. What it needs is somewhere for the eye to land
@@ -694,7 +635,6 @@ function flashHoisted(node) {
 }
 
 function applyHoist({ force = false } = {}) {
-  hoistPending = false;
   const chosen = fontOptions.querySelector('input[name="font-pair"]:checked')?.closest('.picker-type-option');
   if (!chosen) return;
   const wanted = [chosen, ...pairOrder.filter((node) => node !== chosen)];
@@ -715,42 +655,6 @@ function applyHoist({ force = false } = {}) {
   syncScrollButtons();
   if (moved) flashHoisted(chosen);
 }
-
-/* Disabled: the reorder pulled the row the user had just clicked away from
-   where they left it, which reads as the list moving on its own. The rail now
-   keeps the order the pairs were dealt in and the checked state alone says
-   which one is chosen. */
-function requestHoist() {
-  hoistPending = false;
-}
-
-function settleHoist() {
-  if (hoistPending && !railBusy()) applyHoist();
-}
-
-typeRail.addEventListener('pointerenter', () => {
-  pointerInRail = true;
-});
-
-// A frame of slack so :hover has resolved before the guard reads it.
-typeRail.addEventListener('pointerleave', () => {
-  pointerInRail = false;
-  requestAnimationFrame(settleHoist);
-});
-
-typeRail.addEventListener('pointerdown', () => {
-  keyboardInRail = false;
-});
-
-typeRail.addEventListener('keydown', ({ key }) => {
-  if (RAIL_NAV_KEYS.has(key)) keyboardInRail = true;
-});
-
-typeRail.addEventListener('focusout', ({ relatedTarget }) => {
-  if (typeRail.contains(relatedTarget)) return;
-  keyboardInRail = false;
-  settleHoist();
-});
 
 /* Type scale.
 
@@ -3971,7 +3875,6 @@ function ensurePremiumMotion() {
   premiumMotionInstalled = true;
   installPremiumMotion();
 }
-/* premium-motion-end */
 
 
 /* Custom fonts. A URL is carried through as-is; an uploaded face is handed to
@@ -4867,7 +4770,6 @@ document.addEventListener('picker:screenchange', (event) => {
   // Arriving is the quietest moment there is, so the rail settles here even
   // if it is already in order: the chosen pair is the row you land on.
   if (event.detail.screen === '04') {
-    keyboardInRail = false;
     applyHoist({ force: true });
   }
   // A hidden screen has no animations to rewind, so the scene starts on the

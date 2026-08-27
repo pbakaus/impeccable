@@ -22,8 +22,8 @@ import fs from 'node:fs';
 import { readFile, mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-export const STORE_DIR = '.impeccable/design-context';
-export const WORKSPACE_DIR = '.impeccable/visual-cues';
+const STORE_DIR = '.impeccable/design-context';
+const WORKSPACE_DIR = '.impeccable/visual-cues';
 /* The shape of context.json. Bump only when the shape changes, never for a release. */
 export const SCHEMA_VERSION = 1;
 
@@ -45,7 +45,6 @@ export function paths(cwd = process.cwd()) {
     journalJsonl: path.join(runtime, 'journal.jsonl'),
     draftJson: path.join(runtime, 'draft.json'),
     exportsDir: path.join(store, 'exports'),
-    workspaceDir: path.resolve(cwd, WORKSPACE_DIR),
     cuesJson: path.resolve(cwd, WORKSPACE_DIR, 'cues.json'),
     fontsManifestJson: path.resolve(cwd, WORKSPACE_DIR, 'fonts.json'),
   };

@@ -27,6 +27,8 @@
  */
 
 import crypto from 'node:crypto';
+import { realpathSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 // Seeds are inlined (129 entries, hand-curated via a tinder review of
@@ -500,7 +502,10 @@ function hueWord(H) {
 // no side effects.
 export { SEEDS };
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// argv[1] must be realpath'd: a skill installed via symlink makes argv[1]
+// the symlink path, which never equality-matches import.meta.url's realpath,
+// so the CLI would silently never run (same guard as visual-cues.mjs).
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(resolve(process.argv[1]))).href) {
 const args = parseArgs(process.argv.slice(2));
 const seed = pickSeed(SEEDS, args);
 const [L, C, H] = seed.oklch;

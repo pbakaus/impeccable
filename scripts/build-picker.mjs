@@ -11,8 +11,6 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const buildDir = path.join(root, 'build-picker');
 const outputDir = path.join(root, 'skill/scripts/picker');
 // Static assets vendored under picker/assets/ (the site now lives in the
-// private impeccable-site repo, so the picker carries its own copies).
-// Static assets vendored under picker/assets/ (the site now lives in the
 // private impeccable-site repo, so the picker carries its own copies). These
 // are referenced from markup at runtime, so Vite never sees them.
 const assetsSource = path.join(root, 'picker/assets');

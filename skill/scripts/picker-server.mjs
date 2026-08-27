@@ -60,6 +60,7 @@ Options:
   --cues-dir PATH   Visual cues directory (default: .impeccable/visual-cues)
   --timeout MINUTES Exit 2 if nothing submits (default: 60)
   --fresh           Start blank, ignoring any previous answers or draft
+  --doc             Reopen the design context document; no questionnaire
   --help            Show this help
 
 Output:
@@ -422,9 +423,6 @@ async function copyChosenCue(answers) {
 }
 
 async function spawnDocSession() {
-  /* The read-only path is otherwise unreachable from a test, and a document
-     that renders without an edit session is a real state worth exercising. */
-  if (process.env.IMPECCABLE_DOC_SESSION_DISABLE === '1') return null;
   try {
     const docPort = await findOpenPort(port + 1);
     const docToken = randomUUID();

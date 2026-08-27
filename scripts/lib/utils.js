@@ -645,9 +645,9 @@ const EXCLUDED_FROM_SUGGESTIONS = new Set([
 // These are the commands that audit/critique/etc. reference when suggesting next steps.
 const IMPECCABLE_SUB_COMMANDS = [
   'adapt', 'animate', 'audit', 'bolder', 'clarify', 'colorize',
-  'critique',
-  'design-context', 'delight', 'distill', 'document', 'harden', 'layout',
-  'onboard', 'optimize', 'overdrive', 'polish', 'quieter', 'shape', 'typeset',
+  'critique', 'delight', 'design-context', 'distill', 'document', 'harden',
+  'layout', 'onboard', 'optimize', 'overdrive', 'polish', 'quieter', 'shape',
+  'typeset',
 ];
 
 export function replacePlaceholders(content, provider, commandNames = [], allSkillNames = []) {

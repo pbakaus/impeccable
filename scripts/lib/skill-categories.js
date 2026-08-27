@@ -12,7 +12,6 @@ export const SKILL_CATEGORIES = {
   impeccable: 'create',
   shape: 'create',
   // EVALUATE - review and assess
-  'design-context': 'system',
   critique: 'evaluate',
   audit: 'evaluate',
   // REFINE - improve existing design
@@ -37,6 +36,7 @@ export const SKILL_CATEGORIES = {
   init: 'system',
   document: 'system',
   extract: 'system',
+  'design-context': 'system',
   live: 'system',
 };
 

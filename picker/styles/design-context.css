@@ -974,91 +974,6 @@ body.dcx-open { overflow: hidden; background: linear-gradient(180deg, var(--ks-l
   color: var(--ks-text-faint);
 }
 
-/* Type specimen (Typography) — set in the project's real faces. */
-.dcx-specimen {
-  display: grid;
-  gap: 18px;
-  padding: clamp(24px, 3.4vw, 40px);
-  border: 1px solid var(--ks-rule);
-  border-radius: 10px;
-  background: var(--panel-bg);
-}
-
-.dcx-specimen-display {
-  margin: 0;
-  font-family: "Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", Georgia, serif;
-  font-weight: 400;
-  font-size: clamp(2.2rem, 4.6vw, 3.6rem);
-  line-height: 1.15;
-  color: var(--ks-champagne);
-  text-wrap: balance;
-}
-
-.dcx-specimen-body {
-  margin: 0;
-  max-width: 62ch;
-  font-family: "Source Sans 3", system-ui, sans-serif;
-  font-size: 1rem;
-  line-height: 1.6;
-  color: var(--ks-text-muted);
-}
-
-.dcx-specimen-label {
-  margin: 0;
-  font-family: "Source Sans 3", system-ui, sans-serif;
-  font-size: 0.875rem;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--ks-text-faint);
-}
-
-/* Radius samples (Material). */
-.dcx-radius-row { display: flex; flex-wrap: wrap; gap: 18px; }
-
-.dcx-radius-sample { display: grid; gap: 8px; justify-items: center; }
-
-.dcx-radius-box {
-  width: 76px;
-  height: 76px;
-  border: 1.5px solid var(--accent-line);
-  background: var(--accent-wash);
-}
-
-.dcx-radius-caption {
-  font-family: var(--ks-mono);
-  font-size: 0.68rem;
-  color: var(--ks-text-muted);
-}
-
-/* Spacing scale bars (Material). */
-.dcx-space-rows { display: grid; gap: 8px; }
-
-.dcx-space-row {
-  display: grid;
-  grid-template-columns: 74px minmax(0, 1fr) 84px;
-  align-items: center;
-  gap: 14px;
-}
-
-.dcx-space-name,
-.dcx-space-value {
-  font-family: var(--ks-mono);
-  font-size: 0.7rem;
-  color: var(--ks-text-muted);
-}
-
-.dcx-space-value { text-align: right; color: var(--ks-text-faint); }
-
-.dcx-space-bar {
-  height: 12px;
-  width: var(--bar, 20%);
-  min-width: 6px;
-  border-radius: 3px;
-  background: var(--accent-wash);
-  border: 1px solid var(--accent-line);
-}
-
 /* Empty state (Iconography). */
 .dcx-empty {
   padding: clamp(26px, 4vw, 40px);
@@ -1181,7 +1096,6 @@ body.dcx-open { overflow: hidden; background: linear-gradient(180deg, var(--ks-l
     gap: 4px;
   }
 
-  .dcx-space-row { grid-template-columns: 58px minmax(0, 1fr) 70px; }
 }
 
 /* ============================================================

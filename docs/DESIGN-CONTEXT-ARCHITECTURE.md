@@ -77,6 +77,7 @@ skill/scripts/design-context/
   store.mjs            the only code that knows store paths or writes store files
   bindings.mjs         the editable-field registry for the document
   session-routes.mjs   HTTP handlers for the document edit session
+  portability.mjs      the export bundle format and its import validation
 
 skill/scripts/
   picker-server.mjs      static serving, boot contract, submit, autosave, spawn
