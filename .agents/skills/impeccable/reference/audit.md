@@ -99,7 +99,7 @@ For each issue, document:
 - **Impact**: How it affects users
 - **WCAG/Standard**: Which standard it violates (if applicable)
 - **Recommendation**: How to fix it
-- **Suggested command**: Which command to use (prefer: $impeccable adapt, $impeccable animate, $impeccable audit, $impeccable bolder, $impeccable clarify, $impeccable colorize, $impeccable critique, $impeccable delight, $impeccable distill, $impeccable document, $impeccable harden, $impeccable layout, $impeccable onboard, $impeccable optimize, $impeccable overdrive, $impeccable polish, $impeccable quieter, $impeccable shape, $impeccable typeset)
+- **Suggested command**: Which command to use (prefer: $impeccable adapt, $impeccable animate, $impeccable audit, $impeccable bolder, $impeccable clarify, $impeccable colorize, $impeccable critique, $impeccable design-context, $impeccable delight, $impeccable distill, $impeccable document, $impeccable harden, $impeccable layout, $impeccable onboard, $impeccable optimize, $impeccable overdrive, $impeccable polish, $impeccable quieter, $impeccable shape, $impeccable typeset)
 
 ### Patterns & Systemic Issues
 
@@ -118,7 +118,7 @@ List recommended commands in priority order (P0 first, then P1, then P2):
 1. **[P?] `$command-name`**: Brief description (specific context from audit findings)
 2. **[P?] `$command-name`**: Brief description (specific context)
 
-**Rules**: Only recommend commands from: $impeccable adapt, $impeccable animate, $impeccable audit, $impeccable bolder, $impeccable clarify, $impeccable colorize, $impeccable critique, $impeccable delight, $impeccable distill, $impeccable document, $impeccable harden, $impeccable layout, $impeccable onboard, $impeccable optimize, $impeccable overdrive, $impeccable polish, $impeccable quieter, $impeccable shape, $impeccable typeset. Map findings to the most appropriate command. End with `$impeccable polish` as the final step if any fixes were recommended.
+**Rules**: Only recommend commands from: $impeccable adapt, $impeccable animate, $impeccable audit, $impeccable bolder, $impeccable clarify, $impeccable colorize, $impeccable critique, $impeccable design-context, $impeccable delight, $impeccable distill, $impeccable document, $impeccable harden, $impeccable layout, $impeccable onboard, $impeccable optimize, $impeccable overdrive, $impeccable polish, $impeccable quieter, $impeccable shape, $impeccable typeset. Map findings to the most appropriate command. End with `$impeccable polish` as the final step if any fixes were recommended.
 
 After presenting the summary, tell the user:
 

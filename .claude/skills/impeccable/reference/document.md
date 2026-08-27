@@ -64,6 +64,7 @@ Omit irrelevant sections rather than filling them with invented rules. Put respo
 ## When to run
 
 - New-work found a coherent incumbent visual system but no `DESIGN.md`.
+- New-work paused before its direction roll on a project with no `DESIGN.md` and the user accepted the seed questionnaire recommendation; run seed mode.
 - The first implementation of a new world is complete and its provisional decisions need to be carbonized.
 - An existing `DESIGN.md` is stale (the design has drifted).
 - Before a large redesign, to capture the current state as a reference.
@@ -73,9 +74,9 @@ If a `DESIGN.md` already exists, **do not silently overwrite it**. Show the user
 ## Two paths
 
 - **Scan mode** (default): the project has design tokens, components, or rendered output. Extract, then confirm descriptive language. Use when there's code to analyze.
-- **Seed mode**: the project is pre-implementation. Ensure PRODUCT.md exists, then reuse new-work's visual-world workshop and write its directional DESIGN.md seed. Re-run in scan mode once there's code.
+- **Seed mode**: the project is pre-implementation (fresh init, nothing built yet). Decide first whether the browser questionnaire can run, gather any existing brand assets, interview in chat (three named references and one anti-reference when the questionnaire will run; five high-level answers when it will not), then write a seed DESIGN.md marked `<!-- SEED -->` that carries every decision the interview and the questionnaire made. Re-run in scan mode once there's code.
 
-Decide by scanning first (Scan mode Step 1). If the scan finds no tokens, no component files, and no rendered site, offer seed mode; don't silently switch. `/impeccable document --seed` requests new-work's world workshop, but it does not authorize replacing coherent code: when an incumbent system exists, offer scan mode or route an explicit identity-replacement request through new-work.
+Decide by scanning first (Scan mode Step 1). If the scan finds no tokens, no component files, and no rendered site, offer seed mode; don't silently switch. `/impeccable document --seed` forces seed mode on a pre-implementation project, but it does not authorize replacing coherent code: when an incumbent system exists, offer scan mode or route an explicit identity-replacement request through new-work.
 
 ## Scan mode (approach C: auto-extract, then confirm descriptive language)
 
@@ -308,7 +309,7 @@ The `html` and `css` fields must be **self-contained, drop-in snippets** that re
 
 1. **Tailwind expansion.** If the source uses Tailwind (className="bg-primary text-white rounded-lg px-6 py-3"), expand every utility to literal CSS properties in the `css` string. Do **not** reference Tailwind classes; do **not** assume a Tailwind CSS bundle is loaded. Each component is self-contained.
 2. **Token resolution.** If the project exposes tokens as CSS custom properties on `:root` (e.g. `--color-primary`, `--radius-md`), reference them via `var(--color-primary)`; they inherit through the shadow DOM and stay live-bound. If tokens live only in JS theme objects (styled-components, CSS-in-JS), resolve to literal values at generation time.
-3. **Icons.** Inline as SVG. Do not reference Lucide/Heroicons packages, icon fonts, or `<img src="...">`. A typical icon is 16-24px; copy the SVG path data directly.
+3. **Icons.** Inline as SVG. Do not reference Lucide/Heroicons packages, icon fonts, or `<img src="...">`. A typical icon is 16-24px; copy the SVG path data directly. This is about how a snippet ships, not about which family the project draws from: when the design names an icon set, keep using that set's glyphs and paste their path data in.
 4. **States.** Include `:hover`, `:focus-visible`, and (if meaningful) `:active` rules inline. A static default-only snapshot makes the panel feel dead. Hover + focus rules in the CSS make it feel alive.
 5. **Reset bloat.** Extract only the component's *distinctive* CSS (background, color, padding, border-radius, typography, transition). Skip universal resets (`box-sizing: border-box`, `line-height: inherit`, `-webkit-font-smoothing`). The panel already has a neutral canvas; don't re-ship resets.
 6. **Scoped class names.** Prefix every class with `ds-` (e.g. `ds-btn-primary`, `ds-input-search`) so component CSS doesn't collide with other components' CSS in the same shadow DOM.
@@ -349,45 +350,137 @@ Your own write is the freshest source; subsequent commands in this session don't
 
 ## Seed mode
 
-For projects with no visual system to extract yet. Produces a user-chosen visual-world scaffold, not a fabricated token spec.
-
-### Step 1: Route through new-work's workshop
+For projects with no visual system to extract yet. Produces a minimal, user-chosen scaffold, not a fabricated token spec.
 
 PRODUCT.md is the prerequisite. If it is missing, load [init.md](init.md) and complete its product interview first. Do not create a visual identity without durable product context.
 
-If PRODUCT.md exists, load [new-work.md](new-work.md) and resolve visual authority. Seed mode requires a concrete first surface: use the target the user named, or ask what they want to make first. Run new-work's **Create or replace the visual world** flow, then **Commit the world**, so the visual world and its first expression are chosen together. Stop after the directional DESIGN.md seed and surface brief; do not implement. A structured simulated user counts as the user and must get the same choice.
+### Step 1: Decide the path, confirm seed mode, and ask for assets
 
-If new-work already completed the workshop in this session, use its chosen direction directly. Do not ask again.
+The browser questionnaire asks color strategy and motion per surface and picks concrete typefaces and a type scale by eye, so whether it will run decides what the chat interview may ask. Decide the path **before the first question**, never after the interview:
 
-### Step 2: Write seed DESIGN.md
+- **The harness has native image generation** (Codex's `image_gen`, an equivalent MCP tool, or similar): the questionnaire path; the cues are generated directly at Step 4, no setup needed. This branch wins even when `.impeccable/.env` already holds an `IMAGE_GEN_API_KEY` or an earlier run in another harness left a wrapper script behind; those are fallbacks for keyless harnesses, not the preferred path. A native tool that **cannot generate** (zero credits, failed auth) counts as absent: fall through to the next branch without asking, and mention the swap in the final report.
+- **No usable native path, key already in `.impeccable/.env`**: the questionnaire path, with no pause and no questions. Load [image-api.md](image-api.md) and use its shipped wrapper; it pre-answers everything this path has ever stopped to ask, including which provider the key belongs to.
+- **No usable native path, no key**: pause. STOP and call the AskUserQuestion tool to clarify. Ask whether the user wants generated visual cues to pick a palette by eye. *"I can generate a few small palette-and-mood images so you choose a direction visually instead of from descriptions. That needs an image-generation API key (FLUX and Google Nano Banana are supported out of the box; other providers work too), stored as `IMAGE_GEN_API_KEY` in `.impeccable/.env`. Add one, or skip straight to the chat interview?"* If a key arrives, write it to `.impeccable/.env` together with `IMAGE_GEN_PROVIDER` (`bfl` for FLUX, `gemini` for Nano Banana, the provider's own name for anything else; when the user does not say, let the wrapper infer it from the key). Confirm that file is listed in the project's `.gitignore` (add it if missing; a committed key is a leak), then load [image-api.md](image-api.md). Its shipped wrapper is the whole integration for the built-in providers; only a provider it does not know earns the project-local wrapper that file specifies. A key arriving makes this the questionnaire path.
+- **The user opts out, or no key arrives**: the interview-only path. The assets ask below, the five questions in Step 3, then Steps 5-6 from the interview alone.
 
-Use the canonical section order from Scan mode. Populate the selected workshop direction and leave unresolved implementation facts as honest placeholders. The seed commits a world and its invariants; it does not pretend implementation tokens already exist.
+Then confirm seed mode and ask for assets, framed for the path:
 
-Lead the file with:
+- **Questionnaire path**: *"There's no existing visual system to scan. You'll pick the visual direction by eye in a browser questionnaire; before I generate its options, three quick things. First: if you have any visual assets (a logo, reference or product images, moodboards), drop them in or point me at the files. They're extra context that makes the first DESIGN.md seed more accurate. You can re-run `/impeccable document` once there's code, to capture the real tokens and components. OK?"*
+- **Interview-only path**: *"There's no existing visual system to scan. I'll ask five quick questions to seed a starter DESIGN.md. First: if you have any visual assets (a logo, reference or product images, moodboards), drop them in or point me at the files. They'll ground the questions in what you already have. You can re-run `/impeccable document` once there's code, to capture the real tokens and components. OK?"*
+
+Also glance for assets already in the project (`assets/`, `public/`, `brand/`, image files at the root); name anything found so the user can confirm it's relevant. Assets are optional: one ask, then proceed with whatever arrived.
+
+If the user prefers to skip entirely, stop. No file.
+
+### Step 2: Read the assets
+
+Look at every asset provided (attached in chat or a file path) and record what it tells you, before writing the questions:
+
+- **Logo**: sample the exact colors, note letterform character (geometric / humanist / serif) and temperature.
+- **Reference / product images**: density, palette, type feel; what the user is drawn to.
+- **Moodboards**: recurring hues, textures, era, register cues.
+
+On the questionnaire path, the files themselves also feed the design context document the picker shows after the last question. When the user provided actual files (a logo, a mood board, a reference image), copy each one into `.impeccable/design-context/assets/`, keeping its filename. Record every staged file for Step 4's context write: it becomes an object entry in `context.json` `context.assets`, `{ "file": "<filename>", "kind": "logo" | "moodboard" | "reference", "note": "<one-line observation>" }`, where the note is what this step read off it. An observation with no file behind it stays a plain string entry, as before. On the interview-only path, stage nothing; the observations feed the questions and the seed alone.
+
+These observations exist to sharpen Step 3. **No assets: skip straight to Step 3** with generic options.
+
+### Step 3: The interview
+
+Group each path's questions into one `AskUserQuestion` interaction. Options must be concrete. Keep skill vocabulary (seed, register, anti-reference) out of question text; ask for the thing in words the user would use. Ask like a magazine editor profiling the brand: curious and narrative, drawing out the feel the surface should carry.
+
+**Questionnaire path: two questions, nothing more.** With Step 1's assets ask these are the whole chat interview; the questionnaire asks everything else by eye.
+
+1. **Three named references.** Brands, products, printed objects. Not adjectives. When Step 2 produced observations, ground candidate names in them (references drawn from the moodboard's era).
+2. **One anti-reference.** What the product should NOT feel like. Also named.
+
+**Do not ask about color, typography, or motion here; the questionnaire owns them.** It asks color strategy and motion per surface and picks concrete typefaces and a type scale, so a chat answer would be asked again by eye and one of the two would be thrown away. Both answered, go straight to Step 4.
+
+**Interview-only path: five questions.** When Step 2 produced observations, ground the options in them: offer the logo's sampled color as a hue anchor in Q1, a type direction that matches the letterforms in Q2, candidate named references drawn from the moodboard's era in Q4. The user should recognize their own material in the choices.
+
+1. **Color strategy.** Pick one:
+   - Restrained: tinted neutrals + one accent ≤10%
+   - Committed: one saturated color carries 30–60% of the surface
+   - Full palette: 3–4 named color roles, each deliberate
+   - Drenched: the surface IS the color
+   
+   Then: one hue family or anchor reference ("deep teal", "mustard", "Klim #ff4500 orange").
+
+2. **Typography direction.** Pick one (specific fonts come later):
+   - Serif display + sans body
+   - Single sans (warm / technical / geometric / humanist; pick a feel)
+   - Display + mono
+   - Mono-forward
+   - Editorial script + sans
+
+3. **Motion energy.** Pick one:
+   - Restrained: state changes only
+   - Responsive: feedback + transitions, no choreography
+   - Choreographed: orchestrated entrances, scroll-driven sequences
+
+4. **Three named references.** Brands, products, printed objects. Not adjectives.
+
+5. **One anti-reference.** What it should NOT feel like. Also named.
+
+### Step 4: Launch the questionnaire (questionnaire path only)
+
+**Interview-only path: skip this step.** Go to Step 5 and seed from the answers alone. Step 1 already settled the capability question; do not re-open it here.
+
+On the questionnaire path, **stop and load [visual-cues.md](visual-cues.md)** and follow its pipeline; it owns everything from the one-line user announcement and the persona palette studio through generation, `cues.json`, and the picker pause. Do not restate its mechanics here or in chat. The picker's exit is the handoff: when the server exits 0 and `.impeccable/design-context/answers.json` lands, come back here and run Steps 5-6 with that file in hand.
+
+### Step 5: Write seed DESIGN.md
+
+Use the canonical section order from Scan mode. Populate what the interview, the assets, and the questionnaire answer; leave the rest as honest placeholders. The seed is a scaffold, not a fabricated spec, but a decision the user actually made in the picker is real and belongs in the file at full strength.
+
+Mark the file as a seed with this comment as the first line of the markdown body, immediately after the frontmatter's closing `---` (the frontmatter must open the file or token parsers will not see it):
 
 ```markdown
 <!-- SEED: established with the user before implementation; re-run /impeccable document once there's code to capture the actual tokens and components. -->
 ```
 
-Per-section guidance in seed mode:
+**Two seeds exist**, and which one you write depends on whether Step 4's picker ran:
 
-- **Overview**: the chosen design thesis, layout behavior, material character, imagery stance, motion grammar, and reusable signature. Keep the selected first-surface expression in its surface brief; do not promote its composition into the global world.
-- **Colors**: the selected palette strategy and roles. Include values only when the user, an existing asset, or new-work's exploration established them; otherwise mark them `[to be resolved during implementation]`.
-- **Typography**: the selected type character and role relationship. Include font names only when established; otherwise mark the pairing `[to be resolved during implementation]`.
-- **Layout**: the selected spatial grammar and responsive behavior, without pretending exact measurements are settled.
-- **Elevation & Depth**: the selected material and depth behavior, stated as an invariant rather than inferred from a generic preset.
-- **Shapes**: the selected form and corner language.
+**Interview-only seed** (the user opted out of generation, or no key arrived). Per-section guidance:
+
+- **Overview**: Creative North Star and philosophy phrased from the answers (color strategy + motion energy + references). Reference the user's anti-reference directly.
+- **Colors**: Color strategy as a Named Rule (e.g. *"The Drenched Rule. The surface IS the color."*). Hue family or anchor reference. Colors sampled from a provided logo are real; include them with exact values and note the source. Everything else stays `[to be resolved during implementation]`; those sampled anchors are the only hex this seed may carry.
+- **Typography**: the direction the user picked (e.g. "Serif display + sans body"). No font names yet: `[font pairing to be chosen at implementation]`.
+- **Layout** and **Shapes**: omit unless an asset or answer established a spatial or form preference; do not invent grids or corner language pre-implementation.
+- **Elevation & Depth**: inferred from motion energy. Restrained/Responsive → flat by default; Choreographed → layered. One sentence.
 - **Components**: omit entirely; no components exist yet.
-- **Do's and Don'ts**: record the durable guardrails confirmed during the world choice, not task-local refusals.
+- **Do's and Don'ts**: carry PRODUCT.md's anti-references directly plus the anti-reference named in Q5.
 
-Seed mode writes a minimal frontmatter with `name` and `description` only; no colors, typography, rounded, spacing, or components yet. Real tokens land on the next Scan-mode run. Skip the `.impeccable/design.json` sidecar in seed mode for the same reason: nothing to render.
+This seed writes a minimal frontmatter with `name` and `description` only; no colors, typography, rounded, spacing, or components yet.
 
-### Step 3: Confirm
+**Questionnaire seed** (`.impeccable/design-context/answers.json` exists from this run). The user answered every screen by eye, so the seed carries their answers as decisions, not directions. Read the answers file plus the picked cue's palette entry in `.impeccable/visual-cues/cues.json` (`palette-source` names it), and map:
+
+- **Frontmatter**: `name` and `description`, plus real `colors` (the four `palette-*` hex values under descriptive slugs; these are picked, not sampled) and real `typography` (`font-heading` and `font-body` are exact family names; give each role its family and weight intent, leave sizes for implementation). Derive the two text inks and record them under `colors` too: one near-black and one near-white, the pair the picker's previews already set their text in over these exact surfaces, each holding 4.5:1 against the grounds it will carry copy on, so a builder needing body-text contrast finds ink in the system instead of inventing a fifth color. Still no `rounded`, `spacing`, or `components`: the corner and spacing answers are qualitative, and nothing is built.
+- **Overview**: Creative North Star and philosophy phrased from the questionnaire's color-strategy and motion answers plus the chat references; reference the user's anti-reference directly. Name the chosen surfaces (`surface-modes`) and what each is for. Movement stays here, after the North Star, but the questionnaire asks it of a landing page and a portfolio only, so write what the keys support:
+  - `motion-energy-<mode>` keys present, all agreeing: one philosophy sentence for the product, as before.
+  - Keys present and disagreeing: one sentence per surface, named (*"The landing page moves on state change only; the portfolio stages entrances and drives sequences on scroll."*). The bare `motion-energy` is the leading one of the two.
+  - **No `motion-energy` key at all**: the run has neither of those surfaces, so movement was never asked. Say nothing about it, and do not fill the gap from the register; this path's chat interview never asked about motion, so there is nothing to borrow. The next Scan-mode run reads the real transitions out of the code.
+- **Colors**: the four roles with their picked hex, noting the cue they came from. Name the chosen cue by its slug, and note that the unpicked cue images stay in `.impeccable/visual-cues/` for later art direction. `color-strategy` becomes the Named Rule. When surfaces differ (`color-strategy-<mode>` keys), state each surface's strategy and which surface leads (the bare key's owner).
+- **Typography**: the real pair by name, the pairing's character, and the type scale as a rule: `type-scale` names it, `type-scale-ratio` is the ratio (e.g. *"Major third: each heading step is 1.25x the last"*). Base size and exact steps stay `[resolved at implementation]`. A `font-heading-source` / `font-body-source` value means a user-provided font file; record where it lives.
+- **Layout**: `boundary-style` (how sections separate) per surface when the `-<mode>` keys differ, plus `layout-structure` (how pages are composed), which the questionnaire asks of a landing page and a portfolio only. No invented grids beyond what the answers state.
+  - `layout-structure` present: one bare key and no `-<mode>` keys, so state it as a rule for the whole product rather than per surface.
+  - **No `layout-structure` key at all**: the run has neither of those surfaces, so composition was never asked. Say nothing about how strict the grid is, and let `boundary-style` carry the section.
+- **Elevation & Depth**: `depth-style` per surface, stated directly; the questionnaire answered this, so do not re-infer it from motion energy.
+- **Shapes**: `corner-style` per surface.
+- **Components**: still omit; nothing exists yet.
+- **Do's and Don'ts**: the interview-only guidance, plus a Do fixing the icon source: every icon comes from the chosen pack (`icon-pack-name`, license, URL), no mixed sets.
+
+Per-surface answers come back for every chosen surface, defaults included, and a difference between surfaces is a decision the picker enforced, not an inconsistency to smooth over (the option lists differ per surface). Where all surfaces agree, state the answer once for the product. `motion-energy` and `layout-structure` are the two keys that can be missing entirely, since movement and composition are asked of a landing page and a portfolio only; [visual-cues.md](visual-cues.md) has the full contract.
+
+Both seeds skip the `.impeccable/design.json` sidecar: nothing to render yet. Real tokens for sizes, spacing, and components land on the next Scan-mode run.
+
+### Step 6: Confirm
 
 1. Show the seed DESIGN.md. Call out that it is a seed (the marker is the literal commitment).
 2. Tell the user: "Re-run `/impeccable document` once you have some code. That pass will extract real tokens and generate the sidecar."
+3. On the questionnaire path, add one line: the interview is kept, and `/impeccable design-context` reopens the document, re-runs the questionnaire over these answers, or writes the context out for another tool. See [design-context.md](design-context.md).
 
 Your own write is the freshest source; no reload needed.
+
+When the questionnaire ran, the confirm is not the end of the turn: the design context document in the user's tab is live for edits through the session the picker forked. Follow the document edit loop in [visual-cues.md](visual-cues.md): poll, apply `edit_request`s to this same DESIGN.md, reply. A color the user changed in the tab before your seed write is already in `answers.json`; one changed after arrives as a `save_batch` event, its value already in the store and its description in DESIGN.md yours to bring in line.
 
 ## Style guidelines
 

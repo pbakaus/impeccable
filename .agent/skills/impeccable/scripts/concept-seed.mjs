@@ -47,6 +47,7 @@
  *
  * Usage:
  *   node scripts/concept-seed.mjs --scope direction --mode persuade
+ *   node scripts/concept-seed.mjs --scope direction --mode persuade --seed-declined="<user's verbatim skip answer>"
  *   node scripts/concept-seed.mjs --scope surface --mode operate --from <key>
  *   node scripts/concept-seed.mjs --scope surface --mode operate --grain flow
  *   node scripts/concept-seed.mjs --scope direction --candidate-count 6
@@ -54,6 +55,16 @@
  *   node scripts/concept-seed.mjs --scope direction --mode persuade --from <key> --reroll 1 --register bolder
  *   node scripts/concept-seed.mjs --chosen <challenger-id> --kind challenger --from <key> --scope direction
  *   node scripts/concept-seed.mjs --kind assigned --from <key> --scope direction
+ *
+ * --seed-declined records that the user was offered the document --seed
+ * questionnaire on a no-DESIGN.md project and skipped it. The flag carries
+ * evidence: its value is the user's verbatim skip answer, quoted from the
+ * conversation. Without it, a --scope direction roll on a project with no
+ * DESIGN.md refuses to deal and prints the pause directive instead; a bare
+ * or empty flag refuses the same way (a real live session self-passed the
+ * boolean form without asking, which is why the flag demands the quote).
+ * Fabricating or paraphrasing the quote is a contract violation, not a
+ * shortcut.
  *
  * --grain names how much of the product is in play: product, flow, view, or
  * region. A docs site, an onboarding flow, a landing page and a data table are
@@ -87,6 +98,10 @@
  *   IMPECCABLE_CATALOG_DIR  — directory holding the four catalog JSON files.
  *   IMPECCABLE_API_URL      — roll API base (default https://impeccable.style/api).
  *   IMPECCABLE_NO_TELEMETRY — disables the choice ping (DO_NOT_TRACK also honored).
+ *   IMPECCABLE_SEED_DECLINED — set to 1 to bypass the seed pause without a
+ *     quote; the unattended escape for eval and CI harnesses that
+ *     legitimately roll direction on a no-DESIGN.md workspace. Never for
+ *     attended sessions; the bypass is logged to stderr so it stays auditable.
  */
 
 import crypto from 'node:crypto';
@@ -678,6 +693,21 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const candidateCountIdx = args.indexOf('--candidate-count');
   const chosenIdx = args.indexOf('--chosen');
   const kindIdx = args.indexOf('--kind');
+  // --seed-declined carries evidence: the user's verbatim skip answer, in
+  // either --seed-declined="<answer>" or --seed-declined <answer> form. A
+  // bare or empty flag does not count; a live session self-passed the
+  // boolean form without asking the user, so the flag demands the quote.
+  let seedDeclinedAnswer = null;
+  for (let i = 0; i < args.length; i += 1) {
+    if (args[i] === '--seed-declined') {
+      const next = args[i + 1];
+      seedDeclinedAnswer = next !== undefined && !next.startsWith('--') ? next : '';
+    } else if (args[i].startsWith('--seed-declined=')) {
+      seedDeclinedAnswer = args[i].slice('--seed-declined='.length);
+    }
+  }
+  const seedDeclinedByEnv = process.env.IMPECCABLE_SEED_DECLINED === '1';
+  const seedDeclined = Boolean(seedDeclinedAnswer && seedDeclinedAnswer.trim()) || seedDeclinedByEnv;
   try {
     if (chosenIdx !== -1 || kindIdx !== -1) {
       // Choice ping: always exits 0, telemetry must never fail a design flow.
@@ -698,13 +728,39 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       // rolled directions with no PRODUCT.md, so nothing grounded the fusion).
       // The --chosen branch above stays ungated; telemetry never blocks.
       const { loadContext } = await import('./context.mjs');
-      if (!loadContext(process.cwd()).hasProduct) {
+      const ctx = loadContext(process.cwd());
+      if (!ctx.hasProduct) {
         process.stdout.write([
           'NO_PRODUCT_MD: the dice stay in the cup until product truth exists.',
           'Complete the init ask round and write PRODUCT.md first (reference/init.md), then re-run this exact command.',
           'Challengers fuse their form with facts from PRODUCT.md; without it every direction is ungrounded.',
         ].join(' ') + '\n');
         process.exit(1);
+      }
+      // Mechanical seed-pause gate: prose alone did not keep a model from
+      // rolling a direction before offering the seed questionnaire (a real
+      // session read a stale reference file and dealt straight after init),
+      // and a boolean flag did not either (the next session self-passed it
+      // without asking). A direction roll invents the visual world, so on a
+      // project with no DESIGN.md the user gets the choice first; a seed
+      // DESIGN.md counts as present, so a post-questionnaire re-entry never
+      // re-asks. The flag now carries the user's verbatim skip answer.
+      const scopeArg = scopeIdx !== -1 ? args[scopeIdx + 1] : 'surface';
+      if (scopeArg === 'direction' && !ctx.hasDesign && !seedDeclined) {
+        process.stdout.write([
+          'NO_DESIGN_MD: the dice stay in the cup until the user answers the seed question.',
+          'First action: create a tracked todo "Ask user: document --seed or skip" with the harness todo tool and start no other todo until it is answered; with no todo tool, state this gate to the user in chat before anything else.',
+          'Then ask one question: recommend `document --seed`, the guided interview plus browser questionnaire (reference/document.md, seed mode), because a world built from the user\'s own choices beats one assigned to them; offer the skip in the same breath.',
+          'User accepts: run document seed mode; its seed DESIGN.md reads as an established world, so no direction roll happens.',
+          'User skips: re-run this exact command with --seed-declined="<their verbatim skip answer>" quoting the user\'s actual words from this conversation.',
+          'The original build request is never a skip answer, a bare or empty flag refuses again, and a fabricated or paraphrased quote is a contract violation.',
+        ].join(' ') + '\n');
+        process.exit(1);
+      }
+      if (scopeArg === 'direction' && !ctx.hasDesign && seedDeclinedByEnv && !(seedDeclinedAnswer && seedDeclinedAnswer.trim())) {
+        // Auditable trace for the unattended escape; stderr keeps the seed
+        // output clean for the agent.
+        process.stderr.write('seed pause bypassed via IMPECCABLE_SEED_DECLINED (unattended harness escape)\n');
       }
       process.stdout.write(await renderConceptSeed({
         scope: scopeIdx !== -1 ? args[scopeIdx + 1] : 'surface',

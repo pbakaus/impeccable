@@ -375,7 +375,7 @@ if (hasFlag('start')) {
   const state = JSON.parse(fs.readFileSync(stateFile(key), 'utf8'));
   console.log(`QUESTION URL: ${state.url}`);
   console.log(`QUESTION KEY: ${key}`);
-  console.log('Open the URL for the user now: in-app browser when the harness has one, otherwise the system opener (macOS `open`, Linux `xdg-open`), otherwise show the URL.');
+  console.log('Open the URL for the user now: on Cursor with browser_navigate (the in-IDE browser), on another harness with its in-app browser tool, otherwise the system opener (macOS `open`, Linux `xdg-open`), otherwise show the URL.');
   console.log(`Then collect the answer with: node ${fileURLToPath(import.meta.url)} --wait --key ${key}`);
   process.exit(0);
 }
