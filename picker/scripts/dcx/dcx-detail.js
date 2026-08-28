@@ -111,6 +111,21 @@ import { dcxAsset } from './assets.js';
     section.querySelectorAll(":scope .dcx-fan-note").forEach((note) => note.remove());
   };
 
+  /* A "default" chip marks a surface that kept its preset instead of being
+     configured, and the sentence that said so was a provenance note, which the
+     pass above removes. Restate it in a class this pass keeps, so a value the
+     run never chose is never read as one it did. The "leading" chip shares the
+     class and means something else, hence the text test. */
+  const notePresetDefaults = (body) => {
+    const chips = [...body.querySelectorAll(".dcx-default-mark")];
+    if (!chips.some((chip) => chip.textContent.trim() === "default")) return;
+    if (body.querySelector(":scope > .dcx-default-note")) return;
+    const note = document.createElement("p");
+    note.className = "dcx-default-note";
+    note.textContent = "Entries marked default kept their surface's preset; this run never set them. Run /impeccable design-context edit to answer them.";
+    body.appendChild(note);
+  };
+
   const compactColorArticle = (article) => {
     if (article.dataset.dcxColorCompacted === "true") return;
 
@@ -268,6 +283,7 @@ import { dcxAsset } from './assets.js';
     wrapPrincipleContent(section, category);
     placeProductPlatform(section, category);
     removeProvenanceNotes(section);
+    notePresetDefaults(body);
   };
 
   const enhanceArticle = (article, category) => {

@@ -968,7 +968,8 @@ body.dcx-open { overflow: hidden; background: linear-gradient(180deg, var(--ks-l
   opacity: 0.82;
 }
 
-.dcx-fan-note {
+.dcx-fan-note,
+.dcx-default-note {
   margin: 10px 0 0;
   font-size: 0.8rem;
   color: var(--ks-text-faint);
@@ -2249,10 +2250,12 @@ body.dcx-live .dcx-request { display: inline-flex; }
   --derived-panel-edge: color-mix(in oklab, var(--pv-strong) 20%, var(--pv-neutral));
 }
 
-/* Restrained lock for the non-persuade clones, mirrored from the strategy
-   remap so the derived boards hold the gallery's base regardless of the
-   run's strategy answer. */
-.dcx-proof--board > .picker-preview:not([data-surface="persuade"]) {
+/* Quiet base for derived-surface clones that carry no strategy answer of their
+   own (the Product surface cards). A frame that restates a strategy renders
+   that strategy instead, and a persuade frame keeps the full palette. The
+   clone's own data-surface is stripped by proofHtml, so this keys on the
+   frame's data-dcx-surface restatement. Body mirrored from picker.css:3404. */
+.dcx-proof--board:not([data-dcx-strategy]):not([data-dcx-surface="persuade"]) > .picker-preview {
   --pv-secondary: color-mix(in oklab, var(--pkc-neutral) 78%, var(--pkc-n-ink));
   --pv-tertiary: color-mix(in oklab, var(--pkc-neutral) 86%, var(--pkc-n-ink));
   --pv-t-ink: var(--pkc-n-ink);

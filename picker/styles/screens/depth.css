@@ -137,10 +137,11 @@
 .picker-screen[data-screen="10"] .picker-board-stage > .picker-preview .pg-cap::before { box-shadow: var(--derived-shadow-card) !important; }
 .picker-screen[data-screen="10"] .picker-board-stage > .picker-preview :is(.po-chart i, .po-side, .po-panel) { box-shadow: var(--derived-shadow-surface) !important; }
 
-/* Depth persuade rides the drenched base, the gallery's baseCellId lock.
-   The role swap has to land before the persuade-specific secondary locks,
-   or the ground stays light and every derived depth cell misses by a mile. */
-.picker-screen[data-screen="10"] .picker-board-stage > .picker-preview[data-surface="persuade"] {
+/* Depth persuade rode the gallery's drenched base cell unconditionally, which
+   painted the board in the primary for every run. The swap now applies only
+   when the run actually chose the drenched strategy; otherwise the committed
+   base from the shared 08/09/10 map (boundaries.css) carries the board. */
+#picker-form:has(input[name="color-strategy"][value="drenched"]:checked) .picker-screen[data-screen="10"] .picker-board-stage > .picker-preview[data-surface="persuade"] {
   --pv-neutral: var(--pkc-primary);
   --pv-n-ink: var(--pkc-p-ink);
   --pv-primary: var(--pkc-p-ink);
@@ -155,18 +156,18 @@
   --pv-secondary-wash: color-mix(in oklab, var(--pkc-p-ink) 16%, var(--pkc-primary));
 }
 
-.picker-screen[data-screen="10"] .picker-board-stage > .picker-preview[data-surface="persuade"] .pv-desktop .pv-image {
+#picker-form:has(input[name="color-strategy"][value="drenched"]:checked) .picker-screen[data-screen="10"] .picker-board-stage > .picker-preview[data-surface="persuade"] .pv-desktop .pv-image {
   background: linear-gradient(135deg, color-mix(in oklab, var(--pkc-p-ink) 16%, var(--pkc-primary)), color-mix(in oklab, var(--pkc-secondary) 34%, var(--pkc-primary))) !important;
   border-color: color-mix(in oklab, var(--pkc-secondary) 52%, var(--pkc-primary)) !important;
 }
 
-.picker-screen[data-screen="10"] .picker-board-stage > .picker-preview[data-surface="persuade"] .pv-desktop .pv-image::after { background: var(--pkc-tertiary) !important; }
+#picker-form:has(input[name="color-strategy"][value="drenched"]:checked) .picker-screen[data-screen="10"] .picker-board-stage > .picker-preview[data-surface="persuade"] .pv-desktop .pv-image::after { background: var(--pkc-tertiary) !important; }
 
-.picker-screen[data-screen="10"] .picker-board-stage > .picker-preview[data-surface="persuade"] .pv-desktop .pv-actions i:last-child {
+#picker-form:has(input[name="color-strategy"][value="drenched"]:checked) .picker-screen[data-screen="10"] .picker-board-stage > .picker-preview[data-surface="persuade"] .pv-desktop .pv-actions i:last-child {
   border-color: color-mix(in oklab, var(--pkc-secondary) 68%, var(--pkc-p-ink)) !important;
   background: color-mix(in oklab, var(--pkc-secondary) 18%, var(--pkc-primary)) !important;
 }
 
-.picker-screen[data-screen="10"] .picker-board-stage > .picker-preview[data-surface="persuade"] .pv-desktop .pv-nav-bars i:nth-child(2) {
+#picker-form:has(input[name="color-strategy"][value="drenched"]:checked) .picker-screen[data-screen="10"] .picker-board-stage > .picker-preview[data-surface="persuade"] .pv-desktop .pv-nav-bars i:nth-child(2) {
   background: color-mix(in oklab, var(--pkc-secondary) 72%, var(--pkc-p-ink)) !important;
 }

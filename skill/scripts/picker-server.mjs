@@ -262,6 +262,12 @@ async function handleRequest(request, response) {
        where to reach it from this response; the agent learns from
        runtime/session.json, which the sibling writes at boot. */
     const doc = await spawnDocSession();
+    /* The tab fires its first asset requests the moment this response lands,
+       and an img that reaches a forked session still booting fails once and
+       never retries. The session writes its record only after listen succeeds,
+       so the record on disk is readiness itself; no HTTP probe, which would
+       also mark the session adopted before any tab has seen it. */
+    if (doc) await waitForSessionRecord(5000);
     response.once('finish', () => {
       console.log(`ANSWERS ${answersPath}`);
       server.close(() => process.exit(0));

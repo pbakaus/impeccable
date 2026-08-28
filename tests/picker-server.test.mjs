@@ -165,6 +165,12 @@ async function waitForExit(processHandle) {
 async function cleanup(t, fixture, server) {
   t.after(async () => {
     if (server?.processHandle.exitCode === null) server.processHandle.kill('SIGTERM');
+    /* A submit spawns a detached doc session that outlives the picker; reap it
+       by its own record or it squats a port a later test needs. */
+    try {
+      const record = JSON.parse(await readFile(path.join(fixture.cwd, '.impeccable/design-context/runtime/session.json'), 'utf8'));
+      if (record?.pid) process.kill(record.pid, 'SIGTERM');
+    } catch { /* no session was spawned, or it is already gone */ }
     await rm(fixture.cwd, { recursive: true, force: true });
   });
 }
@@ -701,6 +707,132 @@ test('questionnaire refuses to start without cues.json', async () => {
     assert.equal(code, 1);
     assert.match(stderr, /No visual cues found\. Run \/impeccable document --seed/);
   } finally {
+    await rm(fixture.cwd, { recursive: true, force: true });
+  }
+});
+
+/* The chosen cue joins the doc session's image routes: one fixed store file,
+   token-gated, PNG only. The 404 is the run whose palette named no cue, so
+   nothing was ever copied in. */
+test('doc session serves the stored cue, token-gated', async () => {
+  const fixture = await createFixture();
+  const sessionScript = path.join(root, 'skill/scripts/picker-doc-session.mjs');
+  const child = spawn(process.execPath, [sessionScript, '--port', String(portBase + 70)], {
+    cwd: fixture.cwd,
+    env: { ...process.env, IMPECCABLE_DOC_TOKEN: 't-cue' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  try {
+    const sessionFile = path.join(fixture.cwd, '.impeccable/design-context/runtime/session.json');
+    let session = null;
+    for (let attempt = 0; attempt < 100 && !session; attempt += 1) {
+      if (existsSync(sessionFile)) session = JSON.parse(await readFile(sessionFile, 'utf8'));
+      else await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.ok(session?.port, 'the session never recorded its port');
+    const base = `http://127.0.0.1:${session.port}`;
+
+    // No submit has copied a cue in yet.
+    assert.equal((await fetch(`${base}/cue.png?token=t-cue`)).status, 404);
+
+    await mkdir(path.join(fixture.cwd, '.impeccable/design-context'), { recursive: true });
+    await writeFile(path.join(fixture.cwd, '.impeccable/design-context/cue.png'), Buffer.from('fake-cue-png'));
+
+    const ok = await fetch(`${base}/cue.png?token=t-cue`);
+    assert.equal(ok.status, 200);
+    assert.equal(ok.headers.get('content-type'), 'image/png');
+    assert.match(ok.headers.get('cache-control') || '', /max-age/);
+    assert.equal(await ok.text(), 'fake-cue-png');
+
+    assert.equal((await fetch(`${base}/cue.png?token=wrong`)).status, 403);
+    assert.equal((await fetch(`${base}/cue.png`)).status, 403);
+  } finally {
+    child.kill('SIGTERM');
+    await rm(fixture.cwd, { recursive: true, force: true });
+  }
+});
+
+/* The Hooks page's live channel: GET /doc/hooks reads the project's hook
+   state and POST /doc/hooks applies a full desired state, both through
+   hook-admin.mjs with no model in the loop. Exact-set semantics: an entry
+   missing from a later payload is a removal, which the union-merging CLI
+   verbs cannot express. */
+test('doc session reads and applies hook state, token-gated', async () => {
+  const fixture = await createFixture();
+  const sessionScript = path.join(root, 'skill/scripts/picker-doc-session.mjs');
+  const child = spawn(process.execPath, [sessionScript, '--port', String(portBase + 80)], {
+    cwd: fixture.cwd,
+    env: { ...process.env, IMPECCABLE_DOC_TOKEN: 't-hooks' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  try {
+    const sessionFile = path.join(fixture.cwd, '.impeccable/design-context/runtime/session.json');
+    let session = null;
+    for (let attempt = 0; attempt < 100 && !session; attempt += 1) {
+      if (existsSync(sessionFile)) session = JSON.parse(await readFile(sessionFile, 'utf8'));
+      else await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.ok(session?.port, 'the session never recorded its port');
+    const base = `http://127.0.0.1:${session.port}`;
+
+    // Fresh project: defaults, nothing ignored.
+    const fresh = await fetch(`${base}/doc/hooks?token=t-hooks`);
+    assert.equal(fresh.status, 200);
+    assert.deepEqual((await fresh.json()).state, {
+      enabled: true, ignoreRules: [], ignoreFiles: [], ignoreValues: [],
+    });
+
+    // Apply a full state and read it back from the response and the disk.
+    const applied = await fetch(`${base}/doc/hooks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: 't-hooks',
+        state: {
+          enabled: false,
+          ignoreRules: ['side-tab'],
+          ignoreFiles: ['src/legacy/**'],
+          ignoreValues: [{ rule: 'overused-font', value: 'Inter', reason: 'user confirmed' }],
+        },
+      }),
+    });
+    assert.equal(applied.status, 200);
+    const appliedState = (await applied.json()).state;
+    assert.equal(appliedState.enabled, false);
+    assert.deepEqual(appliedState.ignoreRules, ['side-tab']);
+    const config = JSON.parse(await readFile(path.join(fixture.cwd, '.impeccable/config.json'), 'utf8'));
+    assert.equal(config.hook.enabled, false);
+    assert.deepEqual(config.detector.ignoreRules, ['side-tab']);
+    assert.deepEqual(config.detector.ignoreFiles, ['src/legacy/**']);
+    assert.equal(config.detector.ignoreValues.length, 1);
+
+    // Removals stick: a payload without the entries clears them on disk.
+    const cleared = await fetch(`${base}/doc/hooks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: 't-hooks',
+        state: { enabled: false, ignoreRules: [], ignoreFiles: [], ignoreValues: [] },
+      }),
+    });
+    assert.equal(cleared.status, 200);
+    const clearedConfig = JSON.parse(await readFile(path.join(fixture.cwd, '.impeccable/config.json'), 'utf8'));
+    assert.deepEqual(clearedConfig.detector.ignoreRules, []);
+    assert.deepEqual(clearedConfig.detector.ignoreValues, []);
+
+    // The gate and the validation hold.
+    assert.equal((await fetch(`${base}/doc/hooks`)).status, 403);
+    assert.equal((await fetch(`${base}/doc/hooks?token=wrong`)).status, 403);
+    const rejected = await fetch(`${base}/doc/hooks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: 't-hooks', state: { ignoreValues: [{ rule: 'x', value: '*' }] } }),
+    });
+    assert.equal(rejected.status, 400);
+  } finally {
+    child.kill('SIGTERM');
     await rm(fixture.cwd, { recursive: true, force: true });
   }
 });

@@ -68,12 +68,16 @@ const contextReady = Promise.all([getJson('/context.json'), cuesReady])
    document mode, read by the parts of it that differ. */
 let docMode = false;
 
-/* The submit flow renders before the server has exited but reveals after, and
-   the store's copy of the cue is made during that submit: a URL first requested
-   after the exit would find nothing serving it. The cue the questionnaire
-   already displayed is in the browser's cache, so that run keeps reading it
-   from the workspace, and only a document opened later reads the store copy. */
-const cueImageSrc = (slug) => (docMode ? '/cue.png' : `/cues/${encodeURIComponent(slug)}.png`);
+/* The chosen cue, wherever this page can still reach it. A live doc session
+   outlives every server the page booted from, so it is the first choice, and
+   the store's copy is made during submit before that session is forked. A
+   document opened later without a session still has the picker server serving
+   the store copy; a submit run before either exists reads the workspace image
+   the questionnaire already displayed, which is in the browser's cache. */
+const cueImageSrc = (slug) => {
+  if (docSession) return `${docSession.base}/cue.png?token=${encodeURIComponent(docSession.token)}`;
+  return docMode ? '/cue.png' : `/cues/${encodeURIComponent(slug)}.png`;
+};
 
 const seedHexFor = (source, role) => {
   const slot = seedPalettes?.[source]?.[role];
@@ -88,7 +92,10 @@ const seedHexFor = (source, role) => {
 const ROLES = ['primary', 'secondary', 'tertiary', 'neutral'];
 const SURFACE_ORDER = ['persuade', 'operate', 'read', 'experience'];
 const SURFACE_LABELS = { persuade: 'Landing page', operate: 'Tool', read: 'Docs', experience: 'Portfolio' };
-const PER_SURFACE = ['color-strategy', 'boundary-style', 'corner-style', 'depth-style'];
+/* The five questions asked per surface, matching portability.mjs. The bare key
+   is the leading surface's answer, which is what DESIGN.md records as the rule
+   for the whole product. */
+const PER_SURFACE = ['color-strategy', 'boundary-style', 'corner-style', 'depth-style', 'motion-energy'];
 
 const fieldValue = (name) => {
   const field = form.elements[name];
@@ -290,6 +297,19 @@ document.addEventListener('load', (event) => {
 document.addEventListener('error', (event) => {
   const image = event.target;
   if (!(image instanceof HTMLImageElement)) return;
+  /* A card that asked for the cue swaps to its vendored photo rather than
+     hiding: the entry is real either way, only the imagery moved. One swap
+     only, so a fallback that also fails lands at the hide rule below. */
+  if (image.dataset.dcxSwapSrc) {
+    const fallback = image.dataset.dcxSwapSrc;
+    delete image.dataset.dcxSwapSrc;
+    if (image.dataset.dcxSwapAlt) {
+      image.alt = image.dataset.dcxSwapAlt;
+      delete image.dataset.dcxSwapAlt;
+    }
+    image.src = fallback;
+    return;
+  }
   const casualty = image.closest('[data-dcx-hide-on-error]');
   if (casualty) casualty.hidden = true;
 }, true);
@@ -323,6 +343,7 @@ function paintCommitted(node) {
   set('n-ink', contrastInk(colors.neutral));
   set('p-ink', contrastInk(colors.primary));
   set('t-ink', contrastInk(colors.tertiary));
+  set('s-on-n', readableOn(colors.secondary, colors.neutral));
   set('p-on-n', readableOn(colors.primary, colors.neutral));
   set('t-on-n', readableOn(colors.tertiary, colors.neutral));
   set('t-on-p', readableOn(colors.tertiary, colors.primary));
@@ -337,6 +358,7 @@ function proofHtml(source, { strategy = '', kind = 'board', marks = null } = {})
   if (!source) return '';
   const clone = source.cloneNode(true);
   clone.hidden = false;
+  const sourceSurface = source.getAttribute('data-surface') || '';
   clone.removeAttribute('data-surface');
   for (const node of [clone, ...clone.querySelectorAll('[id]')]) node.removeAttribute('id');
   for (const node of $$('button, input', clone)) {
@@ -355,6 +377,13 @@ function proofHtml(source, { strategy = '', kind = 'board', marks = null } = {})
     for (const [key, value] of Object.entries(marks)) {
       if (value) wrap.setAttribute(`data-dcx-${key}`, value);
     }
+  }
+  /* The surface the drawing came from, restated on the frame: the clone loses
+     its own data-surface above, and the stylesheet's quiet-base rule has to
+     tell a persuade board from a derived one. Marks that already named a
+     surface win, since those carry the committed answer. */
+  if (sourceSurface && !wrap.hasAttribute('data-dcx-surface')) {
+    wrap.setAttribute('data-dcx-surface', sourceSurface);
   }
   paintCommitted(wrap);
   wrap.appendChild(clone);
@@ -964,6 +993,24 @@ function renderDocument() {
     description: MODE_DEFS[surface.mode] || surface.goal || '',
   }));
   const name = snapshot.context?.product?.name || '';
+  /* Bridges for the document engine, whose modules read globals rather than
+     importing this file. The cue URL is empty when the palette came from a
+     seed deck or a custom pick, which keeps the vendored card photo; the
+     product name fills the specimen fields that would otherwise show another
+     studio's. */
+  const dealtCues = Array.isArray(snapshot.cueSlugs) ? snapshot.cueSlugs : [];
+  const chosenCue = snapshot.paletteSource && (docMode || dealtCues.includes(snapshot.paletteSource))
+    ? snapshot.paletteSource
+    : '';
+  window.dcxCueImageSrc = chosenCue ? cueImageSrc(chosenCue) : '';
+  window.dcxProductName = name;
+  /* The components inventory reads the committed palette through --pkc-* on
+     <body>: its article is rebuilt on every remount, so the paint lives on the
+     one node that survives. A run that never committed a full palette leaves
+     the gate off and keeps the vendored demo colors. */
+  const paletteLive = ROLES.every((role) => fieldValue(`palette-${role}`));
+  document.body.classList.toggle('dcx-palette-live', paletteLive);
+  if (paletteLive) paintCommitted(document.body);
   for (const [id, build] of Object.entries(BUILDERS)) {
     const template = document.getElementById(`dcx-detail-${id}`);
     template.innerHTML = `<article class="dcx-article">${build(snapshot, name)}</article>`;
@@ -982,6 +1029,16 @@ function collectAnswers() {
   for (const [name, value] of new FormData(form)) {
     if (!(name in answers)) answers[name] = value;
     else answers[name] = Array.isArray(answers[name]) ? [...answers[name], value] : [answers[name], value];
+  }
+  /* The visible radio follows whichever surface tab was shown last, so the bare
+     key can leave carrying a trailing surface's answer. The leading surface owns
+     it: restate it from that surface's own field before this goes to disk. */
+  const chosen = [].concat(answers['surface-modes'] || []);
+  const leading = SURFACE_ORDER.filter((mode) => chosen.includes(mode));
+  for (const key of PER_SURFACE) {
+    if (!(key in answers)) continue;
+    const owner = leading.find((mode) => answers[`${key}-${mode}`]);
+    if (owner) answers[key] = answers[`${key}-${owner}`];
   }
   return answers;
 }

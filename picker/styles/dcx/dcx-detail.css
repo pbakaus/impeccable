@@ -623,7 +623,8 @@
   overflow-wrap: anywhere;
 }
 
-.dcx-detail-article .dcx-fan-note {
+.dcx-detail-article .dcx-fan-note,
+.dcx-detail-article .dcx-default-note {
   max-width: 72ch;
   margin-top: 12px;
   color: var(--ks-text-faint);

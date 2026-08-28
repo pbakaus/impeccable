@@ -315,7 +315,37 @@ import { dcxAsset } from './assets.js';
     if (lede) lede.textContent = "Identity, voice, references, taste boundaries, and available assets.";
   };
 
-  const componentCardMedia = () => dcxAsset("/assets/components/hanazono-ikebana-card.jpg");
+  const FALLBACK_CARD_IMAGE = "/assets/components/hanazono-ikebana-card.jpg";
+
+  const escapeSpecimen = (value) => String(value).replace(/[&<>"]/g, (character) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[character]
+  ));
+
+  /* The run's own product name, published by the data layer (design-context.js
+     renderDocument). The specimen fields show a real value rather than a label,
+     so a run with no name on record keeps a neutral stand-in. */
+  const productName = () => {
+    const name = typeof window.dcxProductName === "string" ? window.dcxProductName.trim() : "";
+    return escapeSpecimen(name || "Untitled project");
+  };
+
+  const productDomain = () => {
+    const name = typeof window.dcxProductName === "string" ? window.dcxProductName : "";
+    /* The strip leaves only [a-z0-9], so this needs no escaping of its own. */
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "");
+    return slug || "example";
+  };
+
+  /* Cue-first card media: the data layer publishes the run's chosen cue on
+     window.dcxCueImageSrc, and the vendored photo is the fallback, swapped in
+     by the delegated error listener when the cue cannot load. A run whose
+     palette named no cue gets the vendored photo directly. */
+  const componentCardImage = (fallbackAlt, cueAlt) => {
+    const cue = typeof window.dcxCueImageSrc === "string" ? window.dcxCueImageSrc : "";
+    const fallbackSrc = dcxAsset(FALLBACK_CARD_IMAGE);
+    if (!cue) return `src="${fallbackSrc}" alt="${fallbackAlt}"`;
+    return `src="${cue}" alt="${cueAlt}" data-dcx-swap-src="${fallbackSrc}" data-dcx-swap-alt="${fallbackAlt}"`;
+  };
 
   const composeComponentsArticle = (article) => {
     article.querySelectorAll(":scope > .dcx-block[data-label]").forEach((block) => block.remove());
@@ -414,7 +444,7 @@ import { dcxAsset } from './assets.js';
               </div>
               <div class="dcx-demo-field">
                 <span class="dcx-demo-field-label">Project type</span>
-                <span class="dcx-demo-input">Ceremony florals</span>
+                <span class="dcx-demo-input">Quarterly report</span>
                 <small>Filled</small>
               </div>
               <div class="dcx-demo-field is-invalid">
@@ -432,15 +462,15 @@ import { dcxAsset } from './assets.js';
             <div class="dcx-component-demo-grid dcx-component-demo-grid--three dcx-component-demo-grid--baseline">
               <div class="dcx-demo-field dcx-demo-field--small">
                 <span class="dcx-demo-field-label">Small</span>
-                <span class="dcx-demo-input">Hana</span>
+                <span class="dcx-demo-input">Nova</span>
               </div>
               <div class="dcx-demo-field">
                 <span class="dcx-demo-field-label">Medium</span>
-                <span class="dcx-demo-input">Hanazono Atelier</span>
+                <span class="dcx-demo-input">${productName()}</span>
               </div>
               <div class="dcx-demo-field dcx-demo-field--large">
                 <span class="dcx-demo-field-label">Large</span>
-                <span class="dcx-demo-input">Private celebration</span>
+                <span class="dcx-demo-input">Quarterly planning</span>
               </div>
             </div>
           </div>
@@ -454,7 +484,7 @@ import { dcxAsset } from './assets.js';
                 <span class="dcx-demo-field-label">Search</span>
                 <span class="dcx-demo-input dcx-demo-input--affix">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"></circle><path d="m16 16 4 4"></path></svg>
-                  Spring arrangements
+                  Recent documents
                 </span>
               </div>
               <div class="dcx-demo-field">
@@ -463,7 +493,7 @@ import { dcxAsset } from './assets.js';
               </div>
               <div class="dcx-demo-field">
                 <span class="dcx-demo-field-label">Website</span>
-                <span class="dcx-demo-input dcx-demo-input--affix dcx-demo-input--suffix">hanazono<span>.jp</span></span>
+                <span class="dcx-demo-input dcx-demo-input--affix dcx-demo-input--suffix">${productDomain()}<span>.com</span></span>
               </div>
             </div>
           </div>
@@ -474,8 +504,8 @@ import { dcxAsset } from './assets.js';
           <div class="dcx-component-canvas dcx-component-canvas--fields">
             <div class="dcx-component-demo-grid dcx-component-demo-grid--single">
               <div class="dcx-demo-field">
-                <span class="dcx-demo-field-label">Tell us about the setting</span>
-                <span class="dcx-demo-input dcx-demo-input--textarea">A quiet evening ceremony with seasonal branches, soft candlelight, and room for the architecture to breathe.</span>
+                <span class="dcx-demo-field-label">Tell us about the project</span>
+                <span class="dcx-demo-input dcx-demo-input--textarea">A short brief describing the setting, the audience, and the constraints this piece of work has to hold.</span>
                 <small>240 characters remaining</small>
               </div>
             </div>
@@ -501,15 +531,15 @@ import { dcxAsset } from './assets.js';
               <article class="dcx-showcase-card">
                 <div class="dcx-showcase-card-body">
                   <span class="dcx-component-kind">Testimonial</span>
-                  <blockquote>&ldquo;The room felt entirely transformed, but still like us.&rdquo;</blockquote>
-                  <span class="dcx-showcase-card-meta">Mika &amp; Ren</span>
+                  <blockquote>&ldquo;It fits the way we already work, and it still feels like ours.&rdquo;</blockquote>
+                  <span class="dcx-showcase-card-meta">A long-time customer</span>
                 </div>
               </article>
               <article class="dcx-showcase-card">
                 <div class="dcx-showcase-card-body">
                   <span class="dcx-component-kind">Details</span>
-                  <h5>Autumn ceremony</h5>
-                  <dl><div><dt>Season</dt><dd>Late autumn</dd></div><div><dt>Setting</dt><dd>Kyoto townhouse</dd></div></dl>
+                  <h5>Project details</h5>
+                  <dl><div><dt>Timeline</dt><dd>Six weeks</dd></div><div><dt>Setting</dt><dd>Distributed team</dd></div></dl>
                 </div>
               </article>
             </div>
@@ -521,18 +551,18 @@ import { dcxAsset } from './assets.js';
           <div class="dcx-component-canvas dcx-component-canvas--cards">
             <div class="dcx-component-demo-grid dcx-component-demo-grid--two">
               <article class="dcx-showcase-card dcx-showcase-card--media">
-                <img src="${componentCardMedia()}" width="800" height="1200" alt="Purple flowers arranged in a black ceramic vase" loading="lazy" decoding="async">
+                <img ${componentCardImage("Purple flowers arranged in a black ceramic vase", "The visual cue this palette was picked from")} width="800" height="1200" loading="lazy" decoding="async">
                 <div class="dcx-showcase-card-body">
-                  <span class="dcx-component-kind">Garden study</span>
+                  <span class="dcx-component-kind">Case study</span>
                   <h5>Line, pause, and negative space</h5>
-                  <p>A restrained floral study built around one deliberate gesture.</p>
+                  <p>A calm composition built around one deliberate gesture.</p>
                 </div>
               </article>
               <article class="dcx-showcase-card dcx-showcase-card--media dcx-showcase-card--media-close">
-                <img src="${componentCardMedia()}" width="800" height="1200" alt="Close crop of purple ikebana flowers" loading="lazy" decoding="async">
+                <img ${componentCardImage("Close crop of purple ikebana flowers", "The chosen visual cue, cropped close")} width="800" height="1200" loading="lazy" decoding="async">
                 <div class="dcx-showcase-card-body">
                   <span class="dcx-component-kind">Material note</span>
-                  <h5>Dark ceramic, soft bloom</h5>
+                  <h5>Detail, closely cropped</h5>
                   <p>The same image can lead with subject or material detail.</p>
                 </div>
               </article>
@@ -544,11 +574,11 @@ import { dcxAsset } from './assets.js';
           <figcaption><h4>Horizontal</h4></figcaption>
           <div class="dcx-component-canvas dcx-component-canvas--cards dcx-component-canvas--single-card">
             <article class="dcx-showcase-card dcx-showcase-card--horizontal">
-              <img src="${componentCardMedia()}" width="800" height="1200" alt="Purple ikebana in a dark ceramic vase" loading="lazy" decoding="async">
+              <img ${componentCardImage("Purple ikebana in a dark ceramic vase", "The chosen visual cue as a wide feature image")} width="800" height="1200" loading="lazy" decoding="async">
               <div class="dcx-showcase-card-body">
                 <span class="dcx-component-kind">Featured story</span>
                 <h5>A study in asymmetry</h5>
-                <p>How a single stem, a dark vessel, and generous space hold the composition together.</p>
+                <p>How a single focal point, a quiet ground, and generous space hold the composition together.</p>
                 <span class="dcx-showcase-card-link">Explore the study <span aria-hidden="true">&#8594;</span></span>
               </div>
             </article>
@@ -563,15 +593,15 @@ import { dcxAsset } from './assets.js';
                 <div class="dcx-showcase-card-body">
                   <span class="dcx-component-kind">Consultation</span>
                   <h5>Plan the first conversation</h5>
-                  <p>Share the date and setting so the studio can prepare.</p>
+                  <p>Share the date and setting so the team can prepare.</p>
                   <span class="dcx-demo-button dcx-demo-button--primary">Book now</span>
                 </div>
               </article>
               <article class="dcx-showcase-card dcx-showcase-card--action">
                 <div class="dcx-showcase-card-body">
-                  <span class="dcx-component-kind">Commission guide</span>
+                  <span class="dcx-component-kind">Process guide</span>
                   <h5>Understand the process</h5>
-                  <p>Read the stages, timing, and what the studio needs from you.</p>
+                  <p>Read the stages, timing, and what the team needs from you.</p>
                   <span class="dcx-demo-button dcx-demo-button--outline">View the guide</span>
                 </div>
               </article>

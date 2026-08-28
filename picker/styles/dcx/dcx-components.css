@@ -499,3 +499,107 @@
   font-size: 0.86rem;
   line-height: 1.55;
 }
+
+/* ============================================================
+   Specimens in the committed palette: when the run committed one,
+   the inventory renders in it. design-context.js sets
+   .dcx-palette-live on <body> and paints --pkc-* there (the body
+   survives document remounts; the article does not). Without the
+   gate the vendored kinpaku colors above stand. Danger stays
+   --ks-vermilion: semantic, not brand. Geometry untouched.
+   ============================================================ */
+.dcx-palette-live .dcx-detail-article--components .dcx-component-canvas {
+  background: var(--pkc-neutral);
+}
+
+.dcx-palette-live .dcx-detail-article--components .dcx-demo-button--primary {
+  border-color: var(--pkc-primary);
+  background: var(--pkc-primary);
+  color: var(--pkc-p-ink);
+}
+
+.dcx-palette-live .dcx-detail-article--components .dcx-demo-button--secondary {
+  border-color: color-mix(in oklab, var(--pkc-n-ink) 14%, var(--pkc-neutral));
+  background: color-mix(in oklab, var(--pkc-n-ink) 14%, var(--pkc-neutral));
+  color: var(--pkc-n-ink);
+}
+
+.dcx-palette-live .dcx-detail-article--components .dcx-demo-button--tertiary {
+  border-color: color-mix(in oklab, var(--pkc-tertiary) 55%, var(--pkc-neutral));
+  background: color-mix(in oklab, var(--pkc-tertiary) 13%, transparent);
+  color: var(--pkc-t-on-n);
+}
+
+.dcx-palette-live .dcx-detail-article--components .dcx-demo-button--outline {
+  border-color: color-mix(in oklab, var(--pkc-n-ink) 22%, transparent);
+  color: var(--pkc-n-ink);
+}
+
+.dcx-palette-live .dcx-detail-article--components .dcx-demo-button--ghost {
+  color: color-mix(in oklab, var(--pkc-n-ink) 92%, var(--pkc-neutral));
+}
+
+.dcx-palette-live .dcx-detail-article--components .dcx-demo-icon-button--secondary {
+  background: color-mix(in oklab, var(--pkc-n-ink) 14%, var(--pkc-neutral));
+  color: var(--pkc-n-ink);
+}
+
+.dcx-palette-live .dcx-detail-article--components .dcx-demo-icon-button--outline {
+  border-color: color-mix(in oklab, var(--pkc-n-ink) 22%, transparent);
+  color: var(--pkc-s-on-n);
+}
+
+.dcx-palette-live .dcx-detail-article--components .dcx-demo-spinner {
+  border-color: color-mix(in oklab, var(--pkc-p-ink) 35%, transparent);
+  border-top-color: var(--pkc-p-ink);
+}
+
+.dcx-palette-live .dcx-detail-article--components .dcx-demo-field-label {
+  color: color-mix(in oklab, var(--pkc-n-ink) 75%, var(--pkc-neutral));
+}
+
+.dcx-palette-live .dcx-detail-article--components .dcx-demo-input {
+  border-color: color-mix(in oklab, var(--pkc-n-ink) 22%, transparent);
+  background: color-mix(in oklab, var(--pkc-n-ink) 7%, var(--pkc-neutral));
+  color: var(--pkc-n-ink);
+}
+
+.dcx-palette-live .dcx-detail-article--components .dcx-demo-input.is-placeholder {
+  color: color-mix(in oklab, var(--pkc-n-ink) 55%, var(--pkc-neutral));
+}
+
+.dcx-palette-live .dcx-detail-article--components .dcx-demo-field:not(.is-invalid) small {
+  color: color-mix(in oklab, var(--pkc-n-ink) 75%, var(--pkc-neutral));
+}
+
+.dcx-palette-live .dcx-detail-article--components .dcx-demo-input--affix > span {
+  color: var(--pkc-s-on-n);
+}
+
+.dcx-palette-live .dcx-detail-article--components .dcx-showcase-card {
+  border-color: color-mix(in oklab, var(--pkc-n-ink) 18%, transparent);
+  background: color-mix(in oklab, var(--pkc-n-ink) 5%, var(--pkc-neutral));
+}
+
+.dcx-palette-live .dcx-detail-article--components .dcx-showcase-card h5,
+.dcx-palette-live .dcx-detail-article--components .dcx-showcase-card blockquote {
+  color: var(--pkc-n-ink);
+}
+
+.dcx-palette-live .dcx-detail-article--components .dcx-showcase-card p,
+.dcx-palette-live .dcx-detail-article--components .dcx-showcase-card dd {
+  color: color-mix(in oklab, var(--pkc-n-ink) 92%, var(--pkc-neutral));
+}
+
+.dcx-palette-live .dcx-detail-article--components .dcx-showcase-card-meta {
+  color: color-mix(in oklab, var(--pkc-n-ink) 75%, var(--pkc-neutral));
+}
+
+.dcx-palette-live .dcx-detail-article--components .dcx-showcase-card dt,
+.dcx-palette-live .dcx-detail-article--components .dcx-showcase-card .dcx-component-kind {
+  color: color-mix(in oklab, var(--pkc-n-ink) 64%, var(--pkc-neutral));
+}
+
+.dcx-palette-live .dcx-detail-article--components .dcx-showcase-card-link {
+  color: var(--pkc-s-on-n);
+}

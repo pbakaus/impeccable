@@ -41,6 +41,7 @@
  *   with IMPECCABLE_DOC_TOKEN in the environment.
  */
 
+import { execFileSync } from 'node:child_process';
 import http from 'node:http';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -58,6 +59,21 @@ const brandAssetsDir = store.assetsDir;
    foils, rail textures, placeholder brand assets) are served from here after
    the submit-flow picker server has exited. Read-only, image types only. */
 const pickerAssetsDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'picker', 'assets');
+
+/* The Hooks page reads and writes hook config through hook-admin.mjs, the one
+   writer whose shapes stay validated; this server only ferries JSON either
+   way. Sync is fine: the admin runs in milliseconds, holds no sockets, and a
+   moment of backpressure on the doc port costs nothing. */
+const hookAdminScript = path.join(path.dirname(fileURLToPath(import.meta.url)), 'hook-admin.mjs');
+function runHookAdmin(args, input) {
+  const stdout = execFileSync(process.execPath, [hookAdminScript, ...args], {
+    cwd: process.cwd(),
+    input: input ?? '',
+    encoding: 'utf-8',
+    timeout: 15_000,
+  });
+  return JSON.parse(stdout);
+}
 
 const MAX_BODY_BYTES = 1024 * 1024;
 const FONT_EXTENSIONS = new Set(['.woff2', '.woff', '.ttf', '.otf']);
@@ -291,6 +307,29 @@ async function handleRequest(request, response) {
     return;
   }
 
+  /* The chosen cue, copied into the store at submit (picker-server.mjs
+     copyChosenCue). The components cards and the Color article render it after
+     the picker server has exited, so the tab fetches it here: token-gated, one
+     fixed file, PNG only, the trust model of the routes beside it. A run whose
+     palette named no cue has no file, which is the 404. */
+  if (request.method === 'GET' && requestPath === '/cue.png') {
+    if (url.searchParams.get('token') !== token) throw httpError(403, 'Bad token');
+    let body;
+    try {
+      body = await readFile(store.cuePng);
+    } catch {
+      throw httpError(404, 'Not found');
+    }
+    response.writeHead(200, {
+      'Content-Type': 'image/png',
+      'Content-Length': body.length,
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'max-age=86400',
+    });
+    response.end(body);
+    return;
+  }
+
   /* The document's own static images, for the tab that outlives the picker
      server: the submit flow exits on /submit, and article images only load when
      a view opens, which is always after that. Same trust model as the route
@@ -344,6 +383,21 @@ async function handleRequest(request, response) {
     return;
   }
 
+  /* The Hooks page's live state: the shared config's hook switch and the
+     detector ignore lists, read through hook-admin so this server never
+     parses config shapes itself. */
+  if (request.method === 'GET' && requestPath === '/doc/hooks') {
+    if (url.searchParams.get('token') !== token) throw httpError(403, 'Bad token');
+    let state;
+    try {
+      state = runHookAdmin(['state']);
+    } catch (error) {
+      throw httpError(500, String(error.stderr || error.message || error).trim().split('\n')[0]);
+    }
+    sendJson(response, 200, { ok: true, state });
+    return;
+  }
+
   if (request.method === 'GET' && requestPath === '/doc/answers') {
     if (url.searchParams.get('token') !== token) throw httpError(403, 'Bad token');
     const answers = JSON.parse(await readFile(answersPath, 'utf8'));
@@ -384,6 +438,24 @@ async function handleRequest(request, response) {
   if (requestPath === '/doc/save') {
     const applied = await saves.save(body);
     sendJson(response, 200, { ok: true, version, ...applied });
+    return;
+  }
+
+  /* The Hooks page's Apply: the full desired state arrives at once and is
+     written by hook-admin.mjs apply, with no model in the loop. Same
+     deterministic contract as /doc/save: complete or refused, never
+     approximately done. */
+  if (requestPath === '/doc/hooks') {
+    if (!body.state || typeof body.state !== 'object' || Array.isArray(body.state)) {
+      throw httpError(400, 'state must be a JSON object');
+    }
+    let state;
+    try {
+      state = runHookAdmin(['apply'], JSON.stringify(body.state));
+    } catch (error) {
+      throw httpError(400, String(error.stderr || error.message || error).trim().split('\n')[0]);
+    }
+    sendJson(response, 200, { ok: true, state });
     return;
   }
 
