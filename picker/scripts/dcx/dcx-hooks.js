@@ -30,47 +30,103 @@ import RULES from '../../data/hook-rules.json';
     "Copy",
     "Quality",
   ];
+  const EXCEPTION_KINDS = {
+    value: { label: "Silence one value", hint: "One rule stops flagging one exact value, everywhere." },
+    "rule-in-files": { label: "Silence a rule in files", hint: "One rule goes quiet in matching files and stays live everywhere else." },
+    file: { label: "Skip a file entirely", hint: "Every rule skips matching files. The widest exception; prefer the two above." },
+  };
 
-  const initialState = () => ({
-    enabled: true,
-    activeFamily: "fingerprints",
-    disabled: ["em-dash-overuse"],
-    custom: [],
-  });
-
-  const loadState = () => {
-    const fallback = initialState();
+  /* Only the view preference persists in the browser. The state that matters
+     lives in the project's .impeccable/config.json and arrives from the doc
+     session, so the page shows what the hook will actually do, not a preview. */
+  const loadView = () => {
     try {
       const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-      if (!parsed || typeof parsed !== "object") return fallback;
-      return {
-        enabled: parsed.enabled !== false,
-        activeFamily: FAMILY_META[parsed.activeFamily] ? parsed.activeFamily : fallback.activeFamily,
-        disabled: Array.isArray(parsed.disabled)
-          ? parsed.disabled.filter((id) => typeof id === "string")
-          : fallback.disabled,
-        custom: Array.isArray(parsed.custom)
-          ? parsed.custom.filter((rule) => rule && typeof rule.id === "string" && typeof rule.name === "string")
-          : [],
-      };
+      return { activeFamily: parsed && FAMILY_META[parsed.activeFamily] ? parsed.activeFamily : "fingerprints" };
     } catch {
-      return fallback;
+      return { activeFamily: "fingerprints" };
     }
   };
 
-  const state = loadState();
-  const disabledRules = new Set(state.disabled);
-  const disciplineAnimations = new WeakMap();
-  const customFormAnimations = new WeakMap();
-  let syncFrame = 0;
+  const view = loadView();
 
-  const persist = () => {
-    state.disabled = [...disabledRules];
+  const persistView = () => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ activeFamily: view.activeFamily }));
     } catch {
       // The file:// preview may deny storage; the in-memory controls still work.
     }
+  };
+
+  /* live is the last state the project confirmed; draft is what the controls
+     show. Apply sends the whole draft and the server's echo becomes the new
+     live, so the page and .impeccable/config.json can only disagree while the
+     Apply bar is visible and says so. */
+  let live = null;
+  let draft = null;
+  let liveError = "";
+  let applying = false;
+  let appliedFlash = false;
+  let appliedFlashTimer = 0;
+  let fetchStarted = false;
+
+  const docSession = () => window.dcxDocSession || null;
+  const hooksUrl = () => {
+    const session = docSession();
+    if (!session?.base || !session?.token) return "";
+    return `${session.base}/doc/hooks?token=${encodeURIComponent(session.token)}`;
+  };
+
+  const cloneState = (state) => JSON.parse(JSON.stringify(state));
+
+  const entryKey = (entry) => {
+    const files = Array.isArray(entry.files) && entry.files.length > 0 ? [...entry.files].sort().join("\u001f") : "";
+    return `${entry.rule}\u0000${entry.value}\u0000${files}`;
+  };
+
+  const changeCount = () => {
+    if (!live || !draft) return 0;
+    let count = draft.enabled !== live.enabled ? 1 : 0;
+    const liveRules = new Set(live.ignoreRules);
+    const draftRules = new Set(draft.ignoreRules);
+    for (const id of draftRules) if (!liveRules.has(id)) count += 1;
+    for (const id of liveRules) if (!draftRules.has(id)) count += 1;
+    const liveFiles = new Set(live.ignoreFiles);
+    const draftFiles = new Set(draft.ignoreFiles);
+    for (const glob of draftFiles) if (!liveFiles.has(glob)) count += 1;
+    for (const glob of liveFiles) if (!draftFiles.has(glob)) count += 1;
+    const liveValues = new Map(live.ignoreValues.map((entry) => [entryKey(entry), entry]));
+    const draftValues = new Map(draft.ignoreValues.map((entry) => [entryKey(entry), entry]));
+    for (const key of draftValues.keys()) if (!liveValues.has(key)) count += 1;
+    for (const key of liveValues.keys()) if (!draftValues.has(key)) count += 1;
+    return count;
+  };
+
+  /* Three-way rebase for an apply that lost the race: keep every edit the
+     visitor made (draft against the state the page read) and land it on what
+     the project now holds, so nothing another writer added is dropped. */
+  const rebaseDraft = (oldLive, oldDraft, newLive) => {
+    const next = cloneState(newLive);
+    if (oldDraft.enabled !== oldLive.enabled) next.enabled = oldDraft.enabled;
+    for (const key of ["ignoreRules", "ignoreFiles"]) {
+      const removed = new Set(oldLive[key].filter((item) => !oldDraft[key].includes(item)));
+      const added = oldDraft[key].filter((item) => !oldLive[key].includes(item));
+      next[key] = next[key].filter((item) => !removed.has(item));
+      for (const item of added) if (!next[key].includes(item)) next[key].push(item);
+    }
+    const oldKeys = new Set(oldLive.ignoreValues.map(entryKey));
+    const draftKeys = new Set(oldDraft.ignoreValues.map(entryKey));
+    const removedKeys = new Set([...oldKeys].filter((key) => !draftKeys.has(key)));
+    next.ignoreValues = next.ignoreValues.filter((entry) => !removedKeys.has(entryKey(entry)));
+    const presentKeys = new Set(next.ignoreValues.map(entryKey));
+    for (const entry of oldDraft.ignoreValues) {
+      const key = entryKey(entry);
+      if (!oldKeys.has(key) && !presentKeys.has(key)) {
+        next.ignoreValues.push(cloneState(entry));
+        presentKeys.add(key);
+      }
+    }
+    return next;
   };
 
   const escapeHtml = (value) => String(value)
@@ -90,6 +146,8 @@ import RULES from '../../data/hook-rules.json';
     return firstSentence || text;
   };
 
+  const ruleName = (id) => RULES.find((rule) => rule.id === id)?.name || id;
+
   const templateMarkup = () => `
     <article class="dcx-article">
       <header>
@@ -103,7 +161,7 @@ import RULES from '../../data/hook-rules.json';
           <div class="dcx-hooks-status" data-hooks-status>
             <div class="dcx-hooks-status-copy">
               <strong data-hooks-master-copy>Enable hooks</strong>
-              <p data-hooks-master-detail>Preview only — project settings are unchanged.</p>
+              <p data-hooks-master-detail>Reading this project&rsquo;s settings&hellip;</p>
             </div>
             <div class="dcx-hooks-status-control">
               <span class="dcx-hooks-status-state" data-hooks-master-state>On</span>
@@ -140,43 +198,55 @@ import RULES from '../../data/hook-rules.json';
           </div>
         </div>
       </section>
-      <section class="dcx-block" data-label="Custom rules">
-        <span class="dcx-block-label">Custom rules</span>
+      <section class="dcx-block" data-label="Exceptions">
+        <span class="dcx-block-label">Exceptions</span>
         <div class="dcx-hooks-custom" data-hooks-custom>
           <div class="dcx-hooks-custom-toolbar">
-            <p data-hooks-custom-count>No custom rules.</p>
-            <button class="dcx-hooks-button" type="button" data-hooks-add aria-expanded="false" aria-controls="dcx-hooks-custom-form">Add rule</button>
+            <p data-hooks-custom-count>No exceptions.</p>
+            <button class="dcx-hooks-button" type="button" data-hooks-add aria-expanded="false" aria-controls="dcx-hooks-custom-form">Add exception</button>
           </div>
           <form class="dcx-hooks-custom-form" id="dcx-hooks-custom-form" data-hooks-form hidden>
             <label>
-              <span>Rule name</span>
-              <input name="name" required maxlength="80" placeholder="e.g. Approved corner radius">
-            </label>
-            <label>
-              <span>Category</span>
-              <select name="discipline">
-                <option>Visual Details</option>
-                <option>Typography</option>
-                <option>Color & Contrast</option>
-                <option>Layout & Space</option>
-                <option>Motion</option>
-                <option>Imagery</option>
-                <option>Copy</option>
+              <span>Kind</span>
+              <select name="kind" data-hooks-kind>
+                ${Object.entries(EXCEPTION_KINDS).map(([id, meta]) => `<option value="${id}">${escapeHtml(meta.label)}</option>`).join("")}
               </select>
             </label>
-            <label class="dcx-hooks-custom-form-description">
-              <span>What should it catch?</span>
-              <textarea name="description" required rows="3" maxlength="240" placeholder="Describe the condition and the correction."></textarea>
+            <p class="dcx-hooks-kind-hint" data-hooks-kind-hint>${escapeHtml(EXCEPTION_KINDS.value.hint)}</p>
+            <label data-hooks-field="rule">
+              <span>Rule</span>
+              <select name="rule">
+                ${[...RULES].sort((a, b) => a.name.localeCompare(b.name)).map((rule) => `<option value="${escapeHtml(rule.id)}">${escapeHtml(rule.name)}</option>`).join("")}
+              </select>
+            </label>
+            <label data-hooks-field="value">
+              <span>Value</span>
+              <input name="value" maxlength="200" placeholder="e.g. Inter, or #7BA98F">
+            </label>
+            <label data-hooks-field="files" hidden>
+              <span>Files</span>
+              <input name="files" maxlength="400" placeholder="Globs, comma separated: src/legacy/**, docs/demo.html">
+            </label>
+            <label data-hooks-field="reason">
+              <span>Reason</span>
+              <input name="reason" maxlength="200" placeholder="Optional: who decided, and the evidence">
             </label>
             <div class="dcx-hooks-form-actions">
               <button class="dcx-hooks-button dcx-hooks-button--quiet" type="button" data-hooks-cancel>Cancel</button>
-              <button class="dcx-hooks-button" type="submit">Save rule</button>
+              <button class="dcx-hooks-button" type="submit">Add</button>
             </div>
           </form>
           <div class="dcx-hooks-custom-list" data-hooks-custom-list></div>
-          <p class="dcx-hooks-storage-note">Preview only — saved in this browser; custom rules do not run.</p>
+          <p class="dcx-hooks-storage-note" data-hooks-live-note>Exceptions apply to the design hook and to npx impeccable detect in this project.</p>
         </div>
       </section>
+      <div class="dcx-hooks-applybar" data-hooks-applybar hidden>
+        <p class="dcx-hooks-applybar-copy" data-hooks-applybar-copy aria-live="polite"></p>
+        <div class="dcx-hooks-applybar-actions">
+          <button class="dcx-hooks-button dcx-hooks-button--quiet" type="button" data-hooks-discard>Discard</button>
+          <button class="dcx-hooks-button" type="button" data-hooks-apply>Apply</button>
+        </div>
+      </div>
     </article>
   `;
 
@@ -210,7 +280,8 @@ import RULES from '../../data/hook-rules.json';
   };
 
   const familyRules = (family) => RULES.filter((rule) => rule.group === family);
-  const isEnabled = (id) => !disabledRules.has(id);
+  const isEnabled = (id) => !(draft ? draft.ignoreRules.includes(id) : false);
+  const interactive = () => Boolean(live && draft && !applying);
 
   const revealSelectedFamily = (target) => {
     if (!MOBILE_FAMILIES.matches) return;
@@ -228,6 +299,10 @@ import RULES from '../../data/hook-rules.json';
       behavior: REDUCED_MOTION.matches ? "auto" : "smooth",
     });
   };
+
+  const disciplineAnimations = new WeakMap();
+  const customFormAnimations = new WeakMap();
+  let syncFrame = 0;
 
   const setDisciplineOpen = (details, expanded) => {
     const panel = details.querySelector(":scope > .dcx-hooks-disclosure");
@@ -333,7 +408,7 @@ import RULES from '../../data/hook-rules.json';
     target.innerHTML = Object.entries(FAMILY_META).map(([id, meta]) => {
       const rules = familyRules(id);
       const enabled = rules.filter((rule) => isEnabled(rule.id)).length;
-      const selected = state.activeFamily === id;
+      const selected = view.activeFamily === id;
       return `
         <button
           id="dcx-hooks-family-${id}"
@@ -352,7 +427,7 @@ import RULES from '../../data/hook-rules.json';
       `;
     }).join("");
     const panel = article.querySelector("#dcx-hooks-rule-panel");
-    panel?.setAttribute("aria-labelledby", `dcx-hooks-family-${state.activeFamily}`);
+    panel?.setAttribute("aria-labelledby", `dcx-hooks-family-${view.activeFamily}`);
     requestAnimationFrame(() => revealSelectedFamily(target));
   };
 
@@ -363,7 +438,7 @@ import RULES from '../../data/hook-rules.json';
     if (!target || !summary) return;
 
     const query = (search?.value || "").trim().toLowerCase();
-    const rules = familyRules(state.activeFamily);
+    const rules = familyRules(view.activeFamily);
     const filtered = rules.filter((rule) => !query
       || `${rule.id} ${rule.name} ${rule.description} ${rule.discipline}`.toLowerCase().includes(query));
     const enabled = rules.filter((rule) => isEnabled(rule.id)).length;
@@ -388,8 +463,9 @@ import RULES from '../../data/hook-rules.json';
       return;
     }
 
+    const disabledUi = interactive() ? "" : "disabled";
     target.innerHTML = orderedGroups.map(([discipline, entries], index) => {
-      const disclosureId = `dcx-hooks-${state.activeFamily}-${slugify(discipline)}`;
+      const disclosureId = `dcx-hooks-${view.activeFamily}-${slugify(discipline)}`;
       const summaryId = `${disclosureId}-summary`;
       return `
       <details class="dcx-hooks-discipline" ${query || index === 0 ? "open" : ""}>
@@ -413,6 +489,7 @@ import RULES from '../../data/hook-rules.json';
                       data-hooks-rule="${escapeHtml(rule.id)}"
                       aria-label="Enable ${escapeHtml(rule.name)}"
                       ${isEnabled(rule.id) ? "checked" : ""}
+                      ${disabledUi}
                     >
                     <span aria-hidden="true"></span>
                   </label>
@@ -426,61 +503,96 @@ import RULES from '../../data/hook-rules.json';
     }).join("");
   };
 
-  const renderCustom = (article) => {
+  /* One row per exception the project holds, whatever wrote it: entries added
+     here, by an agent's triage, or by npx impeccable ignores all render the
+     same, and Remove queues a real removal for Apply. */
+  const renderExceptions = (article) => {
     const target = article.querySelector("[data-hooks-custom-list]");
     const count = article.querySelector("[data-hooks-custom-count]");
+    const note = article.querySelector("[data-hooks-live-note]");
+    const add = article.querySelector("[data-hooks-add]");
     if (!target) return;
 
+    const values = draft ? draft.ignoreValues : [];
+    const files = draft ? draft.ignoreFiles : [];
+    const total = values.length + files.length;
     if (count) {
-      count.textContent = state.custom.length
-        ? `${state.custom.length} custom ${state.custom.length === 1 ? "rule" : "rules"}`
-        : "No custom rules.";
+      count.textContent = total
+        ? `${total} ${total === 1 ? "exception" : "exceptions"}`
+        : "No exceptions.";
     }
-
-    if (!state.custom.length) {
-      target.innerHTML = "";
-      return;
+    if (add) add.disabled = !interactive();
+    if (note) {
+      note.textContent = interactive() || applying
+        ? "Exceptions apply to the design hook and to npx impeccable detect in this project."
+        : "The editing session has ended. /impeccable design-context reopens it.";
     }
 
     target.innerHTML = "";
-    state.custom.forEach((rule) => {
+    values.forEach((entry, index) => {
       const row = document.createElement("article");
       row.className = "dcx-hooks-custom-rule";
 
       const copy = document.createElement("div");
       copy.className = "dcx-hooks-rule-copy";
-      const id = document.createElement("code");
-      id.textContent = rule.id;
+      const kind = document.createElement("span");
+      kind.className = "dcx-hooks-custom-discipline";
+      kind.textContent = entry.value === "*" ? "Rule, in files" : "Value";
       const name = document.createElement("strong");
-      name.textContent = rule.name;
-      const description = document.createElement("p");
-      description.textContent = rule.description;
-      const discipline = document.createElement("span");
-      discipline.className = "dcx-hooks-custom-discipline";
-      discipline.textContent = rule.discipline;
-      copy.append(id, name, description, discipline);
+      name.textContent = entry.value === "*"
+        ? ruleName(entry.rule)
+        : `${ruleName(entry.rule)}: ${entry.value}`;
+      const detail = document.createElement("p");
+      detail.textContent = entry.files?.length
+        ? `In ${entry.files.join(", ")}`
+        : "Everywhere in this project.";
+      copy.append(kind, name, detail);
+      if (entry.reason) {
+        const reason = document.createElement("p");
+        reason.className = "dcx-hooks-custom-reason";
+        reason.textContent = entry.reason;
+        copy.append(reason);
+      }
 
       const controls = document.createElement("div");
       controls.className = "dcx-hooks-custom-controls";
-      const toggle = document.createElement("label");
-      toggle.className = "dcx-hooks-switch";
-      const input = document.createElement("input");
-      input.type = "checkbox";
-      input.setAttribute("role", "switch");
-      input.setAttribute("aria-label", `Enable ${rule.name}`);
-      input.dataset.hooksCustomRule = rule.id;
-      input.checked = rule.enabled !== false;
-      const track = document.createElement("span");
-      track.setAttribute("aria-hidden", "true");
-      toggle.append(input, track);
-
       const remove = document.createElement("button");
       remove.className = "dcx-hooks-remove";
       remove.type = "button";
-      remove.dataset.hooksRemove = rule.id;
-      remove.setAttribute("aria-label", `Remove ${rule.name}`);
+      remove.dataset.hooksRemoveValue = String(index);
+      remove.setAttribute("aria-label", `Remove exception for ${ruleName(entry.rule)}`);
       remove.textContent = "Remove";
-      controls.append(toggle, remove);
+      remove.disabled = !interactive();
+      controls.append(remove);
+      row.append(copy, controls);
+      target.appendChild(row);
+    });
+
+    files.forEach((glob, index) => {
+      const row = document.createElement("article");
+      row.className = "dcx-hooks-custom-rule";
+
+      const copy = document.createElement("div");
+      copy.className = "dcx-hooks-rule-copy";
+      const kind = document.createElement("span");
+      kind.className = "dcx-hooks-custom-discipline";
+      kind.textContent = "Skipped files";
+      const name = document.createElement("strong");
+      name.textContent = glob;
+      const detail = document.createElement("p");
+      detail.textContent = "Every rule skips matching files.";
+      copy.append(kind, name, detail);
+
+      const controls = document.createElement("div");
+      controls.className = "dcx-hooks-custom-controls";
+      const remove = document.createElement("button");
+      remove.className = "dcx-hooks-remove";
+      remove.type = "button";
+      remove.dataset.hooksRemoveFile = String(index);
+      remove.setAttribute("aria-label", `Stop skipping ${glob}`);
+      remove.textContent = "Remove";
+      remove.disabled = !interactive();
+      controls.append(remove);
       row.append(copy, controls);
       target.appendChild(row);
     });
@@ -494,33 +606,169 @@ import RULES from '../../data/hook-rules.json';
     const stateText = article.querySelector("[data-hooks-master-state]");
     if (!input || !status || !copy || !detail || !stateText) return;
 
-    input.checked = state.enabled;
-    status.classList.toggle("is-paused", !state.enabled);
+    const enabled = draft ? draft.enabled : true;
+    input.checked = enabled;
+    input.disabled = !interactive();
+    status.classList.toggle("is-paused", !enabled);
     copy.textContent = "Enable hooks";
-    detail.textContent = "Preview only — project settings are unchanged.";
-    stateText.textContent = state.enabled ? "On" : "Off";
+    if (draft) {
+      detail.textContent = "Runs in this project; changes land in .impeccable/config.json when you press Apply.";
+    } else if (liveError) {
+      detail.textContent = liveError;
+    } else if (!docSession()) {
+      detail.textContent = "The editing session has ended. /impeccable design-context reopens it.";
+    } else {
+      detail.textContent = "Reading this project’s settings…";
+    }
+    stateText.textContent = enabled ? "On" : "Off";
+  };
+
+  const syncApplyBar = (article) => {
+    const bar = article.querySelector("[data-hooks-applybar]");
+    const copy = article.querySelector("[data-hooks-applybar-copy]");
+    const apply = article.querySelector("[data-hooks-apply]");
+    const discard = article.querySelector("[data-hooks-discard]");
+    if (!bar || !copy || !apply || !discard) return;
+
+    const changes = changeCount();
+    const show = Boolean(live && draft) && (changes > 0 || applying || appliedFlash);
+    bar.hidden = !show;
+    if (!show) return;
+
+    apply.disabled = applying || changes === 0;
+    discard.disabled = applying || changes === 0;
+    if (applying) {
+      copy.textContent = "Applying…";
+    } else if (changes > 0) {
+      copy.textContent = `${changes} ${changes === 1 ? "change" : "changes"} not applied yet.`;
+    } else {
+      copy.textContent = "Applied to .impeccable/config.json.";
+    }
   };
 
   const renderArticle = (article) => {
     syncMaster(article);
     renderFamilies(article);
     renderRules(article);
-    renderCustom(article);
+    renderExceptions(article);
+    syncApplyBar(article);
+  };
+
+  const hooksArticles = () => [...document.querySelectorAll('.dcx-article[data-dcx-category="hooks"]')];
+  const renderAll = () => hooksArticles().forEach(renderArticle);
+
+  const fetchLiveState = async () => {
+    const url = hooksUrl();
+    if (!url || fetchStarted) return;
+    fetchStarted = true;
+    try {
+      const response = await fetch(url);
+      const body = await response.json().catch(() => null);
+      if (!response.ok || !body?.ok || !body.state) {
+        throw new Error(body?.error || `The doc session answered ${response.status}.`);
+      }
+      live = body.state;
+      draft = cloneState(live);
+      liveError = "";
+    } catch {
+      liveError = "Could not read this project’s hook settings; the controls stay read-only.";
+      /* A later remount retries: the session may only now be announced. */
+      fetchStarted = false;
+    }
+    renderAll();
+  };
+
+  const applyDraft = async (article) => {
+    const url = hooksUrl();
+    const session = docSession();
+    if (!url || !session || !draft || applying) return;
+    applying = true;
+    appliedFlash = false;
+    if (appliedFlashTimer) {
+      window.clearTimeout(appliedFlashTimer);
+      appliedFlashTimer = 0;
+    }
+    renderAll();
+    try {
+      const response = await fetch(`${session.base}/doc/hooks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: session.token, state: { ...draft, baseline: live } }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || !body?.ok || !body.state) {
+        throw new Error(body?.error || `The doc session answered ${response.status}.`);
+      }
+      live = body.state;
+      draft = cloneState(live);
+      appliedFlash = true;
+      appliedFlashTimer = window.setTimeout(() => {
+        appliedFlashTimer = 0;
+        appliedFlash = false;
+        renderAll();
+      }, 2600);
+    } catch (error) {
+      const message = String(error.message || error);
+      applying = false;
+      if (message.includes("hook config changed on disk") && live && draft) {
+        const oldLive = live;
+        const oldDraft = draft;
+        try {
+          const refreshed = await fetch(url);
+          const refreshedBody = await refreshed.json().catch(() => null);
+          if (refreshed.ok && refreshedBody?.ok && refreshedBody.state) {
+            live = refreshedBody.state;
+            draft = rebaseDraft(oldLive, oldDraft, live);
+            renderAll();
+            /* Written after renderAll so the bar's own copy cannot eat it. */
+            const copy = article.querySelector("[data-hooks-applybar-copy]");
+            if (copy) copy.textContent = "Another run changed this project's hook settings while you edited. Your changes were re-applied on top; review and press Apply again.";
+            return;
+          }
+        } catch {
+          /* The session dropped mid-conflict; fall through to the plain error. */
+        }
+      }
+      syncApplyBar(article);
+      /* After the bar re-renders its change count, the reason overwrites it;
+         written after the sync so the sync cannot eat it. */
+      const copy = article.querySelector("[data-hooks-applybar-copy]");
+      if (copy) copy.textContent = `Not applied: ${message}`;
+      return;
+    }
+    applying = false;
+    renderAll();
   };
 
   const initializeMountedArticles = () => {
     syncFrame = 0;
-    document.querySelectorAll('.dcx-article[data-dcx-category="hooks"]').forEach((article) => {
+    hooksArticles().forEach((article) => {
       if (article.dataset.dcxHooksReady === "true") return;
       article.dataset.dcxHooksReady = "true";
       renderArticle(article);
     });
+    if (live === null) fetchLiveState();
   };
 
   const scheduleSync = () => {
     if (syncFrame) return;
     syncFrame = requestAnimationFrame(initializeMountedArticles);
   };
+
+  const syncKindFields = (form) => {
+    const kind = form.querySelector("[data-hooks-kind]")?.value || "value";
+    const hint = form.querySelector("[data-hooks-kind-hint]");
+    if (hint) hint.textContent = EXCEPTION_KINDS[kind]?.hint || "";
+    form.querySelector('[data-hooks-field="rule"]')?.toggleAttribute("hidden", kind === "file");
+    form.querySelector('[data-hooks-field="value"]')?.toggleAttribute("hidden", kind !== "value");
+    form.querySelector('[data-hooks-field="files"]')?.toggleAttribute("hidden", kind === "value");
+    form.querySelector('[data-hooks-field="reason"]')?.toggleAttribute("hidden", kind === "file");
+  };
+
+  const parseGlobList = (value) => [...new Set(String(value)
+    .split(/[\n,]/)
+    .map((glob) => glob.trim())
+    .filter(Boolean))];
 
   document.addEventListener("click", (event) => {
     const article = event.target.closest('.dcx-article[data-dcx-category="hooks"]');
@@ -536,23 +784,24 @@ import RULES from '../../data/hook-rules.json';
     const family = event.target.closest("[data-hooks-family]");
     if (family) {
       const restoreFocus = family === document.activeElement;
-      state.activeFamily = family.dataset.hooksFamily;
-      persist();
+      view.activeFamily = family.dataset.hooksFamily;
+      persistView();
       renderFamilies(article);
       renderRules(article);
       if (restoreFocus) {
-        article.querySelector(`[data-hooks-family="${state.activeFamily}"]`)?.focus({ preventScroll: true });
+        article.querySelector(`[data-hooks-family="${view.activeFamily}"]`)?.focus({ preventScroll: true });
       }
       return;
     }
 
     const add = event.target.closest("[data-hooks-add]");
-    if (add) {
+    if (add && interactive()) {
       const form = article.querySelector("[data-hooks-form]");
       if (!form) return;
+      syncKindFields(form);
       setCustomFormOpen(form, true);
       add.setAttribute("aria-expanded", "true");
-      form.querySelector("input[name='name']")?.focus();
+      form.querySelector("[data-hooks-kind]")?.focus();
       return;
     }
 
@@ -567,14 +816,33 @@ import RULES from '../../data/hook-rules.json';
       return;
     }
 
-    const remove = event.target.closest("[data-hooks-remove]");
-    if (remove) {
-      state.custom = state.custom.filter((rule) => rule.id !== remove.dataset.hooksRemove);
-      persist();
-      renderCustom(article);
-      (article.querySelector("[data-hooks-remove]") || article.querySelector("[data-hooks-add]"))
+    const removeValue = event.target.closest("[data-hooks-remove-value]");
+    if (removeValue && interactive()) {
+      draft.ignoreValues.splice(Number(removeValue.dataset.hooksRemoveValue), 1);
+      renderAll();
+      (article.querySelector(".dcx-hooks-remove") || article.querySelector("[data-hooks-add]"))
         ?.focus({ preventScroll: true });
+      return;
     }
+
+    const removeFile = event.target.closest("[data-hooks-remove-file]");
+    if (removeFile && interactive()) {
+      draft.ignoreFiles.splice(Number(removeFile.dataset.hooksRemoveFile), 1);
+      renderAll();
+      (article.querySelector(".dcx-hooks-remove") || article.querySelector("[data-hooks-add]"))
+        ?.focus({ preventScroll: true });
+      return;
+    }
+
+    const discard = event.target.closest("[data-hooks-discard]");
+    if (discard && live) {
+      draft = cloneState(live);
+      renderAll();
+      return;
+    }
+
+    const apply = event.target.closest("[data-hooks-apply]");
+    if (apply) applyDraft(article);
   });
 
   document.addEventListener("input", (event) => {
@@ -609,39 +877,39 @@ import RULES from '../../data/hook-rules.json';
         ? buttons.length - 1
         : (index + direction + buttons.length) % buttons.length;
     buttons[nextIndex].click();
-    article.querySelector(`[data-hooks-family="${state.activeFamily}"]`)?.focus();
+    article.querySelector(`[data-hooks-family="${view.activeFamily}"]`)?.focus();
   });
 
   document.addEventListener("change", (event) => {
     const article = event.target.closest('.dcx-article[data-dcx-category="hooks"]');
     if (!article) return;
 
+    if (event.target.matches("[data-hooks-kind]")) {
+      const form = event.target.closest("[data-hooks-form]");
+      if (form) syncKindFields(form);
+      return;
+    }
+
+    if (!interactive()) return;
+
     if (event.target.matches("[data-hooks-master]")) {
-      state.enabled = event.target.checked;
-      persist();
+      draft.enabled = event.target.checked;
       syncMaster(article);
+      syncApplyBar(article);
       return;
     }
 
     if (event.target.matches("[data-hooks-rule]")) {
-      if (event.target.checked) disabledRules.delete(event.target.dataset.hooksRule);
-      else disabledRules.add(event.target.dataset.hooksRule);
-      persist();
+      const id = event.target.dataset.hooksRule;
+      if (event.target.checked) draft.ignoreRules = draft.ignoreRules.filter((entry) => entry !== id);
+      else if (!draft.ignoreRules.includes(id)) draft.ignoreRules.push(id);
       renderFamilies(article);
+      syncApplyBar(article);
       const query = article.querySelector("[data-hooks-search]")?.value.trim();
       const summary = article.querySelector("[data-hooks-summary]");
       if (!query && summary) {
-        const rules = familyRules(state.activeFamily);
+        const rules = familyRules(view.activeFamily);
         summary.textContent = `${rules.filter((rule) => isEnabled(rule.id)).length} of ${rules.length} selected`;
-      }
-      return;
-    }
-
-    if (event.target.matches("[data-hooks-custom-rule]")) {
-      const rule = state.custom.find((entry) => entry.id === event.target.dataset.hooksCustomRule);
-      if (rule) {
-        rule.enabled = event.target.checked;
-        persist();
       }
     }
   });
@@ -651,30 +919,37 @@ import RULES from '../../data/hook-rules.json';
     if (!form) return;
     event.preventDefault();
     const article = form.closest('.dcx-article[data-dcx-category="hooks"]');
-    if (!article) return;
+    if (!article || !interactive()) return;
 
     const data = new FormData(form);
-    const name = String(data.get("name") || "").trim();
-    const description = String(data.get("description") || "").trim();
-    const discipline = String(data.get("discipline") || "Visual Details");
-    if (!name || !description) return;
+    const kind = String(data.get("kind") || "value");
+    const rule = String(data.get("rule") || "").trim();
+    const value = String(data.get("value") || "").trim();
+    const files = parseGlobList(data.get("files") || "");
+    const reason = String(data.get("reason") || "").trim();
 
-    const base = slugify(name);
-    let id = base;
-    let suffix = 2;
-    const existing = new Set([...RULES.map((rule) => rule.id), ...state.custom.map((rule) => rule.id)]);
-    while (existing.has(id)) {
-      id = `${base}-${suffix}`;
-      suffix += 1;
+    if (kind === "file") {
+      if (!files.length) return;
+      files.forEach((glob) => {
+        if (!draft.ignoreFiles.includes(glob)) draft.ignoreFiles.push(glob);
+      });
+    } else {
+      const entry = kind === "value"
+        ? { rule, value }
+        : { rule, value: "*", files };
+      if (!entry.rule || (kind === "value" && !entry.value)) return;
+      if (kind === "rule-in-files" && !files.length) return;
+      if (reason) entry.reason = reason;
+      const keys = new Set(draft.ignoreValues.map(entryKey));
+      if (!keys.has(entryKey(entry))) draft.ignoreValues.push(entry);
     }
 
-    state.custom.push({ id, name, description, discipline, enabled: true });
-    persist();
     form.reset();
+    syncKindFields(form);
     setCustomFormOpen(form, false);
     const addButton = article.querySelector("[data-hooks-add]");
     addButton?.setAttribute("aria-expanded", "false");
-    renderCustom(article);
+    renderAll();
     addButton?.focus({ preventScroll: true });
   });
 

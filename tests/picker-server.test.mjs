@@ -822,6 +822,38 @@ test('doc session reads and applies hook state, token-gated', async () => {
     assert.deepEqual(clearedConfig.detector.ignoreRules, []);
     assert.deepEqual(clearedConfig.detector.ignoreValues, []);
 
+    // A stale baseline is refused, protecting entries another writer added
+    // after the page read its state; the fresh state then applies cleanly.
+    const before = (await (await fetch(`${base}/doc/hooks?token=t-hooks`)).json()).state;
+    const configPath = path.join(fixture.cwd, '.impeccable/config.json');
+    const drifted = JSON.parse(await readFile(configPath, 'utf8'));
+    drifted.detector.ignoreRules = ['kicker-above-heading'];
+    await writeFile(configPath, `${JSON.stringify(drifted, null, 2)}\n`);
+    const conflicted = await fetch(`${base}/doc/hooks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: 't-hooks',
+        state: { enabled: false, ignoreRules: ['side-tab'], ignoreFiles: [], ignoreValues: [], baseline: before },
+      }),
+    });
+    assert.equal(conflicted.status, 400);
+    assert.match((await conflicted.json()).error, /hook config changed on disk/);
+    const untouched = JSON.parse(await readFile(configPath, 'utf8'));
+    assert.deepEqual(untouched.detector.ignoreRules, ['kicker-above-heading']);
+    const rebasedState = (await (await fetch(`${base}/doc/hooks?token=t-hooks`)).json()).state;
+    const accepted = await fetch(`${base}/doc/hooks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: 't-hooks',
+        state: { ...rebasedState, ignoreRules: [...rebasedState.ignoreRules, 'side-tab'], baseline: rebasedState },
+      }),
+    });
+    assert.equal(accepted.status, 200);
+    const merged = JSON.parse(await readFile(configPath, 'utf8'));
+    assert.deepEqual(merged.detector.ignoreRules, ['kicker-above-heading', 'side-tab']);
+
     // The gate and the validation hold.
     assert.equal((await fetch(`${base}/doc/hooks`)).status, 403);
     assert.equal((await fetch(`${base}/doc/hooks?token=wrong`)).status, 403);

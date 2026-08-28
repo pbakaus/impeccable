@@ -630,3 +630,78 @@
     transition: none;
   }
 }
+
+/* ============================================================
+   Live wiring: the exceptions form's kind-driven fields and the
+   Apply bar. State loads from and lands in the project's
+   .impeccable/config.json through the doc session; the bar shows
+   only while the draft and the project disagree.
+   ============================================================ */
+.dcx-detail-article--hooks .dcx-hooks-custom-form label[hidden] {
+  display: none;
+}
+
+.dcx-detail-article--hooks .dcx-hooks-kind-hint {
+  grid-column: 1 / -1;
+  margin: -6px 0 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--ks-text-muted);
+}
+
+.dcx-detail-article--hooks .dcx-hooks-custom-reason {
+  margin: 2px 0 0;
+  font-size: 0.82rem;
+  font-style: italic;
+  color: var(--ks-text-faint);
+}
+
+.dcx-detail-article--hooks .dcx-hooks-switch input:disabled + span,
+.dcx-detail-article--hooks .dcx-hooks-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.dcx-detail-article--hooks .dcx-hooks-applybar {
+  position: sticky;
+  bottom: 18px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 26px;
+  padding: 14px 18px;
+  border: 1px solid var(--ks-rule);
+  border-radius: 12px;
+  background: var(--ks-graphite-2);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.35);
+}
+
+.dcx-detail-article--hooks .dcx-hooks-applybar[hidden] {
+  display: none;
+}
+
+.dcx-detail-article--hooks .dcx-hooks-applybar-copy {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--ks-text);
+}
+
+.dcx-detail-article--hooks .dcx-hooks-applybar-actions {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 560px) {
+  .dcx-detail-article--hooks .dcx-hooks-applybar {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: center;
+  }
+
+  .dcx-detail-article--hooks .dcx-hooks-applybar-actions .dcx-hooks-button {
+    flex: 1;
+  }
+}
