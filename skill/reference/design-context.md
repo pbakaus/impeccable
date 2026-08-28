@@ -90,4 +90,4 @@ The document is a working surface. Follow [visual-cues.md](visual-cues.md)'s "Th
 
 - Never poll `answers.json` while a server runs. The process exiting is the signal.
 - Never drive the questionnaire yourself. The answers are the user's, and a run you filled in is a run they did not make.
-- Editing in the document changes values that are already there. A field the interview never captured is added by asking through the document's own request control, not by this command.
+- Editing in the document changes values that are already there. A field the interview never captured is added by asking in chat, not by this command.

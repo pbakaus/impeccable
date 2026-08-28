@@ -1472,40 +1472,12 @@ const questions = [
       <div class="dcx-panel">
         <header class="dcx-topbar">
           <div class="dcx-current"></div>
-          <button class="dcx-request" type="button" data-dcx-request>Request a change</button>
           <button class="dcx-close" type="button" aria-label="Close"></button>
         </header>
         <div class="dcx-main" tabindex="-1"></div>
       </div>
     </div>
   </template>
-
-  {/* Edit-request modal: complex changes the document cannot apply itself
-      are written up here and queued for the agent over the doc session. */}
-  <dialog class="picker-modal dcx-request-modal" data-dcx-request-modal aria-labelledby="dcx-request-title">
-    <div class="picker-modal-inner">
-      <header class="picker-modal-head">
-        <h2 id="dcx-request-title">Request a change</h2>
-        <p data-dcx-request-lede>Describe the change; the agent applies it to the design document and the page updates here.</p>
-      </header>
-      <fieldset class="picker-modal-field">
-        <legend data-dcx-request-scope>Change</legend>
-        <label class="picker-modal-label" for="dcx-request-prompt">What should change?</label>
-        <textarea class="picker-modal-input dcx-request-prompt" id="dcx-request-prompt" rows="4" maxlength="4000"
-          placeholder="e.g. Swap the heading font for something with more contrast at display sizes."></textarea>
-        <div class="picker-modal-file-block" data-dcx-request-fonts hidden>
-          <label class="picker-modal-label" for="dcx-request-font-files">Font files (optional)</label>
-          <input class="picker-modal-file-input" id="dcx-request-font-files" type="file" multiple
-            accept=".woff2,.woff,.ttf,.otf" data-dcx-request-files />
-          <p class="picker-modal-or" data-dcx-request-upload-note></p>
-        </div>
-      </fieldset>
-      <footer class="picker-modal-actions">
-        <button class="picker-back" type="button" data-dcx-request-cancel>Cancel</button>
-        <button class="ks-button ks-button-primary" type="button" data-dcx-request-send>Send to the agent</button>
-      </footer>
-    </div>
-  </dialog>
 
   {/* Live edit tray: every queued request with its status, fed by polling. */}
   <div class="dcx-tray" data-dcx-tray hidden aria-live="polite"></div>

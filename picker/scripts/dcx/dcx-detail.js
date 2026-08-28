@@ -42,7 +42,7 @@ import { dcxAsset } from './assets.js';
       "Cards": ["Content, media, horizontal, and action compositions."],
     },
     material: {
-      "The page, as chosen": ["What each selected surface represents in this design context."],
+      "The page, as chosen": ["The page anatomy each surface committed, and what it represents."],
       "Motion per surface": ["How movement supports each context without becoming spectacle."],
       "Motion": ["How movement should support the experience."],
       "Accessibility": ["The rules that keep the material system readable and operable."],
@@ -198,9 +198,9 @@ import { dcxAsset } from './assets.js';
     if (!previews) return;
 
     /* One definition per chosen surface, published by the data layer at render
-       time (design-context.js renderDocument). If the list is missing the
-       original preview boards stay, which is a visible fallback rather than an
-       empty section. */
+       time (design-context.js renderDocument), appended under the boards so
+       the drawings and the words both survive. A missing list changes
+       nothing: the boards already stand on their own. */
     const entries = Array.isArray(window.dcxSurfaceDefs) ? window.dcxSurfaceDefs : [];
     if (!entries.length) return;
 
@@ -217,7 +217,7 @@ import { dcxAsset } from './assets.js';
       definitions.appendChild(item);
     });
 
-    previews.replaceWith(definitions);
+    previews.after(definitions);
   };
 
   const enhanceSection = (section, category, iconIndex) => {

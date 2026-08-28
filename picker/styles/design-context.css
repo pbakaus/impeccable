@@ -1114,6 +1114,16 @@ body.dcx-open { overflow: hidden; background: linear-gradient(180deg, var(--ks-l
   padding: clamp(14px, 2vw, 22px);
 }
 
+/* A motion cell is display:none until the motion screen's own reveal rules
+   pick it, and every one of those is scoped under #picker-form:has(...),
+   which a clone in the document is outside of. A frame holds exactly one
+   cell, the committed one, so revealing every cell inside a frame reveals
+   just that one. Body verbatim from picker/styles/screens/motion.css's
+   reveal rule; change them together. */
+.dcx-proof .picker-preview-motion[data-motion-cell] {
+  display: grid;
+}
+
 /* The strategy stage's base mapping, restated for clones that live outside
    it: the artboard reads the committed palette painted on the frame. */
 .dcx-proof--board > .picker-preview {
@@ -2081,48 +2091,8 @@ body.dcx-open { overflow: hidden; background: linear-gradient(180deg, var(--ks-l
   .dcx-matrix-row { grid-template-columns: 110px minmax(0, 1fr); }
 }
 
-/* ============================================================
-   Live editing — affordances appear once the edit session is up
-   (body.dcx-live), and stand down when it goes away.
-   ============================================================ */
-.dcx-edit,
-.dcx-request {
-  display: none;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 14px;
-  border: 1px solid var(--ks-rule);
-  background: transparent;
-  color: var(--ks-text-muted);
-  font-family: var(--ks-mono);
-  font-size: 0.68rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: color 0.2s var(--ks-ease), border-color 0.2s var(--ks-ease);
-}
-
-body.dcx-live .dcx-edit,
-body.dcx-live .dcx-request { display: inline-flex; }
-
-.dcx-edit:hover,
-.dcx-request:hover {
-  color: var(--accent);
-  border-color: var(--accent);
-}
-
-.dcx-edit:focus-visible,
-.dcx-request:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.dcx-pair-why + .dcx-edit { margin-top: 18px; }
-
-.dcx-topbar .dcx-request { margin-left: auto; margin-right: 14px; }
-
-/* The topbar is a grid of current + close today; let the request button sit
-   between them without re-authoring the bar. */
+/* The topbar is current + close; the settings module inserts its actions
+   cluster between them, so keep the bar a flex row. */
 .dcx-topbar { display: flex; align-items: center; }
 .dcx-topbar .dcx-current { flex: 1; min-width: 0; }
 
@@ -2195,15 +2165,6 @@ body.dcx-live .dcx-request { display: inline-flex; }
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--ks-text-faint);
-}
-
-/* ============================================================
-   Request modal — rides the picker's modal shell.
-   ============================================================ */
-.dcx-request-modal .dcx-request-prompt {
-  width: 100%;
-  resize: vertical;
-  min-height: 96px;
 }
 
 /* ============================================================

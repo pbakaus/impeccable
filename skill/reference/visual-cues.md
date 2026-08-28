@@ -465,7 +465,7 @@ In the same write, add a top-level `context` object carrying the chat half of th
     "platform": "[bare value from PRODUCT.md Platform: web, ios, android, or adaptive]",
     "positioning": { "not": "[what it is not, from PRODUCT.md Positioning]", "this": "[what it is instead]" },
     "clarities": ["[one line per item of PRODUCT.md's what-must-be-clear-first list]"],
-    "conversion": "[primary conversion from PRODUCT.md Product Purpose, bare action: book a consultation]",
+    "conversion": "[primary conversion from PRODUCT.md Product Purpose, one sentence-case action phrase: Book a consultation]",
     "principles": [{ "title": "[principle name from PRODUCT.md Design Principles]", "detail": "[one clause: what it means for design]" }],
     "surfaces": { "persuade": "[what this surface is for this product, one line]", "operate": "[...]", "read": "[...]", "experience": "[...]" },
     "operatingContext": "[one line from PRODUCT.md Operating Context]"

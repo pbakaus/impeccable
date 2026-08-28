@@ -161,6 +161,7 @@ async function serveFile(response, baseDir, relativePath, allowedExtensions = MI
   const filePath = containedPath(baseDir, relativePath);
   const extension = path.extname(relativePath).toLowerCase();
   if (!filePath || ![...allowedExtensions].includes(extension) || !MIME.has(extension)) {
+    response.removeHeader('Cache-Control');
     sendJson(response, 404, { error: 'Not found' });
     return;
   }
@@ -175,6 +176,7 @@ async function serveFile(response, baseDir, relativePath, allowedExtensions = MI
     });
     response.end(body);
   } catch {
+    response.removeHeader('Cache-Control');
     sendJson(response, 404, { error: 'Not found' });
   }
 }
@@ -267,7 +269,7 @@ async function handleRequest(request, response) {
        never retries. The session writes its record only after listen succeeds,
        so the record on disk is readiness itself; no HTTP probe, which would
        also mark the session adopted before any tab has seen it. */
-    if (doc) await waitForSessionRecord(5000);
+    if (doc) await waitForSessionRecord(5000, doc.port);
     response.once('finish', () => {
       console.log(`ANSWERS ${answersPath}`);
       server.close(() => process.exit(0));
@@ -443,7 +445,7 @@ async function spawnDocSession() {
       env: { ...process.env, IMPECCABLE_DOC_TOKEN: docToken },
     });
     child.unref();
-    return { base: `http://127.0.0.1:${docPort}`, token: docToken };
+    return { base: `http://127.0.0.1:${docPort}`, token: docToken, port: docPort };
   } catch {
     /* The document still renders read-only; only the edit loop is lost. */
     return null;
@@ -470,11 +472,11 @@ async function probeSession(record) {
   }
 }
 
-async function waitForSessionRecord(deadlineMs) {
+async function waitForSessionRecord(deadlineMs, expectPort = 0) {
   const until = Date.now() + deadlineMs;
   for (;;) {
     const record = await readJsonSoft(store.sessionJson);
-    if (record?.port) return record;
+    if (record?.port && (!expectPort || record.port === expectPort)) return record;
     if (Date.now() > until) return null;
     await sleep(150);
   }

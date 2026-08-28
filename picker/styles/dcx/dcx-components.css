@@ -603,3 +603,53 @@
 .dcx-palette-live .dcx-detail-article--components .dcx-showcase-card-link {
   color: var(--pkc-s-on-n);
 }
+
+/* ============================================================
+   Specimens in the committed kit: faces, corners, depth, and the
+   scale step, the same contract .dcx-palette-live holds for color.
+   design-context.js paintKit publishes --pkc-font-*, --pkc-radius-*,
+   --pkc-shadow-*, and --pkc-scale-ratio on <body> and gates them
+   behind .dcx-kit-live; without the gate the vendored kinpaku kit
+   above stands. Documentation chrome (the canvas frame, figcaption
+   headings, the mono eyebrows and metadata) stays the document's
+   own furniture and is deliberately left alone.
+   ============================================================ */
+.dcx-kit-live .dcx-detail-article--components .dcx-component-canvas {
+  font-family: var(--pkc-font-body);
+}
+
+.dcx-kit-live .dcx-detail-article--components .dcx-demo-button,
+.dcx-kit-live .dcx-detail-article--components .dcx-demo-field-label,
+.dcx-kit-live .dcx-detail-article--components .dcx-demo-input,
+.dcx-kit-live .dcx-detail-article--components .dcx-showcase-card p,
+.dcx-kit-live .dcx-detail-article--components .dcx-showcase-card blockquote {
+  font-family: var(--pkc-font-body);
+}
+
+.dcx-kit-live .dcx-detail-article--components .dcx-showcase-card h5 {
+  font-family: var(--pkc-font-heading);
+  font-weight: var(--pkc-font-heading-weight);
+  font-size: calc(0.88rem * var(--pkc-scale-ratio, 1.18));
+}
+
+.dcx-kit-live .dcx-detail-article--components .dcx-demo-button,
+.dcx-kit-live .dcx-detail-article--components .dcx-demo-input {
+  border-radius: var(--pkc-radius-control);
+}
+
+.dcx-kit-live .dcx-detail-article--components .dcx-showcase-card {
+  border-radius: var(--pkc-radius-surface);
+  box-shadow: var(--pkc-shadow-card);
+}
+
+.dcx-kit-live .dcx-detail-article--components :is(
+  .dcx-demo-button--primary,
+  .dcx-demo-button--secondary,
+  .dcx-demo-button--danger
+) {
+  box-shadow: var(--pkc-shadow-control);
+}
+
+.dcx-kit-live .dcx-detail-article--components .dcx-demo-input {
+  box-shadow: var(--pkc-shadow-surface);
+}

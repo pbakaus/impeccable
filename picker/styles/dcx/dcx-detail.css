@@ -360,6 +360,18 @@
   row-gap: 7px;
 }
 
+.dcx-detail-article .dcx-pick--proof {
+  grid-template-areas:
+    "surface title"
+    "surface description"
+    "proof   proof";
+}
+
+.dcx-detail-article .dcx-pick--proof > .dcx-proof {
+  grid-area: proof;
+  margin-top: 14px;
+}
+
 .dcx-detail-article .dcx-pick-surface {
   grid-area: surface;
   align-self: start;
@@ -391,6 +403,14 @@
       "title"
       "description";
     row-gap: 8px;
+  }
+
+  .dcx-detail-article .dcx-pick--proof {
+    grid-template-areas:
+      "surface"
+      "title"
+      "description"
+      "proof";
   }
 
   .dcx-detail-article .dcx-pick-surface {
@@ -629,10 +649,6 @@
   margin-top: 12px;
   color: var(--ks-text-faint);
   line-height: 1.55;
-}
-
-.dcx-detail-article .dcx-edit {
-  margin-top: 18px;
 }
 
 @media (max-width: 720px) {

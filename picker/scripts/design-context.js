@@ -212,6 +212,19 @@ function takeSnapshot() {
    dcx-detail template.
    ============================================================ */
 
+/* A stored value the schema asks for as a bare action arrives as a fragment
+   ("walk over"), and the callout slot beside it holds sentences. Lift the
+   first letter only, and only when the first word is otherwise lowercase, so
+   a deliberate lowercase token (iPhone, npm) is left alone. Applied at ONE
+   call site (Primary conversion); the other value slots are fed by templates
+   that already ask for sentences, and several hold identifiers. */
+const sentenceCase = (value) => {
+  const text = String(value);
+  const first = text.split(/\s/)[0] || '';
+  if (!/^[a-z]/.test(text) || /[A-Z]/.test(first)) return text;
+  return text[0].toUpperCase() + text.slice(1);
+};
+
 const escapeHtml = (value) => String(value)
   .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 
@@ -352,6 +365,60 @@ function paintCommitted(node) {
   set('p-on-i', readableOn(colors.primary, contrastInkHex(colors.primary)));
 }
 
+/* Component-scale corner and depth ramps for the committed kit. The shadow
+   bodies are verbatim from design-context.css's [data-dcx-depth=...] rules;
+   the radius values are their component-scale equivalents, because the
+   artboard ramp ([data-dcx-corner=...] in the same file) is drawn at
+   miniature scale, where 3px reads as a card radius. Change a body here and
+   there together. */
+const KIT_RADIUS = {
+  sharp: { control: '0px', surface: '0px' },
+  'slightly-soft': { control: '4px', surface: '6px' },
+  friendly: { control: '10px', surface: '14px' },
+  pill: { control: '999px', surface: '18px' },
+};
+const KIT_SHADOW = {
+  flat: { card: 'none', control: 'none', surface: 'none' },
+  'soft-lift': {
+    card: '0 1px 1px rgb(0 0 0 / 0.15), 0 3px 7px rgb(0 0 0 / 0.14)',
+    control: '0 1px 2px rgb(0 0 0 / 0.24)',
+    surface: '0 2px 5px rgb(0 0 0 / 0.14)',
+  },
+  floating: {
+    card: '0 2px 3px rgb(0 0 0 / 0.2), 0 9px 18px rgb(0 0 0 / 0.24)',
+    control: '0 3px 6px rgb(0 0 0 / 0.32)',
+    surface: '0 6px 14px rgb(0 0 0 / 0.22)',
+  },
+};
+const KIT_SERIF = /serif|mincho|baskerville|bitter|marcellus|slab|antiqua|garamond|didot|bodoni/i;
+const kitStack = (family) => `"${family.replaceAll('"', '\\"')}", ${KIT_SERIF.test(family) ? 'serif' : 'sans-serif'}`;
+
+/* The rest of the committed kit, published the way paintCommitted publishes
+   color: onto one node, every value or none. A var() that resolves to nothing
+   invalidates its declaration at computed-value time (a missing radius would
+   become 0, not the vendored default), so the gate class only goes on when
+   fonts, radius, and shadow are all present. Reads the LEADING surface's
+   answers (s.corners[0], s.depth[0]): the visible radio follows whichever
+   surface tab was shown last, while perSurface() orders by SURFACE_ORDER. */
+function paintKit(node, s) {
+  const radius = KIT_RADIUS[s.corners[0]?.value];
+  const shadow = KIT_SHADOW[s.depth[0]?.value];
+  if (!s.fonts.heading || !s.fonts.body || !radius || !shadow) return false;
+  const set = (name, value) => node.style.setProperty(`--pkc-${name}`, value);
+  set('font-heading', kitStack(s.fonts.heading));
+  set('font-body', kitStack(s.fonts.body));
+  set('font-heading-weight',
+    document.querySelector('input[name="font-pair"]:checked')?.closest('.picker-type-option')
+      ?.style.getPropertyValue('--pair-heading-weight') || '400');
+  set('radius-control', radius.control);
+  set('radius-surface', radius.surface);
+  set('shadow-card', shadow.card);
+  set('shadow-control', shadow.control);
+  set('shadow-surface', shadow.surface);
+  if (s.scale.ratio) set('scale-ratio', String(s.scale.ratio));
+  return true;
+}
+
 /* Clone one questionnaire drawing into a dcx frame. Inline styles travel
    with the clone; ids do not (they would collide with the originals). */
 function proofHtml(source, { strategy = '', kind = 'board', marks = null } = {}) {
@@ -400,7 +467,11 @@ const surfaceTilePreview = (mode) => $(`input[name="surface-modes"][value="${mod
 /* The boundaries screen keeps one carried ps artboard per surface, and by
    that screen the drawing is the page as chosen so far. It is the clone
    source for any proof that wants the whole material story on one page. */
-const carriedBoard = (mode) => $(`[data-question="boundaries"] .picker-board-stage > :is(.picker-artboard, .picker-preview)[data-surface="${mode}"]`);
+const questionBoard = (question, mode) => $(`[data-question="${question}"] .picker-board-stage > :is(.picker-artboard, .picker-preview)[data-surface="${mode}"]`);
+const carriedBoard = (mode) => questionBoard('boundaries', mode);
+/* The motion screen boards one drawing per surface AND option; the answer
+   names which one is the committed drawing. */
+const motionBoard = (mode, value) => $(`[data-question="motion"] .picker-board-stage > :is(.picker-artboard, .picker-preview)[data-motion-cell="${mode}-${value}"]`);
 
 /* One surface's committed structural answers, as the data-dcx-* marks the
    document stylesheet keys its mirrored bodies on. Layout is one answer for
@@ -516,7 +587,7 @@ function buildProduct(s, name) {
     parts.push(block('Positioning', `<div class="dcx-callout-pair">${cells}</div>`));
   }
   if (product.conversion) {
-    parts.push(block('Primary conversion', callout('The one action', escapeHtml(product.conversion), true)));
+    parts.push(block('Primary conversion', callout('The one action', escapeHtml(sentenceCase(product.conversion)), true)));
   }
   if (Array.isArray(product.clarities) && product.clarities.length) {
     parts.push(block('What must be clear first', list(product.clarities.map(escapeHtml))));
@@ -796,8 +867,7 @@ function buildTypography(s, name) {
           ${s.fonts.bodySource ? `<code class="dcx-pair-source">${escapeHtml(s.fonts.bodySource)}</code>` : ''}
         </article>
       </div>
-      <p class="dcx-pair-why" style="font-family:'${escapeHtml(s.fonts.body)}', sans-serif;">${escapeHtml(s.fonts.why || 'Chosen on the font pair screen against every surface this product ships.')}</p>
-      <button class="dcx-edit" type="button" data-dcx-request-kind="font">Change the fonts&hellip;</button>`));
+      <p class="dcx-pair-why" style="font-family:'${escapeHtml(s.fonts.body)}', sans-serif;">${escapeHtml(s.fonts.why || 'Chosen on the font pair screen against every surface this product ships.')}</p>`));
   } else {
     parts.push(block('The pair', empty('No pair selected', 'The font pair screen was not completed on this run.')));
   }
@@ -850,11 +920,11 @@ function buildIconography(s, name) {
 
 /* A per-surface question laid out the way its screen asked it: one card per
    surface, the pick's title carrying the card, the description under it. */
-const pickGrid = (entries) => `<div class="dcx-picks" data-count="${entries.length}">${entries.map((entry) => `
-  <article class="dcx-pick">
+const pickGrid = (entries, preview = null) => `<div class="dcx-picks" data-count="${entries.length}">${entries.map((entry) => `
+  <article class="dcx-pick${preview ? ' dcx-pick--proof' : ''}">
     <span class="dcx-pick-surface">${escapeHtml(entry.label)}${entry.chosen ? '' : ' <span class="dcx-default-mark">default</span>'}</span>
     <h3 class="dcx-pick-title">${escapeHtml(entry.title)}</h3>
-    <p class="dcx-pick-desc">${escapeHtml(entry.desc)}</p>
+    <p class="dcx-pick-desc">${escapeHtml(entry.desc)}</p>${preview ? preview(entry) : ''}
   </article>`).join('')}</div>`;
 
 function buildMaterial(s, name) {
@@ -888,7 +958,7 @@ function buildMaterial(s, name) {
      empty one says the question was never put, which is a different thing from
      a quiet answer and is worth saying out loud. */
   if (s.motion.length) {
-    parts.push(block('Motion per surface', pickGrid(s.motion)
+    parts.push(block('Motion per surface', pickGrid(s.motion, (e) => proofHtml(motionBoard(e.mode, e.value), { kind: 'board', marks: materialMarks(s, e.mode) }))
       + note(interview.motionEnergy
         ? `The seed interview asked for <strong>${escapeHtml(interview.motionEnergy)}</strong>; the motion screen answered it per surface above.`
         : 'Asked of the landing page and the portfolio only. A tool and a document are moved through rather than watched, so their movement follows the interface rather than a house style.')));
@@ -905,11 +975,11 @@ function buildMaterial(s, name) {
     parts.push(block('Layout structure', callout(s.layout.title, escapeHtml(s.layout.desc))
       + note('Asked of the landing page and the portfolio, where the composition of the page is itself the decision. One answer is kept for the run, and every surface is drawn on it.')));
   }
-  parts.push(block('Boundaries per surface', pickGrid(s.boundaries)
+  parts.push(block('Boundaries per surface', pickGrid(s.boundaries, (e) => proofHtml(questionBoard('boundaries', e.mode), { kind: 'board', marks: materialMarks(s, e.mode) }))
     + note('How sections separate on each surface.')));
-  parts.push(block('Corners per surface', pickGrid(s.corners)
+  parts.push(block('Corners per surface', pickGrid(s.corners, (e) => proofHtml(questionBoard('corners', e.mode), { kind: 'board', marks: materialMarks(s, e.mode) }))
     + note('How round shapes are on each surface.')));
-  parts.push(block('Depth per surface', pickGrid(s.depth)
+  parts.push(block('Depth per surface', pickGrid(s.depth, (e) => proofHtml(questionBoard('depth', e.mode), { kind: 'board', marks: materialMarks(s, e.mode) }))
     + note('How far off the page things sit on each surface.')));
   return parts.join('');
 }
@@ -1011,6 +1081,9 @@ function renderDocument() {
   const paletteLive = ROLES.every((role) => fieldValue(`palette-${role}`));
   document.body.classList.toggle('dcx-palette-live', paletteLive);
   if (paletteLive) paintCommitted(document.body);
+  /* The rest of the committed kit rides the same node: faces, corners, depth,
+     and the scale ratio. Without these the inventory can only be recolored. */
+  document.body.classList.toggle('dcx-kit-live', paintKit(document.body, snapshot));
   for (const [id, build] of Object.entries(BUILDERS)) {
     const template = document.getElementById(`dcx-detail-${id}`);
     template.innerHTML = `<article class="dcx-article">${build(snapshot, name)}</article>`;
@@ -1134,13 +1207,6 @@ $('[data-doc-retry]')?.addEventListener('click', finishSequence);
 
 let revealed = false;
 
-/* The mounted document is the new engine's (picker/scripts/dcx/dcx-document.js);
-   these are the two facts the data layer still needs from it. */
-const dcxCurrentCategory = () => document.querySelector('.dcx-expander[data-dcx-document]')?.dataset.dcxCurrentCategory
-  || window.dcxDocument?.currentCategory()
-  || '';
-const dcxCategoryLabel = (category) => $(`.dcx-tile[data-category="${category}"]`)?.dataset.name || 'Design context';
-
 function revealDocument() {
   revealed = true;
   document.body.classList.add('dcx-open');
@@ -1184,10 +1250,7 @@ window.addEventListener('resize', () => {
    Live edit session — the document as a working surface.
 
    The picker server forks a doc-session sibling on submit and hands
-   this tab its address and token. A change the reader wants goes to
-   the agent as a request: POST /doc/request, the agent long-polls the
-   queue, does the work, and replies. The tray shows each request move
-   pending -> working -> done.
+   this tab its address and token.
 
    The tab learns about the outside world the way live mode's browser
    does, scaled to polling: /doc/state every couple of seconds, and a
@@ -1200,9 +1263,6 @@ let docOnline = false;
 let trayRequests = [];
 
 const tray = $('[data-dcx-tray]');
-const requestModal = $('[data-dcx-request-modal]');
-
-const docLive = () => Boolean(docSession);
 
 function startDocSession(doc) {
   docSession = doc;
@@ -1215,16 +1275,6 @@ function startDocSession(doc) {
      after submit and article images fetch after that exit. */
   refreshDocument();
   schedulePoll(1500);
-}
-
-async function docPost(pathname, body) {
-  const response = await fetch(`${docSession.base}${pathname}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token: docSession.token, ...body }),
-  });
-  if (!response.ok) throw new Error(`${pathname} failed: ${response.status}`);
-  return response.json();
 }
 
 let pollTimer;
@@ -1312,60 +1362,6 @@ function refreshDocument() {
   renderDocument();
   window.dcxDocument?.remount();
 }
-
-/* ---------- Complex edits: the request modal ---------- */
-
-let requestKind = 'freeform';
-
-document.addEventListener('click', (event) => {
-  const trigger = event.target.closest('[data-dcx-request], [data-dcx-request-kind]');
-  if (!trigger || !requestModal) return;
-  requestKind = trigger.dataset.dcxRequestKind || 'freeform';
-  const category = dcxCurrentCategory();
-  const scopeName = category ? dcxCategoryLabel(category) : 'Design context';
-  $('[data-dcx-request-scope]', requestModal).textContent = requestKind === 'font'
-    ? 'Typography change' : `${scopeName} change`;
-  $('[data-dcx-request-fonts]', requestModal).hidden = requestKind !== 'font';
-  const prompt = $('.dcx-request-prompt', requestModal);
-  prompt.value = '';
-  $('[data-dcx-request-upload-note]', requestModal).textContent = '';
-  requestModal.showModal();
-  prompt.focus();
-});
-
-$('[data-dcx-request-cancel]', requestModal)?.addEventListener('click', () => requestModal.close());
-
-$('[data-dcx-request-send]', requestModal)?.addEventListener('click', async () => {
-  const prompt = $('.dcx-request-prompt', requestModal).value.trim();
-  if (!prompt || !docLive()) return;
-  const send = $('[data-dcx-request-send]', requestModal);
-  send.disabled = true;
-  try {
-    const files = $('[data-dcx-request-files]', requestModal)?.files || [];
-    const uploaded = [];
-    for (const file of files) {
-      const response = await fetch(`${docSession.base}/font-upload?token=${encodeURIComponent(docSession.token)}`, {
-        method: 'POST',
-        headers: { 'X-Font-Filename': file.name },
-        body: file,
-      });
-      if (response.ok) uploaded.push((await response.json()).path);
-    }
-    const result = await docPost('/doc/request', {
-      kind: requestKind,
-      prompt,
-      category: dcxCurrentCategory(),
-      payload: uploaded.length ? { fonts: uploaded } : {},
-    });
-    docVersion = result.version;
-    requestModal.close();
-    schedulePoll(400);
-  } catch {
-    $('[data-dcx-request-upload-note]', requestModal).textContent = 'The edit session is unreachable; the request was not sent.';
-  } finally {
-    send.disabled = false;
-  }
-});
 
 /* ---------- The tray ---------- */
 

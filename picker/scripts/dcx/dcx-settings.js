@@ -56,9 +56,7 @@
     trigger.setAttribute("aria-expanded", "false");
     trigger.innerHTML = settingsIcon;
 
-    const request = topbar.querySelector(".dcx-request");
-    (request || templateClose).before(actions);
-    if (request) actions.append(request);
+    templateClose.before(actions);
     actions.append(trigger, templateClose);
   };
 
