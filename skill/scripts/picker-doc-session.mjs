@@ -420,10 +420,13 @@ async function handleRequest(request, response) {
     if (!['done', 'error', 'retry'].includes(body.status)) throw httpError(400, 'status must be done, error, or retry');
     entry.status = body.status === 'retry' ? 'pending' : body.status;
     entry.message = String(body.message || '');
+    /* Values attached to the reply land in the store here, same as a batch
+       reply: the session stays the only writer while it runs. */
+    const applied = entry.status === 'pending' ? null : await saves.applyAgentUpdates(body);
     saves.noteRequest(entry.id, entry.status);
     bumpVersion();
     if (entry.status === 'pending') wakeParkedPolls();
-    sendJson(response, 200, { ok: true, version });
+    sendJson(response, 200, { ok: true, version, applied });
     return;
   }
 

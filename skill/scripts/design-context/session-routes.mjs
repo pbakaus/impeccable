@@ -185,6 +185,10 @@ export function createSaveRoutes({ cwd = process.cwd(), onChange = () => {} } = 
       return { ok: true, status: body.status, applied };
     },
 
+    /** Values an agent attached to a request reply; batch replies apply
+        theirs inside reply(). */
+    applyAgentUpdates: (body) => applyAgentUpdates(body, cwd),
+
     /** Journaled so the tab re-reads on a font or freeform request too. */
     noteRequest(id, status) {
       appendJournal({ type: 'request', id, status }, cwd);

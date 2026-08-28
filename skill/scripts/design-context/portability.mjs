@@ -27,7 +27,9 @@ import {
 const BUNDLE_KIND = 'impeccable-design-context';
 const BUNDLE_SCHEMA = 1;
 
-const MAX_FILE_BYTES = 1024 * 1024;
+/* Generated cue PNGs run a few megabytes, so the per-file cap must clear
+   them; MAX_BUNDLE_BYTES still bounds the whole. */
+const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const MAX_BUNDLE_BYTES = 20 * 1024 * 1024;
 
 const MIME = new Map([

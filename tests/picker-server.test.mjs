@@ -612,3 +612,95 @@ test('doc session serves picker assets, token-gated and contained', async (t) =>
     await rm(fixture.cwd, { recursive: true, force: true });
   }
 });
+
+test('a request reply carries attached answers into the store', async () => {
+  const fixture = await createFixture();
+  const sessionScript = path.join(root, 'skill/scripts/picker-doc-session.mjs');
+  const answersPath = path.join(fixture.storeDir, 'answers.json');
+  await mkdir(fixture.storeDir, { recursive: true });
+  await writeFile(answersPath, `${JSON.stringify({ 'palette-primary': '#111111' })}\n`);
+
+  const child = spawn(process.execPath, [sessionScript, '--port', String(portBase + 61)], {
+    cwd: fixture.cwd,
+    env: { ...process.env, IMPECCABLE_DOC_TOKEN: 't-reply' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  try {
+    const sessionFile = path.join(fixture.cwd, '.impeccable/design-context/runtime/session.json');
+    let session = null;
+    for (let attempt = 0; attempt < 100 && !session; attempt += 1) {
+      if (existsSync(sessionFile)) session = JSON.parse(await readFile(sessionFile, 'utf8'));
+      else await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.ok(session?.port, 'the session never recorded its port');
+    const post = (route, body) => fetch(`http://127.0.0.1:${session.port}${route}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    const request = await post('/doc/request', { token: 't-reply', kind: 'freeform', prompt: 'Swap the heading face' });
+    const { id } = await request.json();
+    const reply = await post('/doc/reply', {
+      token: 't-reply', id, status: 'done', message: 'Swapped.', answers: { 'font-heading': 'Fraunces' },
+    });
+    assert.equal(reply.status, 200);
+    assert.equal((await reply.json()).applied?.answers, 1);
+    let answers = JSON.parse(await readFile(answersPath, 'utf8'));
+    assert.equal(answers['font-heading'], 'Fraunces');
+    assert.equal(answers['palette-primary'], '#111111');
+
+    /* A retry releases the request untouched, so its values must not land. */
+    const second = await post('/doc/request', { token: 't-reply', kind: 'freeform', prompt: 'Another ask' });
+    const { id: id2 } = await second.json();
+    const retry = await post('/doc/reply', { token: 't-reply', id: id2, status: 'retry', answers: { 'font-heading': 'Sora' } });
+    assert.equal((await retry.json()).applied, null);
+    answers = JSON.parse(await readFile(answersPath, 'utf8'));
+    assert.equal(answers['font-heading'], 'Fraunces');
+  } finally {
+    child.kill('SIGTERM');
+    await rm(fixture.cwd, { recursive: true, force: true });
+  }
+});
+
+test('export bundles multi-megabyte files and still skips absurd ones', async () => {
+  const fixture = await createFixture();
+  await mkdir(path.join(fixture.storeDir, 'assets'), { recursive: true });
+  await writeFile(path.join(fixture.storeDir, 'answers.json'), `${JSON.stringify({ 'palette-primary': '#111111' })}\n`);
+  await writeFile(path.join(fixture.storeDir, 'cue.png'), Buffer.alloc(2 * 1024 * 1024, 7));
+  await writeFile(path.join(fixture.storeDir, 'assets', 'oversize.png'), Buffer.alloc(9 * 1024 * 1024, 7));
+
+  try {
+    const portability = await import(pathToFileURL(path.join(root, 'skill/scripts/design-context/portability.mjs')).href);
+    const { bundlePath, skipped } = await portability.exportDesignContext(fixture.cwd, {});
+    const bundle = JSON.parse(await readFile(bundlePath, 'utf8'));
+    assert.deepEqual(bundle.files.map((file) => file.path), ['cue.png']);
+    assert.equal(skipped.length, 1);
+    assert.equal(skipped[0].path, 'assets/oversize.png');
+    assert.deepEqual(bundle.skipped.map((entry) => entry.path), ['assets/oversize.png']);
+  } finally {
+    await rm(fixture.cwd, { recursive: true, force: true });
+  }
+});
+
+test('questionnaire refuses to start without cues.json', async () => {
+  const fixture = await createFixture();
+  await rm(path.join(fixture.cuesDir, 'cues.json'));
+
+  const child = spawn(process.execPath, [serverScript, '--port', String(portBase + 63)], {
+    cwd: fixture.cwd,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  child.stderr.setEncoding('utf8');
+  let stderr = '';
+  child.stderr.on('data', (chunk) => { stderr += chunk; });
+
+  try {
+    const [code] = await once(child, 'exit');
+    assert.equal(code, 1);
+    assert.match(stderr, /No visual cues found\. Run \/impeccable document --seed/);
+  } finally {
+    await rm(fixture.cwd, { recursive: true, force: true });
+  }
+});

@@ -547,6 +547,12 @@ if (options.doc) {
     process.exit(1);
   }
   docSession = await adoptDocSession();
+} else if (!await stat(path.join(options.cuesDir, 'cues.json')).catch(() => null)) {
+  /* The palette screen loads the dealt cues and the built-in seeds together,
+     and neither arrives without this file: refuse rather than serve a broken
+     run. */
+  console.error('No visual cues found. Run /impeccable document --seed to generate them first.');
+  process.exit(1);
 }
 
 server.listen(port, '127.0.0.1', () => {
