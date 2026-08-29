@@ -316,7 +316,7 @@ As you run commands, Impeccable writes working files under `.impeccable/`: criti
 # Unanchored: .impeccable may sit at the repo root or under a nested
 # workspace (apps/web/.impeccable/...); anchored patterns would miss it.
 # Shared artifacts stay tracked: config.json, live/config.json,
-# design.json, critique/*.md.
+# design.json, surfaces/*.md, critique/*.md.
 .impeccable/config.local.json
 .impeccable/hook.cache.json
 .impeccable/hook.pending.json
@@ -342,6 +342,7 @@ The block is wrapped in `# impeccable-ignore-start` / `# impeccable-ignore-end` 
 - `.impeccable/config.json` (unified shared config)
 - `.impeccable/live/config.json` (live-mode framework wiring)
 - `.impeccable/design.json` (shared design spec)
+- `.impeccable/surfaces/*.md` (route- or artifact-specific strategy and direction contracts)
 - `.impeccable/critique/*.md` (review reports)
 
 If an ephemeral file (a screenshot, `config.local.json`) was committed before you added the block, `.gitignore` will not untrack it automatically. Run `git rm --cached <path>` to stop tracking it without deleting your local copy.
@@ -366,7 +367,7 @@ For debugging, set `hook.auditLog` in `.impeccable/config.json` to a path (or th
 
 ## Build path: comp-first or code-first
 
-When a new surface gets designed, Impeccable either generates a full-fidelity comp first and builds to match it, or builds straight in code with the ambition written into the direction contract and checked at the finish. Comp-first composes bolder and takes longer; code-first is leaner and faster. `/impeccable init` asks once and records the answer as `buildPath` in `.impeccable/config.json`:
+When a new surface gets designed, Impeccable either generates a full-fidelity comp first and builds to match it, or builds straight in code with the ambition written into a development-only direction contract in the surface brief and checked at the finish. Comp-first composes bolder and takes longer; code-first is leaner and faster. `/impeccable init` asks once and records the answer as `buildPath` in `.impeccable/config.json`:
 
 ```json
 { "buildPath": "comp" }
