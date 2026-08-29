@@ -103,7 +103,7 @@ From the root of your project, run:
 npx impeccable install
 ```
 
-This shows the harness folders it detected (for example `~/.claude`, `~/.codex`, `~/.grok`, or project-local `.cursor`), lets you keep the detected set or customize providers, then asks whether to install into the current project or globally. Use `--providers=claude,codex,cursor,grok` and `--scope=project|global` to skip those choices in scripts. On Claude Code, Cursor, Codex, GitHub Copilot, and Grok Build, it also installs the provider-native hook manifest for the current project. Works with Cursor, Claude Code, Gemini CLI, Codex CLI, Grok Build, and every other supported tool. Reload your harness afterward.
+This shows the harness folders it detected (for example `~/.claude`, `~/.codex`, `~/.grok`, `~/.hermes`, or project-local `.cursor`), lets you keep the detected set or customize providers, then asks whether to install into the current project or globally. Use `--providers=claude,codex,cursor,grok` and `--scope=project|global` to skip those choices in scripts. On Claude Code, Cursor, Codex, GitHub Copilot, and Grok Build, it also installs the provider-native hook manifest for the current project. Works with Cursor, Claude Code, Gemini CLI, Codex CLI, Grok Build, and every other supported tool. Reload your harness afterward.
 
 To refresh an existing install, run:
 
@@ -126,7 +126,7 @@ git add .gitmodules .impeccable .claude .cursor
 git commit -m "Add Impeccable skills"
 ```
 
-Use the providers your project needs, for example `claude`, `cursor`, `gemini`, `codex`, `github`, `grok`, `opencode`, `pi`, `qoder`, `trae`, `trae-cn`, `rovo-dev`, or `vibe`. The command links individual skill folders from `.impeccable/dist/universal/` and leaves existing real skill directories untouched unless you pass `--force`.
+Use the providers your project needs, for example `claude`, `cursor`, `gemini`, `codex`, `github`, `grok`, `hermes`, `opencode`, `pi`, `qoder`, `trae`, `trae-cn`, `rovo-dev`, or `vibe`. The command links individual skill folders from `.impeccable/dist/universal/` and leaves existing real skill directories untouched unless you pass `--force`.
 
 To update later:
 
@@ -181,6 +181,25 @@ cp -r dist/claude-code/.claude/* ~/.claude/
 ```bash
 cp -r dist/opencode/.opencode your-project/
 ```
+
+**Hermes Agent:**
+```bash
+# Global (applies to all projects; honors $HERMES_HOME for profiles)
+cp -r dist/hermes/.hermes/skills/* ~/.hermes/skills/
+
+# Or project-specific
+cp -r dist/hermes/.hermes your-project/
+```
+
+> **Note:** Hermes gates project-local skills behind a per-repo trust decision
+> (they are procedure documents, so auto-loading them from any cloned repo is
+> treated as a prompt-injection vector). After a project-scoped install, run
+> `hermes skills trust` once from the project root. Global installs into
+> `~/.hermes/skills/` load without a trust step. `/impeccable <command>` then
+> routes through the skill's Commands table; the design hook does not install
+> on Hermes (no hook surface).
+>
+> [Learn more about Hermes skills](https://hermes-agent.nousresearch.com/docs/user-guide/features/skills)
 
 **Pi:**
 ```bash
@@ -418,6 +437,7 @@ Full detector docs: [impeccable.style/docs/detector](https://impeccable.style/do
 - [Gemini CLI](https://github.com/google-gemini/gemini-cli)
 - [Codex CLI](https://github.com/openai/codex)
 - [Grok Build](https://x.ai/cli)
+- [Hermes Agent](https://hermes-agent.nousresearch.com)
 - [OpenCode](https://opencode.ai)
 - [Pi](https://pi.dev)
 - [Kiro](https://kiro.dev)
