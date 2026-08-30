@@ -138,6 +138,13 @@ export const PROVIDERS = {
     displayName: 'Mistral Vibe',
     frontmatterFields: ['user-invocable', 'license', 'compatibility', 'metadata', 'allowed-tools'],
   },
+  veto: {
+    provider: 'veto',
+    providerTags: ['veto'],
+    configDir: '.veto',
+    displayName: 'Veto',
+    frontmatterFields: ['license', 'compatibility', 'metadata'],
+  },
   grok: {
     provider: 'grok',
     providerTags: ['grok'],

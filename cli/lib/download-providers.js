@@ -18,6 +18,7 @@ export const FILE_DOWNLOAD_PROVIDER_CONFIG_DIRS = Object.freeze({
   pi: '.pi',
   qoder: '.qoder',
   vibe: '.vibe',
+  veto: '.veto',
 });
 
 export const FILE_DOWNLOAD_PROVIDERS = Object.freeze(

@@ -103,7 +103,7 @@ From the root of your project, run:
 npx impeccable install
 ```
 
-This shows the harness folders it detected (for example `~/.claude`, `~/.codex`, `~/.grok`, or project-local `.cursor`), lets you keep the detected set or customize providers, then asks whether to install into the current project or globally. Use `--providers=claude,codex,cursor,grok` and `--scope=project|global` to skip those choices in scripts. On Claude Code, Cursor, Codex, GitHub Copilot, and Grok Build, it also installs the provider-native hook manifest for the current project. Works with Cursor, Claude Code, Gemini CLI, Codex CLI, Grok Build, and every other supported tool. Reload your harness afterward.
+This shows the harness folders or installed CLIs it detected (for example `~/.claude`, `~/.codex`, `~/.grok`, `~/.veto`, or project-local `.cursor`), lets you keep the detected set or customize providers, then asks whether to install into the current project or globally. Use `--providers=claude,codex,cursor,grok,veto` and `--scope=project|global` to skip those choices in scripts. On Claude Code, Cursor, Codex, GitHub Copilot, and Grok Build, it also installs the provider-native hook manifest for the current project. Veto receives the packaged skill under `~/.veto/skills/` and does not run native Impeccable edit hooks. Works with Cursor, Claude Code, Gemini CLI, Codex CLI, Grok Build, Veto, and every other supported tool. Reload your harness afterward.
 
 To refresh an existing install, run:
 
@@ -126,7 +126,7 @@ git add .gitmodules .impeccable .claude .cursor
 git commit -m "Add Impeccable skills"
 ```
 
-Use the providers your project needs, for example `claude`, `cursor`, `gemini`, `codex`, `github`, `grok`, `opencode`, `pi`, `qoder`, `trae`, `trae-cn`, `rovo-dev`, or `vibe`. The command links individual skill folders from `.impeccable/dist/universal/` and leaves existing real skill directories untouched unless you pass `--force`.
+Use the providers your project needs, for example `claude`, `cursor`, `gemini`, `codex`, `github`, `grok`, `opencode`, `pi`, `qoder`, `trae`, `trae-cn`, `rovo-dev`, `vibe`, or `veto`. The command links individual skill folders from `.impeccable/dist/universal/` and leaves existing real skill directories untouched unless you pass `--force`.
 
 To update later:
 
@@ -425,6 +425,7 @@ Full detector docs: [impeccable.style/docs/detector](https://impeccable.style/do
 - [Rovo Dev](https://www.atlassian.com/software/rovo)
 - [Qoder](https://qoder.com)
 - [Mistral Vibe](https://docs.mistral.ai/vibe/code/overview)
+- [Veto](https://github.com/oleg-koval/veto)
 - [Google Antigravity](https://antigravity.google)
 
 ## Community & Ecosystem
