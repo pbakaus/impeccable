@@ -321,6 +321,8 @@ As you run commands, Impeccable writes working files under `.impeccable/`: criti
 .impeccable/hook.cache.json
 .impeccable/hook.pending.json
 .impeccable/*.png
+.impeccable/review/
+.impeccable/questions/
 .impeccable/live/server.json
 .impeccable/live/sessions/
 .impeccable/live/previews/
