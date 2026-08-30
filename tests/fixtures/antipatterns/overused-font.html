@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Overused Font — Side by Side</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 24px;
+      background: #f9fafb;
+      color: #111827;
+      font: 16px/1.5 system-ui, sans-serif;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 32px;
+      max-width: 1180px;
+      margin: 0 auto;
+    }
+    .col-label {
+      margin: 0 0 14px;
+      color: #475569;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    article { margin: 0 0 20px; }
+    h1 { margin: 0 0 24px; font-size: 48px; line-height: 1.1; }
+    h2 { margin: 0 0 8px; font-size: 22px; line-height: 1.2; }
+    p { margin: 0; font-size: 16px; color: #374151; }
+    .face-inter { font-family: Inter, sans-serif; }
+    .face-geist { font-family: Geist, sans-serif; }
+    .face-montserrat { font-family: Montserrat, sans-serif; }
+    .face-lato { font-family: Lato, sans-serif; }
+    .face-inter-system { font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif; }
+    .face-system-shorthand {
+      font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    .face-system-family {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    .face-system-ui { font-family: system-ui, sans-serif; }
+    .face-segoe { font-family: "Segoe UI", Roboto, sans-serif; }
+    .face-ui-sans { font-family: ui-sans-serif, Roboto, sans-serif; }
+  </style>
+</head>
+<body>
+  <h1>Overused Font</h1>
+  <div class="grid">
+    <section class="col" data-col="flag">
+      <p class="col-label">Should flag</p>
+      <article>
+        <h2>Overused Inter</h2>
+        <p class="face-inter">Inter is the primary face on this block, so overused-font should name it.</p>
+      </article>
+      <article>
+        <h2>Overused Geist</h2>
+        <p class="face-geist">Geist is the primary face on this block, so overused-font should name it.</p>
+      </article>
+      <article>
+        <h2>Overused Montserrat</h2>
+        <p class="face-montserrat">Montserrat is the primary face on this block, so overused-font should name it.</p>
+      </article>
+      <article>
+        <h2>Overused Lato</h2>
+        <p class="face-lato">Lato is the primary face on this block, so overused-font should name it.</p>
+      </article>
+      <article>
+        <h2>Inter Before System Stack</h2>
+        <p class="face-inter-system">Inter ahead of -apple-system is still the primary face, so overused-font should name it.</p>
+      </article>
+    </section>
+    <section class="col" data-col="pass">
+      <p class="col-label">Should pass</p>
+      <article>
+        <h2>Canonical System Stack</h2>
+        <p class="face-system-shorthand">Roboto sits after Apple and Segoe UI faces in this stack, so it is a fallback, not the primary.</p>
+      </article>
+      <article>
+        <h2>Font Family System Stack</h2>
+        <p class="face-system-family">The same stack written as font-family must also leave Roboto unflagged.</p>
+      </article>
+      <article>
+        <h2>System UI Only</h2>
+        <p class="face-system-ui">system-ui with a generic fallback is a platform face, not an overused web font.</p>
+      </article>
+      <article>
+        <h2>Segoe UI Lead</h2>
+        <p class="face-segoe">Segoe UI in the lead position keeps Roboto as a later platform fallback.</p>
+      </article>
+      <article>
+        <h2>Ui Sans Lead</h2>
+        <p class="face-ui-sans">ui-sans-serif in the lead position keeps Roboto as a later platform fallback.</p>
+      </article>
+    </section>
+  </div>
+<script src="/js/detect-antipatterns-browser.js"></script>
+</body>
+</html>

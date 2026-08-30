@@ -633,6 +633,21 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
     assert.equal(f.length, 0);
   });
 
+  it('overused-font: flags named primaries and skips system-stack Roboto', async () => {
+    const f = await detectHtml(path.join(FIXTURES, 'overused-font.html'));
+    const snippets = f.filter(r => r.antipattern === 'overused-font').map(r => r.snippet).join(' | ');
+    for (const font of ['inter', 'geist', 'montserrat', 'lato']) {
+      assert.match(snippets, new RegExp(`Primary font: ${font}`), `expected flag for ${font}: ${snippets}`);
+    }
+    assert.doesNotMatch(snippets, /roboto/i, `system-stack Roboto must not be primary: ${snippets}`);
+    assert.doesNotMatch(snippets, /arial/i, `system-stack Arial must not be primary: ${snippets}`);
+    assert.equal(
+      f.some(r => r.antipattern === 'flat-type-hierarchy'),
+      false,
+      `overused-font fixture should not contain incidental type findings: ${f.map(r => `${r.antipattern}:${r.snippet}`).join('; ')}`,
+    );
+  });
+
   it('design-system: flags only values outside the provided DESIGN.md tokens', async () => {
     const designSystem = normalizeDesignSystem({
       frontmatter: {

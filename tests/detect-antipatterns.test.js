@@ -675,44 +675,6 @@ describe('detectText — overused fonts', () => {
 });
 
 describe('detectHtml — overused fonts system stack', () => {
-  const systemStackCss = `body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
-    h1 { font-size: 34px; }
-    p { font-size: 15px; }
-    small { font-size: 12px; }`;
-  const systemStackPage = `<!DOCTYPE html><html><head><style>${systemStackCss}</style></head><body><h1>Hello</h1><p>world</p><small>meta</small></body></html>`;
-
-  test('font shorthand system stack does not flag Roboto as overused', async () => {
-    await withStaticFixture({ 'index.html': systemStackPage }, async ({ file }) => {
-      const f = await detectHtml(file);
-      expect(f.filter(r => r.antipattern === 'overused-font')).toHaveLength(0);
-    });
-  });
-
-  test('font-family system stack does not flag Roboto as overused', async () => {
-    const page = `<!DOCTYPE html><html><head><style>
-      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
-      h1 { font-size: 34px; }
-      p { font-size: 15px; }
-      small { font-size: 12px; }
-    </style></head><body><h1>Hello</h1><p>world</p><small>meta</small></body></html>`;
-    await withStaticFixture({ 'index.html': page }, async ({ file }) => {
-      const f = await detectHtml(file);
-      expect(f.filter(r => r.antipattern === 'overused-font')).toHaveLength(0);
-    });
-  });
-
-  test('Inter before system stack still flags overused-font', async () => {
-    const page = `<!DOCTYPE html><html><head><style>
-      body { font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif; }
-      h1 { font-size: 34px; }
-      p { font-size: 15px; }
-    </style></head><body><h1>Hello</h1><p>world</p></body></html>`;
-    await withStaticFixture({ 'index.html': page }, async ({ file }) => {
-      const f = await detectHtml(file);
-      expect(f.some(r => r.antipattern === 'overused-font' && /inter/i.test(r.snippet))).toBe(true);
-    });
-  });
-
   test('checkPageTypography regex path skips Roboto in system stack', () => {
     const html = `<!DOCTYPE html><html><head><style>
       body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
