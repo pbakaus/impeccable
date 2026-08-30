@@ -9,7 +9,7 @@
  */
 
 import { execSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, statSync, lstatSync, unlinkSync, mkdirSync, mkdtempSync, writeFileSync, rmSync, rmdirSync, renameSync, createWriteStream, realpathSync, symlinkSync, readlinkSync, cpSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, accessSync, constants, lstatSync, unlinkSync, mkdirSync, mkdtempSync, writeFileSync, rmSync, rmdirSync, renameSync, createWriteStream, realpathSync, symlinkSync, readlinkSync, cpSync } from 'node:fs';
 import { join, resolve, dirname, relative, isAbsolute, sep, delimiter } from 'node:path';
 import { createInterface, emitKeypressEvents } from 'node:readline';
 import { Readable } from 'node:stream';
@@ -947,7 +947,10 @@ function commandOnPath(command) {
     for (const candidate of candidates) {
       const path = resolve(directory, candidate);
       try {
-        if (statSync(path).isFile()) return path;
+        if (statSync(path).isFile()) {
+          accessSync(path, constants.X_OK);
+          return path;
+        }
       } catch {}
     }
   }

@@ -11,7 +11,7 @@
  */
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
 import { execSync, execFileSync } from 'child_process';
-import { mkdtempSync, existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync, rmSync, lstatSync, realpathSync, readlinkSync, symlinkSync, statSync } from 'fs';
+import { mkdtempSync, existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync, chmodSync, rmSync, lstatSync, realpathSync, readlinkSync, symlinkSync, statSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import {
@@ -922,6 +922,9 @@ describe('skills install/update: local universal bundle e2e', () => {
     const previousPath = process.env.PATH;
     process.env.PATH = bin;
     try {
+      expect(collectInstallDetections(tmp, home).some((detection) => detection.provider === '.veto')).toBe(false);
+
+      chmodSync(join(bin, 'veto'), 0o755);
       const detections = collectInstallDetections(tmp, home);
       const veto = detections.find((detection) => detection.provider === '.veto');
       expect(veto).toEqual(expect.objectContaining({
