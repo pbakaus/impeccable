@@ -9,6 +9,7 @@ import {
   WCAG_LARGE_BOLD_TEXT_PX,
   WCAG_LARGE_TEXT_PX,
   isBrandFontOnOwnDomain,
+  primaryFontFace,
 } from '../shared/constants.mjs';
 import {
   CSS_NAMED_COLORS,
@@ -331,7 +332,7 @@ function checkIconTile(opts) {
 function resolveSerif(fontFamily) {
   if (!fontFamily) return { primary: null, isSerif: false };
   const tokens = fontFamily.split(',').map(f => f.trim().replace(/^['"]|['"]$/g, '').toLowerCase());
-  const primary = tokens.find(f => f && !GENERIC_FONTS.has(f)) || null;
+  const primary = primaryFontFace(fontFamily, GENERIC_FONTS);
   if (!primary) return { primary: null, isSerif: false };
   if (KNOWN_SERIF_FONTS.has(primary)) return { primary, isSerif: true };
   if (tokens.includes('serif')) return { primary, isSerif: true };
@@ -3930,8 +3931,7 @@ function checkTypography() {
     const style = getComputedStyle(el);
     const ff = style.fontFamily;
     if (!ff) continue;
-    const stack = ff.split(',').map(f => f.trim().replace(/^['"]|['"]$/g, '').toLowerCase());
-    const primary = stack.find(f => f && !GENERIC_FONTS.has(f));
+    const primary = primaryFontFace(ff);
     if (!primary) continue;
     fontUsage.set(primary, (fontUsage.get(primary) || 0) + 1);
     totalTextElements++;
@@ -4176,8 +4176,7 @@ function checkPageTypography(doc, win) {
       if (rule.type !== 1) continue;
       const ff = rule.style?.fontFamily;
       if (!ff) continue;
-      const stack = ff.split(',').map(f => f.trim().replace(/^['"]|['"]$/g, '').toLowerCase());
-      const primary = stack.find(f => f && !GENERIC_FONTS.has(f));
+      const primary = primaryFontFace(ff);
       if (primary) {
         fonts.add(primary);
         if (OVERUSED_FONTS.has(primary)) overusedFound.add(primary);
@@ -4196,11 +4195,10 @@ function checkPageTypography(doc, win) {
   const ffRe = /font-family\s*:\s*([^;}]+)/gi;
   let fm;
   while ((fm = ffRe.exec(html)) !== null) {
-    for (const f of fm[1].split(',').map(f => f.trim().replace(/^['"]|['"]$/g, '').toLowerCase())) {
-      if (f && !GENERIC_FONTS.has(f)) {
-        fonts.add(f);
-        if (OVERUSED_FONTS.has(f)) overusedFound.add(f);
-      }
+    const primary = primaryFontFace(fm[1]);
+    if (primary) {
+      fonts.add(primary);
+      if (OVERUSED_FONTS.has(primary)) overusedFound.add(primary);
     }
   }
 
