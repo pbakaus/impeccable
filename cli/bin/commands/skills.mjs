@@ -940,7 +940,7 @@ function userSkillProbePaths(home, harnessDir, provider) {
 
 function commandOnPath(command) {
   const candidates = process.platform === 'win32'
-    ? [command, `${command}.exe`, `${command}.cmd`]
+    ? [`${command}.exe`, `${command}.cmd`, `${command}.bat`]
     : [command];
   for (const directory of String(process.env.PATH || '').split(delimiter)) {
     if (!directory) continue;

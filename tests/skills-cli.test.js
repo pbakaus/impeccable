@@ -941,6 +941,37 @@ describe('skills install/update: local universal bundle e2e', () => {
     }
   });
 
+  test('does not detect an extensionless Veto file on Windows', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-veto-win-detect-'));
+    const home = mkdtempSync(join(tmpdir(), 'imp-home-veto-win-detect-'));
+    const bin = join(tmp, 'bin');
+    mkdirSync(bin, { recursive: true });
+    mkdirSync(join(home, '.veto'), { recursive: true });
+    writeFileSync(join(bin, 'veto'), '#!/bin/sh\n');
+
+    const previousPath = process.env.PATH;
+    const originalPlatform = process.platform;
+    process.env.PATH = bin;
+    try {
+      Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+      expect(collectInstallDetections(tmp, home).some((detection) => detection.provider === '.veto')).toBe(false);
+
+      const windowsCommand = join(bin, 'veto.cmd');
+      writeFileSync(windowsCommand, '@echo off\r\n');
+      chmodSync(windowsCommand, 0o755);
+      const detections = collectInstallDetections(tmp, home);
+      expect(detections.find((detection) => detection.provider === '.veto')).toEqual(expect.objectContaining({
+        foundPath: windowsCommand,
+        reason: 'CLI on PATH',
+      }));
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+      process.env.PATH = previousPath;
+      rmSync(tmp, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   test('installs Veto skills into its global managed directory', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'imp-test-veto-install-'));
     const home = mkdtempSync(join(tmpdir(), 'imp-home-veto-install-'));
