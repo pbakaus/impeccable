@@ -111,7 +111,9 @@ jobs:
         run: npx --yes web-ext@10 lint --source-dir dist/extension-firefox
 
       - name: Verify generated tracked outputs
-        run: git diff --exit-code -- .agents .claude .cursor .gemini .github/skills plugin cli/engine/detect-antipatterns-browser.js extension/detector
+        # cli/engine/ left the tree with the Rust engine swap; the vendored
+        # extension/detector/ path stays listed for when its vendoring lands.
+        run: git diff --exit-code -- .agents .claude .cursor .gemini .github/skills plugin extension/detector
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7
@@ -122,6 +124,50 @@ jobs:
             dist/
             !dist/extension-firefox/
           retention-days: 7
+
+  # Behavior gate: replays the tests/oracle/ goldens against the pinned
+  # engine binary (ENGINE_VERSION). Without this job the oracle only ever
+  # runs on developer laptops: tests/oracle.test.mjs skips cleanly when no
+  # binary is present, so the default suite is silent about it on CI.
+  #
+  # continue-on-error is a release-time toggle: until the first engine
+  # release is published to impeccable-dist, `bun run fetch:engine` 404s and
+  # the job would block every PR on an asset that cannot exist yet. Once
+  # v<ENGINE_VERSION> is live, flip `continue-on-error` to false so oracle
+  # regressions fail CI instead of only annotating it.
+  oracle:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Fetch pinned engine binary
+        id: fetch
+        continue-on-error: true
+        run: bun run fetch:engine
+
+      - name: Replay oracle goldens
+        if: steps.fetch.outcome == 'success'
+        run: node tests/oracle/run.mjs
+
+      - name: Annotate missing engine release
+        if: steps.fetch.outcome != 'success'
+        run: |
+          echo "::warning title=Oracle not run::bun run fetch:engine could not download engine v$(cat ENGINE_VERSION) from the impeccable-dist release channel. The 762-case oracle behavior gate did NOT run. Expected until the first engine release is published; after that, publish the release assets and flip this job's continue-on-error to false."
 
   test:
     runs-on: ubuntu-latest

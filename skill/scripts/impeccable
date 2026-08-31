@@ -2,8 +2,28 @@
 # Impeccable launcher. Runs the platform binary shipped next to this script:
 #   <this dir>/bin/<os>-<arch>/impeccable
 # Order: $IMPECCABLE_BIN, the sibling binary, ~/.impeccable/bin/impeccable,
-# then `impeccable` on PATH (the npm shim). Never needs Node.
+# the version-pinned cache, then `impeccable` on PATH. Never needs Node.
+# The unversioned home binary and the PATH candidate are validated with the
+# engine-probe handshake first: the retired 3.x npm CLI also installed a bin
+# named `impeccable`, and exec'ing it would fail every verb with
+# "Unknown command". Trusted candidates (IMPECCABLE_BIN, the sibling binary,
+# the version-pinned cache) are exec'd without a probe: hooks run them on
+# every edit and must stay fast.
 set -eu
+
+# True when the candidate answers the engine handshake (prints
+# "impeccable-engine <version>", exit 0). Quiet and fast (<100ms).
+# IMPECCABLE_LAUNCHER_PROBE marks the child as a probe: a copy of this
+# launcher reached recursively (e.g. symlinked onto PATH as `impeccable`)
+# then skips its own probes and refuses to download, so probing stays cheap
+# and can never loop.
+probe_ok() {
+  case "$(IMPECCABLE_LAUNCHER_PROBE=1 "$1" engine-probe 2>/dev/null || true)" in
+    impeccable-engine*) return 0 ;;
+  esac
+  return 1
+}
+probing=${IMPECCABLE_LAUNCHER_PROBE:-}
 
 if [ -n "${IMPECCABLE_BIN:-}" ] && [ -x "${IMPECCABLE_BIN}" ]; then
   exec "${IMPECCABLE_BIN}" "$@"
@@ -40,24 +60,42 @@ if [ -f "$bin" ]; then
   # Lost the executable bit in transit (zip extraction, some copiers).
   chmod +x "$bin" 2>/dev/null && exec "$bin" "$@"
 fi
-if [ -x "${HOME:-/nonexistent}/.impeccable/bin/impeccable" ]; then
-  exec "${HOME}/.impeccable/bin/impeccable" "$@"
+# On Windows (an MSYS/Git Bash shell) the cached names carry .exe so this
+# launcher and impeccable.cmd share one cache.
+exe=""
+[ "$os" = windows ] && exe=".exe"
+home_bin="${HOME:-/nonexistent}/.impeccable/bin/impeccable$exe"
+if [ -z "$probing" ] && [ -x "$home_bin" ] && probe_ok "$home_bin"; then
+  exec "$home_bin" "$@"
 fi
 # Version-pinned user cache, filled by the download below or by `impeccable update`.
 version=""
 [ -f "$dir/VERSION" ] && version=$(tr -d '[:space:]' < "$dir/VERSION")
 cache_root="${IMPECCABLE_HOME:-${HOME:-/nonexistent}/.impeccable}"
-cached="$cache_root/bin/$version/impeccable"
+cached="$cache_root/bin/$version/impeccable$exe"
 if [ -n "$version" ] && [ -x "$cached" ]; then
   exec "$cached" "$@"
 fi
-if command -v impeccable >/dev/null 2>&1; then
+if [ -z "$probing" ] && command -v impeccable >/dev/null 2>&1 && probe_ok impeccable; then
   exec impeccable "$@"
 fi
 
 # Last resort: fetch this version's binary for the current platform from the
 # public release channel into the user cache. Needs network; sandboxes without
 # egress preinstall the binary on PATH instead.
+fetch_url() {
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL --retry 2 -o "$tmp" "$1" 2>/dev/null
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -O "$tmp" "$1" 2>/dev/null
+  else
+    return 1
+  fi
+}
+if [ -n "$probing" ]; then
+  # Inside another launcher's probe: no download, fail fast and quiet.
+  exit 127
+fi
 if [ -n "$version" ] && [ "$os" != unknown ] && [ "$arch" != unknown ]; then
   base="${IMPECCABLE_DOWNLOAD_BASE:-https://github.com/renaissance-geek-inc/impeccable-dist/releases/download}"
   asset="impeccable-$os-$arch"
@@ -66,10 +104,12 @@ if [ -n "$version" ] && [ "$os" != unknown ] && [ "$arch" != unknown ]; then
   tmp="$cache_root/bin/$version/.impeccable.part.$$"
   mkdir -p "$cache_root/bin/$version" 2>/dev/null
   fetched=0
-  if command -v curl >/dev/null 2>&1; then
-    curl -fsSL --retry 2 -o "$tmp" "$url" 2>/dev/null && fetched=1
-  elif command -v wget >/dev/null 2>&1; then
-    wget -q -O "$tmp" "$url" 2>/dev/null && fetched=1
+  if fetch_url "$url"; then
+    fetched=1
+  elif [ "$os" = windows ] && [ "$arch" = arm64 ]; then
+    # Windows on ARM runs x64 binaries; fall back when no arm64 asset exists.
+    url="$base/v$version/impeccable-windows-x64.exe"
+    fetch_url "$url" && fetched=1
   fi
   if [ "$fetched" = 1 ]; then
     if command -v curl >/dev/null 2>&1 && curl -fsSL -o "$tmp.sha256" "$url.sha256" 2>/dev/null; then
@@ -90,6 +130,6 @@ if [ -n "$version" ] && [ "$os" != unknown ] && [ "$arch" != unknown ]; then
   rm -f "$tmp" 2>/dev/null
 fi
 
-echo "impeccable: no binary for $os-$arch found (looked in $bin, $cached, PATH)." >&2
-echo "Install one: npm i -g impeccable, or download impeccable-$os-$arch from https://github.com/renaissance-geek-inc/impeccable-dist/releases into $cache_root/bin/$version/impeccable" >&2
+echo "impeccable: no engine binary for $os-$arch found (looked in $bin, $cached, PATH)." >&2
+echo "Download impeccable-$os-$arch from https://github.com/renaissance-geek-inc/impeccable-dist/releases into $cache_root/bin/$version/impeccable$exe (then chmod +x), or set IMPECCABLE_BIN to a preinstalled engine binary. Docs: https://impeccable.style" >&2
 exit 127
