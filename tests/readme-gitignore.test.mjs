@@ -16,7 +16,7 @@ describe('README gitignore block', () => {
   });
 
   it('ignores ephemeral review and questions dirs while keeping shared artifacts tracked', () => {
-    const readme = readFileSync(join(ROOT, 'README.md'), 'utf-8');
+    const readme = readFileSync(join(ROOT, 'README.md'), 'utf-8').replace(/\r\n?/g, '\n');
     const match = readme.match(/```gitignore\n([\s\S]*?)```/);
     assert.ok(match, 'README.md should contain a fenced gitignore block');
     const block = match[1];
