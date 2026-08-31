@@ -99,6 +99,8 @@ function parseFrontmatter(text) {
       try { value = JSON.parse(value); } catch { /* leave as-is */ }
     } else if (/^-?\d+$/.test(value)) {
       value = Number(value);
+    } else if (value === 'true' || value === 'false') {
+      value = value === 'true';
     }
     out[key] = value;
   }
@@ -119,8 +121,7 @@ function listSnapshots(suffix, cwd) {
     .map((f) => path.join(dir, f));
 }
 
-function readLatestSnapshotMatching(suffix, cwd) {
-  const filePath = listSnapshots(suffix, cwd).at(-1);
+function readSnapshot(filePath) {
   if (!filePath) return null;
   const body = fs.readFileSync(filePath, 'utf-8');
   return { path: filePath, body, meta: parseFrontmatter(body) };
@@ -131,25 +132,40 @@ function readLatestSnapshotMatching(suffix, cwd) {
  * to find its fix backlog when the slug matches.
  */
 export function readLatestSnapshot(slug, { cwd = process.cwd() } = {}) {
-  return readLatestSnapshotMatching(`__${slug}.md`, cwd);
+  const latest = readSnapshot(listSnapshots(`__${slug}.md`, cwd).at(-1));
+  return latest?.meta.closed === true ? null : latest;
 }
 
 /**
- * Delete every snapshot for `slug` so `latest` is empty. Returns the newest
- * path removed, or null. Older files for the same slug are also removed:
- * deleting only the newest would promote a prior run as the live backlog.
+ * Mark the newest snapshot for `slug` closed so `latest` is empty without
+ * deleting the score history consumed by `trend`. A later write naturally
+ * becomes the new live backlog. Returns the path marked closed, or null.
  */
 export function closeSnapshot(slug, { cwd = process.cwd() } = {}) {
-  const files = listSnapshots(`__${slug}.md`, cwd);
-  if (files.length === 0) return null;
-  const latest = files.at(-1);
-  for (const file of files) fs.unlinkSync(file);
-  return latest;
+  const latest = readSnapshot(listSnapshots(`__${slug}.md`, cwd).at(-1));
+  if (!latest || latest.meta.closed === true) return null;
+  const closedBody = latest.body.replace(
+    /^(---\r?\n[\s\S]*?)(\r?\n---)/,
+    '$1\nclosed: true$2',
+  );
+  if (closedBody === latest.body) {
+    throw new Error(`Cannot close snapshot without frontmatter: ${latest.path}`);
+  }
+  fs.writeFileSync(latest.path, closedBody, 'utf-8');
+  return latest.path;
 }
 
 /** Return the most recent snapshot across all targets, or null. */
 export function readLatestSnapshotAcrossTargets({ cwd = process.cwd() } = {}) {
-  return readLatestSnapshotMatching('.md', cwd);
+  const latestBySlug = new Map();
+  for (const filePath of listSnapshots('.md', cwd)) {
+    const snapshot = readSnapshot(filePath);
+    if (snapshot?.meta.slug) latestBySlug.set(snapshot.meta.slug, snapshot);
+  }
+  return [...latestBySlug.values()]
+    .filter((snapshot) => snapshot.meta.closed !== true)
+    .sort((a, b) => a.path.localeCompare(b.path))
+    .at(-1) || null;
 }
 
 /**

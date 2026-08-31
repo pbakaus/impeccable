@@ -171,7 +171,7 @@ describe('writeSnapshot + readLatestSnapshot', () => {
     assert.equal(readLatestSnapshot('index-astro', { cwd }), null);
   });
 
-  it('closeSnapshot removes every snapshot for the slug, not only the newest', () => {
+  it('closeSnapshot closes the backlog without deleting its trend history', () => {
     writeSnapshot({
       slug: 'index-astro',
       meta: { total_score: 21, p0_count: 7 },
@@ -189,7 +189,52 @@ describe('writeSnapshot + readLatestSnapshot', () => {
     const closed = closeSnapshot('index-astro', { cwd });
     assert.equal(closed, newest);
     assert.equal(readLatestSnapshot('index-astro', { cwd }), null);
-    assert.deepEqual(readTrend('index-astro', { cwd }), []);
+    const trend = readTrend('index-astro', { cwd });
+    assert.equal(trend.length, 2);
+    assert.equal(trend[0].total_score, 21);
+    assert.equal(trend[1].total_score, 30);
+    assert.equal(trend[1].closed, true);
+  });
+
+  it('a new snapshot reopens a previously closed slug', () => {
+    writeSnapshot({
+      slug: 'index-astro',
+      meta: { total_score: 20 },
+      body: 'resolved',
+      cwd,
+      now: new Date('2026-05-01T00:00:00Z'),
+    });
+    closeSnapshot('index-astro', { cwd });
+    const reopened = writeSnapshot({
+      slug: 'index-astro',
+      meta: { total_score: 15 },
+      body: 'new findings',
+      cwd,
+      now: new Date('2026-05-12T00:00:00Z'),
+    });
+
+    assert.equal(readLatestSnapshot('index-astro', { cwd }).path, reopened);
+    assert.equal(readTrend('index-astro', { cwd }).length, 2);
+  });
+
+  it('latest across targets skips a closed slug without hiding other backlogs', () => {
+    const pricing = writeSnapshot({
+      slug: 'pricing',
+      meta: { total_score: 25 },
+      body: 'pricing backlog',
+      cwd,
+      now: new Date('2026-05-01T00:00:00Z'),
+    });
+    writeSnapshot({
+      slug: 'home',
+      meta: { total_score: 30 },
+      body: 'home backlog',
+      cwd,
+      now: new Date('2026-05-12T00:00:00Z'),
+    });
+    closeSnapshot('home', { cwd });
+
+    assert.equal(readLatestSnapshotAcrossTargets({ cwd }).path, pricing);
   });
 });
 
@@ -235,7 +280,7 @@ describe('CLI entry point', () => {
     assert.equal(r.status, 2);
   });
 
-  it('close subcommand deletes the latest snapshot and exits 0', () => {
+  it('close subcommand closes the latest snapshot and preserves its trend', () => {
     writeSnapshot({ slug: 'index-astro', meta: { total_score: 20 }, body: 'open', cwd });
     const r = spawnSync(process.execPath, [SCRIPT, 'close', 'index-astro'], {
       cwd,
@@ -243,6 +288,18 @@ describe('CLI entry point', () => {
     });
     assert.equal(r.status, 0, `stderr: ${r.stderr}`);
     assert.equal(readLatestSnapshot('index-astro', { cwd }), null);
+    assert.equal(readTrend('index-astro', { cwd }).length, 1);
+    assert.equal(readTrend('index-astro', { cwd })[0].closed, true);
+  });
+
+  it('close subcommand exits 2 when the latest snapshot is already closed', () => {
+    writeSnapshot({ slug: 'index-astro', meta: { total_score: 20 }, body: 'open', cwd });
+    closeSnapshot('index-astro', { cwd });
+    const r = spawnSync(process.execPath, [SCRIPT, 'close', 'index-astro'], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(r.status, 2);
   });
 
   it('close subcommand exits 2 when no snapshot exists', () => {
