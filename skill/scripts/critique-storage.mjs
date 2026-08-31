@@ -18,6 +18,7 @@
  *   node critique-storage.mjs write <slug> <snapshot-body-file>
  *   node critique-storage.mjs latest <slug>
  *   node critique-storage.mjs trend <slug> [limit]
+ *   node critique-storage.mjs close <slug>
  *
  * Note: there is intentionally no `ignore` subcommand. ignore.md is a plain
  * markdown file; the model reads it directly with its file-read tool. This
@@ -133,6 +134,19 @@ export function readLatestSnapshot(slug, { cwd = process.cwd() } = {}) {
   return readLatestSnapshotMatching(`__${slug}.md`, cwd);
 }
 
+/**
+ * Delete every snapshot for `slug` so `latest` is empty. Returns the newest
+ * path removed, or null. Older files for the same slug are also removed:
+ * deleting only the newest would promote a prior run as the live backlog.
+ */
+export function closeSnapshot(slug, { cwd = process.cwd() } = {}) {
+  const files = listSnapshots(`__${slug}.md`, cwd);
+  if (files.length === 0) return null;
+  const latest = files.at(-1);
+  for (const file of files) fs.unlinkSync(file);
+  return latest;
+}
+
 /** Return the most recent snapshot across all targets, or null. */
 export function readLatestSnapshotAcrossTargets({ cwd = process.cwd() } = {}) {
   return readLatestSnapshotMatching('.md', cwd);
@@ -191,13 +205,21 @@ function main(argv) {
       process.stdout.write(latest.body);
       return;
     }
+    case 'close': {
+      const slug = coerceSlug(args[0]);
+      if (!slug) { process.stderr.write('usage: close <slug-or-target>\n'); process.exit(1); }
+      const closed = closeSnapshot(slug);
+      if (!closed) { process.exit(2); }
+      process.stdout.write(`${closed}\n`);
+      return;
+    }
     case 'trend': {
       const rows = readTrend(coerceSlug(args[0]), { limit: args[1] ? Number(args[1]) : 5 });
       process.stdout.write(JSON.stringify(rows, null, 2) + '\n');
       return;
     }
     default:
-      process.stderr.write('usage: critique-storage.mjs <slug|write|latest|trend> [args]\n');
+      process.stderr.write('usage: critique-storage.mjs <slug|write|latest|trend|close> [args]\n');
       process.exit(1);
   }
 }

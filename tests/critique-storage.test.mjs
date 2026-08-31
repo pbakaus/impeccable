@@ -19,6 +19,7 @@ import {
   readLatestSnapshot,
   readLatestSnapshotAcrossTargets,
   readTrend,
+  closeSnapshot,
   nowFilenameStamp,
 } from '../skill/scripts/critique-storage.mjs';
 
@@ -161,6 +162,35 @@ describe('writeSnapshot + readLatestSnapshot', () => {
     const latest = readLatestSnapshot('x', { cwd });
     assert.equal(latest.meta.target, 'docs: critique # main');
   });
+
+  it('closeSnapshot returns the path and leaves readLatestSnapshot null', () => {
+    const out = writeSnapshot({ slug: 'index-astro', meta: { total_score: 20 }, body: 'open', cwd });
+    const closed = closeSnapshot('index-astro', { cwd });
+    assert.equal(closed, out);
+    assert.ok(closed.endsWith('__index-astro.md'));
+    assert.equal(readLatestSnapshot('index-astro', { cwd }), null);
+  });
+
+  it('closeSnapshot removes every snapshot for the slug, not only the newest', () => {
+    writeSnapshot({
+      slug: 'index-astro',
+      meta: { total_score: 21, p0_count: 7 },
+      body: 'old leftover',
+      cwd,
+      now: new Date('2026-05-01T00:00:00Z'),
+    });
+    const newest = writeSnapshot({
+      slug: 'index-astro',
+      meta: { total_score: 30 },
+      body: 'newer',
+      cwd,
+      now: new Date('2026-05-12T00:00:00Z'),
+    });
+    const closed = closeSnapshot('index-astro', { cwd });
+    assert.equal(closed, newest);
+    assert.equal(readLatestSnapshot('index-astro', { cwd }), null);
+    assert.deepEqual(readTrend('index-astro', { cwd }), []);
+  });
 });
 
 describe('CLI entry point', () => {
@@ -199,6 +229,24 @@ describe('CLI entry point', () => {
 
   it('latest subcommand exits 2 when no snapshot exists', () => {
     const r = spawnSync(process.execPath, [SCRIPT, 'latest', 'never-written'], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(r.status, 2);
+  });
+
+  it('close subcommand deletes the latest snapshot and exits 0', () => {
+    writeSnapshot({ slug: 'index-astro', meta: { total_score: 20 }, body: 'open', cwd });
+    const r = spawnSync(process.execPath, [SCRIPT, 'close', 'index-astro'], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(r.status, 0, `stderr: ${r.stderr}`);
+    assert.equal(readLatestSnapshot('index-astro', { cwd }), null);
+  });
+
+  it('close subcommand exits 2 when no snapshot exists', () => {
+    const r = spawnSync(process.execPath, [SCRIPT, 'close', 'never-written'], {
       cwd,
       encoding: 'utf-8',
     });

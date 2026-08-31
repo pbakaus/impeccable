@@ -32,7 +32,13 @@ If a prior critique exists, use it as one input:
 node {{scripts_path}}/critique-storage.mjs latest "<resolved target>"
 ```
 
-Exit 0 returns the latest snapshot; incorporate relevant P0/P1 findings and name the snapshot read. Exit 2 means none exists. Perform an independent pass either way.
+Exit 0 returns the latest snapshot. If the target's last commit is after the snapshot `timestamp`, close it and do not inherit:
+
+```bash
+node {{scripts_path}}/critique-storage.mjs close "<resolved target>"
+```
+
+Otherwise incorporate relevant P0/P1 findings and name the snapshot read. Exit 2 means none exists. Perform an independent pass either way.
 
 ## 3. Triage
 
@@ -95,3 +101,11 @@ Walk the complete path again with mouse, keyboard, and touch where applicable. C
 Follow the quality guidance supplied by `context.mjs` and hooks, then run any other relevant QA commands. Context requests a manual scan only when no automatic detector is active; never add another detector pass. Fix real defects and document only narrow intentional exceptions. A clean scan does not replace visual judgment.
 
 Finish with a source diff: remove accidental churn, orphaned code, redundant values, and temporary artifacts. Ship only when the feature is functionally complete and consistently finished across the path.
+
+When this pass clears every Priority Issue it took from a snapshot, close that snapshot:
+
+```bash
+node {{scripts_path}}/critique-storage.mjs close "<resolved target>"
+```
+
+Do not close when no snapshot was read, or when Priority Issues remain.
