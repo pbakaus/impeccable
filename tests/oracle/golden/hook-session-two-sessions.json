@@ -20,6 +20,6 @@
     }
   ],
   "files": {
-    ".impeccable/hook.cache.json": "{\"version\":1,\"sessions\":{\"s1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/src/components/Card.module.css\":{\"editCount\":1,\"findings\":[\"gradient-text:2\"]}},\"footerShown\":true},\"s2\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/src/components/Card.module.css\":{\"editCount\":1,\"findings\":[\"side-tab:1\"]}},\"footerShown\":true}}}"
+    ".impeccable/hook.cache.json": "{\"version\":1,\"sessions\":{\"s1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/src/components/Card.module.css\":{\"editCount\":1,\"findings\":[\"gradient-text:2\"]}},\"footerShown\":true},\"s2\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/src/components/Card.module.css\":{\"editCount\":1,\"findings\":[\"side-tab:1\",\"gradient-text:2\"]}},\"footerShown\":true}}}"
   }
 }

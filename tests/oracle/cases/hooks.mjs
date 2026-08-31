@@ -101,6 +101,28 @@ export default [
       { stdin: stop({ session_id: 's2' }) },
     ],
   },
+  // Grok Build camelCase envelope (#646): the per-edit pass scans and warms
+  // the session cache without remembering findings (Grok drops PostToolUse
+  // stdout), the end_turn Stop reports the full set, the observe-only
+  // shutdown fire and a stopHookActive re-entry stay silent.
+  {
+    id: 'hook-session-grok-edit-then-stop', verb: 'hook', workspace: 'hook-project', files: CACHE_FILES,
+    steps: [
+      { stdin: { sessionId: 'g1', cwd: WS, hookEventName: 'post_tool_use', toolName: 'str_replace', toolInput: { file_path: `${WS}/src/components/Card.module.css` } } },
+      { stdin: { sessionId: 'g1', cwd: WS, hookEventName: 'stop', reason: 'end_turn' } },
+      { stdin: { sessionId: 'g1', cwd: WS, hookEventName: 'stop', reason: 'shutdown' } },
+      { stdin: { sessionId: 'g1', cwd: WS, hookEventName: 'stop', reason: 'end_turn', stopHookActive: true } },
+    ],
+  },
+  // Codex Stop contract (#603): turn_id identifies Codex, whose Stop channel
+  // is a top-level decision/block instead of hookSpecificOutput.
+  {
+    id: 'hook-session-codex-stop-decision', verb: 'hook', workspace: 'hook-project', files: CACHE_FILES,
+    steps: [
+      { stdin: claudeEdit('src/components/Card.module.css', { session_id: 'cx1', turn_id: 't-1' }) },
+      { stdin: stop({ session_id: 'cx1', turn_id: 't-1' }) },
+    ],
+  },
 
   // --- hook-before-edit.mjs (Cursor) ---
   { id: 'hbe-write-with-findings', verb: 'hook-before-edit', workspace: 'hook-project', stdin: { hook_event_name: 'preToolUse', conversation_id: 'cv1', workspace_roots: [WS], tool_name: 'Write', tool_input: { path: 'src/new.css', content: '.t { background: linear-gradient(90deg,#f00,#00f); -webkit-background-clip: text; color: transparent; }\n' } }, files: CACHE_FILES },

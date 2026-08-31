@@ -239,6 +239,18 @@ const cases = [
   { id: 'doctor-product-only-json', verb: 'doctor', workspace: 'ctx-product-only', args: ['--json'], env: env() },
   { id: 'doctor-full-text', verb: 'doctor', workspace: 'ctx-full', setup: sidecarNewer, env: env() },
   { id: 'doctor-full-json', verb: 'doctor', workspace: 'ctx-full', setup: sidecarNewer, args: ['--json'], env: env() },
+  // Boot and deep findings keep their established artifact order (the JS
+  // shared the boot policy with doctor in 80997663).
+  {
+    id: 'doctor-order-boot-and-deep', verb: 'doctor', workspace: 'ctx-empty',
+    setup: (ws) => {
+      write(ws, 'PRODUCT.md', '# Product\n\n## Register\n\nbrand\n\n## Users\nDesigners.\n');
+      write(ws, 'DESIGN.md', '---\nname: Example\n---\n\n# Design System: Example\n');
+      write(ws, '.impeccable/design.json', JSON.stringify({ schemaVersion: 1 }));
+      write(ws, '.impeccable/config.json', JSON.stringify({ unknownSetting: true }));
+    },
+    args: ['--json'], env: env(),
+  },
   { id: 'doctor-full-sidecar-stale', verb: 'doctor', workspace: 'ctx-full', setup: (ws) => { touch(path.join(ws, 'DESIGN.md'), T_NEW); touch(path.join(ws, '.impeccable/design.json'), T_OLD); }, args: ['--json'], env: env() },
   { id: 'doctor-native-ios-text', verb: 'doctor', workspace: 'ctx-native-ios', env: env() },
   { id: 'doctor-native-ios-json', verb: 'doctor', workspace: 'ctx-native-ios', args: ['--json'], env: env() },
