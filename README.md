@@ -184,8 +184,8 @@ cp -r dist/opencode/.opencode your-project/
 
 **Hermes Agent:**
 ```bash
-# Global (applies to all projects; honors $HERMES_HOME for profiles)
-cp -r dist/hermes/.hermes/skills/* ~/.hermes/skills/
+# Global (applies to all projects; uses the active profile, or ~/.hermes by default)
+cp -r dist/hermes/.hermes/skills/* "${HERMES_HOME:-$HOME/.hermes}/skills/"
 
 # Or project-specific
 cp -r dist/hermes/.hermes your-project/
@@ -194,8 +194,9 @@ cp -r dist/hermes/.hermes your-project/
 > **Note:** Hermes gates project-local skills behind a per-repo trust decision
 > (they are procedure documents, so auto-loading them from any cloned repo is
 > treated as a prompt-injection vector). After a project-scoped install, run
-> `hermes skills trust` once from the project root. Global installs into
-> `~/.hermes/skills/` load without a trust step. `/impeccable <command>` then
+> `hermes skills trust` once from the project root. Global installs into the
+> active `$HERMES_HOME/skills/` (or `~/.hermes/skills/` when unset) load without
+> a trust step. `/impeccable <command>` then
 > routes through the skill's Commands table; the design hook does not install
 > on Hermes (no hook surface).
 >
