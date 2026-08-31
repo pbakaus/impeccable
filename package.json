@@ -89,7 +89,7 @@
     "@ai-sdk/google": "^4.0.8",
     "@ai-sdk/openai": "^4.0.7",
     "@anthropic-ai/claude-agent-sdk": "^0.3.165",
-    "@anthropic-ai/sdk": "^0.120.0",
+    "@anthropic-ai/sdk": "^0.122.0",
     "@babel/parser": "^8.0.4",
     "ai": "^7.0.14",
     "archiver": "^8.0.0",
