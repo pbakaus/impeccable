@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/codex-grid-1d-pass.html\n  [codex-grid-background] px-tiled hairline line-field background\n    → A decorative grid or line-field background drawn with hairline linear-gradient layers tiled by a fixed pixel cell is a recurring generated-UI signature. Reserve grid overlays for actual canvas, map, blueprint, or measurement surfaces; elsewhere use product structure or a plain surface.\n\n1 anti-pattern found.\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

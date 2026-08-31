@@ -393,8 +393,25 @@ describe('skill scripts payload', () => {
     }
   });
 
-  test('ships no Node entry points and no bundled detector', () => {
-    expect([...names].filter((n) => n.endsWith('.mjs') || n.startsWith('detector/') || n.startsWith('lib/'))).toEqual([]);
+  test('ships no engine entry points and no bundled detector', () => {
+    // The engine verbs live in the binary; the only Node scripts allowed in
+    // the payload are the comp-fidelity build pipeline and its libs, which
+    // have not moved into the engine yet.
+    const allowedNodeScripts = new Set([
+      'build-phase.mjs',
+      'comp-diff.mjs',
+      'comp-spec.mjs',
+      'font-match.mjs',
+      'lib/font-fingerprint.mjs',
+      'lib/font-index.mjs',
+      'lib/hero-checks.mjs',
+      'lib/image-metrics.mjs',
+      'lib/png.mjs',
+      'lib/raster.mjs',
+    ]);
+    const stray = [...names].filter((n) =>
+      (n.endsWith('.mjs') || n.startsWith('detector/') || n.startsWith('lib/')) && !allowedNodeScripts.has(n));
+    expect(stray).toEqual([]);
   });
 
   test('never reads platform binaries as source', () => {

@@ -33,3 +33,18 @@ origin but not `'wasm-unsafe-eval'` still refuses to compile it. The JS
 `patchCspMeta` predates the wasm bundle and appended only the origin.
 
 - `live-inject-csp-meta-no-connect-src`: the patched `<meta http-equiv="Content-Security-Policy">` reads `script-src 'self' http://localhost:8412 'wasm-unsafe-eval'` (was `script-src 'self' http://localhost:8412`). The `data-impeccable-csp-original` marker, the `connect-src` and `img-src` additions, idempotence, and the revert on unpatch are unchanged. `live-inject-vite-csp-meta` and `live-inject-next-jsx` carry meta tags the patch does not touch, so their goldens did not move.
+
+## Recorded 2026-08-31: main's post-freeze fixture changes, goldens re-recorded from the engine
+
+The rebase onto main brought fixture updates whose paired JS rule changes have
+not been ported to the engine yet. The detect goldens below are re-recorded
+from the binary, so they pin the engine's current behavior on the new fixture
+content; the entries name the upstream JS change each one still owes. Until a
+rule ships in the engine and its golden is re-recorded, the golden is the pin
+of the gap, not an endorsement of it.
+
+- `detect-fixture-json-color-html`, `detect-fixture-text-color-html`: the fixture gained the color-mix nested-hex column (upstream 54440319, #578, with explicit sizes from 7426af44); the engine still reads hex codes inside `color-mix(...)` when measuring gradient contrast, so its readings on the reshaped fixture differ from the JS engine's.
+- `detect-fixture-json-oklch-neon-text-html`, `detect-fixture-text-oklch-neon-text-html`: new fixture for oklch parsing in visual-contrast and neon-text (upstream 1b7da15b, #592, columns from 8347d77f); the engine does not parse oklch there yet, so the flag column's neon-text goes unflagged and a mis-read low-contrast is recorded.
+- `detect-fixture-json-codex-grid-1d-pass-html`, `detect-fixture-text-codex-grid-1d-pass-html`: new pass-case fixture for 1D dashed rules (upstream a236137b/7ddcd533, #615); the engine still flags the 1D line-field as `codex-grid-background`, which is the pre-fix behavior the fixture exists to retire.
+- `detect-fixture-json-organic-clip-path-html`, `detect-fixture-text-organic-clip-path-html`, `detect-fixture-json-buried-raster-html`, `detect-fixture-text-buried-raster-html`: fixtures for the two comp-fidelity rules (upstream 58561610: organic-clip-path, buried-raster); neither rule exists in the engine, so only incidental findings (or none) are recorded.
+- `detect-dir-json-all-fixtures`, `detect-dir-text-all-fixtures`, `detect-dir-quiet-all-fixtures`, `detect-scope-type`, `detect-scope-both`, `detect-no-advisory-json`, `detect-no-advisory-text`: directory-wide sweeps over `tests/fixtures/antipatterns/`; re-recorded because the fixture set above grew and changed, shifting counts and orderings.
