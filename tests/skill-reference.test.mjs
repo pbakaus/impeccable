@@ -18,13 +18,14 @@ describe('skill reference authoring contracts', () => {
     assert.match(verify, /reduced[- ]motion/i);
   });
 
-  it('checks target-scoped working-tree changes before inheriting a critique snapshot', () => {
+  it('uses an exact content fingerprint before inheriting a critique snapshot', () => {
+    const critique = readFileSync(join(ROOT, 'skill/reference/critique.md'), 'utf-8').replace(/\r\n?/g, '\n');
     const polish = readFileSync(join(ROOT, 'skill/reference/polish.md'), 'utf-8').replace(/\r\n?/g, '\n');
-    const statusCheck = polish.indexOf('git status --short --untracked-files=all ":(literal)<resolved target>"');
-    const commitCheck = polish.indexOf('TZ=UTC git log -1');
 
-    assert.ok(statusCheck >= 0, 'polish must inspect staged, unstaged, and untracked target changes');
-    assert.ok(commitCheck > statusCheck, 'the working-tree check must run before the commit timestamp check');
-    assert.match(polish, /treat it as newer than the snapshot, close the snapshot, and do not inherit/);
+    assert.match(critique, /records an exact content fingerprint/);
+    assert.match(polish, /compares the file's exact current content fingerprint/);
+    assert.match(polish, /Unchanged staged, unstaged, or untracked content remains current/);
+    assert.match(polish, /any byte change closes the backlog while preserving its trend history and exits 2/);
+    assert.doesNotMatch(polish, /git status|git log/);
   });
 });

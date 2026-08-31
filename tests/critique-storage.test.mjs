@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 const SCRIPT = fileURLToPath(new URL('../skill/scripts/critique-storage.mjs', import.meta.url));
 
 import {
+  fingerprintTarget,
   slugFromTarget,
   writeSnapshot,
   readLatestSnapshot,
@@ -85,6 +86,25 @@ describe('nowFilenameStamp', () => {
   it('is windows-safe (no colons or dots in the time fragment)', () => {
     const stamp = nowFilenameStamp(new Date('2026-05-12T18:30:00.123Z'));
     assert.equal(stamp, '2026-05-12T18-30-00Z');
+  });
+});
+
+describe('fingerprintTarget', () => {
+  it('fingerprints exact local file bytes independent of Git state', () => {
+    const target = join(cwd, 'index.html');
+    writeFileSync(target, '<main>hello</main>');
+    const first = fingerprintTarget(target, { cwd });
+    assert.match(first, /^sha256:[a-f0-9]{64}$/);
+    assert.equal(fingerprintTarget('index.html', { cwd }), first);
+
+    writeFileSync(target, '<main>changed</main>');
+    assert.notEqual(fingerprintTarget(target, { cwd }), first);
+  });
+
+  it('returns null for URLs, directories, and missing files', () => {
+    assert.equal(fingerprintTarget('https://example.com/page', { cwd }), null);
+    assert.equal(fingerprintTarget('.', { cwd }), null);
+    assert.equal(fingerprintTarget('missing.html', { cwd }), null);
   });
 });
 
@@ -278,6 +298,69 @@ describe('CLI entry point', () => {
       encoding: 'utf-8',
     });
     assert.equal(r.status, 2);
+  });
+
+  it('inherits an unchanged untracked file snapshot and closes it after any byte change', () => {
+    const target = join(cwd, 'index.html');
+    const bodyFile = join(cwd, 'critique.md');
+    writeFileSync(target, '<main>assessed worktree</main>');
+    writeFileSync(bodyFile, '# Critique\n\nP1: improve hierarchy');
+
+    const write = spawnSync(process.execPath, [SCRIPT, 'write', target, bodyFile], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(write.status, 0, `stderr: ${write.stderr}`);
+
+    const unchanged = spawnSync(process.execPath, [SCRIPT, 'latest', target], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(unchanged.status, 0, `stderr: ${unchanged.stderr}`);
+    assert.match(unchanged.stdout, /improve hierarchy/);
+
+    // The edit can happen in the same clock second as the snapshot; exact
+    // bytes, rather than timestamp precision, determine freshness.
+    writeFileSync(target, '<main>newer worktree</main>');
+    const changed = spawnSync(process.execPath, [SCRIPT, 'latest', target], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(changed.status, 2, `stderr: ${changed.stderr}`);
+    assert.equal(readLatestSnapshot('index-html', { cwd }), null);
+    assert.equal(readTrend('index-html', { cwd })[0].closed, true);
+  });
+
+  it('treats a legacy local-file snapshot without a fingerprint as stale', () => {
+    const target = join(cwd, 'index.html');
+    writeFileSync(target, '<main>current</main>');
+    writeSnapshot({ slug: 'index-html', meta: { total_score: 20 }, body: 'legacy', cwd });
+
+    const latest = spawnSync(process.execPath, [SCRIPT, 'latest', target], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(latest.status, 2, `stderr: ${latest.stderr}`);
+    assert.equal(readTrend('index-html', { cwd })[0].closed, true);
+  });
+
+  it('keeps URL snapshots current without a local fingerprint', () => {
+    const bodyFile = join(cwd, 'critique.md');
+    writeFileSync(bodyFile, '# Critique\n\nP1: improve hierarchy');
+    const target = 'https://example.com/page';
+
+    const write = spawnSync(process.execPath, [SCRIPT, 'write', target, bodyFile], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(write.status, 0, `stderr: ${write.stderr}`);
+
+    const latest = spawnSync(process.execPath, [SCRIPT, 'latest', target], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(latest.status, 0, `stderr: ${latest.stderr}`);
+    assert.match(latest.stdout, /improve hierarchy/);
   });
 
   it('close subcommand closes the latest snapshot and preserves its trend', () => {

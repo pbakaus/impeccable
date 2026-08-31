@@ -32,13 +32,7 @@ If a prior critique exists, use it as one input:
 node {{scripts_path}}/critique-storage.mjs latest "<resolved target>"
 ```
 
-Exit 0 returns the latest snapshot. For a file target, first run `git status --short --untracked-files=all ":(literal)<resolved target>"`. Any output means the working-tree version has staged, unstaged, or untracked changes that commit history cannot date; treat it as newer than the snapshot, close the snapshot, and do not inherit. When the target is clean, read its last commit as `TZ=UTC git log -1 --date=format-local:%Y-%m-%dT%H-%M-%SZ --format=%cd ":(literal)<resolved target>"`; it shares the snapshot `timestamp` format, so compare the two as plain strings. When the commit stamp is greater, close the snapshot and do not inherit:
-
-```bash
-node {{scripts_path}}/critique-storage.mjs close "<resolved target>"
-```
-
-A URL target has no commit stamp; treat its snapshot as current. When current, incorporate relevant P0/P1 findings and name the snapshot read. Exit 2 means none exists. Perform an independent pass either way.
+Exit 0 returns the latest snapshot. For a local file target, the helper compares the file's exact current content fingerprint with the fingerprint captured by critique. Unchanged staged, unstaged, or untracked content remains current; any byte change closes the backlog while preserving its trend history and exits 2. A URL target has no local fingerprint and remains current until explicitly closed. When current, incorporate relevant P0/P1 findings and name the snapshot read. Exit 2 means none exists or the target changed. Perform an independent pass either way.
 
 ## 3. Triage
 

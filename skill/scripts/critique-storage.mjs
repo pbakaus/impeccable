@@ -28,6 +28,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { getCritiqueDir } from './lib/impeccable-paths.mjs';
 import { slugFromTarget } from './lib/target-slug.mjs';
@@ -49,6 +50,25 @@ export { slugFromTarget } from './lib/target-slug.mjs';
 export function nowFilenameStamp(date = new Date()) {
   const iso = date.toISOString();           // 2026-05-12T18:30:00.123Z
   return iso.replace(/[:.]/g, '-').replace(/-\d+Z$/, 'Z');
+}
+
+/**
+ * Return an exact content fingerprint for a local file target. URLs and
+ * non-files return null because their content is not available here.
+ *
+ * The fingerprint deliberately describes bytes, not Git state or mtimes:
+ * critique often assesses an uncommitted file, and a later polish run should
+ * inherit that backlog when the bytes are unchanged regardless of staging.
+ */
+export function fingerprintTarget(target, { cwd = process.cwd() } = {}) {
+  if (!target || /^https?:\/\//i.test(target)) return null;
+  const filePath = path.isAbsolute(target) ? target : path.resolve(cwd, target);
+  try {
+    if (!fs.statSync(filePath).isFile()) return null;
+    return `sha256:${createHash('sha256').update(fs.readFileSync(filePath)).digest('hex')}`;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -211,13 +231,25 @@ function main(argv) {
       if (metaArg) {
         try { meta = JSON.parse(metaArg); } catch { /* ignore */ }
       }
+      // The helper, not caller-provided metadata, owns the target fingerprint.
+      // This makes the snapshot describe the exact file bytes critique saw.
+      delete meta.target_fingerprint;
+      const targetFingerprint = fingerprintTarget(slugArg);
+      if (targetFingerprint) meta.target_fingerprint = targetFingerprint;
       const out = writeSnapshot({ slug, meta, body: raw });
       process.stdout.write(`${out}\n`);
       return;
     }
     case 'latest': {
-      const latest = readLatestSnapshot(coerceSlug(args[0]));
+      const target = args[0];
+      const slug = coerceSlug(target);
+      const latest = readLatestSnapshot(slug);
       if (!latest) { process.exit(2); }
+      const targetFingerprint = fingerprintTarget(target);
+      if (targetFingerprint && latest.meta.target_fingerprint !== targetFingerprint) {
+        closeSnapshot(slug);
+        process.exit(2);
+      }
       process.stdout.write(latest.body);
       return;
     }
