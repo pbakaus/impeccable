@@ -34,17 +34,54 @@ origin but not `'wasm-unsafe-eval'` still refuses to compile it. The JS
 
 - `live-inject-csp-meta-no-connect-src`: the patched `<meta http-equiv="Content-Security-Policy">` reads `script-src 'self' http://localhost:8412 'wasm-unsafe-eval'` (was `script-src 'self' http://localhost:8412`). The `data-impeccable-csp-original` marker, the `connect-src` and `img-src` additions, idempotence, and the revert on unpatch are unchanged. `live-inject-vite-csp-meta` and `live-inject-next-jsx` carry meta tags the patch does not touch, so their goldens did not move.
 
-## Recorded 2026-08-31: main's post-freeze fixture changes, goldens re-recorded from the engine
+## Recorded 2026-08-31: detector-engine ports landed, gap goldens restored
 
-The rebase onto main brought fixture updates whose paired JS rule changes have
-not been ported to the engine yet. The detect goldens below are re-recorded
-from the binary, so they pin the engine's current behavior on the new fixture
-content; the entries name the upstream JS change each one still owes. Until a
-rule ships in the engine and its golden is re-recorded, the golden is the pin
-of the gap, not an endorsement of it.
+The section previously here pinned the gap between main's post-freeze detector
+fixes and the engine. Those fixes are now ported (engine repo commits:
+`c0aa75f` oklch in visual-contrast/neon-text, upstream 1b7da15b #592;
+`5cdeec8` color-mix nested hex, upstream 54440319 #578; the 1D grid fix,
+upstream a236137b #615, rode along in `9046e8f` via a concurrent staging race;
+`6d36231` comment stripping for regex matchers, upstream 067665cc #589 +
+ddb60993 + ba873f75 + 9a7d0fbc; `33aef88` root-relative linked stylesheets,
+upstream 2b88aa52 #652 + daae1d41; `6d0ecf1` URL userinfo redaction with
+origin-scoped basic auth, upstream d5873ff8 + d690349d #657; `09f8ae7` inert
+exact ignore-value refusal, upstream be87f5eb #662; `20c8347` the
+comp-fidelity rules organic-clip-path and buried-raster, upstream 58561610).
+The affected goldens were re-recorded from the fixed engine and each json
+fixture golden was byte-verified against the last JS engine state in history
+(`db1462b9^`, which carries both main's drift and the comp-fidelity rules):
 
-- `detect-fixture-json-color-html`, `detect-fixture-text-color-html`: the fixture gained the color-mix nested-hex column (upstream 54440319, #578, with explicit sizes from 7426af44); the engine still reads hex codes inside `color-mix(...)` when measuring gradient contrast, so its readings on the reshaped fixture differ from the JS engine's.
-- `detect-fixture-json-oklch-neon-text-html`, `detect-fixture-text-oklch-neon-text-html`: new fixture for oklch parsing in visual-contrast and neon-text (upstream 1b7da15b, #592, columns from 8347d77f); the engine does not parse oklch there yet, so the flag column's neon-text goes unflagged and a mis-read low-contrast is recorded.
-- `detect-fixture-json-codex-grid-1d-pass-html`, `detect-fixture-text-codex-grid-1d-pass-html`: new pass-case fixture for 1D dashed rules (upstream a236137b/7ddcd533, #615); the engine still flags the 1D line-field as `codex-grid-background`, which is the pre-fix behavior the fixture exists to retire.
-- `detect-fixture-json-organic-clip-path-html`, `detect-fixture-text-organic-clip-path-html`, `detect-fixture-json-buried-raster-html`, `detect-fixture-text-buried-raster-html`: fixtures for the two comp-fidelity rules (upstream 58561610: organic-clip-path, buried-raster); neither rule exists in the engine, so only incidental findings (or none) are recorded.
-- `detect-dir-json-all-fixtures`, `detect-dir-text-all-fixtures`, `detect-dir-quiet-all-fixtures`, `detect-scope-type`, `detect-scope-both`, `detect-no-advisory-json`, `detect-no-advisory-text`: directory-wide sweeps over `tests/fixtures/antipatterns/`; re-recorded because the fixture set above grew and changed, shifting counts and orderings.
+- Moved to post-fix behavior: `detect-fixture-json-codex-grid-1d-pass-html`,
+  `detect-fixture-text-codex-grid-1d-pass-html` (no finding, exit 0),
+  `detect-fixture-json-organic-clip-path-html`,
+  `detect-fixture-text-organic-clip-path-html`,
+  `detect-fixture-json-buried-raster-html`,
+  `detect-fixture-text-buried-raster-html` (the new rules fire),
+  `detect-fixture-json-glow-html`, `detect-fixture-text-glow-html` (glow's
+  `.photo-opaque-grad` column now carries its intended buried-raster finding),
+  and the sweeps `detect-dir-json-all-fixtures`, `detect-dir-text-all-fixtures`,
+  `detect-dir-quiet-all-fixtures`, `detect-no-advisory-json`,
+  `detect-no-advisory-text`.
+- Unchanged on re-record (already matched the fixed JS in the static engine):
+  `detect-fixture-json-color-html`, `detect-fixture-text-color-html`,
+  `detect-fixture-json-oklch-neon-text-html`,
+  `detect-fixture-text-oklch-neon-text-html` (the oklch and color-mix fixes
+  observably change the browser-side visual-contrast path, which these static
+  scans do not exercise), `detect-scope-type`, `detect-scope-both`.
+
+The frozen call vectors for `checkHtmlPatterns`
+(`tests/oracle/vectors/calls/rules.checks/checkHtmlPatterns.jsonl`) were
+re-recorded the same way: args untouched, results replayed through the
+`db1462b9^` JS (14 of 101 moved: the comp-fidelity scans and the
+comment-stripping/inline-fragment fixes to `enclosingCssSelector`). No case in
+this section is an accepted delta any more; the engine matches the final JS.
+
+## Recorded 2026-08-31: main's Aug 17-31 verb fixes ported to the engine, goldens re-recorded
+
+The goldens below froze pre-fix behavior. Each fix landed on main in JS and
+was ported to the engine; the cases were re-recorded from the binary and
+reviewed line by line, so they now pin the fixed behavior.
+
+- `hook-session-fresh-then-pending-then-stop`, `hook-session-two-sessions`: the Stop deep pass syncs the remembered set to the live scan, including findings the per-edit pass already surfaced, so a second Stop with nothing new is silent and a fixed-then-reintroduced finding fires again (upstream 3c442af7).
+- `hadmin-on`, `hadmin-on-twice`, `hadmin-off-then-status`, `hadmin-on-repairs-existing-manifest`, `hadmin-on-malformed-manifest-backup`: the Claude manifests `hooks on` writes match on `Edit|Write` and the description names the current tools; Claude Code folded multi-edit behavior into Edit (upstream 7d5c60d2).
+- `live-commit-mock-unreported-file-change`: the rollback-failure results share one constructor, which moved `unreportedFiles` and `notes` after `pageUrl` in the emitted JSON (upstream 1f2c3f9d).

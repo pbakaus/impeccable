@@ -1,7 +1,7 @@
 {
   "stdout": "",
-  "stderr": "",
-  "exit": 0,
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/buried-raster.html\n  [buried-raster] raster background at opacity 0.04 \"Grain\"\n    → A background image under a near-opaque gradient wash, or a raster on an element at near-zero opacity, never reaches the screen: the page shows the wash, and the produced texture or photo ships as a compliance token. Let the material show (a tint under 0.9 alpha, a blend mode, an opacity you can see) or remove the file.\n  [buried-raster] <img> at opacity 0.05 \"Ghost img\"\n    → A background image under a near-opaque gradient wash, or a raster on an element at near-zero opacity, never reaches the screen: the page shows the wash, and the produced texture or photo ships as a compliance token. Let the material show (a tint under 0.9 alpha, a blend mode, an opacity you can see) or remove the file.\n  [buried-raster] raster under a near-opaque gradient wash: linear-gradient(rgba(240,237,226,0.96), rgba(240,237,226,0.96)), url(assets/manual-paper.p\n    → A background image under a near-opaque gradient wash, or a raster on an element at near-zero opacity, never reaches the screen: the page shows the wash, and the produced texture or photo ships as a compliance token. Let the material show (a tint under 0.9 alpha, a blend mode, an opacity you can see) or remove the file.\n  [buried-raster] raster under a near-opaque gradient wash: linear-gradient(0deg, rgba(255,255,255,.95), rgba(255,255,255,.95)), url(\"assets/bone-pape\n    → A background image under a near-opaque gradient wash, or a raster on an element at near-zero opacity, never reaches the screen: the page shows the wash, and the produced texture or photo ships as a compliance token. Let the material show (a tint under 0.9 alpha, a blend mode, an opacity you can see) or remove the file.\n\n4 anti-patterns found.\n",
+  "exit": 2,
   "signal": null,
   "files": {}
 }
