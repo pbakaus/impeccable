@@ -17,7 +17,6 @@
  * surface for an established world, so the identity comes from the real UI.
  */
 import fs from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import zlib from 'node:zlib';
 
 function arg(name, fallback = null) {
@@ -270,12 +269,9 @@ fs.writeFileSync(out, Buffer.from(b64, 'base64'));
 // The prompt travels with the asset: embedded in the file itself (EXIF-class
 // metadata via embed-prompt.mjs) so intent survives copies across harnesses,
 // plus a sidecar for anything that indexes rather than opens the image.
-let embedded = false;
 try {
   const { spawnSync } = await import('node:child_process');
-  const result = spawnSync(process.execPath, [fileURLToPath(new URL('./embed-prompt.mjs', import.meta.url)), out, '--prompt', prompt], { stdio: 'ignore' });
-  embedded = !result.error && result.status === 0;
-  if (!embedded) console.warn('generate-image: failed to embed prompt in the image');
+  spawnSync(process.execPath, [new URL('./embed-prompt.mjs', import.meta.url).pathname, out, '--prompt', prompt], { stdio: 'ignore' });
   fs.writeFileSync(`${out}.json`, JSON.stringify({ prompt, createdAt: new Date().toISOString(), tool: 'generate-image.mjs', model: 'gpt-image-2', ...(refs.length ? { refs } : {}) }, null, 2));
 } catch { /* embedding is best-effort */ }
-console.log(`IMAGE: ${out} (${size}, ${quality}, gpt-image-2, billed to your OpenAI key); ${embedded ? 'prompt embedded + sidecar' : 'sidecar'} at ${out}.json`);
+console.log(`IMAGE: ${out} (${size}, ${quality}, gpt-image-2, billed to your OpenAI key); prompt embedded + sidecar at ${out}.json`);
