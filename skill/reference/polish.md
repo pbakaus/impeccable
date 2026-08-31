@@ -32,7 +32,7 @@ If a prior critique exists, use it as one input:
 node {{scripts_path}}/critique-storage.mjs latest "<resolved target>"
 ```
 
-Exit 0 returns the latest snapshot. If the target's last commit is after the snapshot `timestamp`, close it and do not inherit:
+Exit 0 returns the latest snapshot. Read the target's last commit as `TZ=UTC git log -1 --date=format-local:%Y-%m-%dT%H-%M-%SZ --format=%cd <target>`; it shares the snapshot `timestamp` format, so compare the two as plain strings. When the commit stamp is greater, close the snapshot and do not inherit:
 
 ```bash
 node {{scripts_path}}/critique-storage.mjs close "<resolved target>"
