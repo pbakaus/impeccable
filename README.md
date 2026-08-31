@@ -103,7 +103,7 @@ From the root of your project, run:
 npx impeccable install
 ```
 
-This shows the harness folders or installed CLIs it detected (for example `~/.claude`, `~/.codex`, `~/.grok`, `~/.veto`, or project-local `.cursor`), lets you keep the detected set or customize providers, then asks whether to install into the current project or globally. Use `--providers=claude,codex,cursor,grok,veto` and `--scope=project|global` to skip those choices in scripts. On Claude Code, Cursor, Codex, GitHub Copilot, and Grok Build, it also installs the provider-native hook manifest for the current project. Veto receives the packaged skill under `~/.veto/skills/` and does not run native Impeccable edit hooks. Works with Cursor, Claude Code, Gemini CLI, Codex CLI, Grok Build, Veto, and every other supported tool. Reload your harness afterward.
+This shows the harness folders or installed CLIs it detected (for example `~/.claude`, `~/.codex`, `~/.grok`, `~/.hermes`, `~/.veto`, or project-local `.cursor`), lets you keep the detected set or customize providers, then asks whether to install into the current project or globally. Use `--providers=claude,codex,cursor,grok,hermes,veto` and `--scope=project|global` to skip those choices in scripts. On Claude Code, Cursor, Codex, GitHub Copilot, and Grok Build, it also installs the provider-native hook manifest for the current project. Veto receives the packaged skill under `~/.veto/skills/` and does not run native Impeccable edit hooks. Works with Cursor, Claude Code, Gemini CLI, Codex CLI, Grok Build, Hermes Agent, Veto, and every other supported tool. Reload your harness afterward.
 
 To refresh an existing install, run:
 
@@ -126,7 +126,7 @@ git add .gitmodules .impeccable .claude .cursor
 git commit -m "Add Impeccable skills"
 ```
 
-Use the providers your project needs, for example `claude`, `cursor`, `gemini`, `codex`, `github`, `grok`, `opencode`, `pi`, `qoder`, `trae`, `trae-cn`, `rovo-dev`, `vibe`, or `veto`. The command links individual skill folders from `.impeccable/dist/universal/` and leaves existing real skill directories untouched unless you pass `--force`.
+Use the providers your project needs, for example `claude`, `cursor`, `gemini`, `codex`, `github`, `grok`, `hermes`, `opencode`, `pi`, `qoder`, `trae`, `trae-cn`, `rovo-dev`, `vibe`, or `veto`. The command links individual skill folders from `.impeccable/dist/universal/` and leaves existing real skill directories untouched unless you pass `--force`.
 
 To update later:
 
@@ -181,6 +181,26 @@ cp -r dist/claude-code/.claude/* ~/.claude/
 ```bash
 cp -r dist/opencode/.opencode your-project/
 ```
+
+**Hermes Agent:**
+```bash
+# Global (applies to all projects; uses the active profile, or ~/.hermes by default)
+cp -r dist/hermes/.hermes/skills/* "${HERMES_HOME:-$HOME/.hermes}/skills/"
+
+# Or project-specific
+cp -r dist/hermes/.hermes your-project/
+```
+
+> **Note:** Hermes gates project-local skills behind a per-repo trust decision
+> (they are procedure documents, so auto-loading them from any cloned repo is
+> treated as a prompt-injection vector). After a project-scoped install, run
+> `hermes skills trust` once from the project root. Global installs into the
+> active `$HERMES_HOME/skills/` (or `~/.hermes/skills/` when unset) load without
+> a trust step. `/impeccable <command>` then
+> routes through the skill's Commands table; the design hook does not install
+> on Hermes (no hook surface).
+>
+> [Learn more about Hermes skills](https://hermes-agent.nousresearch.com/docs/user-guide/features/skills)
 
 **Pi:**
 ```bash
@@ -316,11 +336,13 @@ As you run commands, Impeccable writes working files under `.impeccable/`: criti
 # Unanchored: .impeccable may sit at the repo root or under a nested
 # workspace (apps/web/.impeccable/...); anchored patterns would miss it.
 # Shared artifacts stay tracked: config.json, live/config.json,
-# design.json, critique/*.md.
+# design.json, surfaces/*.md, critique/*.md.
 .impeccable/config.local.json
 .impeccable/hook.cache.json
 .impeccable/hook.pending.json
 .impeccable/*.png
+.impeccable/review/
+.impeccable/questions/
 .impeccable/live/server.json
 .impeccable/live/sessions/
 .impeccable/live/previews/
@@ -342,6 +364,7 @@ The block is wrapped in `# impeccable-ignore-start` / `# impeccable-ignore-end` 
 - `.impeccable/config.json` (unified shared config)
 - `.impeccable/live/config.json` (live-mode framework wiring)
 - `.impeccable/design.json` (shared design spec)
+- `.impeccable/surfaces/*.md` (route- or artifact-specific strategy and direction contracts)
 - `.impeccable/critique/*.md` (review reports)
 
 If an ephemeral file (a screenshot, `config.local.json`) was committed before you added the block, `.gitignore` will not untrack it automatically. Run `git rm --cached <path>` to stop tracking it without deleting your local copy.
@@ -366,7 +389,7 @@ For debugging, set `hook.auditLog` in `.impeccable/config.json` to a path (or th
 
 ## Build path: comp-first or code-first
 
-When a new surface gets designed, Impeccable either generates a full-fidelity comp first and builds to match it, or builds straight in code with the ambition written into the direction contract and checked at the finish. Comp-first composes bolder and takes longer; code-first is leaner and faster. `/impeccable init` asks once and records the answer as `buildPath` in `.impeccable/config.json`:
+When a new surface gets designed, Impeccable either generates a full-fidelity comp first and builds to match it, or builds straight in code with the ambition written into a development-only direction contract in the surface brief and checked at the finish. Comp-first composes bolder and takes longer; code-first is leaner and faster. `/impeccable init` asks once and records the answer as `buildPath` in `.impeccable/config.json`:
 
 ```json
 { "buildPath": "comp" }
@@ -418,6 +441,7 @@ Full detector docs: [impeccable.style/docs/detector](https://impeccable.style/do
 - [Gemini CLI](https://github.com/google-gemini/gemini-cli)
 - [Codex CLI](https://github.com/openai/codex)
 - [Grok Build](https://x.ai/cli)
+- [Hermes Agent](https://hermes-agent.nousresearch.com)
 - [OpenCode](https://opencode.ai)
 - [Pi](https://pi.dev)
 - [Kiro](https://kiro.dev)

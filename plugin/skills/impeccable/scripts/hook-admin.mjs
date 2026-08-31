@@ -770,9 +770,22 @@ function reset(cwd) {
       }
     } catch { /* ignore */ }
   }
-  return removed.length
-    ? `Reset design hook config and cache (removed: ${removed.join(', ')}).`
-    : 'No hook config or cache to remove. Already at defaults.';
+  // `on` writes three things: config, consent, and hook entries in the
+  // provider manifests. Reset must undo all three (issue #512): a leftover
+  // manifest entry kept invoking the hook after the config that said "off"
+  // was deleted. Local destRel only, since `on` never writes the team-shared
+  // sharedDestRel. No skill-folder gate: a reset mid-uninstall (skill files
+  // gone, manifest still wired) is the case that most needs the prune.
+  const pruned = [];
+  for (const target of HOOK_MANIFEST_TARGETS) {
+    try {
+      if (pruneImpeccableHookFromManifest(path.join(cwd, target.destRel))) pruned.push(target.provider);
+    } catch { /* ignore */ }
+  }
+  const parts = [];
+  if (removed.length) parts.push(`Reset design hook config and cache (removed: ${removed.join(', ')}).`);
+  if (pruned.length) parts.push(`Removed hook entries from: ${pruned.join(', ')}.`);
+  return parts.length ? parts.join(' ') : 'No hook config or cache to remove. Already at defaults.';
 }
 
 function main() {

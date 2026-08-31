@@ -1311,6 +1311,109 @@ describe('hook-admin.mjs', () => {
     assert.equal(r.stdout, '');
     assert.equal(r.audit.skipped, 'config-ignore-file');
   });
+
+  it('reset prunes impeccable entries from an installed manifest, sibling entries survive', () => {
+    // Deliberately no .claude/skills/ folder in this fixture: the prune must
+    // not be gated on the skill install surviving (repairHookManifests()
+    // gates on it; a reset mid-uninstall most needs the prune to run anyway).
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({ hook: { enabled: false } }));
+    fs.mkdirSync(path.join(cwd, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(cwd, '.claude', 'settings.local.json'), JSON.stringify({
+      description: 'Impeccable design detector',
+      hooks: {
+        PostToolUse: [
+          { matcher: 'OtherTool', hooks: [{ type: 'command', command: 'node "./local-hook.mjs"' }] },
+          { matcher: 'Edit|Write', hooks: [{ type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' }] },
+        ],
+        Stop: [{ hooks: [{ type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' }] }],
+      },
+    }));
+
+    const out = runAdmin(['reset']);
+    assert.match(out, /Reset design hook config and cache \(removed:/);
+    assert.match(out, /Removed hook entries from: \.claude\./);
+
+    const claude = JSON.parse(fs.readFileSync(path.join(cwd, '.claude', 'settings.local.json'), 'utf-8'));
+    assert.equal(claude.hooks.PostToolUse.length, 1);
+    assert.match(claude.hooks.PostToolUse[0].hooks[0].command, /local-hook\.mjs/);
+    assert.equal(claude.hooks.Stop, undefined, 'the impeccable-only Stop array should be dropped entirely');
+  });
+
+  it('reset prunes all four provider manifests installed via `on`', () => {
+    for (const provider of ['.claude', '.agents', '.cursor', '.github']) {
+      fs.mkdirSync(path.join(cwd, provider, 'skills', 'impeccable', 'scripts'), { recursive: true });
+    }
+    runAdmin(['on']);
+    assert.match(fs.readFileSync(path.join(cwd, '.claude', 'settings.local.json'), 'utf-8'), /skills\/impeccable\/scripts\/hook\.mjs/);
+
+    const out = runAdmin(['reset']);
+    assert.match(out, /Reset design hook config and cache \(removed:/);
+    assert.match(out, /Removed hook entries from: \.claude, \.agents, \.cursor, \.github\./);
+
+    assert.equal(fs.existsSync(path.join(cwd, '.claude', 'settings.local.json')), false, 'nothing else was in the manifest, so it is removed entirely');
+    assert.equal(fs.existsSync(path.join(cwd, '.codex', 'hooks.json')), false);
+    assert.equal(fs.existsSync(path.join(cwd, '.cursor', 'hooks.json')), false);
+    assert.equal(fs.existsSync(path.join(cwd, '.github', 'hooks', 'impeccable.json')), false);
+  });
+
+  it('reset never touches the shared/committed manifest, only the local one', () => {
+    // .claude/settings.json is the team-shared, typically committed file;
+    // `on` only ever reads it and never writes it, so reset honors the same
+    // write-scope asymmetry.
+    const shared = JSON.stringify({
+      hooks: { PostToolUse: [{ matcher: 'Edit', hooks: [{ type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' }] }] },
+    });
+    fs.mkdirSync(path.join(cwd, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(cwd, '.claude', 'settings.json'), shared);
+    fs.writeFileSync(path.join(cwd, '.claude', 'settings.local.json'), shared);
+
+    const out = runAdmin(['reset']);
+
+    // No config existed, so the message carries only the prune half.
+    assert.match(out, /Removed hook entries from: \.claude\./);
+    assert.doesNotMatch(out, /Reset design hook config and cache/);
+    assert.equal(fs.readFileSync(path.join(cwd, '.claude', 'settings.json'), 'utf-8'), shared, 'shared settings.json must survive reset untouched');
+    assert.equal(fs.existsSync(path.join(cwd, '.claude', 'settings.local.json')), false, 'the local settings.local.json is still pruned');
+  });
+
+  it('reset with no manifests installed keeps the original config-only message', () => {
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({ hook: { enabled: false } }));
+
+    const out = runAdmin(['reset']);
+    assert.match(out, /Reset design hook config and cache/);
+    assert.doesNotMatch(out, /Removed hook entries from/);
+    assert.equal(fs.existsSync(getConfigPath(cwd)), false);
+  });
+
+  it('reset leaves a manifest with no impeccable marker byte-for-byte unchanged', () => {
+    fs.mkdirSync(path.join(cwd, '.claude'), { recursive: true });
+    const unrelated = JSON.stringify({
+      hooks: { PostToolUse: [{ matcher: 'OtherTool', hooks: [{ type: 'command', command: 'node "./unrelated.mjs"' }] }] },
+    });
+    fs.writeFileSync(path.join(cwd, '.claude', 'settings.local.json'), unrelated);
+
+    const out = runAdmin(['reset']);
+
+    assert.match(out, /Already at defaults/);
+    assert.equal(fs.readFileSync(path.join(cwd, '.claude', 'settings.local.json'), 'utf-8'), unrelated);
+  });
+
+  it('on, off, then reset leaves nothing armed: config gone and every manifest unwired (issue #512 repro)', () => {
+    fs.mkdirSync(path.join(cwd, '.claude', 'skills', 'impeccable', 'scripts'), { recursive: true });
+    runAdmin(['on']);
+    runAdmin(['off']);
+
+    runAdmin(['reset']);
+
+    // The harness only invokes the hook through a manifest entry, so with the
+    // config and every manifest gone the project cannot re-arm, whatever the
+    // config default says.
+    assert.equal(fs.existsSync(getConfigPath(cwd)), false);
+    assert.equal(fs.existsSync(getLocalConfigPath(cwd)), false);
+    assert.equal(fs.existsSync(path.join(cwd, '.claude', 'settings.local.json')), false);
+  });
 });
 
 describe('renderTemplate()', () => {
