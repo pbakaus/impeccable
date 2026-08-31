@@ -32,7 +32,7 @@ If a prior critique exists, use it as one input:
 node {{scripts_path}}/critique-storage.mjs latest "<resolved target>"
 ```
 
-Exit 0 returns the latest snapshot. For a file target, read its last commit as `TZ=UTC git log -1 --date=format-local:%Y-%m-%dT%H-%M-%SZ --format=%cd <target>`; it shares the snapshot `timestamp` format, so compare the two as plain strings. When the commit stamp is greater, close the snapshot and do not inherit:
+Exit 0 returns the latest snapshot. For a file target, first run `git status --short --untracked-files=all ":(literal)<resolved target>"`. Any output means the working-tree version has staged, unstaged, or untracked changes that commit history cannot date; treat it as newer than the snapshot, close the snapshot, and do not inherit. When the target is clean, read its last commit as `TZ=UTC git log -1 --date=format-local:%Y-%m-%dT%H-%M-%SZ --format=%cd ":(literal)<resolved target>"`; it shares the snapshot `timestamp` format, so compare the two as plain strings. When the commit stamp is greater, close the snapshot and do not inherit:
 
 ```bash
 node {{scripts_path}}/critique-storage.mjs close "<resolved target>"
