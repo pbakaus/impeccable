@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export const LABEL_DEFS = [
+  { name: 'needs triage', color: 'd4c5f9', description: 'New or reopened issue awaiting maintainer triage' },
   { name: 'waiting on contributor', color: 'fbca04', description: 'Waiting for the PR author to respond or make changes' },
   { name: 'needs maintainer review', color: '5319e7', description: 'Ready for a maintainer to review or decide' },
   { name: 'ready to merge', color: '0e8a16', description: 'Passing, resolved, and ready for a maintainer merge decision' },
@@ -42,7 +43,16 @@ const DEFAULT_TRUSTED_MARKER_AUTHORS = ['github-actions', 'github-actions[bot]']
 
 const REVIEW_BLOCKING_STATES = new Set(['CHANGES_REQUESTED']);
 const FAILING_STATUS_STATES = new Set(['ERROR', 'FAILURE']);
+const CONTRIBUTOR_POLICY_LABELS = new Set([
+  'policy: needs issue',
+  'policy: needs ai disclosure',
+  'policy: generated output',
+]);
 const SHERIFF_WAIT_COMMAND = /^\/sheriff\s+wait\s*$/i;
+
+function normalizeLabelName(label) {
+  return String(label || '').trim().toLowerCase();
+}
 
 const PR_QUERY = `
 query($owner: String!, $name: String!, $after: String) {
@@ -139,11 +149,14 @@ export function evaluatePullRequest(pr, options = {}) {
   const closeDays = Number.isFinite(options.closeDays) ? options.closeDays : 14;
   const maintainers = loginSet(options.maintainers || DEFAULT_MAINTAINERS);
   const regularContributors = loginSet(options.regularContributors || DEFAULT_REGULAR_CONTRIBUTORS);
-  const exemptLabels = new Set(options.exemptLabels || DEFAULT_EXEMPT_LABELS);
+  const exemptLabels = new Set(
+    (options.exemptLabels || DEFAULT_EXEMPT_LABELS).map(normalizeLabelName),
+  );
   const trustedMarkerAuthors = loginSet(options.trustedMarkerAuthors || DEFAULT_TRUSTED_MARKER_AUTHORS);
   const autoCloseRegulars = options.autoCloseRegulars === true;
 
   const labels = new Set(pr.labels || []);
+  const policyBlockers = [...labels].filter(isBlockingPolicyLabel);
   const author = normalizeLogin(pr.authorLogin || pr.author?.login || '');
   const daysOpen = Math.floor((now.getTime() - toDate(pr.createdAt).getTime()) / DAY_MS);
   const latestContributorCommitAt = latestCommitBelongsToAuthor(pr, author) ? pr.latestCommitAt : null;
@@ -173,7 +186,30 @@ export function evaluatePullRequest(pr, options = {}) {
   }
 
   if (pr.mergeable === 'CONFLICTING') {
-    addBlocker({ kind: 'merge-conflicts', label: 'blocked: merge conflicts', at: pr.updatedAt });
+    const firstSeenAt = latestLabelEventAt(
+      pr.labelEvents || [],
+      'blocked: merge conflicts',
+      'LabeledEvent',
+    ) || pr.updatedAt || pr.latestCommitAt || pr.createdAt;
+    addContributorBlocker({
+      kind: 'merge-conflicts',
+      label: 'blocked: merge conflicts',
+      at: latestDate([firstSeenAt, latestContributorAt]),
+    });
+  }
+
+  for (const label of policyBlockers) {
+    const firstSeenAt = latestLabelEventAt(
+      pr.labelEvents || [],
+      label,
+      'LabeledEvent',
+    ) || pr.updatedAt || pr.createdAt;
+    const blocker = {
+      kind: label,
+      at: latestDate([firstSeenAt, latestContributorAt]),
+    };
+    if (CONTRIBUTOR_POLICY_LABELS.has(label)) addContributorBlocker(blocker);
+    else addBlocker(blocker);
   }
 
   if (latestBlockingReviewAt && !isAfter(latestContributorAt, latestBlockingReviewAt)) {
@@ -216,6 +252,7 @@ export function evaluatePullRequest(pr, options = {}) {
     && !contributorActionRequired
     && unresolvedThreadCount === 0
     && pr.reviewDecision !== 'CHANGES_REQUESTED'
+    && policyBlockers.length === 0
     && statusIsReady
     && mergeableIsReady;
 
@@ -235,7 +272,8 @@ export function evaluatePullRequest(pr, options = {}) {
   const warningAlreadyPosted = Boolean(warningPostedAt
     && (!contributorActionBlockerAt || !isAfter(contributorActionBlockerAt, warningPostedAt)));
   const closeAlreadyPosted = hasMarker(pr.comments, CLOSE_MARKER, trustedMarkerAuthors);
-  const exemptFromClose = [...labels].some((label) => exemptLabels.has(label));
+  const exemptFromClose = [...labels]
+    .some((label) => exemptLabels.has(normalizeLabelName(label)));
   const regularContributor = regularContributors.has(author);
   const shouldWarn = staleEligible && !warningAlreadyPosted;
   const shouldClose = contributorActionRequired
@@ -373,7 +411,7 @@ export function staleWarningComment(pr, {
     WARNING_MARKER,
     `Thanks for the PR. Impeccable is moving quickly, and this PR is currently waiting on contributor action.`,
     '',
-    `It has been waiting for contributor action for ${waitingDays} days. Please address the outstanding review feedback, draft state, or explicit maintainer wait request. PRs that are still waiting on contributor action after ${closeDays} days are closed automatically.`,
+    `It has been waiting for contributor action for ${waitingDays} days. Please address the outstanding review feedback, draft state, merge conflict, policy requirement, or explicit maintainer wait request. PRs that are still waiting on contributor action after ${closeDays} days are closed automatically.`,
     '',
     `If nothing changes, this PR may be closed on or after ${closeDate}. Happy to reopen when it is ready to continue.`,
   ].join('\n');
@@ -758,6 +796,10 @@ function loginSet(logins) {
 
 function normalizeLogin(login) {
   return String(login || '').toLowerCase();
+}
+
+function isBlockingPolicyLabel(label) {
+  return String(label || '').startsWith('policy:') && label !== 'policy: approved';
 }
 
 function requireValue(argv, index, flag) {

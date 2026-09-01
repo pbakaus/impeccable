@@ -674,6 +674,34 @@ describe('detectText — overused fonts', () => {
   });
 });
 
+describe('detectHtml — overused fonts system stack', () => {
+  test('Inter before a system stack still flags overused-font', async () => {
+    const page = `<!DOCTYPE html><html><head><style>
+      body { font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif; }
+      h1 { font-size: 34px; }
+      p { font-size: 15px; }
+    </style></head><body><h1>Hello</h1><p>world</p></body></html>`;
+    await withStaticFixture({ 'index.html': page }, async ({ file }) => {
+      const f = await detectHtml(file);
+      expect(f.some(r => r.antipattern === 'overused-font' && /inter/i.test(r.snippet))).toBe(true);
+    });
+  });
+
+  test('checkPageTypography regex path skips Roboto in system stack', () => {
+    const html = `<!DOCTYPE html><html><head><style>
+      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+    </style></head><body><h1>Hello</h1><p>world</p></body></html>`;
+    const doc = {
+      styleSheets: [],
+      documentElement: { outerHTML: html },
+      querySelectorAll() { return []; },
+    };
+    const win = { getComputedStyle() { return { fontSize: '16px' }; } };
+    const f = checkPageTypography(doc, win);
+    expect(f.filter(r => r.id === 'overused-font')).toHaveLength(0);
+  });
+});
+
 describe('detectText — flat type hierarchy', () => {
   test('flags sizes too close together', () => {
     const page = '<!DOCTYPE html><html><style>h1{font-size:18px}h2{font-size:16px}h3{font-size:15px}p{font-size:14px}.s{font-size:13px}</style></html>';

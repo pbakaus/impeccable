@@ -28,6 +28,7 @@ import { runUserBot } from './new-work-e2e/user-bot.mjs';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SERVE = path.join(ROOT, 'skill', 'scripts', 'serve-question.mjs');
 const GENERATE = path.join(ROOT, 'skill', 'scripts', 'generate-image.mjs');
+const EMBED_PROMPT = path.join(ROOT, 'skill', 'scripts', 'embed-prompt.mjs');
 const CATALOG_DIR = path.join(ROOT, 'tests', 'fixtures', 'concept-catalog');
 
 let playwright;
@@ -118,6 +119,10 @@ function spawnSyncGen(prompt, out, size = null) {
     env: { ...process.env, IMPECCABLE_IMAGE_GEN_FAKE: '1' },
     encoding: 'buffer',
   });
+}
+
+function spawnSyncEmbed(args) {
+  return spawnSync(process.execPath, [EMBED_PROMPT, ...args], { encoding: 'utf8' });
 }
 
 // --------------------------------------------------------------------------
@@ -843,7 +848,7 @@ describe('new-work-e2e: serve-question decision page', () => {
       // the server keeps its real clock, so its own idle grace never fires.
       await page.clock.install();
       let beats = 0;
-      page.on('request', (r) => { if (r.url().endsWith('/heartbeat')) beats += 1; });
+      page.on('request', (r) => { if (new URL(r.url()).pathname === '/heartbeat') beats += 1; });
       await page.goto(url, { waitUntil: 'load' });
       // Playwright actionability waits on rAF, which the fake clock owns, so
       // dispatch the click directly.
@@ -1008,6 +1013,57 @@ describe('new-work-e2e: fake image generation', () => {
       const bytesA = readFileSync(a);
       const bytesC = readFileSync(c);
       assert.ok(!bytesA.equals(bytesC), 'different prompts produce different images');
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('reads, scans, and idempotently replaces the prompt embedded in a PNG', () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), 'new-work-img-'));
+    try {
+      const image = makeFakeImage(cwd, 'synthetic IEND source prompt', 'comp.png');
+      const original = readFileSync(image);
+      assert.ok(original.indexOf(Buffer.from('IEND')) < original.lastIndexOf(Buffer.from('IEND')),
+        'the fixture carries IEND bytes in metadata before the real terminator chunk');
+
+      const first = spawnSyncEmbed([image, '--prompt', 'first production prompt']);
+      assert.equal(first.status, 0, first.stderr);
+      assert.equal(spawnSyncEmbed([image, '--read']).stdout.trim(), 'first production prompt');
+
+      const scan = spawnSyncEmbed(['--scan', cwd]);
+      assert.equal(scan.status, 0, scan.stderr);
+      assert.match(scan.stdout, /SCAN: 1 raster, 0 missing/);
+
+      const second = spawnSyncEmbed([image, '--prompt', 'replacement production prompt']);
+      assert.equal(second.status, 0, second.stderr);
+      assert.equal(spawnSyncEmbed([image, '--read']).stdout.trim(), 'replacement production prompt');
+
+      const bytes = readFileSync(image);
+      assert.equal(bytes.toString().match(/impeccable:prompt/g)?.length, 1,
+        're-embedding replaces the existing metadata instead of accumulating chunks');
+      assert.ok(bytes.includes(Buffer.from('SYNTHETIC')),
+        'replacing the prompt preserves unrelated PNG metadata');
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('reads JPEG comments and sidecar fallbacks through the same scan contract', () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), 'new-work-img-'));
+    try {
+      const jpeg = path.join(cwd, 'reference.jpg');
+      const webp = path.join(cwd, 'reference.webp');
+      writeFileSync(jpeg, Buffer.from([0xff, 0xd8, 0xff, 0xda, 0x00, 0x02]));
+      writeFileSync(webp, Buffer.from('RIFF placeholder WEBP'));
+
+      assert.equal(spawnSyncEmbed([jpeg, '--prompt', 'jpeg prompt']).status, 0);
+      assert.equal(spawnSyncEmbed([webp, '--prompt', 'sidecar prompt']).status, 0);
+      assert.equal(spawnSyncEmbed([jpeg, '--read']).stdout.trim(), 'jpeg prompt');
+      assert.equal(spawnSyncEmbed([webp, '--read']).stdout.trim(), 'sidecar prompt');
+
+      const scan = spawnSyncEmbed(['--scan', cwd]);
+      assert.equal(scan.status, 0, scan.stderr);
+      assert.match(scan.stdout, /SCAN: 2 rasters, 0 missing/);
     } finally {
       rmSync(cwd, { recursive: true, force: true });
     }

@@ -162,7 +162,68 @@ async function runVisualContrastFallback(page, serializedGroups, options, profil
 // Puppeteer detection (for URLs)
 // ---------------------------------------------------------------------------
 
-async function detectUrl(url, options = {}) {
+function decodeUrlComponent(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function splitScanUrl(url) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return { href: url, credentials: null };
+  }
+  if (!parsed.username && !parsed.password) {
+    return { href: url, credentials: null };
+  }
+  const credentials =
+    parsed.protocol === 'http:' || parsed.protocol === 'https:'
+      ? {
+          username: decodeUrlComponent(parsed.username),
+          password: decodeUrlComponent(parsed.password),
+        }
+      : null;
+  parsed.username = '';
+  parsed.password = '';
+  return { href: parsed.href, credentials };
+}
+
+function basicAuthHeader(credentials) {
+  return `Basic ${Buffer.from(`${credentials.username}:${credentials.password}`).toString('base64')}`;
+}
+
+// page.authenticate is page-wide: a cross-origin redirect that then 401s
+// would receive these credentials. Attach Authorization only to the scan origin.
+async function applyOriginScopedAuth(page, href, credentials) {
+  if (!credentials) return;
+  let origin = '';
+  try {
+    origin = new URL(href).origin;
+  } catch {
+    return;
+  }
+  if (!origin) return;
+  const header = basicAuthHeader(credentials);
+  await page.setRequestInterception(true);
+  page.on('request', (request) => {
+    let headers;
+    try {
+      if (new URL(request.url()).origin === origin) {
+        headers = { ...request.headers(), authorization: header };
+      }
+    } catch {
+      // invalid request URL: continue without auth
+    }
+    void request.continue(headers ? { headers } : undefined).catch(() => {});
+  });
+}
+
+async function detectUrl(rawUrl, options = {}) {
+  const { href: url, credentials } = splitScanUrl(rawUrl);
   const profile = options?.profile;
   const waitUntil = options?.waitUntil || 'networkidle0';
   const settleMs = Number.isFinite(options?.settleMs) ? options.settleMs : 0;
@@ -238,6 +299,7 @@ async function detectUrl(url, options = {}) {
       ruleId: 'set-viewport',
       target: url,
     }, () => page.setViewport(viewport));
+    await applyOriginScopedAuth(page, url, credentials);
     await profileStepAsync(profile, {
       engine: 'browser',
       phase: 'load',
@@ -369,4 +431,4 @@ async function createBrowserDetector(options = {}) {
   };
 }
 
-export { runVisualContrastFallback, detectUrl, createBrowserDetector, launchBrowser };
+export { runVisualContrastFallback, detectUrl, createBrowserDetector, launchBrowser, splitScanUrl };

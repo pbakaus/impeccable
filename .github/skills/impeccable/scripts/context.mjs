@@ -1172,6 +1172,7 @@ async function cli() {
     appendDetectorFallback(parts, ctx);
     appendImageGenDirective(parts);
     appendBuildPathDirective(parts, ctx);
+    await appendCompRoundOpenDirective(parts, ctx);
     appendAutonomyCounterDirective(parts);
     appendSubagentAuthorizationDirective(parts);
     if (shouldWarnMissingTarget(ctx, targetProvided, targetExists)) {
@@ -1191,6 +1192,7 @@ async function cli() {
   appendDetectorFallback(parts, ctx);
   appendImageGenDirective(parts);
   appendBuildPathDirective(parts, ctx);
+  await appendCompRoundOpenDirective(parts, ctx);
   appendAutonomyCounterDirective(parts);
   appendSubagentAuthorizationDirective(parts);
   if (shouldWarnMissingTarget(ctx, targetProvided, targetExists)) {
@@ -1329,6 +1331,25 @@ function readBuildPathAt(root) {
 // selecting another workspace, cwd is the caller's app, not the target's, and
 // letting it rank above the repo root hands one workspace another's workflow.
 // It stands in only when no project resolved at all.
+// A direction was dealt for a comp-led build and the phase machine never
+// started, or stopped short of the hero gate: the comp round is open. Said
+// here because every model in the corpus ran context.mjs unprompted, and
+// the run that skipped the round did so between the roll and the first
+// write; a boot that names the open round is a boot the write cannot claim
+// it never saw. Reads build-phase's own helper so the two agree.
+async function appendCompRoundOpenDirective(parts, ctx) {
+  try {
+    const { compRoundOpen } = await import('./build-phase.mjs');
+    const roots = [...new Set([ctx?.projectRoot || process.cwd(), ctx?.repoRoot].filter(Boolean).map((r) => path.resolve(r)))];
+    for (const root of roots) {
+      const open = compRoundOpen(root);
+      if (!open) continue;
+      parts.push(`COMP_ROUND_OPEN: ${open.reason}. On a comp-led build no page code is written before build-phase.mjs closes the comps, spec, plates, and hero gates; run \`node ${path.dirname(fileURLToPath(import.meta.url))}/build-phase.mjs status\` and follow its NEXT line. A page written past an open round is what the finish reviewer sends back.`);
+      return;
+    }
+  } catch { /* build-phase absent: nothing to say */ }
+}
+
 function appendBuildPathDirective(parts, ctx) {
   const roots = [...new Set(
     [ctx?.projectRoot || process.cwd(), ctx?.repoRoot].filter(Boolean).map((root) => path.resolve(root)),

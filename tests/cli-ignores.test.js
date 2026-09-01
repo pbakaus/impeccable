@@ -115,6 +115,13 @@ describe('impeccable ignores CLI', () => {
     expect(existsSync(join(root, '.impeccable', 'config.json'))).toBe(false);
   });
 
+  test('rejects exact values for rules that cannot extract one', () => {
+    const result = run(['add-value', 'side-tab', 'Inter']);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(/side-tab has no extractable ignore value.*add-value side-tab "\*" --file <glob>/);
+    expect(existsSync(join(root, '.impeccable', 'config.json'))).toBe(false);
+  });
+
   test('removes an existing broad wildcard value ignore', () => {
     mkdirSync(join(root, '.impeccable'), { recursive: true });
     writeFileSync(join(root, '.impeccable', 'config.json'), JSON.stringify({

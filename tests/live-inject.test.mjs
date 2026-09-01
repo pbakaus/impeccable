@@ -10,9 +10,37 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { livePathGlobToRegex } from '../skill/scripts/lib/live-path-globs.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const INJECT = resolve(__dirname, '..', 'skill/scripts/live-inject.mjs');
+
+describe('live path globs', () => {
+  it('matches recursive segments, including zero segments', () => {
+    const anywhere = livePathGlobToRegex('**/index.html');
+    assert.equal(anywhere.test('index.html'), true);
+    assert.equal(anywhere.test('public/index.html'), true);
+    assert.equal(anywhere.test('apps/web/public/index.html'), true);
+
+    const underPublic = livePathGlobToRegex('public/**/*.html');
+    assert.equal(underPublic.test('public/index.html'), true);
+    assert.equal(underPublic.test('public/docs/index.html'), true);
+    assert.equal(underPublic.test('src/index.html'), false);
+  });
+
+  it('keeps single-star and question-mark matches inside one segment', () => {
+    const pattern = livePathGlobToRegex('pages/*/item?.html');
+    assert.equal(pattern.test('pages/docs/item1.html'), true);
+    assert.equal(pattern.test('pages/docs/deep/item1.html'), false);
+    assert.equal(pattern.test('pages/docs/item12.html'), false);
+  });
+
+  it('treats regular-expression punctuation as literal path text', () => {
+    const pattern = livePathGlobToRegex('pages/[draft]/item+.html');
+    assert.equal(pattern.test('pages/[draft]/item+.html'), true);
+    assert.equal(pattern.test('pages/d/itemm.html'), false);
+  });
+});
 
 function runInject(cwd, configPath, args) {
   try {

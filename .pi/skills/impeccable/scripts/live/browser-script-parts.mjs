@@ -6,6 +6,7 @@ import { LIVE_CHROME_MOUNT_CONTRACT, LIVE_UI_SURFACES } from './ui-surfaces.mjs'
 export const LIVE_BROWSER_SCRIPT_PARTS = Object.freeze([
   Object.freeze({ name: 'session-state', file: 'live-browser-session.js' }),
   Object.freeze({ name: 'dom-helpers', file: 'live-browser-dom.js' }),
+  Object.freeze({ name: 'project-ignores', file: 'live-browser-ignores.js' }),
   Object.freeze({ name: 'browser-ui', file: 'live-browser.js' }),
 ]);
 
@@ -47,6 +48,11 @@ export function assembleLiveBrowserScript({
   // so tests can assemble with a stand-in.
   uiSurfaces = LIVE_UI_SURFACES,
   mountContract = LIVE_CHROME_MOUNT_CONTRACT,
+  // Project detector waivers ({ ignoreRules, ignoreValues, roots }), read from
+  // .impeccable config by live-server.mjs. live-browser-ignores.js resolves
+  // them against the page when a detect scan starts, so the overlay filters
+  // the same findings the CLI and the edit hook do (issue #639).
+  projectIgnores = null,
 }) {
   const prelude =
     `window.__IMPECCABLE_TOKEN__ = '${token}';\n` +
@@ -66,7 +72,8 @@ export function assembleLiveBrowserScript({
     // repo's tests, the impeccable-site Live UI lab) import the module directly,
     // which is what keeps the two from drifting.
     `window.__IMPECCABLE_LIVE_UI_SURFACES__ = ${JSON.stringify(uiSurfaces)};\n` +
-    `window.__IMPECCABLE_LIVE_MOUNT_CONTRACT__ = ${JSON.stringify(mountContract)};\n`;
+    `window.__IMPECCABLE_LIVE_MOUNT_CONTRACT__ = ${JSON.stringify(mountContract)};\n` +
+    `window.__IMPECCABLE_PROJECT_IGNORES__ = ${JSON.stringify(projectIgnores)};\n`;
 
   const body = parts.map((part) => {
     const file = part.file || path.basename(part.path || '');

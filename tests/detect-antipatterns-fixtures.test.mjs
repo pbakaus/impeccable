@@ -633,6 +633,21 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
     assert.equal(f.length, 0);
   });
 
+  it('overused-font: flags named primaries and skips system-stack Roboto', async () => {
+    const f = await detectHtml(path.join(FIXTURES, 'overused-font.html'));
+    const snippets = f.filter(r => r.antipattern === 'overused-font').map(r => r.snippet).join(' | ');
+    for (const font of ['inter', 'geist', 'montserrat', 'lato']) {
+      assert.match(snippets, new RegExp(`Primary font: ${font}`), `expected flag for ${font}: ${snippets}`);
+    }
+    assert.doesNotMatch(snippets, /roboto/i, `system-stack Roboto must not be primary: ${snippets}`);
+    assert.doesNotMatch(snippets, /arial/i, `system-stack Arial must not be primary: ${snippets}`);
+    assert.equal(
+      f.some(r => r.antipattern === 'flat-type-hierarchy'),
+      false,
+      `overused-font fixture should not contain incidental type findings: ${f.map(r => `${r.antipattern}:${r.snippet}`).join('; ')}`,
+    );
+  });
+
   it('design-system: flags only values outside the provided DESIGN.md tokens', async () => {
     const designSystem = normalizeDesignSystem({
       frontmatter: {
@@ -1561,5 +1576,34 @@ describe('detectHtml — dark themes written in modern color syntax', () => {
       hidden.length, 0,
       `no finding may reference the occluded gradient's stops, got: ${hidden.map(r => r.snippet).join('; ')}`,
     );
+  });
+});
+
+describe('detectHtml — organic-clip-path', () => {
+  const SHOULD_FLAG = ['polygon() with 18 vertices', 'polygon() with 21 vertices', 'path() with 6 curve segments'];
+  it('flags organic polygon/path clips and passes geometric clips', async () => {
+    const f = await detectHtml(path.join(FIXTURES, 'organic-clip-path.html'));
+    const hits = f.filter(r => r.antipattern === 'organic-clip-path');
+    // arch (18), blob (21), silhouette path, inline blob (21)
+    assert.equal(hits.length, 4, hits.map(h => h.snippet).join('\n'));
+    for (const text of SHOULD_FLAG) {
+      assert.ok(hits.some(h => (h.snippet || '').includes(text)), `expected a finding containing "${text}"`);
+    }
+    // geometric clips never mention themselves
+    for (const h of hits) assert.doesNotMatch(h.snippet, /with [5-9] vertices/);
+  });
+});
+
+describe('detectHtml — buried-raster', () => {
+  it('flags rasters under near-opaque washes and at near-zero opacity, passes tints, blends, and visible textures', async () => {
+    const f = await detectHtml(path.join(FIXTURES, 'buried-raster.html'));
+    const hits = f.filter(r => r.antipattern === 'buried-raster');
+    const snippets = hits.map(h => h.snippet || '');
+    assert.equal(snippets.filter(s => /near-opaque gradient wash/.test(s)).length, 2, snippets.join('\n'));
+    assert.ok(snippets.some(s => /raster background at opacity 0.04 "Grain"/.test(s)), snippets.join('\n'));
+    assert.ok(snippets.some(s => /<img> at opacity 0.05 "Ghost img"/.test(s)), snippets.join('\n'));
+    assert.equal(hits.length, 4, snippets.join('\n'));
+    // the passing shapes never appear
+    assert.ok(!snippets.some(s => /hero\.jpg|opacity 0\.6|multiply|Faint text/.test(s)));
   });
 });

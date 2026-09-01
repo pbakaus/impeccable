@@ -11,14 +11,17 @@
  */
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
 import { execSync, execFileSync } from 'child_process';
-import { mkdtempSync, existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync, rmSync, lstatSync, realpathSync, readlinkSync, symlinkSync } from 'fs';
+import { mkdtempSync, existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync, chmodSync, rmSync, lstatSync, realpathSync, readlinkSync, symlinkSync, statSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import {
+  collectInstallDetections,
   copyProviderAgents,
   copyProviderHooks,
   copyProviderSkills,
   decideHookInstall,
+  downloadAndExtractBundle,
+  downloadFile,
   expectedHookDests,
   formatInstallDetectionLines,
   mergeHookManifests,
@@ -907,6 +910,85 @@ describe('skills install/update: local universal bundle e2e', () => {
     rmSync(tmp, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });
   });
+
+  test('detects an installed Veto CLI and targets its managed skill directory', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-veto-detect-'));
+    const home = mkdtempSync(join(tmpdir(), 'imp-home-veto-detect-'));
+    const bin = join(tmp, 'bin');
+    mkdirSync(bin, { recursive: true });
+    mkdirSync(join(home, '.veto'), { recursive: true });
+    writeFileSync(join(bin, 'veto'), '#!/bin/sh\n');
+
+    const previousPath = process.env.PATH;
+    process.env.PATH = bin;
+    try {
+      expect(collectInstallDetections(tmp, home).some((detection) => detection.provider === '.veto')).toBe(false);
+
+      chmodSync(join(bin, 'veto'), 0o755);
+      const detections = collectInstallDetections(tmp, home);
+      const veto = detections.find((detection) => detection.provider === '.veto');
+      expect(veto).toEqual(expect.objectContaining({
+        provider: '.veto',
+        scope: 'user',
+        foundPath: join(bin, 'veto'),
+        installPath: join(home, '.veto', 'skills'),
+        reason: 'CLI on PATH',
+      }));
+    } finally {
+      process.env.PATH = previousPath;
+      rmSync(tmp, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('does not detect an extensionless Veto file on Windows', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-veto-win-detect-'));
+    const home = mkdtempSync(join(tmpdir(), 'imp-home-veto-win-detect-'));
+    const bin = join(tmp, 'bin');
+    mkdirSync(bin, { recursive: true });
+    mkdirSync(join(home, '.veto'), { recursive: true });
+    writeFileSync(join(bin, 'veto'), '#!/bin/sh\n');
+
+    const previousPath = process.env.PATH;
+    const originalPlatform = process.platform;
+    process.env.PATH = bin;
+    try {
+      Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+      expect(collectInstallDetections(tmp, home).some((detection) => detection.provider === '.veto')).toBe(false);
+
+      const windowsCommand = join(bin, 'veto.cmd');
+      writeFileSync(windowsCommand, '@echo off\r\n');
+      chmodSync(windowsCommand, 0o755);
+      const detections = collectInstallDetections(tmp, home);
+      expect(detections.find((detection) => detection.provider === '.veto')).toEqual(expect.objectContaining({
+        foundPath: windowsCommand,
+        reason: 'CLI on PATH',
+      }));
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+      process.env.PATH = previousPath;
+      rmSync(tmp, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('installs Veto skills into its global managed directory', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-veto-install-'));
+    const home = mkdtempSync(join(tmpdir(), 'imp-home-veto-install-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.veto']);
+
+    const output = run('install -y --providers=veto --scope=global --no-hooks', {
+      cwd: tmp,
+      env: { ...process.env, HOME: home, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+
+    expect(output).toContain('Installed impeccable into: .veto (global)');
+    expect(existsSync(join(home, '.veto', 'skills', 'impeccable', 'SKILL.md'))).toBe(true);
+
+    rmSync(tmp, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }, 15000);
 
   test('installs provider-specific skills into a fresh project', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'imp-test-local-install-'));
@@ -2213,4 +2295,174 @@ describe('hermesGlobalHome resolver (PR #521)', () => {
     rmSync(tmp, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });
   }, 20000);
+});
+
+describe('downloadAndExtractBundle: safe staging dir (#479)', () => {
+  test('local bundle uses mkdtemp under tmpdir with 0700 perms', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-staging-'));
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.claude']);
+    const prev = process.env.IMPECCABLE_BUNDLE_PATH;
+    let stagingDir;
+    try {
+      process.env.IMPECCABLE_BUNDLE_PATH = bundleRoot;
+      stagingDir = await downloadAndExtractBundle();
+
+      expect(stagingDir.startsWith(tmpdir())).toBe(true);
+      const basename = stagingDir.split(/[/\\]/).pop();
+      expect(basename.startsWith('impeccable-local-bundle-')).toBe(true);
+      expect(basename).not.toMatch(/^impeccable-local-bundle-\d+-\d+$/);
+
+      if (process.platform !== 'win32') {
+        expect(statSync(stagingDir).mode & 0o777).toBe(0o700);
+      }
+
+      expect(existsSync(join(stagingDir, '.claude', 'skills', 'impeccable', 'SKILL.md'))).toBe(true);
+    } finally {
+      if (prev === undefined) delete process.env.IMPECCABLE_BUNDLE_PATH;
+      else process.env.IMPECCABLE_BUNDLE_PATH = prev;
+      if (stagingDir) rmSync(stagingDir, { recursive: true, force: true });
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('downloadFile (#479)', () => {
+  test('200 writes body to dest with wx flag', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'imp-dl-'));
+    const dest = join(dir, 'out.bin');
+    try {
+      const fetchImpl = async () => new Response('hello', { status: 200 });
+      await downloadFile('https://example.com/file', dest, { fetchImpl });
+      expect(readFileSync(dest, 'utf8')).toBe('hello');
+
+      await expect(downloadFile('https://example.com/file', dest, { fetchImpl }))
+        .rejects.toThrow();
+      expect(readFileSync(dest, 'utf8')).toBe('hello');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('404 throws and dest does not exist', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'imp-dl-'));
+    const dest = join(dir, 'out.bin');
+    try {
+      const fetchImpl = async () => new Response('not found', { status: 404 });
+      await expect(downloadFile('https://example.com/missing', dest, { fetchImpl }))
+        .rejects.toThrow(/HTTP 404/);
+      expect(existsSync(dest)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('redirect 302 to 200 follows location and writes second body', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'imp-dl-'));
+    const dest = join(dir, 'out.bin');
+    try {
+      let callCount = 0;
+      const fetchImpl = async (url) => {
+        callCount++;
+        if (url === 'https://example.com/start') {
+          return new Response('', { status: 302, headers: { location: 'https://example.com/final' } });
+        }
+        return new Response('final body', { status: 200 });
+      };
+      await downloadFile('https://example.com/start', dest, { fetchImpl });
+      expect(callCount).toBe(2);
+      expect(readFileSync(dest, 'utf8')).toBe('final body');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('redirect 302 to 404 throws and dest does not exist', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'imp-dl-'));
+    const dest = join(dir, 'out.bin');
+    try {
+      const fetchImpl = async (url) => {
+        if (url.includes('/start')) {
+          return new Response('', { status: 302, headers: { location: 'https://example.com/bad' } });
+        }
+        return new Response('error', { status: 404 });
+      };
+      await expect(downloadFile('https://example.com/start', dest, { fetchImpl }))
+        .rejects.toThrow(/HTTP 404/);
+      expect(existsSync(dest)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('redirect to http throws non-HTTPS and dest does not exist', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'imp-dl-'));
+    const dest = join(dir, 'out.bin');
+    try {
+      const fetchImpl = async () => new Response('', { status: 302, headers: { location: 'http://example.com/insecure' } });
+      await expect(downloadFile('https://example.com/start', dest, { fetchImpl }))
+        .rejects.toThrow(/non-HTTPS/i);
+      expect(existsSync(dest)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('relative redirect location resolved against current URL', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'imp-dl-'));
+    const dest = join(dir, 'out.bin');
+    try {
+      const fetchImpl = async (url) => {
+        if (url === 'https://example.com/api/start') {
+          return new Response('', { status: 302, headers: { location: '/final' } });
+        }
+        expect(url).toBe('https://example.com/final');
+        return new Response('ok', { status: 200 });
+      };
+      await downloadFile('https://example.com/api/start', dest, { fetchImpl });
+      expect(readFileSync(dest, 'utf8')).toBe('ok');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('more than maxRedirects hops throws and dest does not exist', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'imp-dl-'));
+    const dest = join(dir, 'out.bin');
+    try {
+      const fetchImpl = async () => new Response('', { status: 302, headers: { location: 'https://example.com/loop' } });
+      await expect(downloadFile('https://example.com/loop', dest, { fetchImpl }))
+        .rejects.toThrow(/Too many redirects/);
+      expect(existsSync(dest)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('fetchImpl rejection leaves dest absent', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'imp-dl-'));
+    const dest = join(dir, 'out.bin');
+    try {
+      const fetchImpl = async () => { throw new Error('network down'); };
+      await expect(downloadFile('https://example.com/file', dest, { fetchImpl }))
+        .rejects.toThrow(/network down/);
+      expect(existsSync(dest)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('http initial URL throws without calling fetch', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'imp-dl-'));
+    const dest = join(dir, 'out.bin');
+    try {
+      let called = false;
+      const fetchImpl = async () => { called = true; return new Response('x', { status: 200 }); };
+      await expect(downloadFile('http://example.com/file', dest, { fetchImpl }))
+        .rejects.toThrow(/non-HTTPS/i);
+      expect(called).toBe(false);
+      expect(existsSync(dest)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

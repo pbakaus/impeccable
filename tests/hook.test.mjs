@@ -9,6 +9,7 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -24,6 +25,8 @@ import {
   truthy,
   getConfigPath,
   getLocalConfigPath,
+  getCachePath,
+  getPendingPath,
   ensureHookGitExcludes,
   readConfig,
   readCache,
@@ -66,6 +69,12 @@ import {
 } from '../skill/scripts/hook-lib.mjs';
 import { normalizeIgnoreValueEntries as normalizeIgnoreValueEntriesCli } from '../cli/lib/impeccable-config.mjs';
 import { detectHtml, detectText } from '../cli/engine/detect-antipatterns.mjs';
+
+// Hook state paths are env-sensitive: an ambient IMPECCABLE_CACHE_ROOT (a
+// developer using the redirect locally) would relocate cache/pending out of
+// the tmp projects and break stock-path assertions. Clear it up front; the
+// dedicated issue-#422 suite sets and restores it explicitly.
+delete process.env.IMPECCABLE_CACHE_ROOT;
 
 function mkTmp() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-hook-'));
@@ -412,6 +421,195 @@ describe('readCache / persistCache / bumpEditCount', () => {
     assert.equal(Object.keys(reloaded.sessions).length, 8);
     assert.ok(reloaded.sessions['sid-9'], 'newest preserved');
     assert.ok(!reloaded.sessions['sid-0'], 'oldest gc-ed');
+  });
+});
+
+describe('IMPECCABLE_CACHE_ROOT relocates hook state (issue #422)', () => {
+  let cwd;
+  let cacheRoot;
+  let savedEnv;
+  beforeEach(() => {
+    cwd = mkTmp();
+    cacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-cache-root-'));
+    savedEnv = process.env.IMPECCABLE_CACHE_ROOT;
+  });
+  afterEach(() => {
+    if (savedEnv === undefined) delete process.env.IMPECCABLE_CACHE_ROOT;
+    else process.env.IMPECCABLE_CACHE_ROOT = savedEnv;
+    fs.rmSync(cwd, { recursive: true, force: true });
+    fs.rmSync(cacheRoot, { recursive: true, force: true });
+  });
+
+  it('keeps hook state project-local when the env var is unset', () => {
+    delete process.env.IMPECCABLE_CACHE_ROOT;
+    assert.equal(getCachePath(cwd), path.join(cwd, '.impeccable', 'hook.cache.json'));
+    assert.equal(getPendingPath(cwd), path.join(cwd, '.impeccable', 'hook.pending.json'));
+  });
+
+  it('treats a blank env var as unset', () => {
+    process.env.IMPECCABLE_CACHE_ROOT = '   ';
+    assert.equal(getCachePath(cwd), path.join(cwd, '.impeccable', 'hook.cache.json'));
+  });
+
+  // Mirrors hookStateDir's slug formula: readable separator-mapped path plus
+  // an 8-hex sha256 disambiguator.
+  function slugFor(p) {
+    const resolved = path.resolve(p);
+    const readable = resolved.replace(/[:\\/.]/g, '-');
+    const digest = crypto.createHash('sha256').update(resolved).digest('hex').slice(0, 8);
+    return `${readable}-${digest}`;
+  }
+
+  it('relocates cache and pending under a per-project slug dir', () => {
+    process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
+    assert.equal(getCachePath(cwd), path.join(cacheRoot, slugFor(cwd), 'hook.cache.json'));
+    assert.equal(getPendingPath(cwd), path.join(cacheRoot, slugFor(cwd), 'hook.pending.json'));
+  });
+
+  it('slug maps separators, colons, and dots to hyphens, with a digest suffix', () => {
+    process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
+    const proj = path.join(cwd, 'my.app', 'v2');
+    const slugDir = path.basename(path.dirname(getCachePath(proj)));
+    assert.doesNotMatch(slugDir, /[:\\/.]/, 'no path-significant chars survive');
+    assert.match(slugDir, /my-app-v2-[0-9a-f]{8}$/, `readable slug + 8-hex digest (got ${slugDir})`);
+  });
+
+  it('distinct projects whose readable slugs collide get distinct state dirs', () => {
+    process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
+    const dotted = path.join(cwd, 'my.app');
+    const dashed = path.join(cwd, 'my-app');
+    // Readable part is identical for both...
+    assert.equal(
+      path.resolve(dotted).replace(/[:\\/.]/g, '-'),
+      path.resolve(dashed).replace(/[:\\/.]/g, '-'),
+    );
+    // ...but the digest keeps their hook state apart.
+    assert.notEqual(path.dirname(getCachePath(dotted)), path.dirname(getCachePath(dashed)));
+  });
+
+  it('trailing separators and relative segments slug to the same dir', () => {
+    process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
+    const canonical = getCachePath(cwd);
+    assert.equal(getCachePath(cwd + path.sep), canonical);
+    assert.equal(getCachePath(path.join(cwd, 'sub', '..')), canonical);
+  });
+
+  it('trims stray whitespace from the env value', () => {
+    process.env.IMPECCABLE_CACHE_ROOT = `  ${cacheRoot}  `;
+    assert.equal(getCachePath(cwd), path.join(cacheRoot, slugFor(cwd), 'hook.cache.json'));
+  });
+
+  it('persistCache degrades gracefully when the cache root is unusable', () => {
+    // Point the root at an existing FILE so mkdir of the slug dir must fail.
+    const blocker = path.join(cacheRoot, 'not-a-dir');
+    fs.writeFileSync(blocker, 'x');
+    process.env.IMPECCABLE_CACHE_ROOT = blocker;
+    const cache = readCache(cwd);
+    bumpEditCount(cache, 'sid-1', '/x/a.tsx');
+    assert.equal(persistCache(cwd, cache), false, 'returns false instead of throwing');
+    assert.equal(fs.existsSync(path.join(cwd, '.impeccable')), false);
+  });
+
+  it('config paths stay project-local even when the redirect is active', () => {
+    process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
+    assert.equal(getConfigPath(cwd), path.join(cwd, '.impeccable', 'config.json'));
+    assert.equal(getLocalConfigPath(cwd), path.join(cwd, '.impeccable', 'config.local.json'));
+  });
+
+  it('expands a leading ~/ against os.homedir()', () => {
+    // Property check without duplicating the expansion: the tilde form must
+    // resolve identically to the explicit homedir-joined form.
+    process.env.IMPECCABLE_CACHE_ROOT = path.join(os.homedir(), 'impeccable-state');
+    const explicit = getCachePath(cwd);
+    process.env.IMPECCABLE_CACHE_ROOT = '~/impeccable-state';
+    assert.equal(getCachePath(cwd), explicit);
+    assert.ok(explicit.startsWith(os.homedir()), 'anchored under the home dir');
+  });
+
+  it('persistCache round-trips through the redirect dir and leaves the project root clean', () => {
+    process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
+    const cache = readCache(cwd);
+    bumpEditCount(cache, 'sid-1', '/x/a.tsx');
+    assert.equal(persistCache(cwd, cache), true);
+
+    assert.equal(fs.existsSync(path.join(cwd, '.impeccable')), false, 'project root untouched');
+    assert.equal(fs.existsSync(path.join(cacheRoot, slugFor(cwd), 'hook.cache.json')), true);
+
+    const reloaded = readCache(cwd);
+    assert.equal(reloaded.sessions['sid-1'].files['/x/a.tsx'].editCount, 1);
+  });
+
+  function redirectEventFor(file, sessionId = 'redir-sid') {
+    return {
+      session_id: sessionId,
+      cwd,
+      hook_event_name: 'PostToolUse',
+      tool_name: 'Edit',
+      tool_input: { file_path: file },
+    };
+  }
+
+  function writeProjectFile(rel, body) {
+    const abs = path.join(cwd, rel);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, body);
+    return abs;
+  }
+
+  it('runHook end-to-end: findings persist under the redirect root, project root stays clean', async () => {
+    process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
+    const file = writeProjectFile('src/Card.tsx', 'noop');
+    const det = fakeDetector([finding('text-overflow', 1)]);
+
+    const first = await runHook({
+      stdinJson: JSON.stringify(redirectEventFor(file)),
+      env: {}, cwd, detector: det,
+    });
+    assert.match(first.stdout, /Design hook findings requiring review/);
+    assert.equal(fs.existsSync(path.join(cwd, '.impeccable')), false, 'no project-local footprint');
+    assert.equal(fs.existsSync(getCachePath(cwd)), true, 'cache lands under the redirect root');
+
+    // Session dedup still works across runs through the redirected cache.
+    const second = await runHook({
+      stdinJson: JSON.stringify(redirectEventFor(file)),
+      env: {}, cwd, detector: det,
+    });
+    assert.doesNotMatch(second.stdout, /Design hook findings requiring review/);
+    assert.match(second.stdout, /flagged earlier this session/);
+  });
+
+  it('runHook end-to-end: clean edits keep persisting editCount once redirected state exists', async () => {
+    process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
+    const file = writeProjectFile('src/Card.tsx', 'noop');
+
+    // Earn the footprint (in the redirect dir) with a real finding first.
+    await runHook({
+      stdinJson: JSON.stringify(redirectEventFor(file)),
+      env: {}, cwd, detector: fakeDetector([finding('text-overflow', 1)]),
+    });
+    assert.equal(fs.existsSync(getCachePath(cwd)), true);
+
+    // A clean follow-up edit must still persist its editCount bump — the
+    // opted-in check has to see the redirected cache, not just `<cwd>/.impeccable/`.
+    await runHook({
+      stdinJson: JSON.stringify(redirectEventFor(file)),
+      env: {}, cwd, detector: fakeDetector([]),
+    });
+    const cache = readCache(cwd);
+    assert.equal(cache.sessions['redir-sid'].files[file].editCount, 2);
+    assert.equal(fs.existsSync(path.join(cwd, '.impeccable')), false, 'project root still clean');
+  });
+
+  it('runHook end-to-end: a no-footprint clean edit writes nothing anywhere (gates hold under redirect)', async () => {
+    process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
+    const file = writeProjectFile('src/Card.tsx', 'noop');
+    const r = await runHook({
+      stdinJson: JSON.stringify(redirectEventFor(file)),
+      env: {}, cwd, detector: fakeDetector([]),
+    });
+    assert.match(r.stdout, /No deterministic design-quality issues found/);
+    assert.equal(fs.existsSync(path.join(cwd, '.impeccable')), false);
+    assert.equal(fs.existsSync(getCachePath(cwd)), false, 'redirect root also stays empty');
   });
 });
 
@@ -819,6 +1017,28 @@ describe('hook-admin.mjs', () => {
     assert.equal(fs.existsSync(getConfigPath(cwd)), false, 'a refused ignore must not write config');
   });
 
+  it('ignore-value refuses exact values for rules that cannot extract one', () => {
+    assert.throws(
+      () => runAdmin(['ignore-value', 'cramped-padding', 'padding: 4px 8px']),
+      /cramped-padding has no extractable ignore value.*ignore-value cramped-padding "\*" --file <glob>/,
+    );
+    assert.throws(
+      () => runAdmin(['ignore-value', 'side-tab', 'Inter', '--file', 'a.css']),
+      /side-tab has no extractable ignore value.*ignore-value side-tab "\*" --file <glob>/,
+    );
+    assert.equal(fs.existsSync(getConfigPath(cwd)), false, 'a refused ignore must not write config');
+
+    const out = runAdmin(['ignore-value', 'overused-font', 'Inter']);
+    assert.match(out, /Added overused-font=inter/);
+
+    runAdmin(['ignore-value', 'cramped-padding', '*', '--file', 'index.html']);
+    const shared = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8')).detector;
+    assert.equal(shared.ignoreValues.filter((e) => e.rule === 'cramped-padding').length, 1);
+    const entry = shared.ignoreValues.find((e) => e.rule === 'cramped-padding');
+    assert.equal(entry.value, '*');
+    assert.deepEqual(entry.files, ['index.html']);
+  });
+
   it('ignore-value --file requires a glob', () => {
     assert.throws(
       () => runAdmin(['ignore-value', 'side-tab', '*', '--file']),
@@ -1090,6 +1310,109 @@ describe('hook-admin.mjs', () => {
     });
     assert.equal(r.stdout, '');
     assert.equal(r.audit.skipped, 'config-ignore-file');
+  });
+
+  it('reset prunes impeccable entries from an installed manifest, sibling entries survive', () => {
+    // Deliberately no .claude/skills/ folder in this fixture: the prune must
+    // not be gated on the skill install surviving (repairHookManifests()
+    // gates on it; a reset mid-uninstall most needs the prune to run anyway).
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({ hook: { enabled: false } }));
+    fs.mkdirSync(path.join(cwd, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(cwd, '.claude', 'settings.local.json'), JSON.stringify({
+      description: 'Impeccable design detector',
+      hooks: {
+        PostToolUse: [
+          { matcher: 'OtherTool', hooks: [{ type: 'command', command: 'node "./local-hook.mjs"' }] },
+          { matcher: 'Edit|Write', hooks: [{ type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' }] },
+        ],
+        Stop: [{ hooks: [{ type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' }] }],
+      },
+    }));
+
+    const out = runAdmin(['reset']);
+    assert.match(out, /Reset design hook config and cache \(removed:/);
+    assert.match(out, /Removed hook entries from: \.claude\./);
+
+    const claude = JSON.parse(fs.readFileSync(path.join(cwd, '.claude', 'settings.local.json'), 'utf-8'));
+    assert.equal(claude.hooks.PostToolUse.length, 1);
+    assert.match(claude.hooks.PostToolUse[0].hooks[0].command, /local-hook\.mjs/);
+    assert.equal(claude.hooks.Stop, undefined, 'the impeccable-only Stop array should be dropped entirely');
+  });
+
+  it('reset prunes all four provider manifests installed via `on`', () => {
+    for (const provider of ['.claude', '.agents', '.cursor', '.github']) {
+      fs.mkdirSync(path.join(cwd, provider, 'skills', 'impeccable', 'scripts'), { recursive: true });
+    }
+    runAdmin(['on']);
+    assert.match(fs.readFileSync(path.join(cwd, '.claude', 'settings.local.json'), 'utf-8'), /skills\/impeccable\/scripts\/hook\.mjs/);
+
+    const out = runAdmin(['reset']);
+    assert.match(out, /Reset design hook config and cache \(removed:/);
+    assert.match(out, /Removed hook entries from: \.claude, \.agents, \.cursor, \.github\./);
+
+    assert.equal(fs.existsSync(path.join(cwd, '.claude', 'settings.local.json')), false, 'nothing else was in the manifest, so it is removed entirely');
+    assert.equal(fs.existsSync(path.join(cwd, '.codex', 'hooks.json')), false);
+    assert.equal(fs.existsSync(path.join(cwd, '.cursor', 'hooks.json')), false);
+    assert.equal(fs.existsSync(path.join(cwd, '.github', 'hooks', 'impeccable.json')), false);
+  });
+
+  it('reset never touches the shared/committed manifest, only the local one', () => {
+    // .claude/settings.json is the team-shared, typically committed file;
+    // `on` only ever reads it and never writes it, so reset honors the same
+    // write-scope asymmetry.
+    const shared = JSON.stringify({
+      hooks: { PostToolUse: [{ matcher: 'Edit', hooks: [{ type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' }] }] },
+    });
+    fs.mkdirSync(path.join(cwd, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(cwd, '.claude', 'settings.json'), shared);
+    fs.writeFileSync(path.join(cwd, '.claude', 'settings.local.json'), shared);
+
+    const out = runAdmin(['reset']);
+
+    // No config existed, so the message carries only the prune half.
+    assert.match(out, /Removed hook entries from: \.claude\./);
+    assert.doesNotMatch(out, /Reset design hook config and cache/);
+    assert.equal(fs.readFileSync(path.join(cwd, '.claude', 'settings.json'), 'utf-8'), shared, 'shared settings.json must survive reset untouched');
+    assert.equal(fs.existsSync(path.join(cwd, '.claude', 'settings.local.json')), false, 'the local settings.local.json is still pruned');
+  });
+
+  it('reset with no manifests installed keeps the original config-only message', () => {
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({ hook: { enabled: false } }));
+
+    const out = runAdmin(['reset']);
+    assert.match(out, /Reset design hook config and cache/);
+    assert.doesNotMatch(out, /Removed hook entries from/);
+    assert.equal(fs.existsSync(getConfigPath(cwd)), false);
+  });
+
+  it('reset leaves a manifest with no impeccable marker byte-for-byte unchanged', () => {
+    fs.mkdirSync(path.join(cwd, '.claude'), { recursive: true });
+    const unrelated = JSON.stringify({
+      hooks: { PostToolUse: [{ matcher: 'OtherTool', hooks: [{ type: 'command', command: 'node "./unrelated.mjs"' }] }] },
+    });
+    fs.writeFileSync(path.join(cwd, '.claude', 'settings.local.json'), unrelated);
+
+    const out = runAdmin(['reset']);
+
+    assert.match(out, /Already at defaults/);
+    assert.equal(fs.readFileSync(path.join(cwd, '.claude', 'settings.local.json'), 'utf-8'), unrelated);
+  });
+
+  it('on, off, then reset leaves nothing armed: config gone and every manifest unwired (issue #512 repro)', () => {
+    fs.mkdirSync(path.join(cwd, '.claude', 'skills', 'impeccable', 'scripts'), { recursive: true });
+    runAdmin(['on']);
+    runAdmin(['off']);
+
+    runAdmin(['reset']);
+
+    // The harness only invokes the hook through a manifest entry, so with the
+    // config and every manifest gone the project cannot re-arm, whatever the
+    // config default says.
+    assert.equal(fs.existsSync(getConfigPath(cwd)), false);
+    assert.equal(fs.existsSync(getLocalConfigPath(cwd)), false);
+    assert.equal(fs.existsSync(path.join(cwd, '.claude', 'settings.local.json')), false);
   });
 });
 

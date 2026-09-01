@@ -714,8 +714,18 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
-      /function requestDetectScan\(\)[\s\S]{0,240}?const scanId = String\(\+\+detectScanSeq\);[\s\S]{0,80}?activeDetectScanId = scanId;[\s\S]{0,160}?config: \{ scanId \}/,
-      'Detect scans must send a fresh scan id to the detector',
+      /function requestDetectScan\(\)[\s\S]{0,240}?const scanId = String\(\+\+detectScanSeq\);[\s\S]{0,80}?activeDetectScanId = scanId;[\s\S]{0,2200}?config: \{\s*scanId,\s*disabledRules: ignores\.disabledRules \|\| \[\],\s*disabledValues: ignores\.disabledValues \|\| \[\],\s*skipScan: ignores\.skipScan === true,\s*\},/,
+      'Detect scans must send a fresh scan id plus the resolved project waivers to the detector',
+    );
+    assert.match(
+      SOURCE,
+      /let ignores = \{ disabledRules: \[\], disabledValues: \[\], skipScan: false \};\s*if \(typeof ignoresApi\?\.resolveDetectIgnores === 'function'\) \{\s*try \{/,
+      'a cached live.js without the ignores resolver part must still scan, just unfiltered',
+    );
+    assert.match(
+      SOURCE,
+      /\} catch \(e\) \{\s*ignores = \{ disabledRules: \[\], disabledValues: \[\], skipScan: false \};\s*\}/,
+      'a throwing ignores resolver must degrade to an unfiltered scan, not break the detect toggle',
     );
     assert.match(
       SOURCE,

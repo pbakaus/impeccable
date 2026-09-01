@@ -9,11 +9,12 @@
  */
 
 import { execSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, statSync, lstatSync, unlinkSync, mkdirSync, writeFileSync, rmSync, rmdirSync, renameSync, createWriteStream, realpathSync, symlinkSync, readlinkSync, cpSync } from 'node:fs';
-import { join, resolve, dirname, relative, isAbsolute, sep } from 'node:path';
+import { existsSync, readFileSync, readdirSync, statSync, accessSync, constants, lstatSync, unlinkSync, mkdirSync, mkdtempSync, writeFileSync, rmSync, rmdirSync, renameSync, createWriteStream, realpathSync, symlinkSync, readlinkSync, cpSync } from 'node:fs';
+import { join, resolve, dirname, relative, isAbsolute, sep, delimiter } from 'node:path';
 import { createInterface, emitKeypressEvents } from 'node:readline';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
-import { get } from 'node:https';
 import { createHash } from 'node:crypto';
 import { tmpdir, homedir } from 'node:os';
 import { unzipSync } from 'fflate';
@@ -23,7 +24,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const API_BASE = 'https://impeccable.style';
 
 // Provider folder names in project roots
-const PROVIDER_DIRS = ['.claude', '.cursor', '.gemini', '.agents', '.agent', '.github', '.grok', '.hermes', '.kiro', '.opencode', '.pi', '.qoder', '.trae', '.trae-cn', '.rovodev', '.vibe'];
+const PROVIDER_DIRS = ['.claude', '.cursor', '.gemini', '.agents', '.agent', '.github', '.grok', '.hermes', '.kiro', '.opencode', '.pi', '.qoder', '.trae', '.trae-cn', '.rovodev', '.vibe', '.veto'];
 const PROVIDER_ALIASES = {
   agent: '.agent',
   agents: '.agents',
@@ -48,6 +49,7 @@ const PROVIDER_ALIASES = {
   trae: '.trae',
   'trae-cn': '.trae-cn',
   vibe: '.vibe',
+  veto: '.veto',
 };
 
 const PROVIDER_DISPLAY = {
@@ -67,8 +69,9 @@ const PROVIDER_DISPLAY = {
   '.trae': { name: 'Trae', input: 'trae' },
   '.trae-cn': { name: 'Trae CN', input: 'trae-cn' },
   '.vibe': { name: 'Mistral Vibe', input: 'vibe' },
+  '.veto': { name: 'Veto', input: 'veto' },
 };
-const PROVIDER_INPUT_ORDER = ['antigravity', 'claude', 'codex', 'cursor', 'gemini', 'github', 'grok', 'hermes', 'kiro', 'opencode', 'pi', 'qoder', 'trae', 'trae-cn', 'rovo-dev', 'vibe'];
+const PROVIDER_INPUT_ORDER = ['antigravity', 'claude', 'codex', 'cursor', 'gemini', 'github', 'grok', 'hermes', 'kiro', 'opencode', 'pi', 'qoder', 'trae', 'trae-cn', 'rovo-dev', 'vibe', 'veto'];
 
 // OpenCode reads global skills from its config directory, not ~/.opencode:
 // $OPENCODE_CONFIG_DIR, else $XDG_CONFIG_HOME/opencode, else
@@ -163,6 +166,10 @@ const GLOBAL_HARNESS_HINTS = [
   { home: '.qoder', provider: '.qoder' },
   { home: '.rovodev', provider: '.rovodev' },
   { home: '.vibe', provider: '.vibe' },
+  // Veto is a CLI harness whose managed skill directory is ~/.veto/skills.
+  // Require its managed state directory as well as the executable so an
+  // unrelated `veto` binary on PATH does not change project install defaults.
+  { command: 'veto', provider: '.veto' },
 ];
 
 // Last-resort default when nothing is detected: Claude Code + the universal
@@ -622,13 +629,17 @@ async function downloadAndExtractBundle() {
   const localBundle = process.env.IMPECCABLE_BUNDLE_PATH;
   if (localBundle) return copyOrExtractLocalBundle(localBundle);
 
-  const tmpZip = join(tmpdir(), `impeccable-update-${Date.now()}.zip`);
-  const tmpDir = join(tmpdir(), `impeccable-update-${Date.now()}`);
-  await downloadFile(`${API_BASE}/api/download/bundle/universal`, tmpZip);
-  mkdirSync(tmpDir, { recursive: true });
-  await extractZip(tmpZip, tmpDir);
-  rmSync(tmpZip, { force: true });
-  return tmpDir;
+  const staging = mkdtempSync(join(tmpdir(), 'impeccable-update-'));
+  const tmpZip = join(staging, 'bundle.zip');
+  try {
+    await downloadFile(`${API_BASE}/api/download/bundle/universal`, tmpZip);
+    await extractZip(tmpZip, staging);
+    rmSync(tmpZip, { force: true });
+    return staging;
+  } catch (e) {
+    rmSync(staging, { recursive: true, force: true });
+    throw e;
+  }
 }
 
 async function copyOrExtractLocalBundle(sourceValue) {
@@ -637,16 +648,18 @@ async function copyOrExtractLocalBundle(sourceValue) {
     throw new Error(`Local bundle not found: ${source}`);
   }
 
-  const tmpDir = join(tmpdir(), `impeccable-local-bundle-${process.pid}-${Date.now()}`);
-  mkdirSync(tmpDir, { recursive: true });
-
-  if (statSync(source).isDirectory()) {
-    cpSync(source, tmpDir, { recursive: true });
-    return tmpDir;
+  const staging = mkdtempSync(join(tmpdir(), 'impeccable-local-bundle-'));
+  try {
+    if (statSync(source).isDirectory()) {
+      cpSync(source, staging, { recursive: true });
+    } else {
+      await extractZip(source, staging);
+    }
+    return staging;
+  } catch (e) {
+    rmSync(staging, { recursive: true, force: true });
+    throw e;
   }
-
-  await extractZip(source, tmpDir);
-  return tmpDir;
 }
 
 /**
@@ -659,7 +672,7 @@ async function copyOrExtractLocalBundle(sourceValue) {
  */
 function normalizeForHash(content) {
   return content
-    .replace(/\.(claude|cursor|agents|agent|github|gemini|codex|grok|hermes|kiro|opencode|pi|qoder|trae|trae-cn|rovodev|vibe)\/skills\//g, '.PROVIDER/skills/');
+    .replace(/\.(claude|cursor|agents|agent|github|gemini|codex|grok|hermes|kiro|opencode|pi|qoder|trae|trae-cn|rovodev|vibe|veto)\/skills\//g, '.PROVIDER/skills/');
 }
 
 function hashSkillFile(filePath) {
@@ -925,6 +938,25 @@ function userSkillProbePaths(home, harnessDir, provider) {
   ]);
 }
 
+function commandOnPath(command) {
+  const candidates = process.platform === 'win32'
+    ? [`${command}.exe`, `${command}.cmd`, `${command}.bat`]
+    : [command];
+  for (const directory of String(process.env.PATH || '').split(delimiter)) {
+    if (!directory) continue;
+    for (const candidate of candidates) {
+      const path = resolve(directory, candidate);
+      try {
+        if (statSync(path).isFile()) {
+          accessSync(path, constants.X_OK);
+          return path;
+        }
+      } catch {}
+    }
+  }
+  return null;
+}
+
 function collectInstallDetections(root, home = homedir()) {
   const detections = [];
   for (const provider of PROVIDER_DIRS) {
@@ -945,9 +977,14 @@ function collectInstallDetections(root, home = homedir()) {
     const { provider } = hint;
     // A hint is either a fixed dir under home or a resolver for harnesses
     // whose location depends on the environment (OpenCode's config dir).
-    const foundPath = hint.resolve ? hint.resolve(home) : join(home, hint.home);
-    if (!existsSync(foundPath)) continue;
-    const skillProbePaths = hint.resolve
+    const foundPath = hint.command
+      ? commandOnPath(hint.command)
+      : hint.resolve ? hint.resolve(home) : join(home, hint.home);
+    if (!foundPath || (!hint.command && !existsSync(foundPath))) continue;
+    if (hint.command && !existsSync(join(home, '.veto'))) continue;
+    const skillProbePaths = hint.command
+      ? [userProviderSkillsDir(home, provider)]
+      : hint.resolve
       ? uniquePaths([userProviderSkillsDir(home, provider), join(foundPath, 'skills')])
       : userSkillProbePaths(home, hint.home, provider);
     detections.push({
@@ -958,7 +995,7 @@ function collectInstallDetections(root, home = homedir()) {
       installPath: userProviderSkillsDir(home, provider),
       skillProbePaths,
       hasRealSkills: skillProbePaths.some(hasRealSkillEntries),
-      reason: 'user harness folder',
+      reason: hint.command ? 'CLI on PATH' : 'user harness folder',
     });
   }
   return detections;
@@ -2163,26 +2200,35 @@ function getModifiedSkillFiles(root, providerDirs) {
   return modified;
 }
 
-function downloadFile(url, dest) {
-  return new Promise((resolve, reject) => {
-    const file = createWriteStream(dest);
-    get(url, (res) => {
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        // Follow redirect
-        get(res.headers.location, (res2) => {
-          res2.pipe(file);
-          file.on('finish', () => { file.close(); resolve(); });
-        }).on('error', reject);
-        return;
-      }
-      if (res.statusCode !== 200) {
-        reject(new Error(`HTTP ${res.statusCode}`));
-        return;
-      }
-      res.pipe(file);
-      file.on('finish', () => { file.close(); resolve(); });
-    }).on('error', reject);
-  });
+async function downloadFile(url, dest, { fetchImpl = globalThis.fetch } = {}) {
+  let current = url;
+  let hopsLeft = 5;
+  while (true) {
+    const parsed = new URL(current);
+    if (parsed.protocol !== 'https:') {
+      throw new Error('Refusing non-HTTPS URL');
+    }
+    const res = await fetchImpl(current, { redirect: 'manual' });
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get('location');
+      if (!location) throw new Error(`HTTP ${res.status}`);
+      if (hopsLeft <= 0) throw new Error('Too many redirects');
+      hopsLeft -= 1;
+      current = new URL(location, current).href;
+      continue;
+    }
+    if (res.status !== 200) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    if (!res.body) throw new Error('Empty response body');
+    try {
+      await pipeline(Readable.fromWeb(res.body), createWriteStream(dest, { flags: 'wx' }));
+    } catch (e) {
+      if (e.code !== 'EEXIST') rmSync(dest, { force: true });
+      throw e;
+    }
+    return;
+  }
 }
 
 async function update(flags = []) {
@@ -2332,6 +2378,8 @@ export {
   copyProviderHooks,
   copyProviderSkills,
   decideHookInstall,
+  downloadAndExtractBundle,
+  downloadFile,
   expectedHookDests,
   extractZip,
   formatInstallDetectionLines,

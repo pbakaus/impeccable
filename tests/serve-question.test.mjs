@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, execSync } from 'node:child_process';
+import http from 'node:http';
 import { writeFileSync, readFileSync, rmSync, utimesSync, mkdtempSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -40,6 +41,25 @@ const PAYLOAD = {
   reroll: true,
   steer: true,
 };
+
+function rawRequest(port, { method = 'GET', path: reqPath = '/', headers = {} } = {}, body) {
+  return new Promise((resolve, reject) => {
+    const req = http.request({
+      host: '127.0.0.1',
+      port,
+      method,
+      path: reqPath,
+      headers,
+    }, (res) => {
+      const chunks = [];
+      res.on('data', (chunk) => chunks.push(chunk));
+      res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString() }));
+    });
+    req.on('error', reject);
+    if (body) req.write(body);
+    req.end();
+  });
+}
 
 describe('serve-question', () => {
   it('opens Windows URLs through cmd.exe and reserves the start title argument', () => {
@@ -105,8 +125,111 @@ describe('serve-question', () => {
     assert.ok(url, started.out);
     const waiting = await run(['--wait', '--key', 'tk', '--poll', '1']);
     assert.equal(waiting.code, 3);
-    await fetch(`${url}answer`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'assigned', steer: '' }) });
+    await fetch(`${url}answer?key=tk`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'assigned', steer: '' }) });
     const collected = await run(['--wait', '--key', 'tk', '--poll', '5']);
+    assert.equal(collected.code, 0);
+    assert.match(collected.out, /"optionId":"assigned"/);
+  });
+
+  it('rejects detached POSTs without the session key or with bad Host/Origin', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'serve-question-'));
+    const payloadPath = path.join(dir, 'q.json');
+    const key = 'seckey';
+    const answerPath = path.join(dir, '.impeccable', 'questions', `${key}.answer.json`);
+    writeFileSync(payloadPath, JSON.stringify(PAYLOAD));
+    const run = (args) => new Promise((resolve) => {
+      const child = spawn(process.execPath, [SCRIPT, ...args], { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] });
+      let out = '';
+      child.stdout.on('data', (chunk) => { out += chunk; });
+      child.on('exit', (code) => resolve({ code, out }));
+    });
+    const started = await run(['--start', '--payload', payloadPath, '--no-open', '--key', key]);
+    assert.equal(started.code, 0);
+    const url = started.out.match(/QUESTION URL: (\S+)/)?.[1];
+    assert.ok(url, started.out);
+    const port = Number(new URL(url).port);
+    const goodHost = `127.0.0.1:${port}`;
+    const body = JSON.stringify({ optionId: 'assigned', steer: '' });
+    const jsonHeaders = { 'content-type': 'application/json', Host: goodHost };
+
+    const noKey = await fetch(`http://${goodHost}/answer`, { method: 'POST', headers: jsonHeaders, body });
+    assert.equal(noKey.status, 401);
+    assert.equal(existsSync(answerPath), false);
+    const waiting = await run(['--wait', '--key', key, '--poll', '1']);
+    assert.equal(waiting.code, 3);
+
+    const wrongKey = await fetch(`http://${goodHost}/answer?key=wrong`, { method: 'POST', headers: jsonHeaders, body });
+    assert.equal(wrongKey.status, 401);
+
+    const evilOrigin = await rawRequest(port, {
+      method: 'POST',
+      path: `/answer?key=${key}`,
+      headers: { ...jsonHeaders, Origin: 'https://evil.example' },
+    }, body);
+    assert.equal(evilOrigin.status, 403);
+    assert.equal(existsSync(answerPath), false);
+
+    const spoofedHostPost = await rawRequest(port, {
+      method: 'POST',
+      path: `/answer?key=${key}`,
+      headers: { ...jsonHeaders, Host: `evil.example:${port}` },
+    }, body);
+    assert.equal(spoofedHostPost.status, 403);
+
+    const noKeyBeat = await fetch(`http://${goodHost}/heartbeat`, { method: 'POST', headers: { Host: goodHost } });
+    assert.equal(noKeyBeat.status, 401);
+
+    const spoofedHostGet = await rawRequest(port, {
+      path: '/',
+      headers: { Host: `evil.example:${port}` },
+    });
+    assert.equal(spoofedHostGet.status, 403);
+
+    // The bare-host allowance exists only for --port 80, where browsers omit
+    // the suffix; on any other port a portless Host stays rejected.
+    const bareHostGet = await rawRequest(port, {
+      path: '/',
+      headers: { Host: '127.0.0.1' },
+    });
+    assert.equal(bareHostGet.status, 403);
+
+    const slashSlash = await rawRequest(port, {
+      path: '//',
+      headers: { Host: goodHost },
+    });
+    assert.equal(slashSlash.status, 400);
+    assert.equal((await fetch(url)).status, 200);
+
+    // The build-path flip commands the agent through --wait, so it takes the
+    // same key and Origin gate as /answer.
+    const flipPath = path.join(dir, '.impeccable', 'questions', `${key}.flip.json`);
+    const flipBody = JSON.stringify({ value: 'comp' });
+    const noKeyFlip = await fetch(`http://${goodHost}/build-path`, { method: 'POST', headers: jsonHeaders, body: flipBody });
+    assert.equal(noKeyFlip.status, 401);
+    assert.equal(existsSync(flipPath), false);
+    const evilOriginFlip = await rawRequest(port, {
+      method: 'POST',
+      path: `/build-path?key=${key}`,
+      headers: { ...jsonHeaders, Origin: 'https://evil.example' },
+    }, flipBody);
+    assert.equal(evilOriginFlip.status, 403);
+    assert.equal(existsSync(flipPath), false);
+    const okFlip = await fetch(`http://${goodHost}/build-path?key=${key}`, { method: 'POST', headers: jsonHeaders, body: flipBody });
+    assert.equal(okFlip.status, 200);
+    assert.equal(existsSync(flipPath), true);
+    const flipped = await run(['--wait', '--key', key, '--poll', '2']);
+    assert.equal(flipped.code, 0);
+    assert.match(flipped.out, /BUILD PATH FLIPPED/);
+
+    const html = await (await fetch(url)).text();
+    assert.match(html, /const KEY = "seckey"/);
+    assert.match(html, /\/answer' \+ keyQ/);
+    assert.match(html, /\/heartbeat' \+ keyQ/);
+    assert.match(html, /\/build-path' \+ keyQ/);
+
+    const ok = await fetch(`http://${goodHost}/answer?key=${key}`, { method: 'POST', headers: jsonHeaders, body });
+    assert.equal(ok.status, 200);
+    const collected = await run(['--wait', '--key', key, '--poll', '5']);
     assert.equal(collected.code, 0);
     assert.match(collected.out, /"optionId":"assigned"/);
   });
@@ -211,7 +334,7 @@ describe('serve-question', () => {
     // Beat well past the 3s timeout: the timer must not fire under a live page.
     const beatUntil = Date.now() + 5500;
     while (Date.now() < beatUntil) {
-      await fetch(`${url}heartbeat`, { method: 'POST' });
+      await fetch(`${url}heartbeat?key=life`, { method: 'POST' });
       await new Promise((r) => setTimeout(r, 400));
     }
     const alive = await fetch(url);
@@ -296,7 +419,7 @@ describe('serve-question', () => {
     // One beat, then silence: the idle grace must still reclaim the daemon.
     // Before the fix, the whole lifetime check sat inside timeoutSec > 0 and
     // a closed tab leaked this daemon forever.
-    await fetch(`${url}heartbeat`, { method: 'POST' });
+    await fetch(`${url}heartbeat?key=zero`, { method: 'POST' });
     const deadline = Date.now() + 12000;
     let gone = false;
     while (Date.now() < deadline && !gone) {
@@ -321,8 +444,8 @@ describe('serve-question', () => {
     const url = started.out.match(/QUESTION URL: (\S+)/)?.[1];
     assert.ok(url, started.out);
     try {
-      await fetch(`${url}heartbeat`, { method: 'POST' });
-      await fetch(`${url}answer`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: '' }) });
+      await fetch(`${url}heartbeat?key=latehand`, { method: 'POST' });
+      await fetch(`${url}answer?key=latehand`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: '' }) });
       // Go silent like a stalled page until just before the 3s idle
       // deadline, then deliver: the daemon used to exit before the page's
       // watch could claim the hand, orphaning a delivery --update had
@@ -367,7 +490,7 @@ describe('serve-question', () => {
       // serving decision has to live here: once a re-roll answer is collected
       // and no replacement has landed, GET / re-enters the bounded shuffle
       // wait instead of re-serving the answered cards.
-      await fetch(`${url}answer`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: '' }) });
+      await fetch(`${url}answer?key=refresh`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: '' }) });
       const waitingPage = await (await fetch(url)).text();
       assert.ok(waitingPage.includes('awaitNextRound(false,'), 'a refresh mid re-roll re-enters the shuffle wait');
       const nextPath = path.join(dir, 'next.json');
@@ -397,7 +520,7 @@ describe('serve-question', () => {
     const url = started.out.match(/QUESTION URL: (\S+)/)?.[1];
     assert.ok(url, started.out);
     try {
-      await fetch(`${url}answer`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: '' }) });
+      await fetch(`${url}answer?key=deadline`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: '' }) });
       const fresh = await (await fetch(url)).text();
       const budget = Number(fresh.match(/awaitNextRound\(false, (\d+)\);/)?.[1]);
       assert.ok(budget > 0 && budget <= 3000, `the waiting page carries the remaining allowance, got ${budget}`);
@@ -406,7 +529,7 @@ describe('serve-question', () => {
       // click-time disable can race a second click, so the server keeps the
       // first stamp instead of renewing the allowance.
       await new Promise((r) => setTimeout(r, 1200));
-      await fetch(`${url}answer`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: '' }) });
+      await fetch(`${url}answer?key=deadline`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: '' }) });
       const restamped = Number((await (await fetch(url)).text()).match(/awaitNextRound\(false, (\d+)\);/)?.[1]);
       assert.ok(restamped > 0 && restamped < 2500, `a duplicate re-roll does not renew the allowance, got ${restamped}`);
       await new Promise((r) => setTimeout(r, 3500));
@@ -442,7 +565,7 @@ describe('serve-question', () => {
       // A bad file that reaches the disk anyway must not trap the page:
       // GET / discards it, so /next-status stops reporting a hand that can
       // never render and the bounded wait resumes instead of reload-looping.
-      await fetch(`${url}answer`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: '' }) });
+      await fetch(`${url}answer?key=badhand`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: '' }) });
       writeFileSync(path.join(dir, '.impeccable', 'questions', 'badhand.next.json'), JSON.stringify({ title: 'No options' }));
       const page = await (await fetch(url)).text();
       assert.ok(page.includes('awaitNextRound(false,'), 'the round stays in the wait');
@@ -468,7 +591,7 @@ describe('serve-question', () => {
     const url = started.out.match(/QUESTION URL: (\S+)/)?.[1];
     assert.ok(url, started.out);
     try {
-      await fetch(`${url}answer`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: '' }) });
+      await fetch(`${url}answer?key=silent`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: '' }) });
       const collected = await run(['--wait', '--key', 'silent', '--poll', '2']);
       assert.equal(collected.code, 0, collected.out);
       // The stalled page went silent by design: fake a beat older than the
@@ -521,7 +644,7 @@ describe('serve-question', () => {
     const url = started.out.match(/QUESTION URL: (\S+)/)?.[1];
     assert.ok(url, started.out);
     try {
-      await fetch(`${url}answer`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: '' }) });
+      await fetch(`${url}answer?key=claimgap`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: '' }) });
       const collected = await run(['--wait', '--key', 'claimgap', '--poll', '2']);
       assert.equal(collected.code, 0, collected.out);
       const statePath = path.join(dir, '.impeccable', 'questions', 'claimgap.state.json');

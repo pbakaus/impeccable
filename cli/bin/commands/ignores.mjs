@@ -7,6 +7,7 @@ import {
   readDetectionConfig,
   readRawDetectionConfig,
   writeDetectionConfig,
+  extractFindingIgnoreValue,
 } from '../../lib/impeccable-config.mjs';
 
 const ACTION_ALIASES = new Map([
@@ -235,6 +236,9 @@ function addFile(cwd, args) {
 function addValue(cwd, args) {
   const { local, rest } = parseScope(args);
   const parsed = parseValueArgs(rest);
+  if (parsed.value !== '*' && !extractFindingIgnoreValue({ antipattern: parsed.rule, ignoreValue: parsed.value })) {
+    throw new Error(`${parsed.rule} has no extractable ignore value. Use impeccable ignores add-value ${parsed.rule} "*" --file <glob> to suppress it in matching files.`);
+  }
   const config = readScopeConfig(cwd, local);
   const key = ignoreValueKey(parsed);
   const existing = config.ignoreValues.find((entry) => ignoreValueKey(entry) === key);

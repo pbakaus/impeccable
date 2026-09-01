@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { GENERIC_FONTS, OVERUSED_FONTS } from '../../shared/constants.mjs';
+import { OVERUSED_FONTS, primaryFontFace } from '../../shared/constants.mjs';
 import {
   checkSourceDesignSystem,
   collectStaticDesignSystemFindings,
@@ -51,9 +51,7 @@ function checkStaticPageTypography(document, window) {
   for (const el of document.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, td, th, dd, blockquote, figcaption, a, button, label, span, div')) {
     const hasText = el.childNodes.some(n => n.nodeType === 3 && n.textContent.trim().length > 0);
     if (!hasText) continue;
-    const ff = window.getComputedStyle(el).fontFamily || '';
-    const stack = ff.split(',').map(f => f.trim().replace(/^['"]|['"]$/g, '').toLowerCase());
-    const primary = stack.find(f => f && !GENERIC_FONTS.has(f));
+    const primary = primaryFontFace(window.getComputedStyle(el).fontFamily);
     if (!primary) continue;
     fonts.add(primary);
     if (OVERUSED_FONTS.has(primary)) overusedFound.add(primary);

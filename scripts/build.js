@@ -10,6 +10,7 @@
  * - Codex: dist/codex/ only (OpenAI-metadata bundle; not synced to repo root)
  * - Agents: .agents/skills/ (Codex repo/user installs)
  * - GitHub: .github/skills/ (GitHub Copilot)
+ * - Veto: .veto/skills/ (Veto model-routing harness)
  *
  * Also assembles a universal ZIP containing all providers,
  * and builds Tailwind CSS for production deployment.
@@ -556,6 +557,7 @@ This folder contains skills for all supported tools:
   .trae/      -> Trae International
   .rovodev/   -> Rovo Dev
   .vibe/      -> Mistral Vibe
+  .veto/      -> Veto model-routing harness
   .qoder/     -> Qoder
 
 To install, copy the relevant folder(s) into your project root.

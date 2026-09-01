@@ -798,7 +798,11 @@ describe('API roll path', () => {
       assert.equal(requests.some(url => url.startsWith('/api/roll?')), true, 'the CLI must hit the roll endpoint');
       assert.match(result.stdout, /source: api/);
       assert.match(result.stdout, /letterpress print shop/);
-      assert.match(result.stdout, /TELEMETRY:/);
+      // The choice-recording command rides on build-phase start now (the
+      // separate TELEMETRY ping was the step every comp-round-skipping run
+      // suppressed); an API roll names it with the --chosen slot.
+      assert.match(result.stdout, /AFTER THE CHOICE, run exactly one command/);
+      assert.match(result.stdout, /build-phase\.mjs start --direction [\w-]+ --kind <assigned\|pick\|challenger\|canon> \[--chosen <challenger-id>\]/);
       assert.match(result.stderr, /DISPATCHER_DESTROY_CALLED/, 'the dispatcher must be destroyed before process.exit');
     } finally {
       server.close();

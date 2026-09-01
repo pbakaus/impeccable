@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Organic clip-path polygon fixture</title>
+<style>
+  /* FLAG: a 17-vertex polygon approximating a torn-paper arch (the album run) */
+  .arch { width: 400px; height: 500px; background: #1a1a1a; clip-path: polygon(2% 100%, 0 51%, 1% 43%, 3% 35%, 7% 27%, 12% 20%, 19% 14%, 27% 9%, 37% 5%, 49% 1%, 59% 4%, 69% 8%, 78% 14%, 86% 21%, 92% 30%, 96% 39%, 98% 48%, 100% 100%); }
+  /* FLAG: a "blob" hero mask with a dozen points and no straight edges */
+  .blob { width: 320px; height: 320px; background: #c33; clip-path: polygon(50% 0%, 61% 8%, 74% 6%, 82% 16%, 94% 22%, 96% 36%, 100% 50%, 92% 63%, 88% 78%, 74% 88%, 60% 100%, 46% 96%, 30% 98%, 18% 86%, 6% 78%, 2% 62%, 0% 48%, 6% 34%, 12% 20%, 22% 10%, 36% 4%); }
+  /* FLAG: shorthand path() drawing a silhouette in CSS */
+  .silhouette { width: 300px; height: 400px; background: #222; clip-path: path('M150 0 C 180 40, 220 60, 230 120 C 240 180, 200 220, 210 280 C 220 340, 180 400, 150 400 C 120 400, 80 340, 90 280 C 100 220, 60 180, 70 120 C 80 60, 120 40, 150 0 Z'); }
+  /* FLAG: inline style variant */
+
+  /* PASS: rectangular / geometric clips */
+  .cut-corner { clip-path: polygon(0 0, 100% 0, 100% 85%, 85% 100%, 0 100%); }
+  .diagonal-band { clip-path: polygon(0 0, 100% 0, 100% 80%, 0 100%); }
+  .hexagon { clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%); }
+  .arrow { clip-path: polygon(0 20%, 60% 20%, 60% 0, 100% 50%, 60% 100%, 60% 80%, 0 80%); }
+  .chevron-eight { clip-path: polygon(0 0, 75% 0, 100% 50%, 75% 100%, 0 100%, 25% 50%, 0 0, 0 0); }
+  /* PASS: circle / ellipse / inset primitives */
+  .avatar { clip-path: circle(50% at 50% 50%); }
+  .pill { clip-path: inset(0 round 999px); }
+  /* PASS: an SVG-drawn mask that comes from an alpha matte image, not a polygon */
+  .matte { mask-image: url(assets/cutout-alpha.png); }
+</style>
+</head>
+<body>
+  <div class="arch">Arch</div>
+  <div class="blob">Blob</div>
+  <div class="silhouette">Silhouette</div>
+  <div style="width:200px;height:200px;background:#333;clip-path:polygon(48% 2%, 60% 6%, 71% 12%, 80% 21%, 88% 33%, 93% 46%, 94% 60%, 90% 73%, 82% 84%, 70% 93%, 56% 98%, 42% 97%, 29% 92%, 18% 83%, 10% 71%, 5% 58%, 5% 44%, 9% 31%, 17% 20%, 27% 11%, 38% 5%)">Inline blob</div>
+  <div class="cut-corner">Cut corner</div>
+  <div class="diagonal-band">Diagonal band</div>
+  <div class="hexagon">Hexagon</div>
+  <div class="arrow">Arrow</div>
+  <div class="chevron-eight">Chevron eight</div>
+  <div class="avatar">Avatar</div>
+  <div class="pill">Pill</div>
+  <div class="matte">Matte</div>
+</body>
+</html>

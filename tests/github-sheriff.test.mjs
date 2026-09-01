@@ -360,12 +360,15 @@ describe('github sheriff', () => {
     assert.equal(plan.shouldClose, false);
   });
 
-  it('does not warn or close PRs blocked only by merge conflicts', () => {
+  it('treats merge conflicts as contributor action and ages from the first conflict label', () => {
     const plan = evaluatePullRequest(pr({
       createdAt: '2026-06-20T00:00:00Z',
+      updatedAt: '2026-07-07T00:00:00Z',
+      latestCommitAt: '2026-06-20T01:00:00Z',
       mergeable: 'CONFLICTING',
       labels: ['waiting on contributor', 'stale'],
       labelEvents: [
+        labelEvent('LabeledEvent', 'blocked: merge conflicts', 'github-actions[bot]', '2026-06-21T00:00:00Z'),
         labelEvent('LabeledEvent', 'waiting on contributor', 'github-actions[bot]', '2026-07-01T00:00:00Z'),
       ],
       comments: [
@@ -373,11 +376,54 @@ describe('github sheriff', () => {
       ],
     }), { now: NOW });
 
-    assert.equal(plan.contributorActionRequired, false);
-    assert.deepEqual(plan.labelsToAdd, ['blocked: merge conflicts', 'needs maintainer review']);
-    assert.deepEqual(plan.labelsToRemove, ['stale', 'waiting on contributor']);
+    assert.equal(plan.contributorActionRequired, true);
+    assert.deepEqual(plan.labelsToAdd, ['blocked: merge conflicts']);
+    assert.deepEqual(plan.labelsToRemove, []);
     assert.equal(plan.shouldWarn, false);
-    assert.equal(plan.shouldClose, false);
+    assert.equal(plan.shouldClose, true);
+  });
+
+  it('blocks ready state and starts the stale clock for contributor-resolvable policy labels', () => {
+    const plan = evaluatePullRequest(pr({
+      createdAt: '2026-06-20T00:00:00Z',
+      latestCommitAt: '2026-06-20T01:00:00Z',
+      statusState: 'SUCCESS',
+      mergeable: 'MERGEABLE',
+      labels: ['ready to merge', 'policy: generated output'],
+      labelEvents: [
+        labelEvent('LabeledEvent', 'policy: generated output', 'pbakaus', '2026-06-21T00:00:00Z'),
+      ],
+    }), { now: NOW });
+
+    assert.equal(plan.contributorActionRequired, true);
+    assert.equal(plan.readyToMerge, false);
+    assert.deepEqual(plan.labelsToAdd, ['stale', 'waiting on contributor']);
+    assert.deepEqual(plan.labelsToRemove, ['ready to merge']);
+    assert.equal(plan.shouldWarn, true);
+  });
+
+  it('keeps maintainer policy decisions out of ready state without blaming the contributor', () => {
+    const plan = evaluatePullRequest(pr({
+      statusState: 'SUCCESS',
+      mergeable: 'MERGEABLE',
+      labels: ['ready to merge', 'policy: needs approval'],
+    }), { now: NOW });
+
+    assert.equal(plan.contributorActionRequired, false);
+    assert.equal(plan.readyToMerge, false);
+    assert.deepEqual(plan.labelsToAdd, ['needs maintainer review']);
+    assert.deepEqual(plan.labelsToRemove, ['ready to merge']);
+  });
+
+  it('does not treat policy approval as a blocker', () => {
+    const plan = evaluatePullRequest(pr({
+      statusState: 'SUCCESS',
+      mergeable: 'MERGEABLE',
+      labels: ['policy: approved'],
+    }), { now: NOW });
+
+    assert.equal(plan.readyToMerge, true);
+    assert.deepEqual(plan.labelsToAdd, ['ready to merge']);
   });
 
   it('uses PR creation, not unrelated updates, for drafts opened as draft', () => {
@@ -632,6 +678,32 @@ describe('github sheriff', () => {
 
     assert.equal(plan.shouldWarn, true);
     assert.equal(plan.shouldClose, false);
+  });
+
+  it('auto-closes regular contributors in the scheduled mode unless explicitly exempted', () => {
+    const source = {
+      authorLogin: 'abdulwahabone',
+      createdAt: '2026-06-20T00:00:00Z',
+      latestCommitAt: '2026-06-20T01:00:00Z',
+      comments: [
+        comment('pbakaus', '2026-06-21T00:00:00Z', '/sheriff wait'),
+        comment('github-actions[bot]', '2026-06-27T00:00:00Z', WARNING_MARKER),
+      ],
+    };
+    const closePlan = evaluatePullRequest(pr(source), { now: NOW, autoCloseRegulars: true });
+    const exemptPlan = evaluatePullRequest(pr({ ...source, labels: ['Do Not Close'] }), {
+      now: NOW,
+      autoCloseRegulars: true,
+    });
+    const customExemptPlan = evaluatePullRequest(pr({ ...source, labels: ['Keep Open'] }), {
+      now: NOW,
+      autoCloseRegulars: true,
+      exemptLabels: ['keep open'],
+    });
+
+    assert.equal(closePlan.shouldClose, true);
+    assert.equal(exemptPlan.shouldClose, false);
+    assert.equal(customExemptPlan.shouldClose, false);
   });
 
   it('keeps stale comments idempotent', () => {
