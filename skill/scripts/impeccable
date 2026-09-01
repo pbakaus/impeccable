@@ -112,17 +112,32 @@ if [ -n "$version" ] && [ "$os" != unknown ] && [ "$arch" != unknown ]; then
     fetch_url "$url" && fetched=1
   fi
   if [ "$fetched" = 1 ]; then
-    if command -v curl >/dev/null 2>&1 && curl -fsSL -o "$tmp.sha256" "$url.sha256" 2>/dev/null; then
-      expected=$(cut -d' ' -f1 < "$tmp.sha256")
-      actual=""
-      if command -v shasum >/dev/null 2>&1; then actual=$(shasum -a 256 "$tmp" | cut -d' ' -f1)
-      elif command -v sha256sum >/dev/null 2>&1; then actual=$(sha256sum "$tmp" | cut -d' ' -f1); fi
-      if [ -n "$actual" ] && [ "$actual" != "$expected" ]; then
-        rm -f "$tmp" "$tmp.sha256"
-        echo "impeccable: checksum mismatch downloading $url" >&2
-        exit 127
-      fi
-      rm -f "$tmp.sha256"
+    # Fail closed: a freshly downloaded binary runs only after verifying
+    # against its .sha256 sidecar. A sidecar that cannot be fetched, or a
+    # machine with no sha256 tool, refuses the download instead of exec'ing
+    # an unverified binary. (A binary already on PATH or in the cache that
+    # passes engine-probe is unaffected.)
+    sidecar_ok=0
+    if command -v curl >/dev/null 2>&1; then
+      curl -fsSL --retry 2 -o "$tmp.sha256" "$url.sha256" 2>/dev/null && sidecar_ok=1
+    elif command -v wget >/dev/null 2>&1; then
+      wget -q -O "$tmp.sha256" "$url.sha256" 2>/dev/null && sidecar_ok=1
+    fi
+    expected=""
+    [ "$sidecar_ok" = 1 ] && expected=$(cut -d' ' -f1 < "$tmp.sha256")
+    actual=""
+    if command -v shasum >/dev/null 2>&1; then actual=$(shasum -a 256 "$tmp" | cut -d' ' -f1)
+    elif command -v sha256sum >/dev/null 2>&1; then actual=$(sha256sum "$tmp" | cut -d' ' -f1); fi
+    rm -f "$tmp.sha256"
+    if [ -z "$expected" ] || [ -z "$actual" ]; then
+      rm -f "$tmp"
+      echo "impeccable: cannot verify $url against $url.sha256 (sidecar unavailable or no sha256 tool); refusing the unverified download" >&2
+      exit 127
+    fi
+    if [ "$actual" != "$expected" ]; then
+      rm -f "$tmp"
+      echo "impeccable: checksum mismatch downloading $url" >&2
+      exit 127
     fi
     chmod +x "$tmp" 2>/dev/null
     mv -f "$tmp" "$cached" && exec "$cached" "$@"

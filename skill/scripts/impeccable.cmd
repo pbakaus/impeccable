@@ -13,9 +13,10 @@ rem - The unversioned user binary and the PATH candidate are validated with
 rem   the engine-probe handshake (see :probe) so the retired 3.x npm CLI,
 rem   whose bin is also named impeccable, is never exec'd. IMPECCABLE_BIN,
 rem   the sibling binary, and the version-pinned cache stay trusted.
-rem - Downloads are verified against the .sha256 sidecar via certutil when
-rem   the sidecar is served; on ARM64 the arm64 asset is tried first and the
-rem   x64 asset is the fallback (Windows on ARM runs x64 binaries).
+rem - Downloads are verified against the .sha256 sidecar via certutil and
+rem   fail closed: a missing sidecar or hash tool refuses the download. On
+rem   ARM64 the arm64 asset is tried first and the x64 asset is the
+rem   fallback (Windows on ARM runs x64 binaries).
 if not defined IMPECCABLE_SKILL_DIR set "IMPECCABLE_SKILL_DIR=%~dp0.."
 if not defined IMPECCABLE_SELF set "IMPECCABLE_SELF=%~f0"
 set "arch=x64"
@@ -81,25 +82,30 @@ curl.exe -fsSL -o "%cached%.part" "%url%" >nul 2>nul
 if errorlevel 1 goto fail
 
 :verify
-rem Mirrors the sh launcher: a missing sidecar or hash tool skips
-rem verification; a mismatch is fatal.
+rem Mirrors the sh launcher and fails closed: a freshly downloaded binary
+rem runs only after verifying against its .sha256 sidecar. A sidecar that
+rem cannot be fetched, or an empty certutil result, refuses the download
+rem instead of running an unverified binary.
 curl.exe -fsSL -o "%cached%.sha256" "%url%.sha256" >nul 2>nul
-if not errorlevel 1 goto have_sidecar
-del "%cached%.sha256" >nul 2>nul
-goto place
-:have_sidecar
+if errorlevel 1 goto verify_refuse
 set "expected="
 set /p expected=<"%cached%.sha256"
 for /f "tokens=1" %%h in ("%expected%") do set "expected=%%h"
 set "actual="
 for /f "skip=1 delims=" %%h in ('certutil -hashfile "%cached%.part" SHA256 2^>nul') do if not defined actual set "actual=%%h"
 del "%cached%.sha256" >nul 2>nul
-if not defined expected goto place
-if not defined actual goto place
+if not defined expected goto verify_refuse
+if not defined actual goto verify_refuse
 set "actual=%actual: =%"
 if /I "%actual%"=="%expected%" goto place
 del "%cached%.part" >nul 2>nul
 echo impeccable: checksum mismatch downloading %url% 1>&2
+exit /b 127
+
+:verify_refuse
+del "%cached%.part" >nul 2>nul
+del "%cached%.sha256" >nul 2>nul
+echo impeccable: cannot verify %url% against %url%.sha256; refusing the unverified download 1>&2
 exit /b 127
 
 :place
