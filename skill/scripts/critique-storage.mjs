@@ -16,9 +16,9 @@
  * CLI entry points (called from skill instructions):
  *   node critique-storage.mjs slug <resolved-target>
  *   node critique-storage.mjs write <slug> <snapshot-body-file>
- *   node critique-storage.mjs latest <slug>
+ *   node critique-storage.mjs latest <slug> [--json]
  *   node critique-storage.mjs trend <slug> [limit]
- *   node critique-storage.mjs close <slug>
+ *   node critique-storage.mjs close <slug> <snapshot-file>
  *
  * Note: there is intentionally no `ignore` subcommand. ignore.md is a plain
  * markdown file; the model reads it directly with its file-read tool. This
@@ -175,22 +175,41 @@ export function readLatestSnapshot(slug, { cwd = process.cwd() } = {}) {
 }
 
 /**
- * Mark the newest snapshot for `slug` closed so `latest` is empty without
- * deleting the score history consumed by `trend`. A later write naturally
- * becomes the new live backlog. Returns the path marked closed, or null.
+ * Mark one exact snapshot closed without deleting the score history consumed
+ * by `trend`. Exact identity matters: a newer critique may land after polish
+ * reads its backlog, and that newer snapshot must remain live. `snapshotFile`
+ * may be the absolute path returned by readLatestSnapshot() or the basename
+ * emitted by `latest --json`. Returns the path marked closed, or null.
  */
-export function closeSnapshot(slug, { cwd = process.cwd() } = {}) {
-  const latest = readSnapshot(listSnapshots(`__${slug}.md`, cwd).at(-1));
-  if (!latest || latest.meta.closed === true) return null;
-  const closedBody = latest.body.replace(
+export function closeSnapshot(snapshotFile, { cwd = process.cwd() } = {}) {
+  if (!snapshotFile || typeof snapshotFile !== 'string') return null;
+  const dir = path.resolve(getCritiqueDir(cwd));
+  const snapshotPath = path.isAbsolute(snapshotFile)
+    ? path.resolve(snapshotFile)
+    : path.resolve(dir, snapshotFile);
+  const filename = path.basename(snapshotPath);
+  if (
+    path.dirname(snapshotPath) !== dir
+    || !SNAPSHOT_FILENAME.test(filename)
+  ) return null;
+
+  let snapshot;
+  try {
+    if (!fs.lstatSync(snapshotPath).isFile()) return null;
+    snapshot = readSnapshot(snapshotPath);
+  } catch {
+    return null;
+  }
+  if (!snapshot || snapshot.meta.closed === true) return null;
+  const closedBody = snapshot.body.replace(
     /^(---\r?\n[\s\S]*?)(\r?\n---)/,
     '$1\nclosed: true$2',
   );
-  if (closedBody === latest.body) {
-    throw new Error(`Cannot close snapshot without frontmatter: ${latest.path}`);
+  if (closedBody === snapshot.body) {
+    throw new Error(`Cannot close snapshot without frontmatter: ${snapshot.path}`);
   }
-  fs.writeFileSync(latest.path, closedBody, 'utf-8');
-  return latest.path;
+  fs.writeFileSync(snapshot.path, closedBody, 'utf-8');
+  return snapshot.path;
 }
 
 /** Return the most recent snapshot across all targets, or null. */
@@ -268,7 +287,12 @@ function main(argv) {
     }
     case 'latest': {
       const target = args[0];
+      const format = args[1];
       const slug = coerceSlug(target);
+      if (!slug || (format && format !== '--json')) {
+        process.stderr.write('usage: latest <slug-or-target> [--json]\n');
+        process.exit(1);
+      }
       const latest = readLatestSnapshot(slug);
       if (!latest) { process.exit(2); }
       const targetFingerprint = fingerprintTarget(target);
@@ -284,16 +308,32 @@ function main(argv) {
           : !isReadySlug(target)
       );
       if (concreteLocalTarget && latest.meta.target_fingerprint !== targetFingerprint) {
-        closeSnapshot(slug);
+        closeSnapshot(latest.path);
         process.exit(2);
       }
-      process.stdout.write(latest.body);
+      if (format === '--json') {
+        process.stdout.write(JSON.stringify({
+          snapshot_file: path.basename(latest.path),
+          body: latest.body,
+        }, null, 2) + '\n');
+      } else {
+        process.stdout.write(latest.body);
+      }
       return;
     }
     case 'close': {
-      const slug = coerceSlug(args[0]);
-      if (!slug) { process.stderr.write('usage: close <slug-or-target>\n'); process.exit(1); }
-      const closed = closeSnapshot(slug);
+      const [slugArg, snapshotFile, ...extra] = args;
+      const slug = coerceSlug(slugArg);
+      if (!slug || !snapshotFile || extra.length > 0) {
+        process.stderr.write('usage: close <slug-or-target> <snapshot-file>\n');
+        process.exit(1);
+      }
+      if (
+        path.basename(snapshotFile) !== snapshotFile
+        || !SNAPSHOT_FILENAME.test(snapshotFile)
+        || !snapshotFile.endsWith(`__${slug}.md`)
+      ) process.exit(2);
+      const closed = closeSnapshot(snapshotFile);
       if (!closed) { process.exit(2); }
       process.stdout.write(`${closed}\n`);
       return;

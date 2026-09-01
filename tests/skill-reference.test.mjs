@@ -26,6 +26,10 @@ describe('skill reference authoring contracts', () => {
     assert.match(polish, /compares the file's exact current content fingerprint/);
     assert.match(polish, /Unchanged staged, unstaged, or untracked content remains current/);
     assert.match(polish, /any byte change, deletion, or replacement with a non-file closes the backlog/);
+    assert.match(polish, /latest "<resolved target>" --json/);
+    assert.match(polish, /exact `snapshot_file` identity/);
+    assert.match(polish, /close "<resolved target>" "<snapshot_file returned by latest>"/);
+    assert.match(polish, /if a newer critique landed meanwhile, its backlog stays live/);
     assert.doesNotMatch(polish, /git status|git log/);
   });
 });

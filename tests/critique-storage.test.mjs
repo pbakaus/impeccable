@@ -6,7 +6,7 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -212,7 +212,7 @@ describe('writeSnapshot + readLatestSnapshot', () => {
 
   it('closeSnapshot returns the path and leaves readLatestSnapshot null', () => {
     const out = writeSnapshot({ slug: 'index-astro', meta: { total_score: 20 }, body: 'open', cwd });
-    const closed = closeSnapshot('index-astro', { cwd });
+    const closed = closeSnapshot(out, { cwd });
     assert.equal(closed, out);
     assert.ok(closed.endsWith('__index-astro.md'));
     assert.equal(readLatestSnapshot('index-astro', { cwd }), null);
@@ -233,7 +233,7 @@ describe('writeSnapshot + readLatestSnapshot', () => {
       cwd,
       now: new Date('2026-05-12T00:00:00Z'),
     });
-    const closed = closeSnapshot('index-astro', { cwd });
+    const closed = closeSnapshot(newest, { cwd });
     assert.equal(closed, newest);
     assert.equal(readLatestSnapshot('index-astro', { cwd }), null);
     const trend = readTrend('index-astro', { cwd });
@@ -244,14 +244,14 @@ describe('writeSnapshot + readLatestSnapshot', () => {
   });
 
   it('a new snapshot reopens a previously closed slug', () => {
-    writeSnapshot({
+    const resolved = writeSnapshot({
       slug: 'index-astro',
       meta: { total_score: 20 },
       body: 'resolved',
       cwd,
       now: new Date('2026-05-01T00:00:00Z'),
     });
-    closeSnapshot('index-astro', { cwd });
+    closeSnapshot(resolved, { cwd });
     const reopened = writeSnapshot({
       slug: 'index-astro',
       meta: { total_score: 15 },
@@ -272,14 +272,14 @@ describe('writeSnapshot + readLatestSnapshot', () => {
       cwd,
       now: new Date('2026-05-01T00:00:00Z'),
     });
-    writeSnapshot({
+    const home = writeSnapshot({
       slug: 'home',
       meta: { total_score: 30 },
       body: 'home backlog',
       cwd,
       now: new Date('2026-05-12T00:00:00Z'),
     });
-    closeSnapshot('home', { cwd });
+    closeSnapshot(home, { cwd });
 
     assert.equal(readLatestSnapshotAcrossTargets({ cwd }).path, pricing);
   });
@@ -493,9 +493,36 @@ describe('CLI entry point', () => {
     assert.match(latest.stdout, /improve hierarchy/);
   });
 
-  it('close subcommand closes the latest snapshot and preserves its trend', () => {
-    writeSnapshot({ slug: 'index-astro', meta: { total_score: 20 }, body: 'open', cwd });
-    const r = spawnSync(process.execPath, [SCRIPT, 'close', 'index-astro'], {
+  it('latest --json returns the exact snapshot identity and body', () => {
+    const snapshot = writeSnapshot({
+      slug: 'index-astro',
+      meta: { total_score: 20 },
+      body: 'exact backlog',
+      cwd,
+    });
+    const r = spawnSync(process.execPath, [SCRIPT, 'latest', 'index-astro', '--json'], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(r.status, 0, `stderr: ${r.stderr}`);
+    const result = JSON.parse(r.stdout);
+    assert.equal(result.snapshot_file, basename(snapshot));
+    assert.match(result.body, /exact backlog/);
+  });
+
+  it('close subcommand closes the identified snapshot and preserves its trend', () => {
+    const snapshot = writeSnapshot({
+      slug: 'index-astro',
+      meta: { total_score: 20 },
+      body: 'open',
+      cwd,
+    });
+    const r = spawnSync(process.execPath, [
+      SCRIPT,
+      'close',
+      'index-astro',
+      basename(snapshot),
+    ], {
       cwd,
       encoding: 'utf-8',
     });
@@ -505,10 +532,59 @@ describe('CLI entry point', () => {
     assert.equal(readTrend('index-astro', { cwd })[0].closed, true);
   });
 
-  it('close subcommand exits 2 when the latest snapshot is already closed', () => {
-    writeSnapshot({ slug: 'index-astro', meta: { total_score: 20 }, body: 'open', cwd });
-    closeSnapshot('index-astro', { cwd });
-    const r = spawnSync(process.execPath, [SCRIPT, 'close', 'index-astro'], {
+  it('close subcommand leaves a newer critique backlog active', () => {
+    const first = writeSnapshot({
+      slug: 'index-astro',
+      meta: { total_score: 20 },
+      body: 'first backlog',
+      cwd,
+      now: new Date('2026-05-12T00:00:00Z'),
+    });
+    const read = spawnSync(process.execPath, [SCRIPT, 'latest', 'index-astro', '--json'], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(read.status, 0, `stderr: ${read.stderr}`);
+    assert.equal(JSON.parse(read.stdout).snapshot_file, basename(first));
+
+    const newer = writeSnapshot({
+      slug: 'index-astro',
+      meta: { total_score: 30 },
+      body: 'newer unprocessed backlog',
+      cwd,
+      now: new Date('2026-05-12T00:00:01Z'),
+    });
+    const close = spawnSync(process.execPath, [
+      SCRIPT,
+      'close',
+      'index-astro',
+      basename(first),
+    ], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(close.status, 0, `stderr: ${close.stderr}`);
+    assert.equal(readLatestSnapshot('index-astro', { cwd }).path, newer);
+    assert.equal(readLatestSnapshotAcrossTargets({ cwd }).path, newer);
+    const trend = readTrend('index-astro', { cwd });
+    assert.equal(trend[0].closed, true);
+    assert.equal(trend[1].closed, undefined);
+  });
+
+  it('close subcommand exits 2 when the identified snapshot is already closed', () => {
+    const snapshot = writeSnapshot({
+      slug: 'index-astro',
+      meta: { total_score: 20 },
+      body: 'open',
+      cwd,
+    });
+    closeSnapshot(snapshot, { cwd });
+    const r = spawnSync(process.execPath, [
+      SCRIPT,
+      'close',
+      'index-astro',
+      basename(snapshot),
+    ], {
       cwd,
       encoding: 'utf-8',
     });
@@ -516,11 +592,35 @@ describe('CLI entry point', () => {
   });
 
   it('close subcommand exits 2 when no snapshot exists', () => {
-    const r = spawnSync(process.execPath, [SCRIPT, 'close', 'never-written'], {
+    const r = spawnSync(process.execPath, [
+      SCRIPT,
+      'close',
+      'never-written',
+      '2026-05-12T00-00-00Z__never-written.md',
+    ], {
       cwd,
       encoding: 'utf-8',
     });
     assert.equal(r.status, 2);
+  });
+
+  it('close subcommand requires the identity returned by latest --json', () => {
+    const r = spawnSync(process.execPath, [SCRIPT, 'close', 'index-astro'], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /snapshot-file/);
+  });
+
+  it('close subcommand rejects a snapshot identity from another slug', () => {
+    const home = writeSnapshot({ slug: 'home', meta: { total_score: 20 }, body: 'home', cwd });
+    const r = spawnSync(process.execPath, [SCRIPT, 'close', 'pricing', basename(home)], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(r.status, 2);
+    assert.notEqual(readLatestSnapshot('home', { cwd }), null);
   });
 });
 
