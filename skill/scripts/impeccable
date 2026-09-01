@@ -25,18 +25,22 @@ probe_ok() {
 }
 probing=${IMPECCABLE_LAUNCHER_PROBE:-}
 
-if [ -n "${IMPECCABLE_BIN:-}" ] && [ -x "${IMPECCABLE_BIN}" ]; then
-  exec "${IMPECCABLE_BIN}" "$@"
-fi
-
 dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 # What the binary needs to know about its home: the skill directory (for
 # reference/*.md and command-metadata.json) and how to name itself in the
-# commands it prints.
+# commands it prints. Exported BEFORE any exec below, including the
+# IMPECCABLE_BIN override: an engine binary reached with no IMPECCABLE_SKILL_DIR
+# cannot find reference/*.md (so native platform refs never inline) or read its
+# own version (so UPDATE_AVAILABLE never fires). Setting it here covers every
+# candidate the launcher can exec.
 : "${IMPECCABLE_SKILL_DIR:=$(CDPATH= cd -- "$dir/.." && pwd)}"
 : "${IMPECCABLE_SELF:=$0}"
 export IMPECCABLE_SKILL_DIR IMPECCABLE_SELF
+
+if [ -n "${IMPECCABLE_BIN:-}" ] && [ -x "${IMPECCABLE_BIN}" ]; then
+  exec "${IMPECCABLE_BIN}" "$@"
+fi
 
 case "$(uname -s 2>/dev/null || echo unknown)" in
   Darwin) os=darwin ;;
