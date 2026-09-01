@@ -406,10 +406,16 @@ describe('live-browser source contracts', () => {
     const jsxGateIdx = injectFn.indexOf('if (isJsxSourceFile(filePath))');
     const htmlFetchIdx = injectFn.indexOf("const url = 'http://localhost:'");
     assert.ok(jsxGateIdx !== -1 && htmlFetchIdx > jsxGateIdx, 'JSX must return before /source fetch');
+    const jsxGate = injectFn.slice(jsxGateIdx, htmlFetchIdx);
     assert.doesNotMatch(
-      injectFn.slice(jsxGateIdx, htmlFetchIdx),
+      jsxGate,
       /replaceChild/,
       'the JSX gate must not replaceChild a React tree',
+    );
+    assert.doesNotMatch(
+      jsxGate,
+      /recoverEmptyCycling|discardOrphanedSession/,
+      'a missing JSX wrap must wait for mount, not tear the session down',
     );
     assert.doesNotMatch(SOURCE, /function normalizeSourceFallbackBlock/);
     assert.doesNotMatch(SOURCE, /function jsxStyleObjectToCss/);

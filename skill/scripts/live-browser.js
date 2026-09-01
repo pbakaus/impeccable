@@ -6282,7 +6282,9 @@
         completeSourceInjection(liveWrapper, sessionId, { ...opts, filePath });
         return;
       }
-      // #454: never fetch/parse JSX. Empty wrap stays for HMR; missing wrap recovers.
+      // #454: never fetch/parse JSX. Empty wrap stays for HMR. Missing wrap
+      // stays too: closed modal / other route still has variants in source,
+      // and the observer transitions to CYCLING when it mounts.
       if (opts.generationCompleted && sessionId === currentSessionId) {
         const attempt = opts.attempt || 0;
         if (attempt < COMPLETED_SOURCE_FALLBACK_RETRIES) {
@@ -6292,7 +6294,12 @@
           }, COMPLETED_SOURCE_FALLBACK_RETRY_MS);
           return;
         }
-        if (!liveWrapper) recoverEmptyCycling('source-fallback-empty');
+        if (!liveWrapper) {
+          showToast(
+            "Variants ready. If the picked element isn't visible, retrace the path that revealed it - they'll appear automatically.",
+            15000,
+          );
+        }
         return;
       }
       if (opts.orphanDiscard && !liveWrapper && sessionId === currentSessionId) {
@@ -6303,8 +6310,6 @@
             if (state !== 'GENERATING' && state !== 'CYCLING') return;
             injectVariantsFromSource(filePath, sessionId, { ...opts, _orphanAttempt: attempt + 1 });
           }, COMPLETED_SOURCE_FALLBACK_RETRY_MS);
-        } else {
-          discardOrphanedSession('variant wrapper missing from source');
         }
       }
       return;
