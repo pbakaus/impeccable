@@ -20,12 +20,15 @@ describe('skill detector bundle', () => {
     expect(scriptNames.has('detector/vendor/static-html-parsers.mjs')).toBe(true);
   });
 
-  test('static HTML parser vendor bundle matches a fresh rebuild', () => {
+  test('static HTML parser vendor bundle matches the source digest', () => {
     const result = spawnSync(
       process.execPath,
       [path.join(ROOT, 'scripts/build-static-html-parsers.js'), '--check'],
       { cwd: ROOT, encoding: 'utf8' },
     );
+    if (result.status !== 0) {
+      throw new Error(result.stderr || result.stdout || `--check exited ${result.status}`);
+    }
     expect(result.status).toBe(0);
   });
 
@@ -33,7 +36,7 @@ describe('skill detector bundle', () => {
     const vendor = path.join(ROOT, 'cli/engine/vendor/static-html-parsers.mjs');
     const original = fs.readFileSync(vendor, 'utf8');
     try {
-      fs.writeFileSync(vendor, original.replace('htmlparser2', 'htmlparser2-stale'));
+      fs.writeFileSync(vendor, original.replace(/Source digest: [0-9a-f]+/, 'Source digest: deadbeefdeadbeef'));
       const result = spawnSync(
         process.execPath,
         [path.join(ROOT, 'scripts/build-static-html-parsers.js'), '--check'],

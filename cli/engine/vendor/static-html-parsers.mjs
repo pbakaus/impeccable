@@ -1,6 +1,7 @@
 /**
  * GENERATED -- do not edit. Source: scripts/lib/static-html-parsers.entry.mjs
  * Rebuild: node scripts/build-static-html-parsers.js
+ * Source digest: 7169e400f73e8c91
  *
  * Bundles htmlparser2, css-select, css-tree, and domutils for skill/plugin installs.
  * Third-party licenses: see NOTICE.md.
