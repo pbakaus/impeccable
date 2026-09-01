@@ -92,6 +92,27 @@ export function stageWorkspace(name) {
   return tmp;
 }
 
+// Replace `needle` only where it ends a path segment: at the end of the text
+// or followed by anything but a name character (a separator, quote, dot,
+// whitespace, JSON punctuation).
+// A short home directory (`/root` in a container) is otherwise a substring of
+// ordinary words, and `.impeccable/live/roots.json` came out as
+// `.impeccable/live<HOME>s.json`.
+function maskPath(text, needle, tag) {
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    const j = text.indexOf(needle, i);
+    if (j === -1) break;
+    out += text.slice(i, j);
+    const after = text[j + needle.length];
+    const boundary = after === undefined || !/[A-Za-z0-9_-]/.test(after);
+    out += boundary ? tag : needle;
+    i = j + needle.length;
+  }
+  return out + text.slice(i);
+}
+
 export function normalize(text, { ws, home = os.homedir() }) {
   if (typeof text !== 'string') return text;
   let out = text;
@@ -114,7 +135,7 @@ export function normalize(text, { ws, home = os.homedir() }) {
   for (const [needle, tag] of [
     [wsReal, '<WS>'], [ws, '<WS>'], [REPO_ROOT, '<REPO>'], [home, '<HOME>'],
   ]) {
-    if (needle) out = out.split(needle).join(tag);
+    if (needle) out = maskPath(out, needle, tag);
   }
   // Self-referential command lines: the JS prints "node <scripts>/<verb>.mjs", the
   // binary prints "<bin> <verb>". Both collapse to "<IMPECCABLE> <verb>".
