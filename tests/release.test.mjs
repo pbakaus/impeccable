@@ -49,6 +49,10 @@ function runRelease(cwd, ...args) {
       cwd,
       encoding: 'utf-8',
       timeout: 60000,
+      // The D4 engine release-order guard would otherwise probe the network for
+      // published engine assets; these guards predate it and only exercise the
+      // version/changelog/artifact checks, so take its documented escape hatch.
+      env: { ...process.env, IMPECCABLE_SKIP_ENGINE_CHECK: '1' },
     });
     return { code: 0, stdout, stderr: '' };
   } catch (err) {
@@ -80,6 +84,13 @@ describe('release.mjs guards', () => {
 
     fs.mkdirSync(path.join(workDir, 'scripts'));
     fs.copyFileSync(RELEASE_SCRIPT, path.join(workDir, 'scripts', 'release.mjs'));
+    // release.mjs imports ./check-engine-release.mjs and ./fetch-engine.mjs
+    // (and check-engine-release.mjs imports fetch-engine.mjs), so stage them
+    // too or the dry runs fail to resolve the modules instead of exercising
+    // the guard.
+    for (const dep of ['check-engine-release.mjs', 'fetch-engine.mjs']) {
+      fs.copyFileSync(path.join(REPO_ROOT, 'scripts', dep), path.join(workDir, 'scripts', dep));
+    }
     write('.claude-plugin/plugin.json', JSON.stringify({ name: 'impeccable', version: '1.2.3' }));
     write('.claude-plugin/marketplace.json', JSON.stringify({ plugins: [{ name: 'impeccable', version: '1.2.3' }] }));
     write('package.json', JSON.stringify({ name: 'impeccable', version: '9.9.9' }));
