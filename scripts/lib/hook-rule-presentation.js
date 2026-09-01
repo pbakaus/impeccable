@@ -31,6 +31,8 @@ export const DISCIPLINES = {
   'pulsing-dot': 'Motion',
   'blinking-cursor': 'Motion',
   'shape-assembled-illustration': 'Imagery',
+  'organic-clip-path': 'Imagery',
+  'buried-raster': 'Imagery',
   'dark-glow': 'Color & Contrast',
   'radial-halo': 'Color & Contrast',
   'radial-spotlight-glow': 'Color & Contrast',
