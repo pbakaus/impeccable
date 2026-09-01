@@ -426,7 +426,7 @@ describe('detectUrl — browser-only fixtures', () => {
       for (const item of cases) {
         const count = await page.evaluate((html) => {
           document.body.innerHTML = html;
-          return window.impeccableDetect()
+          return window.impeccableDetect({ serialize: false })
             .flatMap(group => group.findings || [])
             .filter(finding => (finding.type || finding.id) === 'flat-type-hierarchy')
             .length;

@@ -3926,7 +3926,8 @@ function hasTextContent(el) {
 
 function isRenderedTypeElement(el, getStyle) {
   for (let current = el; current; current = current.parentElement) {
-    if (current.hidden || current.getAttribute?.('aria-hidden') === 'true') return false;
+    const hiddenAttr = typeof current.getAttribute === 'function' && current.getAttribute('hidden') !== null;
+    if (current.hidden || hiddenAttr || current.getAttribute?.('aria-hidden') === 'true') return false;
     const style = getStyle(current);
     if (!style) continue;
     const display = String(style.display || '').toLowerCase();
