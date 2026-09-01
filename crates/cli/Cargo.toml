@@ -1,0 +1,24 @@
+[package]
+name = "impeccable"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+impeccable-common = { path = "../common" }
+impeccable-context = { path = "../context" }
+impeccable-browser = { path = "../browser" }
+impeccable-detect = { path = "../detect" }
+impeccable-html = { path = "../html" }
+impeccable-hook = { path = "../hook" }
+impeccable-live = { path = "../live" }
+impeccable-skills = { path = "../skills" }
+impeccable-core = { workspace = true }
+impeccable-comp = { workspace = true }
+impeccable-comp-verbs = { workspace = true }
+serde_json = { workspace = true }
+base64 = "0.22"
+
+[dev-dependencies]
+serde_json = { workspace = true }

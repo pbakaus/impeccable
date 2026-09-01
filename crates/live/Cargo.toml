@@ -1,0 +1,20 @@
+[package]
+name = "impeccable-live"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+impeccable-common = { workspace = true }
+impeccable-context = { workspace = true }
+impeccable-core = { workspace = true }
+impeccable-hook = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true, features = ["preserve_order", "float_roundtrip"] }
+regex = { workspace = true }
+once_cell = { workspace = true }
+sha2 = "0.10"
+ureq = { version = "2", default-features = false, features = ["tls", "json"] }
+sha1 = "0.10"
+getrandom = "0.2"

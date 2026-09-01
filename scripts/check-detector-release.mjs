@@ -6,8 +6,9 @@
  * (crates/core/build.rs downloads it for the pinned DETECTOR_VERSION). An
  * engine release therefore cannot be built until the detector release exists.
  * This script verifies that `detector-v<DETECTOR_VERSION>` is fully published
- * on the public repo's GitHub Releases: one archive + .sha256 per target and
- * the browser bundle the extension vendors.
+ * on the public repo's GitHub Releases: one archive + .sha256 per target, the
+ * browser bundle the extension vendors, and the in-page bundle (+ .sha256)
+ * that crates/core/build.rs embeds for live mode's /detect.js.
  *
  *   node scripts/check-detector-release.mjs            # exits 1 and lists what is missing
  *   node scripts/check-detector-release.mjs --json     # machine-readable
@@ -24,6 +25,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const DEFAULT_DETECTOR_BASE = 'https://github.com/pbakaus/impeccable/releases/download';
 export const DETECTOR_TARGETS = ['darwin-arm64', 'darwin-x64', 'linux-x64', 'linux-arm64', 'windows-x64'];
 export const BROWSER_BUNDLE_ASSET = 'detector-browser-bundle.zip';
+/** The in-page wasm bundle crates/core/build.rs resolves beside the archive. */
+export const IN_PAGE_BUNDLE_ASSET = 'detect-antipatterns-browser.js';
 
 export function readDetectorVersion(root = ROOT) {
   return fs.readFileSync(path.join(root, 'DETECTOR_VERSION'), 'utf-8').trim();
@@ -69,14 +72,17 @@ export async function checkDetectorRelease({
     );
   }
   const bundleUrl = assetUrl(version, BROWSER_BUNDLE_ASSET, base);
+  const inPageUrl = assetUrl(version, IN_PAGE_BUNDLE_ASSET, base);
   probes.push(
     urlExists(bundleUrl, fetchImpl).then((ok) => { if (!ok) missing.push({ kind: 'bundle', what: BROWSER_BUNDLE_ASSET, url: bundleUrl }); }),
+    urlExists(inPageUrl, fetchImpl).then((ok) => { if (!ok) missing.push({ kind: 'in-page', what: IN_PAGE_BUNDLE_ASSET, url: inPageUrl }); }),
+    urlExists(`${inPageUrl}.sha256`, fetchImpl).then((ok) => { if (!ok) missing.push({ kind: 'in-page-checksum', what: `${IN_PAGE_BUNDLE_ASSET}.sha256`, url: `${inPageUrl}.sha256` }); }),
   );
   await Promise.all(probes);
   // Plain byte order (not localeCompare, which files punctuation before
-  // letters): per-target rows first, the bundle row last.
-  const order = { archive: 0, checksum: 1, bundle: 2 };
-  const key = (m) => m.target || 'zz-bundle';
+  // letters): per-target rows first, then the two bundle rows.
+  const order = { archive: 0, checksum: 1, bundle: 2, 'in-page': 3, 'in-page-checksum': 4 };
+  const key = (m) => m.target || (m.kind === 'bundle' ? 'zz-bundle' : 'zz-in-page');
   missing.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) || order[a.kind] - order[b.kind]);
   return { ok: missing.length === 0, version, base, missing };
 }
@@ -89,7 +95,7 @@ function main() {
       process.exit(result.ok ? 0 : 1);
     }
     if (result.ok) {
-      console.log(`✓ detector v${result.version} release is complete: ${DETECTOR_TARGETS.length} archives + .sha256 + ${BROWSER_BUNDLE_ASSET} are published.`);
+      console.log(`✓ detector v${result.version} release is complete: ${DETECTOR_TARGETS.length} archives + .sha256, ${BROWSER_BUNDLE_ASSET} and ${IN_PAGE_BUNDLE_ASSET} + .sha256 are published.`);
       console.log(`  release base: ${result.base}`);
       process.exit(0);
     }
@@ -98,7 +104,8 @@ function main() {
     console.error('');
     console.error(`Publish detector v${result.version} (tag v${result.version} in the private detector repo; its CI`);
     console.error(`uploads the archives to this repo's detector-v${result.version} release) BEFORE tagging an engine`);
-    console.error('release: crates/core/build.rs downloads the archive for every target it builds.');
+    console.error('release: crates/core/build.rs downloads the archive for every target it builds,');
+    console.error(`and the ${IN_PAGE_BUNDLE_ASSET} it embeds for live mode.`);
     console.error(`  release base: ${result.base}`);
     process.exit(1);
   });

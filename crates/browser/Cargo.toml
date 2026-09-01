@@ -1,0 +1,16 @@
+[package]
+name = "impeccable-browser"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+impeccable-core = { workspace = true }
+impeccable-detect = { workspace = true }
+serde_json = { workspace = true, features = ["preserve_order", "float_roundtrip"] }
+tungstenite = { version = "0.28", default-features = false, features = ["handshake"] }
+png = "0.18"
+base64 = "0.22"
+url = "2"
+percent-encoding = "2"

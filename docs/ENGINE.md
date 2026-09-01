@@ -42,10 +42,11 @@ cargo test --workspace
 IMPECCABLE_BIN=target/release/impeccable node tests/oracle/run.mjs   # the behavior gate
 ```
 
-`bun run test` and the oracle find the binary through `IMPECCABLE_BIN` or
+`bun run test` and the oracle find the binary through `IMPECCABLE_BIN`, then
 `skill/scripts/bin/<os>-<arch>/` (`bun run fetch:engine` downloads the pinned
 release there; `IMPECCABLE_BIN=target/release/impeccable bun run fetch:engine`
-copies a local build).
+copies a local build), then `target/release/impeccable`, so a plain
+`cargo build --release -p impeccable` is enough.
 
 ## The closed detector
 
@@ -55,7 +56,11 @@ prebuilt native archive per target, `libimpeccable_detector-<os>-<arch>.a`
 (`impeccable_detector-windows-x64.lib`), published as the GitHub Release
 `detector-v<DETECTOR_VERSION>` on this repo, next to
 `detector-browser-bundle.zip` (the same rules compiled to wasm for the
-extension, the live overlay and the site).
+extension, the live overlay and the site). That release also carries
+`detect-antipatterns-browser.js` and its `.sha256`: the in-page bundle
+`crates/core/build.rs` resolves the same three ways and hands to
+`impeccable_core::browser::IN_PAGE_BUNDLE_JS`, which live mode serves as
+`/detect.js`. It is generated, so it is not tracked here.
 
 `crates/core/build.rs` resolves the archive in this order and links it:
 
@@ -66,6 +71,10 @@ extension, the live overlay and the site).
 3. A download from `detector-v<DETECTOR_VERSION>` into that cache, verified
    against the `.sha256` sidecar. `IMPECCABLE_DETECTOR_BASE` overrides the
    release root; `IMPECCABLE_DETECTOR_OFFLINE=1` refuses to download.
+
+The in-page bundle follows the same order (beside the archive when
+`IMPECCABLE_DETECTOR_LIB` supplies one, else the version cache, else a
+verified download).
 
 Three things follow from how that archive is made, and they are the reason
 for three otherwise odd-looking settings:

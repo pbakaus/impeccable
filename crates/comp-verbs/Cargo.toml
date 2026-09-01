@@ -1,0 +1,25 @@
+[package]
+name = "impeccable-comp-verbs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The comp-fidelity verb orchestrators (build-phase / comp-diff / comp-spec /
+# font-match), ported from the skill's JS scripts. OPEN and free of the closed
+# `core` crate: it wires only the pure `comp` foundation plus `common` (Io).
+# The one piece it cannot do alone — font-match's headless browser rendering of
+# font specimens — is injected as a `FontRenderer` trait the CLI implements over
+# `crates/browser`, so the browser (and its `core` dependency) stays out of here.
+
+[dependencies]
+impeccable-comp = { workspace = true }
+impeccable-common = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true, features = ["preserve_order", "float_roundtrip"] }
+regex = { workspace = true }
+once_cell = { workspace = true }
+sha1 = "0.10"
+
+[dev-dependencies]
+serde_json = { workspace = true, features = ["preserve_order", "float_roundtrip"] }

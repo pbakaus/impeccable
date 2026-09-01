@@ -1,0 +1,29 @@
+[package]
+name = "impeccable-core"
+version.workspace = true
+edition = "2021"
+# The open shim. It holds no rule logic, only the boundary crossing.
+license.workspace = true
+publish.workspace = true
+build = "build.rs"
+
+[features]
+default = []
+# Vector dispatcher used by tests/vectors.rs to replay the recorded JS call
+# vectors through the Rust port (open arms plus the detector's, over the ABI).
+vectors = ["impeccable-foundation/vectors"]
+# The table-driven fake DOM for browser-rule tests.
+fake-dom = ["impeccable-foundation/fake-dom"]
+
+[dependencies]
+impeccable-foundation = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true, features = ["float_roundtrip"] }
+once_cell = { workspace = true }
+
+[build-dependencies]
+ureq = "2"
+sha2 = "0.10"
+
+[dev-dependencies]
+impeccable-core = { path = ".", features = ["fake-dom", "vectors"] }

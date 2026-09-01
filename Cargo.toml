@@ -25,10 +25,12 @@ impeccable-comp = { path = "crates/comp" }
 impeccable-comp-verbs = { path = "crates/comp-verbs" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
-anyhow = "1"
 thiserror = "2"
 regex = "1"
 once_cell = "1"
+# The boundary encoding: every value that crosses into the closed detector
+# is postcard bytes (docs/ENGINE.md).
+postcard = { version = "1", features = ["alloc"] }
 
 # No cross-crate LTO: crates/core links the prebuilt detector as a native
 # archive of Rust objects, and fat or thin LTO internalizes the std symbols

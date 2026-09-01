@@ -2,7 +2,9 @@
  * Locate the impeccable engine binary for tests that drive verbs end to end.
  *
  * Order: $IMPECCABLE_BIN, then skill/scripts/bin/<os>-<arch>/impeccable[.exe]
- * (what `bun run fetch:engine` writes). Returns null when neither exists so a
+ * (what `bun run fetch:engine` writes), then target/release/impeccable[.exe]
+ * (what `cargo build --release -p impeccable` writes, so a local source build
+ * is picked up without any extra step). Returns null when none exists so a
  * suite can skip cleanly instead of failing on a machine without the engine.
  */
 import fs from 'node:fs';
@@ -22,11 +24,16 @@ export function findEngineBinary() {
   const fromEnv = process.env.IMPECCABLE_BIN;
   if (fromEnv && fs.existsSync(fromEnv)) return path.resolve(fromEnv);
   const target = engineTarget();
-  const local = path.join(REPO_ROOT, 'skill', 'scripts', 'bin', target, target.startsWith('windows-') ? 'impeccable.exe' : 'impeccable');
-  return fs.existsSync(local) ? local : null;
+  const exe = target.startsWith('windows-') ? 'impeccable.exe' : 'impeccable';
+  const candidates = [
+    path.join(REPO_ROOT, 'skill', 'scripts', 'bin', target, exe),
+    path.join(REPO_ROOT, 'target', 'release', exe),
+  ];
+  return candidates.find((p) => fs.existsSync(p)) || null;
 }
 
-export const ENGINE_MISSING_MESSAGE = 'engine binary not found: run `bun run fetch:engine` or set IMPECCABLE_BIN';
+export const ENGINE_MISSING_MESSAGE =
+  'engine binary not found: run `cargo build --release -p impeccable` or `bun run fetch:engine`, or set IMPECCABLE_BIN';
 
 /** Environment the launcher would export for the binary when run from this repo's skill dir. */
 export function engineEnv(bin, extra = {}) {

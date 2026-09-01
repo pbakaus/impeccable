@@ -1,0 +1,27 @@
+[package]
+name = "impeccable-comp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The pure, browser-independent foundation of the comp-fidelity pipeline,
+# ported from the skill's JS libs (png / raster / image-metrics /
+# font-fingerprint / font-index / hero-checks). Self-contained and free of the
+# closed `core` crate so it can be split into its own open repo: the only JS
+# number semantics it needs (`toFixed`, hex) are reimplemented locally in
+# `jsnum`. No CLI verbs and no browser rendering live here (that is step 2).
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true, features = ["preserve_order", "float_roundtrip"] }
+regex = { workspace = true }
+once_cell = { workspace = true }
+png = "0.18"
+# Non-PNG raster decode (WebP / JPEG / GIF) for loadRaster, replacing the JS
+# shell-outs to dwebp / sips / magick / convert. AVIF needs a C library and is
+# deferred to step 2 (a browser can also produce a PNG there).
+image = { version = "0.25", default-features = false, features = ["jpeg", "gif", "webp"] }
+
+[dev-dependencies]
+serde_json = { workspace = true, features = ["preserve_order", "float_roundtrip"] }

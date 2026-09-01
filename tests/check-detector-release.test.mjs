@@ -6,7 +6,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  archiveAsset, assetUrl, checkDetectorRelease, DETECTOR_TARGETS, BROWSER_BUNDLE_ASSET, DEFAULT_DETECTOR_BASE,
+  archiveAsset, assetUrl, checkDetectorRelease, DETECTOR_TARGETS, BROWSER_BUNDLE_ASSET,
+  IN_PAGE_BUNDLE_ASSET, DEFAULT_DETECTOR_BASE,
 } from '../scripts/check-detector-release.mjs';
 
 const okResponse = { status: 206, body: { cancel: async () => {} } };
@@ -23,24 +24,30 @@ describe('check-detector-release', () => {
     assert.equal(DEFAULT_DETECTOR_BASE, 'https://github.com/pbakaus/impeccable/releases/download');
   });
 
-  it('passes when every archive, checksum and the browser bundle answer', async () => {
+  it('passes when every archive, checksum and both bundles answer', async () => {
     const seen = [];
     const fetchImpl = async (url) => { seen.push(url); return okResponse; };
     const result = await checkDetectorRelease({ version: '0.1.0', base: 'https://example.test/dl', fetchImpl });
     assert.equal(result.ok, true);
     assert.equal(result.missing.length, 0);
-    assert.equal(seen.length, DETECTOR_TARGETS.length * 2 + 1);
+    // Per target: archive + .sha256. Plus the extension bundle, the in-page
+    // bundle crates/core embeds, and that bundle's own .sha256.
+    assert.equal(seen.length, DETECTOR_TARGETS.length * 2 + 3);
     assert.ok(seen.includes(`https://example.test/dl/detector-v0.1.0/${BROWSER_BUNDLE_ASSET}`));
+    assert.ok(seen.includes(`https://example.test/dl/detector-v0.1.0/${IN_PAGE_BUNDLE_ASSET}`));
+    assert.ok(seen.includes(`https://example.test/dl/detector-v0.1.0/${IN_PAGE_BUNDLE_ASSET}.sha256`));
   });
 
   it('lists every missing asset, sorted by target then archive/checksum/bundle', async () => {
-    const fetchImpl = async (url) => (url.includes('windows-x64') || url.endsWith(BROWSER_BUNDLE_ASSET) ? missingResponse : okResponse);
+    const fetchImpl = async (url) => (url.includes('windows-x64') || url.includes(BROWSER_BUNDLE_ASSET) || url.includes(IN_PAGE_BUNDLE_ASSET) ? missingResponse : okResponse);
     const result = await checkDetectorRelease({ version: '0.1.0', base: 'https://example.test/dl', fetchImpl });
     assert.equal(result.ok, false);
     assert.deepEqual(result.missing.map((m) => m.what), [
       'impeccable_detector-windows-x64.lib',
       'impeccable_detector-windows-x64.lib.sha256',
       BROWSER_BUNDLE_ASSET,
+      IN_PAGE_BUNDLE_ASSET,
+      `${IN_PAGE_BUNDLE_ASSET}.sha256`,
     ]);
   });
 
@@ -48,6 +55,6 @@ describe('check-detector-release', () => {
     const fetchImpl = async () => { throw new Error('offline'); };
     const result = await checkDetectorRelease({ version: '0.1.0', base: 'https://example.test/dl', fetchImpl });
     assert.equal(result.ok, false);
-    assert.equal(result.missing.length, DETECTOR_TARGETS.length * 2 + 1);
+    assert.equal(result.missing.length, DETECTOR_TARGETS.length * 2 + 3);
   });
 });
