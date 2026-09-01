@@ -962,13 +962,45 @@ export function extractPlatform(product) {
  * (this file lives at `<skill>/scripts/context.mjs`). Returns null when the
  * frontmatter is missing or unreadable.
  */
+function parseSkillFrontmatterVersion(content) {
+  const match = String(content).match(/^---[ \t]*\r?\n([\s\S]*?)\r?\n---(?:[ \t]*\r?\n|[ \t]*$)/);
+  if (!match) return null;
+
+  let metadataVersion = null;
+  let topLevelVersion = null;
+  let inMetadata = false;
+  let metadataIndent = null;
+
+  for (const line of match[1].split(/\r?\n/)) {
+    if (!line.trim() || line.trimStart().startsWith('#')) continue;
+    const indentText = line.match(/^[ \t]*/)[0];
+    const indent = indentText.replace(/\t/g, '  ').length;
+
+    if (indent === 0) {
+      inMetadata = /^metadata:\s*(?:#.*)?$/.test(line);
+      metadataIndent = null;
+      const version = line.match(/^version:\s*(.+?)\s*$/);
+      if (version) topLevelVersion = version[1];
+      continue;
+    }
+
+    if (!inMetadata) continue;
+    if (metadataIndent === null) metadataIndent = indent;
+    if (indent !== metadataIndent) continue;
+    const version = line.trim().match(/^version:\s*(.+?)\s*$/);
+    if (version) metadataVersion = version[1];
+  }
+
+  const value = metadataVersion || topLevelVersion;
+  return value ? value.trim().replace(/^(["'])(.*)\1$/, '$2') : null;
+}
+
 function readLocalSkillVersion() {
   try {
     const here = path.dirname(fileURLToPath(import.meta.url));
     const skillMd = path.join(here, '..', 'SKILL.md');
     const content = fs.readFileSync(skillMd, 'utf-8');
-    const match = content.match(/^version:\s*(.+)$/m);
-    return match ? match[1].trim().replace(/^["']|["']$/g, '') : null;
+    return parseSkillFrontmatterVersion(content);
   } catch {
     return null;
   }

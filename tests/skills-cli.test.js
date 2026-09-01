@@ -24,6 +24,7 @@ import {
   downloadFile,
   expectedHookDests,
   formatInstallDetectionLines,
+  getSkillsVersion,
   mergeHookManifests,
   migrateUnprefixImpeccable,
   resolveInstallTargets,
@@ -168,6 +169,32 @@ function createPrefixedInstall(root, { prefix = 'i-', providers = ['.claude'], f
     if (foreign) writeSkill(root, provider, foreign);
   }
 }
+
+describe('skills version discovery', () => {
+  test('prefers metadata.version while accepting legacy top-level version', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-skill-version-'));
+    const skillDir = join(tmp, '.agents', 'skills', 'impeccable');
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(join(skillDir, 'SKILL.md'), [
+      '---',
+      'name: impeccable',
+      'version: 0.9.0',
+      'metadata:',
+      '  version: 1.2.3',
+      '---',
+      '',
+      'Body.',
+    ].join('\n'));
+
+    try {
+      expect(getSkillsVersion(tmp, 'project')).toBe('1.2.3');
+      writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: impeccable\nversion: 0.9.0\n---\nBody.\n');
+      expect(getSkillsVersion(tmp, 'project')).toBe('0.9.0');
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
 
 // ─── Already-installed detection ─────────────────────────────────────────────
 

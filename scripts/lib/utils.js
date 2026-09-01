@@ -787,6 +787,9 @@ export function generateYamlFrontmatter(data) {
           lines.push(`  - ${formatYamlScalar(item)}`);
         }
       }
+    } else if (value && typeof value === 'object') {
+      lines.push(`${key}:`);
+      appendYamlObject(lines, value, 2);
     } else if (typeof value === 'boolean') {
       lines.push(`${key}: ${value}`);
     } else {

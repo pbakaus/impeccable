@@ -241,6 +241,7 @@ export function createTransformer(config) {
     providerTags = [provider],
     writeOpenAIMetadata = false,
     includeVersion = true,
+    versionInMetadata = false,
   } = config;
   const placeholderKey = placeholderProvider || provider;
 
@@ -274,12 +275,21 @@ export function createTransformer(config) {
         name: skillName,
         description: skill.description,
       };
-      if (skillsVersion && includeVersion) frontmatterObj.version = skillsVersion;
+      if (skillsVersion && includeVersion && !versionInMetadata) {
+        frontmatterObj.version = skillsVersion;
+      }
 
       for (const spec of activeFields) {
         if (spec.condition && !spec.condition(skill)) continue;
         const val = spec.value ? spec.value(skill) : skill[spec.sourceKey];
         if (val) frontmatterObj[spec.yamlKey] = val;
+      }
+
+      if (skillsVersion && includeVersion && versionInMetadata) {
+        frontmatterObj.metadata = {
+          ...(frontmatterObj.metadata || {}),
+          version: skillsVersion,
+        };
       }
 
       // Replace {{command_hint}} in argument-hint with command names from metadata,

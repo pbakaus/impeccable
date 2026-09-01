@@ -1465,11 +1465,11 @@ describe('context.mjs update check', () => {
 
   const cachePath = () => path.join(scratch, 'update-check.json');
 
-  function setup(cacheObj, { disable = false, host } = {}) {
+  function setup(cacheObj, { disable = false, host, skillFrontmatter } = {}) {
     const skillScript = stageContextBundle(path.join(scratch, 'skill', 'scripts'));
     fs.writeFileSync(
       path.join(scratch, 'skill', 'SKILL.md'),
-      `---\nname: impeccable\nversion: ${LOCAL_VERSION}\n---\n\nbody\n`,
+      `---\n${skillFrontmatter || `name: impeccable\nversion: ${LOCAL_VERSION}`}\n---\n\nbody\n`,
     );
     fs.writeFileSync(cachePath(), JSON.stringify(cacheObj));
     const project = path.join(scratch, 'project');
@@ -1520,6 +1520,22 @@ describe('context.mjs update check', () => {
     assert.match(res.stdout, /npx impeccable update/);
     // It must come after the real context, never replace it.
     assert.match(res.stdout, /^# PRODUCT\.md/);
+  });
+
+  it('reads metadata.version and prefers it over the legacy top-level key', () => {
+    const metadataOnly = run(
+      { lastCheck: Date.now(), latestVersion: '2.0.0' },
+      { skillFrontmatter: `name: impeccable\nmetadata:\n  version: ${LOCAL_VERSION}` },
+    );
+    assert.equal(metadataOnly.status, 0);
+    assert.match(metadataOnly.stdout, /installed v1\.0\.0, latest v2\.0\.0/);
+
+    const both = run(
+      { lastCheck: Date.now(), latestVersion: '2.0.0' },
+      { skillFrontmatter: `name: impeccable\nversion: 9.0.0\nmetadata:\n  version: ${LOCAL_VERSION}` },
+    );
+    assert.equal(both.status, 0);
+    assert.match(both.stdout, /installed v1\.0\.0, latest v2\.0\.0/);
   });
 
   // The directive used to say "ask once" and "if they agree, run it" while also

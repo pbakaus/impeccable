@@ -25,17 +25,43 @@ import fs from 'fs';
 import path from 'path';
 
 /**
- * Pull the `version:` value out of a SKILL.md leading frontmatter block.
+ * Pull the version value out of a SKILL.md leading frontmatter block.
  * CRLF-tolerant (`\r?\n`) to match the shared parseFrontmatter in
  * scripts/lib/utils.js — a bundle saved with CRLF line endings must not read
- * as a null version and trip a false mismatch. `(.+)` stops at the line
- * terminator (so a trailing `\r` is excluded), and `.trim()` mops up the rest.
+ * as a null version and trip a false mismatch. Codex builds carry the version
+ * under `metadata.version`; legacy provider builds keep the top-level key.
  */
 export function readSkillFrontmatterVersion(content) {
-  const fm = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  const fm = String(content).match(/^---[ \t]*\r?\n([\s\S]*?)\r?\n---(?:[ \t]*\r?\n|[ \t]*$)/);
   if (!fm) return null;
-  const line = fm[1].match(/^version:\s*(.+)/m);
-  return line ? line[1].trim().replace(/^['"]|['"]$/g, '') : null;
+
+  let metadataVersion = null;
+  let topLevelVersion = null;
+  let inMetadata = false;
+  let metadataIndent = null;
+
+  for (const line of fm[1].split(/\r?\n/)) {
+    if (!line.trim() || line.trimStart().startsWith('#')) continue;
+    const indentText = line.match(/^[ \t]*/)[0];
+    const indent = indentText.replace(/\t/g, '  ').length;
+
+    if (indent === 0) {
+      inMetadata = /^metadata:\s*(?:#.*)?$/.test(line);
+      metadataIndent = null;
+      const version = line.match(/^version:\s*(.+?)\s*$/);
+      if (version) topLevelVersion = version[1];
+      continue;
+    }
+
+    if (!inMetadata) continue;
+    if (metadataIndent === null) metadataIndent = indent;
+    if (indent !== metadataIndent) continue;
+    const version = line.trim().match(/^version:\s*(.+?)\s*$/);
+    if (version) metadataVersion = version[1];
+  }
+
+  const value = metadataVersion || topLevelVersion;
+  return value ? value.trim().replace(/^(["'])(.*)\1$/, '$2') : null;
 }
 
 /**

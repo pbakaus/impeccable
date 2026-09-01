@@ -557,6 +557,39 @@ async function showHelp() {
 
 // ─── version helpers ─────────────────────────────────────────────────────────
 
+function parseSkillFrontmatterVersion(content) {
+  const match = String(content).match(/^---[ \t]*\r?\n([\s\S]*?)\r?\n---(?:[ \t]*\r?\n|[ \t]*$)/);
+  if (!match) return null;
+
+  let metadataVersion = null;
+  let topLevelVersion = null;
+  let inMetadata = false;
+  let metadataIndent = null;
+
+  for (const line of match[1].split(/\r?\n/)) {
+    if (!line.trim() || line.trimStart().startsWith('#')) continue;
+    const indentText = line.match(/^[ \t]*/)[0];
+    const indent = indentText.replace(/\t/g, '  ').length;
+
+    if (indent === 0) {
+      inMetadata = /^metadata:\s*(?:#.*)?$/.test(line);
+      metadataIndent = null;
+      const version = line.match(/^version:\s*(.+?)\s*$/);
+      if (version) topLevelVersion = version[1];
+      continue;
+    }
+
+    if (!inMetadata) continue;
+    if (metadataIndent === null) metadataIndent = indent;
+    if (indent !== metadataIndent) continue;
+    const version = line.trim().match(/^version:\s*(.+?)\s*$/);
+    if (version) metadataVersion = version[1];
+  }
+
+  const value = metadataVersion || topLevelVersion;
+  return value ? value.trim().replace(/^(["'])(.*)\1$/, '$2') : null;
+}
+
 /**
  * Read the skills version from the impeccable SKILL.md frontmatter.
  */
@@ -566,8 +599,8 @@ function getSkillsVersion(root, scope) {
       const skillMd = join(skillsDir, 'impeccable', 'SKILL.md');
       if (!existsSync(skillMd)) continue;
       const content = readFileSync(skillMd, 'utf-8');
-      const match = content.match(/^version:\s*(.+)$/m);
-      if (match) return match[1].trim().replace(/^["']|["']$/g, '');
+      const version = parseSkillFrontmatterVersion(content);
+      if (version) return version;
     }
   }
   return null;
@@ -2483,6 +2516,7 @@ export {
   expectedHookDests,
   extractZip,
   formatInstallDetectionLines,
+  getSkillsVersion,
   isUpToDate,
   hermesGlobalHome,
   HOME_SKILLS_DIR_OVERRIDES,
