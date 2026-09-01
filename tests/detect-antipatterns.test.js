@@ -16,6 +16,7 @@ import * as domutils from 'domutils';
 import { StaticDocument } from '../cli/engine/engines/static-html/css-cascade.mjs';
 import { filterByScopes } from '../cli/engine/registry/antipatterns.mjs';
 import {
+  checkFlatTypeHierarchySamples,
   checkColors,
   checkElementTextOverflowDOM,
   checkHeroEyebrow,
@@ -703,16 +704,59 @@ describe('detectHtml — overused fonts system stack', () => {
 });
 
 describe('detectText — flat type hierarchy', () => {
-  test('flags sizes too close together', () => {
+  test('source-only declarations abstain because rendered role frequency is unknowable', () => {
     const page = '<!DOCTYPE html><html><style>h1{font-size:18px}h2{font-size:16px}h3{font-size:15px}p{font-size:14px}.s{font-size:13px}</style></html>';
     const f = detectText(page, 'test.html');
-    expect(f.some(r => r.antipattern === 'flat-type-hierarchy')).toBe(true);
+    expect(f.filter(r => r.antipattern === 'flat-type-hierarchy')).toHaveLength(0);
   });
 
-  test('passes good hierarchy', () => {
+  test('also abstains when source declarations suggest a wide hierarchy', () => {
     const page = '<!DOCTYPE html><html><style>h1{font-size:48px}h2{font-size:32px}p{font-size:16px}.s{font-size:12px}</style></html>';
     const f = detectText(page, 'test.html');
     expect(f.filter(r => r.antipattern === 'flat-type-hierarchy')).toHaveLength(0);
+  });
+});
+
+describe('flat-type-hierarchy — role analysis', () => {
+  test('uses the dominant size within each semantic role', () => {
+    const findings = checkFlatTypeHierarchySamples([
+      { role: 'h1', size: 18 },
+      { role: 'h2', size: 16 },
+      { role: 'h2', size: 16 },
+      { role: 'h2', size: 40 },
+      ...Array.from({ length: 20 }, () => ({ role: 'body', size: 14 })),
+      { role: 'body', size: 10 },
+    ]);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].snippet).toContain('body 14px, h2 16px, h1 18px');
+    expect(findings[0].snippet).not.toContain('40px');
+  });
+
+  test('passes when one adjacent role step reaches the documented threshold', () => {
+    const findings = checkFlatTypeHierarchySamples([
+      { role: 'h1', size: 25 },
+      { role: 'h2', size: 20 },
+      { role: 'body', size: 16 },
+    ]);
+    expect(findings).toHaveLength(0);
+  });
+
+  test('abstains when fewer than three semantic roles render', () => {
+    const findings = checkFlatTypeHierarchySamples([
+      { role: 'h1', size: 18 },
+      ...Array.from({ length: 100 }, () => ({ role: 'body', size: 14 })),
+    ]);
+    expect(findings).toHaveLength(0);
+  });
+
+  test('abstains from a role whose competing sizes have no dominant value', () => {
+    const findings = checkFlatTypeHierarchySamples([
+      { role: 'h1', size: 18 },
+      { role: 'h1', size: 48 },
+      { role: 'h2', size: 16 },
+      { role: 'body', size: 14 },
+    ]);
+    expect(findings).toHaveLength(0);
   });
 });
 
@@ -749,13 +793,13 @@ describe('partials skip page-level checks', () => {
     expect(f.some(r => r.antipattern === 'side-tab')).toBe(true);
   });
 
-  test('regex: full page with flat hierarchy IS flagged', () => {
+  test('regex: full page with declarations-only hierarchy abstains', () => {
     const page = '<!DOCTYPE html><html><head></head><body>\n' +
       '<h1 style="font-size: 18px">h1</h1>\n<h2 style="font-size: 16px">h2</h2>\n' +
       '<p style="font-size: 14px">p</p>\n<span style="font-size: 15px">s</span>\n' +
       '<small style="font-size: 13px">sm</small>\n</body></html>';
     const f = detectText(page, 'index.html');
-    expect(f.some(r => r.antipattern === 'flat-type-hierarchy')).toBe(true);
+    expect(f.filter(r => r.antipattern === 'flat-type-hierarchy')).toHaveLength(0);
   });
 });
 

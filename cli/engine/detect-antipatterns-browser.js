@@ -159,7 +159,7 @@ const ANTIPATTERNS = [
     scopes: ['type'],
     name: 'Flat type hierarchy',
     description:
-      'Font sizes are too close together — no clear visual hierarchy. Use fewer sizes with more contrast (aim for at least a 1.25 ratio between steps).',
+      'Dominant heading and body roles are separated by less than 1.25× at every step, leaving the size hierarchy flat. Add at least one stronger size step.',
     skillSection: 'Typography',
     skillGuideline: 'flat type hierarchy',
   },
@@ -5184,6 +5184,86 @@ function checkElementGlow(tag, style, effectiveBg) {
 
 // ─── Section 6: Page-Level Checks ───────────────────────────────────────────
 
+const TYPE_HIERARCHY_SELECTOR = 'h1,h2,h3,h4,h5,h6,p,li,td,th,dd,blockquote,figcaption';
+const TYPE_HIERARCHY_MIN_ROLES = 3;
+const TYPE_HIERARCHY_MIN_STEP_RATIO = 1.25;
+
+function typeHierarchyRole(el) {
+  const tag = String(el?.tagName || el?.nodeName || '').toLowerCase();
+  return /^h[1-6]$/.test(tag) ? tag : 'body';
+}
+
+function hasTextContent(el) {
+  return String(el?.textContent || '').trim().length > 0;
+}
+
+function isRenderedTypeElement(el, getStyle) {
+  for (let current = el; current; current = current.parentElement) {
+    if (current.hidden || current.getAttribute?.('aria-hidden') === 'true') return false;
+    const style = getStyle(current);
+    if (!style) continue;
+    const display = String(style.display || '').toLowerCase();
+    const visibility = String(style.visibility || '').toLowerCase();
+    if (display === 'none' || visibility === 'hidden' || visibility === 'collapse') return false;
+    const opacity = parseFloat(style.opacity);
+    if (Number.isFinite(opacity) && opacity <= 0.01) return false;
+  }
+  return true;
+}
+
+function dominantTypeRoleSize(samples) {
+  const counts = new Map();
+  for (const sample of samples) {
+    counts.set(sample.size, (counts.get(sample.size) || 0) + 1);
+  }
+  const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0]);
+  if (ranked.length > 1 && ranked[0][1] === ranked[1][1]) return null;
+  return ranked[0]?.[0] ?? null;
+}
+
+function checkFlatTypeHierarchySamples(samples) {
+  const byRole = new Map();
+  for (const sample of samples || []) {
+    const role = String(sample?.role || '');
+    const size = Math.round(Number(sample?.size) * 10) / 10;
+    if (!role || !Number.isFinite(size) || size < 8 || size >= 200) continue;
+    if (!byRole.has(role)) byRole.set(role, []);
+    byRole.get(role).push({ role, size });
+  }
+
+  const roles = [...byRole.entries()].map(([role, roleSamples]) => ({
+    role,
+    size: dominantTypeRoleSize(roleSamples),
+  })).filter(item => item.size !== null);
+
+  if (roles.length < TYPE_HIERARCHY_MIN_ROLES) return [];
+
+  const sorted = roles.slice().sort((a, b) => a.size - b.size || a.role.localeCompare(b.role));
+  let largestStep = 1;
+  for (let i = 1; i < sorted.length; i++) {
+    largestStep = Math.max(largestStep, sorted[i].size / sorted[i - 1].size);
+  }
+  if (largestStep >= TYPE_HIERARCHY_MIN_STEP_RATIO) return [];
+
+  const roleSizes = sorted.map(item => `${item.role} ${item.size}px`).join(', ');
+  return [{
+    id: 'flat-type-hierarchy',
+    snippet: `Role sizes: ${roleSizes} (largest adjacent step ${largestStep.toFixed(2)}:1; target ${TYPE_HIERARCHY_MIN_STEP_RATIO}:1)`,
+  }];
+}
+
+function checkFlatTypeHierarchyFromDoc(root, getStyle, options = {}) {
+  const samples = [];
+  for (const el of root.querySelectorAll(TYPE_HIERARCHY_SELECTOR)) {
+    if (options.skipElement?.(el)) continue;
+    if (!hasTextContent(el) || !isRenderedTypeElement(el, getStyle)) continue;
+    const fontSize = parseFloat(getStyle(el)?.fontSize);
+    if (!Number.isFinite(fontSize) || fontSize < 8 || fontSize >= 200) continue;
+    samples.push({ role: typeHierarchyRole(el), size: fontSize });
+  }
+  return checkFlatTypeHierarchySamples(samples);
+}
+
 // Browser page-level checks — use document/getComputedStyle globals
 
 function checkTypography() {
@@ -5222,17 +5302,10 @@ function checkTypography() {
     }
   }
 
-  const sizes = new Set();
-  for (const el of document.querySelectorAll('h1,h2,h3,h4,h5,h6,p,span,a,li,td,th,label,button,div')) {
-    const fs = parseFloat(getComputedStyle(el).fontSize);
-    if (fs > 0 && fs < 200) sizes.add(Math.round(fs * 10) / 10);
-  }
-  if (sizes.size >= 3) {
-    const sorted = [...sizes].sort((a, b) => a - b);
-    const ratio = sorted[sorted.length - 1] / sorted[0];
-    if (ratio < 2.0) {
-      findings.push({ type: 'flat-type-hierarchy', detail: `Sizes: ${sorted.map(s => s + 'px').join(', ')} (ratio ${ratio.toFixed(1)}:1)` });
-    }
+  for (const finding of checkFlatTypeHierarchyFromDoc(document, getComputedStyle, {
+    skipElement: el => el.closest?.('.impeccable-overlay, .impeccable-label, .impeccable-banner, .impeccable-tooltip, [id^="impeccable-live-"]'),
+  })) {
+    findings.push({ type: finding.id, detail: finding.snippet });
   }
 
   return findings;
@@ -5479,21 +5552,7 @@ function checkPageTypography(doc, win) {
     findings.push({ id: 'overused-font', snippet: `Primary font: ${font}` });
   }
 
-  // Flat type hierarchy
-  const sizes = new Set();
-  const textEls = doc.querySelectorAll('h1, h2, h3, h4, h5, h6, p, span, a, li, td, th, label, button, div');
-  for (const el of textEls) {
-    const fontSize = parseFloat(win.getComputedStyle(el).fontSize);
-    // Filter out sub-8px values (jsdom doesn't resolve relative units properly)
-    if (fontSize >= 8 && fontSize < 200) sizes.add(Math.round(fontSize * 10) / 10);
-  }
-  if (sizes.size >= 3) {
-    const sorted = [...sizes].sort((a, b) => a - b);
-    const ratio = sorted[sorted.length - 1] / sorted[0];
-    if (ratio < 2.0) {
-      findings.push({ id: 'flat-type-hierarchy', snippet: `Sizes: ${sorted.map(s => s + 'px').join(', ')} (ratio ${ratio.toFixed(1)}:1)` });
-    }
-  }
+  findings.push(...checkFlatTypeHierarchyFromDoc(doc, el => win.getComputedStyle(el)));
 
   return findings;
 }

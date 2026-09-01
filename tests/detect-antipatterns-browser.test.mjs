@@ -35,6 +35,20 @@ const MIME = {
   '.jpg': 'image/jpeg',
 };
 
+function isolatedBrowserFixtureCases(name) {
+  const source = fs.readFileSync(path.join(ROOT, 'tests', 'fixtures', 'antipatterns', name), 'utf8');
+  const style = source.match(/<style>([\s\S]*?)<\/style>/i)?.[1] || '';
+  const cases = [];
+  for (const match of source.matchAll(/<article\b([^>]*)>([\s\S]*?)<\/article>/gi)) {
+    const attrs = match[1];
+    const caseName = attrs.match(/\bdata-case="([^"]+)"/i)?.[1];
+    const expect = attrs.match(/\bdata-expect="(flag|pass)"/i)?.[1];
+    if (!caseName || !expect) continue;
+    cases.push({ caseName, expect, html: `<article${attrs}>${match[2]}</article>` });
+  }
+  return { style, cases };
+}
+
 let server;
 let baseUrl;
 
@@ -389,6 +403,40 @@ describe('detectUrl — browser-only fixtures', () => {
       assert.ok(result.pageTypes.includes('overused-font'), `expected browser typography scan to include page-level overused-font: ${JSON.stringify(result)}`);
       assert.equal(result.hasBanner, true, `expected page-level typography banner: ${JSON.stringify(result)}`);
       assert.ok(result.overlays >= 5, `expected visible typography overlays, got: ${JSON.stringify(result)}`);
+      await page.close();
+    } finally {
+      await browser.close().catch(() => {});
+    }
+  });
+
+  it('flat-type-hierarchy: browser scan uses role and frequency evidence', async () => {
+    const puppeteer = await import('puppeteer');
+    const browser = await puppeteer.default.launch({
+      headless: true,
+      args: process.env.CI ? ['--no-sandbox', '--disable-setuid-sandbox'] : [],
+    });
+    try {
+      const page = await browser.newPage();
+      const { style, cases } = isolatedBrowserFixtureCases('flat-type-hierarchy.html');
+      await page.setContent(`<!DOCTYPE html><html><head><style>${style}</style></head><body></body></html>`);
+      await page.evaluate(() => { window.__IMPECCABLE_CONFIG__ = { autoScan: false }; });
+      const browserScript = fs.readFileSync(path.join(ROOT, 'cli/engine/detect-antipatterns-browser.js'), 'utf-8');
+      await page.evaluate(browserScript);
+
+      for (const item of cases) {
+        const count = await page.evaluate((html) => {
+          document.body.innerHTML = html;
+          return window.impeccableDetect()
+            .flatMap(group => group.findings || [])
+            .filter(finding => (finding.type || finding.id) === 'flat-type-hierarchy')
+            .length;
+        }, item.html);
+        assert.equal(
+          count,
+          item.expect === 'flag' ? 1 : 0,
+          `unexpected browser result for "${item.caseName}"`,
+        );
+      }
       await page.close();
     } finally {
       await browser.close().catch(() => {});

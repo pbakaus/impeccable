@@ -7,6 +7,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import {
@@ -19,6 +20,49 @@ import { checkEmDashOveruse } from '../cli/engine/rules/checks.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURES = path.join(__dirname, 'fixtures', 'antipatterns');
+
+function isolatedFixtureCases(name) {
+  const source = fs.readFileSync(path.join(FIXTURES, name), 'utf8');
+  const style = source.match(/<style>([\s\S]*?)<\/style>/i)?.[1] || '';
+  const cases = [];
+  for (const match of source.matchAll(/<article\b([^>]*)>([\s\S]*?)<\/article>/gi)) {
+    const attrs = match[1];
+    const caseName = attrs.match(/\bdata-case="([^"]+)"/i)?.[1];
+    const expect = attrs.match(/\bdata-expect="(flag|pass)"/i)?.[1];
+    if (!caseName || !expect) continue;
+    cases.push({
+      caseName,
+      expect,
+      html: `<!DOCTYPE html><html><head><style>${style}</style></head><body><article${attrs}>${match[2]}</article></body></html>`,
+    });
+  }
+  return cases;
+}
+
+describe('flat-type-hierarchy — role and usage fixture (issue #619)', () => {
+  it('flags compressed document roles and passes dense UI/chrome shapes', async () => {
+    const cases = isolatedFixtureCases('flat-type-hierarchy.html');
+    assert.equal(cases.filter(item => item.expect === 'flag').length, 4);
+    assert.equal(cases.filter(item => item.expect === 'pass').length, 5);
+
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-flat-type-'));
+    try {
+      for (const [index, item] of cases.entries()) {
+        const file = path.join(tempDir, `case-${index}.html`);
+        fs.writeFileSync(file, item.html);
+        const findings = await detectHtml(file);
+        const flat = findings.filter(finding => finding.antipattern === 'flat-type-hierarchy');
+        if (item.expect === 'flag') {
+          assert.equal(flat.length, 1, `expected "${item.caseName}" to flag: ${JSON.stringify(findings)}`);
+        } else {
+          assert.equal(flat.length, 0, `expected "${item.caseName}" to pass: ${JSON.stringify(flat)}`);
+        }
+      }
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+});
 
 describe('detectText - Astro structural CSS fixtures', () => {
   const SHOULD_FLAG = [
