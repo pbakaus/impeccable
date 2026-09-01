@@ -31,7 +31,7 @@ const CODEX_HARNESSES = new Set(['.codex', '.agents']);
 // Valid sub-command names
 const VALID_COMMANDS = [
   'craft', 'init', 'extract', 'document', 'shape',
-  'critique', 'design-context', 'audit',
+  'critique', 'audit',
   'polish', 'bolder', 'quieter', 'distill', 'harden', 'onboard', 'live',
   'animate', 'colorize', 'typeset', 'layout', 'delight', 'overdrive',
   'clarify', 'adapt', 'optimize',

@@ -122,24 +122,6 @@ const ANTIPATTERNS = [
     skillSection: 'Imagery',
   },
   {
-    id: 'organic-clip-path',
-    category: 'quality',
-    name: 'Organic contour drawn as clip-path',
-    description:
-      'A clip-path polygon with many arbitrary vertices, or a curved clip-path path(), is CSS approximating a torn edge, blob, or silhouette. It reads as the cheap version of the effect and is usually a produced or photographic material replaced with code. Derive an alpha matte from the real image, or ship the shape as a cut-out raster; keep clip-path for geometry (cut corners, diagonals, hexagons).',
-    skillSection: 'Imagery',
-    skillGuideline: 'geometric masks standing in for organic contours',
-  },
-  {
-    id: 'buried-raster',
-    category: 'quality',
-    name: 'Raster buried under a wash or opacity',
-    description:
-      'A background image under a near-opaque gradient wash, or a raster on an element at near-zero opacity, never reaches the screen: the page shows the wash, and the produced texture or photo ships as a compliance token. Let the material show (a tint under 0.9 alpha, a blend mode, an opacity you can see) or remove the file.',
-    skillSection: 'Imagery',
-    skillGuideline: 'a produced material must survive to the screen',
-  },
-  {
     id: 'dark-glow',
     category: 'slop',
     name: 'Glowing shadow accents',

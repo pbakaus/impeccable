@@ -27,7 +27,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveLiveConfigPath } from './lib/impeccable-paths.mjs';
-import { livePathGlobToRegex } from './lib/live-path-globs.mjs';
 import {
   describeInjectArtifacts,
   frameworkIgnorePatterns,
@@ -365,7 +364,7 @@ export function resolveFiles(rootDir, config) {
   const patterns = config.files;
   const userExcludes = Array.isArray(config.exclude) ? config.exclude : [];
   const allExcludes = [...HARD_EXCLUDES, ...userExcludes];
-  const excludeRegexes = allExcludes.map(livePathGlobToRegex);
+  const excludeRegexes = allExcludes.map(globToRegex);
 
   const isExcluded = (relPath) => excludeRegexes.some((re) => re.test(relPath));
   const isGlob = (s) => /[*?[]/.test(s);
@@ -400,6 +399,47 @@ export function resolveFiles(rootDir, config) {
     }
   }
   return out;
+}
+
+/**
+ * Convert a glob pattern to a RegExp. Supports:
+ *   **  → any number of path segments (including zero)
+ *   *   → any chars except `/`
+ *   ?   → any single char except `/`
+ * Paths are normalized to forward slashes before matching.
+ */
+function globToRegex(pattern) {
+  let re = '';
+  let i = 0;
+  while (i < pattern.length) {
+    const c = pattern[i];
+    if (c === '*') {
+      if (pattern[i + 1] === '*') {
+        // ** — any number of segments, including zero. Handle the common
+        // **/ and /** forms so `a/**/b` matches `a/b` as well as `a/x/y/b`.
+        if (pattern[i + 2] === '/') {
+          re += '(?:.*/)?';
+          i += 3;
+        } else {
+          re += '.*';
+          i += 2;
+        }
+      } else {
+        re += '[^/]*';
+        i += 1;
+      }
+    } else if (c === '?') {
+      re += '[^/]';
+      i += 1;
+    } else if (/[.+^${}()|[\]\\]/.test(c)) {
+      re += '\\' + c;
+      i += 1;
+    } else {
+      re += c;
+      i += 1;
+    }
+  }
+  return new RegExp('^' + re + '$');
 }
 
 // ---------------------------------------------------------------------------

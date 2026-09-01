@@ -1171,9 +1171,7 @@ async function cli() {
     parts.push(buildResolvedContextDirective(ctx, cliOptions, { targetExists }));
     appendDetectorFallback(parts, ctx);
     appendImageGenDirective(parts);
-    appendDesignContextDirective(parts, ctx);
     appendBuildPathDirective(parts, ctx);
-    await appendCompRoundOpenDirective(parts, ctx);
     appendAutonomyCounterDirective(parts);
     appendSubagentAuthorizationDirective(parts);
     if (shouldWarnMissingTarget(ctx, targetProvided, targetExists)) {
@@ -1192,9 +1190,7 @@ async function cli() {
   parts.push(buildResolvedContextDirective(ctx, cliOptions, { targetExists }));
   appendDetectorFallback(parts, ctx);
   appendImageGenDirective(parts);
-  appendDesignContextDirective(parts, ctx);
   appendBuildPathDirective(parts, ctx);
-  await appendCompRoundOpenDirective(parts, ctx);
   appendAutonomyCounterDirective(parts);
   appendSubagentAuthorizationDirective(parts);
   if (shouldWarnMissingTarget(ctx, targetProvided, targetExists)) {
@@ -1333,25 +1329,6 @@ function readBuildPathAt(root) {
 // selecting another workspace, cwd is the caller's app, not the target's, and
 // letting it rank above the repo root hands one workspace another's workflow.
 // It stands in only when no project resolved at all.
-// A direction was dealt for a comp-led build and the phase machine never
-// started, or stopped short of the hero gate: the comp round is open. Said
-// here because every model in the corpus ran context.mjs unprompted, and
-// the run that skipped the round did so between the roll and the first
-// write; a boot that names the open round is a boot the write cannot claim
-// it never saw. Reads build-phase's own helper so the two agree.
-async function appendCompRoundOpenDirective(parts, ctx) {
-  try {
-    const { compRoundOpen } = await import('./build-phase.mjs');
-    const roots = [...new Set([ctx?.projectRoot || process.cwd(), ctx?.repoRoot].filter(Boolean).map((r) => path.resolve(r)))];
-    for (const root of roots) {
-      const open = compRoundOpen(root);
-      if (!open) continue;
-      parts.push(`COMP_ROUND_OPEN: ${open.reason}. On a comp-led build no page code is written before build-phase.mjs closes the comps, spec, plates, and hero gates; run \`node ${path.dirname(fileURLToPath(import.meta.url))}/build-phase.mjs status\` and follow its NEXT line. A page written past an open round is what the finish reviewer sends back.`);
-      return;
-    }
-  } catch { /* build-phase absent: nothing to say */ }
-}
-
 function appendBuildPathDirective(parts, ctx) {
   const roots = [...new Set(
     [ctx?.projectRoot || process.cwd(), ctx?.repoRoot].filter(Boolean).map((root) => path.resolve(root)),
@@ -1365,61 +1342,6 @@ function appendBuildPathDirective(parts, ctx) {
     // bare absolute reads as a rule that overrides new-work's one-time offer,
     // which is exactly how the same wording misfired in serve-question.
     parts.push(`BUILD_PATH_DEFAULT: ${found.value} (from ${found.source}). Author direction and surface rounds with this as buildPath.value and toggle: true; a flip on the page binds that session only and is never written back, because a default is already recorded here. New-work's one-time offer to record a flipped value applies only where no default exists, which is why you are not seeing this line on those projects.`);
-    return;
-  }
-}
-
-// The design interview's durable record: when the user chose the visual world
-// in the browser questionnaire, the choice survives as files (the cue image
-// the palette was picked from, staged brand assets, every per-surface answer),
-// not only as DESIGN.md prose. A later session must learn those files exist
-// to open them; an older seed DESIGN.md may not name them at all. Bounded
-// stats on fixed store paths only (Tier 1: no walks, no git).
-//
-// The names are spelled here rather than imported from
-// design-context/store.mjs, which owns them: this script boots every session
-// and imports only node builtins and ./lib, so a sibling directory missing
-// from a harness's copy cannot take the whole session down with a resolve
-// error. Same reason `.impeccable/config.json` is spelled out below. If the
-// store ever moves, this list moves with it.
-const DESIGN_CONTEXT_DIR = '.impeccable/design-context';
-
-function appendDesignContextDirective(parts, ctx) {
-  const roots = [...new Set(
-    [process.cwd(), ctx.projectRoot, ctx.contextDir]
-      .filter(Boolean)
-      .map((dir) => path.resolve(dir)),
-  )];
-  for (const root of roots) {
-    const store = {
-      cuePng: path.join(root, DESIGN_CONTEXT_DIR, 'cue.png'),
-      answersJson: path.join(root, DESIGN_CONTEXT_DIR, 'answers.json'),
-      contextJson: path.join(root, DESIGN_CONTEXT_DIR, 'context.json'),
-      assetsDir: path.join(root, DESIGN_CONTEXT_DIR, 'assets'),
-    };
-    let cueExists = false;
-    let answersExist = false;
-    let contextExists = false;
-    let assetNames = [];
-    try { cueExists = fs.existsSync(store.cuePng); } catch {}
-    try { answersExist = fs.existsSync(store.answersJson); } catch {}
-    try { contextExists = fs.existsSync(store.contextJson); } catch {}
-    try {
-      assetNames = fs.readdirSync(store.assetsDir).filter((name) => !name.startsWith('.'));
-    } catch {}
-    if (!cueExists && !answersExist && assetNames.length === 0) continue;
-
-    const rel = (target) => path.relative(process.cwd(), target) || target;
-    const pieces = [];
-    if (cueExists) pieces.push(`${rel(store.cuePng)} (the image the user picked the palette from)`);
-    if (assetNames.length > 0) pieces.push(`${rel(store.assetsDir)}/ (staged brand material: ${assetNames.join(', ')})`);
-    if (answersExist) pieces.push(`${rel(store.answersJson)} (every questionnaire decision, per surface)`);
-    if (contextExists) pieces.push(`${rel(store.contextJson)} (the interview's chat half, with each staged file's kind and note under context.assets)`);
-    parts.push([
-      'DESIGN_CONTEXT: the visual world on record was chosen by the user in the design interview, and the interview record is files, not only prose: ' + pieces.join('; ') + '.',
-      "Before building or comping any surface on this world, open the cue image and every staged asset; they are the world's pixel truth, and a staged logo is the project's real mark.",
-      'reference/new-work.md names where each rides (comp reference, build material, reviewer calibration).',
-    ].join(' '));
     return;
   }
 }

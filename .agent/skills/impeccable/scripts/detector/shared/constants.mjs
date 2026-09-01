@@ -56,26 +56,12 @@ function isBrandFontOnOwnDomain(font) {
   return allowed.some(suffix => host === suffix || host.endsWith('.' + suffix));
 }
 
-// Overused-font primary selection skips only CSS generics so a system stack
-// keeps the system face as primary; GENERIC_FONTS still includes platform
-// faces for design-system/serif resolution.
-const CSS_GENERIC_FONTS = new Set([
-  'serif', 'sans-serif', 'monospace', 'cursive', 'fantasy',
-  'inherit', 'initial', 'unset', 'revert',
-]);
-
 const GENERIC_FONTS = new Set([
-  ...CSS_GENERIC_FONTS,
+  'serif', 'sans-serif', 'monospace', 'cursive', 'fantasy',
   'system-ui', 'ui-serif', 'ui-sans-serif', 'ui-monospace', 'ui-rounded',
   '-apple-system', 'blinkmacsystemfont', 'segoe ui',
+  'inherit', 'initial', 'unset', 'revert',
 ]);
-
-function primaryFontFace(fontFamily, skip = CSS_GENERIC_FONTS) {
-  return String(fontFamily || '')
-    .split(',')
-    .map(f => f.trim().replace(/^['"]|['"]$/g, '').toLowerCase())
-    .find(f => f && !skip.has(f)) || null;
-}
 
 // WCAG large text thresholds are defined in points: 18pt normal text and
 // 14pt bold text. Browsers expose font-size in CSS pixels at 96px per inch.
@@ -118,7 +104,6 @@ export {
   BRAND_FONT_DOMAINS,
   isBrandFontOnOwnDomain,
   GENERIC_FONTS,
-  primaryFontFace,
   WCAG_LARGE_TEXT_PX,
   WCAG_LARGE_BOLD_TEXT_PX,
   EM_DASH_FLOOR,

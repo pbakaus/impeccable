@@ -1019,9 +1019,7 @@ ${buildPath?.toggle ? `<div id="bp-confirm" role="dialog" aria-modal="true" aria
   // exits on any pick and has no update channel, so a followup payload there
   // still gets the goodbye screen, never a loading hand nothing will resolve.
   const FOLLOWUP = ${payload.followup === true && Boolean(detachedKey) ? 'true' : 'false'};
-  const KEY = ${JSON.stringify(detachedKey || '')};
-  const keyQ = KEY ? '?key=' + encodeURIComponent(KEY) : '';
-  const beat = () => { try { navigator.sendBeacon('/heartbeat' + keyQ); } catch { fetch('/heartbeat' + keyQ, { method: 'POST' }); } };
+  const beat = () => { try { navigator.sendBeacon('/heartbeat'); } catch { fetch('/heartbeat', { method: 'POST' }); } };
   ${waiting && waitBudgetMs <= 0 ? '' : 'beat();'}
   const beatTimer = setInterval(beat, 5000);
   // A dead server must fail loudly: awaiting a rejected fetch here used to
@@ -1032,7 +1030,7 @@ ${buildPath?.toggle ? `<div id="bp-confirm" role="dialog" aria-modal="true" aria
     // is in flight would overwrite the answer being collected.
     document.querySelectorAll('.reroll-btn, #canon').forEach(b => b.setAttribute('disabled', ''));
     try {
-      await fetch('/answer' + keyQ, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId, steer: steer() }) });
+      await fetch('/answer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId, steer: steer() }) });
     } catch {
       document.body.innerHTML = '<div class="done">The question server went away before this choice could land.<br>Tell the agent your pick in the chat instead.</div>';
       return;
@@ -1306,7 +1304,7 @@ ${buildPath?.toggle ? `<div id="bp-confirm" role="dialog" aria-modal="true" aria
     };
     const apply = (value) => {
       set(value);
-      fetch('/build-path' + keyQ, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ value }) });
+      fetch('/build-path', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ value }) });
       if (value === 'comp') enterComp(); else exitComp();
     };
     // Flipping to comp starts real generation, so it confirms first; the
@@ -1474,7 +1472,7 @@ ${buildPath?.toggle ? `<div id="bp-confirm" role="dialog" aria-modal="true" aria
     // re-roll and renewed the delivery deadline.
     document.querySelectorAll('.reroll-btn, #canon').forEach(b => b.setAttribute('disabled', ''));
     try {
-      await fetch('/answer' + keyQ, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: steer(), ...(register ? { register } : {}) }) });
+      await fetch('/answer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId: 'reroll', steer: steer(), ...(register ? { register } : {}) }) });
     } catch {
       document.body.innerHTML = '<div class="done">The question server went away before this choice could land.<br>Tell the agent your pick in the chat instead.</div>';
       return;
@@ -1568,39 +1566,8 @@ ${buildPath?.toggle ? `<div id="bp-confirm" role="dialog" aria-modal="true" aria
 </script>`;
 }
 
-// Browsers omit the :80 suffix on the default HTTP port, so a server on
-// --port 80 sees bare loopback hosts and origins.
-function allowedHost(host, port) {
-  if (host === `127.0.0.1:${port}` || host === `localhost:${port}`) return true;
-  return port === 80 && (host === '127.0.0.1' || host === 'localhost');
-}
-
-function allowedOrigin(origin, port) {
-  if (origin === `http://127.0.0.1:${port}` || origin === `http://localhost:${port}`) return true;
-  return port === 80 && (origin === 'http://127.0.0.1' || origin === 'http://localhost');
-}
-
-function rejectDetachedPost(req, res, url, port) {
-  if (detachedKey && url.searchParams.get('key') !== detachedKey) {
-    res.writeHead(401); res.end(); return true;
-  }
-  const origin = req.headers.origin;
-  if (origin && !allowedOrigin(origin, port)) {
-    res.writeHead(403); res.end(); return true;
-  }
-  return false;
-}
-
 const server = http.createServer((req, res) => {
-  const { port } = server.address();
-  if (!allowedHost(req.headers.host, port)) {
-    res.writeHead(403); res.end(); return;
-  }
-  let url;
-  try { url = new URL(req.url, 'http://127.0.0.1'); }
-  catch { res.writeHead(400); res.end(); return; }
-  const pathname = url.pathname;
-  if (req.method === 'GET' && pathname === '/') {
+  if (req.method === 'GET' && req.url === '/') {
     const pending = nextFile();
     if (pending && fs.existsSync(pending)) {
       // A next file the round cannot load has to leave the disk either way:
@@ -1626,8 +1593,7 @@ const server = http.createServer((req, res) => {
     res.end(page(awaitingNext));
     return;
   }
-  if (req.method === 'POST' && pathname === '/heartbeat') {
-    if (rejectDetachedPost(req, res, url, port)) return;
+  if (req.method === 'POST' && req.url === '/heartbeat') {
     res.writeHead(204); res.end();
     server.lastBeatSeen = Date.now();
     if (detachedKey) {
@@ -1643,13 +1609,13 @@ const server = http.createServer((req, res) => {
     }
     return;
   }
-  if (req.method === 'GET' && pathname === '/next-status') {
+  if (req.method === 'GET' && req.url === '/next-status') {
     const pending = nextFile();
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ ready: Boolean(pending && fs.existsSync(pending)) }));
     return;
   }
-  const imageMatch = req.method === 'GET' && pathname.match(/^\/img\/(\d+)$/);
+  const imageMatch = req.method === 'GET' && req.url?.match(/^\/img\/(\d+)(?:\?.*)?$/);
   if (imageMatch) {
     const abs = localImages[Number(imageMatch[1])];
     if (!abs || !fs.existsSync(abs)) { res.writeHead(404); res.end(); return; }
@@ -1662,34 +1628,27 @@ const server = http.createServer((req, res) => {
     fs.createReadStream(abs).pipe(res);
     return;
   }
-  if (req.method === 'POST' && pathname === '/build-path') {
-    if (rejectDetachedPost(req, res, url, port)) return;
+  if (req.method === 'POST' && req.url === '/build-path') {
     let body = '';
     req.on('data', (chunk) => { body += chunk; });
     req.on('end', () => {
-      let value = null;
-      try { value = JSON.parse(body).value; } catch { /* ignore */ }
-      if (value === 'comp' || value === 'code') {
-        const wasComp = liveBuildPath === 'comp';
-        liveBuildPath = value;
-        // Only a flip TO comp needs the agent mid-round: comps must start
-        // rendering into the declared slots. The reverse is free.
-        if (detachedKey && value === 'comp' && !wasComp) {
-          fs.mkdirSync(QUESTION_DIR, { recursive: true });
-          fs.writeFileSync(flipFile(detachedKey), JSON.stringify({ buildPath: 'comp' }) + '\n');
-        }
-      }
-      // Answer only once the flip is on disk. Responding first raced the
-      // caller: the 200 reached the client (a separate process) while this
-      // one could still be preempted before the write landed, so a poller
-      // that trusted the 200 could look for the flip file and miss it.
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end('{"ok":true}');
+      let value = null;
+      try { value = JSON.parse(body).value; } catch { /* ignore */ }
+      if (value !== 'comp' && value !== 'code') return;
+      const wasComp = liveBuildPath === 'comp';
+      liveBuildPath = value;
+      // Only a flip TO comp needs the agent mid-round: comps must start
+      // rendering into the declared slots. The reverse is free.
+      if (detachedKey && value === 'comp' && !wasComp) {
+        fs.mkdirSync(QUESTION_DIR, { recursive: true });
+        fs.writeFileSync(flipFile(detachedKey), JSON.stringify({ buildPath: 'comp' }) + '\n');
+      }
     });
     return;
   }
-  if (req.method === 'POST' && pathname === '/answer') {
-    if (rejectDetachedPost(req, res, url, port)) return;
+  if (req.method === 'POST' && req.url === '/answer') {
     let body = '';
     req.on('data', (chunk) => { body += chunk; });
     req.on('end', () => {

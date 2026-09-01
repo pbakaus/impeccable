@@ -1472,19 +1472,7 @@ if (IS_BROWSER) {
     return findings;
   }
 
-  // A page matched by detector.ignoreFiles is waived wholesale: every scan
-  // stage answers empty so the badge and toast read zero. Mirrors
-  // shouldIgnoreDetectionFile in cli/lib/impeccable-config.mjs; the live
-  // overlay resolves the globs per page (live-browser-ignores.js) and
-  // forwards the verdict as config.skipScan.
-  function skipScanActive() {
-    return EXTENSION_MODE && window.__IMPECCABLE_CONFIG__?.skipScan === true;
-  }
-
   function collectBrowserFindings() {
-    if (skipScanActive()) {
-      return { groupMap: new Map(), allFindings: [], pageLevelFindings: [] };
-    }
     const groupMap = new Map();
     const _disabled = EXTENSION_MODE ? (window.__IMPECCABLE_CONFIG__?.disabledRules || []) : [];
     const _ruleOk = (id) => !_disabled.length || !_disabled.includes(id);
@@ -1685,119 +1673,6 @@ if (IS_BROWSER) {
       }).filter(f => _ruleOk(f.type));
       pageLevelFindings.push(...mapped);
       addBrowserFindings(groupMap, document.body, mapped);
-    }
-
-    // Value-level suppression (issue #639). `disabledRules` above handles
-    // whole rules; this applies the config's remaining ignoreValues entries,
-    // which the CLI filters through isIgnoredFindingValue in
-    // cli/lib/impeccable-config.mjs, so a project waiver like
-    // overused-font = "geist mono" reaches the overlay and extension too.
-    const _normValue = (v) => String(v || '').trim().replace(/^["']|["']$/g, '')
-      .replace(/\+/g, ' ').replace(/\s+/g, ' ').toLowerCase();
-    const _disabledValues = EXTENSION_MODE
-      ? (Array.isArray(window.__IMPECCABLE_CONFIG__?.disabledValues) ? window.__IMPECCABLE_CONFIG__.disabledValues : [])
-        .filter(e => e && typeof e === 'object' && e.rule && e.value)
-        .map(e => ({ rule: String(e.rule).trim().toLowerCase(), value: _normValue(e.value) }))
-      : [];
-    if (_disabledValues.length > 0) {
-      // The six rules whose findings carry a matchable value; keep in step
-      // with extractFindingIgnoreValue in cli/lib/impeccable-config.mjs.
-      // Everything else is suppressed by rule or by file scope, both already
-      // resolved into disabledRules before the scan message was sent.
-      const _directValueRules = new Set([
-        'overused-font',
-        'bounce-easing',
-        'design-system-font',
-        'design-system-color',
-        'design-system-radius',
-        'design-system-font-size',
-      ]);
-      // The design-system checks set `ignoreValue` on their findings; the
-      // detail fallbacks catch overused-font, whose value lives in its
-      // sentence. One CLI matcher is not mirrored here: the motion extractor
-      // (a value-scoped bounce-easing waiver only matches when the finding
-      // carries ignoreValue directly). The CLI's [?&]family= URL fallback is
-      // also omitted on purpose: browser findings for these rules always
-      // carry ignoreValue or a "Primary font:" / "Google Fonts:" /
-      // font-family sentence, so it is unreachable here.
-      const _findingValue = (f) => {
-        if (!f || !_directValueRules.has(f.type || f.id)) return '';
-        const direct = f.ignoreValue || f.value;
-        if (direct) return _normValue(direct);
-        // The CLI routes bounce-easing through extractMotionIgnoreValue and
-        // never the font regexes; without a direct ignoreValue there is no
-        // value to match, so do not invent one from unrelated CSS text.
-        if ((f.type || f.id) === 'bounce-easing') return '';
-        for (const text of [f.detail, f.snippet]) {
-          if (typeof text !== 'string' || !text) continue;
-          const primary = text.match(/Primary font:\s*([^()\n;]+)/i);
-          if (primary) return _normValue(primary[1]);
-          const google = text.match(/Google Fonts:\s*([^()\n;]+)/i);
-          if (google) return _normValue(google[1]);
-          const family = text.match(/font-family\s*:\s*["']?([^'",;\n]+)/i);
-          if (family) return _normValue(family[1]);
-        }
-        return '';
-      };
-      // design-system-color compares by color value, not by spelling: the
-      // browser reports computed rgb(...) strings while waivers are usually
-      // written as hex. Mirrors ignoreValueMatches -> colorIgnoreKey in
-      // cli/lib/impeccable-config.mjs for the hex and rgb()/rgba() forms;
-      // hsl stays CLI-only.
-      const _colorKey = (value) => {
-        const text = String(value || '').trim().toLowerCase();
-        const hex = text.match(/^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/);
-        if (hex) {
-          const expanded = hex[1].length <= 4 ? [...hex[1]].map(d => d + d).join('') : hex[1];
-          const [r, g, b, a = 255] = expanded.match(/../g).map(ch => parseInt(ch, 16));
-          return `${r},${g},${b},${a}`;
-        }
-        const rgb = text.match(/^rgba?\((.*)\)$/);
-        if (!rgb) return '';
-        const body = rgb[1].trim().replace(/\s*\/\s*/g, ' / ');
-        let parts;
-        if (body.includes(',')) {
-          parts = body.split(',').map(p => p.trim()).filter(Boolean);
-          const last = parts[parts.length - 1];
-          if (last && last.includes('/')) {
-            parts = [...parts.slice(0, -1), ...last.split('/').map(p => p.trim()).filter(Boolean)];
-          }
-        } else {
-          parts = body.split(/\s+/).filter(p => p && p !== '/');
-        }
-        if (parts.length < 3 || parts.length > 4) return '';
-        const channel = (raw, isAlpha) => {
-          const m = String(raw).trim().match(/^(-?\d*\.?\d+)(%)?$/);
-          if (!m) return null;
-          let v = parseFloat(m[1]);
-          if (m[2]) v = isAlpha ? v / 100 : v * 2.55;
-          const max = isAlpha ? 1 : 255;
-          if (!Number.isFinite(v) || v < 0 || v > max) return null;
-          return isAlpha ? v : Math.round(v);
-        };
-        const r = channel(parts[0], false);
-        const g = channel(parts[1], false);
-        const b = channel(parts[2], false);
-        const a = parts[3] === undefined ? 1 : channel(parts[3], true);
-        if ([r, g, b, a].some(v => v === null)) return '';
-        return `${r},${g},${b},${Math.round(a * 255)}`;
-      };
-      const _valueIgnored = (f) => {
-        const value = _findingValue(f);
-        if (!value) return false;
-        const rule = f.type || f.id;
-        return _disabledValues.some(e => e.rule === rule && (e.value === value
-          || (rule === 'design-system-color'
-            && _colorKey(e.value) !== '' && _colorKey(e.value) === _colorKey(value))));
-      };
-      for (const [el, list] of [...groupMap.entries()]) {
-        const kept = list.filter(f => !_valueIgnored(f));
-        if (kept.length > 0) groupMap.set(el, kept);
-        else groupMap.delete(el);
-      }
-      for (let i = pageLevelFindings.length - 1; i >= 0; i--) {
-        if (_valueIgnored(pageLevelFindings[i])) pageLevelFindings.splice(i, 1);
-      }
     }
 
     return {
@@ -2017,12 +1892,6 @@ if (IS_BROWSER) {
 
   async function collectBrowserFindingsAsync(options = {}, runtime = {}) {
     const collected = collectBrowserFindings();
-    // The visual pass walks the DOM on its own; on a skipScan page it would
-    // repopulate the emptied scan, so it is skipped with everything else.
-    if (skipScanActive()) {
-      lastVisualContrastAnalyses = [];
-      return { ...collected, allFindings: [], visualContrastAnalyses: [] };
-    }
     await addVisualContrastFindings(collected.groupMap, options, runtime);
     return {
       ...collected,
@@ -2076,7 +1945,7 @@ if (IS_BROWSER) {
     const generation = scanGeneration;
     const collected = collectBrowserFindings();
     const allFindings = renderBrowserFindings(collected, options);
-    if (!skipScanActive() && shouldRunVisualContrast(options)) {
+    if (shouldRunVisualContrast(options)) {
       addVisualContrastFindings(collected.groupMap, options, { decorate: true, generation })
         .then(() => {
           if (generation === scanGeneration) postSerializedFindings(collected.groupMap, options);

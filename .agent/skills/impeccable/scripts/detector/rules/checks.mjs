@@ -9,7 +9,6 @@ import {
   WCAG_LARGE_BOLD_TEXT_PX,
   WCAG_LARGE_TEXT_PX,
   isBrandFontOnOwnDomain,
-  primaryFontFace,
 } from '../shared/constants.mjs';
 import {
   CSS_NAMED_COLORS,
@@ -332,7 +331,7 @@ function checkIconTile(opts) {
 function resolveSerif(fontFamily) {
   if (!fontFamily) return { primary: null, isSerif: false };
   const tokens = fontFamily.split(',').map(f => f.trim().replace(/^['"]|['"]$/g, '').toLowerCase());
-  const primary = primaryFontFace(fontFamily, GENERIC_FONTS);
+  const primary = tokens.find(f => f && !GENERIC_FONTS.has(f)) || null;
   if (!primary) return { primary: null, isSerif: false };
   if (KNOWN_SERIF_FONTS.has(primary)) return { primary, isSerif: true };
   if (tokens.includes('serif')) return { primary, isSerif: true };
@@ -683,13 +682,8 @@ function enclosingCssSelector(cssText, index) {
   if (!cssText || !Number.isFinite(index)) return null;
   const open = cssText.lastIndexOf('{', index);
   if (open === -1) return null;
-  // A match inside an inline style fragment (`style="…"` appended to the
-  // corpus by buildHtmlPatternCorpora) has no enclosing rule; the previous
-  // `{` belongs to some other selector.
-  const closeBeforeIndex = cssText.lastIndexOf('}', index);
-  if (closeBeforeIndex > open) return null;
   const prevClose = Math.max(cssText.lastIndexOf('}', open - 1), cssText.lastIndexOf(';', open - 1));
-  const raw = cssText.slice(prevClose + 1, open).replace(/\/\*[\s\S]*?\*\//g, '').trim().replace(/\s+/g, ' ');
+  const raw = cssText.slice(prevClose + 1, open).trim().replace(/\s+/g, ' ');
   if (!raw || raw.startsWith('@') || /^\d/.test(raw) || /[{}<]/.test(raw)) return null;
   // Keyframe steps: percentage steps fail the digit test above, but `from`
   // and `to` would read as (never-matching) type selectors and get a valid
@@ -1455,95 +1449,6 @@ function scanHtmlForShapeAssembledIllustration(html) {
   return findings;
 }
 
-
-// --- Organic clip-path polygons ----------------------------------------------
-// A `clip-path: polygon(...)` with many vertices, or `clip-path: path(...)`
-// with curves, is CSS approximating an organic contour: a torn edge, a blob,
-// a silhouette. The approximation reads as the cheap version of the effect
-// (the craft floor's geometric-occlusion-mask ban), and it is the signature
-// of a comp's produced material being replaced with code. Geometric clips
-// (cut corners, diagonals, hexagons, arrows: few vertices, or vertices on
-// the 0/50/100 grid) pass; circle()/inset()/ellipse() pass; a mask-image
-// from an alpha matte passes.
-const ORGANIC_POLYGON_MIN_VERTICES = 10;
-function scanCssTextForOrganicClipPath(styleText) {
-  const findings = [];
-  const re = /clip-path\s*:\s*(polygon|path)\s*\(([^)]*(?:\)[^;}]*)?)/gi;
-  let m;
-  while ((m = re.exec(styleText)) !== null) {
-    const kind = m[1].toLowerCase();
-    const body = m[2];
-    if (kind === 'path') {
-      // curves (C, S, Q, T, A, absolute or relative) drawing a contour, not a
-      // rectilinear M/L/Z outline; letters in path data are only commands
-      const curves = (body.match(/[CSQTA]/gi) || []).length;
-      if (curves < 3) continue;
-      findings.push({ id: 'organic-clip-path', snippet: `clip-path: path() with ${curves} curve segments`, selector: enclosingCssSelector(styleText, m.index) || undefined });
-      continue;
-    }
-    const points = body.split(',').map((p) => p.trim()).filter(Boolean);
-    if (points.length < ORGANIC_POLYGON_MIN_VERTICES) continue;
-    // Vertices sitting on a coarse grid (multiples of 25%) are geometric; a
-    // contour has arbitrary values.
-    let offGrid = 0;
-    for (const p of points) {
-      const nums = p.match(/-?[\d.]+/g) || [];
-      for (const n of nums) { const v = parseFloat(n); if (Math.abs(v - Math.round(v / 25) * 25) > 0.5) offGrid++; }
-    }
-    if (offGrid < points.length) continue;
-    findings.push({ id: 'organic-clip-path', snippet: `clip-path: polygon() with ${points.length} vertices approximating an organic contour`, selector: enclosingCssSelector(styleText, m.index) || undefined });
-  }
-  return findings;
-}
-
-// --- Buried raster ------------------------------------------------------------
-// A raster (background-image url or <img>) that never reaches the screen:
-// under a near-opaque gradient wash in the same background stack, or on an
-// element at near-zero opacity. It is how a produced texture "ships" while
-// the page shows flat color, and the finish reviewer cannot see it either.
-// A tint under 0.9 alpha passes (hero darkening); a blend mode passes
-// (multiply/overlay keep the material visible); opacity >= 0.15 passes.
-function scanCssTextForBuriedRaster(styleText) {
-  const findings = [];
-  // background stacks: split declarations, look for url() + a gradient whose
-  // stops all carry alpha >= 0.9 (or opaque hex/named colors)
-  const declRe = /background(?:-image)?\s*:\s*([^;}]+)/gi;
-  let m;
-  while ((m = declRe.exec(styleText)) !== null) {
-    const value = m[1];
-    if (!/url\(/i.test(value) || !/gradient\(/i.test(value)) continue;
-    // a blend mode declared in the same rule keeps the raster visible
-    const ruleStart = styleText.lastIndexOf('{', m.index);
-    const ruleEnd = styleText.indexOf('}', m.index);
-    const rule = styleText.slice(ruleStart < 0 ? 0 : ruleStart, ruleEnd < 0 ? styleText.length : ruleEnd);
-    if (/background-blend-mode\s*:\s*(?!normal)/i.test(rule) || /mix-blend-mode\s*:\s*(?!normal)/i.test(rule)) continue;
-    // Layers are painted first-on-top: only a wash listed BEFORE the url()
-    // covers it. An image on top of a gradient is not buried.
-    const firstUrl = value.search(/url\(/i);
-    const gradients = [...value.matchAll(/(?:linear|radial|conic)-gradient\([^()]*(?:\([^()]*\)[^()]*)*\)/gi)].filter((gm) => gm.index < firstUrl).map((gm) => gm[0]);
-    let opaqueWash = false;
-    // an alpha token normalized to 0..1: '0.8' -> 0.8, '80%' -> 0.8
-    const alphaOf = (a) => { if (a == null) return 1; const v = parseFloat(a); return String(a).trim().endsWith('%') ? v / 100 : v; };
-    for (const g of gradients) {
-      const alphas = [...g.matchAll(/rgba?\(\s*[\d.]+%?\s*,?\s*[\d.]+%?\s*,?\s*[\d.]+%?\s*(?:[,/]\s*([\d.]+%?))?\s*\)|hsla?\([^)]*?(?:[,/]\s*([\d.]+%?))?\s*\)/gi)].map((a) => alphaOf(a[1] ?? a[2]));
-      const stripped = g.replace(/rgba?\([^)]*\)|hsla?\([^)]*\)/gi, '');
-      // hex stops: 4- and 8-digit forms carry their own alpha
-      for (const h of stripped.matchAll(/#([0-9a-f]{3,8})\b/gi)) {
-        const hex = h[1];
-        if (hex.length === 4) alphas.push(parseInt(hex[3] + hex[3], 16) / 255);
-        else if (hex.length === 8) alphas.push(parseInt(hex.slice(6), 16) / 255);
-        else alphas.push(1);
-      }
-      const named = /\b(?:white|black|ivory|beige|linen|snow|cream)\b/i.test(stripped);
-      if (named) alphas.push(1);
-      if (alphas.length && alphas.every((a) => !Number.isFinite(a) || a >= 0.9)) { opaqueWash = true; break; }
-    }
-    if (!opaqueWash) continue;
-    findings.push({ id: 'buried-raster', snippet: `raster under a near-opaque gradient wash: ${value.trim().slice(0, 90)}`, selector: enclosingCssSelector(styleText, m.index) || undefined });
-  }
-  return findings;
-}
-
 // Scoped scan corpora for the page-level pattern checks. CSS-property
 // regexes run over the whole source string fire on documentation ABOUT
 // css — `<code>background-clip: text</code>` prose, <pre> samples, HTML
@@ -1715,10 +1620,6 @@ function checkHtmlPatterns(html, corpora) {
 
   // Shape-assembled illustrations (large pictorial SVGs built from primitives)
   findings.push(...scanHtmlForShapeAssembledIllustration(html));
-
-  // Organic clip-path contours and rasters buried under washes or opacity
-  findings.push(...scanCssTextForOrganicClipPath(styleText));
-  findings.push(...scanCssTextForBuriedRaster(styleText));
 
   // Auto-scrolling marquees (<marquee> or infinite horizontal loop animations)
   findings.push(...scanCssTextForMarquee(styleText, html));
@@ -3190,30 +3091,14 @@ function isNonRenderedText(el, tag, style) {
 function checkQuality(opts) {
   const { el, tag, style, hasDirectText, textLen, fontSize, lineHeightPx, letterSpacingPx, rect, lineMax = 80, viewportWidth = 0, win = null } = opts;
   const findings = [];
-  // A raster (<img>, or an element with a background url) at near-zero
-  // opacity never reaches the screen: the produced material ships as a
-  // compliance token. The CSS-text scan catches the stylesheet form; this
-  // catches computed opacity on the element itself (both engines).
-  // Skip browser extension injected elements BEFORE any finding is pushed
-  // (a low-opacity raster those hosts inject used to be recorded and then
-  // returned by this very skip). Read the id via getAttribute whenever
-  // `el.id` is not a string: on a <form> (and other [LegacyOverrideBuiltIns]
-  // hosts) a named control like <input name="id"> shadows the builtin `id`
-  // getter and returns the control element, whose `.startsWith` is undefined
-  // and throws (issue #407 — every Shopify product form ships an
-  // <input name="id">).
+  // Skip browser extension injected elements. Read the id via getAttribute
+  // whenever `el.id` is not a string: on a <form> (and other
+  // [LegacyOverrideBuiltIns] hosts) a named control like <input name="id">
+  // shadows the builtin `id` getter and returns the control element, whose
+  // `.startsWith` is undefined and throws (issue #407 — every Shopify product
+  // form ships an <input name="id">).
   const elId = typeof el.id === 'string' ? el.id : (el.getAttribute?.('id') || '');
   if (elId.startsWith('claude-') || elId.startsWith('cic-')) return findings;
-  {
-    const op = parseFloat(style.opacity);
-    if (Number.isFinite(op) && op < 0.15 && op >= 0) {
-      const bg = String(style.backgroundImage || '');
-      if (tag === 'img' || /url\(/i.test(bg)) {
-        const label = tag === 'img' ? (el.getAttribute && el.getAttribute('alt')) || '' : (el.textContent || '').trim().slice(0, 40);
-        findings.push({ id: 'buried-raster', snippet: `${tag === 'img' ? '<img>' : 'raster background'} at opacity ${op}${label ? ` "${label}"` : ''}` });
-      }
-    }
-  }
 
   // --- Line length too long --- (browser-only: needs rect.width)
   if (rect && hasDirectText && QUALITY_TEXT_TAGS.has(tag) && rect.width > 0 && textLen > lineMax) {
@@ -3931,7 +3816,8 @@ function checkTypography() {
     const style = getComputedStyle(el);
     const ff = style.fontFamily;
     if (!ff) continue;
-    const primary = primaryFontFace(ff);
+    const stack = ff.split(',').map(f => f.trim().replace(/^['"]|['"]$/g, '').toLowerCase());
+    const primary = stack.find(f => f && !GENERIC_FONTS.has(f));
     if (!primary) continue;
     fontUsage.set(primary, (fontUsage.get(primary) || 0) + 1);
     totalTextElements++;
@@ -4176,7 +4062,8 @@ function checkPageTypography(doc, win) {
       if (rule.type !== 1) continue;
       const ff = rule.style?.fontFamily;
       if (!ff) continue;
-      const primary = primaryFontFace(ff);
+      const stack = ff.split(',').map(f => f.trim().replace(/^['"]|['"]$/g, '').toLowerCase());
+      const primary = stack.find(f => f && !GENERIC_FONTS.has(f));
       if (primary) {
         fonts.add(primary);
         if (OVERUSED_FONTS.has(primary)) overusedFound.add(primary);
@@ -4195,10 +4082,11 @@ function checkPageTypography(doc, win) {
   const ffRe = /font-family\s*:\s*([^;}]+)/gi;
   let fm;
   while ((fm = ffRe.exec(html)) !== null) {
-    const primary = primaryFontFace(fm[1]);
-    if (primary) {
-      fonts.add(primary);
-      if (OVERUSED_FONTS.has(primary)) overusedFound.add(primary);
+    for (const f of fm[1].split(',').map(f => f.trim().replace(/^['"]|['"]$/g, '').toLowerCase())) {
+      if (f && !GENERIC_FONTS.has(f)) {
+        fonts.add(f);
+        if (OVERUSED_FONTS.has(f)) overusedFound.add(f);
+      }
     }
   }
 
@@ -5274,36 +5162,6 @@ function checkTextOcclusionDOM() {
   // reads as an opaque box.
   const effectiveOpacity = effectiveOpacityDOM;
 
-  // The part of an element that is actually painted, after every scrolling or
-  // clipping ancestor has had its say.
-  //
-  // getBoundingClientRect reports where a box would be if nothing cut it off,
-  // so a paragraph half scrolled out of a panel still reports its full height,
-  // and the half that is clipped away lands wherever the page continues below
-  // the panel. The elementFromPoint probe then samples coordinates the text is
-  // not painted at, finds whatever genuinely is painted there, and reports the
-  // text as buried under it. Any sticky footer or toolbar beneath a scroll
-  // region produces this, and it is the shape most likely to be waved off as
-  // noise, which costs the rule its credibility on the findings that are real.
-  //
-  // Border box rather than padding box on purpose: it errs toward probing, and
-  // giving up a scrollbar gutter's width would drop true findings at the right
-  // edge of a scroller.
-  const paintedRect = (el, rect) => {
-    let left = rect.left, top = rect.top, right = rect.right, bottom = rect.bottom;
-    for (let cur = el.parentElement; cur && cur !== document.documentElement; cur = cur.parentElement) {
-      let cs; try { cs = getComputedStyle(cur); } catch { continue; }
-      const clipsX = String(cs.overflowX || 'visible') !== 'visible';
-      const clipsY = String(cs.overflowY || 'visible') !== 'visible';
-      if (!clipsX && !clipsY) continue;
-      let b; try { b = cur.getBoundingClientRect(); } catch { continue; }
-      if (clipsX) { left = Math.max(left, b.left); right = Math.min(right, b.right); }
-      if (clipsY) { top = Math.max(top, b.top); bottom = Math.min(bottom, b.bottom); }
-      if (right - left < 1 || bottom - top < 1) return null;
-    }
-    return { left, top, right, bottom, width: right - left, height: bottom - top };
-  };
-
   // Collect renderable text owners in / near the first viewport for the
   // elementFromPoint probe. SVG <text> counts too.
   const textEls = [];
@@ -5316,13 +5174,8 @@ function checkTextOcclusionDOM() {
     if (text.length < 2) continue;
     if (!isPaintedForOcclusion(el)) continue;
     if (effectiveOpacity(el) <= 0.02) continue;
-    let full; try { full = el.getBoundingClientRect(); } catch { continue; }
-    if (full.width < 6 || full.height < 6) continue;
-    // Probe only where the text is on screen. A run clipped down to a sliver is
-    // dropped rather than sampled: a few pixels of visible text cannot support
-    // a coverage fraction worth reporting either way.
-    const rect = paintedRect(el, full);
-    if (!rect || rect.width < 6 || rect.height < 6) continue;
+    let rect; try { rect = el.getBoundingClientRect(); } catch { continue; }
+    if (rect.width < 6 || rect.height < 6) continue;
     // Viewport-bound probe: keep text whose box overlaps the live viewport.
     if (rect.bottom <= 0 || rect.top >= vh) continue;
     textEls.push({ el, rect, text, inSvg });
@@ -5591,8 +5444,6 @@ export {
   cssLengthToPx,
   scanCssTextForPulsingDot,
   scanHtmlForShapeAssembledIllustration,
-  scanCssTextForOrganicClipPath,
-  scanCssTextForBuriedRaster,
   buildHtmlPatternCorpora,
   checkHtmlPatterns,
   readOwnBackgroundColor,

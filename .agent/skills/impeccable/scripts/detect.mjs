@@ -18,13 +18,4 @@ if (!detectorPath) {
 
 const { detectCli } = await import(pathToFileURL(detectorPath));
 
-// A comp-led build with its comp round or hero gate still open is not a page
-// the detector can pass: say so after the scan (stderr, so --json stays
-// parseable), on the same condition context.mjs reports at boot.
-try {
-  const { compRoundOpen } = await import(pathToFileURL(path.join(__dirname, 'build-phase.mjs')));
-  const open = compRoundOpen(process.cwd());
-  if (open) process.stderr.write(`COMP_ROUND_OPEN: ${open.reason}. A detector pass is not a finish: run node ${__dirname}/build-phase.mjs status and follow its NEXT line before treating this page as built.\n`);
-} catch { /* build-phase absent */ }
-
 await detectCli();

@@ -995,9 +995,7 @@ function extractRadiusTokens(value) {
   return String(value || '')
     .replace(/\s*\/\s*/g, ' ')
     .split(/\s+/)
-    // var() fallbacks leave the closing parenthesis on the final token. Strip
-    // it before length resolution so `8px)` is not treated as unitless 8rem.
-    .map(token => token.trim().replace(/\)+$/, ''))
+    .map(token => token.trim())
     .filter(Boolean);
 }
 

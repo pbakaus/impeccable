@@ -47,7 +47,6 @@
  *
  * Usage:
  *   node scripts/concept-seed.mjs --scope direction --mode persuade
- *   node scripts/concept-seed.mjs --scope direction --mode persuade --seed-declined="<user's verbatim skip answer>"
  *   node scripts/concept-seed.mjs --scope surface --mode operate --from <key>
  *   node scripts/concept-seed.mjs --scope surface --mode operate --grain flow
  *   node scripts/concept-seed.mjs --scope direction --candidate-count 6
@@ -55,16 +54,6 @@
  *   node scripts/concept-seed.mjs --scope direction --mode persuade --from <key> --reroll 1 --register bolder
  *   node scripts/concept-seed.mjs --chosen <challenger-id> --kind challenger --from <key> --scope direction
  *   node scripts/concept-seed.mjs --kind assigned --from <key> --scope direction
- *
- * --seed-declined records that the user was offered the document --seed
- * questionnaire on a no-DESIGN.md project and skipped it. The flag carries
- * evidence: its value is the user's verbatim skip answer, quoted from the
- * conversation. Without it, a --scope direction roll on a project with no
- * DESIGN.md refuses to deal and prints the pause directive instead; a bare
- * or empty flag refuses the same way (a real live session self-passed the
- * boolean form without asking, which is why the flag demands the quote).
- * Fabricating or paraphrasing the quote is a contract violation, not a
- * shortcut.
  *
  * --grain names how much of the product is in play: product, flow, view, or
  * region. A docs site, an onboarding flow, a landing page and a data table are
@@ -98,15 +87,10 @@
  *   IMPECCABLE_CATALOG_DIR  — directory holding the four catalog JSON files.
  *   IMPECCABLE_API_URL      — roll API base (default https://impeccable.style/api).
  *   IMPECCABLE_NO_TELEMETRY — disables the choice ping (DO_NOT_TRACK also honored).
- *   IMPECCABLE_SEED_DECLINED — set to 1 to bypass the seed pause without a
- *     quote; the unattended escape for eval and CI harnesses that
- *     legitimately roll direction on a no-DESIGN.md workspace. Never for
- *     attended sessions; the bypass is logged to stderr so it stays auditable.
  */
 
 import crypto from 'node:crypto';
-import { dirname, join, relative, resolve } from 'node:path';
-import { readFileSync, realpathSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   approvedPoolRevision,
@@ -629,22 +613,16 @@ rivals to your habitual layout, and keep only what makes this product clearer.${
   assignment by deal order, so the dice still choose. Verdicts and donations
   apply between the challengers, weighed against the leader. The pick card
   sits out; the canon stays, as always.`;
-  // The one command that follows a resolved choice. It records the choice
-  // (anonymous telemetry on API-dealt rolls; skipped under DO_NOT_TRACK /
-  // IMPECCABLE_NO_TELEMETRY) and opens the build's phase machine, whose
-  // first gate is the comp round on a comp-led build. Every run that skipped
-  // the comp round did so by treating a separate "telemetry ping" as
-  // bookkeeping: suppressed with >/dev/null, run after the page was written,
-  // or never run. So there is no separate ping; the start command is the
-  // ping, and it is not optional.
-  const nextCommand = scope === 'direction'
-    ? `AFTER THE CHOICE, run exactly one command and follow what it prints (do not suppress its output; do not write page code before it):
-  node ${relative(process.cwd(), here) || '.'}/build-phase.mjs start --direction ${key} --kind <assigned|pick|challenger|canon>${data.source === 'api' ? ' [--chosen <challenger-id>]' : ''}${register ? ` --register ${register}` : ''}
-  It records the choice${data.source === 'api' ? ' (anonymous: card kind plus catalog id; skipped under DO_NOT_TRACK / IMPECCABLE_NO_TELEMETRY)' : ''} and opens the build phases: on a comp-led build the comp round is the first gate (three comps, one approved) and no page code is written before it closes; on a code-led build it prints the contract step. A build without this state file is a build the finish reviewer treats as having skipped the round.\n`
-    : (data.source === 'api'
-      ? `AFTER THE CHOICE, run once: node ${relative(process.cwd(), here) || '.'}/concept-seed.mjs --kind <assigned|pick|challenger|canon> --from ${key} --scope ${scope}${mode ? ` --mode ${mode}` : ''} (records the choice; the locked card's comp is the approved comp, so then: node ${relative(process.cwd(), here) || '.'}/build-phase.mjs start --comp <that comp>).\n`
-      : `AFTER THE CHOICE: the locked card's comp is the approved comp; run node ${relative(process.cwd(), here) || '.'}/build-phase.mjs start --comp <that comp> and follow what it prints.\n`);
-  const telemetryBlock = nextCommand;
+  const telemetryBlock = data.source === 'api'
+    ? `TELEMETRY: after the user's choice resolves, rerun this script once with
+  --kind <assigned|pick|challenger|canon> --from ${key} --scope ${scope}${mode ? ` --mode ${mode}` : ''},
+  adding --chosen <challenger-id> when a dealt challenger won and keeping
+  --register <safer|bolder> when the resolved round came from a steered hand.
+  One ping per resolved attended round. The ping is anonymous, the card kind
+  plus the catalog id when one won; your grounded candidates' names never
+  leave the machine, and the ping is skipped automatically when DO_NOT_TRACK
+  or IMPECCABLE_NO_TELEMETRY is set.\n`
+    : '';
   const assignedBlock = register === null
     ? `${scope === 'direction' ? `ASSIGNED INDEX: ${buildIndex}` : `DEALT INDICES: ${dealtIndices.join(', ')} (index ${buildIndex} leads)`}
   ${promotedInstruction}
@@ -688,58 +666,7 @@ ${restated}
 `;
 }
 
-/**
- * What the model must do next, once a direction (or surface structure) is
- * chosen. Read from the same config the boot directive reads:
- * `.impeccable/config.local.json` over `.impeccable/config.json`,
- * `buildPath` comp|code; with neither, comp-led whenever image generation
- * exists (an OpenAI key here; a harness-native image tool is invisible to
- * this script, so the text names it too), code-led otherwise.
- */
-export function nextStepAfterChoice({ key, scope, cwd = process.cwd(), env = process.env } = {}) {
-  let buildPath = null;
-  for (const name of ['config.json', 'config.local.json']) {
-    try {
-      const raw = JSON.parse(readFileSync(resolve(cwd, '.impeccable', name), 'utf8'));
-      if (raw?.buildPath === 'comp' || raw?.buildPath === 'code') buildPath = raw.buildPath;
-    } catch { /* absent */ }
-  }
-  const scriptsDir = dirname(fileURLToPath(import.meta.url));
-  const scripts = relative(cwd, scriptsDir) || '.';
-  const imageGen = !!env.OPENAI_API_KEY;
-  const seed = key ? ` --direction ${key}` : '';
-  if (buildPath === 'code') {
-    return `NEXT (code-led, from .impeccable config): write the direction contract, then build; no comp round. Load reference/new-work.md section 5 and 6.\n`;
-  }
-  const why = buildPath === 'comp' ? 'from .impeccable config' : imageGen ? 'default: image generation is available' : 'default: comp-led unless no image tool exists; if your harness truly has none and there is no OpenAI key, this is code-led and you say so in one line';
-  if (scope === 'surface') {
-    return `NEXT (comp-led, ${why}): the locked card's comp is the approved comp. Run: node ${scripts}/build-phase.mjs start --comp <that comp> and follow its NEXT lines. Do not write page code before build-phase.mjs advance has closed the spec, plates, and hero gates.\n`;
-  }
-  return `NEXT (comp-led, ${why}): the world is chosen; the composition is not. Run: node ${scripts}/build-phase.mjs start${seed} and follow its NEXT lines: it opens the comps phase (three comps under .impeccable/mocks/, one approved by the user through the decision page or structured question, sidecar "approved": true), then spec, plates, hero, sections, motion, responsive, review. Do not write page code before those gates close. Reference: reference/visualize.md for the comp round.\n`;
-}
-
-export function sameMainModulePath(left, right, platform = process.platform) {
-  if (platform !== 'win32') return left === right;
-  const normalizeDriveLetter = (value) => value.replace(/^([a-z]):/i, (_, drive) => `${drive.toUpperCase()}:`);
-  return normalizeDriveLetter(left) === normalizeDriveLetter(right);
-}
-
-function isMainModule() {
-  if (!process.argv[1]) return false;
-  try {
-    // Node resolves import.meta.url through symlinks but leaves argv[1] as the
-    // invoked path. Compare real paths so a linked skill still runs its CLI,
-    // normalizing the drive-letter casing that Windows junctions can change.
-    return sameMainModulePath(
-      realpathSync(process.argv[1]),
-      realpathSync(fileURLToPath(import.meta.url))
-    );
-  } catch {
-    return false;
-  }
-}
-
-if (isMainModule()) {
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
   const fromIdx = args.indexOf('--from');
   const scopeIdx = args.indexOf('--scope');
@@ -751,21 +678,6 @@ if (isMainModule()) {
   const candidateCountIdx = args.indexOf('--candidate-count');
   const chosenIdx = args.indexOf('--chosen');
   const kindIdx = args.indexOf('--kind');
-  // --seed-declined carries evidence: the user's verbatim skip answer, in
-  // either --seed-declined="<answer>" or --seed-declined <answer> form. A
-  // bare or empty flag does not count; a live session self-passed the
-  // boolean form without asking the user, so the flag demands the quote.
-  let seedDeclinedAnswer = null;
-  for (let i = 0; i < args.length; i += 1) {
-    if (args[i] === '--seed-declined') {
-      const next = args[i + 1];
-      seedDeclinedAnswer = next !== undefined && !next.startsWith('--') ? next : '';
-    } else if (args[i].startsWith('--seed-declined=')) {
-      seedDeclinedAnswer = args[i].slice('--seed-declined='.length);
-    }
-  }
-  const seedDeclinedByEnv = process.env.IMPECCABLE_SEED_DECLINED === '1';
-  const seedDeclined = Boolean(seedDeclinedAnswer && seedDeclinedAnswer.trim()) || seedDeclinedByEnv;
   try {
     if (chosenIdx !== -1 || kindIdx !== -1) {
       // Choice ping: always exits 0, telemetry must never fail a design flow.
@@ -780,65 +692,19 @@ if (isMainModule()) {
         register: registerIdx !== -1 ? args[registerIdx + 1] : undefined,
       });
       process.stdout.write(sent ? 'choice recorded\n' : 'choice ping skipped\n');
-      // The choice is resolved; this is the last script output the model
-      // reads before it decides what to do next, and every run that skipped
-      // the comp round did so right here: prose 20 KB into new-work.md lost
-      // to "direction locked, building now". So the ping prints the next
-      // mandatory step from the recorded build path, and the phase machine
-      // takes it from there.
-      process.stdout.write(nextStepAfterChoice({
-        key: fromIdx !== -1 ? args[fromIdx + 1] : undefined,
-        scope: scopeIdx !== -1 ? args[scopeIdx + 1] : undefined,
-      }));
     } else {
-      // A dealt roll leaves a marker the build phase clears: context.mjs and
-      // detect.mjs read it and refuse to treat page work as done while a
-      // direction is chosen but the build never started (COMP_ROUND_OPEN).
-      try {
-        const { mkdirSync, writeFileSync: wf } = await import('node:fs');
-        if (scopeIdx !== -1 && args[scopeIdx + 1] === 'direction') {
-          mkdirSync(resolve(process.cwd(), '.impeccable', 'build'), { recursive: true });
-          wf(resolve(process.cwd(), '.impeccable', 'build', 'pending.json'), JSON.stringify({ scope: 'direction', at: new Date().toISOString() }, null, 2));
-        }
-      } catch { /* marker is best-effort */ }
       // Mechanical init gate: prose alone does not keep a model from dealing
       // before init, and fresh repos produced exactly that skip (the model
       // rolled directions with no PRODUCT.md, so nothing grounded the fusion).
       // The --chosen branch above stays ungated; telemetry never blocks.
       const { loadContext } = await import('./context.mjs');
-      const ctx = loadContext(process.cwd());
-      if (!ctx.hasProduct) {
+      if (!loadContext(process.cwd()).hasProduct) {
         process.stdout.write([
           'NO_PRODUCT_MD: the dice stay in the cup until product truth exists.',
           'Complete the init ask round and write PRODUCT.md first (reference/init.md), then re-run this exact command.',
           'Challengers fuse their form with facts from PRODUCT.md; without it every direction is ungrounded.',
         ].join(' ') + '\n');
         process.exit(1);
-      }
-      // Mechanical seed-pause gate: prose alone did not keep a model from
-      // rolling a direction before offering the seed questionnaire (a real
-      // session read a stale reference file and dealt straight after init),
-      // and a boolean flag did not either (the next session self-passed it
-      // without asking). A direction roll invents the visual world, so on a
-      // project with no DESIGN.md the user gets the choice first; a seed
-      // DESIGN.md counts as present, so a post-questionnaire re-entry never
-      // re-asks. The flag now carries the user's verbatim skip answer.
-      const scopeArg = scopeIdx !== -1 ? args[scopeIdx + 1] : 'surface';
-      if (scopeArg === 'direction' && !ctx.hasDesign && !seedDeclined) {
-        process.stdout.write([
-          'NO_DESIGN_MD: the dice stay in the cup until the user answers the seed question.',
-          'First action: create a tracked todo "Ask user: document --seed or skip" with the harness todo tool and start no other todo until it is answered; with no todo tool, state this gate to the user in chat before anything else.',
-          'Then ask one question: recommend `document --seed`, the guided interview plus browser questionnaire (reference/document.md, seed mode), because a world built from the user\'s own choices beats one assigned to them; offer the skip in the same breath.',
-          'User accepts: run document seed mode; its seed DESIGN.md reads as an established world, so no direction roll happens.',
-          'User skips: re-run this exact command with --seed-declined="<their verbatim skip answer>" quoting the user\'s actual words from this conversation.',
-          'The original build request is never a skip answer, a bare or empty flag refuses again, and a fabricated or paraphrased quote is a contract violation.',
-        ].join(' ') + '\n');
-        process.exit(1);
-      }
-      if (scopeArg === 'direction' && !ctx.hasDesign && seedDeclinedByEnv && !(seedDeclinedAnswer && seedDeclinedAnswer.trim())) {
-        // Auditable trace for the unattended escape; stderr keeps the seed
-        // output clean for the agent.
-        process.stderr.write('seed pause bypassed via IMPECCABLE_SEED_DECLINED (unattended harness escape)\n');
       }
       process.stdout.write(await renderConceptSeed({
         scope: scopeIdx !== -1 ? args[scopeIdx + 1] : 'surface',

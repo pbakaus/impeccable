@@ -43,7 +43,6 @@
  *   `cli/engine/detect-antipatterns.mjs` (running from source).
  */
 
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -211,49 +210,12 @@ export function getLocalConfigPath(cwd) {
   return path.join(cwd, '.impeccable', 'config.local.json');
 }
 
-// Where mutable hook state (cache + pending) lives. Defaults to the
-// project-local `.impeccable/` dir. When IMPECCABLE_CACHE_ROOT is set, state
-// relocates to a per-project subdirectory of that root instead, keyed by a
-// slug of the project path (`[:\\/.]` → `-`, mirroring Claude Code's
-// `~/.claude/projects/` convention), so project roots stay free of tool
-// artifacts (issue #422). User-authored config (config.json,
-// config.local.json, design.json) deliberately stays project-local — only
-// disposable state relocates.
-// Read from process.env (not runHook's injected env): the cache root is a
-// machine-scoped setting like CURSOR_PROJECT_DIR, not a per-invocation
-// switch. Trim guards against stray whitespace in env files; `~/` (or the
-// Windows `~\` spelling) expands via os.homedir(), and when no home dir can
-// be determined the expansion is rejected — state falls back to the
-// project-local default rather than anchoring under the hook process's cwd.
-// Resolving both sides makes the slug deterministic when callers hand in a
-// trailing separator or unnormalized cwd. The slug is the readable
-// separator-mapped path PLUS an 8-hex sha256 of the resolved path: the
-// readable part alone is lossy (`/x/my.app` and `/x/my-app` would both map
-// to `-x-my-app` and share state), so the digest disambiguates while keeping
-// the dir name human-scannable.
-function hookStateDir(cwd) {
-  const raw = process.env.IMPECCABLE_CACHE_ROOT;
-  let root = typeof raw === 'string' ? raw.trim() : '';
-  if (root.startsWith('~/') || root.startsWith('~\\') || root === '~') {
-    let home = '';
-    try { home = os.homedir() || ''; } catch { home = ''; }
-    root = home ? path.join(home, root.slice(2)) : '';
-  }
-  if (root) {
-    const resolved = path.resolve(String(cwd));
-    const slug = resolved.replace(/[:\\/.]/g, '-');
-    const digest = crypto.createHash('sha256').update(resolved).digest('hex').slice(0, 8);
-    return path.join(path.resolve(root), `${slug}-${digest}`);
-  }
-  return path.join(cwd, '.impeccable');
-}
-
 export function getCachePath(cwd) {
-  return path.join(hookStateDir(cwd), 'hook.cache.json');
+  return path.join(cwd, '.impeccable', 'hook.cache.json');
 }
 
 export function getPendingPath(cwd) {
-  return path.join(hookStateDir(cwd), 'hook.pending.json');
+  return path.join(cwd, '.impeccable', 'hook.pending.json');
 }
 
 export function resolveProjectCwd(event, fallback = process.cwd()) {
@@ -2160,13 +2122,8 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
     // touched-file list for the Stop deep pass, and an already-present
     // `.impeccable/` dir marks a project that opted in. A non-UI edit, or a
     // clean UI edit in a project with no Impeccable footprint, must be a
-    // no-op on disk (issues #344, #305). An existing cache file also counts
-    // as opted in: under IMPECCABLE_CACHE_ROOT (issue #422) state lives
-    // outside the project, so the project dir alone can't carry the marker —
-    // without this, clean-edit editCount bumps would stop persisting the
-    // moment state relocates. Under stock paths the cache sits inside
-    // `.impeccable/`, so the extra check changes nothing there.
-    if (deferredTotal > 0 || (cacheDirty && (fs.existsSync(path.join(projectCwd, '.impeccable')) || fs.existsSync(getCachePath(projectCwd))))) {
+    // no-op on disk (issues #344, #305).
+    if (deferredTotal > 0 || (cacheDirty && fs.existsSync(path.join(projectCwd, '.impeccable')))) {
       persistCache(projectCwd, cache);
     }
 
