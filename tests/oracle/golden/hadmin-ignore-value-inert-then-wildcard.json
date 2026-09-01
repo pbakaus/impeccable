@@ -1,0 +1,25 @@
+{
+  "steps": [
+    {
+      "stdout": "",
+      "stderr": "Error: cramped-padding has no extractable ignore value. Use /impeccable hooks ignore-value cramped-padding \"*\" --file <glob> to suppress it in matching files.\n",
+      "exit": 1,
+      "signal": null
+    },
+    {
+      "stdout": "Added cramped-padding=* scoped to index.html to shared detector.ignoreValues (.impeccable/config.json).\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "Impeccable design hook\n  state:        enabled\n  shared file:  .impeccable/config.json\n  local file:   .impeccable/config.local.json (not present)\n  ignoreRules:  (none)\n  ignoreFiles:  (none)\n  ignoreValues: cramped-padding=* [index.html]\n  maxFindings:  5\n  maxChars:     8000\n  env override: unset\n  cache file:   .impeccable/hook.cache.json (not present)\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    }
+  ],
+  "files": {
+    ".impeccable/config.json": "{\n  \"detector\": {\n    \"ignoreRules\": [],\n    \"ignoreFiles\": [],\n    \"ignoreValues\": [\n      {\n        \"rule\": \"cramped-padding\",\n        \"value\": \"*\",\n        \"files\": [\n          \"index.html\"\n        ],\n        \"createdAt\": \"<ISO>\"\n      }\n    ]\n  }\n}\n"
+  }
+}

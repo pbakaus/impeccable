@@ -182,6 +182,10 @@ export default [
   { id: 'hadmin-ignore-value-missing', verb: 'hook-admin', workspace: 'hook-project', args: ['ignore-value', 'overused-font'], files: CACHE_FILES },
   { id: 'hadmin-ignore-value-unknown-flag', verb: 'hook-admin', workspace: 'hook-project', args: ['ignore-value', 'overused-font', 'Inter', '--wat'], files: CACHE_FILES },
   { id: 'hadmin-ignore-value-twice-updates-reason', verb: 'hook-admin', workspace: 'hook-project', files: CACHE_FILES, steps: [{ args: ['ignore-value', 'overused-font', 'Inter'] }, { args: ['ignore-value', 'overused-font', 'inter', '--reason=second'] }, { args: ['status'] }] },
+  // upstream be87f5eb (#662): exact values for rules that cannot extract one are inert and refused
+  { id: 'hadmin-ignore-value-inert-exact', verb: 'hook-admin', workspace: 'hook-project', args: ['ignore-value', 'cramped-padding', 'padding: 4px 8px'], files: CACHE_FILES },
+  { id: 'hadmin-ignore-value-inert-scoped', verb: 'hook-admin', workspace: 'hook-project', args: ['ignore-value', 'side-tab', 'Inter', '--file', 'a.css'], files: CACHE_FILES },
+  { id: 'hadmin-ignore-value-inert-then-wildcard', verb: 'hook-admin', workspace: 'hook-project', files: CACHE_FILES, steps: [{ args: ['ignore-value', 'cramped-padding', 'padding: 4px 8px'] }, { args: ['ignore-value', 'cramped-padding', '*', '--file', 'index.html'] }, { args: ['status'] }] },
   { id: 'hadmin-reset-empty', verb: 'hook-admin', workspace: 'hook-project', args: ['reset'], files: CACHE_FILES },
   { id: 'hadmin-full-cycle', verb: 'hook-admin', workspace: 'hook-project', files: CACHE_FILES, steps: [{ args: ['ignore-rule', 'side-tab'] }, { args: ['ignore-file', 'x/**', '--local'] }, { args: ['ignore-value', 'overused-font', 'Inter'] }, { args: ['status'] }, { args: ['reset'] }, { args: ['status'] }] },
   {

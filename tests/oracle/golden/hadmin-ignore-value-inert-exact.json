@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "Error: cramped-padding has no extractable ignore value. Use /impeccable hooks ignore-value cramped-padding \"*\" --file <glob> to suppress it in matching files.\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}
