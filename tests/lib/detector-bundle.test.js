@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { spawnSync } from 'node:child_process';
 import fs from 'fs';
 import path from 'path';
 import { readSourceFiles } from '../../scripts/lib/utils.js';
@@ -17,6 +18,31 @@ describe('skill detector bundle', () => {
     expect(scriptNames.has('detector/cli/main.mjs')).toBe(true);
     expect(scriptNames.has('detector/engines/static-html/detect-html.mjs')).toBe(true);
     expect(scriptNames.has('detector/vendor/static-html-parsers.mjs')).toBe(true);
+  });
+
+  test('static HTML parser vendor bundle matches a fresh rebuild', () => {
+    const result = spawnSync(
+      process.execPath,
+      [path.join(ROOT, 'scripts/build-static-html-parsers.js'), '--check'],
+      { cwd: ROOT, encoding: 'utf8' },
+    );
+    expect(result.status).toBe(0);
+  });
+
+  test('static HTML parser --check fails when the vendor bundle is stale', () => {
+    const vendor = path.join(ROOT, 'cli/engine/vendor/static-html-parsers.mjs');
+    const original = fs.readFileSync(vendor, 'utf8');
+    try {
+      fs.writeFileSync(vendor, original.replace('htmlparser2', 'htmlparser2-stale'));
+      const result = spawnSync(
+        process.execPath,
+        [path.join(ROOT, 'scripts/build-static-html-parsers.js'), '--check'],
+        { cwd: ROOT, encoding: 'utf8' },
+      );
+      expect(result.status).toBe(1);
+    } finally {
+      fs.writeFileSync(vendor, original);
+    }
   });
 
   test('critique references the bundled detector command', () => {

@@ -25,7 +25,7 @@ export const SUITES = {
     description: 'Build, provider transforms, CLI helpers, context, and storage unit tests.',
     triggers: [
       ...COMMON_INFRA_PATTERNS,
-      /^scripts\/(?!benchmark-detector|build-browser-detector|build-static-html-parsers|build-extension)/,
+      /^scripts\/(?!benchmark-detector|build-browser-detector|build-static-html-parsers|build-extension|lib\/static-html-parsers\.entry)/,
       /^skill\/(SKILL\.src\.md|agents\/|reference\/|scripts\/(cleanup-deprecated|comp-diff|comp-spec|build-phase|font-match|data\/font-index|concept-seed|generate-image|context|context-signals|critique-storage|design-parser|doctor|hook|impeccable-paths|is-generated|lib\/(artifact-schema|png|raster|image-metrics|font-fingerprint|font-index|hero-checks|composition-catalog|concept-catalog|provider|staleness|staleness-deep|staleness-notice|surface-briefs|target-slug|template-extensions)|pin|surface-brief))/,
       /^README(\.npm)?\.md$/,
       /^cli\/bin\//,
@@ -93,6 +93,7 @@ export const SUITES = {
       /^cli\/engine\//,
       /^extension\/(background|content|detector|devtools|popup|manifest\.json)/,
       /^scripts\/(benchmark-detector|build-browser-detector|build-static-html-parsers|build-extension)\.js$/,
+      /^scripts\/lib\/static-html-parsers\.entry\.mjs$/,
       /^site\/(pages\/detector|public\/antipattern|data\/anti-patterns-catalog\.js)/,
       /^tests\/fixtures\/antipatterns/,
     ],

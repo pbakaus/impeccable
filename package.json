@@ -42,8 +42,8 @@
   "scripts": {
     "build:skills": "bun run scripts/build.js --skip-root-sync",
     "build:skills:release": "bun run scripts/build.js",
-    "build": "bun run build:skills && mkdir -p build/_data && rm -rf build/_data/dist && cp -R dist build/_data/dist",
-    "build:release": "bun run build:skills:release && mkdir -p build/_data && rm -rf build/_data/dist && cp -R dist build/_data/dist",
+    "build": "node scripts/build-static-html-parsers.js --check && bun run build:skills && mkdir -p build/_data && rm -rf build/_data/dist && cp -R dist build/_data/dist",
+    "build:release": "node scripts/build-static-html-parsers.js --check && bun run build:skills:release && mkdir -p build/_data && rm -rf build/_data/dist && cp -R dist build/_data/dist",
     "build:browser": "node scripts/build-browser-detector.js",
     "build:static-html-parsers": "node scripts/build-static-html-parsers.js",
     "build:extension": "node scripts/build-extension.js",
