@@ -4,7 +4,7 @@
  *
  * The launcher (skill/scripts/impeccable), the npm shim (cli/bin/cli.js), and
  * `impeccable install` all dead-end unless the engine release for the pinned
- * ENGINE_VERSION exists FIRST: the five platform binaries in the impeccable-dist
+ * ENGINE_VERSION exists FIRST: the five platform binaries in the engine-v<version> GitHub Release
  * release channel AND the five @impeccable/cli-<os>-<arch> npm platform packages.
  * Nothing else mechanically stops a maintainer from tagging the skill release (or
  * merging and letting the sync workflow rewrite provider dirs) before those assets
@@ -23,7 +23,7 @@
  *   node scripts/check-engine-release.mjs --json     # machine-readable report
  *
  * Environment:
- *   IMPECCABLE_DOWNLOAD_BASE  dist release channel root (default: the public dist releases)
+ *   IMPECCABLE_DOWNLOAD_BASE  release root (default: the public repo's GitHub Releases)
  */
 import {
   ENGINE_TARGETS,
@@ -102,7 +102,7 @@ function report(result) {
   const { ok, version, base, missing } = result;
   if (ok) {
     console.log(`✓ engine v${version} release is complete: all ${ENGINE_TARGETS.length} binaries + .sha256 + npm platform packages are published.`);
-    console.log(`  dist channel: ${base}`);
+    console.log(`  release base: ${base}`);
     return;
   }
   console.error(`✗ engine v${version} release is INCOMPLETE — ${missing.length} asset(s) missing:`);
@@ -111,11 +111,11 @@ function report(result) {
     console.error(`      ${m.url}`);
   }
   console.error('');
-  console.error(`Publish engine v${version} to the impeccable-dist release channel AND the`);
+  console.error(`Publish engine v${version} (tag engine-v${version}, bun run release:engine) AND the`);
   console.error('five @impeccable/cli-<os>-<arch> npm platform packages BEFORE releasing the');
   console.error('skill or merging rust-swap. Ordering: engine release → platform packages →');
   console.error('skill release/merge. See CLAUDE.md "Releases" and docs REVIEW-TRIAGE.md D4.');
-  console.error(`  dist channel: ${base}`);
+  console.error(`  release base: ${base}`);
 }
 
 async function main(argv = process.argv.slice(2)) {

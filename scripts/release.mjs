@@ -1,8 +1,13 @@
 #!/usr/bin/env node
-// Tags and publishes a GitHub release for one of three independently versioned
-// components: skill, cli, extension.
+// Tags and publishes a GitHub release for one of the independently versioned
+// components: skill, cli, extension, engine.
 //
-// Usage: node scripts/release.mjs <skill|cli|extension> [--dry-run]
+// Usage: node scripts/release.mjs <skill|cli|extension|engine> [--dry-run]
+//
+// `engine` is different: it only tags `engine-v<ENGINE_VERSION>` and pushes the
+// tag; .github/workflows/release-engine.yml builds the five binaries and
+// publishes the GitHub Release. It has no changelog entry and no local
+// artifacts, and it is gated on the closed detector release the build links.
 //
 // Refuses on a dirty tree, an unpushed HEAD, or a missing changelog entry.
 // For the skill component, also reruns `bun run build:release` and refuses if the
@@ -13,6 +18,7 @@ import { execSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkEngineRelease } from './check-engine-release.mjs';
+import { checkDetectorRelease, readDetectorVersion } from './check-detector-release.mjs';
 import { readEngineVersion } from './fetch-engine.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -64,6 +70,13 @@ const COMPONENTS = {
     tweetHeader: (v) => `Impeccable browser extension v${v} is out.`,
     tweetCta: null,
   },
+  engine: {
+    // Version comes from the root ENGINE_VERSION file, not a JSON manifest;
+    // releaseEngine() below owns this component's whole flow.
+    manifest: 'ENGINE_VERSION',
+    tagPrefix: 'engine-v',
+    label: 'Engine',
+  },
 };
 
 const REPO_URL = 'https://github.com/pbakaus/impeccable';
@@ -74,10 +87,15 @@ const dryRun = args.includes('--dry-run');
 const component = args.find((a) => !a.startsWith('--'));
 
 if (!component || !COMPONENTS[component]) {
-  console.error('usage: release.mjs <skill|cli|extension> [--dry-run]');
+  console.error('usage: release.mjs <skill|cli|extension|engine> [--dry-run]');
   process.exit(1);
 }
 const cfg = COMPONENTS[component];
+
+if (component === 'engine') {
+  await releaseEngine();
+  process.exit(0);
+}
 
 function fail(msg) {
   console.error(`✗ ${msg}`);
@@ -117,7 +135,7 @@ if (cfg.sibling) {
 
 // Release-order guard (triage decision D4). Engine-gated components refuse to
 // tag/publish until the engine release for the pinned ENGINE_VERSION is fully
-// live: the five dist binaries + .sha256 and the five @impeccable/cli-<os>-<arch>
+// live: the five engine-v<version> release binaries + .sha256 and the five @impeccable/cli-<os>-<arch>
 // npm platform packages. Without this the launcher, the npm shim, and
 // `impeccable install` all dead-end. Set IMPECCABLE_SKIP_ENGINE_CHECK=1 only
 // when you know the assets exist and the registry probe is unreachable.
@@ -130,7 +148,7 @@ if (cfg.engineGated && process.env.IMPECCABLE_SKIP_ENGINE_CHECK !== '1') {
     for (const m of result.missing) console.error(`    · ${m.what}\n        ${m.url}`);
     fail(
       `Refusing to release ${cfg.label} ${version}: engine v${engineVersion} is not fully published.\n` +
-      `  Publish engine v${engineVersion} to impeccable-dist AND the five @impeccable/cli-<os>-<arch>\n` +
+      `  Publish engine v${engineVersion} (bun run release:engine) AND the five @impeccable/cli-<os>-<arch>\n` +
       '  npm platform packages first. Ordering: engine release → platform packages → skill/CLI release.\n' +
       '  See CLAUDE.md "Releases" and the engine repo docs/REVIEW-TRIAGE.md D4.'
     );
@@ -364,4 +382,84 @@ function htmlToMarkdown(html) {
   md = md.replace(/[ \t]+\n/g, '\n');
   md = md.replace(/\n{3,}/g, '\n\n');
   return md.trim();
+}
+
+
+// The engine release: verify, tag, push. CI does the building and publishing
+// (release-engine.yml), so the maintainer's machine never needs five
+// toolchains. Refuses when the detector release the build links against is
+// not published: crates/core/build.rs downloads
+// detector-v<DETECTOR_VERSION> for every target, so a missing archive would
+// fail every matrix job after the tag is already pushed.
+async function releaseEngine() {
+  step('Reading version from ENGINE_VERSION');
+  const version = readEngineVersion(repoRoot);
+  if (!/^\d+\.\d+\.\d+/.test(version)) fail(`ENGINE_VERSION "${version}" is not a version`);
+  ok(`Engine ${version}`);
+
+  step('Checking package.json optionalDependencies pin the same engine version');
+  const pkg = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
+  const pins = Object.entries(pkg.optionalDependencies || {}).filter(([name]) => name.startsWith('@impeccable/cli-'));
+  const wrong = pins.filter(([, range]) => String(range).replace(/^[^\d]*/, '') !== version);
+  if (wrong.length) fail(`package.json pins ${wrong.map(([n, r]) => `${n}@${r}`).join(', ')}; expected ${version}. Bump them with ENGINE_VERSION.`);
+  ok(`${pins.length} platform package pins agree`);
+
+  if (process.env.IMPECCABLE_SKIP_DETECTOR_CHECK !== '1') {
+    const detectorVersion = readDetectorVersion(repoRoot);
+    step(`Verifying detector v${detectorVersion} release assets are published (the engine build links them)`);
+    const result = await checkDetectorRelease({ version: detectorVersion });
+    if (!result.ok) {
+      console.error('✗ Detector release is incomplete. Missing assets:');
+      for (const m of result.missing) console.error(`    · ${m.what}\n        ${m.url}`);
+      fail(
+        `Refusing to tag engine ${version}: detector v${detectorVersion} is not fully published.\n` +
+        '  Tag the detector repo first; its CI publishes the archives to this repo\'s detector-v release.\n' +
+        '  Ordering: detector release → engine release → platform packages → skill/CLI release.'
+      );
+    }
+    ok(`detector v${detectorVersion} release assets all present`);
+  } else {
+    step('Skipping detector release-order guard (IMPECCABLE_SKIP_DETECTOR_CHECK=1)');
+  }
+
+  const tag = `${cfg.tagPrefix}${version}`;
+
+  step('Checking working tree is clean');
+  const status = run('git status --porcelain');
+  if (status) fail(`Working tree is dirty. Commit or stash first:\n${status}`);
+  ok('clean');
+
+  step('Checking HEAD is pushed to origin');
+  const branch = run('git rev-parse --abbrev-ref HEAD');
+  const head = run('git rev-parse HEAD');
+  let remoteHead;
+  try {
+    remoteHead = run(`git rev-parse origin/${branch}`);
+  } catch {
+    fail(`No tracking branch origin/${branch}. Push first.`);
+  }
+  if (head !== remoteHead) fail(`HEAD is ahead of origin/${branch}. Push your commits first.`);
+  ok(`origin/${branch} matches HEAD`);
+
+  step(`Verifying tag ${tag} does not already exist`);
+  let localTagExists = false;
+  try {
+    run(`git rev-parse -q --verify "refs/tags/${tag}"`);
+    localTagExists = true;
+  } catch {}
+  if (localTagExists) fail(`Tag ${tag} already exists locally.`);
+  const remoteTags = run('git ls-remote --tags origin');
+  if (remoteTags.split('\n').some((line) => line.endsWith(`refs/tags/${tag}`))) {
+    fail(`Tag ${tag} already exists on origin.`);
+  }
+  ok('tag is free');
+
+  step(`Creating annotated tag ${tag}`);
+  runMutating(`git tag -a ${tag} -m "Engine ${version}"`);
+  runMutating(`git push origin ${tag}`);
+
+  console.log(`\n✓ Engine ${version} tagged as ${tag}`);
+  console.log(`\n→ Next step: watch the release-engine workflow (${REPO_URL}/actions/workflows/release-engine.yml).`);
+  console.log(`  It publishes the five binaries + .sha256 as ${REPO_URL}/releases/tag/${tag}.`);
+  console.log('  Then publish the five @impeccable/cli-<os>-<arch> npm platform packages, then release the CLI/skill.');
 }

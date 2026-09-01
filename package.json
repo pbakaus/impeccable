@@ -65,7 +65,10 @@
     "postpack": "cp README.repo.md README.md && rm README.repo.md",
     "release:skill": "node scripts/release.mjs skill",
     "release:cli": "node scripts/release.mjs cli",
-    "release:ext": "node scripts/release.mjs extension"
+    "release:ext": "node scripts/release.mjs extension",
+    "release:engine": "node scripts/release.mjs engine",
+    "check:detector-release": "node scripts/check-detector-release.mjs",
+    "check:engine-release": "node scripts/check-engine-release.mjs"
   },
   "optionalDependencies": {
     "@impeccable/cli-darwin-arm64": "0.1.0",

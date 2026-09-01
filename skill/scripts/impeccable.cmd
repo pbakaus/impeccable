@@ -69,15 +69,15 @@ if defined IMPECCABLE_LAUNCHER_PROBE exit /b 127
 if not defined version goto fail
 where curl.exe >nul 2>nul
 if errorlevel 1 goto fail
-if not defined IMPECCABLE_DOWNLOAD_BASE set "IMPECCABLE_DOWNLOAD_BASE=https://github.com/renaissance-geek-inc/impeccable-dist/releases/download"
+if not defined IMPECCABLE_DOWNLOAD_BASE set "IMPECCABLE_DOWNLOAD_BASE=https://github.com/pbakaus/impeccable/releases/download"
 if not exist "%IMPECCABLE_HOME%\bin\%version%" mkdir "%IMPECCABLE_HOME%\bin\%version%" >nul 2>nul
 set "asset=impeccable-windows-%arch%.exe"
-set "url=%IMPECCABLE_DOWNLOAD_BASE%/v%version%/%asset%"
+set "url=%IMPECCABLE_DOWNLOAD_BASE%/engine-v%version%/%asset%"
 curl.exe -fsSL -o "%cached%.part" "%url%" >nul 2>nul
 if not errorlevel 1 goto verify
 if not "%arch%"=="arm64" goto fail
 set "asset=impeccable-windows-x64.exe"
-set "url=%IMPECCABLE_DOWNLOAD_BASE%/v%version%/%asset%"
+set "url=%IMPECCABLE_DOWNLOAD_BASE%/engine-v%version%/%asset%"
 curl.exe -fsSL -o "%cached%.part" "%url%" >nul 2>nul
 if errorlevel 1 goto fail
 
@@ -138,5 +138,5 @@ exit /b 0
 :fail
 del "%cached%.part" >nul 2>nul
 echo impeccable: no engine binary found (looked in %bin%, %cached%, PATH). 1>&2
-echo Download impeccable-windows-%arch%.exe from https://github.com/renaissance-geek-inc/impeccable-dist/releases and save it as %cached%, or set IMPECCABLE_BIN to a preinstalled engine binary. Docs: https://impeccable.style 1>&2
+echo Download impeccable-windows-%arch%.exe from https://github.com/pbakaus/impeccable/releases (tag engine-v%version%) and save it as %cached%, or set IMPECCABLE_BIN to a preinstalled engine binary. Docs: https://impeccable.style 1>&2
 exit /b 127

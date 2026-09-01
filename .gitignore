@@ -17,6 +17,9 @@ build/
 # Build artifacts
 *.log
 
+# Cargo (the Rust workspace; Cargo.lock IS tracked, it pins the engine build)
+/target/
+
 # OS files
 .DS_Store
 Thumbs.db

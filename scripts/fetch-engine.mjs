@@ -11,10 +11,10 @@
  *   node scripts/fetch-engine.mjs --lenient      # a target that cannot be fetched warns instead of failing
  *
  * Environment (same names the launcher honors):
- *   IMPECCABLE_DOWNLOAD_BASE  release channel root (default: the public dist releases)
+ *   IMPECCABLE_DOWNLOAD_BASE  release channel root (default: the public repo's GitHub Releases)
  *   IMPECCABLE_BIN            copy this local binary for the current platform instead of downloading
  *
- * The URL scheme is the launcher's: <base>/v<version>/impeccable-<os>-<arch>[.exe],
+ * The URL scheme is the launcher's: <base>/engine-v<version>/impeccable-<os>-<arch>[.exe],
  * with an optional <asset>.sha256 next to it that is verified when present.
  */
 import fs from 'node:fs';
@@ -24,7 +24,7 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-export const DEFAULT_DOWNLOAD_BASE = 'https://github.com/renaissance-geek-inc/impeccable-dist/releases/download';
+export const DEFAULT_DOWNLOAD_BASE = 'https://github.com/pbakaus/impeccable/releases/download';
 export const ENGINE_TARGETS = ['darwin-arm64', 'darwin-x64', 'linux-x64', 'linux-arm64', 'windows-x64'];
 
 export function readEngineVersion(root = ROOT) {
@@ -43,7 +43,7 @@ export function binaryName(target) {
 
 export function assetUrl(version, target, base = process.env.IMPECCABLE_DOWNLOAD_BASE || DEFAULT_DOWNLOAD_BASE) {
   const asset = `impeccable-${target}${target.startsWith('windows-') ? '.exe' : ''}`;
-  return `${base.replace(/\/$/, '')}/v${version}/${asset}`;
+  return `${base.replace(/\/$/, '')}/engine-v${version}/${asset}`;
 }
 
 export function binaryPath(target, dest = path.join(ROOT, 'skill', 'scripts', 'bin')) {

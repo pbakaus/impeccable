@@ -61,6 +61,7 @@ export const SUITES = {
           'tests/hook-build.test.mjs',
           'tests/openai-plugin.test.mjs',
           'tests/release.test.mjs',
+          'tests/check-detector-release.test.mjs',
           'tests/skill-reference.test.mjs',
           'tests/readme-gitignore.test.mjs',
           'tests/test-suites.test.mjs',

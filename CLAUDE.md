@@ -14,9 +14,10 @@ There is **one** user-invocable skill, `impeccable`, with **23 commands** undern
 
 The skill has no runtime of its own. Every command the skill text runs is `{{scripts_path}}/impeccable <verb>` (Setup step 1 says `impeccable context`; `impeccable.cmd` is the Windows twin for shells without `sh`). `skill/scripts/impeccable` is a POSIX `sh` launcher: it execs `$IMPECCABLE_BIN` if set, else the sibling `scripts/bin/<os>-<arch>/impeccable[.exe]`, else `~/.impeccable/bin/impeccable`, else the version-pinned user cache `~/.impeccable/bin/<VERSION>/`, else `impeccable` on PATH, and as a last resort downloads the pinned version into that cache. It exports `IMPECCABLE_SKILL_DIR` (the skill dir, for `reference/*.md` and `command-metadata.json`) and `IMPECCABLE_SELF` (how the binary spells itself in the commands it prints).
 
-The binary is built from a separate repo (`~/code/impeccable-engine`; do not edit it from here). Its verbs are the old script basenames (`context`, `doctor`, `pin`, `hook`, `hook-before-edit`, `live*`, `detect`, ...) with two aliases: `signals` for context-signals and `hooks` for hook-admin. Its observable behavior is specified in `docs/CLI-CONTRACT.md` and pinned by `tests/oracle/`.
+The binary is built from **this repo's Cargo workspace** (`Cargo.toml` at the root, `crates/*`; `cargo build --release -p impeccable`). Its verbs are the old script basenames (`context`, `doctor`, `pin`, `hook`, `hook-before-edit`, `live*`, `detect`, ...) with two aliases: `signals` for context-signals and `hooks` for hook-admin. Its observable behavior is specified in `docs/CLI-CONTRACT.md` and pinned by `tests/oracle/`. **Read `docs/ENGINE.md` before touching `crates/`**: it maps the crates and explains the one piece that is not in this repo.
 
-- **`ENGINE_VERSION`** (repo root) pins the engine release. The build copies it to `skill/scripts/VERSION`, which the launcher reads to name the download and the cache dir; `cli/bin/cli.js` reads the same version from `package.json`'s `optionalDependencies`. Bumping it is a release-time decision, like the other manifest versions.
+- **The rule engine is closed and prebuilt.** The checks themselves (the "detector") live in the private repo `renaissance-geek-inc/impeccable-detector` and ship as a native archive per target, published to this repo's GitHub Releases as `detector-v<DETECTOR_VERSION>`. `crates/core/build.rs` downloads and links it; `crates/foundation` (open) holds the helpers and every type that crosses the boundary; `crates/core` is the shim that keeps the `impeccable_core::...` paths every crate uses. Consequences: `rust-toolchain.toml` pins an **exact** rustc (the archive's objects only link against the same build), the release profile has `lto = false` (cross-crate LTO drops std symbols the archive needs), and a rule change is a detector release plus a `DETECTOR_VERSION` bump here. `IMPECCABLE_DETECTOR_LIB=<dir>` points the build at a local detector build.
+- **`ENGINE_VERSION`** (repo root) pins the engine release (`engine-v<X>` on this repo's GitHub Releases, built by `.github/workflows/release-engine.yml` when `bun run release:engine` pushes the tag). The build copies it to `skill/scripts/VERSION`, which the launcher reads to name the download and the cache dir; `cli/bin/cli.js` reads the same version from `package.json`'s `optionalDependencies`. Bumping it is a release-time decision, like the other manifest versions. **`DETECTOR_VERSION`** pins the closed detector the engine is built against; it moves independently.
 - **Binaries are never tracked.** `skill/scripts/bin/` and `**/skills/impeccable/scripts/bin/` are gitignored, so the tracked provider dirs and `plugin/` ship launcher-only and users get the binary on first run. `bun run build:release` produces launcher-only zips by default; `IMPECCABLE_BUNDLE_ENGINE=1 bun run build:release` fetches every target (`scripts/fetch-engine.mjs --all --lenient`) and stages `bin/<os-arch>/` into the dist skill copies **after** the root harness dirs and `plugin/` were synced, so `dist/universal.zip` is self-contained for offline installs while git stays clean. Bundling is opt-in because five targets in every provider copy put `universal.zip` near 340 MB, past the 25 MB Cloudflare Pages file cap that `impeccable install` downloads through.
 - **Tests get a binary** from `IMPECCABLE_BIN` or `skill/scripts/bin/<os-arch>/` (`bun run fetch:engine`; `IMPECCABLE_BIN=<local build> bun run fetch:engine` copies a local build there). `tests/lib/engine-bin.mjs` is the one resolver; suites that need the binary skip cleanly without it.
 - **The oracle is the behavior gate.** `tests/oracle/` holds goldens recorded from the JS scripts before they left the tree, plus reviewed deltas in `DELTAS.md`; `tests/oracle.test.mjs` replays them against the binary in `bun run test`. New cases are recorded from the binary (`record.mjs --bin`) and reviewed by hand. `tests/oracle/vectors/calls/` is the frozen function-level snapshot; it cannot be regenerated.
@@ -290,13 +291,14 @@ If you need to fix release notes after the fact (typo, missing thank-you, format
 
 ### Release order is mechanically enforced (triage decision D4)
 
-The skill launcher, the npm shim (`cli/bin/cli.js`), and `impeccable install` all resolve the engine binary for the pinned `ENGINE_VERSION`. Nothing they do works until the engine release exists first. **The order is: publish the engine release, then the platform packages, then release/merge the skill (or CLI):**
+The skill launcher, the npm shim (`cli/bin/cli.js`), and `impeccable install` all resolve the engine binary for the pinned `ENGINE_VERSION`. Nothing they do works until the engine release exists first. **The order is: publish the detector release, then the engine release, then the platform packages, then release/merge the skill (or CLI):**
 
-1. Publish engine `v<ENGINE_VERSION>` to the `impeccable-dist` release channel: the five `impeccable-<os>-<arch>[.exe]` binaries plus a `.sha256` beside each.
-2. Publish the five `@impeccable/cli-<os>-<arch>@<ENGINE_VERSION>` npm platform packages.
-3. Only then tag/publish the skill or CLI release, and only then merge a branch that bumps `ENGINE_VERSION` (the `sync-generated-output.yml` workflow rewrites provider dirs on merge to `main`).
+1. Publish detector `detector-v<DETECTOR_VERSION>`: tag `v<X>` in the private detector repo; its CI uploads the five archives + `.sha256` and `detector-browser-bundle.zip` to this repo's Releases. `scripts/check-detector-release.mjs` verifies it; `bun run release:engine` refuses without it (the engine build downloads the archive for every target).
+2. Publish engine `engine-v<ENGINE_VERSION>`: `bun run release:engine` tags and pushes; `release-engine.yml` builds the five `impeccable-<os>-<arch>[.exe]` binaries plus a `.sha256` beside each and publishes the release on this repo.
+3. Publish the five `@impeccable/cli-<os>-<arch>@<ENGINE_VERSION>` npm platform packages.
+4. Only then tag/publish the skill or CLI release, and only then merge a branch that bumps `ENGINE_VERSION` (the `sync-generated-output.yml` workflow rewrites provider dirs on merge to `main`).
 
-`scripts/check-engine-release.mjs` verifies all of that for the pinned version (HEAD/ranged-GET each dist asset, registry-probe each npm package; honors `IMPECCABLE_DOWNLOAD_BASE`). It exits non-zero and names exactly which assets are missing. `scripts/release.mjs` runs it as a hard gate before tagging the **skill** and **CLI** components and refuses to proceed when any asset is absent; the **extension** release is exempt because it ships a vendored WASM detector and never execs the engine. `IMPECCABLE_SKIP_ENGINE_CHECK=1` bypasses the gate only for the case where the assets exist but the registry probe is unreachable. CI's `engine-release-ready` job runs the same script; it is `continue-on-error: true` with a loud `::warning` until the first engine release is published, at which point flip it to `false` so a mis-ordered merge fails CI.
+`scripts/check-engine-release.mjs` verifies step 2 and 3 for the pinned version (ranged-GET each release asset, registry-probe each npm package; honors `IMPECCABLE_DOWNLOAD_BASE`). It exits non-zero and names exactly which assets are missing. `scripts/release.mjs` runs it as a hard gate before tagging the **skill** and **CLI** components and refuses to proceed when any asset is absent; the **extension** release is exempt because it ships a vendored WASM detector and never execs the engine. `IMPECCABLE_SKIP_ENGINE_CHECK=1` bypasses the gate only for the case where the assets exist but the registry probe is unreachable. CI's `engine-release-ready` job runs the same script; it is `continue-on-error: true` with a loud `::warning` until the first engine release is published, at which point flip it to `false` so a mis-ordered merge fails CI.
 
 ## Adding New Commands
 
@@ -306,7 +308,7 @@ All commands live under `/impeccable`. To add a new one:
 2. Add a row to the **Sub-command reference table** in `skill/SKILL.src.md`
 3. Add an entry to the **Command menu** section in the same file
 4. Add the command name to `IMPECCABLE_SUB_COMMANDS` in `scripts/lib/utils.js`
-5. Add it to the `pin` verb's valid-command list in the engine repo (and record the pin/unpin oracle case)
+5. Add it to the `pin` verb's valid-command list (`crates/context`) and record the pin/unpin oracle case
 6. Add its metadata (description + argumentHint) to `skill/scripts/command-metadata.json`
 7. Add its category to `SKILL_CATEGORIES` in `scripts/lib/skill-categories.js`
 8. Add its relationships to `COMMAND_RELATIONSHIPS` in impeccable-site's `sub-pages-data.js`
@@ -324,17 +326,21 @@ The build validator (`generateCounts` in `scripts/build.js`) checks these files 
 
 ## Adding or modifying anti-pattern detection rules
 
-The rule engine lives in the engine repo (`crates/core` is the pure rule core, `crates/html` the static HTML engine, `crates/browser` the URL engine, plus a WASM build for the extension, the live overlay, and the site). Nothing here implements a rule. What this repo owns and keeps in sync:
+The rule engine lives in the private detector repo (`renaissance-geek-inc/impeccable-detector`, checked out at `~/code/impeccable-detector`): the checks, the browser rule adapters over the `Dom` trait, the visual-contrast decisions, and the wasm build for the extension, the live overlay and the site. This repo owns everything around it and keeps it in sync:
 
 | Where | How it stays in sync |
 |---|---|
 | `docs/CLI-CONTRACT.md` | Hand-edited: the observable contract of `impeccable detect` and every other verb |
+| `crates/foundation` | Open: the rule registry (`registry.rs`, already public as `antipatterns.json`), findings, color, the `Dom` trait, `SnapshotDom`, and every type that crosses the boundary (`boundary.rs` holds the function ids) |
+| `crates/core` | The shim: one function per closed check the open crates call; a test diffs its id table against the archive's |
+| `crates/html`, `crates/browser`, `crates/detect` | Open engines: parsing, cascade, CDP, snapshots, file walking, output. They call the checks through `impeccable_core::checks::*` and `impeccable_core::browser::*` |
 | `tests/fixtures/antipatterns/{rule-id}.html` | Hand-edited fixture (two columns, should-flag / should-pass, unique headings, explicit pixel dimensions) |
 | `tests/oracle/golden/*` | Recorded from the binary with `node tests/oracle/record.mjs --bin detect-`, reviewed by hand |
-| `extension/detector/` | Vendored from the engine by `bun run build:extension`; the build's rule-count check reads `antipatterns.json` when present |
+| `tests/oracle/vectors/calls/` | Frozen function-level vectors; replay through the shipped archive via `impeccable_core::vectors::call` |
+| `extension/detector/` | Vendored from `detector-browser-bundle.zip` by `bun run build:extension`; the build's rule-count check reads `antipatterns.json` when present |
 | `skill/SKILL.src.md` and `reference/*.md` | Hand-edited if the rule introduces new design guidance |
 
-Order for a new rule: fixture here first, rule in the engine against that fixture, oracle case + golden here, then `bun run build && bun run test` with a binary present. Rule counts quoted in `README.md` / `README.npm.md` are validated by `generateCounts` against the vendored registry.
+Order for a new rule: fixture here first, registry row in `crates/foundation/src/registry.rs`, the check in the detector repo against that fixture (plus a `boundary.rs` id and a shim when an open crate calls it directly), a detector release and `DETECTOR_VERSION` bump, oracle case + golden here, then `bun run build && bun run test` with a binary present. Rule counts quoted in `README.md` / `README.npm.md` are validated by `generateCounts` against the vendored registry.
 
 ## Evals Framework (separate private repo)
 

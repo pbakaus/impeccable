@@ -1,0 +1,8 @@
+# Exact pin, on purpose. crates/core links a prebuilt closed detector
+# (docs/ENGINE.md) whose objects reference std by mangled symbol name, so the
+# runtime and the detector must be compiled by the very same rustc. rustup
+# installs this version automatically; bumping it means a new detector
+# release built with the new version (DETECTOR_VERSION moves with it).
+[toolchain]
+channel = "1.97.1"
+targets = ["wasm32-unknown-unknown"]

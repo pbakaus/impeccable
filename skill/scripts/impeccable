@@ -101,10 +101,10 @@ if [ -n "$probing" ]; then
   exit 127
 fi
 if [ -n "$version" ] && [ "$os" != unknown ] && [ "$arch" != unknown ]; then
-  base="${IMPECCABLE_DOWNLOAD_BASE:-https://github.com/renaissance-geek-inc/impeccable-dist/releases/download}"
+  base="${IMPECCABLE_DOWNLOAD_BASE:-https://github.com/pbakaus/impeccable/releases/download}"
   asset="impeccable-$os-$arch"
   [ "$os" = windows ] && asset="$asset.exe"
-  url="$base/v$version/$asset"
+  url="$base/engine-v$version/$asset"
   tmp="$cache_root/bin/$version/.impeccable.part.$$"
   mkdir -p "$cache_root/bin/$version" 2>/dev/null
   fetched=0
@@ -112,7 +112,7 @@ if [ -n "$version" ] && [ "$os" != unknown ] && [ "$arch" != unknown ]; then
     fetched=1
   elif [ "$os" = windows ] && [ "$arch" = arm64 ]; then
     # Windows on ARM runs x64 binaries; fall back when no arm64 asset exists.
-    url="$base/v$version/impeccable-windows-x64.exe"
+    url="$base/engine-v$version/impeccable-windows-x64.exe"
     fetch_url "$url" && fetched=1
   fi
   if [ "$fetched" = 1 ]; then
@@ -150,5 +150,5 @@ if [ -n "$version" ] && [ "$os" != unknown ] && [ "$arch" != unknown ]; then
 fi
 
 echo "impeccable: no engine binary for $os-$arch found (looked in $bin, $cached, PATH)." >&2
-echo "Download impeccable-$os-$arch from https://github.com/renaissance-geek-inc/impeccable-dist/releases into $cache_root/bin/$version/impeccable$exe (then chmod +x), or set IMPECCABLE_BIN to a preinstalled engine binary. Docs: https://impeccable.style" >&2
+echo "Download impeccable-$os-$arch from https://github.com/pbakaus/impeccable/releases (tag engine-v$version) into $cache_root/bin/$version/impeccable$exe (then chmod +x), or set IMPECCABLE_BIN to a preinstalled engine binary. Docs: https://impeccable.style" >&2
 exit 127

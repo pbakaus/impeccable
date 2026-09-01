@@ -1,0 +1,87 @@
+name: release-engine
+# Builds the engine binary for every supported target and publishes them, with
+# sha256 sidecars, as the GitHub Release `engine-v<X>` on this repo. That
+# release is what the launcher (skill/scripts/impeccable), the npm shim
+# (cli/bin/cli.js), `impeccable install`, and `bun run fetch:engine` download.
+#
+# Trigger: `bun run release:engine` (scripts/release.mjs) verifies
+# ENGINE_VERSION, the detector release it builds against, and a clean tree,
+# then pushes the tag. Third-party actions are pinned to commit SHAs so a
+# moved tag cannot swap the code this workflow runs.
+on:
+  push:
+    tags: ['engine-v*']
+permissions:
+  contents: write
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-14,       target: aarch64-apple-darwin,       short: darwin-arm64 }
+          - { os: macos-13,       target: x86_64-apple-darwin,        short: darwin-x64 }
+          - { os: ubuntu-latest,  target: x86_64-unknown-linux-musl,  short: linux-x64 }
+          - { os: ubuntu-latest,  target: aarch64-unknown-linux-musl, short: linux-arm64, cross: true }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc,     short: windows-x64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Check the tag matches ENGINE_VERSION
+        shell: bash
+        run: |
+          set -e
+          want="engine-v$(tr -d '[:space:]' < ENGINE_VERSION)"
+          [ "$GITHUB_REF_NAME" = "$want" ] || { echo "tag $GITHUB_REF_NAME != $want"; exit 1; }
+      # rust-toolchain.toml pins the exact rustc the prebuilt detector was
+      # built with; `rustup show` installs it. Never override the toolchain here.
+      - name: Install the pinned toolchain
+        shell: bash
+        run: rustup show && rustup target add ${{ matrix.target }}
+      - if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - if: matrix.cross
+        run: cargo install cross --locked
+      - name: Build
+        shell: bash
+        # build.rs in crates/core downloads the pinned detector archive for
+        # this target from the detector-v<DETECTOR_VERSION> release.
+        run: ${{ matrix.cross && 'cross' || 'cargo' }} build --release -p impeccable --target ${{ matrix.target }}
+      - name: Smoke the binary
+        if: ${{ !matrix.cross }}
+        shell: bash
+        run: target/${{ matrix.target }}/release/impeccable${{ runner.os == 'Windows' && '.exe' || '' }} engine-probe
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: impeccable-${{ matrix.short }}
+          path: target/${{ matrix.target }}/release/impeccable${{ runner.os == 'Windows' && '.exe' || '' }}
+          if-no-files-found: error
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with: { path: artifacts }
+      - name: Lay out release assets with checksums
+        run: |
+          set -e
+          mkdir -p out
+          for d in artifacts/impeccable-*; do
+            short=$(basename "$d" | sed 's/^impeccable-//')
+            f=$(ls "$d" | head -1)
+            case "$short" in windows-*) dest="out/impeccable-$short.exe" ;; *) dest="out/impeccable-$short" ;; esac
+            cp "$d/$f" "$dest"
+            (cd out && sha256sum "$(basename "$dest")" > "$(basename "$dest").sha256")
+          done
+          ls -la out
+      - name: Publish the GitHub Release
+        env: { GH_TOKEN: "${{ github.token }}" }
+        # No --clobber: a published asset is immutable. A re-run against an
+        # existing release fails on the first existing asset instead of
+        # silently replacing a binary and its sidecar hash.
+        run: |
+          set -e
+          tag="${GITHUB_REF_NAME}"
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --title "impeccable engine $tag" \
+            --notes "Prebuilt impeccable engine binaries ($tag). The launcher, the npm shim and impeccable install download these on first run. Docs: https://impeccable.style" out/* || \
+          gh release upload "$tag" out/* --repo "$GITHUB_REPOSITORY"

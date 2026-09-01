@@ -21,8 +21,8 @@ const PLATFORM_PKG = `@impeccable/cli-${TARGET}`;
 const VERSION = String(pkg.optionalDependencies?.[PLATFORM_PKG] || Object.values(pkg.optionalDependencies || {})[0] || '').replace(/^[^\d]*/, '');
 const CACHE_ROOT = process.env.IMPECCABLE_HOME || path.join(os.homedir(), '.impeccable');
 const CACHED = path.join(CACHE_ROOT, 'bin', VERSION, EXE);
-const BASE = (process.env.IMPECCABLE_DOWNLOAD_BASE || 'https://github.com/renaissance-geek-inc/impeccable-dist/releases/download').replace(/\/$/, '');
-const URL = `${BASE}/v${VERSION}/impeccable-${TARGET}${OS === 'windows' ? '.exe' : ''}`;
+const BASE = (process.env.IMPECCABLE_DOWNLOAD_BASE || 'https://github.com/pbakaus/impeccable/releases/download').replace(/\/$/, '');
+const URL = `${BASE}/engine-v${VERSION}/impeccable-${TARGET}${OS === 'windows' ? '.exe' : ''}`;
 
 function exists(p) { try { return !!p && fs.statSync(p).isFile(); } catch { return false; } }
 function fromPackage() {
