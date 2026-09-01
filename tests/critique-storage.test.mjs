@@ -397,6 +397,43 @@ describe('CLI entry point', () => {
     assert.equal(readLatestSnapshot('shell', { cwd }), null);
   });
 
+  it('does not close another target when a slug also names an extensionless file', () => {
+    const originalDir = join(cwd, 'foo');
+    const originalTarget = join('foo', 'bar');
+    const originalPath = join(cwd, originalTarget);
+    const ambiguousTarget = join(cwd, 'foo-bar');
+    const bodyFile = join(cwd, 'critique.md');
+    mkdirSync(originalDir);
+    writeFileSync(originalPath, '<main>assessed original</main>');
+    writeFileSync(bodyFile, '# Critique\n\nP1: preserve this backlog');
+
+    const write = spawnSync(process.execPath, [SCRIPT, 'write', originalTarget, bodyFile], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(write.status, 0, `stderr: ${write.stderr}`);
+
+    // This distinct extensionless file shares the original target's slug.
+    // Reading by slug must not compare its bytes with the original snapshot.
+    writeFileSync(ambiguousTarget, '<main>different target</main>');
+    const bySlug = spawnSync(process.execPath, [SCRIPT, 'latest', 'foo-bar'], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(bySlug.status, 0, `stderr: ${bySlug.stderr}`);
+    assert.match(bySlug.stdout, /preserve this backlog/);
+    assert.notEqual(readLatestSnapshot('foo-bar', { cwd }), null);
+
+    // The recorded original path still owns freshness invalidation.
+    writeFileSync(originalPath, '<main>changed original</main>');
+    const changedOriginal = spawnSync(process.execPath, [SCRIPT, 'latest', originalTarget], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(changedOriginal.status, 2, `stderr: ${changedOriginal.stderr}`);
+    assert.equal(readLatestSnapshot('foo-bar', { cwd }), null);
+  });
+
   it('closes a local snapshot when its target is deleted or replaced by a directory', () => {
     const bodyFile = join(cwd, 'critique.md');
     writeFileSync(bodyFile, '# Critique\n\nP1: improve hierarchy');

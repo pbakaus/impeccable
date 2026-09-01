@@ -273,10 +273,15 @@ function main(argv) {
       if (!latest) { process.exit(2); }
       const targetFingerprint = fingerprintTarget(target);
       const targetPath = resolveLocalTargetPath(target);
+      // A slug can also be a valid extensionless filename. Only treat it as
+      // the snapshot's local target when the stored identity agrees. For
+      // legacy snapshots without target_path, retain the old unambiguous
+      // path/URL-marker behavior rather than guessing from file existence.
+      const recordedTargetPath = latest.meta.target_path;
       const concreteLocalTarget = targetPath && (
-        latest.meta.target_path === targetPath
-        || !isReadySlug(target)
-        || fs.existsSync(targetPath)
+        recordedTargetPath
+          ? recordedTargetPath === targetPath
+          : !isReadySlug(target)
       );
       if (concreteLocalTarget && latest.meta.target_fingerprint !== targetFingerprint) {
         closeSnapshot(slug);
