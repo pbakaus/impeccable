@@ -250,12 +250,18 @@ export function closeSnapshot(snapshotFile, { cwd = process.cwd() } = {}) {
 
 /** Return the most recent snapshot across all targets, or null. */
 export function readLatestSnapshotAcrossTargets({ cwd = process.cwd() } = {}) {
-  const latestBySlug = new Map();
+  const latestByTarget = new Map();
   for (const filePath of listSnapshots('.md', cwd)) {
     const snapshot = readSnapshot(filePath);
-    if (snapshot?.meta.slug) latestBySlug.set(snapshot.meta.slug, snapshot);
+    if (!snapshot?.meta.slug) continue;
+    // Slugs are lossy: distinct targets such as foo/bar and foo-bar can share
+    // one. Keep each known identity's latest open/closed state independent so
+    // closing one target cannot hide another target's live backlog. Legacy
+    // snapshots without identity remain one stream per slug.
+    const streamKey = snapshotTargetIdentity(snapshot) || `slug:${snapshot.meta.slug}`;
+    latestByTarget.set(streamKey, snapshot);
   }
-  return [...latestBySlug.values()]
+  return [...latestByTarget.values()]
     .filter((snapshot) => snapshot.meta.closed !== true)
     .sort((a, b) => a.path.localeCompare(b.path))
     .at(-1) || null;

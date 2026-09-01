@@ -283,6 +283,32 @@ describe('writeSnapshot + readLatestSnapshot', () => {
 
     assert.equal(readLatestSnapshotAcrossTargets({ cwd }).path, pricing);
   });
+
+  it('latest across targets keeps colliding target identities independent', () => {
+    const original = writeSnapshot({
+      slug: 'foo-bar',
+      meta: {
+        target_identity: `file:${join(cwd, 'foo', 'bar')}`,
+        total_score: 20,
+      },
+      body: 'older original backlog',
+      cwd,
+      now: new Date('2026-05-01T00:00:00Z'),
+    });
+    const colliding = writeSnapshot({
+      slug: 'foo-bar',
+      meta: {
+        target_identity: `file:${join(cwd, 'foo-bar')}`,
+        total_score: 30,
+      },
+      body: 'newer colliding backlog',
+      cwd,
+      now: new Date('2026-05-12T00:00:00Z'),
+    });
+    closeSnapshot(colliding, { cwd });
+
+    assert.equal(readLatestSnapshotAcrossTargets({ cwd }).path, original);
+  });
 });
 
 describe('CLI entry point', () => {
