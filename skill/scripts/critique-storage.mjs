@@ -71,7 +71,7 @@ function resolveTargetIdentity(target, { cwd = process.cwd() } = {}) {
     try {
       const url = new URL(target);
       const pathname = url.pathname.replace(/\/+$/, '') || '/';
-      return `url:${url.hostname.toLowerCase()}${pathname}`;
+      return `url:${url.origin}${pathname}`;
     } catch {
       return null;
     }

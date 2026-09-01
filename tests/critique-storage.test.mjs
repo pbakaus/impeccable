@@ -620,7 +620,7 @@ describe('CLI entry point', () => {
     assert.equal(write.status, 0, `stderr: ${write.stderr}`);
     assert.equal(
       readLatestSnapshot('example-com-page', { cwd }).meta.target_identity,
-      'url:example.com/page',
+      'url:https://example.com/page',
     );
 
     const latest = spawnSync(process.execPath, [SCRIPT, 'latest', target], {
@@ -636,6 +636,54 @@ describe('CLI entry point', () => {
     });
     assert.equal(bySlug.status, 0, `stderr: ${bySlug.stderr}`);
     assert.match(bySlug.stdout, /improve hierarchy/);
+  });
+
+  it('keeps URL schemes and non-default ports in separate identity streams', () => {
+    const bodyFile = join(cwd, 'critique.md');
+    const targets = [
+      ['http://example.test/review', 'http backlog'],
+      ['https://example.test/review', 'https backlog'],
+      ['https://example.test:8443/review', 'port backlog'],
+    ];
+
+    for (const [target, backlog] of targets) {
+      writeFileSync(bodyFile, `# Critique\n\nP1: ${backlog}`);
+      const write = spawnSync(process.execPath, [SCRIPT, 'write', target, bodyFile], {
+        cwd,
+        encoding: 'utf-8',
+      });
+      assert.equal(write.status, 0, `stderr: ${write.stderr}`);
+    }
+
+    const results = targets.map(([target, backlog]) => {
+      const latest = spawnSync(
+        process.execPath,
+        [SCRIPT, 'latest', target, '--json'],
+        { cwd, encoding: 'utf-8' },
+      );
+      assert.equal(latest.status, 0, `stderr: ${latest.stderr}`);
+      const result = JSON.parse(latest.stdout);
+      assert.match(result.body, new RegExp(backlog));
+      return result;
+    });
+    assert.equal(new Set(results.map((result) => result.snapshot_file)).size, 3);
+
+    const closeHttp = spawnSync(process.execPath, [
+      SCRIPT,
+      'close',
+      targets[0][0],
+      results[0].snapshot_file,
+    ], { cwd, encoding: 'utf-8' });
+    assert.equal(closeHttp.status, 0, `stderr: ${closeHttp.stderr}`);
+
+    for (const [target, backlog] of targets.slice(1)) {
+      const latest = spawnSync(process.execPath, [SCRIPT, 'latest', target], {
+        cwd,
+        encoding: 'utf-8',
+      });
+      assert.equal(latest.status, 0, `stderr: ${latest.stderr}`);
+      assert.match(latest.stdout, new RegExp(backlog));
+    }
   });
 
   it('latest --json returns the exact snapshot identity and body', () => {
