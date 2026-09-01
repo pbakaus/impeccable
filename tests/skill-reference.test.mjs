@@ -67,4 +67,14 @@ describe('skill reference authoring contracts', () => {
     assert.match(polish, /if a newer critique landed meanwhile, its backlog stays live/);
     assert.doesNotMatch(polish, /git status|git log/);
   });
+
+  it('finish capture forbids installing a Playwright browser and names the installed-browser fallback', () => {
+    const newWork = readFileSync(join(ROOT, 'skill/reference/new-work.md'), 'utf-8').replace(/\r\n?/g, '\n');
+    const inspectAndFinish = newWork.match(/## 7\. Inspect and finish\n([\s\S]*?)(?:\n## |$)/)?.[1] ?? '';
+
+    assert.match(inspectAndFinish, /native or browser-canvas screenshot path/);
+    assert.match(inspectAndFinish, /npx playwright install/);
+    assert.match(inspectAndFinish, /installed Chrome/);
+    assert.match(inspectAndFinish, /leftover page from another process on the same localhost port/);
+  });
 });
