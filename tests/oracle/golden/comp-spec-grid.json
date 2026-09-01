@@ -1,0 +1,7 @@
+{
+  "stdout": "GRID .impeccable/build/comp-grid.png (768x512 comp; cells A0 top-left to J9 bottom-right)\nPALETTE #f7e8e8(69%) #182838(14%) #9a9aa5(7%) #c5c5d1(7%) #7c7c82(4%)\nBANDS 6% 9% 14% 18% 20% 24% 47% 51% 54% 58% 60% 64% 66% 69% 72% 75% 78% 81% 84% 88% 91% 98%\nNEXT open the grid image, then write regions.json in exactly this shape and run --regions regions.json:\n  { \"regions\": [ { \"id\": \"exploded-plate\", \"kind\": \"plate\", \"grid\": \"E0:H4\", \"note\": \"exploded carburetor drawing\" }, { \"id\": \"masthead\", \"kind\": \"chrome\", \"grid\": \"A0:J0\", \"note\": \"navy bar\" } ] }\n  kind: plate | image | texture (painted material: every illustration, photograph, figure, product object, texture; each ships as a raster plate) or text | control | chrome (code draws it). grid: <colrow>:<colrow>, A0 top-left to J9 bottom-right, inclusive.\n  A texture region is a clean sample cell of the material (ground with no ink on it), not the whole band it covers; the page tiles it. Ink that sits on the material gets its own text/control region.\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

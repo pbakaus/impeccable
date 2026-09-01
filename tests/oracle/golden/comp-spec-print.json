@@ -1,0 +1,7 @@
+{
+  "stdout": "SPEC comp comp.png 768x512 landscape\nPALETTE #f7e8e8(69%) #182838(14%) #9a9aa5(7%) #c5c5d1(7%) #7c7c82(4%)\nBANDS 6% 9% 14% 18% 20% 24% 47% 51% 54% 58% 60% 64% 66% 69% 72% 75% 78% 81% 84% 88% 91% 98%\nREGION top                chrome   semantic box x0% y0% w100% h20% (768x102px, 7.5294:1) palette #f5e7e8 #182838 #bdbdc8  # top masthead band area\nREGION art                plate    raster   box x40% y20% w60% h30% (461x154px, 2.9935:1) palette #e6dfe5 #a2a2ad #7f7f88 plate assets/plates/art.png  # an exploded illustration drawing\nREGION body               text     semantic box x0% y50% w40% h40% (307x205px, 1.4976:1) palette #f8e8e8 #182838 #787878  # a paragraph of body text content\nPLATES 1 to produce: art\nRULE anything not in this list does not exist on the page: no borders, rules, chrome, or containers the comp does not show. Every raster region ships as its plate, never as CSS.\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

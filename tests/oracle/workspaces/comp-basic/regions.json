@@ -1,0 +1,5 @@
+{ "allowUncovered": true, "regions": [
+  { "id": "top", "kind": "chrome", "grid": "A0:J1", "note": "top masthead band area" },
+  { "id": "art", "kind": "plate", "grid": "E2:J4", "note": "an exploded illustration drawing" },
+  { "id": "body", "kind": "text", "grid": "A5:D8", "note": "a paragraph of body text content" }
+] }

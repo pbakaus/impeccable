@@ -1,0 +1,7 @@
+{
+  "stdout": "usage: comp-spec.mjs --comp <png> --grid            write .impeccable/build/comp-grid.png (10x10 labeled grid) + palette + bands\n       comp-spec.mjs --comp <png> --regions <json>  measure regions -> .impeccable/build/spec.json\n         regions json: { \"regions\": [ { \"id\": \"art\", \"kind\": \"plate|image|texture|text|control|chrome\", \"grid\": \"E0:J4\", \"note\": \"...\" } ] }\n       comp-spec.mjs --comp <png> --auto            band regions when you have no regions file\n       comp-spec.mjs --print                        the compact spec\n       comp-spec.mjs --crop <id> [--out f] [--scale n]   reference crop of a region (never a shipping asset)\n       comp-spec.mjs --plate-prompt <id>            the regeneration prompt for a raster region\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

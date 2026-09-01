@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "usage: comp-diff.mjs --comp <png> --build <png> [--spec spec.json] [--out-dir dir] [--align top|stretch] [--label name] [--threshold 0.75] [--json]\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

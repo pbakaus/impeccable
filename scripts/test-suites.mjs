@@ -51,17 +51,13 @@ export const SUITES = {
         // A finite per-test cap so an async hang is cancelled and reported
         // rather than left running with `--test-timeout` unset (Infinity).
         // Note: this timer lives in the event loop, so it cannot interrupt a
-        // test blocked in a synchronous spawnSync; the child bounds in
-        // tests/build-phase.test.mjs and the runner's wall-clock group-kill
-        // cover that case. The slowest core test is ~11s, so 180s is safe.
+        // test blocked in a synchronous spawnSync; the runner's wall-clock
+        // group-kill covers that case. The slowest core test is ~11s, so 180s
+        // is safe.
         timeoutMs: 180000,
         files: [
-          'tests/build-phase.test.mjs',
           'tests/ci-test-plan.test.mjs',
-          'tests/comp-diff.test.mjs',
-          'tests/font-match.test.mjs',
           'tests/github-sheriff.test.mjs',
-          'tests/hero-checks.test.mjs',
           'tests/hook-build.test.mjs',
           'tests/openai-plugin.test.mjs',
           'tests/release.test.mjs',

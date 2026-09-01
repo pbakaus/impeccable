@@ -1,0 +1,267 @@
+{
+  "tool": "comp-spec",
+  "version": 1,
+  "createdAt": "2026-09-01T19:17:09.643Z",
+  "comp": "comp.png",
+  "warnings": [],
+  "uncoveredInkCells": [
+    "A2",
+    "B2",
+    "C2",
+    "E5",
+    "F5",
+    "G5",
+    "H5",
+    "I5",
+    "J5",
+    "E6",
+    "A9",
+    "B9",
+    "C9"
+  ],
+  "compSize": {
+    "width": 768,
+    "height": 512
+  },
+  "aspect": 1.5,
+  "orientation": "landscape",
+  "palette": [
+    {
+      "hex": "#f7e8e8",
+      "coverage": 0.6868
+    },
+    {
+      "hex": "#182838",
+      "coverage": 0.1403
+    },
+    {
+      "hex": "#9a9aa5",
+      "coverage": 0.0683
+    },
+    {
+      "hex": "#c5c5d1",
+      "coverage": 0.0672
+    },
+    {
+      "hex": "#7c7c82",
+      "coverage": 0.0374
+    }
+  ],
+  "bands": [
+    {
+      "y": 0.0588,
+      "strength": 1
+    },
+    {
+      "y": 0.0941,
+      "strength": 0.4087
+    },
+    {
+      "y": 0.1412,
+      "strength": 0.7036
+    },
+    {
+      "y": 0.1765,
+      "strength": 0.6963
+    },
+    {
+      "y": 0.2,
+      "strength": 0.6026
+    },
+    {
+      "y": 0.2353,
+      "strength": 0.6125
+    },
+    {
+      "y": 0.4706,
+      "strength": 0.3982
+    },
+    {
+      "y": 0.5059,
+      "strength": 0.9754
+    },
+    {
+      "y": 0.5412,
+      "strength": 0.5699
+    },
+    {
+      "y": 0.5765,
+      "strength": 0.8782
+    },
+    {
+      "y": 0.6,
+      "strength": 0.3576
+    },
+    {
+      "y": 0.6353,
+      "strength": 0.4894
+    },
+    {
+      "y": 0.6588,
+      "strength": 0.5699
+    },
+    {
+      "y": 0.6941,
+      "strength": 0.8782
+    },
+    {
+      "y": 0.7176,
+      "strength": 0.3576
+    },
+    {
+      "y": 0.7529,
+      "strength": 0.4877
+    },
+    {
+      "y": 0.7765,
+      "strength": 0.5699
+    },
+    {
+      "y": 0.8118,
+      "strength": 0.8782
+    },
+    {
+      "y": 0.8353,
+      "strength": 0.3576
+    },
+    {
+      "y": 0.8824,
+      "strength": 0.4877
+    },
+    {
+      "y": 0.9059,
+      "strength": 0.3028
+    },
+    {
+      "y": 0.9765,
+      "strength": 0.3039
+    }
+  ],
+  "regions": [
+    {
+      "id": "top",
+      "kind": "chrome",
+      "note": "top masthead band area",
+      "grid": "A0:J1",
+      "box": {
+        "x": 0,
+        "y": 0,
+        "w": 1,
+        "h": 0.2
+      },
+      "px": {
+        "x": 0,
+        "y": 0,
+        "w": 768,
+        "h": 102
+      },
+      "aspect": 7.5294,
+      "palette": [
+        {
+          "hex": "#f5e7e8",
+          "coverage": 0.392
+        },
+        {
+          "hex": "#182838",
+          "coverage": 0.3825
+        },
+        {
+          "hex": "#bdbdc8",
+          "coverage": 0.1348
+        },
+        {
+          "hex": "#8b8b96",
+          "coverage": 0.0908
+        }
+      ],
+      "detail": {
+        "energy": 39.1367
+      },
+      "medium": "semantic",
+      "plate": null,
+      "text": null
+    },
+    {
+      "id": "art",
+      "kind": "plate",
+      "note": "an exploded illustration drawing",
+      "grid": "E2:J4",
+      "box": {
+        "x": 0.4,
+        "y": 0.2,
+        "w": 0.6,
+        "h": 0.3
+      },
+      "px": {
+        "x": 307,
+        "y": 102,
+        "w": 461,
+        "h": 154
+      },
+      "aspect": 2.9935,
+      "palette": [
+        {
+          "hex": "#e6dfe5",
+          "coverage": 0.5326
+        },
+        {
+          "hex": "#a2a2ad",
+          "coverage": 0.383
+        },
+        {
+          "hex": "#7f7f88",
+          "coverage": 0.0844
+        }
+      ],
+      "detail": {
+        "energy": 38.5615
+      },
+      "medium": "raster",
+      "plate": "assets/plates/art.png",
+      "text": null
+    },
+    {
+      "id": "body",
+      "kind": "text",
+      "note": "a paragraph of body text content",
+      "grid": "A5:D8",
+      "box": {
+        "x": 0,
+        "y": 0.5,
+        "w": 0.4,
+        "h": 0.4
+      },
+      "px": {
+        "x": 0,
+        "y": 256,
+        "w": 307,
+        "h": 205
+      },
+      "aspect": 1.4976,
+      "palette": [
+        {
+          "hex": "#f8e8e8",
+          "coverage": 0.6826
+        },
+        {
+          "hex": "#182838",
+          "coverage": 0.223
+        },
+        {
+          "hex": "#787878",
+          "coverage": 0.0848
+        },
+        {
+          "hex": "#b82828",
+          "coverage": 0.0096
+        }
+      ],
+      "detail": {
+        "energy": 32.0304
+      },
+      "medium": "semantic",
+      "plate": null,
+      "text": null
+    }
+  ]
+}

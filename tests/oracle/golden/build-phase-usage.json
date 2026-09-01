@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "usage: build-phase.mjs start --comp <png> [--breakpoint WxH] | status [--json] | advance [--force --reason \"...\"] | record hero --build <png> | scaffold | note \"<text>\" | finish --disposition <word>\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

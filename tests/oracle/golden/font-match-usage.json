@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "usage: font-match.mjs --measure <text-region-id> | --rank <text-region-id> [--candidates \"Family:700,Family2:400,...\"] [--text \"...\"] [--transform uppercase] [--category sans,serif,display,handwriting,mono]\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

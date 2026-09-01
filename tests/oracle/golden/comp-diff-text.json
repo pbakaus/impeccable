@@ -1,0 +1,7 @@
+{
+  "stdout": "COMP-DIFF [build] overall 84% (match) structure 98% color 83% detail 54% bands 100%\nPALETTE comp #f7e8e8(69%) #182838(14%) #9a9aa5(7%) #c5c5d1(7%) #7c7c82(4%)\nPALETTE build #ede1e1(84%) #182838(14%) #787878(1%) #b82828(0%)\nREGION top                match         82%  structure  98%  color  75%  detail  54%\nREGION art                missing       36%  structure  86%  color  42%  detail   2%\nREGION body               match        100%  structure 100%  color 100%  detail 100%\nWORST art (missing, 36%); top (match, 82%); body (match, 100%)\nOPEN the side-by-side and the worst region pairs before deciding anything; the numbers rank, the crops decide.\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

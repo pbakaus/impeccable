@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "comp-spec: region x is kind \"chrome\" but its note describes painted material (\"an exploded diagram illustration\"). Anything drawn, photographed, or textured ships as a raster plate: set kind to plate (illustration, diagram, figure), image (photograph), or texture (ground). If the note is wrong and code really draws it (a table, a rule, a chrome bar), reword the note or set \"codeDrawn\": true on the region.\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}
