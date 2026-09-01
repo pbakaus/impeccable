@@ -38,7 +38,7 @@ import {
   extractFindingIgnoreValue,
 } from './hook-lib.mjs';
 
-const ACTIONS = new Set(['status', 'on', 'off', 'ignore-rule', 'ignore-file', 'ignore-value', 'reset']);
+const ACTIONS = new Set(['status', 'on', 'off', 'ignore-rule', 'ignore-file', 'ignore-value', 'reset', 'state', 'apply']);
 const IMPECCABLE_HOOK_COMMAND_MARKERS = [
   'skills/impeccable/scripts/hook-probe.mjs',
   'skills/impeccable/scripts/hook.mjs',
@@ -788,6 +788,145 @@ function reset(cwd) {
   return parts.length ? parts.join(' ') : 'No hook config or cache to remove. Already at defaults.';
 }
 
+/* ============================================================
+   The design context document's machine channel.
+
+   `state` prints the shared-scope hook state as one JSON object; `apply`
+   reads the full desired state from stdin as JSON and writes it exactly.
+   The document's Hooks page is the caller, through the doc session; the
+   page shows the user every entry it read, so what it sends back is the
+   whole managed set and removals are as deliberate as additions. The
+   union-merging writers above cannot express a removal, which is why
+   `apply` writes the managed detector keys wholesale; unmanaged keys
+   (designSystem, advisoryRules, extensions) survive untouched, and the
+   hook section keeps every field the UI does not manage. An apply may
+   carry a `baseline` field: the state a previous read returned. When the
+   project no longer matches it, the write is refused, so an entry another
+   writer added after that read is never silently clobbered.
+   ============================================================ */
+
+function uiState(cwd) {
+  const detector = readRawDetectorConfig(cwd) || mergeDetectorConfig(null);
+  const hook = readRawHookConfig(cwd);
+  return {
+    enabled: !(hook && hook.enabled === false),
+    ignoreRules: Array.isArray(detector.ignoreRules) ? detector.ignoreRules : [],
+    ignoreFiles: Array.isArray(detector.ignoreFiles) ? detector.ignoreFiles : [],
+    ignoreValues: normalizeIgnoreValueEntries(detector.ignoreValues || []),
+  };
+}
+
+const APPLY_LIST_LIMIT = 200;
+
+function cleanStringList(value, label) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new Error(`${label} must be an array`);
+  if (value.length > APPLY_LIST_LIMIT) throw new Error(`${label} holds more than ${APPLY_LIST_LIMIT} entries`);
+  const out = [];
+  for (const entry of value) {
+    if (typeof entry !== 'string' || !entry.trim()) throw new Error(`${label} entries must be non-empty strings`);
+    if (entry.length > 400) throw new Error(`${label} entry exceeds 400 characters`);
+    if (!out.includes(entry.trim())) out.push(entry.trim());
+  }
+  return out;
+}
+
+function cleanIgnoreValues(value) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new Error('ignoreValues must be an array');
+  if (value.length > APPLY_LIST_LIMIT) throw new Error(`ignoreValues holds more than ${APPLY_LIST_LIMIT} entries`);
+  const out = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error('ignoreValues entries must be objects');
+    const rule = typeof entry.rule === 'string' ? entry.rule.trim() : '';
+    const val = typeof entry.value === 'string' ? entry.value.trim() : '';
+    if (!rule || !val) throw new Error('ignoreValues entries need a rule and a value');
+    const clean = { rule, value: val };
+    if (entry.files !== undefined) {
+      const files = cleanStringList(entry.files, 'ignoreValues files');
+      if (files.length > 0) clean.files = files;
+    }
+    if (val === '*' && !clean.files) throw new Error('a "*" value needs a files scope; use ignoreRules for project-wide');
+    if (typeof entry.reason === 'string' && entry.reason.trim()) clean.reason = entry.reason.trim().slice(0, 400);
+    out.push(clean);
+  }
+  return normalizeIgnoreValueEntries(out);
+}
+
+// Exact-set write for the three managed detector keys. Unlike
+// writeDetectorConfig this does not union with what is on disk: the caller
+// read the full state first and hands back the complete set, so an entry
+// missing from the payload is a removal, not an oversight.
+function setDetectorExact(cwd, desired) {
+  const filePath = getConfigPath(cwd);
+  const existingRaw = readRawConfigFile(filePath).raw;
+  const existing = existingRaw && typeof existingRaw === 'object' && !Array.isArray(existingRaw) ? existingRaw : {};
+  const nextHook = stripDetectorKeys(hookSection(existing));
+  const existingDetector = detectorSection(existing) || {};
+  const next = {
+    ...existing,
+    detector: {
+      ...existingDetector,
+      ignoreRules: desired.ignoreRules,
+      ignoreFiles: desired.ignoreFiles,
+      ignoreValues: desired.ignoreValues,
+    },
+  };
+  if (Object.keys(nextHook).length > 0) next.hook = nextHook;
+  else delete next.hook;
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, JSON.stringify(next, null, 2) + '\n');
+}
+
+// Canonical projection for the baseline comparison: order-stable and
+// validation-free, because a baseline is a previous read echoed back and
+// cleaning it could reject entries that are already on disk.
+function canonState(state) {
+  if (!state || typeof state !== 'object' || Array.isArray(state)) return null;
+  const list = (value) => (Array.isArray(value) ? value.map(String) : []);
+  const values = Array.isArray(state.ignoreValues)
+    ? state.ignoreValues.map((entry) => [
+        String(entry?.rule ?? ''),
+        String(entry?.value ?? ''),
+        Array.isArray(entry?.files) ? entry.files.map(String) : null,
+        typeof entry?.reason === 'string' ? entry.reason : null,
+      ])
+    : [];
+  return JSON.stringify([state.enabled === true, list(state.ignoreRules), list(state.ignoreFiles), values]);
+}
+
+function applyUiState(cwd) {
+  let payload;
+  try {
+    payload = JSON.parse(fs.readFileSync(0, 'utf-8'));
+  } catch {
+    throw new Error('apply reads one JSON object from stdin');
+  }
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error('apply reads one JSON object from stdin');
+  }
+  if (payload.enabled !== undefined && typeof payload.enabled !== 'boolean') {
+    throw new Error('enabled must be a boolean');
+  }
+  if (payload.baseline !== undefined) {
+    const baseline = canonState(payload.baseline);
+    if (baseline === null) throw new Error('baseline must be the state object a previous read returned');
+    if (baseline !== canonState(uiState(cwd))) {
+      throw new Error('the hook config changed on disk after this state was read; read it again and reapply');
+    }
+  }
+  const desired = {
+    ignoreRules: cleanStringList(payload.ignoreRules, 'ignoreRules'),
+    ignoreFiles: cleanStringList(payload.ignoreFiles, 'ignoreFiles'),
+    ignoreValues: cleanIgnoreValues(payload.ignoreValues),
+  };
+  if (typeof payload.enabled === 'boolean' && payload.enabled !== uiState(cwd).enabled) {
+    setEnabled(cwd, payload.enabled);
+  }
+  setDetectorExact(cwd, desired);
+  return JSON.stringify(uiState(cwd));
+}
+
 function main() {
   const [, , actionArg, ...rest] = process.argv;
   const action = (actionArg || 'status').toLowerCase();
@@ -808,6 +947,8 @@ function main() {
       case 'ignore-file': out = addIgnoreFile(cwd, rest); break;
       case 'ignore-value': out = addIgnoreValue(cwd, rest); break;
       case 'reset':  out = reset(cwd); break;
+      case 'state':  out = JSON.stringify(uiState(cwd)); break;
+      case 'apply':  out = applyUiState(cwd); break;
     }
     process.stdout.write(out + '\n');
   } catch (err) {
