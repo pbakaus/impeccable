@@ -302,6 +302,12 @@ function main(argv) {
       // legacy snapshots without target_path, retain the old unambiguous
       // path/URL-marker behavior rather than guessing from file existence.
       const recordedTargetPath = latest.meta.target_path;
+      if (isReadySlug(target) && !recordedTargetPath) {
+        process.stderr.write(
+          'ambiguous legacy snapshot target; use an explicit ./path or full URL\n',
+        );
+        process.exit(2);
+      }
       const concreteLocalTarget = targetPath && (
         recordedTargetPath
           ? recordedTargetPath === targetPath

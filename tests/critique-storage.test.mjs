@@ -474,6 +474,28 @@ describe('CLI entry point', () => {
     assert.equal(readTrend('index-html', { cwd })[0].closed, true);
   });
 
+  it('rejects an ambiguous legacy extensionless lookup until the path is explicit', () => {
+    const target = join(cwd, 'main');
+    writeFileSync(target, '<main>changed since legacy critique</main>');
+    writeSnapshot({ slug: 'main', meta: { total_score: 20 }, body: 'legacy stale', cwd });
+
+    const ambiguous = spawnSync(process.execPath, [SCRIPT, 'latest', 'main'], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(ambiguous.status, 2, `stderr: ${ambiguous.stderr}`);
+    assert.match(ambiguous.stderr, /ambiguous legacy snapshot target/);
+    assert.notEqual(readLatestSnapshot('main', { cwd }), null);
+
+    const explicit = spawnSync(process.execPath, [SCRIPT, 'latest', './main'], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(explicit.status, 2, `stderr: ${explicit.stderr}`);
+    assert.equal(readLatestSnapshot('main', { cwd }), null);
+    assert.equal(readTrend('main', { cwd })[0].closed, true);
+  });
+
   it('keeps URL snapshots current without a local fingerprint', () => {
     const bodyFile = join(cwd, 'critique.md');
     writeFileSync(bodyFile, '# Critique\n\nP1: improve hierarchy');
@@ -494,13 +516,14 @@ describe('CLI entry point', () => {
   });
 
   it('latest --json returns the exact snapshot identity and body', () => {
+    const target = 'https://example.com/exact';
     const snapshot = writeSnapshot({
-      slug: 'index-astro',
+      slug: 'example-com-exact',
       meta: { total_score: 20 },
       body: 'exact backlog',
       cwd,
     });
-    const r = spawnSync(process.execPath, [SCRIPT, 'latest', 'index-astro', '--json'], {
+    const r = spawnSync(process.execPath, [SCRIPT, 'latest', target, '--json'], {
       cwd,
       encoding: 'utf-8',
     });
@@ -533,14 +556,15 @@ describe('CLI entry point', () => {
   });
 
   it('close subcommand leaves a newer critique backlog active', () => {
+    const target = 'https://example.com/index';
     const first = writeSnapshot({
-      slug: 'index-astro',
+      slug: 'example-com-index',
       meta: { total_score: 20 },
       body: 'first backlog',
       cwd,
       now: new Date('2026-05-12T00:00:00Z'),
     });
-    const read = spawnSync(process.execPath, [SCRIPT, 'latest', 'index-astro', '--json'], {
+    const read = spawnSync(process.execPath, [SCRIPT, 'latest', target, '--json'], {
       cwd,
       encoding: 'utf-8',
     });
@@ -548,7 +572,7 @@ describe('CLI entry point', () => {
     assert.equal(JSON.parse(read.stdout).snapshot_file, basename(first));
 
     const newer = writeSnapshot({
-      slug: 'index-astro',
+      slug: 'example-com-index',
       meta: { total_score: 30 },
       body: 'newer unprocessed backlog',
       cwd,
@@ -557,16 +581,16 @@ describe('CLI entry point', () => {
     const close = spawnSync(process.execPath, [
       SCRIPT,
       'close',
-      'index-astro',
+      target,
       basename(first),
     ], {
       cwd,
       encoding: 'utf-8',
     });
     assert.equal(close.status, 0, `stderr: ${close.stderr}`);
-    assert.equal(readLatestSnapshot('index-astro', { cwd }).path, newer);
+    assert.equal(readLatestSnapshot('example-com-index', { cwd }).path, newer);
     assert.equal(readLatestSnapshotAcrossTargets({ cwd }).path, newer);
-    const trend = readTrend('index-astro', { cwd });
+    const trend = readTrend('example-com-index', { cwd });
     assert.equal(trend[0].closed, true);
     assert.equal(trend[1].closed, undefined);
   });
