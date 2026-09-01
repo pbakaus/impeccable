@@ -48,6 +48,13 @@ export const SUITES = {
       },
       {
         runner: 'node',
+        // A finite per-test cap so an async hang is cancelled and reported
+        // rather than left running with `--test-timeout` unset (Infinity).
+        // Note: this timer lives in the event loop, so it cannot interrupt a
+        // test blocked in a synchronous spawnSync; the child bounds in
+        // tests/build-phase.test.mjs and the runner's wall-clock group-kill
+        // cover that case. The slowest core test is ~11s, so 180s is safe.
+        timeoutMs: 180000,
         files: [
           'tests/build-phase.test.mjs',
           'tests/ci-test-plan.test.mjs',
@@ -255,6 +262,13 @@ export const SUITES = {
         // path is graded, so the cap was selecting for the behavior the suite
         // exists to forbid.
         timeoutMs: 900000,
+        // Overall wall-clock safety cap for the whole sweep: if a provider
+        // call wedges past every inner guard (the harness's 840s per-turn
+        // AbortSignal and the 900s per-test timeout), the runner SIGKILLs the
+        // process group so the sweep still ends with a per-provider tally
+        // instead of hanging overnight. Sized well above a healthy two-provider
+        // sweep; override with IMPECCABLE_TEST_WALL_CLOCK_MS to scope it down.
+        wallClockMs: 3_600_000,
         files: [
           'tests/skill-behavior/scenarios.test.mjs',
           'tests/skill-behavior/workflow-contract.test.mjs',

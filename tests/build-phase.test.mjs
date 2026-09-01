@@ -33,8 +33,28 @@ function makeComp(w = 640, h = 400) {
   return img;
 }
 
+// Every child here is spawned synchronously. spawnSync blocks the test
+// worker's thread, so node's own `--test-timeout` (an event-loop timer) can
+// never interrupt a child that wedges — under load a fork/exec can block on
+// OS resources, and a gate's grandchild (comp-diff.mjs) or an accidental
+// browser launch can stall. spawnSync's own `timeout`/`killSignal` is the one
+// mechanism that can kill such a child, so bound every run: a wedge becomes a
+// fast, named failure that the next test survives, never a suite-wide hang.
+const RUN_TIMEOUT_MS = Number(process.env.IMPECCABLE_BUILD_PHASE_RUN_TIMEOUT_MS) || 120_000;
 function run(script, args, cwd) {
-  return spawnSync(process.execPath, [script, ...args], { cwd, encoding: 'utf8' });
+  const res = spawnSync(process.execPath, [script, ...args], {
+    cwd,
+    encoding: 'utf8',
+    timeout: RUN_TIMEOUT_MS,
+    killSignal: 'SIGKILL',
+  });
+  if (res.error && (res.error.code === 'ETIMEDOUT' || res.signal === 'SIGKILL')) {
+    throw new Error(
+      `build-phase child timed out after ${RUN_TIMEOUT_MS}ms and was killed (SIGKILL): ` +
+      `node ${script} ${args.join(' ')}\nstdout so far:\n${res.stdout || ''}\nstderr so far:\n${res.stderr || ''}`,
+    );
+  }
+  return res;
 }
 
 describe('comp-spec', () => {

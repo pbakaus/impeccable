@@ -347,13 +347,31 @@ export function makeTools(workspace, extraEnv = {}, simulatedUser = {}) {
  * `priorMessages` lets multi-turn scenarios chain context from a previous
  * call (append the SDK's response messages between turns).
  */
-export async function runTurn({ workspace, model, userPrompt, priorMessages = [], maxSteps = 8, env = {}, simulatedUser = {} }) {
+// A single turn (generateText) can drive up to ~30 tool-use steps against a
+// frontier model; the thorough path was measured near 580s. generateText
+// takes no timeout of its own, so a provider socket that stalls mid-stream
+// keeps the fetch — and therefore the whole node process — alive indefinitely,
+// past node's own `--test-timeout` (which cancels the test but not the open
+// handle). We attach a real AbortSignal instead: on expiry the underlying
+// fetch is aborted, the socket closes, the turn throws, and the scenario
+// fails-and-continues so the sweep still produces a per-provider tally. The
+// cap sits just under the 900s per-test timeout so a genuine slow-but-correct
+// run is never killed. The timer is unref'd (it must not keep the loop alive
+// after a healthy turn) and cleared on completion.
+const TURN_TIMEOUT_MS = Number(process.env.IMPECCABLE_SKILL_BEHAVIOR_TURN_TIMEOUT_MS) || 840_000;
+export async function runTurn({ workspace, model, userPrompt, priorMessages = [], maxSteps = 8, env = {}, simulatedUser = {}, timeoutMs = TURN_TIMEOUT_MS }) {
   const { tools, trace } = makeTools(workspace, env, simulatedUser);
   const messages = [
     ...priorMessages,
     { role: 'user', content: userPrompt },
   ];
   let result;
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () => controller.abort(new Error(`LLM turn exceeded ${timeoutMs}ms; aborting the provider call`)),
+    timeoutMs,
+  );
+  if (typeof timer.unref === 'function') timer.unref();
   try {
     result = await generateText({
       model,
@@ -361,13 +379,19 @@ export async function runTurn({ workspace, model, userPrompt, priorMessages = []
       messages,
       tools,
       stopWhen: [stepCountIs(maxSteps)],
+      // Real client-side deadline on the provider call: without it a stalled
+      // stream wedges the whole sweep with no tally.
+      abortSignal: controller.signal,
       // Resolved from the model object so the 21 runTurn call sites stay
       // unchanged. Reasoning models run at the provider default otherwise,
       // which is not the tier this suite is meant to measure.
       providerOptions: getProviderOptions(model?.modelId ?? ''),
     });
   } catch (err) {
-    throw new Error(`LLM behavior turn failed before completing: ${String(err)}`, { cause: err });
+    const reason = controller.signal.aborted ? ` (aborted after ${timeoutMs}ms client-side timeout)` : '';
+    throw new Error(`LLM behavior turn failed before completing${reason}: ${String(err)}`, { cause: err });
+  } finally {
+    clearTimeout(timer);
   }
   const generatedResponseMessages = result.responseMessages ?? result.response?.messages ?? [];
   const responseMessages = [...messages, ...generatedResponseMessages];
