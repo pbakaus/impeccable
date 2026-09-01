@@ -1,6 +1,6 @@
 {
   "stdout": "",
-  "stderr": "usage: impeccable critique-storage <slug|write|latest|trend> [args]\n",
+  "stderr": "usage: impeccable critique-storage <slug|write|latest|trend|close> [args]\n",
   "exit": 1,
   "signal": null,
   "files": {}

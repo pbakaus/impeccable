@@ -1,7 +1,7 @@
 {
-  "stdout": "---\ntotal_score: 72\np0_count: 1\np1_count: 3\ntarget: \"src/pages/index.astro\"\ntimestamp: \"<ISO>\"\nslug: src-pages-index-astro\n---\n# Critique: Home\n\nHero copy is generic; the CTA sits below the fold.\n",
+  "stdout": "",
   "stderr": "",
-  "exit": 0,
+  "exit": 2,
   "signal": null,
   "files": {}
 }

@@ -7,7 +7,7 @@
       "signal": null
     },
     {
-      "stdout": "---\ntimestamp: <STAMP>\nslug: src-app-tsx\n---\nChild critique.\n",
+      "stdout": "---\ntarget_identity: \"file:<WS>/apps/a/src/App.tsx\"\ntarget_fingerprint: \"sha256:2ef6aa1a29b71cfc99d83be19dc97ec8cef0fc8636a8ab706a652b6ecd253b52\"\ntarget_path: <WS>/apps/a/src/App.tsx\ntimestamp: <STAMP>\nslug: src-app-tsx\n---\nChild critique.\n",
       "stderr": "",
       "exit": 0,
       "signal": null

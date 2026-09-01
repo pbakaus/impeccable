@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/overused-font.html\n  [overused-font] Primary font: inter\n    → Inter, Roboto, Fraunces, Geist, Plus Jakarta Sans, and Space Grotesk are used on so many sites they no longer feel distinctive. Each new wave of AI-generated UIs converges on the same handful of faces. Choose a face that gives your interface personality.\n  [overused-font] Primary font: geist\n    → Inter, Roboto, Fraunces, Geist, Plus Jakarta Sans, and Space Grotesk are used on so many sites they no longer feel distinctive. Each new wave of AI-generated UIs converges on the same handful of faces. Choose a face that gives your interface personality.\n  [overused-font] Primary font: montserrat\n    → Inter, Roboto, Fraunces, Geist, Plus Jakarta Sans, and Space Grotesk are used on so many sites they no longer feel distinctive. Each new wave of AI-generated UIs converges on the same handful of faces. Choose a face that gives your interface personality.\n  [overused-font] Primary font: lato\n    → Inter, Roboto, Fraunces, Geist, Plus Jakarta Sans, and Space Grotesk are used on so many sites they no longer feel distinctive. Each new wave of AI-generated UIs converges on the same handful of faces. Choose a face that gives your interface personality.\n\n4 anti-patterns found.\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}
