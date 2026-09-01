@@ -217,7 +217,12 @@ const cases = [
     env: env(), files: IMPECCABLE_FILES,
   },
   { id: 'context-fallback-dir-docs', verb: 'context', workspace: 'ctx-empty', setup: (ws) => write(ws, 'docs/PRODUCT.md', '# Docs product\n\n<!-- impeccable:product-schema 1 -->\n\n## Positioning\nLives under docs/.\n'), env: env(), files: IMPECCABLE_FILES },
-  { id: 'context-lowercase-product-name', verb: 'context', workspace: 'ctx-empty', setup: (ws) => write(ws, 'product.md', '# lower\n\n<!-- impeccable:product-schema 1 -->\n\n## Positioning\nLowercase filename.\n'), env: env(), files: IMPECCABLE_FILES },
+  // `product.md` is found through the case-insensitive lookup of PRODUCT.md on
+  // macOS and Windows and reported under the canonical name; on a
+  // case-sensitive file system the fallback scan finds it as `product.md`.
+  // Both are right for their host, so the case runs only where the golden
+  // was recorded.
+  { id: 'context-lowercase-product-name', platforms: ['darwin', 'win32'], verb: 'context', workspace: 'ctx-empty', setup: (ws) => write(ws, 'product.md', '# lower\n\n<!-- impeccable:product-schema 1 -->\n\n## Positioning\nLowercase filename.\n'), env: env(), files: IMPECCABLE_FILES },
   { id: 'context-design-only', verb: 'context', workspace: 'ctx-empty', setup: (ws) => write(ws, 'DESIGN.md', '---\nname: Only\n---\n# Design: Only\n\n## Colors\n- **Ink** (#111): Text.\n'), env: env(), files: IMPECCABLE_FILES },
   { id: 'context-empty-platform-section', verb: 'context', workspace: 'ctx-empty', setup: (ws) => write(ws, 'PRODUCT.md', '# P\n\n<!-- impeccable:product-schema 1 -->\n\n## Platform\n\n## Positioning\nEmpty platform section.\n'), env: env(), files: IMPECCABLE_FILES },
   { id: 'context-android', verb: 'context', workspace: 'ctx-empty', setup: (ws) => write(ws, 'PRODUCT.md', '# P\n\n<!-- impeccable:product-schema 1 -->\n\n## Platform\n\nAndroid\n\n## Positioning\nNative android.\n'), env: env(), files: IMPECCABLE_FILES },

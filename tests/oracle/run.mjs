@@ -8,7 +8,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { allCases, runCase, readGolden, diffResults, ORACLE_DIR } from './lib.mjs';
+import { allCases, runCase, readGolden, diffResults, caseRunsHere, ORACLE_DIR } from './lib.mjs';
 
 const argv = process.argv.slice(2);
 const impl = argv.includes('--js') ? 'js' : 'bin';
@@ -16,8 +16,9 @@ const prefix = argv.find(a => !a.startsWith('--')) || '';
 const accepted = loadAcceptedDeltas();
 
 const cases = (await allCases()).filter(c => c.id.startsWith(prefix));
-let pass = 0, fail = 0, acceptedCount = 0, missing = 0;
+let pass = 0, fail = 0, acceptedCount = 0, missing = 0, skipped = 0;
 for (const c of cases) {
+  if (!caseRunsHere(c)) { skipped++; process.stdout.write(`-- ${c.id}: skipped (platforms: ${c.platforms.join(', ')})\n`); continue; }
   const golden = readGolden(c.id);
   if (!golden) { missing++; process.stdout.write(`?? ${c.id}: no golden (run record.mjs)\n`); continue; }
   const actual = runCase(c, { impl });
@@ -27,7 +28,7 @@ for (const c of cases) {
   fail++;
   process.stdout.write(`XX ${c.id}\n${diffs.map(d => '   ' + d.replace(/\n/g, '\n   ')).join('\n')}\n`);
 }
-process.stdout.write(`\n${pass} pass, ${fail} fail, ${acceptedCount} accepted deltas, ${missing} missing goldens (${impl})\n`);
+process.stdout.write(`\n${pass} pass, ${fail} fail, ${acceptedCount} accepted deltas, ${missing} missing goldens${skipped ? `, ${skipped} skipped on ${process.platform}` : ''} (${impl})\n`);
 process.exit(fail || missing ? 1 : 0);
 
 function loadAcceptedDeltas() {

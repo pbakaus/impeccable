@@ -78,7 +78,12 @@ export async function allCases() {
 }
 
 export function stageWorkspace(name) {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-oracle-'));
+  // realpath, so every path the verbs see and every <WS> the harness passes
+  // (env, args, lock files) is the same string. macOS's tmpdir is a symlink
+  // (/var -> /private/var); without this, goldens recorded there carried
+  // symlink artifacts (`../../../../../../..<WS>/...` relative paths, lock
+  // files that never matched their own file) that Linux does not reproduce.
+  const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-oracle-')));
   if (name) {
     const src = path.join(WORKSPACES_DIR, name);
     if (!fs.existsSync(src)) throw new Error(`oracle workspace not found: ${name}`);
@@ -209,6 +214,16 @@ function isProbablyText(buf) {
  * Run one case with the given implementation ('js' | 'bin').
  * Returns { stdout, stderr, exit, signal, files } normalized.
  */
+/**
+ * A case may declare `platforms: ['darwin', 'win32']` when its behavior is a
+ * property of the host (case-insensitive file systems, for example) rather
+ * than of the implementation. Such a case runs only on those platforms; the
+ * runner reports it as skipped elsewhere instead of failing.
+ */
+export function caseRunsHere(c, platform = process.platform) {
+  return !Array.isArray(c.platforms) || c.platforms.includes(platform);
+}
+
 export function runCase(c, { impl = 'js', bin = process.env.IMPECCABLE_BIN } = {}) {
   const ws = stageWorkspace(c.workspace);
   try {

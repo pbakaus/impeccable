@@ -17,10 +17,12 @@ pub struct RawDirEntry {
     pub is_symlink: bool,
 }
 
-/// `readdirSync(dir, { withFileTypes: true })` in the order the OS returns
-/// entries. Node does not sort, and several live outputs (glob expansion,
-/// the drift scan) depend on that order, so callers that want sorted output
-/// sort explicitly.
+/// `readdirSync(dir, { withFileTypes: true })`. Node does not sort, and
+/// several live outputs (glob expansion, the drift scan, source-candidate
+/// lists) depend on the order, so this pins it: entries come back sorted by
+/// name bytes, which is the order macOS returned them in when every golden
+/// was recorded. Linux file systems return hash order, and without the sort
+/// the same walk produced a different candidate list there.
 pub fn read_dir_raw(dir: &str) -> Option<Vec<RawDirEntry>> {
     let rd = std::fs::read_dir(dir).ok()?;
     let mut out = Vec::new();
@@ -39,10 +41,11 @@ pub fn read_dir_raw(dir: &str) -> Option<Vec<RawDirEntry>> {
             is_symlink,
         });
     }
+    out.sort_by(|a, b| a.name.as_bytes().cmp(b.name.as_bytes()));
     Some(out)
 }
 
-/// `readdirSync(dir)` names, OS order.
+/// `readdirSync(dir)` names, sorted like [`read_dir_raw`].
 pub fn read_dir_names_raw(dir: &str) -> Option<Vec<String>> {
     read_dir_raw(dir).map(|v| v.into_iter().map(|e| e.name).collect())
 }

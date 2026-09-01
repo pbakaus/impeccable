@@ -116,3 +116,18 @@ scan a hook manifest.
 
 - `context-stale-hook-manifest`: a `.claude/settings.local.json` naming `node "${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/hook.mjs"` under the `claude-code` provider emits `MANUAL_DETECTOR_REQUIRED` (the stale marker no longer counts as active).
 - `context-launcher-hook-active`: the same manifest in the launcher form (`"…/impeccable" hook`) suppresses `MANUAL_DETECTOR_REQUIRED`, confirming the launcher marker is still recognized as active.
+
+## Recorded 2026-09-01: the harness stages workspaces at their real path
+
+Two goldens were re-recorded after `stageWorkspace` started returning the
+realpath of the staged directory. macOS's tmpdir is a symlink (`/var` ->
+`/private/var`), and the old goldens carried that artifact rather than the
+verbs' behavior; Linux, where the two paths are the same, never reproduced
+them. The binary's output is unchanged; the input the harness fed it is.
+
+- `context-dir-override`: `productPath` is `elsewhere/PRODUCT.md`, the plain relative path, instead of `../../../../../../..<WS>/elsewhere/PRODUCT.md` (a relative path from the symlinked cwd to the resolved one).
+- `live-accept-source-locked`: the accept now reports `source_locked`, which is what the case is named for. The staged lock named the file under the symlinked path, so the verb never matched it against its own resolved path and the old golden recorded a successful accept.
+
+`context-lowercase-product-name` runs only on case-insensitive hosts
+(`platforms: ['darwin', 'win32']` in the case): `product.md` is found through
+the canonical name there and through the fallback scan elsewhere, both right.
