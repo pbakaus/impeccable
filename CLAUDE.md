@@ -288,6 +288,16 @@ Skill releases attach `dist/universal.zip`. Extension releases run `bun run buil
 
 If you need to fix release notes after the fact (typo, missing thank-you, formatting bug): `gh release edit <tag> --notes-file <md>`. The release script's `htmlToMarkdown` function is the cleanest source for regenerating notes from the changelog.
 
+### Release order is mechanically enforced (triage decision D4)
+
+The skill launcher, the npm shim (`cli/bin/cli.js`), and `impeccable install` all resolve the engine binary for the pinned `ENGINE_VERSION`. Nothing they do works until the engine release exists first. **The order is: publish the engine release, then the platform packages, then release/merge the skill (or CLI):**
+
+1. Publish engine `v<ENGINE_VERSION>` to the `impeccable-dist` release channel: the five `impeccable-<os>-<arch>[.exe]` binaries plus a `.sha256` beside each.
+2. Publish the five `@impeccable/cli-<os>-<arch>@<ENGINE_VERSION>` npm platform packages.
+3. Only then tag/publish the skill or CLI release, and only then merge a branch that bumps `ENGINE_VERSION` (the `sync-generated-output.yml` workflow rewrites provider dirs on merge to `main`).
+
+`scripts/check-engine-release.mjs` verifies all of that for the pinned version (HEAD/ranged-GET each dist asset, registry-probe each npm package; honors `IMPECCABLE_DOWNLOAD_BASE`). It exits non-zero and names exactly which assets are missing. `scripts/release.mjs` runs it as a hard gate before tagging the **skill** and **CLI** components and refuses to proceed when any asset is absent; the **extension** release is exempt because it ships a vendored WASM detector and never execs the engine. `IMPECCABLE_SKIP_ENGINE_CHECK=1` bypasses the gate only for the case where the assets exist but the registry probe is unreachable. CI's `engine-release-ready` job runs the same script; it is `continue-on-error: true` with a loud `::warning` until the first engine release is published, at which point flip it to `false` so a mis-ordered merge fails CI.
+
 ## Adding New Commands
 
 All commands live under `/impeccable`. To add a new one:

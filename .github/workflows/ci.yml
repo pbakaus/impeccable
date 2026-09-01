@@ -169,6 +169,39 @@ jobs:
         run: |
           echo "::warning title=Oracle not run::bun run fetch:engine could not download engine v$(cat ENGINE_VERSION) from the impeccable-dist release channel. The 762-case oracle behavior gate did NOT run. Expected until the first engine release is published; after that, publish the release assets and flip this job's continue-on-error to false."
 
+  # Release-order guard (triage decision D4). Verifies that the engine release for
+  # the pinned ENGINE_VERSION is fully published — the five dist binaries + .sha256
+  # AND the five @impeccable/cli-<os>-<arch> npm platform packages — before a skill
+  # release/merge that depends on them. The launcher, npm shim, and
+  # `impeccable install` all dead-end without those assets.
+  #
+  # continue-on-error is a release-time toggle: until the first engine release is
+  # published to impeccable-dist, the assets cannot exist and this job would block
+  # every PR. It emits a loud ::warning instead. Once v<ENGINE_VERSION> is live,
+  # flip `continue-on-error` to false so a MIS-ORDERED release (skill/CLI ahead of
+  # the engine) fails CI. release.mjs already hard-fails `release:skill`/`release:cli`.
+  engine-release-ready:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Check engine release assets for pinned ENGINE_VERSION
+        id: check
+        continue-on-error: true
+        run: node scripts/check-engine-release.mjs
+
+      - name: Annotate missing engine release
+        if: steps.check.outcome != 'success'
+        run: |
+          echo "::warning title=Engine release not ready::The engine release for v$(cat ENGINE_VERSION) is not fully published to impeccable-dist and/or the @impeccable/cli-<os>-<arch> npm platform packages. Releasing the skill/CLI (or merging) now would dead-end the launcher, the npm shim, and impeccable install. Expected until the first engine release exists; after that, publish the engine + platform packages and flip this job's continue-on-error to false so a mis-ordered release fails CI."
+
   test:
     runs-on: ubuntu-latest
     needs: test-matrix

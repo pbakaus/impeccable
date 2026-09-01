@@ -12,6 +12,8 @@ import { readFileSync, writeFileSync, unlinkSync, existsSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { checkEngineRelease } from './check-engine-release.mjs';
+import { readEngineVersion } from './fetch-engine.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -23,6 +25,9 @@ const COMPONENTS = {
     tagPrefix: 'skill-v',
     label: 'Skill',
     changelogLabel: 'v',
+    // The skill's launcher and `impeccable install` dead-end without the engine
+    // release for the pinned ENGINE_VERSION. Enforce release order (D4).
+    engineGated: true,
     buildCmd: 'bun run build:release',
     artifacts: ['dist/universal.zip'],
     postReleaseHint: null,
@@ -34,6 +39,10 @@ const COMPONENTS = {
     tagPrefix: 'cli-v',
     label: 'CLI',
     changelogLabel: 'CLI v',
+    // The npm shim resolves the engine binary through the @impeccable/cli-<os>-<arch>
+    // platform packages (pinned at ENGINE_VERSION) and the dist channel; publishing
+    // it before those exist strands `npx impeccable`. Enforce release order (D4).
+    engineGated: true,
     buildCmd: null,
     artifacts: [],
     postReleaseHint: 'Run `npm publish` next to push the package to the npm registry.',
@@ -45,6 +54,9 @@ const COMPONENTS = {
     tagPrefix: 'ext-v',
     label: 'Extension',
     changelogLabel: 'Extension v',
+    // The extension ships a vendored WASM detector and does not exec the engine
+    // binary, so it is exempt from the engine release-order guard.
+    engineGated: false,
     buildCmd: 'bun run build:extension',
     artifacts: ['dist/extension.zip', 'dist/extension-firefox.zip'],
     postReleaseHint:
@@ -101,6 +113,31 @@ if (cfg.sibling) {
     fail(`${cfg.manifest} (${version}) and ${cfg.sibling} (${siblingVersion}) disagree. Bump both.`);
   }
   ok(`${cfg.sibling} agrees`);
+}
+
+// Release-order guard (triage decision D4). Engine-gated components refuse to
+// tag/publish until the engine release for the pinned ENGINE_VERSION is fully
+// live: the five dist binaries + .sha256 and the five @impeccable/cli-<os>-<arch>
+// npm platform packages. Without this the launcher, the npm shim, and
+// `impeccable install` all dead-end. Set IMPECCABLE_SKIP_ENGINE_CHECK=1 only
+// when you know the assets exist and the registry probe is unreachable.
+if (cfg.engineGated && process.env.IMPECCABLE_SKIP_ENGINE_CHECK !== '1') {
+  const engineVersion = readEngineVersion(repoRoot);
+  step(`Verifying engine v${engineVersion} release assets are published (D4 release-order guard)`);
+  const result = await checkEngineRelease({ version: engineVersion });
+  if (!result.ok) {
+    console.error('✗ Engine release is incomplete. Missing assets:');
+    for (const m of result.missing) console.error(`    · ${m.what}\n        ${m.url}`);
+    fail(
+      `Refusing to release ${cfg.label} ${version}: engine v${engineVersion} is not fully published.\n` +
+      `  Publish engine v${engineVersion} to impeccable-dist AND the five @impeccable/cli-<os>-<arch>\n` +
+      '  npm platform packages first. Ordering: engine release → platform packages → skill/CLI release.\n' +
+      '  See CLAUDE.md "Releases" and the engine repo docs/REVIEW-TRIAGE.md D4.'
+    );
+  }
+  ok(`engine v${engineVersion} release assets all present`);
+} else if (cfg.engineGated) {
+  step('Skipping engine release-order guard (IMPECCABLE_SKIP_ENGINE_CHECK=1)');
 }
 
 const tag = `${cfg.tagPrefix}${version}`;
