@@ -311,6 +311,9 @@ describe('CLI entry point', () => {
       encoding: 'utf-8',
     });
     assert.equal(write.status, 0, `stderr: ${write.stderr}`);
+    const written = readLatestSnapshot('index-html', { cwd });
+    assert.equal(written.meta.target_path, target);
+    assert.match(written.meta.target_fingerprint, /^sha256:[a-f0-9]{64}$/);
 
     const unchanged = spawnSync(process.execPath, [SCRIPT, 'latest', target], {
       cwd,
@@ -329,6 +332,42 @@ describe('CLI entry point', () => {
     assert.equal(changed.status, 2, `stderr: ${changed.stderr}`);
     assert.equal(readLatestSnapshot('index-html', { cwd }), null);
     assert.equal(readTrend('index-html', { cwd })[0].closed, true);
+  });
+
+  it('fingerprints extensionless local targets instead of mistaking them for slugs', () => {
+    const target = join(cwd, 'main');
+    const bodyFile = join(cwd, 'critique.md');
+    writeFileSync(target, '<main>assessed</main>');
+    writeFileSync(bodyFile, '# Critique\n\nP1: improve hierarchy');
+
+    const write = spawnSync(process.execPath, [SCRIPT, 'write', target, bodyFile], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(write.status, 0, `stderr: ${write.stderr}`);
+
+    writeFileSync(target, '<main>changed</main>');
+    const changed = spawnSync(process.execPath, [SCRIPT, 'latest', target], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(changed.status, 2, `stderr: ${changed.stderr}`);
+    assert.equal(readLatestSnapshot('main', { cwd }), null);
+
+    const deletedTarget = join(cwd, 'shell');
+    writeFileSync(deletedTarget, '#!/bin/sh\n');
+    const deletedWrite = spawnSync(process.execPath, [SCRIPT, 'write', deletedTarget, bodyFile], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(deletedWrite.status, 0, `stderr: ${deletedWrite.stderr}`);
+    rmSync(deletedTarget);
+    const deleted = spawnSync(process.execPath, [SCRIPT, 'latest', deletedTarget], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(deleted.status, 2, `stderr: ${deleted.stderr}`);
+    assert.equal(readLatestSnapshot('shell', { cwd }), null);
   });
 
   it('closes a local snapshot when its target is deleted or replaced by a directory', () => {

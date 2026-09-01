@@ -60,9 +60,14 @@ export function nowFilenameStamp(date = new Date()) {
  * critique often assesses an uncommitted file, and a later polish run should
  * inherit that backlog when the bytes are unchanged regardless of staging.
  */
-export function fingerprintTarget(target, { cwd = process.cwd() } = {}) {
+function resolveLocalTargetPath(target, { cwd = process.cwd() } = {}) {
   if (!target || /^https?:\/\//i.test(target)) return null;
-  const filePath = path.isAbsolute(target) ? target : path.resolve(cwd, target);
+  return path.isAbsolute(target) ? path.resolve(target) : path.resolve(cwd, target);
+}
+
+export function fingerprintTarget(target, { cwd = process.cwd() } = {}) {
+  const filePath = resolveLocalTargetPath(target, { cwd });
+  if (!filePath) return null;
   try {
     if (!fs.statSync(filePath).isFile()) return null;
     return `sha256:${createHash('sha256').update(fs.readFileSync(filePath)).digest('hex')}`;
@@ -238,8 +243,12 @@ function main(argv) {
       // The helper, not caller-provided metadata, owns the target fingerprint.
       // This makes the snapshot describe the exact file bytes critique saw.
       delete meta.target_fingerprint;
+      delete meta.target_path;
       const targetFingerprint = fingerprintTarget(slugArg);
-      if (targetFingerprint) meta.target_fingerprint = targetFingerprint;
+      if (targetFingerprint) {
+        meta.target_fingerprint = targetFingerprint;
+        meta.target_path = resolveLocalTargetPath(slugArg);
+      }
       const out = writeSnapshot({ slug, meta, body: raw });
       process.stdout.write(`${out}\n`);
       return;
@@ -250,9 +259,12 @@ function main(argv) {
       const latest = readLatestSnapshot(slug);
       if (!latest) { process.exit(2); }
       const targetFingerprint = fingerprintTarget(target);
-      const concreteLocalTarget = target
-        && !/^https?:\/\//i.test(target)
-        && !isReadySlug(target);
+      const targetPath = resolveLocalTargetPath(target);
+      const concreteLocalTarget = targetPath && (
+        latest.meta.target_path === targetPath
+        || !isReadySlug(target)
+        || fs.existsSync(targetPath)
+      );
       if (concreteLocalTarget && latest.meta.target_fingerprint !== targetFingerprint) {
         closeSnapshot(slug);
         process.exit(2);
