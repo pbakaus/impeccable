@@ -13,6 +13,10 @@ build/
 # can copy them into tmp git repos and assert is-generated behavior.
 !tests/framework-fixtures/**/dist/
 !tests/framework-fixtures/**/dist/**
+# Same for the oracle workspaces: live-html carries a dist/generated.html
+# that the generated-file cases point at.
+!tests/oracle/workspaces/**/dist/
+!tests/oracle/workspaces/**/dist/**
 
 # Build artifacts
 *.log
