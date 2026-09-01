@@ -29,6 +29,7 @@ import {
   PRODUCT_MD_SAMPLE,
   PRODUCT_MD_SAMPLE_NO_REGISTER,
   PRODUCT_MD_SAMPLE_IOS,
+  MINIMAL_IOS_SOURCE,
   DESIGN_MD_SAMPLE,
   MINIMAL_LANDING_HTML,
   SVELTE_PROJECT_FILES,
@@ -531,7 +532,7 @@ for (const modelId of resolveModelList()) {
       // reference/ios.md itself, so native guidance enters the conversation
       // without relying on a second model-directed file read.
       const workspace = prepareWorkspace({
-        files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE_IOS },
+        files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE_IOS, 'TideDetailView.swift': MINIMAL_IOS_SOURCE },
       });
       try {
         const { trace, text } = await runTurn({
@@ -566,7 +567,7 @@ for (const modelId of resolveModelList()) {
       // switching via its web-only guard is acceptable; never reaching the
       // variant is the failure).
       const workspace = prepareWorkspace({
-        files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE_IOS },
+        files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE_IOS, 'TideDetailView.swift': MINIMAL_IOS_SOURCE },
       });
       try {
         const { trace, text } = await runTurn({

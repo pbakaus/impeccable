@@ -196,9 +196,6 @@ function parseScalar(raw) {
 
 const HEX_RE = /#[0-9a-fA-F]{3,8}\b/g;
 const OKLCH_RE = /oklch\([^)]+\)/gi;
-const RGBA_RE = /rgba?\([^)]+\)/gi;
-const BOX_SHADOW_RE = /(?:box-shadow:\s*)?((?:-?\d[\w\d\s\-.,/()#%]*)+)/;
-const NAMED_RULE_RE = /\*\*(The [^*]+?Rule)\.\*\*\s*(.+)/;
 
 // ---------- Section splitting ----------
 
@@ -332,47 +329,37 @@ function stripBold(s) {
 function extractNamedRules(lines) {
   const rules = [];
   const seen = new Set();
+  const addRule = (name, body, { allowDuplicate = false } = {}) => {
+    const key = name.toLowerCase();
+    if (!allowDuplicate && seen.has(key)) return;
+    seen.add(key);
+    rules.push({ name, body });
+  };
 
   // Style A (Impeccable): "**The X Rule.** body body body" — can span lines.
   const joined = lines.join('\n');
-  const inlineStart = /\*\*(The [^*]+?Rule)\.\*\*/g;
-  const inlineMatches = [];
-  let m;
-  while ((m = inlineStart.exec(joined)) !== null) {
-    inlineMatches.push({ name: m[1], start: m.index, end: inlineStart.lastIndex });
-  }
+  const inlineMatches = [...joined.matchAll(/\*\*(The [^*]+?Rule)\.\*\*/g)];
   for (let i = 0; i < inlineMatches.length; i++) {
-    const mm = inlineMatches[i];
-    const bodyEnd = i + 1 < inlineMatches.length ? inlineMatches[i + 1].start : joined.length;
+    const match = inlineMatches[i];
+    const bodyEnd = inlineMatches[i + 1]?.index ?? joined.length;
     const body = joined
-      .slice(mm.end, bodyEnd)
+      .slice(match.index + match[0].length, bodyEnd)
       .replace(/\n##[^\n]*$/s, '')
       .replace(/\n###[^\n]*$/s, '')
       .trim();
-    const name = stripBold(mm.name).trim();
-    seen.add(name.toLowerCase());
-    rules.push({ name, body: stripBold(body) });
+    // Preserve the inline format's historical behavior: repeated inline rules
+    // remain visible, while the later heading and bullet formats dedupe.
+    addRule(stripBold(match[1]).trim(), stripBold(body), { allowDuplicate: true });
   }
 
   // Style B (Stitch): `### The "X" Rule` or `### The X Fallback`, body is the
   // bullets/paragraphs until the next heading. Accept Rule / Fallback / Principle.
-  for (let i = 0; i < lines.length; i++) {
-    const h3 = lines[i].match(/^###\s+(.+?)\s*$/);
-    if (!h3) continue;
-    const headerName = stripBold(h3[1]).replace(/["“”]/g, '').trim();
+  for (const subsection of splitSubsections(lines).slice(1)) {
+    const headerName = stripBold(subsection.name).replace(/["“”]/g, '').trim();
     if (!/^The\b.*\b(Rule|Fallback|Principle)\b/i.test(headerName)) continue;
-    if (seen.has(headerName.toLowerCase())) continue;
 
-    const bodyLines = [];
-    for (let j = i + 1; j < lines.length; j++) {
-      if (/^##\s|^###\s/.test(lines[j])) break;
-      bodyLines.push(lines[j]);
-    }
-    const body = stripBold(bodyLines.join('\n').replace(/\n+/g, ' ')).trim();
-    if (body) {
-      seen.add(headerName.toLowerCase());
-      rules.push({ name: headerName, body });
-    }
+    const body = stripBold(subsection.lines.join('\n').replace(/\n+/g, ' ')).trim();
+    if (body) addRule(headerName, body);
   }
 
   // Style C (Stitch bullet form): "*   **The Layering Principle:** body"
@@ -382,9 +369,7 @@ function extractNamedRules(lines) {
     if (!mm) continue;
     const nameRaw = mm[1].replace(/[.:]\s*$/, '').replace(/["“”]/g, '').trim();
     if (!/^The\b.+\b(Rule|Fallback|Principle)$/i.test(nameRaw)) continue;
-    if (seen.has(nameRaw.toLowerCase())) continue;
-    seen.add(nameRaw.toLowerCase());
-    rules.push({ name: nameRaw, body: stripBold(mm[2]).trim() });
+    addRule(nameRaw, stripBold(mm[2]).trim());
   }
 
   return rules;
@@ -548,36 +533,6 @@ function detectFormat(v) {
   if (/^oklch/i.test(v)) return 'oklch';
   if (/^rgb/i.test(v)) return 'rgb';
   return 'unknown';
-}
-
-function scanInlineColors(lines) {
-  const out = [];
-  for (const line of lines) {
-    if (!/^\s*[-*]\s/.test(line)) continue;
-    const trimmed = line.replace(/^\s*[-*]\s+/, '');
-    const color = parseColorBullet(trimmed);
-    if (color) out.push(color);
-  }
-  return out;
-}
-
-function parseStitchInlineGroups(lines) {
-  // Stitch writes: `*   **Primary (`#00478d` to `#005eb8`):** Use for "..."`
-  // Each bullet IS its own role. Group them under the spoken role name.
-  const out = [];
-  for (const line of lines) {
-    if (!/^\s*[-*]\s/.test(line)) continue;
-    const trimmed = line.replace(/^\s*[-*]\s+/, '').trim();
-    const m = trimmed.match(
-      /^\*\*([A-Z][a-zA-Z]+)\s*\(([^)]+)\):\*\*\s*(.*)$/
-    );
-    if (m) {
-      const role = m[1];
-      const color = buildColor(role, m[2], m[3]);
-      out.push({ role, colors: [color] });
-    }
-  }
-  return out;
 }
 
 function extractTypography(section) {

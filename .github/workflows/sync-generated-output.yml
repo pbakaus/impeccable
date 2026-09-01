@@ -27,6 +27,7 @@ env:
     .gemini
     .github/skills
     .grok
+    .hermes
     .kiro
     .opencode
     .pi

@@ -42,6 +42,7 @@ function shouldRunPageAnalyzers(content, filePath) {
 }
 
 const JS_SOURCE_EXTS = new Set(['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs']);
+const STYLESHEET_EXTS = new Set(['.css', '.scss', '.sass', '.less']);
 const REGEX_PREFIX_KEYWORDS = new Set(['await', 'case', 'default', 'delete', 'do', 'else', 'in', 'instanceof', 'new', 'of', 'return', 'throw', 'typeof', 'void', 'yield']);
 const BLOCK_BRACE_PREFIX_KEYWORDS = new Set(['do', 'else', 'finally', 'try']);
 
@@ -256,6 +257,153 @@ function stripCssComments(content) {
   return content.replace(/\/\*[\s\S]*?\*\//g, comment => comment.replace(/[^\n]/g, ' '));
 }
 
+function blankHtmlComments(text) {
+  return text.replace(/<!--[\s\S]*?-->/g, comment => comment.replace(/[^\n]/g, ' '));
+}
+
+function blankCssLineCommentsInStyleBlocks(text) {
+  const re = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
+  let output = '';
+  let lastIndex = 0;
+  let match;
+  while ((match = re.exec(text)) !== null) {
+    const inner = match[1];
+    const openLength = match[0].length - inner.length - '</style>'.length;
+    output += text.slice(lastIndex, match.index);
+    output += match[0].slice(0, openLength);
+    output += blankCssLineComments(inner);
+    output += match[0].slice(openLength + inner.length);
+    lastIndex = re.lastIndex;
+  }
+  return output + text.slice(lastIndex);
+}
+
+function blankHtmlAndCssCommentsOutsideScripts(text) {
+  const re = /<script\b[^>]*>[\s\S]*?<\/script>/gi;
+  let output = '';
+  let lastIndex = 0;
+  let match;
+  while ((match = re.exec(text)) !== null) {
+    output += blankCssLineCommentsInStyleBlocks(stripCssComments(blankHtmlComments(text.slice(lastIndex, match.index))));
+    output += match[0];
+    lastIndex = re.lastIndex;
+  }
+  return output + blankCssLineCommentsInStyleBlocks(stripCssComments(blankHtmlComments(text.slice(lastIndex))));
+}
+
+function blankCssLineComments(text) {
+  let output = '';
+  let state = 'code';
+  let urlDepth = 0;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const next = text[i + 1];
+    if (state === 'line') {
+      if (char === '\n') {
+        output += '\n';
+        state = 'code';
+      } else {
+        output += ' ';
+      }
+      continue;
+    }
+    if (state === 'single' || state === 'double') {
+      output += char;
+      if (char === '\\' && next) {
+        output += next;
+        i++;
+      } else if ((state === 'single' && char === "'") || (state === 'double' && char === '"')) {
+        state = 'code';
+      }
+      continue;
+    }
+    const prev = output.length ? output[output.length - 1] : '';
+    if (char === '/' && next === '/' && urlDepth === 0 && prev !== ':' && prev !== '(' && prev !== '\\') {
+      output += '  ';
+      i++;
+      state = 'line';
+      continue;
+    }
+    if (char === "'") state = 'single';
+    else if (char === '"') state = 'double';
+    if (char === '(') {
+      const behind = output.replace(/\s+$/, '');
+      if (urlDepth > 0 || /url$/i.test(behind)) urlDepth++;
+    } else if (char === ')' && urlDepth) {
+      urlDepth--;
+    }
+    output += char;
+  }
+  return output;
+}
+
+function findAstroFrontmatterClose(text) {
+  if (!text.startsWith('---')) return -1;
+  let cursor = text.indexOf('\n');
+  if (cursor === -1) return -1;
+  cursor += 1;
+  while (cursor < text.length) {
+    if (text[cursor - 1] === '\n' && text.startsWith('---', cursor)) {
+      let end = cursor + 3;
+      while (text[end] === ' ' || text[end] === '\t') end++;
+      if (end >= text.length || text[end] === '\n' || text[end] === '\r') return cursor - 1;
+    }
+    const char = text[cursor];
+    const next = text[cursor + 1];
+    if (char === "'" || char === '"') {
+      const close = findQuotedStringEnd(text, cursor, char);
+      if (close === -1) return -1;
+      cursor = close + 1;
+      continue;
+    }
+    if (char === '`') {
+      const close = findTemplateLiteralEnd(text, cursor);
+      if (close === -1) return -1;
+      cursor = close + 1;
+      continue;
+    }
+    if (char === '/' && next === '/') {
+      const lineEnd = text.indexOf('\n', cursor);
+      if (lineEnd === -1) return -1;
+      cursor = lineEnd;
+      continue;
+    }
+    if (char === '/' && next === '*') {
+      const commentEnd = text.indexOf('*/', cursor + 2);
+      if (commentEnd === -1) return -1;
+      cursor = commentEnd + 2;
+      continue;
+    }
+    if (char === '/' && next !== '/' && next !== '*') {
+      const close = findRegexLiteralEnd(text, cursor);
+      if (close !== -1) {
+        cursor = close + 1;
+        continue;
+      }
+    }
+    cursor++;
+  }
+  return -1;
+}
+
+function blankAstroFrontmatterComments(text) {
+  const close = findAstroFrontmatterClose(text);
+  if (close === -1) return text;
+  return stripJsComments(text.slice(0, close)) + text.slice(close);
+}
+
+function blankCommentsForMatchers(text, ext) {
+  if (PAGE_ANALYZER_EXTS.has(ext)) {
+    const withFrontmatter = ext === '.astro' ? blankAstroFrontmatterComments(text) : text;
+    return blankHtmlAndCssCommentsOutsideScripts(withFrontmatter);
+  }
+  if (STYLESHEET_EXTS.has(ext)) {
+    const withoutBlocks = stripCssComments(text);
+    return ext === '.css' ? withoutBlocks : blankCssLineComments(withoutBlocks);
+  }
+  return text;
+}
+
 function firstOverusedGoogleFont(text) {
   return extractGoogleFontFamilies(text).find(f => OVERUSED_FONTS.has(f)) || '';
 }
@@ -425,25 +573,28 @@ const REGEX_MATCHERS = [
     },
     fmt: (m) => `cubic-bezier(${m[1]}, ${m[2]}, ${m[3]}, ${m[4]})` },
   // --- Layout property transition ---
-  { id: 'layout-transition', regex: /transition\s*:\s*([^;{}]+)/gi,
+  // JSX inline style objects use comma-delimited quoted values, not semicolons (issue #548).
+  { id: 'layout-transition', regex: /transition\s*:\s*(?:(['"])((?:(?!\1)[^\\]|\\.)*)\1|([^;{}]+))/gi,
     test: (m) => {
-      const val = m[1].toLowerCase();
+      const val = (m[2] ?? m[3] ?? '').toLowerCase();
       if (/\ball\b/.test(val)) return false;
       return /\b(?:(?:max|min)-)?(?:width|height)\b|\bpadding\b|\bmargin\b/.test(val);
     },
     fmt: (m) => {
-      const found = m[1].match(/\b(?:(?:max|min)-)?(?:width|height)\b|\bpadding(?:-(?:top|right|bottom|left))?\b|\bmargin(?:-(?:top|right|bottom|left))?\b/gi);
-      return `transition: ${found ? found.join(', ') : m[1].trim()}`;
+      const raw = m[2] ?? m[3] ?? '';
+      const found = raw.match(/\b(?:(?:max|min)-)?(?:width|height)\b|\bpadding(?:-(?:top|right|bottom|left))?\b|\bmargin(?:-(?:top|right|bottom|left))?\b/gi);
+      return `transition: ${found ? found.join(', ') : raw.trim()}`;
     } },
-  { id: 'layout-transition', regex: /transition-property\s*:\s*([^;{}]+)/gi,
+  { id: 'layout-transition', regex: /transition-property\s*:\s*(?:(['"])((?:(?!\1)[^\\]|\\.)*)\1|([^;{}]+))/gi,
     test: (m) => {
-      const val = m[1].toLowerCase();
+      const val = (m[2] ?? m[3] ?? '').toLowerCase();
       if (/\ball\b/.test(val)) return false;
       return /\b(?:(?:max|min)-)?(?:width|height)\b|\bpadding\b|\bmargin\b/.test(val);
     },
     fmt: (m) => {
-      const found = m[1].match(/\b(?:(?:max|min)-)?(?:width|height)\b|\bpadding(?:-(?:top|right|bottom|left))?\b|\bmargin(?:-(?:top|right|bottom|left))?\b/gi);
-      return `transition-property: ${found ? found.join(', ') : m[1].trim()}`;
+      const raw = m[2] ?? m[3] ?? '';
+      const found = raw.match(/\b(?:(?:max|min)-)?(?:width|height)\b|\bpadding(?:-(?:top|right|bottom|left))?\b|\bmargin(?:-(?:top|right|bottom|left))?\b/gi);
+      return `transition-property: ${found ? found.join(', ') : raw.trim()}`;
     } },
   // --- Broken image: src="" or src="#" or src=" " ---
   { id: 'broken-image', regex: /<img\b[^>]*?\bsrc\s*=\s*(?:""|''|"\s+"|'\s+'|"#"|'#')/gi,
@@ -456,32 +607,6 @@ const REGEX_MATCHERS = [
 ];
 
 const REGEX_ANALYZERS = [
-  // Flat type hierarchy
-  (content, filePath) => {
-    const sizes = new Set();
-    const REM = 16;
-    let m;
-    const sizeRe = /font-size\s*:\s*([\d.]+)(px|rem|em)\b/gi;
-    while ((m = sizeRe.exec(content)) !== null) {
-      const px = m[2] === 'px' ? +m[1] : +m[1] * REM;
-      if (px > 0 && px < 200) sizes.add(Math.round(px * 10) / 10);
-    }
-    const clampRe = /font-size\s*:\s*clamp\(\s*([\d.]+)(px|rem|em)\s*,\s*[^,]+,\s*([\d.]+)(px|rem|em)\s*\)/gi;
-    while ((m = clampRe.exec(content)) !== null) {
-      sizes.add(Math.round((m[2] === 'px' ? +m[1] : +m[1] * REM) * 10) / 10);
-      sizes.add(Math.round((m[4] === 'px' ? +m[3] : +m[3] * REM) * 10) / 10);
-    }
-    const TW = { 'text-xs': 12, 'text-sm': 14, 'text-base': 16, 'text-lg': 18, 'text-xl': 20, 'text-2xl': 24, 'text-3xl': 30, 'text-4xl': 36, 'text-5xl': 48, 'text-6xl': 60, 'text-7xl': 72, 'text-8xl': 96, 'text-9xl': 128 };
-    for (const [cls, px] of Object.entries(TW)) { if (new RegExp(`\\b${cls}\\b`).test(content)) sizes.add(px); }
-    if (sizes.size < 3) return [];
-    const sorted = [...sizes].sort((a, b) => a - b);
-    const ratio = sorted[sorted.length - 1] / sorted[0];
-    if (ratio >= 2.0) return [];
-    const lines = content.split('\n');
-    let line = 1;
-    for (let i = 0; i < lines.length; i++) { if (/font-size/i.test(lines[i]) || /\btext-(?:xs|sm|base|lg|xl|\d)/i.test(lines[i])) { line = i + 1; break; } }
-    return [finding('flat-type-hierarchy', filePath, `Sizes: ${sorted.map(s => s + 'px').join(', ')} (ratio ${ratio.toFixed(1)}:1)`, line)];
-  },
   // Monotonous spacing (regex)
   (content, filePath) => {
     const vals = [];
@@ -1003,11 +1128,12 @@ const TEXT_CONTENT_ANALYZER_IDS = [
 function runTextContentAnalyzers(content, filePath, options = {}) {
   const profile = options?.profile;
   if (!shouldRunPageAnalyzers(content, filePath)) return [];
-  // The 3 text-content analyzers are at indices 2-4 in REGEX_ANALYZERS
-  // (single-font's removal on 2026-07-29 shifted every index down one).
+  // The 3 text-content analyzers are at indices 1-3 in REGEX_ANALYZERS.
+  // flat-type-hierarchy left this source-only path in issue #619 because it
+  // needs rendered role and usage evidence.
   const findings = [];
   for (let i = 0; i < TEXT_CONTENT_ANALYZER_IDS.length; i++) {
-    const analyzer = REGEX_ANALYZERS[2 + i];
+    const analyzer = REGEX_ANALYZERS[1 + i];
     const ruleId = TEXT_CONTENT_ANALYZER_IDS[i];
     findings.push(...profileFindings(profile, {
       engine: 'regex',
@@ -1025,14 +1151,13 @@ function detectText(content, filePath, options = {}) {
   const ext = extFromFilePath(filePath);
   const commentStrippedSource = JS_SOURCE_EXTS.has(ext) ? stripJsComments(content, {
     jsx: ext === '.js' || ext === '.jsx' || ext === '.tsx',
-  }) : content;
+  }) : blankCommentsForMatchers(content, ext);
   const source = stripCssInJsComments(commentStrippedSource, ext);
   const lines = source.split('\n');
 
   // Run regex matchers on the full file content (catches Tailwind classes, inline styles)
   // Enable block context for CSS files where related properties span multiple lines
-  const cssLike = new Set(['.css', '.scss', '.sass', '.less']);
-  findings.push(...runRegexMatchers(lines, filePath, 0, cssLike.has(ext) || null, {
+  findings.push(...runRegexMatchers(lines, filePath, 0, STYLESHEET_EXTS.has(ext) || null, {
     profile,
     phase: 'source',
   }));
@@ -1047,7 +1172,7 @@ function detectText(content, filePath, options = {}) {
     scanCssTextForPseudoStripe(text).map(hit =>
       finding(hit.id, filePath, hit.snippet, lineOffset + text.slice(0, hit.index).split('\n').length));
 
-  if (cssLike.has(ext)) {
+  if (STYLESHEET_EXTS.has(ext)) {
     findings.push(...scanInsetStripeCss(content, filePath));
     findings.push(...pseudoStripeFindings(content, 0));
   }
@@ -1075,7 +1200,8 @@ function detectText(content, filePath, options = {}) {
     }, () => extractStyleBlocks(content, ext))
     : extractStyleBlocks(content, ext);
   for (const block of styleBlocks) {
-    const blockLines = block.content.split('\n');
+    const blockContent = blankCssLineComments(stripCssComments(block.content));
+    const blockLines = blockContent.split('\n');
     findings.push(...runRegexMatchers(blockLines, filePath, block.startLine - 1, true, {
       profile,
       phase: 'style-block',
@@ -1086,8 +1212,8 @@ function detectText(content, filePath, options = {}) {
     // 1-based, so the offset is startLine - 2; startLine - 1 double-counted and
     // reported every selector one line low. runRegexMatchers keeps startLine - 1
     // because it indexes its split lines from zero.
-    findings.push(...scanInsetStripeCss(block.content, filePath, block.startLine - 2));
-    findings.push(...pseudoStripeFindings(block.content, block.startLine - 2));
+    findings.push(...scanInsetStripeCss(blockContent, filePath, block.startLine - 2));
+    findings.push(...pseudoStripeFindings(blockContent, block.startLine - 2));
   }
 
   // Extract and scan CSS-in-JS template literals
@@ -1133,7 +1259,6 @@ function detectText(content, filePath, options = {}) {
   // Page-level analyzers only run on full pages
   if (shouldRunPageAnalyzers(content, filePath)) {
     const analyzerIds = [
-      'flat-type-hierarchy',
       'monotonous-spacing',
       'em-dash-overuse',
       'marketing-buzzword',

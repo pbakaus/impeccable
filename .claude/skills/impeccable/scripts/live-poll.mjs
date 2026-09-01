@@ -238,10 +238,9 @@ export async function completeAcceptHandling(event, base, token) {
     });
   } catch (err) {
     event._completionAck = { ok: false, error: err.message };
+    return event;
   }
-  if (!event._completionAck) {
-    event._completionAck = completionAckForAcceptResult(event.id, completionType, event._acceptResult);
-  }
+  event._completionAck = completionAckForAcceptResult(event.id, completionType, event._acceptResult);
   return event;
 }
 
@@ -269,9 +268,11 @@ export function printPollEvent(event) {
   // Situational plumbing rides with the event itself: `_instructions` is the
   // authoritative next step, with real ids and paths substituted, so the
   // reference doc can stay lean and can never drift from script behavior.
-  if (event && typeof event === 'object' && !event._instructions) {
+  // A wire-supplied value must never win over the locally generated one.
+  if (event && typeof event === 'object') {
     const instructions = instructionsForEvent(event, { scriptsPath: SELF_DIR });
     if (instructions) event._instructions = instructions;
+    else delete event._instructions;
   }
   console.log(JSON.stringify(event));
 }

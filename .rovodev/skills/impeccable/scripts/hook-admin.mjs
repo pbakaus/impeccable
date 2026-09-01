@@ -35,6 +35,7 @@ import {
   ensureHookGitExcludes,
   normalizeIgnoreValue,
   normalizeIgnoreValueEntries,
+  extractFindingIgnoreValue,
 } from './hook-lib.mjs';
 
 const ACTIONS = new Set(['status', 'on', 'off', 'ignore-rule', 'ignore-file', 'ignore-value', 'reset']);
@@ -75,11 +76,11 @@ const HOOK_MANIFEST_TARGETS = [
     destRel: '.claude/settings.local.json',
     sharedDestRel: '.claude/settings.json',
     manifest: () => ({
-      description: 'Impeccable design detector: immediate-tier checks after Edit/Write/MultiEdit on UI files, full-rule deep pass on Stop.',
+      description: 'Impeccable design detector: immediate-tier checks after Edit/Write on UI files, full-rule deep pass on Stop.',
       hooks: {
         PostToolUse: [
           {
-            matcher: 'Edit|Write|MultiEdit',
+            matcher: 'Edit|Write',
             hooks: [
               {
                 type: 'command',
@@ -713,6 +714,10 @@ function addIgnoreValue(cwd, args) {
     throw new Error(`Wildcard value ignores must be scoped with --file <glob>, e.g. ${IMPECCABLE_COMMAND} hooks ignore-value design-system-font-size "*" --file "src/widget.js". To suppress the rule project-wide use ${projectWide}.`);
   }
 
+  if (parsed.value !== '*' && !extractFindingIgnoreValue({ antipattern: parsed.rule, ignoreValue: parsed.value })) {
+    throw new Error(`${parsed.rule} has no extractable ignore value. Use ${IMPECCABLE_COMMAND} hooks ignore-value ${parsed.rule} "*" --file <glob> to suppress it in matching files.`);
+  }
+
   const local = parsed.local;
   const config = mergeDetectorConfig(readRawDetectorConfig(cwd, { local }));
   // Key on the file scope too: the same rule/value legitimately appears more than
@@ -765,9 +770,22 @@ function reset(cwd) {
       }
     } catch { /* ignore */ }
   }
-  return removed.length
-    ? `Reset design hook config and cache (removed: ${removed.join(', ')}).`
-    : 'No hook config or cache to remove. Already at defaults.';
+  // `on` writes three things: config, consent, and hook entries in the
+  // provider manifests. Reset must undo all three (issue #512): a leftover
+  // manifest entry kept invoking the hook after the config that said "off"
+  // was deleted. Local destRel only, since `on` never writes the team-shared
+  // sharedDestRel. No skill-folder gate: a reset mid-uninstall (skill files
+  // gone, manifest still wired) is the case that most needs the prune.
+  const pruned = [];
+  for (const target of HOOK_MANIFEST_TARGETS) {
+    try {
+      if (pruneImpeccableHookFromManifest(path.join(cwd, target.destRel))) pruned.push(target.provider);
+    } catch { /* ignore */ }
+  }
+  const parts = [];
+  if (removed.length) parts.push(`Reset design hook config and cache (removed: ${removed.join(', ')}).`);
+  if (pruned.length) parts.push(`Removed hook entries from: ${pruned.join(', ')}.`);
+  return parts.length ? parts.join(' ') : 'No hook config or cache to remove. Already at defaults.';
 }
 
 function main() {

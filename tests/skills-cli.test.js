@@ -11,14 +11,17 @@
  */
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
 import { execSync, execFileSync } from 'child_process';
-import { mkdtempSync, existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync, rmSync, lstatSync, realpathSync, readlinkSync, symlinkSync, cpSync } from 'fs';
+import { mkdtempSync, existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync, chmodSync, rmSync, lstatSync, realpathSync, readlinkSync, symlinkSync, statSync, cpSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import {
+  collectInstallDetections,
   copyProviderAgents,
   copyProviderHooks,
   copyProviderSkills,
   decideHookInstall,
+  downloadAndExtractBundle,
+  downloadFile,
   expectedHookDests,
   formatInstallDetectionLines,
   mergeHookManifests,
@@ -96,11 +99,13 @@ function createFakeUniversalBundle(root, providers = ['.claude', '.agents', '.cu
     writeFileSync(join(skillDir, 'scripts', 'context.mjs'), 'console.log("local bundle context");\n');
   }
   if (providers.includes('.claude')) {
-    mkdirSync(join(bundleRoot, '.claude'), { recursive: true });
+    mkdirSync(join(bundleRoot, '.claude', 'agents'), { recursive: true });
     writeFileSync(join(bundleRoot, '.claude', 'settings.json'), JSON.stringify({
       description: 'fresh claude hook',
       hooks: { PostToolUse: [{ matcher: 'Edit', hooks: [{ type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' }] }] },
     }, null, 2));
+    writeFileSync(join(bundleRoot, '.claude', 'agents', 'impeccable-finish-reviewer.md'),
+      '---\nname: impeccable-finish-reviewer\ndescription: Reviews a finished build.\n---\nClaude reviewer body.\n');
   }
   if (providers.includes('.cursor')) {
     mkdirSync(join(bundleRoot, '.cursor'), { recursive: true });
@@ -129,6 +134,12 @@ function createFakeUniversalBundle(root, providers = ['.claude', '.agents', '.cu
       'body impeccable',
       '',
     ].join('\n'));
+  }
+  if (providers.includes('.grok')) {
+    mkdirSync(join(bundleRoot, '.grok', 'hooks'), { recursive: true });
+    writeFileSync(join(bundleRoot, '.grok', 'hooks', 'impeccable.json'), JSON.stringify({
+      hooks: { PostToolUse: [{ matcher: 'Edit|Write|MultiEdit', hooks: [{ type: 'command', command: 'node ".grok/skills/impeccable/scripts/hook.mjs"' }] }] },
+    }, null, 2));
   }
   // Native subagent definitions, mirroring the build's provider agents output.
   if (providers.includes('.github')) {
@@ -252,7 +263,51 @@ describe('copyProviderSkills: symlink handling', () => {
   });
 });
 
-describe('copyProviderAgents: Copilot and Cursor subagents', () => {
+describe('copyProviderAgents: Claude, Copilot, and Cursor subagents', () => {
+  test('Claude project and user scopes use .claude/agents, with project copies taking precedence', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-agents-claude-'));
+    const home = mkdtempSync(join(tmpdir(), 'imp-agents-claude-home-'));
+    const bundle = createFakeUniversalBundle(tmp, ['.claude']);
+    mkdirSync(join(home, '.claude', 'agents'), { recursive: true });
+    writeFileSync(join(home, '.claude', 'agents', 'impeccable-finish-reviewer.md'), 'stale copy\n');
+
+    const projectResults = copyProviderAgents(bundle, tmp, ['.claude'], { scope: 'project', home });
+    const userResults = copyProviderAgents(bundle, home, ['.claude'], { scope: 'user' });
+
+    expect(projectResults).toHaveLength(1);
+    expect(projectResults[0].shadowed).toEqual([]);
+    expect(userResults).toHaveLength(1);
+    expect(readFileSync(join(tmp, '.claude', 'agents', 'impeccable-finish-reviewer.md'), 'utf8'))
+      .toContain('Claude reviewer body.');
+    expect(readFileSync(join(home, '.claude', 'agents', 'impeccable-finish-reviewer.md'), 'utf8'))
+      .toContain('Claude reviewer body.');
+
+    rmSync(tmp, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  test('Claude install and update backfill bundled agents beside an unchanged skill', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-agents-claude-install-'));
+    const home = mkdtempSync(join(tmpdir(), 'imp-agents-claude-install-home-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.claude']);
+    const env = { ...process.env, HOME: home, IMPECCABLE_BUNDLE_PATH: bundleRoot };
+    const agentPath = join(tmp, '.claude', 'agents', 'impeccable-finish-reviewer.md');
+
+    const installOutput = run('skills install -y --no-hooks --providers=claude', { cwd: tmp, env });
+    expect(installOutput).toContain('Installed Claude Code agents into:');
+    expect(existsSync(agentPath)).toBe(true);
+
+    rmSync(agentPath);
+    const updateOutput = run('skills update -y --no-hooks', { cwd: tmp, env });
+    expect(updateOutput).toContain('Updated');
+    expect(updateOutput).toContain('Installed Claude Code agents into:');
+    expect(existsSync(agentPath)).toBe(true);
+
+    rmSync(tmp, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }, 15000);
+
   test('project scope places agents at .github/agents/ and .cursor/agents/', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'imp-agents-project-'));
     const bundle = createFakeUniversalBundle(tmp, ['.github', '.cursor']);
@@ -285,6 +340,46 @@ describe('copyProviderAgents: Copilot and Cursor subagents', () => {
     rmSync(tmp, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });
   });
+
+  test('skills check accepts current Copilot user agents in a home-rooted checkout', () => {
+    const home = mkdtempSync(join(tmpdir(), 'imp-agents-check-home-'));
+    execSync('git init', { cwd: home });
+    const bundleRoot = createFakeUniversalBundle(home, ['.github']);
+    const env = { ...process.env, HOME: home, IMPECCABLE_BUNDLE_PATH: bundleRoot };
+
+    run('skills install -y --scope=global --no-hooks --providers=github', { cwd: home, env });
+    expect(existsSync(join(home, '.copilot', 'agents', 'impeccable-finish-reviewer.agent.md'))).toBe(true);
+    expect(existsSync(join(home, '.github', 'agents'))).toBe(false);
+
+    const output = run('skills check', { cwd: home, env });
+    expect(output).toContain('Skills are up to date');
+    expect(output).not.toContain('Updates available');
+
+    rmSync(home, { recursive: true, force: true });
+  }, 15000);
+
+  test('inferred home-rooted updates refresh stale or missing Copilot user agents', () => {
+    const home = mkdtempSync(join(tmpdir(), 'imp-agents-update-home-'));
+    execSync('git init', { cwd: home });
+    const bundleRoot = createFakeUniversalBundle(home, ['.github']);
+    const env = { ...process.env, HOME: home, IMPECCABLE_BUNDLE_PATH: bundleRoot };
+    const userAgent = join(home, '.copilot', 'agents', 'impeccable-finish-reviewer.agent.md');
+    const projectAgent = join(home, '.github', 'agents', 'impeccable-finish-reviewer.agent.md');
+
+    run('skills install -y --scope=global --no-hooks --providers=github', { cwd: home, env });
+    writeFileSync(userAgent, 'stale copy\n');
+
+    run('skills update -y --no-hooks', { cwd: home, env });
+    expect(readFileSync(userAgent, 'utf8')).toContain('Copilot reviewer body.');
+    expect(existsSync(projectAgent)).toBe(false);
+
+    rmSync(userAgent);
+    run('skills update -y --no-hooks', { cwd: home, env });
+    expect(readFileSync(userAgent, 'utf8')).toContain('Copilot reviewer body.');
+    expect(existsSync(projectAgent)).toBe(false);
+
+    rmSync(home, { recursive: true, force: true });
+  }, 20000);
 
   test('project scope reports user-level Copilot agents that shadow the installed ones; Cursor never does (project wins there)', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'imp-agents-shadow-'));
@@ -857,6 +952,85 @@ describe('skills install/update: local universal bundle e2e', () => {
     rmSync(home, { recursive: true, force: true });
   });
 
+  test('detects an installed Veto CLI and targets its managed skill directory', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-veto-detect-'));
+    const home = mkdtempSync(join(tmpdir(), 'imp-home-veto-detect-'));
+    const bin = join(tmp, 'bin');
+    mkdirSync(bin, { recursive: true });
+    mkdirSync(join(home, '.veto'), { recursive: true });
+    writeFileSync(join(bin, 'veto'), '#!/bin/sh\n');
+
+    const previousPath = process.env.PATH;
+    process.env.PATH = bin;
+    try {
+      expect(collectInstallDetections(tmp, home).some((detection) => detection.provider === '.veto')).toBe(false);
+
+      chmodSync(join(bin, 'veto'), 0o755);
+      const detections = collectInstallDetections(tmp, home);
+      const veto = detections.find((detection) => detection.provider === '.veto');
+      expect(veto).toEqual(expect.objectContaining({
+        provider: '.veto',
+        scope: 'user',
+        foundPath: join(bin, 'veto'),
+        installPath: join(home, '.veto', 'skills'),
+        reason: 'CLI on PATH',
+      }));
+    } finally {
+      process.env.PATH = previousPath;
+      rmSync(tmp, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('does not detect an extensionless Veto file on Windows', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-veto-win-detect-'));
+    const home = mkdtempSync(join(tmpdir(), 'imp-home-veto-win-detect-'));
+    const bin = join(tmp, 'bin');
+    mkdirSync(bin, { recursive: true });
+    mkdirSync(join(home, '.veto'), { recursive: true });
+    writeFileSync(join(bin, 'veto'), '#!/bin/sh\n');
+
+    const previousPath = process.env.PATH;
+    const originalPlatform = process.platform;
+    process.env.PATH = bin;
+    try {
+      Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+      expect(collectInstallDetections(tmp, home).some((detection) => detection.provider === '.veto')).toBe(false);
+
+      const windowsCommand = join(bin, 'veto.cmd');
+      writeFileSync(windowsCommand, '@echo off\r\n');
+      chmodSync(windowsCommand, 0o755);
+      const detections = collectInstallDetections(tmp, home);
+      expect(detections.find((detection) => detection.provider === '.veto')).toEqual(expect.objectContaining({
+        foundPath: windowsCommand,
+        reason: 'CLI on PATH',
+      }));
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+      process.env.PATH = previousPath;
+      rmSync(tmp, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('installs Veto skills into its global managed directory', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-veto-install-'));
+    const home = mkdtempSync(join(tmpdir(), 'imp-home-veto-install-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.veto']);
+
+    const output = run('install -y --providers=veto --scope=global --no-hooks', {
+      cwd: tmp,
+      env: { ...process.env, HOME: home, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+
+    expect(output).toContain('Installed impeccable into: .veto (global)');
+    expect(existsSync(join(home, '.veto', 'skills', 'impeccable', 'SKILL.md'))).toBe(true);
+
+    rmSync(tmp, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }, 15000);
+
   test('installs provider-specific skills into a fresh project', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'imp-test-local-install-'));
     execSync('git init', { cwd: tmp });
@@ -1080,21 +1254,24 @@ describe('skills install/update: local universal bundle e2e', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'imp-test-scope-user-hooks-'));
     const home = mkdtempSync(join(tmpdir(), 'imp-home-scope-user-hooks-'));
     execSync('git init', { cwd: tmp });
-    const bundleRoot = createFakeUniversalBundle(tmp, ['.claude', '.agents', '.cursor']);
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.claude', '.agents', '.cursor', '.grok']);
 
-    const output = run('skills install -y --providers=claude,codex,cursor --scope=global', {
+    const output = run('skills install -y --providers=claude,codex,cursor,grok --scope=global', {
       cwd: tmp,
       env: { ...process.env, HOME: home, IMPECCABLE_BUNDLE_PATH: bundleRoot },
     });
 
-    expect(output).toContain('Installed impeccable into: .claude, .agents, .cursor (global)');
-    for (const provider of ['.claude', '.agents', '.cursor']) {
+    expect(output).toContain('Installed impeccable into: .claude, .agents, .cursor, .grok (global)');
+    for (const provider of ['.claude', '.agents', '.cursor', '.grok']) {
       expect(existsSync(join(home, provider, 'skills', 'impeccable', 'SKILL.md'))).toBe(true);
       expect(existsSync(join(tmp, provider, 'skills', 'impeccable', 'SKILL.md'))).toBe(false);
     }
     expect(readFileSync(join(tmp, '.claude', 'settings.local.json'), 'utf8')).toContain(join(home, '.claude', 'skills', 'impeccable', 'scripts', 'hook.mjs'));
     expect(readFileSync(join(tmp, '.codex', 'hooks.json'), 'utf8')).toContain(join(home, '.agents', 'skills', 'impeccable', 'scripts', 'hook.mjs'));
     expect(readFileSync(join(tmp, '.cursor', 'hooks.json'), 'utf8')).toContain(join(home, '.cursor', 'skills', 'impeccable', 'scripts', 'hook-before-edit.mjs'));
+    const grokHooks = readFileSync(join(tmp, '.grok', 'hooks', 'impeccable.json'), 'utf8');
+    expect(grokHooks).toContain(join(home, '.grok', 'skills', 'impeccable', 'scripts', 'hook.mjs'));
+    expect(grokHooks).not.toContain('".grok/skills/impeccable/scripts/hook.mjs"');
 
     rmSync(tmp, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });
@@ -1783,6 +1960,35 @@ describe('hook manifest merge helpers', () => {
       'node .cursor/skills/impeccable/scripts/hook-before-edit.mjs',
     ]);
   });
+
+  test('mergeHookManifests replaces legacy Windows-path Claude hooks (#604)', () => {
+    const legacyPath = 'C:\\Users\\alice\\.claude\\skills\\impeccable\\scripts\\hook.mjs';
+    const legacyCommand = `[ ! -f "${legacyPath}" ] || node "${legacyPath}"`;
+    const freshCommand = `node -e "guard" "${legacyPath}"`;
+    const merged = mergeHookManifests(
+      {
+        hooks: {
+          PostToolUse: [{ matcher: 'Edit|Write|MultiEdit', hooks: [
+            { type: 'command', command: legacyCommand },
+          ] }],
+          Stop: [{ hooks: [{ type: 'command', command: legacyCommand }] }],
+        },
+      },
+      {
+        hooks: {
+          PostToolUse: [{ matcher: 'Edit|Write|MultiEdit', hooks: [
+            { type: 'command', command: freshCommand },
+          ] }],
+          Stop: [{ hooks: [{ type: 'command', command: freshCommand }] }],
+        },
+      },
+    );
+
+    expect(merged.hooks.PostToolUse).toHaveLength(1);
+    expect(merged.hooks.Stop).toHaveLength(1);
+    expect(merged.hooks.PostToolUse[0].hooks[0].command).toBe(freshCommand);
+    expect(merged.hooks.Stop[0].hooks[0].command).toBe(freshCommand);
+  });
 });
 
 // ─── Hook command path resolution (issue #399, part 1) ───────────────────────
@@ -2073,4 +2279,324 @@ describeRemote('skills install: production universal bundle download', () => {
     expect(skills).toContain('impeccable');
     expect(skills).not.toContain('i-impeccable');
   }, 90000);
+});
+
+describe('hermesGlobalHome resolver (PR #521)', () => {
+  // hermesGlobalHome was added in PR #521 to honor $HERMES_HOME for
+  // profile-scoped installs. The original PR had a P1 bug at lines
+  // 105-111 of cli/bin/commands/skills.mjs: it called `path.resolve` and
+  // `path.sep` but the file only named-imports `resolve` and `sep` from
+  // `node:path`. The ReferenceError was swallowed by the catch block, so
+  // $HERMES_HOME was silently ignored and installs always landed in
+  // ~/.hermes regardless of the active profile.
+  //
+  // These tests exercise the real implementation (via the export
+  // added to the skills.mjs test surface), not a reimplementation.
+
+  // The resolver is internal to skills.mjs. It reads $HERMES_HOME and
+  // returns the home dir it should use for ~/.hermes/skills. We import
+  // it via the public test surface — see the export block at the bottom
+  // of skills.mjs.
+  let hermesGlobalHome;
+
+  beforeAll(async () => {
+    // Dynamic import so the test can use the same surface as the
+    // production code without forcing a re-export gymnastics on the
+    // rest of the test file.
+    const mod = await import('../cli/bin/commands/skills.mjs');
+    hermesGlobalHome = mod.hermesGlobalHome;
+  });
+
+  test('default (no HERMES_HOME) returns <home>/.hermes', () => {
+    // Use a fresh tmp HOME so the test never depends on the dev's real
+    // ~/.hermes leaking through. The `delete env.HERMES_HOME` happens
+    // in the caller; here we just verify the function honors an
+    // explicitly-unset env (process.env is set per test below).
+    const home = mkdtempSync(join(tmpdir(), 'imp-home-hermes-default-'));
+    try {
+      expect(hermesGlobalHome(home)).toBe(join(home, '.hermes'));
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('HERMES_HOME=<home>/.hermes is honored (default profile)', () => {
+    const home = mkdtempSync(join(tmpdir(), 'imp-home-hermes-real-'));
+    const prev = process.env.HERMES_HOME;
+    process.env.HERMES_HOME = join(home, '.hermes');
+    try {
+      // The resolver returns $HERMES_HOME (resolved) when it lives
+      // under the active home. Callers append 'skills'.
+      expect(hermesGlobalHome(home)).toBe(join(home, '.hermes'));
+    } finally {
+      if (prev === undefined) delete process.env.HERMES_HOME;
+      else process.env.HERMES_HOME = prev;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('HERMES_HOME=<home>/.hermes/profiles/forge is honored (active profile)', () => {
+    // The whole point of the resolver: a Hermes invocation with
+    // HERMES_HOME pointing at an active profile should install into
+    // that profile's skills dir, not the default ~/.hermes. The
+    // original bug had install/update/check landing in ~/.hermes for
+    // every profile, which is the cross-profile data-corruption class
+    // that hermes_constants.py's active_profile fallback warning is
+    // designed to detect.
+    const home = mkdtempSync(join(tmpdir(), 'imp-home-hermes-profile-'));
+    const prev = process.env.HERMES_HOME;
+    process.env.HERMES_HOME = join(home, '.hermes', 'profiles', 'forge');
+    try {
+      const resolved = hermesGlobalHome(home);
+      expect(resolved).toBe(join(home, '.hermes', 'profiles', 'forge'));
+      // And critically: it must NOT fall back to the default profile
+      // when an active profile is selected.
+      expect(resolved).not.toBe(join(home, '.hermes'));
+    } finally {
+      if (prev === undefined) delete process.env.HERMES_HOME;
+      else process.env.HERMES_HOME = prev;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('HERMES_HOME outside the active home is ignored (cross-home leakage guard)', () => {
+    // If the developer's shell has HERMES_HOME=/home/dev/.hermes and a
+    // test runs under HOME=/tmp/imp-home-xxx, the resolver must NOT
+    // pick up the dev's real ~/.hermes. Otherwise test output (and
+    // potentially writes) leak into the developer's working state.
+    // The cross-home guard turns the inherited HERMES_HOME into a
+    // not-set, so the resolver falls back to <home>/.hermes.
+    const home = mkdtempSync(join(tmpdir(), 'imp-home-hermes-xhome-'));
+    const otherHome = mkdtempSync(join(tmpdir(), 'imp-home-hermes-xhome-other-'));
+    const prev = process.env.HERMES_HOME;
+    process.env.HERMES_HOME = join(otherHome, '.hermes', 'profiles', 'main');
+    try {
+      // HERMES_HOME is set but it doesn't sit under `home`, so the
+      // resolver should treat it as not-set and return <home>/.hermes.
+      expect(hermesGlobalHome(home)).toBe(join(home, '.hermes'));
+    } finally {
+      if (prev === undefined) delete process.env.HERMES_HOME;
+      else process.env.HERMES_HOME = prev;
+      rmSync(home, { recursive: true, force: true });
+      rmSync(otherHome, { recursive: true, force: true });
+    }
+  });
+
+  test('HOME_SKILLS_DIR_OVERRIDES[".hermes"] returns <HERMES_HOME>/skills under an active profile', async () => {
+    // Integration check: the resolver is wired through the override
+    // map, so this is what the install path actually consumes. The
+    // import is cached across the suite (ESM module singleton), so
+    // the same `hermesGlobalHome` from the unit tests above applies
+    // here. We assert inside the async block so process.env is still
+    // set when the override function reads it (the unit-test version
+    // returns synchronously, but this one uses async import to share
+    // the module reference).
+    const home = mkdtempSync(join(tmpdir(), 'imp-home-hermes-override-'));
+    const prev = process.env.HERMES_HOME;
+    process.env.HERMES_HOME = join(home, '.hermes', 'profiles', 'savant');
+    try {
+      const mod = await import('../cli/bin/commands/skills.mjs');
+      const override = mod.HOME_SKILLS_DIR_OVERRIDES['.hermes'];
+      expect(override(home)).toBe(join(home, '.hermes', 'profiles', 'savant', 'skills'));
+    } finally {
+      if (prev === undefined) delete process.env.HERMES_HOME;
+      else process.env.HERMES_HOME = prev;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('end-to-end: --scope=user --providers=hermes with HERMES_HOME=profile lands in the active profile', () => {
+    // The full pipeline: drive the real CLI under a controlled HOME and
+    // HERMES_HOME. This catches any regression that breaks the wiring
+    // between hermesGlobalHome and the install path (e.g. if a future
+    // refactor moves the override out of HOME_SKILLS_DIR_OVERRIDES, or
+    // if copyProviderSkills stops reading from it).
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-hermes-e2e-'));
+    const home = mkdtempSync(join(tmpdir(), 'imp-home-hermes-e2e-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.hermes']);
+    const baseEnv = { ...process.env, HOME: home, IMPECCABLE_BUNDLE_PATH: bundleRoot };
+    delete baseEnv.HERMES_HOME;
+    const profileDir = join(home, '.hermes', 'profiles', 'forge');
+    const env = { ...baseEnv, HERMES_HOME: profileDir };
+
+    run('skills install -y --providers=hermes --scope=user --no-hooks', { cwd: tmp, env });
+
+    // Landed in the active profile, not the default ~/.hermes.
+    expect(existsSync(join(profileDir, 'skills', 'impeccable', 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(home, '.hermes', 'skills', 'impeccable', 'SKILL.md'))).toBe(false);
+
+    rmSync(tmp, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }, 20000);
+});
+
+describe('downloadAndExtractBundle: safe staging dir (#479)', () => {
+  test('local bundle uses mkdtemp under tmpdir with 0700 perms', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-staging-'));
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.claude']);
+    const prev = process.env.IMPECCABLE_BUNDLE_PATH;
+    let stagingDir;
+    try {
+      process.env.IMPECCABLE_BUNDLE_PATH = bundleRoot;
+      stagingDir = await downloadAndExtractBundle();
+
+      expect(stagingDir.startsWith(tmpdir())).toBe(true);
+      const basename = stagingDir.split(/[/\\]/).pop();
+      expect(basename.startsWith('impeccable-local-bundle-')).toBe(true);
+      expect(basename).not.toMatch(/^impeccable-local-bundle-\d+-\d+$/);
+
+      if (process.platform !== 'win32') {
+        expect(statSync(stagingDir).mode & 0o777).toBe(0o700);
+      }
+
+      expect(existsSync(join(stagingDir, '.claude', 'skills', 'impeccable', 'SKILL.md'))).toBe(true);
+    } finally {
+      if (prev === undefined) delete process.env.IMPECCABLE_BUNDLE_PATH;
+      else process.env.IMPECCABLE_BUNDLE_PATH = prev;
+      if (stagingDir) rmSync(stagingDir, { recursive: true, force: true });
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('downloadFile (#479)', () => {
+  test('200 writes body to dest with wx flag', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'imp-dl-'));
+    const dest = join(dir, 'out.bin');
+    try {
+      const fetchImpl = async () => new Response('hello', { status: 200 });
+      await downloadFile('https://example.com/file', dest, { fetchImpl });
+      expect(readFileSync(dest, 'utf8')).toBe('hello');
+
+      await expect(downloadFile('https://example.com/file', dest, { fetchImpl }))
+        .rejects.toThrow();
+      expect(readFileSync(dest, 'utf8')).toBe('hello');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('404 throws and dest does not exist', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'imp-dl-'));
+    const dest = join(dir, 'out.bin');
+    try {
+      const fetchImpl = async () => new Response('not found', { status: 404 });
+      await expect(downloadFile('https://example.com/missing', dest, { fetchImpl }))
+        .rejects.toThrow(/HTTP 404/);
+      expect(existsSync(dest)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('redirect 302 to 200 follows location and writes second body', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'imp-dl-'));
+    const dest = join(dir, 'out.bin');
+    try {
+      let callCount = 0;
+      const fetchImpl = async (url) => {
+        callCount++;
+        if (url === 'https://example.com/start') {
+          return new Response('', { status: 302, headers: { location: 'https://example.com/final' } });
+        }
+        return new Response('final body', { status: 200 });
+      };
+      await downloadFile('https://example.com/start', dest, { fetchImpl });
+      expect(callCount).toBe(2);
+      expect(readFileSync(dest, 'utf8')).toBe('final body');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('redirect 302 to 404 throws and dest does not exist', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'imp-dl-'));
+    const dest = join(dir, 'out.bin');
+    try {
+      const fetchImpl = async (url) => {
+        if (url.includes('/start')) {
+          return new Response('', { status: 302, headers: { location: 'https://example.com/bad' } });
+        }
+        return new Response('error', { status: 404 });
+      };
+      await expect(downloadFile('https://example.com/start', dest, { fetchImpl }))
+        .rejects.toThrow(/HTTP 404/);
+      expect(existsSync(dest)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('redirect to http throws non-HTTPS and dest does not exist', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'imp-dl-'));
+    const dest = join(dir, 'out.bin');
+    try {
+      const fetchImpl = async () => new Response('', { status: 302, headers: { location: 'http://example.com/insecure' } });
+      await expect(downloadFile('https://example.com/start', dest, { fetchImpl }))
+        .rejects.toThrow(/non-HTTPS/i);
+      expect(existsSync(dest)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('relative redirect location resolved against current URL', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'imp-dl-'));
+    const dest = join(dir, 'out.bin');
+    try {
+      const fetchImpl = async (url) => {
+        if (url === 'https://example.com/api/start') {
+          return new Response('', { status: 302, headers: { location: '/final' } });
+        }
+        expect(url).toBe('https://example.com/final');
+        return new Response('ok', { status: 200 });
+      };
+      await downloadFile('https://example.com/api/start', dest, { fetchImpl });
+      expect(readFileSync(dest, 'utf8')).toBe('ok');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('more than maxRedirects hops throws and dest does not exist', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'imp-dl-'));
+    const dest = join(dir, 'out.bin');
+    try {
+      const fetchImpl = async () => new Response('', { status: 302, headers: { location: 'https://example.com/loop' } });
+      await expect(downloadFile('https://example.com/loop', dest, { fetchImpl }))
+        .rejects.toThrow(/Too many redirects/);
+      expect(existsSync(dest)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('fetchImpl rejection leaves dest absent', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'imp-dl-'));
+    const dest = join(dir, 'out.bin');
+    try {
+      const fetchImpl = async () => { throw new Error('network down'); };
+      await expect(downloadFile('https://example.com/file', dest, { fetchImpl }))
+        .rejects.toThrow(/network down/);
+      expect(existsSync(dest)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('http initial URL throws without calling fetch', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'imp-dl-'));
+    const dest = join(dir, 'out.bin');
+    try {
+      let called = false;
+      const fetchImpl = async () => { called = true; return new Response('x', { status: 200 }); };
+      await expect(downloadFile('http://example.com/file', dest, { fetchImpl }))
+        .rejects.toThrow(/non-HTTPS/i);
+      expect(called).toBe(false);
+      expect(existsSync(dest)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

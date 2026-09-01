@@ -9,6 +9,7 @@
       --paper: #f7f3ee;
       --ink: #171717;
       --muted: #566174;
+      --flag-white: oklch(1 0 0);
     }
 
     body {
@@ -110,7 +111,7 @@
       <h2>Should flag after pixel sampling</h2>
 
       <article class="image-card light-image">
-        <p style="color: rgb(255, 255, 255);">White text on light image should be sampled by pixel contrast.</p>
+        <p style="color: var(--flag-white);">White text on light image should be sampled by pixel contrast.</p>
       </article>
 
       <article class="image-card dark-image">

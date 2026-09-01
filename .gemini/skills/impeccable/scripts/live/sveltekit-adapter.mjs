@@ -11,6 +11,8 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { firstExistingFile, hasAnyDependency } from './frameworks/detect-utils.mjs';
+
 export const SVELTE_LIVE_ROOT_COMPONENT = 'src/lib/impeccable/ImpeccableLiveRoot.svelte';
 export const SVELTE_LAYOUT_MARKER_OPEN = '<!-- impeccable-live-svelte-start -->';
 export const SVELTE_LAYOUT_MARKER_CLOSE = '<!-- impeccable-live-svelte-end -->';
@@ -45,11 +47,17 @@ export function detectSvelteKitProject(cwd = process.cwd(), config = null) {
     && fileIncludes(path.join(cwd, appHtml), '%sveltekit.head%');
   if (!hasTemplateMarkers) return null;
 
-  const hasSvelteConfig = fs.existsSync(path.join(cwd, 'svelte.config.js'))
-    || fs.existsSync(path.join(cwd, 'svelte.config.mjs'))
-    || fs.existsSync(path.join(cwd, 'svelte.config.cjs'))
-    || fs.existsSync(path.join(cwd, 'svelte.config.ts'));
-  const hasKitPackage = packageHasSvelteKit(cwd);
+  const hasSvelteConfig = Boolean(firstExistingFile(cwd, [
+    'svelte.config.js',
+    'svelte.config.mjs',
+    'svelte.config.cjs',
+    'svelte.config.ts',
+  ]));
+  const hasKitPackage = hasAnyDependency(cwd, [
+    '@sveltejs/kit',
+    '@sveltejs/vite-plugin-svelte',
+    'svelte',
+  ]);
   if (!hasSvelteConfig && !hasKitPackage) return null;
 
   return {
@@ -260,34 +268,14 @@ function findSvelteKitAppHtml(cwd, config) {
 }
 
 function findSvelteKitLayout(cwd) {
-  const candidates = [
+  return firstExistingFile(cwd, [
     'src/routes/+layout.svelte',
     'src/routes/(app)/+layout.svelte',
-  ];
-  for (const rel of candidates) {
-    if (fs.existsSync(path.join(cwd, rel))) return rel;
-  }
-  return 'src/routes/+layout.svelte';
+  ]) || 'src/routes/+layout.svelte';
 }
 
 function defaultSvelteLayout() {
   return `<script>\n  let { children } = $props();\n</script>\n\n{@render children?.()}\n`;
-}
-
-function packageHasSvelteKit(cwd) {
-  const file = path.join(cwd, 'package.json');
-  if (!fs.existsSync(file)) return false;
-  try {
-    const pkg = JSON.parse(fs.readFileSync(file, 'utf-8'));
-    const deps = {
-      ...(pkg.dependencies || {}),
-      ...(pkg.devDependencies || {}),
-      ...(pkg.peerDependencies || {}),
-    };
-    return Boolean(deps['@sveltejs/kit'] || deps['@sveltejs/vite-plugin-svelte'] || deps.svelte);
-  } catch {
-    return false;
-  }
 }
 
 function fileIncludes(file, text) {

@@ -90,7 +90,8 @@
  */
 
 import crypto from 'node:crypto';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
+import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   approvedPoolRevision,
@@ -338,6 +339,20 @@ export function renderConceptSeed({
   };
   const indexSalt = reroll === 0 ? 'index' : `index:reroll-${reroll}`;
   const buildIndex = 3 + Math.floor(unit(indexSalt) * (candidateCount - 2)); // 3..candidateCount
+  // Surface scope deals a hand of three grounded structures: one card is not
+  // a choice, and the full ranked list would hand selection back to the
+  // model's taste. The dice pick all three; the primary index leads. The
+  // no-lineup rule stays direction-only, where it was written for worlds.
+  const dealtIndices = [buildIndex];
+  for (let draw = 0; scope === 'surface' && dealtIndices.length < Math.min(3, candidateCount); draw += 1) {
+    const idx = 1 + Math.floor(unit(`${indexSalt}:deal-${draw}`) * candidateCount);
+    if (!dealtIndices.includes(idx)) dealtIndices.push(idx);
+    if (draw > 64) { // hash repeats cannot stall the deal
+      for (let fill = 1; dealtIndices.length < Math.min(3, candidateCount); fill += 1) {
+        if (!dealtIndices.includes(fill)) dealtIndices.push(fill);
+      }
+    }
+  }
 
   // Local catalog first (private repo, evals, tests), then the roll API,
   // then a degraded assignment-only seed. The assigned index is pure local
@@ -404,19 +419,31 @@ export function renderConceptSeed({
   interaction and state, and a substantially different future surface. In an
   attended run, present the assigned direction fully committed and offer
   re-roll. You may add ONE card for your top-ranked grounded candidate when
-  it is not the assigned direction, kicker MY PICK, with an honest risk line
+  it is not the assigned direction, kicker IMPECCABLE’S PICK, with an honest risk line
   naming its familiarity; one pick card, never a ranked lineup, and the pick
   never takes the lead position. When the assignment IS your top candidate,
   there is no pick card. Re-roll yourself only
   on named factual grounds, when the assignment cannot carry the product's
   truth or task; taste is never grounds.`
   : `After ordering the task's grounded structural candidates by resonance,
-  build candidate ${buildIndex} of your own grounded list; the assignment never
-  points at a challenger. The assignment is the roll, not a suggestion.
-  In an attended run, present the assigned structure and offer re-roll; never
-  present a ranked lineup to choose from. Re-roll yourself only when the
-  assignment fails audience identification or product clarity on named
-  factual grounds.`;
+  deal candidates ${dealtIndices.join(', ')} of your own grounded list to the
+  table; index ${buildIndex} leads, and the deal never points at a challenger.
+  The deal is the roll, not a suggestion: the dice decide which structures
+  reach the user, so the ranking rut stays broken while the user still gets a
+  real choice, and the full ranked list stays yours. In an attended run,
+  present the three dealt structures as full cards of equal salience, the
+  lead carrying kicker THE ROLL, with steer and re-roll, and let the user
+  lock one in; the world is already settled, so this choice is composition.
+  Visualize every dealt card: with image generation available and a
+  comp-led default (.impeccable/config.json buildPath; the page toggle
+  handles the exception), declare a comp per card and generate after
+  serving, lead first; otherwise author each card's wireframe field (see
+  serve-question --schema) and the page draws the schematic. Carry the
+  recorded default in the payload as buildPath with toggle: true. Locking a card
+  approves its comp: a surface round that put three visualized structures on
+  the table replaces the three-option comp round in visualize.md. Re-roll
+  yourself only when every dealt structure fails audience identification or
+  product clarity on named factual grounds.`;
 
   const challengerInstruction = scope === 'direction'
     ? `Fuse each challenger before judging it: the challenger supplies the form
@@ -490,7 +517,7 @@ assigned index is suspended this round and the user picks; seed key ${key}.
 `
       : '';
     return `${degradedHeader}
-${degradedRegister}ASSIGNED INDEX: ${buildIndex}
+${degradedRegister}${scope === 'direction' ? `ASSIGNED INDEX: ${buildIndex}` : `DEALT INDICES: ${dealtIndices.join(', ')} (index ${buildIndex} leads)`}
   ${promotedInstruction}
   The assignment exists to refuse the model's ranking rut, never to outrank
   the user or the brief. Never expose assignment metadata in user-facing labels.
@@ -514,8 +541,11 @@ channel: when a browser can open, present the direction on the decision page
 the no-browser fallback.
 ${authorityInstruction}
 A user- or brief-pinned decision beats the roll, always.
-ASSIGNED INDEX (restated for truncated readers): ${buildIndex}. Build candidate
-${buildIndex} of your own grounded list; seed key ${key}.
+${scope === 'direction'
+    ? `ASSIGNED INDEX (restated for truncated readers): ${buildIndex}. Build candidate
+${buildIndex} of your own grounded list; seed key ${key}.`
+    : `DEALT INDICES (restated for truncated readers): ${dealtIndices.join(', ')}; index
+${buildIndex} leads. Present all three dealt structures; seed key ${key}.`}
 `;
   }
 
@@ -584,18 +614,24 @@ rivals to your habitual layout, and keep only what makes this product clearer.${
   assignment by deal order, so the dice still choose. Verdicts and donations
   apply between the challengers, weighed against the leader. The pick card
   sits out; the canon stays, as always.`;
-  const telemetryBlock = data.source === 'api'
-    ? `TELEMETRY: after the user's choice resolves, rerun this script once with
-  --kind <assigned|pick|challenger|canon> --from ${key} --scope ${scope}${mode ? ` --mode ${mode}` : ''},
-  adding --chosen <challenger-id> when a dealt challenger won and keeping
-  --register <safer|bolder> when the resolved round came from a steered hand.
-  One ping per resolved attended round. The ping is anonymous, the card kind
-  plus the catalog id when one won; your grounded candidates' names never
-  leave the machine, and the ping is skipped automatically when DO_NOT_TRACK
-  or IMPECCABLE_NO_TELEMETRY is set.\n`
-    : '';
+  // The one command that follows a resolved choice. It records the choice
+  // (anonymous telemetry on API-dealt rolls; skipped under DO_NOT_TRACK /
+  // IMPECCABLE_NO_TELEMETRY) and opens the build's phase machine, whose
+  // first gate is the comp round on a comp-led build. Every run that skipped
+  // the comp round did so by treating a separate "telemetry ping" as
+  // bookkeeping: suppressed with >/dev/null, run after the page was written,
+  // or never run. So there is no separate ping; the start command is the
+  // ping, and it is not optional.
+  const nextCommand = scope === 'direction'
+    ? `AFTER THE CHOICE, run exactly one command and follow what it prints (do not suppress its output; do not write page code before it):
+  node ${relative(process.cwd(), here) || '.'}/build-phase.mjs start --direction ${key} --kind <assigned|pick|challenger|canon>${data.source === 'api' ? ' [--chosen <challenger-id>]' : ''}${register ? ` --register ${register}` : ''}
+  It records the choice${data.source === 'api' ? ' (anonymous: card kind plus catalog id; skipped under DO_NOT_TRACK / IMPECCABLE_NO_TELEMETRY)' : ''} and opens the build phases: on a comp-led build the comp round is the first gate (three comps, one approved) and no page code is written before it closes; on a code-led build it prints the contract step. A build without this state file is a build the finish reviewer treats as having skipped the round.\n`
+    : (data.source === 'api'
+      ? `AFTER THE CHOICE, run once: node ${relative(process.cwd(), here) || '.'}/concept-seed.mjs --kind <assigned|pick|challenger|canon> --from ${key} --scope ${scope}${mode ? ` --mode ${mode}` : ''} (records the choice; the locked card's comp is the approved comp, so then: node ${relative(process.cwd(), here) || '.'}/build-phase.mjs start --comp <that comp>).\n`
+      : `AFTER THE CHOICE: the locked card's comp is the approved comp; run node ${relative(process.cwd(), here) || '.'}/build-phase.mjs start --comp <that comp> and follow what it prints.\n`);
+  const telemetryBlock = nextCommand;
   const assignedBlock = register === null
-    ? `ASSIGNED INDEX: ${buildIndex}
+    ? `${scope === 'direction' ? `ASSIGNED INDEX: ${buildIndex}` : `DEALT INDICES: ${dealtIndices.join(', ')} (index ${buildIndex} leads)`}
   ${promotedInstruction}
   The assignment exists to refuse the model's ranking rut, never to outrank
   the user or the brief. Never expose assignment metadata in user-facing labels.`
@@ -621,8 +657,11 @@ craft bar, the finish level and commitment the build is expected to reach,
 never as a mockup to copy; your surface serves this product, not that render.
 `;
   const restated = register === null
-    ? `ASSIGNED INDEX (restated for truncated readers): ${buildIndex}. Build candidate
+    ? (scope === 'direction'
+      ? `ASSIGNED INDEX (restated for truncated readers): ${buildIndex}. Build candidate
 ${buildIndex} of your own grounded list; seed key ${key}.`
+      : `DEALT INDICES (restated for truncated readers): ${dealtIndices.join(', ')}; index
+${buildIndex} leads. Present all three dealt structures; seed key ${key}.`)
     : `REGISTER (restated for truncated readers): ${register}, user-requested; the
 assigned index is suspended this round; seed key ${key}.`;
   return `${scope.toUpperCase()} CONCEPT SEED (key: ${key}; mode: ${mode ?? 'unscoped'}; source: ${data.source}; approved pool: ${data.poolRevision}; ${data.approvedCount}/${data.catalogCount} human-approved; rerun with --scope ${scope}${mode ? ` --mode ${mode}` : ''} --from ${key}${reroll > 0 ? ` --reroll ${reroll}` : ''}${register ? ` --register ${register}` : ''} --candidate-count ${candidateCount} to reproduce this roll against this catalog revision)
@@ -634,7 +673,58 @@ ${restated}
 `;
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+/**
+ * What the model must do next, once a direction (or surface structure) is
+ * chosen. Read from the same config the boot directive reads:
+ * `.impeccable/config.local.json` over `.impeccable/config.json`,
+ * `buildPath` comp|code; with neither, comp-led whenever image generation
+ * exists (an OpenAI key here; a harness-native image tool is invisible to
+ * this script, so the text names it too), code-led otherwise.
+ */
+export function nextStepAfterChoice({ key, scope, cwd = process.cwd(), env = process.env } = {}) {
+  let buildPath = null;
+  for (const name of ['config.json', 'config.local.json']) {
+    try {
+      const raw = JSON.parse(readFileSync(resolve(cwd, '.impeccable', name), 'utf8'));
+      if (raw?.buildPath === 'comp' || raw?.buildPath === 'code') buildPath = raw.buildPath;
+    } catch { /* absent */ }
+  }
+  const scriptsDir = dirname(fileURLToPath(import.meta.url));
+  const scripts = relative(cwd, scriptsDir) || '.';
+  const imageGen = !!env.OPENAI_API_KEY;
+  const seed = key ? ` --direction ${key}` : '';
+  if (buildPath === 'code') {
+    return `NEXT (code-led, from .impeccable config): write the direction contract, then build; no comp round. Load reference/new-work.md section 5 and 6.\n`;
+  }
+  const why = buildPath === 'comp' ? 'from .impeccable config' : imageGen ? 'default: image generation is available' : 'default: comp-led unless no image tool exists; if your harness truly has none and there is no OpenAI key, this is code-led and you say so in one line';
+  if (scope === 'surface') {
+    return `NEXT (comp-led, ${why}): the locked card's comp is the approved comp. Run: node ${scripts}/build-phase.mjs start --comp <that comp> and follow its NEXT lines. Do not write page code before build-phase.mjs advance has closed the spec, plates, and hero gates.\n`;
+  }
+  return `NEXT (comp-led, ${why}): the world is chosen; the composition is not. Run: node ${scripts}/build-phase.mjs start${seed} and follow its NEXT lines: it opens the comps phase (three comps under .impeccable/mocks/, one approved by the user through the decision page or structured question, sidecar "approved": true), then spec, plates, hero, sections, motion, responsive, review. Do not write page code before those gates close. Reference: reference/visualize.md for the comp round.\n`;
+}
+
+export function sameMainModulePath(left, right, platform = process.platform) {
+  if (platform !== 'win32') return left === right;
+  const normalizeDriveLetter = (value) => value.replace(/^([a-z]):/i, (_, drive) => `${drive.toUpperCase()}:`);
+  return normalizeDriveLetter(left) === normalizeDriveLetter(right);
+}
+
+function isMainModule() {
+  if (!process.argv[1]) return false;
+  try {
+    // Node resolves import.meta.url through symlinks but leaves argv[1] as the
+    // invoked path. Compare real paths so a linked skill still runs its CLI,
+    // normalizing the drive-letter casing that Windows junctions can change.
+    return sameMainModulePath(
+      realpathSync(process.argv[1]),
+      realpathSync(fileURLToPath(import.meta.url))
+    );
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule()) {
   const args = process.argv.slice(2);
   const fromIdx = args.indexOf('--from');
   const scopeIdx = args.indexOf('--scope');
@@ -660,7 +750,27 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
         register: registerIdx !== -1 ? args[registerIdx + 1] : undefined,
       });
       process.stdout.write(sent ? 'choice recorded\n' : 'choice ping skipped\n');
+      // The choice is resolved; this is the last script output the model
+      // reads before it decides what to do next, and every run that skipped
+      // the comp round did so right here: prose 20 KB into new-work.md lost
+      // to "direction locked, building now". So the ping prints the next
+      // mandatory step from the recorded build path, and the phase machine
+      // takes it from there.
+      process.stdout.write(nextStepAfterChoice({
+        key: fromIdx !== -1 ? args[fromIdx + 1] : undefined,
+        scope: scopeIdx !== -1 ? args[scopeIdx + 1] : undefined,
+      }));
     } else {
+      // A dealt roll leaves a marker the build phase clears: context.mjs and
+      // detect.mjs read it and refuse to treat page work as done while a
+      // direction is chosen but the build never started (COMP_ROUND_OPEN).
+      try {
+        const { mkdirSync, writeFileSync: wf } = await import('node:fs');
+        if (scopeIdx !== -1 && args[scopeIdx + 1] === 'direction') {
+          mkdirSync(resolve(process.cwd(), '.impeccable', 'build'), { recursive: true });
+          wf(resolve(process.cwd(), '.impeccable', 'build', 'pending.json'), JSON.stringify({ scope: 'direction', at: new Date().toISOString() }, null, 2));
+        }
+      } catch { /* marker is best-effort */ }
       // Mechanical init gate: prose alone does not keep a model from dealing
       // before init, and fresh repos produced exactly that skip (the model
       // rolled directions with no PRODUCT.md, so nothing grounded the fusion).

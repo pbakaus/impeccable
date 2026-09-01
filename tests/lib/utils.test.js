@@ -614,7 +614,7 @@ describe('replacePlaceholders', () => {
     expect(result).toBe('STOP and call the AskUserQuestion tool to clarify.');
 
     const cursorResult = replacePlaceholders('{{ask_instruction}}', 'cursor');
-    expect(cursorResult).toBe('ask the user directly to clarify what you cannot infer.');
+    expect(cursorResult).toBe('Ask the user directly to clarify what you cannot infer.');
   });
 
   test('should replace {{available_commands}} with command list', () => {

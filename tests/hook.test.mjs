@@ -9,6 +9,7 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -24,6 +25,8 @@ import {
   truthy,
   getConfigPath,
   getLocalConfigPath,
+  getCachePath,
+  getPendingPath,
   ensureHookGitExcludes,
   readConfig,
   readCache,
@@ -45,11 +48,13 @@ import {
   resolveTargetFiles,
   resolveHarness,
   normalizeHookEvent,
+  isStopEvent,
   expandScanTargets,
   parseStaticStyleImports,
   coLocatedStylesheets,
   runHook,
   runStopHook,
+  commitFooterShown,
   IMMEDIATE_TIER_RULES,
   splitFindingsByTier,
   perEditTieringActive,
@@ -64,6 +69,12 @@ import {
 } from '../skill/scripts/hook-lib.mjs';
 import { normalizeIgnoreValueEntries as normalizeIgnoreValueEntriesCli } from '../cli/lib/impeccable-config.mjs';
 import { detectHtml, detectText } from '../cli/engine/detect-antipatterns.mjs';
+
+// Hook state paths are env-sensitive: an ambient IMPECCABLE_CACHE_ROOT (a
+// developer using the redirect locally) would relocate cache/pending out of
+// the tmp projects and break stock-path assertions. Clear it up front; the
+// dedicated issue-#422 suite sets and restores it explicitly.
+delete process.env.IMPECCABLE_CACHE_ROOT;
 
 function mkTmp() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-hook-'));
@@ -410,6 +421,195 @@ describe('readCache / persistCache / bumpEditCount', () => {
     assert.equal(Object.keys(reloaded.sessions).length, 8);
     assert.ok(reloaded.sessions['sid-9'], 'newest preserved');
     assert.ok(!reloaded.sessions['sid-0'], 'oldest gc-ed');
+  });
+});
+
+describe('IMPECCABLE_CACHE_ROOT relocates hook state (issue #422)', () => {
+  let cwd;
+  let cacheRoot;
+  let savedEnv;
+  beforeEach(() => {
+    cwd = mkTmp();
+    cacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-cache-root-'));
+    savedEnv = process.env.IMPECCABLE_CACHE_ROOT;
+  });
+  afterEach(() => {
+    if (savedEnv === undefined) delete process.env.IMPECCABLE_CACHE_ROOT;
+    else process.env.IMPECCABLE_CACHE_ROOT = savedEnv;
+    fs.rmSync(cwd, { recursive: true, force: true });
+    fs.rmSync(cacheRoot, { recursive: true, force: true });
+  });
+
+  it('keeps hook state project-local when the env var is unset', () => {
+    delete process.env.IMPECCABLE_CACHE_ROOT;
+    assert.equal(getCachePath(cwd), path.join(cwd, '.impeccable', 'hook.cache.json'));
+    assert.equal(getPendingPath(cwd), path.join(cwd, '.impeccable', 'hook.pending.json'));
+  });
+
+  it('treats a blank env var as unset', () => {
+    process.env.IMPECCABLE_CACHE_ROOT = '   ';
+    assert.equal(getCachePath(cwd), path.join(cwd, '.impeccable', 'hook.cache.json'));
+  });
+
+  // Mirrors hookStateDir's slug formula: readable separator-mapped path plus
+  // an 8-hex sha256 disambiguator.
+  function slugFor(p) {
+    const resolved = path.resolve(p);
+    const readable = resolved.replace(/[:\\/.]/g, '-');
+    const digest = crypto.createHash('sha256').update(resolved).digest('hex').slice(0, 8);
+    return `${readable}-${digest}`;
+  }
+
+  it('relocates cache and pending under a per-project slug dir', () => {
+    process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
+    assert.equal(getCachePath(cwd), path.join(cacheRoot, slugFor(cwd), 'hook.cache.json'));
+    assert.equal(getPendingPath(cwd), path.join(cacheRoot, slugFor(cwd), 'hook.pending.json'));
+  });
+
+  it('slug maps separators, colons, and dots to hyphens, with a digest suffix', () => {
+    process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
+    const proj = path.join(cwd, 'my.app', 'v2');
+    const slugDir = path.basename(path.dirname(getCachePath(proj)));
+    assert.doesNotMatch(slugDir, /[:\\/.]/, 'no path-significant chars survive');
+    assert.match(slugDir, /my-app-v2-[0-9a-f]{8}$/, `readable slug + 8-hex digest (got ${slugDir})`);
+  });
+
+  it('distinct projects whose readable slugs collide get distinct state dirs', () => {
+    process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
+    const dotted = path.join(cwd, 'my.app');
+    const dashed = path.join(cwd, 'my-app');
+    // Readable part is identical for both...
+    assert.equal(
+      path.resolve(dotted).replace(/[:\\/.]/g, '-'),
+      path.resolve(dashed).replace(/[:\\/.]/g, '-'),
+    );
+    // ...but the digest keeps their hook state apart.
+    assert.notEqual(path.dirname(getCachePath(dotted)), path.dirname(getCachePath(dashed)));
+  });
+
+  it('trailing separators and relative segments slug to the same dir', () => {
+    process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
+    const canonical = getCachePath(cwd);
+    assert.equal(getCachePath(cwd + path.sep), canonical);
+    assert.equal(getCachePath(path.join(cwd, 'sub', '..')), canonical);
+  });
+
+  it('trims stray whitespace from the env value', () => {
+    process.env.IMPECCABLE_CACHE_ROOT = `  ${cacheRoot}  `;
+    assert.equal(getCachePath(cwd), path.join(cacheRoot, slugFor(cwd), 'hook.cache.json'));
+  });
+
+  it('persistCache degrades gracefully when the cache root is unusable', () => {
+    // Point the root at an existing FILE so mkdir of the slug dir must fail.
+    const blocker = path.join(cacheRoot, 'not-a-dir');
+    fs.writeFileSync(blocker, 'x');
+    process.env.IMPECCABLE_CACHE_ROOT = blocker;
+    const cache = readCache(cwd);
+    bumpEditCount(cache, 'sid-1', '/x/a.tsx');
+    assert.equal(persistCache(cwd, cache), false, 'returns false instead of throwing');
+    assert.equal(fs.existsSync(path.join(cwd, '.impeccable')), false);
+  });
+
+  it('config paths stay project-local even when the redirect is active', () => {
+    process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
+    assert.equal(getConfigPath(cwd), path.join(cwd, '.impeccable', 'config.json'));
+    assert.equal(getLocalConfigPath(cwd), path.join(cwd, '.impeccable', 'config.local.json'));
+  });
+
+  it('expands a leading ~/ against os.homedir()', () => {
+    // Property check without duplicating the expansion: the tilde form must
+    // resolve identically to the explicit homedir-joined form.
+    process.env.IMPECCABLE_CACHE_ROOT = path.join(os.homedir(), 'impeccable-state');
+    const explicit = getCachePath(cwd);
+    process.env.IMPECCABLE_CACHE_ROOT = '~/impeccable-state';
+    assert.equal(getCachePath(cwd), explicit);
+    assert.ok(explicit.startsWith(os.homedir()), 'anchored under the home dir');
+  });
+
+  it('persistCache round-trips through the redirect dir and leaves the project root clean', () => {
+    process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
+    const cache = readCache(cwd);
+    bumpEditCount(cache, 'sid-1', '/x/a.tsx');
+    assert.equal(persistCache(cwd, cache), true);
+
+    assert.equal(fs.existsSync(path.join(cwd, '.impeccable')), false, 'project root untouched');
+    assert.equal(fs.existsSync(path.join(cacheRoot, slugFor(cwd), 'hook.cache.json')), true);
+
+    const reloaded = readCache(cwd);
+    assert.equal(reloaded.sessions['sid-1'].files['/x/a.tsx'].editCount, 1);
+  });
+
+  function redirectEventFor(file, sessionId = 'redir-sid') {
+    return {
+      session_id: sessionId,
+      cwd,
+      hook_event_name: 'PostToolUse',
+      tool_name: 'Edit',
+      tool_input: { file_path: file },
+    };
+  }
+
+  function writeProjectFile(rel, body) {
+    const abs = path.join(cwd, rel);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, body);
+    return abs;
+  }
+
+  it('runHook end-to-end: findings persist under the redirect root, project root stays clean', async () => {
+    process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
+    const file = writeProjectFile('src/Card.tsx', 'noop');
+    const det = fakeDetector([finding('text-overflow', 1)]);
+
+    const first = await runHook({
+      stdinJson: JSON.stringify(redirectEventFor(file)),
+      env: {}, cwd, detector: det,
+    });
+    assert.match(first.stdout, /Design hook findings requiring review/);
+    assert.equal(fs.existsSync(path.join(cwd, '.impeccable')), false, 'no project-local footprint');
+    assert.equal(fs.existsSync(getCachePath(cwd)), true, 'cache lands under the redirect root');
+
+    // Session dedup still works across runs through the redirected cache.
+    const second = await runHook({
+      stdinJson: JSON.stringify(redirectEventFor(file)),
+      env: {}, cwd, detector: det,
+    });
+    assert.doesNotMatch(second.stdout, /Design hook findings requiring review/);
+    assert.match(second.stdout, /flagged earlier this session/);
+  });
+
+  it('runHook end-to-end: clean edits keep persisting editCount once redirected state exists', async () => {
+    process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
+    const file = writeProjectFile('src/Card.tsx', 'noop');
+
+    // Earn the footprint (in the redirect dir) with a real finding first.
+    await runHook({
+      stdinJson: JSON.stringify(redirectEventFor(file)),
+      env: {}, cwd, detector: fakeDetector([finding('text-overflow', 1)]),
+    });
+    assert.equal(fs.existsSync(getCachePath(cwd)), true);
+
+    // A clean follow-up edit must still persist its editCount bump — the
+    // opted-in check has to see the redirected cache, not just `<cwd>/.impeccable/`.
+    await runHook({
+      stdinJson: JSON.stringify(redirectEventFor(file)),
+      env: {}, cwd, detector: fakeDetector([]),
+    });
+    const cache = readCache(cwd);
+    assert.equal(cache.sessions['redir-sid'].files[file].editCount, 2);
+    assert.equal(fs.existsSync(path.join(cwd, '.impeccable')), false, 'project root still clean');
+  });
+
+  it('runHook end-to-end: a no-footprint clean edit writes nothing anywhere (gates hold under redirect)', async () => {
+    process.env.IMPECCABLE_CACHE_ROOT = cacheRoot;
+    const file = writeProjectFile('src/Card.tsx', 'noop');
+    const r = await runHook({
+      stdinJson: JSON.stringify(redirectEventFor(file)),
+      env: {}, cwd, detector: fakeDetector([]),
+    });
+    assert.match(r.stdout, /No deterministic design-quality issues found/);
+    assert.equal(fs.existsSync(path.join(cwd, '.impeccable')), false);
+    assert.equal(fs.existsSync(getCachePath(cwd)), false, 'redirect root also stays empty');
   });
 });
 
@@ -817,6 +1017,28 @@ describe('hook-admin.mjs', () => {
     assert.equal(fs.existsSync(getConfigPath(cwd)), false, 'a refused ignore must not write config');
   });
 
+  it('ignore-value refuses exact values for rules that cannot extract one', () => {
+    assert.throws(
+      () => runAdmin(['ignore-value', 'cramped-padding', 'padding: 4px 8px']),
+      /cramped-padding has no extractable ignore value.*ignore-value cramped-padding "\*" --file <glob>/,
+    );
+    assert.throws(
+      () => runAdmin(['ignore-value', 'side-tab', 'Inter', '--file', 'a.css']),
+      /side-tab has no extractable ignore value.*ignore-value side-tab "\*" --file <glob>/,
+    );
+    assert.equal(fs.existsSync(getConfigPath(cwd)), false, 'a refused ignore must not write config');
+
+    const out = runAdmin(['ignore-value', 'overused-font', 'Inter']);
+    assert.match(out, /Added overused-font=inter/);
+
+    runAdmin(['ignore-value', 'cramped-padding', '*', '--file', 'index.html']);
+    const shared = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8')).detector;
+    assert.equal(shared.ignoreValues.filter((e) => e.rule === 'cramped-padding').length, 1);
+    const entry = shared.ignoreValues.find((e) => e.rule === 'cramped-padding');
+    assert.equal(entry.value, '*');
+    assert.deepEqual(entry.files, ['index.html']);
+  });
+
   it('ignore-value --file requires a glob', () => {
     assert.throws(
       () => runAdmin(['ignore-value', 'side-tab', '*', '--file']),
@@ -946,6 +1168,11 @@ describe('hook-admin.mjs', () => {
     // impeccable entry must have been stripped, not accumulated.
     assert.equal(claude.split('skills/impeccable/scripts/hook.mjs').length - 1, 2);
     assert.match(claude, /"Stop"/);
+    const claudeManifest = JSON.parse(claude);
+    const impeccableGroup = claudeManifest.hooks.PostToolUse.find((group) =>
+      group.hooks?.some((hook) => hook.command?.includes('skills/impeccable/scripts/hook.mjs')));
+    assert.ok(impeccableGroup, 'repaired Claude settings should contain the Impeccable PostToolUse group');
+    assert.equal(impeccableGroup.matcher, 'Edit|Write');
 
     const codex = fs.readFileSync(path.join(cwd, '.codex', 'hooks.json'), 'utf-8');
     assert.match(codex, /\.agents\/skills\/impeccable\/scripts\/hook\.mjs/);
@@ -1084,6 +1311,109 @@ describe('hook-admin.mjs', () => {
     assert.equal(r.stdout, '');
     assert.equal(r.audit.skipped, 'config-ignore-file');
   });
+
+  it('reset prunes impeccable entries from an installed manifest, sibling entries survive', () => {
+    // Deliberately no .claude/skills/ folder in this fixture: the prune must
+    // not be gated on the skill install surviving (repairHookManifests()
+    // gates on it; a reset mid-uninstall most needs the prune to run anyway).
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({ hook: { enabled: false } }));
+    fs.mkdirSync(path.join(cwd, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(cwd, '.claude', 'settings.local.json'), JSON.stringify({
+      description: 'Impeccable design detector',
+      hooks: {
+        PostToolUse: [
+          { matcher: 'OtherTool', hooks: [{ type: 'command', command: 'node "./local-hook.mjs"' }] },
+          { matcher: 'Edit|Write', hooks: [{ type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' }] },
+        ],
+        Stop: [{ hooks: [{ type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' }] }],
+      },
+    }));
+
+    const out = runAdmin(['reset']);
+    assert.match(out, /Reset design hook config and cache \(removed:/);
+    assert.match(out, /Removed hook entries from: \.claude\./);
+
+    const claude = JSON.parse(fs.readFileSync(path.join(cwd, '.claude', 'settings.local.json'), 'utf-8'));
+    assert.equal(claude.hooks.PostToolUse.length, 1);
+    assert.match(claude.hooks.PostToolUse[0].hooks[0].command, /local-hook\.mjs/);
+    assert.equal(claude.hooks.Stop, undefined, 'the impeccable-only Stop array should be dropped entirely');
+  });
+
+  it('reset prunes all four provider manifests installed via `on`', () => {
+    for (const provider of ['.claude', '.agents', '.cursor', '.github']) {
+      fs.mkdirSync(path.join(cwd, provider, 'skills', 'impeccable', 'scripts'), { recursive: true });
+    }
+    runAdmin(['on']);
+    assert.match(fs.readFileSync(path.join(cwd, '.claude', 'settings.local.json'), 'utf-8'), /skills\/impeccable\/scripts\/hook\.mjs/);
+
+    const out = runAdmin(['reset']);
+    assert.match(out, /Reset design hook config and cache \(removed:/);
+    assert.match(out, /Removed hook entries from: \.claude, \.agents, \.cursor, \.github\./);
+
+    assert.equal(fs.existsSync(path.join(cwd, '.claude', 'settings.local.json')), false, 'nothing else was in the manifest, so it is removed entirely');
+    assert.equal(fs.existsSync(path.join(cwd, '.codex', 'hooks.json')), false);
+    assert.equal(fs.existsSync(path.join(cwd, '.cursor', 'hooks.json')), false);
+    assert.equal(fs.existsSync(path.join(cwd, '.github', 'hooks', 'impeccable.json')), false);
+  });
+
+  it('reset never touches the shared/committed manifest, only the local one', () => {
+    // .claude/settings.json is the team-shared, typically committed file;
+    // `on` only ever reads it and never writes it, so reset honors the same
+    // write-scope asymmetry.
+    const shared = JSON.stringify({
+      hooks: { PostToolUse: [{ matcher: 'Edit', hooks: [{ type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' }] }] },
+    });
+    fs.mkdirSync(path.join(cwd, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(cwd, '.claude', 'settings.json'), shared);
+    fs.writeFileSync(path.join(cwd, '.claude', 'settings.local.json'), shared);
+
+    const out = runAdmin(['reset']);
+
+    // No config existed, so the message carries only the prune half.
+    assert.match(out, /Removed hook entries from: \.claude\./);
+    assert.doesNotMatch(out, /Reset design hook config and cache/);
+    assert.equal(fs.readFileSync(path.join(cwd, '.claude', 'settings.json'), 'utf-8'), shared, 'shared settings.json must survive reset untouched');
+    assert.equal(fs.existsSync(path.join(cwd, '.claude', 'settings.local.json')), false, 'the local settings.local.json is still pruned');
+  });
+
+  it('reset with no manifests installed keeps the original config-only message', () => {
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({ hook: { enabled: false } }));
+
+    const out = runAdmin(['reset']);
+    assert.match(out, /Reset design hook config and cache/);
+    assert.doesNotMatch(out, /Removed hook entries from/);
+    assert.equal(fs.existsSync(getConfigPath(cwd)), false);
+  });
+
+  it('reset leaves a manifest with no impeccable marker byte-for-byte unchanged', () => {
+    fs.mkdirSync(path.join(cwd, '.claude'), { recursive: true });
+    const unrelated = JSON.stringify({
+      hooks: { PostToolUse: [{ matcher: 'OtherTool', hooks: [{ type: 'command', command: 'node "./unrelated.mjs"' }] }] },
+    });
+    fs.writeFileSync(path.join(cwd, '.claude', 'settings.local.json'), unrelated);
+
+    const out = runAdmin(['reset']);
+
+    assert.match(out, /Already at defaults/);
+    assert.equal(fs.readFileSync(path.join(cwd, '.claude', 'settings.local.json'), 'utf-8'), unrelated);
+  });
+
+  it('on, off, then reset leaves nothing armed: config gone and every manifest unwired (issue #512 repro)', () => {
+    fs.mkdirSync(path.join(cwd, '.claude', 'skills', 'impeccable', 'scripts'), { recursive: true });
+    runAdmin(['on']);
+    runAdmin(['off']);
+
+    runAdmin(['reset']);
+
+    // The harness only invokes the hook through a manifest entry, so with the
+    // config and every manifest gone the project cannot re-arm, whatever the
+    // config default says.
+    assert.equal(fs.existsSync(getConfigPath(cwd)), false);
+    assert.equal(fs.existsSync(getLocalConfigPath(cwd)), false);
+    assert.equal(fs.existsSync(path.join(cwd, '.claude', 'settings.local.json')), false);
+  });
 });
 
 describe('renderTemplate()', () => {
@@ -1093,59 +1423,96 @@ describe('renderTemplate()', () => {
     const text = renderTemplate(findings, '/x/Card.tsx', DEFAULT_CONFIG, { cwd: '/x' });
     assert.ok(text.startsWith(`${ENVELOPE_PREFIX} Design hook findings requiring review in Card.tsx (12 issue(s)):`));
     assert.match(text, /\.\.\. and 7 more \(see \/impeccable audit\)\./);
-    // Exactly 5 finding lines.
-    const lines = text.split('\n').filter((l) => l.startsWith('- '));
+    // Exactly 5 finding lines. The footer's triage bullets also start with
+    // "- ", so count only lines carrying a rule id.
+    const lines = text.split('\n').filter((l) => /^- L\d+ \[/.test(l));
     assert.equal(lines.length, 5);
     assert.ok(text.length <= DEFAULT_CONFIG.limits.maxChars);
   });
 
-  it('emits a directive footer (imperative + judgment clause + confirmed ignore guidance)', () => {
-    // Steers the model: imperative "handle", explicit context judgment
-    // before editing, and "acknowledge" so the user sees the resolution
-    // in the chat reply. See `directiveFooter()` in hook-lib.mjs for
-    // the rationale.
+  it('emits a directive footer (triage branches + executable self-serve ignore + honest provenance)', () => {
+    // Steers the model: imperative triage into fix / suppress-and-disclose /
+    // ask, a runnable hook-admin.mjs path for the self-served ignore, and the
+    // provenance rule for --reason. See `directiveFooter()` in hook-lib.mjs
+    // for the rationale.
     const text = renderTemplate(
       [finding('side-tab', 1, { name: 'X' })],
       '/x/Card.tsx', DEFAULT_CONFIG, { cwd: '/x' }
     );
-    assert.match(text, /Handle these before finalizing/);
-    assert.match(text, /fix findings that are real design problems/);
-    assert.match(text, /classify contextually intentional findings as false positives/);
-    assert.match(text, /Use context judgment before editing/);
-    assert.match(text, /not automatically a defect/);
+    assert.match(text, /Triage each finding/);
+    assert.match(text, /what you fixed, what you suppressed, and what you left standing/);
+    assert.match(text, /Real design problem: fix it\. Keep intentional design as designed\./);
+    assert.match(text, /Confident false positive or sanctioned exception/);
     assert.match(text, /literal or domain-appropriate motion/);
-    assert.match(text, /Do not change intentional design just to satisfy the hook/);
-    assert.match(text, /Suppress a finding only after the user explicitly confirms it is intentional/);
-    assert.match(text, /do not silence a real finding with an inline ignore comment/);
-    assert.match(text, /inline `impeccable-disable <rule>` comment only when the waiver must travel with a file/);
-    assert.match(text, /ignore-value \.\.\. --shared/);
-    assert.match(text, /ignore-rule overused-font --all-values/);
-    assert.match(text, /\/impeccable hooks ignore-file Card\.tsx/);
-    assert.match(text, /ignore-rule <id>/);
-    assert.match(text, /\/impeccable audit/);
+    assert.match(text, /persist the narrowest ignore yourself and disclose it/);
+    // quoteCommandArg quotes the hook-admin.mjs path per platform (single
+    // quotes on POSIX, double on Windows; #533), so match either close quote.
+    assert.match(text, /hook-admin\.mjs['"] ignore-value <rule> "<value>" --reason "<who decided: evidence>"/);
+    assert.match(text, /Write "user confirmed" in a reason only when the user did/);
+    assert.match(text, /Unsure: leave it as is and ask the user in one line/);
+    assert.match(text, /Self-serve ends at ignore-value/);
+    assert.match(text, /never add an ignore to push a blocked write through/);
+    assert.match(text, /Full suppression ladder: \/impeccable hooks/);
   });
 
-  it('shows the exact value-specific command for overused-font findings', () => {
+  it('renders the one-line short footer when opts.footer is "short"', () => {
+    const text = renderTemplate(
+      [finding('side-tab', 1, { name: 'X' })],
+      '/x/Card.tsx', DEFAULT_CONFIG, { cwd: '/x', footer: 'short' }
+    );
+    assert.match(text, /Triage per the session policy/);
+    // The short form names the tool without the absolute path; the runnable
+    // invocation lives only in the session's first (full) footer. The quoted
+    // path would render as `node '...'` on POSIX or `node "..."` on Windows,
+    // so reject both.
+    assert.match(text, /`hook-admin\.mjs ignore-value`/);
+    assert.doesNotMatch(text, /node ['"]/);
+    assert.match(text, /unsure, ask in one line/);
+    assert.doesNotMatch(text, /Triage each finding/);
+    assert.doesNotMatch(text, /Self-serve ends at ignore-value/);
+  });
+
+  it('dedupes rule descriptions within one emission, keeping per-line ignore hints', () => {
+    const desc = 'Long registry description that should appear once.';
+    const text = renderTemplate(
+      [
+        finding('overused-font', 2, { name: 'Overused font', description: desc, snippet: 'font-family: "Roboto"' }),
+        finding('overused-font', 9, { name: 'Overused font', description: desc, snippet: 'font-family: "Inter"' }),
+      ],
+      '/x/fonts.css', DEFAULT_CONFIG, { cwd: '/x' }
+    );
+    const occurrences = text.split(desc).length - 1;
+    assert.equal(occurrences, 1);
+    // The repeat keeps the rule id, name, and its own value-specific hint.
+    assert.match(text, /- L9 \[overused-font\] Overused font\. If intentional: `ignore-value overused-font Inter`\./);
+    assert.match(text, /`ignore-value overused-font Roboto`/);
+  });
+
+  it('shows the value-specific ignore hint for overused-font findings', () => {
     const text = renderTemplate(
       [finding('overused-font', 1, { name: 'Overused font', snippet: 'body { font-family: "Roboto", sans-serif; }' })],
       '/x/fonts.css', DEFAULT_CONFIG, { cwd: '/x' }
     );
-    assert.match(text, /\/impeccable hooks ignore-value overused-font Roboto --shared/);
-    assert.match(text, /ignore-rule overused-font --all-values/);
+    // The line carries just the rule/value pair; the runnable hook-admin.mjs
+    // prefix and the --reason contract are stated once in the footer.
+    assert.match(text, /If intentional: `ignore-value overused-font Roboto`\./);
   });
 
-  it('shows the exact value-specific command for bounce-easing findings', () => {
+  it('shows the value-specific ignore hint for bounce-easing findings', () => {
     const text = renderTemplate(
       [finding('bounce-easing', 1, { name: 'Bounce or elastic easing', snippet: 'animation: bounce-ball' })],
       '/x/main.css', DEFAULT_CONFIG, { cwd: '/x' }
     );
-    assert.match(text, /\/impeccable hooks ignore-value bounce-easing bounce-ball --shared/);
+    assert.match(text, /If intentional: `ignore-value bounce-easing bounce-ball`\./);
   });
 
   it('single-quotes a hostile font value so the suggestion cannot inject a shell command (#476)', () => {
-    // The suggested command comes straight from scanned file content. A
-    // double-quoted arg would leave $(...) live for whoever runs the
-    // suggestion; single quotes neutralize it.
+    // The suggested pair comes straight from scanned file content. A
+    // double-quoted arg would leave $(...) live for whoever pastes it into
+    // the footer's hook-admin.mjs command; single quotes neutralize it. The
+    // hint format is now the bare `ignore-value <rule> '<value>'` pair (the
+    // runnable command prefix, --shared/--reason contract live in the
+    // footer), but the value still goes through quoteCommandArg.
     const text = renderTemplate(
       [finding('overused-font', 1, {
         name: 'Overused font',
@@ -1153,29 +1520,55 @@ describe('renderTemplate()', () => {
       })],
       '/x/fonts.css', DEFAULT_CONFIG, { cwd: '/x' }
     );
-    assert.match(text, /ignore-value overused-font '\$\(touch pwned\)' --shared/);
+    assert.match(text, /ignore-value overused-font '\$\(touch pwned\)'/);
     assert.doesNotMatch(text, /ignore-value overused-font "\$\(touch pwned\)"/);
   });
 
-  it('quotes the --file path per platform: single quotes on POSIX, double quotes on Windows (#533)', () => {
-    // The suggested command is run on the same machine the hook fired on.
-    // POSIX needs single quotes so $(...) in a filename cannot execute; Windows
-    // cmd.exe treats single quotes as literal, so a path with spaces must stay
-    // double-quoted or the ignore scope is split at the space.
+  it('quotes a hint value per platform: single quotes on POSIX, double quotes on Windows (#533)', () => {
+    // #533 originally targeted the footer's concrete `--file <path>`
+    // suggestion; directiveFooter() now carries only literal placeholders
+    // (`--file <path>`), so that surface is gone. The quoting-sensitive
+    // surface that remains user-visible is the per-finding ignore hint,
+    // whose value comes straight from scanned file content and is meant to
+    // be pasted into the footer's command on this same machine. POSIX needs
+    // single quotes so $(...) cannot execute; Windows cmd.exe treats single
+    // quotes as literal, so a value with spaces must stay double-quoted or
+    // the ignore scope is split at the space.
     const original = process.platform;
     const renderFor = (platform) => {
       Object.defineProperty(process, 'platform', { value: platform, configurable: true });
       try {
         return renderTemplate(
-          [finding('side-tab', 1, { name: 'Side tab' })],
-          '/x/My Components/Card.tsx', DEFAULT_CONFIG, { cwd: '/x' }
+          [finding('overused-font', 1, {
+            name: 'Overused font',
+            snippet: 'h1 { font-family: "Space Grotesk Var", sans-serif; }',
+          })],
+          '/x/fonts.css', DEFAULT_CONFIG, { cwd: '/x' }
         );
       } finally {
         Object.defineProperty(process, 'platform', { value: original, configurable: true });
       }
     };
-    assert.match(renderFor('linux'), /--file 'My Components\/Card\.tsx'/);
-    assert.match(renderFor('win32'), /--file "My Components\/Card\.tsx"/);
+    assert.match(renderFor('linux'), /ignore-value overused-font 'Space Grotesk Var'/);
+    assert.match(renderFor('win32'), /ignore-value overused-font "Space Grotesk Var"/);
+  });
+
+  it('keeps the policy footer when reserveChars presses against the 500-char floor', () => {
+    // Bugbot on PR #508: the note reservation used to be subtracted after
+    // the 500-char floor, so the clamp could run at ~366 chars, below the
+    // budget clampLastLine assumes safe, and the hard tail slice cut the
+    // policy footer. The reserve now comes off before the floor; when the
+    // floor wins, the note defers instead.
+    const config = { ...DEFAULT_CONFIG, limits: { ...DEFAULT_CONFIG.limits, maxChars: 500 } };
+    const longPath = `/x/${'deeply-nested/'.repeat(6)}Component.tsx`;
+    const text = renderTemplate(
+      Array.from({ length: 6 }, (_, i) =>
+        finding('side-tab', i + 1, { name: 'Side tab', description: 'Colored side border.' })),
+      longPath, config, { cwd: '/x', reserveChars: 134 }
+    );
+    assert.ok(text.length <= 500, `stays inside the floored budget (got ${text.length})`);
+    assert.match(text, /unsure, ask in one line\.$/);
+    assert.doesNotMatch(text, /…$/);
   });
 
   it('drops the L<line> prefix when line is 0', () => {
@@ -1204,6 +1597,32 @@ describe('renderTemplate()', () => {
       { ...DEFAULT_CONFIG, limits: { maxFindings: 5, maxChars: 500 } },
       { cwd: '/x' });
     assert.ok(text.length <= 500);
+  });
+
+  it('keeps a policy footer when the clamp cuts down to one finding line', () => {
+    // At the minimum budget the full footer cannot fit beside a long finding,
+    // so the clamp clips the finding line and downgrades to the short policy
+    // instead of slicing the footer off the tail.
+    const huge = [finding('side-tab', 1, { name: 'X', description: 'y'.repeat(2000) })];
+    const text = renderTemplate(huge, '/x/a.tsx',
+      { ...DEFAULT_CONFIG, limits: { maxFindings: 5, maxChars: 500 } },
+      { cwd: '/x' });
+    assert.ok(text.length <= 500);
+    assert.match(text, /\[side-tab\]/, 'the finding is still identified');
+    assert.match(text, /Triage per the session policy/, 'a clamped emission still carries the policy');
+  });
+
+  it('keeps findings that fit beside the short policy instead of dropping them for the full one', () => {
+    const findings = [1, 2, 3].map((line) =>
+      finding('side-tab', line, { name: 'X', description: 'short issue' }));
+    const text = renderTemplate(findings, '/x/a.tsx',
+      { ...DEFAULT_CONFIG, limits: { maxFindings: 5, maxChars: 500 } },
+      { cwd: '/x' });
+    assert.ok(text.length <= 500);
+    assert.match(text, /- L1 /);
+    assert.match(text, /- L2 /);
+    assert.match(text, /- L3 /, 'all findings survive; the clamp must not drop lines chasing the full policy');
+    assert.match(text, /Triage per the session policy/);
   });
 });
 
@@ -1270,9 +1689,30 @@ describe('writeAuditLog()', () => {
 });
 
 describe('payload()', () => {
-  it('produces hookSpecificOutput for Claude/Codex', () => {
+  it('produces hookSpecificOutput for Claude', () => {
     const obj = JSON.parse(payload('hello'));
     assert.equal(obj.hookSpecificOutput.hookEventName, 'PostToolUse');
+    assert.equal(obj.hookSpecificOutput.additionalContext, 'hello');
+  });
+
+  it('keeps Codex PostToolUse on the Claude-compatible context channel', () => {
+    const obj = JSON.parse(payload('hello', 'PostToolUse', 'codex'));
+    assert.equal(obj.hookSpecificOutput.hookEventName, 'PostToolUse');
+    assert.equal(obj.hookSpecificOutput.additionalContext, 'hello');
+  });
+
+  it('produces a blocking decision for Codex Stop', () => {
+    const obj = JSON.parse(payload('hello', 'Stop', 'codex'));
+    assert.deepEqual(obj, { decision: 'block', reason: 'hello' });
+  });
+
+  it('emits nothing for a Codex Stop with no findings text', () => {
+    assert.equal(payload('', 'Stop', 'codex'), '');
+  });
+
+  it('keeps Claude Stop on the additional-context channel', () => {
+    const obj = JSON.parse(payload('hello', 'Stop', 'claude'));
+    assert.equal(obj.hookSpecificOutput.hookEventName, 'Stop');
     assert.equal(obj.hookSpecificOutput.additionalContext, 'hello');
   });
 
@@ -1396,6 +1836,32 @@ rounded:
     assert.ok(out.additionalContext.includes(ENVELOPE_PREFIX));
     assert.match(out.additionalContext, /Design hook findings requiring review/);
     assert.equal(out.hookSpecificOutput, undefined);
+  });
+
+  it('handles a Grok Build search_replace event and does not classify it as github (#646)', async () => {
+    const file = writeFixture('src/Card.tsx', 'noop');
+    const det = fakeDetector([finding('gradient-text', 1, { name: 'Gradient text' })]);
+    const grokEvent = {
+      hookEventName: 'post_tool_use',
+      sessionId: 'grok-1',
+      cwd,
+      workspaceRoot: `${cwd}/`,
+      toolName: 'search_replace',
+      toolInput: { file_path: file, old_string: 'a', new_string: 'b' },
+      toolResult: { type: 'SearchReplace' },
+    };
+
+    const r = await runHook({ stdinJson: JSON.stringify(grokEvent), env: {}, cwd, detector: det });
+    assert.equal(r.exitCode, 0);
+    assert.equal(r.audit.harness, 'grok');
+    assert.notEqual(r.audit.harness, 'github');
+    assert.equal(r.audit.emitted, true);
+    assert.equal(r.audit.skipped, undefined);
+    const out = JSON.parse(r.stdout);
+    assert.match(out.hookSpecificOutput.additionalContext, /gradient-text/);
+    const cache = readCache(cwd);
+    assert.ok(cache.sessions['grok-1'].files[file], 'PostToolUse must mark the file for Stop');
+    assert.deepEqual(cache.sessions['grok-1'].files[file].findings || [], []);
   });
 
   it('handles a GitHub Copilot apply_patch event end-to-end (interactive/cloud path)', async () => {
@@ -1609,7 +2075,7 @@ rounded:
     });
     assert.match(withDesign.stdout, /Design hook findings requiring review/);
     assert.match(withDesign.stdout, /design-system-font/);
-    assert.match(withDesign.stdout, /ignore-value design-system-font Poppins --shared/);
+    assert.match(withDesign.stdout, /If intentional: `ignore-value design-system-font Poppins`/);
   });
 
   it('respects detector.designSystem.enabled=false', async () => {
@@ -2193,6 +2659,116 @@ describe('runHook() — the session cache tracks the current scan', () => {
   });
 });
 
+describe('runHook() — session-scoped notices', () => {
+  let cwd;
+  beforeEach(() => {
+    cwd = mkTmp();
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+  });
+  afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+  const event = (file, sessionId = 'sid-1') => JSON.stringify({
+    session_id: sessionId, cwd, hook_event_name: 'PostToolUse',
+    tool_name: 'Edit', tool_input: { file_path: file },
+  });
+
+  it('emits the full directive footer once per session, then the short reminder', async () => {
+    const a = path.join(cwd, 'a.css');
+    const b = path.join(cwd, 'b.css');
+    fs.writeFileSync(a, 'noop');
+    fs.writeFileSync(b, 'noop');
+    const det = fakeDetector([finding('tiny-text', 1, { name: 'Tiny text' })]);
+
+    const r1 = await runHook({ stdinJson: event(a), env: {}, cwd, detector: det });
+    assert.match(r1.stdout, /Triage each finding/, 'first fresh emission carries the full policy');
+
+    const r2 = await runHook({ stdinJson: event(b), env: {}, cwd, detector: det });
+    assert.match(r2.stdout, /Triage per the session policy/);
+    assert.doesNotMatch(r2.stdout, /Triage each finding/, 'repeat emissions carry the short reminder');
+
+    // A new session pays the full policy again.
+    const r3 = await runHook({ stdinJson: event(a, 'sid-2'), env: {}, cwd, detector: det });
+    assert.match(r3.stdout, /Triage each finding/);
+  });
+
+  it('mentions the DESIGN.md staleness note once per session', async () => {
+    const a = path.join(cwd, 'a.css');
+    const b = path.join(cwd, 'b.css');
+    fs.writeFileSync(a, 'noop');
+    fs.writeFileSync(b, 'noop');
+    const det = {
+      ...fakeDetector([finding('tiny-text', 1, { name: 'Tiny text' })]),
+      loadDesignSystemForCwd: () => ({ present: true, mdNewerThanJson: true }),
+    };
+
+    const r1 = await runHook({ stdinJson: event(a), env: {}, cwd, detector: det });
+    assert.match(r1.stdout, /DESIGN\.md is newer than \.impeccable\/design\.json/);
+
+    const r2 = await runHook({ stdinJson: event(b), env: {}, cwd, detector: det });
+    assert.ok(r2.audit.emitted, 'second file still emits findings');
+    assert.doesNotMatch(r2.stdout, /DESIGN\.md is newer/, 'the staleness note does not repeat within a session');
+  });
+
+  it('delivers the staleness note inside the budget on a full first emission', async () => {
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
+      hook: { limits: { maxChars: 500 } },
+    }));
+    const a = path.join(cwd, 'a.css');
+    const b = path.join(cwd, 'b.css');
+    fs.writeFileSync(a, 'noop');
+    fs.writeFileSync(b, 'noop');
+    const det = {
+      ...fakeDetector([finding('tiny-text', 1, { name: 'Tiny text', description: 'y'.repeat(600) })]),
+      loadDesignSystemForCwd: () => ({ present: true, mdNewerThanJson: true }),
+    };
+
+    // A finding this long would fill the whole budget; the renderer must
+    // reserve room so the note still lands without busting maxChars.
+    const r1 = await runHook({ stdinJson: event(a), env: {}, cwd, detector: det });
+    const ctx1 = JSON.parse(r1.stdout).hookSpecificOutput.additionalContext;
+    assert.ok(ctx1.length <= 500, `final emission honors maxChars (got ${ctx1.length})`);
+    assert.match(ctx1, /DESIGN\.md is newer/, 'the note is delivered on the first emission, not deferred past it');
+
+    const r2 = await runHook({ stdinJson: event(b), env: {}, cwd, detector: det });
+    const ctx2 = JSON.parse(r2.stdout).hookSpecificOutput.additionalContext;
+    assert.doesNotMatch(ctx2, /DESIGN\.md is newer/, 'one mention per session');
+  });
+
+  it('keeps the full-footer flag unspent when the clamp downgrades the footer', async () => {
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
+      hook: { limits: { maxChars: 500 } },
+    }));
+    const a = path.join(cwd, 'a.css');
+    fs.writeFileSync(a, 'noop');
+    const det = fakeDetector([finding('tiny-text', 1, { name: 'Tiny text', description: 'y'.repeat(600) })]);
+
+    // 500 chars cannot hold the full policy, so the emission carries the
+    // short form. The session must not be marked as having seen the full
+    // footer it never received.
+    const r1 = await runHook({ stdinJson: event(a), env: {}, cwd, detector: det });
+    assert.match(r1.stdout, /Triage per the session policy/);
+    assert.doesNotMatch(r1.stdout, /Triage each finding/);
+    const cache = readCache(cwd);
+    assert.ok(!cache.sessions['sid-1'].footerShown, 'a downgraded footer does not spend the session flag');
+  });
+
+  it('commits the footer flag only for the complete full policy, not its opening words', () => {
+    const cache = { version: 1, sessions: {} };
+    const full = renderTemplate(
+      [finding('tiny-text', 1, { name: 'Tiny text' })],
+      '/x/a.css', DEFAULT_CONFIG, { cwd: '/x' },
+    );
+
+    // A tail truncation can spare "Triage each finding" while cutting the
+    // policy body. That must not count as delivered.
+    commitFooterShown(cache, 'sid-1', full.slice(0, full.length - 40));
+    assert.ok(!cache.sessions['sid-1']?.footerShown, 'a truncated policy must not spend the flag');
+
+    commitFooterShown(cache, 'sid-1', full);
+    assert.ok(cache.sessions['sid-1'].footerShown, 'the intact policy commits the flag');
+  });
+});
+
 describe('runHook() — clean-ack noise', () => {
   let cwd;
   beforeEach(() => {
@@ -2507,8 +3083,18 @@ describe('resolveTargetFiles()', () => {
 describe('resolveHarness() / normalizeHookEvent()', () => {
   it('routes explicit env and Cursor conversation_id to cursor harness', () => {
     assert.equal(resolveHarness({ IMPECCABLE_HOOK_HARNESS: 'cursor' }), 'cursor');
+    assert.equal(resolveHarness({ IMPECCABLE_HOOK_HARNESS: 'codex' }), 'codex');
     assert.equal(resolveHarness({}, { conversation_id: 'c1' }), 'cursor');
+    assert.equal(resolveHarness({}, { turn_id: 'turn-1' }), 'codex');
     assert.equal(resolveHarness({}), 'claude');
+  });
+
+  it('prefers explicit harness and Cursor detection over the Codex turn_id', () => {
+    assert.equal(resolveHarness({ IMPECCABLE_HOOK_HARNESS: 'claude' }, { turn_id: 'turn-1' }), 'claude');
+    assert.equal(resolveHarness({ IMPECCABLE_HOOK_HARNESS: 'grok' }, { turn_id: 'turn-1' }), 'grok');
+    assert.equal(resolveHarness({}, { conversation_id: 'c1', turn_id: 'turn-1' }), 'cursor');
+    assert.equal(resolveHarness({}, { turn_id: '' }), 'claude');
+    assert.equal(resolveHarness({}, { turn_id: 42 }), 'claude');
   });
 
   it('maps Cursor postToolUse Write path into file_path + cwd', () => {
@@ -2529,6 +3115,46 @@ describe('resolveHarness() / normalizeHookEvent()', () => {
     assert.equal(resolveHarness({ IMPECCABLE_HOOK_HARNESS: 'github' }), 'github');
     // A Claude/Codex event (tool_name/tool_input) must not be mistaken for github.
     assert.equal(resolveHarness({}, { tool_name: 'Edit', tool_input: { file_path: 'a.tsx' } }), 'claude');
+  });
+
+  it('routes a Grok Build envelope (toolName/toolInput, no toolArgs) to grok, not github (#646)', () => {
+    const post = {
+      hookEventName: 'post_tool_use',
+      sessionId: 's1',
+      cwd: '/proj',
+      toolName: 'search_replace',
+      toolInput: { file_path: '/proj/src/styles.css' },
+    };
+    const stop = {
+      hookEventName: 'stop',
+      sessionId: 's1',
+      cwd: '/proj',
+      reason: 'end_turn',
+      stopHookActive: false,
+    };
+    assert.equal(resolveHarness({}, post), 'grok');
+    assert.equal(resolveHarness({}, stop), 'grok');
+    assert.equal(resolveHarness({ IMPECCABLE_HOOK_HARNESS: 'grok' }), 'grok');
+    assert.equal(isStopEvent(stop), true);
+    assert.equal(isStopEvent({ hook_event_name: 'Stop' }), true);
+    assert.equal(isStopEvent(post), false);
+  });
+
+  it('normalizes a Grok search_replace event onto tool_input.file_path + session_id', () => {
+    const normalized = normalizeHookEvent({
+      hookEventName: 'post_tool_use',
+      sessionId: 'g1',
+      cwd: '/proj',
+      workspaceRoot: '/proj/',
+      toolName: 'search_replace',
+      toolInput: { file_path: '/proj/src/styles.css', old_string: 'a', new_string: 'b' },
+      toolResult: { type: 'SearchReplace' },
+    }, '/fallback', 'grok');
+    assert.equal(normalized.session_id, 'g1');
+    assert.equal(normalized.cwd, '/proj');
+    assert.equal(normalized.tool_name, 'search_replace');
+    assert.equal(normalized.tool_input.file_path, '/proj/src/styles.css');
+    assert.deepEqual(resolveTargetFiles(normalized, '/proj'), ['/proj/src/styles.css']);
   });
 
   it('normalizes a GitHub edit event: JSON-string toolArgs.path -> tool_input.file_path', () => {
@@ -2998,12 +3624,79 @@ describe('Cursor hook scripts', () => {
     assert.equal(payload.permission, 'deny');
     assert.match(payload.user_message, /blocked this write/);
     assert.match(payload.user_message, /side-tab/);
-    assert.match(payload.agent_message, /Handle these before finalizing/);
+    assert.match(payload.agent_message, /Triage each finding/);
+    assert.match(payload.agent_message, /Full suppression ladder/, 'the deny message carries the complete policy, not a truncated head');
+    assert.ok(payload.agent_message.length <= 4000, 'the deny message respects the Cursor cap');
 
     const entries = fs.readFileSync(logPath, 'utf-8').trim().split('\n').map((line) => JSON.parse(line));
     assert.equal(entries[0].event, 'preToolUse');
     assert.equal(entries[0].blocked, true);
     assert.equal(entries[0].blockedFindings, 1);
+  });
+
+  it('preToolUse delivers the stale-sidecar note within a 500-char budget (PR #508)', () => {
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
+      hook: { limits: { maxChars: 500 } },
+    }));
+
+    const designMd = path.join(cwd, 'DESIGN.md');
+    const sidecarPath = path.join(cwd, '.impeccable', 'design.json');
+    fs.writeFileSync(designMd, `---
+typography:
+  body:
+    fontFamily: "IBM Plex Sans, Arial, sans-serif"
+colors:
+  ink: "#241f1a"
+rounded:
+  "2xl": "80px"
+---
+
+# Design System
+`);
+    fs.writeFileSync(sidecarPath, JSON.stringify({
+      extensions: {
+        colorMeta: {
+          accent: {
+            canonical: '#b8422e',
+            tonalRamp: ['#d55a42'],
+          },
+        },
+        roundedMeta: {
+          lg: { canonical: '24px' },
+        },
+      },
+    }));
+    const past = new Date(Date.now() - 10000);
+    fs.utimesSync(sidecarPath, past, past);
+
+    const filePath = path.join(cwd, 'src/Card.html');
+    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-before-edit.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'preToolUse',
+        session_id: 'sid-508',
+        cwd,
+        tool_name: 'Write',
+        tool_input: {
+          file_path: filePath,
+          content: `
+            <style>
+              .card { border-left: 4px solid #7c3aed; border-radius: 16px; }
+            </style>
+            <div class="card">Hello</div>
+          `,
+        },
+      }),
+      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
+      encoding: 'utf-8',
+    });
+
+    const payload = JSON.parse(out);
+    assert.equal(payload.permission, 'deny');
+    assert.match(payload.agent_message, /DESIGN\.md is newer/);
+    assert.ok(payload.agent_message.length <= 500, `deny message length ${payload.agent_message.length} exceeds 500-char budget`);
+    assert.equal(readCache(cwd).sessions['sid-508'].designNoteShown, true);
   });
 
   it('preToolUse allows writes with findings when the project platform is native', () => {
@@ -3407,6 +4100,7 @@ describe('runHook() — per-edit tiering', () => {
     assert.equal(perEditTieringActive({ perEditRules: 'all' }, 'claude'), false);
     assert.equal(perEditTieringActive({ perEditRules: 'immediate' }, 'github'), false);
     assert.equal(perEditTieringActive({ perEditRules: 'immediate' }, 'cursor'), false);
+    assert.equal(perEditTieringActive({ perEditRules: 'immediate' }, 'grok'), true);
     assert.equal(perEditTieringActive({}, 'claude'), true);
   });
 
@@ -3544,6 +4238,71 @@ describe('runStopHook()', () => {
     assert.match(out.hookSpecificOutput.additionalContext, /side-tab/);
     assert.doesNotMatch(out.hookSpecificOutput.additionalContext, /dark-glow/);
     assert.equal(stop.emission.kind, 'stop-deep-pass');
+  });
+
+  it('emits Codex Stop findings as a blocking decision', async () => {
+    const sid = 'stop-codex';
+    write('package.json', '{}');
+    const file = write('src/Card.tsx', 'noop');
+    const det = fakeDetector([finding('marketing-buzzword', 3)]);
+    const editEventCodex = { ...editEvent(file, sid), turn_id: 'turn-1' };
+    const stopEventCodex = { ...stopEvent(sid), turn_id: 'turn-1' };
+
+    const edit = await runHook({ stdinJson: JSON.stringify(editEventCodex), env: {}, cwd, detector: det });
+    assert.equal(edit.audit.harness, 'codex');
+    assert.equal(edit.audit.deferred, 1);
+    const editOut = JSON.parse(edit.stdout);
+    assert.ok(editOut.hookSpecificOutput, 'Codex per-edit output stays on the PostToolUse context channel');
+    assert.equal(editOut.decision, undefined);
+
+    const stop = await runStopHook({ stdinJson: JSON.stringify(stopEventCodex), env: {}, cwd, detector: det });
+    assert.equal(stop.exitCode, 0);
+    assert.equal(stop.audit.harness, 'codex');
+    assert.equal(stop.audit.emitted, true, JSON.stringify(stop.audit));
+    const out = JSON.parse(stop.stdout);
+    assert.equal(out.decision, 'block');
+    assert.match(out.reason, /marketing-buzzword/);
+    assert.ok(out.reason.trim().length > 0, 'Codex ignores a block whose reason trims empty');
+    assert.equal(out.hookSpecificOutput, undefined);
+  });
+
+  it('skips the Codex Stop re-fire after a block instead of blocking again', async () => {
+    const sid = 'stop-codex-refire';
+    write('package.json', '{}');
+    const file = write('src/Card.tsx', 'noop');
+    const det = fakeDetector([finding('marketing-buzzword', 3)]);
+
+    await runHook({
+      stdinJson: JSON.stringify({ ...editEvent(file, sid), turn_id: 'turn-1' }),
+      env: {},
+      cwd,
+      detector: det,
+    });
+    const refire = { ...stopEvent(sid), turn_id: 'turn-1', stop_hook_active: true };
+    const stop = await runStopHook({ stdinJson: JSON.stringify(refire), env: {}, cwd, detector: det });
+    assert.equal(stop.exitCode, 0);
+    assert.equal(stop.stdout, '');
+    assert.equal(stop.audit.skipped, 'stop-hook-active');
+  });
+
+  it('keeps a policy footer when the grouped Stop render is clamped to the minimum budget', async () => {
+    const sid = 'stop-clamp';
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({ hook: { limits: { maxChars: 500 } } }));
+    const a = write('src/A.tsx', 'noop');
+    const b = write('src/B.tsx', 'noop');
+    const det = fakeDetector([finding('side-tab', 1, { name: 'X', description: 'y'.repeat(2000) })]);
+
+    // Two touched files with deferred findings so the Stop pass groups them.
+    await runHook({ stdinJson: JSON.stringify(editEvent(a, sid)), env: {}, cwd, detector: det });
+    await runHook({ stdinJson: JSON.stringify(editEvent(b, sid)), env: {}, cwd, detector: det });
+
+    const stop = await runStopHook({ stdinJson: JSON.stringify(stopEvent(sid)), env: {}, cwd, detector: det });
+    assert.equal(stop.audit.emitted, true);
+    const ctx = JSON.parse(stop.stdout).hookSpecificOutput.additionalContext;
+    assert.ok(ctx.length <= 500, `grouped emission honors maxChars (got ${ctx.length})`);
+    assert.match(ctx, /Triage per the session policy/, 'a clamped grouped emission still carries the policy');
+    assert.match(ctx, /\[side-tab\]/, 'a clamped grouped emission keeps finding detail, not just a file header');
   });
 
   it('exits silent and fast when the session touched no UI files', async () => {
@@ -3687,5 +4446,192 @@ describe('runStopHook()', () => {
     });
     assert.equal(reentrant.audit.reentrant, true);
     assert.equal(reentrant.stdout, '');
+  });
+
+  function grokEditEvent(file, sessionId) {
+    return {
+      hookEventName: 'post_tool_use',
+      sessionId,
+      cwd,
+      workspaceRoot: `${cwd}/`,
+      toolName: 'search_replace',
+      toolInput: { file_path: file, old_string: 'a', new_string: 'b' },
+      toolResult: { type: 'SearchReplace' },
+    };
+  }
+
+  function grokStopEvent(sessionId, reason = 'end_turn') {
+    return {
+      hookEventName: 'stop',
+      sessionId,
+      cwd,
+      workspaceRoot: `${cwd}/`,
+      reason,
+      stopHookActive: false,
+    };
+  }
+
+  it('Grok Stop end_turn runs the deep pass over files warmed by camelCase PostToolUse (#646)', async () => {
+    const sid = 'grok-stop-sid';
+    const file = write('src/Card.tsx', 'noop');
+    const det = fakeDetector([
+      finding('dark-glow', 5),
+      finding('marketing-buzzword', 3),
+    ]);
+
+    const edit = await runHook({ stdinJson: JSON.stringify(grokEditEvent(file, sid)), env: {}, cwd, detector: det });
+    assert.equal(edit.audit.harness, 'grok');
+    assert.match(edit.stdout, /dark-glow/);
+    assert.doesNotMatch(edit.stdout, /marketing-buzzword/);
+
+    const stop = await runStopHook({ stdinJson: JSON.stringify(grokStopEvent(sid)), env: {}, cwd, detector: det });
+    assert.equal(stop.exitCode, 0);
+    assert.equal(stop.audit.harness, 'grok');
+    assert.equal(stop.audit.session, sid);
+    assert.equal(stop.audit.emitted, true);
+    const out = JSON.parse(stop.stdout);
+    assert.equal(out.hookSpecificOutput.hookEventName, 'Stop');
+    // Grok discarded the per-edit stdout, so Stop must still carry the
+    // immediate-tier finding as well as the deferred remainder.
+    assert.match(out.hookSpecificOutput.additionalContext, /dark-glow/);
+    assert.match(out.hookSpecificOutput.additionalContext, /marketing-buzzword/);
+  });
+
+  it('Grok Stop re-emits a finding that was fixed then reintroduced', async () => {
+    // Grok PostToolUse only touches the file. Stop is the cache writer.
+    // A clean Stop must replace the remembered set with the empty scan so
+    // the same finding is not deduped away when it comes back.
+    const sid = 'grok-stop-reintro';
+    const file = write('src/Card.tsx', 'noop');
+    let current = [finding('dark-glow', 5)];
+    const det = {
+      set(next) { current = next; },
+      detectText: () => current.slice(),
+      detectHtml: () => current.slice(),
+    };
+
+    await runHook({ stdinJson: JSON.stringify(grokEditEvent(file, sid)), env: {}, cwd, detector: det });
+    const first = await runStopHook({ stdinJson: JSON.stringify(grokStopEvent(sid)), env: {}, cwd, detector: det });
+    assert.match(first.stdout, /dark-glow/);
+
+    det.set([]);
+    const clean = await runStopHook({ stdinJson: JSON.stringify(grokStopEvent(sid)), env: {}, cwd, detector: det });
+    assert.equal(clean.stdout, '');
+    assert.equal(clean.audit.skipped, 'stop-clean');
+    assert.deepEqual(readCache(cwd).sessions[sid].files[file].findings, []);
+
+    det.set([finding('dark-glow', 5)]);
+    const again = await runStopHook({ stdinJson: JSON.stringify(grokStopEvent(sid)), env: {}, cwd, detector: det });
+    assert.equal(again.audit.emitted, true);
+    assert.match(again.stdout, /dark-glow/, 'a finding fixed then reintroduced must fire at Stop again');
+  });
+
+  it('a Stop detector failure leaves the remembered set alone', async () => {
+    // A throw yields an empty scan; recording that as truth would wipe the
+    // remembered keys and make the next successful Stop re-emit everything.
+    const sid = 'grok-stop-throw';
+    const file = write('src/Card.tsx', 'noop');
+    let fail = false;
+    const scan = () => {
+      if (fail) throw new Error('detector crashed');
+      return [finding('dark-glow', 5)];
+    };
+    const det = { detectText: scan, detectHtml: scan };
+
+    await runHook({ stdinJson: JSON.stringify(grokEditEvent(file, sid)), env: {}, cwd, detector: det });
+    const first = await runStopHook({ stdinJson: JSON.stringify(grokStopEvent(sid)), env: {}, cwd, detector: det });
+    assert.match(first.stdout, /dark-glow/);
+    const remembered = readCache(cwd).sessions[sid].files[file].findings;
+    assert.equal(remembered.length, 1);
+
+    fail = true;
+    const broken = await runStopHook({ stdinJson: JSON.stringify(grokStopEvent(sid)), env: {}, cwd, detector: det });
+    assert.equal(broken.stdout, '');
+    assert.equal(broken.audit.skipped, 'stop-clean');
+    assert.deepEqual(readCache(cwd).sessions[sid].files[file].findings, remembered);
+
+    fail = false;
+    const recovered = await runStopHook({ stdinJson: JSON.stringify(grokStopEvent(sid)), env: {}, cwd, detector: det });
+    assert.equal(recovered.stdout, '', 'an unchanged finding must stay deduped after a detector failure');
+    assert.equal(recovered.audit.skipped, 'stop-clean');
+  });
+
+  it('Stop remembers the live scan, not only newly emitted findings', async () => {
+    // Per-edit already remembered dark-glow. Stop then emits the deferred
+    // remainder. The cache must keep both keys so a second Stop stays silent
+    // instead of re-firing the immediate-tier finding.
+    const sid = 'stop-sync-full-set';
+    const file = write('src/Card.tsx', 'noop');
+    const det = fakeDetector([
+      finding('dark-glow', 5),
+      finding('marketing-buzzword', 3),
+    ]);
+
+    await runHook({ stdinJson: JSON.stringify(editEvent(file, sid)), env: {}, cwd, detector: det });
+    const first = await runStopHook({ stdinJson: JSON.stringify(stopEvent(sid)), env: {}, cwd, detector: det });
+    assert.match(first.stdout, /marketing-buzzword/);
+    assert.doesNotMatch(first.stdout, /dark-glow/);
+
+    const second = await runStopHook({ stdinJson: JSON.stringify(stopEvent(sid)), env: {}, cwd, detector: det });
+    assert.equal(second.stdout, '');
+    assert.equal(second.audit.skipped, 'stop-clean');
+  });
+
+  it('Grok Stop shutdown is observe-only and does not emit a second deep pass (#646)', async () => {
+    const sid = 'grok-shutdown';
+    const file = write('src/Card.tsx', 'noop');
+    const det = fakeDetector([finding('dark-glow', 5)]);
+    await runHook({ stdinJson: JSON.stringify(grokEditEvent(file, sid)), env: {}, cwd, detector: det });
+
+    const stop = await runStopHook({
+      stdinJson: JSON.stringify(grokStopEvent(sid, 'shutdown')),
+      env: {}, cwd, detector: det,
+    });
+    assert.equal(stop.exitCode, 0);
+    assert.equal(stop.stdout, '');
+    assert.equal(stop.audit.skipped, 'stop-reason');
+    assert.equal(stop.audit.reason, 'shutdown');
+  });
+
+  it('Grok stopHookActive:true exits silent after camelCase normalize (#646)', async () => {
+    const sid = 'grok-active';
+    const file = write('src/Card.tsx', 'noop');
+    const det = fakeDetector([finding('marketing-buzzword', 3)]);
+    await runHook({ stdinJson: JSON.stringify(grokEditEvent(file, sid)), env: {}, cwd, detector: det });
+
+    const active = { ...grokStopEvent(sid), stopHookActive: true };
+    const stop = await runStopHook({ stdinJson: JSON.stringify(active), env: {}, cwd, detector: det });
+    assert.equal(stop.exitCode, 0);
+    assert.equal(stop.stdout, '');
+    assert.equal(stop.audit.skipped, 'stop-hook-active');
+  });
+
+  it('hook.mjs routes Grok camelCase stop stdin into runStopHook (#646)', async () => {
+    const sid = 'grok-script-stop';
+    const file = write('src/hero.css', [
+      '.hero {',
+      '  background: linear-gradient(#f00, #00f);',
+      '  -webkit-background-clip: text;',
+      '  color: transparent;',
+      '}',
+      '',
+    ].join('\n'));
+
+    const edit = await runHook({ stdinJson: JSON.stringify(grokEditEvent(file, sid)), env: {}, cwd });
+    assert.equal(edit.audit.harness, 'grok');
+    assert.equal(edit.audit.emitted, true);
+
+    const env = { ...process.env };
+    delete env.IMPECCABLE_HOOK_DEPTH;
+    delete env.CLAUDE_HOOK_DEPTH;
+    const out = execFileSync(process.execPath, [path.resolve('skill/scripts/hook.mjs')], {
+      cwd,
+      input: JSON.stringify(grokStopEvent(sid)),
+      env,
+      encoding: 'utf-8',
+    });
+    const payload = JSON.parse(out);
+    assert.equal(payload.hookSpecificOutput.hookEventName, 'Stop');
+    assert.match(payload.hookSpecificOutput.additionalContext, /gradient-text/);
   });
 });

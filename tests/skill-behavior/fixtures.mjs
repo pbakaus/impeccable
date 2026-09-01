@@ -163,6 +163,49 @@ targets usable one-handed with wet hands.
 `;
 
 /**
+ * The native counterpart to MINIMAL_LANDING_HTML, and it exists for the same
+ * reason. A native scenario carrying only PRODUCT.md gives an audit nothing to
+ * audit: the agent goes looking for the app it was told exists, and a routing
+ * assertion ends up measuring how a model copes with an empty workspace
+ * instead. One screen is enough to make the request answerable.
+ */
+export const MINIMAL_IOS_SOURCE = `import SwiftUI
+
+struct TideDetailView: View {
+    let station: String
+    @State private var showsLog = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Next window") {
+                    HStack {
+                        Text("High")
+                        Spacer()
+                        Text("4:12 PM").foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        Text("Low")
+                        Spacer()
+                        Text("10:38 PM").foregroundStyle(.secondary)
+                    }
+                }
+                Section {
+                    Button("Log a catch") { showsLog = true }
+                }
+            }
+            .navigationTitle(station)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Refresh") { }
+                }
+            }
+        }
+    }
+}
+`;
+
+/**
  * Tiny static landing page fixture for scenarios that invoke sub-commands
  * (polish, audit) without standing up a full framework project. Gives the
  * agent something concrete to inspect so it doesn't bail with "what

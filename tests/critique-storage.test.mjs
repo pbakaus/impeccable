@@ -5,8 +5,8 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { basename, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -14,11 +14,13 @@ import { fileURLToPath } from 'node:url';
 const SCRIPT = fileURLToPath(new URL('../skill/scripts/critique-storage.mjs', import.meta.url));
 
 import {
+  fingerprintTarget,
   slugFromTarget,
   writeSnapshot,
   readLatestSnapshot,
   readLatestSnapshotAcrossTargets,
   readTrend,
+  closeSnapshot,
   nowFilenameStamp,
 } from '../skill/scripts/critique-storage.mjs';
 
@@ -87,6 +89,25 @@ describe('nowFilenameStamp', () => {
   });
 });
 
+describe('fingerprintTarget', () => {
+  it('fingerprints exact local file bytes independent of Git state', () => {
+    const target = join(cwd, 'index.html');
+    writeFileSync(target, '<main>hello</main>');
+    const first = fingerprintTarget(target, { cwd });
+    assert.match(first, /^sha256:[a-f0-9]{64}$/);
+    assert.equal(fingerprintTarget('index.html', { cwd }), first);
+
+    writeFileSync(target, '<main>changed</main>');
+    assert.notEqual(fingerprintTarget(target, { cwd }), first);
+  });
+
+  it('returns null for URLs, directories, and missing files', () => {
+    assert.equal(fingerprintTarget('https://example.com/page', { cwd }), null);
+    assert.equal(fingerprintTarget('.', { cwd }), null);
+    assert.equal(fingerprintTarget('missing.html', { cwd }), null);
+  });
+});
+
 describe('writeSnapshot + readLatestSnapshot', () => {
   it('round-trips body and frontmatter', () => {
     const out = writeSnapshot({
@@ -113,6 +134,33 @@ describe('writeSnapshot + readLatestSnapshot', () => {
     const latest = readLatestSnapshot('index-astro', { cwd });
     assert.equal(latest.meta.total_score, 30);
     assert.match(latest.body, /new/);
+  });
+
+  it('preserves same-second snapshots with a sortable collision suffix', () => {
+    const now = new Date('2026-05-12T18:30:00Z');
+    const first = writeSnapshot({
+      slug: 'index-astro',
+      meta: { total_score: 20 },
+      body: 'first',
+      cwd,
+      now,
+    });
+    const second = writeSnapshot({
+      slug: 'index-astro',
+      meta: { total_score: 30 },
+      body: 'second',
+      cwd,
+      now,
+    });
+
+    assert.notEqual(second, first);
+    assert.ok(first.endsWith('2026-05-12T18-30-00Z__index-astro.md'));
+    assert.ok(second.endsWith('2026-05-12T18-30-00Z~0001__index-astro.md'));
+    assert.match(readLatestSnapshot('index-astro', { cwd }).body, /second/);
+    assert.deepEqual(
+      readTrend('index-astro', { cwd }).map((entry) => entry.total_score),
+      [20, 30],
+    );
   });
 
   it('picks the newest snapshot across target slugs', () => {
@@ -161,6 +209,129 @@ describe('writeSnapshot + readLatestSnapshot', () => {
     const latest = readLatestSnapshot('x', { cwd });
     assert.equal(latest.meta.target, 'docs: critique # main');
   });
+
+  it('closeSnapshot returns the path and leaves readLatestSnapshot null', () => {
+    const out = writeSnapshot({ slug: 'index-astro', meta: { total_score: 20 }, body: 'open', cwd });
+    const closed = closeSnapshot(out, { cwd });
+    assert.equal(closed, out);
+    assert.ok(closed.endsWith('__index-astro.md'));
+    assert.equal(readLatestSnapshot('index-astro', { cwd }), null);
+  });
+
+  it('closeSnapshot closes the backlog without deleting its trend history', () => {
+    writeSnapshot({
+      slug: 'index-astro',
+      meta: { total_score: 21, p0_count: 7 },
+      body: 'old leftover',
+      cwd,
+      now: new Date('2026-05-01T00:00:00Z'),
+    });
+    const newest = writeSnapshot({
+      slug: 'index-astro',
+      meta: { total_score: 30 },
+      body: 'newer',
+      cwd,
+      now: new Date('2026-05-12T00:00:00Z'),
+    });
+    const closed = closeSnapshot(newest, { cwd });
+    assert.equal(closed, newest);
+    assert.equal(readLatestSnapshot('index-astro', { cwd }), null);
+    const trend = readTrend('index-astro', { cwd });
+    assert.equal(trend.length, 2);
+    assert.equal(trend[0].total_score, 21);
+    assert.equal(trend[1].total_score, 30);
+    assert.equal(trend[1].closed, true);
+  });
+
+  it('a new snapshot reopens a previously closed slug', () => {
+    const resolved = writeSnapshot({
+      slug: 'index-astro',
+      meta: { total_score: 20 },
+      body: 'resolved',
+      cwd,
+      now: new Date('2026-05-01T00:00:00Z'),
+    });
+    closeSnapshot(resolved, { cwd });
+    const reopened = writeSnapshot({
+      slug: 'index-astro',
+      meta: { total_score: 15 },
+      body: 'new findings',
+      cwd,
+      now: new Date('2026-05-12T00:00:00Z'),
+    });
+
+    assert.equal(readLatestSnapshot('index-astro', { cwd }).path, reopened);
+    assert.equal(readTrend('index-astro', { cwd }).length, 2);
+  });
+
+  it('latest across targets skips a closed slug without hiding other backlogs', () => {
+    const pricing = writeSnapshot({
+      slug: 'pricing',
+      meta: { total_score: 25 },
+      body: 'pricing backlog',
+      cwd,
+      now: new Date('2026-05-01T00:00:00Z'),
+    });
+    const home = writeSnapshot({
+      slug: 'home',
+      meta: { total_score: 30 },
+      body: 'home backlog',
+      cwd,
+      now: new Date('2026-05-12T00:00:00Z'),
+    });
+    closeSnapshot(home, { cwd });
+
+    assert.equal(readLatestSnapshotAcrossTargets({ cwd }).path, pricing);
+  });
+
+  it('latest across targets keeps colliding target identities independent', () => {
+    const original = writeSnapshot({
+      slug: 'foo-bar',
+      meta: {
+        target_identity: `file:${join(cwd, 'foo', 'bar')}`,
+        total_score: 20,
+      },
+      body: 'older original backlog',
+      cwd,
+      now: new Date('2026-05-01T00:00:00Z'),
+    });
+    const colliding = writeSnapshot({
+      slug: 'foo-bar',
+      meta: {
+        target_identity: `file:${join(cwd, 'foo-bar')}`,
+        total_score: 30,
+      },
+      body: 'newer colliding backlog',
+      cwd,
+      now: new Date('2026-05-12T00:00:00Z'),
+    });
+    closeSnapshot(colliding, { cwd });
+
+    assert.equal(readLatestSnapshotAcrossTargets({ cwd }).path, original);
+  });
+
+  it('latest across targets does not resurrect legacy work after identity migration', () => {
+    writeSnapshot({
+      slug: 'index-html',
+      meta: { total_score: 20 },
+      body: 'legacy backlog',
+      cwd,
+      now: new Date('2026-05-01T00:00:00Z'),
+    });
+    const modern = writeSnapshot({
+      slug: 'index-html',
+      meta: {
+        target_identity: `file:${join(cwd, 'index.html')}`,
+        total_score: 30,
+      },
+      body: 'modern backlog',
+      cwd,
+      now: new Date('2026-05-12T00:00:00Z'),
+    });
+    closeSnapshot(modern, { cwd });
+
+    assert.equal(readLatestSnapshotAcrossTargets({ cwd }), null);
+  });
 });
 
 describe('CLI entry point', () => {
@@ -203,6 +374,486 @@ describe('CLI entry point', () => {
       encoding: 'utf-8',
     });
     assert.equal(r.status, 2);
+  });
+
+  it('inherits an unchanged untracked file snapshot and closes it after any byte change', () => {
+    const target = join(cwd, 'index.html');
+    const bodyFile = join(cwd, 'critique.md');
+    writeFileSync(target, '<main>assessed worktree</main>');
+    writeFileSync(bodyFile, '# Critique\n\nP1: improve hierarchy');
+
+    const write = spawnSync(process.execPath, [SCRIPT, 'write', target, bodyFile], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(write.status, 0, `stderr: ${write.stderr}`);
+    const written = readLatestSnapshot('index-html', { cwd });
+    assert.equal(written.meta.target_path, target);
+    assert.equal(written.meta.target_identity, `file:${target}`);
+    assert.match(written.meta.target_fingerprint, /^sha256:[a-f0-9]{64}$/);
+
+    const unchanged = spawnSync(process.execPath, [SCRIPT, 'latest', target], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(unchanged.status, 0, `stderr: ${unchanged.stderr}`);
+    assert.match(unchanged.stdout, /improve hierarchy/);
+
+    // The edit can happen in the same clock second as the snapshot; exact
+    // bytes, rather than timestamp precision, determine freshness.
+    writeFileSync(target, '<main>newer worktree</main>');
+    const changed = spawnSync(process.execPath, [SCRIPT, 'latest', target], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(changed.status, 2, `stderr: ${changed.stderr}`);
+    assert.equal(readLatestSnapshot('index-html', { cwd }), null);
+    assert.equal(readTrend('index-html', { cwd })[0].closed, true);
+  });
+
+  it('fingerprints extensionless local targets instead of mistaking them for slugs', () => {
+    const target = join(cwd, 'main');
+    const bodyFile = join(cwd, 'critique.md');
+    writeFileSync(target, '<main>assessed</main>');
+    writeFileSync(bodyFile, '# Critique\n\nP1: improve hierarchy');
+
+    const write = spawnSync(process.execPath, [SCRIPT, 'write', target, bodyFile], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(write.status, 0, `stderr: ${write.stderr}`);
+
+    writeFileSync(target, '<main>changed</main>');
+    const changed = spawnSync(process.execPath, [SCRIPT, 'latest', target], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(changed.status, 2, `stderr: ${changed.stderr}`);
+    assert.equal(readLatestSnapshot('main', { cwd }), null);
+
+    const deletedTarget = join(cwd, 'shell');
+    writeFileSync(deletedTarget, '#!/bin/sh\n');
+    const deletedWrite = spawnSync(process.execPath, [SCRIPT, 'write', deletedTarget, bodyFile], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(deletedWrite.status, 0, `stderr: ${deletedWrite.stderr}`);
+    rmSync(deletedTarget);
+    const deleted = spawnSync(process.execPath, [SCRIPT, 'latest', deletedTarget], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(deleted.status, 2, `stderr: ${deleted.stderr}`);
+    assert.equal(readLatestSnapshot('shell', { cwd }), null);
+  });
+
+  it('rejects a concrete target that collides with another target slug', () => {
+    const originalDir = join(cwd, 'foo');
+    const originalTarget = join('foo', 'bar');
+    const originalPath = join(cwd, originalTarget);
+    const ambiguousTarget = join(cwd, 'foo-bar');
+    const bodyFile = join(cwd, 'critique.md');
+    mkdirSync(originalDir);
+    writeFileSync(originalPath, '<main>assessed original</main>');
+    writeFileSync(bodyFile, '# Critique\n\nP1: preserve this backlog');
+
+    const write = spawnSync(process.execPath, [SCRIPT, 'write', originalTarget, bodyFile], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(write.status, 0, `stderr: ${write.stderr}`);
+
+    // This distinct extensionless file shares the original target's slug.
+    // The bare value is ambiguous while that file exists, and an explicit
+    // local path is a known identity mismatch. Neither may inherit or close
+    // the original snapshot.
+    writeFileSync(ambiguousTarget, '<main>different target</main>');
+    const ambiguous = spawnSync(process.execPath, [SCRIPT, 'latest', 'foo-bar'], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(ambiguous.status, 2, `stderr: ${ambiguous.stderr}`);
+    assert.match(ambiguous.stderr, /ambiguous snapshot slug/);
+    const explicitOther = spawnSync(process.execPath, [SCRIPT, 'latest', './foo-bar'], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(explicitOther.status, 2, `stderr: ${explicitOther.stderr}`);
+    assert.notEqual(readLatestSnapshot('foo-bar', { cwd }), null);
+
+    // Once the local name collision is gone, the same bare value is an
+    // intentional slug lookup and can return the original backlog.
+    rmSync(ambiguousTarget);
+    const bySlug = spawnSync(process.execPath, [SCRIPT, 'latest', 'foo-bar'], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(bySlug.status, 0, `stderr: ${bySlug.stderr}`);
+    assert.match(bySlug.stdout, /preserve this backlog/);
+
+    // The recorded original path still owns freshness invalidation.
+    writeFileSync(originalPath, '<main>changed original</main>');
+    const changedOriginal = spawnSync(process.execPath, [SCRIPT, 'latest', originalTarget], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(changedOriginal.status, 2, `stderr: ${changedOriginal.stderr}`);
+    assert.equal(readLatestSnapshot('foo-bar', { cwd }), null);
+  });
+
+  it('finds the exact target backlog when two live snapshots share a slug', () => {
+    const originalDir = join(cwd, 'foo');
+    const originalTarget = join('foo', 'bar');
+    const otherTarget = join(cwd, 'foo-bar');
+    const bodyFile = join(cwd, 'critique.md');
+    mkdirSync(originalDir);
+    writeFileSync(join(cwd, originalTarget), '<main>original</main>');
+    writeFileSync(otherTarget, '<main>other</main>');
+
+    writeFileSync(bodyFile, '# Critique\n\nP1: original backlog');
+    const originalWrite = spawnSync(
+      process.execPath,
+      [SCRIPT, 'write', originalTarget, bodyFile],
+      { cwd, encoding: 'utf-8' },
+    );
+    assert.equal(originalWrite.status, 0, `stderr: ${originalWrite.stderr}`);
+
+    writeFileSync(bodyFile, '# Critique\n\nP1: newer other backlog');
+    const otherWrite = spawnSync(
+      process.execPath,
+      [SCRIPT, 'write', './foo-bar', bodyFile],
+      { cwd, encoding: 'utf-8' },
+    );
+    assert.equal(otherWrite.status, 0, `stderr: ${otherWrite.stderr}`);
+
+    const originalLatest = spawnSync(
+      process.execPath,
+      [SCRIPT, 'latest', originalTarget, '--json'],
+      { cwd, encoding: 'utf-8' },
+    );
+    assert.equal(originalLatest.status, 0, `stderr: ${originalLatest.stderr}`);
+    const originalResult = JSON.parse(originalLatest.stdout);
+    assert.match(originalResult.body, /original backlog/);
+    assert.doesNotMatch(originalResult.body, /newer other backlog/);
+
+    const otherLatest = spawnSync(
+      process.execPath,
+      [SCRIPT, 'latest', './foo-bar', '--json'],
+      { cwd, encoding: 'utf-8' },
+    );
+    assert.equal(otherLatest.status, 0, `stderr: ${otherLatest.stderr}`);
+    const otherResult = JSON.parse(otherLatest.stdout);
+    assert.match(otherResult.body, /newer other backlog/);
+    assert.notEqual(otherResult.snapshot_file, originalResult.snapshot_file);
+
+    const closeOriginal = spawnSync(process.execPath, [
+      SCRIPT,
+      'close',
+      originalTarget,
+      originalResult.snapshot_file,
+    ], { cwd, encoding: 'utf-8' });
+    assert.equal(closeOriginal.status, 0, `stderr: ${closeOriginal.stderr}`);
+
+    const closedOriginal = spawnSync(
+      process.execPath,
+      [SCRIPT, 'latest', originalTarget],
+      { cwd, encoding: 'utf-8' },
+    );
+    assert.equal(closedOriginal.status, 2, `stderr: ${closedOriginal.stderr}`);
+    const stillOpenOther = spawnSync(
+      process.execPath,
+      [SCRIPT, 'latest', './foo-bar'],
+      { cwd, encoding: 'utf-8' },
+    );
+    assert.equal(stillOpenOther.status, 0, `stderr: ${stillOpenOther.stderr}`);
+    assert.match(stillOpenOther.stdout, /newer other backlog/);
+  });
+
+  it('closes a local snapshot when its target is deleted or replaced by a directory', () => {
+    const bodyFile = join(cwd, 'critique.md');
+    writeFileSync(bodyFile, '# Critique\n\nP1: improve hierarchy');
+
+    for (const replacement of ['missing', 'directory']) {
+      const target = join(cwd, `${replacement}.html`);
+      writeFileSync(target, '<main>assessed</main>');
+      const write = spawnSync(process.execPath, [SCRIPT, 'write', target, bodyFile], {
+        cwd,
+        encoding: 'utf-8',
+      });
+      assert.equal(write.status, 0, `stderr: ${write.stderr}`);
+
+      rmSync(target);
+      if (replacement === 'directory') mkdirSync(target);
+
+      const latest = spawnSync(process.execPath, [SCRIPT, 'latest', target], {
+        cwd,
+        encoding: 'utf-8',
+      });
+      assert.equal(latest.status, 2, `stderr: ${latest.stderr}`);
+      const slug = `${replacement}-html`;
+      assert.equal(readLatestSnapshot(slug, { cwd }), null);
+      assert.equal(readTrend(slug, { cwd })[0].closed, true);
+    }
+  });
+
+  it('treats a legacy local-file snapshot without a fingerprint as stale', () => {
+    const target = join(cwd, 'index.html');
+    writeFileSync(target, '<main>current</main>');
+    writeSnapshot({ slug: 'index-html', meta: { total_score: 20 }, body: 'legacy', cwd });
+
+    const latest = spawnSync(process.execPath, [SCRIPT, 'latest', target], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(latest.status, 2, `stderr: ${latest.stderr}`);
+    assert.equal(readTrend('index-html', { cwd })[0].closed, true);
+  });
+
+  it('rejects an ambiguous legacy extensionless lookup until the path is explicit', () => {
+    const target = join(cwd, 'main');
+    writeFileSync(target, '<main>changed since legacy critique</main>');
+    writeSnapshot({ slug: 'main', meta: { total_score: 20 }, body: 'legacy stale', cwd });
+
+    const ambiguous = spawnSync(process.execPath, [SCRIPT, 'latest', 'main'], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(ambiguous.status, 2, `stderr: ${ambiguous.stderr}`);
+    assert.match(ambiguous.stderr, /ambiguous legacy snapshot target/);
+    assert.notEqual(readLatestSnapshot('main', { cwd }), null);
+
+    const explicit = spawnSync(process.execPath, [SCRIPT, 'latest', './main'], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(explicit.status, 2, `stderr: ${explicit.stderr}`);
+    assert.equal(readLatestSnapshot('main', { cwd }), null);
+    assert.equal(readTrend('main', { cwd })[0].closed, true);
+  });
+
+  it('keeps URL snapshots current without a local fingerprint', () => {
+    const bodyFile = join(cwd, 'critique.md');
+    writeFileSync(bodyFile, '# Critique\n\nP1: improve hierarchy');
+    const target = 'https://example.com/page';
+
+    const write = spawnSync(process.execPath, [SCRIPT, 'write', target, bodyFile], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(write.status, 0, `stderr: ${write.stderr}`);
+    assert.equal(
+      readLatestSnapshot('example-com-page', { cwd }).meta.target_identity,
+      'url:https://example.com/page',
+    );
+
+    const latest = spawnSync(process.execPath, [SCRIPT, 'latest', target], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(latest.status, 0, `stderr: ${latest.stderr}`);
+    assert.match(latest.stdout, /improve hierarchy/);
+
+    const bySlug = spawnSync(process.execPath, [SCRIPT, 'latest', 'example-com-page'], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(bySlug.status, 0, `stderr: ${bySlug.stderr}`);
+    assert.match(bySlug.stdout, /improve hierarchy/);
+  });
+
+  it('keeps URL schemes and non-default ports in separate identity streams', () => {
+    const bodyFile = join(cwd, 'critique.md');
+    const targets = [
+      ['http://example.test/review', 'http backlog'],
+      ['https://example.test/review', 'https backlog'],
+      ['https://example.test:8443/review', 'port backlog'],
+    ];
+
+    for (const [target, backlog] of targets) {
+      writeFileSync(bodyFile, `# Critique\n\nP1: ${backlog}`);
+      const write = spawnSync(process.execPath, [SCRIPT, 'write', target, bodyFile], {
+        cwd,
+        encoding: 'utf-8',
+      });
+      assert.equal(write.status, 0, `stderr: ${write.stderr}`);
+    }
+
+    const results = targets.map(([target, backlog]) => {
+      const latest = spawnSync(
+        process.execPath,
+        [SCRIPT, 'latest', target, '--json'],
+        { cwd, encoding: 'utf-8' },
+      );
+      assert.equal(latest.status, 0, `stderr: ${latest.stderr}`);
+      const result = JSON.parse(latest.stdout);
+      assert.match(result.body, new RegExp(backlog));
+      return result;
+    });
+    assert.equal(new Set(results.map((result) => result.snapshot_file)).size, 3);
+
+    const wrongClose = spawnSync(process.execPath, [
+      SCRIPT,
+      'close',
+      targets[1][0],
+      results[0].snapshot_file,
+    ], { cwd, encoding: 'utf-8' });
+    assert.equal(wrongClose.status, 2, `stderr: ${wrongClose.stderr}`);
+    const httpStillOpen = spawnSync(
+      process.execPath,
+      [SCRIPT, 'latest', targets[0][0]],
+      { cwd, encoding: 'utf-8' },
+    );
+    assert.equal(httpStillOpen.status, 0, `stderr: ${httpStillOpen.stderr}`);
+    assert.match(httpStillOpen.stdout, /http backlog/);
+
+    const closeHttp = spawnSync(process.execPath, [
+      SCRIPT,
+      'close',
+      targets[0][0],
+      results[0].snapshot_file,
+    ], { cwd, encoding: 'utf-8' });
+    assert.equal(closeHttp.status, 0, `stderr: ${closeHttp.stderr}`);
+
+    for (const [target, backlog] of targets.slice(1)) {
+      const latest = spawnSync(process.execPath, [SCRIPT, 'latest', target], {
+        cwd,
+        encoding: 'utf-8',
+      });
+      assert.equal(latest.status, 0, `stderr: ${latest.stderr}`);
+      assert.match(latest.stdout, new RegExp(backlog));
+    }
+  });
+
+  it('latest --json returns the exact snapshot identity and body', () => {
+    const target = 'https://example.com/exact';
+    const snapshot = writeSnapshot({
+      slug: 'example-com-exact',
+      meta: { total_score: 20 },
+      body: 'exact backlog',
+      cwd,
+    });
+    const r = spawnSync(process.execPath, [SCRIPT, 'latest', target, '--json'], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(r.status, 0, `stderr: ${r.stderr}`);
+    const result = JSON.parse(r.stdout);
+    assert.equal(result.snapshot_file, basename(snapshot));
+    assert.match(result.body, /exact backlog/);
+  });
+
+  it('close subcommand closes the identified snapshot and preserves its trend', () => {
+    const snapshot = writeSnapshot({
+      slug: 'index-astro',
+      meta: { total_score: 20 },
+      body: 'open',
+      cwd,
+    });
+    const r = spawnSync(process.execPath, [
+      SCRIPT,
+      'close',
+      'index-astro',
+      basename(snapshot),
+    ], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(r.status, 0, `stderr: ${r.stderr}`);
+    assert.equal(readLatestSnapshot('index-astro', { cwd }), null);
+    assert.equal(readTrend('index-astro', { cwd }).length, 1);
+    assert.equal(readTrend('index-astro', { cwd })[0].closed, true);
+  });
+
+  it('close subcommand leaves a newer critique backlog active', () => {
+    const target = 'https://example.com/index';
+    const first = writeSnapshot({
+      slug: 'example-com-index',
+      meta: { total_score: 20 },
+      body: 'first backlog',
+      cwd,
+      now: new Date('2026-05-12T00:00:00Z'),
+    });
+    const read = spawnSync(process.execPath, [SCRIPT, 'latest', target, '--json'], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(read.status, 0, `stderr: ${read.stderr}`);
+    assert.equal(JSON.parse(read.stdout).snapshot_file, basename(first));
+
+    const newer = writeSnapshot({
+      slug: 'example-com-index',
+      meta: { total_score: 30 },
+      body: 'newer unprocessed backlog',
+      cwd,
+      now: new Date('2026-05-12T00:00:01Z'),
+    });
+    const close = spawnSync(process.execPath, [
+      SCRIPT,
+      'close',
+      target,
+      basename(first),
+    ], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(close.status, 0, `stderr: ${close.stderr}`);
+    assert.equal(readLatestSnapshot('example-com-index', { cwd }).path, newer);
+    assert.equal(readLatestSnapshotAcrossTargets({ cwd }).path, newer);
+    const trend = readTrend('example-com-index', { cwd });
+    assert.equal(trend[0].closed, true);
+    assert.equal(trend[1].closed, undefined);
+  });
+
+  it('close subcommand exits 2 when the identified snapshot is already closed', () => {
+    const snapshot = writeSnapshot({
+      slug: 'index-astro',
+      meta: { total_score: 20 },
+      body: 'open',
+      cwd,
+    });
+    closeSnapshot(snapshot, { cwd });
+    const r = spawnSync(process.execPath, [
+      SCRIPT,
+      'close',
+      'index-astro',
+      basename(snapshot),
+    ], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(r.status, 2);
+  });
+
+  it('close subcommand exits 2 when no snapshot exists', () => {
+    const r = spawnSync(process.execPath, [
+      SCRIPT,
+      'close',
+      'never-written',
+      '2026-05-12T00-00-00Z__never-written.md',
+    ], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(r.status, 2);
+  });
+
+  it('close subcommand requires the identity returned by latest --json', () => {
+    const r = spawnSync(process.execPath, [SCRIPT, 'close', 'index-astro'], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /snapshot-file/);
+  });
+
+  it('close subcommand rejects a snapshot identity from another slug', () => {
+    const home = writeSnapshot({ slug: 'home', meta: { total_score: 20 }, body: 'home', cwd });
+    const r = spawnSync(process.execPath, [SCRIPT, 'close', 'pricing', basename(home)], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(r.status, 2);
+    assert.notEqual(readLatestSnapshot('home', { cwd }), null);
   });
 });
 

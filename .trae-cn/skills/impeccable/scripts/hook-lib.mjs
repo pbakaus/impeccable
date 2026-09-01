@@ -22,6 +22,9 @@
  *   dedupeAgainstCache(findings, cache, sessionId, filePath)
  *   renderTemplate(findings, filePath, config, opts)
  *   renderCleanAck(filePath, opts) / renderPendingAck(filePath, known, opts)
+ *   appendDesignSystemNote(text, scanOptions) / appendDesignSystemNoteOnce(text, scanOptions, cache, sessionId, config)
+ *   designNoteReserve(scanOptions, cache, sessionId)
+ *   footerModeForSession(cache, sessionId) / commitFooterShown(cache, sessionId, text)
  *   shouldEmitAckForFile(filePath, config?)
  *   writeAuditLog(env, entry)
  *   loadDetector() -> Promise<{ detectText, detectHtml }>
@@ -40,6 +43,7 @@
  *   `cli/engine/detect-antipatterns.mjs` (running from source).
  */
 
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -207,12 +211,49 @@ export function getLocalConfigPath(cwd) {
   return path.join(cwd, '.impeccable', 'config.local.json');
 }
 
+// Where mutable hook state (cache + pending) lives. Defaults to the
+// project-local `.impeccable/` dir. When IMPECCABLE_CACHE_ROOT is set, state
+// relocates to a per-project subdirectory of that root instead, keyed by a
+// slug of the project path (`[:\\/.]` → `-`, mirroring Claude Code's
+// `~/.claude/projects/` convention), so project roots stay free of tool
+// artifacts (issue #422). User-authored config (config.json,
+// config.local.json, design.json) deliberately stays project-local — only
+// disposable state relocates.
+// Read from process.env (not runHook's injected env): the cache root is a
+// machine-scoped setting like CURSOR_PROJECT_DIR, not a per-invocation
+// switch. Trim guards against stray whitespace in env files; `~/` (or the
+// Windows `~\` spelling) expands via os.homedir(), and when no home dir can
+// be determined the expansion is rejected — state falls back to the
+// project-local default rather than anchoring under the hook process's cwd.
+// Resolving both sides makes the slug deterministic when callers hand in a
+// trailing separator or unnormalized cwd. The slug is the readable
+// separator-mapped path PLUS an 8-hex sha256 of the resolved path: the
+// readable part alone is lossy (`/x/my.app` and `/x/my-app` would both map
+// to `-x-my-app` and share state), so the digest disambiguates while keeping
+// the dir name human-scannable.
+function hookStateDir(cwd) {
+  const raw = process.env.IMPECCABLE_CACHE_ROOT;
+  let root = typeof raw === 'string' ? raw.trim() : '';
+  if (root.startsWith('~/') || root.startsWith('~\\') || root === '~') {
+    let home = '';
+    try { home = os.homedir() || ''; } catch { home = ''; }
+    root = home ? path.join(home, root.slice(2)) : '';
+  }
+  if (root) {
+    const resolved = path.resolve(String(cwd));
+    const slug = resolved.replace(/[:\\/.]/g, '-');
+    const digest = crypto.createHash('sha256').update(resolved).digest('hex').slice(0, 8);
+    return path.join(path.resolve(root), `${slug}-${digest}`);
+  }
+  return path.join(cwd, '.impeccable');
+}
+
 export function getCachePath(cwd) {
-  return path.join(cwd, '.impeccable', 'hook.cache.json');
+  return path.join(hookStateDir(cwd), 'hook.cache.json');
 }
 
 export function getPendingPath(cwd) {
-  return path.join(cwd, '.impeccable', 'hook.pending.json');
+  return path.join(hookStateDir(cwd), 'hook.pending.json');
 }
 
 export function resolveProjectCwd(event, fallback = process.cwd()) {
@@ -813,9 +854,9 @@ export function splitFindingsByTier(findings) {
 }
 
 // Whether the per-edit pass for this harness should defer non-immediate
-// findings to a Stop deep pass. Only Claude Code and Codex dispatch our Stop
-// hook; Cursor and GitHub Copilot have no deep pass wired, so deferring for
-// them would silently drop the non-immediate rules entirely.
+// findings to a Stop deep pass. Claude Code, Codex, and Grok Build dispatch
+// our Stop hook; Cursor and GitHub Copilot have no deep pass wired, so
+// deferring for them would silently drop the non-immediate rules entirely.
 export function perEditTieringActive(config, harness) {
   if (harness === 'cursor' || harness === 'github') return false;
   return (config?.perEditRules || DEFAULT_CONFIG.perEditRules) !== 'all';
@@ -970,7 +1011,13 @@ export function renderTemplate(findings, filePath, config, opts = {}) {
   if (!Array.isArray(findings) || findings.length === 0) return '';
   const limits = config?.limits || DEFAULT_CONFIG.limits;
   const cap = Math.max(1, limits.maxFindings || DEFAULT_CONFIG.limits.maxFindings);
-  const maxChars = Math.max(500, limits.maxChars || DEFAULT_CONFIG.limits.maxChars);
+  // reserveChars holds back room for a note the caller appends after render
+  // (the DESIGN.md staleness note), so the final payload stays inside the
+  // configured budget. It comes off after the 500-char floor, so at floor
+  // configs the note keeps guaranteed delivery room; the clamp budget can
+  // therefore sit below 500, which clampLastLine's footer-preserving
+  // fallback handles (Bugbot on PR #508).
+  const maxChars = Math.max(500, limits.maxChars || DEFAULT_CONFIG.limits.maxChars) - (opts.reserveChars || 0);
 
   const cwd = opts.cwd || process.cwd();
   const display = relativize(filePath, cwd);
@@ -979,11 +1026,12 @@ export function renderTemplate(findings, filePath, config, opts = {}) {
   const remaining = total - shown.length;
 
   const header = `${ENVELOPE_PREFIX} Design hook findings requiring review in ${display} (${total} issue(s)):`;
-  const lines = shown.map((f) => formatFindingLine(f));
+  const seenRules = new Set();
+  const lines = shown.map((f) => formatDedupedFindingLine(f, seenRules));
   const more = remaining > 0
     ? `... and ${remaining} more (see ${IMPECCABLE_COMMAND} audit).`
     : null;
-  const footer = directiveFooter(display);
+  const footer = directiveFooter({ mode: opts.footer });
 
   const blocks = [header, ...lines];
   if (more) blocks.push(more);
@@ -1007,12 +1055,15 @@ function renderGroupedTemplate(groups, config, opts = {}) {
 
   const limits = config?.limits || DEFAULT_CONFIG.limits;
   const cap = Math.max(1, limits.maxFindings || DEFAULT_CONFIG.limits.maxFindings);
-  const maxChars = Math.max(500, limits.maxChars || DEFAULT_CONFIG.limits.maxChars);
+  const maxChars = Math.max(500, limits.maxChars || DEFAULT_CONFIG.limits.maxChars) - (opts.reserveChars || 0);
   const cwd = opts.cwd || process.cwd();
   const total = realGroups.reduce((sum, group) => sum + group.findings.length, 0);
   const header = `${ENVELOPE_PREFIX} Design hook findings requiring review across ${realGroups.length} files (${total} issue(s)):`;
   const lines = [];
   let shownCount = 0;
+  // One seen-set across all groups: a rule already described under one file
+  // is not re-described under the next.
+  const seenRules = new Set();
 
   for (const group of realGroups) {
     const display = relativize(group.filePath, cwd);
@@ -1020,7 +1071,7 @@ function renderGroupedTemplate(groups, config, opts = {}) {
     const remainingCap = Math.max(0, cap - shownCount);
     const shown = group.findings.slice(0, remainingCap);
     for (const finding of shown) {
-      lines.push(formatFindingLine(finding));
+      lines.push(formatDedupedFindingLine(finding, seenRules));
     }
     shownCount += shown.length;
     const hidden = group.findings.length - shown.length;
@@ -1029,7 +1080,7 @@ function renderGroupedTemplate(groups, config, opts = {}) {
     }
   }
 
-  const footer = directiveFooter('the affected files', { grouped: true });
+  const footer = directiveFooter({ mode: opts.footer });
   let text = [header, ...lines, '', footer].join('\n');
   if (text.length > maxChars) {
     text = clampGroupedToBudget(header, lines, footer, maxChars);
@@ -1037,76 +1088,131 @@ function renderGroupedTemplate(groups, config, opts = {}) {
   return text;
 }
 
+// The clamp contract, shared by both budget functions: the footer is policy,
+// not detail, so it survives every clamp. Try the requested footer first;
+// when it cannot fit even after dropping finding lines, retry with the short
+// policy rather than sacrifice findings that fit beside it. A result that
+// dropped every finding line (a grouped render can fit a bare file header)
+// does not count as a fit: findings are why the emission exists.
+const isFindingLine = (line) => line.startsWith('- ');
+
+function footerFallbacks(footer) {
+  const short = directiveFooter({ mode: 'short' });
+  return footer === short ? [footer] : [footer, short];
+}
+
 function clampGroupedToBudget(header, lines, footer, maxChars) {
-  const assemble = (linesArr, omitted) => [
+  const assemble = (linesArr, omitted, footerText) => [
     header,
     ...linesArr,
     ...(omitted ? [`... and more (see ${IMPECCABLE_COMMAND} audit).`] : []),
     '',
-    footer,
+    footerText,
   ].join('\n');
 
-  let working = lines.slice();
-  let omitted = false;
-  let assembled = assemble(working, omitted);
-  while (assembled.length > maxChars && working.length > 1) {
-    working.pop();
-    omitted = true;
-    assembled = assemble(working, omitted);
+  for (const footerText of footerFallbacks(footer)) {
+    let working = lines.slice();
+    let omitted = false;
+    let assembled = assemble(working, omitted, footerText);
+    while (assembled.length > maxChars && working.length > 1) {
+      working.pop();
+      omitted = true;
+      assembled = assemble(working, omitted, footerText);
+    }
+    if (assembled.length <= maxChars && working.some(isFindingLine)) return assembled;
   }
-  if (assembled.length > maxChars) {
-    assembled = `${assembled.slice(0, maxChars - 1)}…`;
-  }
-  return assembled;
+  return clampLastLine((linesArr, footerText) => assemble(linesArr, true, footerText),
+    lines.find(isFindingLine) || lines[0], maxChars);
 }
 
 function clampToBudget(header, lines, more, footer, maxChars) {
-  const assemble = (linesArr, moreText) => {
+  const assemble = (linesArr, moreText, footerText) => {
     const blocks = [header, ...linesArr];
     if (moreText) blocks.push(moreText);
     blocks.push('');
-    blocks.push(footer);
+    blocks.push(footerText);
     return blocks.join('\n');
   };
 
-  let working = lines.slice();
-  let moreText = more;
-  let assembled = assemble(working, moreText);
-  while (assembled.length > maxChars && working.length > 1) {
-    working.pop();
-    moreText = `... and more (see ${IMPECCABLE_COMMAND} audit).`;
-    assembled = assemble(working, moreText);
+  let lastMore = more;
+  for (const footerText of footerFallbacks(footer)) {
+    let working = lines.slice();
+    let moreText = more;
+    let assembled = assemble(working, moreText, footerText);
+    while (assembled.length > maxChars && working.length > 1) {
+      working.pop();
+      moreText = `... and more (see ${IMPECCABLE_COMMAND} audit).`;
+      assembled = assemble(working, moreText, footerText);
+    }
+    lastMore = moreText;
+    if (assembled.length <= maxChars) return assembled;
   }
-  if (assembled.length > maxChars) {
-    assembled = `${assembled.slice(0, maxChars - 1)}…`;
-  }
-  return assembled;
+  return clampLastLine((linesArr, footerText) => assemble(linesArr, lastMore, footerText),
+    lines.find(isFindingLine) || lines[0], maxChars);
 }
 
-function formatFindingLine(f) {
+// Last resort with one finding line left: the short policy gets the budget
+// first, the line is clipped to what remains. The pre-fix tail-slice cut
+// whatever happened to be last, which was always the footer.
+function clampLastLine(build, line, maxChars) {
+  const footerText = directiveFooter({ mode: 'short' });
+  const bare = build([], footerText);
+  // +1 for the newline the line itself brings when it joins the blocks.
+  const room = maxChars - bare.length - 1;
+  if (room >= 24) {
+    const clipped = line.length > room ? `${line.slice(0, room - 1)}…` : line;
+    return build([clipped], footerText);
+  }
+  // No room for even a clipped finding line: the note reservation can pull
+  // the budget below the 500-char floor, and a deep file path can push the
+  // header past what remains beside the short policy (Bugbot on PR #508).
+  // Drop the line, and if the bare header + policy still overflow, clip the
+  // head. Never tail-slice: the footer sits at the end, so a tail slice is
+  // exactly the footer cut this renderer exists to prevent.
+  if (bare.length <= maxChars) return bare;
+  const head = bare.slice(0, Math.max(0, maxChars - footerText.length - 4));
+  return `${head}…\n\n${footerText}`;
+}
+
+// `compact` drops the registry description: within one emission the first
+// occurrence of a rule carries the full description and repeats keep only the
+// rule id, name, and their own ignore hint (values differ per line, so the
+// hint must survive the dedupe).
+function formatFindingLine(f, opts = {}) {
   const prefix = f.line && f.line > 0 ? `- L${f.line}` : '-';
-  const desc = (f.description || '').trim();
+  const desc = opts.compact ? '' : (f.description || '').trim();
   const name = (f.name || '').trim();
   // Description from the registry already ends in punctuation; join with a
   // single space. `name` may have a trailing period already, keep it clean.
   const nameSegment = name ? `${name.replace(/\.+\s*$/, '')}.` : '';
-  const ignoreCommand = formatFindingIgnoreCommand(f);
-  const ignoreSegment = ignoreCommand
-    ? ` If the user explicitly confirms this value is intentional: \`${ignoreCommand}\`.`
-    : '';
+  const ignoreHint = formatFindingIgnoreHint(f);
+  const ignoreSegment = ignoreHint ? ` If intentional: \`${ignoreHint}\`.` : '';
   return `${prefix} [${f.antipattern}] ${nameSegment} ${desc}${ignoreSegment}`.replace(/\s+/g, ' ').trim();
 }
 
-function formatFindingIgnoreCommand(finding) {
+// Dedupe applied in shown-line order, so the first rendered occurrence of a
+// rule always carries the description. The budget clamps pop lines from the
+// end, which can never orphan a compact repeat before its described first
+// occurrence.
+function formatDedupedFindingLine(finding, seenRules) {
+  const rule = normalizeIgnoreRule(finding?.antipattern);
+  const compact = rule ? seenRules.has(rule) : false;
+  if (rule) seenRules.add(rule);
+  return formatFindingLine(finding, { compact });
+}
+
+// The rule/value pair the footer's `hook-admin.mjs ignore-value` command
+// takes. Deliberately just the args: the executable prefix, the --reason
+// contract, and the disclosure rule live in the directive footer, stated once
+// instead of per line.
+function formatFindingIgnoreHint(finding) {
   if (!finding || typeof finding !== 'object') return '';
   const rule = normalizeIgnoreRule(finding.antipattern);
   if (!rule) return '';
   const normalizedValue = extractFindingIgnoreValue(finding);
   if (!normalizedValue) return '';
-  const value = extractFindingIgnoreValueRaw(finding);
-  const valueArg = quoteCommandArg(value);
-  const reason = quoteCommandArg(`User confirmed ${value} is intentional`);
-  return `${IMPECCABLE_COMMAND} hooks ignore-value ${rule} ${valueArg} --shared --reason ${reason}`;
+  const valueArg = quoteCommandArg(extractFindingIgnoreValueRaw(finding));
+  return `ignore-value ${rule} ${valueArg}`;
 }
 
 function quoteCommandArg(value) {
@@ -1183,16 +1289,48 @@ export function resolveHarness(env = {}, event = null) {
   const explicit = env?.IMPECCABLE_HOOK_HARNESS;
   if (explicit === 'cursor') return 'cursor';
   if (explicit === 'github') return 'github';
-  if (explicit === 'claude' || explicit === 'codex') return 'claude';
-  // GitHub Copilot's postToolUse event uses camelCase `toolName`/`toolArgs` and
-  // has no `tool_name`/`tool_input`. That shape is the discriminator.
+  if (explicit === 'grok') return 'grok';
+  if (explicit === 'claude') return 'claude';
+  if (explicit === 'codex') return 'codex';
+  // Grok Build sends camelCase `toolName`/`toolInput`/`hookEventName` and no
+  // snake_case pair. GitHub Copilot sends camelCase `toolName`/`toolArgs`.
+  // Check Grok first: the old GitHub heuristic (`toolName` and no
+  // `tool_input`) also matches Grok, which is how live PostToolUse was
+  // classified as Copilot and then skipped with no-file-path (#646).
+  if (looksLikeGrokEnvelope(event)) return 'grok';
   if (event && typeof event === 'object'
     && (typeof event.toolName === 'string' || event.toolArgs !== undefined)
     && event.tool_name === undefined && event.tool_input === undefined) {
     return 'github';
   }
   if (typeof event?.conversation_id === 'string' && event.conversation_id) return 'cursor';
+  // Codex turn-scoped events carry `turn_id`. Claude Code does not. Detecting
+  // it here means an already-installed Codex hook emits the Codex Stop
+  // contract without rewriting the hook command to set IMPECCABLE_HOOK_HARNESS.
+  // https://developers.openai.com/codex/hooks#stop
+  if (typeof event?.turn_id === 'string' && event.turn_id) return 'codex';
   return 'claude';
+}
+
+function looksLikeGrokEnvelope(event) {
+  if (!event || typeof event !== 'object') return false;
+  if (event.hook_event_name !== undefined
+    || event.tool_name !== undefined
+    || event.tool_input !== undefined) {
+    return false;
+  }
+  if (event.toolArgs !== undefined) return false;
+  if (typeof event.hookEventName === 'string') return true;
+  return typeof event.toolName === 'string' && event.toolInput !== undefined;
+}
+
+// Stop arrives as Claude's `hook_event_name: "Stop"` or Grok Build's
+// `hookEventName: "stop"`. hook.mjs routes on the raw stdin, before any
+// normalize, so both casings must match here.
+export function isStopEvent(event) {
+  if (!event || typeof event !== 'object') return false;
+  const name = event.hook_event_name || event.hookEventName;
+  return typeof name === 'string' && name.toLowerCase() === 'stop';
 }
 
 // GitHub Copilot's postToolUse payload is
@@ -1286,9 +1424,36 @@ function normalizeGitHubEvent(event, projectCwd) {
   };
 }
 
+// Grok Build 1.0.5 (captured 2026-08-24) sends camelCase `toolName` /
+// `toolInput` / `sessionId` / `stopHookActive`, plus `cwd` alongside a
+// trailing-slashed `workspaceRoot` (every consumer path.resolve()s, so no
+// stripping here). Only the fields the hook reads are copied; the event
+// name stays camelCase because routing already happened on the raw stdin
+// (isStopEvent) and nothing downstream reads `hook_event_name`.
+function normalizeGrokEvent(event, projectCwd) {
+  const cwd = event.cwd || event.workspaceRoot || envProjectDir(projectCwd) || projectCwd;
+  const sessionId = event.sessionId || event.session_id || 'unknown';
+  const rawInput = event.toolInput ?? event.tool_input;
+  const toolInput = rawInput && typeof rawInput === 'object' && !Array.isArray(rawInput)
+    ? { ...rawInput }
+    : {};
+  const out = {
+    ...event,
+    cwd,
+    session_id: sessionId,
+    tool_name: event.toolName || event.tool_name || null,
+    tool_input: toolInput,
+  };
+  if (event.stopHookActive !== undefined && event.stop_hook_active === undefined) {
+    out.stop_hook_active = event.stopHookActive;
+  }
+  return out;
+}
+
 export function normalizeHookEvent(event, projectCwd, harness = 'claude') {
   if (!event || typeof event !== 'object') return event;
   if (harness === 'github') return normalizeGitHubEvent(event, projectCwd);
+  if (harness === 'grok') return normalizeGrokEvent(event, projectCwd);
   if (harness !== 'cursor') return event;
 
   const cwd = event.cwd
@@ -1606,36 +1771,105 @@ export function designSystemOptions(config, detector, projectCwd) {
   }
 }
 
+const DESIGN_STALE_NOTE = `${ENVELOPE_PREFIX} DESIGN.md is newer than .impeccable/design.json. Run ${IMPECCABLE_COMMAND} document to refresh the design-system sidecar.`;
+
 export function appendDesignSystemNote(text, scanOptions) {
   if (!text || !scanOptions?.designSystem?.mdNewerThanJson) return text;
-  return `${text}\n\n${ENVELOPE_PREFIX} DESIGN.md is newer than .impeccable/design.json. Run ${IMPECCABLE_COMMAND} document to refresh the design-system sidecar.`;
+  return `${text}\n\n${DESIGN_STALE_NOTE}`;
 }
 
+// Session-scoped once-only gate for repeat-prone message parts. Returns true
+// the first time a flag is consumed in a session and false after, mirroring
+// the `cleanAcked` mechanic: the mtime skew (and the policy footer) do not
+// change between edits, so re-stating them on every emission spends context
+// to say nothing new. Callers must persist the cache for the flag to stick.
+function consumeSessionNoticeFlag(cache, sessionId, flag) {
+  const session = ensureSession(cache, sessionId);
+  if (session[flag]) return false;
+  session[flag] = true;
+  session.updatedAt = Date.now();
+  return true;
+}
+
+// Once-per-session variant of appendDesignSystemNote for the emission paths
+// that have cache access. The staleness note names standing project state,
+// not new information, so one mention per session is enough. The note is
+// appended after the renderer has clamped to the configured budget: render
+// paths reserve room for it via designNoteReserve, and the size check here
+// is the safety net for the ack paths, deferring (without consuming the
+// flag) to a later emission rather than busting maxChars.
+export function appendDesignSystemNoteOnce(text, scanOptions, cache, sessionId, config) {
+  if (!text || !scanOptions?.designSystem?.mdNewerThanJson) return text;
+  const maxChars = Math.max(500, config?.limits?.maxChars || DEFAULT_CONFIG.limits.maxChars);
+  if (text.length + DESIGN_STALE_NOTE.length + 2 > maxChars) return text;
+  if (!consumeSessionNoticeFlag(cache, sessionId, 'designNoteShown')) return text;
+  return appendDesignSystemNote(text, scanOptions);
+}
+
+// Render-time reservation for the note above: how many characters the
+// renderer must hold back so a pending staleness note still fits inside the
+// configured budget. Zero once the session has seen the note. Without the
+// reservation, a session whose every emission fills the budget would defer
+// the note forever.
+export function designNoteReserve(scanOptions, cache, sessionId) {
+  if (!scanOptions?.designSystem?.mdNewerThanJson) return 0;
+  if (ensureSession(cache, sessionId).designNoteShown) return 0;
+  return DESIGN_STALE_NOTE.length + 2;
+}
+
+// Full directive footer once per session, the short reminder after. Fresh
+// emissions and Cursor denials share the session flag (`footerShown`), so a
+// session pays the full policy exactly once however it first fires. The mode
+// is a peek: the clamp can downgrade a requested full footer under a tight
+// budget, so the flag commits only when the complete full policy actually
+// reached the output. Matching the whole footer text (not a sentinel) keeps
+// the flag honest against any truncation that spares the opening words.
+export function footerModeForSession(cache, sessionId) {
+  return ensureSession(cache, sessionId).footerShown ? 'short' : 'full';
+}
+
+export function commitFooterShown(cache, sessionId, text) {
+  if (!text || !text.includes(directiveFooter())) return;
+  const session = ensureSession(cache, sessionId);
+  if (session.footerShown) return;
+  session.footerShown = true;
+  session.updatedAt = Date.now();
+}
+
+const HOOK_ADMIN_COMMAND = `node ${quoteCommandArg(path.join(__dirname, 'hook-admin.mjs'))}`;
+
 // The directive footer is the part of the hook output that steers model
-// behavior. Three intentional moves:
-//   1. **Imperative, not advisory.** "Handle these..." beats "Consider
-//      revising..." which the model treats as a soft suggestion it can
-//      override when the user asked for any kind of throwaway / demo UI.
-//   2. **Explicit judgment clause.** Without it, the model will try to
-//      "fix" intentional motion, bad fixtures, anti-pattern examples in
-//      docs, or test cases. Naming the judgment inline beats hoping the
-//      model infers it from context.
-//   3. **Acknowledgement instruction.** Hook output is injected as
-//      developer-role context, not a chat turn, so the user never sees the
-//      raw envelope. Asking the model to surface the resolution in its
-//      reply is the cheapest way to make the feedback loop visible.
-function directiveFooter(display, opts = {}) {
-  // Offer the rule-scoped-to-file form first. `ignore-file` silences every rule
-  // for the path forever, which is far more than one noisy rule on a real UI
-  // surface justifies, and it was previously the only option named here.
-  const target = opts.grouped ? '<path>' : quoteCommandArg(display);
-  const fileIgnoreGuidance = `run \`${IMPECCABLE_COMMAND} hooks ignore-value <id> "*" --file ${target}\` to scope just that rule to the file, or \`${IMPECCABLE_COMMAND} hooks ignore-file ${target}\` only when the whole file is out of scope for design review (a fixture, a generated artifact, a deliberate demo)`;
+// behavior. Intentional moves, in order:
+//   1. **Imperative, not advisory.** "Triage each finding..." beats
+//      "Consider revising...", which the model treats as a soft suggestion.
+//   2. **Positive triage branches.** Fix / suppress-and-disclose / ask. The
+//      suppress branch names the calibration examples (demo, fixture,
+//      documented bad design, user-confirmed choice) because the agent now
+//      acts on its own confidence and needs the bar stated.
+//   3. **Executable ignore path.** The old footer named only the slash
+//      command, which an agent reacting to hook output cannot run; the
+//      hook-admin.mjs invocation is runnable as-is and keeps agents out of
+//      hand-editing config.json.
+//   4. **Honest provenance.** The --reason is the audit trail; "user
+//      confirmed" appears only when the user actually did.
+//   5. **Acknowledgement instruction.** Hook output is injected as
+//      developer-role context, so the reply is where the user sees the
+//      resolution, including any ignore the agent persisted.
+//   6. **Once per session.** The full policy emits on the session's first
+//      fire; later emissions carry the one-line short form (mode 'short').
+function directiveFooter(opts = {}) {
+  if (opts.mode === 'short') {
+    // No command path here: the session's first emission already gave the
+    // runnable hook-admin.mjs invocation, and restating ~70 chars of absolute
+    // path on every repeat is the duplication this mode exists to cut.
+    return 'Triage per the session policy: fix real problems; persist confident false-positive or sanctioned-exception ignores via `hook-admin.mjs ignore-value` and disclose them in your reply; unsure, ask in one line.';
+  }
   return [
-    'Handle these before finalizing: fix findings that are real design problems, or explicitly classify contextually intentional findings as false positives. Acknowledge what you changed or why you are leaving a finding unchanged.',
-    '',
-    'Use context judgment before editing. A finding is not automatically a defect; literal or domain-appropriate motion, intentional demos or fixtures, documentation of bad design, and user-confirmed choices can be valid as-is.',
-    '',
-    `Do not change intentional design just to satisfy the hook, and do not silence a real finding with an inline ignore comment to skip fixing it. Suppress a finding only after the user explicitly confirms it is intentional. Prefer a config ignore (one reviewable place, the commands below); reach for an inline \`impeccable-disable <rule>\` comment only when the waiver must travel with a file that leaves the repo, such as an exported or standalone document. Prefer the narrowest persisted exception: run the exact \`${IMPECCABLE_COMMAND} hooks ignore-value ... --shared\` command shown next to a value-specific finding. For \`overused-font\`, use \`ignore-value\` for a specific font and use \`${IMPECCABLE_COMMAND} hooks ignore-rule overused-font --all-values\` only when the user asks to ignore overused fonts generally. For a finding whose line shows no exact ignore-value command, such as \`side-tab\`, ${fileIgnoreGuidance}; use \`${IMPECCABLE_COMMAND} hooks ignore-rule <id>\` only when the user asks to suppress the whole non-value-specific rule. Run ${IMPECCABLE_COMMAND} audit for the full pass.`,
+    'Triage each finding, then state in your reply what you fixed, what you suppressed, and what you left standing:',
+    '- Real design problem: fix it. Keep intentional design as designed.',
+    `- Confident false positive or sanctioned exception (an intentional demo or fixture, documentation of bad design, literal or domain-appropriate motion, a choice the user confirmed): persist the narrowest ignore yourself and disclose it. Run \`${HOOK_ADMIN_COMMAND} ignore-value <rule> "<value>" --reason "<who decided: evidence>"\` with the pair shown on the finding line, or value "*" plus \`--file <path>\` when the line shows none. Write "user confirmed" in a reason only when the user did.`,
+    '- Unsure: leave it as is and ask the user in one line.',
+    `Self-serve ends at ignore-value: \`ignore-file\` and \`ignore-rule\` need the user's explicit approval, and never add an ignore to push a blocked write through. Full suppression ladder: ${IMPECCABLE_COMMAND} hooks.`,
   ].join('\n');
 }
 
@@ -1822,7 +2056,15 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
       // findings stop being remembered and a reintroduced one reads as fresh.
       // Only the immediate tier is remembered: a deferred finding the per-edit
       // pass never reported must still read as fresh to the Stop deep pass.
-      rememberFindings(cache, sessionId, filePath, immediate);
+      //
+      // Grok ignores PostToolUse stdout, so Stop is the user-visible pass.
+      // Remembering here would dedupe those findings out of Stop. Touch the
+      // file so Stop has it, and leave the finding list empty.
+      if (harness === 'grok') {
+        touchFile(cache, sessionId, filePath);
+      } else {
+        rememberFindings(cache, sessionId, filePath, immediate);
+      }
       cacheDirty = true;
 
       if (fresh.length > 0) {
@@ -1857,20 +2099,23 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
       }
     }
 
-    // Persist only when the write is earned: fresh findings justify creating
-    // `.impeccable/` (dedup and suppression need it), deferred findings do
-    // too (the Stop deep pass needs the touched-file list to surface them),
-    // and an already-present `.impeccable/` dir marks a project that opted
-    // in. A non-UI edit, or a clean UI edit in a project with no Impeccable
-    // footprint, must be a no-op on disk (issues #344, #305).
-    if (freshGroups.length > 0 || deferredTotal > 0
-      || (cacheDirty && fs.existsSync(path.join(projectCwd, '.impeccable')))) {
-      persistCache(projectCwd, cache);
-    }
-
+    // The session notice flags mutate the cache, so they must settle before
+    // the persist that makes them stick across events.
     if (freshGroups.length > 0) {
       const firstGroup = freshGroups[0];
-      const text = appendDesignSystemNote(renderGroupedTemplate(freshGroups, config, { cwd: projectCwd }), scanOptions);
+      const footerMode = footerModeForSession(cache, sessionId);
+      const text = appendDesignSystemNoteOnce(
+        renderGroupedTemplate(freshGroups, config, {
+          cwd: projectCwd,
+          footer: footerMode,
+          reserveChars: designNoteReserve(scanOptions, cache, sessionId),
+        }),
+        scanOptions, cache, sessionId, config,
+      );
+      commitFooterShown(cache, sessionId, text);
+      // Fresh findings always earn the cache write, including creating
+      // `.impeccable/`: dedup, suppression, and the notice flags need it.
+      persistCache(projectCwd, cache);
       const allFindings = freshGroups.flatMap((group) => group.findings);
       return {
         exitCode: 0,
@@ -1893,6 +2138,38 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
       };
     }
 
+    // Resolve the ack emission before the persist below: appendDesignSystem-
+    // NoteOnce consumes a session flag, and the flag only sticks when the
+    // write happens after it. Quiet mode emits nothing, so it consumes
+    // nothing. The clean arm mirrors the branch order further down: pending
+    // outranks suppression, suppression outranks clean.
+    let ack = null;
+    if (!quietMode && pendingWinner && shouldEmitAckForFile(pendingWinner.filePath, config)) {
+      ack = {
+        kind: 'pending',
+        text: appendDesignSystemNoteOnce(renderPendingAck(pendingWinner.filePath, pendingWinner.known, { cwd: projectCwd }), scanOptions, cache, sessionId, config),
+      };
+    } else if (!quietMode && !suppressionWinner && cleanWinner && !cleanAckDeduped && shouldEmitAckForFile(cleanWinner.filePath, config)) {
+      ack = {
+        kind: 'clean',
+        text: appendDesignSystemNoteOnce(renderCleanAck(cleanWinner.filePath, { cwd: projectCwd }), scanOptions, cache, sessionId, config),
+      };
+    }
+
+    // Persist only when the write is earned: deferred findings need the
+    // touched-file list for the Stop deep pass, and an already-present
+    // `.impeccable/` dir marks a project that opted in. A non-UI edit, or a
+    // clean UI edit in a project with no Impeccable footprint, must be a
+    // no-op on disk (issues #344, #305). An existing cache file also counts
+    // as opted in: under IMPECCABLE_CACHE_ROOT (issue #422) state lives
+    // outside the project, so the project dir alone can't carry the marker —
+    // without this, clean-edit editCount bumps would stop persisting the
+    // moment state relocates. Under stock paths the cache sits inside
+    // `.impeccable/`, so the extra check changes nothing there.
+    if (deferredTotal > 0 || (cacheDirty && (fs.existsSync(path.join(projectCwd, '.impeccable')) || fs.existsSync(getCachePath(projectCwd))))) {
+      persistCache(projectCwd, cache);
+    }
+
     if (detectorThrewAny && !pendingWinner && !cleanWinner) {
       return result({ emitted: false, error: 'detector-threw', durationMs: Date.now() - started });
     }
@@ -1901,8 +2178,8 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
       return result({ emitted: false, quiet: true, durationMs: Date.now() - started });
     }
 
-    if (pendingWinner && shouldEmitAckForFile(pendingWinner.filePath, config)) {
-      const text = appendDesignSystemNote(renderPendingAck(pendingWinner.filePath, pendingWinner.known, { cwd: projectCwd }), scanOptions);
+    if (ack?.kind === 'pending') {
+      const text = ack.text;
       return {
         exitCode: 0,
         stdout: payload(text, 'PostToolUse', harness),
@@ -1935,8 +2212,8 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
       };
     }
 
-    if (cleanWinner && !cleanAckDeduped && shouldEmitAckForFile(cleanWinner.filePath, config)) {
-      const text = appendDesignSystemNote(renderCleanAck(cleanWinner.filePath, { cwd: projectCwd }), scanOptions);
+    if (ack?.kind === 'clean') {
+      const text = ack.text;
       return {
         exitCode: 0,
         stdout: payload(text, 'PostToolUse', harness),
@@ -1996,8 +2273,11 @@ export const STOP_MAX_FILES = 20;
  *   { exitCode, stdout, audit, emission? }
  *
  * Never throws; exits silent (and fast) when the session touched no UI
- * files. Output uses the Stop hookSpecificOutput channel: additionalContext
- * is delivered to the model and the conversation continues so it can act.
+ * files. Output goes out on the harness's Stop continuation channel: Claude
+ * Code and Grok Build read hookSpecificOutput.additionalContext, Codex takes
+ * a decision: "block" whose reason becomes the continuation prompt. Either
+ * way the findings reach the model and the conversation continues so it
+ * can act.
  */
 export async function runStopHook({ stdinJson, env = {}, cwd = process.cwd(), now = Date.now, detector } = {}) {
   const audit = { ts: new Date(now()).toISOString(), event: 'Stop' };
@@ -2024,22 +2304,36 @@ export async function runStopHook({ stdinJson, env = {}, cwd = process.cwd(), no
       return result({ skipped: 'stdin-empty', durationMs: Date.now() - started });
     }
 
-    // Claude Code's Stop-hook contract: `stop_hook_active` is true when this
-    // hook is being re-invoked only because a prior invocation kept the turn
-    // alive (here, via hookSpecificOutput.additionalContext). Re-scanning and
-    // re-blocking now would loop until Claude Code's consecutive-block cap
-    // force-ends the turn (issue #400). The prior fire already surfaced the
-    // findings; whether to act on them is the agent's call. Exit fast with no
-    // output before any scan. Only Claude Code sends this field; other
-    // harnesses omit it, so the strict `=== true` is a no-op for them. This
-    // guard makes the loop impossible regardless of the finding cache key's
-    // line-number sensitivity (out of scope here; see findingCacheKey).
+    const harness = resolveHarness(env, event);
+    audit.harness = harness;
+    event = normalizeHookEvent(event, cwd, harness);
+
+    // Stop-hook re-entry guard: `stop_hook_active` is true when this hook is
+    // being re-invoked only because a prior invocation kept the turn alive
+    // (Claude Code via hookSpecificOutput.additionalContext, Codex via a
+    // decision: "block" continuation). Re-scanning and re-blocking now could
+    // loop (issue #400). The prior fire already surfaced the findings;
+    // whether to act on them is the agent's call. Exit fast with no output
+    // before any scan. Claude Code and Codex both send this field: Codex
+    // mirrors the Claude contract (StopCommandInput in
+    // codex-rs/hooks/src/schema.rs) and latches it true for the rest of the
+    // turn once a block is honored (codex-rs/core/src/session/turn.rs). Grok
+    // sends `stopHookActive`, copied onto the snake_case field above. Cursor
+    // and GitHub Copilot omit the field, so the strict `=== true` is a no-op
+    // for them. The guard makes the loop impossible regardless of the finding
+    // cache key's line-number sensitivity (out of scope here; see
+    // findingCacheKey).
     if (event.stop_hook_active === true) {
       return result({ skipped: 'stop-hook-active', durationMs: Date.now() - started });
     }
 
-    const harness = resolveHarness(env, event);
-    audit.harness = harness;
+    // Grok fires Stop twice: `end_turn` (the gate that can inject
+    // additionalContext) then an observe-only `shutdown`. A second deep
+    // pass would re-emit the same findings. Claude omits `reason`; only
+    // skip when Grok named a reason that is not end_turn.
+    if (harness === 'grok' && typeof event.reason === 'string' && event.reason !== 'end_turn') {
+      return result({ skipped: 'stop-reason', reason: event.reason, durationMs: Date.now() - started });
+    }
 
     // A Stop event carries no file, so the session cwd is the project.
     // Umbrella-dir launches keyed their per-edit cache to the edited file's
@@ -2074,6 +2368,7 @@ export async function runStopHook({ stdinJson, env = {}, cwd = process.cwd(), no
 
     const freshGroups = [];
     let scanned = 0;
+    let cacheDirty = false;
     for (const filePath of touched) {
       if (scanned >= STOP_MAX_FILES) break;
       if (hasPathTraversal(filePath) || SENSITIVE_PATH.test(filePath)) continue;
@@ -2094,37 +2389,58 @@ export async function runStopHook({ stdinJson, env = {}, cwd = process.cwd(), no
       try { content = fs.readFileSync(filePath, 'utf-8'); } catch { continue; }
 
       let findings;
+      let detectorThrew = false;
       const useHtmlEngine = configuredExt
         ? configuredExt.engine === 'html'
         : (ext === '.html' || ext === '.htm');
 
       if (useHtmlEngine && typeof det.detectHtml === 'function') {
-        try { findings = await det.detectHtml(filePath, scanOptions); } catch { findings = []; }
+        try { findings = await det.detectHtml(filePath, scanOptions); } catch { findings = []; detectorThrew = true; }
       } else {
-        try { findings = await det.detectText(content, filePath, scanOptions); } catch { findings = []; }
+        try { findings = await det.detectText(content, filePath, scanOptions); } catch { findings = []; detectorThrew = true; }
       }
+
+      // A detector failure tells us nothing about the file. Leave whatever
+      // was remembered alone rather than recording an empty scan as truth.
+      if (detectorThrew) continue;
 
       // Full rule set: no tier split here. Config/inline ignores still apply,
       // and the session dedupe drops everything the per-edit pass (or an
       // earlier Stop pass) already surfaced.
       const filtered = filterFindings(findings || [], content, ext, config);
       const fresh = dedupeAgainstCache(filtered, cache, sessionId, filePath);
+      // Sync to the live scan, including empty. Remembering only `fresh`
+      // (or skipping the write on a clean Stop) left stale keys in place, so
+      // a finding that was fixed and later reintroduced never fired again.
+      rememberFindings(cache, sessionId, filePath, filtered);
+      cacheDirty = true;
       if (fresh.length > 0) {
-        rememberFindings(cache, sessionId, filePath, fresh);
         freshGroups.push({ filePath, findings: fresh });
       }
     }
     audit.scannedFiles = scanned;
 
     if (freshGroups.length === 0) {
+      if (cacheDirty) persistCache(projectCwd, cache);
       return result({ emitted: false, skipped: 'stop-clean', durationMs: Date.now() - started });
     }
 
-    // Fresh findings earn the cache write so the next Stop fire is silent
-    // unless new issues appear.
-    persistCache(projectCwd, cache);
+    // A per-edit fire earlier in this session already consumed the footer
+    // flag, so the Stop wall of text carries the one-line short footer.
+    const footerMode = footerModeForSession(cache, sessionId);
+    const text = appendDesignSystemNoteOnce(
+      renderGroupedTemplate(freshGroups, config, {
+        cwd: projectCwd,
+        footer: footerMode,
+        reserveChars: designNoteReserve(scanOptions, cache, sessionId),
+      }),
+      scanOptions, cache, sessionId, config,
+    );
+    commitFooterShown(cache, sessionId, text);
 
-    const text = appendDesignSystemNote(renderGroupedTemplate(freshGroups, config, { cwd: projectCwd }), scanOptions);
+    // Persist the live finding set so the next Stop fire is silent unless
+    // new issues appear; the notice flags ride along.
+    persistCache(projectCwd, cache);
     return {
       exitCode: 0,
       stdout: payload(text, 'Stop', harness),
@@ -2158,6 +2474,15 @@ export function payload(text, eventName = 'PostToolUse', harness = 'claude') {
   // `additionalContext` string (alongside an optional `modifiedResult`).
   if (harness === 'github') {
     return JSON.stringify({ additionalContext: text });
+  }
+  // Codex shares Claude Code's PostToolUse additional-context shape, but its
+  // Stop schema rejects unknown fields. Findings that should continue the
+  // turn must be a top-level blocking decision.
+  // https://developers.openai.com/codex/hooks#stop (schema of record:
+  // codex-rs/hooks/src/schema.rs, StopCommandOutputWire)
+  if (harness === 'codex' && eventName === 'Stop') {
+    if (!String(text ?? '').trim()) return '';
+    return JSON.stringify({ decision: 'block', reason: text });
   }
   return JSON.stringify({
     hookSpecificOutput: { hookEventName: eventName, additionalContext: text },

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { GENERIC_FONTS, OVERUSED_FONTS } from '../../shared/constants.mjs';
+import { OVERUSED_FONTS, primaryFontFace } from '../../shared/constants.mjs';
 import {
   checkSourceDesignSystem,
   collectStaticDesignSystemFindings,
@@ -25,9 +25,11 @@ import {
   checkElementOversizedH1,
   checkElementQuality,
   checkElementRadialSpotlight,
+  checkFlatTypeHierarchyFromDoc,
   checkCreamPalette,
   checkHtmlPatterns,
   checkKickerAboveHeadingFromDoc,
+  scopedIgnoreActive,
   checkNumberedSectionLabelsFromDoc,
   checkPageLayout,
   checkPageQualityFromDoc,
@@ -50,9 +52,7 @@ function checkStaticPageTypography(document, window) {
   for (const el of document.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, td, th, dd, blockquote, figcaption, a, button, label, span, div')) {
     const hasText = el.childNodes.some(n => n.nodeType === 3 && n.textContent.trim().length > 0);
     if (!hasText) continue;
-    const ff = window.getComputedStyle(el).fontFamily || '';
-    const stack = ff.split(',').map(f => f.trim().replace(/^['"]|['"]$/g, '').toLowerCase());
-    const primary = stack.find(f => f && !GENERIC_FONTS.has(f));
+    const primary = primaryFontFace(window.getComputedStyle(el).fontFamily);
     if (!primary) continue;
     fonts.add(primary);
     if (OVERUSED_FONTS.has(primary)) overusedFound.add(primary);
@@ -60,18 +60,7 @@ function checkStaticPageTypography(document, window) {
   for (const font of overusedFound) {
     findings.push({ id: 'overused-font', snippet: `Primary font: ${font}` });
   }
-  const sizes = new Set();
-  for (const el of document.querySelectorAll('h1, h2, h3, h4, h5, h6, p, span, a, li, td, th, label, button, div')) {
-    const fontSize = parseFloat(window.getComputedStyle(el).fontSize);
-    if (fontSize >= 8 && fontSize < 200) sizes.add(Math.round(fontSize * 10) / 10);
-  }
-  if (sizes.size >= 3) {
-    const sorted = [...sizes].sort((a, b) => a - b);
-    const ratio = sorted[sorted.length - 1] / sorted[0];
-    if (ratio < 2.0) {
-      findings.push({ id: 'flat-type-hierarchy', snippet: `Sizes: ${sorted.map(s => s + 'px').join(', ')} (ratio ${ratio.toFixed(1)}:1)` });
-    }
-  }
+  findings.push(...checkFlatTypeHierarchyFromDoc(document, el => window.getComputedStyle(el)));
   return findings;
 }
 
@@ -133,7 +122,7 @@ async function detectHtml(filePath, options = {}) {
         parseDocument: htmlparser2.parseDocument,
         selectAll: cssSelect.selectAll,
         selectOne: cssSelect.selectOne,
-        is: cssSelect.is,
+        compile: cssSelect.compile,
         csstree,
         domutils,
       };
@@ -182,6 +171,9 @@ async function detectHtml(filePath, options = {}) {
       const tag = el.tagName.toLowerCase();
       const style = window.getComputedStyle(el);
       for (const f of runElementCheck(rule.id, () => rule.run(el, tag, style, window, customPropMap))) {
+        // Element-scoped waivers: a data-impeccable-ignore ancestor suppresses
+        // matching findings for its subtree, same as the browser walk.
+        if (scopedIgnoreActive(el, f.id)) continue;
         findings.push(finding(f.id, filePath, f.snippet));
       }
     }
@@ -249,6 +241,17 @@ async function detectHtml(filePath, options = {}) {
     for (const f of runPageCheck('html-patterns', () => checkHtmlPatterns(html, patternCorpora).filter(item =>
       item.id !== 'bounce-easing' && item.id !== 'layout-transition'
     ))) {
+      // Selector-backed page findings honor scoped waivers here too, matching
+      // the browser pass: resolve the selector and drop the finding when an
+      // ignoring ancestor covers a match. Unlike the browser, an unmatched
+      // selector keeps the finding — static scans see partial documents.
+      if (f.selector) {
+        let matches = null;
+        try {
+          matches = document.querySelectorAll(String(f.selector).replace(/::?[a-zA-Z-]+(\([^)]*\))?/g, '').trim());
+        } catch { matches = null; }
+        if (matches && matches.length > 0 && [...matches].every(el => scopedIgnoreActive(el, f.id))) continue;
+      }
       const item = finding(f.id, filePath, f.snippet);
       // Position-aware severity promotion: checks may attach a per-finding
       // severity (e.g. a pulsing dot inside a header/nav landmark) that

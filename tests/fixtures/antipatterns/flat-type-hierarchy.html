@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flat Type Hierarchy — Role and Usage Cases</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 24px;
+      background: #ffffff;
+      color: #172033;
+      font-family: Karla, Arial, sans-serif;
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 32px;
+      max-width: 1120px;
+      margin: 0 auto;
+    }
+
+    article {
+      margin: 0 0 24px;
+      padding: 20px;
+      border: 1px solid #d8deea;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section aria-label="Should flag">
+      <article data-expect="flag" data-case="Flag Compressed Product">
+        <h1 style="font-size: 18px">Flag Compressed Product</h1>
+        <h2 style="font-size: 16px">Primary section</h2>
+        <h3 style="font-size: 15px">Supporting section</h3>
+        <p style="font-size: 14px">Body copy is almost indistinguishable from every heading level.</p>
+      </article>
+
+      <article data-expect="flag" data-case="Flag Soft Editorial">
+        <h1 style="font-size: 21px">Flag Soft Editorial</h1>
+        <h2 style="font-size: 19px"><span>A section with barely less emphasis</span></h2>
+        <p style="font-size: 17px">The body is compressed into the same narrow band.</p>
+      </article>
+
+      <article data-expect="flag" data-case="Flag Crowded Documentation">
+        <h1 style="font-size: 20px">Flag Crowded Documentation</h1>
+        <h2 style="font-size: 18px">Second-level documentation heading</h2>
+        <h3 style="font-size: 17px">Third-level documentation heading</h3>
+        <p style="font-size: 16px">Reading text has no strong size step above it.</p>
+      </article>
+
+      <article data-expect="flag" data-case="Flag Repeated Role">
+        <h1 style="font-size: 18px">Flag Repeated Role</h1>
+        <h2 style="font-size: 16px">Dominant section size</h2>
+        <h2 style="font-size: 16px">Another section at the dominant size</h2>
+        <h2 style="font-size: 17px">A one-off section variation</h2>
+        <p style="font-size: 15px">The representative role sizes remain uniformly compressed.</p>
+      </article>
+
+      <article aria-hidden="true" data-expect="flag" data-case="Flag Painted Aria Hidden">
+        <h1 style="font-size: 18px">Flag Painted Aria Hidden</h1>
+        <h2 style="font-size: 16px">A visible section excluded from the accessibility tree</h2>
+        <p style="font-size: 15px">Painted text still contributes to the visual hierarchy.</p>
+      </article>
+    </section>
+
+    <section aria-label="Should pass">
+      <article data-expect="pass" data-case="Pass Dense Session List">
+        <h1 style="font-size: 16px">Pass Dense Session List</h1>
+        <div style="font-size: 11px">Session alpha</div>
+        <div style="font-size: 11px">Session beta</div>
+        <div style="font-size: 11px">Session gamma</div>
+        <div style="font-size: 11px">Session delta</div>
+        <div style="font-size: 11px">Session epsilon</div>
+        <div style="font-size: 11px">Session zeta</div>
+        <div style="font-size: 11px">Session eta</div>
+        <div style="font-size: 11px">Session theta</div>
+        <span style="font-size: 13px">One-off status</span>
+        <button style="font-size: 14px">One-off action</button>
+        <span style="font-size: 15px">One-off summary</span>
+      </article>
+
+      <article data-expect="pass" data-case="Pass Empty Inherited Containers">
+        <h2 style="font-size: 16px">Pass Empty Inherited Containers</h2>
+        <h1 hidden style="font-size: 18px">Hidden inherited title</h1>
+        <p hidden style="font-size: 14px">Hidden inherited body</p>
+        <div style="font-size: 14px"></div>
+        <div style="font-size: 15px"><span></span></div>
+        <div style="font-size: 16px"></div>
+      </article>
+
+      <article data-expect="pass" data-case="Pass One-Off Chrome">
+        <h1 style="font-size: 24px">Pass One-Off Chrome</h1>
+        <p style="font-size: 16px">The body size carries the page.</p>
+        <p style="font-size: 16px">The body size repeats consistently.</p>
+        <p style="font-size: 16px">The body size remains dominant.</p>
+        <button style="font-size: 14px">Rare action</button>
+        <label style="font-size: 15px">Rare label</label>
+        <div style="font-size: 18px">Rare utility value</div>
+      </article>
+
+      <article data-expect="pass" data-case="Pass Dense Issue List">
+        <h1 style="font-size: 16px">Pass Dense Issue List</h1>
+        <a style="font-size: 12px" href="#">Issue metadata one</a>
+        <a style="font-size: 12px" href="#">Issue metadata two</a>
+        <a style="font-size: 12px" href="#">Issue metadata three</a>
+        <a style="font-size: 14px" href="#">Issue title one</a>
+        <a style="font-size: 14px" href="#">Issue title two</a>
+        <span style="font-size: 16px">List count</span>
+      </article>
+
+      <article data-expect="pass" data-case="Pass Strong Document Hierarchy">
+        <h1 style="font-size: 48px">Pass Strong Document Hierarchy</h1>
+        <h2 style="font-size: 30px">A clearly subordinate section</h2>
+        <h3 style="font-size: 22px">A readable subsection</h3>
+        <p style="font-size: 16px">Body copy sits on a clearly separated scale.</p>
+      </article>
+
+      <article style="content-visibility: hidden" data-expect="pass" data-case="Pass Content Visibility Hidden">
+        <h1 style="font-size: 18px">Pass Content Visibility Hidden</h1>
+        <h2 style="font-size: 16px">This section is not painted</h2>
+        <p style="font-size: 15px">Non-painted text should not affect the hierarchy.</p>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

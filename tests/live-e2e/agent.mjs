@@ -29,6 +29,7 @@ import { promisify } from 'node:util';
 import { completionTypeForAcceptResult } from '../../skill/scripts/live/completion.mjs';
 
 const execFileP = promisify(execFile);
+const CARBONIZE_HMR_BOUNDARY_MS = 250;
 
 export const STEER_MARKER_ATTR = 'data-impeccable-steer';
 export const STEER_MARKER_VALUE = 'e2e';
@@ -2172,6 +2173,13 @@ export async function runAgentLoop({
             const post = await fs.readFile(path.join(tmp, acceptResult.file), 'utf-8');
             log(`--- post-accept (pre-carbonize) ---\n${post}`);
           }
+          // live-accept writes the intermediate carbonize tree, then a real
+          // agent reads its cleanup instructions before writing the final
+          // source. The deterministic agent otherwise collapses both writes
+          // into the same filesystem watcher tick, so Vite can observe the
+          // carbonize state but miss the clean state entirely. Preserve the
+          // real protocol boundary instead of relying on browser DOM cleanup.
+          await new Promise((resolve) => setTimeout(resolve, CARBONIZE_HMR_BOUNDARY_MS));
           await runCarbonizeCleanup({ tmp, file: acceptResult.file, sessionId: event.id, variant: event.variantId });
           log(`carbonize cleanup done on ${acceptResult.file}`);
         }
@@ -2455,7 +2463,12 @@ async function runCarbonizeCleanup({ tmp, file, sessionId /* , variant */ }) {
   // element is now dead weight.
   body = body.replace(/\s+data-impeccable-hoist-id="[^"]*"/g, '');
 
-  await fs.writeFile(filePath, body, 'utf-8');
+  // Publish the clean source atomically. A direct write briefly exposes a
+  // zero-byte file, which can make the harness (and Vite) observe cleanup as
+  // complete before the accepted source has actually landed.
+  const temporaryPath = `${filePath}.impeccable-carbonize-${sessionId}.tmp`;
+  await fs.writeFile(temporaryPath, body, 'utf-8');
+  await fs.rename(temporaryPath, filePath);
 }
 
 function unwrapDivAttributeWrapper(body, attrName, { expandSingleLineContainer = false } = {}) {

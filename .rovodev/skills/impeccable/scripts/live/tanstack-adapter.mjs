@@ -19,6 +19,8 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+
+import { firstExistingFile, hasAnyDependency } from './frameworks/detect-utils.mjs';
 import { buildLiveScriptSrc } from './frameworks/script-src.mjs';
 
 export const TANSTACK_MARKER_OPEN = '{/* impeccable-live-tanstack-start */}';
@@ -42,8 +44,8 @@ const START_PACKAGES = [
 ];
 
 export function detectTanStackStartProject(cwd = process.cwd()) {
-  if (!packageHasTanStackStart(cwd)) return null;
-  const rootRoute = findRootRouteFile(cwd);
+  if (!hasAnyDependency(cwd, START_PACKAGES)) return null;
+  const rootRoute = firstExistingFile(cwd, ROOT_ROUTE_CANDIDATES);
   if (!rootRoute) return null;
 
   const ext = path.extname(rootRoute);
@@ -216,29 +218,6 @@ export default function ImpeccableLiveRoot() {
 // its leading comment and its script data-attribute; user files never do.
 function isManagedComponent(content) {
   return String(content || '').includes('impeccable-live-tanstack');
-}
-
-function findRootRouteFile(cwd) {
-  for (const rel of ROOT_ROUTE_CANDIDATES) {
-    if (fs.existsSync(path.join(cwd, rel))) return rel;
-  }
-  return null;
-}
-
-function packageHasTanStackStart(cwd) {
-  const file = path.join(cwd, 'package.json');
-  if (!fs.existsSync(file)) return false;
-  try {
-    const pkg = JSON.parse(fs.readFileSync(file, 'utf-8'));
-    const deps = {
-      ...(pkg.dependencies || {}),
-      ...(pkg.devDependencies || {}),
-      ...(pkg.peerDependencies || {}),
-    };
-    return START_PACKAGES.some((name) => Boolean(deps[name]));
-  } catch {
-    return false;
-  }
 }
 
 function relativeImportSpecifier(fromFile, toFile) {

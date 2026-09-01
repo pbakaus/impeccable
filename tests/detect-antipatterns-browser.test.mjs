@@ -20,6 +20,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createBrowserDetector, detectUrl, normalizeDesignSystem } from '../cli/engine/detect-antipatterns.mjs';
+import { launchBrowser } from '../cli/engine/engines/browser/detect-url.mjs';
 import { filterDetectionFindings } from '../cli/lib/impeccable-config.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -33,6 +34,20 @@ const MIME = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
 };
+
+function isolatedBrowserFixtureCases(name) {
+  const source = fs.readFileSync(path.join(ROOT, 'tests', 'fixtures', 'antipatterns', name), 'utf8');
+  const style = source.match(/<style>([\s\S]*?)<\/style>/i)?.[1] || '';
+  const cases = [];
+  for (const match of source.matchAll(/<article\b([^>]*)>([\s\S]*?)<\/article>/gi)) {
+    const attrs = match[1];
+    const caseName = attrs.match(/\bdata-case="([^"]+)"/i)?.[1];
+    const expect = attrs.match(/\bdata-expect="(flag|pass)"/i)?.[1];
+    if (!caseName || !expect) continue;
+    cases.push({ caseName, expect, html: `<article${attrs}>${match[2]}</article>` });
+  }
+  return { style, cases };
+}
 
 let server;
 let baseUrl;
@@ -110,6 +125,127 @@ describe('detectUrl — browser-only fixtures', () => {
     for (const cls of ['pass-same-bg-child', 'pass-marquee-shell', 'pass-inner-text-surface']) {
       assert.doesNotMatch(snippets, new RegExp(`"${cls}"`), `".${cls}" should not be flagged`);
     }
+  });
+
+  it('dark-glow: unreadable url() surface keeps zero-offset halos, abstains on offset chromatic shadows', async () => {
+    // Mirrors the static assertions in detect-antipatterns-fixtures.test.mjs.
+    // The browser adapter (checkElementGlowDOM) once returned [] for the
+    // whole element when the parent surface was unresolved, which also
+    // dropped zero-offset chromatic halos that need no background at all.
+    const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/glow.html`, { visualContrast: false });
+    const glow = f.filter(r => r.antipattern === 'dark-glow');
+    assert.ok(
+      glow.some(g => /Zero-offset box-shadow glow \(#d946ef\)/i.test(g.snippet || '')),
+      'expected zero-offset halo finding under unreadable image surface',
+    );
+    assert.equal(
+      glow.filter(g => /#10b981/i.test(g.snippet || '')).length, 0,
+      'offset chromatic shadow on unknown surface must not be scored',
+    );
+    // Gradient-over-image split: an opaque gradient provably covers the
+    // image, so the dark-background tell may score against its stops; a
+    // translucent wash blends with unknowable pixels (a white photo under a
+    // 20% black wash paints ~#cccccc, not black), so the walk abstains.
+    assert.ok(
+      glow.some(g => /Colored box-shadow glow \(#f97316\) on dark background/i.test(g.snippet || '')),
+      'expected colored-glow finding under a provably opaque gradient over an image',
+    );
+    assert.equal(
+      glow.filter(g => /#f43f5e/i.test(g.snippet || '')).length, 0,
+      'offset chromatic shadow under a translucent wash over an image must abstain',
+    );
+  });
+
+  it('image-backed text: the overlay default pass pixel-samples the image itself', async () => {
+    // Drives the OVERLAY entry (impeccableDetectAsync with default options),
+    // not detectUrl's Node-side full fallback — the image-only default mode
+    // lives in the injected bundle. Fourteen gradient decoys precede the
+    // panels: the image-only filter must apply inside the candidate cap, or
+    // they starve the pass and nothing gets sampled. The sampled finding
+    // carries the candidate's text, so the white-on-light specimen must be
+    // the one that flags and the dark-ink control must stay clean.
+    const puppeteer = await import('puppeteer');
+    const browser = await launchBrowser(puppeteer, { headless: true, args: process.env.CI ? ['--no-sandbox', '--disable-setuid-sandbox'] : [] });
+    try {
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1280, height: 800 });
+      await page.goto(`${baseUrl}/fixtures/antipatterns/image-backed-contrast.html`, { waitUntil: 'load' });
+      await page.addScriptTag({ path: path.join(ROOT, 'cli/engine/detect-antipatterns-browser.js') });
+      const groups = await page.evaluate(() => window.impeccableDetectAsync());
+      const contrast = groups.flatMap(g => (g.findings || []).filter(f => f.type === 'low-contrast').map(f => f.detail || f.snippet || ''));
+      const snippets = contrast.join('\n');
+      assert.match(snippets, /browser contrast/, `expected a sampled (not analytic) finding:\n${snippets}`);
+      assert.match(snippets, /White text on a near-white/, `flag case missing:\n${snippets}`);
+      assert.doesNotMatch(snippets, /Dark ink/, `pass case must not flag:\n${snippets}`);
+      assert.equal(contrast.length, 1, `expected exactly the white-on-light case, got ${contrast.length}:\n${snippets}`);
+    } finally {
+      await browser.close().catch(() => {});
+    }
+  });
+
+  it('scoped-ignore: data-impeccable-ignore waives its subtree in the browser walk', async () => {
+    // Browser twin of the static scoped-ignore test: same fixture, same
+    // expectation — only the control and the other-rule-waived case flag.
+    const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/scoped-ignore.html`, { visualContrast: false });
+    const sideTabs = f.filter(r => r.antipattern === 'side-tab');
+    const snippets = sideTabs.map(r => r.snippet || '').join('\n');
+    // Every case carries a unique border width, so each finding attributes to
+    // exactly one case: control 6, other-rule 8, sibling-waiver 12,
+    // misspelled-rule 5 must flag; the five waived shapes must not.
+    for (const w of ['5px', '6px', '8px', '12px']) {
+      assert.match(snippets, new RegExp(`border-left: ${w.replace('px', '')}px`), `flag case ${w} missing:\n${snippets}`);
+    }
+    for (const w of ['4px', '7px', '9px', '10px', '11px']) {
+      assert.doesNotMatch(snippets, new RegExp(`border-left: ${w.replace('px', '')}px`), `waived case ${w} must not flag:\n${snippets}`);
+    }
+    assert.equal(sideTabs.length, 4, `expected exactly the 4 flag cases, got ${sideTabs.length}:\n${snippets}`);
+    // CSS-scan findings resolve their selectors against the live DOM: the
+    // marquee track sits under a marquee waiver (suppressed), and the grid
+    // rule's selector renders nowhere on this page (dropped).
+    assert.equal(f.filter(r => r.antipattern === 'marquee').length, 0, 'waived marquee must not flag');
+    assert.equal(f.filter(r => r.antipattern === 'codex-grid-background').length, 0, 'dead grid CSS must not flag in the browser');
+    // The overshoot bezier sits inside a keyframe `to` step: the selector
+    // extractor must refuse `to` (matches nothing) so the finding is RETAINED
+    // as page-level rather than wrongly dropped by the zero-match rule.
+    assert.ok(f.some(r => r.antipattern === 'bounce-easing'), 'keyframe-step bezier finding must survive selector extraction');
+  });
+
+  it('low-contrast: a gradient body ground with oklch stops is measured, never assumed white', async () => {
+    // The impeccable.style FP class: `background: linear-gradient(oklch(7%…),
+    // oklch(4%…))` on body leaves backgroundColor transparent, and the old
+    // resolveBackground assumed white for any body-level gradient — turning
+    // every light-on-dark text on the page into a ~1.3:1 finding (~120 of
+    // them on one site). In a real browser, reaching that branch means the
+    // ground truly is the gradient, so its stops are the surface to measure.
+    // visualContrast: false scopes this to the DOM resolution path under test;
+    // the screenshot sampler is a separate subsystem with its own coverage.
+    const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/dark-gradient-ground.html`, { visualContrast: false });
+    const contrast = f.filter(r => r.antipattern === 'low-contrast');
+    const snippets = contrast.map(r => r.snippet || '').join('\n');
+    assert.doesNotMatch(snippets, /on #ffffff/, `light-on-dark text was measured against an assumed white body:\n${snippets}`);
+    // Each FLAG case is pinned to its full text-on-background signature (the
+    // hexes are the engine's own deterministic oklch conversions), so an
+    // offsetting miss and false positive cannot cancel out — in particular
+    // the frosted pair: flag-light-on-frosted must be measured against the
+    // COMPOSITED wash (#dcdbd8), never a raw dark stop, while count === 3
+    // proves no pass-column case (like pass-dark-on-frosted) flags instead.
+    assert.match(snippets, /text #2e2e2e on #010101/, `flag-muted-direct missing against the darker stop:\n${snippets}`);
+    assert.match(snippets, /text #333333 on #010101/, `flag-muted-nested missing against the darker stop:\n${snippets}`);
+    assert.match(snippets, /text #d7d7d7 on #dcdbd8/, `flag-light-on-frosted missing against the composited wash:\n${snippets}`);
+    assert.equal(contrast.length, 3, `expected exactly the 3 flag-column cases, got ${contrast.length}:\n${snippets}`);
+  });
+
+  it('ai-color-palette: oklch neon text flags the should-flag column only', async () => {
+    const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/oklch-neon-text.html`, { visualContrast: false });
+    const neon = f.filter(r =>
+      r.antipattern === 'ai-color-palette' && /neon text on dark background/i.test(r.snippet || '')
+    );
+    assert.equal(
+      neon.length,
+      1,
+      `expected exactly 1 oklch neon-text finding, got ${neon.length}: ${JSON.stringify(f.map(r => r.snippet))}`,
+    );
+    assert.match(neon[0].snippet || '', /Cyan neon text on dark background/i);
   });
 
   it('shadowed form.id: a <form> with <input name="id"> does not crash the scan (issue #407)', async () => {
@@ -273,6 +409,40 @@ describe('detectUrl — browser-only fixtures', () => {
     }
   });
 
+  it('flat-type-hierarchy: browser scan uses role and frequency evidence', async () => {
+    const puppeteer = await import('puppeteer');
+    const browser = await puppeteer.default.launch({
+      headless: true,
+      args: process.env.CI ? ['--no-sandbox', '--disable-setuid-sandbox'] : [],
+    });
+    try {
+      const page = await browser.newPage();
+      const { style, cases } = isolatedBrowserFixtureCases('flat-type-hierarchy.html');
+      await page.setContent(`<!DOCTYPE html><html><head><style>${style}</style></head><body></body></html>`);
+      await page.evaluate(() => { window.__IMPECCABLE_CONFIG__ = { autoScan: false }; });
+      const browserScript = fs.readFileSync(path.join(ROOT, 'cli/engine/detect-antipatterns-browser.js'), 'utf-8');
+      await page.evaluate(browserScript);
+
+      for (const item of cases) {
+        const count = await page.evaluate((html) => {
+          document.body.innerHTML = html;
+          return window.impeccableDetect({ serialize: false })
+            .flatMap(group => group.findings || [])
+            .filter(finding => (finding.type || finding.id) === 'flat-type-hierarchy')
+            .length;
+        }, item.html);
+        assert.equal(
+          count,
+          item.expect === 'flag' ? 1 : 0,
+          `unexpected browser result for "${item.caseName}"`,
+        );
+      }
+      await page.close();
+    } finally {
+      await browser.close().catch(() => {});
+    }
+  });
+
   it('overused-font: hook inline-ignore comments do not suppress browser findings', async () => {
     const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/hook-inline-ignore.html`);
     assert.ok(
@@ -375,7 +545,7 @@ describe('detectUrl — browser-only fixtures', () => {
     assert.match(snippets, /flag-box-text/, `opaque box painted over text should flag: ${snippets}`);
     assert.match(snippets, /flag-leak/, `inline element with leaked opaque padding should flag: ${snippets}`);
     assert.match(snippets, /flag-headline/, `headline overhanging an opaque card should flag: ${snippets}`);
-    for (const cls of ['pass-title', 'pass-eyebrow', 'pass-hero', 'cap', 'pass-under', 'pass-fixedbar']) {
+    for (const cls of ['pass-title', 'pass-eyebrow', 'pass-hero', 'cap', 'pass-under', 'pass-fixedbar', 'pass-scrubber']) {
       assert.doesNotMatch(snippets, new RegExp(cls), `".${cls}" must not flag: ${snippets}`);
     }
     assert.equal(hits.length, 3, `expected exactly 3 text-occlusion findings, got ${hits.length}: ${snippets}`);
@@ -859,6 +1029,233 @@ describe('detectUrl — browser-only fixtures', () => {
     }
   });
 
+  it('extension mode suppresses disabledValues entries from scan config', async () => {
+    // The live overlay resolves .impeccable ignoreValues per page and sends
+    // the survivors as config.disabledValues (issue #639); the detector must
+    // filter them where the findings are assembled, since the overlay draws
+    // its own markers from the collected findings.
+    const normalized = normalizeDesignSystem({
+      frontmatter: {
+        typography: {
+          display: { fontFamily: 'Avenir Next, Georgia, serif' },
+          body: { fontFamily: 'IBM Plex Sans, Arial, sans-serif' },
+        },
+        colors: {
+          ink: '#241f1a',
+          paper: '#f7f4ee',
+          surface: '#ffffff',
+          accent: '#b8422e',
+          border: '#d4c7b9',
+        },
+        rounded: {
+          sm: '4px',
+          md: '8px',
+          '"2xl"': '32px',
+          full: '999px',
+        },
+      },
+    });
+    // The JSON-safe payload shape the extension panel and detectUrl inject as
+    // __IMPECCABLE_CONFIG__.designSystem (serializeDesignSystemForBrowser in
+    // cli/engine/engines/browser/detect-url.mjs).
+    const designSystem = {
+      present: true,
+      hasFonts: normalized.hasFonts === true,
+      allowedFonts: Array.from(normalized.allowedFonts || []),
+      hasColors: normalized.hasColors === true,
+      allowedColors: Array.from(normalized.allowedColorKeys?.values?.() || [])
+        .map(entry => entry?.color)
+        .filter(color => color && Number.isFinite(color.r) && Number.isFinite(color.g) && Number.isFinite(color.b))
+        .map(color => ({ r: color.r, g: color.g, b: color.b })),
+      hasRadii: normalized.hasRadii === true,
+      allowedRadii: (normalized.allowedRadii || [])
+        .map(entry => Number(entry?.px))
+        .filter(px => Number.isFinite(px)),
+      hasPillRadius: normalized.hasPillRadius === true,
+    };
+    const puppeteer = await import('puppeteer');
+    const browser = await puppeteer.default.launch({
+      headless: true,
+      args: process.env.CI ? ['--no-sandbox', '--disable-setuid-sandbox'] : [],
+    });
+    try {
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1280, height: 800 });
+      await page.goto(`${baseUrl}/fixtures/antipatterns/design-system.html`, { waitUntil: 'load' });
+      const browserScript = fs.readFileSync(path.join(ROOT, 'cli/engine/detect-antipatterns-browser.js'), 'utf-8');
+      await page.evaluate(() => {
+        document.documentElement.dataset.impeccableExtension = 'true';
+        window.__impeccableMessages = [];
+        window.addEventListener('message', event => {
+          if (event.source !== window || !event.data?.source?.startsWith('impeccable-')) return;
+          window.__impeccableMessages.push(event.data);
+        });
+      });
+      await page.evaluate(browserScript);
+      const scan = (scanId, disabledValues, extraConfig = {}) => page.evaluate(async (config) => {
+        window.postMessage({ source: 'impeccable-command', action: 'scan', config }, '*');
+        const deadline = Date.now() + 2000;
+        while (
+          Date.now() < deadline &&
+          !window.__impeccableMessages.some(message =>
+            message.source === 'impeccable-results' && message.scanId === config.scanId)
+        ) {
+          await new Promise(resolve => setTimeout(resolve, 25));
+        }
+        const resultMessage = window.__impeccableMessages.find(message =>
+          message.source === 'impeccable-results' && message.scanId === config.scanId);
+        const flat = (resultMessage?.findings || []).flatMap(group => group.findings || []);
+        return {
+          total: flat.length,
+          colors: flat.filter(finding => finding.type === 'design-system-color').length,
+          colorValues: flat
+            .filter(finding => finding.type === 'design-system-color')
+            .map(finding => finding.ignoreValue || ''),
+          fonts: flat
+            .filter(finding => finding.type === 'design-system-font')
+            .map(finding => finding.ignoreValue || ''),
+        };
+      }, { scanId, visualContrast: false, designSystem, ...(disabledValues ? { disabledValues } : {}), ...extraConfig });
+
+      const unfiltered = await scan('scan-dv-1');
+      assert.ok(
+        unfiltered.fonts.some(value => /poppins/i.test(value)),
+        `expected an undocumented poppins font finding, got: ${JSON.stringify(unfiltered)}`,
+      );
+
+      const filtered = await scan('scan-dv-2', [{ rule: 'design-system-font', value: 'poppins' }]);
+      assert.equal(
+        filtered.fonts.some(value => /poppins/i.test(value)),
+        false,
+        `expected the poppins waiver to suppress its finding, got: ${JSON.stringify(filtered)}`,
+      );
+      const waivedCount = unfiltered.fonts.filter(value => /poppins/i.test(value)).length;
+      assert.equal(
+        filtered.total,
+        unfiltered.total - waivedCount,
+        `expected exactly the waived findings to disappear, got: ${JSON.stringify({ unfiltered, filtered })}`,
+      );
+      assert.equal(
+        filtered.colors,
+        unfiltered.colors,
+        `expected unrelated design-system findings to survive, got: ${JSON.stringify({ unfiltered, filtered })}`,
+      );
+
+      // Color waivers match by value, not by spelling: the browser reports
+      // computed rgb(...) strings, the waiver is written as hex (mirrors
+      // ignoreValueMatches -> colorIgnoreKey in cli/lib/impeccable-config.mjs).
+      const rgbToHex = (value) => {
+        const m = String(value).match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/i);
+        if (!m) return null;
+        return `#${[m[1], m[2], m[3]].map(n => Number(n).toString(16).padStart(2, '0')).join('')}`;
+      };
+      const rgbColor = unfiltered.colorValues.find(value => rgbToHex(value));
+      assert.ok(
+        rgbColor,
+        `expected an rgb()-reported design-system-color finding, got: ${JSON.stringify(unfiltered.colorValues)}`,
+      );
+      const hexWaiver = rgbToHex(rgbColor);
+      const colorFiltered = await scan('scan-dv-3', [{ rule: 'design-system-color', value: hexWaiver }]);
+      const waivedColorCount = unfiltered.colorValues.filter(value => value === rgbColor).length;
+      assert.equal(
+        colorFiltered.colors,
+        unfiltered.colors - waivedColorCount,
+        `expected the hex waiver ${hexWaiver} to suppress the ${rgbColor} findings, got: ${JSON.stringify({ colorValues: unfiltered.colorValues, colorFiltered })}`,
+      );
+      assert.equal(
+        colorFiltered.fonts.some(value => /poppins/i.test(value)),
+        true,
+        `expected unrelated font findings to survive the color waiver, got: ${JSON.stringify(colorFiltered)}`,
+      );
+
+      // A page waived wholesale by detector.ignoreFiles arrives with
+      // config.skipScan and must scan to nothing at all.
+      const skipped = await scan('scan-dv-4', null, { skipScan: true });
+      assert.equal(skipped.total, 0, `expected skipScan to empty the scan, got: ${JSON.stringify(skipped)}`);
+      await page.close();
+    } finally {
+      await browser.close().catch(() => {});
+    }
+  });
+
+  it('extension scan: skipScan suppresses the visual contrast stage too', async () => {
+    const puppeteer = await import('puppeteer');
+    const browser = await puppeteer.default.launch({
+      headless: true,
+      args: process.env.CI ? ['--no-sandbox', '--disable-setuid-sandbox'] : [],
+    });
+    try {
+      const page = await browser.newPage();
+      // Keep failing visual-contrast cards inside the no-scroll viewport.
+      await page.setViewport({ width: 1280, height: 1000 });
+      await page.goto(`${baseUrl}/fixtures/antipatterns/visual-contrast.html`, { waitUntil: 'load' });
+      const browserScript = fs.readFileSync(path.join(ROOT, 'cli/engine/detect-antipatterns-browser.js'), 'utf-8');
+      await page.evaluate(() => {
+        document.documentElement.dataset.impeccableExtension = 'true';
+        window.__impeccableMessages = [];
+        window.addEventListener('message', event => {
+          if (event.source !== window || !event.data?.source?.startsWith('impeccable-')) return;
+          window.__impeccableMessages.push(event.data);
+        });
+      });
+      await page.evaluate(browserScript);
+      const resultsFor = (scanId) => page.evaluate((id) => (
+        (window.__impeccableMessages || [])
+          .filter(m => m.source === 'impeccable-results' && m.scanId === id)
+          .map(m => ({
+            count: m.count,
+            types: (m.findings || []).flatMap(g => (g.findings || []).map(f => f.type || f.id)),
+          }))
+      ), scanId);
+
+      // Control: the visual pass runs after the analytic scan and re-posts
+      // results carrying its low-contrast findings. This is exactly what an
+      // ignoreFiles-waived page must not do.
+      await page.evaluate(() => {
+        window.postMessage({
+          source: 'impeccable-command',
+          action: 'scan',
+          config: { scanId: 'vc-skip-1', visualContrast: true, visualContrastMaxCandidates: 20 },
+        }, '*');
+      });
+      const controlDeadline = Date.now() + 8000;
+      let control = [];
+      while (Date.now() < controlDeadline) {
+        control = await resultsFor('vc-skip-1');
+        if (control.some(r => r.types.includes('low-contrast'))) break;
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      assert.ok(
+        control.some(r => r.types.includes('low-contrast')),
+        `expected the control scan's visual pass to report low-contrast, got: ${JSON.stringify(control)}`,
+      );
+
+      // skipScan: a page waived wholesale by detector.ignoreFiles must stay
+      // at zero through the async visual stage as well: no results post with
+      // findings, no markers.
+      await page.evaluate(() => {
+        window.postMessage({
+          source: 'impeccable-command',
+          action: 'scan',
+          config: { scanId: 'vc-skip-2', visualContrast: true, visualContrastMaxCandidates: 20, skipScan: true },
+        }, '*');
+      });
+      await new Promise(resolve => setTimeout(resolve, 2500));
+      const skipped = await resultsFor('vc-skip-2');
+      assert.ok(skipped.length >= 1, `expected the skipScan scan to post results, got: ${JSON.stringify(skipped)}`);
+      assert.ok(
+        skipped.every(r => r.count === 0 && r.types.length === 0),
+        `expected every skipScan results post to stay empty, got: ${JSON.stringify(skipped)}`,
+      );
+      const overlays = await page.evaluate(() =>
+        document.querySelectorAll('.impeccable-overlay, .impeccable-label').length);
+      assert.equal(overlays, 0, `expected no markers on a skipScan page, got ${overlays}`);
+      await page.close();
+    } finally {
+      await browser.close().catch(() => {});
+    }
+  });
+
   it('browser API: impeccableDetect is pure, impeccableScan decorates', async () => {
     const puppeteer = await import('puppeteer');
     const browser = await puppeteer.default.launch({
@@ -947,5 +1344,78 @@ describe('detectUrl — browser-only fixtures', () => {
     } finally {
       await detector.close();
     }
+  });
+
+  // Only a real browser reproduces this one: Chrome keeps oklch(), lch(), and
+  // color(srgb ...) verbatim in getComputedStyle output, so a detector that
+  // cannot parse those reads every surface as unset, walks out of the page,
+  // and assumes the white canvas. On a dark theme that turns every light line
+  // into a false "on #ffffff" finding (two live scans of impeccable.style
+  // produced 95 and ~120 of them).
+  describe('dark themes written in modern color syntax', () => {
+    const FLAG_PAIRS = [
+      // Worst stop of the two-stop oklch ground.
+      ['#35332d', '#050403'],
+      ['#47474d', '#1a1c1f'],
+      ['#59595c', '#121215'],
+      ['#56514e', '#302b27'],
+      ['#bfbdb8', '#faf7f2'],
+      // Chrome resolves inherit / currentcolor before getComputedStyle
+      // output, so these two must flag natively as well.
+      ['#c7c4bf', '#faf7f2'],
+      ['#bfbdb8', '#f0ede8'],
+    ];
+
+    it('reads oklch / color() / lch grounds and never assumes white', async () => {
+      const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/dark-theme-modern-color.html`, {
+        visualContrast: false,
+      });
+      const lowContrast = f.filter(r => r.antipattern === 'low-contrast');
+      const snippets = lowContrast.map(r => r.snippet || '');
+
+      const onWhite = snippets.filter(s => /on #ffffff/i.test(s));
+      assert.equal(
+        onWhite.length, 0,
+        `no finding may claim a white ground on this page, got: ${onWhite.join('; ')}`,
+      );
+
+      const pale = snippets.filter(s => /#e7e4dd/i.test(s));
+      assert.equal(
+        pale.length, 0,
+        `ivory copy on dark grounds must not flag, got: ${pale.join('; ')}`,
+      );
+
+      for (const [text, bg] of FLAG_PAIRS) {
+        assert.ok(
+          snippets.some(s => s.includes(`text ${text}`) && s.includes(`on ${bg}`)),
+          `expected low-contrast for text ${text} on ${bg}, got: ${snippets.join('; ')}`,
+        );
+      }
+
+      // `url(...), linear-gradient(red, blue)` paints the image on top; no
+      // finding may measure against the occluded gradient's stops.
+      const hidden = f.filter(r => /#ff0000|#0000ff/i.test(r.snippet || ''));
+      assert.equal(
+        hidden.length, 0,
+        `no finding may reference the occluded gradient's stops, got: ${hidden.map(r => r.snippet).join('; ')}`,
+      );
+    });
+  });
+});
+
+describe('detectUrl — comp-fidelity rules (browser adapter parity)', () => {
+  it('organic-clip-path fires in the browser on the same fixture', async () => {
+    const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/organic-clip-path.html`, { visualContrast: false });
+    const hits = f.filter(r => r.antipattern === 'organic-clip-path');
+    assert.equal(hits.length, 4, hits.map(h => h.snippet).join('\n'));
+  });
+
+  it('buried-raster fires in the browser for washes and near-zero opacity', async () => {
+    const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/buried-raster.html`, { visualContrast: false });
+    const snippets = f.filter(r => r.antipattern === 'buried-raster').map(h => h.snippet || '');
+    assert.equal(snippets.filter(s => /near-opaque gradient wash/.test(s)).length, 2, snippets.join('\n'));
+    assert.ok(snippets.some(s => /raster background at opacity 0.04/.test(s)), snippets.join('\n'));
+    assert.ok(snippets.some(s => /<img> at opacity 0.05/.test(s)), snippets.join('\n'));
+    assert.ok(!snippets.some(s => /hero\.jpg|opacity 0\.6|Faint text/.test(s)));
   });
 });

@@ -12,32 +12,20 @@ const localNoChanges = !eventName && !process.env.CI_CHANGED_FILES;
 // (skill-behavior, accept-cleanup, deepseek), every single night.
 const isSchedule = eventName === 'schedule';
 const changedFiles = localNoChanges || isSchedule ? [] : getChangedFiles();
-const forceDeterministic = localNoChanges || eventName === 'push' || eventName === 'workflow_dispatch';
+const forceDeterministic = localNoChanges || isSchedule || eventName === 'push' || eventName === 'workflow_dispatch';
 const forceOptIn = eventName === 'workflow_dispatch';
 
-const plan = isSchedule
-  ? {
-    core: true,
-    detector: true,
-    live: true,
-    framework: true,
-    cli_remote_e2e: false,
-    live_e2e: true,
-    live_e2e_accept_cleanup: false,
-    skill_behavior: false,
-    live_svelte_adapter_deepseek: false,
-  }
-  : {
-    core: true,
-    detector: forceDeterministic || matchesSuiteTriggers('detector', changedFiles),
-    live: forceDeterministic || matchesSuiteTriggers('live', changedFiles),
-    framework: forceDeterministic || matchesSuiteTriggers('framework', changedFiles),
-    cli_remote_e2e: forceOptIn,
-    live_e2e: forceOptIn || matchesSuiteTriggers('live-e2e', changedFiles),
-    live_e2e_accept_cleanup: forceOptIn || matchesSuiteTriggers('live-e2e-accept-cleanup', changedFiles),
-    skill_behavior: forceOptIn || matchesSuiteTriggers('skill-behavior', changedFiles),
-    live_svelte_adapter_deepseek: forceOptIn || matchesSuiteTriggers('live-svelte-adapter-deepseek', changedFiles),
-  };
+const plan = {
+  core: true,
+  detector: forceDeterministic || matchesSuiteTriggers('detector', changedFiles),
+  live: forceDeterministic || matchesSuiteTriggers('live', changedFiles),
+  framework: forceDeterministic || matchesSuiteTriggers('framework', changedFiles),
+  cli_remote_e2e: forceOptIn,
+  live_e2e: isSchedule || forceOptIn || matchesSuiteTriggers('live-e2e', changedFiles),
+  live_e2e_accept_cleanup: forceOptIn || matchesSuiteTriggers('live-e2e-accept-cleanup', changedFiles),
+  skill_behavior: forceOptIn || matchesSuiteTriggers('skill-behavior', changedFiles),
+  live_svelte_adapter_deepseek: forceOptIn || matchesSuiteTriggers('live-svelte-adapter-deepseek', changedFiles),
+};
 
 writeGithubOutputs(plan);
 printSummary(plan, changedFiles);

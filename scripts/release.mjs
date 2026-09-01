@@ -166,10 +166,30 @@ if (headerIdx === -1) {
 // Notes are the entry's bullet list. Scoping to <ul class="cf-items">
 // skips the optional lead paragraph, before/after figure, and stat row
 // that the headline release (v3.5.0) carries, so release notes stay clean.
-const listStart = changelogHtml.indexOf('<ul class="cf-items">', headerIdx);
-const listEnd = changelogHtml.indexOf('</ul>', listStart);
-if (listStart === -1 || listEnd === -1) fail('Changelog entry markup is malformed.');
-const entryHtml = changelogHtml.slice(listStart, listEnd + '</ul>'.length);
+//
+// The search is bounded to this entry's own </article>. Unbounded, a version
+// whose list carried any other class was silently skipped and the NEXT
+// entry's bullets shipped as its release notes: every v4.0.x skill release
+// went out carrying v4.0.0's notes that way, and nothing failed. A mismatch
+// now stops the release instead of publishing another version's words.
+const articleEnd = changelogHtml.indexOf('</article>', headerIdx);
+if (articleEnd === -1) fail('Changelog entry markup is malformed.');
+// EVERY list in the entry, not the first. A long release is grouped into
+// themed <ul>s behind cf-group labels, and taking only the first published one
+// theme and silently dropped the rest.
+const entryScope = changelogHtml.slice(headerIdx, articleEnd);
+const lists = entryScope.match(/<ul class="cf-items">[\s\S]*?<\/ul>/g);
+if (!lists || !lists.length) {
+  // An unclosed list and a missing one are different repairs, so they get
+  // different messages. Reporting "no list" for markup that plainly has one
+  // sends you looking for the wrong thing.
+  const opened = entryScope.includes('<ul class="cf-items">');
+  fail(opened
+    ? `The changelog entry for "${cfg.changelogLabel}${version}" opens a <ul class="cf-items"> that is never closed inside its <article>. Fix the markup.`
+    : `The changelog entry for "${cfg.changelogLabel}${version}" has no <ul class="cf-items"> of its own. `
+      + 'Its bullets are in a list this script cannot read, and no notes would ship.');
+}
+const entryHtml = lists.join('\n');
 
 const notes = htmlToMarkdown(entryHtml);
 ok('extracted');

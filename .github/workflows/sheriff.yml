@@ -1,6 +1,8 @@
 name: PR Sheriff
 
 on:
+  issues:
+    types: [opened, reopened]
   schedule:
     # Daily UTC afternoon pass. The script uses an aggressive 7/14 day window:
     # warn contributor-blocked PRs after 7 days open, close after 14.
@@ -24,7 +26,25 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  issue-inbox:
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark issue for triage
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh label create "needs triage" \
+            --repo "$GH_REPO" \
+            --color "d4c5f9" \
+            --description "New or reopened issue awaiting maintainer triage" \
+            --force
+          gh issue edit "$ISSUE_NUMBER" --repo "$GH_REPO" --add-label "needs triage"
+
   sheriff:
+    if: github.event_name != 'issues'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -49,4 +69,5 @@ jobs:
             --warning-days 7 \
             --close-days 14 \
             --maintainers "pbakaus" \
-            --regular-contributors "pbakaus,abdulwahabone"
+            --regular-contributors "pbakaus,abdulwahabone" \
+            --auto-close-regulars

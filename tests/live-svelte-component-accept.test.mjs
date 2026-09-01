@@ -1,7 +1,8 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync, symlinkSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import {
@@ -17,6 +18,7 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_NODE_MODULES = join(__dirname, '..', 'node_modules');
+const ACCEPT = resolve(__dirname, '..', 'skill/scripts/live-accept.mjs');
 
 const ROUTE_SOURCE = `<script>
   let stages = [
@@ -52,6 +54,14 @@ function write(root, rel, content) {
   const abs = join(root, rel);
   mkdirSync(dirname(abs), { recursive: true });
   writeFileSync(abs, content);
+}
+
+function runAccept(cwd, args) {
+  const output = execFileSync(process.execPath, [ACCEPT, ...args], {
+    cwd,
+    encoding: 'utf-8',
+  });
+  return JSON.parse(output.trim());
 }
 
 describe('svelte component scaffold + accept pipeline', () => {
@@ -103,6 +113,50 @@ describe('svelte component scaffold + accept pipeline', () => {
     assert.match(v1, /let \{ stages = \[\] \} = \$props\(\)/);
     // Stub CSS is seeded from the route's matching rules.
     assert.match(v1, /border-top: 1px solid #333/);
+  });
+
+  it('accepts a Svelte component session through the CLI', () => {
+    const session = scaffold('cliacc1');
+    write(tmp, join(session.componentDir, 'v1.svelte'), `<script>
+  let { stages = [] } = $props();
+</script>
+
+<ol class="accepted-board">
+  {#each stages as stage, i}
+    <li class="stage">
+      <span class="label">{stage.label}</span>
+      <p class="detail">{stage.detail}</p>
+    </li>
+  {/each}
+</ol>
+
+<style>
+  .accepted-board { display: grid; }
+</style>
+`);
+
+    const result = runAccept(tmp, ['--id', 'cliacc1', '--variant', '1']);
+    assert.equal(result.handled, true, result.error);
+    assert.equal(result.file, 'src/routes/+page.svelte');
+    assert.equal(result.previewMode, 'svelte-component');
+    assert.equal(result.componentDir, session.componentDir);
+    assert.match(readFileSync(join(tmp, result.file), 'utf-8'), /class="[^"]*\baccepted-board\b/);
+    assert.equal(findSvelteComponentManifest('cliacc1', tmp), null);
+  });
+
+  it('discards a Svelte component session through the CLI', () => {
+    const session = scaffold('clidisc1');
+
+    const result = runAccept(tmp, ['--id', 'clidisc1', '--discard']);
+    assert.deepEqual(result, {
+      handled: true,
+      file: 'src/routes/+page.svelte',
+      carbonize: false,
+      previewMode: 'svelte-component',
+      componentDir: session.componentDir,
+    });
+    assert.equal(readFileSync(join(tmp, result.file), 'utf-8'), ROUTE_SOURCE);
+    assert.equal(findSvelteComponentManifest('clidisc1', tmp), null);
   });
 
   it('falls back to source-preview for markup with component tags', () => {

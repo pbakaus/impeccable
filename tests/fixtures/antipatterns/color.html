@@ -36,6 +36,30 @@
     .ox-glow { background: linear-gradient(160deg, rgba(52,192,168,0.09) 0%, #141419 65%); padding: 20px; }
     .ox-glow p { color: #e8e6e3; font-size: 18px; }
     .ox-glow .muted { color: #8e8c89; font-size: 16px; }
+    /* Gradient stop written as color-mix with a bright nested ingredient.
+       The stop paints as a 16% wash of the light oklch color (composited
+       over the dark wrap it is near-black); the nested oklch(90% ...) is an
+       INGREDIENT, never painted. A parser that re-extracts nested tokens
+       appends it as a phantom opaque light stop and the worst-case ratio
+       then flags the light text at ~1:1 against a color nobody sees. */
+    .mix-dark-wrap { background: #0f0f11; padding: 16px; }
+    .mix-glow { background: linear-gradient(160deg, color-mix(in oklab, oklch(90% 0.02 95) 16%, transparent) 0%, #141419 65%); padding: 20px; }
+    .mix-glow p { color: #ded9cf; font-size: 16px; }
+    /* issue #578 — #000 inside color-mix is an ingredient; white-ish text on
+       the mixed dark green must not be scored against phantom black. */
+    .mix-hex-brand { background: linear-gradient(135deg, color-mix(in srgb, var(--mix-hex-brand) 92%, #000), color-mix(in srgb, var(--mix-hex-brand-deep) 90%, #000)); width: 400px; height: 120px; padding: 20px; }
+    /* currentcolor surface: background-color paints with the element's own
+       text color, which is itself a var() token here. jsdom hands both
+       through verbatim, so the walk must resolve the token via the
+       custom-prop map instead of abstaining on a knowable surface. */
+    :root { --fixture-bone: #e8e2d6; --mix-hex-brand: #2d5a4a; --mix-hex-brand-deep: #1a3d32; }
+    .currentcolor-surface { background-color: currentcolor; color: var(--fixture-bone); padding: 14px 16px; border-radius: 10px; margin-bottom: 10px; }
+    .currentcolor-low-text { color: #cfc9bd; font-size: 14px; }
+    .currentcolor-good-text { color: #3a352c; font-size: 14px; }
+    /* Same shape but the token does not exist: the surface truly cannot be
+       read, so the walk must abstain rather than guess. */
+    .currentcolor-unknown { background-color: currentcolor; color: var(--fixture-undefined-token); padding: 14px 16px; border-radius: 10px; }
+    .currentcolor-unknown p { color: #efe9dd; font-size: 14px; }
   </style>
 </head>
 <body>
@@ -110,6 +134,21 @@
       <h3 class="text-purple-500 text-2xl font-bold" style="color: rgb(168, 85, 247); font-size: 1.5rem; font-weight: 700;">text-purple-500 heading</h3>
       <div class="bg-gradient-to-r from-purple-500 to-indigo-500 text-white p-4 rounded card" style="background: linear-gradient(to right, rgb(168, 85, 247), rgb(99, 102, 241)); color: white;">
         <p>Purple-to-indigo gradient</p>
+      </div>
+
+      <h3>color-mix nested hex must not report phantom black</h3>
+      <!-- Dark ink on the mixed green is a real fail against #17372d. The
+           leaked-#000 extractor used to report it as on #000000 instead. -->
+      <div class="mix-hex-brand" data-test="mix-hex-brand-dark">
+        <p style="color: #3d2418; font-size: 16px;">Dark ink on a mixed green stop must not report on #000000</p>
+      </div>
+
+      <h3>currentcolor surface via var() token</h3>
+      <!-- background-color: currentcolor with color: var(--fixture-bone).
+           The surface is knowable (bone #e8e2d6), so the faint text on it is
+           a real low-contrast finding, not an abstention. -->
+      <div class="currentcolor-surface" data-test="currentcolor-low">
+        <p class="currentcolor-low-text">Faint warm gray on a bone currentcolor surface</p>
       </div>
     </div>
 
@@ -210,6 +249,31 @@
           <p>Light body copy on a faint accent glow that composites to near-black</p>
           <p class="muted">Muted secondary line on the same faint glow area here</p>
         </div>
+      </div>
+
+      <h3>color-mix gradient stop: nested ingredient is not a surface</h3>
+      <div class="mix-dark-wrap">
+        <div class="mix-glow" data-test="mix-glow">
+          <p>Light copy on a faint mixed wash over a dark ground stays readable</p>
+        </div>
+      </div>
+
+      <h3>color-mix nested hex is not a surface</h3>
+      <div class="mix-hex-brand" data-test="mix-hex-brand">
+        <p style="color: #f7f3ea; font-size: 16px;">WhatsApp-style light text on a mixed dark green gradient stays readable</p>
+      </div>
+
+      <h3>currentcolor surface with good contrast</h3>
+      <div class="currentcolor-surface" data-test="currentcolor-good">
+        <p class="currentcolor-good-text">Dark ink text on a bone currentcolor surface</p>
+      </div>
+
+      <h3>currentcolor surface with unresolvable token (must abstain)</h3>
+      <!-- The var() token is undefined, so the surface genuinely cannot be
+           read. The walk must abstain instead of guessing a background for
+           the light text inside. -->
+      <div class="currentcolor-unknown" data-test="currentcolor-unknown">
+        <p>Light text on an unknowable currentcolor surface</p>
       </div>
 
       <h3>Emoji on light backgrounds</h3>

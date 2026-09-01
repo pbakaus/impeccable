@@ -26,6 +26,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { getProviderOptions } from './providers.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
@@ -348,6 +349,10 @@ export async function runTurn({ workspace, model, userPrompt, priorMessages = []
       messages,
       tools,
       stopWhen: [stepCountIs(maxSteps)],
+      // Resolved from the model object so the 21 runTurn call sites stay
+      // unchanged. Reasoning models run at the provider default otherwise,
+      // which is not the tier this suite is meant to measure.
+      providerOptions: getProviderOptions(model?.modelId ?? ''),
     });
   } catch (err) {
     throw new Error(`LLM behavior turn failed before completing: ${String(err)}`, { cause: err });

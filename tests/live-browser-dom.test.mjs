@@ -53,6 +53,7 @@ function createDocument() {
     activeElement: null,
     elementsById,
     getElementById(id) { return elementsById.get(id) || null; },
+    querySelectorAll() { return []; },
   };
 }
 
@@ -154,5 +155,40 @@ describe('live-browser-dom helpers', () => {
     root.listeners.mousedown({ stopPropagation: () => { stopped += 1; } });
     root.listeners.focusin({ stopPropagation: () => { stopped += 1; } });
     assert.equal(stopped, 3);
+  });
+
+  it('detects framework HMR ownership while leaving static DOM eligible for cleanup', () => {
+    const staticDoc = createDocument();
+    const { context, createHelpers } = loadFactory(staticDoc);
+    const helpers = createHelpers({ prefix: 'impeccable-live', document: staticDoc });
+    const staticWrapper = createElement();
+
+    assert.equal(helpers.hasFrameworkHmrOwnership(staticWrapper), false);
+
+    staticDoc.querySelectorAll = () => [{ getAttribute: () => '/app/@vite/client' }];
+    assert.equal(helpers.hasFrameworkHmrOwnership(staticWrapper), false);
+
+    staticDoc.querySelectorAll = () => [];
+    context.$RefreshReg$ = () => {};
+    assert.equal(helpers.hasFrameworkHmrOwnership(staticWrapper), false);
+    delete context.$RefreshReg$;
+
+    context.__VUE_HMR_RUNTIME__ = {};
+    assert.equal(helpers.hasFrameworkHmrOwnership(staticWrapper), false);
+    delete context.__VUE_HMR_RUNTIME__;
+
+    const reactWrapper = createElement();
+    reactWrapper.__reactFiber$impeccable = {};
+    assert.equal(helpers.hasFrameworkHmrOwnership(reactWrapper), true);
+
+    const vueParent = createElement();
+    vueParent.__vueParentComponent = {};
+    const nestedWrapper = createElement();
+    nestedWrapper.parentElement = vueParent;
+    assert.equal(helpers.hasFrameworkHmrOwnership(nestedWrapper), true);
+
+    const svelteWrapper = createElement();
+    svelteWrapper.__svelte_meta = {};
+    assert.equal(helpers.hasFrameworkHmrOwnership(svelteWrapper), true);
   });
 });

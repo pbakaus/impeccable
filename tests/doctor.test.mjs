@@ -634,6 +634,26 @@ describe('doctor CLI', () => {
     assert.equal(report.ruleRegistryAvailable, true);
   });
 
+  it('keeps boot and deep findings in their established artifact order', () => {
+    write('PRODUCT.md', '# Product\n\n## Register\n\nbrand\n\n## Users\nDesigners.\n');
+    write('DESIGN.md', '---\nname: Example\n---\n\n# Design System: Example\n');
+    write('.impeccable/design.json', JSON.stringify({ schemaVersion: 1 }));
+    write('.impeccable/config.json', JSON.stringify({ unknownSetting: true }));
+
+    const res = run(['--json']);
+    assert.equal(res.status, 0, res.stderr);
+    assert.deepEqual(
+      JSON.parse(res.stdout).findings.map((entry) => entry.id),
+      [
+        'product-deprecated-register',
+        'product-schema-legacy',
+        'design-sidecar-schema-outdated',
+        'design-md-coverage',
+        'config-unknown-keys',
+      ],
+    );
+  });
+
   it('applies only the automatic migrations under --fix', () => {
     write('PRODUCT.md', CURRENT_PRODUCT.replace('<!-- impeccable:product-schema 1 -->\n\n', ''));
     write('DESIGN.json', JSON.stringify({ schemaVersion: 2 }));

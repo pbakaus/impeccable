@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -12,7 +12,7 @@ import {
   validateConceptEntry,
 } from '../skill/scripts/lib/concept-catalog.mjs';
 import { readCompositionCatalog } from '../skill/scripts/lib/composition-catalog.mjs';
-import { dealCompositions, pingChosen, renderChallenger, selectApprovedChallengers, selectApprovedComposition, selectApprovedCompositions } from '../skill/scripts/concept-seed.mjs';
+import { dealCompositions, pingChosen, renderChallenger, sameMainModulePath, selectApprovedChallengers, selectApprovedComposition, selectApprovedCompositions } from '../skill/scripts/concept-seed.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SCRIPT = path.join(ROOT, 'skill', 'scripts', 'concept-seed.mjs');
@@ -40,6 +40,37 @@ function run(scope, extraArgs = [], env = {}) {
 }
 
 describe('concept seed scopes', () => {
+  it('normalizes Windows drive-letter casing for linked entry paths', () => {
+    assert.equal(
+      sameMainModulePath('C:\\repo\\skill\\scripts\\concept-seed.mjs', 'c:\\repo\\skill\\scripts\\concept-seed.mjs', 'win32'),
+      true
+    );
+    assert.equal(
+      sameMainModulePath('/repo/Skill/scripts/concept-seed.mjs', '/repo/skill/scripts/concept-seed.mjs', 'linux'),
+      false
+    );
+  });
+
+  it('runs through a symlinked skill directory', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'concept-seed-symlink-'));
+    const linkedSkill = path.join(dir, 'skill');
+    try {
+      symlinkSync(path.join(ROOT, 'skill'), linkedSkill, process.platform === 'win32' ? 'junction' : 'dir');
+      const result = spawnSync(process.execPath, [
+        path.join(linkedSkill, 'scripts', 'concept-seed.mjs'),
+        '--scope', 'surface', '--mode', 'persuade', '--from', 'symlink-test',
+      ], {
+        cwd: ROOT,
+        encoding: 'utf-8',
+        env: { ...process.env, IMPECCABLE_CATALOG_DIR: FIXTURE_DIR },
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /SURFACE CONCEPT SEED/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('keeps complete-direction and established-world surface rolls reproducible but independent', () => {
     const directionA = run('direction');
     const directionB = run('direction');
@@ -798,7 +829,11 @@ describe('API roll path', () => {
       assert.equal(requests.some(url => url.startsWith('/api/roll?')), true, 'the CLI must hit the roll endpoint');
       assert.match(result.stdout, /source: api/);
       assert.match(result.stdout, /letterpress print shop/);
-      assert.match(result.stdout, /TELEMETRY:/);
+      // The choice-recording command rides on build-phase start now (the
+      // separate TELEMETRY ping was the step every comp-round-skipping run
+      // suppressed); an API roll names it with the --chosen slot.
+      assert.match(result.stdout, /AFTER THE CHOICE, run exactly one command/);
+      assert.match(result.stdout, /build-phase\.mjs start --direction [\w-]+ --kind <assigned\|pick\|challenger\|canon> \[--chosen <challenger-id>\]/);
       assert.match(result.stderr, /DISPATCHER_DESTROY_CALLED/, 'the dispatcher must be destroyed before process.exit');
     } finally {
       server.close();

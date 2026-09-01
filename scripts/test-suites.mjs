@@ -26,7 +26,7 @@ export const SUITES = {
     triggers: [
       ...COMMON_INFRA_PATTERNS,
       /^scripts\/(?!benchmark-detector|build-browser-detector|build-extension)/,
-      /^skill\/(SKILL\.src\.md|agents\/|reference\/|scripts\/(cleanup-deprecated|concept-seed|context|context-signals|critique-storage|design-parser|doctor|hook|impeccable-paths|is-generated|lib\/(artifact-schema|composition-catalog|concept-catalog|provider|staleness|staleness-deep|staleness-notice|surface-briefs|target-slug|template-extensions)|pin|surface-brief))/,
+      /^skill\/(SKILL\.src\.md|agents\/|reference\/|scripts\/(cleanup-deprecated|comp-diff|comp-spec|build-phase|font-match|data\/font-index|concept-seed|generate-image|context|context-signals|critique-storage|design-parser|doctor|hook|impeccable-paths|is-generated|lib\/(artifact-schema|png|raster|image-metrics|font-fingerprint|font-index|hero-checks|composition-catalog|concept-catalog|provider|staleness|staleness-deep|staleness-notice|surface-briefs|target-slug|template-extensions)|pin|surface-brief))/,
       /^README(\.npm)?\.md$/,
       /^cli\/bin\//,
     ],
@@ -49,6 +49,7 @@ export const SUITES = {
           'tests/skills-cli.test.js',
           'tests/validate-plugin-versions.test.js',
           'tests/validate-plugin-manifest.test.js',
+          'tests/plugin-paths.test.js',
         ],
       },
       {
@@ -57,6 +58,11 @@ export const SUITES = {
           'tests/ci-test-plan.test.mjs',
           'tests/cli-args.test.mjs',
           'tests/concept-seed.test.mjs',
+          'tests/generate-image-embed.test.mjs',
+          'tests/comp-diff.test.mjs',
+          'tests/build-phase.test.mjs',
+          'tests/font-match.test.mjs',
+          'tests/hero-checks.test.mjs',
           'tests/serve-question.test.mjs',
           'tests/context.test.mjs',
           'tests/context-signals.test.mjs',
@@ -72,6 +78,7 @@ export const SUITES = {
           'tests/doctor.test.mjs',
           'tests/staleness.test.mjs',
           'tests/skill-reference.test.mjs',
+          'tests/readme-gitignore.test.mjs',
           'tests/target-args.test.mjs',
           'tests/surface-brief.test.mjs',
           'tests/template-extensions.test.mjs',
@@ -110,6 +117,8 @@ export const SUITES = {
           'tests/detect-antipatterns-fixtures.test.mjs',
           'tests/detect-antipatterns-browser.test.mjs',
           'tests/detect-cli-design-contamination.test.mjs',
+          'tests/detect-cli-design-monorepo.test.mjs',
+          'tests/detect-cli-stdin-dispatch.test.mjs',
         ],
       },
     ],
@@ -132,6 +141,7 @@ export const SUITES = {
           'tests/live-accept-css.test.mjs',
           'tests/live-accept-scrub.test.mjs',
           'tests/live-browser-dom.test.mjs',
+          'tests/live-browser-ignores.test.mjs',
           'tests/live-browser-script-parts.test.mjs',
           'tests/live-browser-regression.test.mjs',
           'tests/live-browser-session.test.mjs',
@@ -153,6 +163,7 @@ export const SUITES = {
           'tests/live-insert-ui.test.mjs',
           'tests/live-manual-edits-buffer.test.mjs',
           'tests/live-poll.test.mjs',
+          'tests/live-project-ignores.test.mjs',
           'tests/live-poll-lanes.test.mjs',
           'tests/live-poll-stream.test.mjs',
           'tests/live-recovery-commands.test.mjs',
@@ -164,6 +175,7 @@ export const SUITES = {
           'tests/live-source-search.test.mjs',
           'tests/live-svelte-ast.test.mjs',
           'tests/live-svelte-component-accept.test.mjs',
+          'tests/live-svelte-props-script.test.mjs',
           'tests/live-tanstack-adapter.test.mjs',
           'tests/live-target-context.test.mjs',
           'tests/live-ui-surfaces.test.mjs',
@@ -225,6 +237,7 @@ export const SUITES = {
       /^skill\/agents\//,
       /^scripts\/build\.js$/,
       /^scripts\/lib\/validate-plugin-manifest\.js$/,
+      /^scripts\/lib\/plugin-paths\.js$/,
       /^tests\/plugin-e2e\.test\.mjs$/,
     ],
     commands: [
@@ -314,7 +327,15 @@ export const SUITES = {
     commands: [
       {
         runner: 'node',
-        timeoutMs: 300000,
+        // 300000 was too low to measure what these scenarios assert. The
+        // workflow-contract turns run 20+ steps against a frontier model, and
+        // the *correct* path is the slow one: a run that stops to put the
+        // concept to the user before building was measured at 579s, while the
+        // runs that skipped that checkpoint and failed the assertion finished
+        // in 130-200s. At a 300s cap the thorough path is killed and the hasty
+        // path is graded, so the cap was selecting for the behavior the suite
+        // exists to forbid.
+        timeoutMs: 900000,
         files: [
           'tests/skill-behavior/scenarios.test.mjs',
           'tests/skill-behavior/workflow-contract.test.mjs',

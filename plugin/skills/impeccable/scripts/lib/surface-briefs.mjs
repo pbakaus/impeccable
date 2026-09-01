@@ -8,6 +8,12 @@ export function getSurfaceBriefDir(projectRoot) {
   return path.join(projectRoot, '.impeccable', 'surfaces');
 }
 
+function normalizeRouteTarget(route) {
+  if (!route.startsWith('/') || route.includes('..')) return null;
+  const normalized = route.split(/[?#]/, 1)[0].replace(/\/{2,}/g, '/').replace(/\/$/, '') || '/';
+  return `route:${normalized}`;
+}
+
 export function normalizeSurfaceTarget(target, { projectRoot = process.cwd() } = {}) {
   if (!target || typeof target !== 'string' || !target.trim()) return null;
   const trimmed = target.trim();
@@ -21,21 +27,13 @@ export function normalizeSurfaceTarget(target, { projectRoot = process.cwd() } =
       return null;
     }
   }
-  if (/^route:/i.test(trimmed)) {
-    const route = trimmed.slice(trimmed.indexOf(':') + 1).trim();
-    if (!route.startsWith('/') || route.includes('..')) return null;
-    const normalizedRoute = route.split(/[?#]/, 1)[0].replace(/\/{2,}/g, '/').replace(/\/$/, '') || '/';
-    return `route:${normalizedRoute}`;
-  }
-  if (trimmed === '/') return 'route:/';
+  if (/^route:/i.test(trimmed)) return normalizeRouteTarget(trimmed.slice(trimmed.indexOf(':') + 1).trim());
+  if (trimmed === '/') return normalizeRouteTarget(trimmed);
   if (trimmed.startsWith('/')) {
     const absolute = path.resolve(trimmed);
     const relativeToProject = path.relative(projectRoot, absolute);
     const isProjectFile = relativeToProject && !relativeToProject.startsWith('..') && !path.isAbsolute(relativeToProject);
-    if (!isProjectFile && !fs.existsSync(absolute) && !trimmed.includes('..')) {
-      const normalizedRoute = trimmed.split(/[?#]/, 1)[0].replace(/\/{2,}/g, '/').replace(/\/$/, '') || '/';
-      return `route:${normalizedRoute}`;
-    }
+    if (!isProjectFile && !fs.existsSync(absolute)) return normalizeRouteTarget(trimmed);
   }
   const abs = path.isAbsolute(trimmed) ? trimmed : path.resolve(projectRoot, trimmed);
   const rel = path.relative(projectRoot, abs);

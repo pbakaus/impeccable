@@ -39,11 +39,41 @@
 
   /* ── PASS: fixed status bar over content at the fold ── */
   .pass-under { margin-top: 20px; font-size: 16px; }
+  /* Invisible interaction layer: an opacity-0 scrubber input stretched over
+     text, like a before/after comparison handle. It paints nothing, so it must
+     not read as an occluder despite its UA background-color. */
+  .pass-scrubber-wrap { position: relative; margin-top: 30px; height: 80px; }
+  .pass-scrubber-text { position: absolute; top: 20px; left: 10px; font-size: 20px; width: 320px; }
+  .pass-scrubber-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; z-index: 5; margin: 0; }
   .pass-fixedbar { position: fixed; left: 0; right: 0; bottom: 0; height: 40px; background: #b22;
     color: #fff; display: flex; align-items: center; padding: 0 16px; }
+  /* ── PASS: text clipped by a scroll region, with an opaque bar right below it ──
+     getBoundingClientRect reports where a box would be if nothing cut it off, so
+     the lines that have scrolled past this panel's bottom edge still report
+     their full rects, and those rects land on the bar. Nothing overlaps: those
+     lines are clipped away, and scrolling brings them into the panel rather than
+     out from under anything. Any sticky footer or toolbar under a scroll region
+     has this shape, which is why it has to probe only where the text paints. */
+  .pass-scrollbox { width: 420px; height: 90px; overflow-y: auto;
+    background: #fff; border: 1px solid #ccd; }
+  .pass-scrollbox p { margin: 0 0 10px; padding: 0 12px; font-size: 16px; color: #222; }
+  .pass-scrollbox p:first-child { padding-top: 12px; }
+  .pass-underbar { width: 420px; height: 64px; background: #223; color: #fff;
+    display: flex; align-items: center; padding: 0 12px; font-size: 16px; }
 </style>
 </head>
 <body>
+  <!-- First in the document on purpose: the probe only samples text in the
+       first viewport, and this case is about geometry rather than about where
+       on the page it sits. -->
+  <div class="pass-scrollbox">
+    <p>Palette and material, warm cream ground with hairline sepia rules</p>
+    <p>Type and composition, engraved italic names over small-caps labels</p>
+    <p>Topology and navigation, move by life stage rather than by index</p>
+    <p>Controls and state, align and overlay and compare and annotate</p>
+  </div>
+  <div class="pass-underbar">Scrolled-out lines report rects that land here</div>
+
   <section>
     <div class="flag-box-wrap">
       <p class="flag-box-text">Root cause identified in four minutes</p>
@@ -77,5 +107,9 @@
     <p class="pass-under">Every span of every trace, kept on disk, no sampling ever applied here.</p>
   </section>
   <div class="pass-fixedbar">8/8 services up &middot; p99 1.20s &middot; retention infinite</div>
+    <div class="pass-scrubber-wrap">
+      <p class="pass-scrubber-text">Drag anywhere to compare versions</p>
+      <input class="pass-scrubber-input" type="range" min="0" max="100" value="50">
+    </div>
 </body>
 </html>

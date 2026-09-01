@@ -1,8 +1,10 @@
 # Product
 
-## Register
+<!-- impeccable:product-schema 1 -->
 
-brand
+## Platform
+
+web
 
 ## Users
 
@@ -12,13 +14,26 @@ Designers, product managers, and engineers who use AI coding tools (Cursor, Clau
 
 Impeccable gives builders a shared design vocabulary with their AI, delivered as a plug-and-play skill that works in every major AI coding harness. Success is measured in two ways: (1) the user can steer AI output with design precision instead of vague prose, and (2) the AI produces interfaces that pass professional design review, not "looks like an AI made it" output.
 
-## Brand Personality
+## Positioning
+
+Impeccable combines an opinionated design skill, live browser iteration, and deterministic anti-pattern detection in one source-first system that is transformed for supported AI coding harnesses. The repository ships the same design vocabulary through harness-native distributions instead of maintaining unrelated prompts for each tool.
+
+## Operating Context
+
+Builders install Impeccable from the repository or package, run `/impeccable init` once to record product truth, then direct design work through the shared command vocabulary. They may iterate against a runnable interface in live mode and use the CLI or browser extension for deterministic checks. Maintainers author the canonical skill under `skill/`; build scripts derive provider distributions, site assets, and validation output.
+
+## Capabilities and Constraints
+
+- The skill exposes 23 design commands covering new work, critique, technical audit, refinement, hardening, adaptation, and live iteration.
+- The CLI and browser extension run deterministic detector rules without an LLM or API key; LLM critique remains a separate judgment layer.
+- Provider-specific root harness folders and `plugin/` are generated distribution artifacts. Source changes belong in `skill/`, `scripts/`, `cli/`, `site/`, `extension/`, `functions/`, or `tests/`.
+- Product claims, testimonials, customers, benchmarks, pricing, licensing, and deployment facts must not be invented when evidence is absent.
+
+## Brand Commitments
 
 Expert, opinionated, refined. Impeccable speaks with an authoritative design voice: confident taste, editorial quality, zero hedging. It's the design director in the room who knows exactly what's wrong and how to fix it. The tone is **direct** (no "maybe consider"), **specific** (no "improve the vibe"), and **rooted in craft** (no hype, no hedging).
 
 Three-word personality: **expert, decisive, editorial**.
-
-## Anti-references
 
 The site and brand must be the antithesis of everything Impeccable critiques. Specifically, avoid:
 
@@ -28,7 +43,15 @@ The site and brand must be the antithesis of everything Impeccable critiques. Sp
 - **Educational framing**: this product is for people who already know they have a problem; we solve it, we don't teach it.
 - **Over-decoration**: every visual element must earn its place. No ornament for ornament's sake.
 
-## Design Principles
+## Evidence on Hand
+
+- `README.md` documents the public command set, supported installation paths, and deterministic detector behavior.
+- `skill/` contains the canonical guidance and command references; `tests/` contains regression coverage for its build and runtime behavior.
+- `site/` is the public product surface and a direct demonstration of the design standard Impeccable advocates.
+- `cli/` and `extension/` are working detector implementations, not roadmap claims.
+- The existing product record names no customer testimonials or quantified outcome studies. Future surfaces must not fabricate them.
+
+## Product Principles
 
 1. **Practice what you preach.** The site must pass its own anti-pattern tests with flying colors. If we ship anything we'd flag in an audit, we've lost.
 2. **Show, don't tell.** Demonstrate design quality through execution, not through words about design quality. The site IS the demo.

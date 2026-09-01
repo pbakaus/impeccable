@@ -103,7 +103,9 @@ describe('ci-test-plan', () => {
     assert.equal(outputs.live_svelte_adapter_deepseek, 'false');
     assert.equal(outputs.cli_remote_e2e, 'false');
     assert.equal(outputs.core, 'true');
+    assert.equal(outputs.detector, 'true');
     assert.equal(outputs.live, 'true');
+    assert.equal(outputs.framework, 'true');
   });
 
 });

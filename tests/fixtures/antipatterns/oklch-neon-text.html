@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OKLCH Neon Text Fixture</title>
+  <style>
+    :root {
+      --neon: oklch(0.85 0.2 195);
+      --muted: oklch(0.85 0.04 195);
+      --paper: oklch(0.9 0 0);
+      --ground: #050505;
+      --light: #f5f5f5;
+    }
+
+    body {
+      margin: 0;
+      padding: 32px;
+      background: var(--ground);
+      font-family: system-ui, sans-serif;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 24px;
+      max-width: 980px;
+      margin: 0 auto;
+    }
+
+    .column {
+      display: grid;
+      gap: 14px;
+    }
+
+    .column > h2 {
+      margin: 0 0 2px;
+      color: var(--paper);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      line-height: 1.4;
+      text-transform: uppercase;
+    }
+
+    p {
+      margin: 0;
+      font-size: 18px;
+    }
+
+    .neon-cyan { color: var(--neon); }
+    .muted-cyan { color: var(--muted); }
+    .oklch-paper { color: var(--paper); }
+
+    .light-shell {
+      background: var(--light);
+      padding: 12px;
+    }
+  </style>
+</head>
+<body>
+  <main class="grid">
+    <section class="column" data-col="flag">
+      <h2>Should flag</h2>
+      <p class="neon-cyan">Cyan neon token</p>
+    </section>
+    <section class="column" data-col="pass">
+      <h2>Should pass</h2>
+      <p class="oklch-paper">Achromatic oklch on dark should pass</p>
+      <p class="muted-cyan">Muted cyan oklch on dark should pass</p>
+      <div class="light-shell">
+        <p class="neon-cyan">Cyan oklch on light ground should pass</p>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

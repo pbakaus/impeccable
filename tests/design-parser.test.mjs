@@ -228,6 +228,33 @@ describe('parseDesignMd overview branch', () => {
   });
 });
 
+describe('parseDesignMd named rules', () => {
+  it('preserves format precedence while deduplicating later definitions', () => {
+    const md = `# Design System: Rules
+
+## Layout
+
+### The "Rhythm" Rule
+Ignore this duplicate heading definition.
+
+### The Fallback Principle
+Use the heading definition.
+
+### Named Rules
+- **The Fallback Principle:** Ignore this duplicate bullet definition.
+- **The Layering Principle:** Use the bullet definition.
+
+**The Rhythm Rule.** Keep the first definition.
+`;
+
+    assert.deepEqual(parseDesignMd(md).layout.rules, [
+      { name: 'The Rhythm Rule', body: 'Keep the first definition.' },
+      { name: 'The Fallback Principle', body: 'Use the heading definition.' },
+      { name: 'The Layering Principle', body: 'Use the bullet definition.' },
+    ]);
+  });
+});
+
 describe('parseDesignMd canonical sections', () => {
   it('preserves content and named rules from all eight canonical sections', () => {
     const md = `# Design System: Complete

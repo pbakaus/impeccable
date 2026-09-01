@@ -13,7 +13,7 @@ Three kinds of drift travel under "out of date". Keep them apart:
 ## Step 1: Run the pass
 
 ```
-node .claude/skills/impeccable/scripts/doctor.mjs --json
+node "<skill-base-dir>/scripts/doctor.mjs" --json
 ```
 
 Add `--target <path>` when the user named a workspace, file, or route in a monorepo. Without it the report describes the repo root, and in a monorepo that is often the wrong project.
@@ -26,7 +26,7 @@ An empty `findings` array is the good outcome. Say so in one line and stop.
 
 The severity says what should happen, not how bad it is.
 
-- **`auto`** carries no decision. Run `node .claude/skills/impeccable/scripts/doctor.mjs --fix` once to apply these, then report what it moved in one line. Do not ask permission first, and do not ask about them afterward.
+- **`auto`** carries no decision. Run `node "<skill-base-dir>/scripts/doctor.mjs" --fix` once to apply these, then report what it moved in one line. Do not ask permission first, and do not ask about them afterward.
 - **`mention`** needs the user to know but not to decide anything now. State each one in a sentence with its offered fix.
 - **`route`** needs a specific command. Name the command and the gap it would close. Run it only if the user asks in this turn; `init` and `document` are conversations, not repairs you perform unattended.
 
@@ -46,6 +46,7 @@ The same restraint applies to `workspace-context-inherited`. Inheritance is a de
 
 - `workspace-platform-native-evidence` is the finding that matters most here: a workspace carrying native build files while inheriting a root record that resolves to web gets web guidance for its whole life and never loads [ios.md](ios.md) or [android.md](android.md). The repair is a child PRODUCT.md in that workspace, because one inherited record cannot hold two platforms.
 - `config-project-roots-match-nothing` means every `projectRoots` glob missed, so the repo root is silently standing in as the active project. A renamed workspace directory is the usual cause. Report the patterns and ask which directories they should name.
+- `config-invalid-build-path` and `config-build-path-unset` both concern one key, `buildPath` in `.impeccable/config.json` (or the gitignored `.impeccable/config.local.json`, which wins for that developer). It holds `comp` or `code` and sets whether new surfaces are built from a generated comp or straight in code. An unread value does not fall back to the opposite path, so a project meaning `code` has been building comp-led; report the exact value. The unset finding fires only where a project has done direction work and never recorded a preference, and the offer belongs in it only when image generation exists in your tool surface. Without image generation there is nothing to choose and nothing to say.
 - Use the `workspaces` table to show the user which apps carry their own context, which inherit, and which have none, before proposing any change.
 
 ## Opting out of the boot check

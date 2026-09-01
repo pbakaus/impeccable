@@ -5,6 +5,7 @@
 //   node embed-prompt.mjs <image> --prompt "the prompt text"
 //   node embed-prompt.mjs <image> --prompt-file prompt.txt
 //   node embed-prompt.mjs <image> --read
+//   node embed-prompt.mjs --scan <dir...>   # list rasters missing a prompt; exit 3 when any
 //
 // Formats: PNG (tEXt chunk, keyword "impeccable:prompt"), JPEG (COM segment).
 // WebP and anything else fall back to a `<image>.json` sidecar; --read checks
@@ -20,14 +21,56 @@ import zlib from 'node:zlib';
 const KEYWORD = 'impeccable:prompt';
 const args = process.argv.slice(2);
 const file = args.find(a => !a.startsWith('--'));
-const readMode = args.includes('--read');
 const argOf = (name) => { const i = args.indexOf(name); return i !== -1 ? args[i + 1] : null; };
+
+function imageType(buffer) {
+  if (buffer.length > 8 && buffer.readUInt32BE(0) === 0x89504e47) return 'png';
+  if (buffer.length > 3 && buffer[0] === 0xff && buffer[1] === 0xd8) return 'jpeg';
+  return null;
+}
+
+function readPrompt(imagePath, buffer = fs.readFileSync(imagePath)) {
+  const type = imageType(buffer);
+  let prompt = type === 'png' ? parsePng(buffer).prompt : type === 'jpeg' ? readJpegCom(buffer) : null;
+  if (prompt == null && fs.existsSync(`${imagePath}.json`)) {
+    try { prompt = JSON.parse(fs.readFileSync(`${imagePath}.json`, 'utf8')).prompt ?? null; } catch { /* stays null */ }
+  }
+  return prompt;
+}
+
+if (args.includes('--scan')) {
+  const targets = args.filter(a => !a.startsWith('--'));
+  if (targets.length === 0) { console.error('embed-prompt: --scan needs at least one directory'); process.exit(1); }
+  const RASTER = /\.(png|jpe?g|webp)$/i;
+  const rasters = [];
+  const walk = (p, isRoot) => {
+    const stat = fs.statSync(p);
+    if (stat.isDirectory()) {
+      const base = p.replace(/\/+$/, '').split('/').pop();
+      // Skip installed deps and hidden dirs found during the walk, but honor a
+      // hidden dir the caller passed explicitly (e.g. .impeccable/mocks).
+      if (!isRoot && (base === 'node_modules' || base.startsWith('.'))) return;
+      for (const entry of fs.readdirSync(p)) walk(`${p.replace(/\/+$/, '')}/${entry}`, false);
+    } else if (RASTER.test(p)) {
+      rasters.push(p);
+    }
+  };
+  for (const target of targets) {
+    if (!fs.existsSync(target)) { console.error(`embed-prompt: no such path ${target}`); process.exit(1); }
+    walk(target, true);
+  }
+  let missing = 0;
+  for (const raster of rasters) {
+    if (readPrompt(raster) == null) { console.log(`MISSING: ${raster}`); missing++; }
+  }
+  console.log(`SCAN: ${rasters.length} raster${rasters.length === 1 ? '' : 's'}, ${missing} missing`);
+  process.exit(missing > 0 ? 3 : 0);
+}
 
 if (!file || !fs.existsSync(file)) { console.error('embed-prompt: image file required'); process.exit(1); }
 
 const buf = fs.readFileSync(file);
-const isPng = buf.length > 8 && buf.readUInt32BE(0) === 0x89504e47;
-const isJpeg = buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8;
+const type = imageType(buf);
 
 const crcTable = (() => {
   const t = new Uint32Array(256);
@@ -45,22 +88,26 @@ function pngChunk(type, data) {
   return out;
 }
 
-function readPngText(b) {
-  let off = 8;
-  while (off + 12 <= b.length) {
-    const len = b.readUInt32BE(off);
-    const type = b.toString('ascii', off + 4, off + 8);
-    if (type === 'tEXt' || type === 'zTXt') {
-      const data = b.subarray(off + 8, off + 8 + len);
-      const nul = data.indexOf(0);
-      if (nul !== -1 && data.toString('latin1', 0, nul) === KEYWORD) {
-        if (type === 'tEXt') return data.toString('utf8', nul + 1);
-        return zlib.inflateSync(data.subarray(nul + 2)).toString('utf8');
-      }
+function parsePng(buffer) {
+  const chunks = [];
+  let prompt = null;
+  let offset = 8;
+  while (offset + 12 <= buffer.length) {
+    const length = buffer.readUInt32BE(offset);
+    const type = buffer.toString('ascii', offset + 4, offset + 8);
+    const data = buffer.subarray(offset + 8, offset + 8 + length);
+    const nul = data.indexOf(0);
+    const promptChunk = (type === 'tEXt' || type === 'zTXt')
+      && nul !== -1 && data.toString('latin1', 0, nul) === KEYWORD;
+    if (prompt == null && promptChunk) {
+      prompt = type === 'tEXt'
+        ? data.toString('utf8', nul + 1)
+        : zlib.inflateSync(data.subarray(nul + 2)).toString('utf8');
     }
-    off += 12 + len;
+    chunks.push({ offset, type, promptChunk, bytes: buffer.subarray(offset, offset + 12 + length) });
+    offset += 12 + length;
   }
-  return null;
+  return { chunks, prompt };
 }
 
 function readJpegCom(b) {
@@ -79,48 +126,34 @@ function readJpegCom(b) {
 }
 
 const sidecar = `${file}.json`;
-if (readMode) {
-  let prompt = null;
-  if (isPng) prompt = readPngText(buf);
-  else if (isJpeg) prompt = readJpegCom(buf);
-  if (prompt == null && fs.existsSync(sidecar)) {
-    try { prompt = JSON.parse(fs.readFileSync(sidecar, 'utf8')).prompt ?? null; } catch { /* fall through */ }
-  }
+if (args.includes('--read')) {
+  const prompt = readPrompt(file, buf);
   if (prompt == null) { console.error('embed-prompt: no embedded prompt found'); process.exit(2); }
   console.log(prompt);
   process.exit(0);
 }
 
-const prompt = argOf('--prompt') ?? (argOf('--prompt-file') ? fs.readFileSync(argOf('--prompt-file'), 'utf8') : null);
+const promptFile = argOf('--prompt-file');
+const prompt = argOf('--prompt') ?? (promptFile ? fs.readFileSync(promptFile, 'utf8') : null);
 if (!prompt) { console.error('embed-prompt: --prompt or --prompt-file required'); process.exit(1); }
 
-if (isPng) {
+if (type === 'png') {
   // Insert (or replace) our tEXt chunk immediately before IEND.
-  const iend = buf.indexOf(Buffer.from('IEND', 'ascii')) - 4;
+  const { chunks, prompt: existingPrompt } = parsePng(buf);
+  const iend = chunks.find((chunk) => chunk.type === 'IEND')?.offset ?? -1;
   if (iend < 8) { console.error('embed-prompt: malformed PNG'); process.exit(1); }
   // Drop any existing chunk with our keyword to keep embedding idempotent.
-  let body = buf.subarray(8, iend);
-  const existing = readPngText(buf);
-  if (existing != null) {
-    const parts = [];
-    let off = 8;
-    while (off + 12 <= buf.length && off < iend + 12) {
-      const len = buf.readUInt32BE(off);
-      const type = buf.toString('ascii', off + 4, off + 8);
-      const chunk = buf.subarray(off, off + 12 + len);
-      const data = buf.subarray(off + 8, off + 8 + len);
-      const nul = data.indexOf(0);
-      const ours = (type === 'tEXt' || type === 'zTXt') && nul !== -1 && data.toString('latin1', 0, nul) === KEYWORD;
-      if (!ours && type !== 'IEND') parts.push(chunk);
-      off += 12 + len;
-    }
-    body = Buffer.concat(parts).subarray(8 * 0); // parts exclude signature
-    fs.writeFileSync(file, Buffer.concat([buf.subarray(0, 8), body, pngChunk('tEXt', Buffer.concat([Buffer.from(KEYWORD, 'latin1'), Buffer.from([0]), Buffer.from(prompt, 'utf8')])), pngChunk('IEND', Buffer.alloc(0))]));
-  } else {
-    fs.writeFileSync(file, Buffer.concat([buf.subarray(0, iend), pngChunk('tEXt', Buffer.concat([Buffer.from(KEYWORD, 'latin1'), Buffer.from([0]), Buffer.from(prompt, 'utf8')])), buf.subarray(iend)]));
-  }
+  const replacing = existingPrompt != null;
+  const body = replacing
+    ? Buffer.concat(chunks
+      .filter((chunk) => chunk.offset < iend && !chunk.promptChunk)
+      .map((chunk) => chunk.bytes))
+    : buf.subarray(8, iend);
+  const promptChunk = pngChunk('tEXt', Buffer.concat([Buffer.from(KEYWORD, 'latin1'), Buffer.from([0]), Buffer.from(prompt, 'utf8')]));
+  const end = replacing ? pngChunk('IEND', Buffer.alloc(0)) : buf.subarray(iend);
+  fs.writeFileSync(file, Buffer.concat([buf.subarray(0, 8), body, promptChunk, end]));
   console.log(`EMBEDDED: ${file} (png tEXt, ${prompt.length} chars)`);
-} else if (isJpeg) {
+} else if (type === 'jpeg') {
   const seg = Buffer.from(`${KEYWORD}\0${prompt}`, 'utf8');
   if (seg.length + 2 > 0xffff) { console.error('embed-prompt: prompt too long for a JPEG segment'); process.exit(1); }
   const com = Buffer.alloc(4 + seg.length);

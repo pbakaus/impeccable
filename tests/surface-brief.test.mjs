@@ -6,6 +6,7 @@ import path from 'node:path';
 
 import {
   listSurfaceBriefs,
+  normalizeSurfaceTarget,
   resolveSurfaceBrief,
   writeSurfaceBrief,
 } from '../skill/scripts/lib/surface-briefs.mjs';
@@ -67,6 +68,13 @@ describe('surface briefs', () => {
     const result = resolveSurfaceBrief(cwd, 'route:/pricing');
     assert.equal(result.reason, 'slug');
     assert.equal(result.brief?.primaryTarget, 'route:/pricing');
+  });
+
+  it('canonicalizes explicit and inferred route identifiers consistently', () => {
+    assert.equal(normalizeSurfaceTarget('route:/docs//intro/?from=nav#top', { projectRoot: cwd }), 'route:/docs/intro');
+    assert.equal(normalizeSurfaceTarget('/docs//intro/?from=nav#top', { projectRoot: cwd }), 'route:/docs/intro');
+    assert.equal(normalizeSurfaceTarget('route:/docs/../admin', { projectRoot: cwd }), null);
+    assert.equal(normalizeSurfaceTarget('/docs/../admin', { projectRoot: cwd }), null);
   });
 
   it('supports the root route even though the filesystem root exists', () => {

@@ -24,6 +24,7 @@ import { fileURLToPath } from 'node:url';
 import { resolveTargetSelection } from './context.mjs';
 import { resolveFiles } from './live-inject.mjs';
 import { readLiveServerInfo } from './lib/impeccable-paths.mjs';
+import { livePathGlobToRegex } from './lib/live-path-globs.mjs';
 import { resolveSurfaceBrief } from './lib/surface-briefs.mjs';
 import { resolveLiveTarget } from './live-target.mjs';
 import { bootInstructions } from './live/instructions.mjs';
@@ -240,7 +241,7 @@ function scanForDrift(rootDir, resolvedFiles, config) {
   // Files matching the user's `exclude` globs are intentional omissions,
   // not drift. Compile them to regexes so the orphan list stays signal.
   const userExcludeRegexes = (Array.isArray(config.exclude) ? config.exclude : [])
-    .map((p) => globToRegex(p));
+    .map(livePathGlobToRegex);
   const isUserExcluded = (rel) => userExcludeRegexes.some((re) => re.test(rel));
 
   const orphans = [];
@@ -276,38 +277,6 @@ function scanForDrift(rootDir, resolvedFiles, config) {
     orphanCount: orphans.length,
     hint: `${orphans.length} HTML file(s) exist but aren't in config.files. Consider adding them, or use a glob pattern like "public/**/*.html".`,
   };
-}
-
-/**
- * Same glob-to-regex mapping used by live-inject.mjs. Kept inline here
- * to avoid a circular import (live-inject.mjs already imports nothing
- * from live.mjs). The two must stay in sync.
- */
-function globToRegex(pattern) {
-  let re = '';
-  let i = 0;
-  while (i < pattern.length) {
-    const c = pattern[i];
-    if (c === '*') {
-      if (pattern[i + 1] === '*') {
-        if (pattern[i + 2] === '/') { re += '(?:.*/)?'; i += 3; }
-        else { re += '.*'; i += 2; }
-      } else {
-        re += '[^/]*';
-        i += 1;
-      }
-    } else if (c === '?') {
-      re += '[^/]';
-      i += 1;
-    } else if (/[.+^${}()|[\]\\]/.test(c)) {
-      re += '\\' + c;
-      i += 1;
-    } else {
-      re += c;
-      i += 1;
-    }
-  }
-  return new RegExp('^' + re + '$');
 }
 
 // ---------------------------------------------------------------------------

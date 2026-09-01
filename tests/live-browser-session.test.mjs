@@ -61,4 +61,24 @@ describe('live-browser-session state helper', () => {
       'event=live_browser_session.revision_resume actor=browser operation=reload_checkpoint risk=durable_store_ignores_stale_checkpoint expected=3 actual=' + second.currentCheckpointRevision(),
     );
   });
+
+  it('retains overlapping handled sessions and reads the legacy single-id format', () => {
+    const createState = loadFactory();
+    const storage = createMemoryStorage();
+    const first = createState({ prefix: 'impeccable-live', storage, idFactory: () => 'owner-a' });
+
+    first.markHandled('session-a');
+    first.markHandled('session-b');
+    assert.equal(first.isHandled('session-a'), true);
+    assert.equal(first.isHandled('session-b'), true);
+
+    const second = createState({ prefix: 'impeccable-live', storage, idFactory: () => 'owner-b' });
+    assert.equal(second.isHandled('session-a'), true, 'handled sessions survive reload-equivalent helpers');
+    second.clearHandled('session-a');
+    assert.equal(second.isHandled('session-a'), false);
+    assert.equal(second.isHandled('session-b'), true, 'clearing one recovery must preserve overlapping sessions');
+
+    storage.setItem(second.handledKey, 'legacy-session');
+    assert.equal(second.isHandled('legacy-session'), true);
+  });
 });

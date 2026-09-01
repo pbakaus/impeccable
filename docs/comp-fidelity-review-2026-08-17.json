@@ -1,0 +1,580 @@
+{
+ "date": "2026-08-17",
+ "reviewer": "pbakaus",
+ "method": "click-to-annotate side-by-side page: comp left, build right; pass/unsure/fail per sample; pin coordinates omitted here, notes kept",
+ "samples": {
+  "cf3-05-05-sol-branch-001": {
+   "verdict": "fail",
+   "note": "",
+   "pins": [
+    "bad font",
+    "shape is different",
+    "asset has wrong bg color",
+    "button in wrong spot",
+    "mini shape on cover should not be there",
+    "text in the wrong place",
+    "paper rip texture missing",
+    "bottom menu entirely missing"
+   ]
+  },
+  "cf3-05-05-sol-branch-002": {
+   "verdict": "fail",
+   "note": "",
+   "pins": [
+    "good font, but bad line height",
+    "yua komiyama in wrong font size and too much spacing to heading)",
+    "button too far down, also too much spacing above",
+    "looks like sol tried to replace the music sheet with html? lots of stuff missing, squiggles etc...",
+    "shape is cut off on both sides, terrible treatment",
+    "soft cathedrals in the wrong spot, very small",
+    "that double shape appears again",
+    "bottom menu missing entirely"
+   ]
+  },
+  "cf3-05-05-sol-branch-003": {
+   "verdict": "fail",
+   "note": "",
+   "pins": [
+    "bad font",
+    "extra content not in comp",
+    "extra content not in comp (worse even, section kickers are banned)",
+    "terrible html/svg rendition of music sheet",
+    "shape cut off at the top, very different quality as original",
+    "cover missing texture, text in wrong spot",
+    "bottom menu entirely missing"
+   ]
+  },
+  "cf3-05-05-sol-main-001": {
+   "verdict": "fail",
+   "note": "by far the worst of all of them in this niche",
+   "pins": [
+    "extra content",
+    "extra content",
+    "extra content",
+    "extra content (section kicker)",
+    "bad font, improvised font treatment",
+    "completely replaced style of listen button",
+    "completely different music sheet",
+    "terrible approximated shape",
+    "bad cover in wrong location, with wrong content",
+    "bottom menu missing"
+   ]
+  },
+  "cf3-05-05-sol-main-002": {
+   "verdict": "fail",
+   "note": "",
+   "pins": [
+    "improvised bad font and treatment (actually doesn't look bad, but fail because very different as the comp)",
+    "extra content",
+    "improvised button, not in comp",
+    "completely different music sheet",
+    "terrible shape",
+    "extra content",
+    "menu missing",
+    "extra shape and other content in the cover",
+    "extra content",
+    "extra content"
+   ]
+  },
+  "cf3-05-05-sol-main-003": {
+   "verdict": "fail",
+   "note": "",
+   "pins": [
+    "extra content",
+    "bad font, improvised",
+    "improvised button",
+    "completely different than music sheet notation",
+    "bad cut off shape",
+    "bad cover with wrong content in bad position",
+    "bottom menu entirely missing again"
+   ]
+  },
+  "cf3-07-07-sol-branch-001": {
+   "verdict": "fail",
+   "note": "",
+   "pins": [
+    "texture of red element entirely missing",
+    "text in wrong location",
+    "text size and font wrong, mirrored, and in the wrong location",
+    "missing from build",
+    "menu to tall in build",
+    "menu dividers don't exist in comp",
+    "line way too low, too much spacing above",
+    "text cut off on the side. bolded parts don't exist in comp",
+    "button too far below, again too much spacing above",
+    "wrong icon",
+    "bad svg approximation",
+    "missing card containment, and bad positioning",
+    "label is outside the box in comp",
+    "very weird font compared to comp",
+    "\"today\" is wrongly positioned (arguably could make more sense there, but still violates the contract; the user should decide in the next round)",
+    "terrible approximation of asset",
+    "lines don't point to the right thing",
+    "this graphic is so bad it's almost offensive",
+    "this whole bottom area is not visible in the build because the content above pushes it all down"
+   ]
+  },
+  "cf3-07-07-sol-branch-002": {
+   "verdict": "fail",
+   "note": "",
+   "pins": [
+    "content missing in build",
+    "wrong color, but arguably might be better (user decision; if the comp violates detector rules like contrast, maybe a stated second pass)",
+    "bad font (too thick) but at least roughly in the right place",
+    "nav area too tall",
+    "hallucinated dividers",
+    "font only ok, not great approximation",
+    "too much spacing (width)",
+    "card in wrong location (needs to be further up and to the left), and bad icon",
+    "terrible svg approximation of asset",
+    "line sticks out of its box",
+    "bad font (too thick)",
+    "label wrongly positioned, not out of the box",
+    "bad svg approximation of asset",
+    "this whole container is too wide, text wraps at completely different breakpoints",
+    "table text too small, looks quite a bit different",
+    "this top card doesn't sit in its own visual card, like in the comp",
+    "absolutely atrocious svg instead of asset",
+    "font on button too small"
+   ]
+  },
+  "cf3-07-07-sol-branch-003": {
+   "verdict": "fail",
+   "note": "",
+   "pins": [
+    "white borders (review artefact, since fixed)",
+    "this text was black in the comp",
+    "texture missing",
+    "bad font size",
+    "made up dividers",
+    "top nav too tall",
+    "invented section kicker",
+    "text size wrong, overall makes this heading way too short",
+    "service note box entirely missing",
+    "thread box missing",
+    "bad svg instead of asset",
+    "lines point nowhere",
+    "table is different, and some content missing",
+    "terrible svg"
+   ]
+  },
+  "cf3-07-07-sol-main-001": {
+   "verdict": "fail",
+   "note": "",
+   "pins": [
+    "this is basically an entirely different build!"
+   ]
+  },
+  "cf3-07-07-sol-main-002": {
+   "verdict": "fail",
+   "note": "",
+   "pins": [
+    "also entirely different build"
+   ]
+  },
+  "cf3-07-07-sol-main-003": {
+   "verdict": "fail",
+   "note": "",
+   "pins": [
+    "entirely different build"
+   ]
+  },
+  "cf3-11-11-sol-branch-001": {
+   "verdict": "unsure",
+   "note": "mostly passing, but a bunch of nits",
+   "pins": [
+    "white letterboxing (review artefact)",
+    "different icons, and too small. also, some missing",
+    "right side legend is missing (arguably redundant, but it's in the comp)",
+    "bottom legend missing",
+    "different arrow style",
+    "no spacing",
+    "acknowledge button not present in comp",
+    "side tab borders are missing in the comp (these side tabs are legitimate: not rounded)",
+    "this legend is arguably a useful addition, but wasn't in the comp"
+   ]
+  },
+  "cf3-11-11-sol-branch-002": {
+   "verdict": "unsure",
+   "note": "mostly pass, with nits",
+   "pins": [
+    "wrong icons again, and some missing",
+    "wrong dropdown style",
+    "wrong live style, no pause button",
+    "utc is above, but not in the comp",
+    "wrong label, and input not vertically centered",
+    "silenced is missing in the build",
+    "wrong arrow styles",
+    "invented box colors",
+    "font size too small",
+    "font size too small",
+    "lines are much less fuzzy (much less data points maybe?)",
+    "legend not in comp"
+   ]
+  },
+  "cf3-11-11-sol-branch-003": {
+   "verdict": "unsure",
+   "note": "ok with nits",
+   "pins": [
+    "wrong dropdown style",
+    "these don't wrap on the comp",
+    "header too tall in build",
+    "best icons so far, mostly good",
+    "settings icon missing in build",
+    "help icon missing in build",
+    "text is overlapping lines",
+    "font size too small",
+    "font size too small (\"errors\")",
+    "these aren't in boxes with a border",
+    "hallucinated legend",
+    "hallucinated little squares",
+    "wrong arrow style"
+   ]
+  },
+  "cf3-11-11-sol-main-001": {
+   "verdict": "fail",
+   "note": "",
+   "pins": [
+    "bad menu",
+    "completely different looking chart structure",
+    "very different looking visualization",
+    "letterboxing (review artefact)",
+    "nav missing",
+    "hallucinated legend",
+    "hallucinated trend lines"
+   ]
+  },
+  "cf3-11-11-sol-main-002": {
+   "verdict": "fail",
+   "note": "didn't leave annotations because very similarly bad to 001",
+   "pins": []
+  },
+  "cf3-11-11-sol-main-003": {
+   "verdict": "fail",
+   "note": "didn't leave annotations because very similarly bad to 001",
+   "pins": []
+  },
+  "cf4-05-05-opus-branch-001": {
+   "verdict": "fail",
+   "note": "",
+   "pins": [
+    "shadow doesn't exist in comp",
+    "button too far down",
+    "music notation lines bleed into the album cover",
+    "bottom menu is entirely missing"
+   ]
+  },
+  "cf4-05-05-opus-branch-002": {
+   "verdict": "fail",
+   "note": "this would be a pass if the black shape wouldnt have a horrible clipping bug",
+   "pins": [
+    "shape cropped at the left and bottom, looks like a bug",
+    "the paper rip effect is bolder than in the comp, but first time the details at the bottom actually come through, nice!"
+   ]
+  },
+  "cf4-05-05-opus-main-001": {
+   "verdict": "pass",
+   "note": "",
+   "pins": [
+    "wrong bg color",
+    "text too cramped towards the top",
+    "mini arc within the cover",
+    "bad font size and position"
+   ]
+  },
+  "cf4-05-05-opus-main-002": {
+   "verdict": "fail",
+   "note": "",
+   "pins": [
+    "bad font",
+    "the grain is too heavy here",
+    "this shape should not go all the way to the bottom",
+    "these artifacts make no sense",
+    "mini arc should be there",
+    "wrong font size in the wrong place",
+    "music notes cut off",
+    "bottom menu missing"
+   ]
+  },
+  "cf4-07-07-opus-branch-001": {
+   "verdict": "unsure",
+   "note": "",
+   "pins": [
+    "white instead of black",
+    "table style is off",
+    "line wrap is different",
+    "image is different",
+    "font is bad - bold",
+    "texture missing",
+    "white letterboxing (review artefact)",
+    "pretty good but looks a bit different",
+    "these stick out"
+   ]
+  },
+  "cf4-07-07-opus-branch-002": {
+   "verdict": "unsure",
+   "note": "",
+   "pins": [
+    "white text, overlaps",
+    "the style of those components is very different, almost as if we didn't pass in the crop of the original or the prompt",
+    "this is flat on the comp",
+    "bad asset",
+    "whole index shown is hallucinated",
+    "font is too different, spacing between lines is too much"
+   ]
+  },
+  "cf4-07-07-opus-main-001": {
+   "verdict": "fail",
+   "note": "",
+   "pins": [
+    "text is wrongly positioned",
+    "bad asset",
+    "bad font weight",
+    "asset in diff style",
+    "asset in diff style",
+    "table is completely off",
+    "invented"
+   ]
+  },
+  "cf4-07-07-opus-main-002": {
+   "verdict": "fail",
+   "note": "",
+   "pins": [
+    "terrible font",
+    "table gone",
+    "bad heading",
+    "should be below button",
+    "hallucinated",
+    "hallucinated",
+    "bad layout",
+    "different copy",
+    "different copy"
+   ]
+  },
+  "cf4-11-11-opus-branch-001": {
+   "verdict": "pass",
+   "note": "mostly nits, would give this a pass",
+   "pins": [
+    "slightly different dropdown styles",
+    "hallucinated side tab",
+    "icons smaller than in comp",
+    "table looks quite different",
+    "number is in the wrong place",
+    "font size too large",
+    "box style is slightly different",
+    "help icon missing"
+   ]
+  },
+  "cf4-11-11-opus-main-001": {
+   "verdict": "unsure",
+   "note": "worse than branch, but also not terrible",
+   "pins": [
+    "hallucinated scope field",
+    "slow traces not in the original comp",
+    "table style and grid is different",
+    "help icon missing",
+    "icons a bit too small",
+    "active style looks different",
+    "button does not exist in comp",
+    "text not vertically aligned",
+    "search bar too long",
+    "background grid lines are missing",
+    "this chart area overall is too tall, pushes everything below further down",
+    "different box style, too tall boxes"
+   ]
+  },
+  "cf4-11-11-opus-main-002": {
+   "verdict": "unsure",
+   "note": "",
+   "pins": [
+    "letterboxing (review artefact)",
+    "button doesn't exist in comp",
+    "chart area way too tall",
+    "box style different",
+    "logo not flush on the left",
+    "icons are too small",
+    "help icon missing"
+   ]
+  },
+  "cf5-07-07-sol-branch-001": {
+   "verdict": "unsure",
+   "note": "",
+   "pins": [
+    "white instead of black text",
+    "font feels very off, too bold, not tall enough etc",
+    "texture missing",
+    "header divider line is much too far down",
+    "font too bold",
+    "line wrap here is terrible, not like in the comp",
+    "this is below the button in the comp",
+    "bad icon",
+    "text a bit too small",
+    "asset is badly positioned",
+    "text too bold",
+    "this whole thing is not in a visual box",
+    "looks like a weird crop",
+    "non-sensical lines that point nowhere",
+    "weird hallucinated buttons",
+    "table too small, font too small, looks different",
+    "asset looks too low res (like a crop), positioned badly, overflows at the top"
+   ]
+  },
+  "cf5-07-07-sol-branch-002": {
+   "verdict": "fail",
+   "note": "",
+   "pins": [
+    "letterboxing (review artefact)",
+    "black text at the bottom missing",
+    "font-size too small",
+    "should be below button",
+    "line height too low",
+    "hallucinated section kicker",
+    "hallucinated dividers",
+    "table entirely missing",
+    "terrible svg",
+    "weird divider",
+    "weird artifacts",
+    "service note box out of viewport",
+    "terrible svg",
+    "header too tall"
+   ]
+  },
+  "cf5-07-07-sol-branch-003": {
+   "verdict": "fail",
+   "note": "",
+   "pins": [
+    "letterboxing (review artefact)",
+    "bad divider lines",
+    "white instead of black text",
+    "texture missing",
+    "bottom text missing",
+    "hallucinated section kicker",
+    "red line too thick",
+    "weird bolding",
+    "service note icon bad, box missing, asset missing",
+    "cardinal clipping sins",
+    "terrible svg",
+    "terrible svg",
+    "hallucinated table header and color",
+    "table overflowing"
+   ]
+  },
+  "cf6-05-05-sol-branch-001": {
+   "verdict": "fail",
+   "note": "",
+   "pins": [
+    "bad section kicker",
+    "font too small",
+    "terrible approximation of music notation sheet",
+    "bottom row missing",
+    "bad bg color",
+    "terrible cover, double arc",
+    "weird white space",
+    "extra text",
+    "extra text",
+    "extra text"
+   ]
+  },
+  "cf6-05-05-sol-branch-002": {
+   "verdict": "fail",
+   "note": "",
+   "pins": [
+    "letter spacing way too wide",
+    "font size too small",
+    "pretty bad approximation of music notation sheet",
+    "bottom row missing",
+    "terrible cover asset",
+    "extra arc"
+   ]
+  },
+  "cf6-05-05-sol-branch-003": {
+   "verdict": "fail",
+   "note": "",
+   "pins": [
+    "bad font, but better than other passes",
+    "terrible approximation again of music notation",
+    "bad cover, but at least soft cathedrals is positioned correctly",
+    "arc shape is wrong and badly positioned",
+    "bottom row missing"
+   ]
+  },
+  "cf6-07-07-sol-branch-001": {
+   "verdict": "fail",
+   "note": "",
+   "pins": [
+    "texture missing",
+    "bad font, too small",
+    "bad font, comp is not bold at all in the header",
+    "too bold font",
+    "wraps on the wrong words",
+    "service note looks different, misses icon, text etc",
+    "stick out of the box",
+    "text overflows the container",
+    "font size way too large",
+    "bad asset crop (crops are never allowed)",
+    "bad asset crop (crops are never allowed) and badly positioned",
+    "lines overflowing, badly positioned",
+    "table header is comically tall",
+    "thread index is overlapping lines",
+    "'thread' label is within the box, not outside"
+   ]
+  },
+  "cf6-07-07-sol-branch-002": {
+   "verdict": "fail",
+   "note": "dramatic fail. invented a completely different layout.",
+   "pins": []
+  },
+  "cf6-07-07-sol-branch-003": {
+   "verdict": "fail",
+   "note": "",
+   "pins": [
+    "texture missing",
+    "font size too big",
+    "heading overflows on the right",
+    "bad line width",
+    "text overflows, box looks super different",
+    "asset terribly positioned",
+    "this whole thing is not in a visible bordered box anymore",
+    "non-sensical lines pointing to wrong things",
+    "asset has bad bg color",
+    "these elements are way too far below and unreadable"
+   ]
+  },
+  "cf7-05-05-opus-branch-001": {
+   "verdict": "fail",
+   "note": "",
+   "pins": [
+    "button too far down",
+    "music notation ok but not perfect; doesn't flow into the arc shape on the right",
+    "font too small",
+    "arc shape cut off on the right and extending too far below",
+    "bottom row entirely missing"
+   ]
+  },
+  "cf7-05-05-opus-branch-002": {
+   "verdict": "pass",
+   "note": "wow - by far the best result so far!",
+   "pins": [
+    "text not present in comp"
+   ]
+  },
+  "cf7-07-07-opus-branch-001": {
+   "verdict": "fail",
+   "note": "absolutely insane fail. it's like a toddler sprinkled assets on a page",
+   "pins": []
+  },
+  "cf7-07-07-opus-branch-002": {
+   "verdict": "pass",
+   "note": "this is a borderline pass",
+   "pins": [
+    "white text instead of black",
+    "texture missing",
+    "bottom text way too far below",
+    "service note box way too far below",
+    "heading way more compressed (short) than in comp",
+    "label not on the left edge",
+    "line missing"
+   ]
+  }
+ }
+}

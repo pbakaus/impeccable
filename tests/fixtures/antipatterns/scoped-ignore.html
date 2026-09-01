@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fixture: data-impeccable-ignore scoped waivers</title>
+<style>
+  body { margin: 0; padding: 40px; background: #faf8f4; font-family: Arial, sans-serif; color: #262421; }
+  /* Every case carries a UNIQUE border-left width so each finding's snippet
+     (`border-left: Npx`) attributes to exactly one case. Flag widths: 5, 6,
+     8, 12. Pass widths: 4, 7, 9, 10, 11. */
+  .tabbed {
+    width: 420px;
+    padding: 16px 20px;
+    margin: 0 0 24px;
+    background: #ffffff;
+    border: 1px solid #ddd8d0;
+    border-left: 6px solid #b8422e;
+  }
+  .w4 { border-left-width: 4px; }
+  .w5 { border-left-width: 5px; }
+  .w7 { border-left-width: 7px; }
+  .w8 { border-left-width: 8px; }
+  .w9 { border-left-width: 9px; }
+  .w10 { border-left-width: 10px; }
+  .w11 { border-left-width: 11px; }
+  .w12 { border-left-width: 12px; }
+  /* Marquee specimen: keyframes + an infinite loop track. The section that
+     hosts it carries a marquee waiver; the CSS-scan finding must resolve the
+     selector to the live element and honor the ancestor attribute. */
+  @keyframes ticker-loop { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+  .quote-track { display: flex; width: max-content; animation: ticker-loop 80s linear infinite; }
+  .quote-track span { padding: 8px 16px; }
+  /* Dead grid CSS: this two-axis hairline grid selector matches nothing on
+     this page, so the browser pass must drop the codex-grid finding — the
+     pattern never renders here. */
+  .never-rendered-grid {
+    background:
+      linear-gradient(90deg, rgba(200,180,120,0.08) 1px, transparent 1px),
+      linear-gradient(180deg, rgba(200,180,120,0.08) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  /* Overshoot bezier inside a keyframe STEP: enclosingCssSelector must refuse
+     `to` as a selector (it would match nothing and wrongly drop the finding),
+     so this bounce-easing finding stays page-level and is retained. */
+  @keyframes springy {
+    from { transform: none; }
+    to { transform: translateY(-4px); animation-timing-function: cubic-bezier(0.3, 1.8, 0.6, 1); }
+  }
+</style>
+</head>
+<body>
+  <!-- FLAG 6px — control: no waiver anywhere above. -->
+  <article class="tabbed control-flags">The control case has a 6px side-tab accent border and no waiver, so the side-tab rule must flag it.</article>
+
+  <!-- FLAG 8px — waiver names a different rule, so side-tab still applies. -->
+  <section data-impeccable-ignore="pulsing-dot">
+    <article class="tabbed w8 flags-other-rule-waived">The waiver names pulsing-dot, not side-tab, so this 8px case must still flag.</article>
+  </section>
+
+  <!-- FLAG 12px — waiver sits on a SIBLING, not an ancestor: no effect. -->
+  <div data-impeccable-ignore="side-tab"></div>
+  <article class="tabbed w12 flags-sibling-waiver">A waiver on a preceding sibling is not an ancestor; this 12px case must still flag.</article>
+
+  <!-- FLAG 5px — waiver value misspells the rule id: exact matching only. -->
+  <section data-impeccable-ignore="side-tabs">
+    <article class="tabbed w5 flags-misspelled-rule">"side-tabs" is not a rule id; the 5px case must still flag.</article>
+  </section>
+
+  <!-- PASS 7px — exact-rule waiver on the container: the subtree is exempt. -->
+  <section data-impeccable-ignore="side-tab">
+    <article class="tabbed w7 pass-exact-rule">Inside a container waived for exactly side-tab; must not flag.</article>
+  </section>
+
+  <!-- PASS 9px — two levels below the waiving container. -->
+  <section data-impeccable-ignore="side-tab">
+    <div>
+      <article class="tabbed w9 pass-nested-depth">Two levels below the waiving container; the ancestor walk must still find it.</article>
+    </div>
+  </section>
+
+  <!-- PASS 10px — star waiver: every rule is exempt in the subtree. -->
+  <section data-impeccable-ignore="*">
+    <article class="tabbed w10 pass-star">Inside a star-waived container; must not flag.</article>
+  </section>
+
+  <!-- PASS 11px — comma list including side-tab. -->
+  <section data-impeccable-ignore="pulsing-dot, side-tab">
+    <article class="tabbed w11 pass-rule-list">side-tab appears in the comma list; must not flag.</article>
+  </section>
+
+  <!-- PASS 4px — waiver on the flagged element itself (self counts). -->
+  <article class="tabbed w4 pass-self-waiver" data-impeccable-ignore="side-tab">The waiver sits on the element itself; must not flag.</article>
+
+  <!-- Live marquee inside a rule-scoped waiver: the CSS-scan marquee finding
+       resolves .quote-track to this element and is waived by the ancestor. -->
+  <section data-impeccable-ignore="marquee">
+    <div class="quote-track"><span>One voice.</span><span>Another voice.</span><span>One voice.</span><span>Another voice.</span></div>
+  </section>
+</body>
+</html>

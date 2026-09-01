@@ -9,11 +9,12 @@
  */
 
 import { execSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, statSync, lstatSync, unlinkSync, mkdirSync, writeFileSync, rmSync, rmdirSync, renameSync, createWriteStream, realpathSync, symlinkSync, readlinkSync, cpSync, copyFileSync } from 'node:fs';
-import { join, resolve, dirname, relative, isAbsolute, sep } from 'node:path';
+import { existsSync, readFileSync, readdirSync, statSync, accessSync, constants, lstatSync, unlinkSync, mkdirSync, mkdtempSync, writeFileSync, rmSync, rmdirSync, renameSync, createWriteStream, realpathSync, symlinkSync, readlinkSync, cpSync, copyFileSync } from 'node:fs';
+import { join, resolve, dirname, relative, isAbsolute, sep, delimiter } from 'node:path';
 import { createInterface, emitKeypressEvents } from 'node:readline';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
-import { get } from 'node:https';
 import { createHash } from 'node:crypto';
 import { tmpdir, homedir } from 'node:os';
 import { unzipSync } from 'fflate';
@@ -23,7 +24,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const API_BASE = 'https://impeccable.style';
 
 // Provider folder names in project roots
-const PROVIDER_DIRS = ['.claude', '.cursor', '.gemini', '.agents', '.agent', '.github', '.grok', '.kiro', '.opencode', '.pi', '.qoder', '.trae', '.trae-cn', '.rovodev', '.vibe'];
+const PROVIDER_DIRS = ['.claude', '.cursor', '.gemini', '.agents', '.agent', '.github', '.grok', '.hermes', '.kiro', '.opencode', '.pi', '.qoder', '.trae', '.trae-cn', '.rovodev', '.vibe', '.veto'];
 const PROVIDER_ALIASES = {
   agent: '.agent',
   agents: '.agents',
@@ -37,6 +38,7 @@ const PROVIDER_ALIASES = {
   github: '.github',
   grok: '.grok',
   'grok-build': '.grok',
+  hermes: '.hermes',
   xai: '.grok',
   kiro: '.kiro',
   opencode: '.opencode',
@@ -47,6 +49,7 @@ const PROVIDER_ALIASES = {
   trae: '.trae',
   'trae-cn': '.trae-cn',
   vibe: '.vibe',
+  veto: '.veto',
 };
 
 const PROVIDER_DISPLAY = {
@@ -57,6 +60,7 @@ const PROVIDER_DISPLAY = {
   '.gemini': { name: 'Gemini CLI', input: 'gemini' },
   '.github': { name: 'GitHub Copilot', input: 'github' },
   '.grok': { name: 'Grok Build', input: 'grok' },
+  '.hermes': { name: 'Hermes Agent', input: 'hermes' },
   '.kiro': { name: 'Kiro', input: 'kiro' },
   '.opencode': { name: 'OpenCode', input: 'opencode' },
   '.pi': { name: 'Pi Coding Agent', input: 'pi' },
@@ -65,8 +69,9 @@ const PROVIDER_DISPLAY = {
   '.trae': { name: 'Trae', input: 'trae' },
   '.trae-cn': { name: 'Trae CN', input: 'trae-cn' },
   '.vibe': { name: 'Mistral Vibe', input: 'vibe' },
+  '.veto': { name: 'Veto', input: 'veto' },
 };
-const PROVIDER_INPUT_ORDER = ['antigravity', 'claude', 'codex', 'cursor', 'gemini', 'github', 'grok', 'kiro', 'opencode', 'pi', 'qoder', 'trae', 'trae-cn', 'rovo-dev', 'vibe'];
+const PROVIDER_INPUT_ORDER = ['antigravity', 'claude', 'codex', 'cursor', 'gemini', 'github', 'grok', 'hermes', 'kiro', 'opencode', 'pi', 'qoder', 'trae', 'trae-cn', 'rovo-dev', 'vibe', 'veto'];
 
 // OpenCode reads global skills from its config directory, not ~/.opencode:
 // $OPENCODE_CONFIG_DIR, else $XDG_CONFIG_HOME/opencode, else
@@ -78,14 +83,52 @@ function opencodeGlobalConfigDir(home) {
   return join(home, '.config', 'opencode');
 }
 
+// Hermes reads skills from `$HERMES_HOME/skills/`, where $HERMES_HOME defaults
+// to `~/.hermes` but is also set to a profile path (e.g.
+// `~/.hermes/profiles/forge`) when a non-default profile is active. Reading
+// the env var matters here at install time: writing to `~/.hermes/skills/`
+// from a profile-scoped Hermes invocation would land in the wrong profile
+// (the same cross-profile data-corruption class that the active_profile
+// fallback warning in hermes_constants.py exists to detect). Used by
+// HOME_SKILLS_DIR_OVERRIDES['.hermes'] only; GLOBAL_HARNESS_HINTS reads the
+// fixed `~/.hermes` location so detection doesn't leak the developer's real
+// HERMES_HOME into test output (test isolation).
+//
+// Ignore $HERMES_HOME when it doesn't sit under `home` (the caller-supplied
+// home dir, which tests inject via HOME=/tmp/...). Without this guard, an
+// inherited $HERMES_HOME=/home/<dev>/.hermes from the developer's shell leaks
+// into test output even when the test sets HOME=/tmp/imp-home-xxx: tests
+// expect ~/.hermes to live under their tmp home, not under the dev's real
+// home. The check uses `resolve()` on both sides so a symlinked test home
+// (e.g. /tmp -> /private/tmp on macOS) still compares correctly.
+function hermesGlobalHome(home) {
+  const envHome = process.env.HERMES_HOME;
+  if (envHome) {
+    try {
+      const resolvedEnv = resolve(envHome);
+      const resolvedHome = resolve(home);
+      // Honor HERMES_HOME only when it lives under the active home (real
+      // ~/.hermes or ~/.hermes/profiles/<name>). Cross-home inheritance is
+      // treated as not-set, so a test running under HOME=/tmp/... doesn't
+      // pick up the developer's real ~/.hermes.
+      if (resolvedEnv === resolvedHome || resolvedEnv.startsWith(resolvedHome + sep)) {
+        return resolvedEnv;
+      }
+    } catch {
+      // fall through to default
+    }
+  }
+  return join(home, '.hermes');
+}
+
 // Providers whose GLOBAL (home) skills dir is not `<provider>/skills`,
 // as a function of the home dir. Pi discovers global skills from
 // ~/.pi/agent/skills/ (issue #327); OpenCode from its config dir (issue
-// #406). Antigravity's global skills dir is ~/.gemini/config/skills/
-// (shared Gemini config location); project scope stays `.agent/skills`.
-// Project scope stays `<provider>/skills` for all of these.
+// #406); Hermes from $HERMES_HOME. Project scope stays `<provider>/skills`
+// for all three.
 const HOME_SKILLS_DIR_OVERRIDES = {
   '.agent': (home) => join(home, '.gemini', 'config', 'skills'),
+  '.hermes': (home) => join(hermesGlobalHome(home), 'skills'),
   '.pi': (home) => join(home, '.pi', 'agent', 'skills'),
   '.opencode': (home) => join(opencodeGlobalConfigDir(home), 'skills'),
 };
@@ -93,6 +136,14 @@ const HOME_SKILLS_DIR_OVERRIDES = {
 // When a project has no harness folder yet, infer the target from globally
 // installed harnesses (~/.claude, ~/.codex, ...). Codex reads skills from
 // .agents/skills, so ~/.codex maps to the .agents bundle variant.
+//
+// Hermes auto-detection uses the fixed `~/.hermes` location only. When a
+// non-default Hermes profile is active (HERMES_HOME points to a profile path),
+// the user is expected to be inside a Hermes invocation and can pass
+// --providers=hermes explicitly. Auto-detection from a non-default HERMES_HOME
+// would also defeat test isolation (tests inject HOME; HERMES_HOME leaks from
+// the parent process and would surface the developer's real ~/.hermes in
+// detection output). The install path honors $HERMES_HOME; detection does not.
 const GLOBAL_HARNESS_HINTS = [
   { home: '.agent', provider: '.agent' },
   // Antigravity nests under ~/.gemini/ too, so any of these also trips the
@@ -105,6 +156,7 @@ const GLOBAL_HARNESS_HINTS = [
   { home: '.cursor', provider: '.cursor' },
   { home: '.gemini', provider: '.gemini' },
   { home: '.grok', provider: '.grok' },
+  { home: '.hermes', provider: '.hermes' },
   { home: '.kiro', provider: '.kiro' },
   { home: '.opencode', provider: '.opencode' },
   // OpenCode's real global config dir (issue #406); the ~/.opencode entry
@@ -114,6 +166,10 @@ const GLOBAL_HARNESS_HINTS = [
   { home: '.qoder', provider: '.qoder' },
   { home: '.rovodev', provider: '.rovodev' },
   { home: '.vibe', provider: '.vibe' },
+  // Veto is a CLI harness whose managed skill directory is ~/.veto/skills.
+  // Require its managed state directory as well as the executable so an
+  // unrelated `veto` binary on PATH does not change project install defaults.
+  { command: 'veto', provider: '.veto' },
 ];
 
 // Last-resort default when nothing is detected: Claude Code + the universal
@@ -573,13 +629,17 @@ async function downloadAndExtractBundle() {
   const localBundle = process.env.IMPECCABLE_BUNDLE_PATH;
   if (localBundle) return copyOrExtractLocalBundle(localBundle);
 
-  const tmpZip = join(tmpdir(), `impeccable-update-${Date.now()}.zip`);
-  const tmpDir = join(tmpdir(), `impeccable-update-${Date.now()}`);
-  await downloadFile(`${API_BASE}/api/download/bundle/universal`, tmpZip);
-  mkdirSync(tmpDir, { recursive: true });
-  await extractZip(tmpZip, tmpDir);
-  rmSync(tmpZip, { force: true });
-  return tmpDir;
+  const staging = mkdtempSync(join(tmpdir(), 'impeccable-update-'));
+  const tmpZip = join(staging, 'bundle.zip');
+  try {
+    await downloadFile(`${API_BASE}/api/download/bundle/universal`, tmpZip);
+    await extractZip(tmpZip, staging);
+    rmSync(tmpZip, { force: true });
+    return staging;
+  } catch (e) {
+    rmSync(staging, { recursive: true, force: true });
+    throw e;
+  }
 }
 
 async function copyOrExtractLocalBundle(sourceValue) {
@@ -588,16 +648,18 @@ async function copyOrExtractLocalBundle(sourceValue) {
     throw new Error(`Local bundle not found: ${source}`);
   }
 
-  const tmpDir = join(tmpdir(), `impeccable-local-bundle-${process.pid}-${Date.now()}`);
-  mkdirSync(tmpDir, { recursive: true });
-
-  if (statSync(source).isDirectory()) {
-    cpSync(source, tmpDir, { recursive: true });
-    return tmpDir;
+  const staging = mkdtempSync(join(tmpdir(), 'impeccable-local-bundle-'));
+  try {
+    if (statSync(source).isDirectory()) {
+      cpSync(source, staging, { recursive: true });
+    } else {
+      await extractZip(source, staging);
+    }
+    return staging;
+  } catch (e) {
+    rmSync(staging, { recursive: true, force: true });
+    throw e;
   }
-
-  await extractZip(source, tmpDir);
-  return tmpDir;
 }
 
 /**
@@ -610,7 +672,7 @@ async function copyOrExtractLocalBundle(sourceValue) {
  */
 function normalizeForHash(content) {
   return content
-    .replace(/\.(claude|cursor|agents|agent|github|gemini|codex|grok|kiro|opencode|pi|qoder|trae|trae-cn|rovodev|vibe)\/skills\//g, '.PROVIDER/skills/');
+    .replace(/\.(claude|cursor|agents|agent|github|gemini|codex|grok|hermes|kiro|opencode|pi|qoder|trae|trae-cn|rovodev|vibe|veto)\/skills\//g, '.PROVIDER/skills/');
 }
 
 function hashSkillFile(filePath) {
@@ -650,7 +712,7 @@ function deduplicateProviders(root, providers, scope) {
  * SKILL.md, so script-only fixes and removed files are detected.
  * Returns true if every bundle skill matches the local copy.
  */
-function isUpToDate(root, providers, bundleDir, scope) {
+function isUpToDate(root, providers, bundleDir, scope, agentScope = scope) {
   const unique = deduplicateProviders(root, providers, scope);
   if (unique.length === 0) return false;
 
@@ -696,6 +758,8 @@ function isUpToDate(root, providers, bundleDir, scope) {
         if (hashSkillFile(bundleFile) !== hashSkillFile(localFile)) return false;
       }
     }
+
+    if (!providerAgentsUpToDate(bundleDir, root, provider, agentScope)) return false;
   }
   return true;
 }
@@ -717,7 +781,8 @@ async function check() {
   console.log('Checking for updates...\n');
   try {
     const bundleDir = await downloadAndExtractBundle();
-    const upToDate = isUpToDate(root, providers, bundleDir);
+    const agentScope = isHomeDir(root) ? 'user' : undefined;
+    const upToDate = isUpToDate(root, providers, bundleDir, undefined, agentScope);
     rmSync(bundleDir, { recursive: true, force: true });
 
     if (upToDate) {
@@ -894,6 +959,25 @@ function userSkillProbePaths(home, harnessDir, provider) {
   ]);
 }
 
+function commandOnPath(command) {
+  const candidates = process.platform === 'win32'
+    ? [`${command}.exe`, `${command}.cmd`, `${command}.bat`]
+    : [command];
+  for (const directory of String(process.env.PATH || '').split(delimiter)) {
+    if (!directory) continue;
+    for (const candidate of candidates) {
+      const path = resolve(directory, candidate);
+      try {
+        if (statSync(path).isFile()) {
+          accessSync(path, constants.X_OK);
+          return path;
+        }
+      } catch {}
+    }
+  }
+  return null;
+}
+
 function collectInstallDetections(root, home = homedir()) {
   const detections = [];
   for (const provider of PROVIDER_DIRS) {
@@ -914,9 +998,14 @@ function collectInstallDetections(root, home = homedir()) {
     const { provider } = hint;
     // A hint is either a fixed dir under home or a resolver for harnesses
     // whose location depends on the environment (OpenCode's config dir).
-    const foundPath = hint.resolve ? hint.resolve(home) : join(home, hint.home);
-    if (!existsSync(foundPath)) continue;
-    const skillProbePaths = hint.resolve
+    const foundPath = hint.command
+      ? commandOnPath(hint.command)
+      : hint.resolve ? hint.resolve(home) : join(home, hint.home);
+    if (!foundPath || (!hint.command && !existsSync(foundPath))) continue;
+    if (hint.command && !existsSync(join(home, '.veto'))) continue;
+    const skillProbePaths = hint.command
+      ? [userProviderSkillsDir(home, provider)]
+      : hint.resolve
       ? uniquePaths([userProviderSkillsDir(home, provider), join(foundPath, 'skills')])
       : userSkillProbePaths(home, hint.home, provider);
     detections.push({
@@ -927,7 +1016,7 @@ function collectInstallDetections(root, home = homedir()) {
       installPath: userProviderSkillsDir(home, provider),
       skillProbePaths,
       hasRealSkills: skillProbePaths.some(hasRealSkillEntries),
-      reason: 'user harness folder',
+      reason: hint.command ? 'CLI on PATH' : 'user harness folder',
     });
   }
   return detections;
@@ -1291,7 +1380,9 @@ function copyProviderCommands(bundleDir, root, targets, { scope } = {}) {
 }
 
 // Native subagent definitions that ship in the bundle next to a provider's
-// skills. GitHub Copilot's live at `.github/agents/impeccable-*.agent.md`:
+// skills. Claude Code's live at `.claude/agents/impeccable-*.md`; project
+// agents take precedence over user agents. GitHub Copilot's live at
+// `.github/agents/impeccable-*.agent.md`:
 // project installs commit them at `<repo>/.github/agents/`, user-level
 // installs go to `~/.copilot/agents/` (Copilot's user-scope dir, NOT
 // `~/.github/`). On a name conflict Copilot lets the user-level file shadow
@@ -1301,6 +1392,11 @@ function copyProviderCommands(bundleDir, root, targets, { scope } = {}) {
 // `~/.cursor/agents/`; project agents take precedence there, so no shadow
 // warning is needed.
 const PROVIDER_AGENT_ARTIFACTS = {
+  '.claude': {
+    ext: '.md',
+    userDir: home => join(home, '.claude', 'agents'),
+    userShadowsProject: false,
+  },
   '.github': {
     ext: '.agent.md',
     userDir: home => join(home, '.copilot', 'agents'),
@@ -1312,6 +1408,23 @@ const PROVIDER_AGENT_ARTIFACTS = {
     userShadowsProject: false,
   },
 };
+
+function providerAgentsUpToDate(bundleDir, root, provider, scope) {
+  const artifact = PROVIDER_AGENT_ARTIFACTS[provider];
+  if (!artifact) return true;
+  const srcDir = join(bundleDir, provider, 'agents');
+  if (!existsSync(srcDir)) return true;
+
+  const destDir = scope === 'user'
+    ? artifact.userDir(root)
+    : join(root, provider, 'agents');
+  const agentFiles = readdirSync(srcDir).filter(name => name.endsWith(artifact.ext));
+  return agentFiles.every(name => {
+    const localPath = join(destDir, name);
+    return existsSync(localPath)
+      && hashSkillFile(join(srcDir, name)) === hashSkillFile(localPath);
+  });
+}
 
 function copyProviderAgents(bundleDir, root, providers, { scope, home = homedir() } = {}) {
   const targets = Array.isArray(providers) ? providers : [providers];
@@ -1415,7 +1528,7 @@ function hookScriptPathForProvider(skillRoot, provider) {
   if (provider === '.cursor') {
     return join(skillRoot, provider, 'skills', 'impeccable', 'scripts', 'hook-before-edit.mjs');
   }
-  if (provider === '.claude' || provider === '.agents') {
+  if (provider === '.claude' || provider === '.agents' || provider === '.grok') {
     return join(skillRoot, provider, 'skills', 'impeccable', 'scripts', 'hook.mjs');
   }
   return null;
@@ -1491,8 +1604,8 @@ function guardHookCommand(quotedPath, provider) {
 // entries additionally get a `commandWindows` sibling for cmd.exe.
 function rewriteHookCommandsForSkillRoot(value, provider, { skillRoot, absolute }) {
   const hookScript = hookScriptPathForProvider(skillRoot, provider);
-  // Providers we don't own a `node "PATH"` command hook for (.github, .grok)
-  // carry their own portable command forms; leave them untouched.
+  // Providers we don't own a `node "PATH"` command hook for (.github) carry
+  // their own portable command forms; leave them untouched.
   if (!hookScript) return value;
 
   // Project-scope installs derive the provider's own project-relative path
@@ -1574,7 +1687,8 @@ function hookInstalledForProvider(root, provider) {
 
 function valueHasImpeccableHookMarker(value) {
   if (typeof value === 'string') {
-    return IMPECCABLE_HOOK_COMMAND_MARKERS.some(marker => value.includes(marker));
+    const normalized = value.replace(/\\/g, '/');
+    return IMPECCABLE_HOOK_COMMAND_MARKERS.some(marker => normalized.includes(marker));
   }
   if (Array.isArray(value)) return value.some(valueHasImpeccableHookMarker);
   if (value && typeof value === 'object') {
@@ -2121,7 +2235,9 @@ function resolveUpdateTarget({ projectRoot, home, explicitScope }) {
   const homeRooted = isHomeDir(projectRoot);
   if (homeRooted && !explicitScope) {
     const providers = findInstalledProviders(home);
-    return providers.length ? { root: home, scope: undefined, providers, scopeLabel: 'user level' } : null;
+    return providers.length
+      ? { root: home, scope: undefined, agentScope: 'user', providers, scopeLabel: 'user level' }
+      : null;
   }
 
   const projectProviders = homeRooted ? [] : findImpeccableProviders(projectRoot, 'project');
@@ -2182,26 +2298,35 @@ function getModifiedSkillFiles(root, providerDirs) {
   return modified;
 }
 
-function downloadFile(url, dest) {
-  return new Promise((resolve, reject) => {
-    const file = createWriteStream(dest);
-    get(url, (res) => {
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        // Follow redirect
-        get(res.headers.location, (res2) => {
-          res2.pipe(file);
-          file.on('finish', () => { file.close(); resolve(); });
-        }).on('error', reject);
-        return;
-      }
-      if (res.statusCode !== 200) {
-        reject(new Error(`HTTP ${res.statusCode}`));
-        return;
-      }
-      res.pipe(file);
-      file.on('finish', () => { file.close(); resolve(); });
-    }).on('error', reject);
-  });
+async function downloadFile(url, dest, { fetchImpl = globalThis.fetch } = {}) {
+  let current = url;
+  let hopsLeft = 5;
+  while (true) {
+    const parsed = new URL(current);
+    if (parsed.protocol !== 'https:') {
+      throw new Error('Refusing non-HTTPS URL');
+    }
+    const res = await fetchImpl(current, { redirect: 'manual' });
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get('location');
+      if (!location) throw new Error(`HTTP ${res.status}`);
+      if (hopsLeft <= 0) throw new Error('Too many redirects');
+      hopsLeft -= 1;
+      current = new URL(location, current).href;
+      continue;
+    }
+    if (res.status !== 200) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    if (!res.body) throw new Error('Empty response body');
+    try {
+      await pipeline(Readable.fromWeb(res.body), createWriteStream(dest, { flags: 'wx' }));
+    } catch (e) {
+      if (e.code !== 'EEXIST') rmSync(dest, { force: true });
+      throw e;
+    }
+    return;
+  }
 }
 
 async function update(flags = []) {
@@ -2252,7 +2377,7 @@ async function update(flags = []) {
       : { root: projectRoot, scope: 'project', providers: target.projectProviders, scopeLabel: 'this project' };
   }
 
-  const { root, scope } = target;
+  const { root, scope, agentScope = scope } = target;
   console.log(`Updating the ${target.scopeLabel} install: ${formatPathForDisplay(root)} (${target.providers.join(', ')})`);
   const providers = target.providers;
   const linkedProviders = findLinkedProviders(root, providers, scope);
@@ -2276,7 +2401,7 @@ async function update(flags = []) {
   }
 
   // Compare local vs remote -- skip if already up to date
-  if (isUpToDate(root, copyProviders, tmpDir, scope)) {
+  if (isUpToDate(root, copyProviders, tmpDir, scope, agentScope)) {
     try {
       const wantHooks = installHooks && await decideHookInstall(root, copyProviders, { yes });
       const hookTargets = wantHooks ? copyProviderHooks(tmpDir, root, copyProviders, { force }) : [];
@@ -2312,7 +2437,7 @@ async function update(flags = []) {
     if (migrated > 0) console.log('Migrated a prefixed install back to /impeccable (the i- prefix is no longer used).');
 
     const updated = refreshProviderSkills(tmpDir, root, copyProviders, scope);
-    reportProviderAgents(copyProviderAgents(tmpDir, root, copyProviders, { scope }));
+    reportProviderAgents(copyProviderAgents(tmpDir, root, copyProviders, { scope: agentScope }));
     copyProviderCommands(tmpDir, root, copyProviders, { scope });
     const wantHooks = installHooks && await decideHookInstall(root, providers, { yes });
     const hookTargets = wantHooks ? copyProviderHooks(tmpDir, root, providers, { force }) : [];
@@ -2353,10 +2478,14 @@ export {
   copyProviderHooks,
   copyProviderSkills,
   decideHookInstall,
+  downloadAndExtractBundle,
+  downloadFile,
   expectedHookDests,
   extractZip,
   formatInstallDetectionLines,
   isUpToDate,
+  hermesGlobalHome,
+  HOME_SKILLS_DIR_OVERRIDES,
   linkProviderSkills,
   mergeHookManifests,
   migrateUnprefixImpeccable,

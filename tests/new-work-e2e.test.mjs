@@ -28,6 +28,7 @@ import { runUserBot } from './new-work-e2e/user-bot.mjs';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SERVE = path.join(ROOT, 'skill', 'scripts', 'serve-question.mjs');
 const GENERATE = path.join(ROOT, 'skill', 'scripts', 'generate-image.mjs');
+const EMBED_PROMPT = path.join(ROOT, 'skill', 'scripts', 'embed-prompt.mjs');
 const CATALOG_DIR = path.join(ROOT, 'tests', 'fixtures', 'concept-catalog');
 
 let playwright;
@@ -118,6 +119,10 @@ function spawnSyncGen(prompt, out, size = null) {
     env: { ...process.env, IMPECCABLE_IMAGE_GEN_FAKE: '1' },
     encoding: 'buffer',
   });
+}
+
+function spawnSyncEmbed(args) {
+  return spawnSync(process.execPath, [EMBED_PROMPT, ...args], { encoding: 'utf8' });
 }
 
 // --------------------------------------------------------------------------
@@ -315,6 +320,95 @@ describe('new-work-e2e: serve-question decision page', () => {
     }
   });
 
+  it('(e1) a missing comp without inspiration settles into a complete text-only card', async () => {
+    const cwd = makeWorkspace();
+    const key = 'missing-comp';
+    const board = makeFakeImage(cwd, 'board fallback', 'board-fallback.png');
+    const payload = {
+      title: 'Choose the visual world',
+      options: [
+        {
+          id: 'assigned', label: 'Shotengai Chalkboard', kicker: 'THE ROLL',
+          thesis: 'A hand-lettered neighborhood noticeboard.',
+          body: 'Program notes explain how the board changes through the day.',
+          palette: ['#18251d', '#f2e8cb'], materials: ['chalk', 'painted timber'],
+          viewport: 'The daily program fills a ruled community board.',
+          case: 'The audience already reads this visual language.',
+          risk: 'Can become nostalgic if the type loses discipline.',
+          comp: path.join(cwd, '.impeccable', 'mocks', 'decision', 'missing.webp'),
+        },
+        {
+          id: 'kept-only', label: 'Kept Line Only',
+          kept: 'Keep the hand-painted timetable as the organizing device.',
+          comp: path.join(cwd, '.impeccable', 'mocks', 'decision', 'kept-missing.webp'),
+        },
+        {
+          id: 'body-only', label: 'Body Line Only',
+          thesis: 'A compact neighborhood notice.',
+          body: 'Body copy must remain present exactly once.',
+          comp: path.join(cwd, '.impeccable', 'mocks', 'decision', 'body-missing.webp'),
+        },
+        {
+          id: 'plain-body', label: 'Plain Body',
+          body: 'Plain body follows the promoted facts.',
+          viewport: 'A compact neighborhood notice fills the first viewport.',
+          comp: path.join(cwd, '.impeccable', 'mocks', 'decision', 'plain-body-missing.webp'),
+        },
+        {
+          id: 'board-only', label: 'Board Fallback',
+          board,
+          comp: path.join(cwd, '.impeccable', 'mocks', 'decision', 'board-missing.webp'),
+        },
+      ],
+      reroll: true,
+      steer: true,
+    };
+    const { url } = await startDaemon(cwd, payload, key);
+    try {
+      const context = await browser.newContext();
+      await context.addInitScript(() => {
+        const realNow = Date.now.bind(Date);
+        let offset = 0;
+        Date.now = () => realNow() + offset;
+        window.__advanceDecisionClock = (ms) => { offset += ms; };
+      });
+      const page = await context.newPage();
+      await page.goto(url, { waitUntil: 'load' });
+      await page.waitForSelector('.card[data-id="assigned"] .media.comp-pending');
+
+      await page.evaluate(() => window.__advanceDecisionClock(241000));
+      await page.waitForFunction(() => ['assigned', 'kept-only', 'body-only', 'plain-body'].every((id) =>
+        !document.querySelector(`.card[data-id="${id}"] .media`)), null, { timeout: 6000 });
+      await page.waitForSelector('.card[data-id="board-only"] .media.stand-in');
+
+      const faceClass = await page.getAttribute('.card[data-id="assigned"] .face.front', 'class');
+      const back = await page.$('.card[data-id="assigned"] .face.back');
+      const frontRead = await page.$eval('.card[data-id="assigned"] .face.front', (el) => el.textContent);
+      const keptOnlyRead = await page.$eval('.card[data-id="kept-only"] .face.front', (el) => el.textContent);
+      const bodyOnlyRead = await page.$eval('.card[data-id="body-only"] .face.front', (el) => el.textContent);
+      const plainBodyOrder = await page.$$eval('.card[data-id="plain-body"] .body > .fact, .card[data-id="plain-body"] .body > .detail',
+        (els) => els.map((el) => el.className));
+      const boardFallbackLabel = await page.$eval('.card[data-id="board-only"] .stand-in-label', (el) => el.textContent);
+      await context.close();
+
+      assert.match(faceClass, /text-only/, 'the settled card uses the text-only layout');
+      assert.equal(back, null, 'the settled card has no unreachable back face');
+      assert.match(frontRead, /First viewport/, 'the full first-viewport fact moves to the front');
+      assert.match(frontRead, /The case/, 'the full case moves to the front');
+      assert.match(frontRead, /Risk/, 'the risk remains readable after the media collapses');
+      assert.match(frontRead, /Program notes explain/, 'thesis-linked body prose moves off the removed back face');
+      assert.match(keptOnlyRead, /Keep the hand-painted timetable/, 'kept-only content survives without a back face');
+      assert.equal(bodyOnlyRead.match(/Body copy must remain present exactly once\./g)?.length, 1,
+        'body prose already on a no-back front is not duplicated');
+      assert.deepEqual(plainBodyOrder, ['fact', 'detail'],
+        'thesis-less body prose follows the facts promoted from the missing comp');
+      assert.equal(boardFallbackLabel, 'inspiration · comp pending', 'board-only art remains as the labeled fallback');
+    } finally {
+      await stopDaemon(cwd, key);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
   it('(e2) verdicts route the deck: declined cards demote, reorder to the end, and stay adoptable', async () => {
     const cwd = makeWorkspace();
     const key = 'verdicts';
@@ -333,8 +427,9 @@ describe('new-work-e2e: serve-question decision page', () => {
           id: 'challenger-deepsea', label: 'Deep Sea Survey', verdict: 'declined',
           case: 'Fuses poorly: buyers do not identify with abyssal instrumentation.',
           kept: 'Total environmental commitment.', hero,
-          // A stray sketch on a declined card must not re-promote it to a
-          // full media face; the renderer ignores it outright.
+          // A stray comp on a declined card must not re-promote it to a
+          // full media face; the renderer ignores it outright. Declared with
+          // the legacy `sketch` key, which doubles as alias coverage.
           sketch: '.impeccable/sketches/challenger-deepsea.webp',
         },
         { id: 'challenger-waxprint', label: 'Wax Print Market', verdict: 'competitive', hero: winnerHero },
@@ -370,7 +465,7 @@ describe('new-work-e2e: serve-question decision page', () => {
       assert.match(declinedFront, /Kept/, 'the declined front carries its kept line');
       assert.equal(declinedButton, 'Adopt anyway', 'the declined action is adopt, not build');
       assert.ok(competitiveMedia, 'a competitive challenger keeps its full media face');
-      assert.match(raise, /Raised by Deep Sea Survey/, 'the assigned card names its donor');
+      assert.match(raise, /From Deep Sea Survey/, 'the assigned card names its donor');
       assert.equal(answer.optionId, 'challenger-deepsea', 'adopting a declined card answers with its id');
     } finally {
       await stopDaemon(cwd, key);
@@ -470,6 +565,181 @@ describe('new-work-e2e: serve-question decision page', () => {
     }
   });
 
+  it('(h) the build-path toggle: a code-to-comp flip shimmers the slots, surfaces through --wait, and rides the answer', async () => {
+    const cwd = makeWorkspace();
+    const key = 'bptoggle';
+    const payload = {
+      title: 'Choose the structure',
+      buildPath: { value: 'code', toggle: true },
+      steer: true,
+      options: [
+        {
+          id: 'assigned', label: 'The Ledger Spine', kicker: 'THE ROLL',
+          comp: '.impeccable/mocks/decision/assigned.webp',
+          wireframe: { regions: [{ label: 'rail', x: 0, y: 0, w: 3, h: 10 }, { label: 'rows', x: 3, y: 0, w: 9, h: 10 }] },
+        },
+      ],
+    };
+    const { url } = await startDaemon(cwd, payload, key);
+    try {
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      await page.goto(url, { waitUntil: 'load' });
+      assert.equal(await page.$('.media.comp-pending'), null, 'code-led serves no shimmer');
+      assert.ok(await page.$('.media.wire'), 'code-led serves the wireframe');
+      await page.click('.bp-opt[data-bp="comp"]');
+      await page.waitForSelector('#bp-confirm:not([hidden])');
+      assert.equal(await page.$('.media.comp-pending'), null, 'nothing renders before the flip is confirmed');
+      await page.click('#bp-confirm [data-confirm]');
+      await page.waitForSelector('.media.comp-pending');
+      const flipped = await waitLoop(cwd, key, { poll: 10 });
+      assert.equal(flipped.code, 0, flipped.out);
+      assert.match(flipped.out, /BUILD PATH FLIPPED: comp/, 'the flip surfaces through --wait');
+      assert.doesNotMatch(flipped.out, /ANSWER:/, 'a flip is not an answer');
+      // The agent generates the comp; the shimmer swaps for it.
+      mkdirSync(path.join(cwd, '.impeccable', 'mocks', 'decision'), { recursive: true });
+      makeFakeImage(path.join(cwd, '.impeccable', 'mocks', 'decision'), 'ledger spine comp', 'assigned.webp');
+      await page.waitForSelector('.card[data-id="assigned"] .media img.comp:not([hidden])', { timeout: 15000 });
+      await page.click('.card[data-id="assigned"] .face.front button.choose');
+      const collected = await waitLoop(cwd, key, { poll: 10 });
+      await context.close();
+      assert.equal(collected.code, 0, collected.out);
+      const answer = JSON.parse(collected.out.match(/ANSWER: (\{.*\})/)[1]);
+      assert.equal(answer.buildPath, 'comp', 'the answer carries the flipped path');
+      assert.equal(answer.buildPathFlipped, true, 'the answer marks the flip');
+      assert.match(collected.out, /BUILD PATH: comp \(flipped/, 'the directive states session-only scope');
+    } finally {
+      await stopDaemon(cwd, key);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  // The flip used to be tested only on a wireframe card, where the schematic
+  // is hidden and a fresh slot inserted. A card carrying catalog art instead
+  // took the other branch: the inspiration stayed the face and the comp slot
+  // was inserted below it, so the card showed two stacked images. Comp-first
+  // demotes the inspiration to the corner, and a flip has to reach the same
+  // shape a comp-first render would have served.
+  it('(f2) flipping to comp demotes an inspiration face to the corner instead of stacking a second slot', async () => {
+    const cwd = makeWorkspace();
+    const key = 'flipinspo';
+    const hero = makeFakeImage(cwd, 'catalog inspiration', 'inspo.png');
+    const payload = {
+      title: 'Choose the visual world',
+      buildPath: { value: 'code', toggle: true },
+      options: [
+        {
+          id: 'assigned', label: 'The Ledger Spine', kicker: 'THE ROLL', hero,
+          comp: '.impeccable/mocks/decision/assigned.webp',
+          viewport: 'A ruled masthead over a dense grid.', risk: 'Reads editorial.',
+        },
+      ],
+    };
+    const { url } = await startDaemon(cwd, payload, key);
+    try {
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      await page.goto(url, { waitUntil: 'load' });
+
+      const front = '.card[data-id="assigned"] .face.front';
+      // Code-led: the catalog art is the face, labeled so it never reads as a promise.
+      assert.equal(await page.$$eval(`${front} .media`, (els) => els.length), 1, 'one media slot before the flip');
+      assert.ok(await page.$(`${front} .media .media-label`), 'the inspiration face is labeled');
+      assert.equal(await page.$(`${front} .pip`), null, 'no corner inspiration while code-led');
+
+      await page.click('.bp-opt[data-bp="comp"]');
+      await page.waitForSelector('#bp-confirm:not([hidden])');
+      await page.click('#bp-confirm [data-confirm]');
+      await page.waitForSelector(`${front} .media.comp-pending`);
+
+      // The whole point: one slot, not two.
+      assert.equal(await page.$$eval(`${front} .media`, (els) => els.length), 1,
+        'the flip converts the inspiration slot rather than stacking a second one');
+      assert.ok(await page.$(`${front} .media.comp-pending .pip img`), 'the inspiration moved into the corner');
+      assert.equal(await page.$(`${front} .media > .media-label`), null, 'it is no longer presented as the face');
+      assert.ok(await page.$(`${front} .media .chip.expand`), 'the converted slot keeps its expand affordance');
+
+      const flipped = await waitLoop(cwd, key, { poll: 10 });
+      assert.match(flipped.out, /BUILD PATH FLIPPED: comp/);
+
+      // A comp that streams in must be openable. The zoom handlers used to be
+      // bound once at deal time, so anything built by the flip was inert.
+      mkdirSync(path.join(cwd, '.impeccable', 'mocks', 'decision'), { recursive: true });
+      makeFakeImage(path.join(cwd, '.impeccable', 'mocks', 'decision'), 'ledger spine comp', 'assigned.webp');
+      await page.waitForSelector(`${front} .media img.comp:not([hidden])`, { timeout: 15000 });
+      await page.click(`${front} .media .chip.expand`);
+      await page.waitForSelector('#lightbox:not([hidden])');
+      const compSrc = await page.$eval('#lightbox img', (img) => img.getAttribute('src'));
+      assert.ok(compSrc, 'the streamed-in comp opens full screen');
+      await page.click('#lightbox');
+      await page.waitForSelector('#lightbox', { state: 'hidden' });
+
+      // The corner inspiration opens the catalog art, not the comp behind it.
+      // Both zoom targets are delegated to document, where stopPropagation
+      // cannot stop a sibling listener, so split handlers let the media one
+      // overwrite the lightbox the pip had just filled.
+      const cornerSrc = await page.$eval(`${front} .media .pip img`, (img) => img.getAttribute('src'));
+      await page.click(`${front} .media .pip`);
+      await page.waitForSelector('#lightbox:not([hidden])');
+      const pipSrc = await page.$eval('#lightbox img', (img) => img.getAttribute('src'));
+      assert.notEqual(pipSrc, compSrc, 'the corner opens the inspiration, not the comp');
+      assert.equal(pipSrc, cornerSrc, 'and it is exactly the art in the corner');
+      await page.click('#lightbox');
+      await page.waitForSelector('#lightbox', { state: 'hidden' });
+
+      // Flipping back keeps a comp that already landed, by design, and must
+      // still leave exactly one slot. exitComp is synchronous, so there is
+      // nothing to wait for.
+      await page.click('.bp-opt[data-bp="code"]');
+      assert.equal(await page.$$eval(`${front} .media`, (els) => els.length), 1, 'still one slot after flipping back');
+      assert.ok(await page.$(`${front} .media img.comp:not([hidden])`), 'the landed comp survives the flip back');
+      await context.close();
+    } finally {
+      await stopDaemon(cwd, key);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('(g) a wireframe card draws its schematic in the media slot and keeps its full read on the front', async () => {
+    const cwd = makeWorkspace();
+    const key = 'wire';
+    const payload = {
+      title: 'Choose the structure',
+      options: [
+        {
+          id: 'assigned', label: 'The Ledger Spine', kicker: 'THE ROLL',
+          viewport: 'An alphabetical spine with a sticky category rail.',
+          wireframe: { cols: 12, rows: 10, regions: [
+            { label: 'category rail', x: 0, y: 0, w: 3, h: 10, accent: true },
+            { label: 'ledger rows', x: 3, y: 0, w: 9, h: 10 },
+          ] },
+        },
+        { id: 'alt', label: 'The Switchboard', wireframe: { regions: [{ label: 'board', x: 0, y: 0, w: 12, h: 10 }] } },
+      ],
+      reroll: true,
+      steer: true,
+    };
+    await startDaemon(cwd, payload, key);
+    const state = JSON.parse(readFileSync(path.join(cwd, '.impeccable', 'questions', `${key}.state.json`), 'utf8'));
+    try {
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      await page.goto(state.url, { waitUntil: 'load' });
+      const regions = await page.$$eval('.card[data-id="assigned"] .wire-region', (els) => els.length);
+      const accent = await page.$('.card[data-id="assigned"] .wire-region.accent');
+      const back = await page.$('.card[data-id="assigned"] .face.back');
+      const front = await page.$eval('.card[data-id="assigned"] .face.front', (el) => el.textContent);
+      await context.close();
+      assert.equal(regions, 2, 'both wireframe regions render');
+      assert.ok(accent, 'the accent region carries its class');
+      assert.equal(back, null, 'a wireframe card has no back; the full read stays on the front');
+      assert.match(front, /alphabetical spine/, 'the front keeps the full read beside the schematic');
+    } finally {
+      await stopDaemon(cwd, key);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
   it('(f) a hero that never loads collapses to a labeled palette field, not a dark void', async () => {
     const cwd = makeWorkspace();
     const key = 'brokenart';
@@ -526,6 +796,185 @@ describe('new-work-e2e: serve-question decision page', () => {
       rmSync(cwd, { recursive: true, force: true });
     }
   });
+
+  it('(g) a server that dies mid-shuffle stops the poll and names the failure', async () => {
+    const cwd = makeWorkspace();
+    const key = 'gonemid';
+    const payload = {
+      title: 'Choose the visual world',
+      options: [
+        { id: 'assigned', label: 'First Hand', kicker: 'THE ROLL' },
+        { id: 'challenger-a', label: 'Alt One' },
+      ],
+      reroll: true, steer: true,
+    };
+    const { url } = await startDaemon(cwd, payload, key);
+    const context = await browser.newContext();
+    try {
+      const page = await context.newPage();
+      await page.goto(url, { waitUntil: 'load' });
+      await page.click('#reroll');
+      await page.waitForSelector('.card.skeleton');
+      // Collect the re-roll answer, then kill the daemon out from under the
+      // still-open page: the poll must stop and say the server is gone
+      // instead of spinning skeletons forever.
+      const first = await waitLoop(cwd, key);
+      assert.match(first.out, /"optionId":"reroll"/);
+      await run(['--stop', '--key', key], cwd);
+      await page.waitForSelector('.stall', { timeout: 30000 });
+      const text = await page.$eval('.stall', (el) => el.textContent);
+      assert.match(text, /The question server went away/);
+      assert.ok(await page.$('.stall .choose'), 'a way out is offered');
+    } finally {
+      await context.close();
+      await stopDaemon(cwd, key);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('(h) a round nobody delivers stops the poll at the deadline and says so', async () => {
+    const cwd = makeWorkspace();
+    const key = 'nodeal';
+    const payload = {
+      title: 'Choose the visual world',
+      options: [{ id: 'assigned', label: 'First Hand', kicker: 'THE ROLL' }],
+      reroll: true, steer: true, canon: true,
+    };
+    const { url } = await startDaemon(cwd, payload, key);
+    const context = await browser.newContext();
+    try {
+      const page = await context.newPage();
+      // Fake the page clock so the 10-minute delivery deadline is reachable;
+      // the server keeps its real clock, so its own idle grace never fires.
+      await page.clock.install();
+      let beats = 0;
+      page.on('request', (r) => { if (new URL(r.url()).pathname === '/heartbeat') beats += 1; });
+      await page.goto(url, { waitUntil: 'load' });
+      // Playwright actionability waits on rAF, which the fake clock owns, so
+      // dispatch the click directly.
+      await page.$eval('#reroll', (el) => el.click());
+      // The controls must go quiet at the click itself: the POST round-trip
+      // plus the fly-out used to leave them live, and a second click posted
+      // another re-roll that renewed the delivery deadline.
+      assert.ok(await page.$eval('#reroll', (el) => el.disabled), 'the re-roll goes quiet at the click, not after the fly-out');
+      assert.ok(await page.$eval('#canon', (el) => el.disabled), 'the canon exit goes quiet at the click too');
+      // Walk the fake clock forward past the fly-out settle and the deadline.
+      // page.$ runs over CDP, not in-page timers, so it stays safe to poll.
+      let stalled = null;
+      for (let i = 0; i < 40 && !stalled; i++) {
+        await page.clock.fastForward(20000);
+        await new Promise((r) => setTimeout(r, 100));
+        stalled = await page.$('.stall');
+      }
+      assert.ok(stalled, 'the poll stops at the deadline instead of spinning forever');
+      const text = await page.$eval('.stall', (el) => el.textContent);
+      assert.match(text, /The next hand never arrived/);
+      assert.ok(await page.$('.stall .choose'), 'a way out is offered');
+      // The canon exit must go quiet with the re-roll buttons: --wait already
+      // consumed the re-roll, so a canon pick posted now could never be
+      // collected, only close the table under the agent.
+      assert.ok(await page.$eval('#canon', (el) => el.disabled), 'the canon exit is disabled on the stall screen');
+      // The stalled page must also stop heartbeating: the beats are what keep
+      // the daemon alive, so a stalled tab left open used to hold it past its
+      // idle grace forever while --wait spun on WAITING.
+      assert.ok(beats > 0, 'the heartbeat counter observes beats before the stall');
+      const beatsAtStall = beats;
+      await page.clock.fastForward(60000);
+      await new Promise((r) => setTimeout(r, 750));
+      assert.equal(beats, beatsAtStall, 'no heartbeat fires after the stall, so the idle grace can reclaim the daemon');
+      // Reload must not revive the abandoned flow: with no hand delivered it
+      // stays on the silent stall screen and says so, rather than re-serving
+      // the unresolved round with a fresh heartbeat.
+      await page.$eval('.stall .choose', (el) => el.click());
+      // Poll over CDP, not in-page waiters: the fake clock owns rAF.
+      let msg = '';
+      for (let i = 0; i < 50 && !/Still nothing to deal/.test(msg); i++) {
+        await new Promise((r) => setTimeout(r, 100));
+        msg = await page.$eval('.stall p', (el) => el.textContent);
+      }
+      assert.match(msg, /Still nothing to deal/, 'the stall says a reload found nothing');
+      await page.clock.fastForward(30000);
+      await new Promise((r) => setTimeout(r, 500));
+      assert.equal(beats, beatsAtStall, 'a reload attempt with nothing to deal leaves the page silent');
+      // A browser-native refresh bypasses the gated button entirely, so the
+      // server serves the page in waiting mode: the refresh re-enters the
+      // bounded shuffle wait (beating while it waits, like any live wait)
+      // rather than resurrecting the answered cards with an unbounded
+      // heartbeat -- and the deadline silences it all over again.
+      await page.reload({ waitUntil: 'load' });
+      let waitingAgain = null;
+      for (let i = 0; i < 50 && !waitingAgain; i++) {
+        await new Promise((r) => setTimeout(r, 100));
+        waitingAgain = await page.$('.card.skeleton');
+      }
+      assert.ok(waitingAgain, 'a native refresh mid re-roll re-enters the shuffle wait, not the answered round');
+      assert.ok(await page.$eval('#canon', (el) => el.disabled), 'the refreshed waiting page serves the canon exit disabled too');
+      let restalled = null;
+      for (let i = 0; i < 40 && !restalled; i++) {
+        await page.clock.fastForward(20000);
+        await new Promise((r) => setTimeout(r, 100));
+        restalled = await page.$('.stall');
+      }
+      assert.ok(restalled, 'the refreshed wait still ends at the deadline');
+      const beatsAtSecondStall = beats;
+      await page.clock.fastForward(30000);
+      await new Promise((r) => setTimeout(r, 500));
+      assert.equal(beats, beatsAtSecondStall, 'the refreshed page goes silent again at its own deadline');
+      // Once a hand actually lands, the stalled page's beat-free watch deals
+      // it on its own, no click owed, and the heartbeat legitimately resumes:
+      // a live round is not an abandoned flow.
+      const nextPayloadPath = path.join(cwd, 'next.json');
+      writeFileSync(nextPayloadPath, JSON.stringify({
+        title: 'Choose the visual world',
+        options: [{ id: 'assigned', label: 'Second Hand', kicker: 'RE-ROLLED' }],
+        reroll: true, steer: true, canon: true,
+      }));
+      const updated = await run(['--update', '--key', key, '--payload', nextPayloadPath], cwd);
+      assert.equal(updated.code, 0, updated.out);
+      let dealt = null;
+      for (let i = 0; i < 50 && !dealt; i++) {
+        await page.clock.fastForward(2000);
+        await new Promise((r) => setTimeout(r, 100));
+        dealt = await page.$('button.choose');
+      }
+      assert.ok(dealt, 'the stalled page notices the delivered hand on its own and deals it');
+      const label = await page.$eval('.card', (el) => el.textContent);
+      assert.match(label, /Second Hand/, 'reload with a delivered hand serves the new round');
+      assert.ok(beats > beatsAtSecondStall, 'the heartbeat resumes on the re-dealt round');
+      assert.ok(await page.$eval('#canon', (el) => !el.disabled), 'the dealt round serves the canon exit live again');
+    } finally {
+      await context.close();
+      await stopDaemon(cwd, key);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('(i) Build this against a dead server fails loudly instead of confirming', async () => {
+    const cwd = makeWorkspace();
+    const key = 'deadpick';
+    const payload = {
+      title: 'Choose the visual world',
+      options: [{ id: 'assigned', label: 'First Hand', kicker: 'THE ROLL' }],
+      reroll: true, steer: true,
+    };
+    const { url } = await startDaemon(cwd, payload, key);
+    const context = await browser.newContext();
+    try {
+      const page = await context.newPage();
+      await page.goto(url, { waitUntil: 'load' });
+      await page.waitForSelector('button.choose');
+      await run(['--stop', '--key', key], cwd);
+      await page.click('button.choose');
+      await page.waitForSelector('.done', { timeout: 15000 });
+      const text = await page.$eval('.done', (el) => el.textContent);
+      assert.match(text, /went away before this choice could land/);
+      assert.doesNotMatch(text, /Choice recorded/);
+    } finally {
+      await context.close();
+      await stopDaemon(cwd, key);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
 });
 
 // --------------------------------------------------------------------------
@@ -564,6 +1013,57 @@ describe('new-work-e2e: fake image generation', () => {
       const bytesA = readFileSync(a);
       const bytesC = readFileSync(c);
       assert.ok(!bytesA.equals(bytesC), 'different prompts produce different images');
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('reads, scans, and idempotently replaces the prompt embedded in a PNG', () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), 'new-work-img-'));
+    try {
+      const image = makeFakeImage(cwd, 'synthetic IEND source prompt', 'comp.png');
+      const original = readFileSync(image);
+      assert.ok(original.indexOf(Buffer.from('IEND')) < original.lastIndexOf(Buffer.from('IEND')),
+        'the fixture carries IEND bytes in metadata before the real terminator chunk');
+
+      const first = spawnSyncEmbed([image, '--prompt', 'first production prompt']);
+      assert.equal(first.status, 0, first.stderr);
+      assert.equal(spawnSyncEmbed([image, '--read']).stdout.trim(), 'first production prompt');
+
+      const scan = spawnSyncEmbed(['--scan', cwd]);
+      assert.equal(scan.status, 0, scan.stderr);
+      assert.match(scan.stdout, /SCAN: 1 raster, 0 missing/);
+
+      const second = spawnSyncEmbed([image, '--prompt', 'replacement production prompt']);
+      assert.equal(second.status, 0, second.stderr);
+      assert.equal(spawnSyncEmbed([image, '--read']).stdout.trim(), 'replacement production prompt');
+
+      const bytes = readFileSync(image);
+      assert.equal(bytes.toString().match(/impeccable:prompt/g)?.length, 1,
+        're-embedding replaces the existing metadata instead of accumulating chunks');
+      assert.ok(bytes.includes(Buffer.from('SYNTHETIC')),
+        'replacing the prompt preserves unrelated PNG metadata');
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('reads JPEG comments and sidecar fallbacks through the same scan contract', () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), 'new-work-img-'));
+    try {
+      const jpeg = path.join(cwd, 'reference.jpg');
+      const webp = path.join(cwd, 'reference.webp');
+      writeFileSync(jpeg, Buffer.from([0xff, 0xd8, 0xff, 0xda, 0x00, 0x02]));
+      writeFileSync(webp, Buffer.from('RIFF placeholder WEBP'));
+
+      assert.equal(spawnSyncEmbed([jpeg, '--prompt', 'jpeg prompt']).status, 0);
+      assert.equal(spawnSyncEmbed([webp, '--prompt', 'sidecar prompt']).status, 0);
+      assert.equal(spawnSyncEmbed([jpeg, '--read']).stdout.trim(), 'jpeg prompt');
+      assert.equal(spawnSyncEmbed([webp, '--read']).stdout.trim(), 'sidecar prompt');
+
+      const scan = spawnSyncEmbed(['--scan', cwd]);
+      assert.equal(scan.status, 0, scan.stderr);
+      assert.match(scan.stdout, /SCAN: 2 rasters, 0 missing/);
     } finally {
       rmSync(cwd, { recursive: true, force: true });
     }

@@ -48,6 +48,7 @@ import {
   writeLiveServerInfo,
 } from './lib/impeccable-paths.mjs';
 import { countByPage as countPendingByPage } from './live/manual-edits-buffer.mjs';
+import { collectProjectDetectorIgnores } from './live/project-ignores.mjs';
 import {
   createManualApplyController,
   summarizeManualApplyFailures,
@@ -181,8 +182,16 @@ function chatAgentLikelyActive() {
 // cap at 10 MB to guard against runaway writes from a misbehaving client.
 const MAX_ANNOTATION_BYTES = 10 * 1024 * 1024;
 
+const POLLER_OWNED_EVENT_FIELDS = ['_instructions', '_completionAck', '_acceptResult'];
+
+function stripPollerOwnedEventFields(event) {
+  if (!event || typeof event !== 'object') return;
+  for (const key of POLLER_OWNED_EVENT_FIELDS) delete event[key];
+}
+
 function enqueueEvent(event) {
   if (!event) return;
+  stripPollerOwnedEventFields(event);
   // Dedupe by (session, type), except mount failures, which are per-variant:
   // variant 2 failing must not be swallowed because variant 1's failure is
   // still queued.
@@ -746,9 +755,20 @@ function createRequestHandler({ detectScript, liveScriptParts }) {
         commandPrefix: IMPECCABLE_COMMAND_PREFIX,
         appRoot: process.cwd(),
         parts,
+        // Read per request rather than cached, so editing the config and
+        // reloading the tab is enough to pick up a new waiver. Config comes
+        // from every root the session spans (appRoot, contextRoot, repoRoot):
+        // in a monorepo the hook and the CLI key it at the repo root, which
+        // is not the appRoot this process chdir'd onto.
+        projectIgnores: collectProjectDetectorIgnores({
+          appRoot: process.cwd(),
+          contextRoot: LIVE_ROOTS?.contextRoot,
+          repoRoot: LIVE_ROOTS?.repoRoot,
+          scriptsDir: __dirname,
+        }),
       });
       res.writeHead(200, {
-        'Content-Type': 'application/javascript',
+        'Content-Type': 'application/javascript; charset=utf-8',
         'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
         'Pragma': 'no-cache',
       });
@@ -757,7 +777,7 @@ function createRequestHandler({ detectScript, liveScriptParts }) {
     }
     if (p === '/detect.js' || p === '/') {
       if (!detectScript) { res.writeHead(404); res.end('Not available'); return; }
-      res.writeHead(200, { 'Content-Type': 'application/javascript' });
+      res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8' });
       res.end(detectScript);
       return;
     }
@@ -936,15 +956,23 @@ function createRequestHandler({ detectScript, liveScriptParts }) {
       const filePath = url.searchParams.get('path');
       if (!filePath || filePath.includes('..')) { res.writeHead(400); res.end('Bad path'); return; }
       const absPath = path.resolve(process.cwd(), filePath);
-      // Confine to the project root. A bare `startsWith(cwd)` string check lets a
-      // sibling dir whose name extends the root name (projeto -> projeto-backup)
-      // slip through; compare on the relative path instead (same pattern as
-      // sessionFileMetadataFromPollReply below). An empty rel means the request
-      // resolved to the root directory itself, which this file route never serves.
-      const rel = path.relative(process.cwd(), absPath);
+      let realRoot, realTarget;
+      try {
+        realRoot = fs.realpathSync(process.cwd());
+        realTarget = fs.realpathSync(absPath);
+      } catch {
+        res.writeHead(404); res.end('File not found'); return;
+      }
+      // Confine to the project root after symlink resolution. A bare
+      // `startsWith(cwd)` string check lets a sibling dir whose name extends the
+      // root name (projeto -> projeto-backup) slip through; compare on the
+      // relative path instead (same pattern as sessionFileMetadataFromPollReply
+      // below). An empty rel means the request resolved to the root directory
+      // itself, which this file route never serves.
+      const rel = path.relative(realRoot, realTarget);
       if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) { res.writeHead(403); res.end('Forbidden'); return; }
       let content;
-      try { content = fs.readFileSync(absPath, 'utf-8'); }
+      try { content = fs.readFileSync(realTarget, 'utf-8'); }
       catch { res.writeHead(404); res.end('File not found'); return; }
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(content);
@@ -1026,6 +1054,7 @@ function createRequestHandler({ detectScript, liveScriptParts }) {
           res.end(JSON.stringify({ error }));
           return;
         }
+        stripPollerOwnedEventFields(msg);
         if (msg.type === 'agent_phase') {
           recordAgentPhase(msg.id, msg.phase, {
             ...(Number.isFinite(msg.durationMs) ? { durationMs: msg.durationMs } : {}),

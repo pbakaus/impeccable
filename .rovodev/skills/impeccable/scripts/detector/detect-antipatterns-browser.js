@@ -70,12 +70,26 @@ function isBrandFontOnOwnDomain(font) {
   return allowed.some(suffix => host === suffix || host.endsWith('.' + suffix));
 }
 
-const GENERIC_FONTS = new Set([
+// Overused-font primary selection skips only CSS generics so a system stack
+// keeps the system face as primary; GENERIC_FONTS still includes platform
+// faces for design-system/serif resolution.
+const CSS_GENERIC_FONTS = new Set([
   'serif', 'sans-serif', 'monospace', 'cursive', 'fantasy',
-  'system-ui', 'ui-serif', 'ui-sans-serif', 'ui-monospace', 'ui-rounded',
-  '-apple-system', 'blinkmacsystemfont', 'segoe ui',
   'inherit', 'initial', 'unset', 'revert',
 ]);
+
+const GENERIC_FONTS = new Set([
+  ...CSS_GENERIC_FONTS,
+  'system-ui', 'ui-serif', 'ui-sans-serif', 'ui-monospace', 'ui-rounded',
+  '-apple-system', 'blinkmacsystemfont', 'segoe ui',
+]);
+
+function primaryFontFace(fontFamily, skip = CSS_GENERIC_FONTS) {
+  return String(fontFamily || '')
+    .split(',')
+    .map(f => f.trim().replace(/^['"]|['"]$/g, '').toLowerCase())
+    .find(f => f && !skip.has(f)) || null;
+}
 
 // WCAG large text thresholds are defined in points: 18pt normal text and
 // 14pt bold text. Browsers expose font-size in CSS pixels at 96px per inch.
@@ -231,6 +245,24 @@ const ANTIPATTERNS = [
     description:
       'A large inline SVG that builds a pictorial scene from a pile of primitive shapes reads as placeholder clip art, not illustration. Icons, logos, and data graphics are fine at their scale; a hero-sized visual deserves real artwork, a photograph, or a deliberately drawn graphic.',
     skillSection: 'Imagery',
+  },
+  {
+    id: 'organic-clip-path',
+    category: 'quality',
+    name: 'Organic contour drawn as clip-path',
+    description:
+      'A clip-path polygon with many arbitrary vertices, or a curved clip-path path(), is CSS approximating a torn edge, blob, or silhouette. It reads as the cheap version of the effect and is usually a produced or photographic material replaced with code. Derive an alpha matte from the real image, or ship the shape as a cut-out raster; keep clip-path for geometry (cut corners, diagonals, hexagons).',
+    skillSection: 'Imagery',
+    skillGuideline: 'geometric masks standing in for organic contours',
+  },
+  {
+    id: 'buried-raster',
+    category: 'quality',
+    name: 'Raster buried under a wash or opacity',
+    description:
+      'A background image under a near-opaque gradient wash, or a raster on an element at near-zero opacity, never reaches the screen: the page shows the wash, and the produced texture or photo ships as a compliance token. Let the material show (a tint under 0.9 alpha, a blend mode, an opacity you can see) or remove the file.',
+    skillSection: 'Imagery',
+    skillGuideline: 'a produced material must survive to the screen',
   },
   {
     id: 'dark-glow',
@@ -741,14 +773,54 @@ function contrastRatio(c1, c2) {
   return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
 }
 
+// The CSS color functions worth pulling out of a longer declaration. The set
+// is deliberately closed: `linear-gradient(` and `url(` also look like
+// `name(` and must not be read as colors.
+const COLOR_FUNCTION_NAMES = new Set([
+  'rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'oklch', 'oklab', 'lch', 'lab', 'color', 'color-mix',
+]);
+
+// Pull every color-function token out of a value, with balanced-paren capture
+// so nested forms (`color-mix(in oklab, oklch(...) 20%, transparent)`) survive
+// whole. Returns the raw substrings in source order.
+function extractColorFunctionTokens(value) {
+  const str = String(value || '');
+  const tokens = [];
+  const re = /([a-z][a-z-]*)\(/gi;
+  let m;
+  while ((m = re.exec(str)) !== null) {
+    if (!COLOR_FUNCTION_NAMES.has(m[1].toLowerCase())) continue;
+    let depth = 0, end = -1;
+    for (let i = m.index + m[0].length - 1; i < str.length; i++) {
+      if (str[i] === '(') depth++;
+      else if (str[i] === ')') { depth--; if (depth === 0) { end = i; break; } }
+    }
+    if (end < 0) break;
+    tokens.push(str.slice(m.index, end + 1));
+    re.lastIndex = end + 1;
+  }
+  return tokens;
+}
+
 function parseGradientColors(bgImage) {
   if (!bgImage || !bgImage.includes('gradient')) return [];
   const colors = [];
-  for (const m of bgImage.matchAll(/rgba?\([^)]+\)/g)) {
-    const c = parseRgb(m[0]);
+  const tokenSpans = [];
+  let from = 0;
+  // Stops arrive in whatever syntax the author wrote and the browser kept.
+  // A dark ground painted as `linear-gradient(oklch(...), oklch(...))` used
+  // to read as a gradient with no stops at all.
+  for (const token of extractColorFunctionTokens(bgImage)) {
+    const start = bgImage.indexOf(token, from);
+    if (start < 0) break;
+    tokenSpans.push({ start, end: start + token.length });
+    from = start + token.length;
+    const c = parseAnyColor(token);
     if (c) colors.push(c);
   }
   for (const m of bgImage.matchAll(/#([0-9a-f]{6}|[0-9a-f]{3})\b/gi)) {
+    // Nested hex inside color-mix is an ingredient, not a stop (issue #578).
+    if (tokenSpans.some(s => m.index >= s.start && m.index < s.end)) continue;
     const h = m[1];
     if (h.length === 6) {
       colors.push({ r: parseInt(h.slice(0,2),16), g: parseInt(h.slice(2,4),16), b: parseInt(h.slice(4,6),16), a: 1 });
@@ -780,6 +852,424 @@ function getHue(c) {
 function colorToHex(c) {
   if (!c) return '?';
   return '#' + [c.r, c.g, c.b].map(v => v.toString(16).padStart(2, '0')).join('');
+}
+
+// ─── Color-space conversions ────────────────────────────────────────────────
+//
+// Every function here lands on 8-bit sRGB, clamped to gamut. Chrome, Safari,
+// and Firefox all keep the authored color space in getComputedStyle output
+// (`oklch(0.84 0.19 80.46)`, `lch(20 5 60)`, `color(srgb 1.04 0.72 -0.21)`),
+// so a detector that only reads rgb() is blind on any modern palette. The
+// expected outputs are pinned in tests/detect-antipatterns.test.js against
+// what Chrome itself paints for the same strings.
+
+function clamp01(x) {
+  return Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0;
+}
+
+// Linear-light sRGB channel to the encoded 0-255 value.
+function encodeSrgbChannel(x) {
+  const c = clamp01(x);
+  return Math.round((c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055) * 255);
+}
+
+function decodeSrgbChannel(x) {
+  const c = Number.isFinite(x) ? x : 0;
+  const sign = c < 0 ? -1 : 1;
+  const abs = Math.abs(c);
+  return sign * (abs <= 0.04045 ? abs / 12.92 : Math.pow((abs + 0.055) / 1.055, 2.4));
+}
+
+function linearSrgbToColor(r, g, b, a = 1) {
+  return { r: encodeSrgbChannel(r), g: encodeSrgbChannel(g), b: encodeSrgbChannel(b), a };
+}
+
+// OKLab to sRGB (Björn Ottosson's matrices). L in 0..1, a/b are signed axes.
+function oklabToRgb(L, a, b) {
+  const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
+  const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
+  const s_ = L - 0.0894841775 * a - 1.2914855480 * b;
+  const lc = l_ * l_ * l_, mc = m_ * m_ * m_, sc = s_ * s_ * s_;
+  return linearSrgbToColor(
+     4.0767416621 * lc - 3.3077115913 * mc + 0.2309699292 * sc,
+    -1.2684380046 * lc + 2.6097574011 * mc - 0.3413193965 * sc,
+    -0.0041960863 * lc - 0.7034186147 * mc + 1.7076147010 * sc,
+  );
+}
+
+// OKLCH to sRGB. L in 0..1, C in 0..~0.4 typical, H in degrees. Chroma past
+// the sRGB gamut clamps per channel rather than producing NaN.
+function oklchToRgb(L, C, H) {
+  const hRad = (H * Math.PI) / 180;
+  return oklabToRgb(L, C * Math.cos(hRad), C * Math.sin(hRad));
+}
+
+// CIE Lab to sRGB. CSS lab()/lch() use the D50 white point; the matrix below
+// is the Bradford-adapted XYZ-D50 to linear-sRGB transform from CSS Color 4.
+function labToRgb(L, a, b) {
+  const kappa = 24389 / 27, epsilon = 216 / 24389;
+  const fy = (L + 16) / 116, fx = fy + a / 500, fz = fy - b / 200;
+  const invert = (t) => (t * t * t > epsilon ? t * t * t : (116 * t - 16) / kappa);
+  const yr = L > kappa * epsilon ? Math.pow((L + 16) / 116, 3) : L / kappa;
+  const Xn = 0.3457 / 0.3585, Zn = (1 - 0.3457 - 0.3585) / 0.3585;
+  const x = invert(fx) * Xn, y = yr, z = invert(fz) * Zn;
+  return linearSrgbToColor(
+     3.1341359569958707 * x - 1.6173863321612538 * y - 0.4906619460083532 * z,
+    -0.9787955029120890 * x + 1.9162545672595240 * y + 0.0334427311613195 * z,
+     0.0719553798841168 * x - 0.2289768264158322 * y + 1.4053860583241250 * z,
+  );
+}
+
+function lchToRgb(L, C, H) {
+  const hRad = (H * Math.PI) / 180;
+  return labToRgb(L, C * Math.cos(hRad), C * Math.sin(hRad));
+}
+
+// color(<space> c1 c2 c3) for the spaces that turn up in real stylesheets.
+// `srgb` is what Chrome serializes most color-mix() results into, routinely
+// with channels outside 0..1. Spaces we do not model return null so callers
+// abstain instead of measuring against a color we invented.
+function colorFunctionToRgb(space, c1, c2, c3) {
+  switch (space) {
+    case 'srgb':
+      return { r: Math.round(clamp01(c1) * 255), g: Math.round(clamp01(c2) * 255), b: Math.round(clamp01(c3) * 255), a: 1 };
+    case 'srgb-linear':
+      return linearSrgbToColor(c1, c2, c3);
+    case 'display-p3': {
+      const [R, G, B] = [decodeSrgbChannel(c1), decodeSrgbChannel(c2), decodeSrgbChannel(c3)];
+      return linearSrgbToColor(
+         1.2249401762805587 * R - 0.2249404646817506 * G + 0.0000002884022551 * B,
+        -0.0420569547096138 * R + 1.0420571661298634 * G - 0.0000002113202247 * B,
+        -0.0196375587040044 * R - 0.0786360772174755 * G + 1.0982736359214800 * B,
+      );
+    }
+    default:
+      return null;
+  }
+}
+
+function hslToRgb(h, s, l) {
+  h = ((h % 360) + 360) % 360;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m0 = l - c / 2;
+  const [r, g, b] =
+    h < 60 ? [c, x, 0] :
+    h < 120 ? [x, c, 0] :
+    h < 180 ? [0, c, x] :
+    h < 240 ? [0, x, c] :
+    h < 300 ? [x, 0, c] : [c, 0, x];
+  return {
+    r: Math.round((r + m0) * 255),
+    g: Math.round((g + m0) * 255),
+    b: Math.round((b + m0) * 255),
+    a: 1,
+  };
+}
+
+function hwbToRgb(h, w, bl) {
+  if (w + bl >= 1) {
+    const g = Math.round((w / (w + bl)) * 255);
+    return { r: g, g, b: g, a: 1 };
+  }
+  const base = hslToRgb(h, 1, 0.5);
+  const mix = (c) => Math.round(((c / 255) * (1 - w - bl) + w) * 255);
+  return { r: mix(base.r), g: mix(base.g), b: mix(base.b), a: 1 };
+}
+
+// Common CSS named colors — the handful that actually show up in generated
+// UIs, not the full 148-name spec list. Includes the achromatic names so a
+// named gray parses (and correctly reads as no-chroma) instead of being
+// treated as an unknown color.
+const CSS_NAMED_COLORS = {
+  black: { r: 0, g: 0, b: 0 },
+  white: { r: 255, g: 255, b: 255 },
+  gray: { r: 128, g: 128, b: 128 },
+  grey: { r: 128, g: 128, b: 128 },
+  silver: { r: 192, g: 192, b: 192 },
+  dimgray: { r: 105, g: 105, b: 105 },
+  darkgray: { r: 169, g: 169, b: 169 },
+  lightgray: { r: 211, g: 211, b: 211 },
+  gainsboro: { r: 220, g: 220, b: 220 },
+  whitesmoke: { r: 245, g: 245, b: 245 },
+  red: { r: 255, g: 0, b: 0 },
+  crimson: { r: 220, g: 20, b: 60 },
+  tomato: { r: 255, g: 99, b: 71 },
+  coral: { r: 255, g: 127, b: 80 },
+  salmon: { r: 250, g: 128, b: 114 },
+  orange: { r: 255, g: 165, b: 0 },
+  gold: { r: 255, g: 215, b: 0 },
+  yellow: { r: 255, g: 255, b: 0 },
+  olive: { r: 128, g: 128, b: 0 },
+  lime: { r: 0, g: 255, b: 0 },
+  green: { r: 0, g: 128, b: 0 },
+  teal: { r: 0, g: 128, b: 128 },
+  turquoise: { r: 64, g: 224, b: 208 },
+  cyan: { r: 0, g: 255, b: 255 },
+  aqua: { r: 0, g: 255, b: 255 },
+  skyblue: { r: 135, g: 206, b: 235 },
+  dodgerblue: { r: 30, g: 144, b: 255 },
+  blue: { r: 0, g: 0, b: 255 },
+  navy: { r: 0, g: 0, b: 128 },
+  indigo: { r: 75, g: 0, b: 130 },
+  rebeccapurple: { r: 102, g: 51, b: 153 },
+  purple: { r: 128, g: 0, b: 128 },
+  violet: { r: 238, g: 130, b: 238 },
+  orchid: { r: 218, g: 112, b: 214 },
+  magenta: { r: 255, g: 0, b: 255 },
+  fuchsia: { r: 255, g: 0, b: 255 },
+  hotpink: { r: 255, g: 105, b: 180 },
+  pink: { r: 255, g: 192, b: 203 },
+  maroon: { r: 128, g: 0, b: 0 },
+};
+
+// Split a string on top-level commas (ignoring commas nested in parens).
+function splitTopLevelCommas(str) {
+  const parts = [];
+  let depth = 0, start = 0;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    if (ch === '(') depth++;
+    else if (ch === ')') depth = Math.max(0, depth - 1);
+    else if (ch === ',' && depth === 0) {
+      parts.push(str.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  const tail = str.slice(start).trim();
+  if (tail) parts.push(tail);
+  return parts;
+}
+
+// Evaluate a CSS color-mix() expression to {r,g,b,a}. Returns null when
+// the expression can't be resolved (unresolved var(), unknown colors).
+//
+// Mixing is done with premultiplied alpha in sRGB regardless of the
+// declared interpolation space. That is exact for the dominant generated-UI
+// pattern — `color-mix(in oklab, <color> N%, transparent)` — where the
+// result is simply <color> at alpha N% in ANY rectangular space, and a
+// close-enough approximation for opaque-opaque mixes (the detector only
+// consumes these values for contrast/chroma thresholds, not for display).
+function parseColorMix(str) {
+  const m = String(str).trim().match(/^color-mix\(/i);
+  if (!m) return null;
+  // Balanced-paren capture of the arguments.
+  let depth = 0, end = -1;
+  const open = str.indexOf('(');
+  for (let i = open; i < str.length; i++) {
+    if (str[i] === '(') depth++;
+    else if (str[i] === ')') { depth--; if (depth === 0) { end = i; break; } }
+  }
+  if (end < 0) return null;
+  const args = splitTopLevelCommas(str.slice(open + 1, end));
+  if (args.length !== 3 || !/^in\s/i.test(args[0])) return null;
+
+  const parseComponent = (component) => {
+    // Percentage may lead or trail the color per spec.
+    let pct = null;
+    let colorStr = component;
+    const trail = component.match(/\s+([\d.]+)%$/);
+    const lead = component.match(/^([\d.]+)%\s+/);
+    if (trail) { pct = parseFloat(trail[1]); colorStr = component.slice(0, trail.index).trim(); }
+    else if (lead) { pct = parseFloat(lead[1]); colorStr = component.slice(lead[0].length).trim(); }
+    let color;
+    if (/^transparent$/i.test(colorStr)) color = { r: 0, g: 0, b: 0, a: 0 };
+    else color = parseAnyColor(colorStr);
+    if (!color) return null;
+    return { color, pct };
+  };
+
+  const c1 = parseComponent(args[1]);
+  const c2 = parseComponent(args[2]);
+  if (!c1 || !c2) return null;
+  let p1 = c1.pct, p2 = c2.pct;
+  if (p1 == null && p2 == null) { p1 = 50; p2 = 50; }
+  else if (p1 == null) p1 = 100 - p2;
+  else if (p2 == null) p2 = 100 - p1;
+  const sum = p1 + p2;
+  if (sum <= 0) return null;
+  // Per spec: weights normalize to sum; when sum < 100 the result alpha is
+  // additionally scaled by sum/100.
+  const w1 = p1 / sum, w2 = p2 / sum;
+  const alphaScale = sum < 100 ? sum / 100 : 1;
+  const a1 = c1.color.a ?? 1, a2 = c2.color.a ?? 1;
+  const a = (a1 * w1 + a2 * w2) * alphaScale;
+  if (a <= 0) return { r: 0, g: 0, b: 0, a: 0 };
+  const mix = (ch) => Math.round((c1.color[ch] * a1 * w1 + c2.color[ch] * a2 * w2) / (a1 * w1 + a2 * w2));
+  return { r: mix('r'), g: mix('g'), b: mix('b'), a: Math.min(1, a) };
+}
+
+// Composite a translucent color over an opaque(ish) base (simple
+// source-over in sRGB). Returns an opaque {r,g,b,a:1}.
+function compositeColorOver(top, base) {
+  const a = top.a ?? 1;
+  return {
+    r: Math.round(top.r * a + base.r * (1 - a)),
+    g: Math.round(top.g * a + base.g * (1 - a)),
+    b: Math.round(top.b * a + base.b * (1 - a)),
+    a: 1,
+  };
+}
+
+// A color() / lab() / lch() component: a bare number, a percentage against
+// `scale`, or the `none` keyword (which resolves to zero for our purposes).
+function parseColorComponent(token, scale = 1) {
+  if (token == null) return null;
+  const t = String(token).trim();
+  if (/^none$/i.test(t)) return 0;
+  const num = parseFloat(t);
+  if (!Number.isFinite(num)) return null;
+  return t.endsWith('%') ? (num / 100) * scale : num;
+}
+
+function parseAlphaToken(token) {
+  if (token == null) return 1;
+  const t = String(token).trim();
+  if (/^none$/i.test(t)) return 1;
+  const num = parseFloat(t);
+  if (!Number.isFinite(num)) return 1;
+  return t.endsWith('%') ? num / 100 : num;
+}
+
+// Extended color parser: rgb/rgba/hex/oklch/oklab/lch/lab/hsl/hwb/color()/
+// color-mix/common named colors. Returns null on no match. Use this when the
+// input might be any CSS color form; use plain parseRgb when you only expect
+// computed rgb() values from real browsers.
+function parseAnyColor(s) {
+  if (!s || typeof s !== 'string') return null;
+  const str = s.trim();
+  if (str === 'transparent' || str === 'currentcolor' || str === 'inherit') return null;
+  if (/^color-mix\(/i.test(str)) return parseColorMix(str);
+  let m;
+  m = str.match(/rgba?\(\s*(\d+(?:\.\d+)?)\s*,?\s*(\d+(?:\.\d+)?)\s*,?\s*(\d+(?:\.\d+)?)(?:\s*[,/]\s*([\d.]+)(%)?)?\s*\)/);
+  if (m) {
+    const c = { r: Math.round(+m[1]), g: Math.round(+m[2]), b: Math.round(+m[3]), a: 1 };
+    if (m[4] !== undefined) c.a = m[5] === '%' ? parseFloat(m[4]) / 100 : +m[4];
+    return c;
+  }
+  m = str.match(/^#([0-9a-f]{3,8})$/i);
+  if (m) {
+    const h = m[1];
+    if (h.length === 3 || h.length === 4) {
+      return {
+        r: parseInt(h[0] + h[0], 16),
+        g: parseInt(h[1] + h[1], 16),
+        b: parseInt(h[2] + h[2], 16),
+        a: h.length === 4 ? parseInt(h[3] + h[3], 16) / 255 : 1,
+      };
+    }
+    if (h.length === 6 || h.length === 8) {
+      return {
+        r: parseInt(h.slice(0, 2), 16),
+        g: parseInt(h.slice(2, 4), 16),
+        b: parseInt(h.slice(4, 6), 16),
+        a: h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1,
+      };
+    }
+  }
+  // OKLCH parser. Tailwind v4's CSS minifier squishes the space after
+  // `%` ("21.5%.02 50"), so the separator between L and C may be absent.
+  // Match L (with optional %), then C and H separated permissively.
+  m = str.match(/oklch\(\s*([\d.]+)(%?)\s*[\s,]*\s*([\d.]+)\s*[\s,]+\s*([-\d.]+)(?:deg)?(?:\s*\/\s*([\d.]+)(%)?)?\s*\)/i);
+  if (m) {
+    const Lnum = parseFloat(m[1]);
+    const L = m[2] === '%' ? Lnum / 100 : Lnum;
+    const rgb = oklchToRgb(L, parseFloat(m[3]), parseFloat(m[4]));
+    if (m[5] !== undefined) {
+      const alpha = parseFloat(m[5]);
+      rgb.a = m[6] === '%' ? alpha / 100 : alpha;
+    }
+    return rgb;
+  }
+  // OKLAB — a/b are signed axes; percentages map 100% → 0.4.
+  m = str.match(/oklab\(\s*([\d.]+)(%?)\s+(-?[\d.]+)(%?)\s+(-?[\d.]+)(%?)(?:\s*\/\s*([\d.]+)(%)?)?\s*\)/i);
+  if (m) {
+    const L = m[2] === '%' ? parseFloat(m[1]) / 100 : parseFloat(m[1]);
+    const a = m[4] === '%' ? parseFloat(m[3]) * 0.004 : parseFloat(m[3]);
+    const b = m[6] === '%' ? parseFloat(m[5]) * 0.004 : parseFloat(m[5]);
+    const rgb = oklabToRgb(L, a, b);
+    if (m[7] !== undefined) {
+      const alpha = parseFloat(m[7]);
+      rgb.a = m[8] === '%' ? alpha / 100 : alpha;
+    }
+    return rgb;
+  }
+  // LCH / LAB — CIE, D50 white point. Chrome serializes lch(20% 5 60) as
+  // `lch(20 5 60)`, so L arrives with or without its percent sign. In both
+  // spaces L runs 0..100 and 100% means 100.
+  m = str.match(/^lch\(\s*([\d.]+%?|none)\s+([\d.]+%?|none)\s+(-?[\d.]+)(?:deg)?(?:\s*\/\s*([\d.]+%?|none))?\s*\)$/i);
+  if (m) {
+    const L = parseColorComponent(m[1], 100);
+    const C = parseColorComponent(m[2], 150);
+    const H = parseFloat(m[3]);
+    if (L == null || C == null || !Number.isFinite(H)) return null;
+    const rgb = lchToRgb(L, C, H);
+    rgb.a = parseAlphaToken(m[4]);
+    return rgb;
+  }
+  m = str.match(/^lab\(\s*([\d.]+%?|none)\s+(-?[\d.]+%?|none)\s+(-?[\d.]+%?|none)(?:\s*\/\s*([\d.]+%?|none))?\s*\)$/i);
+  if (m) {
+    const L = parseColorComponent(m[1], 100);
+    const a = parseColorComponent(m[2], 125);
+    const b = parseColorComponent(m[3], 125);
+    if (L == null || a == null || b == null) return null;
+    const rgb = labToRgb(L, a, b);
+    rgb.a = parseAlphaToken(m[4]);
+    return rgb;
+  }
+  // color(<space> c1 c2 c3 [/ alpha]) — what Chrome hands back for most
+  // color-mix() results and for any wide-gamut color an author wrote.
+  m = str.match(/^color\(\s*([a-z0-9-]+)\s+(-?[\d.eE+-]+%?|none)\s+(-?[\d.eE+-]+%?|none)\s+(-?[\d.eE+-]+%?|none)(?:\s*\/\s*([\d.]+%?|none))?\s*\)$/i);
+  if (m) {
+    const c1 = parseColorComponent(m[2]);
+    const c2 = parseColorComponent(m[3]);
+    const c3 = parseColorComponent(m[4]);
+    if (c1 == null || c2 == null || c3 == null) return null;
+    const rgb = colorFunctionToRgb(m[1].toLowerCase(), c1, c2, c3);
+    if (!rgb) return null;
+    rgb.a = parseAlphaToken(m[5]);
+    return rgb;
+  }
+  // HSL/HSLA — comma or space syntax, optional deg on hue.
+  m = str.match(/hsla?\(\s*(-?[\d.]+)(?:deg)?\s*[,\s]\s*([\d.]+)%\s*[,\s]\s*([\d.]+)%(?:\s*[,/]\s*([\d.]+)(%)?)?\s*\)/i);
+  if (m) {
+    const rgb = hslToRgb(parseFloat(m[1]), parseFloat(m[2]) / 100, parseFloat(m[3]) / 100);
+    if (m[4] !== undefined) {
+      const alpha = parseFloat(m[4]);
+      rgb.a = m[5] === '%' ? alpha / 100 : alpha;
+    }
+    return rgb;
+  }
+  // HWB — hue whiteness% blackness%.
+  m = str.match(/hwb\(\s*(-?[\d.]+)(?:deg)?\s+([\d.]+)%\s+([\d.]+)%(?:\s*\/\s*([\d.]+)(%)?)?\s*\)/i);
+  if (m) {
+    const rgb = hwbToRgb(parseFloat(m[1]), parseFloat(m[2]) / 100, parseFloat(m[3]) / 100);
+    if (m[4] !== undefined) {
+      const alpha = parseFloat(m[4]);
+      rgb.a = m[5] === '%' ? alpha / 100 : alpha;
+    }
+    return rgb;
+  }
+  const named = CSS_NAMED_COLORS[str.toLowerCase()];
+  if (named) return { ...named, a: 1 };
+  return null;
+}
+
+// True when a computed background-color string names no paint at all. Used to
+// tell "this layer is see-through" (walk on to the ancestor) apart from "this
+// layer has a color we could not read" (stop and abstain).
+//
+// `inherit` belongs here even though it is not literally see-through: it means
+// "paint with the parent's background-color", and walking on to the parent IS
+// that resolution. Real browsers resolve the keyword before getComputedStyle
+// output; only jsdom's partial cascade hands it through verbatim, and treating
+// it as unreadable would make the walk abstain on a surface it can know.
+// (`currentcolor` is NOT here — it is real paint in the element's own text
+// color; resolveBackgroundInfo substitutes the computed color for it.)
+function isNoPaintColorValue(value) {
+  const v = String(value || '').trim().toLowerCase();
+  if (!v) return true;
+  return v === 'transparent' || v === 'none' || v === 'initial' || v === 'inherit' || v === 'unset' || v === 'revert' || v === 'revert-layer';
 }
 
 // --- cli/engine/shared/fonts.mjs ---
@@ -859,6 +1349,34 @@ function checkBorders(tag, widths, colors, radius, opts = {}) {
   }
 
   return findings;
+}
+
+// ─── Scoped ignores: data-impeccable-ignore ─────────────────────────────────
+//
+// An element-scoped waiver that travels with the markup: any element carrying
+// `data-impeccable-ignore="rule-a rule-b"` (or `*`, or an empty value, for
+// every rule) suppresses matching findings from itself and its entire subtree,
+// in every engine that walks elements — the browser overlay, the extension,
+// and the static scan. This is the DOM twin of the line-based
+// `impeccable-disable` comment directives, which the browser cannot apply (a
+// live DOM has no line numbers), and the generalization of the one-off
+// `data-impeccable-allow-kickers` opt-out.
+//
+// The intended use is curated exhibits: a page that documents anti-patterns by
+// example, or renders a deliberate "before" specimen, marks the container once
+// and every engine skips it while still scanning the page around it.
+function scopedIgnoreActive(el, ruleId) {
+  const rule = String(ruleId || '').toLowerCase();
+  let cur = el;
+  while (cur && cur.nodeType === 1) {
+    const attr = typeof cur.getAttribute === 'function' ? cur.getAttribute('data-impeccable-ignore') : null;
+    if (attr != null) {
+      const rules = String(attr).trim().toLowerCase().split(/[\s,]+/).filter(Boolean);
+      if (rules.length === 0 || rules.includes('*') || rules.includes(rule)) return true;
+    }
+    cur = cur.parentElement;
+  }
+  return false;
 }
 
 // Returns true if the given text is composed entirely of emoji characters
@@ -1087,7 +1605,7 @@ function checkIconTile(opts) {
 function resolveSerif(fontFamily) {
   if (!fontFamily) return { primary: null, isSerif: false };
   const tokens = fontFamily.split(',').map(f => f.trim().replace(/^['"]|['"]$/g, '').toLowerCase());
-  const primary = tokens.find(f => f && !GENERIC_FONTS.has(f)) || null;
+  const primary = primaryFontFace(fontFamily, GENERIC_FONTS);
   if (!primary) return { primary: null, isSerif: false };
   if (KNOWN_SERIF_FONTS.has(primary)) return { primary, isSerif: true };
   if (tokens.includes('serif')) return { primary, isSerif: true };
@@ -1428,6 +1946,31 @@ function cssTextHasDarkRootBg(content, customProps) {
   return false;
 }
 
+// Best-effort extraction of the CSS selector whose declaration block contains
+// the given index in raw CSS text. Lets CSS-text findings carry a live-DOM
+// anchor, so the browser pass can resolve scoped ignores against the actual
+// element and drop patterns that render nowhere on the page. Returns null for
+// @-rule preludes, keyframe steps, nested blocks, and anything that does not
+// read as a selector; those findings stay page-level.
+function enclosingCssSelector(cssText, index) {
+  if (!cssText || !Number.isFinite(index)) return null;
+  const open = cssText.lastIndexOf('{', index);
+  if (open === -1) return null;
+  // A match inside an inline style fragment (`style="…"` appended to the
+  // corpus by buildHtmlPatternCorpora) has no enclosing rule; the previous
+  // `{` belongs to some other selector.
+  const closeBeforeIndex = cssText.lastIndexOf('}', index);
+  if (closeBeforeIndex > open) return null;
+  const prevClose = Math.max(cssText.lastIndexOf('}', open - 1), cssText.lastIndexOf(';', open - 1));
+  const raw = cssText.slice(prevClose + 1, open).replace(/\/\*[\s\S]*?\*\//g, '').trim().replace(/\s+/g, ' ');
+  if (!raw || raw.startsWith('@') || /^\d/.test(raw) || /[{}<]/.test(raw)) return null;
+  // Keyframe steps: percentage steps fail the digit test above, but `from`
+  // and `to` would read as (never-matching) type selectors and get a valid
+  // finding wrongly dropped by the zero-match rule downstream.
+  if (/^(?:from|to)(?:\s*,\s*(?:from|to))*$/i.test(raw)) return null;
+  return raw;
+}
+
 function scanCssTextForGlow(content) {
   const customProps = collectCssCustomProps(content);
   const hasDarkBg = cssTextHasDarkRootBg(content, customProps);
@@ -1457,20 +2000,19 @@ function scanCssTextForGlow(content) {
   return results;
 }
 
-// Decorative grid or line-field backgrounds drawn with hairline
+// Decorative two-axis grid backgrounds drawn with hairline
 // linear-gradient layers tiled by a fixed pixel cell. Shared by the HTML
 // pattern pass and the regex source engine so standalone CSS, component
 // styles, and inline styles receive the same coverage. Both signals must
 // co-occur in one declaration block; unrelated rules must not add up across
-// the file. Returns [{ index, snippet }], capped at one finding per source to
-// match the page-level HTML check's existing behavior.
+// the file. A single hairline is a line, divider, or rail, not a grid, even
+// when tiled by a 2D px cell. Returns [{ index, snippet }], capped at one
+// finding per source to match the page-level HTML check's existing behavior.
 function scanCssTextForGridBackground(content) {
   const hairlineRe = /\b\d{1,3}px\s*,\s*transparent\s+\d{1,3}px/gi;
   const invertedHairlineRe = /transparent\s+calc\(100%\s*-\s*\d{1,3}px\)/gi;
   const sizeDeclPxRe = /background-size\s*:[^;{}"']*\b\d{1,3}px\b/i;
-  const sizeDeclPxPairRe = /background-size\s*:[^;{}"']*\b\d{1,3}px\s+\d{1,3}px/i;
   const shorthandPxAnyRe = /\/\s*\d{1,3}px\b/;
-  const shorthandPxPairRe = /\/\s*\d{1,3}px\s+\d{1,3}px/;
   const bgDeclRe = /\bbackground(?:-image)?\s*:\s*([^;{}"']*)/gi;
   const blockRe = /\{([^{}]*)\}|style\s*=\s*"([^"]*)"|style\s*=\s*'([^']*)'/gi;
   let blk;
@@ -1487,13 +2029,10 @@ function scanCssTextForGridBackground(content) {
     }
     if (hairlineCount === 0) continue;
     const hasPxCell = sizeDeclPxRe.test(block) || shorthandPxAnyRe.test(bgJoined);
-    const hasPxPairCell = sizeDeclPxPairRe.test(block) || shorthandPxPairRe.test(bgJoined);
-    if ((hairlineCount >= 2 && hasPxCell) || hasPxPairCell) {
+    if (hairlineCount >= 2 && hasPxCell) {
       return [{
         index: blk.index,
-        snippet: hairlineCount >= 2
-          ? 'two-axis grid-line gradient background'
-          : 'px-tiled hairline line-field background',
+        snippet: 'two-axis grid-line gradient background',
       }];
     }
   }
@@ -1739,6 +2278,7 @@ function scanCssTextForPseudoStripe(rawContent) {
       id: 'side-tab',
       snippet: `${selector} — absolute ${thicknessPx}px pseudo-element stripe (${edge}: 0)`,
       index: selectorStart,
+      selector,
     });
   }
   return findings;
@@ -1801,6 +2341,7 @@ function scanCssTextForInsetStripe(content) {
       findings.push({
         id: 'side-tab',
         snippet: `${selector} — inset box-shadow ${ay === 0 ? ax : ay}px stripe (${edge})`,
+        selector,
       });
       break;
     }
@@ -1858,7 +2399,7 @@ function collectMarqueeKeyframes(content) {
 function scanCssTextForMarquee(content, markup = content) {
   const findings = [];
   if (/<marquee\b/i.test(markup)) {
-    findings.push({ id: 'marquee', snippet: '<marquee> element' });
+    findings.push({ id: 'marquee', snippet: '<marquee> element', selector: 'marquee' });
   }
   const marqueeKeyframes = collectMarqueeKeyframes(content);
   if (marqueeKeyframes.size === 0) return findings;
@@ -1873,7 +2414,7 @@ function scanCssTextForMarquee(content, markup = content) {
       const key = `${selector} ${name}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      findings.push({ id: 'marquee', snippet: `${selector} — infinite horizontal loop animation "${name}"` });
+      findings.push({ id: 'marquee', snippet: `${selector} — infinite horizontal loop animation "${name}"`, selector });
     }
   }
   return findings;
@@ -2187,6 +2728,95 @@ function scanHtmlForShapeAssembledIllustration(html) {
   return findings;
 }
 
+
+// --- Organic clip-path polygons ----------------------------------------------
+// A `clip-path: polygon(...)` with many vertices, or `clip-path: path(...)`
+// with curves, is CSS approximating an organic contour: a torn edge, a blob,
+// a silhouette. The approximation reads as the cheap version of the effect
+// (the craft floor's geometric-occlusion-mask ban), and it is the signature
+// of a comp's produced material being replaced with code. Geometric clips
+// (cut corners, diagonals, hexagons, arrows: few vertices, or vertices on
+// the 0/50/100 grid) pass; circle()/inset()/ellipse() pass; a mask-image
+// from an alpha matte passes.
+const ORGANIC_POLYGON_MIN_VERTICES = 10;
+function scanCssTextForOrganicClipPath(styleText) {
+  const findings = [];
+  const re = /clip-path\s*:\s*(polygon|path)\s*\(([^)]*(?:\)[^;}]*)?)/gi;
+  let m;
+  while ((m = re.exec(styleText)) !== null) {
+    const kind = m[1].toLowerCase();
+    const body = m[2];
+    if (kind === 'path') {
+      // curves (C, S, Q, T, A, absolute or relative) drawing a contour, not a
+      // rectilinear M/L/Z outline; letters in path data are only commands
+      const curves = (body.match(/[CSQTA]/gi) || []).length;
+      if (curves < 3) continue;
+      findings.push({ id: 'organic-clip-path', snippet: `clip-path: path() with ${curves} curve segments`, selector: enclosingCssSelector(styleText, m.index) || undefined });
+      continue;
+    }
+    const points = body.split(',').map((p) => p.trim()).filter(Boolean);
+    if (points.length < ORGANIC_POLYGON_MIN_VERTICES) continue;
+    // Vertices sitting on a coarse grid (multiples of 25%) are geometric; a
+    // contour has arbitrary values.
+    let offGrid = 0;
+    for (const p of points) {
+      const nums = p.match(/-?[\d.]+/g) || [];
+      for (const n of nums) { const v = parseFloat(n); if (Math.abs(v - Math.round(v / 25) * 25) > 0.5) offGrid++; }
+    }
+    if (offGrid < points.length) continue;
+    findings.push({ id: 'organic-clip-path', snippet: `clip-path: polygon() with ${points.length} vertices approximating an organic contour`, selector: enclosingCssSelector(styleText, m.index) || undefined });
+  }
+  return findings;
+}
+
+// --- Buried raster ------------------------------------------------------------
+// A raster (background-image url or <img>) that never reaches the screen:
+// under a near-opaque gradient wash in the same background stack, or on an
+// element at near-zero opacity. It is how a produced texture "ships" while
+// the page shows flat color, and the finish reviewer cannot see it either.
+// A tint under 0.9 alpha passes (hero darkening); a blend mode passes
+// (multiply/overlay keep the material visible); opacity >= 0.15 passes.
+function scanCssTextForBuriedRaster(styleText) {
+  const findings = [];
+  // background stacks: split declarations, look for url() + a gradient whose
+  // stops all carry alpha >= 0.9 (or opaque hex/named colors)
+  const declRe = /background(?:-image)?\s*:\s*([^;}]+)/gi;
+  let m;
+  while ((m = declRe.exec(styleText)) !== null) {
+    const value = m[1];
+    if (!/url\(/i.test(value) || !/gradient\(/i.test(value)) continue;
+    // a blend mode declared in the same rule keeps the raster visible
+    const ruleStart = styleText.lastIndexOf('{', m.index);
+    const ruleEnd = styleText.indexOf('}', m.index);
+    const rule = styleText.slice(ruleStart < 0 ? 0 : ruleStart, ruleEnd < 0 ? styleText.length : ruleEnd);
+    if (/background-blend-mode\s*:\s*(?!normal)/i.test(rule) || /mix-blend-mode\s*:\s*(?!normal)/i.test(rule)) continue;
+    // Layers are painted first-on-top: only a wash listed BEFORE the url()
+    // covers it. An image on top of a gradient is not buried.
+    const firstUrl = value.search(/url\(/i);
+    const gradients = [...value.matchAll(/(?:linear|radial|conic)-gradient\([^()]*(?:\([^()]*\)[^()]*)*\)/gi)].filter((gm) => gm.index < firstUrl).map((gm) => gm[0]);
+    let opaqueWash = false;
+    // an alpha token normalized to 0..1: '0.8' -> 0.8, '80%' -> 0.8
+    const alphaOf = (a) => { if (a == null) return 1; const v = parseFloat(a); return String(a).trim().endsWith('%') ? v / 100 : v; };
+    for (const g of gradients) {
+      const alphas = [...g.matchAll(/rgba?\(\s*[\d.]+%?\s*,?\s*[\d.]+%?\s*,?\s*[\d.]+%?\s*(?:[,/]\s*([\d.]+%?))?\s*\)|hsla?\([^)]*?(?:[,/]\s*([\d.]+%?))?\s*\)/gi)].map((a) => alphaOf(a[1] ?? a[2]));
+      const stripped = g.replace(/rgba?\([^)]*\)|hsla?\([^)]*\)/gi, '');
+      // hex stops: 4- and 8-digit forms carry their own alpha
+      for (const h of stripped.matchAll(/#([0-9a-f]{3,8})\b/gi)) {
+        const hex = h[1];
+        if (hex.length === 4) alphas.push(parseInt(hex[3] + hex[3], 16) / 255);
+        else if (hex.length === 8) alphas.push(parseInt(hex.slice(6), 16) / 255);
+        else alphas.push(1);
+      }
+      const named = /\b(?:white|black|ivory|beige|linen|snow|cream)\b/i.test(stripped);
+      if (named) alphas.push(1);
+      if (alphas.length && alphas.every((a) => !Number.isFinite(a) || a >= 0.9)) { opaqueWash = true; break; }
+    }
+    if (!opaqueWash) continue;
+    findings.push({ id: 'buried-raster', snippet: `raster under a near-opaque gradient wash: ${value.trim().slice(0, 90)}`, selector: enclosingCssSelector(styleText, m.index) || undefined });
+  }
+  return findings;
+}
+
 // Scoped scan corpora for the page-level pattern checks. CSS-property
 // regexes run over the whole source string fire on documentation ABOUT
 // css — `<code>background-clip: text</code>` prose, <pre> samples, HTML
@@ -2244,8 +2874,10 @@ function checkHtmlPatterns(html, corpora) {
   const purpleHexRe = /#(?:7c3aed|8b5cf6|a855f7|9333ea|7e22ce|6d28d9|6366f1|764ba2|667eea)\b/gi;
   if (purpleHexRe.test(styleText)) {
     const purpleTextRe = /(?:(?:^|;)\s*color\s*:\s*(?:.*?)(?:#(?:7c3aed|8b5cf6|a855f7|9333ea|7e22ce|6d28d9))|gradient.*?#(?:7c3aed|8b5cf6|a855f7|764ba2|667eea))/gi;
-    if (purpleTextRe.test(styleText)) {
-      findings.push({ id: 'ai-color-palette', snippet: 'Purple/violet accent colors detected' });
+    purpleTextRe.lastIndex = 0;
+    const purpleMatch = purpleTextRe.exec(styleText);
+    if (purpleMatch) {
+      findings.push({ id: 'ai-color-palette', snippet: 'Purple/violet accent colors detected', selector: enclosingCssSelector(styleText, purpleMatch.index + 1) || undefined });
     }
   }
 
@@ -2256,7 +2888,7 @@ function checkHtmlPatterns(html, corpora) {
     const start = Math.max(0, gm.index - 200);
     const context = styleText.substring(start, gm.index + gm[0].length + 200);
     if (/gradient/i.test(context)) {
-      findings.push({ id: 'gradient-text', snippet: 'background-clip: text + gradient' });
+      findings.push({ id: 'gradient-text', snippet: 'background-clip: text + gradient', selector: enclosingCssSelector(styleText, gm.index) || undefined });
       break;
     }
   }
@@ -2322,7 +2954,7 @@ function checkHtmlPatterns(html, corpora) {
     const animationToken = bounceMatch[1]
       .split(/[,\s]+/)
       .find((part) => /bounce|elastic|wobble|jiggle|spring/i.test(part));
-    findings.push({ id: 'bounce-easing', snippet: `animation: ${animationToken || bounceMatch[1].trim()}` });
+    findings.push({ id: 'bounce-easing', snippet: `animation: ${animationToken || bounceMatch[1].trim()}`, selector: enclosingCssSelector(styleText, bounceMatch.index) || undefined });
   }
 
   // Overshoot cubic-bezier
@@ -2331,7 +2963,7 @@ function checkHtmlPatterns(html, corpora) {
   while ((bm = bezierRe.exec(styleText)) !== null) {
     const y1 = parseFloat(bm[2]), y2 = parseFloat(bm[4]);
     if (y1 < -0.1 || y1 > 1.1 || y2 < -0.1 || y2 > 1.1) {
-      findings.push({ id: 'bounce-easing', snippet: `cubic-bezier(${bm[1]}, ${bm[2]}, ${bm[3]}, ${bm[4]})` });
+      findings.push({ id: 'bounce-easing', snippet: `cubic-bezier(${bm[1]}, ${bm[2]}, ${bm[3]}, ${bm[4]})`, selector: enclosingCssSelector(styleText, bm.index) || undefined });
       break;
     }
   }
@@ -2357,6 +2989,10 @@ function checkHtmlPatterns(html, corpora) {
   // Shape-assembled illustrations (large pictorial SVGs built from primitives)
   findings.push(...scanHtmlForShapeAssembledIllustration(html));
 
+  // Organic clip-path contours and rasters buried under washes or opacity
+  findings.push(...scanCssTextForOrganicClipPath(styleText));
+  findings.push(...scanCssTextForBuriedRaster(styleText));
+
   // Auto-scrolling marquees (<marquee> or infinite horizontal loop animations)
   findings.push(...scanCssTextForMarquee(styleText, html));
 
@@ -2364,18 +3000,21 @@ function checkHtmlPatterns(html, corpora) {
 
   const glowHits = scanCssTextForGlow(styleText);
   if (glowHits.length > 0) {
-    findings.push({ id: 'dark-glow', snippet: glowHits[0].snippet });
+    findings.push({ id: 'dark-glow', snippet: glowHits[0].snippet, selector: enclosingCssSelector(styleText, glowHits[0].index) || undefined });
   }
 
   // Radial-gradient background halo (gradient-drawn sibling of dark-glow)
   const haloHits = scanCssTextForRadialHalo(styleText);
   if (haloHits.length > 0) {
-    findings.push({ id: 'radial-halo', snippet: haloHits[0].snippet });
+    findings.push({ id: 'radial-halo', snippet: haloHits[0].snippet, selector: enclosingCssSelector(styleText, haloHits[0].index) || undefined });
   }
 
   // --- Generated-UI tells: repeating-gradient stripes ---
-  if (/repeating-(?:linear|radial|conic)-gradient\s*\(/i.test(styleText)) {
-    findings.push({ id: 'repeating-stripes-gradient', snippet: 'repeating-gradient decorative stripes' });
+  {
+    const stripesMatch = /repeating-(?:linear|radial|conic)-gradient\s*\(/i.exec(styleText);
+    if (stripesMatch) {
+      findings.push({ id: 'repeating-stripes-gradient', snippet: 'repeating-gradient decorative stripes', selector: enclosingCssSelector(styleText, stripesMatch.index) || undefined });
+    }
   }
 
   // --- Generated-UI tells: two-axis grid-line background ---
@@ -2393,7 +3032,7 @@ function checkHtmlPatterns(html, corpora) {
   // whole gradient layers.
   const gridHits = scanCssTextForGridBackground(styleText);
   if (gridHits.length > 0) {
-    findings.push({ id: 'codex-grid-background', snippet: gridHits[0].snippet });
+    findings.push({ id: 'codex-grid-background', snippet: gridHits[0].snippet, selector: enclosingCssSelector(styleText, gridHits[0].index) || undefined });
   }
 
   // --- Generated-copy tells: "X theater" framing copy ---
@@ -2413,8 +3052,11 @@ function checkHtmlPatterns(html, corpora) {
   // hover:rotate / hover:translate utility on an <img>. Each distinct
   // mechanism is its own finding.
   const imgHoverCss = /\bimg\b[^,{}]*:hover\b[^{}]*\{[^}]*\btransform\s*:\s*(?:scale|rotate|translate|matrix|skew)/i;
-  if (imgHoverCss.test(styleText)) {
-    findings.push({ id: 'image-hover-transform', snippet: 'img:hover { transform } rule' });
+  {
+    const imgHoverMatch = imgHoverCss.exec(styleText);
+    if (imgHoverMatch) {
+      findings.push({ id: 'image-hover-transform', snippet: 'img:hover { transform } rule', selector: enclosingCssSelector(styleText, imgHoverMatch.index + imgHoverMatch[0].indexOf('{') + 1) || undefined });
+    }
   }
   const imgTagRe = /<img\b[^>]*\bclass\s*=\s*"([^"]*)"/gi;
   let im;
@@ -2461,7 +3103,46 @@ function readOwnBackgroundColor(el, computedStyle) {
   return bg;
 }
 
-function resolveBackground(el, win, customPropMap) {
+// One element's background-color as the cascade walk sees it: computed style
+// first (with the modern-color fallback), then, in static mode only,
+// custom-prop resolution and the inline-shorthand peek. Shared by
+// resolveBackgroundInfo and resolveGradientStops so both walks read the same
+// surfaces.
+function readCascadeBackgroundColor(current, style, customPropMap) {
+  let bg = parseRgb(style.backgroundColor) || parseAnyColor(style.backgroundColor);
+  if (!DETECTOR_IS_BROWSER && (!bg || bg.a < 0.1)) {
+    // The static engine can return literal "var(--X)" / "oklch(...)" strings.
+    // Resolve through customPropMap so Tailwind v4 color tokens become RGB.
+    if (customPropMap) {
+      bg = parseColorResolved(style.backgroundColor, customPropMap);
+    }
+    if (!bg || bg.a < 0.1) {
+      // Inline-style fallback for colors the static cascade did not surface
+      // on backgroundColor.
+      const rawStyle = current.getAttribute?.('style') || '';
+      const bgMatch = rawStyle.match(/background(?:-color)?\s*:\s*([^;]+)/i);
+      const inlineBg = bgMatch ? bgMatch[1].trim() : '';
+      if (inlineBg && !/gradient/i.test(inlineBg) && !/url\s*\(/i.test(inlineBg)) {
+        bg = parseColorResolved(inlineBg, customPropMap) || parseAnyColor(inlineBg);
+      }
+    }
+  }
+  return bg;
+}
+
+// Walk up for the surface the element's text is painted on.
+//
+// Returns { color, unresolved }:
+//   • color set          — the effective surface, overlays composited in.
+//   • unresolved: true   — a layer on the way up paints a color this parser
+//                          cannot read, so the surface is unknown. Callers
+//                          must SKIP their contrast checks. Guessing white
+//                          here is what flooded dark themes with false
+//                          "on #ffffff" findings: one abstention costs a
+//                          single finding, one wrong guess costs a hundred.
+//   • both null/false    — no solid color, but a gradient or image is in
+//                          play; callers fall back to its color stops.
+function resolveBackgroundInfo(el, win, customPropMap) {
   let current = el;
   // Translucent layers (0.1 < a < 1) found on the way down to an opaque
   // base. A browser composites these over the base; the old behavior
@@ -2489,67 +3170,114 @@ function resolveBackground(el, win, customPropMap) {
     // body backgrounds.
     // Real browsers serialize wide-gamut computed values as oklab()/oklch()
     // (e.g. any color-mix() result), which plain parseRgb misses.
-    let bg = parseRgb(style.backgroundColor) || parseAnyColor(style.backgroundColor);
-    if (!DETECTOR_IS_BROWSER && (!bg || bg.a < 0.1)) {
-      // jsdom returns literal "var(--X)" / "oklch(...)" strings. Resolve
-      // through customPropMap so Tailwind v4 color tokens become RGB.
-      if (customPropMap) {
-        bg = parseColorResolved(style.backgroundColor, customPropMap);
-      }
-      if (!bg || bg.a < 0.1) {
-        // Inline-style fallback. jsdom doesn't decompose background
-        // shorthand, so colors set via inline style are otherwise invisible.
-        const rawStyle = current.getAttribute?.('style') || '';
-        const bgMatch = rawStyle.match(/background(?:-color)?\s*:\s*([^;]+)/i);
-        const inlineBg = bgMatch ? bgMatch[1].trim() : '';
-        if (inlineBg && !/gradient/i.test(inlineBg) && !/url\s*\(/i.test(inlineBg)) {
-          bg = parseColorResolved(inlineBg, customPropMap) || parseAnyColor(inlineBg);
-        }
-      }
+    let bg = readCascadeBackgroundColor(current, style, customPropMap);
+
+    // `background-color: currentcolor` paints with the element's own text
+    // color — real paint whose value we know. Real browsers resolve the
+    // keyword before getComputedStyle output; jsdom hands it through
+    // verbatim, and without this substitution the layer would read as
+    // unparseable and force a needless abstention.
+    if ((!bg || bg.a < 0.1) && /^currentcolor$/i.test(String(style.backgroundColor || '').trim())) {
+      // The static cascade resolves var() text tokens before checks run, so
+      // style.color is normally already an rgb string here; parseColorResolved
+      // is defense in depth for any future caller that passes a live
+      // customPropMap (it matches the text-color path in checkElementColors
+      // and reduces to parseAnyColor when the map is null or absent).
+      bg = parseRgb(style.color) || parseColorResolved(style.color, customPropMap);
     }
 
     if (bg && bg.a > 0.1) {
-      if (bg.a >= 0.99) return flatten(bg);
+      if (bg.a >= 0.99) return { color: flatten(bg), unresolved: false };
       overlays.push(bg);
+    } else if (!bg && !isNoPaintColorValue(style.backgroundColor)) {
+      // This layer names a color we could not parse (a color space we do not
+      // model, an unresolved var(), a syntax newer than the parser). It may
+      // well be opaque, which would make every ancestor below it invisible —
+      // so the surface is unknown and the walk stops here rather than
+      // reporting an ancestor the visitor never sees.
+      return { color: null, unresolved: true };
     }
-    // No solid bg-color at this level. If THIS level has a gradient/url
-    // with no underlying solid color we can read:
-    //   • on body/html: assume white. Body-level gradients are almost
-    //     always decorative texture (paper grain, noise) on top of a
-    //     solid bg-color the page set via `background: var(--paper)`
-    //     shorthand — which jsdom can't decompose into bg-color. The
-    //     downstream gradient-stops fallback path produces catastrophic
-    //     false positives in this case (gradient noise stops have
-    //     accidental browns/blacks that look like card backgrounds).
-    //   • on other elements: bail to null and let the caller fall back
-    //     to gradient stops (gradient buttons / hero sections are real
-    //     bgs worth checking against).
+    // No solid bg-color at this level, but this level paints an image. CSS
+    // stacks background-image layers first-on-top, so which layer leads
+    // decides what the visitor sees:
+    //   • gradient on top — the gradient is the surface. Hand the caller a
+    //     null color so it falls back to the gradient's own stops (body
+    //     grounds, gradient buttons, hero sections).
+    //   • url() on top — the surface is an image whose pixels this engine
+    //     cannot read, and it may fully cover every layer and ancestor
+    //     beneath it. Same contract as an unparseable color: abstain, so
+    //     the gradient-stop fallback never measures a gradient the image
+    //     hides (the shipped miss: `url(photo), linear-gradient(...)`
+    //     reported low-contrast against the invisible gradient's stops).
     if (hasGradientOrUrl) {
-      if (current.tagName === 'BODY' || current.tagName === 'HTML') {
-        return flatten({ r: 255, g: 255, b: 255, a: 1 });
+      const layers = splitTopLevelCommas(bgImage);
+      const topPaintLayer = layers.find(
+        (layer) => /gradient\s*\(/i.test(layer) || /url\s*\(/i.test(layer),
+      );
+      const gradientOnTop = !!topPaintLayer
+        && /gradient\s*\(/i.test(topPaintLayer)
+        && !/^\s*url\s*\(/i.test(topPaintLayer);
+      if (!gradientOnTop) return { color: null, unresolved: true };
+      // Gradient on top of a url() layer: the image shows through wherever
+      // the gradient is not fully opaque, so a translucent wash like
+      // `linear-gradient(rgba(0,0,0,.2), rgba(0,0,0,.2)), url(photo)` paints
+      // a blend with pixels this engine cannot read. Only a gradient whose
+      // every readable stop is opaque provably covers the image; otherwise
+      // the surface is unknown — abstain rather than hand callers gradient
+      // stops (or a stop average) the visitor never sees unmixed.
+      const urlBeneath = layers.some(
+        (layer) => layer !== topPaintLayer && /url\s*\(/i.test(layer),
+      );
+      if (urlBeneath) {
+        const topStops = parseGradientColors(topPaintLayer);
+        const provablyOpaque = topStops.length > 0 && topStops.every((s) => (s.a ?? 1) >= 0.99);
+        if (!provablyOpaque) return { color: null, unresolved: true };
       }
-      return null;
+      return { color: null, unresolved: false };
     }
     current = current.parentElement;
   }
-  return flatten({ r: 255, g: 255, b: 255, a: 1 });
+  // Every layer up to the document root was genuinely see-through, so the
+  // browser paints its default canvas. This is the ONLY case that earns the
+  // white assumption.
+  return { color: flatten({ r: 255, g: 255, b: 255, a: 1 }), unresolved: false };
+}
+
+function resolveBackground(el, win, customPropMap) {
+  return resolveBackgroundInfo(el, win, customPropMap).color;
 }
 
 // Walk parents looking for a gradient background and return its color stops.
 // Used as a fallback when resolveBackground() returns null because the
 // effective background is a gradient (no single solid color to compare against).
+// Translucent solid layers found between the element and the gradient (frosted
+// panels, glass washes) are composited over every stop, the same way
+// resolveBackground flattens them over a solid base — raw stops alone would
+// false-flag dark text on a light frosted wash over a dark gradient, and miss
+// the inverse.
 function resolveGradientStops(el, win, customPropMap) {
   let current = el;
+  const overlays = [];
   while (current && current.nodeType === 1) {
     const style = DETECTOR_IS_BROWSER ? getComputedStyle(current) : win.getComputedStyle(current);
     const bgImage = style.backgroundImage || '';
+    // A url() layer anywhere in the stack — alone, or alongside a gradient in
+    // the same declaration (a translucent wash over a texture photo) — paints
+    // pixels the analytic walk cannot know. Measuring the gradient stops over
+    // the wrong base flagged dark ink sitting on a bright gold-leaf image at
+    // 2.6:1; skipping beats a wrong ratio, and the screenshot subsystem owns
+    // image-backed text.
+    if (bgImage && bgImage !== 'none' && /url\s*\(/i.test(bgImage)) return null;
     let stops = null;
     if (bgImage && bgImage !== 'none' && /gradient/i.test(bgImage)) {
+      // parseGradientColors (shared) reads modern-space stops too — oklch,
+      // color-mix and friends via balanced-paren token capture — so browser
+      // computed values that keep the authored syntax stay measurable.
       const parsed = parseGradientColors(bgImage);
       if (parsed.length > 0) stops = parsed;
     }
     if (!stops && !DETECTOR_IS_BROWSER) {
-      // jsdom doesn't decompose `background:` shorthand — peek at the raw inline style
+      // Static mode: peek at the raw inline style for gradients the cascade did not surface
       const rawStyle = current.getAttribute?.('style') || '';
       const bgMatch = rawStyle.match(/background(?:-image)?\s*:\s*([^;]+)/i);
       if (bgMatch && /gradient/i.test(bgMatch[1])) {
@@ -2557,7 +3285,23 @@ function resolveGradientStops(el, win, customPropMap) {
         if (parsed.length > 0) stops = parsed;
       }
     }
-    if (stops) return compositeGradientStops(stops, current, win, customPropMap);
+    if (stops) {
+      const composited = compositeGradientStops(stops, current, win, customPropMap);
+      if (!composited || overlays.length === 0) return composited;
+      return composited.map(stop => {
+        let acc = stop;
+        for (let i = overlays.length - 1; i >= 0; i--) acc = compositeColorOver(overlays[i], acc);
+        return acc;
+      });
+    }
+    const bg = readCascadeBackgroundColor(current, style, customPropMap);
+    if (bg && bg.a > 0.1) {
+      // An opaque surface above the gradient means the gradient never shows
+      // through here; resolveBackground would have returned it, so reaching
+      // this is defensive — bail rather than measure the wrong layer.
+      if (bg.a >= 0.99) return null;
+      overlays.push(bg);
+    }
     current = current.parentElement;
   }
   return null;
@@ -2777,15 +3521,25 @@ function checkElementColorsDOM(el) {
   const rect = el.getBoundingClientRect();
   if (rect.width < 10 || rect.height < 10) return [];
   const style = getComputedStyle(el);
+  // Invisible at rest: hidden scene variants (opacity-0 carousels, swap
+  // decks) are not user-visible, and measuring their inherited colors against
+  // whatever surface happens to sit behind the stack is noise, not audit.
+  if (style.visibility === 'hidden' || effectiveOpacityDOM(el) <= 0.02) return [];
   const directText = [...el.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('');
   const hasDirectText = directText.trim().length > 0;
-  let effectiveBg = resolveBackground(el);
+  const bgInfo = resolveBackgroundInfo(el);
+  let effectiveBg = bgInfo.color;
+  // An unreadable surface anywhere up the chain: skip the gradient-stop
+  // fallback too, so nothing downstream measures against a ground we never
+  // resolved.
+  let surfaceUnresolved = bgInfo.unresolved;
   let ownBg = readOwnBackgroundColor(el, style);
   if (!ownBg || (ownBg.a ?? 1) <= 0.5) {
     const pseudoSurface = readPseudoSurfaceDOM(el, rect);
     if (pseudoSurface) {
       ownBg = pseudoSurface;
       effectiveBg = pseudoSurface;
+      surfaceUnresolved = false;
     }
   }
   return checkColors({
@@ -2797,8 +3551,8 @@ function checkElementColorsDOM(el) {
     // an oklch token near its own oklch background).
     textColor: parseRgb(style.color) || parseAnyColor(style.color),
     bgColor: ownBg,
-    effectiveBg,
-    effectiveBgStops: effectiveBg ? null : resolveGradientStops(el),
+    effectiveBg: surfaceUnresolved ? null : effectiveBg,
+    effectiveBgStops: surfaceUnresolved || effectiveBg ? null : resolveGradientStops(el),
     fontSize: parseFloat(style.fontSize) || 16,
     fontWeight: parseInt(style.fontWeight) || 400,
     hasDirectText,
@@ -2948,283 +3702,6 @@ function resolveVarRefs(raw, customPropMap, depth = 0) {
   });
 }
 
-// OKLCH → sRGB conversion (Björn Ottosson's matrices). L in 0..1 (or %),
-// C in 0..~0.4 typical, H in degrees. Returns clamped {r,g,b,a:1} in 0..255.
-// Needed because jsdom doesn't compute oklch() values — getComputedStyle
-// returns the literal "oklch(...)" string. Without this, the entire
-// Tailwind v4 color palette (which is OKLCH-based) is invisible to the
-// detector's contrast / color checks.
-function oklchToRgb(L, C, H) {
-  const hRad = (H * Math.PI) / 180;
-  return oklabToRgb(L, C * Math.cos(hRad), C * Math.sin(hRad));
-}
-
-function oklabToRgb(L, a, b) {
-  const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
-  const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
-  const s_ = L - 0.0894841775 * a - 1.2914855480 * b;
-  const lc = l_ * l_ * l_, mc = m_ * m_ * m_, sc = s_ * s_ * s_;
-  const rLin =  4.0767416621 * lc - 3.3077115913 * mc + 0.2309699292 * sc;
-  const gLin = -1.2684380046 * lc + 2.6097574011 * mc - 0.3413193965 * sc;
-  const bLin = -0.0041960863 * lc - 0.7034186147 * mc + 1.7076147010 * sc;
-  const enc = (x) => {
-    const c = Math.max(0, Math.min(1, x));
-    return c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
-  };
-  return {
-    r: Math.round(enc(rLin) * 255),
-    g: Math.round(enc(gLin) * 255),
-    b: Math.round(enc(bLin) * 255),
-    a: 1,
-  };
-}
-
-function hslToRgb(h, s, l) {
-  h = ((h % 360) + 360) % 360;
-  const c = (1 - Math.abs(2 * l - 1)) * s;
-  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
-  const m0 = l - c / 2;
-  const [r, g, b] =
-    h < 60 ? [c, x, 0] :
-    h < 120 ? [x, c, 0] :
-    h < 180 ? [0, c, x] :
-    h < 240 ? [0, x, c] :
-    h < 300 ? [x, 0, c] : [c, 0, x];
-  return {
-    r: Math.round((r + m0) * 255),
-    g: Math.round((g + m0) * 255),
-    b: Math.round((b + m0) * 255),
-    a: 1,
-  };
-}
-
-function hwbToRgb(h, w, bl) {
-  if (w + bl >= 1) {
-    const g = Math.round((w / (w + bl)) * 255);
-    return { r: g, g, b: g, a: 1 };
-  }
-  const base = hslToRgb(h, 1, 0.5);
-  const mix = (c) => Math.round(((c / 255) * (1 - w - bl) + w) * 255);
-  return { r: mix(base.r), g: mix(base.g), b: mix(base.b), a: 1 };
-}
-
-// Common CSS named colors — the handful that actually show up in generated
-// UIs, not the full 148-name spec list. Includes the achromatic names so a
-// named gray parses (and correctly reads as no-chroma) instead of being
-// treated as an unknown color.
-const CSS_NAMED_COLORS = {
-  black: { r: 0, g: 0, b: 0 },
-  white: { r: 255, g: 255, b: 255 },
-  gray: { r: 128, g: 128, b: 128 },
-  grey: { r: 128, g: 128, b: 128 },
-  silver: { r: 192, g: 192, b: 192 },
-  dimgray: { r: 105, g: 105, b: 105 },
-  darkgray: { r: 169, g: 169, b: 169 },
-  lightgray: { r: 211, g: 211, b: 211 },
-  gainsboro: { r: 220, g: 220, b: 220 },
-  whitesmoke: { r: 245, g: 245, b: 245 },
-  red: { r: 255, g: 0, b: 0 },
-  crimson: { r: 220, g: 20, b: 60 },
-  tomato: { r: 255, g: 99, b: 71 },
-  coral: { r: 255, g: 127, b: 80 },
-  salmon: { r: 250, g: 128, b: 114 },
-  orange: { r: 255, g: 165, b: 0 },
-  gold: { r: 255, g: 215, b: 0 },
-  yellow: { r: 255, g: 255, b: 0 },
-  olive: { r: 128, g: 128, b: 0 },
-  lime: { r: 0, g: 255, b: 0 },
-  green: { r: 0, g: 128, b: 0 },
-  teal: { r: 0, g: 128, b: 128 },
-  turquoise: { r: 64, g: 224, b: 208 },
-  cyan: { r: 0, g: 255, b: 255 },
-  aqua: { r: 0, g: 255, b: 255 },
-  skyblue: { r: 135, g: 206, b: 235 },
-  dodgerblue: { r: 30, g: 144, b: 255 },
-  blue: { r: 0, g: 0, b: 255 },
-  navy: { r: 0, g: 0, b: 128 },
-  indigo: { r: 75, g: 0, b: 130 },
-  rebeccapurple: { r: 102, g: 51, b: 153 },
-  purple: { r: 128, g: 0, b: 128 },
-  violet: { r: 238, g: 130, b: 238 },
-  orchid: { r: 218, g: 112, b: 214 },
-  magenta: { r: 255, g: 0, b: 255 },
-  fuchsia: { r: 255, g: 0, b: 255 },
-  hotpink: { r: 255, g: 105, b: 180 },
-  pink: { r: 255, g: 192, b: 203 },
-  maroon: { r: 128, g: 0, b: 0 },
-};
-
-// Split a string on top-level commas (ignoring commas nested in parens).
-function splitTopLevelCommas(str) {
-  const parts = [];
-  let depth = 0, start = 0;
-  for (let i = 0; i < str.length; i++) {
-    const ch = str[i];
-    if (ch === '(') depth++;
-    else if (ch === ')') depth = Math.max(0, depth - 1);
-    else if (ch === ',' && depth === 0) {
-      parts.push(str.slice(start, i).trim());
-      start = i + 1;
-    }
-  }
-  const tail = str.slice(start).trim();
-  if (tail) parts.push(tail);
-  return parts;
-}
-
-// Evaluate a CSS color-mix() expression to {r,g,b,a}. Returns null when
-// the expression can't be resolved (unresolved var(), unknown colors).
-//
-// Mixing is done with premultiplied alpha in sRGB regardless of the
-// declared interpolation space. That is exact for the dominant generated-UI
-// pattern — `color-mix(in oklab, <color> N%, transparent)` — where the
-// result is simply <color> at alpha N% in ANY rectangular space, and a
-// close-enough approximation for opaque-opaque mixes (the detector only
-// consumes these values for contrast/chroma thresholds, not for display).
-function parseColorMix(str) {
-  const m = String(str).trim().match(/^color-mix\(/i);
-  if (!m) return null;
-  // Balanced-paren capture of the arguments.
-  let depth = 0, end = -1;
-  const open = str.indexOf('(');
-  for (let i = open; i < str.length; i++) {
-    if (str[i] === '(') depth++;
-    else if (str[i] === ')') { depth--; if (depth === 0) { end = i; break; } }
-  }
-  if (end < 0) return null;
-  const args = splitTopLevelCommas(str.slice(open + 1, end));
-  if (args.length !== 3 || !/^in\s/i.test(args[0])) return null;
-
-  const parseComponent = (component) => {
-    // Percentage may lead or trail the color per spec.
-    let pct = null;
-    let colorStr = component;
-    const trail = component.match(/\s+([\d.]+)%$/);
-    const lead = component.match(/^([\d.]+)%\s+/);
-    if (trail) { pct = parseFloat(trail[1]); colorStr = component.slice(0, trail.index).trim(); }
-    else if (lead) { pct = parseFloat(lead[1]); colorStr = component.slice(lead[0].length).trim(); }
-    let color;
-    if (/^transparent$/i.test(colorStr)) color = { r: 0, g: 0, b: 0, a: 0 };
-    else color = parseAnyColor(colorStr);
-    if (!color) return null;
-    return { color, pct };
-  };
-
-  const c1 = parseComponent(args[1]);
-  const c2 = parseComponent(args[2]);
-  if (!c1 || !c2) return null;
-  let p1 = c1.pct, p2 = c2.pct;
-  if (p1 == null && p2 == null) { p1 = 50; p2 = 50; }
-  else if (p1 == null) p1 = 100 - p2;
-  else if (p2 == null) p2 = 100 - p1;
-  const sum = p1 + p2;
-  if (sum <= 0) return null;
-  // Per spec: weights normalize to sum; when sum < 100 the result alpha is
-  // additionally scaled by sum/100.
-  const w1 = p1 / sum, w2 = p2 / sum;
-  const alphaScale = sum < 100 ? sum / 100 : 1;
-  const a1 = c1.color.a ?? 1, a2 = c2.color.a ?? 1;
-  const a = (a1 * w1 + a2 * w2) * alphaScale;
-  if (a <= 0) return { r: 0, g: 0, b: 0, a: 0 };
-  const mix = (ch) => Math.round((c1.color[ch] * a1 * w1 + c2.color[ch] * a2 * w2) / (a1 * w1 + a2 * w2));
-  return { r: mix('r'), g: mix('g'), b: mix('b'), a: Math.min(1, a) };
-}
-
-// Composite a translucent color over an opaque(ish) base (simple
-// source-over in sRGB). Returns an opaque {r,g,b,a:1}.
-function compositeColorOver(top, base) {
-  const a = top.a ?? 1;
-  return {
-    r: Math.round(top.r * a + base.r * (1 - a)),
-    g: Math.round(top.g * a + base.g * (1 - a)),
-    b: Math.round(top.b * a + base.b * (1 - a)),
-    a: 1,
-  };
-}
-
-// Extended color parser: rgb/rgba/hex/oklch/oklab/hsl/hwb/color-mix/common
-// named colors. Returns null on no match. Use this when the input might be
-// any CSS color form; use plain parseRgb when you only expect computed rgb()
-// values from real browsers.
-function parseAnyColor(s) {
-  if (!s || typeof s !== 'string') return null;
-  const str = s.trim();
-  if (str === 'transparent' || str === 'currentcolor' || str === 'inherit') return null;
-  if (/^color-mix\(/i.test(str)) return parseColorMix(str);
-  let m;
-  m = str.match(/rgba?\(\s*(\d+(?:\.\d+)?)\s*,?\s*(\d+(?:\.\d+)?)\s*,?\s*(\d+(?:\.\d+)?)(?:\s*[,/]\s*([\d.]+))?\s*\)/);
-  if (m) return { r: Math.round(+m[1]), g: Math.round(+m[2]), b: Math.round(+m[3]), a: m[4] !== undefined ? +m[4] : 1 };
-  m = str.match(/^#([0-9a-f]{3,8})$/i);
-  if (m) {
-    const h = m[1];
-    if (h.length === 3 || h.length === 4) {
-      return {
-        r: parseInt(h[0] + h[0], 16),
-        g: parseInt(h[1] + h[1], 16),
-        b: parseInt(h[2] + h[2], 16),
-        a: h.length === 4 ? parseInt(h[3] + h[3], 16) / 255 : 1,
-      };
-    }
-    if (h.length === 6 || h.length === 8) {
-      return {
-        r: parseInt(h.slice(0, 2), 16),
-        g: parseInt(h.slice(2, 4), 16),
-        b: parseInt(h.slice(4, 6), 16),
-        a: h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1,
-      };
-    }
-  }
-  // OKLCH parser. Tailwind v4's CSS minifier squishes the space after
-  // `%` ("21.5%.02 50"), so the separator between L and C may be absent.
-  // Match L (with optional %), then C and H separated permissively.
-  m = str.match(/oklch\(\s*([\d.]+)(%?)\s*[\s,]*\s*([\d.]+)\s*[\s,]+\s*([-\d.]+)(?:deg)?(?:\s*\/\s*([\d.]+)(%)?)?\s*\)/i);
-  if (m) {
-    const Lnum = parseFloat(m[1]);
-    const L = m[2] === '%' ? Lnum / 100 : Lnum;
-    const rgb = oklchToRgb(L, parseFloat(m[3]), parseFloat(m[4]));
-    if (m[5] !== undefined) {
-      const alpha = parseFloat(m[5]);
-      rgb.a = m[6] === '%' ? alpha / 100 : alpha;
-    }
-    return rgb;
-  }
-  // OKLAB — a/b are signed axes; percentages map 100% → 0.4.
-  m = str.match(/oklab\(\s*([\d.]+)(%?)\s+(-?[\d.]+)(%?)\s+(-?[\d.]+)(%?)(?:\s*\/\s*([\d.]+)(%)?)?\s*\)/i);
-  if (m) {
-    const L = m[2] === '%' ? parseFloat(m[1]) / 100 : parseFloat(m[1]);
-    const a = m[4] === '%' ? parseFloat(m[3]) * 0.004 : parseFloat(m[3]);
-    const b = m[6] === '%' ? parseFloat(m[5]) * 0.004 : parseFloat(m[5]);
-    const rgb = oklabToRgb(L, a, b);
-    if (m[7] !== undefined) {
-      const alpha = parseFloat(m[7]);
-      rgb.a = m[8] === '%' ? alpha / 100 : alpha;
-    }
-    return rgb;
-  }
-  // HSL/HSLA — comma or space syntax, optional deg on hue.
-  m = str.match(/hsla?\(\s*(-?[\d.]+)(?:deg)?\s*[,\s]\s*([\d.]+)%\s*[,\s]\s*([\d.]+)%(?:\s*[,/]\s*([\d.]+)(%)?)?\s*\)/i);
-  if (m) {
-    const rgb = hslToRgb(parseFloat(m[1]), parseFloat(m[2]) / 100, parseFloat(m[3]) / 100);
-    if (m[4] !== undefined) {
-      const alpha = parseFloat(m[4]);
-      rgb.a = m[5] === '%' ? alpha / 100 : alpha;
-    }
-    return rgb;
-  }
-  // HWB — hue whiteness% blackness%.
-  m = str.match(/hwb\(\s*(-?[\d.]+)(?:deg)?\s+([\d.]+)%\s+([\d.]+)%(?:\s*\/\s*([\d.]+)(%)?)?\s*\)/i);
-  if (m) {
-    const rgb = hwbToRgb(parseFloat(m[1]), parseFloat(m[2]) / 100, parseFloat(m[3]) / 100);
-    if (m[4] !== undefined) {
-      const alpha = parseFloat(m[4]);
-      rgb.a = m[5] === '%' ? alpha / 100 : alpha;
-    }
-    return rgb;
-  }
-  const named = CSS_NAMED_COLORS[str.toLowerCase()];
-  if (named) return { ...named, a: 1 };
-  return null;
-}
 
 // Resolve var() refs in a color string (via customPropMap), then parse.
 // Returns null on any failure. Used in jsdom-mode paths where
@@ -3587,9 +4064,20 @@ function checkElementGlowDOM(el) {
   if (!boxShadow && !textShadow) return [];
   // Use parent's background — glow radiates outward, so the surrounding context matters
   // If resolveBackground returns null (gradient), try to infer from the gradient colors
-  let parentBg = el.parentElement ? resolveBackground(el.parentElement) : resolveBackground(el);
-  if (!parentBg) {
-    // Gradient background — sample its colors to determine if it's dark
+  const parentBgInfo = resolveBackgroundInfo(el.parentElement || el);
+  // Unknown surface (an unreadable layer on the way up): skip only the
+  // gradient hunt below, which would walk PAST that layer and score the
+  // glow against a background the visitor never sees. checkGlow still runs
+  // with a null surface: the zero-offset chromatic halo tell holds on ANY
+  // background, and the static loop already passes the unresolved walk's
+  // null color straight through (detect-html.mjs uses resolveBackground).
+  let parentBg = parentBgInfo.color;
+  if (!parentBg && !parentBgInfo.unresolved) {
+    // Gradient background — sample its colors to determine if it's dark.
+    // Modern-syntax parsing matters here: body-level gradients now reach this
+    // fallback in browser mode, and their stops usually serialize as oklch —
+    // which the shared parseGradientColors reads via its color-function
+    // token capture.
     let cur = el.parentElement;
     while (cur && cur.nodeType === 1) {
       const bgImage = getComputedStyle(cur).backgroundImage || '';
@@ -3632,15 +4120,18 @@ function checkElementAIPaletteDOM(el) {
   }
 
   // Check for neon text (vivid cyan/purple color on dark background)
-  const textColor = parseRgb(style.color);
+  const textColor = parseRgb(style.color) || parseAnyColor(style.color);
   if (textColor && hasChroma(textColor, 80)) {
     const hue = getHue(textColor);
     const isAIPalette = (hue >= 160 && hue <= 200) || (hue >= 260 && hue <= 310);
     if (isAIPalette) {
-      const parentBg = el.parentElement ? resolveBackground(el.parentElement) : null;
-      // Also check gradient parents
-      let effectiveBg = parentBg;
-      if (!effectiveBg) {
+      const parentBgInfo = el.parentElement
+        ? resolveBackgroundInfo(el.parentElement)
+        : { color: null, unresolved: false };
+      // Unknown surface: leave effectiveBg null (no finding) rather than
+      // hunting gradient ancestors past a layer we could not read.
+      let effectiveBg = parentBgInfo.color;
+      if (!effectiveBg && !parentBgInfo.unresolved) {
         let cur = el.parentElement;
         while (cur && cur.nodeType === 1) {
           const gi = getComputedStyle(cur).backgroundImage || '';
@@ -3972,14 +4463,30 @@ function isNonRenderedText(el, tag, style) {
 function checkQuality(opts) {
   const { el, tag, style, hasDirectText, textLen, fontSize, lineHeightPx, letterSpacingPx, rect, lineMax = 80, viewportWidth = 0, win = null } = opts;
   const findings = [];
-  // Skip browser extension injected elements. Read the id via getAttribute
-  // whenever `el.id` is not a string: on a <form> (and other
-  // [LegacyOverrideBuiltIns] hosts) a named control like <input name="id">
-  // shadows the builtin `id` getter and returns the control element, whose
-  // `.startsWith` is undefined and throws (issue #407 — every Shopify product
-  // form ships an <input name="id">).
+  // A raster (<img>, or an element with a background url) at near-zero
+  // opacity never reaches the screen: the produced material ships as a
+  // compliance token. The CSS-text scan catches the stylesheet form; this
+  // catches computed opacity on the element itself (both engines).
+  // Skip browser extension injected elements BEFORE any finding is pushed
+  // (a low-opacity raster those hosts inject used to be recorded and then
+  // returned by this very skip). Read the id via getAttribute whenever
+  // `el.id` is not a string: on a <form> (and other [LegacyOverrideBuiltIns]
+  // hosts) a named control like <input name="id"> shadows the builtin `id`
+  // getter and returns the control element, whose `.startsWith` is undefined
+  // and throws (issue #407 — every Shopify product form ships an
+  // <input name="id">).
   const elId = typeof el.id === 'string' ? el.id : (el.getAttribute?.('id') || '');
   if (elId.startsWith('claude-') || elId.startsWith('cic-')) return findings;
+  {
+    const op = parseFloat(style.opacity);
+    if (Number.isFinite(op) && op < 0.15 && op >= 0) {
+      const bg = String(style.backgroundImage || '');
+      if (tag === 'img' || /url\(/i.test(bg)) {
+        const label = tag === 'img' ? (el.getAttribute && el.getAttribute('alt')) || '' : (el.textContent || '').trim().slice(0, 40);
+        findings.push({ id: 'buried-raster', snippet: `${tag === 'img' ? '<img>' : 'raster background'} at opacity ${op}${label ? ` "${label}"` : ''}` });
+      }
+    }
+  }
 
   // --- Line length too long --- (browser-only: needs rect.width)
   if (rect && hasDirectText && QUALITY_TEXT_TAGS.has(tag) && rect.width > 0 && textLen > lineMax) {
@@ -4435,10 +4942,19 @@ function checkElementBorders(tag, style, overrides, resolvedRadius, el = null) {
 }
 
 function checkElementColors(el, style, tag, window, customPropMap, hasAnchorInheritRule) {
+  // Invisible at rest, static twin of the browser walk's skip: opacity does
+  // not inherit, so walk ancestors multiplying declared opacity down.
+  if (style.visibility === 'hidden') return [];
+  let effOpacity = 1;
+  for (let cur = el; cur && cur.nodeType === 1 && effOpacity > 0.02; cur = cur.parentElement) {
+    effOpacity *= parseFloat(window.getComputedStyle(cur).opacity || '1');
+  }
+  if (effOpacity <= 0.02) return [];
   const directText = [...el.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('');
   const hasDirectText = directText.trim().length > 0;
 
-  const effectiveBg = resolveBackground(el, window, customPropMap);
+  const bgInfo = resolveBackgroundInfo(el, window, customPropMap);
+  const effectiveBg = bgInfo.color;
   // jsdom returns literal "var(--X)" / "oklch(...)" for color, so plain
   // parseRgb misses Tailwind-tokenized text colors. Resolve through the
   // customPropMap first; fall back to parseRgb for vanilla rgb() pages.
@@ -4484,11 +5000,13 @@ function checkElementColors(el, style, tag, window, customPropMap, hasAnchorInhe
   // element itself has no usable own background, that pseudo is the real
   // surface for contrast purposes.
   let finalEffectiveBg = effectiveBg;
+  let surfaceUnresolved = bgInfo.unresolved;
   if ((!ownBg || (ownBg.a ?? 1) <= 0.5) && typeof window.getPseudoSurface === 'function') {
     const pseudoSurface = window.getPseudoSurface(el);
     if (pseudoSurface) {
       ownBg = pseudoSurface;
       finalEffectiveBg = pseudoSurface;
+      surfaceUnresolved = false;
     }
   }
 
@@ -4496,8 +5014,9 @@ function checkElementColors(el, style, tag, window, customPropMap, hasAnchorInhe
     tag,
     textColor,
     bgColor: ownBg,
-    effectiveBg: finalEffectiveBg,
-    effectiveBgStops: finalEffectiveBg ? null : resolveGradientStops(el, window, customPropMap),
+    // Unknown surface: hand the checks nothing rather than a guess.
+    effectiveBg: surfaceUnresolved ? null : finalEffectiveBg,
+    effectiveBgStops: surfaceUnresolved || finalEffectiveBg ? null : resolveGradientStops(el, window, customPropMap),
     fontSize: parseFloat(style.fontSize) || 16,
     fontWeight: parseInt(style.fontWeight) || 400,
     hasDirectText,
@@ -4685,8 +5204,7 @@ function checkTypography() {
     const style = getComputedStyle(el);
     const ff = style.fontFamily;
     if (!ff) continue;
-    const stack = ff.split(',').map(f => f.trim().replace(/^['"]|['"]$/g, '').toLowerCase());
-    const primary = stack.find(f => f && !GENERIC_FONTS.has(f));
+    const primary = primaryFontFace(ff);
     if (!primary) continue;
     fontUsage.set(primary, (fontUsage.get(primary) || 0) + 1);
     totalTextElements++;
@@ -4931,8 +5449,7 @@ function checkPageTypography(doc, win) {
       if (rule.type !== 1) continue;
       const ff = rule.style?.fontFamily;
       if (!ff) continue;
-      const stack = ff.split(',').map(f => f.trim().replace(/^['"]|['"]$/g, '').toLowerCase());
-      const primary = stack.find(f => f && !GENERIC_FONTS.has(f));
+      const primary = primaryFontFace(ff);
       if (primary) {
         fonts.add(primary);
         if (OVERUSED_FONTS.has(primary)) overusedFound.add(primary);
@@ -4951,11 +5468,10 @@ function checkPageTypography(doc, win) {
   const ffRe = /font-family\s*:\s*([^;}]+)/gi;
   let fm;
   while ((fm = ffRe.exec(html)) !== null) {
-    for (const f of fm[1].split(',').map(f => f.trim().replace(/^['"]|['"]$/g, '').toLowerCase())) {
-      if (f && !GENERIC_FONTS.has(f)) {
-        fonts.add(f);
-        if (OVERUSED_FONTS.has(f)) overusedFound.add(f);
-      }
+    const primary = primaryFontFace(fm[1]);
+    if (primary) {
+      fonts.add(primary);
+      if (OVERUSED_FONTS.has(primary)) overusedFound.add(primary);
     }
   }
 
@@ -5593,6 +6109,11 @@ function isRenderedForBrowserRule(el) {
 function checkElementTextOverflowDOM(el) {
   const tag = el.tagName.toLowerCase();
   if (TEXT_OVERFLOW_SKIP_TAGS.has(tag)) return [];
+  // scrollWidth/clientWidth are CSS box-model metrics; on SVG content Chrome
+  // returns arbitrary non-zero values for both (a <text> reported 78/48 while
+  // its rendered length sat comfortably inside its box), so the delta is
+  // noise, not overflow. SVG clips to its own viewport anyway.
+  if (el.namespaceURI === 'http://www.w3.org/2000/svg') return [];
   if (!isRenderedForBrowserRule(el)) return [];
   // Only the element that actually owns overflowing text — not its ancestors,
   // which inherit a wider scrollWidth from the spilling descendant.
@@ -5977,6 +6498,22 @@ function isPaintedForOcclusion(el) {
 // path is pure geometry and runs anywhere on the page.
 const OCCLUSION_TEXT_SKIP_TAGS = new Set(['script', 'style', 'noscript', 'template', 'title']);
 
+// An element whose effective opacity multiplies out to ~0 paints nothing at
+// rest: it is not user-visible, so visual findings on it (contrast, occlusion)
+// measure a state nobody sees. Browser-only — the walk needs live computed
+// styles. Cycling scenes that fade such elements in later are the screenshot
+// subsystem's territory, not the analytic walk's.
+function effectiveOpacityDOM(el) {
+  let o = 1;
+  // Walk all the way through body and html: `body { opacity: 0 }` page-fade
+  // wrappers hide every descendant just as thoroughly as a local wrapper.
+  for (let cur = el; cur && cur.nodeType === 1; cur = cur.parentElement) {
+    o *= parseFloat(getComputedStyle(cur).opacity || '1');
+    if (o <= 0.02) return 0;
+  }
+  return o;
+}
+
 function checkTextOcclusionDOM() {
   const findings = [];
   const seenVictims = new Set();
@@ -6004,6 +6541,41 @@ function checkTextOcclusionDOM() {
     }
     return false;
   };
+  // The classic occluder shape this rules out is an opacity-0 interaction
+  // layer — a range scrubber stretched over a before/after comparison — which
+  // elementFromPoint still returns and whose UA background-color otherwise
+  // reads as an opaque box.
+  const effectiveOpacity = effectiveOpacityDOM;
+
+  // The part of an element that is actually painted, after every scrolling or
+  // clipping ancestor has had its say.
+  //
+  // getBoundingClientRect reports where a box would be if nothing cut it off,
+  // so a paragraph half scrolled out of a panel still reports its full height,
+  // and the half that is clipped away lands wherever the page continues below
+  // the panel. The elementFromPoint probe then samples coordinates the text is
+  // not painted at, finds whatever genuinely is painted there, and reports the
+  // text as buried under it. Any sticky footer or toolbar beneath a scroll
+  // region produces this, and it is the shape most likely to be waved off as
+  // noise, which costs the rule its credibility on the findings that are real.
+  //
+  // Border box rather than padding box on purpose: it errs toward probing, and
+  // giving up a scrollbar gutter's width would drop true findings at the right
+  // edge of a scroller.
+  const paintedRect = (el, rect) => {
+    let left = rect.left, top = rect.top, right = rect.right, bottom = rect.bottom;
+    for (let cur = el.parentElement; cur && cur !== document.documentElement; cur = cur.parentElement) {
+      let cs; try { cs = getComputedStyle(cur); } catch { continue; }
+      const clipsX = String(cs.overflowX || 'visible') !== 'visible';
+      const clipsY = String(cs.overflowY || 'visible') !== 'visible';
+      if (!clipsX && !clipsY) continue;
+      let b; try { b = cur.getBoundingClientRect(); } catch { continue; }
+      if (clipsX) { left = Math.max(left, b.left); right = Math.min(right, b.right); }
+      if (clipsY) { top = Math.max(top, b.top); bottom = Math.min(bottom, b.bottom); }
+      if (right - left < 1 || bottom - top < 1) return null;
+    }
+    return { left, top, right, bottom, width: right - left, height: bottom - top };
+  };
 
   // Collect renderable text owners in / near the first viewport for the
   // elementFromPoint probe. SVG <text> counts too.
@@ -6016,8 +6588,14 @@ function checkTextOcclusionDOM() {
     const text = inSvg ? (el.textContent || '').trim() : elementDirectText(el);
     if (text.length < 2) continue;
     if (!isPaintedForOcclusion(el)) continue;
-    let rect; try { rect = el.getBoundingClientRect(); } catch { continue; }
-    if (rect.width < 6 || rect.height < 6) continue;
+    if (effectiveOpacity(el) <= 0.02) continue;
+    let full; try { full = el.getBoundingClientRect(); } catch { continue; }
+    if (full.width < 6 || full.height < 6) continue;
+    // Probe only where the text is on screen. A run clipped down to a sliver is
+    // dropped rather than sampled: a few pixels of visible text cannot support
+    // a coverage fraction worth reporting either way.
+    const rect = paintedRect(el, full);
+    if (!rect || rect.width < 6 || rect.height < 6) continue;
     // Viewport-bound probe: keep text whose box overlaps the live viewport.
     if (rect.bottom <= 0 || rect.top >= vh) continue;
     textEls.push({ el, rect, text, inSvg });
@@ -6049,6 +6627,7 @@ function checkTextOcclusionDOM() {
         if (top === el || el.contains(top) || top.contains(el)) continue;
         const topCs = getComputedStyle(top);
         if (isFloated(topCs) || isMarqueeish(top, topCs) || isPinnedOverlay(top)) continue;
+        if (effectiveOpacity(top) <= 0.02) continue;
         const topTag = top.tagName.toLowerCase();
         // Text sitting under a raw image/video is contrast territory (deduped
         // against the pixel low-contrast rule); leave those alone here.
@@ -6884,7 +7463,7 @@ if (IS_BROWSER) {
       if (currentStyle.filter && currentStyle.filter !== 'none') reasons.add('filter');
       if (currentStyle.backdropFilter && currentStyle.backdropFilter !== 'none') reasons.add('backdrop filter');
 
-      const solidBg = parseRgb(currentStyle.backgroundColor);
+      const solidBg = parseRgb(currentStyle.backgroundColor) || parseAnyColor(currentStyle.backgroundColor);
       if (solidBg && solidBg.a >= 0.95 && (!bgImage || bgImage === 'none')) break;
       current = current.parentElement;
     }
@@ -6941,8 +7520,12 @@ if (IS_BROWSER) {
 
       const reasons = collectVisualContrastReasons(el, style);
       if (reasons.length === 0) continue;
+      // Image-only mode filters here, inside the cap: gradient/opacity/filter
+      // candidates earlier in DOM order must not consume the budget and
+      // starve the url()-backed texts this mode exists to sample.
+      if (options.imageOnly && !reasons.includes('image background')) continue;
 
-      const textColor = parseRgb(style.color);
+      const textColor = parseRgb(style.color) || parseAnyColor(style.color);
       const fontSize = parseFloat(style.fontSize) || 16;
       const fontWeight = parseInt(style.fontWeight) || 400;
       const isLargeText = fontSize >= WCAG_LARGE_TEXT_PX || (fontSize >= WCAG_LARGE_BOLD_TEXT_PX && fontWeight >= 700);
@@ -7239,7 +7822,7 @@ if (IS_BROWSER) {
         return sample;
       }
     }
-    const bg = parseRgb(style.backgroundColor);
+    const bg = parseRgb(style.backgroundColor) || parseAnyColor(style.backgroundColor);
     if (bg && bg.a > 0.05) return { status: 'sampled', color: bg, method: 'solid-background' };
     return { status: 'unresolved', reason: 'no readable background' };
   }
@@ -7369,7 +7952,7 @@ if (IS_BROWSER) {
     }
 
     const style = getComputedStyle(el);
-    const textColor = parseRgb(style.color) || candidate.textColor;
+    const textColor = parseRgb(style.color) || parseAnyColor(style.color) || candidate.textColor;
     if (!textColor) return { ...candidate, status: 'unresolved', confidence: 'none', reason: 'unreadable text color' };
 
     const rect = getDirectTextRect(el) || el.getBoundingClientRect();
@@ -7433,6 +8016,7 @@ if (IS_BROWSER) {
   }
 
   async function analyzeVisualContrast(options = {}) {
+    // imageOnly is enforced inside the collector, before the candidate cap.
     const candidates = collectVisualContrastCandidates(options);
     const results = [];
     const shouldScrollOffscreen = options.scrollOffscreen === true;
@@ -7518,9 +8102,16 @@ if (IS_BROWSER) {
 
   function addBrowserFindings(groupMap, el, findings) {
     if (!findings || findings.length === 0) return;
+    // Element-scoped waivers: a data-impeccable-ignore ancestor suppresses
+    // matching findings for its whole subtree. Applied at this choke point so
+    // every per-element attribution (checks, layout, occlusion, rhythm)
+    // honors it; page-level findings attributed to <body> pass through
+    // untouched, since body has no ignoring ancestor.
+    const kept = findings.filter(f => !scopedIgnoreActive(el, f.type));
+    if (kept.length === 0) return;
     const existing = groupMap.get(el);
-    if (existing) existing.push(...findings);
-    else groupMap.set(el, [...findings]);
+    if (existing) existing.push(...kept);
+    else groupMap.set(el, [...kept]);
   }
 
   function browserFindingsFromMap(groupMap) {
@@ -7718,7 +8309,19 @@ if (IS_BROWSER) {
     return findings;
   }
 
+  // A page matched by detector.ignoreFiles is waived wholesale: every scan
+  // stage answers empty so the badge and toast read zero. Mirrors
+  // shouldIgnoreDetectionFile in cli/lib/impeccable-config.mjs; the live
+  // overlay resolves the globs per page (live-browser-ignores.js) and
+  // forwards the verdict as config.skipScan.
+  function skipScanActive() {
+    return EXTENSION_MODE && window.__IMPECCABLE_CONFIG__?.skipScan === true;
+  }
+
   function collectBrowserFindings() {
+    if (skipScanActive()) {
+      return { groupMap: new Map(), allFindings: [], pageLevelFindings: [] };
+    }
     const groupMap = new Map();
     const _disabled = EXTENSION_MODE ? (window.__IMPECCABLE_CONFIG__?.disabledRules || []) : [];
     const _ruleOk = (id) => !_disabled.length || !_disabled.includes(id);
@@ -7878,9 +8481,27 @@ if (IS_BROWSER) {
     for (const node of docClone.querySelectorAll('[id^="impeccable-live-"]')) {
       node.remove();
     }
-    const htmlPatternFindings = checkHtmlPatterns(docClone.outerHTML);
-    if (htmlPatternFindings.length > 0) {
-      const mapped = htmlPatternFindings.map(f => {
+    // Regex findings that name a live selector resolve against the real DOM:
+    // pseudo-element/class segments are stripped (the host element is the
+    // anchor), a selector that matches nothing on this page drops the finding
+    // (the CSS ships here, but the pattern never renders — the live DOM is
+    // ground truth in the browser), and a match under a data-impeccable-ignore
+    // ancestor is waived. Selector-less findings stay page-level.
+    const scopedHtmlFindings = checkHtmlPatterns(docClone.outerHTML).filter(f => {
+      if (!f.selector) return true;
+      const query = String(f.selector).replace(/::?[a-zA-Z-]+(\([^)]*\))?/g, '').trim().replace(/,\s*(?=,|$)/g, '');
+      if (!query || /^[,\s]*$/.test(query)) return true;
+      let matches;
+      try {
+        matches = document.querySelectorAll(query);
+      } catch {
+        return true;
+      }
+      if (matches.length === 0) return false;
+      return [...matches].some(el => !scopedIgnoreActive(el, f.id));
+    });
+    if (scopedHtmlFindings.length > 0) {
+      const mapped = scopedHtmlFindings.map(f => {
         const item = { type: f.id, detail: f.snippet };
         if (f.severity) {
           item.severity = f.severity;
@@ -7903,6 +8524,119 @@ if (IS_BROWSER) {
       addBrowserFindings(groupMap, document.body, mapped);
     }
 
+    // Value-level suppression (issue #639). `disabledRules` above handles
+    // whole rules; this applies the config's remaining ignoreValues entries,
+    // which the CLI filters through isIgnoredFindingValue in
+    // cli/lib/impeccable-config.mjs, so a project waiver like
+    // overused-font = "geist mono" reaches the overlay and extension too.
+    const _normValue = (v) => String(v || '').trim().replace(/^["']|["']$/g, '')
+      .replace(/\+/g, ' ').replace(/\s+/g, ' ').toLowerCase();
+    const _disabledValues = EXTENSION_MODE
+      ? (Array.isArray(window.__IMPECCABLE_CONFIG__?.disabledValues) ? window.__IMPECCABLE_CONFIG__.disabledValues : [])
+        .filter(e => e && typeof e === 'object' && e.rule && e.value)
+        .map(e => ({ rule: String(e.rule).trim().toLowerCase(), value: _normValue(e.value) }))
+      : [];
+    if (_disabledValues.length > 0) {
+      // The six rules whose findings carry a matchable value; keep in step
+      // with extractFindingIgnoreValue in cli/lib/impeccable-config.mjs.
+      // Everything else is suppressed by rule or by file scope, both already
+      // resolved into disabledRules before the scan message was sent.
+      const _directValueRules = new Set([
+        'overused-font',
+        'bounce-easing',
+        'design-system-font',
+        'design-system-color',
+        'design-system-radius',
+        'design-system-font-size',
+      ]);
+      // The design-system checks set `ignoreValue` on their findings; the
+      // detail fallbacks catch overused-font, whose value lives in its
+      // sentence. One CLI matcher is not mirrored here: the motion extractor
+      // (a value-scoped bounce-easing waiver only matches when the finding
+      // carries ignoreValue directly). The CLI's [?&]family= URL fallback is
+      // also omitted on purpose: browser findings for these rules always
+      // carry ignoreValue or a "Primary font:" / "Google Fonts:" /
+      // font-family sentence, so it is unreachable here.
+      const _findingValue = (f) => {
+        if (!f || !_directValueRules.has(f.type || f.id)) return '';
+        const direct = f.ignoreValue || f.value;
+        if (direct) return _normValue(direct);
+        // The CLI routes bounce-easing through extractMotionIgnoreValue and
+        // never the font regexes; without a direct ignoreValue there is no
+        // value to match, so do not invent one from unrelated CSS text.
+        if ((f.type || f.id) === 'bounce-easing') return '';
+        for (const text of [f.detail, f.snippet]) {
+          if (typeof text !== 'string' || !text) continue;
+          const primary = text.match(/Primary font:\s*([^()\n;]+)/i);
+          if (primary) return _normValue(primary[1]);
+          const google = text.match(/Google Fonts:\s*([^()\n;]+)/i);
+          if (google) return _normValue(google[1]);
+          const family = text.match(/font-family\s*:\s*["']?([^'",;\n]+)/i);
+          if (family) return _normValue(family[1]);
+        }
+        return '';
+      };
+      // design-system-color compares by color value, not by spelling: the
+      // browser reports computed rgb(...) strings while waivers are usually
+      // written as hex. Mirrors ignoreValueMatches -> colorIgnoreKey in
+      // cli/lib/impeccable-config.mjs for the hex and rgb()/rgba() forms;
+      // hsl stays CLI-only.
+      const _colorKey = (value) => {
+        const text = String(value || '').trim().toLowerCase();
+        const hex = text.match(/^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/);
+        if (hex) {
+          const expanded = hex[1].length <= 4 ? [...hex[1]].map(d => d + d).join('') : hex[1];
+          const [r, g, b, a = 255] = expanded.match(/../g).map(ch => parseInt(ch, 16));
+          return `${r},${g},${b},${a}`;
+        }
+        const rgb = text.match(/^rgba?\((.*)\)$/);
+        if (!rgb) return '';
+        const body = rgb[1].trim().replace(/\s*\/\s*/g, ' / ');
+        let parts;
+        if (body.includes(',')) {
+          parts = body.split(',').map(p => p.trim()).filter(Boolean);
+          const last = parts[parts.length - 1];
+          if (last && last.includes('/')) {
+            parts = [...parts.slice(0, -1), ...last.split('/').map(p => p.trim()).filter(Boolean)];
+          }
+        } else {
+          parts = body.split(/\s+/).filter(p => p && p !== '/');
+        }
+        if (parts.length < 3 || parts.length > 4) return '';
+        const channel = (raw, isAlpha) => {
+          const m = String(raw).trim().match(/^(-?\d*\.?\d+)(%)?$/);
+          if (!m) return null;
+          let v = parseFloat(m[1]);
+          if (m[2]) v = isAlpha ? v / 100 : v * 2.55;
+          const max = isAlpha ? 1 : 255;
+          if (!Number.isFinite(v) || v < 0 || v > max) return null;
+          return isAlpha ? v : Math.round(v);
+        };
+        const r = channel(parts[0], false);
+        const g = channel(parts[1], false);
+        const b = channel(parts[2], false);
+        const a = parts[3] === undefined ? 1 : channel(parts[3], true);
+        if ([r, g, b, a].some(v => v === null)) return '';
+        return `${r},${g},${b},${Math.round(a * 255)}`;
+      };
+      const _valueIgnored = (f) => {
+        const value = _findingValue(f);
+        if (!value) return false;
+        const rule = f.type || f.id;
+        return _disabledValues.some(e => e.rule === rule && (e.value === value
+          || (rule === 'design-system-color'
+            && _colorKey(e.value) !== '' && _colorKey(e.value) === _colorKey(value))));
+      };
+      for (const [el, list] of [...groupMap.entries()]) {
+        const kept = list.filter(f => !_valueIgnored(f));
+        if (kept.length > 0) groupMap.set(el, kept);
+        else groupMap.delete(el);
+      }
+      for (let i = pageLevelFindings.length - 1; i >= 0; i--) {
+        if (_valueIgnored(pageLevelFindings[i])) pageLevelFindings.splice(i, 1);
+      }
+    }
+
     return {
       groupMap,
       allFindings: browserFindingsFromMap(groupMap),
@@ -7910,8 +8644,27 @@ if (IS_BROWSER) {
     };
   }
 
+  // Visual contrast has three modes. Explicit true runs the full sampled
+  // pass; explicit false disables it entirely (the deterministic-only mode
+  // the test suites use). Unset — the default overlay run — samples ONLY
+  // image-backed text: the one class the analytic walk deliberately skips,
+  // because a url() layer's pixels are unknowable without looking. In-page
+  // sampling draws the source image alone to a canvas (glyph ink never
+  // pollutes it), and a cross-origin image without CORS reports unresolved
+  // instead of guessing.
+  function visualContrastMode(options = {}) {
+    const explicit = typeof options.visualContrast === 'boolean'
+      ? options.visualContrast
+      : typeof window.__IMPECCABLE_CONFIG__?.visualContrast === 'boolean'
+        ? window.__IMPECCABLE_CONFIG__.visualContrast
+        : null;
+    if (explicit === true) return 'full';
+    if (explicit === false) return false;
+    return 'image-only';
+  }
+
   function shouldRunVisualContrast(options = {}) {
-    return options.visualContrast === true || window.__IMPECCABLE_CONFIG__?.visualContrast === true;
+    return visualContrastMode(options) !== false;
   }
 
   function visualContrastOptions(options = {}) {
@@ -8088,6 +8841,7 @@ if (IS_BROWSER) {
       return [];
     }
     const resolvedOptions = visualContrastOptions(options);
+    if (visualContrastMode(options) === 'image-only') resolvedOptions.imageOnly = true;
     const analyses = await analyzeVisualContrast(resolvedOptions);
     if (runtime.generation && runtime.generation !== scanGeneration) return analyses;
     lastVisualContrastAnalyses = analyses;
@@ -8100,6 +8854,12 @@ if (IS_BROWSER) {
 
   async function collectBrowserFindingsAsync(options = {}, runtime = {}) {
     const collected = collectBrowserFindings();
+    // The visual pass walks the DOM on its own; on a skipScan page it would
+    // repopulate the emptied scan, so it is skipped with everything else.
+    if (skipScanActive()) {
+      lastVisualContrastAnalyses = [];
+      return { ...collected, allFindings: [], visualContrastAnalyses: [] };
+    }
     await addVisualContrastFindings(collected.groupMap, options, runtime);
     return {
       ...collected,
@@ -8153,7 +8913,7 @@ if (IS_BROWSER) {
     const generation = scanGeneration;
     const collected = collectBrowserFindings();
     const allFindings = renderBrowserFindings(collected, options);
-    if (shouldRunVisualContrast(options)) {
+    if (!skipScanActive() && shouldRunVisualContrast(options)) {
       addVisualContrastFindings(collected.groupMap, options, { decorate: true, generation })
         .then(() => {
           if (generation === scanGeneration) postSerializedFindings(collected.groupMap, options);

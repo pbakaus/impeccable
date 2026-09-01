@@ -2,15 +2,17 @@
 /**
  * Impeccable design hook — PostToolUse + Stop entry point.
  *
- * Reads the Claude Code / Codex / Cursor hook event from stdin and routes by
- * `hook_event_name`:
+ * Reads the Claude Code / Codex / Cursor / Grok Build hook event from stdin
+ * and routes by Stop vs everything else. Claude uses `hook_event_name:
+ * "Stop"`; Grok uses `hookEventName: "stop"`.
  *
  *   - PostToolUse: runs the immediate-tier detector rules against the touched
  *     file and emits a system reminder via
- *     `hookSpecificOutput.additionalContext` when findings exist.
+ *     `hookSpecificOutput.additionalContext` when findings exist. Grok
+ *     discards that stdout; the scan still warms the session cache for Stop.
  *   - Stop: runs the FULL detector rule set over every UI file touched this
  *     session (the deep pass), deduped against what the per-edit pass already
- *     surfaced, and emits once via the Stop additionalContext channel.
+ *     surfaced, and emits once via the harness-specific continuation channel.
  *
  * Contract: never break a turn. Always exit 0. Clean files emit a small ack
  * unless quiet mode is enabled; a clean Stop pass is silent.
@@ -19,7 +21,7 @@
  * subprocess. This file is the thin stdin/stdout adapter.
  */
 
-import { runHook, runStopHook, writeAuditLog } from './hook-lib.mjs';
+import { runHook, runStopHook, writeAuditLog, isStopEvent } from './hook-lib.mjs';
 
 async function readStdin() {
   if (process.stdin.isTTY) return '';
@@ -28,10 +30,9 @@ async function readStdin() {
   return Buffer.concat(chunks).toString('utf-8');
 }
 
-function isStopEvent(stdinJson) {
+function stdinIsStop(stdinJson) {
   try {
-    const event = JSON.parse(stdinJson);
-    return event && typeof event === 'object' && event.hook_event_name === 'Stop';
+    return isStopEvent(JSON.parse(stdinJson));
   } catch {
     // Malformed stdin falls through to runHook, which audits the skip.
     return false;
@@ -48,7 +49,7 @@ async function main() {
   let stdinJson = '';
   try { stdinJson = await readStdin(); } catch { /* fall through */ }
 
-  const run = isStopEvent(stdinJson) ? runStopHook : runHook;
+  const run = stdinIsStop(stdinJson) ? runStopHook : runHook;
   const result = await run({
     stdinJson,
     env: inheritedEnv,

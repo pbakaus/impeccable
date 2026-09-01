@@ -10,6 +10,7 @@
  * - Codex: dist/codex/ only (OpenAI-metadata bundle; not synced to repo root)
  * - Agents: .agents/skills/ (Codex repo/user installs)
  * - GitHub: .github/skills/ (GitHub Copilot)
+ * - Veto: .veto/skills/ (Veto model-routing harness)
  *
  * Also assembles a universal ZIP containing all providers,
  * and builds Tailwind CSS for production deployment.
@@ -25,6 +26,12 @@ import { hooksJsonFor, buildClaudePluginHooksManifest } from './lib/transformers
 import { createAllZips, createProviderZip } from './lib/zip.js';
 import { collectPluginVersions } from './lib/validate-plugin-versions.js';
 import { collectPluginManifestFindings } from './lib/validate-plugin-manifest.js';
+import {
+  rewritePluginMarkdownTree,
+  rewritePluginAgentMarkdown,
+  verifyPluginSkillRewrite,
+  verifyPluginAgentRewrite,
+} from './lib/plugin-paths.js';
 import { stageOpenAIPlugin } from './lib/openai-plugin.js';
 import { ANTIPATTERNS } from '../cli/engine/registry/antipatterns.mjs';
 // Sub-page generation is now handled by Astro content collections.
@@ -373,6 +380,57 @@ function validateSkillProse(rootDir) {
 }
 
 /**
+ * Validate that every `{{ask_instruction}}` interpolation starts a sentence.
+ *
+ * The placeholder's per-provider values are complete capitalized sentences
+ * ("STOP and call the AskUserQuestion tool to clarify."), so a call site that
+ * splices it mid-sentence ships malformed guidance to every provider at once:
+ * `stop and STOP and call the AskUserQuestion tool to clarify. before expanding
+ * it`. Four reference files shipped exactly that before this gate existed, and
+ * a comment in PROVIDER_PLACEHOLDERS asking authors to keep the contract is
+ * what failed to prevent it.
+ *
+ * Returns the number of validation errors. Build fails if > 0.
+ */
+function validateAskInstructionSites(rootDir) {
+  const dir = path.join(rootDir, 'skill', 'reference');
+  const token = '{{ask_instruction}}';
+  let errors = 0;
+  let sites = 0;
+
+  if (!fs.existsSync(dir)) return 0;
+
+  for (const file of fs.readdirSync(dir)) {
+    if (path.extname(file) !== '.md') continue;
+    const rel = path.join('skill/reference', file);
+    fs.readFileSync(path.join(dir, file), 'utf-8')
+      .split('\n')
+      .forEach((line, i) => {
+        let idx = line.indexOf(token);
+        while (idx !== -1) {
+          sites++;
+          // Bold/italic markers may sit between the punctuation and the token.
+          const before = line.slice(0, idx).replace(/[*_`]+\s*$/, '').trimEnd();
+          if (before !== '' && !/[.!?:]$/.test(before)) {
+            console.error(`  ❌ ${rel}:${i + 1}: ${token} is spliced mid-sentence`);
+            console.error(`        ...${before.slice(-60)} ${token}`);
+            console.error(`        Provider values are full sentences. Start a new one.`);
+            errors++;
+          }
+          idx = line.indexOf(token, idx + 1);
+        }
+      });
+  }
+
+  if (errors === 0) {
+    console.log(`✓ ask_instruction call sites: ${sites} sentence-initial`);
+  } else {
+    console.error(`\n❌ ${errors} of ${sites} {{ask_instruction}} site(s) spliced mid-sentence.`);
+  }
+  return errors;
+}
+
+/**
  * Validate that every hand-authored HTML page carries the shared site header.
  * The partial is stamped with `<!-- site-header v1 -->` so drift is loud.
  *
@@ -492,6 +550,7 @@ This folder contains skills for all supported tools:
   .agent/     -> Antigravity
   .github/    -> GitHub Copilot
   .grok/      -> Grok Build
+  .hermes/    -> Hermes Agent
   .kiro/      -> Kiro
   .opencode/  -> OpenCode
   .pi/        -> Pi
@@ -499,6 +558,7 @@ This folder contains skills for all supported tools:
   .trae/      -> Trae International
   .rovodev/   -> Rovo Dev
   .vibe/      -> Mistral Vibe
+  .veto/      -> Veto model-routing harness
   .qoder/     -> Qoder
 
 To install, copy the relevant folder(s) into your project root.
@@ -703,6 +763,21 @@ async function build() {
       copyDirSync(claudeAgentsSrc, pluginAgentsDir);
     }
 
+    // The claude-code output resolves {{scripts_path}} to a project-relative
+    // path. Inside the plugin cache that path points into the user's project,
+    // so a dual install silently runs the project's older skill copy (issue
+    // #523). Rewrite the copied markdown to the skill-base-dir form.
+    rewritePluginMarkdownTree(pluginSkillsDir);
+    // Agents get the plugin-root variable, not the skill-base-dir token:
+    // a spawned agent never loads SKILL.md, so the token is undefined there.
+    rewritePluginMarkdownTree(pluginAgentsDir, rewritePluginAgentMarkdown);
+    verifyPluginSkillRewrite(path.join(pluginSkillsDir, 'impeccable', 'SKILL.md'));
+    if (fs.existsSync(pluginAgentsDir)) {
+      for (const agentFile of fs.readdirSync(pluginAgentsDir)) {
+        if (agentFile.endsWith('.md')) verifyPluginAgentRewrite(path.join(pluginAgentsDir, agentFile));
+      }
+    }
+
     // Ship the design detector as a plugin-packaged hook. Claude Code and
     // Grok Build both auto-discover `hooks/hooks.json` at the plugin root
     // (Grok aliases CLAUDE_PLUGIN_ROOT → GROK_PLUGIN_ROOT), so marketplace /
@@ -743,7 +818,11 @@ async function build() {
   // that has no technical reading. Hardening repetition is intentionally allowed.
   const skillProseErrors = validateSkillProse(ROOT_DIR);
 
-  if (countErrors > 0 || versionErrors > 0 || manifestShapeErrors > 0 || proseErrors > 0 || skillProseErrors > 0) {
+  // Placeholder values are full sentences; a mid-sentence splice ships broken
+  // guidance to every provider at once.
+  const askSiteErrors = validateAskInstructionSites(ROOT_DIR);
+
+  if (countErrors > 0 || versionErrors > 0 || manifestShapeErrors > 0 || proseErrors > 0 || skillProseErrors > 0 || askSiteErrors > 0) {
     process.exit(1);
   }
 

@@ -13,6 +13,7 @@ import {
   checkSourceDesignSystem,
   collectStaticDesignSystemFindings,
   isAllowedColorRaw,
+  isAllowedShadowColorRaw,
   isAllowedFont,
   isAllowedRadiusRaw,
   isAllowedFontSizeRaw,
@@ -282,6 +283,9 @@ rounded:
         roundedMeta: {
           lg: { canonical: '24px' },
         },
+        shadows: [
+          { name: 'ambient-low', value: '0 4px 24px rgba(0,0,0,0.12)', purpose: 'Diffuse hover glow.' },
+        ],
       },
     }));
 
@@ -296,6 +300,8 @@ rounded:
     assert.equal(isAllowedColorRaw('#d55a42', loaded), true);
     assert.equal(isAllowedRadiusRaw('80px', loaded), true);
     assert.equal(isAllowedRadiusRaw('24px', loaded), true);
+    assert.equal(isAllowedShadowColorRaw('rgba(0, 0, 0, 0.12)', loaded), true);
+    assert.equal(isAllowedShadowColorRaw('rgba(0, 0, 0, 0.5)', loaded), false);
   });
 
   it('unescapes YAML-escaped quotes around multi-word font families (issue #428)', () => {
@@ -380,6 +386,25 @@ describe('checkSourceDesignSystem()', () => {
     assert.deepEqual(
       findings.map((item) => item.ignoreValue),
       ['Poppins', '#ff00aa', 'rgba(255, 0, 170, 1)', '18px'],
+    );
+  });
+
+  it('judges var() radius fallbacks without keeping the closing parenthesis', () => {
+    const designSystem = normalizeDesignSystem({
+      frontmatter: { rounded: { md: '8px' } },
+    });
+    const findings = checkSourceDesignSystem(`
+.good {
+  border-radius: var(--radius-md, 8px);
+}
+.bad {
+  border-radius: var(--radius-custom, 18px);
+}
+`, '/tmp/radius-fallbacks.css', { designSystem });
+
+    assert.deepEqual(
+      findings.map((item) => [item.antipattern, item.ignoreValue]),
+      [['design-system-radius', '18px']],
     );
   });
 
@@ -471,6 +496,131 @@ const badge = { className: "text-[10px]" };
 
     const findings = checkSourceDesignSystem('.bad { font-size: 12.5px; }', '/tmp/clamp-only.css', { designSystem });
     assert.equal(findings.some((item) => item.antipattern === 'design-system-font-size'), false);
+  });
+});
+
+describe('sidecar shadow tokens (issue #547)', () => {
+  // Mirrors the sidecar `extensions.shadows` schema from document.md Step 4b.
+  function shadowDesignSystem() {
+    return normalizeDesignSystem({
+      frontmatter: {
+        colors: { ink: '#241f1a', paper: '#f7f4ee' },
+      },
+      sidecar: {
+        extensions: {
+          shadows: [
+            {
+              name: 'outset',
+              value: 'inset 0 1px 0 oklch(1 0 0 / 0.07), 0 1px 2px oklch(0 0 0 / 0.28), 0 4px 12px oklch(0 0 0 / 0.22)',
+              purpose: 'Default card shadow.',
+            },
+          ],
+        },
+      },
+    });
+  }
+
+  it('matches documented shadow colors on alpha, not just r/g/b', () => {
+    const designSystem = shadowDesignSystem();
+    assert.equal(isAllowedShadowColorRaw('oklch(0 0 0 / 0.28)', designSystem), true);
+    assert.equal(isAllowedShadowColorRaw('rgba(0, 0, 0, 0.28)', designSystem), true);
+    assert.equal(isAllowedShadowColorRaw('oklch(1 0 0 / 0.07)', designSystem), true);
+    // Same black, undocumented alpha: the r/g/b channels alone must not match.
+    assert.equal(isAllowedShadowColorRaw('oklch(0 0 0 / 55%)', designSystem), false);
+    assert.equal(isAllowedShadowColorRaw('#000', designSystem), false);
+    // Shadow tokens must not switch the general color rule's allowlist on.
+    assert.equal(isAllowedColorRaw('oklch(0 0 0 / 0.28)', designSystem), false);
+  });
+
+  it('allows documented shadow colors in shadow contexts only', () => {
+    const designSystem = shadowDesignSystem();
+    const findings = checkSourceDesignSystem(`
+.a { box-shadow: 0 1px 2px oklch(0 0 0 / 0.28); }
+.b { box-shadow: 0 20px 50px oklch(0 0 0 / 55%); }
+.c { background: #000; }
+.d { background: oklch(0 0 0 / 0.28); }
+.e { text-shadow: 0 1px 2px oklch(0 0 0 / 0.28); }
+.f { box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.07), 0 4px 12px oklch(0 0 0 / 0.22); }
+const card = { boxShadow: "0 1px 2px rgba(0, 0, 0, 0.28)" };
+const layered = { boxShadow: "0 1px 2px rgba(0, 0, 0, 0.28), 0 4px 12px rgba(0, 0, 0, 0.22)" };
+const bad = { color: "rgba(0, 0, 0, 0.28)" };
+const leak = { boxShadow: "0 1px 2px rgba(0, 0, 0, 0.28)", color: "rgba(0, 0, 0, 0.28)" };
+`, '/tmp/shadows.css', { designSystem });
+    const colors = findings.filter((item) => item.antipattern === 'design-system-color');
+
+    // .a, .e, .f, and both JS boxShadow strings (including the second layer
+    // past the comma) pass; .b (undocumented alpha), .c (forbidden ground),
+    // .d (documented alpha outside a shadow), and both JS color keys still
+    // fire — the `leak` line proves the closing quote stops the shadow
+    // context from reaching a later property. A fix that silences .d has
+    // stopped discriminating between shadow usage and page grounds.
+    assert.deepEqual(
+      colors.map((item) => [item.line, item.ignoreValue]),
+      [
+        [3, 'oklch(0 0 0 / 55%)'],
+        [4, '#000'],
+        [5, 'oklch(0 0 0 / 0.28)'],
+        [10, 'rgba(0, 0, 0, 0.28)'],
+        [11, 'rgba(0, 0, 0, 0.28)'],
+      ],
+    );
+  });
+
+  it('abstains from the color rule entirely when only shadows are documented', () => {
+    // A shadows-only sidecar must not switch hasColors on: with no palette to
+    // measure against, the engine abstains rather than guesses, same as every
+    // other design-system rule.
+    const designSystem = normalizeDesignSystem({
+      sidecar: {
+        extensions: {
+          shadows: [{ name: 'outset', value: '0 1px 2px oklch(0 0 0 / 0.28)' }],
+        },
+      },
+    });
+    assert.equal(designSystem.hasColors, false);
+    const findings = checkSourceDesignSystem(
+      '.c { background: #000; }',
+      '/tmp/shadows-only.css',
+      { designSystem },
+    );
+    assert.equal(findings.some((item) => item.antipattern === 'design-system-color'), false);
+  });
+
+  it('keeps shadow context across template interpolations', () => {
+    const designSystem = shadowDesignSystem();
+    const findings = checkSourceDesignSystem(`
+const card = { boxShadow: \`0 \${offset}px 2px rgba(0, 0, 0, 0.28)\` };
+  box-shadow: 0 1px \${blur}px rgba(0, 0, 0, 0.28);
+const fn = { boxShadow: \`0 \${getShadow('lg')} 2px rgba(0, 0, 0, 0.28)\` };
+const tern = { boxShadow: \`0 1px \${dark ? "4px" : "2px"} rgba(0, 0, 0, 0.28)\` };
+  box-shadow: 0 \${theme('blur')} rgba(0, 0, 0, 0.28);
+const nested = { boxShadow: \`0 \${getOffset({ size: 2 })}px 2px rgba(0, 0, 0, 0.28)\` };
+const nestedQ = { boxShadow: \`0 \${getOffset({ size: 'lg' })}px rgba(0, 0, 0, 0.28)\` };
+const leak = { boxShadow: \`0 \${offset}px rgba(0, 0, 0, 0.28)\`, color: "rgba(0, 0, 0, 0.28)" };
+`, '/tmp/interpolated.js', { designSystem });
+    const colors = findings.filter((item) => item.antipattern === 'design-system-color');
+
+    // The documented shadow color passes after a \${...} interpolation in
+    // the JS template literal and the CSS-in-JS line, including
+    // interpolations carrying quoted function arguments, ternary branches,
+    // and one level of object-literal braces; the color key on the leak line
+    // still fires because it sits past the template's closing backtick.
+    assert.deepEqual(
+      colors.map((item) => [item.line, item.ignoreValue]),
+      [[9, 'rgba(0, 0, 0, 0.28)']],
+    );
+  });
+
+  it('does not allow a later declaration to inherit shadow context from earlier on the line', () => {
+    const designSystem = shadowDesignSystem();
+    const findings = checkSourceDesignSystem(
+      '.x { box-shadow: 0 1px 2px oklch(0 0 0 / 0.28); background: oklch(0 0 0 / 0.28); }',
+      '/tmp/one-line.css',
+      { designSystem },
+    );
+    const colors = findings.filter((item) => item.antipattern === 'design-system-color');
+    assert.equal(colors.length, 1);
+    assert.equal(colors[0].ignoreValue, 'oklch(0 0 0 / 0.28)');
   });
 });
 

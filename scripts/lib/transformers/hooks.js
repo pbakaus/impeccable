@@ -46,6 +46,7 @@ function stopEntry(command) {
     ],
   };
 }
+
 const CLAUDE_PROJECT_HOOK = '${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/hook.mjs';
 // The Node major the hook runtime requires, kept equal to the engines floor in
 // package.json. The probe and the notice both derive from it so they cannot
@@ -70,7 +71,9 @@ const NODE_MAJOR_FLOOR = 22;
 //   Claude Code / Codex: `systemMessage` on stdout is shown to the user -> notice
 //   Cursor: preToolUse output is permission-shaped and its `user_message`
 //     renders only on DENY, so warning would block the edit    -> probe only
-//   Grok Build: PostToolUse/Stop stdout is ignored outright    -> probe only
+//   Grok Build: PostToolUse stdout is ignored; Stop additionalContext
+//     reaches the model, but the node-version notice has no systemMessage
+//     channel on this harness                                 -> probe only
 //   Copilot: output contract unconfirmed; do not guess a shape -> probe only
 //
 // The clamp avoids `<` and `>` deliberately: Volta's Windows shims run through
@@ -85,6 +88,27 @@ const guardedNode = (hookPath, notice = '') => {
     : `! ${NODE_PROBE}`;
   return `[ ! -f "${hookPath}" ] || ${probe} || node "${hookPath}"`;
 };
+
+function buildClaudeCompatibleHooks(matcher, hookPath, notice = '') {
+  const command = guardedNode(hookPath, notice);
+  return {
+    PostToolUse: [
+      {
+        matcher,
+        hooks: [
+          {
+            type: 'command',
+            command,
+            timeout: TIMEOUT_SECONDS,
+            statusMessage: STATUS_MESSAGE,
+          },
+        ],
+      },
+    ],
+    Stop: [stopEntry(command)],
+  };
+}
+
 // The message says `on PATH` deliberately: the common cause is a hook shell
 // whose PATH misses the version manager, so a user already running Node 22
 // needs to know the hook's PATH is at issue and not their install. Apostrophes
@@ -115,23 +139,12 @@ const GROK_PROJECT_HOOK = '.grok/skills/impeccable/scripts/hook.mjs';
 
 export function buildClaudeSettingsManifest() {
   return {
-    description: 'Impeccable design detector: immediate-tier checks after Edit/Write/MultiEdit on UI files, full-rule deep pass on Stop.',
-    hooks: {
-      PostToolUse: [
-        {
-          matcher: 'Edit|Write|MultiEdit',
-          hooks: [
-            {
-              type: 'command',
-              command: guardedNode(CLAUDE_PROJECT_HOOK, SYSTEM_MESSAGE_NOTICE),
-              timeout: TIMEOUT_SECONDS,
-              statusMessage: STATUS_MESSAGE,
-            },
-          ],
-        },
-      ],
-      Stop: [stopEntry(guardedNode(CLAUDE_PROJECT_HOOK, SYSTEM_MESSAGE_NOTICE))],
-    },
+    description: 'Impeccable design detector: immediate-tier checks after Edit/Write on UI files, full-rule deep pass on Stop.',
+    hooks: buildClaudeCompatibleHooks(
+      'Edit|Write',
+      CLAUDE_PROJECT_HOOK,
+      SYSTEM_MESSAGE_NOTICE,
+    ),
   };
 }
 
@@ -143,22 +156,11 @@ export function buildClaudeSettingsManifest() {
 // than `hooks`, failing the whole manifest (issue #330).
 export function buildClaudePluginHooksManifest() {
   return {
-    hooks: {
-      PostToolUse: [
-        {
-          matcher: 'Edit|Write|MultiEdit',
-          hooks: [
-            {
-              type: 'command',
-              command: guardedNode(CLAUDE_PLUGIN_HOOK, SYSTEM_MESSAGE_NOTICE),
-              timeout: TIMEOUT_SECONDS,
-              statusMessage: STATUS_MESSAGE,
-            },
-          ],
-        },
-      ],
-      Stop: [stopEntry(guardedNode(CLAUDE_PLUGIN_HOOK, SYSTEM_MESSAGE_NOTICE))],
-    },
+    hooks: buildClaudeCompatibleHooks(
+      'Edit|Write',
+      CLAUDE_PLUGIN_HOOK,
+      SYSTEM_MESSAGE_NOTICE,
+    ),
   };
 }
 
@@ -167,22 +169,11 @@ export function buildClaudePluginHooksManifest() {
 // instead of relying on its Claude compatibility alias.
 export function buildCodexPluginHooksManifest() {
   return {
-    hooks: {
-      PostToolUse: [
-        {
-          matcher: 'Edit|Write|apply_patch',
-          hooks: [
-            {
-              type: 'command',
-              command: guardedNode(CODEX_PLUGIN_HOOK, SYSTEM_MESSAGE_NOTICE),
-              timeout: TIMEOUT_SECONDS,
-              statusMessage: STATUS_MESSAGE,
-            },
-          ],
-        },
-      ],
-      Stop: [stopEntry(guardedNode(CODEX_PLUGIN_HOOK, SYSTEM_MESSAGE_NOTICE))],
-    },
+    hooks: buildClaudeCompatibleHooks(
+      'Edit|Write|apply_patch',
+      CODEX_PLUGIN_HOOK,
+      SYSTEM_MESSAGE_NOTICE,
+    ),
   };
 }
 
@@ -192,22 +183,11 @@ export function buildCodexPluginHooksManifest() {
 export function buildCodexHooksManifest(skillDir = '.codex') {
   const hookPath = codexProjectHook(skillDir);
   return {
-    hooks: {
-      PostToolUse: [
-        {
-          matcher: 'Edit|Write|apply_patch',
-          hooks: [
-            {
-              type: 'command',
-              command: guardedNode(hookPath, SYSTEM_MESSAGE_NOTICE),
-              timeout: TIMEOUT_SECONDS,
-              statusMessage: STATUS_MESSAGE,
-            },
-          ],
-        },
-      ],
-      Stop: [stopEntry(guardedNode(hookPath, SYSTEM_MESSAGE_NOTICE))],
-    },
+    hooks: buildClaudeCompatibleHooks(
+      'Edit|Write|apply_patch',
+      hookPath,
+      SYSTEM_MESSAGE_NOTICE,
+    ),
   };
 }
 
@@ -259,22 +239,7 @@ export function buildGitHubHooksManifest() {
 // https://docs.x.ai/build/features/hooks
 export function buildGrokHooksManifest() {
   return {
-    hooks: {
-      PostToolUse: [
-        {
-          matcher: 'Edit|Write|MultiEdit',
-          hooks: [
-            {
-              type: 'command',
-              command: guardedNode(GROK_PROJECT_HOOK),
-              timeout: TIMEOUT_SECONDS,
-              statusMessage: STATUS_MESSAGE,
-            },
-          ],
-        },
-      ],
-      Stop: [stopEntry(guardedNode(GROK_PROJECT_HOOK))],
-    },
+    hooks: buildClaudeCompatibleHooks('Edit|Write|MultiEdit', GROK_PROJECT_HOOK),
   };
 }
 

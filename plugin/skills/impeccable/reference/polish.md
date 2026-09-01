@@ -29,10 +29,10 @@ Use the feature yourself at the surface's representative sizes: desktop and mobi
 If a prior critique exists, use it as one input:
 
 ```bash
-node .claude/skills/impeccable/scripts/critique-storage.mjs latest "<resolved target>"
+node "<skill-base-dir>/scripts/critique-storage.mjs" latest "<resolved target>" --json
 ```
 
-Exit 0 returns the latest snapshot; incorporate relevant P0/P1 findings and name the snapshot read. Exit 2 means none exists. Perform an independent pass either way.
+Exit 0 returns JSON with the latest snapshot's `body` and an exact `snapshot_file` identity. Retain `snapshot_file` until the end of the pass. For a local file target, the helper compares the file's exact current content fingerprint with the fingerprint captured by critique. Unchanged staged, unstaged, or untracked content remains current; any byte change, deletion, or replacement with a non-file closes the backlog it identified while preserving its trend history and exits 2. A URL target has no local fingerprint and remains current until explicitly closed. When current, incorporate relevant P0/P1 findings from `body` and name the snapshot read. Exit 2 means none exists or the target changed. Perform an independent pass either way.
 
 ## 3. Triage
 
@@ -95,3 +95,11 @@ Walk the complete path again with mouse, keyboard, and touch where applicable. C
 Follow the quality guidance supplied by `context.mjs` and hooks, then run any other relevant QA commands. Context requests a manual scan only when no automatic detector is active; never add another detector pass. Fix real defects and document only narrow intentional exceptions. A clean scan does not replace visual judgment.
 
 Finish with a source diff: remove accidental churn, orphaned code, redundant values, and temporary artifacts. Ship only when the feature is functionally complete and consistently finished across the path.
+
+When this pass clears every Priority Issue it took from a snapshot, close that snapshot:
+
+```bash
+node "<skill-base-dir>/scripts/critique-storage.mjs" close "<resolved target>" "<snapshot_file returned by latest>"
+```
+
+This closes only the snapshot this pass actually processed; if a newer critique landed meanwhile, its backlog stays live. Do not close when no snapshot was read, when `snapshot_file` was not retained, or when Priority Issues remain.
