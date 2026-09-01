@@ -389,6 +389,25 @@ describe('checkSourceDesignSystem()', () => {
     );
   });
 
+  it('judges var() radius fallbacks without keeping the closing parenthesis', () => {
+    const designSystem = normalizeDesignSystem({
+      frontmatter: { rounded: { md: '8px' } },
+    });
+    const findings = checkSourceDesignSystem(`
+.good {
+  border-radius: var(--radius-md, 8px);
+}
+.bad {
+  border-radius: var(--radius-custom, 18px);
+}
+`, '/tmp/radius-fallbacks.css', { designSystem });
+
+    assert.deepEqual(
+      findings.map((item) => [item.antipattern, item.ignoreValue]),
+      [['design-system-radius', '18px']],
+    );
+  });
+
   it('strips CSS priority markers before checking font-family declarations', () => {
     const designSystem = sampleDesignSystem();
     const findings = checkSourceDesignSystem(`
