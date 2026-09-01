@@ -388,36 +388,45 @@ describe('live-browser source contracts', () => {
     );
   });
 
-  it('normalizes generated JSX source before source-fallback DOM parsing', () => {
+  it('never DOMParser-injects JSX source (#454)', () => {
+    const isJsxStart = SOURCE.indexOf('function isJsxSourceFile(');
+    const isJsxEnd = SOURCE.indexOf('function completeSourceInjection', isJsxStart);
+    const isJsxSourceFile = new Function(
+      SOURCE.slice(isJsxStart, isJsxEnd) + '\nreturn isJsxSourceFile;',
+    )();
+
+    assert.equal(isJsxSourceFile('src/App.jsx'), true);
+    assert.equal(isJsxSourceFile('panel/src/Widget.tsx'), true);
+    assert.equal(isJsxSourceFile('index.html'), false);
+    assert.equal(isJsxSourceFile('Card.vue'), false);
+
+    const injectStart = SOURCE.indexOf('function injectVariantsFromSource(');
+    const injectEnd = SOURCE.indexOf('function buildSvelteExpressionTextMap', injectStart);
+    const injectFn = SOURCE.slice(injectStart, injectEnd);
+    const jsxGateIdx = injectFn.indexOf('if (isJsxSourceFile(filePath))');
+    const htmlFetchIdx = injectFn.indexOf("const url = 'http://localhost:'");
+    assert.ok(jsxGateIdx !== -1 && htmlFetchIdx > jsxGateIdx, 'JSX must return before /source fetch');
+    assert.doesNotMatch(
+      injectFn.slice(jsxGateIdx, htmlFetchIdx),
+      /replaceChild/,
+      'the JSX gate must not replaceChild a React tree',
+    );
+    assert.doesNotMatch(SOURCE, /function normalizeSourceFallbackBlock/);
+    assert.doesNotMatch(SOURCE, /function jsxStyleObjectToCss/);
     assert.match(
-      SOURCE,
-      /parser\.parseFromString\(normalizeSourceFallbackBlock\(block, filePath\), 'text\/html'\)/,
-      'source fallback should normalize JSX wrapper syntax before DOMParser sees it',
+      injectFn,
+      /parser\.parseFromString\(block, 'text\/html'\)/,
+      'HTML fallback should parse the extracted marker block as HTML',
     );
     assert.match(
-      SOURCE,
-      /function normalizeSourceFallbackBlock\(block, filePath\)[\s\S]*?<style\\b\(\[\^>\]\*\)>\\s\*\\\{\\s\*`\(\[\\s\\S\]\*\?\)`\\s\*\\\}\\s\*<\\\/style>/,
-      'source fallback should unwrap JSX style template literals',
-    );
-    assert.match(
-      SOURCE,
-      /replace\(\/\\bclassName\\s\*=\/g, 'class='\)/,
-      'source fallback should translate className back to HTML class attributes',
-    );
-    assert.match(
-      SOURCE,
-      /value\.replace\(\/\\\$\\\{\[\^}\]\*\\\}\/g, ' '\)/,
-      'source fallback should reduce JSX template className values to literal class tokens',
+      injectFn,
+      /const startMark = '<!-- impeccable-variants-start ' \+ sessionId \+ ' -->'/,
+      'HTML fallback should still scan HTML comment markers',
     );
     assert.doesNotMatch(
       SOURCE,
       /querySelectorAll\(tag \+ '\\.' \+ cls\.split/,
       'source fallback should not construct unsafe selectors from JSX-ish class strings',
-    );
-    assert.match(
-      SOURCE,
-      /function jsxStyleObjectToCss\(body\)/,
-      'source fallback should translate simple JSX style objects such as display:none',
     );
   });
 

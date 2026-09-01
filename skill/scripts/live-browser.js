@@ -6193,6 +6193,72 @@
     showToast('The previous live session no longer matches the source file, so it was discarded. Pick an element to start fresh.', 6000);
   }
 
+  function isJsxSourceFile(filePath) {
+    return /\.[cm]?[jt]sx$/i.test(String(filePath || ''));
+  }
+
+  function completeSourceInjection(wrapper, sessionId, opts) {
+    recoveryWaitingForAnchor = false;
+    if (pendingVariantAnchorRetryObserver) {
+      pendingVariantAnchorRetryObserver.disconnect();
+      pendingVariantAnchorRetryObserver = null;
+    }
+
+    const previousVisibleVariant = currentSessionId === sessionId ? visibleVariant : 0;
+    const variants = wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])');
+    arrivedVariants = variants.length;
+    expectedVariants = parseInt(wrapper.dataset.impeccableVariantCount || arrivedVariants);
+    if (arrivedVariants <= 0) {
+      if (state === 'GENERATING') {
+        // Mid-generation the source legitimately holds a scaffold wrapper
+        // with no variants yet (the server-side preflight wraps before the
+        // agent writes). Tearing the session down here would destroy an
+        // in-flight generation; stay in GENERATING — the variant observer
+        // is armed and the server re-delivers a missed `done`.
+        if (!opts.generationCompleted) {
+          console.log('[impeccable] Source has scaffold but no variants yet; still generating.');
+          return;
+        }
+        // Generation finished, yet the read shows only the scaffold: the
+        // source view is stale and no further event will fire. Re-read a
+        // few times before surfacing recovery — a single silent return
+        // here would strand the tab in GENERATING forever.
+        const attempt = opts.attempt || 0;
+        if (attempt < COMPLETED_SOURCE_FALLBACK_RETRIES) {
+          console.log('[impeccable] Generation is done but source shows no variants yet; retrying read ('
+            + (attempt + 1) + '/' + COMPLETED_SOURCE_FALLBACK_RETRIES + ').');
+          setTimeout(() => {
+            if (state !== 'GENERATING' || currentSessionId !== sessionId) return;
+            if (arrivedVariants > 0) return;
+            injectVariantsFromSource(opts.filePath, sessionId, { ...opts, attempt: attempt + 1 });
+          }, COMPLETED_SOURCE_FALLBACK_RETRY_MS);
+          return;
+        }
+      }
+      recoverEmptyCycling('source-fallback-empty');
+      return;
+    }
+    const saved = loadSession();
+    const savedVisibleVariant = saved && saved.id === sessionId ? saved.visible : 0;
+    visibleVariant = previousVisibleVariant > 0 && previousVisibleVariant <= arrivedVariants
+      ? previousVisibleVariant
+      : (savedVisibleVariant > 0 && savedVisibleVariant <= arrivedVariants ? savedVisibleVariant : 1);
+    showVariantInDOM(sessionId, visibleVariant);
+
+    selectedElement = pickVariantContent(wrapper, visibleVariant) || wrapper.parentElement;
+
+    setLiveState('CYCLING');
+    recoveryWaitingForAnchor = false;
+    hideShaderOverlay();
+    showOrUpdateCyclingBar();
+    disableInlineEdit();
+    refreshParamsPanel();
+    positionBar();
+    saveSession();
+    completeParameterGenerationIfReady();
+    console.log('[impeccable] Injected ' + arrivedVariants + ' variants from source file.');
+  }
+
   /**
    * No-HMR fallback: fetch the raw source file from the live server,
    * parse it, extract the variant wrapper, and inject it into the live DOM.
@@ -6210,14 +6276,44 @@
       return;
     }
     rememberSessionFileMeta({ file: filePath });
+    if (isJsxSourceFile(filePath)) {
+      const liveWrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+      if (liveWrapper && liveWrapper.querySelector('[data-impeccable-variant]:not([data-impeccable-variant="original"])')) {
+        completeSourceInjection(liveWrapper, sessionId, { ...opts, filePath });
+        return;
+      }
+      // #454: never fetch/parse JSX. Empty wrap stays for HMR; missing wrap recovers.
+      if (opts.generationCompleted && sessionId === currentSessionId) {
+        const attempt = opts.attempt || 0;
+        if (attempt < COMPLETED_SOURCE_FALLBACK_RETRIES) {
+          setTimeout(() => {
+            if (state !== 'GENERATING' || currentSessionId !== sessionId) return;
+            injectVariantsFromSource(filePath, sessionId, { ...opts, attempt: attempt + 1 });
+          }, COMPLETED_SOURCE_FALLBACK_RETRY_MS);
+          return;
+        }
+        if (!liveWrapper) recoverEmptyCycling('source-fallback-empty');
+        return;
+      }
+      if (opts.orphanDiscard && !liveWrapper && sessionId === currentSessionId) {
+        const attempt = opts._orphanAttempt || 0;
+        if (attempt < COMPLETED_SOURCE_FALLBACK_RETRIES) {
+          setTimeout(() => {
+            if (sessionId !== currentSessionId) return;
+            if (state !== 'GENERATING' && state !== 'CYCLING') return;
+            injectVariantsFromSource(filePath, sessionId, { ...opts, _orphanAttempt: attempt + 1 });
+          }, COMPLETED_SOURCE_FALLBACK_RETRY_MS);
+        } else {
+          discardOrphanedSession('variant wrapper missing from source');
+        }
+      }
+      return;
+    }
     const url = 'http://localhost:' + PORT + '/source?token=' + TOKEN + '&path=' + encodeURIComponent(filePath);
     fetch(url)
       .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
       .then(html => {
         const parser = new DOMParser();
-        let srcWrapper = null;
-
-        // Full-file parse works for HTML/JSX; Astro/Vue sources need marker extraction.
         const startMark = '<!-- impeccable-variants-start ' + sessionId + ' -->';
         const endMark = '<!-- impeccable-variants-end ' + sessionId + ' -->';
         const startIdx = html.indexOf(startMark);
@@ -6225,8 +6321,8 @@
         const block = startIdx !== -1 && endIdx !== -1 && endIdx > startIdx
           ? html.slice(startIdx + startMark.length, endIdx).trim()
           : html;
-        const doc = parser.parseFromString(normalizeSourceFallbackBlock(block, filePath), 'text/html');
-        srcWrapper = doc.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+        const doc = parser.parseFromString(block, 'text/html');
+        const srcWrapper = doc.querySelector('[data-impeccable-variants="' + sessionId + '"]');
         if (!srcWrapper) {
           console.warn('[impeccable] Variant wrapper not found in source file.');
           // A resumed cycling session whose wrapper is gone from source is an
@@ -6251,136 +6347,38 @@
           return;
         }
 
-        const previousVisibleVariant = currentSessionId === sessionId ? visibleVariant : 0;
-        const wrapper = srcWrapper.cloneNode(true);
-
-        // Wrapper already in DOM (wrap HMR landed, variant insert did not).
         const existingWrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
         if (existingWrapper) {
+          const wrapper = srcWrapper.cloneNode(true);
           existingWrapper.parentElement.replaceChild(wrapper, existingWrapper);
-        } else {
-          const origContent = srcWrapper.querySelector('[data-impeccable-variant="original"] > :first-child');
-          if (!origContent) return;
-
-          const liveEl = resolveLiveInjectionAnchor(origContent.outerHTML);
-          if (!liveEl) {
-            console.warn('[impeccable] Could not find original element in live DOM.');
-            enterRecoveryWaitingForAnchor({
-              filePath,
-              sessionId,
-              srcWrapper,
-              checkpointReason: 'variant_anchor_missing',
-              trackScroll: false,
-            });
-            return;
-          }
-
-          liveEl.parentElement.replaceChild(wrapper, liveEl);
-        }
-        recoveryWaitingForAnchor = false;
-        if (pendingVariantAnchorRetryObserver) {
-          pendingVariantAnchorRetryObserver.disconnect();
-          pendingVariantAnchorRetryObserver = null;
-        }
-
-        // Update state: count variants, preserving the user's current variant
-        // when a late HMR/source reinjection lands after they have cycled.
-        const variants = wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])');
-        arrivedVariants = variants.length;
-        expectedVariants = parseInt(wrapper.dataset.impeccableVariantCount || arrivedVariants);
-        if (arrivedVariants <= 0) {
-          if (state === 'GENERATING') {
-            // Mid-generation the source legitimately holds a scaffold wrapper
-            // with no variants yet (the server-side preflight wraps before the
-            // agent writes). Tearing the session down here would destroy an
-            // in-flight generation; stay in GENERATING — the variant observer
-            // is armed and the server re-delivers a missed `done`.
-            if (!opts.generationCompleted) {
-              console.log('[impeccable] Source has scaffold but no variants yet; still generating.');
-              return;
-            }
-            // Generation finished, yet the read shows only the scaffold: the
-            // source view is stale and no further event will fire. Re-read a
-            // few times before surfacing recovery — a single silent return
-            // here would strand the tab in GENERATING forever.
-            const attempt = opts.attempt || 0;
-            if (attempt < COMPLETED_SOURCE_FALLBACK_RETRIES) {
-              console.log('[impeccable] Generation is done but source shows no variants yet; retrying read ('
-                + (attempt + 1) + '/' + COMPLETED_SOURCE_FALLBACK_RETRIES + ').');
-              setTimeout(() => {
-                if (state !== 'GENERATING' || currentSessionId !== sessionId) return;
-                if (arrivedVariants > 0) return;
-                injectVariantsFromSource(filePath, sessionId, { ...opts, attempt: attempt + 1 });
-              }, COMPLETED_SOURCE_FALLBACK_RETRY_MS);
-              return;
-            }
-          }
-          recoverEmptyCycling('source-fallback-empty');
+          completeSourceInjection(wrapper, sessionId, { ...opts, filePath });
           return;
         }
-        const saved = loadSession();
-        const savedVisibleVariant = saved && saved.id === sessionId ? saved.visible : 0;
-        visibleVariant = previousVisibleVariant > 0 && previousVisibleVariant <= arrivedVariants
-          ? previousVisibleVariant
-          : (savedVisibleVariant > 0 && savedVisibleVariant <= arrivedVariants ? savedVisibleVariant : 1);
-        showVariantInDOM(sessionId, visibleVariant);
 
-        // Update selectedElement to the visible variant's content
-        selectedElement = pickVariantContent(wrapper, visibleVariant) || wrapper.parentElement;
+        const wrapper = srcWrapper.cloneNode(true);
+        const origContent = srcWrapper.querySelector('[data-impeccable-variant="original"] > :first-child');
+        if (!origContent) return;
 
-        setLiveState('CYCLING');
-        recoveryWaitingForAnchor = false;
-        hideShaderOverlay();
-        showOrUpdateCyclingBar();
-        disableInlineEdit();
-        refreshParamsPanel();
-        positionBar();
-        saveSession();
-        completeParameterGenerationIfReady();
-        console.log('[impeccable] Injected ' + arrivedVariants + ' variants from source file.');
+        const liveEl = resolveLiveInjectionAnchor(origContent.outerHTML);
+        if (!liveEl) {
+          console.warn('[impeccable] Could not find original element in live DOM.');
+          enterRecoveryWaitingForAnchor({
+            filePath,
+            sessionId,
+            srcWrapper,
+            checkpointReason: 'variant_anchor_missing',
+            trackScroll: false,
+          });
+          return;
+        }
+
+        liveEl.parentElement.replaceChild(wrapper, liveEl);
+        completeSourceInjection(wrapper, sessionId, { ...opts, filePath });
       })
       .catch(err => {
         console.error('[impeccable] Failed to fetch source:', err);
         showToast('Could not load variants. Try refreshing the page.', 5000);
       });
-  }
-
-  function normalizeSourceFallbackBlock(block, filePath) {
-    if (!/\.[cm]?[jt]sx$/i.test(String(filePath || ''))) return block;
-    return String(block)
-      .replace(
-        /<style\b([^>]*)>\s*\{\s*`([\s\S]*?)`\s*\}\s*<\/style>/g,
-        (_match, attrs, css) => '<style' + attrs + '>' + css + '</style>',
-      )
-      .replace(/\bclassName\s*=\s*\{\s*`([^`]*?)`\s*\}/g, (_match, value) => {
-        const literalClasses = value.replace(/\$\{[^}]*\}/g, ' ').replace(/\s+/g, ' ').trim();
-        return literalClasses ? 'class="' + escapeHtml(literalClasses) + '"' : '';
-      })
-      .replace(/\bclassName\s*=/g, 'class=')
-      .replace(/\sstyle=\{\{([\s\S]*?)\}\}/g, (_match, body) => {
-        const css = jsxStyleObjectToCss(body);
-        return css ? ' style="' + escapeHtml(css) + '"' : '';
-      });
-  }
-
-  function jsxStyleObjectToCss(body) {
-    const declarations = [];
-    const re = /(["'][^"']+["']|[A-Za-z_$][\w$-]*)\s*:\s*(?:"([^"]*)"|'([^']*)'|(-?\d+(?:\.\d+)?))/g;
-    let match;
-    while ((match = re.exec(String(body || '')))) {
-      const prop = jsxStylePropToCss(match[1]);
-      const value = match[2] ?? match[3] ?? match[4] ?? '';
-      if (!prop || value === '') continue;
-      declarations.push(prop + ': ' + value);
-    }
-    return declarations.join('; ');
-  }
-
-  function jsxStylePropToCss(prop) {
-    let out = String(prop || '').trim().replace(/^["']|["']$/g, '');
-    if (!out) return '';
-    if (out.startsWith('--')) return out;
-    return out.replace(/[A-Z]/g, (ch) => '-' + ch.toLowerCase()).replace(/^-ms-/, '-ms-');
   }
 
   function buildSvelteExpressionTextMap(sourceOriginal, liveOriginal) {
