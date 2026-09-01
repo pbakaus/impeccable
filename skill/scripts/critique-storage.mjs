@@ -18,7 +18,7 @@
  *   node critique-storage.mjs write <slug> <snapshot-body-file>
  *   node critique-storage.mjs latest <slug> [--json]
  *   node critique-storage.mjs trend <slug> [limit]
- *   node critique-storage.mjs close <slug> <snapshot-file>
+ *   node critique-storage.mjs close <resolved-target> <snapshot-file>
  *
  * Note: there is intentionally no `ignore` subcommand. ignore.md is a plain
  * markdown file; the model reads it directly with its file-read tool. This
@@ -401,7 +401,7 @@ function main(argv) {
       const [slugArg, snapshotFile, ...extra] = args;
       const slug = coerceSlug(slugArg);
       if (!slug || !snapshotFile || extra.length > 0) {
-        process.stderr.write('usage: close <slug-or-target> <snapshot-file>\n');
+        process.stderr.write('usage: close <resolved-target> <snapshot-file>\n');
         process.exit(1);
       }
       if (
@@ -409,6 +409,26 @@ function main(argv) {
         || !SNAPSHOT_FILENAME.test(snapshotFile)
         || !snapshotFile.endsWith(`__${slug}.md`)
       ) process.exit(2);
+
+      // A slug and filename are not enough to prove ownership because two
+      // distinct targets can normalize to the same slug. Modern snapshots
+      // carry a canonical identity, so require the supplied resolved target
+      // to match it before allowing the exact snapshot to be closed. Legacy
+      // snapshots without identity retain their historical close behavior.
+      const snapshotPath = path.join(getCritiqueDir(process.cwd()), snapshotFile);
+      let snapshot;
+      try {
+        if (!fs.lstatSync(snapshotPath).isFile()) process.exit(2);
+        snapshot = readSnapshot(snapshotPath);
+      } catch {
+        process.exit(2);
+      }
+      const recordedTargetIdentity = snapshotTargetIdentity(snapshot);
+      if (
+        recordedTargetIdentity
+        && recordedTargetIdentity !== resolveTargetIdentity(slugArg)
+      ) process.exit(2);
+
       const closed = closeSnapshot(snapshotFile);
       if (!closed) { process.exit(2); }
       process.stdout.write(`${closed}\n`);

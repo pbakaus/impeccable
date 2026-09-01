@@ -668,6 +668,21 @@ describe('CLI entry point', () => {
     });
     assert.equal(new Set(results.map((result) => result.snapshot_file)).size, 3);
 
+    const wrongClose = spawnSync(process.execPath, [
+      SCRIPT,
+      'close',
+      targets[1][0],
+      results[0].snapshot_file,
+    ], { cwd, encoding: 'utf-8' });
+    assert.equal(wrongClose.status, 2, `stderr: ${wrongClose.stderr}`);
+    const httpStillOpen = spawnSync(
+      process.execPath,
+      [SCRIPT, 'latest', targets[0][0]],
+      { cwd, encoding: 'utf-8' },
+    );
+    assert.equal(httpStillOpen.status, 0, `stderr: ${httpStillOpen.stderr}`);
+    assert.match(httpStillOpen.stdout, /http backlog/);
+
     const closeHttp = spawnSync(process.execPath, [
       SCRIPT,
       'close',
