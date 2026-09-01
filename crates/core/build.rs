@@ -74,6 +74,7 @@ fn main() {
         bundle.display()
     );
 
+    check_rustc_version(&dir);
     println!("cargo:rustc-link-search=native={}", dir.display());
     println!("cargo:rustc-link-lib=static={LIB_NAME}");
     println!(
@@ -166,6 +167,10 @@ fn fetch_into(cache: &Path, lib: &Path, version: &str, short: &str, file_name: &
     let tmp = cache.join(format!(".{file_name}.part.{}", std::process::id()));
     fs::write(&tmp, &bytes).unwrap_or_else(|e| panic!("cannot write {}: {e}", tmp.display()));
     fs::rename(&tmp, lib).unwrap_or_else(|e| panic!("cannot move {} into place: {e}", tmp.display()));
+    // Best effort: the compiler that built the release, for check_rustc_version.
+    if let Ok(v) = download(&format!("{base}/detector-v{version}/rustc-version.txt")) {
+        let _ = fs::write(cache.join("rustc-version.txt"), v);
+    }
     println!("cargo:warning=fetched detector v{version} for {short} into {}", lib.display());
 }
 
@@ -253,4 +258,29 @@ fn sha256_hex(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     let digest = Sha256::digest(bytes);
     digest.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// The archive's objects reference std by mangled symbol name, so they only
+/// link against the exact rustc that built them. `cargo xtask detector-archive`
+/// writes `rustc-version.txt` next to the archive and the release ships it;
+/// when it is there, refuse a mismatch with a message that names both
+/// versions instead of leaving the linker to print pages of undefined symbols.
+fn check_rustc_version(dir: &Path) {
+    let recorded = match fs::read_to_string(dir.join("rustc-version.txt")) {
+        Ok(s) => s.trim().to_string(),
+        Err(_) => return,
+    };
+    let rustc = env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
+    let out = match std::process::Command::new(&rustc).arg("-V").output() {
+        Ok(o) => String::from_utf8_lossy(&o.stdout).trim().to_string(),
+        Err(_) => return,
+    };
+    if !recorded.is_empty() && recorded != out {
+        panic!(
+            "the detector archive in {} was built by `{recorded}` but this build uses `{out}`. \
+             Both must be the exact version rust-toolchain.toml pins (run `rustup show`); a toolchain \
+             bump needs a new detector release (docs/ENGINE.md).",
+            dir.display()
+        );
+    }
 }
