@@ -73,8 +73,9 @@ describe('skill reference authoring contracts', () => {
     const inspectAndFinish = newWork.match(/## 7\. Inspect and finish\n([\s\S]*?)(?:\n## |$)/)?.[1] ?? '';
 
     assert.match(inspectAndFinish, /native or browser-canvas screenshot path/);
-    assert.match(inspectAndFinish, /npx playwright install/);
-    assert.match(inspectAndFinish, /installed Chrome/);
+    assert.match(inspectAndFinish, /Never run `npx playwright install`/);
+    assert.match(inspectAndFinish, /installed Chrome, Chromium, or Edge/);
+    assert.match(inspectAndFinish, /fail fast if none is present/);
     assert.match(inspectAndFinish, /leftover page from another process on the same localhost port/);
   });
 });
