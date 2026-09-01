@@ -99,3 +99,20 @@ byte-for-byte against the upstream JS on the same inputs before recording.
 - `critique-write-monorepo-child`: `write` stamps the resolved `target_identity`, and a `latest` run from a sibling app resolves to a different identity so it exits 2 rather than returning the neighbor's backlog (upstream 5211bdf4, #660).
 - `detect-fixture-json-overused-font-html`, `detect-fixture-text-overused-font-html`: new fixture added on the swap branch; overused-font primary selection now skips only the CSS generics, so a system stack keeps its system face as primary and later web-font fallbacks like Roboto no longer flag (upstream 2cfd6076, #678).
 - `detect-dir-json-all-fixtures`, `detect-dir-text-all-fixtures`, `detect-dir-quiet-all-fixtures`, `detect-scope-type`, `detect-scope-both`, `detect-no-advisory-json`, `detect-no-advisory-text`: the directory sweep picks up the new overused-font fixture and the #678 primary-face change (upstream 2cfd6076, #678).
+
+## Recorded 2026-08-31: E8 hook-manifest self-heal on upgrade
+
+Two new cases pin the fix for triage E8 (the v3-to-launcher upgrade path). The
+JS `automaticHookMode` counted any hook command naming the skill as an active
+hook, including the JS-era `node .../hook.mjs` form. After a skill update the
+`.mjs` script no longer exists, so that manifest points at a dead command yet
+still suppressed `MANUAL_DETECTOR_REQUIRED`, leaving the detector dark. The
+engine now treats a manifest that names ONLY the `.mjs` form as not an active
+launcher hook, so the manual detector fallback fires until install/update
+repairs the manifest to the launcher form. The launcher form still counts as
+active exactly as before. No existing golden moved: every other `context` case
+runs under the `source` provider, whose manifest list is empty, so none of them
+scan a hook manifest.
+
+- `context-stale-hook-manifest`: a `.claude/settings.local.json` naming `node "${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/hook.mjs"` under the `claude-code` provider emits `MANUAL_DETECTOR_REQUIRED` (the stale marker no longer counts as active).
+- `context-launcher-hook-active`: the same manifest in the launcher form (`"…/impeccable" hook`) suppresses `MANUAL_DETECTOR_REQUIRED`, confirming the launcher marker is still recognized as active.

@@ -42,6 +42,7 @@ const BASE_ENV = {
   IMPECCABLE_UPDATE_CACHE: null,
   IMPECCABLE_NO_STALENESS_CHECK: null,
   IMPECCABLE_HOOK_DISABLED: null,
+  IMPECCABLE_PROVIDER_ID: null,
   IMPECCABLE_PALETTE_SEED: null,
   IMPECCABLE_CONCEPT_SEED: null,
   IMPECCABLE_COMPOSITIONS: null,
@@ -225,6 +226,14 @@ const cases = [
   { id: 'context-build-path-unset-with-surfaces', verb: 'context', workspace: 'ctx-product-only', setup: (ws) => write(ws, '.impeccable/surfaces/src-app-tsx.md', '---\nversion: 1\nslug: "src-app-tsx"\nprimary_target: "src/App.tsx"\nrelated_targets: []\n---\n\n# Surface brief: App\n'), env: env(), files: IMPECCABLE_FILES },
   { id: 'context-project-roots-match-nothing', verb: 'context', workspace: 'ctx-monorepo', setup: (ws) => write(ws, '.impeccable/config.json', JSON.stringify({ projectRoots: ['services/*'] }, null, 2) + '\n'), env: env(), files: IMPECCABLE_FILES },
   { id: 'context-hook-manifest-source-provider', verb: 'context', workspace: 'ctx-product-only', setup: (ws) => write(ws, '.claude/settings.local.json', JSON.stringify({ hooks: { PostToolUse: [{ hooks: [{ type: 'command', command: 'node .claude/skills/impeccable/scripts/hook.mjs' }] }] } }, null, 2) + '\n'), env: env(), files: IMPECCABLE_FILES },
+  // Upgrade path (triage E8): a v3 install left a `.claude/settings.local.json`
+  // naming the retired `node .../hook.mjs` script. Under the real provider the
+  // stale marker must NOT count as an active hook, so MANUAL_DETECTOR_REQUIRED
+  // still fires (the launcher-era script no longer exists; the hook is dead).
+  { id: 'context-stale-hook-manifest', verb: 'context', workspace: 'ctx-product-only', setup: (ws) => write(ws, '.claude/settings.local.json', JSON.stringify({ hooks: { PostToolUse: [{ matcher: 'Edit', hooks: [{ type: 'command', command: 'node "${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/hook.mjs"' }] }] } }, null, 2) + '\n'), env: env({ IMPECCABLE_PROVIDER_ID: 'claude-code' }), files: IMPECCABLE_FILES },
+  // Control: the launcher-era manifest still counts as an active hook, so
+  // MANUAL_DETECTOR_REQUIRED is suppressed exactly as before.
+  { id: 'context-launcher-hook-active', verb: 'context', workspace: 'ctx-product-only', setup: (ws) => write(ws, '.claude/settings.local.json', JSON.stringify({ hooks: { PostToolUse: [{ matcher: 'Edit', hooks: [{ type: 'command', command: '[ ! -f "${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable" ] || "${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable" hook' }] }] } }, null, 2) + '\n'), env: env({ IMPECCABLE_PROVIDER_ID: 'claude-code' }), files: IMPECCABLE_FILES },
 
   // ======================================================================
   // doctor
