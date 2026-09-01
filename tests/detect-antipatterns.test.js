@@ -35,6 +35,15 @@ import {
   scanHtmlForShapeAssembledIllustration,
 } from '../cli/engine/rules/checks.mjs';
 import { parseGradientColors } from '../cli/engine/shared/color.mjs';
+import {
+  createDetectorProfile,
+  profileFindings,
+  profileFindingsAsync,
+  profileStep,
+  profileStepAsync,
+  recordProfileEvent,
+  summarizeDetectorProfile,
+} from '../cli/engine/profile/profiler.mjs';
 
 const FIXTURES = path.join(import.meta.dir, 'fixtures', 'antipatterns');
 const SCRIPT = path.join(import.meta.dir, '..', 'cli', 'engine', 'detect-antipatterns.mjs');
@@ -96,6 +105,53 @@ function pageTypographyForGoogleFonts(href) {
   };
   return checkPageTypography(doc, win);
 }
+
+describe('detector profiler', () => {
+  test('normalizes recorded events before summarizing them', () => {
+    const profile = createDetectorProfile();
+    recordProfileEvent(profile, {
+      engine: 'regex',
+      ms: Number.NaN,
+      findings: Number.POSITIVE_INFINITY,
+      detail: 'source scan',
+      findingIds: ['side-tab'],
+    });
+    recordProfileEvent(profile, { phase: 'parse', ms: 2, findings: 1 });
+
+    expect(profile.events[0]).toEqual({
+      engine: 'regex', phase: 'unknown', ruleId: 'unknown', target: '', ms: 0, findings: 0,
+      detail: 'source scan', findingIds: ['side-tab'],
+    });
+    expect(summarizeDetectorProfile(profile).map(({ phase, totalMs, findings }) => (
+      { phase, totalMs, findings }
+    ))).toEqual([
+      { phase: 'parse', totalMs: 2, findings: 1 },
+      { phase: 'unknown', totalMs: 0, findings: 0 },
+    ]);
+  });
+
+  test('preserves sync and async result and error contracts', async () => {
+    const profile = [];
+    const findings = [{ id: 'side-tab' }, { type: 'side-tab' }, { antipattern: 'dark-glow' }];
+
+    expect(profileFindings(profile, { phase: 'sync-findings' }, () => findings)).toBe(findings);
+    expect(await profileFindingsAsync(profile, { phase: 'async-findings' }, async () => findings)).toBe(findings);
+    expect(() => profileStep(profile, { phase: 'sync-step' }, () => {
+      throw new Error('sync failure');
+    })).toThrow('sync failure');
+    await expect(profileStepAsync(profile, { phase: 'async-step' }, async () => {
+      throw new Error('async failure');
+    })).rejects.toThrow('async failure');
+
+    expect(profile.map(({ phase, findings: count, findingIds }) => ({ phase, count, findingIds }))).toEqual([
+      { phase: 'sync-findings', count: 3, findingIds: ['side-tab', 'dark-glow'] },
+      { phase: 'async-findings', count: 3, findingIds: ['side-tab', 'dark-glow'] },
+      { phase: 'sync-step', count: 0, findingIds: undefined },
+      { phase: 'async-step', count: 0, findingIds: undefined },
+    ]);
+    expect(profile.every(event => Number.isFinite(event.ms) && event.ms >= 0)).toBe(true);
+  });
+});
 
 
 // ---------------------------------------------------------------------------

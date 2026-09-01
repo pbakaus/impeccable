@@ -8,20 +8,24 @@ function createDetectorProfile() {
   return { events: [] };
 }
 
-function recordProfileEvent(profile, event) {
-  if (!profile) return;
-  const normalized = {
+function normalizeProfileEvent(event) {
+  return {
     engine: event.engine || 'unknown',
     phase: event.phase || 'unknown',
     ruleId: event.ruleId || 'unknown',
     target: event.target || '',
     ms: Number.isFinite(event.ms) ? event.ms : 0,
     findings: Number.isFinite(event.findings) ? event.findings : 0,
+    ...(event.detail ? { detail: event.detail } : {}),
+    ...(Array.isArray(event.findingIds) && event.findingIds.length
+      ? { findingIds: event.findingIds }
+      : {}),
   };
-  if (event.detail) normalized.detail = event.detail;
-  if (Array.isArray(event.findingIds) && event.findingIds.length) {
-    normalized.findingIds = event.findingIds;
-  }
+}
+
+function recordProfileEvent(profile, event) {
+  if (!profile) return;
+  const normalized = normalizeProfileEvent(event);
   if (typeof profile === 'function') {
     profile(normalized);
   } else if (typeof profile.record === 'function') {
@@ -38,10 +42,7 @@ function extractFindingIds(findings) {
   return [...new Set(findings.map(f => f?.id || f?.type || f?.antipattern).filter(Boolean))];
 }
 
-function profileFindings(profile, meta, callback) {
-  if (!profile) return callback();
-  const started = profileNow();
-  const findings = callback();
+function recordDuration(profile, meta, started, findings) {
   recordProfileEvent(profile, {
     ...meta,
     ms: profileNow() - started,
@@ -49,6 +50,12 @@ function profileFindings(profile, meta, callback) {
     findingIds: extractFindingIds(findings),
   });
   return findings;
+}
+
+function profileFindings(profile, meta, callback) {
+  if (!profile) return callback();
+  const started = profileNow();
+  return recordDuration(profile, meta, started, callback());
 }
 
 function profileStep(profile, meta, callback) {
@@ -57,25 +64,14 @@ function profileStep(profile, meta, callback) {
   try {
     return callback();
   } finally {
-    recordProfileEvent(profile, {
-      ...meta,
-      ms: profileNow() - started,
-      findings: 0,
-    });
+    recordDuration(profile, meta, started);
   }
 }
 
 async function profileFindingsAsync(profile, meta, callback) {
   if (!profile) return callback();
   const started = profileNow();
-  const findings = await callback();
-  recordProfileEvent(profile, {
-    ...meta,
-    ms: profileNow() - started,
-    findings: Array.isArray(findings) ? findings.length : 0,
-    findingIds: extractFindingIds(findings),
-  });
-  return findings;
+  return recordDuration(profile, meta, started, await callback());
 }
 
 async function profileStepAsync(profile, meta, callback) {
@@ -84,11 +80,7 @@ async function profileStepAsync(profile, meta, callback) {
   try {
     return await callback();
   } finally {
-    recordProfileEvent(profile, {
-      ...meta,
-      ms: profileNow() - started,
-      findings: 0,
-    });
+    recordDuration(profile, meta, started);
   }
 }
 
@@ -107,19 +99,15 @@ function summarizeDetectorProfile(profile) {
     : (Array.isArray(profile?.events) ? profile.events : []);
   const groups = new Map();
   for (const event of events) {
-    const key = [
-      event.engine || 'unknown',
-      event.phase || 'unknown',
-      event.ruleId || 'unknown',
-      event.target || '',
-    ].join('\u0000');
+    const { engine, phase, ruleId, target, ms, findings } = normalizeProfileEvent(event);
+    const key = [engine, phase, ruleId, target].join('\u0000');
     let group = groups.get(key);
     if (!group) {
       group = {
-        engine: event.engine || 'unknown',
-        phase: event.phase || 'unknown',
-        ruleId: event.ruleId || 'unknown',
-        target: event.target || '',
+        engine,
+        phase,
+        ruleId,
+        target,
         calls: 0,
         totalMs: 0,
         findings: 0,
@@ -127,10 +115,9 @@ function summarizeDetectorProfile(profile) {
       };
       groups.set(key, group);
     }
-    const ms = Number.isFinite(event.ms) ? event.ms : 0;
     group.calls += 1;
     group.totalMs += ms;
-    group.findings += Number.isFinite(event.findings) ? event.findings : 0;
+    group.findings += findings;
     group.samples.push(ms);
   }
   return [...groups.values()]
