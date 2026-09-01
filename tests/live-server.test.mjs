@@ -350,7 +350,7 @@ describe('live-server integration', () => {
   it('/live.js serves script with token injected', async () => {
     const res = await fetch(`http://localhost:${server.port}/live.js?token=${server.token}`);
     assert.equal(res.status, 200);
-    assert.equal(res.headers.get('content-type'), 'application/javascript');
+    assert.equal(res.headers.get('content-type'), 'application/javascript; charset=utf-8');
     const text = await res.text();
     assert.ok(text.includes('__IMPECCABLE_TOKEN__'));
     assert.ok(text.includes(server.token));
@@ -545,6 +545,9 @@ colors: {}
     const res = await fetch(`http://localhost:${server.port}/detect.js`);
     // May 404 if detect-antipatterns-browser.js hasn't been built
     assert.ok(res.status === 200 || res.status === 404);
+    if (res.status === 200) {
+      assert.equal(res.headers.get('content-type'), 'application/javascript; charset=utf-8');
+    }
   });
 
   it('/manual-edit-commit runs the batched AI apply path and clears successful entries', async () => {
