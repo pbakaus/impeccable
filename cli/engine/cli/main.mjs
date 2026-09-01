@@ -423,10 +423,11 @@ async function detectCli() {
       }
     }
     else process.stderr.write(formatFindings(allFindings, false) + '\n');
-    process.exit(primary.length > 0 ? 2 : 0);
+  } else if (jsonMode) {
+    process.stdout.write('[]\n');
   }
-  if (jsonMode) process.stdout.write('[]\n');
-  process.exit(0);
+  if (globalThis.__impeccableStaticHtmlDegraded) process.exit(1);
+  process.exit(primary.length > 0 ? 2 : 0);
 }
 
 export { formatFindings, handleStdin, confirm, printUsage, detectCli };

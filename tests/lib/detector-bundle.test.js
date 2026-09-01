@@ -16,6 +16,7 @@ describe('skill detector bundle', () => {
     expect(scriptNames.has('detector/detect-antipatterns-browser.js')).toBe(true);
     expect(scriptNames.has('detector/cli/main.mjs')).toBe(true);
     expect(scriptNames.has('detector/engines/static-html/detect-html.mjs')).toBe(true);
+    expect(scriptNames.has('detector/vendor/static-html-parsers.mjs')).toBe(true);
   });
 
   test('critique references the bundled detector command', () => {

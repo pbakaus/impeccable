@@ -45,6 +45,7 @@
     "build": "bun run build:skills && mkdir -p build/_data && rm -rf build/_data/dist && cp -R dist build/_data/dist",
     "build:release": "bun run build:skills:release && mkdir -p build/_data && rm -rf build/_data/dist && cp -R dist build/_data/dist",
     "build:browser": "node scripts/build-browser-detector.js",
+    "build:static-html-parsers": "node scripts/build-static-html-parsers.js",
     "build:extension": "node scripts/build-extension.js",
     "clean": "rm -rf dist build",
     "rebuild": "bun run clean && bun run build",
