@@ -203,9 +203,13 @@ export function readTrend(slug, { limit = 5, cwd = process.cwd() } = {}) {
 // Accept either a ready slug or a concrete target (path/URL) everywhere, so
 // callers never have to run the slug step separately. Anything containing a
 // path or URL marker is resolved through slugFromTarget.
+function isReadySlug(value) {
+  return /^[a-z0-9-]+$/.test(value || '') && !value.includes('/');
+}
+
 function coerceSlug(value) {
   if (!value) return null;
-  if (/^[a-z0-9-]+$/.test(value) && !value.includes('/')) return value;
+  if (isReadySlug(value)) return value;
   return slugFromTarget(value);
 }
 
@@ -246,7 +250,10 @@ function main(argv) {
       const latest = readLatestSnapshot(slug);
       if (!latest) { process.exit(2); }
       const targetFingerprint = fingerprintTarget(target);
-      if (targetFingerprint && latest.meta.target_fingerprint !== targetFingerprint) {
+      const concreteLocalTarget = target
+        && !/^https?:\/\//i.test(target)
+        && !isReadySlug(target);
+      if (concreteLocalTarget && latest.meta.target_fingerprint !== targetFingerprint) {
         closeSnapshot(slug);
         process.exit(2);
       }

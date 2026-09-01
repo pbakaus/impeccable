@@ -5,7 +5,7 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -329,6 +329,33 @@ describe('CLI entry point', () => {
     assert.equal(changed.status, 2, `stderr: ${changed.stderr}`);
     assert.equal(readLatestSnapshot('index-html', { cwd }), null);
     assert.equal(readTrend('index-html', { cwd })[0].closed, true);
+  });
+
+  it('closes a local snapshot when its target is deleted or replaced by a directory', () => {
+    const bodyFile = join(cwd, 'critique.md');
+    writeFileSync(bodyFile, '# Critique\n\nP1: improve hierarchy');
+
+    for (const replacement of ['missing', 'directory']) {
+      const target = join(cwd, `${replacement}.html`);
+      writeFileSync(target, '<main>assessed</main>');
+      const write = spawnSync(process.execPath, [SCRIPT, 'write', target, bodyFile], {
+        cwd,
+        encoding: 'utf-8',
+      });
+      assert.equal(write.status, 0, `stderr: ${write.stderr}`);
+
+      rmSync(target);
+      if (replacement === 'directory') mkdirSync(target);
+
+      const latest = spawnSync(process.execPath, [SCRIPT, 'latest', target], {
+        cwd,
+        encoding: 'utf-8',
+      });
+      assert.equal(latest.status, 2, `stderr: ${latest.stderr}`);
+      const slug = `${replacement}-html`;
+      assert.equal(readLatestSnapshot(slug, { cwd }), null);
+      assert.equal(readTrend(slug, { cwd })[0].closed, true);
+    }
   });
 
   it('treats a legacy local-file snapshot without a fingerprint as stale', () => {
