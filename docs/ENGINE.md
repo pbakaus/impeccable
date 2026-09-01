@@ -117,6 +117,12 @@ Three release kinds touch the runtime, in this order:
 3. **npm platform packages**, then the **skill** and **CLI** releases, which
    `scripts/check-engine-release.mjs` gates on the engine release.
 
+The browser extension vendors from the same detector release: `bun run
+build:extension` pulls `detector-browser-bundle.zip` for the pinned
+`DETECTOR_VERSION` through `scripts/lib/detector-bundle.mjs`, which resolves
+it the same three ways `crates/core/build.rs` resolves the archive, and
+unpacks the five generated pieces into the gitignored `extension/detector/`.
+
 CI runs the workspace build and tests (`rust`, `rust-windows`) and the oracle
 against a source build; both are warn-only until the first detector release
 exists, then their `continue-on-error` flips to false.

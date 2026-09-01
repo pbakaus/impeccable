@@ -262,7 +262,7 @@ There are three independently versioned components plus the engine pin. Only bum
 
 **Chrome extension**:
 - `extension/manifest.json` → `version`
-- Bump when: extension code changes (`extension/`)
+- Bump when: extension code changes (`extension/`), or a `DETECTOR_VERSION` bump changes the rules the shipped bundle carries. The extension runs the rules as WebAssembly in an offscreen document; `extension/detector/` is vendored at build time from the detector release and is not tracked, so an extension release always needs `bun run build:extension` before the zip is attached.
 
 **Website changelog** (`site/pages/changelog.astro` in the private impeccable-site repo):
 - Add a new `<article>` entry at the top of the relevant component's group, and move the `cf-entry--current` class + `Current` badge onto it (off the previous newest skill entry). The component is derived from the entry `id` prefix: `cli-*`, `ext-*`, else skill.
@@ -337,7 +337,7 @@ The rule engine lives in the private detector repo (`renaissance-geek-inc/impecc
 | `tests/fixtures/antipatterns/{rule-id}.html` | Hand-edited fixture (two columns, should-flag / should-pass, unique headings, explicit pixel dimensions) |
 | `tests/oracle/golden/*` | Recorded from the binary with `node tests/oracle/record.mjs --bin detect-`, reviewed by hand |
 | `tests/oracle/vectors/calls/` | Frozen function-level vectors; replay through the shipped archive via `impeccable_core::vectors::call` |
-| `extension/detector/` | Vendored from `detector-browser-bundle.zip` by `bun run build:extension`; the build's rule-count check reads `antipatterns.json` when present |
+| `extension/detector/` | The five generated pieces (`core.js`, `core_bg.wasm`, `snapshot.js`, `overlay.js`, `antipatterns.json`) vendored from `detector-browser-bundle.zip` by `bun run build:extension`, via `scripts/lib/detector-bundle.mjs` (same three-step resolution as `crates/core/build.rs`: `IMPECCABLE_DETECTOR_LIB`, the `DETECTOR_VERSION` cache, then a checksum-verified download). Gitignored, never tracked; the build's rule-count check reads `antipatterns.json` when present |
 | `skill/SKILL.src.md` and `reference/*.md` | Hand-edited if the rule introduces new design guidance |
 
 Order for a new rule: fixture here first, registry row in `crates/foundation/src/registry.rs`, the check in the detector repo against that fixture (plus a `boundary.rs` id and a shim when an open crate calls it directly), a detector release and `DETECTOR_VERSION` bump, oracle case + golden here, then `bun run build && bun run test` with a binary present. Rule counts quoted in `README.md` / `README.npm.md` are validated by `generateCounts` against the vendored registry.

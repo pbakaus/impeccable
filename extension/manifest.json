@@ -7,11 +7,15 @@
     "activeTab",
     "scripting",
     "storage",
-    "webNavigation"
+    "webNavigation",
+    "offscreen"
   ],
   "host_permissions": [
     "<all_urls>"
   ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
   "background": {
     "service_worker": "background/service-worker.js"
   },
@@ -29,15 +33,5 @@
     "16": "icons/icon-16.png",
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
-  },
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "detector/detect.js"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
-    }
-  ]
+  }
 }

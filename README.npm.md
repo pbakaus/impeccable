@@ -1,6 +1,6 @@
 # Impeccable CLI
 
-Detect UI anti-patterns and design quality issues from the command line, and install the Impeccable design skill into your AI coding harness. The detector scans HTML, CSS, JSX, TSX, Vue, and Svelte files for 59 deterministic rules, including AI-generated UI tells, accessibility violations, and general design quality problems.
+Detect UI anti-patterns and design quality issues from the command line, and install the Impeccable design skill into your AI coding harness. The detector scans HTML, CSS, JSX, TSX, Vue, and Svelte files for 61 deterministic rules, including AI-generated UI tells, accessibility violations, and general design quality problems.
 
 The npm package is a small launcher. It runs the `impeccable` engine binary for your platform, installed alongside it as an optional dependency (`@impeccable/cli-<os>-<arch>`), and falls back to a per-user cache or a one-time download when that package is missing.
 

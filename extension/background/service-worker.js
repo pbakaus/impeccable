@@ -2,7 +2,11 @@
  * Impeccable DevTools Extension - Service Worker
  *
  * Routes messages between popup, DevTools panel, and content scripts.
- * Maintains per-tab state and updates the badge.
+ * Maintains per-tab state and updates the badge. Also owns the offscreen
+ * document that hosts the WebAssembly rule core: the content script measures
+ * the page (a snapshot), the offscreen document runs the rules over it, the
+ * content script draws the result. Neither the popup nor the DevTools panel
+ * see any of that; their messages are unchanged.
  */
 
 // Per-tab state: { tabId: { findings, overlaysVisible, injected } }
@@ -10,6 +14,8 @@ const tabState = new Map();
 
 // Active DevTools panel connections: { tabId: Set<port> }
 const panelPorts = new Map();
+
+const OFFSCREEN_URL = 'offscreen/offscreen.html';
 
 function getState(tabId) {
   if (!tabState.has(tabId)) {
@@ -55,16 +61,59 @@ async function buildScanConfig() {
   return config;
 }
 
+// The offscreen document hosting the WASM core. One per extension; created
+// on the first scan and kept (its rule core stays warm; a closed document
+// would pay the module load again on the next scan).
+let offscreenReady = null;
+async function ensureOffscreenDocument() {
+  if (offscreenReady) return offscreenReady;
+  offscreenReady = (async () => {
+    const contexts = await chrome.runtime.getContexts({
+      contextTypes: ['OFFSCREEN_DOCUMENT'],
+      documentUrls: [chrome.runtime.getURL(OFFSCREEN_URL)],
+    });
+    if (contexts.length === 0) {
+      await chrome.offscreen.createDocument({
+        url: OFFSCREEN_URL,
+        // The document exists to run WebAssembly, which no page-side world can
+        // under a strict page CSP; WORKERS is the closest listed reason.
+        reasons: ['WORKERS'],
+        justification: 'Runs the WebAssembly anti-pattern rule core over a page snapshot; page Content-Security-Policies block WebAssembly in content-script and page worlds.',
+      });
+    }
+    // Wait for the core to be instantiated so the first scan does not race it.
+    for (let attempt = 0; attempt < 50; attempt++) {
+      try {
+        const r = await chrome.runtime.sendMessage({ target: 'impeccable-offscreen', action: 'ping' });
+        if (r && r.ok) return true;
+        if (r && r.error) throw new Error(r.error);
+      } catch (err) {
+        if (err && /Could not establish connection/.test(err.message || '')) {
+          await new Promise(res => setTimeout(res, 50));
+          continue;
+        }
+        throw err;
+      }
+      await new Promise(res => setTimeout(res, 50));
+    }
+    throw new Error('offscreen core did not answer');
+  })();
+  offscreenReady.catch(() => { offscreenReady = null; });
+  return offscreenReady;
+}
+
 // Inject the content script on-demand. We removed the static content_scripts entry to
 // minimize the always-on footprint; the script is only loaded when the user explicitly
 // engages with the extension (DevTools panel/sidebar opened, popup scan, etc).
+// The three detector pieces (snapshot producer, overlay UI, content script)
+// share the isolated world; each is idempotent.
 async function ensureContentScriptInjected(tabId) {
   const state = getState(tabId);
   if (state.csInjected) return { ok: true };
   try {
     await chrome.scripting.executeScript({
       target: { tabId },
-      files: ['content/content-script.js'],
+      files: ['detector/snapshot.js', 'detector/overlay.js', 'content/content-script.js'],
       injectImmediately: true,
     });
     state.csInjected = true;
@@ -77,6 +126,11 @@ async function ensureContentScriptInjected(tabId) {
   }
 }
 
+function reportScanFailure(tabId, message) {
+  chrome.runtime.sendMessage({ action: 'scan-failed', tabId, message }).catch(() => {});
+  notifyPanels(tabId, { action: 'scan-failed', message });
+}
+
 async function sendScanToTab(tabId) {
   const { ok, error } = await ensureContentScriptInjected(tabId);
   if (!ok) {
@@ -86,9 +140,15 @@ async function sendScanToTab(tabId) {
     let url = '';
     try { url = (await chrome.tabs.get(tabId))?.url || ''; } catch { /* tab gone */ }
     const message = url.startsWith('file:')
-      ? 'Can\u2019t scan local files. Enable \u201CAllow access to file URLs\u201D for Impeccable in chrome://extensions.'
-      : `Couldn\u2019t scan this page${error ? `: ${error}` : '.'}`;
-    chrome.runtime.sendMessage({ action: 'scan-failed', tabId, message }).catch(() => {});
+      ? 'Can’t scan local files. Enable “Allow access to file URLs” for Impeccable in chrome://extensions.'
+      : `Couldn’t scan this page${error ? `: ${error}` : '.'}`;
+    reportScanFailure(tabId, message);
+    return;
+  }
+  try {
+    await ensureOffscreenDocument();
+  } catch (err) {
+    reportScanFailure(tabId, `Couldn’t start the rule core: ${err?.message || err}`);
     return;
   }
   const config = await buildScanConfig();
@@ -97,12 +157,17 @@ async function sendScanToTab(tabId) {
 
 // Handle messages from content scripts and popup
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  // Content script <-> offscreen document traffic (snapshots, facts, results)
+  // is addressed to the offscreen document; it answers, this worker stays out.
+  if (msg && msg.target === 'impeccable-offscreen') return false;
+
   const tabId = msg.tabId || sender.tab?.id;
 
   if (msg.action === 'findings' && tabId) {
     const state = getState(tabId);
     state.findings = msg.findings || [];
     state.injected = true;
+    if (msg.stats) state.stats = msg.stats;
     updateBadge(tabId);
     notifyPanels(tabId, { action: 'findings', findings: state.findings });
     // Broadcast for popup
@@ -137,17 +202,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendResponse(getState(tabId));
   }
 
-  else if (msg.action === 'inject-fallback' && tabId) {
-    // CSP fallback: inject detector via chrome.scripting (bypasses page CSP)
-    chrome.scripting.executeScript({
-      target: { tabId },
-      world: 'MAIN',
-      files: ['detector/detect.js'],
-    }).then(() => {
-      // Detector will post impeccable-ready, content script handles the rest
-    }).catch((err) => {
-      console.warn('[impeccable] Fallback injection failed:', err);
-    });
+  else if (msg.action === 'detector-error' && tabId) {
+    // The content script could not complete a scan (snapshot too large, the
+    // core refused the snapshot, ...). Tell the popup and any open panel.
+    reportScanFailure(tabId, msg.message || 'The detector could not run on this page.');
     sendResponse({ ok: true });
   }
 

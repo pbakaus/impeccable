@@ -62,6 +62,7 @@ export const SUITES = {
           'tests/openai-plugin.test.mjs',
           'tests/release.test.mjs',
           'tests/check-detector-release.test.mjs',
+          'tests/detector-bundle.test.mjs',
           'tests/skill-reference.test.mjs',
           'tests/readme-gitignore.test.mjs',
           'tests/test-suites.test.mjs',
@@ -95,7 +96,7 @@ export const SUITES = {
     description: 'Extension packaging checks (the detector engine itself is tested in the engine repo and by the oracle).',
     triggers: [
       ...COMMON_INFRA_PATTERNS,
-      /^extension\/(background|content|detector|devtools|popup|manifest\.json)/,
+      /^extension\/(background|content|detector|devtools|offscreen|popup|manifest\.json)/,
       /^scripts\/(build-browser-detector|build-extension)\.js$/,
     ],
     commands: [
