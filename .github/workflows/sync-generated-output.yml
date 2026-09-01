@@ -37,6 +37,7 @@ env:
     .rovodev
     .trae
     .trae-cn
+    .veto
     .vibe
     plugin
 
