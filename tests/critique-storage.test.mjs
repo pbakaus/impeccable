@@ -136,6 +136,33 @@ describe('writeSnapshot + readLatestSnapshot', () => {
     assert.match(latest.body, /new/);
   });
 
+  it('preserves same-second snapshots with a sortable collision suffix', () => {
+    const now = new Date('2026-05-12T18:30:00Z');
+    const first = writeSnapshot({
+      slug: 'index-astro',
+      meta: { total_score: 20 },
+      body: 'first',
+      cwd,
+      now,
+    });
+    const second = writeSnapshot({
+      slug: 'index-astro',
+      meta: { total_score: 30 },
+      body: 'second',
+      cwd,
+      now,
+    });
+
+    assert.notEqual(second, first);
+    assert.ok(first.endsWith('2026-05-12T18-30-00Z__index-astro.md'));
+    assert.ok(second.endsWith('2026-05-12T18-30-00Z~0001__index-astro.md'));
+    assert.match(readLatestSnapshot('index-astro', { cwd }).body, /second/);
+    assert.deepEqual(
+      readTrend('index-astro', { cwd }).map((entry) => entry.total_score),
+      [20, 30],
+    );
+  });
+
   it('picks the newest snapshot across target slugs', () => {
     writeSnapshot({ slug: 'home', meta: {}, body: 'old', cwd, now: new Date('2026-05-01T00:00:00Z') });
     writeSnapshot({ slug: 'pricing', meta: {}, body: 'new', cwd, now: new Date('2026-05-12T00:00:00Z') });

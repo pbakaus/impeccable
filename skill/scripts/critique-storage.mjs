@@ -88,14 +88,27 @@ export function writeSnapshot({ slug, meta, body, cwd = process.cwd(), now = new
   const dir = getCritiqueDir(cwd);
   fs.mkdirSync(dir, { recursive: true });
   const timestamp = nowFilenameStamp(now);
-  const filePath = path.join(dir, `${timestamp}__${slug}.md`);
   // Spread `meta` first so internally computed `timestamp` and `slug`
   // always win. Otherwise a caller-supplied meta blob (parsed from the
   // IMPECCABLE_CRITIQUE_META env var) could clobber them, leaving the
   // filename in disagreement with its frontmatter and corrupting trends.
   const front = serializeFrontmatter({ ...meta, timestamp, slug });
-  fs.writeFileSync(filePath, `${front}\n${body.trim()}\n`, 'utf-8');
-  return filePath;
+  const contents = `${front}\n${body.trim()}\n`;
+
+  // A second critique can finish in the same UTC second. Use exclusive
+  // creation and a fixed-width suffix so concurrent writers cannot replace
+  // history and lexical ordering still keeps collision entries newest.
+  for (let collision = 0; collision <= 9999; collision += 1) {
+    const suffix = collision === 0 ? '' : `~${String(collision).padStart(4, '0')}`;
+    const filePath = path.join(dir, `${timestamp}${suffix}__${slug}.md`);
+    try {
+      fs.writeFileSync(filePath, contents, { encoding: 'utf-8', flag: 'wx' });
+      return filePath;
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error;
+    }
+  }
+  throw new Error(`Too many critique snapshots for ${slug} at ${timestamp}`);
 }
 
 function serializeFrontmatter(obj) {
@@ -135,7 +148,7 @@ function parseFrontmatter(text) {
 /**
  * Return snapshot files matching `suffix`, sorted oldest → newest.
  */
-const SNAPSHOT_FILENAME = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z__.+\.md$/;
+const SNAPSHOT_FILENAME = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z(?:~\d{4})?__.+\.md$/;
 
 function listSnapshots(suffix, cwd) {
   const dir = getCritiqueDir(cwd);
