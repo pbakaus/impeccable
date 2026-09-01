@@ -112,12 +112,8 @@ async function detectHtml(filePath, options = {}) {
       ruleId: 'import-static-parser',
       target: filePath,
     }, async () => {
-      const [htmlparser2, cssSelect, csstree, domutils] = await Promise.all([
-        import('htmlparser2'),
-        import('css-select'),
-        import('css-tree'),
-        import('domutils'),
-      ]);
+      const parsers = await import(new URL('../../vendor/static-html-parsers.mjs', import.meta.url).href);
+      const { htmlparser2, cssSelect, csstree, domutils } = parsers;
       return {
         parseDocument: htmlparser2.parseDocument,
         selectAll: cssSelect.selectAll,
@@ -127,20 +123,19 @@ async function detectHtml(filePath, options = {}) {
         domutils,
       };
     });
-  } catch (err) {
-  if (!globalThis.__impeccableStaticHtmlWarned) {
-    globalThis.__impeccableStaticHtmlWarned = true;
-
-    process.stderr.write(
-  'impeccable detect: DEGRADED - HTML parser modules unavailable ' +
-  '(htmlparser2, css-select, css-tree, domutils).\n' +
-  'Falling back to regex matching. Custom properties, selector matching and computed ' +
-  'contrast are NOT evaluated; findings are an undercount, not a clean bill of health.\n'
-);
+  } catch {
+    if (!globalThis.__impeccableStaticHtmlWarned) {
+      globalThis.__impeccableStaticHtmlWarned = true;
+      process.stderr.write(
+        'impeccable detect: DEGRADED - HTML parser modules unavailable ' +
+        '(htmlparser2, css-select, css-tree, domutils).\n' +
+        'Falling back to regex matching. Custom properties, selector matching and computed ' +
+        'contrast are NOT evaluated; findings are an undercount, not a clean bill of health.\n',
+      );
+    }
+    globalThis.__impeccableStaticHtmlDegraded = true;
+    return detectText(html, filePath, options);
   }
-
-  return detectText(html, filePath, options);
-}
 
   const resolvedPath = path.resolve(filePath);
   const fileDir = path.dirname(resolvedPath);
