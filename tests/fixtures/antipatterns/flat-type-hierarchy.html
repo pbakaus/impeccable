@@ -58,6 +58,12 @@
         <h2 style="font-size: 17px">A one-off section variation</h2>
         <p style="font-size: 15px">The representative role sizes remain uniformly compressed.</p>
       </article>
+
+      <article aria-hidden="true" data-expect="flag" data-case="Flag Painted Aria Hidden">
+        <h1 style="font-size: 18px">Flag Painted Aria Hidden</h1>
+        <h2 style="font-size: 16px">A visible section excluded from the accessibility tree</h2>
+        <p style="font-size: 15px">Painted text still contributes to the visual hierarchy.</p>
+      </article>
     </section>
 
     <section aria-label="Should pass">
@@ -110,6 +116,12 @@
         <h2 style="font-size: 30px">A clearly subordinate section</h2>
         <h3 style="font-size: 22px">A readable subsection</h3>
         <p style="font-size: 16px">Body copy sits on a clearly separated scale.</p>
+      </article>
+
+      <article style="content-visibility: hidden" data-expect="pass" data-case="Pass Content Visibility Hidden">
+        <h1 style="font-size: 18px">Pass Content Visibility Hidden</h1>
+        <h2 style="font-size: 16px">This section is not painted</h2>
+        <p style="font-size: 15px">Non-painted text should not affect the hierarchy.</p>
       </article>
     </section>
   </main>

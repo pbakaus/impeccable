@@ -42,8 +42,8 @@ function isolatedFixtureCases(name) {
 describe('flat-type-hierarchy — role and usage fixture (issue #619)', () => {
   it('flags compressed document roles and passes dense UI/chrome shapes', async () => {
     const cases = isolatedFixtureCases('flat-type-hierarchy.html');
-    assert.equal(cases.filter(item => item.expect === 'flag').length, 4);
-    assert.equal(cases.filter(item => item.expect === 'pass').length, 5);
+    assert.equal(cases.filter(item => item.expect === 'flag').length, 5);
+    assert.equal(cases.filter(item => item.expect === 'pass').length, 6);
 
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-flat-type-'));
     try {

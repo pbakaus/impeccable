@@ -3927,12 +3927,13 @@ function hasTextContent(el) {
 function isRenderedTypeElement(el, getStyle) {
   for (let current = el; current; current = current.parentElement) {
     const hiddenAttr = typeof current.getAttribute === 'function' && current.getAttribute('hidden') !== null;
-    if (current.hidden || hiddenAttr || current.getAttribute?.('aria-hidden') === 'true') return false;
+    if (current.hidden || hiddenAttr) return false;
     const style = getStyle(current);
     if (!style) continue;
     const display = String(style.display || '').toLowerCase();
     const visibility = String(style.visibility || '').toLowerCase();
-    if (display === 'none' || visibility === 'hidden' || visibility === 'collapse') return false;
+    const contentVisibility = String(style.contentVisibility || '').toLowerCase();
+    if (display === 'none' || visibility === 'hidden' || visibility === 'collapse' || contentVisibility === 'hidden') return false;
     const opacity = parseFloat(style.opacity);
     if (Number.isFinite(opacity) && opacity <= 0.01) return false;
   }
