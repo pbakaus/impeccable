@@ -65,6 +65,21 @@ function resolveLocalTargetPath(target, { cwd = process.cwd() } = {}) {
   return path.isAbsolute(target) ? path.resolve(target) : path.resolve(cwd, target);
 }
 
+function resolveTargetIdentity(target, { cwd = process.cwd() } = {}) {
+  if (!target || typeof target !== 'string') return null;
+  if (/^https?:\/\//i.test(target)) {
+    try {
+      const url = new URL(target);
+      const pathname = url.pathname.replace(/\/+$/, '') || '/';
+      return `url:${url.hostname.toLowerCase()}${pathname}`;
+    } catch {
+      return null;
+    }
+  }
+  const filePath = resolveLocalTargetPath(target, { cwd });
+  return filePath ? `file:${filePath}` : null;
+}
+
 export function fingerprintTarget(target, { cwd = process.cwd() } = {}) {
   const filePath = resolveLocalTargetPath(target, { cwd });
   if (!filePath) return null;
@@ -276,6 +291,9 @@ function main(argv) {
       // This makes the snapshot describe the exact file bytes critique saw.
       delete meta.target_fingerprint;
       delete meta.target_path;
+      delete meta.target_identity;
+      const targetIdentity = resolveTargetIdentity(slugArg);
+      if (targetIdentity) meta.target_identity = targetIdentity;
       const targetFingerprint = fingerprintTarget(slugArg);
       if (targetFingerprint) {
         meta.target_fingerprint = targetFingerprint;
@@ -297,22 +315,34 @@ function main(argv) {
       if (!latest) { process.exit(2); }
       const targetFingerprint = fingerprintTarget(target);
       const targetPath = resolveLocalTargetPath(target);
-      // A slug can also be a valid extensionless filename. Only treat it as
-      // the snapshot's local target when the stored identity agrees. For
-      // legacy snapshots without target_path, retain the old unambiguous
-      // path/URL-marker behavior rather than guessing from file existence.
+      const targetIdentity = resolveTargetIdentity(target);
       const recordedTargetPath = latest.meta.target_path;
-      if (isReadySlug(target) && !recordedTargetPath) {
+      const recordedTargetIdentity = latest.meta.target_identity
+        || (recordedTargetPath ? `file:${recordedTargetPath}` : null);
+      const readySlug = isReadySlug(target);
+      const matchingIdentity = recordedTargetIdentity === targetIdentity;
+
+      // Bare slugs remain a supported lookup mode, including for URL
+      // snapshots. But when a same-named local file exists, the request is
+      // ambiguous unless that exact file owns the snapshot identity.
+      if (readySlug && !recordedTargetIdentity) {
         process.stderr.write(
           'ambiguous legacy snapshot target; use an explicit ./path or full URL\n',
         );
         process.exit(2);
       }
-      const concreteLocalTarget = targetPath && (
-        recordedTargetPath
-          ? recordedTargetPath === targetPath
-          : !isReadySlug(target)
-      );
+      if (readySlug && targetPath && fs.existsSync(targetPath) && !matchingIdentity) {
+        process.stderr.write(
+          'ambiguous snapshot slug; use an explicit ./path or remove the local name collision\n',
+        );
+        process.exit(2);
+      }
+
+      const concreteTarget = !readySlug || matchingIdentity;
+      if (concreteTarget && recordedTargetIdentity && !matchingIdentity) {
+        process.exit(2);
+      }
+      const concreteLocalTarget = concreteTarget && targetPath;
       if (concreteLocalTarget && latest.meta.target_fingerprint !== targetFingerprint) {
         closeSnapshot(latest.path);
         process.exit(2);

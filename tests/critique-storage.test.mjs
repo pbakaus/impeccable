@@ -340,6 +340,7 @@ describe('CLI entry point', () => {
     assert.equal(write.status, 0, `stderr: ${write.stderr}`);
     const written = readLatestSnapshot('index-html', { cwd });
     assert.equal(written.meta.target_path, target);
+    assert.equal(written.meta.target_identity, `file:${target}`);
     assert.match(written.meta.target_fingerprint, /^sha256:[a-f0-9]{64}$/);
 
     const unchanged = spawnSync(process.execPath, [SCRIPT, 'latest', target], {
@@ -397,7 +398,7 @@ describe('CLI entry point', () => {
     assert.equal(readLatestSnapshot('shell', { cwd }), null);
   });
 
-  it('does not close another target when a slug also names an extensionless file', () => {
+  it('rejects a concrete target that collides with another target slug', () => {
     const originalDir = join(cwd, 'foo');
     const originalTarget = join('foo', 'bar');
     const originalPath = join(cwd, originalTarget);
@@ -414,15 +415,32 @@ describe('CLI entry point', () => {
     assert.equal(write.status, 0, `stderr: ${write.stderr}`);
 
     // This distinct extensionless file shares the original target's slug.
-    // Reading by slug must not compare its bytes with the original snapshot.
+    // The bare value is ambiguous while that file exists, and an explicit
+    // local path is a known identity mismatch. Neither may inherit or close
+    // the original snapshot.
     writeFileSync(ambiguousTarget, '<main>different target</main>');
+    const ambiguous = spawnSync(process.execPath, [SCRIPT, 'latest', 'foo-bar'], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(ambiguous.status, 2, `stderr: ${ambiguous.stderr}`);
+    assert.match(ambiguous.stderr, /ambiguous snapshot slug/);
+    const explicitOther = spawnSync(process.execPath, [SCRIPT, 'latest', './foo-bar'], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(explicitOther.status, 2, `stderr: ${explicitOther.stderr}`);
+    assert.notEqual(readLatestSnapshot('foo-bar', { cwd }), null);
+
+    // Once the local name collision is gone, the same bare value is an
+    // intentional slug lookup and can return the original backlog.
+    rmSync(ambiguousTarget);
     const bySlug = spawnSync(process.execPath, [SCRIPT, 'latest', 'foo-bar'], {
       cwd,
       encoding: 'utf-8',
     });
     assert.equal(bySlug.status, 0, `stderr: ${bySlug.stderr}`);
     assert.match(bySlug.stdout, /preserve this backlog/);
-    assert.notEqual(readLatestSnapshot('foo-bar', { cwd }), null);
 
     // The recorded original path still owns freshness invalidation.
     writeFileSync(originalPath, '<main>changed original</main>');
@@ -506,6 +524,10 @@ describe('CLI entry point', () => {
       encoding: 'utf-8',
     });
     assert.equal(write.status, 0, `stderr: ${write.stderr}`);
+    assert.equal(
+      readLatestSnapshot('example-com-page', { cwd }).meta.target_identity,
+      'url:example.com/page',
+    );
 
     const latest = spawnSync(process.execPath, [SCRIPT, 'latest', target], {
       cwd,
@@ -513,6 +535,13 @@ describe('CLI entry point', () => {
     });
     assert.equal(latest.status, 0, `stderr: ${latest.stderr}`);
     assert.match(latest.stdout, /improve hierarchy/);
+
+    const bySlug = spawnSync(process.execPath, [SCRIPT, 'latest', 'example-com-page'], {
+      cwd,
+      encoding: 'utf-8',
+    });
+    assert.equal(bySlug.status, 0, `stderr: ${bySlug.stderr}`);
+    assert.match(bySlug.stdout, /improve hierarchy/);
   });
 
   it('latest --json returns the exact snapshot identity and body', () => {
