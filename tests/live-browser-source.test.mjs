@@ -353,12 +353,12 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /function scheduleAcceptCleanup\(accepted\)[\s\S]*?queueMicrotask\(function\(\) \{[\s\S]*?cleanupAcceptedSession\(\);[\s\S]*?setTimeout\(function\(\) \{[\s\S]*?ensureAcceptedDomClean\(accepted\);[\s\S]*?\}, 1200\);/,
+      /function scheduleAcceptCleanup\(accepted\)[\s\S]*?queueMicrotask\(function\(\) \{[\s\S]*?cleanupAcceptedSession\(\);[\s\S]*?setTimeout\(function\(\) \{[\s\S]*?ensureAcceptedDomClean\(accepted, recoveryRevision\);[\s\S]*?\}, 1200\);/,
       'foreground cleanup should be immediate while the no-HMR DOM fallback stays deferred',
     );
     assert.match(
       SOURCE,
-      /function ensureAcceptedDomClean\(pending\)[\s\S]*?acceptedDomAlreadyClean\(pending\)[\s\S]*?findAcceptedRuntimeWrappers\(sessionId\)[\s\S]*?for \(const wrapper of wrappers\)[\s\S]*?parent\.insertBefore\(accepted\.firstChild, wrapper\);[\s\S]*?wrapper\.remove\(\);[\s\S]*?acceptedDomAlreadyClean\(pending\)/,
+      /function ensureAcceptedDomClean\(pending, recoveryRevision\)[\s\S]*?acceptedDomAlreadyClean\(pending\)[\s\S]*?findAcceptedRuntimeWrappers\(sessionId\)[\s\S]*?for \(const wrapper of wrappers\)[\s\S]*?parent\.insertBefore\(accepted\.firstChild, wrapper\);[\s\S]*?wrapper\.remove\(\);[\s\S]*?acceptedDomAlreadyClean\(pending\)/,
       'post-cleanup fallback should unwrap the accepted variant instead of preserving live runtime wrappers',
     );
     assert.match(
@@ -383,8 +383,173 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /function reloadAfterMissingAcceptedDom\(pending\)[\s\S]*?location\.reload\(\);/,
+      /function reloadAfterMissingAcceptedDom\(pending, recoveryRevision\)[\s\S]*?location\.reload\(\);/,
       'missing accepted DOM after clean source should recover by reloading the clean page',
+    );
+    assert.match(
+      SOURCE,
+      /restoreAcceptedDomFromSnapshot\(pending, recoveryRevision\)[\s\S]*?function restoreAcceptedDomFromSnapshot\(pending, recoveryRevision\)[\s\S]*?reloadAfterMissingAcceptedDom\(pending, recoveryRevision\)/,
+      'snapshot restoration must carry the originating recovery revision into its reload fallback',
+    );
+    assert.match(
+      SOURCE,
+      /function ensureAcceptedDomClean\(pending, recoveryRevision\) \{[\s\S]{0,250}?deferredRecoverySuperseded\(pending\?\.id, recoveryRevision\)[\s\S]*?setTimeout\(function\(\) \{[\s\S]{0,180}?deferredRecoverySuperseded\(pending\?\.id, recoveryRevision\)[\s\S]{0,180}?location\.reload\(\);/,
+      'accepted-session cleanup and its reload fallback must yield to a newer Live session',
+    );
+  });
+
+  it('never runs accept or discard structural fallbacks inside framework-owned HMR DOM', () => {
+    assert.match(
+      SOURCE,
+      /if \(hasFrameworkHmrOwnership\(wrappers\[0\] \|\| pending\?\.parentElement\)\) \{[\s\S]{0,500}?acceptedDomAlreadyClean\(pending\)[\s\S]{0,80}?location\.reload\(\);[\s\S]{0,80}?return;[\s\S]{0,120}?if \(wrappers\.length === 0\)/,
+      'accept cleanup must use a reload grace fallback before any framework-owned structural mutation',
+    );
+    assert.match(
+      SOURCE,
+      /if \(hasFrameworkHmrOwnership\(lateWrapper\)\) \{[\s\S]{0,900}?location\.reload\(\);[\s\S]{0,100}?return;[\s\S]{0,150}?releaseDiscardedStaticWrapper\(lateWrapper, cleanupSessionId\)/,
+      'discard cleanup must use a reload grace fallback before replacing a framework-owned wrapper',
+    );
+    assert.match(
+      SOURCE,
+      /function releaseDiscardedStaticWrapper\(wrapper, sessionId\)[\s\S]{0,400}?replaceChild\(content, wrapper\)/,
+      'only the static-wrapper release helper may structurally restore discarded DOM',
+    );
+    assert.match(
+      SOURCE,
+      /if \(hasFrameworkHmrOwnership\(lateWrapper\)\) \{[\s\S]{0,700}?removeDiscardStateStylesheet\(cleanupSessionId\);[\s\S]{0,120}?location\.reload\(\);/,
+      'discard must keep its original-visibility stylesheet until the HMR grace window ends',
+    );
+    assert.match(
+      SOURCE,
+      /const recoverySuperseded = deferredRecoverySuperseded\(cleanupSessionId, cleanupRevision\);[\s\S]{0,500}?if \(recoverySuperseded\) \{[\s\S]{0,250}?watchForDiscardedFrameworkWrapperRemoval\(cleanupSessionId\)[\s\S]{0,150}?releaseDiscardedStaticWrapper\(lateWrapper, cleanupSessionId\)[\s\S]{0,80}?return;/,
+      'discard cleanup and its reload grace callback must yield to a newer Live session',
+    );
+    assert.match(
+      SOURCE,
+      /function discardStateStyleId\(sessionId\)[\s\S]{0,100}?DISCARD_STATE_STYLE_ID \+ '-' \+ sessionId[\s\S]{0,400}?getElementById\(discardStateStyleId\(sessionId\)\)/,
+      'concurrent discard sessions must retain independent visibility stylesheets',
+    );
+    assert.match(
+      SOURCE,
+      /function removeDiscardStateStylesheet\(sessionId\)[\s\S]{0,100}?if \(!sessionId\) return;[\s\S]{0,100}?getElementById\(discardStateStyleId\(sessionId\)\)\?\.remove\(\);/,
+      'an older discard callback must remove only its own session stylesheet',
+    );
+    assert.match(
+      SOURCE,
+      /setTimeout\(function\(\) \{[\s\S]{0,300}?const staleWrapper = document\.querySelector[\s\S]{0,250}?deferredRecoverySuperseded\(cleanupSessionId, cleanupRevision\)[\s\S]{0,250}?watchForDiscardedFrameworkWrapperRemoval\(cleanupSessionId\)[\s\S]{0,100}?return;[\s\S]{0,100}?removeDiscardStateStylesheet\(cleanupSessionId\);[\s\S]{0,100}?location\.reload\(\);/,
+      'framework discard recovery may observe safe HMR cleanup but must not reload replacement work',
+    );
+    assert.match(
+      SOURCE,
+      /const discardedFrameworkWrapperWatchers = new Map\(\);[\s\S]*?function watchForDiscardedFrameworkWrapperRemoval\(sessionId\)[\s\S]{0,1500}?const replacementActive = !!currentSessionId[\s\S]{0,180}?state !== 'IDLE' && state !== 'PICKING'[\s\S]{0,300}?setTimeout\(resolveStillMounted, 12000\)[\s\S]{0,300}?location\.reload\(\);/,
+      'discard recovery must keep observing during replacement work and reload stale framework DOM once Live is idle',
+    );
+  });
+
+  it('recovers a handled variant or carbonize wrapper after HMR cancels the original cleanup timer', () => {
+    const start = SOURCE.indexOf('function scheduleHandledRuntimeWrapperReload(wrapper,');
+    const end = SOURCE.indexOf('\n  function resumeSession(', start);
+    const recovery = SOURCE.slice(start, end);
+    assert.match(recovery, /impeccableCarbonize/);
+    assert.match(recovery, /sessionStorage\.getItem\(handledWrapperReloadKey\(sessionId\)\)/);
+    assert.match(recovery, /sessionStorage\.setItem\(handledWrapperReloadKey\(sessionId\), String\(reloadAttempts \+ 1\)\)/);
+    assert.match(recovery, /if \(reloadAttempts >= 2\) return true;/);
+    assert.match(recovery, /handledRuntimeWrapperReloadSessions\.has\(sessionId\)/);
+    assert.match(recovery, /handledRuntimeWrapperReloadSessions\.add\(sessionId\)/);
+    assert.match(
+      recovery,
+      /deferredRecoverySuperseded\(sessionId, recoveryRevision\)[\s\S]*?return true;[\s\S]*?setTimeout\(function\(\) \{[\s\S]{0,180}?deferredRecoverySuperseded\(sessionId, recoveryRevision\)[\s\S]{0,220}?handledRuntimeWrapperReloadSessions\.delete\(sessionId\);[\s\S]{0,80}?return;/,
+      'handled-wrapper recovery must never reload a newer Live session',
+    );
+    assert.match(
+      SOURCE,
+      /const handledRuntimeWrapperReloadSessions = new Set\(\);[\s\S]*?function handledWrapperReloadKey\(sessionId\)[\s\S]{0,100}?HANDLED_WRAPPER_RELOAD_KEY \+ ':' \+ sessionId/,
+      'overlapping handled sessions must have independent timers and retry budgets',
+    );
+    assert.match(recovery, /\[data-impeccable-variants=.+\[data-impeccable-carbonize=/s);
+    assert.match(recovery, /if \(staleWrapper\) location\.reload\(\);/);
+    assert.match(
+      SOURCE,
+      /function resumeSession\(recoveryRevision = liveInteractionRevision\)[\s\S]{0,250}?\[data-impeccable-carbonize\][\s\S]{0,180}?scheduleHandledRuntimeWrapperReload\(runtimeWrapper, recoveryRevision\)/,
+      'resume must inspect handled carbonize wrappers before clearing handled state',
+    );
+    assert.match(
+      SOURCE,
+      /function restoreSessionSupersedingHandledWrapper\(runtimeWrapper\)[\s\S]{0,900}?saved\.id === handledSessionId[\s\S]{0,300}?restoreSessionWithoutWrapper\('browser_resumed_over_handled_wrapper'\)/,
+      'handled-wrapper recovery must recognize a different durable session as newer work',
+    );
+    assert.match(
+      SOURCE,
+      /function isUsableInjectionAnchor\(el\)[\s\S]{0,250}?closest\?\.\('\[data-impeccable-variants\],\[data-impeccable-carbonize\]'\)/,
+      'a newer restored session must wait for a real page anchor outside stale handled wrappers',
+    );
+    const resumeStart = SOURCE.indexOf('function resumeSession(');
+    const resumeEnd = SOURCE.indexOf('\n  //', resumeStart);
+    const resume = SOURCE.slice(resumeStart, resumeEnd);
+    assert.ok(
+      resume.indexOf('restoreSessionSupersedingHandledWrapper(runtimeWrapper)')
+        < resume.indexOf('scheduleHandledRuntimeWrapperReload(runtimeWrapper, recoveryRevision)'),
+      'a newer durable session must restore before a stale handled wrapper can schedule another reload',
+    );
+    assert.doesNotMatch(
+      resume,
+      /clearHandled\(\);/,
+      'bounded handled state must survive arbitrarily late wrapper hydration and later reloads',
+    );
+    assert.match(
+      resume,
+      /browser_resumed_svelte_orphan_wrapper[\s\S]{0,150}?clearHandled\(sessionId\);/,
+      'orphan cleanup must clear only its own handled id',
+    );
+    assert.match(
+      SOURCE,
+      /if \(!accepted\?\.isSvelteComponent\) \{[\s\S]{0,100}?watchForHandledRuntimeWrapper\(accepted\?\.id, recoveryRevision\);/,
+      'accept cleanup should watch for a carbonize wrapper mounted by a delayed framework refresh',
+    );
+    assert.match(
+      recovery,
+      /function watchForHandledRuntimeWrapper\(sessionId, recoveryRevision = liveInteractionRevision\)[\s\S]*?handledRuntimeWrapperWatchers\.get\(sessionId\)[\s\S]*?observer\.observe\(document\.body, \{ childList: true, subtree: true \}\)[\s\S]*?handledRuntimeWrapperWatchers\.set\(sessionId, \{ observer, timer \}\);/,
+      'late handled-wrapper recovery should remain bounded while covering slow HMR updates',
+    );
+    assert.match(
+      SOURCE,
+      /const handledRuntimeWrapperWatchers = new Map\(\);[\s\S]*?handledRuntimeWrapperWatchers\.delete\(sessionId\);/,
+      'overlapping handled-wrapper scouts must retain independent observer state per session',
+    );
+  });
+
+  it('keeps watching for a framework wrapper when session restore wins the hydration race', () => {
+    assert.match(
+      SOURCE,
+      /const resumed = resumeSession\(\);[\s\S]{0,1200}?if \(!resumed \|\| !document\.querySelector\('\[data-impeccable-variants\],\[data-impeccable-carbonize\]'\)\) \{[\s\S]{0,500}?const scout = new MutationObserver/,
+      'restoring durable session state before hydration must still install the deferred-wrapper scout',
+    );
+    assert.match(
+      SOURCE,
+      /const deferredResumeRevision = liveInteractionRevision;[\s\S]{0,350}?const scout = new MutationObserver[\s\S]{0,350}?resumeSession\(deferredResumeRevision\)/,
+      'the deferred-wrapper scout must retain its originating interaction revision',
+    );
+  });
+
+  it('invalidates nullable deferred recovery as soon as a replacement edit starts configuring', () => {
+    assert.match(
+      SOURCE,
+      /function beginNewLiveConfiguration\(\) \{[\s\S]{0,100}?liveInteractionRevision \+= 1;[\s\S]{0,80}?setLiveState\('CONFIGURING'\);/,
+    );
+    assert.equal(
+      SOURCE.match(/beginNewLiveConfiguration\(\);/g)?.length || 0,
+      3,
+      'mouse replace, mouse insert, and keyboard configuration must all supersede older recovery timers',
+    );
+    assert.match(
+      SOURCE,
+      /function deferredRecoverySuperseded\(sessionId, recoveryRevision\) \{[\s\S]{0,160}?liveInteractionRevision !== recoveryRevision[\s\S]{0,100}?currentSessionId !== sessionId/,
+      'recovery must be fenced before a replacement configuration has a non-null session id',
+    );
+    assert.match(
+      SOURCE,
+      /function scheduleAcceptCleanup\(accepted\) \{[\s\S]{0,100}?const recoveryRevision = liveInteractionRevision;[\s\S]*?watchForHandledRuntimeWrapper\(accepted\?\.id, recoveryRevision\)/,
+      'accept and handled-wrapper recovery must share the originating interaction revision',
     );
   });
 

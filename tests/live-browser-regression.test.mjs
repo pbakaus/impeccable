@@ -1057,7 +1057,7 @@ describe('live-browser.js regression guards', () => {
   it('promotes an early-accepted Svelte preview before releasing the picker', () => {
     assert.match(
       SOURCE,
-      /function scheduleAcceptCleanup\(accepted\) \{[\s\S]{0,420}?if \(accepted\?\.isSvelteComponent\) \{[\s\S]{0,120}?commitAcceptedSvelteComponentToDom\(accepted\.id\);[\s\S]{0,120}?cleanupAcceptedSession\(\);/,
+      /function scheduleAcceptCleanup\(accepted\) \{[\s\S]{0,650}?if \(accepted\?\.isSvelteComponent\) \{[\s\S]{0,120}?commitAcceptedSvelteComponentToDom\(accepted\.id\);[\s\S]{0,120}?cleanupAcceptedSession\(\);/,
       'Svelte early accept must tear down its adapter mount before the next picking session starts',
     );
   });
