@@ -309,6 +309,29 @@ describe('writeSnapshot + readLatestSnapshot', () => {
 
     assert.equal(readLatestSnapshotAcrossTargets({ cwd }).path, original);
   });
+
+  it('latest across targets does not resurrect legacy work after identity migration', () => {
+    writeSnapshot({
+      slug: 'index-html',
+      meta: { total_score: 20 },
+      body: 'legacy backlog',
+      cwd,
+      now: new Date('2026-05-01T00:00:00Z'),
+    });
+    const modern = writeSnapshot({
+      slug: 'index-html',
+      meta: {
+        target_identity: `file:${join(cwd, 'index.html')}`,
+        total_score: 30,
+      },
+      body: 'modern backlog',
+      cwd,
+      now: new Date('2026-05-12T00:00:00Z'),
+    });
+    closeSnapshot(modern, { cwd });
+
+    assert.equal(readLatestSnapshotAcrossTargets({ cwd }), null);
+  });
 });
 
 describe('CLI entry point', () => {
