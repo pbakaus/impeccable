@@ -6282,9 +6282,9 @@
         completeSourceInjection(liveWrapper, sessionId, { ...opts, filePath });
         return;
       }
-      // #454: never fetch/parse JSX. Empty wrap stays for HMR. Missing wrap
-      // stays too: closed modal / other route still has variants in source,
-      // and the observer transitions to CYCLING when it mounts.
+      // #454: never fetch/parse JSX. Missing wrap waits for mount (closed
+      // modal / other route). Insert scaffolds stay for late HMR. A replace
+      // scaffold with no variants after retries is a failed generation.
       if (opts.generationCompleted && sessionId === currentSessionId) {
         const attempt = opts.attempt || 0;
         if (attempt < COMPLETED_SOURCE_FALLBACK_RETRIES) {
@@ -6299,6 +6299,10 @@
             "Variants ready. If the picked element isn't visible, retrace the path that revealed it - they'll appear automatically.",
             15000,
           );
+          return;
+        }
+        if (liveWrapper.dataset.impeccableMode !== 'insert') {
+          recoverEmptyCycling('source-fallback-empty');
         }
         return;
       }

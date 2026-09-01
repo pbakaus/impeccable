@@ -414,8 +414,13 @@ describe('live-browser source contracts', () => {
     );
     assert.doesNotMatch(
       jsxGate,
-      /recoverEmptyCycling|discardOrphanedSession/,
-      'a missing JSX wrap must wait for mount, not tear the session down',
+      /discardOrphanedSession/,
+      'a missing JSX wrap must wait for mount, not discard as an orphan',
+    );
+    assert.match(
+      jsxGate,
+      /if \(!liveWrapper\) \{[\s\S]*?showToast\([\s\S]*?return;[\s\S]*?if \(liveWrapper\.dataset\.impeccableMode !== 'insert'\) \{[\s\S]*?recoverEmptyCycling\('source-fallback-empty'\)/,
+      'missing wrap waits; empty replace wrap recovers after retries; insert scaffolds stay',
     );
     assert.doesNotMatch(SOURCE, /function normalizeSourceFallbackBlock/);
     assert.doesNotMatch(SOURCE, /function jsxStyleObjectToCss/);
