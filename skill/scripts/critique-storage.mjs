@@ -180,12 +180,33 @@ function readSnapshot(filePath) {
   return { path: filePath, body, meta: parseFrontmatter(body) };
 }
 
+function snapshotTargetIdentity(snapshot) {
+  const targetPath = snapshot?.meta.target_path;
+  return snapshot?.meta.target_identity
+    || (targetPath ? `file:${targetPath}` : null);
+}
+
+function readNewestSnapshot(slug, { cwd = process.cwd() } = {}) {
+  return readSnapshot(listSnapshots(`__${slug}.md`, cwd).at(-1));
+}
+
+function readNewestSnapshotForIdentity(
+  slug,
+  targetIdentity,
+  { cwd = process.cwd() } = {},
+) {
+  const matches = listSnapshots(`__${slug}.md`, cwd)
+    .map(readSnapshot)
+    .filter((snapshot) => snapshotTargetIdentity(snapshot) === targetIdentity);
+  return matches.at(-1) || null;
+}
+
 /**
  * Return the most recent snapshot for `slug`, or null. Polish reads this
  * to find its fix backlog when the slug matches.
  */
 export function readLatestSnapshot(slug, { cwd = process.cwd() } = {}) {
-  const latest = readSnapshot(listSnapshots(`__${slug}.md`, cwd).at(-1));
+  const latest = readNewestSnapshot(slug, { cwd });
   return latest?.meta.closed === true ? null : latest;
 }
 
@@ -311,15 +332,28 @@ function main(argv) {
         process.stderr.write('usage: latest <slug-or-target> [--json]\n');
         process.exit(1);
       }
-      const latest = readLatestSnapshot(slug);
-      if (!latest) { process.exit(2); }
       const targetFingerprint = fingerprintTarget(target);
       const targetPath = resolveLocalTargetPath(target);
       const targetIdentity = resolveTargetIdentity(target);
-      const recordedTargetPath = latest.meta.target_path;
-      const recordedTargetIdentity = latest.meta.target_identity
-        || (recordedTargetPath ? `file:${recordedTargetPath}` : null);
       const readySlug = isReadySlug(target);
+      const newestForSlug = readNewestSnapshot(slug);
+      if (!newestForSlug) { process.exit(2); }
+
+      // Concrete targets select the newest snapshot for their exact identity,
+      // not merely the newest filename for a lossy slug. This keeps distinct
+      // targets such as foo/bar and foo-bar from hiding each other's backlog.
+      const exactSnapshot = readNewestSnapshotForIdentity(slug, targetIdentity);
+      let latest = exactSnapshot;
+      if (!latest && !readySlug) {
+        // Legacy snapshots have no identity. Preserve their old explicit
+        // path/URL behavior only when no known target identity was selected.
+        latest = readNewestSnapshotForIdentity(slug, null);
+      }
+      if (!latest) latest = newestForSlug;
+      if (latest.meta.closed === true) { process.exit(2); }
+
+      const recordedTargetPath = latest.meta.target_path;
+      const recordedTargetIdentity = snapshotTargetIdentity(latest);
       const matchingIdentity = recordedTargetIdentity === targetIdentity;
 
       // Bare slugs remain a supported lookup mode, including for URL

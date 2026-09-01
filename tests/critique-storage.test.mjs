@@ -452,6 +452,74 @@ describe('CLI entry point', () => {
     assert.equal(readLatestSnapshot('foo-bar', { cwd }), null);
   });
 
+  it('finds the exact target backlog when two live snapshots share a slug', () => {
+    const originalDir = join(cwd, 'foo');
+    const originalTarget = join('foo', 'bar');
+    const otherTarget = join(cwd, 'foo-bar');
+    const bodyFile = join(cwd, 'critique.md');
+    mkdirSync(originalDir);
+    writeFileSync(join(cwd, originalTarget), '<main>original</main>');
+    writeFileSync(otherTarget, '<main>other</main>');
+
+    writeFileSync(bodyFile, '# Critique\n\nP1: original backlog');
+    const originalWrite = spawnSync(
+      process.execPath,
+      [SCRIPT, 'write', originalTarget, bodyFile],
+      { cwd, encoding: 'utf-8' },
+    );
+    assert.equal(originalWrite.status, 0, `stderr: ${originalWrite.stderr}`);
+
+    writeFileSync(bodyFile, '# Critique\n\nP1: newer other backlog');
+    const otherWrite = spawnSync(
+      process.execPath,
+      [SCRIPT, 'write', './foo-bar', bodyFile],
+      { cwd, encoding: 'utf-8' },
+    );
+    assert.equal(otherWrite.status, 0, `stderr: ${otherWrite.stderr}`);
+
+    const originalLatest = spawnSync(
+      process.execPath,
+      [SCRIPT, 'latest', originalTarget, '--json'],
+      { cwd, encoding: 'utf-8' },
+    );
+    assert.equal(originalLatest.status, 0, `stderr: ${originalLatest.stderr}`);
+    const originalResult = JSON.parse(originalLatest.stdout);
+    assert.match(originalResult.body, /original backlog/);
+    assert.doesNotMatch(originalResult.body, /newer other backlog/);
+
+    const otherLatest = spawnSync(
+      process.execPath,
+      [SCRIPT, 'latest', './foo-bar', '--json'],
+      { cwd, encoding: 'utf-8' },
+    );
+    assert.equal(otherLatest.status, 0, `stderr: ${otherLatest.stderr}`);
+    const otherResult = JSON.parse(otherLatest.stdout);
+    assert.match(otherResult.body, /newer other backlog/);
+    assert.notEqual(otherResult.snapshot_file, originalResult.snapshot_file);
+
+    const closeOriginal = spawnSync(process.execPath, [
+      SCRIPT,
+      'close',
+      originalTarget,
+      originalResult.snapshot_file,
+    ], { cwd, encoding: 'utf-8' });
+    assert.equal(closeOriginal.status, 0, `stderr: ${closeOriginal.stderr}`);
+
+    const closedOriginal = spawnSync(
+      process.execPath,
+      [SCRIPT, 'latest', originalTarget],
+      { cwd, encoding: 'utf-8' },
+    );
+    assert.equal(closedOriginal.status, 2, `stderr: ${closedOriginal.stderr}`);
+    const stillOpenOther = spawnSync(
+      process.execPath,
+      [SCRIPT, 'latest', './foo-bar'],
+      { cwd, encoding: 'utf-8' },
+    );
+    assert.equal(stillOpenOther.status, 0, `stderr: ${stillOpenOther.stderr}`);
+    assert.match(stillOpenOther.stdout, /newer other backlog/);
+  });
+
   it('closes a local snapshot when its target is deleted or replaced by a directory', () => {
     const bodyFile = join(cwd, 'critique.md');
     writeFileSync(bodyFile, '# Critique\n\nP1: improve hierarchy');
