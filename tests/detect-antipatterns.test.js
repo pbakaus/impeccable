@@ -270,6 +270,18 @@ describe('detectText — gray-on-color (issue #633)', () => {
     expect(f).toHaveLength(1);
     expect(f[0].snippet).toContain('text-slate-400 on bg-amber-600');
   });
+
+  test('nested exclusive ternary arms — no finding', () => {
+    expect(grayOnColor(
+      '<div className={a ? "bg-red-500" : b ? "text-slate-400" : "bg-blue-600"} />',
+    )).toHaveLength(0);
+  });
+
+  test('shared classes after a ternary still flag', () => {
+    const f = grayOnColor('<div className={cn(a ? "bg-red-500" : "bg-blue-600", "text-slate-400")} />');
+    expect(f).toHaveLength(1);
+    expect(f[0].snippet).toContain('text-slate-400 on bg-red-500');
+  });
 });
 
 describe('detectText — broken images in source comments', () => {

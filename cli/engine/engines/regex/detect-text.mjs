@@ -573,40 +573,70 @@ function findTernarySplit(text) {
   let qPos = -1;
   let qParen = 0;
   let qBrace = 0;
+  let nested = 0;
+  let colonPos = -1;
   let split = null;
 
+  const isQuestion = (char, prev, next) =>
+    char === '?' && prev !== '.' && next !== '?' && next !== '.';
+  const sameDepth = (depth) => depth.paren === qParen && depth.brace === qBrace;
+
   scanJs(text, 0, (char, i, prev, next, depth) => {
-    if (qPos === -1 && char === '?' && prev !== '.' && next !== '?' && next !== '.') {
-      qPos = i;
-      qParen = depth.paren;
-      qBrace = depth.brace;
+    if (colonPos === -1) {
+      if (qPos === -1 && isQuestion(char, prev, next)) {
+        qPos = i;
+        qParen = depth.paren;
+        qBrace = depth.brace;
+        return false;
+      }
+      if (qPos !== -1 && isQuestion(char, prev, next) && sameDepth(depth)) {
+        nested++;
+        return false;
+      }
+      if (qPos !== -1 && char === ':' && sameDepth(depth)) {
+        if (nested) nested--;
+        else colonPos = i;
+      }
       return false;
     }
-    if (qPos !== -1 && char === ':' && depth.paren === qParen && depth.brace === qBrace) {
+    if (char === ',' && sameDepth(depth)) {
       split = {
         common: text.slice(0, qPos),
-        consequent: text.slice(qPos + 1, i),
-        alternate: text.slice(i + 1),
+        consequent: text.slice(qPos + 1, colonPos),
+        alternate: text.slice(colonPos + 1, i),
+        suffix: text.slice(i),
       };
       return true;
     }
     return false;
   });
+
+  if (!split && qPos !== -1 && colonPos !== -1) {
+    split = {
+      common: text.slice(0, qPos),
+      consequent: text.slice(qPos + 1, colonPos),
+      alternate: text.slice(colonPos + 1),
+      suffix: '',
+    };
+  }
   return split;
 }
 
-function grayOnColorScopes(line, index) {
-  const { text: scope, start } = containingMarkupTag(line, index);
-  const split = findTernarySplit(scope);
-  if (!split) return [scope];
+function exclusiveClassScopes(text) {
+  const split = findTernarySplit(text);
+  if (!split) return [text];
+  return [
+    ...exclusiveClassScopes(split.consequent).map((part) => split.common + part + split.suffix),
+    ...exclusiveClassScopes(split.alternate).map((part) => split.common + part + split.suffix),
+  ];
+}
 
-  const rel = index - start;
-  const qPos = split.common.length;
-  const colonPos = qPos + 1 + split.consequent.length;
-  const thenScope = split.common + split.consequent;
-  const elseScope = split.common + split.alternate;
-  if (rel < qPos) return [thenScope, elseScope];
-  return [rel < colonPos ? thenScope : elseScope];
+function grayOnColorScopes(line, index) {
+  return exclusiveClassScopes(containingMarkupTag(line, index).text);
+}
+
+function grayOnColorPairs(line, grayClass, index) {
+  return grayOnColorScopes(line, index).filter((scope) => scope.includes(grayClass));
 }
 
 const REGEX_MATCHERS = [
@@ -656,9 +686,9 @@ const REGEX_MATCHERS = [
     fmt: () => 'bg-clip-text + bg-gradient' },
   // --- Tailwind gray on colored bg ---
   { id: 'gray-on-color', regex: /\btext-(?:gray|slate|zinc|neutral|stone)-(\d+)\b/g,
-    test: (m, line) => grayOnColorScopes(line, m.index).some((scope) => TW_SOLID_CHROMATIC_BG_RE.test(scope)),
+    test: (m, line) => grayOnColorPairs(line, m[0], m.index).some((scope) => TW_SOLID_CHROMATIC_BG_RE.test(scope)),
     fmt: (m, line) => {
-      const bg = grayOnColorScopes(line, m.index)
+      const bg = grayOnColorPairs(line, m[0], m.index)
         .map((scope) => scope.match(TW_SOLID_CHROMATIC_BG_RE))
         .find(Boolean);
       return `${m[0]} on ${bg?.[0] || '?'}`;
