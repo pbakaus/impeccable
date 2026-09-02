@@ -18,8 +18,9 @@
  *                       Covers:
  *                         - Inline Next.js headers() with CSP string
  *                         - Nuxt routeRules / nitro.routeRules CSP headers
- *   - "middleware":     CSP set dynamically in middleware.{ts,js}.
- *                       Detected but not auto-patched in v1.
+ *   - "middleware":     CSP set dynamically in middleware.{ts,js,mjs} or
+ *                       Next.js 16's proxy.{ts,js,mjs} convention. Detected
+ *                       but not auto-patched in v1.
  *   - "meta-tag":       <meta http-equiv="Content-Security-Policy"> in
  *                       layout files. Detected but not auto-patched in v1.
  *   - null:             no CSP signals found; no patch needed.
@@ -77,6 +78,14 @@ const NUXT_ROUTE_RULES_SIGNALS = [
   /\bscript-src\b/,
 ];
 
+const NEXT_REQUEST_HOOK_FILES = new Set([
+  'middleware.ts',
+  'middleware.js',
+  'middleware.mjs',
+  'proxy.ts',
+  'proxy.js',
+  'proxy.mjs',
+]);
 const MIDDLEWARE_HINT = /headers\.set\(\s*["']Content-Security-Policy["']/i;
 const META_TAG_HINT = /http-equiv\s*=\s*["']Content-Security-Policy["']/i;
 
@@ -133,8 +142,7 @@ export function detectCsp(cwd = process.cwd()) {
 
     // === detect-only shapes ===
 
-    if ((base === 'middleware.ts' || base === 'middleware.js' || base === 'middleware.mjs') &&
-        MIDDLEWARE_HINT.test(body)) {
+    if (NEXT_REQUEST_HOOK_FILES.has(base) && MIDDLEWARE_HINT.test(body)) {
       hits.middleware.push(relPath);
     }
 

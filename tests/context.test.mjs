@@ -1198,6 +1198,29 @@ describe('context.mjs CLI', () => {
     assert.match(disabled.stdout, /detect\.mjs --json <changed targets>/);
   });
 
+  it('finds the active hook manifest at an enclosing harness project root', () => {
+    const scripts = path.join(scratch, 'bundle', 'skills', 'impeccable', 'scripts');
+    stageContextBundle(scripts, { providerId: 'claude-code' });
+
+    const repo = path.join(scratch, 'repo');
+    const project = path.join(repo, 'web');
+    fs.mkdirSync(path.join(repo, '.git'), { recursive: true });
+    fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+    fs.mkdirSync(project, { recursive: true });
+    fs.writeFileSync(path.join(project, 'PRODUCT.md'), '# Nested web product\n');
+    fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), JSON.stringify({
+      hooks: { Stop: [{ hooks: [{ command: 'node .claude/skills/impeccable/scripts/hook.mjs' }] }] },
+    }));
+
+    const res = spawnSync(process.execPath, [path.join(scripts, 'context.mjs')], {
+      cwd: project,
+      encoding: 'utf8',
+      env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1', IMPECCABLE_NO_STALENESS_CHECK: '1' },
+    });
+    assert.equal(res.status, 0, res.stderr);
+    assert.doesNotMatch(res.stdout, /MANUAL_DETECTOR_REQUIRED:/);
+  });
+
   it('adds no detector directive when a per-edit-only hook is active', () => {
     const scripts = path.join(scratch, 'bundle', 'skills', 'impeccable', 'scripts');
     stageContextBundle(scripts, { providerId: 'cursor' });
