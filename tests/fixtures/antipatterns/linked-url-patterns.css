@@ -58,14 +58,26 @@ main > ::before {
   50% { opacity: 0.35; }
 }
 
-/* A live selector can name keyframes that only exist under an inactive
-   container query. The inaccessible body must not create a marquee hit. */
+/* Chromium makes nested keyframes globally available even while the enclosing
+   container condition is false, so this live reference must still scan. */
 .inactive-container-animation-reference {
   animation: inactive-container-horizontal-loop 8s linear infinite;
 }
 
 @container (width > 2000px) {
   @keyframes inactive-container-horizontal-loop {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+}
+
+.active-container-animation-reference {
+  animation: active-container-horizontal-loop 8s linear infinite;
+}
+
+/* The declaration is intentionally outside the container group. */
+@container (width > 900px) {
+  @keyframes active-container-horizontal-loop {
     from { transform: translateX(0); }
     to { transform: translateX(-50%); }
   }

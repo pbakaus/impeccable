@@ -8436,7 +8436,7 @@ if (IS_BROWSER) {
     const seen = new Set();
     const animationNames = new Set();
     const keyframeCandidates = [];
-    const appendRules = (rules, containerStates = []) => {
+    const appendRules = (rules, requiresAppliedMatch = false) => {
       for (const rule of rules) {
         if (rule.styleSheet) {
           appendSheet(rule.styleSheet);
@@ -8450,11 +8450,10 @@ if (IS_BROWSER) {
           // rendered, and retaining them would leak unused CSS into findings.
           if (
             matches?.length > 0
-            && (containerStates.length === 0 || styleRuleAppliesToLiveMatches(rule, matches))
+            && (!requiresAppliedMatch || styleRuleAppliesToLiveMatches(rule, matches))
           ) {
             parts.push(cssText);
             for (const name of animationNamesDeclaredByRule(rule)) animationNames.add(name);
-            for (const state of containerStates) state.active = true;
           }
           continue;
         }
@@ -8472,16 +8471,12 @@ if (IS_BROWSER) {
           keyframeCandidates.push({
             name: keyframesName,
             cssText,
-            containerStates: [...containerStates],
           });
           continue;
         }
         if (hasNestedRules) {
           if (!conditionalCssRuleIsActive(rule)) continue;
-          const nextContainerStates = isContainerCssRule(rule)
-            ? [...containerStates, { active: false }]
-            : containerStates;
-          appendRules(nested, nextContainerStates);
+          appendRules(nested, requiresAppliedMatch || isContainerCssRule(rule));
           continue;
         }
         // Other selector-less leaf at-rules cannot be tied to a rendered node.
@@ -8505,13 +8500,14 @@ if (IS_BROWSER) {
       appendSheet(sheet);
     }
     // Motion checks need the body of a live animation's keyframes. Retain only
-    // definitions referenced by a retained selector rule, and only when every
-    // enclosing container query was proven active by a declaration applying
-    // to a live match. This preserves linked marquee/pulse detection without
-    // letting unused or inactive keyframe bodies feed page-level checks.
+    // definitions referenced by a retained selector rule. Browsers make nested
+    // keyframes globally available even when a surrounding container condition
+    // is currently false, so lexical grouping cannot decide whether the named
+    // animation renders. The live reference is the useful gate: it preserves
+    // linked marquee/pulse detection without letting unreferenced keyframe
+    // bodies feed page-level checks.
     for (const candidate of keyframeCandidates) {
       if (!animationNames.has(candidate.name)) continue;
-      if (candidate.containerStates.some(state => !state.active)) continue;
       parts.push(candidate.cssText);
     }
     return parts.join('\n');

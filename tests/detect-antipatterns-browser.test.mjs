@@ -1405,14 +1405,31 @@ describe('detectUrl — browser-only fixtures', () => {
       })));
       const linkedFindings = await linkedPage.evaluate(() => window.impeccableDetect({ serialize: true })
         .flatMap(group => group.findings || []));
-      const containerBackgrounds = await linkedPage.evaluate(() => ({
-        inactive: getComputedStyle(document.querySelector('.inactive-container-stripes')).backgroundImage,
-        active: getComputedStyle(document.querySelector('.active-container-halo')).backgroundImage,
-        pseudoClass: getComputedStyle(document.querySelector('.inactive-pseudo-stripes')).backgroundImage,
-      }));
+      const containerBackgrounds = await linkedPage.evaluate(async () => {
+        const activeAnimation = document.querySelector('.active-container-animation-reference');
+        const inactiveAnimation = document.querySelector('.inactive-container-animation-reference');
+        const before = {
+          active: getComputedStyle(activeAnimation).transform,
+          inactive: getComputedStyle(inactiveAnimation).transform,
+        };
+        await new Promise(resolve => setTimeout(resolve, 120));
+        return {
+          inactive: getComputedStyle(document.querySelector('.inactive-container-stripes')).backgroundImage,
+          active: getComputedStyle(document.querySelector('.active-container-halo')).backgroundImage,
+          pseudoClass: getComputedStyle(document.querySelector('.inactive-pseudo-stripes')).backgroundImage,
+          activeTransforms: [before.active, getComputedStyle(activeAnimation).transform],
+          inactiveTransforms: [before.inactive, getComputedStyle(inactiveAnimation).transform],
+        };
+      });
       assert.equal(containerBackgrounds.inactive, 'none');
       assert.equal(containerBackgrounds.pseudoClass, 'none');
       assert.match(containerBackgrounds.active, /radial-gradient/i);
+      assert.notEqual(containerBackgrounds.activeTransforms[0], containerBackgrounds.activeTransforms[1]);
+      assert.notEqual(
+        containerBackgrounds.inactiveTransforms[0],
+        containerBackgrounds.inactiveTransforms[1],
+        JSON.stringify(containerBackgrounds),
+      );
       const grids = linkedFindings.filter(finding => finding.type === 'codex-grid-background');
       assert.equal(grids.length, 1, JSON.stringify({ linkedFindings, linkedCssom }));
       assert.equal(grids[0].severity, 'advisory');
@@ -1423,8 +1440,15 @@ describe('detectUrl — browser-only fixtures', () => {
         JSON.stringify({ linkedFindings, linkedCssom }),
       );
       const marquees = linkedFindings.filter(finding => finding.type === 'marquee');
-      assert.equal(marquees.length, 1, JSON.stringify({ linkedFindings, linkedCssom }));
-      assert.match(marquees[0].detail, /\.linked-marquee/);
+      assert.equal(marquees.length, 3, JSON.stringify({ linkedFindings, linkedCssom }));
+      assert.deepEqual(
+        new Set(marquees.map(finding => finding.detail.match(/^\S+/)?.[0])),
+        new Set([
+          '.linked-marquee',
+          '.active-container-animation-reference',
+          '.inactive-container-animation-reference',
+        ]),
+      );
       const pulsingDots = linkedFindings.filter(finding => finding.type === 'pulsing-dot');
       assert.equal(pulsingDots.length, 1, JSON.stringify({ linkedFindings, linkedCssom }));
       assert.match(pulsingDots[0].detail, /\.linked-pulse-dot/);
