@@ -1961,7 +1961,10 @@ function enclosingCssSelector(cssText, index) {
   // `{` belongs to some other selector.
   const closeBeforeIndex = cssText.lastIndexOf('}', index);
   if (closeBeforeIndex > open) return null;
-  const prevClose = Math.max(cssText.lastIndexOf('}', open - 1), cssText.lastIndexOf(';', open - 1));
+  // Ignore delimiters inside comments when locating the previous declaration.
+  // Keeping comment length intact preserves indices into the original source.
+  const beforeOpen = cssText.slice(0, open).replace(/\/\*[\s\S]*?\*\//g, comment => ' '.repeat(comment.length));
+  const prevClose = Math.max(beforeOpen.lastIndexOf('}'), beforeOpen.lastIndexOf(';'));
   const raw = cssText.slice(prevClose + 1, open).replace(/\/\*[\s\S]*?\*\//g, '').trim().replace(/\s+/g, ' ');
   if (!raw || raw.startsWith('@') || /^\d/.test(raw) || /[{}<]/.test(raw)) return null;
   // Keyframe steps: percentage steps fail the digit test above, but `from`
@@ -8188,8 +8191,18 @@ if (IS_BROWSER) {
       const exact = Array.from(root.querySelectorAll(raw));
       if (exact.length > 0) return exact;
     } catch { /* Dynamic/unsupported pseudos get the fallback below. */ }
+
+    // Resolve pseudo-elements to their originating live elements. An attached
+    // pseudo-element (`.card::before`) belongs to the element before it, while
+    // a hostless pseudo-element after a combinator (`main > ::before`) belongs
+    // to a matching element at that position (`main > *`). Replacing every
+    // pseudo indiscriminately with an empty string leaves the latter as the
+    // invalid selector `main >` and makes absent hosts indistinguishable from
+    // selectors the DOM API cannot parse.
     const fallback = raw
-      .replace(/::?[a-zA-Z-]+(\([^)]*\))?/g, '')
+      .replace(/(^|[\s>+~,])::[a-zA-Z-]+(\([^)]*\))?/g, '$1*')
+      .replace(/::[a-zA-Z-]+(\([^)]*\))?/g, '')
+      .replace(/:[a-zA-Z-]+(\([^)]*\))?/g, '')
       .trim()
       .replace(/,\s*(?=,|$)/g, '');
     if (!fallback || /^[,\s]*$/.test(fallback)) return null;
@@ -8234,11 +8247,10 @@ if (IS_BROWSER) {
         const cssText = rule.cssText || '';
         if (rule.selectorText) {
           const matches = selectorNodesForLiveDom(document, rule.selectorText);
-          // A null result means the DOM selector API cannot resolve the CSSOM
-          // selector (commonly a hostless pseudo-element), not that it is
-          // unused. Keep those valid stylesheet rules; only a definitive empty
-          // result proves that no live element can receive the declaration.
-          if (matches === null || matches.length > 0) parts.push(cssText);
+          // Only declarations with a resolvable live host enter the corpus.
+          // Unresolvable selectors are uncertain, not evidence that a pattern
+          // rendered, and retaining them would leak unused CSS into findings.
+          if (matches?.length > 0) parts.push(cssText);
           continue;
         }
         let nested = [];
@@ -8659,7 +8671,7 @@ if (IS_BROWSER) {
     const scopedHtmlFindings = checkHtmlPatterns(html, corpora).filter(f => {
       if (!f.selector) return true;
       const matches = selectorNodesForLiveDom(document, f.selector);
-      if (!matches) return true;
+      if (!matches) return false;
       if (matches.length === 0) return false;
       return matches.some(el => !scopedIgnoreActive(el, f.id));
     });

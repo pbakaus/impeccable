@@ -688,7 +688,10 @@ function enclosingCssSelector(cssText, index) {
   // `{` belongs to some other selector.
   const closeBeforeIndex = cssText.lastIndexOf('}', index);
   if (closeBeforeIndex > open) return null;
-  const prevClose = Math.max(cssText.lastIndexOf('}', open - 1), cssText.lastIndexOf(';', open - 1));
+  // Ignore delimiters inside comments when locating the previous declaration.
+  // Keeping comment length intact preserves indices into the original source.
+  const beforeOpen = cssText.slice(0, open).replace(/\/\*[\s\S]*?\*\//g, comment => ' '.repeat(comment.length));
+  const prevClose = Math.max(beforeOpen.lastIndexOf('}'), beforeOpen.lastIndexOf(';'));
   const raw = cssText.slice(prevClose + 1, open).replace(/\/\*[\s\S]*?\*\//g, '').trim().replace(/\s+/g, ' ');
   if (!raw || raw.startsWith('@') || /^\d/.test(raw) || /[{}<]/.test(raw)) return null;
   // Keyframe steps: percentage steps fail the digit test above, but `from`

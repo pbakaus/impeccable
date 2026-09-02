@@ -1,8 +1,9 @@
 @media (min-width: 1px) {
-  .flag-linked-stripes {
+  .flag-linked-grid {
     width: 160px;
     height: 80px;
-    background: repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px);
+    background: linear-gradient(90deg, #d9d9d9 1px, transparent 1px), linear-gradient(180deg, #d9d9d9 1px, transparent 1px);
+    background-size: 72px 72px;
   }
 }
 
@@ -19,13 +20,10 @@ main > ::before {
   50% { transform: translateY(2px); }
 }
 
-/* Shipped but unused selectors must remain outside live URL findings, even
-   inside grouping rules or when their check does not serialize a selector. */
-@supports (display: grid) {
-  .unused-linked-grid {
-    background: linear-gradient(90deg, #d9d9d9 1px, transparent 1px), linear-gradient(180deg, #d9d9d9 1px, transparent 1px);
-    background-size: 72px 72px;
-  }
+/* A pseudo-element whose originating element is absent must remain outside
+   live URL findings instead of being retained as an unresolvable selector. */
+.absent > ::before {
+  background: repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px);
 }
 
 /* These selectors exist in the live DOM, but their conditions are inactive.
