@@ -770,6 +770,66 @@ describe('loadContext (monorepo project context)', () => {
     assert.match(res.stdout, /MONOREPO_TARGET_REQUIRED/);
   });
 
+  it('resolves a unique workspace child by bare basename via --target', () => {
+    writeMonorepo();
+    write('apps/dashboard/PRODUCT.md', '# Dashboard product\n\n## Platform\n\nweb\n');
+    const res = spawnSync(process.execPath, [SCRIPT_PATH, '--target', 'dashboard'], {
+      cwd: scratch,
+      encoding: 'utf8',
+      env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1', IMPECCABLE_NO_STALENESS_CHECK: '1' },
+    });
+    assert.equal(res.status, 0, res.stderr);
+    assert.match(res.stdout, /# Dashboard product/);
+    assert.match(res.stdout, /"targetExists": true/);
+    assert.match(res.stdout, /"targetPath": "dashboard"/);
+    assert.doesNotMatch(res.stdout, /MONOREPO_TARGET_REQUIRED/);
+
+    const ctx = loadContext(scratch, { targetPath: 'dashboard' });
+    assert.equal(ctx.projectRoot, path.join(scratch, 'apps', 'dashboard'));
+  });
+
+  it('resolves a dotted workspace child name by bare basename via --target', () => {
+    write('package.json', JSON.stringify({
+      private: true,
+      workspaces: ['src/*'],
+    }, null, 2));
+    write('src/Cantaro.Web/PRODUCT.md', '# Cantaro Web product\n\n## Platform\n\nweb\n');
+    write('src/Cantaro.Api/package.json', JSON.stringify({ name: 'cantaro-api' }));
+    const res = spawnSync(process.execPath, [SCRIPT_PATH, '--target', 'Cantaro.Web'], {
+      cwd: scratch,
+      encoding: 'utf8',
+      env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1', IMPECCABLE_NO_STALENESS_CHECK: '1' },
+    });
+    assert.equal(res.status, 0, res.stderr);
+    assert.match(res.stdout, /# Cantaro Web product/);
+    assert.match(res.stdout, /"targetExists": true/);
+    assert.match(res.stdout, /"targetPath": "Cantaro\.Web"/);
+
+    const ctx = loadContext(scratch, { targetPath: 'Cantaro.Web' });
+    assert.equal(ctx.projectRoot, path.join(scratch, 'src', 'Cantaro.Web'));
+  });
+
+  it('does not guess when a bare basename matches multiple workspace children', () => {
+    write('package.json', JSON.stringify({
+      private: true,
+      workspaces: ['apps/*', 'packages/*'],
+    }, null, 2));
+    write('turbo.json', JSON.stringify({ tasks: {} }));
+    write('apps/web/src/App.jsx', 'export default null;\n');
+    write('packages/web/src/index.ts', 'export {};\n');
+    const res = spawnSync(process.execPath, [SCRIPT_PATH, '--target', 'web'], {
+      cwd: scratch,
+      encoding: 'utf8',
+      env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1', IMPECCABLE_NO_STALENESS_CHECK: '1' },
+    });
+    assert.equal(res.status, 0, res.stderr);
+    assert.match(res.stdout, /"targetExists": false/);
+    assert.match(res.stdout, /MONOREPO_TARGET_REQUIRED/);
+
+    const ctx = loadContext(scratch, { targetPath: 'web' });
+    assert.equal(ctx.projectRoot, scratch);
+  });
+
   it('asks for app selection even when root PRODUCT.md is absent', () => {
     write('package.json', JSON.stringify({
       private: true,

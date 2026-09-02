@@ -248,10 +248,25 @@ function resolveEnvContextDir(cwd) {
   return path.isAbsolute(trimmed) ? trimmed : path.resolve(cwd, trimmed);
 }
 
+function resolveTargetPath(cwd, targetPath) {
+  const abs = path.isAbsolute(targetPath) ? targetPath : path.resolve(cwd, targetPath);
+  if (fs.existsSync(abs)) return abs;
+  return findUniqueBareTarget(cwd, targetPath) || abs;
+}
+
+function findUniqueBareTarget(cwd, targetPath) {
+  if (path.isAbsolute(targetPath) || /[\\/]/.test(targetPath)) return null;
+  const repoRoot = findMonorepoRoot(path.resolve(cwd));
+  if (!repoRoot) return null;
+  const matches = discoverTargetCandidates(repoRoot).filter((candidate) => candidate.name === targetPath);
+  if (matches.length !== 1) return null;
+  return path.resolve(repoRoot, matches[0].path);
+}
+
 function resolveTargetDir(cwd, options = {}) {
   const targetPath = options && typeof options === 'object' ? options.targetPath : null;
   if (!targetPath || !String(targetPath).trim()) return cwd;
-  const abs = path.isAbsolute(targetPath) ? targetPath : path.resolve(cwd, targetPath);
+  const abs = resolveTargetPath(cwd, targetPath);
   try {
     const stat = fs.statSync(abs);
     return stat.isDirectory() ? abs : path.dirname(abs);
@@ -1272,8 +1287,7 @@ function hasTargetOption(options) {
 }
 
 function pathExistsForTarget(cwd, targetPath) {
-  const abs = path.isAbsolute(targetPath) ? targetPath : path.resolve(cwd, targetPath);
-  return fs.existsSync(abs);
+  return fs.existsSync(resolveTargetPath(cwd, targetPath));
 }
 
 const HOOK_MANIFESTS_BY_PROVIDER = Object.freeze({
