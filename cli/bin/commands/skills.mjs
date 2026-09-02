@@ -525,6 +525,54 @@ async function promptCheckbox(message, options, { selectedValues = [] } = {}) {
 
 // ─── skills help ──────────────────────────────────────────────────────────────
 
+const SUBCOMMAND_HELP = {
+  install: `Usage: impeccable install [options]
+
+Install compiled Impeccable skills into project or user-level harness folders.
+
+Options:
+  -y, --yes              Accept detected defaults without prompting
+  --providers=<names>    Comma-separated harnesses to install
+  --scope=<scope>        Install scope: project or global
+  --project              Install into the current project
+  --user, --global       Install at the user level
+  --no-hooks             Install skills without provider hook manifests
+  --force                Replace an existing installation
+  -h, --help             Show this help message`,
+  link: `Usage: impeccable link [options]
+
+Link Impeccable skills from a local checkout or submodule.
+
+Options:
+  --source=<path>        Source checkout (default: .impeccable)
+  --providers=<names>    Comma-separated harnesses to link
+  -y, --yes              Accept detected defaults without prompting
+  --force                Replace existing skill folders with links
+  -h, --help             Show this help message`,
+  update: `Usage: impeccable update [options]
+
+Update an existing Impeccable skill installation.
+
+Options:
+  -y, --yes              Accept detected defaults without prompting
+  --scope=<scope>        Update scope: project or global
+  --project              Update the current project installation
+  --user, --global       Update the user-level installation
+  --no-hooks             Update skills without changing hook manifests
+  --force                Replace installed skill files
+  -h, --help             Show this help message`,
+  check: `Usage: impeccable check [options]
+
+Check whether installed Impeccable skills are up to date.
+
+Options:
+  -h, --help             Show this help message`,
+};
+
+function showSubcommandHelp(subcommand) {
+  console.log(SUBCOMMAND_HELP[subcommand]);
+}
+
 async function showHelp() {
   let commands;
   try {
@@ -2532,6 +2580,11 @@ export {
 
 export async function run(args) {
   const sub = args[0];
+
+  if (SUBCOMMAND_HELP[sub] && args.slice(1).some(arg => arg === '--help' || arg === '-h')) {
+    showSubcommandHelp(sub);
+    return;
+  }
 
   if (!sub || sub === 'help' || sub === '--help' || sub === '-h') {
     await showHelp();
