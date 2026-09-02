@@ -1,5 +1,5 @@
 @media (min-width: 1px) {
-  .flag-linked-grid {
+  [data-token="::before"] {
     width: 160px;
     height: 80px;
     background: linear-gradient(90deg, #d9d9d9 1px, transparent 1px), linear-gradient(180deg, #d9d9d9 1px, transparent 1px);
@@ -10,6 +10,19 @@
 body {
   background: #111;
   color: #fff;
+}
+
+/* Literal pseudo-element text inside an attribute value is data, not selector
+   syntax. This rule has no live match even though an empty-value decoy does. */
+[data-decoy="::before"] {
+  color: #7c3aed;
+}
+
+/* Escaped colons are identifier data, not a legacy pseudo-element. */
+.\:\:before {
+  width: 240px;
+  height: 160px;
+  clip-path: polygon(2% 4%, 17% 1%, 31% 7%, 47% 3%, 62% 9%, 79% 2%, 96% 13%, 91% 31%, 98% 49%, 89% 68%, 95% 87%, 74% 96%, 51% 91%, 29% 98%, 8% 84%, 3% 61%);
 }
 
 /* A valid hostless pseudo-element selector cannot be queried through the DOM

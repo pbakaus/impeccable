@@ -1434,6 +1434,12 @@ describe('detectUrl — browser-only fixtures', () => {
         JSON.stringify({ linkedFindings, linkedCssom, containerBackgrounds }),
       );
       assert.equal(linkedFindings.some(finding => finding.type === 'layout-transition'), false);
+      assert.equal(linkedFindings.some(finding => finding.type === 'ai-color-palette'), false);
+      assert.equal(
+        linkedFindings.some(finding => finding.type === 'organic-clip-path'),
+        true,
+        JSON.stringify({ linkedFindings, linkedCssom }),
+      );
       await linkedPage.close();
 
       const fontPage = await browser.newPage();

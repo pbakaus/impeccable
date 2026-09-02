@@ -8184,14 +8184,95 @@ if (IS_BROWSER) {
     else groupMap.set(el, [...kept]);
   }
 
+  function pseudoElementHostSelector(selector) {
+    const raw = String(selector || '');
+    const legacyNames = new Set(['before', 'after', 'first-letter', 'first-line']);
+    const isNameChar = char => /[a-zA-Z0-9_-]/.test(char || '');
+    const consumeFunction = (start) => {
+      let depth = 0;
+      let quote = '';
+      for (let i = start; i < raw.length; i += 1) {
+        const char = raw[i];
+        if (char === '\\') {
+          i += 1;
+          continue;
+        }
+        if (quote) {
+          if (char === quote) quote = '';
+          continue;
+        }
+        if (char === '"' || char === "'") {
+          quote = char;
+          continue;
+        }
+        if (char === '(') depth += 1;
+        if (char === ')' && --depth === 0) return i + 1;
+      }
+      return raw.length;
+    };
+
+    let output = '';
+    let found = false;
+    for (let i = 0; i < raw.length;) {
+      const char = raw[i];
+      if (char === '\\') {
+        output += raw.slice(i, Math.min(raw.length, i + 2));
+        i += 2;
+        continue;
+      }
+      if (char === '"' || char === "'") {
+        const quote = char;
+        const start = i;
+        i += 1;
+        while (i < raw.length) {
+          if (raw[i] === '\\') {
+            i += 2;
+            continue;
+          }
+          const value = raw[i];
+          i += 1;
+          if (value === quote) break;
+        }
+        output += raw.slice(start, i);
+        continue;
+      }
+      if (char !== ':') {
+        output += char;
+        i += 1;
+        continue;
+      }
+
+      let end = i + 1;
+      let isPseudoElement = false;
+      if (raw[end] === ':') {
+        end += 1;
+        const nameStart = end;
+        while (isNameChar(raw[end])) end += 1;
+        isPseudoElement = end > nameStart;
+      } else {
+        const nameStart = end;
+        while (isNameChar(raw[end])) end += 1;
+        isPseudoElement = legacyNames.has(raw.slice(nameStart, end).toLowerCase());
+      }
+      if (!isPseudoElement) {
+        output += char;
+        i += 1;
+        continue;
+      }
+      if (raw[end] === '(') end = consumeFunction(end);
+      found = true;
+      if (!output || /[\s>+~,]/.test(output[output.length - 1])) output += '*';
+      i = end;
+    }
+    if (!found) return null;
+    return output.trim().replace(/,\s*(?=,|$)/g, '');
+  }
+
   function selectorNodesForLiveDom(root, selector) {
     const raw = String(selector || '').trim();
     if (!raw) return null;
-
-    const hasPseudoElement = (
-      /::[a-zA-Z-]+(?:\([^)]*\))?|:(?:before|after|first-letter|first-line)\b/i.test(raw)
-    );
-    if (!hasPseudoElement) {
+    const fallback = pseudoElementHostSelector(raw);
+    if (fallback == null) {
       // An empty result from a valid full selector is authoritative. In
       // particular, do not broaden inactive :hover/:focus/:not() rules to
       // their host element by stripping pseudo-classes.
@@ -8206,11 +8287,6 @@ if (IS_BROWSER) {
     // pseudo indiscriminately with an empty string leaves the latter as the
     // invalid selector `main >` and makes absent hosts indistinguishable from
     // selectors the DOM API cannot parse.
-    const fallback = raw
-      .replace(/(^|[\s>+~,])(?:::[a-zA-Z-]+(?:\([^)]*\))?|:(?:before|after|first-letter|first-line)\b)/gi, '$1*')
-      .replace(/::[a-zA-Z-]+(?:\([^)]*\))?|:(?:before|after|first-letter|first-line)\b/gi, '')
-      .trim()
-      .replace(/,\s*(?=,|$)/g, '');
     if (!fallback || /^[,\s]*$/.test(fallback)) return null;
     try { return Array.from(root.querySelectorAll(fallback)); }
     catch { return null; }
