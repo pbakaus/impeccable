@@ -1408,9 +1408,11 @@ describe('detectUrl — browser-only fixtures', () => {
       const containerBackgrounds = await linkedPage.evaluate(async () => {
         const activeAnimation = document.querySelector('.active-container-animation-reference');
         const inactiveAnimation = document.querySelector('.inactive-container-animation-reference');
+        const overriddenAnimation = document.querySelector('.overridden-keyframes-animation');
         const before = {
           active: getComputedStyle(activeAnimation).transform,
           inactive: getComputedStyle(inactiveAnimation).transform,
+          overridden: getComputedStyle(overriddenAnimation).transform,
         };
         await new Promise(resolve => setTimeout(resolve, 120));
         return {
@@ -1419,6 +1421,7 @@ describe('detectUrl — browser-only fixtures', () => {
           pseudoClass: getComputedStyle(document.querySelector('.inactive-pseudo-stripes')).backgroundImage,
           activeTransforms: [before.active, getComputedStyle(activeAnimation).transform],
           inactiveTransforms: [before.inactive, getComputedStyle(inactiveAnimation).transform],
+          overriddenTransforms: [before.overridden, getComputedStyle(overriddenAnimation).transform],
         };
       });
       assert.equal(containerBackgrounds.inactive, 'none');
@@ -1428,6 +1431,11 @@ describe('detectUrl — browser-only fixtures', () => {
       assert.notEqual(
         containerBackgrounds.inactiveTransforms[0],
         containerBackgrounds.inactiveTransforms[1],
+        JSON.stringify(containerBackgrounds),
+      );
+      assert.equal(
+        containerBackgrounds.overriddenTransforms[0],
+        containerBackgrounds.overriddenTransforms[1],
         JSON.stringify(containerBackgrounds),
       );
       const grids = linkedFindings.filter(finding => finding.type === 'codex-grid-background');

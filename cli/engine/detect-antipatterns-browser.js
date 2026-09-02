@@ -8435,7 +8435,7 @@ if (IS_BROWSER) {
     const parts = [];
     const seen = new Set();
     const animationNames = new Set();
-    const keyframeCandidates = [];
+    const keyframeCandidates = new Map();
     const appendRules = (rules, requiresAppliedMatch = false) => {
       for (const rule of rules) {
         if (rule.styleSheet) {
@@ -8468,7 +8468,9 @@ if (IS_BROWSER) {
         }
         const keyframesName = keyframesRuleName(rule, cssText);
         if (keyframesName) {
-          keyframeCandidates.push({
+          // Keyframes do not merge: when a name is defined more than once, the
+          // later effective definition replaces the earlier one.
+          keyframeCandidates.set(keyframesName, {
             name: keyframesName,
             cssText,
           });
@@ -8506,7 +8508,7 @@ if (IS_BROWSER) {
     // animation renders. The live reference is the useful gate: it preserves
     // linked marquee/pulse detection without letting unreferenced keyframe
     // bodies feed page-level checks.
-    for (const candidate of keyframeCandidates) {
+    for (const candidate of keyframeCandidates.values()) {
       if (!animationNames.has(candidate.name)) continue;
       parts.push(candidate.cssText);
     }

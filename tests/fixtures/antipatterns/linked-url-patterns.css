@@ -47,6 +47,20 @@ main > ::before {
   to { transform: translateX(-50%); }
 }
 
+.overridden-keyframes-animation {
+  animation: overridden-horizontal-loop 2s linear infinite;
+}
+
+@keyframes overridden-horizontal-loop {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+/* The later same-name definition is the one Chromium renders. */
+@keyframes overridden-horizontal-loop {
+  50% { opacity: 0.4; }
+}
+
 .linked-pulse-dot {
   width: 8px;
   height: 8px;
