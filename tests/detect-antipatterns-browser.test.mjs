@@ -1405,6 +1405,11 @@ describe('detectUrl — browser-only fixtures', () => {
       })));
       const linkedFindings = await linkedPage.evaluate(() => window.impeccableDetect({ serialize: true })
         .flatMap(group => group.findings || []));
+      const inactiveContainerBackground = await linkedPage.$eval(
+        '.inactive-container-stripes',
+        element => getComputedStyle(element).backgroundImage,
+      );
+      assert.equal(inactiveContainerBackground, 'none');
       const grids = linkedFindings.filter(finding => finding.type === 'codex-grid-background');
       assert.equal(grids.length, 1, JSON.stringify({ linkedFindings, linkedCssom }));
       assert.equal(grids[0].severity, 'advisory');

@@ -40,6 +40,17 @@ main > ::before {
   }
 }
 
+.container-query-host {
+  container-type: inline-size;
+  width: 240px;
+}
+
+@container (width > 900px) {
+  .inactive-container-stripes {
+    background: repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px);
+  }
+}
+
 .unused-linked-transition {
   transition: width 200ms ease;
 }

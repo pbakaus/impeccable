@@ -8225,6 +8225,13 @@ if (IS_BROWSER) {
       try { return CSS.supports(condition); }
       catch { return true; }
     }
+    if (constructorName === 'CSSContainerRule' || /^\s*@container\b/i.test(rule?.cssText || '')) {
+      // The platform exposes no matchMedia-equivalent for container queries,
+      // and selector matches do not prove that the element's query container
+      // satisfies the condition. Omit the group rather than report styles that
+      // are inactive for the current layout.
+      return false;
+    }
     return true;
   }
 
