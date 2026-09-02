@@ -1166,13 +1166,19 @@ async function cli() {
     throw err;
   }
   const targetProvided = hasTargetOption(cliOptions);
-  const targetExists = targetProvided ? pathExistsForTarget(process.cwd(), cliOptions.targetPath) : null;
+  const resolvedTargetPath = targetProvided
+    ? resolveTargetPath(process.cwd(), cliOptions.targetPath)
+    : null;
+  const targetExists = targetProvided ? fs.existsSync(resolvedTargetPath) : null;
   const selection = resolveTargetSelection(process.cwd(), cliOptions);
   if (selection) {
     process.stdout.write(buildTargetSelectionDirective(selection) + '\n');
     process.exit(0);
   }
-  const ctx = loadContext(process.cwd(), cliOptions);
+  const ctx = loadContext(
+    process.cwd(),
+    resolvedTargetPath ? { targetPath: resolvedTargetPath } : cliOptions,
+  );
   const updateDirective = await computeUpdateDirective();
 
   if (!ctx.hasProduct) {
@@ -1284,10 +1290,6 @@ function parseCliOptions(args) {
 
 function hasTargetOption(options) {
   return !!(options && typeof options.targetPath === 'string' && options.targetPath.trim());
-}
-
-function pathExistsForTarget(cwd, targetPath) {
-  return fs.existsSync(resolveTargetPath(cwd, targetPath));
 }
 
 const HOOK_MANIFESTS_BY_PROVIDER = Object.freeze({
