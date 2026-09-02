@@ -1219,6 +1219,18 @@ describe('context.mjs CLI', () => {
     });
     assert.equal(res.status, 0, res.stderr);
     assert.doesNotMatch(res.stdout, /MANUAL_DETECTOR_REQUIRED:/);
+
+    fs.mkdirSync(path.join(repo, '.impeccable'), { recursive: true });
+    fs.writeFileSync(path.join(repo, '.impeccable', 'config.local.json'), JSON.stringify({
+      hook: { enabled: false },
+    }));
+    const disabled = spawnSync(process.execPath, [path.join(scripts, 'context.mjs')], {
+      cwd: project,
+      encoding: 'utf8',
+      env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1', IMPECCABLE_NO_STALENESS_CHECK: '1' },
+    });
+    assert.equal(disabled.status, 0, disabled.stderr);
+    assert.match(disabled.stdout, /MANUAL_DETECTOR_REQUIRED:/);
   });
 
   it('does not borrow a hook manifest from the invoking workspace when targeting a sibling', () => {
