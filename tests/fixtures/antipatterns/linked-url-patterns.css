@@ -1,0 +1,11 @@
+.flag-linked-stripes {
+  width: 160px;
+  height: 80px;
+  background: repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px);
+}
+
+/* A shipped but unused selector must remain outside live URL findings. */
+.unused-linked-grid {
+  background: linear-gradient(90deg, #d9d9d9 1px, transparent 1px), linear-gradient(180deg, #d9d9d9 1px, transparent 1px);
+  background-size: 72px 72px;
+}

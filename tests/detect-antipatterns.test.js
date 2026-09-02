@@ -2717,23 +2717,30 @@ describe('CLI', () => {
     expect(code).toBe(0);
     expect(stdout).toContain('Usage:');
     expect(stdout).toContain('--quiet');
+    expect(stdout).toContain('Human-readable findings go to stderr');
     expect(stdout).not.toContain('--gpt');
     expect(stdout).not.toContain('--gemini');
   });
 
-  test('generated-UI tells run by default in the CLI', () => {
+  test('severity advisory is non-blocking, flagged in JSON, and suppressible', () => {
     const { stdout, code } = run('--json', path.join(FIXTURES, 'gpt-tells.html'));
-    expect(code).toBe(2);
-    const ids = JSON.parse(stdout).map(f => f.antipattern);
+    expect(code).toBe(0);
+    const findings = JSON.parse(stdout);
+    const ids = findings.map(f => f.antipattern);
     expect(ids).toContain('gpt-thin-border-wide-shadow');
     expect(ids).toContain('repeating-stripes-gradient');
     expect(ids).toContain('codex-grid-background');
     expect(ids).toContain('theater-slop-phrase');
+    expect(findings.every(f => f.severity === 'advisory' && f.advisory === true)).toBe(true);
+
+    const hidden = run('--json', '--no-advisory', path.join(FIXTURES, 'gpt-tells.html'));
+    expect(hidden.code).toBe(0);
+    expect(JSON.parse(hidden.stdout)).toEqual([]);
   });
 
   test('legacy provider flags are accepted as deprecated no-ops', () => {
     const { stdout, stderr, code } = run('--gpt', '--json', path.join(FIXTURES, 'gpt-tells.html'));
-    expect(code).toBe(2);
+    expect(code).toBe(0);
     expect(stderr).toContain('--gpt and --gemini are deprecated and ignored');
     expect(JSON.parse(stdout).some(f => f.antipattern === 'codex-grid-background')).toBe(true);
   });
@@ -2744,14 +2751,30 @@ describe('CLI', () => {
     expect(stderr).not.toContain('cannot access detect');
   });
 
+  test('keeps a local path containing spaces as one scan target', () => {
+    const fixture = writeStaticFixture({
+      'page with spaces.html': '<!doctype html><html><body><main><h1>Plain page</h1></main></body></html>',
+    });
+    const file = path.join(fixture.dir, 'page with spaces.html');
+    try {
+      const { stdout, stderr, code } = run('--json', file);
+      expect(code).toBe(0);
+      expect(JSON.parse(stdout)).toEqual([]);
+      expect(stderr).not.toContain('cannot access');
+    } finally {
+      fs.rmSync(fixture.dir, { recursive: true, force: true });
+    }
+  });
+
   test('should-pass exits 0', () => {
     const { code } = run(path.join(FIXTURES, 'should-pass.html'));
     expect(code).toBe(0);
   });
 
   test('should-flag exits 2 with findings', () => {
-    const { code, stderr } = run(path.join(FIXTURES, 'should-flag.html'));
+    const { stdout, code, stderr } = run(path.join(FIXTURES, 'should-flag.html'));
     expect(code).toBe(2);
+    expect(stdout).toBe('');
     expect(stderr).toContain('side-tab');
   });
 
@@ -2899,7 +2922,7 @@ colors:
 `);
 
       const full = runIn(dir, '--json', 'index.css');
-      expect(full.code).toBe(2);
+      expect(full.code).toBe(0);
       const fullIds = JSON.parse(full.stdout).map((finding) => finding.antipattern);
       expect(fullIds).toContain('design-system-font-size');
       expect(fullIds).toContain('design-system-color');

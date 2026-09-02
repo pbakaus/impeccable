@@ -358,7 +358,7 @@ const ANTIPATTERNS = [
     // rather than a failure. It fires only on the AI saturation pattern, not on
     // ordinary prose. Advisory findings are surfaced separately, never counted
     // as failures, and skipped by the design hook unless a project opts in.
-    advisory: true,
+    severity: 'advisory',
     name: 'Em-dash overuse',
     description:
       'Em-dash saturation in body copy is an AI cadence tell. Advisory only: humans use em-dashes legitimately, so this fires only on saturation — at least 8 em-dashes (— or --) at a density near one per 500 characters of body text — never on a long article that uses a few. Prefer commas, colons, periods, or parentheses.',
@@ -5293,14 +5293,17 @@ function checkTypography() {
   }
 
   if (totalTextElements >= 20) {
-    // A font is "primary" if it's used by at least 15% of text elements
-    const PRIMARY_THRESHOLD = 0.15;
-    for (const [font, count] of fontUsage) {
+    // Report the actual primary face: the uniquely most-used family. The old
+    // 15% threshold labeled secondary faces as primary (e.g. an 82/18 split).
+    const ranked = [...fontUsage.entries()].sort((a, b) => b[1] - a[1]);
+    const [primary] = ranked;
+    const tied = ranked[1]?.[1] === primary?.[1];
+    if (primary && !tied) {
+      const [font, count] = primary;
       const share = count / totalTextElements;
-      if (share < PRIMARY_THRESHOLD) continue;
-      if (!OVERUSED_FONTS.has(font)) continue;
-      if (isBrandFontOnOwnDomain(font)) continue;
-      findings.push({ type: 'overused-font', detail: `Primary font: ${font} (${Math.round(share * 100)}% of text)` });
+      if (OVERUSED_FONTS.has(font) && !isBrandFontOnOwnDomain(font)) {
+        findings.push({ type: 'overused-font', detail: `Primary font: ${font} (${Math.round(share * 100)}% of text)` });
+      }
     }
   }
 
@@ -8133,7 +8136,7 @@ if (IS_BROWSER) {
           // Advisory findings (em-dash overuse, etc.) are surfaced but never
           // treated as failures; carry the flag so the overlay/extension can
           // render them with the mildest affordance and consumers can filter.
-          advisory: (ap && ap.advisory === true) || f.advisory === true,
+          advisory: ap?.severity === 'advisory' || f.severity === 'advisory' || f.advisory === true,
           detail: f.detail || f.snippet,
           ignoreValue: f.ignoreValue || f.value || '',
           name: ap ? ap.name : (f.type || f.id),
@@ -8173,6 +8176,36 @@ if (IS_BROWSER) {
     const existing = groupMap.get(el);
     if (existing) existing.push(...kept);
     else groupMap.set(el, [...kept]);
+  }
+
+  // Read CSS that is absent from document.outerHTML. Inline <style> blocks are
+  // already present in the HTML pattern corpus, so limit this walk to linked
+  // stylesheets. Same-origin CSS and readable CORS sheets participate; browser
+  // security exceptions for cross-origin sheets are expected and skipped.
+  function linkedStylesheetText() {
+    const parts = [];
+    const seen = new Set();
+    const appendSheet = (sheet) => {
+      if (!sheet || seen.has(sheet)) return;
+      seen.add(sheet);
+      let rules;
+      try { rules = Array.from(sheet.cssRules || sheet.rules || []); }
+      catch { return; }
+      for (const rule of rules) {
+        if (rule.styleSheet) appendSheet(rule.styleSheet);
+        else if (rule.cssText) parts.push(rule.cssText);
+      }
+    };
+    let sheets;
+    try { sheets = Array.from(document.styleSheets || []); }
+    catch { return ''; }
+    for (const sheet of sheets) {
+      const owner = sheet.ownerNode;
+      if (owner?.tagName?.toLowerCase() !== 'link') continue;
+      if (!/\bstylesheet\b/i.test(owner.getAttribute?.('rel') || '')) continue;
+      appendSheet(sheet);
+    }
+    return parts.join('\n');
   }
 
   function browserFindingsFromMap(groupMap) {
@@ -8548,7 +8581,11 @@ if (IS_BROWSER) {
     // (the CSS ships here, but the pattern never renders — the live DOM is
     // ground truth in the browser), and a match under a data-impeccable-ignore
     // ancestor is waived. Selector-less findings stay page-level.
-    const scopedHtmlFindings = checkHtmlPatterns(docClone.outerHTML).filter(f => {
+    const html = docClone.outerHTML;
+    const corpora = buildHtmlPatternCorpora(html);
+    const linkedCss = linkedStylesheetText();
+    if (linkedCss) corpora.styleText += `\n${linkedCss}`;
+    const scopedHtmlFindings = checkHtmlPatterns(html, corpora).filter(f => {
       if (!f.selector) return true;
       const query = String(f.selector).replace(/::?[a-zA-Z-]+(\([^)]*\))?/g, '').trim().replace(/,\s*(?=,|$)/g, '');
       if (!query || /^[,\s]*$/.test(query)) return true;

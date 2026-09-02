@@ -15,6 +15,7 @@
  */
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -51,6 +52,21 @@ function isolatedBrowserFixtureCases(name) {
 
 let server;
 let baseUrl;
+
+function runDetectCli(args) {
+  return new Promise((resolve) => {
+    execFile(
+      process.execPath,
+      [path.join(ROOT, 'skill', 'scripts', 'detect.mjs'), ...args],
+      { cwd: path.join(ROOT, 'tests', 'fixtures'), encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 },
+      (error, stdout, stderr) => resolve({
+        code: typeof error?.code === 'number' ? error.code : 0,
+        stdout,
+        stderr,
+      }),
+    );
+  });
+}
 
 before(async () => {
   // Static server: maps /fixtures/* to tests/fixtures/* and
@@ -1343,6 +1359,64 @@ describe('detectUrl — browser-only fixtures', () => {
       assert.equal(second.filter(r => r.antipattern === 'body-text-viewport-edge').length, 3);
     } finally {
       await detector.close();
+    }
+  });
+
+  it('CLI expands a joined multi-URL target and attributes both scans', async () => {
+    const first = `${baseUrl}/fixtures/antipatterns/quality.html`;
+    const second = `${baseUrl}/fixtures/antipatterns/body-text-viewport-edge.html`;
+    const result = await runDetectCli([
+      '--json',
+      '--viewport',
+      '1280x800',
+      `${first} ${second}`,
+    ]);
+    assert.equal(result.code, 2, result.stderr);
+    const files = new Set(JSON.parse(result.stdout).map(finding => finding.file));
+    assert.ok(files.has(first), `missing first URL attribution: ${JSON.stringify([...files])}`);
+    assert.ok(files.has(second), `missing second URL attribution: ${JSON.stringify([...files])}`);
+    assert.equal(files.has(`${first} ${second}`), false);
+  });
+
+  it('URL scans read linked CSS, serialize severity advisories, and flag only the dominant font', async () => {
+    const puppeteer = await import('puppeteer');
+    const browser = await launchBrowser(puppeteer, {
+      headless: true,
+      args: process.env.CI ? ['--no-sandbox', '--disable-setuid-sandbox'] : [],
+    });
+    const browserScript = fs.readFileSync(path.join(ROOT, 'cli/engine/detect-antipatterns-browser.js'), 'utf-8');
+    try {
+      const linkedPage = await browser.newPage();
+      await linkedPage.goto(`${baseUrl}/fixtures/antipatterns/linked-url-patterns.html`, { waitUntil: 'load' });
+      await linkedPage.evaluate(() => { window.__IMPECCABLE_CONFIG__ = { autoScan: false }; });
+      await linkedPage.evaluate(browserScript);
+      const linkedFindings = await linkedPage.evaluate(() => window.impeccableDetect({ serialize: true })
+        .flatMap(group => group.findings || []));
+      const stripes = linkedFindings.filter(finding => finding.type === 'repeating-stripes-gradient');
+      assert.equal(stripes.length, 1, JSON.stringify(linkedFindings));
+      assert.equal(stripes[0].severity, 'advisory');
+      assert.equal(stripes[0].advisory, true);
+      assert.equal(linkedFindings.some(finding => finding.type === 'codex-grid-background'), false);
+      await linkedPage.close();
+
+      const fontPage = await browser.newPage();
+      const primary = Array.from({ length: 82 }, (_, i) => `<span class="primary">Primary ${i}</span>`).join('');
+      const secondary = Array.from({ length: 18 }, (_, i) => `<span class="secondary">Secondary ${i}</span>`).join('');
+      await fontPage.setContent(`<!doctype html><style>
+        .primary { font-family: Geist, sans-serif; }
+        .secondary { font-family: "Geist Mono", monospace; }
+      </style><main>${primary}${secondary}</main>`);
+      await fontPage.evaluate(() => { window.__IMPECCABLE_CONFIG__ = { autoScan: false }; });
+      await fontPage.evaluate(browserScript);
+      const fontFindings = await fontPage.evaluate(() => window.impeccableDetect({ serialize: true })
+        .flatMap(group => group.findings || [])
+        .filter(finding => finding.type === 'overused-font'));
+      assert.equal(fontFindings.length, 1, JSON.stringify(fontFindings));
+      assert.match(fontFindings[0].detail, /Primary font: geist \(82% of text\)/i);
+      assert.doesNotMatch(fontFindings[0].detail, /geist mono/i);
+      await fontPage.close();
+    } finally {
+      await browser.close().catch(() => {});
     }
   });
 

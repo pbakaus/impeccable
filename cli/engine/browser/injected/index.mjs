@@ -1235,7 +1235,7 @@ if (IS_BROWSER) {
           // Advisory findings (em-dash overuse, etc.) are surfaced but never
           // treated as failures; carry the flag so the overlay/extension can
           // render them with the mildest affordance and consumers can filter.
-          advisory: (ap && ap.advisory === true) || f.advisory === true,
+          advisory: ap?.severity === 'advisory' || f.severity === 'advisory' || f.advisory === true,
           detail: f.detail || f.snippet,
           ignoreValue: f.ignoreValue || f.value || '',
           name: ap ? ap.name : (f.type || f.id),
@@ -1275,6 +1275,36 @@ if (IS_BROWSER) {
     const existing = groupMap.get(el);
     if (existing) existing.push(...kept);
     else groupMap.set(el, [...kept]);
+  }
+
+  // Read CSS that is absent from document.outerHTML. Inline <style> blocks are
+  // already present in the HTML pattern corpus, so limit this walk to linked
+  // stylesheets. Same-origin CSS and readable CORS sheets participate; browser
+  // security exceptions for cross-origin sheets are expected and skipped.
+  function linkedStylesheetText() {
+    const parts = [];
+    const seen = new Set();
+    const appendSheet = (sheet) => {
+      if (!sheet || seen.has(sheet)) return;
+      seen.add(sheet);
+      let rules;
+      try { rules = Array.from(sheet.cssRules || sheet.rules || []); }
+      catch { return; }
+      for (const rule of rules) {
+        if (rule.styleSheet) appendSheet(rule.styleSheet);
+        else if (rule.cssText) parts.push(rule.cssText);
+      }
+    };
+    let sheets;
+    try { sheets = Array.from(document.styleSheets || []); }
+    catch { return ''; }
+    for (const sheet of sheets) {
+      const owner = sheet.ownerNode;
+      if (owner?.tagName?.toLowerCase() !== 'link') continue;
+      if (!/\bstylesheet\b/i.test(owner.getAttribute?.('rel') || '')) continue;
+      appendSheet(sheet);
+    }
+    return parts.join('\n');
   }
 
   function browserFindingsFromMap(groupMap) {
@@ -1650,7 +1680,11 @@ if (IS_BROWSER) {
     // (the CSS ships here, but the pattern never renders — the live DOM is
     // ground truth in the browser), and a match under a data-impeccable-ignore
     // ancestor is waived. Selector-less findings stay page-level.
-    const scopedHtmlFindings = checkHtmlPatterns(docClone.outerHTML).filter(f => {
+    const html = docClone.outerHTML;
+    const corpora = buildHtmlPatternCorpora(html);
+    const linkedCss = linkedStylesheetText();
+    if (linkedCss) corpora.styleText += `\n${linkedCss}`;
+    const scopedHtmlFindings = checkHtmlPatterns(html, corpora).filter(f => {
       if (!f.selector) return true;
       const query = String(f.selector).replace(/::?[a-zA-Z-]+(\([^)]*\))?/g, '').trim().replace(/,\s*(?=,|$)/g, '');
       if (!query || /^[,\s]*$/.test(query)) return true;

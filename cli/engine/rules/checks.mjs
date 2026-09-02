@@ -4020,14 +4020,17 @@ function checkTypography() {
   }
 
   if (totalTextElements >= 20) {
-    // A font is "primary" if it's used by at least 15% of text elements
-    const PRIMARY_THRESHOLD = 0.15;
-    for (const [font, count] of fontUsage) {
+    // Report the actual primary face: the uniquely most-used family. The old
+    // 15% threshold labeled secondary faces as primary (e.g. an 82/18 split).
+    const ranked = [...fontUsage.entries()].sort((a, b) => b[1] - a[1]);
+    const [primary] = ranked;
+    const tied = ranked[1]?.[1] === primary?.[1];
+    if (primary && !tied) {
+      const [font, count] = primary;
       const share = count / totalTextElements;
-      if (share < PRIMARY_THRESHOLD) continue;
-      if (!OVERUSED_FONTS.has(font)) continue;
-      if (isBrandFontOnOwnDomain(font)) continue;
-      findings.push({ type: 'overused-font', detail: `Primary font: ${font} (${Math.round(share * 100)}% of text)` });
+      if (OVERUSED_FONTS.has(font) && !isBrandFontOnOwnDomain(font)) {
+        findings.push({ type: 'overused-font', detail: `Primary font: ${font} (${Math.round(share * 100)}% of text)` });
+      }
     }
   }
 

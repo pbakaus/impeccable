@@ -665,6 +665,7 @@ describe('filterFindings()', () => {
     const filtered = filterFindings(findings, content, '.ts', {
       ignoreRules: ['side-tab'],
       minSeverity: 'error',
+      advisoryRules: 'include',
       limits: DEFAULT_CONFIG.limits,
     });
     assert.deepEqual(filtered.map((f) => f.antipattern), ['gradient-text', 'overused-font']);
@@ -674,6 +675,7 @@ describe('filterFindings()', () => {
     const findings = [
       finding('side-tab', 1),
       finding('em-dash-overuse', 2),
+      finding('design-system-radius', 3, { severity: 'advisory' }),
       finding('gradient-text', 3),
     ];
     const filtered = filterFindings(findings, '', '.html', {
@@ -700,6 +702,7 @@ describe('filterFindings()', () => {
     assert.ok(ADVISORY_RULES.has('em-dash-overuse'));
     assert.equal(isAdvisoryFinding(finding('em-dash-overuse', 1)), true);
     assert.equal(isAdvisoryFinding({ antipattern: 'anything', advisory: true }), true);
+    assert.equal(isAdvisoryFinding({ antipattern: 'anything', severity: 'advisory' }), true);
     assert.equal(isAdvisoryFinding(finding('side-tab', 1)), false);
   });
 
