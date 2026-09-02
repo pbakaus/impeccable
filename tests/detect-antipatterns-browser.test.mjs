@@ -1390,13 +1390,25 @@ describe('detectUrl — browser-only fixtures', () => {
       await linkedPage.goto(`${baseUrl}/fixtures/antipatterns/linked-url-patterns.html`, { waitUntil: 'load' });
       await linkedPage.evaluate(() => { window.__IMPECCABLE_CONFIG__ = { autoScan: false }; });
       await linkedPage.evaluate(browserScript);
+      const linkedCssom = await linkedPage.evaluate(() => Array.from(document.styleSheets).map(sheet => ({
+        owner: sheet.ownerNode?.tagName || null,
+        rules: Array.from(sheet.cssRules || []).map(rule => ({
+          cssText: rule.cssText,
+          selectorText: rule.selectorText || null,
+          nested: Array.from(rule.cssRules || []).map(child => ({
+            cssText: child.cssText,
+            selectorText: child.selectorText || null,
+          })),
+        })),
+      })));
       const linkedFindings = await linkedPage.evaluate(() => window.impeccableDetect({ serialize: true })
         .flatMap(group => group.findings || []));
       const stripes = linkedFindings.filter(finding => finding.type === 'repeating-stripes-gradient');
-      assert.equal(stripes.length, 1, JSON.stringify(linkedFindings));
+      assert.equal(stripes.length, 1, JSON.stringify({ linkedFindings, linkedCssom }));
       assert.equal(stripes[0].severity, 'advisory');
       assert.equal(stripes[0].advisory, true);
       assert.equal(linkedFindings.some(finding => finding.type === 'codex-grid-background'), false);
+      assert.equal(linkedFindings.some(finding => finding.type === 'layout-transition'), false);
       await linkedPage.close();
 
       const fontPage = await browser.newPage();

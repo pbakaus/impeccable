@@ -8178,23 +8178,67 @@ if (IS_BROWSER) {
     else groupMap.set(el, [...kept]);
   }
 
+  function selectorNodesForLiveDom(root, selector) {
+    const raw = String(selector || '').trim();
+    if (!raw) return null;
+    try {
+      const exact = Array.from(root.querySelectorAll(raw));
+      if (exact.length > 0) return exact;
+    } catch { /* Dynamic/unsupported pseudos get the fallback below. */ }
+    const fallback = raw
+      .replace(/::?[a-zA-Z-]+(\([^)]*\))?/g, '')
+      .trim()
+      .replace(/,\s*(?=,|$)/g, '');
+    if (!fallback || /^[,\s]*$/.test(fallback)) return null;
+    try { return Array.from(root.querySelectorAll(fallback)); }
+    catch { return null; }
+  }
+
   // Read CSS that is absent from document.outerHTML. Inline <style> blocks are
   // already present in the HTML pattern corpus, so limit this walk to linked
-  // stylesheets. Same-origin CSS and readable CORS sheets participate; browser
-  // security exceptions for cross-origin sheets are expected and skipped.
+  // stylesheets. Flatten grouping rules so each declaration keeps its selector,
+  // and admit only selector rules that target the live DOM. That prevents
+  // unused utilities from feeding both selector-scoped and page-level checks.
+  // Same-origin CSS and readable CORS sheets participate; browser security
+  // exceptions for cross-origin sheets are expected and skipped.
   function linkedStylesheetText() {
     const parts = [];
     const seen = new Set();
+    const appendRules = (rules) => {
+      for (const rule of rules) {
+        if (rule.styleSheet) {
+          appendSheet(rule.styleSheet);
+          continue;
+        }
+        const cssText = rule.cssText || '';
+        if (rule.selectorText) {
+          if (selectorNodesForLiveDom(document, rule.selectorText)?.length > 0) parts.push(cssText);
+          continue;
+        }
+        let nested = [];
+        let hasNestedRules = false;
+        try {
+          const ruleList = rule.cssRules;
+          hasNestedRules = ruleList != null;
+          nested = Array.from(ruleList || []);
+        } catch {
+          continue;
+        }
+        const isKeyframes = /^\s*@(?:-webkit-)?keyframes\b/i.test(cssText);
+        if (hasNestedRules && !isKeyframes) {
+          appendRules(nested);
+          continue;
+        }
+        if (cssText) parts.push(cssText);
+      }
+    };
     const appendSheet = (sheet) => {
       if (!sheet || seen.has(sheet)) return;
       seen.add(sheet);
       let rules;
       try { rules = Array.from(sheet.cssRules || sheet.rules || []); }
       catch { return; }
-      for (const rule of rules) {
-        if (rule.styleSheet) appendSheet(rule.styleSheet);
-        else if (rule.cssText) parts.push(rule.cssText);
-      }
+      appendRules(rules);
     };
     let sheets;
     try { sheets = Array.from(document.styleSheets || []); }
@@ -8587,16 +8631,10 @@ if (IS_BROWSER) {
     if (linkedCss) corpora.styleText += `\n${linkedCss}`;
     const scopedHtmlFindings = checkHtmlPatterns(html, corpora).filter(f => {
       if (!f.selector) return true;
-      const query = String(f.selector).replace(/::?[a-zA-Z-]+(\([^)]*\))?/g, '').trim().replace(/,\s*(?=,|$)/g, '');
-      if (!query || /^[,\s]*$/.test(query)) return true;
-      let matches;
-      try {
-        matches = document.querySelectorAll(query);
-      } catch {
-        return true;
-      }
+      const matches = selectorNodesForLiveDom(document, f.selector);
+      if (!matches) return true;
       if (matches.length === 0) return false;
-      return [...matches].some(el => !scopedIgnoreActive(el, f.id));
+      return matches.some(el => !scopedIgnoreActive(el, f.id));
     });
     if (scopedHtmlFindings.length > 0) {
       const mapped = scopedHtmlFindings.map(f => {
