@@ -13,6 +13,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { printUsage } from './usage.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SKILL_COMMANDS = new Set(['help', 'install', 'link', 'update', 'check']);
@@ -33,23 +34,7 @@ async function main() {
   const command = args[0];
 
   if (!command || command === '--help' || command === '-h') {
-    console.log(`Usage: impeccable <command> [options]
-
-Commands:
-  detect [file-or-dir-or-url...]   Scan for UI anti-patterns and design quality issues
-  ignores                          Manage detector ignore rules, files, and values
-  help                             List all available skills and commands
-  install                          Install impeccable skills into your project or global harness
-  link                             Symlink skills from a local checkout or submodule
-  update                           Update skills to the latest version
-  check                            Check if skill updates are available
-
-Options:
-  --help       Show this help message
-  --version    Show version number
-
-Compatibility:
-  impeccable skills <command>       Legacy namespace; still supported.`);
+    printUsage();
     process.exit(0);
   }
 

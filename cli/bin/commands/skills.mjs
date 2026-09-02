@@ -19,6 +19,7 @@ import { createHash } from 'node:crypto';
 import { tmpdir, homedir } from 'node:os';
 import { unzipSync } from 'fflate';
 import { getHookConsent, setHookConsent } from '../../lib/impeccable-config.mjs';
+import { printUsage } from '../usage.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const API_BASE = 'https://impeccable.style';
@@ -2362,22 +2363,9 @@ async function downloadFile(url, dest, { fetchImpl = globalThis.fetch } = {}) {
   }
 }
 
-function printUpdateUsage() {
-  console.log(`Usage: impeccable update [options]
-
-Update installed impeccable skills to the latest version.
-
-Options:
-  --project, --user    Update the project-level or user-level install
-  -y, --yes            Skip confirmation prompts
-  --force              Overwrite existing hook manifests
-  --no-hooks           Refresh skills without installing or repairing hooks
-  -h, --help           Show this help message`);
-}
-
 async function update(flags = []) {
   if (flags.includes('--help') || flags.includes('-h')) {
-    printUpdateUsage();
+    printUsage();
     return;
   }
 

@@ -858,9 +858,14 @@ describe('skills install/update: local universal bundle e2e', () => {
   test('root help advertises top-level skills commands', () => {
     const output = run('--help');
 
-    expect(output).toContain('install                          Install impeccable skills');
-    expect(output).toContain('update                           Update skills to the latest version');
-    expect(output).toContain('impeccable skills <command>       Legacy namespace; still supported.');
+    expect(output).toContain('Start with /impeccable');
+    expect(output).toContain('npx impeccable install');
+    expect(output).toContain('npx impeccable update');
+    expect(output).toContain('impeccable skills <command>         Legacy namespace; still supported');
+    expect(output).toContain('Detector CLI');
+    expect(output).toContain('Design Context');
+    expect(output).not.toContain('Full session path');
+    expect(output).not.toContain('Useful command pairs');
     expect(output).not.toContain('skills install                   Install impeccable skills');
   });
 
@@ -876,7 +881,8 @@ describe('skills install/update: local universal bundle e2e', () => {
 
     for (const args of ['update --help', 'update -h', 'skills update --help']) {
       const output = run(args, { cwd: tmp, env: { ...envBase, HOME: home } });
-      expect(output).toContain('Usage: impeccable update');
+      expect(output).toContain('Usage: impeccable <command> [options]');
+      expect(output).toContain('Start with /impeccable');
       expect(output).not.toContain('Checking for updates');
       expect(output).not.toContain('Updating the');
     }
@@ -888,7 +894,7 @@ describe('skills install/update: local universal bundle e2e', () => {
     const emptyTmp = mkdtempSync(join(tmpdir(), 'imp-test-update-help-empty-699-'));
     const emptyHome = mkdtempSync(join(tmpdir(), 'imp-home-update-help-empty-699-'));
     const output = run('update --help', { cwd: emptyTmp, env: { ...envBase, HOME: emptyHome } });
-    expect(output).toContain('Usage: impeccable update');
+    expect(output).toContain('Usage: impeccable <command> [options]');
     expect(output).not.toContain('Run `npx impeccable install` to install first.');
     expect(output).not.toContain('Checking for updates');
 
