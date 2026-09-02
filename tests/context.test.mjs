@@ -1298,6 +1298,40 @@ describe('context.mjs CLI', () => {
     assert.match(res.stdout, /MANUAL_DETECTOR_REQUIRED:/);
   });
 
+  it('does not borrow the caller hook for a target in an independent sibling repository', () => {
+    const scripts = path.join(scratch, 'bundle', 'skills', 'impeccable', 'scripts');
+    stageContextBundle(scripts, { providerId: 'claude-code' });
+
+    const caller = path.join(scratch, 'caller');
+    const target = path.join(scratch, 'target');
+    fs.mkdirSync(path.join(caller, '.git'), { recursive: true });
+    fs.mkdirSync(path.join(caller, '.claude'), { recursive: true });
+    fs.mkdirSync(path.join(target, '.git'), { recursive: true });
+    fs.mkdirSync(path.join(target, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(caller, 'PRODUCT.md'), '# Caller\n');
+    fs.writeFileSync(path.join(caller, '.claude', 'settings.local.json'), JSON.stringify({
+      hooks: { Stop: [{ hooks: [{ command: 'node .claude/skills/impeccable/scripts/hook.mjs' }] }] },
+    }));
+    fs.writeFileSync(path.join(target, 'PRODUCT.md'), '# Target\n');
+    fs.writeFileSync(path.join(target, 'src', 'App.jsx'), 'export default function App() { return "target"; }\n');
+
+    const res = spawnSync(process.execPath, [
+      path.join(scripts, 'context.mjs'),
+      '--target',
+      path.join('..', 'target', 'src', 'App.jsx'),
+    ], {
+      cwd: caller,
+      encoding: 'utf8',
+      env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1', IMPECCABLE_NO_STALENESS_CHECK: '1' },
+    });
+    assert.equal(res.status, 0, res.stderr);
+    assert.match(res.stdout, /"projectRoot": ".*\/target"/);
+    assert.match(res.stdout, /"repoRoot": ".*\/target"/);
+    assert.match(res.stdout, /# Target/);
+    assert.doesNotMatch(res.stdout, /# Caller/);
+    assert.match(res.stdout, /MANUAL_DETECTOR_REQUIRED:/);
+  });
+
   it('adds no detector directive when a per-edit-only hook is active', () => {
     const scripts = path.join(scratch, 'bundle', 'skills', 'impeccable', 'scripts');
     stageContextBundle(scripts, { providerId: 'cursor' });

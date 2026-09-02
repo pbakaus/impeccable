@@ -208,6 +208,18 @@ function resolveProject(cwd = process.cwd(), options = {}) {
     }
   }
   if (!repoRoot) {
+    const targetIsExternal = hasTargetOption(options)
+      && targetDir !== absCwd
+      && !isPathInside(targetDir, absCwd);
+    if (targetIsExternal) {
+      const targetRepoRoot = findGitBoundaryRoot(targetDir) || targetDir;
+      return {
+        targetDir,
+        projectRoot: nearestTargetContextRoot(targetRepoRoot, targetDir) || targetRepoRoot,
+        repoRoot: targetRepoRoot,
+        isMonorepo: false,
+      };
+    }
     return {
       targetDir,
       projectRoot: nearestTargetContextRoot(absCwd, targetDir) || absCwd,
@@ -221,6 +233,18 @@ function resolveProject(cwd = process.cwd(), options = {}) {
     repoRoot,
     isMonorepo: true,
   };
+}
+
+function findGitBoundaryRoot(startDir) {
+  let dir = path.resolve(startDir);
+  const homeDir = path.resolve(os.homedir());
+  while (true) {
+    if (hasGitBoundary(dir)) return dir;
+    if (dir === homeDir) return null;
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
 }
 
 function isPathInside(candidate, root) {
