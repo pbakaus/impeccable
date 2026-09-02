@@ -386,6 +386,8 @@ describe('detectUrl — browser-only fixtures', () => {
     }
     assert.doesNotMatch(snippets, /pass-/, `no pass-case cursor should be flagged, got: ${snippets}`);
     assert.equal(hits.length, 3, `expected 3 blinking-cursor findings, got ${hits.length}: ${snippets}`);
+    assert.equal(hits.every(hit => hit.severity === 'warning'), true, JSON.stringify(hits));
+    assert.equal(hits.some(hit => hit.advisory === true), false, JSON.stringify(hits));
   });
 
   it('typography side-by-side: element-level flag cases get regular overlays', async () => {

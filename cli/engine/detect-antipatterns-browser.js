@@ -8129,14 +8129,17 @@ if (IS_BROWSER) {
       isHidden: isElementHidden(el),
       findings: findings.map(f => {
         const ap = ANTIPATTERNS.find(a => a.id === (f.type || f.id));
+        const severity = f.severity || ap?.severity || 'warning';
         return {
           type: f.type || f.id,
           category: ap ? ap.category : 'quality',
-          severity: f.severity || ap?.severity || 'warning',
+          severity,
           // Advisory findings (em-dash overuse, etc.) are surfaced but never
           // treated as failures; carry the flag so the overlay/extension can
           // render them with the mildest affordance and consumers can filter.
-          advisory: ap?.severity === 'advisory' || f.severity === 'advisory' || f.advisory === true,
+          // Per-finding promotions override the registry default, so derive
+          // this strictly from the effective severity.
+          advisory: severity === 'advisory',
           detail: f.detail || f.snippet,
           ignoreValue: f.ignoreValue || f.value || '',
           name: ap ? ap.name : (f.type || f.id),
@@ -8194,6 +8197,24 @@ if (IS_BROWSER) {
     catch { return null; }
   }
 
+  function conditionalCssRuleIsActive(rule) {
+    const type = Number(rule?.type);
+    const constructorName = rule?.constructor?.name || '';
+    if (constructorName === 'CSSMediaRule' || type === 4) {
+      const condition = rule.conditionText || rule.media?.mediaText || '';
+      if (!condition || typeof window.matchMedia !== 'function') return true;
+      try { return window.matchMedia(condition).matches; }
+      catch { return true; }
+    }
+    if (constructorName === 'CSSSupportsRule' || type === 12) {
+      const condition = rule.conditionText || '';
+      if (!condition || typeof CSS === 'undefined' || typeof CSS.supports !== 'function') return true;
+      try { return CSS.supports(condition); }
+      catch { return true; }
+    }
+    return true;
+  }
+
   // Read CSS that is absent from document.outerHTML. Inline <style> blocks are
   // already present in the HTML pattern corpus, so limit this walk to linked
   // stylesheets. Flatten grouping rules so each declaration keeps its selector,
@@ -8226,6 +8247,7 @@ if (IS_BROWSER) {
         }
         const isKeyframes = /^\s*@(?:-webkit-)?keyframes\b/i.test(cssText);
         if (hasNestedRules && !isKeyframes) {
+          if (!conditionalCssRuleIsActive(rule)) continue;
           appendRules(nested);
           continue;
         }

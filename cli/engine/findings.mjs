@@ -1,7 +1,13 @@
-import { getAntipattern, isAdvisoryRule } from './registry/antipatterns.mjs';
+import { getAntipattern } from './registry/antipatterns.mjs';
 
 function getAP(id) {
   return getAntipattern(id);
+}
+
+function deriveAdvisoryFlag(item) {
+  if (item.severity === 'advisory') item.advisory = true;
+  else delete item.advisory;
+  return item;
 }
 
 function finding(id, filePath, snippet, line = 0) {
@@ -11,8 +17,7 @@ function finding(id, filePath, snippet, line = 0) {
   // failures. Carry the flag on the finding so every consumer (CLI, JSON, hook)
   // can partition without a registry lookup. Only stamped when true to keep the
   // finding shape stable for the vast majority of rules.
-  if (isAdvisoryRule(id)) base.advisory = true;
-  return base;
+  return deriveAdvisoryFlag(base);
 }
 
-export { getAP, finding };
+export { getAP, finding, deriveAdvisoryFlag };

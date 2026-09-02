@@ -15,6 +15,20 @@
   }
 }
 
+/* These selectors exist in the live DOM, but their conditions are inactive.
+   URL scans must not treat their declarations as rendered page styles. */
+@media (max-width: 1px) {
+  .inactive-media-stripes {
+    background: repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px);
+  }
+}
+
+@supports (display: imaginary-layout) {
+  .inactive-supports-stripes {
+    background: repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px);
+  }
+}
+
 .unused-linked-transition {
   transition: width 200ms ease;
 }
