@@ -45,6 +45,11 @@ main > ::before {
   }
 }
 
+/* The host exists, but the complete pseudo-class selector is inactive. */
+.inactive-pseudo-stripes:not(.active) {
+  background: repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px);
+}
+
 .container-query-host {
   container-type: inline-size;
   width: 240px;
@@ -63,6 +68,18 @@ main > ::before {
     width: 640px;
     height: 400px;
     background: radial-gradient(circle, rgba(80, 111, 255, 0.85), transparent 70%);
+  }
+}
+
+/* Non-selector at-rules in an inactive container must not enter page-level
+   pattern scans just because their CSSOM text is readable. */
+@container (width > 2000px) {
+  @keyframes inactive-container-gradient-text {
+    from {
+      background: linear-gradient(90deg, #111, #999);
+      background-clip: text;
+    }
+    to { background: none; }
   }
 }
 

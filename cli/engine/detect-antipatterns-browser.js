@@ -8187,10 +8187,17 @@ if (IS_BROWSER) {
   function selectorNodesForLiveDom(root, selector) {
     const raw = String(selector || '').trim();
     if (!raw) return null;
-    try {
-      const exact = Array.from(root.querySelectorAll(raw));
-      if (exact.length > 0) return exact;
-    } catch { /* Dynamic/unsupported pseudos get the fallback below. */ }
+
+    const hasPseudoElement = (
+      /::[a-zA-Z-]+(?:\([^)]*\))?|:(?:before|after|first-letter|first-line)\b/i.test(raw)
+    );
+    if (!hasPseudoElement) {
+      // An empty result from a valid full selector is authoritative. In
+      // particular, do not broaden inactive :hover/:focus/:not() rules to
+      // their host element by stripping pseudo-classes.
+      try { return Array.from(root.querySelectorAll(raw)); }
+      catch { return null; }
+    }
 
     // Resolve pseudo-elements to their originating live elements. An attached
     // pseudo-element (`.card::before`) belongs to the element before it, while
@@ -8200,9 +8207,8 @@ if (IS_BROWSER) {
     // invalid selector `main >` and makes absent hosts indistinguishable from
     // selectors the DOM API cannot parse.
     const fallback = raw
-      .replace(/(^|[\s>+~,])::[a-zA-Z-]+(\([^)]*\))?/g, '$1*')
-      .replace(/::[a-zA-Z-]+(\([^)]*\))?/g, '')
-      .replace(/:[a-zA-Z-]+(\([^)]*\))?/g, '')
+      .replace(/(^|[\s>+~,])(?:::[a-zA-Z-]+(?:\([^)]*\))?|:(?:before|after|first-letter|first-line)\b)/gi, '$1*')
+      .replace(/::[a-zA-Z-]+(?:\([^)]*\))?|:(?:before|after|first-letter|first-line)\b/gi, '')
       .trim()
       .replace(/,\s*(?=,|$)/g, '');
     if (!fallback || /^[,\s]*$/.test(fallback)) return null;
@@ -8312,7 +8318,10 @@ if (IS_BROWSER) {
           appendRules(nested, requiresAppliedMatch || isContainerCssRule(rule));
           continue;
         }
-        if (cssText) parts.push(cssText);
+        // Selector-less leaf at-rules (notably @keyframes) cannot be tied to a
+        // rendered node. Their activating selector declarations are already
+        // retained above, while admitting the leaf text would let unused or
+        // conditionally inactive CSS create page-level findings.
       }
     };
     const appendSheet = (sheet) => {

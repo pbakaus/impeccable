@@ -1408,8 +1408,10 @@ describe('detectUrl — browser-only fixtures', () => {
       const containerBackgrounds = await linkedPage.evaluate(() => ({
         inactive: getComputedStyle(document.querySelector('.inactive-container-stripes')).backgroundImage,
         active: getComputedStyle(document.querySelector('.active-container-halo')).backgroundImage,
+        pseudoClass: getComputedStyle(document.querySelector('.inactive-pseudo-stripes')).backgroundImage,
       }));
       assert.equal(containerBackgrounds.inactive, 'none');
+      assert.equal(containerBackgrounds.pseudoClass, 'none');
       assert.match(containerBackgrounds.active, /radial-gradient/i);
       const grids = linkedFindings.filter(finding => finding.type === 'codex-grid-background');
       assert.equal(grids.length, 1, JSON.stringify({ linkedFindings, linkedCssom }));
@@ -1421,7 +1423,16 @@ describe('detectUrl — browser-only fixtures', () => {
         JSON.stringify({ linkedFindings, linkedCssom }),
       );
       assert.equal(linkedFindings.some(finding => finding.type === 'radial-halo'), true);
-      assert.equal(linkedFindings.some(finding => finding.type === 'repeating-stripes-gradient'), false);
+      assert.equal(
+        linkedFindings.some(finding => finding.type === 'repeating-stripes-gradient'),
+        false,
+        JSON.stringify({ linkedFindings, linkedCssom, containerBackgrounds }),
+      );
+      assert.equal(
+        linkedFindings.some(finding => finding.type === 'gradient-text'),
+        false,
+        JSON.stringify({ linkedFindings, linkedCssom, containerBackgrounds }),
+      );
       assert.equal(linkedFindings.some(finding => finding.type === 'layout-transition'), false);
       await linkedPage.close();
 
