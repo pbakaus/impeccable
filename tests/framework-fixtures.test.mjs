@@ -284,3 +284,27 @@ for (const name of listFixtures()) {
     });
   });
 }
+
+describe('detectCsp — Next.js proxy placement', () => {
+  it('accepts root and src proxy files but ignores same-named nested helpers', () => {
+    const source = `export function proxy() {
+  const response = new Response();
+  response.headers.set('Content-Security-Policy', "script-src 'self'");
+  return response;
+}\n`;
+    for (const [relPath, expectedShape] of [
+      ['proxy.ts', 'middleware'],
+      ['src/proxy.ts', 'middleware'],
+      ['lib/network/proxy.ts', null],
+    ]) {
+      const tmp = mkdtempSync(join(tmpdir(), 'impeccable-proxy-placement-'));
+      try {
+        mkdirSync(dirname(join(tmp, relPath)), { recursive: true });
+        writeFileSync(join(tmp, relPath), source);
+        assert.equal(detectCsp(tmp).shape, expectedShape, relPath);
+      } finally {
+        rmSync(tmp, { recursive: true, force: true });
+      }
+    }
+  });
+});

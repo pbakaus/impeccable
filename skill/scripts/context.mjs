@@ -1313,13 +1313,11 @@ function hookEnabledAt(root) {
 
 const STOP_REVIEW_PROVIDERS = new Set(['claude-code', 'codex', 'agents', 'grok']);
 
-// Harness project settings are discovered by walking up from the active
-// working directory. Context resolution can intentionally select a nested
-// product root even when the harness project (and its hook manifest) lives at
-// the enclosing git root, so checking only projectRoot/repoRoot produces a
-// false MANUAL_DETECTOR_REQUIRED directive. Mirror the ancestor lookup through
-// the nearest git boundary, while retaining exact resolved roots for explicit
-// targets outside the invoking directory.
+// Harness project settings are discovered by walking up from the resolved
+// project root. Its hook manifest can live at an enclosing git root, so
+// checking only projectRoot/repoRoot produces a false
+// MANUAL_DETECTOR_REQUIRED directive. Starting from projectRoot also prevents
+// an explicit target from borrowing an unrelated manifest near the caller.
 function hookManifestSearchRoots(ctx) {
   const roots = [];
   const seen = new Set();
@@ -1331,7 +1329,7 @@ function hookManifestSearchRoots(ctx) {
     roots.push(resolved);
   };
 
-  let current = path.resolve(process.cwd());
+  let current = path.resolve(ctx.projectRoot || process.cwd());
   const home = path.resolve(os.homedir());
   while (true) {
     add(current);

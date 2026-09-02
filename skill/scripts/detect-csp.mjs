@@ -78,16 +78,28 @@ const NUXT_ROUTE_RULES_SIGNALS = [
   /\bscript-src\b/,
 ];
 
-const NEXT_REQUEST_HOOK_FILES = new Set([
+const NEXT_MIDDLEWARE_FILES = new Set([
   'middleware.ts',
   'middleware.js',
   'middleware.mjs',
+]);
+const NEXT_PROXY_FILES = new Set([
   'proxy.ts',
   'proxy.js',
   'proxy.mjs',
 ]);
 const MIDDLEWARE_HINT = /headers\.set\(\s*["']Content-Security-Policy["']/i;
 const META_TAG_HINT = /http-equiv\s*=\s*["']Content-Security-Policy["']/i;
+
+function isNextRequestHookFile(relPath, base) {
+  if (NEXT_MIDDLEWARE_FILES.has(base)) return true;
+  if (!NEXT_PROXY_FILES.has(base)) return false;
+  const normalized = relPath.split(path.sep).join('/').toLowerCase();
+  // Next.js 16 recognizes proxy at the project root or in the optional src/
+  // directory, alongside app/ or pages/. A same-named helper deeper in the
+  // tree is not the framework request hook.
+  return normalized === base || normalized === `src/${base}`;
+}
 
 /**
  * @param {string} cwd Project root.
@@ -142,7 +154,7 @@ export function detectCsp(cwd = process.cwd()) {
 
     // === detect-only shapes ===
 
-    if (NEXT_REQUEST_HOOK_FILES.has(base) && MIDDLEWARE_HINT.test(body)) {
+    if (isNextRequestHookFile(relPath, base) && MIDDLEWARE_HINT.test(body)) {
       hits.middleware.push(relPath);
     }
 
