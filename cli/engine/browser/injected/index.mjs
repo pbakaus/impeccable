@@ -1520,6 +1520,41 @@ if (IS_BROWSER) {
     return normalizeAnimationName(rule?.name || match?.[1] || '');
   }
 
+  function cssPropertyName(property) {
+    if (property.startsWith('--')) return property;
+    return property.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`);
+  }
+
+  function resolvedAnimationKeyframes(candidateNames) {
+    if (typeof document.getAnimations !== 'function') return null;
+    let animations;
+    try { animations = document.getAnimations(); }
+    catch { return null; }
+
+    const resolved = new Map();
+    const metadata = new Set(['offset', 'computedOffset', 'easing', 'composite']);
+    for (const animation of animations) {
+      const name = normalizeAnimationName(animation?.animationName || '');
+      if (!name || !candidateNames.has(name) || resolved.has(name)) continue;
+      let frames;
+      try { frames = animation.effect?.getKeyframes?.() || []; }
+      catch { continue; }
+      const blocks = [];
+      for (const frame of frames) {
+        const rawOffset = Number.isFinite(frame.computedOffset) ? frame.computedOffset : frame.offset;
+        if (!Number.isFinite(rawOffset)) continue;
+        const offset = Math.round(rawOffset * 1000000) / 10000;
+        const declarations = Object.entries(frame)
+          .filter(([property, value]) => !metadata.has(property) && value != null && value !== '')
+          .map(([property, value]) => `${cssPropertyName(property)}: ${value};`);
+        if (declarations.length === 0) continue;
+        blocks.push(`${offset}% { ${declarations.join(' ')} }`);
+      }
+      if (blocks.length > 0) resolved.set(name, `@keyframes ${name} { ${blocks.join(' ')} }`);
+    }
+    return resolved;
+  }
+
   // Read CSS that is absent from document.outerHTML. Inline <style> blocks are
   // already present in the HTML pattern corpus, so limit this walk to linked
   // stylesheets. Flatten grouping rules so each declaration keeps its selector,
@@ -1597,16 +1632,21 @@ if (IS_BROWSER) {
       if (!/\bstylesheet\b/i.test(owner.getAttribute?.('rel') || '')) continue;
       appendSheet(sheet);
     }
-    // Motion checks need the body of a live animation's keyframes. Retain only
-    // definitions referenced by a retained selector rule. Browsers make nested
-    // keyframes globally available even when a surrounding container condition
-    // is currently false, so lexical grouping cannot decide whether the named
-    // animation renders. The live reference is the useful gate: it preserves
-    // linked marquee/pulse detection without letting unreferenced keyframe
-    // bodies feed page-level checks.
-    for (const candidate of keyframeCandidates.values()) {
-      if (!animationNames.has(candidate.name)) continue;
-      parts.push(candidate.cssText);
+    // Motion checks need the effective body of a live animation's keyframes.
+    // Let the browser resolve duplicate names across source order, imports,
+    // conditional groups, and cascade layers, then serialize those computed
+    // frames back into the pattern corpus. Browsers also make container-nested
+    // keyframes globally available, so lexical grouping is not a reliable
+    // activity signal. When the Web Animations API is unavailable, fall back to
+    // the last source-order definition referenced by a retained linked rule.
+    const resolvedKeyframes = resolvedAnimationKeyframes(new Set(keyframeCandidates.keys()));
+    if (resolvedKeyframes) {
+      parts.push(...resolvedKeyframes.values());
+    } else {
+      for (const candidate of keyframeCandidates.values()) {
+        if (!animationNames.has(candidate.name)) continue;
+        parts.push(candidate.cssText);
+      }
     }
     return parts.join('\n');
   }

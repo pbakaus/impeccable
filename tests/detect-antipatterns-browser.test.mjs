@@ -1409,10 +1409,12 @@ describe('detectUrl — browser-only fixtures', () => {
         const activeAnimation = document.querySelector('.active-container-animation-reference');
         const inactiveAnimation = document.querySelector('.inactive-container-animation-reference');
         const overriddenAnimation = document.querySelector('.overridden-keyframes-animation');
+        const layeredAnimation = document.querySelector('.layered-keyframes-animation');
         const before = {
           active: getComputedStyle(activeAnimation).transform,
           inactive: getComputedStyle(inactiveAnimation).transform,
           overridden: getComputedStyle(overriddenAnimation).transform,
+          layered: getComputedStyle(layeredAnimation).transform,
         };
         await new Promise(resolve => setTimeout(resolve, 120));
         return {
@@ -1422,6 +1424,10 @@ describe('detectUrl — browser-only fixtures', () => {
           activeTransforms: [before.active, getComputedStyle(activeAnimation).transform],
           inactiveTransforms: [before.inactive, getComputedStyle(inactiveAnimation).transform],
           overriddenTransforms: [before.overridden, getComputedStyle(overriddenAnimation).transform],
+          layeredTransforms: [before.layered, getComputedStyle(layeredAnimation).transform],
+          activeAnimationKeyframes: activeAnimation.getAnimations()[0]?.effect?.getKeyframes() || [],
+          overriddenAnimationKeyframes: overriddenAnimation.getAnimations()[0]?.effect?.getKeyframes() || [],
+          layeredAnimationKeyframes: layeredAnimation.getAnimations()[0]?.effect?.getKeyframes() || [],
         };
       });
       assert.equal(containerBackgrounds.inactive, 'none');
@@ -1438,6 +1444,26 @@ describe('detectUrl — browser-only fixtures', () => {
         containerBackgrounds.overriddenTransforms[1],
         JSON.stringify(containerBackgrounds),
       );
+      assert.equal(
+        containerBackgrounds.activeAnimationKeyframes.some(frame => /translateX\([^)]*%\)/i.test(frame.transform || '')),
+        true,
+        JSON.stringify(containerBackgrounds.activeAnimationKeyframes),
+      );
+      assert.equal(
+        containerBackgrounds.overriddenAnimationKeyframes.some(frame => frame.transform && frame.transform !== 'none'),
+        false,
+        JSON.stringify(containerBackgrounds.overriddenAnimationKeyframes),
+      );
+      assert.notEqual(
+        containerBackgrounds.layeredTransforms[0],
+        containerBackgrounds.layeredTransforms[1],
+        JSON.stringify(containerBackgrounds),
+      );
+      assert.equal(
+        containerBackgrounds.layeredAnimationKeyframes.some(frame => /translateX\([^)]*%\)/i.test(frame.transform || '')),
+        true,
+        JSON.stringify(containerBackgrounds.layeredAnimationKeyframes),
+      );
       const grids = linkedFindings.filter(finding => finding.type === 'codex-grid-background');
       assert.equal(grids.length, 1, JSON.stringify({ linkedFindings, linkedCssom }));
       assert.equal(grids[0].severity, 'advisory');
@@ -1448,13 +1474,14 @@ describe('detectUrl — browser-only fixtures', () => {
         JSON.stringify({ linkedFindings, linkedCssom }),
       );
       const marquees = linkedFindings.filter(finding => finding.type === 'marquee');
-      assert.equal(marquees.length, 3, JSON.stringify({ linkedFindings, linkedCssom }));
+      assert.equal(marquees.length, 4, JSON.stringify({ linkedFindings, linkedCssom }));
       assert.deepEqual(
         new Set(marquees.map(finding => finding.detail.match(/^\S+/)?.[0])),
         new Set([
           '.linked-marquee',
           '.active-container-animation-reference',
           '.inactive-container-animation-reference',
+          '.layered-keyframes-animation',
         ]),
       );
       const pulsingDots = linkedFindings.filter(finding => finding.type === 'pulsing-dot');

@@ -61,6 +61,26 @@ main > ::before {
   50% { opacity: 0.4; }
 }
 
+@layer linked-keyframes-low, linked-keyframes-high;
+
+.layered-keyframes-animation {
+  animation: layered-horizontal-loop 2s linear infinite;
+}
+
+@layer linked-keyframes-high {
+  @keyframes layered-horizontal-loop {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+}
+
+/* Lower layer appears later in source, but does not override the high layer. */
+@layer linked-keyframes-low {
+  @keyframes layered-horizontal-loop {
+    50% { opacity: 0.4; }
+  }
+}
+
 .linked-pulse-dot {
   width: 8px;
   height: 8px;
