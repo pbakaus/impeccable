@@ -830,6 +830,35 @@ describe('loadContext (monorepo project context)', () => {
     assert.equal(ctx.projectRoot, scratch);
   });
 
+  it('resolves a unique workspace child when the target was already resolved against cwd', () => {
+    writeMonorepo();
+    write('apps/dashboard/PRODUCT.md', '# Dashboard product\n');
+    const ctx = loadContext(scratch, { targetPath: path.join(scratch, 'dashboard') });
+    assert.equal(ctx.projectRoot, path.join(scratch, 'apps', 'dashboard'));
+  });
+
+  it('does not guess a nested product basename in a non-monorepo repo', () => {
+    write('packages/checkout/PRODUCT.md', '# Checkout product\n');
+    write('packages/checkout/file.ts', 'export const x = 1;\n');
+    const bare = loadContext(scratch, { targetPath: 'checkout' });
+    assert.equal(bare.isMonorepo, false);
+    assert.equal(bare.projectRoot, scratch);
+    const explicit = loadContext(scratch, { targetPath: 'packages/checkout/file.ts' });
+    assert.equal(explicit.projectRoot, path.join(scratch, 'packages', 'checkout'));
+    assert.match(explicit.product, /Checkout product/);
+  });
+
+  it('does not select a negated workspace child by basename', () => {
+    write('pnpm-workspace.yaml', 'packages:\n  - "packages/*"\n  - "!packages/internal"\n');
+    write('PRODUCT.md', '# Root product\n');
+    write('packages/ui/src/index.ts', 'export {};\n');
+    write('packages/internal/PRODUCT.md', '# Internal product\n');
+    write('packages/internal/src/index.ts', 'export {};\n');
+    const ctx = loadContext(scratch, { targetPath: 'internal' });
+    assert.equal(ctx.projectRoot, scratch);
+    assert.match(ctx.product, /Root product/);
+  });
+
   it('asks for app selection even when root PRODUCT.md is absent', () => {
     write('package.json', JSON.stringify({
       private: true,
@@ -870,6 +899,16 @@ describe('loadContext (impeccable projectRoots config)', () => {
     assert.match(ctx.product, /Root product/);
     assert.equal(ctx.designPath, path.join('docs', 'design', 'skins', 'neon-seoul', 'DESIGN.md'));
     assert.equal(ctx.productPath, 'PRODUCT.md');
+  });
+
+  it('resolves a unique projectRoots child by bare basename', () => {
+    writeSkinsConfig();
+    write('docs/design/skins/neon-seoul/DESIGN.md', '# Neon Seoul design\n');
+    write('docs/design/skins/marble/DESIGN.md', '# Marble design\n');
+    const ctx = loadContext(scratch, { targetPath: 'neon-seoul' });
+    assert.equal(ctx.projectRoot, path.join(scratch, 'docs', 'design', 'skins', 'neon-seoul'));
+    assert.match(ctx.design, /Neon Seoul design/);
+    assert.match(ctx.product, /Root product/);
   });
 
   it('resolves a config-declared child from cwd inside the folder', () => {

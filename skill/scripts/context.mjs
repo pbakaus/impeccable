@@ -255,10 +255,16 @@ function resolveTargetPath(cwd, targetPath) {
 }
 
 function findUniqueBareTarget(cwd, targetPath) {
-  if (path.isAbsolute(targetPath) || /[\\/]/.test(targetPath)) return null;
-  const repoRoot = findMonorepoRoot(path.resolve(cwd));
+  const absCwd = path.resolve(cwd);
+  const abs = path.isAbsolute(targetPath) ? targetPath : path.resolve(absCwd, targetPath);
+  const rel = path.relative(absCwd, abs);
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return null;
+  const segments = rel.split(path.sep).filter(Boolean);
+  if (segments.length !== 1) return null;
+  const name = segments[0];
+  const repoRoot = findMonorepoRoot(absCwd);
   if (!repoRoot) return null;
-  const matches = discoverTargetCandidates(repoRoot).filter((candidate) => candidate.name === targetPath);
+  const matches = discoverTargetCandidates(repoRoot).filter((candidate) => candidate.name === name);
   if (matches.length !== 1) return null;
   return path.resolve(repoRoot, matches[0].path);
 }
