@@ -223,6 +223,55 @@ describe('detectText — Tailwind side-tab', () => {
   });
 });
 
+describe('detectText — gray-on-color (issue #633)', () => {
+  const grayOnColor = (src, file = 'Repro.jsx') =>
+    detectText(src, file).filter(r => r.antipattern === 'gray-on-color');
+
+  test('opacity hover — no finding', () => {
+    expect(grayOnColor('<button className="text-slate-300 hover:bg-red-500/10 hover:text-red-400">Log out</button>')).toHaveLength(0);
+  });
+
+  test('opacity rest — no finding', () => {
+    expect(grayOnColor('<button className="text-slate-300 bg-red-500/10">Log out</button>')).toHaveLength(0);
+  });
+
+  test('solid still flags', () => {
+    const f = grayOnColor('<button className="text-slate-300 bg-red-500">Log out</button>');
+    expect(f).toHaveLength(1);
+    expect(f[0].snippet).toContain('text-slate-300 on bg-red-500');
+  });
+
+  test('ternary arms — no finding', () => {
+    expect(grayOnColor(
+      '<button className={`px-4 py-2 text-sm rounded-lg transition-colors ${mode === "a" ? "bg-amber-600 text-white" : "bg-white/5 text-slate-400 hover:bg-white/10"}`}>Mode</button>',
+    )).toHaveLength(0);
+  });
+
+  test('ternary with comparison > does not close the tag early', () => {
+    expect(grayOnColor(
+      '<button className={mode > 0 ? "bg-amber-600 text-white" : "text-slate-400"}>Mode</button>',
+    )).toHaveLength(0);
+  });
+
+  test('siblings on one line — no finding', () => {
+    expect(grayOnColor(
+      '<div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-amber-500" /><span className="text-slate-400">Vital few</span></div>',
+    )).toHaveLength(0);
+  });
+
+  test('cn() simultaneous args still flag', () => {
+    const f = grayOnColor('<button className={cn("text-slate-400", "bg-blue-600")}>Go</button>');
+    expect(f).toHaveLength(1);
+    expect(f[0].snippet).toContain('text-slate-400 on bg-blue-600');
+  });
+
+  test('cn() + ternary with gray in common prefix still flags', () => {
+    const f = grayOnColor('<button className={cn("text-slate-400", mode === "a" ? "bg-amber-600" : "bg-white")}>Go</button>');
+    expect(f).toHaveLength(1);
+    expect(f[0].snippet).toContain('text-slate-400 on bg-amber-600');
+  });
+});
+
 describe('detectText — broken images in source comments', () => {
   test('ignores img tags mentioned in JavaScript comments', () => {
     const source = [
@@ -1806,6 +1855,38 @@ describe('checkColors — oklch computed colors', () => {
       classList: 'btn btn-primary',
     });
     expect(f.some(r => r.id === 'low-contrast')).toBe(true);
+  });
+});
+
+describe('checkColors — Tailwind classList gray-on-color (issue #633)', () => {
+  const grayOnColor = (classList) =>
+    checkColors({
+      tag: 'div',
+      textColor: null,
+      bgColor: null,
+      effectiveBg: null,
+      effectiveBgStops: null,
+      fontSize: 14,
+      fontWeight: 400,
+      hasDirectText: true,
+      isEmojiOnly: false,
+      bgClip: '',
+      bgImage: '',
+      classList,
+    }).filter(r => r.id === 'gray-on-color');
+
+  test('opacity hover — no finding', () => {
+    expect(grayOnColor('text-slate-300 hover:bg-red-500/10')).toHaveLength(0);
+  });
+
+  test('opacity rest — no finding', () => {
+    expect(grayOnColor('text-slate-300 bg-red-500/10')).toHaveLength(0);
+  });
+
+  test('solid still flags', () => {
+    const f = grayOnColor('text-slate-300 bg-red-500');
+    expect(f).toHaveLength(1);
+    expect(f[0].snippet).toBe('text-slate-300 on bg-red-500');
   });
 });
 
