@@ -1405,11 +1405,12 @@ describe('detectUrl — browser-only fixtures', () => {
       })));
       const linkedFindings = await linkedPage.evaluate(() => window.impeccableDetect({ serialize: true })
         .flatMap(group => group.findings || []));
-      const inactiveContainerBackground = await linkedPage.$eval(
-        '.inactive-container-stripes',
-        element => getComputedStyle(element).backgroundImage,
-      );
-      assert.equal(inactiveContainerBackground, 'none');
+      const containerBackgrounds = await linkedPage.evaluate(() => ({
+        inactive: getComputedStyle(document.querySelector('.inactive-container-stripes')).backgroundImage,
+        active: getComputedStyle(document.querySelector('.active-container-halo')).backgroundImage,
+      }));
+      assert.equal(containerBackgrounds.inactive, 'none');
+      assert.match(containerBackgrounds.active, /radial-gradient/i);
       const grids = linkedFindings.filter(finding => finding.type === 'codex-grid-background');
       assert.equal(grids.length, 1, JSON.stringify({ linkedFindings, linkedCssom }));
       assert.equal(grids[0].severity, 'advisory');
@@ -1419,6 +1420,7 @@ describe('detectUrl — browser-only fixtures', () => {
         true,
         JSON.stringify({ linkedFindings, linkedCssom }),
       );
+      assert.equal(linkedFindings.some(finding => finding.type === 'radial-halo'), true);
       assert.equal(linkedFindings.some(finding => finding.type === 'repeating-stripes-gradient'), false);
       assert.equal(linkedFindings.some(finding => finding.type === 'layout-transition'), false);
       await linkedPage.close();

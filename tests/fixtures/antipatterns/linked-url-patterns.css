@@ -7,6 +7,11 @@
   }
 }
 
+body {
+  background: #111;
+  color: #fff;
+}
+
 /* A valid hostless pseudo-element selector cannot be queried through the DOM
    selector API. It must remain in the corpus rather than count as unused. */
 main > ::before {
@@ -45,9 +50,19 @@ main > ::before {
   width: 240px;
 }
 
+.container-query-host-active {
+  width: 960px;
+}
+
 @container (width > 900px) {
   .inactive-container-stripes {
     background: repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px);
+  }
+
+  .active-container-halo {
+    width: 640px;
+    height: 400px;
+    background: radial-gradient(circle, rgba(80, 111, 255, 0.85), transparent 70%);
   }
 }
 

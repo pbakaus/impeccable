@@ -8210,6 +8210,45 @@ if (IS_BROWSER) {
     catch { return null; }
   }
 
+  let containerProbeSequence = 0;
+
+  function isContainerCssRule(rule) {
+    return rule?.constructor?.name === 'CSSContainerRule'
+      || /^\s*@container\b/i.test(rule?.cssText || '');
+  }
+
+  function styleRuleAppliesToLiveMatches(rule, matches) {
+    const style = rule?.style;
+    if (!style || !matches?.length || typeof getComputedStyle !== 'function') return false;
+    const sequence = ++containerProbeSequence;
+    const property = `--impeccable-container-probe-${sequence}-${Math.random().toString(36).slice(2)}`;
+    const value = `impeccable-container-active-${sequence}`;
+    const previousValue = style.getPropertyValue(property);
+    const previousPriority = style.getPropertyPriority(property);
+    try {
+      style.setProperty(property, value, 'important');
+    } catch {
+      return false;
+    }
+
+    const pseudoElements = [...new Set(
+      String(rule.selectorText || '').match(/::[a-zA-Z-]+(?:\([^)]*\))?/g) || [],
+    )];
+    try {
+      return matches.some(el => [null, ...pseudoElements].some(pseudo => {
+        try {
+          const computed = pseudo ? getComputedStyle(el, pseudo) : getComputedStyle(el);
+          return computed.getPropertyValue(property).trim() === value;
+        } catch {
+          return false;
+        }
+      }));
+    } finally {
+      if (previousValue) style.setProperty(property, previousValue, previousPriority);
+      else style.removeProperty(property);
+    }
+  }
+
   function conditionalCssRuleIsActive(rule) {
     const type = Number(rule?.type);
     const constructorName = rule?.constructor?.name || '';
@@ -8225,13 +8264,6 @@ if (IS_BROWSER) {
       try { return CSS.supports(condition); }
       catch { return true; }
     }
-    if (constructorName === 'CSSContainerRule' || /^\s*@container\b/i.test(rule?.cssText || '')) {
-      // The platform exposes no matchMedia-equivalent for container queries,
-      // and selector matches do not prove that the element's query container
-      // satisfies the condition. Omit the group rather than report styles that
-      // are inactive for the current layout.
-      return false;
-    }
     return true;
   }
 
@@ -8245,7 +8277,7 @@ if (IS_BROWSER) {
   function linkedStylesheetText() {
     const parts = [];
     const seen = new Set();
-    const appendRules = (rules) => {
+    const appendRules = (rules, requiresAppliedMatch = false) => {
       for (const rule of rules) {
         if (rule.styleSheet) {
           appendSheet(rule.styleSheet);
@@ -8257,7 +8289,12 @@ if (IS_BROWSER) {
           // Only declarations with a resolvable live host enter the corpus.
           // Unresolvable selectors are uncertain, not evidence that a pattern
           // rendered, and retaining them would leak unused CSS into findings.
-          if (matches?.length > 0) parts.push(cssText);
+          if (
+            matches?.length > 0
+            && (!requiresAppliedMatch || styleRuleAppliesToLiveMatches(rule, matches))
+          ) {
+            parts.push(cssText);
+          }
           continue;
         }
         let nested = [];
@@ -8272,7 +8309,7 @@ if (IS_BROWSER) {
         const isKeyframes = /^\s*@(?:-webkit-)?keyframes\b/i.test(cssText);
         if (hasNestedRules && !isKeyframes) {
           if (!conditionalCssRuleIsActive(rule)) continue;
-          appendRules(nested);
+          appendRules(nested, requiresAppliedMatch || isContainerCssRule(rule));
           continue;
         }
         if (cssText) parts.push(cssText);
