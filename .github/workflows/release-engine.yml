@@ -20,7 +20,9 @@ jobs:
       matrix:
         include:
           - { os: macos-14,       target: aarch64-apple-darwin,       short: darwin-arm64 }
-          - { os: macos-13,       target: x86_64-apple-darwin,        short: darwin-x64 }
+          # No Intel runner: GitHub retired macos-13. Apple's toolchain builds
+          # x86_64 on an arm64 host natively once the target is installed.
+          - { os: macos-14,       target: x86_64-apple-darwin,        short: darwin-x64 }
           - { os: ubuntu-latest,  target: x86_64-unknown-linux-musl,  short: linux-x64 }
           - { os: ubuntu-latest,  target: aarch64-unknown-linux-musl, short: linux-arm64, cross: true }
           - { os: windows-latest, target: x86_64-pc-windows-msvc,     short: windows-x64 }
