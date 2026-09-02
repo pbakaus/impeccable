@@ -8233,7 +8233,12 @@ if (IS_BROWSER) {
         }
         const cssText = rule.cssText || '';
         if (rule.selectorText) {
-          if (selectorNodesForLiveDom(document, rule.selectorText)?.length > 0) parts.push(cssText);
+          const matches = selectorNodesForLiveDom(document, rule.selectorText);
+          // A null result means the DOM selector API cannot resolve the CSSOM
+          // selector (commonly a hostless pseudo-element), not that it is
+          // unused. Keep those valid stylesheet rules; only a definitive empty
+          // result proves that no live element can receive the declaration.
+          if (matches === null || matches.length > 0) parts.push(cssText);
           continue;
         }
         let nested = [];

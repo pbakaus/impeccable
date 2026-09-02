@@ -1409,6 +1409,11 @@ describe('detectUrl — browser-only fixtures', () => {
       assert.equal(stripes.length, 1, JSON.stringify({ linkedFindings, linkedCssom }));
       assert.equal(stripes[0].severity, 'advisory');
       assert.equal(stripes[0].advisory, true);
+      assert.equal(
+        linkedFindings.some(finding => finding.type === 'bounce-easing'),
+        true,
+        JSON.stringify({ linkedFindings, linkedCssom }),
+      );
       assert.equal(linkedFindings.some(finding => finding.type === 'codex-grid-background'), false);
       assert.equal(linkedFindings.some(finding => finding.type === 'layout-transition'), false);
       await linkedPage.close();

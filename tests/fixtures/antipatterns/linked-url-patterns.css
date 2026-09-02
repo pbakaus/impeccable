@@ -6,6 +6,19 @@
   }
 }
 
+/* A valid hostless pseudo-element selector cannot be queried through the DOM
+   selector API. It must remain in the corpus rather than count as unused. */
+main > ::before {
+  content: "Rendered pseudo-element text";
+  display: block;
+  width: 160px;
+  animation: bounce-linked-pseudo 1s ease-in-out infinite;
+}
+
+@keyframes bounce-linked-pseudo {
+  50% { transform: translateY(2px); }
+}
+
 /* Shipped but unused selectors must remain outside live URL findings, even
    inside grouping rules or when their check does not serialize a selector. */
 @supports (display: grid) {
