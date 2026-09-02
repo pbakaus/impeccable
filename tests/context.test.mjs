@@ -1266,6 +1266,38 @@ describe('context.mjs CLI', () => {
     assert.match(res.stdout, /MANUAL_DETECTOR_REQUIRED:/);
   });
 
+  it('does not borrow an outer workspace hook for a target in a nested Git repository', () => {
+    const scripts = path.join(scratch, 'bundle', 'skills', 'impeccable', 'scripts');
+    stageContextBundle(scripts, { providerId: 'claude-code' });
+
+    const repo = path.join(scratch, 'repo');
+    const target = path.join(repo, 'repos', 'standalone');
+    fs.mkdirSync(path.join(repo, '.git'), { recursive: true });
+    fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+    fs.mkdirSync(path.join(target, '.git'), { recursive: true });
+    fs.mkdirSync(path.join(target, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(repo, 'package.json'), JSON.stringify({ private: true, workspaces: ['repos/*'] }));
+    fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), JSON.stringify({
+      hooks: { Stop: [{ hooks: [{ command: 'node .claude/skills/impeccable/scripts/hook.mjs' }] }] },
+    }));
+    fs.writeFileSync(path.join(target, 'package.json'), JSON.stringify({ name: 'standalone' }));
+    fs.writeFileSync(path.join(target, 'PRODUCT.md'), '# Standalone\n');
+    fs.writeFileSync(path.join(target, 'src', 'App.jsx'), 'export default function App() { return "standalone"; }\n');
+
+    const res = spawnSync(process.execPath, [
+      path.join(scripts, 'context.mjs'),
+      '--target',
+      path.join('repos', 'standalone', 'src', 'App.jsx'),
+    ], {
+      cwd: repo,
+      encoding: 'utf8',
+      env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1', IMPECCABLE_NO_STALENESS_CHECK: '1' },
+    });
+    assert.equal(res.status, 0, res.stderr);
+    assert.match(res.stdout, /"projectRoot": ".*\/repos\/standalone"/);
+    assert.match(res.stdout, /MANUAL_DETECTOR_REQUIRED:/);
+  });
+
   it('adds no detector directive when a per-edit-only hook is active', () => {
     const scripts = path.join(scratch, 'bundle', 'skills', 'impeccable', 'scripts');
     stageContextBundle(scripts, { providerId: 'cursor' });
