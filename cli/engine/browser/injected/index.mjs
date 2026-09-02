@@ -1547,6 +1547,10 @@ if (IS_BROWSER) {
         const declarations = Object.entries(frame)
           .filter(([property, value]) => !metadata.has(property) && value != null && value !== '')
           .map(([property, value]) => `${cssPropertyName(property)}: ${value};`);
+        const easing = String(frame.easing || '').trim();
+        if (easing && easing.toLowerCase() !== 'linear') {
+          declarations.push(`animation-timing-function: ${easing};`);
+        }
         if (declarations.length === 0) continue;
         blocks.push(`${offset}% { ${declarations.join(' ')} }`);
       }

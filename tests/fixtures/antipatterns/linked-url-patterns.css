@@ -47,6 +47,18 @@ main > ::before {
   to { transform: translateX(-50%); }
 }
 
+.linked-keyframe-overshoot {
+  animation: linked-keyframe-curve 2s linear infinite;
+}
+
+@keyframes linked-keyframe-curve {
+  from {
+    transform: translateY(0);
+    animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  to { transform: translateY(2px); }
+}
+
 .overridden-keyframes-animation {
   animation: overridden-horizontal-loop 2s linear infinite;
 }

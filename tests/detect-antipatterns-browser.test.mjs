@@ -1469,7 +1469,8 @@ describe('detectUrl — browser-only fixtures', () => {
       assert.equal(grids[0].severity, 'advisory');
       assert.equal(grids[0].advisory, true);
       assert.equal(
-        linkedFindings.some(finding => finding.type === 'bounce-easing'),
+        linkedFindings.some(finding => finding.type === 'bounce-easing'
+          && finding.detail === 'cubic-bezier(0.34, 1.56, 0.64, 1)'),
         true,
         JSON.stringify({ linkedFindings, linkedCssom }),
       );
