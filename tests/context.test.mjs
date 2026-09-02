@@ -408,7 +408,7 @@ describe('loadContext (monorepo project context)', () => {
     assert.equal(ctx.designPath, null);
   });
 
-  it('resolves an explicit root target into a nested-git workspace child', () => {
+  it('keeps an explicit root target inside its nested Git repository', () => {
     write('package.json', JSON.stringify({
       private: true,
       workspaces: ['repos/*'],
@@ -421,13 +421,13 @@ describe('loadContext (monorepo project context)', () => {
 
     const project = path.join(scratch, 'repos', 'standalone');
     const ctx = loadContext(scratch, { targetPath: 'repos/standalone/src/App.jsx' });
-    assert.equal(ctx.isMonorepo, true);
+    assert.equal(ctx.isMonorepo, false);
     assert.equal(ctx.projectRoot, project);
-    assert.equal(ctx.repoRoot, scratch);
+    assert.equal(ctx.repoRoot, project);
     assert.match(ctx.product, /Standalone product/);
-    assert.match(ctx.design, /Outer design/);
+    assert.equal(ctx.design, null);
     assert.equal(ctx.productPath, path.join('repos', 'standalone', 'PRODUCT.md'));
-    assert.equal(ctx.designPath, 'DESIGN.md');
+    assert.equal(ctx.designPath, null);
   });
 
   it('supports double-star workspace patterns by resolving the shallow child project', () => {
@@ -1298,6 +1298,39 @@ describe('context.mjs CLI', () => {
     assert.match(res.stdout, /MANUAL_DETECTOR_REQUIRED:/);
   });
 
+  it('treats a markerless nested Git target as an independent repository', () => {
+    const scripts = path.join(scratch, 'bundle', 'skills', 'impeccable', 'scripts');
+    stageContextBundle(scripts, { providerId: 'claude-code' });
+
+    const repo = path.join(scratch, 'repo');
+    const target = path.join(repo, 'repos', 'standalone');
+    fs.mkdirSync(path.join(repo, '.git'), { recursive: true });
+    fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+    fs.mkdirSync(path.join(target, '.git'), { recursive: true });
+    fs.mkdirSync(path.join(target, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(repo, 'package.json'), JSON.stringify({ private: true, workspaces: ['repos/*'] }));
+    fs.writeFileSync(path.join(repo, 'PRODUCT.md'), '# Outer product\n');
+    fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), JSON.stringify({
+      hooks: { Stop: [{ hooks: [{ command: 'node .claude/skills/impeccable/scripts/hook.mjs' }] }] },
+    }));
+    fs.writeFileSync(path.join(target, 'src', 'App.jsx'), 'export default function App() { return "standalone"; }\n');
+
+    const res = spawnSync(process.execPath, [
+      path.join(scripts, 'context.mjs'),
+      '--target',
+      path.join('repos', 'standalone', 'src', 'App.jsx'),
+    ], {
+      cwd: repo,
+      encoding: 'utf8',
+      env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1', IMPECCABLE_NO_STALENESS_CHECK: '1' },
+    });
+    assert.equal(res.status, 0, res.stderr);
+    assert.match(res.stdout, /"projectRoot": ".*\/repos\/standalone"/);
+    assert.match(res.stdout, /"repoRoot": ".*\/repos\/standalone"/);
+    assert.doesNotMatch(res.stdout, /# Outer product/);
+    assert.match(res.stdout, /MANUAL_DETECTOR_REQUIRED:/);
+  });
+
   it('does not borrow the caller hook for a target in an independent sibling repository', () => {
     const scripts = path.join(scratch, 'bundle', 'skills', 'impeccable', 'scripts');
     stageContextBundle(scripts, { providerId: 'claude-code' });
@@ -1329,6 +1362,45 @@ describe('context.mjs CLI', () => {
     assert.match(res.stdout, /"repoRoot": ".*\/target"/);
     assert.match(res.stdout, /# Target/);
     assert.doesNotMatch(res.stdout, /# Caller/);
+    assert.match(res.stdout, /MANUAL_DETECTOR_REQUIRED:/);
+  });
+
+  it('does not treat a home-directory Git checkout as an external target repository', () => {
+    const scripts = path.join(scratch, 'bundle', 'skills', 'impeccable', 'scripts');
+    stageContextBundle(scripts, { providerId: 'claude-code' });
+
+    const fakeHome = path.join(scratch, 'home');
+    const caller = path.join(fakeHome, 'caller');
+    const target = path.join(fakeHome, 'target');
+    fs.mkdirSync(path.join(fakeHome, '.git'), { recursive: true });
+    fs.mkdirSync(path.join(fakeHome, '.claude'), { recursive: true });
+    fs.mkdirSync(caller, { recursive: true });
+    fs.mkdirSync(target, { recursive: true });
+    fs.writeFileSync(path.join(fakeHome, 'PRODUCT.md'), '# Home product\n');
+    fs.writeFileSync(path.join(fakeHome, '.claude', 'settings.local.json'), JSON.stringify({
+      hooks: { Stop: [{ hooks: [{ command: 'node .claude/skills/impeccable/scripts/hook.mjs' }] }] },
+    }));
+    fs.writeFileSync(path.join(target, 'PRODUCT.md'), '# Target product\n');
+
+    const res = spawnSync(process.execPath, [
+      path.join(scripts, 'context.mjs'),
+      '--target',
+      target,
+    ], {
+      cwd: caller,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        HOME: fakeHome,
+        IMPECCABLE_NO_UPDATE_CHECK: '1',
+        IMPECCABLE_NO_STALENESS_CHECK: '1',
+      },
+    });
+    assert.equal(res.status, 0, res.stderr);
+    assert.match(res.stdout, /"projectRoot": ".*\/target"/);
+    assert.match(res.stdout, /"repoRoot": ".*\/target"/);
+    assert.match(res.stdout, /# Target product/);
+    assert.doesNotMatch(res.stdout, /# Home product/);
     assert.match(res.stdout, /MANUAL_DETECTOR_REQUIRED:/);
   });
 

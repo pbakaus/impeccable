@@ -200,7 +200,20 @@ export function resolveTargetSelection(cwd = process.cwd(), options = {}) {
 function resolveProject(cwd = process.cwd(), options = {}) {
   const absCwd = path.resolve(cwd);
   const targetDir = resolveTargetDir(absCwd, options);
+  const hasExplicitTarget = hasTargetOption(options) && targetDir !== absCwd;
+  const targetGitRoot = hasExplicitTarget ? findGitBoundaryRoot(targetDir) : null;
   let repoRoot = findMonorepoRoot(targetDir);
+  if (!repoRoot && targetGitRoot) {
+    const cwdGitRoot = findGitBoundaryRoot(absCwd);
+    if (targetGitRoot !== cwdGitRoot) {
+      return {
+        targetDir,
+        projectRoot: nearestTargetContextRoot(targetGitRoot, targetDir) || targetGitRoot,
+        repoRoot: targetGitRoot,
+        isMonorepo: false,
+      };
+    }
+  }
   if (!repoRoot && targetDir !== absCwd) {
     const cwdRepoRoot = findMonorepoRoot(absCwd);
     if (cwdRepoRoot && isPathInside(targetDir, cwdRepoRoot)) {
@@ -212,7 +225,7 @@ function resolveProject(cwd = process.cwd(), options = {}) {
       && targetDir !== absCwd
       && !isPathInside(targetDir, absCwd);
     if (targetIsExternal) {
-      const targetRepoRoot = findGitBoundaryRoot(targetDir) || targetDir;
+      const targetRepoRoot = targetGitRoot || targetDir;
       return {
         targetDir,
         projectRoot: nearestTargetContextRoot(targetRepoRoot, targetDir) || targetRepoRoot,
@@ -239,8 +252,8 @@ function findGitBoundaryRoot(startDir) {
   let dir = path.resolve(startDir);
   const homeDir = path.resolve(os.homedir());
   while (true) {
-    if (hasGitBoundary(dir)) return dir;
     if (dir === homeDir) return null;
+    if (hasGitBoundary(dir)) return dir;
     const parent = path.dirname(dir);
     if (parent === dir) return null;
     dir = parent;
@@ -1359,8 +1372,9 @@ function hookManifestSearchRoots(ctx) {
   let current = path.resolve(ctx.projectRoot || process.cwd());
   const home = path.resolve(os.homedir());
   while (true) {
+    if (current === home) break;
     add(current);
-    if (current === home || hasGitBoundary(current)) break;
+    if (hasGitBoundary(current)) break;
     const parent = path.dirname(current);
     if (parent === current) break;
     current = parent;
