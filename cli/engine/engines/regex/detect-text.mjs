@@ -578,7 +578,7 @@ function findTernarySplit(text) {
   let split = null;
 
   const isQuestion = (char, prev, next) =>
-    char === '?' && prev !== '.' && next !== '?' && next !== '.';
+    char === '?' && prev !== '.' && prev !== '?' && next !== '?' && next !== '.';
   const sameDepth = (depth) => depth.paren === qParen && depth.brace === qBrace;
 
   scanJs(text, 0, (char, i, prev, next, depth) => {

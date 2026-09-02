@@ -282,6 +282,12 @@ describe('detectText — gray-on-color (issue #633)', () => {
     expect(f).toHaveLength(1);
     expect(f[0].snippet).toContain('text-slate-400 on bg-red-500');
   });
+
+  test('nullish coalescing before a ternary — no finding', () => {
+    expect(grayOnColor(
+      '<div className={value ?? fallback ? "bg-red-500" : "text-slate-400"} />',
+    )).toHaveLength(0);
+  });
 });
 
 describe('detectText — broken images in source comments', () => {
