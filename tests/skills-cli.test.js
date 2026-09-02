@@ -864,6 +864,38 @@ describe('skills install/update: local universal bundle e2e', () => {
     expect(output).not.toContain('skills install                   Install impeccable skills');
   });
 
+  test('update --help is read-only and never downloads (#699)', () => {
+    const missingBundle = join(tmpdir(), 'imp-missing-bundle-699-does-not-exist');
+    const envBase = { ...process.env, IMPECCABLE_BUNDLE_PATH: missingBundle };
+
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-update-help-699-'));
+    const home = mkdtempSync(join(tmpdir(), 'imp-home-update-help-699-'));
+    createFakeSkills(tmp, ['impeccable'], ['.claude']);
+    const skillPath = join(tmp, '.claude', 'skills', 'impeccable', 'SKILL.md');
+    const beforeContent = readFileSync(skillPath, 'utf8');
+
+    for (const args of ['update --help', 'update -h', 'skills update --help']) {
+      const output = run(args, { cwd: tmp, env: { ...envBase, HOME: home } });
+      expect(output).toContain('Usage: impeccable update');
+      expect(output).not.toContain('Checking for updates');
+      expect(output).not.toContain('Updating the');
+    }
+    expect(readFileSync(skillPath, 'utf8')).toBe(beforeContent);
+
+    rmSync(tmp, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+
+    const emptyTmp = mkdtempSync(join(tmpdir(), 'imp-test-update-help-empty-699-'));
+    const emptyHome = mkdtempSync(join(tmpdir(), 'imp-home-update-help-empty-699-'));
+    const output = run('update --help', { cwd: emptyTmp, env: { ...envBase, HOME: emptyHome } });
+    expect(output).toContain('Usage: impeccable update');
+    expect(output).not.toContain('Run `npx impeccable install` to install first.');
+    expect(output).not.toContain('Checking for updates');
+
+    rmSync(emptyTmp, { recursive: true, force: true });
+    rmSync(emptyHome, { recursive: true, force: true });
+  });
+
   test('top-level install aliases the legacy skills install command', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'imp-test-top-level-install-'));
     const home = mkdtempSync(join(tmpdir(), 'imp-home-top-level-install-'));

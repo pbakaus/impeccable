@@ -2362,7 +2362,25 @@ async function downloadFile(url, dest, { fetchImpl = globalThis.fetch } = {}) {
   }
 }
 
+function printUpdateUsage() {
+  console.log(`Usage: impeccable update [options]
+
+Update installed impeccable skills to the latest version.
+
+Options:
+  --project, --user    Update the project-level or user-level install
+  -y, --yes            Skip confirmation prompts
+  --force              Overwrite existing hook manifests
+  --no-hooks           Refresh skills without installing or repairing hooks
+  -h, --help           Show this help message`);
+}
+
 async function update(flags = []) {
+  if (flags.includes('--help') || flags.includes('-h')) {
+    printUpdateUsage();
+    return;
+  }
+
   const yes = flags.includes('-y') || flags.includes('--yes');
   const force = flags.includes('--force');
   const installHooks = !flags.includes('--no-hooks');
