@@ -1422,6 +1422,12 @@ describe('detectUrl — browser-only fixtures', () => {
         true,
         JSON.stringify({ linkedFindings, linkedCssom }),
       );
+      const marquees = linkedFindings.filter(finding => finding.type === 'marquee');
+      assert.equal(marquees.length, 1, JSON.stringify({ linkedFindings, linkedCssom }));
+      assert.match(marquees[0].detail, /\.linked-marquee/);
+      const pulsingDots = linkedFindings.filter(finding => finding.type === 'pulsing-dot');
+      assert.equal(pulsingDots.length, 1, JSON.stringify({ linkedFindings, linkedCssom }));
+      assert.match(pulsingDots[0].detail, /\.linked-pulse-dot/);
       assert.equal(linkedFindings.some(finding => finding.type === 'radial-halo'), true);
       assert.equal(
         linkedFindings.some(finding => finding.type === 'repeating-stripes-gradient'),

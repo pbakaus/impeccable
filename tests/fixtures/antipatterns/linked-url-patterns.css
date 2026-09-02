@@ -38,6 +38,39 @@ main > ::before {
   50% { transform: translateY(2px); }
 }
 
+.linked-marquee {
+  animation: linked-horizontal-loop 8s linear infinite;
+}
+
+@keyframes linked-horizontal-loop {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+.linked-pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  animation: linked-signal-cycle 1.5s ease-in-out infinite;
+}
+
+@keyframes linked-signal-cycle {
+  50% { opacity: 0.35; }
+}
+
+/* A live selector can name keyframes that only exist under an inactive
+   container query. The inaccessible body must not create a marquee hit. */
+.inactive-container-animation-reference {
+  animation: inactive-container-horizontal-loop 8s linear infinite;
+}
+
+@container (width > 2000px) {
+  @keyframes inactive-container-horizontal-loop {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+}
+
 /* A pseudo-element whose originating element is absent must remain outside
    live URL findings instead of being retained as an unresolvable selector. */
 .absent > ::before {

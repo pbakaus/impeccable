@@ -1445,6 +1445,81 @@ if (IS_BROWSER) {
     return true;
   }
 
+  function splitCssCommaList(value) {
+    const parts = [];
+    let current = '';
+    let quote = '';
+    let escaped = false;
+    for (const char of String(value || '')) {
+      if (escaped) {
+        current += char;
+        escaped = false;
+        continue;
+      }
+      if (char === '\\') {
+        current += char;
+        escaped = true;
+        continue;
+      }
+      if (quote) {
+        current += char;
+        if (char === quote) quote = '';
+        continue;
+      }
+      if (char === '"' || char === "'") {
+        quote = char;
+        current += char;
+        continue;
+      }
+      if (char === ',') {
+        parts.push(current);
+        current = '';
+        continue;
+      }
+      current += char;
+    }
+    parts.push(current);
+    return parts;
+  }
+
+  function normalizeAnimationName(value) {
+    const name = String(value || '').trim();
+    if (name.length >= 2 && name[0] === name[name.length - 1] && (name[0] === '"' || name[0] === "'")) {
+      return name.slice(1, -1);
+    }
+    return name;
+  }
+
+  function animationNamesDeclaredByRule(rule) {
+    const style = rule?.style;
+    if (!style) return [];
+    let value = '';
+    try {
+      value = style.animationName
+        || style.getPropertyValue?.('animation-name')
+        || style.webkitAnimationName
+        || style.getPropertyValue?.('-webkit-animation-name')
+        || '';
+    } catch {
+      return [];
+    }
+    return splitCssCommaList(value)
+      .map(normalizeAnimationName)
+      .filter(name => name && name.toLowerCase() !== 'none');
+  }
+
+  function keyframesRuleName(rule, cssText) {
+    const constructorName = rule?.constructor?.name || '';
+    const type = Number(rule?.type);
+    const isKeyframes = constructorName === 'CSSKeyframesRule'
+      || constructorName === 'WebKitCSSKeyframesRule'
+      || type === 7
+      || /^\s*@(?:-webkit-)?keyframes\b/i.test(cssText);
+    if (!isKeyframes) return '';
+    const match = String(cssText || '').match(/^\s*@(?:-webkit-)?keyframes\s+([^\s{]+)/i);
+    return normalizeAnimationName(rule?.name || match?.[1] || '');
+  }
+
   // Read CSS that is absent from document.outerHTML. Inline <style> blocks are
   // already present in the HTML pattern corpus, so limit this walk to linked
   // stylesheets. Flatten grouping rules so each declaration keeps its selector,
@@ -1455,7 +1530,9 @@ if (IS_BROWSER) {
   function linkedStylesheetText() {
     const parts = [];
     const seen = new Set();
-    const appendRules = (rules, requiresAppliedMatch = false) => {
+    const animationNames = new Set();
+    const keyframeCandidates = [];
+    const appendRules = (rules, containerStates = []) => {
       for (const rule of rules) {
         if (rule.styleSheet) {
           appendSheet(rule.styleSheet);
@@ -1469,9 +1546,11 @@ if (IS_BROWSER) {
           // rendered, and retaining them would leak unused CSS into findings.
           if (
             matches?.length > 0
-            && (!requiresAppliedMatch || styleRuleAppliesToLiveMatches(rule, matches))
+            && (containerStates.length === 0 || styleRuleAppliesToLiveMatches(rule, matches))
           ) {
             parts.push(cssText);
+            for (const name of animationNamesDeclaredByRule(rule)) animationNames.add(name);
+            for (const state of containerStates) state.active = true;
           }
           continue;
         }
@@ -1484,16 +1563,24 @@ if (IS_BROWSER) {
         } catch {
           continue;
         }
-        const isKeyframes = /^\s*@(?:-webkit-)?keyframes\b/i.test(cssText);
-        if (hasNestedRules && !isKeyframes) {
-          if (!conditionalCssRuleIsActive(rule)) continue;
-          appendRules(nested, requiresAppliedMatch || isContainerCssRule(rule));
+        const keyframesName = keyframesRuleName(rule, cssText);
+        if (keyframesName) {
+          keyframeCandidates.push({
+            name: keyframesName,
+            cssText,
+            containerStates: [...containerStates],
+          });
           continue;
         }
-        // Selector-less leaf at-rules (notably @keyframes) cannot be tied to a
-        // rendered node. Their activating selector declarations are already
-        // retained above, while admitting the leaf text would let unused or
-        // conditionally inactive CSS create page-level findings.
+        if (hasNestedRules) {
+          if (!conditionalCssRuleIsActive(rule)) continue;
+          const nextContainerStates = isContainerCssRule(rule)
+            ? [...containerStates, { active: false }]
+            : containerStates;
+          appendRules(nested, nextContainerStates);
+          continue;
+        }
+        // Other selector-less leaf at-rules cannot be tied to a rendered node.
       }
     };
     const appendSheet = (sheet) => {
@@ -1512,6 +1599,16 @@ if (IS_BROWSER) {
       if (owner?.tagName?.toLowerCase() !== 'link') continue;
       if (!/\bstylesheet\b/i.test(owner.getAttribute?.('rel') || '')) continue;
       appendSheet(sheet);
+    }
+    // Motion checks need the body of a live animation's keyframes. Retain only
+    // definitions referenced by a retained selector rule, and only when every
+    // enclosing container query was proven active by a declaration applying
+    // to a live match. This preserves linked marquee/pulse detection without
+    // letting unused or inactive keyframe bodies feed page-level checks.
+    for (const candidate of keyframeCandidates) {
+      if (!animationNames.has(candidate.name)) continue;
+      if (candidate.containerStates.some(state => !state.active)) continue;
+      parts.push(candidate.cssText);
     }
     return parts.join('\n');
   }
