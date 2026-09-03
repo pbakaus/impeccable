@@ -101,6 +101,21 @@ re!(
     )
 );
 re!(TW_BG_CLIP_TEXT, format!(r"{B}bg-clip-text{B}"));
+
+/// JS: detect-text.mjs#TW_SOLID_CHROMATIC_BG_RE and checks.mjs#checkColors's
+/// `colorBgMatch`, whose `\d+(?!\/)\b` skips a `bg-blue-500/10` opacity tint
+/// (#707). The `regex` crate has no lookahead: `\d+` is already maximal before
+/// the word boundary, so the only thing left to test is the byte after it.
+pub fn find_solid_chromatic_bg(s: &str) -> Option<&str> {
+    let mut from = 0usize;
+    while let Some(m) = TW_COLOR_BG.find_at(s, from) {
+        if s.as_bytes().get(m.end()) != Some(&b'/') {
+            return Some(m.as_str());
+        }
+        from = m.start() + 1;
+    }
+    None
+}
 re!(TW_BG_GRADIENT_TO, format!(r"{B}bg-gradient-to-"));
 re!(
     TW_PURPLE_TEXT,
@@ -234,11 +249,11 @@ pub fn check_colors(opts: &ColorOpts) -> Vec<RuleHit> {
 
     if let Some(class_str) = opts.class_list.as_deref().filter(|s| !s.is_empty()) {
         let gray_match = TW_GRAY_TEXT.find(class_str);
-        let color_bg_match = TW_COLOR_BG.find(class_str);
+        let color_bg_match = find_solid_chromatic_bg(class_str);
         if let (Some(g), Some(c)) = (gray_match, color_bg_match) {
             findings.push(RuleHit::new(
                 "gray-on-color",
-                format!("{} on {}", g.as_str(), c.as_str()),
+                format!("{} on {}", g.as_str(), c),
             ));
         }
         if TW_BG_CLIP_TEXT.is_match(class_str) && TW_BG_GRADIENT_TO.is_match(class_str) {
@@ -999,6 +1014,33 @@ mod tests {
         assert_eq!(
             extract_shadow_lengths("rgb(1, 2, 3) 0px 0px 20px", None),
             vec![1.0, 2.0, 3.0, 0.0, 0.0, 20.0]
+        );
+    }
+
+    #[test]
+    fn gray_on_color_opacity_tint() {
+        let hits = |class_list: &str| {
+            check_colors(&ColorOpts {
+                tag: "div".to_string(),
+                font_size: 14.0,
+                font_weight: 400.0,
+                has_direct_text: true,
+                class_list: Some(class_list.to_string()),
+                ..Default::default()
+            })
+            .into_iter()
+            .filter(|h| h.id == "gray-on-color")
+            .map(|h| h.snippet)
+            .collect::<Vec<_>>()
+        };
+        // #707: a `/10` opacity tint is not a solid chromatic fill.
+        assert!(hits("text-slate-300 hover:bg-red-500/10").is_empty());
+        assert!(hits("text-slate-300 bg-red-500/10").is_empty());
+        assert_eq!(hits("text-slate-300 bg-red-500"), vec!["text-slate-300 on bg-red-500"]);
+        // A later solid class still pairs when an earlier one is a tint.
+        assert_eq!(
+            hits("text-slate-300 bg-red-500/10 bg-teal-600"),
+            vec!["text-slate-300 on bg-teal-600"]
         );
     }
 

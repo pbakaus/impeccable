@@ -6,6 +6,7 @@ use impeccable_core::checks::css_scan::{
 };
 use impeccable_core::color::is_neutral_color;
 use impeccable_core::constants::{EM_DASH_CHARS_PER_DASH, EM_DASH_FLOOR, OVERUSED_FONTS};
+use impeccable_core::checks::rules::find_solid_chromatic_bg;
 use impeccable_core::findings::{finding, Finding};
 use impeccable_core::fonts::extract_google_font_families;
 use impeccable_core::js::{
@@ -23,6 +24,8 @@ use crate::util::{line_of_offset, re, ANY, B, D, W, WS, WS_CHARS};
 #[derive(Debug, Clone)]
 pub struct MatchCtx {
     pub groups: Vec<Option<String>>,
+    /// JS `m.index`: the byte offset of the whole match in the line.
+    pub index: usize,
 }
 
 impl MatchCtx {
@@ -31,6 +34,7 @@ impl MatchCtx {
             groups: (0..c.len())
                 .map(|i| c.get(i).map(|g| g.as_str().to_string()))
                 .collect(),
+            index: c.get(0).map(|g| g.start()).unwrap_or(0),
         }
     }
     /// JS `m[i]` (`''` when undefined, which is what template strings and
@@ -41,6 +45,233 @@ impl MatchCtx {
     pub fn whole(&self) -> &str {
         self.g(0)
     }
+}
+
+/// The JS-source scanner every gray-on-color scope helper walks with: it
+/// tracks string, template-literal, paren and brace depth and reports every
+/// other character to `on_char`, which returns `true` to stop the walk.
+///
+/// JS: detect-text.mjs#scanJs
+struct ScanDepth {
+    paren: i32,
+    brace: i32,
+}
+
+fn scan_js<F>(text: &str, start: usize, mut on_char: F)
+where
+    F: FnMut(char, usize, Option<char>, Option<char>, &ScanDepth) -> bool,
+{
+    let chars: Vec<(usize, char)> = text.char_indices().collect();
+    let mut k = chars
+        .iter()
+        .position(|(b, _)| *b >= start)
+        .unwrap_or(chars.len());
+    let mut string_quote: Option<char> = None;
+    let mut in_template = false;
+    let mut paren = 0i32;
+    let mut brace = 0i32;
+    let mut interp_brace: Vec<i32> = Vec::new();
+
+    while k < chars.len() {
+        let (bi, ch) = chars[k];
+        let prev = if k > 0 { Some(chars[k - 1].1) } else { None };
+        let next = chars.get(k + 1).map(|(_, c)| *c);
+
+        if let Some(q) = string_quote {
+            if ch == '\\' {
+                k += 2;
+                continue;
+            }
+            if ch == q {
+                string_quote = None;
+            }
+            k += 1;
+            continue;
+        }
+        if in_template && interp_brace.is_empty() {
+            if ch == '\\' {
+                k += 2;
+                continue;
+            }
+            if ch == '$' && next == Some('{') {
+                brace += 1;
+                interp_brace.push(brace);
+                k += 2;
+                continue;
+            }
+            if ch == '`' {
+                in_template = false;
+            }
+            k += 1;
+            continue;
+        }
+
+        if ch == '\'' || ch == '"' {
+            string_quote = Some(ch);
+            k += 1;
+            continue;
+        }
+        if ch == '`' {
+            in_template = true;
+            k += 1;
+            continue;
+        }
+        if ch == '(' {
+            paren += 1;
+            k += 1;
+            continue;
+        }
+        if ch == ')' {
+            paren -= 1;
+            k += 1;
+            continue;
+        }
+        if ch == '{' {
+            brace += 1;
+            k += 1;
+            continue;
+        }
+        if ch == '}' {
+            brace -= 1;
+            if interp_brace.last().is_some_and(|last| brace < *last) {
+                interp_brace.pop();
+            }
+            k += 1;
+            continue;
+        }
+        if on_char(ch, bi, prev, next, &ScanDepth { paren, brace }) {
+            return;
+        }
+        k += 1;
+    }
+}
+
+/// JS: detect-text.mjs#containingMarkupTag (only its `text` is read).
+fn containing_markup_tag(line: &str) -> impl Fn(usize) -> String + '_ {
+    move |index: usize| {
+        let mut i = 0usize;
+        while i < line.len() {
+            let Some(rel) = line[i..].find('<') else { break };
+            let tag_start = i + rel;
+            let after = &line[tag_start + 1..];
+            if !after.chars().next().is_some_and(|c| c.is_ascii_alphabetic()) {
+                i = tag_start + 1;
+                continue;
+            }
+            let mut tag_end: Option<usize> = None;
+            scan_js(line, tag_start + 1, |ch, j, _p, _n, depth| {
+                if ch == '>' && depth.brace == 0 {
+                    tag_end = Some(j);
+                    return true;
+                }
+                false
+            });
+            let Some(end) = tag_end else { break };
+            if index >= tag_start && index <= end {
+                return line[tag_start..end + 1].to_string();
+            }
+            i = end + 1;
+        }
+        line.to_string()
+    }
+}
+
+struct TernarySplit {
+    common: String,
+    consequent: String,
+    alternate: String,
+    suffix: String,
+}
+
+/// JS: detect-text.mjs#findTernarySplit
+fn find_ternary_split(text: &str) -> Option<TernarySplit> {
+    let mut q_pos: Option<usize> = None;
+    let mut q_paren = 0i32;
+    let mut q_brace = 0i32;
+    let mut nested = 0u32;
+    let mut colon_pos: Option<usize> = None;
+    let mut split: Option<TernarySplit> = None;
+
+    // `?.` and `??` are not ternaries.
+    let is_question = |ch: char, prev: Option<char>, next: Option<char>| {
+        ch == '?'
+            && prev != Some('.')
+            && prev != Some('?')
+            && next != Some('?')
+            && next != Some('.')
+    };
+
+    scan_js(text, 0, |ch, i, prev, next, depth| {
+        if colon_pos.is_none() {
+            if q_pos.is_none() && is_question(ch, prev, next) {
+                q_pos = Some(i);
+                q_paren = depth.paren;
+                q_brace = depth.brace;
+                return false;
+            }
+            let same_depth = depth.paren == q_paren && depth.brace == q_brace;
+            if q_pos.is_some() && is_question(ch, prev, next) && same_depth {
+                nested += 1;
+                return false;
+            }
+            if q_pos.is_some() && ch == ':' && same_depth {
+                if nested > 0 {
+                    nested -= 1;
+                } else {
+                    colon_pos = Some(i);
+                }
+            }
+            return false;
+        }
+        if ch == ',' && depth.paren == q_paren && depth.brace == q_brace {
+            let (q, c) = (q_pos.unwrap(), colon_pos.unwrap());
+            split = Some(TernarySplit {
+                common: text[..q].to_string(),
+                consequent: text[q + 1..c].to_string(),
+                alternate: text[c + 1..i].to_string(),
+                suffix: text[i..].to_string(),
+            });
+            return true;
+        }
+        false
+    });
+
+    if split.is_none() {
+        if let (Some(q), Some(c)) = (q_pos, colon_pos) {
+            split = Some(TernarySplit {
+                common: text[..q].to_string(),
+                consequent: text[q + 1..c].to_string(),
+                alternate: text[c + 1..].to_string(),
+                suffix: String::new(),
+            });
+        }
+    }
+    split
+}
+
+/// JS: detect-text.mjs#exclusiveClassScopes
+fn exclusive_class_scopes(text: &str) -> Vec<String> {
+    let Some(split) = find_ternary_split(text) else {
+        return vec![text.to_string()];
+    };
+    let mut out = Vec::new();
+    for part in exclusive_class_scopes(&split.consequent) {
+        out.push(format!("{}{}{}", split.common, part, split.suffix));
+    }
+    for part in exclusive_class_scopes(&split.alternate) {
+        out.push(format!("{}{}{}", split.common, part, split.suffix));
+    }
+    out
+}
+
+/// JS: detect-text.mjs#grayOnColorPairs. A gray text class only pairs with a
+/// chromatic background inside the same markup tag and the same ternary arm
+/// (#707).
+fn gray_on_color_pairs(line: &str, gray_class: &str, index: usize) -> Vec<String> {
+    exclusive_class_scopes(&containing_markup_tag(line)(index))
+        .into_iter()
+        .filter(|scope| scope.contains(gray_class))
+        .collect()
 }
 
 pub struct Matcher {
@@ -331,10 +562,6 @@ re!(
     format!("{B}text-(?:gray|slate|zinc|neutral|stone)-({D}+){B}")
 );
 re!(
-    COLOR_BG_RE,
-    format!("{B}bg-(?:red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-{D}+{B}")
-);
-re!(
     PURPLE_TEXT_RE,
     format!("{B}text-(?:purple|violet|indigo)-({D}+){B}")
 );
@@ -495,7 +722,10 @@ fn find_transition_matches(prefix: &Regex, line: &str) -> Vec<MatchCtx> {
         }
         match matched {
             Some((end, groups)) => {
-                out.push(MatchCtx { groups });
+                out.push(MatchCtx {
+                    groups,
+                    index: m.start(),
+                });
                 pos = end;
             }
             None => {
@@ -564,6 +794,7 @@ fn find_img_without_src(line: &str) -> Vec<MatchCtx> {
                 }
                 out.push(MatchCtx {
                     groups: vec![Some(line[m.start()..gt + 1].to_string())],
+                    index: m.start(),
                 });
                 pos = gt + 1;
             }
@@ -672,9 +903,17 @@ pub static REGEX_MATCHERS: Lazy<Vec<Matcher>> = Lazy::new(|| {
         Matcher {
             id: "gray-on-color",
             find_all: |l| all(&GRAY_TEXT_RE, l),
-            test: |_, line| COLOR_BG_RE.is_match(line),
+            test: |m, line| {
+                gray_on_color_pairs(line, m.whole(), m.index)
+                    .iter()
+                    .any(|scope| find_solid_chromatic_bg(scope).is_some())
+            },
             fmt: |m, line| {
-                let bg = COLOR_BG_RE.find(line).map(|b| b.as_str()).unwrap_or("?");
+                let pairs = gray_on_color_pairs(line, m.whole(), m.index);
+                let bg = pairs
+                    .iter()
+                    .find_map(|scope| find_solid_chromatic_bg(scope))
+                    .unwrap_or("?");
                 format!("{} on {}", m.whole(), bg)
             },
         },
@@ -1158,6 +1397,40 @@ mod tests {
             }
         }
         out
+    }
+
+    /// Cases recorded from origin/main's JS after #707; every expectation
+    /// here was produced by running `impeccable detect` on both engines.
+    #[test]
+    fn gray_on_color_scoping() {
+        let g = |line: &str| run("gray-on-color", line);
+        // A `/10` opacity tint is not a solid fill.
+        assert!(g(r#"<button className="text-slate-300 hover:bg-red-500/10 hover:text-red-400">Log out</button>"#).is_empty());
+        assert!(g(r#"<button className="text-slate-300 bg-red-500/10">Log out</button>"#).is_empty());
+        assert_eq!(
+            g(r#"<button className="text-slate-300 bg-red-500">Log out</button>"#),
+            vec!["text-slate-300 on bg-red-500"]
+        );
+        // Exclusive ternary arms never pair with each other.
+        assert!(g(r#"<button className={`px-4 py-2 text-sm rounded-lg transition-colors ${mode === "a" ? "bg-amber-600 text-white" : "bg-white/5 text-slate-400 hover:bg-white/10"}`}>Mode</button>"#).is_empty());
+        assert!(g(r#"<button className={mode > 0 ? "bg-amber-600 text-white" : "text-slate-400"}>Mode</button>"#).is_empty());
+        assert!(g(r#"<div className={a ? "bg-red-500" : b ? "text-slate-400" : "bg-blue-600"} />"#).is_empty());
+        assert!(g(r#"<div className={value ?? fallback ? "bg-red-500" : "text-slate-400"} />"#).is_empty());
+        // Sibling tags on one line are separate scopes.
+        assert!(g(r#"<div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-amber-500" /><span className="text-slate-400">Vital few</span></div>"#).is_empty());
+        // Simultaneous arguments, a common prefix, and a shared suffix pair.
+        assert_eq!(
+            g(r#"<button className={cn("text-slate-400", "bg-blue-600")}>Go</button>"#),
+            vec!["text-slate-400 on bg-blue-600"]
+        );
+        assert_eq!(
+            g(r#"<button className={cn("text-slate-400", mode === "a" ? "bg-amber-600" : "bg-white")}>Go</button>"#),
+            vec!["text-slate-400 on bg-amber-600"]
+        );
+        assert_eq!(
+            g(r#"<div className={cn(a ? "bg-red-500" : "bg-blue-600", "text-slate-400")} />"#),
+            vec!["text-slate-400 on bg-red-500"]
+        );
     }
 
     #[test]
