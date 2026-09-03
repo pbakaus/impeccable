@@ -286,6 +286,49 @@ fn resolve_env_context_dir(cwd: &str, env: &Env) -> Option<String> {
     Some(if jsp::is_absolute(t) { t.to_string() } else { jsp::resolve(cwd, &[t]) })
 }
 
+/// JS: context.mjs#resolveTargetPath. A bare workspace name (or a
+/// single-segment path a caller already absolutized against cwd) that does
+/// not exist resolves to the one workspace candidate with that name (#706).
+pub fn resolve_target_path(cwd: &str, target_path: &str, env: &Env) -> String {
+    let abs = if jsp::is_absolute(target_path) {
+        target_path.to_string()
+    } else {
+        jsp::resolve(cwd, &[target_path])
+    };
+    if exists(&abs) {
+        return abs;
+    }
+    find_unique_bare_target(cwd, target_path, env).unwrap_or(abs)
+}
+
+/// JS: context.mjs#findUniqueBareTarget
+fn find_unique_bare_target(cwd: &str, target_path: &str, env: &Env) -> Option<String> {
+    let abs_cwd = jsp::resolve(cwd, &[]);
+    let abs = if jsp::is_absolute(target_path) {
+        target_path.to_string()
+    } else {
+        jsp::resolve(&abs_cwd, &[target_path])
+    };
+    let rel = jsp::relative(&abs_cwd, &abs_cwd, &abs);
+    if rel.is_empty() || rel.starts_with("..") || jsp::is_absolute(&rel) {
+        return None;
+    }
+    let segments: Vec<&str> = rel.split(jsp::SEP).filter(|s| !s.is_empty()).collect();
+    if segments.len() != 1 {
+        return None;
+    }
+    let name = segments[0];
+    let repo_root = find_monorepo_root(&abs_cwd, env)?;
+    let matches: Vec<TargetCandidate> = discover_target_candidates(&repo_root, env)
+        .into_iter()
+        .filter(|c| c.name == name)
+        .collect();
+    if matches.len() != 1 {
+        return None;
+    }
+    Some(jsp::resolve(&repo_root, &[&matches[0].path]))
+}
+
 fn resolve_target_dir(cwd: &str, options: &TargetOptions) -> String {
     let Some(tp) = options.target_path.as_deref() else { return cwd.to_string() };
     if js_trim(tp).is_empty() {

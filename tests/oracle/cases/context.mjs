@@ -172,6 +172,13 @@ const cases = [
   { id: 'context-monorepo-target-dot', verb: 'context', workspace: 'ctx-monorepo', args: ['--target', '.'], env: env(), files: IMPECCABLE_FILES },
   { id: 'context-monorepo-target-missing', verb: 'context', workspace: 'ctx-monorepo', args: ['--target', 'apps/zzz/src/App.tsx'], env: env(), files: IMPECCABLE_FILES },
   { id: 'context-monorepo-from-child-cwd', verb: 'context', workspace: 'ctx-monorepo', cwd: 'apps/b', env: env(), files: IMPECCABLE_FILES },
+  // #706: a bare child name resolves to the one workspace candidate with that
+  // name; an absolutized single-segment path that does not exist takes the
+  // same route; an ambiguous or unknown name still reports the miss.
+  { id: 'context-monorepo-target-bare-name', verb: 'context', workspace: 'ctx-monorepo', args: ['--target', 'a'], env: env(), files: IMPECCABLE_FILES },
+  { id: 'context-monorepo-target-bare-name-abs', verb: 'context', workspace: 'ctx-monorepo', args: ['--target', `${WS}/b`], env: env(), files: IMPECCABLE_FILES },
+  { id: 'context-monorepo-target-bare-unknown', verb: 'context', workspace: 'ctx-monorepo', args: ['--target', 'zzz'], env: env(), files: IMPECCABLE_FILES },
+  { id: 'context-monorepo-target-bare-from-child-cwd', verb: 'context', workspace: 'ctx-monorepo', cwd: 'apps/b', args: ['--target', 'a'], env: env(), files: IMPECCABLE_FILES },
   { id: 'context-legacy', verb: 'context', workspace: 'ctx-legacy', setup: legacySetup, env: env(), files: IMPECCABLE_FILES },
   { id: 'context-hook-disabled-env', verb: 'context', workspace: 'ctx-product-only', env: env({ IMPECCABLE_HOOK_DISABLED: 'yes' }), files: IMPECCABLE_FILES },
   {

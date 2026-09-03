@@ -484,18 +484,30 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         }
     };
     let target_provided = has_target_option(&options);
-    let target_exists = if target_provided {
-        let tp = options.target_path.as_deref().unwrap();
-        let abs = if jsp::is_absolute(tp) { tp.to_string() } else { jsp::resolve(&cwd, &[tp]) };
-        Some(exists(&abs))
+    // #706: resolve `--target` once, so a bare workspace name does not walk
+    // the candidates twice and loadContext sees the resolved path.
+    let resolved_target_path = if target_provided {
+        Some(resolve_target_path(
+            &cwd,
+            options.target_path.as_deref().unwrap(),
+            &env,
+        ))
     } else {
         None
     };
+    let target_exists = resolved_target_path.as_deref().map(exists);
     if let Some(sel) = resolve_target_selection(&cwd, &options, &env) {
         io.out(&format!("{}\n", build_target_selection_directive(&sel)));
         return 0;
     }
-    let ctx = load_context(&cwd, &options, &env);
+    let load_options = match resolved_target_path.as_deref() {
+        Some(p) => TargetOptions {
+            target_path: Some(p.to_string()),
+            ..Default::default()
+        },
+        None => options.clone(),
+    };
+    let ctx = load_context(&cwd, &load_options, &env);
     let update_directive = compute_update_directive(&cwd, &env, &provider);
     let cmd = &provider.command;
 
