@@ -63,6 +63,19 @@ fn fixture_for(golden_name: &str, fixtures: &Path) -> Option<PathBuf> {
     None
 }
 
+/// Masks the checkout root out of a finding's `file` and renders the rest with
+/// `/`. The goldens were recorded through the JS CLI on POSIX; on Windows the
+/// same path carries `\` separators, and what the golden pins is the masked
+/// path, not the host's separator.
+fn mask_file(file: &str, root: &str, token: &str) -> String {
+    let masked = file.replace(root, token);
+    if cfg!(windows) {
+        masked.replace('\\', "/")
+    } else {
+        masked
+    }
+}
+
 #[test]
 fn html_fixture_goldens_match() {
     let Some(repo) = public_repo() else {
@@ -133,7 +146,7 @@ fn html_fixture_goldens_match() {
         for f in &mut actual {
             if let Some(file) = f.get_mut("file") {
                 if let Some(s) = file.as_str() {
-                    let s = s.replace(&repo_str, "<REPO>");
+                    let s = mask_file(s, &repo_str, "<REPO>");
                     *file = Value::String(s);
                 }
             }
@@ -226,7 +239,7 @@ fn detect_config_workspace_no_config_matches() {
     let ws_str = ws.to_string_lossy().into_owned();
     for f in &mut actual {
         if let Some(Value::String(s)) = f.get_mut("file") {
-            *s = s.replace(&ws_str, "<WS>");
+            *s = mask_file(s, &ws_str, "<WS>");
         }
     }
     assert_eq!(actual, expected);
