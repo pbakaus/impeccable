@@ -8,12 +8,15 @@ use crate::background::{read_own_background_color, resolve_border_radius_px, sv}
 use crate::dom::{StaticDocument, StaticElement};
 use crate::quality::{has_nonblank_direct_text, pf0};
 use impeccable_core::checks::measures::{cream_from_class_list, is_cream_color};
-use impeccable_core::checks::rules::{is_card_like_from_props, RuleHit};
+use impeccable_core::checks::rules::{
+    check_flat_type_hierarchy_samples, is_card_like_from_props, type_hierarchy_role, RuleHit,
+    TypeSample, TYPE_HIERARCHY_SELECTOR,
+};
 use impeccable_core::checks::text_rules::{
     is_repeated_text_container, REPEATED_TEXT_CONTAINER_TAGS, REPEATED_TEXT_SKIP_SELECTOR,
 };
 use impeccable_core::constants::{CSS_GENERIC_FONTS, OVERUSED_FONTS, SAFE_TAGS};
-use impeccable_core::js::{self, math_round, number_to_string, parse_float, to_fixed};
+use impeccable_core::js::{self, number_to_string, parse_float};
 use impeccable_core::js_ext_b::{slice_utf16_prefix, utf16_len};
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -60,38 +63,60 @@ pub fn check_static_page_typography(doc: &StaticDocument) -> Vec<RuleHit> {
             format!("Primary font: {}", font),
         ));
     }
-    let mut sizes: Vec<f64> = Vec::new();
-    for el in
-        doc.query_selector_all("h1, h2, h3, h4, h5, h6, p, span, a, li, td, th, label, button, div")
-    {
-        let font_size = parse_float(sv(el.style(), "fontSize"));
-        if font_size >= 8.0 && font_size < 200.0 {
-            let v = math_round(font_size * 10.0) / 10.0;
-            if !sizes.contains(&v) {
-                sizes.push(v);
-            }
-        }
-    }
-    if sizes.len() >= 3 {
-        let mut sorted = sizes.clone();
-        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        let ratio = sorted[sorted.len() - 1] / sorted[0];
-        if ratio < 2.0 {
-            let list: Vec<String> = sorted
-                .iter()
-                .map(|s| format!("{}px", number_to_string(*s)))
-                .collect();
-            findings.push(RuleHit::new(
-                "flat-type-hierarchy",
-                format!(
-                    "Sizes: {} (ratio {}:1)",
-                    list.join(", "),
-                    to_fixed(ratio, 1)
-                ),
-            ));
-        }
-    }
+    findings.extend(check_flat_type_hierarchy_from_doc(doc));
     findings
+}
+
+/// JS: checks.mjs#isRenderedTypeElement over the static cascade.
+///
+/// JS-PARITY: jsdom's `el.hidden` reflects the `hidden` attribute, which the
+/// attribute test already covers. `contentVisibility` only ever reads its
+/// `STATIC_DEFAULT_STYLE` default here: css-cascade.mjs#STATIC_PROP_MAP has no
+/// `content-visibility` entry, so a declared `content-visibility: hidden`
+/// never reaches the static computed style.
+fn is_rendered_type_element(el: &StaticElement<'_>) -> bool {
+    let mut current = Some(el.clone());
+    while let Some(node) = current {
+        if node.get_attribute("hidden").is_some() {
+            return false;
+        }
+        let style = node.style();
+        let display = js::to_lower_case(sv(style, "display"));
+        let visibility = js::to_lower_case(sv(style, "visibility"));
+        let content_visibility = js::to_lower_case(sv(style, "contentVisibility"));
+        if display == "none"
+            || visibility == "hidden"
+            || visibility == "collapse"
+            || content_visibility == "hidden"
+        {
+            return false;
+        }
+        let opacity = parse_float(sv(style, "opacity"));
+        if opacity.is_finite() && opacity <= 0.01 {
+            return false;
+        }
+        current = node.parent_element();
+    }
+    true
+}
+
+/// JS: checks.mjs#checkFlatTypeHierarchyFromDoc over the static document.
+pub fn check_flat_type_hierarchy_from_doc(doc: &StaticDocument) -> Vec<RuleHit> {
+    let mut samples: Vec<TypeSample> = Vec::new();
+    for el in doc.query_selector_all(TYPE_HIERARCHY_SELECTOR) {
+        if js::trim(&el.text_content()).is_empty() || !is_rendered_type_element(&el) {
+            continue;
+        }
+        let font_size = parse_float(sv(el.style(), "fontSize"));
+        if !font_size.is_finite() || font_size < 8.0 || font_size >= 200.0 {
+            continue;
+        }
+        samples.push(TypeSample {
+            role: type_hierarchy_role(&el.tag_lower()),
+            size: font_size,
+        });
+    }
+    check_flat_type_hierarchy_samples(&samples)
 }
 
 // ─── Nested cards ───────────────────────────────────────────────────────────

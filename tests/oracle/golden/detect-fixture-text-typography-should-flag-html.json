@@ -1,6 +1,6 @@
 {
   "stdout": "",
-  "stderr": "\n<REPO>/tests/fixtures/antipatterns/typography-should-flag.html\n  [overused-font] Primary font: inter\n    → Inter, Roboto, Fraunces, Geist, Plus Jakarta Sans, and Space Grotesk are used on so many sites they no longer feel distinctive. Each new wave of AI-generated UIs converges on the same handful of faces. Choose a face that gives your interface personality.\n  [flat-type-hierarchy] Sizes: 13px, 14px, 15px, 16px, 18px (ratio 1.4:1)\n    → Font sizes are too close together — no clear visual hierarchy. Use fewer sizes with more contrast (aim for at least a 1.25 ratio between steps).\n\n2 anti-patterns found.\n",
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/typography-should-flag.html\n  [overused-font] Primary font: inter\n    → Inter, Roboto, Fraunces, Geist, Plus Jakarta Sans, and Space Grotesk are used on so many sites they no longer feel distinctive. Each new wave of AI-generated UIs converges on the same handful of faces. Choose a face that gives your interface personality.\n  [flat-type-hierarchy] Role sizes: body 14px, h3 15px, h2 16px, h1 18px (largest adjacent step 1.13:1; target 1.25:1)\n    → Dominant heading and body roles are separated by less than 1.25× at every step, leaving the size hierarchy flat. Add at least one stronger size step.\n\n2 anti-patterns found.\n",
   "exit": 2,
   "signal": null,
   "files": {}

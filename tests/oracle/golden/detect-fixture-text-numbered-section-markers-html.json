@@ -1,7 +1,7 @@
 {
   "stdout": "",
-  "stderr": "",
-  "exit": 0,
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/numbered-section-markers.html\n  [flat-type-hierarchy] Role sizes: body 16px, h1 16px, h2 16px (largest adjacent step 1.00:1; target 1.25:1)\n    → Dominant heading and body roles are separated by less than 1.25× at every step, leaving the size hierarchy flat. Add at least one stronger size step.\n\n1 anti-pattern found.\n",
+  "exit": 2,
   "signal": null,
   "files": {}
 }

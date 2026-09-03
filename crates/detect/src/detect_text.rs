@@ -1367,8 +1367,11 @@ pub fn run_text_content_analyzers(
         return vec![];
     }
     let mut findings = Vec::new();
+    // JS: the 3 text-content analyzers sit at indices 1-3 of REGEX_ANALYZERS.
+    // flat-type-hierarchy left this source-only path in #702 because it needs
+    // rendered role and usage evidence.
     for (i, rule_id) in TEXT_CONTENT_ANALYZER_IDS.iter().enumerate() {
-        let analyzer = REGEX_ANALYZERS[2 + i];
+        let analyzer = REGEX_ANALYZERS[1 + i];
         let meta = ProfileMeta {
             engine: "regex",
             phase: "text-content",

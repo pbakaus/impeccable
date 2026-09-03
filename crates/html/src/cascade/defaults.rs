@@ -109,6 +109,7 @@ pub const STATIC_DEFAULT_STYLE: &[(&str, &str)] = &[
     ("marginLeft", "0px"),
     ("position", "static"),
     ("visibility", "visible"),
+    ("contentVisibility", "visible"),
     ("opacity", "1"),
     ("top", "auto"),
     ("right", "auto"),

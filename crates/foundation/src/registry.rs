@@ -73,7 +73,7 @@ pub static ANTIPATTERNS: &[Antipattern] = &[
         severity: None,
         advisory: false,
         name: "Flat type hierarchy",
-        description: "Font sizes are too close together — no clear visual hierarchy. Use fewer sizes with more contrast (aim for at least a 1.25 ratio between steps).",
+        description: "Dominant heading and body roles are separated by less than 1.25× at every step, leaving the size hierarchy flat. Add at least one stronger size step.",
         skill_section: Some("Typography"),
         skill_guideline: Some("flat type hierarchy"),
     },

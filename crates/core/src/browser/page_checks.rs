@@ -7,8 +7,8 @@
 
 #![allow(unused_imports)]
 use super::dom::{
-    class_attr, closest_or_none, direct_text, has_direct_text_longer_than, pf0, style_px,
-    tag_lower, Dom, ElId, ElStyle, Rect,
+    ancestors_inclusive, class_attr, closest_or_none, direct_text, has_direct_text_longer_than, pf0,
+    style_px, tag_lower, Dom, ElId, ElStyle, Rect,
 };
 use super::element_checks::{class_selector, effective_opacity_dom, is_rendered_for_browser_rule};
 use super::{BrowserFinding, ElFinding};
@@ -16,7 +16,10 @@ use crate::checks::measures::{
     cream_from_class_list, is_cream_color, is_opaque_decorated_box,
     is_screen_reader_only_text_style, SrOnlyMetrics, StyleMap,
 };
-use crate::checks::rules::{is_card_like_from_props, RuleHit};
+use crate::checks::rules::{
+    check_flat_type_hierarchy_samples, is_card_like_from_props, type_hierarchy_role, RuleHit,
+    TypeSample, TYPE_HIERARCHY_SELECTOR,
+};
 use crate::color::parse_any_color;
 use crate::constants::{is_brand_font_on_own_domain, CSS_GENERIC_FONTS, OVERUSED_FONTS, SAFE_TAGS};
 use crate::js::{self, math_max, math_min, math_round, number_to_string, parse_float, to_fixed};
@@ -162,40 +165,70 @@ pub fn check_typography(dom: &dyn Dom) -> Vec<BrowserFinding> {
         }
     }
 
-    let mut sizes: Vec<f64> = Vec::new();
-    for el in dom
-        .query_all(None, "h1,h2,h3,h4,h5,h6,p,span,a,li,td,th,label,button,div")
-        .unwrap_or_default()
-    {
-        let fs = parse_float(&dom.style(el, "fontSize"));
-        if fs > 0.0 && fs < 200.0 {
-            let v = math_round(fs * 10.0) / 10.0;
-            if !sizes.iter().any(|s| *s == v) {
-                sizes.push(v);
-            }
-        }
-    }
-    if sizes.len() >= 3 {
-        let mut sorted = sizes.clone();
-        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        let ratio = sorted[sorted.len() - 1] / sorted[0];
-        if ratio < 2.0 {
-            findings.push(BrowserFinding::new(
-                "flat-type-hierarchy",
-                format!(
-                    "Sizes: {} (ratio {}:1)",
-                    sorted
-                        .iter()
-                        .map(|s| format!("{}px", number_to_string(*s)))
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                    to_fixed(ratio, 1)
-                ),
-            ));
-        }
+    for hit in check_flat_type_hierarchy_from_dom(dom, Some(TYPE_HIERARCHY_SKIP_SELECTOR)) {
+        findings.push(BrowserFinding::new(&hit.id, hit.snippet));
     }
 
     findings
+}
+
+/// The overlay chrome `checkTypography` hands `checkFlatTypeHierarchyFromDoc`
+/// as its `skipElement` selector.
+pub const TYPE_HIERARCHY_SKIP_SELECTOR: &str =
+    ".impeccable-overlay, .impeccable-label, .impeccable-banner, .impeccable-tooltip, [id^=\"impeccable-live-\"]";
+
+/// JS: checks.mjs#isRenderedTypeElement over a live DOM.
+fn is_rendered_type_element(dom: &dyn Dom, el: ElId) -> bool {
+    for current in ancestors_inclusive(dom, el) {
+        if dom.hidden_prop(current) || dom.attr(current, "hidden").is_some() {
+            return false;
+        }
+        let display = js::to_lower_case(&dom.style(current, "display"));
+        let visibility = js::to_lower_case(&dom.style(current, "visibility"));
+        let content_visibility = js::to_lower_case(&dom.style(current, "contentVisibility"));
+        if display == "none"
+            || visibility == "hidden"
+            || visibility == "collapse"
+            || content_visibility == "hidden"
+        {
+            return false;
+        }
+        let opacity = parse_float(&dom.style(current, "opacity"));
+        if opacity.is_finite() && opacity <= 0.01 {
+            return false;
+        }
+    }
+    true
+}
+
+/// JS: checks.mjs#checkFlatTypeHierarchyFromDoc over a live DOM.
+pub fn check_flat_type_hierarchy_from_dom(
+    dom: &dyn Dom,
+    skip_selector: Option<&str>,
+) -> Vec<RuleHit> {
+    let mut samples: Vec<TypeSample> = Vec::new();
+    for el in dom
+        .query_all(None, TYPE_HIERARCHY_SELECTOR)
+        .unwrap_or_default()
+    {
+        if let Some(sel) = skip_selector {
+            if closest_or_none(dom, el, sel).is_some() {
+                continue;
+            }
+        }
+        if js::trim(&dom.text_content(el)).is_empty() || !is_rendered_type_element(dom, el) {
+            continue;
+        }
+        let font_size = parse_float(&dom.style(el, "fontSize"));
+        if !font_size.is_finite() || font_size < 8.0 || font_size >= 200.0 {
+            continue;
+        }
+        samples.push(TypeSample {
+            role: type_hierarchy_role(&tag_lower(dom, el)),
+            size: font_size,
+        });
+    }
+    check_flat_type_hierarchy_samples(&samples)
 }
 
 /// JS: checks.mjs#isCardLikeDOM(el)
@@ -1404,11 +1437,54 @@ mod tests {
         d.set_style(s, "fontFamily", "Georgia");
         d.set_style(s, "fontSize", "24px");
         let f = check_typography(&d);
-        assert_eq!(f.len(), 2, "{f:?}");
+        // One `body` role is under TYPE_HIERARCHY_MIN_ROLES, so the flat-type
+        // rule abstains and only the font finding stands (#702).
+        assert_eq!(f.len(), 1, "{f:?}");
         assert_eq!(f[0].type_, "overused-font");
         assert_eq!(f[0].detail, "Primary font: inter (95% of text)");
-        assert_eq!(f[1].type_, "flat-type-hierarchy");
-        assert_eq!(f[1].detail, "Sizes: 16px, 18px, 24px (ratio 1.5:1)");
+    }
+
+    #[test]
+    fn flat_type_hierarchy_roles() {
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        for (tag, size) in [("p", "16px"), ("p", "16px"), ("h2", "17px"), ("h1", "18px")] {
+            let el = d.add(Some(body), tag);
+            d.add_text(el, "text");
+            d.set_style(el, "fontSize", size);
+        }
+        let f = check_typography(&d);
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert_eq!(f[0].type_, "flat-type-hierarchy");
+        assert_eq!(
+            f[0].detail,
+            "Role sizes: body 16px, h2 17px, h1 18px (largest adjacent step 1.06:1; target 1.25:1)"
+        );
+
+        // A clear step at any adjacent pair clears the rule.
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        for (tag, size) in [("p", "16px"), ("h2", "24px"), ("h1", "40px")] {
+            let el = d.add(Some(body), tag);
+            d.add_text(el, "text");
+            d.set_style(el, "fontSize", size);
+        }
+        assert!(check_typography(&d).is_empty());
+
+        // A hidden ancestor takes its text out of the sample.
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        for (tag, size) in [("p", "16px"), ("p", "16px"), ("h2", "17px")] {
+            let el = d.add(Some(body), tag);
+            d.add_text(el, "text");
+            d.set_style(el, "fontSize", size);
+        }
+        let wrap = d.add(Some(body), "div");
+        d.set_style(wrap, "display", "none");
+        let h1 = d.add(Some(wrap), "h1");
+        d.add_text(h1, "text");
+        d.set_style(h1, "fontSize", "18px");
+        assert!(check_typography(&d).is_empty());
     }
 
     #[test]

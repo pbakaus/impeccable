@@ -794,6 +794,113 @@ pub fn check_glow(opts: &GlowOpts) -> Vec<RuleHit> {
     }
 }
 
+// ─── Section 6 shared: flat type hierarchy ──────────────────────────────────
+
+/// JS: checks.mjs#TYPE_HIERARCHY_SELECTOR
+pub const TYPE_HIERARCHY_SELECTOR: &str = "h1,h2,h3,h4,h5,h6,p,li,td,th,dd,blockquote,figcaption";
+/// JS: checks.mjs#TYPE_HIERARCHY_MIN_ROLES
+pub const TYPE_HIERARCHY_MIN_ROLES: usize = 3;
+/// JS: checks.mjs#TYPE_HIERARCHY_MIN_STEP_RATIO
+pub const TYPE_HIERARCHY_MIN_STEP_RATIO: f64 = 1.25;
+
+/// One `{ role, size }` entry the JS pushes into `samples`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypeSample {
+    pub role: String,
+    pub size: f64,
+}
+
+/// JS: checks.mjs#typeHierarchyRole
+pub fn type_hierarchy_role(tag: &str) -> String {
+    let tag = js::to_lower_case(tag);
+    let b = tag.as_bytes();
+    if b.len() == 2 && b[0] == b'h' && (b'1'..=b'6').contains(&b[1]) {
+        tag
+    } else {
+        "body".to_string()
+    }
+}
+
+/// JS: checks.mjs#dominantTypeRoleSize
+fn dominant_type_role_size(samples: &[f64]) -> Option<f64> {
+    // `new Map()` keeps insertion order; the JS sorts by count desc then size asc.
+    let mut counts: Vec<(f64, f64)> = Vec::new();
+    for size in samples {
+        match counts
+            .iter_mut()
+            .find(|(k, _)| crate::js_ext_b::same_value_zero(*k, *size))
+        {
+            Some(slot) => slot.1 += 1.0,
+            None => counts.push((*size, 1.0)),
+        }
+    }
+    let mut ranked = counts;
+    ranked.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal))
+    });
+    if ranked.len() > 1 && ranked[0].1 == ranked[1].1 {
+        return None;
+    }
+    ranked.first().map(|(size, _)| *size)
+}
+
+/// JS: checks.mjs#checkFlatTypeHierarchySamples
+pub fn check_flat_type_hierarchy_samples(samples: &[TypeSample]) -> Vec<RuleHit> {
+    // `new Map()` keyed by role, in first-seen order.
+    let mut by_role: Vec<(String, Vec<f64>)> = Vec::new();
+    for sample in samples {
+        let size = math_round(sample.size * 10.0) / 10.0;
+        if sample.role.is_empty() || !size.is_finite() || size < 8.0 || size >= 200.0 {
+            continue;
+        }
+        match by_role.iter_mut().find(|(r, _)| *r == sample.role) {
+            Some(slot) => slot.1.push(size),
+            None => by_role.push((sample.role.clone(), vec![size])),
+        }
+    }
+
+    let mut roles: Vec<(String, f64)> = by_role
+        .into_iter()
+        .filter_map(|(role, sizes)| dominant_type_role_size(&sizes).map(|size| (role, size)))
+        .collect();
+
+    if roles.len() < TYPE_HIERARCHY_MIN_ROLES {
+        return Vec::new();
+    }
+
+    roles.sort_by(|a, b| {
+        a.1.partial_cmp(&b.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            // JS-PARITY: checks.mjs sorts ties with `a.role.localeCompare(b.role)`.
+            // Every role is `body` or `h1`..`h6`, lowercase ASCII, where the ICU
+            // root collation and byte order agree.
+            .then_with(|| a.0.cmp(&b.0))
+    });
+    let mut largest_step = 1.0f64;
+    for i in 1..roles.len() {
+        largest_step = math_max(largest_step, roles[i].1 / roles[i - 1].1);
+    }
+    if largest_step >= TYPE_HIERARCHY_MIN_STEP_RATIO {
+        return Vec::new();
+    }
+
+    let role_sizes: Vec<String> = roles
+        .iter()
+        .map(|(role, size)| format!("{} {}px", role, number_to_string(*size)))
+        .collect();
+    vec![RuleHit::new(
+        "flat-type-hierarchy",
+        format!(
+            "Role sizes: {} (largest adjacent step {}:1; target {}:1)",
+            role_sizes.join(", "),
+            to_fixed(largest_step, 2),
+            number_to_string(TYPE_HIERARCHY_MIN_STEP_RATIO)
+        ),
+    )]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

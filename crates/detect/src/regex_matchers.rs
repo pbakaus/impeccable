@@ -9,7 +9,7 @@ use impeccable_core::constants::{EM_DASH_CHARS_PER_DASH, EM_DASH_FLOOR, OVERUSED
 use impeccable_core::findings::{finding, Finding};
 use impeccable_core::fonts::extract_google_font_families;
 use impeccable_core::js::{
-    self, ci, math_round, number_to_string, parse_float, string_to_number, to_fixed,
+    self, ci, math_round, number_to_string, parse_float, string_to_number,
 };
 use impeccable_core::js_ext_a::{advance_utf16, slice_utf16_start, utf16_index, utf16_length};
 use once_cell::sync::Lazy;
@@ -787,33 +787,6 @@ fn utf16_slice(s: &str, start: usize, end: usize) -> String {
 
 pub type Analyzer = fn(&str, &str) -> Vec<Finding>;
 
-re!(
-    FONT_SIZE_RE,
-    format!(
-        "{}{WS}*:{WS}*([0-9.]+)({px}|{rem}|{em}){B}",
-        ci("font-size"),
-        px = ci("px"),
-        rem = ci("rem"),
-        em = ci("em")
-    )
-);
-re!(
-    CLAMP_SIZE_RE,
-    format!(
-        "{fs}{WS}*:{WS}*{clamp}\\({WS}*([0-9.]+)({px}|{rem}|{em}){WS}*,{WS}*[^,]+,{WS}*([0-9.]+)({px}|{rem}|{em}){WS}*\\)",
-        fs = ci("font-size"),
-        clamp = ci("clamp"),
-        px = ci("px"),
-        rem = ci("rem"),
-        em = ci("em")
-    )
-);
-re!(FONT_SIZE_WORD_RE, ci("font-size"));
-re!(
-    TEXT_SIZE_CLASS_RE,
-    format!("{B}{}(?:xs|sm|base|lg|xl|[0-9])", ci("text-"))
-);
-
 fn same_value_zero(a: f64, b: f64) -> bool {
     (a.is_nan() && b.is_nan()) || a == b
 }
@@ -824,85 +797,6 @@ fn set_add(set: &mut Vec<f64>, v: f64) {
     }
 }
 
-fn analyze_flat_type_hierarchy(content: &str, file_path: &str) -> Vec<Finding> {
-    let mut sizes: Vec<f64> = Vec::new();
-    let rem = 16.0;
-    for m in FONT_SIZE_RE.captures_iter(content) {
-        let px = if &m[2] == "px" {
-            num(&m[1])
-        } else {
-            num(&m[1]) * rem
-        };
-        if px > 0.0 && px < 200.0 {
-            set_add(&mut sizes, math_round(px * 10.0) / 10.0);
-        }
-    }
-    for m in CLAMP_SIZE_RE.captures_iter(content) {
-        let a = if &m[2] == "px" {
-            num(&m[1])
-        } else {
-            num(&m[1]) * rem
-        };
-        set_add(&mut sizes, math_round(a * 10.0) / 10.0);
-        let b = if &m[4] == "px" {
-            num(&m[3])
-        } else {
-            num(&m[3]) * rem
-        };
-        set_add(&mut sizes, math_round(b * 10.0) / 10.0);
-    }
-    const TW: &[(&str, f64)] = &[
-        ("text-xs", 12.0),
-        ("text-sm", 14.0),
-        ("text-base", 16.0),
-        ("text-lg", 18.0),
-        ("text-xl", 20.0),
-        ("text-2xl", 24.0),
-        ("text-3xl", 30.0),
-        ("text-4xl", 36.0),
-        ("text-5xl", 48.0),
-        ("text-6xl", 60.0),
-        ("text-7xl", 72.0),
-        ("text-8xl", 96.0),
-        ("text-9xl", 128.0),
-    ];
-    for (cls, px) in TW {
-        let re = Regex::new(&format!("{B}{cls}{B}")).unwrap();
-        if re.is_match(content) {
-            set_add(&mut sizes, *px);
-        }
-    }
-    if sizes.len() < 3 {
-        return vec![];
-    }
-    let mut sorted = sizes.clone();
-    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let ratio = sorted[sorted.len() - 1] / sorted[0];
-    if ratio >= 2.0 {
-        return vec![];
-    }
-    let mut line = 1;
-    for (i, l) in content.split('\n').enumerate() {
-        if FONT_SIZE_WORD_RE.is_match(l) || TEXT_SIZE_CLASS_RE.is_match(l) {
-            line = i + 1;
-            break;
-        }
-    }
-    let list: Vec<String> = sorted
-        .iter()
-        .map(|s| format!("{}px", number_to_string(*s)))
-        .collect();
-    vec![finding(
-        "flat-type-hierarchy",
-        file_path,
-        &format!(
-            "Sizes: {} (ratio {}:1)",
-            list.join(", "),
-            to_fixed(ratio, 1)
-        ),
-        line as f64,
-    )]
-}
 
 re!(
     SPACING_PX_RE,
@@ -1220,7 +1114,6 @@ fn analyze_marquee(content: &str, file_path: &str) -> Vec<Finding> {
 
 /// JS `REGEX_ANALYZERS` in order.
 pub const REGEX_ANALYZERS: &[Analyzer] = &[
-    analyze_flat_type_hierarchy,
     analyze_monotonous_spacing,
     analyze_em_dash_overuse,
     analyze_marketing_buzzword,
@@ -1240,7 +1133,6 @@ pub const TEXT_CONTENT_ANALYZER_IDS: &[&str] = &[
 /// The ruleIds the JS assigns to analyzers by index (`analyzerIds[i] || analyzer-${i+1}`).
 pub fn analyzer_rule_id(i: usize) -> String {
     const IDS: &[&str] = &[
-        "flat-type-hierarchy",
         "monotonous-spacing",
         "em-dash-overuse",
         "marketing-buzzword",

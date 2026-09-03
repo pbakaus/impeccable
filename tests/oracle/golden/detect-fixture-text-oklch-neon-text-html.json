@@ -1,6 +1,6 @@
 {
   "stdout": "",
-  "stderr": "\n<REPO>/tests/fixtures/antipatterns/oklch-neon-text.html\n  [low-contrast] 1.3:1 (need 4.5:1) — text #00f4f6 on #f5f5f5\n    → Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.\n  [flat-type-hierarchy] Sizes: 13px, 16px, 18px (ratio 1.4:1)\n    → Font sizes are too close together — no clear visual hierarchy. Use fewer sizes with more contrast (aim for at least a 1.25 ratio between steps).\n\n2 anti-patterns found.\n",
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/oklch-neon-text.html\n  [low-contrast] 1.3:1 (need 4.5:1) — text #00f4f6 on #f5f5f5\n    → Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.\n\n1 anti-pattern found.\n",
   "exit": 2,
   "signal": null,
   "files": {}
