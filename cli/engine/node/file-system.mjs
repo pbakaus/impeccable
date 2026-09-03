@@ -46,15 +46,20 @@ const IMPORT_SPECIFIER_PATTERNS = [
   /@(?:use|forward)\s+['"]([^'"]+)['"]/g,
 ];
 
-function walkDir(dir) {
+function walkDir(dir, onReadError = null) {
   const files = [];
   let entries;
-  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return files; }
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch (error) {
+    if (onReadError) onReadError(dir, error);
+    return files;
+  }
   for (const entry of entries) {
     if (SKIP_DIRS.has(entry.name)) continue;
     if (entry.isDirectory() && entry.name.startsWith('.') && !HIDDEN_SOURCE_DIRS.has(entry.name)) continue;
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) files.push(...walkDir(full));
+    if (entry.isDirectory()) files.push(...walkDir(full, onReadError));
     else if (hasScannableExtension(entry.name)) files.push(full);
   }
   return files;

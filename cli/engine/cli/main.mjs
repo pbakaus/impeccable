@@ -401,7 +401,7 @@ async function detectCli() {
             }
           }
 
-          const files = walkDir(resolved)
+          const files = walkDir(resolved, reportLocalScanFailure)
             .filter(file => !shouldIgnoreDetectionFile(file, process.cwd(), detectionConfig));
           const htmlCount = files.filter(f => HTML_EXTENSIONS.has(path.extname(f).toLowerCase())).length;
 

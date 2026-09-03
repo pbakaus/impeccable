@@ -67,9 +67,10 @@ function runWithoutPuppeteer(args, files = {}, { nodeArgs = [] } = {}) {
   }
 }
 
-const DENY_READ_PRELOAD = `
+const DENY_FS_PRELOAD = `
 const fs = require('node:fs');
 const originalReadFileSync = fs.readFileSync;
+const originalReaddirSync = fs.readdirSync;
 fs.readFileSync = function (file, ...args) {
   if (String(file).endsWith('unreadable.css')) {
     const error = new Error('simulated EACCES');
@@ -77,6 +78,14 @@ fs.readFileSync = function (file, ...args) {
     throw error;
   }
   return originalReadFileSync.call(this, file, ...args);
+};
+fs.readdirSync = function (dir, ...args) {
+  if (String(dir).endsWith('unreadable-dir')) {
+    const error = new Error('simulated directory EACCES');
+    error.code = 'EACCES';
+    throw error;
+  }
+  return originalReaddirSync.call(this, dir, ...args);
 };
 `;
 
@@ -176,10 +185,10 @@ describe('detect CLI browser failures', () => {
     const result = runWithoutPuppeteer(
       ['unreadable.css'],
       {
-        'deny-read.cjs': DENY_READ_PRELOAD,
+        'deny-fs.cjs': DENY_FS_PRELOAD,
         'unreadable.css': '.hero { color: red; }\n',
       },
-      { nodeArgs: ['--require=./deny-read.cjs'] },
+      { nodeArgs: ['--require=./deny-fs.cjs'] },
     );
 
     expect(result.status).toBe(1);
@@ -192,17 +201,50 @@ describe('detect CLI browser failures', () => {
     const result = runWithoutPuppeteer(
       ['styles'],
       {
-        'deny-read.cjs': DENY_READ_PRELOAD,
+        'deny-fs.cjs': DENY_FS_PRELOAD,
         'styles/unreadable.css': '.hero { color: red; }\n',
         'styles/page.css': '.hero { animation: bounce 1s linear infinite; }\n',
       },
-      { nodeArgs: ['--require=./deny-read.cjs'] },
+      { nodeArgs: ['--require=./deny-fs.cjs'] },
     );
     const findings = JSON.parse(result.stdout);
 
     expect(result.status).toBe(1);
     expect(findings.some(finding => finding.antipattern === 'bounce-easing')).toBe(true);
     expect(result.stderr.match(/simulated EACCES/g)).toHaveLength(1);
+  });
+
+  test('unreadable local directory exits 1 with valid empty JSON', () => {
+    const result = runWithoutPuppeteer(
+      ['unreadable-dir'],
+      {
+        'deny-fs.cjs': DENY_FS_PRELOAD,
+        'unreadable-dir/page.css': '.hero { color: red; }\n',
+      },
+      { nodeArgs: ['--require=./deny-fs.cjs'] },
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('[]\n');
+    expect(result.stderr).toContain('Error: cannot scan');
+    expect(result.stderr).toContain('unreadable-dir: simulated directory EACCES');
+  });
+
+  test('unreadable nested directory preserves findings from readable siblings', () => {
+    const result = runWithoutPuppeteer(
+      ['project'],
+      {
+        'deny-fs.cjs': DENY_FS_PRELOAD,
+        'project/unreadable-dir/hidden.css': '.hero { color: red; }\n',
+        'project/page.css': '.hero { animation: bounce 1s linear infinite; }\n',
+      },
+      { nodeArgs: ['--require=./deny-fs.cjs'] },
+    );
+    const findings = JSON.parse(result.stdout);
+
+    expect(result.status).toBe(1);
+    expect(findings.some(finding => finding.antipattern === 'bounce-easing')).toBe(true);
+    expect(result.stderr.match(/simulated directory EACCES/g)).toHaveLength(1);
   });
 });
 

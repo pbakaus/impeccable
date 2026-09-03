@@ -2648,6 +2648,21 @@ describe('walkDir', () => {
     expect(walkDir('/nonexistent/path/12345')).toHaveLength(0);
   });
 
+  test('reports directory traversal errors to an optional handler', () => {
+    const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-walk-error-'));
+    try {
+      const missing = path.join(parent, 'missing');
+      const errors = [];
+
+      expect(walkDir(missing, (dir, error) => {
+        errors.push({ dir, code: error.code });
+      })).toHaveLength(0);
+      expect(errors).toEqual([{ dir: missing, code: 'ENOENT' }]);
+    } finally {
+      fs.rmSync(parent, { recursive: true, force: true });
+    }
+  });
+
   // Issue #303: when impeccable (or any agent tool) is installed into a
   // project's .claude/.cursor/etc. tree, a root scan descended into the
   // vendored skill code and reported the detector's own example strings as
