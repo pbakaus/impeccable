@@ -47,10 +47,14 @@ impl Tmp {
         self.0.to_string_lossy().into_owned()
     }
     fn write(&self, rel: &str, body: &str) -> String {
-        let abs = self.0.join(rel);
-        std::fs::create_dir_all(abs.parent().unwrap()).unwrap();
-        std::fs::write(&abs, body).unwrap();
-        abs.to_string_lossy().into_owned()
+        // `PathBuf::join` keeps the `/` inside `rel`, which leaves a mixed-form
+        // path on Windows; join the way the hook's own path helpers do, so the
+        // returned path is what the hook resolves a relative target to.
+        let abs = jsp::join(&[&self.path(), rel]);
+        let p = std::path::Path::new(&abs).to_path_buf();
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(&p, body).unwrap();
+        abs
     }
     fn exists(&self, rel: &str) -> bool {
         self.0.join(rel).exists()
@@ -70,6 +74,11 @@ impl Drop for Tmp {
 /// renders it there).
 fn shared_config_rel() -> String {
     jsp::join(&[".impeccable", "config.json"])
+}
+
+/// The local config path as the admin verbs print it, in the same host form.
+fn local_config_rel() -> String {
+    jsp::join(&[".impeccable", "config.local.json"])
 }
 
 fn rt_with(cwd: &str, env: HashMap<String, String>) -> Runtime<'static> {
@@ -1337,7 +1346,7 @@ fn admin_ignore_value_scoping_and_idempotency() {
             "--local",
         ],
     );
-    assert_eq!(out, "Added design-system-font-size=* scoped to src/a.js, src/z.js to local detector.ignoreValues (.impeccable/config.local.json).\n");
+    assert_eq!(out, format!("Added design-system-font-size=* scoped to src/a.js, src/z.js to local detector.ignoreValues ({}).\n", local_config_rel()));
     let (out, _, _) = admin_run(&r, &["status"]);
     assert!(out.contains(
         "ignoreValues: overused-font=inter, design-system-font-size=* [src/a.js, src/z.js]\n"
@@ -1354,7 +1363,7 @@ fn admin_ignore_value_scoping_and_idempotency() {
     assert_eq!(code, 1);
     assert_eq!(err, "Unknown action: bogus\nValid: status, on, off, ignore-rule, ignore-file, ignore-value, reset\n");
     let (out, _, _) = admin_run(&r, &["reset"]);
-    assert_eq!(out, "Reset design hook config and cache (removed: .impeccable/config.json, .impeccable/config.local.json).\n");
+    assert_eq!(out, format!("Reset design hook config and cache (removed: {}, {}).\n", shared_config_rel(), local_config_rel()));
     assert!(!t.exists(".impeccable/config.json"));
 }
 
@@ -1425,7 +1434,11 @@ fn admin_on_off_preserve_sibling_hook_fields() {
     );
     std::fs::create_dir_all(t.0.join(".github/skills/impeccable")).unwrap();
     let (out, _, _) = admin_run(&r, &["on"]);
-    assert_eq!(out, "Design hook enabled for this project (wrote .impeccable/config.json). Recorded local hook consent in .impeccable/config.local.json. Installed or repaired hook manifests for: .github.\n");
+    assert_eq!(out, format!(
+        "Design hook enabled for this project (wrote {}). Recorded local hook consent in {}. Installed or repaired hook manifests for: .github.\n",
+        shared_config_rel(),
+        local_config_rel()
+    ));
     assert!(t
         .read(".github/hooks/impeccable.json")
         .contains("\"matcher\": \"edit|create|apply_patch\""));
@@ -1433,7 +1446,7 @@ fn admin_on_off_preserve_sibling_hook_fields() {
     assert!(out.ends_with("Hook manifests already installed for: .github.\n"));
     let (out, _, _) = admin_run(&r, &["status"]);
     assert!(out.contains("state:        enabled\n"));
-    assert!(out.contains("local file:   .impeccable/config.local.json\n"));
+    assert!(out.contains(&format!("local file:   {}\n", local_config_rel())));
 }
 
 #[test]

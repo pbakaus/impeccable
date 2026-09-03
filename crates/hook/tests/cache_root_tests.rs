@@ -110,7 +110,19 @@ fn state_relocates_and_slug_normalizes() {
     // The readable part stays human-scannable and the 8-hex digest keeps
     // colliding readable slugs apart (`/x/my.app` vs `/x/my-app`).
     let dir = std::path::Path::new(&cache).parent().unwrap().file_name().unwrap().to_string_lossy().into_owned();
-    assert!(dir.starts_with("-x-my-app-"), "{}", dir);
+    // The readable part is the RESOLVED project path with `:`, `\`, `/` and `.`
+    // mapped to `-`, so on Windows it carries the current drive
+    // (`D:\x\my.app` -> `D--x-my-app`). Derive it rather than pinning the
+    // POSIX spelling.
+    let resolved = impeccable_common::jsp::resolve(
+        &std::env::current_dir().unwrap().to_string_lossy(),
+        &["/x/my.app"],
+    );
+    let readable: String = resolved
+        .chars()
+        .map(|c| if matches!(c, ':' | '\\' | '/' | '.') { '-' } else { c })
+        .collect();
+    assert!(dir.starts_with(&format!("{readable}-")), "{}", dir);
     let digest = dir.rsplit('-').next().unwrap();
     assert_eq!(digest.len(), 8);
     assert!(digest.chars().all(|c| c.is_ascii_hexdigit()));
