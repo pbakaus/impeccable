@@ -51,6 +51,8 @@ const BASE_ENV = {
   IMPECCABLE_NO_STALENESS_CHECK: null,
   IMPECCABLE_HOOK_DISABLED: null,
   IMPECCABLE_PROVIDER_ID: null,
+  OPENCODE_CONFIG_DIR: null,
+  XDG_CONFIG_HOME: null,
   IMPECCABLE_PALETTE_SEED: null,
   IMPECCABLE_CONCEPT_SEED: null,
   IMPECCABLE_COMPOSITIONS: null,
@@ -431,6 +433,40 @@ const cases = [
   { id: 'pin-unpin-skips-non-pinned', verb: 'pin', workspace: 'ctx-pin', args: ['unpin', 'audit'], env: env(), files: ['.*/skills/**'] },
   { id: 'pin-then-unpin', verb: 'pin', workspace: 'ctx-pin', env: env(), files: ['.*/skills/**'], steps: [{ args: ['pin', 'critique'] }, { args: ['pin', 'critique'] }, { args: ['unpin', 'critique'] }, { args: ['unpin', 'critique'] }] },
   { id: 'pin-i-impeccable-alias', verb: 'pin', workspace: 'ctx-empty', setup: (ws) => write(ws, '.codex/skills/i-impeccable/SKILL.md', '---\nname: i-impeccable\n---\n'), args: ['pin', 'shape'], env: env(), files: ['.*/skills/**'] },
+  // #483: OpenCode does not surface a pinned SKILL.md in its slash menu, so a
+  // pin there writes `commands/impeccable-<cmd>.md` instead, in the project
+  // scope and in the user config dir, and never a `.opencode/skills/<cmd>`.
+  {
+    id: 'pin-opencode-project', verb: 'pin', workspace: 'ctx-empty',
+    setup: (ws) => write(ws, '.opencode/skills/impeccable/SKILL.md', '---\nname: impeccable\n---\n'),
+    args: ['pin', 'polish'], env: env(), files: ['.*/skills/**', '.*/commands/**'],
+  },
+  {
+    id: 'pin-opencode-user-scope', verb: 'pin', workspace: 'ctx-empty',
+    args: ['pin', 'polish'],
+    env: env({ OPENCODE_CONFIG_DIR: `${WS}/oc-config` }),
+    setup: (ws) => write(ws, 'oc-config/skills/impeccable/SKILL.md', '---\nname: impeccable\n---\n'),
+    files: ['oc-config/**'],
+  },
+  {
+    id: 'pin-opencode-skips-foreign-command', verb: 'pin', workspace: 'ctx-empty',
+    setup: (ws) => {
+      write(ws, '.opencode/skills/impeccable/SKILL.md', '---\nname: impeccable\n---\n');
+      write(ws, '.opencode/commands/impeccable-polish.md', '---\ndescription: hand written\n---\n');
+    },
+    args: ['pin', 'polish'], env: env(), files: ['.*/skills/**', '.*/commands/**'],
+  },
+  {
+    id: 'pin-opencode-then-unpin', verb: 'pin', workspace: 'ctx-empty',
+    setup: (ws) => write(ws, '.opencode/skills/impeccable/SKILL.md', '---\nname: impeccable\n---\n'),
+    env: env(), files: ['.*/skills/**', '.*/commands/**'],
+    steps: [{ args: ['pin', 'polish'] }, { args: ['unpin', 'polish'] }, { args: ['unpin', 'polish'] }],
+  },
+  {
+    id: 'pin-opencode-unpin-skips-foreign', verb: 'pin', workspace: 'ctx-empty',
+    setup: (ws) => write(ws, '.opencode/commands/impeccable-polish.md', '---\ndescription: hand written\n---\n'),
+    args: ['unpin', 'polish'], env: env(), files: ['.*/skills/**', '.*/commands/**'],
+  },
 
   // ======================================================================
   // surface-brief

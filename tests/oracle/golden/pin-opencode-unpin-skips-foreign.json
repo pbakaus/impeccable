@@ -1,0 +1,9 @@
+{
+  "stdout": "  SKIP: <WS>/.opencode/commands/impeccable-polish.md (not a pinned command)\nNo pinned 'polish' shortcut found.\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".opencode/commands/impeccable-polish.md": "---\ndescription: hand written\n---\n"
+  }
+}

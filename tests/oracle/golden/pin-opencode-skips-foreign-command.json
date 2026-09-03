@@ -1,0 +1,10 @@
+{
+  "stdout": "  SKIP: <WS>/.opencode/commands/impeccable-polish.md (non-pinned command already exists)\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".opencode/commands/impeccable-polish.md": "---\ndescription: hand written\n---\n",
+    ".opencode/skills/impeccable/SKILL.md": "---\nname: impeccable\n---\n"
+  }
+}

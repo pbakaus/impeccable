@@ -1,0 +1,10 @@
+{
+  "stdout": "  + <WS>/.opencode/commands/impeccable-polish.md\n\nPinned 'polish' as a standalone shortcut in 1 location(s).\nUse the pinned command directly in each harness.\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".opencode/commands/impeccable-polish.md": "---\ndescription: \"Performs a final quality pass fixing alignment, spacing, consistency, and micro-detail issues before shipping. Use when the user mentions polish, finishing touches, pre-launch review, something looks off, or wants to go from good to great.\"\nagent: build\nsubtask: true\n---\n\n<!-- impeccable-pinned-command -->\n\nLoad the `impeccable` skill via the skill tool (name: \"impeccable\"), then run `<skill-base-dir>/scripts/impeccable context`, then load `<skill-base-dir>/reference/polish.md` and follow it. `<skill-base-dir>` is the skill's base directory as reported by the skill tool response; substitute the actual absolute path before running or reading anything.\n\n$ARGUMENTS\n",
+    ".opencode/skills/impeccable/SKILL.md": "---\nname: impeccable\n---\n"
+  }
+}

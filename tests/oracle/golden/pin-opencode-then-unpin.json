@@ -1,0 +1,25 @@
+{
+  "steps": [
+    {
+      "stdout": "  + <WS>/.opencode/commands/impeccable-polish.md\n\nPinned 'polish' as a standalone shortcut in 1 location(s).\nUse the pinned command directly in each harness.\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "  - <WS>/.opencode/commands/impeccable-polish.md\n\nUnpinned 'polish' from 1 location(s).\nUse Impeccable's 'polish' workflow directly to access it.\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "No pinned 'polish' shortcut found.\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    }
+  ],
+  "files": {
+    ".opencode/skills/impeccable/SKILL.md": "---\nname: impeccable\n---\n"
+  }
+}

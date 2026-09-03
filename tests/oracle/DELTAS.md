@@ -144,3 +144,14 @@ the same exit code for the same run.
 - `context-full-target-route`, `surface-brief-path-slash`, `surface-brief-path-outside`, `surface-brief-read-route`: stdout and exit code match origin/main byte for byte; nothing here is a delta beyond the upstream change itself.
 - `surface-brief-write-route`: the write now fails on both engines (exit 1) because `/.impeccable/surfaces` is not writable. Node reports `ENOENT: no such file or directory, mkdir '/.impeccable/surfaces'`; the engine reports the failed write as `No such file or directory (os error 2)`. Same failure, different wording for an unwritable filesystem root.
 
+## Recorded 2026-09-03: the OpenCode pinned command names the launcher
+
+Upstream `9736a9f6` (#483) makes `pin` write an OpenCode slash-command bridge
+whose body tells the agent to run `node <skill-base-dir>/scripts/context.mjs`.
+The engine names its own command everywhere else the launcher replaced a
+script path (see the 2026-08-17 section above), so the bridge says
+`<skill-base-dir>/scripts/impeccable context` instead. Nothing else in the
+file, the file set, or the printed lines differs from the JS.
+
+- `pin-opencode-project`, `pin-opencode-user-scope`, `pin-opencode-skips-foreign-command`, `pin-opencode-then-unpin`, `pin-opencode-unpin-skips-foreign`.
+
