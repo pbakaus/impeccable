@@ -141,27 +141,30 @@ pub fn check_typography(dom: &dyn Dom) -> Vec<BrowserFinding> {
     }
 
     if total_text_elements >= 20.0 {
-        const PRIMARY_THRESHOLD: f64 = 0.15;
+        // Report the actual primary face: the uniquely most-used family. The
+        // old 15% threshold labeled secondary faces as primary, e.g. an 82/18
+        // split (#709). `Array.prototype.sort` is stable, so ties keep
+        // first-seen order and the tie test compares the top two counts.
         let hostname = dom.hostname();
-        for (font, count) in &font_usage {
-            let share = count / total_text_elements;
-            if share < PRIMARY_THRESHOLD {
-                continue;
+        let mut ranked: Vec<&(String, f64)> = font_usage.iter().collect();
+        ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        if let Some((font, count)) = ranked.first().map(|(f, c)| (f, *c)) {
+            let tied = ranked.get(1).map(|r| r.1) == Some(count);
+            if !tied {
+                let share = count / total_text_elements;
+                if OVERUSED_FONTS.contains(&font.as_str())
+                    && !is_brand_font_on_own_domain(font, Some(&hostname))
+                {
+                    findings.push(BrowserFinding::new(
+                        "overused-font",
+                        format!(
+                            "Primary font: {} ({}% of text)",
+                            font,
+                            number_to_string(math_round(share * 100.0))
+                        ),
+                    ));
+                }
             }
-            if !OVERUSED_FONTS.contains(&font.as_str()) {
-                continue;
-            }
-            if is_brand_font_on_own_domain(font, Some(&hostname)) {
-                continue;
-            }
-            findings.push(BrowserFinding::new(
-                "overused-font",
-                format!(
-                    "Primary font: {} ({}% of text)",
-                    font,
-                    number_to_string(math_round(share * 100.0))
-                ),
-            ));
         }
     }
 

@@ -28,6 +28,7 @@ extern "C" {
     fn css_escape(s: &str) -> String;
     fn keyframes(name: &str) -> Option<String>;
     fn document_html_for_patterns() -> String;
+    fn linked_stylesheet_text() -> String;
     fn tag_name(el: u32) -> String;
     fn namespace_uri(el: u32) -> String;
     fn parent(el: u32) -> u32;
@@ -176,6 +177,9 @@ impl Dom for JsDom {
                 .map(|decls| KeyframeFrame { decls })
                 .collect(),
         )
+    }
+    fn linked_stylesheet_text(&self) -> String {
+        linked_stylesheet_text()
     }
     fn document_html_for_patterns(&self) -> String {
         document_html_for_patterns()

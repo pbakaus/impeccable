@@ -1,7 +1,7 @@
 {
   "stdout": "",
-  "stderr": "\n<REPO>/tests/fixtures/antipatterns/shape-assembled-illustration.html\n  [shape-assembled-illustration] inline <svg> scene: 12 primitive shapes, ~640x480px, 6 fill colors\n    → A large inline SVG that builds a pictorial scene from a pile of primitive shapes reads as placeholder clip art, not illustration. Icons, logos, and data graphics are fine at their scale; a hero-sized visual deserves real artwork, a photograph, or a deliberately drawn graphic.\n\n1 anti-pattern found.\n",
-  "exit": 2,
+  "stderr": "\n0 anti-patterns found.\n\n── Advisory (not counted as failures) ──\n\n<REPO>/tests/fixtures/antipatterns/shape-assembled-illustration.html\n  [shape-assembled-illustration] inline <svg> scene: 12 primitive shapes, ~640x480px, 6 fill colors\n    → A large inline SVG that builds a pictorial scene from a pile of primitive shapes reads as placeholder clip art, not illustration. Icons, logos, and data graphics are fine at their scale; a hero-sized visual deserves real artwork, a photograph, or a deliberately drawn graphic.\n\n1 advisory note. Suppress with --no-advisory.\n",
+  "exit": 0,
   "signal": null,
   "files": {}
 }

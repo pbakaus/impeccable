@@ -43,6 +43,10 @@ Advisory findings:
   counted as failures and never changing the exit code. They stay out of the
   failure count so they never block automation. --no-advisory hides them.
 
+Output streams:
+  Human-readable findings go to stderr so stdout stays available for structured
+  output. Use --json for JSON on stdout, or redirect text with 2> findings.txt.
+
 Project config:
   Respects .impeccable/config.json and .impeccable/config.local.json detector
   settings: detector.ignoreRules, detector.ignoreFiles, detector.ignoreValues,
@@ -60,7 +64,7 @@ Detection modes:
   HTML files     Static HTML/CSS analysis (default, catches linked CSS)
   Non-HTML files Regex pattern matching (CSS, JSX, TSX, etc.)
   URLs           Puppeteer full browser rendering (auto-detected;
-                 http(s):// and file:// URLs)
+                 http(s):// and file:// URLs; accessible linked CSS included)
 
 Examples:
   impeccable detect src/
@@ -77,8 +81,35 @@ fn format_finding_summary(count: usize) -> String {
     )
 }
 
+/// JS: main.mjs#expandJoinedUrlTargets
+///
+/// Some agent runners hand a shell-ready URL list to the process as one argv
+/// value. A browser accepts the spaces as part of one encoded URL, producing a
+/// plausible scan attributed to a bogus joined path. Expand only when every
+/// whitespace-delimited token is independently a URL, preserving ordinary
+/// filesystem paths that contain spaces.
+fn expand_joined_url_targets(targets: Vec<String>) -> Vec<String> {
+    let mut out = Vec::with_capacity(targets.len());
+    for target in targets {
+        if !WHITESPACE_RE.is_match(&target) {
+            out.push(target);
+            continue;
+        }
+        let parts: Vec<&str> = WS_RUN_RE
+            .split(impeccable_core::js::trim(&target))
+            .filter(|p| !p.is_empty())
+            .collect();
+        if parts.len() > 1 && parts.iter().all(|p| URL_RE.is_match(p)) {
+            out.extend(parts.into_iter().map(str::to_string));
+        } else {
+            out.push(target);
+        }
+    }
+    out
+}
+
 fn is_advisory(f: &Finding) -> bool {
-    f.advisory == Some(true)
+    f.advisory == Some(true) || f.severity == "advisory"
 }
 
 fn partition_advisory(findings: &[Finding]) -> (Vec<&Finding>, Vec<&Finding>) {
@@ -280,6 +311,8 @@ impl<'a> Ctx<'a> {
 
 re!(VIEWPORT_RE, format!("^({D}{{2,5}})[xX]({D}{{2,5}})$"));
 re!(URL_RE, "^(?i:https?|file)://");
+re!(WHITESPACE_RE, impeccable_core::js::WS.to_string());
+re!(WS_RUN_RE, format!("{}+", impeccable_core::js::WS));
 re!(FILE_URL_RE, "^(?i:file):");
 
 /// `fileURLToPath` for the `file:` URLs the CLI accepts; None when it can't map.
@@ -455,11 +488,12 @@ fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32,
         // does sets this before handing the options to an engine.
         rule_pack: None,
     };
-    let targets: Vec<String> = args
-        .iter()
-        .filter(|a| !a.starts_with("--"))
-        .cloned()
-        .collect();
+    let targets: Vec<String> = expand_joined_url_targets(
+        args.iter()
+            .filter(|a| !a.starts_with("--"))
+            .cloned()
+            .collect(),
+    );
 
     if help_mode {
         io.out(USAGE);

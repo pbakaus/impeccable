@@ -93,18 +93,21 @@ pub fn enclosing_css_selector(css_text: &str, index: usize) -> Option<String> {
             return None;
         }
     }
-    let from = open.saturating_sub(1);
+    // Ignore delimiters inside comments when locating the previous
+    // declaration. Blanking each comment to its own length keeps every index
+    // into the original source valid (#709).
+    let before_open = SELECTOR_COMMENT_RE.replace_all(&css_text[..open], |c: &regex::Captures| {
+        " ".repeat(c[0].len())
+    });
     let prev_close = match (
-        last_index_of_byte(css_text, b'}', from),
-        last_index_of_byte(css_text, b';', from),
+        before_open.rfind('}'),
+        before_open.rfind(';'),
     ) {
         (Some(a), Some(b)) => Some(a.max(b)),
         (Some(a), None) => Some(a),
         (None, Some(b)) => Some(b),
         (None, None) => None,
     };
-    // JS: `lastIndexOf('}', open - 1)` with open == 0 clamps to index 0.
-    let prev_close = if open == 0 { None } else { prev_close };
     let slice_start = prev_close.map(|p| p + 1).unwrap_or(0);
     let no_comments = SELECTOR_COMMENT_RE.replace_all(&css_text[slice_start..open], "");
     let raw_trim = js::trim(&no_comments);

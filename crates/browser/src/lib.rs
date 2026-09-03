@@ -368,6 +368,7 @@ fn detect_url_impl(
         if !r.severity.is_empty() && r.severity != item.severity {
             item.severity = r.severity;
         }
+        impeccable_core::findings::derive_advisory_flag(&mut item);
         findings.push(item);
     }
     Ok(findings)

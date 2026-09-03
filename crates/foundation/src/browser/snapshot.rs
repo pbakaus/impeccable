@@ -347,6 +347,10 @@ pub struct Snapshot {
     /// `[name, frames]` in stylesheet order (first rule per name wins).
     #[serde(default)]
     pub keyframes: Vec<(String, Vec<Vec<(String, String)>>)>,
+    /// `__snapLinkedStylesheetText()`: the readable linked-stylesheet corpus
+    /// (#709). Absent in captures older than that change.
+    #[serde(rename = "linkedCss", default)]
+    pub linked_css: String,
     /// The property columns of `SnapNode::style` (normally `STYLE_PROPS`;
     /// carried so an older capture stays readable).
     #[serde(rename = "styleProps", default)]
@@ -690,6 +694,9 @@ impl Dom for SnapshotDom {
     }
     fn document_html_for_patterns(&self) -> String {
         self.snap.html.clone()
+    }
+    fn linked_stylesheet_text(&self) -> String {
+        self.snap.linked_css.clone()
     }
     fn tag_name(&self, el: ElId) -> String {
         self.snap.node(el).tag.clone()

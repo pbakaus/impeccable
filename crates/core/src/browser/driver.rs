@@ -556,6 +556,10 @@ fn drop_dangling_commas(s: &str) -> String {
 /// The live-DOM scope of a CSS-text finding's selector: pseudo segments
 /// stripped, dangling commas removed. `None` when nothing queryable is left
 /// (the finding stays page-level).
+///
+/// Superseded by [`pseudo_element_host_selector`] for the driver's own
+/// filter (#709); kept because the static engine still spells the scope this
+/// way.
 pub fn html_pattern_query(selector: &str) -> Option<String> {
     let stripped = PSEUDO_SEGMENT_RE.replace_all(selector, "");
     let query = drop_dangling_commas(crate::js::trim(&stripped));
@@ -563,6 +567,155 @@ pub fn html_pattern_query(selector: &str) -> Option<String> {
         return None;
     }
     Some(query)
+}
+
+fn is_selector_name_char(c: Option<char>) -> bool {
+    matches!(c, Some(c) if c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+/// JS: injected/index.mjs#pseudoElementHostSelector
+///
+/// Rewrites a selector so its pseudo-elements resolve to the live element
+/// that originates them: `.card::before` to `.card`, and a hostless
+/// `main > ::before` to `main > *`. `None` when the selector carries no
+/// pseudo-element at all, which is the caller's signal that the full
+/// selector is queryable as written.
+///
+/// JS-PARITY: the JS indexes UTF-16 code units; this walks chars, which
+/// differs only for an astral character inside a selector literal.
+pub fn pseudo_element_host_selector(selector: &str) -> Option<String> {
+    const LEGACY_NAMES: &[&str] = &["before", "after", "first-letter", "first-line"];
+    let raw: Vec<char> = selector.chars().collect();
+    let consume_function = |start: usize| -> usize {
+        let mut depth: i32 = 0;
+        let mut quote: Option<char> = None;
+        let mut i = start;
+        while i < raw.len() {
+            let ch = raw[i];
+            if ch == '\\' {
+                i += 2;
+                continue;
+            }
+            if let Some(q) = quote {
+                if ch == q {
+                    quote = None;
+                }
+                i += 1;
+                continue;
+            }
+            if ch == '"' || ch == '\'' {
+                quote = Some(ch);
+                i += 1;
+                continue;
+            }
+            if ch == '(' {
+                depth += 1;
+            }
+            if ch == ')' {
+                depth -= 1;
+                if depth == 0 {
+                    return i + 1;
+                }
+            }
+            i += 1;
+        }
+        raw.len()
+    };
+
+    let mut output = String::new();
+    let mut found = false;
+    let mut i = 0usize;
+    while i < raw.len() {
+        let ch = raw[i];
+        if ch == '\\' {
+            let end = raw.len().min(i + 2);
+            output.extend(&raw[i..end]);
+            i += 2;
+            continue;
+        }
+        if ch == '"' || ch == '\'' {
+            let quote = ch;
+            let start = i;
+            i += 1;
+            while i < raw.len() {
+                if raw[i] == '\\' {
+                    i += 2;
+                    continue;
+                }
+                let value = raw[i];
+                i += 1;
+                if value == quote {
+                    break;
+                }
+            }
+            output.extend(&raw[start..raw.len().min(i)]);
+            continue;
+        }
+        if ch != ':' {
+            output.push(ch);
+            i += 1;
+            continue;
+        }
+
+        let mut end = i + 1;
+        let is_pseudo_element;
+        if raw.get(end) == Some(&':') {
+            end += 1;
+            let name_start = end;
+            while is_selector_name_char(raw.get(end).copied()) {
+                end += 1;
+            }
+            is_pseudo_element = end > name_start;
+        } else {
+            let name_start = end;
+            while is_selector_name_char(raw.get(end).copied()) {
+                end += 1;
+            }
+            let name: String = raw[name_start..end].iter().collect();
+            is_pseudo_element = LEGACY_NAMES.contains(&crate::js::to_lower_case(&name).as_str());
+        }
+        if !is_pseudo_element {
+            output.push(ch);
+            i += 1;
+            continue;
+        }
+        if raw.get(end) == Some(&'(') {
+            end = consume_function(end);
+        }
+        found = true;
+        let last = output.chars().last();
+        if last.is_none()
+            || matches!(last, Some(c) if crate::js::is_js_whitespace(c)
+                || c == '>' || c == '+' || c == '~' || c == ',')
+        {
+            output.push('*');
+        }
+        i = end;
+    }
+    if !found {
+        return None;
+    }
+    Some(drop_dangling_commas(crate::js::trim(&output)))
+}
+
+/// JS: injected/index.mjs#selectorNodesForLiveDom
+///
+/// `None` means "unresolvable": the DOM API refused the selector, or the
+/// pseudo-element rewrite left nothing queryable. An empty vector from a
+/// selector the DOM did accept is authoritative, so an inactive
+/// `:hover` / `:focus` / `:not()` rule is never broadened to its host.
+pub fn selector_nodes_for_live_dom(dom: &dyn Dom, selector: &str) -> Option<Vec<ElId>> {
+    let raw = crate::js::trim(selector);
+    if raw.is_empty() {
+        return None;
+    }
+    let Some(fallback) = pseudo_element_host_selector(raw) else {
+        return dom.query_all(None, raw).ok();
+    };
+    if fallback.is_empty() || ONLY_COMMAS_WS_RE.is_match(&fallback) {
+        return None;
+    }
+    dom.query_all(None, &fallback).ok()
 }
 
 /// The regex-on-HTML pass of collectBrowserFindings: `checkHtmlPatterns` on
@@ -573,22 +726,26 @@ pub fn html_pattern_query(selector: &str) -> Option<String> {
 /// caller applies `_ruleOk`.
 pub fn scoped_html_pattern_findings(dom: &dyn Dom) -> Vec<BrowserFinding> {
     let html = dom.document_html_for_patterns();
-    let all = crate::checks::html_patterns::check_html_patterns(&html, None);
+    // Linked stylesheets are absent from the page's outerHTML, so the probe
+    // hands their readable, live-resolving rules to the style corpus (#709).
+    let mut corpora = crate::checks::html_patterns::build_html_pattern_corpora(&html);
+    let linked_css = dom.linked_stylesheet_text();
+    if !linked_css.is_empty() {
+        corpora.style_text.push('\n');
+        corpora.style_text.push_str(&linked_css);
+    }
+    let all = crate::checks::html_patterns::check_html_patterns(&html, Some(&corpora));
     let mut out = Vec::new();
     for f in all {
         if let Some(selector) = f.selector.as_deref().filter(|s| !s.is_empty()) {
-            if let Some(query) = html_pattern_query(selector) {
-                match dom.query_all(None, &query) {
-                    Err(_) => {}
-                    Ok(matches) => {
-                        if matches.is_empty() {
-                            continue;
-                        }
-                        if !matches.iter().any(|el| !scoped_ignore_active(dom, *el, &f.id)) {
-                            continue;
-                        }
-                    }
-                }
+            let Some(matches) = selector_nodes_for_live_dom(dom, selector) else {
+                continue;
+            };
+            if matches.is_empty() {
+                continue;
+            }
+            if !matches.iter().any(|el| !scoped_ignore_active(dom, *el, &f.id)) {
+                continue;
             }
         }
         let mut item = BrowserFinding::new(f.id.clone(), f.snippet.clone());
@@ -657,11 +814,12 @@ pub fn serialize_findings(dom: &dyn Dom, groups: &[FindingGroup]) -> serde_json:
                     "category".into(),
                     Value::String(ap.map(|a| a.category).unwrap_or("quality").to_string()),
                 );
+                // Per-finding promotions override the registry default, so
+                // derive the advisory flag strictly from the effective
+                // severity (#709).
+                let advisory = severity == "advisory";
                 m.insert("severity".into(), Value::String(severity));
-                m.insert(
-                    "advisory".into(),
-                    Value::Bool(ap.map_or(false, |a| a.advisory)),
-                );
+                m.insert("advisory".into(), Value::Bool(advisory));
                 m.insert("detail".into(), Value::String(f.detail.clone()));
                 m.insert(
                     "ignoreValue".into(),
@@ -1296,5 +1454,42 @@ mod tests {
         assert!(visual_contrast_result_finding(&d, p, &existing, &result).is_none());
         let pass = json!({ "status": "pass", "selector": "#t", "finding": null });
         assert_eq!(visual_contrast_result_el(&d, &pass), None);
+    }
+}
+
+#[cfg(test)]
+mod pseudo_host_tests {
+    use super::pseudo_element_host_selector as host;
+
+    #[test]
+    fn pseudo_element_hosts() {
+        // No pseudo-element: the full selector stays queryable as written.
+        assert_eq!(host(".card"), None);
+        assert_eq!(host("a:hover"), None);
+        assert_eq!(host("li:not(.x)"), None);
+        // Attached and hostless pseudo-elements.
+        assert_eq!(host(".card::before"), Some(".card".to_string()));
+        assert_eq!(host("main > ::before"), Some("main > *".to_string()));
+        assert_eq!(host("::after"), Some("*".to_string()));
+        // The legacy one-colon spellings only.
+        assert_eq!(host(".c:before"), Some(".c".to_string()));
+        assert_eq!(host(".c:focus"), None);
+        // Functional pseudo-elements consume their argument list.
+        assert_eq!(host("p::part(label) span"), Some("p span".to_string()));
+        // Literals are preserved, colons inside them are not pseudo starts.
+        assert_eq!(host("[data-x=\"a::b\"]"), None);
+        assert_eq!(
+            host("[data-x=\"a::b\"]::before"),
+            Some("[data-x=\"a::b\"]".to_string())
+        );
+        // A pseudo-class keeps its colon while a pseudo-element resolves.
+        assert_eq!(host("a:hover::after"), Some("a:hover".to_string()));
+        // Values recorded from the JS on origin/main (#709).
+        assert_eq!(host(".a::before, .b"), Some(".a, .b".to_string()));
+        assert_eq!(host(".a::before,"), Some(".a".to_string()));
+        assert_eq!(host("::before ::after"), Some("* *".to_string()));
+        assert_eq!(host(r"\:esc::before"), Some(r"\:esc".to_string()));
+        assert_eq!(host("a::before("), Some("a".to_string()));
+        assert_eq!(host("div::first-line"), Some("div".to_string()));
     }
 }

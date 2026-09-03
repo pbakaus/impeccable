@@ -104,12 +104,18 @@ pub fn depth_is_set(value: Option<&str>) -> bool {
 /// same list without linking this native-only crate.
 pub use impeccable_core::registry::IMMEDIATE_TIER_RULES;
 
+/// A legacy id fallback that keeps older detector findings recognizable when
+/// they carry neither the runtime flag nor the canonical advisory severity.
+/// Current findings are classified by their serialized metadata (#709).
 pub const ADVISORY_RULES: &[&str] = &["em-dash-overuse"];
 
 /// JS: isAdvisoryFinding(finding)
 pub fn is_advisory_finding(f: &Finding) -> bool {
     let id = normalize_ignore_rule(&f.antipattern);
-    !id.is_empty() && (ADVISORY_RULES.contains(&id.as_str()) || f.advisory == Some(true))
+    !id.is_empty()
+        && (ADVISORY_RULES.contains(&id.as_str())
+            || f.advisory == Some(true)
+            || f.severity == "advisory")
 }
 
 pub const HOOK_LOCAL_IGNORE_PATTERNS: &[&str] = &[

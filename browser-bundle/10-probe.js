@@ -101,6 +101,11 @@ const __impeccableDom = {
     }
     return undefined;
   },
+  linked_stylesheet_text() {
+    // The CSSOM walk lives in 15-snapshot.js so the standalone snapshot
+    // producer carries it too; both routes read the same corpus.
+    return __snapLinkedStylesheetText();
+  },
   document_html_for_patterns() {
     const docClone = document.documentElement.cloneNode(true);
     for (const node of docClone.querySelectorAll('[id^="impeccable-live-"]')) node.remove();

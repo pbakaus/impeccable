@@ -101,6 +101,12 @@ pub trait Dom {
     /// `document.documentElement.cloneNode(true)` with every
     /// `[id^="impeccable-live-"]` node removed, serialized as `outerHTML`.
     fn document_html_for_patterns(&self) -> String;
+    /// The CSS of every readable linked stylesheet whose rules resolve to a
+    /// live element, flattened out of its grouping rules (#709). Empty when
+    /// the probe cannot read the CSSOM.
+    fn linked_stylesheet_text(&self) -> String {
+        String::new()
+    }
 
     // ── element identity / tree ───────────────────────────────────────
     /// `el.tagName` (uppercase for HTML elements, as-is for SVG/foreign).

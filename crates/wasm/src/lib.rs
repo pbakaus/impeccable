@@ -66,7 +66,7 @@ pub fn antipatterns_json() -> String {
                 "name": ap.name,
                 "category": ap.category,
                 "severity": ap.severity,
-                "advisory": ap.advisory,
+                "advisory": ap.severity == Some("advisory"),
                 "description": ap.description,
             })
         })

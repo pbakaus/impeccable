@@ -253,9 +253,6 @@ fn antipattern_json(ap: &impeccable_core::registry::Antipattern) -> Value {
     if let Some(s) = ap.severity {
         m.insert("severity".into(), json!(s));
     }
-    if ap.advisory {
-        m.insert("advisory".into(), json!(true));
-    }
     m.insert("name".into(), json!(ap.name));
     m.insert("description".into(), json!(ap.description));
     if let Some(s) = ap.skill_section {

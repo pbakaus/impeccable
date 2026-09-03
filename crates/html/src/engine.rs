@@ -335,6 +335,7 @@ pub fn detect_html_source(
                 if let Some(sev) = f.severity.as_ref() {
                     item.severity = sev.clone();
                 }
+                impeccable_core::findings::derive_advisory_flag(&mut item);
                 findings.push(item);
             }
         }

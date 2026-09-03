@@ -1,7 +1,7 @@
 {
-  "stdout": "[\n  {\n    \"antipattern\": \"shape-assembled-illustration\",\n    \"name\": \"Shape-assembled illustration\",\n    \"description\": \"A large inline SVG that builds a pictorial scene from a pile of primitive shapes reads as placeholder clip art, not illustration. Icons, logos, and data graphics are fine at their scale; a hero-sized visual deserves real artwork, a photograph, or a deliberately drawn graphic.\",\n    \"severity\": \"advisory\",\n    \"category\": \"slop\",\n    \"file\": \"<REPO>/tests/fixtures/antipatterns/shape-assembled-illustration.html\",\n    \"line\": 0,\n    \"snippet\": \"inline <svg> scene: 12 primitive shapes, ~640x480px, 6 fill colors\"\n  }\n]\n",
+  "stdout": "[\n  {\n    \"antipattern\": \"shape-assembled-illustration\",\n    \"name\": \"Shape-assembled illustration\",\n    \"description\": \"A large inline SVG that builds a pictorial scene from a pile of primitive shapes reads as placeholder clip art, not illustration. Icons, logos, and data graphics are fine at their scale; a hero-sized visual deserves real artwork, a photograph, or a deliberately drawn graphic.\",\n    \"severity\": \"advisory\",\n    \"category\": \"slop\",\n    \"file\": \"<REPO>/tests/fixtures/antipatterns/shape-assembled-illustration.html\",\n    \"line\": 0,\n    \"snippet\": \"inline <svg> scene: 12 primitive shapes, ~640x480px, 6 fill colors\",\n    \"advisory\": true\n  }\n]\n",
   "stderr": "",
-  "exit": 2,
+  "exit": 0,
   "signal": null,
   "files": {}
 }

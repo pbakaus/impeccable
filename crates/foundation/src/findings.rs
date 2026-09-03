@@ -21,7 +21,7 @@ pub struct Finding {
     #[serde(with = "crate::js::json_number")]
     pub line: f64,
     pub snippet: String,
-    /// JS `advisory: true`, stamped only for advisory rules.
+    /// JS `advisory: true`, derived from the effective severity (#709).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub advisory: Option<bool>,
     /// Extra keys spread onto the finding by callers, in insertion order.
@@ -41,7 +41,7 @@ impl IgnorableFinding for Finding {
 /// JS `finding(id, filePath, snippet, line = 0)` for a rule already resolved
 /// from the registry.
 pub fn finding_for(ap: &Antipattern, file_path: &str, snippet: &str, line: f64) -> Finding {
-    Finding {
+    let mut f = Finding {
         antipattern: ap.id.to_string(),
         name: ap.name.to_string(),
         description: ap.description.to_string(),
@@ -50,9 +50,22 @@ pub fn finding_for(ap: &Antipattern, file_path: &str, snippet: &str, line: f64) 
         file: file_path.to_string(),
         line,
         snippet: snippet.to_string(),
-        advisory: if ap.advisory { Some(true) } else { None },
+        advisory: None,
         extras: Map::new(),
-    }
+    };
+    derive_advisory_flag(&mut f);
+    f
+}
+
+/// JS: findings.mjs#deriveAdvisoryFlag. `advisory: true` is stamped when and
+/// only when the effective severity is `'advisory'`, so a per-finding severity
+/// promotion or demotion carries the flag with it (#709).
+pub fn derive_advisory_flag(item: &mut Finding) {
+    item.advisory = if item.severity == "advisory" {
+        Some(true)
+    } else {
+        None
+    };
 }
 
 /// JS `finding(id, filePath, snippet, line = 0)`. Returns `None` for an id

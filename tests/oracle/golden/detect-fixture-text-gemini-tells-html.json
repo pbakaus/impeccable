@@ -1,7 +1,7 @@
 {
   "stdout": "",
-  "stderr": "\n<REPO>/tests/fixtures/antipatterns/gemini-tells.html\n  [image-hover-transform] img:hover { transform } rule\n    → Scaling or rotating an image on hover is a recurring generated-UI signature. Let imagery sit still, or use a subtler, purposeful interaction.\n  [image-hover-transform] Tailwind hover transform on <img>\n    → Scaling or rotating an image on hover is a recurring generated-UI signature. Let imagery sit still, or use a subtler, purposeful interaction.\n\n2 anti-patterns found.\n",
-  "exit": 2,
+  "stderr": "\n0 anti-patterns found.\n\n── Advisory (not counted as failures) ──\n\n<REPO>/tests/fixtures/antipatterns/gemini-tells.html\n  [image-hover-transform] img:hover { transform } rule\n    → Scaling or rotating an image on hover is a recurring generated-UI signature. Let imagery sit still, or use a subtler, purposeful interaction.\n  [image-hover-transform] Tailwind hover transform on <img>\n    → Scaling or rotating an image on hover is a recurring generated-UI signature. Let imagery sit still, or use a subtler, purposeful interaction.\n\n2 advisory notes. Suppress with --no-advisory.\n",
+  "exit": 0,
   "signal": null,
   "files": {}
 }

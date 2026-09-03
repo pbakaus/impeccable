@@ -130,6 +130,10 @@ Advisory findings:
   counted as failures and never changing the exit code. They stay out of the
   failure count so they never block automation. --no-advisory hides them.
 
+Output streams:
+  Human-readable findings go to stderr so stdout stays available for structured
+  output. Use --json for JSON on stdout, or redirect text with 2> findings.txt.
+
 Project config:
   Respects .impeccable/config.json and .impeccable/config.local.json detector
   settings: detector.ignoreRules, detector.ignoreFiles, detector.ignoreValues,
@@ -147,7 +151,7 @@ Detection modes:
   HTML files     Static HTML/CSS analysis (default, catches linked CSS)
   Non-HTML files Regex pattern matching (CSS, JSX, TSX, etc.)
   URLs           Puppeteer full browser rendering (auto-detected;
-                 http(s):// and file:// URLs)
+                 http(s):// and file:// URLs; accessible linked CSS included)
 
 Examples:
   impeccable detect src/
@@ -222,9 +226,9 @@ Example (non-TTY):
 **Finding object** (`cli/engine/findings.mjs` `finding(id, filePath, snippet, line = 0)`), key order exactly:
 ```js
 { antipattern: id, name: ap.name, description: ap.description, severity: ap.severity || 'warning', category: ap.category || null, file: filePath, line, snippet }
-// plus, only when registry rule has `advisory: true`:  advisory: true
+// plus, only when the effective severity is 'advisory':  advisory: true
 ```
-Optional keys added later by engines (appended after the above): `ignoreValue` (design-system rules; browser findings with a value), `importedBy` (dir scans), `severity` may be overwritten by per-finding promotion (browser & html-patterns, e.g. pulsing dot in a header). Design-system findings are `{...finding(...), ...extras}` where extras = `{ ignoreValue }`. Static-HTML and browser findings have `line: 0`; regex findings have 1-based lines. `severity` values in registry: `'warning'` (default), `'advisory'` (many generated-UI tells and design-system-color/radius/font-size, numbered-section-labels, blinking-cursor, shape-assembled-illustration), `'error'` (`script-error`, `content-hidden-at-rest`). **Only `em-dash-overuse` has `advisory: true`**; `severity:'advisory'` alone does NOT make a finding advisory for exit-code/partition purposes (isAdvisory checks `finding.advisory === true`).
+Optional keys added later by engines (appended after the above): `ignoreValue` (design-system rules; browser findings with a value), `importedBy` (dir scans), `severity` may be overwritten by per-finding promotion (browser & html-patterns, e.g. pulsing dot in a header). Design-system findings are `{...finding(...), ...extras}` where extras = `{ ignoreValue }`. Static-HTML and browser findings have `line: 0`; regex findings have 1-based lines. `severity` values in registry: `'warning'` (default), `'advisory'` (many generated-UI tells and design-system-color/radius/font-size, numbered-section-labels, blinking-cursor, shape-assembled-illustration), `'error'` (`script-error`, `content-hidden-at-rest`). `severity` is the canonical advisory field (#709): `deriveAdvisoryFlag` stamps `advisory: true` when and only when the effective severity is `'advisory'`, so a per-finding promotion or demotion carries the flag with it, and every `severity:'advisory'` rule is partitioned out of the failure count and the exit code. `isAdvisory` accepts either `finding.advisory === true` or `finding.severity === 'advisory'`.
 
 **Categories**: `category` is `'slop'` (AI tells) or `'quality'`. Category has **no effect on output**, ordering, or exit codes; it is only carried in the finding and used by `getRulesForCategory`. Registry (59 ids, in order): side-tab, border-accent-on-rounded, overused-font, flat-type-hierarchy, gradient-text, ai-color-palette, cream-palette, nested-cards, monotonous-spacing, bounce-easing, pulsing-dot, blinking-cursor, shape-assembled-illustration, dark-glow, radial-halo, radial-spotlight-glow, marquee, icon-tile-stack, italic-serif-display, hero-eyebrow-chip, kicker-above-heading, numbered-section-labels, em-dash-overuse, marketing-buzzword, aphoristic-cadence, oversized-h1, extreme-negative-tracking, broken-image, script-error, content-hidden-at-rest, edge-flush-cards, text-occlusion, first-viewport-column-overflow, gray-on-color, low-contrast, layout-transition, line-length, cramped-padding, body-text-viewport-edge, tight-leading, skipped-heading, heading-rhythm, justified-text, tiny-text, undersized-ui-text, all-caps-body, wide-tracking, text-overflow, repeated-container-text, clipped-overflow-container, design-system-font, design-system-color, design-system-radius, design-system-font-size, gpt-thin-border-wide-shadow, repeating-stripes-gradient, codex-grid-background, theater-slop-phrase, image-hover-transform. Scopes: `type` = overused-font, flat-type-hierarchy, italic-serif-display, hero-eyebrow-chip, kicker-above-heading, numbered-section-labels, oversized-h1, extreme-negative-tracking, line-length, tight-leading, skipped-heading, heading-rhythm, justified-text, tiny-text, undersized-ui-text, all-caps-body, wide-tracking, design-system-font, design-system-font-size; `layout` = nested-cards, monotonous-spacing, icon-tile-stack, content-hidden-at-rest, edge-flush-cards, text-occlusion, first-viewport-column-overflow, line-length, cramped-padding, body-text-viewport-edge, heading-rhythm, text-overflow, clipped-overflow-container. `RULE_ENGINE_SUPPORT = { regex: Set['source','page-analyzer'], 'static-html': Set['element','page'], browser: Set['element','page','layout'], visual: Set['visual-contrast'] }`.
 
