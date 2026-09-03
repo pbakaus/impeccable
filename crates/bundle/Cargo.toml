@@ -1,13 +1,11 @@
 [package]
-name = "xtask"
+name = "impeccable-bundle"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
 publish.workspace = true
 
-[[bin]]
-name = "xtask"
-path = "src/main.rs"
-
 [dependencies]
-impeccable-bundle = { workspace = true }
+impeccable-core = { workspace = true }
+serde_json = { workspace = true }
+base64 = "0.22"

@@ -23,6 +23,7 @@ impeccable-context = { path = "crates/context" }
 impeccable-hook = { path = "crates/hook" }
 impeccable-comp = { path = "crates/comp" }
 impeccable-comp-verbs = { path = "crates/comp-verbs" }
+impeccable-bundle = { path = "crates/bundle" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 thiserror = "2"

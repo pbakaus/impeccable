@@ -39,8 +39,9 @@ crates/
                the browser rule adapters, the visual-contrast decisions
   wasm         wasm-bindgen exports over `core` (the in-page bundle and the
                extension's offscreen core)
-  xtask        `cargo xtask bundle`: builds the in-page bundle and the
-               extension pieces
+  bundle       the page JS plus the bundler: in-page bundle, extension
+               pieces, registry JSON, the wasm-pack call
+  xtask        `cargo xtask bundle`: the workspace's caller of `bundle`
 ```
 
 `crates/core` re-exports the foundation modules under its own paths, so every
@@ -96,7 +97,7 @@ sources, same bytes.
 
 `wasm-pack` is the one extra tool this needs (`cargo install wasm-pack
 --locked`) plus the `wasm32-unknown-unknown` target, which
-`rust-toolchain.toml` requests. `IMPECCABLE_XTASK_SKIP_WASM_PACK=1` reuses
+`rust-toolchain.toml` requests. `IMPECCABLE_BUNDLE_SKIP_WASM_PACK=1` reuses
 whatever is already in `target/wasm-bundle/`, for iterating on the page JS
 alone. `IMPECCABLE_EXTENSION_SKIP_BUNDLE=1` lets `bun run build:extension`
 skip the bundle step when `extension/detector/` is already complete, for CI
@@ -104,6 +105,32 @@ matrices that pre-built it.
 
 Run `cargo xtask bundle` after touching `crates/core`, `crates/wasm`, or
 `browser-bundle/`, and commit the refreshed live asset.
+
+### Reusing the bundler downstream
+
+None of that lives in the task. `impeccable-bundle` (`crates/bundle`) embeds
+`browser-bundle/*.js` with `include_str!` and owns the assembly, so a crate
+that links `impeccable-core` + `impeccable-wasm` plus its own rule pack into
+one wasm module builds the same artifacts for that module without copying a
+file out of this repo:
+
+```rust
+let (glue, wasm) = impeccable_bundle::wasm_pack_build(
+    Path::new("crates/my-wasm"),      // engine + pack, not crates/wasm
+    Path::new("target/wasm-bundle"),
+    &[],                              // extra cargo args, after `--`
+)?;
+let js = impeccable_bundle::in_page_bundle(&glue, &wasm);   // /detect.js
+let registry = impeccable_bundle::registry_json();          // built-ins + pack rows
+let ext = impeccable_bundle::extension_pieces(&glue, &wasm, &registry);
+impeccable_bundle::check_capture_contract()?;               // snapshot/core drift
+```
+
+Nothing there writes files or exits: the caller places the bytes and reports
+its own failures. The pack's registry rows appear in `registry_json` once the
+pack is installed, since the registry reads built-ins plus every registered
+slice. `IMPECCABLE_BUNDLE_SKIP_WASM_PACK=1` is the library's name for the
+skip switch (the old `IMPECCABLE_XTASK_SKIP_WASM_PACK=1` still works).
 
 ## Rule packs
 

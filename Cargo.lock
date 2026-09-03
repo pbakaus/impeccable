@@ -541,6 +541,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "impeccable-bundle"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "impeccable-core",
+ "serde_json",
+]
+
+[[package]]
 name = "impeccable-common"
 version = "0.1.0"
 dependencies = [
@@ -1672,9 +1681,7 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 name = "xtask"
 version = "0.1.0"
 dependencies = [
- "base64",
- "impeccable-core",
- "serde_json",
+ "impeccable-bundle",
 ]
 
 [[package]]
