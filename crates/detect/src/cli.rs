@@ -15,10 +15,11 @@ use crate::design_system::{load_design_system_for_target, DesignSystemCache};
 use crate::detect_text::{detect_text, TextOptions};
 use crate::engines::{EngineError, Engines, ScanOptions};
 use crate::file_system::{
-    build_import_graph, detect_framework_config, is_html_path, is_port_listening, walk_dir,
+    build_import_graph_reporting, detect_framework_config, is_html_path, is_port_listening,
+    walk_dir_reporting,
 };
 use crate::jsp;
-use crate::util::{exists, re, read_text, D};
+use crate::util::{exists, re, D};
 
 pub const USAGE: &str = "Usage: impeccable detect [options] [file-or-dir-or-url...]
 
@@ -46,6 +47,12 @@ Advisory findings:
 Output streams:
   Human-readable findings go to stderr so stdout stays available for structured
   output. Use --json for JSON on stdout, or redirect text with 2> findings.txt.
+
+Exit status:
+  0  Scan completed with no primary findings (advisories may still be listed)
+  1  At least one requested target could not be scanned
+  2  Scan completed with primary findings
+  Operational failure takes precedence when a multi-target scan is partial.
 
 Project config:
   Respects .impeccable/config.json and .impeccable/config.local.json detector
@@ -231,9 +238,18 @@ struct Ctx<'a> {
     base: ScanOptions,
     cache: DesignSystemCache,
     stdin_tty: bool,
+    /// JS `hadOperationalFailure`: at least one requested target could not be
+    /// scanned, which forces exit 1 (#711).
+    had_operational_failure: bool,
 }
 
 impl<'a> Ctx<'a> {
+    /// JS: main.mjs#reportLocalScanFailure
+    fn report_local_scan_failure(&mut self, target: &str, message: &str) {
+        self.had_operational_failure = true;
+        self.io.err(&format!("Error: cannot scan {target}: {message}\n"));
+    }
+
     fn scan_options_for(&mut self, local_path: Option<&str>) -> ScanOptions {
         let (Some(local_path), true) = (local_path, self.design_system_enabled) else {
             return self.base.clone();
@@ -263,11 +279,18 @@ impl<'a> Ctx<'a> {
                 .html
                 .detect_html(file_path, options, &mut *self.io.stderr);
         }
-        let content = read_text(file_path).ok_or_else(|| {
-            EngineError::new(format!(
-                "ENOENT: no such file or directory, open '{file_path}'"
-            ))
-        })?;
+        let content = match std::fs::read_to_string(file_path) {
+            Ok(c) => c,
+            Err(e) => {
+                // JS `fs.readFileSync` throws with Node's errno message.
+                return Err(EngineError::new(match e.kind() {
+                    std::io::ErrorKind::PermissionDenied => {
+                        format!("EACCES: permission denied, open '{file_path}'")
+                    }
+                    _ => format!("ENOENT: no such file or directory, open '{file_path}'"),
+                }));
+            }
+        };
         Ok(detect_text(
             &content,
             file_path,
@@ -518,6 +541,7 @@ fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32,
         base,
         cache: DesignSystemCache::new(),
         stdin_tty,
+        had_operational_failure: false,
     };
 
     let mut all: Vec<Finding> = Vec::new();
@@ -530,12 +554,33 @@ fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32,
             targets.clone()
         };
         let url_count = paths.iter().filter(|p| URL_RE.is_match(p)).count();
-        let shared = if url_count > 1 {
+        let mut shared = if url_count > 1 {
             engines.url.and_then(|u| u.open_shared())
         } else {
             None
         };
-        let result = scan_targets(&mut ctx, &paths, shared.as_deref(), &mut all);
+        // JS: `await createBrowserDetector()` throws before the loop; the
+        // failure is reported once and every URL target is skipped (#711).
+        let mut browser_setup_failed = false;
+        if let Some(s) = shared.as_deref() {
+            if let Err(e) = s.ensure_launched() {
+                browser_setup_failed = true;
+                ctx.had_operational_failure = true;
+                ctx.io.err(&format!("Error: {}\n", e.message));
+            }
+        }
+        if browser_setup_failed {
+            if let Some(s) = shared.take() {
+                s.close();
+            }
+        }
+        let result = scan_targets(
+            &mut ctx,
+            &paths,
+            shared.as_deref(),
+            browser_setup_failed,
+            &mut all,
+        );
         if let Some(s) = shared {
             s.close();
         }
@@ -550,6 +595,16 @@ fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32,
     }
     let (primary, advisory) = partition_advisory(&all);
     let (primary_len, advisory_len) = (primary.len(), advisory.len());
+    // Exit 1 means at least one requested scan could not complete. It takes
+    // precedence over exit 2 because findings from the remaining targets do
+    // not turn a partial scan into a complete one (#711).
+    let exit_code = if ctx.had_operational_failure {
+        1
+    } else if primary_len > 0 {
+        2
+    } else {
+        0
+    };
     if !all.is_empty() {
         if json_mode {
             let text = format_findings(&all, true, stderr_tty);
@@ -571,12 +626,31 @@ fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32,
             let text = format_findings(&all, false, stderr_tty);
             ctx.io.err(&format!("{text}\n"));
         }
-        return Ok(if primary_len > 0 { 2 } else { 0 });
+        return Ok(exit_code);
     }
     if json_mode {
         ctx.io.out("[]\n");
     }
-    Ok(0)
+    Ok(exit_code)
+}
+
+/// The `error.message` Node hands `reportLocalScanFailure` for a failed
+/// `readdirSync` / `readFileSync`.
+fn node_scan_error(path: &str, err: &std::io::Error) -> String {
+    let syscall = if std::fs::metadata(path).map(|m| m.is_dir()).unwrap_or(false) {
+        "scandir"
+    } else {
+        "open"
+    };
+    match err.kind() {
+        std::io::ErrorKind::NotFound => {
+            format!("ENOENT: no such file or directory, {syscall} '{path}'")
+        }
+        std::io::ErrorKind::PermissionDenied => {
+            format!("EACCES: permission denied, {syscall} '{path}'")
+        }
+        _ => format!("{err}"),
+    }
 }
 
 /// An engine error outside a per-URL try: the JS lets it propagate to
@@ -590,10 +664,14 @@ fn scan_targets(
     ctx: &mut Ctx,
     paths: &[String],
     shared: Option<&dyn crate::engines::SharedBrowser>,
+    browser_setup_failed: bool,
     all: &mut Vec<Finding>,
 ) -> Result<(), Exit> {
     for target in paths {
         if URL_RE.is_match(target) {
+            if browser_setup_failed {
+                continue;
+            }
             let url_options = if FILE_URL_RE.is_match(target) {
                 let local = file_url_to_local_path(target);
                 ctx.scan_options_for(local.as_deref())
@@ -611,12 +689,16 @@ fn scan_targets(
             };
             match result {
                 Ok(f) => all.extend(f),
-                Err(e) => ctx.io.err(&format!("Error: {}\n", e.message)),
+                Err(e) => {
+                    ctx.had_operational_failure = true;
+                    ctx.io.err(&format!("Error: {}\n", e.message));
+                }
             }
             continue;
         }
         let resolved = jsp::resolve(&ctx.cwd, &[target]);
         let Ok(stat) = std::fs::metadata(&resolved) else {
+            ctx.had_operational_failure = true;
             ctx.io.err(&format!("Warning: cannot access {target}\n"));
             continue;
         };
@@ -649,10 +731,18 @@ fn scan_targets(
                 }
             }
             let cwd = ctx.cwd.clone();
-            let files: Vec<String> = walk_dir(&resolved)
-                .into_iter()
-                .filter(|f| !should_ignore_detection_file(f, &cwd, &ctx.config))
-                .collect();
+            // Unreadable directories and files are reported, not silently
+            // skipped, and each one forces exit 1 (#711).
+            let mut walk_failures: Vec<(String, String)> = Vec::new();
+            let files: Vec<String> = walk_dir_reporting(&resolved, &mut |dir, err| {
+                walk_failures.push((dir.to_string(), node_scan_error(dir, err)));
+            })
+            .into_iter()
+            .filter(|f| !should_ignore_detection_file(f, &cwd, &ctx.config))
+            .collect();
+            for (dir, message) in walk_failures {
+                ctx.report_local_scan_failure(&dir, &message);
+            }
             let html_count = files.iter().filter(|f| is_html_path(f)).count();
             if files.len() > 50 && ctx.stdin_tty && !ctx.json_mode && !ctx.quiet_mode {
                 ctx.io.err(&format!(
@@ -667,7 +757,15 @@ fn scan_targets(
                     return Err(Exit(0));
                 }
             }
-            let graph = build_import_graph(&files);
+            let mut unreadable_files: Vec<String> = Vec::new();
+            let mut read_failures: Vec<(String, String)> = Vec::new();
+            let graph = build_import_graph_reporting(&files, &mut |file, err| {
+                unreadable_files.push(file.to_string());
+                read_failures.push((file.to_string(), node_scan_error(file, err)));
+            });
+            for (file, message) in read_failures {
+                ctx.report_local_scan_failure(&file, &message);
+            }
             let mut imported_by_map: Vec<(String, Vec<String>)> = Vec::new();
             for (importer, imports) in &graph {
                 for imported in imports {
@@ -681,10 +779,18 @@ fn scan_targets(
                 }
             }
             for file in &files {
+                if unreadable_files.contains(file) {
+                    continue;
+                }
                 let opts = ctx.scan_options_for(Some(file));
-                let mut file_findings = ctx
-                    .detect_local_file(file, &opts)
-                    .map_err(|e| fatal(ctx.io, e))?;
+                let mut file_findings = match ctx.detect_local_file(file, &opts) {
+                    Ok(f) => f,
+                    Err(e) => {
+                        let message = e.message.clone();
+                        ctx.report_local_scan_failure(file, &message);
+                        continue;
+                    }
+                };
                 if let Some((_, importers)) = imported_by_map.iter().find(|(k, _)| k == file) {
                     if !importers.is_empty() {
                         let names: Vec<Value> = importers
@@ -705,10 +811,13 @@ fn scan_targets(
                 continue;
             }
             let opts = ctx.scan_options_for(Some(&resolved));
-            let f = ctx
-                .detect_local_file(&resolved, &opts)
-                .map_err(|e| fatal(ctx.io, e))?;
-            all.extend(f);
+            match ctx.detect_local_file(&resolved, &opts) {
+                Ok(f) => all.extend(f),
+                Err(e) => {
+                    let message = e.message.clone();
+                    ctx.report_local_scan_failure(target, &message);
+                }
+            }
         }
     }
     Ok(())

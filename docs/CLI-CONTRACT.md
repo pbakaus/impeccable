@@ -134,6 +134,12 @@ Output streams:
   Human-readable findings go to stderr so stdout stays available for structured
   output. Use --json for JSON on stdout, or redirect text with 2> findings.txt.
 
+Exit status:
+  0  Scan completed with no primary findings (advisories may still be listed)
+  1  At least one requested target could not be scanned
+  2  Scan completed with primary findings
+  Operational failure takes precedence when a multi-target scan is partial.
+
 Project config:
   Respects .impeccable/config.json and .impeccable/config.local.json detector
   settings: detector.ignoreRules, detector.ignoreFiles, detector.ignoreValues,
@@ -179,15 +185,25 @@ Examples:
    - **File**: skipped if `shouldIgnoreDetectionFile`; else `detectLocalFile`.
    - `detectLocalFile(fp, opts)`: extension (lowercased) in `HTML_EXTENSIONS = {'.html','.htm'}` → `detectHtml(fp, opts)`; else `detectText(readFileSync(fp,'utf-8'), fp, opts)`.
 4. Post-filter: `filterDetectionFindings(all, config)` (ignoreRules/ignoreValues), then `filterByScopes(all, scopes)` (keeps findings whose rule declares any requested scope; empty scopes = no filter), then `--no-advisory` drop.
-5. Partition `{primary, advisory}` by `f.advisory === true`.
+5. Partition `{primary, advisory}` by `f.advisory === true || f.severity === 'advisory'`.
+
+Any target that cannot be scanned sets `hadOperationalFailure` (#711): a URL
+whose browser setup or scan throws, a path `statSync` cannot reach
+(`stderr> Warning: cannot access <target>`), an unreadable directory or file
+in a dir walk, and a per-file scan that throws
+(`stderr> Error: cannot scan <target>: <message>`). A multi-URL scan whose
+shared browser fails to launch prints its `Error:` once and skips every URL
+target.
 
 **Output and exit codes**:
 - `allFindings.length > 0`:
   - json: `stdout> JSON.stringify(allFindings, null, 2) + '\n'` (all findings, advisory ones flagged).
   - quiet: `stderr> ${primary.length} anti-pattern${n===1?'':'s'} found.\n`; if advisory: `stderr> dim(`${adv} advisory note${adv===1?'':'s'} (not counted).`) + '\n'`.
   - text: `stderr> formatFindings(all,false) + '\n'`.
-  - `exit(primary.length > 0 ? 2 : 0)`.
-- no findings: json → `stdout> []\n`; text/quiet → nothing. `exit 0`.
+  - `exit(hadOperationalFailure ? 1 : (primary.length > 0 ? 2 : 0))`.
+- no findings: json → `stdout> []\n`; text/quiet → nothing. `exit(hadOperationalFailure ? 1 : 0)`.
+- Exit 1 takes precedence over exit 2: findings from the targets that did scan
+  do not turn a partial scan into a complete one (#711).
 - Any other exit: `1` for arg errors above; uncaught exceptions propagate to `cli.js` catch (`exit 1`).
 - `dim(text)` = `process.stderr.isTTY ? '\x1b[2m' + text + '\x1b[0m' : text`. This is the **only** ANSI styling in detect output.
 

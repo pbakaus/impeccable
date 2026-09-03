@@ -1,7 +1,7 @@
 {
   "stdout": "",
   "stderr": "Warning: cannot access does-not-exist.html\n",
-  "exit": 0,
+  "exit": 1,
   "signal": null,
   "files": {}
 }

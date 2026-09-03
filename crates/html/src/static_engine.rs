@@ -88,6 +88,9 @@ impl HtmlEngine for StaticHtmlEngine {
                     std::io::ErrorKind::NotFound => {
                         format!("ENOENT: no such file or directory, open '{path}'")
                     }
+                    std::io::ErrorKind::PermissionDenied => {
+                        format!("EACCES: permission denied, open '{path}'")
+                    }
                     _ => format!("{source}, open '{path}'"),
                 },
             })

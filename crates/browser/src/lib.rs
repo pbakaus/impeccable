@@ -133,6 +133,25 @@ impl SharedBrowser for SharedBrowserHandle<'_> {
             b.close();
         }
     }
+
+    fn ensure_launched(&self) -> Result<(), EngineError> {
+        if let Some(msg) = self.launch_error.borrow().as_ref() {
+            return Err(EngineError::new(msg.clone()));
+        }
+        if self.browser.borrow().is_some() {
+            return Ok(());
+        }
+        match self.engine.launch() {
+            Ok(b) => {
+                *self.browser.borrow_mut() = Some(b);
+                Ok(())
+            }
+            Err(e) => {
+                *self.launch_error.borrow_mut() = Some(e.message.clone());
+                Err(e)
+            }
+        }
+    }
 }
 
 /// JS detect-url.mjs `credentials` from `splitScanUrl`.

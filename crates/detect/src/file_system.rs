@@ -57,9 +57,22 @@ pub fn is_html_path(file_path: &str) -> bool {
 /// JS: file-system.mjs#walkDir. Files in `readdirSync` order (the OS order,
 /// which Node does not sort either), recursive; an unreadable dir yields [].
 pub fn walk_dir(dir: &str) -> Vec<String> {
+    walk_dir_reporting(dir, &mut |_, _| {})
+}
+
+/// JS: file-system.mjs#walkDir(dir, onReadError). An unreadable directory is
+/// reported and skipped rather than silently yielding nothing (#711).
+pub fn walk_dir_reporting(
+    dir: &str,
+    on_read_error: &mut dyn FnMut(&str, &std::io::Error),
+) -> Vec<String> {
     let mut files = Vec::new();
-    let Ok(rd) = std::fs::read_dir(dir) else {
-        return files;
+    let rd = match std::fs::read_dir(dir) {
+        Ok(rd) => rd,
+        Err(e) => {
+            on_read_error(dir, &e);
+            return files;
+        }
     };
     let mut entries: Vec<(String, bool)> = Vec::new();
     for entry in rd.flatten() {
@@ -82,7 +95,7 @@ pub fn walk_dir(dir: &str) -> Vec<String> {
         }
         let full = jsp::join(&[dir, &name]);
         if is_dir {
-            files.extend(walk_dir(&full));
+            files.extend(walk_dir_reporting(&full, on_read_error));
         } else if has_scannable_extension(&name) {
             files.push(full);
         }
@@ -134,12 +147,25 @@ pub fn resolve_import(specifier: &str, from_dir: &str, file_set: &[String]) -> O
 /// JS: file-system.mjs#buildImportGraph. `(file, imports)` pairs in file
 /// order; each import list is insertion-ordered and deduplicated (JS `Set`).
 pub fn build_import_graph(files: &[String]) -> Vec<(String, Vec<String>)> {
+    build_import_graph_reporting(files, &mut |_, _| {})
+}
+
+/// JS: file-system.mjs#buildImportGraph(files, onReadError). A file that
+/// cannot be read is reported and left out of the graph; the caller skips it
+/// for the scan too (#711).
+pub fn build_import_graph_reporting(
+    files: &[String],
+    on_read_error: &mut dyn FnMut(&str, &std::io::Error),
+) -> Vec<(String, Vec<String>)> {
     let mut graph = Vec::new();
     for file in files {
-        // JS readFileSync throws on an unreadable file and the whole scan
-        // aborts; a file that vanished between walk and read is rare enough
-        // that treating it as empty is the friendlier port.
-        let content = read_text(file).unwrap_or_default();
+        let content = match std::fs::read_to_string(file) {
+            Ok(c) => c,
+            Err(e) => {
+                on_read_error(file, &e);
+                continue;
+            }
+        };
         let dir = jsp::dirname(file);
         let mut imports: Vec<String> = Vec::new();
         for pattern in IMPORT_SPECIFIER_PATTERNS.iter() {

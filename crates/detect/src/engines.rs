@@ -76,6 +76,13 @@ pub trait UrlEngine {
 pub trait SharedBrowser {
     fn detect_url(&self, url: &str, options: &ScanOptions) -> Result<Vec<Finding>, EngineError>;
     fn close(&self);
+    /// The eager half of `createBrowserDetector()`: bring the browser up now,
+    /// so a launch failure is reported once before the loop and every URL
+    /// target is skipped, exactly as the JS `await createBrowserDetector()`
+    /// throw does (#711). Engines with nothing to launch keep the default.
+    fn ensure_launched(&self) -> Result<(), EngineError> {
+        Ok(())
+    }
 }
 
 /// The engines available to one `detect` run.

@@ -56,6 +56,32 @@ export default function cases() {
     { id: 'detect-no-args', verb: 'detect', args: [] },
     { id: 'detect-missing-file', verb: 'detect', args: ['--no-config', 'does-not-exist.html'] },
     { id: 'detect-missing-file-json', verb: 'detect', args: ['--no-config', '--json', 'does-not-exist.html'] },
+    // #711: a target that cannot be scanned forces exit 1, and that takes
+    // precedence over findings from the targets that did scan.
+    {
+      id: 'detect-missing-file-with-findings', verb: 'detect',
+      args: ['--no-config', '--json', `<REPO>/tests/fixtures/antipatterns/layout.html`, 'does-not-exist.html'],
+      isolateHome: false,
+    },
+    {
+      id: 'detect-unreadable-file-json', verb: 'detect',
+      setup: (ws) => {
+        const p = path.join(ws, 'locked.html');
+        fs.writeFileSync(p, '<div style="border-left: 4px solid #ff0000">x</div>\n');
+        fs.chmodSync(p, 0o000);
+      },
+      args: ['--no-config', '--json', 'locked.html'],
+    },
+    {
+      id: 'detect-unreadable-file-in-dir', verb: 'detect',
+      setup: (ws) => {
+        fs.writeFileSync(path.join(ws, 'a.html'), '<div style="border-left: 4px solid #ff0000">x</div>\n');
+        const p = path.join(ws, 'b.html');
+        fs.writeFileSync(p, '<div style="border-left: 4px solid #ff0000">x</div>\n');
+        fs.chmodSync(p, 0o000);
+      },
+      args: ['--no-config', '--json', '.'],
+    },
     { id: 'detect-unknown-flag', verb: 'detect', args: ['--bogus', `<REPO>/tests/fixtures/antipatterns/blinking-cursor.html`], isolateHome: false },
     { id: 'detect-bad-viewport', verb: 'detect', args: ['--viewport', 'wide', `<REPO>/tests/fixtures/antipatterns/blinking-cursor.html`], isolateHome: false },
     { id: 'cli-help', verb: 'cli-help', args: [] },
