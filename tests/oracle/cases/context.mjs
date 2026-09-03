@@ -30,6 +30,14 @@ import zlib from 'node:zlib';
 import { execFileSync } from 'node:child_process';
 
 const WS = '<WS>';
+
+// #710: a Next.js 16 proxy request hook that sets a CSP header.
+const PROXY_CSP_SOURCE = `export function proxy() {
+  const response = new Response();
+  response.headers.set('Content-Security-Policy', "script-src 'self'");
+  return response;
+}
+`;
 const REPO = '<REPO>';
 
 // Env the recording machine may carry that would leak into output.
@@ -65,6 +73,22 @@ const write = (ws, rel, body) => {
   fs.writeFileSync(abs, body);
   return abs;
 };
+
+// A `.git` directory marking a repository boundary. Written at run time so
+// the fixture tree stays a plain directory in this repo.
+const gitBoundary = (ws, rel) => {
+  fs.mkdirSync(path.join(ws, rel, '.git'), { recursive: true });
+};
+
+// An installed Claude Code Stop hook in the launcher spelling, which is what
+// `context` counts as active coverage.
+const claudeStopHook = (ws, rel) => write(
+  ws,
+  path.join(rel, '.claude/settings.local.json'),
+  JSON.stringify({
+    hooks: { Stop: [{ hooks: [{ command: '.claude/skills/impeccable/scripts/impeccable hook' }] }] },
+  }) + '\n',
+);
 
 // Fixed mtimes so DESIGN.md-vs-sidecar age comparisons never depend on copy
 // order or filesystem timestamp granularity.
@@ -179,6 +203,66 @@ const cases = [
   { id: 'context-monorepo-target-bare-name-abs', verb: 'context', workspace: 'ctx-monorepo', args: ['--target', `${WS}/b`], env: env(), files: IMPECCABLE_FILES },
   { id: 'context-monorepo-target-bare-unknown', verb: 'context', workspace: 'ctx-monorepo', args: ['--target', 'zzz'], env: env(), files: IMPECCABLE_FILES },
   { id: 'context-monorepo-target-bare-from-child-cwd', verb: 'context', workspace: 'ctx-monorepo', cwd: 'apps/b', args: ['--target', 'a'], env: env(), files: IMPECCABLE_FILES },
+  // #710: the hook manifest can live at an enclosing git root, the lifecycle
+  // config beside it is honored, and an explicit target never borrows a
+  // manifest from the caller or an outer workspace across a git boundary.
+  {
+    id: 'context-hook-at-enclosing-git-root', verb: 'context', workspace: 'ctx-empty', cwd: 'web',
+    setup: (ws) => { gitBoundary(ws, '.'); write(ws, 'web/PRODUCT.md', '# Nested web product\n'); claudeStopHook(ws, '.'); },
+    env: env({ IMPECCABLE_PROVIDER_ID: 'claude-code' }),
+  },
+  {
+    id: 'context-hook-at-enclosing-git-root-disabled', verb: 'context', workspace: 'ctx-empty', cwd: 'web',
+    setup: (ws) => {
+      gitBoundary(ws, '.');
+      write(ws, 'web/PRODUCT.md', '# Nested web product\n');
+      claudeStopHook(ws, '.');
+      write(ws, '.impeccable/config.local.json', JSON.stringify({ hook: { enabled: false } }) + '\n');
+    },
+    env: env({ IMPECCABLE_PROVIDER_ID: 'claude-code' }),
+  },
+  {
+    id: 'context-hook-not-borrowed-from-caller', verb: 'context', workspace: 'ctx-empty', cwd: 'apps/marketing',
+    args: ['--target', `${WS}/apps/dashboard/src/App.jsx`],
+    setup: (ws) => {
+      gitBoundary(ws, '.');
+      write(ws, 'package.json', JSON.stringify({ private: true, workspaces: ['apps/*'] }) + '\n');
+      write(ws, 'turbo.json', JSON.stringify({ tasks: {} }) + '\n');
+      write(ws, 'apps/marketing/package.json', JSON.stringify({ name: 'marketing' }) + '\n');
+      write(ws, 'apps/dashboard/package.json', JSON.stringify({ name: 'dashboard' }) + '\n');
+      write(ws, 'apps/dashboard/PRODUCT.md', '# Dashboard\n');
+      write(ws, 'apps/dashboard/src/App.jsx', 'export default function App() { return "dashboard"; }\n');
+      claudeStopHook(ws, 'apps/marketing');
+    },
+    env: env({ IMPECCABLE_PROVIDER_ID: 'claude-code' }),
+  },
+  {
+    id: 'context-hook-not-borrowed-across-nested-git', verb: 'context', workspace: 'ctx-empty',
+    args: ['--target', 'repos/standalone/src/App.jsx'],
+    setup: (ws) => {
+      gitBoundary(ws, '.');
+      gitBoundary(ws, 'repos/standalone');
+      write(ws, 'package.json', JSON.stringify({ private: true, workspaces: ['repos/*'] }) + '\n');
+      claudeStopHook(ws, '.');
+      write(ws, 'repos/standalone/package.json', JSON.stringify({ name: 'standalone' }) + '\n');
+      write(ws, 'repos/standalone/PRODUCT.md', '# Standalone\n');
+      write(ws, 'repos/standalone/src/App.jsx', 'export default function App() { return "standalone"; }\n');
+    },
+    env: env({ IMPECCABLE_PROVIDER_ID: 'claude-code' }),
+  },
+  {
+    id: 'context-markerless-nested-git-target', verb: 'context', workspace: 'ctx-empty',
+    args: ['--target', 'repos/standalone/src/App.jsx'],
+    setup: (ws) => {
+      gitBoundary(ws, '.');
+      gitBoundary(ws, 'repos/standalone');
+      write(ws, 'package.json', JSON.stringify({ private: true, workspaces: ['repos/*'] }) + '\n');
+      write(ws, 'PRODUCT.md', '# Outer product\n');
+      claudeStopHook(ws, '.');
+      write(ws, 'repos/standalone/src/App.jsx', 'export default function App() { return "standalone"; }\n');
+    },
+    env: env({ IMPECCABLE_PROVIDER_ID: 'claude-code' }),
+  },
   { id: 'context-legacy', verb: 'context', workspace: 'ctx-legacy', setup: legacySetup, env: env(), files: IMPECCABLE_FILES },
   { id: 'context-hook-disabled-env', verb: 'context', workspace: 'ctx-product-only', env: env({ IMPECCABLE_HOOK_DISABLED: 'yes' }), files: IMPECCABLE_FILES },
   {
@@ -506,6 +590,21 @@ const cases = [
   { id: 'csp-none', verb: 'detect-csp', workspace: 'ctx-csp-none', setup: (ws) => write(ws, 'node_modules/dep/middleware.ts', 'export function middleware(req, res) { res.headers.set("Content-Security-Policy", "x"); }\n'), env: env() },
   { id: 'csp-nuxt-security', verb: 'detect-csp', workspace: 'ctx-csp-none', setup: (ws) => write(ws, 'nuxt.config.ts', "export default defineNuxtConfig({ modules: ['nuxt-security'], security: { headers: { contentSecurityPolicy: { 'script-src': [\"'self'\"] } } } });\n"), env: env() },
   { id: 'csp-empty', verb: 'detect-csp', workspace: 'ctx-empty', env: env() },
+  // #710: Next.js 16 spells the request hook `proxy`, recognized at a project
+  // root or its src/ dir, and only where a Next project marker sits beside it.
+  { id: 'csp-proxy-root', verb: 'detect-csp', workspace: 'ctx-csp-none', setup: (ws) => write(ws, 'proxy.ts', PROXY_CSP_SOURCE), env: env() },
+  { id: 'csp-proxy-src', verb: 'detect-csp', workspace: 'ctx-csp-none', setup: (ws) => write(ws, 'src/proxy.ts', PROXY_CSP_SOURCE), env: env() },
+  {
+    id: 'csp-proxy-nested-app', verb: 'detect-csp', workspace: 'ctx-csp-none',
+    setup: (ws) => { write(ws, 'apps/web/app/page.tsx', 'export default function Page() { return null; }\n'); write(ws, 'apps/web/proxy.ts', PROXY_CSP_SOURCE); },
+    env: env(),
+  },
+  {
+    id: 'csp-proxy-nested-pkg', verb: 'detect-csp', workspace: 'ctx-csp-none',
+    setup: (ws) => { write(ws, 'apps/store/package.json', JSON.stringify({ dependencies: { next: '^16.0.0' } }) + '\n'); write(ws, 'apps/store/proxy.ts', PROXY_CSP_SOURCE); },
+    env: env(),
+  },
+  { id: 'csp-proxy-helper-ignored', verb: 'detect-csp', workspace: 'ctx-csp-none', setup: (ws) => write(ws, 'lib/network/proxy.ts', PROXY_CSP_SOURCE), env: env() },
 
   // ======================================================================
   // concept-seed (local catalog or offline degraded only)

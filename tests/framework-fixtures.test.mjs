@@ -265,7 +265,7 @@ for (const name of listFixtures()) {
   });
 }
 
-describe('detectCsp — Next.js proxy placement', () => {
+describe('detect-csp — Next.js proxy placement', { skip: ENGINE_BIN ? false : ENGINE_MISSING_MESSAGE }, () => {
   it('accepts proxy files at app roots and src roots but ignores same-named helpers', () => {
     const source = `export function proxy() {
   const response = new Response();
@@ -293,7 +293,8 @@ describe('detectCsp — Next.js proxy placement', () => {
           }
         }
         writeFileSync(join(tmp, relPath), source);
-        assert.equal(detectCsp(tmp).shape, expectedShape, relPath);
+        const result = JSON.parse(runVerb('detect-csp', [], { cwd: tmp }));
+        assert.equal(result.shape, expectedShape, relPath);
       } finally {
         rmSync(tmp, { recursive: true, force: true });
       }

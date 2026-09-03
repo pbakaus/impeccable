@@ -230,12 +230,49 @@ pub fn resolve_target_selection(cwd: &str, options: &TargetOptions, env: &Env) -
 pub fn resolve_project(cwd: &str, options: &TargetOptions, env: &Env) -> Project {
     let abs_cwd = jsp::resolve(cwd, &[]);
     let target_dir = resolve_target_dir(&abs_cwd, options);
+    // #710: an explicit target inside its own git repository resolves against
+    // that repository, so caller context never leaks across the boundary.
+    let has_explicit_target = has_target_option(options) && target_dir != abs_cwd;
+    let target_git_root = if has_explicit_target {
+        find_git_boundary_root(&target_dir, env)
+    } else {
+        None
+    };
     let mut repo_root = find_monorepo_root(&target_dir, env);
+    if repo_root.is_none() {
+        if let Some(tgr) = target_git_root.as_deref() {
+            let cwd_git_root = find_git_boundary_root(&abs_cwd, env);
+            if Some(tgr) != cwd_git_root.as_deref() {
+                return Project {
+                    project_root: nearest_target_context_root(tgr, &target_dir)
+                        .unwrap_or_else(|| tgr.to_string()),
+                    repo_root: tgr.to_string(),
+                    is_monorepo: false,
+                    target_dir,
+                };
+            }
+        }
+    }
     if repo_root.is_none() && target_dir != abs_cwd {
         if let Some(cwd_root) = find_monorepo_root(&abs_cwd, env) {
             if is_path_inside(&target_dir, &cwd_root) {
                 repo_root = Some(cwd_root);
             }
+        }
+    }
+    if repo_root.is_none() {
+        let target_is_external = has_target_option(options)
+            && target_dir != abs_cwd
+            && !is_path_inside(&target_dir, &abs_cwd);
+        if target_is_external {
+            let target_repo_root = target_git_root.unwrap_or_else(|| target_dir.clone());
+            return Project {
+                project_root: nearest_target_context_root(&target_repo_root, &target_dir)
+                    .unwrap_or_else(|| target_repo_root.clone()),
+                repo_root: target_repo_root,
+                is_monorepo: false,
+                target_dir,
+            };
         }
     }
     match repo_root {
@@ -252,6 +289,30 @@ pub fn resolve_project(cwd: &str, options: &TargetOptions, env: &Env) -> Project
             target_dir,
         },
     }
+}
+
+/// JS: context.mjs#findGitBoundaryRoot
+pub fn find_git_boundary_root(start_dir: &str, env: &Env) -> Option<String> {
+    let mut dir = jsp::resolve(start_dir, &[]);
+    let home = jsp::resolve(&homedir(env), &[]);
+    loop {
+        if dir == home {
+            return None;
+        }
+        if has_git_boundary(&dir) {
+            return Some(dir);
+        }
+        let parent = jsp::dirname(&dir);
+        if parent == dir {
+            return None;
+        }
+        dir = parent;
+    }
+}
+
+/// JS: context.mjs#hasGitBoundary
+pub fn has_git_boundary(dir: &str) -> bool {
+    exists(&jsp::join(&[dir, ".git"]))
 }
 
 pub fn is_path_inside(candidate: &str, root: &str) -> bool {
@@ -363,7 +424,7 @@ fn find_monorepo_root(start: &str, env: &Env) -> Option<String> {
         if is_monorepo_root(&dir) {
             return Some(dir);
         }
-        if exists(&jsp::join(&[&dir, ".git"])) {
+        if has_git_boundary(&dir) {
             return None;
         }
         let parent = jsp::dirname(&dir);

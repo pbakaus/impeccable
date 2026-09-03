@@ -79,19 +79,15 @@ pub fn automatic_hook_mode(ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider)
         return "none";
     }
     let manifests = hook_manifests_for(&provider.id);
-    let mut roots: Vec<String> = Vec::new();
-    for r in [cwd, &ctx.project_root, &ctx.repo_root] {
-        if r.is_empty() {
+    for root in hook_manifest_search_roots(ctx, cwd, env) {
+        // A manifest can live above the resolved product. Honor the hook
+        // lifecycle config beside that manifest before treating it as active
+        // coverage (#710).
+        if !hook_enabled_at(&root, env) {
             continue;
         }
-        let a = jsp::resolve(r, &[]);
-        if !roots.contains(&a) {
-            roots.push(a);
-        }
-    }
-    for root in &roots {
         for rel in manifests {
-            if let Some(raw) = read_json(&jsp::join(&[root, rel])) {
+            if let Some(raw) = read_json(&jsp::join(&[&root, rel])) {
                 if let Some(h) = raw.get("hooks") {
                     if crate::staleness::js_truthy(h) && value_has_hook_marker(h) {
                         return if STOP_REVIEW_PROVIDERS.contains(&provider.id.as_str()) { "stop" } else { "per-edit" };
@@ -101,6 +97,39 @@ pub fn automatic_hook_mode(ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider)
         }
     }
     "none"
+}
+
+/// JS: context.mjs#hookManifestSearchRoots
+///
+/// Harness project settings are discovered by walking up from the resolved
+/// project root. Its hook manifest can live at an enclosing git root, so
+/// checking only projectRoot produces a false MANUAL_DETECTOR_REQUIRED
+/// directive. Starting from projectRoot also prevents an explicit target from
+/// borrowing an unrelated manifest near the caller. The walk itself is the
+/// authority: do not append repoRoot afterward, because `resolve_project` can
+/// retain an outer workspace root for a target inside an independent nested
+/// Git repository.
+fn hook_manifest_search_roots(ctx: &Ctx, cwd: &str, env: &Env) -> Vec<String> {
+    let mut roots: Vec<String> = Vec::new();
+    let mut current = jsp::resolve(if ctx.project_root.is_empty() { cwd } else { &ctx.project_root }, &[]);
+    let home = jsp::resolve(&crate::util::homedir(env), &[]);
+    loop {
+        if current == home {
+            break;
+        }
+        if !roots.contains(&current) {
+            roots.push(current.clone());
+        }
+        if crate::context::has_git_boundary(&current) {
+            break;
+        }
+        let parent = jsp::dirname(&current);
+        if parent == current {
+            break;
+        }
+        current = parent;
+    }
+    roots
 }
 
 fn read_build_path_at(root: &str) -> Option<(String, String)> {

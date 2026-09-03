@@ -1,7 +1,7 @@
 {
-  "stdout": "---\nversion: 1\nslug: \"route-pricing\"\nprimary_target: \"route:/pricing\"\nrelated_targets: []\n---\n\n# Surface brief: Pricing\n\n## Mode\nPersuade\n\n## Product strategy\nMake the middle tier the obvious pick.\n",
+  "stdout": "",
   "stderr": "",
-  "exit": 0,
+  "exit": 2,
   "signal": null,
   "files": {}
 }

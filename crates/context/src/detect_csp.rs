@@ -1,7 +1,7 @@
 //! JS: detect-csp.mjs -> `impeccable detect-csp`
 
 use crate::jsp;
-use crate::util::{json_pretty, read_dir_entries};
+use crate::util::{exists, json_pretty, read_dir_entries};
 use impeccable_common::Io;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -48,7 +48,74 @@ fn is_config(rel: &str, name: &str) -> bool {
     Regex::new(&format!(r"(^|/){}\.config\.", name)).map(|r| r.is_match(rel)).unwrap_or(false)
 }
 
-fn visit(abs: &str, rel: &str, body: &str, hits: &mut Hits) {
+const NEXT_MIDDLEWARE_FILES: &[&str] = &["middleware.ts", "middleware.js", "middleware.mjs"];
+const NEXT_PROXY_FILES: &[&str] = &["proxy.ts", "proxy.js", "proxy.mjs"];
+const NEXT_CONFIG_FILES: &[&str] = &[
+    "next.config.js",
+    "next.config.mjs",
+    "next.config.cjs",
+    "next.config.ts",
+    "next.config.mts",
+    "next.config.cts",
+];
+
+/// JS: detect-csp.mjs#hasNextProjectMarker
+fn has_next_project_marker(project_root: &str) -> bool {
+    if NEXT_CONFIG_FILES.iter().any(|n| exists(&jsp::join(&[project_root, n]))) {
+        return true;
+    }
+    if ["app", "pages", "src/app", "src/pages"]
+        .iter()
+        .any(|rel| exists(&jsp::join(&[project_root, rel])))
+    {
+        return true;
+    }
+    let Ok(raw) = std::fs::read_to_string(jsp::join(&[project_root, "package.json"])) else {
+        return false;
+    };
+    let Ok(pkg) = serde_json::from_str::<Value>(&raw) else {
+        return false;
+    };
+    ["dependencies", "devDependencies", "peerDependencies"]
+        .iter()
+        .any(|group| {
+            pkg.get(*group)
+                .and_then(|g| g.as_object())
+                .is_some_and(|g| g.contains_key("next"))
+        })
+}
+
+/// JS: detect-csp.mjs#isNextRequestHookFile
+///
+/// Next.js 16 recognizes `proxy` at the project root or in the optional `src/`
+/// directory, alongside `app/` or `pages/`. The scan root is commonly a
+/// monorepo, so that placement is also accepted relative to a nested directory
+/// carrying a concrete Next.js project marker. A same-named helper elsewhere in
+/// the tree is not the framework request hook.
+fn is_next_request_hook_file(root: &str, abs_path: &str, rel_path: &str, base: &str) -> bool {
+    if NEXT_MIDDLEWARE_FILES.contains(&base) {
+        return true;
+    }
+    if !NEXT_PROXY_FILES.contains(&base) {
+        return false;
+    }
+    let normalized = jsp::to_posix(rel_path).to_lowercase();
+    if normalized == base || normalized == format!("src/{base}") {
+        return true;
+    }
+    let hook_dir = jsp::dirname(abs_path);
+    let project_root = if jsp::basename(&hook_dir).to_lowercase() == "src" {
+        jsp::dirname(&hook_dir)
+    } else {
+        hook_dir
+    };
+    if jsp::resolve(&project_root, &[]) == jsp::resolve(root, &[]) {
+        return true;
+    }
+    has_next_project_marker(&project_root)
+}
+
+fn visit(root: &str, abs: &str, rel: &str, body: &str, hits: &mut Hits) {
     let ext = jsp::extname(abs);
     let base = jsp::basename(abs).to_lowercase();
     let scan = SCAN_EXTS.contains(&ext.as_str());
@@ -68,7 +135,7 @@ fn visit(abs: &str, rel: &str, body: &str, hits: &mut Hits) {
         hits.append_string.push(rel.to_string());
         return;
     }
-    if (base == "middleware.ts" || base == "middleware.js" || base == "middleware.mjs") && MIDDLEWARE_HINT.is_match(body) {
+    if is_next_request_hook_file(root, abs, rel, &base) && MIDDLEWARE_HINT.is_match(body) {
         hits.middleware.push(rel.to_string());
     }
     if LAYOUT_EXTS.contains(&ext.as_str()) && META_TAG_HINT.is_match(body) {
@@ -100,7 +167,7 @@ fn walk(root: &str, dir: &str, depth: usize, hits: &mut Hits) {
         let Ok(bytes) = std::fs::read(&abs) else { continue };
         let slice = if bytes.len() > MAX_READ_BYTES { &bytes[..MAX_READ_BYTES] } else { &bytes[..] };
         let body = String::from_utf8_lossy(slice);
-        visit(&abs, &jsp::relative("/", root, &abs), &body, hits);
+        visit(root, &abs, &jsp::relative("/", root, &abs), &body, hits);
     }
 }
 

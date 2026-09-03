@@ -131,3 +131,16 @@ them. The binary's output is unchanged; the input the harness fed it is.
 `context-lowercase-product-name` runs only on case-insensitive hosts
 (`platforms: ['darwin', 'win32']` in the case): `product.md` is found through
 the canonical name there and through the fallback scan elsewhere, both right.
+
+## Recorded 2026-09-03: #710 resolves an explicit target at its own git boundary
+
+Upstream `672ca296` (#710) scopes an explicit `--target` to its own repository.
+A route-shaped target that begins with `/` is an absolute path outside the
+workspace, so route cases that used to resolve inside the fixture now resolve
+against the filesystem root. Every case below was re-recorded after confirming
+`origin/main`'s `context.mjs` / `surface-brief.mjs` produce the same stdout and
+the same exit code for the same run.
+
+- `context-full-target-route`, `surface-brief-path-slash`, `surface-brief-path-outside`, `surface-brief-read-route`: stdout and exit code match origin/main byte for byte; nothing here is a delta beyond the upstream change itself.
+- `surface-brief-write-route`: the write now fails on both engines (exit 1) because `/.impeccable/surfaces` is not writable. Node reports `ENOENT: no such file or directory, mkdir '/.impeccable/surfaces'`; the engine reports the failed write as `No such file or directory (os error 2)`. Same failure, different wording for an unwritable filesystem root.
+
