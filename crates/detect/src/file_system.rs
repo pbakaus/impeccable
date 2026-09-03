@@ -547,15 +547,15 @@ mod tests {
 
     #[test]
     fn imports() {
-        let files = vec!["/p/a.tsx".to_string(), "/p/b/index.css".to_string()];
-        assert_eq!(
-            resolve_import("./a", "/p", &files).as_deref(),
-            Some("/p/a.tsx")
-        );
-        assert_eq!(
-            resolve_import("./b", "/p", &files).as_deref(),
-            Some("/p/b/index.css")
-        );
-        assert_eq!(resolve_import("react", "/p", &files), None);
+        // Paths in the platform's own form: the resolver joins with Node's
+        // `path` semantics for the host, so a POSIX root would never match the
+        // file set on Windows.
+        let root = if cfg!(windows) { "C:\\p" } else { "/p" };
+        let a = jsp::join(&[root, "a.tsx"]);
+        let b_index = jsp::join(&[root, "b", "index.css"]);
+        let files = vec![a.clone(), b_index.clone()];
+        assert_eq!(resolve_import("./a", root, &files).as_deref(), Some(a.as_str()));
+        assert_eq!(resolve_import("./b", root, &files).as_deref(), Some(b_index.as_str()));
+        assert_eq!(resolve_import("react", root, &files), None);
     }
 }
