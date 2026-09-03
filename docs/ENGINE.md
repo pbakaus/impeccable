@@ -9,13 +9,17 @@ This page is the map for anyone building or changing the runtime. The
 observable behavior of every verb is specified in `CLI-CONTRACT.md` and
 pinned byte-for-byte by `tests/oracle/`.
 
+Everything is in this repo, Apache-2.0, and builds offline from source. No
+part of the engine is fetched at build time.
+
 ## Layout
 
 ```
 Cargo.toml              the workspace (crates/*), release profile
-rust-toolchain.toml     EXACT rustc pin (see "The closed detector")
-DETECTOR_VERSION        which prebuilt detector release crates/core links
+rust-toolchain.toml     the channel plus the wasm32 target
 ENGINE_VERSION          which engine release the launcher / npm shim download
+.cargo/config.toml      the `cargo xtask` alias
+browser-bundle/         the page JS the in-page bundle is built from
 crates/
   cli          the `impeccable` binary: verb router, exit codes
   common       Io handle (stdout/stderr/stdin/env/cwd), path + process helpers
@@ -28,11 +32,23 @@ crates/
   detect       `impeccable detect`: file walk, config, ignores, output, regex engine
   html         the static HTML engine: parser, cascade, static DOM, rule adapters
   browser      the URL engine: Chrome discovery, CDP, snapshot, visual pass
-  foundation   OPEN helpers + boundary types: JS-semantics helpers, color,
-               findings, registry, inline ignores, the Dom trait, SnapshotDom
-  core         the shim: re-exports foundation under the paths every crate
-               uses, and forwards the rule checks to the closed detector
+  foundation   JS-semantics helpers, color, findings, the rule registry, inline
+               ignores, the Dom trait, SnapshotDom, and the plain-data types
+               every check takes in and hands back
+  core         the rule logic: every `check_*` / `scan_*` and its heuristics,
+               the browser rule adapters, the visual-contrast decisions
+  wasm         wasm-bindgen exports over `core` (the in-page bundle and the
+               extension's offscreen core)
+  xtask        `cargo xtask bundle`: builds the in-page bundle and the
+               extension pieces
 ```
+
+`crates/core` re-exports the foundation modules under its own paths, so every
+consumer names one crate: `impeccable_core::js`, `impeccable_core::color`,
+`impeccable_core::checks::rules::check_colors`,
+`impeccable_core::browser::driver::collect_browser_findings`. The split
+between the two crates is about what a check is written against, not about
+who may see it.
 
 Build and test:
 
@@ -48,98 +64,64 @@ release there; `IMPECCABLE_BIN=target/release/impeccable bun run fetch:engine`
 copies a local build), then `target/release/impeccable`, so a plain
 `cargo build --release -p impeccable` is enough.
 
-## The closed detector
-
-The rule engine itself (the checks, the browser rule adapters, the visual
-contrast decisions) is proprietary and lives in a private repo. It ships as a
-prebuilt native archive per target, `libimpeccable_detector-<os>-<arch>.a`
-(`impeccable_detector-windows-x64.lib`), published as the GitHub Release
-`detector-v<DETECTOR_VERSION>` on this repo, next to
-`detector-browser-bundle.zip` (the same rules compiled to wasm for the
-extension, the live overlay and the site). That release also carries
-`detect-antipatterns-browser.js` and its `.sha256`: the in-page bundle
-`crates/core/build.rs` resolves the same three ways and hands to
-`impeccable_core::browser::IN_PAGE_BUNDLE_JS`, which live mode serves as
-`/detect.js`. It is generated, so it is not tracked here.
-
-`crates/core/build.rs` resolves the archive in this order and links it:
-
-1. `IMPECCABLE_DETECTOR_LIB=<dir>`: a directory holding the archive for the
-   current target (a local build of the detector repo).
-2. `~/.impeccable/detector/<DETECTOR_VERSION>/<os>-<arch>/` (`IMPECCABLE_HOME`
-   moves the root).
-3. A download from `detector-v<DETECTOR_VERSION>` into that cache, verified
-   against the `.sha256` sidecar. `IMPECCABLE_DETECTOR_BASE` overrides the
-   release root; `IMPECCABLE_DETECTOR_OFFLINE=1` refuses to download.
-
-The in-page bundle follows the same order (beside the archive when
-`IMPECCABLE_DETECTOR_LIB` supplies one, else the version cache, else a
-verified download).
-
-Three things follow from how that archive is made, and they are the reason
-for three otherwise odd-looking settings:
-
-- **The toolchain is pinned to an exact version.** The archive is the closed
-  crates' rlib objects repacked with `llvm-ar`, with no std inside. Its
-  objects reference std by mangled symbol name, which only resolves against
-  the same rustc build. `rust-toolchain.toml` pins it; rustup installs it on
-  first `cargo` invocation. A toolchain bump needs a new detector release.
-- **The release profile has `lto = false`.** Fat and thin LTO internalize std
-  symbols the opaque archive still needs and the link fails with "symbol(s)
-  not found". Cargo's default thin-local LTO stays.
-- **`crates/core` keeps the old paths.** Nothing outside `crates/core` and
-  `crates/foundation` knows about the boundary: `impeccable_core::checks::
-  rules::check_colors` is a one-line shim that encodes its argument, calls
-  the archive, decodes the result. The C-ABI is three symbols
-  (`det_abi_version`, `det_call`, `det_free`) and a host vtable the closed
-  side uses to call back into the open `Dom` / `StyleMap` implementations.
-  Every id and every type that crosses is declared in
-  `crates/foundation/src/boundary.rs`; the shim checks the ABI number once
-  and panics with a clear message when the archive was built for another.
-
 The frozen function-level vectors in `tests/oracle/vectors/calls/` replay
-through the shipped archive (`impeccable_core::vectors::call` forwards
-unknown names to it), so the black box is verified the same way the open
-code is.
+through `impeccable_core::vectors::call` (`cargo test -p impeccable-core`),
+which is the union of foundation's dispatch arms and the core's.
+
+## The browser bundle
+
+The same rules that run natively run in a page, compiled to WebAssembly.
+`cargo xtask bundle` is the one command that produces every browser artifact:
+
+1. `wasm-pack build crates/wasm --target no-modules --release` into
+   `target/wasm-bundle/` (opt-level `z`, then `wasm-opt`).
+2. Concatenate the page JS in `browser-bundle/*.js` in a fixed order with the
+   wasm-bindgen glue and the `.wasm` embedded as base64. The page JS only
+   implements the `Dom` probe, marshals JSON, and draws the overlay; no rule
+   logic lives there.
+3. Write `dist/detect-antipatterns-browser.js` and `dist/antipatterns.json`,
+   and copy the bundle to
+   **`crates/live/assets/detect-antipatterns-browser.js`**. That copy is a
+   tracked generated file: `crates/live/src/browser_assets.rs` embeds it with
+   `include_str!` and the live server hands it to the browser as `/detect.js`,
+   so the binary has to carry it.
+4. Write the five extension pieces into `extension/detector/`
+   (`snapshot.js`, `overlay.js`, `core.js`, `core_bg.wasm`,
+   `antipatterns.json`). That directory is gitignored;
+   `bun run build:extension` runs this task and then packages the zips.
+
+`cargo xtask bundle --check` rebuilds and fails when the tracked live asset is
+stale, which is the CI staleness gate. The build is deterministic: same
+sources, same bytes.
+
+`wasm-pack` is the one extra tool this needs (`cargo install wasm-pack
+--locked`) plus the `wasm32-unknown-unknown` target, which
+`rust-toolchain.toml` requests. `IMPECCABLE_XTASK_SKIP_WASM_PACK=1` reuses
+whatever is already in `target/wasm-bundle/`, for iterating on the page JS
+alone. `IMPECCABLE_EXTENSION_SKIP_BUNDLE=1` lets `bun run build:extension`
+skip the bundle step when `extension/detector/` is already complete, for CI
+matrices that pre-built it.
+
+Run `cargo xtask bundle` after touching `crates/core`, `crates/wasm`, or
+`browser-bundle/`, and commit the refreshed live asset.
 
 ## Releases
 
-Three release kinds touch the runtime, in this order:
+Two release kinds touch the runtime, in this order:
 
-1. **Detector** (`detector-v<X>`, published by the private repo's CI to this
-   repo's Releases). `DETECTOR_VERSION` here pins it.
-2. **Engine** (`engine-v<ENGINE_VERSION>`): `bun run release:engine` verifies
-   the detector release exists (`scripts/check-detector-release.mjs`), tags,
-   and pushes; `.github/workflows/release-engine.yml` builds the five targets
-   and publishes the binaries with `.sha256` sidecars. The launcher, the npm
-   shim and `impeccable install` download from
+1. **Engine** (`engine-v<ENGINE_VERSION>`): `bun run release:engine` verifies
+   the version, the npm platform-package pins and a clean tree, then tags and
+   pushes; `.github/workflows/release-engine.yml` builds the five targets and
+   publishes the binaries with `.sha256` sidecars. The launcher, the npm shim
+   and `impeccable install` download from
    `github.com/pbakaus/impeccable/releases/download/engine-v<X>/`.
-3. **npm platform packages**, then the **skill** and **CLI** releases, which
+2. **npm platform packages**, then the **skill** and **CLI** releases, which
    `scripts/check-engine-release.mjs` gates on the engine release.
 
-The browser extension vendors from the same detector release: `bun run
-build:extension` pulls `detector-browser-bundle.zip` for the pinned
-`DETECTOR_VERSION` through `scripts/lib/detector-bundle.mjs`, which resolves
-it the same three ways `crates/core/build.rs` resolves the archive, and
-unpacks the five generated pieces into the gitignored `extension/detector/`.
+The extension ships its own vendored WASM core and never execs the engine
+binary, so `bun run release:ext` is exempt from that gate. It does need
+`bun run build:extension` (and therefore a Rust toolchain and `wasm-pack`)
+before the zip is attached.
 
-CI runs the workspace build and tests (`rust`, `rust-windows`) and the oracle
-against a source build; both are warn-only until the first detector release
-exists, then their `continue-on-error` flips to false.
-
-## Working on the detector
-
-Changes to rule logic happen in the private detector repo. Point the shim at
-a local build while iterating:
-
-```bash
-# in the detector repo
-cargo xtask detector-archive --out /tmp/det
-# here
-IMPECCABLE_DETECTOR_LIB=/tmp/det cargo test --workspace
-```
-
-Adding a function that the open crates call: add its id to
-`foundation/src/boundary.rs` (never renumber), the shim in `crates/core`, the
-dispatcher arm in the detector repo, and bump `boundary::ABI` if any existing
-signature or type changed. The shim's test diffs the two id tables.
+CI runs the workspace build and tests (`rust`, `rust-windows`) and replays the
+oracle against a release build from the checkout under test.

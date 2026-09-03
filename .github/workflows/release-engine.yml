@@ -5,8 +5,8 @@ name: release-engine
 # (cli/bin/cli.js), `impeccable install`, and `bun run fetch:engine` download.
 #
 # Trigger: `bun run release:engine` (scripts/release.mjs) verifies
-# ENGINE_VERSION, the detector release it builds against, and a clean tree,
-# then pushes the tag. Third-party actions are pinned to commit SHAs so a
+# ENGINE_VERSION, the npm platform-package pins, and a clean tree, then
+# pushes the tag. Third-party actions are pinned to commit SHAs so a
 # moved tag cannot swap the code this workflow runs.
 on:
   push:
@@ -35,8 +35,8 @@ jobs:
           set -e
           want="engine-v$(tr -d '[:space:]' < ENGINE_VERSION)"
           [ "$GITHUB_REF_NAME" = "$want" ] || { echo "tag $GITHUB_REF_NAME != $want"; exit 1; }
-      # rust-toolchain.toml pins the exact rustc the prebuilt detector was
-      # built with; `rustup show` installs it. Never override the toolchain here.
+      # rust-toolchain.toml names the channel; `rustup show` installs it.
+      # Never override the toolchain here.
       - name: Install the pinned toolchain
         shell: bash
         run: rustup show && rustup target add ${{ matrix.target }}
@@ -46,8 +46,6 @@ jobs:
         run: cargo install cross --locked
       - name: Build
         shell: bash
-        # build.rs in crates/core downloads the pinned detector archive for
-        # this target from the detector-v<DETECTOR_VERSION> release.
         run: ${{ matrix.cross && 'cross' || 'cargo' }} build --release -p impeccable --target ${{ matrix.target }}
       - name: Smoke the binary
         if: ${{ !matrix.cross }}

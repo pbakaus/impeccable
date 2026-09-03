@@ -25,7 +25,7 @@ export const SUITES = {
     description: 'Build, provider transforms, hook manifests, plugin validators, and prose gates.',
     triggers: [
       ...COMMON_INFRA_PATTERNS,
-      /^scripts\/(?!build-browser-detector|build-extension)/,
+      /^scripts\/(?!build-extension)/,
       /^skill\/(SKILL\.src\.md|agents\/|reference\/|scripts\/)/,
       /^ENGINE_VERSION$/,
       /^README(\.npm)?\.md$/,
@@ -61,8 +61,6 @@ export const SUITES = {
           'tests/hook-build.test.mjs',
           'tests/openai-plugin.test.mjs',
           'tests/release.test.mjs',
-          'tests/check-detector-release.test.mjs',
-          'tests/detector-bundle.test.mjs',
           'tests/skill-reference.test.mjs',
           'tests/readme-gitignore.test.mjs',
           'tests/test-suites.test.mjs',
@@ -93,11 +91,13 @@ export const SUITES = {
     ],
   },
   detector: {
-    description: 'Extension packaging checks (the detector engine itself is tested in the engine repo and by the oracle).',
+    description: 'Extension packaging checks (the rule logic itself is covered by the crate tests and the oracle).',
     triggers: [
       ...COMMON_INFRA_PATTERNS,
       /^extension\/(background|content|detector|devtools|offscreen|popup|manifest\.json)/,
-      /^scripts\/(build-browser-detector|build-extension)\.js$/,
+      /^scripts\/build-extension\.js$/,
+      /^browser-bundle\//,
+      /^crates\/(core|foundation|wasm|xtask)\//,
     ],
     commands: [
       {

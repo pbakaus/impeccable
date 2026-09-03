@@ -1,5 +1,5 @@
 //! Replays the recorded JS call vectors through the Rust port and requires
-//! every one to match. Vectors live in the public repo at
+//! every one to match. Vectors live at
 //! `tests/oracle/vectors/calls/<module>/<fn>.jsonl` in this repo;
 //! `IMPECCABLE_PUBLIC_REPO` overrides the root for an out-of-tree checkout.
 
@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 
 const MODULES: &[&str] = &["shared.color", "shared.inline-ignores", "rules.checks"];
 
-/// The repo root: this workspace is the public repo. `IMPECCABLE_PUBLIC_REPO`
-/// overrides it for an out-of-tree checkout.
+/// The repo root. `IMPECCABLE_PUBLIC_REPO` overrides it for an out-of-tree
+/// checkout.
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
 }
@@ -100,7 +100,7 @@ fn same(a: &Canon, b: &Canon) -> bool {
 fn replay_recorded_vectors() {
     let Some(dir) = vectors_dir() else {
         panic!(
-            "vectors dir not found; set IMPECCABLE_PUBLIC_REPO to a checkout of the public repo that has \
+            "vectors dir not found; set IMPECCABLE_PUBLIC_REPO to a checkout of this repo that has \
              tests/oracle/vectors/calls (generate with `node tests/oracle/vectors/record-calls.mjs`)"
         );
     };
@@ -109,12 +109,12 @@ fn replay_recorded_vectors() {
     let mut lines_out: Vec<String> = Vec::new();
     for module in MODULES {
         let mod_dir = dir.join(module);
-        // `KNOWN_FUNCTIONS` is already the union of the open arms and the
-        // detector's, fetched across the boundary.
+        // `KNOWN_FUNCTIONS` is the union of foundation's arms and this
+        // crate's.
         let mut known: Vec<&str> = Vec::new();
         for (m, fns) in KNOWN_FUNCTIONS.iter() {
             if m == module {
-                known.extend(fns.iter().map(|f| f.as_str()));
+                known.extend(fns.iter().copied());
             }
         }
         let mut seen: Vec<String> = Vec::new();

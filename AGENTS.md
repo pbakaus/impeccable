@@ -17,7 +17,7 @@
 - `bun run test:live-e2e` - opt-in live-mode E2E against framework fixtures (~2 min; needs `npx playwright install chromium` once).
 - `bun run test:skill-behavior` - opt-in LLM-backed checks that the SKILL.md Setup flow actually drives the agent (runs claude-sonnet-5 / gpt-5.6-luna / gemini-3.5-flash / deepseek-v4-flash; needs `.env` with provider keys).
 - `bun run test:plugin-e2e` - just the plugin loader E2E, for fast iteration on `plugin/`, `skill/agents/`, or `scripts/build.js` changes.
-- `bun run build:extension` - rebuild the extension bundle (`build:browser` is a no-op stub; the in-page bundle comes from the engine repo).
+- `bun run build:extension` - rebuild the extension bundle (it runs `cargo xtask bundle`, which also refreshes the in-page detector bundle).
 
 Run `bun run build` after changing anything in `skill/`, transformer code, or user-facing counts. It validates the generated distribution under `dist/` without touching tracked root harness outputs. Use `bun run build:release` only when intentionally refreshing generated provider permutations for release/main-sync or build-system work.
 

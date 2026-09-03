@@ -21,7 +21,7 @@ const RUST_PATTERNS = [
   /^crates\//,
   /^Cargo\.(toml|lock)$/,
   /^rust-toolchain\.toml$/,
-  /^DETECTOR_VERSION$/,
+  /^browser-bundle\//,
   /^tests\/oracle\//,
   /^\.github\/workflows\/ci\.yml$/,
 ];

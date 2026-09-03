@@ -834,15 +834,7 @@ pub mod json_number {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     pub fn serialize<S: Serializer>(v: &f64, s: S) -> Result<S::Ok, S::Error> {
-        // The integral collapse exists so JSON reads `12` where JS printed
-        // `12`, not `12.0`. It must not happen for a binary format: the
-        // boundary's postcard encoding is not self-describing, so an i64
-        // where the decoder expects an f64 is silently the wrong bytes.
-        if s.is_human_readable()
-            && v.is_finite()
-            && v.fract() == 0.0
-            && v.abs() < 9.007_199_254_740_992e15
-        {
+        if v.is_finite() && v.fract() == 0.0 && v.abs() < 9.007_199_254_740_992e15 {
             (*v as i64).serialize(s)
         } else {
             v.serialize(s)

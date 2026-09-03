@@ -3,11 +3,10 @@
 /**
  * Builds the browser DevTools extension (Chrome + Firefox).
  *
- * 1. Vendors the five generated detector pieces (core.js, core_bg.wasm,
- *    snapshot.js, overlay.js, antipatterns.json) into extension/detector/
- *    from the closed detector release, resolved by
- *    scripts/lib/detector-bundle.mjs the same three ways crates/core/build.rs
- *    resolves the native archive.
+ * 1. Builds the five generated detector pieces (core.js, core_bg.wasm,
+ *    snapshot.js, overlay.js, antipatterns.json) into extension/detector/ by
+ *    running `cargo xtask bundle`, which compiles the rule core to
+ *    WebAssembly and concatenates it with the page JS in browser-bundle/.
  * 2. Checks that every path the manifest and the service worker reference
  *    exists in extension/.
  * 3. Packages extension.zip (Chrome Web Store) and extension-firefox.zip (AMO).
@@ -23,38 +22,49 @@
  * Firefox artifact is still produced so `web-ext lint` keeps covering the
  * shared shell.
  *
+ * Needs a Rust toolchain and wasm-pack for step 1. CI matrices that already
+ * ran `cargo xtask bundle` can skip it with IMPECCABLE_EXTENSION_SKIP_BUNDLE=1,
+ * which is honored only when extension/detector/ already holds all five pieces.
+ *
  * Run: node scripts/build-extension.js
- *   IMPECCABLE_DETECTOR_LIB=<dir>   use a local `cargo xtask detector-archive` output
- *   IMPECCABLE_DETECTOR_BASE=<url>  override the detector release root
- *   IMPECCABLE_DETECTOR_OFFLINE=1   refuse to download
  */
 
 import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { DETECTOR_PIECES, vendorDetectorBundle } from './lib/detector-bundle.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const EXT_DIR = path.join(ROOT, 'extension');
 const DETECTOR_DIR = path.join(EXT_DIR, 'detector');
 
-// --- 1. Vendor the detector pieces ---
+// --- 1. Build the detector pieces (cargo xtask bundle) ---
 
-const vendored = await vendorDetectorBundle({
-  root: ROOT,
-  destDir: DETECTOR_DIR,
-  log: (line) => console.log(line),
-});
-const totalKb = vendored.files.reduce((sum, f) => sum + f.bytes, 0) / 1024;
-console.log(
-  `Vendored ${DETECTOR_PIECES.length} detector pieces into extension/detector/ ` +
-    `(${totalKb.toFixed(1)} KB, detector v${vendored.version}, source: ${vendored.source})`,
-);
+/** The five generated pieces the extension shell loads. */
+const DETECTOR_PIECES = ['core.js', 'core_bg.wasm', 'snapshot.js', 'overlay.js', 'antipatterns.json'];
+
+const havePieces = DETECTOR_PIECES.every((piece) => fs.existsSync(path.join(DETECTOR_DIR, piece)));
+if (process.env.IMPECCABLE_EXTENSION_SKIP_BUNDLE === '1' && havePieces) {
+  console.log('Skipping `cargo xtask bundle` (IMPECCABLE_EXTENSION_SKIP_BUNDLE=1, extension/detector/ is complete)');
+} else {
+  console.log('Building extension/detector/ with `cargo xtask bundle` ...');
+  execSync('cargo xtask bundle', { cwd: ROOT, stdio: 'inherit' });
+}
+
+const missingPieces = DETECTOR_PIECES.filter((piece) => !fs.existsSync(path.join(DETECTOR_DIR, piece)));
+if (missingPieces.length) {
+  throw new Error(
+    `extension/detector/ is missing generated piece(s) after the bundle step:\n` +
+      missingPieces.map((p) => `  \u00b7 ${p}`).join('\n'),
+  );
+}
+const totalKb =
+  DETECTOR_PIECES.reduce((sum, piece) => sum + fs.statSync(path.join(DETECTOR_DIR, piece)).size, 0) / 1024;
+console.log(`Built ${DETECTOR_PIECES.length} detector pieces into extension/detector/ (${totalKb.toFixed(1)} KB)`);
 
 const ruleCount = JSON.parse(fs.readFileSync(path.join(DETECTOR_DIR, 'antipatterns.json'), 'utf-8')).length;
-console.log(`  antipatterns.json: ${ruleCount} rules (generated; not regenerated here)`);
+console.log(`  antipatterns.json: ${ruleCount} rules`);
 
 // --- 2. Referenced-file check ---
 

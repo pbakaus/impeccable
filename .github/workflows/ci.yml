@@ -93,12 +93,21 @@ jobs:
         if: needs.changes.outputs.framework == 'true'
         run: bun run test:framework
 
-      - name: Rebuild browser detector
-        if: needs.changes.outputs.detector == 'true'
-        run: bun run build:browser
-
       - name: Build
         run: bun run build
+
+      # `bun run build:extension` runs `cargo xtask bundle`: the rule core
+      # compiled to wasm plus the page JS in browser-bundle/.
+      - name: Install the pinned toolchain
+        if: needs.changes.outputs.detector == 'true'
+        run: rustup show && rustup target add wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        if: needs.changes.outputs.detector == 'true'
+
+      - name: Install wasm-pack
+        if: needs.changes.outputs.detector == 'true'
+        run: cargo install wasm-pack --locked
 
       - name: Build extension
         if: needs.changes.outputs.detector == 'true'
@@ -112,8 +121,8 @@ jobs:
         run: npx --yes web-ext@10 lint --source-dir dist/extension-firefox
 
       - name: Verify generated tracked outputs
-        # cli/engine/ left the tree with the Rust engine swap; the vendored
-        # extension/detector/ path stays listed for when its vendoring lands.
+        # extension/detector/ is gitignored (built by `cargo xtask bundle`);
+        # it stays listed so a stray tracked copy shows up here.
         run: git diff --exit-code -- .agents .claude .cursor .gemini .github/skills plugin extension/detector
 
       - name: Upload build artifacts
@@ -126,45 +135,28 @@ jobs:
             !dist/extension-firefox/
           retention-days: 7
 
-  # The Rust workspace: the engine binary and every crate behind it.
-  # crates/core/build.rs downloads the prebuilt closed detector archive for
-  # the pinned DETECTOR_VERSION (docs/ENGINE.md), so this job needs that
-  # release to exist.
-  #
-  # continue-on-error is a release-time toggle: until detector-v<DETECTOR_VERSION>
-  # is published, the archive cannot be fetched and the job would block every
-  # PR. Once it is live, flip continue-on-error to false so a Rust regression
-  # fails CI instead of only annotating it.
+  # The Rust workspace: the engine binary, the rule core, and every crate
+  # behind them. Everything builds from source with no downloads.
   rust:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.rust == 'true'
-    continue-on-error: true
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      # rust-toolchain.toml pins the exact rustc the detector was built with;
-      # `rustup show` installs it. Never override the toolchain here.
+      # rust-toolchain.toml names the channel; `rustup show` installs it.
+      # Never override the toolchain here.
       - name: Install the pinned toolchain
         run: rustup show
 
       - uses: Swatinem/rust-cache@v2
 
       - name: Build
-        id: build
-        continue-on-error: true
         run: cargo build --workspace --all-targets
 
       - name: Test
-        if: steps.build.outcome == 'success'
         run: cargo test --workspace
-
-      - name: Annotate missing detector release
-        if: steps.build.outcome != 'success'
-        run: |
-          echo "::warning title=Rust workspace not built::cargo build failed. If crates/core/build.rs could not download detector-v$(cat DETECTOR_VERSION), the detector release is not published yet; publish it (tag the private detector repo) and flip this job's continue-on-error to false. Otherwise this is a real build failure."
-          exit 1
 
   # The engine ships a windows-x64 binary (release-engine.yml), so the
   # workspace has to build and pass its own tests there. Tests that need a
@@ -173,7 +165,6 @@ jobs:
     runs-on: windows-latest
     needs: changes
     if: needs.changes.outputs.rust == 'true'
-    continue-on-error: true
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -188,13 +179,10 @@ jobs:
   # not on the last published binary). Without this job the oracle only ever
   # runs on developer laptops: tests/oracle.test.mjs skips cleanly when no
   # binary is present, so the default suite is silent about it on CI.
-  #
-  # continue-on-error: same release-time toggle as `rust` above.
   oracle:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.oracle == 'true' || needs.changes.outputs.rust == 'true'
-    continue-on-error: true
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -218,21 +206,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Build the engine from source
-        id: build
-        continue-on-error: true
         run: cargo build --release -p impeccable
 
       - name: Replay oracle goldens
-        if: steps.build.outcome == 'success'
         env:
           IMPECCABLE_BIN: ${{ github.workspace }}/target/release/impeccable
         run: node tests/oracle/run.mjs
-
-      - name: Annotate missing detector release
-        if: steps.build.outcome != 'success'
-        run: |
-          echo "::warning title=Oracle not run::the engine did not build (see the rust job). The oracle behavior gate did NOT run. Expected until detector-v$(cat DETECTOR_VERSION) is published; after that, flip this job's continue-on-error to false."
-          exit 1
 
   # Release-order guard (triage decision D4). Verifies that the engine release for
   # the pinned ENGINE_VERSION is fully published — the five dist binaries + .sha256

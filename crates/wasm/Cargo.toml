@@ -1,0 +1,32 @@
+[package]
+name = "impeccable-wasm"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+# The JSON-in/JSON-out exports over the pure core surface (exports_pure.rs),
+# for the site and other consumers. Off in the shipped in-page bundle: the
+# scan path never calls them and they add ~150 KB of wasm plus ~80 KB of glue.
+# `cargo xtask bundle --pure` builds a bundle that carries them; native
+# `cargo test -p impeccable-wasm` covers them either way.
+pure-exports = ["impeccable-core/vectors"]
+
+[dependencies]
+impeccable-core = { workspace = true }
+wasm-bindgen = "0.2"
+serde_json = { workspace = true }
+
+[dev-dependencies]
+impeccable-wasm = { path = ".", features = ["pure-exports"] }
+
+# wasm-pack runs wasm-opt on the release build. `--all-features` is required:
+# the bundled wasm-opt predates the wasm features rustc emits by default
+# (bulk memory, multivalue, reference types) and rejects the module otherwise.
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-Oz", "--all-features"]

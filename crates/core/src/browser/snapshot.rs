@@ -1,7 +1,8 @@
-//! The snapshot DOM and its one-shot findings run. The snapshot itself is
-//! open (`impeccable_foundation::browser::snapshot`); the run below drives the
-//! closed driver through the shim, so the memo reset and the needs handshake
-//! stay on this side of the boundary.
+//! The snapshot DOM and its one-shot findings run. Everything except the
+//! run itself is open and lives in `impeccable_foundation::browser::snapshot`;
+//! this module re-exports it under the path callers already use and adds
+//! [`collect_findings_from_snapshot`], which drives the closed browser
+//! driver.
 
 pub use impeccable_foundation::browser::snapshot::*;
 

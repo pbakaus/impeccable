@@ -1,25 +1,19 @@
-//! impeccable-core: the open runtime's view of the detector engine.
+//! impeccable-core: the rule logic of the impeccable detector engine, ported
+//! from the JS `cli/engine` with byte-for-byte behavioral parity. The
+//! `check_*` / `scan_*` functions and the heuristics behind them live here.
 //!
-//! This crate holds no rule logic. It is the seam between the open runtime
-//! (the `html`, `detect`, `browser`, `live`, `hook` and `context` crates) and
-//! the closed detector, and it exposes exactly the module paths those crates
-//! already use:
-//!
-//! - the **open** helpers (`js`, `color`, `registry`, `browser::dom`, the
-//!   plain-data input and output types, ...) are `pub use`d straight from
-//!   `impeccable-foundation`, which is Apache-2.0 and part of this workspace;
-//! - the **closed** functions (`checks::rules::check_borders`,
-//!   `browser::driver::collect_browser_findings`, ...) are one-line shims with
-//!   the same signatures, which encode their arguments and call across the
-//!   C-ABI in [`impeccable_foundation::boundary`] into the prebuilt detector
-//!   archive that `build.rs` links.
-//!
-//! Consumers cannot tell the difference, which is the point: moving a
-//! function from open to closed (or back) is a change here and nowhere else.
+//! Everything they are written against lives in `impeccable-foundation`: JS
+//! number and string semantics, colour maths, the rule registry, inline
+//! ignores, the DOM probe trait, and the plain-data input and output types.
+//! This crate re-exports those modules for its own convenience, so
+//! `crate::js`, `crate::color`, `crate::browser::dom` and friends keep
+//! resolving inside it, and so consumers can name everything through
+//! `impeccable_core::`. No filesystem, process, or network access lives here,
+//! and the crate compiles to wasm (`crates/wasm` builds the in-page bundle
+//! and the extension core from it).
 
 pub mod browser;
 pub mod checks;
-mod ffi;
 
 pub use impeccable_foundation::{
     color, constants, fdlibm_trig, findings, fonts, inline_ignores, js, js_ext_a, js_ext_b, page,
@@ -28,6 +22,3 @@ pub use impeccable_foundation::{
 
 #[cfg(any(test, feature = "vectors"))]
 pub mod vectors;
-
-/// The boundary contract, re-exported so tests and tools can name the ids.
-pub use impeccable_foundation::boundary;

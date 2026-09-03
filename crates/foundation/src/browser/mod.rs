@@ -1,7 +1,7 @@
-//! The open half of the in-page rule set: the DOM probe trait every engine
+//! The shared half of the in-page rule set: the DOM probe trait every engine
 //! implements ([`dom::Dom`]), the snapshot implementation and its selector
-//! engine, the test fake, and the boundary types the browser checks take in
-//! and hand back. The checks themselves live in the detector.
+//! engine, the test fake, and the plain-data types the browser checks take
+//! in and hand back. The checks themselves live in `impeccable-core`.
 //!
 //! - `dom`: the [`dom::Dom`] trait, `ElId`, `Rect`, shared helpers.
 //! - `snapshot`: [`snapshot::SnapshotDom`], the trait over a serialized page
@@ -26,46 +26,19 @@ pub use dom::{Dom, ElId, Rect};
 /// The `{ type, detail, severity?, ignoreValue? }` shape the overlay loop
 /// carries (`checkElement*DOM(el).map(f => ({ type: f.id, detail: f.snippet }))`).
 /// Field order matches the JS object literal so serialized JSON is byte-equal.
-/// `Serialize` is hand-written: JSON omits an absent `severity` /
-/// `ignoreValue` (the JS object literal had no such key), but the boundary's
-/// postcard encoding is not self-describing and a skipped field would
-/// desynchronize the stream, so a binary format gets all four.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BrowserFinding {
     #[serde(rename = "type")]
     pub type_: String,
     pub detail: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub severity: Option<String>,
-    #[serde(default, rename = "ignoreValue")]
+    #[serde(
+        default,
+        rename = "ignoreValue",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub ignore_value: Option<String>,
-}
-
-impl Serialize for BrowserFinding {
-    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeStruct;
-        if !s.is_human_readable() {
-            let mut st = s.serialize_struct("BrowserFinding", 4)?;
-            st.serialize_field("type", &self.type_)?;
-            st.serialize_field("detail", &self.detail)?;
-            st.serialize_field("severity", &self.severity)?;
-            st.serialize_field("ignoreValue", &self.ignore_value)?;
-            return st.end();
-        }
-        let n = 2 + self.severity.is_some() as usize + self.ignore_value.is_some() as usize;
-        let mut st = s.serialize_struct("BrowserFinding", n)?;
-        st.serialize_field("type", &self.type_)?;
-        st.serialize_field("detail", &self.detail)?;
-        match &self.severity {
-            Some(v) => st.serialize_field("severity", v)?,
-            None => st.skip_field("severity")?,
-        }
-        match &self.ignore_value {
-            Some(v) => st.serialize_field("ignoreValue", v)?,
-            None => st.skip_field("ignoreValue")?,
-        }
-        st.end()
-    }
 }
 
 impl BrowserFinding {

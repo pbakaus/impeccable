@@ -7,7 +7,7 @@
 // `engine` is different: it only tags `engine-v<ENGINE_VERSION>` and pushes the
 // tag; .github/workflows/release-engine.yml builds the five binaries and
 // publishes the GitHub Release. It has no changelog entry and no local
-// artifacts, and it is gated on the closed detector release the build links.
+// artifacts.
 //
 // Refuses on a dirty tree, an unpushed HEAD, or a missing changelog entry.
 // For the skill component, also reruns `bun run build:release` and refuses if the
@@ -18,7 +18,6 @@ import { execSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkEngineRelease } from './check-engine-release.mjs';
-import { checkDetectorRelease, readDetectorVersion } from './check-detector-release.mjs';
 import { readEngineVersion } from './fetch-engine.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -387,10 +386,8 @@ function htmlToMarkdown(html) {
 
 // The engine release: verify, tag, push. CI does the building and publishing
 // (release-engine.yml), so the maintainer's machine never needs five
-// toolchains. Refuses when the detector release the build links against is
-// not published: crates/core/build.rs downloads
-// detector-v<DETECTOR_VERSION> for every target, so a missing archive would
-// fail every matrix job after the tag is already pushed.
+// toolchains. The whole workspace builds from source, so there is nothing to
+// fetch and nothing to order ahead of it.
 async function releaseEngine() {
   step('Reading version from ENGINE_VERSION');
   const version = readEngineVersion(repoRoot);
@@ -403,24 +400,6 @@ async function releaseEngine() {
   const wrong = pins.filter(([, range]) => String(range).replace(/^[^\d]*/, '') !== version);
   if (wrong.length) fail(`package.json pins ${wrong.map(([n, r]) => `${n}@${r}`).join(', ')}; expected ${version}. Bump them with ENGINE_VERSION.`);
   ok(`${pins.length} platform package pins agree`);
-
-  if (process.env.IMPECCABLE_SKIP_DETECTOR_CHECK !== '1') {
-    const detectorVersion = readDetectorVersion(repoRoot);
-    step(`Verifying detector v${detectorVersion} release assets are published (the engine build links them)`);
-    const result = await checkDetectorRelease({ version: detectorVersion });
-    if (!result.ok) {
-      console.error('✗ Detector release is incomplete. Missing assets:');
-      for (const m of result.missing) console.error(`    · ${m.what}\n        ${m.url}`);
-      fail(
-        `Refusing to tag engine ${version}: detector v${detectorVersion} is not fully published.\n` +
-        '  Tag the detector repo first; its CI publishes the archives to this repo\'s detector-v release.\n' +
-        '  Ordering: detector release → engine release → platform packages → skill/CLI release.'
-      );
-    }
-    ok(`detector v${detectorVersion} release assets all present`);
-  } else {
-    step('Skipping detector release-order guard (IMPECCABLE_SKIP_DETECTOR_CHECK=1)');
-  }
 
   const tag = `${cfg.tagPrefix}${version}`;
 

@@ -52,7 +52,7 @@ function runRelease(cwd, ...args) {
       // The D4 engine release-order guard would otherwise probe the network for
       // published engine assets; these guards predate it and only exercise the
       // version/changelog/artifact checks, so take its documented escape hatch.
-      env: { ...process.env, IMPECCABLE_SKIP_ENGINE_CHECK: '1', IMPECCABLE_SKIP_DETECTOR_CHECK: '1' },
+      env: { ...process.env, IMPECCABLE_SKIP_ENGINE_CHECK: '1' },
     });
     return { code: 0, stdout, stderr: '' };
   } catch (err) {
@@ -88,7 +88,7 @@ describe('release.mjs guards', () => {
     // (and check-engine-release.mjs imports fetch-engine.mjs), so stage them
     // too or the dry runs fail to resolve the modules instead of exercising
     // the guard.
-    for (const dep of ['check-engine-release.mjs', 'check-detector-release.mjs', 'fetch-engine.mjs']) {
+    for (const dep of ['check-engine-release.mjs', 'fetch-engine.mjs']) {
       fs.copyFileSync(path.join(REPO_ROOT, 'scripts', dep), path.join(workDir, 'scripts', dep));
     }
     write('.claude-plugin/plugin.json', JSON.stringify({ name: 'impeccable', version: '1.2.3' }));
@@ -99,7 +99,6 @@ describe('release.mjs guards', () => {
       optionalDependencies: { '@impeccable/cli-darwin-arm64': '0.1.0', '@impeccable/cli-linux-x64': '0.1.0' },
     }));
     write('ENGINE_VERSION', '0.1.0\n');
-    write('DETECTOR_VERSION', '0.1.0\n');
     write('extension/manifest.json', JSON.stringify({ version: '2.0.0' }));
     write('site/pages/changelog.astro', CHANGELOG);
     write('dist/universal.zip', 'zip');
@@ -141,7 +140,6 @@ describe('release.mjs guards', () => {
     assert.equal(code, 0, stdout);
     assert.match(stdout, /Engine 0\.1\.0/);
     assert.match(stdout, /2 platform package pins agree/);
-    assert.match(stdout, /Skipping detector release-order guard/);
     assert.match(stdout, /\[dry-run\] git tag -a engine-v0\.1\.0/);
     assert.match(stdout, /\[dry-run\] git push origin engine-v0\.1\.0/);
     assert.doesNotMatch(stdout, /gh release create/);

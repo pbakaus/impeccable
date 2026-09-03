@@ -1,7 +1,7 @@
 //! The plain-data shapes of the visual-contrast subsystem: painted-image
 //! rects, the raster plan, the stack walk's node list, and the two staged
 //! plans (`CssPlan`, `Prepared`) the caller resolves between passes. The
-//! decisions that produce them live in the detector.
+//! decisions that produce them live in `impeccable-core`.
 
 use super::dom::{ElId, Rect};
 use crate::color::Rgba;

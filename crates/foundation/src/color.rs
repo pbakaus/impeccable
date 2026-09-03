@@ -13,14 +13,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 /// The JS color object `{ r, g, b, a? }`.
-///
-/// `Deserialize` is derived; `Serialize` is written by hand because the JSON
-/// shape and the boundary's binary shape differ. In JSON `a` is omitted when
-/// absent (the JS object literal had no `a` key) and integral channels print
-/// without a fraction. Postcard is not self-describing, so a skipped field or
-/// an i64 in an f64 slot would desynchronize the stream: for a non
-/// human-readable format every field is written, as an f64.
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Rgba {
     #[serde(with = "crate::js::json_number")]
     pub r: f64,
@@ -28,37 +21,12 @@ pub struct Rgba {
     pub g: f64,
     #[serde(with = "crate::js::json_number")]
     pub b: f64,
-    #[serde(default, with = "crate::js::json_number::option")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "crate::js::json_number::option"
+    )]
     pub a: Option<f64>,
-}
-
-impl Serialize for Rgba {
-    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeStruct;
-        if !s.is_human_readable() {
-            let mut st = s.serialize_struct("Rgba", 4)?;
-            st.serialize_field("r", &self.r)?;
-            st.serialize_field("g", &self.g)?;
-            st.serialize_field("b", &self.b)?;
-            st.serialize_field("a", &self.a)?;
-            return st.end();
-        }
-        struct Num(f64);
-        impl Serialize for Num {
-            fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-                crate::js::json_number::serialize(&self.0, s)
-            }
-        }
-        let mut st = s.serialize_struct("Rgba", if self.a.is_some() { 4 } else { 3 })?;
-        st.serialize_field("r", &Num(self.r))?;
-        st.serialize_field("g", &Num(self.g))?;
-        st.serialize_field("b", &Num(self.b))?;
-        match self.a {
-            Some(a) => st.serialize_field("a", &Num(a))?,
-            None => st.skip_field("a")?,
-        }
-        st.end()
-    }
 }
 
 impl Rgba {

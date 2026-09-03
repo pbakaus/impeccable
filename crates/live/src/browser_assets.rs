@@ -1,9 +1,9 @@
 //! JS: live/browser-script-parts.mjs plus the files the server serves. The
 //! browser scripts are embedded at build time straight from `skill/scripts/`,
 //! the one copy the build also ships to every provider, so the binary and the
-//! installed skill can never disagree. The `/detect.js` fallback is the closed
-//! in-page bundle, which `crates/core/build.rs` resolves beside the detector
-//! archive rather than tracking here. When a skill directory with the part
+//! installed skill can never disagree. The `/detect.js` fallback is the
+//! in-page detector bundle, a tracked generated file under `../assets/`
+//! (`cargo xtask bundle` writes it). When a skill directory with the part
 //! files is available (`IMPECCABLE_SKILL_DIR`), the parts are re-read from disk
 //! on every request like the JS, so edits land on the next tab reload.
 
@@ -16,7 +16,7 @@ pub const LIVE_BROWSER_DOM_JS: &str = include_str!("../../../skill/scripts/live-
 pub const LIVE_BROWSER_IGNORES_JS: &str = include_str!("../../../skill/scripts/live-browser-ignores.js");
 pub const LIVE_BROWSER_JS: &str = include_str!("../../../skill/scripts/live-browser.js");
 pub const MODERN_SCREENSHOT_JS: &[u8] = include_bytes!("../../../skill/scripts/modern-screenshot.umd.js");
-pub use impeccable_core::browser::IN_PAGE_BUNDLE_JS as DETECT_BROWSER_JS;
+pub const DETECT_BROWSER_JS: &str = include_str!("../assets/detect-antipatterns-browser.js");
 
 /// JS: LIVE_BROWSER_SCRIPT_PARTS, in order: (name, file, embedded source).
 pub const LIVE_BROWSER_SCRIPT_PARTS: [(&str, &str, &str); 4] = [

@@ -1,4 +1,4 @@
-//! impeccable-foundation: the open half of the impeccable engine. It carries
+//! impeccable-foundation: the helper layer of the impeccable engine. It carries
 //! the JS runtime semantics the port depends on (number and string
 //! formatting, trig, regex fragments), colour maths, the rule registry,
 //! inline-ignore handling, page and font helpers, the DOM probe trait with
@@ -6,10 +6,9 @@
 //! every rule check takes in and hands back.
 //!
 //! What is NOT here is the rule logic: the `check_*` and `scan_*` functions
-//! and their heuristics live in `impeccable-core`. This crate is Apache-2.0
-//! and has no filesystem, process, or network access; it compiles to wasm.
+//! and their heuristics live in `impeccable-core`. This crate has no
+//! filesystem, process, or network access; it compiles to wasm.
 
-pub mod boundary;
 pub mod browser;
 pub mod color;
 pub mod constants;

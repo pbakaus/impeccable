@@ -1,8 +1,6 @@
-# Exact pin, on purpose. crates/core links a prebuilt closed detector
-# (docs/ENGINE.md) whose objects reference std by mangled symbol name, so the
-# runtime and the detector must be compiled by the very same rustc. rustup
-# installs this version automatically; bumping it means a new detector
-# release built with the new version (DETECTOR_VERSION moves with it).
+# Stable, with the wasm target the in-page bundle and the extension core are
+# built for (`cargo xtask bundle`). rustup installs both automatically on the
+# first `cargo` invocation. See docs/ENGINE.md.
 [toolchain]
-channel = "1.97.1"
+channel = "stable"
 targets = ["wasm32-unknown-unknown"]
