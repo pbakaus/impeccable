@@ -17,6 +17,8 @@ const COMMON_INFRA_PATTERNS = [
   /^scripts\/run-tests\.mjs$/,
   /^scripts\/test-suites\.mjs$/,
   /^scripts\/ci-test-plan\.mjs$/,
+  /^scripts\/lib\/(live-server-processes|test-orphan-reaper)\.mjs$/,
+  /^tests\/lib\/live-servers\.mjs$/,
   /^\.github\/workflows\/ci\.yml$/,
 ];
 
@@ -170,6 +172,7 @@ export const SUITES = {
           'tests/live-reference.test.mjs',
           'tests/live-roots.test.mjs',
           'tests/live-server.test.mjs',
+          'tests/live-server-leak.test.mjs',
           'tests/live-session-store.test.mjs',
           'tests/live-source-lock.test.mjs',
           'tests/live-source-search.test.mjs',

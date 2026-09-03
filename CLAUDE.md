@@ -140,9 +140,22 @@ bun run test                  # Default suite: unit + static framework fixtures 
 bun run test:live-e2e         # Opt-in: full-cycle live-mode E2E across framework fixtures
 bun run test:skill-behavior   # Opt-in: LLM-backed checks that the skill text actually drives the agent's setup flow
 bun run test:plugin-e2e       # Just the plugin loader E2E (also part of the default suite)
+bun run test:cleanup          # Kill live servers a previous run of THIS checkout left behind
 ```
 
 Unit tests (build orchestration, detector logic) run via `bun test`. Fixture tests (jsdom-based HTML detection) run via `node --test` because bun is too slow with jsdom. The `test` script handles this split automatically.
+
+### Live servers must not outlive their test process
+
+A live server does not die with the process that started it: a direct child survives its parent, and `live-server --background` is orphaned to pid 1 by design. Teardown in an `after()` hook or a `finally` covers only the exits JavaScript can observe, so a `SIGKILL`, a Ctrl-C, or a wedged runner used to leave servers squatting the live suite's fixed ports for days (issue #717).
+
+Three pieces keep that from recurring, and a new test that starts a server owes the first one:
+
+- **`armLiveServerReaper()`** (`tests/lib/live-servers.mjs`), called once at module scope by any test file that starts a live server. It stamps the process environment with a unique marker, installs exit and signal handlers, and spawns a detached reaper holding a pipe to the process. When the process dies for any reason at all, the pipe closes and the reaper kills the servers carrying that marker. Wrap direct children in `trackServerChild()` so the common case is a cheap `child.kill()`. This is deliberately implementation-agnostic: it works the same for the Node scripts and for the Rust `impeccable live-server`.
+- **The runner guard.** `scripts/run-tests.mjs` runs each suite command as its own process-group leader, forwards `SIGINT` / `SIGTERM` to the group, and after every suite checks whether any live server carrying that suite's run id is still alive. If one is, it kills it and fails the run. Bypass with `IMPECCABLE_SKIP_LEAK_CHECK=1`.
+- **`bun run test:cleanup`.** A one-shot sweep for leftovers from earlier runs.
+
+**Everything that kills is scoped by an environment marker this repo's harness exported**, never by process name or port. A sweep can never touch a live server that another checkout, or the user's own session, is running. Keep it that way.
 
 ### Which opt-in suite a change owes
 

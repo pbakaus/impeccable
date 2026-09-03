@@ -54,6 +54,7 @@
     "test:detector": "node scripts/run-tests.mjs detector",
     "test:framework": "node scripts/run-tests.mjs framework",
     "test:live": "node scripts/run-tests.mjs live",
+    "test:cleanup": "node scripts/run-tests.mjs --cleanup",
     "test:cli-e2e": "node scripts/run-tests.mjs cli-e2e",
     "test:cli-remote-e2e": "node scripts/run-tests.mjs cli-remote-e2e",
     "test:plugin-e2e": "node scripts/run-tests.mjs plugin-e2e",

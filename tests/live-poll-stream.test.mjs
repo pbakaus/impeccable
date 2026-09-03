@@ -11,6 +11,9 @@ import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { getLiveServerPath } from '../skill/scripts/lib/impeccable-paths.mjs';
 import { postReply } from '../skill/scripts/live-poll.mjs';
+import { armLiveServerReaper, trackServerChild } from './lib/live-servers.mjs';
+
+armLiveServerReaper();
 
 const REPO_ROOT = process.cwd();
 const SERVER_SCRIPT = join(REPO_ROOT, 'skill/scripts/live-server.mjs');
@@ -18,11 +21,11 @@ const POLL_SCRIPT = join(REPO_ROOT, 'skill/scripts/live-poll.mjs');
 
 function startServer(port = 8498, { cwd = REPO_ROOT } = {}) {
   return new Promise((resolve, reject) => {
-    const proc = spawn('node', [SERVER_SCRIPT, '--port=' + port], {
+    const proc = trackServerChild(spawn('node', [SERVER_SCRIPT, '--port=' + port], {
       cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env },
-    });
+    }));
     let output = '';
     proc.stdout.on('data', (d) => {
       output += d.toString();

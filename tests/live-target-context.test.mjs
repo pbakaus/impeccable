@@ -5,6 +5,11 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { armLiveServerReaper } from './lib/live-servers.mjs';
+
+// These tests boot detached live servers through live.mjs; the reaper kills any
+// the `stop` calls miss when the process dies before them.
+armLiveServerReaper();
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..');

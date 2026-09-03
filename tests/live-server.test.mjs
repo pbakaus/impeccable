@@ -19,6 +19,11 @@ import {
   removeAllSvelteComponentSessions,
   sweepInactiveSvelteComponentSessions,
 } from '../skill/scripts/live/svelte-component.mjs';
+import { armLiveServerReaper, trackServerChild } from './lib/live-servers.mjs';
+
+// Every server this file starts is killed even if the process is SIGKILLed or
+// a test times out before its after() hook runs. See tests/lib/live-servers.mjs.
+armLiveServerReaper();
 
 const REPO_ROOT = process.cwd();
 const SERVER_SCRIPT = join(REPO_ROOT, 'skill/scripts/live-server.mjs');
@@ -29,11 +34,11 @@ const COMPLETE_SCRIPT = join(REPO_ROOT, 'skill/scripts/live-complete.mjs');
 
 function startServer(port = 8499, { cwd = REPO_ROOT, env = {} } = {}) {
   return new Promise((resolve, reject) => {
-    const proc = spawn('node', [SERVER_SCRIPT, '--port=' + port], {
+    const proc = trackServerChild(spawn('node', [SERVER_SCRIPT, '--port=' + port], {
       cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, IMPECCABLE_LIVE_COPY_AGENT: 'off', ...env },
-    });
+    }));
     let output = '';
     proc.stdout.on('data', (d) => {
       output += d.toString();

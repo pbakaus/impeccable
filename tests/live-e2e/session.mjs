@@ -22,11 +22,17 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { runAgentLoop } from './agent.mjs';
+import { armLiveServerReaper, trackServerChild } from '../lib/live-servers.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..', '..');
 const SCRIPTS_DIR = join(REPO_ROOT, 'skill', 'scripts');
 const FIXTURES_DIR = join(REPO_ROOT, 'tests', 'framework-fixtures');
+
+// Live servers here are detached daemons (`live-server --background`, or a full
+// `live` boot), orphaned to pid 1 by design; teardown() is the only thing that
+// stops them. The reaper covers the runs where teardown never happens.
+armLiveServerReaper();
 
 export { SCRIPTS_DIR, FIXTURES_DIR, REPO_ROOT };
 
@@ -198,14 +204,14 @@ export function runInject(tmp, port, token) {
 
 export function startDevServer(tmp, runtime) {
   const [cmd, ...args] = runtime.devCommand;
-  const child = spawn(cmd, args, {
+  const child = trackServerChild(spawn(cmd, args, {
     cwd: tmp,
     // runtime.env lets a fixture pin framework behavior. Astro 7 needs
     // ASTRO_DEV_BACKGROUND set: it auto-detects AI-agent environments and
     // daemonizes `astro dev`, which the harness reads as a crashed server.
     env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1', ...(runtime.env || {}) },
     stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  }));
 
   const readyRe = new RegExp(runtime.readyPattern);
   const bufLog = [];
