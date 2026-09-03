@@ -752,8 +752,9 @@ mod tests_660 {
         let dir = jsp::join(&[&cwd, ".impeccable", "critique"]);
         std::fs::create_dir_all(&dir).unwrap();
         let name = "2026-05-12T18-30-00Z__app-tsx.md";
-        // Joined the way the verb resolves it, so the separators match on Windows.
-        let identity = format!("file:{}", jsp::join(&[&cwd, "App.tsx"]));
+        // The identity exactly as the verb resolves it for this target from this
+        // cwd, so the test holds on every platform's path semantics.
+        let identity = resolve_target_identity("App.tsx", &cwd).unwrap();
         let body = format!("---\ntarget_identity: \"{}\"\nslug: app-tsx\n---\n# Critique\n", identity);
         std::fs::write(jsp::join(&[&dir, name]), &body).unwrap();
 
