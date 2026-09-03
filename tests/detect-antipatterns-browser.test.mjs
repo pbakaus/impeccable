@@ -15,6 +15,7 @@
  */
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -51,6 +52,21 @@ function isolatedBrowserFixtureCases(name) {
 
 let server;
 let baseUrl;
+
+function runDetectCli(args) {
+  return new Promise((resolve) => {
+    execFile(
+      process.execPath,
+      [path.join(ROOT, 'skill', 'scripts', 'detect.mjs'), ...args],
+      { cwd: path.join(ROOT, 'tests', 'fixtures'), encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 },
+      (error, stdout, stderr) => resolve({
+        code: typeof error?.code === 'number' ? error.code : 0,
+        stdout,
+        stderr,
+      }),
+    );
+  });
+}
 
 before(async () => {
   // Static server: maps /fixtures/* to tests/fixtures/* and
@@ -370,6 +386,8 @@ describe('detectUrl — browser-only fixtures', () => {
     }
     assert.doesNotMatch(snippets, /pass-/, `no pass-case cursor should be flagged, got: ${snippets}`);
     assert.equal(hits.length, 3, `expected 3 blinking-cursor findings, got ${hits.length}: ${snippets}`);
+    assert.equal(hits.every(hit => hit.severity === 'warning'), true, JSON.stringify(hits));
+    assert.equal(hits.some(hit => hit.advisory === true), false, JSON.stringify(hits));
   });
 
   it('typography side-by-side: element-level flag cases get regular overlays', async () => {
@@ -1343,6 +1361,171 @@ describe('detectUrl — browser-only fixtures', () => {
       assert.equal(second.filter(r => r.antipattern === 'body-text-viewport-edge').length, 3);
     } finally {
       await detector.close();
+    }
+  });
+
+  it('CLI expands a joined multi-URL target and attributes both scans', async () => {
+    const first = `${baseUrl}/fixtures/antipatterns/quality.html`;
+    const second = `${baseUrl}/fixtures/antipatterns/body-text-viewport-edge.html`;
+    const result = await runDetectCli([
+      '--json',
+      '--viewport',
+      '1280x800',
+      `${first} ${second}`,
+    ]);
+    assert.equal(result.code, 2, result.stderr);
+    const files = new Set(JSON.parse(result.stdout).map(finding => finding.file));
+    assert.ok(files.has(first), `missing first URL attribution: ${JSON.stringify([...files])}`);
+    assert.ok(files.has(second), `missing second URL attribution: ${JSON.stringify([...files])}`);
+    assert.equal(files.has(`${first} ${second}`), false);
+  });
+
+  it('URL scans read linked CSS, serialize severity advisories, and flag only the dominant font', async () => {
+    const puppeteer = await import('puppeteer');
+    const browser = await launchBrowser(puppeteer, {
+      headless: true,
+      args: process.env.CI ? ['--no-sandbox', '--disable-setuid-sandbox'] : [],
+    });
+    const browserScript = fs.readFileSync(path.join(ROOT, 'cli/engine/detect-antipatterns-browser.js'), 'utf-8');
+    try {
+      const linkedPage = await browser.newPage();
+      await linkedPage.goto(`${baseUrl}/fixtures/antipatterns/linked-url-patterns.html`, { waitUntil: 'load' });
+      await linkedPage.evaluate(() => { window.__IMPECCABLE_CONFIG__ = { autoScan: false }; });
+      await linkedPage.evaluate(browserScript);
+      const linkedCssom = await linkedPage.evaluate(() => Array.from(document.styleSheets).map(sheet => ({
+        owner: sheet.ownerNode?.tagName || null,
+        rules: Array.from(sheet.cssRules || []).map(rule => ({
+          cssText: rule.cssText,
+          selectorText: rule.selectorText || null,
+          nested: Array.from(rule.cssRules || []).map(child => ({
+            cssText: child.cssText,
+            selectorText: child.selectorText || null,
+          })),
+        })),
+      })));
+      const linkedFindings = await linkedPage.evaluate(() => window.impeccableDetect({ serialize: true })
+        .flatMap(group => group.findings || []));
+      const containerBackgrounds = await linkedPage.evaluate(async () => {
+        const activeAnimation = document.querySelector('.active-container-animation-reference');
+        const inactiveAnimation = document.querySelector('.inactive-container-animation-reference');
+        const overriddenAnimation = document.querySelector('.overridden-keyframes-animation');
+        const layeredAnimation = document.querySelector('.layered-keyframes-animation');
+        const before = {
+          active: getComputedStyle(activeAnimation).transform,
+          inactive: getComputedStyle(inactiveAnimation).transform,
+          overridden: getComputedStyle(overriddenAnimation).transform,
+          layered: getComputedStyle(layeredAnimation).transform,
+        };
+        await new Promise(resolve => setTimeout(resolve, 120));
+        return {
+          inactive: getComputedStyle(document.querySelector('.inactive-container-stripes')).backgroundImage,
+          active: getComputedStyle(document.querySelector('.active-container-halo')).backgroundImage,
+          pseudoClass: getComputedStyle(document.querySelector('.inactive-pseudo-stripes')).backgroundImage,
+          activeTransforms: [before.active, getComputedStyle(activeAnimation).transform],
+          inactiveTransforms: [before.inactive, getComputedStyle(inactiveAnimation).transform],
+          overriddenTransforms: [before.overridden, getComputedStyle(overriddenAnimation).transform],
+          layeredTransforms: [before.layered, getComputedStyle(layeredAnimation).transform],
+          activeAnimationKeyframes: activeAnimation.getAnimations()[0]?.effect?.getKeyframes() || [],
+          overriddenAnimationKeyframes: overriddenAnimation.getAnimations()[0]?.effect?.getKeyframes() || [],
+          layeredAnimationKeyframes: layeredAnimation.getAnimations()[0]?.effect?.getKeyframes() || [],
+        };
+      });
+      assert.equal(containerBackgrounds.inactive, 'none');
+      assert.equal(containerBackgrounds.pseudoClass, 'none');
+      assert.match(containerBackgrounds.active, /radial-gradient/i);
+      assert.notEqual(containerBackgrounds.activeTransforms[0], containerBackgrounds.activeTransforms[1]);
+      assert.notEqual(
+        containerBackgrounds.inactiveTransforms[0],
+        containerBackgrounds.inactiveTransforms[1],
+        JSON.stringify(containerBackgrounds),
+      );
+      assert.equal(
+        containerBackgrounds.overriddenTransforms[0],
+        containerBackgrounds.overriddenTransforms[1],
+        JSON.stringify(containerBackgrounds),
+      );
+      assert.equal(
+        containerBackgrounds.activeAnimationKeyframes.some(frame => /translateX\([^)]*%\)/i.test(frame.transform || '')),
+        true,
+        JSON.stringify(containerBackgrounds.activeAnimationKeyframes),
+      );
+      assert.equal(
+        containerBackgrounds.overriddenAnimationKeyframes.some(frame => frame.transform && frame.transform !== 'none'),
+        false,
+        JSON.stringify(containerBackgrounds.overriddenAnimationKeyframes),
+      );
+      assert.notEqual(
+        containerBackgrounds.layeredTransforms[0],
+        containerBackgrounds.layeredTransforms[1],
+        JSON.stringify(containerBackgrounds),
+      );
+      assert.equal(
+        containerBackgrounds.layeredAnimationKeyframes.some(frame => /translateX\([^)]*%\)/i.test(frame.transform || '')),
+        true,
+        JSON.stringify(containerBackgrounds.layeredAnimationKeyframes),
+      );
+      const grids = linkedFindings.filter(finding => finding.type === 'codex-grid-background');
+      assert.equal(grids.length, 1, JSON.stringify({ linkedFindings, linkedCssom }));
+      assert.equal(grids[0].severity, 'advisory');
+      assert.equal(grids[0].advisory, true);
+      assert.equal(
+        linkedFindings.some(finding => finding.type === 'bounce-easing'
+          && finding.detail === 'cubic-bezier(0.34, 1.56, 0.64, 1)'),
+        true,
+        JSON.stringify({ linkedFindings, linkedCssom }),
+      );
+      const marquees = linkedFindings.filter(finding => finding.type === 'marquee');
+      assert.equal(marquees.length, 4, JSON.stringify({ linkedFindings, linkedCssom }));
+      assert.deepEqual(
+        new Set(marquees.map(finding => finding.detail.match(/^\S+/)?.[0])),
+        new Set([
+          '.linked-marquee',
+          '.active-container-animation-reference',
+          '.inactive-container-animation-reference',
+          '.layered-keyframes-animation',
+        ]),
+      );
+      const pulsingDots = linkedFindings.filter(finding => finding.type === 'pulsing-dot');
+      assert.equal(pulsingDots.length, 1, JSON.stringify({ linkedFindings, linkedCssom }));
+      assert.match(pulsingDots[0].detail, /\.linked-pulse-dot/);
+      assert.equal(linkedFindings.some(finding => finding.type === 'radial-halo'), true);
+      assert.equal(
+        linkedFindings.some(finding => finding.type === 'repeating-stripes-gradient'),
+        false,
+        JSON.stringify({ linkedFindings, linkedCssom, containerBackgrounds }),
+      );
+      assert.equal(
+        linkedFindings.some(finding => finding.type === 'gradient-text'),
+        false,
+        JSON.stringify({ linkedFindings, linkedCssom, containerBackgrounds }),
+      );
+      assert.equal(linkedFindings.some(finding => finding.type === 'layout-transition'), false);
+      assert.equal(linkedFindings.some(finding => finding.type === 'ai-color-palette'), false);
+      assert.equal(
+        linkedFindings.some(finding => finding.type === 'organic-clip-path'),
+        true,
+        JSON.stringify({ linkedFindings, linkedCssom }),
+      );
+      await linkedPage.close();
+
+      const fontPage = await browser.newPage();
+      const primary = Array.from({ length: 82 }, (_, i) => `<span class="primary">Primary ${i}</span>`).join('');
+      const secondary = Array.from({ length: 18 }, (_, i) => `<span class="secondary">Secondary ${i}</span>`).join('');
+      await fontPage.setContent(`<!doctype html><style>
+        .primary { font-family: Geist, sans-serif; }
+        .secondary { font-family: "Geist Mono", monospace; }
+      </style><main>${primary}${secondary}</main>`);
+      await fontPage.evaluate(() => { window.__IMPECCABLE_CONFIG__ = { autoScan: false }; });
+      await fontPage.evaluate(browserScript);
+      const fontFindings = await fontPage.evaluate(() => window.impeccableDetect({ serialize: true })
+        .flatMap(group => group.findings || [])
+        .filter(finding => finding.type === 'overused-font'));
+      assert.equal(fontFindings.length, 1, JSON.stringify(fontFindings));
+      assert.match(fontFindings[0].detail, /Primary font: geist \(82% of text\)/i);
+      assert.doesNotMatch(fontFindings[0].detail, /geist mono/i);
+      await fontPage.close();
+    } finally {
+      await browser.close().catch(() => {});
     }
   });
 

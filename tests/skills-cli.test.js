@@ -864,6 +864,40 @@ describe('skills install/update: local universal bundle e2e', () => {
     expect(output).not.toContain('skills install                   Install impeccable skills');
   });
 
+  test('skill-management subcommand help exits before downloads, prompts, or writes (#699)', () => {
+    const commands = ['install', 'link', 'update', 'check'];
+    const prefixes = ['', 'skills '];
+    const helpFlags = ['--help', '-h'];
+
+    for (const command of commands) {
+      for (const prefix of prefixes) {
+        for (const helpFlag of helpFlags) {
+          const tmp = mkdtempSync(join(tmpdir(), `imp-test-${command}-help-`));
+          const home = mkdtempSync(join(tmpdir(), `imp-home-${command}-help-`));
+          execSync('git init', { cwd: tmp });
+
+          const output = run(`${prefix}${command} ${helpFlag}`, {
+            cwd: tmp,
+            env: {
+              ...process.env,
+              HOME: home,
+              IMPECCABLE_BUNDLE_PATH: join(tmp, 'must-not-be-read'),
+            },
+          });
+
+          expect(output).toContain(`Usage: impeccable ${command}`);
+          for (const provider of ['.agents', '.claude', '.cursor', '.impeccable']) {
+            expect(existsSync(join(tmp, provider))).toBe(false);
+            expect(existsSync(join(home, provider))).toBe(false);
+          }
+
+          rmSync(tmp, { recursive: true, force: true });
+          rmSync(home, { recursive: true, force: true });
+        }
+      }
+    }
+  }, 30000);
+
   test('top-level install aliases the legacy skills install command', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'imp-test-top-level-install-'));
     const home = mkdtempSync(join(tmpdir(), 'imp-home-top-level-install-'));

@@ -37,13 +37,30 @@ function fileUrlToLocalPath(url) {
   }
 }
 
+const URL_TARGET_RE = /^(?:https?|file):\/\//i;
+
+// Some agent runners hand a shell-ready URL list to Node as one argv value.
+// A browser accepts the spaces as part of one encoded URL, producing a
+// plausible scan attributed to a bogus joined path. Expand only when every
+// whitespace-delimited token is independently a URL, preserving ordinary
+// filesystem paths that contain spaces.
+function expandJoinedUrlTargets(targets) {
+  return targets.flatMap((target) => {
+    if (!/\s/.test(target)) return [target];
+    const parts = target.trim().split(/\s+/).filter(Boolean);
+    return parts.length > 1 && parts.every(part => URL_TARGET_RE.test(part))
+      ? parts
+      : [target];
+  });
+}
+
 // Advisory findings are detected but never treated as failures: they list in a
 // separate, visually dimmed section, are excluded from the failure count that
 // drives the exit code, and carry `"advisory": true` in JSON so consumers can
 // filter. Every advisory finding carries the flag (stamped by the registry via
 // findings.mjs).
 function isAdvisory(finding) {
-  return finding && finding.advisory === true;
+  return Boolean(finding && (finding.advisory === true || finding.severity === 'advisory'));
 }
 
 function partitionAdvisory(findings) {
@@ -168,6 +185,10 @@ Advisory findings:
   counted as failures and never changing the exit code. They stay out of the
   failure count so they never block automation. --no-advisory hides them.
 
+Output streams:
+  Human-readable findings go to stderr so stdout stays available for structured
+  output. Use --json for JSON on stdout, or redirect text with 2> findings.txt.
+
 Project config:
   Respects .impeccable/config.json and .impeccable/config.local.json detector
   settings: detector.ignoreRules, detector.ignoreFiles, detector.ignoreValues,
@@ -185,7 +206,7 @@ Detection modes:
   HTML files     Static HTML/CSS analysis (default, catches linked CSS)
   Non-HTML files Regex pattern matching (CSS, JSX, TSX, etc.)
   URLs           Puppeteer full browser rendering (auto-detected;
-                 http(s):// and file:// URLs)
+                 http(s):// and file:// URLs; accessible linked CSS included)
 
 Examples:
   impeccable detect src/
@@ -283,7 +304,7 @@ async function detectCli() {
     const designSystem = loadDesignSystemForTarget(localPath, { cache: designSystemCache });
     return designSystem ? { ...baseScanOptions, designSystem } : baseScanOptions;
   };
-  const targets = args.filter(a => !a.startsWith('--'));
+  const targets = expandJoinedUrlTargets(args.filter(a => !a.startsWith('--')));
 
   if (helpMode) { printUsage(); process.exit(0); }
 
@@ -297,13 +318,12 @@ async function detectCli() {
     // real cascade, real computed styles, real layout. Callers that want a
     // browser-grade scan of a local artifact can pass file:///abs/path.html
     // instead of the bare path (which stays on the static engine).
-    const urlRe = /^(?:https?|file):\/\//i;
-    const urlTargetCount = paths.filter(target => urlRe.test(target)).length;
+    const urlTargetCount = paths.filter(target => URL_TARGET_RE.test(target)).length;
     const browserDetector = urlTargetCount > 1 ? await createBrowserDetector() : null;
 
     try {
       for (const target of paths) {
-        if (urlRe.test(target)) {
+        if (URL_TARGET_RE.test(target)) {
           // A file:// URL points at a local artifact, so its design system
           // resolves from that file's project. A remote http(s) URL has no
           // local project — it gets base options (no design system), never

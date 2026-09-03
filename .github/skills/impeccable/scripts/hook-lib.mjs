@@ -138,17 +138,20 @@ export const IMMEDIATE_TIER_RULES = new Set([
 // the agent is never nagged about a taste call a human might make on purpose.
 // A project opts back in with `.impeccable/config.json`:
 //   { "detector": { "advisoryRules": "include" } }
-// This set is the hook's own copy of the registry's `advisory: true` rules,
-// mirroring how IMMEDIATE_TIER_RULES lists rule ids inline so the hook stays
-// self-contained and testable without loading the detector. Keep it in sync
-// with the registry (cli/engine/registry/antipatterns.mjs).
+// This legacy id fallback keeps older detector findings recognizable when they
+// carry neither the current runtime flag nor the canonical advisory severity.
+// Current findings are classified by their serialized metadata below.
 export const ADVISORY_RULES = new Set([
   'em-dash-overuse',
 ]);
 
 export function isAdvisoryFinding(finding) {
   const id = finding && normalizeIgnoreRule(finding.antipattern);
-  return Boolean(id && (ADVISORY_RULES.has(id) || finding.advisory === true));
+  return Boolean(id && (
+    ADVISORY_RULES.has(id)
+    || finding.advisory === true
+    || finding.severity === 'advisory'
+  ));
 }
 
 export const DEFAULT_CONFIG = Object.freeze({

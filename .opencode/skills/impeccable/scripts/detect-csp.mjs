@@ -18,8 +18,9 @@
  *                       Covers:
  *                         - Inline Next.js headers() with CSP string
  *                         - Nuxt routeRules / nitro.routeRules CSP headers
- *   - "middleware":     CSP set dynamically in middleware.{ts,js}.
- *                       Detected but not auto-patched in v1.
+ *   - "middleware":     CSP set dynamically in middleware.{ts,js,mjs} or
+ *                       Next.js 16's proxy.{ts,js,mjs} convention. Detected
+ *                       but not auto-patched in v1.
  *   - "meta-tag":       <meta http-equiv="Content-Security-Policy"> in
  *                       layout files. Detected but not auto-patched in v1.
  *   - null:             no CSP signals found; no patch needed.
@@ -77,8 +78,56 @@ const NUXT_ROUTE_RULES_SIGNALS = [
   /\bscript-src\b/,
 ];
 
+const NEXT_MIDDLEWARE_FILES = new Set([
+  'middleware.ts',
+  'middleware.js',
+  'middleware.mjs',
+]);
+const NEXT_PROXY_FILES = new Set([
+  'proxy.ts',
+  'proxy.js',
+  'proxy.mjs',
+]);
+const NEXT_CONFIG_FILES = [
+  'next.config.js',
+  'next.config.mjs',
+  'next.config.cjs',
+  'next.config.ts',
+  'next.config.mts',
+  'next.config.cts',
+];
 const MIDDLEWARE_HINT = /headers\.set\(\s*["']Content-Security-Policy["']/i;
 const META_TAG_HINT = /http-equiv\s*=\s*["']Content-Security-Policy["']/i;
+
+function hasNextProjectMarker(projectRoot) {
+  if (NEXT_CONFIG_FILES.some(name => fs.existsSync(path.join(projectRoot, name)))) return true;
+  if (['app', 'pages', 'src/app', 'src/pages'].some(rel => fs.existsSync(path.join(projectRoot, rel)))) return true;
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8'));
+    return ['dependencies', 'devDependencies', 'peerDependencies']
+      .some(group => pkg?.[group] && Object.prototype.hasOwnProperty.call(pkg[group], 'next'));
+  } catch {
+    return false;
+  }
+}
+
+function isNextRequestHookFile(root, absPath, relPath, base) {
+  if (NEXT_MIDDLEWARE_FILES.has(base)) return true;
+  if (!NEXT_PROXY_FILES.has(base)) return false;
+  const normalized = relPath.split(path.sep).join('/').toLowerCase();
+  // Next.js 16 recognizes proxy at the project root or in the optional src/
+  // directory, alongside app/ or pages/. The scan root is commonly a
+  // monorepo, so also accept that placement relative to a nested directory
+  // that carries a concrete Next.js project marker. A same-named helper
+  // elsewhere in the tree is not the framework request hook.
+  if (normalized === base || normalized === `src/${base}`) return true;
+  const hookDir = path.dirname(absPath);
+  const projectRoot = path.basename(hookDir).toLowerCase() === 'src'
+    ? path.dirname(hookDir)
+    : hookDir;
+  if (path.resolve(projectRoot) === path.resolve(root)) return true;
+  return hasNextProjectMarker(projectRoot);
+}
 
 /**
  * @param {string} cwd Project root.
@@ -133,8 +182,7 @@ export function detectCsp(cwd = process.cwd()) {
 
     // === detect-only shapes ===
 
-    if ((base === 'middleware.ts' || base === 'middleware.js' || base === 'middleware.mjs') &&
-        MIDDLEWARE_HINT.test(body)) {
+    if (isNextRequestHookFile(cwd, absPath, relPath, base) && MIDDLEWARE_HINT.test(body)) {
       hits.middleware.push(relPath);
     }
 

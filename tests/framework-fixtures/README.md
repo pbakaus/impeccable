@@ -94,6 +94,9 @@ Fixtures can also opt into a **runtime E2E** pass that actually installs depende
 }
 ```
 
+The legacy `middleware` shape name covers CSP set in either Next.js
+`middleware.*` files or the Next.js 16 `proxy.*` convention.
+
 The `expectedAfter` file lives alongside `fixture.json` (not inside `files/`) and is a human/agent-review reference — tests don't auto-apply the patch.
 
 The `runtime` block is optional. Fixtures without it only run the static unit checks (is-generated, inject, wrap, csp-detect). Fixtures *with* it additionally run the E2E suite in `tests/live-e2e.test.mjs` (`bun run test:live-e2e`), which:

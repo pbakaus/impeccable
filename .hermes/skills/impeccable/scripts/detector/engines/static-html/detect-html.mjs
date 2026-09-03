@@ -9,7 +9,7 @@ import {
 } from '../../design-system.mjs';
 import { isFullPage } from '../../shared/page.mjs';
 import { applyInlineIgnores } from '../../shared/inline-ignores.mjs';
-import { finding } from '../../findings.mjs';
+import { deriveAdvisoryFlag, finding } from '../../findings.mjs';
 import { profileFindings, profileStep, profileStepAsync } from '../../profile/profiler.mjs';
 import {
   checkElementBorders,
@@ -257,7 +257,7 @@ async function detectHtml(filePath, options = {}) {
       // severity (e.g. a pulsing dot inside a header/nav landmark) that
       // overrides the registry default.
       if (f.severity) item.severity = f.severity;
-      findings.push(item);
+      findings.push(deriveAdvisoryFlag(item));
     }
     // Text-content analyzers (em-dash overuse, marketing buzzwords,
     // numbered section markers, aphoristic cadence) live in the regex

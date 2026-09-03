@@ -10,7 +10,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const cli = path.join(root, 'cli', 'bin', 'cli.js');
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-stdin-dispatch-'));
 
-function detectStdinFile(filePath) {
+function detectStdinFile(filePath, expectedStatus = 2) {
   const result = spawnSync(
     process.execPath,
     [cli, 'detect', '--json', '--no-config', '--no-design-system'],
@@ -19,7 +19,7 @@ function detectStdinFile(filePath) {
       encoding: 'utf8',
     },
   );
-  assert.equal(result.status, 2, result.stderr);
+  assert.equal(result.status, expectedStatus, result.stderr);
   return JSON.parse(result.stdout);
 }
 
@@ -57,9 +57,11 @@ describe('detect CLI stdin file dispatch', () => {
       }
     `);
 
-    const findings = detectStdinFile(filePath);
+    const findings = detectStdinFile(filePath, 0);
     assert.ok(findings.some(
-      (item) => item.file === filePath && item.antipattern === 'codex-grid-background',
+      (item) => item.file === filePath
+        && item.antipattern === 'codex-grid-background'
+        && item.advisory === true,
     ));
   });
 });

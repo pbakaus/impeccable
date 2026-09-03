@@ -233,7 +233,7 @@ const ANTIPATTERNS = [
     // rather than a failure. It fires only on the AI saturation pattern, not on
     // ordinary prose. Advisory findings are surfaced separately, never counted
     // as failures, and skipped by the design hook unless a project opts in.
-    advisory: true,
+    severity: 'advisory',
     name: 'Em-dash overuse',
     description:
       'Em-dash saturation in body copy is an AI cadence tell. Advisory only: humans use em-dashes legitimately, so this fires only on saturation — at least 8 em-dashes (— or --) at a density near one per 500 characters of body text — never on a long article that uses a few. Prefer commas, colons, periods, or parentheses.',
@@ -588,9 +588,10 @@ function getAntipattern(id) {
 // Advisory rules are detected and reported, but never treated as failures:
 // the CLI lists them under a separate "Advisory" section, they do not affect
 // exit codes or the failure count, and the design hook skips them by default.
-// The set is derived from the registry so a rule only needs `advisory: true`.
+// `severity` is the canonical registry field. The runtime finding serializer
+// derives its `advisory: true` compatibility/output flag from this set.
 const ADVISORY_RULE_IDS = new Set(
-  ANTIPATTERNS.filter(rule => rule.advisory === true).map(rule => rule.id),
+  ANTIPATTERNS.filter(rule => rule.severity === 'advisory').map(rule => rule.id),
 );
 
 function isAdvisoryRule(id) {
