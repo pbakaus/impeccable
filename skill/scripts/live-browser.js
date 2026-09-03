@@ -6239,35 +6239,45 @@
   function probeJsxWrapperForOrphan(filePath, sessionId, opts) {
     const attempt = opts._orphanAttempt || 0;
     const url = 'http://localhost:' + PORT + '/source?token=' + TOKEN + '&path=' + encodeURIComponent(filePath);
-    // A read that cannot answer (the file renamed or deleted: 404; a transient
-    // fetch failure) counts against the same retry budget as a read that
-    // answers without the marker. Either way the session cannot recover its
-    // wrapper from source, and after the budget it is discarded rather than
-    // left frozen in GENERATING or CYCLING; the reason names which it was.
-    const retryOrDiscard = (reason) => {
-      if (sessionId !== currentSessionId) return;
-      if (state !== 'GENERATING' && state !== 'CYCLING') return;
-      if (attempt < COMPLETED_SOURCE_FALLBACK_RETRIES) {
-        setTimeout(() => {
-          if (sessionId !== currentSessionId) return;
-          if (state !== 'GENERATING' && state !== 'CYCLING') return;
-          injectVariantsFromSource(filePath, sessionId, { ...opts, _orphanAttempt: attempt + 1 });
-        }, COMPLETED_SOURCE_FALLBACK_RETRY_MS);
-        return;
-      }
+    const stillActive = () => sessionId === currentSessionId && (state === 'GENERATING' || state === 'CYCLING');
+    const retryLater = () => {
+      setTimeout(() => {
+        if (!stillActive()) return;
+        injectVariantsFromSource(filePath, sessionId, { ...opts, _orphanAttempt: attempt + 1 });
+      }, COMPLETED_SOURCE_FALLBACK_RETRY_MS);
+    };
+    // Discarding is durable (the session moves to the discarded phase and the
+    // picker replaces it), so it needs evidence that the wrapper is gone: a
+    // read that answers without the marker, or a 404 (the file itself was
+    // renamed or deleted). Either kind retries on the shared budget first.
+    // A read that fails for any other reason (the server briefly away, a
+    // transient fetch error) says nothing about the wrapper; after the budget
+    // the session is kept, the user told, and the next event retries.
+    const onNoWrapper = (reason) => {
+      if (!stillActive()) return;
+      if (attempt < COMPLETED_SOURCE_FALLBACK_RETRIES) { retryLater(); return; }
       discardOrphanedSession(reason);
+    };
+    const onUnreadable = (detail) => {
+      if (!stillActive()) return;
+      if (attempt < COMPLETED_SOURCE_FALLBACK_RETRIES) { retryLater(); return; }
+      console.warn('[impeccable] Could not read source to check the variant wrapper; keeping the session: ' + detail);
+      showToast('Could not read the source file to check this session; it stays open and is checked again on the next event.', 5500);
     };
     fetch(url)
       .then(r => { if (!r.ok) throw new Error('source read failed: ' + r.status); return r.text(); })
       .then(text => {
-        if (sessionId !== currentSessionId) return;
-        if (state !== 'GENERATING' && state !== 'CYCLING') return;
+        if (!stillActive()) return;
         if (sourceHasSessionWrapper(text, sessionId)) return;
-        retryOrDiscard('variant wrapper missing from source');
+        onNoWrapper('variant wrapper missing from source');
       })
       .catch(err => {
-        console.warn('[impeccable] Orphan probe could not read source: ' + (err && err.message ? err.message : err));
-        retryOrDiscard('source unreadable while checking for the variant wrapper (' + (err && err.message ? err.message : 'fetch failed') + ')');
+        const detail = err && err.message ? err.message : 'fetch failed';
+        if (/source read failed: 404$/.test(detail)) {
+          onNoWrapper('source file missing (404) while checking for the variant wrapper');
+          return;
+        }
+        onUnreadable(detail);
       });
   }
 

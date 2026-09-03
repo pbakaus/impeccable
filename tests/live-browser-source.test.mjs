@@ -630,22 +630,32 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       probe,
-      /if \(attempt < COMPLETED_SOURCE_FALLBACK_RETRIES\) \{[\s\S]*?\}\s*discardOrphanedSession\(reason\);/,
+      /const onNoWrapper = \(reason\) => \{[\s\S]*?if \(attempt < COMPLETED_SOURCE_FALLBACK_RETRIES\) \{ retryLater\(\); return; \}\s*discardOrphanedSession\(reason\);/,
       'the probe must exhaust the shared retry budget before discarding',
     );
     assert.match(
       probe,
-      /retryOrDiscard\('variant wrapper missing from source'\)/,
+      /onNoWrapper\('variant wrapper missing from source'\)/,
       'a read without the marker retries on the budget, then discards',
     );
-    // A read that cannot answer (404 after a rename or delete, a transient
-    // fetch failure) must not strand the session: it shares the retry budget
-    // and ends in a discard that names the failure, never an empty catch.
+    // A read that cannot answer must not strand the session (no empty catch),
+    // and only evidence that the wrapper is gone may discard: a 404 (the file
+    // renamed or deleted) counts, a transient failure does not.
     assert.doesNotMatch(probe, /\.catch\(\(\) => \{\}\)/, 'the probe must not swallow source read failures');
     assert.match(
       probe,
-      /\.catch\(err => \{[\s\S]*?retryOrDiscard\('source unreadable while checking for the variant wrapper/,
-      'a failed source read retries on the same budget and then discards',
+      /source read failed: 404\$\/\.test\(detail\)\) \{\s*onNoWrapper\('source file missing \(404\)/,
+      'a 404 is evidence the file is gone: retry on the budget, then discard',
+    );
+    assert.match(
+      probe,
+      /const onUnreadable = \(detail\) => \{[\s\S]*?retryLater\(\); return; \}[\s\S]*?showToast\(/,
+      'a transient failure retries on the budget and then keeps the session, telling the user',
+    );
+    assert.doesNotMatch(
+      probe.slice(probe.indexOf('const onUnreadable')),
+      /discardOrphanedSession/,
+      'a transient failure must never discard a session',
     );
 
     const matchStart = SOURCE.indexOf('function sourceHasSessionWrapper(');
