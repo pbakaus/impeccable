@@ -344,14 +344,83 @@ fn build_target_selection_directive(sel: &TargetSelection) -> String {
 
 // ─── Update check ──────────────────────────────────────────────────────────
 
-static VERSION_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^version:\s*(.+)$").unwrap());
+static FRONTMATTER_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?s)^---[ \t]*\r?\n(.*?)\r?\n---(?:[ \t]*\r?\n|[ \t]*$)").unwrap()
+});
+static METADATA_KEY_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^metadata:\s*(?:#.*)?$").unwrap());
+static VERSION_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^version:\s*(.+?)\s*$").unwrap());
+
+/// JS: context.mjs#parseSkillFrontmatterVersion
+///
+/// Codex's validator rejects unknown top-level keys, so the Codex and
+/// `.agents` skills carry `version` under the spec-defined `metadata:` map
+/// (#703). A metadata version wins; a legacy top-level one still reads.
+fn parse_skill_frontmatter_version(content: &str) -> Option<String> {
+    let caps = FRONTMATTER_RE.captures(content)?;
+    let body = caps.get(1)?.as_str();
+
+    let mut metadata_version: Option<String> = None;
+    let mut top_level_version: Option<String> = None;
+    let mut in_metadata = false;
+    let mut metadata_indent: Option<usize> = None;
+
+    for line in body.split('\n') {
+        let line = line.strip_suffix('\r').unwrap_or(line);
+        let trimmed_start = line.trim_start();
+        if trimmed_start.is_empty() || trimmed_start.starts_with('#') {
+            continue;
+        }
+        let indent_text: String = line.chars().take_while(|c| *c == ' ' || *c == '\t').collect();
+        // JS `indentText.replace(/\t/g, '  ').length`.
+        let indent = indent_text.replace('\t', "  ").chars().count();
+
+        if indent == 0 {
+            in_metadata = METADATA_KEY_RE.is_match(line);
+            metadata_indent = None;
+            if let Some(m) = VERSION_RE.captures(line) {
+                top_level_version = Some(m[1].to_string());
+            }
+            continue;
+        }
+        if !in_metadata {
+            continue;
+        }
+        if metadata_indent.is_none() {
+            metadata_indent = Some(indent);
+        }
+        if metadata_indent != Some(indent) {
+            continue;
+        }
+        if let Some(m) = VERSION_RE.captures(line.trim()) {
+            metadata_version = Some(m[1].to_string());
+        }
+    }
+
+    let value = metadata_version.or(top_level_version)?;
+    let v = js_trim(&value);
+    if v.is_empty() {
+        return None;
+    }
+    Some(strip_matched_quotes(v))
+}
+
+/// JS `.replace(/^(["'])(.*)\1$/, '$2')`: only a matched pair is stripped.
+fn strip_matched_quotes(v: &str) -> String {
+    let chars: Vec<char> = v.chars().collect();
+    if chars.len() >= 2 {
+        let first = chars[0];
+        if (first == '"' || first == '\'') && chars[chars.len() - 1] == first {
+            return chars[1..chars.len() - 1].iter().collect();
+        }
+    }
+    v.to_string()
+}
 
 fn read_local_skill_version(provider: &Provider) -> Option<String> {
     let p = provider.skill_md_path()?;
     let content = safe_read(&p)?;
-    let m = VERSION_RE.captures(&content)?;
-    let v = js_trim(&m[1]);
-    Some(strip_one_quote_each_end(v))
+    parse_skill_frontmatter_version(&content)
 }
 
 fn update_cache_path(env: &Env) -> String {
@@ -618,4 +687,39 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     }
     io.out(&format!("{}\n", parts.join("\n\n---\n\n")));
     0
+}
+
+#[cfg(test)]
+mod skill_version_tests {
+    use super::parse_skill_frontmatter_version as v;
+
+    /// Values recorded from origin/main's `parseSkillFrontmatterVersion` (#703).
+    #[test]
+    fn frontmatter_version_shapes() {
+        assert_eq!(v("---\nname: impeccable\nversion: 4.1.3\n---\n\nbody\n").as_deref(), Some("4.1.3"));
+        assert_eq!(v("---\nname: impeccable\nversion: \"4.1.3\"\n---\n").as_deref(), Some("4.1.3"));
+        assert_eq!(v("---\nname: impeccable\nversion: '4.1.3'\n---\n").as_deref(), Some("4.1.3"));
+        assert_eq!(
+            v("---\nname: impeccable\nmetadata:\n  version: 4.1.3\n  argument-hint: \"[t]\"\n---\n").as_deref(),
+            Some("4.1.3")
+        );
+        // A metadata version wins over a legacy top-level one, in either order.
+        assert_eq!(v("---\nversion: 1.0.0\nmetadata:\n  version: 4.1.3\n---\n").as_deref(), Some("4.1.3"));
+        assert_eq!(
+            v("---\nmetadata:\n  version: 4.1.3\nname: x\nversion: 2.0.0\n---\n").as_deref(),
+            Some("4.1.3")
+        );
+        // Only the map's own indent level counts, so a deeper key is ignored.
+        assert_eq!(
+            v("---\nmetadata:\n  a:\n    version: 9.9.9\n  version: 4.1.3\n---\n").as_deref(),
+            Some("4.1.3")
+        );
+        assert_eq!(v("---\nmetadata:\n\tversion: 4.1.3\n---\n").as_deref(), Some("4.1.3"));
+        assert_eq!(v("---\nmetadata: # note\n  version: 4.1.3\n---\n").as_deref(), Some("4.1.3"));
+        assert_eq!(v("---\r\nmetadata:\r\n  version: 4.1.3\r\n---\r\n").as_deref(), Some("4.1.3"));
+        assert_eq!(v("---\n# version: 9.9.9\nversion: 4.1.3\n---\n").as_deref(), Some("4.1.3"));
+        assert_eq!(v("---  \nversion: 4.1.3\n---  \n").as_deref(), Some("4.1.3"));
+        assert_eq!(v("version: 4.1.3\n"), None);
+        assert_eq!(v("---\nversion:\n---\n"), None);
+    }
 }

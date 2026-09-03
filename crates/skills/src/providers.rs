@@ -507,22 +507,102 @@ pub fn is_real_skill_dir(skills_dir: &str, name: &str) -> bool {
     util::is_real_dir(&full) && util::exists(&jsp::join(&[&full, "SKILL.md"]))
 }
 
-/// `^version:\s*(.+)$` (multiline) with surrounding quotes stripped.
+/// JS: skills.mjs#parseSkillFrontmatterVersion
+///
+/// Codex's validator rejects unknown top-level keys, so the Codex and
+/// `.agents` skills carry `version` under the spec-defined `metadata:` map
+/// (#703). A metadata version wins; a legacy top-level one still reads.
 fn extract_version(content: &str) -> Option<String> {
-    for line in content.split('\n') {
+    let body = frontmatter_body(content)?;
+
+    let mut metadata_version: Option<String> = None;
+    let mut top_level_version: Option<String> = None;
+    let mut in_metadata = false;
+    let mut metadata_indent: Option<usize> = None;
+
+    for line in body.split('\n') {
         let line = line.strip_suffix('\r').unwrap_or(line);
-        if let Some(rest) = line.strip_prefix("version:") {
-            let v = rest.trim_start_matches(|c: char| c.is_whitespace());
-            if v.is_empty() {
-                continue;
+        let trimmed_start = line.trim_start();
+        if trimmed_start.is_empty() || trimmed_start.starts_with('#') {
+            continue;
+        }
+        let indent_text: String = line.chars().take_while(|c| *c == ' ' || *c == '\t').collect();
+        // JS `indentText.replace(/\t/g, '  ').length`.
+        let indent = indent_text.replace('\t', "  ").chars().count();
+
+        if indent == 0 {
+            in_metadata = is_metadata_key_line(line);
+            metadata_indent = None;
+            if let Some(v) = version_value(line) {
+                top_level_version = Some(v);
             }
-            let v = v.trim();
-            let v = v.strip_prefix(['"', '\'']).unwrap_or(v);
-            let v = v.strip_suffix(['"', '\'']).unwrap_or(v);
-            return Some(v.to_string());
+            continue;
+        }
+        if !in_metadata {
+            continue;
+        }
+        if metadata_indent.is_none() {
+            metadata_indent = Some(indent);
+        }
+        if metadata_indent != Some(indent) {
+            continue;
+        }
+        if let Some(v) = version_value(line.trim()) {
+            metadata_version = Some(v);
         }
     }
+
+    let value = metadata_version.or(top_level_version)?;
+    let v = value.trim();
+    if v.is_empty() {
+        return None;
+    }
+    // JS `.replace(/^(["'])(.*)\1$/, '$2')`: only a matched pair is stripped.
+    let chars: Vec<char> = v.chars().collect();
+    if chars.len() >= 2 {
+        let first = chars[0];
+        if (first == '"' || first == '\'') && chars[chars.len() - 1] == first {
+            return Some(chars[1..chars.len() - 1].iter().collect());
+        }
+    }
+    Some(v.to_string())
+}
+
+/// JS `/^---[ \t]*\r?\n([\s\S]*?)\r?\n---(?:[ \t]*\r?\n|[ \t]*$)/`.
+fn frontmatter_body(content: &str) -> Option<&str> {
+    let rest = content.strip_prefix("---")?;
+    let rest = rest.trim_start_matches([' ', '\t']);
+    let rest = rest.strip_prefix("\r\n").or_else(|| rest.strip_prefix('\n'))?;
+    let mut from = 0usize;
+    while let Some(idx) = rest[from..].find("\n---") {
+        let at = from + idx;
+        let after = &rest[at + 4..];
+        let tail = after.trim_start_matches([' ', '\t']);
+        if tail.is_empty() || tail.starts_with('\n') || tail.starts_with("\r\n") {
+            let body = &rest[..at];
+            return Some(body.strip_suffix('\r').unwrap_or(body));
+        }
+        from = at + 1;
+    }
     None
+}
+
+/// JS `/^metadata:\s*(?:#.*)?$/`.
+fn is_metadata_key_line(line: &str) -> bool {
+    let Some(rest) = line.strip_prefix("metadata:") else { return false };
+    let rest = rest.trim_start_matches(|c: char| c.is_whitespace());
+    rest.is_empty() || rest.starts_with('#')
+}
+
+/// JS `/^version:\s*(.+?)\s*$/` on an already-trimmed line.
+fn version_value(line: &str) -> Option<String> {
+    let rest = line.strip_prefix("version:")?;
+    let v = rest.trim();
+    if v.is_empty() {
+        None
+    } else {
+        Some(v.to_string())
+    }
 }
 
 /// JS: getFlagValue(flags, name): `--name=value` or `--name value`.
@@ -680,8 +760,31 @@ mod tests {
 
     #[test]
     fn version_extraction() {
+        // Values recorded from origin/main's parseSkillFrontmatterVersion (#703).
         assert_eq!(extract_version("---\nname: x\nversion: \"9.9.9\"\n---").as_deref(), Some("9.9.9"));
         assert_eq!(extract_version("---\nname: x\n---"), None);
+        assert_eq!(extract_version("---\nname: x\nversion: 4.1.3\n---\n\nbody\n").as_deref(), Some("4.1.3"));
+        assert_eq!(extract_version("---\nname: x\nversion: '4.1.3'\n---\n").as_deref(), Some("4.1.3"));
+        assert_eq!(
+            extract_version("---\nname: x\nmetadata:\n  version: 4.1.3\n  argument-hint: \"[t]\"\n---\n").as_deref(),
+            Some("4.1.3")
+        );
+        assert_eq!(extract_version("---\nversion: 1.0.0\nmetadata:\n  version: 4.1.3\n---\n").as_deref(), Some("4.1.3"));
+        assert_eq!(
+            extract_version("---\nmetadata:\n  version: 4.1.3\nname: x\nversion: 2.0.0\n---\n").as_deref(),
+            Some("4.1.3")
+        );
+        assert_eq!(
+            extract_version("---\nmetadata:\n  a:\n    version: 9.9.9\n  version: 4.1.3\n---\n").as_deref(),
+            Some("4.1.3")
+        );
+        assert_eq!(extract_version("---\nmetadata:\n\tversion: 4.1.3\n---\n").as_deref(), Some("4.1.3"));
+        assert_eq!(extract_version("---\nmetadata: # note\n  version: 4.1.3\n---\n").as_deref(), Some("4.1.3"));
+        assert_eq!(extract_version("---\r\nmetadata:\r\n  version: 4.1.3\r\n---\r\n").as_deref(), Some("4.1.3"));
+        assert_eq!(extract_version("---\n# version: 9.9.9\nversion: 4.1.3\n---\n").as_deref(), Some("4.1.3"));
+        assert_eq!(extract_version("---  \nversion: 4.1.3\n---  \n").as_deref(), Some("4.1.3"));
+        assert_eq!(extract_version("version: 4.1.3\n"), None);
+        assert_eq!(extract_version("---\nversion:\n---\n"), None);
     }
 
     #[test]
