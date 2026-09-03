@@ -6239,23 +6239,36 @@
   function probeJsxWrapperForOrphan(filePath, sessionId, opts) {
     const attempt = opts._orphanAttempt || 0;
     const url = 'http://localhost:' + PORT + '/source?token=' + TOKEN + '&path=' + encodeURIComponent(filePath);
+    // A read that cannot answer (the file renamed or deleted: 404; a transient
+    // fetch failure) counts against the same retry budget as a read that
+    // answers without the marker. Either way the session cannot recover its
+    // wrapper from source, and after the budget it is discarded rather than
+    // left frozen in GENERATING or CYCLING; the reason names which it was.
+    const retryOrDiscard = (reason) => {
+      if (sessionId !== currentSessionId) return;
+      if (state !== 'GENERATING' && state !== 'CYCLING') return;
+      if (attempt < COMPLETED_SOURCE_FALLBACK_RETRIES) {
+        setTimeout(() => {
+          if (sessionId !== currentSessionId) return;
+          if (state !== 'GENERATING' && state !== 'CYCLING') return;
+          injectVariantsFromSource(filePath, sessionId, { ...opts, _orphanAttempt: attempt + 1 });
+        }, COMPLETED_SOURCE_FALLBACK_RETRY_MS);
+        return;
+      }
+      discardOrphanedSession(reason);
+    };
     fetch(url)
-      .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
+      .then(r => { if (!r.ok) throw new Error('source read failed: ' + r.status); return r.text(); })
       .then(text => {
         if (sessionId !== currentSessionId) return;
         if (state !== 'GENERATING' && state !== 'CYCLING') return;
         if (sourceHasSessionWrapper(text, sessionId)) return;
-        if (attempt < COMPLETED_SOURCE_FALLBACK_RETRIES) {
-          setTimeout(() => {
-            if (sessionId !== currentSessionId) return;
-            if (state !== 'GENERATING' && state !== 'CYCLING') return;
-            injectVariantsFromSource(filePath, sessionId, { ...opts, _orphanAttempt: attempt + 1 });
-          }, COMPLETED_SOURCE_FALLBACK_RETRY_MS);
-          return;
-        }
-        discardOrphanedSession('variant wrapper missing from source');
+        retryOrDiscard('variant wrapper missing from source');
       })
-      .catch(() => {});
+      .catch(err => {
+        console.warn('[impeccable] Orphan probe could not read source: ' + (err && err.message ? err.message : err));
+        retryOrDiscard('source unreadable while checking for the variant wrapper (' + (err && err.message ? err.message : 'fetch failed') + ')');
+      });
   }
 
   function completeSourceInjection(wrapper, sessionId, opts) {

@@ -622,7 +622,7 @@ describe('live-browser source contracts', () => {
     for (const forbidden of ['DOMParser', 'parseFromString', 'replaceChild', 'innerHTML']) {
       assert.ok(!probe.includes(forbidden), 'the orphan probe must not ' + forbidden + ' JSX source');
     }
-    assert.match(probe, /\.then\(r => \{ if \(!r\.ok\) throw new Error\(r\.status\); return r\.text\(\); \}\)/);
+    assert.match(probe, /\.then\(r => \{ if \(!r\.ok\) throw new Error\('source read failed: ' \+ r\.status\); return r\.text\(\); \}\)/);
     assert.match(
       probe,
       /if \(sourceHasSessionWrapper\(text, sessionId\)\) return;/,
@@ -630,8 +630,22 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       probe,
-      /if \(attempt < COMPLETED_SOURCE_FALLBACK_RETRIES\) \{[\s\S]*?\}\s*discardOrphanedSession\('variant wrapper missing from source'\);/,
+      /if \(attempt < COMPLETED_SOURCE_FALLBACK_RETRIES\) \{[\s\S]*?\}\s*discardOrphanedSession\(reason\);/,
       'the probe must exhaust the shared retry budget before discarding',
+    );
+    assert.match(
+      probe,
+      /retryOrDiscard\('variant wrapper missing from source'\)/,
+      'a read without the marker retries on the budget, then discards',
+    );
+    // A read that cannot answer (404 after a rename or delete, a transient
+    // fetch failure) must not strand the session: it shares the retry budget
+    // and ends in a discard that names the failure, never an empty catch.
+    assert.doesNotMatch(probe, /\.catch\(\(\) => \{\}\)/, 'the probe must not swallow source read failures');
+    assert.match(
+      probe,
+      /\.catch\(err => \{[\s\S]*?retryOrDiscard\('source unreadable while checking for the variant wrapper/,
+      'a failed source read retries on the same budget and then discards',
     );
 
     const matchStart = SOURCE.indexOf('function sourceHasSessionWrapper(');
