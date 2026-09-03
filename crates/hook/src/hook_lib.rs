@@ -100,21 +100,9 @@ pub fn depth_is_set(value: Option<&str>) -> bool {
     !text.is_empty() && text.bytes().all(|b| b.is_ascii_digit()) && text.bytes().any(|b| b != b'0')
 }
 
-pub const IMMEDIATE_TIER_RULES: &[&str] = &[
-    "broken-image",
-    "text-overflow",
-    "clipped-overflow-container",
-    "body-text-viewport-edge",
-    "low-contrast",
-    "gray-on-color",
-    "tiny-text",
-    "gradient-text",
-    "dark-glow",
-    "design-system-font",
-    "design-system-color",
-    "design-system-radius",
-    "design-system-font-size",
-];
+/// The immediate tier, owned by the registry so wasm consumers can read the
+/// same list without linking this native-only crate.
+pub use impeccable_core::registry::IMMEDIATE_TIER_RULES;
 
 pub const ADVISORY_RULES: &[&str] = &["em-dash-overuse"];
 

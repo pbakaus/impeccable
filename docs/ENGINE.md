@@ -206,7 +206,12 @@ and return the findings array `impeccable detect --json` prints, same keys and
 same order. `designSystem` carries the DESIGN.md inputs rather than a
 normalized object, because the JS API's normalized form used `Set`s and
 `Map`s that JSON cannot hold. Unparseable options fall back to the defaults.
-`antipatterns_json()` lists the built-ins followed by any pack's rows.
+`antipatterns_json()` lists the built-ins followed by any pack's rows, and
+`immediate_tier_rules_json()` returns the design hook's immediate tier (the
+rule ids worth fixing at the edit site). That list lives in
+`impeccable_core::registry::IMMEDIATE_TIER_RULES`, which `impeccable-hook`
+re-exports, so a wasm consumer reads the same one the hook runs on instead of
+keeping a copy.
 
 A pack reaches those exports through `impeccable_wasm::set_rule_pack` and
 `exports_detect::set_static_rule_pack`, both Rust-only: the consumer is a

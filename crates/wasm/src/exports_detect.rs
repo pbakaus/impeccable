@@ -146,3 +146,16 @@ pub fn detect_html_source_json(html: &str, file_path: &str, options_json: &str) 
     );
     findings_json(&findings)
 }
+
+/// The immediate tier: the rule ids the design hook fixes at edit time, as a
+/// JSON array of strings.
+///
+/// It rides the `detect` feature because the consumers that need it are the
+/// ones scanning files without the binary. A reviewer downstream reads it to
+/// decide how loudly a finding is reported, and copying the list into that
+/// codebase is how the two drift apart.
+#[wasm_bindgen]
+pub fn immediate_tier_rules_json() -> String {
+    serde_json::to_string(impeccable_core::registry::IMMEDIATE_TIER_RULES)
+        .unwrap_or_else(|_| "[]".into())
+}

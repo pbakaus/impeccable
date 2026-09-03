@@ -706,6 +706,36 @@ pub static ANTIPATTERNS: &[Antipattern] = &[
     },
 ];
 
+/// The rules the design hook fixes at edit time rather than deferring to a
+/// review pass: broken output, objective legibility failures, single-property
+/// mechanical slop, and design-system drift. Every one of them is mechanical,
+/// unambiguous, and cheap to correct at the edit site.
+///
+/// It lives here rather than in `impeccable-hook` because the hook crate is
+/// native-only (it reaches for the filesystem and the process environment)
+/// while downstream consumers want the same list from wasm. `hook_lib`
+/// re-exports it; the `detect` feature of `impeccable-wasm` exports it as
+/// JSON.
+pub const IMMEDIATE_TIER_RULES: &[&str] = &[
+    // Broken output.
+    "broken-image",
+    "text-overflow",
+    "clipped-overflow-container",
+    "body-text-viewport-edge",
+    // Objective contrast / legibility failures.
+    "low-contrast",
+    "gray-on-color",
+    "tiny-text",
+    // Single-property mechanical slop, trivial to fix at the edit site.
+    "gradient-text",
+    "dark-glow",
+    // Design-system drift compounds if not corrected at edit time.
+    "design-system-font",
+    "design-system-color",
+    "design-system-radius",
+    "design-system-font-size",
+];
+
 /// JS `RULE_ENGINE_SUPPORT`.
 pub const RULE_ENGINE_SUPPORT: &[(&str, &[&str])] = &[
     ("regex", &["source", "page-analyzer"]),
