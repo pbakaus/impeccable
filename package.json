@@ -94,6 +94,7 @@
     "@babel/parser": "^8.0.4",
     "ai": "^7.0.14",
     "archiver": "^8.0.0",
+    "esbuild": "0.28.1",
     "playwright": "^1.59.1",
     "svelte": "^5",
     "zod": "^4.3.6"

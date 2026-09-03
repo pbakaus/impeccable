@@ -297,7 +297,11 @@ async function detectCli() {
   // apply by default. `--no-config` (raw scan) and the dedicated
   // `--no-inline-ignores` both turn them off.
   const inlineIgnoresEnabled = configEnabled && !args.includes('--no-inline-ignores');
-  const baseScanOptions = { inlineIgnores: inlineIgnoresEnabled };
+  let hadOperationalFailure = false;
+  const baseScanOptions = {
+    inlineIgnores: inlineIgnoresEnabled,
+    onOperationalFailure: () => { hadOperationalFailure = true; },
+  };
   if (viewport) baseScanOptions.viewport = viewport;
   // DESIGN.md must resolve from EACH scan target's own project root, not from
   // process.cwd(): scanning project B's files from inside project A applied A's
@@ -315,7 +319,6 @@ async function detectCli() {
   if (helpMode) { printUsage(); process.exit(0); }
 
   let allFindings = [];
-  let hadOperationalFailure = false;
   const reportLocalScanFailure = (target, error) => {
     hadOperationalFailure = true;
     process.stderr.write(`Error: cannot scan ${target}: ${error.message}\n`);

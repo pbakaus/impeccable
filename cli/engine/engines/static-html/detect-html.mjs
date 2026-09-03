@@ -133,7 +133,13 @@ async function detectHtml(filePath, options = {}) {
         'contrast are NOT evaluated; findings are an undercount, not a clean bill of health.\n',
       );
     }
-    globalThis.__impeccableStaticHtmlDegraded = true;
+    if (typeof options.onOperationalFailure === 'function') {
+      options.onOperationalFailure({
+        engine: 'static-html',
+        reason: 'parser-bundle-unavailable',
+        target: filePath,
+      });
+    }
     return detectText(html, filePath, options);
   }
 

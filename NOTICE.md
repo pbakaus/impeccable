@@ -12,12 +12,4 @@ The `skill/reference/ios.md` and `skill/reference/android.md` platform reference
 
 ## Static HTML parser bundle
 
-`cli/engine/vendor/static-html-parsers.mjs` is a generated bundle of the parser packages the static-HTML detector needs at runtime. Skill and plugin installs copy that file with the detector; they do not install these packages from npm.
-
-| Package | License |
-|---|---|
-| htmlparser2 | MIT |
-| css-select | BSD-2-Clause |
-| css-tree | MIT |
-| domutils | BSD-2-Clause |
-| source-map-js (via css-tree) | BSD-3-Clause |
+`cli/engine/vendor/static-html-parsers.mjs` is a generated bundle of the parser packages the static-HTML detector needs at runtime. Skill and plugin installs copy that file with the detector; they do not install these packages from npm. Complete copyright and license texts for every package included in the bundle ship beside it in `cli/engine/vendor/static-html-parsers.LICENSES.txt`.
