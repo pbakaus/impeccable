@@ -138,6 +138,26 @@ describe('detect CLI browser failures', () => {
     expect(findings.some(finding => finding.antipattern === 'bounce-easing')).toBe(true);
     expect(result.stderr).toContain('puppeteer is required for URL scanning');
   });
+
+  test('exits 1 when an explicitly requested local target cannot be accessed', () => {
+    const result = runWithoutPuppeteer(['missing.css']);
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('[]\n');
+    expect(result.stderr).toContain('Warning: cannot access missing.css');
+  });
+
+  test('missing local target takes precedence over findings from another target', () => {
+    const result = runWithoutPuppeteer(
+      ['missing.css', 'page.css'],
+      { 'page.css': '.hero { animation: bounce 1s linear infinite; }\n' },
+    );
+    const findings = JSON.parse(result.stdout);
+
+    expect(result.status).toBe(1);
+    expect(findings.some(finding => finding.antipattern === 'bounce-easing')).toBe(true);
+    expect(result.stderr).toContain('Warning: cannot access missing.css');
+  });
 });
 
 describe('splitScanUrl', () => {

@@ -364,7 +364,11 @@ async function detectCli() {
         const resolved = path.resolve(target);
         let stat;
         try { stat = fs.statSync(resolved); }
-        catch { process.stderr.write(`Warning: cannot access ${target}\n`); continue; }
+        catch {
+          hadOperationalFailure = true;
+          process.stderr.write(`Warning: cannot access ${target}\n`);
+          continue;
+        }
 
         if (stat.isDirectory()) {
           // Check for framework dev server config (skip in JSON/quiet modes to avoid polluting output)
