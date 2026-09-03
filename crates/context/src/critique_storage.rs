@@ -755,7 +755,13 @@ mod tests_660 {
         // The identity exactly as the verb resolves it for this target from this
         // cwd, so the test holds on every platform's path semantics.
         let identity = resolve_target_identity("App.tsx", &cwd).unwrap();
-        let body = format!("---\ntarget_identity: \"{}\"\nslug: app-tsx\n---\n# Critique\n", identity);
+        // Frontmatter values are JSON scalars (`parse_frontmatter` reads them
+        // with serde_json), so the identity is JSON-quoted: a Windows path's
+        // backslashes must be escaped or the value fails to parse.
+        let body = format!(
+            "---\ntarget_identity: {}\nslug: app-tsx\n---\n# Critique\n",
+            serde_json::to_string(&identity).unwrap()
+        );
         std::fs::write(jsp::join(&[&dir, name]), &body).unwrap();
 
         // Wrong target identity: refused (exit 2), snapshot untouched.
