@@ -3684,6 +3684,23 @@ describe('buildImportGraph', () => {
       expect(imp).toContain(MF);
     }
   });
+
+  test('reports unreadable files and continues building the graph', async () => {
+    await withStaticFixture({
+      'readable.css': '@import "./missing.css";\n',
+    }, ({ dir }) => {
+      const readable = path.join(dir, 'readable.css');
+      const missing = path.join(dir, 'missing.css');
+      const errors = [];
+      const graph = buildImportGraph([missing, readable], (file, error) => {
+        errors.push({ file, code: error.code });
+      });
+
+      expect(errors).toEqual([{ file: missing, code: 'ENOENT' }]);
+      expect(graph.get(readable)).toEqual(new Set([missing]));
+      expect(graph.has(missing)).toBe(false);
+    });
+  });
 });
 
 describe('resolveImport', () => {

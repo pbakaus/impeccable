@@ -316,6 +316,10 @@ async function detectCli() {
 
   let allFindings = [];
   let hadOperationalFailure = false;
+  const reportLocalScanFailure = (target, error) => {
+    hadOperationalFailure = true;
+    process.stderr.write(`Error: cannot scan ${target}: ${error.message}\n`);
+  };
 
   if (!process.stdin.isTTY && targets.length === 0) {
     allFindings = await handleStdin(scanOptionsFor);
@@ -413,7 +417,11 @@ async function detectCli() {
           }
 
           // Build import graph for multi-file awareness
-          const graph = buildImportGraph(files);
+          const unreadableFiles = new Set();
+          const graph = buildImportGraph(files, (file, error) => {
+            unreadableFiles.add(file);
+            reportLocalScanFailure(file, error);
+          });
           // Build reverse map: file -> set of files that import it
           const importedByMap = new Map();
           for (const [importer, imports] of graph) {
@@ -424,24 +432,33 @@ async function detectCli() {
           }
 
           for (const file of files) {
-            // Each file resolves its own project design system (cached by root),
-            // so a scan spanning sibling projects applies the right rules per file.
-            const fileOptions = scanOptionsFor(file);
-            const fileFindings = await detectLocalFile(file, fileOptions);
-            // Annotate findings with import context
-            const importers = importedByMap.get(file);
-            if (importers && importers.size > 0) {
-              const importerNames = [...importers].map(f => path.basename(f));
-              for (const f of fileFindings) {
-                f.importedBy = importerNames;
+            if (unreadableFiles.has(file)) continue;
+            try {
+              // Each file resolves its own project design system (cached by root),
+              // so a scan spanning sibling projects applies the right rules per file.
+              const fileOptions = scanOptionsFor(file);
+              const fileFindings = await detectLocalFile(file, fileOptions);
+              // Annotate findings with import context
+              const importers = importedByMap.get(file);
+              if (importers && importers.size > 0) {
+                const importerNames = [...importers].map(f => path.basename(f));
+                for (const f of fileFindings) {
+                  f.importedBy = importerNames;
+                }
               }
+              allFindings.push(...fileFindings);
+            } catch (error) {
+              reportLocalScanFailure(file, error);
             }
-            allFindings.push(...fileFindings);
           }
         } else if (stat.isFile()) {
           if (shouldIgnoreDetectionFile(resolved, process.cwd(), detectionConfig)) continue;
-          const fileOptions = scanOptionsFor(resolved);
-          allFindings.push(...await detectLocalFile(resolved, fileOptions));
+          try {
+            const fileOptions = scanOptionsFor(resolved);
+            allFindings.push(...await detectLocalFile(resolved, fileOptions));
+          } catch (error) {
+            reportLocalScanFailure(target, error);
+          }
         }
       }
     } finally {

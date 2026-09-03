@@ -45,7 +45,7 @@ function makePuppeteer({ failChannel = false } = {}) {
   };
 }
 
-function runWithoutPuppeteer(args, files = {}) {
+function runWithoutPuppeteer(args, files = {}, { nodeArgs = [] } = {}) {
   const isolatedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-no-puppeteer-'));
   try {
     const cliRoot = path.join(isolatedRoot, 'cli');
@@ -59,13 +59,26 @@ function runWithoutPuppeteer(args, files = {}) {
     }
     return spawnSync(
       'node',
-      [path.join(cliRoot, 'engine', 'detect-antipatterns.mjs'), '--json', ...args],
+      [...nodeArgs, path.join(cliRoot, 'engine', 'detect-antipatterns.mjs'), '--json', ...args],
       { cwd: isolatedRoot, encoding: 'utf8' },
     );
   } finally {
     fs.rmSync(isolatedRoot, { recursive: true, force: true });
   }
 }
+
+const DENY_READ_PRELOAD = `
+const fs = require('node:fs');
+const originalReadFileSync = fs.readFileSync;
+fs.readFileSync = function (file, ...args) {
+  if (String(file).endsWith('unreadable.css')) {
+    const error = new Error('simulated EACCES');
+    error.code = 'EACCES';
+    throw error;
+  }
+  return originalReadFileSync.call(this, file, ...args);
+};
+`;
 
 describe('launchBrowser', () => {
   test('Windows: prefers system Chrome via channel:chrome', async () => {
@@ -157,6 +170,39 @@ describe('detect CLI browser failures', () => {
     expect(result.status).toBe(1);
     expect(findings.some(finding => finding.antipattern === 'bounce-easing')).toBe(true);
     expect(result.stderr).toContain('Warning: cannot access missing.css');
+  });
+
+  test('unreadable local file exits 1 with valid empty JSON and no stack trace', () => {
+    const result = runWithoutPuppeteer(
+      ['unreadable.css'],
+      {
+        'deny-read.cjs': DENY_READ_PRELOAD,
+        'unreadable.css': '.hero { color: red; }\n',
+      },
+      { nodeArgs: ['--require=./deny-read.cjs'] },
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('[]\n');
+    expect(result.stderr).toContain('Error: cannot scan unreadable.css: simulated EACCES');
+    expect(result.stderr).not.toContain('at detectLocalFile');
+  });
+
+  test('unreadable directory file preserves findings from readable siblings', () => {
+    const result = runWithoutPuppeteer(
+      ['styles'],
+      {
+        'deny-read.cjs': DENY_READ_PRELOAD,
+        'styles/unreadable.css': '.hero { color: red; }\n',
+        'styles/page.css': '.hero { animation: bounce 1s linear infinite; }\n',
+      },
+      { nodeArgs: ['--require=./deny-read.cjs'] },
+    );
+    const findings = JSON.parse(result.stdout);
+
+    expect(result.status).toBe(1);
+    expect(findings.some(finding => finding.antipattern === 'bounce-easing')).toBe(true);
+    expect(result.stderr.match(/simulated EACCES/g)).toHaveLength(1);
   });
 });
 

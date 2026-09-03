@@ -81,12 +81,19 @@ function resolveImport(specifier, fromDir, fileSet) {
   return null;
 }
 
-function buildImportGraph(files) {
+function buildImportGraph(files, onReadError = null) {
   const fileSet = new Set(files);
   const graph = new Map();
 
   for (const file of files) {
-    const content = fs.readFileSync(file, 'utf-8');
+    let content;
+    try {
+      content = fs.readFileSync(file, 'utf-8');
+    } catch (error) {
+      if (!onReadError) throw error;
+      onReadError(file, error);
+      continue;
+    }
     const dir = path.dirname(file);
     const imports = new Set();
 
