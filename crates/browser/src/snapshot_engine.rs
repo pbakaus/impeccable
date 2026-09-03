@@ -180,8 +180,13 @@ pub fn resolve_needs<T>(
 }
 
 /// The design-system config the browser rules read, built the way
-/// `configure-pure-detect` fed `window.__IMPECCABLE_CONFIG__` to the bundle.
-pub fn browser_config(design_system: Value) -> BrowserConfig {
+/// `configure-pure-detect` fed `window.__IMPECCABLE_CONFIG__` to the bundle,
+/// plus the rule pack the caller installed (`None` in the `impeccable`
+/// binary).
+pub fn browser_config(
+    design_system: Value,
+    rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
+) -> BrowserConfig {
     BrowserConfig {
         extension_mode: false,
         disabled_rules: Vec::new(),
@@ -192,6 +197,7 @@ pub fn browser_config(design_system: Value) -> BrowserConfig {
             Some(design_system)
         },
         line_length_max: None,
+        rule_pack,
     }
 }
 

@@ -1,5 +1,13 @@
 //! Port of `cli/engine/registry/antipatterns.mjs`: the rule registry, in
-//! source order, with every field the JS objects carry.
+//! source order, with every field the JS objects carry, plus the extension
+//! point rule packs register their own rows through ([`extend`]).
+//!
+//! [`ANTIPATTERNS`] stays the built-in list, byte-for-byte what the JS
+//! shipped. Rows a pack registers live in a separate list that every lookup
+//! consults after the built-ins, so an engine with no pack installed behaves
+//! exactly as before and a pack can never shadow a built-in id.
+
+use std::sync::{OnceLock, RwLock};
 
 /// One `ANTIPATTERNS` entry. Optional fields are `None` where the JS object
 /// has no such key; `advisory` is `true` only where the JS has
@@ -706,9 +714,89 @@ pub const RULE_ENGINE_SUPPORT: &[(&str, &[&str])] = &[
     ("visual", &["visual-contrast"]),
 ];
 
-/// JS `getAntipattern(id)`.
+/// Rows registered by rule packs, in registration order. One entry per
+/// `extend` call; `&'static` all the way down, so a lookup can hand out
+/// `&'static Antipattern` without holding the lock.
+static EXTRA_ROWS: OnceLock<RwLock<Vec<&'static [Antipattern]>>> = OnceLock::new();
+
+fn extra_rows() -> &'static RwLock<Vec<&'static [Antipattern]>> {
+    EXTRA_ROWS.get_or_init(|| RwLock::new(Vec::new()))
+}
+
+/// A snapshot of the registered slices. Cheap when nothing is registered (an
+/// empty `Vec` does not allocate), which is every built-in build.
+fn extra_slices() -> Vec<&'static [Antipattern]> {
+    match extra_rows().read() {
+        Ok(rows) => rows.clone(),
+        // The list is append-only `&'static` rows, so a lock poisoned by a
+        // panic elsewhere is still sound to read; ignoring the poison keeps a
+        // rejected `extend` from making every later lookup miss the rows that
+        // did register.
+        Err(poisoned) => poisoned.into_inner().clone(),
+    }
+}
+
+/// Register a rule pack's rows. Every registry lookup then resolves them
+/// after the built-ins. Calling it again with the same slice is a no-op, so a
+/// pack that installs itself from more than one entry point is safe.
+///
+/// Callers register at startup, before any scan. There is no way to
+/// unregister: a rule pack is a property of the process, not of a run.
+///
+/// # Panics
+/// When a row's id collides with a built-in id or with a row another pack
+/// already registered. A duplicate id would make `get_antipattern` answer
+/// with whichever row came first, which is not a behavior worth guessing at.
+pub fn extend(rows: &'static [Antipattern]) {
+    let mut registered = match extra_rows().write() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    if registered.iter().any(|slice| std::ptr::eq(*slice, rows)) {
+        return;
+    }
+    // Collect the complaint first and panic after the guard is dropped: a
+    // panic while holding the write guard would poison the lock, and a
+    // rejected registration should leave the registry exactly as it was.
+    let mut rejected: Option<String> = None;
+    for row in rows {
+        if let Some(existing) = ANTIPATTERNS.iter().find(|built_in| built_in.id == row.id) {
+            rejected = Some(format!(
+                "registry::extend: rule id {:?} collides with the built-in rule {:?}; \
+                 namespace pack ids (e.g. \"mypack/{}\")",
+                row.id, existing.name, row.id
+            ));
+            break;
+        }
+        if registered
+            .iter()
+            .any(|slice| slice.iter().any(|other| other.id == row.id))
+        {
+            rejected = Some(format!(
+                "registry::extend: rule id {:?} is already registered by another rule pack",
+                row.id
+            ));
+            break;
+        }
+    }
+    if let Some(message) = rejected {
+        drop(registered);
+        panic!("{message}");
+    }
+    registered.push(rows);
+}
+
+/// Every rule the process knows: the built-ins in registry order, then each
+/// pack's rows in registration order.
+pub fn all_antipatterns() -> impl Iterator<Item = &'static Antipattern> {
+    ANTIPATTERNS
+        .iter()
+        .chain(extra_slices().into_iter().flat_map(|slice| slice.iter()))
+}
+
+/// JS `getAntipattern(id)`, extended with the rule packs' rows.
 pub fn get_antipattern(id: &str) -> Option<&'static Antipattern> {
-    ANTIPATTERNS.iter().find(|rule| rule.id == id)
+    all_antipatterns().find(|rule| rule.id == id)
 }
 
 /// JS `getAP(id)` from `findings.mjs` (an alias of `getAntipattern`).
@@ -718,8 +806,7 @@ pub fn get_ap(id: &str) -> Option<&'static Antipattern> {
 
 /// JS `ADVISORY_RULE_IDS`: ids of rules with `advisory: true`, in registry order.
 pub fn advisory_rule_ids() -> impl Iterator<Item = &'static str> {
-    ANTIPATTERNS
-        .iter()
+    all_antipatterns()
         .filter(|rule| rule.advisory)
         .map(|rule| rule.id)
 }
@@ -731,8 +818,7 @@ pub fn is_advisory_rule(id: &str) -> bool {
 
 /// JS `getRulesForCategory(category)`.
 pub fn get_rules_for_category(category: &str) -> Vec<&'static Antipattern> {
-    ANTIPATTERNS
-        .iter()
+    all_antipatterns()
         .filter(|rule| rule.category == category)
         .collect()
 }
@@ -749,7 +835,7 @@ pub fn get_rule_engine_support(engine: &str) -> &'static [&'static str] {
 /// JS `RULE_SCOPES`: every scope tag declared by any rule, first-seen order.
 pub fn rule_scopes() -> Vec<&'static str> {
     let mut out: Vec<&'static str> = Vec::new();
-    for rule in ANTIPATTERNS {
+    for rule in all_antipatterns() {
         for scope in rule.scopes.unwrap_or(&[]) {
             if !out.contains(scope) {
                 out.push(scope);
@@ -802,5 +888,110 @@ mod tests {
         assert!(get_rule_engine_support("nope").is_empty());
         let ids: std::collections::HashSet<&str> = ANTIPATTERNS.iter().map(|r| r.id).collect();
         assert_eq!(ids.len(), ANTIPATTERNS.len());
+    }
+
+    /// Rows a test pack registers: no scopes and not advisory, so the
+    /// built-in assertions in `registry_shape` hold whatever order the test
+    /// threads run in.
+    static PACK_ROWS: &[Antipattern] = &[
+        Antipattern {
+            id: "testpack/one",
+            category: "quality",
+            scopes: None,
+            severity: Some("warning"),
+            advisory: false,
+            name: "Test pack rule one",
+            description: "First row of the registry-extension test pack.",
+            skill_section: None,
+            skill_guideline: None,
+        },
+        Antipattern {
+            id: "testpack/two",
+            category: "testpack-only",
+            scopes: None,
+            severity: Some("error"),
+            advisory: false,
+            name: "Test pack rule two",
+            description: "Second row of the registry-extension test pack.",
+            skill_section: None,
+            skill_guideline: None,
+        },
+    ];
+
+    static COLLIDING_ROWS: &[Antipattern] = &[Antipattern {
+        id: "side-tab",
+        category: "quality",
+        scopes: None,
+        severity: None,
+        advisory: false,
+        name: "Collides with a built-in",
+        description: "Registering this must panic.",
+        skill_section: None,
+        skill_guideline: None,
+    }];
+
+    #[test]
+    fn extension_is_visible_to_every_lookup() {
+        assert!(get_antipattern("testpack/one").is_none());
+        extend(PACK_ROWS);
+        // Idempotent per slice.
+        extend(PACK_ROWS);
+        extend(PACK_ROWS);
+
+        let one = get_antipattern("testpack/one").expect("pack row resolves");
+        assert_eq!(one.name, "Test pack rule one");
+        assert_eq!(
+            get_ap("testpack/two").map(|r| r.severity),
+            Some(Some("error"))
+        );
+        assert!(get_antipattern("testpack/nope").is_none());
+
+        // Built-ins still come first and are untouched.
+        let all: Vec<&str> = all_antipatterns().map(|r| r.id).collect();
+        assert_eq!(all.len(), ANTIPATTERNS.len() + PACK_ROWS.len());
+        assert_eq!(all[0], "side-tab");
+        assert_eq!(
+            &all[ANTIPATTERNS.len()..],
+            &["testpack/one", "testpack/two"]
+        );
+
+        // Category and advisory views see the rows.
+        let quality: Vec<&str> = get_rules_for_category("quality")
+            .iter()
+            .map(|r| r.id)
+            .collect();
+        assert!(quality.contains(&"testpack/one"));
+        assert_eq!(
+            get_rules_for_category("testpack-only")
+                .iter()
+                .map(|r| r.id)
+                .collect::<Vec<_>>(),
+            vec!["testpack/two"]
+        );
+        assert!(!is_advisory_rule("testpack/one"));
+
+        // A finding built from a pack row carries the pack's metadata.
+        let f = crate::findings::finding("testpack/two", "a.tsx", "snip", 3.0);
+        assert_eq!(f.name, "Test pack rule two");
+        assert_eq!(f.severity, "error");
+        assert_eq!(f.category.as_deref(), Some("testpack-only"));
+    }
+
+    #[test]
+    fn built_in_id_collision_panics() {
+        let err = std::panic::catch_unwind(|| extend(COLLIDING_ROWS)).unwrap_err();
+        let message = err
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .unwrap_or("");
+        assert!(
+            message.contains("collides with the built-in rule"),
+            "{message}"
+        );
+        assert!(message.contains("side-tab"), "{message}");
+        assert!(get_antipattern("side-tab")
+            .unwrap()
+            .name
+            .starts_with("Side-tab"));
     }
 }

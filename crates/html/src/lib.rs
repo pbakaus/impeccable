@@ -17,6 +17,6 @@ pub mod static_engine;
 
 pub use engine::{
     detect_html, detect_html_source, DesignSystemHook, DetectHtmlOptions, HtmlEngineError,
-    TextContentAnalyzers,
+    StaticRulePack, TextContentAnalyzers,
 };
 pub use static_engine::{DetectDesignSystemHook, DetectorProfileSink, StaticHtmlEngine};

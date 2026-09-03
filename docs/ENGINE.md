@@ -105,6 +105,96 @@ matrices that pre-built it.
 Run `cargo xtask bundle` after touching `crates/core`, `crates/wasm`, or
 `browser-bundle/`, and commit the refreshed live asset.
 
+## Rule packs
+
+The built-in rules are compiled in and always run. A **rule pack** is how a
+crate that depends on this workspace adds rules of its own without forking it:
+one process-lifetime value carrying its own registry rows plus the hooks it
+has rules for. With no pack installed nothing changes, which the oracle
+enforces byte-for-byte.
+
+The traits:
+
+- `impeccable_core::rule_pack::RulePack` (object-safe, `Send + Sync + Debug`)
+  with three hooks, each defaulting to empty: `check_text(content, file_path,
+  ext)` for the text engine, `check_element_dom(dom, el)` and
+  `check_page_dom(dom)` for the browser engines.
+- `impeccable_html::StaticRulePack` with `check_document(doc, file_path)`.
+  The `StaticDocument` model belongs to `crates/html`, and `detect` cannot
+  name a type from a crate that depends on it, so the static engine's hook is
+  a separate trait. A pack that covers HTML implements both.
+
+Three steps for the downstream crate: declare `static ROWS: &[Antipattern]`
+with namespaced ids (`mypack/my-rule`) and return them from `registry()`;
+call `impeccable_core::rule_pack::install(&PACK)` once at startup, which is
+what makes `get_antipattern` resolve the pack's ids and therefore what gives
+its findings a name, description, category, and severity; then pass the pack
+to the engine being run.
+
+Where a pack reference travels:
+
+| Engine | Field |
+|---|---|
+| text | `TextOptions.rule_pack`, `ScanOptions.rule_pack` |
+| static HTML | `DetectHtmlOptions.static_rule_pack` and `.rule_pack`; `StaticHtmlEngine.static_rule_pack` for the `Engines` seam |
+| browser / snapshot | `BrowserConfig.rule_pack` (`#[serde(skip)]`: a pack is a Rust value, never JSON from the page) |
+
+Where each hook runs, and why there:
+
+- **Text engine** (`detect_text`): after every built-in matcher, style-block
+  and CSS-in-JS pass, the design-system scan, the dedupe, and the page
+  analyzers, and before inline ignores. Appending last keeps built-in output
+  identical, and being inside the waiver step means `impeccable-disable`
+  covers a pack's rules the same way it covers built-in ones.
+- **Static HTML engine** (`detect_html_source`): after the element rules, the
+  design-system merge, the page-level checks and the pattern checks, again
+  just before inline ignores. An HTML file gets exactly one pack pass:
+  `static_rule_pack` when it is set, otherwise `rule_pack.check_text` over
+  the raw HTML source, which is how a text-only pack still covers `.html`
+  files. A pack that implements both never reports the same file twice.
+- **Browser driver** (`collect_browser_findings`): `check_element_dom` runs
+  at the end of the driver's per-element loop, through the same
+  disabled-rules filter and grouped onto the same element as the built-in
+  findings; `check_page_dom` runs after every built-in page pass, attributed
+  like the built-in checks that name their own element (`el: None` means
+  `document.body`). `skipScan` skips the pack too.
+
+The registry keeps `ANTIPATTERNS` as the built-in list and consults the
+registered rows after it (`registry::extend`, `registry::all_antipatterns`).
+`extend` is idempotent per slice and panics on an id collision, so a pack can
+never shadow a built-in rule. Registration is append-only and has no undo:
+a pack is a property of the process, not of a run.
+
+### The wasm `detect` feature
+
+`crates/wasm` builds with `--features detect` for hosts that cannot exec the
+binary (Cloudflare Workers and other wasm sandboxes). It adds two exports
+over the file-scanning engines, JSON in and JSON out:
+
+- `detect_text_json(content, file_path, options_json)`
+- `detect_html_source_json(html, file_path, options_json)`
+
+Both take `{ inlineIgnores?: boolean, designSystem?: { frontmatter?, sidecar? } }`
+and return the findings array `impeccable detect --json` prints, same keys and
+same order. `designSystem` carries the DESIGN.md inputs rather than a
+normalized object, because the JS API's normalized form used `Set`s and
+`Map`s that JSON cannot hold. Unparseable options fall back to the defaults.
+`antipatterns_json()` lists the built-ins followed by any pack's rows.
+
+A pack reaches those exports through `impeccable_wasm::set_rule_pack` and
+`exports_detect::set_static_rule_pack`, both Rust-only: the consumer is a
+crate that links `impeccable-wasm` as an rlib, registers its pack, and runs
+`wasm-pack` over itself. There is deliberately no JS-facing setter.
+
+```bash
+cargo build -p impeccable-wasm --features detect --target wasm32-unknown-unknown --release
+```
+
+Pristine (the PR design-review bot) is the first consumer: its `rules/` crate
+carries `pristine/*` rules on all three hooks and reaches the engine through
+this feature, replacing the `detectText` call it makes into the npm
+`impeccable@3` package today.
+
 ## Releases
 
 Two release kinds touch the runtime, in this order:

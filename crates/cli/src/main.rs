@@ -114,7 +114,10 @@ pub const CLI_VERSION: &str = "3.6.0";
 /// (crates/html). The browser engine (crates/browser) plugs in here once it
 /// lands; until then URL scans report the puppeteer message.
 fn engines() -> impeccable_detect::Engines<'static> {
-    static HTML: impeccable_html::StaticHtmlEngine = impeccable_html::StaticHtmlEngine;
+    static HTML: impeccable_html::StaticHtmlEngine = impeccable_html::StaticHtmlEngine {
+        // The shipped binary carries the built-in rules only.
+        static_rule_pack: None,
+    };
     impeccable_detect::Engines {
         html: &HTML,
         url: Some(url_engine()),

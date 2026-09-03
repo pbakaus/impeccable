@@ -342,6 +342,10 @@ The rule logic lives in `crates/core`: every check, the browser rule adapters ov
 
 Order for a new rule: fixture here first, registry row in `crates/foundation/src/registry.rs`, the check in `crates/core` against that fixture, oracle case + golden, `cargo xtask bundle` to refresh the tracked live asset, then `bun run build && bun run test` with a binary present. Rule counts quoted in `README.md` / `README.npm.md` are validated by `generateCounts` against the vendored registry.
 
+### Rule packs (downstream crates adding rules)
+
+A crate that depends on this workspace can add rules without forking it: implement `impeccable_core::rule_pack::RulePack` (text plus the two browser DOM hooks) and, for the static engine, `impeccable_html::StaticRulePack`, call `impeccable_core::rule_pack::install(&PACK)` at startup, and hand the pack to the engine through `TextOptions` / `ScanOptions`, `DetectHtmlOptions`, `StaticHtmlEngine`, or `BrowserConfig`. Every hook runs after the built-ins and before inline ignores, so built-in output with no pack installed is byte-identical, which the oracle enforces. The registry keeps `ANTIPATTERNS` as the built-in list and `registry::extend` appends a pack's rows, panicking on an id collision. `crates/wasm --features detect` exposes the two file engines as JSON exports (`detect_text_json`, `detect_html_source_json`) for hosts that cannot exec the binary; Pristine consumes that path. Full contract in `docs/ENGINE.md` ("Rule packs"). The shipped `impeccable` binary installs no pack, and nothing in this repo should start doing so.
+
 ## Evals Framework (separate private repo)
 
 The eval framework lives in a separate private repo at `~/code/impeccable-evals/`. It measures whether the `/impeccable` skill improves or harms AI-generated frontend design by running the same brief through a model with and without the skill loaded.

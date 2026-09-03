@@ -436,8 +436,10 @@ fn scan_page_inner(
     })
     .map_err(cdp_err)?;
 
-    let config =
-        snapshot_engine::browser_config(serialize_design_system_for_browser(options.design_system.as_deref()));
+    let config = snapshot_engine::browser_config(
+        serialize_design_system_for_browser(options.design_system.as_deref()),
+        options.rule_pack,
+    );
 
     // Deterministic pass: capture the page and run the rule core natively over
     // the snapshot (hit-test misses answered to a fixpoint). serialize_findings

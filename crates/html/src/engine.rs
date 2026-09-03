@@ -50,6 +50,21 @@ pub trait DesignSystemHook {
 /// engine: em-dash overuse, marketing buzzwords, aphoristic cadence.
 pub type TextContentAnalyzers<'a> = &'a dyn Fn(&str, &str) -> Vec<Finding>;
 
+/// The static engine's half of a rule pack (`impeccable_core::rule_pack`):
+/// rules written against the parsed page. The [`StaticDocument`] model is
+/// this crate's, so this hook cannot live on the engine-wide `RulePack`
+/// trait; a pack implements both and hands the same value to both fields of
+/// [`DetectHtmlOptions`].
+///
+/// Findings come back as full [`Finding`] values, built with
+/// `impeccable_core::findings::finding_for(row, file_path, snippet, line)` so
+/// they carry the pack's own registry metadata.
+pub trait StaticRulePack: Send + Sync + std::fmt::Debug {
+    /// Runs once per HTML file, after every built-in pass and before inline
+    /// ignores.
+    fn check_document(&self, doc: &StaticDocument, file_path: &str) -> Vec<Finding>;
+}
+
 /// The `options` object `detectHtml` reads.
 #[derive(Default, Clone, Copy)]
 pub struct DetectHtmlOptions<'a> {
@@ -65,6 +80,14 @@ pub struct DetectHtmlOptions<'a> {
     /// Sink for the JS `process.stderr.write` notices (unreadable linked
     /// stylesheets); `None` drops them.
     pub warn: Option<&'a dyn Fn(&str)>,
+    /// A rule pack's static-document hook: rules over the parsed page.
+    pub static_rule_pack: Option<&'static dyn StaticRulePack>,
+    /// The same pack's engine-wide text hook. An HTML file gets **one** pack
+    /// pass: `static_rule_pack` when it is set, otherwise this one over the
+    /// raw HTML source (which is how a text-only pack still covers `.html`
+    /// files, the way the built-in text-content analyzers do). A pack that
+    /// implements both therefore never reports twice for the same file.
+    pub rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
 }
 
 /// Errors of the static engine.
@@ -329,6 +352,29 @@ pub fn detect_html_source(
                 }
             }
         }
+    }
+
+    // A rule pack sees the page after every built-in pass (element rules, the
+    // design-system merge, the page-level checks) and before inline ignores:
+    // appending keeps built-in output byte-identical when no pack is
+    // installed, and pack findings are waivable like built-in ones.
+    if let Some(pack) = options.static_rule_pack {
+        let pack_findings = profile::findings(
+            profile,
+            Meta::new("page", "rule-pack", fp),
+            |f: &Finding| f.antipattern.as_str(),
+            || pack.check_document(&doc, fp),
+        );
+        findings.extend(pack_findings);
+    } else if let Some(pack) = options.rule_pack {
+        let ext = impeccable_detect::detect_text::ext_from_file_path(fp);
+        let pack_findings = profile::findings(
+            profile,
+            Meta::new("source", "rule-pack", fp),
+            |f: &Finding| f.antipattern.as_str(),
+            || pack.check_text(html, fp, &ext),
+        );
+        findings.extend(pack_findings);
     }
 
     if options.inline_ignores_disabled {

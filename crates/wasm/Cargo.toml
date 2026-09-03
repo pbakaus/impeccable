@@ -16,14 +16,22 @@ default = []
 # `cargo xtask bundle --pure` builds a bundle that carries them; native
 # `cargo test -p impeccable-wasm` covers them either way.
 pure-exports = ["impeccable-core/vectors"]
+# The file-scanning engines as JSON-in / JSON-out exports (exports_detect.rs):
+# `detect_text_json` and `detect_html_source_json`, for hosts that cannot exec
+# the binary (Cloudflare Workers and other wasm sandboxes). Off in the in-page
+# bundle, which scans the live DOM instead and would only pay the parser's
+# weight for nothing.
+detect = ["dep:impeccable-detect", "dep:impeccable-html"]
 
 [dependencies]
 impeccable-core = { workspace = true }
+impeccable-detect = { workspace = true, optional = true }
+impeccable-html = { workspace = true, optional = true }
 wasm-bindgen = "0.2"
 serde_json = { workspace = true }
 
 [dev-dependencies]
-impeccable-wasm = { path = ".", features = ["pure-exports"] }
+impeccable-wasm = { path = ".", features = ["pure-exports", "detect"] }
 
 # wasm-pack runs wasm-opt on the release build. `--all-features` is required:
 # the bundled wasm-opt predates the wasm features rustc emits by default

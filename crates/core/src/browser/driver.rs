@@ -984,6 +984,11 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
             design_system.as_ref(),
             &mut design_seen,
         ));
+        // Rule-pack element rules run last, so the built-in findings for this
+        // element keep their order and their position in the group.
+        if let Some(pack) = config.rule_pack {
+            findings.extend(pack.check_element_dom(dom, el));
+        }
         let findings: Vec<BrowserFinding> =
             findings.into_iter().filter(|f| rule_ok(&f.type_)).collect();
         add_browser_findings(dom, &mut groups, el, findings);
@@ -1042,6 +1047,12 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
     page_pass(&mut groups, &mut page_level, q::check_page_quality_dom(dom));
     page_pass(&mut groups, &mut page_level, hits(pc::check_cream_palette(dom)));
     page_pass(&mut groups, &mut page_level, scoped_html_pattern_findings(dom));
+
+    // Rule-pack page rules run after every built-in page pass, through the
+    // same attribution as the built-in checks that name their own element.
+    if let Some(pack) = config.rule_pack {
+        el_pass(&mut groups, pack.check_page_dom(dom));
+    }
 
     CollectResult { groups, page_level }
 }

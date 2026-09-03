@@ -10,6 +10,7 @@ use impeccable_core::findings::{finding, Finding};
 use impeccable_core::inline_ignores::apply_inline_ignores;
 use impeccable_core::js::{self, ci, number_to_string, string_to_number};
 use impeccable_core::page::is_full_page;
+use impeccable_core::rule_pack::RulePack;
 
 use crate::design_system::{check_source_design_system, DesignSystem};
 use crate::profiler::{profile_findings, profile_step, DetectorProfile, ProfileMeta};
@@ -26,6 +27,8 @@ pub struct TextOptions<'a> {
     pub design_system: Option<&'a DesignSystem>,
     /// JS `options.inlineIgnores === false` disables the waivers.
     pub inline_ignores: bool,
+    /// An installed rule pack's text hook; `None` runs the built-ins only.
+    pub rule_pack: Option<&'static dyn RulePack>,
 }
 
 const PAGE_ANALYZER_EXTS: &[&str] = &[".html", ".htm", ".astro", ".vue", ".svelte"];
@@ -1550,6 +1553,14 @@ pub fn detect_text(content: &str, file_path: &str, options: &TextOptions) -> Vec
                 || analyzer(content, file_path),
             ));
         }
+    }
+
+    // A rule pack sees the file after every built-in matcher, analyzer, and
+    // the dedupe, and before inline ignores: its rows are waivable with
+    // `impeccable-disable` exactly like built-in rules, and appending keeps
+    // built-in output byte-identical when no pack is installed.
+    if let Some(pack) = options.rule_pack {
+        deduped.extend(pack.check_text(content, file_path, &ext));
     }
 
     if options.inline_ignores {

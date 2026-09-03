@@ -6,6 +6,7 @@
 use std::rc::Rc;
 
 use impeccable_core::findings::Finding;
+use impeccable_core::rule_pack::RulePack;
 
 use crate::design_system::DesignSystem;
 use crate::profiler::DetectorProfile;
@@ -22,6 +23,10 @@ pub struct ScanOptions {
     pub viewport: Option<(u32, u32)>,
     /// JS `options.profile` (library callers only; no CLI flag).
     pub profile: Option<Rc<DetectorProfile>>,
+    /// The installed rule pack (`impeccable_core::rule_pack`), passed through
+    /// to the text engine and on to the HTML engine. `None` in the `impeccable`
+    /// binary, which ships the built-in rules only.
+    pub rule_pack: Option<&'static dyn RulePack>,
 }
 
 /// An error an engine raises; `detectCli` reports it the way the JS surfaces

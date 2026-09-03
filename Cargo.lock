@@ -701,6 +701,8 @@ name = "impeccable-wasm"
 version = "0.1.0"
 dependencies = [
  "impeccable-core",
+ "impeccable-detect",
+ "impeccable-html",
  "impeccable-wasm",
  "serde_json",
  "wasm-bindgen",

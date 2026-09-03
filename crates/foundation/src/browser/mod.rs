@@ -99,6 +99,12 @@ pub struct BrowserConfig {
     /// applies `|| 80`).
     #[serde(default)]
     pub line_length_max: Option<serde_json::Value>,
+    /// The installed rule pack, when the host linked one in
+    /// ([`crate::rule_pack`]). Not part of the JSON config: a pack is a Rust
+    /// value, so it is skipped in both directions and a config parsed from
+    /// the page carries `None`.
+    #[serde(skip)]
+    pub rule_pack: Option<&'static dyn crate::rule_pack::RulePack>,
 }
 
 impl BrowserConfig {
