@@ -694,10 +694,10 @@ mod tests_660 {
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
         ));
         std::fs::create_dir_all(&base).unwrap();
-        // Like Node's `realpathSync`: no `\\\\?\\` verbatim prefix on Windows,
+        // Like Node's `realpathSync`: no `\\?\` verbatim prefix on Windows,
         // so paths the verb joins with `/` resolve under this root.
         let real = std::fs::canonicalize(&base).unwrap().to_string_lossy().into_owned();
-        real.strip_prefix(r"\\\\?\\").map(str::to_string).unwrap_or(real)
+        real.strip_prefix(r"\\?\").map(str::to_string).unwrap_or(real)
     }
 
     fn run_capture(cwd: &str, args: &[&str]) -> (i32, String, String) {
