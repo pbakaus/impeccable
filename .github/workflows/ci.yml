@@ -172,7 +172,7 @@ jobs:
         run: rustup show
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --workspace --all-targets
-      - run: cargo test --workspace
+      - run: cargo test --workspace --no-fail-fast
 
   # Behavior gate: replays the tests/oracle/ goldens against a release build
   # of the engine from THIS checkout (so a PR is judged on its own source,

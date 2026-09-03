@@ -113,6 +113,13 @@ fn state_relocates_and_slug_normalizes() {
     assert_ne!(get_cache_path("/x/my.app"), get_cache_path("/x/my-app"));
 }
 
+/// The project-local cache path for `/x/app`, joined with the host's path
+/// semantics (backslashes on Windows), which is what the stock behavior
+/// produces.
+fn stock_cache_path() -> String {
+    impeccable_common::jsp::join(&["/x/app", ".impeccable", "hook.cache.json"])
+}
+
 #[test]
 fn root_value_normalization_and_opt_out() {
     let _l = ENV_LOCK.lock().unwrap();
@@ -131,11 +138,11 @@ fn root_value_normalization_and_opt_out() {
     // Unset or blank keeps stock project-local behavior.
     {
         let _g = EnvGuard::set(&[("IMPECCABLE_CACHE_ROOT", None)]);
-        assert_eq!(get_cache_path("/x/app"), "/x/app/.impeccable/hook.cache.json");
+        assert_eq!(get_cache_path("/x/app"), stock_cache_path());
     }
     {
         let _g = EnvGuard::set(&[("IMPECCABLE_CACHE_ROOT", Some("   "))]);
-        assert_eq!(get_cache_path("/x/app"), "/x/app/.impeccable/hook.cache.json");
+        assert_eq!(get_cache_path("/x/app"), stock_cache_path());
     }
 }
 
