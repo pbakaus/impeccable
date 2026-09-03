@@ -189,6 +189,12 @@ Output streams:
   Human-readable findings go to stderr so stdout stays available for structured
   output. Use --json for JSON on stdout, or redirect text with 2> findings.txt.
 
+Exit status:
+  0  Scan completed with no primary findings (advisories may still be listed)
+  1  At least one requested target could not be scanned
+  2  Scan completed with primary findings
+  Operational failure takes precedence when a multi-target scan is partial.
+
 Project config:
   Respects .impeccable/config.json and .impeccable/config.local.json detector
   settings: detector.ignoreRules, detector.ignoreFiles, detector.ignoreValues,
@@ -309,6 +315,7 @@ async function detectCli() {
   if (helpMode) { printUsage(); process.exit(0); }
 
   let allFindings = [];
+  let hadOperationalFailure = false;
 
   if (!process.stdin.isTTY && targets.length === 0) {
     allFindings = await handleStdin(scanOptionsFor);
@@ -319,11 +326,22 @@ async function detectCli() {
     // browser-grade scan of a local artifact can pass file:///abs/path.html
     // instead of the bare path (which stays on the static engine).
     const urlTargetCount = paths.filter(target => URL_TARGET_RE.test(target)).length;
-    const browserDetector = urlTargetCount > 1 ? await createBrowserDetector() : null;
+    let browserDetector = null;
+    let browserSetupFailed = false;
+    if (urlTargetCount > 1) {
+      try {
+        browserDetector = await createBrowserDetector();
+      } catch (e) {
+        browserSetupFailed = true;
+        hadOperationalFailure = true;
+        process.stderr.write(`Error: ${e.message}\n`);
+      }
+    }
 
     try {
       for (const target of paths) {
         if (URL_TARGET_RE.test(target)) {
+          if (browserSetupFailed) continue;
           // A file:// URL points at a local artifact, so its design system
           // resolves from that file's project. A remote http(s) URL has no
           // local project — it gets base options (no design system), never
@@ -336,7 +354,10 @@ async function detectCli() {
               ? (url) => browserDetector.detectUrl(url, urlOptions)
               : (url) => detectUrl(url, urlOptions);
             allFindings.push(...await scanner(target));
-          } catch (e) { process.stderr.write(`Error: ${e.message}\n`); }
+          } catch (e) {
+            hadOperationalFailure = true;
+            process.stderr.write(`Error: ${e.message}\n`);
+          }
           continue;
         }
 
@@ -433,6 +454,10 @@ async function detectCli() {
   // advisory-only scan still prints its notes but exits 0 (a clean pass), so
   // advisory rules never break CI or block automation.
   const { primary, advisory } = partitionAdvisory(allFindings);
+  // Exit 1 means at least one requested scan could not complete. It takes
+  // precedence over exit 2 because findings from the remaining targets do not
+  // turn a partial scan into a complete one.
+  const exitCode = hadOperationalFailure ? 1 : (primary.length > 0 ? 2 : 0);
 
   if (allFindings.length > 0) {
     if (jsonMode) process.stdout.write(formatFindings(allFindings, true) + '\n');
@@ -443,10 +468,10 @@ async function detectCli() {
       }
     }
     else process.stderr.write(formatFindings(allFindings, false) + '\n');
-    process.exit(primary.length > 0 ? 2 : 0);
+    process.exit(exitCode);
   }
   if (jsonMode) process.stdout.write('[]\n');
-  process.exit(0);
+  process.exit(exitCode);
 }
 
 export { formatFindings, handleStdin, confirm, printUsage, detectCli };

@@ -60,8 +60,11 @@ npx impeccable detect --fast src/
 
 ## Exit Codes
 
-- `0`: no issues found
-- `2`: anti-patterns detected
+- `0`: scan completed with no primary findings (advisories may still be listed)
+- `1`: at least one requested target could not be scanned
+- `2`: scan completed with primary findings
+
+Operational failure takes precedence when a multi-target scan is partial. In JSON mode, stdout remains a findings array and diagnostics are written to stderr.
 
 ## Options
 

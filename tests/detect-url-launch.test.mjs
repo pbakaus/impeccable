@@ -1,6 +1,13 @@
 import { describe, test, expect, afterEach } from 'bun:test';
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
 import http from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { launchBrowser, detectUrl, splitScanUrl } from '../cli/engine/engines/browser/detect-url.mjs';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // launchBrowser prefers the system-installed Chrome on Windows to dodge the
 // bundled-Chrome GPU crash-loop (issue #372), and keeps the pinned bundled
@@ -36,6 +43,28 @@ function makePuppeteer({ failChannel = false } = {}) {
       },
     },
   };
+}
+
+function runWithoutPuppeteer(args, files = {}) {
+  const isolatedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-no-puppeteer-'));
+  try {
+    const cliRoot = path.join(isolatedRoot, 'cli');
+    fs.mkdirSync(cliRoot, { recursive: true });
+    fs.cpSync(path.join(ROOT, 'cli', 'engine'), path.join(cliRoot, 'engine'), { recursive: true });
+    fs.cpSync(path.join(ROOT, 'cli', 'lib'), path.join(cliRoot, 'lib'), { recursive: true });
+    for (const [relativePath, contents] of Object.entries(files)) {
+      const filePath = path.join(isolatedRoot, relativePath);
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, contents);
+    }
+    return spawnSync(
+      'node',
+      [path.join(cliRoot, 'engine', 'detect-antipatterns.mjs'), '--json', ...args],
+      { cwd: isolatedRoot, encoding: 'utf8' },
+    );
+  } finally {
+    fs.rmSync(isolatedRoot, { recursive: true, force: true });
+  }
 }
 
 describe('launchBrowser', () => {
@@ -78,6 +107,36 @@ describe('launchBrowser', () => {
     await launchBrowser(p.mod, {});
 
     expect(p.calls.every(c => c.channel === undefined)).toBe(true);
+  });
+});
+
+describe('detect CLI browser failures', () => {
+  test('exits 1 with valid empty JSON when Puppeteer is unavailable', () => {
+    const result = runWithoutPuppeteer(['https://example.com']);
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('[]\n');
+    expect(result.stderr).toContain('puppeteer is required for URL scanning');
+  });
+
+  test('reports a shared multi-URL setup failure once and exits 1', () => {
+    const result = runWithoutPuppeteer(['https://example.com', 'https://example.org']);
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('[]\n');
+    expect(result.stderr.match(/puppeteer is required for URL scanning/g)).toHaveLength(1);
+  });
+
+  test('operational failure takes precedence over findings from another target', () => {
+    const result = runWithoutPuppeteer(
+      ['https://example.com', 'page.css'],
+      { 'page.css': '.hero { animation: bounce 1s linear infinite; }\n' },
+    );
+    const findings = JSON.parse(result.stdout);
+
+    expect(result.status).toBe(1);
+    expect(findings.some(finding => finding.antipattern === 'bounce-easing')).toBe(true);
+    expect(result.stderr).toContain('puppeteer is required for URL scanning');
   });
 });
 
