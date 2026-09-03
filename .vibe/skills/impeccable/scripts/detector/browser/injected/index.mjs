@@ -1228,14 +1228,17 @@ if (IS_BROWSER) {
       isHidden: isElementHidden(el),
       findings: findings.map(f => {
         const ap = ANTIPATTERNS.find(a => a.id === (f.type || f.id));
+        const severity = f.severity || ap?.severity || 'warning';
         return {
           type: f.type || f.id,
           category: ap ? ap.category : 'quality',
-          severity: f.severity || ap?.severity || 'warning',
+          severity,
           // Advisory findings (em-dash overuse, etc.) are surfaced but never
           // treated as failures; carry the flag so the overlay/extension can
           // render them with the mildest affordance and consumers can filter.
-          advisory: (ap && ap.advisory === true) || f.advisory === true,
+          // Per-finding promotions override the registry default, so derive
+          // this strictly from the effective severity.
+          advisory: severity === 'advisory',
           detail: f.detail || f.snippet,
           ignoreValue: f.ignoreValue || f.value || '',
           name: ap ? ap.name : (f.type || f.id),
@@ -1275,6 +1278,381 @@ if (IS_BROWSER) {
     const existing = groupMap.get(el);
     if (existing) existing.push(...kept);
     else groupMap.set(el, [...kept]);
+  }
+
+  function pseudoElementHostSelector(selector) {
+    const raw = String(selector || '');
+    const legacyNames = new Set(['before', 'after', 'first-letter', 'first-line']);
+    const isNameChar = char => /[a-zA-Z0-9_-]/.test(char || '');
+    const consumeFunction = (start) => {
+      let depth = 0;
+      let quote = '';
+      for (let i = start; i < raw.length; i += 1) {
+        const char = raw[i];
+        if (char === '\\') {
+          i += 1;
+          continue;
+        }
+        if (quote) {
+          if (char === quote) quote = '';
+          continue;
+        }
+        if (char === '"' || char === "'") {
+          quote = char;
+          continue;
+        }
+        if (char === '(') depth += 1;
+        if (char === ')' && --depth === 0) return i + 1;
+      }
+      return raw.length;
+    };
+
+    let output = '';
+    let found = false;
+    for (let i = 0; i < raw.length;) {
+      const char = raw[i];
+      if (char === '\\') {
+        output += raw.slice(i, Math.min(raw.length, i + 2));
+        i += 2;
+        continue;
+      }
+      if (char === '"' || char === "'") {
+        const quote = char;
+        const start = i;
+        i += 1;
+        while (i < raw.length) {
+          if (raw[i] === '\\') {
+            i += 2;
+            continue;
+          }
+          const value = raw[i];
+          i += 1;
+          if (value === quote) break;
+        }
+        output += raw.slice(start, i);
+        continue;
+      }
+      if (char !== ':') {
+        output += char;
+        i += 1;
+        continue;
+      }
+
+      let end = i + 1;
+      let isPseudoElement = false;
+      if (raw[end] === ':') {
+        end += 1;
+        const nameStart = end;
+        while (isNameChar(raw[end])) end += 1;
+        isPseudoElement = end > nameStart;
+      } else {
+        const nameStart = end;
+        while (isNameChar(raw[end])) end += 1;
+        isPseudoElement = legacyNames.has(raw.slice(nameStart, end).toLowerCase());
+      }
+      if (!isPseudoElement) {
+        output += char;
+        i += 1;
+        continue;
+      }
+      if (raw[end] === '(') end = consumeFunction(end);
+      found = true;
+      if (!output || /[\s>+~,]/.test(output[output.length - 1])) output += '*';
+      i = end;
+    }
+    if (!found) return null;
+    return output.trim().replace(/,\s*(?=,|$)/g, '');
+  }
+
+  function selectorNodesForLiveDom(root, selector) {
+    const raw = String(selector || '').trim();
+    if (!raw) return null;
+    const fallback = pseudoElementHostSelector(raw);
+    if (fallback == null) {
+      // An empty result from a valid full selector is authoritative. In
+      // particular, do not broaden inactive :hover/:focus/:not() rules to
+      // their host element by stripping pseudo-classes.
+      try { return Array.from(root.querySelectorAll(raw)); }
+      catch { return null; }
+    }
+
+    // Resolve pseudo-elements to their originating live elements. An attached
+    // pseudo-element (`.card::before`) belongs to the element before it, while
+    // a hostless pseudo-element after a combinator (`main > ::before`) belongs
+    // to a matching element at that position (`main > *`). Replacing every
+    // pseudo indiscriminately with an empty string leaves the latter as the
+    // invalid selector `main >` and makes absent hosts indistinguishable from
+    // selectors the DOM API cannot parse.
+    if (!fallback || /^[,\s]*$/.test(fallback)) return null;
+    try { return Array.from(root.querySelectorAll(fallback)); }
+    catch { return null; }
+  }
+
+  let containerProbeSequence = 0;
+
+  function isContainerCssRule(rule) {
+    return rule?.constructor?.name === 'CSSContainerRule'
+      || /^\s*@container\b/i.test(rule?.cssText || '');
+  }
+
+  function styleRuleAppliesToLiveMatches(rule, matches) {
+    const style = rule?.style;
+    if (!style || !matches?.length || typeof getComputedStyle !== 'function') return false;
+    const sequence = ++containerProbeSequence;
+    const property = `--impeccable-container-probe-${sequence}-${Math.random().toString(36).slice(2)}`;
+    const value = `impeccable-container-active-${sequence}`;
+    const previousValue = style.getPropertyValue(property);
+    const previousPriority = style.getPropertyPriority(property);
+    try {
+      style.setProperty(property, value, 'important');
+    } catch {
+      return false;
+    }
+
+    const pseudoElements = [...new Set(
+      String(rule.selectorText || '').match(/::[a-zA-Z-]+(?:\([^)]*\))?/g) || [],
+    )];
+    try {
+      return matches.some(el => [null, ...pseudoElements].some(pseudo => {
+        try {
+          const computed = pseudo ? getComputedStyle(el, pseudo) : getComputedStyle(el);
+          return computed.getPropertyValue(property).trim() === value;
+        } catch {
+          return false;
+        }
+      }));
+    } finally {
+      if (previousValue) style.setProperty(property, previousValue, previousPriority);
+      else style.removeProperty(property);
+    }
+  }
+
+  function conditionalCssRuleIsActive(rule) {
+    const type = Number(rule?.type);
+    const constructorName = rule?.constructor?.name || '';
+    if (constructorName === 'CSSMediaRule' || type === 4) {
+      const condition = rule.conditionText || rule.media?.mediaText || '';
+      if (!condition || typeof window.matchMedia !== 'function') return true;
+      try { return window.matchMedia(condition).matches; }
+      catch { return true; }
+    }
+    if (constructorName === 'CSSSupportsRule' || type === 12) {
+      const condition = rule.conditionText || '';
+      if (!condition || typeof CSS === 'undefined' || typeof CSS.supports !== 'function') return true;
+      try { return CSS.supports(condition); }
+      catch { return true; }
+    }
+    return true;
+  }
+
+  function splitCssCommaList(value) {
+    const parts = [];
+    let current = '';
+    let quote = '';
+    let escaped = false;
+    for (const char of String(value || '')) {
+      if (escaped) {
+        current += char;
+        escaped = false;
+        continue;
+      }
+      if (char === '\\') {
+        current += char;
+        escaped = true;
+        continue;
+      }
+      if (quote) {
+        current += char;
+        if (char === quote) quote = '';
+        continue;
+      }
+      if (char === '"' || char === "'") {
+        quote = char;
+        current += char;
+        continue;
+      }
+      if (char === ',') {
+        parts.push(current);
+        current = '';
+        continue;
+      }
+      current += char;
+    }
+    parts.push(current);
+    return parts;
+  }
+
+  function normalizeAnimationName(value) {
+    const name = String(value || '').trim();
+    if (name.length >= 2 && name[0] === name[name.length - 1] && (name[0] === '"' || name[0] === "'")) {
+      return name.slice(1, -1);
+    }
+    return name;
+  }
+
+  function animationNamesDeclaredByRule(rule) {
+    const style = rule?.style;
+    if (!style) return [];
+    let value = '';
+    try {
+      value = style.animationName
+        || style.getPropertyValue?.('animation-name')
+        || style.webkitAnimationName
+        || style.getPropertyValue?.('-webkit-animation-name')
+        || '';
+    } catch {
+      return [];
+    }
+    return splitCssCommaList(value)
+      .map(normalizeAnimationName)
+      .filter(name => name && name.toLowerCase() !== 'none');
+  }
+
+  function keyframesRuleName(rule, cssText) {
+    const constructorName = rule?.constructor?.name || '';
+    const type = Number(rule?.type);
+    const isKeyframes = constructorName === 'CSSKeyframesRule'
+      || constructorName === 'WebKitCSSKeyframesRule'
+      || type === 7
+      || /^\s*@(?:-webkit-)?keyframes\b/i.test(cssText);
+    if (!isKeyframes) return '';
+    const match = String(cssText || '').match(/^\s*@(?:-webkit-)?keyframes\s+([^\s{]+)/i);
+    return normalizeAnimationName(rule?.name || match?.[1] || '');
+  }
+
+  function cssPropertyName(property) {
+    if (property.startsWith('--')) return property;
+    return property.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`);
+  }
+
+  function resolvedAnimationKeyframes(candidateNames) {
+    if (typeof document.getAnimations !== 'function') return null;
+    let animations;
+    try { animations = document.getAnimations(); }
+    catch { return null; }
+
+    const resolved = new Map();
+    const metadata = new Set(['offset', 'computedOffset', 'easing', 'composite']);
+    for (const animation of animations) {
+      const name = normalizeAnimationName(animation?.animationName || '');
+      if (!name || !candidateNames.has(name) || resolved.has(name)) continue;
+      let frames;
+      try { frames = animation.effect?.getKeyframes?.() || []; }
+      catch { continue; }
+      const blocks = [];
+      for (const frame of frames) {
+        const rawOffset = Number.isFinite(frame.computedOffset) ? frame.computedOffset : frame.offset;
+        if (!Number.isFinite(rawOffset)) continue;
+        const offset = Math.round(rawOffset * 1000000) / 10000;
+        const declarations = Object.entries(frame)
+          .filter(([property, value]) => !metadata.has(property) && value != null && value !== '')
+          .map(([property, value]) => `${cssPropertyName(property)}: ${value};`);
+        const easing = String(frame.easing || '').trim();
+        if (easing && easing.toLowerCase() !== 'linear') {
+          declarations.push(`animation-timing-function: ${easing};`);
+        }
+        if (declarations.length === 0) continue;
+        blocks.push(`${offset}% { ${declarations.join(' ')} }`);
+      }
+      if (blocks.length > 0) resolved.set(name, `@keyframes ${name} { ${blocks.join(' ')} }`);
+    }
+    return resolved;
+  }
+
+  // Read CSS that is absent from document.outerHTML. Inline <style> blocks are
+  // already present in the HTML pattern corpus, so limit this walk to linked
+  // stylesheets. Flatten grouping rules so each declaration keeps its selector,
+  // and admit only selector rules that target the live DOM. That prevents
+  // unused utilities from feeding both selector-scoped and page-level checks.
+  // Same-origin CSS and readable CORS sheets participate; browser security
+  // exceptions for cross-origin sheets are expected and skipped.
+  function linkedStylesheetText() {
+    const parts = [];
+    const seen = new Set();
+    const animationNames = new Set();
+    const keyframeCandidates = new Map();
+    const appendRules = (rules, requiresAppliedMatch = false) => {
+      for (const rule of rules) {
+        if (rule.styleSheet) {
+          appendSheet(rule.styleSheet);
+          continue;
+        }
+        const cssText = rule.cssText || '';
+        if (rule.selectorText) {
+          const matches = selectorNodesForLiveDom(document, rule.selectorText);
+          // Only declarations with a resolvable live host enter the corpus.
+          // Unresolvable selectors are uncertain, not evidence that a pattern
+          // rendered, and retaining them would leak unused CSS into findings.
+          if (
+            matches?.length > 0
+            && (!requiresAppliedMatch || styleRuleAppliesToLiveMatches(rule, matches))
+          ) {
+            parts.push(cssText);
+            for (const name of animationNamesDeclaredByRule(rule)) animationNames.add(name);
+          }
+          continue;
+        }
+        let nested = [];
+        let hasNestedRules = false;
+        try {
+          const ruleList = rule.cssRules;
+          hasNestedRules = ruleList != null;
+          nested = Array.from(ruleList || []);
+        } catch {
+          continue;
+        }
+        const keyframesName = keyframesRuleName(rule, cssText);
+        if (keyframesName) {
+          // Keyframes do not merge: when a name is defined more than once, the
+          // later effective definition replaces the earlier one.
+          keyframeCandidates.set(keyframesName, {
+            name: keyframesName,
+            cssText,
+          });
+          continue;
+        }
+        if (hasNestedRules) {
+          if (!conditionalCssRuleIsActive(rule)) continue;
+          appendRules(nested, requiresAppliedMatch || isContainerCssRule(rule));
+          continue;
+        }
+        // Other selector-less leaf at-rules cannot be tied to a rendered node.
+      }
+    };
+    const appendSheet = (sheet) => {
+      if (!sheet || seen.has(sheet)) return;
+      seen.add(sheet);
+      let rules;
+      try { rules = Array.from(sheet.cssRules || sheet.rules || []); }
+      catch { return; }
+      appendRules(rules);
+    };
+    let sheets;
+    try { sheets = Array.from(document.styleSheets || []); }
+    catch { return ''; }
+    for (const sheet of sheets) {
+      const owner = sheet.ownerNode;
+      if (owner?.tagName?.toLowerCase() !== 'link') continue;
+      if (!/\bstylesheet\b/i.test(owner.getAttribute?.('rel') || '')) continue;
+      appendSheet(sheet);
+    }
+    // Motion checks need the effective body of a live animation's keyframes.
+    // Let the browser resolve duplicate names across source order, imports,
+    // conditional groups, and cascade layers, then serialize those computed
+    // frames back into the pattern corpus. Browsers also make container-nested
+    // keyframes globally available, so lexical grouping is not a reliable
+    // activity signal. When the Web Animations API is unavailable, fall back to
+    // the last source-order definition referenced by a retained linked rule.
+    const resolvedKeyframes = resolvedAnimationKeyframes(new Set(keyframeCandidates.keys()));
+    if (resolvedKeyframes) {
+      parts.push(...resolvedKeyframes.values());
+    } else {
+      for (const candidate of keyframeCandidates.values()) {
+        if (!animationNames.has(candidate.name)) continue;
+        parts.push(candidate.cssText);
+      }
+    }
+    return parts.join('\n');
   }
 
   function browserFindingsFromMap(groupMap) {
@@ -1650,18 +2028,16 @@ if (IS_BROWSER) {
     // (the CSS ships here, but the pattern never renders — the live DOM is
     // ground truth in the browser), and a match under a data-impeccable-ignore
     // ancestor is waived. Selector-less findings stay page-level.
-    const scopedHtmlFindings = checkHtmlPatterns(docClone.outerHTML).filter(f => {
+    const html = docClone.outerHTML;
+    const corpora = buildHtmlPatternCorpora(html);
+    const linkedCss = linkedStylesheetText();
+    if (linkedCss) corpora.styleText += `\n${linkedCss}`;
+    const scopedHtmlFindings = checkHtmlPatterns(html, corpora).filter(f => {
       if (!f.selector) return true;
-      const query = String(f.selector).replace(/::?[a-zA-Z-]+(\([^)]*\))?/g, '').trim().replace(/,\s*(?=,|$)/g, '');
-      if (!query || /^[,\s]*$/.test(query)) return true;
-      let matches;
-      try {
-        matches = document.querySelectorAll(query);
-      } catch {
-        return true;
-      }
+      const matches = selectorNodesForLiveDom(document, f.selector);
+      if (!matches) return false;
       if (matches.length === 0) return false;
-      return [...matches].some(el => !scopedIgnoreActive(el, f.id));
+      return matches.some(el => !scopedIgnoreActive(el, f.id));
     });
     if (scopedHtmlFindings.length > 0) {
       const mapped = scopedHtmlFindings.map(f => {

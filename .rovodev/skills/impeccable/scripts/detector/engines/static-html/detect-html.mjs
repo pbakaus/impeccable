@@ -9,7 +9,7 @@ import {
 } from '../../design-system.mjs';
 import { isFullPage } from '../../shared/page.mjs';
 import { applyInlineIgnores } from '../../shared/inline-ignores.mjs';
-import { finding } from '../../findings.mjs';
+import { deriveAdvisoryFlag, finding } from '../../findings.mjs';
 import { profileFindings, profileStep, profileStepAsync } from '../../profile/profiler.mjs';
 import {
   checkElementBorders,
@@ -25,6 +25,7 @@ import {
   checkElementOversizedH1,
   checkElementQuality,
   checkElementRadialSpotlight,
+  checkFlatTypeHierarchyFromDoc,
   checkCreamPalette,
   checkHtmlPatterns,
   checkKickerAboveHeadingFromDoc,
@@ -59,18 +60,7 @@ function checkStaticPageTypography(document, window) {
   for (const font of overusedFound) {
     findings.push({ id: 'overused-font', snippet: `Primary font: ${font}` });
   }
-  const sizes = new Set();
-  for (const el of document.querySelectorAll('h1, h2, h3, h4, h5, h6, p, span, a, li, td, th, label, button, div')) {
-    const fontSize = parseFloat(window.getComputedStyle(el).fontSize);
-    if (fontSize >= 8 && fontSize < 200) sizes.add(Math.round(fontSize * 10) / 10);
-  }
-  if (sizes.size >= 3) {
-    const sorted = [...sizes].sort((a, b) => a - b);
-    const ratio = sorted[sorted.length - 1] / sorted[0];
-    if (ratio < 2.0) {
-      findings.push({ id: 'flat-type-hierarchy', snippet: `Sizes: ${sorted.map(s => s + 'px').join(', ')} (ratio ${ratio.toFixed(1)}:1)` });
-    }
-  }
+  findings.push(...checkFlatTypeHierarchyFromDoc(document, el => window.getComputedStyle(el)));
   return findings;
 }
 
@@ -267,7 +257,7 @@ async function detectHtml(filePath, options = {}) {
       // severity (e.g. a pulsing dot inside a header/nav landmark) that
       // overrides the registry default.
       if (f.severity) item.severity = f.severity;
-      findings.push(item);
+      findings.push(deriveAdvisoryFlag(item));
     }
     // Text-content analyzers (em-dash overuse, marketing buzzwords,
     // numbered section markers, aphoristic cadence) live in the regex

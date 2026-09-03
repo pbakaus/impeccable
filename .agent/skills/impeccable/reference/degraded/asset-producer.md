@@ -15,74 +15,23 @@ When the parent hands you a decision card packet instead of an approved mock, th
 
 ## Input Contract
 
-Expect:
+Expect the measured spec (`.impeccable/build/spec.json`, written by `comp-spec.mjs` from the approved comp), the approved comp path, and the skill scripts path. Optionally: a subset of region ids to produce, extra prompt notes per region, and format or transparency needs. Everything else you need is in the spec: each raster region's id, kind (plate, image, texture), pixel box, sampled palette, aspect, note, and the plate path it must land on.
 
-- Approved mock path or screenshot reference.
-- Crop paths or a contact sheet with crop ids.
-- Output directory.
-- Required dimensions, format, transparency needs, and avoid list.
-- Notes on what should remain semantic HTML/CSS/SVG instead of raster.
+If there is no spec, stop and return one line asking the parent to run `comp-spec.mjs` first. You do not inventory the comp yourself; the spec is the inventory, and a second inventory disagrees with the first.
 
-If the source mock is attached but has no filesystem path, use it for visual planning; ask for a path only before cropping or writing assets.
+## The job
 
-Defaults unless contradicted:
+Every region with `medium: raster` in the spec ships as a plate at its `plate` path. A plate is the region regenerated at asset resolution from the comp crop as reference: same subject, same composition, same palette, same lighting and material, with the UI text and page chrome removed, at 1.5x the comp region's pixel size or more. The page draws text, controls, radius, shadow, and layout in code; the plate carries what code cannot draw. Crops from the comp are references, never shipping pixels: a comp is reference grade and a shipped crop is how a beautiful comp becomes a blurry site.
 
-- `.webp` for opaque photos, backgrounds, and textures.
-- `.png` for transparent cutouts, seals, tickets, and illustrations.
-- Target production size, or at least 2x display size when dimensions are known. Never default to the small size of a full-page mock crop.
-- Remove UI text, navigation, buttons, labels, and body copy.
-- Keep physical marks only when the parent says they are part of the asset.
-- Remove letterboxing, empty padding, baked card corners, borders, shadows, caption bands, and layout background unless the parent says those pixels are intrinsic.
-- Keep the final assets directory clean: only files the build will consume. Source crops, reference crops, masks, and contact sheets go in a sibling `_sources`, `sources`, or review folder.
+Per region, in the spec's order:
 
-Ask blockers once, globally. Missing source path/crops or output directory blocks production. Exact dimensions, compression targets, retina variants, and format preferences do not; choose defaults and report them.
+1. `node .agent/skills/impeccable/scripts/comp-spec.mjs --crop <id>` writes the reference crop under `.impeccable/build/crops/`.
+2. Produce the plate. With the API fallback: `node .agent/skills/impeccable/scripts/generate-image.mjs --plate <id> --quality high` does the whole step (crop as reference, the spec's plate prompt, output size chosen from the region's aspect, the file written to its plate path, prompt embedded, and the plate scored against the crop). With a harness-native image tool: use the crop as the input image and `node .agent/skills/impeccable/scripts/comp-spec.mjs --plate-prompt <id>` as the prompt, write the result to the plate path, then run `node .agent/skills/impeccable/scripts/embed-prompt.mjs <plate> --prompt "<the exact prompt>"`.
+3. Read the score line. `PLATE-SCORE` under 50%, or a `PLATE-WARN`, means the plate does not read as the region: open the plate beside the crop, name what drifted (subject, framing, palette, style), tighten the prompt with that, and regenerate once. Two misses on one region: keep the better plate, mark it `needs_parent_review`, and say why in one line.
+4. Transparent cutouts (a figure or object on the page ground): generate on a flat chroma color absent from the subject and key it to alpha before writing the PNG; never ship the keyed background.
 
-## Workflow
-
-1. Inventory the full approved mock or every assigned crop.
-2. Put each visual role in exactly one bucket:
-   - `produce`: needs generation, image editing, cleanup, cutout work, or a clean plate before it can ship.
-   - `direct`: ships after format conversion, compression, or renaming because the parent supplied a real standalone source: a project file, stock, or prior production art. A crop from the approved mock is never `direct`, whatever its apparent size.
-   - `semantic`: build in HTML/CSS/SVG/canvas, no raster output.
-3. Crops from the mock are binding visual references, never shipping pixels: a full-page mock's effective resolution is reference grade, and a shipped crop, however close it looks, is how a beautiful comp becomes a blurry site. Every mock-derived asset goes through `produce` as a clean regeneration.
-4. Give the parent an execution order for the `produce` bucket.
-5. For produced assets, choose the least inventive strategy: image-to-image clean plate, faithful regeneration from crop reference, transparent cutout, texture/pattern reconstruction, stock/project source, or a semantic HTML/CSS/SVG recommendation when raster is wrong.
-6. Use the harness's native image tool by default when generation or editing is needed; otherwise use the skill's generate-image.mjs.
-
-7. Remove baked-in UI text, navigation, buttons, body copy, and mock chrome unless the text is part of the asset.
-8. Think through the final DOM/CSS representation before generating. If CSS will own radius, clipping, shadows, borders, perspective, responsive cropping, captions, or card frames, do not bake those into the bitmap.
-9. Save outputs non-destructively in the requested project directory, and leave the intent with the file: after every generation, run `node .agent/skills/impeccable/scripts/embed-prompt.mjs <asset> --prompt "<the prompt used>"` so the prompt lives inside the image itself. The build thread composes what you made and needs to know what it is looking at, and the embedding survives copies where sidecars get lost.
-10. Compare each output against its source crop, opening every image by its workspace-relative path; sandboxed viewers reject absolute paths. If a review/QA tool is available, run it before the final manifest, then retry each major/fatal finding once before finalizing.
-
-Use `texture/pattern extraction` only when the source region is already clean enough to sample as texture. If UI, cards, labels, headings, body copy, or footer chrome must be removed first, classify it as crop-derived cleanup or clean-plate work.
-
-Use `semantic` for dashboards, charts, controls, screenshots of whole UI sections, data widgets, card chrome, app frames, icon toolbars, logos, wordmarks, and anything the final implementation can render crisply in HTML/CSS/SVG/canvas. Ship a screenshot raster only when the parent explicitly says the screenshot itself is the final asset.
-
-Semantic does not mean ignored. For every semantic role, write a concrete implementation handoff for the parent craft agent: the DOM/component layers, CSS-owned visual treatment, SVG/canvas/icon-library pieces, responsive behavior, and which nearby produced raster assets it composes with. For logos and icons, prefer inline SVG/vector or icon-library implementation unless the parent provides a production logo raster.
-
-## Prompt Pattern
-
-Use this shape for image-to-image work:
-
-```text
-Use the provided crop as the approved visual reference.
-Recreate the same asset as a clean reusable production image at the target component aspect ratio and at least 2x display resolution.
-Preserve silhouette, object/scene perspective, camera angle, palette, lighting, material, texture, and visual role.
-Remove baked-in UI copy, navigation, buttons, labels, body text, watermarks, and mock chrome unless explicitly part of the asset.
-Remove letterboxing, padding, card borders, rounded clipping, CSS shadows, perspective transforms, caption bands, and layout backgrounds that the implementation should create in code.
-Do not add new objects. Do not change the concept. Do not redesign the composition.
-```
-
-For transparent cutouts: use true alpha when the tool supports it; otherwise generate on a flat chroma-key color that cannot appear in the subject and post-process that color to alpha before shipping the PNG/WebP. Never ship the keyed background as the final asset.
+Do not redesign. Do not add objects, restyle, or reinterpret; the comp was approved as it is. Do not touch the page code, the spec, or the comp. Do not produce anything the spec does not list; a region the parent forgot goes back as a one-line note, not a plate.
 
 ## Output Contract
 
-Return a complete manifest, grouped by `produce`, `direct`, and `semantic`. For each asset include: `id`, `source_crop`, `output_path` when applicable, `strategy`, `prompt_used` when applicable, `dimensions`, `format`, `transparency`, `deviations`, and `qa_status`.
-
-For each semantic row include `id`, `implementation`, `notes`, and `qa_status`. The `implementation` is a concrete build handoff, not a note that no asset was produced: name the likely HTML/CSS/SVG/canvas/icon/component pieces and the visual responsibilities code owns.
-
-`qa_status` is `accepted`, `needs_parent_review`, or `blocked`. `accepted` only after visual comparison passes. `needs_parent_review` for cut-off subjects, unwanted borders or rounded-card chrome, letterboxing, baked semantic text, low-resolution output, perspective that should have been CSS, missing transparency, or drift from the crop. `blocked` when inputs, permissions, image capability, or asset source quality prevent a credible result.
-
-End with `execution_order`, `blockers`, and `assumptions` sections. Keep blockers global and minimal; per-asset rows carry only asset-specific risks or decisions.
-
-Do not modify implementation code. Do not edit the approved mock. Do not produce final page copy. The parent craft agent owns implementation and final mock fidelity.
+Return one line per raster region: `<id> <plate path> <WxH> <score>% <accepted|needs_parent_review|blocked> <one-line note or ->`. Then `blockers` (missing spec, missing comp, no image capability, exhausted key) and `assumptions`, each global and minimal. Nothing else: no summary, no praise, no implementation advice. The parent runs `build-phase.mjs advance` to verify the plates against the same spec; your line and its line must agree.

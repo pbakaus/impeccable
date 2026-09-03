@@ -46,14 +46,14 @@ Fields marked with * are spec-standard. Others are provider extensions.
 | `license`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | `compatibility`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | `metadata`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| `allowed-tools`* | Yes | No | Ignored | No | No | Yes | No | No | Yes | Yes | Yes | Yes | Yes | Yes |
-| `user-invocable` | Yes | No | No | No | Yes | Yes | No | No | Yes | No | Yes | Yes | Yes | No |
-| `argument-hint` | Yes | No | No | No | Yes | Yes | No | No | Yes | No | Yes | Yes | No | No |
+| `allowed-tools`* | Yes | No | Ignored | No | No | Yes | No | No | No | Yes | Yes | Yes | Yes | Yes |
+| `user-invocable` | Yes | No | No | No | Yes | Yes | No | No | No | No | Yes | Yes | Yes | No |
+| `argument-hint` | Yes | No | No | No | Yes | Yes | No | No | No | No | Yes | Yes | No | No |
 | `disable-model-invocation` | Yes | Yes | No | No | Yes | Yes | No | No | Yes | Yes | TBD | TBD | No | No |
-| `model` | Yes | No | No | No | No | Yes | No | No | Yes | No | No | No | No | No |
+| `model` | Yes | No | No | No | No | Yes | No | No | No | No | No | No | No | No |
 | `effort` | Yes | No | No | No | No | Yes | No | No | No | No | No | No | No | No |
 | `context` | Yes | No | No | No | No | No | No | No | No | No | No | No | No | No |
-| `agent` | Yes | No | No | No | No | No | No | No | Yes | No | No | No | No | No |
+| `agent` | Yes | No | No | No | No | No | No | No | No | No | No | No | No | No |
 | `hooks` | Yes | No | No | Yes | No | Yes | No | No | No | No | No | No | No | No |
 
 Notes:
@@ -64,6 +64,7 @@ Notes:
 - Hermes Agent reads the Agent Skills spec as-is. Spec-defined fields (`name`, `description`, `license`, `compatibility`, `metadata`) are parsed and stored; harness-specific extensions (`user-invocable`, `argument-hint`, `allowed-tools`, `disable-model-invocation`, `model`, `effort`, `context`, `agent`, `hooks`) are unknown keys and silently ignored. Hermes has no hook surface, no per-skill tool ACL, and no slash-command equivalent of `user-invocable` (skills are loaded via `/skill <name>` or auto-loaded; sub-commands like `/impeccable polish` are routed from the skill body, not declared in frontmatter). Hermes adds two frontmatter fields not in the spec: `platforms:` (OS filter; default = all) and `environments:` (relevance gate over `kanban`, `docker`, `s6`). Unknown fields are silently ignored.
 - Kiro recognizes `user-invocable` and `disable-model-invocation` per community reports but does not formally document them.
 - Antigravity supports standard Agent Skills spec frontmatter fields (`name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools`).
+- OpenCode 1.18.10 recognises only the spec subset on SKILL.md (`name`, `description`, `license`, `compatibility`, `metadata`). Claude-style extensions (`user-invocable`, `argument-hint`, `allowed-tools`, `model`, `agent`) are silently ignored; Impeccable still emits them today for other harnesses, but they have no effect in OpenCode. Use `commands/<name>.md` (see Placeholder / Variable Substitution below) for slash UX; OpenCode honours only `description`, `agent`, `model`, `variant`, `subtask` on command files.
 - Unknown fields are silently ignored by all harnesses.
 
 ## Hook surface used by Impeccable
@@ -133,8 +134,8 @@ Some harnesses have separate "custom commands" systems (distinct from skills) wi
 
 | Harness | Command system | Substitution syntax |
 |---------|---------------|-------------------|
+| OpenCode | `.opencode/commands/` (Markdown) | `$ARGUMENTS`, `$1`-`$N`, `` !`shell` ``, `@file` |
 | Gemini CLI | `.gemini/commands/` (TOML) | `{{args}}`, `!{shell}`, `@{file}` |
 | Codex CLI | `.codex/prompts/` | `$ARGNAME` |
-| OpenCode | `.opencode/commands/` | `$ARGUMENTS`, `$1`-`$N`, `` !`shell` `` |
 
 Our build system handles cross-provider placeholders at compile time via `replacePlaceholders()` for `{{model}}`, `{{config_file}}`, `{{ask_instruction}}`, and `{{available_commands}}`.

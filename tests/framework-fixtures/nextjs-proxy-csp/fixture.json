@@ -1,0 +1,15 @@
+{
+  "name": "Next.js 16 (proxy CSP)",
+  "config": {
+    "files": ["app/layout.tsx"],
+    "insertBefore": "</body>",
+    "commentSyntax": "jsx"
+  },
+  "sourceFiles": ["proxy.ts", "app/layout.tsx"],
+  "generatedFiles": [],
+  "wrapCases": [],
+  "csp": {
+    "shape": "middleware",
+    "signals": ["proxy.ts:Content-Security-Policy"]
+  }
+}

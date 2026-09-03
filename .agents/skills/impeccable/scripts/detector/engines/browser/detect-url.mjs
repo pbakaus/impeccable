@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { finding } from '../../findings.mjs';
+import { deriveAdvisoryFlag, finding } from '../../findings.mjs';
 import { profileFindingsAsync, profileStep, profileStepAsync } from '../../profile/profiler.mjs';
 import { captureVisualContrastCandidate } from '../visual/screenshot-contrast.mjs';
 import { checkContentHiddenAtRest } from '../../rules/checks.mjs';
@@ -394,7 +394,7 @@ async function detectUrl(rawUrl, options = {}) {
     // Per-finding severity promotion (e.g. hero-region pulsing dot)
     // overrides the registry default carried by finding().
     if (f.severity && f.severity !== item.severity) item.severity = f.severity;
-    return item;
+    return deriveAdvisoryFlag(item);
   });
 }
 

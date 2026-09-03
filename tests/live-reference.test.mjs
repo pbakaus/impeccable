@@ -11,8 +11,8 @@ describe('live reference authoring contract', () => {
     const skillSrc = readFileSync(join(ROOT, 'skill/SKILL.src.md'), 'utf-8');
     const liveMd = readFileSync(join(ROOT, 'skill/reference/live.md'), 'utf-8');
 
-    assert.match(skillSrc, /load the one playbook that owns the request/);
-    assert.match(skillSrc, /Commands table's reference for an explicit or clearly implied sub-command/);
+    assert.match(skillSrc, /Load the request's playbook/);
+    assert.match(skillSrc, /Commands-table reference for an explicit\/implied sub-command/);
     assert.doesNotMatch(skillSrc, /Use this same scripts directory for all Impeccable helper commands/);
     assert.doesNotMatch(skillSrc, /walk upward for the nearest project `\.agents`, `\.claude`, or `\.cursor` skill/);
     assert.doesNotMatch(skillSrc, /## Context diagnostics/);
@@ -23,7 +23,7 @@ describe('live reference authoring contract', () => {
     const skillSrc = readFileSync(join(ROOT, 'skill/SKILL.src.md'), 'utf-8');
     const liveMd = readFileSync(join(ROOT, 'skill/reference/live.md'), 'utf-8');
 
-    assert.match(skillSrc, /load the one playbook that owns the request/);
+    assert.match(skillSrc, /Load the request's playbook/);
     assert.doesNotMatch(skillSrc, /TARGET_SELECTION_REQUIRED/);
     assert.doesNotMatch(skillSrc, /productStatus/);
     assert.doesNotMatch(skillSrc, /designStatus/);

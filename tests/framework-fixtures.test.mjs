@@ -264,3 +264,39 @@ for (const name of listFixtures()) {
     });
   });
 }
+
+describe('detectCsp — Next.js proxy placement', () => {
+  it('accepts proxy files at app roots and src roots but ignores same-named helpers', () => {
+    const source = `export function proxy() {
+  const response = new Response();
+  response.headers.set('Content-Security-Policy', "script-src 'self'");
+  return response;
+}\n`;
+    for (const [relPath, expectedShape, markers = []] of [
+      ['proxy.ts', 'middleware'],
+      ['src/proxy.ts', 'middleware'],
+      ['apps/web/proxy.ts', 'middleware', ['apps/web/app']],
+      ['apps/docs/src/proxy.ts', 'middleware', ['apps/docs/src/pages']],
+      ['apps/store/proxy.ts', 'middleware', ['apps/store/package.json']],
+      ['lib/network/proxy.ts', null],
+      ['apps/web/lib/proxy.ts', null, ['apps/web/app']],
+    ]) {
+      const tmp = mkdtempSync(join(tmpdir(), 'impeccable-proxy-placement-'));
+      try {
+        mkdirSync(dirname(join(tmp, relPath)), { recursive: true });
+        for (const marker of markers) {
+          if (marker.endsWith('package.json')) {
+            mkdirSync(dirname(join(tmp, marker)), { recursive: true });
+            writeFileSync(join(tmp, marker), JSON.stringify({ dependencies: { next: '^16.0.0' } }));
+          } else {
+            mkdirSync(join(tmp, marker), { recursive: true });
+          }
+        }
+        writeFileSync(join(tmp, relPath), source);
+        assert.equal(detectCsp(tmp).shape, expectedShape, relPath);
+      } finally {
+        rmSync(tmp, { recursive: true, force: true });
+      }
+    }
+  });
+});

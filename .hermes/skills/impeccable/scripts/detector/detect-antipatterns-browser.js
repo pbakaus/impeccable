@@ -159,7 +159,7 @@ const ANTIPATTERNS = [
     scopes: ['type'],
     name: 'Flat type hierarchy',
     description:
-      'Font sizes are too close together — no clear visual hierarchy. Use fewer sizes with more contrast (aim for at least a 1.25 ratio between steps).',
+      'Dominant heading and body roles are separated by less than 1.25× at every step, leaving the size hierarchy flat. Add at least one stronger size step.',
     skillSection: 'Typography',
     skillGuideline: 'flat type hierarchy',
   },
@@ -358,7 +358,7 @@ const ANTIPATTERNS = [
     // rather than a failure. It fires only on the AI saturation pattern, not on
     // ordinary prose. Advisory findings are surfaced separately, never counted
     // as failures, and skipped by the design hook unless a project opts in.
-    advisory: true,
+    severity: 'advisory',
     name: 'Em-dash overuse',
     description:
       'Em-dash saturation in body copy is an AI cadence tell. Advisory only: humans use em-dashes legitimately, so this fires only on saturation — at least 8 em-dashes (— or --) at a density near one per 500 characters of body text — never on a long article that uses a few. Prefer commas, colons, periods, or parentheses.',
@@ -1490,7 +1490,7 @@ function checkColors(opts) {
     const classStr = typeof classList === 'string' ? classList : Array.from(classList).join(' ');
 
     const grayMatch = classStr.match(/\btext-(?:gray|slate|zinc|neutral|stone)-\d+\b/);
-    const colorBgMatch = classStr.match(/\bbg-(?:red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d+\b/);
+    const colorBgMatch = classStr.match(/\bbg-(?:red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d+(?!\/)\b/);
     if (grayMatch && colorBgMatch) {
       findings.push({ id: 'gray-on-color', snippet: `${grayMatch[0]} on ${colorBgMatch[0]}` });
     }
@@ -1961,7 +1961,10 @@ function enclosingCssSelector(cssText, index) {
   // `{` belongs to some other selector.
   const closeBeforeIndex = cssText.lastIndexOf('}', index);
   if (closeBeforeIndex > open) return null;
-  const prevClose = Math.max(cssText.lastIndexOf('}', open - 1), cssText.lastIndexOf(';', open - 1));
+  // Ignore delimiters inside comments when locating the previous declaration.
+  // Keeping comment length intact preserves indices into the original source.
+  const beforeOpen = cssText.slice(0, open).replace(/\/\*[\s\S]*?\*\//g, comment => ' '.repeat(comment.length));
+  const prevClose = Math.max(beforeOpen.lastIndexOf('}'), beforeOpen.lastIndexOf(';'));
   const raw = cssText.slice(prevClose + 1, open).replace(/\/\*[\s\S]*?\*\//g, '').trim().replace(/\s+/g, ' ');
   if (!raw || raw.startsWith('@') || /^\d/.test(raw) || /[{}<]/.test(raw)) return null;
   // Keyframe steps: percentage steps fail the digit test above, but `from`
@@ -5184,6 +5187,88 @@ function checkElementGlow(tag, style, effectiveBg) {
 
 // ─── Section 6: Page-Level Checks ───────────────────────────────────────────
 
+const TYPE_HIERARCHY_SELECTOR = 'h1,h2,h3,h4,h5,h6,p,li,td,th,dd,blockquote,figcaption';
+const TYPE_HIERARCHY_MIN_ROLES = 3;
+const TYPE_HIERARCHY_MIN_STEP_RATIO = 1.25;
+
+function typeHierarchyRole(el) {
+  const tag = String(el?.tagName || el?.nodeName || '').toLowerCase();
+  return /^h[1-6]$/.test(tag) ? tag : 'body';
+}
+
+function hasTextContent(el) {
+  return String(el?.textContent || '').trim().length > 0;
+}
+
+function isRenderedTypeElement(el, getStyle) {
+  for (let current = el; current; current = current.parentElement) {
+    const hiddenAttr = typeof current.getAttribute === 'function' && current.getAttribute('hidden') !== null;
+    if (current.hidden || hiddenAttr) return false;
+    const style = getStyle(current);
+    if (!style) continue;
+    const display = String(style.display || '').toLowerCase();
+    const visibility = String(style.visibility || '').toLowerCase();
+    const contentVisibility = String(style.contentVisibility || '').toLowerCase();
+    if (display === 'none' || visibility === 'hidden' || visibility === 'collapse' || contentVisibility === 'hidden') return false;
+    const opacity = parseFloat(style.opacity);
+    if (Number.isFinite(opacity) && opacity <= 0.01) return false;
+  }
+  return true;
+}
+
+function dominantTypeRoleSize(samples) {
+  const counts = new Map();
+  for (const sample of samples) {
+    counts.set(sample.size, (counts.get(sample.size) || 0) + 1);
+  }
+  const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0]);
+  if (ranked.length > 1 && ranked[0][1] === ranked[1][1]) return null;
+  return ranked[0]?.[0] ?? null;
+}
+
+function checkFlatTypeHierarchySamples(samples) {
+  const byRole = new Map();
+  for (const sample of samples || []) {
+    const role = String(sample?.role || '');
+    const size = Math.round(Number(sample?.size) * 10) / 10;
+    if (!role || !Number.isFinite(size) || size < 8 || size >= 200) continue;
+    if (!byRole.has(role)) byRole.set(role, []);
+    byRole.get(role).push({ role, size });
+  }
+
+  const roles = [...byRole.entries()].map(([role, roleSamples]) => ({
+    role,
+    size: dominantTypeRoleSize(roleSamples),
+  })).filter(item => item.size !== null);
+
+  if (roles.length < TYPE_HIERARCHY_MIN_ROLES) return [];
+
+  const sorted = roles.slice().sort((a, b) => a.size - b.size || a.role.localeCompare(b.role));
+  let largestStep = 1;
+  for (let i = 1; i < sorted.length; i++) {
+    largestStep = Math.max(largestStep, sorted[i].size / sorted[i - 1].size);
+  }
+  if (largestStep >= TYPE_HIERARCHY_MIN_STEP_RATIO) return [];
+
+  const roleSizes = sorted.map(item => `${item.role} ${item.size}px`).join(', ');
+  return [{
+    id: 'flat-type-hierarchy',
+    snippet: `Role sizes: ${roleSizes} (largest adjacent step ${largestStep.toFixed(2)}:1; target ${TYPE_HIERARCHY_MIN_STEP_RATIO}:1)`,
+  }];
+}
+
+function checkFlatTypeHierarchyFromDoc(root, getStyle, options = {}) {
+  const samples = [];
+  for (const el of root.querySelectorAll(TYPE_HIERARCHY_SELECTOR)) {
+    if (options.skipElement?.(el)) continue;
+    if (!hasTextContent(el) || !isRenderedTypeElement(el, getStyle)) continue;
+    const fontSize = parseFloat(getStyle(el)?.fontSize);
+    if (!Number.isFinite(fontSize) || fontSize < 8 || fontSize >= 200) continue;
+    samples.push({ role: typeHierarchyRole(el), size: fontSize });
+  }
+  return checkFlatTypeHierarchySamples(samples);
+}
+
 // Browser page-level checks — use document/getComputedStyle globals
 
 function checkTypography() {
@@ -5211,28 +5296,24 @@ function checkTypography() {
   }
 
   if (totalTextElements >= 20) {
-    // A font is "primary" if it's used by at least 15% of text elements
-    const PRIMARY_THRESHOLD = 0.15;
-    for (const [font, count] of fontUsage) {
+    // Report the actual primary face: the uniquely most-used family. The old
+    // 15% threshold labeled secondary faces as primary (e.g. an 82/18 split).
+    const ranked = [...fontUsage.entries()].sort((a, b) => b[1] - a[1]);
+    const [primary] = ranked;
+    const tied = ranked[1]?.[1] === primary?.[1];
+    if (primary && !tied) {
+      const [font, count] = primary;
       const share = count / totalTextElements;
-      if (share < PRIMARY_THRESHOLD) continue;
-      if (!OVERUSED_FONTS.has(font)) continue;
-      if (isBrandFontOnOwnDomain(font)) continue;
-      findings.push({ type: 'overused-font', detail: `Primary font: ${font} (${Math.round(share * 100)}% of text)` });
+      if (OVERUSED_FONTS.has(font) && !isBrandFontOnOwnDomain(font)) {
+        findings.push({ type: 'overused-font', detail: `Primary font: ${font} (${Math.round(share * 100)}% of text)` });
+      }
     }
   }
 
-  const sizes = new Set();
-  for (const el of document.querySelectorAll('h1,h2,h3,h4,h5,h6,p,span,a,li,td,th,label,button,div')) {
-    const fs = parseFloat(getComputedStyle(el).fontSize);
-    if (fs > 0 && fs < 200) sizes.add(Math.round(fs * 10) / 10);
-  }
-  if (sizes.size >= 3) {
-    const sorted = [...sizes].sort((a, b) => a - b);
-    const ratio = sorted[sorted.length - 1] / sorted[0];
-    if (ratio < 2.0) {
-      findings.push({ type: 'flat-type-hierarchy', detail: `Sizes: ${sorted.map(s => s + 'px').join(', ')} (ratio ${ratio.toFixed(1)}:1)` });
-    }
+  for (const finding of checkFlatTypeHierarchyFromDoc(document, getComputedStyle, {
+    skipElement: el => el.closest?.('.impeccable-overlay, .impeccable-label, .impeccable-banner, .impeccable-tooltip, [id^="impeccable-live-"]'),
+  })) {
+    findings.push({ type: finding.id, detail: finding.snippet });
   }
 
   return findings;
@@ -5479,21 +5560,7 @@ function checkPageTypography(doc, win) {
     findings.push({ id: 'overused-font', snippet: `Primary font: ${font}` });
   }
 
-  // Flat type hierarchy
-  const sizes = new Set();
-  const textEls = doc.querySelectorAll('h1, h2, h3, h4, h5, h6, p, span, a, li, td, th, label, button, div');
-  for (const el of textEls) {
-    const fontSize = parseFloat(win.getComputedStyle(el).fontSize);
-    // Filter out sub-8px values (jsdom doesn't resolve relative units properly)
-    if (fontSize >= 8 && fontSize < 200) sizes.add(Math.round(fontSize * 10) / 10);
-  }
-  if (sizes.size >= 3) {
-    const sorted = [...sizes].sort((a, b) => a - b);
-    const ratio = sorted[sorted.length - 1] / sorted[0];
-    if (ratio < 2.0) {
-      findings.push({ id: 'flat-type-hierarchy', snippet: `Sizes: ${sorted.map(s => s + 'px').join(', ')} (ratio ${ratio.toFixed(1)}:1)` });
-    }
-  }
+  findings.push(...checkFlatTypeHierarchyFromDoc(doc, el => win.getComputedStyle(el)));
 
   return findings;
 }
@@ -8065,14 +8132,17 @@ if (IS_BROWSER) {
       isHidden: isElementHidden(el),
       findings: findings.map(f => {
         const ap = ANTIPATTERNS.find(a => a.id === (f.type || f.id));
+        const severity = f.severity || ap?.severity || 'warning';
         return {
           type: f.type || f.id,
           category: ap ? ap.category : 'quality',
-          severity: f.severity || ap?.severity || 'warning',
+          severity,
           // Advisory findings (em-dash overuse, etc.) are surfaced but never
           // treated as failures; carry the flag so the overlay/extension can
           // render them with the mildest affordance and consumers can filter.
-          advisory: (ap && ap.advisory === true) || f.advisory === true,
+          // Per-finding promotions override the registry default, so derive
+          // this strictly from the effective severity.
+          advisory: severity === 'advisory',
           detail: f.detail || f.snippet,
           ignoreValue: f.ignoreValue || f.value || '',
           name: ap ? ap.name : (f.type || f.id),
@@ -8112,6 +8182,381 @@ if (IS_BROWSER) {
     const existing = groupMap.get(el);
     if (existing) existing.push(...kept);
     else groupMap.set(el, [...kept]);
+  }
+
+  function pseudoElementHostSelector(selector) {
+    const raw = String(selector || '');
+    const legacyNames = new Set(['before', 'after', 'first-letter', 'first-line']);
+    const isNameChar = char => /[a-zA-Z0-9_-]/.test(char || '');
+    const consumeFunction = (start) => {
+      let depth = 0;
+      let quote = '';
+      for (let i = start; i < raw.length; i += 1) {
+        const char = raw[i];
+        if (char === '\\') {
+          i += 1;
+          continue;
+        }
+        if (quote) {
+          if (char === quote) quote = '';
+          continue;
+        }
+        if (char === '"' || char === "'") {
+          quote = char;
+          continue;
+        }
+        if (char === '(') depth += 1;
+        if (char === ')' && --depth === 0) return i + 1;
+      }
+      return raw.length;
+    };
+
+    let output = '';
+    let found = false;
+    for (let i = 0; i < raw.length;) {
+      const char = raw[i];
+      if (char === '\\') {
+        output += raw.slice(i, Math.min(raw.length, i + 2));
+        i += 2;
+        continue;
+      }
+      if (char === '"' || char === "'") {
+        const quote = char;
+        const start = i;
+        i += 1;
+        while (i < raw.length) {
+          if (raw[i] === '\\') {
+            i += 2;
+            continue;
+          }
+          const value = raw[i];
+          i += 1;
+          if (value === quote) break;
+        }
+        output += raw.slice(start, i);
+        continue;
+      }
+      if (char !== ':') {
+        output += char;
+        i += 1;
+        continue;
+      }
+
+      let end = i + 1;
+      let isPseudoElement = false;
+      if (raw[end] === ':') {
+        end += 1;
+        const nameStart = end;
+        while (isNameChar(raw[end])) end += 1;
+        isPseudoElement = end > nameStart;
+      } else {
+        const nameStart = end;
+        while (isNameChar(raw[end])) end += 1;
+        isPseudoElement = legacyNames.has(raw.slice(nameStart, end).toLowerCase());
+      }
+      if (!isPseudoElement) {
+        output += char;
+        i += 1;
+        continue;
+      }
+      if (raw[end] === '(') end = consumeFunction(end);
+      found = true;
+      if (!output || /[\s>+~,]/.test(output[output.length - 1])) output += '*';
+      i = end;
+    }
+    if (!found) return null;
+    return output.trim().replace(/,\s*(?=,|$)/g, '');
+  }
+
+  function selectorNodesForLiveDom(root, selector) {
+    const raw = String(selector || '').trim();
+    if (!raw) return null;
+    const fallback = pseudoElementHostSelector(raw);
+    if (fallback == null) {
+      // An empty result from a valid full selector is authoritative. In
+      // particular, do not broaden inactive :hover/:focus/:not() rules to
+      // their host element by stripping pseudo-classes.
+      try { return Array.from(root.querySelectorAll(raw)); }
+      catch { return null; }
+    }
+
+    // Resolve pseudo-elements to their originating live elements. An attached
+    // pseudo-element (`.card::before`) belongs to the element before it, while
+    // a hostless pseudo-element after a combinator (`main > ::before`) belongs
+    // to a matching element at that position (`main > *`). Replacing every
+    // pseudo indiscriminately with an empty string leaves the latter as the
+    // invalid selector `main >` and makes absent hosts indistinguishable from
+    // selectors the DOM API cannot parse.
+    if (!fallback || /^[,\s]*$/.test(fallback)) return null;
+    try { return Array.from(root.querySelectorAll(fallback)); }
+    catch { return null; }
+  }
+
+  let containerProbeSequence = 0;
+
+  function isContainerCssRule(rule) {
+    return rule?.constructor?.name === 'CSSContainerRule'
+      || /^\s*@container\b/i.test(rule?.cssText || '');
+  }
+
+  function styleRuleAppliesToLiveMatches(rule, matches) {
+    const style = rule?.style;
+    if (!style || !matches?.length || typeof getComputedStyle !== 'function') return false;
+    const sequence = ++containerProbeSequence;
+    const property = `--impeccable-container-probe-${sequence}-${Math.random().toString(36).slice(2)}`;
+    const value = `impeccable-container-active-${sequence}`;
+    const previousValue = style.getPropertyValue(property);
+    const previousPriority = style.getPropertyPriority(property);
+    try {
+      style.setProperty(property, value, 'important');
+    } catch {
+      return false;
+    }
+
+    const pseudoElements = [...new Set(
+      String(rule.selectorText || '').match(/::[a-zA-Z-]+(?:\([^)]*\))?/g) || [],
+    )];
+    try {
+      return matches.some(el => [null, ...pseudoElements].some(pseudo => {
+        try {
+          const computed = pseudo ? getComputedStyle(el, pseudo) : getComputedStyle(el);
+          return computed.getPropertyValue(property).trim() === value;
+        } catch {
+          return false;
+        }
+      }));
+    } finally {
+      if (previousValue) style.setProperty(property, previousValue, previousPriority);
+      else style.removeProperty(property);
+    }
+  }
+
+  function conditionalCssRuleIsActive(rule) {
+    const type = Number(rule?.type);
+    const constructorName = rule?.constructor?.name || '';
+    if (constructorName === 'CSSMediaRule' || type === 4) {
+      const condition = rule.conditionText || rule.media?.mediaText || '';
+      if (!condition || typeof window.matchMedia !== 'function') return true;
+      try { return window.matchMedia(condition).matches; }
+      catch { return true; }
+    }
+    if (constructorName === 'CSSSupportsRule' || type === 12) {
+      const condition = rule.conditionText || '';
+      if (!condition || typeof CSS === 'undefined' || typeof CSS.supports !== 'function') return true;
+      try { return CSS.supports(condition); }
+      catch { return true; }
+    }
+    return true;
+  }
+
+  function splitCssCommaList(value) {
+    const parts = [];
+    let current = '';
+    let quote = '';
+    let escaped = false;
+    for (const char of String(value || '')) {
+      if (escaped) {
+        current += char;
+        escaped = false;
+        continue;
+      }
+      if (char === '\\') {
+        current += char;
+        escaped = true;
+        continue;
+      }
+      if (quote) {
+        current += char;
+        if (char === quote) quote = '';
+        continue;
+      }
+      if (char === '"' || char === "'") {
+        quote = char;
+        current += char;
+        continue;
+      }
+      if (char === ',') {
+        parts.push(current);
+        current = '';
+        continue;
+      }
+      current += char;
+    }
+    parts.push(current);
+    return parts;
+  }
+
+  function normalizeAnimationName(value) {
+    const name = String(value || '').trim();
+    if (name.length >= 2 && name[0] === name[name.length - 1] && (name[0] === '"' || name[0] === "'")) {
+      return name.slice(1, -1);
+    }
+    return name;
+  }
+
+  function animationNamesDeclaredByRule(rule) {
+    const style = rule?.style;
+    if (!style) return [];
+    let value = '';
+    try {
+      value = style.animationName
+        || style.getPropertyValue?.('animation-name')
+        || style.webkitAnimationName
+        || style.getPropertyValue?.('-webkit-animation-name')
+        || '';
+    } catch {
+      return [];
+    }
+    return splitCssCommaList(value)
+      .map(normalizeAnimationName)
+      .filter(name => name && name.toLowerCase() !== 'none');
+  }
+
+  function keyframesRuleName(rule, cssText) {
+    const constructorName = rule?.constructor?.name || '';
+    const type = Number(rule?.type);
+    const isKeyframes = constructorName === 'CSSKeyframesRule'
+      || constructorName === 'WebKitCSSKeyframesRule'
+      || type === 7
+      || /^\s*@(?:-webkit-)?keyframes\b/i.test(cssText);
+    if (!isKeyframes) return '';
+    const match = String(cssText || '').match(/^\s*@(?:-webkit-)?keyframes\s+([^\s{]+)/i);
+    return normalizeAnimationName(rule?.name || match?.[1] || '');
+  }
+
+  function cssPropertyName(property) {
+    if (property.startsWith('--')) return property;
+    return property.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`);
+  }
+
+  function resolvedAnimationKeyframes(candidateNames) {
+    if (typeof document.getAnimations !== 'function') return null;
+    let animations;
+    try { animations = document.getAnimations(); }
+    catch { return null; }
+
+    const resolved = new Map();
+    const metadata = new Set(['offset', 'computedOffset', 'easing', 'composite']);
+    for (const animation of animations) {
+      const name = normalizeAnimationName(animation?.animationName || '');
+      if (!name || !candidateNames.has(name) || resolved.has(name)) continue;
+      let frames;
+      try { frames = animation.effect?.getKeyframes?.() || []; }
+      catch { continue; }
+      const blocks = [];
+      for (const frame of frames) {
+        const rawOffset = Number.isFinite(frame.computedOffset) ? frame.computedOffset : frame.offset;
+        if (!Number.isFinite(rawOffset)) continue;
+        const offset = Math.round(rawOffset * 1000000) / 10000;
+        const declarations = Object.entries(frame)
+          .filter(([property, value]) => !metadata.has(property) && value != null && value !== '')
+          .map(([property, value]) => `${cssPropertyName(property)}: ${value};`);
+        const easing = String(frame.easing || '').trim();
+        if (easing && easing.toLowerCase() !== 'linear') {
+          declarations.push(`animation-timing-function: ${easing};`);
+        }
+        if (declarations.length === 0) continue;
+        blocks.push(`${offset}% { ${declarations.join(' ')} }`);
+      }
+      if (blocks.length > 0) resolved.set(name, `@keyframes ${name} { ${blocks.join(' ')} }`);
+    }
+    return resolved;
+  }
+
+  // Read CSS that is absent from document.outerHTML. Inline <style> blocks are
+  // already present in the HTML pattern corpus, so limit this walk to linked
+  // stylesheets. Flatten grouping rules so each declaration keeps its selector,
+  // and admit only selector rules that target the live DOM. That prevents
+  // unused utilities from feeding both selector-scoped and page-level checks.
+  // Same-origin CSS and readable CORS sheets participate; browser security
+  // exceptions for cross-origin sheets are expected and skipped.
+  function linkedStylesheetText() {
+    const parts = [];
+    const seen = new Set();
+    const animationNames = new Set();
+    const keyframeCandidates = new Map();
+    const appendRules = (rules, requiresAppliedMatch = false) => {
+      for (const rule of rules) {
+        if (rule.styleSheet) {
+          appendSheet(rule.styleSheet);
+          continue;
+        }
+        const cssText = rule.cssText || '';
+        if (rule.selectorText) {
+          const matches = selectorNodesForLiveDom(document, rule.selectorText);
+          // Only declarations with a resolvable live host enter the corpus.
+          // Unresolvable selectors are uncertain, not evidence that a pattern
+          // rendered, and retaining them would leak unused CSS into findings.
+          if (
+            matches?.length > 0
+            && (!requiresAppliedMatch || styleRuleAppliesToLiveMatches(rule, matches))
+          ) {
+            parts.push(cssText);
+            for (const name of animationNamesDeclaredByRule(rule)) animationNames.add(name);
+          }
+          continue;
+        }
+        let nested = [];
+        let hasNestedRules = false;
+        try {
+          const ruleList = rule.cssRules;
+          hasNestedRules = ruleList != null;
+          nested = Array.from(ruleList || []);
+        } catch {
+          continue;
+        }
+        const keyframesName = keyframesRuleName(rule, cssText);
+        if (keyframesName) {
+          // Keyframes do not merge: when a name is defined more than once, the
+          // later effective definition replaces the earlier one.
+          keyframeCandidates.set(keyframesName, {
+            name: keyframesName,
+            cssText,
+          });
+          continue;
+        }
+        if (hasNestedRules) {
+          if (!conditionalCssRuleIsActive(rule)) continue;
+          appendRules(nested, requiresAppliedMatch || isContainerCssRule(rule));
+          continue;
+        }
+        // Other selector-less leaf at-rules cannot be tied to a rendered node.
+      }
+    };
+    const appendSheet = (sheet) => {
+      if (!sheet || seen.has(sheet)) return;
+      seen.add(sheet);
+      let rules;
+      try { rules = Array.from(sheet.cssRules || sheet.rules || []); }
+      catch { return; }
+      appendRules(rules);
+    };
+    let sheets;
+    try { sheets = Array.from(document.styleSheets || []); }
+    catch { return ''; }
+    for (const sheet of sheets) {
+      const owner = sheet.ownerNode;
+      if (owner?.tagName?.toLowerCase() !== 'link') continue;
+      if (!/\bstylesheet\b/i.test(owner.getAttribute?.('rel') || '')) continue;
+      appendSheet(sheet);
+    }
+    // Motion checks need the effective body of a live animation's keyframes.
+    // Let the browser resolve duplicate names across source order, imports,
+    // conditional groups, and cascade layers, then serialize those computed
+    // frames back into the pattern corpus. Browsers also make container-nested
+    // keyframes globally available, so lexical grouping is not a reliable
+    // activity signal. When the Web Animations API is unavailable, fall back to
+    // the last source-order definition referenced by a retained linked rule.
+    const resolvedKeyframes = resolvedAnimationKeyframes(new Set(keyframeCandidates.keys()));
+    if (resolvedKeyframes) {
+      parts.push(...resolvedKeyframes.values());
+    } else {
+      for (const candidate of keyframeCandidates.values()) {
+        if (!animationNames.has(candidate.name)) continue;
+        parts.push(candidate.cssText);
+      }
+    }
+    return parts.join('\n');
   }
 
   function browserFindingsFromMap(groupMap) {
@@ -8487,18 +8932,16 @@ if (IS_BROWSER) {
     // (the CSS ships here, but the pattern never renders — the live DOM is
     // ground truth in the browser), and a match under a data-impeccable-ignore
     // ancestor is waived. Selector-less findings stay page-level.
-    const scopedHtmlFindings = checkHtmlPatterns(docClone.outerHTML).filter(f => {
+    const html = docClone.outerHTML;
+    const corpora = buildHtmlPatternCorpora(html);
+    const linkedCss = linkedStylesheetText();
+    if (linkedCss) corpora.styleText += `\n${linkedCss}`;
+    const scopedHtmlFindings = checkHtmlPatterns(html, corpora).filter(f => {
       if (!f.selector) return true;
-      const query = String(f.selector).replace(/::?[a-zA-Z-]+(\([^)]*\))?/g, '').trim().replace(/,\s*(?=,|$)/g, '');
-      if (!query || /^[,\s]*$/.test(query)) return true;
-      let matches;
-      try {
-        matches = document.querySelectorAll(query);
-      } catch {
-        return true;
-      }
+      const matches = selectorNodesForLiveDom(document, f.selector);
+      if (!matches) return false;
       if (matches.length === 0) return false;
-      return [...matches].some(el => !scopedIgnoreActive(el, f.id));
+      return matches.some(el => !scopedIgnoreActive(el, f.id));
     });
     if (scopedHtmlFindings.length > 0) {
       const mapped = scopedHtmlFindings.map(f => {

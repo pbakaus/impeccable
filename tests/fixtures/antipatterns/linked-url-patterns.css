@@ -1,0 +1,192 @@
+@media (min-width: 1px) {
+  [data-token="::before"] {
+    width: 160px;
+    height: 80px;
+    background: linear-gradient(90deg, #d9d9d9 1px, transparent 1px), linear-gradient(180deg, #d9d9d9 1px, transparent 1px);
+    background-size: 72px 72px;
+  }
+}
+
+body {
+  background: #111;
+  color: #fff;
+}
+
+/* Literal pseudo-element text inside an attribute value is data, not selector
+   syntax. This rule has no live match even though an empty-value decoy does. */
+[data-decoy="::before"] {
+  color: #7c3aed;
+}
+
+/* Escaped colons are identifier data, not a legacy pseudo-element. */
+.\:\:before {
+  width: 240px;
+  height: 160px;
+  clip-path: polygon(2% 4%, 17% 1%, 31% 7%, 47% 3%, 62% 9%, 79% 2%, 96% 13%, 91% 31%, 98% 49%, 89% 68%, 95% 87%, 74% 96%, 51% 91%, 29% 98%, 8% 84%, 3% 61%);
+}
+
+/* A valid hostless pseudo-element selector cannot be queried through the DOM
+   selector API. It must remain in the corpus rather than count as unused. */
+main > ::before {
+  content: "Rendered pseudo-element text";
+  display: block;
+  width: 160px;
+  animation: bounce-linked-pseudo 1s ease-in-out infinite;
+}
+
+@keyframes bounce-linked-pseudo {
+  50% { transform: translateY(2px); }
+}
+
+.linked-marquee {
+  animation: linked-horizontal-loop 8s linear infinite;
+}
+
+@keyframes linked-horizontal-loop {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+.linked-keyframe-overshoot {
+  animation: linked-keyframe-curve 2s linear infinite;
+}
+
+@keyframes linked-keyframe-curve {
+  from {
+    transform: translateY(0);
+    animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  to { transform: translateY(2px); }
+}
+
+.overridden-keyframes-animation {
+  animation: overridden-horizontal-loop 2s linear infinite;
+}
+
+@keyframes overridden-horizontal-loop {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+/* The later same-name definition is the one Chromium renders. */
+@keyframes overridden-horizontal-loop {
+  50% { opacity: 0.4; }
+}
+
+@layer linked-keyframes-low, linked-keyframes-high;
+
+.layered-keyframes-animation {
+  animation: layered-horizontal-loop 2s linear infinite;
+}
+
+@layer linked-keyframes-high {
+  @keyframes layered-horizontal-loop {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+}
+
+/* Lower layer appears later in source, but does not override the high layer. */
+@layer linked-keyframes-low {
+  @keyframes layered-horizontal-loop {
+    50% { opacity: 0.4; }
+  }
+}
+
+.linked-pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  animation: linked-signal-cycle 1.5s ease-in-out infinite;
+}
+
+@keyframes linked-signal-cycle {
+  50% { opacity: 0.35; }
+}
+
+/* Chromium makes nested keyframes globally available even while the enclosing
+   container condition is false, so this live reference must still scan. */
+.inactive-container-animation-reference {
+  animation: inactive-container-horizontal-loop 8s linear infinite;
+}
+
+@container (width > 2000px) {
+  @keyframes inactive-container-horizontal-loop {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+}
+
+.active-container-animation-reference {
+  animation: active-container-horizontal-loop 8s linear infinite;
+}
+
+/* The declaration is intentionally outside the container group. */
+@container (width > 900px) {
+  @keyframes active-container-horizontal-loop {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+}
+
+/* A pseudo-element whose originating element is absent must remain outside
+   live URL findings instead of being retained as an unresolvable selector. */
+.absent > ::before {
+  background: repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px);
+}
+
+/* These selectors exist in the live DOM, but their conditions are inactive.
+   URL scans must not treat their declarations as rendered page styles. */
+@media (max-width: 1px) {
+  .inactive-media-stripes {
+    background: repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px);
+  }
+}
+
+@supports (display: imaginary-layout) {
+  .inactive-supports-stripes {
+    background: repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px);
+  }
+}
+
+/* The host exists, but the complete pseudo-class selector is inactive. */
+.inactive-pseudo-stripes:not(.active) {
+  background: repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px);
+}
+
+.container-query-host {
+  container-type: inline-size;
+  width: 240px;
+}
+
+.container-query-host-active {
+  width: 960px;
+}
+
+@container (width > 900px) {
+  .inactive-container-stripes {
+    background: repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px);
+  }
+
+  .active-container-halo {
+    width: 640px;
+    height: 400px;
+    background: radial-gradient(circle, rgba(80, 111, 255, 0.85), transparent 70%);
+  }
+}
+
+/* Non-selector at-rules in an inactive container must not enter page-level
+   pattern scans just because their CSSOM text is readable. */
+@container (width > 2000px) {
+  @keyframes inactive-container-gradient-text {
+    from {
+      background: linear-gradient(90deg, #111, #999);
+      background-clip: text;
+    }
+    to { background: none; }
+  }
+}
+
+.unused-linked-transition {
+  transition: width 200ms ease;
+}

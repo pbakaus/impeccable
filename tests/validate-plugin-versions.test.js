@@ -157,6 +157,16 @@ describe('readSkillFrontmatterVersion', () => {
     expect(readSkillFrontmatterVersion('---\nversion: "3.7.1"\n---\n')).toBe('3.7.1');
   });
 
+  test('prefers metadata.version while accepting the legacy top-level key', () => {
+    const content = '---\nname: impeccable\nversion: 3.0.0\nmetadata:\n  version: 3.7.1\n---\n';
+    expect(readSkillFrontmatterVersion(content)).toBe('3.7.1');
+  });
+
+  test('reads metadata.version after nested metadata fields', () => {
+    const content = '---\nname: impeccable\nmetadata:\n  interface:\n    display_name: Impeccable\n  version: "3.7.1"\n---\n';
+    expect(readSkillFrontmatterVersion(content)).toBe('3.7.1');
+  });
+
   test('returns null when there is no frontmatter block', () => {
     expect(readSkillFrontmatterVersion('no frontmatter here')).toBeNull();
   });

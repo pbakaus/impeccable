@@ -282,6 +282,7 @@ const STATIC_DEFAULT_STYLE = {
   marginLeft: '0px',
   position: 'static',
   visibility: 'visible',
+  contentVisibility: 'visible',
   opacity: '1',
   top: 'auto',
   right: 'auto',

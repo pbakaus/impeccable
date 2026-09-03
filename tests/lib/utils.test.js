@@ -162,6 +162,15 @@ describe('generateYamlFrontmatter', () => {
     expect(result).toContain('user-invocable: true');
   });
 
+  test('should generate nested metadata', () => {
+    const result = generateYamlFrontmatter({
+      name: 'test',
+      metadata: { version: '1.2.3' },
+    });
+
+    expect(result).toContain('metadata:\n  version: 1.2.3');
+  });
+
   test('should roundtrip: generate and parse back', () => {
     const original = {
       name: 'roundtrip-test',
