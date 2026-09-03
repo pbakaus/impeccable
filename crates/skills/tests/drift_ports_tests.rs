@@ -134,7 +134,10 @@ fn run_cli(args: &[&str], cwd: &str, env: &HashMap<String, String>) -> Run {
 
 fn base_env(home: &str, tmp: &str, bundle: &str) -> HashMap<String, String> {
     let mut env = HashMap::new();
+    // `os.homedir()` reads USERPROFILE on Windows and HOME on posix, so a
+    // fixture home has to name both or the verb writes into the real profile.
     env.insert("HOME".to_string(), home.to_string());
+    env.insert("USERPROFILE".to_string(), home.to_string());
     env.insert("TMPDIR".to_string(), tmp.to_string());
     env.insert("TEMP".to_string(), tmp.to_string());
     env.insert("IMPECCABLE_BUNDLE_PATH".to_string(), bundle.to_string());
@@ -348,7 +351,10 @@ fn claude_project_and_user_scopes_use_claude_agents_dir() {
     let bundle_dir = create_fake_universal_bundle(&root, &[".claude"]);
     write(&format!("{home}/.claude/agents/impeccable-finish-reviewer.md"), "stale copy\n");
 
-    let env: HashMap<String, String> = HashMap::from([("HOME".to_string(), home.clone())]);
+    let env: HashMap<String, String> = HashMap::from([
+        ("HOME".to_string(), home.clone()),
+        ("USERPROFILE".to_string(), home.clone()),
+    ]);
     let sys = sys_for(&tmp, &env);
     let project_results =
         bundle::copy_provider_agents(&sys, &bundle_dir, &tmp, &[".claude"], Some(Scope::Project)).unwrap();

@@ -99,7 +99,10 @@ fn windows_form_keeps_double_quoted_absolute_path() {
     let out = rewrite_hook_commands_for_platform(&claude_bundle_manifest(), ".claude", root, true, true);
     for c in commands(&out) {
         let p = skill_launcher(root, ".claude");
-        assert_eq!(c, format!("command=[ ! -f \"{p}\" ] || \"{p}\" hook"));
+        // The Windows form is the JSON-quoted path, so a host path's
+        // backslashes arrive escaped inside the command string.
+        let q = serde_json::to_string(&p).unwrap();
+        assert_eq!(c, format!("command=[ ! -f {q} ] || {q} hook"));
         assert!(!c.contains(&format!("'{p}")));
     }
 }
