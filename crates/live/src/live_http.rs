@@ -459,6 +459,16 @@ pub fn read_request_deadline(
     max_body: usize,
     deadline: Duration,
 ) -> Option<Request> {
+    // Bound the read at the socket as well as at the watchdog. Windows does
+    // not unblock a `recv` already parked in the kernel when another thread
+    // calls `shutdown` on the same socket, so there the watchdog alone cannot
+    // enforce the deadline and a silent connection held its ticket for the
+    // whole 60s header timeout. A read that makes no progress for the deadline
+    // now returns on every platform and the handler drops its ticket; the
+    // watchdog stays as the backstop for a connection that keeps trickling
+    // bytes without ever completing a request.
+    let prev_timeout = stream.read_timeout().ok().flatten();
+    let _ = stream.set_read_timeout(Some(deadline));
     let done = Arc::new(AtomicBool::new(false));
     let watch_stream = stream.try_clone().ok()?;
     let watch_done = done.clone();
@@ -482,6 +492,7 @@ pub fn read_request_deadline(
     });
     let req = read_request(stream, max_body);
     done.store(true, Ordering::SeqCst);
+    let _ = stream.set_read_timeout(prev_timeout);
     req
 }
 
@@ -968,12 +979,12 @@ mod tests {
         // Must run within a small multiple of the deadline. Before the fix the
         // silent ticket was held for the whole read window and this never
         // arrived; generous slack absorbs CI scheduling. The Windows runner
-        // schedules the watchdog's 50ms polling loop against a ~15.6ms system
-        // timer while the whole crate's tests run in parallel, so it needs a
-        // wider margin; the bound stays far under the 60s read timeout a
+        // schedules the watchdog's polling loop against a ~15.6ms system timer
+        // while the whole crate's tests run in parallel, so it gets a wider
+        // margin; the bound stays far under the 60s read timeout a
         // deadline-less read would hold the ticket for, so the test still
         // distinguishes the fix from the regression.
-        let slack = if cfg!(windows) { deadline * 40 } else { deadline * 6 };
+        let slack = if cfg!(windows) { deadline * 12 } else { deadline * 6 };
         ran_rx.recv_timeout(slack).expect(
             "later /events was wedged behind a silent connection past the read deadline",
         );
