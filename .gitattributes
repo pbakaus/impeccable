@@ -1,0 +1,6 @@
+# The oracle replays goldens recorded from a POSIX checkout, and a finding's
+# snippet carries the fixture's own bytes, so these files have to arrive with
+# LF on every platform. `-text` disables end-of-line conversion outright, which
+# is also safe for any binary that lands under these trees.
+tests/fixtures/** -text
+tests/oracle/** -text
