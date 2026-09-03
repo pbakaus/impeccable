@@ -10,7 +10,7 @@ use super::{BrowserConfig, BrowserFinding, FindingGroup};
 use crate::js_ext_a::JsMap;
 use serde::Serialize;
 
-/// The collect result is open (it crosses the boundary).
+/// The collect result type is shared.
 pub use impeccable_foundation::browser::CollectResult;
 
 /// JS: checks.mjs#scopedIgnoreActive(el, ruleId)

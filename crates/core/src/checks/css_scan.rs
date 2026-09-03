@@ -18,7 +18,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 
 /// The stylesheet-text utilities and finding shapes these scanners are built
-/// on are open; re-exported so `checks::css_scan` stays one path.
+/// on are shared; re-exported so `checks::css_scan` stays one path.
 pub use impeccable_foundation::css::scan::*;
 
 macro_rules! re {

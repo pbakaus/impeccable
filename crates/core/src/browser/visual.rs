@@ -20,7 +20,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
-/// The plans and rects this subsystem passes around are open; re-exported
+/// The plans and rects this subsystem passes around are shared; re-exported
 /// so `browser::visual` stays one path.
 pub use impeccable_foundation::browser::visual::*;
 

@@ -1,9 +1,9 @@
 //! Port of `cli/engine/rules/checks.mjs`, split by concern so parallel work
-//! does not collide. Each module holds the closed part of its concern: the
-//! `check_*` and `scan_*` functions and the heuristics behind them. The open
-//! part (the plain-data inputs and outputs, the CSS and text utilities, the
-//! selector and tag lists) lives in `impeccable_foundation` and is
-//! re-exported at the top of each module, so `checks::rules::RuleHit`,
+//! does not collide. Each module holds the rule half of its concern: the
+//! `check_*` and `scan_*` functions and the heuristics behind them. The
+//! shared half (the plain-data inputs and outputs, the CSS and text
+//! utilities, the selector and tag lists) lives in `impeccable_foundation`
+//! and is re-exported at the top of each module, so `checks::rules::RuleHit`,
 //! `checks::measures::StyleMap` and friends keep resolving here.
 //!
 //! - `rules`: Section 3 pure element checks (checkBorders, checkColors,
@@ -35,8 +35,8 @@
 //! browser ones live in `crate::browser` against the probe trait.
 //!
 //! `vectors_a` (rules, css_scan, html_patterns) and `vectors_b` (measures,
-//! text_rules) hold the vector-replay dispatch arms for the closed functions
-//! of `crate::vectors`; the open arms are dispatched by
+//! text_rules) hold this crate's vector-replay dispatch arms for
+//! `crate::vectors`; foundation's own arms are dispatched by
 //! `impeccable_foundation::vectors`.
 
 pub mod css_scan;

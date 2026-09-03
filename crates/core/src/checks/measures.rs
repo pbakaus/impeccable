@@ -17,7 +17,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 
 /// The CSS value helpers, style traits and plain-data types these checks are
-/// written against are open; re-exported so `checks::measures` stays one path.
+/// written against are shared; re-exported so `checks::measures` stays one path.
 pub use impeccable_foundation::css::measures::*;
 
 /// JS `\d` is ASCII only.

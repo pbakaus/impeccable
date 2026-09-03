@@ -25,7 +25,7 @@ use crate::js_ext_b::{slice_utf16_prefix, utf16_len};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-/// The hidden-text measurement result is open (it crosses the boundary).
+/// The hidden-text measurement result type is shared.
 pub use impeccable_foundation::browser::HiddenTextMeasure;
 
 macro_rules! re {

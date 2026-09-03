@@ -1,8 +1,7 @@
 //! The snapshot DOM and its one-shot findings run. Everything except the
-//! run itself is open and lives in `impeccable_foundation::browser::snapshot`;
-//! this module re-exports it under the path callers already use and adds
-//! [`collect_findings_from_snapshot`], which drives the closed browser
-//! driver.
+//! run itself lives in `impeccable_foundation::browser::snapshot`; this
+//! module re-exports it under the path callers already use and adds
+//! [`collect_findings_from_snapshot`], which drives the browser driver.
 
 pub use impeccable_foundation::browser::snapshot::*;
 

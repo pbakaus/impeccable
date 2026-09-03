@@ -6,18 +6,18 @@
 //! the overlay UI.
 //!
 //! The probe trait itself, its snapshot implementation, the selector engine,
-//! the test fake and the boundary types are open and live in
+//! the test fake and the plain-data types live in
 //! `impeccable_foundation::browser`; they are re-exported here under the
 //! paths callers already use.
 //!
 //! Module map (one JS region each, so parallel work does not collide):
 //!
-//! - `dom`: the [`dom::Dom`] trait, `ElId`, `Rect`, shared helpers (open).
+//! - `dom`: the [`dom::Dom`] trait, `ElId`, `Rect`, shared helpers.
 //! - `snapshot`: [`snapshot::SnapshotDom`], the trait over a serialized page
-//!   (the extension's CSP-proof path, open), plus the one-shot findings run
-//!   that drives the checks below; `selector`: the Chrome-flavored selector
-//!   engine it matches with (open).
-//! - `fake_dom`: a table-driven fake for unit tests (test builds only, open).
+//!   (the extension's CSP-proof path), plus the one-shot findings run that
+//!   drives the checks below; `selector`: the Chrome-flavored selector
+//!   engine it matches with.
+//! - `fake_dom`: a table-driven fake for unit tests (test builds only).
 //! - `background`: Section 4 in browser mode — `readOwnBackgroundColor`,
 //!   `readCascadeBackgroundColor`, `resolveBackgroundInfo`,
 //!   `resolveBackground`, `resolveGradientStops`, `compositeGradientStops`.
@@ -62,7 +62,7 @@
 //!   `parsePositionToken/Pair`, `resolvePaintedImageRect`,
 //!   `resolveObjectImageRect`, `pointToImageSource`, `firstCssUrl`,
 //!   `getLayerValue`, the candidate-analysis finalization. Its plain-data
-//!   plans and rects are open. The async pixel sampling (Image loading,
+//!   plans and rects are shared. The async pixel sampling (Image loading,
 //!   canvas draws) stays JS and feeds these.
 //!
 //! Porting rules are the crate's usual ones (see docs/PORTING-GUIDE.md):

@@ -18,7 +18,7 @@ use crate::js_ext_a::{num_truthy, slice_utf16_start, split_commas_outside_parens
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-/// The hit and option structs these checks are written against are open;
+/// The hit and option structs these checks are written against are shared;
 /// re-exported so `checks::rules` stays one path.
 pub use impeccable_foundation::rules::types::*;
 

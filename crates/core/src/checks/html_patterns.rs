@@ -14,7 +14,7 @@ use crate::js_ext_a::{advance_utf16, is_word_byte, retreat_utf16};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-/// The corpora type is open; re-exported so `checks::html_patterns` stays
+/// The corpora type is shared; re-exported so `checks::html_patterns` stays
 /// one path.
 pub use impeccable_foundation::rules::html_patterns::*;
 

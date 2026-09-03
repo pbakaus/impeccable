@@ -1,5 +1,5 @@
-//! Vector-replay dispatch for the closed checks of group b (`measures`,
-//! `text_rules`). `crate::vectors::call` tries the open foundation arms
+//! Vector-replay dispatch for the checks of group b (`measures`,
+//! `text_rules`). `crate::vectors::call` tries the foundation arms
 //! first, then this; returns None for functions this group does not own.
 
 use crate::checks::measures::{self, Finding};

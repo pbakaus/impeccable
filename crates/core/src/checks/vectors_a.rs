@@ -1,4 +1,4 @@
-//! Vector-replay dispatch for the closed checks of group a (`rules`,
+//! Vector-replay dispatch for the checks of group a (`rules`,
 //! `css_scan`, `html_patterns`). `crate::vectors::call` tries the open
 //! foundation arms first, then this; returns None for functions this group
 //! does not own.
