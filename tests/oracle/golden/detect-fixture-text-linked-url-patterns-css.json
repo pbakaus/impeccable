@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/linked-url-patterns.css\n  line 184: [gradient-text] background-clip: text + gradient\n    → Gradient text is decorative rather than meaningful — a common AI tell, especially on headings and metrics. Use solid colors for text.\n  line 34: [bounce-easing] animation: bounce-linked-pseudo\n    → Bounce and elastic easing feel dated and tacky. Real objects decelerate smoothly — use exponential easing (ease-out-quart/quint/expo) instead.\n  line 57: [bounce-easing] cubic-bezier(0.34, 1.56, 0.64, 1)\n    → Bounce and elastic easing feel dated and tacky. Real objects decelerate smoothly — use exponential easing (ease-out-quart/quint/expo) instead.\n  line 191: [layout-transition] transition: width\n    → Animating width, height, padding, or margin causes layout thrash and janky performance. Use transform and opacity instead, or grid-template-rows for height animations.\n\n4 anti-patterns found.\n\n── Advisory (not counted as failures) ──\n\n<REPO>/tests/fixtures/antipatterns/linked-url-patterns.css\n  line 2: [codex-grid-background] two-axis grid-line gradient background\n    → A decorative grid or line-field background drawn with hairline linear-gradient layers tiled by a fixed pixel cell is a recurring generated-UI signature. Reserve grid overlays for actual canvas, map, blueprint, or measurement surfaces; elsewhere use product structure or a plain surface.\n\n1 advisory note. Suppress with --no-advisory.\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

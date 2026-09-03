@@ -1,0 +1,7 @@
+{
+  "stdout": "[\n  {\n    \"antipattern\": \"flat-type-hierarchy\",\n    \"name\": \"Flat type hierarchy\",\n    \"description\": \"Dominant heading and body roles are separated by less than 1.25× at every step, leaving the size hierarchy flat. Add at least one stronger size step.\",\n    \"severity\": \"warning\",\n    \"category\": \"slop\",\n    \"file\": \"<REPO>/tests/fixtures/antipatterns/flat-type-hierarchy.html\",\n    \"line\": 0,\n    \"snippet\": \"Role sizes: body 16px, h2 16px, h1 18px (largest adjacent step 1.13:1; target 1.25:1)\"\n  }\n]\n",
+  "stderr": "",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}
