@@ -2,6 +2,7 @@
 //! hook command path resolution (#399)", "hook manifest merge helpers"), in
 //! the launcher generation.
 
+use impeccable_common::jsp;
 use impeccable_skills::hook_manifest::*;
 use impeccable_skills::providers::Sys;
 use serde_json::{json, Value};
@@ -15,6 +16,12 @@ fn claude_bundle_manifest() -> Value {
             "Stop": [{ "hooks": [{ "type": "command", "command": "[ ! -f \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" ] || \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook", "timeout": 30 }] }]
         }
     })
+}
+
+/// The launcher path a hook command points at, joined with the host's path
+/// semantics the way `rewrite_hook_commands_for_platform` joins it.
+fn skill_launcher(root: &str, provider: &str) -> String {
+    jsp::join(&[root, provider, "skills", "impeccable", "scripts", "impeccable"])
 }
 
 fn commands(v: &Value) -> Vec<String> {
@@ -63,7 +70,9 @@ fn absolute_path_is_single_quoted_and_inert_under_sh() {
     let root = "/tmp/imp-hook-$(touch pwned)-x";
     let out = rewrite_hook_commands_for_platform(&claude_bundle_manifest(), ".claude", root, true, false);
     for c in commands(&out) {
-        let expected_path = format!("{root}/.claude/skills/impeccable/scripts/impeccable");
+        // The launcher path is joined with the host's path semantics, so the
+        // expectation is joined the same way (backslashes on Windows).
+        let expected_path = skill_launcher(root, ".claude");
         assert_eq!(c, format!("command=[ ! -f '{expected_path}' ] || '{expected_path}' hook"));
         assert!(!c.contains("${CLAUDE_PROJECT_DIR}"));
         assert!(!c.contains(&format!("\"{root}")));
@@ -89,7 +98,7 @@ fn windows_form_keeps_double_quoted_absolute_path() {
     let root = "/home/u";
     let out = rewrite_hook_commands_for_platform(&claude_bundle_manifest(), ".claude", root, true, true);
     for c in commands(&out) {
-        let p = format!("{root}/.claude/skills/impeccable/scripts/impeccable");
+        let p = skill_launcher(root, ".claude");
         assert_eq!(c, format!("command=[ ! -f \"{p}\" ] || \"{p}\" hook"));
         assert!(!c.contains(&format!("'{p}")));
     }
@@ -147,9 +156,10 @@ fn github_manifests_pass_through_and_grok_is_rewritten() {
         "[ ! -f \".grok/skills/impeccable/scripts/impeccable\" ] || \".grok/skills/impeccable/scripts/impeccable\" hook"
     );
     let abs = rewrite_hook_commands_for_platform(&grok, ".grok", "/home/u", true, false);
+    let p = skill_launcher("/home/u", ".grok");
     assert_eq!(
         abs["hooks"]["PostToolUse"][0]["hooks"][0]["command"],
-        "[ ! -f '/home/u/.grok/skills/impeccable/scripts/impeccable' ] || '/home/u/.grok/skills/impeccable/scripts/impeccable' hook"
+        serde_json::Value::String(format!("[ ! -f '{p}' ] || '{p}' hook"))
     );
     // Grok is not Codex: no commandWindows sibling is added.
     assert!(rel["hooks"]["PostToolUse"][0]["hooks"][0].get("commandWindows").is_none());
@@ -326,19 +336,21 @@ fn repair_leaves_dirs_without_an_impeccable_marker_alone() {
 #[test]
 fn hook_artifacts_map_providers_to_manifest_files() {
     let dests = expected_hook_dests("/p", &[".claude", ".agents", ".cursor", ".github", ".grok", ".gemini"]);
+    // Manifest destinations are joined with the host's path semantics, so the
+    // expectations are joined the same way (backslashes on Windows).
     assert_eq!(dests, [
-        "/p/.claude/settings.local.json",
-        "/p/.codex/hooks.json",
-        "/p/.cursor/hooks.json",
-        "/p/.github/hooks/impeccable.json",
-        "/p/.grok/hooks/impeccable.json",
+        jsp::join(&["/p", ".claude", "settings.local.json"]),
+        jsp::join(&["/p", ".codex", "hooks.json"]),
+        jsp::join(&["/p", ".cursor", "hooks.json"]),
+        jsp::join(&["/p", ".github", "hooks", "impeccable.json"]),
+        jsp::join(&["/p", ".grok", "hooks", "impeccable.json"]),
     ]);
     let a = hook_artifacts_for_provider("/b", "/p", ".claude");
-    assert_eq!(a[0].src, "/b/.claude/settings.json");
-    assert_eq!(a[0].dest, "/p/.claude/settings.local.json");
-    assert_eq!(a[0].shared_dest.as_deref(), Some("/p/.claude/settings.json"));
+    assert_eq!(a[0].src, jsp::join(&["/b", ".claude", "settings.json"]));
+    assert_eq!(a[0].dest, jsp::join(&["/p", ".claude", "settings.local.json"]));
+    assert_eq!(a[0].shared_dest.as_deref(), Some(jsp::join(&["/p", ".claude", "settings.json"]).as_str()));
     let c = hook_artifacts_for_provider("/b", "/p", ".agents");
-    assert_eq!(c[0].src, "/b/.codex/hooks.json");
-    assert_eq!(c[0].dest, "/p/.codex/hooks.json");
+    assert_eq!(c[0].src, jsp::join(&["/b", ".codex", "hooks.json"]));
+    assert_eq!(c[0].dest, jsp::join(&["/p", ".codex", "hooks.json"]));
     assert!(c[0].shared_dest.is_none());
 }

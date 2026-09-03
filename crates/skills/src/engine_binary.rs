@@ -174,7 +174,15 @@ mod tests {
             "https://github.com/pbakaus/impeccable/releases/download/engine-v1.2.3/impeccable-darwin-arm64"
         );
         assert_eq!(asset_url("http://x/", "1", "windows", "x64"), "http://x/engine-v1/impeccable-windows-x64.exe");
-        assert_eq!(binary_path("/s", "linux", "x64"), "/s/scripts/bin/linux-x64/impeccable");
-        assert_eq!(binary_path("/s", "windows", "arm64"), "/s/scripts/bin/windows-arm64/impeccable.exe");
+        // The sibling binary path is joined with the host's path semantics
+        // (backslashes on Windows); only the asset name is platform-keyed.
+        assert_eq!(
+            binary_path("/s", "linux", "x64"),
+            jsp::join(&["/s", "scripts", "bin", "linux-x64", "impeccable"])
+        );
+        assert_eq!(
+            binary_path("/s", "windows", "arm64"),
+            jsp::join(&["/s", "scripts", "bin", "windows-arm64", "impeccable.exe"])
+        );
     }
 }

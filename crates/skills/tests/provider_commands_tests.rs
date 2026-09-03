@@ -15,7 +15,11 @@ fn temp_root(name: &str) -> String {
         .unwrap_or(0);
     let dir = std::env::temp_dir().join(format!("impeccable-{name}-{}-{nanos}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("temp root");
-    dir.canonicalize().unwrap().to_string_lossy().into_owned()
+    // Like Node's `realpathSync`: no `\\?\` verbatim prefix on Windows, so the
+    // `/`-joined paths these tests build under this root still resolve (the
+    // kernel takes a verbatim path literally and rejects a forward slash).
+    let real = dir.canonicalize().unwrap().to_string_lossy().into_owned();
+    real.strip_prefix(r"\\?\").map(str::to_string).unwrap_or(real)
 }
 
 fn write(path: &str, content: &str) {

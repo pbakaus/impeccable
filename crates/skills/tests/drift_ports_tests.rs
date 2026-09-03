@@ -16,7 +16,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use impeccable_common::Io;
+use impeccable_common::{jsp, Io};
 use impeccable_skills::bundle::{self, download_file_with, FetchResponse};
 use impeccable_skills::hook_manifest::merge_hook_manifests;
 use impeccable_skills::providers::{Scope, Sys};
@@ -29,7 +29,11 @@ fn temp_root(name: &str) -> String {
         .unwrap_or(0);
     let dir = std::env::temp_dir().join(format!("impeccable-{name}-{}-{nanos}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("temp root");
-    dir.canonicalize().unwrap().to_string_lossy().into_owned()
+    // Like Node's `realpathSync`: no `\\?\` verbatim prefix on Windows, so the
+    // `/`-joined paths these tests build under this root still resolve (the
+    // kernel takes a verbatim path literally and rejects a forward slash).
+    let real = dir.canonicalize().unwrap().to_string_lossy().into_owned();
+    real.strip_prefix(r"\\?\").map(str::to_string).unwrap_or(real)
 }
 
 fn write(path: &str, content: &str) {
@@ -284,7 +288,9 @@ fn download_file_http_initial_url_throws_without_calling_fetch() {
 #[test]
 fn local_bundle_uses_mkdtemp_staging_under_tmpdir() {
     let root = temp_root("staging");
-    let tmp = format!("{root}/tmp");
+    // The staging dir the bundle builds is joined with the host's path
+    // semantics, so the tmpdir it is compared against is joined the same way.
+    let tmp = jsp::join(&[&root, "tmp"]);
     std::fs::create_dir_all(&tmp).unwrap();
     let bundle_root = create_fake_universal_bundle(&root, &[".claude"]);
     let env = base_env(&root, &tmp, &bundle_root);
@@ -292,7 +298,7 @@ fn local_bundle_uses_mkdtemp_staging_under_tmpdir() {
 
     let staging = bundle::download_and_extract_bundle(&sys).unwrap();
     assert!(staging.starts_with(&tmp), "{staging} not under {tmp}");
-    let basename = staging.rsplit('/').next().unwrap();
+    let basename = staging.rsplit(['/', '\\']).next().unwrap();
     assert!(basename.starts_with("impeccable-local-bundle-"), "{basename}");
     // Random mkdtemp suffix, not the old `-<pid>-<millis>` form.
     let suffix = &basename["impeccable-local-bundle-".len()..];
@@ -453,6 +459,15 @@ fn inferred_home_rooted_updates_refresh_stale_or_missing_copilot_user_agents() {
 
 // ─── Grok project hooks on global installs (49571365, #642) ──────────────────
 
+/// The launcher path the installer writes into a hook manifest, in the host's
+/// path form and escaped the way it lands inside the JSON file (a Windows path
+/// carries backslashes, which JSON doubles).
+fn manifest_skill_path(home: &str, provider: &str) -> String {
+    let p = jsp::join(&[home, provider, "skills", "impeccable", "scripts", "impeccable"]);
+    let quoted = serde_json::to_string(&p).unwrap();
+    quoted[1..quoted.len() - 1].to_string()
+}
+
 #[test]
 fn global_install_rewrites_grok_project_hooks_to_the_global_skill_path() {
     let root = temp_root("grok-global");
@@ -483,12 +498,12 @@ fn global_install_rewrites_grok_project_hooks_to_the_global_skill_path() {
     }
     // Launcher-era adaptation: the JS asserted the rewritten hook.mjs path;
     // the engine writes the launcher form pointing at the same global root.
-    assert!(read(&format!("{tmp}/.claude/settings.local.json")).contains(&format!("{home}/.claude/skills/impeccable/scripts/impeccable")));
-    assert!(read(&format!("{tmp}/.codex/hooks.json")).contains(&format!("{home}/.agents/skills/impeccable/scripts/impeccable")));
-    assert!(read(&format!("{tmp}/.cursor/hooks.json")).contains(&format!("{home}/.cursor/skills/impeccable/scripts/impeccable")));
+    assert!(read(&format!("{tmp}/.claude/settings.local.json")).contains(&manifest_skill_path(&home, ".claude")));
+    assert!(read(&format!("{tmp}/.codex/hooks.json")).contains(&manifest_skill_path(&home, ".agents")));
+    assert!(read(&format!("{tmp}/.cursor/hooks.json")).contains(&manifest_skill_path(&home, ".cursor")));
     let grok_hooks = read(&format!("{tmp}/.grok/hooks/impeccable.json"));
     assert!(
-        grok_hooks.contains(&format!("{home}/.grok/skills/impeccable/scripts/impeccable")),
+        grok_hooks.contains(&manifest_skill_path(&home, ".grok")),
         "grok hook not rewritten to the global skill path: {grok_hooks}"
     );
     assert!(
