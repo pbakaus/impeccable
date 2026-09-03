@@ -52,7 +52,11 @@ impl Tmp {
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
         ));
         std::fs::create_dir_all(&base).unwrap();
-        Tmp(std::fs::canonicalize(&base).unwrap())
+        // Like Node's `realpathSync`: no `\\?\` verbatim prefix on Windows, so the
+        // paths the hook joins under this root resolve (the kernel takes a
+        // verbatim path literally and rejects a forward slash).
+        let real = std::fs::canonicalize(&base).unwrap().to_string_lossy().into_owned();
+        Tmp(PathBuf::from(real.strip_prefix(r"\\?\").unwrap_or(&real)))
     }
     fn path(&self) -> String {
         self.0.to_string_lossy().into_owned()
@@ -87,7 +91,7 @@ const CLEAN_CSS: &str = ".card { color: #333; }\n";
 
 #[test]
 fn state_relocates_and_slug_normalizes() {
-    let _l = ENV_LOCK.lock().unwrap();
+    let _l = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let root = Tmp::new();
     let _g = EnvGuard::set(&[("IMPECCABLE_CACHE_ROOT", Some(&root.path()))]);
 
@@ -122,7 +126,7 @@ fn stock_cache_path() -> String {
 
 #[test]
 fn root_value_normalization_and_opt_out() {
-    let _l = ENV_LOCK.lock().unwrap();
+    let _l = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let root = Tmp::new();
     // Stray whitespace in env files trims away.
     let padded = format!("  {}  ", root.path());
@@ -149,7 +153,7 @@ fn root_value_normalization_and_opt_out() {
 #[cfg(unix)]
 #[test]
 fn tilde_expands_against_homedir_or_rejects() {
-    let _l = ENV_LOCK.lock().unwrap();
+    let _l = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let home = Tmp::new();
     let explicit = {
         let joined = format!("{}/caches", home.path());
@@ -172,7 +176,7 @@ fn tilde_expands_against_homedir_or_rejects() {
 
 #[test]
 fn run_hook_persists_and_dedupes_through_the_redirect() {
-    let _l = ENV_LOCK.lock().unwrap();
+    let _l = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let root = Tmp::new();
     let project = Tmp::new();
     let _g = EnvGuard::set(&[("IMPECCABLE_CACHE_ROOT", Some(&root.path()))]);
@@ -202,7 +206,7 @@ fn run_hook_persists_and_dedupes_through_the_redirect() {
 
 #[test]
 fn no_footprint_noop_gate_holds_under_redirect() {
-    let _l = ENV_LOCK.lock().unwrap();
+    let _l = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let root = Tmp::new();
     let project = Tmp::new();
     let _g = EnvGuard::set(&[("IMPECCABLE_CACHE_ROOT", Some(&root.path()))]);

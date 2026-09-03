@@ -10,7 +10,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use impeccable_common::Io;
+use impeccable_common::{jsp, Io};
 use impeccable_core::findings::{finding, Finding};
 use impeccable_detect::MissingHtmlEngine;
 use impeccable_hook::hook_lib::*;
@@ -37,7 +37,11 @@ impl Tmp {
         ));
         std::fs::create_dir_all(&base).unwrap();
         // Canonical path so the JS-style path helpers and the fs agree on macOS.
-        Tmp(std::fs::canonicalize(&base).unwrap())
+        // Like Node's `realpathSync`, without the `\\?\` verbatim prefix Windows
+        // adds: the kernel takes a verbatim path literally, so a `/` joined
+        // under it would not resolve.
+        let real = std::fs::canonicalize(&base).unwrap().to_string_lossy().into_owned();
+        Tmp(PathBuf::from(real.strip_prefix(r"\\?\").unwrap_or(&real)))
     }
     fn path(&self) -> String {
         self.0.to_string_lossy().into_owned()
@@ -59,6 +63,13 @@ impl Drop for Tmp {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
     }
+}
+
+/// The shared config path as the admin verbs print it: relative to the
+/// project, in the host's path form (backslashes on Windows, as `path.relative`
+/// renders it there).
+fn shared_config_rel() -> String {
+    jsp::join(&[".impeccable", "config.json"])
 }
 
 fn rt_with(cwd: &str, env: HashMap<String, String>) -> Runtime<'static> {
@@ -461,7 +472,12 @@ fn render_template_caps_and_footers() {
     ));
     assert!(text.contains("... and 7 more (see /impeccable audit)."));
     assert_eq!(text.lines().filter(|l| l.starts_with("- L")).count(), 5);
-    assert!(text.contains("Run `'/opt/bin/impeccable' hooks ignore-value <rule> \"<value>\" --reason \"<who decided: evidence>\"`"));
+    // The self-command is quoted in the host's shell form (#476 / #533):
+    // single quotes under sh, double quotes on Windows.
+    let self_cmd = quote_command_arg("/opt/bin/impeccable", cfg!(windows));
+    assert!(text.contains(&format!(
+        "Run `{self_cmd} hooks ignore-value <rule> \"<value>\" --reason \"<who decided: evidence>\"`"
+    )));
     assert!(text.contains("Full suppression ladder: /impeccable hooks."));
     let short = render_template(
         &r,
@@ -545,7 +561,10 @@ fn render_template_dedupes_descriptions_and_quotes_hints() {
         &c,
         &opts("/x"),
     );
-    assert!(hostile.contains("ignore-value overused-font '$(touch pwned)'"));
+    assert!(hostile.contains(&format!(
+        "ignore-value overused-font {}",
+        quote_command_arg("$(touch pwned)", cfg!(windows))
+    )));
     let no_hint = {
         let mut x = f("side-tab", 1.0, "Side tab", "d", "s");
         x.extras.insert("ignoreValue".into(), json!("Inter"));
@@ -686,7 +705,9 @@ fn harness_detection_and_github_normalization() {
     assert_eq!(resolve_harness(&forced, Some(&gh)), "codex");
     assert_eq!(
         parse_apply_patch_paths(&r, "*** Begin Patch\n*** Update File: a.css\r\n*** Add File: /abs/b.css\n*** Delete File: c.css\n", "/p"),
-        vec!["/p/a.css", "/abs/b.css"]
+        // A relative patch path is resolved against the cwd with the host's
+        // path semantics; an already-absolute one is passed through.
+        vec![jsp::join(&["/p", "a.css"]), "/abs/b.css".to_string()]
     );
     assert_eq!(
         payload("t", "Stop", "claude"),
@@ -723,7 +744,7 @@ fn expand_scan_targets_follows_styles() {
         "src/styles.css",
         "src/index.sass",
     ] {
-        assert!(out.contains(&format!("{cwd}/{name}")), "{name} in {out:?}");
+        assert!(out.contains(&jsp::join(&[&cwd, name])), "{name} in {out:?}");
     }
     let rel = expand_scan_targets(&r, &["src/App.jsx".into()], &cwd);
     assert_eq!(
@@ -1018,7 +1039,7 @@ fn run_hook_co_located_styles_and_tiering_config() {
         json!(1)
     );
     assert_eq!(
-        cache["sessions"]["s1"]["files"][format!("{cwd}/src/styles.css")]["editCount"],
+        cache["sessions"]["s1"]["files"][jsp::join(&[&cwd, "src/styles.css"])]["editCount"],
         json!(0),
         "co-scanned styles do not bump"
     );
@@ -1252,7 +1273,7 @@ fn before_edit_denies_shell_and_edit_shapes() {
     assert!(last.contains("This is the 7th repeated denial for the same file and finding signature, so Impeccable is allowing this write to avoid a loop."));
     let cache = read_cache(&cwd);
     assert_eq!(
-        cache["sessions"]["cv1"]["files"][format!("{cwd}/src/new.css")]["cursorDenials"]
+        cache["sessions"]["cv1"]["files"][jsp::join(&[&cwd, "src/new.css"])]["cursorDenials"]
             ["gradient-text:1"],
         json!(7)
     );
@@ -1281,7 +1302,7 @@ fn admin_ignore_value_scoping_and_idempotency() {
     assert_eq!(code, 0);
     assert_eq!(
         out,
-        "Added overused-font=inter to shared detector.ignoreValues (.impeccable/config.json).\n"
+        format!("Added overused-font=inter to shared detector.ignoreValues ({}).\n", shared_config_rel())
     );
     assert!(!t.exists(".impeccable/config.local.json"));
     let cfg: Value = serde_json::from_str(&t.read(".impeccable/config.json")).unwrap();
@@ -1381,7 +1402,7 @@ fn admin_on_off_preserve_sibling_hook_fields() {
     let (out, _, _) = admin_run(&r, &["off"]);
     assert_eq!(
         out,
-        "Design hook disabled for this project (wrote .impeccable/config.json).\n"
+        format!("Design hook disabled for this project (wrote {}).\n", shared_config_rel())
     );
     let cfg: Value = serde_json::from_str(&t.read(".impeccable/config.json")).unwrap();
     assert_eq!(cfg["hook"]["quiet"], json!(true));
