@@ -6216,6 +6216,48 @@
     return /\.[cm]?[jt]sx$/i.test(String(filePath || ''));
   }
 
+  function sourceHasSessionWrapper(text, sessionId) {
+    const src = String(text || '');
+    return src.indexOf('data-impeccable-variants="' + sessionId + '"') !== -1
+      || src.indexOf("data-impeccable-variants='" + sessionId + "'") !== -1
+      || src.indexOf('impeccable-variants-start ' + sessionId) !== -1;
+  }
+
+  /**
+   * Orphan probe for JSX targets (#439 + #454). An unmounted wrapper and a
+   * wrapper deleted from source look identical in the DOM, and only the second
+   * is an orphan, so the DOM alone cannot decide. #454 forbids parsing or
+   * injecting raw JSX; reading the file as plain text and matching the session
+   * marker honors that, because no DOM is ever built from what comes back.
+   * Marker present means the component is simply not mounted right now (a
+   * closed modal, another route) and the variant observer keeps waiting.
+   * Marker absent after the same retry budget the HTML path uses means the
+   * file was edited out from under the session, which no reload, HMR push, or
+   * server restart can repair, so the session self-discards and hands the
+   * surface back to the picker.
+   */
+  function probeJsxWrapperForOrphan(filePath, sessionId, opts) {
+    const attempt = opts._orphanAttempt || 0;
+    const url = 'http://localhost:' + PORT + '/source?token=' + TOKEN + '&path=' + encodeURIComponent(filePath);
+    fetch(url)
+      .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
+      .then(text => {
+        if (sessionId !== currentSessionId) return;
+        if (state !== 'GENERATING' && state !== 'CYCLING') return;
+        if (sourceHasSessionWrapper(text, sessionId)) return;
+        if (attempt < COMPLETED_SOURCE_FALLBACK_RETRIES) {
+          setTimeout(() => {
+            if (sessionId !== currentSessionId) return;
+            if (state !== 'GENERATING' && state !== 'CYCLING') return;
+            injectVariantsFromSource(filePath, sessionId, { ...opts, _orphanAttempt: attempt + 1 });
+          }, COMPLETED_SOURCE_FALLBACK_RETRY_MS);
+          return;
+        }
+        discardOrphanedSession('variant wrapper missing from source');
+      })
+      .catch(() => {});
+  }
+
   function completeSourceInjection(wrapper, sessionId, opts) {
     recoveryWaitingForAnchor = false;
     if (pendingVariantAnchorRetryObserver) {
@@ -6326,14 +6368,7 @@
         return;
       }
       if (opts.orphanDiscard && !liveWrapper && sessionId === currentSessionId) {
-        const attempt = opts._orphanAttempt || 0;
-        if (attempt < COMPLETED_SOURCE_FALLBACK_RETRIES) {
-          setTimeout(() => {
-            if (sessionId !== currentSessionId) return;
-            if (state !== 'GENERATING' && state !== 'CYCLING') return;
-            injectVariantsFromSource(filePath, sessionId, { ...opts, _orphanAttempt: attempt + 1 });
-          }, COMPLETED_SOURCE_FALLBACK_RETRY_MS);
-        }
+        probeJsxWrapperForOrphan(filePath, sessionId, opts);
       }
       return;
     }
