@@ -967,8 +967,14 @@ mod tests {
 
         // Must run within a small multiple of the deadline. Before the fix the
         // silent ticket was held for the whole read window and this never
-        // arrived; generous slack absorbs CI scheduling.
-        ran_rx.recv_timeout(deadline * 6).expect(
+        // arrived; generous slack absorbs CI scheduling. The Windows runner
+        // schedules the watchdog's 50ms polling loop against a ~15.6ms system
+        // timer while the whole crate's tests run in parallel, so it needs a
+        // wider margin; the bound stays far under the 60s read timeout a
+        // deadline-less read would hold the ticket for, so the test still
+        // distinguishes the fix from the regression.
+        let slack = if cfg!(windows) { deadline * 40 } else { deadline * 6 };
+        ran_rx.recv_timeout(slack).expect(
             "later /events was wedged behind a silent connection past the read deadline",
         );
 
