@@ -1,0 +1,7 @@
+{
+  "stdout": "Usage: impeccable install [options]\n\nInstall compiled Impeccable skills into project or user-level harness folders.\n\nOptions:\n  -y, --yes              Accept detected defaults without prompting\n  --providers=<names>    Comma-separated harnesses to install\n  --scope=<scope>        Install scope: project or global\n  --project              Install into the current project\n  --user, --global       Install at the user level\n  --no-hooks             Install skills without provider hook manifests\n  --force                Replace an existing installation\n  -h, --help             Show this help message\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

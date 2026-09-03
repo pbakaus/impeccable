@@ -1,0 +1,7 @@
+{
+  "stdout": "Usage: impeccable update [options]\n\nUpdate an existing Impeccable skill installation.\n\nOptions:\n  -y, --yes              Accept detected defaults without prompting\n  --scope=<scope>        Update scope: project or global\n  --project              Update the current project installation\n  --user, --global       Update the user-level installation\n  --no-hooks             Update skills without changing hook manifests\n  --force                Replace installed skill files\n  -h, --help             Show this help message\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

@@ -15,9 +15,40 @@ use crate::util::{self, pad_end, utf16_len, utf16_prefix};
 use crate::{Flow, R};
 
 /// JS: skills.mjs#run(args)
+/// JS: skills.mjs#SUBCOMMAND_HELP (#708). Static help for a sub-command, so
+/// `install --help` never enters an operational path.
+const SUBCOMMAND_HELP: &[(&str, &str)] = &[
+    (
+        "install",
+        "Usage: impeccable install [options]\n\nInstall compiled Impeccable skills into project or user-level harness folders.\n\nOptions:\n  -y, --yes              Accept detected defaults without prompting\n  --providers=<names>    Comma-separated harnesses to install\n  --scope=<scope>        Install scope: project or global\n  --project              Install into the current project\n  --user, --global       Install at the user level\n  --no-hooks             Install skills without provider hook manifests\n  --force                Replace an existing installation\n  -h, --help             Show this help message",
+    ),
+    (
+        "link",
+        "Usage: impeccable link [options]\n\nLink Impeccable skills from a local checkout or submodule.\n\nOptions:\n  --source=<path>        Source checkout (default: .impeccable)\n  --providers=<names>    Comma-separated harnesses to link\n  -y, --yes              Accept detected defaults without prompting\n  --force                Replace existing skill folders with links\n  -h, --help             Show this help message",
+    ),
+    (
+        "update",
+        "Usage: impeccable update [options]\n\nUpdate an existing Impeccable skill installation.\n\nOptions:\n  -y, --yes              Accept detected defaults without prompting\n  --scope=<scope>        Update scope: project or global\n  --project              Update the current project installation\n  --user, --global       Update the user-level installation\n  --no-hooks             Update skills without changing hook manifests\n  --force                Replace installed skill files\n  -h, --help             Show this help message",
+    ),
+    (
+        "check",
+        "Usage: impeccable check [options]\n\nCheck whether installed Impeccable skills are up to date.\n\nOptions:\n  -h, --help             Show this help message",
+    ),
+];
+
+fn subcommand_help(sub: &str) -> Option<&'static str> {
+    SUBCOMMAND_HELP.iter().find(|(k, _)| *k == sub).map(|(_, v)| *v)
+}
+
 pub fn run(args: &[String], io: &mut Io) -> R<()> {
     let sub = args.first().map(String::as_str).unwrap_or("");
     let rest: Vec<String> = args.iter().skip(1).cloned().collect();
+    if let Some(help) = subcommand_help(sub) {
+        if rest.iter().any(|a| a == "--help" || a == "-h") {
+            out(io, help);
+            return Ok(());
+        }
+    }
     match sub {
         "" | "help" | "--help" | "-h" => show_help(io),
         "install" => install(&rest, io),

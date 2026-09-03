@@ -1,0 +1,7 @@
+{
+  "stdout": "Usage: impeccable link [options]\n\nLink Impeccable skills from a local checkout or submodule.\n\nOptions:\n  --source=<path>        Source checkout (default: .impeccable)\n  --providers=<names>    Comma-separated harnesses to link\n  -y, --yes              Accept detected defaults without prompting\n  --force                Replace existing skill folders with links\n  -h, --help             Show this help message\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}
