@@ -444,7 +444,11 @@ mod tests {
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
         ));
         std::fs::create_dir_all(&base).unwrap();
-        std::fs::canonicalize(&base).unwrap().to_string_lossy().into_owned()
+        // Like Node's `realpathSync`: on Windows, `canonicalize` yields a
+        // `\\?\` verbatim path, which the kernel takes literally, so the `/`
+        // separators a hook command appends would not resolve under it.
+        let real = std::fs::canonicalize(&base).unwrap().to_string_lossy().into_owned();
+        real.strip_prefix(r"\\?\").map(str::to_string).unwrap_or(real)
     }
 
     fn write(root: &str, rel: &str, body: &str) {

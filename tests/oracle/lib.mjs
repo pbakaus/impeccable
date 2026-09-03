@@ -151,6 +151,11 @@ export function normalize(text, { ws, home = os.homedir() }) {
   // (2026-05-12T18-30-00Z), both in the file name (<stamp>__<slug>.md) and in
   // the `timestamp:` frontmatter it writes.
   out = out.replace(/\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z/g, '<STAMP>');
+  // A target given as an absolute path outside the workspace makes the verb
+  // print the surface path relative to the root, which climbs as many levels
+  // as the staged tmpdir is deep (7 on macOS, 2 on Linux). The climb is a
+  // property of the machine, not of the verb.
+  out = out.replace(/(?:\.\.\/){2,}(?=\.impeccable\/)/g, '<UP_TO_ROOT>/');
   // Hook audit entries carry wall-clock durations.
   out = out.replace(/"durationMs":\s*\d+(?:\.\d+)?/g, '"durationMs": <MS>');
   // ISO timestamps and epoch millis are run-dependent.

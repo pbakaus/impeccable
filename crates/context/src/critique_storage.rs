@@ -694,7 +694,10 @@ mod tests_660 {
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
         ));
         std::fs::create_dir_all(&base).unwrap();
-        std::fs::canonicalize(&base).unwrap().to_string_lossy().into_owned()
+        // Like Node's `realpathSync`: no `\\\\?\\` verbatim prefix on Windows,
+        // so paths the verb joins with `/` resolve under this root.
+        let real = std::fs::canonicalize(&base).unwrap().to_string_lossy().into_owned();
+        real.strip_prefix(r"\\\\?\\").map(str::to_string).unwrap_or(real)
     }
 
     fn run_capture(cwd: &str, args: &[&str]) -> (i32, String, String) {
@@ -719,7 +722,10 @@ mod tests_660 {
     #[test]
     fn target_identity_file_url_and_trailing_slash() {
         let cwd = "/work";
-        assert_eq!(resolve_target_identity("src/App.tsx", cwd), Some("file:/work/src/App.tsx".to_string()));
+        // The file identity is the platform's resolved path (Node `path.resolve`
+        // semantics through `jsp`), so it carries the host's separators.
+        let expected_file = format!("file:{}", jsp::resolve(cwd, &["src/App.tsx"]));
+        assert_eq!(resolve_target_identity("src/App.tsx", cwd), Some(expected_file));
         assert_eq!(resolve_target_identity("http://example.com/pricing/", cwd), Some("url:http://example.com/pricing".to_string()));
         assert_eq!(resolve_target_identity("http://example.com", cwd), Some("url:http://example.com/".to_string()));
         assert_eq!(resolve_target_identity("", cwd), None);
@@ -746,7 +752,8 @@ mod tests_660 {
         let dir = jsp::join(&[&cwd, ".impeccable", "critique"]);
         std::fs::create_dir_all(&dir).unwrap();
         let name = "2026-05-12T18-30-00Z__app-tsx.md";
-        let identity = format!("file:{}/App.tsx", cwd);
+        // Joined the way the verb resolves it, so the separators match on Windows.
+        let identity = format!("file:{}", jsp::join(&[&cwd, "App.tsx"]));
         let body = format!("---\ntarget_identity: \"{}\"\nslug: app-tsx\n---\n# Critique\n", identity);
         std::fs::write(jsp::join(&[&dir, name]), &body).unwrap();
 

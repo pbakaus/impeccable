@@ -280,6 +280,16 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      # The live verbs are the engine binary; build it from this checkout so the
+      # suite tests the branch, not the last published release.
+      - name: Install the pinned toolchain
+        run: rustup show
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build the engine
+        run: cargo build --release -p impeccable
+
       - name: Run remote CLI E2E smoke
         run: bun run test:cli-remote-e2e
 
@@ -334,6 +344,16 @@ jobs:
 
       - name: Install Playwright Chromium
         run: npx playwright install chromium
+
+      # The live verbs are the engine binary; build it from this checkout so the
+      # suite tests the branch, not the last published release.
+      - name: Install the pinned toolchain
+        run: rustup show
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build the engine
+        run: cargo build --release -p impeccable
 
       - name: Run live E2E tests
         run: bun run test:live-e2e
@@ -411,6 +431,16 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install chromium
 
+      # The live verbs are the engine binary; build it from this checkout so the
+      # suite tests the branch, not the last published release.
+      - name: Install the pinned toolchain
+        run: rustup show
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build the engine
+        run: cargo build --release -p impeccable
+
       - name: Run live E2E tests
         run: bun run test:live-e2e
         env:
@@ -483,6 +513,19 @@ jobs:
         if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
         run: npx playwright install chromium
 
+      # The live verbs are the engine binary; build it from this checkout so the
+      # suite tests the branch, not the last published release.
+      - name: Install the pinned toolchain
+        if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
+        run: rustup show
+
+      - uses: Swatinem/rust-cache@v2
+        if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
+
+      - name: Build the engine
+        if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
+        run: cargo build --release -p impeccable
+
       - name: Run accept cleanup regression
         if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
         run: |
@@ -546,6 +589,19 @@ jobs:
       - name: Install Playwright Chromium
         if: ${{ env.DEEPSEEK_API_KEY != '' }}
         run: npx playwright install chromium
+
+      # The live verbs are the engine binary; build it from this checkout so the
+      # suite tests the branch, not the last published release.
+      - name: Install the pinned toolchain
+        if: ${{ env.DEEPSEEK_API_KEY != '' }}
+        run: rustup show
+
+      - uses: Swatinem/rust-cache@v2
+        if: ${{ env.DEEPSEEK_API_KEY != '' }}
+
+      - name: Build the engine
+        if: ${{ env.DEEPSEEK_API_KEY != '' }}
+        run: cargo build --release -p impeccable
 
       - name: Run Svelte adapter DeepSeek sweep
         if: ${{ env.DEEPSEEK_API_KEY != '' }}
