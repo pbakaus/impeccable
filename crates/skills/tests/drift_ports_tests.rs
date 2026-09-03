@@ -465,13 +465,23 @@ fn inferred_home_rooted_updates_refresh_stale_or_missing_copilot_user_agents() {
 
 // ─── Grok project hooks on global installs (49571365, #642) ──────────────────
 
-/// The launcher path the installer writes into a hook manifest, in the host's
-/// path form and escaped the way it lands inside the JSON file (a Windows path
-/// carries backslashes, which JSON doubles).
-fn manifest_skill_path(home: &str, provider: &str) -> String {
+/// True when a hook manifest names this provider's launcher. The file is read
+/// as JSON so the check does not depend on how many escaping layers the host's
+/// path form needs: a Windows command carries the JSON-quoted path (its
+/// backslashes doubled), the sh form carries the path verbatim.
+fn manifest_names_launcher(manifest: &str, home: &str, provider: &str) -> bool {
+    fn any_string(v: &Value, pred: &dyn Fn(&str) -> bool) -> bool {
+        match v {
+            Value::String(s) => pred(s),
+            Value::Array(a) => a.iter().any(|c| any_string(c, pred)),
+            Value::Object(o) => o.values().any(|c| any_string(c, pred)),
+            _ => false,
+        }
+    }
     let p = jsp::join(&[home, provider, "skills", "impeccable", "scripts", "impeccable"]);
-    let quoted = serde_json::to_string(&p).unwrap();
-    quoted[1..quoted.len() - 1].to_string()
+    let escaped = p.replace('\\', "\\\\");
+    let value: Value = serde_json::from_str(&read(manifest)).unwrap();
+    any_string(&value, &|s: &str| s.contains(&p) || s.contains(&escaped))
 }
 
 #[test]
@@ -504,12 +514,13 @@ fn global_install_rewrites_grok_project_hooks_to_the_global_skill_path() {
     }
     // Launcher-era adaptation: the JS asserted the rewritten hook.mjs path;
     // the engine writes the launcher form pointing at the same global root.
-    assert!(read(&format!("{tmp}/.claude/settings.local.json")).contains(&manifest_skill_path(&home, ".claude")));
-    assert!(read(&format!("{tmp}/.codex/hooks.json")).contains(&manifest_skill_path(&home, ".agents")));
-    assert!(read(&format!("{tmp}/.cursor/hooks.json")).contains(&manifest_skill_path(&home, ".cursor")));
-    let grok_hooks = read(&format!("{tmp}/.grok/hooks/impeccable.json"));
+    assert!(manifest_names_launcher(&format!("{tmp}/.claude/settings.local.json"), &home, ".claude"));
+    assert!(manifest_names_launcher(&format!("{tmp}/.codex/hooks.json"), &home, ".agents"));
+    assert!(manifest_names_launcher(&format!("{tmp}/.cursor/hooks.json"), &home, ".cursor"));
+    let grok_manifest = format!("{tmp}/.grok/hooks/impeccable.json");
+    let grok_hooks = read(&grok_manifest);
     assert!(
-        grok_hooks.contains(&manifest_skill_path(&home, ".grok")),
+        manifest_names_launcher(&grok_manifest, &home, ".grok"),
         "grok hook not rewritten to the global skill path: {grok_hooks}"
     );
     assert!(
