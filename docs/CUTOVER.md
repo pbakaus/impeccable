@@ -52,7 +52,10 @@ as the record). The old `impeccable-dist` channel is archived too.
 - The Firefox extension zip is packaged and lint-clean but cannot run the
   offscreen-document design; a Gecko fallback is future work before an AMO
   release.
-- Pristine runs the engine inside Cloudflare Workers as the npm
-  `impeccable@3` package. `impeccable@4` is a native-binary shim, so Pristine
-  stays on `^3.5.0` until it moves to the wasm `detect` surface and its own
-  rule pack (`docs/ENGINE.md`, "Rule packs").
+- Pristine consumes this engine as a wasm module built from a git revision
+  pin (branch `rust-engine` in the pristine repo): its `rules/` crate links
+  `impeccable-core`, `impeccable-wasm` (`detect` feature) and
+  `impeccable-bundle` with its own rule pack, and `bun run engine:bump` moves
+  the pin (a weekly workflow opens the PR). No engine code is copied there.
+  Until `rust-swap` merges, that pin points at a `rust-swap` commit; after
+  the merge, switch the bump script's branch constant to `main`.
