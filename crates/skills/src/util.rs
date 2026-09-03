@@ -71,6 +71,11 @@ pub fn is_dir(p: &str) -> bool {
     std::fs::metadata(p).map(|m| m.is_dir()).unwrap_or(false)
 }
 
+/// `fs.statSync(p).isFile()`; false on error.
+pub fn is_file(p: &str) -> bool {
+    std::fs::metadata(p).map(|m| m.is_file()).unwrap_or(false)
+}
+
 /// `fs.lstatSync(p).isSymbolicLink()`; false on error.
 pub fn is_symlink(p: &str) -> bool {
     std::fs::symlink_metadata(p)

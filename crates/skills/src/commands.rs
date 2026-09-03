@@ -480,6 +480,12 @@ fn link(flags: &[String], io: &mut Io) -> R<()> {
         }
     }
     let result = bundle::link_provider_skills(io, &source.bundle_root, &root, &targets, force).map_err(Flow::Throw)?;
+    // Linked installs are excluded from install/update refreshes (overwriting
+    // a symlink would destroy the link), so this is the only path that can
+    // deliver the OpenCode command bridge to them. A copy, not a symlink: the
+    // bridge is static and OpenCode scans the real commands dir. No-ops when
+    // the source checkout has no built commands (#483).
+    bundle::copy_provider_commands(&sys, &source.bundle_root, &root, &targets, Some(Scope::Project));
     if result.linked == 0 && result.already == 0 {
         if result.skipped > 0 {
             err(io, "Nothing was linked because matching skill folders already exist.");
@@ -598,6 +604,7 @@ fn install(flags: &[String], io: &mut Io) -> R<()> {
                 updated = refreshed.len();
                 let agents = bundle::copy_provider_agents(&sys, &bdir, &install_root, &copy_targets, scope_opt)?;
                 bundle::report_provider_agents(&sys, io, &agents);
+                bundle::copy_provider_commands(&sys, &bdir, &install_root, &copy_targets, scope_opt);
                 let v = sys.get_skills_version(&install_root, scope_opt);
                 out(io, &format!("Updated {updated} skill(s){}.", to_version_suffix(&v)));
                 install_engine_binaries(&sys, io, &refreshed);
@@ -682,6 +689,7 @@ fn install(flags: &[String], io: &mut Io) -> R<()> {
     let outcome: Result<(Vec<String>, Vec<bundle::AgentResult>, Vec<&'static str>), String> = (|| {
         let written = bundle::copy_provider_skills(&sys, &bundle_dir, &install_root, &targets, scope_opt)?;
         let agents = bundle::copy_provider_agents(&sys, &bundle_dir, &install_root, &targets, scope_opt)?;
+        bundle::copy_provider_commands(&sys, &bundle_dir, &install_root, &targets, scope_opt);
         let hooks = if want_hooks {
             copy_provider_hooks(&sys, &bundle_dir, &hook_root, &targets, force, Some(&install_root))?
         } else {
@@ -862,6 +870,7 @@ fn update(flags: &[String], io: &mut Io) -> R<()> {
         let refreshed = bundle::refresh_provider_skills(&sys, &tmp_dir, &root, &copy_providers, scope).map_err(Flow::Throw)?;
         let agents = bundle::copy_provider_agents(&sys, &tmp_dir, &root, &copy_providers, agent_scope).map_err(Flow::Throw)?;
         bundle::report_provider_agents(&sys, io, &agents);
+        bundle::copy_provider_commands(&sys, &tmp_dir, &root, &copy_providers, scope);
         // Repair any stale pre-launcher (`node .../hook.mjs`) manifest a v3
         // install left behind, regardless of hook consent (triage E8).
         hook_manifest::repair_stale_hook_manifests(&sys, &root, &copy_providers, None).map_err(Flow::Throw)?;

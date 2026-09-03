@@ -13,7 +13,9 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use sha2::{Digest, Sha256};
 
-use crate::providers::{provider_display_name, Scope, Sys, API_BASE, PROVIDER_DIRS};
+use crate::providers::{
+    opencode_global_config_dir, provider_display_name, Scope, Sys, API_BASE, PROVIDER_DIRS,
+};
 use crate::util::{self, jsp};
 
 /// Ceiling on any single download this crate performs (triage C4). The
@@ -423,6 +425,31 @@ pub fn is_up_to_date(sys: &Sys, root: &str, providers: &[&str], bundle_dir: &str
                 }
             }
         }
+        // Provider command artifacts (OpenCode's `commands/impeccable.md`) are
+        // part of "current" too: an install whose skills match but whose
+        // bridge is missing or drifted must refresh, otherwise
+        // reinstall/update report success while the slash command stays
+        // absent (#483). Only bundle-shipped files are checked, so pinned or
+        // user commands never affect freshness. The commands dir sits next to
+        // the matched skills dir, so deriving it from `local_skills_dir` stays
+        // correct for every layout `copy_provider_commands` can write.
+        let bundle_commands_dir = jsp::join(&[bundle_dir, provider, "commands"]);
+        if util::exists(&bundle_commands_dir) {
+            let local_commands_dir = jsp::join(&[&jsp::dirname(&local_skills_dir), "commands"]);
+            for entry in util::read_dir_names(&bundle_commands_dir).unwrap_or_default() {
+                let bundle_file = jsp::join(&[&bundle_commands_dir, &entry]);
+                if !util::is_file(&bundle_file) {
+                    continue;
+                }
+                let local_file = jsp::join(&[&local_commands_dir, &entry]);
+                if !util::exists(&local_file) {
+                    return Ok(false);
+                }
+                if hash_skill_file(&bundle_file)? != hash_skill_file(&local_file)? {
+                    return Ok(false);
+                }
+            }
+        }
         if !provider_agents_up_to_date(bundle_dir, root, provider, agent_scope)? {
             return Ok(false);
         }
@@ -495,6 +522,77 @@ pub fn copy_provider_skills(sys: &Sys, bundle_dir: &str, root: &str, targets: &[
         }
     }
     Ok(written)
+}
+
+/// JS: skills.mjs#providerCommandsDir. Project installs land at
+/// `<root>/<configDir>/commands`; a user-scope OpenCode install must target
+/// the config dir OpenCode actually scans.
+fn provider_commands_dir(sys: &Sys, root: &str, provider_entry: &str, scope: Option<Scope>) -> String {
+    if scope == Some(Scope::User) {
+        jsp::join(&[&opencode_global_config_dir(&sys.env, root), "commands"])
+    } else {
+        jsp::join(&[root, provider_entry, "commands"])
+    }
+}
+
+/// JS: skills.mjs#copyProviderCommands(bundleDir, root, targets, {scope}).
+///
+/// OpenCode discovers custom commands from `{command,commands}/**.md` under
+/// any active config dir, so this mirrors `copy_provider_skills`: project
+/// scope writes `<root>/<configDir>/commands/`, user scope writes
+/// `opencode_global_config_dir(home)/commands`.
+///
+/// Migration guard: a pre-#406 global OpenCode install at
+/// `~/.opencode/commands/` is not scanned by OpenCode. After a global
+/// install, the commands just written are removed from the stranded legacy
+/// copy, sibling commands stay put, symlinked legacy dirs are skipped
+/// (deleting through a symlink would empty the real target), and a
+/// home-rooted git repo is left alone.
+pub fn copy_provider_commands(sys: &Sys, bundle_dir: &str, root: &str, targets: &[&str], scope: Option<Scope>) -> usize {
+    let mut written = 0usize;
+    for target in targets {
+        let dotted = format!(".{target}");
+        let provider_entry: &str = if PROVIDER_DIRS.contains(&dotted.as_str()) {
+            &dotted
+        } else {
+            target
+        };
+        let src_dir = jsp::join(&[bundle_dir, provider_entry, "commands"]);
+        if !util::exists(&src_dir) {
+            continue;
+        }
+        let local_commands_dir = provider_commands_dir(sys, root, provider_entry, scope);
+        let _ = std::fs::create_dir_all(&local_commands_dir);
+        let entries = util::read_dir_names(&src_dir).unwrap_or_default();
+        for entry in &entries {
+            let src = jsp::join(&[&src_dir, entry]);
+            if !util::is_file(&src) {
+                continue;
+            }
+            let dest = jsp::join(&[&local_commands_dir, entry]);
+            util::rm_rf(&dest);
+            if std::fs::copy(&src, &dest).is_ok() {
+                written += 1;
+            }
+        }
+        if scope == Some(Scope::User) && provider_entry == ".opencode" {
+            let legacy_dir = jsp::join(&[root, ".opencode", "commands"]);
+            let migratable = util::exists(&legacy_dir)
+                && !util::is_symlink(&legacy_dir)
+                && util::realpath(&legacy_dir) != util::realpath(&local_commands_dir)
+                && !util::exists(&jsp::join(&[root, ".git"]));
+            if migratable {
+                for entry in &entries {
+                    if !util::is_file(&jsp::join(&[&src_dir, entry])) {
+                        continue;
+                    }
+                    util::rm_rf(&jsp::join(&[&legacy_dir, entry]));
+                }
+                util::rmdir(&legacy_dir);
+            }
+        }
+    }
+    written
 }
 
 /// JS: refreshProviderSkills(bundleDir, root, providers, scope). Returns the

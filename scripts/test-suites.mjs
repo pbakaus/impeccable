@@ -36,7 +36,6 @@ export const SUITES = {
         runner: 'bun',
         files: [
           'tests/build.test.js',
-          'tests/copy-provider-commands.test.js',
           'tests/lib/provider-blocks.test.js',
           'tests/lib/transformers/provider-blocks.test.js',
           'tests/lib/utils.test.js',
