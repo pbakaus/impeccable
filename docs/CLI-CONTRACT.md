@@ -344,7 +344,7 @@ Optional keys added later by engines (appended after the above): `ignoreValue` (
 
 **Rust authenticity addition (#479):** the historical JS bundle flow below
 is superseded for remote downloads. The Rust installer resolves the site's
-302 to a versioned Impeccable GitHub release and verifies
+redirect (301/302/303/307/308) to a versioned Impeccable GitHub release and verifies
 `universal.zip.sig.json` against a compiled-in Ed25519 public key before ZIP
 extraction. Missing/invalid signatures, unknown keys, mismatched metadata or
 content, and failures fetching either asset exit nonzero, including when

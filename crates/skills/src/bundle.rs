@@ -295,7 +295,15 @@ pub fn download_and_extract_bundle(sys: &Sys) -> Result<String, String> {
     if let Some(local) = sys.env.get("IMPECCABLE_BUNDLE_PATH").filter(|v| !v.is_empty()) {
         return copy_or_extract_local_bundle(sys, local);
     }
-    download_and_extract_signed_bundle(sys, &mut ureq_fetch, &bundle_signature::trusted_keys()?)
+    download_remote_bundle(sys, &mut ureq_fetch, bundle_signature::trusted_keys())
+}
+
+fn download_remote_bundle(
+    sys: &Sys,
+    fetch: &mut dyn FnMut(&str) -> Result<FetchResponse, String>,
+    keys: Result<TrustedKeys, String>,
+) -> Result<String, String> {
+    keys.and_then(|keys| download_and_extract_signed_bundle(sys, fetch, &keys))
         .map_err(|e| format!("{}{e}. Nothing was installed; retry or update the CLI. If this persists, report it at https://github.com/pbakaus/impeccable/issues/479", bundle_signature::ERROR_PREFIX))
 }
 
@@ -312,7 +320,7 @@ fn download_and_extract_signed_bundle(
         // Resolve once, then request both assets from that exact release. Never
         // pair a latest-version lookup with a independently changing ZIP URL.
         let response = fetch(&format!("{API_BASE}/api/download/bundle/universal"))?;
-        if response.status != 302 {
+        if !matches!(response.status, 301 | 302 | 303 | 307 | 308) {
             return Err(format!("Expected a signed bundle release redirect (HTTP {})", response.status));
         }
         let location = response.location.ok_or("Missing bundle release redirect")?;
@@ -959,6 +967,45 @@ mod tests {
     fn hash_normalizes_provider_paths() {
         assert_eq!(normalize_for_hash("x .claude/skills/y .trae-cn/skills/z .agent/skills/"), "x .PROVIDER/skills/y .PROVIDER/skills/z .PROVIDER/skills/");
         assert_eq!(normalize_for_hash(".other/skills/"), ".other/skills/");
+    }
+
+    #[test]
+    fn keyring_load_failure_is_fatal_before_any_download() {
+        let sys = Sys::new(Default::default(), "/".into());
+        let mut fetch = |_: &str| -> Result<FetchResponse, String> {
+            panic!("A failed keyring must never reach the network");
+        };
+        let error = download_remote_bundle(&sys, &mut fetch, Err("Invalid compiled bundle signing keyring".into())).unwrap_err();
+        assert!(error.starts_with(bundle_signature::ERROR_PREFIX), "{error}");
+        assert!(error.contains("Invalid compiled bundle signing keyring"), "{error}");
+    }
+
+    #[test]
+    fn release_resolution_accepts_standard_redirects_only() {
+        for status in [200, 300, 301, 302, 303, 304, 305, 306, 307, 308, 404] {
+            let root = tmp_dir(&format!("redirect-{status}"));
+            let sys = Sys::new([("TMPDIR".into(), root.clone()), ("TEMP".into(), root.clone())].into(), root.clone());
+            let mut requests = 0;
+            let mut fetch = |_: &str| -> Result<FetchResponse, String> {
+                requests += 1;
+                if requests > 1 { return Err("reached signature download".into()); }
+                Ok(FetchResponse {
+                    status,
+                    location: Some("https://github.com/pbakaus/impeccable/releases/download/skill-v4.2.0/universal.zip".into()),
+                    body: Box::new(std::io::empty()),
+                })
+            };
+            let error = download_and_extract_signed_bundle(&sys, &mut fetch, &Default::default()).unwrap_err();
+            if matches!(status, 301 | 302 | 303 | 307 | 308) {
+                assert_eq!(error, "reached signature download", "HTTP {status}");
+                assert_eq!(requests, 2);
+            } else {
+                assert!(error.contains("Expected a signed bundle release redirect"), "{error}");
+                assert_eq!(requests, 1);
+            }
+            assert_eq!(std::fs::read_dir(&root).unwrap().count(), 0);
+            util::rm_rf(&root);
+        }
     }
 
     #[test]

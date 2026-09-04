@@ -259,6 +259,7 @@ for (const artifact of cfg.artifacts) {
 // Sign the final rebuilt bytes before any tag or upload. Dry runs do not
 // unlock 1Password or write a signature; they only show the publishing plan.
 if (component === 'skill') {
+  const signatureArtifact = 'dist/universal.zip.sig.json';
   step('Signing universal.zip with the trusted 1Password release key');
   if (dryRun) {
     console.log('  [dry-run] Sign dist/universal.zip (1Password is not accessed)');
@@ -268,9 +269,10 @@ if (component === 'skill') {
     } catch (error) {
       fail(error.message);
     }
+    if (!existsSync(path.join(repoRoot, signatureArtifact))) fail(`Missing artifact: ${signatureArtifact}`);
     ok('signature verified locally');
   }
-  cfg.artifacts.push('dist/universal.zip.sig.json');
+  cfg.artifacts.push(signatureArtifact);
 }
 
 console.log('\n--- Release notes preview ---');
