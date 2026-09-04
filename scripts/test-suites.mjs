@@ -17,6 +17,10 @@ const COMMON_INFRA_PATTERNS = [
   /^scripts\/run-tests\.mjs$/,
   /^scripts\/test-suites\.mjs$/,
   /^scripts\/ci-test-plan\.mjs$/,
+  /^scripts\/lib\/(live-server-processes|process-group|test-orphan-reaper)\.mjs$/,
+  /^tests\/lib\/live-servers\.mjs$/,
+  /^scripts\/lib\/(live-server-processes|process-group|test-orphan-reaper)\.mjs$/,
+  /^tests\/lib\/live-servers\.mjs$/,
   /^\.github\/workflows\/ci\.yml$/,
 ];
 
@@ -62,6 +66,7 @@ export const SUITES = {
           'tests/github-sheriff.test.mjs',
           'tests/hook-build.test.mjs',
           'tests/openai-plugin.test.mjs',
+          'tests/process-group.test.mjs',
           'tests/release.test.mjs',
           'tests/skill-reference.test.mjs',
           'tests/readme-gitignore.test.mjs',
@@ -128,6 +133,7 @@ export const SUITES = {
           'tests/live-e2e-llm-agent.test.mjs',
           'tests/live-e2e-steer-agent.test.mjs',
           'tests/live-e2e/agent-insert.test.mjs',
+          'tests/live-server-leak.test.mjs',
         ],
       },
     ],

@@ -157,9 +157,25 @@ bun run test                  # Default suite: unit + static framework fixtures 
 bun run test:live-e2e         # Opt-in: full-cycle live-mode E2E across framework fixtures
 bun run test:skill-behavior   # Opt-in: LLM-backed checks that the skill text actually drives the agent's setup flow
 bun run test:plugin-e2e       # Just the plugin loader E2E (also part of the default suite)
+bun run test:cleanup          # Kill live servers a previous run of THIS checkout left behind
 ```
 
 Unit tests (build orchestration, transformers, validators) run via `bun test`. Everything that spawns the engine binary (`tests/oracle.test.mjs`, `tests/framework-fixtures.test.mjs`) runs via `node --test`; both skip cleanly when no binary is found (`bun run fetch:engine` or `IMPECCABLE_BIN`). The `test` script handles this split automatically. Verb behavior is not unit-tested here at all: the oracle goldens and the engine repo's own tests own it.
+
+### Live servers must not outlive their test process
+
+A live server does not die with the process that started it: a direct child survives its parent, and `impeccable live-server --background` is orphaned to pid 1 by design (`spawn_detached_with_args` in `crates/live/src/server.rs`). Teardown in an `after()` hook or a `finally` covers only the exits JavaScript can observe, so a `SIGKILL`, a Ctrl-C, or a wedged runner used to leave servers squatting the live suite's fixed ports for days (issue #717).
+
+Three pieces keep that from recurring, and a new test that starts a server owes the first one:
+
+- **`armLiveServerReaper()`** (`tests/lib/live-servers.mjs`), called once at module scope by any test file that starts a live server. It stamps the process environment with a unique marker, installs exit and signal handlers, and spawns a detached reaper holding a pipe to the process. When the process dies for any reason at all, the pipe closes and the reaper kills the servers carrying that marker. Wrap direct children in `trackServerChild()` so the common case is a cheap `child.kill()`. On this branch the two places that start one are `tests/live-e2e/session.mjs` and the oracle's daemon steps (`runDaemonStep` in `tests/oracle/lib.mjs`); both already arm it.
+
+  The mechanism is deliberately implementation-agnostic, which is what let it survive the Node-to-Rust swap unchanged: it keys on the environment rather than on anything the server implements. That works because the daemon spawn does `env_clear().envs(env)` against `Io::stdio()`'s `env`, which is `std::env::vars()`, so the detached Rust process carries the parent's environment and the markers reach it. If a future change scrubs or narrows that env, the guard goes silently blind, so keep the daemon inheriting it.
+- **The runner guard.** `scripts/run-tests.mjs` runs each suite command as its own process-group leader, ends that group on `SIGINT` / `SIGTERM` / `SIGHUP` and on the wall-clock cap, and after every suite checks whether any live server carrying that suite's run id is still alive. If one is, it kills it and fails the run. Bypass with `IMPECCABLE_SKIP_LEAK_CHECK=1`. The same group is what `IMPECCABLE_TEST_WALL_CLOCK_MS` (or a suite's `wallClockMs`) SIGKILLs when a command wedges, so a suite blocked in a synchronous call still ends and still gets swept.
+- **`bun run test:cleanup`.** A one-shot sweep for leftovers from earlier runs.
+- **`tests/live-server-leak.test.mjs`** pins the guarantee against the real engine binary (resolved through `tests/lib/engine-bin.mjs`, skipped when there is none): it boots `impeccable live-server`, SIGKILLs the process that started it, and fails if the server outlives it.
+
+**Everything that kills is scoped by an environment marker this repo's harness exported**, never by process name, port, or path. A sweep can never touch a live server that another checkout, or the user's own session, is running. Keep it that way, and keep marker values opaque: every one is a random token or a hash of the checkout path (`repoMarker()`), drawn from `[A-Za-z0-9_-]` so it can never contain whitespace. `ps -E` flattens the environment into one whitespace-separated line, so a value free to hold a space could hide the end of its own entry and let one checkout's cleanup reach another's servers. `assertMarkerValue` refuses such a value; the readable path travels separately as `IMPECCABLE_TEST_REPO_PATH`, which nothing matches on.
 
 ### Which opt-in suite a change owes
 
