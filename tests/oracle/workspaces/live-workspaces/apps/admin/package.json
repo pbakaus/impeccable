@@ -1,1 +1,1 @@
-{ "name": "admin", "private": true, "type": "module", "dependencies": { "astro": "^5.0.0" } }
+{ "name": "admin", "private": true, "type": "module", "dependencies": { "astro": "^7.1.0" } }
