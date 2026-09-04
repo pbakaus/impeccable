@@ -44,6 +44,16 @@ describe('rewritePluginMarkdown', () => {
     expect(output).toContain('node "<skill-base-dir>/scripts/live-poll.mjs" --reply EVENT_ID done');
   });
 
+  test('quotes the engine launcher path and leaves the verb outside the quotes', () => {
+    const output = rewritePluginMarkdown(
+      'Run `<skill-base-dir>/scripts/impeccable context` once, then `<skill-base-dir>/scripts/impeccable.cmd doctor --json`; ' +
+      'already quoted: `"<skill-base-dir>/scripts/impeccable" hooks on`.',
+    );
+    expect(output).toContain('`"<skill-base-dir>/scripts/impeccable" context`');
+    expect(output).toContain('`"<skill-base-dir>/scripts/impeccable.cmd" doctor --json`');
+    expect(output).not.toContain('""<skill-base-dir>');
+  });
+
   test('quotes commands already in the skill-base-dir form without double-quoting', () => {
     // SKILL.src.md's Setup step 1 carries the token form natively; a base
     // directory with spaces splits an unquoted path before node sees it.
@@ -60,15 +70,15 @@ describe('rewritePluginMarkdown', () => {
     const frontmatter = [
       'allowed-tools:',
       '  - Bash(npx impeccable *)',
-      '  - Bash(node .claude/skills/impeccable/scripts/*)',
+      '  - Bash(.claude/skills/impeccable/scripts/impeccable *)',
       '---',
       '',
     ].join('\n');
     const output = rewritePluginMarkdown(frontmatter);
-    // The generic path rewrite alone would leave Bash(node <skill-base-dir>/scripts/*),
+    // The generic path rewrite alone would leave Bash(<skill-base-dir>/scripts/impeccable *),
     // a dead literal, and any wildcard replacement would auto-approve
     // same-shaped paths outside the plugin. The line must go entirely.
-    expect(output).not.toContain('Bash(node ');
+    expect(output).not.toContain('scripts/impeccable *');
     expect(output).toContain('  - Bash(npx impeccable *)\n---');
   });
 
@@ -76,12 +86,12 @@ describe('rewritePluginMarkdown', () => {
     const input =
       '1. Run `node <skill-base-dir>/scripts/context.mjs` once per session, where `<skill-base-dir>` is the ' +
       "loaded base directory the runtime reports for this skill; keep cwd at the user's project. " +
-      'That base directory resolves every `node .claude/skills/impeccable/scripts/...` command in this skill ' +
+      'That base directory resolves every `.claude/skills/impeccable/scripts/impeccable <verb>` command in this skill ' +
       'and its references, and `.claude/skills/impeccable/scripts` is the fallback only when the runtime ' +
       'reports no base directory. Pass a named source file or route as `--target <path>`.';
     const output = rewritePluginMarkdown(input);
     expect(output).toContain(
-      'Every `node "<skill-base-dir>/scripts/..."` command in this skill and its references resolves against that base directory.',
+      'Every `"<skill-base-dir>/scripts/impeccable" <verb>` command in this skill and its references resolves against that base directory.',
     );
     // The naive rewrite would keep the fallback clause and name the token as
     // its own fallback for when there is no base directory to resolve it.
@@ -247,11 +257,11 @@ describe('verifyPluginSkillRewrite', () => {
 
   const goodSkill = [
     'allowed-tools:',
-    '  - Bash(node .claude/skills/impeccable/scripts/*)',
+    '  - Bash(.claude/skills/impeccable/scripts/impeccable *)',
     '',
-    '1. Run `node <skill-base-dir>/scripts/context.mjs` once per session, where `<skill-base-dir>` is the ' +
+    '1. Run `<skill-base-dir>/scripts/impeccable context` once per session, where `<skill-base-dir>` is the ' +
       "loaded base directory the runtime reports for this skill; keep cwd at the user's project. " +
-      'That base directory resolves every `node .claude/skills/impeccable/scripts/...` command in this skill ' +
+      'That base directory resolves every `.claude/skills/impeccable/scripts/impeccable <verb>` command in this skill ' +
       'and its references, and `.claude/skills/impeccable/scripts` is the fallback only when the runtime ' +
       'reports no base directory.',
   ].join('\n');
@@ -269,13 +279,13 @@ describe('verifyPluginSkillRewrite', () => {
     expect(() => verifyPluginSkillRewrite(p)).toThrow(/Setup step 1 fallback sentence/);
   });
 
-  test('fails the build when a node pre-approval survives the removal', () => {
+  test('fails the build when a launcher pre-approval survives the removal', () => {
     const reworded = goodSkill.replace(
-      'Bash(node .claude/skills/impeccable/scripts/*)',
-      'Bash(node .claude/skills/impeccable/scripts/**)',
+      'Bash(.claude/skills/impeccable/scripts/impeccable *)',
+      'Bash(.claude/skills/impeccable/scripts/impeccable.cmd *)',
     );
     const p = writeSkill(rewritePluginMarkdown(reworded));
-    expect(() => verifyPluginSkillRewrite(p)).toThrow(/pre-approves a node script path/);
+    expect(() => verifyPluginSkillRewrite(p)).toThrow(/pre-approves an engine launcher/);
   });
 
   test('fails the build when the project-relative scripts path survives at all', () => {

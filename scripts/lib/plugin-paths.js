@@ -33,7 +33,7 @@ export const PLUGIN_SCRIPTS_PATH = '<skill-base-dir>/scripts';
 // no variable bound to the loaded plugin root (CLAUDE_PLUGIN_ROOT is
 // hook-only). The plugin copy drops the rule and script runs go through
 // the normal Bash confirmation.
-export const PROJECT_ALLOWED_TOOLS_LINE = `  - Bash(node ${CLAUDE_PROJECT_SCRIPTS_PATH}/*)\n`;
+export const PROJECT_ALLOWED_TOOLS_LINE = `  - Bash(${CLAUDE_PROJECT_SCRIPTS_PATH}/impeccable *)\n`;
 
 // Setup step 1's second sentence names the project path as the fallback
 // when the runtime reports no base directory. A plugin install has no
@@ -41,10 +41,10 @@ export const PROJECT_ALLOWED_TOOLS_LINE = `  - Bash(node ${CLAUDE_PROJECT_SCRIPT
 // fix), and every instruction in the plugin copy already carries the
 // token, so the sentence loses its fallback clause.
 const SETUP_FALLBACK_TEXT =
-  'That base directory resolves every `node .claude/skills/impeccable/scripts/...` command in this skill and its references, ' +
+  'That base directory resolves every `.claude/skills/impeccable/scripts/impeccable <verb>` command in this skill and its references, ' +
   'and `.claude/skills/impeccable/scripts` is the fallback only when the runtime reports no base directory.';
 const SETUP_PLUGIN_TEXT =
-  'Every `node "<skill-base-dir>/scripts/..."` command in this skill and its references resolves against that base directory.';
+  'Every `"<skill-base-dir>/scripts/impeccable" <verb>` command in this skill and its references resolves against that base directory.';
 
 // Agent files are subagent system prompts: a spawned agent never loads
 // SKILL.md, so Setup's <skill-base-dir> token is undefined in the one
@@ -84,7 +84,11 @@ export function rewritePluginMarkdown(content) {
     // script argument, including the token-form commands SKILL.src.md
     // carries natively (Setup step 1). Runs after the path replacement so
     // one pattern covers both origins; already-quoted forms don't match.
-    .replace(/node <skill-base-dir>\/scripts\/([^\s`"]+)/g, 'node "<skill-base-dir>/scripts/$1"');
+    .replace(/node <skill-base-dir>\/scripts\/([^\s`"]+)/g, 'node "<skill-base-dir>/scripts/$1"')
+    // The engine launcher is the command itself now (`<skill-base-dir>/scripts/impeccable <verb>`,
+    // or `impeccable.cmd` on a Windows shell without sh), so the launcher path
+    // is what gets quoted; the verb and its arguments follow unquoted.
+    .replace(/(?<!["\w/])<skill-base-dir>\/scripts\/impeccable(\.cmd)?(?=[\s`])/g, '"<skill-base-dir>/scripts/impeccable$1"');
 }
 
 /**
@@ -150,11 +154,11 @@ export function verifyPluginSkillRewrite(skillMdPath) {
       'scripts/lib/plugin-paths.js (issue #523); update SETUP_FALLBACK_TEXT to the new wording.',
     );
   }
-  if (content.includes('Bash(node ')) {
+  if (/Bash\((?:node |[^)]*scripts\/impeccable)/.test(content)) {
     throw new Error(
-      `Plugin rewrite drift: ${skillMdPath} still pre-approves a node script path. ` +
+      `Plugin rewrite drift: ${skillMdPath} still pre-approves an engine launcher or node script path. ` +
       "SKILL.src.md's allowed-tools entry no longer matches the removal in " +
-      'scripts/lib/plugin-paths.js (issue #523); the plugin ships no node pre-approval.',
+      'scripts/lib/plugin-paths.js (issue #523); the plugin ships no launcher pre-approval.',
     );
   }
   if (content.includes(CLAUDE_PROJECT_SCRIPTS_PATH)) {
