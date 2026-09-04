@@ -549,6 +549,39 @@ fn is_loopback_origin(origin: &str) -> bool {
     host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "[::1]"
 }
 
+/// Routes that give their turnstile ticket up before touching server state.
+///
+/// Static assets and read-only file routes need no arrival ordering. Neither
+/// does the SSE stream: `handle_sse` releases its ticket two statements after
+/// it registers anyway, but taking a turn first means the registration waits
+/// behind every connection accepted before it, and a peer that stalls
+/// mid-request holds the lane for the whole `READ_REQUEST_DEADLINE` (10s).
+/// A `done` broadcast that lands in that window reaches an empty client set
+/// and is gone for good, which is one way a reconnecting tab sits at the
+/// generating loader forever (issue #719). Registering early can only make a
+/// stream see MORE broadcasts; the one thing it costs is that the `connected`
+/// frame's `activeSessions` snapshot may miss a mutation still in flight, and
+/// the browser treats that snapshot as a hint, not as truth.
+///
+/// CORS preflights deliberately do NOT release: the browser issues the real
+/// POSTs as their preflights are answered, so answering preflights out of
+/// order would reorder the POSTs (checkpoint before generate) at the source.
+fn releases_ticket_up_front(path: &str, method: &str) -> bool {
+    matches!(
+        (path, method),
+        ("/live.js", _)
+            | ("/detect.js", _)
+            | ("/", _)
+            | ("/modern-screenshot.js", _)
+            | ("/health", _)
+            | ("/status", _)
+            | ("/design-system.json", _)
+            | ("/design-system/raw", _)
+            | ("/source", _)
+            | ("/events", "GET")
+    )
+}
+
 fn respond(stream: &mut TcpStream, cors: &[(String, String)], res: Response) {
     send_response(stream, cors, &res);
 }
@@ -586,17 +619,10 @@ fn handle_connection(shared: Shared, mut stream: TcpStream, mut ticket: Ticket) 
     // CORS preflights do take a turn: the browser issues the real POSTs as
     // their preflights are answered, so answering preflights out of order
     // would reorder the POSTs (checkpoint before generate) at the source.
-    match (req.path.as_str(), req.method.as_str()) {
-        ("/live.js", _)
-        | ("/detect.js", _)
-        | ("/", _)
-        | ("/modern-screenshot.js", _)
-        | ("/health", _)
-        | ("/status", _)
-        | ("/design-system.json", _)
-        | ("/design-system/raw", _)
-        | ("/source", _) => ticket.release(),
-        _ => ticket.wait_turn(),
+    if releases_ticket_up_front(&req.path, &req.method) {
+        ticket.release();
+    } else {
+        ticket.wait_turn();
     }
     let token_now = lock(&shared).token.clone();
     let mut cors: Vec<(String, String)> = Vec::new();
@@ -904,6 +930,14 @@ fn handle_connection(shared: Shared, mut stream: TcpStream, mut ticket: Ticket) 
                 &cors,
                 text_res(200, Some("text/plain"), "stopping"),
             );
+            // JS: shutdown() ends in `process.exit(0)`. Without this the
+            // accept loop never sees a reason to stop, so a stopped server
+            // keeps the port and keeps answering while its `server.json` is
+            // already gone: the next `impeccable live` boots a second server
+            // on another port and a tab can reattach to the zombie. Set the
+            // flag after the response is written so `stop` still reads
+            // `stopping` rather than a reset connection.
+            lock(&shared).shutting_down = true;
         }
         ("/poll", "GET") => handle_poll_get(&shared, stream, &cors, &req, token_ok, &mut ticket),
         ("/poll", "POST") => {
@@ -2584,5 +2618,37 @@ mod content_type_tests {
             .headers
             .iter()
             .any(|(k, v)| k == "Content-Type" && v == "application/javascript; charset=utf-8"));
+    }
+
+    #[test]
+    fn sse_stream_does_not_take_a_turn_in_the_mutation_lane() {
+        // The stream releases its ticket right after it registers anyway, so
+        // waiting for a turn first buys nothing and can park the registration
+        // behind a stalled peer for the whole read deadline (issue #719).
+        assert!(releases_ticket_up_front("/events", "GET"));
+        // Everything that mutates state still passes through the lane in
+        // arrival order, preflights included: answering those out of order
+        // reorders the POSTs the browser issues behind them.
+        assert!(!releases_ticket_up_front("/events", "POST"));
+        assert!(!releases_ticket_up_front("/events", "OPTIONS"));
+        assert!(!releases_ticket_up_front("/poll", "POST"));
+        assert!(!releases_ticket_up_front("/stop", "GET"));
+    }
+
+    #[test]
+    fn read_only_and_asset_routes_still_skip_the_lane() {
+        for path in [
+            "/live.js",
+            "/detect.js",
+            "/",
+            "/modern-screenshot.js",
+            "/health",
+            "/status",
+            "/design-system.json",
+            "/design-system/raw",
+            "/source",
+        ] {
+            assert!(releases_ticket_up_front(path, "GET"), "{path}");
+        }
     }
 }

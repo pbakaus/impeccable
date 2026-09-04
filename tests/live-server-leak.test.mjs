@@ -37,6 +37,8 @@ const WINDOWS = process.platform === 'win32';
 
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
 const PORT = 8591;
+// A second port so the stop guard never collides with the reaper guard.
+const STOP_PORT = 8592;
 // The server under test is the engine's `live-server` verb, not a script: this
 // guarantee has to hold for whatever binary the harness is pointed at.
 const ENGINE_BIN = findEngineBinary();
@@ -146,6 +148,59 @@ describe('live server leak guard', () => {
     } finally {
       if (victim?.proc && victim.proc.exitCode == null) victim.proc.kill('SIGKILL');
       if (serverPid && alive(serverPid)) killLiveServers([{ pid: serverPid, command: '' }]);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('ends the server process on stop, so the port is free again', {
+    skip: NO_ENGINE,
+  }, async () => {
+    // Node's shutdown() finished with process.exit(0). The engine's did not,
+    // and nothing set `shutting_down`, so a stopped server kept the port and
+    // kept answering while its server.json was already gone: the next
+    // `impeccable live` booted a second server elsewhere and a tab could
+    // reattach to the zombie and never hear another broadcast (issue #719).
+    const cwd = mkdtempSync(join(tmpdir(), 'impeccable-stop-'));
+    let server;
+    try {
+      writeFileSync(join(cwd, 'package.json'), '{"name":"stop-fixture"}\n');
+      server = spawn(ENGINE_BIN, ['live-server', `--port=${STOP_PORT}`], {
+        cwd,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: {
+          ...process.env,
+          IMPECCABLE_SKILL_DIR: join(REPO_ROOT, 'skill'),
+          IMPECCABLE_SELF: ENGINE_BIN,
+        },
+      });
+      const up = await waitUntil(async () => {
+        try {
+          const res = await fetch(`http://127.0.0.1:${STOP_PORT}/health`);
+          return res.ok || res.status === 401;
+        } catch { return false; }
+      }, { timeoutMs: 20_000 });
+      assert.equal(up, true, 'live server never came up');
+
+      const stop = spawn(ENGINE_BIN, ['live-server', 'stop'], {
+        cwd,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: {
+          ...process.env,
+          IMPECCABLE_SKILL_DIR: join(REPO_ROOT, 'skill'),
+          IMPECCABLE_SELF: ENGINE_BIN,
+        },
+      });
+      await new Promise((resolve) => stop.on('exit', resolve));
+
+      const gone = await waitUntil(() => !alive(server.pid), { timeoutMs: 15_000 });
+      assert.equal(gone, true, `live server pid ${server.pid} survived its own stop`);
+
+      const stillServing = await fetch(`http://127.0.0.1:${STOP_PORT}/health`)
+        .then(() => true)
+        .catch(() => false);
+      assert.equal(stillServing, false, 'stopped server is still answering on its port');
+    } finally {
+      if (server && server.exitCode == null) server.kill('SIGKILL');
       rmSync(cwd, { recursive: true, force: true });
     }
   });
