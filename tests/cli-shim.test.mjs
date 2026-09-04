@@ -176,8 +176,9 @@ describe('npm shim download verification', { skip: process.platform === 'win32' 
 
   it('answers --version and -v from its own package.json without touching a binary', async () => {
     const expected = JSON.parse(fs.readFileSync(PKG_PATH, 'utf-8')).version;
-    for (const flag of ['--version', '-v']) {
-      const res = await runShim([flag]);
+    for (const args of [['--version'], ['-v'], ['--version', 'extra']]) {
+      const flag = args.join(' ');
+      const res = await runShim(args);
       assert.equal(res.status, 0, `${flag} exits 0`);
       assert.equal(res.stdout, `${expected}\n`);
       assert.deepEqual(requests, [], 'no download was attempted');
