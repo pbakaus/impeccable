@@ -19,12 +19,3 @@
 {"args":["999px"],"result":999}
 {"args":["240px"],"result":240}
 {"args":["120px"],"result":120}
-{"args":["8px"],"result":8}
-{"args":["4px"],"result":4}
-{"args":[""],"result":null}
-{"args":["0"],"result":null}
-{"args":["3px"],"result":3}
-{"args":["100%"],"result":null}
-{"args":["24px"],"result":24}
-{"args":["1px"],"result":1}
-{"args":["12px"],"result":12}

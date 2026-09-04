@@ -17,6 +17,3 @@
 {"args":["none"],"result":{"name":"","timing":""}}
 {"args":["ticker-loop 80s linear infinite"],"result":{"name":"ticker-loop","timing":"linear"}}
 {"args":["blink 1s infinite"],"result":{"name":"blink","timing":""}}
-{"args":["ticker-loop 80s linear infinite"],"result":{"name":"ticker-loop","timing":"linear"}}
-{"args":["bounce-keyframe 1s infinite"],"result":{"name":"bounce-keyframe","timing":""}}
-{"args":["fade-in-keyframe 0.4s cubic-bezier(0.16,1,0.3,1)"],"result":{"name":"fade-in-keyframe","timing":"cubic-bezier(0.16,1,0.3,1)"}}

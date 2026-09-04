@@ -11,16 +11,3 @@
 {"args":[{"gradientValue":"radial-gradient(circle,#ff0080 0%,#7928ca 45%,#0070f3 100%)","width":800,"height":520,"label":"Rich Radial Composition"}],"result":[]}
 {"args":[{"gradientValue":"radial-gradient(circle,rgba(255,0,128,0.90) 0%,rgba(121,40,202,0.85) 50%,transparent)","width":780,"height":500,"label":"Rich Transparent Composition"}],"result":[]}
 {"args":[{"gradientValue":"radial-gradient(circle,rgba(80,111,255,0.85),transparent)","width":800,"height":520,"label":"Opaque Center Glow"}],"result":[]}
-{"args":[{"gradientValue":"radial-gradient(circle at 52% 38%,rgba(80,111,255,0.26),transparent 44%)","width":360,"height":560,"label":"Hero Spotlight Blue"}],"result":[{"id":"radial-spotlight-glow","snippet":"radial-gradient spotlight glow \"Hero Spotlight Blue\" (#506fff a0.26 → transparent) on 360x560 surface"}]}
-{"args":[{"gradientValue":"radial-gradient(circle,rgba(139,92,246,0.30),transparent 60%)","width":900,"height":600,"label":"Section Glow Violet"}],"result":[{"id":"radial-spotlight-glow","snippet":"radial-gradient spotlight glow \"Section Glow Violet\" (#8b5cf6 a0.30 → transparent) on 900x600 surface"}]}
-{"args":[{"gradientValue":"radial-gradient(ellipse at top,rgba(34,211,238,0.22),transparent 70%)","width":760,"height":480,"label":"Overlay Glow Cyan"}],"result":[{"id":"radial-spotlight-glow","snippet":"radial-gradient spotlight glow \"Overlay Glow Cyan\" (#22d3ee a0.22 → transparent) on 760x480 surface"}]}
-{"args":[{"gradientValue":"radial-gradient(circle,rgba(255,90,120,0.28) 0%,rgba(255,90,120,0.12) 45%,transparent 75%)","width":640,"height":400,"label":"Two Stop Soft Glow"}],"result":[{"id":"radial-spotlight-glow","snippet":"radial-gradient spotlight glow \"Two Stop Soft Glow\" (#ff5a78 a0.28 → transparent) on 640x400 surface"}]}
-{"args":[{"gradientValue":"radial-gradient(circle,#506fff3d,transparent 50%)","width":700,"height":460,"label":"Hex Alpha Glow"}],"result":[{"id":"radial-spotlight-glow","snippet":"radial-gradient spotlight glow \"Hex Alpha Glow\" (#506fff a0.24 → transparent) on 700x460 surface"}]}
-{"args":[{"gradientValue":"radial-gradient(circle,#1e3a8a,#0f172a)","width":800,"height":520,"label":"Opaque Radial Background"}],"result":[]}
-{"args":[{"gradientValue":"radial-gradient(circle,rgba(80,111,255,0.30),transparent)","width":40,"height":40,"label":"Small Accent Badge"}],"result":[]}
-{"args":[{"gradientValue":"radial-gradient(circle,rgba(255,196,64,0.35),transparent 70%)","width":72,"height":72,"label":"Avatar Glow Light"}],"result":[]}
-{"args":[{"gradientValue":"radial-gradient(circle,rgba(0,0,0,0.40),transparent 80%)","width":800,"height":520,"label":"Neutral Vignette"}],"result":[]}
-{"args":[{"gradientValue":"radial-gradient(ellipse,rgba(255,255,255,0.35),transparent 70%)","width":820,"height":540,"label":"White Vignette"}],"result":[]}
-{"args":[{"gradientValue":"radial-gradient(circle,#ff0080 0%,#7928ca 45%,#0070f3 100%)","width":800,"height":520,"label":"Rich Radial Composition"}],"result":[]}
-{"args":[{"gradientValue":"radial-gradient(circle,rgba(255,0,128,0.90) 0%,rgba(121,40,202,0.85) 50%,transparent)","width":780,"height":500,"label":"Rich Transparent Composition"}],"result":[]}
-{"args":[{"gradientValue":"radial-gradient(circle,rgba(80,111,255,0.85),transparent)","width":800,"height":520,"label":"Opaque Center Glow"}],"result":[]}

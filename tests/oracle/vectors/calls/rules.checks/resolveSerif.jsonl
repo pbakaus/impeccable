@@ -3,8 +3,3 @@
 {"args":["\"Playfair Display\",serif"],"result":{"primary":"playfair display","isSerif":true}}
 {"args":["\"CustomSerifFace\",serif"],"result":{"primary":"customserifface","isSerif":true}}
 {"args":["\"Karla\",sans-serif"],"result":{"primary":"karla","isSerif":false}}
-{"args":["\"Fraunces\",Georgia,serif"],"result":{"primary":"fraunces","isSerif":true}}
-{"args":["\"Recoleta\",serif"],"result":{"primary":"recoleta","isSerif":true}}
-{"args":["\"Playfair Display\",serif"],"result":{"primary":"playfair display","isSerif":true}}
-{"args":["\"CustomSerifFace\",serif"],"result":{"primary":"customserifface","isSerif":true}}
-{"args":["\"Karla\",sans-serif"],"result":{"primary":"karla","isSerif":false}}

@@ -1,4 +1,2 @@
 {"args":["rgb(180, 83, 9)"],"result":true}
 {"args":["rgb(102, 102, 102)"],"result":false}
-{"args":["rgb(102, 102, 102)"],"result":false}
-{"args":["rgb(180, 83, 9)"],"result":true}
