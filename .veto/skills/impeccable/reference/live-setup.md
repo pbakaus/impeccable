@@ -1,4 +1,4 @@
-One-time live-mode project setup. Loaded from [live.md](live.md) only when `live.mjs` reports `config_missing` / `config_invalid`, when `configDrift` needs handling, or when the config lacks `cspChecked`. Not part of the per-session hot path.
+One-time live-mode project setup. Loaded from [live.md](live.md) only when `impeccable live` reports `config_missing` / `config_invalid`, when `configDrift` needs handling, or when the config lacks `cspChecked`. Not part of the per-session hot path.
 
 ## Write the config
 
@@ -32,9 +32,9 @@ Create the file at the `path` the boot reported (default `.impeccable/live/confi
 | Astro | `[" <root layout .astro>"]` | `</body>` | `html` |
 | Multi-page (separate HTML per route) | `["public/**/*.html"]` glob over the served dir | `</body>` | `html` |
 
-Pick an anchor that exists in every file (`</body>` almost always works); `insertAfter` matches after a line instead. For multi-page sites prefer a glob so new pages are picked up automatically. For sites whose pages are rebuilt by a generator, the inject survives only until the next regeneration: re-run `live.mjs` after each build (accept is unaffected; it writes true source via the fallback flow).
+Pick an anchor that exists in every file (`</body>` almost always works); `insertAfter` matches after a line instead. For multi-page sites prefer a glob so new pages are picked up automatically. For sites whose pages are rebuilt by a generator, the inject survives only until the next regeneration: re-run `impeccable live` after each build (accept is unaffected; it writes true source via the fallback flow).
 
-**Framework adapters (auto-detected at inject time).** Every inject records what it wrote in `.impeccable/live/inject-journal.json`; the next inject or remove heals artifacts a crash or wrong-directory stop left behind. SvelteKit, Nuxt, and TanStack Start server-render their document shell, so a raw `<script>` in the entry template will not execute reliably; `live-inject.mjs` detects them and routes to a dedicated adapter (SvelteKit: dev-only root component from `+layout.svelte`; Nuxt: dev-only `.client.ts` plugin; TanStack Start: a generated dev-only `ImpeccableLiveRoot` component in `__root`). The `files` value stays a valid detection/CSP hint but is not the literal insertion site. A plain TanStack Router SPA takes the baseline Vite path.
+**Framework adapters (auto-detected at inject time).** Every inject records what it wrote in `.impeccable/live/inject-journal.json`; the next inject or remove heals artifacts a crash or wrong-directory stop left behind. SvelteKit, Nuxt, and TanStack Start server-render their document shell, so a raw `<script>` in the entry template will not execute reliably; `impeccable live-inject` detects them and routes to a dedicated adapter (SvelteKit: dev-only root component from `+layout.svelte`; Nuxt: dev-only `.client.ts` plugin; TanStack Start: a generated dev-only `ImpeccableLiveRoot` component in `__root`). The `files` value stays a valid detection/CSP hint but is not the literal insertion site. A plain TanStack Router SPA takes the baseline Vite path.
 
 ## Config drift
 
@@ -45,7 +45,7 @@ On every boot the project is scanned for HTML files under common page roots (`pu
 If `config.cspChecked === true`, skip this whole section; the user was already asked once.
 
 ```bash
-node .veto/skills/impeccable/scripts/detect-csp.mjs
+.veto/skills/impeccable/scripts/impeccable detect-csp
 ```
 
 Output `{ shape, signals }`; the shape names the *patch mechanism*, so one template covers many frameworks:
@@ -97,6 +97,6 @@ Per-framework: Next.js inline `headers()` in `next.config.*`; Nuxt `routeRules['
 
 ## Troubleshooting
 
-If the user said "no" to the CSP patch and later reports live not working: their dev CSP blocks `http://localhost:8400`. Delete `cspChecked` from `.impeccable/live/config.json` and re-run `live.mjs`; setup asks again.
+If the user said "no" to the CSP patch and later reports live not working: their dev CSP blocks `http://localhost:8400`. Delete `cspChecked` from `.impeccable/live/config.json` and re-run `impeccable live`; setup asks again.
 
-After setup, re-run `live.mjs`.
+After setup, re-run `impeccable live`.

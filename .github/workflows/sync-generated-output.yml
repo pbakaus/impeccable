@@ -21,10 +21,14 @@ concurrency:
 
 env:
   GENERATED_PATHS: >-
+    .agent
     .agents
+    .codex
     .claude
     .cursor
     .gemini
+    .github/agents
+    .github/hooks
     .github/skills
     .grok
     .hermes
@@ -35,6 +39,7 @@ env:
     .rovodev
     .trae
     .trae-cn
+    .veto
     .vibe
     plugin
 

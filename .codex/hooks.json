@@ -6,7 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ ! -f \".codex/skills/impeccable/scripts/hook.mjs\" ] || ! { node -e \"process.exit(Math.min(parseInt(process.versions.node,10),22)===22?0:1)\" 2>/dev/null || { D=\"$HOME/.impeccable\"; [ -f \"$D/node-unsupported\" ] || { mkdir -p \"$D\" 2>/dev/null && : > \"$D/node-unsupported\" 2>/dev/null && printf '%s' '{\"systemMessage\":\"The impeccable design hook is not running: no Node 22 or newer on PATH. Install one, or remove the impeccable hook from your harness settings.\"}'; }; exit 0; }; } || node \".codex/skills/impeccable/scripts/hook.mjs\"",
+            "command": "[ ! -f \".codex/skills/impeccable/scripts/impeccable\" ] || \".codex/skills/impeccable/scripts/impeccable\" hook",
+            "commandWindows": "if exist \".codex/skills/impeccable/scripts/impeccable.cmd\" (\".codex/skills/impeccable/scripts/impeccable.cmd\" hook & exit /b)",
             "timeout": 5,
             "statusMessage": "Checking UI changes"
           }
@@ -18,7 +19,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ ! -f \".codex/skills/impeccable/scripts/hook.mjs\" ] || ! { node -e \"process.exit(Math.min(parseInt(process.versions.node,10),22)===22?0:1)\" 2>/dev/null || { D=\"$HOME/.impeccable\"; [ -f \"$D/node-unsupported\" ] || { mkdir -p \"$D\" 2>/dev/null && : > \"$D/node-unsupported\" 2>/dev/null && printf '%s' '{\"systemMessage\":\"The impeccable design hook is not running: no Node 22 or newer on PATH. Install one, or remove the impeccable hook from your harness settings.\"}'; }; exit 0; }; } || node \".codex/skills/impeccable/scripts/hook.mjs\"",
+            "command": "[ ! -f \".codex/skills/impeccable/scripts/impeccable\" ] || \".codex/skills/impeccable/scripts/impeccable\" hook",
+            "commandWindows": "if exist \".codex/skills/impeccable/scripts/impeccable.cmd\" (\".codex/skills/impeccable/scripts/impeccable.cmd\" hook & exit /b)",
             "timeout": 30,
             "statusMessage": "Design deep pass"
           }

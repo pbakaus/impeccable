@@ -5,7 +5,7 @@
       {
         "type": "command",
         "matcher": "edit|create|apply_patch",
-        "bash": "[ ! -f \"$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/hook.mjs\" ] || ! node -e \"process.exit(Math.min(parseInt(process.versions.node,10),22)===22?0:1)\" 2>/dev/null || node \"$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/hook.mjs\"",
+        "bash": "[ ! -f \"$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/impeccable\" ] || \"$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/impeccable\" hook",
         "timeoutSec": 5
       }
     ]
