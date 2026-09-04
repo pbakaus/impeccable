@@ -288,6 +288,18 @@ describe('verifyPluginSkillRewrite', () => {
     expect(() => verifyPluginSkillRewrite(p)).toThrow(/pre-approves an engine launcher/);
   });
 
+  test('fails the build when a legacy node pre-approval survives', () => {
+    // The Node-era line is gone from SKILL.src.md, but a copy that still
+    // carries one must fail the same way as a surviving launcher line.
+    const p = writeSkill(
+      rewritePluginMarkdown(goodSkill).replace(
+        'allowed-tools:\n',
+        'allowed-tools:\n  - Bash(node <skill-base-dir>/scripts/*)\n',
+      ),
+    );
+    expect(() => verifyPluginSkillRewrite(p)).toThrow(/pre-approves an engine launcher or node script path/);
+  });
+
   test('fails the build when the project-relative scripts path survives at all', () => {
     // Simulate a path shape the replacements don't know: the rewritten copy
     // still names the project scripts directory somewhere new.
