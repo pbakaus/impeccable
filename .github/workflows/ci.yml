@@ -219,14 +219,12 @@ jobs:
   # release/merge that depends on them. The launcher, npm shim, and
   # `impeccable install` all dead-end without those assets.
   #
-  # continue-on-error is a release-time toggle: until the first engine release is
-  # published, the assets cannot exist and this job would block
-  # every PR. It emits a loud ::warning instead. Once v<ENGINE_VERSION> is live,
-  # flip `continue-on-error` to false so a MIS-ORDERED release (skill/CLI ahead of
-  # the engine) fails CI. release.mjs already hard-fails `release:skill`/`release:cli`.
+  # A hard gate since engine-v0.1.0 shipped: the assets for the pinned
+  # ENGINE_VERSION must exist before a skill/CLI release or a merge that bumps the
+  # pin, or the launcher, the npm shim and `impeccable install` dead-end.
+  # release.mjs hard-fails `release:skill`/`release:cli` on the same check.
   engine-release-ready:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -237,14 +235,12 @@ jobs:
           node-version: 24
 
       - name: Check engine release assets for pinned ENGINE_VERSION
-        id: check
-        continue-on-error: true
         run: node scripts/check-engine-release.mjs
 
       - name: Annotate missing engine release
-        if: steps.check.outcome != 'success'
+        if: failure()
         run: |
-          echo "::warning title=Engine release not ready::The engine release for v$(cat ENGINE_VERSION) is not fully published (engine-v$(cat ENGINE_VERSION) release) and/or the @impeccable/cli-<os>-<arch> npm platform packages. Releasing the skill/CLI (or merging) now would dead-end the launcher, the npm shim, and impeccable install. Expected until the first engine release exists; after that, publish the engine + platform packages and flip this job's continue-on-error to false so a mis-ordered release fails CI."
+          echo "::error title=Engine release not ready::The engine release for v$(cat ENGINE_VERSION) is not fully published (engine-v$(cat ENGINE_VERSION) release assets and/or the @impeccable/cli-<os>-<arch> npm platform packages). Publish the engine (bun run release:engine) and the platform packages (bun run release:platform-packages) before bumping ENGINE_VERSION on main or releasing the skill/CLI."
 
   test:
     runs-on: ubuntu-latest
