@@ -154,8 +154,26 @@ describe('live-browser.js regression guards', () => {
     assert.match(SOURCE, /if \(instant\) barEl\.style\.display = 'none'/);
     assert.match(
       SOURCE,
-      /if \(restoreOriginal\) showOriginalDuringDiscard\(cleanupSessionId\);\s*else wrapper\.style\.display = 'none';/,
+      /if \(restoreOriginal\) showOriginalDuringDiscard\(cleanupSessionId\);\s*else for \(const discardWrapper of discardWrappers\) discardWrapper\.style\.display = 'none';/,
       'only non-discard cleanup may blank the wrapper while waiting for HMR',
+    );
+    // Same intent, one wrapper or many: a target inside a `.map()` renders one
+    // wrapper per item, so the blanking and the release that undoes it have to
+    // cover the same set or the extra items never get their original back.
+    assert.match(
+      SOURCE,
+      /const discardWrappers = discardedWrappers\(cleanupSessionId\);/,
+      'the discard blanking must collect every wrapper for the session',
+    );
+    assert.match(
+      SOURCE,
+      /function releaseDiscardedStaticWrappers\(sessionId, wrappers\)[\s\S]{0,400}?for \(const wrapper of set\) releaseDiscardedStaticWrapper\(wrapper\);/,
+      'the delayed release must unwind every wrapper the blanking covered',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /releaseDiscardedStaticWrapper\(lateWrapper/,
+      'releasing only the first match leaves the other mapped items blanked forever',
     );
   });
 
