@@ -1,193 +1,175 @@
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-:root {
-  color-scheme: dark;
-  --ks-kinpaku: oklch(84% 0.19 80.46);
-  --ks-kinpaku-pale: oklch(86% 0.07 84);
-  --ks-patina: oklch(70% 0.12 188);
-  --ks-lacquer: oklch(7% 0.006 95);
-  --ks-lacquer-deep: oklch(4% 0.004 95);
-  --ks-text: oklch(88% 0 0);
-  --ks-text-muted: oklch(72% 0 0);
-  --ks-text-faint: oklch(62% 0 0);
-  --ks-rule: oklch(78% 0 0 / 0.16);
-  --popup-brand: var(--ks-kinpaku);
-  --ks-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
-}
+/*
+ * Popup: the toolbar sheet. Paper ground, the mark and the wordmark at the
+ * head, one count, two controls. Tokens and the severity language live in
+ * ../shared/kinpaku.css; only layout and the local pieces are here.
+ *
+ * The count is ink at every value: gold under 2:1 on paper cannot carry a
+ * numeral. What findings change is the rule under it, which lights gold.
+ * Neither button carries the kit's gold arrow, because popup.js rewrites
+ * both labels through textContent and would drop any child element.
+ */
 
 body {
-  width: 220px;
-  background: var(--ks-lacquer);
-  color: var(--ks-text);
-  font-family: system-ui, -apple-system, sans-serif;
-  font-size: 13px;
-  padding: 16px;
+  width: 224px;
+  padding: 14px 14px 10px;
 }
+
+/* Head */
 
 header {
   display: flex;
   align-items: center;
-  gap: 4px;
-  margin-bottom: 16px;
-}
-
-.logo {
-  width: 26px;
-  height: 26px;
-  display: grid;
-  place-items: center;
-  color: var(--popup-brand);
-}
-
-.logo svg {
-  width: 22px;
-  height: 22px;
-  display: block;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--ks-rule);
 }
 
 h1 {
-  color: var(--popup-brand);
-  font-size: 12px;
+  font-family: var(--ks-font-wordmark);
+  font-size: var(--ks-type-ui);
   font-weight: 600;
-  letter-spacing: 0.15em;
+  letter-spacing: 0.16em;
+  line-height: 1;
   text-transform: uppercase;
+  color: var(--ks-ink);
 }
+
+/* Count */
 
 .count-display {
   text-align: center;
-  padding: 16px 0;
+  padding: 18px 0 0;
   margin-bottom: 16px;
 }
 
 .count-number {
-  display: block;
-  font-size: 36px;
-  font-weight: 700;
+  display: inline-block;
+  min-width: 56px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--ks-rule);
+  font-family: var(--ks-font-wordmark);
+  font-size: 44px;
+  font-weight: 300;
   line-height: 1;
-  margin-bottom: 4px;
-  color: var(--ks-text-faint);
-  transition: color 0.2s;
+  letter-spacing: 0.01em;
+  color: var(--ks-text-mute-deep);
+  transition: color var(--ks-settle) var(--ks-ease), border-color var(--ks-settle) var(--ks-ease);
 }
 
+/* Findings present: the numeral goes ink and the rule under it lights gold. */
 .count-number.has-findings {
-  color: var(--ks-kinpaku);
+  color: var(--ks-ink);
+  border-bottom-color: var(--ks-kinpaku);
 }
 
 .count-label {
-  font-size: 12px;
+  display: block;
+  margin-top: 8px;
+  font-size: var(--ks-type-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--ks-text-muted);
 }
+
+/* Controls */
 
 .actions {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
+.btn {
+  display: block;
+  width: 100%;
+  min-height: 30px;
+  padding: 7px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--ks-radius-sm);
+  font-family: inherit;
+  font-size: var(--ks-type-label);
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color var(--ks-quick) var(--ks-ease),
+    border-color var(--ks-quick) var(--ks-ease),
+    color var(--ks-quick) var(--ks-ease);
+}
+
+.btn-primary {
+  background: var(--ks-ink);
+  border-color: var(--ks-ink);
+  color: var(--ks-paper-raised);
+}
+
+.btn-primary:hover {
+  background: var(--ks-text);
+  border-color: var(--ks-text);
+}
+
+.btn-primary:active {
+  background: oklch(8% 0 0);
+  border-color: oklch(8% 0 0);
+}
+
+.btn-primary:disabled {
+  background: transparent;
+  border-color: var(--ks-rule);
+  color: var(--ks-text-mute-deep);
+  cursor: default;
+}
+
+.btn-secondary {
+  background: var(--ks-paper-raised);
+  border-color: var(--ks-edge);
+  color: var(--ks-ink);
+  box-shadow: var(--ks-cap-lift);
+}
+
+.btn-secondary:hover {
+  border-color: var(--ks-ink);
+}
+
+.btn-secondary:active {
+  background: var(--ks-gray);
+  box-shadow: var(--ks-cap-press);
+}
+
+/* A scan that did not run. The one vermilion in the extension. */
+
 .scan-error {
-  margin: -8px 0 16px;
-  font-size: 11px;
-  line-height: 1.4;
-  color: oklch(70% 0.13 30);
+  margin: -8px 0 14px;
+  padding-left: 8px;
+  border-left: 2px solid var(--ks-vermilion);
+  font-size: var(--ks-type-micro);
+  line-height: 1.45;
+  color: var(--ks-vermilion);
 }
 
 .scan-error[hidden] {
   display: none;
 }
 
-.btn {
-  display: block;
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid transparent;
-  border-radius: 2px;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition:
-    transform 180ms var(--ks-ease),
-    background-color 180ms var(--ks-ease),
-    border-color 180ms var(--ks-ease),
-    color 180ms var(--ks-ease),
-    opacity 0.15s;
-}
-
-.btn-primary {
-  background: var(--ks-kinpaku);
-  border-color: var(--ks-kinpaku);
-  color: var(--ks-lacquer-deep);
-}
-
-.btn-primary:hover {
-  background: var(--ks-kinpaku-pale);
-  border-color: var(--ks-kinpaku-pale);
-  transform: translateY(-1px);
-}
-
-.btn-secondary {
-  background: transparent;
-  border-color: var(--ks-kinpaku);
-  color: var(--ks-kinpaku);
-}
-
-.btn-secondary:hover {
-  background: oklch(77% 0.14 82 / 0.08);
-  transform: translateY(-1px);
-}
-
-.btn:focus-visible {
-  outline: 2px solid var(--ks-patina);
-  outline-offset: 3px;
-}
+/* Foot */
 
 footer {
   text-align: center;
-  padding-top: 8px;
+  padding-top: 10px;
   border-top: 1px solid var(--ks-rule);
 }
 
 footer a {
-  font-size: 11px;
+  font-size: var(--ks-type-micro);
   color: var(--ks-text-muted);
   text-decoration: none;
+  border-bottom: 1px solid transparent;
+  padding-bottom: 1px;
+  transition: color var(--ks-quick) var(--ks-ease), border-color var(--ks-quick) var(--ks-ease);
 }
 
 footer a:hover {
-  color: var(--popup-brand);
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    color-scheme: light;
-    --ks-kinpaku-deep: oklch(61% 0.085 78);
-    --ks-lacquer: oklch(97% 0.012 95);
-    --ks-text: oklch(25% 0.018 95);
-    --ks-text-muted: oklch(45% 0.015 95);
-    --ks-text-faint: oklch(55% 0.012 95);
-    --ks-rule: oklch(25% 0.02 95 / 0.12);
-    --popup-brand: oklch(18% 0.02 95);
-  }
-
-  .count-number.has-findings {
-    color: var(--ks-kinpaku-deep);
-  }
-
-  .btn-primary {
-    color: oklch(14% 0.018 95);
-  }
-
-  .btn-secondary,
-  .btn-secondary:hover {
-    border-color: var(--ks-kinpaku-deep);
-    color: var(--ks-kinpaku-deep);
-  }
-
-  .btn-secondary:hover {
-    background: oklch(77% 0.13 82 / 0.10);
-  }
+  color: var(--ks-ink);
+  border-bottom-color: var(--ks-kinpaku);
 }

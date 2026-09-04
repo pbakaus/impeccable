@@ -2785,21 +2785,25 @@ function createInPageVisualIO(wasm) {
 function createImpeccableOverlay({ extensionMode = false, antipatterns = [] } = {}) {
   // Kinpaku gold — pinned to the site's brand token (see
   // site/styles/kinpaku-tokens.css --ks-kinpaku). Keep this in sync with
-  // the picker's C.brand in skill/scripts/live-browser.js and the kit's
-  // picker section in site/styles/kinpaku-kit.css.
+  // the picker's C.brand in skill/scripts/live-browser.js, the extension's
+  // extension/shared/kinpaku.css, and the kit's picker section in
+  // site/styles/kinpaku-kit.css.
   //
-  // One color across both light and dark host pages. The outline is a
-  // 2px gesture pointing at an element + a labeled tag — it's a marker,
-  // not body text, so it doesn't need WCAG AA against the page. The
-  // label text inside the gold tag is dark (LABEL_INK) which has ~16:1
-  // against the leaf gold, so reading the rule name is solid in both
-  // modes. Hover deepens the gold (preserves chroma — never drops it,
+  // One color across both light and dark host pages. The marker is a gold
+  // hairline plus a soft outer glow: the hairline holds its shape on a
+  // light page, the glow carries it on a dark one, and neither reads as
+  // body text, so the pair doesn't need WCAG AA against the page. The
+  // label is the detector's tag: dark ink (LABEL_INK, --ks-on-gold) on
+  // leaf gold, about 11.8:1, in the mono face the tag uses everywhere
+  // else. Hover deepens the gold (preserves chroma, never drops it:
   // dropping chroma washes the gold into a sand/olive tone).
   const BRAND_COLOR = 'oklch(84% 0.19 80.46)';
   const BRAND_COLOR_HOVER = 'oklch(74% 0.18 80)';
-  const LABEL_INK = 'oklch(4% 0.004 95)';
+  const LABEL_INK = 'oklch(14% 0.018 95)';
   const LABEL_BG = BRAND_COLOR;
   const OUTLINE_COLOR = BRAND_COLOR;
+  const GLOW = '0 0 0 3px oklch(84% 0.19 80.46 / 0.20), 0 0 12px oklch(84% 0.19 80.46 / 0.45)';
+  const GLOW_HOVER = '0 0 0 3px oklch(74% 0.18 80 / 0.28), 0 0 16px oklch(74% 0.18 80 / 0.6)';
 
   // Inject hover styles via CSS (more reliable than JS event listeners)
   const styleEl = document.createElement('style');
@@ -2810,9 +2814,10 @@ function createImpeccableOverlay({ extensionMode = false, antipatterns = [] } = 
     }
     .impeccable-overlay:not(.impeccable-banner) {
       pointer-events: none;
-      outline: 2px solid ${OUTLINE_COLOR};
+      outline: 1px solid ${OUTLINE_COLOR};
+      box-shadow: ${GLOW};
       border-radius: 4px;
-      transition: outline-color 0.15s ease;
+      transition: outline-color 0.15s ease, box-shadow 0.15s ease;
       animation: impeccable-reveal 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
       animation-play-state: paused;
       border-top-left-radius: 0;
@@ -2822,6 +2827,7 @@ function createImpeccableOverlay({ extensionMode = false, antipatterns = [] } = 
     }
     .impeccable-overlay.impeccable-hover {
       outline-color: ${BRAND_COLOR_HOVER};
+      box-shadow: ${GLOW_HOVER};
       z-index: 100001 !important;
     }
     .impeccable-overlay.impeccable-hover .impeccable-label {
@@ -2873,9 +2879,9 @@ function createImpeccableOverlay({ extensionMode = false, antipatterns = [] } = 
   function updateSpotlightClipPath() {
     if (!spotlightBackdrop || !spotlightTarget) return;
     const r = spotlightTarget.getBoundingClientRect();
-    // Match the overlay's outer edge: element rect + 4px (2px overlay offset + 2px outline width)
-    const inset = 4;
-    const radius = 6; // outline border-radius (4) + outline width (2)
+    // Match the overlay's outer edge: element rect + 3px (2px overlay offset + 1px hairline)
+    const inset = 3;
+    const radius = 5; // outline border-radius (4) + hairline width (1)
     const x1 = r.left - inset;
     const y1 = r.top - inset;
     const x2 = r.right + inset;
@@ -3067,11 +3073,12 @@ function createImpeccableOverlay({ extensionMode = false, antipatterns = [] } = 
       position: 'absolute', bottom: '100%', left: '-2px',
       display: 'flex', alignItems: 'center',
       whiteSpace: 'nowrap',
-      fontSize: '11px', fontWeight: '600', letterSpacing: '0.02em',
+      fontSize: '10px', fontWeight: '600', letterSpacing: '0.06em',
+      textTransform: 'uppercase',
       color: LABEL_INK, lineHeight: '14px',
       background: LABEL_BG,
-      fontFamily: 'system-ui, sans-serif',
-      borderRadius: '4px 4px 0 0',
+      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+      borderRadius: '3px 3px 0 0',
     });
 
     const textSpan = document.createElement('span');
@@ -3095,9 +3102,9 @@ function createImpeccableOverlay({ extensionMode = false, antipatterns = [] } = 
       cycleMode = true;
 
       const btnStyle = {
-        background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)',
+        background: 'none', border: 'none', color: 'oklch(14% 0.018 95 / 0.7)',
         fontSize: '11px', cursor: 'pointer', padding: '3px 4px',
-        fontFamily: 'system-ui, sans-serif', lineHeight: '14px',
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', lineHeight: '14px',
         pointerEvents: 'auto',
       };
 
@@ -3189,7 +3196,7 @@ function createImpeccableOverlay({ extensionMode = false, antipatterns = [] } = 
     Object.assign(banner.style, {
       position: 'fixed', top: '0', left: '0', right: '0', zIndex: '100000',
       background: LABEL_BG, color: LABEL_INK,
-      fontFamily: 'system-ui, sans-serif', fontSize: '13px',
+      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: '12px',
       display: 'flex', alignItems: 'center', pointerEvents: 'auto',
       height: '36px', overflow: 'hidden', maxWidth: '100vw',
       transform: 'translateY(-100%)',
@@ -3212,7 +3219,7 @@ function createImpeccableOverlay({ extensionMode = false, antipatterns = [] } = 
       const tag = document.createElement('span');
       tag.textContent = `${prefix}${TYPE_LABELS[f.type] || f.type}: ${f.detail}`;
       Object.assign(tag.style, {
-        background: 'rgba(255,255,255,0.15)', padding: '2px 8px',
+        background: 'oklch(14% 0.018 95 / 0.12)', padding: '2px 8px',
         borderRadius: '3px', fontSize: '12px', fontFamily: 'ui-monospace, monospace',
         whiteSpace: 'nowrap', flexShrink: '0', scrollSnapAlign: 'start',
       });
@@ -3234,7 +3241,7 @@ function createImpeccableOverlay({ extensionMode = false, antipatterns = [] } = 
       toggle.title = 'Toggle overlay visibility';
       Object.assign(toggle.style, {
         background: 'none', border: 'none',
-        color: 'white', fontSize: '16px', cursor: 'pointer', padding: '0 4px',
+        color: LABEL_INK, fontSize: '16px', cursor: 'pointer', padding: '0 4px',
         opacity: '0.85', transition: 'opacity 0.15s',
       });
       let overlaysVisible = true;
@@ -3252,7 +3259,7 @@ function createImpeccableOverlay({ extensionMode = false, antipatterns = [] } = 
       close.title = 'Dismiss banner';
       Object.assign(close.style, {
         background: 'none', border: 'none',
-        color: 'white', fontSize: '18px', cursor: 'pointer', padding: '0 4px',
+        color: LABEL_INK, fontSize: '18px', cursor: 'pointer', padding: '0 4px',
       });
       close.addEventListener('click', () => banner.remove());
       controls.appendChild(close);

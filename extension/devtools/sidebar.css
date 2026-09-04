@@ -1,97 +1,94 @@
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-:root {
-  --bg: #fff;
-  --text: #1a1a1a;
-  --text-dim: #666;
-  --text-faint: #999;
-  --accent: oklch(48% 0.25 350);
-  --rule: #e8e6e2;
-}
-
-.theme-dark {
-  --bg: #1a1a1a;
-  --text: #f5f3ef;
-  --text-dim: #9a9590;
-  --text-faint: #666;
-  --accent: oklch(60% 0.25 350);
-  --rule: #2a2a2a;
-}
+/*
+ * Elements sidebar: the findings on the selected element, on paper.
+ *
+ * Tokens and the severity language are in ../shared/kinpaku.css. The pane is
+ * narrow, so the language is carried by two small pieces: the kind label
+ * (the detector's gold tag for an AI tell, a quiet gray chip for a quality
+ * issue) and the detail line in patina-deep mono.
+ */
 
 body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  font-size: 12px;
-  line-height: 1.5;
-  padding: 12px 14px;
+  padding: 10px 12px 14px;
+  font-size: var(--ks-type-label);
 }
 
-/* Empty / no-findings states */
+/* Empty and no-findings states */
 
 .state {
-  color: var(--text-faint);
-  font-size: 12px;
-  font-style: italic;
-  padding: 4px 0;
+  padding: 3px 0;
+  font-size: var(--ks-type-label);
+  color: var(--ks-text-muted);
 }
 
 .state strong {
-  color: var(--text-dim);
-  font-style: normal;
+  color: var(--ks-ink);
   font-weight: 600;
 }
 
-/* Finding list */
+/* Findings */
 
 .finding + .finding {
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid var(--rule);
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ks-rule);
 }
 
 .finding-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 6px;
+  margin-bottom: 5px;
 }
 
 .finding-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--ks-type-label);
   font-weight: 600;
-  font-size: 12px;
-  color: var(--text);
-  letter-spacing: -0.005em;
+  color: var(--ks-ink);
 }
 
+/* The slop marker: gold, and the only gold glyph in the pane. */
 .finding-name .marker {
-  color: var(--accent);
-  margin-right: 4px;
+  color: var(--ks-kinpaku-rich);
+  font-size: 10px;
+  line-height: 1;
 }
 
+/* AI tell: the detector's tag. Quality: a quiet chip. */
 .finding-kind {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  min-height: 15px;
+  padding: 0 5px;
+  border-radius: var(--ks-radius-sm);
+  background: var(--ks-gray);
+  color: var(--ks-text-muted);
+  font-family: var(--ks-mono);
   font-size: 9px;
   font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-faint);
-  flex-shrink: 0;
+}
+
+.finding-kind.is-slop {
+  background: var(--ks-kinpaku);
+  color: var(--ks-on-gold);
 }
 
 .finding-detail {
-  font-family: ui-monospace, 'SF Mono', 'Cascadia Code', monospace;
-  font-size: 11px;
-  color: var(--text-dim);
-  margin-bottom: 6px;
+  margin-bottom: 5px;
+  font-family: var(--ks-mono);
+  font-size: var(--ks-type-micro);
+  color: var(--ks-patina-deep);
 }
 
 .finding-description {
-  font-size: 11px;
-  color: var(--text-dim);
-  line-height: 1.55;
+  font-size: var(--ks-type-micro);
+  line-height: 1.5;
+  color: var(--ks-text-muted);
 }

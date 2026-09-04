@@ -1,52 +1,41 @@
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-/* Light theme (default DevTools) */
-:root {
-  --bg: #fff;
-  --bg-subtle: #f5f5f5;
-  --bg-hover: #eee;
-  --text: #1a1a1a;
-  --text-dim: #666;
-  --accent: oklch(48% 0.25 350);
-  --accent-dim: oklch(40% 0.18 350);
-  --border: #ddd;
-  --radius: 6px;
-}
-
-/* Dark theme (set via JS from chrome.devtools.panels.themeName) */
-.theme-dark {
-  --bg: #1a1a1a;
-  --bg-subtle: #242424;
-  --bg-hover: #2a2a2a;
-  --text: #f5f3ef;
-  --text-dim: #999;
-  --accent: oklch(55% 0.25 350);
-  --accent-dim: oklch(45% 0.18 350);
-  --border: #333;
-}
+/*
+ * DevTools panel: a paper sheet laid on the tool.
+ *
+ * Tokens, the severity language and the theme decision live in
+ * ../shared/kinpaku.css. The short version, because it shapes every rule
+ * below: one light theme in both DevTools themes; gold is the mark, the
+ * tag and the lit dot on a control; patina carries any colored text;
+ * selectors and counts are mono, as they are in the agent.
+ *
+ * How a finding reads here:
+ *   AI tells   gold. A lit gold dot on the section, the count as the
+ *              detector's tag, the section name in ink.
+ *   Quality    patina. A patina dot, a quiet gray count, a muted name.
+ *   Selector   patina-deep mono in both sections: it is the one piece of
+ *              colored text, and patina is the color that may carry text.
+ *
+ * Controls are paper hardware: a recessed track, a raised cap that stands
+ * a millimetre proud, and a gold dot that lights when the cap is the one
+ * selected.
+ */
 
 body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: system-ui, -apple-system, sans-serif;
-  font-size: 12px;
-  line-height: 1.5;
-  overflow-y: auto;
   height: 100vh;
+  overflow-y: auto;
+  font-size: var(--ks-type-label);
 }
 
-/* Toolbar */
+/* ============================================================
+   Toolbar
+   ============================================================ */
 .toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg);
+  gap: 12px;
+  padding: 7px 10px;
+  background: var(--ks-paper);
+  border-bottom: 1px solid var(--ks-rule);
   position: sticky;
   top: 0;
   z-index: 10;
@@ -56,97 +45,199 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .toolbar-right {
   display: flex;
   align-items: center;
-  gap: 4px;
-}
-
-.logo {
-  font-size: 18px;
-  font-weight: 500;
-  color: var(--text);
-  opacity: 0.7;
+  gap: 2px;
 }
 
 h1 {
-  font-size: 13px;
+  font-family: var(--ks-font-wordmark);
+  font-size: var(--ks-type-ui);
   font-weight: 600;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.16em;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--ks-ink);
 }
 
+/* The total, as the detector's own tag. */
 .badge {
-  background: var(--accent);
-  color: white;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 1px 6px;
-  border-radius: 10px;
-  min-width: 20px;
-  text-align: center;
   display: none;
+  align-items: center;
+  min-height: 16px;
+  padding: 0 6px;
+  border-radius: var(--ks-radius-sm);
+  background: var(--ks-kinpaku);
+  color: var(--ks-on-gold);
+  font-family: var(--ks-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1;
 }
 
 .badge.visible {
-  display: inline-block;
+  display: inline-flex;
 }
 
-/* Tool buttons */
+/* Tool buttons: a cap that rises under the pointer. */
 .tool-btn {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: var(--radius);
+  width: 26px;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: var(--ks-radius-sm);
   background: transparent;
-  color: var(--text-dim);
+  color: var(--ks-text-muted);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background-color var(--ks-quick) var(--ks-ease),
+    border-color var(--ks-quick) var(--ks-ease),
+    color var(--ks-quick) var(--ks-ease);
 }
 
 .tool-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text);
+  background: var(--ks-paper-raised);
+  border-color: var(--ks-rule);
+  box-shadow: var(--ks-cap-lift);
+  color: var(--ks-ink);
 }
 
+.tool-btn:active {
+  box-shadow: var(--ks-cap-press);
+}
+
+/* Held down: a raised cap with its indicator lit. */
+.tool-btn.active {
+  background: var(--ks-paper-raised);
+  border-color: var(--ks-rule);
+  box-shadow: var(--ks-cap-lift);
+  color: var(--ks-ink);
+}
+
+.tool-btn.active::after {
+  content: "";
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--ks-kinpaku);
+  box-shadow: var(--ks-led);
+}
+
+/* Overlays hidden: the eye reads off. */
 .tool-btn.inactive {
-  opacity: 0.4;
+  color: var(--ks-text-mute-deep);
 }
 
-/* Findings */
+/* Copied: a state, so patina. */
+.tool-btn.copied {
+  color: var(--ks-patina-deep);
+}
+
+/* ============================================================
+   Findings
+   ============================================================ */
 #findings-container {
-  padding: 8px;
+  padding: 6px 8px 16px;
+}
+
+.category-section {
+  margin-bottom: 6px;
+}
+
+.category-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 6px 4px;
+}
+
+.category-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* AI tells: the lit gold dot. Quality: patina. */
+.category-dot-slop {
+  background: var(--ks-kinpaku);
+  box-shadow: var(--ks-led);
+}
+
+.category-dot-quality {
+  background: var(--ks-patina);
+}
+
+.category-name {
+  font-family: var(--ks-mono);
+  font-size: var(--ks-type-micro);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ks-text-muted);
+}
+
+.category-slop .category-name {
+  color: var(--ks-ink);
+}
+
+/* The count is the tag in an AI-tell section, a quiet chip in a quality one. */
+.category-count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 15px;
+  padding: 0 5px;
+  border-radius: var(--ks-radius-sm);
+  background: var(--ks-gray);
+  color: var(--ks-text-muted);
+  font-family: var(--ks-mono);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.category-slop .category-count {
+  background: var(--ks-kinpaku);
+  color: var(--ks-on-gold);
 }
 
 .finding-group {
-  margin-bottom: 2px;
+  margin-bottom: 1px;
 }
 
 .group-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 8px;
-  border-radius: var(--radius);
+  padding: 5px 6px;
+  border-radius: var(--ks-radius-sm);
   cursor: pointer;
   user-select: none;
-  transition: background 0.15s;
+  transition: background-color var(--ks-quick) var(--ks-ease);
 }
 
 .group-header:hover {
-  background: var(--bg-hover);
+  background: var(--ks-paper-deep);
 }
 
 .group-chevron {
-  font-size: 10px;
-  color: var(--text-dim);
-  transition: transform 0.15s;
   width: 12px;
   flex-shrink: 0;
+  font-size: 9px;
+  color: var(--ks-text-faint);
+  transition: transform var(--ks-quick) var(--ks-ease);
 }
 
 .group-header.collapsed .group-chevron {
@@ -154,16 +245,17 @@ h1 {
 }
 
 .group-name {
-  font-weight: 600;
-  font-size: 12px;
   flex: 1;
   min-width: 0;
+  font-size: var(--ks-type-label);
+  font-weight: 600;
+  color: var(--ks-ink);
 }
 
 .group-count {
-  font-size: 11px;
-  color: var(--text-dim);
-  font-weight: 500;
+  font-family: var(--ks-mono);
+  font-size: 10px;
+  color: var(--ks-text-faint);
 }
 
 .group-items {
@@ -177,15 +269,15 @@ h1 {
 .finding-item {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 5px 8px 5px 28px;
-  border-radius: var(--radius);
+  gap: 1px;
+  padding: 4px 6px 5px 26px;
+  border-radius: var(--ks-radius-sm);
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background-color var(--ks-quick) var(--ks-ease);
 }
 
 .finding-item:hover {
-  background: var(--bg-hover);
+  background: var(--ks-paper-deep);
 }
 
 .finding-row {
@@ -200,6 +292,36 @@ h1 {
   min-width: 0;
 }
 
+/* The one colored text in the list. Patina clears 4.5:1 on paper. */
+.finding-selector {
+  font-family: var(--ks-mono);
+  font-size: var(--ks-type-micro);
+  color: var(--ks-patina-deep);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.finding-detail {
+  font-size: var(--ks-type-micro);
+  color: var(--ks-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.finding-description {
+  display: none;
+  padding: 3px 0 2px;
+  font-size: var(--ks-type-micro);
+  line-height: 1.45;
+  color: var(--ks-text-muted);
+}
+
+.finding-item:hover .finding-description {
+  display: block;
+}
+
 .finding-copy {
   display: none;
   align-items: center;
@@ -207,12 +329,12 @@ h1 {
   width: 18px;
   height: 18px;
   flex-shrink: 0;
-  border: none;
-  border-radius: 4px;
+  border: 1px solid transparent;
+  border-radius: var(--ks-radius-sm);
   background: transparent;
-  color: var(--text-dim);
+  color: var(--ks-text-faint);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background-color var(--ks-quick) var(--ks-ease), color var(--ks-quick) var(--ks-ease);
 }
 
 .finding-item:hover .finding-copy {
@@ -220,72 +342,45 @@ h1 {
 }
 
 .finding-copy:hover {
-  background: var(--bg);
-  color: var(--accent);
+  background: var(--ks-paper-raised);
+  border-color: var(--ks-rule);
+  color: var(--ks-ink);
 }
 
 .finding-copy.copied {
-  color: var(--accent);
+  color: var(--ks-patina-deep);
 }
 
-.tool-btn.copied {
-  color: var(--accent);
-}
-
-.finding-selector {
-  font-family: ui-monospace, 'SF Mono', 'Cascadia Code', monospace;
-  font-size: 11px;
-  color: var(--accent);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.finding-detail {
-  font-size: 11px;
-  color: var(--text-dim);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.finding-description {
-  font-size: 11px;
-  color: var(--text-dim);
-  opacity: 0.7;
-  line-height: 1.4;
-  padding: 2px 0 4px;
-  display: none;
-}
-
-.finding-item:hover .finding-description {
-  display: block;
-}
-
-/* Finding tags (page-level, hidden, etc.) */
+/* Tags on a finding: quiet by default. Gold is reserved for the section
+   and the total, so a row-level tag never competes with it. */
 .finding-tag {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  min-height: 14px;
+  margin-bottom: 2px;
+  padding: 0 5px;
+  border-radius: var(--ks-radius-sm);
+  font-family: var(--ks-mono);
   font-size: 9px;
   font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 1px 5px;
-  border-radius: 3px;
-  margin-bottom: 2px;
 }
 
 .tag-page {
-  color: var(--accent-dim);
-  background: transparent;
+  background: var(--ks-patina-pale);
+  color: var(--ks-patina-ink);
 }
 
 .tag-hidden {
-  color: var(--text-dim);
-  background: var(--bg-hover);
+  background: var(--ks-gray);
+  color: var(--ks-text-muted);
 }
 
 .finding-item.is-hidden {
-  opacity: 0.55;
+  opacity: 0.6;
   cursor: default;
 }
 
@@ -293,152 +388,157 @@ h1 {
   background: transparent;
 }
 
-/* Empty state */
+/* ============================================================
+   Empty state
+   ============================================================ */
 .empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 48px 24px;
+  padding: 56px 24px;
   text-align: center;
 }
 
 .empty-icon {
-  font-size: 32px;
-  font-weight: 500;
-  opacity: 0.3;
-  margin-bottom: 12px;
+  width: 26px;
+  height: 26px;
+  margin-bottom: 14px;
+  border-radius: var(--ks-radius-sm);
+  background: var(--ks-gray);
+  color: var(--ks-text-mute-deep);
+  font-family: var(--ks-font-wordmark);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 26px;
 }
 
 .empty-title {
-  font-size: 13px;
-  font-weight: 500;
-  margin-bottom: 4px;
+  margin-bottom: 3px;
+  font-size: var(--ks-type-ui);
+  font-weight: 600;
+  color: var(--ks-ink);
 }
 
 .empty-hint {
-  font-size: 12px;
-  color: var(--text-dim);
+  font-size: var(--ks-type-micro);
+  color: var(--ks-text-muted);
 }
 
-/* Category sections */
-.category-section {
-  margin-bottom: 4px;
-}
-
-.category-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 8px 4px;
-}
-
-.category-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.category-dot-slop {
-  background: oklch(55% 0.25 350);
-}
-
-.category-dot-quality {
-  background: var(--text-dim);
-}
-
-.category-name {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-dim);
-}
-
-.category-count {
-  font-size: 11px;
-  color: var(--text-dim);
-  font-weight: 500;
-}
-
-/* Settings */
+/* ============================================================
+   Settings. Every control here is paper hardware.
+   ============================================================ */
 #settings-container {
-  border-bottom: 1px solid var(--border);
-  padding: 0 8px 8px;
+  padding: 0 8px 10px;
+  background: var(--ks-paper-deep);
+  border-bottom: 1px solid var(--ks-rule);
 }
 
 .settings-header {
-  font-size: 11px;
+  padding: 10px 6px 6px;
+  font-family: var(--ks-mono);
+  font-size: var(--ks-type-micro);
   font-weight: 600;
-  color: var(--text-dim);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 8px 8px 6px;
+  letter-spacing: 0.12em;
+  color: var(--ks-text-muted);
+}
+
+#settings-list .settings-header {
+  padding: 12px 6px 4px;
 }
 
 .settings-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 1px 12px;
-  padding-bottom: 8px;
-}
-
-#settings-list .settings-header {
-  padding: 8px 8px 4px;
+  gap: 0 12px;
+  padding-bottom: 6px;
 }
 
 .setting-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 8px 8px;
   gap: 12px;
+  padding: 4px 6px 8px;
 }
 
 .setting-label {
-  font-size: 11px;
-  color: var(--text);
+  font-size: var(--ks-type-label);
+  color: var(--ks-text);
 }
 
+/* Segmented control: a recessed track carrying raised caps. */
 .setting-segmented {
   display: inline-flex;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--ks-radius-sm);
+  background: var(--ks-gray);
+  box-shadow: var(--ks-track-recess);
 }
 
 .setting-segmented button {
-  background: transparent;
+  position: relative;
+  padding: 3px 9px 3px 16px;
   border: none;
-  color: var(--text-dim);
-  font-size: 11px;
-  padding: 3px 8px;
-  cursor: pointer;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--ks-text-muted);
   font-family: inherit;
-  border-right: 1px solid var(--border);
+  font-size: var(--ks-type-micro);
+  font-weight: 500;
+  line-height: 1.4;
+  cursor: pointer;
+  transition:
+    background-color var(--ks-quick) var(--ks-ease),
+    color var(--ks-quick) var(--ks-ease),
+    box-shadow var(--ks-quick) var(--ks-ease);
 }
 
-.setting-segmented button:last-child {
-  border-right: none;
+/* The key's indicator: dark at rest, lit gold on the selected cap. */
+.setting-segmented button::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 6px;
+  transform: translateY(-50%);
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ks-gray-2);
+  box-shadow: inset 0 1px 1px oklch(13% 0 0 / 0.18);
+  transition: background-color var(--ks-quick) var(--ks-ease), box-shadow var(--ks-quick) var(--ks-ease);
 }
 
 .setting-segmented button:hover {
-  color: var(--text);
+  color: var(--ks-ink);
 }
 
 .setting-segmented button.active {
-  background: var(--accent);
-  color: white;
+  background: var(--ks-paper-raised);
+  box-shadow: var(--ks-cap-lift);
+  color: var(--ks-ink);
 }
 
+.setting-segmented button.active::before {
+  background: var(--ks-kinpaku);
+  box-shadow: var(--ks-led);
+}
+
+.setting-segmented button:active {
+  box-shadow: var(--ks-cap-press);
+  transform: translateY(1px);
+}
+
+/* Switch: a recessed track, a paper knob, a dot that lights when on. */
 .setting-switch {
   position: relative;
   display: inline-block;
-  width: 28px;
-  height: 16px;
-  cursor: pointer;
+  width: 30px;
+  height: 18px;
   flex-shrink: 0;
+  cursor: pointer;
 }
 
 .setting-switch input {
@@ -450,10 +550,10 @@ h1 {
 
 .setting-switch-track {
   position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: var(--border);
-  border-radius: 8px;
-  transition: background 0.15s ease;
+  inset: 0;
+  border-radius: var(--ks-radius-pill);
+  background: var(--ks-gray-2);
+  box-shadow: var(--ks-track-recess);
 }
 
 .setting-switch-track::before {
@@ -461,60 +561,92 @@ h1 {
   position: absolute;
   top: 2px;
   left: 2px;
-  width: 12px;
-  height: 12px;
-  background: var(--bg);
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
-  transition: transform 0.15s ease;
+  background: var(--ks-paper-raised);
+  box-shadow: var(--ks-cap-lift);
+  transition: transform 220ms cubic-bezier(0.3, 0.7, 0.2, 1);
 }
 
-.setting-switch input:checked + .setting-switch-track {
-  background: var(--accent);
+.setting-switch-track::after {
+  content: '';
+  position: absolute;
+  top: 7px;
+  left: 7px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--ks-gray-2);
+  box-shadow: inset 0 1px 1px oklch(13% 0 0 / 0.18);
+  transition:
+    transform 220ms cubic-bezier(0.3, 0.7, 0.2, 1),
+    background-color var(--ks-quick) var(--ks-ease),
+    box-shadow var(--ks-quick) var(--ks-ease);
 }
 
-.setting-switch input:checked + .setting-switch-track::before {
+.setting-switch input:checked + .setting-switch-track::before,
+.setting-switch input:checked + .setting-switch-track::after {
   transform: translateX(12px);
 }
 
+.setting-switch input:checked + .setting-switch-track::after {
+  background: var(--ks-kinpaku);
+  box-shadow: var(--ks-led);
+}
+
+.setting-switch input:focus-visible + .setting-switch-track {
+  outline: 2px solid var(--ks-patina);
+  outline-offset: 2px;
+}
+
+/* Rule toggles */
 .setting-rule {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 8px;
-  border-radius: var(--radius);
-  font-size: 11px;
+  gap: 7px;
+  padding: 2px 6px;
+  border-radius: var(--ks-radius-sm);
+  font-size: var(--ks-type-micro);
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background-color var(--ks-quick) var(--ks-ease);
 }
 
 .setting-rule:hover {
-  background: var(--bg-hover);
+  background: var(--ks-gray);
 }
 
 .setting-rule input[type="checkbox"] {
   margin: 0;
-  accent-color: var(--accent);
+  accent-color: var(--ks-patina-deep);
 }
 
-/* Scanning state */
+/* ============================================================
+   Scanning
+   ============================================================ */
 .scanning-indicator {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px;
-  color: var(--text-dim);
-  font-size: 12px;
+  padding: 14px 12px;
+  font-size: var(--ks-type-label);
+  color: var(--ks-text-muted);
 }
 
 .scanning-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--ks-kinpaku);
+  box-shadow: var(--ks-led);
   animation: pulse 1s ease-in-out infinite;
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 0.3; }
+  0%, 100% { opacity: 0.35; }
   50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scanning-dot { animation: none; }
 }

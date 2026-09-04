@@ -85,7 +85,7 @@ function render(items) {
         <div class="finding">
           <div class="finding-header">
             <span class="finding-name">${marker}${escapeHtml(f.name)}</span>
-            <span class="finding-kind">${kind}</span>
+            <span class="finding-kind ${isSlop ? 'is-slop' : 'is-quality'}">${kind}</span>
           </div>
           <div class="finding-detail">${escapeHtml(f.detail)}</div>
           <div class="finding-description">${escapeHtml(f.description)}</div>

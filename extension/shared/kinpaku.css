@@ -1,0 +1,213 @@
+/*
+ * Impeccable extension: the shared surface.
+ *
+ * One system across the popup, the DevTools panel and the Elements sidebar,
+ * mirroring impeccable.style's "paper and instruments" tokens
+ * (site/styles/kinpaku-tokens.css). Values are copied, never invented; when
+ * the site's tokens move, move these with them.
+ *
+ * The rules that shape everything below:
+ *
+ *   Paper and ink.   Surfaces are neutral paper (chroma 0), type is ink.
+ *                    No warm cast, no dark section backgrounds.
+ *   Gold is jewelry. Kinpaku fills the mark, a hairline, the lit dot on a
+ *                    control, and the tag. It never carries text on paper
+ *                    and never fills a panel.
+ *   Patina reads.    When color has to be read as text it is patina-deep,
+ *                    which clears 4.5:1 on paper. Gold at 84% lightness
+ *                    lands under 2:1 there, so gold text is a bug.
+ *   Instruments.     A dark surface is something you operate. In here that
+ *                    is a segmented control and a switch: a recessed track,
+ *                    a raised cap, a lit gold dot.
+ *
+ * Severity language (the one mapping this UI uses, everywhere):
+ *
+ *   AI tell   the detector's own gold tag, and a lit gold dot on the
+ *             category. It is the finding the product is named for, so it
+ *             gets the brand's one loud mark.
+ *   Quality   patina: a patina dot and patina-deep text. Present, read as
+ *             state, never competing with the gold.
+ *   Failure   vermilion, and only for a scan that did not run.
+ *
+ * Theme. The brand has one light theme, so this has one too, in the popup
+ * and in both DevTools themes. A paper panel inside dark DevTools is a
+ * deliberate call: the panel is a sheet laid on the tool, so it carries an
+ * ink toolbar seam and a hard outer edge to sit against the dark frame
+ * rather than bleed into it. `.theme-dark` (set by panel.js and sidebar.js
+ * from chrome.devtools.panels.themeName) tunes that seam; it does not
+ * invert the surface.
+ *
+ * Fonts. Extension pages cannot load web fonts, so the two site faces are
+ * matched from system stacks: Avenir Next (with Segoe UI Variable and
+ * system-ui behind it) stands in for Albert Sans, the geometric humanist
+ * that carries everything read; Avenir Next Condensed (Roboto Condensed,
+ * Arial Narrow) stands in for Alumni Sans in the wordmark; ui-monospace
+ * carries keys, selectors and the tag, as JetBrains Mono does on the site.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* Gold. The mark, a line, a lit dot, the tag. Never text on paper. */
+  --ks-kinpaku: oklch(84% 0.19 80.46);
+  --ks-kinpaku-vivid: oklch(87% 0.20 85);
+  --ks-kinpaku-rich: oklch(77% 0.13 82);
+  --ks-kinpaku-deep: oklch(61% 0.085 78);
+  --ks-on-gold: oklch(14% 0.018 95);
+
+  /* Patina. State, links, selection, and any text that has to be colored. */
+  --ks-patina: oklch(70% 0.12 188);
+  --ks-patina-pale: oklch(82% 0.07 188);
+  --ks-patina-deep: oklch(46% 0.08 188);
+  --ks-patina-ink: oklch(38% 0.08 188);
+
+  /* Failure only. */
+  --ks-vermilion: oklch(52% 0.16 35);
+
+  /* Paper. */
+  --ks-paper: oklch(97.8% 0 0);
+  --ks-paper-raised: oklch(99.5% 0 0);
+  --ks-paper-deep: oklch(95% 0 0);
+  --ks-gray: oklch(92% 0 0);
+  --ks-gray-2: oklch(88% 0 0);
+
+  /* Ink. */
+  --ks-ink: oklch(13% 0 0);
+  --ks-text: oklch(22% 0 0);
+  --ks-text-muted: oklch(46% 0 0);
+  --ks-text-faint: oklch(56% 0 0);
+  --ks-text-mute-deep: oklch(66% 0 0);
+
+  /* Rules. A divider is faint; the bound of a control clears 3:1. */
+  --ks-rule: oklch(13% 0 0 / 0.08);
+  --ks-edge: oklch(13% 0 0 / 0.45);
+
+  /* Shape. */
+  --ks-radius-sm: 3px;
+  --ks-radius-md: 8px;
+  --ks-radius-pill: 999px;
+
+  /* Paper hardware. A cap stands proud of a recessed track; the dot lights. */
+  --ks-cap-lift: inset 0 1px 0 oklch(100% 0 0 / 0.9), 0 1px 0 oklch(13% 0 0 / 0.14), 0 2px 3px oklch(13% 0 0 / 0.08);
+  --ks-cap-press: inset 0 1px 2px oklch(13% 0 0 / 0.14);
+  --ks-track-recess: inset 0 1px 3px oklch(13% 0 0 / 0.16), inset 0 -1px 0 oklch(100% 0 0 / 0.7);
+  --ks-led: 0 0 0 1px oklch(13% 0 0 / 0.12), 0 0 4px oklch(84% 0.19 80 / 0.6);
+  --ks-lift-1: 0 1px 1px oklch(13% 0 0 / 0.05), 0 2px 3px oklch(13% 0 0 / 0.04), 0 6px 12px oklch(13% 0 0 / 0.05);
+
+  /* Motion. */
+  --ks-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ks-quick: 120ms;
+  --ks-settle: 200ms;
+
+  /* Type. System stands-in for the two site faces; see the header. */
+  --ks-font: "Avenir Next", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --ks-font-wordmark: "Avenir Next Condensed", "Roboto Condensed", "Arial Narrow", var(--ks-font);
+  --ks-mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+
+  /* Dense UI ramp. 11px is the floor for anything functional. */
+  --ks-type-micro: 11px;
+  --ks-type-label: 12px;
+  --ks-type-ui: 13px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--ks-paper);
+  color: var(--ks-text);
+  font-family: var(--ks-font);
+  font-size: var(--ks-type-label);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ============================================================
+   The mark. The one place gold fills a shape: a carved ink tile
+   split by the slash, the same glyph the toolbar icon carries.
+   ============================================================ */
+.ks-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--ks-radius-sm);
+  background: var(--ks-ink);
+  color: var(--ks-kinpaku);
+}
+
+.ks-mark svg {
+  display: block;
+  width: 15px;
+  height: 15px;
+}
+
+.ks-wordmark {
+  font-family: var(--ks-font-wordmark);
+  font-size: var(--ks-type-ui);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--ks-ink);
+}
+
+/* ============================================================
+   The tag. The detector's own label: small, mono, ink on gold.
+   It is how a finding names itself in the page overlay, so it is
+   how it names itself here.
+   ============================================================ */
+.ks-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 16px;
+  padding: 0 5px;
+  border-radius: var(--ks-radius-sm);
+  background: var(--ks-kinpaku);
+  color: var(--ks-on-gold);
+  font-family: var(--ks-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.ks-tag.is-quiet {
+  background: var(--ks-gray);
+  color: var(--ks-text-muted);
+}
+
+/* ============================================================
+   Focus. Patina, everywhere, at 2px.
+   ============================================================ */
+:focus-visible {
+  outline: 2px solid var(--ks-patina);
+  outline-offset: 2px;
+}
+
+/* Dark DevTools: the panel stays paper, and the seam hardens so the sheet
+   reads as laid on the tool rather than bleeding into its frame. A hard top
+   edge gives the sheet a boundary against the dark chrome above it, and the
+   dividers inside step up so they still read next to that edge. */
+.theme-dark {
+  --ks-rule: oklch(13% 0 0 / 0.12);
+}
+
+.theme-dark body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: oklch(13% 0 0 / 0.55);
+  z-index: 20;
+}
