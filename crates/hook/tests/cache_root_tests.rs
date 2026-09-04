@@ -13,6 +13,8 @@ use impeccable_hook::hook_lib::{get_cache_path, get_pending_path, Runtime};
 use impeccable_hook::hook;
 use serde_json::json;
 
+static TMP_SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 static HTML: MissingHtmlEngine = MissingHtmlEngine;
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
