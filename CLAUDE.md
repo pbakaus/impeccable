@@ -353,10 +353,11 @@ The rule logic lives in `crates/core`: every check, the browser rule adapters ov
 | `tests/oracle/golden/*` | Recorded from the binary with `node tests/oracle/record.mjs --bin detect-`, reviewed by hand |
 | `tests/oracle/vectors/calls/` | Frozen function-level vectors; replayed by `crates/core/tests/vectors.rs` through `impeccable_core::vectors::call` |
 | `crates/live/assets/detect-antipatterns-browser.js` | The in-page bundle, a tracked generated file. `cargo xtask bundle` rewrites it; the binary embeds it and serves it as `/detect.js` |
-| `extension/detector/` | The five generated pieces (`core.js`, `core_bg.wasm`, `snapshot.js`, `overlay.js`, `antipatterns.json`) written by `cargo xtask bundle`, which `bun run build:extension` runs. Gitignored, never tracked; the build's rule-count check reads `antipatterns.json` when present |
+| `crates/live/assets/antipatterns.json` | The registry as `[{ id, name, category, description }]`, the second tracked generated file. Same writer and the same `cargo xtask bundle --check` staleness gate. It exists because `extension/detector/` is gitignored: this is how a consumer without a Rust toolchain (impeccable.style, working from a tarball of this repo) reads the rule list. Adding or renaming a rule means committing this file too |
+| `extension/detector/` | The five generated pieces (`core.js`, `core_bg.wasm`, `snapshot.js`, `overlay.js`, `antipatterns.json`) written by `cargo xtask bundle`, which `bun run build:extension` runs. Gitignored, never tracked |
 | `skill/SKILL.src.md` and `reference/*.md` | Hand-edited if the rule introduces new design guidance |
 
-Order for a new rule: fixture here first, registry row in `crates/foundation/src/registry.rs`, the check in `crates/core` against that fixture, oracle case + golden, `cargo xtask bundle` to refresh the tracked live asset, then `bun run build && bun run test` with a binary present. Rule counts quoted in `README.md` / `README.npm.md` are validated by `generateCounts` against the vendored registry.
+Order for a new rule: fixture here first, registry row in `crates/foundation/src/registry.rs`, the check in `crates/core` against that fixture, oracle case + golden, `cargo xtask bundle` to refresh the two tracked live assets, then `bun run build && bun run test` with a binary present. Rule counts quoted in `README.md` / `README.npm.md` are validated by `generateCounts` against `crates/live/assets/antipatterns.json`.
 
 ### Rule packs (downstream crates adding rules)
 

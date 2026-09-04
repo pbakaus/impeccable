@@ -53,7 +53,7 @@ Other area-to-suite obligations (the canonical mapping is the `triggers` lists i
 
 ## Anti-pattern detection rules
 
-The rule engine lives in the engine repo, not here. What this repo owns is the behavior contract: `docs/CLI-CONTRACT.md` describes every verb, `tests/oracle/` holds the recorded goldens and replays them against the binary (`tests/oracle.test.mjs`), and `tests/fixtures/antipatterns/*.html` are the fixtures those goldens scan. A rule change lands in the engine, then here as a new oracle case (`node tests/oracle/record.mjs --bin <prefix>`, golden reviewed by hand) and, when it introduces new design guidance, an edit to `skill/SKILL.src.md` or `skill/reference/*.md`. Rule counts quoted in `README.md` and `README.npm.md` are checked by the build against `extension/detector/antipatterns.json` when that vendored file is present.
+The rule engine lives in the engine repo, not here. What this repo owns is the behavior contract: `docs/CLI-CONTRACT.md` describes every verb, `tests/oracle/` holds the recorded goldens and replays them against the binary (`tests/oracle.test.mjs`), and `tests/fixtures/antipatterns/*.html` are the fixtures those goldens scan. A rule change lands in the engine, then here as a new oracle case (`node tests/oracle/record.mjs --bin <prefix>`, golden reviewed by hand) and, when it introduces new design guidance, an edit to `skill/SKILL.src.md` or `skill/reference/*.md`. Rule counts quoted in `README.md` and `README.npm.md` are checked by the build against `crates/live/assets/antipatterns.json`, the tracked registry `cargo xtask bundle` writes (it falls back to the gitignored `extension/detector/antipatterns.json`).
 
 ## Commit & Pull Request Guidelines
 

@@ -61,11 +61,11 @@ function generateCounts(rootDir, skills, buildDir) {
     commandCount = activeCommands.length;
   }
 
-  // Count detection rules from the engine's rule registry as vendored by
-  // build:extension (extension/detector/antipatterns.json). The registry
-  // lives in the engine repo now, so when that file is absent (fresh
-  // checkout, no extension build) the detection-count check is skipped
-  // rather than guessed.
+  // Count detection rules from the rule registry as `cargo xtask bundle`
+  // emits it. crates/live/assets/antipatterns.json is tracked, so a fresh
+  // checkout has it; extension/detector/antipatterns.json is the gitignored
+  // extension copy and only stands in for an older tree. With neither, the
+  // detection-count check is skipped rather than guessed.
   const detectionCount = readDetectionRuleCount(rootDir);
 
   // Validate counts in key files
@@ -118,19 +118,28 @@ function generateCounts(rootDir, skills, buildDir) {
     console.error(`\n❌ ${errors} stale count reference(s) found. Update them to match source of truth.`);
   }
 
-  console.log(`✓ Generated counts: ${commandCount} commands, ${detectionCount == null ? 'detection rules unchecked (no extension/detector/antipatterns.json)' : `${detectionCount} detection rules`}`);
+  console.log(`✓ Generated counts: ${commandCount} commands, ${detectionCount == null ? 'detection rules unchecked (no antipatterns.json)' : `${detectionCount} detection rules`}`);
   return errors;
 }
 
+const RULE_REGISTRY_PATHS = [
+  ['crates', 'live', 'assets', 'antipatterns.json'],
+  ['extension', 'detector', 'antipatterns.json'],
+];
+
 function readDetectionRuleCount(rootDir) {
-  const registry = path.join(rootDir, 'extension', 'detector', 'antipatterns.json');
-  if (!fs.existsSync(registry)) return null;
-  try {
-    const rules = JSON.parse(fs.readFileSync(registry, 'utf-8'));
-    return new Set((Array.isArray(rules) ? rules : []).map(rule => rule.id)).size || null;
-  } catch {
-    return null;
+  for (const parts of RULE_REGISTRY_PATHS) {
+    const registry = path.join(rootDir, ...parts);
+    if (!fs.existsSync(registry)) continue;
+    try {
+      const rules = JSON.parse(fs.readFileSync(registry, 'utf-8'));
+      const count = new Set((Array.isArray(rules) ? rules : []).map(rule => rule.id)).size;
+      if (count > 0) return count;
+    } catch {
+      // try the next location
+    }
   }
+  return null;
 }
 
 /**

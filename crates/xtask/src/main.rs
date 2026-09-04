@@ -12,9 +12,10 @@
 //!      the .wasm embedded as base64;
 //!   3. writes `dist/detect-antipatterns-browser.js` (deterministic: same
 //!      sources, same bytes) and `dist/antipatterns.json` (the registry
-//!      slice the extension panel reads), and copies the bundle to
-//!      `crates/live/assets/detect-antipatterns-browser.js`, the tracked
-//!      generated file live mode embeds and serves as `/detect.js`;
+//!      slice the extension panel reads), and copies both into
+//!      `crates/live/assets/`, where they are tracked: live mode embeds the
+//!      bundle and serves it as `/detect.js`, and `antipatterns.json` is the
+//!      registry a downstream consumer reads out of a source checkout;
 //!   4. writes the extension pieces into `extension/detector/`:
 //!      `snapshot.js` (content-script snapshot producer), `overlay.js`
 //!      (content-script overlay UI), `core.js` + `core_bg.wasm`
@@ -22,11 +23,11 @@
 //!      gitignored and vendored by `bun run build:extension`, which runs
 //!      this task.
 //!
-//! Run this after touching `crates/core`, `crates/wasm`, or
-//! `browser-bundle/`, and commit the refreshed live asset.
+//! Run this after touching `crates/core`, `crates/foundation`,
+//! `crates/wasm`, or `browser-bundle/`, and commit the refreshed assets.
 //!
-//! `cargo xtask bundle --check` rebuilds and fails when the tracked live
-//! asset differs (CI staleness gate).
+//! `cargo xtask bundle --check` rebuilds and fails when either tracked asset
+//! differs (CI staleness gate).
 
 use std::path::{Path, PathBuf};
 
@@ -74,23 +75,40 @@ fn bundle(check: bool, pure: bool) {
     let ext = impeccable_bundle::extension_pieces(&glue, &wasm, &registry);
 
     let dist = root.join("dist");
-    // The one tracked generated file: live mode embeds it (include_str! in
-    // crates/live/src/browser_assets.rs) and serves it as /detect.js.
-    let live_asset = root.join("crates/live/assets/detect-antipatterns-browser.js");
+    // The two tracked generated files. live mode embeds the bundle
+    // (include_str! in crates/live/src/browser_assets.rs) and serves it as
+    // /detect.js, so the binary has to carry it; antipatterns.json is the
+    // registry slice downstream consumers read out of a source checkout
+    // (impeccable.style counts and renders the rules from it).
+    let assets = root.join("crates/live/assets");
+    let tracked: [(PathBuf, &[u8]); 2] = [
+        (assets.join("detect-antipatterns-browser.js"), out.as_bytes()),
+        (assets.join("antipatterns.json"), registry.as_bytes()),
+    ];
     if check {
-        if std::fs::read(&live_asset).unwrap_or_default() != out.as_bytes() {
-            eprintln!("crates/live/assets/detect-antipatterns-browser.js is stale");
+        let mut stale = false;
+        for (path, want) in &tracked {
+            let name = path.strip_prefix(&root).unwrap_or(path).display();
+            if std::fs::read(path).unwrap_or_default() != *want {
+                eprintln!("{name} is stale");
+                stale = true;
+            } else {
+                println!("{name} is up to date");
+            }
+        }
+        if stale {
             eprintln!("run `cargo xtask bundle` and commit crates/live/assets");
             std::process::exit(1);
         }
-        println!("crates/live/assets/detect-antipatterns-browser.js is up to date");
         return;
     }
     std::fs::create_dir_all(&dist).expect("dist dir");
     std::fs::write(dist.join("detect-antipatterns-browser.js"), &out).expect("write bundle");
     std::fs::write(dist.join("antipatterns.json"), &registry).expect("write registry");
-    std::fs::create_dir_all(live_asset.parent().unwrap()).expect("live assets dir");
-    std::fs::write(&live_asset, &out).expect("write live asset");
+    std::fs::create_dir_all(&assets).expect("live assets dir");
+    for (path, bytes) in &tracked {
+        std::fs::write(path, bytes).expect("write tracked asset");
+    }
     // extension/detector/: gitignored, vendored by `bun run build:extension`.
     let ext_dir = root.join("extension/detector");
     std::fs::create_dir_all(&ext_dir).expect("extension dir");

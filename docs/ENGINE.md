@@ -81,17 +81,20 @@ The same rules that run natively run in a page, compiled to WebAssembly.
    implements the `Dom` probe, marshals JSON, and draws the overlay; no rule
    logic lives there.
 3. Write `dist/detect-antipatterns-browser.js` and `dist/antipatterns.json`,
-   and copy the bundle to
-   **`crates/live/assets/detect-antipatterns-browser.js`**. That copy is a
-   tracked generated file: `crates/live/src/browser_assets.rs` embeds it with
+   and copy both into **`crates/live/assets/`**. Those two copies are tracked
+   generated files. `crates/live/src/browser_assets.rs` embeds the bundle with
    `include_str!` and the live server hands it to the browser as `/detect.js`,
-   so the binary has to carry it.
+   so the binary has to carry it. `antipatterns.json` is the registry
+   (`[{ id, name, category, description }]`) that a consumer working from a
+   source checkout or a repo tarball reads without a Rust toolchain, since
+   `extension/detector/` is gitignored; impeccable.style counts and renders
+   the rules from it.
 4. Write the five extension pieces into `extension/detector/`
    (`snapshot.js`, `overlay.js`, `core.js`, `core_bg.wasm`,
    `antipatterns.json`). That directory is gitignored;
    `bun run build:extension` runs this task and then packages the zips.
 
-`cargo xtask bundle --check` rebuilds and fails when the tracked live asset is
+`cargo xtask bundle --check` rebuilds and fails when either tracked asset is
 stale, which is the CI staleness gate. The build is deterministic: same
 sources, same bytes.
 
@@ -103,8 +106,8 @@ alone. `IMPECCABLE_EXTENSION_SKIP_BUNDLE=1` lets `bun run build:extension`
 skip the bundle step when `extension/detector/` is already complete, for CI
 matrices that pre-built it.
 
-Run `cargo xtask bundle` after touching `crates/core`, `crates/wasm`, or
-`browser-bundle/`, and commit the refreshed live asset.
+Run `cargo xtask bundle` after touching `crates/core`, `crates/foundation`,
+`crates/wasm`, or `browser-bundle/`, and commit the refreshed assets.
 
 ### Reusing the bundler downstream
 
