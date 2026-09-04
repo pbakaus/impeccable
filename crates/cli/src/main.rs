@@ -108,7 +108,7 @@ fn run(args: &[String], io: &mut Io) -> i32 {
 
 /// The npm `impeccable` package version `cli.js --version` prints (its
 /// `package.json`), tracked separately from the crate version.
-pub const CLI_VERSION: &str = "3.6.0";
+pub const CLI_VERSION: &str = "4.0.0";
 
 /// The engines wired into `impeccable detect`: the static HTML engine
 /// (crates/html). The browser engine (crates/browser) plugs in here once it

@@ -155,3 +155,12 @@ file, the file set, or the printed lines differs from the JS.
 
 - `pin-opencode-project`, `pin-opencode-user-scope`, `pin-opencode-skips-foreign-command`, `pin-opencode-then-unpin`, `pin-opencode-unpin-skips-foreign`.
 
+
+## Recorded 2026-09-04: `--version` follows the npm package to 4.0.0
+
+The npm shim answers `--version` / `-v` itself from its own `package.json`
+(docs/CLI-CONTRACT.md), so the number users see tracks the package they
+installed. The binary's `CLI_VERSION` moves from `3.6.0` to `4.0.0` with the
+CLI 4.0.0 release; it is what the binary prints when run directly.
+
+- `cli-version`.

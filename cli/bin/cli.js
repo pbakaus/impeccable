@@ -68,6 +68,14 @@ async function locate() {
   return download().catch((err) => { process.stderr.write(`impeccable: ${err.message}\n`); return null; });
 }
 
+// `--version` / `-v` is answered by the shim itself: the number users mean
+// is this npm package's version, not the engine's (docs/CLI-CONTRACT.md).
+const argv = process.argv.slice(2);
+if (argv.length === 1 && (argv[0] === '--version' || argv[0] === '-v')) {
+  process.stdout.write(`${pkg.version}\n`);
+  process.exit(0);
+}
+
 const bin = await locate();
 if (!bin) {
   process.stderr.write(
@@ -76,7 +84,7 @@ if (!bin) {
   );
   process.exit(127);
 }
-const result = spawnSync(bin, process.argv.slice(2), {
+const result = spawnSync(bin, argv, {
   stdio: 'inherit',
   env: { IMPECCABLE_SELF: 'npx impeccable', ...process.env },
 });
