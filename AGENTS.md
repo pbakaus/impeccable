@@ -2,11 +2,12 @@
 
 ## Project Structure & Module Organization
 
-`skill/` is the source of truth for the Impeccable skill: `SKILL.src.md`, `reference/`, `scripts/`, and `agents/`. `skill/scripts/` holds the launcher (`impeccable`, `impeccable.cmd`), the pinned engine `VERSION`, `command-metadata.json`, and the in-page live-mode JS; every skill verb (`{{scripts_path}}/impeccable <verb>`) runs in the engine binary, which is built in a separate repo and pinned by the root `ENGINE_VERSION` file. Build logic lives in `scripts/`, with provider configs in `scripts/lib/transformers/`. `cli/` is the npm shim that runs the same binary, the browser extension lives in `extension/`, and regression coverage in `tests/` with fixtures under `tests/fixtures/` and the behavior goldens under `tests/oracle/`. `dist/` and `build/` are generated and gitignored. The root harness folders (`.agents/`, `.claude/`, `.cursor/`, etc.) and `plugin/` are generated distribution artifacts that are tracked for direct repo installs, not hand-authored source.
+`skill/` is the source of truth for the Impeccable skill: `SKILL.src.md`, `reference/`, `scripts/`, and `agents/`. `skill/scripts/` holds the launcher (`impeccable`, `impeccable.cmd`), the pinned engine `VERSION`, `command-metadata.json`, and the in-page live-mode JS. Every skill verb (`{{scripts_path}}/impeccable <verb>`) runs in the engine binary, built from this repo's Cargo workspace under `crates/`; the root `ENGINE_VERSION` pins the released binary used by installs. Read `docs/ENGINE.md` before changing runtime code. Build logic lives in `scripts/`, with provider configs in `scripts/lib/transformers/`. `cli/` is the npm shim that runs the same binary, the browser extension lives in `extension/`, and regression coverage lives in the Rust crates and `tests/`, including fixtures under `tests/fixtures/` and behavior goldens under `tests/oracle/`. The website and service live in the separate private `impeccable-site` repo. `dist/` and `build/` are generated and gitignored. The root harness folders (`.agents/`, `.claude/`, `.cursor/`, etc.) and `plugin/` are generated distribution artifacts that are tracked for direct repo installs, not hand-authored source.
 
 ## Build, Test, and Development Commands
 
-- `bun run dev` - start the local Bun server.
+- `cargo build --release -p impeccable` - build this checkout's runtime into `target/release/impeccable`.
+- `cargo test --workspace` - run the Rust workspace tests.
 - `bun run build` - source-first build: regenerate `dist/`, derived site assets, and validation output without syncing tracked harness folders.
 - `bun run build:release` - release/distribution build: run the full build and sync tracked root harness folders plus `plugin/`.
 - `bun run rebuild` - clean and rebuild everything from scratch without syncing tracked harness folders.
@@ -25,7 +26,7 @@ Run `bun run build` after changing anything in `skill/`, transformer code, or us
 
 The root harness folders (`.agents/skills/`, `.claude/skills/`, `.cursor/skills/`, `.gemini/skills/`, `.github/skills/`, `.grok/skills/`, `.hermes/skills/`, `.kiro/skills/`, `.opencode/skills/`, `.pi/skills/`, `.qoder/skills/`, `.rovodev/skills/`, `.trae*/skills/`, `.vibe/skills/`) and `plugin/` stay tracked so `main` remains installable for direct GitHub, `npx skills`, and submodule users. They are still generated artifacts.
 
-Normal development should be source-first: stage changes in `skill/`, `scripts/`, `cli/`, `site/`, `extension/`, `functions/`, and `tests/`; leave generated harness churn unstaged unless the user asked for it. After source changes land on `main`, `.github/workflows/sync-generated-output.yml` runs `bun run build:release` and commits generated provider output directly back to `main`. Treat generated harness diffs as release artifacts and keep them out of feature PRs unless they are the point of the PR.
+Normal development should be source-first: stage changes in `crates/`, `browser-bundle/`, `skill/`, `scripts/`, `cli/`, `extension/`, and `tests/`; leave generated harness churn unstaged unless the user asked for it. After source changes land on `main`, `.github/workflows/sync-generated-output.yml` runs `bun run build:release` and commits generated provider output directly back to `main`. Treat generated harness diffs as release artifacts and keep them out of feature PRs unless they are the point of the PR. The two tracked engine assets under `crates/live/assets/` follow the rule-change workflow below instead.
 
 ## Sandbox gotchas for Codex agents
 
@@ -39,9 +40,13 @@ Some repo workflows need to run outside the sandbox in the desktop app:
 
 Use ESM, semicolons, and the existing two-space indentation style in JS, HTML, and CSS. Prefer small, single-purpose modules over large abstractions. Keep filenames descriptive and lowercase with hyphens where needed; skill entrypoints stay as `SKILL.md`, build and test helpers use `.js` or `.mjs`. In source frontmatter, use clear kebab-case names and concise descriptions. There is no dedicated formatter or linter configured here, so match surrounding code closely.
 
+For Rust, follow the surrounding crate's conventions and workspace formatting configuration. Keep changes scoped; do not reformat unrelated modules.
+
 ## Testing Guidelines
 
-Tests use Bun’s test runner plus Node’s built-in `--test`. Name tests `*.test.js` or `*.test.mjs` and place new fixtures near the behavior they cover, usually under `tests/fixtures/`. Prefer targeted test runs while iterating, then finish with `bun run test`. If you change generated outputs or provider transforms, verify both source parsing and at least one affected provider path in `dist/`.
+Tests use Bun's test runner plus Node's built-in `--test`. Name tests `*.test.js` or `*.test.mjs` and place new fixtures near the behavior they cover, usually under `tests/fixtures/`. Prefer targeted test runs while iterating, then finish with `bun run test`. If you change generated outputs or provider transforms, verify both source parsing and at least one affected provider path in `dist/`.
+
+For runtime changes under `crates/`, add a failing regression in the affected crate, run its focused tests, then `cargo test --workspace`. Rebuild with `cargo build --release -p impeccable` and run `IMPECCABLE_BIN="$PWD/target/release/impeccable" bun run test` so the oracle exercises the changed source, not an older downloaded release. Review intended oracle changes by hand; never overwrite goldens just to make a regression pass. `tests/oracle/vectors/calls/` contains frozen function-level vectors and must not be regenerated.
 
 For changes to the live-mode page JS (`skill/scripts/live-browser*.js`) or an `ENGINE_VERSION` bump, also run `bun run test:live-e2e` (kept out of the default suite because it does real `npm install` per fixture and boots framework dev servers). Scope to one fixture with `IMPECCABLE_E2E_ONLY=<fixture-name>` while iterating; pass `IMPECCABLE_E2E_DEBUG=1` for page-DOM and dev-server-log dumps on failure. Schema and authoring guide for new fixtures live in `tests/framework-fixtures/README.md`.
 
@@ -53,7 +58,11 @@ Other area-to-suite obligations (the canonical mapping is the `triggers` lists i
 
 ## Anti-pattern detection rules
 
-The rule engine lives in the engine repo, not here. What this repo owns is the behavior contract: `docs/CLI-CONTRACT.md` describes every verb, `tests/oracle/` holds the recorded goldens and replays them against the binary (`tests/oracle.test.mjs`), and `tests/fixtures/antipatterns/*.html` are the fixtures those goldens scan. A rule change lands in the engine, then here as a new oracle case (`node tests/oracle/record.mjs --bin <prefix>`, golden reviewed by hand) and, when it introduces new design guidance, an edit to `skill/SKILL.src.md` or `skill/reference/*.md`. Rule counts quoted in `README.md` and `README.npm.md` are checked by the build against `crates/live/assets/antipatterns.json`, the tracked registry `cargo xtask bundle` writes (it falls back to the gitignored `extension/detector/antipatterns.json`).
+The rule engine lives in this workspace. `crates/core` holds the checks and browser adapters; `crates/foundation` holds the registry and shared types. `crates/html`, `crates/browser`, and `crates/detect` provide the static HTML, URL, and CLI/text paths. `crates/wasm` compiles the shared rules for the extension, live overlay, and site. See `docs/ENGINE.md` for the crate map and bundle flow, and `docs/CLI-CONTRACT.md` for observable behavior.
+
+Add a fixture first under `tests/fixtures/antipatterns/` with should-flag and should-pass columns, at least four flag cases and five false-positive shapes, unique headings, and explicit pixel dimensions. Add failing Rust coverage before implementing the rule. Cover each affected engine path and add or update an oracle case (`node tests/oracle/record.mjs --bin <prefix>`, golden reviewed by hand). When a rule introduces design guidance, update `skill/SKILL.src.md` or `skill/reference/*.md` too.
+
+Run `cargo xtask bundle` after rule or browser-bundle changes and commit its two tracked outputs: `crates/live/assets/detect-antipatterns-browser.js` and `crates/live/assets/antipatterns.json`. The generated `extension/detector/` remains gitignored. Rebuild the native binary after bundling, run the Rust and Bun/Node checks above, and run `bun run build` to validate distribution and rule counts. Verify browser-facing changes on the relevant live fixture; native and browser adapters can disagree.
 
 ## Commit & Pull Request Guidelines
 
@@ -77,4 +86,4 @@ Tags are per-component because the three components ship independently: `skill-v
 
 ## Contributor Notes
 
-Do not edit generated provider files directly unless you are intentionally patching generated output as part of a build-system change. Prefer fixing the root source in `skill/`, `scripts/`, or `cli/` (or the engine repo for verb behavior), then regenerate artifacts for validation. Stage generated harness artifacts only for release/main-sync or build-system work.
+Do not edit generated provider files directly unless you are intentionally patching generated output as part of a build-system change. Prefer fixing the root source in `skill/`, `scripts/`, or `cli/`, and `crates/` for runtime behavior, then regenerate artifacts for validation. Stage generated harness artifacts only for release/main-sync or build-system work.

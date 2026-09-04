@@ -160,7 +160,7 @@ bun run test:plugin-e2e       # Just the plugin loader E2E (also part of the def
 bun run test:cleanup          # Kill live servers a previous run of THIS checkout left behind
 ```
 
-Unit tests (build orchestration, transformers, validators) run via `bun test`. Everything that spawns the engine binary (`tests/oracle.test.mjs`, `tests/framework-fixtures.test.mjs`) runs via `node --test`; both skip cleanly when no binary is found (`bun run fetch:engine` or `IMPECCABLE_BIN`). The `test` script handles this split automatically. Verb behavior is not unit-tested here at all: the oracle goldens and the engine repo's own tests own it.
+Unit tests (build orchestration, transformers, validators) run via `bun test`. Everything that spawns the engine binary (`tests/oracle.test.mjs`, `tests/framework-fixtures.test.mjs`) runs via `node --test`; both skip cleanly when no binary is found (`bun run fetch:engine` or `IMPECCABLE_BIN`). The `test` script handles this split automatically. Runtime unit and integration tests live under `crates/` and run with `cargo test --workspace`; the oracle goldens pin observable verb behavior across the same workspace.
 
 ### Live servers must not outlive their test process
 
@@ -190,7 +190,7 @@ The default suite does not cover everything. When a change touches one of these 
 | `ENGINE_VERSION` bump | `bun run test:new-work-e2e` | Playwright, offline, no API cost |
 | `plugin/`, `skill/agents/`, `scripts/build.js`, plugin manifest validator | `bun run test:plugin-e2e` | ~1 s; already in the default suite, needs the `claude` CLI |
 
-Verb-level behavior changes happen in the engine repo; the check they owe here is `bun run test` with a binary present (the oracle), and a new oracle case when the contract grows.
+For verb-level behavior changes in `crates/`, run focused crate tests and `cargo test --workspace`, then `cargo build --release -p impeccable`. Run `IMPECCABLE_BIN="$PWD/target/release/impeccable" bun run test` to exercise the changed source rather than an older downloaded release. Add a new oracle case when the contract grows and review golden changes by hand. See `docs/ENGINE.md` for browser-bundle checks and generated assets.
 
 **Plugin loader E2E** (`tests/plugin-e2e.test.mjs`, in the default suite): installs the committed `./plugin` subtree into a real Claude Code, sandboxed via `CLAUDE_CONFIG_DIR` in a temp dir, and asserts the component inventory from `claude plugin details`: the skill parses, every `plugin/agents/*.md` is visible, hooks are discovered. This is the only check that catches loader-contract surprises the unit guards can't know about (PR #494 shipped an `agents` manifest key that silently loaded zero agents; `claude plugin validate` never flags plugin-manifest problems). Runs in about a second; skips cleanly when the `claude` CLI is not on PATH. The known contract itself (allowed manifest keys, no `agents` key, trailing-slash `skills` path, source agents shipped) is pinned deterministically by `scripts/lib/validate-plugin-manifest.js`, unit-tested in `tests/validate-plugin-manifest.test.js` and enforced as a `bun run build` gate. Never add a key to the generated plugin manifest without verifying it against a real install and extending `KNOWN_LOADER_KEYS`.
 
@@ -255,7 +255,7 @@ npx impeccable install                          # install skills
 npx impeccable --help                           # show help
 ```
 
-The package no longer exports a JS detector API (`main` / `exports` are gone); the in-page bundle for the extension and site comes from the engine repo.
+The package no longer exports a JS detector API (`main` / `exports` are gone); the in-page bundle for the extension and site is built from this workspace by `cargo xtask bundle`.
 
 ## Versioning
 
@@ -313,7 +313,7 @@ The skill launcher, the npm shim (`cli/bin/cli.js`), and `impeccable install` al
 2. Publish the five `@impeccable/cli-<os>-<arch>@<ENGINE_VERSION>` npm platform packages.
 3. Only then tag/publish the skill or CLI release, and only then merge a branch that bumps `ENGINE_VERSION` (the `sync-generated-output.yml` workflow rewrites provider dirs on merge to `main`).
 
-`scripts/check-engine-release.mjs` verifies step 1 and 2 for the pinned version (ranged-GET each release asset, registry-probe each npm package; honors `IMPECCABLE_DOWNLOAD_BASE`). It exits non-zero and names exactly which assets are missing. `scripts/release.mjs` runs it as a hard gate before tagging the **skill** and **CLI** components and refuses to proceed when any asset is absent; the **extension** release is exempt because it ships a vendored WASM detector and never execs the engine. `IMPECCABLE_SKIP_ENGINE_CHECK=1` bypasses the gate only for the case where the assets exist but the registry probe is unreachable. CI's `engine-release-ready` job runs the same script; it is `continue-on-error: true` with a loud `::warning` until the first engine release is published, at which point flip it to `false` so a mis-ordered merge fails CI.
+`scripts/check-engine-release.mjs` verifies step 1 and 2 for the pinned version (ranged-GET each release asset, registry-probe each npm package; honors `IMPECCABLE_DOWNLOAD_BASE`). It exits non-zero and names exactly which assets are missing. `scripts/release.mjs` runs it as a hard gate before tagging the **skill** and **CLI** components and refuses to proceed when any asset is absent; the **extension** release is exempt because it ships a vendored WASM detector and never execs the engine. `IMPECCABLE_SKIP_ENGINE_CHECK=1` bypasses the gate only for the case where the assets exist but the registry probe is unreachable. CI's `engine-release-ready` job runs the same script as a hard gate, so missing release assets fail CI.
 
 ## Adding New Commands
 
