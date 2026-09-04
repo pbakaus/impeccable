@@ -555,7 +555,7 @@ describe('live-browser source contracts', () => {
 
   it('never DOMParser-injects JSX source (#454)', () => {
     const isJsxStart = SOURCE.indexOf('function isJsxSourceFile(');
-    const isJsxEnd = SOURCE.indexOf('function completeSourceInjection', isJsxStart);
+    const isJsxEnd = SOURCE.indexOf('function sourceHasSessionWrapper(', isJsxStart);
     const isJsxSourceFile = new Function(
       SOURCE.slice(isJsxStart, isJsxEnd) + '\nreturn isJsxSourceFile;',
     )();
@@ -580,7 +580,12 @@ describe('live-browser source contracts', () => {
     assert.doesNotMatch(
       jsxGate,
       /discardOrphanedSession/,
-      'a missing JSX wrap must wait for mount, not discard as an orphan',
+      'a missing JSX wrap must not discard from the DOM alone; only the source probe may decide',
+    );
+    assert.match(
+      jsxGate,
+      /if \(opts\.orphanDiscard && !liveWrapper && sessionId === currentSessionId\) \{\s*probeJsxWrapperForOrphan\(filePath, sessionId, opts\);/,
+      'a resumed CYCLING session with no mounted JSX wrapper must run the source orphan probe (#439)',
     );
     assert.match(
       jsxGate,
@@ -604,6 +609,64 @@ describe('live-browser source contracts', () => {
       /querySelectorAll\(tag \+ '\\.' \+ cls\.split/,
       'source fallback should not construct unsafe selectors from JSX-ish class strings',
     );
+  });
+
+  it('self-discards a JSX session whose wrapper left the source file (#439)', () => {
+    const probeStart = SOURCE.indexOf('function probeJsxWrapperForOrphan(');
+    assert.ok(probeStart !== -1, 'the JSX orphan probe must exist');
+    const probeEnd = SOURCE.indexOf('function completeSourceInjection', probeStart);
+    const probe = SOURCE.slice(probeStart, probeEnd);
+
+    // #454 stands: the probe reads the file as text and never builds a DOM
+    // from it, so raw JSX can never reach the page through this path.
+    for (const forbidden of ['DOMParser', 'parseFromString', 'replaceChild', 'innerHTML']) {
+      assert.ok(!probe.includes(forbidden), 'the orphan probe must not ' + forbidden + ' JSX source');
+    }
+    assert.match(probe, /\.then\(r => \{ if \(!r\.ok\) throw new Error\('source read failed: ' \+ r\.status\); return r\.text\(\); \}\)/);
+    assert.match(
+      probe,
+      /if \(sourceHasSessionWrapper\(text, sessionId\)\) return;/,
+      'a wrapper still in source is an unmounted component, not an orphan',
+    );
+    assert.match(
+      probe,
+      /const onNoWrapper = \(reason\) => \{[\s\S]*?if \(attempt < COMPLETED_SOURCE_FALLBACK_RETRIES\) \{ retryLater\(\); return; \}\s*discardOrphanedSession\(reason\);/,
+      'the probe must exhaust the shared retry budget before discarding',
+    );
+    assert.match(
+      probe,
+      /onNoWrapper\('variant wrapper missing from source'\)/,
+      'a read without the marker retries on the budget, then discards',
+    );
+    // A read that cannot answer must not strand the session (no empty catch),
+    // and only evidence that the wrapper is gone may discard: a 404 (the file
+    // renamed or deleted) counts, a transient failure does not.
+    assert.doesNotMatch(probe, /\.catch\(\(\) => \{\}\)/, 'the probe must not swallow source read failures');
+    assert.match(
+      probe,
+      /source read failed: 404\$\/\.test\(detail\)\) \{\s*onNoWrapper\('source file missing \(404\)/,
+      'a 404 is evidence the file is gone: retry on the budget, then discard',
+    );
+    assert.match(
+      probe,
+      /const onUnreadable = \(detail\) => \{[\s\S]*?retryLater\(\); return; \}[\s\S]*?showToast\(/,
+      'a transient failure retries on the budget and then keeps the session, telling the user',
+    );
+    assert.doesNotMatch(
+      probe.slice(probe.indexOf('const onUnreadable')),
+      /discardOrphanedSession/,
+      'a transient failure must never discard a session',
+    );
+
+    const matchStart = SOURCE.indexOf('function sourceHasSessionWrapper(');
+    const sourceHasSessionWrapper = new Function(
+      SOURCE.slice(matchStart, probeStart) + '\nreturn sourceHasSessionWrapper;',
+    )();
+    assert.equal(sourceHasSessionWrapper('<div data-impeccable-variants="ab12cd34">', 'ab12cd34'), true);
+    assert.equal(sourceHasSessionWrapper("<div data-impeccable-variants='ab12cd34'>", 'ab12cd34'), true);
+    assert.equal(sourceHasSessionWrapper('{/* impeccable-variants-start ab12cd34 */}', 'ab12cd34'), true);
+    assert.equal(sourceHasSessionWrapper('<div data-impeccable-variants="99887766">', 'ab12cd34'), false);
+    assert.equal(sourceHasSessionWrapper('', 'ab12cd34'), false);
   });
 
   it('does not source-inject per variant_progress checkpoint (HMR owns mid-generation reconciliation)', () => {
