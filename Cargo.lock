@@ -698,6 +698,8 @@ dependencies = [
  "libc",
  "once_cell",
  "regex",
+ "ring",
+ "serde",
  "serde_json",
  "sha2",
  "ureq",

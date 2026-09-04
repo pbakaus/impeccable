@@ -10,9 +10,11 @@ impeccable-common = { path = "../common" }
 impeccable-context = { path = "../context" }
 impeccable-detect = { path = "../detect" }
 serde_json = { workspace = true }
+serde = { workspace = true }
 regex = { workspace = true }
 once_cell = { workspace = true }
 sha2 = "0.10"
+ring = "0.17.14"
 ureq = { version = "2", default-features = false, features = ["tls", "json"] }
 url = "2"
 zip = { version = "2", default-features = false, features = ["deflate"] }

@@ -342,6 +342,16 @@ Optional keys added later by engines (appended after the above): `ignoreValue` (
 
 #### `impeccable help|install|link|update|check` and `impeccable skills <verb>` (`cli/bin/commands/skills.mjs`)
 
+**Rust authenticity addition (#479):** the historical JS bundle flow below
+is superseded for remote downloads. The Rust installer resolves the site's
+302 to a versioned Impeccable GitHub release and verifies
+`universal.zip.sig.json` against a compiled-in Ed25519 public key before ZIP
+extraction. Missing/invalid signatures, unknown keys, mismatched metadata or
+content, and failures fetching either asset exit nonzero, including when
+`install` finds an existing installation. No downloaded content reaches the
+installed skill or hook files. Explicit `IMPECCABLE_BUNDLE_PATH` and `link`
+retain their local-development trust behavior. See [bundle signing](BUNDLE-SIGNING.md).
+
 - **Invoked from**: README.md ("npx impeccable install / update"), README.npm.md Quick Start (`npx impeccable skills install`, `... install -y --providers=claude,codex --scope=project`, `... update`, `... install --no-hooks`, `... link --source=.impeccable --providers=claude,cursor`, `... skills help`), `README.md:360` (hook consent explanation).
 - `run(args)`: `args[0]` ∈ `undefined|help|--help|-h` → `showHelp()`; `install` → `install(rest)`; `link`; `update`; `check` (ignores flags); else `stderr> Unknown skills command: ${sub}` + `Run 'impeccable --help' for available commands.`, `exit 1`.
 - Constants: `API_BASE = 'https://impeccable.style'`; `PROVIDER_DIRS = ['.claude','.cursor','.gemini','.agents','.agent','.github','.grok','.hermes','.kiro','.opencode','.pi','.qoder','.trae','.trae-cn','.rovodev','.vibe']`; aliases (`agent`→`.agent`, `agents`/`codex`→`.agents`, `antigravity`→`.agent`, `claude`/`claude-code`→`.claude`, `copilot`/`github`→`.github`, `cursor`, `gemini`, `grok`/`grok-build`/`xai`→`.grok`, `hermes`, `kiro`, `opencode`, `pi`, `qoder`, `rovo-dev`/`rovodev`→`.rovodev`, `trae`, `trae-cn`, `vibe`); leading `.` stripped and lowercased before alias lookup; a literal PROVIDER_DIR value is accepted as-is. `DEFAULT_TARGETS = ['.claude','.agents']`. User-scope skill dir overrides: `.agent`→`~/.gemini/config/skills`, `.hermes`→`$HERMES_HOME/skills` (only when HERMES_HOME under home) else `~/.hermes/skills`, `.pi`→`~/.pi/agent/skills`, `.opencode`→`$OPENCODE_CONFIG_DIR|$XDG_CONFIG_HOME/opencode|~/.config/opencode` + `/skills`; others `~/<provider>/skills`. Project scope: `<root>/<provider>/skills`.

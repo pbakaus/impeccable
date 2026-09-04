@@ -232,6 +232,10 @@ this feature, replacing the `detectText` call it makes into the npm
 
 ## Releases
 
+Remote skill ZIPs require a pinned-key signature before extraction. See
+[bundle signing](BUNDLE-SIGNING.md) for the 1Password setup and the required
+signature-first rollout order.
+
 Two release kinds touch the runtime, in this order:
 
 1. **Engine** (`engine-v<ENGINE_VERSION>`): `bun run release:engine` verifies

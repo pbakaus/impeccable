@@ -70,6 +70,7 @@ export const SUITES = {
           'tests/openai-plugin.test.mjs',
           'tests/process-group.test.mjs',
           'tests/release.test.mjs',
+          'tests/bundle-signing.test.mjs',
           'tests/skill-reference.test.mjs',
           'tests/readme-gitignore.test.mjs',
           'tests/test-suites.test.mjs',

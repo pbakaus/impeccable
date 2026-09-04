@@ -3,8 +3,7 @@
 //! `cli/bin/commands/skills.mjs` (plus the slice of `cli/lib/impeccable-config.mjs`
 //! it imports).
 //!
-//! Two deliberate departures from the JS, both part of the release that
-//! replaces the Node scripts with the binary:
+//! Deliberate departures from the original JS behavior:
 //!
 //! 1. After a skill directory is written (fresh install, refresh, update), if
 //!    its `scripts/VERSION` exists and `scripts/bin/<os>-<arch>/impeccable`
@@ -19,11 +18,16 @@
 //!    (`impeccable_hook::admin`) writes, and both paths recognize a manifest
 //!    entry as ours through `impeccable_context::hook_markers`, so the two
 //!    never drift on detection. See `hook_manifest`.
+//! 3. Remote skill ZIPs require an Ed25519 signature from a compiled-in key
+//!    before extraction. Failure is fatal even when an existing install is
+//!    present. Explicit local bundle overrides remain unsigned development
+//!    inputs. See `bundle_signature` and docs/BUNDLE-SIGNING.md.
 //!
 //! Everything else (messages, exit codes, endpoints, flags, prompts, file
 //! layout) follows the JS byte for byte.
 
 pub mod bundle;
+mod bundle_signature;
 pub mod commands;
 pub mod engine_binary;
 pub mod hook_manifest;

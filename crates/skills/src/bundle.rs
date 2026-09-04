@@ -17,6 +17,7 @@ use crate::providers::{
     opencode_global_config_dir, provider_display_name, Scope, Sys, API_BASE, PROVIDER_DIRS,
 };
 use crate::util::{self, jsp};
+use crate::bundle_signature::{self, TrustedKeys, MAX_SIGNATURE_BYTES};
 
 /// Ceiling on any single download this crate performs (triage C4). The
 /// launcher-only universal bundle is under 25 MB (the Cloudflare Pages file
@@ -80,6 +81,7 @@ pub struct FetchResponse {
 fn ureq_fetch(url: &str) -> Result<FetchResponse, String> {
     let agent = ureq::AgentBuilder::new()
         .timeout_connect(std::time::Duration::from_secs(30))
+        .timeout(std::time::Duration::from_secs(120))
         .redirects(0)
         .build();
     match agent.get(url).call() {
@@ -293,13 +295,40 @@ pub fn download_and_extract_bundle(sys: &Sys) -> Result<String, String> {
     if let Some(local) = sys.env.get("IMPECCABLE_BUNDLE_PATH").filter(|v| !v.is_empty()) {
         return copy_or_extract_local_bundle(sys, local);
     }
+    download_and_extract_signed_bundle(sys, &mut ureq_fetch, &bundle_signature::trusted_keys()?)
+        .map_err(|e| format!("{}{e}. Nothing was installed; retry or update the CLI. If this persists, report it at https://github.com/pbakaus/impeccable/issues/479", bundle_signature::ERROR_PREFIX))
+}
+
+fn download_and_extract_signed_bundle(
+    sys: &Sys,
+    fetch: &mut dyn FnMut(&str) -> Result<FetchResponse, String>,
+    keys: &TrustedKeys,
+) -> Result<String, String> {
     let tmp = util::tmpdir(&sys.env);
     let staging = util::mkdtemp(&jsp::join(&[&tmp, "impeccable-update-"]))?;
     let tmp_zip = jsp::join(&[&staging, "bundle.zip"]);
+    let tmp_signature = jsp::join(&[&staging, "bundle.sig.json"]);
     let result = (|| -> Result<(), String> {
-        download_file(&format!("{API_BASE}/api/download/bundle/universal"), &tmp_zip)?;
-        extract_zip_file(&tmp_zip, &staging, &sys.cwd)?;
+        // Resolve once, then request both assets from that exact release. Never
+        // pair a latest-version lookup with a independently changing ZIP URL.
+        let response = fetch(&format!("{API_BASE}/api/download/bundle/universal"))?;
+        if response.status != 302 {
+            return Err(format!("Expected a signed bundle release redirect (HTTP {})", response.status));
+        }
+        let location = response.location.ok_or("Missing bundle release redirect")?;
+        let version = bundle_signature::release_version(&location)?;
+        download_file_capped(&format!("{location}.sig.json"), &tmp_signature, fetch, MAX_SIGNATURE_BYTES)?;
+        download_file_with(&location, &tmp_zip, fetch)?;
+        let signature = std::fs::read(&tmp_signature).map_err(|e| e.to_string())?;
+        let file = std::fs::File::open(&tmp_zip).map_err(|e| e.to_string())?;
+        let mut reader = std::io::BufReader::new(file);
+        bundle_signature::verify_reader(&mut reader, &signature, &version, keys)?;
+        // Reuse the verified file handle rather than reopening by pathname.
+        use std::io::Seek;
+        reader.rewind().map_err(|e| e.to_string())?;
+        extract_zip_from(reader, &staging, &sys.cwd)?;
         util::rm_rf(&tmp_zip);
+        util::rm_rf(&tmp_signature);
         Ok(())
     })();
     match result {
@@ -930,5 +959,71 @@ mod tests {
     fn hash_normalizes_provider_paths() {
         assert_eq!(normalize_for_hash("x .claude/skills/y .trae-cn/skills/z .agent/skills/"), "x .PROVIDER/skills/y .PROVIDER/skills/z .PROVIDER/skills/");
         assert_eq!(normalize_for_hash(".other/skills/"), ".other/skills/");
+    }
+
+    #[test]
+    fn signed_download_verifies_before_extraction_and_cleans_all_failures() {
+        use ring::signature::{Ed25519KeyPair, KeyPair};
+        let key = Ed25519KeyPair::from_seed_unchecked(&[7; 32]).unwrap();
+        let hex = |bytes: &[u8]| bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
+        let keys = [("test-only".into(), hex(key.public_key().as_ref()))].into();
+        let zip = zip_bytes(&[(".claude/skills/impeccable/SKILL.md", b"verified skill")]);
+        let digest = format!("{:x}", Sha256::digest(&zip));
+        let payload = format!("impeccable-skill-bundle-v1\ntest-only\nskill-v4.2.0\nuniversal.zip\n{}\n{digest}\n", zip.len());
+        let signature = serde_json::to_vec(&serde_json::json!({
+            "schema": 1, "keyId": "test-only", "version": "4.2.0", "artifact": "universal.zip",
+            "size": zip.len(), "sha256": digest, "signature": hex(key.sign(payload.as_bytes()).as_ref()),
+        })).unwrap();
+        let release = "https://github.com/pbakaus/impeccable/releases/download/skill-v4.2.0/universal.zip";
+        for case in ["valid", "tampered", "missing", "oversized", "downgrade", "malformed-zip", "invalid-signature"] {
+            let root = tmp_dir(case);
+            let temp = format!("{root}/temp");
+            std::fs::create_dir(&temp).unwrap();
+            let installed = format!("{root}/existing-skill.md");
+            std::fs::write(&installed, "user's existing skill").unwrap();
+            let sys = Sys::new([("TMPDIR".into(), temp.clone()), ("TEMP".into(), temp.clone())].into(), root.clone());
+            let mut requested = Vec::new();
+            let mut fetch = |url: &str| -> Result<FetchResponse, String> {
+                requested.push(url.to_string());
+                let mut res = FetchResponse { status: 200, location: None, body: Box::new(std::io::Cursor::new(Vec::new())) };
+                if url.ends_with("/api/download/bundle/universal") {
+                    res.status = 302;
+                    res.location = Some(release.into());
+                } else if url == format!("{release}.sig.json") {
+                    res.body = Box::new(std::io::Cursor::new(signature.clone()));
+                    match case {
+                        "missing" => res.status = 404,
+                        "oversized" => res.body = Box::new(std::io::repeat(b' ')),
+                        "downgrade" => { res.status = 302; res.location = Some("http://unsafe.test/sig".into()); }
+                        "invalid-signature" => res.body = Box::new(std::io::Cursor::new(b"{}".to_vec())),
+                        _ => {}
+                    }
+                } else if url == release {
+                    let mut bytes = zip.clone();
+                    if case == "tampered" { bytes[0] ^= 1; }
+                    if case == "malformed-zip" { bytes = b"not even a ZIP".to_vec(); }
+                    res.body = Box::new(std::io::Cursor::new(bytes));
+                } else { panic!("Unexpected URL: {url}"); }
+                Ok(res)
+            };
+            let result = download_and_extract_signed_bundle(&sys, &mut fetch, &keys);
+            if case == "valid" {
+                let staging = result.unwrap();
+                assert_eq!(std::fs::read_to_string(format!("{staging}/.claude/skills/impeccable/SKILL.md")).unwrap(), "verified skill");
+                assert!(!util::exists(&format!("{staging}/bundle.zip")));
+                assert!(!util::exists(&format!("{staging}/bundle.sig.json")));
+                util::rm_rf(&staging);
+            } else {
+                let error = result.unwrap_err();
+                if case == "malformed-zip" {
+                    assert!(error.contains("size"), "must reject before ZIP parsing: {error}");
+                }
+            }
+            assert_eq!(std::fs::read_to_string(&installed).unwrap(), "user's existing skill");
+            assert_eq!(std::fs::read_dir(&temp).unwrap().count(), 0, "staging leak in {case}");
+            assert_eq!(requested[0], format!("{API_BASE}/api/download/bundle/universal"));
+            assert_eq!(requested[1], format!("{release}.sig.json"));
+            util::rm_rf(&root);
+        }
     }
 }

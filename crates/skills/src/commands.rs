@@ -588,7 +588,8 @@ fn install(flags: &[String], io: &mut Io) -> R<()> {
                 match bundle::download_and_extract_bundle(&sys) {
                     Ok(dir) => bundle_dir = Some(dir),
                     Err(e) => {
-                        if !missing_hook_targets.is_empty() || !missing_selected_targets.is_empty() {
+                        if e.starts_with(crate::bundle_signature::ERROR_PREFIX)
+                            || !missing_hook_targets.is_empty() || !missing_selected_targets.is_empty() {
                             return Err(e);
                         }
                         update_check_skipped = true;
