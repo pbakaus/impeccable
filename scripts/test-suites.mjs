@@ -63,6 +63,7 @@ export const SUITES = {
         timeoutMs: 180000,
         files: [
           'tests/ci-test-plan.test.mjs',
+          'tests/cli-shim.test.mjs',
           'tests/github-sheriff.test.mjs',
           'tests/hook-build.test.mjs',
           'tests/openai-plugin.test.mjs',

@@ -33,15 +33,30 @@ async function download() {
   const res = await fetch(URL, { redirect: 'follow' });
   if (!res.ok) return null;
   const buf = Buffer.from(await res.arrayBuffer());
+  // Fail closed, like the skill launcher and `impeccable install`: a sidecar
+  // that cannot be fetched, or that carries no hash, refuses the download
+  // instead of caching an unverified binary. Nothing is written until the
+  // hash matches, so a refusal leaves the cache dir untouched.
   const sum = await fetch(`${URL}.sha256`, { redirect: 'follow' }).then(r => (r.ok ? r.text() : ''), () => '');
-  const expected = sum.trim().split(/\s+/)[0];
-  if (expected && createHash('sha256').update(buf).digest('hex') !== expected) {
+  const expected = sum.trim().split(/\s+/)[0].toLowerCase();
+  if (!expected) {
+    throw new Error(
+      `cannot verify ${URL} against ${URL}.sha256 (sidecar unavailable or empty); `
+      + 'refusing the unverified download',
+    );
+  }
+  if (createHash('sha256').update(buf).digest('hex') !== expected) {
     throw new Error(`checksum mismatch downloading ${URL}`);
   }
   fs.mkdirSync(path.dirname(CACHED), { recursive: true });
   const tmp = `${CACHED}.part.${process.pid}`;
-  fs.writeFileSync(tmp, buf, { mode: 0o755 });
-  fs.renameSync(tmp, CACHED);
+  try {
+    fs.writeFileSync(tmp, buf, { mode: 0o755 });
+    fs.renameSync(tmp, CACHED);
+  } catch (err) {
+    try { fs.rmSync(tmp, { force: true }); } catch { /* best effort */ }
+    throw err;
+  }
   return CACHED;
 }
 async function locate() {
