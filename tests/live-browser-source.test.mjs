@@ -564,6 +564,67 @@ describe('live-browser source contracts', () => {
     );
   });
 
+  it('never leaves a shader behind when the teardown races its construction (#719)', () => {
+    // showShaderOverlay appends its canvas, then awaits createImageBitmap and
+    // the GL setup before it publishes shaderState. A teardown inside that
+    // window found shaderState null, returned, and then watched the
+    // construction publish itself over a session that had already reached
+    // CYCLING, with no teardown left to run. On a slow runner that is the
+    // generating loader frozen over a page that already cycles.
+    const hideStart = SOURCE.indexOf('function hideShaderOverlay()');
+    const hide = SOURCE.slice(hideStart, SOURCE.indexOf('\n  function ', hideStart + 10));
+    assert.match(
+      hide,
+      /shaderEpoch \+= 1;[\s\S]{0,120}?if \(!shaderState\) \{/,
+      'the epoch must be bumped before the no-state early return, or an in-flight construction never hears about the teardown',
+    );
+    assert.match(hide, /removeStrayShaderNode\(\);/, 'a teardown must also drop a shader node no state owns');
+
+    const showStart = SOURCE.indexOf('async function showShaderOverlay(');
+    const show = SOURCE.slice(showStart, SOURCE.indexOf('\n  async function handleAccept', showStart));
+    assert.match(show, /const epoch = shaderEpoch;/, 'the construction must pin the epoch it owns');
+    assert.match(
+      show,
+      /const abandoned = \(node, gl\) => \{[\s\S]{0,80}?if \(epoch === shaderEpoch\) return false;[\s\S]{0,200}?return true;/,
+      'abandoning must remove the canvas and release the GL context',
+    );
+    assert.match(
+      show,
+      /if \(abandoned\(canvas, gl\)\) return;\n    shaderState = \{ canvas, gl, program, texture,/,
+      'the publish must be guarded by the epoch it pinned',
+    );
+    const awaitIdx = show.indexOf('await createImageBitmap(blob)');
+    assert.ok(awaitIdx > 0, 'createImageBitmap is the await this guards');
+    assert.ok(
+      show.indexOf('if (abandoned(canvas, gl))', awaitIdx) > awaitIdx,
+      'the bitmap await must be followed by an abandonment check',
+    );
+    for (const call of ['showShaderBitmapFallback(canvas, blob);']) {
+      let at = show.indexOf(call);
+      assert.ok(at > 0, call);
+      while (at > 0) {
+        const before = show.slice(Math.max(0, at - 220), at);
+        assert.match(before, /abandoned\(canvas, (?:gl|null)\)/, 'every fallback publish must be epoch guarded');
+        at = show.indexOf(call, at + 1);
+      }
+    }
+  });
+
+  it('lowers the shader on every route that sets CYCLING (#719)', () => {
+    // resumeSession reaches CYCLING through setLiveState(resumedState), which
+    // its own block covers; every literal site has to lower the loader too.
+    const sites = [...SOURCE.matchAll(/setLiveState\('CYCLING'\);/g)].map((m) => m.index);
+    assert.ok(sites.length >= 8, `expected the known CYCLING sites, saw ${sites.length}`);
+    for (const at of sites) {
+      const after = SOURCE.slice(at, at + 260);
+      assert.match(
+        after,
+        /hideShaderOverlay\(\);/,
+        `a setLiveState('CYCLING') at offset ${at} does not lower the generating shader`,
+      );
+    }
+  });
+
   it('prefers the wrapper that actually holds variants over the first match (#719)', () => {
     // A target inside a `.map()` renders one wrapper per item, and an agent
     // that relocates the wrapper out of the shared primitive live-wrap

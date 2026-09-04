@@ -5820,6 +5820,7 @@
           return;
         }
         setLiveState('CYCLING');
+        hideShaderOverlay();
         showOrUpdateCyclingBar();
         saveSession();
         completeParameterGenerationIfReady();
@@ -7166,6 +7167,7 @@
           if (arrivedVariants >= expectedVariants && expectedVariants > 0) {
             if (state === 'GENERATING') {
               setLiveState('CYCLING');
+              hideShaderOverlay();
               showOrUpdateCyclingBar();
               disableInlineEdit();
               refreshParamsPanel();
@@ -7226,6 +7228,7 @@
             pendingAcceptedSession = null;
             awaitingAcceptResult = null;
             setLiveState('CYCLING');
+            hideShaderOverlay();
             updateBarContent('cycling');
             showToast('Could not complete accept cleanup. Try Accept again.', 5000);
             break;
@@ -8328,6 +8331,15 @@ void main() {
   // matches the original off-white risograph paper.
   const SHADER_PAPER_FALLBACK = [0.975, 0.965, 0.955];
   let shaderState = null; // { canvas, gl, program, texture, rafId, startTime }
+  // showShaderOverlay is async: it appends its canvas, then awaits
+  // createImageBitmap and the GL setup before it publishes shaderState. A
+  // teardown that landed inside that window found shaderState still null,
+  // returned, and then watched the construction publish itself over a session
+  // that had already left GENERATING, with no teardown left to run. That is
+  // the generating loader frozen over a page that already cycles (issue #719).
+  // Every teardown bumps this epoch; a construction abandons its own canvas as
+  // soon as it sees the epoch move.
+  let shaderEpoch = 0;
 
   // The element's effective background tone, used as the uniform halftone
   // ground so content dissolves into dots over it. Unlike resolveCanvasBackground
@@ -8474,14 +8486,28 @@ void main() {
     });
   }
 
+  /** Drop a shader node no shaderState owns (an abandoned construction). */
+  function removeStrayShaderNode() {
+    const stray = uiGetById(PREFIX + '-shader');
+    if (stray) stray.remove();
+  }
+
   function hideShaderOverlay() {
-    if (!shaderState) return;
+    // Bump first, unconditionally: this is what tells an in-flight
+    // showShaderOverlay to abandon itself rather than publish over a session
+    // that has already moved on.
+    shaderEpoch += 1;
+    if (!shaderState) {
+      removeStrayShaderNode();
+      return;
+    }
     if (shaderState.rafId) cancelAnimationFrame(shaderState.rafId);
     if (shaderState.canvas) shaderState.canvas.remove();
     if (shaderState.objectUrl) URL.revokeObjectURL(shaderState.objectUrl);
     const lose = shaderState.gl?.getExtension?.('WEBGL_lose_context');
     try { lose?.loseContext(); } catch {}
     shaderState = null;
+    removeStrayShaderNode();
   }
 
   function showShaderBitmapFallback(canvas, blob) {
@@ -8506,6 +8532,16 @@ void main() {
   async function showShaderOverlay(el, blob, rect, paper) {
     hideShaderOverlay();
     if (!blob || !el) return;
+    // hideShaderOverlay just bumped the epoch, so this run owns it until the
+    // next teardown. Every step past an await re-checks before it publishes.
+    const epoch = shaderEpoch;
+    const abandoned = (node, gl) => {
+      if (epoch === shaderEpoch) return false;
+      node.remove();
+      const lose = gl?.getExtension?.('WEBGL_lose_context');
+      try { lose?.loseContext(); } catch {}
+      return true;
+    };
     const canvas = document.createElement('canvas');
     canvas.id = PREFIX + '-shader';
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -8528,6 +8564,7 @@ void main() {
     if (!gl) {
       // WebGL unavailable: use the captured bitmap as a background overlay so
       // the user still sees something meaningful during generation.
+      if (abandoned(canvas, null)) return;
       showShaderBitmapFallback(canvas, blob);
       return;
     }
@@ -8567,14 +8604,20 @@ void main() {
     }
 
     // Upload the screenshot as a texture
+    if (abandoned(canvas, gl)) return;
     let bitmap;
     try {
       bitmap = await createImageBitmap(blob);
     } catch (err) {
       console.warn('[impeccable] shader bitmap decode failed:', err);
+      if (abandoned(canvas, gl)) return;
       const lose = gl.getExtension?.('WEBGL_lose_context');
       try { lose?.loseContext(); } catch {}
       showShaderBitmapFallback(canvas, blob);
+      return;
+    }
+    if (abandoned(canvas, gl)) {
+      if (bitmap.close) bitmap.close();
       return;
     }
     texture = gl.createTexture();
@@ -8595,6 +8638,7 @@ void main() {
     const paperRgb = paper || resolvePaperRgb(el);
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+    if (abandoned(canvas, gl)) return;
     shaderState = { canvas, gl, program, texture, rafId: 0, startTime: performance.now(), reduced };
     function frame() {
       if (!shaderState) return;
@@ -8674,6 +8718,7 @@ void main() {
       .catch(() => {
         if (pendingAcceptedSession?.id === acceptedSessionId) pendingAcceptedSession = null;
         setLiveState('CYCLING');
+        hideShaderOverlay();
         showOrUpdateCyclingBar();
         showToast('Could not confirm accept with the live server. Session kept for recovery; try Accept again.', 5000);
       });
