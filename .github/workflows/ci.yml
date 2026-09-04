@@ -121,9 +121,17 @@ jobs:
         run: npx --yes web-ext@10 lint --source-dir dist/extension-firefox
 
       - name: Verify generated tracked outputs
-        # extension/detector/ is gitignored (built by `cargo xtask bundle`);
-        # it stays listed so a stray tracked copy shows up here.
-        run: git diff --exit-code -- .agents .claude .cursor .gemini .github/skills plugin extension/detector
+        # crates/live/assets/antipatterns.json is the registry `cargo xtask
+        # bundle` writes, and this is its staleness gate: a rule whose name or
+        # description changed without changing the rule count would otherwise
+        # ship stale metadata to every consumer that reads it from a checkout.
+        # The bundle beside it is deliberately not listed. Its bytes carry a
+        # wasm module built by whatever wasm-pack and wasm-opt the runner
+        # installed, so diffing it would fail on toolchain drift rather than on
+        # a real change; the registry is plain Rust data and has no such
+        # dependency. extension/detector/ is gitignored (built by the same
+        # command); it stays listed so a stray tracked copy shows up here.
+        run: git diff --exit-code -- .agents .claude .cursor .gemini .github/skills plugin crates/live/assets/antipatterns.json extension/detector
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7

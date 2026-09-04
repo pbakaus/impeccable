@@ -118,7 +118,7 @@ function generateCounts(rootDir, skills, buildDir) {
     console.error(`\n❌ ${errors} stale count reference(s) found. Update them to match source of truth.`);
   }
 
-  console.log(`✓ Generated counts: ${commandCount} commands, ${detectionCount == null ? 'detection rules unchecked (no antipatterns.json)' : `${detectionCount} detection rules`}`);
+  console.log(`✓ Generated counts: ${commandCount} commands, ${detectionCount == null ? 'detection rules unchecked (no readable antipatterns.json)' : `${detectionCount} detection rules`}`);
   return errors;
 }
 
@@ -133,8 +133,13 @@ function readDetectionRuleCount(rootDir) {
     if (!fs.existsSync(registry)) continue;
     try {
       const rules = JSON.parse(fs.readFileSync(registry, 'utf-8'));
-      const count = new Set((Array.isArray(rules) ? rules : []).map(rule => rule.id)).size;
-      if (count > 0) return count;
+      // Only string ids count. A shape change (a wrapper object, a row without
+      // an id) would otherwise collapse to a Set of one `undefined` and read as
+      // a one-rule registry, which validates every count claim as stale.
+      const ids = (Array.isArray(rules) ? rules : [])
+        .map(rule => rule?.id)
+        .filter(id => typeof id === 'string' && id.length > 0);
+      if (ids.length > 0) return new Set(ids).size;
     } catch {
       // try the next location
     }
