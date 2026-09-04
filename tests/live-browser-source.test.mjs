@@ -406,22 +406,22 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /if \(hasFrameworkHmrOwnership\(lateWrapper\)\) \{[\s\S]{0,900}?location\.reload\(\);[\s\S]{0,100}?return;[\s\S]{0,150}?releaseDiscardedStaticWrapper\(lateWrapper, cleanupSessionId\)/,
+      /if \(hasFrameworkHmrOwnership\(lateWrapper\)\) \{[\s\S]{0,1100}?location\.reload\(\);[\s\S]{0,100}?return;[\s\S]{0,150}?releaseDiscardedStaticWrappers\(cleanupSessionId, lateWrappers\)/,
       'discard cleanup must use a reload grace fallback before replacing a framework-owned wrapper',
     );
     assert.match(
       SOURCE,
-      /function releaseDiscardedStaticWrapper\(wrapper, sessionId\)[\s\S]{0,400}?replaceChild\(content, wrapper\)/,
+      /function releaseDiscardedStaticWrapper\(wrapper\)[\s\S]{0,400}?replaceChild\(content, wrapper\)/,
       'only the static-wrapper release helper may structurally restore discarded DOM',
     );
     assert.match(
       SOURCE,
-      /if \(hasFrameworkHmrOwnership\(lateWrapper\)\) \{[\s\S]{0,700}?removeDiscardStateStylesheet\(cleanupSessionId\);[\s\S]{0,120}?location\.reload\(\);/,
+      /if \(hasFrameworkHmrOwnership\(lateWrapper\)\) \{[\s\S]{0,900}?removeDiscardStateStylesheet\(cleanupSessionId\);[\s\S]{0,250}?location\.reload\(\);/,
       'discard must keep its original-visibility stylesheet until the HMR grace window ends',
     );
     assert.match(
       SOURCE,
-      /const recoverySuperseded = deferredRecoverySuperseded\(cleanupSessionId, cleanupRevision\);[\s\S]{0,500}?if \(recoverySuperseded\) \{[\s\S]{0,250}?watchForDiscardedFrameworkWrapperRemoval\(cleanupSessionId\)[\s\S]{0,150}?releaseDiscardedStaticWrapper\(lateWrapper, cleanupSessionId\)[\s\S]{0,80}?return;/,
+      /const recoverySuperseded = deferredRecoverySuperseded\(cleanupSessionId, cleanupRevision\);[\s\S]{0,700}?if \(recoverySuperseded\) \{[\s\S]{0,250}?watchForDiscardedFrameworkWrapperRemoval\(cleanupSessionId\)[\s\S]{0,150}?releaseDiscardedStaticWrappers\(cleanupSessionId, lateWrappers\)[\s\S]{0,80}?return;/,
       'discard cleanup and its reload grace callback must yield to a newer Live session',
     );
     assert.match(
@@ -436,7 +436,7 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /setTimeout\(function\(\) \{[\s\S]{0,300}?const staleWrapper = document\.querySelector[\s\S]{0,250}?deferredRecoverySuperseded\(cleanupSessionId, cleanupRevision\)[\s\S]{0,250}?watchForDiscardedFrameworkWrapperRemoval\(cleanupSessionId\)[\s\S]{0,100}?return;[\s\S]{0,100}?removeDiscardStateStylesheet\(cleanupSessionId\);[\s\S]{0,100}?location\.reload\(\);/,
+      /setTimeout\(function\(\) \{[\s\S]{0,300}?const staleWrappers = discardedWrappers\(cleanupSessionId\);[\s\S]{0,250}?deferredRecoverySuperseded\(cleanupSessionId, cleanupRevision\)[\s\S]{0,250}?watchForDiscardedFrameworkWrapperRemoval\(cleanupSessionId\)[\s\S]{0,100}?return;[\s\S]{0,100}?removeDiscardStateStylesheet\(cleanupSessionId\);[\s\S]{0,250}?location\.reload\(\);/,
       'framework discard recovery may observe safe HMR cleanup but must not reload replacement work',
     );
     assert.match(
@@ -561,6 +561,60 @@ describe('live-browser source contracts', () => {
       resume,
       /queueCheckpoint\(resumeReason\);[\s\S]{0,500}?sendCheckpoint\('variants_ready'\)/,
       'a complete resume must report variants_ready, not only browser_resumed',
+    );
+  });
+
+  it('unwinds every wrapper a discard hid, not just the first (#719)', () => {
+    // Bugbot on #720: the non-restoreOriginal discard hides every matching
+    // wrapper, so the delayed fallback has to release the same set. Releasing
+    // the first match left the other mapped items at display:none with their
+    // original content never restored, on exactly the static and missed-HMR
+    // flows the fallback exists for. The e2e fixtures cannot cover this:
+    // hasFrameworkHmrOwnership is true for every React, Vue, and Svelte
+    // fixture, so they all take the watcher path instead.
+    const cleanupAt = SOURCE.indexOf('function cleanup(options)');
+    assert.ok(cleanupAt > 0, 'cleanup must exist');
+    const cleanup = SOURCE.slice(cleanupAt, SOURCE.indexOf('\n  //', cleanupAt));
+
+    assert.match(
+      cleanup,
+      /const discardWrappers = discardedWrappers\(cleanupSessionId\);[\s\S]{0,260}?for \(const discardWrapper of discardWrappers\) discardWrapper\.style\.display = 'none';/,
+      'the hide must cover every wrapper for the session',
+    );
+    assert.match(
+      cleanup,
+      /const lateWrappers = discardedWrappers\(cleanupSessionId\);[\s\S]{0,120}?if \(lateWrappers\.length === 0\)/,
+      'the fallback must look at the same set the hide covered',
+    );
+    assert.doesNotMatch(
+      cleanup,
+      /releaseDiscardedStaticWrapper\(/,
+      'cleanup must go through the plural release so every hidden wrapper is unwound',
+    );
+    for (const call of [...cleanup.matchAll(/releaseDiscardedStaticWrappers\([^)]*\)/g)].map((m) => m[0])) {
+      assert.match(call, /lateWrappers/, `${call} must release the captured set`);
+    }
+    assert.ok(
+      [...cleanup.matchAll(/releaseDiscardedStaticWrappers\(/g)].length === 2,
+      'both the superseded and the plain static branch must release',
+    );
+
+    const pluralAt = SOURCE.indexOf('function releaseDiscardedStaticWrappers(sessionId, wrappers)');
+    assert.ok(pluralAt > 0, 'releaseDiscardedStaticWrappers must exist');
+    const plural = SOURCE.slice(pluralAt, SOURCE.indexOf('\n  }', pluralAt));
+    assert.match(plural, /removeDiscardStateStylesheet\(sessionId\);/, 'the stylesheet comes down once');
+    assert.match(
+      plural,
+      /for \(const wrapper of set\) releaseDiscardedStaticWrapper\(wrapper\);/,
+      'every wrapper in the set is released',
+    );
+
+    // Intent of main's original guard, kept: discard must not blank the
+    // original, and must not animate stale chrome while waiting for HMR.
+    assert.match(
+      cleanup,
+      /if \(restoreOriginal\) showOriginalDuringDiscard\(cleanupSessionId\);/,
+      'only non-discard cleanup may blank the wrapper while waiting for HMR',
     );
   });
 
@@ -696,9 +750,6 @@ describe('live-browser source contracts', () => {
         'orphan',
         // pendingAcceptedSession existence guard
         'if',
-        // discard cleanup, both bounded retries
-        'lateWrapper',
-        'staleWrapper',
       ].sort(),
       'a new raw [data-impeccable-variants=...] first-match lookup appeared; route it through findVariantsWrapper, or add it here with the reason it may take the first match',
     );

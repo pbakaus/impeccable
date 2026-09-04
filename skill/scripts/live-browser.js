@@ -6716,8 +6716,17 @@
     document.getElementById(discardStateStyleId(sessionId))?.remove();
   }
 
-  function releaseDiscardedStaticWrapper(wrapper, sessionId) {
-    removeDiscardStateStylesheet(sessionId);
+  /**
+   * Every wrapper a discard has to unwind. A target inside a `.map()` renders
+   * one wrapper per item, so the hide, the release, and the existence checks
+   * all have to speak about the same set.
+   */
+  function discardedWrappers(sessionId) {
+    if (!sessionId) return [];
+    return [...document.querySelectorAll('[data-impeccable-variants="' + sessionId + '"]')];
+  }
+
+  function releaseDiscardedStaticWrapper(wrapper) {
     if (!wrapper) return;
     const orig = wrapper.querySelector('[data-impeccable-variant="original"]');
     const content = orig?.firstElementChild;
@@ -6726,6 +6735,18 @@
       return;
     }
     wrapper.remove();
+  }
+
+  /**
+   * Undo the discard hide on every wrapper it covered. Releasing only the
+   * first match left the other mapped items sitting at display:none with
+   * their original content never restored, on exactly the static and
+   * missed-HMR flows this fallback exists for.
+   */
+  function releaseDiscardedStaticWrappers(sessionId, wrappers) {
+    removeDiscardStateStylesheet(sessionId);
+    const set = wrappers && wrappers.length ? wrappers : discardedWrappers(sessionId);
+    for (const wrapper of set) releaseDiscardedStaticWrapper(wrapper);
   }
 
   function watchForDiscardedFrameworkWrapperRemoval(sessionId) {
@@ -9256,7 +9277,7 @@ void main() {
       // Every match, not the first: a target inside a `.map()` renders one
       // wrapper per item, and hiding only one leaves the rest of the
       // discarded variants on screen.
-      const discardWrappers = [...document.querySelectorAll('[data-impeccable-variants="' + cleanupSessionId + '"]')];
+      const discardWrappers = discardedWrappers(cleanupSessionId);
       if (discardWrappers.length > 0) {
         if (restoreOriginal) showOriginalDuringDiscard(cleanupSessionId);
         else for (const discardWrapper of discardWrappers) discardWrapper.style.display = 'none';
@@ -9267,16 +9288,19 @@ void main() {
           removeDiscardStateStylesheet();
           return;
         }
-        const lateWrapper = document.querySelector('[data-impeccable-variants="' + cleanupSessionId + '"]');
-        if (!lateWrapper) {
+        const lateWrappers = discardedWrappers(cleanupSessionId);
+        if (lateWrappers.length === 0) {
           removeDiscardStateStylesheet(cleanupSessionId);
           return;
         }
+        // Duplicates all render from one source element, so HMR ownership is
+        // uniform across them; the first is a fair witness for the set.
+        const lateWrapper = lateWrappers[0];
         if (recoverySuperseded) {
           if (hasFrameworkHmrOwnership(lateWrapper)) {
             watchForDiscardedFrameworkWrapperRemoval(cleanupSessionId);
           } else {
-            releaseDiscardedStaticWrapper(lateWrapper, cleanupSessionId);
+            releaseDiscardedStaticWrappers(cleanupSessionId, lateWrappers);
           }
           return;
         }
@@ -9285,18 +9309,20 @@ void main() {
           // the final source rewrite, reload once after a grace window so the
           // discarded source becomes authoritative without a reconciler race.
           setTimeout(function() {
-            const staleWrapper = document.querySelector('[data-impeccable-variants="' + cleanupSessionId + '"]');
+            const staleWrappers = discardedWrappers(cleanupSessionId);
             if (deferredRecoverySuperseded(cleanupSessionId, cleanupRevision)) {
-              if (!staleWrapper) removeDiscardStateStylesheet(cleanupSessionId);
+              if (staleWrappers.length === 0) removeDiscardStateStylesheet(cleanupSessionId);
               else watchForDiscardedFrameworkWrapperRemoval(cleanupSessionId);
               return;
             }
             removeDiscardStateStylesheet(cleanupSessionId);
-            if (staleWrapper) location.reload();
+            // A reload restores every wrapper's original at once, so there is
+            // nothing per-wrapper to do here.
+            if (staleWrappers.length > 0) location.reload();
           }, 2000);
           return;
         }
-        releaseDiscardedStaticWrapper(lateWrapper, cleanupSessionId);
+        releaseDiscardedStaticWrappers(cleanupSessionId, lateWrappers);
       }, 2000);
     }
     hideBar(instantChrome);
