@@ -126,8 +126,9 @@ body {
 }
 
 /* ============================================================
-   The mark. The one place gold fills a shape: a carved ink tile
-   split by the slash, the same glyph the toolbar icon carries.
+   The mark. The site's header sets the glyph in ink straight on
+   the paper, no tile behind it and no gold: the same two-shape
+   slash the toolbar icon carries, at the header's proportion.
    ============================================================ */
 .ks-mark {
   display: grid;
@@ -135,15 +136,13 @@ body {
   flex: none;
   width: 22px;
   height: 22px;
-  border-radius: var(--ks-radius-sm);
-  background: var(--ks-ink);
-  color: var(--ks-kinpaku);
+  color: var(--ks-ink);
 }
 
 .ks-mark svg {
   display: block;
-  width: 15px;
-  height: 15px;
+  width: 20px;
+  height: 20px;
 }
 
 .ks-wordmark {
