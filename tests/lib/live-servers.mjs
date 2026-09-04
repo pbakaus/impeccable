@@ -19,6 +19,7 @@
  */
 
 import { spawn } from 'node:child_process';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -69,7 +70,9 @@ export function armLiveServerReaper() {
   for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
     process.on(sig, () => {
       cleanupSync();
-      process.exit(sig === 'SIGINT' ? 130 : 143);
+      // The shell convention for "killed by signal N": 130 SIGINT, 143 SIGTERM,
+      // 129 SIGHUP.
+      process.exit(128 + (os.constants.signals[sig] ?? 0));
     });
   }
   // An uncaught exception still fires 'exit', so no separate handler is owed.

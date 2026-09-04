@@ -47,12 +47,14 @@ export function makeRunId(repoRoot = process.cwd()) {
  * Live servers still running that carry one of the given markers.
  *
  * @param {object} opts
+ * Every marker is an environment entry the harness itself exported. There is
+ * deliberately no fallback that matches a command line under the checkout: a
+ * developer running `impeccable live` in this repo has exactly that command
+ * line, and a cleanup must never be able to kill their session.
+ *
  * @param {string} [opts.runId]  match `IMPECCABLE_TEST_RUN_ID=<runId>` exactly.
  * @param {string} [opts.procId] match `IMPECCABLE_TEST_PROC_ID=<procId>` exactly.
- * @param {string} [opts.repo]   match `IMPECCABLE_TEST_REPO=<repo>` exactly, and
- *                               also any command line naming this repo's own
- *                               `live-server` script (covers servers started
- *                               before the marker existed).
+ * @param {string} [opts.repo]   match `IMPECCABLE_TEST_REPO=<repo>` exactly.
  * @returns {{pid:number, command:string}[]}
  */
 export function findLiveServers({ runId, procId, repo } = {}) {
@@ -65,16 +67,7 @@ export function findLiveServers({ runId, procId, repo } = {}) {
   const commands = listCommands();
   if (!commands.size) return [];
 
-  const matched = new Set();
-  for (const pid of pidsWithEnvMarker(markers, commands)) matched.add(pid);
-  if (repo) {
-    // A server whose argv names this checkout's script is ours regardless of
-    // whether it was started with the marker in place.
-    const own = path.join(repo, 'skill', 'scripts', 'live-server');
-    for (const [pid, command] of commands) {
-      if (command.includes(own)) matched.add(pid);
-    }
-  }
+  const matched = new Set(pidsWithEnvMarker(markers, commands));
 
   const out = [];
   for (const pid of matched) {
@@ -125,6 +118,34 @@ function signal(pid, sig) {
   try { process.kill(pid, sig); } catch { /* already gone */ }
 }
 
+/**
+ * Whether a `ps -E` line contains `marker` as a complete environment entry.
+ *
+ * A plain substring test is wrong here: `IMPECCABLE_TEST_REPO=/work/impeccable`
+ * is a substring of `IMPECCABLE_TEST_REPO=/work/impeccable-copy`, and matching
+ * it would let one checkout's cleanup kill a neighbouring checkout's servers.
+ * `ps` flattens the environment into space-separated `KEY=VALUE` pairs, so an
+ * entry ends where the line ends or where the next `KEY=` begins. A value that
+ * itself contains both a space and something shaped like `KEY=` is ambiguous in
+ * this format and is the one case this cannot resolve.
+ */
+export function envLineHasEntry(line, marker) {
+  for (let from = 0; ; from += 1) {
+    const at = line.indexOf(marker, from);
+    if (at === -1) return false;
+    const startsEntry = at === 0 || /\s/.test(line[at - 1]);
+    if (startsEntry && endsEntry(line.slice(at + marker.length))) return true;
+    from = at;
+  }
+}
+
+function endsEntry(rest) {
+  if (rest === '') return true;
+  if (!/^\s/.test(rest)) return false;
+  const next = rest.trimStart();
+  return next === '' || /^[A-Za-z_][A-Za-z0-9_]*=/.test(next);
+}
+
 /** pid -> full command line, for every process this user can see. */
 function listCommands() {
   const map = new Map();
@@ -141,10 +162,12 @@ function listCommands() {
 /**
  * Pids whose environment contains one of `markers`.
  *
- * Linux exposes `/proc/<pid>/environ` directly. BSD/macOS `ps -E` appends the
- * environment to the command column, so the marker is searched in that combined
- * line and the command is then read back from the marker-free listing (an env
- * value that happened to contain "live-server" must not decide the match).
+ * Linux exposes `/proc/<pid>/environ` directly, so entries are compared whole.
+ * BSD/macOS `ps -E` appends the environment to the command column instead, so
+ * the marker is matched against that combined line through `envLineHasEntry`,
+ * which requires the same whole-entry boundary. The command itself is then read
+ * back from the marker-free listing, so an env value that happened to contain
+ * "live-server" cannot decide the match.
  */
 function pidsWithEnvMarker(markers, commands) {
   const hits = [];
@@ -168,7 +191,7 @@ function pidsWithEnvMarker(markers, commands) {
     if (!m) continue;
     const pid = Number(m[1]);
     if (!commands.has(pid)) continue;
-    if (markers.some((marker) => m[2].includes(marker))) hits.push(pid);
+    if (markers.some((marker) => envLineHasEntry(m[2], marker))) hits.push(pid);
   }
   return hits;
 }

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_SUITES, OPT_IN_SUITES, SUITES, expandSuites } from './test-suites.mjs';
@@ -42,8 +43,13 @@ for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
   process.on(sig, () => {
     shuttingDown = true;
     killCurrentGroup();
-    process.exit(sig === 'SIGINT' ? 130 : 143);
+    process.exit(exitCodeForSignal(sig));
   });
+}
+
+/** The shell convention for "killed by signal N": 130 SIGINT, 143 SIGTERM, 129 SIGHUP. */
+function exitCodeForSignal(sig) {
+  return 128 + (os.constants.signals[sig] ?? 0);
 }
 process.on('exit', () => killCurrentGroup());
 
@@ -170,11 +176,18 @@ async function assertNoLeakedServers(runId, suiteName) {
   process.exit(1);
 }
 
-/** `bun run test:cleanup`: kill live servers this checkout's tests left behind. */
+/**
+ * `bun run test:cleanup`: kill live servers this checkout's tests left behind.
+ *
+ * Scoped to servers carrying this checkout's `IMPECCABLE_TEST_REPO` marker, so
+ * a live session the developer started themselves in this same repo is not a
+ * candidate. A server from a run that predates the marker is not found here and
+ * has to be killed by hand.
+ */
 function cleanupRepoServers() {
   const leaked = findLiveServers({ repo: REPO_ROOT });
   if (!leaked.length) {
-    console.log('No leftover live servers from this repo.');
+    console.log('No leftover live servers from this repo\'s test runs.');
     return 0;
   }
   for (const { pid, command } of leaked) console.log(`killing pid ${pid}  ${command}`);

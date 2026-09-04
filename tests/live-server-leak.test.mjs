@@ -18,12 +18,19 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import {
   PROC_ID_ENV,
+  REPO_ENV,
   RUN_ID_ENV,
   alive,
+  envLineHasEntry,
   findLiveServers,
   killLiveServers,
   makeRunId,
 } from '../scripts/lib/live-server-processes.mjs';
+
+// The reaper is a POSIX mechanism (a detached process holding a pipe, killed by
+// signal). armLiveServerReaper() does not arm it on Windows, so the guarantee it
+// pins is not one Windows makes yet.
+const WINDOWS = process.platform === 'win32';
 
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
 const PORT = 8591;
@@ -106,7 +113,9 @@ function startVictim(cwd) {
 }
 
 describe('live server leak guard', () => {
-  it('kills the live server when the test process is SIGKILLed', async () => {
+  it('kills the live server when the test process is SIGKILLed', {
+    skip: WINDOWS ? 'the reaper is POSIX-only; armLiveServerReaper() does not arm it on win32' : false,
+  }, async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'impeccable-leak-'));
     let victim;
     let serverPid;
@@ -132,5 +141,41 @@ describe('live server leak guard', () => {
     // other checkout, or the user's own session, is running.
     assert.deepEqual(findLiveServers({}), []);
     assert.deepEqual(findLiveServers({ runId: 'no-such-run-id-' + Date.now() }), []);
+  });
+});
+
+describe('envLineHasEntry', () => {
+  const marker = `${REPO_ENV}=/work/impeccable`;
+
+  it('matches the entry at the end of the line and between other entries', () => {
+    assert.equal(envLineHasEntry(`node live-server.mjs PATH=/usr/bin ${marker}`, marker), true);
+    assert.equal(envLineHasEntry(`node live-server.mjs ${marker} PATH=/usr/bin`, marker), true);
+    assert.equal(envLineHasEntry(`node x ${marker} ${RUN_ID_ENV}=abc PATH=/usr/bin`, marker), true);
+  });
+
+  it('does not match an adjacent checkout whose path merely starts the same', () => {
+    // The bug this exists for: /work/impeccable is a substring of
+    // /work/impeccable-copy, and one checkout's cleanup must not reach the
+    // other's servers.
+    assert.equal(envLineHasEntry(`node x ${REPO_ENV}=/work/impeccable-copy`, marker), false);
+    assert.equal(envLineHasEntry(`node x ${REPO_ENV}=/work/impeccable-copy PATH=/usr/bin`, marker), false);
+    assert.equal(envLineHasEntry(`node x ${REPO_ENV}=/work/impeccable2 PATH=/usr/bin`, marker), false);
+  });
+
+  it('does not match when the entry name only ends with the marker name', () => {
+    // The marker is a substring here, but it does not start an entry.
+    assert.equal(envLineHasEntry(`node x MY_${marker} PATH=/usr/bin`, marker), false);
+    assert.equal(envLineHasEntry(`node x X${marker}`, marker), false);
+  });
+
+  it('matches a value containing a space, and stops at the next KEY=', () => {
+    const spaced = `${REPO_ENV}=/work/my repo`;
+    assert.equal(envLineHasEntry(`node x ${spaced} PATH=/usr/bin`, spaced), true);
+    assert.equal(envLineHasEntry(`node x ${REPO_ENV}=/work/my repo copy PATH=/usr/bin`, spaced), false);
+  });
+
+  it('returns false when the marker is absent', () => {
+    assert.equal(envLineHasEntry('node live-server.mjs PATH=/usr/bin', marker), false);
+    assert.equal(envLineHasEntry('', marker), false);
   });
 });
