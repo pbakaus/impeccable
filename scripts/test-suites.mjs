@@ -103,7 +103,7 @@ export const SUITES = {
     description: 'Extension packaging checks (the rule logic itself is covered by the crate tests and the oracle).',
     triggers: [
       ...COMMON_INFRA_PATTERNS,
-      /^extension\/(background|content|detector|devtools|offscreen|popup|manifest\.json)/,
+      /^extension\/(background|content|detector|devtools|offscreen|popup|shared|manifest\.json)/,
       /^scripts\/build-extension\.js$/,
       /^browser-bundle\//,
       /^crates\/(core|foundation|wasm|xtask)\//,

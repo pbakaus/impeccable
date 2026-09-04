@@ -201,6 +201,10 @@ body {
   --ks-rule: oklch(13% 0 0 / 0.12);
 }
 
+/* The seam is drawn over the top of the sticky toolbar on purpose, which is
+   the only way a 2px edge stays put while the sheet scrolls under it. It is
+   paint and nothing else: pointer-events are off, so the toolbar's top row of
+   pixels stays clickable. */
 .theme-dark body::before {
   content: "";
   position: fixed;
@@ -209,5 +213,6 @@ body {
   right: 0;
   height: 2px;
   background: oklch(13% 0 0 / 0.55);
+  pointer-events: none;
   z-index: 20;
 }
