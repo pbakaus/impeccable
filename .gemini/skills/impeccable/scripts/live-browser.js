@@ -2060,7 +2060,7 @@
       if (anchor) return anchor;
     }
     if (currentSessionId && (state === 'GENERATING' || state === 'CYCLING')) {
-      const wrapper = document.querySelector('[data-impeccable-variants="' + currentSessionId + '"]');
+      const wrapper = findVariantsWrapper(currentSessionId);
       if (wrapper) {
         const variantCount = wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])').length;
         if (variantCount > 0 && visibleVariant > 0) {
@@ -2131,14 +2131,14 @@
 
   function isInsertGeneratingSession() {
     if (state !== 'GENERATING' || !currentSessionId) return false;
-    const wrapper = document.querySelector('[data-impeccable-variants="' + currentSessionId + '"]');
+    const wrapper = findVariantsWrapper(currentSessionId);
     return !!wrapper && wrapper.dataset.impeccableMode === 'insert';
   }
 
   /** Recreate the dotted placeholder if Astro/Vite HMR removed it mid-generation. */
   function ensureInsertPlaceholder() {
     if (!isInsertGeneratingSession()) return placeholderElement;
-    const wrapper = document.querySelector('[data-impeccable-variants="' + currentSessionId + '"]');
+    const wrapper = findVariantsWrapper(currentSessionId);
     const variantCount = wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])').length;
     if (variantCount > 0) return placeholderElement;
     if (placeholderElement && document.body.contains(placeholderElement)) return placeholderElement;
@@ -3156,7 +3156,7 @@
         || svelteComponentSession.wrapperEl
         || null;
     }
-    const wrapper = document.querySelector('[data-impeccable-variants="' + currentSessionId + '"]');
+    const wrapper = findVariantsWrapper(currentSessionId);
     if (!wrapper) return null;
     return wrapper.querySelector('[data-impeccable-variant="' + visibleVariant + '"]');
   }
@@ -4900,7 +4900,7 @@
       return Object.values(svelteComponentSession.paramsByVariant || {})
         .reduce((total, params) => total + (Array.isArray(params) ? params.length : 0), 0);
     }
-    const wrapper = document.querySelector('[data-impeccable-variants="' + currentSessionId + '"]');
+    const wrapper = findVariantsWrapper(currentSessionId);
     if (!wrapper) return 0;
     return [...wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])')]
       .reduce((total, variant) => total + parseVariantParams(variant).length, 0);
@@ -5004,7 +5004,7 @@
       scheduleCyclingBarSync(sessionId, num);
       return true;
     }
-    const wrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+    const wrapper = findVariantsWrapper(sessionId);
     if (!wrapper) return false;
     updateVariantStateStylesheet(sessionId, num);
     // Unconditional refresh - covers first-reveal (no-op if state isn't
@@ -5820,6 +5820,7 @@
           return;
         }
         setLiveState('CYCLING');
+        hideShaderOverlay();
         showOrUpdateCyclingBar();
         saveSession();
         completeParameterGenerationIfReady();
@@ -6361,7 +6362,7 @@
     }
     rememberSessionFileMeta({ file: filePath });
     if (isJsxSourceFile(filePath)) {
-      const liveWrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+      const liveWrapper = findVariantsWrapper(sessionId);
       if (liveWrapper && liveWrapper.querySelector('[data-impeccable-variant]:not([data-impeccable-variant="original"])')) {
         completeSourceInjection(liveWrapper, sessionId, { ...opts, filePath });
         return;
@@ -6433,7 +6434,7 @@
           return;
         }
 
-        const existingWrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+        const existingWrapper = findVariantsWrapper(sessionId);
         if (existingWrapper) {
           const wrapper = srcWrapper.cloneNode(true);
           existingWrapper.parentElement.replaceChild(wrapper, existingWrapper);
@@ -6590,7 +6591,7 @@
       if (anchor && !anchor.__impeccableFrozenAnchor) selectedElement = anchor;
       return;
     }
-    const wrapper = document.querySelector('[data-impeccable-variants="' + currentSessionId + '"]');
+    const wrapper = findVariantsWrapper(currentSessionId);
     if (!wrapper) return;
     const visEl = pickVariantContent(wrapper, visibleVariant);
     if (visEl) selectedElement = visEl;
@@ -6600,7 +6601,7 @@
     if (svelteComponentSession?.sessionId === sessionId && svelteComponentSession.mountedVariant > 0) {
       return svelteComponentSession.mountedVariant;
     }
-    const wrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+    const wrapper = findVariantsWrapper(sessionId);
     if (!wrapper) return 0;
     const variants = wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])');
     for (const variant of variants) {
@@ -6715,8 +6716,17 @@
     document.getElementById(discardStateStyleId(sessionId))?.remove();
   }
 
-  function releaseDiscardedStaticWrapper(wrapper, sessionId) {
-    removeDiscardStateStylesheet(sessionId);
+  /**
+   * Every wrapper a discard has to unwind. A target inside a `.map()` renders
+   * one wrapper per item, so the hide, the release, and the existence checks
+   * all have to speak about the same set.
+   */
+  function discardedWrappers(sessionId) {
+    if (!sessionId) return [];
+    return [...document.querySelectorAll('[data-impeccable-variants="' + sessionId + '"]')];
+  }
+
+  function releaseDiscardedStaticWrapper(wrapper) {
     if (!wrapper) return;
     const orig = wrapper.querySelector('[data-impeccable-variant="original"]');
     const content = orig?.firstElementChild;
@@ -6725,6 +6735,18 @@
       return;
     }
     wrapper.remove();
+  }
+
+  /**
+   * Undo the discard hide on every wrapper it covered. Releasing only the
+   * first match left the other mapped items sitting at display:none with
+   * their original content never restored, on exactly the static and
+   * missed-HMR flows this fallback exists for.
+   */
+  function releaseDiscardedStaticWrappers(sessionId, wrappers) {
+    removeDiscardStateStylesheet(sessionId);
+    const set = wrappers && wrappers.length ? wrappers : discardedWrappers(sessionId);
+    for (const wrapper of set) releaseDiscardedStaticWrapper(wrapper);
   }
 
   function watchForDiscardedFrameworkWrapperRemoval(sessionId) {
@@ -6907,6 +6929,42 @@
   // MutationObserver for progressive variant reveal
   //
 
+  // A session id can have more than one wrapper in the DOM: the target may sit
+  // inside a `.map()` callback (the wrapper renders once per item), or the
+  // agent may have relocated the wrapper out of the shared primitive live-wrap
+  // scaffolded into. A plain first match can then pin an empty scaffold while
+  // the real variants sit in a later wrapper, which strands the session at
+  // 0/N and leaves the bar, the params panel, and accept all reading the
+  // wrong element. Prefer a wrapper that actually holds variants. With zero
+  // or one match this is exactly the querySelector it replaces.
+  //
+  // Every lookup of the ACTIVE session's wrapper goes through here. The
+  // remaining raw `[data-impeccable-variants=...]` uses are deliberate: bare
+  // existence checks, selector strings for stylesheets and observers (which
+  // want to cover every match), `querySelectorAll` sweeps, and the parsed
+  // source document, which is not this document.
+  function pickPopulatedVariantsWrapper(selector) {
+    const matches = document.querySelectorAll(selector);
+    if (matches.length < 2) return matches[0] || null;
+    for (const candidate of matches) {
+      if (candidate.querySelector('[data-impeccable-variant]:not([data-impeccable-variant="original"])')) {
+        return candidate;
+      }
+    }
+    return matches[0];
+  }
+
+  /** The wrapper holding `sessionId`'s variants, or null without an id. */
+  function findVariantsWrapper(sessionId) {
+    if (!sessionId) return null;
+    return pickPopulatedVariantsWrapper('[data-impeccable-variants="' + sessionId + '"]');
+  }
+
+  /** Any live variant wrapper, for the resume paths that have no id yet. */
+  function findAnyVariantsWrapper() {
+    return pickPopulatedVariantsWrapper('[data-impeccable-variants]');
+  }
+
   function startVariantObserver(sessionId) {
     let updating = false; // re-entrancy guard
 
@@ -6936,7 +6994,7 @@
       }
       if (!dominated) return;
 
-      const wrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+      const wrapper = findVariantsWrapper(sessionId);
       if (!wrapper) return;
 
       const variants = wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])');
@@ -7145,6 +7203,7 @@
           if (arrivedVariants >= expectedVariants && expectedVariants > 0) {
             if (state === 'GENERATING') {
               setLiveState('CYCLING');
+              hideShaderOverlay();
               showOrUpdateCyclingBar();
               disableInlineEdit();
               refreshParamsPanel();
@@ -7205,6 +7264,7 @@
             pendingAcceptedSession = null;
             awaitingAcceptResult = null;
             setLiveState('CYCLING');
+            hideShaderOverlay();
             updateBarContent('cycling');
             showToast('Could not complete accept cleanup. Try Accept again.', 5000);
             break;
@@ -8307,6 +8367,15 @@ void main() {
   // matches the original off-white risograph paper.
   const SHADER_PAPER_FALLBACK = [0.975, 0.965, 0.955];
   let shaderState = null; // { canvas, gl, program, texture, rafId, startTime }
+  // showShaderOverlay is async: it appends its canvas, then awaits
+  // createImageBitmap and the GL setup before it publishes shaderState. A
+  // teardown that landed inside that window found shaderState still null,
+  // returned, and then watched the construction publish itself over a session
+  // that had already left GENERATING, with no teardown left to run. That is
+  // the generating loader frozen over a page that already cycles (issue #719).
+  // Every teardown bumps this epoch; a construction abandons its own canvas as
+  // soon as it sees the epoch move.
+  let shaderEpoch = 0;
 
   // The element's effective background tone, used as the uniform halftone
   // ground so content dissolves into dots over it. Unlike resolveCanvasBackground
@@ -8453,14 +8522,28 @@ void main() {
     });
   }
 
+  /** Drop a shader node no shaderState owns (an abandoned construction). */
+  function removeStrayShaderNode() {
+    const stray = uiGetById(PREFIX + '-shader');
+    if (stray) stray.remove();
+  }
+
   function hideShaderOverlay() {
-    if (!shaderState) return;
+    // Bump first, unconditionally: this is what tells an in-flight
+    // showShaderOverlay to abandon itself rather than publish over a session
+    // that has already moved on.
+    shaderEpoch += 1;
+    if (!shaderState) {
+      removeStrayShaderNode();
+      return;
+    }
     if (shaderState.rafId) cancelAnimationFrame(shaderState.rafId);
     if (shaderState.canvas) shaderState.canvas.remove();
     if (shaderState.objectUrl) URL.revokeObjectURL(shaderState.objectUrl);
     const lose = shaderState.gl?.getExtension?.('WEBGL_lose_context');
     try { lose?.loseContext(); } catch {}
     shaderState = null;
+    removeStrayShaderNode();
   }
 
   function showShaderBitmapFallback(canvas, blob) {
@@ -8485,6 +8568,16 @@ void main() {
   async function showShaderOverlay(el, blob, rect, paper) {
     hideShaderOverlay();
     if (!blob || !el) return;
+    // hideShaderOverlay just bumped the epoch, so this run owns it until the
+    // next teardown. Every step past an await re-checks before it publishes.
+    const epoch = shaderEpoch;
+    const abandoned = (node, gl) => {
+      if (epoch === shaderEpoch) return false;
+      node.remove();
+      const lose = gl?.getExtension?.('WEBGL_lose_context');
+      try { lose?.loseContext(); } catch {}
+      return true;
+    };
     const canvas = document.createElement('canvas');
     canvas.id = PREFIX + '-shader';
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -8507,6 +8600,7 @@ void main() {
     if (!gl) {
       // WebGL unavailable: use the captured bitmap as a background overlay so
       // the user still sees something meaningful during generation.
+      if (abandoned(canvas, null)) return;
       showShaderBitmapFallback(canvas, blob);
       return;
     }
@@ -8546,14 +8640,20 @@ void main() {
     }
 
     // Upload the screenshot as a texture
+    if (abandoned(canvas, gl)) return;
     let bitmap;
     try {
       bitmap = await createImageBitmap(blob);
     } catch (err) {
       console.warn('[impeccable] shader bitmap decode failed:', err);
+      if (abandoned(canvas, gl)) return;
       const lose = gl.getExtension?.('WEBGL_lose_context');
       try { lose?.loseContext(); } catch {}
       showShaderBitmapFallback(canvas, blob);
+      return;
+    }
+    if (abandoned(canvas, gl)) {
+      if (bitmap.close) bitmap.close();
       return;
     }
     texture = gl.createTexture();
@@ -8574,6 +8674,7 @@ void main() {
     const paperRgb = paper || resolvePaperRgb(el);
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+    if (abandoned(canvas, gl)) return;
     shaderState = { canvas, gl, program, texture, rafId: 0, startTime: performance.now(), reduced };
     function frame() {
       if (!shaderState) return;
@@ -8610,7 +8711,7 @@ void main() {
       clientSentAt: Date.now(),
     };
     if (!currentSessionId || arrivedVariants === 0) return;
-    const acceptWrapper = document.querySelector('[data-impeccable-variants="' + currentSessionId + '"]');
+    const acceptWrapper = findVariantsWrapper(currentSessionId);
     if (Object.keys(paramsCurrentValues).length > 0) {
       acceptPayload.paramValues = { ...paramsCurrentValues };
     }
@@ -8653,6 +8754,7 @@ void main() {
       .catch(() => {
         if (pendingAcceptedSession?.id === acceptedSessionId) pendingAcceptedSession = null;
         setLiveState('CYCLING');
+        hideShaderOverlay();
         showOrUpdateCyclingBar();
         showToast('Could not confirm accept with the live server. Session kept for recovery; try Accept again.', 5000);
       });
@@ -8704,7 +8806,7 @@ void main() {
   }
 
   function snapshotAcceptedVariantDom(sessionId, variantId) {
-    const wrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+    const wrapper = findVariantsWrapper(sessionId);
     const accepted = wrapper?.querySelector?.('[data-impeccable-variant="' + variantId + '"]');
     const root = accepted?.firstElementChild || null;
     return {
@@ -8831,7 +8933,7 @@ void main() {
   }
 
   function commitAcceptedVariantToDom(sessionId, variantId) {
-    const wrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+    const wrapper = findVariantsWrapper(sessionId);
     if (!wrapper) return false;
     const accepted = wrapper.querySelector('[data-impeccable-variant="' + variantId + '"]');
     if (!accepted || !accepted.firstElementChild) return false;
@@ -9059,7 +9161,7 @@ void main() {
   }
 
   function restoreFromActiveSessions(activeSessions, reason) {
-    const wrapper = document.querySelector('[data-impeccable-variants]');
+    const wrapper = findAnyVariantsWrapper();
     if (wrapper && !isFrameworkComponentPreviewMode(wrapper.dataset.impeccablePreview)) return false;
     if (svelteComponentSession?.sessionId === currentSessionId) return false;
     return restoreSessionWithoutWrapper(reason || 'sse_connected', activeSessions);
@@ -9172,10 +9274,13 @@ void main() {
       // reconciler later tries to remove a wrapper we already removed.
       // Schedule a 2s fallback that does the manual swap only if HMR hasn't
       // replaced the wrapper by then (keeps static-server / no-HMR flows alive).
-      const wrapper = document.querySelector('[data-impeccable-variants="' + cleanupSessionId + '"]');
-      if (wrapper) {
+      // Every match, not the first: a target inside a `.map()` renders one
+      // wrapper per item, and hiding only one leaves the rest of the
+      // discarded variants on screen.
+      const discardWrappers = discardedWrappers(cleanupSessionId);
+      if (discardWrappers.length > 0) {
         if (restoreOriginal) showOriginalDuringDiscard(cleanupSessionId);
-        else wrapper.style.display = 'none';
+        else for (const discardWrapper of discardWrappers) discardWrapper.style.display = 'none';
       }
       setTimeout(function() {
         const recoverySuperseded = deferredRecoverySuperseded(cleanupSessionId, cleanupRevision);
@@ -9183,16 +9288,19 @@ void main() {
           removeDiscardStateStylesheet();
           return;
         }
-        const lateWrapper = document.querySelector('[data-impeccable-variants="' + cleanupSessionId + '"]');
-        if (!lateWrapper) {
+        const lateWrappers = discardedWrappers(cleanupSessionId);
+        if (lateWrappers.length === 0) {
           removeDiscardStateStylesheet(cleanupSessionId);
           return;
         }
+        // Duplicates all render from one source element, so HMR ownership is
+        // uniform across them; the first is a fair witness for the set.
+        const lateWrapper = lateWrappers[0];
         if (recoverySuperseded) {
           if (hasFrameworkHmrOwnership(lateWrapper)) {
             watchForDiscardedFrameworkWrapperRemoval(cleanupSessionId);
           } else {
-            releaseDiscardedStaticWrapper(lateWrapper, cleanupSessionId);
+            releaseDiscardedStaticWrappers(cleanupSessionId, lateWrappers);
           }
           return;
         }
@@ -9201,18 +9309,20 @@ void main() {
           // the final source rewrite, reload once after a grace window so the
           // discarded source becomes authoritative without a reconciler race.
           setTimeout(function() {
-            const staleWrapper = document.querySelector('[data-impeccable-variants="' + cleanupSessionId + '"]');
+            const staleWrappers = discardedWrappers(cleanupSessionId);
             if (deferredRecoverySuperseded(cleanupSessionId, cleanupRevision)) {
-              if (!staleWrapper) removeDiscardStateStylesheet(cleanupSessionId);
+              if (staleWrappers.length === 0) removeDiscardStateStylesheet(cleanupSessionId);
               else watchForDiscardedFrameworkWrapperRemoval(cleanupSessionId);
               return;
             }
             removeDiscardStateStylesheet(cleanupSessionId);
-            if (staleWrapper) location.reload();
+            // A reload restores every wrapper's original at once, so there is
+            // nothing per-wrapper to do here.
+            if (staleWrappers.length > 0) location.reload();
           }, 2000);
           return;
         }
-        releaseDiscardedStaticWrapper(lateWrapper, cleanupSessionId);
+        releaseDiscardedStaticWrappers(cleanupSessionId, lateWrappers);
       }, 2000);
     }
     hideBar(instantChrome);
@@ -9400,8 +9510,13 @@ void main() {
     return restoreSessionWithoutWrapper('browser_resumed_over_handled_wrapper');
   }
 
-  function resumeSession(recoveryRevision = liveInteractionRevision) {
-    const wrapper = document.querySelector('[data-impeccable-variants]');
+  function resumeSession(recoveryRevision = liveInteractionRevision, opts = {}) {
+    // Which path resumed matters in the journal: an init resume is a fresh
+    // page load, the deferred-wrapper scout is a mid-page-load arrival. Both
+    // used to log the same `browser_resumed`, which made issue #719 take a
+    // DOM reconstruction to diagnose.
+    const resumeReason = opts.reason || 'browser_resumed';
+    const wrapper = findAnyVariantsWrapper();
     const runtimeWrapper = wrapper || document.querySelector('[data-impeccable-carbonize]');
     if (restoreSessionSupersedingHandledWrapper(runtimeWrapper)) return true;
     if (scheduleHandledRuntimeWrapperReload(runtimeWrapper, recoveryRevision)) return false;
@@ -9500,16 +9615,38 @@ void main() {
 
     showBar(state === 'CYCLING' ? 'cycling' : 'generating');
     startScrollTracking();
-    // Build the params panel for the restored visible variant. Previously
-    // this was missed on page-reload resume: showVariantInDOM above fires
-    // refreshParamsPanel, but state was still IDLE at that moment so it
-    // hid. Now that state is CYCLING, re-fire.
-    if (state === 'CYCLING') refreshParamsPanel();
+    // A resume can BE the arrival, not just a re-entry after one. The server's
+    // generation preflight runs live-wrap with --defer-source-write, so the
+    // wrapper and every variant reach the DOM in one HMR batch, and the
+    // deferred-wrapper scout (constructed at init) runs before the variant
+    // MutationObserver (constructed at Go) on that batch. Finish the same
+    // transition the observer would have finished. Without hideShaderOverlay
+    // the generating shader stays frozen over the target and the session looks
+    // stuck at GENERATING while the bar already cycles (issue #719).
+    if (state === 'CYCLING') {
+      recoveryWaitingForAnchor = false;
+      hideShaderOverlay();
+      if (isInsert) finalizeInsertSession();
+      disableInlineEdit();
+      // Build the params panel for the restored visible variant. Previously
+      // this was missed on page-reload resume: showVariantInDOM above fires
+      // refreshParamsPanel, but state was still IDLE at that moment so it
+      // hid. Now that state is CYCLING, re-fire.
+      refreshParamsPanel();
+    }
     saveSession();
     if (arrivedVariants > 0 && arrivedVariants < expectedVariants) {
       sendCheckpoint('variants_progress');
     } else {
-      queueCheckpoint('browser_resumed');
+      queueCheckpoint(resumeReason);
+      // Only variants_progress and variants_ready count as publication
+      // progress. When the resume is the arrival, the observer never gets to
+      // report it (this function disconnects and re-creates it below, which
+      // drops the records it had already queued for this same batch), so
+      // without this the server never learns the variants were published.
+      if (arrivedVariants > 0 && arrivedVariants >= expectedVariants && expectedVariants > 0) {
+        sendCheckpoint('variants_ready');
+      }
     }
 
     // Start observing for more variants AFTER initial setup
@@ -12831,7 +12968,7 @@ void main() {
         const wrapper = document.querySelector('[data-impeccable-variants],[data-impeccable-carbonize]');
         if (!wrapper) return;
         scout.disconnect();
-        if (resumeSession(deferredResumeRevision)) {
+        if (resumeSession(deferredResumeRevision, { reason: 'browser_resumed_deferred_wrapper' })) {
           console.log('[impeccable] Resumed deferred session ' + currentSessionId + ' (post-hydration).');
         }
       });
