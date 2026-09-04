@@ -1,1 +1,1 @@
-{ "name": "web", "private": true, "type": "module", "devDependencies": { "vite": "^8.0.0" } }
+{ "name": "web", "private": true, "type": "module", "devDependencies": { "@vitejs/plugin-react": "^5.0.0", "vite": "^8.0.0" } }
