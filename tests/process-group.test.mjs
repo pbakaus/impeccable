@@ -13,7 +13,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { killGroupSync, stopGroup, trackChildExit } from '../scripts/lib/process-group.mjs';
+import {
+  createGroupShutdown,
+  killGroupSync,
+  stopGroup,
+  trackChildExit,
+} from '../scripts/lib/process-group.mjs';
 
 const POSIX = process.platform !== 'win32';
 
@@ -104,5 +109,92 @@ describe('killGroupSync', () => {
     const running = spawnObedient();
     await stopGroup(running, { graceMs: 5_000 });
     assert.equal(killGroupSync(running), false);
+  });
+});
+
+describe('createGroupShutdown', () => {
+  const posixOnly = { skip: POSIX ? false : 'process groups and SIGTERM are POSIX-only' };
+
+  function spy() {
+    const codes = [];
+    return { codes, exit: (code) => codes.push(code) };
+  }
+
+  it('a second signal kills the group instead of abandoning the escalation', posixOnly, async () => {
+    // The regression: the first handler used to clear the only reference to
+    // the group before awaiting, so the second signal killed nothing and its
+    // exit walked away from an escalation that was still in flight. Because
+    // the suite is spawned detached, it then outlived the runner, which is the
+    // exact leak this whole change exists to close.
+    const running = spawnStubborn();
+    const { pid } = running.child;
+    await new Promise((r) => setTimeout(r, 250));
+
+    const { codes, exit } = spy();
+    const shutdown = createGroupShutdown({ exit, graceMs: 30_000 });
+    shutdown.track(running);
+
+    const first = shutdown.onSignal(130);
+    await new Promise((r) => setTimeout(r, 150));
+
+    const startedAt = Date.now();
+    await shutdown.onSignal(130);
+    await running.exited;
+    const elapsed = Date.now() - startedAt;
+
+    assert.equal(isAlive(pid), false, 'the second signal must end the group');
+    assert.ok(elapsed < 2_000, `should not wait out the 30s grace, took ${elapsed}ms`);
+    assert.equal(codes[0], 130);
+    await first;
+  });
+
+  it('ends the group on the first signal when it exits promptly', posixOnly, async () => {
+    const running = spawnObedient();
+    const { pid } = running.child;
+    const { codes, exit } = spy();
+    const shutdown = createGroupShutdown({ exit, graceMs: 5_000 });
+    shutdown.track(running);
+
+    const startedAt = Date.now();
+    await shutdown.onSignal(143);
+    assert.ok(Date.now() - startedAt < 1_000);
+    assert.deepEqual(codes, [143]);
+    assert.equal(isAlive(pid), false);
+  });
+
+  it('onExit still reaches a group a shutdown is in the middle of stopping', posixOnly, async () => {
+    const running = spawnStubborn();
+    const { pid } = running.child;
+    await new Promise((r) => setTimeout(r, 250));
+
+    const { exit } = spy();
+    const shutdown = createGroupShutdown({ exit, graceMs: 30_000 });
+    shutdown.track(running);
+    const inFlight = shutdown.onSignal(130);
+    await new Promise((r) => setTimeout(r, 150));
+
+    // `current` is null by now; the handle lives in `stopping`.
+    assert.equal(shutdown.onExit(), true);
+    await running.exited;
+    assert.equal(isAlive(pid), false);
+    await inFlight;
+  });
+
+  it('exits cleanly when no group is running', async () => {
+    const { codes, exit } = spy();
+    const shutdown = createGroupShutdown({ exit });
+    await shutdown.onSignal(129);
+    assert.deepEqual(codes, [129]);
+    assert.equal(shutdown.onExit(), false);
+  });
+
+  it('reports that it is shutting down, so a normal exit is not misread', posixOnly, async () => {
+    const running = spawnObedient();
+    const shutdown = createGroupShutdown({ exit: () => {}, graceMs: 5_000 });
+    shutdown.track(running);
+    assert.equal(shutdown.shuttingDown, false);
+    const done = shutdown.onSignal(130);
+    assert.equal(shutdown.shuttingDown, true);
+    await done;
   });
 });

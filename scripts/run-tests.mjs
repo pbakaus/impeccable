@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_SUITES, OPT_IN_SUITES, SUITES, expandSuites } from './test-suites.mjs';
-import { killGroupSync, stopGroup, trackChildExit } from './lib/process-group.mjs';
+import { createGroupShutdown, trackChildExit } from './lib/process-group.mjs';
 import {
   REPO_ENV,
   REPO_PATH_ENV,
@@ -39,31 +39,13 @@ if (args.includes('--cleanup')) {
  * file may use spawnSync: a blocked event loop cannot run the signal handlers
  * that make that guarantee, and cannot reap the child it is waiting on either.
  */
-let currentChild = null;
-let shuttingDown = false;
+const shutdown = createGroupShutdown();
 
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
-  process.on(sig, () => { void shutdown(sig); });
+  process.on(sig, () => { void shutdown.onSignal(exitCodeForSignal(sig)); });
 }
-process.on('exit', () => {
-  // Nothing can be awaited here, so this is the one path that does not wait.
-  const running = currentChild;
-  currentChild = null;
-  killGroupSync(running);
-});
-
-async function shutdown(sig) {
-  const running = currentChild;
-  currentChild = null;
-  if (shuttingDown) {
-    // A second Ctrl-C means "stop waiting". Skip the grace period entirely.
-    killGroupSync(running);
-    process.exit(exitCodeForSignal(sig));
-  }
-  shuttingDown = true;
-  await stopGroup(running);
-  process.exit(exitCodeForSignal(sig));
-}
+// Nothing can be awaited here, so this is the one path that does not wait.
+process.on('exit', () => shutdown.onExit());
 
 /** The shell convention for "killed by signal N": 130 SIGINT, 143 SIGTERM, 129 SIGHUP. */
 function exitCodeForSignal(sig) {
@@ -136,16 +118,16 @@ function runProcess(cmd, args, { env }) {
     });
     // Registered before the handlers below, so `hasExited` is already set by
     // the time they run and a shutdown mid-exit does not signal a dead pid.
-    currentChild = trackChildExit(child);
+    shutdown.track(trackChildExit(child));
 
     child.on('error', (err) => {
-      currentChild = null;
+      shutdown.release();
       console.error(err.message);
       process.exit(1);
     });
     child.on('exit', (code) => {
-      currentChild = null;
-      if (shuttingDown) return;
+      shutdown.release();
+      if (shutdown.shuttingDown) return;
       if (code !== 0) {
         // Leaked servers are still worth reporting on a failing suite: a
         // failure before teardown is one of the ways they are left behind.

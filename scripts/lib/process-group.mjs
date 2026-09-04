@@ -79,3 +79,68 @@ function raceExit(running, ms) {
     });
   });
 }
+
+/**
+ * The runner's shutdown state machine: which group is ours, and how it ends.
+ *
+ * Kept here rather than as loose module state in the runner because the
+ * interesting case is a state bug, not a signalling one. The first signal hands
+ * the group off from `current` to `stopping` and then awaits the grace period.
+ * A second signal has to be able to reach that same handle, or it kills nothing
+ * and `exit` abandons the escalation still in flight, leaving a detached suite
+ * running after the runner is gone. Clearing one reference without holding the
+ * other is exactly how that happens.
+ *
+ * @param {object} [opts]
+ * @param {(code: number) => void} [opts.exit]  injectable for tests; in
+ *        production this never returns, so a shutdown that has been overtaken
+ *        by a second signal simply stops there.
+ */
+export function createGroupShutdown({ exit = (code) => process.exit(code), graceMs = 2000 } = {}) {
+  let current = null;
+  let stopping = null;
+  let shuttingDown = false;
+
+  return {
+    /** Adopt a freshly spawned group. */
+    track(running) {
+      current = running;
+      return running;
+    },
+
+    /** The group finished on its own; nothing left to end. */
+    release() {
+      current = null;
+    },
+
+    get shuttingDown() {
+      return shuttingDown;
+    },
+
+    /** A termination signal arrived. The second one stops waiting. */
+    async onSignal(exitCode) {
+      if (shuttingDown) {
+        // Still inside the first shutdown's grace period. Do not wait it out:
+        // kill the handle that shutdown is holding, which `current` no longer
+        // is, and leave.
+        killGroupSync(stopping);
+        exit(exitCode);
+        return;
+      }
+      shuttingDown = true;
+      stopping = current;
+      current = null;
+      await stopGroup(stopping, { graceMs });
+      stopping = null;
+      exit(exitCode);
+    },
+
+    /** `process.on('exit')`: the last resort, and the one that cannot wait. */
+    onExit() {
+      const running = current || stopping;
+      current = null;
+      stopping = null;
+      return killGroupSync(running);
+    },
+  };
+}
