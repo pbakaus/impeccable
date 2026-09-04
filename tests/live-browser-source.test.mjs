@@ -470,7 +470,7 @@ describe('live-browser source contracts', () => {
     assert.match(recovery, /if \(staleWrapper\) location\.reload\(\);/);
     assert.match(
       SOURCE,
-      /function resumeSession\(recoveryRevision = liveInteractionRevision\)[\s\S]{0,250}?\[data-impeccable-carbonize\][\s\S]{0,180}?scheduleHandledRuntimeWrapperReload\(runtimeWrapper, recoveryRevision\)/,
+      /function resumeSession\(recoveryRevision = liveInteractionRevision, opts = \{\}\)[\s\S]{0,700}?\[data-impeccable-carbonize\][\s\S]{0,180}?scheduleHandledRuntimeWrapperReload\(runtimeWrapper, recoveryRevision\)/,
       'resume must inspect handled carbonize wrappers before clearing handled state',
     );
     assert.match(
@@ -526,9 +526,65 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /const deferredResumeRevision = liveInteractionRevision;[\s\S]{0,350}?const scout = new MutationObserver[\s\S]{0,350}?resumeSession\(deferredResumeRevision\)/,
-      'the deferred-wrapper scout must retain its originating interaction revision',
+      /const deferredResumeRevision = liveInteractionRevision;[\s\S]{0,350}?const scout = new MutationObserver[\s\S]{0,400}?resumeSession\(deferredResumeRevision, \{ reason: 'browser_resumed_deferred_wrapper' \}\)/,
+      'the deferred-wrapper scout must retain its originating interaction revision and name itself in the journal',
     );
+  });
+
+  it('finishes the cycling transition when the resume is the arrival (#719)', () => {
+    // The server's generation preflight runs live-wrap with
+    // --defer-source-write, so the wrapper and every variant reach the DOM in
+    // one HMR batch. The deferred-wrapper scout is constructed at init, the
+    // variant MutationObserver at Go, and observer callbacks run in
+    // construction order, so on that batch the scout resumes first and
+    // resumeSession IS the transition into CYCLING. It has to finish the same
+    // transition the observer would have: leaving the generating shader up
+    // paints a frozen capture of the original over a DOM that already holds
+    // the variants, which is the stuck loader from issue #719.
+    const resumeStart = SOURCE.indexOf('function resumeSession(');
+    const resumeEnd = SOURCE.indexOf('\n  //', resumeStart);
+    const resume = SOURCE.slice(resumeStart, resumeEnd);
+    assert.match(
+      resume,
+      /if \(state === 'CYCLING'\) \{[\s\S]{0,200}?hideShaderOverlay\(\);/,
+      'a resume into CYCLING must take the generating shader down',
+    );
+    assert.match(
+      resume,
+      /if \(state === 'CYCLING'\) \{[\s\S]{0,700}?refreshParamsPanel\(\);/,
+      'a resume into CYCLING must still rebuild the params panel',
+    );
+    // Only variants_progress|variants_ready count as publication progress, so
+    // a resume that already holds every variant has to report one of them or
+    // the server never learns the generation was published.
+    assert.match(
+      resume,
+      /queueCheckpoint\(resumeReason\);[\s\S]{0,500}?sendCheckpoint\('variants_ready'\)/,
+      'a complete resume must report variants_ready, not only browser_resumed',
+    );
+  });
+
+  it('prefers the wrapper that actually holds variants over the first match (#719)', () => {
+    // A target inside a `.map()` renders one wrapper per item, and an agent
+    // that relocates the wrapper out of the shared primitive live-wrap
+    // scaffolded leaves an empty one behind. First match can then pin a
+    // scaffold with no variants and strand the session at 0/N.
+    const start = SOURCE.indexOf('function findVariantsWrapper(sessionId)');
+    assert.ok(start > 0, 'findVariantsWrapper must exist');
+    const helper = SOURCE.slice(start, SOURCE.indexOf('\n  function startVariantObserver(', start));
+    assert.match(helper, /if \(matches\.length < 2\) return matches\[0\] \|\| null;/);
+    assert.match(
+      helper,
+      /candidate\.querySelector\('\[data-impeccable-variant\]:not\(\[data-impeccable-variant="original"\]\)'\)[\s\S]{0,80}?return candidate;/,
+      'the preferred wrapper is the one holding non-original variants',
+    );
+    assert.match(helper, /return matches\[0\];/, 'with no populated wrapper the old first match still wins');
+    for (const caller of [
+      'const wrapper = findVariantsWrapper(sessionId);',
+      'const wrapper = findVariantsWrapper(null);',
+    ]) {
+      assert.ok(SOURCE.includes(caller), `${caller} should be how the resolvers look a wrapper up`);
+    }
   });
 
   it('invalidates nullable deferred recovery as soon as a replacement edit starts configuring', () => {

@@ -606,6 +606,35 @@ export async function clickGo(page) {
 }
 
 /**
+ * The generating shader is the visible loader: a frozen capture of the
+ * original painted over the target while variants are being written. Every
+ * transition into CYCLING has to take it down, so a cycling bar with the
+ * shader still up is the stuck loader from issue #719, not a cosmetic
+ * detail. The transition is synchronous, so a short window is generous.
+ */
+async function assertGeneratingShaderCleared(page) {
+  const stillUp = await page
+    .waitForFunction(
+      () => !(window.__impeccableLiveQuery || document.querySelector.bind(document))('#impeccable-live-shader'),
+      undefined,
+      { timeout: 5_000 },
+    )
+    .then(() => false)
+    .catch(() => true);
+  if (stillUp) {
+    const err = new Error(
+      'CYCLING reached but the generating shader overlay (#impeccable-live-shader) is still up: '
+      + 'the loader never handed off to the variant cycler',
+    );
+    // Cycling was reached, so the recovery paths in waitForCyclingRobust
+    // (retrace preActions, reload) have nothing to recover and a reload would
+    // hide the defect by taking the shader down with the page.
+    err.impeccableNoRetry = true;
+    throw err;
+  }
+}
+
+/**
  * Wait for the bar to enter CYCLING state — happens after the agent's
  * variants land in the DOM via HMR and the MutationObserver counts them.
  *
@@ -636,6 +665,7 @@ export async function waitForCycling(page, expectedCount, { timeout = 30_000 } =
     { barSel: BAR_ID, expected: expectedCount },
     { timeout },
     );
+    await assertGeneratingShaderCleared(page);
   } catch (err) {
     if (process.env.IMPECCABLE_E2E_DEBUG) {
       const snapshot = await page.evaluate((barSel) => {

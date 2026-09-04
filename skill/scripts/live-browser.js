@@ -6907,6 +6907,27 @@
   // MutationObserver for progressive variant reveal
   //
 
+  // A session id can have more than one wrapper in the DOM: the target may sit
+  // inside a `.map()` callback (the wrapper renders once per item), or the
+  // agent may have relocated the wrapper out of the shared primitive live-wrap
+  // scaffolded into. A plain first match can then pin an empty scaffold while
+  // the real variants sit in a later wrapper, which strands the session at
+  // 0/N. Prefer a wrapper that actually holds variants. With zero or one match
+  // this is exactly the querySelector it replaces.
+  function findVariantsWrapper(sessionId) {
+    const selector = sessionId
+      ? '[data-impeccable-variants="' + sessionId + '"]'
+      : '[data-impeccable-variants]';
+    const matches = document.querySelectorAll(selector);
+    if (matches.length < 2) return matches[0] || null;
+    for (const candidate of matches) {
+      if (candidate.querySelector('[data-impeccable-variant]:not([data-impeccable-variant="original"])')) {
+        return candidate;
+      }
+    }
+    return matches[0];
+  }
+
   function startVariantObserver(sessionId) {
     let updating = false; // re-entrancy guard
 
@@ -6936,7 +6957,7 @@
       }
       if (!dominated) return;
 
-      const wrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+      const wrapper = findVariantsWrapper(sessionId);
       if (!wrapper) return;
 
       const variants = wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])');
@@ -9059,7 +9080,7 @@ void main() {
   }
 
   function restoreFromActiveSessions(activeSessions, reason) {
-    const wrapper = document.querySelector('[data-impeccable-variants]');
+    const wrapper = findVariantsWrapper(null);
     if (wrapper && !isFrameworkComponentPreviewMode(wrapper.dataset.impeccablePreview)) return false;
     if (svelteComponentSession?.sessionId === currentSessionId) return false;
     return restoreSessionWithoutWrapper(reason || 'sse_connected', activeSessions);
@@ -9400,8 +9421,13 @@ void main() {
     return restoreSessionWithoutWrapper('browser_resumed_over_handled_wrapper');
   }
 
-  function resumeSession(recoveryRevision = liveInteractionRevision) {
-    const wrapper = document.querySelector('[data-impeccable-variants]');
+  function resumeSession(recoveryRevision = liveInteractionRevision, opts = {}) {
+    // Which path resumed matters in the journal: an init resume is a fresh
+    // page load, the deferred-wrapper scout is a mid-page-load arrival. Both
+    // used to log the same `browser_resumed`, which made issue #719 take a
+    // DOM reconstruction to diagnose.
+    const resumeReason = opts.reason || 'browser_resumed';
+    const wrapper = findVariantsWrapper(null);
     const runtimeWrapper = wrapper || document.querySelector('[data-impeccable-carbonize]');
     if (restoreSessionSupersedingHandledWrapper(runtimeWrapper)) return true;
     if (scheduleHandledRuntimeWrapperReload(runtimeWrapper, recoveryRevision)) return false;
@@ -9500,16 +9526,38 @@ void main() {
 
     showBar(state === 'CYCLING' ? 'cycling' : 'generating');
     startScrollTracking();
-    // Build the params panel for the restored visible variant. Previously
-    // this was missed on page-reload resume: showVariantInDOM above fires
-    // refreshParamsPanel, but state was still IDLE at that moment so it
-    // hid. Now that state is CYCLING, re-fire.
-    if (state === 'CYCLING') refreshParamsPanel();
+    // A resume can BE the arrival, not just a re-entry after one. The server's
+    // generation preflight runs live-wrap with --defer-source-write, so the
+    // wrapper and every variant reach the DOM in one HMR batch, and the
+    // deferred-wrapper scout (constructed at init) runs before the variant
+    // MutationObserver (constructed at Go) on that batch. Finish the same
+    // transition the observer would have finished. Without hideShaderOverlay
+    // the generating shader stays frozen over the target and the session looks
+    // stuck at GENERATING while the bar already cycles (issue #719).
+    if (state === 'CYCLING') {
+      recoveryWaitingForAnchor = false;
+      hideShaderOverlay();
+      if (isInsert) finalizeInsertSession();
+      disableInlineEdit();
+      // Build the params panel for the restored visible variant. Previously
+      // this was missed on page-reload resume: showVariantInDOM above fires
+      // refreshParamsPanel, but state was still IDLE at that moment so it
+      // hid. Now that state is CYCLING, re-fire.
+      refreshParamsPanel();
+    }
     saveSession();
     if (arrivedVariants > 0 && arrivedVariants < expectedVariants) {
       sendCheckpoint('variants_progress');
     } else {
-      queueCheckpoint('browser_resumed');
+      queueCheckpoint(resumeReason);
+      // Only variants_progress and variants_ready count as publication
+      // progress. When the resume is the arrival, the observer never gets to
+      // report it (this function disconnects and re-creates it below, which
+      // drops the records it had already queued for this same batch), so
+      // without this the server never learns the variants were published.
+      if (arrivedVariants > 0 && arrivedVariants >= expectedVariants && expectedVariants > 0) {
+        sendCheckpoint('variants_ready');
+      }
     }
 
     // Start observing for more variants AFTER initial setup
@@ -12831,7 +12879,7 @@ void main() {
         const wrapper = document.querySelector('[data-impeccable-variants],[data-impeccable-carbonize]');
         if (!wrapper) return;
         scout.disconnect();
-        if (resumeSession(deferredResumeRevision)) {
+        if (resumeSession(deferredResumeRevision, { reason: 'browser_resumed_deferred_wrapper' })) {
           console.log('[impeccable] Resumed deferred session ' + currentSessionId + ' (post-hydration).');
         }
       });
