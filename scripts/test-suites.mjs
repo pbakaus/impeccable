@@ -122,6 +122,7 @@ export const SUITES = {
         files: [
           'tests/live-reference.test.mjs',
           'tests/live-browser-ignores.test.mjs',
+          'tests/live-browser-source.test.mjs',
           'tests/live-e2e-agent-output.test.mjs',
           'tests/live-e2e-cli-options.test.mjs',
           'tests/live-e2e-llm-agent.test.mjs',
