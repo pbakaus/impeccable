@@ -39,7 +39,8 @@ pub fn installed_rule_pack() -> Option<&'static dyn RulePack> {
 }
 
 /// `collectBrowserFindings()`: `config_json` is `{ extensionMode,
-/// disabledRules, designSystem, lineLengthMax }`; returns
+/// disabledRules, disabledValues, skipScan, designSystem, lineLengthMax }`;
+/// returns
 /// `{ groups: [{ el, findings }], pageLevel: [...] }`.
 #[wasm_bindgen]
 pub fn collect_browser_findings(config_json: &str) -> String {

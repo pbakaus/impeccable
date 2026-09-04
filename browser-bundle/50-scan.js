@@ -68,6 +68,11 @@ if (IS_BROWSER && !__impeccable) {
     return JSON.stringify({
       extensionMode: EXTENSION_MODE,
       disabledRules: Array.isArray(config.disabledRules) ? config.disabledRules : [],
+      // The live overlay resolves the project's ignoreValues for this page
+      // and forwards the survivors here (live-browser-ignores.js); the core
+      // applies them where the findings are assembled, because the overlay
+      // draws its markers from the collected findings.
+      disabledValues: Array.isArray(config.disabledValues) ? config.disabledValues : [],
       designSystem: config.designSystem == null ? null : config.designSystem,
       lineLengthMax: config.lineLengthMax == null ? null : config.lineLengthMax,
       skipScan: config.skipScan === true,

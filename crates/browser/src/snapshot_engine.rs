@@ -190,6 +190,7 @@ pub fn browser_config(
     BrowserConfig {
         extension_mode: false,
         disabled_rules: Vec::new(),
+        disabled_values: Vec::new(),
         skip_scan: false,
         design_system: if design_system.is_null() {
             None

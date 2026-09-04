@@ -86,4 +86,6 @@ pub mod text_collectors;
 pub mod visual;
 
 pub use dom::{Dom, ElId, Rect};
-pub use impeccable_foundation::browser::{BrowserConfig, BrowserFinding, ElFinding, FindingGroup};
+pub use impeccable_foundation::browser::{
+    BrowserConfig, BrowserFinding, DisabledValue, ElFinding, FindingGroup,
+};

@@ -76,6 +76,57 @@ pub struct FindingGroup {
     pub findings: Vec<BrowserFinding>,
 }
 
+/// One `{ rule, value }` entry of `window.__IMPECCABLE_CONFIG__.disabledValues`:
+/// a project `ignoreValues` waiver the live overlay resolved for this page
+/// (live-browser-ignores.js) and forwarded for the scan to apply where the
+/// findings are assembled. Rule and value are carried raw; the driver
+/// normalizes them the way the CLI's `isIgnoredFindingValue` does.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct DisabledValue {
+    pub rule: String,
+    pub value: String,
+}
+
+/// JS `.filter(e => e && typeof e === 'object' && e.rule && e.value)` over
+/// whatever the page put on the config. `__IMPECCABLE_CONFIG__` arrives in
+/// whatever state it was written in, so a hand-edited entry of the wrong
+/// shape is dropped rather than failing the parse of the whole config.
+fn de_disabled_values<'de, D>(de: D) -> Result<Vec<DisabledValue>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw = serde_json::Value::deserialize(de)?;
+    let Some(items) = raw.as_array() else {
+        return Ok(Vec::new());
+    };
+    Ok(items
+        .iter()
+        .filter_map(|entry| {
+            let obj = entry.as_object()?;
+            // JS `String(e.rule)` after the truthiness filter: an empty
+            // string and a numeric 0 are both falsy, so both drop the entry.
+            let text = |key: &str| match obj.get(key) {
+                Some(serde_json::Value::String(s)) => s.clone(),
+                Some(serde_json::Value::Number(n)) => {
+                    let v = n.as_f64().unwrap_or(0.0);
+                    if v == 0.0 {
+                        String::new()
+                    } else {
+                        crate::js::number_to_string(v)
+                    }
+                }
+                _ => String::new(),
+            };
+            let rule = text("rule");
+            let value = text("value");
+            if rule.is_empty() || value.is_empty() {
+                return None;
+            }
+            Some(DisabledValue { rule, value })
+        })
+        .collect())
+}
+
 /// What the bundle passes into `collectBrowserFindings`: extension mode and
 /// the relevant slice of `window.__IMPECCABLE_CONFIG__`.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -87,6 +138,13 @@ pub struct BrowserConfig {
     /// extension mode, exactly as the JS reads it).
     #[serde(default)]
     pub disabled_rules: Vec<String>,
+    /// `window.__IMPECCABLE_CONFIG__?.disabledValues || []` (only honored in
+    /// extension mode, exactly as the JS reads it). `disabled_rules` waives
+    /// whole rules; these waive one reported value of one rule, which is how
+    /// a project entry like `overused-font = "geist mono"` reaches the
+    /// overlay. Serialized as `disabledValues`.
+    #[serde(default, deserialize_with = "de_disabled_values")]
+    pub disabled_values: Vec<DisabledValue>,
     /// `window.__IMPECCABLE_CONFIG__?.skipScan === true` (only honored in
     /// extension mode): the page is waived wholesale by detector.ignoreFiles,
     /// so every scan stage answers empty.

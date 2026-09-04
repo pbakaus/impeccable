@@ -110,6 +110,7 @@
     return JSON.stringify({
       extensionMode: true,
       disabledRules: Array.isArray(config.disabledRules) ? config.disabledRules : [],
+      disabledValues: Array.isArray(config.disabledValues) ? config.disabledValues : [],
       designSystem: config.designSystem == null ? null : config.designSystem,
       lineLengthMax: config.lineLengthMax == null ? null : config.lineLengthMax,
       skipScan: config.skipScan === true,

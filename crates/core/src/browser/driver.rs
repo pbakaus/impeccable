@@ -6,7 +6,7 @@
 #![allow(unused_imports)]
 use super::dom::{tag_lower, Dom, ElId, Rect};
 use super::element_checks::check_element_borders_dom;
-use super::{BrowserConfig, BrowserFinding, FindingGroup};
+use super::{BrowserConfig, BrowserFinding, DisabledValue, FindingGroup};
 use crate::js_ext_a::JsMap;
 use serde::Serialize;
 
@@ -1065,6 +1065,233 @@ fn hits(v: Vec<crate::checks::rules::RuleHit>) -> Vec<BrowserFinding> {
     v.iter().map(BrowserFinding::from_hit).collect()
 }
 
+// ─── value-level suppression (JS: index.mjs#collectBrowserFindings tail) ────
+//
+// `disabledRules` waives whole rules; this applies the config's remaining
+// `ignoreValues` entries, which the CLI filters through
+// `isIgnoredFindingValue` (crates/detect config.rs), so a project waiver like
+// `overused-font = "geist mono"` reaches the overlay and the extension too.
+
+/// The six rules whose findings carry a matchable value; keep in step with
+/// `extract_finding_ignore_value` in crates/detect. Everything else is
+/// suppressed by rule or by file scope, both already resolved into
+/// `disabledRules` before the scan message was sent.
+const DIRECT_VALUE_RULES: &[&str] = &[
+    "overused-font",
+    "bounce-easing",
+    "design-system-font",
+    "design-system-color",
+    "design-system-radius",
+    "design-system-font-size",
+];
+
+static EDGE_QUOTE_RE: once_cell::sync::Lazy<regex::Regex> =
+    once_cell::sync::Lazy::new(|| regex::Regex::new(r#"^["']|["']$"#).expect("EDGE_QUOTE_RE"));
+static WS_RUN_RE: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+    regex::Regex::new(&format!("[{}]+", crate::js::WS_CHARS)).expect("WS_RUN_RE")
+});
+static PRIMARY_FONT_RE: once_cell::sync::Lazy<regex::Regex> =
+    once_cell::sync::Lazy::new(|| {
+        regex::Regex::new(&format!(
+            "(?i:Primary font):[{}]*([^()\n;]+)",
+            crate::js::WS_CHARS
+        ))
+        .expect("PRIMARY_FONT_RE")
+    });
+static GOOGLE_LABEL_RE: once_cell::sync::Lazy<regex::Regex> =
+    once_cell::sync::Lazy::new(|| {
+        regex::Regex::new(&format!(
+            "(?i:Google Fonts):[{}]*([^()\n;]+)",
+            crate::js::WS_CHARS
+        ))
+        .expect("GOOGLE_LABEL_RE")
+    });
+static FAMILY_RE: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+    regex::Regex::new(&format!(
+        r#"(?i:font-family)[{ws}]*:[{ws}]*["']?([^'",;\n]+)"#,
+        ws = crate::js::WS_CHARS
+    ))
+    .expect("FAMILY_RE")
+});
+static COLOR_HEX_RE: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+    regex::Regex::new("^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$").expect("COLOR_HEX_RE")
+});
+static COLOR_RGB_RE: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+    regex::Regex::new(r"^rgba?\(([\s\S]*)\)$").expect("COLOR_RGB_RE")
+});
+static COLOR_CHANNEL_RE: once_cell::sync::Lazy<regex::Regex> =
+    once_cell::sync::Lazy::new(|| {
+        regex::Regex::new(r"^(-?\d*\.?\d+)(%)?$").expect("COLOR_CHANNEL_RE")
+    });
+
+/// JS `_normValue`: trim, drop one edge quote at each end, `+` to space,
+/// collapse whitespace runs, lowercase.
+pub fn normalize_browser_ignore_value(value: &str) -> String {
+    let t = crate::js::trim(value);
+    let t = EDGE_QUOTE_RE.replace_all(t, "");
+    let t = t.replace('+', " ");
+    let t = WS_RUN_RE.replace_all(&t, " ");
+    crate::js::to_lower_case(&t)
+}
+
+/// JS `_colorKey`: `design-system-color` compares by color value, not by
+/// spelling, because the browser reports computed `rgb(...)` strings while
+/// waivers are usually written as hex. Mirrors `colorIgnoreKey` in
+/// crates/detect for the hex and `rgb()`/`rgba()` forms; hsl stays CLI-only,
+/// as it was in the JS engine.
+pub fn browser_color_ignore_key(value: &str) -> String {
+    let text = crate::js::to_lower_case(crate::js::trim(value));
+    if let Some(m) = COLOR_HEX_RE.captures(&text) {
+        let digits = m.get(1).unwrap().as_str();
+        let expanded: String = if digits.len() <= 4 {
+            digits.chars().flat_map(|c| [c, c]).collect()
+        } else {
+            digits.to_string()
+        };
+        let bytes: Vec<u32> = expanded
+            .as_bytes()
+            .chunks(2)
+            .map(|c| u32::from_str_radix(std::str::from_utf8(c).unwrap_or("0"), 16).unwrap_or(0))
+            .collect();
+        let a = bytes.get(3).copied().unwrap_or(255);
+        return format!("{},{},{},{}", bytes[0], bytes[1], bytes[2], a);
+    }
+    let Some(m) = COLOR_RGB_RE.captures(&text) else {
+        return String::new();
+    };
+    // JS: body.trim().replace(/\s*\/\s*/g, ' / '), then split on ',' with the
+    // trailing `a / b` group re-split, or on whitespace when there is no comma.
+    let body = crate::js::trim(m.get(1).unwrap().as_str()).to_string();
+    let body = slash_spaced(&body);
+    let parts: Vec<String> = if body.contains(',') {
+        let mut parts: Vec<String> = body
+            .split(',')
+            .map(|p| crate::js::trim(p).to_string())
+            .filter(|p| !p.is_empty())
+            .collect();
+        if let Some(last) = parts.last().cloned() {
+            if last.contains('/') {
+                parts.pop();
+                parts.extend(
+                    last.split('/')
+                        .map(|p| crate::js::trim(p).to_string())
+                        .filter(|p| !p.is_empty()),
+                );
+            }
+        }
+        parts
+    } else {
+        WS_RUN_RE
+            .split(&body)
+            .filter(|p| !p.is_empty() && *p != "/")
+            .map(|p| p.to_string())
+            .collect()
+    };
+    if parts.len() < 3 || parts.len() > 4 {
+        return String::new();
+    }
+    let channel = |raw: &str, is_alpha: bool| -> Option<f64> {
+        let m = COLOR_CHANNEL_RE.captures(crate::js::trim(raw))?;
+        let mut v: f64 = m.get(1).unwrap().as_str().parse().ok()?;
+        if m.get(2).is_some() {
+            v = if is_alpha { v / 100.0 } else { v * 2.55 };
+        }
+        let max = if is_alpha { 1.0 } else { 255.0 };
+        if !v.is_finite() || v < 0.0 || v > max {
+            return None;
+        }
+        Some(if is_alpha { v } else { v.round() })
+    };
+    let (Some(r), Some(g), Some(b)) = (
+        channel(&parts[0], false),
+        channel(&parts[1], false),
+        channel(&parts[2], false),
+    ) else {
+        return String::new();
+    };
+    let a = match parts.get(3) {
+        None => 1.0,
+        Some(p) => match channel(p, true) {
+            Some(v) => v,
+            None => return String::new(),
+        },
+    };
+    format!(
+        "{},{},{},{}",
+        crate::js::number_to_string(r),
+        crate::js::number_to_string(g),
+        crate::js::number_to_string(b),
+        crate::js::number_to_string((a * 255.0).round())
+    )
+}
+
+/// JS `.replace(/\s*\/\s*/g, ' / ')`.
+fn slash_spaced(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let chars: Vec<char> = text.chars().collect();
+    let is_ws = |c: char| c.is_whitespace() || c == '\u{feff}';
+    let mut i = 0;
+    while i < chars.len() {
+        let start = i;
+        while i < chars.len() && is_ws(chars[i]) {
+            i += 1;
+        }
+        if i < chars.len() && chars[i] == '/' {
+            i += 1;
+            while i < chars.len() && is_ws(chars[i]) {
+                i += 1;
+            }
+            out.push_str(" / ");
+            continue;
+        }
+        i = start;
+        out.push(chars[i]);
+        i += 1;
+    }
+    out
+}
+
+/// JS `_findingValue`: the value a finding of a value-scoped rule offers to a
+/// waiver, or empty when it offers none.
+fn browser_finding_ignore_value(f: &BrowserFinding) -> String {
+    if !DIRECT_VALUE_RULES.contains(&f.type_.as_str()) {
+        return String::new();
+    }
+    if let Some(direct) = f.ignore_value.as_deref().filter(|s| !s.is_empty()) {
+        return normalize_browser_ignore_value(direct);
+    }
+    // The CLI routes bounce-easing through extractMotionIgnoreValue and never
+    // the font regexes; without a direct ignoreValue there is no value to
+    // match, so do not invent one from unrelated CSS text.
+    if f.type_ == "bounce-easing" {
+        return String::new();
+    }
+    // The design-system checks set `ignoreValue` on their findings; the detail
+    // fallback catches overused-font, whose value lives in its sentence.
+    for re in [&*PRIMARY_FONT_RE, &*GOOGLE_LABEL_RE, &*FAMILY_RE] {
+        if let Some(m) = re.captures(&f.detail) {
+            return normalize_browser_ignore_value(m.get(1).unwrap().as_str());
+        }
+    }
+    String::new()
+}
+
+/// JS `_valueIgnored`.
+fn browser_value_ignored(f: &BrowserFinding, entries: &[(String, String)]) -> bool {
+    let value = browser_finding_ignore_value(f);
+    if value.is_empty() {
+        return false;
+    }
+    entries.iter().any(|(rule, entry_value)| {
+        rule == &f.type_
+            && (entry_value == &value
+                || (f.type_ == "design-system-color" && {
+                    let key = browser_color_ignore_key(entry_value);
+                    !key.is_empty() && key == browser_color_ignore_key(&value)
+                }))
+    })
+}
+
 /// JS: index.mjs#collectBrowserFindings()
 pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> CollectResult {
     use super::element_checks as ec;
@@ -1210,6 +1437,31 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
     // same attribution as the built-in checks that name their own element.
     if let Some(pack) = config.rule_pack {
         el_pass(&mut groups, pack.check_page_dom(dom));
+    }
+
+    // Value-level suppression runs last, over everything the passes produced,
+    // so a project waiver covers a rule pack's findings the same way it covers
+    // the built-in ones. JS: index.mjs#collectBrowserFindings() tail.
+    let disabled_values: Vec<(String, String)> = if config.extension_mode {
+        config
+            .disabled_values
+            .iter()
+            .map(|e| {
+                (
+                    crate::js::to_lower_case(crate::js::trim(&e.rule)),
+                    normalize_browser_ignore_value(&e.value),
+                )
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    if !disabled_values.is_empty() {
+        for group in groups.iter_mut() {
+            group.findings.retain(|f| !browser_value_ignored(f, &disabled_values));
+        }
+        groups.retain(|g| !g.findings.is_empty());
+        page_level.retain(|f| !browser_value_ignored(f, &disabled_values));
     }
 
     CollectResult { groups, page_level }
@@ -1420,6 +1672,170 @@ mod tests {
         let d = make_dom();
         let out = collect_browser_findings(&d, &non_ext);
         assert!(!out.groups.is_empty());
+    }
+
+    #[test]
+    fn skip_scan_covers_every_stage_of_the_collect_pass() {
+        // The visual-contrast stage is not part of this pass (it runs in the
+        // page, 50-scan.js), but everything the core produces has to be gone:
+        // element groups, page-level findings, and the rule pack.
+        let mut d = FakeDom::new();
+        let (html, body) = d.with_page();
+        let head = d.add(Some(html), "head");
+        let link = d.add(Some(head), "link");
+        d.set_attr(link, "href", "https://fonts.googleapis.com/css2?family=Poppins");
+        d.add_selector(link, "link[href*=\"fonts.googleapis.com/css\"]");
+        let p = d.add(Some(body), "p");
+        d.add_text(p, "Hello");
+        d.set_styles(p, &[("fontFamily", "Poppins, sans-serif")]);
+        d.el_mut(p).check_visibility = Some(true);
+        let ds = json!({ "present": true, "hasFonts": true, "allowedFonts": ["Inter"] });
+        let cfg = BrowserConfig {
+            extension_mode: true,
+            skip_scan: true,
+            design_system: Some(ds),
+            ..Default::default()
+        };
+        let out = collect_browser_findings(&d, &cfg);
+        assert!(out.groups.is_empty());
+        assert!(out.page_level.is_empty());
+    }
+
+    /// The waiver plumbing the live overlay depends on: `disabledValues`
+    /// entries resolved by live-browser-ignores.js suppress the matching
+    /// findings where the findings are assembled, since the overlay draws its
+    /// markers from what this pass returns. JS: index.mjs#collectBrowserFindings
+    /// value-level suppression (issue #639).
+    #[test]
+    fn disabled_values_suppress_matching_findings() {
+        let make_dom = || {
+            let mut d = FakeDom::new();
+            let (_h, body) = d.with_page();
+            let p = d.add(Some(body), "p");
+            d.add_text(p, "Hello");
+            d.set_styles(
+                p,
+                &[
+                    ("fontFamily", "Poppins, sans-serif"),
+                    ("color", "rgb(255, 0, 0)"),
+                    ("backgroundColor", "rgba(0, 0, 0, 0)"),
+                ],
+            );
+            d.el_mut(p).check_visibility = Some(true);
+            d
+        };
+        let ds = json!({
+            "present": true,
+            "hasFonts": true, "allowedFonts": ["Inter"],
+            "hasColors": true, "allowedColors": [{ "r": 10, "g": 20, "b": 30 }]
+        });
+        let base = BrowserConfig {
+            extension_mode: true,
+            design_system: Some(ds),
+            ..Default::default()
+        };
+        let types = |out: &CollectResult| -> Vec<String> {
+            out.groups
+                .iter()
+                .flat_map(|g| g.findings.iter().map(|f| f.type_.clone()))
+                .collect()
+        };
+
+        let unfiltered = collect_browser_findings(&make_dom(), &base);
+        assert!(types(&unfiltered).contains(&"design-system-font".to_string()));
+        assert!(types(&unfiltered).contains(&"design-system-color".to_string()));
+
+        // A font waiver drops its finding and leaves the unrelated one.
+        let font_waived = BrowserConfig {
+            disabled_values: vec![DisabledValue {
+                rule: "design-system-font".into(),
+                value: "Poppins".into(),
+            }],
+            ..base.clone()
+        };
+        let out = collect_browser_findings(&make_dom(), &font_waived);
+        assert!(!types(&out).contains(&"design-system-font".to_string()));
+        assert!(types(&out).contains(&"design-system-color".to_string()));
+
+        // Color waivers match by value, not by spelling: the browser reports
+        // computed rgb(...) and the waiver is written as hex.
+        let color_waived = BrowserConfig {
+            disabled_values: vec![DisabledValue {
+                rule: "design-system-color".into(),
+                value: "#ff0000".into(),
+            }],
+            ..base.clone()
+        };
+        let out = collect_browser_findings(&make_dom(), &color_waived);
+        assert!(!types(&out).contains(&"design-system-color".to_string()));
+        assert!(types(&out).contains(&"design-system-font".to_string()));
+
+        // A waiver for another rule's value changes nothing.
+        let unrelated = BrowserConfig {
+            disabled_values: vec![DisabledValue {
+                rule: "design-system-font".into(),
+                value: "Inter".into(),
+            }],
+            ..base.clone()
+        };
+        let out = collect_browser_findings(&make_dom(), &unrelated);
+        assert_eq!(types(&out), types(&unfiltered));
+
+        // Outside extension mode the config is whatever the page set, so the
+        // list is ignored, exactly as the JS read it.
+        let non_ext = BrowserConfig {
+            extension_mode: false,
+            ..font_waived
+        };
+        let out = collect_browser_findings(&make_dom(), &non_ext);
+        assert!(types(&out).contains(&"design-system-font".to_string()));
+    }
+
+    #[test]
+    fn disabled_values_parse_and_normalize_like_the_js() {
+        // JS `.filter(e => e && typeof e === 'object' && e.rule && e.value)`:
+        // a hand-edited __IMPECCABLE_CONFIG__ drops bad entries, it does not
+        // fail the whole config.
+        let cfg: BrowserConfig = serde_json::from_str(
+            r##"{"extensionMode":true,"disabledValues":[
+                {"rule":"overused-font","value":"Geist+Mono"},
+                {"rule":"design-system-font"},
+                {"value":"orphan"},
+                "nope",
+                {"rule":"design-system-color","value":"#FFF"}
+            ]}"##,
+        )
+        .unwrap();
+        assert_eq!(cfg.disabled_values.len(), 2);
+        assert_eq!(cfg.disabled_values[0].value, "Geist+Mono");
+        // A config with no disabledValues at all still parses.
+        let bare: BrowserConfig = serde_json::from_str(r#"{"extensionMode":true}"#).unwrap();
+        assert!(bare.disabled_values.is_empty());
+        let junk: BrowserConfig =
+            serde_json::from_str(r#"{"disabledValues":"not an array"}"#).unwrap();
+        assert!(junk.disabled_values.is_empty());
+
+        assert_eq!(normalize_browser_ignore_value("  \"Geist+Mono\" "), "geist mono");
+        assert_eq!(browser_color_ignore_key("#fff"), "255,255,255,255");
+        assert_eq!(browser_color_ignore_key("rgb(255, 0, 0)"), "255,0,0,255");
+        assert_eq!(
+            browser_color_ignore_key("rgb(255 255 255 / 50%)"),
+            "255,255,255,128"
+        );
+        // hsl stays CLI-only in the browser matcher, as it was in the JS.
+        assert_eq!(browser_color_ignore_key("hsl(0, 0%, 100%)"), "");
+        assert_eq!(browser_color_ignore_key("not a color"), "");
+
+        // bounce-easing without a direct ignoreValue offers no value: the CLI
+        // routes it through the motion extractor and never the font regexes.
+        let bounce = BrowserFinding::new("bounce-easing", "font-family: Poppins");
+        assert!(browser_finding_ignore_value(&bounce).is_empty());
+        let mut carried = BrowserFinding::new("overused-font", "Primary font: Poppins (etc)");
+        assert_eq!(browser_finding_ignore_value(&carried), "poppins");
+        carried.ignore_value = Some("Space Grotesk".into());
+        assert_eq!(browser_finding_ignore_value(&carried), "space grotesk");
+        // A rule outside the six offers nothing to match.
+        assert!(browser_finding_ignore_value(&BrowserFinding::new("glow-effect", "x")).is_empty());
     }
 
     #[test]
