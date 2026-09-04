@@ -64,6 +64,7 @@ export const SUITES = {
         files: [
           'tests/ci-test-plan.test.mjs',
           'tests/cli-shim.test.mjs',
+          'tests/publish-platform-packages.test.mjs',
           'tests/github-sheriff.test.mjs',
           'tests/hook-build.test.mjs',
           'tests/openai-plugin.test.mjs',

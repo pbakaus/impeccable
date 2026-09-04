@@ -67,6 +67,7 @@
     "release:cli": "node scripts/release.mjs cli",
     "release:ext": "node scripts/release.mjs extension",
     "release:engine": "node scripts/release.mjs engine",
+    "release:platform-packages": "node scripts/publish-platform-packages.mjs",
     "check:engine-release": "node scripts/check-engine-release.mjs"
   },
   "optionalDependencies": {
