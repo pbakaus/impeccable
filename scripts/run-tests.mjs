@@ -6,11 +6,13 @@ import { fileURLToPath } from 'node:url';
 import { DEFAULT_SUITES, OPT_IN_SUITES, SUITES, expandSuites } from './test-suites.mjs';
 import {
   REPO_ENV,
+  REPO_PATH_ENV,
   RUN_ID_ENV,
   alive,
   findLiveServers,
   killLiveServers,
   makeRunId,
+  repoMarker,
 } from './lib/live-server-processes.mjs';
 
 const REPO_ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -76,7 +78,10 @@ async function runCommand(command, suiteName) {
   const env = {
     ...process.env,
     [RUN_ID_ENV]: runId,
-    [REPO_ENV]: REPO_ROOT,
+    // The hash is what matching uses; the path rides along for a human reading
+    // `ps -E` output and is never matched on.
+    [REPO_ENV]: repoMarker(REPO_ROOT),
+    [REPO_PATH_ENV]: REPO_ROOT,
     ...(command.env || {}),
   };
 

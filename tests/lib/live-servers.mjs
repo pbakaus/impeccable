@@ -25,11 +25,14 @@ import { fileURLToPath } from 'node:url';
 import {
   PROC_ID_ENV,
   REPO_ENV,
+  REPO_PATH_ENV,
   RUN_ID_ENV,
   alive,
   findLiveServers,
   killLiveServers,
+  makeProcId,
   makeRunId,
+  repoMarker,
 } from '../../scripts/lib/live-server-processes.mjs';
 
 const REPO_ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
@@ -46,12 +49,13 @@ let reaper = null;
 export function armLiveServerReaper() {
   if (procId) return procId;
 
-  procId = `${process.pid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  procId = makeProcId();
   process.env[PROC_ID_ENV] = procId;
   // Standalone `node --test tests/live-server.test.mjs` gets the same coverage
   // as a run through scripts/run-tests.mjs.
   if (!process.env[RUN_ID_ENV]) process.env[RUN_ID_ENV] = makeRunId(REPO_ROOT);
-  if (!process.env[REPO_ENV]) process.env[REPO_ENV] = REPO_ROOT;
+  if (!process.env[REPO_ENV]) process.env[REPO_ENV] = repoMarker(REPO_ROOT);
+  if (!process.env[REPO_PATH_ENV]) process.env[REPO_PATH_ENV] = REPO_ROOT;
 
   if (process.platform !== 'win32' && process.env.IMPECCABLE_NO_TEST_REAPER !== '1') {
     try {

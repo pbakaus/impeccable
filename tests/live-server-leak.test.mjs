@@ -12,7 +12,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -24,7 +24,9 @@ import {
   envLineHasEntry,
   findLiveServers,
   killLiveServers,
+  makeProcId,
   makeRunId,
+  repoMarker,
 } from '../scripts/lib/live-server-processes.mjs';
 
 // The reaper is a POSIX mechanism (a detached process holding a pipe, killed by
@@ -145,7 +147,12 @@ describe('live server leak guard', () => {
 });
 
 describe('envLineHasEntry', () => {
-  const marker = `${REPO_ENV}=/work/impeccable`;
+  // Marker values are opaque tokens, never paths: repoMarker() hashes the
+  // checkout so two adjacent checkouts get unrelated values, and the run and
+  // process ids are random hex. Nothing a marker can hold contains whitespace,
+  // which is the invariant this matcher rests on.
+  const hash = repoMarker('/work/impeccable');
+  const marker = `${REPO_ENV}=${hash}`;
 
   it('matches the entry at the end of the line and between other entries', () => {
     assert.equal(envLineHasEntry(`node live-server.mjs PATH=/usr/bin ${marker}`, marker), true);
@@ -153,13 +160,37 @@ describe('envLineHasEntry', () => {
     assert.equal(envLineHasEntry(`node x ${marker} ${RUN_ID_ENV}=abc PATH=/usr/bin`, marker), true);
   });
 
-  it('does not match an adjacent checkout whose path merely starts the same', () => {
-    // The bug this exists for: /work/impeccable is a substring of
-    // /work/impeccable-copy, and one checkout's cleanup must not reach the
-    // other's servers.
-    assert.equal(envLineHasEntry(`node x ${REPO_ENV}=/work/impeccable-copy`, marker), false);
-    assert.equal(envLineHasEntry(`node x ${REPO_ENV}=/work/impeccable-copy PATH=/usr/bin`, marker), false);
-    assert.equal(envLineHasEntry(`node x ${REPO_ENV}=/work/impeccable2 PATH=/usr/bin`, marker), false);
+  it('does not match a value the marker is a strict prefix of', () => {
+    // The shape the hash rules out at the source, asserted anyway: a longer
+    // value starting with this one must not count as this entry.
+    assert.equal(envLineHasEntry(`node x ${marker}ff PATH=/usr/bin`, marker), false);
+    assert.equal(envLineHasEntry(`node x ${marker}-2`, marker), false);
+    assert.equal(envLineHasEntry(`node x ${REPO_ENV}=${hash}0123456789abcdef`, marker), false);
+  });
+
+  it('gives adjacent checkouts unrelated markers', () => {
+    // The bug this all exists for: /work/impeccable is a substring of
+    // /work/impeccable-copy. Hashing means the two markers no longer share a
+    // prefix at all, so a substring can never arise in the first place.
+    const neighbour = repoMarker('/work/impeccable-copy');
+    assert.notEqual(neighbour, hash);
+    assert.equal(neighbour.startsWith(hash), false);
+    assert.equal(envLineHasEntry(`node x ${REPO_ENV}=${neighbour} PATH=/usr/bin`, marker), false);
+  });
+
+  it('resolves one checkout to one marker through symlinks and trailing slashes', () => {
+    const real = mkdtempSync(join(tmpdir(), 'impeccable-marker-'));
+    const link = join(mkdtempSync(join(tmpdir(), 'impeccable-link-')), 'checkout');
+    try {
+      symlinkSync(real, link);
+      const expected = repoMarker(real);
+      for (const spelling of [`${real}/`, `${real}/.`, link, `${link}/`]) {
+        assert.equal(repoMarker(spelling), expected, `${spelling} should hash like ${real}`);
+      }
+    } finally {
+      rmSync(link, { force: true });
+      rmSync(real, { recursive: true, force: true });
+    }
   });
 
   it('does not match when the entry name only ends with the marker name', () => {
@@ -168,14 +199,25 @@ describe('envLineHasEntry', () => {
     assert.equal(envLineHasEntry(`node x X${marker}`, marker), false);
   });
 
-  it('matches a value containing a space, and stops at the next KEY=', () => {
-    const spaced = `${REPO_ENV}=/work/my repo`;
-    assert.equal(envLineHasEntry(`node x ${spaced} PATH=/usr/bin`, spaced), true);
-    assert.equal(envLineHasEntry(`node x ${REPO_ENV}=/work/my repo copy PATH=/usr/bin`, spaced), false);
-  });
-
   it('returns false when the marker is absent', () => {
     assert.equal(envLineHasEntry('node live-server.mjs PATH=/usr/bin', marker), false);
     assert.equal(envLineHasEntry('', marker), false);
+  });
+});
+
+describe('marker values', () => {
+  it('generates run and process ids from a whitespace-free alphabet', () => {
+    for (const value of [makeRunId('/work/impeccable'), makeProcId(), repoMarker('/work/impeccable')]) {
+      assert.match(value, /^[A-Za-z0-9_-]+$/, `marker value "${value}" must not need quoting`);
+    }
+  });
+
+  it('refuses to match on a value that could break out of its entry', () => {
+    // The guard that keeps the matcher's invariant honest if someone later
+    // passes a path where a token is expected.
+    assert.throws(
+      () => findLiveServers({ runId: '/work/my repo PATH=x' }),
+      /marker value must be/,
+    );
   });
 });

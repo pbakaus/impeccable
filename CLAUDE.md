@@ -155,7 +155,7 @@ Three pieces keep that from recurring, and a new test that starts a server owes 
 - **The runner guard.** `scripts/run-tests.mjs` runs each suite command as its own process-group leader, forwards `SIGINT` / `SIGTERM` to the group, and after every suite checks whether any live server carrying that suite's run id is still alive. If one is, it kills it and fails the run. Bypass with `IMPECCABLE_SKIP_LEAK_CHECK=1`.
 - **`bun run test:cleanup`.** A one-shot sweep for leftovers from earlier runs.
 
-**Everything that kills is scoped by an environment marker this repo's harness exported**, never by process name or port. A sweep can never touch a live server that another checkout, or the user's own session, is running. Keep it that way.
+**Everything that kills is scoped by an environment marker this repo's harness exported**, never by process name, port, or path. A sweep can never touch a live server that another checkout, or the user's own session, is running. Keep it that way, and keep marker values opaque: every one is a random token or a hash of the checkout path (`repoMarker()`), drawn from `[A-Za-z0-9_-]` so it can never contain whitespace. `ps -E` flattens the environment into one whitespace-separated line, so a value free to hold a space could hide the end of its own entry and let one checkout's cleanup reach another's servers. `assertMarkerValue` refuses such a value; the readable path travels separately as `IMPECCABLE_TEST_REPO_PATH`, which nothing matches on.
 
 ### Which opt-in suite a change owes
 

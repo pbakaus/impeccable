@@ -15,11 +15,27 @@
  * net. It identifies servers by an environment marker the runner exports, so a
  * sweep can only ever match a server this repo's test harness started; nothing
  * is matched by port, by name alone, or by "looks like impeccable".
+ *
+ * Every marker value is an opaque token: a random run or process id, or a hash
+ * of the checkout path. None of them is a path, and none can contain
+ * whitespace, which is what keeps the `ps -E` matching below exact.
  */
 
 import { spawnSync } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
+import { createHash, randomBytes } from 'node:crypto';
+import { readFileSync, readdirSync, realpathSync } from 'node:fs';
 import path from 'node:path';
+
+/**
+ * The three matching markers. Every value is an opaque token from the alphabet
+ * below, never a path and never anything a user chose. That is what lets the
+ * `ps -E` matcher work on a "starts an entry, ends at whitespace or line end"
+ * rule with no ambiguous case left, and it is a load-bearing invariant rather
+ * than a formatting preference: a value free to contain a space and a
+ * `KEY=`-shaped token could impersonate the end of its own entry, and one
+ * checkout's cleanup could then reach a neighbouring checkout's servers.
+ */
+const MARKER_VALUE_RE = /^[A-Za-z0-9_-]+$/;
 
 /** Env var carrying the id of one suite command. Descendants inherit it. */
 export const RUN_ID_ENV = 'IMPECCABLE_TEST_RUN_ID';
@@ -29,8 +45,18 @@ export const RUN_ID_ENV = 'IMPECCABLE_TEST_RUN_ID';
  * what lets one file's reaper kill that file's servers and not its siblings'.
  */
 export const PROC_ID_ENV = 'IMPECCABLE_TEST_PROC_ID';
-/** Env var carrying the repo root, so a cleanup can be scoped to this checkout. */
+/**
+ * Env var carrying a hash of the checkout, so a cleanup can be scoped to it.
+ * The value is `repoMarker()`, not the path: two checkouts whose paths share a
+ * prefix get unrelated hashes, and no filesystem path can leak into matching.
+ */
 export const REPO_ENV = 'IMPECCABLE_TEST_REPO';
+/**
+ * The checkout path in readable form, for a human looking at `ps -E` output or
+ * a stuck process. **Never used for matching**, and nothing should start: it is
+ * the one marker-adjacent value that can contain whitespace.
+ */
+export const REPO_PATH_ENV = 'IMPECCABLE_TEST_REPO_PATH';
 
 /**
  * A command line belonging to a live server. Matches the Node script
@@ -38,9 +64,32 @@ export const REPO_ENV = 'IMPECCABLE_TEST_REPO';
  */
 const LIVE_SERVER_RE = /(^|[\s/\\])live-server(\.mjs|\.exe)?(\s|$)/;
 
+/**
+ * A stable, opaque id for one checkout: the first 16 hex characters of the
+ * sha256 of its real path. Symlinked and `/private`-prefixed spellings of the
+ * same directory resolve to the same marker; `/work/impeccable` and
+ * `/work/impeccable-copy` do not share a prefix.
+ */
+export function repoMarker(repoRoot) {
+  // path.resolve first so a trailing slash or a `.` segment cannot change the
+  // marker for a directory that is not on disk (realpathSync throws for those).
+  let resolved = path.resolve(repoRoot);
+  try { resolved = realpathSync(resolved); } catch { /* not on disk; hash as normalized */ }
+  return createHash('sha256').update(resolved).digest('hex').slice(0, 16);
+}
+
+/**
+ * An id for one suite command. Random, so two runs of the same suite in the
+ * same second never collide, and hex/`-` only so it can never break out of its
+ * own environment entry.
+ */
 export function makeRunId(repoRoot = process.cwd()) {
-  const slug = path.basename(repoRoot).replace(/[^A-Za-z0-9_-]/g, '') || 'repo';
-  return `${slug}-${Date.now().toString(36)}-${process.pid}`;
+  return `${repoMarker(repoRoot)}-${randomBytes(8).toString('hex')}`;
+}
+
+/** An id for one test process. Same alphabet rule as the run id. */
+export function makeProcId() {
+  return `p${process.pid}-${randomBytes(8).toString('hex')}`;
 }
 
 /**
@@ -54,14 +103,15 @@ export function makeRunId(repoRoot = process.cwd()) {
  *
  * @param {string} [opts.runId]  match `IMPECCABLE_TEST_RUN_ID=<runId>` exactly.
  * @param {string} [opts.procId] match `IMPECCABLE_TEST_PROC_ID=<procId>` exactly.
- * @param {string} [opts.repo]   match `IMPECCABLE_TEST_REPO=<repo>` exactly.
+ * @param {string} [opts.repo]   a checkout path; matched as its `repoMarker()`
+ *                               hash, never as the path itself.
  * @returns {{pid:number, command:string}[]}
  */
 export function findLiveServers({ runId, procId, repo } = {}) {
   const markers = [];
-  if (runId) markers.push(`${RUN_ID_ENV}=${runId}`);
-  if (procId) markers.push(`${PROC_ID_ENV}=${procId}`);
-  if (repo) markers.push(`${REPO_ENV}=${repo}`);
+  if (runId) markers.push(`${RUN_ID_ENV}=${assertMarkerValue(runId)}`);
+  if (procId) markers.push(`${PROC_ID_ENV}=${assertMarkerValue(procId)}`);
+  if (repo) markers.push(`${REPO_ENV}=${assertMarkerValue(repoMarker(repo))}`);
   if (!markers.length) return [];
 
   const commands = listCommands();
@@ -121,29 +171,40 @@ function signal(pid, sig) {
 /**
  * Whether a `ps -E` line contains `marker` as a complete environment entry.
  *
- * A plain substring test is wrong here: `IMPECCABLE_TEST_REPO=/work/impeccable`
- * is a substring of `IMPECCABLE_TEST_REPO=/work/impeccable-copy`, and matching
- * it would let one checkout's cleanup kill a neighbouring checkout's servers.
- * `ps` flattens the environment into space-separated `KEY=VALUE` pairs, so an
- * entry ends where the line ends or where the next `KEY=` begins. A value that
- * itself contains both a space and something shaped like `KEY=` is ambiguous in
- * this format and is the one case this cannot resolve.
+ * A plain substring test is wrong here: a marker is a substring of any longer
+ * value that starts with it, and matching that would let one checkout's cleanup
+ * kill a neighbouring checkout's servers. `ps` flattens the environment into
+ * whitespace-separated `KEY=VALUE` pairs, so an entry runs to the next
+ * whitespace or to the end of the line.
+ *
+ * That simple rule is sound only because every marker value is drawn from
+ * `MARKER_VALUE_RE` and can therefore never contain whitespace: no value can
+ * hide the end of its own entry, and there is no ambiguous case. Give a marker
+ * a free-form value and this becomes guesswork again, which is why
+ * `assertMarkerValue` refuses one.
  */
 export function envLineHasEntry(line, marker) {
   for (let from = 0; ; from += 1) {
     const at = line.indexOf(marker, from);
     if (at === -1) return false;
     const startsEntry = at === 0 || /\s/.test(line[at - 1]);
-    if (startsEntry && endsEntry(line.slice(at + marker.length))) return true;
+    const end = at + marker.length;
+    const endsEntry = end === line.length || /\s/.test(line[end]);
+    if (startsEntry && endsEntry) return true;
     from = at;
   }
 }
 
-function endsEntry(rest) {
-  if (rest === '') return true;
-  if (!/^\s/.test(rest)) return false;
-  const next = rest.trimStart();
-  return next === '' || /^[A-Za-z_][A-Za-z0-9_]*=/.test(next);
+/** Refuse a marker value that could break out of its own environment entry. */
+function assertMarkerValue(value) {
+  if (!MARKER_VALUE_RE.test(value)) {
+    throw new Error(
+      `refusing to match on "${value}": a marker value must be [A-Za-z0-9_-] only, ` +
+      'so that an environment entry ends where the whitespace after it does. ' +
+      'Hash or tokenize the value before passing it (see repoMarker).',
+    );
+  }
+  return value;
 }
 
 /** pid -> full command line, for every process this user can see. */
