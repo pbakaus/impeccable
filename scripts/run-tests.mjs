@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_SUITES, OPT_IN_SUITES, SUITES, expandSuites } from './test-suites.mjs';
+import { killGroupSync, stopGroup, trackChildExit } from './lib/process-group.mjs';
 import {
   REPO_ENV,
   REPO_PATH_ENV,
@@ -36,24 +37,38 @@ if (args.includes('--cleanup')) {
  * Suite commands run in their own process group so a Ctrl-C, a timeout, or an
  * exiting runner can take the whole tree down at once. Nothing else in this
  * file may use spawnSync: a blocked event loop cannot run the signal handlers
- * that make that guarantee.
+ * that make that guarantee, and cannot reap the child it is waiting on either.
  */
 let currentChild = null;
 let shuttingDown = false;
 
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
-  process.on(sig, () => {
-    shuttingDown = true;
-    killCurrentGroup();
+  process.on(sig, () => { void shutdown(sig); });
+}
+process.on('exit', () => {
+  // Nothing can be awaited here, so this is the one path that does not wait.
+  const running = currentChild;
+  currentChild = null;
+  killGroupSync(running);
+});
+
+async function shutdown(sig) {
+  const running = currentChild;
+  currentChild = null;
+  if (shuttingDown) {
+    // A second Ctrl-C means "stop waiting". Skip the grace period entirely.
+    killGroupSync(running);
     process.exit(exitCodeForSignal(sig));
-  });
+  }
+  shuttingDown = true;
+  await stopGroup(running);
+  process.exit(exitCodeForSignal(sig));
 }
 
 /** The shell convention for "killed by signal N": 130 SIGINT, 143 SIGTERM, 129 SIGHUP. */
 function exitCodeForSignal(sig) {
   return 128 + (os.constants.signals[sig] ?? 0);
 }
-process.on('exit', () => killCurrentGroup());
 
 const requestedSuites = args.filter((arg) => !arg.startsWith('-'));
 let suites;
@@ -119,7 +134,9 @@ function runProcess(cmd, args, { env }) {
       stdio: ['ignore', 'inherit', 'inherit'],
       env,
     });
-    currentChild = child;
+    // Registered before the handlers below, so `hasExited` is already set by
+    // the time they run and a shutdown mid-exit does not signal a dead pid.
+    currentChild = trackChildExit(child);
 
     child.on('error', (err) => {
       currentChild = null;
@@ -140,17 +157,6 @@ function runProcess(cmd, args, { env }) {
       resolve();
     });
   });
-}
-
-function killCurrentGroup() {
-  const child = currentChild;
-  currentChild = null;
-  if (!child || child.exitCode != null) return;
-  try { process.kill(-child.pid, 'SIGTERM'); } catch { /* group already gone */ }
-  try { child.kill('SIGTERM'); } catch { /* already gone */ }
-  const deadline = Date.now() + 2000;
-  while (Date.now() < deadline && alive(child.pid)) { /* brief spin, exit path only */ }
-  try { process.kill(-child.pid, 'SIGKILL'); } catch { /* gone */ }
 }
 
 /**

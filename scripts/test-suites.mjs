@@ -17,7 +17,7 @@ const COMMON_INFRA_PATTERNS = [
   /^scripts\/run-tests\.mjs$/,
   /^scripts\/test-suites\.mjs$/,
   /^scripts\/ci-test-plan\.mjs$/,
-  /^scripts\/lib\/(live-server-processes|test-orphan-reaper)\.mjs$/,
+  /^scripts\/lib\/(live-server-processes|process-group|test-orphan-reaper)\.mjs$/,
   /^tests\/lib\/live-servers\.mjs$/,
   /^\.github\/workflows\/ci\.yml$/,
 ];
@@ -76,6 +76,7 @@ export const SUITES = {
           'tests/impeccable-paths.test.mjs',
           'tests/openai-plugin.test.mjs',
           'tests/pin.test.mjs',
+          'tests/process-group.test.mjs',
           'tests/release.test.mjs',
           'tests/doctor.test.mjs',
           'tests/staleness.test.mjs',

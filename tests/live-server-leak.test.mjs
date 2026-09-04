@@ -178,17 +178,29 @@ describe('envLineHasEntry', () => {
     assert.equal(envLineHasEntry(`node x ${REPO_ENV}=${neighbour} PATH=/usr/bin`, marker), false);
   });
 
-  it('resolves one checkout to one marker through symlinks and trailing slashes', () => {
+  it('resolves one checkout to one marker through trailing slashes and dot segments', () => {
     const real = mkdtempSync(join(tmpdir(), 'impeccable-marker-'));
-    const link = join(mkdtempSync(join(tmpdir(), 'impeccable-link-')), 'checkout');
     try {
-      symlinkSync(real, link);
       const expected = repoMarker(real);
-      for (const spelling of [`${real}/`, `${real}/.`, link, `${link}/`]) {
+      for (const spelling of [`${real}/`, `${real}/.`, join(real, 'sub', '..')]) {
         assert.equal(repoMarker(spelling), expected, `${spelling} should hash like ${real}`);
       }
     } finally {
-      rmSync(link, { force: true });
+      rmSync(real, { recursive: true, force: true });
+    }
+  });
+
+  it('resolves a symlinked checkout to the same marker as its target', () => {
+    const real = mkdtempSync(join(tmpdir(), 'impeccable-marker-'));
+    const link = join(mkdtempSync(join(tmpdir(), 'impeccable-link-')), 'checkout');
+    try {
+      // Windows refuses a directory symlink without Developer Mode; a junction
+      // is the equivalent it does allow. Same call shape as concept-seed's.
+      symlinkSync(real, link, process.platform === 'win32' ? 'junction' : 'dir');
+      assert.equal(repoMarker(link), repoMarker(real));
+      assert.equal(repoMarker(`${link}/`), repoMarker(real));
+    } finally {
+      rmSync(link, { force: true, recursive: true });
       rmSync(real, { recursive: true, force: true });
     }
   });
