@@ -630,8 +630,8 @@ describe('live-browser source contracts', () => {
     // that relocates the wrapper out of the shared primitive live-wrap
     // scaffolded leaves an empty one behind. First match can then pin a
     // scaffold with no variants and strand the session at 0/N.
-    const start = SOURCE.indexOf('function findVariantsWrapper(sessionId)');
-    assert.ok(start > 0, 'findVariantsWrapper must exist');
+    const start = SOURCE.indexOf('function pickPopulatedVariantsWrapper(selector)');
+    assert.ok(start > 0, 'pickPopulatedVariantsWrapper must exist');
     const helper = SOURCE.slice(start, SOURCE.indexOf('\n  function startVariantObserver(', start));
     assert.match(helper, /if \(matches\.length < 2\) return matches\[0\] \|\| null;/);
     assert.match(
@@ -640,12 +640,73 @@ describe('live-browser source contracts', () => {
       'the preferred wrapper is the one holding non-original variants',
     );
     assert.match(helper, /return matches\[0\];/, 'with no populated wrapper the old first match still wins');
-    for (const caller of [
-      'const wrapper = findVariantsWrapper(sessionId);',
-      'const wrapper = findVariantsWrapper(null);',
+    assert.match(
+      helper,
+      /function findVariantsWrapper\(sessionId\) \{\n    if \(!sessionId\) return null;/,
+      'a missing id must not silently widen the lookup to any session',
+    );
+    assert.match(
+      helper,
+      /function findAnyVariantsWrapper\(\) \{[\s\S]{0,120}?'\[data-impeccable-variants\]'/,
+      'the resume paths that have no id yet need their own entry point',
+    );
+  });
+
+  it('routes every active-session wrapper lookup through the resolver (#719)', () => {
+    // Bugbot on #720: findVariantsWrapper alone is not enough while the bar
+    // anchor, the visible-variant element, the params count, and accept still
+    // take the first match, because in the relocated-wrapper case Tune never
+    // binds and the bar keeps anchoring to the empty scaffold.
+    for (const fn of [
+      'function resolveBarAnchor()',
+      'function isInsertGeneratingSession()',
+      'function ensureInsertPlaceholder()',
+      'function mountedParameterCount()',
+      'function readVisibleVariantFromDOM(sessionId)',
+      'function snapshotAcceptedVariantDom(sessionId, variantId)',
+      'function commitAcceptedVariantToDom(sessionId, variantId)',
     ]) {
-      assert.ok(SOURCE.includes(caller), `${caller} should be how the resolvers look a wrapper up`);
+      const at = SOURCE.indexOf(fn);
+      assert.ok(at > 0, `${fn} should exist`);
+      const body = SOURCE.slice(at, SOURCE.indexOf('\n  }', at));
+      assert.doesNotMatch(
+        body,
+        /document\.querySelector\('\[data-impeccable-variants="'/,
+        `${fn} must resolve the session wrapper through findVariantsWrapper`,
+      );
     }
+
+    // Anything still taking a raw first match is a deliberate existence check
+    // or a cleanup sweep. Pinning the exact set means a new raw lookup has to
+    // justify itself here rather than quietly reintroducing the bug.
+    const rawSites = [...SOURCE.matchAll(
+      /(?:const (\w+) = (?:!!)?|(if) \()[^\n]{0,40}?document\.querySelector\('\[data-impeccable-variants="' \+ [\w.?]+ \+ '"\]'\)/g,
+    )].map((m) => m[1] || m[2]);
+    assert.deepEqual(
+      [...rawSites].sort(),
+      [
+        // existence only, inside the variant-anchor retry observer
+        'wrapperLanded',
+        // svelte component republish: an identity check next to
+        // svelteComponentSession, and a component wrapper holds no variants
+        'existingWrapper',
+        // orphan removal in abortSvelteComponentInjection
+        'orphan',
+        // orphan removal in resetSvelteComponentSession
+        'orphan',
+        // pendingAcceptedSession existence guard
+        'if',
+        // discard cleanup, both bounded retries
+        'lateWrapper',
+        'staleWrapper',
+      ].sort(),
+      'a new raw [data-impeccable-variants=...] first-match lookup appeared; route it through findVariantsWrapper, or add it here with the reason it may take the first match',
+    );
+    assert.equal(
+      rawSites.length,
+      SOURCE.split(`document.querySelector('[data-impeccable-variants="'`).length - 1,
+      'every raw session-wrapper lookup must be shaped so this guard can see it',
+    );
   });
 
   it('invalidates nullable deferred recovery as soon as a replacement edit starts configuring', () => {

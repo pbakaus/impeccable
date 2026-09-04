@@ -2060,7 +2060,7 @@
       if (anchor) return anchor;
     }
     if (currentSessionId && (state === 'GENERATING' || state === 'CYCLING')) {
-      const wrapper = document.querySelector('[data-impeccable-variants="' + currentSessionId + '"]');
+      const wrapper = findVariantsWrapper(currentSessionId);
       if (wrapper) {
         const variantCount = wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])').length;
         if (variantCount > 0 && visibleVariant > 0) {
@@ -2131,14 +2131,14 @@
 
   function isInsertGeneratingSession() {
     if (state !== 'GENERATING' || !currentSessionId) return false;
-    const wrapper = document.querySelector('[data-impeccable-variants="' + currentSessionId + '"]');
+    const wrapper = findVariantsWrapper(currentSessionId);
     return !!wrapper && wrapper.dataset.impeccableMode === 'insert';
   }
 
   /** Recreate the dotted placeholder if Astro/Vite HMR removed it mid-generation. */
   function ensureInsertPlaceholder() {
     if (!isInsertGeneratingSession()) return placeholderElement;
-    const wrapper = document.querySelector('[data-impeccable-variants="' + currentSessionId + '"]');
+    const wrapper = findVariantsWrapper(currentSessionId);
     const variantCount = wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])').length;
     if (variantCount > 0) return placeholderElement;
     if (placeholderElement && document.body.contains(placeholderElement)) return placeholderElement;
@@ -3156,7 +3156,7 @@
         || svelteComponentSession.wrapperEl
         || null;
     }
-    const wrapper = document.querySelector('[data-impeccable-variants="' + currentSessionId + '"]');
+    const wrapper = findVariantsWrapper(currentSessionId);
     if (!wrapper) return null;
     return wrapper.querySelector('[data-impeccable-variant="' + visibleVariant + '"]');
   }
@@ -4900,7 +4900,7 @@
       return Object.values(svelteComponentSession.paramsByVariant || {})
         .reduce((total, params) => total + (Array.isArray(params) ? params.length : 0), 0);
     }
-    const wrapper = document.querySelector('[data-impeccable-variants="' + currentSessionId + '"]');
+    const wrapper = findVariantsWrapper(currentSessionId);
     if (!wrapper) return 0;
     return [...wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])')]
       .reduce((total, variant) => total + parseVariantParams(variant).length, 0);
@@ -5004,7 +5004,7 @@
       scheduleCyclingBarSync(sessionId, num);
       return true;
     }
-    const wrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+    const wrapper = findVariantsWrapper(sessionId);
     if (!wrapper) return false;
     updateVariantStateStylesheet(sessionId, num);
     // Unconditional refresh - covers first-reveal (no-op if state isn't
@@ -6362,7 +6362,7 @@
     }
     rememberSessionFileMeta({ file: filePath });
     if (isJsxSourceFile(filePath)) {
-      const liveWrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+      const liveWrapper = findVariantsWrapper(sessionId);
       if (liveWrapper && liveWrapper.querySelector('[data-impeccable-variant]:not([data-impeccable-variant="original"])')) {
         completeSourceInjection(liveWrapper, sessionId, { ...opts, filePath });
         return;
@@ -6434,7 +6434,7 @@
           return;
         }
 
-        const existingWrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+        const existingWrapper = findVariantsWrapper(sessionId);
         if (existingWrapper) {
           const wrapper = srcWrapper.cloneNode(true);
           existingWrapper.parentElement.replaceChild(wrapper, existingWrapper);
@@ -6591,7 +6591,7 @@
       if (anchor && !anchor.__impeccableFrozenAnchor) selectedElement = anchor;
       return;
     }
-    const wrapper = document.querySelector('[data-impeccable-variants="' + currentSessionId + '"]');
+    const wrapper = findVariantsWrapper(currentSessionId);
     if (!wrapper) return;
     const visEl = pickVariantContent(wrapper, visibleVariant);
     if (visEl) selectedElement = visEl;
@@ -6601,7 +6601,7 @@
     if (svelteComponentSession?.sessionId === sessionId && svelteComponentSession.mountedVariant > 0) {
       return svelteComponentSession.mountedVariant;
     }
-    const wrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+    const wrapper = findVariantsWrapper(sessionId);
     if (!wrapper) return 0;
     const variants = wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])');
     for (const variant of variants) {
@@ -6913,12 +6913,16 @@
   // agent may have relocated the wrapper out of the shared primitive live-wrap
   // scaffolded into. A plain first match can then pin an empty scaffold while
   // the real variants sit in a later wrapper, which strands the session at
-  // 0/N. Prefer a wrapper that actually holds variants. With zero or one match
-  // this is exactly the querySelector it replaces.
-  function findVariantsWrapper(sessionId) {
-    const selector = sessionId
-      ? '[data-impeccable-variants="' + sessionId + '"]'
-      : '[data-impeccable-variants]';
+  // 0/N and leaves the bar, the params panel, and accept all reading the
+  // wrong element. Prefer a wrapper that actually holds variants. With zero
+  // or one match this is exactly the querySelector it replaces.
+  //
+  // Every lookup of the ACTIVE session's wrapper goes through here. The
+  // remaining raw `[data-impeccable-variants=...]` uses are deliberate: bare
+  // existence checks, selector strings for stylesheets and observers (which
+  // want to cover every match), `querySelectorAll` sweeps, and the parsed
+  // source document, which is not this document.
+  function pickPopulatedVariantsWrapper(selector) {
     const matches = document.querySelectorAll(selector);
     if (matches.length < 2) return matches[0] || null;
     for (const candidate of matches) {
@@ -6927,6 +6931,17 @@
       }
     }
     return matches[0];
+  }
+
+  /** The wrapper holding `sessionId`'s variants, or null without an id. */
+  function findVariantsWrapper(sessionId) {
+    if (!sessionId) return null;
+    return pickPopulatedVariantsWrapper('[data-impeccable-variants="' + sessionId + '"]');
+  }
+
+  /** Any live variant wrapper, for the resume paths that have no id yet. */
+  function findAnyVariantsWrapper() {
+    return pickPopulatedVariantsWrapper('[data-impeccable-variants]');
   }
 
   function startVariantObserver(sessionId) {
@@ -8675,7 +8690,7 @@ void main() {
       clientSentAt: Date.now(),
     };
     if (!currentSessionId || arrivedVariants === 0) return;
-    const acceptWrapper = document.querySelector('[data-impeccable-variants="' + currentSessionId + '"]');
+    const acceptWrapper = findVariantsWrapper(currentSessionId);
     if (Object.keys(paramsCurrentValues).length > 0) {
       acceptPayload.paramValues = { ...paramsCurrentValues };
     }
@@ -8770,7 +8785,7 @@ void main() {
   }
 
   function snapshotAcceptedVariantDom(sessionId, variantId) {
-    const wrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+    const wrapper = findVariantsWrapper(sessionId);
     const accepted = wrapper?.querySelector?.('[data-impeccable-variant="' + variantId + '"]');
     const root = accepted?.firstElementChild || null;
     return {
@@ -8897,7 +8912,7 @@ void main() {
   }
 
   function commitAcceptedVariantToDom(sessionId, variantId) {
-    const wrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+    const wrapper = findVariantsWrapper(sessionId);
     if (!wrapper) return false;
     const accepted = wrapper.querySelector('[data-impeccable-variant="' + variantId + '"]');
     if (!accepted || !accepted.firstElementChild) return false;
@@ -9125,7 +9140,7 @@ void main() {
   }
 
   function restoreFromActiveSessions(activeSessions, reason) {
-    const wrapper = findVariantsWrapper(null);
+    const wrapper = findAnyVariantsWrapper();
     if (wrapper && !isFrameworkComponentPreviewMode(wrapper.dataset.impeccablePreview)) return false;
     if (svelteComponentSession?.sessionId === currentSessionId) return false;
     return restoreSessionWithoutWrapper(reason || 'sse_connected', activeSessions);
@@ -9238,10 +9253,13 @@ void main() {
       // reconciler later tries to remove a wrapper we already removed.
       // Schedule a 2s fallback that does the manual swap only if HMR hasn't
       // replaced the wrapper by then (keeps static-server / no-HMR flows alive).
-      const wrapper = document.querySelector('[data-impeccable-variants="' + cleanupSessionId + '"]');
-      if (wrapper) {
+      // Every match, not the first: a target inside a `.map()` renders one
+      // wrapper per item, and hiding only one leaves the rest of the
+      // discarded variants on screen.
+      const discardWrappers = [...document.querySelectorAll('[data-impeccable-variants="' + cleanupSessionId + '"]')];
+      if (discardWrappers.length > 0) {
         if (restoreOriginal) showOriginalDuringDiscard(cleanupSessionId);
-        else wrapper.style.display = 'none';
+        else for (const discardWrapper of discardWrappers) discardWrapper.style.display = 'none';
       }
       setTimeout(function() {
         const recoverySuperseded = deferredRecoverySuperseded(cleanupSessionId, cleanupRevision);
@@ -9472,7 +9490,7 @@ void main() {
     // used to log the same `browser_resumed`, which made issue #719 take a
     // DOM reconstruction to diagnose.
     const resumeReason = opts.reason || 'browser_resumed';
-    const wrapper = findVariantsWrapper(null);
+    const wrapper = findAnyVariantsWrapper();
     const runtimeWrapper = wrapper || document.querySelector('[data-impeccable-carbonize]');
     if (restoreSessionSupersedingHandledWrapper(runtimeWrapper)) return true;
     if (scheduleHandledRuntimeWrapperReload(runtimeWrapper, recoveryRevision)) return false;
