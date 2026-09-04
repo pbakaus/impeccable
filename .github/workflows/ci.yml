@@ -235,10 +235,12 @@ jobs:
           node-version: 24
 
       - name: Check engine release assets for pinned ENGINE_VERSION
+        id: check
         run: node scripts/check-engine-release.mjs
 
       - name: Annotate missing engine release
-        if: failure()
+        # Only when the check itself failed, so a checkout or setup failure keeps its own error.
+        if: failure() && steps.check.outcome == 'failure'
         run: |
           echo "::error title=Engine release not ready::The engine release for v$(cat ENGINE_VERSION) is not fully published (engine-v$(cat ENGINE_VERSION) release assets and/or the @impeccable/cli-<os>-<arch> npm platform packages). Publish the engine (bun run release:engine) and the platform packages (bun run release:platform-packages) before bumping ENGINE_VERSION on main or releasing the skill/CLI."
 
