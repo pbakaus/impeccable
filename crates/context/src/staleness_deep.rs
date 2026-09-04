@@ -437,11 +437,17 @@ pub fn load_known_rule_ids() -> Option<Vec<String>> {
 mod tests {
     use super::check_hook_installation;
 
+    static TMP_SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
     fn tmp() -> String {
         let base = std::env::temp_dir().join(format!(
-            "impeccable-doctor-hook-{}-{}",
+            "impeccable-doctor-hook-{}-{}-{}",
             std::process::id(),
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos(),
+            // A per-process counter: Windows' clock is coarse enough that two
+            // parallel tests can share a nanosecond stamp and then delete each
+            // other's directories.
+            TMP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&base).unwrap();
         // Like Node's `realpathSync`: on Windows, `canonicalize` yields a

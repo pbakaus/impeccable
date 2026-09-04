@@ -47,9 +47,13 @@ struct Tmp(PathBuf);
 impl Tmp {
     fn new() -> Tmp {
         let base = std::env::temp_dir().join(format!(
-            "impeccable-cache-root-{}-{}",
+            "impeccable-cache-root-{}-{}-{}",
             std::process::id(),
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos(),
+            // A per-process counter: Windows' clock is coarse enough that two
+            // parallel tests can share a nanosecond stamp and then delete each
+            // other's directories.
+            TMP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&base).unwrap();
         // Like Node's `realpathSync`: no `\\?\` verbatim prefix on Windows, so the
