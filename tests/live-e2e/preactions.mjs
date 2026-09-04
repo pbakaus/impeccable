@@ -93,7 +93,8 @@ export async function waitForCyclingRobust(page, expectedCount, opts = {}) {
     try {
       await waitForCycling(page, expectedCount, { timeout: firstPassTimeoutMs });
       return;
-    } catch {
+    } catch (preErr) {
+      if (preErr?.impeccableNoRetry) throw preErr;
       log(`Cycling not reached in ${firstPassTimeoutMs}ms — retracing preActions`);
       await runPreActions(page, preActions);
     }
@@ -106,7 +107,7 @@ export async function waitForCyclingRobust(page, expectedCount, opts = {}) {
     if (process.env.IMPECCABLE_E2E_DEBUG) {
       firstErr.message += '\n\n--- live UI snapshot ---\n' + JSON.stringify(await liveUiSnapshot(page), null, 2);
     }
-    if (agentMode !== 'llm') throw firstErr;
+    if (agentMode !== 'llm' || firstErr?.impeccableNoRetry) throw firstErr;
   }
 
   log('Cycling not reached after LLM generate — reloading to pick up HMR');
