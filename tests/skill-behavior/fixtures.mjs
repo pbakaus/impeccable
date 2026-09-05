@@ -335,3 +335,11 @@ separates major regions. No drop shadows under 16px blur.
 - Cards: avoid; prefer hairlined regions and inline lists.
 - Forms: floating labels, no border on the input — underline only.
 `;
+
+// A real surface keeps workflow advice and explicit-command precedence tests
+// answerable without requiring the model to invent a project.
+export const WORKFLOW_ADVICE_FILES = {
+  'PRODUCT.md': PRODUCT_MD_SAMPLE,
+  'DESIGN.md': DESIGN_MD_SAMPLE,
+  'index.html': MINIMAL_LANDING_HTML,
+};

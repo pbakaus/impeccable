@@ -72,6 +72,25 @@ The trace is the source of truth, not the model's free-form reply.
 | 13 | empty workspace; prompt is `/impeccable teach` | runs `impeccable context` and diverts into `reference/init.md` because `teach` aliases `init` |
 | 14 | PRODUCT.md with `## Platform: ios` (native iOS app); prompt is `/impeccable craft a tide detail screen` | `impeccable context` runs and emits the contents of `reference/ios.md` directly, placing native conventions in context without a second model-directed read |
 | 15 | same iOS fixture; prompt is `/impeccable audit` | agent loads `reference/audit.native.md` (the Commands-table native variant, routed instead of `audit.md`) |
+| 16 | existing surface, with and without PRODUCT.md; asks where to start | loads `routing.md`, delivers advice, and does not edit project files, start an interview, archive a critique, or run menu scans |
+| 17 | existing surface; asks whether critique is required before polish | loads `routing.md` and both command references, then delivers advice without executing the playbooks |
+| 18 | existing surface; explicitly requests polish followed by a next-command recommendation | loads `polish.md` rather than substituting workflow advice for the requested work |
+
+## Workflow-advice baseline (PR #737)
+
+The four cases in scenarios 16-18 are new; prior scenario results do not
+establish their behavior. The advice-only assertions inspect write-tool calls
+and file mutations from bash (excluding context's internal `.impeccable/`
+state, but not critique reports), require an actual answer, and reject
+interviews and menu scans. Scenario 18 checks command-reference precedence;
+it does not assert completion of a full polish pass.
+
+| Scenario | claude-sonnet-5 | gpt-5.6-terra | gemini-3.7-flash |
+|---|---|---|---|
+| 16 (existing project) | not measured | not measured | not measured |
+| 16 (missing product context) | not measured | not measured | not measured |
+| 17 (command comparison) | not measured | not measured | not measured |
+| 18 (explicit command) | not measured | not measured | not measured |
 
 The workflow-contract file adds end-to-end assertions for attended fresh init,
 an initialized natural build request, replacement-world redesign, scope-preserving bolder
