@@ -74,6 +74,8 @@
 
     "@impeccable/cli-darwin-arm64": ["@impeccable/cli-darwin-arm64@0.1.1", "", { "os": "darwin", "cpu": "arm64", "bin": { "impeccable-darwin-arm64": "bin/impeccable" } }, "sha512-1/DZYaiZqDoNwpXpyoG4gRQpgLZ4YDCMADGzA5wYmNiG279b3KPt2RLYUww6NF2hxoMxdVQUAGzdc5062KZKHg=="],
 
+    "@impeccable/cli-darwin-x64": ["@impeccable/cli-darwin-x64@0.1.1", "", { "os": "darwin", "cpu": "x64", "bin": { "impeccable-darwin-x64": "bin/impeccable" } }, "sha512-/itjFZEHPcz1RQDBx3+2aeTebQ4pCD30VKAJ3Zst5KxHteJQOW3hoiTFE7jAOXg3vG2D/qAaEh/7Eo+xzEawew=="],
+
     "@impeccable/cli-linux-arm64": ["@impeccable/cli-linux-arm64@0.1.1", "", { "os": "linux", "cpu": "arm64", "bin": { "impeccable-linux-arm64": "bin/impeccable" } }, "sha512-uGJ2DNVq3NzH8+RlTlyn1XWpAsNS1bv6kix7PsAnzCa0aBiOHaYSUkPXbqDVUTDy9X4oEOsZYuzbgoY+otkoMQ=="],
 
     "@impeccable/cli-linux-x64": ["@impeccable/cli-linux-x64@0.1.1", "", { "os": "linux", "cpu": "x64", "bin": { "impeccable-linux-x64": "bin/impeccable" } }, "sha512-wPul+V7w9g0MZAgFmJJvEOXpy8AYt4htmLQJIx7XvakSp8CS+PYBjEFqmWSW41NlrNAaifzDKdUe6rzeRli97A=="],
