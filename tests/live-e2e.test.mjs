@@ -1283,17 +1283,21 @@ for (const { name, fixture } of fixtures) {
         const pickSelector = annotation.selector || fixture.runtime.pickSelector || 'h1.hero-title';
         try {
           await waitForHandshake(page);
+          if (annotation.uploadDelayMs) {
+            await page.route('**/annotation?*', async (route) => {
+              await new Promise(resolve => setTimeout(resolve, annotation.uploadDelayMs));
+              await route.continue();
+            });
+          }
           if (fixture.runtime.preActions) await runPreActions(page, fixture.runtime.preActions);
           await pickElement(page, pickSelector, { resetPickMode: true });
           await drawAnnotationPinAndStroke(page, {
             comment: annotation.comment || 'Make this selected element easier to scan',
           });
           await clickGo(page);
-          await waitForCyclingRobust(page, 3, {
-            agentMode,
-            preActions: fixture.runtime.preActions,
-            log: (m) => t.diagnostic(m),
-          });
+          // A reload would mask a checkpoint-before-creation race by adopting
+          // the session again. Annotated generation must complete in this tab.
+          await waitForCycling(page, 3, { timeout: agentMode === 'llm' ? 180_000 : 30_000 });
 
           const generateEvent = recordedGenerateEvents.at(-1);
           await assertAnnotationUploadEvent(generateEvent);
@@ -1302,7 +1306,7 @@ for (const { name, fixture } of fixtures) {
 
           const sourceFile = await locateSessionFile(session.appRoot);
           const svelteComponentTarget = svelteComponentTargetFor(sourceFile);
-          await clickNext(page);
+          await cycleToVariant(page, 2, 3);
           assert.equal(await getVisibleVariant(page), 2, 'variant 2 visible after annotated generate');
           await clickAccept(page, { expectedVariant: 2 });
           await waitForBarHidden(page);

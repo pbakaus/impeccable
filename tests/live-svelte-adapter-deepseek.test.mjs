@@ -26,7 +26,6 @@ import {
   clickEditCopy,
   clickExitLiveMode,
   clickGo,
-  clickNext,
   cycleToVariant,
   clickSaveEdit,
   drawAnnotationPinAndStroke,
@@ -282,7 +281,7 @@ async function runAnnotationGenerateFlow({ page, tmp, evidence }) {
   const generateEvent = latestJournalEvent(tmp, (event) => event.type === 'generate' && event.screenshotPath);
   await assertAnnotationUploadEvent(generateEvent);
   assert.ok(existsSync(generateEvent.screenshotPath), 'annotation screenshot file exists');
-  await clickNext(page);
+  await cycleTo(page, 2);
   await assertVariantCounter(page, 2, 3);
   await evidence.capture('annotation-cycle');
   await clickDiscard(page);

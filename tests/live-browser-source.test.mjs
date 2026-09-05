@@ -2,12 +2,53 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { runInNewContext } from 'node:vm';
 
 const SOURCE = readFileSync(join(process.cwd(), 'skill/scripts/live-browser.js'), 'utf-8');
 const PENDING_DOCK_POSITION_SOURCE = SOURCE.match(/function positionPendingDock\(\) \{[\s\S]*?\n  \}/)?.[0] || '';
 const CAPTURE_AND_EMIT_SOURCE = SOURCE.match(/async function captureAndEmit\([\s\S]*?\n  \}/)?.[0] || '';
 
 describe('live-browser source contracts', () => {
+  it('does not checkpoint a generation before captureAndEmit creates its session', () => {
+    for (const name of ['handleGo', 'handleInsertCreate']) {
+      const body = SOURCE.match(new RegExp(`function ${name}\\(\\) \\{[\\s\\S]*?\\n  \\}`))?.[0];
+      assert.ok(body);
+      assert.doesNotMatch(body, /sendCheckpoint\('generate_started'\)/);
+    }
+  });
+
+  for (const annotated of [false, true]) {
+    for (const outcome of ['created', 'failed', 'superseded']) {
+      it(`${annotated ? 'annotated' : 'plain'} generation checkpoints only its acknowledged current session (${outcome})`, async () => {
+        const capture = Promise.withResolvers();
+        const creation = Promise.withResolvers();
+        const events = [];
+        const context = {
+          currentSessionId: 'session-a', state: 'GENERATING', PORT: 1234, TOKEN: 'test',
+          console, Date,
+          captureElementToBlob: () => capture.promise,
+          showShaderOverlay() {},
+          fetch: async () => ({ ok: true, json: async () => ({ path: '/annotation.png' }) }),
+          sendEvent: async (payload) => { events.push(payload.type); return creation.promise; },
+          sendCheckpoint: (reason) => events.push(reason),
+        };
+        const emit = runInNewContext(`(${CAPTURE_AND_EMIT_SOURCE})`, context);
+        const pending = emit({}, { type: 'generate', id: 'session-a' }, {
+          comments: annotated ? [{ text: 'change title' }] : [], strokes: [],
+        }, {});
+        await new Promise(resolve => setImmediate(resolve));
+        assert.deepEqual(events, annotated ? [] : ['generate']);
+        capture.resolve({ blob: {}, paper: 'white' });
+        await new Promise(resolve => setImmediate(resolve));
+        assert.deepEqual(events, ['generate'], 'capture/upload must not checkpoint before creation is acknowledged');
+        if (outcome === 'superseded') context.currentSessionId = 'session-b';
+        creation.resolve(outcome === 'failed' ? null : { ok: true });
+        await pending;
+        assert.deepEqual(events, outcome === 'created' ? ['generate', 'generate_started'] : ['generate']);
+      });
+    }
+  }
+
   it('reports foreground poll connectivity without a background worker dependency', () => {
     assert.match(
       SOURCE,
@@ -29,7 +70,7 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       CAPTURE_AND_EMIT_SOURCE,
-      /if \(hasAnnotations\) \{[\s\S]*?basePayload\.clientSentAt = Date\.now\(\);\s*sendEvent\(screenshotPath \? \{ \.\.\.basePayload, screenshotPath \} : basePayload\);\s*\}/,
+      /if \(hasAnnotations\) \{[\s\S]*?basePayload\.clientSentAt = Date\.now\(\);\s*const created = await sendEvent\(screenshotPath \? \{ \.\.\.basePayload, screenshotPath \} : basePayload\);/,
       'annotated generation should dispatch exactly after capture and upload resolve',
     );
   });
