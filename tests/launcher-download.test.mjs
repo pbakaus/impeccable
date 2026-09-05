@@ -36,10 +36,37 @@ async function exercise(t, scenario) {
       `#!/bin/sh\n${scenario === 'removed-during-hash' ? 'rm -f "$3"\n' : ''}printf '%s  %s\\n' '${HASH}' "$3"\nexit ${scenario === 'hash-failure' ? 1 : 0}\n`,
       { mode: 0o755 });
   }
-  if (!WINDOWS && ['removed-before-move', 'removed-after-move', 'emptied-after-move'].includes(scenario)) {
+  const placementScenarios = ['removed-before-move', 'removed-after-move', 'emptied-after-move', 'move-failure'];
+  if (!WINDOWS && placementScenarios.includes(scenario)) {
     const before = scenario === 'removed-before-move' ? 'rm -f "$2"\n' : '';
     const after = scenario === 'removed-after-move' ? 'rm -f "$3"\n' : scenario === 'emptied-after-move' ? ': > "$3"\n' : '';
-    fs.writeFileSync(path.join(tools, 'mv'), `#!/bin/sh\n${before}/bin/mv "$@" || exit $?\n${after}`, { mode: 0o755 });
+    fs.writeFileSync(path.join(tools, 'mv'), scenario === 'move-failure' ? '#!/bin/sh\nexit 1\n' : `#!/bin/sh\n${before}/bin/mv "$@" || exit $?\n${after}`, { mode: 0o755 });
+  }
+  if (WINDOWS && (placementScenarios.includes(scenario) || ['hash-failure', 'removed-during-hash'].includes(scenario))) {
+    // move is a cmd builtin and certutil is an .exe: PATH shims cannot
+    // intercept them. Instrument ONLY the external-operation boundary in the
+    // staged test copy, preserving the launcher's real labels/checks/status
+    // handling. The separate valid case always runs the unmodified launcher.
+    const fault = path.join(tools, 'fault.cmd');
+    const hashFault = ['hash-failure', 'removed-during-hash'].includes(scenario);
+    const operation = hashFault
+      ? 'certutil -hashfile "%cached%.part" SHA256 >"%cached%.sha256" 2>nul'
+      : 'move /y "%cached%.part" "%cached%" >nul 2>nul';
+    let script;
+    if (hashFault) {
+      script = `@echo off\n${scenario === 'removed-during-hash' ? 'del "%cached%.part" >nul 2>nul\n' : ''}echo hash header\necho ${HASH}\nexit /b 1\n`;
+    } else if (scenario === 'move-failure') {
+      script = '@echo off\nexit /b 1\n';
+    } else {
+      const before = scenario === 'removed-before-move' ? 'del "%cached%.part" >nul 2>nul\n' : '';
+      const after = scenario === 'removed-after-move' ? 'del "%cached%" >nul 2>nul\n' : scenario === 'emptied-after-move' ? 'type nul >"%cached%"\n' : '';
+      script = `@echo off\n${before}${operation}\nif errorlevel 1 exit /b 1\n${after}exit /b 0\n`;
+    }
+    fs.writeFileSync(fault, script.replaceAll('\n', '\r\n'));
+    const source = fs.readFileSync(launcher, 'utf8');
+    assert.equal(source.split(operation).length, 2, 'instrument exactly one operation');
+    const replacement = `call "${fault}"${hashFault ? ' >"%cached%.sha256" 2>nul' : ''}`;
+    fs.writeFileSync(launcher, source.replace(operation, replacement));
   }
   const requests = [];
   const server = http.createServer((req, res) => {
@@ -89,7 +116,7 @@ test('launcher downloads and runs a verified executable', async t => {
   assert.equal(result.requests.length, 2);
 });
 
-for (const scenario of ['removed', 'emptied', 'empty-download', 'no-sidecar', 'empty-sidecar', 'mismatch', ...(!WINDOWS ? ['hash-failure', 'removed-during-hash', 'removed-before-move', 'removed-after-move', 'emptied-after-move'] : [])]) {
+for (const scenario of ['removed', 'emptied', 'empty-download', 'no-sidecar', 'empty-sidecar', 'mismatch', 'hash-failure', 'removed-during-hash', 'removed-before-move', 'removed-after-move', 'emptied-after-move', 'move-failure']) {
   test(`launcher refuses ${scenario} with an accurate diagnostic`, async t => {
     const result = await exercise(t, scenario);
     assert.equal(result.status, 127, JSON.stringify(result));
@@ -104,6 +131,8 @@ for (const scenario of ['removed', 'emptied', 'empty-download', 'no-sidecar', 'e
       assert.doesNotMatch(result.stderr, /checksum mismatch/);
     } else if (scenario === 'mismatch') {
       assert.match(result.stderr, /checksum mismatch/);
+    } else if (scenario === 'move-failure') {
+      assert.match(result.stderr, /could not cache the verified download/);
     } else {
       assert.match(result.stderr, /refusing the unverified download/);
     }
