@@ -18,9 +18,11 @@ $failed = $false
 try {
   $before = Get-MpComputerStatus
   $report.before = $before | Select-Object AMServiceEnabled, AntivirusEnabled, RealTimeProtectionEnabled, AMEngineVersion, AMProductVersion, AntivirusSignatureVersion, AntivirusSignatureLastUpdated
+  $preferences = Get-MpPreference
+  $report.preferencesBefore = $preferences | Select-Object DisableRealtimeMonitoring, DisableIOAVProtection, DisableBehaviorMonitoring, MAPSReporting, SubmitSamplesConsent, ExclusionPath, ExclusionProcess, ExclusionExtension
   if (-not $before.AMServiceEnabled) {
     # Enabling an installed service is safe on this disposable runner. Never
-    # change exclusion, remediation, or cloud policies.
+    # weaken protection or change remediation policies.
     Start-Service WinDefend
   }
   $mp = Get-ChildItem "$env:ProgramData\Microsoft\Windows Defender\Platform\*\MpCmdRun.exe" -ErrorAction SilentlyContinue |
@@ -36,13 +38,29 @@ try {
   # Hosted images can default to real-time monitoring off. Enable it for the
   # download-time reproduction and explicitly refuse to mislabel a scan if
   # policy prevents activation. Never turn protection off.
-  Set-MpPreference -DisableRealtimeMonitoring $false
+  # The hosted image excludes both entire drives. Remove those existing
+  # exclusions on this disposable machine; never add any. Enable the checks
+  # a normal consumer install has, but keep automatic sample uploads off.
+  foreach ($excludedPath in @($preferences.ExclusionPath)) {
+    if ($excludedPath) { Remove-MpPreference -ExclusionPath $excludedPath }
+  }
+  foreach ($excludedProcess in @($preferences.ExclusionProcess)) {
+    if ($excludedProcess) { Remove-MpPreference -ExclusionProcess $excludedProcess }
+  }
+  foreach ($excludedExtension in @($preferences.ExclusionExtension)) {
+    if ($excludedExtension) { Remove-MpPreference -ExclusionExtension $excludedExtension }
+  }
+  Set-MpPreference -DisableRealtimeMonitoring $false -DisableIOAVProtection $false -DisableBehaviorMonitoring $false -MAPSReporting Advanced -SubmitSamplesConsent NeverSend
   Start-Sleep -Seconds 3
   $current = Get-MpComputerStatus
   $report.scannerStatus = $current | Select-Object AMServiceEnabled, AntivirusEnabled, RealTimeProtectionEnabled, AMEngineVersion, AMProductVersion, AntivirusSignatureVersion, AntivirusSignatureLastUpdated
   if (-not $current.AMServiceEnabled -or -not $current.AntivirusEnabled) { throw 'Defender is not active; no scan verdict can be inferred.' }
   if (-not $current.RealTimeProtectionEnabled) { throw 'Real-time monitoring remains disabled by runner policy; cannot reproduce download-time detection on this host.' }
   $report.protectionPreferences = Get-MpPreference | Select-Object DisableRealtimeMonitoring, DisableIOAVProtection, DisableBehaviorMonitoring, MAPSReporting, SubmitSamplesConsent, ExclusionPath, ExclusionProcess, ExclusionExtension
+  $cloudOutput = & $mp -ValidateMapsConnection 2>&1 | Out-String
+  $report.cloudConnectionExitCode = $LASTEXITCODE
+  $cloudOutput | Set-Content (Join-Path $evidence 'cloud-connection.txt')
+  Write-Output $cloudOutput
   $http = [System.Net.Http.HttpClient]::new()
   $http.Timeout = [TimeSpan]::FromSeconds(90)
   foreach ($sample in @(
