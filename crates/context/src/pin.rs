@@ -13,10 +13,10 @@ const HARNESS_DIRS: [&str; 17] = [
     ".pi", ".opencode", ".kiro", ".rovodev", ".vibe", ".qoder",
 ];
 const CODEX_HARNESSES: [&str; 2] = [".codex", ".agents"];
-pub const VALID_COMMANDS: [&str; 23] = [
+pub const VALID_COMMANDS: [&str; 24] = [
     "craft", "init", "extract", "document", "shape", "critique", "audit", "polish", "bolder", "quieter", "distill",
     "harden", "onboard", "live", "animate", "colorize", "typeset", "layout", "delight", "overdrive", "clarify",
-    "adapt", "optimize",
+    "adapt", "optimize", "generate",
 ];
 const PIN_MARKER: &str = "<!-- impeccable-pinned-skill -->";
 const OPENCODE_PIN_MARKER: &str = "<!-- impeccable-pinned-command -->";

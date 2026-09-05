@@ -2037,6 +2037,7 @@
   function setLiveState(next) {
     state = next;
     window.__IMPECCABLE_LIVE_STATE__ = next;
+    retryDeclinedAgentTargets();
     syncPageInteractionCursor();
     // Whether a queued steer is still behind a generation is a function of this
     // state, so the hint has to move with it, not only with the 5s poll.
@@ -4014,6 +4015,7 @@
 
   function hidePendingApplyDock() {
     pendingApplyInFlight = false;
+    retryDeclinedAgentTargets();
     clearStoredManualApplyState();
     if (pendingIntroAnimation) { pendingIntroAnimation.cancel(); pendingIntroAnimation = null; }
     if (pendingDockEl) pendingDockEl.style.display = 'none';
@@ -4047,6 +4049,7 @@
   function setPendingApplyLoading(loading, count) {
     if (!pendingPillEl || !pendingPillLabelEl || !pendingPillCountEl || !pendingTrashBtn) return;
     pendingApplyInFlight = loading === true;
+    if (!pendingApplyInFlight) retryDeclinedAgentTargets();
     const currentCount = count || parseInt(pendingPillEl.dataset.count || '0', 10) || 0;
     if (pendingApplyInFlight) storeManualApplyState(currentCount);
     else clearStoredManualApplyState();
@@ -7112,6 +7115,271 @@
   }
 
   //
+  // ------------------------------------------------------------------
+  // Agent-initiated targeting (the `generate` command). The agent names an
+  // element by CSS selector over POST /agent-target; the server pushes an
+  // `agent_target` SSE message here. The overlay resolves the selector,
+  // scrolls the element into view, enters the same picked state a user
+  // click produces, and fires the normal Go pipeline, so everything
+  // downstream (generate event, variants, cycling, accept) is unchanged.
+  // The verdict goes back through POST /agent-target-result, which resolves
+  // the agent's held-open CLI call.
+
+  function postAgentTargetResult(targetId, result) {
+    fetch('http://localhost:' + PORT + '/agent-target-result?token=' + TOKEN, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: TOKEN, targetId, ...result }),
+    }).catch(() => { /* server gone; nothing to report to */ });
+  }
+
+  function describeAgentTargetCandidate(el) {
+    return {
+      tag: el.tagName.toLowerCase(),
+      id: el.id || null,
+      classes: [...el.classList].filter((c) => !c.startsWith('impeccable-')),
+      text: (el.textContent || '').trim().slice(0, 80),
+    };
+  }
+
+  function resolveAgentTargetElement(msg) {
+    let matched;
+    try {
+      matched = [...document.querySelectorAll(msg.selector)];
+    } catch {
+      return { error: { ok: false, error: 'invalid_selector', selector: msg.selector } };
+    }
+    let candidates = matched.filter((el) => pickable(el));
+    if (msg.text) {
+      const needle = String(msg.text).toLowerCase();
+      candidates = candidates.filter((el) => (el.textContent || '').toLowerCase().includes(needle));
+    }
+    if (candidates.length === 0) {
+      return {
+        error: {
+          ok: false,
+          error: 'no_match',
+          selector: msg.selector,
+          matchCount: 0,
+          // How many nodes the raw selector hit before the pickable/text
+          // filters: distinguishes a wrong selector from an unpickable match.
+          rawMatchCount: matched.length,
+        },
+      };
+    }
+    if (Number.isInteger(msg.index)) {
+      const el = candidates[msg.index - 1];
+      if (!el) {
+        return { error: { ok: false, error: 'index_out_of_range', selector: msg.selector, matchCount: candidates.length } };
+      }
+      return { el, matchCount: candidates.length };
+    }
+    if (candidates.length > 1) {
+      return {
+        error: {
+          ok: false,
+          error: 'ambiguous',
+          selector: msg.selector,
+          matchCount: candidates.length,
+          candidates: candidates.slice(0, 8).map(describeAgentTargetCandidate),
+        },
+      };
+    }
+    return { el: candidates[0], matchCount: 1 };
+  }
+
+  function scrollAgentTargetIntoView(el, done) {
+    const rect = el.getBoundingClientRect();
+    if (rect.top >= 0 && rect.bottom <= window.innerHeight) { done(); return; }
+    let settled = false;
+    let fallback = null;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      removeEventListener('scrollend', finish, true);
+      if (fallback) clearTimeout(fallback);
+      done();
+    };
+    // scrollend where supported; a timer covers engines without it and the
+    // no-movement case (element already at its final resting position).
+    addEventListener('scrollend', finish, true);
+    fallback = setTimeout(finish, 1200);
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+
+  // One id per page load: the server keys claims and roll-call reports on
+  // it, and only the tab that holds the lease can renew it.
+  const AGENT_TARGET_CLIENT_ID = id8();
+
+  function claimAgentTarget(targetId, report) {
+    return fetch('http://localhost:' + PORT + '/agent-target-claim?token=' + TOKEN, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: TOKEN, targetId, clientId: AGENT_TARGET_CLIENT_ID, ...report }),
+    }).then((res) => res.json())
+      .then((j) => ({ granted: !!j && j.granted === true, pending: !!j && j.pending === true }))
+      .catch(() => ({ granted: false, pending: false }));
+  }
+
+  function agentTargetBusyReason() {
+    if (pendingApplyInFlight) return 'manual_apply_in_flight';
+    if (state !== 'IDLE' && state !== 'PICKING' && state !== 'CONFIGURING') return 'session_active';
+    return null;
+  }
+
+  // Targets this tab declined as busy. A busy report is only this tab's word
+  // at that moment: the moment it is free again (setLiveState), it claims
+  // each of these as eligible, and the server drops the stale report, so a
+  // busy verdict is never built on a tab that has since gone idle. The
+  // server denies claims for resolved targets, so retries are harmless.
+  const busyDeclinedTargets = new Map();
+
+  function declineAgentTargetBusy(msg, busy) {
+    busyDeclinedTargets.set(msg.targetId, msg);
+    claimAgentTarget(msg.targetId, { eligible: false, state, reason: busy });
+  }
+
+  // A torn-down overlay, or one whose helper connection is gone, cannot
+  // serve a target and must not even claim one: it would hold the lease for
+  // a request it will never act on.
+  function agentTargetOverlayGone() {
+    return !evtSource;
+  }
+
+  // A denied claimant retries at this cadence, a little over the lease, so
+  // the first retry after a dead holder's lease lapses is granted.
+  const AGENT_TARGET_RESCUE_RETRY_MS = 3500;
+
+  // Claim the lease and act as the holder. A denied claim means another tab
+  // holds the lease. That holder can die before posting its result (reload,
+  // crash, even after renewing), and its lease lapses after ~3s, so this tab
+  // keeps retrying for as long as the server still holds the request: the
+  // answer's `pending` is the server's word that the request is alive, and
+  // it turns false the moment the request resolved or timed out, so no tab
+  // retries a request nobody awaits. A tab that turned busy meanwhile joins
+  // the roll call instead of taking a lease it cannot use. The first claim
+  // and the busy-to-idle re-claim share this.
+  function claimAndActOnAgentTarget(msg) {
+    if (agentTargetOverlayGone()) return;
+    const busy = agentTargetBusyReason();
+    if (busy) { declineAgentTargetBusy(msg, busy); return; }
+    claimAgentTarget(msg.targetId, { eligible: true }).then((claim) => {
+      if (claim.granted) { actOnAgentTarget(msg); return; }
+      if (!claim.pending) return;
+      setTimeout(() => claimAndActOnAgentTarget(msg), AGENT_TARGET_RESCUE_RETRY_MS);
+    });
+  }
+
+  function retryDeclinedAgentTargets() {
+    if (busyDeclinedTargets.size === 0 || agentTargetBusyReason()) return;
+    for (const [targetId, msg] of busyDeclinedTargets) {
+      busyDeclinedTargets.delete(targetId);
+      claimAndActOnAgentTarget(msg);
+    }
+  }
+
+  // Targets this page already answered (claimed, declined, or acted on).
+  // The server replays pending targets to every connection that opens, and
+  // an EventSource reconnect opens one for a page that already heard the
+  // target, so a replay must not start a second claim or a second Go.
+  const agentTargetsSeen = [];
+
+  function handleAgentTarget(msg) {
+    if (!msg || typeof msg.targetId !== 'string') return;
+    if (agentTargetsSeen.includes(msg.targetId)) return;
+    agentTargetsSeen.push(msg.targetId);
+    if (agentTargetsSeen.length > 100) agentTargetsSeen.shift();
+    const busy = agentTargetBusyReason();
+    if (busy) {
+      // Roll call: a busy tab reports itself and never acts. The server
+      // answers `busy` the moment every connected overlay has reported, so
+      // an idle tab elsewhere is never raced by a timer.
+      declineAgentTargetBusy(msg, busy);
+      return;
+    }
+    // Eligible tabs race for the server's lease and only the holder acts. A
+    // hidden tab yields a short head start so a visible one wins when both
+    // exist, and still serves the request on its own: the user finds the
+    // selection waiting when they return to it.
+    setTimeout(() => claimAndActOnAgentTarget(msg), document.hidden ? 150 : 0);
+  }
+
+  function actOnAgentTarget(msg) {
+    if (agentTargetOverlayGone()) return;
+    const reply = (result) => postAgentTargetResult(msg.targetId, result);
+    const busy = agentTargetBusyReason();
+    if (busy) {
+      // Turned busy between claim and act: report it, which also hands the
+      // lease back so the roll call can complete or a rescuer can claim.
+      declineAgentTargetBusy(msg, busy);
+      return;
+    }
+    const resolved = resolveAgentTargetElement(msg);
+    if (resolved.error) { reply(resolved.error); return; }
+    const el = resolved.el;
+    if (msg.dryRun) {
+      reply({
+        ok: true,
+        dryRun: true,
+        matchCount: resolved.matchCount,
+        element: describeAgentTargetCandidate(el),
+      });
+      return;
+    }
+    scrollAgentTargetIntoView(el, () => {
+      // Torn down during the scroll settle: do not renew. The lease lapses
+      // for a rescuer instead of Go minting a session on a dismantled
+      // overlay.
+      if (agentTargetOverlayGone()) return;
+      // Renew the lease right before the irreversible part: a tab whose
+      // lease lapsed while it scrolled (a rescuer took over) stops here, so
+      // one request never gets two Go presses.
+      claimAgentTarget(msg.targetId, { eligible: true }).then((renewal) => {
+        if (!renewal.granted) return;
+        // An insert placement left mid-configure gives way, exactly as a
+        // click outside it does in handleClick.
+        if (state === 'CONFIGURING' && configureKind === 'insert') cancelInsertConfigure();
+        // Mirror of the user-click pick entry in handleClick, minus the
+        // pick-mode gate (the agent's intent replaces the toggle); the entry
+        // goes through beginNewLiveConfiguration like every other pick so
+        // deferred recovery sees a fresh interaction revision.
+        selectedElement = el;
+        beginNewLiveConfiguration();
+        showHighlight(selectedElement);
+        clearAnnotations();
+        showAnnotOverlay(selectedElement);
+        showBar('configure');
+        renderEditBadge(hasTextRows(selectedElement) ? 'idle' : 'hidden');
+        startScrollTracking();
+        maybePrefetchPage();
+        maybeWarnConditionalAncestor(selectedElement);
+        // Preset what the agent asked for, then fire the same Go a user press
+        // fires. handleGo reads exactly these inputs.
+        selectedAction = msg.action;
+        selectedCount = msg.count;
+        // updateBarContent rebuilds the configure row and replaces the input
+        // element, so the prompt must be written into the input it creates,
+        // never before (the action-chip click handler does the same dance).
+        updateBarContent('configure');
+        const input = uiGetById(PREFIX + '-input');
+        if (input) input.value = msg.prompt || '';
+        handleGo();
+        if (state === 'GENERATING' && currentSessionId) {
+          reply({
+            ok: true,
+            matchCount: resolved.matchCount,
+            sessionId: currentSessionId,
+            action: msg.action,
+            count: msg.count,
+            element: describeAgentTargetCandidate(el),
+          });
+        } else {
+          reply({ ok: false, error: 'go_failed', state });
+        }
+      });
+    });
+  }
+
   // SSE (server→browser) + fetch POST (browser→server)
   // Zero-dependency replacement for WebSocket.
   //
@@ -7121,7 +7389,7 @@
   const SSE_MAX_RETRIES = 20;  // generous: heartbeats keep the connection alive, so retries mean real trouble
 
   function connectSSE() {
-    evtSource = new EventSource('http://localhost:' + PORT + '/events?token=' + TOKEN);
+    evtSource = new EventSource('http://localhost:' + PORT + '/events?token=' + TOKEN + '&clientId=' + AGENT_TARGET_CLIENT_ID);
 
     evtSource.onopen = () => {
       sseRetries = 0; // reset on successful (re)connect
@@ -7145,6 +7413,9 @@
           break;
         case 'agent_polling':
           syncAgentPollingUi(!!msg.connected);
+          break;
+        case 'agent_target':
+          handleAgentTarget(msg);
           break;
         case 'agent_phase':
           if (msg.id === currentSessionId && (state === 'GENERATING' || state === 'CYCLING')) {
@@ -11715,6 +11986,9 @@ void main() {
 
   /** Full teardown: remove all UI, disconnect SSE, clean up. */
   function teardown() {
+    // Declined targets die with the overlay: the IDLE transition below must
+    // not re-claim a lease this page can no longer act on.
+    busyDeclinedTargets.clear();
     stopAgentStatusPoll();
     hideAgentPollTooltip();
     if (agentPollTooltipEl) {

@@ -1720,3 +1720,62 @@ fn codex_stop_emits_decision_block() {
     assert!(out["reason"].as_str().unwrap().contains("[side-tab]"));
     assert!(out.get("hookSpecificOutput").is_none());
 }
+
+// ── live-preview stand-down ───────────────────────────────────────────────
+//
+// A live variant session owns files carrying preview scaffolding
+// (`data-impeccable-variants=` wrappers, `impeccable-carbonize-start`
+// blocks). Every hook entry stands down on them: findings there are noise
+// and acting on them derails the session; live-complete verifies the file
+// once the accepted variant is permanent.
+
+#[test]
+fn run_hook_stands_down_on_live_preview_markers() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    // Control: the same slop without markers is reported.
+    let plain = t.write("src/plain.css", GRADIENT_CSS);
+    let reported = hook::run_hook(&r, &edit_event(&cwd, &plain, "s1"));
+    assert!(reported.stdout.contains("[gradient-text]"), "{}", reported.stdout);
+    // A carbonize block in flight: skipped, nothing emitted.
+    let carbonized = t.write(
+        "src/carbonized.css",
+        &format!("/* impeccable-carbonize-start ab12cd34 */\n{GRADIENT_CSS}/* impeccable-carbonize-end ab12cd34 */\n"),
+    );
+    let skipped = hook::run_hook(&r, &edit_event(&cwd, &carbonized, "s1"));
+    assert_eq!(skipped.stdout, "", "no findings while live markers are in the file");
+    assert_eq!(skipped.audit["skipped"], json!("live-preview"));
+    // A published variants wrapper, same stand-down.
+    let wrapped = t.write(
+        "src/wrapped.html",
+        "<!-- impeccable-variants-start ab12cd34 --><div data-impeccable-variants=\"ab12cd34\" data-impeccable-variant-count=\"3\"></div>\n",
+    );
+    let skipped = hook::run_hook(&r, &edit_event(&cwd, &wrapped, "s1"));
+    assert_eq!(skipped.stdout, "");
+    assert_eq!(skipped.audit["skipped"], json!("live-preview"));
+}
+
+#[test]
+fn before_edit_stands_down_on_live_preview_markers() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let r = rt(&cwd);
+    let slop = ".t { background: linear-gradient(90deg,#f00,#00f); -webkit-background-clip: text; color: transparent; }\n";
+    // Control: denied at normal size without markers.
+    let (out, _) = hbe(&r, &cursor(&cwd, "Write", json!({"file_path": "src/x.css", "content": slop})));
+    assert!(out.starts_with("{\"permission\":\"deny\""), "{out}");
+    // The very first variants write introduces the markers in the proposed
+    // content itself.
+    let proposed = format!("/* impeccable-carbonize-start ab12cd34 */\n{slop}");
+    let (out, code) = hbe(&r, &cursor(&cwd, "Write", json!({"file_path": "src/x.css", "content": proposed})));
+    assert_eq!(code, 0);
+    assert_eq!(out, "{\"permission\":\"allow\"}");
+    // Later fragment edits touch a file that already carries them on disk:
+    // the proposed content alone looks like plain slop.
+    t.write("src/y.css", "/* impeccable-carbonize-start ab12cd34 */\n.v { color: red; }\n");
+    let (out, code) = hbe(&r, &cursor(&cwd, "Write", json!({"file_path": "src/y.css", "content": slop})));
+    assert_eq!(code, 0);
+    assert_eq!(out, "{\"permission\":\"allow\"}");
+}

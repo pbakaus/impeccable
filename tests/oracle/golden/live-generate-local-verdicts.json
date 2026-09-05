@@ -1,0 +1,61 @@
+{
+  "steps": [
+    {
+      "stdout": "Usage: impeccable live-generate --selector <css> [--text <snippet>] [--index <n>] [--action <name>] [--count <n>] [--prompt <text>] [--dry-run] [--wait-for-browser <ms>]\n\nFlags:\n  --selector <css>   required; resolved with document.querySelectorAll\n  --text <snippet>   optional; keeps only matches whose textContent contains it\n  --index <n>        optional; 1-based pick among the remaining matches\n  --action <name>    optional; one of the live action vocabulary (default: impeccable)\n  --count <n>        optional; variants to request, 1-8 (default: 3)\n  --prompt <text>    optional; freeform direction, same as typing before Go\n  --dry-run          optional; resolve and report without starting anything\n  --wait-for-browser <ms>  optional; poll the helper until a page with the\n                     overlay connects (or the budget runs out) before sending\n                     the target.\n\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "{\n  \"ok\": false,\n  \"error\": \"selector_required\",\n  \"_instructions\": \"Pass --selector with a CSS selector for the element to target. Derive it from the page source: prefer an id, a unique class, or a landmark section, and add --text \\\"<visible text>\\\" when the class repeats.\"\n}\n",
+      "stderr": "",
+      "exit": 1,
+      "signal": null
+    },
+    {
+      "stdout": "{\n  \"ok\": false,\n  \"error\": \"missing_flag_value\",\n  \"flag\": \"--selector\"\n}\n",
+      "stderr": "",
+      "exit": 1,
+      "signal": null
+    },
+    {
+      "stdout": "{\n  \"ok\": false,\n  \"error\": \"invalid_action\",\n  \"action\": \"bold\",\n  \"validActions\": [\n    \"impeccable\",\n    \"bolder\",\n    \"quieter\",\n    \"distill\",\n    \"polish\",\n    \"typeset\",\n    \"colorize\",\n    \"layout\",\n    \"adapt\",\n    \"animate\",\n    \"delight\",\n    \"overdrive\"\n  ],\n  \"_instructions\": \"Map the request wording onto the closest listed action (bold -> bolder, quiet/calmer -> quieter, simplify -> distill). When no action fits, use --action impeccable and carry the wording via --prompt.\"\n}\n",
+      "stderr": "",
+      "exit": 1,
+      "signal": null
+    },
+    {
+      "stdout": "{\n  \"ok\": false,\n  \"error\": \"invalid_count\",\n  \"count\": \"9\",\n  \"_instructions\": \"Pass --count as an integer from 1 to 8.\"\n}\n",
+      "stderr": "",
+      "exit": 1,
+      "signal": null
+    },
+    {
+      "stdout": "{\n  \"ok\": false,\n  \"error\": \"invalid_count\",\n  \"count\": \"three\",\n  \"_instructions\": \"Pass --count as an integer from 1 to 8.\"\n}\n",
+      "stderr": "",
+      "exit": 1,
+      "signal": null
+    },
+    {
+      "stdout": "{\n  \"ok\": false,\n  \"error\": \"invalid_index\",\n  \"index\": \"0\",\n  \"_instructions\": \"Pass --index as a 1-based integer position among the matches.\"\n}\n",
+      "stderr": "",
+      "exit": 1,
+      "signal": null
+    },
+    {
+      "stdout": "{\n  \"ok\": false,\n  \"error\": \"invalid_wait\",\n  \"wait\": \"soon\",\n  \"_instructions\": \"Pass --wait-for-browser as a positive integer of milliseconds, e.g. --wait-for-browser 120000.\"\n}\n",
+      "stderr": "",
+      "exit": 1,
+      "signal": null
+    },
+    {
+      "stdout": "{\n  \"ok\": false,\n  \"error\": \"server_not_running\",\n  \"_instructions\": \"No live helper server is recorded for this project. Run the live boot first (<IMPECCABLE> live), open the app URL that serves a pageFiles entry, then rerun this command.\"\n}\n",
+      "stderr": "",
+      "exit": 1,
+      "signal": null
+    }
+  ],
+  "files": {
+    ".impeccable/live/config.json": "{\n  \"files\": [\"index.html\", \"public/**/*.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n"
+  }
+}

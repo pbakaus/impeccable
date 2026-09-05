@@ -182,6 +182,8 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             next_poll_id: 1,
             next_client_id: 1,
             next_apply_timer_gen: 0,
+            pending_agent_targets: Vec::new(),
+            next_agent_target_timer_gen: 0,
             shutting_down: false,
             cleaned_up: false,
             log_tx,
@@ -517,6 +519,9 @@ fn shutdown(shared: &Shared) {
     }
     for poll in st.pending_polls.drain(..) {
         let _ = poll.tx.send(json!({ "type": "exit" }));
+    }
+    for (_, pending) in st.pending_agent_targets.drain(..) {
+        let _ = pending.tx.send(json!({ "ok": false, "error": "server_stopping" }));
     }
     // Give response writers a moment to flush before the process exits.
     drop(st);
@@ -907,7 +912,14 @@ fn handle_connection(shared: Shared, mut stream: TcpStream, mut ticket: Ticket) 
                 text_res(200, Some("text/html; charset=utf-8"), &content),
             );
         }
-        ("/events", "GET") => handle_sse(&shared, stream, &cors, token_ok, &mut ticket),
+        ("/events", "GET") => handle_sse(
+            &shared,
+            stream,
+            &cors,
+            token_ok,
+            req.query_get("clientId").map(|s| s.to_string()),
+            &mut ticket,
+        ),
         ("/manual-edit-stash", "POST")
         | ("/manual-edit-stash", "GET")
         | ("/manual-edit-commit", "POST")
@@ -942,6 +954,16 @@ fn handle_connection(shared: Shared, mut stream: TcpStream, mut ticket: Ticket) 
         ("/poll", "GET") => handle_poll_get(&shared, stream, &cors, &req, token_ok, &mut ticket),
         ("/poll", "POST") => {
             handle_poll_post(&shared, &mut stream, &cors, &req, &token_now, &mut ticket)
+        }
+        // --- Agent-initiated targeting (the `generate` command) ---
+        ("/agent-target", "POST") => {
+            handle_agent_target_post(&shared, stream, &cors, &req, &token_now, &mut ticket)
+        }
+        ("/agent-target-result", "POST") => {
+            handle_agent_target_result_post(&shared, &mut stream, &cors, &req, &token_now)
+        }
+        ("/agent-target-claim", "POST") => {
+            handle_agent_target_claim_post(&shared, &mut stream, &cors, &req, &token_now)
         }
         _ => respond(&mut stream, &cors, text_res(404, None, "Not found")),
     }
@@ -1028,6 +1050,7 @@ fn handle_sse(
     stream: TcpStream,
     cors: &[(String, String)],
     token_ok: bool,
+    agent_client_id: Option<String>,
     ticket: &mut Ticket,
 ) {
     let mut stream = stream;
@@ -1050,7 +1073,7 @@ fn handle_sse(
             }))
             .unwrap_or_default()
         );
-        let (id, rx, tx) = st.add_sse_client();
+        let (id, rx, tx) = st.add_sse_client(agent_client_id);
         (id, rx, tx, frame)
     };
     // Registered; the stream now parks, so let later requests through.
@@ -2588,6 +2611,196 @@ fn handle_manual_edit_commit(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Agent-initiated element targeting (the `generate` command)
+// ---------------------------------------------------------------------------
+
+/// JS: validateAgentTargetRequest(msg)
+fn validate_agent_target_request(msg: &Value) -> Option<String> {
+    let selector_ok = matches!(msg.get("selector"), Some(Value::String(s)) if !s.trim().is_empty());
+    if !selector_ok {
+        return Some("agent_target: selector is required".into());
+    }
+    if msg.get("selector").and_then(Value::as_str).map(|s| s.chars().count()).unwrap_or(0) > 1000 {
+        return Some("agent_target: selector too long".into());
+    }
+    let action_ok = matches!(msg.get("action"), Some(Value::String(a)) if crate::vocabulary::VISUAL_ACTIONS.contains(&a.as_str()));
+    if !action_ok {
+        return Some(format!(
+            "agent_target: invalid action (valid: {})",
+            crate::vocabulary::VISUAL_ACTIONS.join(", ")
+        ));
+    }
+    let count_ok = match msg.get("count") {
+        Some(Value::Number(n)) => n.as_i64().map(|c| (1..=8).contains(&c)).unwrap_or(false),
+        _ => false,
+    };
+    if !count_ok {
+        return Some("agent_target: count must be 1-8".into());
+    }
+    if let Some(text) = msg.get("text") {
+        if !matches!(text, Value::String(t) if t.chars().count() <= 500) {
+            return Some("agent_target: text must be a string of at most 500 chars".into());
+        }
+    }
+    if let Some(index) = msg.get("index") {
+        if !index.as_i64().map(|i| i >= 1).unwrap_or(false) {
+            return Some("agent_target: index must be a positive integer (1-based)".into());
+        }
+    }
+    if let Some(prompt) = msg.get("prompt") {
+        if !matches!(prompt, Value::String(p) if p.chars().count() <= 2000) {
+            return Some("agent_target: prompt must be a string of at most 2000 chars".into());
+        }
+    }
+    if let Some(dry) = msg.get("dryRun") {
+        if !dry.is_boolean() {
+            return Some("agent_target: dryRun must be a boolean".into());
+        }
+    }
+    None
+}
+
+/// Parse the body and check its token; answers the request itself on failure.
+fn agent_target_body(
+    stream: &mut TcpStream,
+    cors: &[(String, String)],
+    req: &Request,
+    token: &str,
+) -> Option<Map<String, Value>> {
+    let Some(msg) = parse_json_body(req) else {
+        respond(stream, cors, json_res(400, json!({ "error": "Invalid JSON" })));
+        return None;
+    };
+    let obj = msg.as_object().cloned().unwrap_or_default();
+    if obj.get("token").and_then(Value::as_str) != Some(token) {
+        respond(stream, cors, json_res(401, json!({ "error": "Unauthorized" })));
+        return None;
+    }
+    Some(obj)
+}
+
+/// JS: handleAgentTargetPost: hold the response until the overlay answers.
+fn handle_agent_target_post(
+    shared: &Shared,
+    stream: TcpStream,
+    cors: &[(String, String)],
+    req: &Request,
+    token: &str,
+    ticket: &mut Ticket,
+) {
+    let mut stream = stream;
+    let Some(msg) = agent_target_body(&mut stream, cors, req, token) else {
+        return;
+    };
+    if let Some(error) = validate_agent_target_request(&Value::Object(msg.clone())) {
+        respond(&mut stream, cors, json_res(400, json!({ "error": error })));
+        return;
+    }
+    let mut st = lock(shared);
+    if st.sse_clients.is_empty() {
+        drop(st);
+        respond(
+            &mut stream,
+            cors,
+            json_res(200, json!({ "ok": false, "error": "no_browser_connected" })),
+        );
+        return;
+    }
+    let mut payload = Map::new();
+    payload.insert("selector".into(), msg.get("selector").cloned().unwrap_or(Value::Null));
+    if let Some(text) = msg.get("text").and_then(Value::as_str).filter(|t| !t.is_empty()) {
+        payload.insert("text".into(), json!(text));
+    }
+    if let Some(index) = msg.get("index").and_then(Value::as_i64) {
+        payload.insert("index".into(), json!(index));
+    }
+    payload.insert("action".into(), msg.get("action").cloned().unwrap_or(Value::Null));
+    payload.insert("count".into(), msg.get("count").cloned().unwrap_or(Value::Null));
+    if let Some(prompt) = msg.get("prompt").and_then(Value::as_str).filter(|p| !p.is_empty()) {
+        payload.insert("prompt".into(), json!(prompt));
+    }
+    if msg.get("dryRun").and_then(Value::as_bool) == Some(true) {
+        payload.insert("dryRun".into(), json!(true));
+    }
+    let (target_id, rx) = st.register_agent_target(payload);
+    drop(st);
+    // Registered and broadcast; the response now parks, so let the claims
+    // and the result through.
+    ticket.release();
+    let result = rx
+        .recv()
+        .unwrap_or_else(|_| json!({ "ok": false, "error": "server_stopping" }));
+    let mut out = Map::new();
+    out.insert("targetId".into(), json!(target_id));
+    if let Value::Object(fields) = result {
+        for (k, v) in fields {
+            out.insert(k, v);
+        }
+    }
+    respond(&mut stream, cors, json_res(200, Value::Object(out)));
+}
+
+/// JS: handleAgentTargetResultPost
+fn handle_agent_target_result_post(
+    shared: &Shared,
+    stream: &mut TcpStream,
+    cors: &[(String, String)],
+    req: &Request,
+    token: &str,
+) {
+    let Some(msg) = agent_target_body(stream, cors, req, token) else {
+        return;
+    };
+    let target_id = match msg.get("targetId") {
+        Some(Value::String(id)) if !id.is_empty() => id.clone(),
+        _ => {
+            respond(
+                stream,
+                cors,
+                json_res(400, json!({ "error": "agent_target_result: missing targetId" })),
+            );
+            return;
+        }
+    };
+    let mut result = Map::new();
+    for (k, v) in msg {
+        if k != "token" && k != "targetId" {
+            result.insert(k, v);
+        }
+    }
+    let delivered = lock(shared).resolve_agent_target(&target_id, Value::Object(result));
+    respond(stream, cors, json_res(200, json!({ "ok": true, "delivered": delivered })));
+}
+
+/// JS: handleAgentTargetClaimPost
+fn handle_agent_target_claim_post(
+    shared: &Shared,
+    stream: &mut TcpStream,
+    cors: &[(String, String)],
+    req: &Request,
+    token: &str,
+) {
+    let Some(msg) = agent_target_body(stream, cors, req, token) else {
+        return;
+    };
+    let target_id = msg.get("targetId").and_then(Value::as_str).unwrap_or("").to_string();
+    let client_id = msg.get("clientId").and_then(Value::as_str).unwrap_or("").to_string();
+    if target_id.is_empty() || client_id.is_empty() {
+        respond(
+            stream,
+            cors,
+            json_res(400, json!({ "error": "agent_target_claim: missing targetId or clientId" })),
+        );
+        return;
+    }
+    let eligible = msg.get("eligible").and_then(Value::as_bool) == Some(true);
+    let state = msg.get("state").cloned().unwrap_or(Value::Null);
+    let reason = msg.get("reason").cloned().unwrap_or(Value::Null);
+    let body = lock(shared).claim_agent_target(&target_id, &client_id, eligible, state, reason);
+    respond(stream, cors, json_res(200, body));
+}
+
 #[cfg(test)]
 mod content_type_tests {
     use super::*;
@@ -2633,6 +2846,12 @@ mod content_type_tests {
         assert!(!releases_ticket_up_front("/events", "OPTIONS"));
         assert!(!releases_ticket_up_front("/poll", "POST"));
         assert!(!releases_ticket_up_front("/stop", "GET"));
+        // The agent-target routes mutate the roll call and must keep arrival
+        // order too: a claim answered before the target it claims registers
+        // would deny a tab that should have been granted.
+        assert!(!releases_ticket_up_front("/agent-target", "POST"));
+        assert!(!releases_ticket_up_front("/agent-target-result", "POST"));
+        assert!(!releases_ticket_up_front("/agent-target-claim", "POST"));
     }
 
     #[test]

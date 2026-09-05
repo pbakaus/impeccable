@@ -39,6 +39,29 @@ pub struct ParkedPoll {
 pub struct SseClient {
     pub id: u64,
     pub tx: Sender<String>,
+    /// The overlay's per-page-load id (`/events?clientId=`), so a disconnect
+    /// can retire its word in any agent-target roll call it took part in.
+    pub agent_client_id: Option<String>,
+}
+
+/// One overlay's roll-call report on an agent target: its busy state and why.
+pub struct AgentTargetReport {
+    pub client_id: String,
+    pub state: Value,
+    pub reason: Value,
+}
+
+/// A held-open `POST /agent-target` (the `generate` command): resolved by
+/// `POST /agent-target-result`, by a complete busy roll call, by its timeout,
+/// or by shutdown. The claim lease decides which overlay acts.
+pub struct AgentTargetPending {
+    pub tx: Sender<Value>,
+    /// The `agent_target` SSE payload, replayed to overlays that connect late.
+    pub payload: Value,
+    pub owner: Option<String>,
+    pub claimed_until: i64,
+    pub reports: Vec<AgentTargetReport>,
+    pub timer_gen: u64,
 }
 
 /// One pre-apply file snapshot entry (`{ exists, content }`).
@@ -84,6 +107,9 @@ pub struct ServerState {
     pub manual_edit_activity: Option<Value>,
     pub next_manual_edit_seq: i64,
     pub pending_apply_deferreds: Vec<(String, ApplyDeferred)>,
+    /// Held-open agent targets keyed by targetId, in arrival order.
+    pub pending_agent_targets: Vec<(String, AgentTargetPending)>,
+    pub next_agent_target_timer_gen: u64,
     pub last_poll_at: i64,
     pub timed_out_apply_ids: Vec<(String, TimedOutApply)>,
     pub next_poll_id: u64,
@@ -603,24 +629,279 @@ impl ServerState {
         before != self.pending_polls.len()
     }
 
-    /// Register an SSE client; returns (id, receiver).
-    pub fn add_sse_client(&mut self) -> (u64, Receiver<String>, Sender<String>) {
+    /// Register an SSE client; returns (id, receiver). An overlay that
+    /// connects after an agent target was broadcast (a reload mid-request is
+    /// the common case) joins its roll call: every pending target is replayed
+    /// to it, so it claims or declines like the others instead of silently
+    /// widening the count the roll call is judged against.
+    pub fn add_sse_client(
+        &mut self,
+        agent_client_id: Option<String>,
+    ) -> (u64, Receiver<String>, Sender<String>) {
         let (tx, rx) = channel();
         let id = self.next_client_id;
         self.next_client_id += 1;
-        self.sse_clients.push(SseClient { id, tx: tx.clone() });
+        for (_, pending) in &self.pending_agent_targets {
+            let _ = tx.send(format!(
+                "data: {}\n\n",
+                serde_json::to_string(&pending.payload).unwrap_or_else(|_| "null".into())
+            ));
+        }
+        self.sse_clients.push(SseClient {
+            id,
+            tx: tx.clone(),
+            agent_client_id,
+        });
         (id, rx, tx)
     }
 
     /// Remove an SSE client; when none remain arm the exit timer (JS
-    /// `req.on('close')`).
+    /// `req.on('close')`). A departed overlay's word no longer counts in any
+    /// agent-target roll call. The overlay, not the connection, is the
+    /// participant: an EventSource reconnect opens a replacement connection
+    /// under the same page-level clientId before the old one is seen to
+    /// close, so its word is retired only once no connection carries that
+    /// id, while every roll call is still re-judged against the connections
+    /// that remain.
     pub fn remove_sse_client(&mut self, id: u64) {
         let before = self.sse_clients.len();
+        let agent_client_id = self
+            .sse_clients
+            .iter()
+            .find(|c| c.id == id)
+            .and_then(|c| c.agent_client_id.clone());
         self.sse_clients.retain(|c| c.id != id);
-        if before != self.sse_clients.len() && self.sse_clients.is_empty() {
-            self.clear_exit_timer();
-            self.arm_exit_timer();
+        if before != self.sse_clients.len() {
+            let still_connected = agent_client_id
+                .as_deref()
+                .map(|cid| self.sse_clients.iter().any(|c| c.agent_client_id.as_deref() == Some(cid)))
+                .unwrap_or(false);
+            self.drop_agent_target_client(if still_connected { None } else { agent_client_id.as_deref() });
+            if self.sse_clients.is_empty() {
+                self.clear_exit_timer();
+                self.arm_exit_timer();
+            }
         }
+    }
+
+    /// Connected overlays for a roll call: one per distinct clientId, plus
+    /// every connection that sent none (an older overlay build), so a
+    /// reconnect's momentary duplicate connection never waits on a second
+    /// report from the same tab.
+    pub fn connected_overlay_count(&self) -> usize {
+        let mut ids: Vec<&str> = Vec::new();
+        let mut anonymous = 0;
+        for c in &self.sse_clients {
+            match c.agent_client_id.as_deref() {
+                Some(cid) => {
+                    if !ids.contains(&cid) {
+                        ids.push(cid);
+                    }
+                }
+                None => anonymous += 1,
+            }
+        }
+        ids.len() + anonymous
+    }
+
+    // ---------------------------------------------------------------------
+    // Agent-initiated element targeting (the `generate` command)
+    // ---------------------------------------------------------------------
+    //
+    // POST /agent-target lets the AGENT start a variant session: the server
+    // pushes an `agent_target` SSE message, the overlay resolves the selector,
+    // scrolls to the element, enters the same picked state a user click
+    // produces, and fires the normal Go pipeline. The HTTP response is held
+    // open until the overlay POSTs /agent-target-result (or the timeout
+    // fires), so the CLI gets a synchronous verdict. No session exists until
+    // the browser's own generate event creates one.
+
+    /// Browser must answer an agent_target push within this window. The env
+    /// override exists for tests; real sessions keep the default.
+    pub fn agent_target_timeout_ms(&self) -> u64 {
+        env_positive_ms(&self.env, "IMPECCABLE_AGENT_TARGET_TIMEOUT_MS").unwrap_or(15_000)
+    }
+
+    /// A granted claim is a lease, not a lock: if the winning tab dies before
+    /// posting its result (reload, crash), the lease lapses and a surviving
+    /// tab's retry rescues the request instead of letting it wait out the
+    /// browser timeout. The lease comfortably exceeds a healthy winner's
+    /// worst case (claim RTT + smooth-scroll settle + Go, under 2s).
+    pub fn agent_target_lease_ms(&self) -> i64 {
+        env_positive_ms(&self.env, "IMPECCABLE_AGENT_TARGET_CLAIM_LEASE_MS")
+            .map(|v| v as i64)
+            .unwrap_or(3_000)
+    }
+
+    /// Hold a new agent target: mint its id, broadcast the push, arm the
+    /// timeout. Returns the id and the receiver the route blocks on.
+    pub fn register_agent_target(&mut self, mut payload: Map<String, Value>) -> (String, Receiver<Value>) {
+        let target_id = crate::random::random_id8();
+        payload.insert("targetId".into(), json!(target_id));
+        // JS spread order: type, targetId, then the request fields.
+        let mut ordered = Map::new();
+        ordered.insert("type".into(), json!("agent_target"));
+        ordered.insert("targetId".into(), json!(target_id));
+        for (k, v) in payload {
+            if k != "type" && k != "targetId" {
+                ordered.insert(k, v);
+            }
+        }
+        let payload = Value::Object(ordered);
+        let (tx, rx) = channel();
+        self.next_agent_target_timer_gen += 1;
+        let timer_gen = self.next_agent_target_timer_gen;
+        self.pending_agent_targets.push((
+            target_id.clone(),
+            AgentTargetPending {
+                tx,
+                payload: payload.clone(),
+                owner: None,
+                claimed_until: 0,
+                reports: Vec::new(),
+                timer_gen,
+            },
+        ));
+        self.broadcast(&payload);
+        let timeout_ms = self.agent_target_timeout_ms();
+        let weak = self.self_ref.clone();
+        let id = target_id.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(timeout_ms));
+            if let Some(shared) = weak.upgrade() {
+                let mut st = lock(&shared);
+                let Some((_, pending)) = st
+                    .pending_agent_targets
+                    .iter()
+                    .find(|(k, p)| *k == id && p.timer_gen == timer_gen)
+                else {
+                    return;
+                };
+                let verdict = if pending.reports.is_empty() {
+                    json!({ "ok": false, "error": "browser_timeout", "timeoutMs": timeout_ms })
+                } else {
+                    agent_target_busy_verdict(pending)
+                };
+                st.resolve_agent_target(&id, verdict);
+            }
+        });
+        (target_id, rx)
+    }
+
+    /// Deliver a verdict to the held request; false when nothing awaits it.
+    pub fn resolve_agent_target(&mut self, target_id: &str, result: Value) -> bool {
+        let Some(pos) = self
+            .pending_agent_targets
+            .iter()
+            .position(|(k, _)| k == target_id)
+        else {
+            return false;
+        };
+        let (_, pending) = self.pending_agent_targets.remove(pos);
+        let _ = pending.tx.send(result);
+        true
+    }
+
+    /// Every connected overlay has declined: answer busy now, not at the
+    /// timeout. Judged against the connections of this moment, so it runs
+    /// whenever a report lands and whenever an overlay leaves.
+    pub fn maybe_complete_agent_target_roll_call(&mut self, target_id: &str) {
+        let connected = self.connected_overlay_count();
+        let verdict = self
+            .pending_agent_targets
+            .iter()
+            .find(|(k, _)| k == target_id)
+            .and_then(|(_, p)| {
+                if p.owner.is_some() || p.reports.is_empty() || p.reports.len() < connected {
+                    None
+                } else {
+                    Some(agent_target_busy_verdict(p))
+                }
+            });
+        if let Some(verdict) = verdict {
+            self.resolve_agent_target(target_id, verdict);
+        }
+    }
+
+    /// A disconnected overlay's word no longer counts: drop its busy report,
+    /// hand back a lease it held (a rescuer's next claim is granted at once
+    /// instead of after the lease lapses), and re-judge each roll call
+    /// against the overlays that remain.
+    pub fn drop_agent_target_client(&mut self, client_id: Option<&str>) {
+        let ids: Vec<String> = self
+            .pending_agent_targets
+            .iter()
+            .map(|(k, _)| k.clone())
+            .collect();
+        for id in ids {
+            if let Some(cid) = client_id {
+                if let Some((_, p)) = self.pending_agent_targets.iter_mut().find(|(k, _)| *k == id) {
+                    p.reports.retain(|r| r.client_id != cid);
+                    if p.owner.as_deref() == Some(cid) {
+                        p.owner = None;
+                        p.claimed_until = 0;
+                    }
+                }
+            }
+            self.maybe_complete_agent_target_roll_call(&id);
+        }
+    }
+
+    /// Roll call plus a first-wins lease. Every connected overlay claims once.
+    /// A busy tab claims with eligible:false and is only counted: the moment
+    /// every connected overlay has reported busy, the held request answers
+    /// `busy` without waiting on a timer or guessing about a slower idle tab.
+    /// An eligible tab is granted when nobody holds the lease, when it
+    /// already holds it (a renew, which the holder does right before it
+    /// fires Go, so a lapsed lease can never leave two tabs acting), or when
+    /// the previous holder's lease lapsed without a result (a rescue).
+    /// Unknown or resolved targets deny and say so (`pending: false`), which
+    /// ends a rescuer's retry loop. Returns the response body.
+    pub fn claim_agent_target(
+        &mut self,
+        target_id: &str,
+        client_id: &str,
+        eligible: bool,
+        state: Value,
+        reason: Value,
+    ) -> Value {
+        let lease_ms = self.agent_target_lease_ms();
+        let now = now_i64();
+        let Some((_, pending)) = self
+            .pending_agent_targets
+            .iter_mut()
+            .find(|(k, _)| k == target_id)
+        else {
+            return json!({ "ok": true, "granted": false, "pending": false });
+        };
+        if !eligible {
+            pending.reports.retain(|r| r.client_id != client_id);
+            pending.reports.push(AgentTargetReport {
+                client_id: client_id.to_string(),
+                state,
+                reason,
+            });
+            // A holder that turned busy hands the lease back, so the roll
+            // call can complete and an eligible tab's retry is granted at
+            // once instead of waiting for the lease to lapse.
+            if pending.owner.as_deref() == Some(client_id) {
+                pending.owner = None;
+                pending.claimed_until = 0;
+            }
+            self.maybe_complete_agent_target_roll_call(target_id);
+            return json!({ "ok": true, "granted": false });
+        }
+        // An eligible claim is the client's latest word: drop any earlier
+        // busy report, so a busy verdict only ever counts tabs still busy.
+        pending.reports.retain(|r| r.client_id != client_id);
+        let granted = pending.owner.is_none()
+            || pending.owner.as_deref() == Some(client_id)
+            || pending.claimed_until <= now;
+        if granted {
+            pending.owner = Some(client_id.to_string());
+            pending.claimed_until = now + lease_ms;
+        }
+        json!({ "ok": true, "granted": granted, "pending": true })
     }
 
     /// JS: generationIsFenced(id)
@@ -1187,4 +1468,23 @@ pub fn strip_poller_owned_event_fields(event: &mut Map<String, Value>) {
     for key in ["_instructions", "_completionAck", "_acceptResult"] {
         event.remove(key);
     }
+}
+
+/// `Number(process.env.X || '') || default`: a positive integer wins, anything
+/// else falls back to the default.
+fn env_positive_ms(env: &Env, key: &str) -> Option<u64> {
+    env.get(key)
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .filter(|v| *v > 0)
+}
+
+/// The busy verdict for a held target: the first report's state and reason.
+pub fn agent_target_busy_verdict(pending: &AgentTargetPending) -> Value {
+    let first = pending.reports.first();
+    json!({
+        "ok": false,
+        "error": "busy",
+        "state": first.map(|r| r.state.clone()).unwrap_or(Value::Null),
+        "reason": first.map(|r| r.reason.clone()).unwrap_or(Value::Null),
+    })
 }

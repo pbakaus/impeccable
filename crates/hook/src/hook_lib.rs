@@ -2436,3 +2436,13 @@ pub fn normalize_rule_id(v: &str) -> String {
 pub fn js_slice(s: &str, start: usize, end: usize) -> String {
     slice_utf16(s, start, end)
 }
+
+/// A live variant session owns files carrying preview scaffolding: the
+/// wrapper a generate publishes and the carbonize block an accept leaves
+/// until cleanup. Findings on those files are noise (variants are meant to
+/// be tried, not audited) and acting on them derails the session mid-cycle,
+/// so every hook entry stands down on the markers; `live-complete` verifies
+/// the file once the accepted variant is permanent.
+pub fn has_live_preview_markers(content: &str) -> bool {
+    content.contains("data-impeccable-variants=") || content.contains("impeccable-carbonize-start")
+}

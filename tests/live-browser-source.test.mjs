@@ -808,8 +808,8 @@ describe('live-browser source contracts', () => {
     );
     assert.equal(
       SOURCE.match(/beginNewLiveConfiguration\(\);/g)?.length || 0,
-      3,
-      'mouse replace, mouse insert, and keyboard configuration must all supersede older recovery timers',
+      4,
+      'mouse replace, mouse insert, keyboard configuration, and the agent-target entry must all supersede older recovery timers',
     );
     assert.match(
       SOURCE,
@@ -820,6 +820,47 @@ describe('live-browser source contracts', () => {
       SOURCE,
       /function scheduleAcceptCleanup\(accepted\) \{[\s\S]{0,100}?const recoveryRevision = liveInteractionRevision;[\s\S]*?watchForHandledRuntimeWrapper\(accepted\?\.id, recoveryRevision\)/,
       'accept and handled-wrapper recovery must share the originating interaction revision',
+    );
+  });
+
+  it('re-claims busy-declined agent targets only while the overlay can still serve them', () => {
+    const teardownSource = SOURCE.match(/function teardown\(\) \{[\s\S]*?\n  \}/)?.[0] || '';
+    const clearAt = teardownSource.indexOf('busyDeclinedTargets.clear();');
+    const idleAt = teardownSource.indexOf("setLiveState('IDLE')");
+    assert.ok(clearAt >= 0 && idleAt > clearAt, 'teardown must drop declined targets before its IDLE transition, or a dead overlay re-claims a lease');
+    assert.match(
+      SOURCE,
+      /function hidePendingApplyDock\(\) \{\s*pendingApplyInFlight = false;\s*retryDeclinedAgentTargets\(\);/,
+      'finishing a manual apply must withdraw this tab\'s busy report',
+    );
+    assert.match(
+      SOURCE,
+      /pendingApplyInFlight = loading === true;\s*if \(!pendingApplyInFlight\) retryDeclinedAgentTargets\(\);/,
+      'clearing the apply flag must withdraw this tab\'s busy report',
+    );
+    const helper = SOURCE.match(/function claimAndActOnAgentTarget\(msg\) \{[\s\S]*?\n  \}/)?.[0] || '';
+    assert.match(helper, /if \(agentTargetOverlayGone\(\)\) return;/, 'a gone overlay must not take a lease it cannot act on');
+    assert.match(helper, /if \(!claim\.pending\) return;/, 'the server, not a timer, ends the rescue loop');
+    assert.match(
+      SOURCE,
+      /\/events\?token=' \+ TOKEN \+ '&clientId=' \+ AGENT_TARGET_CLIENT_ID/,
+      'the SSE connection must carry the overlay id, so a disconnect retires its roll-call word',
+    );
+    assert.match(
+      SOURCE,
+      /function handleAgentTarget\(msg\) \{[\s\S]{0,120}?if \(agentTargetsSeen\.includes\(msg\.targetId\)\) return;/,
+      'a replayed target this page already handled must not start a second claim or Go',
+    );
+    assert.match(helper, /setTimeout\(\(\) => claimAndActOnAgentTarget\(msg\), AGENT_TARGET_RESCUE_RETRY_MS\);/, 'a denied claim on a live request retries until the lease lapses');
+    assert.match(
+      SOURCE,
+      /scrollAgentTargetIntoView\(el, \(\) => \{[\s\S]{0,300}?if \(agentTargetOverlayGone\(\)\) return;[\s\S]{0,400}?claimAgentTarget\(msg\.targetId, \{ eligible: true \}\)/,
+      'a tab torn down during the scroll settle must not renew its lease',
+    );
+    assert.equal(
+      (SOURCE.match(/claimAndActOnAgentTarget\(msg\)/g) || []).length,
+      4,
+      'the first claim and the busy-to-idle re-claim must share the rescue path (definition, two call sites, the retry)',
     );
   });
 

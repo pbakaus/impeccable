@@ -43,6 +43,7 @@ pub mod live_boot;
 pub mod live_commit_manual_edits;
 pub mod live_complete;
 pub mod live_discard_manual_edits;
+pub mod live_generate;
 pub mod live_inject;
 pub mod live_insert;
 pub mod live_poll;
@@ -68,6 +69,7 @@ pub fn run(verb: &str, args: &[String], io: &mut Io) -> i32 {
         "live-insert" | "insert" => live_insert::run(args, io),
         "live-accept" | "accept" => live_accept::run(args, io),
         "live-server" => live_server::run(args, io),
+        "live-generate" => live_generate::run(args, io),
         "live-poll" | "poll" => live_poll::run(args, io),
         "live-commit-manual-edits" | "commit-manual-edits" => {
             live_commit_manual_edits::run(args, io)
