@@ -156,7 +156,7 @@ export function verifyPluginSkillRewrite(skillMdPath) {
       'scripts/lib/plugin-paths.js (issue #523); update SETUP_FALLBACK_TEXT to the new wording.',
     );
   }
-  if (/^allowed-tools:/m.test(content)) {
+  if (parseFrontmatter(content).frontmatter['allowed-tools'] !== undefined) {
     throw new Error(
       `Plugin rewrite drift: ${skillMdPath} still declares allowed-tools in frontmatter. ` +
       'The plugin copy must drop the entire block so non-interactive sessions can activate ' +

@@ -290,9 +290,16 @@ describe('verifyPluginSkillRewrite', () => {
   });
 
   test('fails the build when allowed-tools frontmatter survives the removal', () => {
-    const p = writeSkill(
-      'allowed-tools:\n  - Bash(npx impeccable *)\n' + rewritePluginMarkdown(goodSkill),
-    );
+    const p = writeSkill([
+      '---',
+      'name: impeccable',
+      'allowed-tools:',
+      '  - Bash(npx impeccable *)',
+      'license: Apache 2.0',
+      '---',
+      '',
+      rewritePluginMarkdown(goodSkill),
+    ].join('\n'));
     expect(() => verifyPluginSkillRewrite(p)).toThrow(/allowed-tools/);
   });
 
@@ -317,12 +324,12 @@ describe('verifyPluginSkillRewrite', () => {
 });
 
 describe('SKILL.src.md frontmatter', () => {
-  test('does not declare allowed-tools (issue #736)', () => {
+  test('keeps allowed-tools in source for non-Claude providers (issue #736)', () => {
     const src = fs.readFileSync(
       path.join(import.meta.dirname, '../skill/SKILL.src.md'),
       'utf-8',
     );
     const { frontmatter } = parseFrontmatter(src);
-    expect(frontmatter['allowed-tools']).toBeUndefined();
+    expect(frontmatter['allowed-tools']).toBeDefined();
   });
 });
