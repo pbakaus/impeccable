@@ -621,6 +621,7 @@ for (const modelId of resolveModelList()) {
             model,
             userPrompt: "I'm joining this project. Where should I start with Impeccable?",
             maxSteps: 8,
+            contextOnlyBash: true,
           });
           logTrace('S16', label, modelId, trace, { textSample: text.slice(0, 300) });
           assert.ok(fileLoaded(trace, 'routing.md'), 'workflow advice loads the shared routing reference');
@@ -639,6 +640,7 @@ for (const modelId of resolveModelList()) {
           model,
           userPrompt: 'Should I use critique or polish on index.html? Is a critique required before polishing?',
           maxSteps: 8,
+          contextOnlyBash: true,
         });
         logTrace('S17', 'command-comparison', modelId, trace, { textSample: text.slice(0, 300) });
         assert.ok(fileLoaded(trace, 'routing.md'), 'a command name in a question still routes to advice');
@@ -658,6 +660,7 @@ for (const modelId of resolveModelList()) {
           model,
           userPrompt: '/impeccable polish index.html. Please do the polish pass now; afterward tell me which command would be useful next.',
           maxSteps: setupMaxSteps,
+          contextOnlyBash: true,
         });
         logTrace('S18', 'explicit-command', modelId, trace, { textSample: text.slice(0, 300) });
         assert.ok(fileLoaded(trace, 'polish.md'), 'the requested command must not be replaced with advice');

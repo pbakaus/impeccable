@@ -219,7 +219,7 @@ function defaultSimulatedAnswer(question) {
   return 'Use the brief, preserve real operational content, and make the primary decision obvious.';
 }
 
-export function makeTools(workspace, extraEnv = {}, simulatedUser = {}) {
+export function makeTools(workspace, extraEnv = {}, simulatedUser = {}, { contextOnlyBash = false } = {}) {
   const trace = {
     toolCalls: [],
     bashCommands: [],
@@ -242,13 +242,21 @@ export function makeTools(workspace, extraEnv = {}, simulatedUser = {}) {
   }
   const tools = {
     bash: tool({
-      description:
-        'Run a bash command in the workspace root. Use this to invoke skill commands (e.g. `.claude/skills/impeccable/scripts/impeccable context`).',
+      description: contextOnlyBash
+        ? 'Only `.claude/skills/impeccable/scripts/impeccable context` is allowed here. Use read/list for workspace files and skill references; write remains available for requested edits.'
+        : 'Run a bash command in the workspace root. Use this to invoke skill commands (e.g. `.claude/skills/impeccable/scripts/impeccable context`).',
       inputSchema: z.object({
         command: z.string().describe('The bash command to execute.'),
       }),
       execute: async ({ command }) => {
         const call = record('bash', { command });
+        // Routing tests need the real context loader, not a general-purpose
+        // shell on the host. Reject before execution (still record attempts).
+        if (contextOnlyBash && command.trim() !== '.claude/skills/impeccable/scripts/impeccable context') {
+          const out = 'Error: only `.claude/skills/impeccable/scripts/impeccable context` is allowed. Use read/list for files; references live at .claude/skills/impeccable/reference/.';
+          trace.bashOutputs.push(out);
+          return out;
+        }
         const before = snapshotWorkspaceFiles(workspace);
         const res = await execBash(workspace, command, 20_000, extraEnv);
         call.mutatedPaths = changedPaths(before, snapshotWorkspaceFiles(workspace));
@@ -284,6 +292,9 @@ export function makeTools(workspace, extraEnv = {}, simulatedUser = {}) {
         const call = record('write', { path: p, contents });
         const resolved = safeResolve(workspace, p);
         if (typeof resolved !== 'string') return `Error: ${resolved.error}`;
+        if (contextOnlyBash && path.relative(workspace, resolved).split(path.sep)[0] === '.claude') {
+          return 'Error: the staged skill is read-only; edits must target project files.';
+        }
         fs.mkdirSync(path.dirname(resolved), { recursive: true });
         fs.writeFileSync(resolved, contents);
         call.mutatedPaths = [p];
@@ -359,8 +370,8 @@ export function makeTools(workspace, extraEnv = {}, simulatedUser = {}) {
 // run is never killed. The timer is unref'd (it must not keep the loop alive
 // after a healthy turn) and cleared on completion.
 const TURN_TIMEOUT_MS = Number(process.env.IMPECCABLE_SKILL_BEHAVIOR_TURN_TIMEOUT_MS) || 840_000;
-export async function runTurn({ workspace, model, userPrompt, priorMessages = [], maxSteps = 8, env = {}, simulatedUser = {}, timeoutMs = TURN_TIMEOUT_MS }) {
-  const { tools, trace } = makeTools(workspace, env, simulatedUser);
+export async function runTurn({ workspace, model, userPrompt, priorMessages = [], maxSteps = 8, env = {}, simulatedUser = {}, timeoutMs = TURN_TIMEOUT_MS, contextOnlyBash = false }) {
+  const { tools, trace } = makeTools(workspace, env, simulatedUser, { contextOnlyBash });
   const messages = [
     ...priorMessages,
     { role: 'user', content: userPrompt },

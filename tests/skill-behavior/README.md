@@ -83,7 +83,11 @@ establish their behavior. The advice-only assertions inspect write-tool calls
 and file mutations from bash (excluding context's internal `.impeccable/`
 state, but not critique reports), require an actual answer, and reject
 interviews and menu scans. Scenario 18 checks command-reference precedence;
-it does not assert completion of a full polish pass.
+it does not assert completion of a full polish pass. These cases allow only
+the exact context-loader command through bash; references use read/list, and
+the write tool remains available for project files so unsolicited edits still
+fail the test. Writes to the staged skill are rejected. This keeps the routing
+measurement from running arbitrary shell searches outside its fixture.
 
 | Scenario | claude-sonnet-5 | gpt-5.6-terra | gemini-3.7-flash |
 |---|---|---|---|
