@@ -188,6 +188,20 @@ jobs:
       - run: cargo build --workspace --all-targets
       - run: cargo test --workspace --no-fail-fast
 
+  launcher-windows:
+    runs-on: windows-latest
+    needs: changes
+    if: needs.changes.outputs.core == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Exercise Windows launcher downloads and verification
+        run: node --test tests/launcher-download.test.mjs
+
   # Behavior gate: replays the tests/oracle/ goldens against a release build
   # of the engine from THIS checkout (so a PR is judged on its own source,
   # not on the last published binary). Without this job the oracle only ever
