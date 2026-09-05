@@ -265,7 +265,7 @@ export const SUITES = {
     triggers: [
       ...COMMON_INFRA_PATTERNS,
       /^skill\/SKILL\.src\.md$/,
-      /^skill\/reference\/(init|document|brand|product|shape|craft|audit|polish|live)\.md$/,
+      /^skill\/reference\/(init|document|brand|product|shape|craft|audit|polish|live|routing)\.md$/,
       /^ENGINE_VERSION$/,
       /^tests\/skill-behavior\//,
     ],
