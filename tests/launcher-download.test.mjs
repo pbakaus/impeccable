@@ -36,6 +36,11 @@ async function exercise(t, scenario) {
       `#!/bin/sh\n${scenario === 'removed-during-hash' ? 'rm -f "$3"\n' : ''}printf '%s  %s\\n' '${HASH}' "$3"\nexit ${scenario === 'hash-failure' ? 1 : 0}\n`,
       { mode: 0o755 });
   }
+  if (!WINDOWS && ['removed-before-move', 'removed-after-move', 'emptied-after-move'].includes(scenario)) {
+    const before = scenario === 'removed-before-move' ? 'rm -f "$2"\n' : '';
+    const after = scenario === 'removed-after-move' ? 'rm -f "$3"\n' : scenario === 'emptied-after-move' ? ': > "$3"\n' : '';
+    fs.writeFileSync(path.join(tools, 'mv'), `#!/bin/sh\n${before}/bin/mv "$@" || exit $?\n${after}`, { mode: 0o755 });
+  }
   const requests = [];
   const server = http.createServer((req, res) => {
     requests.push(req.url);
@@ -84,17 +89,17 @@ test('launcher downloads and runs a verified executable', async t => {
   assert.equal(result.requests.length, 2);
 });
 
-for (const scenario of ['removed', 'emptied', 'empty-download', 'no-sidecar', 'empty-sidecar', 'mismatch', ...(!WINDOWS ? ['hash-failure', 'removed-during-hash'] : [])]) {
+for (const scenario of ['removed', 'emptied', 'empty-download', 'no-sidecar', 'empty-sidecar', 'mismatch', ...(!WINDOWS ? ['hash-failure', 'removed-during-hash', 'removed-before-move', 'removed-after-move', 'emptied-after-move'] : [])]) {
   test(`launcher refuses ${scenario} with an accurate diagnostic`, async t => {
     const result = await exercise(t, scenario);
     assert.equal(result.status, 127, JSON.stringify(result));
     assert.doesNotMatch(result.stdout, /verified-engine/);
     assert.deepEqual(result.files, [], 'no unverified file or sidecar left behind');
-    if (scenario === 'removed' || scenario === 'removed-during-hash') {
-      assert.match(result.stderr, /download completed but the file was removed before verification/);
+    if (scenario.startsWith('removed')) {
+      assert.match(result.stderr, /download completed but the file was removed before (verification|execution)/);
       assert.match(result.stderr, /antivirus.*logs/i);
       assert.doesNotMatch(result.stderr, /checksum mismatch/);
-    } else if (scenario === 'emptied' || scenario === 'empty-download') {
+    } else if (scenario.startsWith('emptied') || scenario === 'empty-download') {
       assert.match(result.stderr, /downloaded file is empty/);
       assert.doesNotMatch(result.stderr, /checksum mismatch/);
     } else if (scenario === 'mismatch') {

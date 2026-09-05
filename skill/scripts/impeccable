@@ -97,13 +97,14 @@ fetch_url() {
   fi
 }
 check_download() {
-  if [ ! -f "$tmp" ]; then
+  download_file=${1:-$tmp}
+  if [ ! -f "$download_file" ]; then
     rm -f "$tmp.sha256"
-    echo "impeccable: download completed but the file was removed before verification: $url; check your antivirus quarantine or logs. Refusing to continue; do not disable protection." >&2
+    echo "impeccable: download completed but the file was removed before execution: $url; check your antivirus quarantine or logs. Refusing to continue; do not disable protection." >&2
     exit 127
   fi
-  if [ ! -s "$tmp" ]; then
-    rm -f "$tmp" "$tmp.sha256"
+  if [ ! -s "$download_file" ]; then
+    rm -f "$download_file" "$tmp.sha256"
     echo "impeccable: downloaded file is empty: $url; refusing the unverified download" >&2
     exit 127
   fi
@@ -161,8 +162,22 @@ if [ -n "$version" ] && [ "$os" != unknown ] && [ "$arch" != unknown ]; then
       echo "impeccable: checksum mismatch downloading $url" >&2
       exit 127
     fi
-    chmod +x "$tmp" 2>/dev/null
-    mv -f "$tmp" "$cached" && exec "$cached" "$@"
+    check_download
+    if ! chmod +x "$tmp" 2>/dev/null; then
+      check_download
+      rm -f "$tmp"
+      echo "impeccable: could not make the verified download executable: $url" >&2
+      exit 127
+    fi
+    check_download
+    if ! mv -f "$tmp" "$cached" 2>/dev/null; then
+      check_download
+      rm -f "$tmp"
+      echo "impeccable: could not cache the verified download: $url" >&2
+      exit 127
+    fi
+    check_download "$cached"
+    exec "$cached" "$@"
   fi
   rm -f "$tmp" 2>/dev/null
 fi

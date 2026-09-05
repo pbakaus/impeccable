@@ -121,26 +121,39 @@ echo impeccable: cannot verify %url% against %url%.sha256; refusing the unverifi
 exit /b 127
 
 :check_download
-if not exist "%cached%.part" goto download_missing
-for %%f in ("%cached%.part") do if %%~zf==0 goto download_empty
+set "download_file=%~1"
+if not defined download_file set "download_file=%cached%.part"
+if not exist "%download_file%" goto download_missing
+for %%f in ("%download_file%") do if %%~zf==0 goto download_empty
 exit /b 0
 
 :download_missing
 del "%cached%.sha256" >nul 2>nul
-echo impeccable: download completed but the file was removed before verification: %url%; check your antivirus quarantine or logs. Refusing to continue; do not disable protection. 1>&2
+echo impeccable: download completed but the file was removed before execution: %url%; check your antivirus quarantine or logs. Refusing to continue; do not disable protection. 1>&2
 exit /b 127
 
 :download_empty
-del "%cached%.part" >nul 2>nul
+del "%download_file%" >nul 2>nul
 del "%cached%.sha256" >nul 2>nul
 echo impeccable: downloaded file is empty: %url%; refusing the unverified download 1>&2
 exit /b 127
 
 :place
+call :check_download
+if errorlevel 1 exit /b 127
 move /y "%cached%.part" "%cached%" >nul 2>nul
-if not exist "%cached%" goto fail
+if errorlevel 1 goto place_failed
+call :check_download "%cached%"
+if errorlevel 1 exit /b 127
 set "run=%cached%"
 goto run
+
+:place_failed
+call :check_download
+if errorlevel 1 exit /b 127
+del "%cached%.part" >nul 2>nul
+echo impeccable: could not cache the verified download: %url% 1>&2
+exit /b 127
 
 :run
 "%run%" %*
