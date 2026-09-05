@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { generateYamlFrontmatter, parseFrontmatter } from './utils.js';
 
 /**
  * Rewrite project-relative script paths for the plugin subtree (issue #523).
@@ -26,14 +27,18 @@ export const CLAUDE_PROJECT_SCRIPTS_PATH = '.claude/skills/impeccable/scripts';
 
 export const PLUGIN_SCRIPTS_PATH = '<skill-base-dir>/scripts';
 
-// The project-path rule pre-approves a path inside the user's project, the
-// one place the plugin must NOT run scripts from. No replacement rule
-// exists: a wildcard pattern such as `node */skills/impeccable/scripts/*`
-// auto-approves any same-shaped path anywhere on disk, and frontmatter has
-// no variable bound to the loaded plugin root (CLAUDE_PLUGIN_ROOT is
-// hook-only). The plugin copy drops the rule and script runs go through
-// the normal Bash confirmation.
+// Claude Code requires user consent to activate a skill whose frontmatter
+// declares allowed-tools; non-interactive hosts (`claude -p`) cannot provide
+// it and the skill silently degrades (issue #736). The plugin copy drops the
+// key via structured frontmatter rewrite, not regex.
 export const PROJECT_ALLOWED_TOOLS_LINE = `  - Bash(${CLAUDE_PROJECT_SCRIPTS_PATH}/impeccable *)\n`;
+
+function stripAllowedToolsFrontmatter(content) {
+  const { frontmatter, body } = parseFrontmatter(content);
+  if (frontmatter['allowed-tools'] === undefined) return content;
+  delete frontmatter['allowed-tools'];
+  return `${generateYamlFrontmatter(frontmatter)}\n${body}`;
+}
 
 // Setup step 1's second sentence names the project path as the fallback
 // when the runtime reports no base directory. A plugin install has no
@@ -72,10 +77,7 @@ export const AGENT_EMBED_FALLBACK =
  * unit suite can pin every rewrite without a build.
  */
 export function rewritePluginMarkdown(content) {
-  return content
-    // Order matters: the allowed-tools line contains the project path, so
-    // remove it before the generic path replacement rewrites it into a
-    // line the removal no longer matches.
+  return stripAllowedToolsFrontmatter(content)
     .replaceAll(PROJECT_ALLOWED_TOOLS_LINE, '')
     .replaceAll(SETUP_FALLBACK_TEXT, SETUP_PLUGIN_TEXT)
     .replaceAll(CLAUDE_PROJECT_SCRIPTS_PATH, PLUGIN_SCRIPTS_PATH)
@@ -154,10 +156,17 @@ export function verifyPluginSkillRewrite(skillMdPath) {
       'scripts/lib/plugin-paths.js (issue #523); update SETUP_FALLBACK_TEXT to the new wording.',
     );
   }
+  if (/^allowed-tools:/m.test(content)) {
+    throw new Error(
+      `Plugin rewrite drift: ${skillMdPath} still declares allowed-tools in frontmatter. ` +
+      'The plugin copy must drop the entire block so non-interactive sessions can activate ' +
+      'the skill (issue #736); update the removal in scripts/lib/plugin-paths.js.',
+    );
+  }
   if (/Bash\((?:node |[^)]*scripts\/impeccable)/.test(content)) {
     throw new Error(
       `Plugin rewrite drift: ${skillMdPath} still pre-approves an engine launcher or node script path. ` +
-      "SKILL.src.md's allowed-tools entry no longer matches the removal in " +
+      'A stray Bash(...) entry survived the allowed-tools removal in ' +
       'scripts/lib/plugin-paths.js (issue #523); the plugin ships no launcher pre-approval.',
     );
   }
