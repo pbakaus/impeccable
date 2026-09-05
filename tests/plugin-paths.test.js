@@ -15,6 +15,7 @@ import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { parseFrontmatter } from '../scripts/lib/utils.js';
 import {
   rewritePluginMarkdown,
   rewritePluginAgentMarkdown,
@@ -66,20 +67,24 @@ describe('rewritePluginMarkdown', () => {
     );
   });
 
-  test('removes the node pre-approval instead of widening it', () => {
-    const frontmatter = [
+  test('removes the entire allowed-tools frontmatter block', () => {
+    const input = [
+      '---',
+      'name: impeccable',
       'allowed-tools:',
       '  - Bash(npx impeccable *)',
       '  - Bash(.claude/skills/impeccable/scripts/impeccable *)',
+      'license: Apache 2.0',
       '---',
       '',
+      'Body text.',
     ].join('\n');
-    const output = rewritePluginMarkdown(frontmatter);
-    // The generic path rewrite alone would leave Bash(<skill-base-dir>/scripts/impeccable *),
-    // a dead literal, and any wildcard replacement would auto-approve
-    // same-shaped paths outside the plugin. The line must go entirely.
+    const output = rewritePluginMarkdown(input);
+    expect(output).not.toMatch(/^allowed-tools:/m);
     expect(output).not.toContain('scripts/impeccable *');
-    expect(output).toContain('  - Bash(npx impeccable *)\n---');
+    expect(output).not.toContain('npx impeccable');
+    expect(output).toContain('license: Apache 2.0');
+    expect(output).toContain('Body text.');
   });
 
   test('drops the project-path fallback clause from Setup step 1', () => {
@@ -256,9 +261,6 @@ describe('verifyPluginSkillRewrite', () => {
   };
 
   const goodSkill = [
-    'allowed-tools:',
-    '  - Bash(.claude/skills/impeccable/scripts/impeccable *)',
-    '',
     '1. Run `<skill-base-dir>/scripts/impeccable context` once per session, where `<skill-base-dir>` is the ' +
       "loaded base directory the runtime reports for this skill; keep cwd at the user's project. " +
       'That base directory resolves every `.claude/skills/impeccable/scripts/impeccable <verb>` command in this skill ' +
@@ -269,6 +271,7 @@ describe('verifyPluginSkillRewrite', () => {
   test('accepts a correctly rewritten SKILL.md', () => {
     const p = writeSkill(rewritePluginMarkdown(goodSkill));
     expect(() => verifyPluginSkillRewrite(p)).not.toThrow();
+    expect(fs.readFileSync(p, 'utf-8')).not.toMatch(/^allowed-tools:/m);
   });
 
   test('fails the build when the Setup fallback sentence no longer matched', () => {
@@ -280,22 +283,31 @@ describe('verifyPluginSkillRewrite', () => {
   });
 
   test('fails the build when a launcher pre-approval survives the removal', () => {
-    const reworded = goodSkill.replace(
-      'Bash(.claude/skills/impeccable/scripts/impeccable *)',
-      'Bash(.claude/skills/impeccable/scripts/impeccable.cmd *)',
+    const p = writeSkill(
+      rewritePluginMarkdown(goodSkill) + '\n  - Bash(<skill-base-dir>/scripts/impeccable.cmd *)\n',
     );
-    const p = writeSkill(rewritePluginMarkdown(reworded));
     expect(() => verifyPluginSkillRewrite(p)).toThrow(/pre-approves an engine launcher/);
   });
 
+  test('fails the build when allowed-tools frontmatter survives the removal', () => {
+    const p = writeSkill([
+      '---',
+      'name: impeccable',
+      'allowed-tools:',
+      '  - Bash(npx impeccable *)',
+      'license: Apache 2.0',
+      '---',
+      '',
+      rewritePluginMarkdown(goodSkill),
+    ].join('\n'));
+    expect(() => verifyPluginSkillRewrite(p)).toThrow(/allowed-tools/);
+  });
+
   test('fails the build when a legacy node pre-approval survives', () => {
-    // The Node-era line is gone from SKILL.src.md, but a copy that still
-    // carries one must fail the same way as a surviving launcher line.
+    // A copy that still carries a node pre-approval must fail the same way as
+    // a surviving launcher line, even outside an allowed-tools block.
     const p = writeSkill(
-      rewritePluginMarkdown(goodSkill).replace(
-        'allowed-tools:\n',
-        'allowed-tools:\n  - Bash(node <skill-base-dir>/scripts/*)\n',
-      ),
+      rewritePluginMarkdown(goodSkill) + '\n  - Bash(node <skill-base-dir>/scripts/*)\n',
     );
     expect(() => verifyPluginSkillRewrite(p)).toThrow(/pre-approves an engine launcher or node script path/);
   });
@@ -308,5 +320,16 @@ describe('verifyPluginSkillRewrite', () => {
       '\nState lives next to `.claude/skills/impeccable/scripts` on disk.',
     );
     expect(() => verifyPluginSkillRewrite(p)).toThrow(/still contains the project-relative scripts path/);
+  });
+});
+
+describe('SKILL.src.md frontmatter', () => {
+  test('keeps allowed-tools in source for non-Claude providers (issue #736)', () => {
+    const src = fs.readFileSync(
+      path.join(import.meta.dirname, '../skill/SKILL.src.md'),
+      'utf-8',
+    );
+    const { frontmatter } = parseFrontmatter(src);
+    expect(frontmatter['allowed-tools']).toBeDefined();
   });
 });

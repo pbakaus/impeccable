@@ -7,6 +7,7 @@ import {
   MANUAL_EDIT_SYSTEM_INSTRUCTIONS,
   VARIANT_SYSTEM_INSTRUCTIONS,
   createLlmAgent,
+  llmRequestSettings,
   parseManualEditResponse,
   parseVariantResponse,
   progressiveVariantGuidance,
@@ -18,6 +19,19 @@ import {
   validateProgressiveVariantOutput,
   validateVariantVisibleCopy,
 } from './live-e2e/agents/llm-agent.mjs';
+
+describe('live-e2e LLM request settings', () => {
+  it('explicitly selects low-effort DeepSeek thinking for bounded JSON edit requests', () => {
+    assert.deepEqual(llmRequestSettings('deepseek'), {
+      thinking: { type: 'enabled' }, output_config: { effort: 'low' },
+    });
+  });
+
+  it('leaves other providers unchanged', () => {
+    assert.deepEqual(llmRequestSettings('anthropic'), {});
+    assert.deepEqual(llmRequestSettings('openai'), {});
+  });
+});
 
 describe('live-e2e LLM agent provider config', () => {
   it('defaults to OpenAI gpt-5.6-terra at medium reasoning effort', () => {

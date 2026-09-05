@@ -57,6 +57,12 @@
     "readyPattern": "Local:\\s+https?://[^:]+:(\\d+)",
     "readyTimeoutMs": 120000,
     "steer": false,
+    "liveChrome": {
+      "annotations": {
+        "selector": "h1.hero-title",
+        "uploadDelayMs": 300
+      }
+    },
     "pickSelector": "ul.expense-list",
     "pickPosition": {
       "x": 10,

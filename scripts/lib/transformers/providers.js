@@ -29,7 +29,9 @@ export const PROVIDERS = {
     providerTags: ['claude-code', 'claude'],
     configDir: '.claude',
     displayName: 'Claude Code',
-    frontmatterFields: ['user-invocable', 'argument-hint', 'license', 'compatibility', 'metadata', 'allowed-tools'],
+    frontmatterFields: ['user-invocable', 'argument-hint', 'license', 'compatibility', 'metadata'],
+    // allowed-tools omitted: Claude Code blocks skill activation in non-interactive
+    // sessions when the field is present (issue #736). Other providers keep it.
     agentFormat: 'claude-md',
     emitHooks: 'claude',
     // Project-local Claude Code hooks live in `.claude/settings.json`.

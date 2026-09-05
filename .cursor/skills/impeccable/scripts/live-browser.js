@@ -7834,7 +7834,6 @@
     if (editBadgeEl && editBadgeEl.style.display !== 'none') renderEditBadge('idle-disabled');
     showBar('generating');
     saveSession();
-    sendCheckpoint('generate_started');
     writeScrollY(window.scrollY);
     if (variantObserver) variantObserver.disconnect();
     variantObserver = startVariantObserver(currentSessionId);
@@ -7916,7 +7915,6 @@
     showBar('generating');
     startScrollTracking();
     saveSession();
-    sendCheckpoint('generate_started');
     writeScrollY(window.scrollY);
     if (variantObserver) variantObserver.disconnect();
     variantObserver = startVariantObserver(currentSessionId);
@@ -8238,7 +8236,8 @@
     // rasterization from delaying the fetch itself.
     if (!hasAnnotations) {
       basePayload.clientSentAt = Date.now();
-      await sendEvent(basePayload);
+      const created = await sendEvent(basePayload);
+      if (created?.ok && currentSessionId === basePayload.id) sendCheckpoint('generate_started');
     }
 
     let screenshotPath;
@@ -8279,7 +8278,10 @@
     // is semantic input. Plain requests were already dispatched above.
     if (hasAnnotations) {
       basePayload.clientSentAt = Date.now();
-      sendEvent(screenshotPath ? { ...basePayload, screenshotPath } : basePayload);
+      const created = await sendEvent(screenshotPath ? { ...basePayload, screenshotPath } : basePayload);
+      // Capture/upload can take seconds. Progress before this acknowledgment
+      // refers to an unknown session and would clear our own active work.
+      if (created?.ok && currentSessionId === basePayload.id) sendCheckpoint('generate_started');
     }
   }
 

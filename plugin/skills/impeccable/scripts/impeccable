@@ -96,6 +96,19 @@ fetch_url() {
     return 1
   fi
 }
+check_download() {
+  download_file=${1:-$tmp}
+  if [ ! -f "$download_file" ]; then
+    rm -f "$tmp.sha256"
+    echo "impeccable: download completed but the file was removed before execution: $url; check your antivirus quarantine or logs. Refusing to continue; do not disable protection." >&2
+    exit 127
+  fi
+  if [ ! -s "$download_file" ]; then
+    rm -f "$download_file" "$tmp.sha256"
+    echo "impeccable: downloaded file is empty: $url; refusing the unverified download" >&2
+    exit 127
+  fi
+}
 if [ -n "$probing" ]; then
   # Inside another launcher's probe: no download, fail fast and quiet.
   exit 127
@@ -116,6 +129,7 @@ if [ -n "$version" ] && [ "$os" != unknown ] && [ "$arch" != unknown ]; then
     fetch_url "$url" && fetched=1
   fi
   if [ "$fetched" = 1 ]; then
+    check_download
     # Fail closed: a freshly downloaded binary runs only after verifying
     # against its .sha256 sidecar. A sidecar that cannot be fetched, or a
     # machine with no sha256 tool, refuses the download instead of exec'ing
@@ -127,15 +141,20 @@ if [ -n "$version" ] && [ "$os" != unknown ] && [ "$arch" != unknown ]; then
     elif command -v wget >/dev/null 2>&1; then
       wget -q -O "$tmp.sha256" "$url.sha256" 2>/dev/null && sidecar_ok=1
     fi
+    check_download
     expected=""
     [ "$sidecar_ok" = 1 ] && expected=$(cut -d' ' -f1 < "$tmp.sha256")
     actual=""
-    if command -v shasum >/dev/null 2>&1; then actual=$(shasum -a 256 "$tmp" | cut -d' ' -f1)
-    elif command -v sha256sum >/dev/null 2>&1; then actual=$(sha256sum "$tmp" | cut -d' ' -f1); fi
+    if command -v shasum >/dev/null 2>&1; then
+      if digest=$(shasum -a 256 "$tmp" 2>/dev/null); then actual=${digest%% *}; fi
+    elif command -v sha256sum >/dev/null 2>&1; then
+      if digest=$(sha256sum "$tmp" 2>/dev/null); then actual=${digest%% *}; fi
+    fi
+    check_download
     rm -f "$tmp.sha256"
     if [ -z "$expected" ] || [ -z "$actual" ]; then
       rm -f "$tmp"
-      echo "impeccable: cannot verify $url against $url.sha256 (sidecar unavailable or no sha256 tool); refusing the unverified download" >&2
+      echo "impeccable: cannot verify $url against $url.sha256 (sidecar unavailable or hashing failed); refusing the unverified download" >&2
       exit 127
     fi
     if [ "$actual" != "$expected" ]; then
@@ -143,8 +162,22 @@ if [ -n "$version" ] && [ "$os" != unknown ] && [ "$arch" != unknown ]; then
       echo "impeccable: checksum mismatch downloading $url" >&2
       exit 127
     fi
-    chmod +x "$tmp" 2>/dev/null
-    mv -f "$tmp" "$cached" && exec "$cached" "$@"
+    check_download
+    if ! chmod +x "$tmp" 2>/dev/null; then
+      check_download
+      rm -f "$tmp"
+      echo "impeccable: could not make the verified download executable: $url" >&2
+      exit 127
+    fi
+    check_download
+    if ! mv -f "$tmp" "$cached" 2>/dev/null; then
+      check_download
+      rm -f "$tmp"
+      echo "impeccable: could not cache the verified download: $url" >&2
+      exit 127
+    fi
+    check_download "$cached"
+    exec "$cached" "$@"
   fi
   rm -f "$tmp" 2>/dev/null
 fi

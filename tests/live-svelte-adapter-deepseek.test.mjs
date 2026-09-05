@@ -26,8 +26,7 @@ import {
   clickEditCopy,
   clickExitLiveMode,
   clickGo,
-  clickNext,
-  clickPrev,
+  cycleToVariant,
   clickSaveEdit,
   drawAnnotationPinAndStroke,
   editTextLeaf,
@@ -40,6 +39,7 @@ import {
   waitForBarHidden,
   waitForCycling,
   waitForHandshake,
+  waitForVariantSettled,
 } from './live-e2e/ui.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -281,7 +281,7 @@ async function runAnnotationGenerateFlow({ page, tmp, evidence }) {
   const generateEvent = latestJournalEvent(tmp, (event) => event.type === 'generate' && event.screenshotPath);
   await assertAnnotationUploadEvent(generateEvent);
   assert.ok(existsSync(generateEvent.screenshotPath), 'annotation screenshot file exists');
-  await clickNext(page);
+  await cycleTo(page, 2);
   await assertVariantCounter(page, 2, 3);
   await evidence.capture('annotation-cycle');
   await clickDiscard(page);
@@ -514,14 +514,10 @@ async function clickPendingTrash(page) {
 }
 
 async function cycleTo(page, target) {
-  for (let i = 0; i < 6; i++) {
-    const visible = await getVisibleVariant(page);
-    if (visible === target) return;
-    if (visible == null) await page.waitForTimeout(250);
-    else if (visible < target) await clickNext(page);
-    else await clickPrev(page);
-  }
-  assert.equal(await getVisibleVariant(page), target, `variant ${target} visible`);
+  // Component imports finish after the counter changes. Do not send the next
+  // click (or reload) while the previous variant is still mounting.
+  await cycleToVariant(page, target, 3);
+  await waitForVariantSettled(page, target, 3);
 }
 
 async function waitForVisibleCycling(page, count, { timeout }) {
