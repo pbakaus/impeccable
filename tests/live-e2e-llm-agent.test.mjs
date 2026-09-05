@@ -21,8 +21,10 @@ import {
 } from './live-e2e/agents/llm-agent.mjs';
 
 describe('live-e2e LLM request settings', () => {
-  it('explicitly disables DeepSeek thinking for bounded JSON edit requests', () => {
-    assert.deepEqual(llmRequestSettings('deepseek'), { thinking: { type: 'disabled' } });
+  it('explicitly selects low-effort DeepSeek thinking for bounded JSON edit requests', () => {
+    assert.deepEqual(llmRequestSettings('deepseek'), {
+      thinking: { type: 'enabled' }, output_config: { effort: 'low' },
+    });
   });
 
   it('leaves other providers unchanged', () => {

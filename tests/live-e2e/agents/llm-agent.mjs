@@ -251,9 +251,12 @@ function resolveProvider(opts, env) {
 export function llmRequestSettings(provider) {
   // DeepSeek defaults to high-effort thinking, which can consume the entire
   // bounded response before emitting the JSON these edit tests exercise.
-  // Keep real model-generated edits, but make this harness mode explicit.
+  // Low effort retains planning for the full live spec without inheriting
+  // the provider's high-effort default.
   // https://api-docs.deepseek.com/guides/thinking_mode/
-  return provider === 'deepseek' ? { thinking: { type: 'disabled' } } : {};
+  return provider === 'deepseek'
+    ? { thinking: { type: 'enabled' }, output_config: { effort: 'low' } }
+    : {};
 }
 
 /**
