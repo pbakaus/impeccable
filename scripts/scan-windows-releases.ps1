@@ -20,7 +20,7 @@ try {
   $report.before = $before | Select-Object AMServiceEnabled, AntivirusEnabled, RealTimeProtectionEnabled, AMEngineVersion, AMProductVersion, AntivirusSignatureVersion, AntivirusSignatureLastUpdated
   if (-not $before.AMServiceEnabled) {
     # Enabling an installed service is safe on this disposable runner. Never
-    # change exclusion, remediation, cloud, or real-time protection policies.
+    # change exclusion, remediation, or cloud policies.
     Start-Service WinDefend
   }
   $mp = Get-ChildItem "$env:ProgramData\Microsoft\Windows Defender\Platform\*\MpCmdRun.exe" -ErrorAction SilentlyContinue |
@@ -33,9 +33,16 @@ try {
   $updateOutput | Set-Content (Join-Path $evidence 'signature-update.txt')
   Write-Output $updateOutput
   if ($report.signatureUpdateExitCode -ne 0) { throw 'Defender signature update failed; cannot claim a current-definition scan.' }
+  # Hosted images can default to real-time monitoring off. Enable it for the
+  # download-time reproduction and explicitly refuse to mislabel a scan if
+  # policy prevents activation. Never turn protection off.
+  Set-MpPreference -DisableRealtimeMonitoring $false
+  Start-Sleep -Seconds 3
   $current = Get-MpComputerStatus
   $report.scannerStatus = $current | Select-Object AMServiceEnabled, AntivirusEnabled, RealTimeProtectionEnabled, AMEngineVersion, AMProductVersion, AntivirusSignatureVersion, AntivirusSignatureLastUpdated
   if (-not $current.AMServiceEnabled -or -not $current.AntivirusEnabled) { throw 'Defender is not active; no scan verdict can be inferred.' }
+  if (-not $current.RealTimeProtectionEnabled) { throw 'Real-time monitoring remains disabled by runner policy; cannot reproduce download-time detection on this host.' }
+  $report.protectionPreferences = Get-MpPreference | Select-Object DisableRealtimeMonitoring, DisableIOAVProtection, DisableBehaviorMonitoring, MAPSReporting, SubmitSamplesConsent, ExclusionPath, ExclusionProcess, ExclusionExtension
   $http = [System.Net.Http.HttpClient]::new()
   $http.Timeout = [TimeSpan]::FromSeconds(90)
   foreach ($sample in @(
