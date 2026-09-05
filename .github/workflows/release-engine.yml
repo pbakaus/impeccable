@@ -11,6 +11,8 @@ name: release-engine
 on:
   push:
     tags: ['engine-v*']
+# Same-run artifact transfers use ACTIONS_RUNTIME_TOKEN, not GITHUB_TOKEN;
+# they do not require actions: read/write. Keep downloads scoped to this run.
 permissions:
   contents: read
 jobs:

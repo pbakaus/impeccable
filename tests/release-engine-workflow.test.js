@@ -29,6 +29,17 @@ describe('engine release signing boundary', () => {
     expect(workflow.jobs.publish.steps.find(step => step.name === 'Lay out release assets with checksums').run).toContain('sha256sum');
   });
 
+  test('artifact downloads stay on the same-run runtime-token path', () => {
+    for (const name of ['sign-windows', 'publish']) {
+      const download = action(workflow.jobs[name], 'actions/download-artifact');
+      // Supplying github-token opts into the public API path, which requires
+      // separate Actions permissions and can read other workflow runs.
+      for (const input of ['github-token', 'repository', 'run-id']) {
+        expect(download.with[input]).toBeUndefined();
+      }
+    }
+  });
+
   test('signs exactly the engine with timestamping, then verifies before upload', () => {
     const sign = workflow.jobs['sign-windows'];
     const signing = action(sign, 'azure/artifact-signing-action');

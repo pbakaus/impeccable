@@ -18,7 +18,7 @@ with signed bytes under the same version.
   subject `repo:pbakaus/impeccable:environment:windows-signing`.
 - GitHub environment: `windows-signing`, restricted to **tags** matching
   `engine-v*`, with `pbakaus` as required reviewer and administrator bypass off.
-  Self-review is allowed so Paul can approve a release he triggered.
+  Self-review allows the required reviewer to approve releases they trigger.
 - Environment variables `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, and
   `AZURE_SUBSCRIPTION_ID` contain public identifiers, not secrets. No client
   secret, private key, or PFX is stored in GitHub.
