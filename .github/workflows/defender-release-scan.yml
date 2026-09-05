@@ -1,0 +1,30 @@
+name: Investigate Windows release detections
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/scan-740-defender]
+    paths:
+      - .github/workflows/defender-release-scan.yml
+      - scripts/scan-windows-releases.ps1
+
+permissions:
+  contents: read
+
+jobs:
+  defender:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Scan exact published samples without executing them
+        shell: pwsh
+        run: ./scripts/scan-windows-releases.ps1
+      - name: Preserve text evidence only
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: defender-scan-evidence
+          path: ${{ runner.temp }}/impeccable-defender-evidence/
+          if-no-files-found: warn
+          retention-days: 14
