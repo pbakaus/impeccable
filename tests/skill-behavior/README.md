@@ -94,12 +94,12 @@ measurement from running arbitrary shell searches outside its fixture.
 | 16 (existing project) | pass | pass | pass |
 | 16 (missing product context) | pass | pass | pass |
 | 17 (command comparison) | pass | pass | pass |
-| 18 (explicit command) | not measured | not measured | not measured |
+| 18 (explicit command) | pass | pass | pass |
 
 The advice cells are one restricted-shell run each, with recorded read-tool
 paths checked against the stricter reference-read assertion. The initial
 unrestricted run was stopped after host-wide search attempts and is excluded.
-Scenario 18 is rerun with an eight-step budget and actual read-tool evidence;
+Scenario 18 passed on all three providers with an eight-step budget and actual read-tool evidence;
 the earlier three-step results counted rejected bash reads and are excluded.
 The broader suite's sandboxed OpenAI DNS errors are not behavior measurements.
 
