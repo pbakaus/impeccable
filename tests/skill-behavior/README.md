@@ -76,7 +76,7 @@ The trace is the source of truth, not the model's free-form reply.
 | 17 | existing surface; asks whether critique is required before polish | loads `routing.md` and both command references, then delivers advice without executing the playbooks |
 | 18 | existing surface; explicitly requests polish followed by a next-command recommendation | loads `polish.md` rather than substituting workflow advice for the requested work |
 
-## Workflow-advice baseline (PR #737)
+## Workflow-advice baseline (2026-09-05, PR #737)
 
 The four cases in scenarios 16-18 are new; prior scenario results do not
 establish their behavior. The advice-only assertions inspect write-tool calls
@@ -91,10 +91,17 @@ measurement from running arbitrary shell searches outside its fixture.
 
 | Scenario | claude-sonnet-5 | gpt-5.6-terra | gemini-3.7-flash |
 |---|---|---|---|
-| 16 (existing project) | not measured | not measured | not measured |
-| 16 (missing product context) | not measured | not measured | not measured |
-| 17 (command comparison) | not measured | not measured | not measured |
+| 16 (existing project) | pass | pass | pass |
+| 16 (missing product context) | pass | pass | pass |
+| 17 (command comparison) | pass | pass | pass |
 | 18 (explicit command) | not measured | not measured | not measured |
+
+The advice cells are one restricted-shell run each, with recorded read-tool
+paths checked against the stricter reference-read assertion. The initial
+unrestricted run was stopped after host-wide search attempts and is excluded.
+Scenario 18 is rerun with an eight-step budget and actual read-tool evidence;
+the earlier three-step results counted rejected bash reads and are excluded.
+The broader suite's sandboxed OpenAI DNS errors are not behavior measurements.
 
 The workflow-contract file adds end-to-end assertions for attended fresh init,
 an initialized natural build request, replacement-world redesign, scope-preserving bolder

@@ -624,7 +624,7 @@ for (const modelId of resolveModelList()) {
             contextOnlyBash: true,
           });
           logTrace('S16', label, modelId, trace, { textSample: text.slice(0, 300) });
-          assert.ok(fileLoaded(trace, 'routing.md'), 'workflow advice loads the shared routing reference');
+          assert.ok(readsMatching(trace, 'reference/routing.md').length, 'workflow advice loads the shared routing reference');
           assertAdviceOnly(trace, text);
         } finally {
           cleanupWorkspace(workspace);
@@ -643,9 +643,9 @@ for (const modelId of resolveModelList()) {
           contextOnlyBash: true,
         });
         logTrace('S17', 'command-comparison', modelId, trace, { textSample: text.slice(0, 300) });
-        assert.ok(fileLoaded(trace, 'routing.md'), 'a command name in a question still routes to advice');
-        assert.ok(fileLoaded(trace, 'critique.md'), 'comparison consults the critique contract');
-        assert.ok(fileLoaded(trace, 'polish.md'), 'comparison consults the polish contract');
+        assert.ok(readsMatching(trace, 'reference/routing.md').length, 'a command name in a question still routes to advice');
+        assert.ok(readsMatching(trace, 'reference/critique.md').length, 'comparison consults the critique contract');
+        assert.ok(readsMatching(trace, 'reference/polish.md').length, 'comparison consults the polish contract');
         assertAdviceOnly(trace, text);
       } finally {
         cleanupWorkspace(workspace);
@@ -659,11 +659,11 @@ for (const modelId of resolveModelList()) {
           workspace,
           model,
           userPrompt: '/impeccable polish index.html. Please do the polish pass now; afterward tell me which command would be useful next.',
-          maxSteps: setupMaxSteps,
+          maxSteps: 8,
           contextOnlyBash: true,
         });
         logTrace('S18', 'explicit-command', modelId, trace, { textSample: text.slice(0, 300) });
-        assert.ok(fileLoaded(trace, 'polish.md'), 'the requested command must not be replaced with advice');
+        assert.ok(readsMatching(trace, 'reference/polish.md').length, 'the requested command must not be replaced with advice');
       } finally {
         cleanupWorkspace(workspace);
       }
