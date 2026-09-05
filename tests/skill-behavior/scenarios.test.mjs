@@ -85,11 +85,11 @@ for (const modelId of resolveModelList()) {
 
   describe(`skill behavior :: ${modelId}`, () => {
     if (!keyPresent) {
-      it(`skipped — ${PROVIDERS[provider].envKey} is unset`, { skip: true }, () => {});
+      it(`skipped — ${PROVIDERS[provider].envKey} is unset`, { skip: true }, () => { });
       return;
     }
     if (!ENGINE_BIN) {
-      it(`skipped — ${ENGINE_MISSING_MESSAGE}`, { skip: true }, () => {});
+      it(`skipped — ${ENGINE_MISSING_MESSAGE}`, { skip: true }, () => { });
       return;
     }
     const model = getModel(modelId);
@@ -114,17 +114,17 @@ for (const modelId of resolveModelList()) {
         assert.ok(
           loadCalls.length >= 1,
           `expected agent to run impeccable context at least once; got ${loadCalls.length}.\n` +
-            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+          `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
         assert.ok(
           fileLoaded(trace, 'init.md'),
           `craft should load init.md when no product or visual world exists; an automated harness is not a bypass.\n` +
-            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+          `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
         assert.ok(
           loadedBeforeImplementationWrite(trace, 'init.md'),
           `agent should resolve init before writing implementation files.\n` +
-            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+          `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
       } finally {
         cleanupWorkspace(workspace);
@@ -147,12 +147,12 @@ for (const modelId of resolveModelList()) {
         assert.ok(
           loadCalls.length >= 1 && loadCalls.length <= 3,
           `expected 1-3 impeccable context invocations; got ${loadCalls.length}.\n` +
-            `bashCommands: ${JSON.stringify(trace.bashCommands, null, 2)}`,
+          `bashCommands: ${JSON.stringify(trace.bashCommands, null, 2)}`,
         );
         assert.ok(
           fileLoaded(trace, 'new-work.md'),
           `a greenfield request with PRODUCT.md should load new-work.md to establish the missing visual world.\n` +
-            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+          `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
       } finally {
         cleanupWorkspace(workspace);
@@ -175,12 +175,12 @@ for (const modelId of resolveModelList()) {
         assert.ok(
           loadCalls.length >= 1 && loadCalls.length <= 3,
           `expected 1-3 impeccable context invocations; got ${loadCalls.length}.\n` +
-            `bashCommands: ${JSON.stringify(trace.bashCommands, null, 2)}`,
+          `bashCommands: ${JSON.stringify(trace.bashCommands, null, 2)}`,
         );
         assert.ok(
           fileLoaded(trace, 'new-work.md'),
           `craft inside a committed PRODUCT.md + DESIGN.md world should load new-work.md for the task-specific concept.\n` +
-            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+          `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
         // The skill tells the agent to also familiarize with the existing
         // design system. DESIGN.md is bundled in impeccable context output, but
@@ -194,7 +194,7 @@ for (const modelId of resolveModelList()) {
         assert.ok(
           designSignal,
           `agent should consult the design system (DESIGN.md, CSS/tokens, or list project files).\n` +
-            `readPaths: ${JSON.stringify(trace.readPaths)}, listPaths: ${JSON.stringify(trace.listPaths)}`,
+          `readPaths: ${JSON.stringify(trace.readPaths)}, listPaths: ${JSON.stringify(trace.listPaths)}`,
         );
       } finally {
         cleanupWorkspace(workspace);
@@ -236,7 +236,7 @@ for (const modelId of resolveModelList()) {
           turn2Loads.length,
           0,
           `agent re-ran impeccable context on turn 2 despite it being in prior conversation. ` +
-            `bashCommands: ${JSON.stringify(turn2.trace.bashCommands, null, 2)}`,
+          `bashCommands: ${JSON.stringify(turn2.trace.bashCommands, null, 2)}`,
         );
       } finally {
         cleanupWorkspace(workspace);
@@ -259,11 +259,11 @@ for (const modelId of resolveModelList()) {
         assert.ok(
           loadCalls.length >= 1,
           `expected impeccable context invocation; got ${loadCalls.length}.\n` +
-            `bashCommands: ${JSON.stringify(trace.bashCommands, null, 2)}`,
+          `bashCommands: ${JSON.stringify(trace.bashCommands, null, 2)}`,
         );
         assert.ok(fileLoaded(trace, 'new-work.md'),
           `greenfield craft should load new-work.md for visual authority and world discovery.\n` +
-            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`);
+          `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`);
         assert.equal(fileLoaded(trace, 'init.md'), false, 'existing PRODUCT.md must not re-enter init for missing DESIGN.md');
       } finally {
         cleanupWorkspace(workspace);
@@ -289,7 +289,7 @@ for (const modelId of resolveModelList()) {
         assert.ok(
           fileLoaded(trace, 'polish.md'),
           `agent should load polish.md when /impeccable polish is invoked.\n` +
-            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+          `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
       } finally {
         cleanupWorkspace(workspace);
@@ -315,7 +315,7 @@ for (const modelId of resolveModelList()) {
         assert.ok(
           fileLoaded(trace, 'audit.md'),
           `agent should load audit.md when /impeccable audit is invoked.\n` +
-            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+          `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
       } finally {
         cleanupWorkspace(workspace);
@@ -348,7 +348,7 @@ for (const modelId of resolveModelList()) {
         assert.ok(
           projectReads.length >= 1,
           `agent should read at least one project code file to understand the existing design system.\n` +
-            `readPaths: ${JSON.stringify(trace.readPaths, null, 2)}`,
+          `readPaths: ${JSON.stringify(trace.readPaths, null, 2)}`,
         );
       } finally {
         cleanupWorkspace(workspace);
@@ -393,7 +393,7 @@ for (const modelId of resolveModelList()) {
         assert.ok(
           trace.bashOutputs.some((o) => o.includes('UPDATE_AVAILABLE')),
           `impeccable context should have emitted UPDATE_AVAILABLE (a newer version is cached).\n` +
-            `bashOutputs: ${JSON.stringify(trace.bashOutputs, null, 2)}`,
+          `bashOutputs: ${JSON.stringify(trace.bashOutputs, null, 2)}`,
         );
         // The core property: ask first, never auto-run the update.
         const ranUpdate = executedUpdateCommands(trace);
@@ -429,13 +429,13 @@ for (const modelId of resolveModelList()) {
         assert.ok(
           bashCommandsMatching(trace, 'impeccable context').length >= 1,
           `expected agent to run impeccable context at least once.\n` +
-            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+          `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
         // It must load the scoped command's own reference and get on with it.
         assert.ok(
           fileLoaded(trace, 'polish.md'),
           `agent should load polish.md and proceed with the scoped command.\n` +
-            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+          `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
         // The core property: a scoped command on existing code must not divert
         // into init just because PRODUCT.md is absent.
@@ -446,7 +446,7 @@ for (const modelId of resolveModelList()) {
           initLoaded,
           false,
           `scoped /impeccable polish on existing code should not divert into init.md when PRODUCT.md is missing.\n` +
-            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+          `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
       } finally {
         cleanupWorkspace(workspace);
@@ -466,12 +466,12 @@ for (const modelId of resolveModelList()) {
         assert.ok(
           bashCommandsMatching(trace, 'impeccable context').length >= 1,
           `expected agent to run impeccable context at least once.\n` +
-            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+          `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
         assert.ok(
           loadedBeforeImplementationWrite(trace, 'init.md'),
           `shape should resolve init.md before implementation when no world exists.\n` +
-            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+          `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
       } finally {
         cleanupWorkspace(workspace);
@@ -491,12 +491,12 @@ for (const modelId of resolveModelList()) {
         assert.ok(
           bashCommandsMatching(trace, 'impeccable context').length >= 1,
           `expected agent to run impeccable context at least once.\n` +
-            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+          `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
         assert.ok(
           loadedBeforeImplementationWrite(trace, 'init.md'),
           `build intent should resolve init.md before implementation when no world exists.\n` +
-            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+          `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
       } finally {
         cleanupWorkspace(workspace);
@@ -518,7 +518,7 @@ for (const modelId of resolveModelList()) {
         assert.ok(
           bashCommandsMatching(trace, 'impeccable context').length >= 1,
           `expected agent to run impeccable context at least once.\n` +
-            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+          `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
         const initLoaded =
           readsMatching(trace, 'init.md').length > 0 ||
@@ -526,7 +526,7 @@ for (const modelId of resolveModelList()) {
         assert.ok(
           initLoaded,
           `/impeccable teach should behave like init and load init.md when PRODUCT.md is missing.\n` +
-            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+          `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
       } finally {
         cleanupWorkspace(workspace);
@@ -552,13 +552,13 @@ for (const modelId of resolveModelList()) {
         assert.ok(
           loadCalls.length >= 1,
           `expected agent to run impeccable context at least once; got ${loadCalls.length}.\n` +
-            `bashCommands: ${JSON.stringify(trace.bashCommands, null, 2)}`,
+          `bashCommands: ${JSON.stringify(trace.bashCommands, null, 2)}`,
         );
         // Proof the native reference itself entered the agent's view.
         assert.ok(
           trace.bashOutputs.some((o) => /# NATIVE PLATFORM REFERENCE: IOS \(reference\/ios\.md\)/.test(o)),
           `impeccable context should have emitted reference/ios.md content (platform is ios).\n` +
-            `bashOutputs: ${JSON.stringify(trace.bashOutputs, null, 2)}`,
+          `bashOutputs: ${JSON.stringify(trace.bashOutputs, null, 2)}`,
         );
       } finally {
         cleanupWorkspace(workspace);
@@ -586,12 +586,43 @@ for (const modelId of resolveModelList()) {
         assert.ok(
           bashCommandsMatching(trace, 'impeccable context').length >= 1,
           `expected agent to run impeccable context at least once.\n` +
-            `bashCommands: ${JSON.stringify(trace.bashCommands, null, 2)}`,
+          `bashCommands: ${JSON.stringify(trace.bashCommands, null, 2)}`,
         );
         assert.ok(
           fileLoaded(trace, 'audit.native.md'),
           `agent should load audit.native.md (not just audit.md) when the platform is ios.\n` +
-            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+          `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+        );
+      } finally {
+        cleanupWorkspace(workspace);
+      }
+    });
+
+    it('scenario 16: workflow question routes to ask.md', async () => {
+      const workspace = prepareWorkspace({
+        files: {
+          'PRODUCT.md': PRODUCT_MD_SAMPLE,
+          'DESIGN.md': DESIGN_MD_SAMPLE,
+        },
+      });
+
+      try {
+        const { trace, text } = await runTurn({
+          workspace,
+          model,
+          userPrompt:
+            "I'm joining this project. What command fits my situation and where should I start?",
+          maxSteps: setupMaxSteps,
+        });
+
+        logTrace('S16', 'workflow-question-routing', modelId, trace, {
+          textSample: text.slice(0, 300),
+        });
+
+        assert.ok(
+          fileLoaded(trace, 'ask.md'),
+          `agent should load ask.md for workflow questions.\n` +
+          `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
       } finally {
         cleanupWorkspace(workspace);
