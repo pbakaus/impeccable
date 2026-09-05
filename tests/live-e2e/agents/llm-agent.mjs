@@ -620,10 +620,10 @@ export async function createLlmAgent(opts = {}) {
         max_tokens: 4096,
         system: systemBlocks(STEER_SYSTEM_INSTRUCTIONS),
         messages: [{ role: 'user', content: userMessage }],
-      }, {
+      }, provider === 'deepseek' ? {
         maxRetries: LLM_REQUEST_MAX_RETRIES,
         timeout: MANUAL_EDIT_REQUEST_TIMEOUT_MS,
-      });
+      } : {});
 
       const cacheRead = response.usage?.cache_read_input_tokens ?? 0;
       const inputTokens = response.usage?.input_tokens ?? 0;
