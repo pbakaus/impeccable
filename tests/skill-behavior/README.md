@@ -92,16 +92,18 @@ measurement from running arbitrary shell searches outside its fixture.
 | Scenario | claude-sonnet-5 | gpt-5.6-terra | gemini-3.7-flash |
 |---|---|---|---|
 | 16 (existing project) | pass | pass | pass |
-| 16 (missing product context) | pass | pass | pass |
+| 16 (missing product context) | flaky (1 of 2) | pass | pass |
 | 17 (command comparison) | pass | pass | pass |
 | 18 (explicit command) | pass | pass | pass |
 
-The advice cells are one restricted-shell run each, with recorded read-tool
-paths checked against the stricter reference-read assertion. The initial
-unrestricted run was stopped after host-wide search attempts and is excluded.
-Scenario 18 passed on all three providers with an eight-step budget and actual read-tool evidence;
-the earlier three-step results counted rejected bash reads and are excluded.
-The broader suite's sandboxed OpenAI DNS errors are not behavior measurements.
+Rechecked after reducing the skill addition to 59 words. Claude's first
+missing-context response stayed read-only but skipped `routing.md`; an unchanged
+repeat passed on all three providers. Keep that reference-read miss visible as
+a flake rather than adding instructions for a single observation. All assertions
+remain unchanged. Scenario 18 uses an eight-step budget and actual read-tool
+evidence, not rejected bash reads. The initial unrestricted run (stopped after
+host-wide search attempts), earlier rejected-read results, and broader suite's
+sandboxed provider DNS errors are excluded from this baseline.
 
 The workflow-contract file adds end-to-end assertions for attended fresh init,
 an initialized natural build request, replacement-world redesign, scope-preserving bolder

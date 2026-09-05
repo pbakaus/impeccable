@@ -1,16 +1,8 @@
 # Command guidance
 
-For a workflow question, use the section below. Only a bare invocation uses the context-aware menu and its signal/scan steps.
-
 ## Workflow questions
 
-Answer the user's situation or command comparison, not a request to execute it. Setup may load context, but do not start an interview, run an audit, change project files, or launch the recommended command without a request to do that work. Missing PRODUCT.md is a reason to recommend `init`, not to start it during advice.
-
-Use the Commands table to shortlist relevant commands, then read just their references (native variants where applicable) before making claims about prerequisites, outputs, or scope. Reading a playbook for comparison does not authorize executing its instructions. Base comparisons on the decision the user faces, not a second command catalog.
-
-Distinguish a useful sequence from a dependency. For example, `polish` can use a current critique snapshot, but also works independently; `harden` belongs in the path when production concerns warrant it. For new surfaces, distinguish `shape`'s confirmed brief from implementation through `new-work`. Follow the current references rather than prescribing one universal workflow.
-
-Give a short recommendation and why it fits, with an optional next step. For the broader entry-point map and command pairs, point to the [docs landing page](https://impeccable.style/docs/); the bundled command references remain the authority for this installed version. Stop after the advice. If the user also explicitly asks to run a command, follow that request instead of substituting guidance.
+Give advice without executing commands; the menu below is only for bare invocations. Consult relevant command references as needed for prerequisites and scope. Link to the [docs](https://impeccable.style/docs/) for the broader workflow guide. If the user also requests execution, follow that request.
 
 ## No-argument routing: the context-aware menu
 
