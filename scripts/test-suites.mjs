@@ -33,6 +33,7 @@ export const SUITES = {
       /^skill\/(SKILL\.src\.md|agents\/|reference\/|scripts\/)/,
       /^ENGINE_VERSION$/,
       /^README(\.npm)?\.md$/,
+      /^\.github\/workflows\/release-engine\.yml$/,
       /^cli\/bin\//,
     ],
     commands: [
@@ -50,6 +51,7 @@ export const SUITES = {
           'tests/validate-plugin-versions.test.js',
           'tests/validate-plugin-manifest.test.js',
           'tests/plugin-paths.test.js',
+          'tests/release-engine-workflow.test.js',
         ],
       },
       {

@@ -12,7 +12,7 @@ on:
   push:
     tags: ['engine-v*']
 permissions:
-  contents: write
+  contents: read
 jobs:
   build:
     strategy:
@@ -53,15 +53,79 @@ jobs:
         run: target/${{ matrix.target }}/release/impeccable${{ runner.os == 'Windows' && '.exe' || '' }} engine-probe
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: impeccable-${{ matrix.short }}
+          # Keep unsigned Windows output outside the publish job's pattern.
+          name: ${{ matrix.short == 'windows-x64' && 'unsigned-windows-x64' || format('impeccable-{0}', matrix.short) }}
           path: target/${{ matrix.target }}/release/impeccable${{ runner.os == 'Windows' && '.exe' || '' }}
           if-no-files-found: error
-  publish:
+  sign-windows:
     needs: build
+    runs-on: windows-latest
+    timeout-minutes: 15
+    environment: windows-signing
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      # A fresh runner signs only this run's engine. It does not check out or
+      # execute repository code with the Azure identity available.
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: unsigned-windows-x64
+          path: unsigned
+      - name: Azure login (OIDC)
+        uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Sign Windows engine
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2
+        with:
+          endpoint: https://eus.codesigning.azure.net/
+          signing-account-name: impeccable-signing
+          certificate-profile-name: impeccable-windows
+          files: ${{ github.workspace }}\unsigned\impeccable.exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: Impeccable engine
+          description-url: https://impeccable.style
+          exclude-environment-credential: true
+          # Only the preceding OIDC Azure CLI login is used. Other credential
+          # types are excluded by this pinned action's defaults.
+          exclude-azure-cli-credential: false
+          cache-dependencies: false
+      - name: Verify signed engine
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $signature = Get-AuthenticodeSignature -LiteralPath 'unsigned/impeccable.exe'
+          if ($signature.Status -ne 'Valid') {
+            throw "Invalid Windows signature: $($signature.Status) — $($signature.StatusMessage)"
+          }
+          $publisher = $signature.SignerCertificate.GetNameInfo([System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false)
+          if ($publisher -cne 'Renaissance Geek, Inc.') {
+            throw "Unexpected Windows publisher: $publisher"
+          }
+          if ($null -eq $signature.TimeStamperCertificate) {
+            throw 'The Windows signature has no timestamp.'
+          }
+          Write-Output "Verified publisher: $publisher; certificate: $($signature.SignerCertificate.Thumbprint)"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: impeccable-windows-x64
+          path: unsigned/impeccable.exe
+          if-no-files-found: error
+  publish:
+    needs: [build, sign-windows]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
-        with: { path: artifacts }
+        with:
+          pattern: impeccable-*
+          path: artifacts
       - name: Lay out release assets with checksums
         run: |
           set -e
