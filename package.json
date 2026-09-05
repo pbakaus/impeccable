@@ -71,11 +71,11 @@
     "check:engine-release": "node scripts/check-engine-release.mjs"
   },
   "optionalDependencies": {
-    "@impeccable/cli-darwin-arm64": "0.1.1",
-    "@impeccable/cli-darwin-x64": "0.1.1",
-    "@impeccable/cli-linux-x64": "0.1.1",
-    "@impeccable/cli-linux-arm64": "0.1.1",
-    "@impeccable/cli-windows-x64": "0.1.1"
+    "@impeccable/cli-darwin-arm64": "0.1.2",
+    "@impeccable/cli-darwin-x64": "0.1.2",
+    "@impeccable/cli-linux-x64": "0.1.2",
+    "@impeccable/cli-linux-arm64": "0.1.2",
+    "@impeccable/cli-windows-x64": "0.1.2"
   },
   "devDependencies": {
     "@ai-sdk/anthropic": "^4.0.7",
