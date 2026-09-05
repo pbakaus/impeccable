@@ -248,6 +248,14 @@ function resolveProvider(opts, env) {
   return 'openai';
 }
 
+export function llmRequestSettings(provider) {
+  // DeepSeek defaults to high-effort thinking, which can consume the entire
+  // bounded response before emitting the JSON these edit tests exercise.
+  // Keep real model-generated edits, but make this harness mode explicit.
+  // https://api-docs.deepseek.com/guides/thinking_mode/
+  return provider === 'deepseek' ? { thinking: { type: 'disabled' } } : {};
+}
+
 /**
  * Anthropic-SDK-shaped shim over the `ai` SDK for OpenAI models, so the
  * three text-only call sites in this file stay provider-agnostic. system
@@ -331,6 +339,7 @@ export async function createLlmAgent(opts = {}) {
         try {
           response = await client.messages.create(
             {
+              ...llmRequestSettings(provider),
               model,
               temperature: 0,
               max_tokens: 16000,
@@ -476,6 +485,7 @@ export async function createLlmAgent(opts = {}) {
         try {
           response = await client.messages.create(
             {
+              ...llmRequestSettings(provider),
               model,
               temperature: 0,
               max_tokens: 16000,
@@ -605,10 +615,14 @@ export async function createLlmAgent(opts = {}) {
       ].join('\n');
 
       const response = await client.messages.create({
+        ...llmRequestSettings(provider),
         model,
         max_tokens: 4096,
         system: systemBlocks(STEER_SYSTEM_INSTRUCTIONS),
         messages: [{ role: 'user', content: userMessage }],
+      }, {
+        maxRetries: LLM_REQUEST_MAX_RETRIES,
+        timeout: MANUAL_EDIT_REQUEST_TIMEOUT_MS,
       });
 
       const cacheRead = response.usage?.cache_read_input_tokens ?? 0;
