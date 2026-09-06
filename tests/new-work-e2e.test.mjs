@@ -129,10 +129,10 @@ function spawnSyncGen(prompt, out, size = null) {
 // serve-question interactive cycles
 // --------------------------------------------------------------------------
 describe('new-work-e2e: serve-question decision page', () => {
-  it('loads both bundled font families and all dialog weights without external requests', async () => {
+  it('renders a light system-font picker without font or external requests', async () => {
     const cwd = makeWorkspace();
-    const key = 'local-fonts';
-    const context = await browser.newContext();
+    const key = 'system-fonts';
+    const context = await browser.newContext({ colorScheme: 'dark' });
     const externalRequests = [];
     const fontResponses = [];
     try {
@@ -155,29 +155,24 @@ describe('new-work-e2e: serve-question decision page', () => {
         }
       });
       await page.goto(url);
-      const loaded = await page.evaluate(async () => {
-        const results = [];
-        for (const [family, weights] of [['Albert Sans', [400, 500, 600]], ['Alumni Sans', [100, 400]]]) {
-          for (const weight of weights) {
-            const faces = await document.fonts.load(`${weight} 16px "${family}"`, 'Local typography');
-            results.push({ family, weight, count: faces.length, loaded: faces.every((face) => face.status === 'loaded') });
-          }
-        }
+      const appearance = await page.evaluate(async () => {
         await document.fonts.ready;
-        return results;
+        return {
+          fonts: document.fonts.size,
+          family: getComputedStyle(document.body).fontFamily,
+          scheme: getComputedStyle(document.documentElement).colorScheme,
+          logoPaths: document.querySelectorAll('.brand svg path').length,
+          logoText: document.querySelectorAll('.brand svg text').length,
+        };
       });
-      assert.equal(loaded.length, 5);
-      for (const face of loaded) {
-        assert.ok(face.count > 0 && face.loaded, `font face did not load: ${JSON.stringify(face)}`);
-      }
+      assert.equal(appearance.fonts, 0, 'no custom font faces');
+      assert.match(appearance.family, /^system-ui,/);
+      assert.equal(appearance.scheme, 'light', 'picker stays light even with a dark OS preference');
+      assert.ok(appearance.logoPaths > 2, 'the brand mark and wordmark are vector outlines');
+      assert.equal(appearance.logoText, 0, 'the logo does not depend on a font');
+      await page.getByRole('img', { name: 'Impeccable', exact: true }).waitFor();
       assert.deepEqual(externalRequests, [], 'dialog must not request third-party resources');
-      assert.deepEqual(fontResponses.map((response) => new URL(response.url).pathname).sort(), [
-        '/fonts/albert-sans.ttf', '/fonts/alumni-sans.ttf',
-      ]);
-      for (const response of fontResponses) {
-        assert.equal(response.status, 200);
-        assert.equal(response.type, 'font/ttf');
-      }
+      assert.deepEqual(fontResponses, [], 'no bundled or remote font downloads');
     } finally {
       await context.close();
       await stopDaemon(cwd, key);

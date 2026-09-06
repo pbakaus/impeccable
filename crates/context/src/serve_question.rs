@@ -483,17 +483,6 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
             .iter()
             .find(|h| h.field.equiv("Origin"))
             .map(|h| h.value.as_str().to_string());
-        // Only embedded, allowlisted assets; never resolve these paths on disk.
-        // Keep this after the Host gate, just like the page and image routes.
-        if method == "GET" {
-            if let Some((bytes, content_type)) = question_font_asset(&path) {
-                let resp = tiny_http::Response::from_data(bytes)
-                    .with_header(tiny_http::Header::from_bytes("content-type", content_type).unwrap())
-                    .with_header(tiny_http::Header::from_bytes("x-content-type-options", "nosniff").unwrap());
-                let _ = request.respond(resp);
-                continue;
-            }
-        }
         let mut st = state.lock().unwrap();
         if method == "GET" && path == "/" {
             if let Some(pending) = st.next_file() {
@@ -670,16 +659,6 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
 }
 
 use std::io::Write;
-
-fn question_font_asset(path: &str) -> Option<(&'static [u8], &'static str)> {
-    match path {
-        "/fonts/albert-sans.ttf" => Some((include_bytes!("../assets/fonts/albert-sans.ttf"), "font/ttf")),
-        "/fonts/alumni-sans.ttf" => Some((include_bytes!("../assets/fonts/alumni-sans.ttf"), "font/ttf")),
-        "/fonts/albert-sans-OFL.txt" => Some((include_bytes!("../assets/fonts/albert-sans-OFL.txt"), "text/plain; charset=utf-8")),
-        "/fonts/alumni-sans-OFL.txt" => Some((include_bytes!("../assets/fonts/alumni-sans-OFL.txt"), "text/plain; charset=utf-8")),
-        _ => None,
-    }
-}
 
 /// JS: serve-question.mjs#allowedHost — browsers omit the :80 suffix on the
 /// default HTTP port, so a server on --port 80 sees bare loopback hosts.
@@ -1286,26 +1265,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn question_page_uses_only_bundled_fonts() {
+    fn question_page_uses_system_fonts_and_inline_branding() {
         assert!(!PAGE.contains("fonts.googleapis.com"));
         assert!(!PAGE.contains("fonts.gstatic.com"));
-        assert!(PAGE.contains("/fonts/albert-sans.ttf"));
-        assert!(PAGE.contains("/fonts/alumni-sans.ttf"));
-    }
-
-    #[test]
-    fn bundled_fonts_are_truetype_and_assets_are_allowlisted() {
-        for family in ["albert-sans", "alumni-sans"] {
-            let (bytes, mime) = question_font_asset(&format!("/fonts/{}.ttf", family)).unwrap();
-            assert!(bytes.starts_with(&[0, 1, 0, 0]));
-            assert_eq!(mime, "font/ttf");
-            let (license, mime) = question_font_asset(&format!("/fonts/{}-OFL.txt", family)).unwrap();
-            assert_eq!(mime, "text/plain; charset=utf-8");
-            assert!(std::str::from_utf8(license).unwrap().contains("SIL OPEN FONT LICENSE Version 1.1"));
-        }
-        assert!(question_font_asset("/fonts/../q.json").is_none());
-        assert!(question_font_asset("/fonts/albert-sans.ttf/extra").is_none());
-        assert!(question_font_asset("/fonts/missing.ttf").is_none());
+        assert!(!PAGE.contains("@font-face"));
+        assert!(!PAGE.contains("/fonts/"));
+        assert!(PAGE.contains("--ks-font: system-ui,"));
+        assert!(PAGE.contains("aria-label=\"Impeccable\""));
+        assert!(PAGE.contains("color-scheme: light"));
+        assert!(!PAGE.contains("color-scheme: dark"));
     }
 
     // JS scenarios: tests/serve-question.test.mjs (public repo main,
