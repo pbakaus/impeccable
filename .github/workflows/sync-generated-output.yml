@@ -26,6 +26,7 @@ env:
     .codex
     .claude
     .cursor
+    .dsh
     .gemini
     .github/agents
     .github/hooks

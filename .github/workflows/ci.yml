@@ -137,7 +137,7 @@ jobs:
         # What `bun run build` writes, which runs on every PR.
         # extension/detector/ is gitignored (built by `cargo xtask bundle`);
         # it stays listed so a stray tracked copy shows up here.
-        run: git diff --exit-code -- .agents .claude .cursor .gemini .github/skills plugin extension/detector
+        run: git diff --exit-code -- .agents .claude .cursor .dsh .gemini .github/skills plugin extension/detector
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7

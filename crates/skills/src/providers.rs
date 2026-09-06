@@ -327,6 +327,16 @@ impl Sys {
                 has_real_skills: has_real_skill_entries(&jsp::join(&[root, provider, "skills"])),
             });
         }
+        // Shared probe pair for env-relocated config dirs (OpenCode, DSH):
+        // the harness-specific user skills dir plus a direct
+        // `<config-dir>/skills` fallback.
+        let config_dir_detection = |provider: &'static str, found: String| {
+            let probes = unique_paths(vec![
+                self.user_provider_skills_dir(home, provider),
+                jsp::join(&[&found, "skills"]),
+            ]);
+            (found, probes)
+        };
         for hint in GLOBAL_HARNESS_HINTS {
             let (found_path, probe_paths) = match hint {
                 Hint::Home(rel, provider) => {
@@ -338,12 +348,10 @@ impl Sys {
                     (found, probes)
                 }
                 Hint::OpencodeConfig(provider) => {
-                    let found = opencode_global_config_dir(&self.env, home);
-                    let probes = unique_paths(vec![
-                        self.user_provider_skills_dir(home, provider),
-                        jsp::join(&[&found, "skills"]),
-                    ]);
-                    (found, probes)
+                    config_dir_detection(provider, opencode_global_config_dir(&self.env, home))
+                }
+                Hint::DshHome(provider) => {
+                    config_dir_detection(provider, dsh_global_home(&self.env, &self.cwd, home))
                 }
             };
             if !util::exists(&found_path) {
@@ -433,12 +441,16 @@ pub enum UpdateTarget {
 enum Hint {
     Home(&'static str, &'static str),
     OpencodeConfig(&'static str),
+    /// `$DSH_HOME` relocates the whole config root, so detection must probe
+    /// the resolved home (which falls back to `~/.dsh`) rather than a fixed
+    /// relative path; a plain `Home` hint would miss a DSH_HOME-only setup.
+    DshHome(&'static str),
 }
 
 impl Hint {
     fn provider(&self) -> &'static str {
         match self {
-            Hint::Home(_, p) | Hint::OpencodeConfig(p) => p,
+            Hint::Home(_, p) | Hint::OpencodeConfig(p) | Hint::DshHome(p) => p,
         }
     }
 }
@@ -451,7 +463,7 @@ const GLOBAL_HARNESS_HINTS: &[Hint] = &[
     Hint::Home(".claude", ".claude"),
     Hint::Home(".codex", ".agents"),
     Hint::Home(".cursor", ".cursor"),
-    Hint::Home(".dsh", ".dsh"),
+    Hint::DshHome(".dsh"),
     Hint::Home(".gemini", ".gemini"),
     Hint::Home(".grok", ".grok"),
     Hint::Home(".hermes", ".hermes"),
