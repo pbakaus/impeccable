@@ -42,6 +42,8 @@ On every boot the project is scanned for HTML files under common page roots (`pu
 
 ## CSP detection (first-time only)
 
+Keep all allowances below development-only, including manual middleware and meta-tag edits. Do not change a deployed production site's CSP to load the localhost helper; see [live.md](live.md) for production inspection alternatives.
+
 If `config.cspChecked === true`, skip this whole section; the user was already asked once.
 
 ```bash

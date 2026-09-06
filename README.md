@@ -426,6 +426,12 @@ npx impeccable install
 npx impeccable update
 ```
 
+## Live mode and production sites
+
+Live mode edits a local checkout through a development server or local static HTML. Injecting its localhost HTTP helper into a deployed production site, including an HTTPS site, is not supported. Do not disable browser security or weaken production CSP to make it work.
+
+For production inspection, use `npx impeccable detect https://example.com` or the browser extension. These inspect the rendered page; they do not provide live variant editing or write changes back to your source.
+
 ## CLI
 
 Impeccable includes a standalone CLI for detecting anti-patterns without an AI harness. `npx impeccable` is a small shim that runs the same engine binary the skill uses (installed as a platform-specific optional dependency, or fetched once into `~/.impeccable/bin/`); Node is needed only for `npx` itself, and you can also download the binary directly and put it on your PATH.

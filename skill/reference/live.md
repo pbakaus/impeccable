@@ -4,6 +4,8 @@ Interactive live variant mode: select elements in the browser, pick a design act
 
 A running dev server with HMR (Vite, Next.js, Bun, etc.), OR a static HTML file open in the browser. If the dev server's default port is busy, the app is very likely ALREADY running; probe the default URL before spawning a second server.
 
+Live editing requires a local checkout; injection into deployed production sites (including HTTPS) is unsupported. For production inspection, use `{{scripts_path}}/impeccable detect <url>` or the browser extension, not the live helper. Do not disable browser security or weaken production CSP to enable live mode.
+
 <codex>
 Codex: run live helper commands, the app dev server, and any dependency-installing setup with `sandbox_permissions: "require_escalated"` from the start; live mode depends on localhost and package-manager network access that the sandbox blocks.
 </codex>
