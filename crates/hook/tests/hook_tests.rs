@@ -124,6 +124,240 @@ fn stop_event(cwd: &str, session: &str) -> String {
 const GRADIENT_CSS: &str = ".title { background: linear-gradient(90deg, #f472b6, #a78bfa); -webkit-background-clip: text; color: transparent; }\n";
 const SIDE_TAB_CSS: &str = ".card { border-left: 4px solid #6366f1; border-radius: 8px; }\n";
 
+fn edit_with_original(cwd: &str, file: &str, session: &str, before: &str, old: &str, new: &str) -> String {
+    json!({
+        "session_id": session, "cwd": cwd, "hook_event_name": "PostToolUse",
+        "tool_name": "Edit", "tool_input": {"file_path": file, "old_string": old, "new_string": new},
+        "tool_response": {"filePath": file, "originalFile": before, "oldString": old,
+            "newString": new, "replaceAll": false, "userModified": false},
+    }).to_string()
+}
+
+#[test]
+fn stop_baseline_import_only_edit_does_not_blame_existing_font() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    // This is the actual working-tree preimage, not HEAD (which might differ).
+    let before = "import dead from 'dead';\nconst report = `<style>body { font-family: Fraunces; }</style>`;\n";
+    let after = before.replacen("import dead from 'dead';\n", "", 1);
+    let file = t.write("query.ts", &after);
+    let r = rt(&cwd);
+    assert!(detector_detect_text(before, &file, &HookScanOptions::default()).iter().any(|f| f.antipattern == "overused-font"));
+    hook::run_hook(&r, &edit_with_original(&cwd, &file, "s1", before, "import dead from 'dead';\n", ""));
+    let stop = hook::run_stop_hook(&r, &stop_event(&cwd, "s1"));
+    assert!(stop.stdout.is_empty(), "{}", stop.stdout);
+    assert_eq!(stop.audit["preExistingFindings"], json!(1));
+    assert!(!t.read(".impeccable/hook.cache.json").contains("const report"), "do not persist source contents");
+    assert!(!t.exists(".impeccable/config.local.json"), "baseline is not an ignore");
+    assert!(detector_detect_text(&after, &file, &HookScanOptions::default()).iter().any(|f| f.antipattern == "overused-font"), "explicit scans stay unchanged");
+}
+
+#[test]
+fn stop_baseline_reports_new_findings_and_keeps_first_preimage() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let file = t.write("card.css", SIDE_TAB_CSS);
+    let r = rt(&cwd);
+    hook::run_hook(&r, &edit_with_original(&cwd, &file, "s1", ".card {}\n", ".card {}\n", SIDE_TAB_CSS));
+    let second = format!("/* later */\n{SIDE_TAB_CSS}");
+    t.write("card.css", &second);
+    hook::run_hook(&r, &edit_with_original(&cwd, &file, "s1", SIDE_TAB_CSS, SIDE_TAB_CSS, &second));
+    let stop = hook::run_stop_hook(&r, &stop_event(&cwd, "s1"));
+    assert!(stop.stdout.contains("[side-tab]"));
+    assert!(stop.stdout.contains("[new]"), "{}", stop.stdout);
+    assert_eq!(stop.audit["newFindings"], json!(1));
+}
+
+#[test]
+fn stop_baseline_missing_or_mismatched_preimage_stays_unknown() {
+    for original in [None, Some("not the actual preimage")] {
+        let t = Tmp::new();
+        let cwd = t.path();
+        t.write("package.json", "{}");
+        let file = t.write("card.css", SIDE_TAB_CSS);
+        let r = rt(&cwd);
+        let event = original.map(|before| edit_with_original(&cwd, &file, "s1", before, ".card {}", SIDE_TAB_CSS))
+            .unwrap_or_else(|| edit_event(&cwd, &file, "s1"));
+        hook::run_hook(&r, &event);
+        let stop = hook::run_stop_hook(&r, &stop_event(&cwd, "s1"));
+        assert!(stop.stdout.contains("[attribution unknown]"), "{}", stop.stdout);
+        assert!(stop.stdout.contains("may predate this session"));
+        assert_eq!(stop.audit["unknownFindings"], json!(1));
+    }
+}
+
+#[test]
+fn stop_baseline_existing_debt_fixed_then_reintroduced_is_new() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let clean = ".card {}\n";
+    let file = t.write("card.css", clean);
+    let r = rt(&cwd);
+    hook::run_hook(&r, &edit_with_original(&cwd, &file, "s1", SIDE_TAB_CSS, SIDE_TAB_CSS, clean));
+    t.write("card.css", SIDE_TAB_CSS);
+    hook::run_hook(&r, &edit_with_original(&cwd, &file, "s1", clean, clean, SIDE_TAB_CSS));
+    let stop = hook::run_stop_hook(&r, &stop_event(&cwd, "s1"));
+    assert!(stop.stdout.contains("[new]"), "{}", stop.stdout);
+    assert_eq!(stop.audit["preExistingFindings"], json!(0));
+}
+
+#[test]
+fn stop_baseline_late_preimage_does_not_relabel_unknown_debt() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let file = t.write("card.css", SIDE_TAB_CSS);
+    let r = rt(&cwd);
+    hook::run_hook(&r, &edit_event(&cwd, &file, "s1"));
+    let second = format!("/* later */\n{SIDE_TAB_CSS}");
+    t.write("card.css", &second);
+    hook::run_hook(&r, &edit_with_original(&cwd, &file, "s1", SIDE_TAB_CSS, SIDE_TAB_CSS, &second));
+    let stop = hook::run_stop_hook(&r, &stop_event(&cwd, "s1"));
+    assert_eq!(stop.audit["unknownFindings"], json!(1));
+    assert_eq!(stop.audit["preExistingFindings"], json!(0));
+}
+
+#[test]
+fn stop_baseline_keeps_indirect_stylesheet_findings_unknown() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    t.write("src/styles.css", SIDE_TAB_CSS);
+    let before = "import './styles.css';\nexport const Card = () => <div>Before</div>;\n";
+    let after = before.replace("Before", "After");
+    let file = t.write("src/Card.tsx", &after);
+    let r = rt(&cwd);
+    hook::run_hook(&r, &edit_with_original(&cwd, &file, "s1", before, "Before", "After"));
+    let stop = hook::run_stop_hook(&r, &stop_event(&cwd, "s1"));
+    assert!(stop.stdout.contains("[side-tab]"), "{}", stop.stdout);
+    assert_eq!(stop.audit["unknownFindings"], json!(1));
+    assert_eq!(stop.audit["preExistingFindings"], json!(0));
+}
+
+#[test]
+fn stop_baseline_extra_identical_occurrence_is_not_suppressed() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    // The text detector deduplicates identical snippets within two lines.
+    let after = format!("{SIDE_TAB_CSS}\n\n\n{SIDE_TAB_CSS}");
+    let file = t.write("card.css", &after);
+    let r = rt(&cwd);
+    hook::run_hook(&r, &edit_with_original(&cwd, &file, "s1", SIDE_TAB_CSS, SIDE_TAB_CSS, &after));
+    let stop = hook::run_stop_hook(&r, &stop_event(&cwd, "s1"));
+    assert_eq!(stop.audit["preExistingFindings"], json!(1));
+    assert_eq!(stop.audit["newFindings"], json!(1));
+}
+
+#[test]
+fn stop_baseline_write_create_is_new_but_missing_update_preimage_is_unknown() {
+    for (kind, expected) in [("create", "newFindings"), ("update", "unknownFindings")] {
+        let t = Tmp::new();
+        let cwd = t.path();
+        t.write("package.json", "{}");
+        let file = t.write("card.css", SIDE_TAB_CSS);
+        let r = rt(&cwd);
+        let event = json!({"cwd": cwd, "session_id": "s1", "tool_name": "Write",
+            "tool_input": {"file_path": file, "content": SIDE_TAB_CSS},
+            "tool_response": {"type": kind, "filePath": file, "content": SIDE_TAB_CSS, "originalFile": null}}).to_string();
+        hook::run_hook(&r, &event);
+        let stop = hook::run_stop_hook(&r, &stop_event(&cwd, "s1"));
+        assert_eq!(stop.audit[expected], json!(1));
+    }
+}
+
+#[test]
+fn stop_baseline_unknown_notice_respects_small_output_budget() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    t.write(".impeccable/config.json", r#"{"hook":{"limits":{"maxChars":500}}}"#);
+    let file = t.write("card.css", SIDE_TAB_CSS);
+    let r = rt(&cwd);
+    hook::run_hook(&r, &edit_event(&cwd, &file, "s1"));
+    let stop = hook::run_stop_hook(&r, &stop_event(&cwd, "s1"));
+    let output: Value = serde_json::from_str(&stop.stdout).unwrap();
+    let text = output["hookSpecificOutput"]["additionalContext"].as_str().unwrap();
+    assert!(text.encode_utf16().count() <= 500, "{text}");
+    assert!(text.contains("may predate this session"));
+}
+
+#[test]
+fn stop_baseline_uses_dirty_worktree_not_git_head() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    t.write("card.css", ".card {}\n");
+    std::fs::create_dir(t.0.join("empty-hooks")).unwrap();
+    let hooks = format!("core.hooksPath={}/empty-hooks", cwd);
+    let git = |args: &[&str]| {
+        let result = std::process::Command::new("git").current_dir(&t.0)
+            .args(["-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                "-c", "commit.gpgsign=false", "-c", &hooks])
+            .args(args).output().unwrap();
+        assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+    };
+    git(&["init", "--quiet"]);
+    git(&["add", "card.css", "package.json"]);
+    git(&["commit", "--quiet", "-m", "clean baseline"]);
+    // The user introduced this debt before the agent session; HEAD is clean.
+    let before = format!("/* unrelated */\n{SIDE_TAB_CSS}");
+    let file = t.write("card.css", SIDE_TAB_CSS);
+    let r = rt(&cwd);
+    hook::run_hook(&r, &edit_with_original(&cwd, &file, "s1", &before, "/* unrelated */\n", ""));
+    let stop = hook::run_stop_hook(&r, &stop_event(&cwd, "s1"));
+    assert_eq!(stop.audit["preExistingFindings"], json!(1));
+    assert!(stop.stdout.is_empty());
+}
+
+#[test]
+fn stop_baseline_untrusted_shapes_do_not_suppress_findings() {
+    for variant in ["modified", "wrong-path", "no-session", "oversized", "ambiguous", "other-provider"] {
+        let t = Tmp::new();
+        let cwd = t.path();
+        t.write("package.json", "{}");
+        let file = t.write("card.css", SIDE_TAB_CSS);
+        let mut event: Value = serde_json::from_str(&edit_with_original(&cwd, &file, "s1", SIDE_TAB_CSS, SIDE_TAB_CSS, SIDE_TAB_CSS)).unwrap();
+        match variant {
+            "modified" => event["tool_response"]["userModified"] = json!(true),
+            "wrong-path" => event["tool_response"]["filePath"] = json!("another.css"),
+            "no-session" => event["session_id"] = Value::Null,
+            "oversized" => event["tool_response"]["originalFile"] = json!("x".repeat(512 * 1024 + 1)),
+            "ambiguous" => {
+                let repeated = SIDE_TAB_CSS.repeat(2);
+                t.write("card.css", &repeated);
+                event["tool_response"]["originalFile"] = json!(repeated);
+            }
+            _ => {},
+        }
+        let r = if variant == "other-provider" { rt_with(&cwd, env(&[("IMPECCABLE_HOOK_HARNESS", "codex")])) } else { rt(&cwd) };
+        hook::run_hook(&r, &event.to_string());
+        let session = if variant == "no-session" { "unknown" } else { "s1" };
+        let stop = hook::run_stop_hook(&r, &stop_event(&cwd, session));
+        assert!(stop.stdout.contains("[attribution unknown]"), "{variant}: {}", stop.stdout);
+        assert_eq!(stop.audit["preExistingFindings"], json!(0), "{variant}");
+    }
+}
+
+#[test]
+fn stop_baseline_scan_suppression_discards_exemptions() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let file = t.write("card.css", SIDE_TAB_CSS);
+    let r = rt(&cwd);
+    let event = edit_with_original(&cwd, &file, "s1", SIDE_TAB_CSS, SIDE_TAB_CSS, SIDE_TAB_CSS);
+    for _ in 0..=EDIT_COUNT_THRESHOLD {
+        hook::run_hook(&r, &event);
+    }
+    let stop = hook::run_stop_hook(&r, &stop_event(&cwd, "s1"));
+    assert_eq!(stop.audit["unknownFindings"], json!(1));
+    assert_eq!(stop.audit["preExistingFindings"], json!(0));
+}
+
 fn audit_str<'a>(a: &'a Map<String, Value>, k: &str) -> Option<&'a str> {
     a.get(k).and_then(Value::as_str)
 }

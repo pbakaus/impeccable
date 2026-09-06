@@ -1,0 +1,19 @@
+{
+  "steps": [
+    {
+      "stdout": "",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    }
+  ],
+  "files": {
+    ".impeccable/hook.cache.json": "{\"version\":1,\"sessions\":{\"s1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/src/report.ts\":{\"editCount\":1,\"findings\":[\"overused-font:1:fraunces\"],\"stopBaseline\":{\"version\":1,\"engine\":\"<ENGINE_VERSION>\",\"counts\":{\"57802aad69167e30e1dc001298a4ad9552f238c951be5b990b3071d6e2bdf827\":1}}}}}}}"
+  }
+}

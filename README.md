@@ -419,6 +419,8 @@ Codex requires one platform step that Impeccable cannot safely skip: open `/hook
 
 Full hook docs: [impeccable.style/docs/hooks](https://impeccable.style/docs/hooks).
 
+The Stop pass suppresses confirmed pre-existing findings when a verified before-edit baseline is available (currently Claude Edit/Write results for text scans). Other findings are marked new or attribution unknown; unknown is not evidence that your session caused the problem. Explicit `detect` scans remain unchanged.
+
 Manual copy commands are fallback/debug instructions. The normal path is:
 
 ```bash

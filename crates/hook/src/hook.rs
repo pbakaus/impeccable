@@ -7,6 +7,7 @@ use impeccable_core::js;
 use serde_json::{Map, Value};
 
 use crate::hook_lib::*;
+use crate::stop_baseline;
 use crate::util::{
     exists, iso_now, jsp, node_read_error, now_ms, str_field, truthy_value, utf16_len,
 };
@@ -237,11 +238,19 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
             }
         }
 
+        let use_html_engine = match configured {
+            Some(c) => c.engine == "html",
+            None => ext == ".html" || ext == ".htm",
+        };
         if primary_files.contains(file_path) {
+            if harness == "claude" {
+                stop_baseline::capture(rt, &event, &mut cache, &session_id, file_path, use_html_engine);
+            }
             let edit_count = bump_edit_count(&mut cache, &session_id, file_path);
             cache_dirty = true;
             audit.insert("editCount".into(), Value::from(edit_count as u64));
             if edit_count > EDIT_COUNT_THRESHOLD as f64 {
+                stop_baseline::invalidate(&mut cache, &session_id, file_path);
                 let just_crossed = edit_count == (EDIT_COUNT_THRESHOLD + 1) as f64;
                 if just_crossed && suppression_winner.is_none() {
                     suppression_winner = Some(file_path.clone());
@@ -266,10 +275,6 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
                 };
             }
         };
-        let use_html_engine = match configured {
-            Some(c) => c.engine == "html",
-            None => ext == ".html" || ext == ".htm",
-        };
         let mut detector_threw = false;
         let findings: Vec<Finding> = if use_html_engine {
             match detector_detect_html(rt, file_path, &scan) {
@@ -282,6 +287,9 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
         } else {
             detector_detect_text(&content, file_path, &scan)
         };
+        if !detector_threw && !use_html_engine {
+            stop_baseline::reconcile(&mut cache, &session_id, file_path, &findings);
+        }
         let raw_count = findings.len();
         let filtered = filter_findings(findings, &config);
         let (immediate, deferred) = if tiered {
@@ -660,6 +668,9 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
     let mut fresh_groups: Vec<Group> = Vec::new();
     let mut scanned = 0usize;
     let mut cache_dirty = false;
+    let mut pre_existing = 0usize;
+    let mut new_findings = 0usize;
+    let mut unknown = 0usize;
     for file_path in &touched {
         if scanned >= STOP_MAX_FILES {
             break;
@@ -705,8 +716,15 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
         } else {
             detector_detect_text(&content, file_path, &scan)
         };
+        if !use_html_engine {
+            stop_baseline::reconcile(&mut cache, &session_id, file_path, &findings);
+        }
         let filtered = filter_findings(findings, &config);
-        let fresh = dedupe_against_cache(&filtered, &mut cache, &session_id, file_path);
+        let classified = stop_baseline::classify(&cache, &session_id, file_path, use_html_engine, filtered.clone());
+        pre_existing += classified.pre_existing;
+        new_findings += classified.new;
+        unknown += classified.unknown;
+        let fresh = dedupe_against_cache(&classified.findings, &mut cache, &session_id, file_path);
         // JS: sync to the live scan, including empty. Remembering only
         // `fresh` (or skipping the write on a clean Stop) left stale keys in
         // place, so a finding that was fixed and later reintroduced never
@@ -721,6 +739,9 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
         }
     }
     audit.insert("scannedFiles".into(), Value::from(scanned));
+    audit.insert("preExistingFindings".into(), Value::from(pre_existing));
+    audit.insert("newFindings".into(), Value::from(new_findings));
+    audit.insert("unknownFindings".into(), Value::from(unknown));
     if fresh_groups.is_empty() {
         if cache_dirty {
             persist_cache(rt, &project_cwd, &cache);
@@ -735,7 +756,13 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
         );
     }
     let short = footer_mode_short(&mut cache, &session_id);
-    let reserve = design_note_reserve(rt, &scan, &mut cache, &session_id);
+    let attribution_note = if unknown > 0 {
+        format!("{ENVELOPE_PREFIX} {}", stop_baseline::UNKNOWN_NOTE)
+    } else {
+        String::new()
+    };
+    let reserve = design_note_reserve(rt, &scan, &mut cache, &session_id)
+        + if attribution_note.is_empty() { 0.0 } else { (utf16_len(&attribution_note) + 2) as f64 };
     let rendered = render_grouped_template(
         rt,
         &fresh_groups,
@@ -748,6 +775,7 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
     );
     let text =
         append_design_system_note_once(rt, &rendered, &scan, &mut cache, &session_id, &config);
+    let text = if attribution_note.is_empty() { text } else { format!("{attribution_note}\n\n{text}") };
     commit_footer_shown(rt, &mut cache, &session_id, &text);
     persist_cache(rt, &project_cwd, &cache);
     let all: usize = fresh_groups.iter().map(|g| g.findings.len()).sum();

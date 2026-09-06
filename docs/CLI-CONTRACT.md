@@ -1125,6 +1125,16 @@ Candidates in order: `<scripts>/detector/detect-antipatterns.mjs` (built skill l
 
 ---
 
+#### Stop finding attribution (#522)
+
+The Rust Stop pass still scans whole touched files; it does not infer causation from changed line ranges. It suppresses confirmed pre-existing text findings and marks remaining findings `[new]` or `[attribution unknown]`. Unknown findings remain visible, with a reminder not to treat them as regressions or broaden the task without asking. Explicit `detect` scans and per-edit/pre-edit output are unchanged.
+
+A baseline currently requires the first observed edit of that file in a named Claude session to carry a complete `Edit`/`Write` result (`tool_response.originalFile`, `filePath`, and the replacement/content fields). Replaying that result must exactly match the current file. `Write` with `type: "create"` and a null original is an empty baseline; a null original on an update is unknown. No Git/HEAD comparison is used, so existing uncommitted work is part of the baseline. Missing, ambiguous, oversized, mismatched, or user-modified results remain unknown; a later edit cannot establish a missing initial baseline.
+
+The baseline compares pure text-detector findings, independent of line numbers, with multiplicity preserved. It stores only hashed finding identities and counts under the existing session cache's `stopBaseline` field, versioned by schema and engine. A finding observed to disappear loses its exemption, so reintroducing it is new. Capture is capped at 512 KiB per file and 256 findings. Cache eviction or incompatible metadata falls back to unknown, never suppression.
+
+DOM scans, design-system findings, co-scanned stylesheets without their own baseline, and providers/events without a verified preimage remain unknown: other files or earlier edits may affect the result. `[new]` means absent from the verified first-observed-edit baseline, not proof of who caused it. Stop audit output records `preExistingFindings` (suppressed), `newFindings`, and `unknownFindings` before notification deduplication. No permanent ignores or new hook permissions are created.
+
 #### `hook-before-edit.mjs` -> `impeccable hook-before-edit` (Cursor preToolUse write gate)
 
 - **Invoked from**: Cursor project manifest `.cursor/hooks.json`:

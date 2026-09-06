@@ -17,6 +17,40 @@ const claudeEdit = (file, extra = {}) => ({
 const stop = (extra = {}) => ({ session_id: 's1', cwd: WS, hook_event_name: 'Stop', stop_hook_active: false, ...extra });
 
 export default [
+  {
+    id: 'hook-stop-baseline-new-finding', workspace: 'hook-project', files: CACHE_FILES,
+    normalize: [['("stopBaseline":\\{"version":1,"engine":")[^"]+', 'g', '$1<ENGINE_VERSION>']],
+    setup(ws) {
+      fs.writeFileSync(`${ws}/src/new.css`, '.card { border-left: 4px solid #6366f1; border-radius: 8px; }\n');
+    },
+    steps: [
+      { verb: 'hook', stdin: claudeEdit('src/new.css', {
+        tool_name: 'Write',
+        tool_response: {
+          type: 'create', filePath: `${WS}/src/new.css`, originalFile: null,
+          content: '.card { border-left: 4px solid #6366f1; border-radius: 8px; }\n',
+        },
+      }) },
+      { verb: 'hook', stdin: stop() },
+    ],
+  },
+  {
+    id: 'hook-stop-baseline-import-only', workspace: 'hook-project', files: CACHE_FILES,
+    normalize: [['("stopBaseline":\\{"version":1,"engine":")[^"]+', 'g', '$1<ENGINE_VERSION>']],
+    setup(ws) {
+      fs.writeFileSync(`${ws}/src/report.ts`, "const report = `<style>body { font-family: Fraunces; }</style>`;\n");
+    },
+    steps: [
+      { verb: 'hook', stdin: claudeEdit('src/report.ts', {
+        tool_response: {
+          filePath: `${WS}/src/report.ts`,
+          originalFile: "import dead from 'dead';\nconst report = `<style>body { font-family: Fraunces; }</style>`;\n",
+          oldString: "import dead from 'dead';\n", newString: '', replaceAll: false, userModified: false,
+        },
+      }) },
+      { verb: 'hook', stdin: stop() },
+    ],
+  },
   // --- hook.mjs: per-edit ---
   { id: 'hook-edit-tsx-fresh', verb: 'hook', workspace: 'hook-project', stdin: claudeEdit('src/components/Card.tsx'), files: CACHE_FILES },
   { id: 'hook-edit-css-fresh', verb: 'hook', workspace: 'hook-project', stdin: claudeEdit('src/components/Card.module.css'), files: CACHE_FILES },
