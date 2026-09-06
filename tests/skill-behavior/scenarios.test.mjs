@@ -652,6 +652,49 @@ for (const modelId of resolveModelList()) {
       }
     });
 
+    for (const denyBash of [true, false]) {
+      it(`scenario 19: ${denyBash ? 'denied launcher' : 'successful launcher control'} loads context and references before editing`, async () => {
+        const workspace = prepareWorkspace({ files: {
+          'PRODUCT.md': PRODUCT_MD_SAMPLE,
+          'DESIGN.md': DESIGN_MD_SAMPLE,
+          'index.html': '<!doctype html><html lang="en"><head><title>Fieldnotes</title><style>body{font:16px system-ui;margin:32px}button{padding:2px 4px}</style></head><body><main><h1>Fieldnotes</h1><p>A calmer place for your notes.</p><button>New note</button></main></body></html>',
+        } });
+        try {
+          const { trace, stepTexts, finishReason, responseMessages } = await runTurn({
+            workspace,
+            model,
+            userPrompt: '/impeccable polish index.html. Keep this pass small: improve the button spacing only, preserving the page content and structure.',
+            maxSteps: 12,
+            denyBash,
+            contextOnlyBash: !denyBash,
+          });
+          const allText = stepTexts.join('\n');
+          logTrace('S19', denyBash ? 'denied-launcher' : 'successful-launcher', modelId, trace, { finishReason, text: allText });
+          assert.notEqual(finishReason, 'length', 'a truncated response is not a completed fallback');
+          if (denyBash) {
+            assert.ok(trace.toolCalls.some((call) => call.name === 'bash' && call.denied && /impeccable\s+context\b/.test(call.input.command)), 'must encounter an actual denied context attempt');
+          } else {
+            assert.ok(trace.bashOutputs.some((out) => out.startsWith('exit=0\n')), 'the control must execute the real context loader successfully');
+          }
+          const writeIndex = trace.toolCalls.findIndex((call) => call.mutatedPaths.includes('index.html'));
+          assert.ok(writeIndex >= 0, 'must continue to the requested edit, not just load references');
+          for (const filename of [...(denyBash ? ['PRODUCT.md', 'DESIGN.md'] : []), 'reference/polish.md', 'reference/craft-floor.md']) {
+            const readIndex = trace.toolCalls.findIndex((call) => call.name === 'read' && call.succeeded && (call.input.path === filename || call.input.path.endsWith(`/${filename}`)));
+            assert.ok(readIndex >= 0 && readIndex < writeIndex, `${filename} must actually be read before editing`);
+          }
+          const warning = /(?:context|launcher|bash)[^.!?\n]{0,160}(?:denied|refused|unavailable|blocked|could(?:n't| not)|cannot|can't|did(?:n't| not)|fail|unable)|(?:denied|refused|unavailable|blocked|could(?:n't| not)|cannot|can't|unable)[^.!?\n]{0,160}(?:context|launcher|bash)/i;
+          const assistantBlocks = responseMessages.filter((message) => message.role === 'assistant')
+            .flatMap((message) => typeof message.content === 'string' ? [{ type: 'text', text: message.content }] : message.content);
+          const warningIndex = assistantBlocks.findIndex((block) => block.type === 'text' && warning.test(block.text));
+          const writeBlockIndex = assistantBlocks.findIndex((block) => block.type === 'tool-call' && block.toolName === 'write');
+          if (denyBash) assert.ok(warningIndex >= 0 && writeBlockIndex > warningIndex, 'must disclose the failed context launcher before editing, not only in the final summary');
+          assert.ok(!trace.toolCalls.some((call) => call.mutatedPaths.some((p) => /(?:^|\/)(?:PRODUCT|DESIGN)\.md$/.test(p))), 'must not fabricate or replace project context');
+        } finally {
+          cleanupWorkspace(workspace);
+        }
+      });
+    }
+
     it('scenario 18: explicit command request takes precedence over workflow advice', async () => {
       const workspace = prepareWorkspace({ files: WORKFLOW_ADVICE_FILES });
       try {

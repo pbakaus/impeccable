@@ -75,12 +75,28 @@ The trace is the source of truth, not the model's free-form reply.
 | 16 | existing surface, with and without PRODUCT.md; asks where to start | loads `routing.md`, delivers advice, and does not edit project files, start an interview, archive a critique, or run menu scans |
 | 17 | existing surface; asks whether critique is required before polish | loads `routing.md` and both command references, then delivers advice without executing the playbooks |
 | 18 | existing surface; explicitly requests polish followed by a next-command recommendation | loads `polish.md` rather than substituting workflow advice for the requested work |
+| 19 | tiny spacing edit with PRODUCT.md + DESIGN.md; Bash denied, plus a real-loader success control | actually reads playbook and craft floor before editing; denial also requires direct context-file reads and a user-visible warning before the edit |
 
 ## Setup launcher-failure branch (2026-09-06, PR #750)
 
-Setup step 1 now says: if the launcher is refused, missing, or fails, still do steps 2 and 3, tell the user, and read PRODUCT.md / DESIGN.md when they exist. Scenarios 1-15 are unchanged. The harness bash tool always runs the launcher, so those rows still measure the success path (run context, then load the playbook).
+Scenario 19 injects a host permission error before any shell command executes,
+including retries and compound commands. File tools remain available; the
+staged skill is read-only. Assertions require successful reads, an actual UI
+edit, unchanged context files, and disclosure before the first write in the
+assistant message sequence. Failed read attempts and shell commands merely
+mentioning a reference do not count as loading it. The success control allows
+only the real context-loader command through Bash and requires exit 0.
 
-This suite cannot simulate a host permission denial. The failure-branch wording is locked by the authoring-contract test in `tests/plugin-paths.test.js`. An LLM scenario for the refused-launcher path would need the harness to inject a denied `impeccable context` call; that is a harness change, not a Setup-text change, and is not in this PR.
+The suite measures continuation after a tool refusal, not Claude's skill
+activation or plugin substitution. Those are separate loader/path checks.
+It also does not establish behavior for every missing-binary or runtime error.
+
+Focused baseline (2026-09-06): both scenario 19 cases passed on
+`claude-sonnet-5`, one run each. The original wording also continued after
+denial in the comparison run, but disclosed the failure only in its final
+summary. This does not reproduce the reporter's complete reference-loading
+failure or establish a multi-provider pass. An earlier scenario 6 result used
+attempt-based reference assertions and is not counted as a success control.
 
 ## Workflow-advice baseline (2026-09-05, PR #737)
 

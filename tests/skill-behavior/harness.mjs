@@ -219,7 +219,7 @@ function defaultSimulatedAnswer(question) {
   return 'Use the brief, preserve real operational content, and make the primary decision obvious.';
 }
 
-export function makeTools(workspace, extraEnv = {}, simulatedUser = {}, { contextOnlyBash = false } = {}) {
+export function makeTools(workspace, extraEnv = {}, simulatedUser = {}, { contextOnlyBash = false, denyBash = false } = {}) {
   const trace = {
     toolCalls: [],
     bashCommands: [],
@@ -250,6 +250,14 @@ export function makeTools(workspace, extraEnv = {}, simulatedUser = {}, { contex
       }),
       execute: async ({ command }) => {
         const call = record('bash', { command });
+        // Simulate a host refusal, not a process failure. Nothing reaches a
+        // shell, including retries, alternate launchers, and compound commands.
+        if (denyBash) {
+          call.denied = true;
+          const out = 'Error: Bash permission denied by the host. This command was not executed.';
+          trace.bashOutputs.push(out);
+          return out;
+        }
         // Routing tests need the real context loader, not a general-purpose
         // shell on the host. Reject before execution (still record attempts).
         if (contextOnlyBash && command.trim() !== '.claude/skills/impeccable/scripts/impeccable context') {
@@ -273,13 +281,16 @@ export function makeTools(workspace, extraEnv = {}, simulatedUser = {}, { contex
         path: z.string().describe('Workspace-relative file path.'),
       }),
       execute: async ({ path: p }) => {
-        record('read', { path: p });
+        const call = record('read', { path: p });
+        call.succeeded = false;
         const resolved = safeResolve(workspace, p);
         if (typeof resolved !== 'string') return `Error: ${resolved.error}`;
         if (!fs.existsSync(resolved)) return `File not found: ${p}`;
         const stat = fs.statSync(resolved);
         if (stat.isDirectory()) return `Path is a directory: ${p}. Use list instead.`;
-        return fs.readFileSync(resolved, 'utf8');
+        const contents = fs.readFileSync(resolved, 'utf8');
+        call.succeeded = true;
+        return contents;
       },
     }),
     write: tool({
@@ -292,7 +303,7 @@ export function makeTools(workspace, extraEnv = {}, simulatedUser = {}, { contex
         const call = record('write', { path: p, contents });
         const resolved = safeResolve(workspace, p);
         if (typeof resolved !== 'string') return `Error: ${resolved.error}`;
-        if (contextOnlyBash && path.relative(workspace, resolved).split(path.sep)[0] === '.claude') {
+        if ((contextOnlyBash || denyBash) && path.relative(workspace, resolved).split(path.sep)[0] === '.claude') {
           return 'Error: the staged skill is read-only; edits must target project files.';
         }
         fs.mkdirSync(path.dirname(resolved), { recursive: true });
@@ -370,8 +381,8 @@ export function makeTools(workspace, extraEnv = {}, simulatedUser = {}, { contex
 // run is never killed. The timer is unref'd (it must not keep the loop alive
 // after a healthy turn) and cleared on completion.
 const TURN_TIMEOUT_MS = Number(process.env.IMPECCABLE_SKILL_BEHAVIOR_TURN_TIMEOUT_MS) || 840_000;
-export async function runTurn({ workspace, model, userPrompt, priorMessages = [], maxSteps = 8, env = {}, simulatedUser = {}, timeoutMs = TURN_TIMEOUT_MS, contextOnlyBash = false }) {
-  const { tools, trace } = makeTools(workspace, env, simulatedUser, { contextOnlyBash });
+export async function runTurn({ workspace, model, userPrompt, priorMessages = [], maxSteps = 8, env = {}, simulatedUser = {}, timeoutMs = TURN_TIMEOUT_MS, contextOnlyBash = false, denyBash = false }) {
+  const { tools, trace } = makeTools(workspace, env, simulatedUser, { contextOnlyBash, denyBash });
   const messages = [
     ...priorMessages,
     { role: 'user', content: userPrompt },
@@ -409,6 +420,7 @@ export async function runTurn({ workspace, model, userPrompt, priorMessages = []
   return {
     trace,
     text: result.text ?? '',
+    stepTexts: result.steps.map((step) => step.text ?? ''),
     finishReason: result.finishReason,
     usage: result.usage,
     responseMessages,
