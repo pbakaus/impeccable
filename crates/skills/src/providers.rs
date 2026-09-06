@@ -8,7 +8,7 @@ use crate::util::{self, jsp, Env};
 pub const API_BASE: &str = "https://impeccable.style";
 
 pub const PROVIDER_DIRS: &[&str] = &[
-    ".claude", ".cursor", ".gemini", ".agents", ".agent", ".github", ".grok", ".hermes", ".kiro",
+    ".claude", ".cursor", ".dsh", ".gemini", ".agents", ".agent", ".github", ".grok", ".hermes", ".kiro",
     ".opencode", ".pi", ".qoder", ".trae", ".trae-cn", ".rovodev", ".vibe",
 ];
 
@@ -21,6 +21,9 @@ const PROVIDER_ALIASES: &[(&str, &str)] = &[
     ("codex", ".agents"),
     ("copilot", ".github"),
     ("cursor", ".cursor"),
+    ("deepseek", ".dsh"),
+    ("deepseek-harness", ".dsh"),
+    ("dsh", ".dsh"),
     ("gemini", ".gemini"),
     ("github", ".github"),
     ("grok", ".grok"),
@@ -43,6 +46,7 @@ const PROVIDER_DISPLAY: &[(&str, &str, &str)] = &[
     (".agents", "Codex CLI", "codex"),
     (".claude", "Claude Code", "claude"),
     (".cursor", "Cursor", "cursor"),
+    (".dsh", "DeepSeek Harness", "dsh"),
     (".gemini", "Gemini CLI", "gemini"),
     (".github", "GitHub Copilot", "github"),
     (".grok", "Grok Build", "grok"),
@@ -58,7 +62,7 @@ const PROVIDER_DISPLAY: &[(&str, &str, &str)] = &[
 ];
 
 pub const PROVIDER_INPUT_ORDER: &[&str] = &[
-    "antigravity", "claude", "codex", "cursor", "gemini", "github", "grok", "hermes", "kiro",
+    "antigravity", "claude", "codex", "cursor", "dsh", "gemini", "github", "grok", "hermes", "kiro",
     "opencode", "pi", "qoder", "trae", "trae-cn", "rovo-dev", "vibe",
 ];
 
@@ -89,10 +93,24 @@ pub fn hermes_global_home(env: &Env, cwd: &str, home: &str) -> String {
     jsp::join(&[home, ".hermes"])
 }
 
+/// JS: dshGlobalHome(home): honor $DSH_HOME only when it sits under `home`
+/// (resolved against cwd like `path.resolve`), mirroring hermesGlobalHome.
+pub fn dsh_global_home(env: &Env, cwd: &str, home: &str) -> String {
+    if let Some(env_home) = env.get("DSH_HOME").filter(|v| !v.is_empty()) {
+        let resolved_env = jsp::resolve(cwd, &[env_home]);
+        let resolved_home = jsp::resolve(cwd, &[home]);
+        if resolved_env == resolved_home || resolved_env.starts_with(&format!("{resolved_home}/")) {
+            return resolved_env;
+        }
+    }
+    jsp::join(&[home, ".dsh"])
+}
+
 /// JS: HOME_SKILLS_DIR_OVERRIDES[provider]?.(home)
 fn home_skills_dir_override(env: &Env, cwd: &str, provider: &str, home: &str) -> Option<String> {
     match provider {
         ".agent" => Some(jsp::join(&[home, ".gemini", "config", "skills"])),
+        ".dsh" => Some(jsp::join(&[&dsh_global_home(env, cwd, home), "skills"])),
         ".hermes" => Some(jsp::join(&[&hermes_global_home(env, cwd, home), "skills"])),
         ".pi" => Some(jsp::join(&[home, ".pi", "agent", "skills"])),
         ".opencode" => Some(jsp::join(&[&opencode_global_config_dir(env, home), "skills"])),
@@ -101,7 +119,7 @@ fn home_skills_dir_override(env: &Env, cwd: &str, provider: &str, home: &str) ->
 }
 
 fn has_home_override(provider: &str) -> bool {
-    matches!(provider, ".agent" | ".hermes" | ".pi" | ".opencode")
+    matches!(provider, ".agent" | ".dsh" | ".hermes" | ".pi" | ".opencode")
 }
 
 /// Everything the scans need from the process: env, cwd, and the resolved
@@ -433,6 +451,7 @@ const GLOBAL_HARNESS_HINTS: &[Hint] = &[
     Hint::Home(".claude", ".claude"),
     Hint::Home(".codex", ".agents"),
     Hint::Home(".cursor", ".cursor"),
+    Hint::Home(".dsh", ".dsh"),
     Hint::Home(".gemini", ".gemini"),
     Hint::Home(".grok", ".grok"),
     Hint::Home(".hermes", ".hermes"),
@@ -756,6 +775,28 @@ mod tests {
         let (p, invalid) = parse_provider_list("claude, codex,claude,zzz");
         assert_eq!(p, vec![".claude", ".agents"]);
         assert_eq!(invalid, vec!["zzz"]);
+    }
+
+    #[test]
+    fn dsh_provider_resolves() {
+        assert_eq!(normalize_provider_name("dsh"), Some(".dsh"));
+        assert_eq!(normalize_provider_name("deepseek"), Some(".dsh"));
+        assert_eq!(normalize_provider_name("deepseek-harness"), Some(".dsh"));
+        assert_eq!(normalize_provider_name(".dsh"), Some(".dsh"));
+        assert_eq!(provider_display_name(".dsh"), "DeepSeek Harness");
+        assert_eq!(provider_input_name(".dsh"), "dsh");
+
+        // Default global skills dir is ~/.dsh/skills; $DSH_HOME wins only
+        // when it sits under home, like $HERMES_HOME for .hermes.
+        let cwd = "/work";
+        let home = "/home/u";
+        let env = Env::new();
+        assert_eq!(dsh_global_home(&env, cwd, home), "/home/u/.dsh");
+        let mut env = Env::new();
+        env.insert("DSH_HOME".into(), "/home/u/custom-dsh".into());
+        assert_eq!(dsh_global_home(&env, cwd, home), "/home/u/custom-dsh");
+        env.insert("DSH_HOME".into(), "/elsewhere/dsh".into());
+        assert_eq!(dsh_global_home(&env, cwd, home), "/home/u/.dsh");
     }
 
     #[test]

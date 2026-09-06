@@ -162,6 +162,7 @@ The skill-behavior suite runs three providers (claude-haiku-4-5, gpt-5.4-mini, g
 - [HARNESSES.md](HARNESSES.md) - Provider capabilities matrix
 - [Cursor Skills](https://cursor.com/docs/context/skills)
 - [Claude Code Skills](https://code.claude.com/docs/en/skills)
+- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
 - [Gemini CLI Skills](https://geminicli.com/docs/cli/skills/)
 - [Codex CLI Skills](https://developers.openai.com/codex/skills/)
 - [VS Code Copilot Skills](https://code.visualstudio.com/docs/copilot/customization/agent-skills)

@@ -184,6 +184,15 @@ cp -r dist/claude-code/.claude/* ~/.claude/
 cp -r dist/opencode/.opencode your-project/
 ```
 
+**DeepSeek Harness:**
+```bash
+# Project-specific
+cp -r dist/dsh/.dsh your-project/
+
+# Or global (applies to all projects)
+cp -r dist/dsh/.dsh/skills/* ~/.dsh/skills/
+```
+
 **Hermes Agent:**
 ```bash
 # Global (applies to all projects; uses the active profile, or ~/.hermes by default)
@@ -444,6 +453,7 @@ Full detector docs: [impeccable.style/docs/detector](https://impeccable.style/do
 - [Cursor](https://cursor.com)
 - [Claude Code](https://claude.ai/code)
 - [GitHub Copilot](https://github.com/features/copilot)
+- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
 - [Gemini CLI](https://github.com/google-gemini/gemini-cli)
 - [Codex CLI](https://github.com/openai/codex)
 - [Grok Build](https://x.ai/cli)

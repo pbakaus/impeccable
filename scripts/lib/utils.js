@@ -424,6 +424,12 @@ export const PROVIDER_PLACEHOLDERS = {
     ask_instruction: 'Ask the user directly to clarify what you cannot infer.',
     command_prefix: '/'
   },
+  'dsh': {
+    model: 'DeepSeek',
+    config_file: 'AGENTS.md',
+    ask_instruction: 'STOP and call the ask_user_question tool to clarify.',
+    command_prefix: '/'
+  },
   'gemini': {
     model: 'Gemini',
     config_file: 'GEMINI.md',
@@ -524,6 +530,7 @@ export const PROVIDER_BLOCK_TAGS = new Set([
   'claude-code',
   'codex',
   'cursor',
+  'dsh',
   'gemini',
   'github',
   'grok',

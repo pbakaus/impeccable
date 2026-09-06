@@ -62,6 +62,7 @@ fn provider_from_skill_dir(skill_dir: &str) -> Option<&'static str> {
     Some(match harness.as_str() {
         ".claude" => "claude-code",
         ".cursor" => "cursor",
+        ".dsh" => "dsh",
         ".gemini" => "gemini",
         ".codex" => "codex",
         ".agents" => "agents",

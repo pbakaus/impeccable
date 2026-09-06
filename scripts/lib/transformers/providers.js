@@ -44,6 +44,20 @@ export const PROVIDERS = {
     displayName: 'Gemini',
     frontmatterFields: [],
   },
+  dsh: {
+    provider: 'dsh',
+    providerTags: ['dsh'],
+    configDir: '.dsh',
+    displayName: 'DeepSeek Harness',
+    // DeepSeek Harness reads the Agent Skills spec subset (`name`,
+    // `description`, `license`, `compatibility`, `metadata`) plus
+    // `user-invocable` and `disable-model-invocation`; unknown keys are
+    // silently ignored. No hook surface (hooks are in-process plugins, not
+    // on-disk manifests) and no native subagent file format, so no
+    // emitHooks / agentFormat. Global skills live at ~/.dsh/skills
+    // ($DSH_HOME/skills when set), matching the engine's home override.
+    frontmatterFields: ['user-invocable', 'license', 'compatibility', 'metadata'],
+  },
   codex: {
     provider: 'codex',
     providerTags: ['codex'],
