@@ -271,18 +271,95 @@ fn stop_baseline_write_create_is_new_but_missing_update_preimage_is_unknown() {
 
 #[test]
 fn stop_baseline_unknown_notice_respects_small_output_budget() {
+    for (budget, stale) in [(500, false), (500, true), (8000, true)] {
+        let t = Tmp::new();
+        let cwd = t.path();
+        t.write("package.json", "{}");
+        t.write(".impeccable/config.json", &json!({"hook":{"limits":{"maxChars":budget}}}).to_string());
+        let file = t.write("card.css", SIDE_TAB_CSS);
+        let r = rt(&cwd);
+        hook::run_hook(&r, &edit_event(&cwd, &file, "s1"));
+        if stale {
+            // Make the notice eligible only at Stop; no sleeps or clock races.
+            t.write("DESIGN.md", "---\nname: Test\n---\n");
+            let sidecar = t.write(".impeccable/design.json", "{}");
+            std::fs::File::options().write(true).open(sidecar).unwrap()
+                .set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_600_000_000)).unwrap();
+            assert!(design_system_options(&read_config(&cwd), &cwd).md_newer_than_json());
+        }
+        let stop = hook::run_stop_hook(&r, &stop_event(&cwd, "s1"));
+        let output: Value = serde_json::from_str(&stop.stdout).unwrap();
+        let text = output["hookSpecificOutput"]["additionalContext"].as_str().unwrap();
+        assert!(text.encode_utf16().count() <= budget, "{text}");
+        assert!(text.contains("may predate this session"));
+        assert!(text.contains("[side-tab]"), "{text}");
+        assert!(text.contains("[attribution unknown]"), "{text}");
+        assert!(text.contains("card.css"), "{text}");
+        if stale {
+            assert_eq!(text.contains("DESIGN.md is newer"), budget > 500, "{text}");
+            let cache: Value = serde_json::from_str(&t.read(".impeccable/hook.cache.json")).unwrap();
+            assert_eq!(cache["sessions"]["s1"]["designNoteShown"] == json!(true), budget > 500);
+        }
+    }
+}
+
+#[test]
+fn stop_baseline_deduplicated_unknown_does_not_add_notice_to_new_finding() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let r = rt(&cwd);
+    let old = t.write("old/card.css", SIDE_TAB_CSS);
+    hook::run_hook(&r, &edit_event(&cwd, &old, "s1"));
+    assert!(hook::run_stop_hook(&r, &stop_event(&cwd, "s1")).stdout.contains("[attribution unknown]"));
+    let new = t.write("new/card.css", SIDE_TAB_CSS);
+    // Use a verified create event (an empty Edit preimage is not trusted).
+    let create = json!({"cwd": cwd, "session_id": "s1", "tool_name": "Write",
+        "tool_input": {"file_path": new, "content": SIDE_TAB_CSS},
+        "tool_response": {"type": "create", "filePath": new, "content": SIDE_TAB_CSS, "originalFile": null}}).to_string();
+    hook::run_hook(&r, &create);
+    let stop = hook::run_stop_hook(&r, &stop_event(&cwd, "s1"));
+    assert_eq!(stop.audit["unknownFindings"], json!(1), "audit retains the full scan");
+    assert!(stop.stdout.contains("[new]"), "{}", stop.stdout);
+    assert!(!stop.stdout.contains("may predate this session"), "{}", stop.stdout);
+}
+
+#[test]
+fn stop_baseline_capped_unknown_does_not_add_notice_to_new_finding() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    t.write(".impeccable/config.json", r#"{"hook":{"limits":{"maxFindings":1}}}"#);
+    let r = rt(&cwd);
+    let new = t.write("new/card.css", SIDE_TAB_CSS);
+    hook::run_hook(&r, &edit_with_original(&cwd, &new, "s1", ".card {}", ".card {}", SIDE_TAB_CSS));
+    let old = t.write("old/card.css", SIDE_TAB_CSS);
+    hook::run_hook(&r, &edit_event(&cwd, &old, "s1"));
+    let stop = hook::run_stop_hook(&r, &stop_event(&cwd, "s1"));
+    assert_eq!(stop.audit["unknownFindings"], json!(1));
+    assert!(stop.stdout.contains("[new]"), "{}", stop.stdout);
+    assert!(!stop.stdout.contains("[attribution unknown]"), "{}", stop.stdout);
+    assert!(!stop.stdout.contains("may predate this session"), "{}", stop.stdout);
+}
+
+#[test]
+fn stop_baseline_small_grouped_output_keeps_finding_and_attribution() {
     let t = Tmp::new();
     let cwd = t.path();
     t.write("package.json", "{}");
     t.write(".impeccable/config.json", r#"{"hook":{"limits":{"maxChars":500}}}"#);
-    let file = t.write("card.css", SIDE_TAB_CSS);
     let r = rt(&cwd);
-    hook::run_hook(&r, &edit_event(&cwd, &file, "s1"));
+    for path in ["one/card.css", "two/card.css"] {
+        let file = t.write(path, SIDE_TAB_CSS);
+        hook::run_hook(&r, &edit_event(&cwd, &file, "s1"));
+    }
     let stop = hook::run_stop_hook(&r, &stop_event(&cwd, "s1"));
     let output: Value = serde_json::from_str(&stop.stdout).unwrap();
     let text = output["hookSpecificOutput"]["additionalContext"].as_str().unwrap();
     assert!(text.encode_utf16().count() <= 500, "{text}");
-    assert!(text.contains("may predate this session"));
+    assert!(text.contains("[side-tab]"), "{text}");
+    assert!(text.contains("[attribution unknown]"), "{text}");
+    assert!(text.contains("may predate this session"), "{text}");
 }
 
 #[test]

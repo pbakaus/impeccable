@@ -756,26 +756,42 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
         );
     }
     let short = footer_mode_short(&mut cache, &session_id);
-    let attribution_note = if unknown > 0 {
+    let mut attribution_note = if fresh_groups.iter().any(|group| {
+        group.findings.iter().any(|f| f.name.starts_with("[attribution unknown]"))
+    }) {
         format!("{ENVELOPE_PREFIX} {}", stop_baseline::UNKNOWN_NOTE)
     } else {
         String::new()
     };
-    let reserve = design_note_reserve(rt, &scan, &mut cache, &session_id)
-        + if attribution_note.is_empty() { 0.0 } else { (utf16_len(&attribution_note) + 2) as f64 };
-    let rendered = render_grouped_template(
+    // Findings and attribution take priority. Append the lower-priority stale
+    // DESIGN.md notice only if it fits, without consuming its session flag.
+    let render = |note: &str| render_grouped_template(
         rt,
         &fresh_groups,
         &config,
         &RenderOpts {
             cwd: Some(project_cwd.clone()),
             short_footer: short,
-            reserve_chars: reserve,
+            reserve_chars: if note.is_empty() { 0.0 } else { (utf16_len(note) + 2) as f64 },
         },
     );
+    let mut rendered = render(&attribution_note);
+    if !attribution_note.is_empty() && !rendered.lines().any(|line| {
+        line.starts_with("- ") && (line.contains("[attribution unknown]") || line.contains("[new]"))
+    }) {
+        // At the minimum budget, a grouped header and policy footer may crowd
+        // out even the first finding. Shorten the notice before losing it.
+        attribution_note = format!("{ENVELOPE_PREFIX} {}", stop_baseline::COMPACT_UNKNOWN_NOTE);
+        rendered = render(&attribution_note);
+    }
+    // maxFindings / maxChars may also remove all unknown findings. Do not
+    // attach their guidance to an output that only shows confirmed new debt.
+    let shows_unknown = rendered.lines().any(|line| {
+        line.starts_with("- ") && line.contains("[attribution unknown]")
+    });
+    let text = if shows_unknown { format!("{attribution_note}\n\n{rendered}") } else { rendered };
     let text =
-        append_design_system_note_once(rt, &rendered, &scan, &mut cache, &session_id, &config);
-    let text = if attribution_note.is_empty() { text } else { format!("{attribution_note}\n\n{text}") };
+        append_design_system_note_once(rt, &text, &scan, &mut cache, &session_id, &config);
     commit_footer_shown(rt, &mut cache, &session_id, &text);
     persist_cache(rt, &project_cwd, &cache);
     let all: usize = fresh_groups.iter().map(|g| g.findings.len()).sum();
