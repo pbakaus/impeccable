@@ -76,6 +76,12 @@ The trace is the source of truth, not the model's free-form reply.
 | 17 | existing surface; asks whether critique is required before polish | loads `routing.md` and both command references, then delivers advice without executing the playbooks |
 | 18 | existing surface; explicitly requests polish followed by a next-command recommendation | loads `polish.md` rather than substituting workflow advice for the requested work |
 
+## Setup launcher-failure branch (2026-09-06, PR #750)
+
+Setup step 1 now says: if the launcher is refused, missing, or fails, still do steps 2 and 3, tell the user, and read PRODUCT.md / DESIGN.md when they exist. Scenarios 1-15 are unchanged. The harness bash tool always runs the launcher, so those rows still measure the success path (run context, then load the playbook).
+
+This suite cannot simulate a host permission denial. The failure-branch wording is locked by the authoring-contract test in `tests/plugin-paths.test.js`. An LLM scenario for the refused-launcher path would need the harness to inject a denied `impeccable context` call; that is a harness change, not a Setup-text change, and is not in this PR.
+
 ## Workflow-advice baseline (2026-09-05, PR #737)
 
 The four cases in scenarios 16-18 are new; prior scenario results do not
