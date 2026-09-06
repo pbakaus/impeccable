@@ -66,7 +66,7 @@ Notes:
 - Kiro recognizes `user-invocable` and `disable-model-invocation` per community reports but does not formally document them.
 - Antigravity supports standard Agent Skills spec frontmatter fields (`name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools`).
 - OpenCode 1.18.10 recognises only the spec subset on SKILL.md (`name`, `description`, `license`, `compatibility`, `metadata`). Claude-style extensions (`user-invocable`, `argument-hint`, `allowed-tools`, `model`, `agent`) are silently ignored; Impeccable still emits them today for other harnesses, but they have no effect in OpenCode. Use `commands/<name>.md` (see Placeholder / Variable Substitution below) for slash UX; OpenCode honours only `description`, `agent`, `model`, `variant`, `subtask` on command files.
-- DeepSeek Harness parses the Agent Skills frontmatter and requires `name` and `description`; it reads `metadata` (including `metadata.version`, which Impeccable's updater uses), `user-invocable`, and `disable-model-invocation`. Spec fields it does not consume (`license`, `compatibility`, `allowed-tools`) and Claude-style extensions (`argument-hint`, `model`, `effort`, `context`, `agent`, `hooks`) are silently ignored. Hooks are in-process plugins configured via cordis.yml, not on-disk manifests, so there is no hook surface to install. Subagents exist but are composed from preset config, not an on-disk skill-adjacent format.
+- DeepSeek Harness parses the Agent Skills frontmatter and requires `name` and `description`; it reads `metadata`, `user-invocable`, and `disable-model-invocation`. Spec fields it does not consume (`license`, `compatibility`, `allowed-tools`) and Claude-style extensions (`argument-hint`, `model`, `effort`, `context`, `agent`, `hooks`) are silently ignored. Hooks are in-process plugins configured via cordis.yml, not on-disk manifests, so there is no hook surface to install. Subagents exist but are composed from preset config, not an on-disk skill-adjacent format. Verified against the [filesystem skill provider](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/skill/skill-filesystem/README.md).
 - Unknown fields are silently ignored by all harnesses.
 
 ## Hook surface used by Impeccable
@@ -85,7 +85,7 @@ Notes:
 |---------|-----------------|------------|
 | Claude Code | `.claude/skills/` | - |
 | Cursor | `.cursor/skills/` | `.agents/skills/`, `.claude/skills/` |
-| DeepSeek Harness | `.dsh/skills/` (project), `~/.dsh/skills/` (global; `$DSH_HOME/skills` when set) | `~/.agents/skills/` (global) |
+| DeepSeek Harness | `.dsh/skills/` (project), `~/.dsh/skills/` (global; `$DSH_HOME/skills` when set) | `.agents/skills/` (project), `~/.agents/skills/` (global) |
 | Gemini CLI | `.gemini/skills/` | `.agents/skills/` |
 | Codex CLI | `.agents/skills/` (primary) | - |
 | GitHub Copilot | `.github/skills/` | `.agents/skills/`, `.claude/skills/` |

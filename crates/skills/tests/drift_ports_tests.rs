@@ -397,6 +397,40 @@ fn claude_install_and_update_backfill_bundled_agents() {
     std::fs::remove_dir_all(&root).ok();
 }
 
+#[test]
+fn dsh_install_and_update_use_relocated_home_without_touching_project_skills() {
+    let root = temp_root("dsh-install-update");
+    let project = jsp::join(&[&root, "project"]);
+    let home = jsp::join(&[&root, "home"]);
+    let tmpdir = jsp::join(&[&root, "tmp"]);
+    let dsh_home = jsp::join(&[&home, "custom dsh"]);
+    for dir in [&project, &home, &tmpdir, &dsh_home] {
+        std::fs::create_dir_all(dir).unwrap();
+    }
+    std::fs::create_dir_all(jsp::join(&[&project, ".git"])).unwrap();
+    let bundle = create_fake_universal_bundle(&root, &[".dsh"]);
+    let mut env = base_env(&home, &tmpdir, &bundle);
+    env.insert("DSH_HOME".into(), dsh_home.clone());
+    let project_skill = jsp::join(&[&project, ".dsh", "skills", "impeccable", "SKILL.md"]);
+    write(&project_skill, "project skill must stay untouched");
+    let installed = jsp::join(&[&dsh_home, "skills", "impeccable", "SKILL.md"]);
+    let source = jsp::join(&[&bundle, ".dsh", "skills", "impeccable", "SKILL.md"]);
+
+    let r = run_cli(&["install", "-y", "--providers=deepseek-harness", "--scope=global"], &project, &env);
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    assert_eq!(read(&installed), read(&source));
+    assert!(!std::path::Path::new(&jsp::join(&[&home, ".dsh"])).exists());
+
+    write(&source, "---\nname: impeccable\nversion: 9.9.10-local\n---\n\nUpdated DSH fixture.\n");
+    let r = run_cli(&["update", "-y", "--providers=dsh", "--scope=global"], &project, &env);
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    assert_eq!(read(&installed), read(&source));
+    assert_eq!(read(&project_skill), "project skill must stay untouched");
+    assert!(!std::path::Path::new(&jsp::join(&[&dsh_home, "agents"])).exists());
+    assert!(!std::path::Path::new(&jsp::join(&[&dsh_home, "hooks"])).exists());
+    std::fs::remove_dir_all(&root).ok();
+}
+
 // ─── home-scoped agent freshness (16a218e6) ──────────────────────────────────
 
 #[test]

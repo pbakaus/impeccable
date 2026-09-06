@@ -99,7 +99,13 @@ pub fn dsh_global_home(env: &Env, cwd: &str, home: &str) -> String {
     if let Some(env_home) = env.get("DSH_HOME").filter(|v| !v.is_empty()) {
         let resolved_env = jsp::resolve(cwd, &[env_home]);
         let resolved_home = jsp::resolve(cwd, &[home]);
-        if resolved_env == resolved_home || resolved_env.starts_with(&format!("{resolved_home}/")) {
+        // Native path.relative handles Windows separators, drive/UNC roots,
+        // and case folding without accepting a sibling with the same prefix.
+        let relative = jsp::relative(cwd, &resolved_home, &resolved_env);
+        if !jsp::is_absolute(&relative)
+            && relative != ".."
+            && !relative.starts_with(&format!("..{}", jsp::SEP))
+        {
             return resolved_env;
         }
     }
@@ -800,15 +806,53 @@ mod tests {
 
         // Default global skills dir is ~/.dsh/skills; $DSH_HOME wins only
         // when it sits under home, like $HERMES_HOME for .hermes.
-        let cwd = "/work";
-        let home = "/home/u";
+        let cwd = if cfg!(windows) { r"C:\work" } else { "/work" };
+        let home = if cfg!(windows) { r"C:\Users\u" } else { "/home/u" };
+        let default = jsp::join(&[home, ".dsh"]);
+        let custom = jsp::join(&[home, "custom-dsh"]);
         let env = Env::new();
-        assert_eq!(dsh_global_home(&env, cwd, home), "/home/u/.dsh");
+        assert_eq!(dsh_global_home(&env, cwd, home), default);
         let mut env = Env::new();
-        env.insert("DSH_HOME".into(), "/home/u/custom-dsh".into());
-        assert_eq!(dsh_global_home(&env, cwd, home), "/home/u/custom-dsh");
+        env.insert("DSH_HOME".into(), custom.clone());
+        assert_eq!(dsh_global_home(&env, cwd, home), custom);
         env.insert("DSH_HOME".into(), "/elsewhere/dsh".into());
-        assert_eq!(dsh_global_home(&env, cwd, home), "/home/u/.dsh");
+        assert_eq!(dsh_global_home(&env, cwd, home), default);
+    }
+
+    #[test]
+    fn dsh_home_respects_resolved_path_boundaries() {
+        let home = if cfg!(windows) { r"C:\Users\Test User" } else { "/home/Test User" };
+        let cwd = jsp::join(&[home, "project"]);
+        let default = jsp::join(&[home, ".dsh"]);
+        for (value, expected) in [
+            ("../custom dsh".to_string(), jsp::join(&[home, "custom dsh"])),
+            (home.to_string(), home.to_string()),
+            (String::new(), default.clone()),
+            (format!("{home}-other/dsh"), default.clone()),
+            (format!("{home}/../outside"), default),
+        ] {
+            let env = Env::from([("DSH_HOME".into(), value.clone())]);
+            assert_eq!(dsh_global_home(&env, &cwd, home), expected, "DSH_HOME={value}");
+        }
+        // A drive/filesystem root has no extra separator to append.
+        let root = if cfg!(windows) { "C:\\" } else { "/" };
+        let child = jsp::join(&[root, "custom dsh"]);
+        let env = Env::from([("DSH_HOME".into(), child.clone())]);
+        assert_eq!(dsh_global_home(&env, root, root), child);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn dsh_home_handles_windows_case_separators_and_devices() {
+        for (home, value, expected) in [
+            (r"C:\Users\Alice", "c:/users/alice/custom", r"c:\users\alice\custom"),
+            (r"C:\Users\Alice", r"D:\Users\Alice\custom", r"C:\Users\Alice\.dsh"),
+            (r"\\server\share\Alice", r"\\server\share\Alice\custom", r"\\server\share\Alice\custom"),
+            (r"\\server\share\Alice", r"\\server\other\Alice\custom", r"\\server\share\Alice\.dsh"),
+        ] {
+            let env = Env::from([("DSH_HOME".into(), value.into())]);
+            assert_eq!(dsh_global_home(&env, home, home), expected);
+        }
     }
 
     #[test]

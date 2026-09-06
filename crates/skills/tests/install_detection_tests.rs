@@ -5,6 +5,7 @@
 use std::collections::HashMap;
 
 use impeccable_skills::providers::{Scope, Sys};
+use impeccable_common::jsp;
 
 fn temp_root(name: &str) -> String {
     let nanos = std::time::SystemTime::now()
@@ -39,7 +40,7 @@ fn dsh_detections(sys: &Sys, root: &str) -> Vec<String> {
 fn dsh_home_only_setup_is_detected() {
     let home = temp_root("dsh-home-detect");
     let project = temp_root("dsh-home-project");
-    let dsh_home = format!("{home}/custom-dsh");
+    let dsh_home = jsp::join(&[&home, "custom-dsh"]);
     std::fs::create_dir_all(&dsh_home).unwrap();
     let sys = sys_with(&home, &[("DSH_HOME", &dsh_home)]);
 
@@ -51,11 +52,11 @@ fn dsh_home_only_setup_is_detected() {
 fn default_dot_dsh_is_detected_without_env() {
     let home = temp_root("dsh-default-detect");
     let project = temp_root("dsh-default-project");
-    std::fs::create_dir_all(format!("{home}/.dsh")).unwrap();
+    std::fs::create_dir_all(jsp::join(&[&home, ".dsh"])).unwrap();
     let sys = sys_with(&home, &[]);
 
     let found = dsh_detections(&sys, &project);
-    assert_eq!(found, vec![format!("{home}/.dsh")]);
+    assert_eq!(found, vec![jsp::join(&[&home, ".dsh"])]);
 }
 
 #[test]
@@ -70,7 +71,7 @@ fn dsh_home_outside_home_falls_back_to_dot_dsh() {
     assert!(dsh_detections(&sys, &project).is_empty());
 
     // With ~/.dsh present the fallback detects the default location.
-    std::fs::create_dir_all(format!("{home}/.dsh")).unwrap();
+    std::fs::create_dir_all(jsp::join(&[&home, ".dsh"])).unwrap();
     let found = dsh_detections(&sys, &project);
-    assert_eq!(found, vec![format!("{home}/.dsh")]);
+    assert_eq!(found, vec![jsp::join(&[&home, ".dsh"])]);
 }

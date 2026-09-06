@@ -65,6 +65,29 @@ for (const [key, config] of Object.entries(PROVIDERS)) {
       expect(fs.existsSync(refPath)).toBe(true);
     });
 
+    if (key === 'dsh') {
+      test('uses DSH tools and resource paths without installing unsupported hooks or agents', () => {
+        transform([{
+          name: 'impeccable',
+          description: 'Test',
+          userInvocable: true,
+          allowedTools: 'Bash',
+          body: '{{ask_instruction}} Run `{{scripts_path}}/impeccable context`.',
+          references: [{ name: 'polish', content: 'Run `{{scripts_path}}/impeccable detect`.', filePath: '/fake/polish.md' }],
+        }], TEST_DIR);
+        const content = fs.readFileSync(skillPath(config, 'impeccable'), 'utf8');
+        expect(content).toContain('call the ask_user_question tool');
+        expect(content).toContain('.dsh/skills/impeccable/scripts/impeccable context');
+        expect(parseFrontmatter(content).frontmatter['allowed-tools']).toBeUndefined();
+        const root = path.join(TEST_DIR, 'dsh', '.dsh');
+        expect(fs.readFileSync(path.join(root, 'skills/impeccable/reference/polish.md'), 'utf8'))
+          .toContain('.dsh/skills/impeccable/scripts/impeccable detect');
+        expect(fs.readdirSync(root)).toEqual(['skills']);
+        expect(config.emitHooks).toBeUndefined();
+        expect(config.agentFormat).toBeUndefined();
+      });
+    }
+
     test('should emit skillsVersion in generated skill frontmatter', () => {
       const skills = [{ name: 'test', description: 'Test', body: 'Body' }];
       transform(skills, TEST_DIR, { skillsVersion: '1.2.3-test' });

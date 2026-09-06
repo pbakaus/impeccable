@@ -190,7 +190,8 @@ cp -r dist/opencode/.opencode your-project/
 cp -r dist/dsh/.dsh your-project/
 
 # Or global (applies to all projects)
-cp -r dist/dsh/.dsh/skills/* ~/.dsh/skills/
+mkdir -p "${DSH_HOME:-$HOME/.dsh}/skills"
+cp -r dist/dsh/.dsh/skills/* "${DSH_HOME:-$HOME/.dsh}/skills/"
 ```
 
 **Hermes Agent:**
