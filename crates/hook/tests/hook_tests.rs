@@ -363,6 +363,39 @@ fn stop_baseline_small_grouped_output_keeps_finding_and_attribution() {
 }
 
 #[test]
+fn stop_baseline_dropped_notice_reclaims_its_rendering_budget() {
+    for max_findings in [1, 5] {
+        let t = Tmp::new();
+        let cwd = t.path();
+        t.write("package.json", "{}");
+        t.write(".impeccable/config.json", &json!({"hook":{"limits":{"maxChars":500,"maxFindings":max_findings}}}).to_string());
+        let r = rt(&cwd);
+        let new = t.write("new/card.css", SIDE_TAB_CSS);
+        hook::run_hook(&r, &edit_with_original(&cwd, &new, "s1", ".card {}", ".card {}", SIDE_TAB_CSS));
+        let old = t.write("old/card.css", SIDE_TAB_CSS);
+        hook::run_hook(&r, &edit_event(&cwd, &old, "s1"));
+        let stop = hook::run_stop_hook(&r, &stop_event(&cwd, "s1"));
+        let output: Value = serde_json::from_str(&stop.stdout).unwrap();
+        let text = output["hookSpecificOutput"]["additionalContext"].as_str().unwrap();
+        let groups: Vec<Group> = [(new, "[new]"), (old, "[attribution unknown]")].into_iter().map(|(file_path, label)| {
+            let mut findings = detector_detect_text(SIDE_TAB_CSS, &file_path, &HookScanOptions::default());
+            for f in &mut findings { f.name = format!("{label} {}", f.name); }
+            Group { file_path, findings }
+        }).collect();
+        let mut config = read_config(&cwd);
+        // Unknown is not displayed at this budget. All available space goes
+        // to the known-new prefix, rather than a discarded notice.
+        config.limits.max_findings = 1.0;
+        let expected = render_grouped_template(&r, &groups, &config, &RenderOpts {
+            cwd: Some(cwd), short_footer: false, reserve_chars: 0.0,
+        });
+        assert_eq!(text, expected, "maxFindings={max_findings}");
+        assert!(text.contains("[new] Side-tab accent border"), "{text}");
+        assert!(!text.contains("may predate this session"), "{text}");
+    }
+}
+
+#[test]
 fn stop_baseline_uses_dirty_worktree_not_git_head() {
     let t = Tmp::new();
     let cwd = t.path();

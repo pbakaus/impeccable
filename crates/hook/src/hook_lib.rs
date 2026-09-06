@@ -1314,7 +1314,7 @@ pub struct RenderOpts {
     pub reserve_chars: f64,
 }
 
-fn cap_of(config: &HookConfig) -> usize {
+pub(crate) fn cap_of(config: &HookConfig) -> usize {
     let mf = config.limits.max_findings;
     let mf = if mf == 0.0 || mf.is_nan() {
         DEFAULT_MAX_FINDINGS

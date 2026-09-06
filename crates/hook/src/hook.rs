@@ -756,39 +756,49 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
         );
     }
     let short = footer_mode_short(&mut cache, &session_id);
-    let mut attribution_note = if fresh_groups.iter().any(|group| {
-        group.findings.iter().any(|f| f.name.starts_with("[attribution unknown]"))
-    }) {
+    let first_unknown = fresh_groups.iter().flat_map(|group| &group.findings)
+        .position(|f| f.name.starts_with("[attribution unknown]"));
+    let mut attribution_note = if first_unknown.is_some() {
         format!("{ENVELOPE_PREFIX} {}", stop_baseline::UNKNOWN_NOTE)
     } else {
         String::new()
     };
     // Findings and attribution take priority. Append the lower-priority stale
     // DESIGN.md notice only if it fits, without consuming its session flag.
-    let render = |note: &str| render_grouped_template(
+    let render = |note: &str, render_config: &HookConfig| render_grouped_template(
         rt,
         &fresh_groups,
-        &config,
+        render_config,
         &RenderOpts {
             cwd: Some(project_cwd.clone()),
             short_footer: short,
             reserve_chars: if note.is_empty() { 0.0 } else { (utf16_len(note) + 2) as f64 },
         },
     );
-    let mut rendered = render(&attribution_note);
+    let mut rendered = render(&attribution_note, &config);
     if !attribution_note.is_empty() && !rendered.lines().any(|line| {
         line.starts_with("- ") && (line.contains("[attribution unknown]") || line.contains("[new]"))
     }) {
         // At the minimum budget, a grouped header and policy footer may crowd
         // out even the first finding. Shorten the notice before losing it.
         attribution_note = format!("{ENVELOPE_PREFIX} {}", stop_baseline::COMPACT_UNKNOWN_NOTE);
-        rendered = render(&attribution_note);
+        rendered = render(&attribution_note, &config);
     }
     // maxFindings / maxChars may also remove all unknown findings. Do not
     // attach their guidance to an output that only shows confirmed new debt.
     let shows_unknown = rendered.lines().any(|line| {
         line.starts_with("- ") && line.contains("[attribution unknown]")
     });
+    if !shows_unknown {
+        if let Some(prefix @ 1..) = first_unknown {
+            // Reclaim the unused notice budget for the known-new prefix.
+            // Keep the unknown suffix omitted: simply expanding the budget
+            // could reveal an unknown finding without its required guidance.
+            let mut visible_config = config.clone();
+            visible_config.limits.max_findings = cap_of(&config).min(prefix) as f64;
+            rendered = render("", &visible_config);
+        }
+    }
     let text = if shows_unknown { format!("{attribution_note}\n\n{rendered}") } else { rendered };
     let text =
         append_design_system_note_once(rt, &text, &scan, &mut cache, &session_id, &config);
