@@ -13,10 +13,10 @@ import { generateYamlFrontmatter, parseFrontmatter } from './utils.js';
  * project's (possibly older) skill copy.
  *
  * No literal path survives installation (the plugin cache location varies
- * per machine and per plugin version), so skill and reference markdown
- * uses the `<skill-base-dir>` form SKILL.md's Setup step 1 already leads
- * with: the runtime shows the skill's loaded base directory when it loads
- * the skill, and scripts resolve against that. Agent files cannot use the
+ * per machine and per plugin version), so plugin skill markdown uses
+ * ${CLAUDE_SKILL_DIR} (issue #744): the directory containing SKILL.md,
+ * substituted by Claude Code at load time. Source uses `<skill-base-dir>`;
+ * the rewrite maps it to the host variable. Agent files cannot use either
  * token (a spawned agent never loads SKILL.md) and get the
  * ${CLAUDE_PLUGIN_ROOT} variable instead; see PLUGIN_AGENT_SCRIPTS_PATH.
  */
@@ -25,7 +25,7 @@ import { generateYamlFrontmatter, parseFrontmatter } from './utils.js';
 // Claude Code transformer's configDir (.claude) + skill name (impeccable).
 export const CLAUDE_PROJECT_SCRIPTS_PATH = '.claude/skills/impeccable/scripts';
 
-export const PLUGIN_SCRIPTS_PATH = '<skill-base-dir>/scripts';
+export const PLUGIN_SCRIPTS_PATH = '${CLAUDE_SKILL_DIR}/scripts';
 
 // Claude Code requires user consent to activate a skill whose frontmatter
 // declares allowed-tools; non-interactive hosts (`claude -p`) cannot provide
@@ -49,7 +49,7 @@ const SETUP_FALLBACK_TEXT =
   'That base directory resolves every `.claude/skills/impeccable/scripts/impeccable <verb>` command in this skill and its references, ' +
   'and `.claude/skills/impeccable/scripts` is the fallback only when the runtime reports no base directory.';
 const SETUP_PLUGIN_TEXT =
-  'Every `"<skill-base-dir>/scripts/impeccable" <verb>` command in this skill and its references resolves against that base directory.';
+  'Every `"${CLAUDE_SKILL_DIR}/scripts/impeccable" <verb>` command in this skill and its references resolves against that base directory.';
 
 // Agent files are subagent system prompts: a spawned agent never loads
 // SKILL.md, so Setup's <skill-base-dir> token is undefined in the one
@@ -81,16 +81,20 @@ export function rewritePluginMarkdown(content) {
     .replaceAll(PROJECT_ALLOWED_TOOLS_LINE, '')
     .replaceAll(SETUP_FALLBACK_TEXT, SETUP_PLUGIN_TEXT)
     .replaceAll(CLAUDE_PROJECT_SCRIPTS_PATH, PLUGIN_SCRIPTS_PATH)
-    // <skill-base-dir> expands to a real path at run time, and an unquoted
+    .replaceAll('<skill-base-dir>', '${CLAUDE_SKILL_DIR}')
+    // ${CLAUDE_SKILL_DIR} expands to a real path at load time, and an unquoted
     // path with spaces splits before node sees it. Quote every command's
-    // script argument, including the token-form commands SKILL.src.md
+    // script argument, including the host-variable commands SKILL.src.md
     // carries natively (Setup step 1). Runs after the path replacement so
     // one pattern covers both origins; already-quoted forms don't match.
-    .replace(/node <skill-base-dir>\/scripts\/([^\s`"]+)/g, 'node "<skill-base-dir>/scripts/$1"')
-    // The engine launcher is the command itself now (`<skill-base-dir>/scripts/impeccable <verb>`,
+    .replace(/node \$\{CLAUDE_SKILL_DIR\}\/scripts\/([^\s`"]+)/g, 'node "${CLAUDE_SKILL_DIR}/scripts/$1"')
+    // The engine launcher is the command itself (`${CLAUDE_SKILL_DIR}/scripts/impeccable <verb>`,
     // or `impeccable.cmd` on a Windows shell without sh), so the launcher path
     // is what gets quoted; the verb and its arguments follow unquoted.
-    .replace(/(?<!["\w/])<skill-base-dir>\/scripts\/impeccable(\.cmd)?(?=[\s`])/g, '"<skill-base-dir>/scripts/impeccable$1"');
+    .replace(
+      /(?<!["\w/])\$\{CLAUDE_SKILL_DIR\}\/scripts\/impeccable(\.cmd)?(?=[\s`])/g,
+      '"${CLAUDE_SKILL_DIR}/scripts/impeccable$1"',
+    );
 }
 
 /**
@@ -151,9 +155,16 @@ export function verifyPluginSkillRewrite(skillMdPath) {
   const content = fs.readFileSync(skillMdPath, 'utf-8');
   if (!content.includes(SETUP_PLUGIN_TEXT)) {
     throw new Error(
-      `Plugin rewrite drift: ${skillMdPath} is missing the <skill-base-dir> resolution sentence. ` +
+      `Plugin rewrite drift: ${skillMdPath} is missing the \${CLAUDE_SKILL_DIR} resolution sentence. ` +
       "SKILL.src.md's Setup step 1 fallback sentence no longer matches the replacement in " +
       'scripts/lib/plugin-paths.js (issue #523); update SETUP_FALLBACK_TEXT to the new wording.',
+    );
+  }
+  if (content.includes('<skill-base-dir>')) {
+    throw new Error(
+      `Plugin rewrite drift: ${skillMdPath} still contains the <skill-base-dir> token. ` +
+      'Plugin skill markdown must use ${CLAUDE_SKILL_DIR} (issue #744); check replaceAll in ' +
+      'scripts/lib/plugin-paths.js.',
     );
   }
   if (parseFrontmatter(content).frontmatter['allowed-tools'] !== undefined) {
