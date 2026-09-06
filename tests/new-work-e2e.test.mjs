@@ -129,6 +129,62 @@ function spawnSyncGen(prompt, out, size = null) {
 // serve-question interactive cycles
 // --------------------------------------------------------------------------
 describe('new-work-e2e: serve-question decision page', () => {
+  it('loads both bundled font families and all dialog weights without external requests', async () => {
+    const cwd = makeWorkspace();
+    const key = 'local-fonts';
+    const context = await browser.newContext();
+    const externalRequests = [];
+    const fontResponses = [];
+    try {
+      const { url } = await startDaemon(cwd, {
+        title: 'Choose the visual world',
+        options: [{ id: 'assigned', label: 'Local typography' }],
+      }, key);
+      const origin = new URL(url).origin;
+      await context.route('**/*', (route) => {
+        if (new URL(route.request().url()).origin !== origin) {
+          externalRequests.push(route.request().url());
+          return route.abort();
+        }
+        return route.continue();
+      });
+      const page = await context.newPage();
+      page.on('response', (response) => {
+        if (response.request().resourceType() === 'font') {
+          fontResponses.push({ url: response.url(), status: response.status(), type: response.headers()['content-type'] });
+        }
+      });
+      await page.goto(url);
+      const loaded = await page.evaluate(async () => {
+        const results = [];
+        for (const [family, weights] of [['Albert Sans', [400, 500, 600]], ['Alumni Sans', [100, 400]]]) {
+          for (const weight of weights) {
+            const faces = await document.fonts.load(`${weight} 16px "${family}"`, 'Local typography');
+            results.push({ family, weight, count: faces.length, loaded: faces.every((face) => face.status === 'loaded') });
+          }
+        }
+        await document.fonts.ready;
+        return results;
+      });
+      assert.equal(loaded.length, 5);
+      for (const face of loaded) {
+        assert.ok(face.count > 0 && face.loaded, `font face did not load: ${JSON.stringify(face)}`);
+      }
+      assert.deepEqual(externalRequests, [], 'dialog must not request third-party resources');
+      assert.deepEqual(fontResponses.map((response) => new URL(response.url).pathname).sort(), [
+        '/fonts/albert-sans.ttf', '/fonts/alumni-sans.ttf',
+      ]);
+      for (const response of fontResponses) {
+        assert.equal(response.status, 200);
+        assert.equal(response.type, 'font/ttf');
+      }
+    } finally {
+      await context.close();
+      await stopDaemon(cwd, key);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
   it('(a) pick assigned returns the option, hero/board fields, and the CHOSEN CARD directive', async () => {
     const cwd = makeWorkspace();
     const key = 'pick';
