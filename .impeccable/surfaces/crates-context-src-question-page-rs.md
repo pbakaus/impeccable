@@ -41,7 +41,9 @@ Finish reviewer disposition: **ship**, with no requested fixes.
   controls; gold appears in the logo, lead-card border, and active switch dot.
 - **Local palette adaptations:** patina is the site's text-safe deep value
   (`oklch(49% 0.11 190)`); faint metadata shares muted ink (`oklch(46% 0 0)`).
-  Dividers use ink at 12% opacity, while control boundaries use 45%.
+  Dividers and the build-path switch boundary use ink at 12% opacity; other
+  control boundaries use 45%. The lead-card outline (including hover) and
+  active switch dot use default Kinpaku (`oklch(84% 0.19 80.46)`), not deep gold.
 - **Explicit font override:** headings, body, and controls use `system-ui,
   -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`; metadata uses
   `ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace`. Body is 15px/1.55;
