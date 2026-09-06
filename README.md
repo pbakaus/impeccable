@@ -194,6 +194,8 @@ mkdir -p "${DSH_HOME:-$HOME/.dsh}/skills"
 cp -r dist/dsh/.dsh/skills/* "${DSH_HOME:-$HOME/.dsh}/skills/"
 ```
 
+The CLI honors `DSH_HOME` only when it resolves inside your home directory (or to home itself); otherwise it uses `~/.dsh`. An outside-home manual copy is not managed by `impeccable install/update`.
+
 **Hermes Agent:**
 ```bash
 # Global (applies to all projects; uses the active profile, or ~/.hermes by default)
