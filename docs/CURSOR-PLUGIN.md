@@ -14,9 +14,9 @@ Use either that installation or the plugin, not both, to avoid duplicate skills 
 
 ## Local plugin preview
 
-From the Impeccable repository, run `bun run build`. Cursor's documented local-plugin loader accepts a copy or symlink of `dist/cursor-plugin` under `~/.cursor/plugins/local/impeccable`. Reload Cursor, then inspect Customize for the skill, four agents, and `preToolUse` hook. Do not overwrite an existing installation. A marketplace installation with the same name takes precedence over a local preview.
+From the Impeccable repository, run `bun run build`, then copy `dist/cursor-plugin` into `~/.cursor/plugins/local/impeccable`. Do not overwrite an existing installation. Cursor 3.15.6 rejects symlinks whose targets are outside its local-plugin directory, so use a real copy. Reload Cursor, then inspect Customize for the skill and four agents, and Hooks for `preToolUse` execution. A marketplace installation with the same name takes precedence over a local preview. Local plugins are user-wide, even when testing with a separate editor profile; remove the temporary copy when finished.
 
-For an isolated project smoke test, a project-scoped `workspaceOpen` hook can return `pluginPaths` containing the absolute staging-directory path. This avoids installing a user-wide plugin. Test the context launcher from a synthetic project outside the plugin directory and inspect hook execution in Cursor's Hooks output.
+Use a synthetic project outside the plugin directory to test context resolution. The documented `workspaceOpen`/`pluginPaths` alternative did not execute reliably during the 3.15.6 smoke test; it is not the verified preview path.
 
 The pre-edit hook uses Cursor's existing POSIX launcher integration. Windows shell behavior and remote environments require separate verification before advertising support for this plugin's hook.
 
@@ -24,7 +24,9 @@ The pre-edit hook uses Cursor's existing POSIX launcher integration. Windows she
 
 Automated checks cover real Cursor-provider packaging, reference links, four agent files, executable permissions, version drift, and hook relocation into a path containing spaces. A direct staged-launcher invocation correctly loaded context from a separate synthetic project. Full non-billed regression tests and source-first/release builds passed.
 
-Live discovery, agent handoff, and hook dispatch inside Cursor remain pending. The isolated profile loaded the test project's `workspaceOpen` configuration, but UI automation could not reliably distinguish that window from the normal signed-in profile; the interactive check was paused rather than counted as a pass.
+On macOS with Cursor 3.15.6, the local plugin loaded with zero parser failures and exposed one skill plus four agents. A real `/impeccable` request ran the installed launcher once against the synthetic project and read the installed polish reference, without editing project files. Native `preToolUse` logs confirmed execution from the installed plugin with valid responses. Installing alongside a separate user skill produces duplicate slash-menu entries; choose one installation method.
+
+A native `impeccable-asset-producer` handoff resolved the supplied skill scripts path and confirmed the launcher exists, without generating assets. A separate one-attribute fixture edit exercised `preToolUse` on Cursor's native `Write` tool: the installed hook exited 0 and returned valid JSON. The fixture was restored and the temporary local plugin removed afterward. Windows and remote runtime checks remain outstanding.
 
 ## Maintainer submission checklist
 
