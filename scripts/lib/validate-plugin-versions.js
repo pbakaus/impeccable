@@ -128,6 +128,10 @@ export function collectPluginVersions(rootDir) {
       relPath: 'dist/openai/impeccable/.codex-plugin/plugin.json',
       read: (raw) => JSON.parse(raw).version,
     },
+    ...['cursor-plugin', 'dist/cursor-plugin'].flatMap((prefix) => [
+      { relPath: `${prefix}/.cursor-plugin/plugin.json`, read: (raw) => JSON.parse(raw).version },
+      { relPath: `${prefix}/skills/impeccable/SKILL.md`, read: readSkillFrontmatterVersion },
+    ]),
     {
       relPath: 'plugin/skills/impeccable/SKILL.md',
       read: (raw) => readSkillFrontmatterVersion(raw),

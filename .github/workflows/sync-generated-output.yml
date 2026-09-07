@@ -8,6 +8,7 @@ on:
       - "cli/engine/**"
       - "skill/**"
       - "scripts/**"
+      - "docs/CURSOR-PLUGIN.md"
       - "package.json"
       - "bun.lock"
   workflow_dispatch:
@@ -43,6 +44,7 @@ env:
     .veto
     .vibe
     plugin
+    cursor-plugin
 
 jobs:
   sync:

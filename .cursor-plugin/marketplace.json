@@ -1,0 +1,6 @@
+{
+  "name": "impeccable",
+  "owner": { "name": "Renaissance Geek, Inc." },
+  "metadata": { "description": "Impeccable design tools for Cursor" },
+  "plugins": [{ "name": "impeccable", "source": "./cursor-plugin" }]
+}

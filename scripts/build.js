@@ -33,6 +33,7 @@ import {
   verifyPluginAgentRewrite,
 } from './lib/plugin-paths.js';
 import { stageOpenAIPlugin } from './lib/openai-plugin.js';
+import { stageCursorPlugin } from './lib/cursor-plugin.js';
 import { ENGINE_TARGETS, binaryName, main as fetchEngineMain, readEngineVersion } from './fetch-engine.mjs';
 // Sub-page generation is now handled by Astro content collections.
 
@@ -894,6 +895,13 @@ async function build() {
   // upload ZIP and local preview directory cannot drift behind provider output.
   const openAiPluginRoot = stageOpenAIPlugin(ROOT_DIR, DIST_DIR);
   await createProviderZip(openAiPluginRoot, DIST_DIR, 'openai-plugin');
+
+  const cursorPluginRoot = stageCursorPlugin(ROOT_DIR, DIST_DIR);
+  if (BUILD_OPTIONS.syncRootOutputs) {
+    const destination = path.join(ROOT_DIR, 'cursor-plugin');
+    fs.rmSync(destination, { recursive: true, force: true });
+    fs.cpSync(cursorPluginRoot, destination, { recursive: true });
+  }
 
   // Release zips ship launcher-only by default: the launcher downloads the
   // pinned engine on first run. IMPECCABLE_BUNDLE_ENGINE=1 opts in to staging

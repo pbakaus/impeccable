@@ -153,13 +153,13 @@ export function buildCodexHooksManifest(skillDir = '.codex') {
   };
 }
 
-export function buildCursorHooksManifest() {
+export function buildCursorHooksManifest(scriptsDir = CURSOR_SCRIPTS) {
   return {
     version: 1,
     hooks: {
       preToolUse: [
         {
-          command: guardedLauncher(launcherIn(CURSOR_SCRIPTS), 'hook-before-edit'),
+          command: guardedLauncher(launcherIn(scriptsDir), 'hook-before-edit'),
           timeout: TIMEOUT_SECONDS,
         },
       ],

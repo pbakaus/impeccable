@@ -1,0 +1,22 @@
+{
+  "name": "impeccable",
+  "version": "4.2.2",
+  "description": "Design and refine interfaces with Impeccable skills, specialist agents, and design checks.",
+  "author": {
+    "name": "Renaissance Geek, Inc."
+  },
+  "homepage": "https://impeccable.style",
+  "repository": "https://github.com/pbakaus/impeccable",
+  "license": "Apache-2.0",
+  "keywords": [
+    "design",
+    "frontend",
+    "accessibility",
+    "ui",
+    "ux"
+  ],
+  "logo": "assets/icon.png",
+  "skills": "./skills/",
+  "agents": "./agents/",
+  "hooks": "./hooks/hooks.json"
+}
