@@ -134,6 +134,18 @@ read `polish.md`. That assertion remains intact: this is another reference-loadi
 gap under #744, not a green planning result. Other providers were not rerun for
 this wording-only review clarification.
 
+The planning case also checks the response-message sequence: the launcher must
+actually be denied, then an assistant warning must precede the first fallback
+PRODUCT.md or DESIGN.md read. Deterministic tests reject silent continuation,
+final-only warnings, warnings before denial, and user-authored warnings. This
+checks disclosure even when no editing occurs; the editing cases retain their
+existing pre-edit warning assertion.
+
+One focused Sonnet rerun with this guard read the playbook and produced a
+read-only plan without craft-floor, but omitted the launcher warning entirely.
+The strengthened assertion correctly failed that run; #744 remains open for
+the behavior failure rather than treating this coverage fix as a skill fix.
+
 These are single samples per case and candidate, not reliability estimates.
 This API harness starts with the skill loaded and readable references. It
 does not measure activation, reproduce Windows command parsing, or establish

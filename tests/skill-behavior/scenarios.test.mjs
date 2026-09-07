@@ -27,6 +27,7 @@ import {
   ENGINE_MISSING_MESSAGE,
 } from './harness.mjs';
 import { detectProvider, getModel, hasKey, resolveModelList, PROVIDERS } from './providers.mjs';
+import { assertPlanningFallbackWarning, LAUNCHER_FAILURE_WARNING } from './assertions.mjs';
 import {
   PRODUCT_MD_SAMPLE,
   PRODUCT_MD_SAMPLE_NO_REGISTER,
@@ -682,10 +683,9 @@ for (const modelId of resolveModelList()) {
             const readIndex = trace.toolCalls.findIndex((call) => call.name === 'read' && call.succeeded && (call.input.path === filename || call.input.path.endsWith(`/${filename}`)));
             assert.ok(readIndex >= 0 && readIndex < writeIndex, `${filename} must actually be read before editing`);
           }
-          const warning = /(?:context|launcher|bash)[^.!?\n]{0,160}(?:denied|refused|unavailable|blocked|could(?:n't| not)|cannot|can't|did(?:n't| not)|fail|unable)|(?:denied|refused|unavailable|blocked|could(?:n't| not)|cannot|can't|unable)[^.!?\n]{0,160}(?:context|launcher|bash)/i;
           const assistantBlocks = responseMessages.filter((message) => message.role === 'assistant')
             .flatMap((message) => typeof message.content === 'string' ? [{ type: 'text', text: message.content }] : message.content);
-          const warningIndex = assistantBlocks.findIndex((block) => block.type === 'text' && warning.test(block.text));
+          const warningIndex = assistantBlocks.findIndex((block) => block.type === 'text' && LAUNCHER_FAILURE_WARNING.test(block.text));
           const writeBlockIndex = assistantBlocks.findIndex((block) => block.type === 'tool-call' && block.toolName === 'write');
           if (denyBash) assert.ok(warningIndex >= 0 && writeBlockIndex > warningIndex, 'must disclose the failed context launcher before editing, not only in the final summary');
           assert.ok(!trace.toolCalls.some((call) => call.mutatedPaths.some((p) => /(?:^|\/)(?:PRODUCT|DESIGN)\.md$/.test(p))), 'must not fabricate or replace project context');
@@ -702,7 +702,7 @@ for (const modelId of resolveModelList()) {
         'index.html': '<!doctype html><html><body><button style="padding:2px 4px">New note</button></body></html>',
       } });
       try {
-        const { trace, text, stepTexts, finishReason } = await runTurn({
+        const { trace, text, stepTexts, finishReason, responseMessages } = await runTurn({
           workspace,
           model,
           userPrompt: '/impeccable polish index.html. Inspect the button spacing and propose a short plan only. Do not edit any files or implement the plan yet.',
@@ -714,6 +714,7 @@ for (const modelId of resolveModelList()) {
         assert.ok(trace.toolCalls.some((call) => call.name === 'bash' && call.denied && /impeccable\s+context\b/.test(call.input.command)), 'must encounter an actual denied context attempt');
         assert.deepEqual(readsMatching(trace, 'craft-floor.md'), [], 'planning-only work must not load the editing floor');
         assertAdviceOnly(trace, text);
+        assertPlanningFallbackWarning(responseMessages);
         for (const filename of ['PRODUCT.md', 'DESIGN.md', 'index.html', 'reference/polish.md']) {
           assert.ok(trace.toolCalls.some((call) => call.name === 'read' && call.succeeded && (call.input.path === filename || call.input.path.endsWith(`/${filename}`))), `${filename} must actually be read`);
         }

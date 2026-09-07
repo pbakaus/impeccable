@@ -4,6 +4,25 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { MockLanguageModelV3 } from 'ai/test';
 import { prepareWorkspace, cleanupWorkspace, makeTools, runTurn, SKILL_BODY } from './skill-behavior/harness.mjs';
+import { assertPlanningFallbackWarning } from './skill-behavior/assertions.mjs';
+
+it('planning fallback requires an assistant warning between the denial and context reads', () => {
+  const call = { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'context', toolName: 'bash', input: { command: '.claude/skills/impeccable/scripts/impeccable context' } }] };
+  const denial = { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'context', toolName: 'bash', output: { type: 'text', value: 'Error: Bash permission denied by the host. This command was not executed.' } }] };
+  const warning = { role: 'assistant', content: 'Context loading did not run because the launcher was denied.' };
+  const read = { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'read', toolName: 'read', input: { path: 'PRODUCT.md' } }] };
+  assert.doesNotThrow(() => assertPlanningFallbackWarning([call, denial, warning, read]));
+  assert.doesNotThrow(() => assertPlanningFallbackWarning([call, denial, { role: 'assistant', content: [{ type: 'text', text: warning.content }, ...read.content] }]));
+  for (const messages of [
+    [call, denial, read], // Silent continuation.
+    [call, denial, read, warning], // Final-only disclosure.
+    [warning, call, denial, read], // Not a response to the actual denial.
+    [call, denial, { ...warning, role: 'user' }, read],
+    [call, { ...denial, content: [{ ...denial.content[0], toolCallId: 'unrelated' }] }, warning, read],
+  ]) {
+    assert.throws(() => assertPlanningFallbackWarning(messages), assert.AssertionError);
+  }
+});
 
 it('DeepSeek gets an explicit output ceiling instead of the compatibility SDK default', async () => {
   const workspace = prepareWorkspace();
