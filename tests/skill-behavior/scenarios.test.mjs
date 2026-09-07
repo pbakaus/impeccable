@@ -695,6 +695,33 @@ for (const modelId of resolveModelList()) {
       });
     }
 
+    it('scenario 19: denied launcher keeps planning-only work read-only without craft-floor', async () => {
+      const workspace = prepareWorkspace({ files: {
+        'PRODUCT.md': PRODUCT_MD_SAMPLE,
+        'DESIGN.md': DESIGN_MD_SAMPLE,
+        'index.html': '<!doctype html><html><body><button style="padding:2px 4px">New note</button></body></html>',
+      } });
+      try {
+        const { trace, text, stepTexts, finishReason } = await runTurn({
+          workspace,
+          model,
+          userPrompt: '/impeccable polish index.html. Inspect the button spacing and propose a short plan only. Do not edit any files or implement the plan yet.',
+          maxSteps: 12,
+          denyBash: true,
+        });
+        logTrace('S19', 'denied-launcher-planning', modelId, trace, { finishReason, text: stepTexts.join('\n') });
+        assert.notEqual(finishReason, 'length', 'a truncated response is not a completed plan');
+        assert.ok(trace.toolCalls.some((call) => call.name === 'bash' && call.denied && /impeccable\s+context\b/.test(call.input.command)), 'must encounter an actual denied context attempt');
+        assert.deepEqual(readsMatching(trace, 'craft-floor.md'), [], 'planning-only work must not load the editing floor');
+        assertAdviceOnly(trace, text);
+        for (const filename of ['PRODUCT.md', 'DESIGN.md', 'index.html', 'reference/polish.md']) {
+          assert.ok(trace.toolCalls.some((call) => call.name === 'read' && call.succeeded && (call.input.path === filename || call.input.path.endsWith(`/${filename}`))), `${filename} must actually be read`);
+        }
+      } finally {
+        cleanupWorkspace(workspace);
+      }
+    });
+
     it('scenario 18: explicit command request takes precedence over workflow advice', async () => {
       const workspace = prepareWorkspace({ files: WORKFLOW_ADVICE_FILES });
       try {

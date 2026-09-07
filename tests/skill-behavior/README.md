@@ -75,7 +75,7 @@ The trace is the source of truth, not the model's free-form reply.
 | 16 | existing surface, with and without PRODUCT.md; asks where to start | loads `routing.md`, delivers advice, and does not edit project files, start an interview, archive a critique, or run menu scans |
 | 17 | existing surface; asks whether critique is required before polish | loads `routing.md` and both command references, then delivers advice without executing the playbooks |
 | 18 | existing surface; explicitly requests polish followed by a next-command recommendation | loads `polish.md` rather than substituting workflow advice for the requested work |
-| 19 | tiny spacing edit with PRODUCT.md + DESIGN.md; Bash denied, plus a real-loader success control | actually reads playbook and craft floor before editing; denial also requires direct context-file reads and a user-visible warning before the edit |
+| 19 | tiny spacing edit with PRODUCT.md + DESIGN.md; Bash denied, a real-loader success control, and a denied-launcher planning-only case | edits require successful playbook/craft-floor reads and a pre-edit denial warning; planning stays read-only and skips craft-floor |
 
 ## Setup launcher-failure branch (2026-09-06, PR #750)
 
@@ -116,13 +116,23 @@ DeepSeek passed both cases. An initial candidate got OpenAI to edit but still
 warned late on Sonnet, OpenAI, and Gemini; DeepSeek's denial response truncated.
 All four successful-launcher controls passed that candidate.
 
-The final candidate separates the fallback from the long first step, says to
+The pre-review candidate separates the fallback from the long first step, says to
 send the warning first and continue through permitted tools, and clarifies
 that craft-floor also applies to small refinements. Setup grows by 18
 whitespace-separated words; the description is unchanged. Sonnet and OpenAI
 passed both final cases, as did DeepSeek with the explicit output ceiling.
 Gemini still warned after the edit; its control passed. The final result is
 7/8; the warning-order assertion remains unchanged.
+
+Review follow-up: the fallback now says to follow the **applicable** steps
+2–3, preserving step 3's planning-only exclusion (20 added Setup words overall).
+A new denied-launcher planning case requires a real plan, no mutations or
+craft-floor read, and successful context/target/playbook reads. On Sonnet,
+the editing denial and successful-loader cases both passed again. The planning
+run stayed read-only and skipped craft-floor, but failed because it did not
+read `polish.md`. That assertion remains intact: this is another reference-loading
+gap under #744, not a green planning result. Other providers were not rerun for
+this wording-only review clarification.
 
 These are single samples per case and candidate, not reliability estimates.
 This API harness starts with the skill loaded and readable references. It

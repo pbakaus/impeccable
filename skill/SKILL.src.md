@@ -22,7 +22,7 @@ Core principles:
 2. Load the request's playbook: its Commands-table reference for an explicit/implied sub-command, or [reference/new-work.md](reference/new-work.md) for a new surface or replacement visual world. Inspect target and incumbent visual truth before editing. When the app cannot run, start with committed visual-regression goldens or screenshot fixtures; verify target and freshness against current tokens, CSS, components, or assets, resolve conflicts, and compare theme/variant captures. <!-- rule:skill-setup-command-ref --> <!-- rule:skill-setup-read-project -->
 3. After resolving analysis and direction, read [reference/craft-floor.md](reference/craft-floor.md) immediately before any UI edit, including small refinements. It carries the quality floor, the absolute bans, and the reflexes no detector catches. Do not load it for planning-only work. <!-- rule:skill-craft-floor-load -->
 
-**Launcher unavailable:** If refused, missing, or failed, **first send the user a message** that context loading did not run. Then read existing PRODUCT.md and DESIGN.md without inventing missing context, complete steps 2–3, and perform the requested work through permitted tools. Launcher failure alone does not block otherwise-permitted edits.
+**Launcher unavailable:** If refused, missing, or failed, **first send the user a message** that context loading did not run. Then read existing PRODUCT.md and DESIGN.md without inventing missing context, follow the applicable steps 2–3, and perform the requested work through permitted tools. Launcher failure alone does not block otherwise-permitted edits.
 
 ## How to design
 
