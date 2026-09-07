@@ -99,6 +99,10 @@ jobs:
       - name: Build
         run: bun run build
 
+      - name: Validate VS Code package
+        run: bunx --package @vscode/vsce@3.9.2 vsce package --no-dependencies
+        working-directory: dist/vscode
+
       # `bun run build:extension` runs `cargo xtask bundle`: the rule core
       # compiled to wasm plus the page JS in browser-bundle/.
       - name: Install the pinned toolchain

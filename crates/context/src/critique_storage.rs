@@ -3,7 +3,7 @@
 use crate::context::resolve_project_root;
 use crate::jsp;
 use crate::target_args::TargetOptions;
-use crate::target_slug::slug_from_target;
+use crate::target_slug::{legacy_slug_from_target, slug_from_target};
 use crate::util::{exists, iso_now, js_trim, json_pretty, node_read_error, read_dir_names, safe_read, Env};
 use impeccable_common::Io;
 use serde_json::{Map, Value};
@@ -393,6 +393,51 @@ fn coerce_slug(value: Option<&str>, cwd: &str) -> Option<String> {
     slug_from_target(Some(v), cwd)
 }
 
+fn slug_candidates(value: Option<&str>, cwd: &str) -> Vec<String> {
+    let Some(v) = value.filter(|v| !v.is_empty()) else {
+        return vec![];
+    };
+    if is_ready_slug(v) {
+        return vec![v.to_string()];
+    }
+    let mut slugs = Vec::new();
+    if let Some(slug) = slug_from_target(Some(v), cwd) {
+        slugs.push(slug);
+    }
+    if let Some(legacy) = legacy_slug_from_target(Some(v), cwd) {
+        if !slugs.contains(&legacy) {
+            slugs.push(legacy);
+        }
+    }
+    slugs
+}
+
+fn read_newest_safe_snapshot_for_slugs(
+    slugs: &[String],
+    target_identity: Option<&str>,
+    cwd: &str,
+    env: &Env,
+) -> Option<Snapshot> {
+    let current = slugs.first().and_then(|slug| read_newest_snapshot(slug, cwd, env));
+    let legacy = target_identity.and_then(|identity| {
+        slugs.get(1).and_then(|slug| read_newest_snapshot_for_identity(slug, Some(identity), cwd, env))
+    });
+    current.into_iter().chain(legacy).max_by(|a, b| a.path.cmp(&b.path))
+}
+
+fn read_newest_snapshot_for_identity_slugs(
+    slugs: &[String],
+    target_identity: Option<&str>,
+    cwd: &str,
+    env: &Env,
+) -> Option<Snapshot> {
+    let current = slugs.first().and_then(|slug| read_newest_snapshot_for_identity(slug, target_identity, cwd, env));
+    let legacy = target_identity.and_then(|identity| {
+        slugs.get(1).and_then(|slug| read_newest_snapshot_for_identity(slug, Some(identity), cwd, env))
+    });
+    current.into_iter().chain(legacy).max_by(|a, b| a.path.cmp(&b.path))
+}
+
 pub fn run(args: &[String], io: &mut Io) -> i32 {
     let cwd = io.cwd.to_string_lossy().into_owned();
     let env = io.env.clone();
@@ -493,26 +538,30 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         "latest" => {
             let target = rest.first().map(String::as_str).unwrap_or("");
             let format = rest.get(1).map(String::as_str);
-            let slug_opt = coerce_slug(rest.first().map(String::as_str), &cwd);
+            let slugs = slug_candidates(rest.first().map(String::as_str), &cwd);
             // JS: format && format !== '--json'  (format truthy = non-empty)
             let bad_format = format.map(|f| !f.is_empty() && f != "--json").unwrap_or(false);
-            let Some(slug) = slug_opt.filter(|_| !bad_format) else {
+            if slugs.is_empty() || bad_format {
                 io.err("usage: latest <slug-or-target> [--json]\n");
                 return 1;
-            };
+            }
             let format_is_json = format == Some("--json");
             let target_fingerprint = fingerprint_target(target, &cwd);
             let target_path = resolve_local_target_path(target, &cwd);
             let target_identity = resolve_target_identity(target, &cwd);
             let ready_slug = is_ready_slug(target);
-            let Some(newest_for_slug) = read_newest_snapshot(&slug, &cwd, &env) else {
+            let Some(newest_for_slug) =
+                read_newest_safe_snapshot_for_slugs(&slugs, target_identity.as_deref(), &cwd, &env)
+            else {
                 return 2;
             };
-            let mut latest = read_newest_snapshot_for_identity(&slug, target_identity.as_deref(), &cwd, &env);
+            let mut latest =
+                read_newest_snapshot_for_identity_slugs(&slugs, target_identity.as_deref(), &cwd, &env);
             if latest.is_none() && !ready_slug {
-                // Legacy snapshots have no identity; preserve their old explicit
-                // path/URL behavior only when no known identity was selected.
-                latest = read_newest_snapshot_for_identity(&slug, None, &cwd, &env);
+                // Identity-less snapshots are safe only under the new/current
+                // collision-resistant slug. A pre-hash slug suffix alone cannot
+                // prove which long target owned the historical snapshot.
+                latest = slugs.first().and_then(|slug| read_newest_snapshot_for_identity(slug, None, &cwd, &env));
             }
             let latest = latest.unwrap_or(newest_for_slug);
             if meta_closed(&latest) {
@@ -520,10 +569,6 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             }
             let recorded_target_identity = snapshot_target_identity(&latest);
             let matching_identity = recorded_target_identity == target_identity;
-            if ready_slug && recorded_target_identity.is_none() {
-                io.err("ambiguous legacy snapshot target; use an explicit ./path or full URL\n");
-                return 2;
-            }
             if ready_slug && target_path.as_deref().map(exists).unwrap_or(false) && !matching_identity {
                 io.err("ambiguous snapshot slug; use an explicit ./path or remove the local name collision\n");
                 return 2;
@@ -564,17 +609,16 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         "close" => {
             let slug_arg = rest.first().map(String::as_str).unwrap_or("");
             let snapshot_file = rest.get(1).map(String::as_str);
-            let slug = coerce_slug(rest.first().map(String::as_str), &cwd);
+            let slugs = slug_candidates(rest.first().map(String::as_str), &cwd);
             let snapshot_file_ok = snapshot_file.map(|s| !s.is_empty()).unwrap_or(false);
-            if slug.is_none() || !snapshot_file_ok || rest.len() > 2 {
+            if slugs.is_empty() || !snapshot_file_ok || rest.len() > 2 {
                 io.err("usage: close <resolved-target> <snapshot-file>\n");
                 return 1;
             }
-            let slug = slug.unwrap();
             let snapshot_file = snapshot_file.unwrap();
             if jsp::basename(snapshot_file) != snapshot_file
                 || !is_snapshot_name(snapshot_file)
-                || !snapshot_file.ends_with(&format!("__{}.md", slug))
+                || !slugs.iter().any(|slug| snapshot_file.ends_with(&format!("__{}.md", slug)))
             {
                 return 2;
             }
@@ -592,6 +636,10 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             // JS #660: a slug + filename does not prove ownership; require the
             // resolved target to match a modern snapshot's recorded identity.
             let recorded_target_identity = snapshot_target_identity(&snapshot);
+            let legacy_match = slugs.get(1).is_some_and(|slug| snapshot_file.ends_with(&format!("__{}.md", slug)));
+            if legacy_match && recorded_target_identity.is_none() {
+                return 2;
+            }
             if let Some(rid) = &recorded_target_identity {
                 if Some(rid.clone()) != resolve_target_identity(slug_arg, &cwd) {
                     return 2;
@@ -610,12 +658,34 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             }
         }
         "trend" => {
-            let slug = coerce_slug(rest.first().map(String::as_str), &cwd).unwrap_or_else(|| "null".to_string());
+            let mut slugs = slug_candidates(rest.first().map(String::as_str), &cwd);
+            if slugs.is_empty() {
+                slugs.push("null".to_string());
+            }
             let limit: f64 = match rest.get(1).filter(|s| !s.is_empty()) {
                 Some(l) => js_number(l),
                 None => 5.0,
             };
-            let all = list_snapshots(&format!("__{}.md", slug), &cwd, &env);
+            let target = rest.first().map(String::as_str).unwrap_or("");
+            let target_identity = resolve_target_identity(target, &cwd);
+            let mut all: Vec<String> = slugs
+                .first()
+                .into_iter()
+                .flat_map(|slug| list_snapshots(&format!("__{}.md", slug), &cwd, &env))
+                .collect();
+            if let Some(legacy) = slugs.get(1) {
+                all.extend(
+                    list_snapshots(&format!("__{}.md", legacy), &cwd, &env)
+                        .into_iter()
+                        .filter(|path| {
+                            read_snapshot_at(path)
+                                .and_then(|snapshot| snapshot_target_identity(&snapshot))
+                                .as_deref()
+                                == target_identity.as_deref()
+                        }),
+                );
+            }
+            all.sort();
             let slice = js_slice_last(&all, limit);
             let rows: Vec<Value> = slice
                 .iter()
@@ -805,6 +875,82 @@ mod tests_660 {
         assert_eq!(code, 0);
         assert!(out.contains("\"snapshot_file\": \"2026-05-12T18-30-00Z__example-com-pricing.md\""));
         assert!(out.contains("\"body\":"));
+        let _ = std::fs::remove_dir_all(&cwd);
+    }
+
+    #[test]
+    fn explicit_long_targets_find_and_close_pre_hash_snapshots() {
+        let cwd = tmp();
+        let dir = jsp::join(&[&cwd, ".impeccable", "critique"]);
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = "https://example.com/a-very-long-directory-structure-with-many-segments/component-name";
+        let legacy_slug = legacy_slug_from_target(Some(target), &cwd).unwrap();
+        assert_ne!(legacy_slug, slug_from_target(Some(target), &cwd).unwrap());
+        let name = format!("2026-05-12T18-30-00Z__{legacy_slug}.md");
+        let identity = resolve_target_identity(target, &cwd).unwrap();
+        let body = format!(
+            "---\ntarget_identity: {}\nslug: {}\n---\n# Legacy critique\n",
+            serde_json::to_string(&identity).unwrap(),
+            legacy_slug
+        );
+        std::fs::write(jsp::join(&[&dir, &name]), body).unwrap();
+
+        let (code, out, _) = run_capture(&cwd, &["latest", target, "--json"]);
+        assert_eq!(code, 0);
+        assert!(out.contains(&name));
+
+        let (code, out, _) = run_capture(&cwd, &["trend", target, "5"]);
+        assert_eq!(code, 0);
+        assert!(out.contains(&legacy_slug));
+
+        let (code, _, _) = run_capture(&cwd, &["close", target, &name]);
+        assert_eq!(code, 0);
+        assert!(std::fs::read_to_string(jsp::join(&[&dir, &name])).unwrap().contains("closed: true"));
+
+        let _ = std::fs::remove_dir_all(&cwd);
+    }
+
+    #[test]
+    fn pre_hash_slug_collisions_require_matching_identity() {
+        let cwd = tmp();
+        let dir = jsp::join(&[&cwd, ".impeccable", "critique"]);
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = "https://example.com/first-prefix-that-is-long-enough/a-very-long-shared-tail/component-name";
+        let collision = "https://example.com/second-prefix-that-is-long-enough/a-very-long-shared-tail/component-name";
+        let legacy_slug = legacy_slug_from_target(Some(target), &cwd).unwrap();
+        assert_eq!(legacy_slug, legacy_slug_from_target(Some(collision), &cwd).unwrap());
+        assert_ne!(slug_from_target(Some(target), &cwd), slug_from_target(Some(collision), &cwd));
+
+        let unidentified_name = format!("2026-05-12T18-30-00Z__{legacy_slug}.md");
+        let unidentified_body = format!("---\nslug: {legacy_slug}\n---\n# Ambiguous legacy critique\n");
+        std::fs::write(jsp::join(&[&dir, &unidentified_name]), unidentified_body).unwrap();
+
+        assert_eq!(run_capture(&cwd, &["latest", target]).0, 2);
+        assert_eq!(run_capture(&cwd, &["latest", collision]).0, 2);
+        assert_eq!(run_capture(&cwd, &["trend", target, "5"]).1.trim(), "[]");
+        assert_eq!(run_capture(&cwd, &["close", target, &unidentified_name]).0, 2);
+        let (code, out, _) = run_capture(&cwd, &["latest", &legacy_slug]);
+        assert_eq!(code, 0);
+        assert!(out.contains("# Ambiguous legacy critique"));
+        assert!(run_capture(&cwd, &["trend", &legacy_slug, "5"]).1.contains(&legacy_slug));
+        assert_eq!(run_capture(&cwd, &["close", &legacy_slug, &unidentified_name]).0, 0);
+
+        let identified_name = format!("2026-05-12T18-31-00Z__{legacy_slug}.md");
+        let identity = resolve_target_identity(target, &cwd).unwrap();
+        let identified_body = format!(
+            "---\ntarget_identity: {}\nslug: {}\n---\n# Identified legacy critique\n",
+            serde_json::to_string(&identity).unwrap(),
+            legacy_slug
+        );
+        std::fs::write(jsp::join(&[&dir, &identified_name]), identified_body).unwrap();
+
+        assert_eq!(run_capture(&cwd, &["latest", target]).0, 0);
+        assert_eq!(run_capture(&cwd, &["latest", collision]).0, 2);
+        assert!(run_capture(&cwd, &["trend", target, "5"]).1.contains("target_identity"));
+        assert_eq!(run_capture(&cwd, &["trend", collision, "5"]).1.trim(), "[]");
+        assert_eq!(run_capture(&cwd, &["close", collision, &identified_name]).0, 2);
+        assert_eq!(run_capture(&cwd, &["close", target, &identified_name]).0, 0);
+
         let _ = std::fs::remove_dir_all(&cwd);
     }
 }

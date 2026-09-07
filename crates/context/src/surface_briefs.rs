@@ -1,7 +1,7 @@
 //! JS: lib/surface-briefs.mjs
 
 use crate::jsp;
-use crate::target_slug::slug_from_target;
+use crate::target_slug::{legacy_slug_from_target, slug_from_target};
 use crate::url;
 use crate::util::{exists, js_trim, read_dir_names, safe_read};
 use serde_json::{Map, Value};
@@ -84,6 +84,16 @@ pub fn surface_brief_path_for_target(target: Option<&str>, project_root: &str) -
         None => normalized.clone(),
     };
     let slug = slug_from_target(Some(&slug_input), project_root)?;
+    Some(jsp::join(&[&get_surface_brief_dir(project_root), &format!("{}.md", slug)]))
+}
+
+fn legacy_surface_brief_path_for_target(target: Option<&str>, project_root: &str) -> Option<String> {
+    let normalized = normalize_surface_target(target, project_root)?;
+    let slug_input = match normalized.strip_prefix("route:") {
+        Some(rest) => format!("route{}", rest),
+        None => normalized.clone(),
+    };
+    let slug = legacy_slug_from_target(Some(&slug_input), project_root)?;
     Some(jsp::join(&[&get_surface_brief_dir(project_root), &format!("{}.md", slug)]))
 }
 
@@ -260,10 +270,17 @@ pub fn resolve_surface_brief(project_root: &str, target: Option<&str>) -> Surfac
         return SurfaceResolution { brief: None, candidates: briefs, reason: "invalid-target" };
     };
     let exact_path = surface_brief_path_for_target(Some(&normalized), project_root);
-    if let Some(exact) = briefs
+    let legacy_path = legacy_surface_brief_path_for_target(Some(&normalized), project_root);
+    let exact = briefs
         .iter()
         .find(|b| b.path == exact_path && (b.targets.is_empty() || b.targets.contains(&normalized)))
-    {
+        .or_else(|| {
+            // Pre-hash long slugs can collide because they contain only the
+            // target suffix. Require the legacy brief's metadata to prove it
+            // belongs to this target before accepting that compatibility path.
+            briefs.iter().find(|b| b.path == legacy_path && b.targets.contains(&normalized))
+        });
+    if let Some(exact) = exact {
         return SurfaceResolution { brief: Some(exact.clone()), candidates: briefs, reason: "slug" };
     }
     let mapped: Vec<SurfaceBrief> = briefs.iter().filter(|b| b.targets.contains(&normalized)).cloned().collect();
@@ -308,4 +325,77 @@ pub fn write_surface_brief(
     let content = format!("{}\n\n{}\n", frontmatter, js_trim(body));
     std::fs::write(&file_path, content).map_err(|e| e.to_string())?;
     Ok(file_path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static TMP_SEQ: AtomicUsize = AtomicUsize::new(0);
+
+    #[test]
+    fn resolves_pre_hash_long_slug_briefs() {
+        let root = std::env::temp_dir().join(format!(
+            "impeccable-surface-legacy-{}-{}",
+            std::process::id(),
+            TMP_SEQ.fetch_add(1, Ordering::Relaxed)
+        ));
+        let root = root.to_string_lossy().into_owned();
+        let target = "src/a-very-long-directory-structure-with-many-segments/component-name.tsx";
+        let legacy = legacy_surface_brief_path_for_target(Some(target), &root).unwrap();
+        let current = surface_brief_path_for_target(Some(target), &root).unwrap();
+        assert_ne!(legacy, current);
+
+        std::fs::create_dir_all(get_surface_brief_dir(&root)).unwrap();
+        let normalized = normalize_surface_target(Some(target), &root).unwrap();
+        let legacy_body = format!(
+            "---\nprimary_target: {}\n---\n# Legacy brief\n",
+            serde_json::to_string(&normalized).unwrap()
+        );
+        std::fs::write(&legacy, legacy_body).unwrap();
+
+        let resolved = resolve_surface_brief(&root, Some(target));
+        assert_eq!(resolved.reason, "slug");
+        assert_eq!(resolved.brief.unwrap().path.as_deref(), Some(legacy.as_str()));
+
+        std::fs::write(&current, "# Current brief\n").unwrap();
+        let resolved = resolve_surface_brief(&root, Some(target));
+        assert_eq!(resolved.brief.unwrap().path.as_deref(), Some(current.as_str()));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rejects_unmapped_pre_hash_slug_collisions() {
+        let root = std::env::temp_dir().join(format!(
+            "impeccable-surface-legacy-collision-{}-{}",
+            std::process::id(),
+            TMP_SEQ.fetch_add(1, Ordering::Relaxed)
+        ));
+        let root = root.to_string_lossy().into_owned();
+        let target = "src/first-prefix-that-is-long-enough/a-very-long-shared-tail/component-name.tsx";
+        let collision = "src/second-prefix-that-is-long-enough/a-very-long-shared-tail/component-name.tsx";
+        let legacy = legacy_surface_brief_path_for_target(Some(target), &root).unwrap();
+        assert_eq!(legacy, legacy_surface_brief_path_for_target(Some(collision), &root).unwrap());
+        assert_ne!(
+            surface_brief_path_for_target(Some(target), &root),
+            surface_brief_path_for_target(Some(collision), &root)
+        );
+
+        std::fs::create_dir_all(get_surface_brief_dir(&root)).unwrap();
+        std::fs::write(&legacy, "# Unmapped legacy brief\n").unwrap();
+        assert_eq!(resolve_surface_brief(&root, Some(target)).reason, "not-found");
+
+        let normalized = normalize_surface_target(Some(target), &root).unwrap();
+        let legacy_body = format!(
+            "---\nprimary_target: {}\n---\n# Mapped legacy brief\n",
+            serde_json::to_string(&normalized).unwrap()
+        );
+        std::fs::write(&legacy, legacy_body).unwrap();
+        assert_eq!(resolve_surface_brief(&root, Some(target)).reason, "slug");
+        assert_eq!(resolve_surface_brief(&root, Some(collision)).reason, "not-found");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
