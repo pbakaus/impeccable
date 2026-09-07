@@ -298,6 +298,10 @@ export const SUITES = {
     commands: [
       { runner: 'node', files: ['tests/skill-workflow-browser.test.mjs'] },
       {
+        runner: 'node', timeoutMs: 240000, wallClockMs: 600000,
+        files: ['tests/skill-workflow/finish-handoff.test.mjs'],
+      },
+      {
         runner: 'node',
         timeoutMs: 900000,
         wallClockMs: 3_600_000,

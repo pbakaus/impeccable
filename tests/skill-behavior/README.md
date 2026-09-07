@@ -100,6 +100,25 @@ The full build reported about 2.95 million input and 53 thousand output tokens
 across all turns (no cache usage reported). Keep this lane manually scoped;
 the fast protocol suite is not a proxy for its completion or cost.
 
+### Documentation handoff follow-up
+
+`tests/skill-workflow/finish-handoff.test.mjs` isolates a synthetic post-review
+checkpoint without rebuilding or capturing a page. Its existing-system fixture
+has no approved system change and a pre-existing missing sidecar; the correct
+result is to check the build against DESIGN.md, preserve it, and leave unrelated
+drift alone. The new-world control must write DESIGN.md and its v2 sidecar.
+
+The unchanged-instructions baseline reproduced the skipped documenter in 31s.
+The revised handoff and documenter passages are 29 words shorter overall and
+make a checked no-change result explicit. The first focused extension retest
+passed in 27s. A repeat checked the source, DESIGN.md, and document.md and made
+no mutations, but omitted degraded/documenter.md, so the strict reference guard
+still failed. The new-world control passed in 91s, writing both required files.
+These small samples support the narrower behavior change, not an all-green
+workflow claim; the reference-loading miss remains visible. No full build was
+rerun. Focused Claude routing S3/S4, the ordinary suite, source-first build, and
+generated-skill authoring validation passed. Release #782 remains held.
+
 Each scenario:
 
 1. `prepareWorkspace()` uses the production transformer to build current source
