@@ -63,6 +63,8 @@ its genuine structured-question fallback; browser decisions have separate E2E.
 
 Set `IMPECCABLE_SKILL_BEHAVIOR_TRACE_DIR=<directory>` to retain per-turn JSON
 with model, prompt, tool results, response ordering, usage, and finish reason.
+Progress and failed turns retain their tool traces too; only completed turns
+carry the full response sequence and final usage.
 These are local diagnostic artifacts; inspect before sharing. Successful reads
 or full reference content in shell output count as loading; filename mentions,
 denied commands, and failed reads do not.
@@ -97,6 +99,18 @@ An intermediate candidate run scored 8/9 because the control rejected valid
 `context --target index.html`; after correcting that allowlist, the full focused
 rerun passed 9/9. This is one measured run per variant, not a reliability estimate
 or an all-workflow pass. Broader routing and workflow results remain separate.
+
+On the resolved fixture, Gemini's workflow run passed 4/5: the completed new
+page omitted user confirmation. Tightening the existing question paragraph
+made its focused build lifecycle rerun pass 1/1. OpenAI passed all five workflow
+cases with the fixture corrections alone. These are incremental measurements,
+not one full sweep on the final candidate.
+
+Claude's three-step routing sweep cut off two setup cases before loading
+`new-work.md`. Both loaded it in bounded six-step diagnostics. Claude now has
+the same six-step setup allowance as Gemini; reference and edit-order assertions
+are unchanged. A full-build baseline separately hit the existing 840-second
+deadline and is not counted as a pass.
 
 ## Scenarios
 

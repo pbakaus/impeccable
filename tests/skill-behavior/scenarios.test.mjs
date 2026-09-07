@@ -101,12 +101,11 @@ for (const modelId of resolveModelList()) {
       return;
     }
     const model = getModel(modelId);
-    // Gemini Flash tends to inspect one file at a time, while the production
-    // Anthropic/OpenAI models batch setup reads and then begin implementation.
-    // Keep the latter tightly bounded so this routing suite does not turn into
-    // a page-generation benchmark, but leave Gemini enough room to reach the
-    // same required reference.
-    const setupMaxSteps = provider === 'google' ? 6 : 3;
+    // Claude and Gemini may inspect the workspace before loading references.
+    // Three steps truncated valid Claude setup; six-step diagnostics reached
+    // the same required references. Keep the budget bounded, not a requirement
+    // that every provider batches its tool calls like OpenAI.
+    const setupMaxSteps = provider === 'openai' ? 3 : 6;
 
     it('scenario 1: no PRODUCT.md / DESIGN.md', async () => {
       const workspace = prepareWorkspace({ files: {} });
