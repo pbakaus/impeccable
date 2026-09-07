@@ -432,6 +432,8 @@ npx impeccable update
 
 Live mode edits a local checkout through a development server or local static HTML. Injecting its localhost HTTP helper into a deployed production site, including an HTTPS site, is not supported. Do not disable browser security or weaken production CSP to make it work.
 
+Use live mode only in projects you trust to run locally. Applying copy edits automatically runs `package.json`'s optional `scripts["impeccable:manual-edit-validate"]` command in a shell, with your user permissions; review that script before using live mode in an unfamiliar checkout.
+
 For production inspection, use `npx impeccable detect https://example.com` or the browser extension. These inspect the rendered page; they do not provide live variant editing or write changes back to your source.
 
 ## CLI

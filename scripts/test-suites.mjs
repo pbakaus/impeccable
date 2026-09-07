@@ -52,6 +52,7 @@ export const SUITES = {
           'tests/validate-plugin-manifest.test.js',
           'tests/plugin-paths.test.js',
           'tests/release-engine-workflow.test.js',
+          'tests/workflow-security.test.js',
         ],
       },
       {
