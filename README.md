@@ -139,6 +139,16 @@ npx impeccable link --source=.impeccable --providers=claude,cursor
 
 ### Option 3: Plugin install
 
+**GitHub Copilot in VS Code:**
+
+Install [Impeccable from the Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=renaissance-geek.impeccable), or run:
+
+```bash
+code --install-extension renaissance-geek.impeccable
+```
+
+Requires VS Code 1.109.3+, Copilot Chat access, and a trusted local workspace. Open Chat in Agent mode and try `/impeccable polish`. This skill-only extension does not install automatic hooks; avoid a duplicate Impeccable skill in the same workspace/profile. See [VS Code distribution details](docs/VSCODE-EXTENSION.md).
+
 **Claude Code:**
 ```bash
 /plugin marketplace add pbakaus/impeccable

@@ -2,7 +2,9 @@
 
 The VS Code extension is a declarative delivery channel for the GitHub Copilot skill. `bun run build` stages `dist/vscode/` from the GitHub provider output; `bun run package:vscode` builds and packages a VSIX with pinned `@vscode/vsce` tooling. Nothing is published by either command.
 
-The package version follows `.claude-plugin/plugin.json`. Do not independently bump it for feature work. The Marketplace identifier is `renaissance-geek.impeccable`, under the registered Renaissance Geek publisher. Initial extension publication is a separate maintainer step; publisher registration alone does not publish the extension.
+Install [Impeccable from the Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=renaissance-geek.impeccable), published by Renaissance Geek, or run `code --install-extension renaissance-geek.impeccable`. Requires VS Code 1.109.3+, Copilot Chat access, and a trusted local workspace. Use Chat in Agent mode, for example `/impeccable polish`. Avoid duplicate Impeccable skill installations in the same workspace/profile.
+
+The package version follows `.claude-plugin/plugin.json`. Do not independently bump it for feature work. Publication and updates are separate maintainer steps; building or packaging does not publish.
 
 ## Scope
 
@@ -37,7 +39,7 @@ Check that `/impeccable` is discoverable, the loaded SKILL.md is inside the inst
 
 Test the oldest supported editor as well as current stable before publication. Windows and remote workspaces need separate smoke checks; do not infer them from a macOS local run. Plain browser-only VS Code cannot run the native launcher.
 
-Initial macOS packaging checks: the VSIX installs in VS Code 1.109.3 (which resolves Copilot Chat 0.37.9) and 1.136.1. The installed launcher loads the synthetic project's context correctly. The older editor has only been install-tested, not behavior-tested.
+Initial macOS packaging checks: the VSIX installs in VS Code 1.109.3 (which resolves Copilot Chat 0.37.9) and 1.136.1. Both editor versions also passed the read-only Copilot behavior smoke below.
 
 ### Recorded Copilot smoke (September 7, 2026)
 
@@ -48,4 +50,8 @@ VS Code 1.136.1, Copilot Chat 0.64.1, Auto routed to GPT-5.6 Luna. A single read
 - The loader resolved the synthetic project root and its PRODUCT.md and DESIGN.md. Copilot then read `reference/polish.md` from the same extension, followed by the three fixture files.
 - The completed report correctly described the fixture. The project still contained only its original three files, with unchanged contents. No workspace skill copy, server, or image-generation call was created.
 
-This is one packaging/path-resolution smoke, not an activation-reliability or design-quality evaluation. It does not establish Windows, remote-host, or minimum-version behavior.
+The final `renaissance-geek.impeccable` 4.2.2 VSIX also passed the same read-only smoke in VS Code 1.109.3 / Copilot Chat 0.37.9 (Auto selected GPT-5.3-Codex): slash discovery, the installed launcher, project context, and the polish reference all resolved correctly. One scoped command approval was granted, and all three fixture files remained unchanged.
+
+After publication, `code --install-extension renaissance-geek.impeccable` installed 4.2.2 into fresh isolated profile/extensions directories in VS Code 1.136.1. All 55 extension payload files matched the tested VSIX (ignoring VS Code's added `package.json` installation metadata). Its installed launcher loaded the same fixture context successfully; fixture hashes and file inventory stayed unchanged. This Marketplace check verified download/install and payload identity, not an additional Copilot conversation.
+
+These are packaging/path-resolution smokes, not activation-reliability or design-quality evaluations. They do not establish Windows or remote-host behavior.
