@@ -2,8 +2,10 @@
 
 use crate::jsp;
 use crate::util::js_trim;
+use sha2::{Digest, Sha256};
 
 const SLUG_MAX: usize = 50;
+const SLUG_HASH_LEN: usize = 8;
 
 /// JS: slugFromTarget(resolved, { cwd })
 pub fn slug_from_target(resolved: Option<&str>, cwd: &str) -> Option<String> {
@@ -87,7 +89,34 @@ pub fn kebab(value: &str) -> Option<String> {
     if u.len() <= SLUG_MAX {
         Some(u)
     } else {
-        let tail = &u[u.len() - SLUG_MAX..];
-        Some(tail.strip_prefix('-').unwrap_or(tail).to_string())
+        let digest = Sha256::digest(u.as_bytes());
+        let hash = format!("{digest:x}");
+        let tail_len = SLUG_MAX - SLUG_HASH_LEN - 1;
+        let tail = &u[u.len() - tail_len..];
+        let tail = tail.strip_prefix('-').unwrap_or(tail);
+        Some(format!("{tail}-{}", &hash[..SLUG_HASH_LEN]))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{kebab, SLUG_MAX};
+
+    #[test]
+    fn truncated_slugs_keep_distinct_full_inputs_distinct() {
+        let suffix = "a".repeat(SLUG_MAX);
+        let alpha = kebab(&format!("alpha-prefix-{suffix}")).unwrap();
+        let beta = kebab(&format!("beta-prefix-{suffix}")).unwrap();
+
+        assert_ne!(alpha, beta);
+        assert!(alpha.len() <= SLUG_MAX);
+        assert!(beta.len() <= SLUG_MAX);
+        assert_eq!(alpha, kebab(&format!("alpha-prefix-{suffix}")).unwrap());
+    }
+
+    #[test]
+    fn non_truncated_slugs_are_unchanged() {
+        assert_eq!(kebab("Button.Primary"), Some("button-primary".to_string()));
+        assert_eq!(kebab(&"a".repeat(SLUG_MAX)), Some("a".repeat(SLUG_MAX)));
     }
 }

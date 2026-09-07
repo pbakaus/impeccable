@@ -483,7 +483,7 @@ The build (`scripts/lib/utils.js` `replaceScriptProviderMarker`) rewrites exactl
 - non-string / empty after trim -> `null`.
 - URL (`/^https?:\/\//i`): `new URL(...)`; invalid -> `null`; slug = `kebab(hostname + pathname)` (port, query, hash dropped; hostname is lowercased by URL).
 - Else path: abs = absolute or `path.resolve(cwd, trimmed)`; rel = `path.relative(cwd, abs)`; if rel starts with `..` or is absolute -> rel = basename(abs); if rel is `''` or `'.'` -> `null`; slug = `kebab(rel)`.
-`kebab(v)`: lowercase; replace runs of `/`, `\`, `.` (`/[/\\.]+/g`) with `-`; replace `/[^a-z0-9-]+/g` with `-`; collapse `/-+/g` -> `-`; strip leading/trailing `-`; empty -> `null`; if length > 50 keep the LAST 50 chars then strip one leading `-`.
+`kebab(v)`: lowercase; replace runs of `/`, `\`, `.` (`/[/\\.]+/g`) with `-`; replace `/[^a-z0-9-]+/g` with `-`; collapse `/-+/g` -> `-`; strip leading/trailing `-`; empty -> `null`. Values up to 50 characters remain unchanged. Longer normalized values keep their last 41 characters (stripping one leading `-`) and append `-` plus the first 8 lowercase hex characters of the SHA-256 digest of the full normalized value.
 Examples: `site/pages/index.astro` -> `site-pages-index-astro`; `http://localhost:3000/pricing` -> `localhost-pricing`; `https://Impeccable.Style/docs/audit/` -> `impeccable-style-docs-audit`.
 
 #### `.impeccable/` path resolution (`lib/impeccable-paths.mjs`)
