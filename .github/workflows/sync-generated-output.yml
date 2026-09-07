@@ -9,6 +9,7 @@ on:
       - "skill/**"
       - "scripts/**"
       - "docs/CURSOR-PLUGIN.md"
+      - "LICENSE"
       - "package.json"
       - "bun.lock"
   workflow_dispatch:

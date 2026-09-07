@@ -87,6 +87,8 @@ describe('Cursor native plugin', () => {
     const workflow = fs.readFileSync(path.join(repository, '.github/workflows/sync-generated-output.yml'), 'utf8');
     assert.match(workflow, /\n    cursor-plugin\n/);
     assert.match(workflow, /docs\/CURSOR-PLUGIN\.md/);
+    const pushPaths = workflow.split('    paths:\n')[1]?.split('  workflow_dispatch:')[0];
+    assert.match(pushPaths ?? '', /^      - "LICENSE"$/m);
   });
 
   it('packages the real provider skill and all agents without unresolved launcher paths', () => {
