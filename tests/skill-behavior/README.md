@@ -128,6 +128,18 @@ case-study test now supplies a complete, explicitly synthetic brief when asked;
 fresh-init and other user simulations are unchanged. Neither incomplete build
 is counted as a pass.
 
+The corrected-user Claude retest also remained incomplete: it asked, recorded
+the six-block brief without the earlier word-count loop, then spent the remaining
+22-step allowance acquiring and inspecting fonts before writing HTML. The
+26-step redesign run produced the page and desktop/mobile captures but stopped
+before DESIGN.md. These results do not establish full workflow completion.
+Further work should separate narrow protocol checks from realistic, provisioned
+full-build runs rather than keep adding skill prose or relaxing finish gates.
+The later Claude run passed fresh init and refinement, failed the two bounded
+build cases, and was stopped during critique's browser-tool discovery. Its
+unfinished critique case is not a pass; the earlier OpenAI/Gemini critique
+results remain the completed measurements.
+
 ## Scenarios
 
 | # | Setup | Assertion |
