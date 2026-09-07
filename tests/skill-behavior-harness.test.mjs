@@ -2,7 +2,47 @@ import { it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { prepareWorkspace, cleanupWorkspace, makeTools } from './skill-behavior/harness.mjs';
+import { MockLanguageModelV3 } from 'ai/test';
+import { prepareWorkspace, cleanupWorkspace, makeTools, runTurn, SKILL_BODY } from './skill-behavior/harness.mjs';
+
+it('DeepSeek gets an explicit output ceiling instead of the compatibility SDK default', async () => {
+  const workspace = prepareWorkspace();
+  try {
+    for (const modelId of ['deepseek-v4-flash', 'claude-sonnet-5']) {
+      const model = new MockLanguageModelV3({
+        modelId,
+        doGenerate: {
+          content: [{ type: 'text', text: 'done' }],
+          finishReason: { unified: 'stop', raw: 'stop' },
+          usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
+          warnings: [],
+        },
+      });
+      await runTurn({ workspace, model, userPrompt: 'Test the harness.', maxSteps: 1 });
+      const request = model.doGenerateCalls[0];
+      assert.equal(request.maxOutputTokens, modelId.startsWith('deepseek-') ? 16_384 : undefined);
+      assert.ok(request.prompt.some((message) => message.role === 'system' && message.content === SKILL_BODY));
+    }
+  } finally {
+    cleanupWorkspace(workspace);
+  }
+});
+
+it('loaded-skill metadata resolves to the staged launcher and readable references', async () => {
+  const workspace = prepareWorkspace();
+  try {
+    const baseDir = SKILL_BODY.match(/^Base directory for this skill \(workspace-relative\): (.+)$/m)?.[1];
+    assert.ok(baseDir, 'the host must supply the skill directory separately from its instructions');
+    assert.ok(fs.statSync(path.join(workspace, baseDir, 'scripts/impeccable')).isFile());
+    const { tools, trace } = makeTools(workspace, {}, {}, { denyBash: true });
+    await tools.read.execute({ path: `${baseDir}/reference/polish.md` });
+    await tools.read.execute({ path: `${baseDir}/reference/craft-floor.md` });
+    assert.ok(trace.toolCalls.every((call) => call.succeeded));
+    assert.ok(SKILL_BODY.includes('<skill-base-dir>/scripts/impeccable context'), 'metadata must not rewrite away the path-resolution behavior under test');
+  } finally {
+    cleanupWorkspace(workspace);
+  }
+});
 
 it('denied-launcher tools reject every shell attempt without executing or modifying the skill', async () => {
   const workspace = prepareWorkspace({ files: { 'index.html': 'before' } });

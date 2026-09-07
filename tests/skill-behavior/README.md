@@ -98,6 +98,43 @@ summary. This does not reproduce the reporter's complete reference-loading
 failure or establish a multi-provider pass. An earlier scenario 6 result used
 attempt-based reference assertions and is not counted as a success control.
 
+### Refusal follow-up (2026-09-06, #744)
+
+The harness now supplies the loaded skill's workspace-relative base directory
+as host metadata. The source instructions and `<skill-base-dir>` resolution
+remain under test; reference reads still have to succeed. It also sets an
+explicit 16,384-token response ceiling for DeepSeek: the Anthropic-compatible
+SDK otherwise treats that model as unknown and caps it at 4,096. Truncation
+still fails the scenario; this changes the test runner, not the shipped skill.
+
+The unchanged-source baseline with directory metadata passed 5/8 focused
+cases: Sonnet skipped craft-floor in its successful-launcher control, OpenAI
+stopped without editing after denial, and Gemini warned only after editing.
+DeepSeek passed both cases. An initial candidate got OpenAI to edit but still
+warned late on Sonnet, OpenAI, and Gemini; DeepSeek's denial response truncated.
+All four successful-launcher controls passed that candidate.
+
+The final candidate separates the fallback from the long first step, says to
+send the warning first and continue through permitted tools, and clarifies
+that craft-floor also applies to small refinements. Setup grows by 18
+whitespace-separated words; the description is unchanged. Sonnet and OpenAI
+passed both final cases, as did DeepSeek with the explicit output ceiling.
+Gemini still warned after the edit; its control passed. The final result is
+7/8; the warning-order assertion remains unchanged.
+
+These are single samples per case and candidate, not reliability estimates.
+This API harness starts with the skill loaded and readable references. It
+does not measure activation, reproduce Windows command parsing, or establish
+fallback behavior when the host also denies required file reads or writes.
+Keep #744 open; evaluate activation separately with #375.
+
+To repeat only these cases (provider keys and an engine binary required):
+
+```sh
+IMPECCABLE_SKILL_BEHAVIOR_MODELS=claude-sonnet-5,gpt-5.6-terra,gemini-3.7-flash,deepseek-v4-flash \
+  node --test --test-name-pattern='scenario 19:' tests/skill-behavior/scenarios.test.mjs
+```
+
 ## Workflow-advice baseline (2026-09-05, PR #737)
 
 The four cases in scenarios 16-18 are new; prior scenario results do not

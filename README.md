@@ -397,6 +397,8 @@ Installed hook surfaces:
 
 Every command goes through the launcher shipped in the skill's `scripts/` directory (`impeccable`, or `impeccable.cmd` on Windows), guarded so a missing launcher is a silent no-op. The launcher runs the engine binary that ships next to it, or downloads the pinned version once into `~/.impeccable/bin/`. No Node or other runtime is required for the hook or the skill.
 
+In Claude Code, installed command hooks run independently of model-tool approval. The first edit or Stop event can therefore download and cache the engine even if the session denies the model's launcher command. Review installed hooks before unattended runs; to disable all Claude Code hooks for a run, pass `--settings '{"disableAllHooks": true}'`. See [Claude Code's hook security guidance](https://code.claude.com/docs/en/hooks#security-considerations).
+
 The installer preserves unrelated hook entries and settings. If a hook manifest is malformed, install/update aborts by default; rerun with `--force` to back up the malformed file as `.bak` and replace it.
 
 On an interactive `install`/`update`, Impeccable explains the hook and offers to install it (default yes). Your choice is remembered per-developer in the gitignored `.impeccable/config.local.json`, so you are not asked again; `--no-hooks` skips it for that run without recording anything. Hook lifecycle settings live under the `hook` key of `.impeccable/config.json`; detector ignores live under `detector`, shared by `/impeccable hooks` and `npx impeccable detect`.
