@@ -18,7 +18,7 @@ import {
 } from './harness.mjs';
 import { detectProvider, getModel, hasKey, resolveModelList, PROVIDERS } from './providers.mjs';
 import { assertNewWorkLifecycle } from './assertions.mjs';
-import { PRODUCT_MD_SAMPLE, DESIGN_MD_SAMPLE } from './fixtures.mjs';
+import { PRODUCT_MD_SAMPLE, DESIGN_MD_SAMPLE, CASE_STUDY_ANSWER } from './fixtures.mjs';
 
 const LEGACY_DESIGN = `# Design
 
@@ -148,6 +148,7 @@ for (const modelId of resolveModelList()) {
           workspace,
           model,
           userPrompt: '/impeccable create a concise evidence-led case-study page. Leave it at index.html.',
+          simulatedUser: { answer: () => CASE_STUDY_ANSWER },
           maxSteps: 22,
         });
         const question = firstCall(trace, ({ name }) => name === 'ask_user_question');

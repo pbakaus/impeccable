@@ -112,6 +112,22 @@ the same six-step setup allowance as Gemini; reference and edit-order assertions
 are unchanged. A full-build baseline separately hit the existing 840-second
 deadline and is not counted as a pass.
 
+The complete routing-only sweep retained its original budgets and passed 55/57
+(Claude 17/19, OpenAI 19/19, Gemini 19/19). A six-step Claude rerun passed the two
+previously clipped cases but exposed a separate context reload on turn two:
+the model queried the loader again for image-tool availability. That run was
+stopped after five passes and this failure rather than finishing another billed
+sweep; the once-per-session assertion remains unchanged.
+
+A saved Claude build trace used five calls shortening/counting the direction
+contract, then reached the 22-step cap before implementation. The word target
+is now approximate, with the six required blocks retained. A subsequent run
+correctly stopped for missing customer evidence: the default simulated user had
+selected “I have real details,” then promised them in a future message. The
+case-study test now supplies a complete, explicitly synthetic brief when asked;
+fresh-init and other user simulations are unchanged. Neither incomplete build
+is counted as a pass.
+
 ## Scenarios
 
 | # | Setup | Assertion |

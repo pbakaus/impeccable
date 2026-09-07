@@ -5,6 +5,24 @@ import path from 'node:path';
 import { MockLanguageModelV3 } from 'ai/test';
 import { prepareWorkspace, cleanupWorkspace, makeTools, runTurn, fileLoaded, SKILL_BODY } from './skill-behavior/harness.mjs';
 import { assertPlanningFallbackWarning, assertNewWorkLifecycle } from './skill-behavior/assertions.mjs';
+import { CASE_STUDY_ANSWER } from './skill-behavior/fixtures.mjs';
+
+it('case-study user supplies evidence now instead of promising a future message', async () => {
+  const workspace = prepareWorkspace();
+  try {
+    const { tools, trace } = makeTools(workspace, {}, { answer: () => CASE_STUDY_ANSWER });
+    for (const question of ['What real customer proof do you have?', 'Please paste the promised details.']) {
+      const result = JSON.parse(await tools.ask_user_question.execute({ questions: [{
+        question, options: [{ label: 'I will paste real customer quotes in my next message' }],
+      }] }));
+      assert.equal(result.answers[question], CASE_STUDY_ANSWER);
+      assert.match(result.answers[question], /clearly labeled synthetic case/);
+    }
+    assert.equal(trace.questionAnswers.length, 2);
+  } finally {
+    cleanupWorkspace(workspace);
+  }
+});
 
 it('new-work requires approval and a brief before code, then documents the finished redesign', () => {
   const ask = { name: 'ask_user_question' };
