@@ -9,6 +9,20 @@ const SLUG_HASH_LEN: usize = 8;
 
 /// JS: slugFromTarget(resolved, { cwd })
 pub fn slug_from_target(resolved: Option<&str>, cwd: &str) -> Option<String> {
+    slug_from_target_using(resolved, cwd, kebab)
+}
+
+/// Compatibility key used by releases that truncated normalized targets to
+/// their last 50 characters without a hash suffix.
+pub(crate) fn legacy_slug_from_target(resolved: Option<&str>, cwd: &str) -> Option<String> {
+    slug_from_target_using(resolved, cwd, legacy_kebab)
+}
+
+fn slug_from_target_using(
+    resolved: Option<&str>,
+    cwd: &str,
+    slugger: fn(&str) -> Option<String>,
+) -> Option<String> {
     let resolved = resolved?;
     let trimmed = js_trim(resolved);
     if trimmed.is_empty() {
@@ -17,7 +31,7 @@ pub fn slug_from_target(resolved: Option<&str>, cwd: &str) -> Option<String> {
     let lower = trimmed.to_ascii_lowercase();
     if lower.starts_with("http://") || lower.starts_with("https://") {
         let (host, pathname) = parse_url_host_path(trimmed)?;
-        return kebab(&format!("{}{}", host, pathname));
+        return slugger(&format!("{}{}", host, pathname));
     }
     let abs = if jsp::is_absolute(trimmed) { trimmed.to_string() } else { jsp::resolve(cwd, &[trimmed]) };
     let mut rel = jsp::relative(cwd, cwd, &abs);
@@ -27,7 +41,7 @@ pub fn slug_from_target(resolved: Option<&str>, cwd: &str) -> Option<String> {
     if rel.is_empty() || rel == "." {
         return None;
     }
-    kebab(&rel)
+    slugger(&rel)
 }
 
 /// Minimal WHATWG URL parse for http(s): returns (hostname lowercased, pathname).
@@ -39,6 +53,30 @@ pub fn parse_url_host_path(s: &str) -> Option<(String, String)> {
 
 /// JS: kebab(value)
 pub fn kebab(value: &str) -> Option<String> {
+    let u = normalized_kebab(value)?;
+    if u.len() <= SLUG_MAX {
+        Some(u)
+    } else {
+        let digest = Sha256::digest(u.as_bytes());
+        let hash = format!("{digest:x}");
+        let tail_len = SLUG_MAX - SLUG_HASH_LEN - 1;
+        let tail = &u[u.len() - tail_len..];
+        let tail = tail.strip_prefix('-').unwrap_or(tail);
+        Some(format!("{tail}-{}", &hash[..SLUG_HASH_LEN]))
+    }
+}
+
+fn legacy_kebab(value: &str) -> Option<String> {
+    let u = normalized_kebab(value)?;
+    if u.len() <= SLUG_MAX {
+        Some(u)
+    } else {
+        let tail = &u[u.len() - SLUG_MAX..];
+        Some(tail.strip_prefix('-').unwrap_or(tail).to_string())
+    }
+}
+
+fn normalized_kebab(value: &str) -> Option<String> {
     let lower = value.to_lowercase();
     // replace runs of / \ . with '-'
     let mut s = String::with_capacity(lower.len());
@@ -83,24 +121,12 @@ pub fn kebab(value: &str) -> Option<String> {
     // strip leading/trailing '-' (JS: /^-|-$/g -> one at each end; after collapse there is at most one)
     let u = u.strip_prefix('-').unwrap_or(&u).to_string();
     let u = u.strip_suffix('-').unwrap_or(&u).to_string();
-    if u.is_empty() {
-        return None;
-    }
-    if u.len() <= SLUG_MAX {
-        Some(u)
-    } else {
-        let digest = Sha256::digest(u.as_bytes());
-        let hash = format!("{digest:x}");
-        let tail_len = SLUG_MAX - SLUG_HASH_LEN - 1;
-        let tail = &u[u.len() - tail_len..];
-        let tail = tail.strip_prefix('-').unwrap_or(tail);
-        Some(format!("{tail}-{}", &hash[..SLUG_HASH_LEN]))
-    }
+    (!u.is_empty()).then_some(u)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{kebab, SLUG_MAX};
+    use super::{kebab, legacy_kebab, SLUG_MAX};
 
     #[test]
     fn truncated_slugs_keep_distinct_full_inputs_distinct() {
@@ -118,5 +144,14 @@ mod tests {
     fn non_truncated_slugs_are_unchanged() {
         assert_eq!(kebab("Button.Primary"), Some("button-primary".to_string()));
         assert_eq!(kebab(&"a".repeat(SLUG_MAX)), Some("a".repeat(SLUG_MAX)));
+    }
+
+    #[test]
+    fn legacy_kebab_preserves_the_previous_truncation_key() {
+        let value = "a-very-long-directory-structure-with-many-segments-component-name.tsx";
+        assert_eq!(
+            legacy_kebab(value),
+            Some("ry-structure-with-many-segments-component-name-tsx".to_string())
+        );
     }
 }
