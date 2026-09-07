@@ -569,10 +569,6 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             }
             let recorded_target_identity = snapshot_target_identity(&latest);
             let matching_identity = recorded_target_identity == target_identity;
-            if ready_slug && recorded_target_identity.is_none() {
-                io.err("ambiguous legacy snapshot target; use an explicit ./path or full URL\n");
-                return 2;
-            }
             if ready_slug && target_path.as_deref().map(exists).unwrap_or(false) && !matching_identity {
                 io.err("ambiguous snapshot slug; use an explicit ./path or remove the local name collision\n");
                 return 2;
@@ -933,6 +929,11 @@ mod tests_660 {
         assert_eq!(run_capture(&cwd, &["latest", collision]).0, 2);
         assert_eq!(run_capture(&cwd, &["trend", target, "5"]).1.trim(), "[]");
         assert_eq!(run_capture(&cwd, &["close", target, &unidentified_name]).0, 2);
+        let (code, out, _) = run_capture(&cwd, &["latest", &legacy_slug]);
+        assert_eq!(code, 0);
+        assert!(out.contains("# Ambiguous legacy critique"));
+        assert!(run_capture(&cwd, &["trend", &legacy_slug, "5"]).1.contains(&legacy_slug));
+        assert_eq!(run_capture(&cwd, &["close", &legacy_slug, &unidentified_name]).0, 0);
 
         let identified_name = format!("2026-05-12T18-31-00Z__{legacy_slug}.md");
         let identity = resolve_target_identity(target, &cwd).unwrap();
