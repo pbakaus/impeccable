@@ -37,4 +37,15 @@ Check that `/impeccable` is discoverable, the loaded SKILL.md is inside the inst
 
 Test the oldest supported editor as well as current stable before publication. Windows and remote workspaces need separate smoke checks; do not infer them from a macOS local run. Plain browser-only VS Code cannot run the native launcher.
 
-Initial macOS packaging checks: the VSIX installs in VS Code 1.109.3 (which resolves Copilot Chat 0.37.9) and 1.136.1. The installed launcher loads the synthetic project's context correctly. These install/subprocess checks do not establish end-to-end Copilot behavior on either version.
+Initial macOS packaging checks: the VSIX installs in VS Code 1.109.3 (which resolves Copilot Chat 0.37.9) and 1.136.1. The installed launcher loads the synthetic project's context correctly. The older editor has only been install-tested, not behavior-tested.
+
+### Recorded Copilot smoke (September 7, 2026)
+
+VS Code 1.136.1, Copilot Chat 0.64.1, Auto routed to GPT-5.6 Luna. A single read-only `/impeccable polish index.html` compatibility request passed:
+
+- `/impeccable` appeared in the slash picker after reloading the window following initial folder trust. Before that reload, the extension was installed but absent from the skill list.
+- Copilot invoked the quoted absolute `skills/impeccable/scripts/impeccable` path inside the installed extension, with `context --target index.html`. One command approval was granted; default permission settings remained unchanged.
+- The loader resolved the synthetic project root and its PRODUCT.md and DESIGN.md. Copilot then read `reference/polish.md` from the same extension, followed by the three fixture files.
+- The completed report correctly described the fixture. The project still contained only its original three files, with unchanged contents. No workspace skill copy, server, or image-generation call was created.
+
+This is one packaging/path-resolution smoke, not an activation-reliability or design-quality evaluation. It does not establish Windows, remote-host, or minimum-version behavior.

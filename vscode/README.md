@@ -12,6 +12,8 @@ Requires VS Code 1.109.3 or later, GitHub Copilot Chat access, and a trusted loc
 
 Copilot can also discover the skill automatically for relevant design requests. Supporting references load only when needed.
 
+If `/impeccable` is missing immediately after trusting a folder, run **Developer: Reload Window**, then try again.
+
 ## What gets installed
 
 This extension bundles the skill, references, and engine launchers. It has no extension runtime, activation events, telemetry code, update command, or automatic detector hooks. Installing it does not copy files into your project or edit `copilot-instructions.md`. Marketplace updates replace the bundled skill.
