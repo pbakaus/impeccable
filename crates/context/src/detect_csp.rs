@@ -167,7 +167,11 @@ fn walk(root: &str, dir: &str, depth: usize, hits: &mut Hits) {
         let Ok(bytes) = std::fs::read(&abs) else { continue };
         let slice = if bytes.len() > MAX_READ_BYTES { &bytes[..MAX_READ_BYTES] } else { &bytes[..] };
         let body = String::from_utf8_lossy(slice);
-        visit(root, &abs, &jsp::relative("/", root, &abs), &body, hits);
+        // Candidate patterns use '/', while native Windows relative paths
+        // use '\\'. Normalize once for classification and portable signals;
+        // to_posix preserves literal backslashes in Unix filenames.
+        let rel = jsp::to_posix(&jsp::relative("/", root, &abs));
+        visit(root, &abs, &rel, &body, hits);
     }
 }
 
