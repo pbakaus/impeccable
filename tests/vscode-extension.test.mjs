@@ -26,6 +26,7 @@ describe('VS Code skill extension', () => {
 
   it('registers only the skill, without editor runtime or project-install sidecars', () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(extension, 'package.json'), 'utf8'));
+    assert.equal(manifest.publisher, 'renaissance-geek');
     assert.deepEqual(manifest.contributes, { chatSkills: [{ path: './skills/impeccable/SKILL.md' }] });
     for (const key of ['main', 'browser', 'activationEvents', 'scripts']) assert.equal(key in manifest, false);
     assert.equal(manifest.version, JSON.parse(fs.readFileSync(path.join(repo, '.claude-plugin/plugin.json'))).version);

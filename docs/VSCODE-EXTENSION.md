@@ -2,7 +2,7 @@
 
 The VS Code extension is a declarative delivery channel for the GitHub Copilot skill. `bun run build` stages `dist/vscode/` from the GitHub provider output; `bun run package:vscode` builds and packages a VSIX with pinned `@vscode/vsce` tooling. Nothing is published by either command.
 
-The package version follows `.claude-plugin/plugin.json`. Do not independently bump it for feature work. The proposed Marketplace identifier is `pbakaus.impeccable`; publisher ownership and initial publication are separate maintainer steps.
+The package version follows `.claude-plugin/plugin.json`. Do not independently bump it for feature work. The Marketplace identifier is `renaissance-geek.impeccable`, under the registered Renaissance Geek publisher. Initial extension publication is a separate maintainer step; publisher registration alone does not publish the extension.
 
 ## Scope
 

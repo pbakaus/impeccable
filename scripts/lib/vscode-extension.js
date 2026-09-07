@@ -42,7 +42,7 @@ export function stageVSCodeExtension(rootDir, distDir) {
     displayName: 'Impeccable',
     description: 'Design skills for GitHub Copilot: build, critique, audit, and refine interfaces.',
     version,
-    publisher: 'pbakaus',
+    publisher: 'renaissance-geek',
     license: 'Apache-2.0',
     homepage: 'https://impeccable.style',
     repository: { type: 'git', url: 'https://github.com/pbakaus/impeccable.git' },
