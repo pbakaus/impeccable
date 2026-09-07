@@ -468,7 +468,7 @@ fn fetch_latest_skill_version(env: &Env) -> Option<String> {
         .cloned()
         .unwrap_or_else(|| "https://impeccable.style".to_string());
     let host = host.strip_suffix('/').unwrap_or(&host).to_string();
-    let agent = ureq::AgentBuilder::new()
+    let agent = crate::http::agent_builder()
         .timeout(std::time::Duration::from_millis(FETCH_TIMEOUT_MS))
         .build();
     let res = agent.get(&format!("{}/api/version", host)).call().ok()?;

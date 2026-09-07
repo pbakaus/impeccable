@@ -294,7 +294,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             }
         }
     }
-    let agent = ureq::AgentBuilder::new().build();
+    let agent = crate::http::agent_builder().build();
     let response = if !refs.is_empty() {
         let boundary = format!("----impeccable{:x}", crate::util::now_ms() as u64);
         let mut body: Vec<u8> = Vec::new();

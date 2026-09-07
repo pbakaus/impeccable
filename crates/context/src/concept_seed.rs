@@ -47,7 +47,7 @@ fn card_base(env: &Env) -> String {
 }
 
 fn agent(timeout: Duration) -> ureq::Agent {
-    ureq::AgentBuilder::new().timeout_connect(timeout).timeout(timeout).build()
+    crate::http::agent_builder().timeout_connect(timeout).timeout(timeout).build()
 }
 
 /// URLSearchParams serialization (application/x-www-form-urlencoded).

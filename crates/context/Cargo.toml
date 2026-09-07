@@ -21,5 +21,7 @@ once_cell = { workspace = true }
 sha2 = "0.10"
 flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
 ureq = { version = "2", default-features = false, features = ["tls", "json"] }
+rustls-native-certs = "0.8"
+webpki-roots = "1"
 tiny_http = "0.12"
 unicode-normalization = "0.1.25"
