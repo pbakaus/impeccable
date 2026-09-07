@@ -18,7 +18,8 @@ describe('VS Code skill extension', () => {
   before(() => {
     scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-vscode-test-'));
     const { skills } = readSourceFiles(repo);
-    createTransformer(PROVIDERS.github)(skills, scratch, { skillsVersion: '4.2.2' });
+    const skillsVersion = JSON.parse(fs.readFileSync(path.join(repo, '.claude-plugin/plugin.json'), 'utf8')).version;
+    createTransformer(PROVIDERS.github)(skills, scratch, { skillsVersion });
     extension = stageVSCodeExtension(repo, scratch);
   });
   after(() => fs.rmSync(scratch, { recursive: true, force: true }));
@@ -30,6 +31,8 @@ describe('VS Code skill extension', () => {
     assert.equal(manifest.version, JSON.parse(fs.readFileSync(path.join(repo, '.claude-plugin/plugin.json'))).version);
     assert.deepEqual(fs.readdirSync(extension).sort(), ['.vscodeignore', 'LICENSE', 'README.md', 'icon.png', 'package.json', 'skills']);
     assert.ok(fs.existsSync(path.join(extension, manifest.contributes.chatSkills[0].path)));
+    const skill = fs.readFileSync(path.join(extension, manifest.contributes.chatSkills[0].path), 'utf8');
+    assert.equal(skill.match(/^version: (.+)$/m)?.[1], manifest.version);
     assert.ok(fs.existsSync(path.join(extension, 'skills/impeccable/reference/degraded/asset-producer.md')));
     assert.equal(fs.existsSync(path.join(extension, 'skills/impeccable/scripts/bin')), false);
   });
