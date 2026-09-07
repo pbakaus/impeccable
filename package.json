@@ -40,6 +40,7 @@
     "build": "bun run build:skills && mkdir -p build/_data && rm -rf build/_data/dist && cp -R dist build/_data/dist",
     "build:release": "bun run build:skills:release && mkdir -p build/_data && rm -rf build/_data/dist && cp -R dist build/_data/dist",
     "build:extension": "node scripts/build-extension.js",
+    "package:vscode": "bun run build:skills && cd dist/vscode && bunx --package @vscode/vsce@3.9.2 vsce package --no-dependencies",
     "fetch:engine": "node scripts/fetch-engine.mjs",
     "clean": "rm -rf dist build",
     "rebuild": "bun run clean && bun run build",
