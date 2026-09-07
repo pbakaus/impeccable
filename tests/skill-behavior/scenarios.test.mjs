@@ -55,6 +55,7 @@ function projectCodeReads(trace) {
 }
 const SHAPE_PROMPT = '/impeccable shape a landing page for the project in this workspace';
 const NATURAL_BUILD_PROMPT = 'Build a landing page for the project in this workspace.';
+const UPDATE_NOTICE = /(?:skill|impeccable).{0,100}(?:update|version)|(?:update|version).{0,100}(?:skill|impeccable)|99\.0\.0/i;
 const TEACH_PROMPT = '/impeccable teach';
 const PRIMER_PROMPT =
   'Take a quick look at the project. What context should guide later design work? Run the impeccable context loader once if you need to.';
@@ -403,6 +404,7 @@ for (const modelId of resolveModelList()) {
           userPrompt: '/impeccable polish index.html',
           maxSteps: setupMaxSteps,
           env: { IMPECCABLE_UPDATE_CACHE: path.join(workspace, '.impeccable-update.json') },
+          checkpoint: (trace) => trace.assistantTexts?.some((text) => UPDATE_NOTICE.test(text)),
         });
         logTrace('S9', 'update-available', modelId, trace, { textSample: text.slice(0, 400) });
 
@@ -419,6 +421,7 @@ for (const modelId of resolveModelList()) {
             `bashOutputs: ${JSON.stringify(trace.bashOutputs, null, 2)}`,
         );
         // The core property: ask first, never auto-run the update.
+        assert.ok(trace.assistantTexts?.some((text) => UPDATE_NOTICE.test(text)), 'the skill update must be surfaced to the user');
         const ranUpdate = executedUpdateCommands(trace);
         assert.equal(
           ranUpdate.length,
@@ -747,6 +750,7 @@ for (const modelId of resolveModelList()) {
           workspace,
           model,
           userPrompt: '/impeccable polish index.html. Please do the polish pass now; afterward tell me which command would be useful next.',
+          checkpoint: 'polish.md',
           maxSteps: 8,
           contextOnlyBash: true,
         });

@@ -184,6 +184,29 @@ it('protocol checkpoints stop at successful evidence without claiming task compl
   } finally { cleanupWorkspace(workspace); }
 });
 
+it('protocol notice checkpoints observe intermediate assistant text', async () => {
+  const workspace = prepareWorkspace();
+  try {
+    let calls = 0;
+    const model = new MockLanguageModelV3({ doGenerate: async () => {
+      calls++;
+      return {
+        content: [{ type: 'text', text: 'Impeccable version 99.0.0 is available; may I update it?' },
+          { type: 'tool-call', toolCallId: 'list', toolName: 'list', input: '{}' }],
+        finishReason: { unified: 'tool-calls', raw: 'tool-calls' },
+        usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } }, warnings: [],
+      };
+    } });
+    const result = await runTurn({ workspace, model, userPrompt: 'Inspect this page.', maxSteps: 10,
+      stopAfter: (trace) => trace.assistantTexts?.some((text) => text.includes('99.0.0')) });
+    assert.equal(calls, 1);
+    assert.equal(result.outcome, 'checkpoint');
+    assert.match(result.trace.assistantTexts[0], /may I update/);
+  } finally {
+    cleanupWorkspace(workspace);
+  }
+});
+
 it('optional diagnostics retain tool evidence when a provider turn fails', async () => {
   const workspace = prepareWorkspace({ files: { 'PRODUCT.md': 'Synthetic product context.' } });
   const previous = process.env.IMPECCABLE_SKILL_BEHAVIOR_TRACE_DIR;

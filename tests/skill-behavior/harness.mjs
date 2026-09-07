@@ -427,7 +427,10 @@ export async function runTurn({ workspace, model, userPrompt, priorMessages = []
       system: environment ? `${SKILL_BODY}\n\nRuntime environment: ${environment}` : SKILL_BODY,
       messages,
       tools,
-      onStepFinish: tracePath ? (step) => saveTrace({ status: 'in-progress', lastStepMessages: step.response.messages }) : undefined,
+      onStepFinish: (step) => {
+        (trace.assistantTexts ??= []).push(step.text ?? '');
+        saveTrace({ status: 'in-progress', lastStepMessages: step.response.messages });
+      },
       stopWhen: [stepCountIs(maxSteps), ...(stopAfter ? [() => stopAfter(trace)] : [])],
       // Real client-side deadline on the provider call: without it a stalled
       // stream wedges the whole sweep with no tally.

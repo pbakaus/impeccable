@@ -48,6 +48,10 @@ A broader run exposed the context-only allowlist rejecting Svelte's valid
 `+page.svelte` target. It was stopped, the allowlist fixed with a failing-then-
 passing unit test, and S8 passed 3/3 on the focused rerun. Failed file reads
 do not count as project exploration.
+Update-notice (S9) and explicit-command (S18) checks also now stop at their
+actual protocol checkpoints, instead of continuing into unrelated polishing;
+their focused final reruns each passed 3/3. S9 now explicitly requires the
+assistant to surface the update, not merely receive its loader directive.
 
 Full workflows moved to `tests/skill-workflow/full-build.test.mjs`:
 
@@ -72,6 +76,29 @@ checks remain, as does exactly one context load across the completed turn.
 CI runs this lane only when its manual `skill_workflow` checkbox is enabled.
 Ordinary protocol CI now fetches its engine instead of silently skipping for
 a missing binary. Full-build results must be reported separately from routing.
+
+### Remaining gaps after the split (2026-09-07)
+
+One provisioned Claude natural-build run reached a final response in 637 seconds
+and 37 model steps, with approval, a surface brief, an implemented page, a
+finish review, corrections, and fresh desktop/mobile screenshots. Its initial
+completion assertions passed. The final test revision additionally requires
+the shipped documentation reference; auditing the saved trace against that
+guard found it missing. **This is not a final full-workflow pass.** Existing
+DESIGN.md was preserved, but the required documentation pass was skipped.
+The final guards were tightened during the run; this trace is not represented
+as a run of those later assertions. No second full build was purchased.
+
+Claude's remaining protocol batch passed S10–S15 and existing-project S16,
+but missing-context S16 omitted routing.md and S17 omitted critique.md.
+Both responses remained read-only. The older S9 timed out during unrelated
+polishing; the corrected focused S9 above supersedes it. The batch was stopped
+during the older S18, before another provider sweep. This is incremental
+evidence, not an all-green final matrix. Release #782 remains on hold.
+
+The full build reported about 2.95 million input and 53 thousand output tokens
+across all turns (no cache usage reported). Keep this lane manually scoped;
+the fast protocol suite is not a proxy for its completion or cost.
 
 Each scenario:
 
