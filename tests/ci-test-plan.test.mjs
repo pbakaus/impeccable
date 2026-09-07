@@ -12,6 +12,7 @@ describe('ci-test-plan', () => {
     const workflow = readFileSync('.github/workflows/ci.yml', 'utf8');
     assert.match(workflow, /skill_workflow:\s*description:[^\n]+\s*type: boolean\s*default: false/);
     const job = workflow.split('\n  skill-workflow:')[1];
+    assert.doesNotMatch(job.split('\n    steps:')[0], /runner\./, 'runner context is unavailable at job-level env');
     assert.match(job, /if: github.event_name == 'workflow_dispatch' && inputs.skill_workflow/);
     assert.ok(job.indexOf('bun run fetch:engine') < job.indexOf('bun run test:skill-workflow'));
     assert.ok(job.indexOf('playwright install --with-deps chromium') < job.indexOf('bun run test:skill-workflow'));

@@ -683,7 +683,6 @@ jobs:
     env:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       IMPECCABLE_SKILL_BEHAVIOR_MODELS: claude-sonnet-5
-      IMPECCABLE_SKILL_BEHAVIOR_TRACE_DIR: ${{ runner.temp }}/skill-workflow-traces
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -703,6 +702,8 @@ jobs:
           bun run fetch:engine
           bunx playwright install --with-deps chromium
       - name: Run completed skill workflows
+        env:
+          IMPECCABLE_SKILL_BEHAVIOR_TRACE_DIR: ${{ runner.temp }}/skill-workflow-traces
         run: bun run test:skill-workflow
       - name: Retain diagnostic traces
         if: always()
