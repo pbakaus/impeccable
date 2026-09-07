@@ -35,6 +35,10 @@ impl Prompt {
         self.stdin_tty && self.stdout_tty && cfg!(unix)
     }
 
+    fn uses_tty_readline(&self, io: &Io) -> bool {
+        cfg!(unix) && self.stdout_tty && io.env("TERM") != Some("dumb")
+    }
+
     fn ansi(&self, open: &str, close: &str, value: &str) -> String {
         if self.style {
             format!("{open}{value}{close}")
@@ -70,7 +74,7 @@ impl Prompt {
             let next = self.piped.as_mut().and_then(|v| v.pop()).unwrap_or_default();
             return Ok(next.trim().to_lowercase());
         }
-        if self.stdout_tty && io.env("TERM") != Some("dumb") {
+        if self.uses_tty_readline(io) {
             return self.tty_readline(io, question);
         }
         io.out(question);
@@ -624,6 +628,9 @@ fn terminal_rows() -> Option<u16> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+
     use super::*;
 
     #[test]
@@ -636,5 +643,30 @@ mod tests {
         assert_eq!(visible_window(12, 16, 10), (3, 13));
         assert_eq!(visible_window(15, 16, 10), (6, 16));
         assert_eq!(visible_window(2, 3, 10), (0, 3));
+    }
+
+    fn tty_prompt() -> Prompt {
+        Prompt { stdin_tty: true, stdout_tty: true, style: false, piped: None }
+    }
+
+    #[test]
+    fn ask_uses_raw_readline_only_on_unix() {
+        let prompt = tty_prompt();
+        let (io, _) = Io::captured("", PathBuf::from("."), HashMap::new());
+        assert_eq!(prompt.uses_tty_readline(&io), cfg!(unix));
+    }
+
+    #[cfg(not(unix))]
+    #[test]
+    fn ask_on_windows_tty_does_not_throw_unsupported() {
+        // Line fallback reads process stdin. Skip on a live console so the
+        // test cannot hang; CI pipes EOF and gets Ok("").
+        if std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+            return;
+        }
+        let mut prompt = tty_prompt();
+        let (mut io, _) = Io::captured("", PathBuf::from("."), HashMap::new());
+        let result = prompt.ask(&mut io, "Update skills in 1 provider folder(s)? (Y/n) ");
+        assert_eq!(result, Ok(String::new()));
     }
 }
