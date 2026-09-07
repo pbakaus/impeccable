@@ -100,9 +100,11 @@ attempt-based reference assertions and is not counted as a success control.
 
 ### Refusal follow-up (2026-09-06, #744)
 
-The harness now supplies the loaded skill's workspace-relative base directory
-as host metadata. The source instructions and `<skill-base-dir>` resolution
-remain under test; reference reads still have to succeed. It also sets an
+The provider-neutral harness models a loaded skill with a known base directory
+using synthetic workspace-relative host metadata, not each provider's exact
+generated prompt. The source instructions and `<skill-base-dir>` resolution
+remain under test; reference reads still have to succeed. Provider transforms
+and plugin loading have separate path/loader tests. The harness also sets an
 explicit 16,384-token response ceiling for DeepSeek: the Anthropic-compatible
 SDK otherwise treats that model as unknown and caps it at 4,096. Truncation
 still fails the scenario; this changes the test runner, not the shipped skill.

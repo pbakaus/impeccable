@@ -86,10 +86,11 @@ function loadSkillBody() {
   return md.trim();
 }
 
-// A real skill load supplies its directory. Without that metadata the model
-// has to guess where relative reference links resolve, testing a broken host
-// fixture rather than continuation after a launcher refusal. Use a relative
-// path because this harness's file tools deliberately reject absolute paths.
+// This provider-neutral fixture assumes a loaded skill with a known base
+// directory, not an exact copy of each host's transformed prompt. Claude's
+// loader supplies a base-directory prefix; here it is workspace-relative
+// because the file tools reject absolute paths. Provider rewrite/loader
+// contracts are tested separately, not established by these behavior cases.
 export const SKILL_BODY = `Base directory for this skill (workspace-relative): .claude/skills/impeccable\n\n${loadSkillBody()}`;
 
 /**
