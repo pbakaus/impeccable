@@ -2,8 +2,8 @@
 
 LLM-backed scenarios that verify how the impeccable skill drives context,
 command-reference, new-work, and native-platform loading. Each scenario runs
-against one current model from each supported provider (Anthropic, OpenAI,
-Google, DeepSeek).
+against the default Anthropic, OpenAI, and Google models. DeepSeek remains
+available through `IMPECCABLE_SKILL_BEHAVIOR_MODELS`.
 
 These are the tests you re-run when you refactor anything in SKILL.md's
 `## Setup` section. They fail when the agent stops following the loading
@@ -25,7 +25,7 @@ skipped, not failed.
 Also requires the engine binary (`bun run fetch:engine`, or `IMPECCABLE_BIN`).
 The staged skill dir ships the launcher (`scripts/impeccable`); the harness
 exports `IMPECCABLE_BIN` into every bash call the agent makes, so the launcher
-resolves the binary in both symlink and copy mode without a download. Without a
+resolves the binary in the generated fixture without a download. Without a
 binary the suites skip.
 
 To run a single scenario against one model:
@@ -39,19 +39,64 @@ IMPECCABLE_SKILL_BEHAVIOR_MODELS=claude-sonnet-5 IMPECCABLE_SKILL_BEHAVIOR_VERBO
 
 Each scenario:
 
-1. `prepareWorkspace()` mints a temp dir, symlinks the canonical skill
-   into `<workspace>/.claude/skills/impeccable` (so its launcher is at
-   `.claude/skills/impeccable/scripts/impeccable`), and optionally writes
-   `PRODUCT.md` / `DESIGN.md` fixtures.
+1. `prepareWorkspace()` uses the production transformer to build current source
+   into an independent `<workspace>/.claude/skills/impeccable`. References have
+   resolved placeholders and generated degraded reviewer/documenter files.
+   Host-specific blocks are omitted: this is a neutral API harness, not an exact
+   Claude/Codex/Gemini host simulation. It optionally seeds project fixtures.
 2. `runTurn()` inlines `SKILL.md` (placeholders neutralized) as the
-   system prompt and runs Vercel AI SDK `generateText` with four
-   workspace-scoped tools: `bash`, `read`, `write`, `list`, and a fake
+   system prompt and runs Vercel AI SDK `generateText` with five
+   tools: `bash`, `read`, `write`, `list`, and a fake
    provider-neutral `ask_user_question` backed by a deterministic simulated user.
 3. The tools record every call into a `trace` that the test asserts on.
 4. For scenario 4, a second `runTurn` reuses turn 1's `responseMessages`
    so the model sees a real multi-turn conversation.
 
 The trace is the source of truth, not the model's free-form reply.
+
+File tools are workspace-scoped; bash is a real host shell, **not a security
+sandbox**. Use disposable synthetic fixtures. Shell helpers do not inherit
+provider API keys/auth tokens; model calls still use the parent's keys. The
+harness always sets `IMPECCABLE_QUESTION_DISABLED=1` for shell calls so real
+decision pages cannot wait for a nonexistent browser user. The engine returns
+its genuine structured-question fallback; browser decisions have separate E2E.
+
+Set `IMPECCABLE_SKILL_BEHAVIOR_TRACE_DIR=<directory>` to retain per-turn JSON
+with model, prompt, tool results, response ordering, usage, and finish reason.
+These are local diagnostic artifacts; inspect before sharing. Successful reads
+or full reference content in shell output count as loading; filename mentions,
+denied commands, and failed reads do not.
+
+Context-only controls permit the real launcher with an optional workspace-relative
+`--target`; compound commands remain rejected. The target form is part of the
+skill's Setup contract, not a launcher failure.
+
+## Release investigation (2026-09-07)
+
+The initial release sweep reported 68/81 passes. Do not interpret its 13 failed
+assertions as 13 demonstrated product regressions. The harness staged raw
+references with unresolved placeholders, omitted generated degraded roles, and
+allowed unanswered browser decisions. Its redesign assertion was also stale:
+current `new-work.md` requires a surface brief **before code**, and DESIGN.md
+**at finish**, from the built world. The corrected lifecycle checks retain
+approval, brief, implementation, and final documentation requirements; missing
+artifacts now have their own error instead of being called premature edits.
+The historical tables below retain their original measurements and methods.
+
+Focused launcher-fallback verification on the corrected fixture:
+
+| Default model | Old fallback paragraph | Explicit pre-tool warning paragraph |
+|---|---:|---:|
+| `claude-sonnet-5` | 2/3 | 3/3 |
+| `gpt-5.6-terra` | 3/3 | 3/3 |
+| `gemini-3.7-flash` | 1/3 | 3/3 |
+
+The three cases are denied editing, successful-loader control, and denied
+planning. The old-paragraph failures were warning order, not refused edits.
+An intermediate candidate run scored 8/9 because the control rejected valid
+`context --target index.html`; after correcting that allowlist, the full focused
+rerun passed 9/9. This is one measured run per variant, not a reliability estimate
+or an all-workflow pass. Broader routing and workflow results remain separate.
 
 ## Scenarios
 
@@ -368,9 +413,9 @@ IMPECCABLE_QUESTION_DISABLED=1 CI=1 IMPECCABLE_SKILL_BEHAVIOR_MODELS=deepseek-v4
   --test-name-pattern="bolder refinement" tests/skill-behavior/workflow-contract.test.mjs
 ```
 
-Keep `--test-timeout` at 300000. A tighter cap turns claude-sonnet-5's slower
-runs into timeouts that look like failures. Set `IMPECCABLE_QUESTION_DISABLED=1`
-and `CI=1` so `impeccable serve-question` cannot open a browser window on the host. Pipe
+Use the suite's current 900000ms timeout for full workflow cases; the 300000ms
+example above is historical. The harness now disables decision pages itself.
+Pipe
 to a file rather than `tail`; node prints the failing-test summary at the end,
 and truncating it costs you the per-model attribution.
 

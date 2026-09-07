@@ -15,7 +15,7 @@ A section, component, feature, or state inside an established surface inherits t
 
 ## 2. Ask what will change the work
 
-Ask one round of two or three related questions through the structured question tool when available. Skip settled facts; a precise request may need only a compact confirmation.
+Before implementation, get the user's answer through the structured question tool when available. Ask two or three related questions; a precise request needs only a compact confirmation. Skip settled facts, not the confirmation: DESIGN.md settles the visual world, not this surface's purpose or concept.
 
 - **Persuade:** who must act, what they should believe, which real proof, content, or assets earn that belief.
 - **Operate:** the task, information, important states, frequency, constraints.

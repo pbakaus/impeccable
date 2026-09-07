@@ -1,5 +1,21 @@
 import assert from 'node:assert/strict';
 
+export function assertNewWorkLifecycle(trace, { target, redesign = false }) {
+  const calls = trace.toolCalls;
+  const writes = (call, file) => (call.mutatedPaths || []).includes(file);
+  const implementation = calls.findIndex((call) => writes(call, target));
+  const question = calls.findIndex((call) => call.name === 'ask_user_question');
+  const brief = calls.findIndex((call) => (call.mutatedPaths || []).some((file) => file.startsWith('.impeccable/surfaces/')));
+  assert.ok(implementation >= 0, `new-work did not produce the requested artifact: ${target}`);
+  assert.ok(question >= 0 && question < implementation, 'implementation must follow a user answer');
+  assert.ok(brief >= 0 && brief < implementation, 'the direction contract must be recorded in a surface brief before implementation');
+  if (redesign) {
+    const lastImplementation = calls.findLastIndex((call) => writes(call, target));
+    const documentation = calls.findLastIndex((call) => writes(call, 'DESIGN.md'));
+    assert.ok(documentation > lastImplementation, 'redesign must record DESIGN.md from the finished build, after the last page edit');
+  }
+}
+
 export const LAUNCHER_FAILURE_WARNING = /(?:context|launcher|bash)[^.!?\n]{0,160}(?:denied|refused|unavailable|blocked|could(?:n't| not)|cannot|can't|did(?:n't| not)|fail|unable)|(?:denied|refused|unavailable|blocked|could(?:n't| not)|cannot|can't|unable)[^.!?\n]{0,160}(?:context|launcher|bash)/i;
 
 export function assertPlanningFallbackWarning(responseMessages) {

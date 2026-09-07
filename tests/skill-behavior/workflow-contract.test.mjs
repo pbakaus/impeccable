@@ -17,6 +17,7 @@ import {
   ENGINE_MISSING_MESSAGE,
 } from './harness.mjs';
 import { detectProvider, getModel, hasKey, resolveModelList, PROVIDERS } from './providers.mjs';
+import { assertNewWorkLifecycle } from './assertions.mjs';
 import { PRODUCT_MD_SAMPLE, DESIGN_MD_SAMPLE } from './fixtures.mjs';
 
 const LEGACY_DESIGN = `# Design
@@ -150,17 +151,16 @@ for (const modelId of resolveModelList()) {
           maxSteps: 22,
         });
         const question = firstCall(trace, ({ name }) => name === 'ask_user_question');
-        const implementation = firstMutation(trace, /\.(?:html?|astro|svelte|jsx?|tsx?)$/i);
         assert.ok(fileLoaded(trace, 'new-work.md'), `new-work.md was not loaded.\n${workflowTraceMessage(trace)}`);
         assert.ok(question >= 0, `task concept was never put to the user.\n${workflowTraceMessage(trace)}`);
-        assert.ok(implementation > question, `implementation began before the attended concept checkpoint.\n${workflowTraceMessage(trace)}`);
+        assertNewWorkLifecycle(trace, { target: 'index.html' });
         assert.equal(fs.existsSync(path.join(workspace, 'index.html')), true, 'new-work must still produce the requested artifact');
       } finally {
         cleanupWorkspace(workspace);
       }
     });
 
-    it('redesign replaces DESIGN before touching the existing page', async () => {
+    it('redesign approves and records the direction before code, then documents the built world', async () => {
       const workspace = prepareWorkspace({
         files: {
           'PRODUCT.md': PRODUCT_MD_SAMPLE,
@@ -176,12 +176,9 @@ for (const modelId of resolveModelList()) {
           maxSteps: 26,
         });
         const question = firstCall(trace, ({ name }) => name === 'ask_user_question');
-        const designWrite = firstMutation(trace, /(^|\/)DESIGN\.md$/i);
-        const implementation = firstMutation(trace, /(^|\/)current\.html$/i);
         assert.ok(fileLoaded(trace, 'new-work.md'), `redesign did not route through new-work.\n${workflowTraceMessage(trace)}`);
         assert.ok(question >= 0, `replacement world was not put to the user.\n${workflowTraceMessage(trace)}`);
-        assert.ok(designWrite > question, `replacement DESIGN.md must follow user choice.\n${workflowTraceMessage(trace)}`);
-        assert.ok(implementation > designWrite, `redesign touched the page before replacing DESIGN.md.\n${workflowTraceMessage(trace)}`);
+        assertNewWorkLifecycle(trace, { target: 'current.html', redesign: true });
         const design = fs.readFileSync(path.join(workspace, 'DESIGN.md'), 'utf8');
         assert.notEqual(design.trim(), LEGACY_DESIGN.trim(), 'redesign preserved the old visual world verbatim');
       } finally {

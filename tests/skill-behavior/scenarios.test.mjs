@@ -22,6 +22,7 @@ import {
   bashCommandsMatching,
   readsMatching,
   fileLoaded,
+  callLoadedFile,
   summarizeTrace,
   ENGINE_BIN,
   ENGINE_MISSING_MESSAGE,
@@ -57,14 +58,9 @@ function logTrace(label, scenario, model, trace, extras = {}) {
 }
 
 function loadedBeforeImplementationWrite(trace, filename) {
-  const needle = filename.toLowerCase();
-  const loadIndex = trace.toolCalls.findIndex(({ name, input }) => {
-    if (name === 'read') return input?.path?.toLowerCase().includes(needle);
-    if (name === 'bash') return input?.command?.toLowerCase().includes(needle);
-    return false;
-  });
+  const loadIndex = trace.toolCalls.findIndex((call) => callLoadedFile(call, filename));
   const writeIndex = trace.toolCalls.findIndex(
-    ({ name, input }) => name === 'write' && /\.(html?|css|svelte|jsx?|tsx?)$/i.test(input?.path ?? ''),
+    ({ mutatedPaths = [] }) => mutatedPaths.some((file) => /\.(html?|css|svelte|jsx?|tsx?)$/i.test(file)),
   );
   return loadIndex >= 0 && (writeIndex < 0 || loadIndex < writeIndex);
 }
