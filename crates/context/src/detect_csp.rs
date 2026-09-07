@@ -214,12 +214,18 @@ mod tests {
 
     impl Fixture {
         fn new() -> Self {
-            let root = std::env::temp_dir().join(format!(
-                "impeccable-csp-761-{}-{}",
-                std::process::id(), NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed),
-            ));
-            std::fs::create_dir(&root).unwrap();
-            Self(root)
+            loop {
+                let root = std::env::temp_dir().join(format!(
+                    "impeccable-csp-761-{}-{}",
+                    std::process::id(), NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed),
+                ));
+                match std::fs::create_dir(&root) {
+                    Ok(()) => return Self(root),
+                    // Never reuse or remove files left by another run.
+                    Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                    Err(e) => panic!("create CSP fixture: {e}"),
+                }
+            }
         }
 
         fn scan(&self, path: &str, body: &str) -> Value {
