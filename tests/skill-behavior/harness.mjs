@@ -154,7 +154,7 @@ function safeResolve(root, userPath) {
 }
 
 function isContextOnlyCommand(workspace, command) {
-  const match = command.trim().match(/^\.claude\/skills\/impeccable\/scripts\/impeccable context(?: --target (?:"([a-zA-Z0-9_./ -]+)"|'([a-zA-Z0-9_./ -]+)'|([a-zA-Z0-9_./-]+)))?$/);
+  const match = command.trim().match(/^\.claude\/skills\/impeccable\/scripts\/impeccable context(?: --target (?:"([a-zA-Z0-9_./+ -]+)"|'([a-zA-Z0-9_./+ -]+)'|([a-zA-Z0-9_./+-]+)))?$/);
   if (!match) return false;
   const target = match[1] ?? match[2] ?? match[3];
   return target === undefined || (!target.startsWith('-') && typeof safeResolve(workspace, target) === 'string');
@@ -400,8 +400,9 @@ export function makeTools(workspace, extraEnv = {}, simulatedUser = {}, { contex
 // run is never killed. The timer is unref'd (it must not keep the loop alive
 // after a healthy turn) and cleared on completion.
 const TURN_TIMEOUT_MS = Number(process.env.IMPECCABLE_SKILL_BEHAVIOR_TURN_TIMEOUT_MS) || 840_000;
-export async function runTurn({ workspace, model, userPrompt, priorMessages = [], maxSteps = 8, env = {}, simulatedUser = {}, timeoutMs = TURN_TIMEOUT_MS, contextOnlyBash = false, denyBash = false }) {
+export async function runTurn({ workspace, model, userPrompt, priorMessages = [], maxSteps = 8, env = {}, simulatedUser = {}, timeoutMs = TURN_TIMEOUT_MS, contextOnlyBash = false, denyBash = false, stopAfter, additionalTools, environment = '' }) {
   const { tools, trace } = makeTools(workspace, env, simulatedUser, { contextOnlyBash, denyBash });
+  if (additionalTools) Object.assign(tools, additionalTools(trace));
   const messages = [
     ...priorMessages,
     { role: 'user', content: userPrompt },
@@ -423,11 +424,11 @@ export async function runTurn({ workspace, model, userPrompt, priorMessages = []
   try {
     result = await generateText({
       model,
-      system: SKILL_BODY,
+      system: environment ? `${SKILL_BODY}\n\nRuntime environment: ${environment}` : SKILL_BODY,
       messages,
       tools,
       onStepFinish: tracePath ? (step) => saveTrace({ status: 'in-progress', lastStepMessages: step.response.messages }) : undefined,
-      stopWhen: [stepCountIs(maxSteps)],
+      stopWhen: [stepCountIs(maxSteps), ...(stopAfter ? [() => stopAfter(trace)] : [])],
       // Real client-side deadline on the provider call: without it a stalled
       // stream wedges the whole sweep with no tally.
       abortSignal: controller.signal,
@@ -449,14 +450,20 @@ export async function runTurn({ workspace, model, userPrompt, priorMessages = []
   }
   const generatedResponseMessages = result.responseMessages ?? result.response?.messages ?? [];
   const responseMessages = [...messages, ...generatedResponseMessages];
+  const outcome = stopAfter?.(trace) ? 'checkpoint'
+    : result.finishReason === 'length' ? 'output-limit'
+    : result.finishReason === 'tool-calls' && result.steps.length >= maxSteps ? 'step-budget'
+    : result.finishReason === 'stop' ? 'complete' : result.finishReason;
   saveTrace({ status: 'completed', responseMessages,
-    finishReason: result.finishReason, steps: result.steps.length, usage: result.usage });
+    outcome, finishReason: result.finishReason, steps: result.steps.length, usage: result.totalUsage ?? result.usage });
   return {
     trace,
+    outcome,
+    steps: result.steps.length,
     text: result.text ?? '',
     stepTexts: result.steps.map((step) => step.text ?? ''),
     finishReason: result.finishReason,
-    usage: result.usage,
+    usage: result.totalUsage ?? result.usage,
     responseMessages,
   };
 }

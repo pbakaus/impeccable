@@ -6,6 +6,30 @@ import { MockLanguageModelV3 } from 'ai/test';
 import { prepareWorkspace, cleanupWorkspace, makeTools, runTurn, fileLoaded, SKILL_BODY } from './skill-behavior/harness.mjs';
 import { assertPlanningFallbackWarning, assertNewWorkLifecycle } from './skill-behavior/assertions.mjs';
 import { CASE_STUDY_ANSWER } from './skill-behavior/fixtures.mjs';
+import { sourceHash as hashSources } from './skill-workflow/source-hash.mjs';
+import { assertCompleted, assertFreshCaptures } from './skill-workflow/assertions.mjs';
+
+it('full workflows reject exhausted budgets and stale or absent visual evidence', () => {
+  for (const outcome of ['checkpoint', 'step-budget', 'output-limit', 'error']) {
+    assert.throws(() => assertCompleted({ outcome, steps: 50 }), /did not finish/);
+  }
+  assert.doesNotThrow(() => assertCompleted({ outcome: 'complete', steps: 12 }));
+  const workspace = prepareWorkspace({ files: { 'index.html': '<h1>Test</h1>' } });
+  try {
+    const sourceHash = hashSources(workspace);
+    const edit = { mutatedPaths: ['index.html'] };
+    const shots = ['desktop', 'mobile'].map((viewport) => ({ capture: { target: 'index.html', viewport, sourceHash } }));
+    const check = (toolCalls) => assertFreshCaptures({ toolCalls }, workspace, 'index.html');
+    assert.doesNotThrow(() => check([edit, ...shots]));
+    assert.throws(() => check([edit]), /missing desktop screenshot/);
+    assert.throws(() => check([...shots, edit]), /missing desktop screenshot/);
+    assert.throws(() => check([edit, shots[0]]), /missing mobile screenshot/);
+    fs.writeFileSync(path.join(workspace, 'style.css'), 'h1 { color: red; }');
+    assert.throws(() => check([edit, ...shots]), /missing desktop screenshot/);
+  } finally {
+    cleanupWorkspace(workspace);
+  }
+});
 
 it('case-study user supplies evidence now instead of promising a future message', async () => {
   const workspace = prepareWorkspace();
@@ -142,6 +166,24 @@ it('DeepSeek gets an explicit output ceiling instead of the compatibility SDK de
   }
 });
 
+it('protocol checkpoints stop at successful evidence without claiming task completion', async () => {
+  const workspace = prepareWorkspace();
+  try {
+    const model = new MockLanguageModelV3({ modelId: 'claude-sonnet-5', doGenerate: {
+      content: [{ type: 'tool-call', toolCallId: 'load', toolName: 'read', input: JSON.stringify({ path: '.claude/skills/impeccable/reference/polish.md' }) }],
+      finishReason: { unified: 'tool-calls', raw: 'tool-calls' },
+      usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } }, warnings: [],
+    } });
+    const result = await runTurn({ workspace, model, userPrompt: 'Route only.', maxSteps: 10,
+      stopAfter: (trace) => fileLoaded(trace, 'polish.md') });
+    assert.equal(result.outcome, 'checkpoint');
+    assert.equal(result.steps, 1);
+    assert.equal(model.doGenerateCalls.length, 1);
+    const exhausted = await runTurn({ workspace, model, userPrompt: 'Complete work.', maxSteps: 1 });
+    assert.equal(exhausted.outcome, 'step-budget');
+  } finally { cleanupWorkspace(workspace); }
+});
+
 it('optional diagnostics retain tool evidence when a provider turn fails', async () => {
   const workspace = prepareWorkspace({ files: { 'PRODUCT.md': 'Synthetic product context.' } });
   const previous = process.env.IMPECCABLE_SKILL_BEHAVIOR_TRACE_DIR;
@@ -244,6 +286,9 @@ it('successful-loader controls accept a workspace-relative target', { skip: !pro
   try {
     const { tools } = makeTools(workspace, {}, {}, { contextOnlyBash: true });
     assert.match(await tools.bash.execute({ command: '.claude/skills/impeccable/scripts/impeccable context --target index.html' }), /^exit=0\n/);
+    for (const target of ['src/routes/+page.svelte', '"src/routes/+page.svelte"']) {
+      assert.match(await tools.bash.execute({ command: `.claude/skills/impeccable/scripts/impeccable context --target ${target}` }), /^exit=0\n/);
+    }
     assert.match(await tools.bash.execute({ command: '.claude/skills/impeccable/scripts/impeccable context --target ../outside.html' }), /^Error:/);
   } finally {
     cleanupWorkspace(workspace);

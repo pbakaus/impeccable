@@ -18,7 +18,7 @@ import path from 'node:path';
 import {
   prepareWorkspace,
   cleanupWorkspace,
-  runTurn,
+  runTurn as runHarnessTurn,
   bashCommandsMatching,
   readsMatching,
   fileLoaded,
@@ -40,7 +40,19 @@ import {
   SVELTE_PROJECT_FILES,
 } from './fixtures.mjs';
 
+// Protocol-only shell access; successful checkpoints end observation, not the task.
+async function runTurn({ checkpoint, ...options }) {
+  return runHarnessTurn({ contextOnlyBash: true, timeoutMs: 180000, ...options,
+    stopAfter: typeof checkpoint === 'function' ? checkpoint
+      : checkpoint ? (trace) => fileLoaded(trace, checkpoint) : undefined });
+}
+
 const CRAFT_PROMPT = '/impeccable craft a landing page for the project in this workspace';
+function projectCodeReads(trace) {
+  return trace.toolCalls.filter((call) => call.name === 'read' && call.succeeded
+    && /\.(css|svelte|tsx?|jsx?|astro)$/i.test(call.input.path)
+    && !call.input.path.includes('.claude/skills/')).map((call) => call.input.path);
+}
 const SHAPE_PROMPT = '/impeccable shape a landing page for the project in this workspace';
 const NATURAL_BUILD_PROMPT = 'Build a landing page for the project in this workspace.';
 const TEACH_PROMPT = '/impeccable teach';
@@ -101,16 +113,14 @@ for (const modelId of resolveModelList()) {
       return;
     }
     const model = getModel(modelId);
-    // Claude and Gemini may inspect the workspace before loading references.
-    // Three steps truncated valid Claude setup; six-step diagnostics reached
-    // the same required references. Keep the budget bounded, not a requirement
-    // that every provider batches its tool calls like OpenAI.
-    const setupMaxSteps = provider === 'openai' ? 3 : 6;
+    // Observe a routing decision, with room for setup reads but no full build.
+    const setupMaxSteps = 10;
 
     it('scenario 1: no PRODUCT.md / DESIGN.md', async () => {
       const workspace = prepareWorkspace({ files: {} });
       try {
         const { trace, text } = await runTurn({
+          checkpoint: 'init.md',
           workspace,
           model,
           userPrompt: CRAFT_PROMPT,
@@ -144,6 +154,7 @@ for (const modelId of resolveModelList()) {
       });
       try {
         const { trace, text } = await runTurn({
+          checkpoint: 'new-work.md',
           workspace,
           model,
           userPrompt: CRAFT_PROMPT,
@@ -172,6 +183,7 @@ for (const modelId of resolveModelList()) {
       });
       try {
         const { trace, text } = await runTurn({
+          checkpoint: 'new-work.md',
           workspace,
           model,
           userPrompt: CRAFT_PROMPT,
@@ -216,6 +228,7 @@ for (const modelId of resolveModelList()) {
         // Turn 1: prime the conversation so impeccable context gets run and its
         // output enters the message history.
         const turn1 = await runTurn({
+          checkpoint: (trace) => trace.bashOutputs.some((output) => output.startsWith('exit=0\n')),
           workspace,
           model,
           userPrompt: PRIMER_PROMPT,
@@ -231,6 +244,7 @@ for (const modelId of resolveModelList()) {
         // Turn 2: the real ask. The skill says "skip if you've already
         // loaded it". Verify the agent honors that.
         const turn2 = await runTurn({
+          checkpoint: 'new-work.md',
           workspace,
           model,
           userPrompt: 'Now, /impeccable craft a landing page based on what you saw.',
@@ -256,6 +270,7 @@ for (const modelId of resolveModelList()) {
       });
       try {
         const { trace, text } = await runTurn({
+          checkpoint: 'new-work.md',
           workspace,
           model,
           userPrompt: CRAFT_PROMPT,
@@ -287,6 +302,7 @@ for (const modelId of resolveModelList()) {
       });
       try {
         const { trace, text } = await runTurn({
+          checkpoint: 'polish.md',
           workspace,
           model,
           userPrompt: '/impeccable polish index.html',
@@ -313,6 +329,7 @@ for (const modelId of resolveModelList()) {
       });
       try {
         const { trace, text } = await runTurn({
+          checkpoint: 'audit.md',
           workspace,
           model,
           userPrompt: '/impeccable audit index.html',
@@ -339,6 +356,7 @@ for (const modelId of resolveModelList()) {
       });
       try {
         const { trace, text } = await runTurn({
+          checkpoint: (trace) => projectCodeReads(trace).length > 0,
           workspace,
           model,
           userPrompt: '/impeccable polish src/routes/+page.svelte',
@@ -349,9 +367,7 @@ for (const modelId of resolveModelList()) {
         // agent should read at least one project code file (CSS / tokens /
         // component / page), not just the skill's PRODUCT.md / DESIGN.md
         // / reference files.
-        const projectReads = trace.readPaths.filter((p) =>
-          /\.(css|svelte|tsx?|jsx?|astro)$/i.test(p) && !p.includes('.claude/skills/'),
-        );
+        const projectReads = projectCodeReads(trace);
         assert.ok(
           projectReads.length >= 1,
           `agent should read at least one project code file to understand the existing design system.\n` +
@@ -426,6 +442,7 @@ for (const modelId of resolveModelList()) {
       });
       try {
         const { trace, text } = await runTurn({
+          checkpoint: 'polish.md',
           workspace,
           model,
           userPrompt: '/impeccable polish index.html',
@@ -464,6 +481,7 @@ for (const modelId of resolveModelList()) {
       const workspace = prepareWorkspace({ files: {} });
       try {
         const { trace, text } = await runTurn({
+          checkpoint: 'init.md',
           workspace,
           model,
           userPrompt: SHAPE_PROMPT,
@@ -489,6 +507,7 @@ for (const modelId of resolveModelList()) {
       const workspace = prepareWorkspace({ files: {} });
       try {
         const { trace, text } = await runTurn({
+          checkpoint: 'init.md',
           workspace,
           model,
           userPrompt: NATURAL_BUILD_PROMPT,
@@ -516,6 +535,7 @@ for (const modelId of resolveModelList()) {
       const workspace = prepareWorkspace({ files: {} });
       try {
         const { trace, text } = await runTurn({
+          checkpoint: 'init.md',
           workspace,
           model,
           userPrompt: TEACH_PROMPT,
@@ -549,6 +569,7 @@ for (const modelId of resolveModelList()) {
       });
       try {
         const { trace, text } = await runTurn({
+          checkpoint: 'ios.md',
           workspace,
           model,
           userPrompt: '/impeccable craft a tide detail screen for the project in this workspace',
@@ -584,6 +605,7 @@ for (const modelId of resolveModelList()) {
       });
       try {
         const { trace, text } = await runTurn({
+          checkpoint: 'audit.native.md',
           workspace,
           model,
           userPrompt: '/impeccable audit the app in this workspace',

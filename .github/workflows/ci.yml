@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      skill_workflow:
+        description: 'Run billed, browser-backed Claude workflow completion tests'
+        type: boolean
+        default: false
   # Nightly full live-e2e matrix. The smoke groups already gate every PR; the
   # full sweep is too slow for that, so it runs once a day against main.
   schedule:
@@ -665,5 +670,44 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Prepare engine for protocol tests
+        run: bun run fetch:engine
+
       - name: Run skill behavior tests
         run: bun run test:skill-behavior
+
+  skill-workflow:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.skill_workflow
+    timeout-minutes: 70
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      IMPECCABLE_SKILL_BEHAVIOR_MODELS: claude-sonnet-5
+      IMPECCABLE_SKILL_BEHAVIOR_TRACE_DIR: ${{ runner.temp }}/skill-workflow-traces
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Prepare engine and browser before billing
+        run: |
+          test -n "$ANTHROPIC_API_KEY" || { echo 'ANTHROPIC_API_KEY is required'; exit 1; }
+          bun run fetch:engine
+          bunx playwright install --with-deps chromium
+      - name: Run completed skill workflows
+        run: bun run test:skill-workflow
+      - name: Retain diagnostic traces
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: skill-workflow-traces
+          path: ${{ runner.temp }}/skill-workflow-traces
+          retention-days: 7

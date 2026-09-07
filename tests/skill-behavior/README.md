@@ -37,6 +37,42 @@ IMPECCABLE_SKILL_BEHAVIOR_MODELS=claude-sonnet-5 IMPECCABLE_SKILL_BEHAVIOR_VERBO
 
 ## How it works
 
+### Protocol versus full completion
+
+`test:skill-behavior` now runs only `scenarios.test.mjs`. Routing cases stop
+at the successful reference/context checkpoint they assert, with a ten-step
+ceiling; shell access is context-only. They do **not** claim that a page was
+built or reviewed. Editing/fallback controls retain their original assertions.
+The focused S1/S2/S3/S4/S19 rerun passed 21/21 across the three default models.
+A broader run exposed the context-only allowlist rejecting Svelte's valid
+`+page.svelte` target. It was stopped, the allowlist fixed with a failing-then-
+passing unit test, and S8 passed 3/3 on the focused rerun. Failed file reads
+do not count as project exploration.
+
+Full workflows moved to `tests/skill-workflow/full-build.test.mjs`:
+
+```bash
+bun run fetch:engine
+bunx playwright install chromium
+bun run test:skill-workflow
+```
+
+This separately billed suite defaults to Claude only; use
+`IMPECCABLE_SKILL_BEHAVIOR_MODELS` to explicitly choose another model or sweep.
+It preflights a local server and Chromium before each provider turn, exposing
+real desktop/mobile screenshot and PNG viewing tools. Text-only fixtures use
+system fonts and block external browser requests. No extra skill prose is added.
+The API harness is not the actual Claude Code host, nor is its shell sandboxed.
+
+Each workflow has a 50-step/840-second ceiling. Reaching a budget or output
+limit fails explicitly; routing checkpoints cannot satisfy completion. UI
+workflows require desktop and mobile captures matching the final local sources after
+its last edit. Approval/brief-before-code and redesign documentation-at-finish
+checks remain, as does exactly one context load across the completed turn.
+CI runs this lane only when its manual `skill_workflow` checkbox is enabled.
+Ordinary protocol CI now fetches its engine instead of silently skipping for
+a missing binary. Full-build results must be reported separately from routing.
+
 Each scenario:
 
 1. `prepareWorkspace()` uses the production transformer to build current source
@@ -275,7 +311,7 @@ evidence, not rejected bash reads. The initial unrestricted run (stopped after
 host-wide search attempts), earlier rejected-read results, and broader suite's
 sandboxed provider DNS errors are excluded from this baseline.
 
-The workflow-contract file adds end-to-end assertions for attended fresh init,
+The full-build file adds end-to-end assertions for attended fresh init,
 an initialized natural build request, replacement-world redesign, scope-preserving bolder
 refinement, and critique's closing question. It checks question order and
 context/artifact writes rather than only reference-file loading.
@@ -452,7 +488,7 @@ when bisecting one scenario:
 ```bash
 IMPECCABLE_QUESTION_DISABLED=1 CI=1 IMPECCABLE_SKILL_BEHAVIOR_MODELS=deepseek-v4-flash \
   node --test --test-timeout=300000 --test-force-exit \
-  --test-name-pattern="bolder refinement" tests/skill-behavior/workflow-contract.test.mjs
+  --test-name-pattern="bolder refinement" tests/skill-workflow/full-build.test.mjs
 ```
 
 Use the suite's current 900000ms timeout for full workflow cases; the 300000ms
