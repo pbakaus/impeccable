@@ -1026,6 +1026,8 @@ Note the global cap across groups is `maxFindings` (5) TOTAL, so later files may
 
 `designSystemOptions(config, det, projectCwd)`: `{}` if `config.designSystem.enabled === false` or detector lacks `loadDesignSystemForCwd`; else `{designSystem}` if `det.loadDesignSystemForCwd(projectCwd)` returns truthy (DESIGN.md found walking up to a project boundary; object includes `mdNewerThanJson` = DESIGN.md mtime > `.impeccable/design.json` mtime + 1000ms).
 
+The Rust post-edit, before-edit, and Stop hooks resolve design rules per target file using the shared context project resolver. An app's DESIGN.md (including the usual `.agents/context` and `docs` locations) takes precedence; an app with no document falls back to its repository's document, never a sibling's. The sidecar comes from the selected design scope, and batch notices follow the displayed file's scope. Hook configuration, platform gating, and session cache locations are unchanged.
+
 `appendDesignSystemNote(text, scanOptions)` → `text + '\n\n' + DESIGN_STALE_NOTE` when `scanOptions.designSystem.mdNewerThanJson`.
 `appendDesignSystemNoteOnce(text, scanOptions, cache, sid, config)`: same, but only if `text.length + NOTE.length + 2 <= max(500, limits.maxChars)` and session flag `designNoteShown` not yet set (sets it).
 `designNoteReserve(scanOptions, cache, sid)` = `NOTE.length + 2` when note pending and not yet shown, else 0.

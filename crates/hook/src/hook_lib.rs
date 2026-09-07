@@ -16,7 +16,7 @@ use impeccable_detect::config::{
     normalize_ignore_rule, normalize_ignore_value, normalize_ignore_value_entries, DetectionConfig,
     IgnoreValueEntry,
 };
-use impeccable_detect::design_system::{load_design_system_for_cwd, DesignSystem};
+use impeccable_detect::design_system::{load_design_system_for_cwd, resolve_design_md_path, DesignSystem};
 use impeccable_detect::detect_text::{detect_text, TextOptions};
 use impeccable_detect::engines::{HtmlEngine, ScanOptions};
 use once_cell::sync::Lazy;
@@ -1643,6 +1643,33 @@ pub fn design_system_options(config: &HookConfig, project_cwd: &str) -> HookScan
     HookScanOptions {
         design_system: load_design_system_for_cwd(project_cwd).map(Rc::new),
     }
+}
+
+/// Resolve design rules for the edited workspace without moving hook state.
+pub fn design_system_options_for_file(
+    rt: &Runtime,
+    config: &HookConfig,
+    project_cwd: &str,
+    file_path: &str,
+) -> HookScanOptions {
+    if !config.design_system_enabled {
+        return HookScanOptions::default();
+    }
+    let project = impeccable_context::context::resolve_project(
+        project_cwd,
+        &impeccable_context::target_args::TargetOptions {
+            target_path: Some(file_path.to_string()),
+        },
+        &rt.env,
+    );
+    // A local DESIGN.md owns the scope even if it has no usable frontmatter.
+    // Fall back only when the app has no document, never to a sibling app.
+    let root = if resolve_design_md_path(&project.project_root).is_some() {
+        &project.project_root
+    } else {
+        &project.repo_root
+    };
+    design_system_options(config, root)
 }
 
 /// The detector the hook drives: the regex engine from `impeccable-detect`

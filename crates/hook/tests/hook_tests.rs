@@ -124,6 +124,141 @@ fn stop_event(cwd: &str, session: &str) -> String {
 const GRADIENT_CSS: &str = ".title { background: linear-gradient(90deg, #f472b6, #a78bfa); -webkit-background-clip: text; color: transparent; }\n";
 const SIDE_TAB_CSS: &str = ".card { border-left: 4px solid #6366f1; border-radius: 8px; }\n";
 
+fn monorepo_design_fixture(root_design: bool) -> Tmp {
+    let t = Tmp::new();
+    t.write("package.json", r#"{"workspaces":["apps/*"]}"#);
+    t.write("apps/a/package.json", "{}");
+    t.write("apps/b/package.json", "{}");
+    t.write("apps/a/DESIGN.md", "---\ncolors:\n  primary: '#112233'\n---\n");
+    if root_design {
+        t.write("DESIGN.md", "---\ncolors:\n  primary: '#224466'\n---\n");
+    }
+    t.write(".impeccable/config.json", r#"{"hook":{"perEditRules":"all"},"detector":{"advisoryRules":"include"}}"#);
+    t
+}
+
+// Run identical cases through all three hook entry points. The probe that is
+// allowed by the repo palette must still fail against app A's own palette.
+fn check_monorepo_design_hook(mode: &str) {
+    for (root_design, app, color, expected) in [
+        (false, "a", "#ff00aa", true),
+        (false, "b", "#ff00aa", false),
+        (true, "a", "#224466", true),
+        (true, "b", "#ff00aa", true),
+        (true, "b", "#224466", false),
+    ] {
+        let t = monorepo_design_fixture(root_design);
+        let cwd = t.path();
+        let source = format!(".probe {{ color: {color}; }}\n");
+        let file = t.write(&format!("apps/{app}/src/probe.css"), &source);
+        let r = rt(&cwd);
+        let out = match mode {
+            "post" => hook::run_hook(&r, &edit_event(&cwd, &file, "s1")).stdout,
+            "before" => {
+                // A proposed new file must resolve its owning app too.
+                std::fs::remove_file(&file).unwrap();
+                hbe(&r, &cursor(&cwd, "Write", json!({
+                    "file_path": file, "content": source,
+                }))).0
+            }
+            "stop" => {
+                let mut cache = read_cache(&cwd);
+                touch_file(&mut cache, "s1", &file);
+                persist_cache(&r, &cwd, &cache);
+                hook::run_stop_hook(&r, &stop_event(&cwd, "s1")).stdout
+            }
+            _ => unreachable!(),
+        };
+        assert_eq!(out.contains("design-system-color"), expected,
+            "{mode}: root_design={root_design}, app={app}, color={color}: {out}");
+        assert!(!t.exists(&format!("apps/{app}/.impeccable/hook.cache.json")),
+            "design resolution must not relocate hook state");
+    }
+}
+
+#[test]
+fn monorepo_design_post_edit() { check_monorepo_design_hook("post"); }
+
+#[test]
+fn monorepo_design_before_edit() { check_monorepo_design_hook("before"); }
+
+#[test]
+fn monorepo_design_stop() { check_monorepo_design_hook("stop"); }
+
+#[test]
+fn monorepo_design_document_locations_and_sidecars() {
+    for location in ["DESIGN.md", "docs/DESIGN.md", ".agents/context/DESIGN.md"] {
+        let t = monorepo_design_fixture(true);
+        let cwd = t.path();
+        let file = t.write("apps/b/src/probe.css", ".probe {}\n");
+        let md = t.write(&format!("apps/b/{location}"),
+            "---\ntypography:\n  body:\n    fontFamily: Georgia\nrounded:\n  md: 8px\ncolors:\n  primary: '#abcdef'\n---\n");
+        let sidecar = t.write("apps/b/.impeccable/design.json", "{}");
+        let scan = design_system_options_for_file(&rt(&cwd), &read_config(&cwd), &cwd, &file);
+        let ds = scan.design_system.as_ref().unwrap();
+        assert_eq!(ds.source_path.as_deref(), Some(md.as_str()));
+        assert_eq!(ds.sidecar_path.as_deref(), Some(sidecar.as_str()));
+        let findings = detector_detect_text(
+            ".probe { color: #ff0000; font-family: Verdana; border-radius: 19px; }", &file, &scan);
+        for rule in ["design-system-color", "design-system-font", "design-system-radius"] {
+            assert!(findings.iter().any(|f| f.antipattern == rule), "{location}: {rule}");
+        }
+        let allowed = detector_detect_text(
+            ".probe { color: #abcdef; font-family: Georgia; border-radius: 8px; }", &file, &scan);
+        assert!(allowed.iter().all(|f| !f.antipattern.starts_with("design-system-")));
+    }
+}
+
+#[test]
+fn monorepo_design_local_document_and_disabled_config_do_not_inherit() {
+    let t = monorepo_design_fixture(true);
+    let cwd = t.path();
+    let file = t.write("apps/a/src/probe.css", ".probe {}\n");
+    t.write("apps/a/DESIGN.md", "# App-specific prose, with no machine-readable tokens\n");
+    let r = rt(&cwd);
+    let mut config = read_config(&cwd);
+    assert!(design_system_options_for_file(&r, &config, &cwd, &file).design_system.is_none());
+    config.design_system_enabled = false;
+    let sibling = t.write("apps/b/src/probe.css", ".probe {}\n");
+    assert!(design_system_options_for_file(&r, &config, &cwd, &sibling).design_system.is_none());
+}
+
+#[test]
+fn monorepo_design_batch_notes_follow_the_displayed_file() {
+    for mode in ["post-fresh", "post-pending", "post-clean", "stop"] {
+        for stale_app in ["a", "b"] {
+            let t = monorepo_design_fixture(true);
+            let cwd = t.path();
+            let source = if mode == "post-clean" { ".probe { color: #112233; }" }
+                else { ".probe { color: #ff00aa; }" };
+            let a = t.write("apps/a/src/probe.css", source);
+            let b = t.write("apps/b/src/probe.css", ".probe { color: #224466; }");
+            let r = rt(&cwd);
+            if mode == "post-pending" {
+                hook::run_hook(&r, &edit_event(&cwd, &a, "s1"));
+            }
+            let sidecar = t.write(if stale_app == "a" { "apps/a/.impeccable/design.json" }
+                else { ".impeccable/design.json" }, "{}");
+            std::fs::File::options().write(true).open(sidecar).unwrap()
+                .set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_600_000_000)).unwrap();
+            let out = if mode == "stop" {
+                let mut cache = read_cache(&cwd);
+                touch_file(&mut cache, "s1", &a);
+                touch_file(&mut cache, "s1", &b);
+                persist_cache(&r, &cwd, &cache);
+                hook::run_stop_hook(&r, &stop_event(&cwd, "s1")).stdout
+            } else {
+                let event = json!({"session_id":"s1", "cwd":cwd, "hook_event_name":"PostToolUse",
+                    "tool_name":"apply_patch", "tool_input":{"command":format!(
+                        "*** Begin Patch\n*** Update File: {a}\n*** Update File: {b}\n*** End Patch")}});
+                hook::run_hook(&r, &event.to_string()).stdout
+            };
+            assert!(out.contains("apps/a/src/probe.css"), "{mode}: {out}");
+            assert_eq!(out.contains("DESIGN.md is newer"), stale_app == "a", "{mode}: {out}");
+        }
+    }
+}
+
 fn edit_with_original(cwd: &str, file: &str, session: &str, before: &str, old: &str, new: &str) -> String {
     json!({
         "session_id": session, "cwd": cwd, "hook_event_name": "PostToolUse",

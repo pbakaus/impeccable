@@ -800,7 +800,7 @@ fn main_flow(rt: &Runtime, stdin: &str) -> Out {
     {
         return skip(&audit, "config-ignore-file");
     }
-    let scan = design_system_options(&config, &cwd);
+    let scan = design_system_options_for_file(rt, &config, &cwd, &file_path);
     let use_html_engine = match configured {
         Some(c) => c.engine == "html",
         None => ext_name == ".html" || ext_name == ".htm",

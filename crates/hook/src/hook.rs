@@ -5,6 +5,7 @@
 use impeccable_core::findings::Finding;
 use impeccable_core::js;
 use serde_json::{Map, Value};
+use std::collections::HashMap;
 
 use crate::hook_lib::*;
 use crate::stop_baseline;
@@ -168,7 +169,7 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
 
     let mut cache = read_cache(&project_cwd);
     let session_id = session_key(&session_value);
-    let scan = design_system_options(&config, &project_cwd);
+    let mut scans = HashMap::new();
     let tiered = per_edit_tiering_active(&config, harness);
 
     struct Pending {
@@ -275,9 +276,12 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
                 };
             }
         };
+        let scan = scans.entry(file_path.clone()).or_insert_with(|| {
+            design_system_options_for_file(rt, &config, &project_cwd, file_path)
+        });
         let mut detector_threw = false;
         let findings: Vec<Finding> = if use_html_engine {
-            match detector_detect_html(rt, file_path, &scan) {
+            match detector_detect_html(rt, file_path, scan) {
                 Ok(f) => f,
                 Err(_) => {
                     detector_threw = true;
@@ -285,7 +289,7 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
                 }
             }
         } else {
-            detector_detect_text(&content, file_path, &scan)
+            detector_detect_text(&content, file_path, scan)
         };
         if !detector_threw && !use_html_engine {
             stop_baseline::reconcile(&mut cache, &session_id, file_path, &findings);
@@ -352,8 +356,9 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
     }
 
     if !fresh_groups.is_empty() {
+        let scan = &scans[&fresh_groups[0].file_path];
         let short = footer_mode_short(&mut cache, &session_id);
-        let reserve = design_note_reserve(rt, &scan, &mut cache, &session_id);
+        let reserve = design_note_reserve(rt, scan, &mut cache, &session_id);
         let rendered = render_grouped_template(
             rt,
             &fresh_groups,
@@ -365,7 +370,7 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
             },
         );
         let text =
-            append_design_system_note_once(rt, &rendered, &scan, &mut cache, &session_id, &config);
+            append_design_system_note_once(rt, &rendered, scan, &mut cache, &session_id, &config);
         commit_footer_shown(rt, &mut cache, &session_id, &text);
         persist_cache(rt, &project_cwd, &cache);
         let all: usize = fresh_groups.iter().map(|g| g.findings.len()).sum();
@@ -396,10 +401,11 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
             .filter(|p| should_emit_ack_for_file(&p.file_path, &config))
         {
             let base = render_pending_ack(rt, &p.file_path, &p.known, &project_cwd);
+            let scan = &scans[&p.file_path];
             ack = Some(Ack::Pending(append_design_system_note_once(
                 rt,
                 &base,
-                &scan,
+                scan,
                 &mut cache,
                 &session_id,
                 &config,
@@ -410,10 +416,11 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
                 .filter(|c| should_emit_ack_for_file(c, &config))
             {
                 let base = render_clean_ack(rt, c, &project_cwd);
+                let scan = &scans[c];
                 ack = Some(Ack::Clean(append_design_system_note_once(
                     rt,
                     &base,
-                    &scan,
+                    scan,
                     &mut cache,
                     &session_id,
                     &config,
@@ -663,7 +670,7 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             ],
         );
     }
-    let scan = design_system_options(&config, &project_cwd);
+    let mut scans = HashMap::new();
 
     let mut fresh_groups: Vec<Group> = Vec::new();
     let mut scanned = 0usize;
@@ -704,17 +711,20 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             Some(c) => c.engine == "html",
             None => ext == ".html" || ext == ".htm",
         };
+        let scan = scans.entry(file_path.clone()).or_insert_with(|| {
+            design_system_options_for_file(rt, &config, &project_cwd, file_path)
+        });
         // JS: a detector failure tells us nothing about the file. Leave
         // whatever was remembered alone rather than recording an empty scan
         // as truth. (detectText cannot throw here: the Rust engine returns
         // findings directly.)
         let findings = if use_html_engine {
-            match detector_detect_html(rt, file_path, &scan) {
+            match detector_detect_html(rt, file_path, scan) {
                 Ok(f) => f,
                 Err(_) => continue,
             }
         } else {
-            detector_detect_text(&content, file_path, &scan)
+            detector_detect_text(&content, file_path, scan)
         };
         if !use_html_engine {
             stop_baseline::reconcile(&mut cache, &session_id, file_path, &findings);
@@ -755,6 +765,7 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             ],
         );
     }
+    let scan = &scans[&fresh_groups[0].file_path];
     let short = footer_mode_short(&mut cache, &session_id);
     let first_unknown = fresh_groups.iter().flat_map(|group| &group.findings)
         .position(|f| f.name.starts_with("[attribution unknown]"));
@@ -801,7 +812,7 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
     }
     let text = if shows_unknown { format!("{attribution_note}\n\n{rendered}") } else { rendered };
     let text =
-        append_design_system_note_once(rt, &text, &scan, &mut cache, &session_id, &config);
+        append_design_system_note_once(rt, &text, scan, &mut cache, &session_id, &config);
     commit_footer_shown(rt, &mut cache, &session_id, &text);
     persist_cache(rt, &project_cwd, &cache);
     let all: usize = fresh_groups.iter().map(|g| g.findings.len()).sum();
