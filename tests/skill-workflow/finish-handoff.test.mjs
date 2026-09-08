@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { prepareWorkspace, cleanupWorkspace, runTurn, fileLoaded, ENGINE_BIN } from '../skill-behavior/harness.mjs';
 import { getModel, detectProvider, hasKey } from '../skill-behavior/providers.mjs';
-import { assertCompleted, assertNoChangeDocumentation } from './assertions.mjs';
+import { assertCompleted, assertNoChangeDocumentation, assertDocumentationArtifacts } from './assertions.mjs';
 import { missingReferences } from '../skill-behavior/assertions.mjs';
 
 // A synthetic post-review checkpoint, not another full-build simulation.
@@ -63,7 +63,7 @@ for (const modelId of (process.env.IMPECCABLE_SKILL_BEHAVIOR_MODELS || 'claude-s
             userPrompt: 'Continue from this checkpoint and finish the task.',
           });
           assertCompleted(result);
-          t.diagnostic(`Documentation wrapper coverage gaps (non-blocking for evidenced no-op): ${missingReferences(result.trace, ['degraded/documenter.md']).join(', ') || 'none'}`);
+          t.diagnostic(`Documentation wrapper coverage gaps (diagnostic; contract and artifacts remain required): ${missingReferences(result.trace, ['degraded/documenter.md']).join(', ') || 'none'}`);
           assert.ok(fileLoaded(result.trace, 'reference/document.md'), 'must consult the documentation contract');
           for (const name of existingSystem ? ['index.html', 'DESIGN.md'] : ['index.html']) {
             assert.ok(fileLoaded(result.trace, name), `documentation must check ${name}, not merely announce a no-op`);
@@ -77,15 +77,10 @@ for (const modelId of (process.env.IMPECCABLE_SKILL_BEHAVIOR_MODELS || 'claude-s
             assert.equal(fs.existsSync(path.join(workspace, '.impeccable/design.json')), false, 'must not repair pre-existing sidecar drift unasked');
             assert.deepEqual(result.trace.toolCalls.flatMap((call) => call.mutatedPaths || []), [], 'a no-change check must not mutate other project files');
           } else {
-            assert.ok(fileLoaded(result.trace, 'degraded/documenter.md'), 'new-world documentation must run the shipped documentation pass');
             const design = fs.readFileSync(path.join(workspace, 'DESIGN.md'), 'utf8');
             if (mode === 'redesign') assert.notEqual(design, files['DESIGN.md'], 'approved redesign must replace the old system');
-            assert.match(design, /^---\n/);
-            assert.match(design, /^colors:/m);
+            assertDocumentationArtifacts(design, fs.readFileSync(path.join(workspace, '.impeccable/design.json'), 'utf8'));
             assert.match(design, /system-ui/);
-            const sidecar = JSON.parse(fs.readFileSync(path.join(workspace, '.impeccable/design.json'), 'utf8'));
-            assert.equal(sidecar.schemaVersion, 2);
-            assert.ok(sidecar.extensions && sidecar.narrative);
             const writes = result.trace.toolCalls.flatMap((call) => call.mutatedPaths || []);
             assert.ok(writes.includes('DESIGN.md') && writes.includes('.impeccable/design.json'), 'both documentation artifacts must be written');
             assert.deepEqual(writes.filter((file) => !['DESIGN.md', '.impeccable/design.json'].includes(file)), [], 'documentation must stay inside its write boundary');

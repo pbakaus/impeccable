@@ -7,7 +7,23 @@ import { prepareWorkspace, cleanupWorkspace, makeTools, runTurn, fileLoaded, SKI
 import { assertPlanningFallbackWarning, assertNewWorkLifecycle, assertWorkflowAdvice, assertCommandComparison, missingReferences } from './skill-behavior/assertions.mjs';
 import { CASE_STUDY_ANSWER } from './skill-behavior/fixtures.mjs';
 import { sourceHash as hashSources } from './skill-workflow/source-hash.mjs';
-import { assertCompleted, assertFreshCaptures, assertNoChangeDocumentation } from './skill-workflow/assertions.mjs';
+import { assertCompleted, assertFreshCaptures, assertNoChangeDocumentation, assertDocumentationArtifacts } from './skill-workflow/assertions.mjs';
+
+it('documentation artifacts require tokens and the v2 sidecar independently of wrapper coverage', () => {
+  const design = '---\ncolors:\n  ink: "#222"\ntypography:\n  body:\n    fontFamily: system-ui\n---\n## Overview\nA reading surface.\n';
+  const sidecar = JSON.stringify({ schemaVersion: 2, extensions: { colorMeta: {} }, narrative: { northStar: 'Manual' } });
+  assert.doesNotThrow(() => assertDocumentationArtifacts(design, sidecar));
+  assert.throws(() => assertDocumentationArtifacts('## Colors\nInk: #222\n', sidecar), /frontmatter/);
+  assert.throws(() => assertDocumentationArtifacts(design.replace('colors:', 'palette:'), sidecar), /color tokens/);
+  assert.throws(() => assertDocumentationArtifacts(design.replace('typography:', 'type:'), sidecar), /typography tokens/);
+  assert.throws(() => assertDocumentationArtifacts(design, ''), SyntaxError);
+  assert.throws(() => assertDocumentationArtifacts(design, sidecar.replace('"schemaVersion":2', '"schemaVersion":1')), /v2 sidecar/);
+  for (const key of ['extensions', 'narrative']) {
+    for (const value of [undefined, {}, []]) {
+      assert.throws(() => assertDocumentationArtifacts(design, JSON.stringify({ ...JSON.parse(sidecar), [key]: value })), /metadata/);
+    }
+  }
+});
 
 it('advice outcomes do not depend on opening every reference, but keep consent and prerequisite gates', () => {
   const trace = { toolCalls: [], writePaths: [], questionCalls: [], bashCommands: [] };

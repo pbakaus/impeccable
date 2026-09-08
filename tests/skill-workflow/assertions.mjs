@@ -2,6 +2,19 @@ import assert from 'node:assert/strict';
 import { sourceHash } from './source-hash.mjs';
 import { missingReferences } from '../skill-behavior/assertions.mjs';
 
+export function assertDocumentationArtifacts(design, sidecarText) {
+  const frontmatter = design.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/)?.[1];
+  assert.ok(frontmatter, 'documentation must include machine-readable frontmatter, not prose alone');
+  assert.match(frontmatter, /^colors:\s*\n[ \t]+\S/m, 'documentation must record color tokens');
+  assert.match(frontmatter, /^typography:\s*\n[ \t]+\S/m, 'documentation must record typography tokens');
+  const sidecar = JSON.parse(sidecarText);
+  assert.equal(sidecar.schemaVersion, 2, 'documentation must write the v2 sidecar');
+  for (const key of ['extensions', 'narrative']) {
+    assert.ok(sidecar[key] && typeof sidecar[key] === 'object' && !Array.isArray(sidecar[key])
+      && Object.keys(sidecar[key]).length, `sidecar must contain ${key} metadata`);
+  }
+}
+
 // For a resumed, already-reviewed ordinary extension only. New worlds and
 // redesigns still owe real documentation writes; this is not an escape hatch.
 export function assertNoChangeDocumentation(result, { target, evidence }) {

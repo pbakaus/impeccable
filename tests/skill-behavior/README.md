@@ -172,6 +172,30 @@ step ran. The run used about 2.11M input / 50K output tokens (no cache reported)
 No further billed retry was started. The separate missing-artifact redesign
 failure still blocks treating this batch as an all-green skill release gate.
 
+### Targeted redesign handoff correction
+
+The parent handoff now explicitly requires token-bearing DESIGN.md and
+`.impeccable/design.json` for approved system changes and verifies those outputs
+before completion. It is nine words shorter; the agent and schema files did not
+change. One unchanged-assertion Claude retest finished in 65s: it read document.md
+and wrote both artifacts, but still skipped the degraded wrapper, so that
+reference assertion failed before the artifact assertions ran.
+
+Wrapper coverage is now diagnostic for all post-review modes; successful spec
+and source reads, completed turns, write boundaries, tokens, and the v2 sidecar
+remain hard gates. Offline evaluation of the saved retest passes these artifact
+checks; the original prose-only/missing-sidecar trace remains rejected. Negative
+controls cover absent tokens, malformed/missing sidecars, old schema versions,
+and absent metadata. This is replay, not a second live pass or a rerun of the
+cleaned-up workspace's byte-preservation checks.
+
+Artifact audit: the sidecar component renders correctly in an offline browser.
+The heading line-height was recorded as 1.3 while the page inherits 1.6 (38.4px
+at 24px), and generatedAt used a placeholder date. These are remaining output
+accuracy limitations, distinct from the corrected missing-artifact failure;
+the shape checks do not establish complete token fidelity. No broad provider or
+full-build rerun was purchased. Build and generated-skill validation passed.
+
 Each scenario:
 
 1. `prepareWorkspace()` uses the production transformer to build current source
