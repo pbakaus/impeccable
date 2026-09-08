@@ -163,6 +163,15 @@ reference coverage. The test stays red; no retry was purchased. Release remains
 held pending disposition. These are synthetic post-review checkpoints, not
 proof of a complete redesign lifecycle.
 
+The single full Claude build passed its automated gates in 623s / 31 steps:
+approval, brief, implemented page, final desktop/mobile captures, and shipped
+reviewer/documenter wrapper loads. The final response gave an in-thread review
+and a no-change documentation assessment of the incumbent system. It did not
+load document.md itself; this is not evidence that every documentation protocol
+step ran. The run used about 2.11M input / 50K output tokens (no cache reported).
+No further billed retry was started. The separate missing-artifact redesign
+failure still blocks treating this batch as an all-green skill release gate.
+
 Each scenario:
 
 1. `prepareWorkspace()` uses the production transformer to build current source
