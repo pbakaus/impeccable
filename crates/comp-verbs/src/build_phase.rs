@@ -56,7 +56,20 @@ fn abs(io: &Io, p: &str) -> PathBuf {
 }
 
 fn self_cmd(io: &Io) -> String {
-    io.env.get("IMPECCABLE_SELF").filter(|v| !v.is_empty()).cloned().unwrap_or_else(|| "impeccable".to_string())
+    let value = io.env.get("IMPECCABLE_SELF").filter(|v| !v.is_empty()).cloned().unwrap_or_else(|| "impeccable".to_string());
+    // The skill launcher exports a raw filename; the npm shim exports a
+    // command prefix such as `npx impeccable`. Quote only a complete filename,
+    // resolving relative launchers against the same cwd as the printed command.
+    if abs(io, &value).is_file()
+        && !value.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'/' | b'.' | b'_' | b'-' | b':') || (cfg!(windows) && b == b'\\'))
+    {
+        if cfg!(windows) {
+            // cmd.exe treats single quotes as literal filename characters.
+            return format!("\"{value}\"");
+        }
+        return format!("'{}'", value.replace('\'', "'\\''"));
+    }
+    value
 }
 
 fn now() -> String {
@@ -1812,6 +1825,48 @@ mod transparency_guidance_tests {
         std::fs::remove_dir_all(dir).unwrap();
         assert!(reasons.contains("/custom/impeccable comp-spec --crop art"), "{reasons}");
         assert!(reasons.contains("/custom/impeccable generate-image --ref"), "{reasons}");
+    }
+
+    #[test]
+    fn launcher_paths_are_quoted_but_command_prefixes_are_preserved() {
+        let dir = std::env::temp_dir().join(format!("impeccable-launcher-quoting-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("my tools")).unwrap();
+        let relative = if cfg!(windows) { "my tools/impeccable.cmd" } else { "my tools/impeccable" };
+        let launcher = dir.join(relative);
+        std::fs::write(&launcher, "").unwrap();
+        for value in [relative.to_string(), launcher.to_string_lossy().into_owned()] {
+            let env = [("IMPECCABLE_SELF".into(), value.clone())].into();
+            let (io, _) = Io::captured("", dir.clone(), env);
+            let quote = if cfg!(windows) { '"' } else { '\'' };
+            let expected = format!("{quote}{value}{quote}");
+            assert_eq!(self_cmd(&io), expected);
+            let next = next_instruction(&io, &json!({"phase": "plates"}));
+            assert!(next.contains(&format!("{expected} generate-image --ref")), "{next}");
+        }
+        for value in ["impeccable", "npx impeccable", "bunx impeccable", "npx --yes impeccable"] {
+            let env = [("IMPECCABLE_SELF".into(), value.into())].into();
+            let (io, _) = Io::captured("", dir.clone(), env);
+            assert_eq!(self_cmd(&io), value);
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn printed_launcher_path_survives_shell_parsing() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("impeccable-launcher-shell-{}", std::process::id()));
+        let launcher = dir.join("user's $assets `literal`/impeccable");
+        std::fs::create_dir_all(launcher.parent().unwrap()).unwrap();
+        std::fs::write(&launcher, "#!/bin/sh\nprintf '%s\\n' \"$@\"\n").unwrap();
+        std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let env = [("IMPECCABLE_SELF".into(), launcher.to_string_lossy().into_owned())].into();
+        let (io, _) = Io::captured("", dir.clone(), env);
+        let command = format!("{} generate-image --background transparent", self_cmd(&io));
+        let output = std::process::Command::new("/bin/sh").arg("-c").arg(command).current_dir(&dir).output().unwrap();
+        std::fs::remove_dir_all(dir).unwrap();
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        assert_eq!(String::from_utf8(output.stdout).unwrap(), "generate-image\n--background\ntransparent\n");
     }
 
     #[test]
