@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { prepareWorkspace, cleanupWorkspace, runTurn, fileLoaded, ENGINE_BIN } from '../skill-behavior/harness.mjs';
 import { getModel, detectProvider, hasKey } from '../skill-behavior/providers.mjs';
-import { assertCompleted } from './assertions.mjs';
+import { assertCompleted, assertNoChangeDocumentation } from './assertions.mjs';
+import { missingReferences } from '../skill-behavior/assertions.mjs';
 
 // A synthetic post-review checkpoint, not another full-build simulation.
 // The page and system agree. A missing sidecar predates this task and is not
@@ -29,7 +30,7 @@ const BRIEF = '# Keyboard guide\n\n## Direction contract\nTHESIS: A short readin
 for (const modelId of (process.env.IMPECCABLE_SKILL_BEHAVIOR_MODELS || 'claude-sonnet-5').split(',').map((id) => id.trim()).filter(Boolean)) {
   for (const existingSystem of [true, false]) {
     it(`post-review ${existingSystem ? 'extension preserves' : 'new world records'} its system :: ${modelId}`,
-      { skip: !ENGINE_BIN || !hasKey(detectProvider(modelId)) }, async () => {
+      { skip: !ENGINE_BIN || !hasKey(detectProvider(modelId)) }, async (t) => {
         const files = {
           'PRODUCT.md': '# Field Manual\n\n## Platform\nweb\n\nA reference guide for keyboard users.\n',
           ...(existingSystem ? { 'DESIGN.md': DESIGN } : {}),
@@ -55,7 +56,7 @@ for (const modelId of (process.env.IMPECCABLE_SKILL_BEHAVIOR_MODELS || 'claude-s
             userPrompt: 'Continue from this checkpoint and finish the task.',
           });
           assertCompleted(result);
-          assert.ok(fileLoaded(result.trace, 'degraded/documenter.md'), 'must load the shipped documentation pass even when DESIGN.md stays unchanged');
+          t.diagnostic(`Documentation wrapper coverage gaps (non-blocking for evidenced no-op): ${missingReferences(result.trace, ['degraded/documenter.md']).join(', ') || 'none'}`);
           assert.ok(fileLoaded(result.trace, 'reference/document.md'), 'must consult the documentation contract');
           for (const name of existingSystem ? ['index.html', 'DESIGN.md'] : ['index.html']) {
             assert.ok(fileLoaded(result.trace, name), `documentation must check ${name}, not merely announce a no-op`);
@@ -64,9 +65,11 @@ for (const modelId of (process.env.IMPECCABLE_SKILL_BEHAVIOR_MODELS || 'claude-s
             assert.equal(fs.readFileSync(path.join(workspace, name), 'utf8'), contents, `${name} must remain unchanged`);
           }
           if (existingSystem) {
+            assertNoChangeDocumentation(result, { target: 'index.html', evidence: [/system-ui/i, /65\s*ch/i, /#0645ad/i] });
             assert.equal(fs.existsSync(path.join(workspace, '.impeccable/design.json')), false, 'must not repair pre-existing sidecar drift unasked');
             assert.deepEqual(result.trace.toolCalls.flatMap((call) => call.mutatedPaths || []), [], 'a no-change check must not mutate other project files');
           } else {
+            assert.ok(fileLoaded(result.trace, 'degraded/documenter.md'), 'new-world documentation must run the shipped documentation pass');
             const design = fs.readFileSync(path.join(workspace, 'DESIGN.md'), 'utf8');
             assert.match(design, /^---\n/);
             assert.match(design, /^colors:/m);

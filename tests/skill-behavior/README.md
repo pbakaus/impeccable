@@ -119,6 +119,32 @@ workflow claim; the reference-loading miss remains visible. No full build was
 rerun. Focused Claude routing S3/S4, the ordinary suite, source-first build, and
 generated-skill authoring validation passed. Release #782 remains held.
 
+### Outcome assertions (maintainer-approved follow-up)
+
+S16/S17 now require a completed, useful, read-only answer; S17 distinguishes
+assessment from implementation and explains that critique is optional before
+polish. Explicit invented prerequisites remain failures. Missing routing or
+comparison references are TAP diagnostics based on successful content loads,
+not failed read attempts. These English-fixture phrase checks are bounded
+regression checks, not a comprehensive semantic grader.
+
+The resumed ordinary-extension checkpoint accepts a direct documentation pass
+without the degraded wrapper only with actual document.md, page, and DESIGN.md
+reads, a concrete no-change report grounded in the fixture's type/palette/layout,
+and zero mutations. Seeded files must still be byte-identical and pre-existing
+sidecar drift must remain untouched. New-world documentation writes, redesign
+ordering, and full-build completion gates are unchanged.
+
+Offline re-evaluation of saved Claude traces: three advice responses and two
+evidenced no-op handoffs pass the new assertions. The original post-review
+baseline and the 637-second full build still fail for absent documentation
+evidence. Unit negative controls reject fabricated prerequisites, unsolicited
+edits/interviews/scans, failed reads, empty or unsupported reports, and exhausted
+budgets. This is assertion replay, not new model evidence or a rerun of cleaned-up
+workspaces' filesystem checks. No paid calls or skill prose changes were needed.
+The earlier reference misses above are now diagnostics, not release blockers by
+themselves; this does not establish an all-green full-workflow matrix.
+
 Each scenario:
 
 1. `prepareWorkspace()` uses the production transformer to build current source
@@ -241,8 +267,8 @@ results remain the completed measurements.
 | 13 | empty workspace; prompt is `/impeccable teach` | runs `impeccable context` and diverts into `reference/init.md` because `teach` aliases `init` |
 | 14 | PRODUCT.md with `## Platform: ios` (native iOS app); prompt is `/impeccable craft a tide detail screen` | `impeccable context` runs and emits the contents of `reference/ios.md` directly, placing native conventions in context without a second model-directed read |
 | 15 | same iOS fixture; prompt is `/impeccable audit` | agent loads `reference/audit.native.md` (the Commands-table native variant, routed instead of `audit.md`) |
-| 16 | existing surface, with and without PRODUCT.md; asks where to start | loads `routing.md`, delivers advice, and does not edit project files, start an interview, archive a critique, or run menu scans |
-| 17 | existing surface; asks whether critique is required before polish | loads `routing.md` and both command references, then delivers advice without executing the playbooks |
+| 16 | existing surface, with and without PRODUCT.md; asks where to start | completes relevant advice without edits, interviews, critique archives, menu scans, or explicit invented refinement prerequisites; reference coverage is diagnostic |
+| 17 | existing surface; asks whether critique is required before polish | completes read-only advice distinguishing assessment from implementation and explaining critique is optional; reference coverage is diagnostic |
 | 18 | existing surface; explicitly requests polish followed by a next-command recommendation | loads `polish.md` rather than substituting workflow advice for the requested work |
 | 19 | tiny spacing edit with PRODUCT.md + DESIGN.md; Bash denied, a real-loader success control, and a denied-launcher planning-only case | edits require successful playbook/craft-floor reads and a pre-edit denial warning; planning stays read-only and skips craft-floor |
 

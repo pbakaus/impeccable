@@ -4,10 +4,55 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { MockLanguageModelV3 } from 'ai/test';
 import { prepareWorkspace, cleanupWorkspace, makeTools, runTurn, fileLoaded, SKILL_BODY } from './skill-behavior/harness.mjs';
-import { assertPlanningFallbackWarning, assertNewWorkLifecycle } from './skill-behavior/assertions.mjs';
+import { assertPlanningFallbackWarning, assertNewWorkLifecycle, assertWorkflowAdvice, assertCommandComparison, missingReferences } from './skill-behavior/assertions.mjs';
 import { CASE_STUDY_ANSWER } from './skill-behavior/fixtures.mjs';
 import { sourceHash as hashSources } from './skill-workflow/source-hash.mjs';
-import { assertCompleted, assertFreshCaptures } from './skill-workflow/assertions.mjs';
+import { assertCompleted, assertFreshCaptures, assertNoChangeDocumentation } from './skill-workflow/assertions.mjs';
+
+it('advice outcomes do not depend on opening every reference, but keep consent and prerequisite gates', () => {
+  const trace = { toolCalls: [], writePaths: [], questionCalls: [], bashCommands: [] };
+  const advice = 'For index.html, start with init to capture context and document to record the existing identity.';
+  const comparison = 'Critique is an assessment. Polish makes fixes. Critique is optional; polish can run directly.';
+  const check = (text, observation = trace) => assertCommandComparison(observation, text);
+  assert.doesNotThrow(() => assertWorkflowAdvice(trace, advice, { missingContext: true }));
+  assert.doesNotThrow(() => check(comparison));
+  assert.doesNotThrow(() => check("Critique reviews the surface. Polish refines it. Critique isn't required before polish."));
+  assert.doesNotThrow(() => check('Critique gives a report. Polish edits the surface independently, without a critique.'));
+  assert.deepEqual(missingReferences(trace, ['reference/critique.md']), ['reference/critique.md']);
+  for (const wrong of ['You must run critique before polish.', 'Critique is required before polish.', 'Polish requires a critique.']) {
+    assert.throws(() => check(`${comparison} ${wrong}`), /invent a critique prerequisite/);
+  }
+  for (const wrong of ['You must run init before polishing.', 'You need to document before refinement.', 'Polish requires PRODUCT.md.']) {
+    assert.throws(() => assertWorkflowAdvice(trace, `${advice} ${wrong}`, { missingContext: true }), /mandatory prerequisite/);
+  }
+  assert.throws(() => check(''), /advice must reach/);
+  assert.throws(() => check('I loaded critique.md and polish.md.'), /explain critique/);
+  for (const mutation of ['index.html', '.impeccable/critique/report.md']) {
+    assert.throws(() => check(comparison, { ...trace, toolCalls: [{ mutatedPaths: [mutation] }] }), /must not edit/);
+  }
+  assert.throws(() => check(comparison, { ...trace, writePaths: ['DESIGN.md'] }), /write tool/);
+  assert.throws(() => check(comparison, { ...trace, questionCalls: [{}] }), /interview/);
+  assert.throws(() => check(comparison, { ...trace, bashCommands: ['impeccable detect index.html'] }), /menu scans/);
+});
+
+it('an unchanged documentation outcome needs real reads and a supported report, not a wrapper filename', () => {
+  const files = ['reference/document.md', 'index.html', 'DESIGN.md'];
+  const toolCalls = files.map((file) => ({ loadedFiles: [file] }));
+  const result = { outcome: 'complete', trace: { toolCalls }, text: 'No changes: index.html matches DESIGN.md: system-ui, 65ch, #0645ad.' };
+  const options = { target: 'index.html', evidence: [/system-ui/, /65ch/, /#0645ad/] };
+  const check = (value) => assertNoChangeDocumentation(value, options);
+  assert.doesNotThrow(() => check(result));
+  assert.deepEqual(missingReferences(result.trace, ['degraded/documenter.md']), ['degraded/documenter.md']);
+  for (const missing of files) {
+    assert.throws(() => check({ ...result, trace: { toolCalls: toolCalls.filter((call) => !call.loadedFiles.includes(missing)) } }), /inspect the actual source/);
+  }
+  assert.throws(() => check({ ...result, trace: { toolCalls: [{ input: { path: 'reference/document.md' }, succeeded: false }] } }), /inspect the actual source/);
+  assert.throws(() => check({ ...result, text: 'No changes: index.html matches DESIGN.md.' }), /report evidence/);
+  assert.throws(() => check({ ...result, outcome: 'step-budget' }), /did not finish/);
+  for (const file of ['DESIGN.md', '.impeccable/design.json', 'index.html']) {
+    assert.throws(() => check({ ...result, trace: { toolCalls: [...toolCalls, { mutatedPaths: [file] }] } }), /must not mutate/);
+  }
+});
 
 it('full workflows reject exhausted budgets and stale or absent visual evidence', () => {
   for (const outcome of ['checkpoint', 'step-budget', 'output-limit', 'error']) {

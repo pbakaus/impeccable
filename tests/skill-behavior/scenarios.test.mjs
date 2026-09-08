@@ -28,7 +28,8 @@ import {
   ENGINE_MISSING_MESSAGE,
 } from './harness.mjs';
 import { detectProvider, getModel, hasKey, resolveModelList, PROVIDERS } from './providers.mjs';
-import { assertPlanningFallbackWarning, LAUNCHER_FAILURE_WARNING } from './assertions.mjs';
+import { assertPlanningFallbackWarning, LAUNCHER_FAILURE_WARNING, assertAdviceOnly, assertWorkflowAdvice, assertCommandComparison, missingReferences } from './assertions.mjs';
+import { assertCompleted } from '../skill-workflow/assertions.mjs';
 import {
   PRODUCT_MD_SAMPLE,
   PRODUCT_MD_SAMPLE_NO_REGISTER,
@@ -88,16 +89,6 @@ function executedUpdateCommands(trace) {
   return executableSegments.filter((segment) =>
     /^(?:(?:npx|bunx|pnpx)\s+)?(?:impeccable|skills)\s+update\b/.test(segment),
   );
-}
-
-function assertAdviceOnly(trace, text) {
-  assert.ok(text.trim(), 'advice must reach the user, not stop at reference loading');
-  assert.deepEqual(trace.writePaths, [], 'advice must not use the write tool');
-  const mutations = trace.toolCalls.flatMap((call) => call.mutatedPaths ?? [])
-    .filter((file) => !file.startsWith('.impeccable/') || file.startsWith('.impeccable/critique/'));
-  assert.deepEqual(mutations, [], 'advice must not edit project files or archive an unsolicited critique');
-  assert.deepEqual(trace.questionCalls, [], 'advice must not start an init or design interview');
-  assert.equal(bashCommandsMatching(trace, 'impeccable detect').length, 0, 'workflow advice does not run menu scans');
 }
 
 for (const modelId of resolveModelList()) {
@@ -634,40 +625,42 @@ for (const modelId of resolveModelList()) {
       ['existing project', WORKFLOW_ADVICE_FILES],
       ['missing product context', { 'index.html': MINIMAL_LANDING_HTML }],
     ]) {
-      it(`scenario 16: workflow advice stays read-only (${label})`, async () => {
+      it(`scenario 16: workflow advice stays read-only (${label})`, async (t) => {
         const workspace = prepareWorkspace({ files });
         try {
-          const { trace, text } = await runTurn({
+          const result = await runTurn({
             workspace,
             model,
             userPrompt: "I'm joining this project. Where should I start with Impeccable?",
             maxSteps: 8,
             contextOnlyBash: true,
           });
+          const { trace, text } = result;
           logTrace('S16', label, modelId, trace, { textSample: text.slice(0, 300) });
-          assert.ok(readsMatching(trace, 'reference/routing.md').length, 'workflow advice loads the shared routing reference');
-          assertAdviceOnly(trace, text);
+          t.diagnostic(`Reference coverage gaps (non-blocking): ${missingReferences(trace, ['reference/routing.md']).join(', ') || 'none'}`);
+          assertCompleted(result);
+          assertWorkflowAdvice(trace, text, { missingContext: label === 'missing product context' });
         } finally {
           cleanupWorkspace(workspace);
         }
       });
     }
 
-    it('scenario 17: command comparison reads references without running them', async () => {
+    it('scenario 17: command comparison explains independent commands without running them', async (t) => {
       const workspace = prepareWorkspace({ files: WORKFLOW_ADVICE_FILES });
       try {
-        const { trace, text } = await runTurn({
+        const result = await runTurn({
           workspace,
           model,
           userPrompt: 'Should I use critique or polish on index.html? Is a critique required before polishing?',
           maxSteps: 8,
           contextOnlyBash: true,
         });
+        const { trace, text } = result;
         logTrace('S17', 'command-comparison', modelId, trace, { textSample: text.slice(0, 300) });
-        assert.ok(readsMatching(trace, 'reference/routing.md').length, 'a command name in a question still routes to advice');
-        assert.ok(readsMatching(trace, 'reference/critique.md').length, 'comparison consults the critique contract');
-        assert.ok(readsMatching(trace, 'reference/polish.md').length, 'comparison consults the polish contract');
-        assertAdviceOnly(trace, text);
+        t.diagnostic(`Reference coverage gaps (non-blocking): ${missingReferences(trace, ['reference/routing.md', 'reference/critique.md', 'reference/polish.md']).join(', ') || 'none'}`);
+        assertCompleted(result);
+        assertCommandComparison(trace, text);
       } finally {
         cleanupWorkspace(workspace);
       }
