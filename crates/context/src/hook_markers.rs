@@ -33,19 +33,28 @@ static LAUNCHER_HOOK_MARKER: Lazy<Regex> = Lazy::new(|| {
 /// User-scope Windows commands embed a JSON-quoted path whose backslashes are
 /// doubled in the command string (#784). #604's single `\`→`/` replace is not
 /// enough: `\\` becomes `//`, which breaks `skills/impeccable` matching.
+/// A leading `//` after a quote (or at the start of the string) is a UNC
+/// prefix and stays two slashes, so doctor still probes `//server/share/...`.
 fn normalize_hook_separators(command: &str) -> String {
     let mut out = String::with_capacity(command.len());
-    let mut last_was_sep = false;
-    for ch in command.chars() {
-        if ch == '\\' || ch == '/' {
-            if !last_was_sep {
-                out.push('/');
-                last_was_sep = true;
-            }
-        } else {
+    let mut chars = command.chars().peekable();
+    let mut prev: Option<char> = None;
+    while let Some(ch) = chars.next() {
+        if ch != '\\' && ch != '/' {
             out.push(ch);
-            last_was_sep = false;
+            prev = Some(ch);
+            continue;
         }
+        let mut n = 1usize;
+        while matches!(chars.peek(), Some('\\' | '/')) {
+            chars.next();
+            n += 1;
+        }
+        out.push('/');
+        if n >= 2 && matches!(prev, None | Some('"' | '\'')) {
+            out.push('/');
+        }
+        prev = Some('/');
     }
     out
 }
@@ -227,5 +236,24 @@ mod tests {
         assert!(is_impeccable_hook_command(cmd), "{cmd}");
         assert!(is_launcher_hook_command(cmd), "{cmd}");
         assert!(is_design_hook_command(cmd), "{cmd}");
+    }
+
+    #[test]
+    fn preserves_unc_prefix_in_program_token() {
+        let launcher = r"\\server\share\.claude\skills\impeccable\scripts\impeccable";
+        let quoted = serde_json::to_string(launcher).unwrap();
+        let json_escaped = format!("[ ! -f {quoted} ] || {quoted} hook");
+        assert!(is_impeccable_hook_command(&json_escaped), "{json_escaped}");
+        assert_eq!(
+            hook_program_token(&json_escaped).as_deref(),
+            Some("//server/share/.claude/skills/impeccable/scripts/impeccable")
+        );
+
+        let single = r#"[ ! -f "\\server\share\.claude\skills\impeccable\scripts\impeccable" ] || "\\server\share\.claude\skills\impeccable\scripts\impeccable" hook"#;
+        assert!(is_impeccable_hook_command(single), "{single}");
+        assert_eq!(
+            hook_program_token(single).as_deref(),
+            Some("//server/share/.claude/skills/impeccable/scripts/impeccable")
+        );
     }
 }
