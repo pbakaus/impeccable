@@ -677,6 +677,8 @@ jobs:
         run: bun run test:skill-behavior
 
   skill-workflow:
+    # Expensive, manually opted-in completion diagnostics. This does not
+    # replace the multi-family skill-behavior protocol suite above.
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' && inputs.skill_workflow
     timeout-minutes: 70

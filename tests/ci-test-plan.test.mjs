@@ -18,6 +18,9 @@ describe('ci-test-plan', () => {
     assert.ok(job.indexOf('playwright install --with-deps chromium') < job.indexOf('bun run test:skill-workflow'));
     const protocol = workflow.split('\n  skill-behavior:')[1].split('\n  skill-workflow:')[0];
     assert.match(protocol, /bun run fetch:engine/);
+    assert.doesNotMatch(protocol, /IMPECCABLE_SKILL_BEHAVIOR_MODELS:/, 'protocol coverage must retain the multi-family defaults');
+    assert.match(protocol, /GOOGLE_CLOUD_API_KEY:/);
+    assert.match(protocol, /ANTHROPIC_API_KEY:/);
   });
   it('keeps docs-only pull requests on the core suite', () => {
     const outputs = runPlan({

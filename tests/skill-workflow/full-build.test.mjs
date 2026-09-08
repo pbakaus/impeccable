@@ -20,7 +20,7 @@ import { detectProvider, getModel, hasKey, resolveModelList, PROVIDERS } from '.
 import { assertNewWorkLifecycle } from '../skill-behavior/assertions.mjs';
 import { PRODUCT_MD_SAMPLE, DESIGN_MD_SAMPLE as ORIGINAL_DESIGN, CASE_STUDY_ANSWER } from '../skill-behavior/fixtures.mjs';
 import { prepareBrowser } from './browser.mjs';
-import { assertCompleted, assertFreshCaptures } from './assertions.mjs';
+import { assertCompleted, assertFreshCaptures, assertDocumentationArtifacts } from './assertions.mjs';
 
 const DESIGN_MD_SAMPLE = ORIGINAL_DESIGN.replace(/GT Sectra \(commercial\)/g, 'Georgia (system)').replace(/JetBrains Mono/g, 'monospace').replace(/Inter/g, 'Arial');
 
@@ -211,6 +211,7 @@ for (const modelId of process.env.IMPECCABLE_SKILL_BEHAVIOR_MODELS ? resolveMode
         assert.ok(fileLoaded(trace, 'documenter.md'), 'redesign must run the shipped documentation pass');
         const design = fs.readFileSync(path.join(workspace, 'DESIGN.md'), 'utf8');
         assert.notEqual(design.trim(), LEGACY_DESIGN.trim(), 'redesign preserved the old visual world verbatim');
+        assertDocumentationArtifacts(design, fs.readFileSync(path.join(workspace, '.impeccable/design.json'), 'utf8'));
       } finally {
         cleanupWorkspace(workspace);
       }

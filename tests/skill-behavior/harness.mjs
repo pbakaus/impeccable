@@ -172,7 +172,7 @@ function safeResolve(root, userPath) {
 }
 
 function isContextOnlyCommand(workspace, command) {
-  const match = command.trim().match(/^\.claude\/skills\/impeccable\/scripts\/impeccable context(?: --target (?:"([a-zA-Z0-9_./+ -]+)"|'([a-zA-Z0-9_./+ -]+)'|([a-zA-Z0-9_./+-]+)))?$/);
+  const match = command.trim().match(/^\.claude\/skills\/impeccable\/scripts\/impeccable context(?: --target(?: |=)(?:"([a-zA-Z0-9_./+ -]+)"|'([a-zA-Z0-9_./+ -]+)'|([a-zA-Z0-9_./+-]+)))?$/);
   if (!match) return false;
   const target = match[1] ?? match[2] ?? match[3];
   return target === undefined || (!target.startsWith('-') && typeof safeResolve(workspace, target) === 'string');

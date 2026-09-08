@@ -353,12 +353,14 @@ it('context-only routing tools reject shell searches and compound commands befor
       '.claude/skills/impeccable/scripts/impeccable context; echo bad > index.html',
       '.claude/skills/impeccable/scripts/impeccable context --target index.html; echo bad > index.html',
       '.claude/skills/impeccable/scripts/impeccable context --target "$(echo bad > index.html)"',
+      '.claude/skills/impeccable/scripts/impeccable context --target=index.html; echo bad > index.html',
+      '.claude/skills/impeccable/scripts/impeccable context --target="$(echo bad > index.html)"',
       'echo bad > index.html',
     ]) {
       assert.match(await tools.bash.execute({ command }), /^Error:/);
     }
     assert.equal(fs.readFileSync(path.join(workspace, 'index.html'), 'utf8'), 'before');
-    assert.equal(trace.bashCommands.length, 5, 'rejected attempts remain observable');
+    assert.equal(trace.bashCommands.length, 7, 'rejected attempts remain observable');
     assert.ok(trace.toolCalls.every((call) => call.mutatedPaths.length === 0));
   } finally {
     cleanupWorkspace(workspace);
@@ -370,10 +372,12 @@ it('successful-loader controls accept a workspace-relative target', { skip: !pro
   try {
     const { tools } = makeTools(workspace, {}, {}, { contextOnlyBash: true });
     assert.match(await tools.bash.execute({ command: '.claude/skills/impeccable/scripts/impeccable context --target index.html' }), /^exit=0\n/);
-    for (const target of ['src/routes/+page.svelte', '"src/routes/+page.svelte"']) {
-      assert.match(await tools.bash.execute({ command: `.claude/skills/impeccable/scripts/impeccable context --target ${target}` }), /^exit=0\n/);
+    for (const separator of [' ', '=']) {
+      for (const target of ['index.html', 'src/routes/+page.svelte', '"src/routes/+page.svelte"', '"my page.html"', "'my page.html'"]) {
+        assert.match(await tools.bash.execute({ command: `.claude/skills/impeccable/scripts/impeccable context --target${separator}${target}` }), /^exit=0\n/);
+      }
+      assert.match(await tools.bash.execute({ command: `.claude/skills/impeccable/scripts/impeccable context --target${separator}../outside.html` }), /^Error:/);
     }
-    assert.match(await tools.bash.execute({ command: '.claude/skills/impeccable/scripts/impeccable context --target ../outside.html' }), /^Error:/);
   } finally {
     cleanupWorkspace(workspace);
   }
