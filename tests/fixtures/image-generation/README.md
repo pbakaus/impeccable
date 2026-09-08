@@ -51,9 +51,8 @@ python3 tests/image-transparency-review.py tmp/image-transparency-2.5
 ```
 
 This suite explicitly sends `background: transparent` and `output_format:
-png` to both Images API endpoints. **The engine does not yet expose these
-options**; this is a capability probe, not a full asset-producer integration
-test. Defaults remain two samples per case/model, `high`, 1024×1024.
+png` to both Images API endpoints. These match the engine's `--background transparent` payload. This
+is a model capability comparison, not a full asset-producer agent test. Defaults remain two samples per case/model, `high`, 1024×1024.
 
 The review helper requires Pillow and makes no network requests. It records
 alpha histograms, border alpha, fixed sail/hole probes, and a central glass

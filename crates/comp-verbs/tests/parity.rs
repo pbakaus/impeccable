@@ -16,6 +16,30 @@ fn fixtures() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../comp/tests/fixtures")
 }
 
+#[test]
+fn transparent_plate_prompt_preserves_paint_and_reference_spacing() {
+    let dir = std::env::temp_dir().join(format!("impeccable-alpha-prompt-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("spec.json"), json!({"regions": [{"id": "boat", "kind": "plate", "note": "White sails and three hull holes"}]}).to_string()).unwrap();
+    let (mut io, output) = impeccable_common::Io::captured("", dir.clone(), Default::default());
+    let args = [
+        "--spec",
+        "spec.json",
+        "--plate-prompt",
+        "boat",
+        "--background",
+        "transparent",
+    ]
+    .map(String::from);
+    assert_eq!(comp_spec::run(&args, &mut io), 0);
+    let prompt = String::from_utf8(output.stdout.borrow().clone()).unwrap();
+    std::fs::remove_dir_all(dir).unwrap();
+    assert!(prompt.contains("transparent alpha"), "{prompt}");
+    assert!(prompt.contains("white"));
+    assert!(prompt.contains("margins"));
+    assert!(!prompt.contains("edge to edge"));
+}
+
 fn load(name: &str) -> Image {
     let buf = std::fs::read(fixtures().join(name)).unwrap();
     png_io::decode_png(&buf).unwrap().image

@@ -63,7 +63,8 @@ glass test separately measures a central body region and uses alpha <250.
 | Sunburst | 6 | 30.39 s | $0.0563 |
 
 Estimated cost: **$1.96 for the valid comparison**, plus **$0.63 for the five
-excluded fixture attempts** ($2.59 total). These use reported text/image input
+excluded fixture attempts** ($2.59 comparison total, excluding the subsequent
+CLI smoke calls below). These use reported text/image input
 and image output tokens at $5/$8/$30 per million respectively, with no cache
 discount assumed, as in the [comp report](../README.md). They are estimates,
 not invoice totals. The same quality label consumes different token counts:
@@ -142,14 +143,23 @@ Flare is closer in this fixture, but none is a faithful geometric replacement.
 
 [Original Flare plate PNG](plate-gpt-image-2.5-flare-1.png).
 
-## Impeccable integration boundary
+## Impeccable integration
 
-The current `generate-image` helper does **not** expose or send `background`
-or `output_format`, and the asset-producer instructions still prescribe
-chroma-keying. This PR's default-model switch alone does not enable native
-transparency in that fallback path. A follow-up integration should expose
-the transparent PNG request for cutouts and replace the corresponding
-chroma-key instructions, while retaining opaque output for photos/textures.
+`generate-image --background transparent` now requests native transparent PNG
+on both the generation and reference-edit endpoints, preserves returned alpha,
+and records `background` and `outputFormat` in the prompt sidecar. It rejects
+invalid background values and non-PNG transparent output paths before billing.
+`opaque` and `auto` are also accepted; omitting the option preserves the prior
+API defaults. Fake mode can emit a real RGBA cutout for offline testing.
+
+`comp-spec --plate-prompt <id> --background transparent` authors a cutout
+prompt that preserves white paint, fine edges, holes, and reference margins.
+The asset-producer and build guidance now use the supported crop → prompt-file
+→ reference-edit commands, selecting native alpha for isolated cutouts and
+opaque output for photos/full-frame imagery. Earlier instructions advertised
+a `generate-image --plate` shortcut that the runtime did not implement; those
+paths now use explicit `--ref`, `--prompt-file`, `--out`, and `--size` arguments.
+Native image tools keep precedence and receive the same cutout prompt.
 
 The downstream foundation already decodes RGBA PNGs and alpha-composites
 plates over the region's sampled ground before scoring. A real generated
@@ -169,3 +179,50 @@ visible despite those passes.
 Validation also includes the full `bun run test` suite against the rebuilt
 engine (pass; two opt-in provider replays skipped), runner syntax and both
 suite dry runs, and deterministic reference-render assertions.
+
+## Live CLI integration checks
+
+Three additional billed requests exercise the rebuilt engine, rather than
+calling the API from the comparison runner: one botanical generation, one
+boat reference edit, and one refinement of that edit. The edit uses the real
+`comp-spec --crop` and `comp-spec --plate-prompt --background transparent`
+commands. [CLI records](cli-integration-results.json) include arguments,
+prompts, sidecars, timings, image hashes, and alpha probes.
+
+Both endpoints return native RGBA PNGs and record the selected background,
+PNG format, model, references, and embedded prompt correctly. The botanical
+cutout has 65.25% fully clear pixels and clean light foregrounds.
+
+![CLI botanical cutout on white, dark, coral](cli-botanical.webp)
+
+The first boat output has a clear exterior but paints its three openings
+near-opaque white (alpha 254). The prescribed visual check catches this;
+alpha-channel presence alone would not. One prompt refinement explicitly
+identifies the three openings as alpha-zero holes. All three tested centers
+then have alpha 0, while both white sail probes remain at 254. Geometry still
+needs review, as in the earlier comparison. These results validate the
+inspection/refinement workflow, not a guarantee that every first attempt
+will be usable.
+
+![First CLI plate: incorrect white openings](cli-boat.webp)
+![Refined CLI plate: openings show the page ground](cli-boat-refined.webp)
+
+The integration adds failing-first regressions for JSON generation and
+multipart editing, explicit/omitted background handling, unchanged PNG image
+chunks after embedding, invalid requests, fake-mode RGBA output, cutout
+prompt authoring, and executable plate guidance. All **448 Rust tests** and
+all **20 offline new-work E2E tests** pass. The full Bun/Node suite passes
+against the rebuilt release binary. The one additional oracle update is
+the reviewed `comp-spec` help line advertising the background option.
+
+The opt-in provider-backed skill-behavior suite was also run: **60/66 pass**
+across Sonnet 5, GPT 5.6 Terra, and Gemini 3.7 Flash. Sonnet's planning-only
+context-loading failure passed a focused retry. Terra's three advice/comparison
+wording assertions failed again and also failed against the committed
+pre-integration skill (`245fb464`). Gemini's missing-surface wording failure
+also reproduced on that baseline; its comparison wording check passed on the
+baseline but failed in the integration run. That last stochastic wording
+failure remains unresolved. These checks concern onboarding advice and
+command explanations, not alpha generation; the suite is **not fully green**.
+The baseline runs use the prior skill files with the same rebuilt engine,
+which those read-only advice scenarios do not invoke for image generation.

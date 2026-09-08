@@ -186,9 +186,14 @@ fn png_chunk(ty: &[u8], data: &[u8]) -> Vec<u8> {
 }
 
 fn png_fake(prompt: &str, w: usize, h: usize) -> Vec<u8> {
+    png_fake_background(prompt, w, h, false)
+}
+
+fn png_fake_background(prompt: &str, w: usize, h: usize, transparent: bool) -> Vec<u8> {
     let colors = palette(prompt);
     let band_h = (h as f64 / colors.len() as f64).ceil() as usize;
-    let stride = w * 3;
+    let channels = if transparent { 4 } else { 3 };
+    let stride = w * channels;
     let mut raw = vec![0u8; h * (stride + 1)];
     for y in 0..h {
         let row = y * (stride + 1);
@@ -196,17 +201,24 @@ fn png_fake(prompt: &str, w: usize, h: usize) -> Vec<u8> {
         let idx = (colors.len() - 1).min(if band_h == 0 { 0 } else { y / band_h });
         let [r, g, b] = colors[idx];
         for x in 0..w {
-            let p = row + 1 + x * 3;
+            let p = row + 1 + x * channels;
             raw[p] = r;
             raw[p + 1] = g;
             raw[p + 2] = b;
+            if transparent {
+                raw[p + 3] = if x < w / 8 || x >= w - w / 8 || y < h / 8 || y >= h - h / 8 {
+                    0
+                } else {
+                    255
+                };
+            }
         }
     }
     let mut ihdr = vec![0u8; 13];
     ihdr[..4].copy_from_slice(&(w as u32).to_be_bytes());
     ihdr[4..8].copy_from_slice(&(h as u32).to_be_bytes());
     ihdr[8] = 8;
-    ihdr[9] = 2;
+    ihdr[9] = if transparent { 6 } else { 2 };
     let mut enc = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::new(9));
     let _ = enc.write_all(&raw);
     let idat = enc.finish().unwrap_or_default();
@@ -238,6 +250,16 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
 }
 
 fn run_with_api_base(args: &[String], io: &mut Io, api_base: &str) -> i32 {
+    let background = arg(args, "background");
+    if args.iter().any(|a| a == "--background") && !matches!(background.as_deref(), Some("transparent" | "opaque" | "auto")) {
+        io.err("generate-image: --background must be transparent, opaque, or auto.\n");
+        return 1;
+    }
+    let transparent = background.as_deref() == Some("transparent");
+    if transparent && arg(args, "out").is_some_and(|out| !out.to_ascii_lowercase().ends_with(".png")) {
+        io.err("generate-image: --background transparent requires a .png --out path.\n");
+        return 1;
+    }
     let cwd = io.cwd.to_string_lossy().into_owned();
     let env: Env = io.env.clone();
     let abs = |p: &str| jsp::resolve(&cwd, &[p]);
@@ -264,7 +286,13 @@ fn run_with_api_base(args: &[String], io: &mut Io, api_base: &str) -> i32 {
             return 1;
         };
         let (w, h) = parse_size(&arg(args, "size").unwrap_or_else(|| "1536x1024".into()));
-        let bytes = if out.ends_with(".svg") { svg_fake(&prompt, w as f64, h as f64).into_bytes() } else { png_fake(&prompt, w, h) };
+        let bytes = if out.ends_with(".svg") {
+            svg_fake(&prompt, w as f64, h as f64).into_bytes()
+        } else if transparent {
+            png_fake_background(&prompt, w, h, true)
+        } else {
+            png_fake(&prompt, w, h)
+        };
         if let Err(e) = std::fs::write(abs(&out), bytes) {
             io.err(&format!("Error: {}\n", node_read_error(&out, &e)));
             return 1;
@@ -313,6 +341,10 @@ fn run_with_api_base(args: &[String], io: &mut Io, api_base: &str) -> i32 {
         field("size", &size);
         field("quality", &quality);
         field("n", "1");
+        if let Some(background) = &background {
+            field("background", background);
+            field("output_format", "png");
+        }
         for r in &refs {
             let bytes = match std::fs::read(abs(r)) {
                 Ok(b) => b,
@@ -348,6 +380,10 @@ fn run_with_api_base(args: &[String], io: &mut Io, api_base: &str) -> i32 {
         m.insert("size".into(), Value::String(size.clone()));
         m.insert("quality".into(), Value::String(quality.clone()));
         m.insert("n".into(), Value::from(1));
+        if let Some(background) = &background {
+            m.insert("background".into(), Value::String(background.clone()));
+            m.insert("output_format".into(), Value::String("png".into()));
+        }
         agent
             .post(&format!("{api_base}/images/generations"))
             .set("Authorization", &format!("Bearer {}", key))
@@ -396,6 +432,10 @@ fn run_with_api_base(args: &[String], io: &mut Io, api_base: &str) -> i32 {
         m.insert("createdAt".into(), Value::String(iso_now()));
         m.insert("tool".into(), Value::String("impeccable generate-image".into()));
         m.insert("model".into(), Value::String(model.clone()));
+        if let Some(background) = &background {
+            m.insert("background".into(), Value::String(background.clone()));
+            m.insert("outputFormat".into(), Value::String("png".into()));
+        }
         if !refs.is_empty() {
             m.insert("refs".into(), Value::Array(refs.iter().cloned().map(Value::String).collect()));
         }
@@ -444,7 +484,7 @@ mod tests {
     use super::*;
     use std::time::Duration;
 
-    fn round_trip(edit: bool, override_model: Option<&str>) {
+    fn round_trip(edit: bool, override_model: Option<&str>, background: Option<&str>) {
         let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
         let api_base = format!("http://{}", server.server_addr());
         let temp = std::env::temp_dir().join(format!("impeccable-image-{}-{}", std::process::id(), server.server_addr().to_ip().unwrap().port()));
@@ -459,7 +499,7 @@ mod tests {
             let mut bytes = Vec::new();
             request.as_reader().read_to_end(&mut bytes).unwrap();
             body.push_str(&String::from_utf8_lossy(&bytes));
-            request.respond(tiny_http::Response::from_string(r#"{"data":[{"b64_json":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII="}]}"#)).unwrap();
+            request.respond(tiny_http::Response::from_string(r#"{"data":[{"b64_json":"iVBORw0KGgoAAAANSUhEUgAAAAQAAAABCAYAAAD5PA/NAAAAGklEQVR4nGP4////f7mAigYGBgaG/////wMAUdQJXhk2RAEAAAAASUVORK5CYII="}]}"#)).unwrap();
             (path, content_type, body)
         });
         let env = Env::from([("OPENAI_API_KEY".into(), "test-key".into())]);
@@ -470,6 +510,9 @@ mod tests {
         }
         if let Some(model) = override_model {
             args.extend(["--model".into(), model.into()]);
+        }
+        if let Some(background) = background {
+            args.extend(["--background".into(), background.into()]);
         }
         let exit = run_with_api_base(&args, &mut io, &api_base);
         let (path, content_type, body) = handle.join().unwrap();
@@ -484,12 +527,33 @@ mod tests {
             assert!(body.contains(&format!("name=\"model\"\r\n\r\n{model}\r\n")));
             assert!(body.contains("name=\"image[]\"; filename=\"ref.png\""));
             assert_eq!(sidecar["refs"], serde_json::json!(["ref.png"]));
+            if let Some(background) = background {
+                assert!(body.contains(&format!("name=\"background\"\r\n\r\n{background}\r\n")));
+                assert!(body.contains("name=\"output_format\"\r\n\r\npng\r\n"));
+            } else {
+                assert!(!body.contains("name=\"background\""));
+            }
         } else {
             assert_eq!(path, "/images/generations");
             assert_eq!(content_type, "application/json");
             let body: Value = serde_json::from_str(&body).unwrap();
-            assert_eq!(body, serde_json::json!({"model": model, "prompt": "Comp regression", "size": "1536x1024", "quality": "high", "n": 1}));
+            let mut expected = serde_json::json!({"model": model, "prompt": "Comp regression", "size": "1536x1024", "quality": "high", "n": 1});
+            if let Some(background) = background {
+                expected["background"] = background.into();
+                expected["output_format"] = "png".into();
+            }
+            assert_eq!(body, expected);
         }
+        if let Some(background) = background {
+            assert_eq!(sidecar["background"], background);
+            assert_eq!(sidecar["outputFormat"], "png");
+        } else {
+            assert!(sidecar.get("background").is_none());
+        }
+        // The server's PNG contains clear, partial, near-opaque and opaque pixels.
+        // Embedding may add metadata before IEND, but must preserve all image chunks.
+        let original = base64_decode("iVBORw0KGgoAAAANSUhEUgAAAAQAAAABCAYAAAD5PA/NAAAAGklEQVR4nGP4////f7mAigYGBgaG/////wMAUdQJXhk2RAEAAAAASUVORK5CYII=");
+        assert!(image.starts_with(&original[..original.len() - 12]));
         assert_eq!(sidecar["model"], model);
         assert_eq!(sidecar["prompt"], "Comp regression");
         assert!(image.starts_with(b"\x89PNG\r\n\x1a\n"));
@@ -500,21 +564,73 @@ mod tests {
 
     #[test]
     fn generation_uses_image_25_and_records_model() {
-        round_trip(false, None);
+        round_trip(false, None, None);
     }
 
     #[test]
     fn reference_edit_uses_image_25_and_records_model() {
-        round_trip(true, None);
+        round_trip(true, None, None);
     }
 
     #[test]
     fn generation_accepts_model_override() {
-        round_trip(false, Some("gpt-image-2"));
+        round_trip(false, Some("gpt-image-2"), None);
     }
 
     #[test]
     fn reference_edit_accepts_sunburst_override() {
-        round_trip(true, Some("gpt-image-2.5-sunburst"));
+        round_trip(true, Some("gpt-image-2.5-sunburst"), None);
+    }
+
+    #[test]
+    fn transparent_generation_preserves_alpha_and_provenance() {
+        round_trip(false, None, Some("transparent"));
+    }
+
+    #[test]
+    fn transparent_edit_preserves_alpha_and_provenance() {
+        round_trip(true, Some("gpt-image-2.5-sunburst"), Some("transparent"));
+    }
+
+    #[test]
+    fn opaque_background_is_explicit() {
+        round_trip(false, None, Some("opaque"));
+    }
+
+    #[test]
+    fn fake_cutout_has_real_alpha_and_default_fake_stays_rgb() {
+        use std::io::Read;
+        let png = png_fake_background("cutout", 16, 16, true);
+        assert_eq!(png[25], 6); // RGBA
+        assert_eq!(png_fake("comp", 16, 16)[25], 2); // RGB, legacy fake output
+        let mut offset = 8;
+        let mut raw = Vec::new();
+        while offset + 12 <= png.len() {
+            let size = u32::from_be_bytes(png[offset..offset + 4].try_into().unwrap()) as usize;
+            if &png[offset + 4..offset + 8] == b"IDAT" {
+                flate2::read::ZlibDecoder::new(&png[offset + 8..offset + 8 + size])
+                    .read_to_end(&mut raw)
+                    .unwrap();
+            }
+            offset += size + 12;
+        }
+        assert_eq!(raw[4], 0); // transparent corner
+        assert_eq!(raw[8 * (16 * 4 + 1) + 1 + 8 * 4 + 3], 255); // opaque subject
+    }
+
+    #[test]
+    fn invalid_background_requests_fail_before_network_or_output() {
+        for flags in [
+            vec!["--background"],
+            vec!["--background", "white"],
+            vec!["--background", "transparent", "--out", "cutout.jpg"],
+        ] {
+            let (mut io, captured) = Io::captured("", std::env::temp_dir(), Env::new());
+            let args = flags.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+            assert_eq!(run(&args, &mut io), 1);
+            let stderr = String::from_utf8(captured.stderr.borrow().clone()).unwrap();
+            assert!(stderr.contains("--background"), "{stderr}");
+            assert!(!stderr.contains("OPENAI_API_KEY"));
+        }
     }
 }

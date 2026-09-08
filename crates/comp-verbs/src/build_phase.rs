@@ -471,7 +471,7 @@ fn gate_plates(io: &Io) -> Gate {
         let file = rr.get("plate").and_then(Value::as_str).map(String::from);
         let Some(file) = file.clone().filter(|f| abs(io, f).exists()) else {
             reasons.push(format!(
-                "plate missing for {id}: expected {}; produce it from comp-spec.mjs --crop {id} with generate-image.mjs --plate",
+                "plate missing for {id}: expected {}; produce it from comp-spec.mjs --crop {id} with generate-image --ref <crop.png> --prompt-file <prompt.txt> --out <plate.png>",
                 file.clone().unwrap_or_else(|| "(no path)".into())
             ));
             plates.push(json!({ "id": id, "file": file, "status": "missing" }));
@@ -497,7 +497,7 @@ fn gate_plates(io: &Io) -> Gate {
         let mut score_val: Option<f64> = None;
         if let Some(comp) = &comp {
             let refimg = plate_reference(comp, &spec, rr);
-            // composite keyed plates over the region's sampled ground
+            // composite transparent plates over the region's sampled ground
             let mut build = img.image.clone();
             let mut transparent = 0usize;
             let mut i = 3;
@@ -537,7 +537,7 @@ fn gate_plates(io: &Io) -> Gate {
                 let same = impeccable_comp::metrics::structure_score(&raw, &r::resize(&img.image, raw.width as f64, raw.height as f64), 256);
                 if same >= 0.95 {
                     reasons.push(format!(
-                        "plate {file} is the comp crop of region {id} (structure {}% against the raw region, a resample of the same pixels): a crop of the comp is never a plate; generate the plate from the crop as reference (generate-image.mjs --plate {id})",
+                        "plate {file} is the comp crop of region {id} (structure {}% against the raw region, a resample of the same pixels): a crop of the comp is never a plate; generate the plate from the crop as reference (generate-image --ref <crop.png> --prompt-file <prompt.txt> --out <plate.png> for {id})",
                         to_fixed(same * 100.0, 0)
                     ));
                 }
@@ -1220,7 +1220,7 @@ fn gate_hero(io: &Io, state: &mut Value, build_path: &str, min: f64, out_dir: &s
         } else if kind == "control" {
             "this control does not read as the comp's: rebuild its chrome from the crop (border, fill, radius, chevron or arrow, label size) rather than from a component default".to_string()
         } else {
-            format!("the plate here does not read as the comp region; regenerate it with the crop as reference (generate-image.mjs --plate {id}) and place it at its box")
+            format!("the plate here does not read as the comp region; regenerate it with the crop as reference (generate-image --ref <crop.png> --prompt-file <prompt.txt> --out <plate.png> for {id}) and place it at its box")
         };
         reasons.push(format!(
             "region {id} ({kind}) is contradicted (structure {}%, detail added {}%): {tail}",
@@ -1476,7 +1476,7 @@ fn hero_loop_verdict(state: &mut Value, gate: &Gate, artifact_path: &str, io: &I
     if stuck && no_progress {
         let w = first_worst.unwrap();
         return Some(format!(
-            "region {w} has been the worst region for three attempts and the score moved less than 3 points: value edits are not reaching it. Open {} and rebuild that region from the comp crop (place its plate, or produce one with generate-image.mjs --plate, or re-derive its structure from the spec box), then recapture.",
+            "region {w} has been the worst region for three attempts and the score moved less than 3 points: value edits are not reaching it. Open {} and rebuild that region from the comp crop (place its plate, or produce one with generate-image --ref <crop.png> --prompt-file <prompt.txt> --out <plate.png>, or re-derive its structure from the spec box), then recapture.",
             format!(".impeccable/review/diff/hero/regions/{w}.png")
         ));
     }
@@ -1752,7 +1752,7 @@ fn next_instruction(io: &Io, state: &Value) -> String {
             "Measure the comp: {s} comp-spec --comp {comp} --grid, open {}, write regions.json (every illustration, photo, texture as its own plate region; every text block its own text region), run {s} comp-spec --comp {comp} --regions regions.json. Then measure the type: {s} font-match --measure <id> for each text region (cap height, width class, weight class) and {s} font-match --rank <lead text region> --text \"<its first words>\" to choose the headline face by metrics (the USE line is the CSS; with no browser it records the catalog's nearest face, which is the choice; do not install one, and do not write a chosen face into the spec by hand). Then {s} build-phase advance.",
             format!("{BUILD_DIR}/comp-grid.png")
         ),
-        "plates" => format!("Produce every plate in the spec ({s} comp-spec --print lists them). Illustrations, photos, figures: {s} generate-image --plate <id>, one call per plate. It crops the comp region itself, sends the crop as the edit reference, sizes the plate, keys ink-on-ground to alpha, scores the result against the crop (PLATE-SCORE) and embeds the prompt; nothing else does all of that. Only when it errors (no key, no network) fall back to the harness image tool with {s} comp-spec --crop <id> as its reference image and {s} comp-spec --plate-prompt <id> as its prompt, then {s} embed-prompt; do not post-process a plate with magick or write your own keying. A generation takes 30 to 90 seconds: run it with a long wait (a 90 s yield, or all plates in one command joined with &&) rather than polling an open session turn after turn. A line drawing or figure on flat ground is keyed to alpha automatically (PLATE-CHROMA): place it with a plain <img> over the page's own ground, never on a second paper. An opaque plate whose ground differs from the page goes in with mix-blend-mode: multiply. Textures (paper, cloth, grain): do not generate first; crop a clean patch of the comp region ({s} comp-spec --crop <id> --raw, then cut a patch free of ink), mirror-tile it to the plate size, and save it as the plate; generate only when no clean patch exists. The gate scores a texture against its whole region box, so a texture region should be drawn around clean ground (a sample cell), not around the ink it sits under; the page tiles it wherever the material goes. Then {s} build-phase advance. Write no page code before this passes."),
+        "plates" => format!("Produce every plate in the spec ({s} comp-spec --print lists them). For each illustration, photo, or figure, run {s} comp-spec --crop <id> --out <crop.png> and save {s} comp-spec --plate-prompt <id> to a prompt file. For an isolated figure or object on the page ground, add --background transparent to that plate-prompt command. Prefer the harness image tool with the crop as reference and that prompt; request native transparent PNG for cutouts. With the API fallback, run {s} generate-image --ref <crop.png> --prompt-file <prompt.txt> --out <plate.png> --size <WxH> --quality high; add --background transparent for cutouts. Create the output directory first and choose a supported size matching the region's aspect at least 1.5x its pixel size. generate-image embeds the prompt; after a harness generation run {s} embed-prompt <plate.png> --prompt-file <prompt.txt>. Preserve white paint, fine edges, and interior holes; verify alpha and inspect the cutout on light and dark grounds. Do not chroma-key native transparent output. Keep photos and textures opaque. Place cutouts with a plain <img> over the page's own ground; inspect glass and other translucent material carefully. Textures (paper, cloth, grain): crop a clean patch from {s} comp-spec --crop <id> --raw and mirror-tile it to the plate size; generate only when no clean patch exists. The gate scores a texture against its whole region box, so draw its region around clean ground. Then {s} build-phase advance scores all plates against their comp regions. A pass does not replace visual inspection of placement, scale, and alpha. Write no page code before this passes."),
         "hero" => format!(
             "Run {s} build-phase scaffold first: it writes the measured layout as CSS custom properties (.impeccable/build/scaffold/layout.css, --r-<id>-x/y/w/h in % of the comp, plus cap height, font-size, family, and weight where measured) and a reference page with every region at its box. Bind those numbers to your own markup (an element per region, its box from the properties); the reference is a check, not the page, and overlapping boxes are overlapping boxes. Build only the first viewport at {}. Copy the comp's words verbatim in this phase (headline, labels, table cells, footer): the user approved that comp with those words, and rewriting is a later, stated decision, never a silent one here. Set every text region's font-size from its measured cap height and its face from the ranking. Plates first: place every plate at its spec box ({s} comp-spec --print lists boxes as percentages of the viewport) with object-fit: cover before writing a line of text or a control, capture into {HERO_REPRO}, and run {s} build-phase record hero (not advance) once so you see the plate regions read as match before text exists; then lay the semantic layer (text, controls, rules) over the plates from the spec's palette and boxes, capture, advance. When it fails, open the region crops it lists first, in order, then fix; do not build past the hero until it passes.",
             bp.unwrap_or("the comp size")
@@ -1762,6 +1762,22 @@ fn next_instruction(io: &Io, state: &Value) -> String {
         "responsive" => format!("Build the other viewports (mobile first if the surface is mobile). The first viewport must hold at common desktop widths (1280 to 1600), not only at the comp's exact size: fluid columns, no fixed-px grid that wraps 96px narrower. Settle or disable entrance motion before capturing (an element mid-animation reads as missing). Capture desktop.png (1440 wide, full page) and mobile.png (390 wide, full page) into .impeccable/review/; the gate diffs the top of desktop.png (scaled to the comp's width) against the comp. Then {s} build-phase advance."),
         "review" => format!("Spawn the finish reviewer with the state file, the hero diff report, and the captures; record its disposition with {s} build-phase finish --disposition <word>."),
         _ => String::new(),
+    }
+}
+
+#[cfg(test)]
+mod transparency_guidance_tests {
+    use super::*;
+
+    #[test]
+    fn plates_use_supported_reference_edit_and_native_alpha_commands() {
+        let (io, _) = Io::captured("", std::env::temp_dir(), Default::default());
+        let instruction = next_instruction(&io, &json!({"phase": "plates"}));
+        assert!(instruction.contains("--background transparent"));
+        assert!(instruction.contains("--ref"));
+        assert!(instruction.contains("--prompt-file"));
+        assert!(!instruction.contains("generate-image --plate"));
+        assert!(!instruction.contains("PLATE-CHROMA"));
     }
 }
 

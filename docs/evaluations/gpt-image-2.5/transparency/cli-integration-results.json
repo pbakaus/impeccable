@@ -1,0 +1,171 @@
+[
+  {
+    "id": "botanical",
+    "args": [
+      "generate-image",
+      "--prompt-file",
+      "botanical-prompt.txt",
+      "--out",
+      "botanical.png",
+      "--size",
+      "1024x1024",
+      "--quality",
+      "high",
+      "--background",
+      "transparent"
+    ],
+    "seconds": 19.028797292,
+    "stdout": "IMAGE: botanical.png (1024x1024, high, gpt-image-2.5-flare, billed to your OpenAI key); prompt embedded + sidecar at botanical.png.json\n",
+    "sidecar": {
+      "prompt": "Generate a production-ready botanical illustration cutout for a website. A single graceful branch with three white camellia flowers, bright green and dark green leaves, and delicate charcoal ink stems. Refined hand-drawn editorial illustration with subtle watercolor detail. All three flowers must have solid opaque white petals, not holes; leaf interiors must stay green. Preserve delicate stems and small gaps between leaves and petals. Center the entire branch with clear padding on every edge, no cropped tips. The background and all gaps between separate plant parts must be genuinely transparent alpha, not white, not a checkerboard picture, not a chroma color. No frame, typography, floor, backdrop, border, or cast shadow. Deliver an isolated reusable PNG asset.",
+      "createdAt": "2026-09-08T22:01:48.453Z",
+      "tool": "impeccable generate-image",
+      "model": "gpt-image-2.5-flare",
+      "background": "transparent",
+      "outputFormat": "png"
+    },
+    "sha256": "8477d2a7f8434a097dac53401c50922622a5247bb4cbe61ec6bc0cb67c91c351",
+    "alpha": {
+      "id": "botanical",
+      "mode": "RGBA",
+      "size": [
+        1024,
+        1024
+      ],
+      "alphaMin": 0,
+      "alphaMax": 254,
+      "transparentPercent": 65.25
+    },
+    "visualReview": "Clean cutout; white petals stay solid on dark and coral."
+  },
+  {
+    "id": "boat",
+    "args": [
+      "generate-image",
+      "--prompt-file",
+      "boat-prompt.txt",
+      "--out",
+      "boat.png",
+      "--size",
+      "1024x1024",
+      "--quality",
+      "high",
+      "--background",
+      "transparent",
+      "--ref",
+      "reference.png"
+    ],
+    "seconds": 16.984962167000003,
+    "stdout": "IMAGE: boat.png (1024x1024, high, gpt-image-2.5-flare, billed to your OpenAI key); prompt embedded + sidecar at boat.png.json\n",
+    "sidecar": {
+      "prompt": "Use the provided crop as the approved visual reference and recreate it as a clean production asset at the target aspect ratio. This is a designed illustration plate. Output the same drawing, same style, same line weight and shading. Preserve silhouette, composition, perspective, palette (#58a59d), lighting, material, and texture exactly. Remove every piece of UI text, label, caption, button, and interface chrome that is not part of the artwork itself. Remove interface borders, card corners, and layout backgrounds; retain only shadows that belong to the referenced object itself. Do not add objects, change the concept, or restyle. Preserve the reference's placement, scale, and clear margins exactly; do not enlarge the subject to fill the frame. Remove the page ground and interior gaps to genuine transparent alpha. Keep white paint and other solid foreground colors opaque, preserve fine edges, and retain partial alpha only for genuinely translucent material or soft shadows in the reference. No chroma background, baked-in checkerboard, or matte. Output a transparent PNG cutout. Region: The same sailboat with two white sails, fine dark rigging, teal hull, gold keel, and exactly three circular open portholes..\n",
+      "createdAt": "2026-09-08T22:01:46.410Z",
+      "tool": "impeccable generate-image",
+      "model": "gpt-image-2.5-flare",
+      "background": "transparent",
+      "outputFormat": "png",
+      "refs": [
+        "reference.png"
+      ]
+    },
+    "sha256": "eadf267850f8a440790b8be145566874766d20c6e6bb7b331137cc789fb9d96a",
+    "alpha": {
+      "id": "boat",
+      "mode": "RGBA",
+      "size": [
+        1024,
+        1024
+      ],
+      "alphaMin": 0,
+      "alphaMax": 254,
+      "transparentPercent": 79.55
+    },
+    "visualReview": "Real alpha outside the boat, but all three hull openings are incorrectly near-opaque white; refinement required."
+  },
+  {
+    "args": [
+      "generate-image",
+      "--ref",
+      "reference.png",
+      "--prompt-file",
+      "boat-refined-prompt.txt",
+      "--out",
+      "boat-refined.png",
+      "--size",
+      "1024x1024",
+      "--quality",
+      "high",
+      "--background",
+      "transparent"
+    ],
+    "seconds": 18.202266792000003,
+    "stdout": "IMAGE: boat-refined.png (1024x1024, high, gpt-image-2.5-flare, billed to your OpenAI key); prompt embedded + sidecar at boat-refined.png.json\n",
+    "reason": "Initial output painted the three hull openings white; one refinement per asset-producer protocol.",
+    "id": "boat-refined",
+    "sidecar": {
+      "prompt": "Use the provided crop as the approved visual reference and recreate it as a clean production asset at the target aspect ratio. This is a designed illustration plate. Output the same drawing, same style, same line weight and shading. Preserve silhouette, composition, perspective, palette (#58a59d), lighting, material, and texture exactly. Remove every piece of UI text, label, caption, button, and interface chrome that is not part of the artwork itself. Remove interface borders, card corners, and layout backgrounds; retain only shadows that belong to the referenced object itself. Do not add objects, change the concept, or restyle. Preserve the reference's placement, scale, and clear margins exactly; do not enlarge the subject to fill the frame. Remove the page ground and interior gaps to genuine transparent alpha. Keep white paint and other solid foreground colors opaque, preserve fine edges, and retain partial alpha only for genuinely translucent material or soft shadows in the reference. No chroma background, baked-in checkerboard, or matte. Output a transparent PNG cutout. Region: The same sailboat with two white sails, fine dark rigging, teal hull, gold keel, and exactly three circular open portholes..\n\nCritical cutout detail: the THREE circular portholes inside the teal hull are OPEN HOLES, not white disks or painted windows. The center and interior of each of those three circles must be alpha zero so a dark or coral page shows through. Only the two triangular sails remain opaque white. Clear all cream page ground and rigging gaps to alpha zero. Preserve the original silhouette, scale, and placement.\n",
+      "createdAt": "2026-09-08T22:03:06.281Z",
+      "tool": "impeccable generate-image",
+      "model": "gpt-image-2.5-flare",
+      "background": "transparent",
+      "outputFormat": "png",
+      "refs": [
+        "reference.png"
+      ]
+    },
+    "sha256": "7021fc4a05b0bcb8127642df61ddf4d79e4de34ed94df0c6abf00a154701020d",
+    "alphaProbes": [
+      {
+        "x": 409,
+        "y": 731,
+        "rgba": [
+          52,
+          103,
+          106,
+          0
+        ]
+      },
+      {
+        "x": 540,
+        "y": 731,
+        "rgba": [
+          54,
+          106,
+          110,
+          0
+        ]
+      },
+      {
+        "x": 671,
+        "y": 731,
+        "rgba": [
+          52,
+          105,
+          107,
+          0
+        ]
+      },
+      {
+        "x": 420,
+        "y": 500,
+        "rgba": [
+          254,
+          254,
+          254,
+          254
+        ]
+      },
+      {
+        "x": 615,
+        "y": 500,
+        "rgba": [
+          254,
+          254,
+          254,
+          254
+        ]
+      }
+    ],
+    "visualReview": "Refinement clears all three holes while preserving white sails; geometry still differs from the reference."
+  }
+]

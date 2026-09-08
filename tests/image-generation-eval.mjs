@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 // Opt-in, billed comparison. Run with node --env-file=.env tests/image-generation-eval.mjs --run.
-// Comp payloads match generate-image; the transparency suite probes native API
-// background/output_format options that the engine does not yet expose.
+// Payloads match generate-image, including its explicit transparent PNG options.
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';

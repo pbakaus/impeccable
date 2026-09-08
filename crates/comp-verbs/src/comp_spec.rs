@@ -642,6 +642,10 @@ pub fn plate_reference(comp: &Image, spec: &Value, region: &Value) -> Image {
 
 /// JS: platePrompt(spec, region).
 pub fn plate_prompt(spec: &Value, region: &Value) -> String {
+    plate_prompt_background(spec, region, false)
+}
+
+fn plate_prompt_background(spec: &Value, region: &Value, transparent: bool) -> String {
     let world = spec
         .get("palette")
         .and_then(Value::as_array)
@@ -665,8 +669,16 @@ pub fn plate_prompt(spec: &Value, region: &Value) -> String {
         kind_line.to_string(),
         format!("Preserve silhouette, composition, perspective, palette ({world}), lighting, material, and texture exactly."),
         "Remove every piece of UI text, label, caption, button, and interface chrome that is not part of the artwork itself.".to_string(),
-        "Remove letterboxing, borders, card corners, drop shadows, and any layout background that the page will draw in code.".to_string(),
-        "Do not add objects. Do not change the concept. Do not restyle. The artwork fills the whole frame edge to edge at the same scale as the reference; no margins, no border, no background band.".to_string(),
+        if transparent {
+            "Remove interface borders, card corners, and layout backgrounds; retain only shadows that belong to the referenced object itself.".to_string()
+        } else {
+            "Remove letterboxing, borders, card corners, drop shadows, and any layout background that the page will draw in code.".to_string()
+        },
+        if transparent {
+            "Do not add objects, change the concept, or restyle. Preserve the reference's placement, scale, and clear margins exactly; do not enlarge the subject to fill the frame. Remove the page ground and interior gaps to genuine transparent alpha. Keep white paint and other solid foreground colors opaque, preserve fine edges, and retain partial alpha only for genuinely translucent material or soft shadows in the reference. No chroma background, baked-in checkerboard, or matte. Output a transparent PNG cutout.".to_string()
+        } else {
+            "Do not add objects. Do not change the concept. Do not restyle. The artwork fills the whole frame edge to edge at the same scale as the reference; no margins, no border, no background band.".to_string()
+        },
     ];
     if let Some(n) = note {
         parts.push(format!("Region: {n}."));
@@ -793,7 +805,7 @@ fn resolve(io: &Io, p: &str) -> PathBuf {
 pub fn run(argv: &[String], io: &mut Io) -> i32 {
     let spec_path = arg_or(argv, "spec", SPEC_PATH).to_string();
     if flag(argv, "help") || argv.is_empty() {
-        io.out("usage: comp-spec.mjs --comp <png> --grid            write .impeccable/build/comp-grid.png (10x10 labeled grid) + palette + bands\n       comp-spec.mjs --comp <png> --regions <json>  measure regions -> .impeccable/build/spec.json\n         regions json: { \"regions\": [ { \"id\": \"art\", \"kind\": \"plate|image|texture|text|control|chrome\", \"grid\": \"E0:J4\", \"note\": \"...\" } ] }\n       comp-spec.mjs --comp <png> --auto            band regions when you have no regions file\n       comp-spec.mjs --print                        the compact spec\n       comp-spec.mjs --crop <id> [--out f] [--scale n]   reference crop of a region (never a shipping asset)\n       comp-spec.mjs --plate-prompt <id>            the regeneration prompt for a raster region\n");
+        io.out("usage: comp-spec.mjs --comp <png> --grid            write .impeccable/build/comp-grid.png (10x10 labeled grid) + palette + bands\n       comp-spec.mjs --comp <png> --regions <json>  measure regions -> .impeccable/build/spec.json\n         regions json: { \"regions\": [ { \"id\": \"art\", \"kind\": \"plate|image|texture|text|control|chrome\", \"grid\": \"E0:J4\", \"note\": \"...\" } ] }\n       comp-spec.mjs --comp <png> --auto            band regions when you have no regions file\n       comp-spec.mjs --print                        the compact spec\n       comp-spec.mjs --crop <id> [--out f] [--scale n]   reference crop of a region (never a shipping asset)\n       comp-spec.mjs --plate-prompt <id> [--background transparent|opaque|auto]  the regeneration prompt for a raster region\n");
         return 0;
     }
     if flag(argv, "print") {
@@ -805,6 +817,11 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
         return 0;
     }
     if let Some(id) = arg(argv, "plate-prompt") {
+        let background = arg(argv, "background");
+        if flag(argv, "background") && !matches!(background, Some("transparent" | "opaque" | "auto")) {
+            io.err("comp-spec: --background must be transparent, opaque, or auto.\n");
+            return 1;
+        }
         let Some(spec) = load_spec(&resolve(io, &spec_path)) else {
             io.err(&format!("comp-spec: no spec at {spec_path}\n"));
             return 1;
@@ -814,7 +831,7 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
             io.err(&format!("comp-spec: no region {id}\n"));
             return 1;
         };
-        io.out(&format!("{}\n", plate_prompt(&spec, region)));
+        io.out(&format!("{}\n", plate_prompt_background(&spec, region, background == Some("transparent"))));
         return 0;
     }
     if let Some(id) = arg(argv, "crop") {
