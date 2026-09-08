@@ -1520,6 +1520,12 @@ describe('live-e2e LLM agent variant prompt', () => {
     assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /bare text element/);
     assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /Accept persists a real source change/);
   });
+
+  it('uses permanent styling hooks outside the reserved live-runtime namespace', () => {
+    assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /data-design-variant/);
+    assert.doesNotMatch(VARIANT_SYSTEM_INSTRUCTIONS, /add[^\n]*data-impeccable-e2e-variant/);
+    assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /Never invent data-impeccable-\*/);
+  });
 });
 
 describe('live-e2e LLM agent variant copy validation', () => {

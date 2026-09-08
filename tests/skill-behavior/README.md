@@ -145,6 +145,24 @@ workspaces' filesystem checks. No paid calls or skill prose changes were needed.
 The earlier reference misses above are now diagnostics, not release blockers by
 themselves; this does not establish an all-green full-workflow matrix.
 
+### Bounded release verification (2026-09-08)
+
+The focused Anthropic live-accept test now verifies the durable session reaches
+`completed`, not just clean source/DOM. Its agent instruction had recommended
+`data-impeccable-e2e-variant`, inside the reserved runtime namespace; the test
+prompt now uses a permanent `data-design-variant` styling hook. The strengthened
+test passed in 14s without forced completion. The full non-billed suite passed.
+No runtime or skill source was changed for this correction.
+
+Claude post-review controls: new world passed in 77s, writing token-bearing
+DESIGN.md and the v2 sidecar; approved redesign failed in 16s. The latter read the
+page and old system, then wrote prose-only DESIGN.md without consulting the
+documentation spec or creating `.impeccable/design.json`, and claimed nothing
+remained outstanding. This is a missing required artifact, not merely missing
+reference coverage. The test stays red; no retry was purchased. Release remains
+held pending disposition. These are synthetic post-review checkpoints, not
+proof of a complete redesign lifecycle.
+
 Each scenario:
 
 1. `prepareWorkspace()` uses the production transformer to build current source

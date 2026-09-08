@@ -28,14 +28,17 @@ const PAGE = '<!doctype html><html lang="en"><meta charset="utf-8"><title>Keyboa
 const BRIEF = '# Keyboard guide\n\n## Direction contract\nTHESIS: A short reading page.\nOWN-WORLD: Inherit Field Manual.\nSTORY: Read keyboard instructions.\nFIRST VIEWPORT: Title, paragraph, link.\nFORM: Direct, precisely specified page; no seed required.\nFINISH: unreviewed and undocumented is unfinished.\n';
 
 for (const modelId of (process.env.IMPECCABLE_SKILL_BEHAVIOR_MODELS || 'claude-sonnet-5').split(',').map((id) => id.trim()).filter(Boolean)) {
-  for (const existingSystem of [true, false]) {
-    it(`post-review ${existingSystem ? 'extension preserves' : 'new world records'} its system :: ${modelId}`,
+  for (const mode of ['extension', 'new world', 'redesign']) {
+    const existingSystem = mode !== 'new world';
+    const preserveSystem = mode === 'extension';
+    it(`post-review ${mode} ${preserveSystem ? 'preserves' : 'records'} its system :: ${modelId}`,
       { skip: !ENGINE_BIN || !hasKey(detectProvider(modelId)) }, async (t) => {
         const files = {
           'PRODUCT.md': '# Field Manual\n\n## Platform\nweb\n\nA reference guide for keyboard users.\n',
-          ...(existingSystem ? { 'DESIGN.md': DESIGN } : {}),
+          ...(existingSystem ? { 'DESIGN.md': preserveSystem ? DESIGN : '# Old Field Manual\n\nBeige cards, serif body type, orange links.\n' } : {}),
           'index.html': PAGE,
-          '.impeccable/surfaces/index-html.md': BRIEF,
+          '.impeccable/surfaces/index-html.md': mode === 'redesign'
+            ? BRIEF.replace('Inherit Field Manual.', 'Approved replacement: white, blue links, system-ui, single column.') : BRIEF,
         };
         const workspace = prepareWorkspace({ files });
         try {
@@ -44,14 +47,18 @@ for (const modelId of (process.env.IMPECCABLE_SKILL_BEHAVIOR_MODELS || 'claude-s
             workspace, model: getModel(modelId), maxSteps: 12, timeoutMs: 180000, contextOnlyBash: true,
             environment: 'This is a resumed post-review checkpoint. No subagent or browser tools are available. The review is closed; no further UI edits or screenshots are needed. Read/list/write tools are available.',
             priorMessages: [
-              { role: 'user', content: existingSystem
+              { role: 'user', content: preserveSystem
                 ? 'Use /impeccable to add the specified keyboard guide page inside the established Field Manual world. Keep the existing visual system. Do not repair unrelated project drift.'
-                : 'Use /impeccable to create Field Manual’s first keyboard guide page. The chosen identity is plain, single-column, system fonts, white background and blue links.' },
+                : mode === 'redesign'
+                  ? 'Use /impeccable to redesign the keyboard guide. I approve replacing the old beige-card/serif/orange world with the plain single-column, system-font, white-background and blue-link identity. Update the system documentation from the finished page.'
+                  : 'Use /impeccable to create Field Manual’s first keyboard guide page. The chosen identity is plain, single-column, system fonts, white background and blue links.' },
               { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'load-new-work', toolName: 'read', input: { path: '.claude/skills/impeccable/reference/new-work.md' } }] },
               { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'load-new-work', toolName: 'read', output: { type: 'text', value: reference } }] },
-              { role: 'assistant', content: `Checkpoint: context and PRODUCT.md were loaded. The user confirmed the exact page and identity. The surface brief and index.html are written. Desktop/mobile captures were validated, the detector ran once, and the shipped finish reviewer returned ship with no open findings. ${existingSystem
+              { role: 'assistant', content: `Checkpoint: context and PRODUCT.md were loaded. The user confirmed the exact page and identity. The surface brief and index.html are written. Desktop/mobile captures were validated, the detector ran once, and the shipped finish reviewer returned ship with no open findings. ${preserveSystem
                 ? 'DESIGN.md was loaded. No durable system changes were requested or introduced. The pre-existing missing .impeccable/design.json was reported but not repaired.'
-                : 'This is the first completed surface of the approved new world. No DESIGN.md or design sidecar exists yet.'}` },
+                : mode === 'redesign'
+                  ? 'The approved replacement world is implemented in index.html. DESIGN.md still describes the superseded identity; no design sidecar exists yet.'
+                  : 'This is the first completed surface of the approved new world. No DESIGN.md or design sidecar exists yet.'}` },
             ],
             userPrompt: 'Continue from this checkpoint and finish the task.',
           });
@@ -62,21 +69,26 @@ for (const modelId of (process.env.IMPECCABLE_SKILL_BEHAVIOR_MODELS || 'claude-s
             assert.ok(fileLoaded(result.trace, name), `documentation must check ${name}, not merely announce a no-op`);
           }
           for (const [name, contents] of Object.entries(files)) {
+            if (mode === 'redesign' && name === 'DESIGN.md') continue;
             assert.equal(fs.readFileSync(path.join(workspace, name), 'utf8'), contents, `${name} must remain unchanged`);
           }
-          if (existingSystem) {
+          if (preserveSystem) {
             assertNoChangeDocumentation(result, { target: 'index.html', evidence: [/system-ui/i, /65\s*ch/i, /#0645ad/i] });
             assert.equal(fs.existsSync(path.join(workspace, '.impeccable/design.json')), false, 'must not repair pre-existing sidecar drift unasked');
             assert.deepEqual(result.trace.toolCalls.flatMap((call) => call.mutatedPaths || []), [], 'a no-change check must not mutate other project files');
           } else {
             assert.ok(fileLoaded(result.trace, 'degraded/documenter.md'), 'new-world documentation must run the shipped documentation pass');
             const design = fs.readFileSync(path.join(workspace, 'DESIGN.md'), 'utf8');
+            if (mode === 'redesign') assert.notEqual(design, files['DESIGN.md'], 'approved redesign must replace the old system');
             assert.match(design, /^---\n/);
             assert.match(design, /^colors:/m);
             assert.match(design, /system-ui/);
             const sidecar = JSON.parse(fs.readFileSync(path.join(workspace, '.impeccable/design.json'), 'utf8'));
             assert.equal(sidecar.schemaVersion, 2);
             assert.ok(sidecar.extensions && sidecar.narrative);
+            const writes = result.trace.toolCalls.flatMap((call) => call.mutatedPaths || []);
+            assert.ok(writes.includes('DESIGN.md') && writes.includes('.impeccable/design.json'), 'both documentation artifacts must be written');
+            assert.deepEqual(writes.filter((file) => !['DESIGN.md', '.impeccable/design.json'].includes(file)), [], 'documentation must stay inside its write boundary');
           }
         } finally {
           cleanupWorkspace(workspace);

@@ -83,7 +83,7 @@ export const VARIANT_SYSTEM_INSTRUCTIONS = [
   '- Replace mode: for bare text elements, keep the full visible copy in one editable text node. If you add child markup for styling, wrap the entire copy; never split the copy across sibling text nodes.',
   '- Replace mode: PRESERVE existing class-bearing descendant elements in place. If the picked element contains <h1 class="hero-title"> and <p class="hero-hook">, keep those elements/classes as direct descendants of the replacement root; do not wrap them in a new structural div such as <div class="hero-inner">.',
   '- Replace mode: Do not return source-identical variants. For a bare text element, preserve the root tag/class/copy but add a small child span or styling hook so Accept persists a real source change.',
-  '- Replace mode: for non-bare elements where the existing children must stay in place, add a harmless root attribute such as data-impeccable-e2e-variant="1" or another non-copy styling hook so the markup is materially changed without changing visible text.',
+  '- Replace mode: for non-bare elements where the existing children must stay in place, add a permanent styling hook such as data-design-variant="1" so the markup is materially changed without changing visible text. Never invent data-impeccable-* attributes: that namespace is reserved for temporary runtime state.',
   '- Generate exactly event.count variants — no more, no fewer.',
   '- Mix the param kinds across the variant set: include at least one range, one steps, and one toggle when count >= 3.',
   '- The scopedCss must follow wrapInfo.cssAuthoring exactly: use its selector strategy, rulePattern, requirements, and forbidden patterns.',
