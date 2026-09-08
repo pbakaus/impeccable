@@ -6,6 +6,8 @@ use impeccable_common::Io;
 use serde_json::{Map, Value};
 use std::io::Write;
 
+pub const DEFAULT_MODEL: &str = "gpt-image-2.5-flare";
+
 fn arg(args: &[String], name: &str) -> Option<String> {
     let i = args.iter().position(|a| a == &format!("--{}", name))?;
     let v = args.get(i + 1)?;
@@ -232,6 +234,10 @@ fn parse_size(s: &str) -> (usize, usize) {
 }
 
 pub fn run(args: &[String], io: &mut Io) -> i32 {
+    run_with_api_base(args, io, "https://api.openai.com/v1")
+}
+
+fn run_with_api_base(args: &[String], io: &mut Io, api_base: &str) -> i32 {
     let cwd = io.cwd.to_string_lossy().into_owned();
     let env: Env = io.env.clone();
     let abs = |p: &str| jsp::resolve(&cwd, &[p]);
@@ -284,6 +290,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     };
     let size = arg(args, "size").unwrap_or_else(|| "1536x1024".into());
     let quality = arg(args, "quality").unwrap_or_else(|| "medium".into());
+    let model = arg(args, "model").unwrap_or_else(|| DEFAULT_MODEL.into());
     let mut refs: Vec<String> = Vec::new();
     for i in 0..args.len() {
         if args[i] == "--ref" {
@@ -301,7 +308,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         let mut field = |name: &str, value: &str| {
             body.extend_from_slice(format!("--{}\r\nContent-Disposition: form-data; name=\"{}\"\r\n\r\n{}\r\n", boundary, name, value).as_bytes());
         };
-        field("model", "gpt-image-2");
+        field("model", &model);
         field("prompt", &prompt);
         field("size", &size);
         field("quality", &quality);
@@ -330,19 +337,19 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         }
         body.extend_from_slice(format!("--{}--\r\n", boundary).as_bytes());
         agent
-            .post("https://api.openai.com/v1/images/edits")
+            .post(&format!("{api_base}/images/edits"))
             .set("Authorization", &format!("Bearer {}", key))
             .set("Content-Type", &format!("multipart/form-data; boundary={}", boundary))
             .send_bytes(&body)
     } else {
         let mut m = Map::new();
-        m.insert("model".into(), Value::String("gpt-image-2".into()));
+        m.insert("model".into(), Value::String(model.clone()));
         m.insert("prompt".into(), Value::String(prompt.clone()));
         m.insert("size".into(), Value::String(size.clone()));
         m.insert("quality".into(), Value::String(quality.clone()));
         m.insert("n".into(), Value::from(1));
         agent
-            .post("https://api.openai.com/v1/images/generations")
+            .post(&format!("{api_base}/images/generations"))
             .set("Authorization", &format!("Bearer {}", key))
             .set("content-type", "application/json")
             .send_string(&serde_json::to_string(&Value::Object(m)).unwrap())
@@ -388,17 +395,18 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         m.insert("prompt".into(), Value::String(prompt.clone()));
         m.insert("createdAt".into(), Value::String(iso_now()));
         m.insert("tool".into(), Value::String("impeccable generate-image".into()));
-        m.insert("model".into(), Value::String("gpt-image-2".into()));
+        m.insert("model".into(), Value::String(model.clone()));
         if !refs.is_empty() {
             m.insert("refs".into(), Value::Array(refs.iter().cloned().map(Value::String).collect()));
         }
         let _ = std::fs::write(abs(&format!("{}.json", out)), json_pretty(&Value::Object(m)));
     }
     io.out(&format!(
-        "IMAGE: {} ({}, {}, gpt-image-2, billed to your OpenAI key); {} at {}.json\n",
+        "IMAGE: {} ({}, {}, {}, billed to your OpenAI key); {} at {}.json\n",
         out,
         size,
         quality,
+        model,
         if embedded { "prompt embedded + sidecar" } else { "sidecar" },
         out
     ));
@@ -429,4 +437,84 @@ fn base64_decode(s: &str) -> Vec<u8> {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    fn round_trip(edit: bool, override_model: Option<&str>) {
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let api_base = format!("http://{}", server.server_addr());
+        let temp = std::env::temp_dir().join(format!("impeccable-image-{}-{}", std::process::id(), server.server_addr().to_ip().unwrap().port()));
+        std::fs::create_dir_all(&temp).unwrap();
+        std::fs::write(temp.join("ref.png"), png_fake("reference", 16, 16)).unwrap();
+        let handle = std::thread::spawn(move || {
+            let mut request = server.recv_timeout(Duration::from_secs(10)).unwrap().expect("image request");
+            let path = request.url().to_string();
+            let content_type = request.headers().iter().find(|h| h.field.equiv("Content-Type")).unwrap().value.to_string();
+            let mut body = String::new();
+            // Multipart carries binary PNG bytes; preserve ASCII fields for inspection.
+            let mut bytes = Vec::new();
+            request.as_reader().read_to_end(&mut bytes).unwrap();
+            body.push_str(&String::from_utf8_lossy(&bytes));
+            request.respond(tiny_http::Response::from_string(r#"{"data":[{"b64_json":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII="}]}"#)).unwrap();
+            (path, content_type, body)
+        });
+        let env = Env::from([("OPENAI_API_KEY".into(), "test-key".into())]);
+        let (mut io, captured) = Io::captured("", temp.clone(), env);
+        let mut args: Vec<String> = ["--prompt", "Comp regression", "--out", "comp.png", "--quality", "high"].iter().map(|s| s.to_string()).collect();
+        if edit {
+            args.extend(["--ref".into(), "ref.png".into()]);
+        }
+        if let Some(model) = override_model {
+            args.extend(["--model".into(), model.into()]);
+        }
+        let exit = run_with_api_base(&args, &mut io, &api_base);
+        let (path, content_type, body) = handle.join().unwrap();
+        let sidecar: Value = serde_json::from_slice(&std::fs::read(temp.join("comp.png.json")).unwrap()).unwrap();
+        let image = std::fs::read(temp.join("comp.png")).unwrap();
+        std::fs::remove_dir_all(&temp).unwrap();
+        assert_eq!(exit, 0);
+        let model = override_model.unwrap_or("gpt-image-2.5-flare");
+        if edit {
+            assert_eq!(path, "/images/edits");
+            assert!(content_type.starts_with("multipart/form-data; boundary="));
+            assert!(body.contains(&format!("name=\"model\"\r\n\r\n{model}\r\n")));
+            assert!(body.contains("name=\"image[]\"; filename=\"ref.png\""));
+            assert_eq!(sidecar["refs"], serde_json::json!(["ref.png"]));
+        } else {
+            assert_eq!(path, "/images/generations");
+            assert_eq!(content_type, "application/json");
+            let body: Value = serde_json::from_str(&body).unwrap();
+            assert_eq!(body, serde_json::json!({"model": model, "prompt": "Comp regression", "size": "1536x1024", "quality": "high", "n": 1}));
+        }
+        assert_eq!(sidecar["model"], model);
+        assert_eq!(sidecar["prompt"], "Comp regression");
+        assert!(image.starts_with(b"\x89PNG\r\n\x1a\n"));
+        let stdout = String::from_utf8(captured.stdout.borrow().clone()).unwrap();
+        assert!(stdout.contains(&format!("{model}, billed to your OpenAI key")));
+        assert!(stdout.contains("prompt embedded + sidecar"));
+    }
+
+    #[test]
+    fn generation_uses_image_25_and_records_model() {
+        round_trip(false, None);
+    }
+
+    #[test]
+    fn reference_edit_uses_image_25_and_records_model() {
+        round_trip(true, None);
+    }
+
+    #[test]
+    fn generation_accepts_model_override() {
+        round_trip(false, Some("gpt-image-2"));
+    }
+
+    #[test]
+    fn reference_edit_accepts_sunburst_override() {
+        round_trip(true, Some("gpt-image-2.5-sunburst"));
+    }
 }

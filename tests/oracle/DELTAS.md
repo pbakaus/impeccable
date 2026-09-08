@@ -6,6 +6,12 @@ without review.
 
 Format: `- \`<case-id>\`: <what differs> (<why>)`
 
+## Recorded 2026-09-08: Image 2.5 API fallback
+
+- `context-openai-key`: the image-generation directive names
+  `gpt-image-2.5-flare`, matching the generation and reference-edit default.
+  Native-tool precedence and the billing disclosure are unchanged.
+
 ## Recorded 2026-08-17: the engine names its own commands
 
 The JS scripts printed their own file names in usage lines, directives, and

@@ -1,0 +1,881 @@
+{
+  "summary": [
+    {
+      "model": "gpt-image-2",
+      "samples": 8,
+      "medianSeconds": 87.91,
+      "minSeconds": 80.79,
+      "maxSeconds": 94.19,
+      "meanCostUsd": 0.16909200000000002,
+      "totalCostUsd": 1.3527360000000002
+    },
+    {
+      "model": "gpt-image-2.5-flare",
+      "samples": 8,
+      "medianSeconds": 18.1,
+      "minSeconds": 14.53,
+      "maxSeconds": 21.43,
+      "meanCostUsd": 0.045624500000000005,
+      "totalCostUsd": 0.36499600000000004
+    },
+    {
+      "model": "gpt-image-2.5-sunburst",
+      "samples": 8,
+      "medianSeconds": 25.335,
+      "minSeconds": 22.21,
+      "maxSeconds": 29.58,
+      "meanCostUsd": 0.045624500000000005,
+      "totalCostUsd": 0.36499600000000004
+    }
+  ],
+  "photoCrop": {
+    "x": 647,
+    "y": 62,
+    "width": 889,
+    "height": 797
+  },
+  "photoPreservation": [
+    {
+      "id": "edit-gpt-image-2.5-flare-1",
+      "normalizedRgbRmse": 0.073311
+    },
+    {
+      "id": "edit-gpt-image-2.5-sunburst-1",
+      "normalizedRgbRmse": 0.065849
+    },
+    {
+      "id": "edit-gpt-image-2-1",
+      "normalizedRgbRmse": 0.0441531
+    },
+    {
+      "id": "edit-gpt-image-2.5-flare-2",
+      "normalizedRgbRmse": 0.0673733
+    },
+    {
+      "id": "edit-gpt-image-2.5-sunburst-2",
+      "normalizedRgbRmse": 0.0662864
+    },
+    {
+      "id": "edit-gpt-image-2-2",
+      "normalizedRgbRmse": 0.0442103
+    }
+  ],
+  "samples": [
+    {
+      "id": "editorial-gpt-image-2.5-flare-1",
+      "case": "editorial",
+      "path": "new-world decision comp",
+      "model": "gpt-image-2.5-flare",
+      "repeat": 1,
+      "quality": "high",
+      "size": "1536x1024",
+      "prompt": "Create a finished high-fidelity website first-viewport comp for a fictional independent architecture journal named FIELDWORK. Flat page screenshot, no browser frame, no device mockup. Structure: a slim masthead across the top; below it a left editorial column occupying 40% of the page and a large architectural photograph occupying the right 60%; a full-width thin rule and three compact story teasers at the bottom. Use warm ivory #F3EFE5 ground, near-black #22241F type, and restrained rust #AD4B32 accents. Sophisticated large high-contrast serif headline, small precise sans-serif navigation and captions. Photograph: a quiet concrete coastal house with a single pine tree, natural late-afternoon light and detailed tactile materials. Exact masthead: FIELDWORK. Exact navigation: Stories, Places, About. Exact eyebrow: ISSUE 08 / SPACES FOR SLOW LIVING. Exact headline on the left: A quieter kind of architecture. Exact description: Notes on buildings that make room for everyday life. Exact action: Explore the issue. Caption below the photo: Coastal House / Study 03. Bottom teasers: Living with less; The shape of shade; Rooms that breathe. The headline must dominate the text column without colliding with the photo. Keep all text legible and all content within the viewport. Do not invent prices, dates, awards, extra stories, or commercial claims. This is a north-star comp to be implemented as real HTML and CSS.",
+      "reference": null,
+      "fingerprint": "bfbeae308bb394f9f69d58267685df722acb440278e5ce85edb3ec36ea9bad18",
+      "createdAt": "2026-09-08T20:47:13.013Z",
+      "requestId": "req_21bfdb30f31b417a8c18b7e351db5d5d",
+      "filename": "editorial-gpt-image-2.5-flare-1.png",
+      "imageSha256": "526c4b1e44f1a62e09a684cc6e75f4c0a596e8538f2a0a8a63efb577943ca47b",
+      "usage": {
+        "input_tokens": 306,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 306
+        },
+        "output_tokens": 1372,
+        "output_tokens_details": {
+          "image_tokens": 1372,
+          "text_tokens": 0
+        },
+        "total_tokens": 1678
+      },
+      "responseSize": "1536x1024",
+      "responseQuality": "high",
+      "status": "ok",
+      "seconds": 18.99,
+      "estimatedCostUsd": 0.04269
+    },
+    {
+      "id": "editorial-gpt-image-2.5-sunburst-1",
+      "case": "editorial",
+      "path": "new-world decision comp",
+      "model": "gpt-image-2.5-sunburst",
+      "repeat": 1,
+      "quality": "high",
+      "size": "1536x1024",
+      "prompt": "Create a finished high-fidelity website first-viewport comp for a fictional independent architecture journal named FIELDWORK. Flat page screenshot, no browser frame, no device mockup. Structure: a slim masthead across the top; below it a left editorial column occupying 40% of the page and a large architectural photograph occupying the right 60%; a full-width thin rule and three compact story teasers at the bottom. Use warm ivory #F3EFE5 ground, near-black #22241F type, and restrained rust #AD4B32 accents. Sophisticated large high-contrast serif headline, small precise sans-serif navigation and captions. Photograph: a quiet concrete coastal house with a single pine tree, natural late-afternoon light and detailed tactile materials. Exact masthead: FIELDWORK. Exact navigation: Stories, Places, About. Exact eyebrow: ISSUE 08 / SPACES FOR SLOW LIVING. Exact headline on the left: A quieter kind of architecture. Exact description: Notes on buildings that make room for everyday life. Exact action: Explore the issue. Caption below the photo: Coastal House / Study 03. Bottom teasers: Living with less; The shape of shade; Rooms that breathe. The headline must dominate the text column without colliding with the photo. Keep all text legible and all content within the viewport. Do not invent prices, dates, awards, extra stories, or commercial claims. This is a north-star comp to be implemented as real HTML and CSS.",
+      "reference": null,
+      "fingerprint": "1dee66da63cff8ef7faf7a3a41f12d8da013a3359fef5de34db2a7b4e3516f54",
+      "createdAt": "2026-09-08T20:47:13.014Z",
+      "requestId": "req_107246178b234927a81d0f336cfa9bf8",
+      "filename": "editorial-gpt-image-2.5-sunburst-1.png",
+      "imageSha256": "9d33314899b83d0a245e9250bd06a0cec9e635a5ff13051bdaff56357ddbd2c8",
+      "usage": {
+        "input_tokens": 306,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 306
+        },
+        "output_tokens": 1372,
+        "output_tokens_details": {
+          "image_tokens": 1372,
+          "text_tokens": 0
+        },
+        "total_tokens": 1678
+      },
+      "responseSize": "1536x1024",
+      "responseQuality": "high",
+      "status": "ok",
+      "seconds": 27.31,
+      "estimatedCostUsd": 0.04269
+    },
+    {
+      "id": "editorial-gpt-image-2-1",
+      "case": "editorial",
+      "path": "new-world decision comp",
+      "model": "gpt-image-2",
+      "repeat": 1,
+      "quality": "high",
+      "size": "1536x1024",
+      "prompt": "Create a finished high-fidelity website first-viewport comp for a fictional independent architecture journal named FIELDWORK. Flat page screenshot, no browser frame, no device mockup. Structure: a slim masthead across the top; below it a left editorial column occupying 40% of the page and a large architectural photograph occupying the right 60%; a full-width thin rule and three compact story teasers at the bottom. Use warm ivory #F3EFE5 ground, near-black #22241F type, and restrained rust #AD4B32 accents. Sophisticated large high-contrast serif headline, small precise sans-serif navigation and captions. Photograph: a quiet concrete coastal house with a single pine tree, natural late-afternoon light and detailed tactile materials. Exact masthead: FIELDWORK. Exact navigation: Stories, Places, About. Exact eyebrow: ISSUE 08 / SPACES FOR SLOW LIVING. Exact headline on the left: A quieter kind of architecture. Exact description: Notes on buildings that make room for everyday life. Exact action: Explore the issue. Caption below the photo: Coastal House / Study 03. Bottom teasers: Living with less; The shape of shade; Rooms that breathe. The headline must dominate the text column without colliding with the photo. Keep all text legible and all content within the viewport. Do not invent prices, dates, awards, extra stories, or commercial claims. This is a north-star comp to be implemented as real HTML and CSS.",
+      "reference": null,
+      "fingerprint": "dd2a4c563a798beccc7a305bc72ddda4549f5fd8414005e66b1852c19e8cf14c",
+      "createdAt": "2026-09-08T20:47:12.998Z",
+      "requestId": "req_8eda29af43864e669b25e99e3aa32f0d",
+      "filename": "editorial-gpt-image-2-1.png",
+      "imageSha256": "29f5c271b548419af4085f170d6bd063194c3af6962caf91a11023eae6ac8c17",
+      "usage": {
+        "input_tokens": 306,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 306
+        },
+        "output_tokens": 5488,
+        "output_tokens_details": {
+          "image_tokens": 5488,
+          "text_tokens": 0
+        },
+        "total_tokens": 5794
+      },
+      "responseSize": "1536x1024",
+      "responseQuality": "high",
+      "status": "ok",
+      "seconds": 91.69,
+      "estimatedCostUsd": 0.16617
+    },
+    {
+      "id": "editorial-gpt-image-2.5-flare-2",
+      "case": "editorial",
+      "path": "new-world decision comp",
+      "model": "gpt-image-2.5-flare",
+      "repeat": 2,
+      "quality": "high",
+      "size": "1536x1024",
+      "prompt": "Create a finished high-fidelity website first-viewport comp for a fictional independent architecture journal named FIELDWORK. Flat page screenshot, no browser frame, no device mockup. Structure: a slim masthead across the top; below it a left editorial column occupying 40% of the page and a large architectural photograph occupying the right 60%; a full-width thin rule and three compact story teasers at the bottom. Use warm ivory #F3EFE5 ground, near-black #22241F type, and restrained rust #AD4B32 accents. Sophisticated large high-contrast serif headline, small precise sans-serif navigation and captions. Photograph: a quiet concrete coastal house with a single pine tree, natural late-afternoon light and detailed tactile materials. Exact masthead: FIELDWORK. Exact navigation: Stories, Places, About. Exact eyebrow: ISSUE 08 / SPACES FOR SLOW LIVING. Exact headline on the left: A quieter kind of architecture. Exact description: Notes on buildings that make room for everyday life. Exact action: Explore the issue. Caption below the photo: Coastal House / Study 03. Bottom teasers: Living with less; The shape of shade; Rooms that breathe. The headline must dominate the text column without colliding with the photo. Keep all text legible and all content within the viewport. Do not invent prices, dates, awards, extra stories, or commercial claims. This is a north-star comp to be implemented as real HTML and CSS.",
+      "reference": null,
+      "fingerprint": "bfbeae308bb394f9f69d58267685df722acb440278e5ce85edb3ec36ea9bad18",
+      "createdAt": "2026-09-08T20:48:44.694Z",
+      "requestId": "req_3181aa870a344107bf14ce802a51cbd7",
+      "filename": "editorial-gpt-image-2.5-flare-2.png",
+      "imageSha256": "e25684c63f1a256e67a6c73135fa64021da8db6083a7c8118a5921e060a2e7f1",
+      "usage": {
+        "input_tokens": 306,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 306
+        },
+        "output_tokens": 1372,
+        "output_tokens_details": {
+          "image_tokens": 1372,
+          "text_tokens": 0
+        },
+        "total_tokens": 1678
+      },
+      "responseSize": "1536x1024",
+      "responseQuality": "high",
+      "status": "ok",
+      "seconds": 17.67,
+      "estimatedCostUsd": 0.04269
+    },
+    {
+      "id": "editorial-gpt-image-2.5-sunburst-2",
+      "case": "editorial",
+      "path": "new-world decision comp",
+      "model": "gpt-image-2.5-sunburst",
+      "repeat": 2,
+      "quality": "high",
+      "size": "1536x1024",
+      "prompt": "Create a finished high-fidelity website first-viewport comp for a fictional independent architecture journal named FIELDWORK. Flat page screenshot, no browser frame, no device mockup. Structure: a slim masthead across the top; below it a left editorial column occupying 40% of the page and a large architectural photograph occupying the right 60%; a full-width thin rule and three compact story teasers at the bottom. Use warm ivory #F3EFE5 ground, near-black #22241F type, and restrained rust #AD4B32 accents. Sophisticated large high-contrast serif headline, small precise sans-serif navigation and captions. Photograph: a quiet concrete coastal house with a single pine tree, natural late-afternoon light and detailed tactile materials. Exact masthead: FIELDWORK. Exact navigation: Stories, Places, About. Exact eyebrow: ISSUE 08 / SPACES FOR SLOW LIVING. Exact headline on the left: A quieter kind of architecture. Exact description: Notes on buildings that make room for everyday life. Exact action: Explore the issue. Caption below the photo: Coastal House / Study 03. Bottom teasers: Living with less; The shape of shade; Rooms that breathe. The headline must dominate the text column without colliding with the photo. Keep all text legible and all content within the viewport. Do not invent prices, dates, awards, extra stories, or commercial claims. This is a north-star comp to be implemented as real HTML and CSS.",
+      "reference": null,
+      "fingerprint": "1dee66da63cff8ef7faf7a3a41f12d8da013a3359fef5de34db2a7b4e3516f54",
+      "createdAt": "2026-09-08T20:48:44.696Z",
+      "requestId": "req_4d32918784484368abc7181764533659",
+      "filename": "editorial-gpt-image-2.5-sunburst-2.png",
+      "imageSha256": "7f568798361fc9b8d374621b3dcfe4f8fba4d369ffc228bfb5fefd0288cbf500",
+      "usage": {
+        "input_tokens": 306,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 306
+        },
+        "output_tokens": 1372,
+        "output_tokens_details": {
+          "image_tokens": 1372,
+          "text_tokens": 0
+        },
+        "total_tokens": 1678
+      },
+      "responseSize": "1536x1024",
+      "responseQuality": "high",
+      "status": "ok",
+      "seconds": 24.23,
+      "estimatedCostUsd": 0.04269
+    },
+    {
+      "id": "editorial-gpt-image-2-2",
+      "case": "editorial",
+      "path": "new-world decision comp",
+      "model": "gpt-image-2",
+      "repeat": 2,
+      "quality": "high",
+      "size": "1536x1024",
+      "prompt": "Create a finished high-fidelity website first-viewport comp for a fictional independent architecture journal named FIELDWORK. Flat page screenshot, no browser frame, no device mockup. Structure: a slim masthead across the top; below it a left editorial column occupying 40% of the page and a large architectural photograph occupying the right 60%; a full-width thin rule and three compact story teasers at the bottom. Use warm ivory #F3EFE5 ground, near-black #22241F type, and restrained rust #AD4B32 accents. Sophisticated large high-contrast serif headline, small precise sans-serif navigation and captions. Photograph: a quiet concrete coastal house with a single pine tree, natural late-afternoon light and detailed tactile materials. Exact masthead: FIELDWORK. Exact navigation: Stories, Places, About. Exact eyebrow: ISSUE 08 / SPACES FOR SLOW LIVING. Exact headline on the left: A quieter kind of architecture. Exact description: Notes on buildings that make room for everyday life. Exact action: Explore the issue. Caption below the photo: Coastal House / Study 03. Bottom teasers: Living with less; The shape of shade; Rooms that breathe. The headline must dominate the text column without colliding with the photo. Keep all text legible and all content within the viewport. Do not invent prices, dates, awards, extra stories, or commercial claims. This is a north-star comp to be implemented as real HTML and CSS.",
+      "reference": null,
+      "fingerprint": "dd2a4c563a798beccc7a305bc72ddda4549f5fd8414005e66b1852c19e8cf14c",
+      "createdAt": "2026-09-08T20:48:44.692Z",
+      "requestId": "req_05c302f9f4aa4455a2e1d7083de3c368",
+      "filename": "editorial-gpt-image-2-2.png",
+      "imageSha256": "853b35a4829fb12a52b58b24b5583b74d89d9cbf56980cff28e9b662a5429823",
+      "usage": {
+        "input_tokens": 306,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 306
+        },
+        "output_tokens": 5488,
+        "output_tokens_details": {
+          "image_tokens": 5488,
+          "text_tokens": 0
+        },
+        "total_tokens": 5794
+      },
+      "responseSize": "1536x1024",
+      "responseQuality": "high",
+      "status": "ok",
+      "seconds": 94.19,
+      "estimatedCostUsd": 0.16617
+    },
+    {
+      "id": "dashboard-gpt-image-2.5-flare-1",
+      "case": "dashboard",
+      "path": "surface composition comp",
+      "model": "gpt-image-2.5-flare",
+      "repeat": 1,
+      "quality": "high",
+      "size": "1536x1024",
+      "prompt": "Create a finished high-fidelity desktop web app screenshot for a fictional support operations product named Relay. Flat UI, no browser or device frame. Structure: a 210px full-height left sidebar, a 72px top header in the remaining area, then a compact queue toolbar and a dense full-width table. This is an operational queue, not a marketing page: no hero art, no giant headline, no chart, no metric cards. Quiet off-white #F7F8F6 canvas, white table rows, charcoal #202822 text, subtle gray dividers, forest green #256044 active accents. Sidebar brand Relay, navigation Inbox (selected), Assigned, Resolved, Settings. Header title Team inbox, right action New conversation. Toolbar: Open 24, search field Search conversations, filter All channels. Table columns: Customer, Subject, Status, Assignee, Updated. Exactly six rows: 1) Maya Chen | Export includes duplicate rows | Open | Luis | 2 min; 2) Noah Williams | Invite link expired | Waiting | Priya | 8 min; 3) Sofia Patel | Change workspace owner | Open | Luis | 14 min; 4) Liam Jones | Billing address update | Waiting | Alex | 22 min; 5) Emma Garcia | Missing notification | Open | Priya | 35 min; 6) Oliver Brown | Import mapping question | Open | Alex | 48 min. Show the first row selected with a pale green fill. Give status labels compact subtle pill treatments. Use small readable sans-serif text with clean column alignment and generous whitespace below the table. Exact footer: Showing 6 of 24 conversations. All requested content must fit in the first viewport; do not invent other data or navigation.",
+      "reference": null,
+      "fingerprint": "86bf3851166e518cf596b5e12d7157ca10b6350209583b2ce139d0810abf5775",
+      "createdAt": "2026-09-08T20:50:18.885Z",
+      "requestId": "req_99c15ea6a75241b69e983c268188a22a",
+      "filename": "dashboard-gpt-image-2.5-flare-1.png",
+      "imageSha256": "b45cdf7adb2076edef1f1fb23593a1ba40012f731bbe785efc1cfc501b213213",
+      "usage": {
+        "input_tokens": 363,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 363
+        },
+        "output_tokens": 1372,
+        "output_tokens_details": {
+          "image_tokens": 1372,
+          "text_tokens": 0
+        },
+        "total_tokens": 1735
+      },
+      "responseSize": "1536x1024",
+      "responseQuality": "high",
+      "status": "ok",
+      "seconds": 18.53,
+      "estimatedCostUsd": 0.042975
+    },
+    {
+      "id": "dashboard-gpt-image-2.5-sunburst-1",
+      "case": "dashboard",
+      "path": "surface composition comp",
+      "model": "gpt-image-2.5-sunburst",
+      "repeat": 1,
+      "quality": "high",
+      "size": "1536x1024",
+      "prompt": "Create a finished high-fidelity desktop web app screenshot for a fictional support operations product named Relay. Flat UI, no browser or device frame. Structure: a 210px full-height left sidebar, a 72px top header in the remaining area, then a compact queue toolbar and a dense full-width table. This is an operational queue, not a marketing page: no hero art, no giant headline, no chart, no metric cards. Quiet off-white #F7F8F6 canvas, white table rows, charcoal #202822 text, subtle gray dividers, forest green #256044 active accents. Sidebar brand Relay, navigation Inbox (selected), Assigned, Resolved, Settings. Header title Team inbox, right action New conversation. Toolbar: Open 24, search field Search conversations, filter All channels. Table columns: Customer, Subject, Status, Assignee, Updated. Exactly six rows: 1) Maya Chen | Export includes duplicate rows | Open | Luis | 2 min; 2) Noah Williams | Invite link expired | Waiting | Priya | 8 min; 3) Sofia Patel | Change workspace owner | Open | Luis | 14 min; 4) Liam Jones | Billing address update | Waiting | Alex | 22 min; 5) Emma Garcia | Missing notification | Open | Priya | 35 min; 6) Oliver Brown | Import mapping question | Open | Alex | 48 min. Show the first row selected with a pale green fill. Give status labels compact subtle pill treatments. Use small readable sans-serif text with clean column alignment and generous whitespace below the table. Exact footer: Showing 6 of 24 conversations. All requested content must fit in the first viewport; do not invent other data or navigation.",
+      "reference": null,
+      "fingerprint": "c0bf1398dab015df3cec4a0f5159805e04b71df48e0d5303e65f1aba18f9e4a8",
+      "createdAt": "2026-09-08T20:50:18.886Z",
+      "requestId": "req_a451b1bfeafd4ab488abfc527d7a1cc1",
+      "filename": "dashboard-gpt-image-2.5-sunburst-1.png",
+      "imageSha256": "2443de2e9283eb95e92e9e945fe703943ac02fd02dbf8fc2d67dce14a82cac44",
+      "usage": {
+        "input_tokens": 363,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 363
+        },
+        "output_tokens": 1372,
+        "output_tokens_details": {
+          "image_tokens": 1372,
+          "text_tokens": 0
+        },
+        "total_tokens": 1735
+      },
+      "responseSize": "1536x1024",
+      "responseQuality": "high",
+      "status": "ok",
+      "seconds": 25.86,
+      "estimatedCostUsd": 0.042975
+    },
+    {
+      "id": "dashboard-gpt-image-2-1",
+      "case": "dashboard",
+      "path": "surface composition comp",
+      "model": "gpt-image-2",
+      "repeat": 1,
+      "quality": "high",
+      "size": "1536x1024",
+      "prompt": "Create a finished high-fidelity desktop web app screenshot for a fictional support operations product named Relay. Flat UI, no browser or device frame. Structure: a 210px full-height left sidebar, a 72px top header in the remaining area, then a compact queue toolbar and a dense full-width table. This is an operational queue, not a marketing page: no hero art, no giant headline, no chart, no metric cards. Quiet off-white #F7F8F6 canvas, white table rows, charcoal #202822 text, subtle gray dividers, forest green #256044 active accents. Sidebar brand Relay, navigation Inbox (selected), Assigned, Resolved, Settings. Header title Team inbox, right action New conversation. Toolbar: Open 24, search field Search conversations, filter All channels. Table columns: Customer, Subject, Status, Assignee, Updated. Exactly six rows: 1) Maya Chen | Export includes duplicate rows | Open | Luis | 2 min; 2) Noah Williams | Invite link expired | Waiting | Priya | 8 min; 3) Sofia Patel | Change workspace owner | Open | Luis | 14 min; 4) Liam Jones | Billing address update | Waiting | Alex | 22 min; 5) Emma Garcia | Missing notification | Open | Priya | 35 min; 6) Oliver Brown | Import mapping question | Open | Alex | 48 min. Show the first row selected with a pale green fill. Give status labels compact subtle pill treatments. Use small readable sans-serif text with clean column alignment and generous whitespace below the table. Exact footer: Showing 6 of 24 conversations. All requested content must fit in the first viewport; do not invent other data or navigation.",
+      "reference": null,
+      "fingerprint": "aba35c2924f59ff9d9f169fb66bb88c92db84389cab65bb47d114d4b564cfaef",
+      "createdAt": "2026-09-08T20:50:18.885Z",
+      "requestId": "req_89e46ace02374f23bf35ca69ec5c7887",
+      "filename": "dashboard-gpt-image-2-1.png",
+      "imageSha256": "df241fa6df394966a1595e59b5b1296ac4705c1d78e4b79f3d4dfc0cc45b0477",
+      "usage": {
+        "input_tokens": 363,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 363
+        },
+        "output_tokens": 5488,
+        "output_tokens_details": {
+          "image_tokens": 5488,
+          "text_tokens": 0
+        },
+        "total_tokens": 5851
+      },
+      "responseSize": "1536x1024",
+      "responseQuality": "high",
+      "status": "ok",
+      "seconds": 80.79,
+      "estimatedCostUsd": 0.166455
+    },
+    {
+      "id": "dashboard-gpt-image-2.5-flare-2",
+      "case": "dashboard",
+      "path": "surface composition comp",
+      "model": "gpt-image-2.5-flare",
+      "repeat": 2,
+      "quality": "high",
+      "size": "1536x1024",
+      "prompt": "Create a finished high-fidelity desktop web app screenshot for a fictional support operations product named Relay. Flat UI, no browser or device frame. Structure: a 210px full-height left sidebar, a 72px top header in the remaining area, then a compact queue toolbar and a dense full-width table. This is an operational queue, not a marketing page: no hero art, no giant headline, no chart, no metric cards. Quiet off-white #F7F8F6 canvas, white table rows, charcoal #202822 text, subtle gray dividers, forest green #256044 active accents. Sidebar brand Relay, navigation Inbox (selected), Assigned, Resolved, Settings. Header title Team inbox, right action New conversation. Toolbar: Open 24, search field Search conversations, filter All channels. Table columns: Customer, Subject, Status, Assignee, Updated. Exactly six rows: 1) Maya Chen | Export includes duplicate rows | Open | Luis | 2 min; 2) Noah Williams | Invite link expired | Waiting | Priya | 8 min; 3) Sofia Patel | Change workspace owner | Open | Luis | 14 min; 4) Liam Jones | Billing address update | Waiting | Alex | 22 min; 5) Emma Garcia | Missing notification | Open | Priya | 35 min; 6) Oliver Brown | Import mapping question | Open | Alex | 48 min. Show the first row selected with a pale green fill. Give status labels compact subtle pill treatments. Use small readable sans-serif text with clean column alignment and generous whitespace below the table. Exact footer: Showing 6 of 24 conversations. All requested content must fit in the first viewport; do not invent other data or navigation.",
+      "reference": null,
+      "fingerprint": "86bf3851166e518cf596b5e12d7157ca10b6350209583b2ce139d0810abf5775",
+      "createdAt": "2026-09-08T20:51:39.673Z",
+      "requestId": "req_11da5d36fdae40fe8ffe2018de8c3b66",
+      "filename": "dashboard-gpt-image-2.5-flare-2.png",
+      "imageSha256": "9ded81eccd698731d0d76b8b08d6f84192530847883ac646d9cdb0da623083a5",
+      "usage": {
+        "input_tokens": 363,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 363
+        },
+        "output_tokens": 1372,
+        "output_tokens_details": {
+          "image_tokens": 1372,
+          "text_tokens": 0
+        },
+        "total_tokens": 1735
+      },
+      "responseSize": "1536x1024",
+      "responseQuality": "high",
+      "status": "ok",
+      "seconds": 14.53,
+      "estimatedCostUsd": 0.042975
+    },
+    {
+      "id": "dashboard-gpt-image-2.5-sunburst-2",
+      "case": "dashboard",
+      "path": "surface composition comp",
+      "model": "gpt-image-2.5-sunburst",
+      "repeat": 2,
+      "quality": "high",
+      "size": "1536x1024",
+      "prompt": "Create a finished high-fidelity desktop web app screenshot for a fictional support operations product named Relay. Flat UI, no browser or device frame. Structure: a 210px full-height left sidebar, a 72px top header in the remaining area, then a compact queue toolbar and a dense full-width table. This is an operational queue, not a marketing page: no hero art, no giant headline, no chart, no metric cards. Quiet off-white #F7F8F6 canvas, white table rows, charcoal #202822 text, subtle gray dividers, forest green #256044 active accents. Sidebar brand Relay, navigation Inbox (selected), Assigned, Resolved, Settings. Header title Team inbox, right action New conversation. Toolbar: Open 24, search field Search conversations, filter All channels. Table columns: Customer, Subject, Status, Assignee, Updated. Exactly six rows: 1) Maya Chen | Export includes duplicate rows | Open | Luis | 2 min; 2) Noah Williams | Invite link expired | Waiting | Priya | 8 min; 3) Sofia Patel | Change workspace owner | Open | Luis | 14 min; 4) Liam Jones | Billing address update | Waiting | Alex | 22 min; 5) Emma Garcia | Missing notification | Open | Priya | 35 min; 6) Oliver Brown | Import mapping question | Open | Alex | 48 min. Show the first row selected with a pale green fill. Give status labels compact subtle pill treatments. Use small readable sans-serif text with clean column alignment and generous whitespace below the table. Exact footer: Showing 6 of 24 conversations. All requested content must fit in the first viewport; do not invent other data or navigation.",
+      "reference": null,
+      "fingerprint": "c0bf1398dab015df3cec4a0f5159805e04b71df48e0d5303e65f1aba18f9e4a8",
+      "createdAt": "2026-09-08T20:51:39.673Z",
+      "requestId": "req_364f9e7ef06647899f80deed1192ba8d",
+      "filename": "dashboard-gpt-image-2.5-sunburst-2.png",
+      "imageSha256": "f1d047057421b3000f1f21d6d5b221f162f96d21d2ff644aa740d15a327aa1c8",
+      "usage": {
+        "input_tokens": 363,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 363
+        },
+        "output_tokens": 1372,
+        "output_tokens_details": {
+          "image_tokens": 1372,
+          "text_tokens": 0
+        },
+        "total_tokens": 1735
+      },
+      "responseSize": "1536x1024",
+      "responseQuality": "high",
+      "status": "ok",
+      "seconds": 24.49,
+      "estimatedCostUsd": 0.042975
+    },
+    {
+      "id": "dashboard-gpt-image-2-2",
+      "case": "dashboard",
+      "path": "surface composition comp",
+      "model": "gpt-image-2",
+      "repeat": 2,
+      "quality": "high",
+      "size": "1536x1024",
+      "prompt": "Create a finished high-fidelity desktop web app screenshot for a fictional support operations product named Relay. Flat UI, no browser or device frame. Structure: a 210px full-height left sidebar, a 72px top header in the remaining area, then a compact queue toolbar and a dense full-width table. This is an operational queue, not a marketing page: no hero art, no giant headline, no chart, no metric cards. Quiet off-white #F7F8F6 canvas, white table rows, charcoal #202822 text, subtle gray dividers, forest green #256044 active accents. Sidebar brand Relay, navigation Inbox (selected), Assigned, Resolved, Settings. Header title Team inbox, right action New conversation. Toolbar: Open 24, search field Search conversations, filter All channels. Table columns: Customer, Subject, Status, Assignee, Updated. Exactly six rows: 1) Maya Chen | Export includes duplicate rows | Open | Luis | 2 min; 2) Noah Williams | Invite link expired | Waiting | Priya | 8 min; 3) Sofia Patel | Change workspace owner | Open | Luis | 14 min; 4) Liam Jones | Billing address update | Waiting | Alex | 22 min; 5) Emma Garcia | Missing notification | Open | Priya | 35 min; 6) Oliver Brown | Import mapping question | Open | Alex | 48 min. Show the first row selected with a pale green fill. Give status labels compact subtle pill treatments. Use small readable sans-serif text with clean column alignment and generous whitespace below the table. Exact footer: Showing 6 of 24 conversations. All requested content must fit in the first viewport; do not invent other data or navigation.",
+      "reference": null,
+      "fingerprint": "aba35c2924f59ff9d9f169fb66bb88c92db84389cab65bb47d114d4b564cfaef",
+      "createdAt": "2026-09-08T20:51:39.672Z",
+      "requestId": "req_b7d9d356f5f34f108320454e2e233e8e",
+      "filename": "dashboard-gpt-image-2-2.png",
+      "imageSha256": "88e6e6cafd9881d5c0c077043877101087790cd832c182f4236c6ebad80ff303",
+      "usage": {
+        "input_tokens": 363,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 363
+        },
+        "output_tokens": 5488,
+        "output_tokens_details": {
+          "image_tokens": 5488,
+          "text_tokens": 0
+        },
+        "total_tokens": 5851
+      },
+      "responseSize": "1536x1024",
+      "responseQuality": "high",
+      "status": "ok",
+      "seconds": 87.35,
+      "estimatedCostUsd": 0.166455
+    },
+    {
+      "id": "mobile-gpt-image-2.5-flare-1",
+      "case": "mobile",
+      "path": "portrait north-star comp",
+      "model": "gpt-image-2.5-flare",
+      "repeat": 1,
+      "quality": "high",
+      "size": "1024x1536",
+      "prompt": "Create a finished high-fidelity portrait mobile app first-screen comp for a fictional personal reading app named Margin. Render the screen edge-to-edge, with no physical phone frame, no perspective, and no surrounding canvas. Structure from top to bottom: small status bar; compact Margin masthead with a search icon; large serif heading Your reading, small caption A little further, every day.; one prominent horizontal Continue reading feature with a designed book cover on the left and title, author, progress bar, and action on the right; a smaller Saved for later section with two horizontal book rows; bottom navigation Library (selected), Notes, Profile. Warm paper #F4F0E8, deep ink #292924, muted brick #A44E3F accent; beautifully restrained editorial typography and precise alignment. The featured book is The Art of Noticing by Rob Walker, with exact progress label 68 of 256 pages and action Continue reading. Saved rows: A Field Guide to Getting Lost by Rebecca Solnit; The Poetics of Space by Gaston Bachelard. Book covers should be simple tasteful typography and abstract color forms with the correct titles, not photographs. Do not invent ratings, reviews, prices, streaks, dates, extra books, or decorative dashboard cards. All text and the full bottom navigation must fit in the screen, with comfortable mobile touch targets and a visibly portrait composition. This comp will guide implementation of the real app.",
+      "reference": null,
+      "fingerprint": "244da058e4f3b6f03f2785f6825fe8139f8670db1c5b50d648dacdbab447dba6",
+      "createdAt": "2026-09-08T20:53:07.021Z",
+      "requestId": "req_6121abc4919a44c2bef83167f69dce40",
+      "filename": "mobile-gpt-image-2.5-flare-1.png",
+      "imageSha256": "f791f85ab8febdfa316cc08d41aefded7170bd258217d84feff0e9dde324093e",
+      "usage": {
+        "input_tokens": 295,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 295
+        },
+        "output_tokens": 1372,
+        "output_tokens_details": {
+          "image_tokens": 1372,
+          "text_tokens": 0
+        },
+        "total_tokens": 1667
+      },
+      "responseSize": "1024x1536",
+      "responseQuality": "high",
+      "status": "ok",
+      "seconds": 18.99,
+      "estimatedCostUsd": 0.042635
+    },
+    {
+      "id": "mobile-gpt-image-2.5-sunburst-1",
+      "case": "mobile",
+      "path": "portrait north-star comp",
+      "model": "gpt-image-2.5-sunburst",
+      "repeat": 1,
+      "quality": "high",
+      "size": "1024x1536",
+      "prompt": "Create a finished high-fidelity portrait mobile app first-screen comp for a fictional personal reading app named Margin. Render the screen edge-to-edge, with no physical phone frame, no perspective, and no surrounding canvas. Structure from top to bottom: small status bar; compact Margin masthead with a search icon; large serif heading Your reading, small caption A little further, every day.; one prominent horizontal Continue reading feature with a designed book cover on the left and title, author, progress bar, and action on the right; a smaller Saved for later section with two horizontal book rows; bottom navigation Library (selected), Notes, Profile. Warm paper #F4F0E8, deep ink #292924, muted brick #A44E3F accent; beautifully restrained editorial typography and precise alignment. The featured book is The Art of Noticing by Rob Walker, with exact progress label 68 of 256 pages and action Continue reading. Saved rows: A Field Guide to Getting Lost by Rebecca Solnit; The Poetics of Space by Gaston Bachelard. Book covers should be simple tasteful typography and abstract color forms with the correct titles, not photographs. Do not invent ratings, reviews, prices, streaks, dates, extra books, or decorative dashboard cards. All text and the full bottom navigation must fit in the screen, with comfortable mobile touch targets and a visibly portrait composition. This comp will guide implementation of the real app.",
+      "reference": null,
+      "fingerprint": "2e4bfd05c4f8f19b0b3c708e08fb1157435fbea6f3f4e5cc10dc9850bcfeedf7",
+      "createdAt": "2026-09-08T20:53:07.023Z",
+      "requestId": "req_804a122e9c5a4fb4b2fbd80ac031f796",
+      "filename": "mobile-gpt-image-2.5-sunburst-1.png",
+      "imageSha256": "5883fd45daca6688b7b0884a18b408e017a8230cb3e3e1e42705b04749329351",
+      "usage": {
+        "input_tokens": 295,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 295
+        },
+        "output_tokens": 1372,
+        "output_tokens_details": {
+          "image_tokens": 1372,
+          "text_tokens": 0
+        },
+        "total_tokens": 1667
+      },
+      "responseSize": "1024x1536",
+      "responseQuality": "high",
+      "status": "ok",
+      "seconds": 25.18,
+      "estimatedCostUsd": 0.042635
+    },
+    {
+      "id": "mobile-gpt-image-2-1",
+      "case": "mobile",
+      "path": "portrait north-star comp",
+      "model": "gpt-image-2",
+      "repeat": 1,
+      "quality": "high",
+      "size": "1024x1536",
+      "prompt": "Create a finished high-fidelity portrait mobile app first-screen comp for a fictional personal reading app named Margin. Render the screen edge-to-edge, with no physical phone frame, no perspective, and no surrounding canvas. Structure from top to bottom: small status bar; compact Margin masthead with a search icon; large serif heading Your reading, small caption A little further, every day.; one prominent horizontal Continue reading feature with a designed book cover on the left and title, author, progress bar, and action on the right; a smaller Saved for later section with two horizontal book rows; bottom navigation Library (selected), Notes, Profile. Warm paper #F4F0E8, deep ink #292924, muted brick #A44E3F accent; beautifully restrained editorial typography and precise alignment. The featured book is The Art of Noticing by Rob Walker, with exact progress label 68 of 256 pages and action Continue reading. Saved rows: A Field Guide to Getting Lost by Rebecca Solnit; The Poetics of Space by Gaston Bachelard. Book covers should be simple tasteful typography and abstract color forms with the correct titles, not photographs. Do not invent ratings, reviews, prices, streaks, dates, extra books, or decorative dashboard cards. All text and the full bottom navigation must fit in the screen, with comfortable mobile touch targets and a visibly portrait composition. This comp will guide implementation of the real app.",
+      "reference": null,
+      "fingerprint": "e813f3e84541995fdad45ae83e6c25c0b5eed8ff0b445950150fd53735874b43",
+      "createdAt": "2026-09-08T20:53:07.020Z",
+      "requestId": "req_4de095dc17e842389b20de9cad8e5154",
+      "filename": "mobile-gpt-image-2-1.png",
+      "imageSha256": "6439386d52c6ba27421d9295cf738fc2ebe5c7978c5663e56144cab2496635a0",
+      "usage": {
+        "input_tokens": 295,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 295
+        },
+        "output_tokens": 5488,
+        "output_tokens_details": {
+          "image_tokens": 5488,
+          "text_tokens": 0
+        },
+        "total_tokens": 5783
+      },
+      "responseSize": "1024x1536",
+      "responseQuality": "high",
+      "status": "ok",
+      "seconds": 84.89,
+      "estimatedCostUsd": 0.166115
+    },
+    {
+      "id": "mobile-gpt-image-2.5-flare-2",
+      "case": "mobile",
+      "path": "portrait north-star comp",
+      "model": "gpt-image-2.5-flare",
+      "repeat": 2,
+      "quality": "high",
+      "size": "1024x1536",
+      "prompt": "Create a finished high-fidelity portrait mobile app first-screen comp for a fictional personal reading app named Margin. Render the screen edge-to-edge, with no physical phone frame, no perspective, and no surrounding canvas. Structure from top to bottom: small status bar; compact Margin masthead with a search icon; large serif heading Your reading, small caption A little further, every day.; one prominent horizontal Continue reading feature with a designed book cover on the left and title, author, progress bar, and action on the right; a smaller Saved for later section with two horizontal book rows; bottom navigation Library (selected), Notes, Profile. Warm paper #F4F0E8, deep ink #292924, muted brick #A44E3F accent; beautifully restrained editorial typography and precise alignment. The featured book is The Art of Noticing by Rob Walker, with exact progress label 68 of 256 pages and action Continue reading. Saved rows: A Field Guide to Getting Lost by Rebecca Solnit; The Poetics of Space by Gaston Bachelard. Book covers should be simple tasteful typography and abstract color forms with the correct titles, not photographs. Do not invent ratings, reviews, prices, streaks, dates, extra books, or decorative dashboard cards. All text and the full bottom navigation must fit in the screen, with comfortable mobile touch targets and a visibly portrait composition. This comp will guide implementation of the real app.",
+      "reference": null,
+      "fingerprint": "244da058e4f3b6f03f2785f6825fe8139f8670db1c5b50d648dacdbab447dba6",
+      "createdAt": "2026-09-08T20:54:31.915Z",
+      "requestId": "req_be34303c8e234fe59d59bc58f74f3824",
+      "filename": "mobile-gpt-image-2.5-flare-2.png",
+      "imageSha256": "ddee2955ff2ba3a061bbf3eb2625e0e1684a606bff52b7570b390700b867a223",
+      "usage": {
+        "input_tokens": 295,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 295
+        },
+        "output_tokens": 1372,
+        "output_tokens_details": {
+          "image_tokens": 1372,
+          "text_tokens": 0
+        },
+        "total_tokens": 1667
+      },
+      "responseSize": "1024x1536",
+      "responseQuality": "high",
+      "status": "ok",
+      "seconds": 15.11,
+      "estimatedCostUsd": 0.042635
+    },
+    {
+      "id": "mobile-gpt-image-2.5-sunburst-2",
+      "case": "mobile",
+      "path": "portrait north-star comp",
+      "model": "gpt-image-2.5-sunburst",
+      "repeat": 2,
+      "quality": "high",
+      "size": "1024x1536",
+      "prompt": "Create a finished high-fidelity portrait mobile app first-screen comp for a fictional personal reading app named Margin. Render the screen edge-to-edge, with no physical phone frame, no perspective, and no surrounding canvas. Structure from top to bottom: small status bar; compact Margin masthead with a search icon; large serif heading Your reading, small caption A little further, every day.; one prominent horizontal Continue reading feature with a designed book cover on the left and title, author, progress bar, and action on the right; a smaller Saved for later section with two horizontal book rows; bottom navigation Library (selected), Notes, Profile. Warm paper #F4F0E8, deep ink #292924, muted brick #A44E3F accent; beautifully restrained editorial typography and precise alignment. The featured book is The Art of Noticing by Rob Walker, with exact progress label 68 of 256 pages and action Continue reading. Saved rows: A Field Guide to Getting Lost by Rebecca Solnit; The Poetics of Space by Gaston Bachelard. Book covers should be simple tasteful typography and abstract color forms with the correct titles, not photographs. Do not invent ratings, reviews, prices, streaks, dates, extra books, or decorative dashboard cards. All text and the full bottom navigation must fit in the screen, with comfortable mobile touch targets and a visibly portrait composition. This comp will guide implementation of the real app.",
+      "reference": null,
+      "fingerprint": "2e4bfd05c4f8f19b0b3c708e08fb1157435fbea6f3f4e5cc10dc9850bcfeedf7",
+      "createdAt": "2026-09-08T20:54:31.916Z",
+      "requestId": "req_5c8a991740364cae95d6886bfb32243f",
+      "filename": "mobile-gpt-image-2.5-sunburst-2.png",
+      "imageSha256": "0e460f00702e1082591657c4baa805c51a9eccd2df4eac9a863e6a50d3fed883",
+      "usage": {
+        "input_tokens": 295,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 295
+        },
+        "output_tokens": 1372,
+        "output_tokens_details": {
+          "image_tokens": 1372,
+          "text_tokens": 0
+        },
+        "total_tokens": 1667
+      },
+      "responseSize": "1024x1536",
+      "responseQuality": "high",
+      "status": "ok",
+      "seconds": 22.21,
+      "estimatedCostUsd": 0.042635
+    },
+    {
+      "id": "mobile-gpt-image-2-2",
+      "case": "mobile",
+      "path": "portrait north-star comp",
+      "model": "gpt-image-2",
+      "repeat": 2,
+      "quality": "high",
+      "size": "1024x1536",
+      "prompt": "Create a finished high-fidelity portrait mobile app first-screen comp for a fictional personal reading app named Margin. Render the screen edge-to-edge, with no physical phone frame, no perspective, and no surrounding canvas. Structure from top to bottom: small status bar; compact Margin masthead with a search icon; large serif heading Your reading, small caption A little further, every day.; one prominent horizontal Continue reading feature with a designed book cover on the left and title, author, progress bar, and action on the right; a smaller Saved for later section with two horizontal book rows; bottom navigation Library (selected), Notes, Profile. Warm paper #F4F0E8, deep ink #292924, muted brick #A44E3F accent; beautifully restrained editorial typography and precise alignment. The featured book is The Art of Noticing by Rob Walker, with exact progress label 68 of 256 pages and action Continue reading. Saved rows: A Field Guide to Getting Lost by Rebecca Solnit; The Poetics of Space by Gaston Bachelard. Book covers should be simple tasteful typography and abstract color forms with the correct titles, not photographs. Do not invent ratings, reviews, prices, streaks, dates, extra books, or decorative dashboard cards. All text and the full bottom navigation must fit in the screen, with comfortable mobile touch targets and a visibly portrait composition. This comp will guide implementation of the real app.",
+      "reference": null,
+      "fingerprint": "e813f3e84541995fdad45ae83e6c25c0b5eed8ff0b445950150fd53735874b43",
+      "createdAt": "2026-09-08T20:54:31.914Z",
+      "requestId": "req_2f23dd85ff9d4169bd92a6e760e71516",
+      "filename": "mobile-gpt-image-2-2.png",
+      "imageSha256": "6c6ccb7ebef369e90fc71e5bd33d8a20f6ef0176d0f6927f8b1a63a461e2ca84",
+      "usage": {
+        "input_tokens": 295,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 295
+        },
+        "output_tokens": 5488,
+        "output_tokens_details": {
+          "image_tokens": 5488,
+          "text_tokens": 0
+        },
+        "total_tokens": 5783
+      },
+      "responseSize": "1024x1536",
+      "responseQuality": "high",
+      "status": "ok",
+      "seconds": 86.91,
+      "estimatedCostUsd": 0.166115
+    },
+    {
+      "id": "edit-gpt-image-2.5-flare-1",
+      "case": "edit",
+      "path": "reference-based comp refinement",
+      "model": "gpt-image-2.5-flare",
+      "repeat": 1,
+      "quality": "high",
+      "size": "1536x1024",
+      "prompt": "Edit the supplied FIELDWORK website comp. Make exactly two changes: replace the main editorial headline with the exact text Spaces worth slowing down for. and change the rust accent color to deep forest green #285343 wherever that accent is used. Preserve the FIELDWORK masthead, all navigation labels, all other copy, the coastal house photograph and its pine tree, the photograph crop, column proportions, ivory background, typography character, teaser content, and all spacing and alignment. The replacement headline must remain within its existing left column with no overlap. Output the complete flat website screenshot at the original landscape aspect ratio. Do not add, remove, reorder, or redesign any other element.",
+      "reference": "editorial-gpt-image-2-1.png",
+      "fingerprint": "bb083c115887040170a37251400983b9a1be647eb8c0637bff498e4f8660b4cf",
+      "createdAt": "2026-09-08T20:55:58.830Z",
+      "requestId": "req_78ec80ebcdc34b79a7ef6d9a572a9781",
+      "filename": "edit-gpt-image-2.5-flare-1.png",
+      "imageSha256": "2059333f942564c54e26964c4f56c263f0c86b755738e3a8849ff6036e7cb38d",
+      "usage": {
+        "input_tokens": 1686,
+        "input_tokens_details": {
+          "image_tokens": 1536,
+          "text_tokens": 150
+        },
+        "output_tokens": 1372,
+        "output_tokens_details": {
+          "image_tokens": 1372,
+          "text_tokens": 0
+        },
+        "total_tokens": 3058
+      },
+      "responseSize": "1536x1024",
+      "responseQuality": "high",
+      "status": "ok",
+      "seconds": 21.43,
+      "estimatedCostUsd": 0.054198
+    },
+    {
+      "id": "edit-gpt-image-2.5-sunburst-1",
+      "case": "edit",
+      "path": "reference-based comp refinement",
+      "model": "gpt-image-2.5-sunburst",
+      "repeat": 1,
+      "quality": "high",
+      "size": "1536x1024",
+      "prompt": "Edit the supplied FIELDWORK website comp. Make exactly two changes: replace the main editorial headline with the exact text Spaces worth slowing down for. and change the rust accent color to deep forest green #285343 wherever that accent is used. Preserve the FIELDWORK masthead, all navigation labels, all other copy, the coastal house photograph and its pine tree, the photograph crop, column proportions, ivory background, typography character, teaser content, and all spacing and alignment. The replacement headline must remain within its existing left column with no overlap. Output the complete flat website screenshot at the original landscape aspect ratio. Do not add, remove, reorder, or redesign any other element.",
+      "reference": "editorial-gpt-image-2-1.png",
+      "fingerprint": "9b558207d3faca7d9043b848d731faa6abdf62d3220c5f801ad47050f8b3c7db",
+      "createdAt": "2026-09-08T20:55:58.832Z",
+      "requestId": "req_74f2c659842e4b99a16430336a8c4ec4",
+      "filename": "edit-gpt-image-2.5-sunburst-1.png",
+      "imageSha256": "9f5bc9b0c1ea01177e6ca5b81f2392012f036d70d66a89947737eae7e710601e",
+      "usage": {
+        "input_tokens": 1686,
+        "input_tokens_details": {
+          "image_tokens": 1536,
+          "text_tokens": 150
+        },
+        "output_tokens": 1372,
+        "output_tokens_details": {
+          "image_tokens": 1372,
+          "text_tokens": 0
+        },
+        "total_tokens": 3058
+      },
+      "responseSize": "1536x1024",
+      "responseQuality": "high",
+      "status": "ok",
+      "seconds": 25.49,
+      "estimatedCostUsd": 0.054198
+    },
+    {
+      "id": "edit-gpt-image-2-1",
+      "case": "edit",
+      "path": "reference-based comp refinement",
+      "model": "gpt-image-2",
+      "repeat": 1,
+      "quality": "high",
+      "size": "1536x1024",
+      "prompt": "Edit the supplied FIELDWORK website comp. Make exactly two changes: replace the main editorial headline with the exact text Spaces worth slowing down for. and change the rust accent color to deep forest green #285343 wherever that accent is used. Preserve the FIELDWORK masthead, all navigation labels, all other copy, the coastal house photograph and its pine tree, the photograph crop, column proportions, ivory background, typography character, teaser content, and all spacing and alignment. The replacement headline must remain within its existing left column with no overlap. Output the complete flat website screenshot at the original landscape aspect ratio. Do not add, remove, reorder, or redesign any other element.",
+      "reference": "editorial-gpt-image-2-1.png",
+      "fingerprint": "c0963b606a818f44d5010424a17d40469a0aeac7b815ef4e7dc26ca9cd3dd0f5",
+      "createdAt": "2026-09-08T20:55:58.826Z",
+      "requestId": "req_8116000194ec4758bf82b1442230a6db",
+      "filename": "edit-gpt-image-2-1.png",
+      "imageSha256": "e1f3da41f27c4ef1b77792de870ddb44a8a7e7c0790e2d24605a8b9828f2ada6",
+      "usage": {
+        "input_tokens": 1676,
+        "input_tokens_details": {
+          "image_tokens": 1536,
+          "text_tokens": 140
+        },
+        "output_tokens": 5488,
+        "output_tokens_details": {
+          "image_tokens": 5488,
+          "text_tokens": 0
+        },
+        "total_tokens": 7164
+      },
+      "responseSize": "1536x1024",
+      "responseQuality": "high",
+      "status": "ok",
+      "seconds": 92.4,
+      "estimatedCostUsd": 0.177628
+    },
+    {
+      "id": "edit-gpt-image-2.5-flare-2",
+      "case": "edit",
+      "path": "reference-based comp refinement",
+      "model": "gpt-image-2.5-flare",
+      "repeat": 2,
+      "quality": "high",
+      "size": "1536x1024",
+      "prompt": "Edit the supplied FIELDWORK website comp. Make exactly two changes: replace the main editorial headline with the exact text Spaces worth slowing down for. and change the rust accent color to deep forest green #285343 wherever that accent is used. Preserve the FIELDWORK masthead, all navigation labels, all other copy, the coastal house photograph and its pine tree, the photograph crop, column proportions, ivory background, typography character, teaser content, and all spacing and alignment. The replacement headline must remain within its existing left column with no overlap. Output the complete flat website screenshot at the original landscape aspect ratio. Do not add, remove, reorder, or redesign any other element.",
+      "reference": "editorial-gpt-image-2-1.png",
+      "fingerprint": "bb083c115887040170a37251400983b9a1be647eb8c0637bff498e4f8660b4cf",
+      "createdAt": "2026-09-08T20:57:31.228Z",
+      "requestId": "req_9a3f08462be042819e3dc9b0f1651f4c",
+      "filename": "edit-gpt-image-2.5-flare-2.png",
+      "imageSha256": "3e1d9430735041c2e48516be63983a72bc53efa62e4e778ddd3debb5cabb8168",
+      "usage": {
+        "input_tokens": 1686,
+        "input_tokens_details": {
+          "image_tokens": 1536,
+          "text_tokens": 150
+        },
+        "output_tokens": 1372,
+        "output_tokens_details": {
+          "image_tokens": 1372,
+          "text_tokens": 0
+        },
+        "total_tokens": 3058
+      },
+      "responseSize": "1536x1024",
+      "responseQuality": "high",
+      "status": "ok",
+      "seconds": 16.47,
+      "estimatedCostUsd": 0.054198
+    },
+    {
+      "id": "edit-gpt-image-2.5-sunburst-2",
+      "case": "edit",
+      "path": "reference-based comp refinement",
+      "model": "gpt-image-2.5-sunburst",
+      "repeat": 2,
+      "quality": "high",
+      "size": "1536x1024",
+      "prompt": "Edit the supplied FIELDWORK website comp. Make exactly two changes: replace the main editorial headline with the exact text Spaces worth slowing down for. and change the rust accent color to deep forest green #285343 wherever that accent is used. Preserve the FIELDWORK masthead, all navigation labels, all other copy, the coastal house photograph and its pine tree, the photograph crop, column proportions, ivory background, typography character, teaser content, and all spacing and alignment. The replacement headline must remain within its existing left column with no overlap. Output the complete flat website screenshot at the original landscape aspect ratio. Do not add, remove, reorder, or redesign any other element.",
+      "reference": "editorial-gpt-image-2-1.png",
+      "fingerprint": "9b558207d3faca7d9043b848d731faa6abdf62d3220c5f801ad47050f8b3c7db",
+      "createdAt": "2026-09-08T20:57:31.231Z",
+      "requestId": "req_4fdcd907ee6a497981d43f2e08976535",
+      "filename": "edit-gpt-image-2.5-sunburst-2.png",
+      "imageSha256": "a31a6011b5818103a2feb007e58bd489e745e9bfa5cad92cc9b366d3c43db9be",
+      "usage": {
+        "input_tokens": 1686,
+        "input_tokens_details": {
+          "image_tokens": 1536,
+          "text_tokens": 150
+        },
+        "output_tokens": 1372,
+        "output_tokens_details": {
+          "image_tokens": 1372,
+          "text_tokens": 0
+        },
+        "total_tokens": 3058
+      },
+      "responseSize": "1536x1024",
+      "responseQuality": "high",
+      "status": "ok",
+      "seconds": 29.58,
+      "estimatedCostUsd": 0.054198
+    },
+    {
+      "id": "edit-gpt-image-2-2",
+      "case": "edit",
+      "path": "reference-based comp refinement",
+      "model": "gpt-image-2",
+      "repeat": 2,
+      "quality": "high",
+      "size": "1536x1024",
+      "prompt": "Edit the supplied FIELDWORK website comp. Make exactly two changes: replace the main editorial headline with the exact text Spaces worth slowing down for. and change the rust accent color to deep forest green #285343 wherever that accent is used. Preserve the FIELDWORK masthead, all navigation labels, all other copy, the coastal house photograph and its pine tree, the photograph crop, column proportions, ivory background, typography character, teaser content, and all spacing and alignment. The replacement headline must remain within its existing left column with no overlap. Output the complete flat website screenshot at the original landscape aspect ratio. Do not add, remove, reorder, or redesign any other element.",
+      "reference": "editorial-gpt-image-2-1.png",
+      "fingerprint": "c0963b606a818f44d5010424a17d40469a0aeac7b815ef4e7dc26ca9cd3dd0f5",
+      "createdAt": "2026-09-08T20:57:31.227Z",
+      "requestId": "req_6088d5b7ad7646f1abadfb8c49cf62a7",
+      "filename": "edit-gpt-image-2-2.png",
+      "imageSha256": "028b211b7ea2670086470baa63c9de8a070ace3fd451314d0f6b6d5fb3eb5248",
+      "usage": {
+        "input_tokens": 1676,
+        "input_tokens_details": {
+          "image_tokens": 1536,
+          "text_tokens": 140
+        },
+        "output_tokens": 5488,
+        "output_tokens_details": {
+          "image_tokens": 5488,
+          "text_tokens": 0
+        },
+        "total_tokens": 7164
+      },
+      "responseSize": "1536x1024",
+      "responseQuality": "high",
+      "status": "ok",
+      "seconds": 88.47,
+      "estimatedCostUsd": 0.177628
+    }
+  ]
+}

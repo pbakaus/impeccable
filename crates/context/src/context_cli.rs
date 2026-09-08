@@ -172,7 +172,7 @@ fn append_image_gen_directive(parts: &mut Vec<String>, env: &Env, provider: &Pro
     parts.push([
         "IMAGE_GEN_AVAILABLE: your harness-native image tool is always the first choice for generation; use it whenever one exists.".to_string(),
         "This environment also carries an OpenAI key as the fallback for harnesses with no native tool:".to_string(),
-        format!("`{} --prompt \"...\" --out <file>` (gpt-image-2, billed to the user's key; say so before the first render, and never reach for it when a native tool exists).", provider.verb_cmd("generate-image")),
+        format!("`{} --prompt \"...\" --out <file>` ({}, billed to the user's key; say so before the first render, and never reach for it when a native tool exists).", provider.verb_cmd("generate-image"), crate::generate_image::DEFAULT_MODEL),
         "Visualizing a direction before building it measurably strengthens the result.".to_string(),
     ].join(" "));
 }
