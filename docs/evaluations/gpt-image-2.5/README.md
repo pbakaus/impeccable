@@ -2,6 +2,8 @@
 
 Run date: September 8, 2026. Prepared and visually reviewed with AI assistance.
 
+Follow-up: [native transparency validation for asset production](transparency/README.md).
+
 ## Decision
 
 Use **Flare as the API fallback default**, with `--model` available for

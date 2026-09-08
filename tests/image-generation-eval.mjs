@@ -1,17 +1,21 @@
 #!/usr/bin/env node
 // Opt-in, billed comparison. Run with node --env-file=.env tests/image-generation-eval.mjs --run.
-// This isolates model quality with the same Images API payloads as generate-image.
+// Comp payloads match generate-image; the transparency suite probes native API
+// background/output_format options that the engine does not yet expose.
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const cases = JSON.parse(await fs.readFile(new URL('./fixtures/image-generation/comps.json', import.meta.url), 'utf8'));
 const models = ['gpt-image-2', 'gpt-image-2.5-flare', 'gpt-image-2.5-sunburst'];
 const args = process.argv.slice(2);
 const option = (name, fallback) => args.includes(name) ? args[args.indexOf(name) + 1] : fallback;
-const out = path.resolve(option('--out', path.join(root, 'tmp/image-generation-2.5')));
+const suite = option('--suite', 'comps');
+if (!['comps', 'transparency'].includes(suite)) throw new Error('--suite must be comps or transparency');
+const fixtureRoot = new URL('./fixtures/image-generation/', import.meta.url);
+const cases = JSON.parse(await fs.readFile(new URL(`${suite}.json`, fixtureRoot), 'utf8'));
+const out = path.resolve(option('--out', path.join(root, suite === 'comps' ? 'tmp/image-generation-2.5' : 'tmp/image-transparency-2.5')));
 const repeats = Number(option('--repeats', '2'));
 if (!Number.isInteger(repeats) || repeats < 1 || repeats > 10) throw new Error('--repeats must be 1–10');
 const quality = option('--quality', 'high');
@@ -28,8 +32,10 @@ async function generate(test, model, repeat) {
   const id = `${test.id}-${model}-${repeat}`;
   const filename = `${id}.png`;
   const recordPath = path.join(out, `${id}.json`);
-  const reference = test.reference ? await fs.readFile(path.join(out, test.reference)) : null;
+  const referenceName = test.referenceFixture || test.reference;
+  const reference = test.referenceFixture ? await fs.readFile(new URL(test.referenceFixture, fixtureRoot)) : test.reference ? await fs.readFile(path.join(out, test.reference)) : null;
   const request = { model, prompt: test.prompt, size: test.size, quality, n: 1 };
+  if (test.background) Object.assign(request, { background: test.background, output_format: 'png' });
   const fingerprint = hash(JSON.stringify({ request, reference: reference && hash(reference) }));
   try {
     const previous = JSON.parse(await fs.readFile(recordPath, 'utf8'));
@@ -41,14 +47,15 @@ async function generate(test, model, repeat) {
     }
   } catch {}
   const started = performance.now();
-  const record = { id, case: test.id, path: test.path, model, repeat, quality, size: test.size, prompt: test.prompt, reference: test.reference || null, fingerprint, createdAt: new Date().toISOString() };
+  const record = { id, case: test.id, path: test.path, model, repeat, quality, size: test.size, prompt: test.prompt, reference: referenceName || null, fingerprint, createdAt: new Date().toISOString() };
+  if (test.background) Object.assign(record, { background: test.background, outputFormat: 'png' });
   try {
     let body;
     const headers = { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` };
     if (reference) {
       body = new FormData();
       for (const [key, value] of Object.entries(request)) body.set(key, String(value));
-      body.append('image[]', new Blob([reference], { type: 'image/png' }), test.reference);
+      body.append('image[]', new Blob([reference], { type: 'image/png' }), referenceName);
     } else {
       headers['Content-Type'] = 'application/json';
       body = JSON.stringify(request);
@@ -61,6 +68,7 @@ async function generate(test, model, repeat) {
     const bytes = Buffer.from(json.data[0].b64_json, 'base64');
     await fs.writeFile(path.join(out, filename), bytes);
     Object.assign(record, { filename, imageSha256: hash(bytes), usage: json.usage, responseSize: json.size, responseQuality: json.quality, status: 'ok' });
+    if (json.background) record.responseBackground = json.background;
   } catch (error) {
     record.status = 'error';
     record.error = error.message;
@@ -71,8 +79,13 @@ async function generate(test, model, repeat) {
   console.log(`${id}: ${record.status}, ${record.seconds}s${record.error ? `, ${record.error}` : ''}`);
 }
 
-// Each round interleaves the models; at most three calls are in flight.
-for (const test of cases) {
+// Static-reference transparency jobs are independent; keep at most three in flight.
+if (suite === 'transparency') {
+  const jobs = cases.flatMap(test => Array.from({ length: repeats }, (_, index) => models.map(model => [test, model, index + 1])).flat());
+  await Promise.all(Array.from({ length: 3 }, async () => {
+    for (let job; (job = jobs.shift());) await generate(...job);
+  }));
+} else for (const test of cases) {
   if (test.reference && !await fs.access(path.join(out, test.reference)).then(() => true, () => false)) {
     console.error(`Skipped ${test.id}: common reference is missing`);
     process.exitCode = 1;

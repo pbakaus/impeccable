@@ -1,4 +1,4 @@
-# Comp model comparison
+# Image model comparisons
 
 `comps.json` holds fixed briefs for the new-world decision comp, surface
 composition, portrait north-star, and reference-refinement paths. The products
@@ -34,3 +34,46 @@ the edit). Record concrete defects rather than equating image similarity or
 latency with visual quality. Two samples per cell are exploratory evidence,
 not a statistically significant benchmark. Quality levels may consume
 different tokens across models, so report usage as well as the quality label.
+
+## Native transparency
+
+`transparency.json` probes botanical cutouts (fine stems and white petals),
+glass (continuous translucency and soft shadow), and reference-based plate
+extraction (white sails, thin rigging, and three open holes). The plate input
+is the opaque cream-ground rendering from `render-transparency-reference.py`; its
+geometry is known, so background removal and reference fidelity can be
+assessed separately. It requests 1024px output from a 640px reference.
+
+```sh
+node tests/image-generation-eval.mjs --suite transparency # 18-call plan
+node --env-file=.env tests/image-generation-eval.mjs --suite transparency --run
+python3 tests/image-transparency-review.py tmp/image-transparency-2.5
+```
+
+This suite explicitly sends `background: transparent` and `output_format:
+png` to both Images API endpoints. **The engine does not yet expose these
+options**; this is a capability probe, not a full asset-producer integration
+test. Defaults remain two samples per case/model, `high`, 1024×1024.
+
+The review helper requires Pillow and makes no network requests. It records
+alpha histograms, border alpha, fixed sail/hole probes, and a central glass
+body probe, then renders each output over white, dark, and coral backgrounds
+alongside its alpha mask. White in the mask means opaque; black means clear.
+Inspect composites rather than RGB hidden under zero alpha. Distinguish
+near-opaque alpha (250–255) from exactly opaque (255), and broad translucent
+areas from ordinary edge antialiasing. Fixed reference probes only establish
+the intended semantic behavior when visual inspection confirms alignment.
+
+To reproduce the input and save the known-alpha original:
+
+```sh
+python3 tests/fixtures/image-generation/render-transparency-reference.py --transparent-out reference.png
+python3 tests/image-transparency-review.py tmp/image-transparency-2.5 --reference-alpha reference.png
+```
+
+The generator checks white sails, rigging, and holes before flattening the
+reference over `#F3EFE5`. The review helper's `--reference-alpha` measures
+silhouette intersection-over-union after resizing the known reference to
+the output dimensions. This uses alpha ≥128 without positional alignment:
+scale and placement drift reduce the score even if the cutout itself is clean.
+Do not chroma-key the API outputs: the experiment measures native alpha.

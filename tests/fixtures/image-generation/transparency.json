@@ -1,0 +1,42 @@
+[
+  {
+    "id": "botanical",
+    "path": "generation: fine details and opaque light foreground",
+    "size": "1024x1024",
+    "prompt": "Generate a production-ready botanical illustration cutout for a website. A single graceful branch with three white camellia flowers, bright green and dark green leaves, and delicate charcoal ink stems. Refined hand-drawn editorial illustration with subtle watercolor detail. All three flowers must have solid opaque white petals, not holes; leaf interiors must stay green. Preserve delicate stems and small gaps between leaves and petals. Center the entire branch with clear padding on every edge, no cropped tips. The background and all gaps between separate plant parts must be genuinely transparent alpha, not white, not a checkerboard picture, not a chroma color. No frame, typography, floor, backdrop, border, or cast shadow. Deliver an isolated reusable PNG asset.",
+    "background": "transparent",
+    "checks": [
+      "Real transparent background and gaps",
+      "White flower petals remain opaque",
+      "Fine stems and leaf tips intact",
+      "No halo on white, dark, or colored backgrounds"
+    ]
+  },
+  {
+    "id": "glass",
+    "path": "generation: continuous translucency and soft shadow",
+    "size": "1024x1024",
+    "prompt": "Generate a photorealistic reusable product cutout: one empty, translucent pale-blue glass perfume bottle with a clear rounded glass stopper, no label or text. Three-quarter view, entire bottle centered with generous transparent padding. The glass should transmit the future webpage background through its body with genuine partial alpha, while retaining subtle pale-blue tint, realistic glass edges, small opaque white specular highlights, and a soft semitransparent contact shadow directly beneath the bottle. Real PNG transparency is essential: outside the bottle and its small shadow must be alpha zero, and the clear interior of the glass must contain partial alpha, not an opaque painted white rectangle. No solid background, no baked-in checkerboard, no table or environment, no gradient backdrop, no extra objects.",
+    "background": "transparent",
+    "checks": [
+      "Background is alpha zero",
+      "Glass body has broad partial alpha",
+      "Specular highlights remain visible",
+      "Soft shadow blends without a rectangular matte"
+    ]
+  },
+  {
+    "id": "plate",
+    "path": "reference edit: approved illustration plate",
+    "size": "1024x1024",
+    "prompt": "Use the provided crop as the approved visual reference and recreate it as a clean production asset at the target aspect ratio. This is a designed illustration plate: the same single sailboat, same style, same dark thin rigging and outlines, two opaque white sails, teal hull, gold keel, and exactly three circular open portholes. Preserve silhouette, composition, perspective, palette, placement and scale exactly. Remove the cream page background to genuine transparent alpha, including the open spaces between the rigging and sails and the three circular holes in the hull. Keep the white paint of both sails fully opaque. No text, border, card corners, page background, drop shadow, new object, checkerboard picture, or chroma color. Recreate at higher resolution, not a screenshot crop; preserve the existing clear margins around the artwork. Output a reusable transparent PNG that can sit on any page background.",
+    "background": "transparent",
+    "checks": [
+      "Two opaque white sails preserved",
+      "Three circular hull holes are transparent",
+      "Rigging and approved geometry preserved",
+      "No cream matte or chroma fringe"
+    ],
+    "referenceFixture": "transparency-reference-opaque.png"
+  }
+]
