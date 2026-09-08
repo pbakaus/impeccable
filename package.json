@@ -59,6 +59,7 @@
     "test:new-work-e2e": "node scripts/run-tests.mjs new-work-e2e",
     "test:live-e2e-agent": "node scripts/run-tests.mjs live-e2e-agent",
     "test:skill-behavior": "node scripts/run-tests.mjs skill-behavior",
+    "test:skill-workflow": "node scripts/run-tests.mjs skill-workflow",
     "test:live-svelte-adapter-deepseek": "node scripts/run-tests.mjs live-svelte-adapter-deepseek",
     "smoke:hooks": "node scripts/smoke-provider-hooks.mjs",
     "audit": "bun audit --audit-level=moderate",

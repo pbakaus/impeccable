@@ -70,7 +70,7 @@ describe('live-e2e accept cleanup regression', () => {
       log: (msg) => t.diagnostic(msg),
     });
 
-    const { page, tmp, teardown } = session;
+    const { page, tmp, appRoot, teardown } = session;
     try {
       t.diagnostic(`Using LLM agent (provider=${llmConfig.provider} model=${llmConfig.model})`);
       await waitForHandshake(page);
@@ -104,6 +104,10 @@ describe('live-e2e accept cleanup regression', () => {
       await clickNext(page);
       assert.equal(await getVisibleVariant(page), 2, 'variant 2 visible after one Next');
 
+      const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('impeccable-live-session') || 'null'));
+      assert.ok(saved?.id && /^[a-zA-Z0-9_-]+$/.test(saved.id), 'cycling session has a safe durable id');
+      const snapshotPath = join(appRoot, '.impeccable/live/sessions', `${saved.id}.snapshot.json`);
+
       t.diagnostic('Accepting variant 2');
       await clickAccept(page, { expectedVariant: 2 });
 
@@ -120,6 +124,19 @@ describe('live-e2e accept cleanup regression', () => {
         sourceFile,
         finalSource,
       });
+
+      // Source/DOM cleanup can precede live-complete, or succeed while its
+      // durable acknowledgement fails. Do not count that as a finished accept.
+      const deadline = Date.now() + 30_000;
+      let snapshot;
+      do {
+        snapshot = JSON.parse(readFileSync(snapshotPath, 'utf8'));
+        if (snapshot.phase === 'completed') break;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      } while (Date.now() < deadline);
+      assert.equal(snapshot.phase, 'completed', 'accept must reach durable completed phase without forcing completion');
+      assert.doesNotMatch(readFileSync(sourceFile, 'utf8'), /data-impeccable-[\w-]+\s*=/, 'accepted source contains no reserved runtime attributes');
+      t.diagnostic(`Durable completion verified for ${saved.id}`);
     } finally {
       await teardown();
     }

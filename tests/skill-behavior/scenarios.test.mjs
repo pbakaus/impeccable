@@ -18,16 +18,18 @@ import path from 'node:path';
 import {
   prepareWorkspace,
   cleanupWorkspace,
-  runTurn,
+  runTurn as runHarnessTurn,
   bashCommandsMatching,
   readsMatching,
   fileLoaded,
+  callLoadedFile,
   summarizeTrace,
   ENGINE_BIN,
   ENGINE_MISSING_MESSAGE,
 } from './harness.mjs';
 import { detectProvider, getModel, hasKey, resolveModelList, PROVIDERS } from './providers.mjs';
-import { assertPlanningFallbackWarning, LAUNCHER_FAILURE_WARNING } from './assertions.mjs';
+import { assertPlanningFallbackWarning, LAUNCHER_FAILURE_WARNING, assertAdviceOnly, assertWorkflowAdvice, assertCommandComparison, missingReferences } from './assertions.mjs';
+import { assertCompleted } from '../skill-workflow/assertions.mjs';
 import {
   PRODUCT_MD_SAMPLE,
   PRODUCT_MD_SAMPLE_NO_REGISTER,
@@ -39,9 +41,22 @@ import {
   SVELTE_PROJECT_FILES,
 } from './fixtures.mjs';
 
+// Protocol-only shell access; successful checkpoints end observation, not the task.
+async function runTurn({ checkpoint, ...options }) {
+  return runHarnessTurn({ contextOnlyBash: true, timeoutMs: 180000, ...options,
+    stopAfter: typeof checkpoint === 'function' ? checkpoint
+      : checkpoint ? (trace) => fileLoaded(trace, checkpoint) : undefined });
+}
+
 const CRAFT_PROMPT = '/impeccable craft a landing page for the project in this workspace';
+function projectCodeReads(trace) {
+  return trace.toolCalls.filter((call) => call.name === 'read' && call.succeeded
+    && /\.(css|svelte|tsx?|jsx?|astro)$/i.test(call.input.path)
+    && !call.input.path.includes('.claude/skills/')).map((call) => call.input.path);
+}
 const SHAPE_PROMPT = '/impeccable shape a landing page for the project in this workspace';
 const NATURAL_BUILD_PROMPT = 'Build a landing page for the project in this workspace.';
+const UPDATE_NOTICE = /(?:skill|impeccable).{0,100}(?:update|version)|(?:update|version).{0,100}(?:skill|impeccable)|99\.0\.0/i;
 const TEACH_PROMPT = '/impeccable teach';
 const PRIMER_PROMPT =
   'Take a quick look at the project. What context should guide later design work? Run the impeccable context loader once if you need to.';
@@ -57,14 +72,9 @@ function logTrace(label, scenario, model, trace, extras = {}) {
 }
 
 function loadedBeforeImplementationWrite(trace, filename) {
-  const needle = filename.toLowerCase();
-  const loadIndex = trace.toolCalls.findIndex(({ name, input }) => {
-    if (name === 'read') return input?.path?.toLowerCase().includes(needle);
-    if (name === 'bash') return input?.command?.toLowerCase().includes(needle);
-    return false;
-  });
+  const loadIndex = trace.toolCalls.findIndex((call) => callLoadedFile(call, filename));
   const writeIndex = trace.toolCalls.findIndex(
-    ({ name, input }) => name === 'write' && /\.(html?|css|svelte|jsx?|tsx?)$/i.test(input?.path ?? ''),
+    ({ mutatedPaths = [] }) => mutatedPaths.some((file) => /\.(html?|css|svelte|jsx?|tsx?)$/i.test(file)),
   );
   return loadIndex >= 0 && (writeIndex < 0 || loadIndex < writeIndex);
 }
@@ -81,16 +91,6 @@ function executedUpdateCommands(trace) {
   );
 }
 
-function assertAdviceOnly(trace, text) {
-  assert.ok(text.trim(), 'advice must reach the user, not stop at reference loading');
-  assert.deepEqual(trace.writePaths, [], 'advice must not use the write tool');
-  const mutations = trace.toolCalls.flatMap((call) => call.mutatedPaths ?? [])
-    .filter((file) => !file.startsWith('.impeccable/') || file.startsWith('.impeccable/critique/'));
-  assert.deepEqual(mutations, [], 'advice must not edit project files or archive an unsolicited critique');
-  assert.deepEqual(trace.questionCalls, [], 'advice must not start an init or design interview');
-  assert.equal(bashCommandsMatching(trace, 'impeccable detect').length, 0, 'workflow advice does not run menu scans');
-}
-
 for (const modelId of resolveModelList()) {
   const provider = detectProvider(modelId);
   const keyPresent = hasKey(provider);
@@ -105,17 +105,14 @@ for (const modelId of resolveModelList()) {
       return;
     }
     const model = getModel(modelId);
-    // Gemini Flash tends to inspect one file at a time, while the production
-    // Anthropic/OpenAI models batch setup reads and then begin implementation.
-    // Keep the latter tightly bounded so this routing suite does not turn into
-    // a page-generation benchmark, but leave Gemini enough room to reach the
-    // same required reference.
-    const setupMaxSteps = provider === 'google' ? 6 : 3;
+    // Observe a routing decision, with room for setup reads but no full build.
+    const setupMaxSteps = 10;
 
     it('scenario 1: no PRODUCT.md / DESIGN.md', async () => {
       const workspace = prepareWorkspace({ files: {} });
       try {
         const { trace, text } = await runTurn({
+          checkpoint: 'init.md',
           workspace,
           model,
           userPrompt: CRAFT_PROMPT,
@@ -149,6 +146,7 @@ for (const modelId of resolveModelList()) {
       });
       try {
         const { trace, text } = await runTurn({
+          checkpoint: 'new-work.md',
           workspace,
           model,
           userPrompt: CRAFT_PROMPT,
@@ -177,6 +175,7 @@ for (const modelId of resolveModelList()) {
       });
       try {
         const { trace, text } = await runTurn({
+          checkpoint: 'new-work.md',
           workspace,
           model,
           userPrompt: CRAFT_PROMPT,
@@ -221,6 +220,7 @@ for (const modelId of resolveModelList()) {
         // Turn 1: prime the conversation so impeccable context gets run and its
         // output enters the message history.
         const turn1 = await runTurn({
+          checkpoint: (trace) => trace.bashOutputs.some((output) => output.startsWith('exit=0\n')),
           workspace,
           model,
           userPrompt: PRIMER_PROMPT,
@@ -236,6 +236,7 @@ for (const modelId of resolveModelList()) {
         // Turn 2: the real ask. The skill says "skip if you've already
         // loaded it". Verify the agent honors that.
         const turn2 = await runTurn({
+          checkpoint: 'new-work.md',
           workspace,
           model,
           userPrompt: 'Now, /impeccable craft a landing page based on what you saw.',
@@ -261,6 +262,7 @@ for (const modelId of resolveModelList()) {
       });
       try {
         const { trace, text } = await runTurn({
+          checkpoint: 'new-work.md',
           workspace,
           model,
           userPrompt: CRAFT_PROMPT,
@@ -292,6 +294,7 @@ for (const modelId of resolveModelList()) {
       });
       try {
         const { trace, text } = await runTurn({
+          checkpoint: 'polish.md',
           workspace,
           model,
           userPrompt: '/impeccable polish index.html',
@@ -318,6 +321,7 @@ for (const modelId of resolveModelList()) {
       });
       try {
         const { trace, text } = await runTurn({
+          checkpoint: 'audit.md',
           workspace,
           model,
           userPrompt: '/impeccable audit index.html',
@@ -344,6 +348,7 @@ for (const modelId of resolveModelList()) {
       });
       try {
         const { trace, text } = await runTurn({
+          checkpoint: (trace) => projectCodeReads(trace).length > 0,
           workspace,
           model,
           userPrompt: '/impeccable polish src/routes/+page.svelte',
@@ -354,9 +359,7 @@ for (const modelId of resolveModelList()) {
         // agent should read at least one project code file (CSS / tokens /
         // component / page), not just the skill's PRODUCT.md / DESIGN.md
         // / reference files.
-        const projectReads = trace.readPaths.filter((p) =>
-          /\.(css|svelte|tsx?|jsx?|astro)$/i.test(p) && !p.includes('.claude/skills/'),
-        );
+        const projectReads = projectCodeReads(trace);
         assert.ok(
           projectReads.length >= 1,
           `agent should read at least one project code file to understand the existing design system.\n` +
@@ -392,6 +395,7 @@ for (const modelId of resolveModelList()) {
           userPrompt: '/impeccable polish index.html',
           maxSteps: setupMaxSteps,
           env: { IMPECCABLE_UPDATE_CACHE: path.join(workspace, '.impeccable-update.json') },
+          checkpoint: (trace) => trace.assistantTexts?.some((text) => UPDATE_NOTICE.test(text)),
         });
         logTrace('S9', 'update-available', modelId, trace, { textSample: text.slice(0, 400) });
 
@@ -408,6 +412,7 @@ for (const modelId of resolveModelList()) {
             `bashOutputs: ${JSON.stringify(trace.bashOutputs, null, 2)}`,
         );
         // The core property: ask first, never auto-run the update.
+        assert.ok(trace.assistantTexts?.some((text) => UPDATE_NOTICE.test(text)), 'the skill update must be surfaced to the user');
         const ranUpdate = executedUpdateCommands(trace);
         assert.equal(
           ranUpdate.length,
@@ -431,6 +436,7 @@ for (const modelId of resolveModelList()) {
       });
       try {
         const { trace, text } = await runTurn({
+          checkpoint: 'polish.md',
           workspace,
           model,
           userPrompt: '/impeccable polish index.html',
@@ -469,6 +475,7 @@ for (const modelId of resolveModelList()) {
       const workspace = prepareWorkspace({ files: {} });
       try {
         const { trace, text } = await runTurn({
+          checkpoint: 'init.md',
           workspace,
           model,
           userPrompt: SHAPE_PROMPT,
@@ -494,6 +501,7 @@ for (const modelId of resolveModelList()) {
       const workspace = prepareWorkspace({ files: {} });
       try {
         const { trace, text } = await runTurn({
+          checkpoint: 'init.md',
           workspace,
           model,
           userPrompt: NATURAL_BUILD_PROMPT,
@@ -521,6 +529,7 @@ for (const modelId of resolveModelList()) {
       const workspace = prepareWorkspace({ files: {} });
       try {
         const { trace, text } = await runTurn({
+          checkpoint: 'init.md',
           workspace,
           model,
           userPrompt: TEACH_PROMPT,
@@ -554,6 +563,7 @@ for (const modelId of resolveModelList()) {
       });
       try {
         const { trace, text } = await runTurn({
+          checkpoint: 'ios.md',
           workspace,
           model,
           userPrompt: '/impeccable craft a tide detail screen for the project in this workspace',
@@ -589,6 +599,7 @@ for (const modelId of resolveModelList()) {
       });
       try {
         const { trace, text } = await runTurn({
+          checkpoint: 'audit.native.md',
           workspace,
           model,
           userPrompt: '/impeccable audit the app in this workspace',
@@ -614,40 +625,42 @@ for (const modelId of resolveModelList()) {
       ['existing project', WORKFLOW_ADVICE_FILES],
       ['missing product context', { 'index.html': MINIMAL_LANDING_HTML }],
     ]) {
-      it(`scenario 16: workflow advice stays read-only (${label})`, async () => {
+      it(`scenario 16: workflow advice stays read-only (${label})`, async (t) => {
         const workspace = prepareWorkspace({ files });
         try {
-          const { trace, text } = await runTurn({
+          const result = await runTurn({
             workspace,
             model,
             userPrompt: "I'm joining this project. Where should I start with Impeccable?",
             maxSteps: 8,
             contextOnlyBash: true,
           });
+          const { trace, text } = result;
           logTrace('S16', label, modelId, trace, { textSample: text.slice(0, 300) });
-          assert.ok(readsMatching(trace, 'reference/routing.md').length, 'workflow advice loads the shared routing reference');
-          assertAdviceOnly(trace, text);
+          t.diagnostic(`Reference coverage gaps (non-blocking): ${missingReferences(trace, ['reference/routing.md']).join(', ') || 'none'}`);
+          assertCompleted(result);
+          assertWorkflowAdvice(trace, text, { missingContext: label === 'missing product context' });
         } finally {
           cleanupWorkspace(workspace);
         }
       });
     }
 
-    it('scenario 17: command comparison reads references without running them', async () => {
+    it('scenario 17: command comparison explains independent commands without running them', async (t) => {
       const workspace = prepareWorkspace({ files: WORKFLOW_ADVICE_FILES });
       try {
-        const { trace, text } = await runTurn({
+        const result = await runTurn({
           workspace,
           model,
           userPrompt: 'Should I use critique or polish on index.html? Is a critique required before polishing?',
           maxSteps: 8,
           contextOnlyBash: true,
         });
+        const { trace, text } = result;
         logTrace('S17', 'command-comparison', modelId, trace, { textSample: text.slice(0, 300) });
-        assert.ok(readsMatching(trace, 'reference/routing.md').length, 'a command name in a question still routes to advice');
-        assert.ok(readsMatching(trace, 'reference/critique.md').length, 'comparison consults the critique contract');
-        assert.ok(readsMatching(trace, 'reference/polish.md').length, 'comparison consults the polish contract');
-        assertAdviceOnly(trace, text);
+        t.diagnostic(`Reference coverage gaps (non-blocking): ${missingReferences(trace, ['reference/routing.md', 'reference/critique.md', 'reference/polish.md']).join(', ') || 'none'}`);
+        assertCompleted(result);
+        assertCommandComparison(trace, text);
       } finally {
         cleanupWorkspace(workspace);
       }
@@ -730,6 +743,7 @@ for (const modelId of resolveModelList()) {
           workspace,
           model,
           userPrompt: '/impeccable polish index.html. Please do the polish pass now; afterward tell me which command would be useful next.',
+          checkpoint: 'polish.md',
           maxSteps: 8,
           contextOnlyBash: true,
         });

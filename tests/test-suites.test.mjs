@@ -12,6 +12,13 @@ import {
 } from '../scripts/test-suites.mjs';
 
 describe('test suite registry', () => {
+  it('separates protocol checkpoints from opt-in browser-backed completion', () => {
+    assert.deepEqual(suiteFiles(['skill-behavior']), ['tests/skill-behavior/scenarios.test.mjs']);
+    assert.ok(OPT_IN_SUITES.includes('skill-workflow'));
+    assert.equal(SUITES['skill-workflow'].needsPlaywright, true);
+    assert.ok(suiteFiles(['skill-workflow']).includes('tests/skill-workflow/full-build.test.mjs'));
+    assert.equal(DEFAULT_SUITES.includes('skill-workflow'), false);
+  });
   it('assigns every test file to a default or opt-in suite', () => {
     const allDiscovered = findTestFiles();
     const allRegistered = new Set(suiteFiles([...DEFAULT_SUITES, ...OPT_IN_SUITES]));

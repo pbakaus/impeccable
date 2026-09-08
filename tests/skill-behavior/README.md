@@ -2,8 +2,8 @@
 
 LLM-backed scenarios that verify how the impeccable skill drives context,
 command-reference, new-work, and native-platform loading. Each scenario runs
-against one current model from each supported provider (Anthropic, OpenAI,
-Google, DeepSeek).
+against the default Anthropic, OpenAI, and Google models. DeepSeek remains
+available through `IMPECCABLE_SKILL_BEHAVIOR_MODELS`.
 
 These are the tests you re-run when you refactor anything in SKILL.md's
 `## Setup` section. They fail when the agent stops following the loading
@@ -25,7 +25,7 @@ skipped, not failed.
 Also requires the engine binary (`bun run fetch:engine`, or `IMPECCABLE_BIN`).
 The staged skill dir ships the launcher (`scripts/impeccable`); the harness
 exports `IMPECCABLE_BIN` into every bash call the agent makes, so the launcher
-resolves the binary in both symlink and copy mode without a download. Without a
+resolves the binary in the generated fixture without a download. Without a
 binary the suites skip.
 
 To run a single scenario against one model:
@@ -37,21 +37,267 @@ IMPECCABLE_SKILL_BEHAVIOR_MODELS=claude-sonnet-5 IMPECCABLE_SKILL_BEHAVIOR_VERBO
 
 ## How it works
 
+### Protocol versus full completion
+
+`test:skill-behavior` now runs only `scenarios.test.mjs`. Routing cases stop
+at the successful reference/context checkpoint they assert, with a ten-step
+ceiling; shell access is context-only. They do **not** claim that a page was
+built or reviewed. Editing/fallback controls retain their original assertions.
+The focused S1/S2/S3/S4/S19 rerun passed 21/21 across the three default models.
+A broader run exposed the context-only allowlist rejecting Svelte's valid
+`+page.svelte` target. It was stopped, the allowlist fixed with a failing-then-
+passing unit test, and S8 passed 3/3 on the focused rerun. Failed file reads
+do not count as project exploration.
+Update-notice (S9) and explicit-command (S18) checks also now stop at their
+actual protocol checkpoints, instead of continuing into unrelated polishing;
+their focused final reruns each passed 3/3. S9 now explicitly requires the
+assistant to surface the update, not merely receive its loader directive.
+
+Full workflows moved to `tests/skill-workflow/full-build.test.mjs`:
+
+```bash
+bun run fetch:engine
+bunx playwright install chromium
+bun run test:skill-workflow
+```
+
+This separately billed suite defaults to Claude only; use
+`IMPECCABLE_SKILL_BEHAVIOR_MODELS` to explicitly choose another model or sweep.
+It preflights a local server and Chromium before each provider turn, exposing
+real desktop/mobile screenshot and PNG viewing tools. Text-only fixtures use
+system fonts and block external browser requests. No extra skill prose is added.
+The API harness is not the actual Claude Code host, nor is its shell sandboxed.
+
+Each workflow has a 50-step/840-second ceiling. Reaching a budget or output
+limit fails explicitly; routing checkpoints cannot satisfy completion. UI
+workflows require desktop and mobile captures matching the final local sources after
+its last edit. Approval/brief-before-code and redesign documentation-at-finish
+checks remain, as does exactly one context load across the completed turn.
+CI runs this lane only when its manual `skill_workflow` checkbox is enabled.
+Ordinary protocol CI now fetches its engine instead of silently skipping for
+a missing binary. Full-build results must be reported separately from routing.
+
+### Remaining gaps after the split (2026-09-07)
+
+One provisioned Claude natural-build run reached a final response in 637 seconds
+and 37 model steps, with approval, a surface brief, an implemented page, a
+finish review, corrections, and fresh desktop/mobile screenshots. Its initial
+completion assertions passed. The final test revision additionally requires
+the shipped documentation reference; auditing the saved trace against that
+guard found it missing. **This is not a final full-workflow pass.** Existing
+DESIGN.md was preserved, but the required documentation pass was skipped.
+The final guards were tightened during the run; this trace is not represented
+as a run of those later assertions. No second full build was purchased.
+
+Claude's remaining protocol batch passed S10–S15 and existing-project S16,
+but missing-context S16 omitted routing.md and S17 omitted critique.md.
+Both responses remained read-only. The older S9 timed out during unrelated
+polishing; the corrected focused S9 above supersedes it. The batch was stopped
+during the older S18, before another provider sweep. This is incremental
+evidence, not an all-green final matrix. Release #782 remains on hold.
+
+The full build reported about 2.95 million input and 53 thousand output tokens
+across all turns (no cache usage reported). Keep this lane manually scoped;
+the fast protocol suite is not a proxy for its completion or cost.
+
+### Documentation handoff follow-up
+
+`tests/skill-workflow/finish-handoff.test.mjs` isolates a synthetic post-review
+checkpoint without rebuilding or capturing a page. Its existing-system fixture
+has no approved system change and a pre-existing missing sidecar; the correct
+result is to check the build against DESIGN.md, preserve it, and leave unrelated
+drift alone. The new-world control must write DESIGN.md and its v2 sidecar.
+
+The unchanged-instructions baseline reproduced the skipped documenter in 31s.
+The revised handoff and documenter passages are 29 words shorter overall and
+make a checked no-change result explicit. The first focused extension retest
+passed in 27s. A repeat checked the source, DESIGN.md, and document.md and made
+no mutations, but omitted degraded/documenter.md, so the strict reference guard
+still failed. The new-world control passed in 91s, writing both required files.
+These small samples support the narrower behavior change, not an all-green
+workflow claim; the reference-loading miss remains visible. No full build was
+rerun. Focused Claude routing S3/S4, the ordinary suite, source-first build, and
+generated-skill authoring validation passed. Release #782 remains held.
+
+### Outcome assertions (maintainer-approved follow-up)
+
+S16/S17 now require a completed, useful, read-only answer; S17 distinguishes
+assessment from implementation and explains that critique is optional before
+polish. Explicit invented prerequisites remain failures. Missing routing or
+comparison references are TAP diagnostics based on successful content loads,
+not failed read attempts. These English-fixture phrase checks are bounded
+regression checks, not a comprehensive semantic grader.
+
+The resumed ordinary-extension checkpoint accepts a direct documentation pass
+without the degraded wrapper only with actual document.md, page, and DESIGN.md
+reads, a concrete no-change report grounded in the fixture's type/palette/layout,
+and zero mutations. Seeded files must still be byte-identical and pre-existing
+sidecar drift must remain untouched. New-world documentation writes, redesign
+ordering, and full-build completion gates are unchanged.
+
+Offline re-evaluation of saved Claude traces: three advice responses and two
+evidenced no-op handoffs pass the new assertions. The original post-review
+baseline and the 637-second full build still fail for absent documentation
+evidence. Unit negative controls reject fabricated prerequisites, unsolicited
+edits/interviews/scans, failed reads, empty or unsupported reports, and exhausted
+budgets. This is assertion replay, not new model evidence or a rerun of cleaned-up
+workspaces' filesystem checks. No paid calls or skill prose changes were needed.
+The earlier reference misses above are now diagnostics, not release blockers by
+themselves; this does not establish an all-green full-workflow matrix.
+
+### Bounded release verification (2026-09-08)
+
+The focused Anthropic live-accept test now verifies the durable session reaches
+`completed`, not just clean source/DOM. Its agent instruction had recommended
+`data-impeccable-e2e-variant`, inside the reserved runtime namespace; the test
+prompt now uses a permanent `data-design-variant` styling hook. The strengthened
+test passed in 14s without forced completion. The full non-billed suite passed.
+No runtime or skill source was changed for this correction.
+
+Claude post-review controls: new world passed in 77s, writing token-bearing
+DESIGN.md and the v2 sidecar; approved redesign failed in 16s. The latter read the
+page and old system, then wrote prose-only DESIGN.md without consulting the
+documentation spec or creating `.impeccable/design.json`, and claimed nothing
+remained outstanding. This is a missing required artifact, not merely missing
+reference coverage. The test stays red; no retry was purchased. Release remains
+held pending disposition. These are synthetic post-review checkpoints, not
+proof of a complete redesign lifecycle.
+
+The single full Claude build passed its automated gates in 623s / 31 steps:
+approval, brief, implemented page, final desktop/mobile captures, and shipped
+reviewer/documenter wrapper loads. The final response gave an in-thread review
+and a no-change documentation assessment of the incumbent system. It did not
+load document.md itself; this is not evidence that every documentation protocol
+step ran. The run used about 2.11M input / 50K output tokens (no cache reported).
+No further billed retry was started. The separate missing-artifact redesign
+failure still blocks treating this batch as an all-green skill release gate.
+
+### Targeted redesign handoff correction
+
+The parent handoff now explicitly requires token-bearing DESIGN.md and
+`.impeccable/design.json` for approved system changes and verifies those outputs
+before completion. It is nine words shorter; the agent and schema files did not
+change. One unchanged-assertion Claude retest finished in 65s: it read document.md
+and wrote both artifacts, but still skipped the degraded wrapper, so that
+reference assertion failed before the artifact assertions ran.
+
+Wrapper coverage is now diagnostic for all post-review modes; successful spec
+and source reads, completed turns, write boundaries, tokens, and the v2 sidecar
+remain hard gates. Offline evaluation of the saved retest passes these artifact
+checks; the original prose-only/missing-sidecar trace remains rejected. Negative
+controls cover absent tokens, malformed/missing sidecars, old schema versions,
+and absent metadata. This is replay, not a second live pass or a rerun of the
+cleaned-up workspace's byte-preservation checks.
+
+Artifact audit: the sidecar component renders correctly in an offline browser.
+The heading line-height was recorded as 1.3 while the page inherits 1.6 (38.4px
+at 24px), and generatedAt used a placeholder date. These are remaining output
+accuracy limitations, distinct from the corrected missing-artifact failure;
+the shape checks do not establish complete token fidelity. No broad provider or
+full-build rerun was purchased. Build and generated-skill validation passed.
+
 Each scenario:
 
-1. `prepareWorkspace()` mints a temp dir, symlinks the canonical skill
-   into `<workspace>/.claude/skills/impeccable` (so its launcher is at
-   `.claude/skills/impeccable/scripts/impeccable`), and optionally writes
-   `PRODUCT.md` / `DESIGN.md` fixtures.
+1. `prepareWorkspace()` uses the production transformer to build current source
+   into an independent `<workspace>/.claude/skills/impeccable`. References have
+   resolved placeholders and generated degraded reviewer/documenter files.
+   Host-specific blocks are omitted: this is a neutral API harness, not an exact
+   Claude/Codex/Gemini host simulation. It optionally seeds project fixtures.
 2. `runTurn()` inlines `SKILL.md` (placeholders neutralized) as the
-   system prompt and runs Vercel AI SDK `generateText` with four
-   workspace-scoped tools: `bash`, `read`, `write`, `list`, and a fake
+   system prompt and runs Vercel AI SDK `generateText` with five
+   tools: `bash`, `read`, `write`, `list`, and a fake
    provider-neutral `ask_user_question` backed by a deterministic simulated user.
 3. The tools record every call into a `trace` that the test asserts on.
 4. For scenario 4, a second `runTurn` reuses turn 1's `responseMessages`
    so the model sees a real multi-turn conversation.
 
 The trace is the source of truth, not the model's free-form reply.
+
+File tools are workspace-scoped; bash is a real host shell, **not a security
+sandbox**. Use disposable synthetic fixtures. Shell helpers do not inherit
+provider API keys/auth tokens; model calls still use the parent's keys. The
+harness always sets `IMPECCABLE_QUESTION_DISABLED=1` for shell calls so real
+decision pages cannot wait for a nonexistent browser user. The engine returns
+its genuine structured-question fallback; browser decisions have separate E2E.
+
+Set `IMPECCABLE_SKILL_BEHAVIOR_TRACE_DIR=<directory>` to retain per-turn JSON
+with model, prompt, tool results, response ordering, usage, and finish reason.
+Progress and failed turns retain their tool traces too; only completed turns
+carry the full response sequence and final usage.
+These are local diagnostic artifacts; inspect before sharing. Successful reads
+or full reference content in shell output count as loading; filename mentions,
+denied commands, and failed reads do not.
+
+Context-only controls permit the real launcher with an optional workspace-relative
+`--target`; compound commands remain rejected. The target form is part of the
+skill's Setup contract, not a launcher failure.
+
+## Release investigation (2026-09-07)
+
+The initial release sweep reported 68/81 passes. Do not interpret its 13 failed
+assertions as 13 demonstrated product regressions. The harness staged raw
+references with unresolved placeholders, omitted generated degraded roles, and
+allowed unanswered browser decisions. Its redesign assertion was also stale:
+current `new-work.md` requires a surface brief **before code**, and DESIGN.md
+**at finish**, from the built world. The corrected lifecycle checks retain
+approval, brief, implementation, and final documentation requirements; missing
+artifacts now have their own error instead of being called premature edits.
+The historical tables below retain their original measurements and methods.
+
+Focused launcher-fallback verification on the corrected fixture:
+
+| Default model | Old fallback paragraph | Explicit pre-tool warning paragraph |
+|---|---:|---:|
+| `claude-sonnet-5` | 2/3 | 3/3 |
+| `gpt-5.6-terra` | 3/3 | 3/3 |
+| `gemini-3.7-flash` | 1/3 | 3/3 |
+
+The three cases are denied editing, successful-loader control, and denied
+planning. The old-paragraph failures were warning order, not refused edits.
+An intermediate candidate run scored 8/9 because the control rejected valid
+`context --target index.html`; after correcting that allowlist, the full focused
+rerun passed 9/9. This is one measured run per variant, not a reliability estimate
+or an all-workflow pass. Broader routing and workflow results remain separate.
+
+On the resolved fixture, Gemini's workflow run passed 4/5: the completed new
+page omitted user confirmation. Tightening the existing question paragraph
+made its focused build lifecycle rerun pass 1/1. OpenAI passed all five workflow
+cases with the fixture corrections alone. These are incremental measurements,
+not one full sweep on the final candidate.
+
+Claude's three-step routing sweep cut off two setup cases before loading
+`new-work.md`. Both loaded it in bounded six-step diagnostics. Claude now has
+the same six-step setup allowance as Gemini; reference and edit-order assertions
+are unchanged. A full-build baseline separately hit the existing 840-second
+deadline and is not counted as a pass.
+
+The complete routing-only sweep retained its original budgets and passed 55/57
+(Claude 17/19, OpenAI 19/19, Gemini 19/19). A six-step Claude rerun passed the two
+previously clipped cases but exposed a separate context reload on turn two:
+the model queried the loader again for image-tool availability. That run was
+stopped after five passes and this failure rather than finishing another billed
+sweep; the once-per-session assertion remains unchanged.
+
+A saved Claude build trace used five calls shortening/counting the direction
+contract, then reached the 22-step cap before implementation. The word target
+is now approximate, with the six required blocks retained. A subsequent run
+correctly stopped for missing customer evidence: the default simulated user had
+selected “I have real details,” then promised them in a future message. The
+case-study test now supplies a complete, explicitly synthetic brief when asked;
+fresh-init and other user simulations are unchanged. Neither incomplete build
+is counted as a pass.
+
+The corrected-user Claude retest also remained incomplete: it asked, recorded
+the six-block brief without the earlier word-count loop, then spent the remaining
+22-step allowance acquiring and inspecting fonts before writing HTML. The
+26-step redesign run produced the page and desktop/mobile captures but stopped
+before DESIGN.md. These results do not establish full workflow completion.
+Further work should separate narrow protocol checks from realistic, provisioned
+full-build runs rather than keep adding skill prose or relaxing finish gates.
+The later Claude run passed fresh init and refinement, failed the two bounded
+build cases, and was stopped during critique's browser-tool discovery. Its
+unfinished critique case is not a pass; the earlier OpenAI/Gemini critique
+results remain the completed measurements.
 
 ## Scenarios
 
@@ -72,8 +318,8 @@ The trace is the source of truth, not the model's free-form reply.
 | 13 | empty workspace; prompt is `/impeccable teach` | runs `impeccable context` and diverts into `reference/init.md` because `teach` aliases `init` |
 | 14 | PRODUCT.md with `## Platform: ios` (native iOS app); prompt is `/impeccable craft a tide detail screen` | `impeccable context` runs and emits the contents of `reference/ios.md` directly, placing native conventions in context without a second model-directed read |
 | 15 | same iOS fixture; prompt is `/impeccable audit` | agent loads `reference/audit.native.md` (the Commands-table native variant, routed instead of `audit.md`) |
-| 16 | existing surface, with and without PRODUCT.md; asks where to start | loads `routing.md`, delivers advice, and does not edit project files, start an interview, archive a critique, or run menu scans |
-| 17 | existing surface; asks whether critique is required before polish | loads `routing.md` and both command references, then delivers advice without executing the playbooks |
+| 16 | existing surface, with and without PRODUCT.md; asks where to start | completes relevant advice without edits, interviews, critique archives, menu scans, or explicit invented refinement prerequisites; reference coverage is diagnostic |
+| 17 | existing surface; asks whether critique is required before polish | completes read-only advice distinguishing assessment from implementation and explaining critique is optional; reference coverage is diagnostic |
 | 18 | existing surface; explicitly requests polish followed by a next-command recommendation | loads `polish.md` rather than substituting workflow advice for the requested work |
 | 19 | tiny spacing edit with PRODUCT.md + DESIGN.md; Bash denied, a real-loader success control, and a denied-launcher planning-only case | edits require successful playbook/craft-floor reads and a pre-edit denial warning; planning stays read-only and skips craft-floor |
 
@@ -188,7 +434,7 @@ evidence, not rejected bash reads. The initial unrestricted run (stopped after
 host-wide search attempts), earlier rejected-read results, and broader suite's
 sandboxed provider DNS errors are excluded from this baseline.
 
-The workflow-contract file adds end-to-end assertions for attended fresh init,
+The full-build file adds end-to-end assertions for attended fresh init,
 an initialized natural build request, replacement-world redesign, scope-preserving bolder
 refinement, and critique's closing question. It checks question order and
 context/artifact writes rather than only reference-file loading.
@@ -365,12 +611,12 @@ when bisecting one scenario:
 ```bash
 IMPECCABLE_QUESTION_DISABLED=1 CI=1 IMPECCABLE_SKILL_BEHAVIOR_MODELS=deepseek-v4-flash \
   node --test --test-timeout=300000 --test-force-exit \
-  --test-name-pattern="bolder refinement" tests/skill-behavior/workflow-contract.test.mjs
+  --test-name-pattern="bolder refinement" tests/skill-workflow/full-build.test.mjs
 ```
 
-Keep `--test-timeout` at 300000. A tighter cap turns claude-sonnet-5's slower
-runs into timeouts that look like failures. Set `IMPECCABLE_QUESTION_DISABLED=1`
-and `CI=1` so `impeccable serve-question` cannot open a browser window on the host. Pipe
+Use the suite's current 900000ms timeout for full workflow cases; the 300000ms
+example above is historical. The harness now disables decision pages itself.
+Pipe
 to a file rather than `tail`; node prints the failing-test summary at the end,
 and truncating it costs you the per-model attribution.
 
