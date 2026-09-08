@@ -256,8 +256,8 @@ fn run_with_api_base(args: &[String], io: &mut Io, api_base: &str) -> i32 {
         return 1;
     }
     let transparent = background.as_deref() == Some("transparent");
-    if transparent && arg(args, "out").is_some_and(|out| !out.to_ascii_lowercase().ends_with(".png")) {
-        io.err("generate-image: --background transparent requires a .png --out path.\n");
+    if background.is_some() && arg(args, "out").is_some_and(|out| !out.to_ascii_lowercase().ends_with(".png")) {
+        io.err("generate-image: --background requires a .png --out path.\n");
         return 1;
     }
     let cwd = io.cwd.to_string_lossy().into_owned();
@@ -624,6 +624,8 @@ mod tests {
             vec!["--background"],
             vec!["--background", "white"],
             vec!["--background", "transparent", "--out", "cutout.jpg"],
+            vec!["--background", "opaque", "--out", "hero.webp"],
+            vec!["--background", "auto", "--out", "hero.svg"],
         ] {
             let (mut io, captured) = Io::captured("", std::env::temp_dir(), Env::new());
             let args = flags.iter().map(|s| s.to_string()).collect::<Vec<_>>();

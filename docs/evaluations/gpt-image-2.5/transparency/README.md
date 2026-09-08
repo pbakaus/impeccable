@@ -148,7 +148,8 @@ Flare is closer in this fixture, but none is a faithful geometric replacement.
 `generate-image --background transparent` now requests native transparent PNG
 on both the generation and reference-edit endpoints, preserves returned alpha,
 and records `background` and `outputFormat` in the prompt sidecar. It rejects
-invalid background values and non-PNG transparent output paths before billing.
+invalid background values and non-PNG output paths for every explicit background
+mode before billing.
 `opaque` and `auto` are also accepted; omitting the option preserves the prior
 API defaults. Fake mode can emit a real RGBA cutout for offline testing.
 

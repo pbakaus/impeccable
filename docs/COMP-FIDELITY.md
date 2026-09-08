@@ -1,6 +1,6 @@
 # Comp fidelity: measuring the build against the comp
 
-Status: shipped on `feat/comp-fidelity` (2026-08). Owner: skill (`skill/scripts/comp-*.mjs`, `build-phase.mjs`) plus two detector rules.
+Status: shipped on `feat/comp-fidelity` (2026-08). Current runtime: `crates/comp` and `crates/comp-verbs` (see [ENGINE.md](ENGINE.md)), plus two detector rules. The evaluation sweeps below retain historical script names; use `impeccable <verb>` in the current engine.
 
 ## The problem
 
@@ -38,17 +38,45 @@ Calibration on the moto run: comp vs itself 100%; comp shifted 12px 87% (match);
 `.impeccable/build/state.json`, phases `spec → plates → hero → sections → motion → responsive → review`, advanced only by the script:
 
 - `spec` gate: spec.json exists, measures this comp, has regions.
-- `plates` gate: every raster region's plate exists, decodes, is at least 1.5x the region's pixel width, and scores against the comp crop (`cover` alignment, kind-weighted, min 0.5).
+- `plates` gate: every raster region's plate exists, decodes, is at least 1.5x the region's pixel width, and scores against the comp crop (`cover` alignment, kind-weighted, minimum overall and structure scores of 0.4 for non-textures; textures use their detail checks).
 - `hero` gate: `.impeccable/review/hero-repro.png` exists and comp-diff scores at least 0.72 with no region `missing` and at most a third `contradicted`. Writes `.impeccable/review/diff/hero/`. Attempts and scores are recorded.
 - later phases record the moment; `--force --reason` is allowed and recorded, never silent.
 
 `status` prints a NEXT line for the current phase, so the prose does not have to.
 
-### 4. Plates: `generate-image.mjs --plate <id>`
+### 4. Plates: crop → prompt → reference edit → gate
 
-One raster region end to end: crop the comp region, send the crop as the edits-endpoint reference with the spec's plate prompt (remove UI text and chrome, keep everything else), pick the closest supported size to the region's aspect, write to the plate path, embed the prompt, score against the crop, warn under 50%, refuse under `--min`. `IMPECCABLE_IMAGE_GEN_FAKE=1` yields the crop at 2x so offline pipelines walk the plate gate. Harness-native image tools use the crop and prompt the same way.
+The runtime commands are `impeccable <verb>` (or the skill's absolute launcher
+path). `generate-image` has no `--plate` mode. For each raster region:
 
-The asset producer agent's job shrinks to: produce the spec's plates, one line per plate, `blockers`, `assumptions`. No inventory of its own (the spec is the inventory), no strategy taxonomy.
+1. Run `impeccable comp-spec --crop <id> --out <crop.png>` to write the approved
+   reference. A crop is an input, never the shipping plate.
+2. Save `impeccable comp-spec --plate-prompt <id> --background transparent`
+   to a UTF-8 prompt file for an isolated cutout. Use `--background opaque`
+   for photos, textures, and full-frame illustrations.
+3. Create the spec's plate directory and choose a supported output size that
+   matches the region's aspect at least 1.5x its pixel size. Prefer a native
+   image tool with the crop and prompt. The API fallback is
+   `impeccable generate-image --ref <crop.png> --prompt-file <prompt.txt> --out <plate.png> --size <WxH> --quality high --background transparent`;
+   use `--background opaque` for full-frame imagery. Every explicit background
+   requests PNG and requires a `.png` output path.
+4. The API helper embeds the prompt and writes a sidecar. After a native tool
+   generation, run `impeccable embed-prompt <plate.png> --prompt-file <prompt.txt>`
+   with the exact prompt sent. Inspect the plate beside the crop for placement,
+   scale, and style. Check cutouts on light and dark grounds: white paint stays
+   solid, holes are clear, and fine edges and translucent material render cleanly.
+   Do not chroma-key native alpha. Refine once on a visual miss; after two misses,
+   keep the better result and report `needs_parent_review`.
+5. After every plate exists at its spec path, the parent runs
+   `impeccable build-phase advance`. The gate composites every plate containing
+   non-opaque alpha over the region's sampled ground before fidelity scoring.
+   Gate success does not replace visual inspection.
+
+`IMPECCABLE_IMAGE_GEN_FAKE=1` creates synthetic palette stripes at the requested
+size, with clear padding for transparent output; it does not reproduce the crop
+or establish asset fidelity. The asset producer reports one line per region,
+including `unscored` until the parent obtains a gate score, plus blockers and
+assumptions. It uses the spec's inventory rather than inventing another one.
 
 ### 4b. Type: `font-match.mjs` and the catalog fingerprint index
 
@@ -73,7 +101,7 @@ Both in both engines (static jsdom + browser bundle), fixtures under `tests/fixt
 
 - It does not judge lettering character, ornament, or motion. The reviewer still owns those.
 - It does not decide plates for the model: the model still names regions on the grid. The gate only refuses to proceed when a named raster region has no plate.
-- The hero threshold (0.72) and plate threshold (0.5) are calibrated on two runs and synthetic perturbations; they will move with evidence. Both are constants at the top of `build-phase.mjs`.
+- The hero threshold (0.72) and non-texture plate thresholds (0.4 overall and structure) are calibrated on two runs and synthetic perturbations; they will move with evidence. These are constants at the top of `crates/comp-verbs/src/build_phase.rs`.
 - Operate surfaces (dashboards, editors) have few or no plates; the spec/diff still apply, the plates gate is trivially satisfied.
 
 ## Evaluating it: first sweep (2026-08-16, gpt-5.6-sol, openai lane)

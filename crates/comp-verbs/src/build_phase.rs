@@ -453,6 +453,7 @@ fn plate_verdict(region: &Value, score: &Score) -> (bool, Vec<String>) {
 }
 
 fn gate_plates(io: &Io) -> Gate {
+    let s = self_cmd(io);
     let Some(spec) = load_spec(&abs(io, SPEC_PATH)) else {
         return Gate::fail(vec!["no spec".into()]);
     };
@@ -471,7 +472,7 @@ fn gate_plates(io: &Io) -> Gate {
         let file = rr.get("plate").and_then(Value::as_str).map(String::from);
         let Some(file) = file.clone().filter(|f| abs(io, f).exists()) else {
             reasons.push(format!(
-                "plate missing for {id}: expected {}; produce it from comp-spec.mjs --crop {id} with generate-image --ref <crop.png> --prompt-file <prompt.txt> --out <plate.png>",
+                "plate missing for {id}: expected {}; produce it from {s} comp-spec --crop {id} with {s} generate-image --ref <crop.png> --prompt-file <prompt.txt> --out <plate.png>",
                 file.clone().unwrap_or_else(|| "(no path)".into())
             ));
             plates.push(json!({ "id": id, "file": file, "status": "missing" }));
@@ -499,15 +500,7 @@ fn gate_plates(io: &Io) -> Gate {
             let refimg = plate_reference(comp, &spec, rr);
             // composite transparent plates over the region's sampled ground
             let mut build = img.image.clone();
-            let mut transparent = 0usize;
-            let mut i = 3;
-            while i < img.image.data.len() {
-                if img.image.data[i] < 128 {
-                    transparent += 1;
-                }
-                i += 4;
-            }
-            if transparent as f64 > (img.image.data.len() / 4) as f64 * 0.05 {
+            if img.image.data.chunks_exact(4).any(|pixel| pixel[3] < 255) {
                 let ground = rr
                     .pointer("/palette/0/hex")
                     .and_then(Value::as_str)
@@ -537,7 +530,7 @@ fn gate_plates(io: &Io) -> Gate {
                 let same = impeccable_comp::metrics::structure_score(&raw, &r::resize(&img.image, raw.width as f64, raw.height as f64), 256);
                 if same >= 0.95 {
                     reasons.push(format!(
-                        "plate {file} is the comp crop of region {id} (structure {}% against the raw region, a resample of the same pixels): a crop of the comp is never a plate; generate the plate from the crop as reference (generate-image --ref <crop.png> --prompt-file <prompt.txt> --out <plate.png> for {id})",
+                        "plate {file} is the comp crop of region {id} (structure {}% against the raw region, a resample of the same pixels): a crop of the comp is never a plate; generate the plate from the crop as reference ({s} generate-image --ref <crop.png> --prompt-file <prompt.txt> --out <plate.png> for {id})",
                         to_fixed(same * 100.0, 0)
                     ));
                 }
@@ -1015,6 +1008,7 @@ fn hero_diff(io: &Io, comp_path: &str, build_path: &str, spec: Option<&Value>, o
 
 #[allow(clippy::too_many_arguments)]
 fn gate_hero(io: &Io, state: &mut Value, build_path: &str, min: f64, out_dir: &str, artifact: Option<&str>, organic_scan: OrganicScan) -> Gate {
+    let s = self_cmd(io);
     if !abs(io, build_path).exists() {
         let bp = state.get("breakpoint").and_then(Value::as_str).map(String::from).unwrap_or_else(|| "comp size".into());
         return Gate::fail(vec![format!("no hero capture at {build_path}: screenshot the first viewport at the comp's own dimensions ({bp}) into that path")]);
@@ -1220,7 +1214,7 @@ fn gate_hero(io: &Io, state: &mut Value, build_path: &str, min: f64, out_dir: &s
         } else if kind == "control" {
             "this control does not read as the comp's: rebuild its chrome from the crop (border, fill, radius, chevron or arrow, label size) rather than from a component default".to_string()
         } else {
-            format!("the plate here does not read as the comp region; regenerate it with the crop as reference (generate-image --ref <crop.png> --prompt-file <prompt.txt> --out <plate.png> for {id}) and place it at its box")
+            format!("the plate here does not read as the comp region; regenerate it with the crop as reference ({s} generate-image --ref <crop.png> --prompt-file <prompt.txt> --out <plate.png> for {id}) and place it at its box")
         };
         reasons.push(format!(
             "region {id} ({kind}) is contradicted (structure {}%, detail added {}%): {tail}",
@@ -1452,6 +1446,7 @@ fn gate_hero(io: &Io, state: &mut Value, build_path: &str, min: f64, out_dir: &s
 
 /// JS: heroLoopVerdict(state, gate, artifactPath).
 fn hero_loop_verdict(state: &mut Value, gate: &Gate, artifact_path: &str, io: &Io) -> Option<String> {
+    let s = self_cmd(io);
     let hero = state.pointer_mut("/phases/hero")?.as_object_mut()?;
     let mut history: Vec<Value> = hero.get("history").and_then(Value::as_array).cloned().unwrap_or_default();
     let entry = json!({
@@ -1476,7 +1471,7 @@ fn hero_loop_verdict(state: &mut Value, gate: &Gate, artifact_path: &str, io: &I
     if stuck && no_progress {
         let w = first_worst.unwrap();
         return Some(format!(
-            "region {w} has been the worst region for three attempts and the score moved less than 3 points: value edits are not reaching it. Open {} and rebuild that region from the comp crop (place its plate, or produce one with generate-image --ref <crop.png> --prompt-file <prompt.txt> --out <plate.png>, or re-derive its structure from the spec box), then recapture.",
+            "region {w} has been the worst region for three attempts and the score moved less than 3 points: value edits are not reaching it. Open {} and rebuild that region from the comp crop (place its plate, or produce one with {s} generate-image --ref <crop.png> --prompt-file <prompt.txt> --out <plate.png>, or re-derive its structure from the spec box), then recapture.",
             format!(".impeccable/review/diff/hero/regions/{w}.png")
         ));
     }
@@ -1768,6 +1763,56 @@ fn next_instruction(io: &Io, state: &Value) -> String {
 #[cfg(test)]
 mod transparency_guidance_tests {
     use super::*;
+
+    #[test]
+    fn plate_gate_scores_sparse_and_partial_alpha_on_the_sampled_ground() {
+        let dir = std::env::temp_dir().join(format!("impeccable-plate-alpha-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join(BUILD_DIR)).unwrap();
+        let (io, _) = Io::captured("", dir.clone(), Default::default());
+        let spec = json!({"comp": "comp.png", "regions": [{
+            "id": "art", "kind": "plate", "medium": "raster", "plate": "plate.png",
+            "px": {"x": 0, "y": 0, "w": 64, "h": 64},
+            "palette": [{"hex": "#183040"}]
+        }]});
+        std::fs::write(dir.join(SPEC_PATH), spec.to_string()).unwrap();
+        for partial in [false, true] {
+            let mut plate = r::create_image(64, 64, [200, 130, 80, 255]);
+            for (i, pixel) in plate.data.chunks_exact_mut(4).enumerate() {
+                if (i / 64 + i % 64) % 16 < 8 {
+                    pixel[..3].copy_from_slice(&[70, 160, 210]);
+                }
+                if partial {
+                    pixel[3] = 160; // No pixels below the old 128 cutoff.
+                } else if i / 64 < 8 && i % 64 < 8 {
+                    pixel.copy_from_slice(&[255, 0, 255, 0]); // Only 1.56% clear.
+                }
+            }
+            let mut flattened = r::create_image(64, 64, [24, 48, 64, 255]);
+            r::blit(&mut flattened, &plate, 0.0, 0.0);
+            std::fs::write(dir.join("comp.png"), png_io::encode_png(&flattened, &[]).unwrap()).unwrap();
+            // Exclude the separate anti-crop gate: this checks the score's ground.
+            let metadata = [("impeccable:fake".into(), "1".into())];
+            std::fs::write(dir.join("plate.png"), png_io::encode_png(&plate, &metadata).unwrap()).unwrap();
+            let alpha_score = gate_plates(&io).plates.unwrap()[0]["score"].as_f64().unwrap();
+            std::fs::write(dir.join("plate.png"), png_io::encode_png(&flattened, &metadata).unwrap()).unwrap();
+            let opaque_score = gate_plates(&io).plates.unwrap()[0]["score"].as_f64().unwrap();
+            assert!((alpha_score - opaque_score).abs() < 1e-9, "partial={partial}: {alpha_score} != {opaque_score}");
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn missing_plate_guidance_uses_the_configured_launcher() {
+        let dir = std::env::temp_dir().join(format!("impeccable-plate-launcher-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join(BUILD_DIR)).unwrap();
+        std::fs::write(dir.join(SPEC_PATH), json!({"regions": [{"id": "art", "medium": "raster", "plate": "missing.png"}]}).to_string()).unwrap();
+        let env = [("IMPECCABLE_SELF".into(), "/custom/impeccable".into())].into();
+        let (io, _) = Io::captured("", dir.clone(), env);
+        let reasons = gate_plates(&io).reasons.join("\n");
+        std::fs::remove_dir_all(dir).unwrap();
+        assert!(reasons.contains("/custom/impeccable comp-spec --crop art"), "{reasons}");
+        assert!(reasons.contains("/custom/impeccable generate-image --ref"), "{reasons}");
+    }
 
     #[test]
     fn plates_use_supported_reference_edit_and_native_alpha_commands() {
