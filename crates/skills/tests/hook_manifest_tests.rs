@@ -357,3 +357,57 @@ fn hook_artifacts_map_providers_to_manifest_files() {
     assert_eq!(c[0].dest, jsp::join(&["/p", ".codex", "hooks.json"]));
     assert!(c[0].shared_dest.is_none());
 }
+
+fn windows_user_scope_hook_command() -> String {
+    let launcher = r"C:\Users\alice\.claude\skills\impeccable\scripts\impeccable";
+    let q = json_string(launcher);
+    format!("[ ! -f {q} ] || {q} hook")
+}
+
+#[test]
+fn merge_json_escaped_windows_launcher_is_idempotent() {
+    let cmd = windows_user_scope_hook_command();
+    let hook_entry = |cmd: String| {
+        json!({ "matcher": "Edit", "hooks": [{ "type": "command", "command": cmd }] })
+    };
+    let stop_entry = |cmd: String| {
+        json!({ "hooks": [{ "type": "command", "command": cmd, "timeout": 30 }] })
+    };
+    let existing = json!({
+        "hooks": {
+            "PostToolUse": [hook_entry(cmd.clone())],
+            "Stop": [stop_entry(cmd.clone())]
+        }
+    });
+    let fresh = json!({
+        "description": "fresh",
+        "hooks": {
+            "PostToolUse": [hook_entry(cmd.clone())],
+            "Stop": [stop_entry(cmd.clone())]
+        }
+    });
+    let merged = merge_hook_manifests(&existing, &fresh);
+    assert_eq!(merged["hooks"]["PostToolUse"].as_array().unwrap().len(), 1);
+    assert_eq!(merged["hooks"]["Stop"].as_array().unwrap().len(), 1);
+    let merged2 = merge_hook_manifests(&merged, &fresh);
+    assert_eq!(merged2["hooks"]["PostToolUse"].as_array().unwrap().len(), 1);
+    assert_eq!(merged2["hooks"]["Stop"].as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn merge_heals_triplicated_stop_groups() {
+    let cmd = windows_user_scope_hook_command();
+    let stop_entry = json!({ "hooks": [{ "type": "command", "command": cmd.clone(), "timeout": 30 }] });
+    let existing = json!({
+        "hooks": {
+            "Stop": [stop_entry.clone(), stop_entry.clone(), stop_entry]
+        }
+    });
+    let fresh = json!({
+        "hooks": {
+            "Stop": [json!({ "hooks": [{ "type": "command", "command": cmd, "timeout": 30 }] })]
+        }
+    });
+    let merged = merge_hook_manifests(&existing, &fresh);
+    assert_eq!(merged["hooks"]["Stop"].as_array().unwrap().len(), 1);
+}

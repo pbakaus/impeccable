@@ -219,13 +219,10 @@ fn rewrite_value(value: &Value, provider: &str, quoted: &QuotedPath, win32: bool
     }
 }
 
-/// JS: valueHasImpeccableHookMarker(value). Command separators are
-/// normalized to `/` first so a legacy Windows-path guard is still
-/// recognized as ours and replaced instead of duplicated (upstream
-/// 665c51b9, #604).
+/// JS: valueHasImpeccableHookMarker(value).
 pub fn value_has_impeccable_hook_marker(value: &Value) -> bool {
     match value {
-        Value::String(s) => is_impeccable_hook_command(&s.replace('\\', "/")),
+        Value::String(s) => is_impeccable_hook_command(s),
         Value::Array(a) => a.iter().any(value_has_impeccable_hook_marker),
         Value::Object(o) => o.values().any(value_has_impeccable_hook_marker),
         _ => false,
@@ -233,12 +230,9 @@ pub fn value_has_impeccable_hook_marker(value: &Value) -> bool {
 }
 
 /// True when `value` names an Impeccable hook in the launcher generation.
-/// Separators are normalized to `/` first, matching
-/// `value_has_impeccable_hook_marker`, so a legacy Windows-path launcher
-/// command is still recognized.
 pub fn value_has_launcher_hook_marker(value: &Value) -> bool {
     match value {
-        Value::String(s) => is_launcher_hook_command(&s.replace('\\', "/")),
+        Value::String(s) => is_launcher_hook_command(s),
         Value::Array(a) => a.iter().any(value_has_launcher_hook_marker),
         Value::Object(o) => o.values().any(value_has_launcher_hook_marker),
         _ => false,
