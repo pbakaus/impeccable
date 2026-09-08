@@ -379,6 +379,30 @@ it('successful-loader controls accept a workspace-relative target', { skip: !pro
   }
 });
 
+it('workspace tools reject symlink escapes and preserve staged-skill write protection', async () => {
+  const workspace = prepareWorkspace({ files: { 'local/value.txt': 'local' } });
+  const outside = prepareWorkspace({ files: { 'value.txt': 'outside' } });
+  try {
+    fs.symlinkSync(outside, path.join(workspace, 'escape'), 'junction');
+    fs.symlinkSync(path.join(workspace, 'local'), path.join(workspace, 'alias'), 'junction');
+    fs.symlinkSync(path.join(workspace, '.claude'), path.join(workspace, 'skill-alias'), 'junction');
+    const { tools } = makeTools(workspace, {}, {}, { contextOnlyBash: true });
+    assert.match(await tools.read.execute({ path: 'escape/value.txt' }), /^Error:/);
+    assert.match(await tools.list.execute({ path: 'escape' }), /^Error:/);
+    assert.match(await tools.write.execute({ path: 'escape/new/file.txt', contents: 'bad' }), /^Error:/);
+    assert.match(await tools.bash.execute({ command: '.claude/skills/impeccable/scripts/impeccable context --target escape/value.txt' }), /^Error:/);
+    assert.match(await tools.write.execute({ path: 'skill-alias/skills/impeccable/reference/routing.md', contents: 'bad' }), /^Error:/);
+    assert.equal(await tools.read.execute({ path: 'alias/value.txt' }), 'local');
+    await tools.write.execute({ path: 'alias/nested/new.txt', contents: 'allowed' });
+    assert.equal(fs.readFileSync(path.join(workspace, 'local/nested/new.txt'), 'utf8'), 'allowed');
+    assert.equal(fs.existsSync(path.join(outside, 'new')), false);
+    assert.equal(fs.readFileSync(path.join(outside, 'value.txt'), 'utf8'), 'outside');
+  } finally {
+    cleanupWorkspace(workspace);
+    cleanupWorkspace(outside);
+  }
+});
+
 it('context-only routing tools keep project writes observable but protect the staged skill', async () => {
   const workspace = prepareWorkspace({ files: { 'index.html': 'before' } });
   try {

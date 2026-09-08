@@ -150,7 +150,25 @@ function safeResolve(root, userPath) {
   if (rel.startsWith('..') || rel.split(path.sep).includes('..')) {
     return { error: 'path escapes the workspace' };
   }
-  return resolved;
+  try {
+    // New write targets need not exist; validate their nearest existing
+    // ancestor, including dangling links, before appending the missing suffix.
+    let ancestor = resolved;
+    while (!fs.existsSync(ancestor)) {
+      if (fs.lstatSync(ancestor, { throwIfNoEntry: false })?.isSymbolicLink()) {
+        return { error: 'path follows a dangling symlink' };
+      }
+      ancestor = path.dirname(ancestor);
+    }
+    const canonical = path.resolve(fs.realpathSync(ancestor), path.relative(ancestor, resolved));
+    const realRel = path.relative(fs.realpathSync(root), canonical);
+    if (realRel === '..' || realRel.startsWith(`..${path.sep}`) || path.isAbsolute(realRel)) {
+      return { error: 'path escapes the workspace through a symlink' };
+    }
+    return canonical;
+  } catch {
+    return { error: 'path cannot be resolved safely' };
+  }
 }
 
 function isContextOnlyCommand(workspace, command) {
@@ -322,7 +340,7 @@ export function makeTools(workspace, extraEnv = {}, simulatedUser = {}, { contex
         const call = record('write', { path: p, contents });
         const resolved = safeResolve(workspace, p);
         if (typeof resolved !== 'string') return `Error: ${resolved.error}`;
-        if (path.relative(workspace, resolved).split(path.sep)[0] === '.claude') {
+        if (path.relative(fs.realpathSync(workspace), resolved).split(path.sep)[0] === '.claude') {
           return 'Error: the staged skill is read-only; edits must target project files.';
         }
         fs.mkdirSync(path.dirname(resolved), { recursive: true });
