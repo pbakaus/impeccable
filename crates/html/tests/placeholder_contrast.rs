@@ -47,6 +47,22 @@ input { background: white; font-size: 16px; width: 200px; height: 40px; }
 }
 
 #[test]
+fn descendant_placeholder_selector_flags() {
+    let html = r#"<!DOCTYPE html>
+<html><head><style>
+.form ::placeholder { color: #bbbbbb; }
+input { background: white; font-size: 16px; width: 200px; height: 40px; }
+</style></head>
+<body><div class="form"><input placeholder="Search"></div></body></html>
+"#;
+    let findings = scan(html);
+    assert!(
+        findings.iter().any(|f| f.antipattern == "low-contrast"),
+        "expected low-contrast for descendant ::placeholder, got {findings:?}"
+    );
+}
+
+#[test]
 fn fixture_flag_and_pass_cases() {
     let fixture = repo_root().join("tests/fixtures/antipatterns/placeholder-contrast.html");
     assert!(

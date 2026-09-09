@@ -12,8 +12,8 @@ use super::checks_shim::CustomProps;
 use super::{
     apply_static_declaration, collect_static_css_rules, compare_static_priority,
     is_static_inherited_prop, make_default_style, normalize_static_css_value,
-    parse_static_style_attribute, static_default_style, CssRule, DeclMeta, SpecifiedDecl,
-    SpecifiedStore, StyleValues, STATIC_DEFAULT_STYLE,
+    parse_static_style_attribute, star_empty_compounds, static_default_style, CssRule, DeclMeta,
+    SpecifiedDecl, SpecifiedStore, StyleValues, STATIC_DEFAULT_STYLE,
 };
 use crate::dom::StaticDocument;
 use crate::profile::{self, Meta, ProfileSink};
@@ -140,21 +140,17 @@ static PSEUDO_RULE_RE: Lazy<Regex> = Lazy::new(|| {
     .expect("PSEUDO_RULE_RE")
 });
 static PLACEHOLDER_RULE_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(&format!(
-        r"(?i)^(.*){ws}*(?:::placeholder|::?-webkit-input-placeholder|::?-moz-placeholder)$",
-        ws = js::WS
-    ))
-    .expect("PLACEHOLDER_RULE_RE")
+    Regex::new(r"(?i)^(.*)(?:::placeholder|::?-webkit-input-placeholder|::?-moz-placeholder)$")
+        .expect("PLACEHOLDER_RULE_RE")
 });
 
 fn placeholder_host_selector(selector: &str) -> Option<String> {
     let pm = PLACEHOLDER_RULE_RE.captures(selector)?;
     let captured = pm.get(1).map(|m| m.as_str()).unwrap_or("");
-    Some(if js::trim(captured).is_empty() {
-        "*".to_string()
-    } else {
-        captured.to_string()
-    })
+    // Keep trailing combinators (`.form ::placeholder`, `.form>::placeholder`)
+    // so `star_empty_compounds` can turn them into a descendant match. Trim
+    // would attach the color to `.form` instead of the inputs inside it.
+    Some(star_empty_compounds(captured))
 }
 static COLOR_TOKEN_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)(?:rgba?|hsla?|oklch|oklab|lab|lch|hwb|color-mix)\([^)]*(?:\([^)]*\))?[^)]*\)|#[0-9a-f]{3,8}(?-u:\b)")

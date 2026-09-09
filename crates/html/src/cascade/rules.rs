@@ -276,7 +276,7 @@ fn is_combinator_or_ws(c: char) -> bool {
 /// combinator/whitespace char; the lookahead requires end-of-string or a
 /// combinator/whitespace char right after group 1. An empty match inserts
 /// `*` and advances one char; a one-char match appends `*` after it.
-fn star_empty_compounds(s: &str) -> String {
+pub(super) fn star_empty_compounds(s: &str) -> String {
     let chars: Vec<char> = s.chars().collect();
     let n = chars.len();
     let mut out = String::new();
