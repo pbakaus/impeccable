@@ -9,6 +9,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use serde_json::{Map, Value};
 
+use crate::engine_route::{merge_extensions, ExtensionEntry};
 use crate::jsp;
 use crate::util::{as_plain_object, js_string, re, read_json, D, DOT, WS};
 
@@ -88,6 +89,9 @@ pub struct DetectionConfig {
     pub ignore_values: Vec<IgnoreValueEntry>,
     pub design_system_enabled: Option<bool>,
     pub advisory_rules: Option<String>,
+    /// `detector.extensions`: extra suffixes and their engine, merged from
+    /// shared then local config the same way the hook reads them.
+    pub extensions: Vec<ExtensionEntry>,
 }
 
 impl DetectionConfig {
@@ -130,6 +134,9 @@ fn apply_detection_config_source(config: &mut DetectionConfig, raw: Option<&Map<
     }
     if let Some(Value::Array(values)) = raw.get("ignoreValues") {
         config.ignore_values = merge_ignore_values(&config.ignore_values, values);
+    }
+    if let Some(Value::Array(list)) = raw.get("extensions") {
+        config.extensions = merge_extensions(&config.extensions, list);
     }
 }
 

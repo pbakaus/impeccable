@@ -753,17 +753,11 @@ fn main_flow(rt: &Runtime, stdin: &str) -> Out {
     }
 
     let config = read_config(&cwd);
-    let ext_name = js::to_lower_case(&jsp::extname(&file_path));
-    let configured = match_configured_extension(&file_path, &config.extensions);
     audit.insert(
         "ext".into(),
-        Value::String(
-            configured
-                .map(|c| c.ext.clone())
-                .unwrap_or_else(|| ext_name.clone()),
-        ),
+        Value::String(extension_label(&file_path, &config.extensions)),
     );
-    if !ALLOWED_EXTS.contains(&ext_name.as_str()) && configured.is_none() {
+    if !is_hook_scan_path(&file_path, &config.extensions) {
         return skip(&audit, "extension");
     }
 
@@ -801,10 +795,7 @@ fn main_flow(rt: &Runtime, stdin: &str) -> Out {
         return skip(&audit, "config-ignore-file");
     }
     let scan = design_system_options_for_file(rt, &config, &cwd, &file_path);
-    let use_html_engine = match configured {
-        Some(c) => c.engine == "html",
-        None => ext_name == ".html" || ext_name == ".htm",
-    };
+    let use_html_engine = uses_html_engine(&file_path, &config.extensions);
     let findings = if use_html_engine {
         match detect_proposed_html(rt, &content, &file_path, &scan) {
             Ok(f) => f,

@@ -48,7 +48,8 @@ impl EngineError {
 /// The static HTML engine (`cli/engine/engines/static-html/detect-html.mjs`
 /// `detectHtml(filePath, options)`). Implemented by crates/html.
 pub trait HtmlEngine {
-    /// Scan one `.html` / `.htm` file. Any stderr the engine writes (the JS
+    /// Scan one markup file (built-in HTML-engine suffixes, or a configured
+    /// `engine: "html"` template). Any stderr the engine writes (the JS
     /// DEGRADED notice) goes through `stderr`.
     fn detect_html(
         &self,

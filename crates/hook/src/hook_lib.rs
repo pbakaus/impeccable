@@ -39,6 +39,20 @@ pub const ACK_EXTS: &[&str] = &[
     ".tsx", ".jsx", ".html", ".htm", ".vue", ".svelte", ".astro", ".css", ".scss", ".sass", ".less",
 ];
 
+pub use impeccable_detect::engine_route::{
+    extension_label, match_configured_extension, match_html_engine_extension, merge_extensions,
+    normalize_extension_entries, uses_html_engine, ExtensionEntry, HTML_ENGINE_EXTENSIONS,
+};
+
+/// Hook allowlist: last-segment `ALLOWED_EXTS`, built-in DOM suffixes
+/// (including `.blade.php`), or a configured `detector.extensions` suffix.
+pub fn is_hook_scan_path(file_path: &str, extensions: &[ExtensionEntry]) -> bool {
+    let ext = js::to_lower_case(&jsp::extname(file_path));
+    ALLOWED_EXTS.contains(&ext.as_str())
+        || match_html_engine_extension(file_path).is_some()
+        || match_configured_extension(file_path, extensions).is_some()
+}
+
 const WS: &str = impeccable_core::js::WS;
 
 macro_rules! re {
@@ -351,12 +365,6 @@ pub fn is_native_platform(platform: Option<&str>) -> bool {
 // ── config ────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ExtensionEntry {
-    pub ext: String,
-    pub engine: String,
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub struct Limits {
     pub max_findings: f64,
     pub max_chars: f64,
@@ -561,81 +569,6 @@ pub fn merge_ignore_values(
         map_set(&mut map, ignore_value_entry_key(&entry), entry);
     }
     map.into_iter().map(|(_, e)| e).collect()
-}
-
-/// JS: template-extensions.mjs#normalizeExtensionEntries
-pub fn normalize_extension_entries(entries: &[Value]) -> Vec<ExtensionEntry> {
-    let mut out = Vec::new();
-    for entry in entries {
-        let (raw, is_string, engine_text) = match entry {
-            Value::String(s) => (Some(s.as_str()), true, false),
-            Value::Object(o) => (
-                match o.get("ext") {
-                    Some(Value::String(s)) => Some(s.as_str()),
-                    _ => None,
-                },
-                false,
-                o.get("engine") == Some(&Value::String("text".to_string())),
-            ),
-            _ => (None, false, false),
-        };
-        let Some(raw) = raw else { continue };
-        let mut ext = js::to_lower_case(js::trim(raw));
-        if ext.is_empty() {
-            continue;
-        }
-        if !ext.starts_with('.') {
-            ext = format!(".{ext}");
-        }
-        let engine = if !is_string && engine_text {
-            "text"
-        } else {
-            "html"
-        };
-        out.push(ExtensionEntry {
-            ext,
-            engine: engine.to_string(),
-        });
-    }
-    out
-}
-
-/// JS: template-extensions.mjs#mergeExtensions
-pub fn merge_extensions(existing: &[ExtensionEntry], incoming: &[Value]) -> Vec<ExtensionEntry> {
-    let mut map: Vec<(String, ExtensionEntry)> = Vec::new();
-    for e in existing {
-        map_set(&mut map, e.ext.clone(), e.clone());
-    }
-    for e in normalize_extension_entries(incoming) {
-        map_set(&mut map, e.ext.clone(), e);
-    }
-    map.into_iter().map(|(_, e)| e).collect()
-}
-
-/// JS: template-extensions.mjs#matchConfiguredExtension
-pub fn match_configured_extension<'a>(
-    file_path: &str,
-    extensions: &'a [ExtensionEntry],
-) -> Option<&'a ExtensionEntry> {
-    if extensions.is_empty() {
-        return None;
-    }
-    let name = js::to_lower_case(&jsp::basename(file_path));
-    if name.is_empty() {
-        return None;
-    }
-    let mut best: Option<&ExtensionEntry> = None;
-    for entry in extensions {
-        if utf16_len(&name) > utf16_len(&entry.ext)
-            && name.ends_with(entry.ext.as_str())
-            && best
-                .map(|b| utf16_len(&entry.ext) > utf16_len(&b.ext))
-                .unwrap_or(true)
-        {
-            best = Some(entry);
-        }
-    }
-    best
 }
 
 // ── cache ─────────────────────────────────────────────────────────────────
@@ -991,6 +924,7 @@ pub fn filter_findings(findings: Vec<Finding>, config: &HookConfig) -> Vec<Findi
         ignore_values: config.ignore_values.clone(),
         design_system_enabled: None,
         advisory_rules: None,
+        extensions: vec![],
     };
     filter_detection_findings(kept, &dc)
 }
@@ -1606,9 +1540,7 @@ pub fn should_emit_ack_for_file(file_path: &str, config: &HookConfig) -> bool {
     if ACK_EXTS.contains(&ext.as_str()) {
         return true;
     }
-    match_configured_extension(file_path, &config.extensions)
-        .map(|c| c.engine == "html")
-        .unwrap_or(false)
+    uses_html_engine(file_path, &config.extensions)
 }
 
 /// The detector option object the hook builds (`{ designSystem? }`).

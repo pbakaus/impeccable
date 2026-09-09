@@ -12,6 +12,7 @@ use std::path::PathBuf;
 
 use impeccable_common::{jsp, Io};
 use impeccable_core::findings::{finding, Finding};
+use impeccable_detect::engines::{EngineError, HtmlEngine, ScanOptions};
 use impeccable_detect::MissingHtmlEngine;
 use impeccable_hook::hook_lib::*;
 use impeccable_hook::{admin, before_edit, hook};
@@ -801,6 +802,88 @@ fn configured_extensions_match_suffixes() {
     assert!(match_configured_extension("/x/a.php", &[]).is_none());
 }
 
+struct CaptureHtml {
+    paths: std::cell::RefCell<Vec<String>>,
+}
+
+impl HtmlEngine for CaptureHtml {
+    fn detect_html(
+        &self,
+        path: &str,
+        _options: &ScanOptions,
+        _stderr: &mut dyn std::io::Write,
+    ) -> Result<Vec<Finding>, EngineError> {
+        self.paths.borrow_mut().push(path.to_string());
+        Ok(vec![finding("low-contrast", path, "low contrast", 1.0)])
+    }
+}
+
+#[test]
+fn hook_routes_builtin_markup_and_configured_erb_to_html_engine() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let html = CaptureHtml {
+        paths: std::cell::RefCell::new(Vec::new()),
+    };
+    let r = Runtime::new(
+        cwd.clone(),
+        HashMap::new(),
+        "/impeccable".to_string(),
+        "/opt/bin/impeccable",
+        &html,
+    );
+    let body = "<a href=\"#\" style=\"color:#ccc;background:#fff\">low contrast</a>\n";
+    let vue = t.write("src/page.vue", body);
+    let blade = t.write("views/page.blade.php", body);
+    let erb = t.write("views/page.html.erb", body);
+
+    let vue_res = hook::run_hook(&r, &edit_event(&cwd, &vue, "s1"));
+    assert!(
+        vue_res.stdout.contains("[low-contrast]"),
+        "{}",
+        vue_res.stdout
+    );
+    assert_eq!(audit_str(&vue_res.audit, "ext"), Some(".vue"));
+
+    let blade_res = hook::run_hook(&r, &edit_event(&cwd, &blade, "s1"));
+    assert!(
+        blade_res.stdout.contains("[low-contrast]"),
+        "{}",
+        blade_res.stdout
+    );
+    assert_eq!(audit_str(&blade_res.audit, "ext"), Some(".blade.php"));
+
+    let erb_skip = hook::run_hook(&r, &edit_event(&cwd, &erb, "s1"));
+    assert_eq!(audit_str(&erb_skip.audit, "skipped"), Some("extension"));
+
+    t.write(
+        ".impeccable/config.json",
+        r#"{"detector":{"extensions":[{"ext":".html.erb","engine":"html"}]}}"#,
+    );
+    let erb_res = hook::run_hook(&r, &edit_event(&cwd, &erb, "s2"));
+    assert!(
+        erb_res.stdout.contains("[low-contrast]"),
+        "{}",
+        erb_res.stdout
+    );
+    assert_eq!(audit_str(&erb_res.audit, "ext"), Some(".html.erb"));
+
+    let seen = html.paths.borrow();
+    assert!(
+        seen.iter().any(|p| p.ends_with("page.vue")),
+        "vue should hit HTML engine: {seen:?}"
+    );
+    assert!(
+        seen.iter().any(|p| p.ends_with("page.blade.php")),
+        "blade.php should hit HTML engine without config: {seen:?}"
+    );
+    assert!(
+        seen.iter().any(|p| p.ends_with("page.html.erb")),
+        "configured html.erb should hit HTML engine: {seen:?}"
+    );
+}
+
 // ── cache ─────────────────────────────────────────────────────────────────
 
 #[test]
@@ -1412,10 +1495,11 @@ fn run_hook_skips_unsafe_and_foreign_targets() {
         Some("outside-project")
     );
     assert!(!t.exists(".impeccable"));
-    // template extensions (#316): .blade.php is skipped without config,
-    // routed through the text engine with `engine: text`
+    // .php is still skipped. .blade.php is a built-in DOM suffix (#795), so
+    // `engine: text` is what routes it through the regex engine.
+    let php = t.write("views/a.php", "<style>.t{background: linear-gradient(90deg,#f00,#00f); -webkit-background-clip: text; color: transparent;}</style>");
+    assert_eq!(audit_str(&go(&php).audit, "skipped"), Some("extension"));
     let blade = t.write("views/a.blade.php", "<style>.t{background: linear-gradient(90deg,#f00,#00f); -webkit-background-clip: text; color: transparent;}</style>");
-    assert_eq!(audit_str(&go(&blade).audit, "skipped"), Some("extension"));
     t.write(
         ".impeccable/config.json",
         r#"{"detector":{"extensions":[{"ext":".blade.php","engine":"text"}]}}"#,
