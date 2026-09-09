@@ -12,8 +12,8 @@ use super::checks_shim::CustomProps;
 use super::{
     apply_static_declaration, collect_static_css_rules, compare_static_priority,
     is_static_inherited_prop, make_default_style, normalize_static_css_value,
-    parse_static_style_attribute, star_empty_compounds, static_default_style, CssRule, DeclMeta,
-    SpecifiedDecl, SpecifiedStore, StyleValues, STATIC_DEFAULT_STYLE,
+    parse_static_style_attribute, static_default_style, CssRule, DeclMeta, SpecifiedDecl,
+    SpecifiedStore, StyleValues, STATIC_DEFAULT_STYLE,
 };
 use crate::dom::StaticDocument;
 use crate::profile::{self, Meta, ProfileSink};
@@ -147,10 +147,22 @@ static PLACEHOLDER_RULE_RE: Lazy<Regex> = Lazy::new(|| {
 fn placeholder_host_selector(selector: &str) -> Option<String> {
     let pm = PLACEHOLDER_RULE_RE.captures(selector)?;
     let captured = pm.get(1).map(|m| m.as_str()).unwrap_or("");
-    // Keep trailing combinators (`.form ::placeholder`, `.form>::placeholder`)
-    // so `star_empty_compounds` can turn them into a descendant match. Trim
-    // would attach the color to `.form` instead of the inputs inside it.
-    Some(star_empty_compounds(captured))
+    let trimmed_end = captured.trim_end_matches(|c: char| js::is_js_whitespace(c));
+    if trimmed_end.is_empty() {
+        return Some("*".to_string());
+    }
+    // Only fill a trailing empty compound. `star_empty_compounds` would
+    // rewrite `.label + ::placeholder` to `.label *+*`.
+    let last = trimmed_end.chars().last().unwrap();
+    if captured.len() != trimmed_end.len() || last == '>' || last == '+' || last == '~' {
+        if last == '>' || last == '+' || last == '~' {
+            Some(format!("{}*", trimmed_end))
+        } else {
+            Some(format!("{} *", trimmed_end))
+        }
+    } else {
+        Some(trimmed_end.to_string())
+    }
 }
 static COLOR_TOKEN_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)(?:rgba?|hsla?|oklch|oklab|lab|lch|hwb|color-mix)\([^)]*(?:\([^)]*\))?[^)]*\)|#[0-9a-f]{3,8}(?-u:\b)")
