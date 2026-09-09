@@ -6,8 +6,6 @@
 
 Use the PRODUCT.md path resolved by `impeccable context`. Update it instead of creating a competing authority. In a child app inheriting root context, confirm shared versus app-specific scope before writing.
 
-When the launcher was refused (degraded Setup), state SKILL.md's degraded notice first, then read PRODUCT.md and DESIGN.md directly from the project root. Refusal changes nothing else: the interview still runs, the must-read pack still applies downstream, and DESIGN.md still belongs to [document.md](document.md) and [new-work.md](new-work.md), never to init.
-
 - **No PRODUCT.md:** explore, interview, and write it.
 - **PRODUCT.md exists:** ask what product knowledge is stale or missing; do not reopen confirmed fields without a reason.
 - **Legacy PRODUCT.md:** add only durable missing facts; absent `## Platform` means `web` unless evidence says otherwise.

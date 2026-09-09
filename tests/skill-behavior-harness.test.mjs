@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { MockLanguageModelV3 } from 'ai/test';
 import { prepareWorkspace, cleanupWorkspace, makeTools, runTurn, fileLoaded, SKILL_BODY } from './skill-behavior/harness.mjs';
-import { assertPlanningFallbackWarning, assertNewWorkLifecycle, assertWorkflowAdvice, assertCommandComparison, missingReferences } from './skill-behavior/assertions.mjs';
+import { assertLauncherDenialWarningBeforeNextTool, assertPlanningFallbackWarning, assertNewWorkLifecycle, assertWorkflowAdvice, assertCommandComparison, missingReferences } from './skill-behavior/assertions.mjs';
 import { CASE_STUDY_ANSWER } from './skill-behavior/fixtures.mjs';
 import { sourceHash as hashSources } from './skill-workflow/source-hash.mjs';
 import { assertCompleted, assertFreshCaptures, assertNoChangeDocumentation, assertDocumentationArtifacts } from './skill-workflow/assertions.mjs';
@@ -183,6 +183,24 @@ it('headless behavior shells disable unattended decision pages and omit provider
     }
   } finally {
     cleanupWorkspace(workspace);
+  }
+});
+
+it('documentation fallback requires an assistant warning before the first tool call after denial', () => {
+  const call = { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'context', toolName: 'bash', input: { command: '.claude/skills/impeccable/scripts/impeccable context' } }] };
+  const denial = { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'context', toolName: 'bash', output: { type: 'text', value: 'Error: Bash permission denied by the host. This command was not executed.' } }] };
+  const warning = { role: 'assistant', content: 'Context loading did not run because the launcher was denied.' };
+  const read = { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'read', toolName: 'read', input: { path: 'reference/document.md' } }] };
+  const write = { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'write', toolName: 'write', input: { path: 'DESIGN.md' } }] };
+  assert.doesNotThrow(() => assertLauncherDenialWarningBeforeNextTool([call, denial, warning, read, write]));
+  assert.doesNotThrow(() => assertLauncherDenialWarningBeforeNextTool([call, denial, { role: 'assistant', content: [{ type: 'text', text: warning.content }, ...read.content] }, write]));
+  for (const messages of [
+    [call, denial, read, warning, write], // Reads first, warns only before the write.
+    [call, denial, read, write, warning], // Final-only disclosure.
+    [warning, call, denial, read], // Not a response to the actual denial.
+    [call, denial, warning], // Warning with no follow-up tool call.
+  ]) {
+    assert.throws(() => assertLauncherDenialWarningBeforeNextTool(messages), assert.AssertionError);
   }
 });
 

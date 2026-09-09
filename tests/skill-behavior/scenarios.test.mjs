@@ -28,7 +28,7 @@ import {
   ENGINE_MISSING_MESSAGE,
 } from './harness.mjs';
 import { detectProvider, getModel, hasKey, resolveModelList, PROVIDERS } from './providers.mjs';
-import { assertPlanningFallbackWarning, LAUNCHER_FAILURE_WARNING, assertAdviceOnly, assertWorkflowAdvice, assertCommandComparison, missingReferences } from './assertions.mjs';
+import { assertLauncherDenialWarningBeforeNextTool, assertPlanningFallbackWarning, LAUNCHER_FAILURE_WARNING, assertAdviceOnly, assertWorkflowAdvice, assertCommandComparison, missingReferences } from './assertions.mjs';
 import { assertCompleted } from '../skill-workflow/assertions.mjs';
 import {
   PRODUCT_MD_SAMPLE,
@@ -730,11 +730,7 @@ for (const modelId of resolveModelList()) {
         assert.ok(documentReadIndex >= 0 && documentReadIndex < designWriteIndex, 'reference/document.md must actually be read before DESIGN.md is written');
         const sourceReadIndex = trace.toolCalls.findIndex((call) => call.name === 'read' && call.succeeded && call.input.path.endsWith('index.html'));
         assert.ok(sourceReadIndex >= 0 && sourceReadIndex < designWriteIndex, 'the incumbent source must be read before DESIGN.md is written');
-        const assistantBlocks = responseMessages.filter((message) => message.role === 'assistant')
-          .flatMap((message) => typeof message.content === 'string' ? [{ type: 'text', text: message.content }] : message.content);
-        const warningIndex = assistantBlocks.findIndex((block) => block.type === 'text' && LAUNCHER_FAILURE_WARNING.test(block.text));
-        const writeBlockIndex = assistantBlocks.findIndex((block) => block.type === 'tool-call' && block.toolName === 'write');
-        assert.ok(warningIndex >= 0 && writeBlockIndex > warningIndex, 'must disclose the failed context launcher before writing, not only in the final summary');
+        assertLauncherDenialWarningBeforeNextTool(responseMessages);
         assert.ok(!trace.toolCalls.some((call) => call.mutatedPaths.some((p) => /(?:^|\/)PRODUCT\.md$/.test(p))), 'must not rewrite PRODUCT.md');
       } finally {
         cleanupWorkspace(workspace);

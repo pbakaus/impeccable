@@ -617,21 +617,6 @@ followed by a single `\n`. Overwrites (one brief per slug).
 
 ---
 
-#### Degraded Setup contract (launcher refused / permission denied)
-
-When the host refuses to execute `impeccable context` at all (Bash permission denied, sandboxed shell, missing binary), the CLI never runs and emits nothing, so the contract shifts entirely to the skill text. `SKILL.src.md`'s Setup paragraph **Launcher unavailable (degraded Setup)** (rule marker `skill-setup-degraded-pack`) owns the behavior:
-
-- **No silent continue.** The agent sends a user-visible degraded notice as a separate message before its next tool call, naming that context loading did not run and that it will read the existing project context directly.
-- **No fabricated context or directives.** PRODUCT.md and DESIGN.md are read directly if present; missing context stays missing. Directives that only `context.mjs` produces (`RESOLVED_CONTEXT`, `CONTEXT_STALE`, `UPDATE_AVAILABLE`, `MANUAL_DETECTOR_REQUIRED`, `IMAGE_TOOLS`, native reference inlining, surface briefs) are simply absent in a degraded run; the agent must not invent them or their contents.
-- **Must-read pack is unconditional.** A degraded run still owes every must-read before acting: the routed command's reference file and `reference/craft-floor.md` before any UI edit (Setup steps 2-3), and `reference/document.md` before any DESIGN.md write. Planning-only work stays read-only and does not load craft-floor.
-- **init in degraded mode** (`reference/init.md` Step 1): the degraded notice comes first, PRODUCT.md/DESIGN.md are resolved by direct read from the project root, and refusal never skips the interview or licenses init to write DESIGN.md.
-
-Launcher refusal is a host-permission outcome, distinct from `context.mjs` running and failing (bad `--target` exits 1 with its own stderr contract above). The degraded path applies to the former; the latter is an ordinary CLI error the agent should surface and correct.
-
-- **Tests**: `tests/skill-behavior/scenarios.test.mjs` scenario 19 (denied-launcher editing, successful-launcher control, denied-launcher planning-only, and denied-launcher documentation: `document.md` must be read before DESIGN.md is written).
-
----
-
 #### Tier 1/2 staleness (`lib/staleness.mjs`, `lib/staleness-notice.mjs`, `lib/staleness-deep.mjs`)
 
 Finding shape (field order): `{ id, artifact, path, severity, summary, fix }`, severity in `auto | mention | route`.
