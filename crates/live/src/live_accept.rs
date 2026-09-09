@@ -973,7 +973,19 @@ fn extract_original(lines: &[String], block: &MarkerBlock) -> Vec<String> {
     let text = strip_style_and_join(lines, block);
     match extract_inner_by_attr(&text, "data-impeccable-variant=\"original\"") {
         None => Vec::new(),
-        Some(inner) => inner.split('\n').map(String::from).collect(),
+        Some(inner) => {
+            // The wrapper puts the original on its own lines, so the inner text
+            // starts and ends with a line break. Restoring those as lines left
+            // one blank line above and one below the element on discard.
+            let mut result: Vec<String> = inner.split('\n').map(String::from).collect();
+            while result.len() > 1 && trim(&result[0]).is_empty() {
+                result.remove(0);
+            }
+            while result.len() > 1 && trim(result.last().unwrap()).is_empty() {
+                result.pop();
+            }
+            result
+        }
     }
 }
 
@@ -1122,4 +1134,46 @@ fn find_session_file(id: &str, cwd: &str) -> Option<(String, String, Vec<String>
     let content = safe_read(&file)?;
     let lines: Vec<String> = content.split('\n').map(String::from).collect();
     Some((file, content, lines))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn discard_restores_the_original_without_blank_lines_around_it() {
+        let dir = std::env::temp_dir().join(format!("impeccable-discard-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("Login.tsx");
+        let src = [
+            "      </div>",
+            "      <div data-impeccable-variants=\"ab12cd34\" data-impeccable-variant-count=\"3\" style={{ display: \"contents\" }}>",
+            "        {/* impeccable-variants-start ab12cd34 */}",
+            "        <style data-impeccable-css=\"ab12cd34\">{`",
+            "          @scope ([data-impeccable-variant=\"1\"]) { :scope > .x { color: red; } }",
+            "        `}</style>",
+            "        {/* Original */}",
+            "        <div data-impeccable-variant=\"original\">",
+            "          <Bar title=\"Log in\" />",
+            "        </div>",
+            "        {/* Variants: insert below this line */}",
+            "        <div data-impeccable-variant=\"1\">",
+            "          <Bar title=\"Log in\" />",
+            "        </div>",
+            "        {/* impeccable-variants-end ab12cd34 */}",
+            "      </div>",
+            "    </AuthPage>",
+        ];
+        let lines: Vec<String> = src.iter().map(|s| s.to_string()).collect();
+        let path = file.to_string_lossy().into_owned();
+        std::fs::write(&file, lines.join("\n")).unwrap();
+        handle_discard_unlocked("ab12cd34", &lines, &path).unwrap();
+        let out = std::fs::read_to_string(&file).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            out,
+            "      </div>\n      <Bar title=\"Log in\" />\n    </AuthPage>"
+        );
+    }
 }
