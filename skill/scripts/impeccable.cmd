@@ -75,8 +75,11 @@ mkdir "%IMPECCABLE_HOME%\bin\%version%" >nul 2>nul
 if errorlevel 1 goto cache_directory_failed
 :cache_ready
 rem Check the staging file too: an existing directory may be read-only.
-(type nul >"%cached%.part") 2>nul
-if errorlevel 1 goto cache_write_failed
+rem Redirection failures do not reliably update ERRORLEVEL in cmd.exe;
+rem branch on the command's failure directly. Never treat a directory as a
+rem staging file (later del cleanup would prompt to delete its contents).
+if exist "%cached%.part\" goto cache_write_failed
+(type nul >"%cached%.part") 2>nul || goto cache_write_failed
 set "asset=impeccable-windows-%arch%.exe"
 set "url=%IMPECCABLE_DOWNLOAD_BASE%/engine-v%version%/%asset%"
 curl.exe -fsSL -o "%cached%.part" "%url%" >nul 2>nul

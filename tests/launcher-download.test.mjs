@@ -39,6 +39,12 @@ async function exercise(t, scenario) {
     fs.mkdirSync(cacheDir, { recursive: true });
     if (WINDOWS) fs.mkdirSync(path.join(cacheDir, 'impeccable.exe.part'));
   }
+  if (scenario === 'cache-readonly-file') {
+    fs.mkdirSync(cacheDir, { recursive: true });
+    const staging = path.join(cacheDir, 'impeccable.exe.part');
+    fs.writeFileSync(staging, 'read-only');
+    fs.chmodSync(staging, 0o444);
+  }
   const tools = path.join(root, 'tools');
   fs.mkdirSync(tools);
   if (!WINDOWS && scenario === 'cache-write-failure') {
@@ -139,7 +145,7 @@ async function exercise(t, scenario) {
   return { ...result, files: fs.existsSync(cacheDir) ? fs.readdirSync(cacheDir) : [], requests, cacheDir };
 }
 
-for (const scenario of ['cache-directory-failure', 'cache-write-failure', 'download-failure', 'transport-failure']) {
+for (const scenario of ['cache-directory-failure', 'cache-write-failure', 'download-failure', 'transport-failure', ...(WINDOWS ? ['cache-readonly-file'] : [])]) {
   test(`launcher explains ${scenario} and how to retry setup`, async t => {
     const result = await exercise(t, scenario);
     assert.equal(result.status, 127, JSON.stringify(result));
