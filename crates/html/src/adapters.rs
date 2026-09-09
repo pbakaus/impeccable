@@ -20,9 +20,9 @@ use impeccable_core::checks::measures::{
 use impeccable_core::checks::rules::{
     check_borders, check_colors, check_glow, check_hero_eyebrow, check_hover_contrast,
     check_icon_tile, check_italic_serif, check_kicker_above_heading, check_motion,
-    is_emoji_only_text, is_heading_tag, resolve_hero_heading_size_px, BorderOpts, ColorOpts,
-    GlowOpts, HeroEyebrowOpts, HoverContrastOpts, IconTileOpts, ItalicSerifOpts, KickerCandidate,
-    MotionOpts, RuleHit, Sides,
+    check_placeholder_colors, is_emoji_only_text, is_heading_tag, resolve_hero_heading_size_px,
+    BorderOpts, ColorOpts, GlowOpts, HeroEyebrowOpts, HoverContrastOpts, IconTileOpts,
+    ItalicSerifOpts, KickerCandidate, MotionOpts, RuleHit, Sides,
 };
 use impeccable_core::checks::text_rules::{
     check_numbered_section_labels, is_kicker_candidate, is_numbered_section_label_candidate,
@@ -539,7 +539,7 @@ pub fn check_element_colors(
             sv(style, "backgroundClip")
         }
     };
-    check_colors(&ColorOpts {
+    let color_opts = ColorOpts {
         tag: tag.to_string(),
         text_color,
         bg_color: own_bg,
@@ -557,7 +557,43 @@ pub fn check_element_colors(
         bg_image: Some(sv(style, "backgroundImage").to_string()),
         class_list: Some(el.class_name().to_string()),
         detector_is_browser: false,
-    })
+    };
+    let mut findings = check_colors(&color_opts);
+    if tag == "input" || tag == "textarea" {
+        let placeholder = el.get_attribute("placeholder").unwrap_or("").trim();
+        if !placeholder.is_empty() {
+            let skip = if tag == "input" {
+                let t = js::to_lower_case(el.get_attribute("type").unwrap_or("text"));
+                matches!(
+                    t.as_str(),
+                    "hidden" | "checkbox" | "radio" | "file" | "submit" | "button" | "image"
+                        | "reset" | "range" | "color"
+                ) || el
+                    .get_attribute("value")
+                    .is_some_and(|v| !js::trim(v).is_empty())
+            } else {
+                !js::trim(&direct_text).is_empty()
+            };
+            if !skip {
+                if let Some(ph_style) = el.doc.get_placeholder_style(el.id()) {
+                    let ph_color = custom_props
+                        .and_then(|m| {
+                            measures::parse_color_resolved(sv_opt(ph_style, "color"), Some(m))
+                        })
+                        .or_else(|| parse_rgb(sv_opt(ph_style, "color")))
+                        .or_else(|| parse_any_color(sv_opt(ph_style, "color")));
+                    if let Some(ph_color) = ph_color {
+                        findings.extend(check_placeholder_colors(
+                            &color_opts,
+                            placeholder,
+                            ph_color,
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    findings
 }
 
 /// JS: checks.mjs#checkElementHoverContrast(el, style, tag, window)

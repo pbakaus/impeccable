@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Placeholder Contrast — Should Flag vs Should Pass</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #fafafa; padding: 24px; margin: 0; color: #1a1a1a; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; max-width: 1200px; margin: 0 auto; }
+    .col h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 16px; color: #475569; }
+    .col h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin: 24px 0 8px; color: #64748b; }
+    .field {
+      width: 280px;
+      height: 40px;
+      padding: 8px 12px;
+      font-size: 16px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      box-sizing: border-box;
+      display: block;
+      margin-bottom: 8px;
+    }
+    .field-white { background: #ffffff; }
+    .field-light { background: #f5f5f5; }
+    .field-dark { background: #1a1a1a; border-color: #333; }
+    .flag-pale-white::placeholder { color: #bbbbbb; }
+    .flag-pale-textarea::placeholder { color: #bbbbbb; }
+    .flag-translucent-light::placeholder { color: rgba(255, 255, 255, 0.4); }
+    .dark-wrap { background: #0f0f11; padding: 20px; width: 320px; }
+    .frosted-panel {
+      background: rgba(255, 255, 255, 0.15);
+      padding: 12px;
+    }
+    .frosted-panel .field {
+      background: rgba(255, 255, 255, 0.2);
+      border-color: rgba(255, 255, 255, 0.25);
+    }
+    .frosted-panel .field::placeholder { color: #bbbbbb; }
+    .pass-ink-white::placeholder { color: #1a1a1a; }
+    .pass-light-dark::placeholder { color: #e8e8e8; }
+    .pass-filled-pale::placeholder { color: #bbbbbb; }
+    .pass-unstyled { /* no ::placeholder rule — UA color only */ }
+  </style>
+</head>
+<body>
+  <div class="grid">
+
+    <div class="col" data-col="flag">
+      <h2>Should flag</h2>
+
+      <h3>Pale placeholder on white input</h3>
+      <input class="field field-white flag-pale-white" type="text" placeholder="Pale Placeholder On White Field">
+
+      <h3>Pale placeholder on white textarea</h3>
+      <textarea class="field field-white flag-pale-textarea" rows="2" placeholder="Pale Placeholder On White Textarea"></textarea>
+
+      <h3>Translucent placeholder on light field</h3>
+      <input class="field field-light flag-translucent-light" type="text" placeholder="Translucent Placeholder On Light Field">
+
+      <h3>Pale placeholder on frosted panel</h3>
+      <div class="dark-wrap">
+        <div class="frosted-panel">
+          <input class="field" type="text" placeholder="Pale Placeholder On Frosted Panel">
+        </div>
+      </div>
+    </div>
+
+    <div class="col" data-col="pass">
+      <h2>Should pass</h2>
+
+      <h3>Ink placeholder on white field</h3>
+      <input class="field field-white pass-ink-white" type="text" placeholder="Ink Placeholder On White Field">
+
+      <h3>Light placeholder on dark field</h3>
+      <input class="field field-dark pass-light-dark" type="text" placeholder="Light Placeholder On Dark Field">
+
+      <h3>Input with no placeholder attribute</h3>
+      <input class="field field-white" type="text" value="">
+
+      <h3>Filled field hides placeholder</h3>
+      <input class="field field-white pass-filled-pale" type="text" value="Already filled" placeholder="Filled Field Hides Placeholder">
+
+      <h3>Unstyled placeholder uses UA color</h3>
+      <input class="field field-white pass-unstyled" type="text" placeholder="Unstyled Placeholder Uses UA Color">
+
+      <h3>Empty placeholder attribute</h3>
+      <input class="field field-white flag-pale-white" type="text" placeholder="">
+    </div>
+
+  </div>
+</body>
+</html>

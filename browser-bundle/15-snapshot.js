@@ -585,6 +585,7 @@ const __impeccableSnapshot = {
     for (let id = 1; id < elements.length; id++) {
       const el = elements[id];
       const rec = { t: el.tagName };
+      const tag = rec.t;
       const nsUri = el.namespaceURI || '';
       const ns = __SNAP_NS[nsUri];
       if (ns === undefined) { rec.n = 3; rec.nu = nsUri; } else if (ns !== 0) { rec.n = ns; }
@@ -615,6 +616,11 @@ const __impeccableSnapshot = {
         if (content == null || content === '' || content === 'none') continue;
         rec[key] = __SNAP_PSEUDO_PROPS.map(p => intern(ps[p]));
       }
+      if ((tag === 'INPUT' || tag === 'TEXTAREA') && el.getAttribute('placeholder')) {
+        let ps;
+        try { ps = getComputedStyle(el, '::placeholder'); } catch { ps = null; }
+        if (ps) rec.ph = intern(ps.color);
+      }
       if (typeof el.getBoundingClientRect === 'function') rec.r = __snapRect4(el.getBoundingClientRect());
       rec.m = [
         __snapNum(el.clientWidth), __snapNum(el.clientHeight), __snapNum(el.clientLeft),
@@ -632,7 +638,6 @@ const __impeccableSnapshot = {
       if (typeof el.className !== 'string') rec.k = true;
       const st = states.get(id);
       if (st) rec.st = st;
-      const tag = rec.t;
       if (tag === 'IMG' || tag === 'VIDEO' || tag === 'CANVAS' || tag === 'PICTURE') {
         rec.md = {
           nw: el.naturalWidth || 0, nh: el.naturalHeight || 0,

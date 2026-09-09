@@ -12,8 +12,9 @@
 //! element tree in document order (child nodes with their text, so
 //! `textContent` and the direct text nodes come out byte-equal), attributes,
 //! the computed-style properties the rules read (`STYLE_PROPS`, interned
-//! values), `::before` / `::after` styles where `content` is set, bounding
-//! rects, the client/scroll/offset metrics, `checkVisibility`, direct-text
+//! values), `::before` / `::after` styles where `content` is set,
+//! `::placeholder` `color` on text controls, bounding rects, the
+//! client/scroll/offset metrics, `checkVisibility`, direct-text
 //! rects, viewport and scroll, hostname, quirks mode, `body.innerText`, the
 //! `@keyframes` rules, the document HTML for the regex pass, and the media
 //! intrinsics the visual-contrast path needs.
@@ -253,6 +254,10 @@ pub struct SnapNode {
     pub before: Option<Vec<u32>>,
     #[serde(rename = "f", default)]
     pub after: Option<Vec<u32>>,
+    /// Interned `getComputedStyle(el, '::placeholder').color` when the
+    /// element has a non-empty `placeholder` attribute.
+    #[serde(rename = "ph", default)]
+    pub placeholder_color: Option<u32>,
     /// `getBoundingClientRect` as `[x, y, width, height]`; `None` when the
     /// element has no such method.
     #[serde(rename = "r", default)]
@@ -824,6 +829,11 @@ impl Dom for SnapshotDom {
     }
     fn pseudo_style(&self, el: ElId, pseudo: &str, prop: &str) -> Option<String> {
         let n = self.snap.node(el);
+        if pseudo == "::placeholder" && prop == "color" {
+            return n
+                .placeholder_color
+                .and_then(|idx| self.snap.strings.get(idx as usize).cloned());
+        }
         let vals = match pseudo {
             "::before" | ":before" => n.before.as_ref(),
             "::after" | ":after" => n.after.as_ref(),
@@ -997,6 +1007,27 @@ mod tests {
         assert_eq!(d.id_prop(5).as_deref(), Some(""));
         assert_eq!(d.rect(4).right, 310.0);
         assert!(d.offset_width(6).is_nan());
+    }
+
+    #[test]
+    fn placeholder_color_is_readable_as_pseudo_style() {
+        let json = r#"{
+          "v": 1, "hostname": "example.test", "innerWidth": 1280, "innerHeight": 800,
+          "styleProps": ["display", "color"], "pseudoProps": ["content"],
+          "strings": ["block", "rgb(0, 0, 0)", "rgb(187, 187, 187)"],
+          "documentElement": 1, "body": 2,
+          "els": [
+            {"t":"HTML","c":[2],"s":[0,1],"r":[0,0,1280,800]},
+            {"t":"BODY","p":1,"c":[3],"s":[0,1]},
+            {"t":"INPUT","p":2,"c":[],"a":[["placeholder","Jane"]],"s":[0,1],"ph":2}
+          ]
+        }"#;
+        let d = snap(json);
+        assert_eq!(
+            d.pseudo_style(3, "::placeholder", "color").as_deref(),
+            Some("rgb(187, 187, 187)")
+        );
+        assert_eq!(d.pseudo_style(2, "::placeholder", "color"), None);
     }
 
     #[test]

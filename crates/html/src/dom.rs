@@ -55,6 +55,7 @@ pub struct StaticDocument {
     pub html: Html,
     styles: HashMap<NodeId, StyleValues>,
     hover_styles: HashMap<NodeId, StyleValues>,
+    placeholder_styles: HashMap<NodeId, StyleValues>,
     accent_dash: HashSet<NodeId>,
     pseudo_surface: HashMap<NodeId, Rgba>,
     selector_cache: RefCell<HashMap<String, Result<Selector, SelectorError>>>,
@@ -174,6 +175,7 @@ impl StaticDocument {
             html,
             styles: HashMap::new(),
             hover_styles: HashMap::new(),
+            placeholder_styles: HashMap::new(),
             accent_dash: HashSet::new(),
             pseudo_surface: HashMap::new(),
             selector_cache: RefCell::new(HashMap::new()),
@@ -318,6 +320,12 @@ impl StaticDocument {
     }
     pub fn get_hover_style(&self, node: NodeId) -> Option<&StyleValues> {
         self.hover_styles.get(&node)
+    }
+    pub fn set_placeholder_style(&mut self, node: NodeId, style: StyleValues) {
+        self.placeholder_styles.insert(node, style);
+    }
+    pub fn get_placeholder_style(&self, node: NodeId) -> Option<&StyleValues> {
+        self.placeholder_styles.get(&node)
     }
     pub fn set_accent_dash_pseudo(&mut self, node: NodeId) {
         self.accent_dash.insert(node);

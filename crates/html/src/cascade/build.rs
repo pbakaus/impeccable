@@ -139,6 +139,23 @@ static PSEUDO_RULE_RE: Lazy<Regex> = Lazy::new(|| {
     ))
     .expect("PSEUDO_RULE_RE")
 });
+static PLACEHOLDER_RULE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(&format!(
+        r"(?i)^(.*){ws}*(?:::placeholder|::?-webkit-input-placeholder|::?-moz-placeholder)$",
+        ws = js::WS
+    ))
+    .expect("PLACEHOLDER_RULE_RE")
+});
+
+fn placeholder_host_selector(selector: &str) -> Option<String> {
+    let pm = PLACEHOLDER_RULE_RE.captures(selector)?;
+    let captured = pm.get(1).map(|m| m.as_str()).unwrap_or("");
+    Some(if js::trim(captured).is_empty() {
+        "*".to_string()
+    } else {
+        captured.to_string()
+    })
+}
 static COLOR_TOKEN_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)(?:rgba?|hsla?|oklch|oklab|lab|lch|hwb|color-mix)\([^)]*(?:\([^)]*\))?[^)]*\)|#[0-9a-f]{3,8}(?-u:\b)")
         .expect("COLOR_TOKEN_RE")
@@ -252,6 +269,7 @@ pub fn build_static_style_map(
 ) {
     let mut specified: SpecifiedStore<NodeId> = SpecifiedStore::new();
     let mut hover_specified: SpecifiedStore<NodeId> = SpecifiedStore::new();
+    let mut placeholder_specified: SpecifiedStore<NodeId> = SpecifiedStore::new();
     let root_custom_props = collect_css_custom_props(css_text);
     let rules = profile::step(
         profile,
@@ -264,7 +282,12 @@ pub fn build_static_style_map(
         Meta::new("selector-match", "css-selectors", file_path),
         || {
             for rule in &rules {
-                if !rule.is_hover {
+                let placeholder_host = if rule.is_hover {
+                    None
+                } else {
+                    placeholder_host_selector(&rule.selector)
+                };
+                if !rule.is_hover && placeholder_host.is_none() {
                     if let Some(pm) = PSEUDO_RULE_RE.captures(&rule.selector) {
                         let base = pm.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
                         mark_pseudo_rule(doc, rule, &base, &root_custom_props);
@@ -273,6 +296,8 @@ pub fn build_static_style_map(
                 }
                 let match_selector: Option<&str> = if rule.is_hover {
                     rule.match_selector.as_deref()
+                } else if let Some(ref host) = placeholder_host {
+                    Some(host.as_str())
                 } else {
                     Some(rule.selector.as_str())
                 };
@@ -296,11 +321,18 @@ pub fn build_static_style_map(
                 };
                 let store = if rule.is_hover {
                     &mut hover_specified
+                } else if placeholder_host.is_some() {
+                    &mut placeholder_specified
                 } else {
                     &mut specified
                 };
                 for node in matched {
                     for decl in &rule.declarations {
+                        if placeholder_host.is_some()
+                            && js::to_lower_case(&decl.prop) != "color"
+                        {
+                            continue;
+                        }
                         let meta = DeclMeta {
                             important: decl.important,
                             specificity: rule.specificity,
@@ -341,7 +373,7 @@ pub fn build_static_style_map(
         profile,
         Meta::new("cascade", "compute-styles", file_path),
         || {
-            compute_styles(doc, &specified, &hover_specified);
+            compute_styles(doc, &specified, &hover_specified, &placeholder_specified);
         },
     );
 }
@@ -353,6 +385,7 @@ fn compute_styles(
     doc: &mut StaticDocument,
     specified: &SpecifiedStore<NodeId>,
     hover_specified: &SpecifiedStore<NodeId>,
+    placeholder_specified: &SpecifiedStore<NodeId>,
 ) {
     let mut computed: HashMap<NodeId, Rc<StyleValues>> = HashMap::new();
     let mut customs: HashMap<NodeId, Rc<CustomProps>> = HashMap::new();
@@ -368,6 +401,7 @@ fn compute_styles(
         .map(|e| (e.id(), None))
         .collect();
     let mut hover_out: Vec<(NodeId, StyleValues)> = Vec::new();
+    let mut placeholder_out: Vec<(NodeId, StyleValues)> = Vec::new();
 
     while let Some((node, parent)) = stack.pop() {
         let parent_style: Option<Rc<StyleValues>> = parent.and_then(|p| computed.get(&p).cloned());
@@ -439,6 +473,21 @@ fn compute_styles(
             }
         }
 
+        if let Some(ph_map) = placeholder_specified.get(&node) {
+            if let Some(color_decl) = ph_map.get("color") {
+                let next = normalize_static_css_value(
+                    "color",
+                    &color_decl.value,
+                    &custom_props,
+                    Some(&values),
+                    Some(&values),
+                );
+                let mut ph_style = StyleValues::default();
+                ph_style.insert("color".to_string(), next);
+                placeholder_out.push((node, ph_style));
+            }
+        }
+
         let style_rc = Rc::new(values);
         computed.insert(node, style_rc);
         customs.insert(node, Rc::new(custom_props));
@@ -459,6 +508,9 @@ fn compute_styles(
     }
     for (node, style) in hover_out {
         doc.set_hover_style(node, style);
+    }
+    for (node, style) in placeholder_out {
+        doc.set_placeholder_style(node, style);
     }
 }
 
