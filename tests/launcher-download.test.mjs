@@ -29,8 +29,23 @@ async function exercise(t, scenario) {
   const launcher = path.join(scripts, name);
   fs.copyFileSync(path.join(ROOT, 'skill/scripts', name), launcher);
   const cacheDir = path.join(cache, 'bin', '0.0.0-test');
+  if (scenario === 'cache-directory-failure') {
+    // A file where the cache parent belongs makes mkdir fail on every OS,
+    // including privileged test runners where chmod cannot deny writes.
+    fs.mkdirSync(cache);
+    fs.writeFileSync(path.join(cache, 'bin'), 'blocked');
+  }
+  if (scenario === 'cache-write-failure') {
+    fs.mkdirSync(cacheDir, { recursive: true });
+    if (WINDOWS) fs.mkdirSync(path.join(cacheDir, 'impeccable.exe.part'));
+  }
   const tools = path.join(root, 'tools');
   fs.mkdirSync(tools);
+  if (!WINDOWS && scenario === 'cache-write-failure') {
+    // The POSIX staging name contains the launcher's PID, so intercept the
+    // preceding mkdir to place a directory at precisely that file path.
+    fs.writeFileSync(path.join(tools, 'mkdir'), '#!/bin/sh\n/bin/mkdir "$@" || exit $?\n/bin/mkdir "$IMPECCABLE_HOME/bin/0.0.0-test/.impeccable.part.$PPID"\n', { mode: 0o755 });
+  }
   if (!WINDOWS && ['hash-failure', 'removed-during-hash'].includes(scenario)) {
     fs.writeFileSync(path.join(tools, 'shasum'),
       `#!/bin/sh\n${scenario === 'removed-during-hash' ? 'rm -f "$3"\n' : ''}printf '%s  %s\\n' '${HASH}' "$3"\nexit ${scenario === 'hash-failure' ? 1 : 0}\n`,
@@ -71,6 +86,10 @@ async function exercise(t, scenario) {
   const requests = [];
   const server = http.createServer((req, res) => {
     requests.push(req.url);
+    if (scenario === 'transport-failure') {
+      req.socket.destroy();
+      return;
+    }
     if (req.url.endsWith('.sha256')) {
       const part = fs.readdirSync(cacheDir).find(file => file.includes('.part'));
       if (scenario === 'removed') fs.unlinkSync(path.join(cacheDir, part));
@@ -78,6 +97,7 @@ async function exercise(t, scenario) {
       res.writeHead(scenario === 'no-sidecar' ? 404 : 200);
       res.end(scenario === 'empty-sidecar' ? '' : `${scenario === 'mismatch' ? '0'.repeat(64) : HASH}  engine\n`);
     } else {
+      if (scenario === 'download-failure') res.writeHead(404);
       res.end(scenario === 'empty-download' ? '' : PAYLOAD);
     }
   });
@@ -92,7 +112,7 @@ async function exercise(t, scenario) {
     IMPECCABLE_DOWNLOAD_BASE: `http://127.0.0.1:${server.address().port}`,
     ...(WINDOWS ? { SystemRoot: process.env.SystemRoot, ComSpec: COMSPEC, PROCESSOR_ARCHITECTURE: 'AMD64' } : {}),
   };
-  const result = await new Promise((resolve, reject) => {
+  const run = () => new Promise((resolve, reject) => {
     const child = WINDOWS
       ? spawn(COMSPEC, ['/d', '/s', '/c', `""${launcher}" /d /c echo verified-engine"`], { env, cwd: root, windowsVerbatimArguments: true, timeout: 20000 })
       : spawn('/bin/sh', [launcher], { env, cwd: root, timeout: 20000 });
@@ -103,9 +123,41 @@ async function exercise(t, scenario) {
     child.on('error', reject);
     child.on('close', (status, signal) => resolve({ status, signal, stdout, stderr }));
   });
+  const result = await run();
+  if (scenario === 'valid') {
+    const requestCount = requests.length;
+    const cachedResult = await run();
+    assert.equal(cachedResult.status, 0, cachedResult.stderr);
+    assert.match(cachedResult.stdout, /verified-engine/);
+    assert.equal(cachedResult.stderr, '', 'cached execution stays quiet');
+    assert.equal(requests.length, requestCount, 'subsequent runs use the cached engine without network');
+  }
   assert.equal(result.signal, null, JSON.stringify(result));
-  assert.equal(requests.filter(url => !url.endsWith('.sha256')).length, 1, 'one binary download, no verification retry loop');
-  return { ...result, files: fs.readdirSync(cacheDir), requests };
+  const cacheFailure = scenario.startsWith('cache-');
+  assert.equal(requests.filter(url => !url.endsWith('.sha256')).length, cacheFailure ? 0 : 1,
+    'cache failures do not attempt a download; other scenarios download once');
+  return { ...result, files: fs.existsSync(cacheDir) ? fs.readdirSync(cacheDir) : [], requests, cacheDir };
+}
+
+for (const scenario of ['cache-directory-failure', 'cache-write-failure', 'download-failure', 'transport-failure']) {
+  test(`launcher explains ${scenario} and how to retry setup`, async t => {
+    const result = await exercise(t, scenario);
+    assert.equal(result.status, 127, JSON.stringify(result));
+    assert.doesNotMatch(result.stdout, /verified-engine/);
+    assert.match(result.stderr, /engine 0\.0\.0-test/);
+    assert.ok(result.stderr.includes(result.cacheDir), result.stderr);
+    assert.match(result.stderr, /engine-probe/);
+    assert.match(result.stderr, /IMPECCABLE_HOME/);
+    assert.match(result.stderr, /IMPECCABLE_BIN/);
+    if (['download-failure', 'transport-failure'].includes(scenario)) {
+      assert.match(result.stderr, /could not download/);
+      assert.match(result.stderr, /network/);
+      assert.deepEqual(result.files, [], 'failed downloads leave no staging files');
+      assert.equal(result.requests.length, 1, 'no verification without a download');
+    } else {
+      assert.match(result.stderr, scenario === 'cache-directory-failure' ? /cannot create/ : /cannot write/);
+    }
+  });
 }
 
 test('launcher downloads and runs a verified executable', async t => {

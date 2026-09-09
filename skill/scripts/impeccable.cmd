@@ -68,18 +68,24 @@ rem another launcher's probe: fail fast and quiet instead.
 if defined IMPECCABLE_LAUNCHER_PROBE exit /b 127
 if not defined version goto fail
 where curl.exe >nul 2>nul
-if errorlevel 1 goto fail
+if errorlevel 1 goto curl_missing
 if not defined IMPECCABLE_DOWNLOAD_BASE set "IMPECCABLE_DOWNLOAD_BASE=https://github.com/pbakaus/impeccable/releases/download"
-if not exist "%IMPECCABLE_HOME%\bin\%version%" mkdir "%IMPECCABLE_HOME%\bin\%version%" >nul 2>nul
+if exist "%IMPECCABLE_HOME%\bin\%version%\" goto cache_ready
+mkdir "%IMPECCABLE_HOME%\bin\%version%" >nul 2>nul
+if errorlevel 1 goto cache_directory_failed
+:cache_ready
+rem Check the staging file too: an existing directory may be read-only.
+(type nul >"%cached%.part") 2>nul
+if errorlevel 1 goto cache_write_failed
 set "asset=impeccable-windows-%arch%.exe"
 set "url=%IMPECCABLE_DOWNLOAD_BASE%/engine-v%version%/%asset%"
 curl.exe -fsSL -o "%cached%.part" "%url%" >nul 2>nul
 if not errorlevel 1 goto verify
-if not "%arch%"=="arm64" goto fail
+if not "%arch%"=="arm64" goto download_failed
 set "asset=impeccable-windows-x64.exe"
 set "url=%IMPECCABLE_DOWNLOAD_BASE%/engine-v%version%/%asset%"
 curl.exe -fsSL -o "%cached%.part" "%url%" >nul 2>nul
-if errorlevel 1 goto fail
+if errorlevel 1 goto download_failed
 
 :verify
 call :check_download
@@ -175,6 +181,28 @@ if not errorlevel 1 set "probe_ok=1"
 :probe_done
 del "%probe_tmp%" >nul 2>nul
 exit /b 0
+
+:cache_directory_failed
+echo impeccable: engine %version% is not installed; cannot create cache directory: "%IMPECCABLE_HOME%\bin\%version%" 1>&2
+goto setup_failed
+
+:cache_write_failed
+echo impeccable: engine %version% is not installed; cannot write to cache directory: "%IMPECCABLE_HOME%\bin\%version%" 1>&2
+goto setup_failed
+
+:curl_missing
+echo impeccable: cannot download engine %version%; curl.exe is unavailable. 1>&2
+goto setup_failed
+
+:download_failed
+del "%cached%.part" >nul 2>nul
+echo impeccable: could not download engine %version% from %url%; check network access and the release URL. 1>&2
+
+:setup_failed
+echo Engine %version% setup needs network access and write permission to "%IMPECCABLE_HOME%\bin\%version%". 1>&2
+echo Run this launcher ("%~f0") with engine-probe in a terminal that has those permissions, then retry the original command. 1>&2
+echo Alternatively, set IMPECCABLE_HOME to a writable cache location, or IMPECCABLE_BIN to a preinstalled engine binary. 1>&2
+exit /b 127
 
 :fail
 del "%cached%.part" >nul 2>nul

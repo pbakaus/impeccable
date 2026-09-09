@@ -87,6 +87,11 @@ fi
 # Last resort: fetch this version's binary for the current platform from the
 # public release channel into the user cache. Needs network; sandboxes without
 # egress preinstall the binary on PATH instead.
+setup_help() {
+  echo "Engine $version setup needs network access and write permission to $cache_root/bin/$version." >&2
+  echo "Run this launcher ($0) with engine-probe in a terminal that has those permissions, then retry the original command." >&2
+  echo "Alternatively, set IMPECCABLE_HOME to a writable cache location, or IMPECCABLE_BIN to a preinstalled engine binary." >&2
+}
 fetch_url() {
   if command -v curl >/dev/null 2>&1; then
     curl -fsSL --retry 2 -o "$tmp" "$1" 2>/dev/null
@@ -119,7 +124,18 @@ if [ -n "$version" ] && [ "$os" != unknown ] && [ "$arch" != unknown ]; then
   [ "$os" = windows ] && asset="$asset.exe"
   url="$base/engine-v$version/$asset"
   tmp="$cache_root/bin/$version/.impeccable.part.$$"
-  mkdir -p "$cache_root/bin/$version" 2>/dev/null
+  if ! mkdir -p "$cache_root/bin/$version" 2>/dev/null; then
+    echo "impeccable: engine $version is not installed; cannot create cache directory: $cache_root/bin/$version" >&2
+    setup_help
+    exit 127
+  fi
+  # Check the actual staging file, not just directory existence: a cache from
+  # an earlier run can be readable but no longer writable inside a sandbox.
+  if ! (umask 077; : > "$tmp") 2>/dev/null; then
+    echo "impeccable: engine $version is not installed; cannot write to cache directory: $cache_root/bin/$version" >&2
+    setup_help
+    exit 127
+  fi
   fetched=0
   if fetch_url "$url"; then
     fetched=1
@@ -180,6 +196,9 @@ if [ -n "$version" ] && [ "$os" != unknown ] && [ "$arch" != unknown ]; then
     exec "$cached" "$@"
   fi
   rm -f "$tmp" 2>/dev/null
+  echo "impeccable: could not download engine $version from $url; check network access, the release URL, and curl or wget availability." >&2
+  setup_help
+  exit 127
 fi
 
 echo "impeccable: no engine binary for $os-$arch found (looked in $bin, $cached, PATH)." >&2
