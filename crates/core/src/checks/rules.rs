@@ -290,18 +290,39 @@ fn contrast_findings(opts: &ColorOpts, text_color: &Rgba) -> Vec<RuleHit> {
 /// SAFE_TAGS gate and the host heuristics in `check_colors` (class list,
 /// clip, gradient) because the host is an empty control; only the
 /// placeholder glyphs are scored. A translucent placeholder is flattened
-/// over the composited background first. Snippets carry the placeholder
-/// string so fixture tests can key on it.
+/// over the composited background first, including each gradient stop when
+/// no opaque surface resolved. Snippets carry the placeholder string so
+/// fixture tests can key on it.
 pub fn check_placeholder_colors(
     opts: &ColorOpts,
     placeholder_text: &str,
     mut text_color: Rgba,
 ) -> Vec<RuleHit> {
+    let mut flat: Option<ColorOpts> = None;
     if text_color.a.map_or(false, |a| a < 1.0) {
         if let Some(bg) = opts.effective_bg {
             text_color = composite_color_over(&text_color, &bg);
+        } else if let Some(stops) = opts.effective_bg_stops.as_ref().filter(|s| !s.is_empty()) {
+            let mut worst_i = 0usize;
+            let mut worst_ratio = f64::MAX;
+            let mut worst_fg = text_color;
+            for (i, stop) in stops.iter().enumerate() {
+                let fg = composite_color_over(&text_color, stop);
+                let r = contrast_ratio(&fg, stop);
+                if r < worst_ratio {
+                    worst_ratio = r;
+                    worst_i = i;
+                    worst_fg = fg;
+                }
+            }
+            text_color = worst_fg;
+            let mut o = opts.clone();
+            o.effective_bg = Some(stops[worst_i]);
+            o.effective_bg_stops = None;
+            flat = Some(o);
         }
     }
+    let opts = flat.as_ref().unwrap_or(opts);
     let mut findings = contrast_findings(opts, &text_color);
     for h in &mut findings {
         h.snippet = format!("placeholder \"{}\" {}", placeholder_text, h.snippet);
@@ -1098,6 +1119,22 @@ mod tests {
         };
         let none = check_placeholder_colors(&unresolved, "Name", Rgba::new(187.0, 187.0, 187.0, 1.0));
         assert!(none.is_empty(), "{none:?}");
+        // Translucent black over a light gradient: flatten per stop, then score.
+        let gradient = ColorOpts {
+            effective_bg: None,
+            effective_bg_stops: Some(vec![
+                Rgba::new(255.0, 255.0, 255.0, 1.0),
+                Rgba::new(240.0, 240.0, 240.0, 1.0),
+            ]),
+            ..opts.clone()
+        };
+        let wash = check_placeholder_colors(
+            &gradient,
+            "Name",
+            Rgba::new(0.0, 0.0, 0.0, 0.2),
+        );
+        assert_eq!(wash.len(), 1, "{wash:?}");
+        assert_eq!(wash[0].id, "low-contrast");
     }
 
     #[test]

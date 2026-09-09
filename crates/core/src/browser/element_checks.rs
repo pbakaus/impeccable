@@ -490,12 +490,10 @@ pub fn check_element_colors_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
                     t.as_str(),
                     "hidden" | "checkbox" | "radio" | "file" | "submit" | "button" | "image"
                         | "reset" | "range" | "color"
-                ) || dom
-                    .attr(el, "value")
-                    .is_some_and(|v| !js::trim(&v).is_empty())
+                )
             } else {
-                !js::trim(&direct).is_empty()
-            };
+                false
+            } || !matches_or_false(dom, el, ":placeholder-shown");
             if !skip {
                 if let Some(ph_raw) = dom.pseudo_style(el, "::placeholder", "color") {
                     if let Some(ph_color) = parse_rgb_or_any(&ph_raw) {
@@ -1428,6 +1426,7 @@ mod tests {
             ],
         );
         d.set_pseudo_style(input, "::placeholder", "color", "rgb(187, 187, 187)");
+        d.add_selector(input, ":placeholder-shown");
         let hits = check_element_colors_dom(&d, input);
         assert!(
             hits.iter().any(|h| {
@@ -1435,6 +1434,32 @@ mod tests {
                     && h.snippet.contains("placeholder \"Pale Placeholder On White Field\"")
             }),
             "{hits:?}"
+        );
+    }
+
+    #[test]
+    fn placeholder_skips_when_not_shown() {
+        let (mut d, body) = page();
+        let input = d.add(Some(body), "input");
+        visible(&mut d, input);
+        d.set_attr(input, "placeholder", "Pale Placeholder On White Field");
+        d.set_attr(input, "value", "");
+        d.set_rect(input, 0.0, 0.0, 200.0, 40.0);
+        d.set_styles(
+            input,
+            &[
+                ("backgroundColor", "rgb(255, 255, 255)"),
+                ("color", "rgb(0, 0, 0)"),
+                ("fontSize", "16px"),
+                ("fontWeight", "400"),
+                ("webkitBackgroundClip", "border-box"),
+            ],
+        );
+        d.set_pseudo_style(input, "::placeholder", "color", "rgb(187, 187, 187)");
+        let hits = check_element_colors_dom(&d, input);
+        assert!(
+            hits.iter().all(|h| h.id != "low-contrast"),
+            "live filled field must not score a hidden placeholder, {hits:?}"
         );
     }
 
