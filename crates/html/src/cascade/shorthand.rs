@@ -257,12 +257,22 @@ fn parse_static_background_layers(value: &str) -> (String, String) {
 /// part of `expand_static_declaration`, whose output the recorded vectors
 /// pin; the cascade stores these beside it (`apply_static_longhand`) so the
 /// sampled-contrast path (#560) can tell a tiled or cover image from a
-/// no-repeat icon. A `background` shorthand with an image resets both to
-/// what it names, as in CSS.
+/// no-repeat icon. Every `background` shorthand resets both to what it
+/// names, the defaults when it names nothing, as in CSS; a CSS-wide keyword
+/// passes through, and a bare `var()` value is left alone the way the
+/// expansion leaves it.
 pub fn background_longhands(prop: &str, value: &str) -> Vec<Expanded> {
     let v = js::trim(value);
     match js::to_lower_case(prop).as_str() {
-        "background" if BG_IMAGE_RE.is_match(v) => {
+        "background" if VAR_ANYWHERE_RE.is_match(v) && !BG_IMAGE_RE.is_match(v) => Vec::new(),
+        "background" if CSS_WIDE_KEYWORD_RE.is_match(v) => {
+            let keyword = js::to_lower_case(v);
+            vec![
+                ("backgroundRepeat".into(), keyword.clone()),
+                ("backgroundSize".into(), keyword),
+            ]
+        }
+        "background" => {
             let (repeat, size) = parse_static_background_layers(v);
             vec![
                 ("backgroundRepeat".into(), repeat),
@@ -275,6 +285,9 @@ pub fn background_longhands(prop: &str, value: &str) -> Vec<Expanded> {
     }
 }
 
+static CSS_WIDE_KEYWORD_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)^(?:inherit|initial|unset|revert|revert-layer)$").expect("CSS_WIDE_KEYWORD_RE")
+});
 static BG_IMAGE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)gradient|url\(").expect("BG_IMAGE_RE"));
 static BG_IMAGE_SPLIT_RE: Lazy<Regex> = Lazy::new(|| {

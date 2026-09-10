@@ -97,9 +97,8 @@ pub fn collect_static_css_text(
     profile: Option<&dyn ProfileSink>,
     file_path: &str,
     warn: Option<&dyn Fn(&str)>,
-) -> (String, Vec<String>) {
+) -> String {
     let mut style_texts: Vec<String> = Vec::new();
-    let mut sheet_dirs: Vec<String> = Vec::new();
     let mut warned_missing_stylesheets: std::collections::HashSet<String> =
         std::collections::HashSet::new();
     for style_el in doc.query_selector_all("style") {
@@ -120,11 +119,13 @@ pub fn collect_static_css_text(
         );
         match read {
             Ok(bytes) => {
-                style_texts.push(String::from_utf8_lossy(&bytes).into_owned());
-                let dir = jsp::dirname(&css_path);
-                if !sheet_dirs.contains(&dir) {
-                    sheet_dirs.push(dir);
-                }
+                let text = String::from_utf8_lossy(&bytes);
+                let sheet_dir = jsp::dirname(&css_path);
+                style_texts.push(if sheet_dir == file_dir_str {
+                    text.into_owned()
+                } else {
+                    rewrite_sheet_urls(&text, &sheet_dir, &file_dir_str)
+                });
             }
             Err(_) => {
                 if warned_missing_stylesheets.insert(css_path.clone()) {
@@ -137,7 +138,57 @@ pub fn collect_static_css_text(
             }
         }
     }
-    (style_texts.join("\n"), sheet_dirs)
+    style_texts.join("\n")
+}
+
+static CSS_URL_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?i)url\(\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|([^)"']*?))\s*\)"#)
+        .expect("CSS_URL_RE")
+});
+static URL_SCHEME_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^[A-Za-z][A-Za-z0-9+.-]*:").expect("URL_SCHEME_RE"));
+
+/// A relative `url()` in a stylesheet is relative to the sheet, and the
+/// cascade sees one concatenated text, so a sheet inlined from another
+/// directory has its relative urls rewritten to page-relative form here.
+/// This is what lets the sampled-contrast path (#560) resolve the image the
+/// winning declaration named. Root-relative, remote, `data:`, fragment, and
+/// escaped urls are left as they are.
+pub fn rewrite_sheet_urls(css: &str, sheet_dir: &str, page_dir: &str) -> String {
+    CSS_URL_RE
+        .replace_all(css, |caps: &regex::Captures| {
+            let whole = caps.get(0).map(|m| m.as_str()).unwrap_or("");
+            let (target, quote) = match (caps.get(1), caps.get(2), caps.get(3)) {
+                (Some(m), _, _) => (m.as_str(), "\""),
+                (_, Some(m), _) => (m.as_str(), "'"),
+                (_, _, Some(m)) => (js::trim(m.as_str()), ""),
+                _ => return whole.to_string(),
+            };
+            let lower = js::to_lower_case(target);
+            if target.is_empty()
+                || target.contains('\\')
+                || target.starts_with('#')
+                || target.starts_with('/')
+                || lower.starts_with("data:")
+                || URL_SCHEME_RE.is_match(target)
+            {
+                return whole.to_string();
+            }
+            let cut = target.find(['?', '#']).unwrap_or(target.len());
+            let (path, suffix) = target.split_at(cut);
+            let absolute = jsp::resolve("/", &[sheet_dir, path]);
+            let relative = jsp::to_posix(&jsp::relative("/", page_dir, &absolute));
+            if relative.is_empty() {
+                return whole.to_string();
+            }
+            let needs_quotes = quote.is_empty()
+                && relative
+                    .chars()
+                    .any(|c| c.is_whitespace() || matches!(c, '(' | ')' | '"' | '\''));
+            let quote = if needs_quotes { "\"" } else { quote };
+            format!("url({quote}{relative}{suffix}{quote})")
+        })
+        .into_owned()
 }
 
 static PSEUDO_RULE_RE: Lazy<Regex> = Lazy::new(|| {

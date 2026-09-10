@@ -249,30 +249,48 @@ fn background_longhands_ride_beside_the_expansion() {
         background_longhands("Background-Size", "100% 32px"),
         vec![("backgroundSize".to_string(), "100% 32px".to_string())]
     );
-    assert!(background_longhands("background", "#fff").is_empty());
+    // A color-only shorthand still resets both longhands, as in CSS.
+    assert_eq!(
+        background_longhands("background", "#fff"),
+        vec![
+            ("backgroundRepeat".to_string(), "repeat".to_string()),
+            ("backgroundSize".to_string(), "auto".to_string()),
+        ]
+    );
+    assert_eq!(
+        background_longhands("background", "Inherit"),
+        vec![
+            ("backgroundRepeat".to_string(), "inherit".to_string()),
+            ("backgroundSize".to_string(), "inherit".to_string()),
+        ]
+    );
+    assert!(background_longhands("background", "var(--surface)").is_empty());
     assert!(background_longhands("color", "red").is_empty());
 
     // A later shorthand with an image resets an earlier longhand, and a
     // later longhand overrides a shorthand, under the cascade's priority.
     let mut specified: SpecifiedStore<&str> = SpecifiedStore::new();
     let node = "n1";
-    let mut apply = |prop: &str, value: &str, m: DeclMeta| {
-        apply_static_declaration(&mut specified, node, prop, value, &m);
+    let apply = |specified: &mut SpecifiedStore<&str>, prop: &str, value: &str, m: DeclMeta| {
+        apply_static_declaration(specified, node, prop, value, &m);
         for (p, v) in background_longhands(prop, value) {
-            apply_static_longhand(&mut specified, node, &p, &v, &m);
+            apply_static_longhand(specified, node, &p, &v, &m);
         }
     };
     apply(
+        &mut specified,
         "background-repeat",
         "no-repeat",
         meta(false, [0, 1, 0], 0, false),
     );
     apply(
+        &mut specified,
         "background",
         "url(hero.jpg) center / cover",
         meta(false, [0, 1, 0], 1, false),
     );
     apply(
+        &mut specified,
         "background-size",
         "contain",
         meta(false, [0, 1, 0], 2, false),
@@ -290,4 +308,65 @@ fn background_longhands_ride_beside_the_expansion() {
         map.get("backgroundImage").map(|d| d.value.as_str()),
         Some("url(hero.jpg) center / cover")
     );
+    // `background: #fff` after a longhand resets it, so a later
+    // `background-image` is classified with the defaults, not a stale value.
+    apply(
+        &mut specified,
+        "background-repeat",
+        "no-repeat",
+        meta(false, [0, 1, 0], 3, false),
+    );
+    apply(
+        &mut specified,
+        "background",
+        "#fff",
+        meta(false, [0, 1, 0], 4, false),
+    );
+    let map = specified.get(&node).expect("node entry");
+    assert_eq!(
+        map.get("backgroundRepeat").map(|d| d.value.as_str()),
+        Some("repeat")
+    );
+    assert_eq!(
+        map.get("backgroundSize").map(|d| d.value.as_str()),
+        Some("auto")
+    );
+}
+
+#[test]
+fn linked_sheet_urls_are_rewritten_page_relative() {
+    use impeccable_html::cascade::build::rewrite_sheet_urls;
+
+    let css = concat!(
+        ".a { background: url(light.png) }\n",
+        ".b { background: url(\"../img/hero.jpg?v=3\") no-repeat }\n",
+        ".c { background-image: url('./x.webp'), url(/root.png), url(data:image/png;base64,AAAA) }\n",
+        ".d { background: url(https://cdn.example.com/a.png) }\n",
+        ".e { mask: url(#clip) }\n",
+        ".f { background: URL( a b.png ) }\n",
+    );
+    let out = rewrite_sheet_urls(css, "/site/css", "/site");
+    assert!(
+        out.contains(".a { background: url(css/light.png) }"),
+        "{out}"
+    );
+    assert!(
+        out.contains(".b { background: url(\"img/hero.jpg?v=3\") no-repeat }"),
+        "{out}"
+    );
+    assert!(
+        out.contains("url('css/x.webp'), url(/root.png), url(data:image/png;base64,AAAA)"),
+        "{out}"
+    );
+    assert!(out.contains("url(https://cdn.example.com/a.png)"), "{out}");
+    assert!(out.contains("url(#clip)"), "{out}");
+    assert!(out.contains("url(\"css/a b.png\")"), "{out}");
+    // A sheet beside the page keeps every path where it was (the engine
+    // does not even call the rewrite for that case).
+    let same = rewrite_sheet_urls(css, "/site", "/site");
+    assert!(same.contains(".a { background: url(light.png) }"), "{same}");
+    assert!(same.contains("url(\"../img/hero.jpg?v=3\")"), "{same}");
+    // A sheet above the page walks back up.
+    let up = rewrite_sheet_urls(".a { background: url(light.png) }", "/site", "/site/pages");
+    assert_eq!(up, ".a { background: url(../light.png) }");
 }

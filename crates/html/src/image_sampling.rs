@@ -1,17 +1,22 @@
 //! The pixels behind image-backed text for the static engine (#560). A
-//! `url()` resolves to bytes from a local file next to the markup or from a
-//! base64 data URI, never from the network; the pure-Rust decoders turn them
-//! into a raster no larger than the browser overlay's 640px canvas; and the
-//! raster is cached for the rest of the process, so a directory scan decodes
-//! each hero once. Anything unreadable, remote, oversized, or undecodable is
-//! `None`, and the caller keeps today's skip.
+//! `url()` resolves to bytes from a local file relative to the page (linked
+//! stylesheets have their urls rewritten to page-relative form when they are
+//! inlined, see `rewrite_sheet_urls`) or from a base64 data URI, never from
+//! the network; the pure-Rust decoders turn them into a raster no larger than
+//! the browser overlay's 640px canvas; and the raster is cached for the rest
+//! of the process, so a directory scan decodes each hero once. Anything
+//! unreadable, remote, oversized, or undecodable is `None`, and the caller
+//! keeps today's skip. The same byte budget bounds a file on disk and a data
+//! URI's payload, checked before anything is copied or decoded.
 
 use crate::cascade::resolve_linked_css_path;
 use base64::Engine;
 use impeccable_common::jsp;
 use impeccable_core::color::Rgba;
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::io::Cursor;
 use std::rc::Rc;
 
@@ -20,6 +25,9 @@ const MAX_RASTER_SIDE: u32 = 640;
 /// Files above this are not read: a hero is a few megabytes, and the hook
 /// runs on every edit.
 const MAX_FILE_BYTES: u64 = 24 * 1024 * 1024;
+/// The base64 payload length that decodes to [`MAX_FILE_BYTES`], so a data
+/// URI is refused before its payload is copied or decoded.
+const MAX_DATA_URI_CHARS: usize = (MAX_FILE_BYTES as usize / 3) * 4 + 4;
 const MAX_IMAGE_SIDE: u32 = 8192;
 const MAX_DECODE_BYTES: u64 = 128 * 1024 * 1024;
 /// Decoded rasters kept per process; the map is cleared when full.
@@ -49,22 +57,18 @@ thread_local! {
     static RASTERS: RefCell<HashMap<String, Option<Rc<Raster>>>> = RefCell::new(HashMap::new());
 }
 
-/// Resolves and decodes the `url()` grounds of one document. The bases are
-/// the document's directory followed by every linked stylesheet's, since a
-/// relative `url()` inside a sheet is relative to the sheet.
+/// Resolves and decodes the `url()` grounds of one document, relative to
+/// the document's directory. A url from a linked stylesheet reaches the
+/// cascade already rewritten to page-relative form.
 pub struct ImageSampler {
-    bases: Vec<String>,
+    base: String,
 }
 
 impl ImageSampler {
-    pub fn new(html_dir: &str, stylesheet_dirs: &[String]) -> Self {
-        let mut bases = vec![html_dir.to_string()];
-        for dir in stylesheet_dirs {
-            if !bases.contains(dir) {
-                bases.push(dir.clone());
-            }
+    pub fn new(html_dir: &str) -> Self {
+        ImageSampler {
+            base: html_dir.to_string(),
         }
-        ImageSampler { bases }
     }
 
     /// The raster behind a `url()` argument, or `None` when it cannot be
@@ -76,7 +80,12 @@ impl ImageSampler {
             return None;
         }
         let key = if is_data_uri(url) {
-            url.to_string()
+            // Refused before anything is allocated: a project file can carry
+            // any size of data URI, and the hook scans on every edit.
+            if url.len() > MAX_DATA_URI_CHARS + 256 {
+                return None;
+            }
+            data_uri_key(url)
         } else {
             self.resolve_file(url)?
         };
@@ -103,19 +112,24 @@ impl ImageSampler {
         if url.starts_with("//") || url.contains("://") {
             return None;
         }
-        self.bases
-            .iter()
-            .map(|base| resolve_linked_css_path(base, url))
-            .find(|path| {
-                std::fs::metadata(path)
-                    .map(|m| m.is_file())
-                    .unwrap_or(false)
-            })
+        let path = resolve_linked_css_path(&self.base, url);
+        std::fs::metadata(&path)
+            .map(|m| m.is_file())
+            .unwrap_or(false)
+            .then_some(path)
     }
 }
 
 fn is_data_uri(url: &str) -> bool {
     url.len() > 5 && url[..5].eq_ignore_ascii_case("data:")
+}
+
+/// The cache key of a data URI: its length and a hash, so the cache never
+/// holds a copy of the URI itself.
+fn data_uri_key(url: &str) -> String {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    url.hash(&mut hasher);
+    format!("data:{}:{:016x}", url.len(), hasher.finish())
 }
 
 /// The name a finding gives the image: the file name, or `data:<mime>`.
@@ -147,10 +161,17 @@ fn data_uri_bytes(url: &str) -> Option<Vec<u8>> {
     {
         return None;
     }
-    let compact: String = payload.chars().filter(|c| !c.is_whitespace()).collect();
+    if payload.len() > MAX_DATA_URI_CHARS {
+        return None;
+    }
+    let compact: Cow<str> = if payload.chars().any(char::is_whitespace) {
+        Cow::Owned(payload.chars().filter(|c| !c.is_whitespace()).collect())
+    } else {
+        Cow::Borrowed(payload)
+    };
     base64::engine::general_purpose::STANDARD
-        .decode(&compact)
-        .or_else(|_| base64::engine::general_purpose::STANDARD_NO_PAD.decode(&compact))
+        .decode(compact.as_ref())
+        .or_else(|_| base64::engine::general_purpose::STANDARD_NO_PAD.decode(compact.as_ref()))
         .ok()
 }
 
@@ -212,7 +233,7 @@ mod tests {
             "data:image/png;base64,{}",
             base64::engine::general_purpose::STANDARD.encode(&bytes)
         );
-        let sampler = ImageSampler::new("/nonexistent", &[]);
+        let sampler = ImageSampler::new("/nonexistent");
         let raster = sampler.load(&uri).expect("png data uri decodes");
         assert_eq!((raster.width, raster.height), (8, 8));
         assert_eq!(raster.pixel(3, 3).r, 240.0);
@@ -221,24 +242,29 @@ mod tests {
         assert!(sampler.load("https://example.com/hero.jpg").is_none());
         assert!(sampler.load("//cdn.example.com/hero.jpg").is_none());
         assert_eq!(ground_label("img/hero.jpg?v=3"), "hero.jpg");
+        // A payload past the byte budget is refused before it is decoded.
+        let huge = format!(
+            "data:image/png;base64,{}",
+            "A".repeat(MAX_DATA_URI_CHARS + 1)
+        );
+        assert!(sampler.load(&huge).is_none());
+        assert_ne!(data_uri_key(&uri), data_uri_key(&huge));
     }
 
     #[test]
-    fn files_resolve_against_every_base_and_downscale() {
+    fn files_resolve_against_the_page_dir_and_downscale() {
         let dir = std::env::temp_dir().join(format!("impeccable-sampler-{}", std::process::id()));
-        let sheet_dir = dir.join("css");
-        std::fs::create_dir_all(&sheet_dir).unwrap();
+        std::fs::create_dir_all(dir.join("img")).unwrap();
         std::fs::write(
-            sheet_dir.join("wide.png"),
+            dir.join("img").join("wide.png"),
             png_bytes(1280, 320, [20, 20, 20, 255]),
         )
         .unwrap();
-        let html_dir = dir.to_string_lossy().into_owned();
-        let sampler = ImageSampler::new(&html_dir, &[sheet_dir.to_string_lossy().into_owned()]);
-        assert!(sampler.load("missing.png").is_none());
+        let sampler = ImageSampler::new(&dir.to_string_lossy());
+        assert!(sampler.load("wide.png").is_none());
         let raster = sampler
-            .load("wide.png")
-            .expect("resolves against the sheet dir");
+            .load("img/wide.png")
+            .expect("resolves against the page dir");
         assert_eq!((raster.width, raster.height), (640, 160));
         assert_eq!(
             (raster.intrinsic_width, raster.intrinsic_height),
@@ -246,7 +272,7 @@ mod tests {
         );
         assert_eq!(raster.pixel(639, 159).g, 20.0);
         // The second load is the cached raster.
-        assert!(Rc::ptr_eq(&raster, &sampler.load("wide.png").unwrap()));
+        assert!(Rc::ptr_eq(&raster, &sampler.load("img/wide.png").unwrap()));
         std::fs::remove_dir_all(&dir).ok();
     }
 }
