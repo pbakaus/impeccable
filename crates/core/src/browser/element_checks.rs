@@ -20,8 +20,9 @@ use crate::checks::measures::{
 };
 use crate::checks::rules::{
     check_borders, check_colors, check_glow, check_hero_eyebrow, check_icon_tile,
-    check_italic_serif, check_motion, is_emoji_only_text, BorderOpts, ColorOpts, GlowOpts,
-    HeroEyebrowOpts, IconTileOpts, ItalicSerifOpts, MotionOpts, RuleHit, Sides, HEADING_TAGS,
+    check_italic_serif, check_motion, check_stripe_child, is_emoji_only_text, BorderOpts,
+    ColorOpts, GlowOpts, HeroEyebrowOpts, IconTileOpts, ItalicSerifOpts, MotionOpts, RuleHit,
+    Sides, HEADING_TAGS,
 };
 use crate::checks::text_rules::{
     CURSOR_FIRST_VIEWPORT_PX, CURSOR_GLYPH_RE, POSITIONED_CHILD_INTERACTIVE_SELECTOR,
@@ -365,6 +366,57 @@ pub fn check_element_pseudo_stripe_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> 
         ));
     }
     findings
+}
+
+const STRIPE_CHILD_SKIP: &str = "nav, blockquote, pre, table, button, a, select, progress, meter, [role=\"progressbar\"], [role=\"slider\"], [role=\"scrollbar\"], [role=\"separator\"], [role=\"tablist\"]";
+
+/// JS: checks.mjs#checkElementStripeChildDOM(el)
+pub fn check_element_stripe_child_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
+    let tag = tag_lower(dom, el);
+    if tag != "div" && tag != "span" {
+        return Vec::new();
+    }
+    let Some(host) = dom.parent(el) else {
+        return Vec::new();
+    };
+    let host_tag = tag_lower(dom, host);
+    if host_tag == "body" || host_tag == "html" {
+        return Vec::new();
+    }
+    if !dom.children(el).is_empty() {
+        return Vec::new();
+    }
+    if !js::trim(&collapse_ws(&dom.text_content(el))).is_empty() {
+        return Vec::new();
+    }
+    if closest_or_none(dom, el, STRIPE_CHILD_SKIP).is_some() {
+        return Vec::new();
+    }
+    if !is_rendered_for_browser_rule(dom, el) {
+        return Vec::new();
+    }
+    if is_tab_context_element(dom, el) || is_status_context_element(dom, el) {
+        return Vec::new();
+    }
+    let host_rect = dom.rect(host);
+    if host_rect.width < 40.0 || host_rect.height < 20.0 {
+        return Vec::new();
+    }
+    let child_rect = dom.rect(el);
+    if child_rect.height < host_rect.height - 44.0 || child_rect.height < host_rect.height * 0.5 {
+        return Vec::new();
+    }
+    let hugs = |v: f64| v.is_finite() && v.abs() <= 3.0;
+    let edge = if hugs(child_rect.left - host_rect.left) {
+        Some("left")
+    } else if hugs(host_rect.right - child_rect.right) {
+        Some("right")
+    } else {
+        None
+    };
+    let width = child_rect.width;
+    let bg = parse_rgb_or_any(&dom.style(el, "backgroundColor"));
+    check_stripe_child(&class_selector(dom, el), width, edge, bg)
 }
 
 /// JS: checks.mjs#readPseudoSurfaceDOM(el, rect)
@@ -1376,6 +1428,44 @@ mod tests {
         );
         d.set_pseudo_style(card, "::before", "backgroundColor", "rgb(120, 120, 120)");
         assert!(check_element_pseudo_stripe_dom(&d, card).is_empty());
+    }
+
+    #[test]
+    fn stripe_child_flags_left_edge_and_skips_neutral_text_and_tab_context() {
+        let (mut d, body) = page();
+        let host = d.add(Some(body), "div");
+        visible(&mut d, host);
+        d.set_attr(host, "class", "card");
+        d.set_rect(host, 0.0, 0.0, 300.0, 100.0);
+        let stripe = d.add(Some(host), "div");
+        visible(&mut d, stripe);
+        d.set_rect(stripe, 0.0, 0.0, 4.0, 100.0);
+        d.set_styles(
+            stripe,
+            &[
+                ("backgroundColor", "rgb(245, 158, 11)"),
+                ("width", "4px"),
+                ("height", "100px"),
+            ],
+        );
+        let hits = check_element_stripe_child_dom(&d, stripe);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].id, "side-tab");
+        assert_eq!(hits[0].snippet, "div — 4px stripe child (left)");
+        d.set_styles(stripe, &[("backgroundColor", "rgb(120, 120, 120)")]);
+        assert!(check_element_stripe_child_dom(&d, stripe).is_empty());
+        let stripe_text = d.add(Some(host), "div");
+        visible(&mut d, stripe_text);
+        d.set_rect(stripe_text, 4.0, 0.0, 4.0, 100.0);
+        d.set_styles(
+            stripe_text,
+            &[("backgroundColor", "rgb(245, 158, 11)")],
+        );
+        d.add_text(stripe_text, "x");
+        assert!(check_element_stripe_child_dom(&d, stripe_text).is_empty());
+        d.set_styles(stripe, &[("backgroundColor", "rgb(245, 158, 11)")]);
+        d.set_attr(host, "class", "card is-active");
+        assert!(check_element_stripe_child_dom(&d, stripe).is_empty());
     }
 
     #[test]

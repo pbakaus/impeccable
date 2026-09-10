@@ -88,6 +88,39 @@ pub fn check_borders(
     findings
 }
 
+/// Pure gate for dedicated stripe-child side-tabs (empty narrow chromatic
+/// `div`/`span` at a card edge).
+pub fn check_stripe_child(
+    selector: &str,
+    width: f64,
+    edge: Option<&str>,
+    bg: Option<Rgba>,
+) -> Vec<RuleHit> {
+    let Some(edge) = edge else {
+        return Vec::new();
+    };
+    if !(width >= 2.0 && width <= 12.0) {
+        return Vec::new();
+    }
+    let Some(bg) = bg else {
+        return Vec::new();
+    };
+    if bg.alpha_or_one() <= 0.1 {
+        return Vec::new();
+    }
+    let spread = js::math_max3(bg.r, bg.g, bg.b) - js::math_min3(bg.r, bg.g, bg.b);
+    if spread < 30.0 {
+        return Vec::new();
+    }
+    vec![RuleHit::new(
+        "side-tab",
+        format!(
+            "{selector} — {}px stripe child ({edge})",
+            number_to_string(math_round(width))
+        ),
+    )]
+}
+
 re!(GRADIENT_CI, ci("gradient"));
 
 re!(
