@@ -1350,6 +1350,7 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
         let mut findings: Vec<BrowserFinding> = Vec::new();
         findings.extend(hits(ec::check_element_borders_dom(dom, el)));
         findings.extend(hits(ec::check_element_pseudo_stripe_dom(dom, el)));
+        findings.extend(hits(ec::check_element_stripe_child_dom(dom, el)));
         findings.extend(hits(ec::check_element_colors_dom(dom, el)));
         findings.extend(hits(ec::check_element_motion_dom(dom, el)));
         findings.extend(hits(ec::check_element_glow_dom(dom, el)));

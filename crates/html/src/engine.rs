@@ -14,8 +14,9 @@ use crate::adapters::{
     check_element_colors, check_element_glow, check_element_gpt_border_shadow,
     check_element_hero_eyebrow, check_element_hover_contrast, check_element_icon_tile,
     check_element_italic_serif, check_element_motion, check_element_oversized_h1,
-    check_element_radial_spotlight, check_kicker_above_heading_from_doc,
-    check_numbered_section_labels_from_doc, scoped_ignore_active,
+    check_element_radial_spotlight, check_element_stripe_child,
+    check_kicker_above_heading_from_doc, check_numbered_section_labels_from_doc,
+    scoped_ignore_active,
 };
 use crate::background::{resolve_background, resolve_border_radius_px, sv};
 use crate::cascade::{build_static_style_map, collect_static_css_text};
@@ -109,6 +110,7 @@ const STATIC_ELEMENT_RULES: &[(&str, &str)] = &[
     ("dark-glow", "*"),
     ("motion-rules", "*"),
     ("icon-tile-stack", "h1,h2,h3,h4,h5,h6"),
+    ("stripe-child", "div,span"),
     ("italic-serif-display", "h1,h2"),
     ("hero-eyebrow-chip", "h1"),
     ("broken-image", "img"),
@@ -134,6 +136,7 @@ fn run_rule(rule_id: &str, el: &StaticElement<'_>, tag: &str) -> Vec<RuleHit> {
         }
         "motion-rules" => check_element_motion(tag, style),
         "icon-tile-stack" => check_element_icon_tile(el, tag),
+        "stripe-child" => check_element_stripe_child(el, style),
         "italic-serif-display" => check_element_italic_serif(el, style, tag),
         "hero-eyebrow-chip" => check_element_hero_eyebrow(el, style, tag),
         "broken-image" => check_element_broken_image(el),

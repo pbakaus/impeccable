@@ -9,7 +9,9 @@ use crate::background::{
     a_ge, a_gt, read_own_background_color, resolve_background, resolve_background_info,
     resolve_border_radius_px, resolve_gradient_stops, sv, sv_opt, CustomPropMap,
 };
-use crate::cascade::StyleValues;
+use crate::cascade::{
+    expand_static_box_values, split_css_tokens, StyleValues,
+};
 use crate::dom::{StaticDocument, StaticElement};
 use crate::quality::{collapse_ws, pf0, resolve_font_size_px};
 use impeccable_core::checks::measures::{
@@ -20,9 +22,9 @@ use impeccable_core::checks::measures::{
 use impeccable_core::checks::rules::{
     check_borders, check_colors, check_glow, check_hero_eyebrow, check_hover_contrast,
     check_icon_tile, check_italic_serif, check_kicker_above_heading, check_motion,
-    is_emoji_only_text, is_heading_tag, resolve_hero_heading_size_px, BorderOpts, ColorOpts,
-    GlowOpts, HeroEyebrowOpts, HoverContrastOpts, IconTileOpts, ItalicSerifOpts, KickerCandidate,
-    MotionOpts, RuleHit, Sides,
+    check_stripe_child, is_emoji_only_text, is_heading_tag, resolve_hero_heading_size_px,
+    BorderOpts, ColorOpts, GlowOpts, HeroEyebrowOpts, HoverContrastOpts, IconTileOpts,
+    ItalicSerifOpts, KickerCandidate, MotionOpts, RuleHit, Sides,
 };
 use impeccable_core::checks::text_rules::{
     check_numbered_section_labels, is_kicker_candidate, is_numbered_section_label_candidate,
@@ -458,6 +460,116 @@ pub fn check_element_borders(
             badge_like: own_bg.is_some_and(|c| c.alpha_or_one() > 0.1),
         },
     )
+}
+
+const STRIPE_CHILD_SKIP: &str = "nav, blockquote, pre, table, button, a, select, progress, meter, [role=\"progressbar\"], [role=\"slider\"], [role=\"scrollbar\"], [role=\"separator\"], [role=\"tablist\"]";
+
+fn static_edge_hugs(value: &str) -> bool {
+    let n = parse_float(value);
+    n.is_finite() && n.abs() <= 2.0
+}
+
+fn static_resolved_inset(style: &StyleValues) -> [String; 4] {
+    let mut out = [
+        sv(style, "top").to_string(),
+        sv(style, "right").to_string(),
+        sv(style, "bottom").to_string(),
+        sv(style, "left").to_string(),
+    ];
+    let inset = sv(style, "inset");
+    if !inset.is_empty() {
+        let expanded = expand_static_box_values(&split_css_tokens(inset));
+        for (i, val) in expanded.into_iter().enumerate() {
+            if out[i].is_empty() || out[i] == "auto" {
+                out[i] = val;
+            }
+        }
+    }
+    out
+}
+
+/// JS: checks.mjs#checkElementStripeChild(el, style)
+pub fn check_element_stripe_child(el: &StaticElement<'_>, style: &StyleValues) -> Vec<RuleHit> {
+    let tag = el.tag_lower();
+    if tag != "div" && tag != "span" {
+        return Vec::new();
+    }
+    let Some(host) = el.parent_element() else {
+        return Vec::new();
+    };
+    if host.tag_lower() == "body" || host.tag_lower() == "html" {
+        return Vec::new();
+    }
+    if !el.children().is_empty() {
+        return Vec::new();
+    }
+    if !collapsed_text_content(el).is_empty() {
+        return Vec::new();
+    }
+    if el.closest(STRIPE_CHILD_SKIP).is_some() {
+        return Vec::new();
+    }
+    if is_tab_context_element(el) || is_status_context_element(el) {
+        return Vec::new();
+    }
+
+    let width = pf0(sv(style, "width"));
+    let position = js::to_lower_case(sv(style, "position"));
+    let host_style = host.style();
+    let edge = if position == "absolute" || position == "fixed" {
+        let height_raw = sv(style, "height");
+        let inset = static_resolved_inset(style);
+        let height_stretches = height_raw == "100%"
+            || (static_edge_hugs(&inset[0]) && static_edge_hugs(&inset[2]));
+        if !height_stretches {
+            return Vec::new();
+        }
+        if static_edge_hugs(&inset[3]) {
+            Some("left")
+        } else if static_edge_hugs(&inset[1]) {
+            Some("right")
+        } else {
+            None
+        }
+    } else {
+        let pdisplay = sv(host_style, "display");
+        if !pdisplay.contains("flex") {
+            return Vec::new();
+        }
+        let pdir = sv(host_style, "flexDirection");
+        if pdir.starts_with("column") {
+            return Vec::new();
+        }
+        let align_self = sv(style, "alignSelf");
+        let effective_align = if !align_self.is_empty() && align_self != "auto" {
+            align_self
+        } else {
+            sv(host_style, "alignItems")
+        };
+        let is_stretch =
+            effective_align.is_empty() || effective_align == "stretch" || effective_align == "normal";
+        let height_raw = sv(style, "height");
+        let height_stretches = (height_raw.is_empty() || height_raw == "auto" || height_raw == "100%")
+            && is_stretch;
+        if !height_stretches {
+            return Vec::new();
+        }
+        let siblings = host.children();
+        if siblings.len() < 2 {
+            return Vec::new();
+        }
+        if siblings.first() == Some(el) {
+            Some("left")
+        } else if siblings.last() == Some(el) {
+            Some("right")
+        } else {
+            None
+        }
+    };
+
+    let bg_raw = sv(style, "backgroundColor");
+    let bg = parse_rgb(Some(&bg_raw)).or_else(|| parse_any_color(Some(&bg_raw)));
+    check_stripe_child(&class_selector(el), width, edge, bg)
 }
 
 /// JS: checks.mjs#checkElementColors(el, style, tag, window, customPropMap, hasAnchorInheritRule)
