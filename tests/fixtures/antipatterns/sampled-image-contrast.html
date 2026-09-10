@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fixture: pixel-sampled contrast on image-backed text (static engine)</title>
+<link rel="stylesheet" href="sampled-images/site.css">
+<style>
+  body { margin: 0; padding: 40px; background: #ffffff; font-family: Georgia, serif; color: #262421; }
+  /* Every panel is a url() ground the analytic walk cannot measure. The
+     static engine reads the image's pixels instead (#560): a fixed grid over
+     the whole image, and a finding only when nearly all of it fails. Each
+     case carries UNIQUE copy so a finding attributes to exactly one case.
+     Images live in sampled-images/: light.png and light.webp are a
+     near-white texture, dark.jpg a charcoal one, split.png half light and
+     half dark, cutout.png the light texture at 25% alpha, icon.png a 24px
+     glyph. */
+  h1 { font-size: 28px; margin: 0 0 24px; }
+  .panel { width: 420px; padding: 24px; margin: 0 0 24px; }
+  .panel p { margin: 0; font-size: 16px; line-height: 1.6; }
+  .panel h2 { margin: 0; font-size: 28px; line-height: 1.3; }
+  .light { background: url(sampled-images/light.png); }
+  .light-webp { background: url("sampled-images/light.webp") center / cover; }
+  .tokens-first { background: center / cover no-repeat url(sampled-images/light.png); }
+  .dark-jpg { background: url(sampled-images/dark.jpg) center / cover no-repeat; }
+  .split { background: url(sampled-images/split.png) repeat; }
+  .inline-data { background: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAaUlEQVR42k2PSQrAMAwD/f9ndt+TNl2OLmMQ5CCELUtR7CuLP+cUuPPo19F73tqY09q4nXsXC0SYA8T3mgNxgMiypMGZccLA5Kij6+eMDhKIZEZQsmkBA47UKxLkFKsHjCE6IOBQSv2bH8D48hUetch/AAAAAElFTkSuQmCC); }
+  /* Uniform tints composite exactly; a wash that varies is a scrim placed
+     under the text on purpose, and without layout the engine cannot say
+     which stop the text sits on. */
+  .wash-weak { background: linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url(sampled-images/light.png); }
+  .wash-strong { background: linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.6)), url(sampled-images/light.png); }
+  .fade-scrim { background: linear-gradient(rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0)), url(sampled-images/light.png); }
+  /* A translucent image composites over what is beneath it: here a dark
+     section, so the light texture at 25% reads as a dark ground. */
+  .dark-section { width: 468px; padding: 0; background: #17150f; }
+  .cutout { background: url(sampled-images/cutout.png); margin: 0; }
+  .missing { background: url(sampled-images/nope.png); }
+  .remote { background: url(https://example.com/hero.jpg) center / cover; }
+  .svg-data { background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'><rect width='100' height='100' fill='%23f5f2ea'/></svg>") center / cover; }
+  /* A no-repeat icon painted at 24px is decoration, not the ground. */
+  .icon-link { background: url(sampled-images/icon.png) no-repeat left center; padding: 8px 8px 8px 32px; margin: 0 0 24px; width: 380px; font-size: 16px; line-height: 1.6; }
+  .white { color: #fdfdfd; }
+  .ink { color: #262421; }
+  .smoke { color: #3a3632; }
+</style>
+</head>
+<body>
+  <h1>Sampled contrast fixture</h1>
+
+  <!-- ── Should flag ──────────────────────────────────────────────── -->
+  <div class="panel light">
+    <p class="white">White copy on a near-white texture fails everywhere the grid lands.</p>
+  </div>
+  <div class="panel dark-jpg">
+    <p class="smoke">Smoke gray copy on a charcoal photo fails wherever it sits.</p>
+  </div>
+  <div class="panel light-webp">
+    <p class="white">The same texture as a WebP decodes through the same path.</p>
+  </div>
+  <div class="panel inline-data">
+    <p class="white">A base64 PNG data URI is read without touching the disk.</p>
+  </div>
+  <div class="panel wash-weak">
+    <p class="white">A thirty percent tint is too weak to carry white copy over the texture.</p>
+  </div>
+  <div class="dark-section">
+    <div class="panel cutout">
+      <p class="ink">Ink on the translucent texture composites over the dark section and fails.</p>
+    </div>
+  </div>
+  <div class="panel from-sheet">
+    <p class="white">The ground of this panel is declared in the linked stylesheet.</p>
+  </div>
+  <div class="panel light">
+    <h2 class="white">Large white heading on the texture</h2>
+  </div>
+  <div class="panel tokens-first">
+    <p class="white">Shorthand tokens before the image still name the ground.</p>
+  </div>
+
+  <!-- ── Should pass ──────────────────────────────────────────────── -->
+  <div class="panel light">
+    <p class="ink">Ink on the near-white texture reads fine and must not flag.</p>
+  </div>
+  <div class="panel dark-jpg">
+    <p class="white">White copy on the charcoal photo reads fine and must not flag.</p>
+  </div>
+  <div class="panel split">
+    <p class="white">Half of this image is dark, so the copy may well sit there.</p>
+  </div>
+  <div class="panel wash-strong">
+    <p class="white">A sixty percent tint carries white copy over the texture.</p>
+  </div>
+  <div class="panel fade-scrim">
+    <p class="white">A scrim that fades out is placed on purpose; the engine keeps the skip.</p>
+  </div>
+  <div class="dark-section">
+    <div class="panel cutout">
+      <p class="white">White copy on the translucent texture over the dark section passes.</p>
+    </div>
+  </div>
+  <div class="panel missing">
+    <p class="white">An image that is not on disk keeps the skip.</p>
+  </div>
+  <div class="panel remote">
+    <p class="white">A remote image is never fetched during a file scan.</p>
+  </div>
+  <div class="panel svg-data">
+    <p class="white">An SVG has no raster to sample, so the skip stands.</p>
+  </div>
+  <p class="icon-link">A twenty four pixel icon beside the copy is decoration, not the ground.</p>
+  <div class="panel light" data-impeccable-ignore="low-contrast">
+    <p class="white">A waived panel keeps its sampled finding out of the report.</p>
+  </div>
+</body>
+</html>

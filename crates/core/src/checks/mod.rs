@@ -29,6 +29,9 @@
 //!   checkNumberedSectionLabels, checkEmDashOveruse, isRepeatedTextContainer.
 //!   Open (selector and tag lists, thresholds, the two text parsers):
 //!   `impeccable_foundation::rules::text`.
+//! - `sampled_contrast`: the static engine's pixel-sampled verdict for text
+//!   over a `url()` background (#560): grid, decoration gate, wash and
+//!   compositing rules, the percentile verdict. No JS ancestor.
 //!
 //! Element/document adapters (`checkElement*`, `*DOM`, `*FromDoc`) are NOT in
 //! core: the static ones live in the `html` crate against its DOM model, the
@@ -43,6 +46,7 @@ pub mod css_scan;
 pub mod html_patterns;
 pub mod measures;
 pub mod rules;
+pub mod sampled_contrast;
 pub mod text_rules;
 
 #[cfg(feature = "vectors")]

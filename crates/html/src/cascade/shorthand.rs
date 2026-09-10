@@ -193,6 +193,101 @@ pub fn parse_static_animation(value: &str) -> StaticAnimation {
     }
 }
 
+static BG_REPEAT_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)^(?:repeat|no-repeat|repeat-x|repeat-y|space|round)$").expect("BG_REPEAT_RE")
+});
+static BG_SIZE_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)^(?:auto|cover|contain|-?[0-9.]+[a-z%]*)$").expect("BG_SIZE_RE"));
+
+/// The per-layer `background-repeat` and `background-size` lists of a
+/// `background` shorthand (`url(a) center / cover no-repeat, url(b)` ->
+/// `no-repeat, repeat` and `cover, auto`). The css-tree generator may glue
+/// the first keyword to the image (`url(a)center/cover`), so a token that
+/// holds a function call is read up to its closing paren and the rest kept.
+fn parse_static_background_layers(value: &str) -> (String, String) {
+    let mut repeats: Vec<String> = Vec::new();
+    let mut sizes: Vec<String> = Vec::new();
+    for layer in split_css_list(value) {
+        let mut repeat: Vec<String> = Vec::new();
+        let mut size: Vec<String> = Vec::new();
+        let mut in_size = false;
+        for raw in split_css_tokens(&layer) {
+            let token = match raw.rfind(')') {
+                Some(end) if raw.contains('(') => raw[end + 1..].to_string(),
+                _ => raw,
+            };
+            if token.is_empty() {
+                in_size = false;
+                continue;
+            }
+            // `center/cover`, `center / cover`, or `center/ cover`: the size
+            // is what follows the slash, one or two values.
+            if let Some((_, after)) = token.split_once('/') {
+                in_size = true;
+                size.clear();
+                if !after.is_empty() && BG_SIZE_RE.is_match(after) {
+                    size.push(js::to_lower_case(after));
+                }
+                continue;
+            }
+            if in_size && size.len() < 2 && BG_SIZE_RE.is_match(&token) {
+                size.push(js::to_lower_case(&token));
+                continue;
+            }
+            in_size = false;
+            if repeat.len() < 2 && BG_REPEAT_RE.is_match(&token) {
+                repeat.push(js::to_lower_case(&token));
+            }
+        }
+        repeats.push(if repeat.is_empty() {
+            "repeat".into()
+        } else {
+            repeat.join(" ")
+        });
+        sizes.push(if size.is_empty() {
+            "auto".into()
+        } else {
+            size.join(" ")
+        });
+    }
+    (repeats.join(", "), sizes.join(", "))
+}
+
+/// The `backgroundRepeat` / `backgroundSize` pairs a declaration sets. Not
+/// part of `expand_static_declaration`, whose output the recorded vectors
+/// pin; the cascade stores these beside it (`apply_static_longhand`) so the
+/// sampled-contrast path (#560) can tell a tiled or cover image from a
+/// no-repeat icon. Every `background` shorthand resets both to what it
+/// names, the defaults when it names nothing, as in CSS; a CSS-wide keyword
+/// passes through, and a bare `var()` value is left alone the way the
+/// expansion leaves it.
+pub fn background_longhands(prop: &str, value: &str) -> Vec<Expanded> {
+    let v = js::trim(value);
+    match js::to_lower_case(prop).as_str() {
+        "background" if VAR_ANYWHERE_RE.is_match(v) && !BG_IMAGE_RE.is_match(v) => Vec::new(),
+        "background" if CSS_WIDE_KEYWORD_RE.is_match(v) => {
+            let keyword = js::to_lower_case(v);
+            vec![
+                ("backgroundRepeat".into(), keyword.clone()),
+                ("backgroundSize".into(), keyword),
+            ]
+        }
+        "background" => {
+            let (repeat, size) = parse_static_background_layers(v);
+            vec![
+                ("backgroundRepeat".into(), repeat),
+                ("backgroundSize".into(), size),
+            ]
+        }
+        "background-repeat" if !v.is_empty() => vec![("backgroundRepeat".into(), v.to_string())],
+        "background-size" if !v.is_empty() => vec![("backgroundSize".into(), v.to_string())],
+        _ => Vec::new(),
+    }
+}
+
+static CSS_WIDE_KEYWORD_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)^(?:inherit|initial|unset|revert|revert-layer)$").expect("CSS_WIDE_KEYWORD_RE")
+});
 static BG_IMAGE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)gradient|url\(").expect("BG_IMAGE_RE"));
 static BG_IMAGE_SPLIT_RE: Lazy<Regex> = Lazy::new(|| {

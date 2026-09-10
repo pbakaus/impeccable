@@ -135,21 +135,30 @@ fn is_heading_123(tag: &str) -> bool {
     matches!(tag, "h1" | "h2" | "h3")
 }
 
+/// The `SAFE_TAGS` skip at the top of `checkColors`: a link, control, or
+/// quote is measured only when it paints its own surface. Shared with the
+/// sampled-contrast path so both skip the same elements.
+pub fn safe_tag_unstyled(opts: &ColorOpts) -> bool {
+    if !set_has(SAFE_TAGS, opts.tag.as_str()) {
+        return false;
+    }
+    let bg_image = opts.bg_image.as_deref().unwrap_or("");
+    let own_bg = opts
+        .bg_color
+        .map_or(false, |c| c.a.map_or(false, |a| a > 0.5));
+    let own_gradient = !bg_image.is_empty() && GRADIENT_CI.is_match(bg_image);
+    let is_styled_control =
+        opts.has_direct_text && (own_bg || own_gradient) && opts.font_size >= 9.0;
+    !is_styled_control
+}
+
 /// JS: checks.mjs#checkColors
 pub fn check_colors(opts: &ColorOpts) -> Vec<RuleHit> {
     let tag = opts.tag.as_str();
     let bg_image = opts.bg_image.as_deref().unwrap_or("");
     let bg_clip = opts.bg_clip.as_deref().unwrap_or("");
-    if set_has(SAFE_TAGS, tag) {
-        let own_bg = opts
-            .bg_color
-            .map_or(false, |c| c.a.map_or(false, |a| a > 0.5));
-        let own_gradient = !bg_image.is_empty() && GRADIENT_CI.is_match(bg_image);
-        let is_styled_control =
-            opts.has_direct_text && (own_bg || own_gradient) && opts.font_size >= 9.0;
-        if !is_styled_control {
-            return Vec::new();
-        }
+    if safe_tag_unstyled(opts) {
+        return Vec::new();
     }
     let mut findings = Vec::new();
 

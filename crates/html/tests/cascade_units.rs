@@ -209,3 +209,209 @@ fn checks_shim_helpers() {
     assert_eq!(resolve_length_px("50%", 10.0), Some(5.0));
     assert_eq!(resolve_length_px("1.5", 10.0), Some(15.0));
 }
+
+#[test]
+fn background_longhands_ride_beside_the_expansion() {
+    use impeccable_html::cascade::rules::apply_static_longhand;
+    use impeccable_html::cascade::shorthand::background_longhands;
+
+    // The expansion itself is pinned by the recorded vectors and stays
+    // image-and-color only; repeat and size come from the side channel.
+    assert_eq!(
+        background_longhands(
+            "background",
+            "url(a.png) center / cover no-repeat, url(b.png)"
+        ),
+        vec![
+            (
+                "backgroundRepeat".to_string(),
+                "no-repeat, repeat".to_string()
+            ),
+            ("backgroundSize".to_string(), "cover, auto".to_string()),
+        ]
+    );
+    // The css-tree generator glues the first keyword to the call.
+    assert_eq!(
+        background_longhands("background", "url(a.png)center/cover no-repeat"),
+        vec![
+            ("backgroundRepeat".to_string(), "no-repeat".to_string()),
+            ("backgroundSize".to_string(), "cover".to_string()),
+        ]
+    );
+    assert_eq!(
+        background_longhands("background", "#fff url(a.png) repeat-x"),
+        vec![
+            ("backgroundRepeat".to_string(), "repeat-x".to_string()),
+            ("backgroundSize".to_string(), "auto".to_string()),
+        ]
+    );
+    assert_eq!(
+        background_longhands("Background-Size", "100% 32px"),
+        vec![("backgroundSize".to_string(), "100% 32px".to_string())]
+    );
+    // A color-only shorthand still resets both longhands, as in CSS.
+    assert_eq!(
+        background_longhands("background", "#fff"),
+        vec![
+            ("backgroundRepeat".to_string(), "repeat".to_string()),
+            ("backgroundSize".to_string(), "auto".to_string()),
+        ]
+    );
+    assert_eq!(
+        background_longhands("background", "Inherit"),
+        vec![
+            ("backgroundRepeat".to_string(), "inherit".to_string()),
+            ("backgroundSize".to_string(), "inherit".to_string()),
+        ]
+    );
+    assert!(background_longhands("background", "var(--surface)").is_empty());
+    assert!(background_longhands("color", "red").is_empty());
+
+    // A later shorthand with an image resets an earlier longhand, and a
+    // later longhand overrides a shorthand, under the cascade's priority.
+    let mut specified: SpecifiedStore<&str> = SpecifiedStore::new();
+    let node = "n1";
+    let apply = |specified: &mut SpecifiedStore<&str>, prop: &str, value: &str, m: DeclMeta| {
+        apply_static_declaration(specified, node, prop, value, &m);
+        for (p, v) in background_longhands(prop, value) {
+            apply_static_longhand(specified, node, &p, &v, &m);
+        }
+    };
+    apply(
+        &mut specified,
+        "background-repeat",
+        "no-repeat",
+        meta(false, [0, 1, 0], 0, false),
+    );
+    apply(
+        &mut specified,
+        "background",
+        "url(hero.jpg) center / cover",
+        meta(false, [0, 1, 0], 1, false),
+    );
+    apply(
+        &mut specified,
+        "background-size",
+        "contain",
+        meta(false, [0, 1, 0], 2, false),
+    );
+    let map = specified.get(&node).expect("node entry");
+    assert_eq!(
+        map.get("backgroundRepeat").map(|d| d.value.as_str()),
+        Some("repeat")
+    );
+    assert_eq!(
+        map.get("backgroundSize").map(|d| d.value.as_str()),
+        Some("contain")
+    );
+    assert_eq!(
+        map.get("backgroundImage").map(|d| d.value.as_str()),
+        Some("url(hero.jpg) center / cover")
+    );
+    // `background: #fff` after a longhand resets it, so a later
+    // `background-image` is classified with the defaults, not a stale value.
+    apply(
+        &mut specified,
+        "background-repeat",
+        "no-repeat",
+        meta(false, [0, 1, 0], 3, false),
+    );
+    apply(
+        &mut specified,
+        "background",
+        "#fff",
+        meta(false, [0, 1, 0], 4, false),
+    );
+    let map = specified.get(&node).expect("node entry");
+    assert_eq!(
+        map.get("backgroundRepeat").map(|d| d.value.as_str()),
+        Some("repeat")
+    );
+    assert_eq!(
+        map.get("backgroundSize").map(|d| d.value.as_str()),
+        Some("auto")
+    );
+}
+
+#[test]
+fn linked_sheet_urls_are_rewritten_page_relative() {
+    use impeccable_html::cascade::build::rewrite_sheet_urls;
+
+    let css = concat!(
+        ".a { background: url(light.png) }\n",
+        ".b { background: url(\"../img/hero.jpg?v=3\") no-repeat }\n",
+        ".c { background-image: url('./x.webp'), url(/root.png), url(data:image/png;base64,AAAA) }\n",
+        ".d { background: url(https://cdn.example.com/a.png) }\n",
+        ".e { mask: url(#clip) }\n",
+        ".f { background: URL( a b.png ) }\n",
+    );
+    let out = rewrite_sheet_urls(css, "/site/css", "/site");
+    assert!(
+        out.contains(".a { background: url(css/light.png) }"),
+        "{out}"
+    );
+    assert!(
+        out.contains(".b { background: url(\"img/hero.jpg?v=3\") no-repeat }"),
+        "{out}"
+    );
+    assert!(
+        out.contains("url('css/x.webp'), url(/root.png), url(data:image/png;base64,AAAA)"),
+        "{out}"
+    );
+    assert!(out.contains("url(https://cdn.example.com/a.png)"), "{out}");
+    assert!(out.contains("url(#clip)"), "{out}");
+    // An unquoted url with a space is not a url token in CSS; it stays put.
+    assert!(out.contains("URL( a b.png )"), "{out}");
+    // A sheet beside the page keeps every path where it was (the engine
+    // does not even call the rewrite for that case).
+    let same = rewrite_sheet_urls(css, "/site", "/site");
+    assert!(same.contains(".a { background: url(light.png) }"), "{same}");
+    assert!(same.contains("url(\"../img/hero.jpg?v=3\")"), "{same}");
+    // A sheet above the page walks back up.
+    let up = rewrite_sheet_urls(".a { background: url(light.png) }", "/site", "/site/pages");
+    assert_eq!(up, ".a { background: url(../light.png) }");
+    // A stray `url(` in a comment, or an unclosed quote, never swallows the
+    // rules after it: comments pass through untouched and a url form ends
+    // where CSS says it ends.
+    let hazards = concat!(
+        "/* see url( for details */ .g { color: red }\n",
+        ".h { background: url(a.png) }\n",
+        ".i { background: url(\"oops }\n",
+        ".j { background: url(b.png) }\n",
+        "/* url(unterminated.png",
+    );
+    let out = rewrite_sheet_urls(hazards, "/site/css", "/site");
+    assert!(
+        out.contains("/* see url( for details */ .g { color: red }"),
+        "{out}"
+    );
+    assert!(out.contains(".h { background: url(css/a.png) }"), "{out}");
+    assert!(out.contains(".i { background: url(\"oops }"), "{out}");
+    assert!(out.contains(".j { background: url(css/b.png) }"), "{out}");
+    assert!(out.ends_with("/* url(unterminated.png"), "{out}");
+    // A `/*` inside a string or an unquoted url is content, not a comment,
+    // so the rules after it are still rewritten.
+    let strings = concat!(
+        ".k { content: \"a/*b\"; background: url(k.png) }\n",
+        ".l { background: url(l/*.png) }\n",
+        ".m { content: 'c/*d'; } /* real url( */ .n { background: url(n.png) }\n",
+    );
+    let out = rewrite_sheet_urls(strings, "/site/css", "/site");
+    assert!(
+        out.contains(".k { content: \"a/*b\"; background: url(css/k.png) }"),
+        "{out}"
+    );
+    assert!(out.contains(".l { background: url(css/l/*.png) }"), "{out}");
+    assert!(
+        out.contains("/* real url( */ .n { background: url(css/n.png) }"),
+        "{out}"
+    );
+    // `myurl(` is a custom function, not the url token: its comment stays a
+    // comment and its argument is not rewritten.
+    let custom = ".q { mask: myurl(a /* url(x.png) */); background: url(q.png) }";
+    let out = rewrite_sheet_urls(custom, "/site/css", "/site");
+    assert_eq!(
+        out,
+        ".q { mask: myurl(a /* url(x.png) */); background: url(css/q.png) }"
+    );
+}
