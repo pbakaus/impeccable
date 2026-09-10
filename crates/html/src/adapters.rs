@@ -9,11 +9,10 @@ use crate::background::{
     a_ge, a_gt, read_own_background_color, resolve_background, resolve_background_info,
     resolve_border_radius_px, resolve_gradient_stops, sv, sv_opt, CustomPropMap,
 };
-use crate::cascade::{
-    expand_static_box_values, split_css_tokens, StyleValues,
-};
+use crate::cascade::{expand_static_box_values, split_css_tokens, StyleValues};
 use crate::dom::{StaticDocument, StaticElement};
 use crate::quality::{collapse_ws, pf0, resolve_font_size_px};
+use impeccable_core::checks::css_scan::css_length_to_px;
 use impeccable_core::checks::measures::{
     self, border_colors_from_style, border_widths_from_style, check_gpt_thin_border_wide_shadow,
     check_oversized_h1, check_radial_spotlight, positioned_style_implies_escape, resolve_length_px,
@@ -513,14 +512,14 @@ pub fn check_element_stripe_child(el: &StaticElement<'_>, style: &StyleValues) -
         return Vec::new();
     }
 
-    let width = pf0(sv(style, "width"));
+    let width = css_length_to_px(sv(style, "width")).unwrap_or_else(|| pf0(sv(style, "width")));
     let position = js::to_lower_case(sv(style, "position"));
     let host_style = host.style();
     let edge = if position == "absolute" || position == "fixed" {
         let height_raw = sv(style, "height");
         let inset = static_resolved_inset(style);
-        let height_stretches = height_raw == "100%"
-            || (static_edge_hugs(&inset[0]) && static_edge_hugs(&inset[2]));
+        let height_stretches =
+            height_raw == "100%" || (static_edge_hugs(&inset[0]) && static_edge_hugs(&inset[2]));
         if !height_stretches {
             return Vec::new();
         }
@@ -546,11 +545,12 @@ pub fn check_element_stripe_child(el: &StaticElement<'_>, style: &StyleValues) -
         } else {
             sv(host_style, "alignItems")
         };
-        let is_stretch =
-            effective_align.is_empty() || effective_align == "stretch" || effective_align == "normal";
+        let is_stretch = effective_align.is_empty()
+            || effective_align == "stretch"
+            || effective_align == "normal";
         let height_raw = sv(style, "height");
-        let height_stretches = (height_raw.is_empty() || height_raw == "auto" || height_raw == "100%")
-            && is_stretch;
+        let height_stretches =
+            height_raw == "100%" || ((height_raw.is_empty() || height_raw == "auto") && is_stretch);
         if !height_stretches {
             return Vec::new();
         }
@@ -558,10 +558,11 @@ pub fn check_element_stripe_child(el: &StaticElement<'_>, style: &StyleValues) -
         if siblings.len() < 2 {
             return Vec::new();
         }
+        let reverse = pdir.contains("reverse");
         if siblings.first() == Some(el) {
-            Some("left")
+            Some(if reverse { "right" } else { "left" })
         } else if siblings.last() == Some(el) {
-            Some("right")
+            Some(if reverse { "left" } else { "right" })
         } else {
             None
         }

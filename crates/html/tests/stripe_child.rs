@@ -2,11 +2,15 @@ use impeccable_html::{detect_html_source, DetectHtmlOptions};
 use std::path::Path;
 
 fn side_tab_snippets(html: &str) -> Vec<String> {
-    detect_html_source(html, Path::new("/app/stripe.html"), &DetectHtmlOptions::default())
-        .into_iter()
-        .filter(|f| f.antipattern == "side-tab")
-        .map(|f| f.snippet)
-        .collect()
+    detect_html_source(
+        html,
+        Path::new("/app/stripe.html"),
+        &DetectHtmlOptions::default(),
+    )
+    .into_iter()
+    .filter(|f| f.antipattern == "side-tab")
+    .map(|f| f.snippet)
+    .collect()
 }
 
 #[test]
@@ -46,6 +50,7 @@ fn absolute_top_bottom_flags() {
 </body></html>"#;
     let hits = side_tab_snippets(html);
     assert_eq!(hits.len(), 1);
+    assert!(hits[0].contains("stripe child (left)"));
 }
 
 #[test]
@@ -106,4 +111,57 @@ fn neutral_and_contentful_and_wide_do_not_flag() {
 <div class="card"><div class="stripe"></div><div>Body</div></div>
 </body></html>"#;
     assert!(side_tab_snippets(wide).is_empty());
+}
+
+#[test]
+fn rem_width_flags() {
+    let html = r#"<!DOCTYPE html><html><head><style>
+.card { display: flex; width: 320px; height: 100px; }
+.stripe { width: 0.25rem; background: #f59e0b; }
+</style></head><body>
+<div class="card"><div class="stripe"></div><div>Body</div></div>
+</body></html>"#;
+    let hits = side_tab_snippets(html);
+    assert_eq!(hits.len(), 1);
+    assert!(hits[0].contains("stripe child (left)"));
+}
+
+#[test]
+fn height_full_with_align_center_flags() {
+    let html = r#"<!DOCTYPE html><html><head><style>
+.card { display: flex; align-items: center; width: 320px; height: 100px; }
+.stripe { width: 4px; height: 100%; background: #f59e0b; }
+</style></head><body>
+<div class="card"><div class="stripe"></div><div>Body</div></div>
+</body></html>"#;
+    let hits = side_tab_snippets(html);
+    assert_eq!(hits.len(), 1);
+    assert!(hits[0].contains("stripe child (left)"));
+}
+
+#[test]
+fn inset_after_left_longhand_flags() {
+    let html = r#"<!DOCTYPE html><html><head><style>
+.card { position: relative; width: 320px; height: 100px; }
+.stripe { position: absolute; left: 10px; inset: 0 auto 0 0; width: 4px; background: #3b82f6; }
+</style></head><body>
+<div class="card"><div class="stripe"></div></div>
+</body></html>"#;
+    let hits = side_tab_snippets(html);
+    assert_eq!(hits.len(), 1);
+    assert!(hits[0].contains("stripe child (left)"));
+}
+
+#[test]
+fn row_reverse_first_child_is_right() {
+    let html = r#"<!DOCTYPE html><html><head><style>
+.card { display: flex; flex-direction: row-reverse; width: 320px; height: 100px; }
+.stripe { width: 4px; background: #f59e0b; }
+.body { flex: 1; }
+</style></head><body>
+<div class="card"><div class="stripe"></div><div class="body">Content</div></div>
+</body></html>"#;
+    let hits = side_tab_snippets(html);
+    assert_eq!(hits.len(), 1);
+    assert!(hits[0].contains("stripe child (right)"));
 }

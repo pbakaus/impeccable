@@ -146,34 +146,62 @@ where
     }
 }
 
+/// Opening-tag span that contains `index`, if any. `end` is the `>` byte.
+fn markup_tag_span(line: &str, index: usize) -> Option<(usize, usize)> {
+    let mut i = 0usize;
+    while i < line.len() {
+        let Some(rel) = line[i..].find('<') else {
+            return None;
+        };
+        let tag_start = i + rel;
+        let after = &line[tag_start + 1..];
+        if !after.chars().next().is_some_and(|c| c.is_ascii_alphabetic()) {
+            i = tag_start + 1;
+            continue;
+        }
+        let mut tag_end: Option<usize> = None;
+        scan_js(line, tag_start + 1, |ch, j, _p, _n, depth| {
+            if ch == '>' && depth.brace == 0 {
+                tag_end = Some(j);
+                return true;
+            }
+            false
+        });
+        let Some(end) = tag_end else {
+            return None;
+        };
+        if index >= tag_start && index <= end {
+            return Some((tag_start, end));
+        }
+        i = end + 1;
+    }
+    None
+}
+
 /// JS: detect-text.mjs#containingMarkupTag (only its `text` is read).
 fn containing_markup_tag(line: &str) -> impl Fn(usize) -> String + '_ {
     move |index: usize| {
-        let mut i = 0usize;
-        while i < line.len() {
-            let Some(rel) = line[i..].find('<') else { break };
-            let tag_start = i + rel;
-            let after = &line[tag_start + 1..];
-            if !after.chars().next().is_some_and(|c| c.is_ascii_alphabetic()) {
-                i = tag_start + 1;
-                continue;
-            }
-            let mut tag_end: Option<usize> = None;
-            scan_js(line, tag_start + 1, |ch, j, _p, _n, depth| {
-                if ch == '>' && depth.brace == 0 {
-                    tag_end = Some(j);
-                    return true;
-                }
-                false
-            });
-            let Some(end) = tag_end else { break };
-            if index >= tag_start && index <= end {
-                return line[tag_start..end + 1].to_string();
-            }
-            i = end + 1;
-        }
-        line.to_string()
+        markup_tag_span(line, index)
+            .map(|(start, end)| line[start..end + 1].to_string())
+            .unwrap_or_else(|| line.to_string())
     }
+}
+
+fn is_self_closing_tag(tag: &str) -> bool {
+    tag.trim_end_matches('>').trim_end().ends_with('/')
+}
+
+/// Text path cannot see the DOM. Require an empty or self-closing tag so a
+/// `w-1 bg-amber-500` wrapper with content is not reported as a stripe.
+fn stripe_child_markup_empty(line: &str, index: usize) -> bool {
+    let Some((start, end)) = markup_tag_span(line, index) else {
+        return false;
+    };
+    if is_self_closing_tag(&line[start..end + 1]) {
+        return true;
+    }
+    let rest = line.get(end + 1..).unwrap_or("").trim_start();
+    rest.is_empty() || rest.starts_with("</")
 }
 
 struct TernarySplit {
@@ -504,6 +532,10 @@ re!(
     r"(?i)aria-(?:current|selected)"
 );
 re!(STRIPE_CHILD_ROUNDED_FULL_RE, format!("{B}rounded-full{B}"));
+re!(
+    STRIPE_CHILD_CUE_RE,
+    format!("{B}(?:shrink-0|rounded-[lres](?:-{W}+)?|left-0|right-0|inset-y-0){B}")
+);
 
 /// Hyphen-safe class-token boundary: the byte before `index` must not be `-`
 /// or an ASCII word character (mirrors JS `(?<![\w-])`; the `regex` crate has
@@ -908,6 +940,8 @@ pub static REGEX_MATCHERS: Lazy<Vec<Matcher>> = Lazy::new(|| {
                 }
                 let scope = containing_markup_tag(line)(m.index);
                 find_solid_chromatic_bg(&scope).is_some()
+                    && stripe_child_markup_empty(line, m.index)
+                    && STRIPE_CHILD_CUE_RE.is_match(&scope)
                     && !scope_has_fixed_height(&scope)
                     && !STRIPE_CHILD_ROUNDED_FULL_RE.is_match(&scope)
                     && !STRIPE_CHILD_ARIA_RE.is_match(&scope)
@@ -1495,11 +1529,11 @@ mod tests {
             vec!["w-1 + bg-amber-500 stripe child"]
         );
         assert_eq!(
-            s(r#"<div class="w-[4px] bg-blue-500"></div>"#),
+            s(r#"<div class="w-[4px] bg-blue-500 shrink-0"></div>"#),
             vec!["w-[4px] + bg-blue-500 stripe child"]
         );
         assert_eq!(
-            s(r#"<span className="w-0.5 bg-rose-500" />"#),
+            s(r#"<span className="w-0.5 bg-rose-500 shrink-0" />"#),
             vec!["w-0.5 + bg-rose-500 stripe child"]
         );
         assert_eq!(
@@ -1517,6 +1551,8 @@ mod tests {
             r#"<div className="w-1 shrink-0"><span className="bg-amber-500" /></div>"#
         )
         .is_empty());
+        assert!(s(r#"<div className="w-1 bg-amber-500">|</div>"#).is_empty());
+        assert!(s(r#"<div className="w-1 bg-amber-500" />"#).is_empty());
     }
 
     #[test]
