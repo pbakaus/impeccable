@@ -26,6 +26,11 @@ html5ever = "0.39"
 selectors = "0.38"
 cssparser = "0.37"
 thiserror = { workspace = true }
+# Decoding the background images behind text for the sampled-contrast path
+# (#560): pure-Rust decoders only (the comp crate's set plus `png`), so the
+# wasm `detect` build keeps working and nothing native is linked.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
+base64 = "0.22"
 
 [dev-dependencies]
 impeccable-core = { workspace = true, features = ["vectors"] }

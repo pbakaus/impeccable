@@ -187,15 +187,39 @@ pub fn apply_static_declaration<K: Hash + Eq>(
 ) {
     let map = specified.map.entry(node).or_default();
     for (expanded_prop, expanded_value) in expand_static_declaration(prop, value) {
-        let existing = map.get(&expanded_prop).map(|d| &d.meta);
-        if compare_static_priority(existing, meta) {
-            let next = SpecifiedDecl {
-                meta: meta.clone(),
-                prop: expanded_prop.clone(),
-                value: expanded_value,
-            };
-            map.insert(expanded_prop, next);
-        }
+        apply_expanded(map, &expanded_prop, &expanded_value, meta);
+    }
+}
+
+/// Stores one already-expanded longhand for `node` under the cascade's
+/// priority rule, the way `apply_static_declaration` stores each pair the
+/// shorthand expansion yields. For the longhands that ride beside that
+/// expansion rather than inside it (`background_longhands`).
+pub fn apply_static_longhand<K: Hash + Eq>(
+    specified: &mut SpecifiedStore<K>,
+    node: K,
+    prop: &str,
+    value: &str,
+    meta: &DeclMeta,
+) {
+    let map = specified.map.entry(node).or_default();
+    apply_expanded(map, prop, value, meta);
+}
+
+fn apply_expanded(
+    map: &mut IndexMap<String, SpecifiedDecl>,
+    prop: &str,
+    value: &str,
+    meta: &DeclMeta,
+) {
+    let existing = map.get(prop).map(|d| &d.meta);
+    if compare_static_priority(existing, meta) {
+        let next = SpecifiedDecl {
+            meta: meta.clone(),
+            prop: prop.to_string(),
+            value: value.to_string(),
+        };
+        map.insert(prop.to_string(), next);
     }
 }
 

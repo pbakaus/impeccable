@@ -10,10 +10,11 @@
 
 use super::checks_shim::CustomProps;
 use super::{
-    apply_static_declaration, collect_static_css_rules, compare_static_priority,
-    is_static_inherited_prop, make_default_style, normalize_static_css_value,
-    parse_static_style_attribute, static_default_style, CssRule, DeclMeta, SpecifiedDecl,
-    SpecifiedStore, StyleValues, STATIC_DEFAULT_STYLE,
+    apply_static_declaration, apply_static_longhand, background_longhands,
+    collect_static_css_rules, compare_static_priority, is_static_inherited_prop,
+    make_default_style, normalize_static_css_value, parse_static_style_attribute,
+    static_default_style, CssRule, DeclMeta, SpecifiedDecl, SpecifiedStore, StyleValues,
+    STATIC_DEFAULT_STYLE,
 };
 use crate::dom::StaticDocument;
 use crate::profile::{self, Meta, ProfileSink};
@@ -39,7 +40,7 @@ static REMOTE_HREF_RE: Lazy<Regex> =
 /// Cache-busting (styles.css?v=3) and root-relative (/static/app.css) hrefs
 /// must not resolve as OS-absolute paths; otherwise the whole stylesheet is
 /// invisible to every element-level check.
-fn resolve_linked_css_path(file_dir: &str, href: &str) -> String {
+pub(crate) fn resolve_linked_css_path(file_dir: &str, href: &str) -> String {
     let stripped = href.split(['?', '#']).next().unwrap_or("");
     let root_relative = stripped.starts_with('/') && !stripped.starts_with("//");
     if !root_relative {
@@ -96,8 +97,9 @@ pub fn collect_static_css_text(
     profile: Option<&dyn ProfileSink>,
     file_path: &str,
     warn: Option<&dyn Fn(&str)>,
-) -> String {
+) -> (String, Vec<String>) {
     let mut style_texts: Vec<String> = Vec::new();
+    let mut sheet_dirs: Vec<String> = Vec::new();
     let mut warned_missing_stylesheets: std::collections::HashSet<String> =
         std::collections::HashSet::new();
     for style_el in doc.query_selector_all("style") {
@@ -117,7 +119,13 @@ pub fn collect_static_css_text(
             || std::fs::read(&css_path),
         );
         match read {
-            Ok(bytes) => style_texts.push(String::from_utf8_lossy(&bytes).into_owned()),
+            Ok(bytes) => {
+                style_texts.push(String::from_utf8_lossy(&bytes).into_owned());
+                let dir = jsp::dirname(&css_path);
+                if !sheet_dirs.contains(&dir) {
+                    sheet_dirs.push(dir);
+                }
+            }
             Err(_) => {
                 if warned_missing_stylesheets.insert(css_path.clone()) {
                     if let Some(warn) = warn {
@@ -129,7 +137,7 @@ pub fn collect_static_css_text(
             }
         }
     }
-    style_texts.join("\n")
+    (style_texts.join("\n"), sheet_dirs)
 }
 
 static PSEUDO_RULE_RE: Lazy<Regex> = Lazy::new(|| {
@@ -308,6 +316,9 @@ pub fn build_static_style_map(
                             inline: false,
                         };
                         apply_static_declaration(store, node, &decl.prop, &decl.value, &meta);
+                        for (prop, value) in background_longhands(&decl.prop, &decl.value) {
+                            apply_static_longhand(store, node, &prop, &value, &meta);
+                        }
                     }
                 }
             }
@@ -331,6 +342,9 @@ pub fn build_static_style_map(
                         inline: true,
                     };
                     apply_static_declaration(&mut specified, node, &decl.prop, &decl.value, &meta);
+                    for (prop, value) in background_longhands(&decl.prop, &decl.value) {
+                        apply_static_longhand(&mut specified, node, &prop, &value, &meta);
+                    }
                 }
                 inline_order += 1000;
             }

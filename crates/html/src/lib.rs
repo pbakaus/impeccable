@@ -9,6 +9,7 @@ pub mod background;
 pub mod cascade;
 pub mod dom;
 pub mod engine;
+pub mod image_sampling;
 pub mod page;
 pub mod profile;
 pub mod quality;

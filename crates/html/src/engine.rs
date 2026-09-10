@@ -20,6 +20,7 @@ use crate::adapters::{
 use crate::background::{resolve_background, resolve_border_radius_px, sv};
 use crate::cascade::{build_static_style_map, collect_static_css_text};
 use crate::dom::{StaticDocument, StaticElement};
+use crate::image_sampling::ImageSampler;
 use crate::page::{
     check_cream_palette, check_page_layout, check_repeated_container_text_from_doc,
     check_static_page_typography,
@@ -119,14 +120,19 @@ const STATIC_ELEMENT_RULES: &[(&str, &str)] = &[
     ("radial-spotlight-glow", "*"),
 ];
 
-fn run_rule(rule_id: &str, el: &StaticElement<'_>, tag: &str) -> Vec<RuleHit> {
+fn run_rule(
+    rule_id: &str,
+    el: &StaticElement<'_>,
+    tag: &str,
+    images: &ImageSampler,
+) -> Vec<RuleHit> {
     let style = el.style();
     match rule_id {
         "border-rules" => {
             let radius = resolve_border_radius_px(style, pf0(sv(style, "width")));
             check_element_borders(tag, style, radius, el)
         }
-        "color-rules" => check_element_colors(el, style, tag, None),
+        "color-rules" => check_element_colors(el, style, tag, None, images),
         "hover-color-rules" => check_element_hover_contrast(el, style, tag),
         "dark-glow" => {
             let base = el.parent_element().unwrap_or(*el);
@@ -207,9 +213,11 @@ pub fn detect_html_source(
         Meta::new("parse-html", "parse-document", fp),
         || StaticDocument::parse(html),
     );
-    let css_text = collect_static_css_text(&doc, &file_dir, profile, fp, options.warn);
+    let (css_text, sheet_dirs) =
+        collect_static_css_text(&doc, &file_dir, profile, fp, options.warn);
     build_static_style_map(&mut doc, css_text.as_str(), profile, fp);
     let doc = doc;
+    let images = ImageSampler::new(&file_dir.to_string_lossy(), &sheet_dirs);
 
     let mut findings: Vec<Finding> = Vec::new();
     let mk = |id: &str, snippet: &str| try_finding(id, fp, snippet, 0.0);
@@ -222,7 +230,7 @@ pub fn detect_html_source(
                 profile,
                 Meta::new("element", rule_id, fp),
                 |h: &RuleHit| h.id.as_str(),
-                || run_rule(rule_id, el, &tag),
+                || run_rule(rule_id, el, &tag, &images),
             );
             for h in hits {
                 if scoped_ignore_active(el, &h.id) {
@@ -394,7 +402,7 @@ pub fn unsupported_selectors(html: &str, file_path: &Path) -> Vec<String> {
         .map(|p| p.to_path_buf())
         .unwrap_or_default();
     let mut doc = StaticDocument::parse(html);
-    let css_text = collect_static_css_text(&doc, &file_dir, None, &file_str, None);
+    let (css_text, _) = collect_static_css_text(&doc, &file_dir, None, &file_str, None);
     build_static_style_map(&mut doc, &css_text, None, &file_str);
     doc.unsupported_selectors()
 }

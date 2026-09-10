@@ -6,11 +6,13 @@
 //! and the computed style and hands plain data over.
 
 use crate::background::{
-    a_ge, a_gt, read_own_background_color, resolve_background, resolve_background_info,
-    resolve_border_radius_px, resolve_gradient_stops, sv, sv_opt, CustomPropMap,
+    a_ge, a_gt, find_image_ground, read_own_background_color, resolve_background,
+    resolve_background_info, resolve_border_radius_px, resolve_gradient_stops, sv, sv_opt,
+    CustomPropMap,
 };
 use crate::cascade::StyleValues;
 use crate::dom::{StaticDocument, StaticElement};
+use crate::image_sampling::{ground_label, ImageSampler};
 use crate::quality::{collapse_ws, pf0, resolve_font_size_px};
 use impeccable_core::checks::measures::{
     self, border_colors_from_style, border_widths_from_style, check_gpt_thin_border_wide_shadow,
@@ -24,13 +26,14 @@ use impeccable_core::checks::rules::{
     GlowOpts, HeroEyebrowOpts, HoverContrastOpts, IconTileOpts, ItalicSerifOpts, KickerCandidate,
     MotionOpts, RuleHit, Sides,
 };
+use impeccable_core::checks::sampled_contrast;
 use impeccable_core::checks::text_rules::{
     check_numbered_section_labels, is_kicker_candidate, is_numbered_section_label_candidate,
     parse_numbered_label_text, KickerCandidateInput, NumberedLabelCandidate,
     NumberedLabelCandidateInput, HEADING_TAGS, KICKER_CARD_CONTEXT_SELECTOR, KICKER_SKIP_SELECTOR,
     POSITIONED_CHILD_INTERACTIVE_SELECTOR,
 };
-use impeccable_core::color::{composite_color_over, parse_any_color, parse_rgb};
+use impeccable_core::color::{composite_color_over, parse_any_color, parse_rgb, Rgba};
 use impeccable_core::js::{self, parse_float, parse_int};
 use impeccable_core::js_ext_a::num_truthy;
 use impeccable_core::js_ext_b::slice_utf16_prefix;
@@ -461,11 +464,15 @@ pub fn check_element_borders(
 }
 
 /// JS: checks.mjs#checkElementColors(el, style, tag, window, customPropMap, hasAnchorInheritRule)
+///
+/// `images` serves the one branch the JS never had: text whose ground is a
+/// `url()` layer is measured against the image's pixels (#560).
 pub fn check_element_colors(
     el: &StaticElement<'_>,
     style: &StyleValues,
     tag: &str,
     custom_props: CustomPropMap<'_>,
+    images: &ImageSampler,
 ) -> Vec<RuleHit> {
     if sv_opt(style, "visibility") == Some("hidden") {
         return Vec::new();
@@ -539,7 +546,7 @@ pub fn check_element_colors(
             sv(style, "backgroundClip")
         }
     };
-    check_colors(&ColorOpts {
+    let opts = ColorOpts {
         tag: tag.to_string(),
         text_color,
         bg_color: own_bg,
@@ -557,7 +564,44 @@ pub fn check_element_colors(
         bg_image: Some(sv(style, "backgroundImage").to_string()),
         class_list: Some(el.class_name().to_string()),
         detector_is_browser: false,
-    })
+    };
+    let mut findings = check_colors(&opts);
+    if surface_unresolved {
+        findings.extend(sampled_image_contrast(el, &opts, images));
+    }
+    findings
+}
+
+/// The sampled-contrast path (#560): when the analytic walk gave up at a
+/// `url()` layer, read that image and measure the text against a grid of
+/// its pixels. Every gate that needs no IO runs first, so a container
+/// without direct text never touches the file.
+fn sampled_image_contrast(
+    el: &StaticElement<'_>,
+    opts: &ColorOpts,
+    images: &ImageSampler,
+) -> Option<RuleHit> {
+    if !sampled_contrast::applies(opts) {
+        return None;
+    }
+    let ground = find_image_ground(el)?;
+    let raster = images.load(&ground.url)?;
+    if sampled_contrast::is_decorative_layer(
+        &ground.repeat,
+        &ground.size,
+        raster.intrinsic_width as f64,
+        raster.intrinsic_height as f64,
+    ) {
+        return None;
+    }
+    let points = sampled_contrast::grid_points(raster.width as usize, raster.height as usize);
+    let samples: Vec<Rgba> = points
+        .iter()
+        .filter_map(|&(x, y)| {
+            sampled_contrast::composite_sample(raster.pixel(x, y), ground.under, &ground.overlays)
+        })
+        .collect();
+    sampled_contrast::sampled_contrast(opts, &ground_label(&ground.url), &samples, points.len())
 }
 
 /// JS: checks.mjs#checkElementHoverContrast(el, style, tag, window)

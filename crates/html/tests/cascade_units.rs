@@ -209,3 +209,85 @@ fn checks_shim_helpers() {
     assert_eq!(resolve_length_px("50%", 10.0), Some(5.0));
     assert_eq!(resolve_length_px("1.5", 10.0), Some(15.0));
 }
+
+#[test]
+fn background_longhands_ride_beside_the_expansion() {
+    use impeccable_html::cascade::rules::apply_static_longhand;
+    use impeccable_html::cascade::shorthand::background_longhands;
+
+    // The expansion itself is pinned by the recorded vectors and stays
+    // image-and-color only; repeat and size come from the side channel.
+    assert_eq!(
+        background_longhands(
+            "background",
+            "url(a.png) center / cover no-repeat, url(b.png)"
+        ),
+        vec![
+            (
+                "backgroundRepeat".to_string(),
+                "no-repeat, repeat".to_string()
+            ),
+            ("backgroundSize".to_string(), "cover, auto".to_string()),
+        ]
+    );
+    // The css-tree generator glues the first keyword to the call.
+    assert_eq!(
+        background_longhands("background", "url(a.png)center/cover no-repeat"),
+        vec![
+            ("backgroundRepeat".to_string(), "no-repeat".to_string()),
+            ("backgroundSize".to_string(), "cover".to_string()),
+        ]
+    );
+    assert_eq!(
+        background_longhands("background", "#fff url(a.png) repeat-x"),
+        vec![
+            ("backgroundRepeat".to_string(), "repeat-x".to_string()),
+            ("backgroundSize".to_string(), "auto".to_string()),
+        ]
+    );
+    assert_eq!(
+        background_longhands("Background-Size", "100% 32px"),
+        vec![("backgroundSize".to_string(), "100% 32px".to_string())]
+    );
+    assert!(background_longhands("background", "#fff").is_empty());
+    assert!(background_longhands("color", "red").is_empty());
+
+    // A later shorthand with an image resets an earlier longhand, and a
+    // later longhand overrides a shorthand, under the cascade's priority.
+    let mut specified: SpecifiedStore<&str> = SpecifiedStore::new();
+    let node = "n1";
+    let mut apply = |prop: &str, value: &str, m: DeclMeta| {
+        apply_static_declaration(&mut specified, node, prop, value, &m);
+        for (p, v) in background_longhands(prop, value) {
+            apply_static_longhand(&mut specified, node, &p, &v, &m);
+        }
+    };
+    apply(
+        "background-repeat",
+        "no-repeat",
+        meta(false, [0, 1, 0], 0, false),
+    );
+    apply(
+        "background",
+        "url(hero.jpg) center / cover",
+        meta(false, [0, 1, 0], 1, false),
+    );
+    apply(
+        "background-size",
+        "contain",
+        meta(false, [0, 1, 0], 2, false),
+    );
+    let map = specified.get(&node).expect("node entry");
+    assert_eq!(
+        map.get("backgroundRepeat").map(|d| d.value.as_str()),
+        Some("repeat")
+    );
+    assert_eq!(
+        map.get("backgroundSize").map(|d| d.value.as_str()),
+        Some("contain")
+    );
+    assert_eq!(
+        map.get("backgroundImage").map(|d| d.value.as_str()),
+        Some("url(hero.jpg) center / cover")
+    );
+}
