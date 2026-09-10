@@ -145,8 +145,10 @@ pub fn collect_static_css_text(
 // whitespace, quotes, parens, braces, or semicolons (CSS syntax), so a
 // stray `url(` can never pair with a `)` in a later rule.
 static CSS_URL_RE: Lazy<Regex> = Lazy::new(|| {
+    // The leading group keeps `url(` from matching inside a longer
+    // identifier such as `myurl(`; the closure emits it unchanged.
     Regex::new(
-        r#"(?i)url\(\s*(?:"((?:[^"\\\n\r]|\\.)*)"|'((?:[^'\\\n\r]|\\.)*)'|([^)"'(\s{};]*))\s*\)"#,
+        r#"(?i)(^|[^A-Za-z0-9_-])url\(\s*(?:"((?:[^"\\\n\r]|\\.)*)"|'((?:[^'\\\n\r]|\\.)*)'|([^)"'(\s{};]*))\s*\)"#,
     )
     .expect("CSS_URL_RE")
 });
@@ -177,6 +179,12 @@ pub fn rewrite_sheet_urls(css: &str, sheet_dir: &str, page_dir: &str) -> String 
 /// `url()` is content, not a comment opener, and an unclosed comment runs to
 /// the end of the sheet. Every span boundary sits on an ASCII byte, so the
 /// spans are valid `str` indices.
+/// A byte that can continue a CSS identifier, so `myurl(` is a custom
+/// function and not the `url(` token.
+fn is_ident_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b >= 0x80
+}
+
 fn comment_spans(css: &str) -> Vec<(usize, usize)> {
     #[derive(Clone, Copy, PartialEq)]
     enum State {
@@ -207,6 +215,7 @@ fn comment_spans(css: &str) -> Vec<(usize, usize)> {
                     && css[i..]
                         .get(..4)
                         .is_some_and(|s| s.eq_ignore_ascii_case("url("))
+                    && !(i > 0 && is_ident_byte(bytes[i - 1]))
                 {
                     i += 4;
                     while i < bytes.len() && bytes[i].is_ascii_whitespace() {
@@ -249,7 +258,8 @@ fn rewrite_code_urls(css: &str, sheet_dir: &str, page_dir: &str) -> String {
     CSS_URL_RE
         .replace_all(css, |caps: &regex::Captures| {
             let whole = caps.get(0).map(|m| m.as_str()).unwrap_or("");
-            let (target, quote) = match (caps.get(1), caps.get(2), caps.get(3)) {
+            let before = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+            let (target, quote) = match (caps.get(2), caps.get(3), caps.get(4)) {
                 (Some(m), _, _) => (m.as_str(), "\""),
                 (_, Some(m), _) => (m.as_str(), "'"),
                 (_, _, Some(m)) => (js::trim(m.as_str()), ""),
@@ -282,7 +292,7 @@ fn rewrite_code_urls(css: &str, sheet_dir: &str, page_dir: &str) -> String {
                     .chars()
                     .any(|c| c.is_whitespace() || matches!(c, '(' | ')' | '"' | '\''));
             let quote = if needs_quotes { "\"" } else { quote };
-            format!("url({quote}{relative}{suffix}{quote})")
+            format!("{before}url({quote}{relative}{suffix}{quote})")
         })
         .into_owned()
 }

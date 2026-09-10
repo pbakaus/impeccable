@@ -406,4 +406,12 @@ fn linked_sheet_urls_are_rewritten_page_relative() {
         out.contains("/* real url( */ .n { background: url(css/n.png) }"),
         "{out}"
     );
+    // `myurl(` is a custom function, not the url token: its comment stays a
+    // comment and its argument is not rewritten.
+    let custom = ".q { mask: myurl(a /* url(x.png) */); background: url(q.png) }";
+    let out = rewrite_sheet_urls(custom, "/site/css", "/site");
+    assert_eq!(
+        out,
+        ".q { mask: myurl(a /* url(x.png) */); background: url(css/q.png) }"
+    );
 }
