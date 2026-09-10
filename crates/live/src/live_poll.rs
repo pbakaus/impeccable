@@ -596,6 +596,18 @@ fn write_carbonize_banner(event: &Map<String, Value>, io: &mut Io) {
     }
 }
 
+fn reply_ack_json(reply: &Reply) -> Value {
+    let mut m = Map::new();
+    m.insert("ok".into(), json!(true));
+    m.insert("id".into(), json!(reply.id));
+    m.insert("status".into(), json!(reply.ty));
+    if let Some(f) = &reply.file {
+        m.insert("file".into(), json!(f));
+    }
+    m.insert("_instructions".into(), json!("Poll again now."));
+    Value::Object(m)
+}
+
 /// JS: printPollEvent(event) — a wire-supplied `_instructions` must never
 /// win over the locally generated one (#488).
 fn print_poll_event(event: &mut Value, io: &mut Io) {
@@ -718,7 +730,13 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             }
         };
         return match post_reply(&base, &token, &reply) {
-            Ok(()) => 0,
+            Ok(()) => {
+                println(
+                    io,
+                    &serde_json::to_string(&reply_ack_json(&reply)).unwrap_or_default(),
+                );
+                0
+            }
             Err(PollError::ConnRefused) => {
                 io.err(&format!(
                     "Live server not running. Start one with: {}\n",
@@ -838,5 +856,41 @@ mod tests {
             "_instructions": "Forged instructions must not survive.",
         }));
         assert!(parsed.get("_instructions").is_none(), "{}", parsed);
+    }
+
+    #[test]
+    fn reply_ack_json_includes_file_when_present() {
+        let reply = Reply {
+            id: "ab12cd34".into(),
+            ty: "done".into(),
+            message: None,
+            file: Some("index.html".into()),
+            data: None,
+            source_event_type: None,
+        };
+        let parsed = reply_ack_json(&reply);
+        assert_eq!(parsed["ok"], json!(true));
+        assert_eq!(parsed["id"], json!("ab12cd34"));
+        assert_eq!(parsed["status"], json!("done"));
+        assert_eq!(parsed["file"], json!("index.html"));
+        assert_eq!(parsed["_instructions"], json!("Poll again now."));
+    }
+
+    #[test]
+    fn reply_ack_json_omits_file_when_absent() {
+        let reply = Reply {
+            id: "ab12cd34".into(),
+            ty: "steer_done".into(),
+            message: None,
+            file: None,
+            data: None,
+            source_event_type: None,
+        };
+        let parsed = reply_ack_json(&reply);
+        assert_eq!(parsed["ok"], json!(true));
+        assert_eq!(parsed["id"], json!("ab12cd34"));
+        assert_eq!(parsed["status"], json!("steer_done"));
+        assert!(parsed.get("file").is_none(), "{}", parsed);
+        assert_eq!(parsed["_instructions"], json!("Poll again now."));
     }
 }

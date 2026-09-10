@@ -26,7 +26,7 @@
       "signal": null
     },
     {
-      "stdout": "",
+      "stdout": "{\"ok\":true,\"id\":\"ab12cd34\",\"status\":\"done\",\"file\":\"index.html\",\"_instructions\":\"Poll again now.\"}\n",
       "stderr": "",
       "exit": 0,
       "signal": null
@@ -44,7 +44,7 @@
       "signal": null
     },
     {
-      "stdout": "",
+      "stdout": "{\"ok\":true,\"id\":\"ab12cd34\",\"status\":\"steer_done\",\"_instructions\":\"Poll again now.\"}\n",
       "stderr": "",
       "exit": 0,
       "signal": null
