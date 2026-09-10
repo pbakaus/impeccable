@@ -191,17 +191,18 @@ fn is_self_closing_tag(tag: &str) -> bool {
     tag.trim_end_matches('>').trim_end().ends_with('/')
 }
 
-/// Text path cannot see the DOM. Require an empty or self-closing tag so a
-/// `w-1 bg-amber-500` wrapper with content is not reported as a stripe.
+/// Text path cannot see the DOM. When this line holds a whole tag, require
+/// it empty or self-closing. A class list with no `<` is a split JSX tag,
+/// so emptiness is unknown and the other gates still apply.
 fn stripe_child_markup_empty(line: &str, index: usize) -> bool {
     let Some((start, end)) = markup_tag_span(line, index) else {
-        return false;
+        return true;
     };
     if is_self_closing_tag(&line[start..end + 1]) {
         return true;
     }
     let rest = line.get(end + 1..).unwrap_or("").trim_start();
-    rest.is_empty() || rest.starts_with("</")
+    rest.starts_with("</")
 }
 
 struct TernarySplit {
@@ -1553,6 +1554,11 @@ mod tests {
         .is_empty());
         assert!(s(r#"<div className="w-1 bg-amber-500">|</div>"#).is_empty());
         assert!(s(r#"<div className="w-1 bg-amber-500" />"#).is_empty());
+        assert_eq!(
+            s(r#"          className="w-1 shrink-0 rounded-l-lg bg-amber-500""#),
+            vec!["w-1 + bg-amber-500 stripe child"]
+        );
+        assert!(s(r#"<div className="w-1 shrink-0 bg-amber-500">"#).is_empty());
     }
 
     #[test]
