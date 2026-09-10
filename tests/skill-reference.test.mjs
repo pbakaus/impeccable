@@ -81,9 +81,12 @@ describe('skill reference authoring contracts', () => {
     assert.match(verifyAdaptations, /produced the evidence/);
     assert.match(verifyAdaptations, /verify layout, never a gesture/);
     assert.match(verifyAdaptations, /reported gap, not a blocker/);
+    assert.match(verifyAdaptations, /\*\*Scroll across it\*\*[\s\S]*without activating it/);
     assert.match(responsive, /\*\*Broken touch interaction\*\*/);
     assert.match(responsive, /what stayed untested/);
+    assert.match(responsive, /Exercise the gesture when a browser tool can synthesize touch/);
     assert.match(edgeCases, /\*\*Interrupted gestures\*\*[\s\S]*works without a reload/);
+    assert.match(edgeCases, /clear the dragging state and release capture/);
     assert.match(verifyHardening, /\*\*Interrupted gestures\*\*/);
   });
 });
