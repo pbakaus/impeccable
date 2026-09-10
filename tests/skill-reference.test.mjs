@@ -67,4 +67,23 @@ describe('skill reference authoring contracts', () => {
     assert.match(polish, /if a newer critique landed meanwhile, its backlog stays live/);
     assert.doesNotMatch(polish, /git status|git log/);
   });
+
+  it('keeps touch-gesture verification in the adapt, audit, and harden references', () => {
+    const adapt = readFileSync(join(ROOT, 'skill/reference/adapt.md'), 'utf-8').replace(/\r\n?/g, '\n');
+    const audit = readFileSync(join(ROOT, 'skill/reference/audit.md'), 'utf-8').replace(/\r\n?/g, '\n');
+    const harden = readFileSync(join(ROOT, 'skill/reference/harden.md'), 'utf-8').replace(/\r\n?/g, '\n');
+    const verifyAdaptations = adapt.match(/## Verify Adaptations\n([\s\S]*?)\n## /)?.[1] ?? '';
+    const responsive = audit.match(/### 4\. Responsive Design\n([\s\S]*?)\n### 5\./)?.[1] ?? '';
+    const edgeCases = harden.match(/### Edge Cases & Boundary Conditions\n([\s\S]*?)\n### /)?.[1] ?? '';
+    const verifyHardening = harden.match(/## Verify Hardening\n([\s\S]*?)(?:\n## |$)/)?.[1] ?? '';
+
+    assert.match(verifyAdaptations, /\*\*Primary gesture\*\*/);
+    assert.match(verifyAdaptations, /produced the evidence/);
+    assert.match(verifyAdaptations, /verify layout, never a gesture/);
+    assert.match(verifyAdaptations, /reported gap, not a blocker/);
+    assert.match(responsive, /\*\*Broken touch interaction\*\*/);
+    assert.match(responsive, /what stayed untested/);
+    assert.match(edgeCases, /\*\*Interrupted gestures\*\*[\s\S]*works without a reload/);
+    assert.match(verifyHardening, /\*\*Interrupted gestures\*\*/);
+  });
 });
