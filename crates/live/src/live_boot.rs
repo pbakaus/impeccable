@@ -118,7 +118,12 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     if design.is_none() {
         missing.push("DESIGN.md");
     }
-    if !missing.is_empty() {
+    // `--allow-missing-context`: a caller that would rather start from the
+    // page than from an interview (the generate command) boots anyway; the
+    // payload names what is missing so the agent extracts the identity
+    // from the surface instead of running init or document mid-session.
+    let allow_missing_context = args.iter().any(|a| a == "--allow-missing-context");
+    if !missing.is_empty() && !allow_missing_context {
         let payload = json!({
             "ok": false,
             "error": "context_missing",
@@ -260,7 +265,43 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         break;
     }
     let self_cmd = impeccable_context::provider::detect(&env, &cwd).self_cmd;
-    let payload = json!({
+    // The generate lane's two opt-ins. Both are silent unless asked for, so
+    // a plain boot's payload is unchanged: `--dev-url` probes which dev
+    // server is serving this app right now (the page carrying our tag) and
+    // reports `devUrl`; `--allow-missing-context` reports `contextMissing`
+    // and a `contextNote` for the files it let the boot proceed without.
+    let want_dev_url = args.iter().any(|a| a == "--dev-url");
+    // `--no-live-bar`: the generate lane wants no bottom bar in any tab for
+    // this helper's lifetime; tell the helper now, before any page connects.
+    let no_live_bar = args.iter().any(|a| a == "--no-live-bar");
+    let live_bar_hidden = if no_live_bar {
+        let port = server_info.get("port").and_then(Value::as_u64).unwrap_or(0);
+        let token = server_info.get("token").and_then(Value::as_str).unwrap_or("");
+        request_live_bar_hidden(port, token)
+    } else {
+        false
+    };
+    let token_for_probe = match server_info.get("token") {
+        Some(Value::String(s)) => s.clone(),
+        _ => String::new(),
+    };
+    let dev_url = if !want_dev_url || token_for_probe.is_empty() {
+        None
+    } else {
+        crate::dev_url::probe(
+            &crate::dev_url::candidates(env.get("IMPECCABLE_DEV_URL_CANDIDATES").map(String::as_str)),
+            &token_for_probe,
+        )
+    };
+    let context_note = if missing.is_empty() {
+        Value::Null
+    } else {
+        json!(format!(
+            "Booted without {} (--allow-missing-context). Extract the identity from the picked element's computed styles, CSS custom properties, and sibling styling; do not run init or document during this session, and do not ask for them.",
+            missing.join(" and ")
+        ))
+    };
+    let mut payload = json!({
         "ok": true,
         "serverPort": server_info.get("port").cloned().unwrap_or(Value::Null),
         "serverToken": server_info.get("token").cloned().unwrap_or(Value::Null),
@@ -282,6 +323,18 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         "surfaceBriefPath": surface_brief_path,
         "_instructions": boot_instructions(&self_cmd),
     });
+    if let Some(obj) = payload.as_object_mut() {
+        if no_live_bar {
+            obj.insert("liveBarHidden".into(), json!(live_bar_hidden));
+        }
+        if want_dev_url {
+            obj.insert("devUrl".into(), dev_url.map(Value::String).unwrap_or(Value::Null));
+        }
+        if allow_missing_context {
+            obj.insert("contextMissing".into(), json!(missing));
+            obj.insert("contextNote".into(), context_note);
+        }
+    }
     println(io, &json_pretty(&payload));
     0
 }
@@ -298,6 +351,23 @@ fn run_inject(args: &[String], cwd: &str, io: &Io) -> String {
 
 /// JS: ensureServerRunning(cwd): reuse a live `server.json` record, else
 /// spawn `live-server --background` (part 3) and parse its output.
+/// Ask the running helper to keep the overlay's global bar hidden for its
+/// lifetime (`POST /live-bar`). True when the helper acknowledged.
+fn request_live_bar_hidden(port: u64, token: &str) -> bool {
+    if port == 0 || token.is_empty() {
+        return false;
+    }
+    let agent = ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_millis(3000))
+        .build();
+    agent
+        .post(&format!("http://127.0.0.1:{}/live-bar", port))
+        .set("Content-Type", "application/json")
+        .send_string(&json!({ "token": token, "hidden": true }).to_string())
+        .map(|res| res.status() == 200)
+        .unwrap_or(false)
+}
+
 fn ensure_server_running(cwd: &str, io: &Io) -> Option<Value> {
     if let Some((info, _)) = read_live_server_info(cwd, &io.env) {
         if let Some(pid) = info.pid {

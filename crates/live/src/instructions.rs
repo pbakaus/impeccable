@@ -23,6 +23,49 @@ use serde_json::{Map, Value};
 
 const PLAN_POINTER: &str = "Plan per live.md section 4: extract the identity lock, pick default vs departure mode, commit each variant to a DIFFERENT primary axis, squint-test the trio. Size parameter knobs per section 7 budgets.";
 
+/// The three dimensions an agent-initiated generate varies for each action:
+/// one per variant, so the trio reads as the same brand at three angles.
+fn action_axes(action: &str) -> &'static str {
+    match action {
+        "bolder" => "scale (bigger type and tighter hierarchy) / saturation (commit the accent color) / structure (a stronger composition)",
+        "quieter" => "color (pull the accent back) / ornament (fewer decorations) / spacing (more air, softer edges)",
+        "distill" => "visual noise / redundant content / nested structure, one class of excess removed per variant",
+        "polish" => "rhythm / hierarchy / micro-details",
+        "typeset" => "a different pairing AND scale ratio per variant, within the available faces",
+        "colorize" => "a different hue family per variant, with its own chroma and contrast strategy",
+        "layout" => "three different structural arrangements, not spacing tweaks",
+        "adapt" => "mobile-first / tablet / desktop-or-print",
+        "animate" => "cascade stagger / clip wipe / scale-and-focus",
+        "delight" => "micro-interaction / typographic surprise / illustrated accent",
+        "overdrive" => "a different convention broken per variant: scale / structure / motion",
+        _ => "hierarchy / color strategy / density",
+    }
+}
+
+/// What the poll tells the handler of a generate the agent itself started
+/// (`origin: "agent"`): the user asked for variants to choose from, fast.
+fn fast_path_instructions(event: &Map<String, Value>) -> String {
+    let action = event
+        .get("action")
+        .and_then(Value::as_str)
+        .filter(|a| !a.is_empty())
+        .unwrap_or("impeccable");
+    let count = js_str(event.get("count"));
+    let prompt = event
+        .get("freeformPrompt")
+        .and_then(Value::as_str)
+        .filter(|p| !p.trim().is_empty())
+        .map(|p| format!(" The user's prompt narrows every variant: \"{}\".", slice16(p, 200)))
+        .unwrap_or_default();
+    format!(
+        "Fast path (the user asked for {count} \"{action}\" variants to choose from, and is watching): do not read live.md, craft-floor.md, PRODUCT.md, or DESIGN.md now; the boot already handed you any design context, and this event carries element.computedStyles, element.cssCustomProperties, and element.parentContext. Lock the identity in ONE sentence from those (real colors, faces, corners, borders, shadows), then write {count} variants that each amplify a DIFFERENT dimension for {action}: {axes}. Keep the copy verbatim; no new fonts or hues beyond what the page already uses unless the prompt asks. When the boot printed a DESIGN.md, its tokens and named rules bound every variant: amplify inside them, never against them (a system that forbids fills, shadows, tints, or unequal columns gets its boldest allowed move on that axis instead, and tokens the axis does not need, such as radius, border, padding, and the number of bold weights, stay exactly as written); leaving the system is the user's call, not a variant. No parameter knobs (no data-impeccable-params): this lane bakes the accepted variant mechanically, and knobs belong to plain live. Floors: body text contrast 4.5:1 or better, no text under 12px, controls at least 40px tall, focus states kept.{prompt}",
+        count = count,
+        action = action,
+        axes = action_axes(action),
+        prompt = prompt
+    )
+}
+
 fn reply_cmd(self_cmd: &str, id: &str, rest: &str) -> String {
     format!("{} --reply {} {}", poll_cmd(self_cmd), id, rest)
 }
@@ -201,13 +244,19 @@ fn generate_instructions(event: &Map<String, Value>, self_cmd: &str) -> String {
         ));
     }
     let action = event.get("action").filter(|a| truthy(Some(a)));
+    let agent_initiated = event.get("origin").and_then(Value::as_str) == Some("agent");
+    if agent_initiated {
+        steps.push(fast_path_instructions(event));
+    }
     match action {
+        Some(_) if agent_initiated => {}
         Some(a) if a.as_str() != Some("impeccable") => steps.push(format!(
             "Action is \"{}\": read reference/{}.md before planning; its MUST params are non-negotiable. {}",
             js_str(Some(a)),
             js_str(Some(a)),
             PLAN_POINTER
         )),
+        _ if agent_initiated => {}
         _ => steps.push(format!(
             "Freeform action: work from SKILL.md rules plus craft-floor.md; no sub-command file. {}",
             PLAN_POINTER
@@ -338,6 +387,20 @@ fn accept_instructions(event: &Map<String, Value>, self_cmd: &str) -> String {
             id
         );
     }
+    if handled && result.get("baked") == Some(&Value::Bool(true)) {
+        let css_file = match result.get("css").and_then(|c| c.get("file")) {
+            Some(v) if truthy(Some(v)) => format!("appended to {}", js_str(Some(v))),
+            _ => "kept in the page's own <style> block".to_string(),
+        };
+        return format!(
+            "{}Variant {} is baked into {}: its CSS was {} with real selectors and the wrapper is gone; the session is complete and there is nothing to clean up (no live-complete needed). Generate lane: stop the helper now with {} stop. Otherwise poll again.",
+            prefix,
+            js_str(result.get("variant")),
+            js_str(result.get("file")),
+            css_file,
+            script_cmd(self_cmd, "live-server")
+        );
+    }
     if handled {
         return format!(
             "{}Accept was merged into source mechanically; nothing to clean up. Poll again.",
@@ -384,4 +447,36 @@ fn accept_instructions(event: &Map<String, Value>, self_cmd: &str) -> String {
         "{}No mechanical accept result; read {}, find the impeccable markers, and finish the merge by hand. Poll again after.",
         prefix, file
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn generate_event(origin: Option<&str>) -> Map<String, Value> {
+        let mut m = Map::new();
+        m.insert("type".into(), json!("generate"));
+        m.insert("id".into(), json!("ab12cd34"));
+        m.insert("action".into(), json!("bolder"));
+        m.insert("count".into(), json!(3));
+        m.insert("element".into(), json!({ "tagName": "section", "id": "pricing", "classes": ["pricing"], "textContent": "Simple pricing" }));
+        if let Some(o) = origin {
+            m.insert("origin".into(), json!(o));
+        }
+        m
+    }
+
+    #[test]
+    fn an_agent_initiated_generate_gets_the_fast_path_not_the_planning_ceremony() {
+        let text = generate_instructions(&generate_event(Some("agent")), "impeccable");
+        assert!(text.contains("Fast path"), "{text}");
+        assert!(text.contains("scale (bigger type"), "{text}");
+        assert!(text.contains("No parameter knobs"), "{text}");
+        assert!(!text.contains("live.md section 4"), "{text}");
+        assert!(!text.contains("read reference/bolder.md"), "{text}");
+        let user = generate_instructions(&generate_event(None), "impeccable");
+        assert!(user.contains("live.md section 4"), "{user}");
+        assert!(!user.contains("Fast path"), "{user}");
+    }
 }

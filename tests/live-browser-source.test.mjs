@@ -808,8 +808,8 @@ describe('live-browser source contracts', () => {
     );
     assert.equal(
       SOURCE.match(/beginNewLiveConfiguration\(\);/g)?.length || 0,
-      3,
-      'mouse replace, mouse insert, and keyboard configuration must all supersede older recovery timers',
+      4,
+      'mouse replace, mouse insert, keyboard configuration, and the agent-target entry must all supersede older recovery timers',
     );
     assert.match(
       SOURCE,
@@ -820,6 +820,216 @@ describe('live-browser source contracts', () => {
       SOURCE,
       /function scheduleAcceptCleanup\(accepted\) \{[\s\S]{0,100}?const recoveryRevision = liveInteractionRevision;[\s\S]*?watchForHandledRuntimeWrapper\(accepted\?\.id, recoveryRevision\)/,
       'accept and handled-wrapper recovery must share the originating interaction revision',
+    );
+  });
+
+  it('settles the Tune knob state when the agent is done, even across a reload', () => {
+    // A generation with no knobs (the generate lane's default) left the Tune
+    // chip spinning: the done reply never completed the parameter phase when
+    // the variants had already mounted, and a reload restored the pending
+    // state from the cache with nothing left to complete it.
+    const doneCase = SOURCE.match(/case 'done':[\s\S]*?case 'complete':/)?.[0] || '';
+    assert.match(
+      doneCase,
+      /if \(arrivedVariants >= expectedVariants && expectedVariants > 0\) \{[\s\S]*?completeParameterGenerationIfReady\(\);\s*break;/,
+      'the done reply completes the parameter phase once every variant is mounted',
+    );
+    assert.match(
+      SOURCE,
+      /const resumedState = arrivedVariants > 0 \? 'CYCLING' : 'GENERATING';[\s\S]{0,600}?settleParameterStateFromHelper\(sessionId\);/,
+      'a resume with a pending Tune state asks the helper whether the generation already finished',
+    );
+    assert.match(
+      SOURCE,
+      /function settleParameterStateFromHelper\(sessionId\) \{[\s\S]{0,900}?session\.generationCompletedAt \|\| session\.generationPhase === 'completed'\) completeParameterGenerationIfReady\(\);/,
+      'the helper\'s session record is what settles it',
+    );
+  });
+
+  it('never shows a pending Tune chip for a session the generate verb started', () => {
+    // The generate lane declares no knobs, so the chip that spins between
+    // the variants mounting and the done reply is noise there; a user's Go
+    // keeps the chip exactly as before (origin null).
+    assert.equal((SOURCE.match(/parameterGenerationState = 'pending';\s*sessionOrigin = agentTargetForGo \? 'agent' : null;/g) || []).length, 2, 'every Go records who fired it');
+    assert.match(
+      SOURCE,
+      /const paramsPending = !hasParams && sessionOrigin !== 'agent' && \(parameterGenerationState === 'pending' \|\| parameterGenerationState === 'loading'\);/,
+      'the pending chip is gated on the origin and nothing else changed',
+    );
+    assert.match(SOURCE, /origin: sessionOrigin \|\| undefined,/, 'the origin is saved with the session');
+    assert.match(SOURCE, /sessionOrigin = saved\.origin === 'agent' \? 'agent' : null;/, 'and restored across a reload');
+    assert.equal((SOURCE.match(/parameterGenerationState = 'idle';\s*sessionOrigin = null;/g) || []).length, 3, 'every session reset clears the origin');
+  });
+
+  it('shows no edit-copy badge on a selection the generate verb made', () => {
+    // The lane never edits copy in the browser; the pencil badge (and its
+    // "disabled while applying" tooltip) belongs to a user's own pick.
+    assert.match(SOURCE, /function renderEditBadge\(mode\) \{\s*if \(editBadgeSuppressed \|\| sessionOrigin === 'agent'\) mode = 'hidden';/);
+    assert.match(SOURCE, /showBar\('configure'\);\s*editBadgeSuppressed = true;\s*renderEditBadge\('hidden'\);/, 'the agent-target pick sets the suppression before its first render');
+    assert.equal((SOURCE.match(/sessionOrigin = null;\s*editBadgeSuppressed = false;/g) || []).length, 3, 'every session reset clears it');
+  });
+
+  it('mounts the global bar hidden when the helper served the lane preference', () => {
+    // The generate lane's helper says so in the script prelude, so the bar
+    // is never drawn and then hidden (no entrance flash, no leftover); a
+    // plain helper serves no such line and the bar mounts exactly as before.
+    assert.match(SOURCE, /const barHiddenFromStart = window\.__IMPECCABLE_LIVE_BAR_HIDDEN__ === true;/);
+    assert.match(SOURCE, /display: barHiddenFromStart \? 'none' : 'flex', alignItems: 'stretch',/);
+    assert.match(SOURCE, /if \(barHiddenFromStart\) \{\s*liveBarHiddenByHelper = true;\s*globalBarEl\.dataset\.liveBarDisplay = 'flex';\s*\}/);
+  });
+
+  it('re-claims busy-declined agent targets only while the overlay can still serve them', () => {
+    const teardownSource = SOURCE.match(/function teardown\(\) \{[\s\S]*?\n  \}/)?.[0] || '';
+    const clearAt = teardownSource.indexOf('busyDeclinedTargets.clear();');
+    assert.ok(
+      teardownSource.includes('agentTargetsSeen.clear();'),
+      'teardown clears the target ledger, so a stale acting entry never refuses the next connection\'s targets',
+    );
+    const idleAt = teardownSource.indexOf("setLiveState('IDLE')");
+    assert.ok(clearAt >= 0 && idleAt > clearAt, 'teardown must drop declined targets before its IDLE transition, or a dead overlay re-claims a lease');
+    assert.match(
+      SOURCE,
+      /function hidePendingApplyDock\(\) \{\s*pendingApplyInFlight = false;\s*retryDeclinedAgentTargets\(\);/,
+      'finishing a manual apply must withdraw this tab\'s busy report',
+    );
+    assert.match(
+      SOURCE,
+      /pendingApplyInFlight = loading === true;\s*if \(!pendingApplyInFlight\) retryDeclinedAgentTargets\(\);/,
+      'clearing the apply flag must withdraw this tab\'s busy report',
+    );
+    const helper = SOURCE.match(/function claimAndActOnAgentTarget\(msg\) \{[\s\S]*?\n  \}/)?.[0] || '';
+    assert.match(helper, /if \(agentTargetOverlayGone\(\)\) return;/, 'a gone overlay must not take a lease it cannot act on');
+    assert.match(helper, /if \(!claim\.pending\) return;/, 'the server, not a timer, ends the rescue loop');
+    assert.match(
+      SOURCE,
+      /\/events\?token=' \+ TOKEN \+ '&clientId=' \+ AGENT_TARGET_CLIENT_ID/,
+      'the SSE connection must carry the overlay id, so a disconnect retires its roll-call word',
+    );
+    assert.match(
+      SOURCE,
+      /function handleAgentTarget\(msg\) \{[\s\S]{0,120}?if \(agentTargetTaken\(msg\.targetId\)\) return;/,
+      'a replayed target this page took a lease on must not start a second claim, Go, or decline; any other replay is handled again',
+    );
+    assert.match(
+      SOURCE,
+      /function agentTargetTaken\(targetId\) \{[\s\S]{0,200}?status === 'acting' \|\| status === 'done';/,
+      'a done target is still taken: a replay while its result is on the wire must not decline busy and hand the lease to a second Go',
+    );
+    assert.match(
+      SOURCE,
+      /function watchAgentTargetResolution\(msg, lastError\) \{\s*if \(agentTargetOverlayGone\(\) \|\| agentTargetTaken\(msg\.targetId\)\) return;/,
+      'the late-mount watch stops once this page took the lease',
+    );
+    assert.match(
+      SOURCE,
+      /agentTargetForGo = \{ targetId: msg\.targetId, matchCount: resolved\.matchCount, action: msg\.action, count: msg\.count, element: candidate \};\s*handleGo\(\);\s*agentTargetForGo = null;/,
+      'the target rides on the Go event it serves, so the helper resolves it even if this page dies before its result lands',
+    );
+    assert.match(
+      SOURCE,
+      /if \(agentTargetForGo\) \{[\s\S]{0,600}?basePayload\.agentTarget = \{\s*targetId: agentTargetForGo\.targetId,\s*clientId: AGENT_TARGET_CLIENT_ID,[\s\S]{0,300}?sessionId: currentSessionId/,
+      'handleGo attaches the agent target with this page\'s client id and the session it minted, so the helper can tell a superseded Go from the serving one',
+    );
+    assert.match(
+      SOURCE,
+      /body\.error === 'agent_target_already_served' && msg\.type === 'generate'\s*&& msg\.id && msg\.id === currentSessionId\) \{\s*abandonSupersededGo\(msg\.id\);\s*return null;/,
+      'a Go the helper refused as already served drops this page\'s local session instead of leaving it generating for nothing',
+    );
+    assert.match(
+      SOURCE,
+      /function postAgentTargetResult\(targetId, result\) \{[\s\S]{0,600}?JSON\.stringify\(\{ token: TOKEN, targetId, clientId: AGENT_TARGET_CLIENT_ID, \.\.\.result \}\)/,
+      'a result post names this page, so the helper can refuse a bystander answering for the holder',
+    );
+    assert.match(
+      SOURCE,
+      /case 'connected':\s*applyLiveBarPreference\(msg\.hideLiveBar === true\);/,
+      'every connection, including a reload or a second tab, takes the helper\'s word on the bar',
+    );
+    assert.match(
+      SOURCE,
+      /case 'live_bar':\s*applyLiveBarPreference\(msg\.hidden === true\);\s*break;/,
+      'a helper-wide change reaches every connected tab at once',
+    );
+    assert.match(
+      SOURCE,
+      /hasProjectContext = !!msg\.hasProjectContext;\s*\/\/[^\n]*\n\s*\/\/[^\n]*\n\s*if \(!hasProjectContext && !liveBarHiddenByHelper\) showToast\(/,
+      'the lane\'s quiet chrome also skips the "No PRODUCT.md" notice, which would send the user to init',
+    );
+    assert.match(
+      SOURCE,
+      /updateGlobalBarState\(\);\s*\/\/[^\n]*\n\s*\/\/[^\n]*\n\s*if \(liveBarHiddenByHelper\) setLiveBarHidden\(true\);/,
+      'a bar built after the helper spoke still ends up hidden',
+    );
+    assert.ok(!/sessionStorage\.getItem\('impeccable-live:hide-bar/.test(SOURCE), 'no per-tab memory: the helper is the single source of truth');
+    assert.match(
+      SOURCE,
+      /function setLiveBarHidden\(hidden\) \{[\s\S]{0,700}?if \(globalBarEl\.style\.display === 'none'\) \{\s*globalBarEl\.style\.display = globalBarEl\.dataset\.liveBarDisplay \|\| 'flex';/,
+      'restoring puts the bar\'s own display value back and is a no-op on a bar that is not hidden, so a plain live session\'s connected frame changes nothing',
+    );
+    assert.ok(!/releaseHiddenLiveBar/.test(SOURCE), 'no session end brings the bar back: the accept and the bake that follows stay bar-free');
+    const teardownBody = SOURCE.match(/function teardown\(\) \{[\s\S]*?\n  \}/)?.[0] || '';
+    assert.match(teardownBody, /liveBarHiddenByHelper = false;/, 'only the helper stopping resets it');
+    assert.match(
+      SOURCE,
+      /if \(claim\.granted\) \{ noteAgentTarget\(msg\.targetId, 'acting'\); actOnAgentTarget\(msg\); return; \}/,
+      'a granted claim marks the target as acting before Go',
+    );
+    assert.match(
+      SOURCE,
+      /function agentTargetBusyReason\(exceptTargetId\) \{[\s\S]{0,500}?status === 'acting' && targetId !== exceptTargetId\) return 'agent_target_in_flight';/,
+      'a tab acting on one target is busy for every other target, so two held requests can never both mint a session here',
+    );
+    assert.match(
+      SOURCE,
+      /function actOnAgentTarget\(msg\) \{[\s\S]{0,900}?if \(resolved\.error\) \{[\s\S]{0,400}?reportAgentTargetUnresolvable\(msg, resolved\.error\);/,
+      'a miss after a granted claim declines (handing the lease back) instead of ending the request for every tab',
+    );
+    // A page that cannot resolve the target never claims it: a first-wins
+    // claim would otherwise let the wrong page answer no_match for a target
+    // another page has.
+    assert.match(
+      SOURCE,
+      /function handleAgentTarget\(msg\) \{[\s\S]{0,700}?if \(declineAgentTargetUnresolvable\(msg\)\) return;/,
+      'the first claim resolves the selector on this page first',
+    );
+    assert.match(
+      SOURCE,
+      /function claimAndActOnAgentTarget\(msg\) \{[\s\S]{0,300}?if \(declineAgentTargetUnresolvable\(msg\)\) return;/,
+      'the re-claim resolves the selector on this page first',
+    );
+    assert.match(
+      SOURCE,
+      /function declineAgentTargetUnresolvable\(msg\) \{[\s\S]{0,200}?resolveAgentTargetElement\(msg\)[\s\S]{0,120}?reportAgentTargetUnresolvable\(msg, probe\.error\)/,
+      'a failed resolution is reported at once so the roll call can proceed on the other overlays\' words',
+    );
+    assert.match(
+      SOURCE,
+      /function reportAgentTargetUnresolvable\(msg, error\) \{[\s\S]{0,300}?reason: 'no_match', result: error[\s\S]{0,120}?if \(!answer\.pending\) return;[\s\S]{0,120}?watchAgentTargetResolution\(msg, error\)/,
+      'the page reports the miss and keeps watching while the server says the request is pending',
+    );
+    assert.match(
+      SOURCE,
+      /function watchAgentTargetResolution\(msg, lastError\) \{[\s\S]{0,400}?if \(!probe\.error\) \{ claimAndActOnAgentTarget\(msg\); return; \}[\s\S]{0,300}?reportAgentTargetUnresolvable\(msg, probe\.error \|\| lastError\)/,
+      'a late mount turns into a claim; otherwise the page re-reports and the server ends the watch',
+    );
+    // The per-origin session cache must not let a tab on another page of
+    // the app resume this page's session (it would sit in GENERATING for a
+    // wrapper it never renders, and decline every later agent target).
+    assert.match(
+      SOURCE,
+      /function restoreSessionWithoutWrapper\(reason, activeSessions\) \{[\s\S]{0,600}?const cached = cachedRaw\?\.id && !pageMatchesCurrent\(cachedRaw\.pageUrl\) \? null : cachedRaw;/,
+      'a cached session is resumed only by the page that saved it',
+    );
+    assert.match(helper, /setTimeout\(\(\) => claimAndActOnAgentTarget\(msg\), AGENT_TARGET_RESCUE_RETRY_MS\);/, 'a denied claim on a live request retries until the lease lapses');
+    assert.match(
+      SOURCE,
+      /scrollAgentTargetIntoView\(el, \(\) => \{[\s\S]{0,300}?if \(agentTargetOverlayGone\(\)\) return;[\s\S]{0,400}?claimAgentTarget\(msg\.targetId, \{ eligible: true \}\)/,
+      'a tab torn down during the scroll settle must not renew its lease',
+    );
+    assert.equal(
+      (SOURCE.match(/claimAndActOnAgentTarget\(msg\)/g) || []).length,
+      5,
+      'the first claim, the busy-to-idle re-claim, and the resolution watch must share the rescue path (definition, three call sites, the retry)',
     );
   });
 

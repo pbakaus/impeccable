@@ -5,6 +5,7 @@
 use crate::paths::{live_dir, safe_session_id};
 use crate::pending_edits::{read_buffer, write_buffer};
 use crate::roots::enter_live_root;
+use crate::session::create_live_session_store;
 use crate::source_lock::with_source_lock;
 use crate::source_search::{find_source_file, is_generated_file, resolve_live_template_extensions};
 use crate::svelte_component::{
@@ -33,12 +34,42 @@ Required:
 
 Options:
   --page-url URL     Current browser page URL; scopes staged copy-edit cleanup
+  --bake             Bake a knob-free HTML/JSX accept mechanically (rules to the
+                     owning stylesheet, wrapper unwrapped) instead of leaving
+                     the carbonize block; the default for sessions the
+                     generate verb started (origin \"agent\")
+  --no-bake          Never bake; always leave the carbonize block
   --defer-source-write
                      Deprecated compatibility flag. Svelte component accepts
                      now write the real source immediately.
 
 Output (JSON):
-  { handled, file, carbonize }";
+  { handled, file, carbonize, baked?, css?, bakeSkipped? }";
+
+/// What a bake needs beyond the file: where to look for the stylesheet and
+/// which session to name in it.
+struct BakeRequest {
+    cwd: String,
+    session_id: String,
+}
+
+/// The two ways an HTML/JSX accept can end.
+enum AcceptOutcome {
+    /// The carbonize block is in source (or nothing was needed).
+    Carbonized {
+        carbonize: bool,
+        original: String,
+        bake_skipped: Option<String>,
+    },
+    /// The variant is permanent: rules appended to `css_file` (None: the
+    /// page's own `<style>` block), wrapper gone.
+    Baked {
+        original: String,
+        css_file: Option<String>,
+        rules: usize,
+        anchor: String,
+    },
+}
 
 pub fn run(args: &[String], io: &mut Io) -> i32 {
     let mut argv: Vec<String> = args.to_vec();
@@ -145,6 +176,8 @@ fn accept_cli(args: &[String], io: &mut Io) -> i32 {
     let param_values_raw = nonempty(arg_val(args, "--param-values"));
     let page_url = nonempty(arg_val(args, "--page-url"));
     let is_discard = args.iter().any(|a| a == "--discard");
+    let bake_flag = args.iter().any(|a| a == "--bake");
+    let no_bake = args.iter().any(|a| a == "--no-bake");
 
     let Some(id) = id else {
         eprintln(io, "Missing --id");
@@ -374,6 +407,22 @@ fn accept_cli(args: &[String], io: &mut Io) -> i32 {
             }
         }
     } else {
+        // A session the generate verb started is baked mechanically unless
+        // told otherwise; anything else only on --bake. Plain live keeps
+        // its carbonize block.
+        let agent_origin = !no_bake
+            && !bake_flag
+            && create_live_session_store(&cwd, &env, Some(&id))
+                .get_snapshot(&id, true)
+                .ok()
+                .flatten()
+                .and_then(|s| s.get("origin").and_then(|o| o.as_str()).map(|o| o == "agent"))
+                .unwrap_or(false);
+        let bake = if !no_bake && (bake_flag || agent_origin) {
+            Some(BakeRequest { cwd: cwd.clone(), session_id: id.clone() })
+        } else {
+            None
+        };
         let owner = format!("accept:{}", id);
         let locked = with_source_lock(
             &target_file,
@@ -393,6 +442,7 @@ fn accept_cli(args: &[String], io: &mut Io) -> i32 {
                     &lines,
                     &target_file,
                     param_values.as_ref(),
+                    bake.as_ref(),
                 )
             },
         );
@@ -411,20 +461,44 @@ fn accept_cli(args: &[String], io: &mut Io) -> i32 {
                 m.insert("error".into(), Value::String(err));
                 emit_result(io, Value::Object(m));
             }
-            Ok(Ok((carbonize, accepted_original_text))) => {
+            Ok(Ok(outcome)) => {
                 let mut m = Map::new();
                 m.insert("handled".into(), Value::Bool(true));
                 m.insert("file".into(), Value::String(rel_file.clone()));
-                m.insert("carbonize".into(), Value::Bool(carbonize));
-                if carbonize {
-                    m.insert(
-                        "todo".into(),
-                        Value::String(format!(
-                            "REQUIRED before next poll: carbonize cleanup in {}. See reference/live.md \"Required after accept\".",
-                            rel_file
-                        )),
-                    );
-                }
+                let accepted_original_text = match outcome {
+                    AcceptOutcome::Carbonized { carbonize, original, bake_skipped } => {
+                        m.insert("carbonize".into(), Value::Bool(carbonize));
+                        if carbonize {
+                            m.insert(
+                                "todo".into(),
+                                Value::String(format!(
+                                    "REQUIRED before next poll: carbonize cleanup in {}. See reference/live.md \"Required after accept\".",
+                                    rel_file
+                                )),
+                            );
+                        }
+                        if let Some(why) = bake_skipped {
+                            m.insert("bakeSkipped".into(), Value::String(why));
+                        }
+                        original
+                    }
+                    AcceptOutcome::Baked { original, css_file, rules, anchor } => {
+                        m.insert("carbonize".into(), Value::Bool(false));
+                        m.insert("baked".into(), Value::Bool(true));
+                        m.insert("variant".into(), Value::String(variant_num.clone()));
+                        m.insert(
+                            "css".into(),
+                            json!({
+                                "file": css_file.as_deref().map(|f| jsp::to_posix(&jsp::relative("/", &cwd, f))),
+                                "rules": rules,
+                                "anchor": anchor,
+                            }),
+                        );
+                        let (clean, findings, _) = crate::accept_verify::verify_accepted_file(&target_file);
+                        m.insert("verify".into(), json!({ "clean": clean, "findings": findings }));
+                        original
+                    }
+                };
                 scrub_manual_edits_against_original_block(
                     &accepted_original_text,
                     &cwd,
@@ -679,14 +753,17 @@ fn reindent_content(content: &[String], from_indent: &str, to_indent: &str) -> V
         .collect()
 }
 
-/// JS: handleAcceptUnlocked → Ok((carbonize, acceptedOriginalText)) or Err(error)
+/// JS: handleAcceptUnlocked → the outcome, or Err(error). With `bake`, a
+/// knob-free variant is made permanent here (see `bake.rs`); when that is
+/// not mechanical the carbonize block is left as before, with the reason.
 fn handle_accept_unlocked(
     id: &str,
     variant_num: &str,
     lines: &[String],
     target_file: &str,
     param_values: Option<&Map<String, Value>>,
-) -> Result<(bool, String), String> {
+    bake: Option<&BakeRequest>,
+) -> Result<AcceptOutcome, String> {
     let Some(block) = find_marker_block(id, lines) else {
         return Err("Markers not found".to_string());
     };
@@ -703,6 +780,38 @@ fn handle_accept_unlocked(
     let has_helper_attrs = variant_text.contains("data-impeccable-variant");
     let needs_carbonize = css_content.is_some() || has_helper_attrs;
     let restored = deindent_content(&variant_content, &indent);
+    let mut bake_skipped: Option<String> = None;
+    if let Some(req) = bake {
+        let mut unwrapped: Vec<String> = Vec::new();
+        unwrapped.extend_from_slice(&lines[..rs]);
+        unwrapped.extend(restored.iter().cloned());
+        unwrapped.extend_from_slice(&lines[(re + 1).min(lines.len())..]);
+        let source_after = unwrapped.join("\n");
+        let planned = crate::bake::plan(
+            &req.cwd,
+            target_file,
+            is_jsx,
+            variant_num,
+            css_content.as_deref(),
+            &restored,
+            param_values,
+            &source_after,
+        );
+        match planned {
+            Ok(plan) => match crate::bake::apply(&plan, &req.session_id, variant_num, target_file, &source_after) {
+                Ok(_) => {
+                    return Ok(AcceptOutcome::Baked {
+                        original: original_content.join("\n"),
+                        css_file: plan.css_file.clone(),
+                        rules: plan.rules,
+                        anchor: plan.anchor.clone(),
+                    });
+                }
+                Err(e) => bake_skipped = Some(e),
+            },
+            Err(e) => bake_skipped = Some(e),
+        }
+    }
     let replacement = build_carbonize_replacement(
         &indent,
         cs,
@@ -718,7 +827,11 @@ fn handle_accept_unlocked(
     new_lines.extend(replacement);
     new_lines.extend_from_slice(&lines[(re + 1).min(lines.len())..]);
     let _ = std::fs::write(target_file, new_lines.join("\n"));
-    Ok((needs_carbonize, original_content.join("\n")))
+    Ok(AcceptOutcome::Carbonized {
+        carbonize: needs_carbonize,
+        original: original_content.join("\n"),
+        bake_skipped,
+    })
 }
 
 /// JS: readSourceShadowPreviewMeta(content, id) → whether the wrapper carries
@@ -1122,4 +1235,136 @@ fn find_session_file(id: &str, cwd: &str) -> Option<(String, String, Vec<String>
     let content = safe_read(&file)?;
     let lines: Vec<String> = content.split('\n').map(String::from).collect();
     Some((file, content, lines))
+}
+
+#[cfg(test)]
+mod bake_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    const SESSION: &str = "ab12cd34";
+
+    /// The source as the generate lane's edit leaves it: the wrapper the
+    /// preflight wrote, three variants, one preview stylesheet.
+    fn app_jsx() -> String {
+        let variant = |n: &str, hidden: bool| {
+            let style = if hidden { " style={{ display: 'none' }}" } else { "" };
+            format!(
+                "          <div data-impeccable-variant=\"{n}\"{style}>\n            <div className=\"pricing-grid\">\n              <article className=\"pricing-card\">Starter</article>\n            </div>\n          </div>\n"
+            )
+        };
+        format!(
+            "export default function App() {{\n  return (\n    <main>\n      <section className=\"pricing\" id=\"pricing\">\n        <h2 className=\"pricing-title\">Simple pricing</h2>\n        <div data-impeccable-variants=\"{s}\" data-impeccable-variant-count=\"3\" style={{{{ display: \"contents\" }}}}>\n          {{/* impeccable-variants-start {s} */}}\n          {{/* Original */}}\n          <div data-impeccable-variant=\"original\">\n            <div className=\"pricing-grid\">\n              <article className=\"pricing-card\">Starter</article>\n            </div>\n          </div>\n          {{/* Variants: insert below this line */}}\n          <style data-impeccable-css=\"{s}\">{{`\n            @scope ([data-impeccable-variant=\"1\"]) {{ :scope > .pricing-grid {{ gap: 8px; }} }}\n            @scope ([data-impeccable-variant=\"2\"]) {{\n              :scope > .pricing-grid {{ gap: 32px; }}\n              :scope .pricing-card {{ border: 2px solid #111; }}\n            }}\n            @scope ([data-impeccable-variant=\"3\"]) {{ :scope > .pricing-grid {{ gap: 0; }} }}\n          `}}</style>\n{v1}{v2}{v3}          {{/* impeccable-variants-end {s} */}}\n        </div>\n      </section>\n    </main>\n  );\n}}\n",
+            s = SESSION,
+            v1 = variant("1", false),
+            v2 = variant("2", true),
+            v3 = variant("3", true)
+        )
+    }
+
+    fn project(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("impeccable-accept-bake-{}-{}", tag, std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::create_dir_all(dir.join(".impeccable/live")).unwrap();
+        std::fs::write(dir.join("src/App.jsx"), app_jsx()).unwrap();
+        std::fs::write(dir.join("src/styles.css"), ".pricing-grid { display: grid; gap: 20px; }\n.pricing-card { padding: 20px; }\n").unwrap();
+        std::fs::write(dir.join("index.html"), "<html><body><div id=\"root\"></div></body></html>").unwrap();
+        std::fs::write(dir.join("package.json"), "{\"name\":\"t\"}").unwrap();
+        dir
+    }
+
+    fn accept(dir: &PathBuf, args: &[&str]) -> Value {
+        let env: Env = std::env::vars().collect();
+        let (mut io, captured) = Io::captured("", dir.clone(), env);
+        let argv: Vec<String> = args.iter().map(|a| a.to_string()).collect();
+        let code = run(&argv, &mut io);
+        drop(io);
+        let out = String::from_utf8_lossy(&captured.stdout.borrow()).into_owned();
+        let err = String::from_utf8_lossy(&captured.stderr.borrow()).into_owned();
+        assert_eq!(code, 0, "stdout: {out}\nstderr: {err}");
+        serde_json::from_str(out.trim()).unwrap_or_else(|e| panic!("{e}: {out}"))
+    }
+
+    #[test]
+    fn a_bake_makes_the_variant_permanent_and_appends_its_rules() {
+        let dir = project("flag");
+        let result = accept(&dir, &["--id", SESSION, "--variant", "2", "--bake"]);
+        assert_eq!(result["handled"], json!(true), "{result}");
+        assert_eq!(result["baked"], json!(true), "{result}");
+        assert_eq!(result["carbonize"], json!(false));
+        assert_eq!(result["variant"], json!("2"));
+        assert_eq!(result["css"]["file"], json!("src/styles.css"), "{result}");
+        assert_eq!(result["css"]["rules"], json!(2));
+        assert_eq!(result["css"]["anchor"], json!("div.pricing-grid"));
+        assert_eq!(result["verify"]["clean"], json!(true), "{result}");
+        let jsx = std::fs::read_to_string(dir.join("src/App.jsx")).unwrap();
+        assert!(!jsx.contains("data-impeccable"), "{jsx}");
+        assert!(!jsx.contains("impeccable-variants"), "{jsx}");
+        assert!(!jsx.contains("<style"), "{jsx}");
+        assert_eq!(jsx.matches("className=\"pricing-grid\"").count(), 1, "{jsx}");
+        // The element sits where the wrapper started, at its indentation.
+        assert!(jsx.contains("        <h2 className=\"pricing-title\">Simple pricing</h2>\n        <div className=\"pricing-grid\">\n          <article className=\"pricing-card\">Starter</article>\n        </div>\n      </section>"), "{jsx}");
+        let css = std::fs::read_to_string(dir.join("src/styles.css")).unwrap();
+        assert!(css.starts_with(".pricing-grid { display: grid; gap: 20px; }\n"), "existing rules untouched: {css}");
+        assert!(css.contains("/* impeccable generate ab12cd34: accepted variant 2 */"), "{css}");
+        assert!(css.contains(".pricing-grid { gap: 32px; }"), "{css}");
+        assert!(css.contains("div.pricing-grid .pricing-card { border: 2px solid #111; }"), "{css}");
+        assert!(!css.contains("8px") && !css.contains("gap: 0"), "other variants dropped: {css}");
+        assert!(!css.contains(":scope") && !css.contains("data-impeccable"), "{css}");
+        // Idempotent: the receipt answers a rerun.
+        let again = accept(&dir, &["--id", SESSION, "--variant", "2", "--bake"]);
+        assert_eq!(again["alreadyApplied"], json!(true), "{again}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_agent_started_session_bakes_by_default_and_plain_live_does_not() {
+        let dir = project("origin");
+        let cwd = dir.to_string_lossy().into_owned();
+        let env: Env = std::env::vars().collect();
+        // Plain live: no origin, no flag -> the carbonize block, as before.
+        let plain = accept(&dir, &["--id", SESSION, "--variant", "2"]);
+        assert_eq!(plain["carbonize"], json!(true), "{plain}");
+        assert!(plain.get("baked").is_none(), "{plain}");
+        let jsx = std::fs::read_to_string(dir.join("src/App.jsx")).unwrap();
+        assert!(jsx.contains("impeccable-carbonize-start"), "{jsx}");
+        assert!(!std::fs::read_to_string(dir.join("src/styles.css")).unwrap().contains("32px"));
+
+        // The generate verb's session: the journal says origin agent.
+        let dir2 = project("origin2");
+        let cwd2 = dir2.to_string_lossy().into_owned();
+        let store = create_live_session_store(&cwd2, &env, Some(SESSION));
+        store
+            .append_event(&json!({ "type": "generate", "id": SESSION, "origin": "agent", "count": 3, "pageUrl": "/", "action": "bolder" }))
+            .unwrap();
+        let baked = accept(&dir2, &["--id", SESSION, "--variant", "2"]);
+        assert_eq!(baked["baked"], json!(true), "{baked}");
+        assert!(!std::fs::read_to_string(dir2.join("src/App.jsx")).unwrap().contains("data-impeccable"));
+        // --no-bake wins over the origin.
+        let dir3 = project("origin3");
+        let cwd3 = dir3.to_string_lossy().into_owned();
+        create_live_session_store(&cwd3, &env, Some(SESSION))
+            .append_event(&json!({ "type": "generate", "id": SESSION, "origin": "agent", "count": 3, "pageUrl": "/", "action": "bolder" }))
+            .unwrap();
+        let kept = accept(&dir3, &["--id", SESSION, "--variant", "2", "--no-bake"]);
+        assert_eq!(kept["carbonize"], json!(true), "{kept}");
+        let _ = (cwd, cwd2, cwd3);
+        for d in [dir, dir2, dir3] {
+            let _ = std::fs::remove_dir_all(&d);
+        }
+    }
+
+    #[test]
+    fn a_knob_session_falls_back_to_the_carbonize_block_with_the_reason() {
+        let dir = project("knobs");
+        let src = std::fs::read_to_string(dir.join("src/App.jsx")).unwrap().replace("gap: 32px", "gap: var(--p-gap, 32px)");
+        std::fs::write(dir.join("src/App.jsx"), src).unwrap();
+        let result = accept(&dir, &["--id", SESSION, "--variant", "2", "--bake"]);
+        assert_eq!(result["carbonize"], json!(true), "{result}");
+        assert!(result["bakeSkipped"].as_str().unwrap().contains("knobs"), "{result}");
+        let jsx = std::fs::read_to_string(dir.join("src/App.jsx")).unwrap();
+        assert!(jsx.contains("impeccable-carbonize-start"), "{jsx}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
