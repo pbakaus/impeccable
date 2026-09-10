@@ -389,4 +389,21 @@ fn linked_sheet_urls_are_rewritten_page_relative() {
     assert!(out.contains(".i { background: url(\"oops }"), "{out}");
     assert!(out.contains(".j { background: url(css/b.png) }"), "{out}");
     assert!(out.ends_with("/* url(unterminated.png"), "{out}");
+    // A `/*` inside a string or an unquoted url is content, not a comment,
+    // so the rules after it are still rewritten.
+    let strings = concat!(
+        ".k { content: \"a/*b\"; background: url(k.png) }\n",
+        ".l { background: url(l/*.png) }\n",
+        ".m { content: 'c/*d'; } /* real url( */ .n { background: url(n.png) }\n",
+    );
+    let out = rewrite_sheet_urls(strings, "/site/css", "/site");
+    assert!(
+        out.contains(".k { content: \"a/*b\"; background: url(css/k.png) }"),
+        "{out}"
+    );
+    assert!(out.contains(".l { background: url(css/l/*.png) }"), "{out}");
+    assert!(
+        out.contains("/* real url( */ .n { background: url(css/n.png) }"),
+        "{out}"
+    );
 }

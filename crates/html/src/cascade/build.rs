@@ -162,19 +162,87 @@ static URL_SCHEME_RE: Lazy<Regex> =
 /// untouched, so nothing inside one can reach the rules after it.
 pub fn rewrite_sheet_urls(css: &str, sheet_dir: &str, page_dir: &str) -> String {
     let mut out = String::with_capacity(css.len());
-    let mut rest = css;
-    while let Some(start) = rest.find("/*") {
-        out.push_str(&rewrite_code_urls(&rest[..start], sheet_dir, page_dir));
-        // An unclosed comment runs to the end of the sheet, as in CSS.
-        let end = rest[start + 2..]
-            .find("*/")
-            .map(|i| start + 2 + i + 2)
-            .unwrap_or(rest.len());
-        out.push_str(&rest[start..end]);
-        rest = &rest[end..];
+    let mut cursor = 0usize;
+    for (start, end) in comment_spans(css) {
+        out.push_str(&rewrite_code_urls(&css[cursor..start], sheet_dir, page_dir));
+        out.push_str(&css[start..end]);
+        cursor = end;
     }
-    out.push_str(&rewrite_code_urls(rest, sheet_dir, page_dir));
+    out.push_str(&rewrite_code_urls(&css[cursor..], sheet_dir, page_dir));
     out
+}
+
+/// The byte spans of every `/* */` comment in `css`, found the way the CSS
+/// tokenizer finds them: a `/*` inside a quoted string or an unquoted
+/// `url()` is content, not a comment opener, and an unclosed comment runs to
+/// the end of the sheet. Every span boundary sits on an ASCII byte, so the
+/// spans are valid `str` indices.
+fn comment_spans(css: &str) -> Vec<(usize, usize)> {
+    #[derive(Clone, Copy, PartialEq)]
+    enum State {
+        Code,
+        Str(u8),
+        Url,
+    }
+    let bytes = css.as_bytes();
+    let mut spans = Vec::new();
+    let mut state = State::Code;
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let b = bytes[i];
+        match state {
+            State::Code => {
+                if b == b'/' && bytes.get(i + 1) == Some(&b'*') {
+                    let end = css[i + 2..]
+                        .find("*/")
+                        .map(|at| i + 2 + at + 2)
+                        .unwrap_or(bytes.len());
+                    spans.push((i, end));
+                    i = end;
+                    continue;
+                }
+                if b == b'"' || b == b'\'' {
+                    state = State::Str(b);
+                } else if b.eq_ignore_ascii_case(&b'u')
+                    && css[i..]
+                        .get(..4)
+                        .is_some_and(|s| s.eq_ignore_ascii_case("url("))
+                {
+                    i += 4;
+                    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                        i += 1;
+                    }
+                    // A quoted argument is a string like any other; an
+                    // unquoted one runs to the closing paren.
+                    if i < bytes.len() && bytes[i] != b'"' && bytes[i] != b'\'' {
+                        state = State::Url;
+                    }
+                    continue;
+                }
+            }
+            State::Str(quote) => {
+                if b == b'\\' {
+                    i += 2;
+                    continue;
+                }
+                // A raw newline ends a string in CSS (a bad-string token).
+                if b == quote || b == b'\n' || b == b'\r' {
+                    state = State::Code;
+                }
+            }
+            State::Url => {
+                if b == b'\\' {
+                    i += 2;
+                    continue;
+                }
+                if b == b')' {
+                    state = State::Code;
+                }
+            }
+        }
+        i += 1;
+    }
+    spans
 }
 
 fn rewrite_code_urls(css: &str, sheet_dir: &str, page_dir: &str) -> String {
