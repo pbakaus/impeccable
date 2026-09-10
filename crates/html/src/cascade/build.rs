@@ -141,9 +141,14 @@ pub fn collect_static_css_text(
     style_texts.join("\n")
 }
 
+// A quoted url cannot span a line and an unquoted one cannot hold
+// whitespace, quotes, parens, braces, or semicolons (CSS syntax), so a
+// stray `url(` can never pair with a `)` in a later rule.
 static CSS_URL_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"(?i)url\(\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|([^)"']*?))\s*\)"#)
-        .expect("CSS_URL_RE")
+    Regex::new(
+        r#"(?i)url\(\s*(?:"((?:[^"\\\n\r]|\\.)*)"|'((?:[^'\\\n\r]|\\.)*)'|([^)"'(\s{};]*))\s*\)"#,
+    )
+    .expect("CSS_URL_RE")
 });
 static URL_SCHEME_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^[A-Za-z][A-Za-z0-9+.-]*:").expect("URL_SCHEME_RE"));
@@ -153,8 +158,26 @@ static URL_SCHEME_RE: Lazy<Regex> =
 /// directory has its relative urls rewritten to page-relative form here.
 /// This is what lets the sampled-contrast path (#560) resolve the image the
 /// winning declaration named. Root-relative, remote, `data:`, fragment, and
-/// escaped urls are left as they are.
+/// escaped urls are left as they are, and comments are copied through
+/// untouched, so nothing inside one can reach the rules after it.
 pub fn rewrite_sheet_urls(css: &str, sheet_dir: &str, page_dir: &str) -> String {
+    let mut out = String::with_capacity(css.len());
+    let mut rest = css;
+    while let Some(start) = rest.find("/*") {
+        out.push_str(&rewrite_code_urls(&rest[..start], sheet_dir, page_dir));
+        // An unclosed comment runs to the end of the sheet, as in CSS.
+        let end = rest[start + 2..]
+            .find("*/")
+            .map(|i| start + 2 + i + 2)
+            .unwrap_or(rest.len());
+        out.push_str(&rest[start..end]);
+        rest = &rest[end..];
+    }
+    out.push_str(&rewrite_code_urls(rest, sheet_dir, page_dir));
+    out
+}
+
+fn rewrite_code_urls(css: &str, sheet_dir: &str, page_dir: &str) -> String {
     CSS_URL_RE
         .replace_all(css, |caps: &regex::Captures| {
             let whole = caps.get(0).map(|m| m.as_str()).unwrap_or("");

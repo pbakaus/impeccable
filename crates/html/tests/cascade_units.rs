@@ -360,7 +360,8 @@ fn linked_sheet_urls_are_rewritten_page_relative() {
     );
     assert!(out.contains("url(https://cdn.example.com/a.png)"), "{out}");
     assert!(out.contains("url(#clip)"), "{out}");
-    assert!(out.contains("url(\"css/a b.png\")"), "{out}");
+    // An unquoted url with a space is not a url token in CSS; it stays put.
+    assert!(out.contains("URL( a b.png )"), "{out}");
     // A sheet beside the page keeps every path where it was (the engine
     // does not even call the rewrite for that case).
     let same = rewrite_sheet_urls(css, "/site", "/site");
@@ -369,4 +370,23 @@ fn linked_sheet_urls_are_rewritten_page_relative() {
     // A sheet above the page walks back up.
     let up = rewrite_sheet_urls(".a { background: url(light.png) }", "/site", "/site/pages");
     assert_eq!(up, ".a { background: url(../light.png) }");
+    // A stray `url(` in a comment, or an unclosed quote, never swallows the
+    // rules after it: comments pass through untouched and a url form ends
+    // where CSS says it ends.
+    let hazards = concat!(
+        "/* see url( for details */ .g { color: red }\n",
+        ".h { background: url(a.png) }\n",
+        ".i { background: url(\"oops }\n",
+        ".j { background: url(b.png) }\n",
+        "/* url(unterminated.png",
+    );
+    let out = rewrite_sheet_urls(hazards, "/site/css", "/site");
+    assert!(
+        out.contains("/* see url( for details */ .g { color: red }"),
+        "{out}"
+    );
+    assert!(out.contains(".h { background: url(css/a.png) }"), "{out}");
+    assert!(out.contains(".i { background: url(\"oops }"), "{out}");
+    assert!(out.contains(".j { background: url(css/b.png) }"), "{out}");
+    assert!(out.ends_with("/* url(unterminated.png"), "{out}");
 }
