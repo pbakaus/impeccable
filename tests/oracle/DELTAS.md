@@ -172,7 +172,7 @@ text instead of skipping the contrast check (docs/CLI-CONTRACT.md, "Sampled
 contrast"). The JS never had this path, so the new fixture
 `sampled-image-contrast.html` (with `sampled-images/`) has no JS golden; its
 cases were recorded from the engine, and the directory sweeps below moved
-only by that fixture's eight `low-contrast` findings, verified entry by entry.
+only by that fixture's nine `low-contrast` findings, verified entry by entry.
 
 - `detect-fixture-json-sampled-image-contrast-html`, `detect-fixture-text-sampled-image-contrast-html`, `detect-fixture-json-sampled-images`, `detect-fixture-text-sampled-images`: new cases.
 - `detect-dir-json-all-fixtures`, `detect-dir-text-all-fixtures`, `detect-dir-quiet-all-fixtures`, `detect-no-advisory-json`, `detect-no-advisory-text`: the directory sweep picks up the new fixture.

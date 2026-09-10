@@ -79,15 +79,16 @@ pub fn is_decorative_layer(repeat: &str, size: &str, intrinsic_w: f64, intrinsic
     }
     let tokens: Vec<&str> = size.split_whitespace().collect();
     let px = |t: Option<&&str>| t.filter(|t| t.ends_with("px")).map(|t| parse_float(t));
-    let w = px(tokens.first()).unwrap_or(intrinsic_w);
-    let h = px(tokens.get(1)).unwrap_or_else(|| {
-        // `background-size: 40px` scales the height with the width.
-        if tokens.len() == 1 && px(tokens.first()).is_some() && intrinsic_w > 0.0 {
-            intrinsic_h * (w / intrinsic_w)
-        } else {
-            intrinsic_h
-        }
-    });
+    // An `auto` (or absent) axis follows the other at the image's aspect
+    // ratio, as in CSS: `40px`, `40px auto`, and `auto 40px` all scale.
+    let (w, h) = match (px(tokens.first()), px(tokens.get(1))) {
+        (Some(w), Some(h)) => (w, h),
+        (Some(w), None) if intrinsic_w > 0.0 => (w, intrinsic_h * (w / intrinsic_w)),
+        (None, Some(h)) if intrinsic_h > 0.0 => (intrinsic_w * (h / intrinsic_h), h),
+        (Some(w), None) => (w, intrinsic_h),
+        (None, Some(h)) => (intrinsic_w, h),
+        (None, None) => (intrinsic_w, intrinsic_h),
+    };
     (!repeat_x && w < DECORATION_MAX_PX) || (!repeat_y && h < DECORATION_MAX_PX)
 }
 
@@ -213,6 +214,14 @@ mod tests {
     fn decoration_gate() {
         assert!(is_decorative_layer("no-repeat", "auto", 24.0, 24.0));
         assert!(is_decorative_layer("no-repeat", "40px", 1200.0, 800.0));
+        assert!(is_decorative_layer("no-repeat", "40px auto", 1200.0, 800.0));
+        assert!(is_decorative_layer("no-repeat", "auto 40px", 1200.0, 800.0));
+        assert!(!is_decorative_layer(
+            "no-repeat",
+            "auto 800px",
+            1200.0,
+            800.0
+        ));
         assert!(is_decorative_layer("repeat-y", "auto", 8.0, 400.0));
         assert!(is_decorative_layer("repeat-x", "auto", 1200.0, 80.0));
         assert!(!is_decorative_layer("no-repeat", "cover", 24.0, 24.0));

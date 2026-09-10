@@ -176,8 +176,13 @@ pub fn rewrite_sheet_urls(css: &str, sheet_dir: &str, page_dir: &str) -> String 
             }
             let cut = target.find(['?', '#']).unwrap_or(target.len());
             let (path, suffix) = target.split_at(cut);
-            let absolute = jsp::resolve("/", &[sheet_dir, path]);
-            let relative = jsp::to_posix(&jsp::relative("/", page_dir, &absolute));
+            // Pure POSIX string math on both directories: a CSS url is
+            // POSIX on every OS, and the win32 helpers would render a drive
+            // path (`D:\a\...`) differently from the url beside it.
+            let sheet = jsp::to_posix(sheet_dir);
+            let page = jsp::to_posix(page_dir);
+            let absolute = jsp::posix::resolve("/", &[&sheet, path]);
+            let relative = jsp::posix::relative("/", &page, &absolute);
             if relative.is_empty() {
                 return whole.to_string();
             }

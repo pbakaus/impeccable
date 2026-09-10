@@ -121,7 +121,9 @@ impl ImageSampler {
 }
 
 fn is_data_uri(url: &str) -> bool {
-    url.len() > 5 && url[..5].eq_ignore_ascii_case("data:")
+    // `get`, not a byte slice: a url may open with a multibyte character.
+    url.get(..5)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("data:"))
 }
 
 /// The cache key of a data URI: its length and a hash, so the cache never
@@ -242,6 +244,11 @@ mod tests {
         assert!(sampler.load("https://example.com/hero.jpg").is_none());
         assert!(sampler.load("//cdn.example.com/hero.jpg").is_none());
         assert_eq!(ground_label("img/hero.jpg?v=3"), "hero.jpg");
+        // A url that opens with a multibyte character is a local path, not
+        // a panic.
+        assert!(!is_data_uri("dat\u{20ac}"));
+        assert!(sampler.load("abcd\u{20ac}.png").is_none());
+        assert_eq!(ground_label("abcd\u{20ac}.png"), "abcd\u{20ac}.png");
         // A payload past the byte budget is refused before it is decoded.
         let huge = format!(
             "data:image/png;base64,{}",

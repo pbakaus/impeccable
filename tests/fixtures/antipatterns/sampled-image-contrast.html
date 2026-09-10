@@ -20,6 +20,7 @@
   .panel h2 { margin: 0; font-size: 28px; line-height: 1.3; }
   .light { background: url(sampled-images/light.png); }
   .light-webp { background: url("sampled-images/light.webp") center / cover; }
+  .tokens-first { background: center / cover no-repeat url(sampled-images/light.png); }
   .dark-jpg { background: url(sampled-images/dark.jpg) center / cover no-repeat; }
   .split { background: url(sampled-images/split.png) repeat; }
   .inline-data { background: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAaUlEQVR42k2PSQrAMAwD/f9ndt+TNl2OLmMQ5CCELUtR7CuLP+cUuPPo19F73tqY09q4nXsXC0SYA8T3mgNxgMiypMGZccLA5Kij6+eMDhKIZEZQsmkBA47UKxLkFKsHjCE6IOBQSv2bH8D48hUetch/AAAAAElFTkSuQmCC); }
@@ -72,6 +73,9 @@
   </div>
   <div class="panel light">
     <h2 class="white">Large white heading on the texture</h2>
+  </div>
+  <div class="panel tokens-first">
+    <p class="white">Shorthand tokens before the image still name the ground.</p>
   </div>
 
   <!-- ── Should pass ──────────────────────────────────────────────── -->

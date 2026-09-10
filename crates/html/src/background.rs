@@ -363,12 +363,14 @@ fn layer_entry(value: &str, index: usize) -> String {
 }
 
 /// The `url()` argument of one background layer: `url(x\ y.png)` from the
-/// css-tree generator, `url("x y.png")` from a style attribute. The layer
-/// may carry the rest of a shorthand after the call (`url(x)center/cover`),
+/// css-tree generator, `url("x y.png")` from a style attribute. A shorthand
+/// layer may carry other tokens around the call (`#000 url(x)center/cover`),
 /// so only the call itself is decoded.
 fn layer_url(layer: &str) -> String {
-    let layer = js::trim(layer);
-    let open = layer.find('(').map(|i| i + 1).unwrap_or(layer.len());
+    let Some(call) = URL_CALL_RE.find(layer) else {
+        return String::new();
+    };
+    let open = call.end();
     let mut depth = 1usize;
     let mut quote: Option<char> = None;
     let mut close = layer.len();
@@ -388,7 +390,7 @@ fn layer_url(layer: &str) -> String {
             None => {}
         }
     }
-    let decoded = decode_url(&layer[..close]);
+    let decoded = decode_url(&format!("url({}", &layer[open..close]));
     let trimmed = js::trim(&decoded);
     let unquoted = trimmed
         .strip_prefix('"')
@@ -433,7 +435,10 @@ pub fn find_image_ground(el: &StaticElement<'_>) -> Option<ImageGround> {
         };
         for (index, layer) in layers.iter().enumerate() {
             let layer = js::trim(layer);
-            if URL_START_RE.is_match(layer) {
+            // A shorthand layer may put color, position, size, or repeat
+            // tokens before the image call; the call is what matters.
+            let is_gradient = GRADIENT_CALL_RE.is_match(layer);
+            if !is_gradient && URL_CALL_RE.is_match(layer) {
                 // A layer beneath the image is unknown paint; otherwise the
                 // element's own color over its parent's ground, white at the
                 // root like the analytic walk.
@@ -459,7 +464,7 @@ pub fn find_image_ground(el: &StaticElement<'_>) -> Option<ImageGround> {
                     under,
                 });
             }
-            if GRADIENT_CALL_RE.is_match(layer) {
+            if is_gradient {
                 let stops = parse_gradient_colors(Some(layer));
                 if stops.is_empty() || stops.iter().all(|s| s.alpha_or_one() >= 0.99) {
                     return None;
