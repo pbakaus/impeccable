@@ -418,6 +418,16 @@ fn push_diag(next: &mut Map<String, Value>, d: Value) {
     next.insert("diagnostics".to_string(), Value::Array(arr));
 }
 
+fn drop_diag(next: &mut Map<String, Value>, error: &str) {
+    let mut arr = next
+        .get("diagnostics")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    arr.retain(|d| d.get("error").and_then(|e| e.as_str()) != Some(error));
+    next.insert("diagnostics".to_string(), Value::Array(arr));
+}
+
 /// JS: applyEvent(snapshot, entry)
 pub fn apply_event(snapshot: &Map<String, Value>, entry: &Value) -> Map<String, Value> {
     let event: Map<String, Value> = match entry.get("event") {
@@ -864,6 +874,7 @@ pub fn apply_event(snapshot: &Map<String, Value>, entry: &Value) -> Map<String, 
             set!("phase", json!("discarded"));
             set!("pendingEventSeq", Value::Null);
             set!("pendingEvent", Value::Null);
+            drop_diag(&mut next, "carbonize_cleanup_required");
         }
         "complete" => {
             set!("phase", json!("completed"));
@@ -876,6 +887,7 @@ pub fn apply_event(snapshot: &Map<String, Value>, entry: &Value) -> Map<String, 
             set_if!("previewMode", ev("previewMode"));
             set!("pendingEventSeq", Value::Null);
             set!("pendingEvent", Value::Null);
+            drop_diag(&mut next, "carbonize_cleanup_required");
         }
         "agent_error" => {
             if canceled && ev("sourceEventType").and_then(|v| v.as_str()) == Some("generate") {
@@ -924,4 +936,64 @@ fn write_snapshot(path: &str, snapshot: &Map<String, Value>, journal_bytes: i64,
 /// The pending event's `id`/`type` as strings (helper for status/resume).
 pub fn get_str<'a>(m: &'a Map<String, Value>, k: &str) -> Option<&'a str> {
     get(m, k).and_then(|v| v.as_str())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn journal_entry(seq: i64, event: Value) -> Value {
+        json!({ "seq": seq, "ts": "2026-01-01T00:00:00.000Z", "event": event })
+    }
+
+    fn has_diag(snapshot: &Map<String, Value>, error: &str) -> bool {
+        snapshot
+            .get("diagnostics")
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                a.iter()
+                    .any(|d| d.get("error").and_then(|e| e.as_str()) == Some(error))
+            })
+            .unwrap_or(false)
+    }
+
+    fn replay(id: &str, events: &[Value]) -> Map<String, Value> {
+        let mut snap = base_snapshot(id);
+        for entry in events {
+            snap = apply_event(&snap, entry);
+        }
+        snap
+    }
+
+    fn accept_carbonize_done(id: &str, terminal: &str) -> Map<String, Value> {
+        replay(
+            id,
+            &[
+                journal_entry(
+                    1,
+                    json!({ "id": id, "type": "accept", "variantId": 2 }),
+                ),
+                journal_entry(
+                    2,
+                    json!({ "id": id, "type": "agent_done", "carbonize": true, "file": "index.html" }),
+                ),
+                journal_entry(3, json!({ "id": id, "type": terminal })),
+            ],
+        )
+    }
+
+    #[test]
+    fn complete_drops_carbonize_cleanup_required() {
+        let snap = accept_carbonize_done("ab12cd34", "complete");
+        assert_eq!(snap.get("phase").and_then(|p| p.as_str()), Some("completed"));
+        assert!(!has_diag(&snap, "carbonize_cleanup_required"));
+    }
+
+    #[test]
+    fn discarded_drops_carbonize_cleanup_required() {
+        let snap = accept_carbonize_done("ab12cd34", "discarded");
+        assert_eq!(snap.get("phase").and_then(|p| p.as_str()), Some("discarded"));
+        assert!(!has_diag(&snap, "carbonize_cleanup_required"));
+    }
 }
