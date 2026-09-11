@@ -548,7 +548,24 @@ fn scan_page_inner(
         snapshot_engine::analyze_visual_contrast(page, &base, 12.0, true)
     })
     .map_err(cdp_err)?;
-    let visual = run_visual_contrast_fallback(page, &analyses, &serialized_groups, viewport, profile, url)?;
+    // The visual pass produces findings outside `collect_browser_findings`,
+    // so the component-level opt-outs are applied here against the same
+    // post-reveal snapshot, keyed on each candidate's own selector.
+    let waive = |selector: &str, rule: &str| -> String {
+        use impeccable_core::browser::Dom as _;
+        if config.ignore_selectors.is_empty() || selector.is_empty() {
+            return String::new();
+        }
+        let Ok(Some(el)) = base.query_one(None, selector) else {
+            return String::new();
+        };
+        impeccable_core::selector_ignores::waiving_selector(&config.ignore_selectors, rule, |sel| {
+            matches!(base.closest(el, sel), Ok(Some(_)))
+        })
+        .unwrap_or_default()
+        .to_string()
+    };
+    let visual = run_visual_contrast_fallback(page, &analyses, &serialized_groups, viewport, profile, url, &waive)?;
     results.extend(visual);
     Ok(results)
 }
@@ -579,6 +596,7 @@ fn reveal_sweep(page: &mut Page<'_>) -> Result<(), CdpError> {
 /// target)`: the JS post-processing of the analytic/canvas analyses
 /// (`analyzeVisualContrast`, computed natively in [`snapshot_engine`]) plus the
 /// screenshot pixel fallback for candidates the analyses left unresolved.
+#[allow(clippy::too_many_arguments)]
 fn run_visual_contrast_fallback(
     page: &mut Page<'_>,
     browser_analyses: &[Value],
@@ -586,6 +604,9 @@ fn run_visual_contrast_fallback(
     viewport: Viewport,
     profile: Option<&DetectorProfile>,
     target: &str,
+    // `(candidate selector, rule id) -> the detector.ignoreSelectors selector
+    // that waives it, or empty`.
+    waive: &dyn Fn(&str, &str) -> String,
 ) -> Result<Vec<RawResult>, EngineError> {
     let existing_low_contrast: Vec<String> = serialized_groups
         .iter()
@@ -611,13 +632,18 @@ fn run_visual_contrast_fallback(
                     .iter()
                     .any(|s| Some(s.as_str()) == r.get("selector").and_then(Value::as_str))
         })
-        .filter_map(|r| r.get("finding"))
-        .map(|f| RawResult {
-            id: js_str(f.get("id")),
-            snippet: js_str(f.get("snippet")),
-            ignore_value: String::new(),
-            ignored_by: String::new(),
-            severity: String::new(),
+        .map(|r| {
+            let selector = r.get("selector").and_then(Value::as_str).unwrap_or("");
+            let f = r.get("finding").expect("filtered on a truthy finding");
+            let id = js_str(f.get("id"));
+            let ignored_by = waive(selector, &id);
+            RawResult {
+                id,
+                snippet: js_str(f.get("snippet")),
+                ignore_value: String::new(),
+                ignored_by,
+                severity: String::new(),
+            }
         })
         .collect();
 
@@ -649,6 +675,11 @@ fn run_visual_contrast_fallback(
         })
         .collect();
     for candidate in filtered {
+        let candidate_selector = candidate
+            .get("selector")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
         let result = step_findings(profile, "visual-contrast", "pixel-diff", target, || {
             let f = screenshot_contrast::capture_visual_contrast_candidate(
                 page,
@@ -658,11 +689,12 @@ fn run_visual_contrast_fallback(
             .map_err(cdp_err)?;
             Ok::<_, EngineError>(
                 f.map(|f| {
+                    let ignored_by = waive(&candidate_selector, f.id);
                     vec![RawResult {
                         id: f.id.to_string(),
                         snippet: f.snippet,
                         ignore_value: String::new(),
-                        ignored_by: String::new(),
+                        ignored_by,
                         severity: String::new(),
                     }]
                 })

@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use crate::config::{
     filter_detection_findings_reported, read_detection_config, selector_ignores_for_target,
-    should_ignore_detection_file, DetectionConfig, IgnoredBySelector,
+    selector_ignores_for_url, should_ignore_detection_file, DetectionConfig, IgnoredBySelector,
 };
 use crate::design_system::{load_design_system_for_target, DesignSystemCache};
 use crate::detect_text::{detect_text, TextOptions};
@@ -297,11 +297,12 @@ impl<'a> Ctx<'a> {
         options
     }
 
-    /// The URL scan's options: no local design system to resolve, but the
-    /// project's unscoped selector ignores still govern the page.
-    fn url_scan_options(&self, url: &str) -> ScanOptions {
+    /// The URL scan's options: no local design system to resolve, and only
+    /// the unscoped component ignores, since a `files` glob names repo paths
+    /// rather than URLs.
+    fn url_scan_options(&self) -> ScanOptions {
         ScanOptions {
-            ignore_selectors: selector_ignores_for_target(&self.config, url),
+            ignore_selectors: selector_ignores_for_url(&self.config),
             ..self.base.clone()
         }
     }
@@ -752,7 +753,7 @@ fn scan_targets(
                 let local = file_url_to_local_path(target);
                 ctx.scan_options_for(local.as_deref())
             } else {
-                ctx.url_scan_options(target)
+                ctx.url_scan_options()
             };
             let result = match (shared, ctx.engines.url) {
                 (Some(s), _) => s.detect_url(target, &url_options),

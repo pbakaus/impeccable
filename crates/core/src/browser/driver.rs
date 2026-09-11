@@ -1989,12 +1989,24 @@ mod tests {
         )
         .unwrap();
         assert_eq!(cfg.ignore_selectors.len(), 1);
-        // Normalization is the constructor's job, not the parser's: the raw
-        // value round-trips and `covers_rule` folds case.
-        assert!(SelectorIgnore::new(&cfg.ignore_selectors[0].rule, ".ks-tag")
-            .covers_rule("undersized-ui-text"));
+        // The parser normalizes, so a page config written by hand still
+        // matches: the rule folds case, the selector keeps it.
+        assert_eq!(cfg.ignore_selectors[0].rule, "undersized-ui-text");
+        assert_eq!(cfg.ignore_selectors[0].selector, ".ks-tag");
         let bare: BrowserConfig = serde_json::from_str("{}").unwrap();
         assert!(bare.ignore_selectors.is_empty());
+        // A hand-edited entry of the wrong shape drops itself, never the whole
+        // config: `unwrap_or_default()` at the wasm boundary would otherwise
+        // lose the design system with it.
+        let junk: BrowserConfig = serde_json::from_str(
+            r#"{"lineLengthMax":90,"ignoreSelectors":[{},null,"nope",{"rule":"side-tab"},{"rule":"side-tab","selector":".x"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(junk.ignore_selectors.len(), 1);
+        assert_eq!(junk.line_max(), 90.0);
+        let not_a_list: BrowserConfig =
+            serde_json::from_str(r#"{"ignoreSelectors":"nope"}"#).unwrap();
+        assert!(not_a_list.ignore_selectors.is_empty());
         // A config without the key serializes without it.
         assert!(!serde_json::to_string(&bare).unwrap().contains("ignoreSelectors"));
     }

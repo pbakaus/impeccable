@@ -811,20 +811,36 @@ pub fn merge_ignore_selectors(
     map.into_iter().map(|(_, e)| e).collect()
 }
 
-/// The entries that govern one scan target, as the engines take them.
+/// The entries that govern one local scan target, as the engines take them.
 ///
 /// An entry with no `files` covers every target. An entry with `files` covers
-/// the ones its globs match, tested the way a scoped `ignoreValues` entry is
-/// (raw path, then each `/`-suffix of it), so a URL target is covered only by
-/// the unscoped entries.
+/// the paths its globs match, tested the way a scoped `ignoreValues` entry is
+/// (raw path, then each `/`-suffix of it).
 pub fn selector_ignores_for_target(
     config: &DetectionConfig,
     target: &str,
 ) -> Vec<SelectorIgnore> {
+    selector_ignores_filtered(config, |files| path_matches_scoped_globs(target, files))
+}
+
+/// The entries that govern a URL scan: the unscoped ones only.
+///
+/// `files` globs describe repo paths, and a URL is not one. Matching them
+/// against the URL would let a glob like `index.html` reach
+/// `https://example.com/index.html` by accident, scoping an ignore to a page
+/// the entry never named.
+pub fn selector_ignores_for_url(config: &DetectionConfig) -> Vec<SelectorIgnore> {
+    selector_ignores_filtered(config, |_| false)
+}
+
+fn selector_ignores_filtered(
+    config: &DetectionConfig,
+    covers: impl Fn(&[String]) -> bool,
+) -> Vec<SelectorIgnore> {
     normalize_ignore_selector_entries_typed(&config.ignore_selectors)
         .into_iter()
         .filter(|e| match &e.files {
-            Some(files) if !files.is_empty() => path_matches_scoped_globs(target, files),
+            Some(files) if !files.is_empty() => covers(files),
             _ => true,
         })
         .map(|e| SelectorIgnore::new(&e.rule, &e.selector))
@@ -1414,9 +1430,18 @@ mod tests {
         assert_eq!(everywhere[0].selector, ".ks-tag");
         let scoped = selector_ignores_for_target(&config, "src/demo/playground.astro");
         assert_eq!(scoped.len(), 2);
-        // A URL target is covered by the unscoped entries only.
+        // A URL scan is covered by the unscoped entries only: a `files` glob
+        // describes repo paths, and must not reach a URL path that happens to
+        // end the same way.
+        assert_eq!(selector_ignores_for_url(&config).len(), 1);
+        let url_globs = config_with_selectors(
+            r#"{"ignoreSelectors":[
+                {"rule":"glow-effect","selector":".demo","files":["index.html"]}
+            ]}"#,
+        );
+        assert!(selector_ignores_for_url(&url_globs).is_empty());
         assert_eq!(
-            selector_ignores_for_target(&config, "https://example.com/").len(),
+            selector_ignores_for_target(&url_globs, "src/index.html").len(),
             1
         );
         // `--no-config` leaves the list empty, so nothing is waived.

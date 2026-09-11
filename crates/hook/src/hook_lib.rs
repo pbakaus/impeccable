@@ -1655,12 +1655,19 @@ impl HookScanOptions {
 
 /// JS: designSystemOptions(config, detector, projectCwd)
 pub fn design_system_options(config: &HookConfig, project_cwd: &str) -> HookScanOptions {
+    // Component ignores are not design-system state: a project with
+    // `designSystem.enabled: false` still opted its components out, and the
+    // hook would otherwise re-report them on every edit.
+    let ignore_selectors = config.ignore_selectors.clone();
     if !config.design_system_enabled {
-        return HookScanOptions::default();
+        return HookScanOptions {
+            design_system: None,
+            ignore_selectors,
+        };
     }
     HookScanOptions {
         design_system: load_design_system_for_cwd(project_cwd).map(Rc::new),
-        ignore_selectors: config.ignore_selectors.clone(),
+        ignore_selectors,
     }
 }
 
@@ -1672,7 +1679,8 @@ pub fn design_system_options_for_file(
     file_path: &str,
 ) -> HookScanOptions {
     if !config.design_system_enabled {
-        return HookScanOptions::default();
+        // Same as above: the waivers travel even when no design system does.
+        return design_system_options(config, project_cwd);
     }
     let project = impeccable_context::context::resolve_project(
         project_cwd,
