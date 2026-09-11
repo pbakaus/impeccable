@@ -775,6 +775,45 @@ fn transition_fmt(prefix: &str, m: &MatchCtx) -> String {
     }
 }
 
+/// `true` when the match at `index` sits in prose rather than in markup: after
+/// a line comment opener, on a doc-comment continuation line, or inside an
+/// inline-code span. Matchers see one line at a time, so these are line-local
+/// checks — enough for the case that matters, a comment that talks about an
+/// element by name.
+fn is_prose_at(line: &str, index: usize) -> bool {
+    let before = match line.get(..index) {
+        Some(b) => b,
+        None => return false,
+    };
+    for opener in ["//", "/*", "<!--", "#"] {
+        if let Some(at) = before.find(opener) {
+            let starts_token = at == 0
+                || before[..at]
+                    .chars()
+                    .next_back()
+                    .map(char::is_whitespace)
+                    .unwrap_or(true);
+            if starts_token {
+                return true;
+            }
+        }
+    }
+    if line.trim_start().starts_with('*') {
+        return true;
+    }
+    before.matches('`').count() % 2 == 1
+}
+
+/// `true` for `<img>` / `<img />` — a tag with no attributes at all. Shipped
+/// markup always carries something (`alt`, `class`, `loading`); a bare tag is
+/// how a person writes the element's NAME inside a sentence.
+fn is_bare_img_tag(tag: &str) -> bool {
+    let t = tag.trim();
+    t.eq_ignore_ascii_case("<img>")
+        || t.eq_ignore_ascii_case("<img/>")
+        || t.eq_ignore_ascii_case("<img />")
+}
+
 /// Hand-written port of `/<img\b(?:(?!\bsrc\s*=)[^>])*>/gi`.
 fn find_img_without_src(line: &str) -> Vec<MatchCtx> {
     let mut out = Vec::new();
@@ -982,13 +1021,17 @@ pub static REGEX_MATCHERS: Lazy<Vec<Matcher>> = Lazy::new(|| {
         Matcher {
             id: "broken-image",
             find_all: |l| all(&BROKEN_IMG_SRC_RE, l),
-            test: |_, _| true,
+            test: |m, line| !is_prose_at(line, m.index),
             fmt: |m, _| slice_utf16_start(m.whole(), 100),
         },
         Matcher {
             id: "broken-image",
             find_all: find_img_without_src,
-            test: |m, _| !SRC_ATTR_RE.is_match(m.whole()),
+            test: |m, line| {
+                !SRC_ATTR_RE.is_match(m.whole())
+                    && !is_bare_img_tag(m.whole())
+                    && !is_prose_at(line, m.index)
+            },
             fmt: |m, _| slice_utf16_start(m.whole(), 100),
         },
     ]
@@ -1451,6 +1494,23 @@ mod tests {
         assert!(run("layout-transition", "transition: all 1s").is_empty());
         assert_eq!(run("broken-image", "<img alt=x>"), vec!["<img alt=x>"]);
         assert!(run("broken-image", "<img src=\"a.png\">").is_empty());
+        // Prose about an element is not markup: a comment or an inline-code
+        // span naming `<img>` used to raise a finding on every pass.
+        assert!(run("broken-image", " * the rail `<img>`s get their offset").is_empty());
+        assert!(run("broken-image", "  // an <img> here is prose, not markup").is_empty());
+        assert!(run("broken-image", "<!-- an <img> mentioned in a comment -->").is_empty());
+        assert!(run("broken-image", "   (lagging) writes onto each `<img>`").is_empty());
+        // A bare tag with no attributes is how the element is named in a
+        // sentence; shipped markup always carries something.
+        assert!(run("broken-image", "<img>").is_empty());
+        assert!(run("broken-image", "<img />").is_empty());
+        // Real defects still caught.
+        assert_eq!(
+            run("broken-image", "<img class=\"logo\" alt=\"Logo\">"),
+            vec!["<img class=\"logo\" alt=\"Logo\">"]
+        );
+        assert!(!run("broken-image", "<img class=\"hero\" src=\"\" alt=\"hero\">").is_empty());
+        assert!(!run("broken-image", "<img src=\"#\" alt=\"placeholder\">").is_empty());
         assert_eq!(
             run("bounce-easing", "cubic-bezier(0.68, -0.55, 0.265, 1.55)"),
             vec!["cubic-bezier(0.68, -0.55, 0.265, 1.55)"]
