@@ -1084,12 +1084,12 @@ fn hero_diff(io: &Io, comp_path: &str, build_path: &str, spec: Option<&Value>, o
 #[allow(clippy::too_many_arguments)]
 fn gate_hero(io: &Io, state: &mut Value, build_path: &str, min: f64, out_dir: &str, artifact: Option<&str>, organic_scan: OrganicScan) -> Gate {
     let pending = Gate::fail(vec!["hero comparison has not completed".into()]);
-    if let Err(e) = unavailable_report(io, out_dir, &pending) {
+    if let Err(e) = unavailable_report(io, out_dir, &pending, "hero") {
         return Gate::fail(vec![format!("cannot persist hero gate evidence: {e}")]);
     }
     let mut gate = gate_hero_inner(io, state, build_path, min, out_dir, artifact, organic_scan);
     if gate.report.is_none() {
-        if let Err(e) = unavailable_report(io, out_dir, &gate) {
+        if let Err(e) = unavailable_report(io, out_dir, &gate, "hero") {
             gate.ok = false;
             gate.reasons.push(format!("cannot persist hero gate evidence: {e}"));
         }
@@ -1109,8 +1109,8 @@ fn atomic_report(path: &Path, report: &Value) -> Result<(), String> {
     result.map_err(|e: std::io::Error| e.to_string())
 }
 
-fn unavailable_report(io: &Io, out_dir: &str, gate: &Gate) -> Result<(), String> {
-    let report = json!({ "interpretation": "hero-gate", "measurementsAvailable": false,
+fn unavailable_report(io: &Io, out_dir: &str, gate: &Gate, phase: &str) -> Result<(), String> {
+    let report = json!({ "interpretation": format!("{phase}-gate"), "measurementsAvailable": false,
         "regions": [], "gate": { "ok": false, "reasons": gate.reasons,
             "advisories": gate.advisories, "unscopedReasons": gate.reasons } });
     atomic_report(&abs(io, &format!("{out_dir}/report.json")), &report)
@@ -1551,24 +1551,31 @@ fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_d
         .iter()
         .filter_map(|r| Some((r.get("id")?.as_str()?.to_string(), json!(r.get("verdict")?.as_str()?))))
         .collect();
+    publish_gate_evidence(io, out_dir, &mut report, &mut measured, &regions, &mut g, "hero");
+
+    g
+}
+
+#[allow(clippy::too_many_arguments)]
+fn publish_gate_evidence(io: &Io, out_dir: &str, report: &mut Value, measured: &mut CompareResult, regions: &[Value], g: &mut Gate, phase: &str) {
     let raw_path = format!("{out_dir}/raw-report.json");
     let raw = report.clone();
-    apply_gate_evidence(&mut report, &mut measured, &regions, &g);
+    g.report = Some(format!("{out_dir}/report.json"));
+    apply_gate_evidence(report, measured, regions, g);
+    report["interpretation"] = json!(format!("{phase}-gate"));
     report["rawReport"] = json!(raw_path);
     let evidence_write = (|| {
         atomic_report(&abs(io, &raw_path), &raw)?;
-        write_region_artifacts(&measured, &abs(io, out_dir), report.get("regions").and_then(Value::as_array).map(Vec::as_slice))?;
-        atomic_report(&abs(io, &format!("{out_dir}/report.json")), &report)
+        write_region_artifacts(measured, &abs(io, out_dir), report.get("regions").and_then(Value::as_array).map(Vec::as_slice))?;
+        atomic_report(&abs(io, &format!("{out_dir}/report.json")), report)
     })();
     if let Err(e) = evidence_write {
         g.ok = false;
-        g.reasons.push(format!("cannot persist hero gate evidence: {e}"));
+        g.reasons.push(format!("cannot persist {phase} gate evidence: {e}"));
         g.report = None;
         g.side_by_side = None;
         g.worst_crops.clear();
     }
-
-    g
 }
 
 fn push_region_blocker(reasons: &mut Vec<String>, regions: &mut Map<String, Value>, id: &str, message: String) {
@@ -1658,6 +1665,21 @@ fn hash_file(io: &Io, file: &str) -> Option<String> {
 }
 
 fn gate_responsive(io: &Io, state: &mut Value, min: f64, out_dir: &str) -> Gate {
+    let pending = Gate::fail(vec!["responsive comparison has not completed".into()]);
+    if let Err(e) = unavailable_report(io, out_dir, &pending, "responsive") {
+        return Gate::fail(vec![format!("cannot persist responsive gate evidence: {e}")]);
+    }
+    let mut gate = gate_responsive_inner(io, state, min, out_dir);
+    if gate.report.is_none() {
+        if let Err(e) = unavailable_report(io, out_dir, &gate, "responsive") {
+            gate.ok = false;
+            gate.reasons.push(format!("cannot persist responsive gate evidence: {e}"));
+        }
+    }
+    gate
+}
+
+fn gate_responsive_inner(io: &Io, state: &mut Value, min: f64, out_dir: &str) -> Gate {
     let desktop = ".impeccable/review/desktop.png";
     let mobile = ".impeccable/review/mobile.png";
     let mut reasons = Vec::new();
@@ -1675,12 +1697,12 @@ fn gate_responsive(io: &Io, state: &mut Value, min: f64, out_dir: &str) -> Gate 
     let spec = load_spec(&abs(io, SPEC_PATH));
     if let Some(failure) = revalidate_plates(io, state, spec.as_ref()) { return failure; }
     let comp_path = state.get("comp").and_then(Value::as_str).unwrap_or("");
-    let report = match hero_diff_labeled(io, comp_path, desktop, spec.as_ref(), out_dir, "desktop") {
+    let (mut report, mut measured) = match hero_diff_labeled(io, comp_path, desktop, spec.as_ref(), out_dir, "desktop") {
         Ok(r) => r,
         Err(e) => return Gate::fail(vec![format!("comp-diff failed on {desktop}: {e}")]),
     };
-    let regions: Vec<Value> = report.get("regions").and_then(Value::as_array).cloned().unwrap_or_default();
-    let missing: Vec<&Value> = regions
+    let mut regions: Vec<Value> = report.get("regions").and_then(Value::as_array).cloned().unwrap_or_default();
+    let missing: Vec<Value> = regions
         .iter()
         .filter(|r| {
             if r.get("verdict").and_then(Value::as_str) != Some("missing") || r.get("kind").and_then(Value::as_str) == Some("texture") {
@@ -1698,8 +1720,17 @@ fn gate_responsive(io: &Io, state: &mut Value, min: f64, out_dir: &str) -> Gate 
             }
             true
         })
-        .collect();
-    let contradicted_direction: Vec<&Value> = regions.iter().filter(|r| r.get("verdict").and_then(Value::as_str) == Some("contradicted") && r.get("kind").and_then(Value::as_str) == Some("text")).collect();
+        .cloned().collect();
+    let contradicted_direction: Vec<Value> = regions.iter().filter(|r| r.get("verdict").and_then(Value::as_str) == Some("contradicted") && r.get("kind").and_then(Value::as_str) == Some("text")).cloned().collect();
+    for region in &mut regions {
+        if region.get("verdict").and_then(Value::as_str) == Some("missing")
+            && matches!(region.get("kind").and_then(Value::as_str), Some("plate" | "image"))
+            && !missing.iter().any(|r| r.get("id") == region.get("id")) {
+            region["verdict"] = json!("drift");
+            region["verdictReason"] = json!("current plate passed asset validation and responsive rendered presence check");
+        }
+    }
+    let mut region_reasons = Map::new();
     let overall = report.get("overall").and_then(Value::as_f64).unwrap_or(0.0);
     let mut reasons = Vec::new();
     if overall < min {
@@ -1712,10 +1743,11 @@ fn gate_responsive(io: &Io, state: &mut Value, min: f64, out_dir: &str) -> Gate 
         ));
     }
     for r in &missing {
-        reasons.push(format!("at desktop width, region {} is missing", r.get("id").and_then(Value::as_str).unwrap_or("")));
+        let id = r.get("id").and_then(Value::as_str).unwrap_or("");
+        push_region_blocker(&mut reasons, &mut region_reasons, id, format!("at desktop width, region {id} is missing"));
     }
     for r in &contradicted_direction {
-        reasons.push(format!(
+        push_region_blocker(&mut reasons, &mut region_reasons, r.get("id").and_then(Value::as_str).unwrap_or(""), format!(
             "at desktop width, region {} ({}) is contradicted (structure {}%)",
             r.get("id").and_then(Value::as_str).unwrap_or(""),
             r.get("kind").and_then(Value::as_str).unwrap_or(""),
@@ -1726,10 +1758,12 @@ fn gate_responsive(io: &Io, state: &mut Value, min: f64, out_dir: &str) -> Gate 
     g.summary = Some(format!("desktop {}% ({})", pct0(overall), report.get("verdict").and_then(Value::as_str).unwrap_or("")));
     g.score = Some(overall);
     g.side_by_side = report.pointer("/files/sideBySide").and_then(Value::as_str).map(String::from);
+    g.region_reasons = region_reasons;
+    publish_gate_evidence(io, out_dir, &mut report, &mut measured, &regions, &mut g, "responsive");
     g
 }
 
-fn hero_diff_labeled(io: &Io, comp_path: &str, build_path: &str, spec: Option<&Value>, out_dir: &str, label: &str) -> Result<Value, String> {
+fn hero_diff_labeled(io: &Io, comp_path: &str, build_path: &str, spec: Option<&Value>, out_dir: &str, label: &str) -> Result<(Value, CompareResult), String> {
     let comp = load_raster(io, comp_path)?;
     let build = load_raster(io, build_path)?;
     let res = compare(&comp, &build, spec, "top", label, None);
@@ -1741,8 +1775,7 @@ fn hero_diff_labeled(io: &Io, comp_path: &str, build_path: &str, spec: Option<&V
         "buildSize": format!("{}x{}", build.width, build.height),
     });
     let report = build_report(&res, Some(&files), &meta);
-    atomic_report(&abs(io, &format!("{out_dir}/report.json")), &report)?;
-    Ok(report)
+    Ok((report, res))
 }
 
 // ---- transitions -----------------------------------------------------------

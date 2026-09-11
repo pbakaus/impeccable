@@ -409,3 +409,36 @@ fn folded_readings_keep_all_region_ids_without_becoming_unscoped() {
         assert_eq!(bindings[id], json!([message]));
     }
 }
+
+#[test]
+fn responsive_failures_replace_previous_success_evidence() {
+    for failure in ["missing-comp", "crop-write"] {
+        let (ws, mut state) = simple_hero_workspace();
+        let image = std::fs::read(ws.path.join("comp.png")).unwrap();
+        ws.write(".impeccable/review/desktop.png", &image);
+        ws.write(".impeccable/review/mobile.png", &image);
+        let good = gate_responsive(&ws.io(), &mut state, RESPONSIVE_MIN, "diff");
+        assert!(good.ok, "{:?}", good.reasons);
+        let report: Value =
+            serde_json::from_slice(&std::fs::read(ws.path.join("diff/report.json")).unwrap())
+                .unwrap();
+        assert_eq!(report["gate"]["ok"], true);
+        assert_eq!(report["interpretation"], "responsive-gate");
+        assert_eq!(report["regions"][0]["blocking"], false);
+        if failure == "missing-comp" {
+            std::fs::remove_file(ws.path.join("comp.png")).unwrap();
+        } else {
+            std::fs::remove_file(ws.path.join("diff/regions/button.png")).unwrap();
+            std::fs::create_dir(ws.path.join("diff/regions/button.png")).unwrap();
+        }
+        let bad = gate_responsive(&ws.io(), &mut state, RESPONSIVE_MIN, "diff");
+        assert!(!bad.ok);
+        let report: Value =
+            serde_json::from_slice(&std::fs::read(ws.path.join("diff/report.json")).unwrap())
+                .unwrap();
+        assert_eq!(report["gate"]["ok"], false, "{failure}");
+        assert_eq!(report["measurementsAvailable"], false);
+        assert_eq!(report["interpretation"], "responsive-gate");
+        assert_eq!(report["gate"]["reasons"], json!(bad.reasons));
+    }
+}

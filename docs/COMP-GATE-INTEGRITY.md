@@ -14,7 +14,7 @@ regions or shrinking their bounds to exclude required work.
 
 A standalone `comp-diff` report contains raw verdicts. The hero gate can interpret
 those measurements using current plate validation and rendered presence. For
-hero evidence:
+hero and responsive evidence:
 
 - `raw-report.json` retains uninterpreted metrics and verdicts.
 - `report.json` retains the same scores, adds `rawVerdict` to each region, and
@@ -34,8 +34,8 @@ gate reasons. It does not present the preceding capture as current evidence.
 
 Repair crops include only regions with current blockers; shared readings retain
 all affected region IDs. Frame-wide blockers keep their whole-frame evidence.
-The current report is marked incomplete before image writes and committed
-atomically only after the evidence files succeed. Write failures block the gate
+Both hero and responsive reports are marked incomplete before preflight and
+image writes, then committed atomically only after the evidence files succeed. Write failures block the gate
 and, when the report location is writable, publish an unavailable-evidence report.
 
 Stall feedback follows repeated blocking reasons. It never chooses an asset to
