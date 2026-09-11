@@ -35,7 +35,12 @@ gate reasons. It does not present the preceding capture as current evidence.
 Repair crops include only regions with current blockers; shared readings retain
 all affected region IDs. Frame-wide blockers keep their whole-frame evidence.
 Both hero and responsive reports are marked incomplete before preflight and
-image writes, then committed atomically only after the evidence files succeed. Write failures block the gate
+image writes, then committed atomically only after the evidence files succeed.
+Each attempt clears the previous raw report, whole-frame PNGs, and region PNGs;
+failed attempts also clear any partial evidence they wrote. Removed regions cannot
+leave old crops in a successful comparison. Cleanup is limited to generated files,
+does not follow region-directory symlinks, and blocks the gate if it fails.
+Write failures block the gate
 and, when the report location is writable, publish an unavailable-evidence report.
 
 Stall feedback follows repeated blocking reasons. It never chooses an asset to

@@ -1113,7 +1113,48 @@ fn unavailable_report(io: &Io, out_dir: &str, gate: &Gate, phase: &str) -> Resul
     let report = json!({ "interpretation": format!("{phase}-gate"), "measurementsAvailable": false,
         "regions": [], "gate": { "ok": false, "reasons": gate.reasons,
             "advisories": gate.advisories, "unscopedReasons": gate.reasons } });
-    atomic_report(&abs(io, &format!("{out_dir}/report.json")), &report)
+    // Invalidate the report before touching images; also clean partial writes on failure.
+    // Attempt cleanup even when the report itself cannot be replaced.
+    let report_write = atomic_report(&abs(io, &format!("{out_dir}/report.json")), &report);
+    let cleanup = clear_comparison_artifacts(&abs(io, out_dir));
+    report_write.and(cleanup)
+}
+
+fn clear_comparison_artifacts(out_dir: &Path) -> Result<(), String> {
+    // Only remove generated files. Never recursively delete a caller's output directory
+    // or follow a regions symlink into another directory. Unexpected directories at
+    // file paths remain obstructions: the subsequent writer must still fail closed.
+    fn remove_file(path: &Path) -> std::io::Result<()> {
+        match std::fs::symlink_metadata(path) {
+            Ok(meta) if !meta.is_dir() => std::fs::remove_file(path),
+            Ok(_) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+    let mut errors = Vec::new();
+    for name in ["raw-report.json", "side-by-side.png", "heatmap.png"] {
+        if let Err(e) = remove_file(&out_dir.join(name)) { errors.push(format!("{name}: {e}")); }
+    }
+    fn clear_regions(path: &Path, errors: &mut Vec<String>) -> std::io::Result<()> {
+        let meta = match std::fs::symlink_metadata(path) {
+            Ok(meta) => meta,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => return Err(e),
+        };
+        if meta.file_type().is_symlink() { return std::fs::remove_file(path); }
+        if meta.is_dir() {
+            for entry in std::fs::read_dir(path)? {
+                let child = entry?.path();
+                if let Err(e) = clear_regions(&child, errors) { errors.push(format!("{}: {e}", child.display())); }
+            }
+        } else if path.extension().and_then(|ext| ext.to_str()) == Some("png") {
+            std::fs::remove_file(path)?;
+        }
+        Ok(())
+    }
+    if let Err(e) = clear_regions(&out_dir.join("regions"), &mut errors) { errors.push(format!("regions: {e}")); }
+    if errors.is_empty() { Ok(()) } else { Err(format!("cannot clear comparison artifacts: {}", errors.join("; "))) }
 }
 
 #[allow(clippy::too_many_arguments)]

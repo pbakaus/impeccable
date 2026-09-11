@@ -329,6 +329,7 @@ fn failed_evidence_writes_cannot_publish_success() {
             &no_organic_scan,
         );
         assert!(!g.ok, "write failure must block: {blocked_file}");
+        assert_no_current_measurements(&ws);
         let report: Value =
             serde_json::from_slice(&std::fs::read(ws.path.join("diff/report.json")).unwrap())
                 .unwrap();
@@ -433,6 +434,7 @@ fn responsive_failures_replace_previous_success_evidence() {
         }
         let bad = gate_responsive(&ws.io(), &mut state, RESPONSIVE_MIN, "diff");
         assert!(!bad.ok);
+        assert_no_current_measurements(&ws);
         let report: Value =
             serde_json::from_slice(&std::fs::read(ws.path.join("diff/report.json")).unwrap())
                 .unwrap();
@@ -441,4 +443,74 @@ fn responsive_failures_replace_previous_success_evidence() {
         assert_eq!(report["interpretation"], "responsive-gate");
         assert_eq!(report["gate"]["reasons"], json!(bad.reasons));
     }
+}
+
+fn assert_no_current_measurements(ws: &Workspace) {
+    for file in ["raw-report.json", "side-by-side.png", "heatmap.png", "regions/button.png", "regions/retired.png", "regions/nested/retired.png"] {
+        assert!(!ws.path.join("diff").join(file).is_file(), "stale evidence: {file}");
+    }
+}
+
+#[test]
+fn failed_preflight_clears_complete_evidence_for_both_gates() {
+    for responsive in [false, true] {
+        let (ws, mut state) = simple_hero_workspace();
+        let image = std::fs::read(ws.path.join("comp.png")).unwrap();
+        ws.write(".impeccable/review/desktop.png", &image);
+        ws.write(".impeccable/review/mobile.png", &image);
+        let run = |state: &mut Value| if responsive {
+            gate_responsive(&ws.io(), state, RESPONSIVE_MIN, "diff")
+        } else {
+            gate_hero(&ws.io(), state, "comp.png", HERO_MIN, "diff", Some("index.html"), &no_organic_scan)
+        };
+        assert!(run(&mut state).ok);
+        ws.write("diff/regions/retired.png", &image);
+        ws.write("diff/regions/nested/retired.png", &image);
+        ws.write("diff/notes.txt", b"keep unrelated files");
+        std::fs::remove_file(ws.path.join("comp.png")).unwrap();
+        assert!(!run(&mut state).ok);
+        assert_no_current_measurements(&ws);
+        assert_eq!(std::fs::read(ws.path.join("diff/notes.txt")).unwrap(), b"keep unrelated files");
+    }
+}
+
+#[test]
+fn successful_repeat_removes_retired_region_crops() {
+    let (ws, mut state) = simple_hero_workspace();
+    ws.write("diff/regions/retired.png", b"old crop");
+    let gate = gate_hero(&ws.io(), &mut state, "comp.png", HERO_MIN, "diff", Some("index.html"), &no_organic_scan);
+    assert!(gate.ok, "{:?}", gate.reasons);
+    assert!(!ws.path.join("diff/regions/retired.png").exists());
+    assert!(ws.path.join("diff/regions/button.png").is_file());
+}
+
+#[cfg(unix)]
+#[test]
+fn artifact_cleanup_does_not_follow_region_directory_symlinks() {
+    let (ws, mut state) = simple_hero_workspace();
+    ws.write("elsewhere/keep.png", b"unrelated image");
+    std::fs::create_dir_all(ws.path.join("diff")).unwrap();
+    std::os::unix::fs::symlink(ws.path.join("elsewhere"), ws.path.join("diff/regions")).unwrap();
+    let gate = gate_hero(&ws.io(), &mut state, "comp.png", HERO_MIN, "diff", Some("index.html"), &no_organic_scan);
+    assert!(gate.ok, "{:?}", gate.reasons);
+    assert_eq!(std::fs::read(ws.path.join("elsewhere/keep.png")).unwrap(), b"unrelated image");
+    assert!(!ws.path.join("elsewhere/button.png").exists());
+    assert!(ws.path.join("diff/regions/button.png").is_file());
+}
+
+#[cfg(unix)]
+#[test]
+fn artifact_cleanup_failure_blocks_the_gate() {
+    use std::os::unix::fs::PermissionsExt;
+    let (ws, mut state) = simple_hero_workspace();
+    ws.write("diff/regions/retired.png", b"stale crop");
+    let dir = ws.path.join("diff/regions");
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let gate = gate_hero(&ws.io(), &mut state, "comp.png", HERO_MIN, "diff", Some("index.html"), &no_organic_scan);
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(!gate.ok);
+    assert!(gate.reasons.iter().any(|r| r.contains("cannot clear comparison artifacts")), "{:?}", gate.reasons);
+    let report: Value = serde_json::from_slice(&std::fs::read(ws.path.join("diff/report.json")).unwrap()).unwrap();
+    assert_eq!(report["measurementsAvailable"], false);
+    assert_eq!(report["gate"]["ok"], false);
 }
