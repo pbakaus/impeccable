@@ -461,13 +461,16 @@ npx impeccable detect --no-config src/       # raw scan, ignoring project config
 npx impeccable ignores list                  # show detector ignores
 npx impeccable ignores add-file "src/legacy/**"
 npx impeccable ignores add-value overused-font Inter --reason "Brand font"
+npx impeccable ignores add-selector undersized-ui-text ".ks-tag" --reason "10px mono label, by design"
 ```
 
 The detector catches 61 deterministic issues across AI slop (side-tab borders, purple gradients, bounce easing, dark glows) and general design quality (line length, cramped padding, small touch targets, skipped headings, and more).
 
 Human-readable findings are diagnostics written to stderr, so redirect them with `2> findings.txt`. Use `--json` for machine-readable results on stdout. Exit `0` means the scan completed without primary findings, exit `2` means it completed with primary findings, and exit `1` means at least one requested target could not be scanned; operational failure takes precedence for a partial multi-target scan. URL scans inspect the rendered DOM, computed layout, and accessible linked stylesheets; browser security still prevents reading cross-origin CSS without CORS. A clean detector run is evidence, not proof of visual or accessibility quality: it does not replace inspecting the rendered experience across relevant viewports.
 
-By default, `detect` respects the same `.impeccable/config.json` and `.impeccable/config.local.json` detector config as the design hook: `detector.ignoreRules`, `detector.ignoreFiles`, `detector.ignoreValues`, and `detector.designSystem.enabled`. Hook lifecycle settings such as `hook.enabled` only affect automatic hook execution.
+By default, `detect` respects the same `.impeccable/config.json` and `.impeccable/config.local.json` detector config as the design hook: `detector.ignoreRules`, `detector.ignoreFiles`, `detector.ignoreValues`, `detector.ignoreSelectors`, and `detector.designSystem.enabled`. Hook lifecycle settings such as `hook.enabled` only affect automatic hook execution.
+
+`detector.ignoreSelectors` is the component-level opt-out. One entry, written by `ignores add-selector <rule> "<selector>"`, waives that rule for every element the CSS selector matches and for that element's subtree, so a component with eleven instances takes one line of config instead of eleven `data-impeccable-ignore` attributes in the markup. What it suppressed is never silent: each scan prints a line per entry on stderr, `3 undersized-ui-text hits ignored by detector.ignoreSelectors on .ks-tag.`, in JSON mode too, so a reviewer sees the count next to the findings.
 
 For a waiver that should travel with one file instead of the repo config, add an inline comment in the file: `<!-- impeccable-disable overused-font: exported brand doc -->`. The marker works in any comment syntax, scopes to the whole file (or one line with `impeccable-disable-line` / `impeccable-disable-next-line`), and is bypassed by `--no-inline-ignores` or `--no-config`.
 

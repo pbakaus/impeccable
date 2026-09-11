@@ -73,6 +73,11 @@ if (IS_BROWSER && !__impeccable) {
       // applies them where the findings are assembled, because the overlay
       // draws its markers from the collected findings.
       disabledValues: Array.isArray(config.disabledValues) ? config.disabledValues : [],
+      // detector.ignoreSelectors: the project's component-level opt-outs,
+      // [{ rule, selector }]. The core waives a finding on any element the
+      // selector matches, and on its subtree, the way the
+      // data-impeccable-ignore attribute waives the element carrying it.
+      ignoreSelectors: Array.isArray(config.ignoreSelectors) ? config.ignoreSelectors : [],
       designSystem: config.designSystem == null ? null : config.designSystem,
       lineLengthMax: config.lineLengthMax == null ? null : config.lineLengthMax,
       skipScan: config.skipScan === true,

@@ -141,12 +141,31 @@ pub fn check_detector_ignores(project_root: &str, known_rule_ids: Option<&[Strin
             continue;
         }
         let rel = to_relative(Some(&fp), project_root).unwrap();
-        if let (Some(known), Some(rules)) = (known_rule_ids, detector.get("ignoreRules").and_then(|v| v.as_array())) {
-            let unknown: Vec<String> = rules
-                .iter()
-                .map(|r| js_trim(&js_string_or_empty(r)).to_lowercase())
-                .filter(|r| !r.is_empty() && r != "*" && !known.contains(r))
-                .collect();
+        if let Some(known) = known_rule_ids {
+            let rules = detector
+                .get("ignoreRules")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+            // A component ignore names a rule too, and a typo there is the
+            // same dead entry: it waives nothing and nobody hears about it.
+            let selector_rules: Vec<Value> = detector
+                .get("ignoreSelectors")
+                .and_then(|v| v.as_array())
+                .map(|list| {
+                    list.iter()
+                        .filter_map(|e| e.get("rule").cloned())
+                        .collect()
+                })
+                .unwrap_or_default();
+            let mut unknown: Vec<String> = Vec::new();
+            for r in rules.iter().chain(selector_rules.iter()) {
+                let id = js_trim(&js_string_or_empty(r)).to_lowercase();
+                if id.is_empty() || id == "*" || known.contains(&id) || unknown.contains(&id) {
+                    continue;
+                }
+                unknown.push(id);
+            }
             if !unknown.is_empty() {
                 out.push(finding(
                     "detector-ignore-rules-unknown",

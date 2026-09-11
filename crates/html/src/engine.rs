@@ -28,7 +28,8 @@ use crate::profile::{self, Meta, ProfileSink};
 use crate::quality::{check_element_quality, check_page_quality_from_doc, pf0};
 use impeccable_core::checks::html_patterns::{check_html_patterns, HtmlPatternCorpora};
 use impeccable_core::checks::rules::RuleHit;
-use impeccable_core::findings::{try_finding, Finding};
+use impeccable_core::findings::{stamp_ignored_by, try_finding, Finding};
+use impeccable_core::selector_ignores::{waiving_selector, SelectorIgnore};
 use impeccable_core::inline_ignores::apply_inline_ignores;
 use impeccable_core::page::is_full_page;
 use once_cell::sync::Lazy;
@@ -80,6 +81,13 @@ pub struct DetectHtmlOptions<'a> {
     /// Sink for the JS `process.stderr.write` notices (unreadable linked
     /// stylesheets); `None` drops them.
     pub warn: Option<&'a dyn Fn(&str)>,
+    /// The project's component-level opt-outs (`detector.ignoreSelectors`),
+    /// already narrowed to the entries whose `files` globs cover this file.
+    /// An element finding whose element (or an ancestor of it) matches one of
+    /// these selectors is stamped `ignoredBy: "<selector>"` rather than
+    /// dropped, so the config layer can count what it suppresses. Empty by
+    /// default, which is the behavior every existing caller gets.
+    pub ignore_selectors: &'a [SelectorIgnore],
     /// A rule pack's static-document hook: rules over the parsed page.
     pub static_rule_pack: Option<&'static dyn StaticRulePack>,
     /// The same pack's engine-wide text hook. An HTML file gets **one** pack
@@ -228,8 +236,14 @@ pub fn detect_html_source(
                 if scoped_ignore_active(el, &h.id) {
                     continue;
                 }
+                // A component-level opt-out waives the same way the attribute
+                // does (self or ancestor), but the finding is stamped rather
+                // than dropped so the config layer can count it.
+                let waived = waiving_selector(options.ignore_selectors, &h.id, |sel| {
+                    el.closest(sel).is_some()
+                });
                 if let Some(f) = mk(&h.id, &h.snippet) {
-                    findings.push(f);
+                    findings.push(stamp_ignored_by(f, waived));
                 }
             }
         }
@@ -316,6 +330,7 @@ pub fn detect_html_source(
             },
         );
         for f in pattern_hits {
+            let mut pattern_waived: Option<String> = None;
             if let Some(selector) = f.selector.as_deref() {
                 let stripped = PSEUDO_STRIP_RE.replace_all(selector, "");
                 let stripped = impeccable_core::js::trim(&stripped);
@@ -329,6 +344,24 @@ pub fn detect_html_source(
                     {
                         continue;
                     }
+                    // A selector-backed pattern finding is waived by config
+                    // only when every element it names is covered, the same
+                    // all-or-nothing rule the attribute pass above applies.
+                    if !matches.is_empty() {
+                        let mut covering: Option<&str> = None;
+                        for el in &matches {
+                            match waiving_selector(options.ignore_selectors, &f.id, |sel| {
+                                el.closest(sel).is_some()
+                            }) {
+                                Some(sel) => covering = covering.or(Some(sel)),
+                                None => {
+                                    covering = None;
+                                    break;
+                                }
+                            }
+                        }
+                        pattern_waived = covering.map(str::to_string);
+                    }
                 }
             }
             if let Some(mut item) = mk(&f.id, &f.snippet) {
@@ -336,7 +369,7 @@ pub fn detect_html_source(
                     item.severity = sev.clone();
                 }
                 impeccable_core::findings::derive_advisory_flag(&mut item);
-                findings.push(item);
+                findings.push(stamp_ignored_by(item, pattern_waived.as_deref()));
             }
         }
 

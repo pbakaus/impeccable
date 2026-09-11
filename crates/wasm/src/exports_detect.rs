@@ -7,13 +7,22 @@
 //! ```json
 //! {
 //!   "inlineIgnores": true,
-//!   "designSystem": { "frontmatter": { ... }, "sidecar": { ... } }
+//!   "designSystem": { "frontmatter": { ... }, "sidecar": { ... } },
+//!   "ignoreSelectors": [{ "rule": "undersized-ui-text", "selector": ".ks-tag" }]
 //! }
 //! ```
 //!
 //! - `inlineIgnores` (default `true`): apply the `impeccable-disable` waivers
 //!   found in the source, exactly as the CLI does. `false` reports waived
 //!   findings too.
+//! - `ignoreSelectors`: the project's component-level opt-outs, the
+//!   `detector.ignoreSelectors` entries whose `files` globs cover this file
+//!   (the host narrows them; the engine matches selectors only). A finding on
+//!   an element the selector matches, or on a descendant of one, comes back
+//!   carrying `ignoredBy: "<selector>"` instead of being dropped, so a host
+//!   can report how many hits an author's opt-out silenced. Applies to the
+//!   HTML engine, where elements exist; the text engine has no DOM to match
+//!   against and ignores the key.
 //! - `designSystem`: the DESIGN.md inputs, not a pre-normalized object (the
 //!   JS API's `options.designSystem` carried `Set`s and `Map`s, which JSON
 //!   cannot). `frontmatter` is the parsed DESIGN.md frontmatter, `sidecar`
@@ -42,6 +51,7 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use impeccable_detect::design_system::{normalize_design_system, DesignSystem};
+use impeccable_core::selector_ignores::SelectorIgnore;
 use impeccable_detect::detect_text::{detect_text, TextOptions};
 use impeccable_html::{detect_html_source, DesignSystemHook, DetectHtmlOptions, StaticRulePack};
 use serde_json::Value;
@@ -65,6 +75,7 @@ pub fn installed_static_rule_pack() -> Option<&'static dyn StaticRulePack> {
 struct Options {
     inline_ignores: bool,
     design_system: Option<DesignSystem>,
+    ignore_selectors: Vec<SelectorIgnore>,
 }
 
 fn parse_options(options_json: &str) -> Options {
@@ -87,9 +98,24 @@ fn parse_options(options_json: &str) -> Options {
             false,
         ))
     });
+    let ignore_selectors = parsed
+        .get("ignoreSelectors")
+        .and_then(Value::as_array)
+        .map(|list| {
+            list.iter()
+                .filter_map(|e| {
+                    let rule = e.get("rule").and_then(Value::as_str)?;
+                    let selector = e.get("selector").and_then(Value::as_str)?;
+                    let entry = SelectorIgnore::new(rule, selector);
+                    entry.is_valid().then_some(entry)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     Options {
         inline_ignores,
         design_system,
+        ignore_selectors,
     }
 }
 
@@ -142,6 +168,7 @@ pub fn detect_html_source_json(html: &str, file_path: &str, options_json: &str) 
             warn: None,
             static_rule_pack: installed_static_rule_pack(),
             rule_pack: crate::installed_rule_pack(),
+            ignore_selectors: &options.ignore_selectors,
         },
     );
     findings_json(&findings)

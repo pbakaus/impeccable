@@ -39,7 +39,14 @@ const KNOWN_CONFIG_KEYS: [&str; 8] =
     ["hook", "detector", "updateCheck", "stalenessCheck", "projectRoots", "buildPath", "$schema", "version"];
 const BUILD_PATH_VALUES: [&str; 2] = ["comp", "code"];
 const DIRECTION_WORK_PATHS: [&str; 2] = [".impeccable/surfaces", ".impeccable/mocks/decision"];
-const KNOWN_DETECTOR_KEYS: [&str; 5] = ["ignoreRules", "ignoreFiles", "ignoreValues", "designSystem", "extensions"];
+const KNOWN_DETECTOR_KEYS: [&str; 6] = [
+    "ignoreRules",
+    "ignoreFiles",
+    "ignoreValues",
+    "ignoreSelectors",
+    "designSystem",
+    "extensions",
+];
 
 struct NativeEvidence {
     platform: &'static str,

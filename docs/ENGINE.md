@@ -204,11 +204,19 @@ over the file-scanning engines, JSON in and JSON out:
 - `detect_text_json(content, file_path, options_json)`
 - `detect_html_source_json(html, file_path, options_json)`
 
-Both take `{ inlineIgnores?: boolean, designSystem?: { frontmatter?, sidecar? } }`
+Both take
+`{ inlineIgnores?: boolean, designSystem?: { frontmatter?, sidecar? }, ignoreSelectors?: [{ rule, selector }] }`
 and return the findings array `impeccable detect --json` prints, same keys and
 same order. `designSystem` carries the DESIGN.md inputs rather than a
 normalized object, because the JS API's normalized form used `Set`s and
-`Map`s that JSON cannot hold. Unparseable options fall back to the defaults.
+`Map`s that JSON cannot hold. `ignoreSelectors` is the project's
+component-level opt-out (`detector.ignoreSelectors`), already narrowed by the
+host to the entries whose `files` globs cover this file: a finding on an
+element the selector matches, or on a descendant of one, comes back carrying
+`ignoredBy: "<selector>"` rather than being dropped, so the host can count
+what an author's opt-out silenced and say so. Only the HTML engine matches
+selectors; the text engine has no DOM and ignores the key. Unparseable
+options fall back to the defaults.
 `antipatterns_json()` lists the built-ins followed by any pack's rows, and
 `immediate_tier_rules_json()` returns the design hook's immediate tier (the
 rule ids worth fixing at the edit site). That list lives in

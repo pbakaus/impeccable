@@ -5,6 +5,7 @@
 
 use impeccable_core::findings::Finding;
 use impeccable_core::js::{self, math_round, number_to_string, parse_float, parse_int};
+use impeccable_core::selector_ignores::SelectorIgnore;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde_json::{Map, Value};
@@ -42,6 +43,7 @@ const DETECTOR_CONFIG_KEYS: &[&str] = &[
     "ignoreRules",
     "ignoreFiles",
     "ignoreValues",
+    "ignoreSelectors",
     "designSystem",
     "advisoryRules",
 ];
@@ -78,6 +80,44 @@ impl IgnoreValueEntry {
     }
 }
 
+/// One normalized `ignoreSelectors` entry: a component-level opt-out.
+///
+/// `{ rule, selector }` waives one rule for every element the selector
+/// matches and for that element's subtree, which is the same waiver
+/// `data-impeccable-ignore="<rule>"` grants the element that carries it. The
+/// point is the count: eleven instances of one component take one entry here
+/// instead of eleven attributes in the markup, and the engine reports what
+/// the entry suppressed rather than staying silent about it.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct IgnoreSelectorEntry {
+    pub rule: String,
+    pub selector: String,
+    pub files: Option<Vec<String>>,
+    pub created_at: Option<String>,
+    pub reason: Option<String>,
+}
+
+impl IgnoreSelectorEntry {
+    pub fn to_json(&self) -> Value {
+        let mut m = Map::new();
+        m.insert("rule".into(), Value::String(self.rule.clone()));
+        m.insert("selector".into(), Value::String(self.selector.clone()));
+        if let Some(files) = &self.files {
+            m.insert(
+                "files".into(),
+                Value::Array(files.iter().map(|f| Value::String(f.clone())).collect()),
+            );
+        }
+        if let Some(c) = &self.created_at {
+            m.insert("createdAt".into(), Value::String(c.clone()));
+        }
+        if let Some(r) = &self.reason {
+            m.insert("reason".into(), Value::String(r.clone()));
+        }
+        Value::Object(m)
+    }
+}
+
 /// The detector config object (`readDetectionConfig` / `readRawDetectionConfig`
 /// result). `design_system` is `Some` when the JS object carries a
 /// `designSystem` key.
@@ -86,6 +126,7 @@ pub struct DetectionConfig {
     pub ignore_rules: Vec<String>,
     pub ignore_files: Vec<String>,
     pub ignore_values: Vec<IgnoreValueEntry>,
+    pub ignore_selectors: Vec<IgnoreSelectorEntry>,
     pub design_system_enabled: Option<bool>,
     pub advisory_rules: Option<String>,
 }
@@ -130,6 +171,9 @@ fn apply_detection_config_source(config: &mut DetectionConfig, raw: Option<&Map<
     }
     if let Some(Value::Array(values)) = raw.get("ignoreValues") {
         config.ignore_values = merge_ignore_values(&config.ignore_values, values);
+    }
+    if let Some(Value::Array(selectors)) = raw.get("ignoreSelectors") {
+        config.ignore_selectors = merge_ignore_selectors(&config.ignore_selectors, selectors);
     }
 }
 
@@ -189,6 +233,22 @@ pub fn write_detection_config(
         .unwrap_or_default();
     for (k, v) in normalize_detection_config_for_write(detector_config) {
         next_detector.insert(k, v);
+    }
+    // `ignoreSelectors` is written only by a project that uses it, so a config
+    // that never opted into component-level ignores does not grow an empty
+    // key on the next `ignores add-rule`.
+    if !detector_config.ignore_selectors.is_empty()
+        || next_detector.contains_key("ignoreSelectors")
+    {
+        next_detector.insert(
+            "ignoreSelectors".into(),
+            Value::Array(
+                normalize_ignore_selector_entries_typed(&detector_config.ignore_selectors)
+                    .iter()
+                    .map(IgnoreSelectorEntry::to_json)
+                    .collect(),
+            ),
+        );
     }
     let mut next = existing.clone();
     next.insert("detector".into(), Value::Object(next_detector));
@@ -643,6 +703,187 @@ fn merge_ignore_values(existing: &[IgnoreValueEntry], incoming: &[Value]) -> Vec
     map.into_iter().map(|(_, e)| e).collect()
 }
 
+/// `normalizeIgnoreValueEntries`' twin for `ignoreSelectors`. The rule is
+/// lowercased like every other rule id; the selector keeps its case (CSS
+/// class names are case-sensitive) and only loses surrounding whitespace.
+/// An entry missing either half is dropped: a selector ignore with no
+/// selector would be `ignoreRules`, and one with no rule would be
+/// `ignoreFiles` by another name.
+pub fn normalize_ignore_selector_entries(entries: &[Value]) -> Vec<IgnoreSelectorEntry> {
+    let mut out = Vec::new();
+    for entry in entries {
+        let Value::Object(entry) = entry else {
+            continue;
+        };
+        let rule = normalize_ignore_rule(
+            &entry
+                .get("rule")
+                .map(js_string_or_empty)
+                .unwrap_or_default(),
+        );
+        let selector = js::trim(
+            &entry
+                .get("selector")
+                .map(js_string_or_empty)
+                .unwrap_or_default(),
+        )
+        .to_string();
+        if rule.is_empty() || selector.is_empty() {
+            continue;
+        }
+        let mut files: Vec<String> = Vec::new();
+        if let Some(Value::String(f)) = entry.get("file") {
+            if !js::trim(f).is_empty() {
+                files.push(js::trim(f).to_string());
+            }
+        }
+        if let Some(Value::Array(list)) = entry.get("files") {
+            for f in list {
+                if let Value::String(f) = f {
+                    if !js::trim(f).is_empty() {
+                        files.push(js::trim(f).to_string());
+                    }
+                }
+            }
+        }
+        let files = unique_strings(files);
+        let mut normalized = IgnoreSelectorEntry {
+            rule,
+            selector,
+            files: if files.is_empty() { None } else { Some(files) },
+            created_at: None,
+            reason: None,
+        };
+        if let Some(Value::String(c)) = entry.get("createdAt") {
+            if !js::trim(c).is_empty() {
+                normalized.created_at = Some(js::trim(c).to_string());
+            }
+        }
+        if let Some(Value::String(r)) = entry.get("reason") {
+            if !js::trim(r).is_empty() {
+                normalized.reason = Some(js::trim(r).to_string());
+            }
+        }
+        out.push(normalized);
+    }
+    out
+}
+
+/// The same normalization over already-typed entries (idempotent on write).
+pub fn normalize_ignore_selector_entries_typed(
+    entries: &[IgnoreSelectorEntry],
+) -> Vec<IgnoreSelectorEntry> {
+    let raw: Vec<Value> = entries.iter().map(IgnoreSelectorEntry::to_json).collect();
+    normalize_ignore_selector_entries(&raw)
+}
+
+fn selector_entry_key(entry: &IgnoreSelectorEntry) -> String {
+    format!(
+        "{}\0{}\0{}",
+        entry.rule,
+        entry.selector,
+        ignore_value_files_key(entry.files.as_ref())
+    )
+}
+
+/// Merge raw `ignoreSelectors` JSON into an existing list, later entries
+/// replacing earlier ones with the same rule + selector + files key. Shared
+/// with the hook's own config reader.
+pub fn merge_ignore_selectors(
+    existing: &[IgnoreSelectorEntry],
+    incoming: &[Value],
+) -> Vec<IgnoreSelectorEntry> {
+    let mut map: Vec<(String, IgnoreSelectorEntry)> = Vec::new();
+    let mut set = |entry: IgnoreSelectorEntry| {
+        let key = selector_entry_key(&entry);
+        if let Some(slot) = map.iter_mut().find(|(k, _)| *k == key) {
+            slot.1 = entry;
+        } else {
+            map.push((key, entry));
+        }
+    };
+    for entry in normalize_ignore_selector_entries_typed(existing) {
+        set(entry);
+    }
+    for entry in normalize_ignore_selector_entries(incoming) {
+        set(entry);
+    }
+    map.into_iter().map(|(_, e)| e).collect()
+}
+
+/// The entries that govern one local scan target, as the engines take them.
+///
+/// An entry with no `files` covers every target. An entry with `files` covers
+/// the paths its globs match, tested the way a scoped `ignoreValues` entry is
+/// (raw path, then each `/`-suffix of it).
+pub fn selector_ignores_for_target(
+    config: &DetectionConfig,
+    target: &str,
+) -> Vec<SelectorIgnore> {
+    selector_ignores_filtered(config, |files| path_matches_scoped_globs(target, files))
+}
+
+/// The entries that govern a URL scan: the unscoped ones only.
+///
+/// `files` globs describe repo paths, and a URL is not one. Matching them
+/// against the URL would let a glob like `index.html` reach
+/// `https://example.com/index.html` by accident, scoping an ignore to a page
+/// the entry never named.
+pub fn selector_ignores_for_url(config: &DetectionConfig) -> Vec<SelectorIgnore> {
+    selector_ignores_filtered(config, |_| false)
+}
+
+fn selector_ignores_filtered(
+    config: &DetectionConfig,
+    covers: impl Fn(&[String]) -> bool,
+) -> Vec<SelectorIgnore> {
+    normalize_ignore_selector_entries_typed(&config.ignore_selectors)
+        .into_iter()
+        .filter(|e| match &e.files {
+            Some(files) if !files.is_empty() => covers(files),
+            _ => true,
+        })
+        .map(|e| SelectorIgnore::new(&e.rule, &e.selector))
+        .collect()
+}
+
+/// One `(rule, selector)` pair and how many findings it waived on this run.
+#[derive(Debug, Clone, PartialEq)]
+pub struct IgnoredBySelector {
+    pub rule: String,
+    pub selector: String,
+    pub count: usize,
+}
+
+/// Split the findings the engines stamped with `ignoredBy` out of the
+/// reportable set, counted by rule and selector in first-seen order. This is
+/// what turns a component-level opt-out into a number a reviewer can read
+/// instead of silence.
+pub fn partition_selector_ignored(findings: Vec<Finding>) -> (Vec<Finding>, Vec<IgnoredBySelector>) {
+    let mut kept = Vec::with_capacity(findings.len());
+    let mut report: Vec<IgnoredBySelector> = Vec::new();
+    for f in findings {
+        match impeccable_core::findings::ignored_by(&f) {
+            Some(selector) => {
+                let rule = normalize_ignore_rule(&f.antipattern);
+                match report
+                    .iter_mut()
+                    .find(|r| r.rule == rule && r.selector == selector)
+                {
+                    Some(slot) => slot.count += 1,
+                    None => report.push(IgnoredBySelector {
+                        rule,
+                        selector: selector.to_string(),
+                        count: 1,
+                    }),
+                }
+            }
+            None => kept.push(f),
+        }
+    }
+    (kept, report)
+}
+
 fn escape_glob_char(c: char) -> bool {
     matches!(
         c,
@@ -766,8 +1007,24 @@ pub fn should_ignore_detection_file(file_path: &str, root: &str, config: &Detect
     false
 }
 
-/// JS: impeccable-config.mjs#filterDetectionFindings
+/// JS: impeccable-config.mjs#filterDetectionFindings, plus the
+/// component-level opt-outs the engines stamped. Callers that want the count
+/// of what a selector ignore suppressed use
+/// [`filter_detection_findings_reported`].
 pub fn filter_detection_findings(findings: Vec<Finding>, config: &DetectionConfig) -> Vec<Finding> {
+    filter_detection_findings_reported(findings, config).0
+}
+
+/// `filterDetectionFindings` with the selector-ignore tally alongside it.
+pub fn filter_detection_findings_reported(
+    findings: Vec<Finding>,
+    config: &DetectionConfig,
+) -> (Vec<Finding>, Vec<IgnoredBySelector>) {
+    let (findings, report) = partition_selector_ignored(findings);
+    (filter_by_rules_and_values(findings, config), report)
+}
+
+fn filter_by_rules_and_values(findings: Vec<Finding>, config: &DetectionConfig) -> Vec<Finding> {
     if findings.is_empty() {
         return vec![];
     }
@@ -813,7 +1070,13 @@ fn is_ignored_finding_value(finding: &Finding, ignore_values: &[IgnoreValueEntry
 }
 
 fn finding_matches_scoped_ignore_file(finding: &Finding, globs: &[String]) -> bool {
-    let file_path = js::trim(&finding.file);
+    path_matches_scoped_globs(&finding.file, globs)
+}
+
+/// JS `findingMatchesScopedIgnoreFile`'s path test: the raw path, then every
+/// `/`-suffix of it, so `src/a.css` is matched by `a.css` too.
+fn path_matches_scoped_globs(path: &str, globs: &[String]) -> bool {
+    let file_path = js::trim(path);
     if file_path.is_empty() {
         return false;
     }
@@ -1120,5 +1383,99 @@ mod tests {
         assert_eq!(normalize_ignore_value(" 'Open+Sans' "), "open sans");
         assert_eq!(decode_uri_component("Open%20Sans"), "Open Sans");
         assert_eq!(decode_uri_component("bad%zz"), "bad%zz");
+    }
+
+    fn config_with_selectors(raw: &str) -> DetectionConfig {
+        let mut config = DetectionConfig::with_defaults();
+        let parsed: Value = serde_json::from_str(raw).unwrap();
+        apply_detection_config_source(&mut config, parsed.as_object());
+        config
+    }
+
+    #[test]
+    fn ignore_selectors_parse_normalize_and_merge() {
+        let config = config_with_selectors(
+            r#"{"ignoreSelectors":[
+                {"rule":"Undersized-UI-Text","selector":"  .ks-tag  ","reason":"by design"},
+                {"rule":"","selector":".x"},
+                {"rule":"side-tab"},
+                "nope",
+                {"rule":"undersized-ui-text","selector":".ks-tag","reason":"second word wins"},
+                {"rule":"glow-effect","selector":".demo","files":["src/demo/**","  "]}
+            ]}"#,
+        );
+        // Half-entries and junk are dropped, and the same rule+selector+files
+        // key is one entry the later value replaces.
+        assert_eq!(config.ignore_selectors.len(), 2);
+        let first = &config.ignore_selectors[0];
+        assert_eq!(first.rule, "undersized-ui-text");
+        assert_eq!(first.selector, ".ks-tag");
+        assert_eq!(first.reason.as_deref(), Some("second word wins"));
+        assert_eq!(
+            config.ignore_selectors[1].files.as_deref(),
+            Some(["src/demo/**".to_string()].as_slice())
+        );
+    }
+
+    #[test]
+    fn selector_ignores_are_narrowed_per_target() {
+        let config = config_with_selectors(
+            r#"{"ignoreSelectors":[
+                {"rule":"undersized-ui-text","selector":".ks-tag"},
+                {"rule":"glow-effect","selector":".demo","files":["src/demo/**"]}
+            ]}"#,
+        );
+        let everywhere = selector_ignores_for_target(&config, "src/pages/index.astro");
+        assert_eq!(everywhere.len(), 1);
+        assert_eq!(everywhere[0].selector, ".ks-tag");
+        let scoped = selector_ignores_for_target(&config, "src/demo/playground.astro");
+        assert_eq!(scoped.len(), 2);
+        // A URL scan is covered by the unscoped entries only: a `files` glob
+        // describes repo paths, and must not reach a URL path that happens to
+        // end the same way.
+        assert_eq!(selector_ignores_for_url(&config).len(), 1);
+        let url_globs = config_with_selectors(
+            r#"{"ignoreSelectors":[
+                {"rule":"glow-effect","selector":".demo","files":["index.html"]}
+            ]}"#,
+        );
+        assert!(selector_ignores_for_url(&url_globs).is_empty());
+        assert_eq!(
+            selector_ignores_for_target(&url_globs, "src/index.html").len(),
+            1
+        );
+        // `--no-config` leaves the list empty, so nothing is waived.
+        assert!(selector_ignores_for_target(&DetectionConfig::raw(), "a.html").is_empty());
+    }
+
+    #[test]
+    fn stamped_findings_leave_the_reportable_set_as_a_count() {
+        let stamp = |rule: &str, selector: Option<&str>| {
+            impeccable_core::findings::stamp_ignored_by(
+                impeccable_core::findings::finding(rule, "a.html", "snip", 0.0),
+                selector,
+            )
+        };
+        let findings = vec![
+            stamp("undersized-ui-text", Some(".ks-tag")),
+            stamp("undersized-ui-text", Some(".ks-tag")),
+            stamp("side-tab", Some(".ks-tag")),
+            stamp("undersized-ui-text", None),
+        ];
+        let (kept, report) =
+            filter_detection_findings_reported(findings, &DetectionConfig::with_defaults());
+        assert_eq!(kept.len(), 1);
+        assert_eq!(report.len(), 2);
+        assert_eq!(report[0].rule, "undersized-ui-text");
+        assert_eq!(report[0].selector, ".ks-tag");
+        assert_eq!(report[0].count, 2);
+        assert_eq!(report[1].count, 1);
+        // Nothing stamped, nothing reported.
+        let (kept, report) = filter_detection_findings_reported(
+            vec![stamp("side-tab", None)],
+            &DetectionConfig::with_defaults(),
+        );
+        assert_eq!(kept.len(), 1);
+        assert!(report.is_empty());
     }
 }

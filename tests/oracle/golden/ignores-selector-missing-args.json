@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "Pass a rule id and a CSS selector, e.g. impeccable ignores add-selector undersized-ui-text \".ks-tag\"\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

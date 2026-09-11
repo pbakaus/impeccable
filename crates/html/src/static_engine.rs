@@ -80,6 +80,7 @@ impl HtmlEngine for StaticHtmlEngine {
             warn: Some(&warn),
             static_rule_pack: self.static_rule_pack,
             rule_pack: options.rule_pack,
+            ignore_selectors: &options.ignore_selectors,
         };
         detect_html(Path::new(path), &html_options).map_err(|e| {
             EngineError::new(match e {

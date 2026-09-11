@@ -7,6 +7,7 @@ use std::rc::Rc;
 
 use impeccable_core::findings::Finding;
 use impeccable_core::rule_pack::RulePack;
+use impeccable_core::selector_ignores::SelectorIgnore;
 
 use crate::design_system::DesignSystem;
 use crate::profiler::DetectorProfile;
@@ -23,6 +24,10 @@ pub struct ScanOptions {
     pub viewport: Option<(u32, u32)>,
     /// JS `options.profile` (library callers only; no CLI flag).
     pub profile: Option<Rc<DetectorProfile>>,
+    /// The project's component-level opt-outs for this target
+    /// (`detector.ignoreSelectors`, narrowed to the entries whose `files`
+    /// globs cover it). Empty under `--no-config`.
+    pub ignore_selectors: Vec<SelectorIgnore>,
     /// The installed rule pack (`impeccable_core::rule_pack`), passed through
     /// to the text engine and on to the HTML engine. `None` in the `impeccable`
     /// binary, which ships the built-in rules only.
