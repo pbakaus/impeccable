@@ -1,0 +1,7 @@
+{
+  "detector": {
+    "extensions": [
+      { "ext": ".html.erb", "engine": "html" }
+    ]
+  }
+}

@@ -17,6 +17,27 @@ const claudeEdit = (file, extra = {}) => ({
 const stop = (extra = {}) => ({ session_id: 's1', cwd: WS, hook_event_name: 'Stop', stop_hook_active: false, ...extra });
 
 export default [
+  ...['vue', 'blade.php'].map(suffix => {
+    const file = `src/Card.${suffix}`;
+    const before = '<div>Before</div>\n<style>\n.card { border-left: 4px solid #6366f1; }\n</style>\n';
+    return {
+      id: `hook-template-baseline-${suffix.replaceAll('.', '-')}`,
+      workspace: 'hook-project', files: CACHE_FILES,
+      normalize: [['("stopBaseline":\\{"version":1,"engine":")[^"]+', 'g', '$1<ENGINE_VERSION>']],
+      setup(ws) {
+        fs.writeFileSync(`${ws}/${file}`, before.replace('Before', 'After'));
+      },
+      steps: [
+        { verb: 'hook', stdin: claudeEdit(file, {
+          tool_response: {
+            filePath: `${WS}/${file}`, originalFile: before,
+            oldString: 'Before', newString: 'After', replaceAll: false, userModified: false,
+          },
+        }) },
+        { verb: 'hook', stdin: stop() },
+      ],
+    };
+  }),
   {
     id: 'hook-stop-baseline-new-finding', workspace: 'hook-project', files: CACHE_FILES,
     normalize: [['("stopBaseline":\\{"version":1,"engine":")[^"]+', 'g', '$1<ENGINE_VERSION>']],

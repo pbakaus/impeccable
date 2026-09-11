@@ -212,6 +212,29 @@ pub fn classify(
     html: bool,
     findings: Vec<Finding>,
 ) -> Classified {
+    classify_impl(cache, session, file, html, findings, None)
+}
+
+/// Text findings keep their session baseline in a hybrid scan. DOM additions
+/// depend on the cascade and must not inherit a source-only exemption.
+pub fn classify_mixed(
+    cache: &Cache,
+    session: &str,
+    file: &str,
+    findings: Vec<Finding>,
+    text: &[Finding],
+) -> Classified {
+    classify_impl(cache, session, file, false, findings, Some(text))
+}
+
+fn classify_impl(
+    cache: &Cache,
+    session: &str,
+    file: &str,
+    html: bool,
+    findings: Vec<Finding>,
+    text: Option<&[Finding]>,
+) -> Classified {
     let mut baseline = if html {
         None
     } else {
@@ -219,7 +242,9 @@ pub fn classify(
     };
     let mut result = Classified::default();
     for mut finding in findings {
-        let known = baseline.as_mut().filter(|_| independent(&finding));
+        let known = baseline.as_mut().filter(|_| {
+            independent(&finding) && text.is_none_or(|source| source.contains(&finding))
+        });
         if let Some(counts) = known {
             let key = key(&finding);
             let count = counts.get(&key).and_then(Value::as_u64).unwrap_or(0);

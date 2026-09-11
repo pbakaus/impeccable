@@ -178,6 +178,25 @@ pub fn detect_html_source(
     file_path: &Path,
     options: &DetectHtmlOptions<'_>,
 ) -> Vec<Finding> {
+    detect_source(html, file_path, options, false)
+}
+
+/// Templates may refer to generated utilities or preprocessors. Their
+/// adapter opts into conservative style checks and source line attribution.
+pub(crate) fn detect_template_source(
+    html: &str,
+    file_path: &Path,
+    options: &DetectHtmlOptions<'_>,
+) -> Vec<Finding> {
+    detect_source(html, file_path, options, true)
+}
+
+fn detect_source(
+    html: &str,
+    file_path: &Path,
+    options: &DetectHtmlOptions<'_>,
+    conservative_template: bool,
+) -> Vec<Finding> {
     let profile = options.profile;
     let file_str = file_path.to_string_lossy().into_owned();
     let fp = file_str.as_str();
@@ -208,13 +227,65 @@ pub fn detect_html_source(
         || StaticDocument::parse(html),
     );
     let css_text = collect_static_css_text(&doc, &file_dir, profile, fp, options.warn);
+    let incomplete_styles = conservative_template
+        && (doc.query_selector_all("style").iter().any(|el| {
+            el.get_attribute("lang")
+                .is_some_and(|lang| !lang.eq_ignore_ascii_case("css"))
+        }) || doc.query_selector_all("*").iter().any(|el| {
+            el.get_attribute("class").is_some_and(|classes| {
+                classes.split_whitespace().any(|class| {
+                    // A class without a local CSS selector may be a utility,
+                    // dynamic binding, or an imported component's global CSS.
+                    // Static defaults are not evidence of its rendered style.
+                    let selector = format!(r"\.{}(?:[^a-zA-Z0-9_-]|$)", regex::escape(class));
+                    !Regex::new(&selector).unwrap().is_match(&css_text)
+                })
+            }) || el.get_attribute(":class").is_some()
+                || el.get_attribute("v-bind:class").is_some()
+        }));
     build_static_style_map(&mut doc, css_text.as_str(), profile, fp);
     let doc = doc;
+
+    let mut source_lines = std::collections::HashMap::new();
+    if conservative_template {
+        // Pair each tag's source occurrences with its parsed occurrences.
+        // Only use unambiguous counts; parser-inserted/repaired tags stay 0.
+        static TAGS: Lazy<Regex> = Lazy::new(|| {
+            Regex::new(
+            r#"(?is)<!--[\s\S]*?-->|<(script|style)\b[^>]*>.*?</(?:script|style)\s*>|<([a-zA-Z][\w:-]*)\b(?:[^>"']|"[^"]*"|'[^']*')*>"#
+        ).unwrap()
+        });
+        let mut tags: std::collections::HashMap<String, Vec<f64>> =
+            std::collections::HashMap::new();
+        for cap in TAGS.captures_iter(html) {
+            if let Some(tag) = cap.get(2) {
+                let line = html[..cap.get(0).unwrap().start()]
+                    .bytes()
+                    .filter(|b| *b == b'\n')
+                    .count()
+                    + 1;
+                tags.entry(tag.as_str().to_ascii_lowercase())
+                    .or_default()
+                    .push(line as f64);
+            }
+        }
+        for (tag, lines) in tags {
+            let elements = doc.query_selector_all(&tag);
+            if elements.len() == lines.len() {
+                for (el, line) in elements.iter().zip(lines) {
+                    source_lines.insert(el.id(), line);
+                }
+            }
+        }
+    }
 
     let mut findings: Vec<Finding> = Vec::new();
     let mk = |id: &str, snippet: &str| try_finding(id, fp, snippet, 0.0);
 
     for (rule_id, selector) in STATIC_ELEMENT_RULES {
+        if incomplete_styles && *rule_id != "broken-image" {
+            continue;
+        }
         let elements = doc.query_selector_all(selector);
         for el in &elements {
             let tag = el.tag_lower();
@@ -228,14 +299,15 @@ pub fn detect_html_source(
                 if scoped_ignore_active(el, &h.id) {
                     continue;
                 }
-                if let Some(f) = mk(&h.id, &h.snippet) {
+                if let Some(mut f) = mk(&h.id, &h.snippet) {
+                    f.line = source_lines.get(&el.id()).copied().unwrap_or(0.0);
                     findings.push(f);
                 }
             }
         }
     }
 
-    if let Some(ds) = options.design_system {
+    if let Some(ds) = options.design_system.filter(|_| !incomplete_styles) {
         let source_design = profile::findings(
             profile,
             Meta::new("source", "design-system", fp),
@@ -251,7 +323,7 @@ pub fn detect_html_source(
         findings.extend(ds.merge(static_design, source_design));
     }
 
-    if is_full_page(html) {
+    if is_full_page(html) && !incomplete_styles {
         let page = |rule_id: &str, f: &dyn Fn() -> Vec<RuleHit>| -> Vec<RuleHit> {
             profile::findings(
                 profile,

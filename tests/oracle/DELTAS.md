@@ -164,3 +164,37 @@ installed. The binary's `CLI_VERSION` moves from `3.6.0` to `4.0.0` with the
 CLI 4.0.0 release; it is what the binary prints when run directly.
 
 - `cli-version`.
+
+## Template DOM routing review (#798)
+
+All text findings are kept for Vue, Svelte, Astro, Blade, and configured markup
+templates, and DOM findings are added for rule families text does not already
+report. Text snippets and line-based cache keys are unchanged. Configured HTML
+suffixes widen directory scans; configured text suffixes do not. Directory
+walks skip `vendor`.
+
+Recorded and reviewed against the release binary:
+
+- `detect-template-dom-{vue,svelte,astro,blade-php,html-erb}`: one low-contrast
+  DOM finding at line 1 per suffix, confirming each routes to the DOM engine
+  and keeps a real source line.
+- `detect-template-dom-configured-walk`: exactly one finding, in
+  `templates/page.html.erb`. `templates/vendor/bundle/page.html.erb` is skipped
+  (`vendor` is now in `SKIP_DIRS`) and `templates/controller.php` is absent
+  (a configured `engine: text` suffix no longer widens the walk).
+- `hook-template-baseline-{vue,blade-php}`: hook scope and a copy edit against
+  pre-existing debt, confirming Stop baselines survive for template files.
+- `detect-help`: two intended contract additions, `detector.extensions` in the
+  project-config list and the "Markup files" detection-mode line naming the
+  built-in suffixes plus configured html-engine extensions.
+
+The regressions measured on the pre-fix head are resolved: the twelve
+`detect-fixture-{json,text}-*` component goldens, `detect-dir-text-all-fixtures`,
+`detect-dir-quiet-all-fixtures`, `detect-scope-{type,layout-text,both}`, and
+`detect-no-advisory-{json,text}` all replay clean again.
+
+`live-accept-svelte-component-accept` still differs, and
+`live-accept-svelte-component-styled-variant` still crashes in its own setup
+reading `node_modules/.impeccable-live/<id>/v2.svelte`. Both reproduce
+identically on the pre-fix head, so they are pre-existing and are deliberately
+not re-recorded here.

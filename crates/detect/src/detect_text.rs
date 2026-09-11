@@ -31,7 +31,6 @@ pub struct TextOptions<'a> {
     pub rule_pack: Option<&'static dyn RulePack>,
 }
 
-const PAGE_ANALYZER_EXTS: &[&str] = &[".html", ".htm", ".astro", ".vue", ".svelte"];
 const JS_SOURCE_EXTS: &[&str] = &[".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"];
 const REGEX_PREFIX_KEYWORDS: &[&str] = &[
     "await",
@@ -70,7 +69,7 @@ pub fn should_run_page_analyzers(content: &str, file_path: &str) -> bool {
         return false;
     }
     let ext = ext_from_file_path(file_path);
-    ext.is_empty() || PAGE_ANALYZER_EXTS.contains(&ext.as_str())
+    ext.is_empty() || crate::engine_route::match_html_engine_extension(file_path).is_some()
 }
 
 fn is_ws(c: char) -> bool {
@@ -631,8 +630,8 @@ fn blank_astro_frontmatter_comments(text: &str) -> String {
 }
 
 /// JS `blankCommentsForMatchers`.
-fn blank_comments_for_matchers(text: &str, ext: &str) -> String {
-    if PAGE_ANALYZER_EXTS.contains(&ext) {
+fn blank_comments_for_matchers(text: &str, file_path: &str, ext: &str) -> String {
+    if crate::engine_route::match_html_engine_extension(file_path).is_some() {
         let with_frontmatter = if ext == ".astro" {
             blank_astro_frontmatter_comments(text)
         } else {
@@ -1400,13 +1399,28 @@ fn pseudo_stripe_findings(text: &str, file_path: &str, line_offset: usize) -> Ve
 
 /// JS: detect-text.mjs#detectText
 pub fn detect_text(content: &str, file_path: &str, options: &TextOptions) -> Vec<Finding> {
+    detect_source(content, file_path, options, false)
+}
+
+/// Full text pipeline for a source the routing map has identified as markup,
+/// including configured multi-part suffixes unknown to the text-only API.
+pub fn detect_markup_text(content: &str, file_path: &str, options: &TextOptions) -> Vec<Finding> {
+    detect_source(content, file_path, options, true)
+}
+
+fn detect_source(
+    content: &str,
+    file_path: &str,
+    options: &TextOptions,
+    markup: bool,
+) -> Vec<Finding> {
     let profile = options.profile;
     let mut findings: Vec<Finding> = Vec::new();
     let ext = ext_from_file_path(file_path);
     let comment_stripped = if JS_SOURCE_EXTS.contains(&ext.as_str()) {
         strip_js_comments(content, ext == ".js" || ext == ".jsx" || ext == ".tsx")
     } else {
-        blank_comments_for_matchers(content, &ext)
+        blank_comments_for_matchers(content, file_path, &ext)
     };
     let source = strip_css_in_js_comments(&comment_stripped, &ext);
     let lines: Vec<&str> = source.split('\n').collect();
@@ -1540,7 +1554,7 @@ pub fn detect_text(content: &str, file_path: &str, options: &TextOptions) -> Vec
         }
     }
 
-    if should_run_page_analyzers(content, file_path) {
+    if (markup && is_full_page(content)) || should_run_page_analyzers(content, file_path) {
         for (i, analyzer) in REGEX_ANALYZERS.iter().enumerate() {
             let rule_id = analyzer_rule_id(i);
             let meta = ProfileMeta {

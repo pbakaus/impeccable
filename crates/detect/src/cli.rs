@@ -14,9 +14,9 @@ use crate::config::{
 use crate::design_system::{load_design_system_for_target, DesignSystemCache};
 use crate::detect_text::{detect_text, TextOptions};
 use crate::engines::{EngineError, Engines, ScanOptions};
+use crate::engine_route::uses_html_engine;
 use crate::file_system::{
-    build_import_graph_reporting, detect_framework_config, is_html_path, is_port_listening,
-    walk_dir_reporting,
+    build_import_graph_reporting, detect_framework_config, is_port_listening, walk_dir_reporting_with,
 };
 use crate::jsp;
 use crate::util::{exists, re, D};
@@ -57,7 +57,7 @@ Exit status:
 Project config:
   Respects .impeccable/config.json and .impeccable/config.local.json detector
   settings: detector.ignoreRules, detector.ignoreFiles, detector.ignoreValues,
-  and detector.designSystem.enabled.
+  detector.extensions, and detector.designSystem.enabled.
 
 Inline ignores:
   In-file comments waive a finding where it lives and travel with the file:
@@ -68,8 +68,9 @@ Inline ignores:
   List one or more rule ids (comma-separated), or omit them / use * for all.
 
 Detection modes:
-  HTML files     Static HTML/CSS analysis (default, catches linked CSS)
-  Non-HTML files Regex pattern matching (CSS, JSX, TSX, etc.)
+  Markup files   Static HTML/CSS analysis (.html, .htm, .vue, .svelte,
+                 .astro, .blade.php, plus detector.extensions with engine html)
+  Other files    Regex pattern matching (CSS, JSX, TSX, etc.)
   URLs           Puppeteer full browser rendering (auto-detected;
                  http(s):// and file:// URLs; accessible linked CSS included)
 
@@ -273,7 +274,7 @@ impl<'a> Ctx<'a> {
         file_path: &str,
         options: &ScanOptions,
     ) -> Result<Vec<Finding>, EngineError> {
-        if is_html_path(file_path) {
+        if uses_html_engine(file_path, &self.config.extensions) {
             return self
                 .engines
                 .html
@@ -734,16 +735,23 @@ fn scan_targets(
             // Unreadable directories and files are reported, not silently
             // skipped, and each one forces exit 1 (#711).
             let mut walk_failures: Vec<(String, String)> = Vec::new();
-            let files: Vec<String> = walk_dir_reporting(&resolved, &mut |dir, err| {
-                walk_failures.push((dir.to_string(), node_scan_error(dir, err)));
-            })
+            let files: Vec<String> = walk_dir_reporting_with(
+                &resolved,
+                &mut |dir, err| {
+                    walk_failures.push((dir.to_string(), node_scan_error(dir, err)));
+                },
+                &ctx.config.extensions,
+            )
             .into_iter()
             .filter(|f| !should_ignore_detection_file(f, &cwd, &ctx.config))
             .collect();
             for (dir, message) in walk_failures {
                 ctx.report_local_scan_failure(&dir, &message);
             }
-            let html_count = files.iter().filter(|f| is_html_path(f)).count();
+            let html_count = files
+                .iter()
+                .filter(|f| uses_html_engine(f, &ctx.config.extensions))
+                .count();
             if files.len() > 50 && ctx.stdin_tty && !ctx.json_mode && !ctx.quiet_mode {
                 ctx.io.err(&format!(
                     "\nFound {} files ({} HTML) in {}.\nScanning may take a while{}.\nTarget a specific subdirectory to narrow scope.\n",

@@ -8,50 +8,32 @@ use std::time::{Duration, Instant};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
+use crate::engine_route::{is_scannable, uses_html_engine, ExtensionEntry};
 use crate::jsp;
 use crate::util::{re, read_text, ANY, D, WS};
 
+/// Built-in DOM markup suffixes. Routing also consults `detector.extensions`
+/// via [`crate::engine_route::uses_html_engine`]; this alias is the built-in
+/// set alone.
+pub use crate::engine_route::HTML_ENGINE_EXTENSIONS as HTML_EXTENSIONS;
+
 /// JS `SKIP_DIRS`.
-pub const SKIP_DIRS: &[&str] = &["node_modules", "dist", "build", "__pycache__"];
+pub const SKIP_DIRS: &[&str] = &["node_modules", "vendor", "dist", "build", "__pycache__"];
 /// JS `HIDDEN_SOURCE_DIRS`.
 pub const HIDDEN_SOURCE_DIRS: &[&str] = &[".vitepress", ".vuepress", ".storybook"];
 /// JS `SCANNABLE_EXTENSIONS` (insertion order matters for `resolveImport`).
-pub const SCANNABLE_EXTENSIONS: &[&str] = &[
-    ".html",
-    ".htm",
-    ".css",
-    ".scss",
-    ".sass",
-    ".less",
-    ".jsx",
-    ".tsx",
-    ".js",
-    ".ts",
-    ".vue",
-    ".svelte",
-    ".astro",
-    ".blade.php",
-];
-/// JS `HTML_EXTENSIONS`.
-pub const HTML_EXTENSIONS: &[&str] = &[".html", ".htm"];
+pub use crate::engine_route::SCANNABLE_EXTENSIONS;
 
 /// JS: file-system.mjs#hasScannableExtension
 pub fn has_scannable_extension(filename: &str) -> bool {
-    let lower = impeccable_core::js::to_lower_case(filename);
-    if SCANNABLE_EXTENSIONS.contains(&jsp::extname(&lower).as_str()) {
-        return true;
-    }
-    for ext in SCANNABLE_EXTENSIONS {
-        if ext[1..].contains('.') && lower.ends_with(ext) {
-            return true;
-        }
-    }
-    false
+    is_scannable(filename, &[])
 }
 
-/// `HTML_EXTENSIONS.has(path.extname(filePath).toLowerCase())`.
+/// Built-in DOM markup: suffix match on [`HTML_EXTENSIONS`], including
+/// multi-part suffixes such as `.blade.php`. Configured
+/// `detector.extensions` are applied by [`crate::engine_route::uses_html_engine`].
 pub fn is_html_path(file_path: &str) -> bool {
-    HTML_EXTENSIONS.contains(&impeccable_core::js::to_lower_case(&jsp::extname(file_path)).as_str())
+    uses_html_engine(file_path, &[])
 }
 
 /// JS: file-system.mjs#walkDir. Files in `readdirSync` order (the OS order,
@@ -65,6 +47,16 @@ pub fn walk_dir(dir: &str) -> Vec<String> {
 pub fn walk_dir_reporting(
     dir: &str,
     on_read_error: &mut dyn FnMut(&str, &std::io::Error),
+) -> Vec<String> {
+    walk_dir_reporting_with(dir, on_read_error, &[])
+}
+
+/// [`walk_dir_reporting`] plus configured `detector.extensions` suffixes so
+/// a directory scan covers `.html.erb` (and similar) once they are declared.
+pub fn walk_dir_reporting_with(
+    dir: &str,
+    on_read_error: &mut dyn FnMut(&str, &std::io::Error),
+    extra: &[ExtensionEntry],
 ) -> Vec<String> {
     let mut files = Vec::new();
     let rd = match std::fs::read_dir(dir) {
@@ -95,8 +87,8 @@ pub fn walk_dir_reporting(
         }
         let full = jsp::join(&[dir, &name]);
         if is_dir {
-            files.extend(walk_dir_reporting(&full, on_read_error));
-        } else if has_scannable_extension(&name) {
+            files.extend(walk_dir_reporting_with(&full, on_read_error, extra));
+        } else if is_scannable(&name, extra) {
             files.push(full);
         }
     }
@@ -543,6 +535,12 @@ mod tests {
         assert!(has_scannable_extension("A.HTML"));
         assert!(!has_scannable_extension("a.php"));
         assert!(is_html_path("/x/y.HTM"));
+        assert!(is_html_path("/x/page.vue"));
+        assert!(is_html_path("/x/page.svelte"));
+        assert!(is_html_path("/x/page.astro"));
+        assert!(is_html_path("/x/show.blade.php"));
+        assert!(!is_html_path("/x/page.html.erb"));
+        assert!(!is_html_path("/x/a.css"));
     }
 
     #[test]

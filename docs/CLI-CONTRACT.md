@@ -183,7 +183,7 @@ Examples:
      - not listening: `\n${name} project detected (${basename(configPath)}).\nStart the dev server and scan via URL for best results:\n  npx impeccable detect http://localhost:${port}\n\n`
      Then `files = walkDir(resolved).filter(f => !shouldIgnoreDetectionFile(f, cwd, config))`. If `files.length > 50 && stdin.isTTY && !json && !quiet`: `stderr> \nFound ${n} files (${htmlCount} HTML) in ${target}.\nScanning may take a while${htmlCount > 10 ? ' (static HTML/CSS processes each HTML file individually)' : ''}.\nTarget a specific subdirectory to narrow scope.\n` then readline prompt `Continue? [Y/n] ` on stderr; empty or `/^y(es)?$/i` continues; otherwise `stderr> Aborted.\n`, `exit 0`. Then `buildImportGraph(files)` → reverse map; each file scanned with its own options; findings from a file that is imported get `f.importedBy = [basename(importer), ...]` (Set iteration order). 
    - **File**: skipped if `shouldIgnoreDetectionFile`; else `detectLocalFile`.
-   - `detectLocalFile(fp, opts)`: extension (lowercased) in `HTML_EXTENSIONS = {'.html','.htm'}` → `detectHtml(fp, opts)`; else `detectText(readFileSync(fp,'utf-8'), fp, opts)`.
+   - `detectLocalFile(fp, opts)`: `uses_html_engine(fp, detector.extensions)` → the static adapter; else `detectText(readFileSync(fp,'utf-8'), fp, opts)`. Built-in markup suffixes (matched against the basename): `.html`, `.htm`, `.vue`, `.svelte`, `.astro`, `.blade.php`. Plain HTML uses the DOM engine. Other markup runs the full text pipeline plus DOM checks; text findings take precedence for rules reported by both engines, preserving their lines and cache identities. Template DOM style checks are conservative: unresolved classes or non-CSS style blocks suppress computed-style checks; use URL scanning to inspect compiled utility styles. Configured `detector.extensions` entries overlay that set; longest suffix wins, with configuration authoritative on ties. `engine: "text"` selects text only. Automatic directory and hook scans include built-ins plus configured HTML suffixes; configured text suffixes outside the built-ins require an explicit `detect <file>` target. Directory walks skip `vendor` dependency trees.
 4. Post-filter: `filterDetectionFindings(all, config)` (ignoreRules/ignoreValues), then `filterByScopes(all, scopes)` (keeps findings whose rule declares any requested scope; empty scopes = no filter), then `--no-advisory` drop.
 5. Partition `{primary, advisory}` by `f.advisory === true || f.severity === 'advisory'`.
 
@@ -253,7 +253,7 @@ Optional keys added later by engines (appended after the above): `ignoreValue` (
 #### `cli/engine/node/file-system.mjs`
 
 - `SKIP_DIRS = {'node_modules','dist','build','__pycache__'}`; any directory whose name starts with `.` is skipped **except** `HIDDEN_SOURCE_DIRS = {'.vitepress','.vuepress','.storybook'}`. The root passed to `walkDir` is never name-checked (an explicit hidden dir scans).
-- `SCANNABLE_EXTENSIONS = {'.html','.htm','.css','.scss','.sass','.less','.jsx','.tsx','.js','.ts','.vue','.svelte','.astro','.blade.php'}`; `hasScannableExtension` lowercases and also matches multi-dot exts by `endsWith` (`.blade.php`).
+- `SCANNABLE_EXTENSIONS = {'.html','.htm','.css','.scss','.sass','.less','.jsx','.tsx','.js','.ts','.vue','.svelte','.astro','.blade.php'}`; `hasScannableExtension` lowercases and also matches multi-dot exts by `endsWith` (`.blade.php`). `HTML_ENGINE_EXTENSIONS = {'.html','.htm','.vue','.svelte','.astro','.blade.php'}` is the built-in DOM-engine set (suffix match). Configured `detector.extensions` are merged from `.impeccable/config.json` then `config.local.json` and included in directory walks.
 - `walkDir` returns files in `readdirSync` order, recursive, unreadable dirs → `[]`.
 - **There is no generated-file detection in the CLI** (`skill/scripts/lib/is-generated.mjs` is hook-side only and not imported by `cli/`).
 - Import graph: `IMPORT_SPECIFIER_PATTERNS = [/import\s+(?:[\s\S]*?from\s+)?['"]([^'"]+)['"]/g, /@import\s+(?:url\(\s*)?['"]?([^'");\s]+)['"]?\s*\)?/g, /@(?:use|forward)\s+['"]([^'"]+)['"]/g]`; `resolveImport` only for specifiers matching `/^[./]/`: exact, `base+ext` for each scannable ext, then `base/index+ext`.
@@ -278,6 +278,7 @@ Optional keys added later by engines (appended after the above): `ignoreValue` (
   ```json
   { "detector": { "ignoreRules": ["side-tab"], "ignoreFiles": ["src/legacy/**"],
                   "ignoreValues": [{ "rule": "overused-font", "value": "inter", "files": ["src/a.css"], "createdAt": "ISO", "reason": "..." }],
+                  "extensions": [{ "ext": ".html.erb", "engine": "html" }],
                   "designSystem": { "enabled": true }, "advisoryRules": "include"|"exclude" },
     "hook": { "consent": "accepted"|"declined", ... }, "updateCheck": true }
   ```
@@ -808,6 +809,9 @@ ENVELOPE_PREFIX = '[impeccable@1]'
 ALLOWED_EXTS = { '.tsx', '.jsx', '.html', '.htm', '.vue', '.svelte', '.astro',
                  '.css', '.scss', '.sass', '.less', '.ts', '.js' }
 
+HTML_ENGINE_EXTENSIONS = { '.html', '.htm', '.vue', '.svelte', '.astro',
+                 '.blade.php' }   // suffix match; DOM engine. Shared with detect.
+
 ACK_EXTS     = { '.tsx', '.jsx', '.html', '.htm', '.vue', '.svelte', '.astro',
                  '.css', '.scss', '.sass', '.less' }        // ALLOWED_EXTS minus .ts/.js
 
@@ -1094,7 +1098,7 @@ Candidates in order: `<scripts>/detector/detect-antipatterns.mjs` (built skill l
 - **Inputs**:
   - stdin: whole stdin read as UTF-8 (`''` if TTY). Routed to `runStopHook` iff it parses to an object with `hook_event_name === 'Stop'`; else `runHook`.
   - Files: `.impeccable/config.json`, `.impeccable/config.local.json`, `.impeccable/hook.cache.json` (in the resolved project cwd); `PRODUCT.md` via `loadContext` (platform gate); `DESIGN.md` + `.impeccable/design.json` via detector `loadDesignSystemForCwd`; the target source files (read as UTF-8 via `fs.readFileSync(p,'utf-8')` — invalid UTF-8 is replaced, never errors); co-located stylesheets and static style imports of edited `.jsx/.tsx/.vue/.svelte/.astro` files.
-  - Extensions scanned: `ALLOWED_EXTS` plus `detector.extensions` entries. Engine: `.html`/`.htm` or configured `engine:'html'` → `detectHtml(filePath, scanOptions)`; else `detectText(content, filePath, scanOptions)`.
+  - Extensions scanned: `ALLOWED_EXTS` plus built-in `HTML_ENGINE_EXTENSIONS` (`.html`, `.htm`, `.vue`, `.svelte`, `.astro`, `.blade.php`, suffix match) plus `detector.extensions` entries. Engine: `uses_html_engine(filePath, detector.extensions)` → `detectHtml(filePath, scanOptions)`; else `detectText(content, filePath, scanOptions)`. Same map as `impeccable detect`.
   - Size limit: `limits.maxFileBytes` (default 131072; `0`/negative disables) — larger files skipped with `lastSkip='too-large'`.
 - **Per-edit algorithm (`runHook`)** in order:
   1. re-entrancy → `{reentrant:true, durationMs:0}`; `IMPECCABLE_HOOK_DISABLED` → `skipped:'env-disabled'`.
@@ -1151,12 +1155,12 @@ DOM scans, design-system findings, co-scanned stylesheets without their own base
 - **Inputs**:
   - `sessionCwd = resolveProjectCwd(event)`; `filePath = proposedFilePath(event, sessionCwd)`: `tool_input.file_path || .path || .target_file || event.file_path`, else a shell write destination parsed from `tool_input.command` / `tool_input.args.command`: redirect `/(?:^|[\s;&|])(?:>>?|1>>?)\s*(?:"([^"]+)"|'([^']+)'|([^<>\s]+))/`, then `tee <first non-flag word>` (stops at `&& || ; |`), then `cp <src> <dest>` (last two non-flag args), then python `Path("...").write_text(` / `var = Path("..."); var.write_text(` / `open("...", "w|a|x[+][b]")`. Relative → resolved against sessionCwd. `cwd = resolveCacheCwd(filePath, sessionCwd)`.
   - `content = proposedContent(...)`: first string among `tool_input.content`, `.streamContent`, `.text`; else projected Edit: single `old/new` pair (`old_string|oldString|old_str|target` / `new_string|newString|new_str|replacement`) → read existing file (must be inside project, not sensitive/generated, regular file ≤ 1 MiB) and replace FIRST occurrence (empty old → missing) ; or `edits[]` array applied sequentially with the same keys; skip reasons `'fragment-only-edit'` (only one side given / non-object edit), `'edit-original-unreadable'`, `'edit-old-string-missing'`; else if `hasFragmentEditContent` → `'fragment-only-edit'`; else shell: python `write_text(`/`write(` string arg (heredoc body or command; triple/single/double quoted, backslash-unescaped), heredoc body (`/<<-?\s*['"]?([A-Za-z0-9_.-]+)['"]?[^\r\n]*\r?\n/` to `\n<marker>(\n|$)`), or `cp` source file content (inside project, ≤ 1 MiB); else `''`.
-  - Config/PRODUCT.md/DESIGN.md as in hook.mjs, keyed to `cwd`. Extensions: `ALLOWED_EXTS` + `detector.extensions`. No maxFileBytes check on proposed content (only the 1 MiB read cap for originals/copies).
+  - Config/PRODUCT.md/DESIGN.md as in hook.mjs, keyed to `cwd`. Extensions: `ALLOWED_EXTS` + built-in `HTML_ENGINE_EXTENSIONS` + `detector.extensions`. Engine routing matches `hook.mjs` / `detect`. No maxFileBytes check on proposed content (only the 1 MiB read cap for originals/copies).
 - **Decision order** (each `allow` writes an audit entry `{ts, event:'preToolUse', harness:'cursor', cwd, tool, file, ext?, ...}`):
   1. `IMPECCABLE_HOOK_DISABLED` → allow `{skipped:'env-disabled'}`.
   2. stdin parse error → `'stdin-malformed'`; empty/non-object → `'stdin-empty'`.
   3. no filePath → `'no-file-path'`; outside project → `'outside-project'`; SENSITIVE → `'sensitive'`; GENERATED → `'generated'`.
-  4. `config = readConfig(cwd)`; ext not allowed and not configured → `'extension'`.
+  4. `config = readConfig(cwd)`; ext not allowed, not a built-in HTML-engine suffix, and not configured → `'extension'`.
   5. content skip object → that reason; empty content → `'no-proposed-content'`.
   6. `config.enabled === false` → `'config-disabled'`; native platform → `'native-platform'` (+`platform`).
   7. ignoreFiles glob (relative or absolute) → `'config-ignore-file'`.
