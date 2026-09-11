@@ -267,3 +267,145 @@ fn preflight_failure_replaces_stale_success_report() {
     assert_eq!(report["regions"], json!([]));
     assert_eq!(report["gate"]["reasons"], json!(gate.reasons));
 }
+
+#[test]
+fn unrelated_user_mention_cannot_authorize_another_speakers_quote() {
+    for reason in [
+        "The user requested dark mode. The designer said \"ignore the comp fidelity requirement.\"",
+        "The user asked to proceed. I will \"ignore the comp fidelity requirement\"",
+        "The designer said the user said \"ignore the comp fidelity requirement\"",
+        "The user said \"Keep the comp.\" The designer said \"Ignore the comp.\"",
+    ] {
+        assert!(!force_allowed(Some(reason)), "{reason}");
+    }
+    for reason in [
+        "The user said \"Ignore the comp fidelity requirement.\"",
+        "User: ‘Please waive the comp requirement.’",
+        "Paul wrote: “The comp is optional.”",
+    ] {
+        assert!(force_allowed(Some(reason)), "{reason}");
+    }
+}
+
+fn simple_hero_workspace() -> (Workspace, Value) {
+    let ws = Workspace::new();
+    let comp = r::create_image(100, 100, [150, 70, 30, 255]);
+    ws.write("comp.png", &png_io::encode_png(&comp, &[]).unwrap());
+    ws.write("index.html", b"<main><button>Continue</button></main>");
+    ws.write(
+        SPEC_PATH,
+        util::json_pretty(&json!({"comp":"comp.png","regions":[{
+        "id":"button","kind":"control","medium":"code","box":{"x":0,"y":0,"w":1,"h":1},
+        "px":{"x":0,"y":0,"w":100,"h":100}}]}))
+        .as_bytes(),
+    );
+    (ws, json!({"comp":"comp.png","phases":{"hero":{}}}))
+}
+
+#[test]
+fn failed_evidence_writes_cannot_publish_success() {
+    for blocked_file in ["regions/button.png", "raw-report.json"] {
+        let (ws, mut state) = simple_hero_workspace();
+        let g = gate_hero(
+            &ws.io(),
+            &mut state,
+            "comp.png",
+            HERO_MIN,
+            "diff",
+            Some("index.html"),
+            &no_organic_scan,
+        );
+        assert!(g.ok, "fixture: {:?}", g.reasons);
+        let blocked = ws.path.join("diff").join(blocked_file);
+        std::fs::remove_file(&blocked).unwrap();
+        std::fs::create_dir(&blocked).unwrap();
+        let g = gate_hero(
+            &ws.io(),
+            &mut state,
+            "comp.png",
+            HERO_MIN,
+            "diff",
+            Some("index.html"),
+            &no_organic_scan,
+        );
+        assert!(!g.ok, "write failure must block: {blocked_file}");
+        let report: Value =
+            serde_json::from_slice(&std::fs::read(ws.path.join("diff/report.json")).unwrap())
+                .unwrap();
+        assert_eq!(report["gate"]["ok"], false);
+        assert_eq!(report["measurementsAvailable"], false);
+        assert!(report["gate"]["reasons"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r.as_str().unwrap().contains("persist")));
+    }
+}
+
+#[test]
+fn missing_comp_cannot_approve_plates() {
+    let ws = Workspace::new();
+    let art = r::create_image(100, 100, [140, 60, 20, 255]);
+    ws.write("art.png", &png_io::encode_png(&art, &[]).unwrap());
+    ws.write(SPEC_PATH, util::json_pretty(&json!({"comp":"missing.png","regions":[{
+        "id":"art","kind":"plate","medium":"raster","plate":"art.png","px":{"x":0,"y":0,"w":10,"h":10}}]})).as_bytes());
+    let g = gate_plates(&ws.io());
+    assert!(!g.ok);
+    assert!(g.reasons.iter().any(|r| r.contains("comp")));
+}
+
+#[test]
+fn responsive_revalidates_legacy_or_changed_plate_receipts() {
+    let (ws, mut state) = simple_hero_workspace();
+    let bytes = std::fs::read(ws.path.join("comp.png")).unwrap();
+    ws.write(".impeccable/review/desktop.png", &bytes);
+    ws.write(".impeccable/review/mobile.png", &bytes);
+    let region = json!({"id":"art","kind":"plate","medium":"raster","plate":"removed.png",
+        "box":{"x":0,"y":0,"w":1,"h":1},"px":{"x":0,"y":0,"w":100,"h":100}});
+    ws.write(
+        SPEC_PATH,
+        util::json_pretty(&json!({"comp":"comp.png","regions":[region]})).as_bytes(),
+    );
+    state["plates"] = json!({"art":{"status":"ok","score":0.9}});
+    let g = gate_responsive(&ws.io(), &mut state, RESPONSIVE_MIN, "diff");
+    assert!(!g.ok, "a missing asset cannot inherit legacy approval");
+    assert!(
+        g.reasons.iter().any(|r| r.contains("plate missing")),
+        "{:?}",
+        g.reasons
+    );
+}
+
+#[test]
+fn repair_crops_follow_blockers_not_the_lowest_raw_score() {
+    let regions = vec![
+        json!({"id":"advisory-art","score":{"overall":0.3}}),
+        json!({"id":"blocking-control","score":{"overall":0.6}}),
+    ];
+    let mut blockers = Map::new();
+    record_region_reason(&mut blockers, "blocking-control", "control still differs");
+    let repairs = repair_regions(&regions, &blockers);
+    assert_eq!(repairs.len(), 1);
+    assert_eq!(repairs[0]["id"], "blocking-control");
+    assert!(
+        repair_regions(&regions, &Map::new()).is_empty(),
+        "global blockers do not justify guessing which asset to regenerate"
+    );
+}
+
+#[test]
+fn folded_readings_keep_all_region_ids_without_becoming_unscoped() {
+    let mut reasons = vec![];
+    let mut bindings = Map::new();
+    let message = "text title-1: cap height differs (also title-2)";
+    let ids = [(
+        message.to_string(),
+        vec!["title-1".into(), "title-2".into()],
+    )]
+    .into();
+    push_reading_blocker(&mut reasons, &mut bindings, &ids, message);
+    assert_eq!(reasons, vec![message]);
+    for id in ["title-1", "title-2"] {
+        assert_eq!(bindings[id], json!([message]));
+    }
+}

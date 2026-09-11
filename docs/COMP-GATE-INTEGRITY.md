@@ -7,7 +7,8 @@ existing plate file does not satisfy a missing-region check.
 ## Measurements and decisions
 
 `comp-diff` measures the declared region bounds. It does not enlarge a narrow
-region to include neighbouring elements. Coverage and region-kind checks remain
+region to include neighbouring elements. Subpixel regions sample at least one
+real source pixel, including at image edges. Coverage and region-kind checks remain
 the responsibility of `comp-spec`; this change does not authorize omitting
 regions or shrinking their bounds to exclude required work.
 
@@ -31,6 +32,12 @@ When capture, spec, or plate validation fails before measurement, the current
 report has `measurementsAvailable: false`, no region results, and the failed
 gate reasons. It does not present the preceding capture as current evidence.
 
+Repair crops include only regions with current blockers; shared readings retain
+all affected region IDs. Frame-wide blockers keep their whole-frame evidence.
+The current report is marked incomplete before image writes and committed
+atomically only after the evidence files succeed. Write failures block the gate
+and, when the report location is writable, publish an unavailable-evidence report.
+
 Stall feedback follows repeated blocking reasons. It never chooses an asset to
 regenerate solely because that asset has the lowest raw score. The feedback is
 additional context; it does not clear a finding or advance the phase.
@@ -38,7 +45,7 @@ additional context; it does not clear a finding or advance the phase.
 ## Plate validation
 
 Successful plate receipts include SHA-256 fingerprints of the asset bytes,
-measured region, and comp. A changed or deleted file, a changed region, or a
+measured region, and comp. Hero and responsive gates revalidate receipts. A changed or deleted file, a changed region, or a
 changed comp invalidates the receipt. Legacy score-only receipts are revalidated.
 An invalid plate cannot receive an `ok` receipt merely because its PNG decoded.
 Rendered presence is still checked after asset validation, so a file hidden in
@@ -47,7 +54,8 @@ the page does not count as placed.
 ## Overrides
 
 A `--force --reason` must contain a direct quoted downgrade of comp authority
-attributed to the user. Generic delegation, the builder's surrounding claim that
+immediately attributed to the user. An unrelated mention of the user does not
+authorize a quote from another speaker. Generic delegation, the builder's surrounding claim that
 it may proceed, or a gate exception does not establish that authorization.
 The quote parser is deliberately conservative. It cannot authenticate a quote:
 the calling harness must retain the actual user answer and assess provenance.

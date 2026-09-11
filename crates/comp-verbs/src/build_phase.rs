@@ -480,7 +480,11 @@ fn gate_plates(io: &Io) -> Gate {
         g.plates = Some(vec![]);
         return g;
     }
-    let comp = spec.get("comp").and_then(Value::as_str).and_then(|c| load_raster(io, c).ok());
+    let Some(comp) = spec.get("comp").and_then(Value::as_str).and_then(|c| load_raster(io, c).ok()) else {
+        let mut gate = Gate::fail(vec!["cannot validate plates: the spec's comp is missing or unreadable".into()]);
+        gate.plates = Some(vec![]);
+        return gate;
+    };
     let mut reasons: Vec<String> = Vec::new();
     let mut plates: Vec<Value> = Vec::new();
     for rr in &raster_regions {
@@ -512,8 +516,9 @@ fn gate_plates(io: &Io) -> Gate {
                 img.image.width, px_w as i64, round(min_w) as i64
             ));
         }
-        let mut score_val: Option<f64> = None;
-        if let Some(comp) = &comp {
+        let score_val;
+        {
+            let comp = &comp;
             let refimg = plate_reference(comp, &spec, rr);
             // composite transparent plates over the region's sampled ground
             let mut build = img.image.clone();
@@ -598,6 +603,19 @@ fn plate_receipt_current(io: &Io, state: &Value, spec: &Value, region: &Value) -
         && sha256_file(io, file).as_deref().is_some_and(|h| receipt.get("assetHash").and_then(Value::as_str) == Some(h))
         && sha256_file(io, comp).as_deref().is_some_and(|h| receipt.get("compHash").and_then(Value::as_str) == Some(h))
         && receipt.get("regionHash").and_then(Value::as_str) == Some(sha256_bytes(util::json_pretty(region).as_bytes()).as_str())
+}
+
+fn revalidate_plates(io: &Io, state: &mut Value, spec: Option<&Value>) -> Option<Gate> {
+    let spec = spec?;
+    let stale = spec_regions(spec).iter()
+        .filter(|r| r.get("medium").and_then(Value::as_str) == Some("raster"))
+        .any(|r| !plate_receipt_current(io, state, spec, r));
+    if stale {
+        let gate = gate_plates(io);
+        save_plate_receipts(state, &gate);
+        if !gate.ok { return Some(gate); }
+    }
+    None
 }
 
 fn hex_rgba(hex: &str) -> Option<[u8; 4]> {
@@ -957,6 +975,7 @@ struct HeroReadings {
     chrome: Vec<String>,
     plates: Vec<String>,
     invented: Value,
+    region_ids: std::collections::HashMap<String, Vec<String>>,
 }
 
 fn hero_readings(io: &Io, state: &Value, spec: Option<&Value>, build_path: &str) -> Option<HeroReadings> {
@@ -974,7 +993,9 @@ fn hero_readings(io: &Io, state: &Value, spec: Option<&Value>, build_path: &str)
     let mut text: Vec<String> = Vec::new();
     let mut chrome: Vec<String> = Vec::new();
     let mut plates: Vec<String> = Vec::new();
+    let mut region_ids = std::collections::HashMap::<String, Vec<String>>::new();
     for rr in spec_regions(spec) {
+        let starts = (text.len(), chrome.len(), plates.len());
         let px = rr.get("px");
         if px.is_none() {
             continue;
@@ -1017,9 +1038,12 @@ fn hero_readings(io: &Io, state: &Value, spec: Option<&Value>, build_path: &str)
                 ));
             }
         }
+        for message in text[starts.0..].iter().chain(chrome[starts.1..].iter()).chain(plates[starts.2..].iter()) {
+            region_ids.entry(message.clone()).or_default().push(region.id.clone());
+        }
     }
     let invented = invented_ink(&comp, &aligned);
-    Some(HeroReadings { text, chrome, plates, invented })
+    Some(HeroReadings { text, chrome, plates, invented, region_ids })
 }
 
 // ---- hero gate -------------------------------------------------------------
@@ -1043,7 +1067,7 @@ fn hero_diff(io: &Io, comp_path: &str, build_path: &str, spec: Option<&Value>, o
     let comp = load_raster(io, comp_path)?;
     let build = load_raster(io, build_path)?;
     let res = compare(&comp, &build, spec, "top", "hero", None);
-    let files = write_artifacts(&res, &comp, &abs(io, out_dir));
+    let files = write_artifacts(&res, &comp, &abs(io, out_dir)).map_err(|e| format!("cannot persist comparison artifacts: {e}"))?;
     let meta = json!({
         "label": "hero",
         "comp": comp_path,
@@ -1053,27 +1077,43 @@ fn hero_diff(io: &Io, comp_path: &str, build_path: &str, spec: Option<&Value>, o
         "buildSize": format!("{}x{}", build.width, build.height),
     });
     let report = build_report(&res, Some(&files), &meta);
-    let _ = std::fs::write(abs(io, &format!("{out_dir}/report.json")), util::json_pretty(&report));
+
     Ok((report, res))
 }
 
 #[allow(clippy::too_many_arguments)]
 fn gate_hero(io: &Io, state: &mut Value, build_path: &str, min: f64, out_dir: &str, artifact: Option<&str>, organic_scan: OrganicScan) -> Gate {
+    let pending = Gate::fail(vec!["hero comparison has not completed".into()]);
+    if let Err(e) = unavailable_report(io, out_dir, &pending) {
+        return Gate::fail(vec![format!("cannot persist hero gate evidence: {e}")]);
+    }
     let mut gate = gate_hero_inner(io, state, build_path, min, out_dir, artifact, organic_scan);
-    if gate.score.is_none() {
-        // An earlier capture must not masquerade as evidence for a failed preflight.
-        let report = json!({ "interpretation": "hero-gate", "measurementsAvailable": false,
-            "regions": [], "gate": { "ok": gate.ok, "reasons": gate.reasons, "advisories": gate.advisories,
-                "unscopedReasons": gate.reasons } });
-        let result = std::fs::create_dir_all(abs(io, out_dir)).and_then(|_| {
-            std::fs::write(abs(io, &format!("{out_dir}/report.json")), util::json_pretty(&report))
-        });
-        if let Err(e) = result {
+    if gate.report.is_none() {
+        if let Err(e) = unavailable_report(io, out_dir, &gate) {
             gate.ok = false;
             gate.reasons.push(format!("cannot persist hero gate evidence: {e}"));
         }
     }
     gate
+}
+
+fn atomic_report(path: &Path, report: &Value) -> Result<(), String> {
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let temp = path.with_extension(format!("tmp-{}-{}", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
+    let result = (|| {
+        if let Some(parent) = path.parent() { std::fs::create_dir_all(parent)?; }
+        std::fs::write(&temp, util::json_pretty(report))?;
+        std::fs::rename(&temp, path)
+    })();
+    if result.is_err() { let _ = std::fs::remove_file(temp); }
+    result.map_err(|e: std::io::Error| e.to_string())
+}
+
+fn unavailable_report(io: &Io, out_dir: &str, gate: &Gate) -> Result<(), String> {
+    let report = json!({ "interpretation": "hero-gate", "measurementsAvailable": false,
+        "regions": [], "gate": { "ok": false, "reasons": gate.reasons,
+            "advisories": gate.advisories, "unscopedReasons": gate.reasons } });
+    atomic_report(&abs(io, &format!("{out_dir}/report.json")), &report)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1086,16 +1126,7 @@ fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_d
     let spec_gate = gate_spec(io, state);
     if !spec_gate.ok { return spec_gate; }
     let spec_for_refs = load_spec(&abs(io, SPEC_PATH));
-    if let Some(spec) = &spec_for_refs {
-        let stale = spec_regions(spec).iter()
-            .filter(|r| r.get("medium").and_then(Value::as_str) == Some("raster"))
-            .any(|r| !plate_receipt_current(io, state, spec, r));
-        if stale {
-            let plates = gate_plates(io);
-            save_plate_receipts(state, &plates);
-            if !plates.ok { return plates; }
-        }
-    }
+    if let Some(failure) = revalidate_plates(io, state, spec_for_refs.as_ref()) { return failure; }
     // resolve the page
     let mut page_file: Option<String> = artifact.map(String::from).or_else(|| state.get("artifact").and_then(Value::as_str).map(String::from));
     if page_file.as_ref().map(|p| !abs(io, p).exists()).unwrap_or(true) {
@@ -1227,7 +1258,7 @@ fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_d
                 && state.get("plates").and_then(|p| p.get(id)).and_then(|p| p.get("score")).and_then(Value::as_f64).is_some_and(|s| s >= PLATE_MIN))
             .unwrap_or(false)
     };
-    let mut placement_notes: Vec<String> = Vec::new();
+    let mut placement_notes: Vec<(String, String)> = Vec::new();
     for r in regions.iter_mut() {
         let kind = r.get("kind").and_then(Value::as_str).unwrap_or("").to_string();
         let id = r.get("id").and_then(Value::as_str).unwrap_or("").to_string();
@@ -1257,10 +1288,10 @@ fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_d
             let (bw_, bh_, bx, by) = (cf(&ib, "w"), cf(&ib, "h"), cf(&ib, "x"), cf(&ib, "y"));
             let off = (bw_ - cw_).abs() > cw_ * 0.2 || (bh_ - ch_).abs() > ch_ * 0.2 || (bx - cx).abs() > cw_ * 0.15 || (by - cy).abs() > ch_ * 0.15;
             if off {
-                placement_notes.push(format!(
+                placement_notes.push((id.to_string(), format!(
                     "plate {id} is placed but not at the comp's box: its ink spans {}x{}px at ({},{}) in the comp region and {}x{}px at ({},{}) in the build; size and position the <img> to the spec box (object-fit: cover), not to the surrounding layout",
                     cw_ as i64, ch_ as i64, cx as i64, cy as i64, bw_ as i64, bh_ as i64, bx as i64, by as i64
-                ));
+                )));
             }
         }
     }
@@ -1274,11 +1305,11 @@ fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_d
             }
         }
     }
-    for n in placement_notes {
+    for (id, n) in placement_notes {
         if above_bar {
             advisories.push(format!("(advisory, above the {}% bar) {n}", pct0(min)));
         } else {
-            reasons.push(n);
+            push_region_blocker(&mut reasons, &mut region_reasons, &id, n);
         }
     }
     // contradicted
@@ -1355,12 +1386,16 @@ fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_d
     let other_contradicted: Vec<&Value> = contradicted.iter().filter(|r| !direction_contradicted.iter().any(|d| d.get("id") == r.get("id"))).collect();
     let allow = 1usize.max(regions.len() / 3);
     if other_contradicted.len() > allow {
-        reasons.push(format!(
+        let message = format!(
             "{} of {} regions contradicted: {}",
             other_contradicted.len(),
             regions.len(),
             other_contradicted.iter().filter_map(|r| r.get("id").and_then(Value::as_str)).collect::<Vec<_>>().join(", ")
-        ));
+        );
+        for r in &other_contradicted {
+            if let Some(id) = r.get("id").and_then(Value::as_str) { record_region_reason(&mut region_reasons, id, &message); }
+        }
+        reasons.push(message);
     }
     // organic clip + svg illustrations
     let artifact_file = page_file.clone();
@@ -1369,7 +1404,7 @@ fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_d
             for o in organic_clip_regions(io, af, spec, organic_scan) {
                 let id = o.get("id").and_then(Value::as_str).unwrap_or("");
                 let snip = o.get("snippet").and_then(Value::as_str).unwrap_or("");
-                reasons.push(format!("artifact draws an organic clip-path ({snip}) inside raster region {id}'s box; that region ships as its plate, never as a polygon"));
+                push_region_blocker(&mut reasons, &mut region_reasons, id, format!("artifact draws an organic clip-path ({snip}) inside raster region {id}'s box; that region ships as its plate, never as a polygon"));
             }
             let svgs = std::fs::read_to_string(abs(io, af)).map(|h| svg_illustrations(&h)).unwrap_or_default();
             for v in svgs.iter().take(6) {
@@ -1392,7 +1427,6 @@ fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_d
     if let Some(readings) = readings {
         use once_cell::sync::Lazy;
         static FOLD: Lazy<regex::Regex> = Lazy::new(|| Regex::new(r"(?i)^text ([a-z0-9]+(?:-[a-z0-9]+)*?)(?:-(?:\d+|[a-z]))?: (cap height|\d+ lines? in the build|the face renders|ink is|its first line|it starts|line pitch)").unwrap());
-        static IDM: Lazy<regex::Regex> = Lazy::new(|| Regex::new(r"^text ([^:]+):").unwrap());
         static CAP: Lazy<regex::Regex> = Lazy::new(|| Regex::new(r"cap height").unwrap());
         static LINES: Lazy<regex::Regex> = Lazy::new(|| Regex::new(r"lines? in the build").unwrap());
         static HEAV: Lazy<regex::Regex> = Lazy::new(|| Regex::new(r"heavier|lighter").unwrap());
@@ -1401,7 +1435,8 @@ fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_d
         let order = |f: &str| -> u8 {
             if CAP.is_match(f) { 0 } else if LINES.is_match(f) { 1 } else if HEAV.is_match(f) { 2 } else if INKIS.is_match(f) { 3 } else { 4 }
         };
-        // fold sibling text findings
+        // Keep region provenance when sibling text findings are folded.
+        let mut reading_ids = readings.region_ids.clone();
         let mut folded: Vec<(String, String, Vec<String>)> = Vec::new(); // (key, first, ids)
         for f in &readings.text {
             let key = if let Some(m) = FOLD.captures(f) {
@@ -1409,24 +1444,21 @@ fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_d
             } else {
                 f.clone()
             };
-            let idm = IDM.captures(f).map(|m| m[1].to_string());
+            let ids = readings.region_ids.get(f).cloned().unwrap_or_default();
             if let Some(entry) = folded.iter_mut().find(|(k, _, _)| *k == key) {
-                if let Some(id) = idm {
-                    entry.2.push(id);
-                }
+                entry.2.extend(ids);
             } else {
-                let ids = idm.map(|id| vec![id]).unwrap_or_default();
                 folded.push((key, f.clone(), ids));
             }
         }
         let mut text: Vec<String> = folded
             .into_iter()
             .map(|(_, first, ids)| {
-                if ids.len() > 1 {
+                let message = if ids.len() > 1 {
                     format!("{first} (also {})", ids[1..].join(", "))
-                } else {
-                    first
-                }
+                } else { first };
+                reading_ids.insert(message.clone(), ids);
+                message
             })
             .collect();
         text.sort_by_key(|a| order(a));
@@ -1466,19 +1498,15 @@ fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_d
                 advisories.push(format!("  {f}"));
             }
         } else {
-            if !kept.is_empty() {
-                let of = if fresh.len() > kept.len() { format!("{} of {}, the rest after these", kept.len(), fresh.len()) } else { format!("{}", kept.len()) };
-                reasons.push(format!("READINGS, each one CSS edit ({of}):"));
-            }
             for f in &kept {
-                reasons.push(f.clone());
+                push_reading_blocker(&mut reasons, &mut region_reasons, &reading_ids, f);
             }
         }
         for f in &advisory_stale {
             advisories.push(format!("(advisory, unchanged for 3+ attempts) {f}"));
         }
         for f in &readings.plates {
-            reasons.push(f.clone());
+            push_reading_blocker(&mut reasons, &mut region_reasons, &reading_ids, f);
         }
         let cells = readings.invented.get("cells").and_then(Value::as_array).cloned().unwrap_or_default();
         let fraction = readings.invented.get("fraction").and_then(Value::as_f64).unwrap_or(0.0);
@@ -1494,8 +1522,7 @@ fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_d
         }
     }
     // worst regions
-    let mut worst_sorted = regions.clone();
-    worst_sorted.sort_by(|a, b| rscore(a, "overall").partial_cmp(&rscore(b, "overall")).unwrap());
+    let worst_sorted = repair_regions(&regions, &region_reasons);
     let worst_top: Vec<&Value> = worst_sorted.iter().take(3).collect();
     let region_dir = format!("{out_dir}/regions");
     let mut g = Gate::blank();
@@ -1528,21 +1555,43 @@ fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_d
     let raw = report.clone();
     apply_gate_evidence(&mut report, &mut measured, &regions, &g);
     report["rawReport"] = json!(raw_path);
-    let evidence_write = std::fs::write(abs(io, &raw_path), util::json_pretty(&raw))
-        .and_then(|_| std::fs::write(abs(io, &format!("{out_dir}/report.json")), util::json_pretty(&report)));
+    let evidence_write = (|| {
+        atomic_report(&abs(io, &raw_path), &raw)?;
+        write_region_artifacts(&measured, &abs(io, out_dir), report.get("regions").and_then(Value::as_array).map(Vec::as_slice))?;
+        atomic_report(&abs(io, &format!("{out_dir}/report.json")), &report)
+    })();
     if let Err(e) = evidence_write {
         g.ok = false;
         g.reasons.push(format!("cannot persist hero gate evidence: {e}"));
-    } else {
-        write_region_artifacts(&measured, &abs(io, out_dir), report.get("regions").and_then(Value::as_array).map(Vec::as_slice));
+        g.report = None;
+        g.side_by_side = None;
+        g.worst_crops.clear();
     }
 
     g
 }
 
 fn push_region_blocker(reasons: &mut Vec<String>, regions: &mut Map<String, Value>, id: &str, message: String) {
-    regions.entry(id.to_string()).or_insert_with(|| json!([])).as_array_mut().unwrap().push(json!(message));
+    record_region_reason(regions, id, &message);
     reasons.push(message);
+}
+
+fn record_region_reason(regions: &mut Map<String, Value>, id: &str, message: &str) {
+    regions.entry(id.to_string()).or_insert_with(|| json!([])).as_array_mut().unwrap().push(json!(message));
+}
+
+fn push_reading_blocker(reasons: &mut Vec<String>, regions: &mut Map<String, Value>, ids: &std::collections::HashMap<String, Vec<String>>, message: &str) {
+    for id in ids.get(message).into_iter().flatten() { record_region_reason(regions, id, message); }
+    reasons.push(message.to_string());
+}
+
+fn repair_regions(regions: &[Value], blockers: &Map<String, Value>) -> Vec<Value> {
+    let mut ordered: Vec<Value> = regions.iter().filter(|region| {
+        region.get("id").and_then(Value::as_str).is_some_and(|id|
+            blockers.get(id).and_then(Value::as_array).is_some_and(|reasons| !reasons.is_empty()))
+    }).cloned().collect();
+    ordered.sort_by(|a, b| rscore(a, "overall").total_cmp(&rscore(b, "overall")));
+    ordered
 }
 
 /// Raw scores never change during interpretation. Only gate verdicts and their
@@ -1608,7 +1657,7 @@ fn hash_file(io: &Io, file: &str) -> Option<String> {
     Some(d.iter().map(|b| format!("{b:02x}")).collect::<String>()[..12].to_string())
 }
 
-fn gate_responsive(io: &Io, state: &Value, min: f64, out_dir: &str) -> Gate {
+fn gate_responsive(io: &Io, state: &mut Value, min: f64, out_dir: &str) -> Gate {
     let desktop = ".impeccable/review/desktop.png";
     let mobile = ".impeccable/review/mobile.png";
     let mut reasons = Vec::new();
@@ -1621,7 +1670,10 @@ fn gate_responsive(io: &Io, state: &Value, min: f64, out_dir: &str) -> Gate {
     if !reasons.is_empty() {
         return Gate::fail(reasons);
     }
+    let spec_gate = gate_spec(io, state);
+    if !spec_gate.ok { return spec_gate; }
     let spec = load_spec(&abs(io, SPEC_PATH));
+    if let Some(failure) = revalidate_plates(io, state, spec.as_ref()) { return failure; }
     let comp_path = state.get("comp").and_then(Value::as_str).unwrap_or("");
     let report = match hero_diff_labeled(io, comp_path, desktop, spec.as_ref(), out_dir, "desktop") {
         Ok(r) => r,
@@ -1635,7 +1687,8 @@ fn gate_responsive(io: &Io, state: &Value, min: f64, out_dir: &str) -> Gate {
                 return false;
             }
             let id = r.get("id").and_then(Value::as_str).unwrap_or("");
-            let passed = state.pointer(&format!("/plates/{id}/status")).and_then(Value::as_str) == Some("ok");
+            let passed = spec.as_ref().is_some_and(|spec| spec_regions(spec).iter().any(|region|
+                region.get("id").and_then(Value::as_str) == Some(id) && plate_receipt_current(io, state, spec, region)));
             let kind = r.get("kind").and_then(Value::as_str).unwrap_or("");
             if (kind == "plate" || kind == "image") && passed {
                 let present = rscore_opt(r, "detailRaw").map(|v| v >= 0.3).unwrap_or(rscore(r, "detail") >= 0.3);
@@ -1680,7 +1733,7 @@ fn hero_diff_labeled(io: &Io, comp_path: &str, build_path: &str, spec: Option<&V
     let comp = load_raster(io, comp_path)?;
     let build = load_raster(io, build_path)?;
     let res = compare(&comp, &build, spec, "top", label, None);
-    let files = write_artifacts(&res, &comp, &abs(io, out_dir));
+    let files = write_artifacts(&res, &comp, &abs(io, out_dir)).map_err(|e| format!("cannot persist comparison artifacts: {e}"))?;
     let meta = json!({
         "label": label, "comp": comp_path, "build": build_path,
         "spec": if spec.is_some() { Value::String(SPEC_PATH.into()) } else { Value::Null },
@@ -1688,7 +1741,7 @@ fn hero_diff_labeled(io: &Io, comp_path: &str, build_path: &str, spec: Option<&V
         "buildSize": format!("{}x{}", build.width, build.height),
     });
     let report = build_report(&res, Some(&files), &meta);
-    let _ = std::fs::write(abs(io, &format!("{out_dir}/report.json")), util::json_pretty(&report));
+    atomic_report(&abs(io, &format!("{out_dir}/report.json")), &report)?;
     Ok(report)
 }
 
@@ -1722,11 +1775,11 @@ fn force_allowed(reason: Option<&str>) -> bool {
     if reason.trim().chars().count() < 20 {
         return false;
     }
-    static NAMES_USER: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)\buser\b|\bthey (said|asked|told|chose|picked)\b|\bpaul\b").unwrap());
-    static QUOTE: Lazy<Regex> = Lazy::new(|| Regex::new(r#""([^"]+)"|“([^”]+)”|'([^']+)'|‘([^’]+)’"#).unwrap());
+    // Match a direct attribution together with its quotation. A user mention
+    // elsewhere in the reason cannot authorize a different speaker's words.
+    static QUOTE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(?i)(?:^|[.!?]\s+)(?:the\s+)?(?:user|paul)(?:\s+(?:said|says|wrote|replied|answered|confirmed|asked)\s*[:,]?|\s*:)\s*(?:"([^"]+)"|“([^”]+)”|'([^']+)'|‘([^’]+)’)"#).unwrap());
     static DOWNGRADE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)^\s*(please\s+)?(ignore|waive|relax|skip|drop|disregard) (the )?(approved )?(comp|mockup|fidelity|plate|region)\b|^\s*(the )?(comp|mockup|fidelity|plate|region)\b[^.!?;\n]{0,40}\b(is optional|is not required|does not need to match|doesn't need to match|need not match|can differ|can be skipped)\b").unwrap());
-    if !NAMES_USER.is_match(reason) { return false; }
-    QUOTE.captures_iter(reason).any(|capture| {
+    QUOTE.captures_iter(reason.trim()).any(|capture| {
         (1..=4).filter_map(|i| capture.get(i)).any(|q| DOWNGRADE.is_match(q.as_str()))
     })
 
@@ -1906,7 +1959,8 @@ mod transparency_guidance_tests {
     fn missing_plate_guidance_uses_the_configured_launcher() {
         let dir = std::env::temp_dir().join(format!("impeccable-plate-launcher-{}", std::process::id()));
         std::fs::create_dir_all(dir.join(BUILD_DIR)).unwrap();
-        std::fs::write(dir.join(SPEC_PATH), json!({"regions": [{"id": "art", "medium": "raster", "plate": "missing.png"}]}).to_string()).unwrap();
+        std::fs::write(dir.join(SPEC_PATH), json!({"comp":"comp.png","regions": [{"id": "art", "medium": "raster", "plate": "missing.png"}]}).to_string()).unwrap();
+        std::fs::write(dir.join("comp.png"), png_io::encode_png(&r::create_image(8,8,[255,255,255,255]), &[]).unwrap()).unwrap();
         let env = [("IMPECCABLE_SELF".into(), "/custom/impeccable".into())].into();
         let (io, _) = Io::captured("", dir.clone(), env);
         let reasons = gate_plates(&io).reasons.join("\n");

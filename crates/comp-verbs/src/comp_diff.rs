@@ -285,8 +285,12 @@ pub fn resolve_regions(comp: &Image, spec: Option<&Value>) -> Vec<RegionBox> {
 /// JS: regionCrop(img, r).
 fn region_crop(img: &Image, rr: &RegionBox) -> Image {
     // Sampling support must not add neighbouring elements to a declared region.
-    r::crop(img, rr.x * img.width as f64, rr.y * img.height as f64,
-        rr.w * img.width as f64, rr.h * img.height as f64)
+    let bounds = r::clamp_rect(img, rr.x * img.width as f64, rr.y * img.height as f64,
+        rr.w * img.width as f64, rr.h * img.height as f64);
+    // A subpixel box still samples an actual pixel, including at the far edge.
+    r::crop(img, bounds.x.min(img.width.saturating_sub(1)) as f64,
+        bounds.y.min(img.height.saturating_sub(1)) as f64,
+        bounds.w.max(1) as f64, bounds.h.max(1) as f64)
 }
 
 fn ink_box_json(b: &Option<InkBox>) -> Value {
@@ -538,31 +542,32 @@ fn write_png(path: &Path, img: &Image) -> Result<(), String> {
 }
 
 /// JS: writeArtifacts(result, comp, outDir).
-pub fn write_artifacts(result: &CompareResult, comp: &Image, out_dir: &Path) -> Value {
-    let _ = std::fs::create_dir_all(out_dir.join("regions"));
+pub fn write_artifacts(result: &CompareResult, comp: &Image, out_dir: &Path) -> Result<Value, String> {
+    std::fs::create_dir_all(out_dir.join("regions")).map_err(|e| e.to_string())?;
     let side = render_side_by_side(comp, &result.aligned, &result.label, &result.whole);
     let side_path = out_dir.join("side-by-side.png");
-    let _ = write_png(&side_path, &side);
+    write_png(&side_path, &side)?;
     let heat_path = out_dir.join("heatmap.png");
-    let _ = write_png(&heat_path, &render_heatmap(comp, &result.aligned));
-    let region_files = write_region_artifacts(result, out_dir, None);
-    json!({
+    write_png(&heat_path, &render_heatmap(comp, &result.aligned))?;
+    let region_files = write_region_artifacts(result, out_dir, None)?;
+    Ok(json!({
         "sideBySide": path_str(&side_path),
         "heatmap": path_str(&heat_path),
         "regionFiles": region_files,
-    })
+    }))
 }
 
 /// Refresh labels after gate interpretation, without rerunning measurements.
-pub fn write_region_artifacts(result: &CompareResult, out_dir: &Path, gate_regions: Option<&[Value]>) -> Vec<Value> {
+pub fn write_region_artifacts(result: &CompareResult, out_dir: &Path, gate_regions: Option<&[Value]>) -> Result<Vec<Value>, String> {
     let mut region_files: Vec<Value> = Vec::new();
     for rg in &result.regions {
         let file = out_dir.join("regions").join(format!("{}.png", rg.id));
         let gate_region = gate_regions.and_then(|regions| regions.iter().find(|r| r.get("id").and_then(Value::as_str) == Some(rg.id.as_str())));
-        let _ = write_png(&file, &render_region_pair(&rg.a, &rg.b, &rg.id, &rg.score, &rg.verdict, gate_region));
+        write_png(&file, &render_region_pair(&rg.a, &rg.b, &rg.id, &rg.score, &rg.verdict, gate_region))
+            .map_err(|e| format!("{}: {e}", file.display()))?;
         region_files.push(json!(path_str(&file)));
     }
-    region_files
+    Ok(region_files)
 }
 
 fn path_str(p: &Path) -> String {
@@ -740,7 +745,10 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
     let files = if flag(argv, "no-files") {
         None
     } else {
-        Some(write_artifacts(&result, &comp, &resolve(io, &out_dir)))
+        match write_artifacts(&result, &comp, &resolve(io, &out_dir)) {
+            Ok(files) => Some(files),
+            Err(e) => { io.err(&format!("comp-diff: cannot persist comparison artifacts: {e}\n")); return 1; }
+        }
     };
     let meta = json!({
         "label": label,
@@ -753,7 +761,9 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
     let report = build_report(&result, files.as_ref(), &meta);
     if files.is_some() {
         let rp = resolve(io, &out_dir).join("report.json");
-        let _ = std::fs::write(&rp, util::json_pretty(&report));
+        if let Err(e) = std::fs::write(&rp, util::json_pretty(&report)) {
+            io.err(&format!("comp-diff: cannot persist report: {e}\n")); return 1;
+        }
     }
     if flag(argv, "json") {
         io.out(&format!("{}\n", util::json_pretty(&report)));
@@ -778,6 +788,19 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
 #[cfg(test)]
 mod region_isolation_regression {
     use super::*;
+    #[test]
+    fn subpixel_regions_sample_real_pixels() {
+        let a = r::create_image(10, 10, [220, 10, 20, 255]);
+        let b = r::create_image(10, 10, [10, 30, 210, 255]);
+        for (x, y) in [(0.2, 0.2), (0.99, 0.99)] {
+            let rr = RegionBox { id: "tiny".into(), x, y, w:0.001, h:0.001, kind:None };
+            let ac = region_crop(&a, &rr);
+            let bc = region_crop(&b, &rr);
+            assert_eq!(&ac.data[..4], &[220,10,20,255]);
+            assert_eq!(&bc.data[..4], &[10,30,210,255]);
+            assert_ne!(ac.data, bc.data);
+        }
+    }
     #[test]
     fn small_region_does_not_sample_neighbours() {
         let a = r::create_image(256, 128, [240, 220, 190, 255]);
