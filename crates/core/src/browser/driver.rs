@@ -1353,7 +1353,11 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
         findings.extend(hits(ec::check_element_colors_dom(dom, el)));
         findings.extend(hits(ec::check_element_motion_dom(dom, el)));
         findings.extend(hits(ec::check_element_glow_dom(dom, el)));
-        findings.extend(hits(ec::check_element_ai_palette_dom(dom, el)));
+        findings.extend(hits(ec::check_element_ai_palette_dom(
+            dom,
+            el,
+            design_system.as_ref(),
+        )));
         findings.extend(hits(ec::check_element_radial_spotlight_dom(dom, el)));
         findings.extend(hits(ec::check_element_icon_tile_dom(dom, el)));
         findings.extend(hits(ec::check_element_italic_serif_dom(dom, el)));
@@ -1789,6 +1793,64 @@ mod tests {
         };
         let out = collect_browser_findings(&make_dom(), &non_ext);
         assert!(types(&out).contains(&"design-system-font".to_string()));
+    }
+
+    /// End to end through the collector: a page whose colors are all its own
+    /// documented oklch tokens must not report `ai-color-palette`, while a
+    /// color the DESIGN.md never declared still reports both rules.
+    #[test]
+    fn ai_palette_respects_the_design_system_palette() {
+        // oklch(24% 0 0) instrument face carrying oklch(70% 0.12 188) verdigris.
+        let make_dom = |text_color: &str| {
+            let mut d = FakeDom::new();
+            let (_h, body) = d.with_page();
+            let panel = d.add(Some(body), "div");
+            d.set_styles(panel, &[("backgroundColor", "rgb(58, 58, 58)")]);
+            d.el_mut(panel).check_visibility = Some(true);
+            let label = d.add(Some(panel), "span");
+            d.add_text(label, "Live");
+            d.set_styles(
+                label,
+                &[
+                    ("color", text_color),
+                    ("backgroundColor", "rgba(0, 0, 0, 0)"),
+                    ("fontFamily", "Inter, sans-serif"),
+                ],
+            );
+            d.el_mut(label).check_visibility = Some(true);
+            d
+        };
+        let types = |out: &CollectResult| -> Vec<String> {
+            out.groups
+                .iter()
+                .flat_map(|g| g.findings.iter().map(|f| f.type_.clone()))
+                .collect()
+        };
+        let design_system = json!({
+            "present": true,
+            "hasFonts": true, "allowedFonts": ["Inter"],
+            "hasColors": true,
+            "allowedColors": [{ "r": 15, "g": 182, "b": 172 }, { "r": 58, "g": 58, "b": 58 }]
+        });
+        let with_ds = BrowserConfig {
+            design_system: Some(design_system),
+            ..Default::default()
+        };
+        let without_ds = BrowserConfig::default();
+
+        // No DESIGN.md: the teal is an unexplained neon and the rule fires.
+        let out = collect_browser_findings(&make_dom("rgb(15, 182, 172)"), &without_ds);
+        assert!(types(&out).contains(&"ai-color-palette".to_string()));
+
+        // Declared token: neither the palette rule nor the drift rule fires.
+        let out = collect_browser_findings(&make_dom("rgb(15, 182, 172)"), &with_ds);
+        assert!(!types(&out).contains(&"ai-color-palette".to_string()), "{:?}", types(&out));
+        assert!(!types(&out).contains(&"design-system-color".to_string()), "{:?}", types(&out));
+
+        // An undeclared neon on the same page still reports both.
+        let out = collect_browser_findings(&make_dom("rgb(0, 229, 255)"), &with_ds);
+        assert!(types(&out).contains(&"ai-color-palette".to_string()), "{:?}", types(&out));
+        assert!(types(&out).contains(&"design-system-color".to_string()), "{:?}", types(&out));
     }
 
     #[test]
