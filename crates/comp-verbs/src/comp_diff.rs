@@ -284,20 +284,9 @@ pub fn resolve_regions(comp: &Image, spec: Option<&Value>) -> Vec<RegionBox> {
 
 /// JS: regionCrop(img, r).
 fn region_crop(img: &Image, rr: &RegionBox) -> Image {
-    let min_px = 48f64;
-    let mut x = rr.x * img.width as f64;
-    let mut y = rr.y * img.height as f64;
-    let mut w = rr.w * img.width as f64;
-    let mut h = rr.h * img.height as f64;
-    if h < min_px {
-        y -= (min_px - h) / 2.0;
-        h = min_px;
-    }
-    if w < min_px {
-        x -= (min_px - w) / 2.0;
-        w = min_px;
-    }
-    r::crop(img, x, y, w, h)
+    // Sampling support must not add neighbouring elements to a declared region.
+    r::crop(img, rr.x * img.width as f64, rr.y * img.height as f64,
+        rr.w * img.width as f64, rr.h * img.height as f64)
 }
 
 fn ink_box_json(b: &Option<InkBox>) -> Value {
@@ -507,7 +496,7 @@ fn render_heatmap(comp: &Image, build: &Image) -> Image {
 }
 
 /// JS: renderRegionPair(compCrop, buildCrop, id, score).
-fn render_region_pair(comp_crop: &Image, build_crop: &Image, id: &str, score: &Score) -> Image {
+fn render_region_pair(comp_crop: &Image, build_crop: &Image, id: &str, score: &Score, verdict: &str, gate_region: Option<&Value>) -> Image {
     let gap = 16f64;
     let pad = 12f64;
     let max_w = 700f64;
@@ -520,11 +509,16 @@ fn render_region_pair(comp_crop: &Image, build_crop: &Image, id: &str, score: &S
     );
     r::blit(&mut out, &a, pad, pad + 30.0);
     r::blit(&mut out, &b, pad + a.width as f64 + gap, pad + 30.0);
-    let v = verdict_for(score, None);
+    let v = verdict;
+    let gate_label = gate_region.map(|region| match region.get("blocking").and_then(Value::as_bool) {
+        Some(true) => " / BLOCKING",
+        Some(false) => " / NONBLOCKING",
+        None => " / CHECK GATE",
+    }).unwrap_or("");
     r::draw_label(&mut out, &format!("{}  COMP", id.to_uppercase()), pad, pad, [255.0, 255.0, 255.0, 255.0], [0.0, 0.0, 0.0, 220.0], 2.0, 4.0);
     r::draw_label(
         &mut out,
-        &format!("BUILD  {} {}%", v.to_uppercase(), to_fixed(score.overall * 100.0, 0)),
+        &format!("BUILD  {} {}%{gate_label}", v.to_uppercase(), to_fixed(score.overall * 100.0, 0)),
         pad + a.width as f64 + gap,
         pad,
         [255.0, 255.0, 255.0, 255.0],
@@ -551,17 +545,24 @@ pub fn write_artifacts(result: &CompareResult, comp: &Image, out_dir: &Path) -> 
     let _ = write_png(&side_path, &side);
     let heat_path = out_dir.join("heatmap.png");
     let _ = write_png(&heat_path, &render_heatmap(comp, &result.aligned));
-    let mut region_files: Vec<Value> = Vec::new();
-    for rg in &result.regions {
-        let file = out_dir.join("regions").join(format!("{}.png", rg.id));
-        let _ = write_png(&file, &render_region_pair(&rg.a, &rg.b, &rg.id, &rg.score));
-        region_files.push(json!(path_str(&file)));
-    }
+    let region_files = write_region_artifacts(result, out_dir, None);
     json!({
         "sideBySide": path_str(&side_path),
         "heatmap": path_str(&heat_path),
         "regionFiles": region_files,
     })
+}
+
+/// Refresh labels after gate interpretation, without rerunning measurements.
+pub fn write_region_artifacts(result: &CompareResult, out_dir: &Path, gate_regions: Option<&[Value]>) -> Vec<Value> {
+    let mut region_files: Vec<Value> = Vec::new();
+    for rg in &result.regions {
+        let file = out_dir.join("regions").join(format!("{}.png", rg.id));
+        let gate_region = gate_regions.and_then(|regions| regions.iter().find(|r| r.get("id").and_then(Value::as_str) == Some(rg.id.as_str())));
+        let _ = write_png(&file, &render_region_pair(&rg.a, &rg.b, &rg.id, &rg.score, &rg.verdict, gate_region));
+        region_files.push(json!(path_str(&file)));
+    }
+    region_files
 }
 
 fn path_str(p: &Path) -> String {
@@ -772,4 +773,24 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
         }
     }
     0
+}
+
+#[cfg(test)]
+mod region_isolation_regression {
+    use super::*;
+    #[test]
+    fn small_region_does_not_sample_neighbours() {
+        let a = r::create_image(256, 128, [240, 220, 190, 255]);
+        let mut b = a.clone();
+        for y in 40..53 { for x in 60..180 {
+            let p = (y * 256 + x) * 4;
+            b.data[p..p+4].copy_from_slice(&[20,20,20,255]);
+        }}
+        let rr = RegionBox { id: "toolbar".into(), x:60.0/256.0, y:53.0/128.0,
+            w:120.0/256.0, h:22.0/128.0, kind:Some("chrome".into()) };
+        let ac = region_crop(&a, &rr);
+        let bc = region_crop(&b, &rr);
+        assert_eq!(ac.height, 22, "crop must honor the declared box");
+        assert_eq!(ac.data, bc.data, "neighbours cannot change the target pixels");
+    }
 }
