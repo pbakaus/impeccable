@@ -233,6 +233,9 @@ struct RawResult {
     snippet: String,
     ignore_value: String,
     severity: String,
+    /// The `detector.ignoreSelectors` selector that waived this finding, when
+    /// one did. Empty for everything else.
+    ignored_by: String,
 }
 
 fn cdp_err(e: CdpError) -> EngineError {
@@ -384,6 +387,12 @@ fn detect_url_impl(
             item.extras
                 .insert("ignoreValue".into(), Value::String(r.ignore_value));
         }
+        if !r.ignored_by.is_empty() {
+            item.extras.insert(
+                impeccable_core::findings::IGNORED_BY_KEY.into(),
+                Value::String(r.ignored_by),
+            );
+        }
         if !r.severity.is_empty() && r.severity != item.severity {
             item.severity = r.severity;
         }
@@ -459,6 +468,7 @@ fn scan_page_inner(
     let config = snapshot_engine::browser_config(
         serialize_design_system_for_browser(options.design_system.as_deref()),
         options.rule_pack,
+        options.ignore_selectors.clone(),
     );
 
     // Deterministic pass: capture the page and run the rule core natively over
@@ -486,6 +496,7 @@ fn scan_page_inner(
                     id: js_str(f.get("type")),
                     snippet: js_str(f.get("detail")),
                     ignore_value: js_str_or_empty(f.get("ignoreValue")),
+                    ignored_by: js_str_or_empty(f.get("ignoredBy")),
                     severity: js_str_or_empty(f.get("severity")),
                 });
             }
@@ -515,6 +526,7 @@ fn scan_page_inner(
                     id: f.id,
                     snippet: f.snippet,
                     ignore_value: String::new(),
+                    ignored_by: String::new(),
                     severity: String::new(),
                 })
                 .collect(),
@@ -527,6 +539,7 @@ fn scan_page_inner(
             id: "script-error".to_string(),
             snippet: message,
             ignore_value: String::new(),
+            ignored_by: String::new(),
             severity: String::new(),
         });
     }
@@ -603,6 +616,7 @@ fn run_visual_contrast_fallback(
             id: js_str(f.get("id")),
             snippet: js_str(f.get("snippet")),
             ignore_value: String::new(),
+            ignored_by: String::new(),
             severity: String::new(),
         })
         .collect();
@@ -648,6 +662,7 @@ fn run_visual_contrast_fallback(
                         id: f.id.to_string(),
                         snippet: f.snippet,
                         ignore_value: String::new(),
+                        ignored_by: String::new(),
                         severity: String::new(),
                     }]
                 })

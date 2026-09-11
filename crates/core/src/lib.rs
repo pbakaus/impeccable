@@ -17,7 +17,7 @@ pub mod checks;
 
 pub use impeccable_foundation::{
     color, constants, fdlibm_trig, findings, fonts, inline_ignores, js, js_ext_a, js_ext_b, page,
-    registry, rule_pack,
+    registry, rule_pack, selector_ignores,
 };
 
 #[cfg(any(test, feature = "vectors"))]

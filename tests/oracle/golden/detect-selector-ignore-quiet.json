@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "1 anti-pattern found.\n3 undersized-ui-text hits ignored by detector.ignoreSelectors on .ks-tag.\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

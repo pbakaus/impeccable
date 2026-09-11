@@ -13,8 +13,9 @@ use impeccable_core::findings::Finding;
 use impeccable_core::js;
 use impeccable_detect::config::{
     extract_finding_ignore_value, filter_detection_findings, matches_any_glob,
-    normalize_ignore_rule, normalize_ignore_value, normalize_ignore_value_entries, DetectionConfig,
-    IgnoreValueEntry,
+    merge_ignore_selectors, normalize_ignore_rule, normalize_ignore_value,
+    normalize_ignore_value_entries, selector_ignores_for_target, DetectionConfig,
+    IgnoreSelectorEntry, IgnoreValueEntry,
 };
 use impeccable_detect::design_system::{load_design_system_for_cwd, resolve_design_md_path, DesignSystem};
 use impeccable_detect::detect_text::{detect_text, TextOptions};
@@ -373,6 +374,8 @@ pub struct HookConfig {
     pub ignore_rules: Vec<String>,
     pub ignore_files: Vec<String>,
     pub ignore_values: Vec<IgnoreValueEntry>,
+    /// `detector.ignoreSelectors`: the project's component-level opt-outs.
+    pub ignore_selectors: Vec<IgnoreSelectorEntry>,
     pub extensions: Vec<ExtensionEntry>,
     pub per_edit_rules: String,
     pub advisory_rules: String,
@@ -389,6 +392,7 @@ impl Default for HookConfig {
             ignore_rules: vec![],
             ignore_files: vec![],
             ignore_values: vec![],
+            ignore_selectors: vec![],
             extensions: vec![],
             per_edit_rules: "immediate".to_string(),
             advisory_rules: "exclude".to_string(),
@@ -481,6 +485,9 @@ fn apply_detector_config_source(config: &mut HookConfig, raw: Option<&Map<String
     }
     if let Some(Value::Array(list)) = raw.get("ignoreValues") {
         config.ignore_values = merge_ignore_values(&config.ignore_values, list);
+    }
+    if let Some(Value::Array(list)) = raw.get("ignoreSelectors") {
+        config.ignore_selectors = merge_ignore_selectors(&config.ignore_selectors, list);
     }
     if let Some(Value::Array(list)) = raw.get("extensions") {
         config.extensions = merge_extensions(&config.extensions, list);
@@ -989,6 +996,7 @@ pub fn filter_findings(findings: Vec<Finding>, config: &HookConfig) -> Vec<Findi
         ignore_rules: config.ignore_rules.clone(),
         ignore_files: vec![],
         ignore_values: config.ignore_values.clone(),
+        ignore_selectors: config.ignore_selectors.clone(),
         design_system_enabled: None,
         advisory_rules: None,
     };
@@ -1615,6 +1623,9 @@ pub fn should_emit_ack_for_file(file_path: &str, config: &HookConfig) -> bool {
 #[derive(Default, Clone)]
 pub struct HookScanOptions {
     pub design_system: Option<Rc<DesignSystem>>,
+    /// The project's component-level opt-outs, narrowed per file when the
+    /// options are handed to an engine.
+    pub ignore_selectors: Vec<IgnoreSelectorEntry>,
 }
 
 impl HookScanOptions {
@@ -1624,12 +1635,19 @@ impl HookScanOptions {
             .map(|d| d.md_newer_than_json)
             .unwrap_or(false)
     }
-    pub fn to_scan_options(&self) -> ScanOptions {
+    pub fn to_scan_options(&self, target: &str) -> ScanOptions {
         ScanOptions {
             inline_ignores: true,
             design_system: self.design_system.clone(),
             viewport: None,
             profile: None,
+            ignore_selectors: selector_ignores_for_target(
+                &DetectionConfig {
+                    ignore_selectors: self.ignore_selectors.clone(),
+                    ..DetectionConfig::raw()
+                },
+                target,
+            ),
             rule_pack: None,
         }
     }
@@ -1642,6 +1660,7 @@ pub fn design_system_options(config: &HookConfig, project_cwd: &str) -> HookScan
     }
     HookScanOptions {
         design_system: load_design_system_for_cwd(project_cwd).map(Rc::new),
+        ignore_selectors: config.ignore_selectors.clone(),
     }
 }
 
@@ -1695,7 +1714,7 @@ pub fn detector_detect_html(
 ) -> Result<Vec<Finding>, String> {
     let mut sink = std::io::sink();
     rt.html
-        .detect_html(file_path, &scan.to_scan_options(), &mut sink)
+        .detect_html(file_path, &scan.to_scan_options(file_path), &mut sink)
         .map_err(|e| e.message)
 }
 

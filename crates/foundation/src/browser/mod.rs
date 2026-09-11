@@ -39,6 +39,17 @@ pub struct BrowserFinding {
         skip_serializing_if = "Option::is_none"
     )]
     pub ignore_value: Option<String>,
+    /// The `detector.ignoreSelectors` selector that waived this finding, when
+    /// one did. A stamped finding is still reported by the engine: the config
+    /// layer drops it and counts it, so a component-level opt-out shows up as
+    /// a number rather than as silence. `None` for everything else, and
+    /// skipped in serialization, so output without the feature is unchanged.
+    #[serde(
+        default,
+        rename = "ignoredBy",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub ignored_by: Option<String>,
 }
 
 impl BrowserFinding {
@@ -48,6 +59,7 @@ impl BrowserFinding {
             detail: detail.into(),
             severity: None,
             ignore_value: None,
+            ignored_by: None,
         }
     }
     /// `{ type: f.id, detail: f.snippet }` from a Section 3 hit.
@@ -145,6 +157,16 @@ pub struct BrowserConfig {
     /// overlay. Serialized as `disabledValues`.
     #[serde(default, deserialize_with = "de_disabled_values")]
     pub disabled_values: Vec<DisabledValue>,
+    /// `window.__IMPECCABLE_CONFIG__?.ignoreSelectors`: the project's
+    /// component-level opt-outs, `[{ rule, selector }]`. Every finding on an
+    /// element the selector matches (or on a descendant of one) is stamped
+    /// with that selector instead of being reported clean, the same waiver
+    /// `data-impeccable-ignore` grants the element that carries it. Honored
+    /// in every mode: unlike `disabledRules`, this list is the project's own
+    /// config rather than a browser-extension preference. Empty by default,
+    /// and skipped in serialization so a config without it is byte-identical.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ignore_selectors: Vec<crate::selector_ignores::SelectorIgnore>,
     /// `window.__IMPECCABLE_CONFIG__?.skipScan === true` (only honored in
     /// extension mode): the page is waived wholesale by detector.ignoreFiles,
     /// so every scan stage answers empty.

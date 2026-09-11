@@ -186,11 +186,13 @@ pub fn resolve_needs<T>(
 pub fn browser_config(
     design_system: Value,
     rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
+    ignore_selectors: Vec<impeccable_core::selector_ignores::SelectorIgnore>,
 ) -> BrowserConfig {
     BrowserConfig {
         extension_mode: false,
         disabled_rules: Vec::new(),
         disabled_values: Vec::new(),
+        ignore_selectors,
         skip_scan: false,
         design_system: if design_system.is_null() {
             None

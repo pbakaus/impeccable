@@ -8,6 +8,7 @@ use super::dom::{tag_lower, Dom, ElId, Rect};
 use super::element_checks::check_element_borders_dom;
 use super::{BrowserConfig, BrowserFinding, DisabledValue, FindingGroup};
 use crate::js_ext_a::JsMap;
+use impeccable_foundation::selector_ignores::{waiving_selector, SelectorIgnore};
 use serde::Serialize;
 
 /// The collect result type is shared.
@@ -60,6 +61,41 @@ pub fn add_browser_findings(
         g.findings.extend(kept);
     } else {
         groups.push(FindingGroup { el, findings: kept });
+    }
+}
+
+/// Apply the project's component-level opt-outs (`detector.ignoreSelectors`)
+/// to a collected group list.
+///
+/// The semantics are the attribute's: an entry waives its rule for every
+/// element the selector matches and for that element's subtree, which is what
+/// `element.closest(selector)` answers. Findings are stamped rather than
+/// dropped, so the layer that owns the ignore list can report "N hits ignored
+/// by config on `.ks-tag`" instead of quietly reporting nothing.
+pub fn stamp_selector_ignores(
+    dom: &dyn Dom,
+    groups: &mut [FindingGroup],
+    entries: &[SelectorIgnore],
+) {
+    if entries.is_empty() {
+        return;
+    }
+    for group in groups.iter_mut() {
+        // Handle 0 is JS null (a missing document.body): nothing to match.
+        if group.el == 0 {
+            continue;
+        }
+        for f in group.findings.iter_mut() {
+            if f.ignored_by.is_some() {
+                continue;
+            }
+            let el = group.el;
+            if let Some(selector) = waiving_selector(entries, &f.type_, |sel| {
+                matches!(dom.closest(el, sel), Ok(Some(_)))
+            }) {
+                f.ignored_by = Some(selector.to_string());
+            }
+        }
     }
 }
 
@@ -363,6 +399,7 @@ pub fn check_element_design_system_dom(
         detail,
         severity: None,
         ignore_value: Some(value),
+        ignored_by: None,
     };
 
     if ds.has_fonts && browser_has_direct_text(dom, el) {
@@ -515,6 +552,7 @@ pub fn check_browser_design_system_sources(
                 ),
                 severity: None,
                 ignore_value: Some(display),
+                ignored_by: None,
             });
         }
     }
@@ -833,6 +871,12 @@ pub fn serialize_findings(dom: &dyn Dom, groups: &[FindingGroup]) -> serde_json:
                     "description".into(),
                     Value::String(ap.map(|a| a.description).unwrap_or("").to_string()),
                 );
+                // Only present when a detector.ignoreSelectors entry waived
+                // this finding, so a scan without the feature serializes
+                // exactly what it always did.
+                if let Some(selector) = f.ignored_by.as_ref() {
+                    m.insert("ignoredBy".into(), Value::String(selector.clone()));
+                }
                 Value::Object(m)
             })
             .collect();
@@ -1464,6 +1508,7 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
         page_level.retain(|f| !browser_value_ignored(f, &disabled_values));
     }
 
+    stamp_selector_ignores(dom, &mut groups, &config.ignore_selectors);
     CollectResult { groups, page_level }
 }
 
@@ -1870,6 +1915,88 @@ mod tests {
         assert!(visual_contrast_result_finding(&d, p, &existing, &result).is_none());
         let pass = json!({ "status": "pass", "selector": "#t", "finding": null });
         assert_eq!(visual_contrast_result_el(&d, &pass), None);
+    }
+
+    #[test]
+    fn config_selector_ignores_stamp_the_component_and_its_subtree() {
+        // The #34 shape: one component, many instances, one rule.
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        let mut tags = Vec::new();
+        for _ in 0..3 {
+            let tag = d.add(Some(body), "span");
+            d.add_selector(tag, ".ks-tag");
+            tags.push(tag);
+        }
+        let inner = d.add(Some(tags[0]), "b");
+        let other = d.add(Some(body), "a");
+        d.add_selector(other, ".cta");
+
+        let mut groups: Vec<FindingGroup> = tags
+            .iter()
+            .chain([&inner, &other])
+            .map(|el| FindingGroup {
+                el: *el,
+                findings: vec![
+                    BrowserFinding::new("undersized-ui-text", "10px functional text"),
+                    BrowserFinding::new("wide-tracking", "letter-spacing: 0.08em"),
+                ],
+            })
+            .collect();
+
+        let entries = vec![SelectorIgnore::new("undersized-ui-text", ".ks-tag")];
+        stamp_selector_ignores(&d, &mut groups, &entries);
+
+        // Three instances plus the descendant: waived, and each carries the
+        // selector that waived it rather than vanishing.
+        for g in groups.iter().take(4) {
+            assert_eq!(g.findings[0].ignored_by.as_deref(), Some(".ks-tag"));
+            // Only the named rule is waived.
+            assert_eq!(g.findings[1].ignored_by, None);
+        }
+        // An element outside the component keeps both findings clean.
+        assert_eq!(groups[4].findings[0].ignored_by, None);
+        assert_eq!(groups[4].findings[1].ignored_by, None);
+
+        // Serialization carries the stamp, and only when there is one.
+        let json = serialize_findings(&d, &groups);
+        let first = &json[0]["findings"][0];
+        assert_eq!(first["ignoredBy"], json!(".ks-tag"));
+        assert_eq!(json[0]["findings"][1].get("ignoredBy"), None);
+    }
+
+    #[test]
+    fn config_selector_ignores_are_off_without_entries() {
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        let tag = d.add(Some(body), "span");
+        d.add_selector(tag, ".ks-tag");
+        let mut groups = vec![FindingGroup {
+            el: tag,
+            findings: vec![BrowserFinding::new("undersized-ui-text", "10px")],
+        }];
+        stamp_selector_ignores(&d, &mut groups, &[]);
+        assert_eq!(groups[0].findings[0].ignored_by, None);
+        // A `*` entry waives every rule on the component, as the attribute does.
+        stamp_selector_ignores(&d, &mut groups, &[SelectorIgnore::new("*", ".ks-tag")]);
+        assert_eq!(groups[0].findings[0].ignored_by.as_deref(), Some(".ks-tag"));
+    }
+
+    #[test]
+    fn browser_config_reads_ignore_selectors_from_the_page_config() {
+        let cfg: BrowserConfig = serde_json::from_str(
+            r#"{"ignoreSelectors":[{"rule":"Undersized-UI-Text","selector":".ks-tag"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(cfg.ignore_selectors.len(), 1);
+        // Normalization is the constructor's job, not the parser's: the raw
+        // value round-trips and `covers_rule` folds case.
+        assert!(SelectorIgnore::new(&cfg.ignore_selectors[0].rule, ".ks-tag")
+            .covers_rule("undersized-ui-text"));
+        let bare: BrowserConfig = serde_json::from_str("{}").unwrap();
+        assert!(bare.ignore_selectors.is_empty());
+        // A config without the key serializes without it.
+        assert!(!serde_json::to_string(&bare).unwrap().contains("ignoreSelectors"));
     }
 }
 

@@ -103,6 +103,23 @@ export default function cases() {
     { id: 'detect-config-from-subdir', verb: 'detect', workspace: 'detect-config', cwd: 'src', args: ['--json', 'page.html'] },
     // A file in one project must not pick up another project's DESIGN.md
     { id: 'detect-config-cross-project', verb: 'detect', workspace: 'detect-config', args: ['--json', `<REPO>/tests/fixtures/antipatterns/blinking-cursor.html`], isolateHome: false },
+
+    // Component-level opt-outs (detector.ignoreSelectors): one entry waives a
+    // rule for every instance of a component, and the scan says how many hits
+    // it suppressed instead of going quiet. The fourth label is outside the
+    // component and stays reported.
+    { id: 'detect-selector-ignore-text', verb: 'detect', workspace: 'detect-selector-ignores', args: ['src/page.html'] },
+    { id: 'detect-selector-ignore-json', verb: 'detect', workspace: 'detect-selector-ignores', args: ['--json', 'src/page.html'] },
+    { id: 'detect-selector-ignore-quiet', verb: 'detect', workspace: 'detect-selector-ignores', args: ['--quiet', 'src/page.html'] },
+    { id: 'detect-selector-ignore-no-config', verb: 'detect', workspace: 'detect-selector-ignores', args: ['--no-config', '--json', 'src/page.html'] },
+
+    // `impeccable ignores` CRUD for the same entries.
+    { id: 'ignores-selector-list', verb: 'ignores', workspace: 'detect-selector-ignores', args: ['list'] },
+    { id: 'ignores-selector-add', verb: 'ignores', workspace: 'detect-selector-ignores', args: ['add-selector', 'undersized-ui-text', '.free-label', '--reason', 'timestamp column'] },
+    { id: 'ignores-selector-remove', verb: 'ignores', workspace: 'detect-selector-ignores', args: ['remove-selector', 'undersized-ui-text', '.ks-tag'] },
+    { id: 'ignores-selector-missing-args', verb: 'ignores', workspace: 'detect-selector-ignores', args: ['add-selector', 'undersized-ui-text'] },
+    { id: 'ignores-selector-star-refused', verb: 'ignores', workspace: 'detect-selector-ignores', args: ['add-selector', 'undersized-ui-text', '*'] },
+    { id: 'ignores-help', verb: 'ignores', args: ['--help'] },
   );
 
   return out;

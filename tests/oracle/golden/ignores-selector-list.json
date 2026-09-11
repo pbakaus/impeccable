@@ -1,0 +1,7 @@
+{
+  "stdout": "Impeccable detector ignores\n  shared file: .impeccable/config.json\n  local file:  .impeccable/config.local.json\n\nMerged:\n  ignoreRules:  (none)\n  ignoreFiles:  (none)\n  ignoreValues: (none)\n  ignoreSelectors: undersized-ui-text on .ks-tag - 10px mono label, confirmed by the author, glow-effect on .demo-stage [src/demo/**]\n  designSystem: enabled\n\nShared:\n  ignoreRules:  (none)\n  ignoreFiles:  (none)\n  ignoreValues: (none)\n  ignoreSelectors: undersized-ui-text on .ks-tag - 10px mono label, confirmed by the author, glow-effect on .demo-stage [src/demo/**]\n  designSystem: enabled\n\nLocal:\n  ignoreRules:  (none)\n  ignoreFiles:  (none)\n  ignoreValues: (none)\n  designSystem: enabled\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

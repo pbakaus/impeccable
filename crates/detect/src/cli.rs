@@ -9,7 +9,8 @@ use impeccable_core::registry::{filter_by_scopes, rule_scopes};
 use serde_json::Value;
 
 use crate::config::{
-    filter_detection_findings, read_detection_config, should_ignore_detection_file, DetectionConfig,
+    filter_detection_findings_reported, read_detection_config, selector_ignores_for_target,
+    should_ignore_detection_file, DetectionConfig, IgnoredBySelector,
 };
 use crate::design_system::{load_design_system_for_target, DesignSystemCache};
 use crate::detect_text::{detect_text, TextOptions};
@@ -57,7 +58,16 @@ Exit status:
 Project config:
   Respects .impeccable/config.json and .impeccable/config.local.json detector
   settings: detector.ignoreRules, detector.ignoreFiles, detector.ignoreValues,
-  and detector.designSystem.enabled.
+  detector.ignoreSelectors, and detector.designSystem.enabled.
+
+Component ignores:
+  detector.ignoreSelectors waives one rule for every element a CSS selector
+  matches, and for that element's subtree: one entry for a component instead
+  of a data-impeccable-ignore attribute on each of its instances. Write one
+  with `impeccable ignores add-selector <rule> \"<selector>\"`. Every scan
+  prints what it suppressed on stderr, in --json runs too, so the exception
+  stays visible:
+    3 undersized-ui-text hits ignored by detector.ignoreSelectors on .ks-tag.
 
 Inline ignores:
   In-file comments waive a finding where it lives and travel with the file:
@@ -207,6 +217,33 @@ fn format_advisory_section(advisory: &[&Finding], stderr_tty: bool) -> String {
     lines.join("\n")
 }
 
+/// The component-level opt-outs that fired on this run, one line each.
+///
+/// A `detector.ignoreSelectors` entry waives every instance of a component at
+/// once, so the only way a reviewer learns it is there is for the scan to say
+/// what it suppressed. Empty when the project has no such entry, or when the
+/// entries it has matched nothing, so a scan is unchanged until the feature
+/// is used.
+pub fn format_ignored_by_selector(report: &[IgnoredBySelector], stderr_tty: bool) -> String {
+    if report.is_empty() {
+        return String::new();
+    }
+    let mut lines = Vec::with_capacity(report.len());
+    for r in report {
+        lines.push(dim(
+            &format!(
+                "{} {} hit{} ignored by detector.ignoreSelectors on {}.",
+                r.count,
+                r.rule,
+                if r.count == 1 { "" } else { "s" },
+                r.selector
+            ),
+            stderr_tty,
+        ));
+    }
+    lines.join("\n")
+}
+
 /// JS: main.mjs#formatFindings
 pub fn format_findings(findings: &[Finding], json_mode: bool, stderr_tty: bool) -> String {
     if json_mode {
@@ -251,6 +288,25 @@ impl<'a> Ctx<'a> {
     }
 
     fn scan_options_for(&mut self, local_path: Option<&str>) -> ScanOptions {
+        let mut options = self.design_system_options_for(local_path);
+        // Component-level opt-outs are per target: an entry with `files`
+        // governs the targets its globs match, an entry without governs all
+        // of them. `--no-config` leaves the list empty, so nothing is waived.
+        options.ignore_selectors =
+            selector_ignores_for_target(&self.config, local_path.unwrap_or_default());
+        options
+    }
+
+    /// The URL scan's options: no local design system to resolve, but the
+    /// project's unscoped selector ignores still govern the page.
+    fn url_scan_options(&self, url: &str) -> ScanOptions {
+        ScanOptions {
+            ignore_selectors: selector_ignores_for_target(&self.config, url),
+            ..self.base.clone()
+        }
+    }
+
+    fn design_system_options_for(&mut self, local_path: Option<&str>) -> ScanOptions {
         let (Some(local_path), true) = (local_path, self.design_system_enabled) else {
             return self.base.clone();
         };
@@ -507,6 +563,8 @@ fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32,
         design_system: None,
         viewport,
         profile: None,
+        // Filled in per target: an ignoreSelectors entry can be scoped to files.
+        ignore_selectors: Vec::new(),
         // The `impeccable` binary installs no rule pack; a library caller that
         // does sets this before handing the options to an engine.
         rule_pack: None,
@@ -587,7 +645,10 @@ fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32,
         result?;
     }
 
-    all = filter_detection_findings(all, &ctx.config);
+    // Findings the engines stamped with a component-level opt-out leave the
+    // reportable set here and come back as a count.
+    let ignored_by_selector;
+    (all, ignored_by_selector) = filter_detection_findings_reported(all, &ctx.config);
     let scope_refs: Vec<&str> = scopes.iter().map(|s| s.as_str()).collect();
     all = filter_by_scopes(all, &scope_refs, |f: &Finding| f.antipattern.as_str());
     if no_advisory {
@@ -605,13 +666,22 @@ fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32,
     } else {
         0
     };
+    // The ignored-by-config tally goes to stderr in every mode: in --json,
+    // stdout stays the findings array a consumer parses.
+    let ignored_note = format_ignored_by_selector(&ignored_by_selector, stderr_tty);
     if !all.is_empty() {
         if json_mode {
             let text = format_findings(&all, true, stderr_tty);
             ctx.io.out(&format!("{text}\n"));
+            if !ignored_note.is_empty() {
+                ctx.io.err(&format!("{ignored_note}\n"));
+            }
         } else if quiet_mode {
             ctx.io
                 .err(&format!("{}\n", format_finding_summary(primary_len)));
+            if !ignored_note.is_empty() {
+                ctx.io.err(&format!("{ignored_note}\n"));
+            }
             if advisory_len > 0 {
                 let note = dim(
                     &format!(
@@ -625,11 +695,17 @@ fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32,
         } else {
             let text = format_findings(&all, false, stderr_tty);
             ctx.io.err(&format!("{text}\n"));
+            if !ignored_note.is_empty() {
+                ctx.io.err(&format!("\n{ignored_note}\n"));
+            }
         }
         return Ok(exit_code);
     }
     if json_mode {
         ctx.io.out("[]\n");
+    }
+    if !ignored_note.is_empty() {
+        ctx.io.err(&format!("{ignored_note}\n"));
     }
     Ok(exit_code)
 }
@@ -676,7 +752,7 @@ fn scan_targets(
                 let local = file_url_to_local_path(target);
                 ctx.scan_options_for(local.as_deref())
             } else {
-                ctx.base.clone()
+                ctx.url_scan_options(target)
             };
             let result = match (shared, ctx.engines.url) {
                 (Some(s), _) => s.detect_url(target, &url_options),
