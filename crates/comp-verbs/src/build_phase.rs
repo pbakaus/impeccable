@@ -1110,14 +1110,65 @@ fn atomic_report(path: &Path, report: &Value) -> Result<(), String> {
 }
 
 fn unavailable_report(io: &Io, out_dir: &str, gate: &Gate, phase: &str) -> Result<(), String> {
-    let report = json!({ "interpretation": format!("{phase}-gate"), "measurementsAvailable": false,
+    let mut report = json!({ "interpretation": format!("{phase}-gate"), "measurementsAvailable": false,
         "regions": [], "gate": { "ok": false, "reasons": gate.reasons,
             "advisories": gate.advisories, "unscopedReasons": gate.reasons } });
     // Invalidate the report before touching images; also clean partial writes on failure.
     // Attempt cleanup even when the report itself cannot be replaced.
     let report_write = atomic_report(&abs(io, &format!("{out_dir}/report.json")), &report);
     let cleanup = clear_comparison_artifacts(&abs(io, out_dir));
+    if let Err(error) = &cleanup {
+        // A read-only regions directory may prevent unlinking its children even
+        // when its parent permits moving the directory. Preserve those bytes as
+        // explicitly invalid evidence instead of leaving them at current paths.
+        report["artifactCleanup"] = json!({"status":"failed", "error":error,
+            "invalidArtifacts":["raw-report.json", "side-by-side.png", "heatmap.png", "regions/"]});
+        match quarantine_comparison_artifacts(&abs(io, out_dir)) {
+            Ok(record) => report["artifactCleanup"]["quarantine"] = record,
+            Err(e) => report["artifactCleanup"]["quarantineError"] = json!(e),
+        }
+        // If the filesystem also refuses quarantine, the report explicitly marks
+        // every potentially remaining artifact invalid. The gate still fails.
+        atomic_report(&abs(io, &format!("{out_dir}/report.json")), &report)?;
+    }
     report_write.and(cleanup)
+}
+
+fn quarantine_comparison_artifacts(out_dir: &Path) -> Result<Value, String> {
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let quarantine = loop {
+        let candidate = out_dir.join(format!("invalid-comparison-{}-{}", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
+        match std::fs::create_dir(&candidate) {
+            Ok(()) => break candidate,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e.to_string()),
+        }
+    };
+    let mut errors = Vec::new();
+    let mut artifacts = Map::new();
+    let prefix = quarantine.file_name().unwrap().to_string_lossy();
+    for name in ["raw-report.json", "side-by-side.png", "heatmap.png", "regions"] {
+        let path = out_dir.join(name);
+        // Keep the same parent: moving a read-only directory into another parent
+        // can require write permission on that directory (to change its `..`).
+        let target = out_dir.join(format!("{prefix}-{name}"));
+        let move_artifact = (|| -> std::io::Result<()> {
+            match std::fs::symlink_metadata(&target) {
+                Ok(_) => return Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "quarantine target exists")),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
+                Err(e) => return Err(e),
+            }
+            std::fs::rename(&path, &target)
+        })();
+        match move_artifact {
+            Ok(()) => { artifacts.insert(name.into(), json!(target.to_string_lossy().replace('\\', "/"))); },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
+            Err(e) => errors.push(format!("{name}: {e}")),
+        }
+    }
+    let record = json!({"invalid":true, "artifacts":artifacts, "errors":errors});
+    atomic_report(&quarantine.join("manifest.json"), &record)?;
+    Ok(record)
 }
 
 fn clear_comparison_artifacts(out_dir: &Path) -> Result<(), String> {

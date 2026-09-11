@@ -40,6 +40,13 @@ Each attempt clears the previous raw report, whole-frame PNGs, and region PNGs;
 failed attempts also clear any partial evidence they wrote. Removed regions cannot
 leave old crops in a successful comparison. Cleanup is limited to generated files,
 does not follow region-directory symlinks, and blocks the gate if it fails.
+When removal fails, the remaining generated set is renamed beside its current paths under a unique
+`invalid-comparison-*` prefix. `artifactCleanup` and a quarantine manifest record
+the moved paths. Keeping the same parent avoids requiring write access to the
+read-only directory itself.
+If filesystem permissions also prevent quarantine, that field records the error
+and explicitly lists the invalid artifact paths; no evidence is certified and the
+gate remains closed.
 Write failures block the gate
 and, when the report location is writable, publish an unavailable-evidence report.
 

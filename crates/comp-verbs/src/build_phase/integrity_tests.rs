@@ -507,10 +507,15 @@ fn artifact_cleanup_failure_blocks_the_gate() {
     let dir = ws.path.join("diff/regions");
     std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o555)).unwrap();
     let gate = gate_hero(&ws.io(), &mut state, "comp.png", HERO_MIN, "diff", Some("index.html"), &no_organic_scan);
-    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+    if dir.exists() { std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap(); }
     assert!(!gate.ok);
     assert!(gate.reasons.iter().any(|r| r.contains("cannot clear comparison artifacts")), "{:?}", gate.reasons);
     let report: Value = serde_json::from_slice(&std::fs::read(ws.path.join("diff/report.json")).unwrap()).unwrap();
     assert_eq!(report["measurementsAvailable"], false);
     assert_eq!(report["gate"]["ok"], false);
+    assert_no_current_measurements(&ws);
+    let quarantine = ws.path.join(report["artifactCleanup"]["quarantine"]["artifacts"]["regions"].as_str().expect("cleanup failure must identify quarantined evidence"));
+    assert!(quarantine.join("retired.png").is_file());
+    assert_eq!(report["artifactCleanup"]["quarantine"]["errors"], json!([]));
+    std::fs::set_permissions(quarantine, std::fs::Permissions::from_mode(0o755)).unwrap();
 }
