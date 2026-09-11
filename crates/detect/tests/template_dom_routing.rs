@@ -58,6 +58,7 @@ fn builtin_markup_and_configured_erb_share_the_html_finding_family() {
         "page.html",
         "page.vue",
         "page.svelte",
+        "page.astro",
         "page.blade.php",
         "page.html.erb",
     ];
@@ -84,6 +85,41 @@ fn builtin_markup_and_configured_erb_share_the_html_finding_family() {
             "{name} finding ids should match page.html"
         );
     }
+}
+
+#[test]
+fn configured_text_suffix_does_not_widen_walk_and_vendor_is_skipped() {
+    use impeccable_detect::engine_route::normalize_extension_entries;
+    use impeccable_detect::file_system::walk_dir_reporting_with;
+    let tmp = std::env::temp_dir().join(format!(
+        "impeccable-walk-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(tmp.join("vendor/bundle")).unwrap();
+    std::fs::create_dir_all(tmp.join("app")).unwrap();
+    for path in [
+        "vendor/bundle/page.html.erb",
+        "vendor/bundle/page.blade.php",
+        "app/Foo.php",
+        "app/page.html.erb",
+        "app/page.blade.php",
+    ] {
+        std::fs::write(tmp.join(path), "<p>Hi</p>").unwrap();
+    }
+    let exts = normalize_extension_entries(&[
+        serde_json::json!({"ext":".php","engine":"text"}),
+        serde_json::json!(".html.erb"),
+    ]);
+    let paths = walk_dir_reporting_with(tmp.to_str().unwrap(), &mut |_, e| panic!("{e}"), &exts);
+    assert_eq!(paths.len(), 2, "{paths:?}");
+    assert!(paths
+        .iter()
+        .all(|p| !p.contains("vendor") && !p.ends_with("Foo.php")));
+    std::fs::remove_dir_all(tmp).unwrap();
 }
 
 #[test]

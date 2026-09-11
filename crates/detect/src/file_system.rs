@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-use crate::engine_route::{match_configured_extension, uses_html_engine, ExtensionEntry};
+use crate::engine_route::{is_scannable, uses_html_engine, ExtensionEntry};
 use crate::jsp;
 use crate::util::{re, read_text, ANY, D, WS};
 
@@ -18,39 +18,15 @@ use crate::util::{re, read_text, ANY, D, WS};
 pub use crate::engine_route::HTML_ENGINE_EXTENSIONS as HTML_EXTENSIONS;
 
 /// JS `SKIP_DIRS`.
-pub const SKIP_DIRS: &[&str] = &["node_modules", "dist", "build", "__pycache__"];
+pub const SKIP_DIRS: &[&str] = &["node_modules", "vendor", "dist", "build", "__pycache__"];
 /// JS `HIDDEN_SOURCE_DIRS`.
 pub const HIDDEN_SOURCE_DIRS: &[&str] = &[".vitepress", ".vuepress", ".storybook"];
 /// JS `SCANNABLE_EXTENSIONS` (insertion order matters for `resolveImport`).
-pub const SCANNABLE_EXTENSIONS: &[&str] = &[
-    ".html",
-    ".htm",
-    ".css",
-    ".scss",
-    ".sass",
-    ".less",
-    ".jsx",
-    ".tsx",
-    ".js",
-    ".ts",
-    ".vue",
-    ".svelte",
-    ".astro",
-    ".blade.php",
-];
+pub use crate::engine_route::SCANNABLE_EXTENSIONS;
 
 /// JS: file-system.mjs#hasScannableExtension
 pub fn has_scannable_extension(filename: &str) -> bool {
-    let lower = impeccable_core::js::to_lower_case(filename);
-    if SCANNABLE_EXTENSIONS.contains(&jsp::extname(&lower).as_str()) {
-        return true;
-    }
-    for ext in SCANNABLE_EXTENSIONS {
-        if ext[1..].contains('.') && lower.ends_with(ext) {
-            return true;
-        }
-    }
-    false
+    is_scannable(filename, &[])
 }
 
 /// Built-in DOM markup: suffix match on [`HTML_EXTENSIONS`], including
@@ -112,9 +88,7 @@ pub fn walk_dir_reporting_with(
         let full = jsp::join(&[dir, &name]);
         if is_dir {
             files.extend(walk_dir_reporting_with(&full, on_read_error, extra));
-        } else if has_scannable_extension(&name)
-            || match_configured_extension(&name, extra).is_some()
-        {
+        } else if is_scannable(&name, extra) {
             files.push(full);
         }
     }

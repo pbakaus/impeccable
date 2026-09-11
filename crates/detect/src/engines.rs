@@ -48,6 +48,20 @@ impl EngineError {
 /// The static HTML engine (`cli/engine/engines/static-html/detect-html.mjs`
 /// `detectHtml(filePath, options)`). Implemented by crates/html.
 pub trait HtmlEngine {
+    /// Scan proposed contents using the real path as the stylesheet base.
+    /// An unavailable source adapter fails open in the pre-write hook.
+    fn detect_html_source(
+        &self,
+        _content: &str,
+        _path: &str,
+        _options: &ScanOptions,
+        _stderr: &mut dyn std::io::Write,
+    ) -> Result<Vec<Finding>, EngineError> {
+        Err(EngineError::new(
+            "static HTML source scanning is unavailable",
+        ))
+    }
+
     /// Scan one markup file (built-in HTML-engine suffixes, or a configured
     /// `engine: "html"` template). Any stderr the engine writes (the JS
     /// DEGRADED notice) goes through `stderr`.

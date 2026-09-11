@@ -235,7 +235,14 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
         let use_html_engine = uses_html_engine(file_path, &config.extensions);
         if primary_files.contains(file_path) {
             if harness == "claude" {
-                stop_baseline::capture(rt, &event, &mut cache, &session_id, file_path, use_html_engine);
+                stop_baseline::capture(
+                    rt,
+                    &event,
+                    &mut cache,
+                    &session_id,
+                    file_path,
+                    use_html_engine && is_plain_html(file_path),
+                );
             }
             let edit_count = bump_edit_count(&mut cache, &session_id, file_path);
             cache_dirty = true;
@@ -281,8 +288,13 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
         } else {
             detector_detect_text(&content, file_path, scan)
         };
-        if !detector_threw && !use_html_engine {
-            stop_baseline::reconcile(&mut cache, &session_id, file_path, &findings);
+        if !detector_threw && !(use_html_engine && is_plain_html(file_path)) {
+            if use_html_engine {
+                let text = detector_detect_text(&content, file_path, scan);
+                stop_baseline::reconcile(&mut cache, &session_id, file_path, &text);
+            } else {
+                stop_baseline::reconcile(&mut cache, &session_id, file_path, &findings);
+            }
         }
         let raw_count = findings.len();
         let filtered = filter_findings(findings, &config);
@@ -711,11 +723,31 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
         } else {
             detector_detect_text(&content, file_path, scan)
         };
-        if !use_html_engine {
-            stop_baseline::reconcile(&mut cache, &session_id, file_path, &findings);
+        let text = if use_html_engine && !is_plain_html(file_path) {
+            detector_detect_text(&content, file_path, scan)
+        } else {
+            vec![]
+        };
+        if !(use_html_engine && is_plain_html(file_path)) {
+            stop_baseline::reconcile(
+                &mut cache,
+                &session_id,
+                file_path,
+                if use_html_engine { &text } else { &findings },
+            );
         }
         let filtered = filter_findings(findings, &config);
-        let classified = stop_baseline::classify(&cache, &session_id, file_path, use_html_engine, filtered.clone());
+        let classified = if use_html_engine && !is_plain_html(file_path) {
+            stop_baseline::classify_mixed(&cache, &session_id, file_path, filtered.clone(), &text)
+        } else {
+            stop_baseline::classify(
+                &cache,
+                &session_id,
+                file_path,
+                use_html_engine,
+                filtered.clone(),
+            )
+        };
         pre_existing += classified.pre_existing;
         new_findings += classified.new;
         unknown += classified.unknown;

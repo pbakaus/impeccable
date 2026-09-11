@@ -6,6 +6,7 @@
 //! or configured `.html.erb` file gets the same engine either way.
 
 use impeccable_core::js;
+use impeccable_core::js_ext_a::JsMap;
 use impeccable_core::js_ext_b::utf16_len;
 use serde_json::Value;
 
@@ -14,14 +15,46 @@ use crate::jsp;
 /// Built-in suffixes that emit markup and therefore run the DOM engine.
 /// Multi-part suffixes (`.blade.php`) match via [`str::ends_with`] on the
 /// basename, not last-segment `extname`.
-pub const HTML_ENGINE_EXTENSIONS: &[&str] = &[
-    ".html",
-    ".htm",
-    ".vue",
-    ".svelte",
-    ".astro",
-    ".blade.php",
-];
+macro_rules! file_kinds {
+    (html: [$($html:literal),*], style: [$($style:literal),*], script: [$($script:literal),*], component: [$($component:literal),*]) => {
+        pub const HTML_ENGINE_EXTENSIONS: &[&str] = &[$($html,)* $($component,)*];
+        pub const SCANNABLE_EXTENSIONS: &[&str] = &[$($html,)* $($style,)* $($script,)* $($component,)*];
+        pub const COMPONENT_EXTENSIONS: &[&str] = &[$($component,)*];
+    };
+}
+
+// Keep import resolution order stable. All built-in scan/routing suffixes
+// derive from this table; component suffixes also enable stylesheet co-scans.
+file_kinds! {
+    html: [".html", ".htm"],
+    style: [".css", ".scss", ".sass", ".less"],
+    script: [".jsx", ".tsx", ".js", ".ts"],
+    component: [".vue", ".svelte", ".astro", ".blade.php"]
+}
+
+pub fn is_plain_html(file_path: &str) -> bool {
+    matches!(
+        jsp::extname(&js::to_lower_case(file_path)).as_str(),
+        ".html" | ".htm"
+    )
+}
+
+/// Configured text suffixes remain available as explicit detect targets;
+/// only markup declarations widen automatic directory and hook scanning.
+pub fn is_scannable(file_path: &str, configured: &[ExtensionEntry]) -> bool {
+    let name = js::to_lower_case(&jsp::basename(file_path));
+    SCANNABLE_EXTENSIONS
+        .iter()
+        .any(|ext| suffix_matches(&name, ext))
+        || uses_html_engine(file_path, configured)
+}
+
+pub fn is_component(file_path: &str) -> bool {
+    let name = js::to_lower_case(&jsp::basename(file_path));
+    COMPONENT_EXTENSIONS
+        .iter()
+        .any(|ext| suffix_matches(&name, ext))
+}
 
 /// One `detector.extensions` entry after `normalizeExtensionEntries`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -69,22 +102,14 @@ pub fn normalize_extension_entries(entries: &[Value]) -> Vec<ExtensionEntry> {
 
 /// JS: template-extensions.mjs#mergeExtensions
 pub fn merge_extensions(existing: &[ExtensionEntry], incoming: &[Value]) -> Vec<ExtensionEntry> {
-    let mut map: Vec<(String, ExtensionEntry)> = Vec::new();
+    let mut map = JsMap::new();
     for e in existing {
-        upsert_ext(&mut map, e.ext.clone(), e.clone());
+        map.set(&e.ext, e.clone());
     }
     for e in normalize_extension_entries(incoming) {
-        upsert_ext(&mut map, e.ext.clone(), e);
+        map.set(&e.ext.clone(), e);
     }
-    map.into_iter().map(|(_, e)| e).collect()
-}
-
-fn upsert_ext(map: &mut Vec<(String, ExtensionEntry)>, key: String, val: ExtensionEntry) {
-    if let Some(slot) = map.iter_mut().find(|(k, _)| *k == key) {
-        slot.1 = val;
-    } else {
-        map.push((key, val));
-    }
+    map.entries().iter().map(|(_, e)| e.clone()).collect()
 }
 
 fn suffix_matches(name: &str, ext: &str) -> bool {
@@ -163,10 +188,13 @@ pub fn uses_html_engine(file_path: &str, configured: &[ExtensionEntry]) -> bool 
 /// Label written to hook audit `ext` and useful in tests: configured suffix,
 /// else the built-in HTML-engine suffix, else last-segment `extname`.
 pub fn extension_label(file_path: &str, configured: &[ExtensionEntry]) -> String {
-    if let Some(c) = match_configured_extension(file_path, configured) {
+    let builtin = match_html_engine_extension(file_path);
+    if let Some(c) = match_configured_extension(file_path, configured)
+        .filter(|c| builtin.is_none_or(|b| utf16_len(&c.ext) >= utf16_len(b)))
+    {
         return c.ext.clone();
     }
-    if let Some(ext) = match_html_engine_extension(file_path) {
+    if let Some(ext) = builtin {
         return ext.to_string();
     }
     js::to_lower_case(&jsp::extname(file_path))

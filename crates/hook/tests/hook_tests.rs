@@ -270,6 +270,106 @@ fn edit_with_original(cwd: &str, file: &str, session: &str, before: &str, old: &
 }
 
 #[test]
+fn template_copy_edit_preserves_stop_baseline_and_cache_identity() {
+    for suffix in ["vue", "svelte", "astro", "blade.php"] {
+        let t = Tmp::new();
+        let cwd = t.path();
+        t.write("package.json", "{}");
+        let before =
+            "<div>Before</div>\n<style>\n.card { border-left: 4px solid #6366f1; }\n</style>";
+        let after = before.replace("Before", "After");
+        let file = t.write(&format!("src/Card.{suffix}"), &after);
+        let html = impeccable_html::StaticHtmlEngine::default();
+        let r = Runtime::new(
+            cwd.clone(),
+            HashMap::new(),
+            "/impeccable".into(),
+            "/opt/bin/impeccable",
+            &html,
+        );
+        let text = detector_detect_text(&after, &file, &HookScanOptions::default());
+        let mixed = detector_detect_html(&r, &file, &HookScanOptions::default()).unwrap();
+        assert!(!text.is_empty());
+        for f in &text {
+            assert!(mixed
+                .iter()
+                .any(|m| finding_cache_key(m) == finding_cache_key(f)));
+        }
+        let mut old_cache = read_cache(&cwd);
+        remember_findings(&mut old_cache, "upgrade", &file, &text);
+        assert!(dedupe_against_cache(&mixed, &mut old_cache, "upgrade", &file).is_empty());
+        hook::run_hook(
+            &r,
+            &edit_with_original(&cwd, &file, "s1", before, "Before", "After"),
+        );
+        assert!(t
+            .read(".impeccable/hook.cache.json")
+            .contains("stopBaseline"));
+        let stop = hook::run_stop_hook(&r, &stop_event(&cwd, "s1"));
+        assert!(stop.stdout.is_empty(), "{suffix}: {}", stop.stdout);
+    }
+}
+
+#[test]
+fn blade_components_coscan_sibling_stylesheets() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let blade = t.write("views/Card.blade.php", "<p>Card</p>");
+    let css = t.write("views/Card.css", SIDE_TAB_CSS);
+    let targets = normalize_scan_targets(&rt(&cwd), &[blade], &cwd);
+    assert!(targets.contains(&css), "{targets:?}");
+}
+
+#[test]
+fn proposed_template_uses_project_stylesheets_without_writing_source() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    t.write(
+        "src/styles/global.css",
+        "body{color:#111;background:#fff}.hero{color:#fff}",
+    );
+    let html = impeccable_html::StaticHtmlEngine::default();
+    let r = Runtime::new(
+        cwd.clone(),
+        HashMap::new(),
+        "/impeccable".into(),
+        "/opt/bin/impeccable",
+        &html,
+    );
+    for suffix in ["html", "astro", "vue", "svelte", "blade.php"] {
+        let original = "<p>Original file</p>";
+        let file = t.write(&format!("src/layouts/Base.{suffix}"), original);
+        let proposed = "<link rel=\"stylesheet\" href=\"../styles/global.css\"><div class=\"hero\" style=\"background:#000\">Welcome home</div>";
+        let (out, code) = hbe(
+            &r,
+            &cursor(&cwd, "Write", json!({"file_path":file,"content":proposed})),
+        );
+        assert_eq!(code, 0);
+        assert_eq!(
+            serde_json::from_str::<Value>(&out).unwrap()["permission"],
+            "allow",
+            "{suffix}: {out}"
+        );
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), original);
+        let (out, _) = hbe(
+            &r,
+            &cursor(
+                &cwd,
+                "Write",
+                json!({"file_path":file,"content":"<a style=\"color:#ccc;background:#fff\">low contrast</a>"}),
+            ),
+        );
+        assert_eq!(
+            serde_json::from_str::<Value>(&out).unwrap()["permission"],
+            "deny",
+            "{suffix}: {out}"
+        );
+    }
+}
+
+#[test]
 fn stop_baseline_import_only_edit_does_not_blame_existing_font() {
     let t = Tmp::new();
     let cwd = t.path();

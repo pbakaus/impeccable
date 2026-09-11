@@ -30,28 +30,19 @@ use crate::util::{
 
 pub const ENVELOPE_PREFIX: &str = "[impeccable@1]";
 
-pub const ALLOWED_EXTS: &[&str] = &[
-    ".tsx", ".jsx", ".html", ".htm", ".vue", ".svelte", ".astro", ".css", ".scss", ".sass",
-    ".less", ".ts", ".js",
-];
+pub use impeccable_detect::engine_route::SCANNABLE_EXTENSIONS as ALLOWED_EXTS;
 
 pub const ACK_EXTS: &[&str] = &[
     ".tsx", ".jsx", ".html", ".htm", ".vue", ".svelte", ".astro", ".css", ".scss", ".sass", ".less",
 ];
 
 pub use impeccable_detect::engine_route::{
-    extension_label, match_configured_extension, match_html_engine_extension, merge_extensions,
-    normalize_extension_entries, uses_html_engine, ExtensionEntry, HTML_ENGINE_EXTENSIONS,
+    extension_label, is_component, is_plain_html, match_configured_extension,
+    match_html_engine_extension, merge_extensions, normalize_extension_entries, uses_html_engine,
+    ExtensionEntry, HTML_ENGINE_EXTENSIONS,
 };
 
-/// Hook allowlist: last-segment `ALLOWED_EXTS`, built-in DOM suffixes
-/// (including `.blade.php`), or a configured `detector.extensions` suffix.
-pub fn is_hook_scan_path(file_path: &str, extensions: &[ExtensionEntry]) -> bool {
-    let ext = js::to_lower_case(&jsp::extname(file_path));
-    ALLOWED_EXTS.contains(&ext.as_str())
-        || match_html_engine_extension(file_path).is_some()
-        || match_configured_extension(file_path, extensions).is_some()
-}
+pub use impeccable_detect::engine_route::is_scannable as is_hook_scan_path;
 
 const WS: &str = impeccable_core::js::WS;
 
@@ -2095,7 +2086,6 @@ pub fn normalize_hook_event(
 
 // ── targets ───────────────────────────────────────────────────────────────
 
-const UI_CODE_EXTS: &[&str] = &[".jsx", ".tsx", ".vue", ".svelte", ".astro"];
 const STYLE_EXTS: &[&str] = &[".css", ".scss", ".sass", ".less"];
 const CO_SCAN_STYLE_NAMES: &[&str] = &[
     "styles.css",
@@ -2222,7 +2212,12 @@ pub fn parse_static_style_imports(
 /// JS: coLocatedStylesheets(filePath)
 pub fn co_located_stylesheets(file_path: &str) -> Vec<String> {
     let dir = jsp::dirname(file_path);
-    let base = jsp::basename_ext(file_path, &jsp::extname(file_path));
+    let name = jsp::basename(file_path);
+    let base = if let Some(suffix) = match_html_engine_extension(file_path) {
+        name[..name.len() - suffix.len()].to_string()
+    } else {
+        jsp::basename_ext(file_path, &jsp::extname(file_path))
+    };
     let mut candidates: Vec<String> = Vec::new();
     for suffix in [
         ".css",
@@ -2309,7 +2304,7 @@ pub fn expand_scan_targets(rt: &Runtime, primaries: &[String], project_cwd: &str
             continue;
         }
         let ext = js::to_lower_case(&jsp::extname(p));
-        if STYLE_EXTS.contains(&ext.as_str()) || !UI_CODE_EXTS.contains(&ext.as_str()) {
+        if !matches!(ext.as_str(), ".jsx" | ".tsx") && !is_component(p) {
             continue;
         }
         let content = safe_read(p).unwrap_or_default();

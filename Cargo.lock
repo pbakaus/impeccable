@@ -662,6 +662,7 @@ dependencies = [
  "impeccable-context",
  "impeccable-core",
  "impeccable-detect",
+ "impeccable-html",
  "once_cell",
  "regex",
  "serde_json",

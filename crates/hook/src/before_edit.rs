@@ -508,24 +508,14 @@ fn detect_proposed_html(
     file_path: &str,
     scan: &HookScanOptions,
 ) -> Result<Vec<Finding>, String> {
-    let base = std::env::temp_dir();
-    let stamp = format!("{}{}", std::process::id(), now_ms() as u64);
-    let dir = base.join(format!("impeccable-pre-{stamp}"));
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let tmp = dir.join(jsp::basename(file_path));
-    let result = (|| {
-        std::fs::write(&tmp, content).map_err(|e| e.to_string())?;
-        let findings = detector_detect_html(rt, &tmp.to_string_lossy(), scan)?;
-        Ok(findings
-            .into_iter()
-            .map(|mut f| {
-                f.file = file_path.to_string();
-                f
-            })
-            .collect())
-    })();
-    let _ = std::fs::remove_dir_all(&dir);
-    result
+    rt.html
+        .detect_html_source(
+            content,
+            file_path,
+            &scan.to_scan_options(),
+            &mut std::io::sink(),
+        )
+        .map_err(|e| e.message)
 }
 
 /// JS: cursorBlockMessage(findings, filePath, config, cwd, footerMode, reserveChars)
