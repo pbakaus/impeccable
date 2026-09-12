@@ -1,6 +1,6 @@
 {
   "stdout": "",
-  "stderr": "Unknown command: doctor\nAvailable commands: craft, init, extract, document, shape, critique, audit, polish, bolder, quieter, distill, harden, onboard, live, animate, colorize, typeset, layout, delight, overdrive, clarify, adapt, optimize\n",
+  "stderr": "Unknown command: doctor\nAvailable commands: craft, init, extract, document, shape, critique, audit, polish, bolder, quieter, distill, harden, onboard, live, animate, colorize, typeset, layout, delight, overdrive, clarify, adapt, optimize, generate\n",
   "exit": 1,
   "signal": null,
   "files": {}

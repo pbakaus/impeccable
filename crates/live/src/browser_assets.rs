@@ -81,10 +81,17 @@ pub fn assemble_live_browser_script(
     app_root: &str,
     parts: &[(&str, &str, String)],
     project_ignores: &Value,
+    live_bar_hidden: bool,
 ) -> String {
     let mut out = String::new();
     out.push_str(&format!("window.__IMPECCABLE_TOKEN__ = '{}';\n", token));
     out.push_str(&format!("window.__IMPECCABLE_PORT__ = {};\n", port));
+    // The generate lane's helper-wide bar preference, known before the
+    // overlay mounts anything, so the bar is never drawn and then hidden.
+    // A plain helper serves exactly the script it always served.
+    if live_bar_hidden {
+        out.push_str("window.__IMPECCABLE_LIVE_BAR_HIDDEN__ = true;\n");
+    }
     out.push_str(&format!(
         "window.__IMPECCABLE_APP_ROOT__ = {};\n",
         serde_json::to_string(&Value::String(app_root.to_string())).unwrap_or_default()

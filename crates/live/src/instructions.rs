@@ -126,7 +126,17 @@ pub fn instructions_for_event(event: &Map<String, Value>, self_cmd: &str) -> Opt
                 reply_cmd(self_cmd, &id, "done --data '{\"status\":\"done\",\"appliedEntryIds\":[...],\"failed\":[],\"files\":[...],\"notes\":[]}'")
             ))
         }
-        "timeout" => Some("No event arrived; poll again immediately.".to_string()),
+        "timeout" => Some(if event.contains_key("_replyAck") {
+            // The reply-and-wait call ran out of --timeout= before the user
+            // chose: the reply itself landed, so the only move is to wait
+            // again, and waiting is the whole job.
+            format!(
+                "Your reply landed (see _replyAck); the user has not chosen yet. Run {} again and keep waiting. Nothing else is owed while it runs: never sleep, and never poll a file on a timer instead.",
+                script_cmd(self_cmd, "live-poll")
+            )
+        } else {
+            "No event arrived; poll again immediately.".to_string()
+        }),
         "exit" => Some(format!(
             "Session over: kill any background poll, then {} stop (removes the injected script tag). Sweep leftover impeccable-variants-start / impeccable-carbonize-start markers from source.",
             script_cmd(self_cmd, "live-server")

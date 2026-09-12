@@ -260,7 +260,33 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         break;
     }
     let self_cmd = impeccable_context::provider::detect(&env, &cwd).self_cmd;
-    let payload = json!({
+    // Two opt-ins, silent unless asked for, so a plain boot's payload is
+    // unchanged: `--dev-url` probes which dev server is serving this app
+    // right now (the page carrying our tag) and reports `devUrl`;
+    // `--no-live-bar` asks the helper to keep the bottom bar out of every
+    // tab for its lifetime, before any page connects.
+    let want_dev_url = args.iter().any(|a| a == "--dev-url");
+    let no_live_bar = args.iter().any(|a| a == "--no-live-bar");
+    let live_bar_hidden = if no_live_bar {
+        let port = server_info.get("port").and_then(Value::as_u64).unwrap_or(0);
+        let token = server_info.get("token").and_then(Value::as_str).unwrap_or("");
+        request_live_bar_hidden(port, token)
+    } else {
+        false
+    };
+    let token_for_probe = match server_info.get("token") {
+        Some(Value::String(s)) => s.clone(),
+        _ => String::new(),
+    };
+    let dev_url = if !want_dev_url || token_for_probe.is_empty() {
+        None
+    } else {
+        crate::dev_url::probe(
+            &crate::dev_url::candidates(env.get("IMPECCABLE_DEV_URL_CANDIDATES").map(String::as_str)),
+            &token_for_probe,
+        )
+    };
+    let mut payload = json!({
         "ok": true,
         "serverPort": server_info.get("port").cloned().unwrap_or(Value::Null),
         "serverToken": server_info.get("token").cloned().unwrap_or(Value::Null),
@@ -282,6 +308,14 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         "surfaceBriefPath": surface_brief_path,
         "_instructions": boot_instructions(&self_cmd),
     });
+    if let Some(obj) = payload.as_object_mut() {
+        if no_live_bar {
+            obj.insert("liveBarHidden".into(), json!(live_bar_hidden));
+        }
+        if want_dev_url {
+            obj.insert("devUrl".into(), dev_url.map(Value::String).unwrap_or(Value::Null));
+        }
+    }
     println(io, &json_pretty(&payload));
     0
 }
@@ -298,6 +332,23 @@ fn run_inject(args: &[String], cwd: &str, io: &Io) -> String {
 
 /// JS: ensureServerRunning(cwd): reuse a live `server.json` record, else
 /// spawn `live-server --background` (part 3) and parse its output.
+/// Ask the running helper to keep the overlay's global bar hidden for its
+/// lifetime (`POST /live-bar`). True when the helper acknowledged.
+fn request_live_bar_hidden(port: u64, token: &str) -> bool {
+    if port == 0 || token.is_empty() {
+        return false;
+    }
+    let agent = ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_millis(3000))
+        .build();
+    agent
+        .post(&format!("http://127.0.0.1:{}/live-bar", port))
+        .set("Content-Type", "application/json")
+        .send_string(&json!({ "token": token, "hidden": true }).to_string())
+        .map(|res| res.status() == 200)
+        .unwrap_or(false)
+}
+
 fn ensure_server_running(cwd: &str, io: &Io) -> Option<Value> {
     if let Some((info, _)) = read_live_server_info(cwd, &io.env) {
         if let Some(pid) = info.pid {

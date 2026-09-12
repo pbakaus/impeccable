@@ -1,0 +1,32 @@
+{
+  "steps": [
+    {
+      "stdout": "",
+      "stderr": "",
+      "exit": null,
+      "signal": null,
+      "daemon": true
+    },
+    {
+      "stdout": "{\n  \"ok\": false,\n  \"error\": \"no_browser_connected\",\n  \"_instructions\": \"No page with the live overlay is connected. Open the app URL that serves a pageFiles entry yourself with your harness browser tool, then rerun this command. Only when no browser tool exists: give the user the URL and rerun with --wait-for-browser 120000 so the command fires as soon as they open the page.\"\n}\n",
+      "stderr": "",
+      "exit": 1,
+      "signal": null
+    },
+    {
+      "stdout": "Stopped live server on port <PORT>.\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    }
+  ],
+  "files": {
+    ".impeccable/live/config.json": "{\n  \"files\": [\"index.html\", \"public/**/*.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n"
+  },
+  "daemon": [
+    {
+      "stdout": "\nImpeccable live server running on http://localhost:<PORT>\nToken: <UUID>\n\nScript: http://localhost:<PORT>/live.js\nInject: managed by impeccable live-inject; Astro source tags use is:inline automatically.\nStop:   impeccable live-server stop\n",
+      "stderr": ""
+    }
+  ]
+}

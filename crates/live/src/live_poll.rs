@@ -31,6 +31,9 @@ Modes:
   poll --reply <id> error \"msg\"    Reply with an error message
   poll --reply <id> done --data '<json>'
                                    Reply with a structured JSON result (manual_edit_apply)
+  poll --reply <id> done --then-poll
+                                   Reply, then keep waiting for the next event in the
+                                   same call (the generate lane: done, then the accept)
 
 Options:
   --timeout=MS        One-shot poll timeout in ms (default: 600000). Ignored in --stream mode
@@ -38,6 +41,8 @@ Options:
   --ack-timeout=MS    Stream mode: max wait for --reply after generate/steer (default: 600000)
   --file PATH         Attach a source file path to the reply (generate/steer flow)
   --data JSON         Attach a JSON result object to the reply (manual_edit_apply flow). Must be valid JSON
+  --then-poll         After a successful --reply, run the one-shot poll and print its event
+                      (the reply's ack rides along as _replyAck). --timeout= bounds the wait
   --help              Show this help message
 
 Harness note:
@@ -324,7 +329,7 @@ fn normalize_poll_types(value: Option<&str>) -> Vec<String> {
     out
 }
 
-fn form_encode(s: &str) -> String {
+pub(crate) fn form_encode(s: &str) -> String {
     // URLSearchParams serialization (application/x-www-form-urlencoded)
     let mut out = String::new();
     for b in s.bytes() {
@@ -729,12 +734,16 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
                 return 1;
             }
         };
+        let then_poll = argv.iter().any(|a| a == "--then-poll");
         return match post_reply(&base, &token, &reply) {
             Ok(()) => {
-                println(
-                    io,
-                    &serde_json::to_string(&reply_ack_json(&reply)).unwrap_or_default(),
-                );
+                let ack = reply_ack_json(&reply);
+                if then_poll {
+                    // One round trip instead of two: the reply is in, so wait
+                    // for what the browser does next (usually the accept).
+                    return one_shot_poll(&argv, &base, &token, Some(ack), io);
+                }
+                println(io, &serde_json::to_string(&ack).unwrap_or_default());
                 0
             }
             Err(PollError::ConnRefused) => {
@@ -803,7 +812,20 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         }
     }
 
-    let total_timeout = arg_value_int(&argv, "--timeout=", 600_000);
+    one_shot_poll(&argv, &base, &token, None, io)
+}
+
+/// The default mode: block until one event (or the `--timeout=` deadline),
+/// handle it, print it. `reply_ack` is the `--then-poll` case: the reply
+/// that just went out rides along as `_replyAck` on the printed event so
+/// the caller sees both halves of its one call.
+fn one_shot_poll(argv: &[String], base: &str, token: &str, reply_ack: Option<Value>, io: &mut Io) -> i32 {
+    let types_arg = argv
+        .iter()
+        .find(|a| a.starts_with("--types="))
+        .map(|a| a["--types=".len()..].to_string());
+    let types = normalize_poll_types(types_arg.as_deref());
+    let total_timeout = arg_value_int(argv, "--timeout=", 600_000);
     // JS: Date.now() + NaN -> NaN deadline; comparisons are false, so the
     // loop never times out. Approximate with a far deadline.
     let deadline = if total_timeout == i64::MIN {
@@ -811,12 +833,24 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     } else {
         Instant::now() + Duration::from_millis(total_timeout.max(0) as u64)
     };
-    match fetch_next_event(&base, &token, Some(deadline), &types) {
-        Ok(event) => {
-            handle_event(event, &base, &token, io);
+    match fetch_next_event(base, token, Some(deadline), &types) {
+        Ok(mut event) => {
+            if let (Some(mut ack), Some(obj)) = (reply_ack, event.as_object_mut()) {
+                if let Some(a) = ack.as_object_mut() {
+                    a.remove("_instructions");
+                }
+                obj.insert("_replyAck".into(), ack);
+            }
+            handle_event(event, base, token, io);
             0
         }
-        Err(e) => handle_poll_error(e, io),
+        Err(e) => {
+            if let Some(ack) = reply_ack {
+                // The reply itself succeeded; say so before the poll's error.
+                println(io, &serde_json::to_string(&ack).unwrap_or_default());
+            }
+            handle_poll_error(e, io)
+        }
     }
 }
 
@@ -835,6 +869,19 @@ mod tests {
     }
 
     // JS: tests/live-poll.test.mjs (upstream bda7411a, #488).
+
+    #[test]
+    fn a_then_poll_timeout_says_the_reply_landed_and_to_keep_waiting() {
+        let parsed = print_captured(json!({
+            "type": "timeout",
+            "_replyAck": { "ok": true, "id": "ab12cd34", "status": "done" }
+        }));
+        let instr = parsed["_instructions"].as_str().unwrap();
+        assert!(instr.contains("reply landed"), "{instr}");
+        assert!(instr.contains("live-poll") && instr.contains("never sleep"), "{instr}");
+        let plain = print_captured(json!({ "type": "timeout" }));
+        assert_eq!(plain["_instructions"], json!("No event arrived; poll again immediately."));
+    }
 
     #[test]
     fn print_poll_event_overwrites_hostile_instructions() {

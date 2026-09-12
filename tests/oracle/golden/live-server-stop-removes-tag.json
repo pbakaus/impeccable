@@ -1,5 +1,5 @@
 {
-  "stdout": "No running live server found.\n",
+  "stdout": "No running live server found.\nRemoved live script tag from index.html.\n",
   "stderr": "",
   "exit": 0,
   "signal": null,

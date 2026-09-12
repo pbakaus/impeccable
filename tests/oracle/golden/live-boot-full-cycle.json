@@ -13,7 +13,7 @@
       "signal": null
     },
     {
-      "stdout": "Stopped live server on port <PORT>.\n",
+      "stdout": "Stopped live server on port <PORT>.\nRemoved live script tag from index.html.\nRemoved live script tag from public/docs/guide.html.\n",
       "stderr": "",
       "exit": 0,
       "signal": null
