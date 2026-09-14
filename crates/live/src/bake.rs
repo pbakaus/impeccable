@@ -147,9 +147,15 @@ fn compound_parts(compound: &str) -> (Option<String>, Vec<String>) {
     let chars: Vec<char> = compound.chars().collect();
     let mut i = 0;
     let mut tag = String::new();
-    while i < chars.len() && (chars[i].is_ascii_alphanumeric() || chars[i] == '-' || chars[i] == '_') {
-        tag.push(chars[i]);
-        i += 1;
+    // The universal selector is a type that matches anything, so it adds
+    // nothing to an anchor and is dropped here (`*`, `*.card`).
+    if chars.first() == Some(&'*') {
+        i = 1;
+    } else {
+        while i < chars.len() && (chars[i].is_ascii_alphanumeric() || chars[i] == '-' || chars[i] == '_') {
+            tag.push(chars[i]);
+            i += 1;
+        }
     }
     let mut tokens: Vec<String> = Vec::new();
     let mut cur = String::new();
@@ -556,6 +562,10 @@ mod tests {
         assert!(rewrite_selector(":scope > section.pricing-grid", a).is_err());
         assert_eq!(rewrite_selector(":scope > section.pricing", "#pricing").unwrap(), "#pricing.pricing");
         assert_eq!(rewrite_selector(":scope > .card:not([hidden])", a).unwrap(), "div.pricing-grid.card:not([hidden])");
+        // The universal selector adds nothing to the anchor.
+        assert_eq!(rewrite_selector(":scope > *", a).unwrap(), "div.pricing-grid");
+        assert_eq!(rewrite_selector(":scope > *.card", a).unwrap(), "div.pricing-grid.card");
+        assert_eq!(rewrite_selector(":scope:hover > * .x", a).unwrap(), "div.pricing-grid:hover .x");
         assert!(rewrite_selector(":scope + .x", a).is_err());
         assert!(rewrite_selector(".a :scope", a).is_err());
     }
