@@ -11,6 +11,7 @@ use super::dom::{
     class_attr, class_attr_or_prop, closest_or_none, direct_text, has_direct_text_longer_than,
     matches_or_false, pf0, safe_id, style_px, tag_lower, Dom, ElId, ElStyle, Rect,
 };
+use super::driver::{browser_colors_close, DesignSystemConfig};
 use super::BrowserFinding;
 use crate::checks::measures::{
     self, border_colors_from_style, border_widths_from_style, check_gpt_thin_border_wide_shadow,
@@ -716,11 +717,42 @@ pub fn check_element_glow_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
     })
 }
 
+/// True when the scan was given a DESIGN.md and that file declares this
+/// color as one of the project's own.
+///
+/// `ai-color-palette` is a rule about the *unchosen* palette: the purple and
+/// the cyan a model reaches for when nobody picked one. A color the author
+/// wrote down in DESIGN.md was picked, so it is not that default whatever
+/// its hue, and a site whose whole palette is its own documented tokens must
+/// not trip the rule on every element that wears one. With no design system
+/// there is nothing to consult and every color stays in scope, which is the
+/// behavior every scan without a DESIGN.md keeps.
+///
+/// The tolerance is `browser_colors_close`, the same one the
+/// `design-system-color` rule matches computed colors with, so a token the
+/// design-system rule calls declared is declared here too.
+fn is_declared_design_color(ds: Option<&DesignSystemConfig>, c: &Rgba) -> bool {
+    let Some(ds) = ds else { return false };
+    if !ds.has_colors {
+        return false;
+    }
+    ds.allowed_colors
+        .iter()
+        .any(|allowed| browser_colors_close(c, allowed))
+}
+
 /// JS: checks.mjs#checkElementAIPaletteDOM(el)
-pub fn check_element_ai_palette_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
+pub fn check_element_ai_palette_dom(
+    dom: &dyn Dom,
+    el: ElId,
+    design_system: Option<&DesignSystemConfig>,
+) -> Vec<RuleHit> {
     let mut findings = Vec::new();
     let bg_image = dom.style(el, "backgroundImage");
     for c in parse_gradient_colors(Some(&bg_image)) {
+        if is_declared_design_color(design_system, &c) {
+            continue;
+        }
         if has_chroma(Some(&c), Some(50.0)) {
             let hue = get_hue(Some(&c));
             if hue >= 260.0 && hue <= 310.0 {
@@ -739,7 +771,8 @@ pub fn check_element_ai_palette_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
             }
         }
     }
-    let text_color = parse_rgb_or_any(&dom.style(el, "color"));
+    let text_color = parse_rgb_or_any(&dom.style(el, "color"))
+        .filter(|c| !is_declared_design_color(design_system, c));
     if let Some(tc) = text_color {
         if has_chroma(Some(&tc), Some(80.0)) {
             let hue = get_hue(Some(&tc));
@@ -1534,7 +1567,72 @@ mod tests {
             "linear-gradient(rgb(168, 85, 247), rgb(59, 130, 246))",
         );
         d.set_style(hero, "color", "rgb(0, 0, 0)");
-        let hits = check_element_ai_palette_dom(&d, hero);
+        let hits = check_element_ai_palette_dom(&d, hero, None);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].snippet, "Purple/violet gradient background");
+    }
+
+    /// A DESIGN.md palette built out of the project's own oklch tokens is not
+    /// the generic assistant default, however cyan or violet the tokens are.
+    /// The verdigris-on-instrument pair here is the shape that fired 80 times
+    /// on one site whose whole palette is documented.
+    fn design_system_with(colors: &[(f64, f64, f64)]) -> DesignSystemConfig {
+        DesignSystemConfig {
+            has_colors: true,
+            allowed_colors: colors
+                .iter()
+                .map(|&(r, g, b)| Rgba { r, g, b, a: None })
+                .collect(),
+            ..DesignSystemConfig::default()
+        }
+    }
+
+    #[test]
+    fn ai_palette_skips_colors_the_design_system_declares() {
+        let (mut d, body) = page();
+        // oklch(24% 0 0) instrument face, oklch(70% 0.12 188) verdigris text.
+        let panel = d.add(Some(body), "div");
+        d.set_style(panel, "backgroundColor", "rgb(58, 58, 58)");
+        let label = d.add(Some(panel), "span");
+        d.set_style(label, "color", "rgb(15, 182, 172)");
+
+        // With no DESIGN.md the rule still fires: nothing says the teal was chosen.
+        let hits = check_element_ai_palette_dom(&d, label, None);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].snippet, "Cyan neon text on dark background");
+
+        // Declared in DESIGN.md, so it is the project's palette, not the default.
+        let ds = design_system_with(&[(15.0, 182.0, 172.0)]);
+        assert!(check_element_ai_palette_dom(&d, label, Some(&ds)).is_empty());
+
+        // A design system that declares some other color leaves the rule alone.
+        let other = design_system_with(&[(200.0, 40.0, 30.0)]);
+        assert_eq!(check_element_ai_palette_dom(&d, label, Some(&other)).len(), 1);
+
+        // `hasColors: false` is a DESIGN.md with no palette section: no allowlist
+        // to consult, so the rule keeps its unconstrained behavior.
+        let empty = DesignSystemConfig::default();
+        assert_eq!(check_element_ai_palette_dom(&d, label, Some(&empty)).len(), 1);
+    }
+
+    #[test]
+    fn ai_palette_gradient_skips_declared_stops_but_not_undeclared_ones() {
+        let (mut d, body) = page();
+        let hero = d.add(Some(body), "section");
+        d.set_style(
+            hero,
+            "backgroundImage",
+            "linear-gradient(rgb(168, 85, 247), rgb(59, 130, 246))",
+        );
+        d.set_style(hero, "color", "rgb(0, 0, 0)");
+
+        // The violet stop is a declared token, so this gradient is the project's.
+        let ds = design_system_with(&[(168.0, 85.0, 247.0), (59.0, 130.0, 246.0)]);
+        assert!(check_element_ai_palette_dom(&d, hero, Some(&ds)).is_empty());
+
+        // Declaring only the blue stop leaves the violet one in scope.
+        let partial = design_system_with(&[(59.0, 130.0, 246.0)]);
+        let hits = check_element_ai_palette_dom(&d, hero, Some(&partial));
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].snippet, "Purple/violet gradient background");
     }
