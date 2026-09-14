@@ -139,11 +139,81 @@ fn split_first_compound(s: &str) -> (String, String) {
     (chars[..i].iter().collect(), chars[i..].iter().collect())
 }
 
+/// The simple selectors of one compound (`div.card[open]:hover` ->
+/// `div`, `.card`, `[open]`, `:hover`): the leading type selector, if any,
+/// and the rest as tokens. Brackets, parentheses and quotes keep their
+/// contents together (`:not([hidden])`, `[data-x="a.b"]`).
+fn compound_parts(compound: &str) -> (Option<String>, Vec<String>) {
+    let chars: Vec<char> = compound.chars().collect();
+    let mut i = 0;
+    let mut tag = String::new();
+    while i < chars.len() && (chars[i].is_ascii_alphanumeric() || chars[i] == '-' || chars[i] == '_') {
+        tag.push(chars[i]);
+        i += 1;
+    }
+    let mut tokens: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    let mut depth = 0i32;
+    let mut quote: Option<char> = None;
+    while i < chars.len() {
+        let c = chars[i];
+        if let Some(q) = quote {
+            cur.push(c);
+            if c == q {
+                quote = None;
+            }
+        } else if c == '"' || c == '\'' {
+            quote = Some(c);
+            cur.push(c);
+        } else if c == '[' || c == '(' {
+            depth += 1;
+            cur.push(c);
+        } else if c == ']' || c == ')' {
+            depth -= 1;
+            cur.push(c);
+        } else if depth == 0 && (c == '.' || c == '#' || c == '[' || c == ':') && !cur.is_empty() {
+            tokens.push(std::mem::take(&mut cur));
+            cur.push(c);
+        } else {
+            cur.push(c);
+        }
+        i += 1;
+    }
+    if !cur.is_empty() {
+        tokens.push(cur);
+    }
+    (if tag.is_empty() { None } else { Some(tag) }, tokens)
+}
+
+/// The wrapper's only child is the element itself, so a `:scope > X`
+/// rule describes that element: the lasting selector is the anchor with
+/// whatever X adds (a class the anchor lacks, an attribute, a state), never
+/// bare X, which would style every X on the page. A type in X must be the
+/// anchor's own (an id anchor carries no type, so any is fine there).
+fn anchor_with_child(anchor: &str, child: &str) -> Result<String, String> {
+    let (anchor_tag, anchor_tokens) = compound_parts(anchor);
+    let (child_tag, child_tokens) = compound_parts(child);
+    if let (Some(a), Some(c)) = (&anchor_tag, &child_tag) {
+        if !a.eq_ignore_ascii_case(c) {
+            return Err(format!("`:scope > {}` names a {} but the variant's root is a {}", child, c, a));
+        }
+    }
+    let mut out = anchor.to_string();
+    for token in child_tokens {
+        if !anchor_tokens.iter().any(|t| t == &token) {
+            out.push_str(&token);
+        }
+    }
+    Ok(out)
+}
+
 /// One selector out of a `:scope` (or `[data-impeccable-variant="N"]`)
 /// prefixed rule, anchored on the element. A state on the wrapper
 /// (`:scope:hover`, `:scope[open]`) lands on the element, which is the
-/// wrapper's only child and takes its place after the unwrap. Err when
-/// `:scope` survives or the rewrite has no meaning.
+/// wrapper's only child and takes its place after the unwrap; a `:scope >`
+/// child compound is that element too, so it merges into the anchor
+/// instead of standing alone. Err when `:scope` survives or the rewrite
+/// has no meaning.
 pub fn rewrite_selector(selector: &str, anchor: &str) -> Result<String, String> {
     let s = trim(selector).to_string();
     let s = VARIANT_PREFIX_RE.replace(&s, ":scope").into_owned();
@@ -155,12 +225,13 @@ pub fn rewrite_selector(selector: &str, anchor: &str) -> Result<String, String> 
             format!("{}{}", anchor, state)
         } else if let Some(child) = after_trim.strip_prefix('>') {
             // `:scope > .x`, `:scope:hover > .x`: the wrapper's child is the
-            // element itself, so the wrapper's state is the element's.
+            // element itself, so the child compound merges into the anchor
+            // and the wrapper's state is the element's.
             let (first, remainder) = split_first_compound(child.trim_start());
             if first.is_empty() {
                 return Err(format!("selector has no child after :scope: {}", selector));
             }
-            format!("{}{}{}", first, state, remainder)
+            format!("{}{}{}", anchor_with_child(anchor, &first)?, state, remainder)
         } else if after_trim.starts_with(['+', '~']) {
             return Err(format!("sibling combinator on :scope has no meaning after unwrap: {}", selector));
         } else {
@@ -467,17 +538,24 @@ mod tests {
     #[test]
     fn scope_selectors_rewrite_onto_the_element() {
         let a = "div.pricing-grid";
-        assert_eq!(rewrite_selector(":scope > .pricing-grid", a).unwrap(), ".pricing-grid");
-        assert_eq!(rewrite_selector(":scope > .pricing-grid .pricing-card", a).unwrap(), ".pricing-grid .pricing-card");
+        assert_eq!(rewrite_selector(":scope > .pricing-grid", a).unwrap(), "div.pricing-grid");
+        assert_eq!(rewrite_selector(":scope > .pricing-grid .pricing-card", a).unwrap(), "div.pricing-grid .pricing-card");
         assert_eq!(rewrite_selector(":scope .pricing-card", a).unwrap(), "div.pricing-grid .pricing-card");
         assert_eq!(rewrite_selector(":scope", a).unwrap(), "div.pricing-grid");
-        assert_eq!(rewrite_selector(":scope:hover > .pricing-grid", a).unwrap(), ".pricing-grid:hover");
-        assert_eq!(rewrite_selector(":scope:focus-within > .pricing-grid .card", a).unwrap(), ".pricing-grid:focus-within .card");
-        assert_eq!(rewrite_selector(":scope[open] > .pricing-grid > .card", a).unwrap(), ".pricing-grid[open] > .card");
+        assert_eq!(rewrite_selector(":scope:hover > .pricing-grid", a).unwrap(), "div.pricing-grid:hover");
+        assert_eq!(rewrite_selector(":scope:focus-within > .pricing-grid .card", a).unwrap(), "div.pricing-grid:focus-within .card");
+        assert_eq!(rewrite_selector(":scope[open] > .pricing-grid > .card", a).unwrap(), "div.pricing-grid[open] > .card");
         assert_eq!(rewrite_selector(":scope:hover .card", a).unwrap(), "div.pricing-grid:hover .card");
         assert_eq!(rewrite_selector(":scope:not([hidden])", a).unwrap(), "div.pricing-grid:not([hidden])");
         assert!(rewrite_selector(":scope:hover >", a).is_err());
-        assert_eq!(rewrite_selector("[data-impeccable-variant=\"2\"] > .x", a).unwrap(), ".x");
+        assert_eq!(rewrite_selector("[data-impeccable-variant=\"2\"] > .x", a).unwrap(), "div.pricing-grid.x");
+        // The child compound is the element: a class it adds rides on the
+        // anchor, a type must be the anchor's own, an id anchor takes any.
+        assert_eq!(rewrite_selector(":scope > div.pricing-grid.wide[open]", a).unwrap(), "div.pricing-grid.wide[open]");
+        assert_eq!(rewrite_selector(":scope > div", a).unwrap(), "div.pricing-grid");
+        assert!(rewrite_selector(":scope > section.pricing-grid", a).is_err());
+        assert_eq!(rewrite_selector(":scope > section.pricing", "#pricing").unwrap(), "#pricing.pricing");
+        assert_eq!(rewrite_selector(":scope > .card:not([hidden])", a).unwrap(), "div.pricing-grid.card:not([hidden])");
         assert!(rewrite_selector(":scope + .x", a).is_err());
         assert!(rewrite_selector(".a :scope", a).is_err());
     }
@@ -512,7 +590,7 @@ mod tests {
 "#;
         let (out, rules) = extract_variant_css(css, "2", "div.pricing-grid").unwrap();
         assert_eq!(rules, 3, "{out}");
-        assert!(out.contains(".pricing-grid { gap: 32px; }"), "{out}");
+        assert!(out.contains("div.pricing-grid { gap: 32px; }"), "{out}");
         assert!(out.contains("div.pricing-grid .pricing-card { border: 2px solid #111; }"), "{out}");
         assert!(out.contains("@media (max-width: 600px)"), "{out}");
         assert!(out.contains("@keyframes rise"), "{out}");
@@ -537,7 +615,7 @@ mod tests {
         assert_eq!(rules, 4, "{out}");
         assert!(out.contains("@media (max-width: 600px)"), "{out}");
         assert!(out.contains("gap: 12px"), "the variant's breakpoint survives: {out}");
-        assert!(out.contains(".pricing-grid:hover .card { border-color: #111; }"), "{out}");
+        assert!(out.contains("div.pricing-grid:hover .card { border-color: #111; }"), "{out}");
         assert!(out.contains(".site-wide { color: red; }"), "{out}");
         assert!(!out.contains("8px") && !out.contains("4px"), "the other variant's rules are gone: {out}");
         assert!(!out.contains("data-impeccable"), "{out}");

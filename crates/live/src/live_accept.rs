@@ -1300,7 +1300,7 @@ mod bake_tests {
         let css = std::fs::read_to_string(dir.join("src/styles.css")).unwrap();
         assert!(css.starts_with(".pricing-grid { display: grid; gap: 20px; }\n"), "existing rules untouched: {css}");
         assert!(css.contains("/* impeccable generate ab12cd34: accepted variant 2 */"), "{css}");
-        assert!(css.contains(".pricing-grid { gap: 32px; }"), "{css}");
+        assert!(css.contains("div.pricing-grid { gap: 32px; }"), "{css}");
         assert!(css.contains("div.pricing-grid .pricing-card { border: 2px solid #111; }"), "{css}");
         assert!(!css.contains("8px") && !css.contains("gap: 0"), "other variants dropped: {css}");
         assert!(!css.contains(":scope") && !css.contains("data-impeccable"), "{css}");
