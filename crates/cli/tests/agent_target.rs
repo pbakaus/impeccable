@@ -754,11 +754,13 @@ fn live_generate_collects_its_own_generate_event_and_reply_then_poll_returns_the
     assert_eq!(code, 0, "{verdict}\n{stderr}");
     assert_eq!(verdict["ok"], serde_json::json!(true), "{verdict}");
     assert_eq!(verdict["sessionId"], serde_json::json!("c0ffee11"));
-    // B: the session's generate event rides along, leased, with the fast path.
+    // B: the session's generate event rides along, leased, with the same
+    // planning steps a user's Go gets.
     assert_eq!(verdict["event"]["type"], serde_json::json!("generate"), "{verdict}");
     assert_eq!(verdict["event"]["id"], serde_json::json!("c0ffee11"));
     assert_eq!(verdict["event"]["origin"], serde_json::json!("agent"));
-    assert!(verdict["event"]["_instructions"].as_str().unwrap().contains("Fast path"), "{verdict}");
+    let plan = verdict["event"]["_instructions"].as_str().unwrap();
+    assert!(plan.contains("read reference/bolder.md before planning") && plan.contains("live.md section 4"), "{verdict}");
     assert!(verdict["_instructions"].as_str().unwrap().contains("--reply c0ffee11 done --file <project-root-relative path you wrote> --then-poll"), "{verdict}");
     // Leased: a plain poll finds nothing else to hand out.
     let (_, polled) = http(s.port, "GET", &format!("/poll?token={}&timeout=300", s.token), None);

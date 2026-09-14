@@ -194,12 +194,12 @@ fn instructions_for(result: &Map<String, Value>, self_cmd: &str) -> Option<Strin
         let reply = format!("{} live-poll --reply {} done --file <project-root-relative path you wrote> --then-poll", self_cmd, s("sessionId"));
         if result.get("event").map(|e| e.is_object()).unwrap_or(false) {
             return Some(format!(
-                "Session {} started: the browser scrolled to the target and fired Go (action \"{}\", count {}). Its generate event is in this output as `event`, already leased: follow event._instructions (identity from the event, ONE edit, no knobs). When the edit is written, reply and wait for the user's choice in one call: {}. The accept it returns is baked into source mechanically (_acceptResult.baked) and completes the session; then stop the helper.",
+                "Session {} started: the browser scrolled to the target and fired Go (action \"{}\", count {}). Its generate event is in this output as `event`, already leased: handle it exactly per live.md's Handle generate, as event._instructions say (the action's reference, section 4 planning, knobs per section 7, all variants in ONE edit at the scaffold's splice). When the edit is written, reply and wait for the user's choice in one call: {}. The accept it returns carbonizes like plain live's: finish live.md's Required after accept, run live-complete, then stop the helper.",
                 s("sessionId"), s("action"), n("count"), reply
             ));
         }
         return Some(format!(
-            "Session {} started: the browser scrolled to the target and fired Go (action \"{}\", count {}). Its generate event had not arrived yet: run {} live-poll to collect it (its _instructions carry the fast path: identity from the event, ONE edit, no knobs), then reply and wait for the accept in one call: {}.",
+            "Session {} started: the browser scrolled to the target and fired Go (action \"{}\", count {}). Its generate event had not arrived yet: run {} live-poll to collect it and handle it exactly per live.md's Handle generate, as its _instructions say; then reply and wait for the accept in one call: {}.",
             s("sessionId"), s("action"), n("count"), self_cmd, reply
         ));
     }

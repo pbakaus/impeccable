@@ -5,7 +5,6 @@
 use crate::paths::{live_dir, safe_session_id};
 use crate::pending_edits::{read_buffer, write_buffer};
 use crate::roots::enter_live_root;
-use crate::session::create_live_session_store;
 use crate::source_lock::with_source_lock;
 use crate::source_search::{find_source_file, is_generated_file, resolve_live_template_extensions};
 use crate::svelte_component::{
@@ -36,8 +35,7 @@ Options:
   --page-url URL     Current browser page URL; scopes staged copy-edit cleanup
   --bake             Bake a knob-free HTML/JSX accept mechanically (rules to the
                      owning stylesheet, wrapper unwrapped) instead of leaving
-                     the carbonize block; the default for sessions the
-                     generate verb started (origin \"agent\")
+                     the carbonize block; opt-in, never the default
   --no-bake          Never bake; always leave the carbonize block
   --defer-source-write
                      Deprecated compatibility flag. Svelte component accepts
@@ -407,18 +405,12 @@ fn accept_cli(args: &[String], io: &mut Io) -> i32 {
             }
         }
     } else {
-        // A session the generate verb started is baked mechanically unless
-        // told otherwise; anything else only on --bake. Plain live keeps
-        // its carbonize block.
-        let agent_origin = !no_bake
-            && !bake_flag
-            && create_live_session_store(&cwd, &env, Some(&id))
-                .get_snapshot(&id, true)
-                .ok()
-                .flatten()
-                .and_then(|s| s.get("origin").and_then(|o| o.as_str()).map(|o| o == "agent"))
-                .unwrap_or(false);
-        let bake = if !no_bake && (bake_flag || agent_origin) {
+        // Only --bake asks for the mechanical bake. Every session, the
+        // generate lane's included, keeps the carbonize block by default:
+        // the agent integrates the accepted variant the way live.md says,
+        // which is what makes the result read as designed rather than
+        // appended.
+        let bake = if !no_bake && bake_flag {
             Some(BakeRequest { cwd: cwd.clone(), session_id: id.clone() })
         } else {
             None
@@ -1319,11 +1311,10 @@ mod bake_tests {
     }
 
     #[test]
-    fn an_agent_started_session_bakes_by_default_and_plain_live_does_not() {
-        let dir = project("origin");
-        let cwd = dir.to_string_lossy().into_owned();
+    fn no_session_bakes_without_the_flag_the_generate_lane_included() {
         let env: Env = std::env::vars().collect();
         // Plain live: no origin, no flag -> the carbonize block, as before.
+        let dir = project("origin");
         let plain = accept(&dir, &["--id", SESSION, "--variant", "2"]);
         assert_eq!(plain["carbonize"], json!(true), "{plain}");
         assert!(plain.get("baked").is_none(), "{plain}");
@@ -1331,26 +1322,25 @@ mod bake_tests {
         assert!(jsx.contains("impeccable-carbonize-start"), "{jsx}");
         assert!(!std::fs::read_to_string(dir.join("src/styles.css")).unwrap().contains("32px"));
 
-        // The generate verb's session: the journal says origin agent.
+        // The generate verb's session (the journal says origin agent) carbonizes
+        // the same way: the agent integrates the accepted variant per live.md.
         let dir2 = project("origin2");
         let cwd2 = dir2.to_string_lossy().into_owned();
-        let store = create_live_session_store(&cwd2, &env, Some(SESSION));
-        store
+        crate::session::create_live_session_store(&cwd2, &env, Some(SESSION))
             .append_event(&json!({ "type": "generate", "id": SESSION, "origin": "agent", "count": 3, "pageUrl": "/", "action": "bolder" }))
             .unwrap();
-        let baked = accept(&dir2, &["--id", SESSION, "--variant", "2"]);
-        assert_eq!(baked["baked"], json!(true), "{baked}");
-        assert!(!std::fs::read_to_string(dir2.join("src/App.jsx")).unwrap().contains("data-impeccable"));
-        // --no-bake wins over the origin.
+        let lane = accept(&dir2, &["--id", SESSION, "--variant", "2"]);
+        assert_eq!(lane["carbonize"], json!(true), "{lane}");
+        assert!(lane.get("baked").is_none(), "{lane}");
+        assert!(std::fs::read_to_string(dir2.join("src/App.jsx")).unwrap().contains("impeccable-carbonize-start"));
+        // --bake is the only way in, and --no-bake still wins over it.
         let dir3 = project("origin3");
-        let cwd3 = dir3.to_string_lossy().into_owned();
-        create_live_session_store(&cwd3, &env, Some(SESSION))
-            .append_event(&json!({ "type": "generate", "id": SESSION, "origin": "agent", "count": 3, "pageUrl": "/", "action": "bolder" }))
-            .unwrap();
-        let kept = accept(&dir3, &["--id", SESSION, "--variant", "2", "--no-bake"]);
+        let baked = accept(&dir3, &["--id", SESSION, "--variant", "2", "--bake"]);
+        assert_eq!(baked["baked"], json!(true), "{baked}");
+        let dir4 = project("origin4");
+        let kept = accept(&dir4, &["--id", SESSION, "--variant", "2", "--bake", "--no-bake"]);
         assert_eq!(kept["carbonize"], json!(true), "{kept}");
-        let _ = (cwd, cwd2, cwd3);
-        for d in [dir, dir2, dir3] {
+        for d in [dir, dir2, dir3, dir4] {
             let _ = std::fs::remove_dir_all(&d);
         }
     }

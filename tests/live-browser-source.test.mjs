@@ -846,15 +846,15 @@ describe('live-browser source contracts', () => {
     );
   });
 
-  it('never shows a pending Tune chip for a session the generate verb started', () => {
-    // The generate lane declares no knobs, so the chip that spins between
-    // the variants mounting and the done reply is noise there; a user's Go
-    // keeps the chip exactly as before (origin null).
+  it('shows the pending Tune chip for a lane session exactly as for any other', () => {
+    // A Go the generate verb fired plans and declares knobs like a user's Go,
+    // so the chip that spins between the variants mounting and the done
+    // reply is gated on the parameter state and nothing else.
     assert.equal((SOURCE.match(/parameterGenerationState = 'pending';\s*sessionOrigin = agentTargetForGo \? 'agent' : null;/g) || []).length, 2, 'every Go records who fired it');
     assert.match(
       SOURCE,
-      /const paramsPending = !hasParams && sessionOrigin !== 'agent' && \(parameterGenerationState === 'pending' \|\| parameterGenerationState === 'loading'\);/,
-      'the pending chip is gated on the origin and nothing else changed',
+      /const paramsPending = !hasParams && \(parameterGenerationState === 'pending' \|\| parameterGenerationState === 'loading'\);/,
+      'the pending chip is not gated on the origin',
     );
     assert.match(SOURCE, /origin: sessionOrigin \|\| undefined,/, 'the origin is saved with the session');
     assert.match(SOURCE, /sessionOrigin = saved\.origin === 'agent' \? 'agent' : null;/, 'and restored across a reload');

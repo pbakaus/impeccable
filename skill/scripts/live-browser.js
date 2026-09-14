@@ -2695,9 +2695,7 @@
     // then becomes interactive as soon as this variant exposes controls.
     const visParams = parseVariantParams(getVisibleVariantEl());
     const hasParams = visParams.length > 0;
-    // A generate-lane session declares no knobs, so it never shows the
-    // pending chip; a user's session keeps it exactly as before.
-    const paramsPending = !hasParams && sessionOrigin !== 'agent' && (parameterGenerationState === 'pending' || parameterGenerationState === 'loading');
+    const paramsPending = !hasParams && (parameterGenerationState === 'pending' || parameterGenerationState === 'loading');
     if (hasParams || paramsPending) {
       const tune = el('button', {
         display: 'inline-flex', alignItems: 'center', gap: '6px',
