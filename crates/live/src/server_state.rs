@@ -740,6 +740,16 @@ impl ServerState {
         }
     }
 
+    /// Whether a connection carries this overlay's clientId. True as well
+    /// while any connection sent none (an older overlay build): that
+    /// overlay cannot be told apart from the id in hand.
+    fn overlay_connected(&self, client_id: &str) -> bool {
+        self.sse_clients.iter().any(|c| match c.agent_client_id.as_deref() {
+            Some(cid) => cid == client_id,
+            None => true,
+        })
+    }
+
     /// Connected overlays for a roll call: one per distinct clientId, plus
     /// every connection that sent none (an older overlay build), so a
     /// reconnect's momentary duplicate connection never waits on a second
@@ -1063,6 +1073,7 @@ impl ServerState {
     ) -> Value {
         let lease_ms = self.agent_target_lease_ms();
         let now = now_i64();
+        let reporter_connected = eligible || self.overlay_connected(client_id);
         let Some((_, pending)) = self
             .pending_agent_targets
             .iter_mut()
@@ -1071,6 +1082,17 @@ impl ServerState {
             return json!({ "ok": true, "granted": false, "pending": false });
         };
         if !eligible {
+            // A report under an id no connection carries any more (the page
+            // unloaded between the broadcast and this claim landing) is not
+            // a participant's word: recorded, it could complete the roll
+            // call, or set its verdict, against the overlays that remain.
+            // An eligible claim is left alone: a lease a departed page holds
+            // lapses and a rescuer takes it, while refusing it would also
+            // refuse the renew a live overlay sends inside an EventSource
+            // reconnect gap, whose Go is still welcome.
+            if !reporter_connected {
+                return json!({ "ok": true, "granted": false, "pending": true });
+            }
             let reason_is_no_match = reason.as_str() == Some("no_match");
             // Only an overlay's first no_match word extends the grace: its
             // re-reports while watching must not keep the roll call open.

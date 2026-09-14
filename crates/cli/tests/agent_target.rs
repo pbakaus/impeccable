@@ -388,6 +388,41 @@ fn agent_target_roll_call_counts_overlays_not_connections() {
 }
 
 #[test]
+fn agent_target_ignores_the_word_of_a_departed_overlay() {
+    let s = Server::start("departed");
+    let mut a = Overlay::connect(s.port, &s.token, "tab-a");
+    let mut b = Overlay::connect(s.port, &s.token, "tab-b");
+    a.next(|m| m["type"] == "connected");
+    b.next(|m| m["type"] == "connected");
+    // B's page goes away; wait until the helper has seen it leave.
+    drop(b);
+    let mut alone = false;
+    let mut last = serde_json::Value::Null;
+    for _ in 0..40 {
+        let (_, body) = http(s.port, "GET", &format!("/status?token={}", s.token), None);
+        let status: serde_json::Value = serde_json::from_str(&body).unwrap_or(serde_json::Value::Null);
+        if status["connectedClients"] == serde_json::json!(1) {
+            alone = true;
+            break;
+        }
+        last = status;
+        std::thread::sleep(Duration::from_millis(15));
+    }
+    assert!(alone, "the helper noticed B leave: {last}");
+    let held = s.hold(serde_json::json!({}));
+    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"].as_str().unwrap().to_string();
+    // A busy report under B's id is nobody's word now: it must neither
+    // complete the roll call (A has not spoken) nor set its verdict.
+    assert_eq!(s.claim(&target_id, "tab-b", false), serde_json::json!({ "ok": true, "granted": false, "pending": true }));
+    std::thread::sleep(Duration::from_millis(60));
+    assert!(!held.is_finished(), "a departed overlay's busy report answered the request");
+    assert_eq!(s.claim(&target_id, "tab-a", true)["granted"], serde_json::json!(true));
+    post_json(s.port, "/agent-target-result", serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": "tab-a", "ok": true, "sessionId": "aabbccdd" }));
+    let (_, verdict) = held.join().unwrap();
+    assert_eq!(verdict["sessionId"], serde_json::json!("aabbccdd"));
+}
+
+#[test]
 fn agent_target_answers_the_resolution_verdict_when_no_page_can_serve() {
     let s = Server::start("no-match");
     let mut a = Overlay::connect(s.port, &s.token, "tab-a");
