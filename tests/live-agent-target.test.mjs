@@ -16,11 +16,14 @@ import { tmpdir } from 'node:os';
 import { execFile, execFileSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { ENGINE_MISSING_MESSAGE, engineEnv, findEngineBinary } from './lib/engine-bin.mjs';
+import { armLiveServerReaper, trackServerChild } from './lib/live-servers.mjs';
 
 // Resolve the repo from this file, not from cwd: the runner may be invoked
 // from tests/ or anywhere else.
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ENGINE_BIN = findEngineBinary();
+// Every live server this file starts dies with it, whichever way it exits.
+armLiveServerReaper();
 
 // The action vocabulary lives in the engine (crates/live/src/vocabulary.rs);
 // read it from the Rust source so the matrix below can never drift from what
@@ -48,11 +51,11 @@ function runGenerate(cwd, args) {
 
 function startServer(port, { cwd, env = {} } = {}) {
   return new Promise((resolve, reject) => {
-    const proc = spawn(ENGINE_BIN, ['live-server', '--port=' + port], {
+    const proc = trackServerChild(spawn(ENGINE_BIN, ['live-server', '--port=' + port], {
       cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: engineEnv(ENGINE_BIN, { IMPECCABLE_LIVE_COPY_AGENT: 'off', ...env }),
-    });
+    }));
     let output = '';
     proc.stdout.on('data', (d) => { output += d.toString(); });
     proc.stderr.on('data', (d) => { output += d.toString(); });
