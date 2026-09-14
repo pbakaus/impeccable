@@ -49,37 +49,47 @@ pub fn probe(candidates: &[String], token: &str) -> Option<String> {
 
 /// Whether something accepts connections at the URL's host and port: the
 /// liveness check `live-generate` runs while it waits for a page, cheap
-/// enough for every few seconds and immune to a slow first render.
+/// enough for every few seconds and immune to a slow first render. Any
+/// scheme: a dev server behind https accepts the TCP connection like any
+/// other, so no TLS is needed to know it is up.
 pub fn answers(url: &str) -> bool {
-    let Some(rest) = url.strip_prefix("http://") else {
-        return false;
-    };
-    let Some(host_port) = rest.split('/').next() else {
-        return false;
-    };
-    let (host, port) = match host_port.rsplit_once(':') {
-        Some((h, p)) => match p.parse::<u16>() {
-            Ok(port) => (h, port),
-            Err(_) => return false,
-        },
-        None => (host_port, 80),
-    };
-    let Some(addr) = (host, port).to_socket_addrs().ok().and_then(|mut a| a.next()) else {
-        return false;
-    };
-    TcpStream::connect_timeout(&addr, Duration::from_millis(300)).is_ok()
+    endpoint(url).is_some_and(|(host, port, _)| connect(host, port).is_some())
 }
 
-/// A minimal HTTP/1.0 GET of `/`; returns the response body on any 2xx.
-fn fetch_root(url: &str) -> Option<String> {
-    let rest = url.strip_prefix("http://")?;
+/// `(host, port, host:port as written)` from an `http://` or `https://`
+/// origin; None for anything else.
+fn endpoint(url: &str) -> Option<(&str, u16, &str)> {
+    let (rest, default_port) = match url.strip_prefix("http://") {
+        Some(rest) => (rest, 80),
+        None => (url.strip_prefix("https://")?, 443),
+    };
     let host_port = rest.split('/').next()?;
     let (host, port) = match host_port.rsplit_once(':') {
         Some((h, p)) => (h, p.parse::<u16>().ok()?),
-        None => (host_port, 80),
+        None => (host_port, default_port),
     };
-    let addr = (host, port).to_socket_addrs().ok()?.next()?;
-    let mut stream = TcpStream::connect_timeout(&addr, Duration::from_millis(300)).ok()?;
+    Some((host.trim_start_matches('[').trim_end_matches(']'), port, host_port))
+}
+
+/// A connection to the first address the host resolves to that accepts
+/// one: `localhost` can resolve to `::1` ahead of `127.0.0.1` while the dev
+/// server listens on only one of them.
+fn connect(host: &str, port: u16) -> Option<TcpStream> {
+    (host, port)
+        .to_socket_addrs()
+        .ok()?
+        .find_map(|addr| TcpStream::connect_timeout(&addr, Duration::from_millis(300)).ok())
+}
+
+/// A minimal HTTP/1.0 GET of `/`; returns the response body on any 2xx.
+/// Plain http only: the tag check needs the document, and an https dev
+/// server would need TLS to hand it over.
+fn fetch_root(url: &str) -> Option<String> {
+    if !url.starts_with("http://") {
+        return None;
+    }
+    let (host, port, host_port) = endpoint(url)?;
+    let mut stream = connect(host, port)?;
     stream.set_read_timeout(Some(Duration::from_millis(1500))).ok()?;
     stream.set_write_timeout(Some(Duration::from_millis(300))).ok()?;
     stream
@@ -136,6 +146,29 @@ mod tests {
         let found = probe(&[dead, theirs.clone(), ours.clone()], "abc-123");
         assert_eq!(found.as_deref(), Some(ours.as_str()));
         assert_eq!(probe(&[theirs], "abc-123"), None);
+    }
+
+    #[test]
+    fn answers_whatever_scheme_the_page_uses() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        assert!(answers(&format!("http://127.0.0.1:{}/", port)));
+        assert!(
+            answers(&format!("https://127.0.0.1:{}/", port)),
+            "an https dev server accepts the connection like any other"
+        );
+        assert!(!answers(&format!("ftp://127.0.0.1:{}/", port)));
+        drop(listener);
+        assert!(!answers(&format!("https://127.0.0.1:{}/", port)));
+    }
+
+    #[test]
+    fn answers_tries_every_address_the_host_resolves_to() {
+        // `localhost` resolves to ::1 ahead of 127.0.0.1 on some hosts; a
+        // server listening on just one of them still answers.
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        assert!(answers(&format!("http://localhost:{}/", port)));
     }
 
     #[test]
