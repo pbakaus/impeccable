@@ -204,6 +204,11 @@ fn instructions_for(result: &Map<String, Value>, self_cmd: &str) -> Option<Strin
         ));
     }
     let text = match s("error").as_str() {
+        "dev_server_gone" => format!(
+            "The dev server at {} stopped answering while this command waited for the page, so no page can load the overlay from it (a server another chat or session started dies with it). {}",
+            s("devUrl"),
+            start_dev_server_hint(&s("harness"))
+        ),
         "no_dev_server" => format!("No dev server is serving this app: none of the usual ports answered with the page carrying the helper's tag (pass --dev-url <url> when you know where it runs). {}", start_dev_server_hint(&s("harness"))),
         "browser_needed" => format!("{}The helper is up and no page is connected yet. {} Then rerun this exact command with --wait-for-browser 60000.", open_ignored_note(result), open_in_harness_hint(&s("harness"), &s("devUrl"), self_cmd)),
         "browser_open_failed" => format!("The browser could not be launched ({}). Open {} yourself with your harness browser tool, or give the user the URL, then rerun this command with --wait-for-browser 120000.", s("detail"), s("url")),
@@ -611,12 +616,48 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
 
     if wait_for_browser_ms > 0 {
         let deadline = Instant::now() + Duration::from_millis(wait_for_browser_ms);
+        // No page can load the overlay from a dead dev server, so the wait
+        // watches the one this command knows (the URL it opened, else the
+        // boot's or the caller's) and ends the moment it stops answering,
+        // instead of running out the budget on a page that will never
+        // reload. Two misses in a row, so a server mid-restart gets a grace.
+        let watched_dev_url: Option<String> = opened
+            .as_ref()
+            .and_then(|o| o.get("url"))
+            .and_then(Value::as_str)
+            .map(String::from)
+            .or_else(|| resolve_dev_url(&boot).0);
+        let started = Instant::now();
+        let mut ticks: u32 = 0;
+        let mut dev_misses: u32 = 0;
         loop {
             let Some(status) = crate::server::fetch_status(port, &token) else {
                 return fail(io, server_died(&me, None, true));
             };
             if status.get("connectedClients").and_then(Value::as_i64).unwrap_or(0) > 0 {
                 break;
+            }
+            if let Some(url) = &watched_dev_url {
+                ticks += 1;
+                if ticks % 3 == 0 {
+                    if crate::dev_url::answers(url) {
+                        dev_misses = 0;
+                    } else {
+                        dev_misses += 1;
+                    }
+                    if dev_misses >= 2 {
+                        let mut v = Map::new();
+                        v.insert("ok".into(), json!(false));
+                        v.insert("error".into(), json!("dev_server_gone"));
+                        v.insert("devUrl".into(), json!(url));
+                        v.insert("waitedMs".into(), json!(started.elapsed().as_millis() as u64));
+                        v.insert("harness".into(), json!(harness));
+                        let mut v = with_open_note(v);
+                        let text = instructions_for(&v, &me).unwrap_or_default();
+                        v.insert("_instructions".into(), json!(text));
+                        return fail(io, with_boot(v));
+                    }
+                }
             }
             if Instant::now() >= deadline {
                 let mut v = Map::new();
@@ -768,6 +809,18 @@ mod tests {
         let bare = parse_flags(&["--dev-url".to_string(), "--selector".to_string(), "h1".to_string()]).unwrap();
         assert!(bare.values.get("dev-url").is_none());
         assert_eq!(bare.values.get("selector").and_then(Value::as_str), Some("h1"));
+    }
+
+    #[test]
+    fn a_dev_server_that_dies_mid_wait_gets_the_start_it_instructions() {
+        let mut m = Map::new();
+        m.insert("error".into(), json!("dev_server_gone"));
+        m.insert("devUrl".into(), json!("http://127.0.0.1:5173/"));
+        m.insert("harness".into(), json!("cursor"));
+        let text = instructions_for(&m, "impeccable").unwrap();
+        assert!(text.contains("stopped answering"), "{text}");
+        assert!(text.contains("http://127.0.0.1:5173/"), "{text}");
+        assert!(text.contains("background terminal") && text.contains("--dev-url"), "{text}");
     }
 
     #[test]

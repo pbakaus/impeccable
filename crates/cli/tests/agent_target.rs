@@ -845,6 +845,72 @@ fn live_generate_boot_and_open_run_the_lane_from_a_cold_project() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// The wait ends when the dev server dies (`--boot`'s detached helper
+/// inherits a test's stdout pipe on Windows, so unix only, like the other
+/// boot tests).
+#[cfg(unix)]
+#[test]
+fn live_generate_stops_waiting_when_the_dev_server_dies() {
+    let dir = std::env::temp_dir().join(format!("impeccable-agent-target-devgone-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join(".impeccable/live")).unwrap();
+    std::fs::write(dir.join("index.html"), "<html><body><h1>t</h1></body></html>").unwrap();
+    std::fs::write(dir.join(".impeccable/live/config.json"), "{\"files\":[\"index.html\"],\"insertBefore\":\"</body>\",\"commentSyntax\":\"html\"}").unwrap();
+    // A stand-in dev server that serves the injected page until told to stop,
+    // then closes its port: the server a harness reaps mid-session.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let dev_port = listener.local_addr().unwrap().port();
+    let dev_url = format!("http://127.0.0.1:{}/", dev_port);
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let stop_flag = stop.clone();
+    let page_dir = dir.clone();
+    std::thread::spawn(move || loop {
+        if stop_flag.load(std::sync::atomic::Ordering::SeqCst) {
+            break; // the listener drops here and the port closes
+        }
+        match listener.accept() {
+            Ok((mut stream, _)) => {
+                let _ = stream.set_nonblocking(false);
+                let mut buf = [0u8; 2048];
+                let _ = std::io::Read::read(&mut stream, &mut buf);
+                let body = std::fs::read_to_string(page_dir.join("index.html")).unwrap_or_default();
+                let res = format!("HTTP/1.0 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
+                let _ = std::io::Write::write_all(&mut stream, res.as_bytes());
+            }
+            Err(_) => std::thread::sleep(Duration::from_millis(30)),
+        }
+    });
+    let started = std::time::Instant::now();
+    let child = std::process::Command::new(env!("CARGO_BIN_EXE_impeccable"))
+        .args(["live-generate", "--selector", "h1", "--action", "bolder", "--boot", "--dev-url", &dev_url, "--wait-for-browser", "30000"])
+        .current_dir(&dir)
+        .env("IMPECCABLE_LIVE_COPY_AGENT", "off")
+        .env("IMPECCABLE_DEV_URL_CANDIDATES", &dev_url)
+        .env("IMPECCABLE_AGENT_TARGET_TIMEOUT_MS", "400")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("cli");
+    // The boot ran and the wait began; now the dev server goes away.
+    std::thread::sleep(Duration::from_millis(2500));
+    stop.store(true, std::sync::atomic::Ordering::SeqCst);
+    let out = child.wait_with_output().expect("cli output");
+    let elapsed = started.elapsed();
+    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+    let last = stdout.trim().lines().last().unwrap_or("");
+    let v: serde_json::Value = serde_json::from_str(stdout.trim()).or_else(|_| serde_json::from_str(last)).unwrap_or_else(|e| panic!("{e}: {stdout}"));
+    assert_eq!(v["error"], serde_json::json!("dev_server_gone"), "{v}");
+    assert_eq!(v["devUrl"], serde_json::json!(dev_url), "{v}");
+    assert!(v["_instructions"].as_str().unwrap().contains("stopped answering"), "{v}");
+    assert!(elapsed < Duration::from_secs(20), "the wait ran out its budget instead of noticing: {:?}", elapsed);
+    // Cleanup: stop the helper the boot started.
+    let info: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(dir.join(".impeccable/live/server.json")).unwrap()).unwrap();
+    let _ = http(info["port"].as_u64().unwrap() as u16, "GET", &format!("/stop?token={}", info["token"].as_str().unwrap()), None);
+    std::thread::sleep(Duration::from_millis(500));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn live_generate_asks_the_harness_to_open_the_page_instead_of_a_second_browser() {
     // Helper up, no page connected, nothing asked to open, nothing to wait

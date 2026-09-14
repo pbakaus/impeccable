@@ -61,6 +61,7 @@ Run it in the foreground in Cursor and Claude Code (it returns within the wait);
 Read the output in this order: `boot.product` / `boot.design` / `boot.surfaceBrief` (or `boot.contextMissing` with `boot.contextNote`: the page is the source of truth, per the note), then `event`, the generate event for `sessionId`, with `_instructions` that carry the whole plan. Every verdict carries `_instructions`, and they win over your recollection of this file; the ones whose move is a decision of yours:
 
 - **`ambiguous`**: the candidates are listed; target their common container, or rerun with `--text "<visible text>"` or `--index <n>`.
+- **`dev_server_gone`**: the dev server stopped answering while the command waited for the page (on Cursor, a server another chat started dies with that chat). Start it the way the verdict says, then rerun with `--dev-url <url>`.
 - **`no_match`**: the tab is on a route that does not render the element (navigate to the right route, rerun), or the selector is wrong (derive a better one from the source, or add `--text`).
 - **`config_missing` / `config_invalid`** under `bootError`: follow [live-setup.md](live-setup.md) first, then rerun.
 - **`event: null`** with `ok: true`: the event was slower than the wait; run `{{scripts_path}}/impeccable live-poll` once to collect it, then continue.

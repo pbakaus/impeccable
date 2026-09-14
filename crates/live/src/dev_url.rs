@@ -47,6 +47,29 @@ pub fn probe(candidates: &[String], token: &str) -> Option<String> {
     hits.into_iter().flatten().next()
 }
 
+/// Whether something accepts connections at the URL's host and port: the
+/// liveness check `live-generate` runs while it waits for a page, cheap
+/// enough for every few seconds and immune to a slow first render.
+pub fn answers(url: &str) -> bool {
+    let Some(rest) = url.strip_prefix("http://") else {
+        return false;
+    };
+    let Some(host_port) = rest.split('/').next() else {
+        return false;
+    };
+    let (host, port) = match host_port.rsplit_once(':') {
+        Some((h, p)) => match p.parse::<u16>() {
+            Ok(port) => (h, port),
+            Err(_) => return false,
+        },
+        None => (host_port, 80),
+    };
+    let Some(addr) = (host, port).to_socket_addrs().ok().and_then(|mut a| a.next()) else {
+        return false;
+    };
+    TcpStream::connect_timeout(&addr, Duration::from_millis(300)).is_ok()
+}
+
 /// A minimal HTTP/1.0 GET of `/`; returns the response body on any 2xx.
 fn fetch_root(url: &str) -> Option<String> {
     let rest = url.strip_prefix("http://")?;
