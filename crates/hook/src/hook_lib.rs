@@ -30,14 +30,19 @@ use crate::util::{
 
 pub const ENVELOPE_PREFIX: &str = "[impeccable@1]";
 
-pub const ALLOWED_EXTS: &[&str] = &[
-    ".tsx", ".jsx", ".html", ".htm", ".vue", ".svelte", ".astro", ".css", ".scss", ".sass",
-    ".less", ".ts", ".js",
-];
+pub use impeccable_detect::engine_route::SCANNABLE_EXTENSIONS as ALLOWED_EXTS;
 
 pub const ACK_EXTS: &[&str] = &[
     ".tsx", ".jsx", ".html", ".htm", ".vue", ".svelte", ".astro", ".css", ".scss", ".sass", ".less",
 ];
+
+pub use impeccable_detect::engine_route::{
+    extension_label, is_component, is_plain_html, match_configured_extension,
+    match_html_engine_extension, merge_extensions, normalize_extension_entries, uses_html_engine,
+    ExtensionEntry, HTML_ENGINE_EXTENSIONS,
+};
+
+pub use impeccable_detect::engine_route::is_scannable as is_hook_scan_path;
 
 const WS: &str = impeccable_core::js::WS;
 
@@ -351,12 +356,6 @@ pub fn is_native_platform(platform: Option<&str>) -> bool {
 // ── config ────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ExtensionEntry {
-    pub ext: String,
-    pub engine: String,
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub struct Limits {
     pub max_findings: f64,
     pub max_chars: f64,
@@ -561,81 +560,6 @@ pub fn merge_ignore_values(
         map_set(&mut map, ignore_value_entry_key(&entry), entry);
     }
     map.into_iter().map(|(_, e)| e).collect()
-}
-
-/// JS: template-extensions.mjs#normalizeExtensionEntries
-pub fn normalize_extension_entries(entries: &[Value]) -> Vec<ExtensionEntry> {
-    let mut out = Vec::new();
-    for entry in entries {
-        let (raw, is_string, engine_text) = match entry {
-            Value::String(s) => (Some(s.as_str()), true, false),
-            Value::Object(o) => (
-                match o.get("ext") {
-                    Some(Value::String(s)) => Some(s.as_str()),
-                    _ => None,
-                },
-                false,
-                o.get("engine") == Some(&Value::String("text".to_string())),
-            ),
-            _ => (None, false, false),
-        };
-        let Some(raw) = raw else { continue };
-        let mut ext = js::to_lower_case(js::trim(raw));
-        if ext.is_empty() {
-            continue;
-        }
-        if !ext.starts_with('.') {
-            ext = format!(".{ext}");
-        }
-        let engine = if !is_string && engine_text {
-            "text"
-        } else {
-            "html"
-        };
-        out.push(ExtensionEntry {
-            ext,
-            engine: engine.to_string(),
-        });
-    }
-    out
-}
-
-/// JS: template-extensions.mjs#mergeExtensions
-pub fn merge_extensions(existing: &[ExtensionEntry], incoming: &[Value]) -> Vec<ExtensionEntry> {
-    let mut map: Vec<(String, ExtensionEntry)> = Vec::new();
-    for e in existing {
-        map_set(&mut map, e.ext.clone(), e.clone());
-    }
-    for e in normalize_extension_entries(incoming) {
-        map_set(&mut map, e.ext.clone(), e);
-    }
-    map.into_iter().map(|(_, e)| e).collect()
-}
-
-/// JS: template-extensions.mjs#matchConfiguredExtension
-pub fn match_configured_extension<'a>(
-    file_path: &str,
-    extensions: &'a [ExtensionEntry],
-) -> Option<&'a ExtensionEntry> {
-    if extensions.is_empty() {
-        return None;
-    }
-    let name = js::to_lower_case(&jsp::basename(file_path));
-    if name.is_empty() {
-        return None;
-    }
-    let mut best: Option<&ExtensionEntry> = None;
-    for entry in extensions {
-        if utf16_len(&name) > utf16_len(&entry.ext)
-            && name.ends_with(entry.ext.as_str())
-            && best
-                .map(|b| utf16_len(&entry.ext) > utf16_len(&b.ext))
-                .unwrap_or(true)
-        {
-            best = Some(entry);
-        }
-    }
-    best
 }
 
 // ── cache ─────────────────────────────────────────────────────────────────
@@ -991,6 +915,7 @@ pub fn filter_findings(findings: Vec<Finding>, config: &HookConfig) -> Vec<Findi
         ignore_values: config.ignore_values.clone(),
         design_system_enabled: None,
         advisory_rules: None,
+        extensions: vec![],
     };
     filter_detection_findings(kept, &dc)
 }
@@ -1606,9 +1531,7 @@ pub fn should_emit_ack_for_file(file_path: &str, config: &HookConfig) -> bool {
     if ACK_EXTS.contains(&ext.as_str()) {
         return true;
     }
-    match_configured_extension(file_path, &config.extensions)
-        .map(|c| c.engine == "html")
-        .unwrap_or(false)
+    uses_html_engine(file_path, &config.extensions)
 }
 
 /// The detector option object the hook builds (`{ designSystem? }`).
@@ -2163,7 +2086,6 @@ pub fn normalize_hook_event(
 
 // ── targets ───────────────────────────────────────────────────────────────
 
-const UI_CODE_EXTS: &[&str] = &[".jsx", ".tsx", ".vue", ".svelte", ".astro"];
 const STYLE_EXTS: &[&str] = &[".css", ".scss", ".sass", ".less"];
 const CO_SCAN_STYLE_NAMES: &[&str] = &[
     "styles.css",
@@ -2290,7 +2212,12 @@ pub fn parse_static_style_imports(
 /// JS: coLocatedStylesheets(filePath)
 pub fn co_located_stylesheets(file_path: &str) -> Vec<String> {
     let dir = jsp::dirname(file_path);
-    let base = jsp::basename_ext(file_path, &jsp::extname(file_path));
+    let name = jsp::basename(file_path);
+    let base = if let Some(suffix) = match_html_engine_extension(file_path) {
+        name[..name.len() - suffix.len()].to_string()
+    } else {
+        jsp::basename_ext(file_path, &jsp::extname(file_path))
+    };
     let mut candidates: Vec<String> = Vec::new();
     for suffix in [
         ".css",
@@ -2377,7 +2304,7 @@ pub fn expand_scan_targets(rt: &Runtime, primaries: &[String], project_cwd: &str
             continue;
         }
         let ext = js::to_lower_case(&jsp::extname(p));
-        if STYLE_EXTS.contains(&ext.as_str()) || !UI_CODE_EXTS.contains(&ext.as_str()) {
+        if !matches!(ext.as_str(), ".jsx" | ".tsx") && !is_component(p) {
             continue;
         }
         let content = safe_read(p).unwrap_or_default();

@@ -12,6 +12,7 @@ use std::path::PathBuf;
 
 use impeccable_common::{jsp, Io};
 use impeccable_core::findings::{finding, Finding};
+use impeccable_detect::engines::{EngineError, HtmlEngine, ScanOptions};
 use impeccable_detect::MissingHtmlEngine;
 use impeccable_hook::hook_lib::*;
 use impeccable_hook::{admin, before_edit, hook};
@@ -266,6 +267,106 @@ fn edit_with_original(cwd: &str, file: &str, session: &str, before: &str, old: &
         "tool_response": {"filePath": file, "originalFile": before, "oldString": old,
             "newString": new, "replaceAll": false, "userModified": false},
     }).to_string()
+}
+
+#[test]
+fn template_copy_edit_preserves_stop_baseline_and_cache_identity() {
+    for suffix in ["vue", "svelte", "astro", "blade.php"] {
+        let t = Tmp::new();
+        let cwd = t.path();
+        t.write("package.json", "{}");
+        let before =
+            "<div>Before</div>\n<style>\n.card { border-left: 4px solid #6366f1; }\n</style>";
+        let after = before.replace("Before", "After");
+        let file = t.write(&format!("src/Card.{suffix}"), &after);
+        let html = impeccable_html::StaticHtmlEngine::default();
+        let r = Runtime::new(
+            cwd.clone(),
+            HashMap::new(),
+            "/impeccable".into(),
+            "/opt/bin/impeccable",
+            &html,
+        );
+        let text = detector_detect_text(&after, &file, &HookScanOptions::default());
+        let mixed = detector_detect_html(&r, &file, &HookScanOptions::default()).unwrap();
+        assert!(!text.is_empty());
+        for f in &text {
+            assert!(mixed
+                .iter()
+                .any(|m| finding_cache_key(m) == finding_cache_key(f)));
+        }
+        let mut old_cache = read_cache(&cwd);
+        remember_findings(&mut old_cache, "upgrade", &file, &text);
+        assert!(dedupe_against_cache(&mixed, &mut old_cache, "upgrade", &file).is_empty());
+        hook::run_hook(
+            &r,
+            &edit_with_original(&cwd, &file, "s1", before, "Before", "After"),
+        );
+        assert!(t
+            .read(".impeccable/hook.cache.json")
+            .contains("stopBaseline"));
+        let stop = hook::run_stop_hook(&r, &stop_event(&cwd, "s1"));
+        assert!(stop.stdout.is_empty(), "{suffix}: {}", stop.stdout);
+    }
+}
+
+#[test]
+fn blade_components_coscan_sibling_stylesheets() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let blade = t.write("views/Card.blade.php", "<p>Card</p>");
+    let css = t.write("views/Card.css", SIDE_TAB_CSS);
+    let targets = normalize_scan_targets(&rt(&cwd), &[blade], &cwd);
+    assert!(targets.contains(&css), "{targets:?}");
+}
+
+#[test]
+fn proposed_template_uses_project_stylesheets_without_writing_source() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    t.write(
+        "src/styles/global.css",
+        "body{color:#111;background:#fff}.hero{color:#fff}",
+    );
+    let html = impeccable_html::StaticHtmlEngine::default();
+    let r = Runtime::new(
+        cwd.clone(),
+        HashMap::new(),
+        "/impeccable".into(),
+        "/opt/bin/impeccable",
+        &html,
+    );
+    for suffix in ["html", "astro", "vue", "svelte", "blade.php"] {
+        let original = "<p>Original file</p>";
+        let file = t.write(&format!("src/layouts/Base.{suffix}"), original);
+        let proposed = "<link rel=\"stylesheet\" href=\"../styles/global.css\"><div class=\"hero\" style=\"background:#000\">Welcome home</div>";
+        let (out, code) = hbe(
+            &r,
+            &cursor(&cwd, "Write", json!({"file_path":file,"content":proposed})),
+        );
+        assert_eq!(code, 0);
+        assert_eq!(
+            serde_json::from_str::<Value>(&out).unwrap()["permission"],
+            "allow",
+            "{suffix}: {out}"
+        );
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), original);
+        let (out, _) = hbe(
+            &r,
+            &cursor(
+                &cwd,
+                "Write",
+                json!({"file_path":file,"content":"<a style=\"color:#ccc;background:#fff\">low contrast</a>"}),
+            ),
+        );
+        assert_eq!(
+            serde_json::from_str::<Value>(&out).unwrap()["permission"],
+            "deny",
+            "{suffix}: {out}"
+        );
+    }
 }
 
 #[test]
@@ -799,6 +900,88 @@ fn configured_extensions_match_suffixes() {
     );
     assert!(match_configured_extension("/x/a.tsx", &exts).is_none());
     assert!(match_configured_extension("/x/a.php", &[]).is_none());
+}
+
+struct CaptureHtml {
+    paths: std::cell::RefCell<Vec<String>>,
+}
+
+impl HtmlEngine for CaptureHtml {
+    fn detect_html(
+        &self,
+        path: &str,
+        _options: &ScanOptions,
+        _stderr: &mut dyn std::io::Write,
+    ) -> Result<Vec<Finding>, EngineError> {
+        self.paths.borrow_mut().push(path.to_string());
+        Ok(vec![finding("low-contrast", path, "low contrast", 1.0)])
+    }
+}
+
+#[test]
+fn hook_routes_builtin_markup_and_configured_erb_to_html_engine() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let html = CaptureHtml {
+        paths: std::cell::RefCell::new(Vec::new()),
+    };
+    let r = Runtime::new(
+        cwd.clone(),
+        HashMap::new(),
+        "/impeccable".to_string(),
+        "/opt/bin/impeccable",
+        &html,
+    );
+    let body = "<a href=\"#\" style=\"color:#ccc;background:#fff\">low contrast</a>\n";
+    let vue = t.write("src/page.vue", body);
+    let blade = t.write("views/page.blade.php", body);
+    let erb = t.write("views/page.html.erb", body);
+
+    let vue_res = hook::run_hook(&r, &edit_event(&cwd, &vue, "s1"));
+    assert!(
+        vue_res.stdout.contains("[low-contrast]"),
+        "{}",
+        vue_res.stdout
+    );
+    assert_eq!(audit_str(&vue_res.audit, "ext"), Some(".vue"));
+
+    let blade_res = hook::run_hook(&r, &edit_event(&cwd, &blade, "s1"));
+    assert!(
+        blade_res.stdout.contains("[low-contrast]"),
+        "{}",
+        blade_res.stdout
+    );
+    assert_eq!(audit_str(&blade_res.audit, "ext"), Some(".blade.php"));
+
+    let erb_skip = hook::run_hook(&r, &edit_event(&cwd, &erb, "s1"));
+    assert_eq!(audit_str(&erb_skip.audit, "skipped"), Some("extension"));
+
+    t.write(
+        ".impeccable/config.json",
+        r#"{"detector":{"extensions":[{"ext":".html.erb","engine":"html"}]}}"#,
+    );
+    let erb_res = hook::run_hook(&r, &edit_event(&cwd, &erb, "s2"));
+    assert!(
+        erb_res.stdout.contains("[low-contrast]"),
+        "{}",
+        erb_res.stdout
+    );
+    assert_eq!(audit_str(&erb_res.audit, "ext"), Some(".html.erb"));
+
+    let seen = html.paths.borrow();
+    assert!(
+        seen.iter().any(|p| p.ends_with("page.vue")),
+        "vue should hit HTML engine: {seen:?}"
+    );
+    assert!(
+        seen.iter().any(|p| p.ends_with("page.blade.php")),
+        "blade.php should hit HTML engine without config: {seen:?}"
+    );
+    assert!(
+        seen.iter().any(|p| p.ends_with("page.html.erb")),
+        "configured html.erb should hit HTML engine: {seen:?}"
+    );
 }
 
 // ── cache ─────────────────────────────────────────────────────────────────
@@ -1412,10 +1595,11 @@ fn run_hook_skips_unsafe_and_foreign_targets() {
         Some("outside-project")
     );
     assert!(!t.exists(".impeccable"));
-    // template extensions (#316): .blade.php is skipped without config,
-    // routed through the text engine with `engine: text`
+    // .php is still skipped. .blade.php is a built-in DOM suffix (#795), so
+    // `engine: text` is what routes it through the regex engine.
+    let php = t.write("views/a.php", "<style>.t{background: linear-gradient(90deg,#f00,#00f); -webkit-background-clip: text; color: transparent;}</style>");
+    assert_eq!(audit_str(&go(&php).audit, "skipped"), Some("extension"));
     let blade = t.write("views/a.blade.php", "<style>.t{background: linear-gradient(90deg,#f00,#00f); -webkit-background-clip: text; color: transparent;}</style>");
-    assert_eq!(audit_str(&go(&blade).audit, "skipped"), Some("extension"));
     t.write(
         ".impeccable/config.json",
         r#"{"detector":{"extensions":[{"ext":".blade.php","engine":"text"}]}}"#,

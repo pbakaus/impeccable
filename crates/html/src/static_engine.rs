@@ -23,7 +23,8 @@ use impeccable_detect::design_system::{
     is_allowed_font, is_allowed_radius_raw, is_transparent_css, make_design_finding,
     merge_design_system_findings, primary_font, DesignSystem, STATIC_DESIGN_SKIP_TAGS,
 };
-use impeccable_detect::detect_text::run_text_content_analyzers;
+use impeccable_detect::detect_text::{detect_markup_text, run_text_content_analyzers, TextOptions};
+use impeccable_detect::engine_route::is_plain_html;
 use impeccable_detect::engines::{EngineError, HtmlEngine, ScanOptions};
 use impeccable_detect::profiler::{DetectorProfile, ProfileEvent as DetectProfileEvent};
 use once_cell::sync::Lazy;
@@ -31,7 +32,9 @@ use regex::Regex;
 
 use crate::background::sv;
 use crate::dom::{StaticDocument, StaticElement};
-use crate::engine::{detect_html, DesignSystemHook, DetectHtmlOptions};
+use crate::engine::{
+    detect_html_source, detect_template_source, DesignSystemHook, DetectHtmlOptions,
+};
 use crate::profile::{ProfileEvent, ProfileSink};
 use crate::quality::pf0;
 
@@ -53,6 +56,28 @@ impl HtmlEngine for StaticHtmlEngine {
         options: &ScanOptions,
         stderr: &mut dyn std::io::Write,
     ) -> Result<Vec<Finding>, EngineError> {
+        let bytes = std::fs::read(path).map_err(|source| {
+            EngineError::new(match source.kind() {
+                std::io::ErrorKind::NotFound => {
+                    format!("ENOENT: no such file or directory, open '{path}'")
+                }
+                std::io::ErrorKind::PermissionDenied => {
+                    format!("EACCES: permission denied, open '{path}'")
+                }
+                _ => format!("{source}, open '{path}'"),
+            })
+        })?;
+        self.detect_html_source(&String::from_utf8_lossy(&bytes), path, options, stderr)
+    }
+
+    fn detect_html_source(
+        &self,
+        content: &str,
+        path: &str,
+        options: &ScanOptions,
+        stderr: &mut dyn std::io::Write,
+    ) -> Result<Vec<Finding>, EngineError> {
+        let hybrid = !is_plain_html(path);
         // The JS DEGRADED notice fires only when its parser modules fail to
         // import; the port links them in. The stderr sink carries the
         // unreadable-linked-stylesheet notices (issue #652).
@@ -75,26 +100,44 @@ impl HtmlEngine for StaticHtmlEngine {
         let html_options = DetectHtmlOptions {
             inline_ignores_disabled: !options.inline_ignores,
             design_system: hook.as_ref().map(|h| h as &dyn DesignSystemHook),
-            text_content_analyzers: Some(&analyzers),
+            text_content_analyzers: if hybrid { None } else { Some(&analyzers) },
             profile: profile_sink.as_ref().map(|s| s as &dyn ProfileSink),
             warn: Some(&warn),
             static_rule_pack: self.static_rule_pack,
-            rule_pack: options.rule_pack,
+            rule_pack: if hybrid { None } else { options.rule_pack },
         };
-        detect_html(Path::new(path), &html_options).map_err(|e| {
-            EngineError::new(match e {
-                // JS `fs.readFileSync` rejection surfaced by `detectCli`'s catch.
-                crate::engine::HtmlEngineError::Read { path, source } => match source.kind() {
-                    std::io::ErrorKind::NotFound => {
-                        format!("ENOENT: no such file or directory, open '{path}'")
-                    }
-                    std::io::ErrorKind::PermissionDenied => {
-                        format!("EACCES: permission denied, open '{path}'")
-                    }
-                    _ => format!("{source}, open '{path}'"),
+        let dom = if hybrid {
+            detect_template_source(content, Path::new(path), &html_options)
+        } else {
+            detect_html_source(content, Path::new(path), &html_options)
+        };
+        if !hybrid {
+            return Ok(dom);
+        }
+        let mut findings = detect_markup_text(
+            content,
+            path,
+            &TextOptions {
+                profile: options.profile.as_deref(),
+                design_system: options.design_system.as_deref(),
+                inline_ignores: options.inline_ignores,
+                rule_pack: if self.static_rule_pack.is_some() {
+                    None
+                } else {
+                    options.rule_pack
                 },
-            })
-        })
+            },
+        );
+        // A DOM hit cannot reliably be matched back to a CSS declaration
+        // (one declaration can style many elements). Prefer the complete,
+        // line-bearing text family when both engines report the same rule.
+        let text_rules: std::collections::HashSet<_> =
+            findings.iter().map(|f| f.antipattern.clone()).collect();
+        findings.extend(
+            dom.into_iter()
+                .filter(|f| !text_rules.contains(&f.antipattern)),
+        );
+        Ok(findings)
     }
 }
 

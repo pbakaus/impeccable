@@ -14,6 +14,7 @@ pub mod cli;
 pub mod config;
 pub mod design_system;
 pub mod detect_text;
+pub mod engine_route;
 pub mod engines;
 pub mod file_system;
 pub mod ignores;
@@ -22,6 +23,11 @@ pub mod profiler;
 pub mod regex_matchers;
 pub mod skills;
 pub mod util;
+
+pub use engine_route::{
+    extension_label, match_configured_extension, match_html_engine_extension, merge_extensions,
+    normalize_extension_entries, uses_html_engine, ExtensionEntry, HTML_ENGINE_EXTENSIONS,
+};
 
 use impeccable_common::Io;
 
