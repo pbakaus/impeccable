@@ -21,43 +21,15 @@ fn is_forbidden_host_cp(c: char) -> bool {
     )
 }
 
-fn percent_encode_path(s: &str) -> String {
-    // path percent-encode set: C0 controls, space, ", #, <, >, ?, `, {, }, and non-ASCII
-    let mut out = String::new();
-    for c in s.chars() {
-        let enc = (c as u32) <= 0x1f || (c as u32) >= 0x7f || matches!(c, ' ' | '"' | '#' | '<' | '>' | '?' | '`' | '{' | '}');
-        if enc {
-            let mut buf = [0u8; 4];
-            for b in c.encode_utf8(&mut buf).bytes() {
-                out.push_str(&format!("%{:02X}", b));
-            }
-        } else {
-            out.push(c);
-        }
-    }
-    out
-}
+// Each component also escapes C0 controls and non-ASCII characters.
+const PATH_ENCODE_SET: &[char] = &[' ', '"', '#', '<', '>', '?', '`', '{', '}'];
+const QUERY_ENCODE_SET: &[char] = &[' ', '"', '#', '<', '>', '\''];
+const FRAGMENT_ENCODE_SET: &[char] = &[' ', '"', '<', '>', '`'];
 
-fn percent_encode_query(s: &str) -> String {
+fn percent_encode(s: &str, encode_set: &[char]) -> String {
     let mut out = String::new();
     for c in s.chars() {
-        let enc = (c as u32) <= 0x1f || (c as u32) >= 0x7f || matches!(c, ' ' | '"' | '#' | '<' | '>' | '\'');
-        if enc {
-            let mut buf = [0u8; 4];
-            for b in c.encode_utf8(&mut buf).bytes() {
-                out.push_str(&format!("%{:02X}", b));
-            }
-        } else {
-            out.push(c);
-        }
-    }
-    out
-}
-
-fn percent_encode_fragment(s: &str) -> String {
-    let mut out = String::new();
-    for c in s.chars() {
-        let enc = (c as u32) <= 0x1f || (c as u32) >= 0x7f || matches!(c, ' ' | '"' | '<' | '>' | '`');
+        let enc = (c as u32) <= 0x1f || (c as u32) >= 0x7f || encode_set.contains(&c);
         if enc {
             let mut buf = [0u8; 4];
             for b in c.encode_utf8(&mut buf).bytes() {
@@ -169,16 +141,16 @@ pub fn parse(input: &str) -> Option<Url> {
                 segs.push(String::new());
             }
         } else {
-            segs.push(percent_encode_path(seg));
+            segs.push(percent_encode(seg, PATH_ENCODE_SET));
         }
     }
     let pathname = if segs.is_empty() { "/".to_string() } else { format!("/{}", segs.join("/")) };
     let search = match query {
-        Some(q) if !q.is_empty() => format!("?{}", percent_encode_query(q)),
+        Some(q) if !q.is_empty() => format!("?{}", percent_encode(q, QUERY_ENCODE_SET)),
         _ => String::new(),
     };
     let hash = match hash {
-        Some(h) if !h.is_empty() => format!("#{}", percent_encode_fragment(h)),
+        Some(h) if !h.is_empty() => format!("#{}", percent_encode(h, FRAGMENT_ENCODE_SET)),
         _ => String::new(),
     };
     Some(Url { scheme, username, password, hostname, port, pathname, search, hash })
@@ -238,6 +210,17 @@ impl Url {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn component_encoding_preserves_distinct_sets() {
+        let text = "\u{1}\u{7f} é💡\"<>`{}'%2f";
+        let u = parse(&format!("https://example.com/x{text}x?q=x{text}x#x{text}x")).unwrap();
+        assert_eq!(u.pathname, "/x%01%7F%20%C3%A9%F0%9F%92%A1%22%3C%3E%60%7B%7D'%2fx");
+        assert_eq!(u.search, "?q=x%01%7F%20%C3%A9%F0%9F%92%A1%22%3C%3E`{}%27%2fx");
+        assert_eq!(u.hash, "#x%01%7F%20%C3%A9%F0%9F%92%A1%22%3C%3E%60{}'%2fx");
+        let u = parse("https://example.com/a?x=?#h?#").unwrap();
+        assert_eq!((u.pathname.as_str(), u.search.as_str(), u.hash.as_str()), ("/a", "?x=?", "#h?#"));
+    }
+
     #[test]
     fn basics() {
         let u = parse("https://Impeccable.Style/docs/audit/").unwrap();
