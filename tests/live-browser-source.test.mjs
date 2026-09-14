@@ -17,6 +17,13 @@ describe('live-browser source contracts', () => {
     }
   });
 
+  it('describes the picked element with the anchor a bake would use and its match count', () => {
+    const body = SOURCE.match(/function extractContext\(el\) \{[\s\S]*?\n  \}/)?.[0];
+    assert.ok(body);
+    assert.match(body, /anchorMatches = document\.querySelectorAll\(anchor\)\.length/);
+    assert.match(body, /anchor, anchorMatches,/);
+  });
+
   for (const annotated of [false, true]) {
     for (const outcome of ['created', 'failed', 'superseded']) {
       it(`${annotated ? 'annotated' : 'plain'} generation checkpoints only its acknowledged current session (${outcome})`, async () => {

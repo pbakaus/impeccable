@@ -49,6 +49,25 @@ Output (JSON):
 struct BakeRequest {
     cwd: String,
     session_id: String,
+    /// The element descriptor the overlay journaled with the session's
+    /// generate event: the anchor it saw and how many elements matched it.
+    element: Option<Map<String, Value>>,
+}
+
+/// The `element` of the session's journaled generate event, if any.
+fn journaled_element(cwd: &str, env: &Env, id: &str) -> Option<Map<String, Value>> {
+    let state = crate::session::create_live_session_store(cwd, env, Some(id)).read_state(id, true).ok()?;
+    let journal = safe_read(&state.journal_path)?;
+    journal
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .find_map(|entry| {
+            let event = entry.get("event")?;
+            if event.get("type").and_then(Value::as_str) != Some("generate") {
+                return None;
+            }
+            event.get("element").and_then(Value::as_object).cloned()
+        })
 }
 
 /// The two ways an HTML/JSX accept can end.
@@ -411,7 +430,7 @@ fn accept_cli(args: &[String], io: &mut Io) -> i32 {
         // which is what makes the result read as designed rather than
         // appended.
         let bake = if !no_bake && bake_flag {
-            Some(BakeRequest { cwd: cwd.clone(), session_id: id.clone() })
+            Some(BakeRequest { cwd: cwd.clone(), session_id: id.clone(), element: journaled_element(&cwd, &env, &id) })
         } else {
             None
         };
@@ -787,6 +806,7 @@ fn handle_accept_unlocked(
             css_content.as_deref(),
             &restored,
             param_values,
+            req.element.as_ref(),
             &source_after,
         );
         match planned {
@@ -1254,7 +1274,13 @@ mod bake_tests {
         )
     }
 
+    /// A project whose session journal says the overlay saw the anchor
+    /// `div.pricing-grid` match exactly one element.
     fn project(tag: &str) -> PathBuf {
+        project_with(tag, Some(json!({ "tagName": "div", "id": null, "classes": ["pricing-grid"], "anchor": "div.pricing-grid", "anchorMatches": 1 })))
+    }
+
+    fn project_with(tag: &str, element: Option<Value>) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("impeccable-accept-bake-{}-{}", tag, std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("src")).unwrap();
@@ -1263,6 +1289,14 @@ mod bake_tests {
         std::fs::write(dir.join("src/styles.css"), ".pricing-grid { display: grid; gap: 20px; }\n.pricing-card { padding: 20px; }\n").unwrap();
         std::fs::write(dir.join("index.html"), "<html><body><div id=\"root\"></div></body></html>").unwrap();
         std::fs::write(dir.join("package.json"), "{\"name\":\"t\"}").unwrap();
+        let env: Env = std::env::vars().collect();
+        let mut generate = json!({ "type": "generate", "id": SESSION, "count": 3, "pageUrl": "/", "action": "bolder" });
+        if let Some(element) = element {
+            generate["element"] = element;
+        }
+        crate::session::create_live_session_store(&dir.to_string_lossy(), &env, Some(SESSION))
+            .append_event(&generate)
+            .unwrap();
         dir
     }
 
@@ -1341,6 +1375,26 @@ mod bake_tests {
         let kept = accept(&dir4, &["--id", SESSION, "--variant", "2", "--bake", "--no-bake"]);
         assert_eq!(kept["carbonize"], json!(true), "{kept}");
         for d in [dir, dir2, dir3, dir4] {
+            let _ = std::fs::remove_dir_all(&d);
+        }
+    }
+
+    #[test]
+    fn a_class_anchor_the_page_showed_more_than_once_refuses_the_bake() {
+        // Three elements matched the anchor when Go fired (three cards from
+        // one JSX element, say): lasting rules on it would restyle them all.
+        let dir = project_with("siblings", Some(json!({ "anchor": "div.pricing-grid", "anchorMatches": 3 })));
+        let result = accept(&dir, &["--id", SESSION, "--variant", "2", "--bake"]);
+        assert_eq!(result["carbonize"], json!(true), "{result}");
+        assert!(result["bakeSkipped"].as_str().unwrap().contains("div.pricing-grid matches 3 elements"), "{result}");
+        assert!(std::fs::read_to_string(dir.join("src/App.jsx")).unwrap().contains("impeccable-carbonize-start"));
+        assert!(!std::fs::read_to_string(dir.join("src/styles.css")).unwrap().contains("32px"));
+        // Without the overlay's descriptor there is nothing to verify against.
+        let dir2 = project_with("nodesc", None);
+        let result = accept(&dir2, &["--id", SESSION, "--variant", "2", "--bake"]);
+        assert_eq!(result["carbonize"], json!(true), "{result}");
+        assert!(result["bakeSkipped"].as_str().unwrap().contains("no element descriptor"), "{result}");
+        for d in [dir, dir2] {
             let _ = std::fs::remove_dir_all(&d);
         }
     }

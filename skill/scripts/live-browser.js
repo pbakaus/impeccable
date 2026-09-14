@@ -991,9 +991,20 @@
         }
       } catch { /* cross-origin */ }
     }
+    // The selector a mechanical bake would anchor lasting rules on, and how
+    // many elements it matches right now: the bake refuses anything but one,
+    // since its rules would restyle every match, not just this element.
+    const cssIdent = (s) => /^[A-Za-z_-][\w-]*$/.test(s);
+    const anchorClasses = [...el.classList].filter(cssIdent);
+    const anchor = el.id && cssIdent(el.id)
+      ? '#' + el.id
+      : (anchorClasses.length ? el.tagName.toLowerCase() + '.' + anchorClasses.join('.') : null);
+    let anchorMatches = null;
+    if (anchor) { try { anchorMatches = document.querySelectorAll(anchor).length; } catch { anchorMatches = null; } }
     return {
       tagName: el.tagName.toLowerCase(), id: el.id || null,
       classes: [...el.classList],
+      anchor, anchorMatches,
       textContent: (el.textContent || '').slice(0, 500),
       outerHTML: sanitizedContextOuterHTML(el, 10000),
       computedStyles: {

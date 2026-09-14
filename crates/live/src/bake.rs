@@ -109,6 +109,55 @@ fn is_css_ident(s: &str) -> bool {
         && !s.starts_with(|c: char| c.is_ascii_digit())
 }
 
+/// The lasting rules apply to every element the anchor matches, so a bake is
+/// only right when that is the accepted element alone. The overlay counted
+/// the anchor's matches on the page when Go fired (`element.anchor` and
+/// `element.anchorMatches` on the generate event, for the anchor it built
+/// from the element's own id or tag and classes); the source anchor must be
+/// that same selector, and the count must be one.
+fn verify_anchor_unique(anchor: &str, element: Option<&Map<String, Value>>) -> Result<(), String> {
+    let Some(element) = element else {
+        return Err(format!(
+            "{} cannot be verified unique on the page: the session's generate event carries no element descriptor",
+            anchor
+        ));
+    };
+    let page_anchor = element.get("anchor").and_then(Value::as_str);
+    let matches = element.get("anchorMatches").and_then(Value::as_i64);
+    match (page_anchor, matches) {
+        (Some(page), Some(1)) if same_anchor(page, anchor) => Ok(()),
+        (Some(page), Some(n)) if same_anchor(page, anchor) => Err(format!(
+            "{} matches {} elements on the page; a lasting rule on it would restyle them all",
+            anchor, n
+        )),
+        (Some(page), Some(_)) => Err(format!(
+            "the element on the page is {} while the source anchors {}; the anchor cannot be verified unique",
+            page, anchor
+        )),
+        _ => Err(format!(
+            "{} cannot be verified unique on the page: the generate event has no anchor count",
+            anchor
+        )),
+    }
+}
+
+/// `#id` anchors match exactly; `tag.class…` anchors match on the tag and
+/// the class set, whatever order the two sides list the classes in.
+fn same_anchor(a: &str, b: &str) -> bool {
+    if a.starts_with('#') || b.starts_with('#') {
+        return a == b;
+    }
+    let parts = |s: &str| -> (String, Vec<String>) {
+        let mut it = s.split('.');
+        let tag = it.next().unwrap_or("").to_string();
+        let mut classes: Vec<String> = it.map(String::from).collect();
+        classes.sort();
+        classes.dedup();
+        (tag, classes)
+    };
+    parts(a) == parts(b)
+}
+
 /// The first compound selector of `s` and what follows it (the following
 /// combinator or whitespace included), honouring brackets, parens, and
 /// quotes. `(s, "")` when there is no combinator.
@@ -436,9 +485,11 @@ static HTML_STYLE_BLOCK_RE: Lazy<Regex> =
 
 /// Plan the bake, or say why it is not mechanical. `css_lines` is the whole
 /// preview stylesheet (JSX template wrap already stripped), `restored` the
-/// accepted variant at the wrapper's indentation, `source_after_unwrap` the
-/// source file with the variant unwrapped (to find its own `<style>` block
-/// when the file is HTML-like).
+/// accepted variant at the wrapper's indentation, `element` the descriptor
+/// the overlay journaled with the generate event (the anchor it saw and how
+/// many elements matched it), `source_after_unwrap` the source file with the
+/// variant unwrapped (to find its own `<style>` block when the file is
+/// HTML-like).
 pub fn plan(
     cwd: &str,
     target_file: &str,
@@ -447,6 +498,7 @@ pub fn plan(
     css_lines: Option<&[String]>,
     restored: &[String],
     param_values: Option<&Map<String, Value>>,
+    element: Option<&Map<String, Value>>,
     source_after_unwrap: &str,
 ) -> Result<BakePlan, String> {
     if param_values.map(|p| !p.is_empty()).unwrap_or(false) {
@@ -470,6 +522,7 @@ pub fn plan(
         ),
         _ => "the variant's root tag has no id or static class to anchor selectors on".to_string(),
     })?;
+    verify_anchor_unique(&anchor, element)?;
     let (rules_css, rules) = extract_variant_css(&css, variant_num, &anchor)?;
     let css_file = if is_jsx {
         Some(find_owning_stylesheet(cwd, &anchor).ok_or_else(|| "no stylesheet under the app root names the element".to_string())?)
@@ -635,20 +688,53 @@ mod tests {
     fn knobs_and_plumbing_refuse_the_bake() {
         let restored = vec!["<div className=\"pricing-grid\">".to_string(), "</div>".to_string()];
         let css = vec!["@scope ([data-impeccable-variant=\"1\"]) { :scope > .pricing-grid { gap: var(--p-gap, 8px); } }".to_string()];
-        let err = plan("/nonexistent", "src/App.jsx", true, "1", Some(&css), &restored, None, "").unwrap_err();
+        let err = plan("/nonexistent", "src/App.jsx", true, "1", Some(&css), &restored, None, None, "").unwrap_err();
         assert!(err.contains("knobs"), "{err}");
         let mut pv = Map::new();
         pv.insert("gap".into(), json!(1));
-        let err = plan("/nonexistent", "src/App.jsx", true, "1", Some(&css), &restored, Some(&pv), "").unwrap_err();
+        let err = plan("/nonexistent", "src/App.jsx", true, "1", Some(&css), &restored, Some(&pv), None, "").unwrap_err();
         assert!(err.contains("paramValues"), "{err}");
         let plumbing = vec!["<div className=\"pricing-grid\" data-impeccable-x=\"1\">".to_string()];
-        let err = plan("/nonexistent", "src/App.jsx", true, "1", Some(&css), &plumbing, None, "").unwrap_err();
+        let err = plan("/nonexistent", "src/App.jsx", true, "1", Some(&css), &plumbing, None, None, "").unwrap_err();
         assert!(err.contains("plumbing"), "{err}");
         // A component root: its className prop may never reach the rendered element.
         let plain = vec!["@scope ([data-impeccable-variant=\"1\"]) { :scope { gap: 8px; } }".to_string()];
         let component = vec!["<PricingGrid className=\"pricing-grid\">".to_string(), "</PricingGrid>".to_string()];
-        let err = plan("/nonexistent", "src/App.jsx", true, "1", Some(&plain), &component, None, "").unwrap_err();
+        let err = plan("/nonexistent", "src/App.jsx", true, "1", Some(&plain), &component, None, None, "").unwrap_err();
         assert!(err.contains("component <PricingGrid>"), "{err}");
+    }
+
+    #[test]
+    fn a_class_anchor_bakes_only_when_the_page_showed_one_match() {
+        let restored = vec!["<div className=\"pricing-grid featured\">".to_string(), "</div>".to_string()];
+        let css = vec!["@scope ([data-impeccable-variant=\"1\"]) { :scope { gap: 8px; } }".to_string()];
+        let attempt = |element: Option<Map<String, Value>>| {
+            plan("/nonexistent", "src/App.jsx", true, "1", Some(&css), &restored, None, element.as_ref(), "").unwrap_err()
+        };
+        let seen = |anchor: &str, matches: Value| {
+            let mut m = Map::new();
+            m.insert("anchor".into(), json!(anchor));
+            m.insert("anchorMatches".into(), matches);
+            m
+        };
+        // Nothing to verify against: no descriptor, no count, another anchor.
+        let err = attempt(None);
+        assert!(err.contains("no element descriptor"), "{err}");
+        let err = attempt(Some(seen("div.pricing-grid.featured", Value::Null)));
+        assert!(err.contains("no anchor count"), "{err}");
+        let err = attempt(Some(seen("div.pricing-grid.featured.open", json!(1))));
+        assert!(err.contains("div.pricing-grid.featured.open") && err.contains("cannot be verified"), "{err}");
+        // Siblings share the classes: the count says so.
+        let err = attempt(Some(seen("div.featured.pricing-grid", json!(3))));
+        assert!(err.contains("div.pricing-grid.featured matches 3 elements"), "{err}");
+        // One match, the classes in the page's own order: the check passes
+        // and the plan moves on to the stylesheet search.
+        let err = attempt(Some(seen("div.featured.pricing-grid", json!(1))));
+        assert!(err.contains("stylesheet"), "{err}");
+        // An id anchor is compared as written.
+        let by_id = vec!["<section id=\"pricing\" className=\"pricing\">".to_string(), "</section>".to_string()];
+        let err = plan("/nonexistent", "src/App.jsx", true, "1", Some(&css), &by_id, None, Some(&seen("#pricing", json!(2))), "").unwrap_err();
+        assert!(err.contains("#pricing matches 2 elements"), "{err}");
     }
 
     #[test]
