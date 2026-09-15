@@ -233,6 +233,9 @@ struct RawResult {
     snippet: String,
     ignore_value: String,
     severity: String,
+    /// The `detector.ignoreSelectors` selector that waived this finding, when
+    /// one did. Empty for everything else.
+    ignored_by: String,
 }
 
 fn cdp_err(e: CdpError) -> EngineError {
@@ -384,6 +387,12 @@ fn detect_url_impl(
             item.extras
                 .insert("ignoreValue".into(), Value::String(r.ignore_value));
         }
+        if !r.ignored_by.is_empty() {
+            item.extras.insert(
+                impeccable_core::findings::IGNORED_BY_KEY.into(),
+                Value::String(r.ignored_by),
+            );
+        }
         if !r.severity.is_empty() && r.severity != item.severity {
             item.severity = r.severity;
         }
@@ -459,6 +468,7 @@ fn scan_page_inner(
     let config = snapshot_engine::browser_config(
         serialize_design_system_for_browser(options.design_system.as_deref()),
         options.rule_pack,
+        options.ignore_selectors.clone(),
     );
 
     // Deterministic pass: capture the page and run the rule core natively over
@@ -486,6 +496,7 @@ fn scan_page_inner(
                     id: js_str(f.get("type")),
                     snippet: js_str(f.get("detail")),
                     ignore_value: js_str_or_empty(f.get("ignoreValue")),
+                    ignored_by: js_str_or_empty(f.get("ignoredBy")),
                     severity: js_str_or_empty(f.get("severity")),
                 });
             }
@@ -515,6 +526,7 @@ fn scan_page_inner(
                     id: f.id,
                     snippet: f.snippet,
                     ignore_value: String::new(),
+                    ignored_by: String::new(),
                     severity: String::new(),
                 })
                 .collect(),
@@ -527,12 +539,13 @@ fn scan_page_inner(
             id: "script-error".to_string(),
             snippet: message,
             ignore_value: String::new(),
+            ignored_by: String::new(),
             severity: String::new(),
         });
     }
 
     let analyses = step(profile, "visual-contrast", "browser-analyze", url, || {
-        snapshot_engine::analyze_visual_contrast(page, &base, 12.0, true)
+        snapshot_engine::analyze_visual_contrast(page, &base, 12.0, true, &config.ignore_selectors)
     })
     .map_err(cdp_err)?;
     let visual = run_visual_contrast_fallback(page, &analyses, &serialized_groups, viewport, profile, url)?;
@@ -566,6 +579,7 @@ fn reveal_sweep(page: &mut Page<'_>) -> Result<(), CdpError> {
 /// target)`: the JS post-processing of the analytic/canvas analyses
 /// (`analyzeVisualContrast`, computed natively in [`snapshot_engine`]) plus the
 /// screenshot pixel fallback for candidates the analyses left unresolved.
+#[allow(clippy::too_many_arguments)]
 fn run_visual_contrast_fallback(
     page: &mut Page<'_>,
     browser_analyses: &[Value],
@@ -598,12 +612,17 @@ fn run_visual_contrast_fallback(
                     .iter()
                     .any(|s| Some(s.as_str()) == r.get("selector").and_then(Value::as_str))
         })
-        .filter_map(|r| r.get("finding"))
-        .map(|f| RawResult {
-            id: js_str(f.get("id")),
-            snippet: js_str(f.get("snippet")),
-            ignore_value: String::new(),
-            severity: String::new(),
+        .map(|r| {
+            let f = r.get("finding").expect("filtered on a truthy finding");
+            let id = js_str(f.get("id"));
+            let ignored_by = js_str_or_empty(r.get("ignoredBy"));
+            RawResult {
+                id,
+                snippet: js_str(f.get("snippet")),
+                ignore_value: String::new(),
+                ignored_by,
+                severity: String::new(),
+            }
         })
         .collect();
 
@@ -644,10 +663,12 @@ fn run_visual_contrast_fallback(
             .map_err(cdp_err)?;
             Ok::<_, EngineError>(
                 f.map(|f| {
+                    let ignored_by = js_str_or_empty(candidate.get("ignoredBy"));
                     vec![RawResult {
                         id: f.id.to_string(),
                         snippet: f.snippet,
                         ignore_value: String::new(),
+                        ignored_by,
                         severity: String::new(),
                     }]
                 })

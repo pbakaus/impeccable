@@ -8,6 +8,7 @@ use super::dom::{tag_lower, Dom, ElId, Rect};
 use super::element_checks::check_element_borders_dom;
 use super::{BrowserConfig, BrowserFinding, DisabledValue, FindingGroup};
 use crate::js_ext_a::JsMap;
+use impeccable_foundation::selector_ignores::{waiving_selector, SelectorIgnore};
 use serde::Serialize;
 
 /// The collect result type is shared.
@@ -60,6 +61,41 @@ pub fn add_browser_findings(
         g.findings.extend(kept);
     } else {
         groups.push(FindingGroup { el, findings: kept });
+    }
+}
+
+/// Apply the project's component-level opt-outs (`detector.ignoreSelectors`)
+/// to a collected group list.
+///
+/// The semantics are the attribute's: an entry waives its rule for every
+/// element the selector matches and for that element's subtree, which is what
+/// `element.closest(selector)` answers. Findings are stamped rather than
+/// dropped, so the layer that owns the ignore list can report "N hits ignored
+/// by config on `.ks-tag`" instead of quietly reporting nothing.
+pub fn stamp_selector_ignores(
+    dom: &dyn Dom,
+    groups: &mut [FindingGroup],
+    entries: &[SelectorIgnore],
+) {
+    if entries.is_empty() {
+        return;
+    }
+    for group in groups.iter_mut() {
+        // Handle 0 is JS null (a missing document.body): nothing to match.
+        if group.el == 0 {
+            continue;
+        }
+        for f in group.findings.iter_mut() {
+            if f.ignored_by.is_some() {
+                continue;
+            }
+            let el = group.el;
+            if let Some(selector) = waiving_selector(entries, &f.type_, |sel| {
+                matches!(dom.closest(el, sel), Ok(Some(_)))
+            }) {
+                f.ignored_by = Some(selector.to_string());
+            }
+        }
     }
 }
 
@@ -363,6 +399,7 @@ pub fn check_element_design_system_dom(
         detail,
         severity: None,
         ignore_value: Some(value),
+        ignored_by: None,
     };
 
     if ds.has_fonts && browser_has_direct_text(dom, el) {
@@ -515,6 +552,7 @@ pub fn check_browser_design_system_sources(
                 ),
                 severity: None,
                 ignore_value: Some(display),
+                ignored_by: None,
             });
         }
     }
@@ -725,6 +763,10 @@ pub fn selector_nodes_for_live_dom(dom: &dyn Dom, selector: &str) -> Option<Vec<
 /// pulsing-dot hero promotion. Returns `{ type, detail, severity? }`; the
 /// caller applies `_ruleOk`.
 pub fn scoped_html_pattern_findings(dom: &dyn Dom) -> Vec<BrowserFinding> {
+    scoped_html_pattern_findings_with_ignores(dom, &[])
+}
+
+fn scoped_html_pattern_findings_with_ignores(dom: &dyn Dom, ignores: &[SelectorIgnore]) -> Vec<BrowserFinding> {
     let html = dom.document_html_for_patterns();
     // Linked stylesheets are absent from the page's outerHTML, so the probe
     // hands their readable, live-resolving rules to the style corpus (#709).
@@ -737,6 +779,7 @@ pub fn scoped_html_pattern_findings(dom: &dyn Dom) -> Vec<BrowserFinding> {
     let all = crate::checks::html_patterns::check_html_patterns(&html, Some(&corpora));
     let mut out = Vec::new();
     for f in all {
+        let mut pattern_waived = None;
         if let Some(selector) = f.selector.as_deref().filter(|s| !s.is_empty()) {
             let Some(matches) = selector_nodes_for_live_dom(dom, selector) else {
                 continue;
@@ -744,11 +787,21 @@ pub fn scoped_html_pattern_findings(dom: &dyn Dom) -> Vec<BrowserFinding> {
             if matches.is_empty() {
                 continue;
             }
-            if !matches.iter().any(|el| !scoped_ignore_active(dom, *el, &f.id)) {
+            let active: Vec<_> = matches.into_iter().filter(|el| !scoped_ignore_active(dom, *el, &f.id)).collect();
+            if active.is_empty() {
                 continue;
+            }
+            // One CSS finding can cover many elements. Keep it reportable
+            // unless every match not already attribute-waived is covered.
+            for el in active {
+                match waiving_selector(ignores, &f.id, |sel| matches!(dom.closest(el, sel), Ok(Some(_)))) {
+                    Some(sel) => { pattern_waived = pattern_waived.or(Some(sel.to_string())); }
+                    None => { pattern_waived = None; break; }
+                }
             }
         }
         let mut item = BrowserFinding::new(f.id.clone(), f.snippet.clone());
+        item.ignored_by = pattern_waived;
         if let Some(sev) = f.severity.as_ref().filter(|s| !s.is_empty()) {
             item.severity = Some(sev.clone());
         } else if f.id == "pulsing-dot" {
@@ -833,6 +886,12 @@ pub fn serialize_findings(dom: &dyn Dom, groups: &[FindingGroup]) -> serde_json:
                     "description".into(),
                     Value::String(ap.map(|a| a.description).unwrap_or("").to_string()),
                 );
+                // Only present when a detector.ignoreSelectors entry waived
+                // this finding, so a scan without the feature serializes
+                // exactly what it always did.
+                if let Some(selector) = f.ignored_by.as_ref() {
+                    m.insert("ignoredBy".into(), Value::String(selector.clone()));
+                }
                 Value::Object(m)
             })
             .collect();
@@ -1431,7 +1490,7 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
 
     page_pass(&mut groups, &mut page_level, q::check_page_quality_dom(dom));
     page_pass(&mut groups, &mut page_level, hits(pc::check_cream_palette(dom)));
-    page_pass(&mut groups, &mut page_level, scoped_html_pattern_findings(dom));
+    page_pass(&mut groups, &mut page_level, scoped_html_pattern_findings_with_ignores(dom, &config.ignore_selectors));
 
     // Rule-pack page rules run after every built-in page pass, through the
     // same attribution as the built-in checks that name their own element.
@@ -1464,6 +1523,7 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
         page_level.retain(|f| !browser_value_ignored(f, &disabled_values));
     }
 
+    stamp_selector_ignores(dom, &mut groups, &config.ignore_selectors);
     CollectResult { groups, page_level }
 }
 
@@ -1870,6 +1930,124 @@ mod tests {
         assert!(visual_contrast_result_finding(&d, p, &existing, &result).is_none());
         let pass = json!({ "status": "pass", "selector": "#t", "finding": null });
         assert_eq!(visual_contrast_result_el(&d, &pass), None);
+    }
+
+    #[test]
+    fn pattern_selector_ignores_cover_matches_not_the_body() {
+        let mut d = FakeDom::new();
+        let (_, body) = d.with_page();
+        d.html_for_patterns = "<style>.title { background: linear-gradient(90deg, #f00, #00f); -webkit-background-clip: text; color: transparent; }</style>".into();
+        let a = d.add(Some(body), "h1");
+        let b = d.add(Some(body), "h2");
+        for el in [a, b] { d.add_selector(el, ".title"); }
+        d.add_selector(a, ".Waived");
+        let cfg = BrowserConfig {
+            ignore_selectors: vec![SelectorIgnore::new("gradient-text", ".Waived")],
+            ..BrowserConfig::default()
+        };
+        let stamp = |d: &FakeDom| {
+            collect_browser_findings(d, &cfg).groups.into_iter().flat_map(|g| g.findings)
+                .find(|f| f.type_ == "gradient-text").expect("pattern finding").ignored_by
+        };
+        assert_eq!(stamp(&d), None, "one uncovered match keeps the finding");
+        d.set_attr(b, "data-impeccable-ignore", "gradient-text");
+        assert_eq!(stamp(&d).as_deref(), Some(".Waived"), "attribute and config coverage combine");
+        d.add_selector(b, ".Waived");
+        assert_eq!(stamp(&d).as_deref(), Some(".Waived"));
+    }
+
+    #[test]
+    fn config_selector_ignores_stamp_the_component_and_its_subtree() {
+        // The #34 shape: one component, many instances, one rule.
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        let mut tags = Vec::new();
+        for _ in 0..3 {
+            let tag = d.add(Some(body), "span");
+            d.add_selector(tag, ".ks-tag");
+            tags.push(tag);
+        }
+        let inner = d.add(Some(tags[0]), "b");
+        let other = d.add(Some(body), "a");
+        d.add_selector(other, ".cta");
+
+        let mut groups: Vec<FindingGroup> = tags
+            .iter()
+            .chain([&inner, &other])
+            .map(|el| FindingGroup {
+                el: *el,
+                findings: vec![
+                    BrowserFinding::new("undersized-ui-text", "10px functional text"),
+                    BrowserFinding::new("wide-tracking", "letter-spacing: 0.08em"),
+                ],
+            })
+            .collect();
+
+        let entries = vec![SelectorIgnore::new("undersized-ui-text", ".ks-tag")];
+        stamp_selector_ignores(&d, &mut groups, &entries);
+
+        // Three instances plus the descendant: waived, and each carries the
+        // selector that waived it rather than vanishing.
+        for g in groups.iter().take(4) {
+            assert_eq!(g.findings[0].ignored_by.as_deref(), Some(".ks-tag"));
+            // Only the named rule is waived.
+            assert_eq!(g.findings[1].ignored_by, None);
+        }
+        // An element outside the component keeps both findings clean.
+        assert_eq!(groups[4].findings[0].ignored_by, None);
+        assert_eq!(groups[4].findings[1].ignored_by, None);
+
+        // Serialization carries the stamp, and only when there is one.
+        let json = serialize_findings(&d, &groups);
+        let first = &json[0]["findings"][0];
+        assert_eq!(first["ignoredBy"], json!(".ks-tag"));
+        assert_eq!(json[0]["findings"][1].get("ignoredBy"), None);
+    }
+
+    #[test]
+    fn config_selector_ignores_are_off_without_entries() {
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        let tag = d.add(Some(body), "span");
+        d.add_selector(tag, ".ks-tag");
+        let mut groups = vec![FindingGroup {
+            el: tag,
+            findings: vec![BrowserFinding::new("undersized-ui-text", "10px")],
+        }];
+        stamp_selector_ignores(&d, &mut groups, &[]);
+        assert_eq!(groups[0].findings[0].ignored_by, None);
+        // A `*` entry waives every rule on the component, as the attribute does.
+        stamp_selector_ignores(&d, &mut groups, &[SelectorIgnore::new("*", ".ks-tag")]);
+        assert_eq!(groups[0].findings[0].ignored_by.as_deref(), Some(".ks-tag"));
+    }
+
+    #[test]
+    fn browser_config_reads_ignore_selectors_from_the_page_config() {
+        let cfg: BrowserConfig = serde_json::from_str(
+            r#"{"ignoreSelectors":[{"rule":"Undersized-UI-Text","selector":".ks-tag"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(cfg.ignore_selectors.len(), 1);
+        // The parser normalizes, so a page config written by hand still
+        // matches: the rule folds case, the selector keeps it.
+        assert_eq!(cfg.ignore_selectors[0].rule, "undersized-ui-text");
+        assert_eq!(cfg.ignore_selectors[0].selector, ".ks-tag");
+        let bare: BrowserConfig = serde_json::from_str("{}").unwrap();
+        assert!(bare.ignore_selectors.is_empty());
+        // A hand-edited entry of the wrong shape drops itself, never the whole
+        // config: `unwrap_or_default()` at the wasm boundary would otherwise
+        // lose the design system with it.
+        let junk: BrowserConfig = serde_json::from_str(
+            r#"{"lineLengthMax":90,"ignoreSelectors":[{},null,"nope",{"rule":"side-tab"},{"rule":"side-tab","selector":".x"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(junk.ignore_selectors.len(), 1);
+        assert_eq!(junk.line_max(), 90.0);
+        let not_a_list: BrowserConfig =
+            serde_json::from_str(r#"{"ignoreSelectors":"nope"}"#).unwrap();
+        assert!(not_a_list.ignore_selectors.is_empty());
+        // A config without the key serializes without it.
+        assert!(!serde_json::to_string(&bare).unwrap().contains("ignoreSelectors"));
     }
 }
 

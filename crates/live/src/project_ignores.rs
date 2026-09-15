@@ -9,6 +9,8 @@
 //!   ignoreFiles   detector.ignoreFiles globs, unioned across roots, so a
 //!                 wholly waived page scans to zero findings in the overlay
 //!                 just as it reports nothing through the CLI and the hook.
+//!   ignoreSelectors component opt-outs ({rule, selector, files?}), resolved
+//!                 to the served page by the same browser-side scope matcher.
 //!   roots         served-root prefixes derived from the inject config's own
 //!                 `files` globs. Never derived from the ignore globs: one
 //!                 entry scoped to prototype/library/** would lend
@@ -71,6 +73,7 @@ pub fn collect_project_detector_ignores(
     let mut ignore_files: Vec<String> = Vec::new();
     let mut value_keys: Vec<String> = Vec::new();
     let mut value_entries: Vec<Value> = Vec::new();
+    let mut selector_entries: Vec<Value> = Vec::new();
     for dir in &config_roots {
         // readConfig merges config.json with the gitignored
         // config.local.json and type-checks both, exactly as the edit hook
@@ -112,6 +115,17 @@ pub fn collect_project_detector_ignores(
                 value_entries.push(Value::Object(serialized));
             }
         }
+        for entry in &config.ignore_selectors {
+            let mut serialized = serde_json::json!({ "rule": entry.rule, "selector": entry.selector });
+            let mut files = entry.files.clone().unwrap_or_default();
+            files.sort();
+            if !files.is_empty() {
+                serialized["files"] = serde_json::json!(files);
+            }
+            if !selector_entries.contains(&serialized) {
+                selector_entries.push(serialized);
+            }
+        }
     }
 
     let (roots, page_files) = read_live_served_pages(cwd, env, &config_roots[0], repo_root);
@@ -121,6 +135,9 @@ pub fn collect_project_detector_ignores(
         Value::Array(ignore_rules.into_iter().map(Value::String).collect()),
     );
     out.insert("ignoreValues".into(), Value::Array(value_entries));
+    if !selector_entries.is_empty() {
+        out.insert("ignoreSelectors".into(), Value::Array(selector_entries));
+    }
     out.insert(
         "ignoreFiles".into(),
         Value::Array(ignore_files.into_iter().map(Value::String).collect()),
@@ -267,6 +284,24 @@ mod tests {
             .collect();
         out.sort();
         out
+    }
+
+    #[test]
+    fn collects_selector_ignores_across_roots_without_private_metadata() {
+        let repo = Tmp::new();
+        let app = format!("{}/site", repo.path());
+        repo.write("site/package.json", "{}");
+        let entries = json!([
+            { "rule": "low-contrast", "selector": ".Card", "files": ["b/**", "a/**"], "reason": "local" }
+        ]);
+        repo.write(".impeccable/config.json", &detector_config(json!({ "ignoreSelectors": entries })));
+        repo.write("site/.impeccable/config.local.json", &detector_config(json!({
+            "ignoreSelectors": [{ "rule": "low-contrast", "selector": ".Card", "files": ["a/**", "b/**"] }]
+        })));
+        let out = collect(&app, Some(&repo.path()));
+        assert_eq!(out["ignoreSelectors"], json!([
+            { "rule": "low-contrast", "selector": ".Card", "files": ["a/**", "b/**"] }
+        ]));
     }
 
     #[test]

@@ -25,6 +25,7 @@ pub mod page;
 pub mod registry;
 pub mod rule_pack;
 pub mod rules;
+pub mod selector_ignores;
 
 #[cfg(any(test, feature = "vectors"))]
 pub mod vectors;
