@@ -144,7 +144,8 @@ describe('committed plugin subtree loads in a real Claude Code', { skip }, () =>
   });
 
   it('discovers the packaged hooks', () => {
-    assert.equal(componentCount('Hooks'), 2);
+    assert.equal(componentCount('Hooks'), 3);
+    assert.match(detailsOutput, /SessionStart/);
     assert.match(detailsOutput, /PostToolUse/);
     assert.match(detailsOutput, /Stop/);
   });

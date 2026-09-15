@@ -94,10 +94,12 @@ const GROK_PROJECT_SCRIPTS = '.grok/skills/impeccable/scripts';
 // `windows: true` adds the `commandWindows` sibling; only Codex-shaped
 // consumers honor it, and an unknown key would fail Codex's strict parser if
 // it were the other way round, so it stays opt-in per manifest.
-function buildClaudeCompatibleHooks(matcher, scriptsDir, { windows = false } = {}) {
+function buildClaudeCompatibleHooks(matcher, scriptsDir, { windows = false, sessionIdentity = false } = {}) {
   const command = guardedLauncher(launcherIn(scriptsDir));
   const commandWindows = windows ? windowsLauncherCommand(launcherCmdIn(scriptsDir)) : undefined;
   return {
+    ...(sessionIdentity ? { SessionStart: [{ hooks: [{ type: 'command', command,
+      timeout: TIMEOUT_SECONDS, statusMessage: 'Preparing build session' }] }] } : {}),
     PostToolUse: [
       {
         matcher,
@@ -119,7 +121,7 @@ function buildClaudeCompatibleHooks(matcher, scriptsDir, { windows = false } = {
 export function buildClaudeSettingsManifest() {
   return {
     description: 'Impeccable design detector: immediate-tier checks after Edit/Write on UI files, full-rule deep pass on Stop.',
-    hooks: buildClaudeCompatibleHooks('Edit|Write', CLAUDE_PROJECT_SCRIPTS),
+    hooks: buildClaudeCompatibleHooks('Edit|Write', CLAUDE_PROJECT_SCRIPTS, { sessionIdentity: true }),
   };
 }
 
@@ -131,7 +133,7 @@ export function buildClaudeSettingsManifest() {
 // than `hooks`, failing the whole manifest (issue #330).
 export function buildClaudePluginHooksManifest() {
   return {
-    hooks: buildClaudeCompatibleHooks('Edit|Write', CLAUDE_PLUGIN_SCRIPTS),
+    hooks: buildClaudeCompatibleHooks('Edit|Write', CLAUDE_PLUGIN_SCRIPTS, { sessionIdentity: true }),
   };
 }
 
@@ -205,6 +207,20 @@ export function buildGrokHooksManifest() {
   };
 }
 
+// Gemini's hook timeouts are milliseconds. BeforeTool transports only the
+// session environment; AfterAgent uses the engine's shared completion check.
+export function buildGeminiHooksManifest() {
+  const command = guardedLauncher('$GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable');
+  return { hooks: {
+    BeforeTool: [{ matcher: '^run_shell_command$', hooks: [{
+      name: 'impeccable-session', type: 'command', command, timeout: 5000,
+    }] }],
+    AfterAgent: [{ hooks: [{
+      name: 'impeccable-completion', type: 'command', command, timeout: 30000,
+    }] }],
+  } };
+}
+
 export function hooksJsonFor(provider, options = {}) {
   switch (provider) {
     case 'claude':
@@ -217,6 +233,8 @@ export function hooksJsonFor(provider, options = {}) {
       return buildGitHubHooksManifest();
     case 'grok':
       return buildGrokHooksManifest();
+    case 'gemini':
+      return buildGeminiHooksManifest();
     default:
       return null;
   }

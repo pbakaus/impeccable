@@ -43,6 +43,8 @@ export const PROVIDERS = {
     configDir: '.gemini',
     displayName: 'Gemini',
     frontmatterFields: [],
+    emitHooks: 'gemini',
+    hooksManifestRel: 'settings.json',
   },
   dsh: {
     provider: 'dsh',

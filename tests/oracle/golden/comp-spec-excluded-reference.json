@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "comp-spec: reference for art has no visible pixels after excluding nav; correct the overlapping region geometry or container roles in the comp spec before evaluating this asset.\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

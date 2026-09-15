@@ -1,6 +1,6 @@
 {
   "stdout": "",
-  "stderr": "usage: build-phase.mjs start --comp <png> [--breakpoint WxH] | status [--json] | advance [--force --reason \"...\"] | record hero --build <png> | scaffold | note \"<text>\" | finish --disposition <word>\n",
+  "stderr": "usage: build-phase.mjs start --comp <png> [--breakpoint WxH] [--artifact <entry file>] [--session-id <id>] | status [--json] | completion [--session-id <id>] | advance [--force --reason \"...\"] | record hero --build <png> | scaffold | note \"<text>\" | finish --disposition <word>\n",
   "exit": 1,
   "signal": null,
   "files": {}

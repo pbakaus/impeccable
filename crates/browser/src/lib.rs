@@ -16,6 +16,8 @@
 //! (`createBrowserDetector()`: `waitUntil: 'load'`, `settleMs: 100`).
 
 pub mod cdp;
+pub mod response_capture;
+pub mod html_snapshot;
 pub mod discovery;
 pub mod screenshot_contrast;
 pub mod snapshot_engine;

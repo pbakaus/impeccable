@@ -154,3 +154,48 @@ pub fn load_raster(file: &std::path::Path) -> Result<(Decoded, std::path::PathBu
     let _ = std::fs::write(&cache, &bytes);
     Ok((Decoded { image: img, text: HashMap::new() }, cache))
 }
+
+/// Decode a static review image from its pinned bytes, without consulting or
+/// writing sibling conversion caches. Keep the original file as review evidence.
+pub fn decode_review_image(bytes: &[u8]) -> Result<(Image, &'static str), String> {
+    if is_png(bytes) {
+        if bytes.len() < 24 { return Err("truncated PNG".into()); }
+        let width = u32::from_be_bytes(bytes[16..20].try_into().unwrap());
+        let height = u32::from_be_bytes(bytes[20..24].try_into().unwrap());
+        if u64::from(width) * u64::from(height) > 32_000_000 { return Err("preview exceeds 32 megapixels".into()); }
+        return Ok((decode_png(bytes)?.image, "PNG"));
+    }
+    let format = image::guess_format(bytes).map_err(|e| format!("unsupported review image: {e}"))?;
+    let name = match format {
+        image::ImageFormat::WebP => {
+            let decoder = image::codecs::webp::WebPDecoder::new(std::io::Cursor::new(bytes)).map_err(|e| e.to_string())?;
+            if decoder.has_animation() { return Err("animated WebP requires a static review state".into()); }
+            "WebP"
+        },
+        image::ImageFormat::Jpeg => "JPEG",
+        _ => return Err("review images must be static PNG, WebP or JPEG".into()),
+    };
+    let reader = image::ImageReader::with_format(std::io::Cursor::new(bytes), format);
+    let (width, height) = reader.into_dimensions().map_err(|e| e.to_string())?;
+    if u64::from(width) * u64::from(height) > 32_000_000 { return Err("preview exceeds 32 megapixels".into()); }
+    let rgba = image::load_from_memory_with_format(bytes, format).map_err(|e| e.to_string())?.to_rgba8();
+    Ok((Image {width: width as usize, height: height as usize, data: rgba.into_raw()}, name))
+}
+
+#[cfg(test)]
+mod review_image_tests {
+    use super::*;
+    #[test]
+    fn review_webp_and_jpeg_decode_original_bytes_and_keep_alpha() {
+        let pixels = [25, 90, 65, 120, 200, 40, 35, 255];
+        let mut webp = Vec::new();
+        image::codecs::webp::WebPEncoder::new_lossless(&mut webp).encode(&pixels, 2, 1, image::ExtendedColorType::Rgba8).unwrap();
+        let (decoded, format) = decode_review_image(&webp).unwrap();
+        assert_eq!(format, "WebP"); assert_eq!(decoded.width, 2); assert_eq!(decoded.data, pixels);
+        let mut jpeg = Vec::new();
+        image::codecs::jpeg::JpegEncoder::new(&mut jpeg).encode(&[25, 90, 65], 1, 1, image::ExtendedColorType::Rgb8).unwrap();
+        let (decoded, format) = decode_review_image(&jpeg).unwrap();
+        assert_eq!(format, "JPEG"); assert_eq!(decoded.data[3], 255);
+        assert!(decode_review_image(b"not an image").is_err());
+    }
+}

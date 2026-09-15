@@ -29,6 +29,8 @@ export const SUITES = {
   core: {
     description: 'Build, provider transforms, hook manifests, plugin validators, and prose gates.',
     triggers: [
+      /^ui\/component-review\//,
+      /^crates\/context\/assets\/component-review\.js$/,
       ...COMMON_INFRA_PATTERNS,
       /^scripts\/(?!build-extension)/,
       /^skill\/(SKILL\.src\.md|agents\/|reference\/|scripts\/)/,
@@ -43,6 +45,9 @@ export const SUITES = {
         runner: 'bun',
         files: [
           'tests/build.test.js',
+          'tests/component-review-bundle.test.js',
+          'ui/component-review/model.test.ts',
+          'ui/component-review/viewport.test.ts',
           'tests/lib/provider-blocks.test.js',
           'tests/lib/transformers/provider-blocks.test.js',
           'tests/lib/utils.test.js',

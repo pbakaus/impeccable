@@ -1795,7 +1795,7 @@ pub fn payload(text: &str, event_name: &str, harness: &str) -> String {
         out.insert("additional_context".into(), Value::String(text.to_string()));
     } else if harness == "github" {
         out.insert("additionalContext".into(), Value::String(text.to_string()));
-    } else if harness == "codex" && event_name == "Stop" {
+    } else if matches!(harness, "codex" | "gemini") && event_name == "Stop" {
         // Codex shares Claude Code's PostToolUse additional-context shape,
         // but its Stop schema rejects unknown fields. Findings that should
         // continue the turn must be a top-level blocking decision (#603).
@@ -1803,7 +1803,7 @@ pub fn payload(text: &str, event_name: &str, harness: &str) -> String {
         if js::trim(text).is_empty() {
             return String::new();
         }
-        out.insert("decision".into(), Value::String("block".to_string()));
+        out.insert("decision".into(), Value::String(if harness == "gemini" { "deny" } else { "block" }.to_string()));
         out.insert("reason".into(), Value::String(text.to_string()));
     } else {
         let mut inner = Map::new();
@@ -1885,9 +1885,13 @@ pub fn resolve_harness(rt: &Runtime, event: Option<&Map<String, Value>>) -> &'st
         Some("grok") => return "grok",
         Some("claude") => return "claude",
         Some("codex") => return "codex",
+        Some("gemini") => return "gemini",
         _ => {}
     }
     if let Some(ev) = event {
+        if matches!(str_field(ev, "hook_event_name"), Some("BeforeTool" | "AfterAgent")) {
+            return "gemini";
+        }
         // Grok Build sends camelCase `toolName`/`toolInput`/`hookEventName`
         // and no snake_case pair. GitHub Copilot sends camelCase
         // `toolName`/`toolArgs`. Check Grok first: the old GitHub heuristic
@@ -1945,7 +1949,7 @@ pub fn is_stop_event(ev: &Map<String, Value>) -> bool {
         Some(v) => Some(v),
         None => ev.get("hookEventName"),
     };
-    matches!(name, Some(Value::String(s)) if js::to_lower_case(s) == "stop")
+    matches!(name, Some(Value::String(s)) if matches!(js::to_lower_case(s).as_str(), "stop" | "afteragent"))
 }
 
 /// JS: parseGitHubToolArgs(toolArgs)

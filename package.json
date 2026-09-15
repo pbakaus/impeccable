@@ -70,14 +70,15 @@
     "release:ext": "node scripts/release.mjs extension",
     "release:engine": "node scripts/release.mjs engine",
     "release:platform-packages": "node scripts/publish-platform-packages.mjs",
-    "check:engine-release": "node scripts/check-engine-release.mjs"
+    "check:engine-release": "node scripts/check-engine-release.mjs",
+    "build:component-review": "bun scripts/build-component-review.mjs"
   },
   "optionalDependencies": {
-    "@impeccable/cli-darwin-arm64": "0.1.5",
-    "@impeccable/cli-darwin-x64": "0.1.5",
-    "@impeccable/cli-linux-x64": "0.1.5",
-    "@impeccable/cli-linux-arm64": "0.1.5",
-    "@impeccable/cli-windows-x64": "0.1.5"
+    "@impeccable/cli-darwin-arm64": "0.1.6",
+    "@impeccable/cli-darwin-x64": "0.1.6",
+    "@impeccable/cli-linux-x64": "0.1.6",
+    "@impeccable/cli-linux-arm64": "0.1.6",
+    "@impeccable/cli-windows-x64": "0.1.6"
   },
   "devDependencies": {
     "@ai-sdk/anthropic": "^4.0.7",

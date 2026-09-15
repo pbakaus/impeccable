@@ -1,0 +1,527 @@
+use super::{manifest, server, store};
+use serde_json::{Value, json};
+use std::{
+    fs,
+    path::PathBuf,
+    sync::atomic::{AtomicUsize, Ordering},
+};
+static NEXT: AtomicUsize = AtomicUsize::new(0);
+struct Fixture {
+    root: PathBuf,
+    project: PathBuf,
+    store: PathBuf,
+}
+impl Fixture {
+    fn new() -> Self {
+        let root = std::env::temp_dir().join(format!(
+            "impeccable-component-review-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let project = root.join("project");
+        let store = root.join("store");
+        fs::create_dir_all(&project).unwrap();
+        for (name, body) in [
+            ("comp.png", b"comp".as_slice()),
+            ("art.png", b"art"),
+            ("control.html", b"<button>Go</button>"),
+            ("shared.css", b"button{color:red}"),
+        ] {
+            fs::write(project.join(name), body).unwrap();
+        }
+        Self {
+            root,
+            project,
+            store,
+        }
+    }
+    fn manifest(&self) -> Value {
+        json!({"schemaVersion":1,"id":"hero","title":"Hero review","comp":{"path":"comp.png","width":100,"height":100},"components":[{"id":"art","name":"Art","medium":"Raster","note":"Illustration","box":{"x":0,"y":0,"w":0.5,"h":1},"preview":{"kind":"image","path":"art.png"},"dependencies":[]},{"id":"control","name":"Control","medium":"HTML","note":"Semantic control","box":{"x":0.5,"y":0,"w":0.5,"h":1},"preview":{"kind":"page","path":"control.html"},"dependencies":["shared.css"]}]})
+    }
+    fn prepare(&self) -> PathBuf {
+        store::prepare(&self.store, &self.project, &self.manifest()).unwrap()
+    }
+}
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.root);
+    }
+}
+fn approve(state: &Value) -> Value {
+    let mut decisions = serde_json::Map::new();
+    for c in state["packet"]["components"].as_array().unwrap() {
+        decisions.insert(
+            c["id"].as_str().unwrap().into(),
+            json!({"revision":c["revision"],"action":"approve","feedback":"","split":false}),
+        );
+    }
+    json!({"schemaVersion":1,"requestId":state["packet"]["id"],"packetRevision":state["packet"]["revision"],"decisions":decisions,"missing":[],"inventoryConfirmed":true})
+}
+#[test]
+fn immutable_snapshots_and_idempotent_feedback_survive_reload() {
+    let f = Fixture::new();
+    let dir = f.prepare();
+    let state = store::read(&dir.join("current.json")).unwrap();
+    let body = approve(&state);
+    let receipt = store::submit(&dir, &body).unwrap();
+    assert_eq!(store::submit(&dir, &body).unwrap(), receipt);
+    assert_eq!(
+        store::read(&dir.join("current.json")).unwrap()["receipt"],
+        receipt
+    );
+    assert_eq!(receipt["reviewer"], "local-browser");
+    assert_eq!(receipt["captureVerified"], false);
+    let mut conflict = body;
+    conflict["decisions"]["art"]["feedback"] = json!("different");
+    assert!(
+        store::submit(&dir, &conflict)
+            .unwrap_err()
+            .contains("already")
+    );
+}
+#[test]
+fn source_change_rejects_pending_approval_and_invalidates_only_affected_components() {
+    let f = Fixture::new();
+    let dir = f.prepare();
+    let first = store::read(&dir.join("current.json")).unwrap();
+    store::submit(&dir, &approve(&first)).unwrap();
+    fs::write(f.project.join("art.png"), b"new art").unwrap();
+    let dir = f.prepare();
+    let next = store::read(&dir.join("current.json")).unwrap();
+    assert_ne!(first["packet"]["revision"], next["packet"]["revision"]);
+    assert!(next["draft"]["decisions"]["art"].is_null());
+    assert_eq!(next["draft"]["decisions"]["control"]["action"], "approve");
+    assert_eq!(next["draft"]["inventoryConfirmed"], false);
+    assert!(
+        store::submit(&dir, &approve(&first))
+            .unwrap_err()
+            .contains("stale")
+    );
+    fs::write(f.project.join("shared.css"), b"changed again").unwrap();
+    assert!(
+        store::submit(&dir, &approve(&next))
+            .unwrap_err()
+            .contains("stale")
+    );
+}
+#[test]
+fn missing_regions_persist_across_rounds_and_old_receipts_are_preserved() {
+    let f = Fixture::new();
+    let dir = f.prepare();
+    let first = store::read(&dir.join("current.json")).unwrap();
+    let mut body = approve(&first);
+    body["missing"] = json!([{"id":"missing-1","name":"Brushwork","feedback":"Restore it","box":{"x":0.2,"y":0.2,"w":0.1,"h":0.1}}]);
+    body["inventoryConfirmed"] = json!(false);
+    let receipt = store::submit(&dir, &body).unwrap();
+    fs::write(f.project.join("art.png"), b"repair").unwrap();
+    f.prepare();
+    let next = store::read(&dir.join("current.json")).unwrap();
+    assert_eq!(next["draft"]["missing"], body["missing"]);
+    let history = store::read(&dir.join(format!(
+        "revisions/{}.json",
+        first["packet"]["revision"].as_str().unwrap()
+    )))
+    .unwrap();
+    assert_eq!(history["receipt"], receipt);
+}
+#[test]
+fn refusal_paths_cannot_be_turned_into_approval() {
+    let f = Fixture::new();
+    let dir = f.prepare();
+    let state = store::read(&dir.join("current.json")).unwrap();
+    let mut body = approve(&state);
+    body["inventoryConfirmed"] = json!(false);
+    assert!(store::submit(&dir, &body).is_err());
+    body["inventoryConfirmed"] = json!(true);
+    body["decisions"]["art"]["action"] = json!("skip");
+    assert!(store::submit(&dir, &body).is_err());
+    body["decisions"]["art"]["action"] = json!("approve");
+    body["decisions"]["art"]["revision"] = json!("invented");
+    assert!(store::submit(&dir, &body).is_err());
+    assert!(store::read(&dir.join("current.json")).unwrap()["receipt"].is_null());
+}
+#[test]
+fn files_are_confined_and_store_is_outside_project() {
+    let f = Fixture::new();
+    let mut manifest = f.manifest();
+    manifest["components"][0]["preview"]["path"] = json!("../outside.png");
+    assert!(manifest::freeze(&f.project, &manifest).is_err());
+    assert!(
+        store::prepare(
+            &f.project.join("forged-approvals"),
+            &f.project,
+            &f.manifest()
+        )
+        .is_err()
+    );
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(&f.root, f.project.join("outside")).unwrap();
+        manifest["components"][0]["preview"]["path"] = json!("outside/project/art.png");
+        let frozen = manifest::freeze(&f.project, &manifest);
+        assert!(frozen.is_ok());
+        std::os::unix::fs::symlink("/etc/hosts", f.project.join("leak")).unwrap();
+        manifest["components"][0]["preview"]["path"] = json!("leak");
+        assert!(manifest::freeze(&f.project, &manifest).is_err());
+    }
+}
+#[test]
+fn malformed_maps_and_cross_origin_posts_are_rejected() {
+    let f = Fixture::new();
+    let mut manifest = f.manifest();
+    manifest["components"][0]["box"]["w"] = json!(0);
+    assert!(manifest::freeze(&f.project, &manifest).is_err());
+    assert!(server::authorized(
+        "POST",
+        Some("127.0.0.1:4321"),
+        Some("http://127.0.0.1:4321"),
+        Some("same-origin"),
+        4321
+    ));
+    for origin in [None, Some("null"), Some("https://evil.example")] {
+        assert!(!server::authorized(
+            "POST",
+            Some("127.0.0.1:4321"),
+            origin,
+            Some("same-origin"),
+            4321
+        ));
+    }
+    assert!(!server::authorized(
+        "GET",
+        Some("evil.example"),
+        None,
+        None,
+        4321
+    ));
+    assert!(super::decode_path("a%20b.png").is_ok());
+    assert!(super::decode_path("%00").is_err());
+}
+
+#[test]
+fn prepare_cli_reports_an_existing_receipt_instead_of_requesting_review_again() {
+    let f = Fixture::new();
+    fs::write(
+        f.project.join("review.json"),
+        serde_json::to_vec(&f.manifest()).unwrap(),
+    )
+    .unwrap();
+    let args = vec![
+        "prepare".into(),
+        "--manifest".into(),
+        "review.json".into(),
+        "--store".into(),
+        f.store.to_string_lossy().into_owned(),
+    ];
+    let invoke = || {
+        let (mut io, captured) =
+            impeccable_common::Io::captured("", f.project.clone(), Default::default());
+        assert_eq!(super::run(&args, &mut io), 0);
+        let result = serde_json::from_slice::<Value>(&captured.stdout.borrow()).unwrap();
+        result
+    };
+    let initial = invoke();
+    assert_eq!(initial["status"], "awaiting-review");
+    let dir = f.store.join(initial["session"].as_str().unwrap());
+    let first = store::read(&dir.join("current.json")).unwrap();
+    store::submit(&dir, &approve(&first)).unwrap();
+    assert_eq!(invoke()["status"], "approved");
+}
+
+#[test]
+fn repair_history_records_feedback_changes_and_removed_components() {
+    let f = Fixture::new();
+    let dir = f.prepare();
+    let first = store::read(&dir.join("current.json")).unwrap();
+    let mut body = approve(&first);
+    body["decisions"]["art"]["action"] = json!("revise");
+    body["decisions"]["art"]["feedback"] = json!("Preserve the motif");
+    store::submit(&dir, &body).unwrap();
+    fs::write(f.project.join("art.png"), b"repair").unwrap();
+    f.prepare();
+    let next = store::read(&dir.join("current.json")).unwrap();
+    assert_eq!(next["history"]["packet"]["round"], 1);
+    assert_eq!(
+        next["history"]["draft"]["decisions"]["art"]["feedback"],
+        "Preserve the motif"
+    );
+    assert_eq!(
+        next["history"]["changes"]["art"]["files"],
+        json!(["art.png"])
+    );
+    assert_eq!(next["history"]["changes"]["control"]["kind"], "unchanged");
+    let mut manifest = f.manifest();
+    manifest["components"].as_array_mut().unwrap().remove(1);
+    store::prepare(&f.store, &f.project, &manifest).unwrap();
+    let removed = store::read(&dir.join("current.json")).unwrap();
+    assert_eq!(removed["history"]["removed"][0]["id"], "control");
+    assert_eq!(removed["draft"]["inventoryConfirmed"], false);
+}
+#[test]
+fn reverting_to_old_content_cannot_reuse_an_old_round_or_approval() {
+    let f = Fixture::new();
+    let dir = f.prepare();
+    let first = store::read(&dir.join("current.json")).unwrap();
+    store::submit(&dir, &approve(&first)).unwrap();
+    fs::write(f.project.join("art.png"), b"repair").unwrap();
+    f.prepare();
+    fs::write(f.project.join("art.png"), b"art").unwrap();
+    f.prepare();
+    let third = store::read(&dir.join("current.json")).unwrap();
+    assert_eq!(third["packet"]["round"], 3);
+    assert_ne!(first["packet"]["revision"], third["packet"]["revision"]);
+    assert!(store::submit(&dir, &approve(&first)).is_err());
+    assert!(third["draft"]["decisions"]["art"].is_null());
+    let archive = store::read(&dir.join(format!(
+        "revisions/{}.json",
+        first["packet"]["revision"].as_str().unwrap()
+    )))
+    .unwrap();
+    assert_eq!(archive["packet"]["round"], 1);
+    assert_eq!(archive["receipt"]["visualDecision"], "approved");
+}
+
+#[test]
+fn preparing_again_before_a_reply_preserves_outstanding_feedback_and_carried_approvals() {
+    let f = Fixture::new();
+    let dir = f.prepare();
+    let first = store::read(&dir.join("current.json")).unwrap();
+    let mut body = approve(&first);
+    body["decisions"]["art"]["action"] = json!("revise");
+    body["decisions"]["art"]["feedback"] = json!("Keep the motif");
+    store::submit(&dir, &body).unwrap();
+    fs::write(f.project.join("art.png"), b"repair one").unwrap();
+    f.prepare();
+    fs::write(f.project.join("art.png"), b"repair two").unwrap();
+    f.prepare();
+    let third = store::read(&dir.join("current.json")).unwrap();
+    assert_eq!(
+        third["history"]["feedback"]["art"]["decision"]["feedback"],
+        "Keep the motif"
+    );
+    assert_eq!(third["history"]["feedback"]["art"]["round"], 1);
+    assert_eq!(third["history"]["changes"]["control"]["carried"], true);
+    store::submit(&dir, &approve(&third)).unwrap();
+    fs::write(f.project.join("art.png"), b"another version").unwrap();
+    f.prepare();
+    let fourth = store::read(&dir.join("current.json")).unwrap();
+    assert!(fourth["history"]["feedback"]["art"].is_null());
+}
+
+#[test]
+fn failed_native_capture_does_not_replace_the_current_review() {
+    struct Refuse;
+    impl super::capture::ComponentCapturer for Refuse {
+        fn capture(
+            &mut self,
+            _: &mut Value,
+            _: &std::collections::BTreeMap<String, Vec<u8>>,
+        ) -> Result<super::capture::CapturedPreviews, String> {
+            Err("missing stylesheet".into())
+        }
+    }
+    let f = Fixture::new();
+    let dir = f.prepare();
+    let before = fs::read(dir.join("current.json")).unwrap();
+    assert!(
+        store::prepare_captured(&f.store, &f.project, &f.manifest(), Some(&mut Refuse))
+            .unwrap_err()
+            .contains("missing stylesheet")
+    );
+    assert_eq!(fs::read(dir.join("current.json")).unwrap(), before);
+}
+#[test]
+fn producer_capture_claims_are_never_authority() {
+    let f = Fixture::new();
+    let mut input = f.manifest();
+    input["captureVerified"] = json!(true);
+    input["capture"] = json!({"schema":"native-component-previews-v1"});
+    input["components"][0]["capture"] = json!({"verified":true});
+    input["components"][0]["preview"]["sourceKind"] = json!("page");
+    let dir = store::prepare(&f.store, &f.project, &input).unwrap();
+    let state = store::read(&dir.join("current.json")).unwrap();
+    assert!(state["packet"]["capture"].is_null());
+    assert!(state["packet"]["components"][0]["capture"].is_null());
+    assert!(state["packet"]["components"][0]["preview"]["sourceKind"].is_null());
+    assert_eq!(
+        store::submit(&dir, &approve(&state)).unwrap()["captureVerified"],
+        false
+    );
+}
+
+#[test]
+fn native_capture_outputs_are_immutable_and_source_changes_invalidate_approval() {
+    struct Renderer;
+    impl super::capture::ComponentCapturer for Renderer {
+        fn capture(
+            &mut self,
+            packet: &mut Value,
+            _: &std::collections::BTreeMap<String, Vec<u8>>,
+        ) -> Result<super::capture::CapturedPreviews, String> {
+            // A trusted in-process renderer double, never a producer JSON claim.
+            packet["components"][1]["preview"] = json!({"kind":"image","url":"/files/_review_captures/control.png","sourceKind":"page"});
+            Ok(super::capture::CapturedPreviews {
+                files: std::collections::BTreeMap::from([(
+                    "_review_captures/control.png".into(),
+                    b"native pixels".to_vec(),
+                )]),
+                evidence: json!({"schema":"native-component-previews-v1","components":[{"id":"art"},{"id":"control"}]}),
+            })
+        }
+    }
+    let f = Fixture::new();
+    let dir =
+        store::prepare_captured(&f.store, &f.project, &f.manifest(), Some(&mut Renderer)).unwrap();
+    let state = store::read(&dir.join("current.json")).unwrap();
+    store::sources_current(&state).unwrap();
+    assert!(
+        state["sources"]
+            .get("_review_captures/control.png")
+            .is_none()
+    );
+    let receipt = store::submit(&dir, &approve(&state)).unwrap();
+    assert_eq!(receipt["captureVerified"], true);
+    assert_eq!(receipt["reviewer"], "local-browser");
+    fs::write(f.project.join("art.png"), b"changed").unwrap();
+    assert!(store::sources_current(&state).is_err());
+    store::prepare_captured(&f.store, &f.project, &f.manifest(), Some(&mut Renderer)).unwrap();
+    let next = store::read(&dir.join("current.json")).unwrap();
+    assert!(next["draft"]["decisions"]["art"].is_null());
+    assert_eq!(next["draft"]["decisions"]["control"]["action"], "approve");
+    assert_ne!(state["packet"]["revision"], next["packet"]["revision"]);
+    assert_eq!(
+        store::submit(&dir, &approve(&next)).unwrap()["captureVerified"],
+        true
+    );
+}
+
+#[test]
+fn changing_manifest_without_prepare_rejects_review_submission() {
+    let f = Fixture::new();
+    let input = f.manifest();
+    let file = f.project.join("review.json");
+    fs::write(&file, serde_json::to_vec(&input).unwrap()).unwrap();
+    let dir = store::prepare_file(&f.store, &f.project, "review.json", None).unwrap();
+    let state = store::read(&dir.join("current.json")).unwrap();
+    let mut changed = input;
+    changed["components"][0]["box"]["w"] = json!(0.4);
+    fs::write(&file, serde_json::to_vec(&changed).unwrap()).unwrap();
+    assert!(
+        store::submit(&dir, &approve(&state))
+            .unwrap_err()
+            .contains("stale")
+    );
+}
+
+#[test]
+fn versioned_packet_keeps_submitted_round_when_current_advances() {
+    let f = Fixture::new();
+    let dir = f.prepare();
+    let state = store::read(&dir.join("current.json")).unwrap();
+    let revision = state["packet"]["revision"].as_str().unwrap();
+    let receipt = store::submit(&dir, &approve(&state)).unwrap();
+    assert_eq!(
+        server::packet_state(&dir, Some(revision)).unwrap()["receipt"],
+        receipt
+    );
+    fs::write(f.project.join("art.png"), b"new artwork").unwrap();
+    f.prepare();
+    let old = server::packet_state(&dir, Some(revision)).unwrap();
+    assert_eq!(old["packet"], state["packet"]);
+    assert_eq!(old["receipt"], receipt);
+    assert_eq!(old["historical"], true);
+    assert!(old["sourceStatus"].is_null());
+    assert_ne!(
+        server::packet_state(&dir, None).unwrap()["packet"]["revision"],
+        revision
+    );
+    assert!(server::packet_state(&dir, Some("../../current")).is_err());
+    assert!(store::submit(&dir, &approve(&state)).is_err());
+}
+
+#[test]
+fn verify_requires_native_approval_and_current_manifest_and_dependencies() {
+    struct Renderer;
+    impl super::capture::ComponentCapturer for Renderer {
+        fn capture(&mut self, packet: &mut Value, _: &std::collections::BTreeMap<String, Vec<u8>>) -> Result<super::capture::CapturedPreviews, String> {
+            packet["components"][1]["preview"] = json!({"kind":"image","url":"/files/_review_captures/control.png","sourceKind":"page"});
+            Ok(super::capture::CapturedPreviews {
+                files: std::collections::BTreeMap::from([("_review_captures/control.png".into(), b"native pixels".to_vec())]),
+                evidence: json!({"schema":"native-component-previews-v1","components":[{"id":"art"},{"id":"control"}]}),
+            })
+        }
+    }
+    let f = Fixture::new();
+    fs::write(f.project.join("review.json"), f.manifest().to_string()).unwrap();
+    let dir = store::prepare_file(&f.store,&f.project,"review.json",Some(&mut Renderer)).unwrap();
+    assert!(super::verify::approved(&f.store,&f.project,"review.json").is_err());
+    let state = store::read(&dir.join("current.json")).unwrap();
+    let mut needs_work = approve(&state);
+    needs_work["decisions"]["art"]["action"] = json!("revise");
+    needs_work["decisions"]["art"]["feedback"] = json!("Wrong shape");
+    store::submit(&dir,&needs_work).unwrap();
+    assert!(super::verify::approved(&f.store,&f.project,"review.json").is_err());
+    fs::write(f.project.join("art.png"), b"repaired art").unwrap();
+    let dir = store::prepare_file(&f.store,&f.project,"review.json",Some(&mut Renderer)).unwrap();
+    let state = store::read(&dir.join("current.json")).unwrap();
+    store::submit(&dir,&approve(&state)).unwrap();
+    assert_eq!(super::verify::approved(&f.store,&f.project,"review.json").unwrap()["visualDecision"],"approved");
+    fs::write(f.project.join("other.json"), f.manifest().to_string()).unwrap();
+    assert!(super::verify::approved(&f.store,&f.project,"other.json").unwrap_err().contains("bind"));
+    fs::write(f.project.join("shared.css"), b"changed after approval").unwrap();
+    assert!(super::verify::approved(&f.store,&f.project,"review.json").unwrap_err().contains("changed"));
+}
+
+#[test]
+fn measured_inventory_is_bound_without_repeated_author_dependencies() {
+    let f = Fixture::new();
+    fs::create_dir_all(f.project.join(".impeccable/build")).unwrap();
+    let path = f.project.join(".impeccable/build/spec.json");
+    fs::write(&path, br#"{"regions":[{"id":"art","kind":"plate"},{"id":"control","kind":"control"}]}"#).unwrap();
+    let mut input = f.manifest(); input["stage"] = json!("components");
+    let dir = store::prepare(&f.store, &f.project, &input).unwrap();
+    let state = store::read(&dir.join("current.json")).unwrap();
+    assert!(state["sources"][".impeccable/build/spec.json"].is_string());
+    let mut missing = input.clone(); missing["components"].as_array_mut().unwrap().pop();
+    assert!(store::prepare(&f.store, &f.project, &missing).unwrap_err().contains("omitted measured region"));
+    let mut flattened = input; flattened["components"][1]["preview"] = json!({"kind":"image","path":"art.png"});
+    assert!(store::prepare(&f.store, &f.project, &flattened).unwrap_err().contains("rendered code preview"));
+    fs::write(path, br#"{"regions":[]}"#).unwrap();
+    assert!(store::sources_current(&state).is_err());
+}
+
+#[test]
+fn isolated_components_require_targets_and_pin_their_ownership() {
+    let f = Fixture::new();
+    fs::create_dir_all(f.project.join(".impeccable/build")).unwrap();
+    fs::write(f.project.join(".impeccable/build/spec.json"), br#"{"regions":[{"id":"art","kind":"plate"},{"id":"control","kind":"control"}]}"#).unwrap();
+    let mut input = f.manifest();
+    input["schemaVersion"] = json!(2);
+    input["stage"] = json!("components");
+    assert!(manifest::freeze(&f.project, &input).unwrap_err().contains("selector"));
+    input["components"][1]["preview"]["selector"] = json!("button");
+    let (first, _) = manifest::freeze(&f.project, &input).unwrap();
+    input["components"][1]["preview"]["selector"] = json!("#cta");
+    let (changed, _) = manifest::freeze(&f.project, &input).unwrap();
+    assert_ne!(first["components"][1]["revision"], changed["components"][1]["revision"]);
+    assert_eq!(first["components"][0]["revision"], changed["components"][0]["revision"]);
+    input["components"][0]["preview"]["selector"] = json!("#fake-raster-target");
+    assert!(manifest::freeze(&f.project, &input).is_err());
+}
+
+#[test]
+fn shared_target_changes_invalidate_other_isolated_components() {
+    let f = Fixture::new();
+    fs::create_dir_all(f.project.join(".impeccable/build")).unwrap();
+    fs::write(f.project.join(".impeccable/build/spec.json"), br#"{"regions":[{"id":"art","kind":"chrome"},{"id":"control","kind":"control"}]}"#).unwrap();
+    let mut input = f.manifest();
+    input["schemaVersion"] = json!(2); input["stage"] = json!("components");
+    input["components"][0]["preview"] = json!({"kind":"page","path":"control.html","selector":"#background"});
+    input["components"][1]["preview"]["selector"] = json!("button");
+    let (before,_) = manifest::freeze(&f.project,&input).unwrap();
+    input["components"][1]["preview"]["selector"] = json!("#cta");
+    let (after,_) = manifest::freeze(&f.project,&input).unwrap();
+    assert_ne!(before["components"][0]["revision"],after["components"][0]["revision"]);
+    input["stage"] = Value::Null;
+    assert!(manifest::freeze(&f.project,&input).is_err());
+}

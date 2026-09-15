@@ -164,3 +164,15 @@ installed. The binary's `CLI_VERSION` moves from `3.6.0` to `4.0.0` with the
 CLI 4.0.0 release; it is what the binary prints when run directly.
 
 - `cli-version`.
+
+## Recorded 2026-09-11: comp regions no longer include neighbouring pixels
+
+The `comp-diff-no-spec` golden now measures the automatic bands at their actual
+bounds rather than enlarging bands under 48px. Reviewed changes are confined to
+regional scores and ink boxes: the second band's overall is 0.6755 (was 0.6951),
+the fourth is 1.0 (was 0.9468), and narrow-band ink boxes use the corrected crop
+coordinates. Whole-frame scores, verdicts, region definitions, exit status, and
+stderr are unchanged. The golden was updated to enforce these exact results;
+this is not an open-ended accepted delta. Frozen function call vectors remain
+unchanged. The Rust narrow-region regression independently checks that changing
+only neighbouring pixels leaves the measured crop identical.

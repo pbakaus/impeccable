@@ -85,18 +85,7 @@ pub fn standard_candidates(env: &HashMap<String, String>) -> Vec<PathBuf> {
             "Microsoft\\Edge\\Application\\msedge.exe",
             "BraveSoftware\\Brave-Browser\\Application\\brave.exe",
         ];
-        let mut roots: Vec<PathBuf> = Vec::new();
-        for key in ["PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA"] {
-            if let Some(v) = env.get(key) {
-                if !v.is_empty() {
-                    roots.push(PathBuf::from(v));
-                }
-            }
-        }
-        if roots.is_empty() {
-            roots.push(PathBuf::from("C:\\Program Files"));
-            roots.push(PathBuf::from("C:\\Program Files (x86)"));
-        }
+        let roots = windows_roots(env);
         for r in rel {
             for root in &roots {
                 out.push(root.join(r));
@@ -140,6 +129,20 @@ pub fn standard_candidates(env: &HashMap<String, String>) -> Vec<PathBuf> {
     out
 }
 
+// Windows environment names are case-insensitive, but std::env::vars keeps
+// their original casing when collected into a Rust HashMap. LOCALAPPDATA alone
+// must not suppress the Program Files locations where system browsers live.
+fn windows_roots(env: &HashMap<String, String>) -> Vec<PathBuf> {
+    let value = |name: &str| env.iter().find(|(key, value)|
+        key.eq_ignore_ascii_case(name) && !value.is_empty()).map(|(_, value)| value);
+    let mut roots = vec![
+        PathBuf::from(value("ProgramFiles").map(String::as_str).unwrap_or(r"C:\Program Files")),
+        PathBuf::from(value("ProgramFiles(x86)").map(String::as_str).unwrap_or(r"C:\Program Files (x86)")),
+    ];
+    if let Some(local) = value("LOCALAPPDATA") { roots.push(PathBuf::from(local)); }
+    roots
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -160,6 +163,20 @@ mod tests {
             me.to_string_lossy().to_string(),
         );
         assert_eq!(find_browser(&env).unwrap(), me);
+    }
+
+    #[test]
+    fn windows_roots_preserve_system_locations_with_mixed_case_environment() {
+        let env = HashMap::from([
+            ("ProgramFiles".into(), r"D:\Apps".into()),
+            ("ProgramFiles(x86)".into(), r"D:\Apps32".into()),
+            ("LOCALAPPDATA".into(), r"C:\Users\runner\AppData\Local".into()),
+        ]);
+        assert_eq!(windows_roots(&env), vec![PathBuf::from(r"D:\Apps"), PathBuf::from(r"D:\Apps32"), PathBuf::from(r"C:\Users\runner\AppData\Local")]);
+        let partial = HashMap::from([("LOCALAPPDATA".into(), r"C:\Users\runner\AppData\Local".into())]);
+        let roots = windows_roots(&partial);
+        assert_eq!(roots[0], PathBuf::from(r"C:\Program Files"));
+        assert_eq!(roots[1], PathBuf::from(r"C:\Program Files (x86)"));
     }
 
     #[test]

@@ -1816,3 +1816,49 @@ Conventions: every script's "run directly" guard is `process.argv[1]` ending wit
 
 #### E2E harness contract (`tests/live-e2e.test.mjs`, `tests/live-e2e/*`)
 - Fake agent polls `GET /poll?token&timeout=5000` (no lease override → 30 s lease), replies via `POST /poll` with `{token,type:'done',sourceEventType:'generate',id,file}`, `steer_done {message,file}`, `error`, accept/discard completions with `data:{carbonize:true,_acceptResult}`/`{_acceptResult}`, manual apply via `live-poll.mjs --reply <id> done --data <json>`. Variant format: 3 variants (font-weights 300/900/600 for render proof), params `lightness` (range), `face` (steps), `italic` (toggle). Scenarios: core, manual, annotations, exit, missed-done, params, mount-failure, republish, storage-loss (fixtures README). Fixture `runtime` block schema is authoritative for what a reimplementation must satisfy end-to-end.
+
+
+## Component review (native, opt-in)
+
+This development command does not yet replace the skill's build-phase gates.
+The packet and evidence contract is documented in
+[`ui/component-review/README.md`](../ui/component-review/README.md).
+
+- `component-review prepare --manifest <project-relative JSON>` snapshots the
+  declared comp, components and dependencies into an out-of-project store.
+  stdout is a JSON object with `session`, `revision`, `round` and `status`:
+  `awaiting-review`, or the existing receipt's `approved` / `changes-requested`.
+  Identical input reuses the packet and receipt. Changed input creates a round
+  and retains only unaffected approvals.
+- `component-review capture --manifest <project-relative JSON>` uses the same
+  review store, but records native evidence before opening a review round. PNG
+  sources are decoded and pinned; static HTML/CSS/SVG previews are captured by
+  isolated Chromium from frozen declared inputs. Missing/failed dependencies,
+  changing pixels, unsupported scripted previews and mismatched comp dimensions
+  fail without replacing the current review. Capture outputs live outside the
+  project; the manifest and source bytes are checked again before submission.
+  The JSON response also includes `capture` evidence.
+- `component-review serve --session <ID> [--port <u16>]` runs a foreground
+  loopback HTTP service. Port defaults to `0` (OS-assigned); stdout reports the
+  URL and PID. It embeds the shared UI and fonts, serves only pinned declared
+  files, and persists version-bound browser submissions. It does not open a
+  browser automatically.
+- `component-review status --session <ID>` prints JSON with `revision`,
+  `receipt`, `capture`, `sourceStatus` (null when current, otherwise an explanation), and
+  the last recorded `service` metadata. Service metadata is not a liveness check.
+- All operations accept `--store <directory>`; the default is
+  `~/.impeccable/component-reviews`. Prepare rejects a store inside the project.
+  Session IDs are 64 hexadecimal characters. Errors write
+  `component-review: <reason>` to stderr and return 1; successful non-server
+  operations return 0. There are no external network or model calls.
+- Receipt identity remains `local-browser`. `captureVerified` is false after
+  plain `prepare`, and true only for native `capture` evidence committed by the
+  trusted in-process adapter. Producer-written capture claims are discarded.
+  Capture provenance establishes pixels/source binding, not aesthetic approval,
+  required HTML semantics, completeness of the intended design, or authenticated
+  human-eval qualification. Scripted/canvas components need a future adapter;
+  the command does not silently substitute their script-disabled fallback.
+
+### Component review verification
+
+`impeccable component-review verify --manifest <project-relative JSON>` reads the current native capture and user receipt. It succeeds only for an approved, natively captured round whose manifest and dependency bytes are unchanged. Pending reviews, requested repairs, changed files, and an unrelated manifest sharing the same id fail. It neither creates nor submits approvals.

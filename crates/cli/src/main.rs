@@ -12,6 +12,7 @@ use std::io::Write;
 use impeccable_common::Io;
 
 mod font_render;
+mod component_capture;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -66,12 +67,16 @@ fn run(args: &[String], io: &mut Io) -> i32 {
         "concept-seed" => impeccable_context::run_concept_seed(rest, io),
         "generate-image" => impeccable_context::run_generate_image(rest, io),
         "serve-question" => impeccable_context::run_serve_question(rest, io),
+        "component-review" => impeccable_context::component_review::run_with_capturer(rest, io, Some(&mut component_capture::NativeComponentCapturer)),
         // comp-fidelity verbs (crates/comp-verbs over crates/comp)
         "comp-spec" => impeccable_comp_verbs::run_comp_spec(rest, io),
         "comp-diff" => impeccable_comp_verbs::run_comp_diff(rest, io),
         "font-match" => {
             let mut renderer = font_render::CdpFontRenderer::from_process_env();
             impeccable_comp_verbs::run_font_match(rest, io, &mut renderer)
+        }
+        "capture-server" => {
+            match impeccable::capture_service::serve(rest) { Ok(()) => 0, Err(e) => { io.err(&format!("Native capture service: {e}\n")); 1 } }
         }
         "build-phase" => {
             // Inject the organic-clip-path CSS scanner (a rule that lives in the
@@ -82,7 +87,11 @@ fn run(args: &[String], io: &mut Io) -> i32 {
                     .map(|f| (f.selector, f.snippet))
                     .collect()
             };
-            impeccable_comp_verbs::run_build_phase(rest, io, &organic)
+            match impeccable::capture_service::RemoteEntryRenderer::from_env(&io.env) {
+                Ok(Some(renderer)) => impeccable_comp_verbs::build_phase::run_with_renderer(rest, io, &organic, Some(&renderer)),
+                Ok(None) => impeccable_comp_verbs::build_phase::run_with_renderer(rest, io, &organic, Some(&impeccable::entry_capture::CdpEntryRenderer)),
+                Err(e) => { io.err(&format!("Native capture service: {e}\n")); 1 }
+            }
         }
         "hook" => impeccable_hook::run_hook(rest, io, engines().html),
         "hook-before-edit" => impeccable_hook::run_hook_before_edit(rest, io, engines().html),

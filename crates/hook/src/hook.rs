@@ -602,15 +602,7 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
     // `stop_hook_active`; Grok sends `stopHookActive`, copied onto the
     // snake_case field by the normalizer. Cursor and GitHub Copilot omit
     // the field, so the strict `=== true` is a no-op for them.
-    if event.get("stop_hook_active") == Some(&Value::Bool(true)) {
-        return result(
-            &audit,
-            vec![
-                ("skipped", Value::from("stop-hook-active")),
-                ("durationMs", ms_since(started)),
-            ],
-        );
-    }
+    let stop_hook_active = event.get("stop_hook_active") == Some(&Value::Bool(true));
     // JS: Grok fires Stop twice: `end_turn` (the gate that can inject
     // additionalContext) then an observe-only `shutdown`. A second deep
     // pass would re-emit the same findings. Claude omits `reason`; only
@@ -649,6 +641,20 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
         );
     }
     let mut cache = read_cache(&project_cwd);
+    if matches!(harness, "claude" | "codex" | "gemini") {
+        if let Some(message) = crate::build_completion::reminder(rt, &project_cwd, &session_id, stop_hook_active, &mut cache) {
+            return RunResult {
+                stdout: payload(&message, "Stop", harness),
+                audit: with(&audit, vec![("kind", Value::from("build-completion")), ("emitted", Value::Bool(true)), ("durationMs", ms_since(started))]),
+            };
+        }
+    }
+    if stop_hook_active {
+        return result(&audit, vec![("skipped", Value::from("stop-hook-active")), ("durationMs", ms_since(started))]);
+    }
+    if truthy(rt.env("IMPECCABLE_HOOK_COMPLETION_ONLY")) {
+        return result(&audit, vec![("skipped", Value::from("no-build-continuation")), ("durationMs", ms_since(started))]);
+    }
     let touched = touched_files(&cache, &session_id);
     if touched.is_empty() {
         return result(
@@ -844,6 +850,25 @@ fn is_stop_event(stdin: &str) -> bool {
 
 /// `impeccable hook` (hook.mjs main). Returns the exit code (always 0).
 pub fn run(rt: &Runtime, stdin: &str, io: &mut impeccable_common::Io) -> i32 {
+    if let Ok(Value::Object(event)) = serde_json::from_str::<Value>(stdin) {
+        if event.get("hook_event_name").and_then(Value::as_str) == Some("BeforeTool")
+            && resolve_harness(rt, Some(&event)) == "gemini" {
+            if !truthy(rt.env("IMPECCABLE_HOOK_DISABLED")) && read_config(&rt.proc_cwd).enabled {
+                if let Some(output) = crate::build_completion::gemini_shell_identity(rt, &event) {
+                    io.out(&format!("{output}\n"));
+                }
+            }
+            return 0;
+        }
+        if event.get("hook_event_name").and_then(Value::as_str) == Some("SessionStart") {
+            if !truthy(rt.env("IMPECCABLE_HOOK_DISABLED")) && resolve_harness(rt, Some(&event)) == "claude" {
+                if let Some(session) = event.get("session_id").and_then(Value::as_str) {
+                    crate::build_completion::persist_session_identity(rt, session);
+                }
+            }
+            return 0;
+        }
+    }
     // JS: process.env.IMPECCABLE_HOOK_DEPTH = process.env.IMPECCABLE_HOOK_DEPTH || '1'
     // is exported for child processes; this binary spawns none, so the
     // pre-mutation snapshot in `rt.env` is the only value that matters.

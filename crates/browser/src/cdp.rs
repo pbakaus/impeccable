@@ -23,7 +23,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use tungstenite::client::IntoClientRequest;
 use tungstenite::protocol::WebSocketConfig;
 use tungstenite::{Message, WebSocket};
@@ -117,6 +117,31 @@ pub struct Browser {
     worker_owner: HashMap<String, String>,
 }
 
+// A timestamp is not a reservation: concurrent calls can observe the same tick.
+// Exclusive mkdir also avoids reusing a stale profile from a previous process.
+fn reserve_profile(parent: &std::path::Path, stamp: u128) -> CdpResult<PathBuf> {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    for _ in 0..128 {
+        let serial = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let path = parent.join(format!(
+            "impeccable_dev_chrome_profile-{}-{stamp}-{serial}",
+            std::process::id()
+        ));
+        match std::fs::create_dir(&path) {
+            Ok(()) => return Ok(path),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => {
+                return Err(CdpError::new(format!(
+                    "Failed to create a temporary browser profile: {e}"
+                )));
+            }
+        }
+    }
+    Err(CdpError::new(
+        "Failed to reserve a unique temporary browser profile",
+    ))
+}
+
 impl Browser {
     /// Launch `executable` headless the way puppeteer does and connect to its
     /// DevTools websocket.
@@ -131,14 +156,7 @@ impl Browser {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or(0);
-        let user_data_dir = std::env::temp_dir().join(format!(
-            "impeccable_dev_chrome_profile-{}-{}",
-            std::process::id(),
-            stamp
-        ));
-        std::fs::create_dir_all(&user_data_dir).map_err(|e| {
-            CdpError::new(format!("Failed to create a temporary browser profile: {e}"))
-        })?;
+        let user_data_dir = reserve_profile(&std::env::temp_dir(), stamp)?;
         args.push(format!("--user-data-dir={}", user_data_dir.display()));
 
         let mut child = match Command::new(executable)
@@ -272,6 +290,12 @@ impl Browser {
         }
     }
 
+    /// Browser-reported capture environment, independent of page script overrides.
+    pub fn version(&mut self) -> CdpResult<Value> {
+        self.conn
+            .send(None, "Browser.getVersion", json!({}), PROTOCOL_TIMEOUT)
+    }
+
     /// `browser.newPage()`: a fresh target in the default context, attached
     /// flat, with puppeteer's page setup applied.
     pub fn new_page(&mut self) -> CdpResult<Page<'_>> {
@@ -307,6 +331,8 @@ impl Browser {
             swapped: false,
             same_document_navigation: false,
             iframe_sessions: HashSet::new(),
+            response_capture: None,
+            execution_contexts: HashMap::new(),
         };
         page.initialize()?;
         Ok(page)
@@ -403,7 +429,10 @@ impl Connection {
             // JS `{ ...request.headers(), authorization: header }`: puppeteer's
             // request.headers() lowercases names, so authorization overrides.
             let mut headers: Vec<Value> = Vec::new();
-            if let Some(obj) = params.pointer("/request/headers").and_then(Value::as_object) {
+            if let Some(obj) = params
+                .pointer("/request/headers")
+                .and_then(Value::as_object)
+            {
                 for (k, v) in obj {
                     let name = k.to_ascii_lowercase();
                     if name == "authorization" {
@@ -460,7 +489,7 @@ impl Connection {
                 None => {
                     return Err(CdpError::new(format!(
                         "{method} timed out. Increase the 'protocolTimeout' setting in launch/connect calls for a higher timeout if needed."
-                    )))
+                    )));
                 }
             };
             if msg.get("id").and_then(Value::as_u64) == Some(id) {
@@ -579,6 +608,18 @@ pub struct Page<'a> {
     same_document_navigation: bool,
     /// Auto-attached OOPIF sessions whose Page events feed the frame map.
     iframe_sessions: HashSet<String>,
+    response_capture: Option<crate::response_capture::ResponseCapture>,
+    execution_contexts: HashMap<i64, String>,
+}
+
+/// An opaque, document-bound isolated execution context. Never falls back to
+/// the page world or a newly navigated document.
+pub struct IsolatedWorld {
+    unique_id: String,
+    context_id: i64,
+    session_id: String,
+    frame_id: String,
+    loader_id: String,
 }
 
 /// A raw `Runtime.evaluate` outcome.
@@ -597,6 +638,63 @@ impl<'a> Page<'a> {
             .send(Some(&sid), method, params, PROTOCOL_TIMEOUT);
         self.pump_events();
         out
+    }
+
+    /// Start a fresh diagnostic journal before navigation. Cache, authentication,
+    /// and service-worker behavior remain unchanged. No response is refetched.
+    pub fn begin_response_capture(&mut self) -> CdpResult<()> {
+        self.send(
+            "Network.enable",
+            json!({
+                "maxTotalBufferSize": crate::response_capture::MAX_TOTAL,
+                "maxResourceBufferSize": crate::response_capture::MAX_BODY
+            }),
+        )?;
+        self.response_capture = Some(crate::response_capture::ResponseCapture::default());
+        Ok(())
+    }
+
+    /// All requests observed for the current document, including failed/missing dependencies.
+    pub fn observed_response_urls(&mut self) -> CdpResult<Vec<String>> {
+        self.pump_events();
+        let capture=self.response_capture.as_ref().ok_or_else(||CdpError::new("response capture is not enabled"))?;
+        let loader=self.frames.get(&self.main_frame_id).map(|f|f.loader_id.as_str()).unwrap_or("");
+        Ok(capture.urls(&self.main_frame_id,loader))
+    }
+
+    /// Retrieve observed main-document response payloads for exact URLs.
+    /// This is transport evidence only: it does not prove rendered use or fidelity.
+    pub fn response_evidence(
+        &mut self,
+        urls: &[String],
+    ) -> CdpResult<crate::response_capture::ResponseEvidence> {
+        self.pump_events();
+        let capture = self
+            .response_capture
+            .as_ref()
+            .ok_or_else(|| CdpError::new("response capture is not enabled"))?;
+        let frame = self.main_frame_id.clone();
+        let loader = self
+            .frames
+            .get(&frame)
+            .map(|f| f.loader_id.clone())
+            .unwrap_or_default();
+        let revision = capture.revision;
+        let pending = capture.pending(urls, &frame, &loader);
+        for (index, request_id) in pending {
+            let body = self
+                .send("Network.getResponseBody", json!({"requestId": request_id}))
+                .map_err(|e| e.message);
+            self.response_capture
+                .as_mut()
+                .unwrap()
+                .store_body(index, body);
+        }
+        Ok(self
+            .response_capture
+            .as_ref()
+            .unwrap()
+            .evidence(urls, &frame, &loader, revision))
     }
 
     /// puppeteer's `CdpPage` + `FrameManager.initialize` for a new target.
@@ -662,6 +760,30 @@ impl<'a> Page<'a> {
         let method = ev.get("method").and_then(Value::as_str).unwrap_or("");
         let session = ev.get("sessionId").and_then(Value::as_str).unwrap_or("");
         let params = ev.get("params").cloned().unwrap_or(Value::Null);
+        if session == self.session_id {
+            match method {
+                "Runtime.executionContextCreated" => {
+                    if let (Some(id), Some(unique)) = (
+                        params.pointer("/context/id").and_then(Value::as_i64),
+                        params.pointer("/context/uniqueId").and_then(Value::as_str),
+                    ) {
+                        if self.execution_contexts.len() < 512 {
+                            self.execution_contexts.insert(id, unique.to_owned());
+                        }
+                    }
+                }
+                "Runtime.executionContextDestroyed" => {
+                    if let Some(id) = params.get("executionContextId").and_then(Value::as_i64) {
+                        self.execution_contexts.remove(&id);
+                    }
+                }
+                "Runtime.executionContextsCleared" => self.execution_contexts.clear(),
+                _ => {}
+            }
+            if let Some(capture) = &mut self.response_capture {
+                capture.event(method, &params);
+            }
+        }
         let is_page_session = session == self.session_id || self.iframe_sessions.contains(session);
         match method {
             "Target.attachedToTarget" => {
@@ -892,7 +1014,14 @@ impl<'a> Page<'a> {
         true
     }
 
-    /// `page.setViewport({width, height})` (EmulationManager#applyViewport).
+    /// Explicit screenshot-environment preference; never injected as page CSS.
+    pub fn set_reduced_motion(&mut self, reduce: bool) -> CdpResult<()> {
+        self.send("Emulation.setEmulatedMedia", json!({"features": [{
+            "name": "prefers-reduced-motion", "value": if reduce { "reduce" } else { "no-preference" }
+        }]}))?;
+        Ok(())
+    }
+
     pub fn set_viewport(&mut self, viewport: Viewport) -> CdpResult<()> {
         self.send(
             "Emulation.setDeviceMetricsOverride",
@@ -955,7 +1084,7 @@ impl<'a> Page<'a> {
             other => {
                 return Err(CdpError::new(format!(
                     "Unknown value for options.waitUntil: {other}"
-                )))
+                )));
             }
         };
         self.pump_events();
@@ -1043,18 +1172,195 @@ impl<'a> Page<'a> {
         }
     }
 
+    /// Create an opt-in world with separate JS globals/prototypes, on the current
+    /// main document. No universal cross-origin access is granted.
+    pub fn create_isolated_world(&mut self) -> CdpResult<IsolatedWorld> {
+        self.pump_events();
+        let frame_id = self.main_frame_id.clone();
+        let loader_id = self
+            .frames
+            .get(&frame_id)
+            .map(|f| f.loader_id.clone())
+            .unwrap_or_default();
+        if frame_id.is_empty() || loader_id.is_empty() {
+            return Err(CdpError::new("no current document for isolated capture"));
+        }
+        let created=self.send("Page.createIsolatedWorld",json!({"frameId":frame_id,"worldName":"impeccable-diagnostic-capture","grantUniveralAccess":false}))?;
+        let id = created["executionContextId"]
+            .as_i64()
+            .ok_or_else(|| CdpError::new("isolated world returned no context id"))?;
+        let unique_id = self
+            .execution_contexts
+            .get(&id)
+            .cloned()
+            .ok_or_else(|| CdpError::new("isolated context identity unavailable"))?;
+        let world = IsolatedWorld {
+            unique_id,
+            context_id: id,
+            session_id: self.session_id.clone(),
+            frame_id,
+            loader_id,
+        };
+        self.validate_world(&world)?;
+        Ok(world)
+    }
+
+    /// Inspect native DOM coverage, including authored closed shadow roots that
+    /// page-world selectors cannot see. This never treats hidden trees as absent.
+    pub fn capture_dom_coverage(&mut self, world: &IsolatedWorld) -> CdpResult<Value> {
+        self.validate_world(world)?;
+        let tree = self.send("DOM.getDocument", json!({"depth":-1,"pierce":true}))?;
+        self.validate_world(world)?;
+        let root = tree
+            .get("root")
+            .ok_or_else(|| CdpError::new("native DOM coverage unavailable"))?;
+        let mut stack = vec![root];
+        let mut nodes = 0;
+        let mut closed = 0;
+        while let Some(node) = stack.pop() {
+            nodes += 1;
+            if nodes > 5000 {
+                return Err(CdpError::new("native capture DOM exceeds 5000 nodes"));
+            }
+            if node.get("shadowRootType").and_then(Value::as_str) == Some("closed") {
+                closed += 1;
+            }
+            for key in ["children", "shadowRoots", "pseudoElements"] {
+                if let Some(children) = node.get(key).and_then(Value::as_array) {
+                    stack.extend(children);
+                }
+            }
+            for key in ["contentDocument", "templateContent"] {
+                if let Some(child) = node.get(key).filter(|v| v.is_object()) {
+                    stack.push(child);
+                }
+            }
+        }
+        Ok(json!({"inspectedNodes":nodes,"closedShadowRoots":closed}))
+    }
+
+    /// Inspector-owned stylesheet; never a page-authored style element.
+    pub fn create_capture_stylesheet(&mut self, world: &IsolatedWorld) -> CdpResult<String> {
+        self.validate_world(world)?;
+        self.send("DOM.enable", json!({}))?;
+        self.send("CSS.enable", json!({}))?;
+        let value = self.send("CSS.createStyleSheet", json!({"frameId":world.frame_id}))?;
+        self.validate_world(world)?;
+        value["styleSheetId"].as_str().map(str::to_owned)
+            .ok_or_else(|| CdpError::new("capture stylesheet unavailable"))
+    }
+
+    pub fn set_capture_stylesheet(&mut self, world: &IsolatedWorld, sheet: &str, text: &str) -> CdpResult<()> {
+        self.validate_world(world)?;
+        if text.len() > 65536 { return Err(CdpError::new("capture stylesheet exceeds bound")); }
+        self.send("CSS.setStyleSheetText", json!({"styleSheetId":sheet,"text":text}))?;
+        self.validate_world(world)
+    }
+
+    /// Main-document generated boxes from native layout, indexed in querySelectorAll order.
+    /// Do not infer pseudo geometry from its owner's rectangle.
+    pub fn capture_pseudo_geometry(&mut self, world: &IsolatedWorld, retained: &[Value]) -> CdpResult<Value> {
+        self.validate_world(world)?;
+        // Text-only generated boxes need no image geometry. Query candidates in
+        // the isolated world before the bounded native layout lookup.
+        let candidates = self.evaluate_value_in_world(world,
+            "[...document.querySelectorAll('*')].flatMap((el,index)=>['before','after'].filter(p=>{const s=getComputedStyle(el,'::'+p);return s.backgroundImage!=='none'||s.content.includes('url(')}).map(pseudo=>({index,pseudo})))")?;
+        let mut candidates = candidates.as_array().ok_or_else(|| CdpError::new("pseudo candidates unavailable"))?.clone();
+        // Suppression can remove a pseudo's only URL. Keep its identity eligible
+        // for a fresh native geometry lookup; never reuse its previous box.
+        for candidate in retained {
+            if !candidates.contains(candidate) { candidates.push(candidate.clone()); }
+        }
+        if candidates.len()>256 {return Err(CdpError::new("capture pseudo image candidates exceed bound"));}
+        if candidates.is_empty() {return Ok(json!([]));}
+        let tree = self.send("DOM.getDocument", json!({"depth":-1}))?;
+        let mut stack = vec![(tree["root"].clone(), String::new())];
+        let mut index = 0usize;
+        let mut pseudos = Vec::new();
+        while let Some((node, selector)) = stack.pop() {
+            let owner = index;
+            if node["nodeType"] == 1 { index += 1; }
+            if index > 5000 { return Err(CdpError::new("capture DOM exceeds bound")); }
+            if let Some(items) = node["pseudoElements"].as_array() {
+                for pseudo in items {
+                    if !matches!(pseudo["pseudoType"].as_str(), Some("before" | "after")) { continue; }
+                    if !candidates.iter().any(|c|c["index"].as_u64()==Some(owner as u64)&&c["pseudo"]==pseudo["pseudoType"]) {continue;}
+                    if pseudos.len() >= 256 { return Err(CdpError::new("capture pseudo elements exceed bound")); }
+                    let layout = self.send("DOM.getBoxModel", json!({"nodeId":pseudo["nodeId"]}));
+                    let bounds = layout.ok().and_then(|v| {
+                        let q = v["model"]["border"].as_array()?;
+                        if q.len()!=8 {return None;}
+                        let values: Option<Vec<f64>>=q.iter().map(Value::as_f64).collect();
+                        let values=values?;
+                        let xs=[values[0],values[2],values[4],values[6]];
+                        let ys=[values[1],values[3],values[5],values[7]];
+                        let x=xs.into_iter().fold(f64::INFINITY,f64::min);
+                        let y=ys.into_iter().fold(f64::INFINITY,f64::min);
+                        Some(json!({"x":x,"y":y,"w":xs.into_iter().fold(f64::NEG_INFINITY,f64::max)-x,"h":ys.into_iter().fold(f64::NEG_INFINITY,f64::max)-y}))
+                    });
+                    pseudos.push(json!({"index":owner,"pseudo":format!("::{}",pseudo["pseudoType"].as_str().unwrap()),"selector":selector,"backendNodeId":pseudo["backendNodeId"],"box":bounds}));
+                }
+            }
+            if let Some(children)=node["children"].as_array() {
+                let elements: Vec<_>=children.iter().filter(|n|n["nodeType"]==1).collect();
+                for (i,child) in elements.into_iter().enumerate().rev() {
+                    let path=if selector.is_empty(){":root".to_owned()}else{format!("{selector}>:nth-child({})",i+1)};
+                    stack.push((child.clone(),path));
+                }
+            }
+        }
+        self.validate_world(world)?;
+        Ok(json!(pseudos))
+    }
+
+    fn validate_world(&mut self, world: &IsolatedWorld) -> CdpResult<()> {
+        self.pump_events();
+        if self.session_id != world.session_id
+            || self.main_frame_id != world.frame_id
+            || self
+                .frames
+                .get(&world.frame_id)
+                .map(|f| f.loader_id.as_str())
+                != Some(world.loader_id.as_str())
+            || self.execution_contexts.get(&world.context_id) != Some(&world.unique_id)
+        {
+            return Err(CdpError::new(
+                "isolated capture context was destroyed or document changed",
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn evaluate_value_in_world(
+        &mut self,
+        world: &IsolatedWorld,
+        expression: &str,
+    ) -> CdpResult<Value> {
+        self.validate_world(world)?;
+        let result = self.evaluate_with_context(expression, Some(&world.unique_id))?;
+        self.validate_world(world)?;
+        match result {
+            EvalOutcome::Value(v) => Ok(v),
+            EvalOutcome::Exception(message) => Err(CdpError::new(message)),
+        }
+    }
+
     /// `page.evaluate(<expression string>)`: `Runtime.evaluate` with
     /// `awaitPromise` + `returnByValue`, in the main world.
     pub fn evaluate(&mut self, expression: &str) -> CdpResult<EvalOutcome> {
-        let res = self.send(
-            "Runtime.evaluate",
-            json!({
-                "expression": expression,
-                "returnByValue": true,
-                "awaitPromise": true,
-                "userGesture": true,
-            }),
-        );
+        self.evaluate_with_context(expression, None)
+    }
+
+    fn evaluate_with_context(
+        &mut self,
+        expression: &str,
+        unique_context: Option<&str>,
+    ) -> CdpResult<EvalOutcome> {
+        let mut params = json!({"expression":expression,"returnByValue":true,"awaitPromise":true,"userGesture":true});
+        if let Some(id) = unique_context {
+            params["uniqueContextId"] = json!(id);
+        }
+        let res = self.send("Runtime.evaluate", params);
         let res = match res {
             Ok(r) => r,
             Err(e) => {
@@ -1088,6 +1394,28 @@ impl<'a> Page<'a> {
             EvalOutcome::Value(v) => Ok(v),
             EvalOutcome::Exception(message) => Err(CdpError::new(message)),
         }
+    }
+
+    /// Preserve transparency when capturing isolated component paint.
+    pub fn set_transparent_background(&mut self) -> CdpResult<()> {
+        self.send("Emulation.setDefaultBackgroundColorOverride", json!({"color":{"r":0,"g":0,"b":0,"a":0}}))?;
+        Ok(())
+    }
+
+    /// Capture the current viewport without Chromium's beyond-viewport resize.
+    /// Use for observations that must not trigger responsive source selection.
+    pub fn screenshot_viewport(&mut self) -> CdpResult<String> {
+        let res = self.send(
+            "Page.captureScreenshot",
+            json!({
+                "format": "png", "optimizeForSpeed": false,
+                "fromSurface": true, "captureBeyondViewport": false,
+            }),
+        )?;
+        res.get("data")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .ok_or_else(|| CdpError::new("viewport screenshot returned no PNG"))
     }
 
     /// `page.screenshot({ encoding: 'base64', clip, captureBeyondViewport: true })`.
@@ -1272,6 +1600,29 @@ mod tests {
                 "description": "SyntaxError: Unexpected token '}'", "objectId": "2" }
         });
         assert_eq!(client_error_message(&syntax), "Unexpected token '}'");
+    }
+
+    #[test]
+    fn concurrent_launches_with_identical_clock_ticks_reserve_distinct_profiles() {
+        let profiles = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..32)
+                .map(|_| scope.spawn(|| reserve_profile(&std::env::temp_dir(), 7).unwrap()))
+                .collect();
+            handles
+                .into_iter()
+                .map(|h| h.join().unwrap())
+                .collect::<Vec<_>>()
+        });
+        assert_eq!(
+            profiles
+                .iter()
+                .collect::<std::collections::HashSet<_>>()
+                .len(),
+            32
+        );
+        for path in profiles {
+            std::fs::remove_dir(path).unwrap();
+        }
     }
 
     #[test]

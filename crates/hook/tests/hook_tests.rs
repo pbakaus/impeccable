@@ -19,6 +19,115 @@ use serde_json::{json, Map, Value};
 
 static HTML: MissingHtmlEngine = MissingHtmlEngine;
 
+#[test]
+#[cfg(unix)]
+fn gemini_before_tool_preserves_command_body_and_only_carries_literal_identity() {
+    let t = Tmp::new();
+    let command = "printf '%s\\n' \"$IMPECCABLE_SESSION_ID\"\nexit 7";
+    for (name, session, disabled, expected) in [
+        ("run_shell_command", "owner-123", false, true),
+        ("read_file", "owner-123", false, false),
+        ("run_shell_command", "bad'$(touch unsafe)", false, false),
+        ("run_shell_command", "owner-123", true, false),
+    ] {
+        let r = rt_with(&t.path(), env(&[("IMPECCABLE_HOOK_DISABLED", if disabled { "1" } else { "" })]));
+        let event = json!({"hook_event_name":"BeforeTool", "session_id":session,
+            "cwd":t.path(), "tool_name":name, "tool_input":{"command":command, "timeout":12}});
+        let (mut io, capture) = Io::captured("", t.0.clone(), HashMap::new());
+        hook::run(&r, &event.to_string(), &mut io);
+        let stdout = String::from_utf8(capture.stdout.borrow().clone()).unwrap();
+        if expected {
+            let output: Value = serde_json::from_str(&stdout).unwrap();
+            let rewritten = output["hookSpecificOutput"]["tool_input"]["command"].as_str().unwrap();
+            assert_eq!(rewritten, format!("export IMPECCABLE_SESSION_ID='owner-123'\n{command}"));
+            assert!(output["hookSpecificOutput"].get("additionalContext").is_none());
+            #[cfg(unix)] {
+                let execution = std::process::Command::new("sh").args(["-c", rewritten]).output().unwrap();
+                assert_eq!(execution.status.code(), Some(7));
+                assert_eq!(String::from_utf8(execution.stdout).unwrap(), "owner-123\n");
+            }
+        } else { assert!(stdout.is_empty()); }
+    }
+}
+
+#[test]
+fn gemini_after_agent_uses_native_retry_contract_and_session_scope() {
+    let t = Tmp::new();
+    t.write("index.html", "<main>In progress</main>");
+    t.write(".impeccable/build/state.json", &json!({
+        "sessionId":"gemini-owner", "artifact":"index.html", "startedAt":"gemini-build",
+        "phases":{"hero":{"status":"open"}}, "finish":null
+    }).to_string());
+    let r = rt(&t.path());
+    for (session, active, expected) in [("other", false, false), ("gemini-owner", false, true),
+        ("gemini-owner", true, true), ("gemini-owner", true, true), ("gemini-owner", true, false)] {
+        let event = json!({"hook_event_name":"AfterAgent", "session_id":session,
+            "cwd":t.path(), "stop_hook_active":active});
+        assert!(is_stop_event(event.as_object().unwrap()));
+        let result = hook::run_stop_hook(&r, &event.to_string());
+        if expected {
+            let output: Value = serde_json::from_str(&result.stdout).unwrap();
+            assert_eq!(output["decision"], "deny");
+            assert!(output["reason"].as_str().unwrap().contains("Comp build"));
+            assert!(output.get("hookSpecificOutput").is_none());
+        } else { assert!(result.stdout.is_empty()); }
+    }
+}
+
+#[test]
+fn session_start_persists_only_a_literal_session_identity() {
+    let t = Tmp::new();
+    let env_path = t.write("session.env", "export EXISTING=kept\n");
+    let r = rt_with(&t.path(), env(&[("CLAUDE_ENV_FILE", &env_path)]));
+    let mut io = Io::captured("", t.0.clone(), HashMap::new()).0;
+    for session in ["owner-123", "bad'$(touch unsafe)"] {
+        let event = json!({"hook_event_name":"SessionStart", "session_id":session, "cwd":t.path()}).to_string();
+        assert_eq!(hook::run(&r, &event, &mut io), 0);
+    }
+    assert_eq!(t.read("session.env"), "export EXISTING=kept\nexport IMPECCABLE_SESSION_ID='owner-123'\n");
+}
+
+#[test]
+fn unfinished_comp_stop_is_owned_bounded_and_does_not_reopen_on_unrelated_turn() {
+    let t = Tmp::new();
+    t.write("index.html", "<main>In progress</main>");
+    t.write(".impeccable/build/state.json", &json!({
+        "tool":"build-phase", "version":2, "startedAt":"build-one",
+        "sessionId":"owner", "artifact":"index.html", "finish":null,
+        "phases":{"hero":{"status":"open"}}
+    }).to_string());
+    let r = rt(&t.path());
+    assert!(hook::run_stop_hook(&r, &stop_event(&t.path(), "other")).stdout.is_empty());
+    let first = hook::run_stop_hook(&r, &stop_event(&t.path(), "owner"));
+    assert!(first.stdout.contains("Comp build"), "{}", first.stdout);
+    // A new unrelated turn must not spend another reminder on unchanged work.
+    assert!(hook::run_stop_hook(&r, &stop_event(&t.path(), "owner")).stdout.is_empty());
+    let active = json!({"session_id":"owner","cwd":t.path(),"hook_event_name":"Stop","stop_hook_active":true}).to_string();
+    assert!(hook::run_stop_hook(&r, &active).stdout.contains("Comp build"));
+    assert!(hook::run_stop_hook(&r, &active).stdout.contains("Comp build"));
+    assert!(hook::run_stop_hook(&r, &active).stdout.is_empty());
+}
+
+#[test]
+fn legacy_comp_state_never_implicitly_claims_the_current_session() {
+    let t = Tmp::new();
+    t.write("index.html", "<main>Old work</main>");
+    t.write(".impeccable/build/state.json", &json!({"artifact":"index.html","startedAt":"old","phases":{}}).to_string());
+    assert!(hook::run_stop_hook(&rt(&t.path()), &stop_event(&t.path(), "new")).stdout.is_empty());
+}
+
+#[test]
+fn completion_only_transport_does_not_duplicate_detector_feedback() {
+    let t = Tmp::new();
+    t.write("package.json", "{}");
+    let file = t.write("card.css", SIDE_TAB_CSS);
+    let r = rt_with(&t.path(), env(&[("IMPECCABLE_HOOK_COMPLETION_ONLY", "1")]));
+    hook::run_hook(&r, &edit_with_original(&t.path(), &file, "owner", ".card {}\n", ".card {}\n", SIDE_TAB_CSS));
+    let stop = hook::run_stop_hook(&r, &stop_event(&t.path(), "owner"));
+    assert!(stop.stdout.is_empty());
+    assert_eq!(stop.audit["skipped"], "no-build-continuation");
+}
+
 struct Tmp(PathBuf);
 impl Tmp {
     fn new() -> Tmp {

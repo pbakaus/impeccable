@@ -15,6 +15,7 @@
 //! never committed to the engine repo. See [`font_match`].
 
 pub mod build_phase;
+pub mod completion;
 pub mod comp_diff;
 pub mod comp_spec;
 pub mod font_match;
@@ -45,3 +46,7 @@ pub fn run_font_match(argv: &[String], io: &mut Io, renderer: &mut dyn font_matc
 pub fn run_build_phase(argv: &[String], io: &mut Io, organic_scan: build_phase::OrganicScan) -> i32 {
     build_phase::run(argv, io, organic_scan)
 }
+
+pub mod asset_capture;
+
+pub mod entry_capture;

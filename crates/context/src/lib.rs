@@ -47,3 +47,5 @@ pub use generate_image::run as run_generate_image;
 pub mod question_page;
 pub mod serve_question;
 pub use serve_question::run as run_serve_question;
+
+pub mod component_review;

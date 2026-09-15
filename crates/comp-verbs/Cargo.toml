@@ -20,6 +20,7 @@ serde_json = { workspace = true, features = ["preserve_order", "float_roundtrip"
 regex = { workspace = true }
 once_cell = { workspace = true }
 sha1 = "0.10"
+sha2 = "0.10"
 
 [dev-dependencies]
 serde_json = { workspace = true, features = ["preserve_order", "float_roundtrip"] }

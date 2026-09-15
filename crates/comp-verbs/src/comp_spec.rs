@@ -604,11 +604,49 @@ fn hex_to_rgb(hex: &str) -> Option<[u8; 3]> {
     ])
 }
 
-/// JS: plateReference(comp, spec, region).
+/// The exclusions are evidence about the reference, not an asset verdict.
+/// Count the union of rasterized rectangles, including already-ground pixels.
+pub struct PlateReference {
+    pub image: Image,
+    pub excluded_pixels: usize,
+    pub total_pixels: usize,
+    pub excluded_regions: Vec<Value>,
+    pub ignored_containers: Vec<String>,
+}
+
+impl PlateReference {
+    pub fn fully_excluded(&self) -> bool {
+        self.excluded_pixels == self.total_pixels
+    }
+
+    pub fn audit(&self) -> Value {
+        json!({"policy":"plate-reference-v2", "excludedPixels":self.excluded_pixels,
+            "totalPixels":self.total_pixels, "remainingPixels":self.total_pixels-self.excluded_pixels,
+            "excludedFraction":self.excluded_pixels as f64 / self.total_pixels.max(1) as f64,
+            "fullyExcluded":self.fully_excluded(), "regions":self.excluded_regions,
+            "ignoredContainers":self.ignored_containers})
+    }
+
+    pub fn issue(&self, id: &str) -> Option<String> {
+        if !self.fully_excluded() { return None; }
+        let ids = self.excluded_regions.iter().filter_map(|r|r["id"].as_str()).collect::<Vec<_>>().join(", ");
+        Some(format!("reference for {id} has no visible pixels after excluding {ids}; correct the overlapping region geometry or container roles in the comp spec before evaluating this asset"))
+    }
+}
+
+/// JS: plateReference(comp, spec, region). Kept for pure image consumers.
 pub fn plate_reference(comp: &Image, spec: &Value, region: &Value) -> Image {
+    prepare_plate_reference(comp, spec, region).image
+}
+
+pub fn prepare_plate_reference(comp: &Image, spec: &Value, region: &Value) -> PlateReference {
     let px = |k: &str| region.pointer(&format!("/px/{k}")).and_then(Value::as_f64).unwrap_or(0.0);
     let (rx, ry, rw, rh) = (px("x"), px("y"), px("w"), px("h"));
     let mut c = r::crop(comp, rx, ry, rw, rh);
+    let total_pixels = c.width * c.height;
+    let mut excluded = vec![false; total_pixels];
+    let mut excluded_regions = Vec::new();
+    let mut ignored_containers = Vec::new();
     let ground = region
         .get("palette")
         .and_then(Value::as_array)
@@ -634,10 +672,25 @@ pub fn plate_reference(comp: &Image, spec: &Value, region: &Value) -> Image {
             if ox2 <= ox || oy2 <= oy {
                 continue;
             }
+            // Containers describe layout/background extent, not foreground ink.
+            // Their actual child text/control regions remain independently masked.
+            if other.get("container").and_then(Value::as_bool) == Some(true) {
+                ignored_containers.push(oid.to_string());
+                continue;
+            }
+            let rect = r::clamp_rect(&c, ox, oy, ox2-ox, oy2-oy);
+            if rect.w == 0 || rect.h == 0 { continue; }
+            for y in rect.y..rect.y+rect.h {
+                for x in rect.x..rect.x+rect.w { excluded[y*c.width+x] = true; }
+            }
+            excluded_regions.push(json!({"id":oid,"kind":okind,
+                "cropPx":{"x":rect.x,"y":rect.y,"w":rect.w,"h":rect.h},
+                "pixels":rect.w*rect.h}));
             r::fill_rect(&mut c, ox, oy, ox2 - ox, oy2 - oy, [ground[0] as f64, ground[1] as f64, ground[2] as f64, 255.0]);
         }
     }
-    c
+    PlateReference { image:c, excluded_pixels:excluded.iter().filter(|v|**v).count(),
+        total_pixels, excluded_regions, ignored_containers }
 }
 
 /// JS: platePrompt(spec, region).
@@ -854,8 +907,15 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
             }
         };
         let medium = region.get("medium").and_then(Value::as_str).unwrap_or("");
+        let mut reference_audit = None;
         let mut c = if medium == "raster" && !flag(argv, "raw") {
-            plate_reference(&comp, &spec, &region)
+            let reference = prepare_plate_reference(&comp, &spec, &region);
+            if let Some(issue) = reference.issue(id) {
+                io.err(&format!("comp-spec: {issue}.\n"));
+                return 2;
+            }
+            reference_audit = Some(reference.audit());
+            reference.image
         } else {
             let px = |k: &str| region.pointer(&format!("/px/{k}")).and_then(Value::as_f64).unwrap_or(0.0);
             r::crop(&comp, px("x"), px("y"), px("w"), px("h"))
@@ -870,7 +930,10 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
         if let Some(parent) = out_path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        let text = vec![("impeccable:crop-of".to_string(), format!("{comp_file}#{id}"))];
+        let mut text = vec![("impeccable:crop-of".to_string(), format!("{comp_file}#{id}"))];
+        if let Some(audit) = reference_audit {
+            text.push(("impeccable:reference-audit".into(), audit.to_string()));
+        }
         match png_io::encode_png(&c, &text) {
             Ok(bytes) => {
                 let _ = std::fs::write(&out_path, bytes);
@@ -970,4 +1033,58 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
     io.out(&format!("{}\n", print_spec(&spec)));
     let _ = r4f(0.0); // silence unused if optimized away
     0
+}
+
+#[cfg(test)]
+mod reference_tests {
+    use super::*;
+
+    fn fixture() -> (Image, Value) {
+        let mut comp = r::create_image(16, 16, [230, 220, 210, 255]);
+        r::fill_rect(&mut comp, 4., 4., 8., 8., [30., 70., 110., 255.]);
+        let region = json!({"id":"art","kind":"plate","medium":"raster",
+            "px":{"x":0,"y":0,"w":16,"h":16},"palette":[{"hex":"#e6dcd2"}]});
+        (comp, region)
+    }
+
+    #[test]
+    fn container_background_preserves_art_but_foreground_control_still_masks() {
+        let (comp, region) = fixture();
+        let container = json!({"id":"background","kind":"chrome","container":true,
+            "px":{"x":0,"y":0,"w":16,"h":16}});
+        let spec = json!({"regions":[region,container]});
+        assert_eq!(plate_reference(&comp, &spec, &spec["regions"][0]).data, comp.data);
+        let mut spec = spec;
+        spec["regions"].as_array_mut().unwrap().push(json!({"id":"button","kind":"control",
+            "px":{"x":0,"y":0,"w":8,"h":8}}));
+        let mut expected = comp.clone();
+        r::fill_rect(&mut expected, 0., 0., 8., 8., [230.,220.,210.,255.]);
+        assert_eq!(plate_reference(&comp, &spec, &spec["regions"][0]).data, expected.data);
+    }
+
+    #[test]
+    fn exclusion_audit_counts_union_and_clips_to_crop() {
+        let (comp, region) = fixture();
+        let spec = json!({"regions":[region,
+            {"id":"left","kind":"text","px":{"x":-8,"y":0,"w":20,"h":16}},
+            {"id":"right","kind":"control","px":{"x":8,"y":0,"w":20,"h":16}}]});
+        let reference = prepare_plate_reference(&comp, &spec, &spec["regions"][0]);
+        assert_eq!(reference.excluded_pixels, 256);
+        assert_eq!(reference.excluded_regions[0]["pixels"], 192);
+        assert_eq!(reference.excluded_regions[1]["pixels"], 128);
+        assert!(reference.fully_excluded());
+        assert_eq!(reference.audit()["remainingPixels"], 0);
+        assert!(reference.issue("art").unwrap().contains("left, right"));
+    }
+
+    #[test]
+    fn uniform_reference_without_exclusions_is_not_an_exclusion_failure() {
+        let (_, region) = fixture();
+        let comp = r::create_image(16, 16, [230, 220, 210, 255]);
+        let spec = json!({"regions":[region]});
+        let reference = prepare_plate_reference(&comp, &spec, &spec["regions"][0]);
+        assert_eq!(reference.excluded_pixels, 0);
+        assert!(!reference.fully_excluded());
+        assert!(reference.issue("art").is_none());
+    }
 }

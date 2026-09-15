@@ -13,6 +13,7 @@ core-registry = []
 
 [dependencies]
 impeccable-common = { workspace = true }
+impeccable-comp = { workspace = true }
 impeccable-core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
