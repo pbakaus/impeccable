@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Stripe-Child Side-Tab Fixture</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; max-width: 960px; margin: 0 auto; }
+    .col h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 16px; color: #475569; }
+    .case { margin-bottom: 24px; padding: 16px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; }
+
+    /* FLAG: flex-row first child stripe */
+    .card-flex-left { display: flex; flex-direction: row; width: 320px; height: 100px; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
+    .stripe-left { width: 4px; background: #f59e0b; flex-shrink: 0; }
+    .card-flex-left .body { flex: 1; padding: 16px; }
+
+    /* FLAG: flex-row last child stripe */
+    .card-flex-right { display: flex; flex-direction: row; width: 320px; height: 100px; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
+    .card-flex-right .body { flex: 1; padding: 16px; }
+    .stripe-right { width: 4px; background: #3b82f6; flex-shrink: 0; }
+
+    /* FLAG: absolute left stripe */
+    .card-abs { position: relative; width: 320px; height: 100px; border: 1px solid #e2e8f0; border-radius: 12px; }
+    .stripe-abs { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: #f59e0b; }
+
+    /* FLAG: absolute inset shorthand */
+    .card-inset { position: relative; width: 320px; height: 100px; border: 1px solid #e2e8f0; border-radius: 12px; }
+    .stripe-inset { position: absolute; inset: 0 auto 0 0; width: 4px; background: #3b82f6; }
+
+    /* PASS: neutral gray stripe */
+    .card-neutral { display: flex; width: 320px; height: 100px; border: 1px solid #e2e8f0; border-radius: 12px; }
+    .stripe-neutral { width: 4px; background: #e5e5e5; }
+
+    /* PASS: black / low-spread fill */
+    .card-black { display: flex; width: 320px; height: 100px; border: 1px solid #e2e8f0; border-radius: 12px; }
+    .stripe-black { width: 4px; background: black; }
+
+    /* PASS: align-items center (short child) */
+    .card-center { display: flex; align-items: center; width: 320px; height: 100px; border: 1px solid #e2e8f0; border-radius: 12px; }
+    .stripe-center { width: 4px; background: #f59e0b; }
+
+    /* PASS: flex-direction column */
+    .card-column { display: flex; flex-direction: column; width: 320px; height: 100px; border: 1px solid #e2e8f0; border-radius: 12px; }
+    .stripe-column { width: 4px; background: #f59e0b; }
+
+    /* PASS: active/selected host context */
+    .card-active { display: flex; width: 320px; height: 100px; border: 1px solid #e2e8f0; border-radius: 12px; }
+    .card-active.is-active .stripe-active { width: 4px; background: #f59e0b; }
+
+    /* PASS: contentful narrow child */
+    .card-text { display: flex; width: 320px; height: 100px; border: 1px solid #e2e8f0; border-radius: 12px; }
+    .stripe-text { width: 4px; background: #f59e0b; }
+
+    /* PASS: progressbar role */
+    .card-progress { display: flex; width: 320px; height: 100px; border: 1px solid #e2e8f0; border-radius: 12px; }
+    .stripe-progress { width: 4px; background: #f59e0b; }
+
+    /* PASS: wide first child */
+    .card-wide { display: flex; width: 320px; height: 100px; border: 1px solid #e2e8f0; border-radius: 12px; }
+    .stripe-wide { width: 40px; background: #f59e0b; }
+  </style>
+</head>
+<body>
+  <div class="grid">
+    <div class="col">
+      <h2>Should flag</h2>
+      <div class="case">
+        <h3>Flex row first-child stripe</h3>
+        <div class="card-flex-left"><div class="stripe-left"></div><div class="body">Card body</div></div>
+      </div>
+      <div class="case">
+        <h3>Flex row last-child stripe</h3>
+        <div class="card-flex-right"><div class="body">Card body</div><div class="stripe-right"></div></div>
+      </div>
+      <div class="case">
+        <h3>Absolute left stripe</h3>
+        <div class="card-abs"><div class="stripe-abs"></div><div class="body">Card body</div></div>
+      </div>
+      <div class="case">
+        <h3>Absolute inset stripe</h3>
+        <div class="card-inset"><div class="stripe-inset"></div><div class="body">Card body</div></div>
+      </div>
+    </div>
+    <div class="col">
+      <h2>Should pass</h2>
+      <div class="case">
+        <h3>Neutral gray stripe</h3>
+        <div class="card-neutral"><div class="stripe-neutral"></div><div class="body">Card body</div></div>
+      </div>
+      <div class="case">
+        <h3>Black stripe fill</h3>
+        <div class="card-black"><div class="stripe-black"></div><div class="body">Card body</div></div>
+      </div>
+      <div class="case">
+        <h3>Align items center short child</h3>
+        <div class="card-center"><div class="stripe-center"></div><div class="body">Card body</div></div>
+      </div>
+      <div class="case">
+        <h3>Flex column layout</h3>
+        <div class="card-column"><div class="stripe-column"></div><div class="body">Card body</div></div>
+      </div>
+      <div class="case">
+        <h3>Active selected host</h3>
+        <div class="card-active is-active"><div class="stripe-active"></div><div>Card body</div></div>
+      </div>
+      <div class="case">
+        <h3>Contentful narrow child</h3>
+        <div class="card-text"><div class="stripe-text">|</div><div class="body">Card body</div></div>
+      </div>
+      <div class="case">
+        <h3>Progressbar context</h3>
+        <div class="card-progress" role="progressbar"><div class="stripe-progress"></div><div class="body">50%</div></div>
+      </div>
+      <div class="case">
+        <h3>Wide forty pixel child</h3>
+        <div class="card-wide"><div class="stripe-wide"></div><div class="body">Card body</div></div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
