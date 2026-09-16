@@ -68,6 +68,24 @@ describe('skill reference authoring contracts', () => {
     assert.doesNotMatch(polish, /git status|git log/);
   });
 
+  it('routes visual decision fallback through wait capability and start failure', () => {
+    const newWork = readFileSync(join(ROOT, 'skill/reference/new-work.md'), 'utf-8').replace(/\r\n?/g, '\n');
+    const visualDecisionPage = newWork.match(
+      /A harness that can leave a shell blocked[\s\S]*?<!-- rule:skill-visual-decision-page -->/,
+    )?.[0] ?? '';
+
+    assert.match(visualDecisionPage, /cannot hold a blocking `--wait`/);
+    assert.match(visualDecisionPage, /without starting the page/);
+    assert.match(visualDecisionPage, /structured tool/);
+    assert.match(visualDecisionPage, /first reply/);
+    assert.match(visualDecisionPage, /exit code 2 from starting it/);
+    assert.match(visualDecisionPage, /wait check before starting/);
+    assert.doesNotMatch(
+      visualDecisionPage,
+      /only exit code 2 from starting it routes the decision to the structured tool; that exit is the fallback/,
+    );
+  });
+
   it('keeps touch-gesture verification in the adapt, audit, and harden references', () => {
     const adapt = readFileSync(join(ROOT, 'skill/reference/adapt.md'), 'utf-8').replace(/\r\n?/g, '\n');
     const audit = readFileSync(join(ROOT, 'skill/reference/audit.md'), 'utf-8').replace(/\r\n?/g, '\n');
