@@ -12117,6 +12117,7 @@ void main() {
         scanId,
         disabledRules: ignores.disabledRules || [],
         disabledValues: ignores.disabledValues || [],
+        ignoreSelectors: ignores.ignoreSelectors || [],
         skipScan: ignores.skipScan === true,
       },
     }, '*');

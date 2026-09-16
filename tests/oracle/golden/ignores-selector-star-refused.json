@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "A `*` selector waives the rule everywhere. Use add-rule for that, or name the component's selector.\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

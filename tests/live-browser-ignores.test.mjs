@@ -23,7 +23,53 @@ const resolve = loadIgnoresApi().resolveDetectIgnores;
 
 const EMPTY = { disabledRules: [], disabledValues: [], skipScan: false };
 
+describe('selector waivers in scan consumers', () => {
+  const source = readFileSync(join(REPO_ROOT, 'browser-bundle/30-scan-common.js'), 'utf8');
+  const api = vm.runInThisContext(`(function () { ${source}; return {
+    options: __visualContrastOptions, reportable: __reportableGroups,
+  }; })()`, { filename: '30-scan-common.js' });
+
+  it('carries page-resolved selectors into the visual and lazy candidate pass', () => {
+    const ignoreSelectors = [{ rule: 'low-contrast', selector: '.Card' }];
+    assert.deepEqual(api.options({}, { ignoreSelectors }).ignoreSelectors, ignoreSelectors);
+    assert.equal(api.options({}, { ignoreSelectors: null }).ignoreSelectors, undefined);
+  });
+
+  it('keeps raw stamps but never renders waived-only groups', () => {
+    const groups = [
+      { el: 1, findings: [{ type: 'low-contrast', ignoredBy: '.Card' }] },
+      { el: 2, findings: [{ type: 'side-tab' }, { type: 'low-contrast', ignoredBy: '.Card' }] },
+    ];
+    assert.deepEqual(api.reportable(groups), [{ el: 2, findings: [{ type: 'side-tab' }] }]);
+    assert.equal(groups[0].findings.length, 1);
+    assert.equal(groups[1].findings.length, 2);
+  });
+});
+
 describe('live-browser-ignores resolver', () => {
+  it('resolves component selectors for the served page without changing selector case', () => {
+    const ignores = {
+      roots: ['prototype/'],
+      pageFiles: ['prototype/index.html', 'prototype/other.html'],
+      ignoreSelectors: [
+        { rule: ' Low-Contrast ', selector: ' .Card ' },
+        { rule: '*', selector: '#Hero', files: ['prototype/index.html'] },
+        { rule: '*', selector: '.Other', files: ['prototype/other.html'] },
+        null, {}, { rule: '*', selector: 7 },
+      ],
+    };
+    assert.deepEqual(resolve({ ignores, pathname: '/' }).ignoreSelectors, [
+      { rule: 'low-contrast', selector: '.Card' },
+      { rule: '*', selector: '#Hero' },
+    ]);
+    assert.deepEqual(resolve({ ignores, pathname: '/other.html' }).ignoreSelectors, [
+      { rule: 'low-contrast', selector: '.Card' },
+      { rule: '*', selector: '.Other' },
+    ]);
+    assert.deepEqual(resolve({ ignores: { ...ignores, ignoreFiles: ['**'] }, pathname: '/' }),
+      { disabledRules: [], disabledValues: [], skipScan: true });
+  });
+
   it('registers a versioned API on the root', () => {
     const api = loadIgnoresApi();
     assert.equal(api.version, 1);

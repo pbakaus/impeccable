@@ -73,6 +73,11 @@ if (IS_BROWSER && !__impeccable) {
       // applies them where the findings are assembled, because the overlay
       // draws its markers from the collected findings.
       disabledValues: Array.isArray(config.disabledValues) ? config.disabledValues : [],
+      // detector.ignoreSelectors: the project's component-level opt-outs,
+      // [{ rule, selector }]. The core waives a finding on any element the
+      // selector matches, and on its subtree, the way the
+      // data-impeccable-ignore attribute waives the element carrying it.
+      ignoreSelectors: Array.isArray(config.ignoreSelectors) ? config.ignoreSelectors : [],
       designSystem: config.designSystem == null ? null : config.designSystem,
       lineLengthMax: config.lineLengthMax == null ? null : config.lineLengthMax,
       skipScan: config.skipScan === true,
@@ -113,7 +118,7 @@ if (IS_BROWSER && !__impeccable) {
   };
 
   function browserFindingsFromMap(groupMap) {
-    return [...groupMap.entries()].map(([el, findings]) => ({ el, findings }));
+    return __reportableGroups([...groupMap.entries()].map(([el, findings]) => ({ el, findings })));
   }
 
   function collectBrowserFindings() {
@@ -130,7 +135,7 @@ if (IS_BROWSER && !__impeccable) {
     return {
       groupMap,
       allFindings: browserFindingsFromMap(groupMap),
-      pageLevelFindings: collected.pageLevel,
+      pageLevelFindings: collected.pageLevel.filter(f => !f.ignoredBy),
     };
   }
 
@@ -167,6 +172,7 @@ if (IS_BROWSER && !__impeccable) {
   }
 
   function addVisualContrastResult(groupMap, result, options = {}) {
+    if (result?.ignoredBy) return false;
     const elId = __impeccable.visual_contrast_result_el(JSON.stringify(result));
     const el = __el(elId);
     if (!el) return false;
@@ -462,12 +468,12 @@ if (IS_BROWSER && !__impeccable) {
       if (__impeccable.snapshot_has_needs()) out = { needs: JSON.parse(__impeccable.snapshot_take_needs()) };
       rounds++;
     }
-    const serialized = JSON.parse(__impeccable.serialize_findings(JSON.stringify(out.groups)));
+    const serialized = JSON.parse(__impeccable.serialize_findings(JSON.stringify(__reportableGroups(out.groups))));
     const unknownStyleProps = JSON.parse(__impeccable.snapshot_unknown_style_props());
     __impeccable.snapshot_clear();
     return {
       findings: serialized,
-      pageLevel: out.pageLevel,
+      pageLevel: out.pageLevel.filter(f => !f.ignoredBy),
       stats: { ...cap.stats, rounds, unknownStyleProps, captureMs: t1 - t0, coreMs: performance.now() - t1 },
     };
   };

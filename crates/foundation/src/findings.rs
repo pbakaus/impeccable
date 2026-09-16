@@ -84,6 +84,31 @@ pub fn finding(id: &str, file_path: &str, snippet: &str, line: f64) -> Finding {
         .unwrap_or_else(|| panic!("finding(): unknown antipattern id {id:?}"))
 }
 
+/// The extras key an engine stamps on a finding a component-level opt-out
+/// (`detector.ignoreSelectors`) waived, carrying the selector that waived it.
+/// The finding still travels; the config layer drops and counts it.
+pub const IGNORED_BY_KEY: &str = "ignoredBy";
+
+/// Stamp `ignoredBy` when a selector waived this finding. `None` leaves the
+/// finding untouched, so nothing changes for a project without the config.
+pub fn stamp_ignored_by(mut finding: Finding, selector: Option<&str>) -> Finding {
+    if let Some(selector) = selector.filter(|s| !s.is_empty()) {
+        finding.extras.insert(
+            IGNORED_BY_KEY.to_string(),
+            Value::String(selector.to_string()),
+        );
+    }
+    finding
+}
+
+/// The selector that waived this finding, when one did.
+pub fn ignored_by(finding: &Finding) -> Option<&str> {
+    match finding.extras.get(IGNORED_BY_KEY) {
+        Some(Value::String(s)) if !s.is_empty() => Some(s.as_str()),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,5 +131,16 @@ mod tests {
         assert!(json.ends_with(r#""snippet":"s","advisory":true,"ignoreValue":"x"}"#));
         assert_eq!(finding("script-error", "f", "s", 0.0).severity, "error");
         assert!(try_finding("nope", "f", "s", 0.0).is_none());
+    }
+
+    #[test]
+    fn ignored_by_stamp_round_trips_and_stays_off_by_default() {
+        let plain = finding("side-tab", "a.html", "s", 0.0);
+        assert_eq!(ignored_by(&stamp_ignored_by(plain.clone(), None)), None);
+        assert_eq!(ignored_by(&stamp_ignored_by(plain.clone(), Some(""))), None);
+        let stamped = stamp_ignored_by(plain, Some(".ks-tag"));
+        assert_eq!(ignored_by(&stamped), Some(".ks-tag"));
+        let json = serde_json::to_string(&stamped).unwrap();
+        assert!(json.ends_with(r#""snippet":"s","ignoredBy":".ks-tag"}"#), "{json}");
     }
 }

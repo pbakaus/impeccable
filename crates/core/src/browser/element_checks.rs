@@ -1309,6 +1309,7 @@ pub fn check_element_blinking_cursor_dom(dom: &dyn Dom, el: ElId) -> Vec<Browser
             None
         },
         ignore_value: None,
+        ignored_by: None,
     }]
 }
 

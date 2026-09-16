@@ -8,7 +8,7 @@ use impeccable_core::js;
 use crate::config::{
     get_config_path, get_local_config_path, normalize_ignore_value, read_detection_config,
     read_raw_detection_config, synthetic_ignore_value, write_detection_config, DetectionConfig,
-    IgnoreValueEntry,
+    IgnoreSelectorEntry, IgnoreValueEntry,
 };
 use crate::jsp;
 
@@ -21,9 +21,11 @@ Actions:
   add-rule <rule> [--all-values]        Ignore a rule
   add-file <glob>                       Ignore files by glob
   add-value <rule> <value>              Ignore one rule/value pair
+  add-selector <rule> <selector>        Ignore one rule on a component, everywhere
   remove-rule <rule>                    Remove a rule ignore
   remove-file <glob>                    Remove a file ignore
   remove-value <rule> <value>           Remove a rule/value ignore
+  remove-selector <rule> <selector>     Remove a component ignore
   clear                                 Clear detector ignores in the selected scope
 
 Scope:
@@ -32,14 +34,22 @@ Scope:
   --all                                 For remove/clear, apply to shared and local
 
 Value options:
-  --file <glob>                         Scope add-value/remove-value to a file glob
-  --reason <text>                       Store or update a reason on add-value
+  --file <glob>                         Scope add-value/add-selector to a file glob
+  --reason <text>                       Store or update a reason on add-value/add-selector
+
+Component ignores (add-selector) waive one rule for every element a CSS
+selector matches, and for that element's subtree. One entry replaces the
+same data-impeccable-ignore attribute repeated on every instance of a
+component, and the scan reports how many hits it suppressed instead of
+going quiet.
 
 Examples:
   impeccable ignores add-file \"src/legacy/**\"
   impeccable ignores add-value overused-font Inter --reason \"Brand font\"
   impeccable ignores add-value design-system-color \"*\" --file \"src/demo.css\"
+  impeccable ignores add-selector undersized-ui-text \".ks-tag\" --reason \"10px mono label, by design\"
   impeccable ignores remove-value overused-font Inter
+  impeccable ignores remove-selector undersized-ui-text \".ks-tag\"
 ";
 
 fn action_for(arg: &str) -> Option<&'static str> {
@@ -48,9 +58,11 @@ fn action_for(arg: &str) -> Option<&'static str> {
         "add-rule" | "ignore-rule" => "add-rule",
         "add-file" | "ignore-file" => "add-file",
         "add-value" | "ignore-value" | "update-value" => "add-value",
+        "add-selector" | "ignore-selector" | "update-selector" => "add-selector",
         "remove-rule" | "rm-rule" => "remove-rule",
         "remove-file" | "rm-file" => "remove-file",
         "remove-value" | "rm-value" => "remove-value",
+        "remove-selector" | "rm-selector" => "remove-selector",
         "clear" => "clear",
         _ => return None,
     })
@@ -191,6 +203,27 @@ fn format_values(values: &[IgnoreValueEntry]) -> String {
         .join(", ")
 }
 
+fn format_selectors(entries: &[IgnoreSelectorEntry]) -> String {
+    if entries.is_empty() {
+        return "(none)".to_string();
+    }
+    entries
+        .iter()
+        .map(|e| {
+            let file_suffix = match &e.files {
+                Some(f) if !f.is_empty() => format!(" [{}]", f.join(", ")),
+                _ => String::new(),
+            };
+            let reason_suffix = match &e.reason {
+                Some(r) if !r.is_empty() => format!(" - {r}"),
+                _ => String::new(),
+            };
+            format!("{} on {}{file_suffix}{reason_suffix}", e.rule, e.selector)
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 fn format_config(label: &str, config: &DetectionConfig) -> String {
     let none_or = |v: &[String]| {
         if v.is_empty() {
@@ -199,21 +232,29 @@ fn format_config(label: &str, config: &DetectionConfig) -> String {
             v.join(", ")
         }
     };
-    [
+    let mut lines = vec![
         format!("{label}:"),
         format!("  ignoreRules:  {}", none_or(&config.ignore_rules)),
         format!("  ignoreFiles:  {}", none_or(&config.ignore_files)),
         format!("  ignoreValues: {}", format_values(&config.ignore_values)),
-        format!(
-            "  designSystem: {}",
-            if config.design_system_enabled == Some(false) {
-                "disabled"
-            } else {
-                "enabled"
-            }
-        ),
-    ]
-    .join("\n")
+    ];
+    // Listed only where the project uses component ignores, so the familiar
+    // four-line block is unchanged for everyone else.
+    if !config.ignore_selectors.is_empty() {
+        lines.push(format!(
+            "  ignoreSelectors: {}",
+            format_selectors(&config.ignore_selectors)
+        ));
+    }
+    lines.push(format!(
+        "  designSystem: {}",
+        if config.design_system_enabled == Some(false) {
+            "disabled"
+        } else {
+            "enabled"
+        }
+    ));
+    lines.join("\n")
 }
 
 fn rel_or_abs(cwd: &str, target: &str) -> String {
@@ -426,6 +467,140 @@ fn add_value(cwd: &str, args: &[String]) -> R<String> {
     ))
 }
 
+struct SelectorArgs {
+    rule: String,
+    selector: String,
+    files: Vec<String>,
+    reason: String,
+}
+
+/// `add-selector <rule> <selector...> [--file <glob>]... [--reason <text...>]`.
+/// The selector keeps its case and its internal spacing (`.card .ks-tag` is a
+/// descendant selector, not two arguments), so positionals after the rule are
+/// joined rather than normalized the way an ignore value is.
+fn parse_selector_args(args: &[String]) -> R<SelectorArgs> {
+    let mut positionals: Vec<String> = Vec::new();
+    let mut files: Vec<String> = Vec::new();
+    let mut reason = String::new();
+    let mut i = 0;
+    while i < args.len() {
+        let arg = args[i].as_str();
+        if arg == "--reason" {
+            let mut chunks = Vec::new();
+            while i + 1 < args.len() && !args[i + 1].starts_with("--") {
+                i += 1;
+                chunks.push(args[i].clone());
+            }
+            reason = js::trim(&chunks.join(" ")).to_string();
+        } else if let Some(v) = arg.strip_prefix("--reason=") {
+            reason = js::trim(v).to_string();
+        } else if arg == "--file" || arg == "--files" {
+            if i + 1 >= args.len() {
+                return Err(format!("{arg} requires a glob"));
+            }
+            i += 1;
+            files.push(require_glob(&args[i], arg)?);
+        } else if let Some(v) = arg.strip_prefix("--file=") {
+            files.push(require_glob(v, "--file")?);
+        } else if let Some(v) = arg.strip_prefix("--files=") {
+            files.push(require_glob(v, "--files")?);
+        } else if arg.starts_with("--") {
+            return Err(format!("Unknown add-selector flag: {arg}"));
+        } else {
+            positionals.push(arg.to_string());
+        }
+        i += 1;
+    }
+    let rule = js::to_lower_case(js::trim(
+        positionals.first().map(String::as_str).unwrap_or(""),
+    ));
+    let selector = js::trim(&positionals.get(1..).unwrap_or(&[]).join(" ")).to_string();
+    if rule.is_empty() || selector.is_empty() {
+        return Err(
+            "Pass a rule id and a CSS selector, e.g. impeccable ignores add-selector undersized-ui-text \".ks-tag\""
+                .to_string(),
+        );
+    }
+    if selector == "*" {
+        return Err("A `*` selector waives the rule everywhere. Use add-rule for that, or name the component's selector.".to_string());
+    }
+    let mut scoped: Vec<String> = Vec::new();
+    for f in files.into_iter().filter(|f| !f.is_empty()) {
+        if !scoped.contains(&f) {
+            scoped.push(f);
+        }
+    }
+    scoped.sort();
+    Ok(SelectorArgs {
+        rule,
+        selector,
+        files: scoped,
+        reason,
+    })
+}
+
+fn selector_key(rule: &str, selector: &str, files: &[String]) -> String {
+    let mut sorted = files.to_vec();
+    sorted.sort();
+    format!(
+        "{}\0{}\0{}",
+        js::to_lower_case(js::trim(rule)),
+        js::trim(selector),
+        sorted.join("\u{1f}")
+    )
+}
+
+fn selector_entry_key(e: &IgnoreSelectorEntry) -> String {
+    selector_key(
+        &e.rule,
+        &e.selector,
+        e.files.as_deref().unwrap_or_default(),
+    )
+}
+
+fn add_selector(cwd: &str, args: &[String]) -> R<String> {
+    let scope = parse_scope(args, false)?;
+    let parsed = parse_selector_args(&scope.rest)?;
+    let mut config = read_raw_detection_config(cwd, scope.local);
+    let key = selector_key(&parsed.rule, &parsed.selector, &parsed.files);
+    if let Some(existing) = config
+        .ignore_selectors
+        .iter_mut()
+        .find(|e| selector_entry_key(e) == key)
+    {
+        if !parsed.reason.is_empty() {
+            existing.reason = Some(parsed.reason.clone());
+        }
+        if !parsed.files.is_empty() {
+            existing.files = Some(parsed.files.clone());
+        }
+    } else {
+        config.ignore_selectors.push(IgnoreSelectorEntry {
+            rule: parsed.rule.clone(),
+            selector: parsed.selector.clone(),
+            files: if parsed.files.is_empty() {
+                None
+            } else {
+                Some(parsed.files.clone())
+            },
+            created_at: Some(iso_now()),
+            reason: if parsed.reason.is_empty() {
+                None
+            } else {
+                Some(parsed.reason.clone())
+            },
+        });
+    }
+    let target = write_scope(cwd, &config, scope.local)?;
+    Ok(format!(
+        "Added {} on {} to {} detector ignoreSelectors ({}).",
+        parsed.rule,
+        parsed.selector,
+        if scope.local { "local" } else { "shared" },
+        rel_or_abs(cwd, &target)
+    ))
+}
+
 fn remove_from_scopes(
     cwd: &str,
     args: &[String],
@@ -493,6 +668,18 @@ fn remove_value(cwd: &str, args: &[String]) -> R<String> {
     })
 }
 
+fn remove_selector(cwd: &str, args: &[String]) -> R<String> {
+    remove_from_scopes(cwd, args, |config, rest| {
+        let parsed = parse_selector_args(rest)?;
+        let key = selector_key(&parsed.rule, &parsed.selector, &parsed.files);
+        let before = config.ignore_selectors.len();
+        config
+            .ignore_selectors
+            .retain(|e| selector_entry_key(e) != key);
+        Ok(before - config.ignore_selectors.len())
+    })
+}
+
 fn clear(cwd: &str, args: &[String]) -> R<String> {
     let scope = parse_scope(args, true)?;
     if !scope.rest.is_empty() {
@@ -508,6 +695,7 @@ fn clear(cwd: &str, args: &[String]) -> R<String> {
         config.ignore_rules.clear();
         config.ignore_files.clear();
         config.ignore_values.clear();
+        config.ignore_selectors.clear();
         write_scope(cwd, &config, is_local)?;
     }
     Ok(format!(
@@ -547,9 +735,11 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         "add-rule" => add_rule(&cwd, &rest),
         "add-file" => add_file(&cwd, &rest),
         "add-value" => add_value(&cwd, &rest),
+        "add-selector" => add_selector(&cwd, &rest),
         "remove-rule" => remove_rule(&cwd, &rest),
         "remove-file" => remove_file(&cwd, &rest),
         "remove-value" => remove_value(&cwd, &rest),
+        "remove-selector" => remove_selector(&cwd, &rest),
         _ => clear(&cwd, &rest),
     };
     match out {

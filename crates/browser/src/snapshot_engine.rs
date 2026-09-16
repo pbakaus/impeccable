@@ -186,11 +186,13 @@ pub fn resolve_needs<T>(
 pub fn browser_config(
     design_system: Value,
     rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
+    ignore_selectors: Vec<impeccable_core::selector_ignores::SelectorIgnore>,
 ) -> BrowserConfig {
     BrowserConfig {
         extension_mode: false,
         disabled_rules: Vec::new(),
         disabled_values: Vec::new(),
+        ignore_selectors,
         skip_scan: false,
         design_system: if design_system.is_null() {
             None
@@ -530,10 +532,11 @@ pub fn analyze_visual_contrast(
     base: &SnapshotDom,
     max_candidates: f64,
     scroll_offscreen: bool,
+    ignores: &[impeccable_core::selector_ignores::SelectorIgnore],
 ) -> CdpResult<Vec<Value>> {
     let options = json!({ "maxCandidates": max_candidates });
     let candidates = resolve_needs(base, page, |d| {
-        visual::collect_visual_contrast_candidates(d, &options)
+        visual::collect_visual_contrast_candidates_with_ignores(d, &options, ignores)
     })?;
     let mut results: Vec<Value> = Vec::with_capacity(candidates.len());
     let restore = live_scroll(page)?;

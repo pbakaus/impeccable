@@ -111,6 +111,11 @@
       extensionMode: true,
       disabledRules: Array.isArray(config.disabledRules) ? config.disabledRules : [],
       disabledValues: Array.isArray(config.disabledValues) ? config.disabledValues : [],
+      // detector.ignoreSelectors: the project's component-level opt-outs,
+      // [{ rule, selector }]. The core waives a finding on any element the
+      // selector matches, and on its subtree, the way the
+      // data-impeccable-ignore attribute waives the element carrying it.
+      ignoreSelectors: Array.isArray(config.ignoreSelectors) ? config.ignoreSelectors : [],
       designSystem: config.designSystem == null ? null : config.designSystem,
       lineLengthMax: config.lineLengthMax == null ? null : config.lineLengthMax,
       skipScan: config.skipScan === true,
@@ -118,12 +123,13 @@
   }
 
   function serialize(wasm, groups) {
-    return JSON.parse(wasm.serialize_findings(JSON.stringify(groups)));
+    return JSON.parse(wasm.serialize_findings(JSON.stringify(__reportableGroups(groups))));
   }
 
   // addVisualContrastResult over id-keyed groups: the two decisions are the
   // core's; this only keeps the map.
   function addVisualContrastResult(wasm, groups, result) {
+    if (result?.ignoredBy) return 0;
     const elId = wasm.visual_contrast_result_el(JSON.stringify(result));
     if (!elId) return 0;
     let group = groups.find(g => g.el === elId);
@@ -144,12 +150,12 @@
     const vc = createVisualContrast(IO);
     const t0 = performance.now();
     const collected = JSON.parse(await IO.core('collect_browser_findings', configJson(config)));
-    const groups = collected.groups;
+    const groups = __reportableGroups(collected.groups);
     const stats = { elements: n, coreMs: performance.now() - t0, unknownStyleProps: JSON.parse(wasm.snapshot_unknown_style_props()) };
     await ask(session, {
       stage: 'findings',
       groups,
-      pageLevel: collected.pageLevel,
+      pageLevel: collected.pageLevel.filter(f => !f.ignoredBy),
       serialized: serialize(wasm, groups),
       stats,
     });
