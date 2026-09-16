@@ -460,6 +460,133 @@ fn check_accepts_current_copilot_user_agents_in_home_rooted_checkout() {
     std::fs::remove_dir_all(&root).ok();
 }
 
+// ─── check vs update scope parity (#824) ─────────────────────────────────────
+
+#[test]
+fn check_ignores_unrelated_harness_skill_in_home_rooted_tree() {
+    let root = temp_root("check-824-extra-harness");
+    let home = format!("{root}/home");
+    let tmpdir = format!("{root}/tmp");
+    for d in [&home, &tmpdir] {
+        std::fs::create_dir_all(d).unwrap();
+    }
+    std::fs::create_dir_all(format!("{home}/.git")).unwrap();
+    let bundle_root = create_fake_universal_bundle(&home, &[".claude", ".cursor"]);
+    let env = base_env(&home, &tmpdir, &bundle_root);
+
+    let r = run_cli(
+        &["install", "-y", "--scope=global", "--no-hooks", "--providers=claude"],
+        &home,
+        &env,
+    );
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    write(
+        &format!("{home}/.cursor/skills/other/SKILL.md"),
+        "---\nname: other\n---\nUnrelated skill.\n",
+    );
+
+    let r = run_cli(&["check"], &home, &env);
+    assert!(r.stdout.contains("Skills are up to date"), "{}\n{}", r.stdout, r.stderr);
+    assert!(!r.stdout.contains("Updates available"), "{}", r.stdout);
+
+    let r = run_cli(&["update", "--global", "-y", "--no-hooks"], &home, &env);
+    assert!(r.stdout.contains("Skills are up to date"), "{}\n{}", r.stdout, r.stderr);
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn check_ignores_leftover_pi_project_layout_in_home_rooted_tree() {
+    let root = temp_root("check-824-pi-leftover");
+    let home = format!("{root}/home");
+    let tmpdir = format!("{root}/tmp");
+    for d in [&home, &tmpdir] {
+        std::fs::create_dir_all(d).unwrap();
+    }
+    std::fs::create_dir_all(format!("{home}/.git")).unwrap();
+    let bundle_root = create_fake_universal_bundle(&home, &[".pi"]);
+    let env = base_env(&home, &tmpdir, &bundle_root);
+
+    let r = run_cli(
+        &["install", "-y", "--scope=global", "--no-hooks", "--providers=pi"],
+        &home,
+        &env,
+    );
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    assert!(std::path::Path::new(&format!("{home}/.pi/agent/skills/impeccable/SKILL.md")).exists());
+    write(
+        &format!("{home}/.pi/skills/other/SKILL.md"),
+        "---\nname: other\n---\nLeftover project-layout skill.\n",
+    );
+
+    let r = run_cli(&["check"], &home, &env);
+    assert!(r.stdout.contains("Skills are up to date"), "{}\n{}", r.stdout, r.stderr);
+    assert!(!r.stdout.contains("Updates available"), "{}", r.stdout);
+
+    let r = run_cli(&["update", "--global", "-y", "--no-hooks"], &home, &env);
+    assert!(r.stdout.contains("Skills are up to date"), "{}\n{}", r.stdout, r.stderr);
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn check_sees_home_rooted_project_scope_pi_install() {
+    let root = temp_root("check-824-pi-project");
+    let home = format!("{root}/home");
+    let tmpdir = format!("{root}/tmp");
+    for d in [&home, &tmpdir] {
+        std::fs::create_dir_all(d).unwrap();
+    }
+    std::fs::create_dir_all(format!("{home}/.git")).unwrap();
+    let bundle_root = create_fake_universal_bundle(&home, &[".pi"]);
+    let env = base_env(&home, &tmpdir, &bundle_root);
+
+    let r = run_cli(
+        &["install", "-y", "--scope=project", "--no-hooks", "--providers=pi"],
+        &home,
+        &env,
+    );
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    assert!(std::path::Path::new(&format!("{home}/.pi/skills/impeccable/SKILL.md")).exists());
+    assert!(!std::path::Path::new(&format!("{home}/.pi/agent/skills/impeccable/SKILL.md")).exists());
+    write(
+        &format!("{home}/.pi/agent/skills/other/SKILL.md"),
+        "---\nname: other\n---\nLeftover user-layout skill.\n",
+    );
+
+    let r = run_cli(&["check"], &home, &env);
+    assert!(!r.stdout.contains("not installed"), "{}\n{}", r.stdout, r.stderr);
+    assert!(r.stdout.contains("Skills are up to date"), "{}\n{}", r.stdout, r.stderr);
+    assert!(!r.stdout.contains("Updates available"), "{}", r.stdout);
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn check_reports_stale_impeccable_in_home_rooted_tree() {
+    let root = temp_root("check-824-stale");
+    let home = format!("{root}/home");
+    let tmpdir = format!("{root}/tmp");
+    for d in [&home, &tmpdir] {
+        std::fs::create_dir_all(d).unwrap();
+    }
+    std::fs::create_dir_all(format!("{home}/.git")).unwrap();
+    let bundle_root = create_fake_universal_bundle(&home, &[".claude"]);
+    let env = base_env(&home, &tmpdir, &bundle_root);
+
+    let r = run_cli(
+        &["install", "-y", "--scope=global", "--no-hooks", "--providers=claude"],
+        &home,
+        &env,
+    );
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    write(
+        &format!("{home}/.claude/skills/impeccable/SKILL.md"),
+        "---\nname: impeccable\nversion: 0.0.0-stale\n---\n\nStale copy.\n",
+    );
+
+    let r = run_cli(&["check"], &home, &env);
+    assert!(r.stdout.contains("Updates available"), "{}\n{}", r.stdout, r.stderr);
+    std::fs::remove_dir_all(&root).ok();
+}
+
 // ─── inferred agent update scope (d2a9efb9) ──────────────────────────────────
 
 #[test]
