@@ -88,6 +88,7 @@ pub struct DetectionConfig {
     pub ignore_values: Vec<IgnoreValueEntry>,
     pub design_system_enabled: Option<bool>,
     pub advisory_rules: Option<String>,
+    pub extensions: Vec<String>,
 }
 
 impl DetectionConfig {
@@ -131,6 +132,40 @@ fn apply_detection_config_source(config: &mut DetectionConfig, raw: Option<&Map<
     if let Some(Value::Array(values)) = raw.get("ignoreValues") {
         config.ignore_values = merge_ignore_values(&config.ignore_values, values);
     }
+    if let Some(Value::Array(list)) = raw.get("extensions") {
+        config.extensions = unique_strings(
+            config
+                .extensions
+                .iter()
+                .cloned()
+                .chain(normalize_detection_extensions(list))
+                .collect(),
+        );
+    }
+}
+
+fn normalize_detection_extensions(entries: &[Value]) -> Vec<String> {
+    let mut out = Vec::new();
+    for entry in entries {
+        let raw = match entry {
+            Value::String(s) => Some(s.as_str()),
+            Value::Object(o) => match o.get("ext") {
+                Some(Value::String(s)) => Some(s.as_str()),
+                _ => None,
+            },
+            _ => None,
+        };
+        let Some(raw) = raw else { continue };
+        let mut ext = js::to_lower_case(js::trim(raw));
+        if ext.is_empty() {
+            continue;
+        }
+        if !ext.starts_with('.') {
+            ext = format!(".{ext}");
+        }
+        out.push(ext);
+    }
+    out
 }
 
 fn unique_strings(values: Vec<String>) -> Vec<String> {
@@ -1120,5 +1155,26 @@ mod tests {
         assert_eq!(normalize_ignore_value(" 'Open+Sans' "), "open sans");
         assert_eq!(decode_uri_component("Open%20Sans"), "Open Sans");
         assert_eq!(decode_uri_component("bad%zz"), "bad%zz");
+    }
+
+    #[test]
+    fn detection_extensions() {
+        let dir = std::env::temp_dir().join(format!(
+            "impeccable-detect-ext-{}",
+            std::process::id()
+        ));
+        let impeccable = dir.join(".impeccable");
+        std::fs::create_dir_all(&impeccable).unwrap();
+        std::fs::write(
+            impeccable.join("config.json"),
+            r#"{"detector":{"extensions":[{"ext":".html.erb","engine":"html"},"blade.php"]}}"#,
+        )
+        .unwrap();
+        let config = read_detection_config(dir.to_str().unwrap());
+        assert_eq!(
+            config.extensions,
+            vec![".html.erb".to_string(), ".blade.php".to_string()]
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

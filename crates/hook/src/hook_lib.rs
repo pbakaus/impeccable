@@ -991,6 +991,7 @@ pub fn filter_findings(findings: Vec<Finding>, config: &HookConfig) -> Vec<Findi
         ignore_values: config.ignore_values.clone(),
         design_system_enabled: None,
         advisory_rules: None,
+        extensions: vec![],
     };
     filter_detection_findings(kept, &dc)
 }
