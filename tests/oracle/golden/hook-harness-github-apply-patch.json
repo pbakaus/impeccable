@@ -4,6 +4,6 @@
   "exit": 0,
   "signal": null,
   "files": {
-    ".impeccable/hook.cache.json": "{\"version\":1,\"sessions\":{\"g1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/src/components/Card.module.css\":{\"editCount\":1,\"findings\":[\"side-tab:1\",\"gradient-text:2\"]}},\"footerShown\":true}}}"
+    ".impeccable/hook.cache.json": "{\"version\":2,\"sessions\":{\"g1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/src/components/Card.module.css\":{\"editCount\":1,\"findings\":[\"side-tab:1\",\"gradient-text:2\"]}},\"footerShown\":true}}}"
   }
 }

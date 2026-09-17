@@ -15,6 +15,34 @@ const FIXTURES = path.join(REPO_ROOT, 'tests', 'fixtures', 'antipatterns');
 
 export default function cases() {
   const out = [];
+  for (const suffix of ['vue', 'svelte', 'astro', 'blade.php', 'html.erb']) {
+    out.push({
+      id: `detect-template-dom-${suffix.replaceAll('.', '-')}`,
+      verb: 'detect', workspace: 'detect-config',
+      args: ['--json', '--no-design-system', `template.${suffix}`],
+      setup(ws) {
+        fs.writeFileSync(path.join(ws, '.impeccable/config.json'), JSON.stringify({
+          detector: { extensions: ['.html.erb'] },
+        }));
+        fs.writeFileSync(path.join(ws, `template.${suffix}`), '<a style="color:#ccc;background:#fff">low contrast</a>\n');
+      },
+    });
+  }
+  out.push({
+    id: 'detect-template-dom-configured-walk',
+    verb: 'detect', workspace: 'detect-config',
+    args: ['--json', '--no-design-system', 'templates'],
+    setup(ws) {
+      fs.writeFileSync(path.join(ws, '.impeccable/config.json'), JSON.stringify({
+        detector: { extensions: ['.html.erb', { ext: '.php', engine: 'text' }] },
+      }));
+      fs.mkdirSync(path.join(ws, 'templates/vendor/bundle'), { recursive: true });
+      const source = '<a style="color:#ccc;background:#fff">low contrast</a>\n';
+      fs.writeFileSync(path.join(ws, 'templates/page.html.erb'), source);
+      fs.writeFileSync(path.join(ws, 'templates/vendor/bundle/page.html.erb'), source);
+      fs.writeFileSync(path.join(ws, 'templates/controller.php'), '<h1 class="bg-clip-text">Heading</h1>\n');
+    },
+  });
   const entries = fs.readdirSync(FIXTURES, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
 
   for (const ent of entries) {

@@ -50,6 +50,6 @@
     }
   ],
   "files": {
-    ".impeccable/hook.cache.json": "{\"version\":1,\"sessions\":{\"cv1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/src/new.css\":{\"editCount\":0,\"findings\":[],\"cursorDenials\":{\"gradient-text:1\":8}}},\"footerShown\":true}}}"
+    ".impeccable/hook.cache.json": "{\"version\":2,\"sessions\":{\"cv1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/src/new.css\":{\"editCount\":0,\"findings\":[],\"cursorDenials\":{\"gradient-text:1\":8}}},\"footerShown\":true}}}"
   }
 }

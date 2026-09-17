@@ -5,6 +5,6 @@
   "signal": null,
   "files": {
     ".impeccable/config.json": "{\n  \"detector\": {\n    \"ignoreRules\": [\n      \"gradient-text\"\n    ]\n  }\n}\n",
-    ".impeccable/hook.cache.json": "{\"version\":1,\"sessions\":{\"s1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/src/components/Card.module.css\":{\"editCount\":1,\"findings\":[],\"cleanAcked\":true}}}}}"
+    ".impeccable/hook.cache.json": "{\"version\":2,\"sessions\":{\"s1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/src/components/Card.module.css\":{\"editCount\":1,\"findings\":[],\"cleanAcked\":true}}}}}"
   }
 }

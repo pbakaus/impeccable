@@ -8,14 +8,15 @@ use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 
 use crate::hook_lib::{
-    detector_detect_text, ensure_file, sessions, Cache, HookScanOptions, Runtime,
+    detector_detect_source, ensure_file, sessions, Cache, HookScanOptions, Runtime,
 };
 
 const FIELD: &str = "stopBaseline";
 const MAX_BYTES: usize = 512 * 1024;
 const MAX_FINDINGS: usize = 256;
 pub const UNKNOWN_NOTE: &str = "Findings marked attribution unknown may predate this session; do not treat them as regressions or broaden the task without asking.";
-pub const COMPACT_UNKNOWN_NOTE: &str = "Unknown findings may predate this session; ask before expanding scope.";
+pub const COMPACT_UNKNOWN_NOTE: &str =
+    "Unknown findings may predate this session; ask before expanding scope.";
 
 fn independent(finding: &Finding) -> bool {
     !finding.antipattern.starts_with("design-system-")
@@ -77,6 +78,7 @@ pub fn capture(
     session: &str,
     file: &str,
     html: bool,
+    markup: bool,
 ) {
     if html || session.is_empty() || session == "unknown" || entry(cache, session, file).is_some() {
         return;
@@ -162,7 +164,7 @@ pub fn capture(
     if std::fs::read_to_string(file).ok().as_deref() != Some(expected.as_str()) {
         return;
     }
-    let findings = detector_detect_text(original, file, &HookScanOptions::default());
+    let findings = detector_detect_source(original, file, &HookScanOptions::default(), markup);
     if findings.len() > MAX_FINDINGS {
         return;
     }
@@ -212,6 +214,29 @@ pub fn classify(
     html: bool,
     findings: Vec<Finding>,
 ) -> Classified {
+    classify_impl(cache, session, file, html, findings, None)
+}
+
+/// Text findings keep their session baseline in a hybrid scan. DOM additions
+/// depend on the cascade and must not inherit a source-only exemption.
+pub fn classify_mixed(
+    cache: &Cache,
+    session: &str,
+    file: &str,
+    findings: Vec<Finding>,
+    text: &[Finding],
+) -> Classified {
+    classify_impl(cache, session, file, false, findings, Some(text))
+}
+
+fn classify_impl(
+    cache: &Cache,
+    session: &str,
+    file: &str,
+    html: bool,
+    findings: Vec<Finding>,
+    text: Option<&[Finding]>,
+) -> Classified {
     let mut baseline = if html {
         None
     } else {
@@ -219,7 +244,9 @@ pub fn classify(
     };
     let mut result = Classified::default();
     for mut finding in findings {
-        let known = baseline.as_mut().filter(|_| independent(&finding));
+        let known = baseline.as_mut().filter(|_| {
+            independent(&finding) && text.is_none_or(|source| source.contains(&finding))
+        });
         if let Some(counts) = known {
             let key = key(&finding);
             let count = counts.get(&key).and_then(Value::as_u64).unwrap_or(0);

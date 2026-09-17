@@ -5,6 +5,6 @@
   "signal": null,
   "files": {
     ".impeccable/config.json": "{\n  \"hook\": {\n    \"perEditRules\": \"all\",\n    \"limits\": {\n      \"maxFindings\": 1,\n      \"maxChars\": 8000\n    }\n  }\n}\n",
-    ".impeccable/hook.cache.json": "{\"version\":1,\"sessions\":{\"s1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/src/page.html\":{\"editCount\":1,\"findings\":[\"low-contrast:0:1.3:1 (need 4.5:1) — text #666666 on #555555\",\"low-contrast:0:1.1:1 (need 4.5:1) — text #000000 on #111111\",\"dark-glow:0:Zero-offset box-shadow glow (#8b5cf6)\",\"cramped-padding:0:<div> \\\"hero\\\": children flush against bg on all sides (no inset)\"]}},\"footerShown\":true}}}"
+    ".impeccable/hook.cache.json": "{\"version\":2,\"sessions\":{\"s1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/src/page.html\":{\"editCount\":1,\"findings\":[\"low-contrast:0:1.3:1 (need 4.5:1) — text #666666 on #555555\",\"low-contrast:0:1.1:1 (need 4.5:1) — text #000000 on #111111\",\"dark-glow:0:Zero-offset box-shadow glow (#8b5cf6)\",\"cramped-padding:0:<div> \\\"hero\\\": children flush against bg on all sides (no inset)\"]}},\"footerShown\":true}}}"
   }
 }

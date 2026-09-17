@@ -14,6 +14,6 @@
     }
   ],
   "files": {
-    ".impeccable/hook.cache.json": "{\"version\":1,\"sessions\":{\"s1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/src/new.css\":{\"editCount\":1,\"findings\":[\"side-tab:1\"],\"stopBaseline\":{\"version\":1,\"engine\":\"<ENGINE_VERSION>\",\"counts\":{}},\"cleanAcked\":true}},\"footerShown\":true}}}"
+    ".impeccable/hook.cache.json": "{\"version\":2,\"sessions\":{\"s1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/src/new.css\":{\"editCount\":1,\"findings\":[\"side-tab:1\"],\"stopBaseline\":{\"version\":1,\"engine\":\"<ENGINE_VERSION>\",\"counts\":{}},\"cleanAcked\":true}},\"footerShown\":true}}}"
   }
 }

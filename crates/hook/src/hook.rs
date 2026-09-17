@@ -3,7 +3,6 @@
 //! pass. Always exits 0; stdout is one JSON document or nothing.
 
 use impeccable_core::findings::Finding;
-use impeccable_core::js;
 use serde_json::{Map, Value};
 use std::collections::HashMap;
 
@@ -124,7 +123,6 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
     let project_cwd =
         resolve_cache_cwd(rt, primary_files.first().map(String::as_str), &session_cwd);
     audit.insert("cwd".into(), Value::String(project_cwd.clone()));
-    let target_files = expand_scan_targets(rt, &primary_files, &project_cwd);
     let session_value = session_id_of(&event);
     audit.insert(
         "session".into(),
@@ -134,7 +132,7 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
         audit.insert("tool".into(), tool.clone());
     }
 
-    if target_files.is_empty() {
+    if primary_files.is_empty() {
         return result(
             &audit,
             vec![
@@ -145,6 +143,8 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
     }
 
     let config = read_config(&project_cwd);
+    let target_files =
+        expand_scan_targets_with(rt, &primary_files, &project_cwd, &config.extensions);
     if !config.enabled {
         return result(
             &audit,
@@ -201,17 +201,11 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
             last_skip = "generated";
             continue;
         }
-        let ext = js::to_lower_case(&jsp::extname(file_path));
-        let configured = match_configured_extension(file_path, &config.extensions);
         audit.insert(
             "ext".into(),
-            Value::String(
-                configured
-                    .map(|c| c.ext.clone())
-                    .unwrap_or_else(|| ext.clone()),
-            ),
+            Value::String(extension_label(file_path, &config.extensions)),
         );
-        if !ALLOWED_EXTS.contains(&ext.as_str()) && configured.is_none() {
+        if !is_hook_scan_path(file_path, &config.extensions) {
             last_skip = "extension";
             continue;
         }
@@ -254,13 +248,19 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
                 }
             }
         }
-        let use_html_engine = match configured {
-            Some(c) => c.engine == "html",
-            None => ext == ".html" || ext == ".htm",
-        };
+        let use_html_engine = uses_html_engine(file_path, &config.extensions);
+        let markup = is_markup_template(file_path, &config.extensions);
         if primary_files.contains(file_path) {
             if harness == "claude" {
-                stop_baseline::capture(rt, &event, &mut cache, &session_id, file_path, use_html_engine);
+                stop_baseline::capture(
+                    rt,
+                    &event,
+                    &mut cache,
+                    &session_id,
+                    file_path,
+                    use_html_engine && is_plain_html(file_path),
+                    markup,
+                );
             }
             let edit_count = bump_edit_count(&mut cache, &session_id, file_path);
             cache_dirty = true;
@@ -318,8 +318,13 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
         } else {
             detector_detect_text(&content, file_path, scan)
         };
-        if !detector_threw && !use_html_engine {
-            stop_baseline::reconcile(&mut cache, &session_id, file_path, &findings);
+        if !detector_threw && !(use_html_engine && is_plain_html(file_path)) {
+            if markup {
+                let text = detector_detect_markup(&content, file_path, scan);
+                stop_baseline::reconcile(&mut cache, &session_id, file_path, &text);
+            } else {
+                stop_baseline::reconcile(&mut cache, &session_id, file_path, &findings);
+            }
         }
         let raw_count = findings.len();
         let filtered = filter_findings(findings, &config);
@@ -476,7 +481,8 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
     // `.impeccable/`, so the extra check changes nothing there.
     if deferred_total > 0
         || (cache_dirty
-            && (exists(&jsp::join(&[&project_cwd, ".impeccable"])) || exists(&get_cache_path(&project_cwd))))
+            && (exists(&jsp::join(&[&project_cwd, ".impeccable"]))
+                || exists(&get_cache_path(&project_cwd))))
     {
         persist_cache(rt, &project_cwd, &cache);
     }
@@ -726,9 +732,7 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
         {
             continue;
         }
-        let ext = js::to_lower_case(&jsp::extname(file_path));
-        let configured = match_configured_extension(file_path, &config.extensions);
-        if !ALLOWED_EXTS.contains(&ext.as_str()) && configured.is_none() {
+        if !is_hook_scan_path(file_path, &config.extensions) {
             continue;
         }
         let rel = relativize(rt, file_path, &project_cwd);
@@ -748,10 +752,8 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
         if crate::hook_lib::has_live_preview_markers(&content) {
             continue;
         }
-        let use_html_engine = match configured {
-            Some(c) => c.engine == "html",
-            None => ext == ".html" || ext == ".htm",
-        };
+        let use_html_engine = uses_html_engine(file_path, &config.extensions);
+        let markup = is_markup_template(file_path, &config.extensions);
         let scan = scans.entry(file_path.clone()).or_insert_with(|| {
             design_system_options_for_file(rt, &config, &project_cwd, file_path)
         });
@@ -767,11 +769,31 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
         } else {
             detector_detect_text(&content, file_path, scan)
         };
-        if !use_html_engine {
-            stop_baseline::reconcile(&mut cache, &session_id, file_path, &findings);
+        let text = if markup {
+            detector_detect_markup(&content, file_path, scan)
+        } else {
+            vec![]
+        };
+        if !(use_html_engine && is_plain_html(file_path)) {
+            stop_baseline::reconcile(
+                &mut cache,
+                &session_id,
+                file_path,
+                if markup { &text } else { &findings },
+            );
         }
         let filtered = filter_findings(findings, &config);
-        let classified = stop_baseline::classify(&cache, &session_id, file_path, use_html_engine, filtered.clone());
+        let classified = if markup {
+            stop_baseline::classify_mixed(&cache, &session_id, file_path, filtered.clone(), &text)
+        } else {
+            stop_baseline::classify(
+                &cache,
+                &session_id,
+                file_path,
+                use_html_engine,
+                filtered.clone(),
+            )
+        };
         pre_existing += classified.pre_existing;
         new_findings += classified.new;
         unknown += classified.unknown;
@@ -808,7 +830,9 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
     }
     let scan = &scans[&fresh_groups[0].file_path];
     let short = footer_mode_short(&mut cache, &session_id);
-    let first_unknown = fresh_groups.iter().flat_map(|group| &group.findings)
+    let first_unknown = fresh_groups
+        .iter()
+        .flat_map(|group| &group.findings)
         .position(|f| f.name.starts_with("[attribution unknown]"));
     let mut attribution_note = if first_unknown.is_some() {
         format!("{ENVELOPE_PREFIX} {}", stop_baseline::UNKNOWN_NOTE)
@@ -817,20 +841,29 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
     };
     // Findings and attribution take priority. Append the lower-priority stale
     // DESIGN.md notice only if it fits, without consuming its session flag.
-    let render = |note: &str, render_config: &HookConfig| render_grouped_template(
-        rt,
-        &fresh_groups,
-        render_config,
-        &RenderOpts {
-            cwd: Some(project_cwd.clone()),
-            short_footer: short,
-            reserve_chars: if note.is_empty() { 0.0 } else { (utf16_len(note) + 2) as f64 },
-        },
-    );
+    let render = |note: &str, render_config: &HookConfig| {
+        render_grouped_template(
+            rt,
+            &fresh_groups,
+            render_config,
+            &RenderOpts {
+                cwd: Some(project_cwd.clone()),
+                short_footer: short,
+                reserve_chars: if note.is_empty() {
+                    0.0
+                } else {
+                    (utf16_len(note) + 2) as f64
+                },
+            },
+        )
+    };
     let mut rendered = render(&attribution_note, &config);
-    if !attribution_note.is_empty() && !rendered.lines().any(|line| {
-        line.starts_with("- ") && (line.contains("[attribution unknown]") || line.contains("[new]"))
-    }) {
+    if !attribution_note.is_empty()
+        && !rendered.lines().any(|line| {
+            line.starts_with("- ")
+                && (line.contains("[attribution unknown]") || line.contains("[new]"))
+        })
+    {
         // At the minimum budget, a grouped header and policy footer may crowd
         // out even the first finding. Shorten the notice before losing it.
         attribution_note = format!("{ENVELOPE_PREFIX} {}", stop_baseline::COMPACT_UNKNOWN_NOTE);
@@ -838,9 +871,9 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
     }
     // maxFindings / maxChars may also remove all unknown findings. Do not
     // attach their guidance to an output that only shows confirmed new debt.
-    let shows_unknown = rendered.lines().any(|line| {
-        line.starts_with("- ") && line.contains("[attribution unknown]")
-    });
+    let shows_unknown = rendered
+        .lines()
+        .any(|line| line.starts_with("- ") && line.contains("[attribution unknown]"));
     if !shows_unknown {
         if let Some(prefix @ 1..) = first_unknown {
             // Reclaim the unused notice budget for the known-new prefix.
@@ -851,9 +884,12 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             rendered = render("", &visible_config);
         }
     }
-    let text = if shows_unknown { format!("{attribution_note}\n\n{rendered}") } else { rendered };
-    let text =
-        append_design_system_note_once(rt, &text, scan, &mut cache, &session_id, &config);
+    let text = if shows_unknown {
+        format!("{attribution_note}\n\n{rendered}")
+    } else {
+        rendered
+    };
+    let text = append_design_system_note_once(rt, &text, scan, &mut cache, &session_id, &config);
     commit_footer_shown(rt, &mut cache, &session_id, &text);
     persist_cache(rt, &project_cwd, &cache);
     let all: usize = fresh_groups.iter().map(|g| g.findings.len()).sum();

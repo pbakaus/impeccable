@@ -31,7 +31,6 @@ pub struct TextOptions<'a> {
     pub rule_pack: Option<&'static dyn RulePack>,
 }
 
-const PAGE_ANALYZER_EXTS: &[&str] = &[".html", ".htm", ".astro", ".vue", ".svelte"];
 const JS_SOURCE_EXTS: &[&str] = &[".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"];
 const REGEX_PREFIX_KEYWORDS: &[&str] = &[
     "await",
@@ -64,13 +63,15 @@ pub fn ext_from_file_path(file_path: &str) -> String {
     }
 }
 
-/// JS `shouldRunPageAnalyzers`.
+/// JS `shouldRunPageAnalyzers`. Consults the HTML-engine suffix map (including
+/// multi-part built-ins such as `.blade.php`) rather than last-segment
+/// `extname`. Configured suffixes reach this path through [`detect_markup_text`].
 pub fn should_run_page_analyzers(content: &str, file_path: &str) -> bool {
     if !is_full_page(content) {
         return false;
     }
     let ext = ext_from_file_path(file_path);
-    ext.is_empty() || PAGE_ANALYZER_EXTS.contains(&ext.as_str())
+    ext.is_empty() || crate::engine_route::uses_html_engine(file_path, &[])
 }
 
 fn is_ws(c: char) -> bool {
@@ -475,10 +476,17 @@ fn blank_html_and_css_comments_outside_scripts(text: &str) -> String {
 }
 
 fn is_js_ws(c: char) -> bool {
-    matches!(c,
-        '\t' | '\n' | '\x0B' | '\x0C' | '\r' | ' ' | '\u{A0}' | '\u{1680}'
-        | '\u{2000}'..='\u{200A}' | '\u{2028}' | '\u{2029}' | '\u{202F}'
-        | '\u{205F}' | '\u{3000}' | '\u{FEFF}')
+    matches!(
+        c,
+        '\t' | '\n' | '\x0B' | '\x0C' | '\r' | ' ' | '\u{A0}' | '\u{1680}' | '\u{2000}'
+            ..='\u{200A}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202F}'
+                | '\u{205F}'
+                | '\u{3000}'
+                | '\u{FEFF}'
+    )
 }
 
 /// JS `blankCssLineComments`: a small state machine that blanks `//` line
@@ -630,9 +638,10 @@ fn blank_astro_frontmatter_comments(text: &str) -> String {
     out
 }
 
-/// JS `blankCommentsForMatchers`.
-fn blank_comments_for_matchers(text: &str, ext: &str) -> String {
-    if PAGE_ANALYZER_EXTS.contains(&ext) {
+/// JS `blankCommentsForMatchers`. `markup` covers configured suffixes
+/// (`detect_markup_text`) that `match_html_engine_extension` does not know.
+fn blank_comments_for_matchers(text: &str, file_path: &str, ext: &str, markup: bool) -> String {
+    if markup || crate::engine_route::match_html_engine_extension(file_path).is_some() {
         let with_frontmatter = if ext == ".astro" {
             blank_astro_frontmatter_comments(text)
         } else {
@@ -1400,13 +1409,28 @@ fn pseudo_stripe_findings(text: &str, file_path: &str, line_offset: usize) -> Ve
 
 /// JS: detect-text.mjs#detectText
 pub fn detect_text(content: &str, file_path: &str, options: &TextOptions) -> Vec<Finding> {
+    detect_source(content, file_path, options, false)
+}
+
+/// Full text pipeline for a source the routing map has identified as markup,
+/// including configured multi-part suffixes unknown to the text-only API.
+pub fn detect_markup_text(content: &str, file_path: &str, options: &TextOptions) -> Vec<Finding> {
+    detect_source(content, file_path, options, true)
+}
+
+fn detect_source(
+    content: &str,
+    file_path: &str,
+    options: &TextOptions,
+    markup: bool,
+) -> Vec<Finding> {
     let profile = options.profile;
     let mut findings: Vec<Finding> = Vec::new();
     let ext = ext_from_file_path(file_path);
     let comment_stripped = if JS_SOURCE_EXTS.contains(&ext.as_str()) {
         strip_js_comments(content, ext == ".js" || ext == ".jsx" || ext == ".tsx")
     } else {
-        blank_comments_for_matchers(content, &ext)
+        blank_comments_for_matchers(content, file_path, &ext, markup)
     };
     let source = strip_css_in_js_comments(&comment_stripped, &ext);
     let lines: Vec<&str> = source.split('\n').collect();
@@ -1540,7 +1564,7 @@ pub fn detect_text(content: &str, file_path: &str, options: &TextOptions) -> Vec
         }
     }
 
-    if should_run_page_analyzers(content, file_path) {
+    if (markup && is_full_page(content)) || should_run_page_analyzers(content, file_path) {
         for (i, analyzer) in REGEX_ANALYZERS.iter().enumerate() {
             let rule_id = analyzer_rule_id(i);
             let meta = ProfileMeta {
@@ -1609,5 +1633,58 @@ mod tests {
         assert_eq!(f.len(), 1);
         assert_eq!(f[0].snippet, ".card — inset box-shadow 4px stripe (left)");
         assert_eq!(f[0].line, 1.0);
+    }
+
+    #[test]
+    fn markup_text_blanks_html_comments_for_configured_suffixes() {
+        let commented = "<!--\n.card { border-left: 4px solid #6366f1; }\n-->\n<p>Hello</p>";
+        let live = "<p>Hello</p>\n<style>.card { border-left: 4px solid #6366f1; }</style>";
+        let opts = TextOptions {
+            inline_ignores: true,
+            ..Default::default()
+        };
+        let vue = detect_text(commented, "/x/Card.vue", &opts);
+        assert!(
+            !vue.iter().any(|f| f.antipattern == "side-tab"),
+            "built-in markup blanks HTML comments: {vue:?}"
+        );
+        let erb = detect_markup_text(commented, "/x/page.html.erb", &opts);
+        assert!(
+            !erb.iter().any(|f| f.antipattern == "side-tab"),
+            "configured markup should blank HTML comments like .vue: {erb:?}"
+        );
+        let live_erb = detect_markup_text(live, "/x/page.html.erb", &opts);
+        assert!(
+            live_erb.iter().any(|f| f.antipattern == "side-tab"),
+            "live CSS outside comments still flags: {live_erb:?}"
+        );
+    }
+
+    #[test]
+    fn page_analyzers_use_suffix_map_not_last_segment() {
+        let page = "<!doctype html><html><body><p>Unlock your potential. Seamlessly leverage cutting-edge solutions. Empower your journey with game-changing innovation. Revolutionize your workflow with next-generation technology.</p></body></html>";
+        assert!(should_run_page_analyzers(page, "page.blade.php"));
+        assert!(should_run_page_analyzers(page, "page.html"));
+        assert!(!should_run_page_analyzers(page, "page.php"));
+        assert!(
+            !should_run_page_analyzers(page, "page.html.erb"),
+            "configured suffixes need detect_markup_text, not last-segment .erb"
+        );
+        let opts = TextOptions {
+            inline_ignores: true,
+            ..Default::default()
+        };
+        assert!(
+            detect_markup_text(page, "page.html.erb", &opts)
+                .iter()
+                .any(|f| f.antipattern == "marketing-buzzword"),
+            "markup pipeline must run full-page copy analyzers"
+        );
+        assert!(
+            !detect_text(page, "page.html.erb", &opts)
+                .iter()
+                .any(|f| f.antipattern == "marketing-buzzword"),
+            "bare detect_text must not guess configured suffixes"
+        );
     }
 }
