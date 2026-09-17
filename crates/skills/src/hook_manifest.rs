@@ -8,7 +8,9 @@
 //! writes the launcher form `[ ! -f "<skill>/scripts/impeccable" ] ||
 //! "<skill>/scripts/impeccable" hook` (`hook-before-edit` for Cursor), the
 //! shape the public build's `transformers/hooks.js` puts in the bundle; the
-//! Codex `commandWindows` sibling runs `impeccable.cmd` behind `if exist`.
+//! Codex `commandWindows` sibling runs `impeccable.cmd` behind `if exist`,
+//! and Grok's sibling is `cmd /c if exist "p" "p" hook` so PowerShell and
+//! `GROK_SHELL=cmd` both parse it.
 //! `impeccable hooks on` (`impeccable_hook::admin`) writes the same launcher
 //! invocation for a project install (without the existence guard). Recognition of an
 //! Impeccable-owned entry (either the JS `.mjs` generation or the launcher
@@ -154,23 +156,56 @@ pub fn quoted_launcher_path(skill_root: &str, provider: &str, absolute: bool) ->
 /// shape the public build's `transformers/hooks.js` `guardedLauncher` emits:
 /// `[ ! -f X ] || X <verb>` (not `|| true`, so the launcher's exit code, and
 /// Claude's exit-2 blocking signal, still reach the agent). `.agents` (Codex)
-/// keeps the POSIX form unconditionally: its Windows consumers read the
-/// `commandWindows` sibling instead. Other providers installed on Windows keep
-/// the double-quoted path (cmd.exe treats `'` as literal, issue #533); the JS
-/// `node -e` existence wrapper has no launcher equivalent, so the POSIX guard
-/// stands there too (Claude Code on Windows runs hooks through Git Bash).
+/// keeps the POSIX form unconditionally: Codex on Windows reads the
+/// `commandWindows` sibling instead. Grok's schema has no such field, so a
+/// Windows install writes the PowerShell-safe `cmd /c` form into `command`
+/// itself. Other providers installed on Windows keep the double-quoted path
+/// (cmd.exe treats `'` as literal, issue #533); the JS `node -e` existence
+/// wrapper has no launcher equivalent, so the POSIX guard stands there too
+/// (Claude Code on Windows runs hooks through Git Bash).
 pub fn hook_command(quoted: &QuotedPath, provider: &str, win32: bool) -> String {
     let verb = hook_verb(provider);
-    let q = if provider != ".agents" && win32 { &quoted.win32 } else { &quoted.posix };
+    // Grok's documented schema has no commandWindows field (unlike Codex),
+    // and its default Windows shell is PowerShell, which ParserErrors on
+    // `[ ! -f ... ]`. A Windows install therefore puts the dual-shell
+    // `cmd /c` form in `command` itself; Unix keeps the POSIX guard.
+    if provider == ".grok" && win32 {
+        return windows_hook_command(quoted, provider);
+    }
+    let q = if provider != ".agents" && provider != ".grok" && win32 {
+        &quoted.win32
+    } else {
+        &quoted.posix
+    };
     format!("[ ! -f {q} ] || {q} {verb}")
 }
 
 /// JS: windowsHookCommand(quotedPath), launcher edition (`transformers/hooks.js`
 /// `windowsLauncherCommand`): the `.cmd` shim behind a cmd.exe `if exist`
-/// guard; `exit /b` forwards the launcher's errorlevel.
+/// guard; `exit /b` forwards the launcher's errorlevel. Grok uses
+/// `grokWindowsLauncherCommand` instead of that parenthesized form.
 pub fn windows_hook_command(quoted: &QuotedPath, provider: &str) -> String {
     let q = &quoted.win32_cmd;
-    format!("if exist {q} ({q} {} & exit /b)", hook_verb(provider))
+    let verb = hook_verb(provider);
+    if provider == ".grok" {
+        grok_windows_hook_command(q, verb)
+    } else {
+        format!("if exist {q} ({q} {verb} & exit /b)")
+    }
+}
+
+/// JS: grokWindowsLauncherCommand. `cmd /c if exist "p" "p" verb` (no extra
+/// wrapping quotes, no doubled inner quotes, backslash paths) is parseable
+/// by PowerShell, cmd.exe, and Git Bash. See `transformers/hooks.js`.
+///
+/// The slash flip runs on the already-JSON-quoted path. `/` is not JSON-escaped,
+/// so a relative command keeps a single `\`; converting the raw path first
+/// would JSON-escape those into `\\` and break `GROK_SHELL=cmd`. The two
+/// orders also disagree on a mixed-separator absolute path (a Windows
+/// `skill_root` joined on Unix).
+fn grok_windows_hook_command(quoted_cmd_path: &str, verb: &str) -> String {
+    let q = quoted_cmd_path.replace('/', "\\");
+    format!("cmd /c if exist {q} {q} {verb}")
 }
 
 /// JS: rewriteHookCommandsForSkillRoot(value, provider, {skillRoot, absolute})
@@ -206,7 +241,7 @@ fn rewrite_value(value: &Value, provider: &str, quoted: &QuotedPath, win32: bool
             for (k, v) in map {
                 next.insert(k.clone(), rewrite_value(v, provider, quoted, win32));
             }
-            if provider == ".agents" {
+            if provider == ".agents" || provider == ".grok" {
                 if let Some(cmd @ Value::String(_)) = map.get("command") {
                     if value_has_impeccable_hook_marker(cmd) {
                         next.insert("commandWindows".to_string(), Value::String(windows_hook_command(quoted, provider)));

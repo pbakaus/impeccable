@@ -58,6 +58,20 @@ export const guardedLauncher = (launcherPath, verb = 'hook') =>
 export const windowsLauncherCommand = (launcherCmdPath, verb = 'hook') =>
   `if exist "${launcherCmdPath}" ("${launcherCmdPath}" ${verb} & exit /b)`;
 
+// Grok Build's default Windows shell is PowerShell (GROK_SHELL auto-detect:
+// pwsh, then Git Bash, then powershell.exe; GROK_SHELL=cmd is also valid).
+// Codex's `if exist "p" ("p" verb & exit /b)` ParserErrors in PowerShell the
+// same way the POSIX `[ ! -f ... ]` guard does. Wrapping that statement in
+// `cmd /c "..."` with doubled inner quotes works in PowerShell but not when
+// GROK_SHELL=cmd (cmd treats the quoted payload as one unknown executable).
+// `cmd /c if exist "p" "p" verb` is parseable by PowerShell, cmd.exe, and
+// Git Bash. Relative paths use backslashes: PowerShell otherwise splits on
+// `/` after `cmd /c`.
+export const grokWindowsLauncherCommand = (launcherCmdPath, verb = 'hook') => {
+  const winPath = launcherCmdPath.replaceAll('/', '\\');
+  return `cmd /c if exist "${winPath}" "${winPath}" ${verb}`;
+};
+
 function stopEntry(command, commandWindows) {
   return {
     hooks: [
@@ -91,12 +105,21 @@ const GITHUB_PROJECT_SCRIPTS = '$(git rev-parse --show-toplevel)/.github/skills/
 // in the matcher (Edit|Write|MultiEdit) alias to Grok's search_replace family.
 const GROK_PROJECT_SCRIPTS = '.grok/skills/impeccable/scripts';
 
-// `windows: true` adds the `commandWindows` sibling; only Codex-shaped
-// consumers honor it, and an unknown key would fail Codex's strict parser if
-// it were the other way round, so it stays opt-in per manifest.
-function buildClaudeCompatibleHooks(matcher, scriptsDir, { windows = false } = {}) {
+// `windows: true` adds the `commandWindows` sibling. Codex 0.146.0+ selects
+// it on Windows (issue #452). Grok Build's documented hook schema has no
+// per-platform field, but the sibling is how this repo already ships a
+// cmd.exe-safe launcher (`impeccable.cmd`) next to the POSIX `command`;
+// unknown keys are skipped rather than failing the manifest. Claude and
+// Cursor stay off: Claude on Windows runs hooks through Git Bash, and an
+// unknown key would fail Codex's strict parser if it were the other way
+// round, so it stays opt-in per manifest.
+function buildClaudeCompatibleHooks(matcher, scriptsDir, { windows = false, grokWindows = false } = {}) {
   const command = guardedLauncher(launcherIn(scriptsDir));
-  const commandWindows = windows ? windowsLauncherCommand(launcherCmdIn(scriptsDir)) : undefined;
+  const commandWindows = grokWindows
+    ? grokWindowsLauncherCommand(launcherCmdIn(scriptsDir))
+    : windows
+      ? windowsLauncherCommand(launcherCmdIn(scriptsDir))
+      : undefined;
   return {
     PostToolUse: [
       {
@@ -201,7 +224,7 @@ export function buildGitHubHooksManifest() {
 // https://docs.x.ai/build/features/hooks
 export function buildGrokHooksManifest() {
   return {
-    hooks: buildClaudeCompatibleHooks('Edit|Write|MultiEdit', GROK_PROJECT_SCRIPTS),
+    hooks: buildClaudeCompatibleHooks('Edit|Write|MultiEdit', GROK_PROJECT_SCRIPTS, { grokWindows: true }),
   };
 }
 

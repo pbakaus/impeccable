@@ -1972,12 +1972,13 @@ fn admin_on_writes_launcher_manifests_for_every_harness() {
         ".agents/skills/impeccable",
         ".cursor/skills/impeccable",
         ".github/skills/impeccable",
+        ".grok/skills/impeccable",
     ] {
         std::fs::create_dir_all(t.0.join(skill)).unwrap();
     }
     let (out, _, code) = admin_run(&r, &["on"]);
     assert_eq!(code, 0, "{out}");
-    assert!(out.ends_with("Installed or repaired hook manifests for: .claude, .agents, .cursor, .github.\n"), "{out}");
+    assert!(out.ends_with("Installed or repaired hook manifests for: .claude, .agents, .cursor, .github, .grok.\n"), "{out}");
 
     let claude: Value = serde_json::from_str(&t.read(".claude/settings.local.json")).unwrap();
     let cmd = "\"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook";
@@ -2010,9 +2011,22 @@ fn admin_on_writes_launcher_manifests_for_every_harness() {
         json!("\"$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/impeccable\" hook")
     );
 
+    let grok: Value = serde_json::from_str(&t.read(".grok/hooks/impeccable.json")).unwrap();
+    let grok_entry = &grok["hooks"]["PostToolUse"][0]["hooks"][0];
+    let grok_windows = r#"cmd /c if exist ".grok\skills\impeccable\scripts\impeccable.cmd" ".grok\skills\impeccable\scripts\impeccable.cmd" hook"#;
+    let grok_posix = "\".grok/skills/impeccable/scripts/impeccable\" hook";
+    let grok_command = if cfg!(windows) { grok_windows } else { grok_posix };
+    assert_eq!(grok["hooks"]["PostToolUse"][0]["matcher"], json!("Edit|Write|MultiEdit"));
+    assert_eq!(grok_entry["command"], json!(grok_command));
+    assert_eq!(grok_entry["commandWindows"], json!(grok_windows));
+    let grok_stop = &grok["hooks"]["Stop"][0]["hooks"][0];
+    assert_eq!(grok_stop["command"], json!(grok_command));
+    assert_eq!(grok_stop["commandWindows"], json!(grok_windows));
+    assert_eq!(grok_stop["timeout"], json!(30));
+
     // A second `on` is a no-op against the manifests it just wrote.
     let (out, _, _) = admin_run(&r, &["on"]);
-    assert!(out.ends_with("Hook manifests already installed for: .claude, .agents, .cursor, .github.\n"), "{out}");
+    assert!(out.ends_with("Hook manifests already installed for: .claude, .agents, .cursor, .github, .grok.\n"), "{out}");
 }
 
 #[test]

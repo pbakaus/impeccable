@@ -164,8 +164,45 @@ fn github_manifests_pass_through_and_grok_is_rewritten() {
         abs["hooks"]["PostToolUse"][0]["hooks"][0]["command"],
         serde_json::Value::String(format!("[ ! -f '{p}' ] || '{p}' hook"))
     );
-    // Grok is not Codex: no commandWindows sibling is added.
-    assert!(rel["hooks"]["PostToolUse"][0]["hooks"][0].get("commandWindows").is_none());
+    // Grok keeps POSIX `command` on Unix and adds a commandWindows sibling
+    // that PowerShell, cmd.exe, and Git Bash can all parse.
+    let grok_windows = r#"cmd /c if exist ".grok\skills\impeccable\scripts\impeccable.cmd" ".grok\skills\impeccable\scripts\impeccable.cmd" hook"#;
+    assert_eq!(
+        rel["hooks"]["PostToolUse"][0]["hooks"][0]["commandWindows"],
+        grok_windows
+    );
+    let win = rewrite_hook_commands_for_platform(&grok, ".grok", "/proj", false, true);
+    // Grok does not select commandWindows (no such field in grok.exe).
+    // A Windows install therefore writes the dual-shell form into
+    // `command` as well, so Stop does not ParserError.
+    assert_eq!(win["hooks"]["PostToolUse"][0]["hooks"][0]["command"], grok_windows);
+    assert_eq!(
+        win["hooks"]["PostToolUse"][0]["hooks"][0]["commandWindows"],
+        grok_windows
+    );
+    let abs_win = rewrite_hook_commands_for_platform(&grok, ".grok", r"C:\Users\alice", true, true);
+    let abs_launcher = skill_launcher(r"C:\Users\alice", ".grok");
+    // Quote first, then flip remaining `/` to `\`. That is the order
+    // `grok_windows_hook_command` uses; converting the raw path first does
+    // not commute when skill_root already contains backslashes (Unix join
+    // keeps them and inserts `/` between segments).
+    let abs_cmd = format!("{abs_launcher}.cmd");
+    let abs_q = json_string(&abs_cmd).replace('/', "\\");
+    #[cfg(unix)]
+    assert_ne!(
+        abs_q,
+        json_string(&abs_cmd.replace('/', "\\")),
+        "slash-flip and JSON quoting must not be reordered"
+    );
+    let abs_windows = format!("cmd /c if exist {abs_q} {abs_q} hook");
+    assert_eq!(
+        abs_win["hooks"]["PostToolUse"][0]["hooks"][0]["command"],
+        abs_windows
+    );
+    assert_eq!(
+        abs_win["hooks"]["PostToolUse"][0]["hooks"][0]["commandWindows"],
+        abs_windows
+    );
 }
 
 #[test]
