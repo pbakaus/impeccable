@@ -64,7 +64,7 @@
                 "exclusiveMinimum": 0
               }
             },
-            "description": "Whole pixels in the original comp. Must fit within its dimensions; inspect the crop."
+            "description": "Whole pixels in the original comp. Must fit within its dimensions; inspect the crop. Non-container code bounds mask their full overlap with artwork. Bound separate text elements separately, not their combined layout extent."
           },
           "box": {
             "type": "object",

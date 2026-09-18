@@ -217,7 +217,8 @@ fn inspect(comp: &Image, input: &Value, comp_path: &str) -> Value {
             if let Some(message) = reference.issue(&id) {
                 issue(&mut issues, "error", "fully-masked", Some(&id), message);
             } else if reference.excluded_pixels > 0 {
-                issue(&mut issues,"info","foreground-mask",Some(&id),format!("Foreground regions exclude {:.1}% of this reference. Inspect the crop and mask together.",100.*reference.excluded_pixels as f64/reference.total_pixels as f64));
+                let sources = reference.excluded_regions.iter().filter_map(|r| r["id"].as_str()).collect::<Vec<_>>().join(", ");
+                issue(&mut issues,"warning","foreground-mask",Some(&id),format!("{sources} exclude {:.1}% of this reference. Check that the excluded pixels contain foreground, not artwork between separate text elements. Split overly broad foreground bounds; review grouping must not change geometry.",100.*reference.excluded_pixels as f64/reference.total_pixels as f64));
             }
             region["reference"] = reference.audit();
         }
@@ -395,7 +396,8 @@ pub fn run(argv: &[String], io: &mut Io, comp: &Image, comp_path: &str) -> i32 {
             if flag(argv, "json") {
                 io.out(&format!("{report}\n"));
             } else {
-                io.out(&format!("MAP {}/index.html\nOVERLAY {}/overlay.png\n{} regions, {errors} errors. Reference only; no build state or approvals changed.\n",report["outputDir"].as_str().unwrap(),report["outputDir"].as_str().unwrap(),report["inputRegionCount"]));
+                let partial_masks = report["issues"].as_array().unwrap().iter().filter(|i| i["code"] == "foreground-mask").count();
+                io.out(&format!("MAP {}/index.html\nOVERLAY {}/overlay.png\n{} regions, {errors} errors, {partial_masks} partial masks to inspect. Zero errors does not certify crop accuracy. Reference only; no build state or approvals changed.\n",report["outputDir"].as_str().unwrap(),report["outputDir"].as_str().unwrap(),report["inputRegionCount"]));
                 for i in report["issues"].as_array().unwrap() {
                     io.out(&format!(
                         "{} {}: {}\n",
@@ -418,6 +420,41 @@ pub fn run(argv: &[String], io: &mut Io, comp: &Image, comp_path: &str) -> i32 {
 mod tests {
     use super::*;
     use impeccable_comp::raster::create_image;
+
+    #[test]
+    fn partial_masks_need_attention_even_without_geometry_errors() {
+        let image = create_image(100, 100, [240, 240, 240, 255]);
+        let input = json!({"regions":[
+            {"id":"art", "kind":"image", "note":"Decorative artwork", "pixelBox":{"x":50,"y":50,"w":20,"h":20}},
+            {"id":"details", "kind":"text", "note":"Separate text elements", "pixelBox":{"x":30,"y":30,"w":30,"h":30}}
+        ]});
+        let report = inspect(&image, &input, "comp.png");
+        let findings = report["issues"].as_array().unwrap();
+        assert!(!findings.iter().any(|i| i["severity"] == "error"));
+        let mask = findings.iter().find(|i| i["code"] == "foreground-mask").unwrap();
+        assert_eq!(mask["severity"], "warning");
+        assert!(mask["message"].as_str().unwrap().contains("details"));
+        assert_eq!(report["regions"][0]["reference"]["excludedPixels"], 100);
+    }
+
+    #[test]
+    fn granular_text_bounds_preserve_art_in_gaps_without_dropping_foreground() {
+        let image = create_image(100, 100, [240, 240, 240, 255]);
+        let input = json!({"regions":[
+            {"id":"art", "kind":"image", "note":"Decorative artwork", "pixelBox":{"x":50,"y":50,"w":20,"h":20}},
+            {"id":"details", "kind":"chrome", "container":true, "note":"Text layout extent", "pixelBox":{"x":30,"y":30,"w":30,"h":30}},
+            {"id":"title", "kind":"text", "parentId":"details", "reviewGroup":"titles", "note":"First title text", "pixelBox":{"x":30,"y":30,"w":30,"h":8}},
+            {"id":"title-2", "kind":"text", "reviewGroup":"titles", "note":"Second title text", "pixelBox":{"x":5,"y":30,"w":30,"h":8}},
+            {"id":"caption", "kind":"text", "parentId":"details", "note":"Caption overlapping art", "pixelBox":{"x":30,"y":50,"w":22,"h":5}}
+        ]});
+        let report = inspect(&image, &input, "comp.png");
+        let reference = &report["regions"][0]["reference"];
+        assert_eq!(reference["excludedPixels"], 10, "only the actual caption overlap is masked");
+        assert_eq!(reference["regions"][0]["id"], "caption");
+        assert_eq!(reference["ignoredContainers"], json!(["details"]));
+        assert_eq!(report["reviewGroups"]["titles"], json!(["title", "title-2"]));
+        assert_eq!(report["regions"].as_array().unwrap().len(), 5);
+    }
 
     #[test]
     fn mixed_review_groups_are_reported_without_discarding_geometry() {
