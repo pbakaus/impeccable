@@ -754,3 +754,51 @@ fn stripped_blurred_shifted_comp_pixels_cannot_pass_with_a_generation_prompt() {
     let texture_gate = gate_plates(&ws.io());
     assert!(!texture_gate.reasons.iter().any(|r|r.contains("is the comp crop")),"{:?}",texture_gate.reasons);
 }
+
+#[test]
+fn rejected_region_revision_cannot_advance_using_an_older_spec() {
+    let ws = Workspace::new();
+    let image = r::create_image(64,64,[80,100,120,255]);
+    ws.write("comp.png", &png_io::encode_png(&image, &[]).unwrap());
+    let input = json!({"regions":[{"id":"photo","kind":"image","bleed":true,
+        "pixelBox":{"x":0,"y":0,"w":64,"h":64},"note":"Full frame photograph"}]});
+    ws.write("regions.json",input.to_string().as_bytes());
+    let mut io=ws.io();
+    let args=["--comp","comp.png","--regions","regions.json"].map(String::from);
+    assert_eq!(crate::comp_spec::run(&args,&mut io),0);
+    let state=json!({"comp":"comp.png"});
+    assert!(gate_spec(&io,&state).ok);
+    let measured=std::fs::read(ws.path.join(SPEC_PATH)).unwrap();
+    ws.write("regions.json",b"{bad json");
+    assert_eq!(crate::comp_spec::run(&args,&mut io),1);
+    assert_eq!(std::fs::read(ws.path.join(SPEC_PATH)).unwrap(),measured);
+    let gate=gate_spec(&io,&state);
+    assert!(!gate.ok,"a rejected edit must not silently reuse the last measured map");
+    assert!(gate.reasons.join(" ").contains("regions.json"));
+    assert!(gate_plates(&io).reasons.join(" ").contains("regions.json"));
+    ws.write("regions.json",input.to_string().as_bytes());
+    assert!(gate_spec(&io,&state).ok);
+    std::fs::remove_file(ws.path.join("regions.json")).unwrap();
+    assert!(!gate_spec(&io,&state).ok);
+}
+
+#[test]
+fn automatic_bands_are_a_draft_not_a_build_spec() {
+    let ws=Workspace::new();
+    let mut image=r::create_image(128,128,[255,255,255,255]);
+    for y in (5..100).step_by(6) { r::fill_rect(&mut image,10.,y as f64,100.,3.,[0.,0.,0.,255.]); }
+    ws.write("comp.png",&png_io::encode_png(&image,&[]).unwrap());
+    let mut io=ws.io();
+    let args=["--comp","comp.png","--auto"].map(String::from);
+    assert_eq!(crate::comp_spec::run(&args,&mut io),0,"auto must produce a usable draft even on a busy comp");
+    let draft=ws.path.join(".impeccable/build/regions.draft.json");
+    assert!(draft.exists());
+    assert_eq!(crate::comp_spec::run(&["--comp","comp.png","--regions",".impeccable/build/regions.draft.json"].map(String::from),&mut io),1);
+    assert!(!ws.path.join(SPEC_PATH).exists());
+    assert!(!gate_spec(&io,&json!({"comp":"comp.png"})).ok);
+    ws.write(SPEC_PATH,&std::fs::read(&draft).unwrap());
+    assert!(!gate_spec(&io,&json!({"comp":"comp.png"})).ok,"copying a draft to the spec path cannot validate it");
+    ws.write(SPEC_PATH,b"previous accepted spec");
+    assert_eq!(crate::comp_spec::run(&args,&mut io),1,"do not overwrite an edited draft");
+    assert_eq!(std::fs::read(ws.path.join(SPEC_PATH)).unwrap(),b"previous accepted spec");
+}

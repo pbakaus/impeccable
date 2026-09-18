@@ -336,6 +336,8 @@ fn gate_spec(io: &Io, state: &Value) -> Gate {
             "no spec at {SPEC_PATH}: run comp-spec.mjs --comp {comp} --grid, name the regions, then --regions regions.json"
         )]);
     };
+    if spec["draft"] == true { return Gate::fail(vec!["automatic region draft is not a measured element map; refine it with comp-spec --regions".into()]); }
+    if let Some(issue) = crate::comp_spec::region_source_issue(io,&spec) { return Gate::fail(vec![issue]); }
     let regions = spec_regions(&spec);
     if regions.is_empty() {
         return Gate::fail(vec!["spec has no regions".into()]);
@@ -496,6 +498,7 @@ fn gate_plates(io: &Io) -> Gate {
 
 fn gate_plates_for(io: &Io, spec: &Value, only_id: Option<&str>) -> Gate {
     let s = self_cmd(io);
+    if let Some(issue) = crate::comp_spec::region_source_issue(io,spec) { return Gate::fail(vec![issue]); }
     let regions = spec_regions(&spec);
     let raster_regions: Vec<Value> = regions.iter().filter(|r| r.get("medium").and_then(Value::as_str) == Some("raster")
         && only_id.is_none_or(|id| r["id"] == id)).cloned().collect();

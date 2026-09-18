@@ -893,11 +893,24 @@ fn resolve(io: &Io, p: &str) -> PathBuf {
 // ---- CLI -------------------------------------------------------------------
 
 /// `impeccable comp-spec ...`
+/// A failed edit leaves the last valid measurements intact, but they cannot
+/// authorize a build against different source geometry.
+pub fn region_source_issue(io: &Io, spec: &Value) -> Option<String> {
+    let source = spec.get("regionsSource")?;
+    let Some(path) = source["path"].as_str() else {
+        return Some("spec has invalid region source evidence; re-run comp-spec --regions".into());
+    };
+    let current = std::fs::read(resolve(io,path)).ok()
+        .map(|bytes| format!("{:x}",Sha256::digest(&bytes)));
+    if current.as_deref().is_some_and(|hash| Some(hash) == source["sha256"].as_str()) { return None; }
+    Some(format!("region source {path} changed or is missing since measurement; fix it and re-run comp-spec --regions {path} before continuing"))
+}
+
 pub fn run(argv: &[String], io: &mut Io) -> i32 {
     let spec_path = arg_or(argv, "spec", SPEC_PATH).to_string();
     if flag(argv, "help") || argv.is_empty() {
         io.out("REGION COORDINATES: use one of grid (coarse inclusive cells), box {x,y,w,h} (fractions of the comp, 0..1), or pixelBox {x,y,w,h} (whole pixels in the original comp). Use exact bounds when an element ends inside a grid cell; do not include neighbouring content.\n");
-        io.out("usage: comp-spec.mjs --comp <png> --grid            write .impeccable/build/comp-grid.png (10x10 labeled grid) + palette + bands\n       comp-spec.mjs --comp <png> --regions <json>  measure regions -> .impeccable/build/spec.json\n         regions json: { \"regions\": [ { \"id\": \"art\", \"kind\": \"plate|image|texture|text|control|chrome\", \"grid\": \"E0:J4\", \"note\": \"...\" } ] }\n       comp-spec.mjs --comp <png> --auto            band regions when you have no regions file\n       comp-spec.mjs --print                        the compact spec\n       comp-spec.mjs --crop <id> [--out f] [--scale n]   reference crop of a region (never a shipping asset)\n       comp-spec.mjs --plate-prompt <id> [--background transparent|opaque|auto]  the regeneration prompt for a raster region\n");
+        io.out("usage: comp-spec.mjs --comp <png> --grid            write .impeccable/build/comp-grid.png (10x10 labeled grid) + palette + bands\n       comp-spec.mjs --comp <png> --regions <json>  measure regions -> .impeccable/build/spec.json\n         regions json: { \"regions\": [ { \"id\": \"art\", \"kind\": \"plate|image|texture|text|control|chrome\", \"grid\": \"E0:J4\", \"note\": \"...\" } ] }\n       comp-spec.mjs --comp <png> --auto [--out f]  write a band draft; refine into elements before --regions\n       comp-spec.mjs --print                        the compact spec\n       comp-spec.mjs --crop <id> [--out f] [--scale n]   reference crop of a region (never a shipping asset)\n       comp-spec.mjs --plate-prompt <id> [--background transparent|opaque|auto]  the regeneration prompt for a raster region\n");
         return 0;
     }
     if flag(argv, "print") {
@@ -1037,10 +1050,39 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
         return 0;
     }
 
+    if flag(argv,"auto") && arg(argv,"regions").is_none() {
+        if flag(argv,"spec") {
+            io.err("comp-spec: --auto writes a draft, not a measured spec; use --out <draft.json> instead of --spec\n");
+            return 1;
+        }
+        let draft_path = arg_or(argv,"out",".impeccable/build/regions.draft.json");
+        let dest = resolve(io,draft_path);
+        if dest == resolve(io,SPEC_PATH) {
+            io.err("comp-spec: an automatic draft cannot replace the measured spec\n");
+            return 1;
+        }
+        let mut draft = auto_regions(&comp);
+        draft["draft"] = json!(true);
+        draft["comp"] = json!(comp_path);
+        if let Some(parent) = dest.parent() { let _ = std::fs::create_dir_all(parent); }
+        use std::io::Write;
+        let written = std::fs::OpenOptions::new().write(true).create_new(true).open(&dest)
+            .and_then(|mut file| file.write_all(util::json_pretty(&draft).as_bytes()));
+        if let Err(error) = written {
+            io.err(&format!("comp-spec: cannot write draft {draft_path}: {error}; use a new --out path to preserve existing work\n"));
+            return 1;
+        }
+        io.out(&format!("DRAFT {draft_path}: {} approximate horizontal bands, not an element map.\nRefine the bands into the visible elements, remove the draft flag, then run comp-spec --comp {comp_path} --regions {draft_path}. The measured spec and build state are unchanged.\n",draft["regions"].as_array().map_or(0,Vec::len)));
+        return 0;
+    }
+    let regions_source;
     let regions_input: Value = if let Some(rf) = arg(argv, "regions") {
         match std::fs::read_to_string(resolve(io, rf)) {
             Ok(raw) => match serde_json::from_str(&raw) {
-                Ok(v) => v,
+                Ok(v) => {
+                    regions_source = json!({"path":rf,"sha256":format!("{:x}",Sha256::digest(raw.as_bytes()))});
+                    v
+                },
                 Err(e) => {
                     io.err(&format!("comp-spec: cannot read regions {rf}: {e}\n"));
                     return 1;
@@ -1051,12 +1093,14 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
                 return 1;
             }
         }
-    } else if flag(argv, "auto") {
-        auto_regions(&comp)
     } else {
         io.err("comp-spec: pass --grid to get the coordinate grid, then --regions <json> (or --auto for band regions)\n");
         return 1;
     };
+    if regions_input["draft"] == true {
+        io.err("comp-spec: this is an automatic draft, not a measured element map; refine its bands into the visible elements before removing the draft flag\n");
+        return 1;
+    }
     let mut spec = match measure_regions(&comp, &regions_input, comp_path) {
         Ok(s) => s,
         Err(e) => {
@@ -1072,6 +1116,7 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
     hasher.update(comp.height.to_le_bytes());
     hasher.update(&comp.data);
     spec["compSha256"] = json!(format!("{:x}", hasher.finalize()));
+    spec["regionsSource"] = regions_source;
     if let Some(previous) = std::fs::read(&spec_out).ok()
         .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok()) {
         preserve_typography(&mut spec, &previous);

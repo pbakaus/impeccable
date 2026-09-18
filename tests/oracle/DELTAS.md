@@ -191,3 +191,13 @@ files, measurements, exit codes and frozen function vectors were not replaced.
 The plate gate applies reference UI exclusions symmetrically after alignment;
 regressions separately verify hidden-pixel invariance, visible missing-art
 rejection, raw comp-copy rejection and unchanged candidate-check state.
+
+## Recorded 2026-09-18: draft region authoring and source binding
+
+`comp-spec-usage` now describes --auto as a draft writer. In
+`comp-spec-regions`, the only file-content addition is regionsSource with the
+input path and fixture-derived SHA-256; all existing fields and measurements
+were compared unchanged. No frozen function vectors changed. New Rust
+regressions verify automatic drafts do not overwrite specs or existing drafts,
+cannot be submitted unchanged, and a rejected/missing region-source revision
+cannot advance the build using the last successful measurements.
