@@ -58,6 +58,28 @@ fn cmd_launcher_asset_naming_matches_engine() {
 }
 
 #[test]
+fn cmd_launcher_forwards_engine_exit_code() {
+    // Bare `exit /b` drops the process exit code when this file is cmd.exe's
+    // entry point (cmd /c, PowerShell, Node spawn). Forward %errorlevel%
+    // after each engine invocation instead.
+    let cmd = launcher_file("impeccable.cmd");
+    for (i, line) in cmd.lines().enumerate() {
+        assert_ne!(
+            line.trim(),
+            "exit /b",
+            "impeccable.cmd line {}: bare exit /b drops the process code: {line}",
+            i + 1
+        );
+    }
+    let forward = "exit /b %errorlevel%";
+    assert_eq!(
+        cmd.matches(forward).count(),
+        2,
+        "PATH candidate and :run must both forward the engine exit code"
+    );
+}
+
+#[test]
 fn cmd_launcher_has_no_multiline_parenthesized_blocks() {
     // cmd.exe expands %var% inside a parenthesized block at parse time, so a
     // `set` + read-back inside one block silently reads the pre-block value

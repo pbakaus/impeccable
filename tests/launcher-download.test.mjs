@@ -174,6 +174,34 @@ test('launcher downloads and runs a verified executable', async t => {
   assert.equal(result.requests.length, 2);
 });
 
+test('cmd launcher forwards engine exit code through cmd /c', { skip: WINDOWS ? false : 'Windows-only cmd /c exit-code forwarding' }, async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-launcher-exit-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const home = path.join(root, 'home');
+  fs.mkdirSync(home);
+  const launcher = path.join(root, 'impeccable.cmd');
+  fs.copyFileSync(path.join(ROOT, 'skill/scripts/impeccable.cmd'), launcher);
+  const env = {
+    PATH: `${process.env.SystemRoot}\\System32;${process.env.SystemRoot}`,
+    HOME: home, USERPROFILE: home, TEMP: root, TMP: root,
+    IMPECCABLE_HOME: path.join(root, 'cache'),
+    IMPECCABLE_BIN: COMSPEC,
+    SystemRoot: process.env.SystemRoot,
+    ComSpec: COMSPEC,
+    PROCESSOR_ARCHITECTURE: 'AMD64',
+  };
+  const run = (args) => new Promise((resolve, reject) => {
+    const child = spawn(COMSPEC, ['/d', '/s', '/c', `""${launcher}" ${args}"`], { env, cwd: root, windowsVerbatimArguments: true, timeout: 20000 });
+    child.on('error', reject);
+    child.on('close', (status, signal) => resolve({ status, signal }));
+  });
+  for (const [args, expected] of [['/c exit 2', 2], ['/c exit 1', 1], ['/c exit 0', 0]]) {
+    const result = await run(args);
+    assert.equal(result.signal, null, JSON.stringify(result));
+    assert.equal(result.status, expected, args);
+  }
+});
+
 for (const scenario of ['removed', 'emptied', 'empty-download', 'no-sidecar', 'empty-sidecar', 'mismatch', 'hash-failure', 'removed-during-hash', 'removed-before-move', 'removed-after-move', 'emptied-after-move', 'move-failure']) {
   test(`launcher refuses ${scenario} with an accurate diagnostic`, async t => {
     const result = await exercise(t, scenario);
