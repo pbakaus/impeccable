@@ -18,6 +18,7 @@ pub mod build_phase;
 pub mod completion;
 pub mod comp_diff;
 pub mod comp_spec;
+mod map_inspection;
 pub mod font_match;
 mod util;
 

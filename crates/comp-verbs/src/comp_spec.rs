@@ -25,10 +25,10 @@ const COLS: &[u8] = b"ABCDEFGHIJ";
 pub const MAX_CODE_REGION_AREA: f64 = 0.25;
 pub const EDGE_CONTACT_MIN: f64 = 0.35;
 
-fn is_raster_kind(k: &str) -> bool {
+pub(crate) fn is_raster_kind(k: &str) -> bool {
     matches!(k, "plate" | "image" | "texture")
 }
-fn is_kind(k: &str) -> bool {
+pub(crate) fn is_kind(k: &str) -> bool {
     matches!(k, "plate" | "image" | "texture" | "text" | "control" | "chrome" | "band")
 }
 
@@ -910,7 +910,7 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
     let spec_path = arg_or(argv, "spec", SPEC_PATH).to_string();
     if flag(argv, "help") || argv.is_empty() {
         io.out("REGION COORDINATES: use one of grid (coarse inclusive cells), box {x,y,w,h} (fractions of the comp, 0..1), or pixelBox {x,y,w,h} (whole pixels in the original comp). Use exact bounds when an element ends inside a grid cell; do not include neighbouring content.\n");
-        io.out("usage: comp-spec.mjs --comp <png> --grid            write .impeccable/build/comp-grid.png (10x10 labeled grid) + palette + bands\n       comp-spec.mjs --comp <png> --regions <json>  measure regions -> .impeccable/build/spec.json\n         regions json: { \"regions\": [ { \"id\": \"art\", \"kind\": \"plate|image|texture|text|control|chrome\", \"grid\": \"E0:J4\", \"note\": \"...\" } ] }\n       comp-spec.mjs --comp <png> --auto [--out f]  write a band draft; refine into elements before --regions\n       comp-spec.mjs --print                        the compact spec\n       comp-spec.mjs --crop <id> [--out f] [--scale n]   reference crop of a region (never a shipping asset)\n       comp-spec.mjs --plate-prompt <id> [--background transparent|opaque|auto]  the regeneration prompt for a raster region\n");
+        io.out("usage: comp-spec.mjs --comp <png> --grid            write .impeccable/build/comp-grid.png (10x10 labeled grid) + palette + bands\n       comp-spec.mjs --comp <png> --regions <json>  measure regions -> .impeccable/build/spec.json\n         regions json: { \"regions\": [ { \"id\": \"art\", \"kind\": \"plate|image|texture|text|control|chrome\", \"grid\": \"E0:J4\", \"note\": \"...\" } ] }\n       comp-spec.mjs --comp <png> --auto [--out f]  write a band draft; refine into elements before --regions\n       comp-spec.mjs --comp <png> --regions <json> --inspect-map [--out-dir dir] [--json]  inspect all crops and masks without writing a spec\n       comp-spec.mjs --print                        the compact spec\n       comp-spec.mjs --crop <id> [--out f] [--scale n]   reference crop of a region (never a shipping asset)\n       comp-spec.mjs --plate-prompt <id> [--background transparent|opaque|auto]  the regeneration prompt for a raster region\n");
         return 0;
     }
     if flag(argv, "print") {
@@ -1011,6 +1011,10 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
             return 1;
         }
     };
+
+    if flag(argv, "inspect-map") {
+        return crate::map_inspection::run(argv, io, &comp, comp_path);
+    }
 
     if flag(argv, "grid") {
         let grid_out = resolve(io, GRID_PATH);

@@ -201,3 +201,12 @@ were compared unchanged. No frozen function vectors changed. New Rust
 regressions verify automatic drafts do not overwrite specs or existing drafts,
 cannot be submitted unchanged, and a rejected/missing region-source revision
 cannot advance the build using the last successful measurements.
+
+## Recorded 2026-09-18: read-only map inspection
+
+`comp-spec-usage` adds one help line for --inspect-map, --out-dir and --json.
+Only that stdout line was edited; existing measurements and frozen function
+vectors remain unchanged. Rust regressions cover consolidated invalid-input
+findings, fully masked references, container and child masks, preservation of
+review group members, reference PNG provenance, HTML escaping, and refusal to
+overwrite an existing report. Inspection does not change specs or build state.
