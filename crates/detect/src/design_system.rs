@@ -25,6 +25,7 @@ use crate::jsp;
 use crate::util::{exists, js_string, re, read_json, read_text, ANY, WS};
 
 const DESIGN_NAMES: &[&str] = &["DESIGN.md", "Design.md", "design.md"];
+
 const FALLBACK_DIRS: &[&str] = &[".agents/context", "docs"];
 const PROJECT_ROOT_MARKERS: &[&str] = &[".git", "package.json", ".impeccable"];
 const COLOR_CHANNEL_TOLERANCE: f64 = 6.0;
@@ -37,6 +38,11 @@ pub const STATIC_DESIGN_SKIP_TAGS: &[&str] = &[
     "head", "title", "meta", "link", "style", "script", "noscript", "template", "source",
 ];
 
+re!(DESIGN_BACKTICKED, "`([^`\n]{1,80})`".to_string());
+re!(
+    DESIGN_CLASS_SELECTOR,
+    "^\\.[A-Za-z_][A-Za-z0-9_-]*$".to_string()
+);
 re!(
     FONT_SIZE_LITERAL_RE,
     format!("^-?[{D}.]+(?:px|rem)$", D = "0-9")
@@ -164,6 +170,33 @@ re!(LEADING_WS_RE, format!("^{WS}*"));
 
 /// JS: design-system.mjs#parseFrontmatter. `None` when there is no
 /// `---` block; otherwise the parsed object (possibly empty).
+/// Class selectors the design document names as its own, in the order it
+/// names them.
+///
+/// A design document writes a component in backticks — "`No ALL CAPS outside
+/// the `.eyebrow` class`" — and that is the repository declaring a pattern by
+/// name. A rule that fires on one of those is reviewing the design system
+/// rather than the change, so the browser rules read this list and stand
+/// down (REN-406). Only a plain class selector counts: a backticked file
+/// name, property or hex is not a component.
+pub fn declared_component_selectors(design_md: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for cap in DESIGN_BACKTICKED.captures_iter(design_md) {
+        let token = js::trim(cap.get(1).map(|m| m.as_str()).unwrap_or(""));
+        if !DESIGN_CLASS_SELECTOR.is_match(token) {
+            continue;
+        }
+        let token = token.to_string();
+        if !out.contains(&token) {
+            out.push(token);
+        }
+        if out.len() >= 64 {
+            break;
+        }
+    }
+    out
+}
+
 pub fn parse_frontmatter(md: &str) -> Option<Map<String, Value>> {
     let lines: Vec<&str> = CRLF_RE.split(md).collect();
     if js::trim(lines.first().copied().unwrap_or("")) != "---" {
@@ -534,6 +567,10 @@ pub struct AllowedFontSize {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct DesignSystem {
     pub present: bool,
+    /// Class selectors the document names as its own (REN-406). Filled where
+    /// the markdown itself is at hand; the allowlists come from frontmatter
+    /// and sidecar, this comes from the prose.
+    pub declared_selectors: Vec<String>,
     pub source_path: Option<String>,
     pub sidecar_path: Option<String>,
     pub md_newer_than_json: bool,
@@ -877,13 +914,15 @@ pub fn load_design_system_for_cwd(cwd: &str) -> Option<DesignSystem> {
     let sidecar = sidecar_path.as_deref().and_then(read_json);
     let sidecar_stat = sidecar_path.as_deref().and_then(mtime_ms);
     let md_newer = matches!((md_stat, sidecar_stat), (Some(m), Some(s)) if m > s + 1000.0);
-    Some(normalize_design_system(
+    let mut ds = normalize_design_system(
         Some(&frontmatter),
         sidecar.as_ref(),
         Some(&md.path),
         sidecar_path.as_deref(),
         md_newer,
-    ))
+    );
+    ds.declared_selectors = declared_component_selectors(&text);
+    Some(ds)
 }
 
 /// JS `designSystemStartDir(targetPath, cwd)`.
@@ -1933,6 +1972,23 @@ fn finding_ignore_or_value_only(item: &Finding) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// REN-406: the halfday design document's one rule about caps.
+    #[test]
+    fn declared_component_selectors_reads_the_document() {
+        let md = "# Halfday design system\n\n- Plain British English, sentence case everywhere.\n  No Title Case, no ALL CAPS outside the `.eyebrow` class.\n- `styles/tokens.css` is the only file with a raw colour, `--ink-900` or `#0f172a`.\n- **Button.** Four kinds and no more: `.btn-primary`, `.btn-secondary`,\n  `.btn-ghost`, `.btn-danger`. And `.btn-primary` again.\n";
+        assert_eq!(
+            declared_component_selectors(md),
+            vec![
+                ".eyebrow",
+                ".btn-primary",
+                ".btn-secondary",
+                ".btn-ghost",
+                ".btn-danger"
+            ]
+        );
+        assert!(declared_component_selectors("nothing to declare").is_empty());
+    }
 
     // ── #570 monorepo DESIGN.md inheritance ─────────────────────────────────
     // Mirrors tests/detect-cli-design-monorepo.test.mjs (public repo main,
