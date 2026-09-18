@@ -46,6 +46,24 @@ function __rectArray(r) {
   return [r.x, r.y, r.width, r.height, r.top, r.right, r.bottom, r.left];
 }
 
+// The client rects of an element's non-blank direct text nodes, one per line
+// box, in document order. Both text-rect probes read the page through this:
+// the union one merges them, the line one hands them over as they are.
+function __textLineRects(el) {
+  const node = __el(el);
+  const rects = [];
+  for (const child of node.childNodes) {
+    if (child.nodeType !== 3 || !(child.textContent || '').trim()) continue;
+    const range = document.createRange();
+    range.selectNodeContents(child);
+    for (const rect of range.getClientRects()) {
+      if (rect.width >= 1 && rect.height >= 1) rects.push(rect);
+    }
+    range.detach?.();
+  }
+  return rects;
+}
+
 const __impeccableDom = {
   document_element() { return __intern(document.documentElement); },
   body() { return __intern(document.body); },
@@ -181,22 +199,21 @@ const __impeccableDom = {
   // getDirectTextRect(el) from the JS driver: union of the client rects of
   // the element's non-blank direct text nodes.
   direct_text_rect(el) {
-    const node = __el(el);
-    const rects = [];
-    for (const child of node.childNodes) {
-      if (child.nodeType !== 3 || !(child.textContent || '').trim()) continue;
-      const range = document.createRange();
-      range.selectNodeContents(child);
-      for (const rect of range.getClientRects()) {
-        if (rect.width >= 1 && rect.height >= 1) rects.push(rect);
-      }
-      range.detach?.();
-    }
+    const rects = __textLineRects(el);
     if (rects.length === 0) return [];
     const left = Math.min(...rects.map(r => r.left));
     const top = Math.min(...rects.map(r => r.top));
     const right = Math.max(...rects.map(r => r.right));
     const bottom = Math.max(...rects.map(r => r.bottom));
     return [left, top, right - left, bottom - top, top, right, bottom, left];
+  },
+  // The same rects, unmerged: getClientRects() returns one per line box, so
+  // this is the element's text line by line, flattened into eights.
+  direct_text_line_rects(el) {
+    const out = [];
+    for (const r of __textLineRects(el)) {
+      out.push(r.left, r.top, r.width, r.height, r.top, r.right, r.bottom, r.left);
+    }
+    return out;
   },
 };

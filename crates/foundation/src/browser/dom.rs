@@ -168,6 +168,17 @@ pub trait Dom {
     /// of every non-blank direct text node (rects narrower/shorter than 1px
     /// dropped); `None` when there is none.
     fn direct_text_rect(&self, el: ElId) -> Option<Rect>;
+    /// The same client rects, unmerged: one per line the text actually
+    /// rendered on (`Range.getClientRects()` returns a rect per line box),
+    /// in document order.
+    ///
+    /// This is how a rule reads a line rather than the box that holds it. The
+    /// default answers the union as a single rect, which is what a probe that
+    /// cannot split a wrapped run has; a caller that needs the count divides
+    /// the rect by the line box rather than assuming one line.
+    fn direct_text_line_rects(&self, el: ElId) -> Vec<Rect> {
+        self.direct_text_rect(el).into_iter().collect()
+    }
 }
 
 // ── shared helpers over the trait ─────────────────────────────────────────

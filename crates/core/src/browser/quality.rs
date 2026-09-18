@@ -92,7 +92,41 @@ pub fn has_meaningful_direct_text(dom: &dyn Dom, el: ElId) -> bool {
     has_direct_text_longer_than(dom, el, 4)
 }
 
+/// The width of every line the element's own text rendered on.
+///
+/// `Range.getClientRects()` gives one rect per line box, so the browser probe
+/// hands the lines over as they are. A probe that can only merge them (a
+/// captured snapshot) hands over the union, and the union is divided by the
+/// line box to get its line count back — either way the caller reads lines
+/// and never a box.
+fn rendered_line_widths(dom: &dyn Dom, el: ElId, line_box: f64) -> Vec<f64> {
+    let mut widths: Vec<f64> = Vec::new();
+    for r in dom.direct_text_line_rects(el) {
+        if r.width <= 0.0 || r.height <= 0.0 {
+            continue;
+        }
+        // Capped: a line box a stylesheet has shrunk to a fraction of the
+        // glyphs would otherwise turn one paragraph into thousands of lines,
+        // and no measure is read off a number that large anyway.
+        let lines = if line_box > 0.0 {
+            js::math_min(500.0, js::math_max(1.0, math_round(r.height / line_box)))
+        } else {
+            1.0
+        };
+        for _ in 0..(lines as usize) {
+            widths.push(r.width);
+        }
+    }
+    widths
+}
+
 /// JS: checks.mjs#textDescendantsFlushSides(el, rect) → [top, right, bottom, left]
+///
+/// The side is flush when the *text* lands on it, not when a text-bearing box
+/// does. A `<td>` fills its table edge to edge and insets its own text by the
+/// cell padding; reading the cell's border box called that flush and charged a
+/// framed table for having no inset, when the reader sees the padding the
+/// cells declare (REN-403).
 pub fn text_descendants_flush_sides(dom: &dyn Dom, el: ElId, rect: &Rect) -> [bool; 4] {
     let mut flush = [false; 4];
     const TEXT_EDGE_THRESHOLD: f64 = 4.0;
@@ -102,7 +136,7 @@ pub fn text_descendants_flush_sides(dom: &dyn Dom, el: ElId, rect: &Rect) -> [bo
         if !TEXT_EDGE_TAGS.contains(&tag_name.as_str()) || !has_meaningful_direct_text(dom, node) {
             continue;
         }
-        let nr = dom.rect(node);
+        let nr = dom.direct_text_rect(node).unwrap_or_else(|| dom.rect(node));
         if nr.width <= 0.0 || nr.height <= 0.0 {
             continue;
         }
@@ -245,21 +279,48 @@ pub fn check_quality(dom: &dyn Dom, q: &QualityInput) -> Vec<RuleHit> {
     }
 
     // --- Line length too long ---
+    //
+    // The measure is the line that rendered, not the box that could have held
+    // it. `rect.width / (fontSize * 0.5)` is the box's capacity: a paragraph
+    // sitting in a 1022px column whose text stops at 571px was charged with
+    // 142 characters a line it never rendered (REN-402). What the reader sees
+    // is `direct_text_line_rects`, one rect per line box, and the characters
+    // divide between the lines in proportion to the ink each carries — one
+    // element's text is one font at one size, so the average advance is the
+    // same on every line of it.
+    //
+    // Charged when at least two rendered lines run past the maximum. The harm
+    // this rule names is the eye losing its place tracking back to the start
+    // of the next line, so it takes a column of long lines to do the damage;
+    // one long line and a short tail is a sentence that wrapped once.
     if has_direct_text
         && QUALITY_TEXT_TAGS.contains(&tag)
         && rect.width > 0.0
         && (text_len as f64) > line_max
     {
-        let chars_per_line = rect.width / (font_size * 0.5);
-        if chars_per_line > line_max + 5.0 {
-            findings.push(RuleHit::new(
-                "line-length",
-                format!(
-                    "~{} chars/line (aim for <{})",
-                    number_to_string(math_round(chars_per_line)),
-                    number_to_string(line_max)
-                ),
-            ));
+        let line_box = match q.line_height_px {
+            Some(px) if px > 0.0 => px,
+            _ => font_size * 1.2,
+        };
+        let widths = rendered_line_widths(dom, el, line_box);
+        let total: f64 = widths.iter().sum();
+        if total > 0.0 {
+            let over = line_max + 5.0;
+            let chars = |w: f64| (text_len as f64) * w / total;
+            let long = widths.iter().filter(|w| chars(**w) > over).count();
+            if long >= 2 {
+                let longest = widths.iter().copied().fold(0.0, js::math_max);
+                findings.push(RuleHit::new(
+                    "line-length",
+                    format!(
+                        "~{} chars on {} of {} rendered lines (aim for <{})",
+                        number_to_string(math_round(chars(longest))),
+                        number_to_string(long as f64),
+                        number_to_string(widths.len() as f64),
+                        number_to_string(line_max)
+                    ),
+                ));
+            }
         }
     }
 
@@ -274,31 +335,43 @@ pub fn check_quality(dom: &dyn Dom, q: &QualityInput) -> Vec<RuleHit> {
         ];
         let border_count = borders.iter().filter(|w| **w > 0.0).count();
         let has_bg = has_visible_background_boundary(dom, el);
-        if border_count >= 2 || has_bg {
+        // The space the reader sees, not the space the stylesheet declares:
+        // the inset between the rendered text and the inside of the border
+        // box. A 44px control with `padding: 0 16px` whose label a flex box
+        // centres has 12px of air above the label and was charged with "0px
+        // vertical padding" (REN-403). Nothing to measure the text with is
+        // nothing to charge on, and the text is measured only for the
+        // elements that got this far: the probe builds a Range per call, and
+        // a page has a great many boxes that are not bounded at all.
+        if let Some(text_rect) = (border_count >= 2 || has_bg)
+            .then(|| dom.direct_text_rect(el))
+            .flatten()
+        {
             let mut v_pads: Vec<f64> = Vec::new();
             let mut h_pads: Vec<f64> = Vec::new();
             if has_bg || borders[0] > 0.0 {
-                v_pads.push(spx("paddingTop"));
+                v_pads.push(text_rect.top - (rect.top + borders[0]));
             }
             if has_bg || borders[2] > 0.0 {
-                v_pads.push(spx("paddingBottom"));
+                v_pads.push((rect.bottom - borders[2]) - text_rect.bottom);
             }
             if has_bg || borders[3] > 0.0 {
-                h_pads.push(spx("paddingLeft"));
+                h_pads.push(text_rect.left - (rect.left + borders[3]));
             }
             if has_bg || borders[1] > 0.0 {
-                h_pads.push(spx("paddingRight"));
+                h_pads.push((rect.right - borders[1]) - text_rect.right);
             }
             let v_min = v_pads.iter().copied().fold(f64::INFINITY, js::math_min);
             let h_min = h_pads.iter().copied().fold(f64::INFINITY, js::math_min);
             let v_thresh = js::math_max(4.0, font_size * 0.3);
             let h_thresh = js::math_max(8.0, font_size * 0.5);
+            let px = |v: f64| number_to_string(math_round(v * 10.0) / 10.0);
             if v_min < v_thresh {
                 findings.push(RuleHit::new(
                     "cramped-padding",
                     format!(
-                        "{}px vertical padding (need ≥{}px for {}px text)",
-                        number_to_string(v_min),
+                        "{}px of space above and below the text (need ≥{}px for {}px text)",
+                        px(v_min),
                         to_fixed(v_thresh, 1),
                         number_to_string(font_size)
                     ),
@@ -307,8 +380,8 @@ pub fn check_quality(dom: &dyn Dom, q: &QualityInput) -> Vec<RuleHit> {
                 findings.push(RuleHit::new(
                     "cramped-padding",
                     format!(
-                        "{}px horizontal padding (need ≥{}px for {}px text)",
-                        number_to_string(h_min),
+                        "{}px of space beside the text (need ≥{}px for {}px text)",
+                        px(h_min),
                         to_fixed(h_thresh, 1),
                         number_to_string(font_size)
                     ),
@@ -380,6 +453,13 @@ pub fn check_quality(dom: &dyn Dom, q: &QualityInput) -> Vec<RuleHit> {
                 ];
                 const PAD_THRESHOLD: f64 = 2.0;
                 const CHILD_INSULATE_THRESHOLD: f64 = 4.0;
+                // Content that runs past the box is clipped, not snug. A
+                // table with a min-width inside an `overflow: hidden` frame
+                // has its far column cut off, which is a defect
+                // `clipped-overflow-container` is named for; calling it "no
+                // inset" points at the wrong thing (REN-403).
+                const OVERFLOW_TOLERANCE: f64 = 1.0;
+                let mut children_overflow = [false; 4];
                 let mut children_insulate = [false; 4];
                 for &child in &children {
                     let child_pad = [
@@ -396,6 +476,18 @@ pub fn check_quality(dom: &dyn Dom, q: &QualityInput) -> Vec<RuleHit> {
                     ];
                     let cr = dom.rect(child);
                     if cr.width > 0.0 && cr.height > 0.0 {
+                        if rect.top - cr.top > OVERFLOW_TOLERANCE {
+                            children_overflow[0] = true;
+                        }
+                        if cr.right - rect.right > OVERFLOW_TOLERANCE {
+                            children_overflow[1] = true;
+                        }
+                        if cr.bottom - rect.bottom > OVERFLOW_TOLERANCE {
+                            children_overflow[2] = true;
+                        }
+                        if rect.left - cr.left > OVERFLOW_TOLERANCE {
+                            children_overflow[3] = true;
+                        }
                         if cr.top - rect.top >= CHILD_INSULATE_THRESHOLD {
                             children_insulate[0] = true;
                         }
@@ -428,7 +520,12 @@ pub fn check_quality(dom: &dyn Dom, q: &QualityInput) -> Vec<RuleHit> {
                 for s in 0..4 {
                     let bg_bounds_side = bg_visible && !(full_bleed_bg_band && (s == 1 || s == 3));
                     let side_bounded = border_visible[s] || outline_visible || bg_bounds_side;
-                    if side_bounded && pad[s] <= PAD_THRESHOLD && !children_insulate[s] && text_flush[s] {
+                    if side_bounded
+                        && pad[s] <= PAD_THRESHOLD
+                        && !children_insulate[s]
+                        && !children_overflow[s]
+                        && text_flush[s]
+                    {
                         flush_sides.push(side_names[s]);
                     }
                 }
@@ -766,20 +863,66 @@ mod tests {
     fn line_length_and_viewport_edge() {
         let mut d = FakeDom::new();
         let (_h, body) = d.with_page();
-        let long = "x".repeat(120);
+        let long = "x".repeat(240);
         let p = text_el(&mut d, body, "p", &long, "16px");
-        d.set_rect(p, 0.0, 100.0, 1200.0, 40.0);
+        d.set_rect(p, 0.0, 100.0, 1200.0, 72.0);
+        // Three rendered lines: two full ones and a tail.
+        d.set_text_lines(p, &[(0.0, 100.0, 1180.0, 19.0), (0.0, 124.0, 1180.0, 19.0), (0.0, 148.0, 400.0, 19.0)]);
         let hits = check_element_quality_dom(&d, p, &BrowserConfig::default());
         let ids: Vec<&str> = hits.iter().map(|h| h.id.as_str()).collect();
         assert!(ids.contains(&"line-length"), "{ids:?}");
-        assert_eq!(hits[0].snippet, "~150 chars/line (aim for <80)");
+        assert_eq!(hits[0].snippet, "~103 chars on 2 of 3 rendered lines (aim for <80)");
         assert!(ids.contains(&"body-text-viewport-edge"));
         let edge = hits.iter().find(|h| h.id == "body-text-viewport-edge").unwrap();
-        assert_eq!(edge.snippet, "<p> with 120-char body bleeds to viewport edge (left 0px)");
+        assert_eq!(edge.snippet, "<p> with 240-char body bleeds to viewport edge (left 0px)");
         // narrower, inset paragraph: neither fires
-        d.set_rect(p, 40.0, 100.0, 600.0, 40.0);
+        d.set_rect(p, 40.0, 100.0, 600.0, 72.0);
+        d.set_text_lines(p, &[(40.0, 100.0, 580.0, 19.0), (40.0, 124.0, 580.0, 19.0), (40.0, 148.0, 580.0, 19.0)]);
         let hits = check_element_quality_dom(&d, p, &BrowserConfig::default());
         assert!(hits.is_empty(), "{hits:?}");
+    }
+
+    /// REN-402. Halfday's pricing copy: a 158-character paragraph in a 1022px
+    /// card body, rendering 145 characters on its first line and 13 on its
+    /// second. The old measurement charged the box (`1022 / (15 * 0.5)` = 136
+    /// "chars/line") on every paragraph that shape, including the ones whose
+    /// text stops well short of the box.
+    #[test]
+    fn line_length_reads_the_rendered_line_not_the_box() {
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        let copy = "People are counted on the first of the month. Someone invited on the 3rd is free until the 1st, and someone removed mid-month is credited on the next invoice.";
+        assert_eq!(copy.chars().count(), 158);
+        let p = text_el(&mut d, body, "p", copy, "15px");
+        d.set_style(p, "lineHeight", "24px");
+        d.set_rect(p, 200.0, 971.0, 1022.0, 48.0);
+        // One long line and a 13-character tail: the eye tracks back once.
+        d.set_text_lines(p, &[(200.0, 974.0, 995.4, 18.0), (200.0, 998.0, 85.5, 18.0)]);
+        assert_eq!(check_element_quality_dom(&d, p, &BrowserConfig::default()), vec![]);
+
+        // The same box, text that stops at 571px: 89 characters on one line.
+        let meta = text_el(&mut d, body, "p", &"y".repeat(89), "14px");
+        d.set_style(meta, "lineHeight", "21.7px");
+        d.set_rect(meta, 200.0, 122.0, 992.0, 21.7);
+        d.set_text_lines(meta, &[(200.0, 124.2, 571.4, 17.0)]);
+        assert_eq!(check_element_quality_dom(&d, meta, &BrowserConfig::default()), vec![]);
+
+        // A column of long lines is the defect the rule is named for.
+        let wall = text_el(&mut d, body, "p", &"z".repeat(500), "15px");
+        d.set_style(wall, "lineHeight", "24px");
+        d.set_rect(wall, 200.0, 100.0, 1022.0, 96.0);
+        d.set_text_lines(
+            wall,
+            &[
+                (200.0, 100.0, 1000.0, 18.0),
+                (200.0, 124.0, 1000.0, 18.0),
+                (200.0, 148.0, 1000.0, 18.0),
+                (200.0, 172.0, 600.0, 18.0),
+            ],
+        );
+        let hits = check_element_quality_dom(&d, wall, &BrowserConfig::default());
+        assert_eq!(hits.len(), 1, "{hits:?}");
+        assert_eq!(hits[0].snippet, "~139 chars on 3 of 4 rendered lines (aim for <80)");
     }
 
     #[test]
@@ -803,9 +946,54 @@ mod tests {
                 ("paddingRight", "12px"),
             ],
         );
+        // The text lands 2px under the top edge, which is what the reader sees
+        // and what the declared padding happens to say here.
+        d.set_text_lines(p, &[(52.0, 102.0, 276.0, 19.0)]);
         let hits = check_element_quality_dom(&d, p, &BrowserConfig::default());
         assert_eq!(hits.len(), 1, "{hits:?}");
-        assert_eq!(hits[0].snippet, "2px vertical padding (need ≥4.8px for 16px text)");
+        assert_eq!(
+            hits[0].snippet,
+            "2px of space above and below the text (need ≥4.8px for 16px text)"
+        );
+    }
+
+    /// REN-403. Halfday's plan button: 44px tall because the design system
+    /// says every control is, `padding: 0 16px`, and the label optically
+    /// centred by a flex box. The declared vertical padding is zero and the
+    /// space above the label is 12px, which is what the reader sees.
+    #[test]
+    fn cramped_padding_measures_the_space_around_the_text() {
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        d.set_style(body, "backgroundColor", "rgb(255, 255, 255)");
+        let btn = text_el(&mut d, body, "a", "Talk to us about Studio", "15px");
+        d.set_rect(btn, 0.0, 778.7, 296.7, 44.0);
+        d.set_styles(
+            btn,
+            &[
+                ("backgroundColor", "rgb(255, 255, 255)"),
+                ("borderTopWidth", "1px"),
+                ("borderRightWidth", "1px"),
+                ("borderBottomWidth", "1px"),
+                ("borderLeftWidth", "1px"),
+                ("paddingTop", "0px"),
+                ("paddingBottom", "0px"),
+                ("paddingLeft", "16px"),
+                ("paddingRight", "16px"),
+                ("display", "flex"),
+            ],
+        );
+        d.set_text_lines(btn, &[(68.0, 791.2, 160.0, 18.0)]);
+        assert_eq!(check_element_quality_dom(&d, btn, &BrowserConfig::default()), vec![]);
+
+        // The same control with the label actually against the edge: charged.
+        d.set_text_lines(btn, &[(68.0, 780.2, 160.0, 18.0)]);
+        let hits = check_element_quality_dom(&d, btn, &BrowserConfig::default());
+        assert_eq!(hits.len(), 1, "{hits:?}");
+        assert_eq!(
+            hits[0].snippet,
+            "0.5px of space above and below the text (need ≥4.5px for 15px text)"
+        );
     }
 
     #[test]
@@ -844,6 +1032,78 @@ mod tests {
         assert_eq!(
             hits[0].snippet,
             "<section> \"card-frame\": children flush against border on right/left (no inset)"
+        );
+    }
+
+    /// REN-403, the wrapper half of the same rule. Crewline's framed table:
+    /// the `<table>` fills the frame edge to edge, and every cell insets its
+    /// own text by the padding the stylesheet gives it. Reading the cell's
+    /// border box called all four sides flush.
+    #[test]
+    fn flush_reads_the_text_not_the_cell_that_holds_it() {
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        d.set_style(body, "backgroundColor", "rgb(255, 255, 255)");
+        let frame = d.add(Some(body), "div");
+        d.set_attr(frame, "class", "table-frame");
+        d.set_rect(frame, 0.0, 0.0, 860.0, 300.0);
+        d.set_styles(
+            frame,
+            &[
+                ("position", "static"),
+                ("borderTopWidth", "1px"),
+                ("borderRightWidth", "1px"),
+                ("borderBottomWidth", "1px"),
+                ("borderLeftWidth", "1px"),
+                ("borderTopColor", "rgb(220, 220, 220)"),
+                ("borderRightColor", "rgb(220, 220, 220)"),
+                ("borderBottomColor", "rgb(220, 220, 220)"),
+                ("borderLeftColor", "rgb(220, 220, 220)"),
+                ("outlineWidth", "0px"),
+                ("backgroundColor", "rgb(250, 250, 250)"),
+                ("paddingTop", "0px"),
+                ("paddingRight", "0px"),
+                ("paddingBottom", "0px"),
+                ("paddingLeft", "0px"),
+                ("fontSize", "15px"),
+            ],
+        );
+        let table = d.add(Some(frame), "table");
+        d.set_rect(table, 0.0, 0.0, 860.0, 300.0);
+        for (i, (x, y, w)) in [(0.0, 0.0, 430.0), (430.0, 0.0, 430.0), (0.0, 260.0, 430.0)]
+            .into_iter()
+            .enumerate()
+        {
+            let cell = d.add(Some(table), "td");
+            d.add_text(cell, "Wednesday afternoon");
+            d.set_rect(cell, x, y, w, 20.0);
+            // Cell padding: 10px down, 16px across, which is where the text is.
+            d.set_text_lines(cell, &[(x + 16.0, y + 10.0, w - 32.0, 17.0)]);
+            let _ = i;
+        }
+        assert_eq!(check_element_quality_dom(&d, frame, &BrowserConfig::default()), vec![]);
+
+        // A cell that really does put its text on the frame line is charged.
+        let tight = d.add(Some(table), "td");
+        d.add_text(tight, "Wednesday afternoon");
+        d.set_rect(tight, 0.0, 140.0, 860.0, 20.0);
+        d.set_text_lines(tight, &[(1.0, 140.0, 858.0, 17.0)]);
+        let hits = check_element_quality_dom(&d, frame, &BrowserConfig::default());
+        assert_eq!(hits.len(), 1, "{hits:?}");
+        assert_eq!(
+            hits[0].snippet,
+            "<div> \"table-frame\": children flush against border+bg on right/left (no inset)"
+        );
+
+        // The same frame at 390px, where the table keeps its min-width and the
+        // frame hides what does not fit: the right side is clipped, not snug,
+        // and that is `clipped-overflow-container`'s business (REN-403).
+        d.set_rect(table, 0.0, 0.0, 1400.0, 300.0);
+        let hits = check_element_quality_dom(&d, frame, &BrowserConfig::default());
+        assert_eq!(hits.len(), 1, "{hits:?}");
+        assert_eq!(
+            hits[0].snippet,
+            "<div> \"table-frame\": children flush against border+bg on left (no inset)"
         );
     }
 

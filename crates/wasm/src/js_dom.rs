@@ -58,6 +58,7 @@ extern "C" {
     fn offset_height(el: u32) -> f64;
     fn check_visibility(el: u32) -> i32;
     fn direct_text_rect(el: u32) -> Vec<f64>;
+    fn direct_text_line_rects(el: u32) -> Vec<f64>;
 }
 
 fn opt(id: u32) -> Option<ElId> {
@@ -339,5 +340,13 @@ impl Dom for JsDom {
         } else {
             Some(to_rect(&v))
         }
+    }
+    /// The probe flattens the per-line rects into one array of eights, in the
+    /// order `rect` uses; a tail shorter than a rect is ignored.
+    fn direct_text_line_rects(&self, el: ElId) -> Vec<Rect> {
+        direct_text_line_rects(el)
+            .chunks_exact(8)
+            .map(to_rect)
+            .collect()
     }
 }
