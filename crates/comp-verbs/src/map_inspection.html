@@ -51,6 +51,8 @@
     h1 { font-size: 20px; line-height: 1.3; margin: 0; }
     header p { margin: 0; color: var(--muted); font-size: 13px; }
     header a { margin-left: auto; font-size: 12px; }
+    #sheets { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; font-size: 12px; }
+    #sheets:empty { display: none; }
     .layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); height: calc(100dvh - 68px); }
     nav { background: var(--panel); border-right: 1px solid var(--line); overflow: auto; padding: 14px 12px; }
     .filters { display: flex; gap: 4px; margin-bottom: 14px; }
@@ -157,6 +159,7 @@
         <div><h2 id="title">Check the region map</h2><p id="explanation"></p><div id="related"></div></div>
         <button id="next">Next check →</button>
       </div>
+      <div id="sheets" aria-label="Comparison sheets"></div>
       <div id="inspection" class="inspection">
         <section>
           <div class="section-title"><h3>In the comp</h3><button id="context-toggle" aria-pressed="false">Show whole comp</button></div>
@@ -337,6 +340,11 @@
     $('context-toggle').onclick = () => { wholeComp = !wholeComp; renderContext(); };
     $('zoom').onchange = () => { if (selected) { renderCrop($('original'), false); renderCrop($('ignored'), true); } };
     $('summary').textContent = `${data.inputRegionCount} regions · ${data.issues.filter(i => i.severity === 'error').length} errors · ${partialMasks.length} partial masks to inspect`;
+    for (const [index, sheet] of (data.comparisonSheets || []).entries()) {
+      const link = element('a', `Comparison sheet ${index + 1}`);
+      link.href = sheet.path; link.target = '_blank'; link.rel = 'noopener';
+      $('sheets').append(link);
+    }
     const otherIssues = data.issues.filter(i => i.code !== 'fully-masked' && i.code !== 'foreground-mask');
     $('diagnostics-label').textContent = `Other map findings (${otherIssues.length})`;
     for (const i of otherIssues) {
