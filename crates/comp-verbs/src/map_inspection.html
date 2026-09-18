@@ -1,28 +1,309 @@
 <!doctype html>
 <html lang="en">
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Comp map inspection · Impeccable</title>
-<style>
-:root{color-scheme:light;--paper:#f6f7f5;--panel:#fff;--ink:#202623;--muted:#5b655f;--line:#d2d9d4;--accent:#00685f;--danger:#a6361d;--warn:#845413;font:14px/1.45 'Avenir Next',system-ui,sans-serif;color:var(--ink);background:var(--paper)}
-*{box-sizing:border-box}body{margin:0}button,select,a{font:inherit}button,select{color:inherit;background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:7px 11px;cursor:pointer}button:hover{background:#eaf1ed}button[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:white}a{color:var(--accent);text-underline-offset:3px}button:focus-visible,select:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}::selection{background:#c3e3d9}header{height:72px;display:flex;align-items:center;gap:24px;padding:12px 24px;background:var(--panel);box-shadow:0 2px 8px #17261b12;position:relative;z-index:2}h1{font-size:20px;line-height:1.3;margin:0}header p{margin:2px 0 0;color:var(--muted);font-size:12px}.links{margin-left:auto;display:flex;gap:16px;font-size:12px}.layout{display:grid;grid-template-columns:250px minmax(0,1fr) minmax(320px,.8fr);height:calc(100dvh - 72px)}nav{background:var(--panel);border-right:1px solid var(--line);overflow:auto;padding:14px 12px}.filters{display:flex;gap:4px;margin-bottom:12px}.filters button{flex:1;font-size:12px;padding:7px 3px}.region{display:grid;grid-template-columns:28px 1fr;gap:8px;text-align:left;width:100%;margin-bottom:3px;border-color:transparent;background:none}.region strong{display:block;font-size:13px;font-weight:600;overflow-wrap:anywhere}.region small{color:var(--muted);display:block;font-size:11px}.region[aria-current=true]{background:#e4eeea;border-color:#8dbbb0}.num{font-variant-numeric:tabular-nums;border:1px solid var(--line);border-radius:3px;text-align:center;padding:2px}.region.error .num{color:white;background:var(--danger);border-color:var(--danger)}.workspace{min-width:0;overflow:auto;padding:20px}.toolbar{display:flex;align-items:center;gap:10px;margin-bottom:14px}.toolbar strong{font-size:14px}.toolbar label{margin-left:auto;font-size:12px;color:var(--muted)}.map{position:relative;box-shadow:0 5px 18px #1c30251a;background:white}.map img{width:100%;display:block}.map svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}.marker{cursor:pointer;outline:none}.marker rect{fill:transparent;stroke:var(--accent);stroke-width:1;vector-effect:non-scaling-stroke}.marker.selected rect,.marker:focus rect{stroke-width:3;fill:#00685f16}.marker.error rect{stroke:var(--danger)}.marker text{fill:white;font:600 12px system-ui}.marker .tag{fill:var(--accent);stroke:white;stroke-width:1}.marker.error .tag{fill:var(--danger)}.coverage{fill:#d6972620;stroke:#845413;stroke-width:1;stroke-dasharray:4 4;pointer-events:none}aside{overflow:auto;background:var(--panel);box-shadow:-3px 0 14px #1b30210c;padding:20px;border-left:1px solid var(--line)}h2{font-size:20px;line-height:1.25;margin:0 0 6px;overflow-wrap:anywhere}.meta{font-size:12px;color:var(--muted);margin:0 0 16px}.note{margin:8px 0 16px}.views{display:flex;gap:5px;flex-wrap:wrap;margin:12px 0}.views button{font-size:12px;padding:6px 9px}.preview{height:clamp(230px,38vh,520px);overflow:auto;background:#eef0ed;display:grid;place-items:center;position:relative}.preview img{display:block;max-width:none;max-height:none;object-fit:contain}.preview.fit img{width:100%;height:100%;min-height:0;min-width:0}.preview.native{display:block}.preview.native img{margin:auto}.caption{font-size:12px;color:var(--muted);margin:8px 0 16px}.issue{padding:10px 0;border-top:1px solid var(--line);font-size:13px}.issue b{font-weight:600;display:block}.issue.error b{color:var(--danger)}.issue.warning b{color:var(--warn)}details{margin:16px 0}summary{cursor:pointer;font-size:13px;font-weight:600}details p{font-size:12px;color:var(--muted);margin:7px 0}.empty{padding:16px;color:var(--muted)}#summary{padding:0 3px 12px;font-size:12px;color:var(--muted)}.legend{color:var(--muted);font-size:12px;margin:12px 0}.badge{color:var(--danger);font-weight:600}.map-note{max-width:65ch;color:var(--muted);font-size:12px}#zoom{padding:4px 6px}footer{font-size:12px;border-top:1px solid var(--line);padding-top:12px;color:var(--muted)}@media(max-width:1100px){.layout{grid-template-columns:210px minmax(0,1fr)}aside{grid-column:2;grid-row:2;overflow:visible}nav{grid-row:1 / 3}.layout{height:auto;min-height:calc(100dvh - 72px)}nav{position:sticky;top:0;height:calc(100dvh - 72px)}.workspace{overflow:visible}}@media(max-width:650px){header{height:auto;padding:14px;gap:12px}.links{flex-direction:column;gap:4px}.layout{display:block}.workspace,aside{padding:16px}nav{position:static;height:200px;border-bottom:1px solid var(--line)}h1{font-size:17px}.preview{height:300px}}
-</style>
-<header><div><h1>Comp map inspection</h1><p>Reference geometry · no build state or approvals changed</p></div><div class="links"><a href="overlay.png" target="_blank" rel="noopener">Numbered overlay</a><a href="report.json" target="_blank" rel="noopener">Report JSON</a></div></header>
-<div class="layout"><nav aria-label="Regions"><div class="filters"><button id="all" aria-pressed="true">All regions</button><button id="problems" aria-pressed="false">Errors</button></div><div id="summary"></div><div id="list"></div></nav>
-<main class="workspace"><div class="toolbar"><strong>Original comp</strong><label><input type="checkbox" id="coverage"> Uncovered cells</label></div><div class="map"><img src="comp.png" alt="Original approved comp"><svg id="map" role="group" aria-label="Region boundaries"></svg></div><p class="legend">Green: region boundary · rust: invalid reference · dashed: uncovered detail</p><p class="map-note">Select a region to inspect its exact crop. Overlaps may be intentional; this report shows geometry and mask effects, not a visual approval.</p><details id="global"><summary>Map diagnostics</summary><div id="global-issues"></div></details></main>
-<aside aria-label="Selected region"><h2 id="title">Select a region</h2><p id="meta" class="meta"></p><p id="note" class="note"></p><div class="views"><button id="raw" aria-pressed="true">Original crop</button><button id="mask" aria-pressed="false">Matcher reference</button></div><div class="toolbar"><span id="dimensions" class="meta"></span><label>Zoom <select id="zoom"><option value="fit">Fit</option><option value="1">100%</option><option value="2">200%</option><option value="4">400%</option></select></label></div><div id="preview" class="preview fit"><img id="crop" alt=""></div><p id="caption" class="caption"></p><div id="issues"></div><details><summary>Relationships &amp; overlaps</summary><div id="relations"></div></details><footer>Reference crops must never ship as page assets. Repeated code groups keep every member; raster assets retain individual review.</footer></aside></div>
-<script type="application/json" id="data">__REPORT_JSON__</script>
-<script>
-const data=JSON.parse(document.getElementById('data').textContent),$=id=>document.getElementById(id),svgNS='http://www.w3.org/2000/svg';
-let selected=null,mode='raw',filter='all';
-const errors=id=>data.issues.filter(i=>i.regionId===id&&i.severity==='error');
-const add=(tag,text,cls)=>{const el=document.createElement(tag);el.textContent=text;if(cls)el.className=cls;return el};
-function issueNodes(issues,target){target.replaceChildren();for(const i of issues){const item=add('div','',`issue ${i.severity}`);item.append(add('b',i.code.replaceAll('-',' ')),add('span',i.message));target.append(item)}}
-function renderList(){const list=$('list');list.replaceChildren();for(const r of data.regions){if(filter==='problems'&&!errors(r.id).length)continue;const b=add('button','',`region ${errors(r.id).length?'error':''}`);b.setAttribute('aria-current',String(selected?.id===r.id));const text=add('span','');text.append(add('strong',r.id),add('small',`${r.kind}${r.container?' · container':''}${r.reviewGroup?' · '+r.reviewGroup:''}`));b.append(add('span',String(r.number),'num'),text);b.onclick=()=>select(r);list.append(b)}if(!list.children.length)list.append(add('p',filter==='problems'?'No drawable regions have errors. Check map diagnostics for rejected entries.':'No valid regions to display. Check map diagnostics.','empty'))}
-function renderMap(){const svg=$('map');svg.setAttribute('viewBox',`0 0 ${data.compSize.width} ${data.compSize.height}`);svg.replaceChildren();const labelScale=data.compSize.width/Math.max(1,svg.getBoundingClientRect().width);if($('coverage').checked){for(const cell of data.uncoveredInkCells){const x=cell.charCodeAt(0)-65,y=Number(cell.slice(1));const rect=document.createElementNS(svgNS,'rect');Object.entries({x:x*data.compSize.width/10,y:y*data.compSize.height/10,width:data.compSize.width/10,height:data.compSize.height/10,class:'coverage'}).forEach(([k,v])=>rect.setAttribute(k,v));svg.append(rect)}}for(const r of data.regions){const g=document.createElementNS(svgNS,'g');g.setAttribute('class',`marker ${selected?.id===r.id?'selected':''} ${errors(r.id).length?'error':''}`);g.setAttribute('tabindex','0');g.setAttribute('role','button');g.setAttribute('aria-label',`Inspect ${r.number}: ${r.id}`);g.onclick=()=>select(r);g.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();select(r)}};const rect=document.createElementNS(svgNS,'rect');Object.entries({x:r.px.x,y:r.px.y,width:r.px.w,height:r.px.h}).forEach(([k,v])=>rect.setAttribute(k,v));g.append(rect);const tag=document.createElementNS(svgNS,'rect');Object.entries({x:r.px.x,y:r.px.y,width:24*labelScale,height:21*labelScale,class:'tag'}).forEach(([k,v])=>tag.setAttribute(k,v));const text=document.createElementNS(svgNS,'text');text.setAttribute('x',r.px.x+4*labelScale);text.setAttribute('y',r.px.y+15*labelScale);text.style.fontSize=`${12*labelScale}px`;text.textContent=r.number;g.append(tag,text);svg.append(g)}}
-function preview(){if(!selected)return;const ref=mode==='mask'&&selected.referencePath;$('crop').src=ref||selected.cropPath;$('crop').alt=`${ref?'Matcher reference':'Original comp crop'} for ${selected.id}`;$('raw').setAttribute('aria-pressed',String(!ref));$('mask').setAttribute('aria-pressed',String(Boolean(ref)));$('mask').hidden=!selected.referencePath;const zoom=$('zoom').value;$('preview').className=`preview ${zoom==='fit'?'fit':'native'}`;$('crop').style.width=zoom==='fit'?'100%':`${selected.px.w*Number(zoom)}px`;$('crop').style.height=zoom==='fit'?'100%':`${selected.px.h*Number(zoom)}px`;$('caption').textContent=ref?`${(100*selected.reference.excludedFraction).toFixed(1)}% excluded by foreground regions. ${selected.reference.fullyExcluded?'No visible reference pixels remain.':'Filled areas are ignored during asset comparison.'}`:'Exact original pixels inside this region. Fit enlarges small crops; zoom cannot add missing image detail.'}
-function select(r){selected=r;mode='raw';$('title').textContent=r.id;$('meta').textContent=`Region ${r.number} · ${r.kind}${r.container?' · container':''}`;$('note').textContent=r.note||'';$('dimensions').textContent=`${r.px.w} × ${r.px.h} px · x ${r.px.x}, y ${r.px.y}`;issueNodes(data.issues.filter(i=>i.regionId===r.id),$('issues'));$('relations').replaceChildren();const lines=[];if(r.parentId)lines.push(`Parent: ${r.parentId}`);if(r.reviewGroup)lines.push(`Review group: ${r.reviewGroup}${data.reviewGroups[r.reviewGroup]?' — '+data.reviewGroups[r.reviewGroup].join(', '):' (individual raster review)'}`);if(r.reference?.regions.length)lines.push('Masks: '+r.reference.regions.map(m=>m.id).join(', '));if(r.reference?.ignoredContainers.length)lines.push('Containers ignored as masks: '+r.reference.ignoredContainers.join(', '));for(const o of data.overlaps.filter(o=>o.a===r.id||o.b===r.id))lines.push(`${o.a===r.id?o.b:o.a}: ${o.pixels} px overlap · ${o.relationship}`);for(const line of lines)$('relations').append(add('p',line));if(!lines.length)$('relations').append(add('p','No declared relationships or overlaps.'));renderList();renderMap();preview()}
-$('all').onclick=()=>{filter='all';$('all').setAttribute('aria-pressed','true');$('problems').setAttribute('aria-pressed','false');renderList()};$('problems').onclick=()=>{filter='problems';$('problems').setAttribute('aria-pressed','true');$('all').setAttribute('aria-pressed','false');renderList()};$('raw').onclick=()=>{mode='raw';preview()};$('mask').onclick=()=>{mode='mask';preview()};$('zoom').onchange=preview;$('coverage').onchange=renderMap;
-$('summary').textContent=`${data.regions.length} of ${data.inputRegionCount} regions drawable · ${data.issues.filter(i=>i.severity==='error').length} errors`;
-issueNodes(data.issues.filter(i=>!i.regionId||!data.regions.some(r=>r.id===i.regionId)),$('global-issues'));$('global').open=Boolean($('global-issues').children.length);renderList();renderMap();const initial=data.regions.find(r=>errors(r.id).length)||data.regions[0];if(initial)select(initial);else $('preview').hidden=true;new ResizeObserver(renderMap).observe(document.querySelector('.map'));
-</script>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Region map · Impeccable</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #f6f7f5;
+      --panel: #fff;
+      --ink: #202623;
+      --muted: #5b655f;
+      --line: #d2d9d4;
+      --accent: #00685f;
+      --danger: #a6361d;
+      font: 14px/1.45 'Avenir Next', system-ui, sans-serif;
+      color: var(--ink);
+      background: var(--paper);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    button, select, a { font: inherit; }
+    button, select {
+      color: inherit;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 7px 11px;
+      cursor: pointer;
+    }
+    button:hover { background: #eaf1ed; }
+    button[aria-pressed=true] { background: var(--accent); border-color: var(--accent); color: white; }
+    button:disabled { opacity: .45; cursor: default; }
+    a { color: var(--accent); text-underline-offset: 3px; }
+    :is(button, select, a, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+    ::selection { background: #c3e3d9; }
+    header {
+      height: 68px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      padding: 12px 24px;
+      background: var(--panel);
+      box-shadow: 0 2px 8px #17261b12;
+      position: relative;
+      z-index: 2;
+    }
+    h1 { font-size: 20px; line-height: 1.3; margin: 0; }
+    header p { margin: 0; color: var(--muted); font-size: 13px; }
+    header a { margin-left: auto; font-size: 12px; }
+    .layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); height: calc(100dvh - 68px); }
+    nav { background: var(--panel); border-right: 1px solid var(--line); overflow: auto; padding: 14px 12px; }
+    .filters { display: flex; gap: 4px; margin-bottom: 14px; }
+    .filters button { flex: 1; font-size: 12px; padding: 7px 3px; }
+    .region {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      text-align: left;
+      width: 100%;
+      margin-bottom: 4px;
+      border-color: transparent;
+      background: none;
+      padding: 10px 8px;
+      overflow-wrap: anywhere;
+    }
+    .region[aria-current=true] { background: #e4eeea; border-color: #8dbbb0; }
+    .region .dot { flex: 0 0 7px; height: 7px; background: var(--line); border-radius: 50%; }
+    .region.error .dot { background: var(--danger); }
+    main { min-width: 0; overflow: auto; padding: 24px; }
+    .heading { display: flex; justify-content: space-between; align-items: start; gap: 20px; margin-bottom: 20px; }
+    h2 { font-size: 24px; line-height: 1.2; margin: 0 0 8px; font-weight: 600; }
+    #explanation { margin: 0; max-width: 65ch; }
+    #explanation.error { color: var(--danger); }
+    #next { white-space: nowrap; }
+    .inspection { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+    .section-title { display: flex; align-items: center; justify-content: space-between; min-height: 36px; gap: 12px; margin-bottom: 12px; }
+    h3 { font-size: 14px; margin: 0; font-weight: 600; }
+    .section-title button, .section-title select { font-size: 12px; padding: 5px 8px; }
+    .context {
+      height: clamp(280px, 48vh, 580px);
+      background: #e9ede8;
+      box-shadow: 0 4px 14px #17261b12;
+    }
+    .context svg { display: block; width: 100%; height: 100%; }
+    .pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+    figure { margin: 0; min-width: 0; }
+    figcaption { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+    .crop {
+      height: clamp(220px, 35vh, 440px);
+      background: #e9ede8;
+      display: grid;
+      place-items: center;
+      overflow: auto;
+    }
+    .crop svg { display: block; width: 100%; height: 100%; }
+    .crop.zoom { display: block; }
+    .crop.zoom svg { max-width: none; max-height: none; margin: auto; }
+    .legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 12px 0; color: var(--muted); font-size: 12px; }
+    .key { display: inline-flex; align-items: center; gap: 6px; }
+    .swatch { width: 12px; height: 12px; border: 2px solid var(--accent); }
+    .swatch.covering { border-color: var(--danger); }
+    #impact { font-size: 13px; margin: 14px 0; max-width: 55ch; }
+    .details { margin-top: 28px; border-top: 1px solid var(--line); padding-top: 16px; }
+    details { margin: 0 0 16px; }
+    summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+    details p { font-size: 12px; margin: 8px 0; overflow-wrap: anywhere; }
+    .issue { padding: 9px 0; font-size: 12px; border-bottom: 1px solid var(--line); }
+    .issue b { display: block; font-weight: 600; }
+    .issue.error b { color: var(--danger); }
+    .empty { color: var(--muted); font-size: 13px; }
+    @media(max-width: 1000px) {
+      .layout { grid-template-columns: 190px minmax(0, 1fr); }
+      .inspection { grid-template-columns: 1fr; }
+      .context { height: 360px; }
+      .crop { height: 280px; }
+    }
+    @media(max-width: 600px) {
+      header { height: auto; padding: 14px; flex-wrap: wrap; gap: 6px 16px; }
+      h1 { font-size: 18px; }
+      header p { font-size: 12px; }
+      .layout { display: block; height: auto; }
+      nav { height: 190px; border-bottom: 1px solid var(--line); }
+      main { padding: 18px; }
+      .heading { flex-wrap: wrap; }
+      .context { height: 300px; }
+      .crop { height: 220px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Region map</h1>
+    <p id="summary"></p>
+    <a href="report.json" target="_blank" rel="noopener">Technical report</a>
+  </header>
+  <div class="layout">
+    <nav aria-label="Regions">
+      <div class="filters">
+        <button id="problems" aria-pressed="true">Problems</button>
+        <button id="all" aria-pressed="false">All regions</button>
+      </div>
+      <div id="list"></div>
+    </nav>
+    <main>
+      <div class="heading">
+        <div><h2 id="title">Check the region map</h2><p id="explanation"></p></div>
+        <button id="next">Next problem →</button>
+      </div>
+      <div id="inspection" class="inspection">
+        <section>
+          <div class="section-title"><h3>In the comp</h3><button id="context-toggle" aria-pressed="false">Show whole comp</button></div>
+          <div class="context"><svg id="context" role="img" aria-label="Selected asset and overlapping boxes in the original comp"></svg></div>
+          <div class="legend">
+            <span class="key"><span class="swatch"></span><span id="asset-key">This asset</span></span>
+            <span class="key" id="covering-key"><span class="swatch covering"></span>Box covering it</span>
+          </div>
+        </section>
+        <section>
+          <div class="section-title"><h3>What gets compared</h3><label>Zoom <select id="zoom"><option value="fit">Fit</option><option value="1">100%</option><option value="2">200%</option><option value="4">400%</option></select></label></div>
+          <div class="pair">
+            <figure><figcaption>Original crop</figcaption><div class="crop" id="original"></div></figure>
+            <figure><figcaption id="ignored-label">Pixels ignored by the checker</figcaption><div class="crop" id="ignored"></div></figure>
+          </div>
+          <p id="impact"></p>
+        </section>
+      </div>
+      <div class="details">
+        <details><summary>Region details</summary><div id="details"></div></details>
+        <details id="diagnostics"><summary id="diagnostics-label">Other map findings</summary><div id="issues"></div></details>
+      </div>
+    </main>
+  </div>
+  <script type="application/json" id="data">__REPORT_JSON__</script>
+  <script>
+    const data = JSON.parse(document.getElementById('data').textContent);
+    const $ = id => document.getElementById(id);
+    const ns = 'http://www.w3.org/2000/svg';
+    const errors = id => data.issues.filter(i => i.regionId === id && i.severity === 'error');
+    const problemRegions = data.regions.filter(r => errors(r.id).length);
+    let selected = null;
+    let filter = problemRegions.length ? 'problems' : 'all';
+    let wholeComp = false;
+
+    function name(region) {
+      return region.id.replace(/-plate$/, /photo/i.test(region.note || '') ? ' photo' : ' artwork').replace(/-/g, ' ').replace(/^./, c => c.toUpperCase());
+    }
+    function element(tag, text, className) {
+      const el = document.createElement(tag);
+      el.textContent = text;
+      if (className) el.className = className;
+      return el;
+    }
+    function svgElement(tag, attrs) {
+      const el = document.createElementNS(ns, tag);
+      for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, value);
+      return el;
+    }
+    function renderList() {
+      $('list').replaceChildren();
+      $('problems').textContent = `Problems (${problemRegions.length})`;
+      $('all').textContent = `All (${data.regions.length})`;
+      for (const key of ['problems', 'all']) $(key).setAttribute('aria-pressed', String(filter === key));
+      for (const r of filter === 'problems' ? problemRegions : data.regions) {
+        const button = element('button', '', `region ${errors(r.id).length ? 'error' : ''}`);
+        button.setAttribute('aria-current', String(selected?.id === r.id));
+        button.append(element('span', '', 'dot'), element('span', name(r)));
+        button.onclick = () => select(r);
+        $('list').append(button);
+      }
+      if (!$('list').children.length) $('list').append(element('p', 'No drawable regions have errors. Other map findings lists rejected entries.', 'empty'));
+    }
+    function renderContext() {
+      if (!selected) return;
+      const svg = $('context');
+      svg.replaceChildren();
+      const covering = (selected.reference?.regions || []).map(m => data.regions.find(r => r.id === m.id)).filter(Boolean);
+      const boxes = [selected, ...covering];
+      const left = Math.min(...boxes.map(r => r.px.x));
+      const top = Math.min(...boxes.map(r => r.px.y));
+      const right = Math.max(...boxes.map(r => r.px.x + r.px.w));
+      const bottom = Math.max(...boxes.map(r => r.px.y + r.px.h));
+      const padding = Math.max(25, (right - left) * .18);
+      const x = Math.max(0, left - padding), y = Math.max(0, top - padding);
+      const w = Math.min(data.compSize.width, right + padding) - x;
+      const h = Math.min(data.compSize.height, bottom + padding) - y;
+      svg.setAttribute('viewBox', wholeComp ? `0 0 ${data.compSize.width} ${data.compSize.height}` : `${x} ${y} ${w} ${h}`);
+      svg.append(svgElement('image', { href: 'comp.png', width: data.compSize.width, height: data.compSize.height }));
+      for (const r of covering) {
+        svg.append(svgElement('rect', { x: r.px.x, y: r.px.y, width: r.px.w, height: r.px.h, fill: '#a6361d12', stroke: '#a6361d', 'stroke-width': 2, 'stroke-dasharray': '6 3', 'vector-effect': 'non-scaling-stroke' }));
+      }
+      svg.append(svgElement('rect', { x: selected.px.x, y: selected.px.y, width: selected.px.w, height: selected.px.h, fill: 'none', stroke: '#00685f', 'stroke-width': 3, 'vector-effect': 'non-scaling-stroke' }));
+      $('covering-key').hidden = covering.length === 0;
+      $('context-toggle').textContent = wholeComp ? 'Show nearby context' : 'Show whole comp';
+      $('context-toggle').setAttribute('aria-pressed', String(wholeComp));
+    }
+    function renderCrop(target, ignored) {
+      target.replaceChildren();
+      const svg = svgElement('svg', { viewBox: `0 0 ${selected.px.w} ${selected.px.h}`, role: 'img', 'aria-label': `${ignored ? 'Ignored pixels on' : 'Original crop of'} ${name(selected)}` });
+      svg.append(svgElement('image', { href: selected.cropPath, width: selected.px.w, height: selected.px.h }));
+      if (ignored && selected.reference) {
+        const defs = svgElement('defs', {});
+        const pattern = svgElement('pattern', { id: 'excluded', width: 8, height: 8, patternUnits: 'userSpaceOnUse' });
+        pattern.append(svgElement('rect', { width: 8, height: 8, fill: '#a6361d20' }));
+        pattern.append(svgElement('path', { d: 'M-2 2L2-2M0 8L8 0M6 10L10 6', stroke: '#a6361d', 'stroke-width': 1.2 }));
+        defs.append(pattern); svg.append(defs);
+        for (const mask of selected.reference.regions) {
+          const p = mask.cropPx;
+          svg.append(svgElement('rect', { x: p.x, y: p.y, width: p.w, height: p.h, fill: 'url(#excluded)' }));
+        }
+      }
+      const zoom = $('zoom').value;
+      target.className = `crop ${zoom === 'fit' ? '' : 'zoom'}`;
+      if (zoom !== 'fit') {
+        svg.style.width = `${selected.px.w * Number(zoom)}px`;
+        svg.style.height = `${selected.px.h * Number(zoom)}px`;
+      }
+      target.append(svg);
+    }
+    function select(r) {
+      selected = r;
+      $('title').textContent = name(r);
+      const ref = r.reference;
+      const percent = ref ? (100 * ref.excludedFraction).toFixed(1).replace(/\.0$/, '') : '0';
+      const covering = ref?.regions.map(m => name(data.regions.find(r => r.id === m.id))).join(', ');
+      $('explanation').className = errors(r.id).length ? 'error' : '';
+      if (ref?.fullyExcluded) {
+        $('explanation').textContent = `The “${covering}” box hides this entire asset from the checker.`;
+        $('impact').textContent = 'Every hatched pixel is ignored. Nothing remains to compare, even if the generated asset is perfect. The covering box needs correcting.';
+      } else if (ref?.excludedPixels) {
+        $('explanation').textContent = `${percent}% of this asset is excluded by overlapping text or controls.`;
+        $('impact').textContent = 'Hatched pixels are ignored; the rest is compared. This is expected only where text or controls actually sit in front of the artwork.';
+      } else {
+        $('explanation').textContent = ref ? 'No overlapping text or controls hide this asset from the checker.' : 'This region is built in code. Check that its box names one element.';
+        $('impact').textContent = ref ? 'All pixels in this crop remain available for comparison. Still check that the crop contains the right artwork.' : 'Code regions that overlap artwork can exclude those pixels from asset comparison. Containers are treated separately.';
+      }
+      $('ignored-label').textContent = ref ? `Ignored pixels · ${percent}%` : 'Same region';
+      $('asset-key').textContent = ref ? 'Asset boundary' : 'Region boundary';
+      $('details').replaceChildren();
+      for (const text of [r.id, r.note, `${r.kind} · ${r.px.w} × ${r.px.h} original pixels · x ${r.px.x}, y ${r.px.y}`, r.parentId && `Parent: ${r.parentId}`, r.reviewGroup && `Review group: ${r.reviewGroup} (every member retained)`].filter(Boolean)) $('details').append(element('p', text));
+      if (r.referencePath) {
+        const p = element('p', '');
+        const link = element('a', 'Open the actual checker reference');
+        link.href = r.referencePath; link.target = '_blank'; link.rel = 'noopener';
+        p.append(link); $('details').append(p);
+      }
+      $('details').append(element('p', 'Reference only. These images cannot ship as page assets. Inspection does not change build state or approvals.'));
+      $('next').hidden = problemRegions.length < 2;
+      $('next').textContent = `Next problem (${Math.max(0, problemRegions.findIndex(p => p.id === r.id)) + 1}/${problemRegions.length}) →`;
+      renderList(); renderContext(); renderCrop($('original'), false); renderCrop($('ignored'), true);
+    }
+    for (const key of ['all', 'problems']) $(key).onclick = () => { filter = key; renderList(); };
+    $('next').onclick = () => select(problemRegions[(problemRegions.findIndex(r => r.id === selected.id) + 1) % problemRegions.length]);
+    $('context-toggle').onclick = () => { wholeComp = !wholeComp; renderContext(); };
+    $('zoom').onchange = () => { if (selected) { renderCrop($('original'), false); renderCrop($('ignored'), true); } };
+    $('summary').textContent = `${data.inputRegionCount} regions · ${data.issues.filter(i => i.severity === 'error').length} errors`;
+    const otherIssues = data.issues.filter(i => i.code !== 'fully-masked' && i.code !== 'foreground-mask');
+    $('diagnostics-label').textContent = `Other map findings (${otherIssues.length})`;
+    for (const i of otherIssues) {
+      const item = element('div', '', `issue ${i.severity}`);
+      item.append(element('b', i.regionId || i.code.replaceAll('-', ' ')), element('span', i.message));
+      $('issues').append(item);
+    }
+    if (data.regions.length) select(problemRegions[0] || data.regions[0]);
+    else { $('inspection').hidden = true; $('next').hidden = true; $('diagnostics').open = true; renderList(); }
+  </script>
+</body>
 </html>
