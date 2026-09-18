@@ -869,9 +869,10 @@ pub static REGEX_MATCHERS: Lazy<Vec<Matcher>> = Lazy::new(|| {
             id: "border-accent-on-rounded",
             find_all: |l| all(&BORDER_ACCENT_TW_RE, l),
             test: |m, line| {
-                has_rounded(line)
+                let scope = containing_markup_tag(line)(m.index);
+                has_rounded(&scope)
                     && num(m.g(1)) >= 1.0
-                    && !ANIMATE_SPIN_RE.is_match(&containing_markup_tag(line)(m.index))
+                    && !ANIMATE_SPIN_RE.is_match(&scope)
             },
             fmt: |m, _| m.whole().to_string(),
         },
@@ -1480,6 +1481,7 @@ mod tests {
             g(r#"<div className="animate-spin rounded-full h-12 w-12 border-b-2" /><div className="rounded-lg border-t-4" />"#),
             vec!["border-t-4"]
         );
+        assert!(g(r#"<div className="animate-spin rounded-full h-12 w-12 border-b-2" /><div className="border-t-4" />"#).is_empty());
     }
 
     #[test]
