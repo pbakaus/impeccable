@@ -113,13 +113,15 @@ pub fn freeze(project: &Path, input: &Value) -> Result<(Value, BTreeMap<String, 
     }
     let mut files = BTreeMap::new();
     let mut comp_files = BTreeMap::new();
+    let mut measured_regions = Vec::new();
     // The component inventory is measured against this spec. Bind it centrally
     // rather than requiring every component author to repeat this dependency.
     if input["stage"] == "components" {
         let spec_path = ".impeccable/build/spec.json";
         comp_files.insert(spec_path.into(), pin(project, spec_path, &mut files)?);
         let spec: Value = serde_json::from_slice(&files[spec_path]).map_err(|e| e.to_string())?;
-        for region in spec["regions"].as_array().ok_or("measured spec needs regions")? {
+        measured_regions = spec["regions"].as_array().ok_or("measured spec needs regions")?.clone();
+        for region in &measured_regions {
             let component = input["components"].as_array().and_then(|items| items.iter().find(|c| c["id"] == region["id"]))
                 .ok_or_else(|| format!("component review omitted measured region {}", region["id"]))?;
             if matches!(region["kind"].as_str(), Some("text" | "control")) && component["preview"]["kind"] != "page" {
@@ -160,6 +162,16 @@ pub fn freeze(project: &Path, input: &Value) -> Result<(Value, BTreeMap<String, 
                 return Err("a review group must share one code document".into());
             }
         }
+    }
+    // Validate the actual review request against measured region roles, including
+    // groups introduced or renamed after map authoring. Do not infer roles from labels.
+    for region in &mut measured_regions {
+        region.as_object_mut().ok_or("measured region must be an object")?.remove("reviewGroup");
+        if let Some(group) = input["components"].as_array().and_then(|cs| cs.iter().find(|c| c["id"] == region["id"]))
+            .and_then(|c| c.get("reviewGroup")) { region["reviewGroup"] = group.clone(); }
+    }
+    if let Some((id, message)) = impeccable_comp::review_groups::issues(&measured_regions).first() {
+        return Err(format!("component {id}: {message}"));
     }
     let mut ids = BTreeSet::new();
     let components = packet["components"]

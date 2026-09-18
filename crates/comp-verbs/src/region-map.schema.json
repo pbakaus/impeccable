@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Impeccable region map",
+  "type": "object",
+  "required": [
+    "regions"
+  ],
+  "properties": {
+    "regions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "note"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable unique identity retained through asset production and review."
+          },
+          "kind": {
+            "enum": [
+              "plate",
+              "image",
+              "texture",
+              "text",
+              "control",
+              "chrome"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "minLength": 8,
+            "description": "The actual subject, material and role visible at these bounds."
+          },
+          "pixelBox": {
+            "type": "object",
+            "required": [
+              "x",
+              "y",
+              "w",
+              "h"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "x": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "y": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "w": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "h": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              }
+            },
+            "description": "Whole pixels in the original comp. Must fit within its dimensions; inspect the crop."
+          },
+          "box": {
+            "type": "object",
+            "required": [
+              "x",
+              "y",
+              "w",
+              "h"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "x": {
+                "type": "number",
+                "minimum": 0
+              },
+              "y": {
+                "type": "number",
+                "minimum": 0
+              },
+              "w": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "h": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            },
+            "description": "Fractions of the full comp in 0..1; x+w and y+h must not exceed 1."
+          },
+          "grid": {
+            "type": "string",
+            "description": "Inclusive grid cells A0 through J9, e.g. A0:B1. Coarse; replace with exact bounds when needed."
+          },
+          "snap": {
+            "type": "boolean",
+            "description": "Grid text/control ink snapping; false retains the entire grid span. Exact boxes do not snap."
+          },
+          "container": {
+            "type": "boolean",
+            "description": "A code region enclosing separate children. Does not replace their inventory."
+          },
+          "parentId": {
+            "type": "string",
+            "description": "Existing distinct enclosing container ID. Containment only, never approval inheritance."
+          },
+          "reviewGroup": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "description": "Repeated instances of the same code component and role. Same kind and container status; peers only. Never group raster assets, ancestors with children, or different parts of one component."
+          },
+          "bleed": {
+            "type": "boolean",
+            "description": "Only when the comp intentionally clips this artwork."
+          },
+          "codeDrawn": {
+            "type": "boolean",
+            "description": "Only when code truly draws this region; never a workaround for painted artwork."
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "pixelBox"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "box"
+                  ]
+                },
+                {
+                  "required": [
+                    "grid"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "required": [
+              "box"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "pixelBox"
+                  ]
+                },
+                {
+                  "required": [
+                    "grid"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "required": [
+              "grid"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "pixelBox"
+                  ]
+                },
+                {
+                  "required": [
+                    "box"
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "draft": {
+      "const": false,
+      "description": "Automatic band drafts are not authored element maps."
+    }
+  }
+}

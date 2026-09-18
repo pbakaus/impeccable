@@ -6,7 +6,7 @@ Use this checkpoint on comp-led builds after producing the initial component kit
 
 Keep the measured spec's region IDs. Include every visible region: produced raster assets and working HTML/CSS/SVG for text, controls, patterns, decoration and layout elements. A region rendered in code needs an actual review document, not a promise to implement it later. Use semantic HTML for content and controls. Do not flatten the page or combine unrelated regions to avoid review. Report omitted regions so the user can mark what is missing.
 
-For a repeated code pattern, give its instances the same `reviewGroup` name. Keep every instance and its region ID in the manifest, in the same kit document. The user can inspect instances and explicitly apply one decision to the unreviewed group. Unique raster assets still require their own review; grouping never removes inventory or gate checks.
+For a repeated code pattern, give instances of the same component and role the same `reviewGroup` name. Group peers of the same kind, not a container with its contents or unrelated text roles. Keep every instance and its region ID in the manifest, in the same kit document. The user can inspect instances and explicitly apply one decision to the unreviewed group. Unique raster assets still require their own review; grouping never removes inventory or gate checks.
 
 Before producing assets, inspect each reference crop against its named subject. Coarse grid cells and automatic ink snapping can include neighbors or omit parts of a compound element. Correct the measured region with an explicit normalized `box`; do not build to a known bad crop. Check the code preview contains the complete component before presenting it. The capture tool refuses content cut off by the review crop.
 

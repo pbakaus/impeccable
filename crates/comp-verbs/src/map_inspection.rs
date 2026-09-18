@@ -163,6 +163,14 @@ fn inspect(comp: &Image, input: &Value, comp_path: &str) -> Value {
     )
     .expect("individually validated regions");
     spec["regions"] = json!(measured);
+    let group_issues = impeccable_comp::review_groups::issues(&measured);
+    let invalid_groups: HashSet<String> = group_issues.iter().filter_map(|(id, _)| {
+        measured.iter().find(|r| r["id"] == *id).and_then(|r| r["reviewGroup"].as_str()).map(String::from)
+    }).collect();
+    for (id, message) in group_issues {
+        let code = if measured.iter().any(|r| r["id"] == id && r["kind"].as_str().is_some_and(is_raster_kind)) { "raster-group" } else { "invalid-group" };
+        issue(&mut issues, "error", code, Some(&id), message);
+    }
     let mut groups: serde_json::Map<String, Value> = serde_json::Map::new();
     for region in &mut measured {
         let id = region["id"].as_str().unwrap().to_string();
@@ -195,23 +203,13 @@ fn inspect(comp: &Image, input: &Value, comp_path: &str) -> Value {
             }
         }
         if let Some(group) = region.get("reviewGroup") {
-            if is_raster_kind(region["kind"].as_str().unwrap()) {
-                issue(&mut issues,"warning","raster-group",Some(&id),"Raster assets require individual review; this group does not combine their decisions.".into());
-            } else if let Some(name) = group.as_str().filter(|n| !n.trim().is_empty()) {
+            if let Some(name) = group.as_str().filter(|n| !n.trim().is_empty() && !invalid_groups.contains(*n)) {
                 groups
                     .entry(name)
                     .or_insert(json!([]))
                     .as_array_mut()
                     .unwrap()
                     .push(json!(id));
-            } else {
-                issue(
-                    &mut issues,
-                    "error",
-                    "invalid-group",
-                    Some(&id),
-                    "reviewGroup must be a nonempty name.".into(),
-                );
             }
         }
         if is_raster_kind(region["kind"].as_str().unwrap()) {
@@ -420,6 +418,21 @@ pub fn run(argv: &[String], io: &mut Io, comp: &Image, comp_path: &str) -> i32 {
 mod tests {
     use super::*;
     use impeccable_comp::raster::create_image;
+
+    #[test]
+    fn mixed_review_groups_are_reported_without_discarding_geometry() {
+        let comp = Image { width: 100, height: 100, data: vec![255; 100*100*4] };
+        let input = json!({"regions":[
+            {"id":"frame","kind":"chrome","container":true,"reviewGroup":"cards","pixelBox":{"x":0,"y":0,"w":20,"h":20},"note":"Card border"},
+            {"id":"label","kind":"text","reviewGroup":"cards","pixelBox":{"x":2,"y":2,"w":10,"h":5},"note":"Card label"}
+        ]});
+        let report = inspect(&comp, &input, "comp.png");
+        assert_eq!(report["regions"].as_array().unwrap().len(),2);
+        assert!(report["issues"].as_array().unwrap().iter().any(|i| i["code"]=="invalid-group"));
+        assert!(report["reviewGroups"].get("cards").is_none());
+        let measured = comp_spec::measure_regions(&comp, &input, "comp.png").unwrap();
+        assert_eq!(measured["regions"][1]["reviewGroup"], "cards");
+    }
 
     #[test]
     fn map_inspection_writes_only_new_reference_artifacts_and_escapes_labels() {

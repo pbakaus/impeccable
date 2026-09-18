@@ -691,3 +691,21 @@ fn invalid_component_geometry_names_the_component_and_bounds() {
     let error = manifest::freeze(&f.project, &input).unwrap_err();
     assert!(error.contains("duplicate component id") && error.contains("art"), "{error}");
 }
+
+#[test]
+fn component_review_refuses_groups_that_mix_measured_roles() {
+    let f = Fixture::new();
+    fs::create_dir_all(f.project.join(".impeccable/build")).unwrap();
+    let mut input = f.manifest();
+    input["stage"] = json!("components");
+    input["components"][1]["reviewGroup"] = json!("peers");
+    let mut peer = input["components"][1].clone(); peer["id"] = json!("peer");
+    input["components"].as_array_mut().unwrap().push(peer);
+    let mut spec = json!({"regions":[{"id":"control","kind":"control"},{"id":"peer","kind":"text"}]});
+    let path = f.project.join(".impeccable/build/spec.json");
+    fs::write(&path, spec.to_string()).unwrap();
+    assert!(manifest::freeze(&f.project,&input).unwrap_err().contains("mixes region kinds"));
+    spec["regions"][1]["kind"] = json!("control");
+    fs::write(&path, spec.to_string()).unwrap();
+    assert_eq!(manifest::freeze(&f.project,&input).unwrap().0["components"].as_array().unwrap().len(),3);
+}

@@ -549,6 +549,9 @@ pub fn measure_regions(comp: &Image, regions_input: &Value, comp_path: &str) -> 
         if raw.get("snap").and_then(Value::as_bool) == Some(false) {
             obj.insert("snap".into(), json!(false));
         }
+        for key in ["parentId", "reviewGroup"] {
+            if let Some(value) = raw.get(key) { obj.insert(key.into(), value.clone()); }
+        }
         if let Some(cb) = cover_box {
             obj.insert("coverBox".into(), box_json(cb));
         }
@@ -908,7 +911,12 @@ pub fn region_source_issue(io: &Io, spec: &Value) -> Option<String> {
 
 pub fn run(argv: &[String], io: &mut Io) -> i32 {
     let spec_path = arg_or(argv, "spec", SPEC_PATH).to_string();
+    if flag(argv, "schema") {
+        io.out(include_str!("region-map.schema.json"));
+        return 0;
+    }
     if flag(argv, "help") || argv.is_empty() {
+        io.out("MAP WORKFLOW: open --grid, author regions.json, run --regions regions.json --inspect-map, inspect its crops, then correct the map. Stop here for a mapping-only task.\nSCHEMA: comp-spec --schema lists required fields, coordinates, parentId and reviewGroup. Default inspection output is concise; --json prints the full report.\n");
         io.out("REGION COORDINATES: use one of grid (coarse inclusive cells), box {x,y,w,h} (fractions of the comp, 0..1), or pixelBox {x,y,w,h} (whole pixels in the original comp). Use exact bounds when an element ends inside a grid cell; do not include neighbouring content.\n");
         io.out("usage: comp-spec.mjs --comp <png> --grid            write .impeccable/build/comp-grid.png (10x10 labeled grid) + palette + bands\n       comp-spec.mjs --comp <png> --regions <json>  measure regions -> .impeccable/build/spec.json\n         regions json: { \"regions\": [ { \"id\": \"art\", \"kind\": \"plate|image|texture|text|control|chrome\", \"grid\": \"E0:J4\", \"note\": \"...\" } ] }\n       comp-spec.mjs --comp <png> --auto [--out f]  write a band draft; refine into elements before --regions\n       comp-spec.mjs --comp <png> --regions <json> --inspect-map [--out-dir dir] [--json]  inspect all crops and masks without writing a spec\n       comp-spec.mjs --print                        the compact spec\n       comp-spec.mjs --crop <id> [--out f] [--scale n]   reference crop of a region (never a shipping asset)\n       comp-spec.mjs --plate-prompt <id> [--background transparent|opaque|auto]  the regeneration prompt for a raster region\n");
         return 0;
@@ -1105,6 +1113,11 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
         io.err("comp-spec: this is an automatic draft, not a measured element map; refine its bands into the visible elements before removing the draft flag\n");
         return 1;
     }
+    let group_issues = impeccable_comp::review_groups::issues(regions_input["regions"].as_array().unwrap_or(&Vec::new()));
+    if !group_issues.is_empty() {
+        for (id, message) in group_issues { io.err(&format!("comp-spec: region {id}: {message}\n")); }
+        return 1;
+    }
     let mut spec = match measure_regions(&comp, &regions_input, comp_path) {
         Ok(s) => s,
         Err(e) => {
@@ -1157,6 +1170,17 @@ fn preserve_typography(spec: &mut Value, previous: &Value) {
 #[cfg(test)]
 mod reference_tests {
     use super::*;
+    #[test]
+    fn mapping_schema_is_available_without_a_comp_or_workspace() {
+        let schema: Value = serde_json::from_str(include_str!("region-map.schema.json")).unwrap();
+        assert_eq!(schema["properties"]["regions"]["items"]["required"], json!(["id","kind","note"]));
+        assert_eq!(schema["properties"]["regions"]["items"]["oneOf"].as_array().unwrap().len(),3);
+        let mut io = Io::stdio();
+        io.cwd = std::path::PathBuf::from("/nonexistent/map-schema-test");
+        io.stdout = Box::new(Vec::<u8>::new());
+        assert_eq!(run(&["--schema".into()], &mut io),0);
+    }
+
 
     #[test]
     fn automatic_snap_preserves_separated_navigation_and_multiline_copy() {
