@@ -495,6 +495,7 @@ re!(
     format!("border(?:Left|Right){WS}*[:=]{WS}*[\"'`]({D}+)px{WS}+solid")
 );
 re!(BORDER_ACCENT_TW_RE, format!("{B}border-[tb]-({D}+){B}"));
+re!(ANIMATE_SPIN_RE, format!("{B}animate-spin{B}"));
 re!(
     BORDER_ACCENT_CSS_RE,
     format!(
@@ -867,7 +868,7 @@ pub static REGEX_MATCHERS: Lazy<Vec<Matcher>> = Lazy::new(|| {
         Matcher {
             id: "border-accent-on-rounded",
             find_all: |l| all(&BORDER_ACCENT_TW_RE, l),
-            test: |m, line| has_rounded(line) && num(m.g(1)) >= 1.0,
+            test: |m, line| has_rounded(line) && num(m.g(1)) >= 1.0 && !ANIMATE_SPIN_RE.is_match(line),
             fmt: |m, _| m.whole().to_string(),
         },
         Matcher {
@@ -1455,6 +1456,22 @@ mod tests {
             run("bounce-easing", "cubic-bezier(0.68, -0.55, 0.265, 1.55)"),
             vec!["cubic-bezier(0.68, -0.55, 0.265, 1.55)"]
         );
+    }
+
+    #[test]
+    fn border_accent_skips_tailwind_spinner() {
+        let g = |line: &str| run("border-accent-on-rounded", line);
+        assert_eq!(
+            g(r#"<div className="rounded-lg border-t-4 border-blue-500" />"#),
+            vec!["border-t-4"]
+        );
+        assert_eq!(
+            g(r#"<div className="rounded-full border-b-2" />"#),
+            vec!["border-b-2"]
+        );
+        assert!(g(r#"<div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent" />"#).is_empty());
+        assert!(g(r#"<div className="sm:animate-spin rounded-full h-8 w-8 border-t-2" />"#).is_empty());
+        assert!(g(r#"<div className="motion-safe:animate-spin rounded-full border-b-2" />"#).is_empty());
     }
 
     #[test]
