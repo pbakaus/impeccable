@@ -105,6 +105,31 @@ export function reviewPeers(packet: ReviewPacket, component: Component): Compone
   return packet.components.filter(c => c.reviewGroup === component.reviewGroup && componentPresentation(c).code);
 }
 export function decisionTargets(packet: ReviewPacket, draft: Draft, selected: Component, grouped: boolean, editing: string[] = []) {
-  return (grouped ? reviewPeers(packet, selected) : [selected]).filter(c => c.id === selected.id ||
-    (componentState(c, draft).kind === 'pending' && !editing.includes(c.id)));
+  const peers = grouped ? reviewPeers(packet, selected) : [selected];
+  if (peers.length === 1) return [selected];
+  return peers.filter(c => componentState(c, draft).kind === 'pending' &&
+    (c.id === selected.id || !editing.includes(c.id)));
+}
+
+
+/** One visible review unit per explicitly authored code pattern. Receipts stay
+ * per instance, including revision checks and individual exceptions. */
+export function reviewUnits(packet: ReviewPacket, draft: Draft, history?: ReviewHistory | null) {
+  const seen = new Set<string>();
+  return packet.components.flatMap(component => {
+    if (seen.has(component.id)) return [];
+    const members = reviewPeers(packet, component);
+    members.forEach(c => seen.add(c.id));
+    const pending = members.filter(c => componentState(c,draft,history).kind === 'pending');
+    const feedback = members.filter(c => componentState(c,draft,history).kind === 'feedback');
+    const representative = pending[0] ?? feedback[0] ?? component;
+    const kind = pending.length ? 'pending' as const : feedback.length ? 'feedback' as const : 'approved' as const;
+    return [{id:component.id, members, representative, pending:pending.length, kind,
+      label:members.length > 1 ? component.reviewGroup!.replace(/[-_]+/g,' ').replace(/^./,c=>c.toUpperCase()) : component.name,
+      box: {x:Math.min(...members.map(c=>c.box.x)),y:Math.min(...members.map(c=>c.box.y)),
+        w:Math.max(...members.map(c=>c.box.x+c.box.w))-Math.min(...members.map(c=>c.box.x)),
+        h:Math.max(...members.map(c=>c.box.y+c.box.h))-Math.min(...members.map(c=>c.box.y))},
+      stateLabel:pending.length ? (members.length>1 ? `${pending.length} to review` : componentState(representative,draft,history).label)
+        : feedback.length ? (members.length>1 ? `${feedback.length} ${feedback.length===1?'needs':'need'} work` : 'Feedback ready') : 'Approved'}];
+  });
 }

@@ -102,4 +102,30 @@ export const styles = `
  .assembled-review .decisions>button{flex:1;min-width:0}
  .assembled-review .page-review-status{text-align:left}
 }
+
+/* Grouped review is the default; instances are an explicit drill-down. */
+.pin small{font:600 10px/1 var(--font-body, sans-serif);margin-left:3px}.pin:has(small){width:auto;min-width:32px;padding:0 7px}
+.instance-region{opacity:.55;border-width:1px;pointer-events:none}
+.group-overview>.compare,.group-overview>.view-controls{display:none}
+.group-overview{position:relative}.group-overview>.review-peers{padding:0 44px 4px 0;min-height:36px}.group-overview>.compare-toolbar{position:absolute;right:0;top:0;justify-content:flex-end;margin:0}
+.group-overview>.compare-toolbar>:not(.comparison-actions),.group-overview .source-link{display:none}
+.group-overview .comparison-actions{margin-left:auto}
+.review-peers{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.group-hint{font-size:12px;color:var(--muted)}
+.instance-grid{display:grid;gap:0;flex:none;grid-auto-rows:max-content}
+.instance-grid-labels{display:grid;grid-template-columns:1fr 1fr;gap:16px;color:var(--muted);font-size:12px;padding:8px 0}
+.instance-row{display:block;height:auto;width:100%;text-align:left;padding:12px 0;border:0;border-top:1px solid var(--line);border-radius:0;background:transparent;color:inherit}
+.instance-row:hover{background:#eef3f1}
+.instance-caption{display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-size:12px;margin-bottom:8px}
+.instance-caption>span{color:var(--muted);font-size:11px}
+.instance-pair{display:grid;grid-template-columns:1fr 1fr;align-items:center;gap:16px}
+.instance-reference{justify-self:center;display:block;position:relative;overflow:hidden;max-height:180px;width:100%;background:var(--comp-background)}
+.instance-reference img{position:absolute;max-width:none;height:auto}
+.instance-produced{justify-self:center;display:flex;align-items:center;justify-content:center;min-height:36px;max-height:180px;overflow:hidden}
+.instance-produced img{display:block;width:100%;height:100%;object-fit:contain}
+.instance-row.approved{opacity:.65}.instance-row.feedback .instance-caption>span{color:var(--warn)}
+.item strong small{font-size:11px;white-space:nowrap;color:var(--muted)}
+#comparison-dialog .group-overview{overflow:auto;min-height:0}
+#comparison-dialog .group-overview>.compare-toolbar{top:0}
+#comparison-dialog .group-overview>.expanded-title{padding-right:44px}
 `;

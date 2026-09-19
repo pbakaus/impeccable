@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { nextUnreviewed, approveRemaining, newDraft, submission, summarize, validBox, type ReviewPacket } from './model';
+import { reviewUnits, decisionTargets, nextUnreviewed, approveRemaining, newDraft, submission, summarize, validBox, type ReviewPacket } from './model';
 const packet: ReviewPacket = { id:'review-1', revision:'packet-1', title:'Test', round:1, comp:{url:'/comp.png',width:100,height:100}, components:[{id:'art',revision:'art-1',name:'Art',medium:'Raster',note:'',box:{x:0,y:0,w:1,h:1},preview:{kind:'image',url:'/art.png'}},{id:'control',revision:'control-1',name:'Button',medium:'HTML',note:'',box:{x:0,y:0,w:.1,h:.1},preview:{kind:'page',url:'/page.html'}}] };
 describe('component review drafts',()=>{
  test('bulk approval still requires explicit inventory confirmation',()=>{const draft=approveRemaining(packet,newDraft(packet));expect(summarize(packet,draft).canSubmit).toBe(false);draft.inventoryConfirmed=true;expect(submission(packet,draft).requestId).toBe(packet.id);});
@@ -85,4 +85,30 @@ test('explicit pattern decisions preserve prior decisions, raster reviews and op
   expect(decisionTargets(p,draft,pattern,true,['c']).map(c=>c.id)).toEqual(['control','d']);
   expect(draft.decisions.b.feedback).toBe('Keep this specific repair');
   expect(reviewPeers(p,packet.components[0])).toEqual([packet.components[0]]);
+});
+
+
+test('review units collapse explicit code groups while retaining individual raster assets',()=>{
+ const p:ReviewPacket={...packet,components:[...Array.from({length:14},(_,i)=>({...packet.components[1],id:`room-${i}`,reviewGroup:'room-name'})),{...packet.components[0],reviewGroup:'room-name'}]};
+ const draft=newDraft(p);const units=reviewUnits(p,draft);
+ expect(units).toHaveLength(2);expect(units[0].members).toHaveLength(14);expect(units[1].members).toHaveLength(1);
+ expect(units[0].label).toBe('Room name');expect(units[0].pending).toBe(14);
+ draft.decisions['room-0']={revision:'control-1',action:'revise',feedback:'Fix this one',split:false};
+ const group=reviewUnits(p,draft)[0];expect(group.id).toBe('room-0');expect(group.representative.id).toBe('room-1');
+ for(const c of decisionTargets(p,draft,group.representative,true))draft.decisions[c.id]={revision:c.revision,action:'approve',feedback:'',split:false};
+ expect(draft.decisions['room-0'].feedback).toBe('Fix this one');expect(reviewUnits(p,draft)[0]).toMatchObject({pending:0,kind:'feedback',stateLabel:'1 need work'});
+ expect(summarize(p,draft)).toMatchObject({approved:13,revisions:1,pending:1});
+ p.components[2].revision='changed';expect(reviewUnits(p,draft)[0]).toMatchObject({pending:1,kind:'pending'});
+});
+
+test('group approval cannot overwrite a reviewed representative',()=>{
+ const p=structuredClone(packet);
+ p.components=p.components.slice(0,1);
+ const original=p.components[0];
+ original.reviewGroup='repeated'; original.preview={kind:'page',url:'/component.html'};
+ p.components.push({...original,id:'second'});
+ const draft=newDraft(p);
+ draft.decisions[original.id]={revision:original.revision,action:'revise',feedback:'Preserve this exception',split:false};
+ expect(decisionTargets(p,draft,original,true).map(c=>c.id)).toEqual(['second']);
+ expect(decisionTargets(p,draft,original,false).map(c=>c.id)).toEqual([original.id]);
 });
