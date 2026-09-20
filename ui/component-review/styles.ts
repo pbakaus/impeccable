@@ -128,4 +128,10 @@ export const styles = `
 #comparison-dialog .group-overview{overflow:auto;min-height:0}
 #comparison-dialog .group-overview>.compare-toolbar{top:0}
 #comparison-dialog .group-overview>.expanded-title{padding-right:44px}
+
+.review-scope{font-size:12px;line-height:1.5;margin:8px 0 12px;color:var(--color-text,#292929);text-align:left;white-space:normal}
+.review-scope p{margin:4px 0;overflow-wrap:anywhere}.review-scope strong{font-weight:600;margin-right:5px}
+.review-scope .separate-reviews,.review-scope .scope-excluded{font-size:11px;color:var(--muted)}
+.instance-row .review-scope{margin:12px 0 0}
+#comparison-dialog .review-scope{flex:none}
 `;

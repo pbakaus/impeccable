@@ -133,3 +133,21 @@ export function reviewUnits(packet: ReviewPacket, draft: Draft, history?: Review
         : feedback.length ? (members.length>1 ? `${feedback.length} ${feedback.length===1?'needs':'need'} work` : 'Feedback ready') : 'Approved'}];
   });
 }
+
+/** Nearby map geometry is context, not proof of capture exclusions. Only the
+ * capture's explicit exclusion list can identify deliberately hidden layers. */
+export function reviewScope(packet: ReviewPacket, component: Component) {
+  const excluded = new Set(component.preview.isolation?.excludedComponents ?? []);
+  const b = component.box;
+  const related = packet.components.filter(other => {
+    if (other.id === component.id) return false;
+    if (excluded.has(other.id)) return true;
+    const o = other.box;
+    const overlap = Math.max(0, Math.min(b.x+b.w,o.x+o.w)-Math.max(b.x,o.x)) *
+      Math.max(0, Math.min(b.y+b.h,o.y+o.h)-Math.max(b.y,o.y));
+    // Strictly smaller, substantially contained regions; omit backgrounds and
+    // neighboring cards. This never changes the review or any reference pixels.
+    return o.w*o.h < b.w*b.h && overlap / (o.w*o.h) >= .98;
+  });
+  return {description:component.note.trim(), related, excluded:related.filter(c=>excluded.has(c.id))};
+}

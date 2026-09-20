@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { reviewUnits, decisionTargets, nextUnreviewed, approveRemaining, newDraft, submission, summarize, validBox, type ReviewPacket } from './model';
+import { reviewScope, reviewUnits, decisionTargets, nextUnreviewed, approveRemaining, newDraft, submission, summarize, validBox, type ReviewPacket } from './model';
 const packet: ReviewPacket = { id:'review-1', revision:'packet-1', title:'Test', round:1, comp:{url:'/comp.png',width:100,height:100}, components:[{id:'art',revision:'art-1',name:'Art',medium:'Raster',note:'',box:{x:0,y:0,w:1,h:1},preview:{kind:'image',url:'/art.png'}},{id:'control',revision:'control-1',name:'Button',medium:'HTML',note:'',box:{x:0,y:0,w:.1,h:.1},preview:{kind:'page',url:'/page.html'}}] };
 describe('component review drafts',()=>{
  test('bulk approval still requires explicit inventory confirmation',()=>{const draft=approveRemaining(packet,newDraft(packet));expect(summarize(packet,draft).canSubmit).toBe(false);draft.inventoryConfirmed=true;expect(submission(packet,draft).requestId).toBe(packet.id);});
@@ -96,7 +96,7 @@ test('review units collapse explicit code groups while retaining individual rast
  draft.decisions['room-0']={revision:'control-1',action:'revise',feedback:'Fix this one',split:false};
  const group=reviewUnits(p,draft)[0];expect(group.id).toBe('room-0');expect(group.representative.id).toBe('room-1');
  for(const c of decisionTargets(p,draft,group.representative,true))draft.decisions[c.id]={revision:c.revision,action:'approve',feedback:'',split:false};
- expect(draft.decisions['room-0'].feedback).toBe('Fix this one');expect(reviewUnits(p,draft)[0]).toMatchObject({pending:0,kind:'feedback',stateLabel:'1 need work'});
+ expect(draft.decisions['room-0'].feedback).toBe('Fix this one');expect(reviewUnits(p,draft)[0]).toMatchObject({pending:0,kind:'feedback',stateLabel:'1 needs work'});
  expect(summarize(p,draft)).toMatchObject({approved:13,revisions:1,pending:1});
  p.components[2].revision='changed';expect(reviewUnits(p,draft)[0]).toMatchObject({pending:1,kind:'pending'});
 });
@@ -111,4 +111,18 @@ test('group approval cannot overwrite a reviewed representative',()=>{
  draft.decisions[original.id]={revision:original.revision,action:'revise',feedback:'Preserve this exception',split:false};
  expect(decisionTargets(p,draft,original,true).map(c=>c.id)).toEqual(['second']);
  expect(decisionTargets(p,draft,original,false).map(c=>c.id)).toEqual([original.id]);
+});
+
+test('scope distinguishes other mapped pieces from explicit capture exclusions',()=>{
+ const p=structuredClone(packet), card=p.components[0];
+ card.note='Card outline';
+ const child=p.components[1];
+ child.box={x:.2,y:.2,w:.2,h:.2};
+ p.components.push({...child,id:'background',box:{x:0,y:0,w:1,h:1}});
+ expect(reviewScope(p,card).related.map(c=>c.id)).toEqual(['control']);
+ expect(reviewScope(p,card).excluded).toEqual([]);
+ card.preview.isolation={method:'dom-component-v1',selector:'#card',excludedComponents:['control']};
+ expect(reviewScope(p,card).excluded.map(c=>c.id)).toEqual(['control']);
+ expect(reviewScope(p,child).related).toEqual([]);
+ expect(reviewScope(p,card).description).toBe('Card outline');
 });
