@@ -77,56 +77,31 @@ fn legacy_kebab(value: &str) -> Option<String> {
 }
 
 fn normalized_kebab(value: &str) -> Option<String> {
-    let lower = value.to_lowercase();
-    // replace runs of / \ . with '-'
-    let mut s = String::with_capacity(lower.len());
-    let mut in_sep = false;
-    for c in lower.chars() {
-        if c == '/' || c == '\\' || c == '.' {
-            if !in_sep {
-                s.push('-');
-                in_sep = true;
-            }
-        } else {
-            in_sep = false;
-            s.push(c);
-        }
-    }
-    // replace runs of [^a-z0-9-] with '-'
-    let mut t = String::with_capacity(s.len());
-    let mut in_bad = false;
-    for c in s.chars() {
-        if c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' {
-            in_bad = false;
-            t.push(c);
-        } else if !in_bad {
-            t.push('-');
-            in_bad = true;
-        }
-    }
-    // collapse -+
-    let mut u = String::with_capacity(t.len());
-    let mut in_dash = false;
-    for c in t.chars() {
-        if c == '-' {
-            if !in_dash {
-                u.push('-');
-                in_dash = true;
-            }
-        } else {
-            in_dash = false;
-            u.push(c);
-        }
-    }
-    // strip leading/trailing '-' (JS: /^-|-$/g -> one at each end; after collapse there is at most one)
-    let u = u.strip_prefix('-').unwrap_or(&u).to_string();
-    let u = u.strip_suffix('-').unwrap_or(&u).to_string();
-    (!u.is_empty()).then_some(u)
+    let normalized = value
+        .to_lowercase()
+        .split(|c: char| !c.is_ascii_lowercase() && !c.is_ascii_digit())
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    (!normalized.is_empty()).then_some(normalized)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{kebab, legacy_kebab, SLUG_MAX};
+    use super::{kebab, legacy_kebab, normalized_kebab, SLUG_MAX};
+
+    #[test]
+    fn normalization_preserves_ascii_runs_after_unicode_lowercasing() {
+        for (input, expected) in [
+            ("", None),
+            (" /\\.--_!?\n🦀 ", None),
+            ("--Button./\\ _Primary...99--", Some("button-primary-99")),
+            ("A🦀B café", Some("a-b-caf")),
+            ("İSTANBUL KELVIN", Some("i-stanbul-kelvin")),
+        ] {
+            assert_eq!(normalized_kebab(input).as_deref(), expected, "{input:?}");
+        }
+    }
 
     #[test]
     fn truncated_slugs_keep_distinct_full_inputs_distinct() {
