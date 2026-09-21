@@ -67,6 +67,7 @@ Commands:
   link                             Symlink skills from a local checkout or submodule
   update                           Update skills to the latest version
   check                            Check if skill updates are available
+  verify-bundle                    Verify a local skill bundle against the pinned signing keys
 
 Options:
   --help       Show this help message

@@ -34,6 +34,7 @@ pub mod hook_manifest;
 pub mod prompt;
 pub mod providers;
 pub mod util;
+mod verify_bundle;
 
 use impeccable_common::Io;
 

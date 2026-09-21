@@ -55,6 +55,7 @@ pub fn run(args: &[String], io: &mut Io) -> R<()> {
         "link" => link(&rest, io),
         "update" => update(&rest, io),
         "check" => check(io),
+        "verify-bundle" => crate::verify_bundle::run(&rest, io),
         other => {
             io.err(&format!("Unknown skills command: {other}\n"));
             io.err("Run 'impeccable --help' for available commands.\n");

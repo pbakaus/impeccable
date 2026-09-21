@@ -164,3 +164,10 @@ installed. The binary's `CLI_VERSION` moves from `3.6.0` to `4.0.0` with the
 CLI 4.0.0 release; it is what the binary prints when run directly.
 
 - `cli-version`.
+
+## Recorded 2026-09-18: offline skill bundle verification
+
+- `cli-help`: adds the `verify-bundle` command to root help.
+- `skills-verify-bundle-help`, `skills-verify-bundle-namespace-help`, and
+  `skills-verify-bundle-version-required`: new offline command help and
+  required expected-version behavior. Existing installer output is unchanged.

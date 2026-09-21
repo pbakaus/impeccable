@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "--version is required; specify the expected skill release\n\nUsage: impeccable verify-bundle <zip> --version <expected-version> [options]\n\nVerify a local skill bundle's signature and SHA-256 using the pinned signing keys.\nRuns offline without extracting files, installing skills, or enabling hooks.\n\nOptions:\n  --version <version>    Required expected skill version (for example, 4.3.1)\n  --signature <path>     Signature manifest (default: <zip>.sig.json)\n  --json                 Print verified metadata as JSON\n  -h, --help             Show this help message\n\nExit codes: 0 verified, 1 verification or file error, 2 invalid arguments.\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

@@ -31,15 +31,15 @@ pub(crate) fn release_version(location: &str) -> Result<String, String> {
     })
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct Envelope {
+pub(crate) struct Envelope {
     schema: u32,
-    key_id: String,
-    version: String,
-    artifact: String,
-    size: u64,
-    sha256: String,
+    pub(crate) key_id: String,
+    pub(crate) version: String,
+    pub(crate) artifact: String,
+    pub(crate) size: u64,
+    pub(crate) sha256: String,
     signature: String,
 }
 
@@ -62,7 +62,7 @@ pub(crate) fn verify_reader(
     signature: &[u8],
     version: &str,
     keys: &TrustedKeys,
-) -> Result<(), String> {
+) -> Result<Envelope, String> {
     if signature.len() as u64 > MAX_SIGNATURE_BYTES {
         return Err("Bundle signature is too large".into());
     }
@@ -108,7 +108,7 @@ pub(crate) fn verify_reader(
     if size != envelope.size || format!("{:x}", hash.finalize()) != envelope.sha256 {
         return Err("Bundle digest or size does not match its signature".into());
     }
-    Ok(())
+    Ok(envelope)
 }
 
 #[cfg(test)]

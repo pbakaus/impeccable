@@ -1831,3 +1831,23 @@ Conventions: every script's "run directly" guard is `process.argv[1]` ending wit
 
 #### E2E harness contract (`tests/live-e2e.test.mjs`, `tests/live-e2e/*`)
 - Fake agent polls `GET /poll?token&timeout=5000` (no lease override → 30 s lease), replies via `POST /poll` with `{token,type:'done',sourceEventType:'generate',id,file}`, `steer_done {message,file}`, `error`, accept/discard completions with `data:{carbonize:true,_acceptResult}`/`{_acceptResult}`, manual apply via `live-poll.mjs --reply <id> done --data <json>`. Variant format: 3 variants (font-weights 300/900/600 for render proof), params `lightness` (range), `face` (steps), `italic` (toggle). Scenarios: core, manual, annotations, exit, missed-done, params, mount-failure, republish, storage-loss (fixtures README). Fixture `runtime` block schema is authoritative for what a reimplementation must satisfy end-to-end.
+
+### `verify-bundle`: offline release verification
+
+`impeccable verify-bundle <zip> --version <expected-version>` (also under
+`impeccable skills`) authenticates local bytes with the remote installer's
+compiled-in Ed25519 keyring before reporting success. No network, extraction,
+installation, hooks, or writes occur. `IMPECCABLE_BUNDLE_PATH` does not bypass
+verification. The expected skill version is required; no `v` or `skill-v`
+prefix. The default signature path is `<zip>.sig.json`; `--signature <path>`
+overrides it. Value options also accept `=`, and `--` ends option parsing.
+Unknown options, duplicate value options, extra paths, and invalid versions
+exit 2. `--help` / `-h` prints static help and exits 0.
+
+Success exits 0 and prints the authenticated artifact, version, key ID,
+SHA-256, and size. `--json` instead prints one object with `verified: true`,
+`version`, `artifact`, `keyId`, `size`, and `sha256`. File/signature failures
+exit 1 with `Could not verify skill bundle: ...` on stderr and empty stdout,
+including in JSON mode. Signature reads are capped at 16 KiB plus one byte to
+detect oversized input; bundle hashing streams through the shared verifier.
+See [BUNDLE-SIGNING.md](BUNDLE-SIGNING.md) for trust scope and examples.
