@@ -143,11 +143,12 @@ export function reviewScope(packet: ReviewPacket, component: Component) {
     if (other.id === component.id) return false;
     if (excluded.has(other.id)) return true;
     const o = other.box;
-    const overlap = Math.max(0, Math.min(b.x+b.w,o.x+o.w)-Math.max(b.x,o.x)) *
-      Math.max(0, Math.min(b.y+b.h,o.y+o.h)-Math.max(b.y,o.y));
-    // Strictly smaller, substantially contained regions; omit backgrounds and
-    // neighboring cards. This never changes the review or any reference pixels.
-    return o.w*o.h < b.w*b.h && overlap / (o.w*o.h) >= .98;
+    const overlapWidth = Math.min(b.x+b.w,o.x+o.w)-Math.max(b.x,o.x);
+    const overlapHeight = Math.min(b.y+b.h,o.y+o.h)-Math.max(b.y,o.y);
+    // Smaller mapped pieces may cross a photograph's edge (headings and route
+    // lines often do). Include their visible intersection, ignoring subpixel
+    // boundary noise. This describes scope only; no pixels or decisions change.
+    return o.w*o.h < b.w*b.h && overlapWidth*packet.comp.width > 1 && overlapHeight*packet.comp.height > 1;
   });
   return {description:component.note.trim(), related, excluded:related.filter(c=>excluded.has(c.id))};
 }

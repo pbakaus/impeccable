@@ -134,4 +134,6 @@ export const styles = `
 .review-scope .separate-reviews,.review-scope .scope-excluded{font-size:11px;color:var(--muted)}
 .instance-row .review-scope{margin:12px 0 0}
 #comparison-dialog .review-scope{flex:none}
+
+.reference-layer{position:absolute;box-sizing:border-box;border:1px dashed #fff;outline:1px solid #173e43;pointer-events:none;z-index:2}.reference-layer>span{position:absolute;top:0;left:0;max-width:100%;padding:1px 4px;background:#173e43;color:white;font:10px/1.4 var(--font-sans,sans-serif);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:0;transition:opacity .12s}.instance-row:hover .reference-layer>span,.instance-row:focus-visible .reference-layer>span,.pan-viewport:hover .reference-layer>span,.pan-viewport:focus .reference-layer>span{opacity:1}
 `;

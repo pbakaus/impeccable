@@ -132,6 +132,7 @@ fn render_page(
           return {html:document.documentElement.outerHTML,svg:document.querySelectorAll('svg').length,images:document.images.length,controls:document.querySelectorAll('button,input,select,textarea,a[href]').length};
         })()"#.replace("ASSEMBLED", if assembled { "true" } else { "false" });
         let dom=page.evaluate_value_in_world(&world,&inspect).map_err(|e|e.message)?;
+        let fonts = page.evaluate_value_in_world(&world, include_str!("component_fonts.js")).map_err(|e| e.message)?;
         let isolated = if let Some(targets) = isolation {
             page.set_transparent_background().map_err(|e| e.message)?;
             let script = format!("({})({})", include_str!("component_isolation.js"), targets);
@@ -179,6 +180,7 @@ fn render_page(
             proof["isolation"] = isolated;
             proof["capturedDomSha256"] = json!(hash(captured_dom.as_str().unwrap().as_bytes()));
         }
+        proof["fonts"] = fonts;
         if assembled {
             proof["kind"] = json!("assembled-page");
             proof["scriptPolicy"] = json!("pinned-local-and-inline; network-api-and-workers-disabled");
@@ -319,6 +321,23 @@ impl ComponentCapturer for NativeComponentCapturer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[ignore = "requires Chromium"]
+    fn missing_primary_font_is_rejected_and_pinned_font_is_captured() {
+        let png = impeccable_comp::png_io::encode_png(&impeccable_comp::raster::create_image(300,100,[255;4]),&[]).unwrap();
+        let html = "<style>body{margin:0}#piece{font:20px 'ReviewFixtureFont',sans-serif}</style><div id='piece'>Hotel review</div>";
+        let mut inputs = BTreeMap::from([("comp.png".into(),png),("index.html".into(),html.as_bytes().to_vec())]);
+        let packet = json!({"schemaVersion":2,"stage":"components","comp":{"url":"/files/comp.png","width":300,"height":100},"components":[{"id":"piece","box":{"x":0,"y":0,"w":1,"h":1},"preview":{"kind":"page","url":"/files/index.html","selector":"#piece"},"dependencies":[]}]});
+        let error = NativeComponentCapturer.capture(&mut packet.clone(),&inputs).err().unwrap();
+        assert!(error.contains("Primary fonts unavailable: ReviewFixtureFont"), "{error}");
+        inputs.insert("index.html".into(),format!("<style>@font-face{{font-family:ReviewFixtureFont;src:url(font.ttf)}}</style>{html}").into_bytes());
+        inputs.insert("font.ttf".into(),include_bytes!("../../../ui/component-review/fonts/albertsans.ttf").to_vec());
+        let mut local = packet.clone();local["components"][0]["dependencies"]=json!(["font.ttf"]);
+        let capture=NativeComponentCapturer.capture(&mut local,&inputs).unwrap();
+        assert_eq!(capture.evidence["components"][0]["views"]["preview"]["fonts"]["primaryFamilies"],json!(["ReviewFixtureFont"]));
+        inputs.insert("index.html".into(),html.replace("'ReviewFixtureFont',sans-serif","sans-serif").into_bytes());
+        NativeComponentCapturer.capture(&mut packet.clone(),&inputs).unwrap();
+    }
     #[test]
     #[ignore = "requires Chromium"]
     fn shared_document_reports_all_missing_images_before_decode_and_names_corrupt_images() {

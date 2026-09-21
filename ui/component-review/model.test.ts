@@ -126,3 +126,13 @@ test('scope distinguishes other mapped pieces from explicit capture exclusions',
  expect(reviewScope(p,child).related).toEqual([]);
  expect(reviewScope(p,card).description).toBe('Card outline');
 });
+
+test('reference scope includes crossing foreground pieces but ignores adjacent pixel seams',()=>{
+ const p=structuredClone(packet),photo=p.components[0];
+ photo.box={x:0,y:0,w:.4,h:1};
+ const other=p.components[1];other.box={x:.2,y:.2,w:.3,h:.1};
+ p.components.push({...other,id:'neighbor',box:{x:.4,y:0,w:.4,h:1}});
+ p.components.push({...other,id:'seam',box:{x:.39999,y:.3,w:.2,h:.1}});
+ expect(reviewScope(p,photo).related.map(c=>c.id)).toEqual(['control']);
+ expect(reviewScope(p,photo).excluded).toEqual([]);
+});

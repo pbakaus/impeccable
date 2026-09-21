@@ -50,6 +50,8 @@ The runtime also captures an unmodified **In context** view from that same docum
 
 Component capture supports stable HTML/CSS and inline SVG. Supply a static review state for motion and keep the implementation's real inputs. A scripted, canvas or otherwise unsupported component is a blocker to report, not permission to substitute a raster or omit it.
 
+Keep the implementation's intended fonts in the review document. Vendor external fonts locally and declare them as dependencies; removing their imports changes the component being reviewed. Capture rejects unavailable primary font families rather than presenting a silent fallback.
+
 ## Present and wait
 
 If the harness exposes `component_review`, call it with `manifest_path` set to `.impeccable/review/components.json`. The host captures the component files, presents this same review interface and returns the user's decisions. A suspended request is waiting for the user; it is not a failed build or an approval.
