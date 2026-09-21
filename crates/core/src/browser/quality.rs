@@ -968,6 +968,33 @@ mod tests {
         assert!(!hits.iter().any(|h| h.id == "line-length"), "{hits:?}");
     }
 
+    /// Two columns that happen to sit on the same rows are two flows, not one
+    /// page-wide line. Fragments join a row only when they run on from it —
+    /// a gap no wider than the row's own line box — so a gutter keeps them
+    /// apart and the characters stay where the reader sees them.
+    #[test]
+    fn columns_on_the_same_rows_are_separate_lines() {
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        let p = text_el(&mut d, body, "p", &"w".repeat(240), "16px");
+        d.set_rect(p, 0.0, 100.0, 1020.0, 72.0);
+        // Two 300px columns with a 100px gutter, three rows each.
+        d.set_text_lines(
+            p,
+            &[
+                (0.0, 100.0, 300.0, 19.0),
+                (400.0, 100.0, 300.0, 19.0),
+                (0.0, 124.0, 300.0, 19.0),
+                (400.0, 124.0, 300.0, 19.0),
+                (0.0, 148.0, 300.0, 19.0),
+                (400.0, 148.0, 300.0, 19.0),
+            ],
+        );
+        let hits = check_element_quality_dom(&d, p, &BrowserConfig::default());
+        // Six short lines of 40 characters each, not three of 700px.
+        assert!(!hits.iter().any(|h| h.id == "line-length"), "{hits:?}");
+    }
+
     /// A rect that is already one line is one line, whatever the leading is.
     /// Dividing every rect by the line box turned a paragraph whose leading
     /// is tighter than its glyph box into two copies of the same line, and

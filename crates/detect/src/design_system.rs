@@ -44,10 +44,12 @@ re!(
     "^\\.[A-Za-z_][A-Za-z0-9_-]*$".to_string()
 );
 // A design document's prose, cut where one statement stops and the next
-// starts. `instead of` / `rather than` open a clause about what the document
-// is steering *away* from; the reversals (`outside`, `except`, ...) open one
-// about what it is steering *toward*, which is what lets "no ALL CAPS outside
-// the `.eyebrow` class" declare `.eyebrow`.
+// starts: punctuation, a line break, and the phrases that turn a sentence
+// around. `instead of` / `rather than` open a
+// clause about what the document is steering *away* from; the reversals
+// (`outside`, `except`, ...) open one about what it is steering *toward*,
+// which is what lets "no ALL CAPS outside the `.eyebrow` class" declare
+// `.eyebrow`.
 re!(
     DESIGN_CLAUSE_SPLIT,
     r"(?i)[.!?;:,()\[\]\n]|\u{2014}|\u{2013}|\binstead of\b|\brather than\b|\bas opposed to\b|\boutside\b|\bexcept\b|\bother than\b|\bunless\b|\bbesides\b|\bapart from\b|\bbeyond\b".to_string()
@@ -56,15 +58,30 @@ re!(
     DESIGN_NEGATING_BOUNDARY,
     r"(?i)^(?:instead of|rather than|as opposed to)$".to_string()
 );
-// Words that condemn whatever their clause names.
+// A directive: it condemns what comes after it, and nothing before it.
+// "Use `.kicker` and never `.tagline`" sanctions the first and forbids the
+// second, and a rule that read the whole clause would lose both.
 re!(
-    DESIGN_NEGATIVE_WORD,
-    r"(?i)\b(?:no|not|never|nor|none|avoid\w*|don'?t|do not|doesn'?t|drop|deprecat\w*|obsolete|legacy|forbidden|banned|disallow\w*|discourag\w*|retired|remove\w*|stop|wrong|unsupported|anti-?pattern\w*)\b".to_string()
+    DESIGN_DIRECTIVE_NEGATIVE,
+    r"(?i)\b(?:no|not|never|nor|none|avoid\w*|don'?t|do not|doesn'?t|does not|drop|remove\w*|stop|skip)\b".to_string()
+);
+// A state: it describes whatever its clause is about, wherever in the clause
+// the name sits. "`.card-old` is deprecated" names the class first.
+re!(
+    DESIGN_STATE_NEGATIVE,
+    r"(?i)\b(?:deprecat\w*|obsolete|legacy|forbidden|banned|disallow\w*|discourag\w*|retired|unsupported|wrong|bad|anti-?pattern\w*|no longer|not allowed|not permitted|not supported|not used)\b".to_string()
 );
 // Headings that introduce a section of counter-examples.
 re!(
     DESIGN_NEGATIVE_HEADING,
-    r"(?i)\b(?:don'?ts?|do not|avoid|never|not to|anti-?patterns?|deprecat\w*|forbidden|banned|legacy|obsolete|mistakes?|wrong|bad)\b".to_string()
+    r"(?i)\b(?:don'?ts?|do not|avoid|never|not to|anti-?patterns?|deprecat\w*|forbidden|banned|legacy|obsolete|retired|unsupported|removed|discourag\w*|disallow\w*|mistakes?|wrong|bad)\b".to_string()
+);
+// A heading that names both sides — "Do and Don't", "Dos and Don'ts",
+// "Do / Do not" — introduces a section of both, so the subsections under it
+// say which is which and the heading itself condemns nothing.
+re!(
+    DESIGN_BOTH_SIDES_HEADING,
+    r"(?i)\bdos?\b[^\n]{0,12}?\b(?:do ?n[o']?ts?|do not)\b|\b(?:do ?n[o']?ts?|do not)\b[^\n]{0,12}?\bdos?\b".to_string()
 );
 re!(
     FONT_SIZE_LITERAL_RE,
@@ -281,15 +298,23 @@ fn under_negative_heading(masked: &str, start: usize) -> bool {
         chain.retain(|(l, _)| *l < level);
         chain.push((level, text));
     }
-    chain
-        .iter()
-        .any(|(_, text)| DESIGN_NEGATIVE_HEADING.is_match(text))
+    chain.iter().any(|(_, text)| {
+        // "Dos and Don'ts" heads a section of both, and the subsections
+        // under it are what say which is which.
+        DESIGN_NEGATIVE_HEADING.is_match(text) && !DESIGN_BOTH_SIDES_HEADING.is_match(text)
+    })
 }
 
 /// The clause the span sits in — from the boundary before it to the boundary
-/// after it — and whether that clause condemns what it names. A clause opened
-/// by "instead of" or "rather than" is condemned by the boundary itself,
-/// whatever words follow.
+/// after it — and whether that clause condemns what it names.
+///
+/// Where the negative word sits decides what it governs. A *state* ("`.x` is
+/// deprecated") describes whatever the clause is about, so it condemns the
+/// class wherever in the clause the name appears. A *directive* ("never use
+/// `.x`") condemns what follows it and nothing before it, which is what keeps
+/// "Use `.kicker` and never `.tagline`" from losing `.kicker`. A clause
+/// opened by "instead of" or "rather than" is condemned by the boundary
+/// itself, whatever words follow.
 fn clause_condemns(masked: &str, start: usize, end: usize) -> bool {
     let mut clause_start = 0usize;
     let mut opened_by_negation = false;
@@ -304,7 +329,8 @@ fn clause_condemns(masked: &str, start: usize, end: usize) -> bool {
         .find(&masked[end..])
         .map(|m| end + m.start())
         .unwrap_or(masked.len());
-    DESIGN_NEGATIVE_WORD.is_match(&masked[clause_start..clause_end])
+    DESIGN_STATE_NEGATIVE.is_match(&masked[clause_start..clause_end])
+        || DESIGN_DIRECTIVE_NEGATIVE.is_match(&masked[clause_start..start])
 }
 
 pub fn parse_frontmatter(md: &str) -> Option<Map<String, Value>> {
@@ -2117,6 +2143,24 @@ mod tests {
         let md = "- Buttons: `.btn-primary`, `.btn-old`.\n- `.btn-old` is deprecated.\n";
         assert_eq!(declared_component_selectors(md), vec![".btn-primary"]);
 
+        // A directive governs what follows it, not the whole clause: a
+        // sentence that sanctions one class and forbids another says both.
+        let md = "- Use `.kicker` and never `.tagline`.\n\
+                  - Every label is a `.kicker`, not a `.tagline`.\n";
+        assert_eq!(declared_component_selectors(md), vec![".kicker"]);
+
+        // Headings that retire a set, in the words a document uses for it.
+        let md = "## Retired components\n\n- `.tagline`\n\n\
+                  ## Unsupported patterns\n\n- `.marquee-row`\n\n\
+                  ## Components\n\n- `.kicker`\n";
+        assert_eq!(declared_component_selectors(md), vec![".kicker"]);
+
+        // A heading that names both sides heads a section of both, and its
+        // subsections are what say which is which.
+        let md = "## Dos and Don'ts\n\n### Do\n\n- Label a section with `.kicker`.\n\n\
+                  ### Don't\n\n- Reach for `.eyebrow`.\n";
+        assert_eq!(declared_component_selectors(md), vec![".kicker"]);
+
         // What the negative words govern is their own clause. "No ALL CAPS
         // outside the `.eyebrow` class" declares `.eyebrow`, and "four kinds
         // and no more" declares all four.
@@ -2462,4 +2506,5 @@ mod tests {
         assert_eq!(js_string(&parse_scalar("007")), "7");
     }
 }
+
 

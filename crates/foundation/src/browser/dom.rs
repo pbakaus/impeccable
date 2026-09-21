@@ -193,13 +193,24 @@ pub trait Dom {
 }
 
 /// The rects of one element's rendered text, merged into the lines they
-/// rendered on: rects whose vertical band overlaps the band the row started
-/// with belong to that row, and a row is the union of its fragments.
+/// rendered on.
 ///
-/// Sorting is by top then left, so a row's fragments arrive together, and
-/// membership is tested against the *first* rect of the row rather than the
-/// row as it grows — an inline-block taller than the leading would otherwise
-/// swallow the line beneath it.
+/// Two rects are the same line when they share a row *and* run on from each
+/// other. Sharing a row is a vertical band overlapping the band the row
+/// started with by more than half the shorter height — that is what makes an
+/// inline `<strong>`, a superscript and the text around them one line.
+/// Running on is a horizontal gap no wider than the row's own line box: the
+/// fragments of a wrapped line are contiguous, while two columns of text that
+/// happen to sit on the same rows are separated by a gutter, and unioning
+/// those would invent a page-wide line neither column ever rendered. An
+/// inline image wider than the leading splits its line in two by the same
+/// test, which understates a line rather than overstating it — the direction
+/// this rule should err in.
+///
+/// Rects arrive in whatever order a DOM walked the text (an element's own
+/// text and its descendants' are interleaved on the page but not in the
+/// walk), so they are sorted top then left first and each rect joins the
+/// newest row still level with it.
 pub fn merge_text_rects_into_lines(rects: Vec<Rect>) -> Vec<Rect> {
     let mut rects: Vec<Rect> = rects
         .into_iter()
@@ -212,23 +223,41 @@ pub fn merge_text_rects_into_lines(rects: Vec<Rect>) -> Vec<Rect> {
             .then(a.left.partial_cmp(&b.left).unwrap_or(std::cmp::Ordering::Equal))
     });
     let mut lines: Vec<Rect> = Vec::new();
-    // The band of the rect each row started with.
+    // The band of the rect each row started with. Membership is tested
+    // against that rather than against the row as it grows, so an
+    // inline-block taller than the leading does not swallow the line beneath.
     let mut bands: Vec<(f64, f64)> = Vec::new();
     for r in rects {
-        if let (Some(line), Some(&(band_top, band_bottom))) = (lines.last_mut(), bands.last()) {
+        let mut joined = false;
+        for i in (0..lines.len()).rev() {
+            let (band_top, band_bottom) = bands[i];
+            // Sorted by top: once a row sits entirely above this rect, every
+            // row before it does too.
+            if band_bottom <= r.top {
+                break;
+            }
             let overlap = band_bottom.min(r.bottom) - band_top.max(r.top);
             let shorter = (band_bottom - band_top).min(r.height);
-            if shorter > 0.0 && overlap > shorter / 2.0 {
-                let left = line.left.min(r.left);
-                let top = line.top.min(r.top);
-                let right = line.right.max(r.right);
-                let bottom = line.bottom.max(r.bottom);
-                *line = Rect::from_xywh(left, top, right - left, bottom - top);
+            if shorter <= 0.0 || overlap <= shorter / 2.0 {
                 continue;
             }
+            let line = lines[i];
+            let gap = (r.left - line.right).max(line.left - r.right);
+            if gap > band_bottom - band_top {
+                continue;
+            }
+            let left = line.left.min(r.left);
+            let top = line.top.min(r.top);
+            let right = line.right.max(r.right);
+            let bottom = line.bottom.max(r.bottom);
+            lines[i] = Rect::from_xywh(left, top, right - left, bottom - top);
+            joined = true;
+            break;
         }
-        bands.push((r.top, r.bottom));
-        lines.push(r);
+        if !joined {
+            bands.push((r.top, r.bottom));
+            lines.push(r);
+        }
     }
     lines
 }
