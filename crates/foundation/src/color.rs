@@ -320,6 +320,40 @@ pub fn has_chroma(c: Option<&Rgba>, threshold: Option<f64>) -> bool {
     (math_max3(c.r, c.g, c.b) - math_min3(c.r, c.g, c.b)) >= threshold
 }
 
+/// A colour's lightness and saturation, HSL, both 0..1.
+///
+/// Saturation is chroma measured the same way at every lightness: the spread
+/// between the channels over the widest spread a colour of that lightness
+/// could have. The raw spread cannot say the same thing, because it shrinks
+/// towards white and towards black — `#e8edf2` spreads 10 of 255 and is a
+/// quarter of the way to fully saturated at its lightness, which is why it
+/// reads as a cool off-white and not as gray (REN-404).
+pub fn lightness_saturation(c: &Rgba) -> (f64, f64) {
+    let max = math_max3(c.r, c.g, c.b) / 255.0;
+    let min = math_min3(c.r, c.g, c.b) / 255.0;
+    let l = (max + min) / 2.0;
+    let d = max - min;
+    let s = if d <= 0.0 || l <= 0.0 || l >= 1.0 {
+        0.0
+    } else {
+        d / (1.0 - (2.0 * l - 1.0).abs())
+    };
+    (l, s)
+}
+
+/// Whether a colour reads as gray ink.
+///
+/// Two things at once: little chroma for the lightness it sits at, and a
+/// lightness that is neither of the two neutral inks a coloured surface is
+/// meant to carry. Near-white and near-black on a colour are deliberate; the
+/// muddy middle is what this names. Relative luminance is not lightness and
+/// cannot stand in for it: `#e8edf2` measures 0.84 there, under the old 0.85
+/// ceiling, and 0.93 as lightness, which is where the eye puts it.
+pub fn is_gray_ink(c: &Rgba) -> bool {
+    let (l, s) = lightness_saturation(c);
+    s < 0.2 && l > 0.2 && l < 0.85
+}
+
 /// JS `getHue(c)`.
 pub fn get_hue(c: Option<&Rgba>) -> f64 {
     let Some(c) = c else { return 0.0 };

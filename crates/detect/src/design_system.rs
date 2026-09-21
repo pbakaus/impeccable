@@ -25,6 +25,7 @@ use crate::jsp;
 use crate::util::{exists, js_string, re, read_json, read_text, ANY, WS};
 
 const DESIGN_NAMES: &[&str] = &["DESIGN.md", "Design.md", "design.md"];
+
 const FALLBACK_DIRS: &[&str] = &[".agents/context", "docs"];
 const PROJECT_ROOT_MARKERS: &[&str] = &[".git", "package.json", ".impeccable"];
 const COLOR_CHANNEL_TOLERANCE: f64 = 6.0;
@@ -37,6 +38,58 @@ pub const STATIC_DESIGN_SKIP_TAGS: &[&str] = &[
     "head", "title", "meta", "link", "style", "script", "noscript", "template", "source",
 ];
 
+re!(DESIGN_BACKTICKED, "`([^`\n]{1,80})`".to_string());
+re!(
+    DESIGN_CLASS_SELECTOR,
+    "^\\.[A-Za-z_][A-Za-z0-9_-]*$".to_string()
+);
+// A design document's prose, cut where one statement stops and the next
+// starts: punctuation, a line break, and the phrases that turn a sentence
+// around. `instead of` / `rather than` open a clause about what the document
+// is steering *away* from; the reversals (`outside`, `except`, ...) open one
+// about what it is steering *toward*, which is what lets "no ALL CAPS outside
+// the `.eyebrow` class" declare `.eyebrow`.
+re!(
+    DESIGN_CLAUSE_SPLIT,
+    r"(?i)[.!?;:,()\[\]\n]|\u{2014}|\u{2013}|\binstead of\b|\brather than\b|\bas opposed to\b|\boutside\b|\bexcept\b|\bother than\b|\bunless\b|\bbesides\b|\bapart from\b|\bbeyond\b".to_string()
+);
+re!(
+    DESIGN_NEGATING_BOUNDARY,
+    r"(?i)^(?:instead of|rather than|as opposed to)$".to_string()
+);
+// A directive: it condemns what comes after it, and nothing before it.
+// "Use `.kicker` and never `.tagline`" sanctions the first and forbids the
+// second, and a rule that read the whole clause would lose both.
+re!(
+    DESIGN_DIRECTIVE_NEGATIVE,
+    r"(?i)\b(?:no|not|never|nor|none|avoid\w*|don'?t|do not|doesn'?t|does not|drop|remove\w*|stop|skip)\b".to_string()
+);
+// A state: it describes whatever its clause is about, wherever in the clause
+// the name sits. "`.card-old` is deprecated" names the class first.
+re!(
+    DESIGN_STATE_NEGATIVE,
+    r"(?i)\b(?:deprecat\w*|obsolete|legacy|forbidden|banned|disallow\w*|discourag\w*|retired|unsupported|wrong|bad|anti-?pattern\w*|no longer|not allowed|not permitted|not supported|not used)\b".to_string()
+);
+// Headings that introduce a section of counter-examples.
+re!(
+    DESIGN_NEGATIVE_HEADING,
+    r"(?i)\b(?:don'?ts?|do not|avoid|never|not to|anti-?patterns?|deprecat\w*|forbidden|banned|legacy|obsolete|retired|unsupported|removed|discourag\w*|disallow\w*|mistakes?|wrong|bad)\b".to_string()
+);
+// A heading that names both sides — "Do and Don't", "Dos and Don'ts",
+// "Do / Do not" — introduces a section of both, so the subsections under it
+// say which is which and the heading itself condemns nothing. The two sides
+// have to be *joined* by something that pairs them: "Don't do this" and "What
+// we don't do" also put a `do` beside a `don't`, and they mean only the one
+// thing.
+re!(DESIGN_BOTH_SIDES_HEADING, {
+    // One joiner or several: "Do's, and Don'ts" and "Do and/or Don't" pair
+    // the two sides with a comma plus a conjunction and with a conjunction
+    // plus a slash.
+    let joiner = format!(r"(?:{WS}*(?:and|or|&|/|\||\+|,|vs\.?|versus)){{1,4}}{WS}*", WS = WS);
+    let affirmative = r"\bdo'?s?\b";
+    let negative = r"\b(?:do ?n[o']?ts?|do not)\b";
+    format!("(?i)(?:{affirmative}{joiner}{negative}|{negative}{joiner}{affirmative})")
+});
 re!(
     FONT_SIZE_LITERAL_RE,
     format!("^-?[{D}.]+(?:px|rem)$", D = "0-9")
@@ -164,6 +217,129 @@ re!(LEADING_WS_RE, format!("^{WS}*"));
 
 /// JS: design-system.mjs#parseFrontmatter. `None` when there is no
 /// `---` block; otherwise the parsed object (possibly empty).
+/// Class selectors the design document names as its own, in the order it
+/// names them.
+///
+/// A design document writes a component in backticks — "No ALL CAPS outside
+/// the `.eyebrow` class" — and that is the repository declaring a pattern by
+/// name. A rule that fires on one of those is reviewing the design system
+/// rather than the change, so the browser rules read this list and stand
+/// down (REN-406). Only a plain class selector counts: a backticked file
+/// name, property or hex is not a component.
+///
+/// Not every class a document names is a class it sanctions. A document also
+/// writes down what it does *not* want — "Avoid `.eyebrow`", "`.card-old` is
+/// deprecated", a "Don't" section of counter-examples — and exempting those
+/// would silence exactly the misuse the document was written to forbid
+/// (REN-406 follow-up). So each occurrence is read in the document's own
+/// structure: the heading chain above it, and the clause it sits in. A class
+/// condemned anywhere in the document is declared nowhere — a document that
+/// says "deprecated" about a class has said enough.
+pub fn declared_component_selectors(design_md: &str) -> Vec<String> {
+    // The prose is cut into clauses on punctuation, and a code span is full
+    // of punctuation that is not prose: `.btn-primary` carries a full stop,
+    // `rgb(0, 0, 0)` a pair of brackets and a comma. Masking every span to a
+    // run of letters of the same byte length keeps every offset where it was.
+    let masked = mask_code_spans(design_md);
+    let mut declared: Vec<String> = Vec::new();
+    let mut condemned: Vec<String> = Vec::new();
+    for cap in DESIGN_BACKTICKED.captures_iter(design_md) {
+        let span = cap.get(0).expect("whole match");
+        let token = js::trim(cap.get(1).map(|m| m.as_str()).unwrap_or(""));
+        if !DESIGN_CLASS_SELECTOR.is_match(token) {
+            continue;
+        }
+        let token = token.to_string();
+        let list = if design_condemns(&masked, span.start(), span.end()) {
+            &mut condemned
+        } else {
+            &mut declared
+        };
+        if !list.contains(&token) {
+            list.push(token);
+        }
+        if declared.len() + condemned.len() >= 128 {
+            break;
+        }
+    }
+    declared.retain(|t| !condemned.contains(t));
+    declared.truncate(64);
+    declared
+}
+
+/// Every code span replaced by a run of `a` of the same byte length, so the
+/// prose around it can be scanned for sentence structure without a class
+/// selector's own dot ending a sentence. ASCII in, same length out, so byte
+/// offsets into the original still address the same characters.
+fn mask_code_spans(design_md: &str) -> String {
+    let mut masked = design_md.as_bytes().to_vec();
+    for span in DESIGN_BACKTICKED.find_iter(design_md) {
+        for b in &mut masked[span.start()..span.end()] {
+            *b = b'a';
+        }
+    }
+    String::from_utf8(masked).unwrap_or_else(|_| design_md.to_string())
+}
+
+/// Whether the document speaks against the code span at `[start, end)`:
+/// either it sits under a heading that introduces counter-examples, or its
+/// own clause carries a word that condemns what the clause names.
+fn design_condemns(masked: &str, start: usize, end: usize) -> bool {
+    under_negative_heading(masked, start) || clause_condemns(masked, start, end)
+}
+
+/// The heading chain above `start`, by level: a subsection of a "Don't"
+/// section is still inside it.
+fn under_negative_heading(masked: &str, start: usize) -> bool {
+    let mut chain: Vec<(usize, &str)> = Vec::new();
+    for line in masked[..start].split('\n') {
+        let line = line.trim_start();
+        let level = line.bytes().take_while(|b| *b == b'#').count();
+        if level == 0 || level > 6 {
+            continue;
+        }
+        let text = &line[level..];
+        if !text.is_empty() && !text.starts_with(' ') {
+            continue;
+        }
+        chain.retain(|(l, _)| *l < level);
+        chain.push((level, text));
+    }
+    chain.iter().any(|(_, text)| {
+        // "Dos and Don'ts" heads a section of both, and the subsections
+        // under it are what say which is which.
+        DESIGN_NEGATIVE_HEADING.is_match(text) && !DESIGN_BOTH_SIDES_HEADING.is_match(text)
+    })
+}
+
+/// The clause the span sits in — from the boundary before it to the boundary
+/// after it — and whether that clause condemns what it names.
+///
+/// Where the negative word sits decides what it governs. A *state* ("`.x` is
+/// deprecated") describes whatever the clause is about, so it condemns the
+/// class wherever in the clause the name appears. A *directive* ("never use
+/// `.x`") condemns what follows it and nothing before it, which is what keeps
+/// "Use `.kicker` and never `.tagline`" from losing `.kicker`. A clause
+/// opened by "instead of" or "rather than" is condemned by the boundary
+/// itself, whatever words follow.
+fn clause_condemns(masked: &str, start: usize, end: usize) -> bool {
+    let mut clause_start = 0usize;
+    let mut opened_by_negation = false;
+    for boundary in DESIGN_CLAUSE_SPLIT.find_iter(&masked[..start]) {
+        clause_start = boundary.end();
+        opened_by_negation = DESIGN_NEGATING_BOUNDARY.is_match(js::trim(boundary.as_str()));
+    }
+    if opened_by_negation {
+        return true;
+    }
+    let clause_end = DESIGN_CLAUSE_SPLIT
+        .find(&masked[end..])
+        .map(|m| end + m.start())
+        .unwrap_or(masked.len());
+    DESIGN_STATE_NEGATIVE.is_match(&masked[clause_start..clause_end])
+        || DESIGN_DIRECTIVE_NEGATIVE.is_match(&masked[clause_start..start])
+}
+
 pub fn parse_frontmatter(md: &str) -> Option<Map<String, Value>> {
     let lines: Vec<&str> = CRLF_RE.split(md).collect();
     if js::trim(lines.first().copied().unwrap_or("")) != "---" {
@@ -534,6 +710,10 @@ pub struct AllowedFontSize {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct DesignSystem {
     pub present: bool,
+    /// Class selectors the document names as its own (REN-406). Filled where
+    /// the markdown itself is at hand; the allowlists come from frontmatter
+    /// and sidecar, this comes from the prose.
+    pub declared_selectors: Vec<String>,
     pub source_path: Option<String>,
     pub sidecar_path: Option<String>,
     pub md_newer_than_json: bool,
@@ -877,13 +1057,15 @@ pub fn load_design_system_for_cwd(cwd: &str) -> Option<DesignSystem> {
     let sidecar = sidecar_path.as_deref().and_then(read_json);
     let sidecar_stat = sidecar_path.as_deref().and_then(mtime_ms);
     let md_newer = matches!((md_stat, sidecar_stat), (Some(m), Some(s)) if m > s + 1000.0);
-    Some(normalize_design_system(
+    let mut ds = normalize_design_system(
         Some(&frontmatter),
         sidecar.as_ref(),
         Some(&md.path),
         sidecar_path.as_deref(),
         md_newer,
-    ))
+    );
+    ds.declared_selectors = declared_component_selectors(&text);
+    Some(ds)
 }
 
 /// JS `designSystemStartDir(targetPath, cwd)`.
@@ -1934,6 +2116,81 @@ fn finding_ignore_or_value_only(item: &Finding) -> String {
 mod tests {
     use super::*;
 
+    /// REN-406: the halfday design document's one rule about caps.
+    #[test]
+    fn declared_component_selectors_reads_the_document() {
+        let md = "# Halfday design system\n\n- Plain British English, sentence case everywhere.\n  No Title Case, no ALL CAPS outside the `.eyebrow` class.\n- `styles/tokens.css` is the only file with a raw colour, `--ink-900` or `#0f172a`.\n- **Button.** Four kinds and no more: `.btn-primary`, `.btn-secondary`,\n  `.btn-ghost`, `.btn-danger`. And `.btn-primary` again.\n";
+        assert_eq!(
+            declared_component_selectors(md),
+            vec![
+                ".eyebrow",
+                ".btn-primary",
+                ".btn-secondary",
+                ".btn-ghost",
+                ".btn-danger"
+            ]
+        );
+        assert!(declared_component_selectors("nothing to declare").is_empty());
+    }
+
+    /// A document also writes down what it does not want, and exempting those
+    /// classes silences exactly the misuse the document forbids.
+    #[test]
+    fn a_negative_example_declares_nothing() {
+        // Condemned in its own clause, by several spellings.
+        let md = "- Avoid `.eyebrow`; it shouts.\n- `.card-old` is deprecated.\n                  - Use `.kicker` instead of `.eyebrow-legacy`.\n                  - Every section label is a `.kicker`, not a `.tagline`.\n";
+        assert_eq!(declared_component_selectors(md), vec![".kicker"]);
+
+        // A section of counter-examples, and its subsections with it.
+        let md = "## Components\n\n- The label above a heading is `.kicker`.\n\n                  ## Don't\n\n### Labels\n\n- `.eyebrow` anywhere.\n";
+        assert_eq!(declared_component_selectors(md), vec![".kicker"]);
+
+        // Condemned once is condemned: a class the document calls deprecated
+        // is not rescued by a list that also names it.
+        let md = "- Buttons: `.btn-primary`, `.btn-old`.\n- `.btn-old` is deprecated.\n";
+        assert_eq!(declared_component_selectors(md), vec![".btn-primary"]);
+
+        // A directive governs what follows it, not the whole clause: a
+        // sentence that sanctions one class and forbids another says both.
+        let md = "- Use `.kicker` and never `.tagline`.\n\
+                  - Every label is a `.kicker`, not a `.tagline`.\n";
+        assert_eq!(declared_component_selectors(md), vec![".kicker"]);
+
+        // Headings that retire a set, in the words a document uses for it.
+        let md = "## Retired components\n\n- `.tagline`\n\n\
+                  ## Unsupported patterns\n\n- `.marquee-row`\n\n\
+                  ## Components\n\n- `.kicker`\n";
+        assert_eq!(declared_component_selectors(md), vec![".kicker"]);
+
+        // A heading that names both sides heads a section of both, and its
+        // subsections are what say which is which.
+        let md = "## Dos and Don'ts\n\n### Do\n\n- Label a section with `.kicker`.\n\n\
+                  ### Don't\n\n- Reach for `.eyebrow`.\n";
+        assert_eq!(declared_component_selectors(md), vec![".kicker"]);
+
+        // Compound separators pair the two sides just as well.
+        for heading in ["Do's, and Don'ts", "Do and/or Don't", "Don'ts / Dos"] {
+            let md = format!("## {heading}\n\n### Do\n\n- Use `.kicker`.\n");
+            assert_eq!(declared_component_selectors(&md), vec![".kicker"], "{heading}");
+        }
+
+        // A heading that only puts a `do` beside a `don't` is not a section
+        // of both, and still condemns what it names.
+        let md = "## Don't do this\n\n- `.eyebrow` above a heading.\n\n\
+                  ## What we don't do\n\n- `.tagline`\n\n\
+                  ## Components\n\n- `.kicker`\n";
+        assert_eq!(declared_component_selectors(md), vec![".kicker"]);
+
+        // What the negative words govern is their own clause. "No ALL CAPS
+        // outside the `.eyebrow` class" declares `.eyebrow`, and "four kinds
+        // and no more" declares all four.
+        let md = "- No Title Case, no ALL CAPS outside the `.eyebrow` class.\n                  - **Button.** Four kinds and no more: `.btn-primary` (one per\n                  surface), `.btn-secondary`, `.btn-ghost`, `.btn-danger`.\n";
+        assert_eq!(
+            declared_component_selectors(md),
+            vec![".eyebrow", ".btn-primary", ".btn-secondary", ".btn-ghost", ".btn-danger"]
+        );
+    }
+
     // ── #570 monorepo DESIGN.md inheritance ─────────────────────────────────
     // Mirrors tests/detect-cli-design-monorepo.test.mjs (public repo main,
     // 47e41195 + 5d7c1cce + e975bec4 + 91f2c7b4) at the findDesignRoot level.
@@ -2269,3 +2526,5 @@ mod tests {
         assert_eq!(js_string(&parse_scalar("007")), "7");
     }
 }
+
+

@@ -78,6 +78,10 @@ pub struct DesignSeen {
 /// `None` when `!raw?.present`.
 #[derive(Debug, Clone, Default)]
 pub struct DesignSystemConfig {
+    /// Selectors the repository's design document names as its own, e.g.
+    /// `.eyebrow` written into DESIGN.md. A rule that would charge one of
+    /// these is reviewing the design system rather than the change (REN-406).
+    pub declared_selectors: Vec<String>,
     pub has_fonts: bool,
     pub allowed_fonts: Vec<String>,
     pub has_colors: bool,
@@ -217,8 +221,15 @@ pub fn browser_design_system_config(config: &BrowserConfig) -> Option<DesignSyst
         .map(js_number)
         .filter(|px| px.is_finite())
         .collect();
+    let declared_selectors: Vec<String> = arr("declaredSelectors")
+        .iter()
+        .map(js_string_or_empty)
+        .map(|s| crate::js::trim(&s).to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
     let is_true = |k: &str| matches!(obj.get(k), Some(serde_json::Value::Bool(true)));
     Some(DesignSystemConfig {
+        declared_selectors,
         has_fonts: is_true("hasFonts") && !allowed_fonts.is_empty(),
         allowed_fonts,
         has_colors: is_true("hasColors") && !allowed_colors.is_empty(),
@@ -1318,6 +1329,11 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
     let rule_ok = |id: &str| disabled.is_empty() || !disabled.iter().any(|d| d == id);
     let design_system = browser_design_system_config(config);
     let mut design_seen = DesignSeen::default();
+    // The AI palette is read over the whole page: neon ink on a near-black
+    // ground waits here until a second tell hue turns up somewhere, so one
+    // deliberate accent stays an accent (REN-405).
+    let mut palette_tells: Vec<ec::TellHue> = Vec::new();
+    let mut palette_ink: Vec<(ElId, BrowserFinding)> = Vec::new();
     let body = dom.body();
     let root = dom.document_element();
     // JS `document.body` may be null on a bare document; every
@@ -1354,7 +1370,19 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
         findings.extend(hits(ec::check_element_colors_dom(dom, el)));
         findings.extend(hits(ec::check_element_motion_dom(dom, el)));
         findings.extend(hits(ec::check_element_glow_dom(dom, el)));
-        findings.extend(hits(ec::check_element_ai_palette_dom(dom, el)));
+        let palette = ec::check_element_ai_palette_dom(dom, el);
+        // An ignored subtree gets no vote in the page-wide reading. A cyan
+        // tell inside `data-impeccable-ignore="ai-color-palette"` would
+        // otherwise open the two-hue gate and charge neon ink somewhere else
+        // on the page that nobody waived — ignored content changing the
+        // result for content that was not ignored.
+        if !scoped_ignore_active(dom, el, "ai-color-palette") {
+            palette_tells.extend(palette.tells.iter().copied());
+        }
+        if let Some(ink) = palette.ink {
+            palette_ink.push((el, BrowserFinding::new(ink.id, ink.snippet)));
+        }
+        findings.extend(hits(palette.hits));
         findings.extend(hits(ec::check_element_radial_spotlight_dom(dom, el)));
         findings.extend(hits(ec::check_element_icon_tile_dom(dom, el)));
         findings.extend(hits(ec::check_element_italic_serif_dom(dom, el)));
@@ -1391,6 +1419,17 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
         }
     }
 
+    // Two different tell hues on one page is the palette; one is an accent.
+    if palette_tells.iter().any(|t| *t == ec::TellHue::Cyan)
+        && palette_tells.iter().any(|t| *t == ec::TellHue::Purple)
+    {
+        for (el, finding) in palette_ink {
+            if rule_ok(&finding.type_) {
+                add_browser_findings(dom, &mut groups, el, vec![finding]);
+            }
+        }
+    }
+
     let page_pass = |groups: &mut Vec<FindingGroup>, page_level: &mut Vec<BrowserFinding>, list: Vec<BrowserFinding>| {
         let list: Vec<BrowserFinding> = list.into_iter().filter(|f| rule_ok(&f.type_)).collect();
         if !list.is_empty() {
@@ -1398,17 +1437,6 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
             add_browser_findings(dom, groups, body_key, list);
         }
     };
-
-    page_pass(
-        &mut groups,
-        &mut page_level,
-        check_browser_design_system_sources(dom, design_system.as_ref(), &mut design_seen),
-    );
-    page_pass(&mut groups, &mut page_level, pc::check_typography(dom));
-    page_pass(&mut groups, &mut page_level, hits(tc::check_kicker_above_heading_dom(dom)));
-    page_pass(&mut groups, &mut page_level, hits(tc::check_numbered_section_labels_dom(dom)));
-    page_pass(&mut groups, &mut page_level, hits(tc::check_repeated_container_text_dom(dom)));
-    page_pass(&mut groups, &mut page_level, hits(tc::check_em_dash_overuse_dom(dom)));
 
     let el_pass = |groups: &mut Vec<FindingGroup>, list: Vec<super::ElFinding>| {
         for f in list {
@@ -1424,6 +1452,18 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
             );
         }
     };
+
+    page_pass(
+        &mut groups,
+        &mut page_level,
+        check_browser_design_system_sources(dom, design_system.as_ref(), &mut design_seen),
+    );
+    page_pass(&mut groups, &mut page_level, pc::check_typography(dom));
+    el_pass(&mut groups, tc::check_kicker_above_heading_dom(dom, design_system.as_ref()));
+    page_pass(&mut groups, &mut page_level, hits(tc::check_numbered_section_labels_dom(dom)));
+    page_pass(&mut groups, &mut page_level, hits(tc::check_repeated_container_text_dom(dom)));
+    page_pass(&mut groups, &mut page_level, hits(tc::check_em_dash_overuse_dom(dom)));
+
     el_pass(&mut groups, pc::check_layout(dom));
     el_pass(&mut groups, pc::check_heading_rhythm_dom(dom));
     el_pass(&mut groups, pc::check_edge_flush_cards_dom(dom));
@@ -1639,6 +1679,57 @@ mod tests {
         assert!(!is_likely_hashed_class("abcdefg"));
     }
 
+    /// REN-405. Northwind's Slate system: near-black ground, light ink, one
+    /// teal accent. The accent lit 18 places on a page with nothing wrong with
+    /// it. It stays quiet until the page shows the other half of the palette.
+    #[test]
+    fn one_accent_hue_on_dark_is_not_the_ai_palette() {
+        let build = |gradient: bool| {
+            let mut d = FakeDom::new();
+            let (_html, body) = d.with_page();
+            d.set_style(body, "backgroundColor", "rgb(15, 18, 17)");
+            d.set_rect(body, 0.0, 0.0, 1440.0, 900.0);
+            for i in 0..3 {
+                let a = d.add(Some(body), "a");
+                d.add_text(a, "Open the ledger");
+                d.set_rect(a, 40.0, 40.0 + 30.0 * (i as f64), 160.0, 20.0);
+                d.set_styles(a, &[("color", "rgb(47, 184, 166)")]);
+            }
+            if gradient {
+                let hero = d.add(Some(body), "div");
+                d.set_rect(hero, 0.0, 200.0, 1440.0, 320.0);
+                d.set_style(
+                    hero,
+                    "backgroundImage",
+                    "linear-gradient(135deg, rgb(124, 58, 237) 0%, rgb(168, 85, 247) 100%)",
+                );
+            }
+            d
+        };
+        let ids = |d: &FakeDom| {
+            collect_browser_findings(d, &BrowserConfig::default())
+                .groups
+                .iter()
+                .flat_map(|g| g.findings.iter())
+                .filter(|f| f.type_ == "ai-color-palette")
+                .map(|f| f.detail.clone())
+                .collect::<Vec<_>>()
+        };
+        // One teal accent on near-black: an accent.
+        assert_eq!(ids(&build(false)), Vec::<String>::new());
+        // The same accent beside a purple gradient: the palette, and every
+        // place it shows is named.
+        assert_eq!(
+            ids(&build(true)),
+            vec![
+                "Purple/violet gradient background".to_string(),
+                "Cyan neon text on dark background".to_string(),
+                "Cyan neon text on dark background".to_string(),
+                "Cyan neon text on dark background".to_string(),
+            ]
+        );
+    }
+
     #[test]
     fn skip_scan_empties_the_collect_pass() {
         // JS: index.mjs#skipScanActive() — an ignoreFiles-waived page answers
@@ -1846,6 +1937,55 @@ mod tests {
         assert_eq!(html_pattern_query("::before, ::after"), None);
         assert_eq!(html_pattern_query(".x:not(.y)::before"), Some(".x".to_string()));
         assert_eq!(html_pattern_query(".a::before,"), Some(".a".to_string()));
+    }
+
+    /// An ignored subtree does not get to open the page-wide palette gate.
+    /// `ai-color-palette` holds neon ink until a second tell hue turns up
+    /// somewhere on the page; a cyan tell inside a
+    /// `data-impeccable-ignore="ai-color-palette"` subtree used to count
+    /// toward that, so waiving one component charged an unrelated one.
+    #[test]
+    fn ignored_colors_do_not_contribute_tell_hues() {
+        let build = |ignore: bool| {
+            let mut d = FakeDom::new();
+            let (_h, body) = d.with_page();
+            d.set_style(body, "backgroundColor", "rgb(5, 6, 10)");
+
+            // The waived component: cyan neon ink on near-black.
+            let demo = d.add(Some(body), "div");
+            d.set_style(demo, "backgroundColor", "rgb(5, 6, 10)");
+            if ignore {
+                d.set_attr(demo, "data-impeccable-ignore", "ai-color-palette");
+            }
+            let cyan = d.add(Some(demo), "span");
+            d.add_text(cyan, "Terminal output");
+            d.set_style(cyan, "color", "rgb(34, 238, 238)");
+            d.set_style(cyan, "backgroundColor", "rgba(0, 0, 0, 0)");
+            d.el_mut(cyan).check_visibility = Some(true);
+
+            // Somewhere else on the page, and waived by nobody.
+            let card = d.add(Some(body), "div");
+            d.set_style(card, "backgroundColor", "rgb(5, 6, 10)");
+            let purple = d.add(Some(card), "span");
+            d.add_text(purple, "Upgrade");
+            d.set_style(purple, "color", "rgb(180, 60, 245)");
+            d.set_style(purple, "backgroundColor", "rgba(0, 0, 0, 0)");
+            d.el_mut(purple).check_visibility = Some(true);
+            d
+        };
+        let charged = |d: &FakeDom| -> Vec<String> {
+            collect_browser_findings(d, &BrowserConfig::default())
+                .groups
+                .iter()
+                .flat_map(|g| g.findings.iter().map(|f| f.type_.clone()))
+                .filter(|t| t == "ai-color-palette")
+                .collect()
+        };
+        // Two tell hues, neither waived: the palette is the page's.
+        assert_eq!(charged(&build(false)).len(), 2);
+        // The cyan half waived: one tell hue is an accent, and the purple ink
+        // outside the ignored subtree is not charged either.
+        assert!(charged(&build(true)).is_empty());
     }
 
     #[test]

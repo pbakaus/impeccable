@@ -4,8 +4,8 @@
 //! `undefined` / `null` distinctions the source relies on.
 
 use crate::color::{
-    color_to_hex, composite_color_over, contrast_ratio, get_hue, has_chroma, is_neutral_color,
-    relative_luminance, Rgba,
+    color_to_hex, composite_color_over, contrast_ratio, get_hue, has_chroma, is_gray_ink,
+    is_neutral_color, relative_luminance, Rgba,
 };
 use crate::constants::{
     BORDER_SAFE_TAGS, GENERIC_FONTS, KNOWN_SERIF_FONTS, SAFE_TAGS, WCAG_LARGE_BOLD_TEXT_PX,
@@ -264,9 +264,12 @@ fn contrast_findings(opts: &ColorOpts, text_color: &Rgba) -> Vec<RuleHit> {
         }
     };
     let mut findings = Vec::new();
-    let text_lum = relative_luminance(text_color);
-    let is_gray = !has_chroma(Some(text_color), Some(20.0)) && text_lum > 0.05 && text_lum < 0.85;
-    if is_gray && bgs.iter().all(|b| has_chroma(Some(b), Some(40.0))) {
+    // Gray is low chroma at whatever lightness the ink sits at, and the
+    // surface is a colour when it has chroma of its own. The old pair of
+    // tests read relative luminance as if it were lightness, which made every
+    // off-white under 0.85 gray and charged an off-white nav on a teal
+    // masthead three times over (REN-404).
+    if is_gray_ink(text_color) && bgs.iter().all(|b| has_chroma(Some(b), Some(40.0))) {
         let bg_label = match opts.effective_bg {
             Some(bg) => color_to_hex(Some(&bg)),
             None => format!(
@@ -1123,6 +1126,38 @@ mod tests {
         assert_eq!(
             hits("text-slate-300 bg-red-500/10 bg-teal-600"),
             vec!["text-slate-300 on bg-teal-600"]
+        );
+    }
+
+    /// REN-404. The bench's masthead: `#e8edf2` nav links on `#123a36`. The
+    /// ink is an off-white with a cool tint, not gray, and the pairing clears
+    /// contrast; the old test called everything under 0.85 relative luminance
+    /// gray and charged it three times over on a page with nothing wrong.
+    #[test]
+    fn off_white_on_a_colour_is_not_gray_ink() {
+        let ink = |hex_r: f64, hex_g: f64, hex_b: f64| {
+            check_colors(&ColorOpts {
+                tag: "p".to_string(),
+                font_size: 15.0,
+                font_weight: 400.0,
+                has_direct_text: true,
+                text_color: Some(Rgba::new(hex_r, hex_g, hex_b, 1.0)),
+                effective_bg: Some(Rgba::new(18.0, 58.0, 54.0, 1.0)),
+                ..Default::default()
+            })
+            .into_iter()
+            .map(|h| h.id)
+            .collect::<Vec<_>>()
+        };
+        // #e8edf2 on #123a36.
+        assert_eq!(ink(232.0, 237.0, 242.0), Vec::<String>::new());
+        // White, the other neutral ink a coloured surface carries.
+        assert_eq!(ink(255.0, 255.0, 255.0), Vec::<String>::new());
+        // #8a8f8c: the muddy middle, still charged, and the contrast check
+        // beside it is untouched.
+        assert_eq!(
+            ink(138.0, 143.0, 140.0),
+            vec!["gray-on-color".to_string(), "low-contrast".to_string()]
         );
     }
 

@@ -768,24 +768,67 @@ pub fn check_element_glow_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
     })
 }
 
+/// The two hues the AI palette is built out of. A page that uses one of them
+/// has an accent; a page that uses both has the palette.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TellHue {
+    Cyan,
+    Purple,
+}
+
+impl TellHue {
+    /// The band a colour falls in, `None` outside both.
+    fn of(hue: f64) -> Option<TellHue> {
+        if (160.0..=200.0).contains(&hue) {
+            Some(TellHue::Cyan)
+        } else if (260.0..=310.0).contains(&hue) {
+            Some(TellHue::Purple)
+        } else {
+            None
+        }
+    }
+    fn label(self) -> &'static str {
+        match self {
+            TellHue::Cyan => "Cyan",
+            TellHue::Purple => "Purple/violet",
+        }
+    }
+}
+
+/// What one element contributes to the AI-palette reading.
+#[derive(Debug, Clone, Default)]
+pub struct AiPaletteReading {
+    /// Charged where they are found: a saturated cyan or purple *gradient* is
+    /// the pattern by itself, whatever else the page does.
+    pub hits: Vec<RuleHit>,
+    /// Neon ink on a near-black ground, held until a second tell hue shows up
+    /// somewhere on the page (REN-405).
+    pub ink: Option<RuleHit>,
+    /// The tell hues this element showed, gradient and ink alike.
+    pub tells: Vec<TellHue>,
+}
+
 /// JS: checks.mjs#checkElementAIPaletteDOM(el)
-pub fn check_element_ai_palette_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
-    let mut findings = Vec::new();
+///
+/// One element's reading. The gradient half answers on its own; the ink half
+/// is held for the page pass, because a single saturated hue on a dark ground
+/// is how a great many ordinary systems draw their one accent — a teal
+/// `#2fb8a6` on near-black lit 18 places on the bench's base, and every one of
+/// them was the same deliberate accent (REN-405). Two different tell hues on
+/// one page is the palette the rule is named for.
+pub fn check_element_ai_palette_dom(dom: &dyn Dom, el: ElId) -> AiPaletteReading {
+    let mut reading = AiPaletteReading::default();
     let bg_image = dom.style(el, "backgroundImage");
     for c in parse_gradient_colors(Some(&bg_image)) {
         if has_chroma(Some(&c), Some(50.0)) {
-            let hue = get_hue(Some(&c));
-            if hue >= 260.0 && hue <= 310.0 {
-                findings.push(RuleHit::new(
+            if let Some(tell) = TellHue::of(get_hue(Some(&c))) {
+                reading.tells.push(tell);
+                reading.hits.push(RuleHit::new(
                     "ai-color-palette",
-                    "Purple/violet gradient background".to_string(),
-                ));
-                break;
-            }
-            if hue >= 160.0 && hue <= 200.0 {
-                findings.push(RuleHit::new(
-                    "ai-color-palette",
-                    "Cyan gradient background".to_string(),
+                    match tell {
+                        TellHue::Purple => "Purple/violet gradient background".to_string(),
+                        TellHue::Cyan => "Cyan gradient background".to_string(),
+                    },
                 ));
                 break;
             }
@@ -794,10 +837,7 @@ pub fn check_element_ai_palette_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
     let text_color = parse_rgb_or_any(&dom.style(el, "color"));
     if let Some(tc) = text_color {
         if has_chroma(Some(&tc), Some(80.0)) {
-            let hue = get_hue(Some(&tc));
-            let is_ai_palette =
-                (hue >= 160.0 && hue <= 200.0) || (hue >= 260.0 && hue <= 310.0);
-            if is_ai_palette {
+            if let Some(tell) = TellHue::of(get_hue(Some(&tc))) {
                 let parent = dom.parent(el);
                 let parent_bg_info = match parent {
                     Some(p) => resolve_background_info(dom, p),
@@ -812,21 +852,17 @@ pub fn check_element_ai_palette_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
                 }
                 if let Some(bg) = effective_bg {
                     if relative_luminance(&bg) < 0.1 {
-                        let label = if hue >= 260.0 {
-                            "Purple/violet"
-                        } else {
-                            "Cyan"
-                        };
-                        findings.push(RuleHit::new(
+                        reading.tells.push(tell);
+                        reading.ink = Some(RuleHit::new(
                             "ai-color-palette",
-                            format!("{label} neon text on dark background"),
+                            format!("{} neon text on dark background", tell.label()),
                         ));
                     }
                 }
             }
         }
     }
-    findings
+    reading
 }
 
 // ── radial spotlight ──────────────────────────────────────────────────────
@@ -1624,9 +1660,11 @@ mod tests {
             "linear-gradient(rgb(168, 85, 247), rgb(59, 130, 246))",
         );
         d.set_style(hero, "color", "rgb(0, 0, 0)");
-        let hits = check_element_ai_palette_dom(&d, hero);
-        assert_eq!(hits.len(), 1);
-        assert_eq!(hits[0].snippet, "Purple/violet gradient background");
+        let reading = check_element_ai_palette_dom(&d, hero);
+        assert_eq!(reading.hits.len(), 1);
+        assert_eq!(reading.hits[0].snippet, "Purple/violet gradient background");
+        assert!(reading.ink.is_none());
+        assert_eq!(reading.tells, vec![TellHue::Purple]);
     }
 
     #[test]
