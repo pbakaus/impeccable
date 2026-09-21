@@ -57,6 +57,11 @@ pub fn run_with_capturer(
             Some("prepare") | Some("capture") => {
                 let path = arg(args, "--manifest")
                     .ok_or("prepare needs --manifest <project-relative file>")?;
+                if args[0] == "capture" {
+                    if let Some(tool) = io.env("IMPECCABLE_COMPONENT_REVIEW_TOOL") {
+                        return Err(format!("This session uses hosted human review. Call {tool} with manifest_path={path:?}; it captures the components and waits for the user's decisions. A failed capture is not approval."));
+                    }
+                }
                 let project = io.cwd.canonicalize().map_err(|e| e.to_string())?;
                 let renderer=if args[0]=="capture" {Some(capturer.take().ok_or("native component capturer unavailable")?)}else{None};
                 let dir=store::prepare_file(&store,&project,&path,renderer)?;

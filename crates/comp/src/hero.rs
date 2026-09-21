@@ -96,6 +96,34 @@ pub fn ink_color(img: &Image) -> Option<InkColor> {
     Some(InkColor { ground, ink })
 }
 
+// A secondary palette cluster may be the surrounding panel, not lettering.
+// Refuse to prescribe that colour as ink when it spans an edge of the crop.
+// This affects diagnostic advice only; full-region fidelity still uses every pixel.
+fn text_ink_color(img: &Image) -> Option<InkColor> {
+    let cols = dominant_colors(img, 4, 3);
+    let ground = cols.first()?.clone();
+    let polarity = fingerprint(img, &FpOpts::default())
+        .filter(|fp| fp.glyphs >= 6 && fp.cap_height_px < img.height as f64 * 0.6)
+        .map(|fp| fp.ink_is_dark);
+    let ink = cols.iter().skip(1).find(|c| {
+        delta_e(c.lab, ground.lab) > 20.0 && !colour_spans_edge(img, &c.hex)
+            && polarity.is_none_or(|dark| (c.lab[0] < ground.lab[0]) == dark)
+    }).cloned();
+    Some(InkColor { ground, ink })
+}
+
+fn colour_spans_edge(img: &Image, hex: &str) -> bool {
+    if img.width == 0 || img.height == 0 { return true; }
+    let rgb: Vec<u8> = (1..7).step_by(2).filter_map(|i| u8::from_str_radix(&hex[i..i+2], 16).ok()).collect();
+    if rgb.len() != 3 { return true; }
+    let matches = |x: usize, y: usize| {
+        let p = &img.data[(y * img.width + x) * 4..];
+        (0..3).map(|i| (p[i] as i32 - rgb[i] as i32).pow(2)).sum::<i32>() < 40 * 40
+    };
+    [0, img.height - 1].iter().any(|&y| (0..img.width).filter(|&x| matches(x,y)).count() * 4 > img.width)
+        || [0, img.width - 1].iter().any(|&x| (0..img.height).filter(|&y| matches(x,y)).count() * 4 > img.height)
+}
+
 /// A spec region (minimal: only the fields the pure checks read).
 pub struct Region {
     pub id: String,
@@ -117,8 +145,8 @@ pub fn text_region_check(region: &Region, comp_crop: &Image, build_crop: &Image)
     let comp = fingerprint(comp_crop, &FpOpts::default());
 
     let colour_only = |findings: &mut Vec<String>| -> Value {
-        let ca = ink_color(comp_crop);
-        let cb = ink_color(build_crop);
+        let ca = text_ink_color(comp_crop);
+        let cb = text_ink_color(build_crop);
         if let (Some(ca), Some(cb)) = (&ca, &cb) {
             if let (Some(ci), Some(cbi)) = (&ca.ink, &cb.ink) {
                 if delta_e(ci.lab, cbi.lab) > 22.0 {
@@ -243,7 +271,7 @@ pub fn text_region_check(region: &Region, comp_crop: &Image, build_crop: &Image)
         }
     }
     if comp.cap_height_px >= 16.0 {
-        if let (Some(ca), Some(cb)) = (ink_color(comp_crop), ink_color(build_crop)) {
+        if let (Some(ca), Some(cb)) = (text_ink_color(comp_crop), text_ink_color(build_crop)) {
             if let (Some(ci), Some(cbi)) = (&ca.ink, &cb.ink) {
                 if delta_e(ci.lab, cbi.lab) > 22.0 {
                     findings.push(format!(
@@ -254,7 +282,11 @@ pub fn text_region_check(region: &Region, comp_crop: &Image, build_crop: &Image)
             }
         }
     }
-    if let (Some(ba), Some(bb)) = (ink_box(comp_crop), ink_box(build_crop)) {
+    // A control's contrast bounds include its outline, fill edge, and icon.
+    // They are not the first line of its lettering. Whole-control placement
+    // and shape remain checked by the independent region comparison.
+    if region.kind != "control" {
+      if let (Some(ba), Some(bb)) = (ink_box(comp_crop), ink_box(build_crop)) {
         let dy = bb.y - ba.y;
         if (dy as f64).abs() > 12f64.max(comp_crop.height as f64 * 0.15) {
             findings.push(format!(
@@ -276,6 +308,7 @@ pub fn text_region_check(region: &Region, comp_crop: &Image, build_crop: &Image)
                 if dx > 0 { "further right" } else { "further left" }
             ));
         }
+    }
     }
     metrics["capDelta"] = json!(round_fixed(cap_delta, 3));
     json!({ "findings": findings, "metrics": metrics })
@@ -505,4 +538,49 @@ pub fn svg_illustrations(html: &str) -> Vec<Value> {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod foreground_tests {
+    use super::*;
+    use crate::raster::create_image;
+
+    fn button(ink: [u8;4]) -> Image {
+        let mut image = create_image(120, 40, [248,216,71,255]);
+        for y in 0..40 { for x in 0..120 {
+            let colour = if y < 3 || y >= 37 {[190,70,27,255]}
+                else if (12..28).contains(&y) && x > 15 && x < 105 && x % 8 < 3 {ink}
+                else {continue};
+            image.data[(y*120+x)*4..(y*120+x)*4+4].copy_from_slice(&colour);
+        }}
+        image
+    }
+    #[test]
+    fn surrounding_panel_is_not_prescribed_as_control_lettering() {
+        let image = button([8,40,72,255]);
+        let chosen = text_ink_color(&image).unwrap().ink.unwrap();
+        assert!(!colour_spans_edge(&image, &chosen.hex));
+        assert_ne!(chosen.hex, "#be461b");
+        assert!(chosen.hex.starts_with("#0"), "{}", chosen.hex);
+    }
+    #[test]
+    fn incorrect_interior_lettering_still_produces_colour_feedback() {
+        let region = Region { id:"action".into(), kind:"control".into(), chosen:None };
+        let result = text_region_check(&region, &button([8,40,72,255]), &button([180,20,180,255]));
+        assert!(result["findings"].as_array().unwrap().iter().any(|f|f.as_str().unwrap().contains("ink is")), "{result}");
+    }
+    #[test]
+    fn control_outline_does_not_become_text_colour_or_first_line() {
+        let a = button([8,40,72,255]);
+        let mut b = a.clone();
+        // A different outer surround must not move the lettering's first line.
+        for y in [0,1,2,37,38,39] { for x in 0..120 {
+            b.data[(y*120+x)*4..(y*120+x)*4+4].copy_from_slice(&[248,216,71,255]);
+        }}
+        let region = Region { id:"action".into(), kind:"control".into(), chosen:None };
+        let result = text_region_check(&region,&a,&b);
+        assert!(!result["findings"].as_array().unwrap().iter().any(|f| {
+            let s=f.as_str().unwrap();s.contains("first line") || s.contains("ink is")
+        }), "{result}");
+    }
 }

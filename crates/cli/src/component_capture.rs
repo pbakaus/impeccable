@@ -75,9 +75,58 @@ fn render_page(
         page.goto(&url, "networkidle0", Duration::from_secs(20))
             .map_err(|e| e.message)?;
         let world = page.create_isolated_world().map_err(|e| e.message)?;
+        let supported = r#"(()=>{if((!ASSEMBLED&&document.scripts.length)||document.querySelector('iframe,frame,object,embed,canvas'))throw Error('Component capture requires static HTML/CSS/SVG; script, frame and canvas components need a supported capture adapter.');return true;})()"#
+            .replace("ASSEMBLED", if assembled { "true" } else { "false" });
+        page.evaluate_value_in_world(&world, &supported).map_err(|e|e.message)?;
+        let urls = page.observed_response_urls().map_err(|e| e.message)?;
+        let evidence = page.response_evidence(&urls).map_err(|e| e.message)?;
+        if evidence.truncated
+            || evidence.changed_during_collection
+            || !evidence.missing_urls.is_empty()
+        {
+            return Err("component network evidence is incomplete".into());
+        }
+        let mut responses = BTreeMap::new();
+        let mut dependency_errors = std::collections::BTreeSet::new();
+        for record in &evidence.responses {
+            if record.url.starts_with("data:image/") {
+                continue;
+            }
+            if record.url == format!("{origin}/favicon.ico")
+                && record.status == Some(404.)
+                && snapshot.bytes("favicon.ico").is_none()
+            {
+                continue;
+            }
+            let Some(target) = record.url.strip_prefix(&origin) else {
+                dependency_errors.insert(format!("external dependency: {}", record.url));
+                continue;
+            };
+            let Some(path) = snapshot.serve_path(target) else {
+                dependency_errors.insert(format!("undeclared dependency: {target}"));
+                continue;
+            };
+            let expected = snapshot.bytes(&path).ok_or("missing frozen dependency")?;
+            if record.status != Some(200.)
+                || !record.complete
+                || record.from_service_worker
+                || record.ambiguous_url
+                || record.body.as_deref() != Some(expected)
+            {
+                dependency_errors.insert(format!("dependency did not match frozen bytes: {path}"));
+                continue;
+            }
+            responses.insert(path, hash(expected));
+        }
+        if !dependency_errors.is_empty() {
+            let shown = dependency_errors.iter().take(16).cloned().collect::<Vec<_>>().join("; ");
+            return Err(format!("Component resources failed ({}): {shown}. Declare missing files in this component's dependencies, including files used outside its selector; check that declared files load from their pinned bytes.", dependency_errors.len()));
+        }
+        if !responses.contains_key(snapshot.entry()) {
+            return Err("component document response is unverified".into());
+        }
         let inspect = r#"(async()=>{
-          if((!ASSEMBLED&&document.scripts.length)||document.querySelector('iframe,frame,object,embed,canvas'))throw Error('Component capture requires static HTML/CSS/SVG; script, frame and canvas components need a supported capture adapter.');
-          await Promise.race([(async()=>{await document.fonts.ready;await Promise.all([...document.images].map(i=>i.decode()));})(),new Promise((_,reject)=>setTimeout(()=>reject(Error('component resources did not settle')),5000))]);
+          await Promise.race([(async()=>{await document.fonts.ready;const failed=await Promise.all([...document.images].map(async i=>{try{await i.decode();return null;}catch{const src=i.currentSrc||i.getAttribute('src')||'(missing src)';return src.startsWith('data:')?'(inline image)':new URL(src,location.href).pathname;}}));if(failed.some(Boolean))throw Error('Images failed to decode: '+[...new Set(failed.filter(Boolean))].join(', '));})(),new Promise((_,reject)=>setTimeout(()=>reject(Error('component resources did not settle')),5000))]);
           if([...document.fonts].some(f=>f.status==='error'))throw Error('A component font failed to load.');
           if(document.getAnimations().some(a=>a.playState==='running'))throw Error('Component is animated; provide its static review state.');
           return {html:document.documentElement.outerHTML,svg:document.querySelectorAll('svg').length,images:document.images.length,controls:document.querySelectorAll('button,input,select,textarea,a[href]').length};
@@ -106,48 +155,6 @@ fn render_page(
         let first = page
             .screenshot_viewport()
             .map_err(|e| e.message)?;
-        let urls = page.observed_response_urls().map_err(|e| e.message)?;
-        let evidence = page.response_evidence(&urls).map_err(|e| e.message)?;
-        if evidence.truncated
-            || evidence.changed_during_collection
-            || !evidence.missing_urls.is_empty()
-        {
-            return Err("component network evidence is incomplete".into());
-        }
-        let mut responses = BTreeMap::new();
-        for record in &evidence.responses {
-            if record.url.starts_with("data:image/") {
-                continue;
-            }
-            if record.url == format!("{origin}/favicon.ico")
-                && record.status == Some(404.)
-                && snapshot.bytes("favicon.ico").is_none()
-            {
-                continue;
-            }
-            let target = record
-                .url
-                .strip_prefix(&origin)
-                .ok_or("component requested an external dependency")?;
-            let path = snapshot
-                .serve_path(target)
-                .ok_or_else(|| format!("undeclared component dependency: {target}"))?;
-            let expected = snapshot.bytes(&path).ok_or("missing frozen dependency")?;
-            if record.status != Some(200.)
-                || !record.complete
-                || record.from_service_worker
-                || record.ambiguous_url
-                || record.body.as_deref() != Some(expected)
-            {
-                return Err(format!(
-                    "component dependency did not match frozen bytes: {path}"
-                ));
-            }
-            responses.insert(path, hash(expected));
-        }
-        if !responses.contains_key(snapshot.entry()) {
-            return Err("component document response is unverified".into());
-        }
         let second = page
             .screenshot_viewport()
             .map_err(|e| e.message)?;
@@ -312,6 +319,21 @@ impl ComponentCapturer for NativeComponentCapturer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[ignore = "requires Chromium"]
+    fn shared_document_reports_all_missing_images_before_decode_and_names_corrupt_images() {
+        let image = impeccable_comp::raster::create_image(40,40,[255,255,255,255]);
+        let png = impeccable_comp::png_io::encode_png(&image,&[]).unwrap();
+        let html = br#"<!doctype html><style>html,body{margin:0}#piece{width:40px;height:40px;background:red}</style><div id="piece"></div><img src="a.png"><img src="b.png">"#;
+        let inputs = BTreeMap::from([("comp.png".into(),png.clone()),("index.html".into(),html.to_vec()),("a.png".into(),png), ("b.png".into(),b"not an image".to_vec())]);
+        let packet = json!({"schemaVersion":2,"stage":"components","comp":{"url":"/files/comp.png","width":40,"height":40},"components":[{"id":"piece","box":{"x":0,"y":0,"w":1,"h":1},"preview":{"kind":"page","url":"/files/index.html","selector":"#piece"},"dependencies":[]}]});
+        let error = NativeComponentCapturer.capture(&mut packet.clone(),&inputs).err().unwrap();
+        assert!(error.contains("a.png") && error.contains("b.png") && error.contains("dependencies"), "{error}");
+        assert!(!error.contains("EncodingError"), "{error}");
+        let mut declared=packet;declared["components"][0]["dependencies"]=json!(["a.png","b.png"]);
+        let error = NativeComponentCapturer.capture(&mut declared,&inputs).err().unwrap();
+        assert!(error.contains("b.png") && !error.contains("EncodingError"), "{error}");
+    }
     #[test]
     #[ignore = "requires Chromium"]
     fn assembled_page_executes_pinned_script_but_component_capture_stays_static() {

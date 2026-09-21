@@ -6,6 +6,21 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 static NEXT: AtomicUsize = AtomicUsize::new(0);
+
+#[test]
+fn hosted_capture_routes_to_the_review_tool_before_browser_or_store_access() {
+    let f = Fixture::new();
+    let (mut io, captured) = impeccable_common::Io::captured("", f.project.clone(),
+        std::collections::HashMap::from([
+            ("HOME".into(), f.root.to_string_lossy().into_owned()),
+            ("IMPECCABLE_COMPONENT_REVIEW_TOOL".into(), "component_review".into()),
+        ]));
+    let args = vec!["capture".into(), "--manifest".into(), "review.json".into()];
+    assert_eq!(super::run_with_capturer(&args, &mut io, None), 1);
+    let error = String::from_utf8(captured.stderr.borrow().clone()).unwrap();
+    assert!(error.contains("Call component_review with manifest_path=\"review.json\""), "{error}");
+    assert!(!f.root.join(".impeccable").exists());
+}
 struct Fixture {
     root: PathBuf,
     project: PathBuf,

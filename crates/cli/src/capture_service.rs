@@ -99,6 +99,9 @@ pub fn serve(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         return Err("capability too short".into());
     }
     let renderer=ReviewedEntryRenderer{session:std::env::var_os("IMPECCABLE_CAPTURE_REVIEW_SESSION").map(PathBuf::from)};
+    // Read host policy once. Requests cannot assert or manufacture approval.
+    let component_review_pending = std::env::var("IMPECCABLE_COMPONENT_REVIEW_PENDING").as_deref() == Ok("1");
+    let review_tool = std::env::var("IMPECCABLE_COMPONENT_REVIEW_TOOL").unwrap_or_else(|_| "component_review".into());
     let listener = TcpListener::bind("127.0.0.1:0")?;
     listener.set_nonblocking(true)?;
     std::fs::write(
@@ -134,6 +137,7 @@ pub fn serve(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             let text = |k: &str| body[k].as_str().ok_or_else(|| format!("missing {k}"));
             match route.as_str() {
                 "/capture" => {
+                    require_component_review(component_review_pending, &review_tool)?;
                     if active.len() >= 2 {
                         return Err("active capture limit".into());
                     }
@@ -324,6 +328,13 @@ fn audit_saved(
 pub struct RemoteEntryRenderer {
     port: u16,
     key: String,
+}
+
+fn require_component_review(pending: bool, tool: &str) -> Result<(), String> {
+    if pending {
+        return Err(format!("Component kit approval is pending. Call {tool} with the component manifest's manifest_path and wait for the user's decisions before assembled-page comparison. No page comparison was performed."));
+    }
+    Ok(())
 }
 impl RemoteEntryRenderer {
     pub fn from_env(env: &HashMap<String, String>) -> Result<Option<Self>, String> {
@@ -561,5 +572,17 @@ mod tests {
             "http://example.com".into(),
         );
         assert!(RemoteEntryRenderer::from_env(&env).is_err());
+    }
+}
+
+#[cfg(test)]
+mod component_boundary_tests {
+    use super::*;
+    #[test]
+    fn page_capture_requires_configured_human_boundary_before_rendering() {
+        let error = require_component_review(true, "component_review").unwrap_err();
+        assert!(error.contains("Component kit approval is pending"));
+        assert!(error.contains("No page comparison was performed"));
+        assert!(require_component_review(false, "component_review").is_ok());
     }
 }
