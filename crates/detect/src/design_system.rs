@@ -78,11 +78,16 @@ re!(
 );
 // A heading that names both sides — "Do and Don't", "Dos and Don'ts",
 // "Do / Do not" — introduces a section of both, so the subsections under it
-// say which is which and the heading itself condemns nothing.
-re!(
-    DESIGN_BOTH_SIDES_HEADING,
-    r"(?i)\bdos?\b[^\n]{0,12}?\b(?:do ?n[o']?ts?|do not)\b|\b(?:do ?n[o']?ts?|do not)\b[^\n]{0,12}?\bdos?\b".to_string()
-);
+// say which is which and the heading itself condemns nothing. The two sides
+// have to be *joined* by something that pairs them: "Don't do this" and "What
+// we don't do" also put a `do` beside a `don't`, and they mean only the one
+// thing.
+re!(DESIGN_BOTH_SIDES_HEADING, {
+    let joiner = format!(r"{WS}*(?:and|or|&|/|\||\+|,|vs\.?|versus){WS}*", WS = WS);
+    let affirmative = r"\bdo'?s?\b";
+    let negative = r"\b(?:do ?n[o']?ts?|do not)\b";
+    format!("(?i)(?:{affirmative}{joiner}{negative}|{negative}{joiner}{affirmative})")
+});
 re!(
     FONT_SIZE_LITERAL_RE,
     format!("^-?[{D}.]+(?:px|rem)$", D = "0-9")
@@ -2159,6 +2164,13 @@ mod tests {
         // subsections are what say which is which.
         let md = "## Dos and Don'ts\n\n### Do\n\n- Label a section with `.kicker`.\n\n\
                   ### Don't\n\n- Reach for `.eyebrow`.\n";
+        assert_eq!(declared_component_selectors(md), vec![".kicker"]);
+
+        // A heading that only puts a `do` beside a `don't` is not a section
+        // of both, and still condemns what it names.
+        let md = "## Don't do this\n\n- `.eyebrow` above a heading.\n\n\
+                  ## What we don't do\n\n- `.tagline`\n\n\
+                  ## Components\n\n- `.kicker`\n";
         assert_eq!(declared_component_selectors(md), vec![".kicker"]);
 
         // What the negative words govern is their own clause. "No ALL CAPS
