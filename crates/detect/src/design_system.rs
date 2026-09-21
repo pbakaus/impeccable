@@ -83,7 +83,10 @@ re!(
 // we don't do" also put a `do` beside a `don't`, and they mean only the one
 // thing.
 re!(DESIGN_BOTH_SIDES_HEADING, {
-    let joiner = format!(r"{WS}*(?:and|or|&|/|\||\+|,|vs\.?|versus){WS}*", WS = WS);
+    // One joiner or several: "Do's, and Don'ts" and "Do and/or Don't" pair
+    // the two sides with a comma plus a conjunction and with a conjunction
+    // plus a slash.
+    let joiner = format!(r"(?:{WS}*(?:and|or|&|/|\||\+|,|vs\.?|versus)){{1,4}}{WS}*", WS = WS);
     let affirmative = r"\bdo'?s?\b";
     let negative = r"\b(?:do ?n[o']?ts?|do not)\b";
     format!("(?i)(?:{affirmative}{joiner}{negative}|{negative}{joiner}{affirmative})")
@@ -2165,6 +2168,12 @@ mod tests {
         let md = "## Dos and Don'ts\n\n### Do\n\n- Label a section with `.kicker`.\n\n\
                   ### Don't\n\n- Reach for `.eyebrow`.\n";
         assert_eq!(declared_component_selectors(md), vec![".kicker"]);
+
+        // Compound separators pair the two sides just as well.
+        for heading in ["Do's, and Don'ts", "Do and/or Don't", "Don'ts / Dos"] {
+            let md = format!("## {heading}\n\n### Do\n\n- Use `.kicker`.\n");
+            assert_eq!(declared_component_selectors(&md), vec![".kicker"], "{heading}");
+        }
 
         // A heading that only puts a `do` beside a `don't` is not a section
         // of both, and still condemns what it names.
