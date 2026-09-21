@@ -709,3 +709,18 @@ fn component_review_refuses_groups_that_mix_measured_roles() {
     fs::write(&path, spec.to_string()).unwrap();
     assert_eq!(manifest::freeze(&f.project,&input).unwrap().0["components"].as_array().unwrap().len(),3);
 }
+
+#[test]
+fn measured_inventory_reports_all_independent_failures_before_capture() {
+    let f = Fixture::new();
+    fs::create_dir_all(f.project.join(".impeccable/build")).unwrap();
+    fs::write(f.project.join(".impeccable/build/spec.json"), br#"{"regions":[{"id":"missing-one","kind":"plate"},{"id":"control","kind":"control"},{"id":"missing-two","kind":"text"}]}"#).unwrap();
+    let mut input = f.manifest();
+    input["stage"] = json!("components");
+    input["components"][1]["preview"] = json!({"kind":"image","path":"art.png"});
+    let error = store::prepare(&f.store, &f.project, &input).unwrap_err();
+    assert!(error.contains("missing-one"));
+    assert!(error.contains("missing-two"));
+    assert!(error.contains("semantic region \"control\" requires a rendered code preview"));
+    assert!(!f.store.exists(), "invalid inventory must not publish a review");
+}

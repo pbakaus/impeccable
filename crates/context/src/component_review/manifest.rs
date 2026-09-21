@@ -121,12 +121,20 @@ pub fn freeze(project: &Path, input: &Value) -> Result<(Value, BTreeMap<String, 
         comp_files.insert(spec_path.into(), pin(project, spec_path, &mut files)?);
         let spec: Value = serde_json::from_slice(&files[spec_path]).map_err(|e| e.to_string())?;
         measured_regions = spec["regions"].as_array().ok_or("measured spec needs regions")?.clone();
+        // These checks are independent. Report the complete inventory repair in
+        // one response before any browser work, without publishing partial proof.
+        let mut errors = Vec::new();
         for region in &measured_regions {
-            let component = input["components"].as_array().and_then(|items| items.iter().find(|c| c["id"] == region["id"]))
-                .ok_or_else(|| format!("component review omitted measured region {}", region["id"]))?;
-            if matches!(region["kind"].as_str(), Some("text" | "control")) && component["preview"]["kind"] != "page" {
-                return Err(format!("semantic region {} requires a rendered code preview", region["id"]));
+            match input["components"].as_array().and_then(|items| items.iter().find(|c| c["id"] == region["id"])) {
+                None => errors.push(format!("component review omitted measured region {}", region["id"])),
+                Some(component) if matches!(region["kind"].as_str(), Some("text" | "control")) && component["preview"]["kind"] != "page" => {
+                    errors.push(format!("semantic region {} requires a rendered code preview", region["id"]));
+                }
+                _ => {}
             }
+        }
+        if !errors.is_empty() {
+            return Err(errors.join("\n"));
         }
     }
 
@@ -170,8 +178,9 @@ pub fn freeze(project: &Path, input: &Value) -> Result<(Value, BTreeMap<String, 
         if let Some(group) = input["components"].as_array().and_then(|cs| cs.iter().find(|c| c["id"] == region["id"]))
             .and_then(|c| c.get("reviewGroup")) { region["reviewGroup"] = group.clone(); }
     }
-    if let Some((id, message)) = impeccable_comp::review_groups::issues(&measured_regions).first() {
-        return Err(format!("component {id}: {message}"));
+    let group_issues = impeccable_comp::review_groups::issues(&measured_regions);
+    if !group_issues.is_empty() {
+        return Err(group_issues.iter().map(|(id, message)| format!("component {id}: {message}")).collect::<Vec<_>>().join("\n"));
     }
     let mut ids = BTreeSet::new();
     let components = packet["components"]
