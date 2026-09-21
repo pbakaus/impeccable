@@ -65,7 +65,8 @@
 //!   parse in the same process).
 
 use super::csstree::{self, Important, Node};
-use super::shorthand::expand_static_declaration;
+use super::shorthand::{expand_static_box_values, expand_static_declaration, Expanded};
+use super::values::split_css_tokens;
 use impeccable_core::js;
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
@@ -177,6 +178,32 @@ impl<K: Hash + Eq> SpecifiedStore<K> {
     }
 }
 
+/// Layout properties the stripe-child static adapter needs that are not in
+/// the frozen `expandStaticDeclaration` allowlist. Applied here so the
+/// recorded vectors stay byte-equal.
+fn extra_specified_expansions(prop: &str, value: &str) -> Vec<Expanded> {
+    let p = js::to_lower_case(prop);
+    let v = js::trim(value);
+    if v.is_empty() {
+        return Vec::new();
+    }
+    match p.as_str() {
+        "flex-direction" => vec![("flexDirection".into(), v.to_string())],
+        "align-items" => vec![("alignItems".into(), v.to_string())],
+        "align-self" => vec![("alignSelf".into(), v.to_string())],
+        "inset" => {
+            let vals = expand_static_box_values(&split_css_tokens(v));
+            vec![
+                ("top".into(), vals[0].clone()),
+                ("right".into(), vals[1].clone()),
+                ("bottom".into(), vals[2].clone()),
+                ("left".into(), vals[3].clone()),
+            ]
+        }
+        _ => Vec::new(),
+    }
+}
+
 /// JS: css-cascade.mjs#applyStaticDeclaration(specified, node, prop, value, meta)
 pub fn apply_static_declaration<K: Hash + Eq>(
     specified: &mut SpecifiedStore<K>,
@@ -186,7 +213,11 @@ pub fn apply_static_declaration<K: Hash + Eq>(
     meta: &DeclMeta,
 ) {
     let map = specified.map.entry(node).or_default();
-    for (expanded_prop, expanded_value) in expand_static_declaration(prop, value) {
+    let extra = extra_specified_expansions(prop, value);
+    for (expanded_prop, expanded_value) in expand_static_declaration(prop, value)
+        .into_iter()
+        .chain(extra)
+    {
         let existing = map.get(&expanded_prop).map(|d| &d.meta);
         if compare_static_priority(existing, meta) {
             let next = SpecifiedDecl {
