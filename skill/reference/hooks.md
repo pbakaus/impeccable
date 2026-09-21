@@ -12,7 +12,7 @@ This command toggles the hook **per project** by editing `.impeccable/config.jso
 
 Declare server-side template extensions under **`detector.extensions`** when the project uses Blade, Twig, ERB, or Handlebars files; the hook skips them otherwise because they sit outside the built-in extension list. One entry per extension, `{ "ext": ".blade.php", "engine": "html" }`. `engine` picks the analyzer (`html` for markup templates, `text` for JS/TS/CSS-like files) and defaults to `html`. Match against the end of the filename, so double extensions like `.blade.php` and `.html.erb` work. Config only adds extensions; the built-in list always applies.
 
-Manual `npx impeccable detect` scans use the same project filter config by default: `detector.ignoreRules`, `detector.ignoreFiles`, `detector.ignoreValues`, and `detector.designSystem.enabled`. `hook.enabled` only controls automatic hook execution, not manual CLI scans. Use `npx impeccable detect --no-config ...` for a raw detector run that ignores project config/context. Use `npx impeccable ignores ...` for direct CLI CRUD on the same detector ignores.
+Manual `npx impeccable detect` scans use the same project filter config by default: `detector.ignoreRules`, `detector.ignoreFiles`, `detector.ignoreValues`, `detector.ignoreSelectors`, and `detector.designSystem.enabled`. `hook.enabled` only controls automatic hook execution, not manual CLI scans. Use `npx impeccable detect --no-config ...` for a raw detector run that ignores project config/context. Use `npx impeccable ignores ...` for direct CLI CRUD on the same detector ignores.
 
 Supported harnesses: Claude Code (`.claude/settings.local.json` in the project, which is gitignored so the hook stays machine-local; a hook you move into the shared `settings.json` is honored in place too), Codex (`.codex/hooks.json` in the project), Cursor (`.cursor/hooks.json` in the project), Grok Build (`.grok/hooks/impeccable.json` in the project; requires `/hooks-trust` or `--trust`), and GitHub Copilot (`.github/hooks/impeccable.json` in the project, a team-shared committed file that both the Copilot CLI and the cloud agent read). For the Copilot CLI, repo-level hooks fire once `.github/hooks/impeccable.json` is committed to the repository's default branch.
 
@@ -63,9 +63,11 @@ Prefer the narrowest exception:
 - If the finding line shows an `ignore-value <rule> <value>` pair, pass it to `impeccable hooks ignore-value` with your `--reason`. This writes shared `.impeccable/config.json` by default.
 - For value-specific findings such as `overused-font` and `bounce-easing`, use `ignore-value` for the specific value. Do not use `ignore-rule overused-font` for a specific font.
 - If the finding has no value-specific command, such as `side-tab`, scope that one rule to the file: `ignore-value <id> "*" --file <path>`. Run `npx impeccable detect <path>` first to see what actually fires there.
+- If the same rule fires on every instance of one component, waive the component once instead of per instance: `npx impeccable ignores add-selector <rule> "<css-selector>" --reason "..."`. It writes `detector.ignoreSelectors` in the same `.impeccable/config.json`, waives that rule for every element the selector matches and for its subtree, and every scan then reports how many hits it suppressed, so the exception stays visible. Eleven copies of the same 10px label want one entry here, not eleven `data-impeccable-ignore` attributes. This is a component-wide suppression: ask the user first, as you would for `ignore-file`. There is no `hooks ignore-selector`; use the `ignores` command.
 - Reach for `ignore-file <path>` only when the whole file is out of scope for design review: a fixture, a generated artifact, a deliberate slop demo. It silences every rule for that file permanently, including rules that have not been written yet. A real UI surface with one noisy rule wants the file-scoped value ignore above.
 - Use `ignore-rule <id>` only when the user asks to suppress that whole rule across the project. For broad overused-font suppression, use `ignore-rule overused-font --all-values` only when the user asks to ignore overused fonts generally.
 - Prefer config ignores (the commands above) by default; they keep suppressions in one reviewable place. Reach for an inline comment only when the waiver must travel with a single file that leaves the repo (a generated/exported standalone document, an emailed HTML file). The supported marker is `impeccable-disable <rule>` (whole file) or `impeccable-disable-line` / `impeccable-disable-next-line` (one line), in any comment syntax, with an optional reason after `:` or `--`. The detector honors it by default; `--no-inline-ignores` or `--no-config` bypasses it.
+- The DOM equivalent, `data-impeccable-ignore="<rule>"` on an element, waives that element and its subtree. It belongs on a one-off: a single demo block, one deliberately ugly sample. Repeating it across every instance of a component is the sign you wanted `ignores add-selector` instead: the attribute hides the count from whoever reviews the change, the config entry reports it.
 
 Example value-specific exception:
 
@@ -90,6 +92,12 @@ for everything else:
 
 ```bash
 {{scripts_path}}/impeccable hooks ignore-value design-system-font-size "*" --file "src/overlay/widget.js" --reason "Injected widget builds its own type scale; DESIGN.md's ramp describes the site"
+```
+
+Example component exception, for one rule across every instance of a component:
+
+```bash
+npx impeccable ignores add-selector undersized-ui-text ".ks-tag" --reason "User confirmed: 10px mono index labels, decorative counters beside the heading"
 ```
 
 Example whole-file exception, for a file that is out of scope entirely:

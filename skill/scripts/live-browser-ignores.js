@@ -232,7 +232,21 @@
       disabledValues.push({ rule, value });
     }
 
-    return { disabledRules: [...disabledRules], disabledValues, skipScan: false };
+    const ignoreSelectors = [];
+    for (const entry of asArray(config.ignoreSelectors)) {
+      if (!entry || typeof entry.rule !== 'string' || typeof entry.selector !== 'string') continue;
+      const rule = normalizeIgnoreRule(entry.rule);
+      const selector = entry.selector.trim();
+      if (!rule || !selector) continue;
+      const files = asArray(entry.files).filter((glob) => typeof glob === 'string' && glob.trim());
+      if (files.length > 0 && !matchesScope(files, candidates)) continue;
+      ignoreSelectors.push({ rule, selector });
+    }
+
+    return {
+      disabledRules: [...disabledRules], disabledValues, skipScan: false,
+      ...(ignoreSelectors.length > 0 ? { ignoreSelectors } : {}),
+    };
   }
 
   root.__IMPECCABLE_LIVE_IGNORES__ = {

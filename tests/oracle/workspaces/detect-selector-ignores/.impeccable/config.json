@@ -1,0 +1,11 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [],
+    "ignoreSelectors": [
+      { "rule": "undersized-ui-text", "selector": ".ks-tag", "reason": "10px mono label, confirmed by the author" },
+      { "rule": "glow-effect", "selector": ".demo-stage", "files": ["src/demo/**"] }
+    ]
+  }
+}

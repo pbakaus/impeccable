@@ -515,7 +515,11 @@ fn detect_proposed_html(
     let tmp = dir.join(jsp::basename(file_path));
     let result = (|| {
         std::fs::write(&tmp, content).map_err(|e| e.to_string())?;
-        let findings = detector_detect_html(rt, &tmp.to_string_lossy(), scan)?;
+        // Read proposed bytes from the temporary file, but resolve project
+        // selector scopes against the file the user is actually editing.
+        let findings = rt.html.detect_html(
+            &tmp.to_string_lossy(), &scan.to_scan_options(file_path), &mut std::io::sink(),
+        ).map_err(|e| e.message)?;
         Ok(findings
             .into_iter()
             .map(|mut f| {
@@ -915,4 +919,33 @@ pub fn run(rt: &Runtime, stdin: &str, io: &mut impeccable_common::Io) -> i32 {
     write_audit_log(rt, &out.audit, &rt.proc_cwd);
     io.out(&out.stdout);
     0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use impeccable_detect::engines::{EngineError, HtmlEngine, ScanOptions};
+
+    #[test]
+    fn proposed_html_scopes_ignores_to_the_original_file() {
+        struct Probe;
+        impl HtmlEngine for Probe {
+            fn detect_html(&self, path: &str, options: &ScanOptions, _: &mut dyn std::io::Write) -> Result<Vec<Finding>, EngineError> {
+                assert!(path.contains("impeccable-pre-"), "content is read from the temporary file");
+                assert_eq!(options.ignore_selectors.len(), 1, "scope uses the original target");
+                assert_eq!(options.ignore_selectors[0].selector, ".Waived");
+                Ok(vec![])
+            }
+        }
+        let rt = Runtime::new("/project".into(), Default::default(), "/impeccable".into(), "/impeccable", &Probe);
+        let scan = HookScanOptions {
+            ignore_selectors: vec![impeccable_detect::config::IgnoreSelectorEntry {
+                rule: "*".into(), selector: ".Waived".into(),
+                files: Some(vec!["src/pages/**".into()]),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        detect_proposed_html(&rt, "<h1>Proposed</h1>", "/project/src/pages/index.html", &scan).unwrap();
+    }
 }

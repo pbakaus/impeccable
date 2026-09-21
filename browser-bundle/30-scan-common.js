@@ -36,6 +36,7 @@ function __visualContrastOptions(options = {}, config = {}) {
         : false;
   return {
     ...options,
+    ...(Array.isArray(config.ignoreSelectors) ? { ignoreSelectors: config.ignoreSelectors } : {}),
     maxCandidates: Number.isFinite(options.visualContrastMaxCandidates)
       ? options.visualContrastMaxCandidates
       : Number.isFinite(options.maxCandidates)
@@ -45,6 +46,15 @@ function __visualContrastOptions(options = {}, config = {}) {
           : undefined,
     scrollOffscreen,
   };
+}
+
+// Engines keep waiver stamps for callers that report suppression counts.
+// UI consumers render only reportable findings, including after visual passes.
+function __reportableGroups(groups) {
+  return groups.map(group => ({
+    ...group,
+    findings: group.findings.filter(finding => !finding.ignoredBy),
+  })).filter(group => group.findings.length > 0);
 }
 
 // The analyses the lazy pass watches: unresolved only because the text was

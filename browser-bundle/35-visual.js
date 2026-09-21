@@ -42,6 +42,7 @@ function createVisualContrast(IO) {
 
   function collectVisualContrastCandidates(options = {}) {
     return __p(IO.coreSync('collect_visual_contrast_candidates', __j({
+      ignoreSelectors: options.ignoreSelectors,
       maxCandidates: options.maxCandidates,
       imageOnly: options.imageOnly,
     })));
@@ -49,6 +50,7 @@ function createVisualContrast(IO) {
 
   async function collectVisualContrastCandidatesAsync(options = {}) {
     return core('collect_visual_contrast_candidates', __j({
+      ignoreSelectors: options.ignoreSelectors,
       maxCandidates: options.maxCandidates,
       imageOnly: options.imageOnly,
     }));
