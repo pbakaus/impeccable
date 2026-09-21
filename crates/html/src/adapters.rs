@@ -502,8 +502,11 @@ pub fn check_element_stripe_child(el: &StaticElement<'_>, style: &StyleValues) -
         // The cascade already expands inset; a winning `auto` longhand
         // must not be overwritten by the earlier shorthand.
         let inset = ["top", "right", "bottom", "left"].map(|prop| sv(style, prop));
-        let height_stretches =
-            height_raw == "100%" || (static_edge_hugs(&inset[0]) && static_edge_hugs(&inset[2]));
+        // Opposing insets stretch only an auto-height box. With a definite
+        // height CSS drops the bottom constraint instead of stretching it.
+        let height_stretches = height_raw == "100%"
+            || ((height_raw.is_empty() || height_raw == "auto")
+                && static_edge_hugs(&inset[0]) && static_edge_hugs(&inset[2]));
         if !height_stretches {
             return Vec::new();
         }

@@ -65,6 +65,26 @@ fn absolute_top_bottom_flags() {
 }
 
 #[test]
+fn absolute_definite_height_does_not_stretch_between_insets() {
+    for height in ["4px", "1rem", "25%", "calc(2px + 2px)"] {
+        let html = format!(r#"<html><body><div style="position:relative;width:320px;height:100px">
+<span style="position:absolute;left:0;top:0;bottom:0;width:4px;height:{height};background:#3b82f6"></span>
+</div></body></html>"#);
+        assert!(side_tab_snippets(&html).is_empty(), "definite height {height} is not stretched");
+    }
+}
+
+#[test]
+fn interactive_host_stripes_keep_the_border_rule_exemptions() {
+    for tag in ["a", "button"] {
+        let html = format!(r#"<html><body><{tag} style="position:relative;display:block;width:320px;height:100px">
+<span style="position:absolute;left:0;top:0;bottom:0;width:4px;background:#3b82f6"></span>
+</{tag}></body></html>"#);
+        assert!(side_tab_snippets(&html).is_empty(), "{tag} is an exempt control");
+    }
+}
+
+#[test]
 fn flex_column_does_not_flag() {
     let html = r#"<!DOCTYPE html><html><head><style>
 .card { display: flex; flex-direction: column; width: 320px; height: 100px; }
