@@ -75,6 +75,20 @@ fn absolute_definite_height_does_not_stretch_between_insets() {
 }
 
 #[test]
+fn auto_height_keywords_stretch_between_insets_and_in_flex_rows() {
+    for height in ["auto", "initial", "unset", "INITIAL", "UNSET"] {
+        for layout in ["position:absolute;left:0;top:0;bottom:0;", ""] {
+            let html = format!(r#"<html><body><div style="position:relative;display:flex;width:320px;height:100px">
+<span style="{layout}width:4px;height:{height};background:#3b82f6"></span><div>Content</div>
+</div></body></html>"#);
+            let hits = side_tab_snippets(&html);
+            assert_eq!(hits.len(), 1, "height {height}, layout {layout}: {hits:?}");
+            assert!(hits[0].contains("stripe child (left)"));
+        }
+    }
+}
+
+#[test]
 fn interactive_host_stripes_keep_the_border_rule_exemptions() {
     for tag in ["a", "button"] {
         let html = format!(r#"<html><body><{tag} style="position:relative;display:block;width:320px;height:100px">
