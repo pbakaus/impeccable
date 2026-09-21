@@ -14,6 +14,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 import {
   prepareWorkspace,
@@ -30,6 +31,7 @@ import {
 import { detectProvider, getModel, hasKey, resolveModelList, PROVIDERS } from './providers.mjs';
 import { assertLauncherDenialWarningBeforeNextTool, assertPlanningFallbackWarning, LAUNCHER_FAILURE_WARNING, assertAdviceOnly, assertWorkflowAdvice, assertCommandComparison, missingReferences } from './assertions.mjs';
 import { assertCompleted } from '../skill-workflow/assertions.mjs';
+import { findEngineBinary } from '../lib/engine-bin.mjs';
 import {
   PRODUCT_MD_SAMPLE,
   PRODUCT_MD_SAMPLE_NO_REGISTER,
@@ -77,6 +79,46 @@ function loadedBeforeImplementationWrite(trace, filename) {
     ({ mutatedPaths = [] }) => mutatedPaths.some((file) => /\.(html?|css|svelte|jsx?|tsx?)$/i.test(file)),
   );
   return loadIndex >= 0 && (writeIndex < 0 || loadIndex < writeIndex);
+}
+
+/**
+ * True when `first` was loaded, and loaded before `second` whenever `second`
+ * was loaded at all. generate.md hands off to live.md, so a run that reaches
+ * live.md must have gone through generate.md first; live.md alone is the
+ * misroute.
+ */
+function loadedBefore(trace, first, second) {
+  const indexOf = (filename) => {
+    const needle = filename.toLowerCase();
+    return trace.toolCalls.findIndex(({ name, input }) => {
+      if (name === 'read') return input?.path?.toLowerCase().includes(needle);
+      if (name === 'bash') return input?.command?.toLowerCase().includes(needle);
+      return false;
+    });
+  };
+  const firstIndex = indexOf(first);
+  const secondIndex = indexOf(second);
+  return firstIndex >= 0 && (secondIndex < 0 || firstIndex < secondIndex);
+}
+
+/**
+ * A generate scenario that reaches the boot leaves a detached live helper
+ * behind; stop it (idempotent) before the workspace goes away.
+ */
+function stopLiveHelper(workspace) {
+  try {
+    const engineBin = findEngineBinary();
+    execFileSync(
+      path.join(workspace, '.claude/skills/impeccable/scripts/impeccable'),
+      ['live-server', 'stop'],
+      {
+        cwd: workspace,
+        stdio: 'ignore',
+        timeout: 10_000,
+        env: { ...process.env, ...(engineBin ? { IMPECCABLE_BIN: engineBin } : {}) },
+      },
+    );
+  } catch { /* nothing was running */ }
 }
 
 function executedUpdateCommands(trace) {
@@ -778,6 +820,87 @@ for (const modelId of resolveModelList()) {
         });
         logTrace('S18', 'explicit-command', modelId, trace, { textSample: text.slice(0, 300) });
         assert.ok(readsMatching(trace, 'reference/polish.md').length, 'the requested command must not be replaced with advice');
+      } finally {
+        cleanupWorkspace(workspace);
+      }
+    });
+
+    it('scenario 20: explicit generate request routes to generate.md', async () => {
+      // "generate N <direction> variants of <element>" is the command's whole
+      // grammar. The route must land on generate.md; bolder.md is the
+      // direction's own playbook and live.md loads it later, so neither
+      // counts as the route.
+      const workspace = prepareWorkspace({
+        files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE, 'DESIGN.md': DESIGN_MD_SAMPLE, 'index.html': MINIMAL_LANDING_HTML },
+      });
+      try {
+        const { trace, text } = await runTurn({
+          workspace,
+          model,
+          userPrompt: '/impeccable generate 2 bold variants of the hero heading',
+          maxSteps: 6,
+        });
+        logTrace('S20', 'generate-explicit', modelId, trace, { textSample: text.slice(0, 400) });
+        assert.ok(
+          loadedBefore(trace, 'generate.md', 'live.md'),
+          `agent should load generate.md for an explicit generate request, before any live.md read.\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+        );
+      } finally {
+        stopLiveHelper(workspace);
+        cleanupWorkspace(workspace);
+      }
+    });
+
+    it('scenario 21: natural-language variant request infers generate', async () => {
+      // No command word and no "generate": the intent is carried by
+      // "versions", "in the browser", and "pick one". A model that reads
+      // that as a source-side bolder or quieter edit misroutes.
+      const workspace = prepareWorkspace({
+        files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE, 'DESIGN.md': DESIGN_MD_SAMPLE, 'index.html': MINIMAL_LANDING_HTML },
+      });
+      try {
+        const { trace, text } = await runTurn({
+          workspace,
+          model,
+          userPrompt: 'Show me a few quieter versions of the hero heading in the browser so I can pick one.',
+          maxSteps: 6,
+        });
+        logTrace('S21', 'generate-implicit', modelId, trace, { textSample: text.slice(0, 400) });
+        assert.ok(
+          loadedBefore(trace, 'generate.md', 'live.md'),
+          `agent should infer generate.md from a versions-to-pick-from request, before any live.md read.\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+        );
+      } finally {
+        stopLiveHelper(workspace);
+        cleanupWorkspace(workspace);
+      }
+    });
+
+    it('scenario 22: a plain refinement request stays out of generate', async () => {
+      // The inverse guard: "make it bolder" asks for one edit in source, not
+      // for variants to choose from in a browser. Over-triggering generate
+      // here would drag every refinement into a live session. Which playbook
+      // the refinement itself lands on is the existing sub-command routing's
+      // business, not this guard's.
+      const workspace = prepareWorkspace({
+        files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE, 'DESIGN.md': DESIGN_MD_SAMPLE, 'index.html': MINIMAL_LANDING_HTML },
+      });
+      try {
+        const { trace, text } = await runTurn({
+          workspace,
+          model,
+          userPrompt: 'Make the hero heading bolder.',
+          maxSteps: 6,
+        });
+        logTrace('S22', 'refinement-not-generate', modelId, trace, { textSample: text.slice(0, 400) });
+        assert.equal(
+          fileLoaded(trace, 'generate.md'),
+          false,
+          `a plain refinement must not route into generate.md.\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+        );
       } finally {
         cleanupWorkspace(workspace);
       }

@@ -1,0 +1,10 @@
+body { margin: 0; font-family: system-ui, sans-serif; color: #1d2229; }
+.page { max-width: 960px; margin: 0 auto; padding: 0 24px; }
+.hero { min-height: 160vh; display: flex; flex-direction: column; justify-content: center; }
+.hero-heading { font-size: 40px; max-width: 18ch; }
+.hero-hook { color: #55606e; }
+.pricing { padding: 80px 0 120px; }
+.pricing-title { font-size: 32px; }
+.pricing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.pricing-card { border: 1px solid #d8dee7; border-radius: 10px; padding: 20px; }
+.tier-price { font-weight: 700; }

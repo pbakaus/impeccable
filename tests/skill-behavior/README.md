@@ -322,6 +322,9 @@ results remain the completed measurements.
 | 17 | existing surface; asks whether critique is required before polish | completes read-only advice distinguishing assessment from implementation and explaining critique is optional; reference coverage is diagnostic |
 | 18 | existing surface; explicitly requests polish followed by a next-command recommendation | loads `polish.md` rather than substituting workflow advice for the requested work |
 | 19 | tiny spacing edit with PRODUCT.md + DESIGN.md; Bash denied, a real-loader success control, a denied-launcher planning-only case, and a denied-launcher documentation case (PRODUCT.md + index.html, no DESIGN.md) | edits require successful playbook/craft-floor reads and a pre-edit denial warning; planning stays read-only and skips craft-floor; documentation requires successful document.md and source reads before any DESIGN.md write, with the denial disclosed before the first tool call after the denied launcher |
+| 20 | PRODUCT.md + DESIGN.md + `index.html`; prompt is `/impeccable generate 2 bold variants of the hero heading` | loads `reference/generate.md`, and before any `live.md` read (live.md alone is the misroute) |
+| 21 | same fixture; prompt is natural language with no command word ("Show me a few quieter versions of the hero heading in the browser so I can pick one.") | infers `reference/generate.md` before any `live.md` read |
+| 22 | same fixture; prompt is `Make the hero heading bolder.` | does **not** load `reference/generate.md` (a plain refinement stays out of live); which playbook the refinement lands on is existing routing's business, not this guard's |
 
 ## Setup launcher-failure branch (2026-09-06, PR #750)
 

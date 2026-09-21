@@ -2199,3 +2199,118 @@ fn codex_stop_emits_decision_block() {
     assert!(out["reason"].as_str().unwrap().contains("[side-tab]"));
     assert!(out.get("hookSpecificOutput").is_none());
 }
+
+// ── live-preview stand-down ───────────────────────────────────────────────
+//
+// A live variant session owns files carrying preview scaffolding
+// (`data-impeccable-variants=` wrappers, `impeccable-carbonize-start`
+// blocks). Every hook entry stands down on them: findings there are noise
+// and acting on them derails the session; live-complete verifies the file
+// once the accepted variant is permanent.
+
+#[test]
+fn run_hook_stands_down_on_live_preview_markers() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    // Control: the same slop without markers is reported.
+    let plain = t.write("src/plain.css", GRADIENT_CSS);
+    let reported = hook::run_hook(&r, &edit_event(&cwd, &plain, "s1"));
+    assert!(reported.stdout.contains("[gradient-text]"), "{}", reported.stdout);
+    // A carbonize block in flight: skipped, nothing emitted.
+    let carbonized = t.write(
+        "src/carbonized.css",
+        &format!("/* impeccable-carbonize-start ab12cd34 */\n{GRADIENT_CSS}/* impeccable-carbonize-end ab12cd34 */\n"),
+    );
+    let skipped = hook::run_hook(&r, &edit_event(&cwd, &carbonized, "s1"));
+    assert_eq!(skipped.stdout, "", "no findings while live markers are in the file");
+    assert_eq!(skipped.audit["skipped"], json!("live-preview"));
+    // A published variants wrapper, same stand-down.
+    let wrapped = t.write(
+        "src/wrapped.html",
+        "<!-- impeccable-variants-start ab12cd34 --><div data-impeccable-variants=\"ab12cd34\" data-impeccable-variant-count=\"3\"></div>\n",
+    );
+    let skipped = hook::run_hook(&r, &edit_event(&cwd, &wrapped, "s1"));
+    assert_eq!(skipped.stdout, "");
+    assert_eq!(skipped.audit["skipped"], json!("live-preview"));
+}
+
+#[test]
+fn before_edit_stands_down_on_live_preview_markers() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let r = rt(&cwd);
+    let slop = ".t { background: linear-gradient(90deg,#f00,#00f); -webkit-background-clip: text; color: transparent; }\n";
+    // Control: denied at normal size without markers.
+    let (out, _) = hbe(&r, &cursor(&cwd, "Write", json!({"file_path": "src/x.css", "content": slop})));
+    assert!(out.starts_with("{\"permission\":\"deny\""), "{out}");
+    // The very first variants write introduces the markers in the proposed
+    // content itself.
+    let proposed = format!("/* impeccable-carbonize-start ab12cd34 */\n{slop}");
+    let (out, code) = hbe(&r, &cursor(&cwd, "Write", json!({"file_path": "src/x.css", "content": proposed})));
+    assert_eq!(code, 0);
+    assert_eq!(out, "{\"permission\":\"allow\"}");
+    // Later fragment edits touch a file that already carries them on disk:
+    // the proposed content alone looks like plain slop.
+    t.write("src/y.css", "/* impeccable-carbonize-start ab12cd34 */\n.v { color: red; }\n");
+    let (out, code) = hbe(&r, &cursor(&cwd, "Write", json!({"file_path": "src/y.css", "content": slop})));
+    assert_eq!(code, 0);
+    assert_eq!(out, "{\"permission\":\"allow\"}");
+}
+
+#[test]
+fn run_hook_stands_down_for_the_whole_edit_when_the_primary_carries_live_markers() {
+    // The edited JSX carries the wrapper; the stylesheet it imports does not.
+    // Co-scanning would still speak up about the stylesheet mid-session, so
+    // the whole event stands down. The same files without markers prove the
+    // co-scan is otherwise live.
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    t.write("src/styles.css", GRADIENT_CSS);
+    let plain = t.write("src/Plain.jsx", "import './styles.css';\nexport default function Plain() { return <h1 className=\"hero-title\">Hi</h1>; }\n");
+    let reported = hook::run_hook(&r, &edit_event(&cwd, &plain, "s1"));
+    assert!(reported.stdout.contains("[gradient-text]"), "co-scanned stylesheet is reported without markers: {}", reported.stdout);
+    let wrapped = t.write(
+        "src/App.jsx",
+        "import './styles.css';\n{/* impeccable-variants-start ab12cd34 */}<div data-impeccable-variants=\"ab12cd34\" data-impeccable-variant-count=\"3\"></div>\n",
+    );
+    let skipped = hook::run_hook(&r, &edit_event(&cwd, &wrapped, "s2"));
+    assert_eq!(skipped.stdout, "", "nothing is emitted while the edited file is in a live session");
+    assert_eq!(skipped.audit["skipped"], json!("live-preview"));
+    let audited = audit_str(&skipped.audit, "file").unwrap_or("").replace('\\', "/");
+    assert!(audited.ends_with("src/App.jsx"), "the audit names the edited file, not the companion: {audited}");
+}
+
+#[test]
+fn run_hook_stands_down_before_the_edit_cap_can_suppress_a_live_file() {
+    // A file edited past the per-session cap would be skipped as
+    // "suppressed" (with the notice) before its content is read. A live
+    // wrap on such a file must stand down instead, every time.
+    let t = Tmp::new();
+    let cwd = t.path();
+    std::fs::create_dir_all(t.0.join(".impeccable")).unwrap();
+    let r = rt(&cwd);
+    // Seven plain edits cross the cap: the 7th carries the notice.
+    let css = t.write("src/b.css", GRADIENT_CSS);
+    let mut outputs = Vec::new();
+    for _ in 0..7 {
+        outputs.push(hook::run_hook(&r, &edit_event(&cwd, &css, "cap")));
+    }
+    assert_eq!(outputs[6].audit["suppressed"], json!(true));
+    assert!(outputs[6].stdout.contains("Suppressing further design hints"));
+    // Now a live session carbonizes into that same file: stand down, never
+    // suppress.
+    t.write(
+        "src/b.css",
+        &format!("/* impeccable-carbonize-start ab12cd34 */\n{GRADIENT_CSS}/* impeccable-carbonize-end ab12cd34 */\n"),
+    );
+    for i in 0..3 {
+        let out = hook::run_hook(&r, &edit_event(&cwd, &css, "cap"));
+        assert_eq!(out.stdout, "", "edit {i}: nothing emitted");
+        assert_eq!(out.audit["skipped"], json!("live-preview"), "edit {i}");
+        assert!(out.audit.get("suppressed").is_none(), "edit {i}: {:?}", out.audit);
+        assert!(out.audit.get("editCount").is_none(), "edit {i}: the cap is not bumped for a live wrap");
+    }
+}

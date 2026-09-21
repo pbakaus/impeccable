@@ -185,6 +185,7 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
     let quiet_mode = truthy(rt.env("IMPECCABLE_HOOK_QUIET")) || config.quiet;
     let mut detector_threw_any = false;
     let mut last_skip = "no-scannable-file";
+    let mut live_preview_edit: Option<String> = None;
     let mut suppressed_hit = false;
     let mut cache_dirty = false;
     let mut deferred_total: usize = 0;
@@ -239,6 +240,20 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
             }
         }
 
+        // A live variant session owns a file carrying preview markers: stand
+        // down before the per-session edit cap can turn the variants wrap
+        // into a suppression notice.
+        if primary_files.contains(file_path) {
+            if let Ok(bytes) = std::fs::read(file_path) {
+                if crate::hook_lib::has_live_preview_markers(&String::from_utf8_lossy(&bytes)) {
+                    if live_preview_edit.is_none() {
+                        live_preview_edit = Some(file_path.clone());
+                    }
+                    last_skip = "live-preview";
+                    continue;
+                }
+            }
+        }
         let use_html_engine = match configured {
             Some(c) => c.engine == "html",
             None => ext == ".html" || ext == ".htm",
@@ -276,6 +291,18 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
                 };
             }
         };
+        if crate::hook_lib::has_live_preview_markers(&content) {
+            // A live variant session owns this file. When it is the edited
+            // (primary) file, the whole event stands down, co-scanned
+            // stylesheets included: a clean ack or a finding about the
+            // companion file is the same mid-session noise the stand-down
+            // exists to prevent.
+            if primary_files.contains(file_path) && live_preview_edit.is_none() {
+                live_preview_edit = Some(file_path.clone());
+            }
+            last_skip = "live-preview";
+            continue;
+        }
         let scan = scans.entry(file_path.clone()).or_insert_with(|| {
             design_system_options_for_file(rt, &config, &project_cwd, file_path)
         });
@@ -353,6 +380,17 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
                 clean_ack_deduped = false;
             }
         }
+    }
+    if let Some(file) = live_preview_edit {
+        audit.insert("file".into(), Value::String(file));
+        return result(
+            &audit,
+            vec![
+                ("emitted", Value::Bool(false)),
+                ("skipped", Value::from("live-preview")),
+                ("durationMs", ms_since(started)),
+            ],
+        );
     }
 
     if !fresh_groups.is_empty() {
@@ -707,6 +745,9 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             Ok(b) => String::from_utf8_lossy(&b).into_owned(),
             Err(_) => continue,
         };
+        if crate::hook_lib::has_live_preview_markers(&content) {
+            continue;
+        }
         let use_html_engine = match configured {
             Some(c) => c.engine == "html",
             None => ext == ".html" || ext == ".htm",

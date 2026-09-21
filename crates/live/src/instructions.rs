@@ -23,6 +23,8 @@ use serde_json::{Map, Value};
 
 const PLAN_POINTER: &str = "Plan per live.md section 4: extract the identity lock, pick default vs departure mode, commit each variant to a DIFFERENT primary axis, squint-test the trio. Size parameter knobs per section 7 budgets.";
 
+/// The three dimensions an agent-initiated generate varies for each action:
+/// one per variant, so the trio reads as the same brand at three angles.
 fn reply_cmd(self_cmd: &str, id: &str, rest: &str) -> String {
     format!("{} --reply {} {}", poll_cmd(self_cmd), id, rest)
 }
@@ -200,6 +202,9 @@ fn generate_instructions(event: &Map<String, Value>, self_cmd: &str) -> String {
             tag
         ));
     }
+    // A Go the generate verb fired (`origin: "agent"`) plans exactly like a
+    // user's Go: the same reference, the same section 4 method, the same
+    // knob budget. The lane is a different way in, not a different design.
     let action = event.get("action").filter(|a| truthy(Some(a)));
     match action {
         Some(a) if a.as_str() != Some("impeccable") => steps.push(format!(
@@ -338,6 +343,20 @@ fn accept_instructions(event: &Map<String, Value>, self_cmd: &str) -> String {
             id
         );
     }
+    if handled && result.get("baked") == Some(&Value::Bool(true)) {
+        let css_file = match result.get("css").and_then(|c| c.get("file")) {
+            Some(v) if truthy(Some(v)) => format!("appended to {}", js_str(Some(v))),
+            _ => "kept in the page's own <style> block".to_string(),
+        };
+        return format!(
+            "{}Variant {} is baked into {}: its CSS was {} with real selectors and the wrapper is gone; the session is complete and there is nothing to clean up (no live-complete needed). Generate lane: stop the helper now with {} stop. Otherwise poll again.",
+            prefix,
+            js_str(result.get("variant")),
+            js_str(result.get("file")),
+            css_file,
+            script_cmd(self_cmd, "live-server")
+        );
+    }
     if handled {
         return format!(
             "{}Accept was merged into source mechanically; nothing to clean up. Poll again.",
@@ -384,4 +403,33 @@ fn accept_instructions(event: &Map<String, Value>, self_cmd: &str) -> String {
         "{}No mechanical accept result; read {}, find the impeccable markers, and finish the merge by hand. Poll again after.",
         prefix, file
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn generate_event(origin: Option<&str>) -> Map<String, Value> {
+        let mut m = Map::new();
+        m.insert("type".into(), json!("generate"));
+        m.insert("id".into(), json!("ab12cd34"));
+        m.insert("action".into(), json!("bolder"));
+        m.insert("count".into(), json!(3));
+        m.insert("element".into(), json!({ "tagName": "section", "id": "pricing", "classes": ["pricing"], "textContent": "Simple pricing" }));
+        if let Some(o) = origin {
+            m.insert("origin".into(), json!(o));
+        }
+        m
+    }
+
+    #[test]
+    fn an_agent_initiated_generate_plans_exactly_like_a_users() {
+        let lane = generate_instructions(&generate_event(Some("agent")), "impeccable");
+        let user = generate_instructions(&generate_event(None), "impeccable");
+        assert_eq!(lane, user, "the lane is a different way in, not a different design");
+        assert!(lane.contains("read reference/bolder.md before planning"), "{lane}");
+        assert!(lane.contains("live.md section 4"), "{lane}");
+        assert!(lane.contains("parameter knobs per section 7"), "{lane}");
+    }
 }

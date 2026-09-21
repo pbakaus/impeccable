@@ -140,12 +140,16 @@ export const SUITES = {
       /^skill\/(reference\/live\.md|scripts\/live-browser)/,
       /^tests\/live-e2e\//,
       /^tests\/lib\/engine-bin\.mjs$/,
+      /^tests\/live-agent-target\.test\.mjs$/,
+      /^tests\/live-boot-fastpath\.test\.mjs$/,
     ],
     commands: [
       {
         runner: 'node',
         files: [
           'tests/live-reference.test.mjs',
+          'tests/live-agent-target.test.mjs',
+          'tests/live-boot-fastpath.test.mjs',
           'tests/live-browser-ignores.test.mjs',
           'tests/live-browser-source.test.mjs',
           'tests/live-e2e-agent-output.test.mjs',

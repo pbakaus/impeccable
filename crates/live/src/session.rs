@@ -508,6 +508,12 @@ pub fn apply_event(snapshot: &Map<String, Value>, entry: &Value) -> Map<String, 
     match evt_type.as_str() {
         "generate" => {
             set!("phase", json!("generate_requested"));
+            // `origin: "agent"` marks a Go the generate verb fired; the
+            // accept pipeline bakes those sessions itself. A plain Go
+            // carries no origin and its snapshot stays exactly as it was.
+            if let Some(origin) = ev("origin").filter(|v| truthy(v)) {
+                set!("origin", origin.clone());
+            }
             set_if!("pageUrl", ev("pageUrl"));
             set_if!("expectedVariants", ev("count"));
             set_if!("pendingEventSeq", seq.as_ref());
