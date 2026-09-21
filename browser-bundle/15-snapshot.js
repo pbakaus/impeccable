@@ -69,25 +69,45 @@ const __SNAP_DEFAULT_MAX_BYTES = 48 * 1024 * 1024;
 function __snapRect4(r) { return [r.x, r.y, r.width, r.height]; }
 function __snapNum(v) { return typeof v === 'number' ? v : null; }
 
+// The client rects of the non-blank text nodes under `node` (same walk as
+// 10-probe.js#__collectTextRects). `deep` includes element descendants.
+function __snapTextRects(node, deep, out) {
+  for (const child of node.childNodes) {
+    if (child.nodeType === 3) {
+      if (!(child.textContent || '').trim()) continue;
+      const range = document.createRange();
+      range.selectNodeContents(child);
+      for (const rect of range.getClientRects()) {
+        if (rect.width >= 1 && rect.height >= 1) out.push(rect);
+      }
+      range.detach?.();
+    } else if (deep && child.nodeType === 1) {
+      __snapTextRects(child, true, out);
+    }
+  }
+  return out;
+}
+
 // getDirectTextRect(el): union of the client rects of the element's
 // non-blank direct text nodes (same measure as 10-probe.js).
 function __snapDirectTextRect(node) {
-  const rects = [];
-  for (const child of node.childNodes) {
-    if (child.nodeType !== 3 || !(child.textContent || '').trim()) continue;
-    const range = document.createRange();
-    range.selectNodeContents(child);
-    for (const rect of range.getClientRects()) {
-      if (rect.width >= 1 && rect.height >= 1) rects.push(rect);
-    }
-    range.detach?.();
-  }
+  const rects = __snapTextRects(node, false, []);
   if (rects.length === 0) return null;
   const left = Math.min(...rects.map(r => r.left));
   const top = Math.min(...rects.map(r => r.top));
   const right = Math.max(...rects.map(r => r.right));
   const bottom = Math.max(...rects.map(r => r.bottom));
   return [left, top, right - left, bottom - top];
+}
+
+// Every rect of the element's rendered text, descendants included: the
+// snapshot half of `text_rects` in 10-probe.js. Recorded rather than derived,
+// because a union of a long first line and a short tail says nothing about
+// either, and a rule about lines that is handed only the union has to stand
+// down. `textLines` on the snapshot is what tells the consumer these are
+// here at all.
+function __snapTextRects4(node) {
+  return __snapTextRects(node, true, []).map(r => [r.x, r.y, r.width, r.height]);
 }
 
 // ─── Linked stylesheet corpus (JS: injected/index.mjs #709) ────────────────
@@ -632,6 +652,8 @@ const __impeccableSnapshot = {
         : -1;
       const dtr = __snapDirectTextRect(el);
       if (dtr) rec.d = dtr;
+      const tr = __snapTextRects4(el);
+      if (tr.length) rec.dl = tr;
       if (el.isContentEditable) rec.e = true;
       if (el.hidden) rec.h = true;
       if (typeof el.id !== 'string') rec.i = true;
@@ -661,6 +683,7 @@ const __impeccableSnapshot = {
     }
     const snapshot = {
       v: 1,
+      textLines: true,
       hostname: location.hostname,
       quirks: document.compatMode === 'BackCompat',
       innerWidth: window.innerWidth,

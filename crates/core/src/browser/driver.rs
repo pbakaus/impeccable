@@ -1370,7 +1370,14 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
         findings.extend(hits(ec::check_element_motion_dom(dom, el)));
         findings.extend(hits(ec::check_element_glow_dom(dom, el)));
         let palette = ec::check_element_ai_palette_dom(dom, el);
-        palette_tells.extend(palette.tells.iter().copied());
+        // An ignored subtree gets no vote in the page-wide reading. A cyan
+        // tell inside `data-impeccable-ignore="ai-color-palette"` would
+        // otherwise open the two-hue gate and charge neon ink somewhere else
+        // on the page that nobody waived — ignored content changing the
+        // result for content that was not ignored.
+        if !scoped_ignore_active(dom, el, "ai-color-palette") {
+            palette_tells.extend(palette.tells.iter().copied());
+        }
         if let Some(ink) = palette.ink {
             palette_ink.push((el, BrowserFinding::new(ink.id, ink.snippet)));
         }
@@ -1929,6 +1936,55 @@ mod tests {
         assert_eq!(html_pattern_query("::before, ::after"), None);
         assert_eq!(html_pattern_query(".x:not(.y)::before"), Some(".x".to_string()));
         assert_eq!(html_pattern_query(".a::before,"), Some(".a".to_string()));
+    }
+
+    /// An ignored subtree does not get to open the page-wide palette gate.
+    /// `ai-color-palette` holds neon ink until a second tell hue turns up
+    /// somewhere on the page; a cyan tell inside a
+    /// `data-impeccable-ignore="ai-color-palette"` subtree used to count
+    /// toward that, so waiving one component charged an unrelated one.
+    #[test]
+    fn ignored_colors_do_not_contribute_tell_hues() {
+        let build = |ignore: bool| {
+            let mut d = FakeDom::new();
+            let (_h, body) = d.with_page();
+            d.set_style(body, "backgroundColor", "rgb(5, 6, 10)");
+
+            // The waived component: cyan neon ink on near-black.
+            let demo = d.add(Some(body), "div");
+            d.set_style(demo, "backgroundColor", "rgb(5, 6, 10)");
+            if ignore {
+                d.set_attr(demo, "data-impeccable-ignore", "ai-color-palette");
+            }
+            let cyan = d.add(Some(demo), "span");
+            d.add_text(cyan, "Terminal output");
+            d.set_style(cyan, "color", "rgb(34, 238, 238)");
+            d.set_style(cyan, "backgroundColor", "rgba(0, 0, 0, 0)");
+            d.el_mut(cyan).check_visibility = Some(true);
+
+            // Somewhere else on the page, and waived by nobody.
+            let card = d.add(Some(body), "div");
+            d.set_style(card, "backgroundColor", "rgb(5, 6, 10)");
+            let purple = d.add(Some(card), "span");
+            d.add_text(purple, "Upgrade");
+            d.set_style(purple, "color", "rgb(180, 60, 245)");
+            d.set_style(purple, "backgroundColor", "rgba(0, 0, 0, 0)");
+            d.el_mut(purple).check_visibility = Some(true);
+            d
+        };
+        let charged = |d: &FakeDom| -> Vec<String> {
+            collect_browser_findings(d, &BrowserConfig::default())
+                .groups
+                .iter()
+                .flat_map(|g| g.findings.iter().map(|f| f.type_.clone()))
+                .filter(|t| t == "ai-color-palette")
+                .collect()
+        };
+        // Two tell hues, neither waived: the palette is the page's.
+        assert_eq!(charged(&build(false)).len(), 2);
+        // The cyan half waived: one tell hue is an accent, and the purple ink
+        // outside the ignored subtree is not charged either.
+        assert!(charged(&build(true)).is_empty());
     }
 
     #[test]

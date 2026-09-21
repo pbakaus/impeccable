@@ -273,6 +273,14 @@ pub struct SnapNode {
     /// `getDirectTextRect` as `[x, y, width, height]`.
     #[serde(rename = "d", default)]
     pub direct_text_rect: Option<[f64; 4]>,
+    /// The client rects of the element's rendered text, descendants included,
+    /// each `[x, y, width, height]`. What a live probe reads on demand, read
+    /// once at capture; the fragments are merged into lines on this side, so
+    /// what travels is the raw list. Empty is "no rendered text", not "not
+    /// recorded" — `Snapshot::text_lines` is what says a capture recorded
+    /// them at all.
+    #[serde(rename = "dl", default, skip_serializing_if = "Vec::is_empty")]
+    pub text_rects: Vec<[f64; 4]>,
     #[serde(rename = "e", default)]
     pub content_editable: bool,
     #[serde(rename = "h", default)]
@@ -374,6 +382,12 @@ pub struct Snapshot {
     pub body: Option<u32>,
     #[serde(rename = "bodyInnerText", default)]
     pub body_inner_text: Option<String>,
+    /// Whether this capture recorded the rects of each element's rendered
+    /// text (`SnapNode::text_rects`). False in captures older than that
+    /// change, where the union in `d` is all there is: a rule that needs the
+    /// lines stands down rather than inventing them from the union.
+    #[serde(rename = "textLines", default)]
+    pub text_lines: bool,
     #[serde(default)]
     pub hits: Vec<HitTest>,
     /// Derived on load: column index per style property name.
@@ -911,6 +925,18 @@ impl Dom for SnapshotDom {
     fn direct_text_rect(&self, el: ElId) -> Option<Rect> {
         self.snap.node(el).direct_text_rect.as_ref().map(rect4)
     }
+    /// `None` on a capture that never recorded them. The union in `d` is not
+    /// an answer here: a paragraph with one long line and a short tail has
+    /// the same union as one with two even lines, so dividing it by a line
+    /// height would invent widths that nothing on the page rendered.
+    fn text_line_rects(&self, el: ElId) -> Option<Vec<Rect>> {
+        if !self.snap.text_lines {
+            return None;
+        }
+        Some(super::dom::merge_text_rects_into_lines(
+            self.snap.node(el).text_rects.iter().map(rect4).collect(),
+        ))
+    }
 }
 
 /// `undefined` read into a wasm f64 is NaN (`offsetWidth` on an SVG
@@ -1085,6 +1111,40 @@ mod tests {
         assert_eq!(d.element_from_point(20.0, 20.0), Some(5));
         assert_eq!(d.elements_from_point(20.0, 20.0), vec![5, 4, 3, 1]);
         assert!(!d.has_needs());
+    }
+
+    /// A capture that recorded the text rects hands over the lines; one that
+    /// did not says so, and the caller stands down rather than reading lines
+    /// out of a union.
+    #[test]
+    fn text_lines_come_from_the_capture_or_not_at_all() {
+        const OLD: &str = r#"{
+          "v": 1, "documentElement": 1, "body": 2,
+          "els": [
+            {"t":"HTML","c":[2]},
+            {"t":"BODY","p":1,"c":[3]},
+            {"t":"P","p":2,"c":["hello"],"d":[0,100,1000,43]}
+          ]
+        }"#;
+        assert_eq!(snap(OLD).text_line_rects(3), None);
+
+        const NEW: &str = r#"{
+          "v": 1, "textLines": true, "documentElement": 1, "body": 2,
+          "els": [
+            {"t":"HTML","c":[2]},
+            {"t":"BODY","p":1,"c":[3]},
+            {"t":"P","p":2,"c":["hello"],"d":[0,100,1000,43],
+             "dl":[[0,100,600,19],[600,100,400,19],[0,124,120,19]]}
+          ]
+        }"#;
+        let lines = snap(NEW).text_line_rects(3).expect("lines");
+        // The two fragments of the first line are the one line they rendered
+        // as; the tail is its own.
+        assert_eq!(lines.len(), 2);
+        assert_eq!((lines[0].left, lines[0].width), (0.0, 1000.0));
+        assert_eq!((lines[1].top, lines[1].width), (124.0, 120.0));
+        // An element the capture found no rendered text on is not "unknown".
+        assert_eq!(snap(NEW).text_line_rects(2), Some(Vec::new()));
     }
 
     #[test]

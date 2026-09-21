@@ -92,32 +92,21 @@ pub fn has_meaningful_direct_text(dom: &dyn Dom, el: ElId) -> bool {
     has_direct_text_longer_than(dom, el, 4)
 }
 
-/// The width of every line the element's own text rendered on.
+/// The width of every line the element's text rendered on, or `None` when
+/// the DOM cannot say where the lines are.
 ///
-/// `Range.getClientRects()` gives one rect per line box, so the browser probe
-/// hands the lines over as they are. A probe that can only merge them (a
-/// captured snapshot) hands over the union, and the union is divided by the
-/// line box to get its line count back — either way the caller reads lines
-/// and never a box.
-fn rendered_line_widths(dom: &dyn Dom, el: ElId, line_box: f64) -> Vec<f64> {
-    let mut widths: Vec<f64> = Vec::new();
-    for r in dom.direct_text_line_rects(el) {
-        if r.width <= 0.0 || r.height <= 0.0 {
-            continue;
-        }
-        // Capped: a line box a stylesheet has shrunk to a fraction of the
-        // glyphs would otherwise turn one paragraph into thousands of lines,
-        // and no measure is read off a number that large anyway.
-        let lines = if line_box > 0.0 {
-            js::math_min(500.0, js::math_max(1.0, math_round(r.height / line_box)))
-        } else {
-            1.0
-        };
-        for _ in 0..(lines as usize) {
-            widths.push(r.width);
-        }
-    }
-    widths
+/// `Dom::text_line_rects` has already merged the fragments of a line back
+/// together, so each rect here is one line box and nothing is divided by
+/// anything: a leading tighter than the glyph box used to turn one rect into
+/// two identical "lines" and charge a single long line twice.
+fn rendered_line_widths(dom: &dyn Dom, el: ElId) -> Option<Vec<f64>> {
+    Some(
+        dom.text_line_rects(el)?
+            .into_iter()
+            .filter(|r| r.width > 0.0 && r.height > 0.0)
+            .map(|r| r.width)
+            .collect(),
+    )
 }
 
 /// JS: checks.mjs#textDescendantsFlushSides(el, rect) → [top, right, bottom, left]
@@ -284,10 +273,20 @@ pub fn check_quality(dom: &dyn Dom, q: &QualityInput) -> Vec<RuleHit> {
     // it. `rect.width / (fontSize * 0.5)` is the box's capacity: a paragraph
     // sitting in a 1022px column whose text stops at 571px was charged with
     // 142 characters a line it never rendered (REN-402). What the reader sees
-    // is `direct_text_line_rects`, one rect per line box, and the characters
-    // divide between the lines in proportion to the ink each carries — one
-    // element's text is one font at one size, so the average advance is the
-    // same on every line of it.
+    // is `text_line_rects`, one rect per line box with the fragments of a
+    // line merged back together, and the characters divide between the lines
+    // in proportion to the ink each carries — one element's text is one font
+    // at one size, so the average advance is the same on every line of it.
+    //
+    // The rects cover the element's whole rendered text, descendants and all,
+    // which is the same text `text_len` counts: measuring the direct text
+    // alone and then charging it with the characters of an inline `<strong>`
+    // inflated every paragraph that had one.
+    //
+    // A DOM that cannot say where the lines are gets no finding. The union of
+    // a long first line and a short tail is the same union as two even lines,
+    // so there is nothing in it to read a line off, and a rule that guesses
+    // there is charging noise.
     //
     // Charged when at least two rendered lines run past the maximum. The harm
     // this rule names is the eye losing its place tracking back to the start
@@ -298,28 +297,25 @@ pub fn check_quality(dom: &dyn Dom, q: &QualityInput) -> Vec<RuleHit> {
         && rect.width > 0.0
         && (text_len as f64) > line_max
     {
-        let line_box = match q.line_height_px {
-            Some(px) if px > 0.0 => px,
-            _ => font_size * 1.2,
-        };
-        let widths = rendered_line_widths(dom, el, line_box);
-        let total: f64 = widths.iter().sum();
-        if total > 0.0 {
-            let over = line_max + 5.0;
-            let chars = |w: f64| (text_len as f64) * w / total;
-            let long = widths.iter().filter(|w| chars(**w) > over).count();
-            if long >= 2 {
-                let longest = widths.iter().copied().fold(0.0, js::math_max);
-                findings.push(RuleHit::new(
-                    "line-length",
-                    format!(
-                        "~{} chars on {} of {} rendered lines (aim for <{})",
-                        number_to_string(math_round(chars(longest))),
-                        number_to_string(long as f64),
-                        number_to_string(widths.len() as f64),
-                        number_to_string(line_max)
-                    ),
-                ));
+        if let Some(widths) = rendered_line_widths(dom, el) {
+            let total: f64 = widths.iter().sum();
+            if total > 0.0 {
+                let over = line_max + 5.0;
+                let chars = |w: f64| (text_len as f64) * w / total;
+                let long = widths.iter().filter(|w| chars(**w) > over).count();
+                if long >= 2 {
+                    let longest = widths.iter().copied().fold(0.0, js::math_max);
+                    findings.push(RuleHit::new(
+                        "line-length",
+                        format!(
+                            "~{} chars on {} of {} rendered lines (aim for <{})",
+                            number_to_string(math_round(chars(longest))),
+                            number_to_string(long as f64),
+                            number_to_string(widths.len() as f64),
+                            number_to_string(line_max)
+                        ),
+                    ));
+                }
             }
         }
     }
@@ -923,6 +919,87 @@ mod tests {
         let hits = check_element_quality_dom(&d, wall, &BrowserConfig::default());
         assert_eq!(hits.len(), 1, "{hits:?}");
         assert_eq!(hits[0].snippet, "~139 chars on 3 of 4 rendered lines (aim for <80)");
+    }
+
+    /// A line box split across text nodes is still one line. An inline
+    /// `<strong>` or `<a>` in the middle of a sentence is its own text node,
+    /// so `getClientRects()` hands back a rect per fragment; counting each
+    /// fragment as a line divided the paragraph's characters among them and
+    /// hid a genuinely long column.
+    #[test]
+    fn a_line_split_across_fragments_is_one_line() {
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        // 300 characters over three rendered lines, each interrupted mid-line
+        // by an inline element and so measured in two pieces.
+        let p = text_el(&mut d, body, "p", &"w".repeat(300), "16px");
+        d.set_rect(p, 0.0, 100.0, 1020.0, 72.0);
+        d.set_text_lines(
+            p,
+            &[
+                (0.0, 100.0, 520.0, 19.0),
+                (520.0, 100.0, 480.0, 19.0),
+                (0.0, 124.0, 510.0, 19.0),
+                (510.0, 124.0, 490.0, 19.0),
+                (0.0, 148.0, 505.0, 19.0),
+                (505.0, 148.0, 495.0, 19.0),
+            ],
+        );
+        let hits = check_element_quality_dom(&d, p, &BrowserConfig::default());
+        let line = hits.iter().find(|h| h.id == "line-length").expect("charged");
+        // Three lines of 1000px, not six of ~500: six would have put 50
+        // characters on each and charged nothing at all.
+        assert_eq!(line.snippet, "~100 chars on 3 of 3 rendered lines (aim for <80)");
+
+        // The same merge the other way: one long line in two fragments plus a
+        // short tail is two lines, and one long line is a sentence that
+        // wrapped once.
+        let q = text_el(&mut d, body, "p", &"w".repeat(190), "16px");
+        d.set_rect(q, 0.0, 300.0, 1020.0, 48.0);
+        d.set_text_lines(
+            q,
+            &[
+                (0.0, 300.0, 600.0, 19.0),
+                (600.0, 300.0, 400.0, 19.0),
+                (0.0, 324.0, 120.0, 19.0),
+            ],
+        );
+        let hits = check_element_quality_dom(&d, q, &BrowserConfig::default());
+        assert!(!hits.iter().any(|h| h.id == "line-length"), "{hits:?}");
+    }
+
+    /// A rect that is already one line is one line, whatever the leading is.
+    /// Dividing every rect by the line box turned a paragraph whose leading
+    /// is tighter than its glyph box into two copies of the same line, and
+    /// two copies of one long line satisfied "at least two long lines".
+    #[test]
+    fn tight_leading_does_not_double_count_a_line() {
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        let p = text_el(&mut d, body, "p", &"w".repeat(200), "15px");
+        // 10px of leading under an 19px glyph box: `round(19 / 10)` is 2.
+        d.set_style(p, "lineHeight", "10px");
+        d.set_rect(p, 0.0, 100.0, 1020.0, 19.0);
+        d.set_text_lines(p, &[(0.0, 100.0, 1000.0, 19.0)]);
+        let hits = check_element_quality_dom(&d, p, &BrowserConfig::default());
+        assert!(!hits.iter().any(|h| h.id == "line-length"), "{hits:?}");
+    }
+
+    /// A DOM that kept only the union of its text rects cannot say where the
+    /// lines are, and the rule stands down rather than inventing them. A
+    /// snapshot captured before the lines were recorded is that DOM: the
+    /// union of a long first line and a short tail is the same union as two
+    /// even lines, so any width read off it is a width nothing rendered.
+    #[test]
+    fn a_dom_without_lines_does_not_charge_line_length() {
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        let p = text_el(&mut d, body, "p", &"w".repeat(300), "16px");
+        d.set_rect(p, 0.0, 100.0, 1020.0, 72.0);
+        // The same paragraph the merge test charges, measured once.
+        d.set_text_rect(p, 0.0, 100.0, 1000.0, 67.0);
+        let hits = check_element_quality_dom(&d, p, &BrowserConfig::default());
+        assert!(!hits.iter().any(|h| h.id == "line-length"), "{hits:?}");
     }
 
     #[test]

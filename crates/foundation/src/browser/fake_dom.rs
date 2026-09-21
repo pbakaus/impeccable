@@ -35,8 +35,9 @@ pub struct FakeEl {
     pub hidden: bool,
     pub check_visibility: Option<bool>,
     pub direct_text_rect: Option<Rect>,
-    /// The per-line rects of the direct text; empty falls back to the union.
-    pub direct_text_line_rects: Vec<Rect>,
+    /// The rects of the element's rendered text. `None` is a DOM that cannot
+    /// say where the lines are, the way a snapshot without them cannot.
+    pub text_line_rects: Option<Vec<Rect>>,
     /// Selectors (exact strings) this element matches beyond `*` and its tag.
     pub selectors: Vec<String>,
     /// `id` IDL property override (`None` = "not a string", falls back to attr).
@@ -160,13 +161,16 @@ impl FakeDom {
         self.el_mut(id).rect = Rect::from_xywh(x, y, w, h);
         self
     }
-    /// The union rect of `id`'s direct text, as `getClientRects()` would give it.
+    /// The union rect of `id`'s direct text, and nothing about its lines:
+    /// a DOM that measured the text once, the way a page snapshot captured
+    /// before the lines were recorded did.
     pub fn set_text_rect(&mut self, id: ElId, x: f64, y: f64, w: f64, h: f64) -> &mut Self {
         self.el_mut(id).direct_text_rect = Some(Rect::from_xywh(x, y, w, h));
         self
     }
-    /// The rects of `id`'s direct text, one per rendered line. The union is
-    /// derived from them, so a test declares the lines and nothing else.
+    /// The rects of `id`'s rendered text. The union is derived from them, so a
+    /// test declares what rendered and nothing else. Fragments that share a
+    /// row merge into one line on the way out, exactly as a live page's do.
     pub fn set_text_lines(&mut self, id: ElId, lines: &[(f64, f64, f64, f64)]) -> &mut Self {
         let rects: Vec<Rect> = lines
             .iter()
@@ -179,7 +183,7 @@ impl FakeDom {
             let bottom = rects.iter().map(|r| r.bottom).fold(f64::NEG_INFINITY, f64::max);
             self.el_mut(id).direct_text_rect = Some(Rect::from_xywh(left, top, right - left, bottom - top));
         }
-        self.el_mut(id).direct_text_line_rects = rects;
+        self.el_mut(id).text_line_rects = Some(rects);
         self
     }
     pub fn add_text(&mut self, id: ElId, text: &str) -> &mut Self {
@@ -527,12 +531,8 @@ impl Dom for FakeDom {
     fn direct_text_rect(&self, el: ElId) -> Option<Rect> {
         self.els[el as usize].direct_text_rect
     }
-    fn direct_text_line_rects(&self, el: ElId) -> Vec<Rect> {
-        let lines = &self.els[el as usize].direct_text_line_rects;
-        if lines.is_empty() {
-            self.direct_text_rect(el).into_iter().collect()
-        } else {
-            lines.clone()
-        }
+    fn text_line_rects(&self, el: ElId) -> Option<Vec<Rect>> {
+        let rects = self.els[el as usize].text_line_rects.clone()?;
+        Some(super::dom::merge_text_rects_into_lines(rects))
     }
 }
