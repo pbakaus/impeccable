@@ -168,6 +168,98 @@ pub trait Dom {
     /// of every non-blank direct text node (rects narrower/shorter than 1px
     /// dropped); `None` when there is none.
     fn direct_text_rect(&self, el: ElId) -> Option<Rect>;
+    /// The rows the element's rendered text occupies: one rect per line box,
+    /// top to bottom. `None` when this DOM cannot say where the lines are.
+    ///
+    /// This is how a rule reads a line rather than the box that holds it, and
+    /// a line here is the whole line the reader sees. `getClientRects()` on a
+    /// text node gives a rect per line box, but a line box is routinely split
+    /// across several text nodes — an inline `<strong>` in the middle of a
+    /// sentence, a framework marker, an HTML comment — so the rects are
+    /// collected over the element's whole rendered text (descendants
+    /// included, which is the text `text_content` counts) and the ones that
+    /// share a row are merged back into the one line they came from. Without
+    /// that merge each fragment is a "line" and one wrapped sentence is
+    /// charged as several.
+    ///
+    /// `None` is the honest answer from a DOM that only kept the union of
+    /// those rects (a page snapshot captured before the lines were recorded).
+    /// A caller stands down there; it never divides a union by a line height
+    /// and calls the pieces lines, because the union of a long first line and
+    /// a short tail says nothing about either.
+    fn text_line_rects(&self, _el: ElId) -> Option<Vec<Rect>> {
+        None
+    }
+}
+
+/// The rects of one element's rendered text, merged into the lines they
+/// rendered on.
+///
+/// Two rects are the same line when they share a row *and* run on from each
+/// other. Sharing a row is a vertical band overlapping the band the row
+/// started with by more than half the shorter height — that is what makes an
+/// inline `<strong>`, a superscript and the text around them one line.
+/// Running on is a horizontal gap no wider than the row's own line box: the
+/// fragments of a wrapped line are contiguous, while two columns of text that
+/// happen to sit on the same rows are separated by a gutter, and unioning
+/// those would invent a page-wide line neither column ever rendered. An
+/// inline image wider than the leading splits its line in two by the same
+/// test, which understates a line rather than overstating it — the direction
+/// this rule should err in.
+///
+/// Rects arrive in whatever order a DOM walked the text (an element's own
+/// text and its descendants' are interleaved on the page but not in the
+/// walk), so they are sorted top then left first and each rect joins the
+/// newest row still level with it.
+pub fn merge_text_rects_into_lines(rects: Vec<Rect>) -> Vec<Rect> {
+    let mut rects: Vec<Rect> = rects
+        .into_iter()
+        .filter(|r| r.width > 0.0 && r.height > 0.0 && r.all_finite())
+        .collect();
+    rects.sort_by(|a, b| {
+        a.top
+            .partial_cmp(&b.top)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.left.partial_cmp(&b.left).unwrap_or(std::cmp::Ordering::Equal))
+    });
+    let mut lines: Vec<Rect> = Vec::new();
+    // The band of the rect each row started with. Membership is tested
+    // against that rather than against the row as it grows, so an
+    // inline-block taller than the leading does not swallow the line beneath.
+    let mut bands: Vec<(f64, f64)> = Vec::new();
+    for r in rects {
+        let mut joined = false;
+        for i in (0..lines.len()).rev() {
+            let (band_top, band_bottom) = bands[i];
+            // Sorted by top: once a row sits entirely above this rect, every
+            // row before it does too.
+            if band_bottom <= r.top {
+                break;
+            }
+            let overlap = band_bottom.min(r.bottom) - band_top.max(r.top);
+            let shorter = (band_bottom - band_top).min(r.height);
+            if shorter <= 0.0 || overlap <= shorter / 2.0 {
+                continue;
+            }
+            let line = lines[i];
+            let gap = (r.left - line.right).max(line.left - r.right);
+            if gap > band_bottom - band_top {
+                continue;
+            }
+            let left = line.left.min(r.left);
+            let top = line.top.min(r.top);
+            let right = line.right.max(r.right);
+            let bottom = line.bottom.max(r.bottom);
+            lines[i] = Rect::from_xywh(left, top, right - left, bottom - top);
+            joined = true;
+            break;
+        }
+        if !joined {
+            bands.push((r.top, r.bottom));
+            lines.push(r);
+        }
+    }
+    lines
 }
 
 // ── shared helpers over the trait ─────────────────────────────────────────
