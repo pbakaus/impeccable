@@ -26,17 +26,18 @@ describe('README gitignore block', () => {
     writeFileSync(join(tmp, '.gitignore'), block);
     execFileSync('git', ['init'], { cwd: tmp });
 
-    const ignored = execFileSync('git', [
-      'check-ignore',
+    for (const rel of [
       '.impeccable/review/desktop.png',
       '.impeccable/questions/fb63f8a6.log',
       'apps/web/.impeccable/review/desktop.png',
       'apps/web/.impeccable/questions/fb63f8a6.log',
-    ], { cwd: tmp, encoding: 'utf-8' });
-    assert.match(ignored, /\.impeccable\/review\/desktop\.png/);
-    assert.match(ignored, /\.impeccable\/questions\/fb63f8a6\.log/);
-    assert.match(ignored, /apps\/web\/\.impeccable\/review\/desktop\.png/);
-    assert.match(ignored, /apps\/web\/\.impeccable\/questions\/fb63f8a6\.log/);
+    ]) {
+      const ignored = execFileSync('git', ['check-ignore', rel], {
+        cwd: tmp,
+        encoding: 'utf-8',
+      });
+      assert.equal(ignored.trim(), rel, `${rel} should be ignored independently`);
+    }
 
     for (const rel of [
       '.impeccable/config.json',
