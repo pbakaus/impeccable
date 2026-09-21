@@ -30,11 +30,20 @@ describe('README gitignore block', () => {
       'check-ignore',
       '.impeccable/review/desktop.png',
       '.impeccable/questions/fb63f8a6.log',
+      'apps/web/.impeccable/review/desktop.png',
+      'apps/web/.impeccable/questions/fb63f8a6.log',
     ], { cwd: tmp, encoding: 'utf-8' });
     assert.match(ignored, /\.impeccable\/review\/desktop\.png/);
     assert.match(ignored, /\.impeccable\/questions\/fb63f8a6\.log/);
+    assert.match(ignored, /apps\/web\/\.impeccable\/review\/desktop\.png/);
+    assert.match(ignored, /apps\/web\/\.impeccable\/questions\/fb63f8a6\.log/);
 
-    for (const rel of ['.impeccable/config.json', '.impeccable/critique/report.md']) {
+    for (const rel of [
+      '.impeccable/config.json',
+      '.impeccable/critique/report.md',
+      'apps/web/.impeccable/config.json',
+      'apps/web/.impeccable/critique/report.md',
+    ]) {
       const result = spawnSync('git', ['check-ignore', rel], { cwd: tmp });
       assert.notEqual(result.status, 0, `${rel} should not be ignored`);
     }

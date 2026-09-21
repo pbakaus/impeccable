@@ -358,31 +358,30 @@ As you run commands, Impeccable writes working files under `.impeccable/`: criti
 ```gitignore
 # impeccable-ignore-start
 # Ephemeral output, runtime state, and per-dev overrides.
-# Unanchored: .impeccable may sit at the repo root or under a nested
-# workspace (apps/web/.impeccable/...); anchored patterns would miss it.
+# The **/ prefix covers .impeccable at the repo root or in a nested workspace.
 # Shared artifacts stay tracked: config.json, live/config.json,
 # design.json, surfaces/*.md, critique/*.md.
-.impeccable/config.local.json
-.impeccable/hook.cache.json
-.impeccable/hook.pending.json
-.impeccable/*.png
-.impeccable/review/
-.impeccable/questions/
-.impeccable/live/server.json
-.impeccable/live/sessions/
-.impeccable/live/previews/
-.impeccable/live/annotations/
-.impeccable/live/cache/
-.impeccable/live/manual-edit-apply-transaction.json
-.impeccable/live/manual-edit-events.jsonl
-.impeccable/live/manual-edit-evidence/
-.impeccable/live/pending-manual-edits.json
-.impeccable/live/deferred-svelte-component-accepts.json
-.impeccable/live/*.png
+**/.impeccable/config.local.json
+**/.impeccable/hook.cache.json
+**/.impeccable/hook.pending.json
+**/.impeccable/*.png
+**/.impeccable/review/
+**/.impeccable/questions/
+**/.impeccable/live/server.json
+**/.impeccable/live/sessions/
+**/.impeccable/live/previews/
+**/.impeccable/live/annotations/
+**/.impeccable/live/cache/
+**/.impeccable/live/manual-edit-apply-transaction.json
+**/.impeccable/live/manual-edit-events.jsonl
+**/.impeccable/live/manual-edit-evidence/
+**/.impeccable/live/pending-manual-edits.json
+**/.impeccable/live/deferred-svelte-component-accepts.json
+**/.impeccable/live/*.png
 # impeccable-ignore-end
 ```
 
-The block is wrapped in `# impeccable-ignore-start` / `# impeccable-ignore-end` markers so you can recognize and refresh it later. Patterns are unanchored on purpose: in a monorepo the active project (and its `.impeccable/` directory) often lives under a nested workspace path like `apps/web/`, and a root-anchored pattern would miss it.
+The block is wrapped in `# impeccable-ignore-start` / `# impeccable-ignore-end` markers so you can recognize and refresh it later. The `**/` prefix makes each pattern match whether the active project's `.impeccable/` directory is at the repository root or under a nested workspace path like `apps/web/`.
 
 **Keep these tracked** (they are shared project artifacts, do not add them to `.gitignore`):
 
