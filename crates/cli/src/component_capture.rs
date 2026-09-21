@@ -196,6 +196,10 @@ impl ComponentCapturer for NativeComponentCapturer {
         packet: &mut Value,
         inputs: &BTreeMap<String, Vec<u8>>,
     ) -> Result<CapturedPreviews, String> {
+        // Failed captures must never leave a partially rewritten review packet.
+        let original_packet = packet;
+        let mut candidate = original_packet.clone();
+        let packet = &mut candidate;
         let isolated = packet["schemaVersion"] == 2 && packet["stage"] == "components";
         let assembled = packet["stage"] == "hero";
         if packet["stage"] == "components" && !isolated {
@@ -235,9 +239,10 @@ impl ComponentCapturer for NativeComponentCapturer {
         let result = (|| {
             let mut files = BTreeMap::new();
             let mut evidence = Vec::new();
+            let mut errors = Vec::new();
             // Reuse captures across regions sharing a source and geometry, never across changed inputs.
             let mut cache: BTreeMap<String, (Vec<u8>, Value)> = BTreeMap::new();
-            for c in packet["components"]
+            'components: for c in packet["components"]
                 .as_array_mut()
                 .ok_or("missing components")?
             {
@@ -285,9 +290,15 @@ impl ComponentCapturer for NativeComponentCapturer {
                     let (png, proof) = if let Some(saved) = cache.get(&cache_key) {
                         saved.clone()
                     } else {
-                        let captured =
-                            render_page(&mut browser, snapshot, width, height, &c["box"], isolation.as_ref(), assembled)
-                                .map_err(|e| format!("{id} {key}: {e}"))?;
+                        let captured = match render_page(&mut browser, snapshot, width, height, &c["box"], isolation.as_ref(), assembled) {
+                            Ok(captured) => captured,
+                            Err(error) => {
+                                errors.push(format!("{id} {key}: {error}"));
+                                // Report independent component failures together, without
+                                // capturing a context for an already-invalid preview.
+                                continue 'components;
+                            }
+                        };
                         cache.insert(cache_key, captured.clone());
                         captured
                     };
@@ -308,12 +319,18 @@ impl ComponentCapturer for NativeComponentCapturer {
                 c["thumbnail"] = json!({"url":c["preview"]["url"]});
                 evidence.push(json!({"id":id,"views":views}));
             }
+            if !errors.is_empty() {
+                return Err(format!("Component captures failed ({}); no review was published:\n{}", errors.len(), errors.join("\n")));
+            }
             Ok(CapturedPreviews {
                 files,
                 evidence: json!({"schema":"native-component-previews-v1","browser":version,"components":evidence,"scope":if assembled {"Pinned assembled page with local scripts, verified network inputs and stable DOM/pixels. No visual, semantic or human-identity approval."} else {"Pinned raster sources and static HTML/CSS/SVG captures. No visual, semantic or human-identity approval."}}),
             })
         })();
         browser.close();
+        if result.is_ok() {
+            *original_packet = candidate;
+        }
         result
     }
 }
@@ -321,6 +338,23 @@ impl ComponentCapturer for NativeComponentCapturer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[ignore = "requires Chromium"]
+    fn reports_multiple_clipped_components_without_mutating_packet() {
+        let png = impeccable_comp::png_io::encode_png(&impeccable_comp::raster::create_image(100,100,[255;4]),&[]).unwrap();
+        let html = br#"<style>body{margin:0}#one,#two{position:absolute;width:20px;height:20px;background:red}#one{left:10px;top:10px}#two{left:60px;top:60px}</style><div id="one"></div><div id="two"></div>"#;
+        let inputs = BTreeMap::from([("comp.png".into(),png),("kit.html".into(),html.to_vec())]);
+        let make = |id:&str| json!({"id":id,"box":{"x":0,"y":0,"w":0.05,"h":0.05},"preview":{"kind":"page","url":"/files/kit.html","selector":format!("#{id}")},"dependencies":[]});
+        let mut packet = json!({"schemaVersion":2,"stage":"components","comp":{"url":"/files/comp.png","width":100,"height":100},"components":[make("one"),make("two")]});
+        let original = packet.clone();
+        let error = NativeComponentCapturer.capture(&mut packet,&inputs).err().unwrap();
+        assert!(error.contains("one preview:") && error.contains("two preview:") && error.contains("failed (2)"), "{error}");
+        assert_eq!(packet,original);
+        for c in packet["components"].as_array_mut().unwrap() { c["box"] = json!({"x":0,"y":0,"w":1,"h":1}); }
+        let captures = NativeComponentCapturer.capture(&mut packet,&inputs).unwrap();
+        assert_eq!(captures.evidence["components"].as_array().unwrap().len(),2);
+        assert_eq!(packet["components"][0]["preview"]["kind"],"image");
+    }
     #[test]
     #[ignore = "requires Chromium"]
     fn missing_primary_font_is_rejected_and_pinned_font_is_captured() {
