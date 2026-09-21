@@ -86,8 +86,8 @@ function __snapTextRects(node, out) {
   return out;
 }
 
-// getDirectTextRect(el): union of the client rects of the element's
-// non-blank direct text nodes (same measure as 10-probe.js).
+// getDirectTextRect(el) over rects already collected: their union, as
+// 10-probe.js#direct_text_rect builds it.
 function __snapDirectTextRectOf(rects) {
   if (rects.length === 0) return null;
   const left = Math.min(...rects.map(r => r.left));

@@ -45,11 +45,10 @@ re!(
 );
 // A design document's prose, cut where one statement stops and the next
 // starts: punctuation, a line break, and the phrases that turn a sentence
-// around. `instead of` / `rather than` open a
-// clause about what the document is steering *away* from; the reversals
-// (`outside`, `except`, ...) open one about what it is steering *toward*,
-// which is what lets "no ALL CAPS outside the `.eyebrow` class" declare
-// `.eyebrow`.
+// around. `instead of` / `rather than` open a clause about what the document
+// is steering *away* from; the reversals (`outside`, `except`, ...) open one
+// about what it is steering *toward*, which is what lets "no ALL CAPS outside
+// the `.eyebrow` class" declare `.eyebrow`.
 re!(
     DESIGN_CLAUSE_SPLIT,
     r"(?i)[.!?;:,()\[\]\n]|\u{2014}|\u{2013}|\binstead of\b|\brather than\b|\bas opposed to\b|\boutside\b|\bexcept\b|\bother than\b|\bunless\b|\bbesides\b|\bapart from\b|\bbeyond\b".to_string()

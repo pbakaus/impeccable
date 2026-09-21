@@ -70,8 +70,8 @@ function __collectTextRects(node, deep, out) {
   return out;
 }
 
-// The element's own direct text, unmerged.
-function __textLineRects(el) {
+// The element's own direct text, unmerged: what the union rect is built from.
+function __directTextRects(el) {
   return __collectTextRects(__el(el), false, []);
 }
 
@@ -210,7 +210,7 @@ const __impeccableDom = {
   // getDirectTextRect(el) from the JS driver: union of the client rects of
   // the element's non-blank direct text nodes.
   direct_text_rect(el) {
-    const rects = __textLineRects(el);
+    const rects = __directTextRects(el);
     if (rects.length === 0) return [];
     const left = Math.min(...rects.map(r => r.left));
     const top = Math.min(...rects.map(r => r.top));
