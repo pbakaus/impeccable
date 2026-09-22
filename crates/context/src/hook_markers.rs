@@ -27,7 +27,9 @@ pub const LEGACY_HOOK_SCRIPT_MARKERS: &[&str] = &[
 /// Matches the launcher path (`.../skills/impeccable/scripts/impeccable` or
 /// `impeccable.cmd`), the closing quote if any, then the hook verb.
 static LAUNCHER_HOOK_MARKER: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"skills/impeccable/scripts/impeccable(?:\.cmd|\.exe)?["']?\s+hook(?:-before-edit|-probe|-after-edit|-stop)?(?:\s|$|["'&|;)])"#).unwrap()
+    // One or more trailing quotes: the retired Grok wrap doubled quotes
+    // inside `cmd /c "..."` (`...impeccable.cmd"" hook`).
+    Regex::new(r#"skills/impeccable/scripts/impeccable(?:\.cmd|\.exe)?["']*\s+hook(?:-before-edit|-probe|-after-edit|-stop)?(?:\s|$|["'&|;)])"#).unwrap()
 });
 
 /// User-scope Windows commands embed a JSON-quoted path whose backslashes are
@@ -77,7 +79,7 @@ pub fn is_launcher_hook_command(command: &str) -> bool {
 /// proper (the per-edit hook and Cursor's before-edit gate). Legacy siblings
 /// like `hook-probe` are admin-only and do not count as an installed hook.
 static LAUNCHER_DESIGN_HOOK: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"skills/impeccable/scripts/impeccable(?:\.cmd|\.exe)?["']?\s+hook(?:-before-edit)?(?:\s|$|["'&|;)])"#).unwrap()
+    Regex::new(r#"skills/impeccable/scripts/impeccable(?:\.cmd|\.exe)?["']*\s+hook(?:-before-edit)?(?:\s|$|["'&|;)])"#).unwrap()
 });
 
 /// True when `command` runs the design hook itself (`hook` or
@@ -153,6 +155,8 @@ mod tests {
             "\"$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/impeccable\" hook",
             "[ ! -f '/x/.claude/skills/impeccable/scripts/impeccable' ] || '/x/.claude/skills/impeccable/scripts/impeccable' hook",
             "if exist \".agents/skills/impeccable/scripts/impeccable.cmd\" (\".agents/skills/impeccable/scripts/impeccable.cmd\" hook & exit /b)",
+            r#"cmd /c "if exist "".grok/skills/impeccable/scripts/impeccable.cmd"" ("".grok/skills/impeccable/scripts/impeccable.cmd"" hook & exit /b)""#,
+            r#"cmd /c if exist ".grok\skills\impeccable\scripts\impeccable.cmd" ".grok\skills\impeccable\scripts\impeccable.cmd" hook"#,
         ] {
             assert!(is_impeccable_hook_command(cmd), "{cmd}");
             assert!(is_design_hook_command(cmd), "{cmd}");

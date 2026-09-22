@@ -403,7 +403,7 @@ Installed hook surfaces:
 - GitHub Copilot: `.github/hooks/impeccable.json` (committed, shared by the Copilot CLI and the cloud agent) runs `.github/skills/impeccable/scripts/impeccable hook`. The Copilot CLI activates it once the file is on the repository's default branch and the folder is trusted.
 - Cursor: `.cursor/hooks.json` runs `.cursor/skills/impeccable/scripts/impeccable hook-before-edit`.
 - Codex: `.codex/hooks.json` runs `.agents/skills/impeccable/scripts/impeccable hook`, with a `commandWindows` sibling that calls `impeccable.cmd` for cmd.exe.
-- Grok Build: `.grok/hooks/impeccable.json` runs `.grok/skills/impeccable/scripts/impeccable hook`. Requires `/hooks-trust` or `--trust`. Findings reach the model on Stop, not after each edit.
+- Grok Build: `.grok/hooks/impeccable.json` runs `.grok/skills/impeccable/scripts/impeccable hook`, with a `commandWindows` sibling that calls `impeccable.cmd` through `cmd /c if exist` so PowerShell (Grok's default Windows shell) does not ParserError. Requires `/hooks-trust` or `--trust`. Findings reach the model on Stop, not after each edit.
 
 Every command goes through the launcher shipped in the skill's `scripts/` directory (`impeccable`, or `impeccable.cmd` on Windows), guarded so a missing launcher is a silent no-op. The launcher runs the engine binary that ships next to it, or downloads the pinned version once into `~/.impeccable/bin/`. No Node or other runtime is required for the hook or the skill.
 

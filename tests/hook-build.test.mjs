@@ -5,7 +5,9 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -17,6 +19,7 @@ import {
   buildCursorHooksManifest,
   buildGitHubHooksManifest,
   buildGrokHooksManifest,
+  grokWindowsLauncherCommand,
   hooksJsonFor,
 } from '../scripts/lib/transformers/hooks.js';
 
@@ -49,6 +52,34 @@ function expectWindowsCommand(command, expectedScriptsDir, verb = 'hook') {
   assert.equal(typeof command, 'string');
   const launcher = `${expectedScriptsDir}/impeccable.cmd`;
   assert.equal(command, `if exist "${launcher}" ("${launcher}" ${verb} & exit /b)`);
+}
+
+function expectGrokWindowsCommand(command, expectedScriptsDir, verb = 'hook') {
+  assert.equal(typeof command, 'string');
+  const launcher = `${expectedScriptsDir.replaceAll('/', '\\')}\\impeccable.cmd`;
+  assert.equal(command, `cmd /c if exist "${launcher}" "${launcher}" ${verb}`);
+}
+
+function spawnCapture(file, args, { cwd, timeout = 15_000, env } = {}) {
+  const result = spawnSync(file, args, {
+    cwd,
+    env,
+    encoding: 'utf8',
+    timeout,
+    windowsHide: true,
+  });
+  return {
+    status: result.status,
+    stdout: (result.stdout || '').replace(/\r/g, ''),
+    stderr: (result.stderr || '').replace(/\r/g, ''),
+    error: result.error,
+  };
+}
+
+function writeGrokStub(root, body) {
+  const scripts = path.join(root, '.grok', 'skills', 'impeccable', 'scripts');
+  fs.mkdirSync(scripts, { recursive: true });
+  fs.writeFileSync(path.join(scripts, 'impeccable.cmd'), body);
 }
 
 function manifestCommands(manifest) {
@@ -195,19 +226,112 @@ describe('hook manifest builders', () => {
     assert.equal(stop.timeout, 30);
     assert.equal(stop.statusMessage, 'Design deep pass');
     expectCommand(stop.command, '.grok/skills/impeccable/scripts');
+    expectGrokWindowsCommand(handler.commandWindows, '.grok/skills/impeccable/scripts');
+    expectGrokWindowsCommand(stop.commandWindows, '.grok/skills/impeccable/scripts');
   });
 
-  it('emits commandWindows only for Codex-shaped manifests', () => {
-    // Codex reads a `commandWindows` sibling; Claude, Cursor, Grok, and Copilot
-    // have no per-platform field, and an unknown key is a risk under a strict
-    // parser, so it stays off everywhere else.
-    const withWindows = [buildCodexHooksManifest(), buildCodexPluginHooksManifest()];
+  it('Grok Windows command is parseable by PowerShell and cmd.exe', {
+    skip: process.platform !== 'win32' ? 'Windows-only shell probe' : false,
+  }, () => {
+    // grok.exe has no commandWindows field. The string that lands in `command`
+    // on Windows has to survive PowerShell (default GROK_SHELL: pwsh -Command)
+    // and GROK_SHELL=cmd (the command string as a batch line) for a missing
+    // launcher (silent 0) and a present one (HOOK_OK / non-zero on hook fail).
+    // Do not wrap the already-prefixed `cmd /c ...` in another `cmd /c`.
+    const command = grokWindowsLauncherCommand('.grok/skills/impeccable/scripts/impeccable.cmd');
+
+    const runPwsh = (file, cwd) => spawnCapture(file, [
+      '-NoProfile', '-NonInteractive', '-Command', command,
+    ], { cwd });
+    const runCmdLine = (cwd) => {
+      const helper = path.join(cwd, '_probe.cmd');
+      fs.writeFileSync(helper, `@echo off\r\n${command}\r\n`);
+      return spawnCapture('cmd.exe', ['/c', helper], { cwd });
+    };
+    const gitBash = [
+      'C:\\Program Files\\Git\\bin\\bash.exe',
+      'C:\\Program Files (x86)\\Git\\bin\\bash.exe',
+    ].find((p) => fs.existsSync(p));
+    const runGitBash = (cwd) => spawnCapture(gitBash, ['-c', command], {
+      cwd,
+      env: {
+        ...process.env,
+        MSYS_NO_PATHCONV: '1',
+        MSYS2_ARG_CONV_EXCL: '*',
+      },
+    });
+
+    const missing = fs.mkdtempSync(path.join(os.tmpdir(), 'imp-grok-miss-'));
+    try {
+      for (const file of ['pwsh', 'powershell']) {
+        const r = runPwsh(file, missing);
+        assert.equal(r.status, 0, `${file} missing: status=${r.status} stderr=${r.stderr}`);
+        assert.doesNotMatch(r.stderr, /ParserError/i, `${file} missing ParserError: ${r.stderr}`);
+      }
+      const cmd = runCmdLine(missing);
+      assert.equal(cmd.status, 0, `cmd missing: status=${cmd.status} stderr=${cmd.stderr}`);
+      if (gitBash) {
+        const bash = runGitBash(missing);
+        assert.equal(bash.status, 0, `git-bash missing: status=${bash.status} stderr=${bash.stderr}`);
+      }
+    } finally {
+      fs.rmSync(missing, { recursive: true, force: true });
+    }
+
+    const present = fs.mkdtempSync(path.join(os.tmpdir(), 'imp-grok-ok-'));
+    writeGrokStub(present, '@echo off\necho HOOK_OK args=%*\nexit /b 0\n');
+    try {
+      for (const file of ['pwsh', 'powershell']) {
+        const r = runPwsh(file, present);
+        assert.equal(r.status, 0, `${file} present: status=${r.status} stderr=${r.stderr}`);
+        assert.match(r.stdout, /HOOK_OK args=hook/, `${file} present stdout=${r.stdout}`);
+      }
+      const cmd = runCmdLine(present);
+      assert.equal(cmd.status, 0, `cmd present: status=${cmd.status} stderr=${cmd.stderr}`);
+      assert.match(cmd.stdout, /HOOK_OK args=hook/, `cmd present stdout=${cmd.stdout}`);
+      if (gitBash) {
+        const bash = runGitBash(present);
+        assert.equal(bash.status, 0, `git-bash present: status=${bash.status} stderr=${bash.stderr}`);
+        assert.match(bash.stdout, /HOOK_OK args=hook/, `git-bash present stdout=${bash.stdout}`);
+      }
+    } finally {
+      fs.rmSync(present, { recursive: true, force: true });
+    }
+
+    const failing = fs.mkdtempSync(path.join(os.tmpdir(), 'imp-grok-fail-'));
+    writeGrokStub(failing, '@echo off\necho HOOK_FAIL\nexit /b 2\n');
+    try {
+      for (const file of ['pwsh', 'powershell']) {
+        const r = runPwsh(file, failing);
+        // PowerShell reports a native exit 2 as 1; Grok fail-opens on any non-zero.
+        assert.notEqual(r.status, 0, `${file} exit-2: status=${r.status} stderr=${r.stderr}`);
+        assert.match(r.stdout, /HOOK_FAIL/, `${file} exit-2 stdout=${r.stdout}`);
+      }
+      const cmd = runCmdLine(failing);
+      assert.equal(cmd.status, 2, `cmd exit-2: status=${cmd.status} stderr=${cmd.stderr} stdout=${cmd.stdout}`);
+      assert.match(cmd.stdout, /HOOK_FAIL/, `cmd exit-2 stdout=${cmd.stdout}`);
+      if (gitBash) {
+        const bash = runGitBash(failing);
+        assert.notEqual(bash.status, 0, `git-bash exit-2: status=${bash.status} stderr=${bash.stderr}`);
+        assert.match(bash.stdout, /HOOK_FAIL/, `git-bash exit-2 stdout=${bash.stdout}`);
+      }
+    } finally {
+      fs.rmSync(failing, { recursive: true, force: true });
+    }
+  });
+
+  it('emits commandWindows only for Codex-shaped and Grok manifests', () => {
+    // Codex 0.146.0+ selects `commandWindows` on Windows (issue #452). Grok
+    // Build gets the same sibling so a cmd.exe-safe impeccable.cmd sits next
+    // to the POSIX command. Claude, Cursor, and Copilot have no per-platform
+    // field, and an unknown key is a risk under a strict parser, so it stays
+    // off everywhere else.
+    const withWindows = [buildCodexHooksManifest(), buildCodexPluginHooksManifest(), buildGrokHooksManifest()];
     const without = [
       buildClaudeSettingsManifest(),
       buildClaudePluginHooksManifest(),
       buildCursorHooksManifest(),
       buildGitHubHooksManifest(),
-      buildGrokHooksManifest(),
     ];
     const entries = (manifest) => {
       const out = [];

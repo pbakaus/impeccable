@@ -55,8 +55,9 @@ fn command_hook(command: &str, timeout: i64, status: &str) -> Value {
 }
 
 /// A command hook with the `commandWindows` sibling Codex 0.146.0+ selects
-/// on Windows (`command_windows.unwrap_or(command)`), pointing at the
-/// launcher's `.cmd` shim so the same `.codex/hooks.json` runs on every OS.
+/// on Windows (`command_windows.unwrap_or(command)`). Grok Build gets the
+/// same sibling as `cmd /c if exist "p" "p" hook` so PowerShell (its default
+/// Windows shell) and `GROK_SHELL=cmd` both parse it.
 fn command_hook_with_windows(command: &str, windows: &str, timeout: i64, status: &str) -> Value {
     obj(vec![
         ("type", Value::from("command")),
@@ -97,6 +98,8 @@ fn stop_manifest_entry_with_windows(command: &str, windows: &str) -> Value {
 const CLAUDE_HOOK_COMMAND: &str = "\"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook";
 const AGENTS_HOOK_COMMAND: &str = "\".agents/skills/impeccable/scripts/impeccable\" hook";
 const AGENTS_HOOK_COMMAND_WINDOWS: &str = "\".agents/skills/impeccable/scripts/impeccable.cmd\" hook";
+const GROK_HOOK_COMMAND: &str = "\".grok/skills/impeccable/scripts/impeccable\" hook";
+const GROK_HOOK_COMMAND_WINDOWS: &str = r#"cmd /c if exist ".grok\skills\impeccable\scripts\impeccable.cmd" ".grok\skills\impeccable\scripts\impeccable.cmd" hook"#;
 const CURSOR_HOOK_COMMAND: &str = "\".cursor/skills/impeccable/scripts/impeccable\" hook-before-edit";
 const GITHUB_HOOK_COMMAND: &str = "\"$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/impeccable\" hook";
 
@@ -173,6 +176,33 @@ fn cursor_manifest() -> Value {
     ])
 }
 
+fn grok_manifest() -> Value {
+    // Grok does not select `commandWindows`. On Windows the PowerShell-safe
+    // form has to live in `command` itself or Stop ParserErrors.
+    let win = GROK_HOOK_COMMAND_WINDOWS;
+    let cmd = if cfg!(windows) {
+        GROK_HOOK_COMMAND_WINDOWS
+    } else {
+        GROK_HOOK_COMMAND
+    };
+    obj(vec![(
+        "hooks",
+        obj(vec![
+            (
+                "PostToolUse",
+                Value::Array(vec![obj(vec![
+                    ("matcher", Value::from("Edit|Write|MultiEdit")),
+                    (
+                        "hooks",
+                        Value::Array(vec![command_hook_with_windows(cmd, win, TIMEOUT_SECONDS, STATUS_MESSAGE)]),
+                    ),
+                ])]),
+            ),
+            ("Stop", Value::Array(vec![stop_manifest_entry_with_windows(cmd, win)])),
+        ]),
+    )])
+}
+
 fn github_manifest() -> Value {
     obj(vec![
         ("version", Value::from(1)),
@@ -222,6 +252,13 @@ const HOOK_MANIFEST_TARGETS: &[ManifestTarget] = &[
         dest_rel: ".github/hooks/impeccable.json",
         shared_dest_rel: None,
         manifest: github_manifest,
+    },
+    ManifestTarget {
+        provider: ".grok",
+        skill_rel: ".grok/skills/impeccable",
+        dest_rel: ".grok/hooks/impeccable.json",
+        shared_dest_rel: None,
+        manifest: grok_manifest,
     },
 ];
 
