@@ -5,6 +5,6 @@
   "signal": null,
   "files": {
     ".impeccable/config.json": "{\n  \"hook\": {\n    \"perEditRules\": \"all\"\n  }\n}\n",
-    ".impeccable/hook.cache.json": "{\"version\":1,\"sessions\":{\"s1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/src/components/Card.tsx\":{\"editCount\":1,\"findings\":[\"bounce-easing:5:cubic-bezier(0.68, -0.55, 0.265, 1.55)\"]},\"<WS>/src/components/Card.module.css\":{\"editCount\":0,\"findings\":[\"side-tab:1\",\"gradient-text:2\"]}},\"footerShown\":true}}}"
+    ".impeccable/hook.cache.json": "{\"version\":2,\"sessions\":{\"s1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/src/components/Card.tsx\":{\"editCount\":1,\"findings\":[\"bounce-easing:5:cubic-bezier(0.68, -0.55, 0.265, 1.55)\"]},\"<WS>/src/components/Card.module.css\":{\"editCount\":0,\"findings\":[\"side-tab:1\",\"gradient-text:2\"]}},\"footerShown\":true}}}"
   }
 }

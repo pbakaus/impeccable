@@ -16,8 +16,10 @@ use impeccable_detect::config::{
     normalize_ignore_rule, normalize_ignore_value, normalize_ignore_value_entries, DetectionConfig,
     IgnoreValueEntry,
 };
-use impeccable_detect::design_system::{load_design_system_for_cwd, resolve_design_md_path, DesignSystem};
-use impeccable_detect::detect_text::{detect_text, TextOptions};
+use impeccable_detect::design_system::{
+    load_design_system_for_cwd, resolve_design_md_path, DesignSystem,
+};
+use impeccable_detect::detect_text::{detect_markup_text, detect_text, TextOptions};
 use impeccable_detect::engines::{HtmlEngine, ScanOptions};
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -30,14 +32,19 @@ use crate::util::{
 
 pub const ENVELOPE_PREFIX: &str = "[impeccable@1]";
 
-pub const ALLOWED_EXTS: &[&str] = &[
-    ".tsx", ".jsx", ".html", ".htm", ".vue", ".svelte", ".astro", ".css", ".scss", ".sass",
-    ".less", ".ts", ".js",
-];
+pub use impeccable_detect::engine_route::SCANNABLE_EXTENSIONS as ALLOWED_EXTS;
 
 pub const ACK_EXTS: &[&str] = &[
     ".tsx", ".jsx", ".html", ".htm", ".vue", ".svelte", ".astro", ".css", ".scss", ".sass", ".less",
 ];
+
+pub use impeccable_detect::engine_route::{
+    extension_label, is_component, is_markup_template, is_plain_html, match_configured_extension,
+    match_html_engine_extension, merge_extensions, normalize_extension_entries, uses_html_engine,
+    ExtensionEntry, HTML_ENGINE_EXTENSIONS,
+};
+
+pub use impeccable_detect::engine_route::is_scannable as is_hook_scan_path;
 
 const WS: &str = impeccable_core::js::WS;
 
@@ -125,6 +132,10 @@ pub const HOOK_LOCAL_IGNORE_PATTERNS: &[&str] = &[
 ];
 const HOOK_IGNORE_MARKER_OPEN: &str = "# impeccable-hook-ignore-start";
 const HOOK_IGNORE_MARKER_CLOSE: &str = "# impeccable-hook-ignore-end";
+/// Bumped when HTML-engine finding keys gained source lines (`rule:line`
+/// instead of `rule:0:snippet`). A session spanning that flip must not treat
+/// the old keys as acknowledgements of the new ones.
+const CACHE_VERSION: u64 = 2;
 const CACHE_MAX_SESSIONS: usize = 8;
 pub const EDIT_COUNT_THRESHOLD: u64 = 6;
 pub const MAX_SCAN_TARGETS: usize = 6;
@@ -184,7 +195,13 @@ fn hook_state_dir(cwd: &str) -> String {
         let resolved = jsp::resolve(&proc_cwd, &[cwd]);
         let slug: String = resolved
             .chars()
-            .map(|c| if matches!(c, ':' | '\\' | '/' | '.') { '-' } else { c })
+            .map(|c| {
+                if matches!(c, ':' | '\\' | '/' | '.') {
+                    '-'
+                } else {
+                    c
+                }
+            })
             .collect();
         let digest = {
             use sha2::Digest;
@@ -192,7 +209,10 @@ fn hook_state_dir(cwd: &str) -> String {
             h.update(resolved.as_bytes());
             format!("{:x}", h.finalize())[..8].to_string()
         };
-        return jsp::join(&[&jsp::resolve(&proc_cwd, &[&root]), &format!("{}-{}", slug, digest)]);
+        return jsp::join(&[
+            &jsp::resolve(&proc_cwd, &[&root]),
+            &format!("{}-{}", slug, digest),
+        ]);
     }
     jsp::join(&[cwd, ".impeccable"])
 }
@@ -349,12 +369,6 @@ pub fn is_native_platform(platform: Option<&str>) -> bool {
 }
 
 // ── config ────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct ExtensionEntry {
-    pub ext: String,
-    pub engine: String,
-}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Limits {
@@ -563,81 +577,6 @@ pub fn merge_ignore_values(
     map.into_iter().map(|(_, e)| e).collect()
 }
 
-/// JS: template-extensions.mjs#normalizeExtensionEntries
-pub fn normalize_extension_entries(entries: &[Value]) -> Vec<ExtensionEntry> {
-    let mut out = Vec::new();
-    for entry in entries {
-        let (raw, is_string, engine_text) = match entry {
-            Value::String(s) => (Some(s.as_str()), true, false),
-            Value::Object(o) => (
-                match o.get("ext") {
-                    Some(Value::String(s)) => Some(s.as_str()),
-                    _ => None,
-                },
-                false,
-                o.get("engine") == Some(&Value::String("text".to_string())),
-            ),
-            _ => (None, false, false),
-        };
-        let Some(raw) = raw else { continue };
-        let mut ext = js::to_lower_case(js::trim(raw));
-        if ext.is_empty() {
-            continue;
-        }
-        if !ext.starts_with('.') {
-            ext = format!(".{ext}");
-        }
-        let engine = if !is_string && engine_text {
-            "text"
-        } else {
-            "html"
-        };
-        out.push(ExtensionEntry {
-            ext,
-            engine: engine.to_string(),
-        });
-    }
-    out
-}
-
-/// JS: template-extensions.mjs#mergeExtensions
-pub fn merge_extensions(existing: &[ExtensionEntry], incoming: &[Value]) -> Vec<ExtensionEntry> {
-    let mut map: Vec<(String, ExtensionEntry)> = Vec::new();
-    for e in existing {
-        map_set(&mut map, e.ext.clone(), e.clone());
-    }
-    for e in normalize_extension_entries(incoming) {
-        map_set(&mut map, e.ext.clone(), e);
-    }
-    map.into_iter().map(|(_, e)| e).collect()
-}
-
-/// JS: template-extensions.mjs#matchConfiguredExtension
-pub fn match_configured_extension<'a>(
-    file_path: &str,
-    extensions: &'a [ExtensionEntry],
-) -> Option<&'a ExtensionEntry> {
-    if extensions.is_empty() {
-        return None;
-    }
-    let name = js::to_lower_case(&jsp::basename(file_path));
-    if name.is_empty() {
-        return None;
-    }
-    let mut best: Option<&ExtensionEntry> = None;
-    for entry in extensions {
-        if utf16_len(&name) > utf16_len(&entry.ext)
-            && name.ends_with(entry.ext.as_str())
-            && best
-                .map(|b| utf16_len(&entry.ext) > utf16_len(&b.ext))
-                .unwrap_or(true)
-        {
-            best = Some(entry);
-        }
-    }
-    best
-}
-
 // ── cache ─────────────────────────────────────────────────────────────────
 
 /// The `.impeccable/hook.cache.json` document, kept as ordered JSON so
@@ -648,9 +587,12 @@ pub type Cache = Map<String, Value>;
 pub fn read_cache(cwd: &str) -> Cache {
     let raw = safe_read_json(&get_cache_path(cwd));
     let mut cache = Map::new();
-    cache.insert("version".into(), Value::from(1));
+    cache.insert("version".into(), Value::from(CACHE_VERSION));
     let sessions = match raw {
-        Some(Value::Object(o)) if o.get("version").and_then(Value::as_f64) == Some(1.0) => {
+        Some(Value::Object(o))
+            if o.get("version").and_then(Value::as_u64) == Some(CACHE_VERSION)
+                || o.get("version").and_then(Value::as_f64) == Some(CACHE_VERSION as f64) =>
+        {
             match o.get("sessions") {
                 Some(Value::Object(s)) => s.clone(),
                 _ => Map::new(),
@@ -991,6 +933,7 @@ pub fn filter_findings(findings: Vec<Finding>, config: &HookConfig) -> Vec<Findi
         ignore_values: config.ignore_values.clone(),
         design_system_enabled: None,
         advisory_rules: None,
+        extensions: vec![],
     };
     filter_detection_findings(kept, &dc)
 }
@@ -1606,9 +1549,7 @@ pub fn should_emit_ack_for_file(file_path: &str, config: &HookConfig) -> bool {
     if ACK_EXTS.contains(&ext.as_str()) {
         return true;
     }
-    match_configured_extension(file_path, &config.extensions)
-        .map(|c| c.engine == "html")
-        .unwrap_or(false)
+    uses_html_engine(file_path, &config.extensions)
 }
 
 /// The detector option object the hook builds (`{ designSystem? }`).
@@ -1674,18 +1615,44 @@ pub fn design_system_options_for_file(
 
 /// The detector the hook drives: the regex engine from `impeccable-detect`
 /// and the static HTML engine through the `HtmlEngine` seam.
+fn text_options(scan: &HookScanOptions) -> TextOptions<'_> {
+    TextOptions {
+        profile: None,
+        design_system: scan.design_system.as_deref(),
+        inline_ignores: true,
+        rule_pack: None,
+    }
+}
+
 pub fn detector_detect_text(
     content: &str,
     file_path: &str,
     scan: &HookScanOptions,
 ) -> Vec<Finding> {
-    let opts = TextOptions {
-        profile: None,
-        design_system: scan.design_system.as_deref(),
-        inline_ignores: true,
-        rule_pack: None,
-    };
-    detect_text(content, file_path, &opts)
+    detect_text(content, file_path, &text_options(scan))
+}
+
+/// Full text pipeline for markup-bearing templates, including configured
+/// suffixes that `detect_text` would treat as last-segment `.erb` / `.php`.
+pub fn detector_detect_markup(
+    content: &str,
+    file_path: &str,
+    scan: &HookScanOptions,
+) -> Vec<Finding> {
+    detect_markup_text(content, file_path, &text_options(scan))
+}
+
+pub fn detector_detect_source(
+    content: &str,
+    file_path: &str,
+    scan: &HookScanOptions,
+    markup: bool,
+) -> Vec<Finding> {
+    if markup {
+        detector_detect_markup(content, file_path, scan)
+    } else {
+        detector_detect_text(content, file_path, scan)
+    }
 }
 
 pub fn detector_detect_html(
@@ -2067,7 +2034,12 @@ fn normalize_grok_event(
         .get("cwd")
         .filter(|v| truthy_value(Some(v)))
         .cloned()
-        .or_else(|| event.get("workspaceRoot").filter(|v| truthy_value(Some(v))).cloned())
+        .or_else(|| {
+            event
+                .get("workspaceRoot")
+                .filter(|v| truthy_value(Some(v)))
+                .cloned()
+        })
         .or_else(|| {
             rt.env("CURSOR_PROJECT_DIR")
                 .filter(|v| !v.is_empty())
@@ -2101,7 +2073,10 @@ fn normalize_grok_event(
     out.insert("tool_name".into(), tool_name);
     out.insert("tool_input".into(), Value::Object(tool_input));
     if event.contains_key("stopHookActive") && !event.contains_key("stop_hook_active") {
-        out.insert("stop_hook_active".into(), event.get("stopHookActive").cloned().unwrap_or(Value::Null));
+        out.insert(
+            "stop_hook_active".into(),
+            event.get("stopHookActive").cloned().unwrap_or(Value::Null),
+        );
     }
     out
 }
@@ -2163,7 +2138,6 @@ pub fn normalize_hook_event(
 
 // ── targets ───────────────────────────────────────────────────────────────
 
-const UI_CODE_EXTS: &[&str] = &[".jsx", ".tsx", ".vue", ".svelte", ".astro"];
 const STYLE_EXTS: &[&str] = &[".css", ".scss", ".sass", ".less"];
 const CO_SCAN_STYLE_NAMES: &[&str] = &[
     "styles.css",
@@ -2289,22 +2263,31 @@ pub fn parse_static_style_imports(
 
 /// JS: coLocatedStylesheets(filePath)
 pub fn co_located_stylesheets(file_path: &str) -> Vec<String> {
+    co_located_stylesheets_with(file_path, &[])
+}
+
+pub fn co_located_stylesheets_with(file_path: &str, extensions: &[ExtensionEntry]) -> Vec<String> {
     let dir = jsp::dirname(file_path);
-    let base = jsp::basename_ext(file_path, &jsp::extname(file_path));
+    let name = jsp::basename(file_path);
+    let suffix = match_html_engine_extension(file_path)
+        .map(str::to_string)
+        .or_else(|| {
+            match_configured_extension(file_path, extensions)
+                .filter(|c| c.engine == "html")
+                .map(|c| c.ext.clone())
+        });
+    let base = if let Some(suffix) = suffix.filter(|s| name.len() > s.len()) {
+        name[..name.len() - suffix.len()].to_string()
+    } else {
+        jsp::basename_ext(file_path, &jsp::extname(file_path))
+    };
     let mut candidates: Vec<String> = Vec::new();
-    for suffix in [
-        ".css",
-        ".module.css",
-        ".scss",
-        ".module.scss",
-        ".sass",
-        ".module.sass",
-        ".less",
-        ".module.less",
-    ] {
-        let p = jsp::join(&[&dir, &format!("{base}{suffix}")]);
-        if !candidates.contains(&p) {
-            candidates.push(p);
+    for ext in STYLE_EXTS {
+        for extra in ["", ".module"] {
+            let p = jsp::join(&[&dir, &format!("{base}{extra}{ext}")]);
+            if !candidates.contains(&p) {
+                candidates.push(p);
+            }
         }
     }
     for name in CO_SCAN_STYLE_NAMES {
@@ -2346,6 +2329,15 @@ pub fn normalize_scan_targets(
 
 /// JS: expandScanTargets(primaryTargets, projectCwd)
 pub fn expand_scan_targets(rt: &Runtime, primaries: &[String], project_cwd: &str) -> Vec<String> {
+    expand_scan_targets_with(rt, primaries, project_cwd, &[])
+}
+
+pub fn expand_scan_targets_with(
+    rt: &Runtime,
+    primaries: &[String],
+    project_cwd: &str,
+    extensions: &[ExtensionEntry],
+) -> Vec<String> {
     let mut ordered = normalize_scan_targets(rt, primaries, project_cwd);
     if ordered.is_empty() {
         return vec![];
@@ -2377,7 +2369,13 @@ pub fn expand_scan_targets(rt: &Runtime, primaries: &[String], project_cwd: &str
             continue;
         }
         let ext = js::to_lower_case(&jsp::extname(p));
-        if STYLE_EXTS.contains(&ext.as_str()) || !UI_CODE_EXTS.contains(&ext.as_str()) {
+        if STYLE_EXTS.contains(&ext.as_str()) {
+            continue;
+        }
+        if !matches!(ext.as_str(), ".jsx" | ".tsx")
+            && !is_component(p)
+            && !is_markup_template(p, extensions)
+        {
             continue;
         }
         let content = safe_read(p).unwrap_or_default();
@@ -2387,7 +2385,7 @@ pub fn expand_scan_targets(rt: &Runtime, primaries: &[String], project_cwd: &str
                 break;
             }
         }
-        for col in co_located_stylesheets(p) {
+        for col in co_located_stylesheets_with(p, extensions) {
             add(&mut ordered, &col);
             if ordered.len() >= MAX_SCAN_TARGETS {
                 break;

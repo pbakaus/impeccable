@@ -4,8 +4,9 @@
 //!
 //! The regex engine and design-system loader come from `impeccable-detect`;
 //! the static HTML engine is reached through the `HtmlEngine` seam the `cli`
-//! binary wires in (crates/html), so `.html` targets and configured
-//! html-engine template extensions get the same DOM rules the JS applied.
+//! binary wires in (crates/html), so built-in markup (`.html`, `.vue`,
+//! `.svelte`, `.astro`, `.blade.php`) and configured `engine: "html"`
+//! template extensions get the same DOM rules `detect` applies.
 //! The native-platform gate reads PRODUCT.md through `impeccable-context`'s
 //! `resolve_context` / `extract_platform` (only the platform is observable,
 //! so the rest of `loadContext` is skipped).

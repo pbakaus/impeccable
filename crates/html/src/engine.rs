@@ -33,6 +33,7 @@ use impeccable_core::inline_ignores::apply_inline_ignores;
 use impeccable_core::page::is_full_page;
 use once_cell::sync::Lazy;
 use regex::Regex;
+use std::collections::HashSet;
 use std::path::Path;
 
 /// The design-system pieces of `detectHtml` (`design-system.mjs`), supplied
@@ -119,6 +120,46 @@ const STATIC_ELEMENT_RULES: &[(&str, &str)] = &[
     ("radial-spotlight-glow", "*"),
 ];
 
+fn preprocessor_style_block(doc: &StaticDocument) -> bool {
+    doc.query_selector_all("style").iter().any(|el| {
+        el.get_attribute("lang")
+            .is_some_and(|lang| !lang.eq_ignore_ascii_case("css"))
+    })
+}
+
+fn class_missing_from_css(class: &str, css_text: &str) -> bool {
+    let selector = format!(r"\.{}(?:[^a-zA-Z0-9_-]|$)", regex::escape(class));
+    !Regex::new(&selector).unwrap().is_match(css_text)
+}
+
+fn node_has_unresolved_or_dynamic_class(
+    el: &StaticElement<'_>,
+    css_text: &str,
+    preprocessor: bool,
+) -> bool {
+    if el.get_attribute(":class").is_some() || el.get_attribute("v-bind:class").is_some() {
+        return true;
+    }
+    el.get_attribute("class").is_some_and(|classes| {
+        classes.split_whitespace().any(|class| {
+            !class.is_empty() && (preprocessor || class_missing_from_css(class, css_text))
+        })
+    })
+}
+
+/// Incomplete classes on this node or an ancestor make computed style
+/// untrustworthy (children inherit that cascade). Inline-only siblings stay eligible.
+fn element_styles_incomplete(el: &StaticElement<'_>, css_text: &str, preprocessor: bool) -> bool {
+    let mut current = Some(*el);
+    while let Some(node) = current {
+        if node_has_unresolved_or_dynamic_class(&node, css_text, preprocessor) {
+            return true;
+        }
+        current = node.parent_element();
+    }
+    false
+}
+
 fn run_rule(rule_id: &str, el: &StaticElement<'_>, tag: &str) -> Vec<RuleHit> {
     let style = el.style();
     match rule_id {
@@ -178,6 +219,25 @@ pub fn detect_html_source(
     file_path: &Path,
     options: &DetectHtmlOptions<'_>,
 ) -> Vec<Finding> {
+    detect_source(html, file_path, options, false)
+}
+
+/// Templates may refer to generated utilities or preprocessors. Their
+/// adapter opts into conservative style checks and source line attribution.
+pub(crate) fn detect_template_source(
+    html: &str,
+    file_path: &Path,
+    options: &DetectHtmlOptions<'_>,
+) -> Vec<Finding> {
+    detect_source(html, file_path, options, true)
+}
+
+fn detect_source(
+    html: &str,
+    file_path: &Path,
+    options: &DetectHtmlOptions<'_>,
+    conservative_template: bool,
+) -> Vec<Finding> {
     let profile = options.profile;
     let file_str = file_path.to_string_lossy().into_owned();
     let fp = file_str.as_str();
@@ -208,8 +268,51 @@ pub fn detect_html_source(
         || StaticDocument::parse(html),
     );
     let css_text = collect_static_css_text(&doc, &file_dir, profile, fp, options.warn);
+    let preprocessor_styles = conservative_template && preprocessor_style_block(&doc);
     build_static_style_map(&mut doc, css_text.as_str(), profile, fp);
+    let incomplete_style_ids: HashSet<_> = if conservative_template {
+        doc.query_selector_all("*")
+            .iter()
+            .filter(|el| element_styles_incomplete(el, &css_text, preprocessor_styles))
+            .map(|el| el.id())
+            .collect()
+    } else {
+        HashSet::new()
+    };
     let doc = doc;
+
+    let mut source_lines = std::collections::HashMap::new();
+    if conservative_template {
+        // Pair each tag's source occurrences with its parsed occurrences.
+        // Only use unambiguous counts; parser-inserted/repaired tags stay 0.
+        static TAGS: Lazy<Regex> = Lazy::new(|| {
+            Regex::new(
+            r#"(?is)<!--[\s\S]*?-->|<(script|style)\b[^>]*>.*?</(?:script|style)\s*>|<([a-zA-Z][\w:-]*)\b(?:[^>"']|"[^"]*"|'[^']*')*>"#
+        ).unwrap()
+        });
+        let mut tags: std::collections::HashMap<String, Vec<f64>> =
+            std::collections::HashMap::new();
+        for cap in TAGS.captures_iter(html) {
+            if let Some(tag) = cap.get(2) {
+                let line = html[..cap.get(0).unwrap().start()]
+                    .bytes()
+                    .filter(|b| *b == b'\n')
+                    .count()
+                    + 1;
+                tags.entry(tag.as_str().to_ascii_lowercase())
+                    .or_default()
+                    .push(line as f64);
+            }
+        }
+        for (tag, lines) in tags {
+            let elements = doc.query_selector_all(&tag);
+            if elements.len() == lines.len() {
+                for (el, line) in elements.iter().zip(lines) {
+                    source_lines.insert(el.id(), line);
+                }
+            }
+        }
+    }
 
     let mut findings: Vec<Finding> = Vec::new();
     let mk = |id: &str, snippet: &str| try_finding(id, fp, snippet, 0.0);
@@ -217,6 +320,9 @@ pub fn detect_html_source(
     for (rule_id, selector) in STATIC_ELEMENT_RULES {
         let elements = doc.query_selector_all(selector);
         for el in &elements {
+            if *rule_id != "broken-image" && incomplete_style_ids.contains(&el.id()) {
+                continue;
+            }
             let tag = el.tag_lower();
             let hits = profile::findings(
                 profile,
@@ -228,7 +334,8 @@ pub fn detect_html_source(
                 if scoped_ignore_active(el, &h.id) {
                     continue;
                 }
-                if let Some(f) = mk(&h.id, &h.snippet) {
+                if let Some(mut f) = mk(&h.id, &h.snippet) {
+                    f.line = source_lines.get(&el.id()).copied().unwrap_or(0.0);
                     findings.push(f);
                 }
             }
@@ -242,12 +349,16 @@ pub fn detect_html_source(
             |f: &Finding| f.antipattern.as_str(),
             || ds.check_source(html, fp),
         );
-        let static_design = profile::findings(
-            profile,
-            Meta::new("page", "design-system", fp),
-            |f: &Finding| f.antipattern.as_str(),
-            || ds.collect_static(&doc, fp),
-        );
+        let static_design = if preprocessor_styles {
+            Vec::new()
+        } else {
+            profile::findings(
+                profile,
+                Meta::new("page", "design-system", fp),
+                |f: &Finding| f.antipattern.as_str(),
+                || ds.collect_static(&doc, fp),
+            )
+        };
         findings.extend(ds.merge(static_design, source_design));
     }
 
@@ -397,4 +508,71 @@ pub fn unsupported_selectors(html: &str, file_path: &Path) -> Vec<String> {
     let css_text = collect_static_css_text(&doc, &file_dir, None, &file_str, None);
     build_static_style_map(&mut doc, &css_text, None, &file_str);
     doc.unsupported_selectors()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scan(source: &str, path: &str) -> Vec<Finding> {
+        detect_template_source(source, Path::new(path), &DetectHtmlOptions::default())
+    }
+
+    #[test]
+    fn unresolved_class_does_not_drop_sibling_inline_contrast() {
+        let source = "<template><div class=\"tw-unknown\">utility</div><a style=\"color:#ccc;background:#fff\">low contrast</a></template>";
+        let findings = scan(source, "Card.vue");
+        assert!(
+            findings.iter().any(|f| f.antipattern == "low-contrast"),
+            "{findings:?}"
+        );
+        assert!(
+            !findings
+                .iter()
+                .any(|f| f.antipattern == "low-contrast" && f.snippet.contains("1.0:1")),
+            "{findings:?}"
+        );
+    }
+
+    #[test]
+    fn preprocessor_does_not_drop_inline_contrast_or_skipped_heading() {
+        let source = "<!doctype html><html><body><h1>Title</h1><h3>Skipped</h3><a style=\"color:#ccc;background:#fff\">low contrast</a><style lang=\"scss\">.card { .title { color: red; } }</style></body></html>";
+        let findings = scan(source, "Card.vue");
+        assert!(
+            findings.iter().any(|f| f.antipattern == "low-contrast"),
+            "{findings:?}"
+        );
+        assert!(
+            findings.iter().any(|f| f.antipattern == "skipped-heading"),
+            "{findings:?}"
+        );
+    }
+
+    #[test]
+    fn unresolved_class_keeps_broken_image_and_skipped_heading() {
+        let source = "<!doctype html><html><body><h1>Title</h1><h3>Skipped</h3><img><div class=\"tw-unknown\">utility</div></body></html>";
+        let findings = scan(source, "Card.vue");
+        assert!(
+            findings.iter().any(|f| f.antipattern == "broken-image"),
+            "{findings:?}"
+        );
+        assert!(
+            findings.iter().any(|f| f.antipattern == "skipped-heading"),
+            "{findings:?}"
+        );
+    }
+
+    #[test]
+    fn preprocessor_suppresses_computed_style_on_classed_elements() {
+        let source = "<!doctype html><html><body><h1>Title</h1><h3>Skipped</h3><div class=\"card\" style=\"color:#ccc;background:#fff\">low</div><style lang=\"scss\">.card { color: red; }</style></body></html>";
+        let findings = scan(source, "Card.vue");
+        assert!(
+            findings.iter().any(|f| f.antipattern == "skipped-heading"),
+            "structure rules must still run: {findings:?}"
+        );
+        assert!(
+            !findings.iter().any(|f| f.antipattern == "low-contrast"),
+            "preprocessor CSS must suppress computed-style on classed elements: {findings:?}"
+        );
+    }
 }

@@ -38,6 +38,6 @@
     }
   ],
   "files": {
-    ".impeccable/hook.cache.json": "{\"version\":1,\"sessions\":{\"s1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/src/components/Card.module.css\":{\"editCount\":2,\"findings\":[\"side-tab:1\",\"gradient-text:2\"]},\"<WS>/src/components/Clean.tsx\":{\"editCount\":2,\"findings\":[],\"cleanAcked\":true}},\"footerShown\":true}}}"
+    ".impeccable/hook.cache.json": "{\"version\":2,\"sessions\":{\"s1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/src/components/Card.module.css\":{\"editCount\":2,\"findings\":[\"side-tab:1\",\"gradient-text:2\"]},\"<WS>/src/components/Clean.tsx\":{\"editCount\":2,\"findings\":[],\"cleanAcked\":true}},\"footerShown\":true}}}"
   }
 }

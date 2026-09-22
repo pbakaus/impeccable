@@ -56,6 +56,6 @@
     }
   ],
   "files": {
-    ".impeccable/hook.cache.json": "{\"version\":1,\"sessions\":{\"s1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/src/components/Card.module.css\":{\"editCount\":9,\"findings\":[\"gradient-text:2\"]}},\"footerShown\":true}}}"
+    ".impeccable/hook.cache.json": "{\"version\":2,\"sessions\":{\"s1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/src/components/Card.module.css\":{\"editCount\":9,\"findings\":[\"gradient-text:2\"]}},\"footerShown\":true}}}"
   }
 }
