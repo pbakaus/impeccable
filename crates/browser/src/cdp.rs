@@ -643,11 +643,14 @@ impl<'a> Page<'a> {
     /// Start a fresh diagnostic journal before navigation. Cache, authentication,
     /// and service-worker behavior remain unchanged. No response is refetched.
     pub fn begin_response_capture(&mut self) -> CdpResult<()> {
+        // Blink counts decoded strings in its inspector buffer (UTF-16 may
+        // need twice their UTF-8 bytes). Reserve representation headroom while
+        // ResponseCapture still enforces the original decoded-byte limits.
         self.send(
             "Network.enable",
             json!({
-                "maxTotalBufferSize": crate::response_capture::MAX_TOTAL,
-                "maxResourceBufferSize": crate::response_capture::MAX_BODY
+                "maxTotalBufferSize": crate::response_capture::MAX_TOTAL * 2,
+                "maxResourceBufferSize": crate::response_capture::MAX_BODY * 2
             }),
         )?;
         self.response_capture = Some(crate::response_capture::ResponseCapture::default());

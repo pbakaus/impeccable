@@ -205,16 +205,25 @@ impl HtmlSnapshot {
         }
         for ((capture, request), region_id) in captures.iter_mut().zip(&requests).zip(region_ids) {
             let receipt = &capture.receipt;
-            if (receipt["status"] == "captured" || receipt["stableCapture"] == true)
-                && (receipt["resolvedUrl"] != request.url
-                    || receipt["documentResponseSha256"] != hash(self.bytes(&self.entry).unwrap())
-                    || receipt["assetSha256"] != hash(&request.asset_bytes)
-                    || receipt["referenceSha256"] != hash(&request.reference_bytes)
-                    || receipt["viewport"] != json!({"width":width,"height":height,"dpr":1})
-                    || receipt["expectedBox"] != json!(request.expected_box)
-                    || receipt["reducedMotion"] != reduced_motion)
-            {
-                return Err("native capture does not match frozen inputs and document".into());
+            if receipt["status"] == "captured" || receipt["stableCapture"] == true {
+                let expected = json!({
+                    "resolvedUrl": request.url,
+                    "documentResponseSha256": hash(self.bytes(&self.entry).unwrap()),
+                    "assetSha256": hash(&request.asset_bytes),
+                    "referenceSha256": hash(&request.reference_bytes),
+                    "viewport": {"width": width, "height": height, "dpr": 1},
+                    "expectedBox": request.expected_box,
+                    "reducedMotion": reduced_motion,
+                });
+                let mismatches: Vec<_> = expected.as_object().unwrap().iter()
+                    .filter(|(key, value)| receipt[*key] != **value)
+                    .map(|(key, _)| key.as_str()).collect();
+                if !mismatches.is_empty() {
+                    return Err(format!(
+                        "native capture does not match frozen inputs and document ({region_id}: {})",
+                        mismatches.join(", ")
+                    ));
+                }
             }
             capture.receipt["regionId"] = json!(region_id);
             capture.receipt["inputSnapshot"] = json!({"digest":self.digest,"manifest":self.manifest,"originalInputsVerified":true});

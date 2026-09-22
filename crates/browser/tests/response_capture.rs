@@ -103,3 +103,37 @@ fn response_capture_reads_original_bytes_and_preserves_repeated_url_ambiguity() 
     page.close();
     browser.close();
 }
+
+#[test]
+fn large_utf8_document_retains_exact_bytes_without_refetch() {
+    let env: HashMap<String, String> = std::env::vars().collect();
+    let Ok(exe) = discovery::find_browser(&env) else { return; };
+    // One non-Latin-1 character makes Blink retain a two-byte string. The
+    // inspector buffer must accommodate it even though the UTF-8 body is <16MiB.
+    let body = format!("<!doctype html><meta charset=utf-8><title>€</title><!--{}-->", "a".repeat(9 * 1024 * 1024)).into_bytes();
+    let served = body.clone();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://127.0.0.1:{}/index.html", listener.local_addr().unwrap().port());
+    let hits = Arc::new(AtomicUsize::new(0));
+    let count = hits.clone();
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut request = [0; 4096];
+        stream.read(&mut request).unwrap();
+        count.fetch_add(1, Ordering::SeqCst);
+        write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", served.len()).unwrap();
+        stream.write_all(&served).unwrap();
+    });
+    let mut browser = Browser::launch(&exe, &[], false).unwrap();
+    let mut page = browser.new_page().unwrap();
+    page.begin_response_capture().unwrap();
+    page.goto(&url, "load", Duration::from_secs(15)).unwrap();
+    let evidence = page.response_evidence(&[url]).unwrap();
+    let response = &evidence.responses[0];
+    assert!(response.unavailable_reason.is_none(), "{:?}", response.unavailable_reason);
+    assert_eq!(response.body.as_deref(), Some(body.as_slice()));
+    assert_eq!(hits.load(Ordering::SeqCst), 1);
+    page.close();
+    browser.close();
+    server.join().unwrap();
+}

@@ -182,10 +182,9 @@ fn fresh_capture_ignores_saved_receipts_and_rejects_stale_or_wrong_documents() {
     assert_eq!(capture.receipt["inputSnapshot"]["digest"], s.digest());
     assert_eq!(renderer.calls, 1);
     renderer.wrong = true;
-    assert!(
-        s.capture_region(&mut renderer, ".impeccable/spec.json", "art", true)
-            .is_err()
-    );
+    let error = s.capture_region(&mut renderer, ".impeccable/spec.json", "art", true)
+        .err().unwrap();
+    assert!(error.contains("art: resolvedUrl"), "{error}");
     renderer.partial = true;
     assert!(
         s.capture_region(&mut renderer, ".impeccable/spec.json", "art", true)
