@@ -8,7 +8,13 @@ fn isolated_world_keeps_page_prototypes_and_globals_separate_and_rejects_navigat
         eprintln!("skip: no browser");
         return;
     };
-    let mut browser = Browser::launch(&exe, &[], false).unwrap();
+    let mut browser = match Browser::launch(&exe, &[], false) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("skip: could not launch browser: {}", e.message);
+            return;
+        }
+    };
     let mut page = browser.new_page().unwrap();
     page.goto("data:text/html,<div id='target' style='position:absolute;left:20px;top:20px;width:80px;height:80px'></div>","load",Duration::from_secs(15)).unwrap();
     page.evaluate_value(

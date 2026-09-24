@@ -20,6 +20,9 @@ pub struct ResponseRecord {
     pub complete: bool,
     /// CDP-decoded response payload, not HTTP transfer/compression bytes.
     pub body: Option<Vec<u8>>,
+    /// CDP returned the renderer's decoded text (UTF-8), not the served bytes.
+    /// Compare with `body_matches`, never `body ==` a frozen file.
+    pub text: bool,
     pub unavailable_reason: Option<String>,
     /// Multiple observed requests for this URL; DOM URL alone cannot bind one.
     pub ambiguous_url: bool,
@@ -43,6 +46,34 @@ pub(crate) struct ResponseCapture {
     pub revision: u64,
     truncated: bool,
     body_bytes: usize,
+}
+
+/// The text Blink decodes from bytes served as `charset=utf-8`: a BOM wins over
+/// the label, and invalid UTF-8 becomes U+FFFD (WHATWG maximal subparts, as
+/// `from_utf8_lossy`). Other labels are not modelled, so they fail closed.
+pub fn decoded_text(raw: &[u8]) -> Vec<u8> {
+    let utf16 = |b: &[u8], be: bool| {
+        let units: Vec<u16> = b.chunks(2).map(|c| match c {
+            [x, y] => if be { u16::from_be_bytes([*x, *y]) } else { u16::from_le_bytes([*x, *y]) },
+            _ => 0xFFFD,
+        }).collect();
+        String::from_utf16_lossy(&units).into_bytes()
+    };
+    match raw {
+        [0xEF, 0xBB, 0xBF, rest @ ..] => String::from_utf8_lossy(rest).into_owned().into_bytes(),
+        [0xFE, 0xFF, rest @ ..] => utf16(rest, true),
+        [0xFF, 0xFE, rest @ ..] => utf16(rest, false),
+        _ => String::from_utf8_lossy(raw).into_owned().into_bytes(),
+    }
+}
+
+impl ResponseRecord {
+    /// Whether the observed response is exactly `raw`: byte-for-byte when CDP
+    /// returned bytes, or as the renderer's decoded text when it returned text
+    /// (the only form of a text body the page consumes).
+    pub fn body_matches(&self, raw: &[u8]) -> bool {
+        self.body.as_deref().is_some_and(|b| if self.text { b == decoded_text(raw) } else { b == raw })
+    }
 }
 
 fn string(v: &Value, key: &str) -> String {
@@ -89,6 +120,7 @@ impl ResponseCapture {
                 from_service_worker: false,
                 complete: false,
                 body: None,
+                text: false,
                 unavailable_reason: None,
                 ambiguous_url: false,
             });
@@ -176,12 +208,13 @@ impl ResponseCapture {
             if bytes.len() > remaining {
                 return Err("response body exceeds capture budget".into());
             }
-            Ok(bytes)
+            Ok((bytes, !encoded))
         });
         match decoded {
-            Ok(bytes) => {
+            Ok((bytes, text)) => {
                 self.body_bytes += bytes.len();
                 r.body = Some(bytes);
+                r.text = text;
             }
             Err(reason) => r.unavailable_reason = Some(reason),
         }
@@ -288,6 +321,22 @@ mod tests {
         );
         assert!(t.evidence(&urls, "main", "old", 0).responses.is_empty());
         assert!(t.evidence(&urls, "main", "", 0).responses.is_empty());
+    }
+    #[test]
+    fn decoded_text_follows_bom_then_lossy_utf8() {
+        assert_eq!(decoded_text(b"\xEF\xBB\xBFa\xE9b"), "a\u{FFFD}b".as_bytes());
+        assert_eq!(decoded_text(b"\xFF\xFEa\x00"), b"a");
+        assert_eq!(decoded_text(b"\xFE\xFF\x00a\x00"), "a\u{FFFD}".as_bytes());
+        assert_eq!(decoded_text(b"\xF0\x9F\x98x"), "\u{FFFD}x".as_bytes());
+        let mut t = ResponseCapture::default();
+        request(&mut t, "1", "a.css");
+        t.store_body(0, Ok(json!({"body":"\u{FFFD}","base64Encoded":false})));
+        let r = &t.records[0];
+        assert!(r.text && r.body_matches(b"\xE9") && r.body_matches(b"\xEF\xBB\xBF\xE9"));
+        assert!(!r.body_matches(b"\xC3\xA9") && !r.body_matches(b""));
+        request(&mut t, "2", "b.bin");
+        t.store_body(1, Ok(json!({"body":"/Q==","base64Encoded":true})));
+        assert!(t.records[1].body_matches(b"\xFD") && !t.records[1].body_matches(b"\xEF\xBF\xBD"));
     }
     #[test]
     fn limits_and_invalid_encoding_never_become_empty_verified_bodies() {

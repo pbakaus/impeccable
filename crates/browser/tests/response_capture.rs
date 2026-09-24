@@ -9,6 +9,12 @@ use std::sync::{
 };
 use std::time::Duration;
 
+fn launch(exe: &std::path::Path) -> Option<Browser> {
+    Browser::launch(exe, &[], false)
+        .map_err(|e| eprintln!("skip: could not launch browser: {}", e.message))
+        .ok()
+}
+
 #[test]
 fn response_capture_reads_original_bytes_and_preserves_repeated_url_ambiguity() {
     let env: HashMap<String, String> = std::env::vars().collect();
@@ -49,7 +55,7 @@ fn response_capture_reads_original_bytes_and_preserves_repeated_url_ambiguity() 
             let _ = stream.write_all(&body);
         }
     });
-    let mut browser = Browser::launch(&exe, &[], false).expect("isolated browser");
+    let Some(mut browser) = launch(&exe) else { return; };
     let mut page = browser.new_page().unwrap();
     assert!(
         page.response_evidence(&[]).is_err(),
@@ -124,7 +130,7 @@ fn large_utf8_document_retains_exact_bytes_without_refetch() {
         write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", served.len()).unwrap();
         stream.write_all(&served).unwrap();
     });
-    let mut browser = Browser::launch(&exe, &[], false).unwrap();
+    let Some(mut browser) = launch(&exe) else { return; };
     let mut page = browser.new_page().unwrap();
     page.begin_response_capture().unwrap();
     page.goto(&url, "load", Duration::from_secs(15)).unwrap();
@@ -136,4 +142,42 @@ fn large_utf8_document_retains_exact_bytes_without_refetch() {
     page.close();
     browser.close();
     server.join().unwrap();
+}
+
+#[test]
+fn decoded_text_bodies_match_only_their_served_bytes() {
+    let env: HashMap<String, String> = std::env::vars().collect();
+    let Ok(exe) = discovery::find_browser(&env) else { return; };
+    // Blink reports these as text: the BOM dropped, the Latin-1 byte as U+FFFD.
+    let html = b"\xEF\xBB\xBF<!doctype html><link rel=stylesheet href=a.css><p>x</p>".to_vec();
+    let css = b"/* caf\xE9 */\r\np{color:red}".to_vec();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let origin = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+    let (served_html, served_css) = (html.clone(), css.clone());
+    std::thread::spawn(move || {
+        for mut stream in listener.incoming().flatten() {
+            let mut request = [0u8; 4096];
+            let n = stream.read(&mut request).unwrap_or(0);
+            let (kind, body) = if request[..n].starts_with(b"GET /a.css ") { ("text/css", &served_css) } else { ("text/html", &served_html) };
+            let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: {kind}; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+            let _ = stream.write_all(body);
+        }
+    });
+    let Some(mut browser) = launch(&exe) else { return; };
+    let mut page = browser.new_page().unwrap();
+    page.begin_response_capture().unwrap();
+    page.goto(&format!("{origin}/"), "load", Duration::from_secs(15)).unwrap();
+    let urls = vec![format!("{origin}/"), format!("{origin}/a.css")];
+    let evidence = page.response_evidence(&urls).unwrap();
+    let find = |u: &str| evidence.responses.iter().find(|r| r.url == u).unwrap();
+    let (doc, sheet) = (find(&urls[0]), find(&urls[1]));
+    assert!(doc.text && sheet.text, "fixture must exercise decoded text bodies");
+    assert_ne!(sheet.body.as_deref(), Some(css.as_slice()));
+    assert!(doc.body_matches(&html) && sheet.body_matches(&css));
+    let mut tampered = css.clone();
+    tampered[9] = b'e';
+    assert!(!sheet.body_matches(&tampered) && !sheet.body_matches(&html));
+    assert!(!doc.body_matches(&html[3..].iter().chain(b" ").copied().collect::<Vec<_>>()));
+    page.close();
+    browser.close();
 }

@@ -66,7 +66,7 @@ fn request(stream: &TcpStream, key: &str) -> Result<(String, Value), String> {
                     return Err("duplicate capability".into());
                 }
                 key_seen = true;
-                authenticated = value.trim() == key;
+                authenticated = same_key(value.trim().as_bytes(), key.as_bytes());
             }
             "origin" | "transfer-encoding" => {
                 return Err("unsupported request origin/encoding".into());
@@ -89,6 +89,20 @@ fn request(stream: &TcpStream, key: &str) -> Result<(String, Value), String> {
     }
     Ok((route, body))
 }
+/// Constant-time over equal lengths; a length mismatch reveals only the length.
+fn same_key(a: &[u8], b: &[u8]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).fold(0u8, |d, (x, y)| d | (x ^ y)) == 0
+}
+/// Hosts poll for the ready file, so it must appear complete or not at all.
+fn write_ready(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    let mut temp = path.as_os_str().to_owned();
+    temp.push(format!(".{}.tmp", std::process::id()));
+    std::fs::write(&temp, bytes)
+        .and_then(|_| std::fs::rename(&temp, path))
+        .inspect_err(|_| {
+            let _ = std::fs::remove_file(&temp);
+        })
+}
 pub fn serve(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     if args.len() != 2 {
         return Err("expected registered-root ready-file".into());
@@ -104,12 +118,13 @@ pub fn serve(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let review_tool = std::env::var("IMPECCABLE_COMPONENT_REVIEW_TOOL").unwrap_or_else(|_| "component_review".into());
     let listener = TcpListener::bind("127.0.0.1:0")?;
     listener.set_nonblocking(true)?;
-    std::fs::write(
-        &args[1],
-        serde_json::to_vec(&json!({"port":listener.local_addr()?.port(),"root":root}))?,
+    write_ready(
+        args[1].as_ref(),
+        &serde_json::to_vec(&json!({"port":listener.local_addr()?.port(),"root":root}))?,
     )?;
     let started = Instant::now();
     let mut serial = 0u64;
+    let mut accept_failures = 0u32;
     let mut captures: HashMap<String, (Instant, Box<dyn CapturedEntry>)> = HashMap::new();
     let mut latest: HashMap<String, String> = HashMap::new();
     let mut active = std::collections::HashSet::new();
@@ -127,8 +142,19 @@ pub fn serve(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
                 std::thread::sleep(Duration::from_millis(10));
                 continue;
             }
-            Err(e) => return Err(e.into()),
+            // EMFILE, ECONNABORTED and friends are per-connection or transient.
+            // Only a listener that keeps failing for about a minute ends the service.
+            Err(e) => {
+                accept_failures += 1;
+                if accept_failures > 600 {
+                    return Err(e.into());
+                }
+                eprintln!("capture service: accept failed: {e}");
+                std::thread::sleep(Duration::from_millis(100));
+                continue;
+            }
         };
+        accept_failures = 0;
         stream.set_nonblocking(false)?;
         stream.set_read_timeout(Some(Duration::from_secs(5)))?;
         stream.set_write_timeout(Some(Duration::from_secs(10)))?;
@@ -555,6 +581,19 @@ mod tests {
                 .is_err()
             );
         }
+    }
+    #[test]
+    fn capability_compare_and_ready_file_are_exact() {
+        assert!(same_key(b"abcd", b"abcd"));
+        assert!(!same_key(b"abcd", b"abce") && !same_key(b"abc", b"abcd") && !same_key(b"", b"a"));
+        let dir = std::env::temp_dir().join(format!("impeccable-ready-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let ready = dir.join("ready.json");
+        write_ready(&ready, b"{\"port\":1}").unwrap();
+        assert_eq!(std::fs::read(&ready).unwrap(), b"{\"port\":1}");
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "temp file must not remain");
+        assert!(write_ready(&dir.join("missing/ready.json"), b"{}").is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
     #[test]
     fn partial_service_configuration_never_falls_back_to_local_capture() {

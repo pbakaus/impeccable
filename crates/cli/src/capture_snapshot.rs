@@ -206,9 +206,16 @@ impl HtmlSnapshot {
         for ((capture, request), region_id) in captures.iter_mut().zip(&requests).zip(region_ids) {
             let receipt = &capture.receipt;
             if receipt["status"] == "captured" || receipt["stableCapture"] == true {
+                let entry = self.bytes(&self.entry).unwrap();
+                // Text responses arrive decoded; bind them to the text these bytes decode to.
+                let document = if receipt["documentResponseText"] == true {
+                    hash(&impeccable_browser::response_capture::decoded_text(entry))
+                } else {
+                    hash(entry)
+                };
                 let expected = json!({
                     "resolvedUrl": request.url,
-                    "documentResponseSha256": hash(self.bytes(&self.entry).unwrap()),
+                    "documentResponseSha256": document,
                     "assetSha256": hash(&request.asset_bytes),
                     "referenceSha256": hash(&request.reference_bytes),
                     "viewport": {"width": width, "height": height, "dpr": 1},

@@ -119,7 +119,7 @@ fn render_page(
                 || !record.complete
                 || record.from_service_worker
                 || record.ambiguous_url
-                || record.body.as_deref() != Some(expected)
+                || !record.body_matches(expected)
             {
                 dependency_errors.insert(format!("dependency did not match frozen bytes: {path}"));
                 continue;
@@ -409,6 +409,20 @@ mod tests {
         let mut declared=packet;declared["components"][0]["dependencies"]=json!(["a.png","b.png"]);
         let error = NativeComponentCapturer.capture(&mut declared,&inputs).err().unwrap();
         assert!(error.contains("b.png") && !error.contains("EncodingError"), "{error}");
+    }
+    #[test]
+    #[ignore = "requires Chromium"]
+    fn bom_entry_and_latin1_stylesheet_verify_against_their_frozen_bytes() {
+        // CDP reports text bodies decoded (BOM dropped, invalid UTF-8 as U+FFFD).
+        let png = impeccable_comp::png_io::encode_png(&impeccable_comp::raster::create_image(40,40,[255;4]),&[]).unwrap();
+        let html = b"\xEF\xBB\xBF<!doctype html><link rel=stylesheet href=a.css><div id=piece></div>".to_vec();
+        let css = b"/* caf\xE9 */ html,body{margin:0}\r\n#piece{width:40px;height:40px;background:blue}".to_vec();
+        let inputs = BTreeMap::from([("comp.png".into(),png),("index.html".into(),html),("a.css".into(),css)]);
+        let mut packet = json!({"schemaVersion":2,"stage":"components","comp":{"url":"/files/comp.png","width":40,"height":40},"components":[{"id":"piece","box":{"x":0,"y":0,"w":1,"h":1},"preview":{"kind":"page","url":"/files/index.html","selector":"#piece"},"dependencies":["a.css"]}]});
+        let captured = NativeComponentCapturer.capture(&mut packet,&inputs).unwrap();
+        let proof = &captured.evidence["components"][0]["views"]["preview"]["observedDependencies"];
+        assert_eq!(proof["a.css"],hash(&inputs["a.css"]));
+        assert_eq!(proof["index.html"],hash(&inputs["index.html"]));
     }
     #[test]
     #[ignore = "requires Chromium"]

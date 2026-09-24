@@ -460,6 +460,8 @@ fn capture_page(
     if document.len() == 1 && !document[0].ambiguous_url && document[0].unavailable_reason.is_none()
     {
         out.receipt["documentResponseSha256"] = json!(document[0].body.as_deref().map(hash));
+        // True when CDP reported decoded text: the hash covers `decoded_text(served)`.
+        out.receipt["documentResponseText"] = json!(document[0].text);
         out.receipt["captureDocument"] = json!({"requestId":document[0].request_id,"frameId":document[0].frame_id,"loaderId":document[0].loader_id});
     }
     out.receipt["screenshotSha256"] = json!(hash(&png));
@@ -490,7 +492,7 @@ fn capture_page(
             overlaps(&row["box"], r)
                 && network.responses.iter().any(|e| {
                     Some(e.url.as_str()) == row["url"].as_str()
-                        && e.body.as_deref().map(hash).as_deref() == Some(expected.as_str())
+                        && e.body_matches(&r.asset_bytes)
                 })
         })
         .count();

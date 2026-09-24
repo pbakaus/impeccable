@@ -303,6 +303,30 @@ fn native_browser_capture_is_bound_to_frozen_entry_spec_and_asset() {
 }
 
 #[test]
+fn native_capture_binds_bom_entry_to_its_frozen_bytes() {
+    use impeccable::asset_capture::CdpAssetRenderer;
+    use impeccable_comp::{png_io, raster};
+    use std::sync::Arc;
+    if impeccable_browser::discovery::find_browser(&std::env::vars().collect()).is_err() {
+        eprintln!("skip: browser unavailable");
+        return;
+    }
+    let f = Fixture::new();
+    // CDP returns this document as decoded text, without its BOM.
+    fs::write(f.0.join("index.html"),b"\xEF\xBB\xBF<!doctype html>\r\n<!-- caf\xC3\xA9 --><style>body{margin:0;background:white}img{position:absolute;left:20px;top:20px;width:80px;height:80px}</style><img src='assets/art.png'>").unwrap();
+    let image = png_io::encode_png(&raster::create_image(32, 32, [231, 60, 30, 255]), &[]).unwrap();
+    fs::write(f.0.join("assets/art.png"), &image).unwrap();
+    fs::write(f.0.join(".impeccable/comp.png"), &image).unwrap();
+    fs::write(f.0.join(".impeccable/spec.json"),br#"{"comp":".impeccable/comp.png","compSize":{"width":200,"height":200},"regions":[{"id":"art","plate":"assets/art.png","px":{"x":20,"y":20,"w":80,"h":80}}]}"#).unwrap();
+    let snapshot = Arc::new(HtmlSnapshot::freeze(f.selection()).unwrap());
+    let capture = snapshot
+        .capture_region(&mut CdpAssetRenderer::from_process_env(), ".impeccable/spec.json", "art", true)
+        .unwrap();
+    assert_eq!(capture.receipt["status"], "captured", "{}", capture.receipt);
+    assert_eq!(capture.receipt["documentResponseText"], true);
+}
+
+#[test]
 fn batch_uses_one_document_and_rejects_mixed_inputs() {
     use impeccable::asset_capture::CdpAssetRenderer;
     use impeccable_comp::{png_io, raster};
