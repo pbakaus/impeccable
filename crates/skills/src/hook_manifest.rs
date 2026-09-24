@@ -33,6 +33,7 @@ pub struct HookArtifactSpec {
 pub fn provider_hook_artifacts(provider: &str) -> &'static [HookArtifactSpec] {
     match provider {
         ".claude" => &[HookArtifactSpec { source_provider: ".claude", rel: "settings.json", dest_provider: ".claude", dest_rel: Some("settings.local.json") }],
+        ".gemini" => &[HookArtifactSpec { source_provider: ".gemini", rel: "settings.json", dest_provider: ".gemini", dest_rel: None }],
         ".cursor" => &[HookArtifactSpec { source_provider: ".cursor", rel: "hooks.json", dest_provider: ".cursor", dest_rel: None }],
         ".agents" => &[HookArtifactSpec { source_provider: ".codex", rel: "hooks.json", dest_provider: ".codex", dest_rel: None }],
         ".github" => &[HookArtifactSpec { source_provider: ".github", rel: "hooks/impeccable.json", dest_provider: ".github", dest_rel: None }],
@@ -95,6 +96,8 @@ pub fn launcher_rel_path(provider: &str) -> String {
     let rel = format!("{provider}/skills/impeccable/scripts/impeccable");
     if provider == ".claude" {
         format!("${{CLAUDE_PROJECT_DIR}}/{rel}")
+    } else if provider == ".gemini" {
+        format!("$GEMINI_PROJECT_DIR/{rel}")
     } else {
         rel
     }
@@ -109,7 +112,7 @@ pub fn launcher_rel_path(provider: &str) -> String {
 /// path or the hook command targets a file that does not exist.
 pub fn launcher_path(skill_root: &str, provider: &str) -> Option<String> {
     match provider {
-        ".cursor" | ".claude" | ".agents" | ".grok" => {
+        ".cursor" | ".claude" | ".agents" | ".grok" | ".gemini" => {
             Some(jsp::join(&[skill_root, provider, "skills", "impeccable", "scripts", "impeccable"]))
         }
         _ => None,

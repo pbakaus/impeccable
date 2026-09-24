@@ -347,6 +347,7 @@ fn hook_artifacts_map_providers_to_manifest_files() {
         jsp::join(&["/p", ".cursor", "hooks.json"]),
         jsp::join(&["/p", ".github", "hooks", "impeccable.json"]),
         jsp::join(&["/p", ".grok", "hooks", "impeccable.json"]),
+        jsp::join(&["/p", ".gemini", "settings.json"]),
     ]);
     let a = hook_artifacts_for_provider("/b", "/p", ".claude");
     assert_eq!(a[0].src, jsp::join(&["/b", ".claude", "settings.json"]));
@@ -410,4 +411,24 @@ fn merge_heals_triplicated_stop_groups() {
     });
     let merged = merge_hook_manifests(&existing, &fresh);
     assert_eq!(merged["hooks"]["Stop"].as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn gemini_manifest_installs_and_rewrites_both_events() {
+    let artifacts = hook_artifacts_for_provider("/bundle", "/project", ".gemini");
+    assert_eq!(artifacts.len(), 1);
+    assert_eq!(artifacts[0].src, jsp::join(&["/bundle", ".gemini", "settings.json"]));
+    assert_eq!(artifacts[0].dest, jsp::join(&["/project", ".gemini", "settings.json"]));
+    let manifest = json!({"hooks": {
+        "BeforeTool": [{"matcher": "^run_shell_command$", "hooks": [{"type": "command", "command": "[ ! -f \"$GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable\" ] || \"$GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable\" hook", "timeout": 5000}]}],
+        "AfterAgent": [{"hooks": [{"type": "command", "command": "\"$GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable\" hook", "timeout": 30000}]}]
+    }});
+    for absolute in [false, true] {
+        let rewritten = rewrite_hook_commands_for_platform(&manifest, ".gemini", "/installed", absolute, false);
+        let expected = if absolute { "'/installed/.gemini/skills/impeccable/scripts/impeccable'" }
+            else { "\"$GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable\"" };
+        for command in commands(&rewritten) { assert_eq!(command, format!("command=[ ! -f {expected} ] || {expected} hook")); }
+        assert_eq!(rewritten["hooks"]["AfterAgent"][0]["hooks"][0]["timeout"], 30000);
+        assert!(rewritten["hooks"].get("AfterTool").is_none());
+    }
 }
