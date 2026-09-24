@@ -13,6 +13,45 @@ HTTPS. Missing signatures, unknown keys, changed metadata, and changed ZIP
 bytes stop the operation before extraction or writes to installed skills.
 The temporary download directory is removed on failure.
 
+## Verify a downloaded release offline
+
+Use an approved engine that includes `verify-bundle`, and obtain the ZIP and
+`universal.zip.sig.json` from the same versioned skill release. Then run:
+
+```sh
+impeccable verify-bundle /path/to/universal.zip --version 4.3.1
+```
+
+The expected version is required and must be the skill version, not the CLI
+or engine version. The signature defaults to `<zip>.sig.json`; use
+`--signature /path/to/manifest.json` when stored separately. Both
+`--version=4.3.1` and `--version 4.3.1` are accepted.
+
+For an audit record:
+
+```sh
+impeccable verify-bundle /path/to/universal.zip --version 4.3.1 --json
+```
+
+Successful JSON contains `verified: true`, `version`, `artifact`, `keyId`,
+`size`, and `sha256`. Only authenticated metadata is printed. Exit codes are
+0 for successful verification, 1 for verification or file errors, and 2 for
+invalid arguments. Errors go to stderr, including with `--json`; stdout is
+empty on failure.
+
+This command reads local files only. It does not download, extract, install,
+or enable hooks, and it ignores local bundle overrides. It uses the same
+compiled-in public keys and verifier as remote installation; there is no
+custom-key or skip-verification option. Approve the engine and its keyring
+through your organization's trust process first. Invoking through `npx` may
+still download the npm package or engine; use an already provisioned native
+binary for a fully offline workflow.
+
+Verification authenticates the bytes and their declared release. It does not
+inspect ZIP contents or prove that skill instructions are safe. Requiring an
+expected version rejects a different release, but cannot tell you whether the
+version you chose is the newest. Verify again if the files change before use.
+
 ## Sign a release
 
 Install the 1Password CLI and enable its desktop app integration. The signing
@@ -53,12 +92,10 @@ review the exact released `universal.zip`, then run:
 node scripts/sign-bundle.mjs 4.2.0 /path/to/universal.zip
 ```
 
-Check the resulting sidecar against the Rust verifier and compiled public key:
+Check the resulting sidecar against the verifier and compiled public key:
 
 ```sh
-IMPECCABLE_VERIFY_BUNDLE=/path/to/universal.zip \
-IMPECCABLE_VERIFY_BUNDLE_VERSION=4.2.0 \
-cargo test -p impeccable-skills verifies_reviewed_release_with_production_keyring -- --ignored
+impeccable verify-bundle /path/to/universal.zip --version 4.2.0
 ```
 
 This creates only the local sidecar. It neither uploads it nor replaces the

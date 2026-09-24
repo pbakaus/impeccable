@@ -7,6 +7,9 @@
  * the top-level verb and the legacy `skills` namespace.
  */
 export default [
+  { id: 'skills-verify-bundle-help', verb: 'verify-bundle', args: ['--help'] },
+  { id: 'skills-verify-bundle-version-required', verb: 'verify-bundle', args: ['universal.zip'] },
+  { id: 'skills-verify-bundle-namespace-help', verb: 'skills', args: ['verify-bundle', '--help'] },
   { id: 'skills-install-help', verb: 'install', args: ['--help'] },
   { id: 'skills-install-help-short', verb: 'install', args: ['-h'] },
   { id: 'skills-link-help', verb: 'link', args: ['--help'] },
