@@ -51,10 +51,9 @@ fn new_build_does_not_inherit_terminal_review_and_foreign_corruption_is_ignored(
     let bad=f.store.join("a".repeat(64));fs::create_dir_all(&bad).unwrap();
     fs::write(bad.join("current.json"),"broken JSON").unwrap();
     let mut hero=f.manifest();hero["stage"]=json!("hero");
-    let dir=store::prepare(&f.store,&f.project,&hero).unwrap();
-    let mut state=store::read(&dir.join("current.json")).unwrap();
-    state["capture"]=json!({"schema":"native-component-previews-v1","components":[]});
-    store::write(&dir.join("current.json"),&state).unwrap();store::submit(&dir,&approve(&state)).unwrap();
+    let dir=store::prepare_captured(&f.store,&f.project,&hero,Some(&mut Native)).unwrap();
+    let state=store::read(&dir.join("current.json")).unwrap();
+    store::submit(&dir,&approve(&state)).unwrap();
     assert!(super::lifecycle::final_session(&f.store,&f.project.canonicalize().unwrap()).unwrap().is_some());
     fs::create_dir_all(f.project.join(".impeccable/build")).unwrap();
     fs::write(f.project.join(".impeccable/build/state.json"),r#"{"startedAt":"new-build","artifact":"index.html"}"#).unwrap();
@@ -937,4 +936,23 @@ fn a_held_lock_is_exclusive_whatever_its_file_says() {
     drop(held);
     assert!(dir.join("review.lock").exists());
     let _again = store::lock(&dir).unwrap();
+}
+
+#[test]
+fn forged_acceptance_never_closes_review_in_lifecycle() {
+    let f = Fixture::new();
+    let mut hero = f.manifest();
+    hero["stage"] = json!("hero");
+    let dir = store::prepare(&f.store, &f.project, &hero).unwrap();
+    let state = store::read(&dir.join("current.json")).unwrap();
+    store::submit(&dir, &approve(&state)).unwrap();
+    let mut forged = store::read(&dir.join("current.json")).unwrap();
+    forged["capture"] = json!({"schema":"native-component-previews-v1","components":[{"id":"art"},{"id":"control"}]});
+    forged["receipt"]["capture"] = forged["capture"].clone();
+    forged["receipt"]["captureVerified"] = json!(true);
+    store::write(&dir.join("current.json"), &forged).unwrap();
+    assert!(super::lifecycle::accepted(&forged));
+    let result = super::lifecycle::inspect(&[dir.clone()], &["components".into(), "hero".into()]).unwrap();
+    assert_eq!(result["status"], "pending");
+    assert!(super::lifecycle::final_session(&f.store, &f.project.canonicalize().unwrap()).unwrap().is_none());
 }
