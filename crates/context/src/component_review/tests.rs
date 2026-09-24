@@ -8,6 +8,71 @@ use std::{
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 
 #[test]
+fn first_viewport_acceptance_closes_both_review_stages_after_later_edits() {
+    let f = Fixture::new();
+    let mut kit = f.manifest();
+    kit["id"] = json!("kit");
+    kit["stage"] = json!("components");
+    // A native captured fixture; no browser or model calls in this unit test.
+    let mut hero = f.manifest();
+    hero["stage"] = json!("hero");
+    let dir = store::prepare(&f.store, &f.project, &hero).unwrap();
+    let mut state = store::read(&dir.join("current.json")).unwrap();
+    state["capture"] = json!({"schema":"native-component-previews-v1","components":[]});
+    store::write(&dir.join("current.json"), &state).unwrap();
+    let receipt = store::submit(&dir, &approve(&state)).unwrap();
+    assert_eq!(receipt["visualDecision"], "approved");
+    fs::write(f.project.join("shared.css"), "footer{color:blue}").unwrap();
+    fs::write(
+        f.project.join("control.html"),
+        "<button>Updated page</button>",
+    )
+    .unwrap();
+    let result =
+        super::lifecycle::inspect(&[dir.clone()], &["components".into(), "hero".into()]).unwrap();
+    assert_eq!(result["status"], "accepted");
+    assert_eq!(result["scope"], "first-viewport");
+    assert_eq!(result["completionFeedback"], Value::Null);
+    // Neither a new assembly ID nor a kit request creates a round or edits the receipt.
+    hero["id"] = json!("another-assembly");
+    assert_eq!(store::prepare(&f.store, &f.project, &hero).unwrap(), dir);
+    assert_eq!(store::prepare(&f.store, &f.project, &kit).unwrap(), dir);
+    assert_eq!(
+        store::read(&dir.join("current.json")).unwrap()["receipt"],
+        receipt
+    );
+    assert_eq!(
+        super::verify::approved(&f.store, &f.project, "no-new-manifest.json").unwrap(),
+        receipt
+    );
+}
+
+#[test]
+fn needs_work_and_unverified_receipts_never_close_review() {
+    let f = Fixture::new();
+    let mut hero = f.manifest();
+    hero["stage"] = json!("hero");
+    let dir = store::prepare(&f.store, &f.project, &hero).unwrap();
+    let state = store::read(&dir.join("current.json")).unwrap();
+    store::submit(&dir, &approve(&state)).unwrap();
+    assert!(!super::lifecycle::closed(
+        &store::read(&dir.join("current.json")).unwrap()
+    ));
+    let mut state = state;
+    state["capture"] = json!({"schema":"native-component-previews-v1"});
+    state["receipt"] = json!({"captureVerified":true,"visualDecision":"changes-requested",
+        "capture":state["capture"],"submission":{"requestId":state["packet"]["id"],"packetRevision":state["packet"]["revision"]}});
+    store::write(&dir.join("current.json"), &state).unwrap();
+    assert!(!super::lifecycle::closed(&state));
+    let result = super::lifecycle::inspect(&[dir], &["hero".into()]).unwrap();
+    assert_eq!(result["status"], "pending");
+    assert!(result["completionFeedback"]
+        .as_str()
+        .unwrap()
+        .contains("not approved"));
+}
+
+#[test]
 fn hosted_capture_routes_to_the_review_tool_before_browser_or_store_access() {
     let f = Fixture::new();
     let (mut io, captured) = impeccable_common::Io::captured("", f.project.clone(),

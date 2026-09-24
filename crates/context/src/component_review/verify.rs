@@ -5,6 +5,9 @@ use std::path::Path;
 
 pub fn approved(store_root: &Path, project: &Path, manifest_path: &str) -> Result<Value, String> {
     let project = project.canonicalize().map_err(|e| e.to_string())?;
+    if let Some(dir) = super::lifecycle::final_session(store_root, &project)? {
+        return Ok(store::read(&dir.join("current.json"))?["receipt"].clone());
+    }
     let manifest_file = project.join(super::manifest::relative(manifest_path)?);
     let manifest = store::read(&manifest_file)?;
     let directory = store::session_dir(store_root, &project, string(&manifest, "id")?);
@@ -17,11 +20,16 @@ pub fn approved(store_root: &Path, project: &Path, manifest_path: &str) -> Resul
         || state["receipt"]["submission"]["packetRevision"] != state["packet"]["revision"]
         || state["receipt"]["submission"]["requestId"] != state["packet"]["id"]
     {
-        return Err("component review is pending or needs work; await the user, then verify again".into());
+        return Err(
+            "component review is pending or needs work; await the user, then verify again".into(),
+        );
     }
     // A different manifest with the same ID must not borrow this session's approval.
-    let source = state["sources"][manifest_path].as_str().ok_or("review did not bind this manifest")?;
-    if super::manifest::digest(&std::fs::read(manifest_file).map_err(|e| e.to_string())?) != source {
+    let source = state["sources"][manifest_path]
+        .as_str()
+        .ok_or("review did not bind this manifest")?;
+    if super::manifest::digest(&std::fs::read(manifest_file).map_err(|e| e.to_string())?) != source
+    {
         return Err("review manifest changed; capture a new round".into());
     }
     Ok(state["receipt"].clone())

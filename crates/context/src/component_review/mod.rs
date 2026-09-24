@@ -1,6 +1,7 @@
 //! Component review is an explicit, opt-in runtime. It does not yet replace the build-phase gates.
 pub mod capture;
 mod history;
+mod lifecycle;
 mod manifest;
 mod server;
 mod store;
@@ -54,6 +55,18 @@ pub fn run_with_capturer(
             .or_else(|| io.home().map(|h| h.join(".impeccable/component-reviews")))
             .ok_or("no home directory; supply --store outside the project")?;
         match args.first().map(String::as_str) {
+            Some("lifecycle") => {
+                let sessions: Vec<PathBuf> = args.windows(2).filter(|w| w[0] == "--session-dir")
+                    .map(|w| PathBuf::from(&w[1])).collect();
+                let required: Vec<String> = args.windows(2).filter(|w| w[0] == "--require")
+                    .map(|w| w[1].clone()).collect();
+                let sessions = if sessions.is_empty() && !args.iter().any(|a| a == "--hosted") {
+                    let project = io.cwd.canonicalize().map_err(|e| e.to_string())?;
+                    lifecycle::project_sessions(&store, &project)?
+                } else { sessions };
+                io.out(&format!("{}\n", lifecycle::inspect(&sessions, &required)?));
+                Ok(())
+            }
             Some("prepare") | Some("capture") => {
                 let path = arg(args, "--manifest")
                     .ok_or("prepare needs --manifest <project-relative file>")?;
@@ -74,7 +87,8 @@ pub fn run_with_capturer(
                     "revision": state["packet"]["revision"],
                     "status": status,
                     "capture": state["capture"],
-                    "round": state["packet"]["round"]
+                    "round": state["packet"]["round"],
+                    "lifecycle": if lifecycle::closed(&state) { lifecycle::terminal(&state) } else { serde_json::Value::Null }
                 })));
                 Ok(())
             }
@@ -106,13 +120,14 @@ pub fn run_with_capturer(
                         "revision": state["packet"]["revision"],
                         "receipt": state["receipt"],
                         "capture": state["capture"],
-                        "sourceStatus": store::sources_current(&state).err(),
+                        "sourceStatus": if lifecycle::closed(&state) { None } else { store::sources_current(&state).err() },
+                        "lifecycle": if lifecycle::closed(&state) { lifecycle::terminal(&state) } else { serde_json::Value::Null },
                         "service": store::read(&dir.join("service.json")).ok()
                     })));
                     Ok(())
                 }
             }
-            _ => Err("usage: impeccable component-review prepare|capture|verify --manifest <file> | serve --session <id> [--port 0] | status|refresh-approvals --session <id> [--store <outside-project-dir>]".into())
+            _ => Err("usage: impeccable component-review prepare|capture|verify --manifest <file> | lifecycle [--session-dir <dir>] [--require components|hero] [--hosted] | serve --session <id> [--port 0] | status|refresh-approvals --session <id> [--store <outside-project-dir>]".into())
         }
     })();
     match result {

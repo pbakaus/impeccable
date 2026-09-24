@@ -3,7 +3,7 @@ use super::{
     store,
 };
 use impeccable_common::Io;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{io::Read, path::Path};
 
 const JS: &str = include_str!("../../assets/component-review.js");
@@ -68,6 +68,8 @@ pub fn packet_state(dir: &Path, revision: Option<&str>) -> Result<Value, String>
         } else {
             None
         }
+    } else if super::lifecycle::closed(&state) {
+        None
     } else {
         store::sources_current(&state).err()
     };

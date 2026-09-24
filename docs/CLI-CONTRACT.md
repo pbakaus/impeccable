@@ -1833,7 +1833,9 @@ The packet and evidence contract is documented in
   stdout is a JSON object with `session`, `revision`, `round` and `status`:
   `awaiting-review`, or the existing receipt's `approved` / `changes-requested`.
   Identical input reuses the packet and receipt. Changed input creates a round
-  and retains only unaffected approvals.
+  and retains only unaffected approvals until the assembled first viewport is accepted.
+  After that, prepare/capture return the accepted session and terminal `lifecycle`
+  without creating a round or capturing a new approval.
 - `component-review capture --manifest <project-relative JSON>` uses the same
   review store, but records native evidence before opening a review round. PNG
   sources are decoded and pinned; static HTML/CSS/SVG previews are captured by
@@ -1865,7 +1867,11 @@ The packet and evidence contract is documented in
 
 ### Component review verification
 
-`impeccable component-review verify --manifest <project-relative JSON>` reads the current native capture and user receipt. It succeeds only for an approved, natively captured round whose manifest and dependency bytes are unchanged. Pending reviews, requested repairs, changed files, and an unrelated manifest sharing the same id fail. It neither creates nor submits approvals.
+`impeccable component-review verify --manifest <project-relative JSON>` reads the native capture and user receipt. Before assembly acceptance, it requires an approved, natively captured round with unchanged manifest and dependencies. After the assembled first viewport is accepted, it returns that original receipt: it does not claim later bytes were reviewed. It neither creates nor submits approvals.
+
+`component-review lifecycle [--session-dir <private directory>] [--require components|hero] [--hosted]` reports the native review decision. Both options may repeat. With `--hosted`, only the supplied private sessions are considered; ordinary sessions resolve acceptance from the project in the local store. The result has `schemaVersion: 1`, `status` (`pending`, `approved`, or `accepted`), `reviewClosed`, and nullable `completionFeedback`. Accepted assembly returns `scope: "first-viewport"` and the original request/revision. Hosts transport that result without adding file-hash approval policy.
+
+Assembly acceptance closes component and assembly reviews for this journey. The agent completes the rest of the page using the accepted direction, without reopening review for shared CSS, responsive changes, finish checks, or new manifest IDs. Needs-work rounds remain possible before acceptance. Original receipts and captures remain immutable. A separately requested new design journey uses a fresh review store; changing a manifest alone never starts one. Source-bound metric evidence below remains separate from this lifecycle.
 
 ### Human-reviewed text at the final comp gate
 

@@ -83,6 +83,9 @@ pub fn prepare_file(
 ) -> Result<PathBuf, String> {
     let canonical = project.canonicalize().map_err(|e| e.to_string())?;
     let project = canonical.as_path();
+    if let Some(accepted) = super::lifecycle::final_session(store, project)? {
+        return Ok(accepted);
+    }
     let path = relative(path)?;
     let full = project
         .join(&path)
@@ -113,6 +116,9 @@ fn prepare_bound(
 ) -> Result<PathBuf, String> {
     let canonical = project.canonicalize().map_err(|e| e.to_string())?;
     let project = canonical.as_path();
+    if let Some(accepted) = super::lifecycle::final_session(store, project)? {
+        return Ok(accepted);
+    }
     let (mut packet, mut files) = freeze(project, input)?;
     let manifest_digest = binding
         .as_ref()
@@ -291,6 +297,17 @@ pub fn sources_current(state: &Value) -> Result<(), String> {
 pub fn submit(dir: &Path, body: &Value) -> Result<Value, String> {
     let _guard = lock(dir)?;
     let mut state = read(&dir.join("current.json"))?;
+    if let Some(final_dir) = super::lifecycle::final_session(
+        dir.parent().ok_or("missing review store")?,
+        Path::new(string(&state, "project")?),
+    )? {
+        if final_dir != dir {
+            return Err(
+                "The assembled first viewport is already accepted; component review is closed."
+                    .into(),
+            );
+        }
+    }
     if body.as_object().is_none_or(|m| {
         m.keys().any(|k| {
             ![
