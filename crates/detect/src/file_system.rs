@@ -37,12 +37,24 @@ pub const HTML_EXTENSIONS: &[&str] = &[".html", ".htm"];
 
 /// JS: file-system.mjs#hasScannableExtension
 pub fn has_scannable_extension(filename: &str) -> bool {
+    has_scannable_extension_with(filename, &[])
+}
+
+/// Built-in scannable extensions plus configured suffix matches (#822).
+fn has_scannable_extension_with(filename: &str, extra_exts: &[String]) -> bool {
     let lower = impeccable_core::js::to_lower_case(filename);
     if SCANNABLE_EXTENSIONS.contains(&jsp::extname(&lower).as_str()) {
         return true;
     }
     for ext in SCANNABLE_EXTENSIONS {
         if ext[1..].contains('.') && lower.ends_with(ext) {
+            return true;
+        }
+    }
+    let name_len = lower.encode_utf16().count();
+    for ext in extra_exts {
+        let ext_len = ext.encode_utf16().count();
+        if name_len > ext_len && lower.ends_with(ext.as_str()) {
             return true;
         }
     }
@@ -57,13 +69,14 @@ pub fn is_html_path(file_path: &str) -> bool {
 /// JS: file-system.mjs#walkDir. Files in `readdirSync` order (the OS order,
 /// which Node does not sort either), recursive; an unreadable dir yields [].
 pub fn walk_dir(dir: &str) -> Vec<String> {
-    walk_dir_reporting(dir, &mut |_, _| {})
+    walk_dir_reporting(dir, &[], &mut |_, _| {})
 }
 
 /// JS: file-system.mjs#walkDir(dir, onReadError). An unreadable directory is
 /// reported and skipped rather than silently yielding nothing (#711).
 pub fn walk_dir_reporting(
     dir: &str,
+    extra_exts: &[String],
     on_read_error: &mut dyn FnMut(&str, &std::io::Error),
 ) -> Vec<String> {
     let mut files = Vec::new();
@@ -95,8 +108,8 @@ pub fn walk_dir_reporting(
         }
         let full = jsp::join(&[dir, &name]);
         if is_dir {
-            files.extend(walk_dir_reporting(&full, on_read_error));
-        } else if has_scannable_extension(&name) {
+            files.extend(walk_dir_reporting(&full, extra_exts, on_read_error));
+        } else if has_scannable_extension_with(&name, extra_exts) {
             files.push(full);
         }
     }
@@ -543,6 +556,11 @@ mod tests {
         assert!(has_scannable_extension("A.HTML"));
         assert!(!has_scannable_extension("a.php"));
         assert!(is_html_path("/x/y.HTM"));
+        let erb = vec![".html.erb".to_string()];
+        assert!(!has_scannable_extension("first.html.erb"));
+        assert!(has_scannable_extension_with("first.html.erb", &erb));
+        assert!(has_scannable_extension_with("A.HTML.ERB", &erb));
+        assert!(!has_scannable_extension_with("notes.txt", &erb));
     }
 
     #[test]

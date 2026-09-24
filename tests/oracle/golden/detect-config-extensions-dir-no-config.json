@@ -1,0 +1,7 @@
+{
+  "stdout": "[\n  {\n    \"antipattern\": \"broken-image\",\n    \"name\": \"Broken or placeholder image\",\n    \"description\": \"<img> tags with empty src, missing src, or placeholder values ship as broken-image boxes. Use real images, generated assets, or remove the tag.\",\n    \"severity\": \"warning\",\n    \"category\": \"quality\",\n    \"file\": \"<WS>/app/views/plain.html\",\n    \"line\": 0,\n    \"snippet\": \"<img> with no src attribute\"\n  }\n]\n",
+  "stderr": "",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

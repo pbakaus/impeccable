@@ -1,0 +1,6 @@
+{
+  "detector": {
+    "extensions": [{ "ext": ".html.erb", "engine": "html" }],
+    "designSystem": { "enabled": false }
+  }
+}

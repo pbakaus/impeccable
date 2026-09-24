@@ -734,7 +734,7 @@ fn scan_targets(
             // Unreadable directories and files are reported, not silently
             // skipped, and each one forces exit 1 (#711).
             let mut walk_failures: Vec<(String, String)> = Vec::new();
-            let files: Vec<String> = walk_dir_reporting(&resolved, &mut |dir, err| {
+            let files: Vec<String> = walk_dir_reporting(&resolved, &ctx.config.extensions, &mut |dir, err| {
                 walk_failures.push((dir.to_string(), node_scan_error(dir, err)));
             })
             .into_iter()
