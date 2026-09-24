@@ -46,6 +46,35 @@ function __rectArray(r) {
   return [r.x, r.y, r.width, r.height, r.top, r.right, r.bottom, r.left];
 }
 
+// The client rects of the non-blank text nodes under `node`, in document
+// order. `deep` walks element children too: one line of prose is one line
+// box however the markup splits it, and an inline <strong>, an <a> or a
+// framework marker in the middle of a sentence is a separate text node whose
+// rects belong to the same line. Nothing is merged here — the rects travel as
+// the page gave them and the consumer groups them into lines (see
+// merge_text_rects_into_lines in crates/foundation/src/browser/dom.rs).
+function __collectTextRects(node, deep, out) {
+  for (const child of node.childNodes) {
+    if (child.nodeType === 3) {
+      if (!(child.textContent || '').trim()) continue;
+      const range = document.createRange();
+      range.selectNodeContents(child);
+      for (const rect of range.getClientRects()) {
+        if (rect.width >= 1 && rect.height >= 1) out.push(rect);
+      }
+      range.detach?.();
+    } else if (deep && child.nodeType === 1) {
+      __collectTextRects(child, true, out);
+    }
+  }
+  return out;
+}
+
+// The element's own direct text, unmerged: what the union rect is built from.
+function __directTextRects(el) {
+  return __collectTextRects(__el(el), false, []);
+}
+
 const __impeccableDom = {
   document_element() { return __intern(document.documentElement); },
   body() { return __intern(document.body); },
@@ -181,22 +210,23 @@ const __impeccableDom = {
   // getDirectTextRect(el) from the JS driver: union of the client rects of
   // the element's non-blank direct text nodes.
   direct_text_rect(el) {
-    const node = __el(el);
-    const rects = [];
-    for (const child of node.childNodes) {
-      if (child.nodeType !== 3 || !(child.textContent || '').trim()) continue;
-      const range = document.createRange();
-      range.selectNodeContents(child);
-      for (const rect of range.getClientRects()) {
-        if (rect.width >= 1 && rect.height >= 1) rects.push(rect);
-      }
-      range.detach?.();
-    }
+    const rects = __directTextRects(el);
     if (rects.length === 0) return [];
     const left = Math.min(...rects.map(r => r.left));
     const top = Math.min(...rects.map(r => r.top));
     const right = Math.max(...rects.map(r => r.right));
     const bottom = Math.max(...rects.map(r => r.bottom));
     return [left, top, right - left, bottom - top, top, right, bottom, left];
+  },
+  // Every rect of the element's rendered text, descendants included, flattened
+  // into eights. The scope is the element's whole text_content, which is the
+  // text a caller counts characters from; the caller merges the rects that
+  // share a row into the line they rendered on.
+  text_rects(el) {
+    const out = [];
+    for (const r of __collectTextRects(__el(el), true, [])) {
+      out.push(r.left, r.top, r.width, r.height, r.top, r.right, r.bottom, r.left);
+    }
+    return out;
   },
 };

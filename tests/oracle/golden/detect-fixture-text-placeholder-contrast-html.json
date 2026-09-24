@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/placeholder-contrast.html\n  [low-contrast] placeholder \"Pale Placeholder On White Field\" 1.9:1 (need 4.5:1) — text #bbbbbb on #ffffff\n    → Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.\n  [low-contrast] placeholder \"Pale Placeholder On White Textarea\" 1.9:1 (need 4.5:1) — text #bbbbbb on #ffffff\n    → Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.\n  [low-contrast] placeholder \"Translucent Placeholder On Light Field\" 1.0:1 (need 4.5:1) — text #f9f9f9 on #f5f5f5\n    → Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.\n  [low-contrast] placeholder \"Pale Placeholder On Frosted Panel\" 3.5:1 (need 4.5:1) — text #bbbbbb on #5c5c5d\n    → Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.\n\n4 anti-patterns found.\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

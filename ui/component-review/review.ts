@@ -406,7 +406,13 @@ export function mountComponentReview(host: HTMLElement, packet: ReviewPacket, op
         if(reduced){restore();return;}
         button.disabled=true;closingComparison=true;if(reviewForm)reviewForm.inert=true;
         const animation=comparisonDialog.animate([{transform:'none',opacity:1},{transform:`translate(${target.x-before.x}px,${target.y-before.y}px) scale(${target.width/before.width},${target.height/before.height})`,opacity:.6}],{duration:200,easing:'cubic-bezier(.4,0,.2,1)',fill:'forwards'});
-        animation.finished.then(()=>{if(comparisonDialog.isConnected){animation.cancel();button.disabled=false;restore();}}).catch(()=>{});
+        comparisonDialog.inert=true;
+        const settle=()=>{
+          animation.cancel();button.disabled=false;comparisonDialog.inert=false;
+          if(comparisonDialog.isConnected)restore();
+          else {closingComparison=false;expandedComparison=false;render();afterClose?.();}
+        };
+        animation.finished.then(settle,settle);
       }
     }
     collapseComparison=done=>setComparisonExpanded(false,done);

@@ -140,25 +140,35 @@ fn locale_compare(a: &str, b: &str) -> std::cmp::Ordering {
 fn check(io: &mut Io) -> R<()> {
     let (sys, _) = ctx(io);
     let root = sys.find_project_root();
-    if sys.is_already_installed(&root, None).is_none() {
+    // A home-rooted tree is either the user-level install or a project
+    // install under ~. Pick one scope so leftover dirs on the other layout
+    // cannot make a current copy look stale (#824). Inferred scope walks
+    // both, which is what produced the false "Updates available".
+    let scope = if sys.is_home_dir(&root) {
+        if sys.is_already_installed(&root, Some(Scope::User)).is_some() {
+            Some(Scope::User)
+        } else {
+            Some(Scope::Project)
+        }
+    } else {
+        None
+    };
+    if sys.is_already_installed(&root, scope).is_none() {
         out(io, "Impeccable is not installed in this project.");
         out(io, "Run `npx impeccable install` to install.");
         return Err(Flow::Exit(0));
     }
-    let providers = sys.find_installed_providers(&root, None);
+    let providers = sys.find_impeccable_providers(&root, scope);
     out(io, "Checking for updates...\n");
     let result = (|| -> Result<bool, String> {
         let bundle_dir = bundle::download_and_extract_bundle(&sys)?;
-        // JS: agentScope 'user' for a home-rooted checkout (d2a9efb9), so
-        // check() judges agent freshness against the user agent dirs.
-        let agent_scope = if sys.is_home_dir(&root) { Some(Scope::User) } else { None };
-        let up_to_date = bundle::is_up_to_date(&sys, &root, &providers, &bundle_dir, None, agent_scope)?;
+        let up_to_date = bundle::is_up_to_date(&sys, &root, &providers, &bundle_dir, scope, scope)?;
         util::rm_rf(&bundle_dir);
         Ok(up_to_date)
     })();
     match result {
         Ok(true) => {
-            let v = sys.get_skills_version(&root, None);
+            let v = sys.get_skills_version(&root, scope);
             out(io, &format!("Skills are up to date{}.", version_suffix(&v)));
         }
         Ok(false) => {

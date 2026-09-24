@@ -8,8 +8,8 @@ pub fn issues(regions: &[Value]) -> Vec<(String, String)> {
     for region in regions {
         let Some(group) = region.get("reviewGroup") else { continue; };
         let id = region["id"].as_str().unwrap_or("");
-        let Some(name) = group.as_str().filter(|s| !s.trim().is_empty() && s.len() <= 120) else {
-            issues.push((id.into(), "reviewGroup needs a nonempty name of at most 120 bytes".into()));
+        let Some(name) = group.as_str().filter(|s| !s.trim().is_empty() && s.chars().count() <= 120) else {
+            issues.push((id.into(), "reviewGroup needs a nonempty name of at most 120 characters".into()));
             continue;
         };
         groups.entry(name).or_default().push(region);
@@ -45,6 +45,11 @@ pub fn issues(regions: &[Value]) -> Vec<(String, String)> {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn group_limit_counts_unicode_characters() {
+        assert!(issues(&[json!({"id":"a","kind":"text","reviewGroup":"部".repeat(120)})]).is_empty());
+        assert!(!issues(&[json!({"id":"a","kind":"text","reviewGroup":"部".repeat(121)})]).is_empty());
+    }
     #[test]
     fn grouped_peers_keep_identity_but_mixed_or_nested_components_are_refused() {
         let peers = json!([

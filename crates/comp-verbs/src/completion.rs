@@ -21,6 +21,36 @@ pub fn artifact_hash(root: &Path, state: &Value) -> Option<String> {
     Some(format!("{:x}", Sha256::digest(bytes)))
 }
 
+/// Conservative local frontend input signature for the screenshot fallback.
+/// Tool receipts and dependency caches cannot invalidate their own signature.
+pub fn input_hash(root: &Path) -> Option<String> {
+    fn collect(root: &Path, dir: &Path, paths: &mut Vec<PathBuf>) -> Option<()> {
+        for entry in std::fs::read_dir(dir).ok()? {
+            let entry=entry.ok()?;let path=entry.path();let name=entry.file_name();
+            let name=name.to_string_lossy();
+            if name.starts_with('.') || matches!(name.as_ref(), "node_modules"|"target") {continue;}
+            let kind=entry.file_type().ok()?;
+            if kind.is_symlink() { return None; }
+            if kind.is_dir() {collect(root,&path,paths)?;}
+            else if matches!(path.extension().and_then(|v|v.to_str()),
+                Some("html"|"htm"|"css"|"scss"|"sass"|"less"|"js"|"mjs"|"cjs"|"ts"|"tsx"|"jsx"|"vue"|"svelte"|"astro"|"json"|"svg"|"png"|"jpg"|"jpeg"|"webp"|"avif"|"gif"|"woff"|"woff2"|"ttf"|"otf"|"mp4"|"webm")) {
+                paths.push(path.strip_prefix(root).ok()?.to_path_buf());
+                if paths.len()>10000 {return None;}
+            }
+        }
+        Some(())
+    }
+    let root=root.canonicalize().ok()?;let mut paths=Vec::new();collect(&root,&root,&mut paths)?;paths.sort();
+    let mut hasher=Sha256::new();let mut total=0u64;
+    for path in paths {
+        let full=root.join(&path);total=total.checked_add(std::fs::metadata(&full).ok()?.len())?;
+        if total>256*1024*1024 {return None;}
+        hasher.update(path.to_string_lossy().as_bytes());hasher.update([0]);
+        hasher.update(Sha256::digest(std::fs::read(full).ok()?));
+    }
+    Some(format!("{:x}",hasher.finalize()))
+}
+
 pub fn open_phases(state: &Value, include_review: bool) -> Vec<&'static str> {
     PHASES.iter().copied().filter(|phase| {
         (include_review || *phase != "review") && !matches!(
@@ -44,7 +74,13 @@ pub fn report(root: &Path, state: Option<&Value>, session_id: Option<&str>) -> V
     };
     let current_hash = artifact_hash(root, state);
     let recorded_hash = state.pointer("/finish/artifactSha256").and_then(Value::as_str);
-    let unchanged = recorded_hash.zip(current_hash.as_deref()).map(|(a,b)| a == b);
+    let mut unchanged = recorded_hash.zip(current_hash.as_deref()).map(|(a,b)| a == b);
+    if let Some(recorded) = state.pointer("/finish/artifactInputsSha256").and_then(Value::as_str) {
+        unchanged = match (unchanged,input_hash(root)) {
+            (Some(entry),Some(inputs)) => Some(entry && recorded == inputs),
+            _ => None,
+        };
+    }
     let status = if phases.is_empty() && disposition == Some("ship") {
         match unchanged {
             Some(true) => "complete",
@@ -59,7 +95,7 @@ pub fn report(root: &Path, state: Option<&Value>, session_id: Option<&str>) -> V
         "disposition":disposition, "artifactUnchangedSinceFinish":unchanged,
         "canContinue":scope == "current-session" && current_hash.is_some()
             && matches!(status, "incomplete" | "changed-after-finish"),
-        "verificationScope":"entry artifact bytes and recorded phase status; dependencies retain their own gate evidence"
+        "verificationScope":if state["finish"]["artifactInputsSha256"].is_string() {"local frontend inputs and recorded phase status"} else {"entry artifact bytes and recorded phase status; dependencies retain their own gate evidence"}
     })
 }
 

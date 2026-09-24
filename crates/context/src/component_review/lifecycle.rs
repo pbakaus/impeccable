@@ -74,10 +74,22 @@ pub fn project_sessions(root: &Path, project: &Path) -> Result<Vec<PathBuf>, Str
         if name.len() != 64 || !name.bytes().all(|b| b.is_ascii_hexdigit()) { continue; }
         let path = entry.path();
         if !path.join("current.json").exists() { continue; }
-        let state = store::read(&path.join("current.json"))?;
-        if string(&state, "project")? == project.to_string_lossy() { sessions.push(path); }
+        // A foreign or abandoned session must not disable review for every project.
+        let Ok(state) = store::read(&path.join("current.json")) else { continue; };
+        if string(&state, "project").ok() == Some(project.to_string_lossy().as_ref())
+            && state["journey"] == journey(project)? { sessions.push(path); }
     }
     Ok(sessions)
+}
+
+/// Starting a new build starts a new review journey; later page edits do not.
+/// Hosts pass their own session directories because their project is a snapshot.
+pub fn journey(project: &Path) -> Result<Value, String> {
+    let path = project.join(".impeccable/build/state.json");
+    if !path.exists() { return Ok(Value::Null); }
+    let state = store::read(&path)?;
+    let started = string(&state, "startedAt")?;
+    Ok(json!({"startedAt":started,"artifact":state["artifact"],"sessionId":state["sessionId"]}))
 }
 
 pub fn final_session(root: &Path, project: &Path) -> Result<Option<PathBuf>, String> {

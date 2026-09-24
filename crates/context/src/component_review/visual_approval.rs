@@ -87,7 +87,8 @@ fn identity(state: &Value, component: &Value, blobs: &Path) -> Option<Value> {
 /// Rebind a submitted visual approval to an unchanged captured presentation.
 /// Never manufacture a receipt or suppress a source change.
 pub fn carry(previous: &Value, current: &mut Value, blobs: &Path) -> usize {
-    if previous["receipt"]["captureVerified"] != true
+    if previous["journey"] != current["journey"]
+        || previous["receipt"]["captureVerified"] != true
         || previous["receipt"]["submission"]["packetRevision"] != previous["packet"]["revision"]
     {
         return 0;

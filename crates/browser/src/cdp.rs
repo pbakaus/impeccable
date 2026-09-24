@@ -1286,7 +1286,7 @@ impl<'a> Page<'a> {
             if index > 5000 { return Err(CdpError::new("capture DOM exceeds bound")); }
             if let Some(items) = node["pseudoElements"].as_array() {
                 for pseudo in items {
-                    if !matches!(pseudo["pseudoType"].as_str(), Some("before" | "after")) { continue; }
+                    if !matches!(pseudo["pseudoType"].as_str(), Some("before" | "after" | "marker")) { continue; }
                     if !candidates.iter().any(|c|c["index"].as_u64()==Some(owner as u64)&&c["pseudo"]==pseudo["pseudoType"]) {continue;}
                     if pseudos.len() >= 256 { return Err(CdpError::new("capture pseudo elements exceed bound")); }
                     let layout = self.send("DOM.getBoxModel", json!({"nodeId":pseudo["nodeId"]}));

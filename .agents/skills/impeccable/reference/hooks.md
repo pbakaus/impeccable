@@ -18,6 +18,8 @@ Supported harnesses: Claude Code (`.claude/settings.local.json` in the project, 
 
 On **Cursor**, `preToolUse` checks proposed Write/Edit/Shell write content and denies only when the real detector finds an issue. The denial message is visible to the agent as the tool error, so the agent can reconsider before the bad write lands.
 
+Gemini installs session and completion hooks in `.gemini/settings.json`. It does not install a per-edit detector hook.
+
 ## Routing
 
 The first argument is the action. Defaults to `status`.

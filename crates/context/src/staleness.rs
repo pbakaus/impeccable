@@ -35,8 +35,8 @@ pub fn finding(id: &str, artifact: &str, path: Option<String>, severity: &'stati
     Finding { id: id.to_string(), artifact: artifact.to_string(), path, severity, summary, fix }
 }
 
-const KNOWN_CONFIG_KEYS: [&str; 8] =
-    ["hook", "detector", "updateCheck", "stalenessCheck", "projectRoots", "buildPath", "$schema", "version"];
+const KNOWN_CONFIG_KEYS: [&str; 9] =
+    ["hook", "detector", "updateCheck", "stalenessCheck", "projectRoots", "buildPath", "browser", "$schema", "version"];
 const BUILD_PATH_VALUES: [&str; 2] = ["comp", "code"];
 const DIRECTION_WORK_PATHS: [&str; 2] = [".impeccable/surfaces", ".impeccable/mocks/decision"];
 const KNOWN_DETECTOR_KEYS: [&str; 5] = ["ignoreRules", "ignoreFiles", "ignoreValues", "designSystem", "extensions"];

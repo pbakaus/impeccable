@@ -1,7 +1,7 @@
 // Native capture adapter, evaluated in a CDP isolated world. Keep DOM/layout and
 // authored styling; suppress paint belonging to other components. No page script
 // or producer screenshot participates in this operation.
-({ id, targets }) => {
+({ id, targets, pseudos = [] }) => {
   const roots = targets.map(target => {
     const matches = document.querySelectorAll(target.selector);
     if (matches.length !== 1) throw Error(`${target.id}: selector must match exactly one element (got ${matches.length}).`);
@@ -49,6 +49,14 @@
       for(const bounds of range.getClientRects())include(bounds,element);
     }
   });
+  const allElements=[...document.querySelectorAll('*')];
+  for(const pseudo of pseudos){
+    const element=allElements[pseudo.index], index=elements.indexOf(element);
+    if(index<0||!visibility[index].owns||visibility[index].main!=='visible')continue;
+    if(!pseudo.box)throw Error(`${id}: generated content geometry unavailable; provide a dedicated static component document.`);
+    const {x,y,w,h}=pseudo.box;
+    include({left:x,top:y,right:x+w,bottom:y+h},element);
+  }
   // Apply only after reading all original computed styles. Descendant components
   // keep their layout space but cannot paint inside their parent's preview.
   if (document.querySelector('[data-impeccable-capture]')) throw Error('Reserved capture attribute is already present.');

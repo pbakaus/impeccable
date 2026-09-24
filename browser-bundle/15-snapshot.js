@@ -69,19 +69,26 @@ const __SNAP_DEFAULT_MAX_BYTES = 48 * 1024 * 1024;
 function __snapRect4(r) { return [r.x, r.y, r.width, r.height]; }
 function __snapNum(v) { return typeof v === 'number' ? v : null; }
 
-// getDirectTextRect(el): union of the client rects of the element's
-// non-blank direct text nodes (same measure as 10-probe.js).
-function __snapDirectTextRect(node) {
-  const rects = [];
+// The client rects of `node`'s own non-blank text nodes (same walk as
+// 10-probe.js#__collectTextRects with `deep` off). Each element records only
+// its own, so a line that rendered is recorded exactly once in a snapshot.
+function __snapTextRects(node, out) {
   for (const child of node.childNodes) {
-    if (child.nodeType !== 3 || !(child.textContent || '').trim()) continue;
+    if (child.nodeType !== 3) continue;
+    if (!(child.textContent || '').trim()) continue;
     const range = document.createRange();
     range.selectNodeContents(child);
     for (const rect of range.getClientRects()) {
-      if (rect.width >= 1 && rect.height >= 1) rects.push(rect);
+      if (rect.width >= 1 && rect.height >= 1) out.push(rect);
     }
     range.detach?.();
   }
+  return out;
+}
+
+// getDirectTextRect(el) over rects already collected: their union, as
+// 10-probe.js#direct_text_rect builds it.
+function __snapDirectTextRectOf(rects) {
   if (rects.length === 0) return null;
   const left = Math.min(...rects.map(r => r.left));
   const top = Math.min(...rects.map(r => r.top));
@@ -585,6 +592,7 @@ const __impeccableSnapshot = {
     for (let id = 1; id < elements.length; id++) {
       const el = elements[id];
       const rec = { t: el.tagName };
+      const tag = rec.t;
       const nsUri = el.namespaceURI || '';
       const ns = __SNAP_NS[nsUri];
       if (ns === undefined) { rec.n = 3; rec.nu = nsUri; } else if (ns !== 0) { rec.n = ns; }
@@ -615,6 +623,11 @@ const __impeccableSnapshot = {
         if (content == null || content === '' || content === 'none') continue;
         rec[key] = __SNAP_PSEUDO_PROPS.map(p => intern(ps[p]));
       }
+      if ((tag === 'INPUT' || tag === 'TEXTAREA') && el.getAttribute('placeholder')) {
+        let ps;
+        try { ps = getComputedStyle(el, '::placeholder'); } catch { ps = null; }
+        if (ps) rec.ph = intern(ps.color);
+      }
       if (typeof el.getBoundingClientRect === 'function') rec.r = __snapRect4(el.getBoundingClientRect());
       rec.m = [
         __snapNum(el.clientWidth), __snapNum(el.clientHeight), __snapNum(el.clientLeft),
@@ -624,15 +637,23 @@ const __impeccableSnapshot = {
       rec.v = typeof el.checkVisibility === 'function'
         ? (el.checkVisibility({ checkOpacity: false, checkVisibilityCSS: true }) ? 1 : 0)
         : -1;
-      const dtr = __snapDirectTextRect(el);
+      // The element's OWN text rects, unmerged (`dl`), and their union
+      // (`d`, the long-standing field). Own and not the subtree's: every
+      // ancestor would otherwise carry a copy of every line under it, which
+      // on a deep text-heavy page multiplies the snapshot by its depth and
+      // can push it past the byte cap. The consumer walks the tree and
+      // assembles an element's lines from the rects its descendants each
+      // recorded once (`SnapshotDom::text_line_rects`).
+      const own = __snapTextRects(el, []);
+      const dtr = __snapDirectTextRectOf(own);
       if (dtr) rec.d = dtr;
+      if (own.length) rec.dl = own.map(r => [r.x, r.y, r.width, r.height]);
       if (el.isContentEditable) rec.e = true;
       if (el.hidden) rec.h = true;
       if (typeof el.id !== 'string') rec.i = true;
       if (typeof el.className !== 'string') rec.k = true;
       const st = states.get(id);
       if (st) rec.st = st;
-      const tag = rec.t;
       if (tag === 'IMG' || tag === 'VIDEO' || tag === 'CANVAS' || tag === 'PICTURE') {
         rec.md = {
           nw: el.naturalWidth || 0, nh: el.naturalHeight || 0,
@@ -656,6 +677,7 @@ const __impeccableSnapshot = {
     }
     const snapshot = {
       v: 1,
+      textLines: true,
       hostname: location.hostname,
       quirks: document.compatMode === 'BackCompat',
       innerWidth: window.innerWidth,

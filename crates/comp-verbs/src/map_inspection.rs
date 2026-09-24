@@ -332,6 +332,12 @@ fn write_report(dir: &Path, comp: &Image, report: &mut Value) -> Result<(), Stri
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     std::fs::create_dir(dir).map_err(|e| format!("choose a new output directory: {e}"))?;
+    let result = write_report_contents(dir, comp, report);
+    if result.is_err() { let _ = std::fs::remove_dir_all(dir); }
+    result
+}
+
+fn write_report_contents(dir: &Path, comp: &Image, report: &mut Value) -> Result<(), String> {
     let source = report["comp"].as_str().unwrap().to_string();
     save_reference(&dir.join("comp.png"), comp, &source)?;
     let spec = report.clone();
@@ -566,6 +572,19 @@ mod tests {
         assert_eq!(measured["regions"][1]["reviewGroup"], "cards");
     }
 
+    #[test]
+    fn failed_report_write_removes_only_its_new_directory() {
+        let root=std::env::temp_dir().join(format!("map-write-failure-{}",std::process::id()));
+        let mut report=json!({"comp":"comp.png","regions":[]});
+        let image=create_image(0,0,[0;4]);
+        assert!(write_report(&root,&image,&mut report).is_err());
+        assert!(!root.exists());
+        std::fs::create_dir(&root).unwrap();
+        std::fs::write(root.join("keep.txt"),"existing").unwrap();
+        assert!(write_report(&root,&image,&mut report).is_err());
+        assert_eq!(std::fs::read_to_string(root.join("keep.txt")).unwrap(),"existing");
+        std::fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn map_inspection_writes_only_new_reference_artifacts_and_escapes_labels() {
         let root = std::env::temp_dir().join(format!(

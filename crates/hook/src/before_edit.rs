@@ -777,6 +777,17 @@ fn main_flow(rt: &Runtime, stdin: &str) -> Out {
     if content.len() as u64 > MAX_SCANNED_BYTES {
         return skip(&audit, "content-too-large");
     }
+    // A live variant session owns files carrying preview scaffolding. Check
+    // the proposed content AND the file on disk: the very first variants
+    // write introduces the markers, and later fragment edits (variant CSS
+    // tweaks) touch a file that already carries them.
+    if crate::hook_lib::has_live_preview_markers(&content)
+        || read_existing_project_file(rt, &file_path, &cwd)
+            .map(|on_disk| crate::hook_lib::has_live_preview_markers(&on_disk))
+            .unwrap_or(false)
+    {
+        return skip(&audit, "live-preview");
+    }
     if !config.enabled {
         return skip(&audit, "config-disabled");
     }

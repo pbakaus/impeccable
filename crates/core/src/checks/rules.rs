@@ -4,7 +4,8 @@
 //! `undefined` / `null` distinctions the source relies on.
 
 use crate::color::{
-    color_to_hex, contrast_ratio, get_hue, has_chroma, is_neutral_color, relative_luminance, Rgba,
+    color_to_hex, composite_color_over, contrast_ratio, get_hue, has_chroma, is_gray_ink,
+    is_neutral_color, relative_luminance, Rgba,
 };
 use crate::constants::{
     BORDER_SAFE_TAGS, GENERIC_FONTS, KNOWN_SERIF_FONTS, SAFE_TAGS, WCAG_LARGE_BOLD_TEXT_PX,
@@ -155,75 +156,10 @@ pub fn check_colors(opts: &ColorOpts) -> Vec<RuleHit> {
 
     if opts.has_direct_text && opts.text_color.is_some() && !opts.is_emoji_only {
         let text_color = opts.text_color.unwrap();
-        let is_gradient_clipped_text = bg_clip == "text";
-        let bgs: Option<Vec<Rgba>> = if is_gradient_clipped_text {
-            None
-        } else if let Some(bg) = opts.effective_bg {
-            Some(vec![bg])
-        } else {
-            match &opts.effective_bg_stops {
-                Some(stops) if !stops.is_empty() => Some(stops.clone()),
-                _ => None,
-            }
-        };
-        if let Some(bgs) = bgs {
-            let text_lum = relative_luminance(&text_color);
-            let is_gray =
-                !has_chroma(Some(&text_color), Some(20.0)) && text_lum > 0.05 && text_lum < 0.85;
-            if is_gray && bgs.iter().all(|b| has_chroma(Some(b), Some(40.0))) {
-                let bg_label = match opts.effective_bg {
-                    Some(bg) => color_to_hex(Some(&bg)),
-                    None => format!(
-                        "gradient({})",
-                        bgs.iter()
-                            .map(|b| color_to_hex(Some(b)))
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ),
-                };
-                findings.push(RuleHit::new(
-                    "gray-on-color",
-                    format!(
-                        "text {} on bg {}",
-                        color_to_hex(Some(&text_color)),
-                        bg_label
-                    ),
-                ));
-            }
-
-            let ratios: Vec<f64> = bgs.iter().map(|b| contrast_ratio(&text_color, b)).collect();
-            let mut worst_idx = 0usize;
-            for i in 1..ratios.len() {
-                if ratios[i] < ratios[worst_idx] {
-                    worst_idx = i;
-                }
-            }
-            let ratio = ratios[worst_idx];
-            let is_large_text = opts.font_size >= WCAG_LARGE_TEXT_PX
-                || (opts.font_size >= WCAG_LARGE_BOLD_TEXT_PX && opts.font_weight >= 700.0);
-            let threshold = if is_large_text { 3.0 } else { 4.5 };
-            if ratio < threshold {
-                let is_alpha_fallback_fp = !opts.detector_is_browser
-                    && opts.effective_bg.is_none()
-                    && text_color.a.map_or(false, |a| a < 1.0);
-                if !is_alpha_fallback_fp {
-                    let ratio_label = if to_fixed(ratio, 1) == to_fixed(threshold, 1) {
-                        to_fixed(ratio, 2)
-                    } else {
-                        to_fixed(ratio, 1)
-                    };
-                    findings.push(RuleHit::new(
-                        "low-contrast",
-                        format!(
-                            "{}:1 (need {}:1) — text {} on {}",
-                            ratio_label,
-                            number_to_string(threshold),
-                            color_to_hex(Some(&text_color)),
-                            color_to_hex(Some(&bgs[worst_idx]))
-                        ),
-                    ));
-                }
-            }
+        // Gradient-clipped text paints the gradient, not `color`, so there
+        // is no background to score it against.
+        if bg_clip != "text" {
+            findings.extend(contrast_findings(opts, &text_color));
         }
 
         if has_chroma(Some(&text_color), Some(50.0)) {
@@ -278,6 +214,122 @@ pub fn check_colors(opts: &ColorOpts) -> Vec<RuleHit> {
         }
     }
 
+    findings
+}
+
+/// The contrast scoring `check_colors` and `check_placeholder_colors`
+/// share: gray-on-color, then WCAG AA against the worst background. The
+/// backgrounds are the composited `effective_bg`, or the gradient stops when
+/// no opaque surface resolved; with neither there is nothing to score.
+fn contrast_findings(opts: &ColorOpts, text_color: &Rgba) -> Vec<RuleHit> {
+    let bgs: Vec<Rgba> = if let Some(bg) = opts.effective_bg {
+        vec![bg]
+    } else {
+        match &opts.effective_bg_stops {
+            Some(stops) if !stops.is_empty() => stops.clone(),
+            _ => return Vec::new(),
+        }
+    };
+    let mut findings = Vec::new();
+    // Gray is low chroma at whatever lightness the ink sits at, and the
+    // surface is a colour when it has chroma of its own. The old pair of
+    // tests read relative luminance as if it were lightness, which made every
+    // off-white under 0.85 gray and charged an off-white nav on a teal
+    // masthead three times over (REN-404).
+    if is_gray_ink(text_color) && bgs.iter().all(|b| has_chroma(Some(b), Some(40.0))) {
+        let bg_label = match opts.effective_bg {
+            Some(bg) => color_to_hex(Some(&bg)),
+            None => format!(
+                "gradient({})",
+                bgs.iter()
+                    .map(|b| color_to_hex(Some(b)))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        };
+        findings.push(RuleHit::new(
+            "gray-on-color",
+            format!("text {} on bg {}", color_to_hex(Some(text_color)), bg_label),
+        ));
+    }
+
+    let ratios: Vec<f64> = bgs.iter().map(|b| contrast_ratio(text_color, b)).collect();
+    let mut worst_idx = 0usize;
+    for i in 1..ratios.len() {
+        if ratios[i] < ratios[worst_idx] {
+            worst_idx = i;
+        }
+    }
+    let ratio = ratios[worst_idx];
+    let is_large_text = opts.font_size >= WCAG_LARGE_TEXT_PX
+        || (opts.font_size >= WCAG_LARGE_BOLD_TEXT_PX && opts.font_weight >= 700.0);
+    let threshold = if is_large_text { 3.0 } else { 4.5 };
+    if ratio < threshold {
+        let is_alpha_fallback_fp = !opts.detector_is_browser
+            && opts.effective_bg.is_none()
+            && text_color.a.map_or(false, |a| a < 1.0);
+        if !is_alpha_fallback_fp {
+            let ratio_label = if to_fixed(ratio, 1) == to_fixed(threshold, 1) {
+                to_fixed(ratio, 2)
+            } else {
+                to_fixed(ratio, 1)
+            };
+            findings.push(RuleHit::new(
+                "low-contrast",
+                format!(
+                    "{}:1 (need {}:1) — text {} on {}",
+                    ratio_label,
+                    number_to_string(threshold),
+                    color_to_hex(Some(text_color)),
+                    color_to_hex(Some(&bgs[worst_idx]))
+                ),
+            ));
+        }
+    }
+    findings
+}
+
+/// Placeholder text contrast, sibling of `check_hover_contrast`. Skips the
+/// SAFE_TAGS gate and the host heuristics in `check_colors` (class list,
+/// clip, gradient) because the host is an empty control; only the
+/// placeholder glyphs are scored. A translucent placeholder is flattened
+/// over the composited background first, including each gradient stop when
+/// no opaque surface resolved. Snippets carry the placeholder string so
+/// fixture tests can key on it.
+pub fn check_placeholder_colors(
+    opts: &ColorOpts,
+    placeholder_text: &str,
+    mut text_color: Rgba,
+) -> Vec<RuleHit> {
+    let mut flat: Option<ColorOpts> = None;
+    if text_color.a.map_or(false, |a| a < 1.0) {
+        if let Some(bg) = opts.effective_bg {
+            text_color = composite_color_over(&text_color, &bg);
+        } else if let Some(stops) = opts.effective_bg_stops.as_ref().filter(|s| !s.is_empty()) {
+            let mut worst_i = 0usize;
+            let mut worst_ratio = f64::MAX;
+            let mut worst_fg = text_color;
+            for (i, stop) in stops.iter().enumerate() {
+                let fg = composite_color_over(&text_color, stop);
+                let r = contrast_ratio(&fg, stop);
+                if r < worst_ratio {
+                    worst_ratio = r;
+                    worst_i = i;
+                    worst_fg = fg;
+                }
+            }
+            text_color = worst_fg;
+            let mut o = opts.clone();
+            o.effective_bg = Some(stops[worst_i]);
+            o.effective_bg_stops = None;
+            flat = Some(o);
+        }
+    }
+    let opts = flat.as_ref().unwrap_or(opts);
+    let mut findings = contrast_findings(opts, &text_color);
+    for h in &mut findings {
+        h.snippet = format!("placeholder \"{}\" {}", placeholder_text, h.snippet);
+    }
     findings
 }
 
@@ -1042,6 +1094,82 @@ mod tests {
             hits("text-slate-300 bg-red-500/10 bg-teal-600"),
             vec!["text-slate-300 on bg-teal-600"]
         );
+    }
+
+    /// REN-404. The bench's masthead: `#e8edf2` nav links on `#123a36`. The
+    /// ink is an off-white with a cool tint, not gray, and the pairing clears
+    /// contrast; the old test called everything under 0.85 relative luminance
+    /// gray and charged it three times over on a page with nothing wrong.
+    #[test]
+    fn off_white_on_a_colour_is_not_gray_ink() {
+        let ink = |hex_r: f64, hex_g: f64, hex_b: f64| {
+            check_colors(&ColorOpts {
+                tag: "p".to_string(),
+                font_size: 15.0,
+                font_weight: 400.0,
+                has_direct_text: true,
+                text_color: Some(Rgba::new(hex_r, hex_g, hex_b, 1.0)),
+                effective_bg: Some(Rgba::new(18.0, 58.0, 54.0, 1.0)),
+                ..Default::default()
+            })
+            .into_iter()
+            .map(|h| h.id)
+            .collect::<Vec<_>>()
+        };
+        // #e8edf2 on #123a36.
+        assert_eq!(ink(232.0, 237.0, 242.0), Vec::<String>::new());
+        // White, the other neutral ink a coloured surface carries.
+        assert_eq!(ink(255.0, 255.0, 255.0), Vec::<String>::new());
+        // #8a8f8c: the muddy middle, still charged, and the contrast check
+        // beside it is untouched.
+        assert_eq!(
+            ink(138.0, 143.0, 140.0),
+            vec!["gray-on-color".to_string(), "low-contrast".to_string()]
+        );
+    }
+
+    #[test]
+    fn placeholder_colors_ignore_host_class_heuristics() {
+        let opts = ColorOpts {
+            tag: "input".to_string(),
+            effective_bg: Some(Rgba::new(255.0, 255.0, 255.0, 1.0)),
+            font_size: 24.0,
+            font_weight: 400.0,
+            class_list: Some("text-slate-300 bg-red-500".to_string()),
+            bg_clip: Some("text".to_string()),
+            bg_image: Some("linear-gradient(red, blue)".to_string()),
+            ..Default::default()
+        };
+        let ink = check_placeholder_colors(&opts, "Name", Rgba::new(26.0, 26.0, 26.0, 1.0));
+        assert!(ink.is_empty(), "{ink:?}");
+        let pale = check_placeholder_colors(&opts, "Name", Rgba::new(187.0, 187.0, 187.0, 1.0));
+        assert_eq!(pale.len(), 1);
+        assert_eq!(pale[0].id, "low-contrast");
+        assert!(pale[0].snippet.contains("placeholder \"Name\""), "{pale:?}");
+        // No resolved surface and no gradient stops: nothing to score.
+        let unresolved = ColorOpts {
+            effective_bg: None,
+            effective_bg_stops: None,
+            ..opts.clone()
+        };
+        let none = check_placeholder_colors(&unresolved, "Name", Rgba::new(187.0, 187.0, 187.0, 1.0));
+        assert!(none.is_empty(), "{none:?}");
+        // Translucent black over a light gradient: flatten per stop, then score.
+        let gradient = ColorOpts {
+            effective_bg: None,
+            effective_bg_stops: Some(vec![
+                Rgba::new(255.0, 255.0, 255.0, 1.0),
+                Rgba::new(240.0, 240.0, 240.0, 1.0),
+            ]),
+            ..opts.clone()
+        };
+        let wash = check_placeholder_colors(
+            &gradient,
+            "Name",
+            Rgba::new(0.0, 0.0, 0.0, 0.2),
+        );
+        assert_eq!(wash.len(), 1, "{wash:?}");
+        assert_eq!(wash[0].id, "low-contrast");
     }
 
     #[test]

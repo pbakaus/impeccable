@@ -443,7 +443,9 @@ describe('new-work-e2e: serve-question decision page', () => {
         window.__advanceDecisionClock = (ms) => { offset += ms; };
       });
       const page = await context.newPage();
-      await page.goto(url, { waitUntil: 'load' });
+      // Missing comps intentionally keep polling; load need not settle while
+      // these requests are in flight. Assert the rendered UI instead.
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
       await page.waitForSelector('.card[data-id="assigned"] .media.comp-pending');
 
       await page.evaluate(() => window.__advanceDecisionClock(241000));

@@ -62,6 +62,13 @@ export const REPO_PATH_ENV = 'IMPECCABLE_TEST_REPO_PATH';
  * A command line belonging to a live server. Matches the Node script
  * (`.../live-server.mjs`) and the engine verb (`.../impeccable live-server`).
  */
+// `ps -E` prints every process's whole environment. On a laptop with a thousand
+// processes that passes Node's default 1 MiB `maxBuffer`, at which point
+// spawnSync kills `ps`, reports `status: null`, and the sweep silently finds
+// nothing: the exact orphan case the reaper exists for. Size the buffer for a
+// busy machine instead.
+const PS_MAX_BUFFER = 256 * 1024 * 1024;
+
 const LIVE_SERVER_RE = /(^|[\s/\\])live-server(\.mjs|\.exe)?(\s|$)/;
 
 /**
@@ -211,7 +218,7 @@ function assertMarkerValue(value) {
 function listCommands() {
   const map = new Map();
   if (process.platform === 'win32') return map; // no supported sweep yet
-  const res = spawnSync('ps', ['-A', '-ww', '-o', 'pid=,command='], { encoding: 'utf-8' });
+  const res = spawnSync('ps', ['-A', '-ww', '-o', 'pid=,command='], { encoding: 'utf-8', maxBuffer: PS_MAX_BUFFER });
   if (res.status !== 0 || !res.stdout) return map;
   for (const line of res.stdout.split('\n')) {
     const m = /^\s*(\d+)\s+(.*)$/.exec(line);
@@ -245,7 +252,7 @@ function pidsWithEnvMarker(markers, commands) {
     return hits;
   }
 
-  const res = spawnSync('ps', ['-A', '-E', '-ww', '-o', 'pid=,command='], { encoding: 'utf-8' });
+  const res = spawnSync('ps', ['-A', '-E', '-ww', '-o', 'pid=,command='], { encoding: 'utf-8', maxBuffer: PS_MAX_BUFFER });
   if (res.status !== 0 || !res.stdout) return hits;
   for (const line of res.stdout.split('\n')) {
     const m = /^\s*(\d+)\s+(.*)$/.exec(line);

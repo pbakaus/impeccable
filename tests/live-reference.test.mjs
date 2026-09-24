@@ -171,4 +171,26 @@ describe('live reference authoring contract', () => {
       'real-LLM E2E prompt should not hard-code @scope as the universal CSS contract',
     );
   });
+
+  it('maps every live action in the generate reference', () => {
+    // generate.md's Step 1 turns request wording into an action value; a
+    // value the picker offers but the reference never names is a request
+    // the agent cannot route.
+    const generateMd = readFileSync(join(ROOT, 'skill/reference/generate.md'), 'utf-8');
+    for (const action of readVisualActions()) {
+      assert.match(generateMd, new RegExp('`' + action + '`'), `generate.md must name \`${action}\``);
+    }
+  });
 });
+
+// The action vocabulary lives in the engine (crates/live/src/vocabulary.rs);
+// read it from the Rust source so the parity check needs no binary and can
+// never drift from what the live server accepts.
+function readVisualActions() {
+  const rust = readFileSync(join(ROOT, 'crates/live/src/vocabulary.rs'), 'utf-8');
+  const block = rust.match(/pub const VISUAL_ACTIONS: \[&str; (\d+)\] = \[([\s\S]*?)\];/);
+  if (!block) throw new Error('VISUAL_ACTIONS not found in crates/live/src/vocabulary.rs');
+  const actions = [...block[2].matchAll(/"([a-z]+)"/g)].map((m) => m[1]);
+  if (actions.length !== Number(block[1])) throw new Error('VISUAL_ACTIONS length mismatch');
+  return actions;
+}

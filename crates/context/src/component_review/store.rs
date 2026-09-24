@@ -141,6 +141,7 @@ fn prepare_bound(
     let dir = session_dir(store, project, string(input, "id")?);
     let _guard = lock(&dir)?;
     let old = read(&dir.join("current.json")).ok();
+    let journey = super::lifecycle::journey(project)?;
     let capture = if let Some(capturer) = capturer {
         let captured = capturer.capture(&mut packet, &files)?;
         for (path, bytes) in captured.files {
@@ -197,7 +198,7 @@ fn prepare_bound(
     };
     sources_current(&json!({"project":project,"sources":sources}))?;
     if old.as_ref().is_some_and(|o| {
-        o["contentRevision"]
+        o["journey"] == journey && o["contentRevision"]
             .as_str()
             .unwrap_or_else(|| o["packet"]["revision"].as_str().unwrap_or(""))
             == content_revision
@@ -235,7 +236,7 @@ fn prepare_bound(
     }
     let mut decisions = serde_json::Map::new();
     let previous = old
-        .as_ref()
+        .as_ref().filter(|v| v["journey"] == journey)
         .map(|v| v["draft"].clone())
         .unwrap_or(Value::Null);
     for c in packet["components"].as_array().unwrap() {
@@ -260,12 +261,24 @@ fn prepare_bound(
             write(&dir.join(format!("revisions/{old_rev}.json")), old)?;
         }
     }
-    let mut state = json!({"schemaVersion":1,"contentRevision":content_revision,"project":project,"packet":packet,"files":hashes,"sources":sources,"capture":capture,"draft":draft,"receipt":null});
-    if let Some(previous) = &old {
+    let mut state = json!({"schemaVersion":1,"journey":super::lifecycle::journey(project)?,"contentRevision":content_revision,"project":project,"packet":packet,"files":hashes,"sources":sources,"capture":capture,"draft":draft,"receipt":null});
+    if let Some(previous) = old.as_ref().filter(|v| v["journey"] == journey) {
         super::visual_approval::carry(previous, &mut state, &blobs);
+        // An unsubmitted intermediate capture is not a revocation. Use only the
+        // latest submitted round, so an older approval cannot override later feedback.
+        if previous["receipt"].is_null() {
+            let mut submitted = fs::read_dir(dir.join("revisions")).into_iter().flatten()
+                .filter_map(Result::ok).filter_map(|entry| read(&entry.path()).ok())
+                .filter(|s| !s["receipt"].is_null() && s["journey"] == state["journey"])
+                .collect::<Vec<_>>();
+            submitted.sort_by_key(|s| s["packet"]["round"].as_u64().unwrap_or(0));
+            if let Some(previous) = submitted.last() {
+                super::visual_approval::carry(previous, &mut state, &blobs);
+            }
+        }
     }
     state["history"] = old
-        .as_ref()
+        .as_ref().filter(|v| v["journey"] == journey)
         .map(|previous| super::history::between(previous, &state))
         .unwrap_or(Value::Null);
     write(&dir.join(format!("revisions/{rev}.json")), &state)?;

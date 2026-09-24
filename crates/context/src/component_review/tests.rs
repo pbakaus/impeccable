@@ -48,6 +48,28 @@ fn first_viewport_acceptance_closes_both_review_stages_after_later_edits() {
 }
 
 #[test]
+fn new_build_does_not_inherit_terminal_review_and_foreign_corruption_is_ignored() {
+    let f=Fixture::new();
+    let bad=f.store.join("a".repeat(64));fs::create_dir_all(&bad).unwrap();
+    fs::write(bad.join("current.json"),"broken JSON").unwrap();
+    let mut hero=f.manifest();hero["stage"]=json!("hero");
+    let dir=store::prepare(&f.store,&f.project,&hero).unwrap();
+    let mut state=store::read(&dir.join("current.json")).unwrap();
+    state["capture"]=json!({"schema":"native-component-previews-v1","components":[]});
+    store::write(&dir.join("current.json"),&state).unwrap();store::submit(&dir,&approve(&state)).unwrap();
+    assert!(super::lifecycle::final_session(&f.store,&f.project.canonicalize().unwrap()).unwrap().is_some());
+    fs::create_dir_all(f.project.join(".impeccable/build")).unwrap();
+    fs::write(f.project.join(".impeccable/build/state.json"),r#"{"startedAt":"new-build","artifact":"index.html"}"#).unwrap();
+    assert!(super::lifecycle::final_session(&f.store,&f.project.canonicalize().unwrap()).unwrap().is_none());
+    let next=store::prepare(&f.store,&f.project,&hero).unwrap();
+    assert_eq!(next,dir);
+    let next=store::read(&next.join("current.json")).unwrap();
+    assert!(next["receipt"].is_null());
+    assert!(next["draft"]["decisions"].as_object().unwrap().is_empty());
+    assert_eq!(next["packet"]["round"],2);
+}
+
+#[test]
 fn needs_work_and_unverified_receipts_never_close_review() {
     let f = Fixture::new();
     let mut hero = f.manifest();
@@ -738,6 +760,10 @@ fn visual_approvals_survive_shared_source_edits_but_not_changed_scope_or_pixels(
     .unwrap();
     let changed = store::read(&dir.join("current.json")).unwrap();
     assert!(changed["draft"]["decisions"]["control"].is_null());
+    store::prepare_captured(&f.store,&f.project,&f.manifest(),Some(&mut Renderer(b"same pixels"))).unwrap();
+    let restored=store::read(&dir.join("current.json")).unwrap();
+    assert_eq!(restored["draft"]["decisions"]["control"]["action"],"approve");
+    assert!(restored["receipt"].is_null());
 }
 
 #[test]

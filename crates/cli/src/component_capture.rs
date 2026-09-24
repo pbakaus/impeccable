@@ -62,6 +62,7 @@ fn render_page(
     box_: &Value,
     isolation: Option<&Value>,
     assembled: bool,
+    check_fonts: bool,
 ) -> Result<(Vec<u8>, Value), String> {
     let server = if assembled { snapshot.serve_assembled()? } else { snapshot.serve()? };
     let url = server.entry_url();
@@ -78,6 +79,13 @@ fn render_page(
         let supported = r#"(()=>{if((!ASSEMBLED&&document.scripts.length)||document.querySelector('iframe,frame,object,embed,canvas'))throw Error('Component capture requires static HTML/CSS/SVG; script, frame and canvas components need a supported capture adapter.');return true;})()"#
             .replace("ASSEMBLED", if assembled { "true" } else { "false" });
         page.evaluate_value_in_world(&world, &supported).map_err(|e|e.message)?;
+        let inspect = r#"(async()=>{
+          await Promise.race([(async()=>{await document.fonts.ready;const failed=await Promise.all([...document.images].map(async i=>{try{await i.decode();return null;}catch{const src=i.currentSrc||i.getAttribute('src')||'(missing src)';return src.startsWith('data:')?'(inline image)':new URL(src,location.href).pathname;}}));if(failed.some(Boolean))throw Error('Images failed to decode: '+[...new Set(failed.filter(Boolean))].join(', ')+'. Check dependencies for missing or invalid images.');})(),new Promise((_,reject)=>setTimeout(()=>reject(Error('component resources did not settle')),5000))]);
+          if([...document.fonts].some(f=>f.status==='error'))throw Error('A component font failed to load.');
+          if(document.getAnimations().some(a=>a.playState==='running'))throw Error('Component is animated; provide its static review state.');
+          return {html:document.documentElement.outerHTML,svg:document.querySelectorAll('svg').length,images:document.images.length,controls:document.querySelectorAll('button,input,select,textarea,a[href]').length};
+        })()"#.replace("ASSEMBLED", if assembled { "true" } else { "false" });
+        let dom=page.evaluate_value_in_world(&world,&inspect).map_err(|e|e.message)?;
         let urls = page.observed_response_urls().map_err(|e| e.message)?;
         let evidence = page.response_evidence(&urls).map_err(|e| e.message)?;
         if evidence.truncated
@@ -125,16 +133,14 @@ fn render_page(
         if !responses.contains_key(snapshot.entry()) {
             return Err("component document response is unverified".into());
         }
-        let inspect = r#"(async()=>{
-          await Promise.race([(async()=>{await document.fonts.ready;const failed=await Promise.all([...document.images].map(async i=>{try{await i.decode();return null;}catch{const src=i.currentSrc||i.getAttribute('src')||'(missing src)';return src.startsWith('data:')?'(inline image)':new URL(src,location.href).pathname;}}));if(failed.some(Boolean))throw Error('Images failed to decode: '+[...new Set(failed.filter(Boolean))].join(', '));})(),new Promise((_,reject)=>setTimeout(()=>reject(Error('component resources did not settle')),5000))]);
-          if([...document.fonts].some(f=>f.status==='error'))throw Error('A component font failed to load.');
-          if(document.getAnimations().some(a=>a.playState==='running'))throw Error('Component is animated; provide its static review state.');
-          return {html:document.documentElement.outerHTML,svg:document.querySelectorAll('svg').length,images:document.images.length,controls:document.querySelectorAll('button,input,select,textarea,a[href]').length};
-        })()"#.replace("ASSEMBLED", if assembled { "true" } else { "false" });
-        let dom=page.evaluate_value_in_world(&world,&inspect).map_err(|e|e.message)?;
-        let fonts = page.evaluate_value_in_world(&world, include_str!("component_fonts.js")).map_err(|e| e.message)?;
+        let font_script = format!("({})({})", include_str!("component_fonts.js"), isolation.unwrap_or(&Value::Null));
+        let fonts = if check_fonts {page.evaluate_value_in_world(&world, &font_script).map_err(|e| e.message)?}
+            else {json!({"check":"context-only-not-reviewed"})};
         let isolated = if let Some(targets) = isolation {
             page.set_transparent_background().map_err(|e| e.message)?;
+            let candidates = page.evaluate_value_in_world(&world, r#"[...document.querySelectorAll('*')].flatMap((el,index)=>el.getClientRects().length?['before','after','marker'].filter(p=>{const s=getComputedStyle(el,'::'+p);return s.visibility==='visible'&&s.display!=='none'&&s.opacity!=='0'&&(p==='marker'?getComputedStyle(el).display==='list-item'&&getComputedStyle(el).listStyleType!=='none':s.content!=='none'&&s.content!=='normal')}).map(pseudo=>({index,pseudo})):[])"#).map_err(|e|e.message)?;
+            let pseudos = page.capture_pseudo_geometry(&world, candidates.as_array().ok_or("missing pseudo candidates")?).map_err(|e|e.message)?;
+            let mut targets = targets.clone();targets["pseudos"] = pseudos;
             let script = format!("({})({})", include_str!("component_isolation.js"), targets);
             Some(page.evaluate_value_in_world(&world, &script).map_err(|e| e.message)?)
         } else { None };
@@ -159,8 +165,10 @@ fn render_page(
         let second = page
             .screenshot_viewport()
             .map_err(|e| e.message)?;
-        let after = page.response_evidence(&urls).map_err(|e| e.message)?;
-        if first != second || after.revision != evidence.revision || after.changed_during_collection
+        let after_urls = page.observed_response_urls().map_err(|e| e.message)?;
+        let after = page.response_evidence(&after_urls).map_err(|e| e.message)?;
+        if first != second || after_urls != urls || after.revision != evidence.revision || after.changed_during_collection
+            || after.truncated || !after.missing_urls.is_empty()
         {
             return Err(format!("component changed during capture (pixels: {}, network revision: {} -> {}, response mutation: {})", first != second, evidence.revision, after.revision, after.changed_during_collection));
         }
@@ -286,11 +294,12 @@ impl ComponentCapturer for NativeComponentCapturer {
                     let isolation = if isolated && key == "preview" {
                         Some(json!({"id":id,"targets":targets.get(&path).ok_or("missing component targets")?}))
                     } else { None };
-                    let cache_key = format!("{}:{}:{}", snapshot.digest(), c["box"], isolation.as_ref().unwrap_or(&Value::Null));
+                    let check_fonts = key == "preview" || assembled;
+                    let cache_key = format!("{}:{}:{}:{}", snapshot.digest(), c["box"], isolation.as_ref().unwrap_or(&Value::Null),check_fonts);
                     let (png, proof) = if let Some(saved) = cache.get(&cache_key) {
                         saved.clone()
                     } else {
-                        let captured = match render_page(&mut browser, snapshot, width, height, &c["box"], isolation.as_ref(), assembled) {
+                        let captured = match render_page(&mut browser, snapshot, width, height, &c["box"], isolation.as_ref(), assembled, check_fonts) {
                             Ok(captured) => captured,
                             Err(error) => {
                                 errors.push(format!("{id} {key}: {error}"));
@@ -357,6 +366,18 @@ mod tests {
     }
     #[test]
     #[ignore = "requires Chromium"]
+    fn generated_decoration_cannot_escape_component_crop() {
+        let png=impeccable_comp::png_io::encode_png(&impeccable_comp::raster::create_image(100,100,[255;4]),&[]).unwrap();
+        let html=br#"<style>body{margin:0}#piece{position:absolute;left:30px;top:30px;width:20px;height:20px;background:blue}#piece::before{content:'';position:absolute;left:-20px;top:0;width:20px;height:20px;background:red}</style><div id="piece"></div>"#;
+        let inputs=BTreeMap::from([("comp.png".into(),png),("index.html".into(),html.to_vec())]);
+        let mut packet=json!({"schemaVersion":2,"stage":"components","comp":{"url":"/files/comp.png","width":100,"height":100},"components":[{"id":"piece","box":{"x":0.3,"y":0.3,"w":0.2,"h":0.2},"preview":{"kind":"page","url":"/files/index.html","selector":"#piece"},"dependencies":[]}]});
+        let err=NativeComponentCapturer.capture(&mut packet.clone(),&inputs).err().unwrap();
+        assert!(err.contains("clips component content"),"{err}");
+        packet["components"][0]["box"]=json!({"x":0.1,"y":0.3,"w":0.4,"h":0.2});
+        NativeComponentCapturer.capture(&mut packet,&inputs).unwrap();
+    }
+    #[test]
+    #[ignore = "requires Chromium"]
     fn missing_primary_font_is_rejected_and_pinned_font_is_captured() {
         let png = impeccable_comp::png_io::encode_png(&impeccable_comp::raster::create_image(300,100,[255;4]),&[]).unwrap();
         let html = "<style>body{margin:0}#piece{font:20px 'ReviewFixtureFont',sans-serif}</style><div id='piece'>Hotel review</div>";
@@ -370,6 +391,8 @@ mod tests {
         let capture=NativeComponentCapturer.capture(&mut local,&inputs).unwrap();
         assert_eq!(capture.evidence["components"][0]["views"]["preview"]["fonts"]["primaryFamilies"],json!(["ReviewFixtureFont"]));
         inputs.insert("index.html".into(),html.replace("'ReviewFixtureFont',sans-serif","sans-serif").into_bytes());
+        NativeComponentCapturer.capture(&mut packet.clone(),&inputs).unwrap();
+        inputs.insert("index.html".into(),b"<style>body{margin:0}#piece{font:20px -apple-system,BlinkMacSystemFont,Arial,sans-serif}.other{font-family:MissingUnrelatedFont}</style><div id='piece'>System text</div><div class='other'>Unrelated</div>".to_vec());
         NativeComponentCapturer.capture(&mut packet.clone(),&inputs).unwrap();
     }
     #[test]

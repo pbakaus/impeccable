@@ -2125,6 +2125,11 @@ fn gate_responsive(io: &Io, state: &mut Value, min: f64, out_dir: &str, renderer
     }
     let native=match prepare_native_capture(io,state,None,renderer,EntryStage::Responsive) {Ok(value)=>value,Err(gate)=>{let _=unavailable_report(io,out_dir,&gate,"responsive");return gate;}};
     let mut gate = gate_responsive_inner(io, state, min, out_dir, native.as_ref());
+    if gate.ok && native.is_none() {
+        let after = crate::completion::input_hash(&io.cwd);
+        if after.is_some() { state["responsiveInputSha256"] = json!(after); }
+        else {gate.ok=false;gate.reasons.push("Frontend inputs could not be fingerprinted during responsive verification".into());}
+    }
     if let Some(native)=&native {finish_native_capture(io,out_dir,&mut gate,native);}
     if gate.report.is_none() {
         if let Err(e) = unavailable_report(io, out_dir, &gate, "responsive") {
@@ -3032,6 +3037,18 @@ pub fn run_with_renderer(argv: &[String],io: &mut Io,organic_scan: OrganicScan,r
                 ));
                 return 2;
             }
+            if disposition == "ship" && state["capturePolicy"] != "native-html-v1"
+                && io.env("IMPECCABLE_NATIVE_CAPTURE") != Some("1") {
+                let current = crate::completion::input_hash(&io.cwd);
+                if current.is_none() || state["responsiveInputSha256"].as_str() != current.as_deref() {
+                    state["phase"] = json!("responsive");
+                    state["phases"]["responsive"]["status"] = json!("open");
+                    state["phases"]["responsive"]["closedAt"] = Value::Null;
+                    save_state(io,&state);
+                    io.err("build-phase: frontend inputs changed since the responsive screenshots were checked. Recapture desktop and mobile, then advance responsive before finish; this does not reopen human review.\n");
+                    return 2;
+                }
+            }
             // Review often changes CSS after responsive passed. A finish signature
             // must cover a fresh native comparison of the final page, not merely
             // a new hash alongside historical gates or model-supplied screenshots.
@@ -3060,6 +3077,11 @@ pub fn run_with_renderer(argv: &[String],io: &mut Io,organic_scan: OrganicScan,r
             }
             let phase = state.get("phase").and_then(Value::as_str).unwrap_or("").to_string();
             state.as_object_mut().unwrap().insert("finish".into(), json!({ "disposition": disposition, "at": now(), "phaseAtFinish": phase }));
+            if state["capturePolicy"] != "native-html-v1" {
+                if let Some(hash) = crate::completion::input_hash(&io.cwd) {
+                    state["finish"]["artifactInputsSha256"] = json!(hash);
+                }
+            }
             if let Some(hash) = crate::completion::artifact_hash(&io.cwd, &state) {
                 state["finish"]["artifactSha256"] = json!(hash);
             }

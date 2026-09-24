@@ -20,6 +20,8 @@ fn small_sans_hidden_and_roman_text_are_exempt() {
     }
     assert_eq!(count("<h1 style='font-style:italic'> <span style='font-style:normal'>Roman</span></h1>"), 0);
     assert_eq!(count("<h1 style='display:none'><em>Hidden</em></h1>"), 0);
+    assert_eq!(count("<h1>Visible <em hidden>Hidden</em></h1>"), 0);
+    assert_eq!(count("<h1 hidden><em>Hidden heading</em></h1>"), 0);
     assert_eq!(count("<p style='font:italic 72px Georgia,serif'>Body text</p>"), 0);
 }
 

@@ -226,6 +226,7 @@ pub fn serialize_design_system_for_browser(ds: Option<&DesignSystem>) -> Value {
         "hasRadii": ds.has_radii,
         "allowedRadii": radii,
         "hasPillRadius": ds.has_pill_radius,
+        "declaredSelectors": ds.declared_selectors,
     })
 }
 

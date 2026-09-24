@@ -12,8 +12,9 @@
 //! element tree in document order (child nodes with their text, so
 //! `textContent` and the direct text nodes come out byte-equal), attributes,
 //! the computed-style properties the rules read (`STYLE_PROPS`, interned
-//! values), `::before` / `::after` styles where `content` is set, bounding
-//! rects, the client/scroll/offset metrics, `checkVisibility`, direct-text
+//! values), `::before` / `::after` styles where `content` is set,
+//! `::placeholder` `color` on text controls, bounding rects, the
+//! client/scroll/offset metrics, `checkVisibility`, direct-text
 //! rects, viewport and scroll, hostname, quirks mode, `body.innerText`, the
 //! `@keyframes` rules, the document HTML for the regex pass, and the media
 //! intrinsics the visual-contrast path needs.
@@ -253,6 +254,10 @@ pub struct SnapNode {
     pub before: Option<Vec<u32>>,
     #[serde(rename = "f", default)]
     pub after: Option<Vec<u32>>,
+    /// Interned `getComputedStyle(el, '::placeholder').color` when the
+    /// element has a non-empty `placeholder` attribute.
+    #[serde(rename = "ph", default)]
+    pub placeholder_color: Option<u32>,
     /// `getBoundingClientRect` as `[x, y, width, height]`; `None` when the
     /// element has no such method.
     #[serde(rename = "r", default)]
@@ -268,6 +273,16 @@ pub struct SnapNode {
     /// `getDirectTextRect` as `[x, y, width, height]`.
     #[serde(rename = "d", default)]
     pub direct_text_rect: Option<[f64; 4]>,
+    /// The client rects of the element's OWN direct text, unmerged, each
+    /// `[x, y, width, height]` — `direct_text_rect` before it was merged into
+    /// a union. Own and not the subtree's: an element's rendered lines are
+    /// assembled from these across its descendants
+    /// ([`SnapshotDom::text_line_rects`]), so a line that rendered is
+    /// recorded once rather than once per ancestor. Empty is "no rendered
+    /// text", not "not recorded" — [`Snapshot::text_lines`] is what says a
+    /// capture recorded them at all.
+    #[serde(rename = "dl", default, skip_serializing_if = "Vec::is_empty")]
+    pub text_rects: Vec<[f64; 4]>,
     #[serde(rename = "e", default)]
     pub content_editable: bool,
     #[serde(rename = "h", default)]
@@ -369,6 +384,12 @@ pub struct Snapshot {
     pub body: Option<u32>,
     #[serde(rename = "bodyInnerText", default)]
     pub body_inner_text: Option<String>,
+    /// Whether this capture recorded the rects of each element's rendered
+    /// text (`SnapNode::text_rects`). False in captures older than that
+    /// change, where the union in `d` is all there is: a rule that needs the
+    /// lines stands down rather than inventing them from the union.
+    #[serde(rename = "textLines", default)]
+    pub text_lines: bool,
     #[serde(default)]
     pub hits: Vec<HitTest>,
     /// Derived on load: column index per style property name.
@@ -824,6 +845,11 @@ impl Dom for SnapshotDom {
     }
     fn pseudo_style(&self, el: ElId, pseudo: &str, prop: &str) -> Option<String> {
         let n = self.snap.node(el);
+        if pseudo == "::placeholder" && prop == "color" {
+            return n
+                .placeholder_color
+                .and_then(|idx| self.snap.strings.get(idx as usize).cloned());
+        }
         let vals = match pseudo {
             "::before" | ":before" => n.before.as_ref(),
             "::after" | ":after" => n.after.as_ref(),
@@ -900,6 +926,29 @@ impl Dom for SnapshotDom {
     }
     fn direct_text_rect(&self, el: ElId) -> Option<Rect> {
         self.snap.node(el).direct_text_rect.as_ref().map(rect4)
+    }
+    /// Assembled from the per-element rects the capture recorded: the
+    /// element's own, then each descendant's, in document order, merged into
+    /// the lines they rendered as.
+    ///
+    /// `None` on a capture that never recorded them. The union in `d` is not
+    /// an answer here: a paragraph with one long line and a short tail has
+    /// the same union as one with two even lines, so dividing it by a line
+    /// height would invent widths that nothing on the page rendered.
+    fn text_line_rects(&self, el: ElId) -> Option<Vec<Rect>> {
+        if !self.snap.text_lines {
+            return None;
+        }
+        fn walk(snap: &Snapshot, el: ElId, out: &mut Vec<Rect>) {
+            let node = snap.node(el);
+            out.extend(node.text_rects.iter().map(rect4));
+            for child in &node.children {
+                walk(snap, *child, out);
+            }
+        }
+        let mut rects = Vec::new();
+        walk(&self.snap, el, &mut rects);
+        Some(super::dom::merge_text_rects_into_lines(rects))
     }
 }
 
@@ -1000,6 +1049,27 @@ mod tests {
     }
 
     #[test]
+    fn placeholder_color_is_readable_as_pseudo_style() {
+        let json = r#"{
+          "v": 1, "hostname": "example.test", "innerWidth": 1280, "innerHeight": 800,
+          "styleProps": ["display", "color"], "pseudoProps": ["content"],
+          "strings": ["block", "rgb(0, 0, 0)", "rgb(187, 187, 187)"],
+          "documentElement": 1, "body": 2,
+          "els": [
+            {"t":"HTML","c":[2],"s":[0,1],"r":[0,0,1280,800]},
+            {"t":"BODY","p":1,"c":[3],"s":[0,1]},
+            {"t":"INPUT","p":2,"c":[],"a":[["placeholder","Jane"]],"s":[0,1],"ph":2}
+          ]
+        }"#;
+        let d = snap(json);
+        assert_eq!(
+            d.pseudo_style(3, "::placeholder", "color").as_deref(),
+            Some("rgb(187, 187, 187)")
+        );
+        assert_eq!(d.pseudo_style(2, "::placeholder", "color"), None);
+    }
+
+    #[test]
     fn selectors_over_snapshot() {
         let d = snap(SMALL);
         assert_eq!(d.query_all(None, "*").unwrap(), vec![1, 2, 3, 4, 5, 6]);
@@ -1054,6 +1124,46 @@ mod tests {
         assert_eq!(d.element_from_point(20.0, 20.0), Some(5));
         assert_eq!(d.elements_from_point(20.0, 20.0), vec![5, 4, 3, 1]);
         assert!(!d.has_needs());
+    }
+
+    /// A capture that recorded the text rects hands over the lines; one that
+    /// did not says so, and the caller stands down rather than reading lines
+    /// out of a union.
+    #[test]
+    fn text_lines_come_from_the_capture_or_not_at_all() {
+        const OLD: &str = r#"{
+          "v": 1, "documentElement": 1, "body": 2,
+          "els": [
+            {"t":"HTML","c":[2]},
+            {"t":"BODY","p":1,"c":[3]},
+            {"t":"P","p":2,"c":["hello"],"d":[0,100,1000,43]}
+          ]
+        }"#;
+        assert_eq!(snap(OLD).text_line_rects(3), None);
+
+        // Each element records only its own text rects; an element's lines
+        // are assembled from its own plus its descendants'. Here the `<p>`
+        // wraps once and an inline `<b>` sits in the middle of its first
+        // line, so the first line arrives in three pieces from two elements.
+        const NEW: &str = r#"{
+          "v": 1, "textLines": true, "documentElement": 1, "body": 2,
+          "els": [
+            {"t":"HTML","c":[2]},
+            {"t":"BODY","p":1,"c":[3]},
+            {"t":"P","p":2,"c":["hello ",4," there"],"d":[0,100,1000,43],
+             "dl":[[0,100,600,19],[700,100,300,19],[0,124,120,19]]},
+            {"t":"B","p":3,"c":["bold"],"d":[600,100,100,19],"dl":[[600,100,100,19]]}
+          ]
+        }"#;
+        let lines = snap(NEW).text_line_rects(3).expect("lines");
+        assert_eq!(lines.len(), 2);
+        assert_eq!((lines[0].left, lines[0].width), (0.0, 1000.0));
+        assert_eq!((lines[1].top, lines[1].width), (124.0, 120.0));
+        // The `<b>` on its own is the one line it rendered.
+        assert_eq!(snap(NEW).text_line_rects(4).expect("lines").len(), 1);
+        // An element the capture found no rendered text under is not
+        // "unknown" — it is an element with no lines.
+        assert_eq!(snap(NEW).text_line_rects(1).map(|l| l.len()), Some(2));
     }
 
     #[test]

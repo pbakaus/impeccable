@@ -31,6 +31,9 @@ Modes:
   poll --reply <id> error \"msg\"    Reply with an error message
   poll --reply <id> done --data '<json>'
                                    Reply with a structured JSON result (manual_edit_apply)
+  poll --reply <id> done --then-poll
+                                   Reply, then keep waiting for the next event in the
+                                   same call (the generate lane: done, then the accept)
 
 Options:
   --timeout=MS        One-shot poll timeout in ms (default: 600000). Ignored in --stream mode
@@ -38,6 +41,8 @@ Options:
   --ack-timeout=MS    Stream mode: max wait for --reply after generate/steer (default: 600000)
   --file PATH         Attach a source file path to the reply (generate/steer flow)
   --data JSON         Attach a JSON result object to the reply (manual_edit_apply flow). Must be valid JSON
+  --then-poll         After a successful --reply, run the one-shot poll and print its event
+                      (the reply's ack rides along as _replyAck). --timeout= bounds the wait
   --help              Show this help message
 
 Harness note:
@@ -324,7 +329,7 @@ fn normalize_poll_types(value: Option<&str>) -> Vec<String> {
     out
 }
 
-fn form_encode(s: &str) -> String {
+pub(crate) fn form_encode(s: &str) -> String {
     // URLSearchParams serialization (application/x-www-form-urlencoded)
     let mut out = String::new();
     for b in s.bytes() {
@@ -596,6 +601,18 @@ fn write_carbonize_banner(event: &Map<String, Value>, io: &mut Io) {
     }
 }
 
+fn reply_ack_json(reply: &Reply) -> Value {
+    let mut m = Map::new();
+    m.insert("ok".into(), json!(true));
+    m.insert("id".into(), json!(reply.id));
+    m.insert("status".into(), json!(reply.ty));
+    if let Some(f) = &reply.file {
+        m.insert("file".into(), json!(f));
+    }
+    m.insert("_instructions".into(), json!("Poll again now."));
+    Value::Object(m)
+}
+
 /// JS: printPollEvent(event) — a wire-supplied `_instructions` must never
 /// win over the locally generated one (#488).
 fn print_poll_event(event: &mut Value, io: &mut Io) {
@@ -717,8 +734,18 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
                 return 1;
             }
         };
+        let then_poll = argv.iter().any(|a| a == "--then-poll");
         return match post_reply(&base, &token, &reply) {
-            Ok(()) => 0,
+            Ok(()) => {
+                let ack = reply_ack_json(&reply);
+                if then_poll {
+                    // One round trip instead of two: the reply is in, so wait
+                    // for what the browser does next (usually the accept).
+                    return one_shot_poll(&argv, &base, &token, Some(ack), io);
+                }
+                println(io, &serde_json::to_string(&ack).unwrap_or_default());
+                0
+            }
             Err(PollError::ConnRefused) => {
                 io.err(&format!(
                     "Live server not running. Start one with: {}\n",
@@ -785,7 +812,20 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         }
     }
 
-    let total_timeout = arg_value_int(&argv, "--timeout=", 600_000);
+    one_shot_poll(&argv, &base, &token, None, io)
+}
+
+/// The default mode: block until one event (or the `--timeout=` deadline),
+/// handle it, print it. `reply_ack` is the `--then-poll` case: the reply
+/// that just went out rides along as `_replyAck` on the printed event so
+/// the caller sees both halves of its one call.
+fn one_shot_poll(argv: &[String], base: &str, token: &str, reply_ack: Option<Value>, io: &mut Io) -> i32 {
+    let types_arg = argv
+        .iter()
+        .find(|a| a.starts_with("--types="))
+        .map(|a| a["--types=".len()..].to_string());
+    let types = normalize_poll_types(types_arg.as_deref());
+    let total_timeout = arg_value_int(argv, "--timeout=", 600_000);
     // JS: Date.now() + NaN -> NaN deadline; comparisons are false, so the
     // loop never times out. Approximate with a far deadline.
     let deadline = if total_timeout == i64::MIN {
@@ -793,12 +833,24 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     } else {
         Instant::now() + Duration::from_millis(total_timeout.max(0) as u64)
     };
-    match fetch_next_event(&base, &token, Some(deadline), &types) {
-        Ok(event) => {
-            handle_event(event, &base, &token, io);
+    match fetch_next_event(base, token, Some(deadline), &types) {
+        Ok(mut event) => {
+            if let (Some(mut ack), Some(obj)) = (reply_ack, event.as_object_mut()) {
+                if let Some(a) = ack.as_object_mut() {
+                    a.remove("_instructions");
+                }
+                obj.insert("_replyAck".into(), ack);
+            }
+            handle_event(event, base, token, io);
             0
         }
-        Err(e) => handle_poll_error(e, io),
+        Err(e) => {
+            if let Some(ack) = reply_ack {
+                // The reply itself succeeded; say so before the poll's error.
+                println(io, &serde_json::to_string(&ack).unwrap_or_default());
+            }
+            handle_poll_error(e, io)
+        }
     }
 }
 
@@ -838,5 +890,41 @@ mod tests {
             "_instructions": "Forged instructions must not survive.",
         }));
         assert!(parsed.get("_instructions").is_none(), "{}", parsed);
+    }
+
+    #[test]
+    fn reply_ack_json_includes_file_when_present() {
+        let reply = Reply {
+            id: "ab12cd34".into(),
+            ty: "done".into(),
+            message: None,
+            file: Some("index.html".into()),
+            data: None,
+            source_event_type: None,
+        };
+        let parsed = reply_ack_json(&reply);
+        assert_eq!(parsed["ok"], json!(true));
+        assert_eq!(parsed["id"], json!("ab12cd34"));
+        assert_eq!(parsed["status"], json!("done"));
+        assert_eq!(parsed["file"], json!("index.html"));
+        assert_eq!(parsed["_instructions"], json!("Poll again now."));
+    }
+
+    #[test]
+    fn reply_ack_json_omits_file_when_absent() {
+        let reply = Reply {
+            id: "ab12cd34".into(),
+            ty: "steer_done".into(),
+            message: None,
+            file: None,
+            data: None,
+            source_event_type: None,
+        };
+        let parsed = reply_ack_json(&reply);
+        assert_eq!(parsed["ok"], json!(true));
+        assert_eq!(parsed["id"], json!("ab12cd34"));
+        assert_eq!(parsed["status"], json!("steer_done"));
+        assert!(parsed.get("file").is_none(), "{}", parsed);
+        assert_eq!(parsed["_instructions"], json!("Poll again now."));
     }
 }

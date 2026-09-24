@@ -15,11 +15,16 @@ fn completion_is_scoped_and_detects_post_finish_edits() {
     assert_eq!(crate::completion::report(&ws.path, Some(&state), Some("other"))["canContinue"], false);
     for phase in PHASES { state["phases"][phase]["status"] = json!("closed"); }
     state["phase"] = json!("review");
+    state["responsiveInputSha256"] = json!(crate::completion::input_hash(&ws.path));
     save_state(&io, &state);
     let finish = ["finish", "--disposition", "ship"].map(String::from);
     assert_eq!(run(&finish, &mut io, &no_organic_scan), 0);
     let state = load_state(&io).unwrap();
     assert_eq!(crate::completion::report(&ws.path, Some(&state), Some("owner"))["status"], "complete");
+    ws.write("styles.css", b"body{color:red}");
+    assert_eq!(crate::completion::report(&ws.path, Some(&state), Some("owner"))["status"], "changed-after-finish");
+    assert_eq!(run(&finish, &mut io, &no_organic_scan), 2);
+    assert_eq!(load_state(&io).unwrap()["phase"], "responsive");
     ws.write("index.html", b"<main>Changed after finish</main>");
     assert_eq!(crate::completion::report(&ws.path, Some(&state), Some("owner"))["status"], "changed-after-finish");
 }

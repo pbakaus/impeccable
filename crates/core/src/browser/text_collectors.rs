@@ -5,8 +5,10 @@
 //! `checkRepeatedContainerTextDOM`) against the [`Dom`] probe. The pure
 //! gates live in `checks::rules` / `checks::text_rules`.
 
-use super::dom::{tag_lower, Dom, ElId, ElStyle};
+use super::dom::{matches_or_false, tag_lower, Dom, ElId, ElStyle};
+use super::driver::DesignSystemConfig;
 use super::element_checks::{class_selector, is_rendered_for_browser_rule};
+use super::{BrowserFinding, ElFinding};
 use crate::checks::measures::resolve_length_px;
 use crate::checks::rules::{check_kicker_above_heading, KickerCandidate, RuleHit};
 use crate::checks::text_rules::{
@@ -99,6 +101,17 @@ fn strip_edge_quotes_slice(text: &str, n: usize) -> String {
 
 /// JS: checks.mjs#collectKickerCandidates(document, getComputedStyle, resolveLengthPx || 0)
 pub fn collect_kicker_candidates(dom: &dyn Dom) -> Vec<KickerCandidate> {
+    collect_kicker_candidates_with_elements(dom)
+        .into_iter()
+        .map(|(_, c)| c)
+        .collect()
+}
+
+/// The same walk, each candidate paired with the eyebrow element it came
+/// from. The finding is about that element and belongs on it: reported
+/// against the page it named `body`, and a charged row has to have something
+/// to point at (REN-406).
+pub fn collect_kicker_candidates_with_elements(dom: &dyn Dom) -> Vec<(ElId, KickerCandidate)> {
     let mut candidates = Vec::new();
     for heading in dom
         .query_all(None, "h1, h2, h3, h4, [role=\"heading\"]")
@@ -164,18 +177,60 @@ pub fn collect_kicker_candidates(dom: &dyn Dom) -> Vec<KickerCandidate> {
         if heading_tag == "h1" && heading_font_size >= 48.0 && kicker_letter_spacing >= 1.6 {
             continue;
         }
-        candidates.push(KickerCandidate {
-            heading_tag,
-            heading_text: strip_edge_quotes_slice(&heading_text, 60),
-            kicker_text: slice_utf16_prefix(&kicker_text, 40),
-        });
+        candidates.push((
+            kicker,
+            KickerCandidate {
+                heading_tag,
+                heading_text: strip_edge_quotes_slice(&heading_text, 60),
+                kicker_text: slice_utf16_prefix(&kicker_text, 40),
+            },
+        ));
     }
     candidates
 }
 
 /// JS: checks.mjs#checkKickerAboveHeadingDOM()
-pub fn check_kicker_above_heading_dom(dom: &dyn Dom) -> Vec<RuleHit> {
-    check_kicker_above_heading(&collect_kicker_candidates(dom))
+///
+/// Two things the page-level version could not do. The finding lands on the
+/// eyebrow it is about rather than on `body`. And an eyebrow the repository's
+/// own design document names — `.eyebrow`, written into DESIGN.md as the one
+/// place caps are allowed — is that repository's vocabulary, not slop: a
+/// pattern the author's contract declares by name is a component with rules,
+/// and charging it reviews the design system instead of the change (REN-406).
+pub fn check_kicker_above_heading_dom(
+    dom: &dyn Dom,
+    design_system: Option<&DesignSystemConfig>,
+) -> Vec<ElFinding> {
+    let pairs: Vec<(ElId, KickerCandidate)> = collect_kicker_candidates_with_elements(dom)
+        .into_iter()
+        .filter(|(el, _)| !is_declared_component(dom, *el, design_system))
+        .collect();
+    let (els, candidates): (Vec<ElId>, Vec<KickerCandidate>) = pairs.into_iter().unzip();
+    check_kicker_above_heading(&candidates)
+        .into_iter()
+        .zip(els)
+        .map(|(hit, el)| ElFinding {
+            el: Some(el),
+            finding: BrowserFinding::new(hit.id, hit.snippet),
+        })
+        .collect()
+}
+
+/// Whether the repository's design document declares this element by name.
+///
+/// The selectors come from the DESIGN.md the review already parses, through
+/// the same design-system config the colour and radius rules read.
+pub fn is_declared_component(
+    dom: &dyn Dom,
+    el: ElId,
+    design_system: Option<&DesignSystemConfig>,
+) -> bool {
+    let Some(ds) = design_system else {
+        return false;
+    };
+    ds.declared_selectors
+        .iter()
+        .any(|sel| matches_or_false(dom, el, sel))
 }
 
 /// JS: checks.mjs#collectNumberedSectionLabelCandidates(document, ...)
@@ -447,13 +502,29 @@ mod tests {
         let h = d.add(Some(sec), "h2");
         d.add_text(h, "Everything you need");
         d.set_style(h, "fontSize", "32px");
-        let hits = check_kicker_above_heading_dom(&d);
+        let hits = check_kicker_above_heading_dom(&d, None);
         assert_eq!(hits.len(), 1);
-        assert_eq!(hits[0].id, "kicker-above-heading");
+        assert_eq!(hits[0].finding.type_, "kicker-above-heading");
         assert_eq!(
-            hits[0].snippet,
+            hits[0].finding.detail,
             "kicker \"Features\" above h2 \"Everything you need\""
         );
+        // The finding names the eyebrow, not the page (REN-406).
+        assert_eq!(hits[0].el, Some(kicker));
+
+        // An eyebrow the repository's DESIGN.md declares by name stands down.
+        d.add_selector(kicker, ".eyebrow");
+        let ds = DesignSystemConfig {
+            declared_selectors: vec![".eyebrow".to_string()],
+            ..Default::default()
+        };
+        assert!(check_kicker_above_heading_dom(&d, Some(&ds)).is_empty());
+        // A selector the document does not name leaves it charged.
+        let other = DesignSystemConfig {
+            declared_selectors: vec![".kicker".to_string()],
+            ..Default::default()
+        };
+        assert_eq!(check_kicker_above_heading_dom(&d, Some(&other)).len(), 1);
         // A card context (heading inside <article> that also contains the
         // kicker) stands down.
         let art = d.add(Some(body), "article");
@@ -463,7 +534,7 @@ mod tests {
         let h2 = d.add(Some(art), "h3");
         d.add_text(h2, "Card heading");
         d.set_style(h2, "fontSize", "24px");
-        assert_eq!(check_kicker_above_heading_dom(&d).len(), 1);
+        assert_eq!(check_kicker_above_heading_dom(&d, None).len(), 1);
     }
 
     #[test]

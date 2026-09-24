@@ -1,0 +1,32 @@
+{
+  "steps": [
+    {
+      "stdout": "",
+      "stderr": "",
+      "exit": null,
+      "signal": null,
+      "daemon": true
+    },
+    {
+      "stdout": "{\n  \"ok\": false,\n  \"error\": \"no_dev_server\",\n  \"harness\": \"source\",\n  \"_instructions\": \"No dev server is serving this app: none of the usual ports answered with the page carrying the helper's tag (pass --dev-url <url> when you know where it runs). Start the project's dev script in a background terminal (npm run dev or the framework's equivalent), wait for it to print its URL, then rerun this exact command with --dev-url <that url>; never kill or restart that server afterwards.\"\n}\n",
+      "stderr": "",
+      "exit": 1,
+      "signal": null
+    },
+    {
+      "stdout": "Stopped live server on port <PORT>.\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    }
+  ],
+  "files": {
+    ".impeccable/live/config.json": "{\n  \"files\": [\"index.html\", \"public/**/*.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n"
+  },
+  "daemon": [
+    {
+      "stdout": "\nImpeccable live server running on http://localhost:<PORT>\nToken: <UUID>\n\nScript: http://localhost:<PORT>/live.js\nInject: managed by impeccable live-inject; Astro source tags use is:inline automatically.\nStop:   impeccable live-server stop\n",
+      "stderr": ""
+    }
+  ]
+}
