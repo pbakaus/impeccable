@@ -210,3 +210,22 @@ vectors remain unchanged. Rust regressions cover consolidated invalid-input
 findings, fully masked references, container and child masks, preservation of
 review group members, reference PNG provenance, HTML escaping, and refusal to
 overwrite an existing report. Inspection does not change specs or build state.
+
+## Recorded 2026-09-24: build session identity and nested italic headings
+
+`build-phase-start-status`: the written state adds `"sessionId": "oracle-build"`
+after `finish`, from the new `--session-id` start option. No other state field,
+stdout, stderr or exit status changed. `build-phase-usage` advertises
+`[--artifact <entry file>] [--session-id <id>]` on start and the new
+`completion [--session-id <id>]` verb; only those usage strings changed.
+
+The italic-serif-display correction adds exactly one finding per golden that
+scans `tests/fixtures/antipatterns/italic-serif-display.html`: `italic serif h1
+(fraunces) at 72px "Inline Em Inside Roman"`, a roman h1 whose visible text is
+an `<em>` set in the same serif. The fixture moved this case from should-pass to
+should-flag. `detect-fixture-{json,text}-italic-serif-display-html` go from 7 to
+8 findings, and the aggregate corpus goldens (`detect-dir-*-all-fixtures`,
+`detect-no-advisory-*`, `detect-scope-both`, `detect-scope-type`) go from 419 to
+420. Every other finding, count, snippet and exit status is unchanged. Hidden
+heading descendants and sans-serif or small italics stay exempt; Rust
+regressions in `crates/html/tests/italic_heading.rs` pin both sides.
