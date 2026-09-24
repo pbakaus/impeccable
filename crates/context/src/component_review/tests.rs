@@ -931,6 +931,8 @@ fn a_held_lock_is_exclusive_whatever_its_file_says() {
     let dir = f.root.join("locked");
     let held = store::lock(&dir).unwrap();
     // Contents of an old-style stale lock (dead PID) never let a second writer in.
+    // Windows locks are mandatory, so the forged contents can't even be written there.
+    #[cfg(unix)]
     fs::write(dir.join("review.lock"), "2147483000\n").unwrap();
     assert!(store::lock(&dir).is_err());
     drop(held);

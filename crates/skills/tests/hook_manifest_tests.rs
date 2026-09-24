@@ -427,8 +427,8 @@ fn gemini_manifest_installs_and_rewrites_both_events() {
         let rewritten = rewrite_hook_commands_for_platform(&manifest, ".gemini", "/installed", absolute, false);
         // Gemini substitutes `$GEMINI_PROJECT_DIR` textually with a
         // shell-escaped path before the shell runs, so the token stays bare.
-        let expected = if absolute { "'/installed/.gemini/skills/impeccable/scripts/impeccable'" }
-            else { "$GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable" };
+        let expected = if absolute { format!("'{}'", jsp::join(&["/installed", ".gemini", "skills", "impeccable", "scripts", "impeccable"])) }
+            else { "$GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable".to_string() };
         for command in commands(&rewritten) { assert_eq!(command, format!("command=[ ! -f {expected} ] || {expected} hook")); }
         assert_eq!(rewritten["hooks"]["AfterAgent"][0]["hooks"][0]["timeout"], 30000);
         assert!(rewritten["hooks"].get("AfterTool").is_none());
@@ -448,7 +448,8 @@ fn gemini_windows_command_is_powershell() {
     assert!(value_has_launcher_hook_marker(&Value::String(cmd)));
     let abs = rewrite_hook_commands_for_platform(&manifest, ".gemini", "C:/Users/o'k", true, true);
     let cmd = abs["hooks"]["AfterAgent"][0]["hooks"][0]["command"].as_str().unwrap().to_string();
-    assert!(cmd.starts_with("if (Test-Path -LiteralPath 'C:/Users/o''k/.gemini/skills/impeccable/scripts/impeccable.cmd') { & 'C:/Users/o''k/"), "{cmd}");
+    let shim = jsp::join(&["C:/Users/o''k", ".gemini", "skills", "impeccable", "scripts", "impeccable.cmd"]);
+    assert_eq!(cmd, format!("if (Test-Path -LiteralPath '{shim}') {{ & '{shim}' hook }}"));
     assert!(value_has_launcher_hook_marker(&Value::String(cmd)));
 }
 
