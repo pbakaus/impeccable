@@ -807,3 +807,82 @@ fn automatic_bands_are_a_draft_not_a_build_spec() {
     assert_eq!(crate::comp_spec::run(&args,&mut io),1,"do not overwrite an edited draft");
     assert_eq!(std::fs::read(ws.path.join(SPEC_PATH)).unwrap(),b"previous accepted spec");
 }
+
+#[test]
+fn degenerate_or_out_of_frame_boxes_are_refused() {
+    let comp = r::create_image(100, 100, [255, 255, 255, 255]);
+    for b in [json!({"x":0.5,"y":0.5,"w":0,"h":0}), json!({"x":0.5,"y":0.5,"w":-0.2,"h":0.1}),
+        json!({"x":0.95,"y":0,"w":0.2,"h":0.1}), json!({"x":-0.1,"y":0,"w":0.2,"h":0.1}),
+        json!({"x":0.5,"y":0.5,"w":0.004,"h":0.1}), json!({"x":0.5,"y":0.5,"w":0.1})] {
+        let input = json!({"allowUncovered":true,"regions":[{"id":"nav","kind":"chrome","note":"top navigation bar","box":b}]});
+        assert!(crate::comp_spec::measure_regions(&comp, &input, "comp.png").unwrap_err().contains("box"), "{b}");
+    }
+    let ok = json!({"allowUncovered":true,"regions":[{"id":"nav","kind":"chrome","note":"top navigation bar","box":{"x":0,"y":0,"w":1,"h":0.1}}]});
+    assert!(crate::comp_spec::measure_regions(&comp, &ok, "comp.png").is_ok());
+    let ws = Workspace::new();
+    ws.write(SPEC_PATH, util::json_pretty(&json!({"comp":"comp.png","regions":[{"id":"nav","kind":"chrome",
+        "note":"top navigation bar","box":{"x":0.5,"y":0.5,"w":0,"h":0},"px":{"x":50,"y":50,"w":0,"h":0}}]})).as_bytes());
+    assert!(!gate_spec(&ws.io(), &json!({"comp":"comp.png"})).ok, "an older degenerate spec cannot close the phase");
+}
+
+#[test]
+fn undrafted_bands_and_unknown_kinds_are_not_an_element_map() {
+    let ws = Workspace::new();
+    let mut image = r::create_image(128, 128, [255, 255, 255, 255]);
+    for y in (5..100).step_by(6) { r::fill_rect(&mut image, 10., y as f64, 100., 3., [0., 0., 0., 255.]); }
+    ws.write("comp.png", &png_io::encode_png(&image, &[]).unwrap());
+    let mut io = ws.io();
+    assert_eq!(crate::comp_spec::run(&["--comp", "comp.png", "--auto"].map(String::from), &mut io), 0);
+    let mut draft: Value = serde_json::from_slice(&std::fs::read(ws.path.join(".impeccable/build/regions.draft.json")).unwrap()).unwrap();
+    draft.as_object_mut().unwrap().remove("draft");
+    draft["allowUncovered"] = json!(true);
+    ws.write("regions.json", draft.to_string().as_bytes());
+    let args = ["--comp", "comp.png", "--regions", "regions.json"].map(String::from);
+    assert_eq!(crate::comp_spec::run(&args, &mut io), 1, "deleting the draft flag does not name the elements");
+    assert!(!gate_spec(&io, &json!({"comp":"comp.png"})).ok);
+    // A spec measured before bands needed notes still cannot close the phase.
+    let mut legacy = draft.clone();
+    legacy["comp"] = json!("comp.png");
+    ws.write(SPEC_PATH, util::json_pretty(&legacy).as_bytes());
+    assert!(!gate_spec(&io, &json!({"comp":"comp.png"})).ok);
+    for kind in [json!("chrom"), Value::Null] {
+        let input = json!({"allowUncovered":true,"regions":[{"id":"nav","kind":kind,"note":"top navigation bar","box":{"x":0,"y":0,"w":1,"h":0.1}}]});
+        assert!(crate::comp_spec::measure_regions(&image, &input, "comp.png").unwrap_err().contains("kind"));
+    }
+    // Refined map: named elements plus a noted band still measures and passes.
+    let refined = json!({"allowUncovered":true,"regions":[
+        {"id":"list","kind":"chrome","note":"striped rule list of the index","container":true,"box":{"x":0,"y":0,"w":1,"h":0.8}},
+        {"id":"footer","kind":"band","note":"empty footer ground band","box":{"x":0,"y":0.8,"w":1,"h":0.2}}]});
+    ws.write("regions.json", refined.to_string().as_bytes());
+    assert_eq!(crate::comp_spec::run(&args, &mut io), 0);
+    assert!(gate_spec(&io, &json!({"comp":"comp.png"})).ok);
+    let only_bands = json!({"allowUncovered":true,"regions":[{"id":"all","kind":"band","note":"the whole page as one band","box":{"x":0,"y":0,"w":1,"h":1}}]});
+    ws.write("regions.json", only_bands.to_string().as_bytes());
+    assert_eq!(crate::comp_spec::run(&args, &mut io), 0);
+    assert!(!gate_spec(&io, &json!({"comp":"comp.png"})).ok, "bands alone are not an element map");
+}
+
+#[test]
+fn quoted_plate_force_holds_for_the_same_bytes_but_not_a_changed_plate() {
+    let ws = Workspace::new();
+    let mut comp = r::create_image(64, 64, [230, 220, 200, 255]);
+    r::fill_rect(&mut comp, 12., 12., 40., 40., [90., 40., 20., 255.]);
+    ws.write("comp.png", &png_io::encode_png(&comp, &[]).unwrap());
+    ws.write("art.png", &png_io::encode_png(&r::resize(&comp, 128.0, 128.0), &[]).unwrap());
+    let spec = json!({"comp":"comp.png", "regions":[{"id":"art","kind":"plate","medium":"raster","plate":"art.png",
+        "box":{"x":0,"y":0,"w":1,"h":1},"px":{"x":0,"y":0,"w":64,"h":64},"detail":{"energy":20}}]});
+    ws.write(SPEC_PATH, util::json_pretty(&spec).as_bytes());
+    let io = ws.io();
+    let mut state = json!({"phase":"plates","comp":"comp.png","phases":{"plates":{"attempts":0},"hero":{}}});
+    let opts = GateOpts { build_path: None, min: None, artifact: None };
+    let reason = "The user said \"Ignore the comp fidelity requirement; ship this version.\"";
+    let result = advance(&io, &mut state, true, Some(reason), &opts, &no_organic_scan, None);
+    assert!(result.ok && result.forced);
+    assert_eq!(state["phase"], "hero");
+    assert!(revalidate_plates(&io, &mut state, Some(&spec)).is_none(), "the recorded force covers these plate bytes");
+    assert!(state["plates"]["art"]["forced"].is_object());
+    ws.write("art.png", &png_io::encode_png(&r::resize(&comp, 130.0, 130.0), &[]).unwrap());
+    let failure = revalidate_plates(&io, &mut state, Some(&spec)).expect("a changed plate is revalidated");
+    assert!(failure.reasons.iter().any(|r| r.contains("comp crop")), "{:?}", failure.reasons);
+    assert!(state["plates"]["art"]["forced"].is_null());
+}

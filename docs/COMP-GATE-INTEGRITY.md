@@ -60,6 +60,9 @@ Successful plate receipts include SHA-256 fingerprints of the asset bytes,
 measured region, and comp. Hero and responsive gates revalidate receipts. A changed or deleted file, a changed region, or a
 changed comp invalidates the receipt. Legacy score-only receipts are revalidated.
 An invalid plate cannot receive an `ok` receipt merely because its PNG decoded.
+A plates phase closed by an accepted `--force` records the waiver on each failing
+receipt, bound to the same hashes; later gates honor it only while the asset,
+region, reference and comp are unchanged, and regate just the plates that changed.
 Rendered presence is still checked after asset validation, so a file hidden in
 the page does not count as placed.
 

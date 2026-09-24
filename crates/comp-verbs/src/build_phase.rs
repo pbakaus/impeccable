@@ -342,6 +342,21 @@ fn gate_spec(io: &Io, state: &Value) -> Gate {
     if regions.is_empty() {
         return Gate::fail(vec!["spec has no regions".into()]);
     }
+    // Re-check what comp-spec now refuses, so an older or hand-edited spec cannot stand in for a measured element map.
+    let malformed: Vec<String> = regions.iter().filter_map(|r| {
+        let id = r["id"].as_str().unwrap_or("?");
+        if !r["kind"].as_str().is_some_and(crate::comp_spec::is_kind) { return Some(format!("region {id} has no known kind")); }
+        // comp-spec has always required notes on element kinds; bands were exempt until they could pass as a map.
+        if r["kind"] == "band" && !r["note"].as_str().is_some_and(|n| n.trim().chars().count() >= 8) { return Some(format!("band {id} has no note naming what the comp shows there")); }
+        if !(r["px"]["w"].as_f64().unwrap_or(0.) >= 1. && r["px"]["h"].as_f64().unwrap_or(0.) >= 1.) { return Some(format!("region {id} measures less than one comp pixel")); }
+        None
+    }).collect();
+    if !malformed.is_empty() {
+        return Gate::fail(malformed.into_iter().map(|m| format!("{m}; fix the regions file and re-run comp-spec --regions")).collect());
+    }
+    if regions.iter().all(|r| r["kind"] == "band") {
+        return Gate::fail(vec!["spec holds only bands, not the visible elements; name each element as a text, control, chrome, or raster region and re-run comp-spec --regions".into()]);
+    }
     let spec_comp = spec.get("comp").and_then(Value::as_str);
     let state_comp = state.get("comp").and_then(Value::as_str);
     if let (Some(sc), Some(stc)) = (spec_comp, state_comp) {
@@ -652,26 +667,55 @@ fn plate_receipt_current(io: &Io, state: &Value, spec: &Value, region: &Value) -
     let Some(receipt) = state.get("plates").and_then(|p| p.get(id)) else { return false; };
     let Some(file) = region.get("plate").and_then(Value::as_str) else { return false; };
     let Some(comp) = spec.get("comp").and_then(Value::as_str) else { return false; };
-    receipt.get("status").and_then(Value::as_str) == Some("ok")
-        && receipt.get("score").and_then(Value::as_f64).map(|s| s.is_finite()).unwrap_or(false)
+    // A quoted --force binds to the exact asset state it waived (a missing plate included).
+    let forced = receipt["forced"].is_object();
+    (forced || receipt.get("status").and_then(Value::as_str) == Some("ok")
+        && receipt.get("score").and_then(Value::as_f64).map(|s| s.is_finite()).unwrap_or(false))
         && receipt.get("file").and_then(Value::as_str) == Some(file)
         && receipt.get("referenceHash").and_then(Value::as_str) == Some(plate_reference_hash(spec).as_str())
-        && sha256_file(io, file).as_deref().is_some_and(|h| receipt.get("assetHash").and_then(Value::as_str) == Some(h))
+        && match sha256_file(io, file) { Some(h) => receipt["assetHash"].as_str() == Some(h.as_str()), None => forced && receipt["assetHash"].is_null() }
         && sha256_file(io, comp).as_deref().is_some_and(|h| receipt.get("compHash").and_then(Value::as_str) == Some(h))
         && receipt.get("regionHash").and_then(Value::as_str) == Some(sha256_bytes(util::json_pretty(region).as_bytes()).as_str())
 }
 
 fn revalidate_plates(io: &Io, state: &mut Value, spec: Option<&Value>) -> Option<Gate> {
     let spec = spec?;
-    let stale = spec_regions(spec).iter()
-        .filter(|r| r.get("medium").and_then(Value::as_str) == Some("raster"))
-        .any(|r| !plate_receipt_current(io, state, spec, r));
-    if stale {
-        let gate = gate_plates(io);
-        save_plate_receipts(state, &gate);
-        if !gate.ok { return Some(gate); }
+    let stale: Vec<String> = spec_regions(spec).iter()
+        .filter(|r| r.get("medium").and_then(Value::as_str) == Some("raster") && !plate_receipt_current(io, state, spec, r))
+        .map(|r| r["id"].as_str().unwrap_or("").to_string()).collect();
+    if stale.is_empty() { return None; }
+    // Regate only stale plates so a still-current forced receipt is not overturned by a neighbour's change.
+    let (mut reasons, mut plates) = (Vec::<String>::new(), Vec::new());
+    for id in &stale {
+        let gate = gate_plates_for(io, spec, Some(id));
+        for reason in gate.reasons { if !reasons.contains(&reason) { reasons.push(reason); } }
+        plates.extend(gate.plates.unwrap_or_default());
     }
-    None
+    if !state["plates"].is_object() { state["plates"] = json!({}); }
+    for id in &stale { state["plates"].as_object_mut().unwrap().remove(id); }
+    for p in &plates { if let Some(id) = p["id"].as_str() { state["plates"][id] = p.clone(); } }
+    if reasons.is_empty() { return None; }
+    let mut gate = Gate::fail(reasons);
+    gate.plates = Some(plates);
+    Some(gate)
+}
+
+/// Record a quoted plates --force on each waived receipt, bound to the current asset, region, reference and comp.
+fn stamp_forced_plates(io: &Io, state: &mut Value, reason: Option<&str>) {
+    let Some(spec) = load_spec(&abs(io, SPEC_PATH)) else { return; };
+    let comp_hash = spec["comp"].as_str().and_then(|c| sha256_file(io, c));
+    let reference_hash = plate_reference_hash(&spec);
+    for r in spec_regions(&spec).iter().filter(|r| r["medium"] == "raster") {
+        let Some(receipt) = r["id"].as_str().and_then(|id| state["plates"].get_mut(id)) else { continue; };
+        if receipt["status"] == "ok" { continue; }
+        let file = r["plate"].as_str();
+        receipt["file"] = json!(file);
+        receipt["assetHash"] = json!(file.and_then(|f| sha256_file(io, f)));
+        receipt["compHash"] = json!(comp_hash);
+        receipt["regionHash"] = json!(sha256_bytes(util::json_pretty(r).as_bytes()));
+        receipt["referenceHash"] = json!(reference_hash);
+        receipt["forced"] = json!({"at": now(), "reason": reason});
+    }
 }
 
 fn hex_rgba(hex: &str) -> Option<[u8; 4]> {
@@ -2367,6 +2411,7 @@ fn advance(io: &Io, state: &mut Value, force: bool, reason: Option<&str>, opts: 
         if let Some(p) = state.pointer_mut(&format!("/phases/{phase}")).and_then(|p| p.as_object_mut()) {
             p.insert("forced".into(), json!({ "at": now(), "reason": reason, "reasons": gate.reasons }));
         }
+        if phase == "plates" { stamp_forced_plates(io, state, reason); }
     }
     if let Some(p) = state.pointer_mut(&format!("/phases/{phase}")).and_then(|p| p.as_object_mut()) {
         p.insert("status".into(), json!("closed"));

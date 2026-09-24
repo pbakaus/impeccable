@@ -120,8 +120,18 @@ fn colour_spans_edge(img: &Image, hex: &str) -> bool {
         let p = &img.data[(y * img.width + x) * 4..];
         (0..3).map(|i| (p[i] as i32 - rgb[i] as i32).pow(2)).sum::<i32>() < 40 * 40
     };
-    [0, img.height - 1].iter().any(|&y| (0..img.width).filter(|&x| matches(x,y)).count() * 4 > img.width)
-        || [0, img.width - 1].iter().any(|&x| (0..img.height).filter(|&y| matches(x,y)).count() * 4 > img.height)
+    // A surround runs unbroken (1px gaps tolerated) along a long edge. Lettering cropped
+    // to its ink touches edges too, but in stem-wide runs, or along the short sides.
+    let spans = |len: usize, hit: &dyn Fn(usize) -> bool| {
+        let (mut run, mut gap, mut best) = (0, 0, 0);
+        for i in 0..len {
+            if hit(i) { run += gap + 1; gap = 0; best = best.max(run); }
+            else if run > 0 && gap < 1 { gap += 1; } else { run = 0; gap = 0; }
+        }
+        best * 4 > len
+    };
+    (img.width >= img.height && [0, img.height - 1].iter().any(|&y| spans(img.width, &|x| matches(x, y))))
+        || (img.height >= img.width && [0, img.width - 1].iter().any(|&x| spans(img.height, &|y| matches(x, y))))
 }
 
 /// A spec region (minimal: only the fields the pure checks read).
@@ -582,5 +592,25 @@ mod foreground_tests {
         assert!(!result["findings"].as_array().unwrap().iter().any(|f| {
             let s=f.as_str().unwrap();s.contains("first line") || s.contains("ink is")
         }), "{result}");
+    }
+    fn lettering(ink: [u8;4], margin: usize) -> Image {
+        // Eight H glyphs 10x16, 3px stems and bar, 4px apart, cropped to the ink plus `margin`.
+        let (w, h) = (8 * 14 - 4 + 2 * margin, 16 + 2 * margin);
+        let mut image = create_image(w, h, [255,255,255,255]);
+        for g in 0..8 { for y in 0..16 { for x in 0..10 {
+            if x < 3 || x >= 7 || (7..10).contains(&y) {
+                let (px, py) = (margin + g * 14 + x, margin + y);
+                image.data[(py*w+px)*4..(py*w+px)*4+4].copy_from_slice(&ink);
+            }
+        }}}
+        image
+    }
+    #[test]
+    fn lettering_cropped_to_its_ink_keeps_its_colour() {
+        let region = Region { id:"title".into(), kind:"text".into(), chosen:None };
+        for margin in [0, 4] {
+            let result = text_region_check(&region, &lettering([24,24,24,255], margin), &lettering([200,30,30,255], margin));
+            assert!(result["findings"].as_array().unwrap().iter().any(|f| f.as_str().unwrap().contains("ink is")), "margin {margin}: {result}");
+        }
     }
 }

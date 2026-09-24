@@ -427,10 +427,10 @@ pub fn measure_regions(comp: &Image, regions_input: &Value, comp_path: &str) -> 
         let raw_kind = raw.get("kind").and_then(Value::as_str);
         let kind = match raw_kind {
             Some(k) if is_kind(k) => k.to_string(),
-            _ => "band".to_string(),
+            _ => return Err(format!("region {id} has kind {}; use one of plate, image, texture, text, control, chrome, band", raw.get("kind").map_or("(missing)".into(), Value::to_string))),
         };
         let note = raw.get("note").and_then(Value::as_str);
-        if kind != "band" && !note.map(|n| n.trim().chars().count() >= 8).unwrap_or(false) {
+        if !note.map(|n| n.trim().chars().count() >= 8).unwrap_or(false) {
             return Err(format!(
                 "region {id} has no note. Say in a few words what the comp shows there (the element, its material, its role): the note drives the plate prompt and the gate's messages, and a drawing named as chrome is only caught by what its note says."
             ));
@@ -476,13 +476,15 @@ pub fn measure_regions(comp: &Image, regions_input: &Value, comp_path: &str) -> 
             }
             (v[0] / w, v[1] / h, v[2] / w, v[3] / h)
         } else if has_normalized_box {
-            let b = raw.get("box").unwrap();
-            (
-                b.get("x").and_then(Value::as_f64).unwrap_or(0.0),
-                b.get("y").and_then(Value::as_f64).unwrap_or(0.0),
-                b.get("w").and_then(Value::as_f64).unwrap_or(0.0),
-                b.get("h").and_then(Value::as_f64).unwrap_or(0.0),
-            )
+            let b = &raw["box"];
+            let coords: Option<Vec<f64>> = ["x", "y", "w", "h"].iter().map(|key| b[*key].as_f64()).collect();
+            // Same geometry contract as pixelBox and --inspect-map: a region is at least one real comp pixel inside the frame.
+            match coords {
+                Some(v) if v.iter().all(|v| v.is_finite()) && v[0] >= 0. && v[1] >= 0. && v[2] > 0. && v[3] > 0.
+                    && v[0] + v[2] <= 1. + 1e-9 && v[1] + v[3] <= 1. + 1e-9
+                    && round(v[2] * w) >= 1. && round(v[3] * h) >= 1. => (v[0], v[1], v[2], v[3]),
+                _ => return Err(format!("region {id}: box must use numeric x, y, w, h within 0..1 of the comp, with positive size of at least one comp pixel")),
+            }
         } else {
             let grid = raw.get("grid").and_then(Value::as_str).unwrap_or("");
             grid_to_box(grid)?
