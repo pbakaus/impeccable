@@ -4,7 +4,12 @@ use super::{
 };
 use impeccable_common::Io;
 use serde_json::{json, Value};
-use std::{io::Read, path::Path};
+use std::{
+    io::Read,
+    path::Path,
+    sync::atomic::{AtomicBool, Ordering},
+    time::{Duration, Instant},
+};
 
 const JS: &str = include_str!("../../assets/component-review.js");
 const HTML: &str = "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Component review · Impeccable</title><link rel='stylesheet' href='/review.css'></head><body><main id='review'></main><script src='/review.js' defer></script></body></html>";
@@ -77,7 +82,15 @@ pub fn packet_state(dir: &Path, revision: Option<&str>) -> Result<Value, String>
         json!({"packet":state["packet"],"draft":state["draft"],"history":state["history"],"receipt":state["receipt"],"sourceStatus":source_status,"historical":historical}),
     )
 }
-pub fn serve(dir: &Path, port: u16, io: &mut Io) -> Result<(), String> {
+/// How long `serve` waits: `idle` with no request, and `grace` of quiet after the
+/// round has a receipt, so the page's submit response lands before the exit.
+pub struct Limits {
+    pub idle: std::time::Duration,
+    pub grace: std::time::Duration,
+}
+/// Exit 0 once the round has the user's submission, 4 when it closes without
+/// one (idle timeout or interrupt). service.json never outlives the server.
+pub fn serve(dir: &Path, port: u16, io: &mut Io, limits: Limits, stop: Option<&AtomicBool>) -> Result<i32, String> {
     store::read(&dir.join("current.json"))?;
     let server = tiny_http::Server::http(("127.0.0.1", port)).map_err(|e| e.to_string())?;
     let actual = server
@@ -87,9 +100,39 @@ pub fn serve(dir: &Path, port: u16, io: &mut Io) -> Result<(), String> {
         .port();
     let service = json!({"url":format!("http://127.0.0.1:{actual}/"),"pid":std::process::id()});
     store::write(&dir.join("service.json"), &service)?;
+    struct Registration<'a>(&'a Path);
+    impl Drop for Registration<'_> {
+        fn drop(&mut self) {
+            let path = self.0.join("service.json");
+            if store::read(&path).is_ok_and(|s| s["pid"] == std::process::id()) {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+    }
+    let _registration = Registration(dir);
     io.out(&format!("COMPONENT REVIEW: {}\n", service));
     let trusted_csp = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
-    for mut req in server.incoming_requests() {
+    let mut last = Instant::now();
+    loop {
+        if stop.is_some_and(|s| s.load(Ordering::SeqCst)) {
+            return Ok(4);
+        }
+        let quiet = last.elapsed();
+        if quiet >= limits.grace
+            && store::read(&dir.join("current.json")).is_ok_and(|s| !s["receipt"].is_null())
+        {
+            io.out("COMPONENT REVIEW: submitted\n");
+            return Ok(0);
+        }
+        if quiet >= limits.idle {
+            io.out("COMPONENT REVIEW: closed after the idle timeout without a decision\n");
+            return Ok(4);
+        }
+        let wait = limits.grace.min(limits.idle).min(Duration::from_secs(1));
+        let Some(mut req) = server.recv_timeout(wait).map_err(|e| e.to_string())? else {
+            continue;
+        };
+        last = Instant::now();
         let method = req.method().as_str().to_string();
         let path = req.url().split('?').next().unwrap_or("").to_string();
         if !authorized(
@@ -214,5 +257,4 @@ pub fn serve(dir: &Path, port: u16, io: &mut Io) -> Result<(), String> {
             ),
         }
     }
-    Ok(())
 }

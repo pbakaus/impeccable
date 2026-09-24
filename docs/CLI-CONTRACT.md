@@ -1859,14 +1859,22 @@ The packet and evidence contract is documented in
   fail without replacing the current review. Capture outputs live outside the
   project; the manifest and source bytes are checked again before submission.
   The JSON response also includes `capture` evidence.
-- `component-review serve --session <ID> [--port <u16>]` runs a foreground
+- `component-review serve --session <ID> [--port <u16>] [--idle-timeout <seconds>]` runs a foreground
   loopback HTTP service. Port defaults to `0` (OS-assigned); stdout reports the
   URL and PID. It embeds the shared UI and fonts, serves only pinned declared
   files, and persists version-bound browser submissions. It does not open a
-  browser automatically.
+  browser automatically. It exits on its own and removes its `service.json`:
+  0 once the current round has a submission (after 5 quiet seconds, so the page
+  receives its response), 4 when it closes without one (no request for the idle
+  timeout, or SIGINT/SIGTERM). The idle timeout defaults to 1800 seconds;
+  `--idle-timeout` or `IMPECCABLE_COMPONENT_REVIEW_IDLE_TIMEOUT` overrides it
+  with a positive number of seconds. Like `serve-question`, it exits 2 without
+  binding when `IMPECCABLE_QUESTION_DISABLED` is set, or in a CI/headless/remote
+  environment unless `IMPECCABLE_QUESTION_FORCE` is set: nobody can review, and
+  the review stays pending.
 - `component-review status --session <ID>` prints JSON with `revision`,
   `receipt`, `capture`, `sourceStatus` (null when current, otherwise an explanation), and
-  the last recorded `service` metadata. Service metadata is not a liveness check.
+  `service`: the recorded server metadata while its PID is alive, otherwise null.
 - All operations accept `--store <directory>`; the default is
   `~/.impeccable/component-reviews`. Prepare rejects a store inside the project.
   Session IDs are 64 hexadecimal characters. Errors write
@@ -1882,7 +1890,7 @@ The packet and evidence contract is documented in
 
 ### Component review verification
 
-`impeccable component-review verify --manifest <project-relative JSON>` reads the native capture and user receipt. Before assembly acceptance, it requires an approved, natively captured round with unchanged manifest and dependencies. After the assembled first viewport is accepted, it returns that original receipt: it does not claim later bytes were reviewed. It neither creates nor submits approvals.
+`impeccable component-review verify --manifest <project-relative JSON>` reads the native capture and user receipt. Before assembly acceptance, it requires an approved, natively captured round with unchanged manifest and dependencies. It does not trust the stored `captureVerified` flag: it recomputes capture integrity from the session's pinned blobs (every blob matches its hash, non-capture files match the pinned sources, the evidence covers every component in the manifest and packet, raster previews match their `raster-source` proof, and code views are `_review_captures/<sha256>.png` files whose hash equals the proof's `screenshotSha256`). The accepted-assembly path applies the same integrity check. After the assembled first viewport is accepted, it returns that original receipt: it does not claim later bytes were reviewed. It neither creates nor submits approvals.
 
 `component-review lifecycle [--session-dir <private directory>] [--require components|hero] [--hosted]` reports the native review decision. Both options may repeat. With `--hosted`, only the supplied private sessions are considered; ordinary sessions resolve acceptance from the project in the local store. The result has `schemaVersion: 1`, `status` (`pending`, `approved`, or `accepted`), `reviewClosed`, and nullable `completionFeedback`. Accepted assembly returns `scope: "first-viewport"` and the original request/revision. Hosts transport that result without adding file-hash approval policy.
 

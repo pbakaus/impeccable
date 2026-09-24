@@ -10,22 +10,30 @@ pub fn read(path: &Path) -> Result<Value, String> {
     serde_json::from_slice(&fs::read(path).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
 }
 pub fn write(path: &Path, value: &Value) -> Result<(), String> {
+    write_bytes(path, &serde_json::to_vec_pretty(value).unwrap())
+}
+/// Temp file plus rename, so a reader or a crash never sees a partial file.
+pub fn write_bytes(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let parent = path.parent().ok_or("missing parent")?;
     fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    let temp = path.with_extension(format!("tmp-{}", std::process::id()));
-    let mut f = fs::File::create(&temp).map_err(|e| e.to_string())?;
-    f.write_all(&serde_json::to_vec_pretty(value).unwrap())
-        .map_err(|e| e.to_string())?;
-    f.sync_all().map_err(|e| e.to_string())?;
-    fs::rename(&temp, path).map_err(|e| e.to_string())?;
-    Ok(())
-}
-pub struct Lock(PathBuf);
-impl Drop for Lock {
-    fn drop(&mut self) {
-        let _ = fs::remove_file(&self.0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let name = path.file_name().ok_or("missing file name")?.to_string_lossy();
+    let temp = parent.join(format!(".{name}.tmp-{}-{n}", std::process::id()));
+    let result = (|| {
+        let mut f = fs::File::create(&temp)?;
+        f.write_all(bytes)?;
+        f.sync_all()?;
+        fs::rename(&temp, path)
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temp);
     }
+    result.map_err(|e| e.to_string())
 }
+/// An OS lock on an open handle: the kernel releases it when the holder exits,
+/// so there is no stale-lock takeover and dropping never deletes another's lock.
+pub struct Lock(#[allow(dead_code)] fs::File);
 pub fn lock(dir: &Path) -> Result<Lock, String> {
     fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     #[cfg(unix)]
@@ -33,28 +41,14 @@ pub fn lock(dir: &Path) -> Result<Lock, String> {
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(dir, fs::Permissions::from_mode(0o700)).map_err(|e| e.to_string())?;
     }
-    let p = dir.join("review.lock");
-    // One writer across prepare, HTTP submission and restart. A dead process leaves no live lock.
+    // One writer across prepare, HTTP submission and restart.
+    let f = fs::OpenOptions::new().read(true).write(true).create(true).truncate(false)
+        .open(dir.join("review.lock")).map_err(|e| e.to_string())?;
     for _ in 0..20 {
-        match fs::OpenOptions::new().write(true).create_new(true).open(&p) {
-            Ok(mut f) => {
-                writeln!(f, "{}", std::process::id()).map_err(|e| e.to_string())?;
-                return Ok(Lock(p));
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                if let Ok(pid) = fs::read_to_string(&p)
-                    .unwrap_or_default()
-                    .trim()
-                    .parse::<i64>()
-                {
-                    if matches!(impeccable_common::proc::kill0(pid), Err("ESRCH")) {
-                        let _ = fs::remove_file(&p);
-                        continue;
-                    }
-                }
-                std::thread::sleep(std::time::Duration::from_millis(25));
-            }
-            Err(e) => return Err(e.to_string()),
+        match f.try_lock() {
+            Ok(()) => return Ok(Lock(f)),
+            Err(fs::TryLockError::WouldBlock) => std::thread::sleep(std::time::Duration::from_millis(25)),
+            Err(fs::TryLockError::Error(e)) => return Err(e.to_string()),
         }
     }
     Err("review is busy; retry shortly".into())
@@ -253,7 +247,10 @@ fn prepare_bound(
     fs::create_dir_all(&blobs).map_err(|e| e.to_string())?;
     for (path, bytes) in files {
         let hash = digest(&bytes);
-        fs::write(blobs.join(&hash), bytes).map_err(|e| e.to_string())?;
+        let blob = blobs.join(&hash);
+        if fs::read(&blob).ok().is_none_or(|b| digest(&b) != hash) {
+            write_bytes(&blob, &bytes)?;
+        }
         hashes.insert(path, json!(hash));
     }
     if let Some(old) = &old {

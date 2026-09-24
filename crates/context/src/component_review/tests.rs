@@ -16,10 +16,8 @@ fn first_viewport_acceptance_closes_both_review_stages_after_later_edits() {
     // A native captured fixture; no browser or model calls in this unit test.
     let mut hero = f.manifest();
     hero["stage"] = json!("hero");
-    let dir = store::prepare(&f.store, &f.project, &hero).unwrap();
-    let mut state = store::read(&dir.join("current.json")).unwrap();
-    state["capture"] = json!({"schema":"native-component-previews-v1","components":[]});
-    store::write(&dir.join("current.json"), &state).unwrap();
+    let dir = store::prepare_captured(&f.store, &f.project, &hero, Some(&mut Native)).unwrap();
+    let state = store::read(&dir.join("current.json")).unwrap();
     let receipt = store::submit(&dir, &approve(&state)).unwrap();
     assert_eq!(receipt["visualDecision"], "approved");
     fs::write(f.project.join("shared.css"), "footer{color:blue}").unwrap();
@@ -543,19 +541,9 @@ fn versioned_packet_keeps_submitted_round_when_current_advances() {
 
 #[test]
 fn verify_requires_native_approval_and_current_manifest_and_dependencies() {
-    struct Renderer;
-    impl super::capture::ComponentCapturer for Renderer {
-        fn capture(&mut self, packet: &mut Value, _: &std::collections::BTreeMap<String, Vec<u8>>) -> Result<super::capture::CapturedPreviews, String> {
-            packet["components"][1]["preview"] = json!({"kind":"image","url":"/files/_review_captures/control.png","sourceKind":"page"});
-            Ok(super::capture::CapturedPreviews {
-                files: std::collections::BTreeMap::from([("_review_captures/control.png".into(), b"native pixels".to_vec())]),
-                evidence: json!({"schema":"native-component-previews-v1","components":[{"id":"art"},{"id":"control"}]}),
-            })
-        }
-    }
     let f = Fixture::new();
     fs::write(f.project.join("review.json"), f.manifest().to_string()).unwrap();
-    let dir = store::prepare_file(&f.store,&f.project,"review.json",Some(&mut Renderer)).unwrap();
+    let dir = store::prepare_file(&f.store,&f.project,"review.json",Some(&mut Native)).unwrap();
     assert!(super::verify::approved(&f.store,&f.project,"review.json").is_err());
     let state = store::read(&dir.join("current.json")).unwrap();
     let mut needs_work = approve(&state);
@@ -564,7 +552,7 @@ fn verify_requires_native_approval_and_current_manifest_and_dependencies() {
     store::submit(&dir,&needs_work).unwrap();
     assert!(super::verify::approved(&f.store,&f.project,"review.json").is_err());
     fs::write(f.project.join("art.png"), b"repaired art").unwrap();
-    let dir = store::prepare_file(&f.store,&f.project,"review.json",Some(&mut Renderer)).unwrap();
+    let dir = store::prepare_file(&f.store,&f.project,"review.json",Some(&mut Native)).unwrap();
     let state = store::read(&dir.join("current.json")).unwrap();
     store::submit(&dir,&approve(&state)).unwrap();
     assert_eq!(super::verify::approved(&f.store,&f.project,"review.json").unwrap()["visualDecision"],"approved");
@@ -829,4 +817,124 @@ fn measured_inventory_reports_all_independent_failures_before_capture() {
     assert!(error.contains("missing-two"));
     assert!(error.contains("semantic region \"control\" requires a rendered code preview"));
     assert!(!f.store.exists(), "invalid inventory must not publish a review");
+}
+
+/// Behaves like the native adapter: code views become hash-named captures with proofs.
+struct Native;
+impl super::capture::ComponentCapturer for Native {
+    fn capture(&mut self, packet: &mut Value, inputs: &std::collections::BTreeMap<String, Vec<u8>>) -> Result<super::capture::CapturedPreviews, String> {
+        let (mut files, mut evidence) = (std::collections::BTreeMap::new(), vec![]);
+        for c in packet["components"].as_array_mut().unwrap() {
+            let path = c["preview"]["url"].as_str().unwrap().strip_prefix("/files/").unwrap().to_string();
+            let proof = if c["preview"]["kind"] == "image" {
+                json!({"kind":"raster-source","path":path,"sha256":manifest::digest(&inputs[&path])})
+            } else {
+                let png = format!("pixels of {path}").into_bytes();
+                let hash = manifest::digest(&png);
+                c["preview"] = json!({"kind":"image","sourceKind":"page","url":format!("/files/_review_captures/{hash}.png")});
+                files.insert(format!("_review_captures/{hash}.png"), png);
+                json!({"kind":"static-code","entry":path,"screenshotSha256":hash,"viewport":{"width":100,"height":100,"dpr":1}})
+            };
+            c["thumbnail"] = json!({"url":c["preview"]["url"]});
+            evidence.push(json!({"id":c["id"],"views":{"preview":proof}}));
+        }
+        Ok(super::capture::CapturedPreviews { files, evidence: json!({"schema":"native-component-previews-v1","components":evidence}) })
+    }
+}
+
+#[test]
+fn verify_recomputes_capture_integrity_instead_of_trusting_stored_flags() {
+    let f = Fixture::new();
+    fs::write(f.project.join("review.json"), f.manifest().to_string()).unwrap();
+    // A plain prepare with a forged capture claim and receipt flag.
+    let dir = store::prepare_file(&f.store, &f.project, "review.json", None).unwrap();
+    let state = store::read(&dir.join("current.json")).unwrap();
+    store::submit(&dir, &approve(&state)).unwrap();
+    let mut forged = store::read(&dir.join("current.json")).unwrap();
+    forged["capture"] = json!({"schema":"native-component-previews-v1","components":[]});
+    forged["receipt"]["capture"] = forged["capture"].clone();
+    forged["receipt"]["captureVerified"] = json!(true);
+    store::write(&dir.join("current.json"), &forged).unwrap();
+    assert!(super::verify::approved(&f.store, &f.project, "review.json").unwrap_err().contains("not intact"));
+    forged["capture"]["components"] = json!([{"id":"art"},{"id":"control"}]);
+    forged["receipt"]["capture"] = forged["capture"].clone();
+    store::write(&dir.join("current.json"), &forged).unwrap();
+    assert!(super::verify::approved(&f.store, &f.project, "review.json").unwrap_err().contains("not intact"));
+    // A genuine capture passes; dropping evidence or swapping captured pixels does not.
+    fs::write(f.project.join("art.png"), b"new art").unwrap();
+    let dir = store::prepare_file(&f.store, &f.project, "review.json", Some(&mut Native)).unwrap();
+    let state = store::read(&dir.join("current.json")).unwrap();
+    store::submit(&dir, &approve(&state)).unwrap();
+    let good = store::read(&dir.join("current.json")).unwrap();
+    assert_eq!(super::verify::approved(&f.store, &f.project, "review.json").unwrap()["visualDecision"], "approved");
+    let mut partial = good.clone();
+    partial["capture"]["components"].as_array_mut().unwrap().pop();
+    partial["receipt"]["capture"] = partial["capture"].clone();
+    store::write(&dir.join("current.json"), &partial).unwrap();
+    assert!(super::verify::approved(&f.store, &f.project, "review.json").unwrap_err().contains("cover"));
+    store::write(&dir.join("current.json"), &good).unwrap();
+    let captured = good["files"].as_object().unwrap().iter().find(|(p, _)| p.starts_with("_review_captures/")).unwrap().1.as_str().unwrap();
+    fs::write(dir.join("blobs").join(captured), b"swapped").unwrap();
+    assert!(super::verify::approved(&f.store, &f.project, "review.json").unwrap_err().contains("pinned bytes"));
+}
+
+fn serve_in_thread(dir: &std::path::Path, idle_ms: u64) -> std::sync::mpsc::Receiver<Result<i32, String>> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let d = dir.to_path_buf();
+    std::thread::spawn(move || {
+        let (mut io, _) = impeccable_common::Io::captured("", d.clone(), Default::default());
+        let limits = server::Limits { idle: std::time::Duration::from_millis(idle_ms), grace: std::time::Duration::from_millis(100) };
+        tx.send(server::serve(&d, 0, &mut io, limits, None)).ok();
+    });
+    rx
+}
+
+#[test]
+fn serve_exits_after_submission_or_idle_and_removes_its_service_record() {
+    let f = Fixture::new();
+    let dir = f.prepare();
+    let rx = serve_in_thread(&dir, 300);
+    assert_eq!(rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap(), Ok(4));
+    assert!(!dir.join("service.json").exists());
+    let state = store::read(&dir.join("current.json")).unwrap();
+    let rx = serve_in_thread(&dir, 60_000);
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    assert!(dir.join("service.json").exists());
+    store::submit(&dir, &approve(&state)).unwrap();
+    assert_eq!(rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap(), Ok(0));
+    assert!(!dir.join("service.json").exists());
+}
+
+#[test]
+fn status_hides_dead_servers_and_serve_refuses_sessions_without_a_browser() {
+    let f = Fixture::new();
+    let dir = f.prepare();
+    let id = dir.file_name().unwrap().to_string_lossy().into_owned();
+    store::write(&dir.join("service.json"), &json!({"url":"http://127.0.0.1:9/","pid":2147483000i64})).unwrap();
+    let run = |cmd: &str, env: &[(&str, &str)]| {
+        let env = env.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        let (mut io, out) = impeccable_common::Io::captured("", f.project.clone(), env);
+        let args: Vec<String> = [cmd, "--session", &id, "--store", f.store.to_str().unwrap()].map(String::from).to_vec();
+        let code = super::run(&args, &mut io);
+        let stdout = String::from_utf8(out.stdout.borrow().clone()).unwrap();
+        (code, stdout)
+    };
+    let (code, out) = run("status", &[]);
+    assert_eq!(code, 0);
+    assert_eq!(serde_json::from_str::<Value>(&out).unwrap()["service"], Value::Null);
+    assert_eq!(run("serve", &[("IMPECCABLE_QUESTION_DISABLED", "1")]).0, 2);
+    assert_eq!(run("serve", &[("CI", "1")]).0, 2);
+}
+
+#[test]
+fn a_held_lock_is_exclusive_whatever_its_file_says() {
+    let f = Fixture::new();
+    let dir = f.root.join("locked");
+    let held = store::lock(&dir).unwrap();
+    // Contents of an old-style stale lock (dead PID) never let a second writer in.
+    fs::write(dir.join("review.lock"), "2147483000\n").unwrap();
+    assert!(store::lock(&dir).is_err());
+    drop(held);
+    assert!(dir.join("review.lock").exists());
+    let _again = store::lock(&dir).unwrap();
 }
