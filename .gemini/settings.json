@@ -7,7 +7,7 @@
           {
             "name": "impeccable-session",
             "type": "command",
-            "command": "[ ! -f \"$GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable\" ] || \"$GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable\" hook",
+            "command": "[ ! -f $GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable ] || $GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable hook",
             "timeout": 5000
           }
         ]
@@ -19,7 +19,7 @@
           {
             "name": "impeccable-completion",
             "type": "command",
-            "command": "[ ! -f \"$GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable\" ] || \"$GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable\" hook",
+            "command": "[ ! -f $GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable ] || $GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable hook",
             "timeout": 30000
           }
         ]
