@@ -396,6 +396,11 @@ fn compute_styles(
                 inherited.unwrap_or_else(|| default.to_string()),
             );
         }
+        // Minimal user-agent emphasis styles. Author declarations below
+        // still win, including explicit normal/inherit resets.
+        if doc.element(node).is_some_and(|el| matches!(el.tag_lower().as_str(), "em" | "i" | "cite" | "dfn" | "var" | "address")) {
+            values.insert("fontStyle".to_string(), "italic".to_string());
+        }
         for (prop, decl) in specified_map {
             if prop.starts_with("--") {
                 continue;

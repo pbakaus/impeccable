@@ -530,13 +530,30 @@ pub fn check_element_italic_serif_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
     if tag != "h1" && tag != "h2" {
         return Vec::new();
     }
-    check_italic_serif(&ItalicSerifOpts {
-        tag,
-        font_style: Some(dom.style(el, "fontStyle")),
-        font_family: Some(dom.style(el, "fontFamily")),
-        font_size: style_px(dom, el, "fontSize"),
-        heading_text: Some(dom.text_content(el)),
-    })
+    // Computed typography belongs to the element that owns the text. A
+    // roman heading can contain italic display text (and vice versa).
+    let mut pending = vec![el];
+    while let Some(node) = pending.pop() {
+        if !is_rendered_for_browser_rule(dom, node) {
+            continue;
+        }
+        if !js::trim(&direct_text(dom, node)).is_empty() {
+            let hits = check_italic_serif(&ItalicSerifOpts {
+                tag: tag.clone(),
+                font_style: Some(dom.style(node, "fontStyle")),
+                font_family: Some(dom.style(node, "fontFamily")),
+                font_size: style_px(dom, node, "fontSize"),
+                heading_text: Some(dom.text_content(el)),
+            });
+            if !hits.is_empty() {
+                // Attribute one finding to the heading, even if several
+                // descendants contribute italic display text.
+                return hits;
+            }
+        }
+        pending.extend(dom.children(node).into_iter().rev());
+    }
+    Vec::new()
 }
 
 /// JS: checks.mjs#domAccentDashPseudo(el)
@@ -1315,6 +1332,49 @@ mod tests {
                 ("backgroundImage", "none"),
             ],
         );
+    }
+
+    #[test]
+    fn italic_serif_checks_visible_heading_text_including_inline_children() {
+        let (mut d, body) = page();
+        let h = d.add(Some(body), "h1");
+        d.add_text(h, "Some places stay with ");
+        d.set_styles(h, &[("fontStyle", "normal"), ("fontFamily", "Georgia, serif"), ("fontSize", "72px")]);
+        let em = d.add(Some(h), "em");
+        d.add_text(em, "you");
+        d.set_styles(em, &[("fontStyle", "italic"), ("fontFamily", "Georgia, serif"), ("fontSize", "72px")]);
+        let hits = check_element_italic_serif_dom(&d, h);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].id, "italic-serif-display");
+        // A second decorated word still produces one heading warning.
+        let span = d.add(Some(h), "span");
+        d.add_text(span, "forever");
+        d.set_styles(span, &[("fontStyle", "italic"), ("fontFamily", "Georgia, serif"), ("fontSize", "72px")]);
+        assert_eq!(check_element_italic_serif_dom(&d, h).len(), 1);
+        d.set_style(span, "fontStyle", "normal");
+        for (property, value) in [("display", "none"), ("visibility", "hidden"), ("opacity", "0"), ("fontSize", "24px"), ("fontFamily", "Arial, sans-serif"), ("fontStyle", "normal")] {
+            let old = d.style(em, property);
+            d.set_style(em, property, value);
+            assert!(check_element_italic_serif_dom(&d, h).is_empty(), "{property}: {value}");
+            d.set_style(em, property, &old);
+        }
+        d.set_style(h, "display", "none");
+        assert!(check_element_italic_serif_dom(&d, h).is_empty());
+    }
+
+    #[test]
+    fn italic_serif_uses_text_styles_not_an_overridden_parent() {
+        let (mut d, body) = page();
+        let h = d.add(Some(body), "h2");
+        d.add_text(h, "  ");
+        d.set_styles(h, &[("fontStyle", "italic"), ("fontFamily", "Georgia, serif"), ("fontSize", "72px")]);
+        let span = d.add(Some(h), "span");
+        d.add_text(span, "Roman headline");
+        d.set_styles(span, &[("fontStyle", "normal"), ("fontFamily", "Georgia, serif"), ("fontSize", "72px")]);
+        assert!(check_element_italic_serif_dom(&d, h).is_empty());
+        d.set_style(span, "fontStyle", "italic");
+        assert_eq!(check_element_italic_serif_dom(&d, h).len(), 1);
+        assert!(check_element_italic_serif_dom(&d, span).is_empty());
     }
 
     #[test]

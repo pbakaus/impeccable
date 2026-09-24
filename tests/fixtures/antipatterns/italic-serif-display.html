@@ -85,15 +85,15 @@
       color: #334155;
     }
 
-    /* d: roman h1 with an italic <em> inside — v1 explicitly does NOT flag this */
-    .pass-roman-h1-em-italic {
+    /* Roman h1 with italic serif display text in an inline descendant. */
+    .fail-roman-h1-em-italic {
       font-family: 'Inter', sans-serif;
       font-style: normal;
       font-size: 72px;
       font-weight: 600;
       margin: 0;
     }
-    .pass-roman-h1-em-italic em {
+    .fail-roman-h1-em-italic em {
       font-family: 'Fraunces', Georgia, serif;
       font-style: italic;
       font-weight: 400;
@@ -143,6 +143,11 @@
       </div>
 
       <div class="case">
+        <h1 class="fail-roman-h1-em-italic">Inline Em Inside <em>Roman</em></h1>
+        <p>Inline italic serif text at hero scale must also be detected.</p>
+      </div>
+
+      <div class="case">
         <h1 class="hero-unknown-serif">Unknown Serif Generic Fallback</h1>
         <p>Primary font unknown to the detector, but the stack ends in generic serif.</p>
       </div>
@@ -167,11 +172,6 @@
       <div class="case">
         <blockquote class="pass-pull-quote">Italic Serif Pull Quote</blockquote>
         <p>Italic serif at 24px is a legitimate pull-quote pattern, not a hero.</p>
-      </div>
-
-      <div class="case">
-        <h1 class="pass-roman-h1-em-italic">Inline Em Inside <em>Roman</em></h1>
-        <p>Roman h1 with an inline italic em — v1 deliberately does not flag this.</p>
       </div>
 
       <div class="case">

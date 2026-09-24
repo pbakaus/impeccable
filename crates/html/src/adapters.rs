@@ -675,13 +675,42 @@ pub fn check_element_italic_serif(
     if tag != "h1" && tag != "h2" {
         return Vec::new();
     }
-    check_italic_serif(&ItalicSerifOpts {
-        tag: tag.to_string(),
-        font_style: Some(sv(style, "fontStyle").to_string()),
-        font_family: Some(sv(style, "fontFamily").to_string()),
-        font_size: pf0(sv(style, "fontSize")),
-        heading_text: Some(el.text_content()),
-    })
+    let mut pending = vec![*el];
+    while let Some(node) = pending.pop() {
+        let mut ancestor = Some(node);
+        let mut hidden = false;
+        while let Some(parent) = ancestor {
+            let s = parent.style();
+            if sv(s, "display") == "none"
+                || matches!(sv(s, "visibility"), "hidden" | "collapse")
+                || sv(s, "contentVisibility") == "hidden"
+                || sv_opt(s, "opacity").is_some_and(|v| parse_float(v) <= 0.01)
+                || parent.get_attribute("aria-hidden").as_deref() == Some("true")
+            {
+                hidden = true;
+                break;
+            }
+            ancestor = parent.parent_element();
+        }
+        if hidden {
+            continue;
+        }
+        if !js::trim(&node.direct_text()).is_empty() {
+            let s = if node == *el { style } else { node.style() };
+            let hits = check_italic_serif(&ItalicSerifOpts {
+                tag: tag.to_string(),
+                font_style: Some(sv(s, "fontStyle").to_string()),
+                font_family: Some(sv(s, "fontFamily").to_string()),
+                font_size: resolve_hero_heading_size_px(sv_opt(s, "fontSize")),
+                heading_text: Some(el.text_content()),
+            });
+            if !hits.is_empty() {
+                return hits;
+            }
+        }
+        pending.extend(node.children().into_iter().rev());
+    }
+    Vec::new()
 }
 
 /// JS: checks.mjs#checkElementHeroEyebrow(el, style, tag, window, customPropMap)
