@@ -425,10 +425,56 @@ fn gemini_manifest_installs_and_rewrites_both_events() {
     }});
     for absolute in [false, true] {
         let rewritten = rewrite_hook_commands_for_platform(&manifest, ".gemini", "/installed", absolute, false);
+        // Gemini substitutes `$GEMINI_PROJECT_DIR` textually with a
+        // shell-escaped path before the shell runs, so the token stays bare.
         let expected = if absolute { "'/installed/.gemini/skills/impeccable/scripts/impeccable'" }
-            else { "\"$GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable\"" };
+            else { "$GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable" };
         for command in commands(&rewritten) { assert_eq!(command, format!("command=[ ! -f {expected} ] || {expected} hook")); }
         assert_eq!(rewritten["hooks"]["AfterAgent"][0]["hooks"][0]["timeout"], 30000);
         assert!(rewritten["hooks"].get("AfterTool").is_none());
     }
+}
+
+#[test]
+fn gemini_windows_command_is_powershell() {
+    // Gemini runs hooks through PowerShell on Windows and has no per-OS
+    // command field, so a Windows install writes a PowerShell guard around
+    // the `.cmd` shim, still recognized as ours.
+    let manifest = json!({"hooks": {"AfterAgent": [{"hooks": [{"type": "command",
+        "command": "\"$GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable\" hook"}]}]}});
+    let rel = rewrite_hook_commands_for_platform(&manifest, ".gemini", "C:/p", false, true);
+    let cmd = rel["hooks"]["AfterAgent"][0]["hooks"][0]["command"].as_str().unwrap().to_string();
+    assert_eq!(cmd, "if (Test-Path -LiteralPath \"$env:GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable.cmd\") { & \"$env:GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable.cmd\" hook }");
+    assert!(value_has_launcher_hook_marker(&Value::String(cmd)));
+    let abs = rewrite_hook_commands_for_platform(&manifest, ".gemini", "C:/Users/o'k", true, true);
+    let cmd = abs["hooks"]["AfterAgent"][0]["hooks"][0]["command"].as_str().unwrap().to_string();
+    assert!(cmd.starts_with("if (Test-Path -LiteralPath 'C:/Users/o''k/.gemini/skills/impeccable/scripts/impeccable.cmd') { & 'C:/Users/o''k/"), "{cmd}");
+    assert!(value_has_launcher_hook_marker(&Value::String(cmd)));
+}
+
+#[test]
+fn gemini_install_merges_into_commented_settings_and_force_never_wipes() {
+    let dir = tmp_dir("gemini-jsonc");
+    let root = dir.to_string_lossy().into_owned();
+    let bundle = jsp::join(&[&root, "bundle"]);
+    let project = jsp::join(&[&root, "project"]);
+    write(&jsp::join(&[&bundle, ".gemini", "settings.json"]), &json!({"hooks": {"AfterAgent": [{"hooks": [{"type": "command",
+        "command": "[ ! -f \"$GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable\" ] || \"$GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable\" hook"}]}]}}).to_string());
+    let settings = jsp::join(&[&project, ".gemini", "settings.json"]);
+    let original = "{\n  // pick a model\n  \"model\": {\"name\": \"gemini-3-pro\"},\n  /* MCP */ \"mcpServers\": {\"x\": {\"url\": \"http://a//b\"}}\n}\n";
+    write(&settings, original);
+    let sys = sys_with_home("/nonexistent-home");
+    copy_provider_hooks(&sys, &bundle, &project, &[".gemini"], false, None).unwrap();
+    let merged: Value = serde_json::from_str(&read(&settings)).unwrap();
+    assert_eq!(merged["model"]["name"], "gemini-3-pro");
+    assert_eq!(merged["mcpServers"]["x"]["url"], "http://a//b");
+    assert!(merged["hooks"]["AfterAgent"].is_array());
+    assert_eq!(read(&format!("{settings}.bak")), original);
+    // Truly malformed: refused without --force, and --force never replaces
+    // the user's whole settings file with a hooks-only manifest.
+    write(&settings, "{ \"model\": ");
+    assert!(copy_provider_hooks(&sys, &bundle, &project, &[".gemini"], false, None).is_err());
+    assert!(copy_provider_hooks(&sys, &bundle, &project, &[".gemini"], true, None).is_err());
+    assert_eq!(read(&settings), "{ \"model\": ");
+    let _ = std::fs::remove_dir_all(&dir);
 }

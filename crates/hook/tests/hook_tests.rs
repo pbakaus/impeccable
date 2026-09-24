@@ -23,7 +23,7 @@ static HTML: MissingHtmlEngine = MissingHtmlEngine;
 #[cfg(unix)]
 fn gemini_before_tool_preserves_command_body_and_only_carries_literal_identity() {
     let t = Tmp::new();
-    let command = "printf '%s\\n' \"$IMPECCABLE_SESSION_ID\"\nexit 7";
+    let command = "printf '%s\\n' \"$IMPECCABLE_SESSION_ID\" # impeccable build-phase completion\nexit 7";
     for (name, session, disabled, expected) in [
         ("run_shell_command", "owner-123", false, true),
         ("read_file", "owner-123", false, false),
@@ -48,6 +48,77 @@ fn gemini_before_tool_preserves_command_body_and_only_carries_literal_identity()
             }
         } else { assert!(stdout.is_empty()); }
     }
+}
+
+#[test]
+fn gemini_before_tool_leaves_unrelated_shell_commands_untouched() {
+    // Only build-phase reads IMPECCABLE_SESSION_ID. Every other shell command
+    // must reach Gemini's allowlist / coreTools policy exactly as the model
+    // wrote it, so its first word is unchanged.
+    let t = Tmp::new();
+    let r = rt(&t.path());
+    for command in ["npm test", "git status && ls", "impeccable build-phase completion --session-id x"] {
+        let event = json!({"hook_event_name":"BeforeTool", "session_id":"owner-123",
+            "cwd":t.path(), "tool_name":"run_shell_command", "tool_input":{"command":command}});
+        let (mut io, capture) = Io::captured("", t.0.clone(), HashMap::new());
+        hook::run(&r, &event.to_string(), &mut io);
+        assert!(capture.stdout.borrow().is_empty(), "{command} was rewritten");
+    }
+}
+
+#[test]
+fn build_completion_reminder_skips_native_projects() {
+    let t = Tmp::new();
+    t.write("PRODUCT.md", "# P\n\n## Platform\nios\n");
+    t.write("index.html", "<main>In progress</main>");
+    t.write(".impeccable/build/state.json", &json!({
+        "sessionId":"owner", "artifact":"index.html", "startedAt":"native-build",
+        "phases":{"hero":{"status":"open"}}, "finish":null
+    }).to_string());
+    let stop = hook::run_stop_hook(&rt(&t.path()), &stop_event(&t.path(), "owner"));
+    assert!(stop.stdout.is_empty(), "{}", stop.stdout);
+    assert_eq!(stop.audit["skipped"], "native-platform");
+}
+
+#[test]
+fn session_start_respects_disabled_hook_config() {
+    let t = Tmp::new();
+    let env_path = t.write("session.env", "");
+    t.write(".impeccable/config.json", r#"{"hook":{"enabled":false}}"#);
+    let r = rt_with(&t.path(), env(&[("CLAUDE_ENV_FILE", &env_path)]));
+    let mut io = Io::captured("", t.0.clone(), HashMap::new()).0;
+    let event = json!({"hook_event_name":"SessionStart", "session_id":"owner-123", "cwd":t.path()}).to_string();
+    assert_eq!(hook::run(&r, &event, &mut io), 0);
+    assert_eq!(t.read("session.env"), "");
+}
+
+#[test]
+fn admin_on_and_reset_manage_gemini_without_losing_user_settings() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    std::fs::create_dir_all(t.0.join(".gemini/skills/impeccable")).unwrap();
+    t.write(".gemini/settings.json", "{\n  // user model\n  \"model\": {\"name\": \"gemini-3-pro\"}, /* auth */\n  \"security\": {\"auth\": {\"selectedType\": \"oauth-personal\"}}\n}\n");
+    let (out, _, code) = admin_run(&r, &["on"]);
+    assert_eq!(code, 0);
+    assert!(out.contains("Installed or repaired hook manifests for: .gemini."), "{out}");
+    let settings: Value = serde_json::from_str(&t.read(".gemini/settings.json")).unwrap();
+    assert_eq!(settings["model"]["name"], "gemini-3-pro");
+    assert_eq!(settings["security"]["auth"]["selectedType"], "oauth-personal");
+    assert!(settings["hooks"]["AfterAgent"].is_array());
+    assert!(settings["hooks"]["BeforeTool"][0]["matcher"] == "^run_shell_command$");
+    assert!(t.exists(".gemini/settings.json.bak"), "commented settings are backed up before rewrite");
+    let (out, _, _) = admin_run(&r, &["reset"]);
+    assert!(out.contains("Removed hook entries from: .gemini."), "{out}");
+    let settings: Value = serde_json::from_str(&t.read(".gemini/settings.json")).unwrap();
+    assert!(settings.get("hooks").is_none());
+    assert_eq!(settings["model"]["name"], "gemini-3-pro");
+    // A settings file that is not JSON even after comments is left alone:
+    // it holds the user's whole Gemini configuration, not just our hooks.
+    t.write(".gemini/settings.json", "{ \"model\": ");
+    let (out, _, _) = admin_run(&r, &["on"]);
+    assert_eq!(t.read(".gemini/settings.json"), "{ \"model\": ");
+    assert!(out.contains(".gemini/settings.json"), "{out}");
 }
 
 #[test]

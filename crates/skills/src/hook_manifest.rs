@@ -16,7 +16,7 @@
 //! `impeccable_context::hook_markers::is_impeccable_hook_command`, so the two
 //! writers and the three readers can never disagree on what counts as ours.
 
-use impeccable_context::hook_markers::{is_impeccable_hook_command, is_launcher_hook_command};
+use impeccable_context::hook_markers::{is_impeccable_hook_command, is_launcher_hook_command, parse_manifest_jsonc};
 use serde_json::{Map, Value};
 
 use crate::providers::Sys;
@@ -164,8 +164,35 @@ pub fn quoted_launcher_path(skill_root: &str, provider: &str, absolute: bool) ->
 /// stands there too (Claude Code on Windows runs hooks through Git Bash).
 pub fn hook_command(quoted: &QuotedPath, provider: &str, win32: bool) -> String {
     let verb = hook_verb(provider);
+    if provider == ".gemini" {
+        return gemini_hook_command(quoted, verb, win32);
+    }
     let q = if provider != ".agents" && win32 { &quoted.win32 } else { &quoted.posix };
     format!("[ ! -f {q} ] || {q} {verb}")
+}
+
+/// Gemini CLI runs a hook through `bash -c` on POSIX and PowerShell on
+/// Windows, and has no per-OS command field, so a Windows install writes a
+/// PowerShell guard around the `.cmd` shim. Gemini also substitutes
+/// `$GEMINI_PROJECT_DIR` in the command text with an already shell-escaped
+/// path before the shell sees it, so the POSIX relative form leaves the token
+/// bare (double quotes would keep the escaping as literal characters), and
+/// the PowerShell form reads `$env:GEMINI_PROJECT_DIR`, which that
+/// substitution does not touch.
+fn gemini_hook_command(quoted: &QuotedPath, verb: &str, win32: bool) -> String {
+    let path: String = serde_json::from_str(&quoted.win32).unwrap_or_default();
+    let relative = path.starts_with("$GEMINI_PROJECT_DIR");
+    if !win32 {
+        let q = if relative { path } else { quoted.posix.clone() };
+        return format!("[ ! -f {q} ] || {q} {verb}");
+    }
+    let cmd = format!("{path}.cmd");
+    let q = if relative {
+        format!("\"{}\"", cmd.replacen("$GEMINI_PROJECT_DIR", "$env:GEMINI_PROJECT_DIR", 1))
+    } else {
+        format!("'{}'", cmd.replace('\'', "''"))
+    };
+    format!("if (Test-Path -LiteralPath {q}) {{ & {q} {verb} }}")
 }
 
 /// JS: windowsHookCommand(quotedPath), launcher edition (`transformers/hooks.js`
@@ -261,16 +288,36 @@ pub fn manifest_has_stale_hook(file: &str) -> bool {
 /// JS: fileHasImpeccableHookMarker(file): parse and scan only the `hooks`
 /// subtree.
 pub fn file_has_impeccable_hook_marker(file: &str) -> bool {
-    if !util::exists(file) {
-        return false;
-    }
-    let Ok(text) = util::read_text(file) else { return false };
-    let Ok(parsed) = serde_json::from_str::<Value>(&text) else { return false };
-    let Value::Object(map) = parsed else { return false };
+    let Some((Value::Object(map), _)) = read_manifest(file) else { return false };
     match map.get("hooks") {
         Some(h @ (Value::Object(_) | Value::Array(_))) => value_has_impeccable_hook_marker(h),
         _ => false,
     }
+}
+
+/// A manifest on disk, parsed with comments tolerated (Gemini's
+/// `settings.json` allows them). The flag says comments were dropped, so a
+/// rewrite must keep a `.bak` of the original.
+fn read_manifest(file: &str) -> Option<(Value, bool)> {
+    if !util::exists(file) {
+        return None;
+    }
+    parse_manifest_jsonc(&util::read_text(file).ok()?)
+}
+
+/// Before rewriting a manifest whose comments the JSON writer cannot keep,
+/// save the original beside it.
+fn backup_commented(path: &str, had_comments: bool) -> Result<(), String> {
+    if had_comments {
+        util::write_bytes(&format!("{path}.bak"), &util::read_bytes(path)?)?;
+    }
+    Ok(())
+}
+
+/// A provider whose hook manifest is the user's whole settings file (model,
+/// auth, MCP servers), so an unreadable one is never replaced wholesale.
+fn manifest_is_user_settings(provider: &str) -> bool {
+    provider == ".gemini"
 }
 
 /// JS: hookInstalledForProvider(root, provider)
@@ -331,8 +378,7 @@ pub fn prune_impeccable_hook_from_manifest(manifest_path: &str) -> Result<bool, 
     if !file_has_impeccable_hook_marker(manifest_path) {
         return Ok(false);
     }
-    let Ok(text) = util::read_text(manifest_path) else { return Ok(false) };
-    let Ok(Value::Object(parsed)) = serde_json::from_str::<Value>(&text) else { return Ok(false) };
+    let Some((Value::Object(parsed), had_comments)) = read_manifest(manifest_path) else { return Ok(false) };
     let existing_hooks: Map<String, Value> = match parsed.get("hooks") {
         Some(Value::Object(h)) => h.clone(),
         _ => Map::new(),
@@ -352,6 +398,7 @@ pub fn prune_impeccable_hook_from_manifest(manifest_path: &str) -> Result<bool, 
         next.shift_remove("description");
         next.shift_remove("version");
     }
+    backup_commented(manifest_path, had_comments)?;
     if next.is_empty() {
         util::rm_rf(manifest_path);
     } else {
@@ -435,11 +482,14 @@ pub fn copy_provider_hooks(sys: &crate::providers::Sys, bundle_dir: &str, root: 
             let fresh = rewrite_hook_commands_for_skill_root(&fresh_manifest, provider, skill_root, absolute);
             let mut next = fresh.clone();
             if util::exists(&artifact.dest) {
-                let parsed = util::read_text(&artifact.dest)
-                    .ok()
-                    .and_then(|t| serde_json::from_str::<Value>(&t).ok());
-                match parsed {
-                    Some(existing) => next = merge_hook_manifests(&existing, &fresh),
+                match read_manifest(&artifact.dest) {
+                    Some((existing, had_comments)) => {
+                        backup_commented(&artifact.dest, had_comments)?;
+                        next = merge_hook_manifests(&existing, &fresh);
+                    }
+                    None if manifest_is_user_settings(provider) => {
+                        return Err(format!("Existing settings file is not valid JSON: {}. It holds your other settings too, so it is never replaced; fix it and re-run.", artifact.dest));
+                    }
                     None => {
                         if !force {
                             return Err(format!("Existing hook manifest is not valid JSON: {}. Re-run with --force to replace it.", artifact.dest));

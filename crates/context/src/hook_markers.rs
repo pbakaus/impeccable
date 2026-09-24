@@ -257,3 +257,59 @@ mod tests {
         );
     }
 }
+
+/// Removes `//` and `/* */` comments outside JSON strings, the dialect
+/// Gemini CLI reads its `settings.json` in (`strip-json-comments`). Returns
+/// the stripped text and whether any comment was removed, so a writer that
+/// cannot preserve comments knows to keep a backup.
+pub fn strip_json_comments(text: &str) -> (String, bool) {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    let (mut in_string, mut escaped, mut stripped) = (false, false, false);
+    while let Some(ch) = chars.next() {
+        if in_string {
+            out.push(ch);
+            if escaped { escaped = false } else if ch == '\\' { escaped = true } else if ch == '"' { in_string = false }
+            continue;
+        }
+        match (ch, chars.peek()) {
+            ('"', _) => { in_string = true; out.push(ch); }
+            ('/', Some('/')) => {
+                stripped = true;
+                while let Some(&c) = chars.peek() { if c == '\n' { break } chars.next(); }
+            }
+            ('/', Some('*')) => {
+                stripped = true;
+                chars.next();
+                let mut prev = '\0';
+                for c in chars.by_ref() { if prev == '*' && c == '/' { break } prev = c; }
+                out.push(' ');
+            }
+            _ => out.push(ch),
+        }
+    }
+    (out, stripped)
+}
+
+/// Parses a hook manifest that may carry comments. `None` when it is not JSON
+/// even after the comments are removed.
+pub fn parse_manifest_jsonc(text: &str) -> Option<(serde_json::Value, bool)> {
+    let (stripped, had_comments) = strip_json_comments(text);
+    serde_json::from_str(&stripped).ok().map(|v| (v, had_comments))
+}
+
+#[cfg(test)]
+mod jsonc_tests {
+    use super::*;
+
+    #[test]
+    fn strips_comments_outside_strings_only() {
+        let (v, had) = parse_manifest_jsonc("{\n // a\n \"u\": \"http://x//y\", /* b */ \"s\": \"/* no */\\\"//\"\n}").unwrap();
+        assert!(had);
+        assert_eq!(v["u"], "http://x//y");
+        assert_eq!(v["s"], "/* no */\"//");
+        assert_eq!(parse_manifest_jsonc("{\"a\": 1}").unwrap().1, false);
+        assert!(parse_manifest_jsonc("{ \"a\": ").is_none());
+        assert_eq!(crate::context_cli::hook_manifests_for("gemini"), &[".gemini/settings.json"]);
+    }
+}

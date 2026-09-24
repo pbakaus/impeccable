@@ -12,12 +12,17 @@ fn literal_session_id(session: &str) -> bool {
 /// Gemini supplies identity to hooks, but not ordinary shell tool processes.
 /// Its native BeforeTool argument transform carries that metadata into the
 /// POSIX shell without adding model instructions or changing the command body.
-/// Windows shell semantics require a separate transport; decline there.
+/// Only `build-phase` reads IMPECCABLE_SESSION_ID (start records the owner,
+/// completion scopes the report), so every other command passes through
+/// untouched: a prefix would change its first word for Gemini's allowlist and
+/// coreTools policy. This runs before every shell call, so it is string checks
+/// only. Windows shell semantics require a separate transport; decline there.
 pub fn gemini_shell_identity(rt: &Runtime, event: &serde_json::Map<String, Value>) -> Option<String> {
     if rt.win32 || event.get("tool_name")?.as_str()? != "run_shell_command" { return None; }
+    let command = event.get("tool_input")?.get("command")?.as_str()?;
+    if !command.contains("build-phase") || command.contains("--session-id") { return None; }
     let session = event.get("session_id")?.as_str()?;
     if !literal_session_id(session) { return None; }
-    let command = event.get("tool_input")?.get("command")?.as_str()?;
     let prefix = format!("export IMPECCABLE_SESSION_ID='{session}'\n");
     if command.starts_with(&prefix) { return None; }
     Some(json!({"hookSpecificOutput":{"tool_input":{"command":format!("{prefix}{command}")}}}).to_string())

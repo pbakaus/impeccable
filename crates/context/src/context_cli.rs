@@ -23,6 +23,7 @@ pub fn hook_manifests_for(provider_id: &str) -> &'static [&'static str] {
         "cursor" => &[".cursor/hooks.json"],
         "github" => &[".github/hooks/impeccable.json"],
         "grok" => &[".grok/hooks/impeccable.json"],
+        "gemini" => &[".gemini/settings.json"],
         _ => &[],
     }
 }
@@ -76,6 +77,11 @@ pub fn automatic_hook_mode(ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider)
     }
     let active_root = jsp::resolve(if ctx.project_root.is_empty() { cwd } else { &ctx.project_root }, &[]);
     if !hook_enabled_at(&active_root, env) {
+        return "none";
+    }
+    // Gemini's manifest carries only the session and build-completion hooks,
+    // no detector pass, so it never counts as automatic coverage.
+    if provider.id == "gemini" {
         return "none";
     }
     let manifests = hook_manifests_for(&provider.id);

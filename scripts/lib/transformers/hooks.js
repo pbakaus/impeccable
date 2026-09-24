@@ -207,10 +207,16 @@ export function buildGrokHooksManifest() {
   };
 }
 
-// Gemini's hook timeouts are milliseconds. BeforeTool transports only the
-// session environment; AfterAgent uses the engine's shared completion check.
+// Gemini's hook timeouts are milliseconds. BeforeTool carries the session id
+// into `build-phase` shell calls only; AfterAgent uses the engine's shared
+// completion check. Gemini substitutes `$GEMINI_PROJECT_DIR` in the command
+// text with an already shell-escaped path before `bash -c` runs it, so the
+// token stays bare: inside double quotes the escaping would turn literal.
+// There is no per-OS command field; a Windows install rewrites this to a
+// PowerShell form (crates/skills hook_manifest.rs).
 export function buildGeminiHooksManifest() {
-  const command = guardedLauncher('$GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable');
+  const launcher = '$GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable';
+  const command = `[ ! -f ${launcher} ] || ${launcher} hook`;
   return { hooks: {
     BeforeTool: [{ matcher: '^run_shell_command$', hooks: [{
       name: 'impeccable-session', type: 'command', command, timeout: 5000,

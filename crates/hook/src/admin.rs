@@ -106,6 +106,9 @@ struct ManifestTarget {
     dest_rel: &'static str,
     shared_dest_rel: Option<&'static str>,
     manifest: fn() -> Value,
+    /// The manifest is the user's whole settings file (model, auth, MCP), so
+    /// an unreadable one is skipped instead of backed up and replaced.
+    user_settings: bool,
 }
 
 fn claude_manifest() -> Value {
@@ -194,6 +197,36 @@ fn github_manifest() -> Value {
     ])
 }
 
+/// Gemini runs hooks through `bash -c` (PowerShell on Windows) after
+/// substituting `$GEMINI_PROJECT_DIR` with a shell-escaped path, so the POSIX
+/// token stays bare; PowerShell reads the env var. Timeouts are milliseconds.
+/// No per-edit detector: BeforeTool carries the session id into
+/// `build-phase` shell calls, AfterAgent runs the build-completion check.
+const GEMINI_HOOK_COMMAND: &str = "$GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable hook";
+const GEMINI_HOOK_COMMAND_WINDOWS: &str = "& \"$env:GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable.cmd\" hook";
+
+fn gemini_manifest() -> Value {
+    let cmd = if cfg!(windows) { GEMINI_HOOK_COMMAND_WINDOWS } else { GEMINI_HOOK_COMMAND };
+    let hook = |name: &str, timeout: i64| obj(vec![
+        ("name", Value::from(name)),
+        ("type", Value::from("command")),
+        ("command", Value::from(cmd)),
+        ("timeout", Value::from(timeout)),
+    ]);
+    obj(vec![(
+        "hooks",
+        obj(vec![
+            ("BeforeTool", Value::Array(vec![obj(vec![
+                ("matcher", Value::from("^run_shell_command$")),
+                ("hooks", Value::Array(vec![hook("impeccable-session", 5000)])),
+            ])])),
+            ("AfterAgent", Value::Array(vec![obj(vec![
+                ("hooks", Value::Array(vec![hook("impeccable-completion", 30000)])),
+            ])])),
+        ]),
+    )])
+}
+
 const HOOK_MANIFEST_TARGETS: &[ManifestTarget] = &[
     ManifestTarget {
         provider: ".claude",
@@ -201,6 +234,7 @@ const HOOK_MANIFEST_TARGETS: &[ManifestTarget] = &[
         dest_rel: ".claude/settings.local.json",
         shared_dest_rel: Some(".claude/settings.json"),
         manifest: claude_manifest,
+        user_settings: false,
     },
     ManifestTarget {
         provider: ".agents",
@@ -208,6 +242,7 @@ const HOOK_MANIFEST_TARGETS: &[ManifestTarget] = &[
         dest_rel: ".codex/hooks.json",
         shared_dest_rel: None,
         manifest: agents_manifest,
+        user_settings: false,
     },
     ManifestTarget {
         provider: ".cursor",
@@ -215,6 +250,7 @@ const HOOK_MANIFEST_TARGETS: &[ManifestTarget] = &[
         dest_rel: ".cursor/hooks.json",
         shared_dest_rel: None,
         manifest: cursor_manifest,
+        user_settings: false,
     },
     ManifestTarget {
         provider: ".github",
@@ -222,6 +258,15 @@ const HOOK_MANIFEST_TARGETS: &[ManifestTarget] = &[
         dest_rel: ".github/hooks/impeccable.json",
         shared_dest_rel: None,
         manifest: github_manifest,
+        user_settings: false,
+    },
+    ManifestTarget {
+        provider: ".gemini",
+        skill_rel: ".gemini/skills/impeccable",
+        dest_rel: ".gemini/settings.json",
+        shared_dest_rel: None,
+        manifest: gemini_manifest,
+        user_settings: true,
     },
 ];
 
@@ -665,6 +710,12 @@ fn set_enabled(rt: &Runtime, cwd: &str, value: bool) -> Result<String, String> {
     } else {
         parts.push("No installed provider skill folders found to repair.".to_string());
     }
+    if !repaired.skipped.is_empty() {
+        parts.push(format!(
+            "Skipped {}: not valid JSON, and it holds your other settings too; fix it and re-run.",
+            repaired.skipped.join(", ")
+        ));
+    }
     if !repaired.backups.is_empty() {
         let names: Vec<String> = repaired
             .backups
@@ -683,6 +734,7 @@ struct Repaired {
     written: Vec<String>,
     already: Vec<String>,
     backups: Vec<String>,
+    skipped: Vec<String>,
 }
 
 /// JS: repairHookManifests(cwd)
@@ -691,6 +743,7 @@ fn repair_hook_manifests(cwd: &str) -> Result<Repaired, String> {
         written: vec![],
         already: vec![],
         backups: vec![],
+        skipped: vec![],
     };
     for target in HOOK_MANIFEST_TARGETS {
         if !exists(&jsp::join(&[cwd, target.skill_rel])) {
@@ -707,9 +760,18 @@ fn repair_hook_manifests(cwd: &str) -> Result<Repaired, String> {
         }
         let fresh = (target.manifest)();
         let mut next = fresh.clone();
+        let mut had_comments = false;
         if exists(&dest) {
-            match safe_read(&dest).and_then(|t| serde_json::from_str::<Value>(&t).ok()) {
-                Some(existing) => next = merge_hook_manifests(&existing, &fresh),
+            match read_manifest(&dest) {
+                Some((existing, commented)) => {
+                    had_comments = commented;
+                    next = merge_hook_manifests(&existing, &fresh);
+                }
+                // The user's whole settings file: never replace it.
+                None if target.user_settings => {
+                    result.skipped.push(target.dest_rel.to_string());
+                    continue;
+                }
                 None => {
                     let backup = format!("{dest}.bak");
                     std::fs::copy(&dest, &backup).map_err(|e| e.to_string())?;
@@ -727,6 +789,7 @@ fn repair_hook_manifests(cwd: &str) -> Result<Repaired, String> {
             result.already.push(target.provider.to_string());
             continue;
         }
+        backup_commented(&dest, had_comments)?;
         std::fs::create_dir_all(jsp::dirname(&dest)).map_err(|e| e.to_string())?;
         std::fs::write(&dest, serialized).map_err(|e| e.to_string())?;
         result.written.push(target.provider.to_string());
@@ -782,12 +845,27 @@ fn merge_hook_manifests(existing: &Value, fresh: &Value) -> Value {
     Value::Object(merged)
 }
 
+/// A manifest parsed with comments tolerated (Gemini's `settings.json`
+/// allows them); the flag says a rewrite would drop comments.
+fn read_manifest(path: &str) -> Option<(Value, bool)> {
+    impeccable_context::hook_markers::parse_manifest_jsonc(&safe_read(path)?)
+}
+
+/// Keep the original of a commented manifest before the JSON writer drops
+/// its comments.
+fn backup_commented(path: &str, had_comments: bool) -> Result<(), String> {
+    if had_comments {
+        std::fs::copy(path, format!("{path}.bak")).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 /// JS: fileHasImpeccableHookMarker(filePath)
 fn file_has_impeccable_hook_marker(path: &str) -> bool {
     if !exists(path) {
         return false;
     }
-    let Some(parsed) = safe_read(path).and_then(|t| serde_json::from_str::<Value>(&t).ok()) else {
+    let Some((parsed, _)) = read_manifest(path) else {
         return false;
     };
     let Value::Object(o) = parsed else {
@@ -870,9 +948,10 @@ fn prune_impeccable_hook_from_manifest(path: &str) -> Result<bool, String> {
     if !file_has_impeccable_hook_marker(path) {
         return Ok(false);
     }
-    let Some(parsed) = safe_read(path).and_then(|t| serde_json::from_str::<Value>(&t).ok()) else {
+    let Some((parsed, had_comments)) = read_manifest(path) else {
         return Ok(false);
     };
+    backup_commented(path, had_comments)?;
     let parsed = as_object(&parsed);
     let existing_hooks = obj_field(&parsed, "hooks").cloned().unwrap_or_default();
     let mut cleaned = Map::new();

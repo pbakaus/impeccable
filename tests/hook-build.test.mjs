@@ -73,8 +73,12 @@ describe('hook manifest builders', () => {
     assert.equal(manifest.hooks.BeforeTool[0].matcher, '^run_shell_command$');
     assert.equal(manifest.hooks.BeforeTool[0].hooks[0].timeout, 5000);
     assert.equal(manifest.hooks.AfterAgent[0].hooks[0].timeout, 30000);
-    expectCommand(manifest.hooks.AfterAgent[0].hooks[0].command, '.gemini/skills/impeccable/scripts');
-    assert.match(manifest.hooks.AfterAgent[0].hooks[0].command, /\$GEMINI_PROJECT_DIR/);
+    // Gemini substitutes $GEMINI_PROJECT_DIR with a shell-escaped path before
+    // bash runs the command, so the token is bare, not double-quoted.
+    const launcher = '$GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable';
+    for (const event of ['BeforeTool', 'AfterAgent']) {
+      assert.equal(manifest.hooks[event][0].hooks[0].command, `[ ! -f ${launcher} ] || ${launcher} hook`);
+    }
   });
   it('builds Claude project settings for the real detector hook', () => {
     const manifest = buildClaudeSettingsManifest();

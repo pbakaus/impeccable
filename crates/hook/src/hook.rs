@@ -678,6 +678,24 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             ],
         );
     }
+    // Native projects skip the whole Stop pass, the build-completion reminder
+    // included. Resolving the platform reads PRODUCT.md, so it is paid only
+    // when there is a build state to remind about or touched files to scan.
+    let mut platform_memo: Option<Option<String>> = None;
+    let native_skip = |platform_memo: &mut Option<Option<String>>| -> Option<RunResult> {
+        let platform = platform_memo.get_or_insert_with(|| resolve_project_platform(rt, &project_cwd)).clone();
+        is_native_platform(platform.as_deref()).then(|| result(
+            &audit,
+            vec![
+                ("skipped", Value::from("native-platform")),
+                ("platform", Value::String(platform.unwrap_or_default())),
+                ("durationMs", ms_since(started)),
+            ],
+        ))
+    };
+    if std::path::Path::new(&project_cwd).join(".impeccable/build/state.json").is_file() {
+        if let Some(skip) = native_skip(&mut platform_memo) { return skip; }
+    }
     let mut cache = read_cache(&project_cwd);
     if matches!(harness, "claude" | "codex" | "gemini") {
         if let Some(message) = crate::build_completion::reminder(rt, &project_cwd, &session_id, stop_hook_active, &mut cache) {
@@ -703,17 +721,7 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             ],
         );
     }
-    let platform = resolve_project_platform(rt, &project_cwd);
-    if is_native_platform(platform.as_deref()) {
-        return result(
-            &audit,
-            vec![
-                ("skipped", Value::from("native-platform")),
-                ("platform", Value::String(platform.unwrap_or_default())),
-                ("durationMs", ms_since(started)),
-            ],
-        );
-    }
+    if let Some(skip) = native_skip(&mut platform_memo) { return skip; }
     let mut scans = HashMap::new();
 
     let mut fresh_groups: Vec<Group> = Vec::new();
@@ -894,15 +902,18 @@ pub fn run(rt: &Runtime, stdin: &str, io: &mut impeccable_common::Io) -> i32 {
     if let Ok(Value::Object(event)) = serde_json::from_str::<Value>(stdin) {
         if event.get("hook_event_name").and_then(Value::as_str) == Some("BeforeTool")
             && resolve_harness(rt, Some(&event)) == "gemini" {
-            if !truthy(rt.env("IMPECCABLE_HOOK_DISABLED")) && read_config(&rt.proc_cwd).enabled {
-                if let Some(output) = crate::build_completion::gemini_shell_identity(rt, &event) {
+            // String checks first: this fires before every Gemini shell call.
+            if let Some(output) = crate::build_completion::gemini_shell_identity(rt, &event) {
+                if !truthy(rt.env("IMPECCABLE_HOOK_DISABLED")) && read_config(&rt.proc_cwd).enabled {
                     io.out(&format!("{output}\n"));
                 }
             }
             return 0;
         }
         if event.get("hook_event_name").and_then(Value::as_str) == Some("SessionStart") {
-            if !truthy(rt.env("IMPECCABLE_HOOK_DISABLED")) && resolve_harness(rt, Some(&event)) == "claude" {
+            let cwd = rt.resolve(&[event.get("cwd").and_then(Value::as_str).unwrap_or(&rt.proc_cwd)]);
+            if !truthy(rt.env("IMPECCABLE_HOOK_DISABLED")) && resolve_harness(rt, Some(&event)) == "claude"
+                && read_config(&cwd).enabled {
                 if let Some(session) = event.get("session_id").and_then(Value::as_str) {
                     crate::build_completion::persist_session_identity(rt, session);
                 }
