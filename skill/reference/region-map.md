@@ -11,10 +11,12 @@ If the request ends at mapping, stop with the map, inspection report and unresol
 
 `--auto` produces horizontal band scaffolding, not element identification. It is optional and does not replace authoring a map.
 
-## Containment and repetition
+## Containment
 
 `parentId` identifies an enclosing `container: true` region. Parent and children keep separate IDs and crops. Containment never transfers approval.
 
-`reviewGroup` identifies repeated instances of the same code component and role. Members must have the same kind and container status and be peers, not ancestors and children. Sharing a card or section is not a reason to group its different parts. Keep every instance in the map and component kit. Raster assets remain individually reviewable. Grouping does not waive crop checks or approve anything; applying a decision to peers remains the user’s choice.
+## Painted material
+
+When measuring, `comp-spec` flags a `text`, `control` or `chrome` region whose crop looks painted (`painted-pixels`: many colours, soft gradients) and lists it in its summary. The plan and asset review shows flagged regions, and those marked `codeDrawn` (painted material you chose to draw in code), to the user first. Do not leave the catch to them: if a region is painted material (a figure, a photograph, a metal or paper surface), classify it `plate`, `image` or `texture` now.
 
 Comp crops are reference evidence only, never production assets. The map inspector marks its PNGs as comp-derived.

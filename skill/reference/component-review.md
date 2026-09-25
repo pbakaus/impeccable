@@ -1,71 +1,34 @@
-# Component review
+# Plan and asset review
 
-Use this checkpoint on comp-led builds after producing the initial component kit and before composing the page. The approved comp is the reference. The user reviews the actual produced components, including code; a list of planned assets or screenshots supplied by the builder is not a review of what will ship.
+Use this checkpoint on comp-led builds once every raster region has its plate and before any page code exists. The approved comp is the reference. The user reviews two things: the plates that will ship, and the production plan for everything else, meaning which regions code draws. A painted region planned as code is the most expensive mistake a comp-led build makes, and this is where the user catches it. Text, controls and chrome are judged later, in the assembled first viewport.
 
-## Prepare the component kit
+## Plan, capture, serve
 
-Keep the measured spec's region IDs. Include every visible region: produced raster assets and working HTML/CSS/SVG for text, controls, patterns, decoration and layout elements. A region rendered in code needs an actual review document, not a promise to implement it later. Use semantic HTML for content and controls. Do not flatten the page or combine unrelated regions to avoid review. Report omitted regions so the user can mark what is missing.
+Run `{{scripts_path}}/impeccable component-review plan`. It writes `.impeccable/review/components.json` from the measured spec, the comp and the plate files, and refuses, naming each one, while any raster region lacks its plate. Never write or edit that file for this stage: the packet is derived from the spec, so every change belongs in the regions file.
 
-For a repeated code pattern, give instances of the same component and role the same `reviewGroup` name. Group peers of the same kind, not a container with its contents or unrelated text roles. Keep every instance and its region ID in the manifest, in the same kit document. The review opens with one item per group and shows its instances together. One explicit group decision applies to its unreviewed instances; the user can open an instance to leave an exception. Existing decisions are preserved. Unique raster assets still require their own review; grouping never removes inventory or gate checks.
+If the harness exposes `component_review`, call it with `manifest_path` set to `.impeccable/review/components.json`. The host captures, presents the review and returns the user's decisions. A suspended request is waiting for the user; it is not a failed build or an approval.
 
-Before producing assets, inspect each reference crop against its named subject. Coarse grid cells and automatic ink snapping can include neighbors or omit parts of a compound element. Correct the measured region with an explicit normalized `box`; do not build to a known bad crop. Check the code preview contains the complete component before presenting it. The capture tool refuses content cut off by the review crop.
+Otherwise run `{{scripts_path}}/impeccable component-review capture --manifest .impeccable/review/components.json`, then start `{{scripts_path}}/impeccable component-review serve --session <returned session>` in the background. Open the URL it prints in the available browser and wait for the user; `serve` exits 0 once they submit. Read the decisions with `{{scripts_path}}/impeccable component-review status --session <id>`; `{{scripts_path}}/impeccable component-review verify --manifest .impeccable/review/components.json` confirms approval and refuses pending, needs-work and stale input. Never submit the page or write a receipt on the user's behalf.
 
-Write `.impeccable/review/components.json` with this manifest format:
+`serve` exits 2 when this session has no browser (the same signal as the decision page) and 4 when it closes after 30 idle minutes without a decision. Either way no one is reviewing: stop waiting, do not approve anything yourself, and do not build past this checkpoint. End the run and report the plan and asset review as pending with its session ID, so the user can resume it. A waiting review is pending work, not a completed build.
 
-```json
-{
-  "schemaVersion": 2,
-  "id": "components",
-  "title": "Component review",
-  "stage": "components",
-  "comp": {"path": ".impeccable/mocks/comp-2.png", "width": 1536, "height": 1024},
-  "components": [
-    {
-      "id": "illustration",
-      "name": "Illustration",
-      "medium": "raster",
-      "box": {"x": 0.5, "y": 0.2, "w": 0.45, "h": 0.7},
-      "note": "Produced cutout; positioned over the page ground.",
-      "preview": {"kind": "image", "path": "assets/illustration.png"},
-      "dependencies": []
-    },
-    {
-      "id": "headline",
-      "name": "Headline",
-      "medium": "html",
-      "box": {"x": 0.05, "y": 0.2, "w": 0.4, "h": 0.25},
-      "note": "Rendered semantic heading and its typography.",
-      "preview": {"kind": "page", "path": ".impeccable/review/components/kit.html", "selector": "#headline"},
-      "dependencies": ["assets/type.woff2"]
-    }
-  ]
-}
-```
+## Act on the receipt
 
-The coordinates above only illustrate the schema. Use the approved comp's actual pixel dimensions and each measured region's normalized bounds (the spec’s `box` is already normalized; divide only pixel coordinates by comp dimensions). Each code preview requires a `selector` matching exactly one component element inside the document body. Shared kit documents are supported: the native capturer preserves layout and authored styles, hides other components, and crops to the measured box. A separately targeted child is excluded from its parent's isolated preview. Background fields therefore show their own paint, not the text and controls laid over them. Place components at the comp coordinates in the review document.
+Apply the user's decisions as given, never your own favorable verdict in their place.
 
-For a raster placed inside the kit, add `context: {"kind":"page","path":".impeccable/review/components/kit.html","selector":"#illustration"}` and declare that document's dependencies. This identifies its DOM placement so a containing code component excludes it too; the raster preview remains the original image bytes.
+- **approve**: once every item is approved and the inventory is confirmed, advance to the hero.
+- **revise** (a plate): regenerate that plate at the same path with the user's feedback.
+- **reclassify** (a code region): in the regions file, change that region's `kind` to the one the user chose and rewrite its `note` to describe the material. Rerun `comp-spec --regions`, then produce the new plates, with the asset producer when subagents are available.
+- **missing**: add the region to the regions file, rerun `comp-spec --regions`, and produce its plate if it is raster.
 
-The runtime also captures an unmodified **In context** view from that same document. This assembled view is reference only, not another component to approve. Keep each review target independently meaningful; use context to show a group together rather than submitting the same content for approval as both a combined component and its children. The final assembled hero still has its own review checkpoint. Include every file the document uses in `dependencies`, including linked CSS, fonts and images. The runtime also binds the measured spec for the component stage and checks its inventory. Local paths only. Static PNG, WebP and JPEG previews retain their original bytes and actual transparency; never draw a checkerboard into the asset.
-
-Component capture supports stable HTML/CSS and inline SVG. Supply a static review state for motion and keep the implementation's real inputs. A scripted, canvas or otherwise unsupported component is a blocker to report, not permission to substitute a raster or omit it.
-
-Keep the implementation's intended fonts in the review document. Vendor external fonts locally and declare them as dependencies; removing their imports changes the component being reviewed. Capture rejects unavailable primary font families rather than presenting a silent fallback.
-
-## Present and wait
-
-If the harness exposes `component_review`, call it with `manifest_path` set to `.impeccable/review/components.json`. The host captures the component files, presents this same review interface and returns the user's decisions. A suspended request is waiting for the user; it is not a failed build or an approval.
-
-Otherwise run `{{scripts_path}}/impeccable component-review capture --manifest .impeccable/review/components.json`, then start `{{scripts_path}}/impeccable component-review serve --session <returned session>` in the background. Open the URL it prints in the available browser and wait for the user; `serve` exits 0 once they submit. Read the result with `{{scripts_path}}/impeccable component-review verify --manifest .impeccable/review/components.json`; pending, needs-work and stale input all refuse approval. Never submit the page or write a receipt on the user's behalf.
-
-`serve` exits 2 when this session has no browser (the same signal as the decision page) and 4 when it closes after 30 idle minutes without a decision. Either way no one is reviewing: stop waiting, do not approve anything yourself, and do not build past this checkpoint. End the run and report the component review as pending with its session ID, so the user can resume it. A waiting review is pending work, not a completed build.
-
-The user can approve components, request changes, and mark missing regions. Act on their feedback without replacing it with your own favorable verdict. Keep component IDs stable, update the actual implementation and dependency list, and present another round. The UI carries only approvals whose component inputs have not changed. Selector ownership is an input too; changing a target invalidates affected captures. Do not ask the user to reapprove unchanged work. Continue only when the inventory is confirmed and all components are approved.
+Then run `plan`, `capture` and `serve` again. Unchanged decisions carry over, so the user sees only what changed. Any spec change needs a new round; the build-phase gate stays closed until the review of the current spec is accepted.
 
 ## Assemble and review
 
-Build the first viewport from the approved component files and run the existing plates and hero gates. Resolve component changes before presenting the assembled first viewport; human review does not waive integrity checks.
+Build the first viewport from the approved plates and plan, and run the hero gate. Human review does not waive its integrity checks. After three failed hero attempts, stop iterating and present the first-viewport review with the current build; the user's eye settles what the readings could not.
 
-Once the first viewport is ready for calibration, present a second manifest at `.impeccable/review/hero.json`, with `id` and `stage` set to `hero`. Use one page-preview component covering the assembled first viewport, its real HTML entry, and its complete dependency list. The reference stays the approved comp. Call the same host review tool (or native capture/serve/verify workflow). Needs-work feedback starts another assembly round. Acceptance closes both review stages for this build: never request component or assembly approval again. Complete the rest of the page, responsive behavior, finish checks and documentation using the accepted first viewport as the visual direction. This is first-viewport calibration, not a claim that the user reviewed the rest of the page. Shared stylesheet edits do not reopen approval. Preserve the accepted direction; a later explicit user change is a new task.
+Present a second manifest at `.impeccable/review/hero.json`, with `id` and `stage` set to `hero`. Use one page-preview component covering the assembled first viewport, its real HTML entry, and its complete dependency list (local paths only). The reference stays the approved comp. Call the same host review tool, or run `capture`, `serve` and `verify` with this manifest. Needs-work feedback starts another assembly round.
+
+Acceptance closes human review for this build: never request plan, asset or assembly approval again. Remaining contradicted readings on code regions (`text`, `control`, `chrome`) become advisories; material vetoes still hold (a missing or unreferenced plate, an SVG illustration, a clipped plate). Complete the rest of the page, responsive behavior, finish checks and documentation with the accepted first viewport as the visual direction. This is first-viewport calibration, not a claim that the user reviewed the rest of the page. Shared stylesheet edits do not reopen approval. Preserve the accepted direction; a later explicit user change is a new task.
 
 Assembled-page capture executes inline and declared local scripts from the pinned inputs. Network APIs, frames and workers are unavailable; the initial viewport must settle before capture. Keep the real page and declare its scripts rather than removing behavior to pass review.
