@@ -485,6 +485,7 @@ mod tests {
     use std::time::Duration;
 
     fn round_trip(edit: bool, override_model: Option<&str>, background: Option<&str>) {
+        let _proxy_lock = crate::http::PROXY_ENV_LOCK.lock().unwrap();
         let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
         let api_base = format!("http://{}", server.server_addr());
         let temp = std::env::temp_dir().join(format!("impeccable-image-{}-{}", std::process::id(), server.server_addr().to_ip().unwrap().port()));
