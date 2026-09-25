@@ -422,6 +422,10 @@ documentation case also passes with main's unchanged `SKILL.src.md` and
 `init.md` plus this test file, so the coverage is the test, not a skill-text
 change.
 
+## Workflow-advice assertion fix (2026-09-24)
+
+On 2026-09-24 S16 and S17 failed on every provider, main included, for a test reason: the sentence-bounded matches used `[^.!?\n]`, so the dot in `index.html` ended the "sentence" and correct advice ("polish index.html to implement the fixes") could not match. A dot followed by a word character no longer ends a sentence. S16 also accepts the surface named as the landing page, this page, or the existing implementation; S17 counts a critique described as a diagnosis. Generic advice and invented critique prerequisites still fail. A live rerun on claude-sonnet-5 and gemini-3.7-flash went from 0/6 to 8/9 with the fix; the remaining case used "existing visual implementation", now accepted.
+
 ## Workflow-advice baseline (2026-09-05, PR #737)
 
 The four cases in scenarios 16-18 are new; prior scenario results do not

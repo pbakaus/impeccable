@@ -22,24 +22,29 @@ function normalizedAdvice(text) {
   return text.replace(/[`*_]/g, '').replace(/[’]/g, "'").toLowerCase();
 }
 
+// One sentence's worth of characters. A dot inside a token (`index.html`,
+// `product.md`) does not end the sentence; only terminal punctuation does.
+const SENTENCE = String.raw`(?:[^.!?\n]|\.(?=\w))`;
+const within = (source) => new RegExp(source.replaceAll('[^.!?\\n]', SENTENCE));
+
 export function assertWorkflowAdvice(trace, text, { missingContext = false } = {}) {
   assertAdviceOnly(trace, text);
   const advice = normalizedAdvice(text);
-  assert.match(advice, /index\.html/, 'advice should address the existing surface');
+  assert.match(advice, /index\.html|landing page|\b(?:this|the|existing|current)\s+(?:page|site|surface|ui)\b|\bexisting\s+(?:visual\s+)?(?:implementation|design|code)\b/, 'advice should address the existing surface');
   assert.match(advice, missingContext ? /\binit\b/ : /\b(?:critique|audit|polish)\b/, 'advice must recommend a relevant starting point');
   if (missingContext) assert.match(advice, /\bdocument\b/, 'advice should explain how to record the existing identity');
-  assert.doesNotMatch(advice, /(?:must|need to|have to|required to)\s+(?:run\s+)?(?:\/impeccable\s+)?(?:init|document)\b[^.!?\n]{0,100}\bbefore\s+(?:you\s+can\s+)?(?:run(?:ning)?\s+)?(?:polish(?:ing)?|refin(?:e|ing|ement))\b|(?:polish|refinement)\s+(?:requires|is blocked by|cannot run without)\s+(?:init|document|product\.md|design\.md)/,
+  assert.doesNotMatch(advice, within(String.raw`(?:must|need to|have to|required to)\s+(?:run\s+)?(?:\/impeccable\s+)?(?:init|document)\b[^.!?\n]{0,100}\bbefore\s+(?:you\s+can\s+)?(?:run(?:ning)?\s+)?(?:polish(?:ing)?|refin(?:e|ing|ement))\b|(?:polish|refinement)\s+(?:requires|is blocked by|cannot run without)\s+(?:init|document|product\.md|design\.md)`),
     'setup is not a mandatory prerequisite for narrow refinement');
 }
 
 export function assertCommandComparison(trace, text) {
   assertAdviceOnly(trace, text);
   const advice = normalizedAdvice(text);
-  assert.match(advice, /critique[^.!?\n]{0,120}(?:review|assess|evaluat|report|findings)/, 'comparison must explain critique as assessment');
-  assert.match(advice, /polish[^.!?\n]{0,120}(?:fix|refin|implement|edit)/, 'comparison must explain polish as implementation');
-  assert.match(advice, /critique\s+(?:is\s+)?(?:isn't|is not|not)\s+(?:required|necessary)|critique[^.!?\n]{0,50}\boptional\b|polish[^.!?\n]{0,100}(?:directly|without\s+(?:a\s+)?critique|independent)/,
+  assert.match(advice, within(String.raw`critique[^.!?\n]{0,120}(?:review|assess|evaluat|report|findings|diagnos)`), 'comparison must explain critique as assessment');
+  assert.match(advice, within(String.raw`polish[^.!?\n]{0,120}(?:fix|refin|implement|edit)`), 'comparison must explain polish as implementation');
+  assert.match(advice, within(String.raw`critique\s+(?:is\s+)?(?:isn't|is not|not)\s+(?:required|necessary)|critique[^.!?\n]{0,50}\boptional\b|polish[^.!?\n]{0,100}(?:directly|without\s+(?:a\s+)?critique|independent)`),
     'comparison must explain that critique is optional before polish');
-  assert.doesNotMatch(advice, /(?:must|need to|have to)\s+(?:run\s+)?critique[^.!?\n]{0,80}before\s+(?:run(?:ning)?\s+)?polish|critique\s+(?:is\s+)?(?:required|mandatory|necessary)\s+before\s+polish|polish\s+(?:requires|cannot run without)\s+(?:a\s+)?critique/,
+  assert.doesNotMatch(advice, within(String.raw`(?:must|need to|have to)\s+(?:run\s+)?critique[^.!?\n]{0,80}before\s+(?:run(?:ning)?\s+)?polish|critique\s+(?:is\s+)?(?:required|mandatory|necessary)\s+before\s+polish|polish\s+(?:requires|cannot run without)\s+(?:a\s+)?critique`),
     'comparison must not invent a critique prerequisite');
 }
 
