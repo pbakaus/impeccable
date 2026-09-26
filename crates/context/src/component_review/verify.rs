@@ -16,7 +16,7 @@ pub fn approved(store_root: &Path, project: &Path, manifest_path: &str) -> Resul
     let _guard = store::lock(&directory)?;
     let state = store::read(&directory.join("current.json"))?;
     store::sources_current(&state)?;
-    if state["capture"]["schema"] != "native-component-previews-v1"
+    if !super::capture::verified(&state)
         || state["receipt"]["captureVerified"] != true
         || state["receipt"]["visualDecision"] != "approved"
         || state["receipt"]["submission"]["packetRevision"] != state["packet"]["revision"]
@@ -48,9 +48,7 @@ pub fn approved(store_root: &Path, project: &Path, manifest_path: &str) -> Resul
 /// every served file matches its blob, and code views point at captured pixels.
 pub fn capture_intact(dir: &Path, state: &Value) -> Result<(), String> {
     let fail = |why: &str| Err(format!("component review capture is not intact: {why}"));
-    if state["capture"]["schema"] != "native-component-previews-v1"
-        || state["receipt"]["capture"] != state["capture"]
-    {
+    if !super::capture::verified(state) || state["receipt"]["capture"] != state["capture"] {
         return fail("no native capture bound to the receipt");
     }
     let files = state["files"].as_object().ok_or("missing pinned files")?;
@@ -73,6 +71,12 @@ pub fn capture_intact(dir: &Path, state: &Value) -> Result<(), String> {
     if pinned(&state["packet"]["comp"]).is_none() {
         return fail("comp is not pinned");
     }
+    let v3 = state["packet"]["schemaVersion"] == 3;
+    if v3 && (state["packet"]["specSha256"].as_str().is_none()
+        || sources.get(super::plan::SPEC) != Some(&state["packet"]["specSha256"]))
+    {
+        return fail("the reviewed spec digest does not match the pinned spec");
+    }
     let components = state["packet"]["components"].as_array().ok_or("missing components")?;
     let evidence = state["capture"]["components"].as_array().ok_or("missing capture evidence")?;
     if evidence.len() != components.len() {
@@ -83,6 +87,18 @@ pub fn capture_intact(dir: &Path, state: &Value) -> Result<(), String> {
         let Some(proof) = evidence.iter().find(|e| e["id"] == id) else {
             return fail(&format!("{id} has no capture evidence"));
         };
+        if v3 && c["preview"]["kind"] == "comp-crop" {
+            let (comp, proof) = (pinned(&state["packet"]["comp"]), &proof["views"]["preview"]);
+            if c["role"] != "plan" || !c["context"].is_null() || !c["thumbnail"].is_null() || proof["kind"] != "comp-crop"
+                || proof["box"] != c["box"] || comp.as_ref().map(|(p, h)| (p.as_str(), h.as_str())) != Some((proof["compPath"].as_str().unwrap_or(""), proof["compSha256"].as_str().unwrap_or("")))
+            {
+                return fail(&format!("{id} lacks comp-crop evidence"));
+            }
+            continue;
+        }
+        if v3 && (c["role"] != "asset" || !c["context"].is_null()) {
+            return fail(&format!("{id} lacks raster-source evidence"));
+        }
         for key in ["preview", "context", "thumbnail"] {
             if c[key].is_null() && key != "preview" {
                 continue;
@@ -96,7 +112,7 @@ pub fn capture_intact(dir: &Path, state: &Value) -> Result<(), String> {
             } else if view["kind"] == "raster-source" {
                 key == "preview" && c[key]["kind"] == "image" && view["path"] == path.as_str() && view["sha256"] == hash.as_str()
             } else {
-                c[key]["kind"] == "image" && c[key]["sourceKind"] == "page"
+                !v3 && c[key]["kind"] == "image" && c[key]["sourceKind"] == "page"
                     && path == format!("_review_captures/{hash}.png") && view["screenshotSha256"] == hash.as_str()
             };
             if !ok {

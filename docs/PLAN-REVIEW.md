@@ -80,3 +80,14 @@ The first-viewport review is unchanged in form. Two rule changes:
 ## Painted-pixel flag (`comp-spec`)
 
 For every `text`, `control` and `chrome` region, `comp-spec` measures the comp crop and adds `flags: [{"id":"painted-pixels","message":...}]` when it looks painted: many distinct colours outside the two dominant clusters and a high share of soft-gradient pixels. It is a flag, not a refusal. Thresholds are calibrated on eval comps: raster regions should flag, text and controls should not. `comp-spec` prints flagged regions in its summary.
+
+## Engine notes
+
+Details the engine settles that the sections above leave open (full wording in `docs/CLI-CONTRACT.md`, "Component review"):
+
+- Packet identity: `id` is `components` for every round, so rounds share one session and decisions carry; `title` is `Plan and asset review`, plus ` · <artifact>` when the build state names one. `name` is derived from the region id.
+- v3 capture evidence has its own schema, `plan-review-proof-v1`, so a browser capture can never stand in for it or the reverse. Plan items carry no `context` or `thumbnail`; assets get `thumbnail` equal to their preview.
+- Decisions keep today's required `feedback` string (empty allowed) for every action; `feedback` is optional only in `submission.reclassify` entries.
+- A spec with no raster region and no plan item has nothing to review: `plan` refuses to write an empty packet, and the build-phase gate does not wait.
+- Hosted sessions (`IMPECCABLE_COMPONENT_REVIEW_TOOL` set) keep their review in the host's store, so the build-phase gate follows the host's policy (`IMPECCABLE_COMPONENT_REVIEW_PENDING=1` refuses) instead of the local store.
+- The plates `--force` rule is unchanged and not widened: a reason that passes it (a quoted user downgrade of the comp) waives the review reason along with the plate readings, and is recorded. `record hero` has no force.

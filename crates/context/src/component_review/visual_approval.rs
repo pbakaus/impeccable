@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 use std::path::Path;
 
 fn identity(state: &Value, component: &Value, blobs: &Path) -> Option<Value> {
-    if state["capture"]["schema"] != "native-component-previews-v1" {
+    if !super::capture::verified(state) {
         return None;
     }
     let evidence = state["capture"]["components"]
@@ -34,6 +34,12 @@ fn identity(state: &Value, component: &Value, blobs: &Path) -> Option<Value> {
             &component[key]
         };
         if view.is_null() {
+            continue;
+        }
+        if key == "preview" && view["kind"] == "comp-crop" {
+            // A plan item's pixels are the comp crop: its box is in the definition, the comp in `comp`.
+            if evidence["views"]["preview"]["kind"] != "comp-crop" { return None; }
+            views.insert(key.into(), view.clone());
             continue;
         }
         let path = view["url"].as_str()?.strip_prefix(&prefix)?;

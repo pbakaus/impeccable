@@ -2319,6 +2319,17 @@ fn run_gate(io: &Io, state: &mut Value, phase: &str, opts: &GateOpts, organic_sc
     }
 }
 
+/// Page work waits for the human plan and asset review (docs/PLAN-REVIEW.md) of the
+/// current spec. A hosted review lives in the host's store; its policy env decides.
+fn plan_review_refusal(io: &Io) -> Option<String> {
+    let s = self_cmd(io);
+    if let Some(tool) = io.env("IMPECCABLE_COMPONENT_REVIEW_TOOL") {
+        return (io.env("IMPECCABLE_COMPONENT_REVIEW_PENDING") == Some("1")).then(|| format!("The plan and asset review is pending. Write it with {s} component-review plan, call {tool} with manifest_path=\".impeccable/review/components.json\", and wait for the user's decisions. Write no page code before it is accepted."));
+    }
+    let Some(home) = io.home() else { return Some("the plan and asset review store needs a home directory".into()) };
+    impeccable_context::component_review::plan::gate(&home.join(".impeccable/component-reviews"), &io.cwd, &s).err()
+}
+
 /// JS: forceAllowed(reason).
 fn force_allowed(reason: Option<&str>) -> bool {
     use once_cell::sync::Lazy;
@@ -2377,7 +2388,10 @@ fn advance(io: &Io, state: &mut Value, force: bool, reason: Option<&str>, opts: 
     if let Some(p) = state.pointer_mut(&format!("/phases/{phase}")).and_then(|p| p.as_object_mut()) {
         p.insert("gate".into(), gate.record_json(&now()));
     }
-    if phase == "plates" { save_plate_receipts(state, &gate); }
+    if phase == "plates" {
+        save_plate_receipts(state, &gate);
+        if let Some(why) = plan_review_refusal(io) { gate.ok = false; gate.reasons.push(why); }
+    }
     if !gate.ok && force && !force_allowed(reason) {
         if let Some(p) = state.pointer_mut(&format!("/phases/{phase}")).and_then(|p| p.as_object_mut()) {
             p.insert("status".into(), json!("open"));
@@ -2464,7 +2478,7 @@ fn next_instruction(io: &Io, state: &Value) -> String {
             "Measure the comp: {s} comp-spec --comp {comp} --grid, open {}, write regions.json (every illustration, photo, texture as its own plate region; every text block its own text region), run {s} comp-spec --comp {comp} --regions regions.json. Then measure the type: {s} font-match --measure <id> for each text region (cap height, width class, weight class) and {s} font-match --rank <lead text region> --text \"<its first words>\" to choose the headline face by metrics (the USE line is the CSS; with no browser it records the catalog's nearest face, which is the choice; do not install one, and do not write a chosen face into the spec by hand). Then {s} build-phase advance.",
             format!("{BUILD_DIR}/comp-grid.png")
         ),
-        "plates" => format!("Produce every plate in the spec ({s} comp-spec --print lists them). For each illustration, photo, or figure, run {s} comp-spec --crop <id> --out <crop.png> and save {s} comp-spec --plate-prompt <id> to a prompt file. For an isolated figure or object on the page ground, add --background transparent to that plate-prompt command. Prefer the harness image tool with the crop as reference and that prompt; request native transparent PNG for cutouts. With the API fallback, run {s} generate-image --ref <crop.png> --prompt-file <prompt.txt> --out <plate.png> --size <WxH> --quality high; add --background transparent for cutouts. Create the output directory first and choose a supported size matching the region's aspect at least 1.5x its pixel size. generate-image embeds the prompt; after a harness generation run {s} embed-prompt <plate.png> --prompt-file <prompt.txt>. Preserve white paint, fine edges, and interior holes; verify alpha and inspect the cutout on light and dark grounds. Do not chroma-key native transparent output. Keep photos and textures opaque. Place cutouts with a plain <img> over the page's own ground; inspect glass and other translucent material carefully. Textures (paper, cloth, grain): crop a clean patch from {s} comp-spec --crop <id> --raw and mirror-tile it to the plate size; generate only when no clean patch exists. The gate scores a texture against its whole region box, so draw its region around clean ground. Keep candidate crops in separate files. Test each with {s} build-phase check-plate <id> --candidate <png> --json; this does not replace the selected asset or advance state. Inspect the candidate before explicitly selecting it at the spec plate path. Then {s} build-phase advance scores all selected plates against their comp regions. A pass does not replace visual inspection of placement, scale, and alpha. Write no page code before this passes."),
+        "plates" => format!("Produce every plate in the spec ({s} comp-spec --print lists them). For each illustration, photo, or figure, run {s} comp-spec --crop <id> --out <crop.png> and save {s} comp-spec --plate-prompt <id> to a prompt file. For an isolated figure or object on the page ground, add --background transparent to that plate-prompt command. Prefer the harness image tool with the crop as reference and that prompt; request native transparent PNG for cutouts. With the API fallback, run {s} generate-image --ref <crop.png> --prompt-file <prompt.txt> --out <plate.png> --size <WxH> --quality high; add --background transparent for cutouts. Create the output directory first and choose a supported size matching the region's aspect at least 1.5x its pixel size. generate-image embeds the prompt; after a harness generation run {s} embed-prompt <plate.png> --prompt-file <prompt.txt>. Preserve white paint, fine edges, and interior holes; verify alpha and inspect the cutout on light and dark grounds. Do not chroma-key native transparent output. Keep photos and textures opaque. Place cutouts with a plain <img> over the page's own ground; inspect glass and other translucent material carefully. Textures (paper, cloth, grain): crop a clean patch from {s} comp-spec --crop <id> --raw and mirror-tile it to the plate size; generate only when no clean patch exists. The gate scores a texture against its whole region box, so draw its region around clean ground. Keep candidate crops in separate files. Test each with {s} build-phase check-plate <id> --candidate <png> --json; this does not replace the selected asset or advance state. Inspect the candidate before explicitly selecting it at the spec plate path. Then {s} build-phase advance scores all selected plates against their comp regions. A pass does not replace visual inspection of placement, scale, and alpha. Once every plate exists, run {s} component-review plan, then {s} component-review capture --manifest .impeccable/review/components.json and {s} component-review serve --session <session>, and wait for the user: advance also waits until they accept this plan and asset review for the current spec. Write no page code before this passes."),
         "hero" => format!(
             "Run {s} build-phase scaffold first: it writes the measured layout as CSS custom properties (.impeccable/build/scaffold/layout.css, --r-<id>-x/y/w/h in % of the comp, plus cap height, font-size, family, and weight where measured) and a reference page with every region at its box. Bind those numbers to your own markup (an element per region, its box from the properties); the reference is a check, not the page, and overlapping boxes are overlapping boxes. Build only the first viewport at {}. Copy the comp's words verbatim in this phase (headline, labels, table cells, footer): the user approved that comp with those words, and rewriting is a later, stated decision, never a silent one here. Set every text region's font-size from its measured cap height and its face from the ranking. Plates first: place every plate at its spec box ({s} comp-spec --print lists boxes as percentages of the viewport) with object-fit: cover before writing a line of text or a control, capture into {HERO_REPRO}, and run {s} build-phase record hero (not advance) once so you see the plate regions read as match before text exists; then lay the semantic layer (text, controls, rules) over the plates from the spec's palette and boxes, capture, advance. When it fails, open the region crops it lists first, in order, then fix; do not build past the hero until it passes.",
             bp.unwrap_or("the comp size")
@@ -2975,6 +2989,10 @@ pub fn run_with_renderer(argv: &[String],io: &mut Io,organic_scan: OrganicScan,r
             let which = argv.get(1).map(String::as_str);
             if which != Some("hero") {
                 io.err("build-phase: record hero --build <png>\n");
+                return 1;
+            }
+            if let Some(why) = plan_review_refusal(io) {
+                io.err(&format!("build-phase: record hero refused. {why}\n"));
                 return 1;
             }
             let build_path = arg(argv, "build").unwrap_or(HERO_REPRO).to_string();
