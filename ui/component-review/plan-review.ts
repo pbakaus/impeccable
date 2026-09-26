@@ -151,7 +151,6 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
     const c = selectedItem(), r = selectedRegion();
     const target = c ?? r;
     if (!target) return;
-    if (c && type === 'revise' && c.role !== 'asset') return;
     if (c && type === 'reclassify' && c.role !== 'plan') return;
     const saved = c ? currentDecision(c, draft) : undefined;
     const savedRegion = r ? regionReclassify(draft, r.id) : undefined;
@@ -172,6 +171,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
       return;
     }
     const c = item(f.id)!;
+    if (f.type === 'revise' && c.role === 'plan' && !f.text.trim()) { root.getElementById('form-text')?.focus(); return; }
     commit(decide(draft, c, f.type, { feedback: f.text, kind: f.kind }), f.type === 'revise' ? `Needs work: ${c.name}.` : `${c.name} will become ${assetKindLabel(f.kind).toLowerCase()}.`);
     advanceFrom(c.id);
   }
@@ -289,9 +289,10 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
     const kbd = (k: string) => `<kbd>${k}</kbd>`;
     if (form) {
       const reclass = form.type === 'reclassify';
+      const planChange = !reclass && item(form.id)?.role === 'plan';
       return `<form id="decision-form" class="decision-form">
         ${reclass ? `<div class="kinds"><span class="tool-label" id="kinds-label">Make it an image as</span><div class="ks-instrument-strip is-paper" data-ks-strip="kind" role="group" aria-labelledby="kinds-label">${ASSET_KINDS.map(k => `<button type="button" class="ks-instrument-key" data-kind="${k.kind}" aria-pressed="${form!.kind === k.kind}">${k.label}</button>`).join('')}</div><p class="kind-hint" id="kind-hint">${esc(ASSET_KINDS.find(k => k.kind === form!.kind)!.hint)}.</p></div>` : ''}
-        <label class="field">${reclass ? 'Anything the image should keep? <span>Optional</span>' : 'What needs to change? <span>Optional</span>'}<textarea id="form-text" rows="3" placeholder="${reclass ? 'For example: keep the brushed direction horizontal.' : 'For example: the figure should face the sea.'}">${esc(form.text)}</textarea></label>
+        <label class="field">${reclass ? 'Anything the image should keep? <span>Optional</span>' : planChange ? 'What should change?' : 'What needs to change? <span>Optional</span>'}<textarea id="form-text" rows="3" ${planChange ? 'required' : ''} placeholder="${reclass ? 'For example: keep the brushed direction horizontal.' : planChange ? 'For example: extend the hero photo under the nav.' : 'For example: the figure should face the sea.'}">${esc(form.text)}</textarea></label>
         <div class="form-actions"><button type="button" id="form-cancel" class="ks-button ks-button-ghost">Cancel</button><button type="submit" class="ks-button ks-button-primary">${reclass ? 'Make it an image' : 'Save feedback'}${ksArrow}</button></div>
       </form>`;
     }
@@ -312,7 +313,8 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
         <button id="decide-yes" class="ks-button ks-button-primary">${yes}</button>
         <button id="decide-no" class="ks-button ks-button-secondary">${no}</button>
       </div>
-      ${d ? `<div class="verdict ${s}"><p><strong>${esc(stateLabel(c))}.</strong>${d.feedback ? ` ${esc(d.feedback)}` : d.action === 'approve' ? '' : ' No note; the agent will diagnose.'}</p><div class="verdict-actions"><button id="decision-edit" class="text-action">Edit</button><button id="decision-clear" class="text-action">Clear</button></div></div>` : ''}`;
+      ${c.role === 'plan' ? `<p class="other-action">Neither fits? <button id="decide-other" class="text-action">Something else…</button></p>` : ''}
+      ${d ? `<div class="verdict ${s}"><p><strong>${esc(stateLabel(c))}.</strong>${d.feedback ? ` ${esc(d.feedback)}` : d.action === 'approve' ? '' : ' No note; the agent will diagnose.'}</p><div class="verdict-actions">${d.action === 'approve' ? '' : '<button id="decision-edit" class="text-action">Edit</button>'}<button id="decision-clear" class="text-action">Clear</button></div></div>` : ''}`;
   }
 
   function detailMarkup() {
@@ -359,7 +361,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
     const disabled = !s.canSubmit || !!form || sending || !!options.status;
     return `<footer>
       <button id="mark" class="ks-button ks-button-ghost mark" aria-pressed="${marking}">${marking ? 'Cancel marking' : 'Mark missing'}</button>
-      <div class="progress" role="status">${lastDecision ? `<span>${esc(lastDecision.label)}</span><button id="undo" class="text-action">Undo</button>` : options.status ? '' : `<span class="keys"><kbd>A</kbd> approve <kbd>N</kbd> change <kbd>J</kbd><kbd>K</kbd> move</span>`}</div>
+      <div class="progress" role="status">${lastDecision ? `<span>${esc(lastDecision.label)}</span><button id="undo" class="text-action">Undo</button>` : options.status ? '' : `<span class="keys"><kbd>A</kbd> approve <kbd>N</kbd> change <kbd>F</kbd> feedback <kbd>J</kbd><kbd>K</kbd> move</span>`}</div>
       <div class="submit"><p>${esc(helper)}</p><button id="submit" class="ks-button ks-button-primary" ${disabled ? 'disabled' : ''}>${sending ? 'Sending…' : s.mode === 'changes' ? 'Send changes' : 'Approve plan and assets'}${sending ? '' : ksArrow}</button></div>
     </footer>`;
   }
@@ -440,7 +442,8 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
     on('decide-yes', approveSelected);
     on('decide-no', () => openForm(selectedItem()?.role === 'asset' ? 'revise' : 'reclassify'));
     on('decide-image', () => openForm('reclassify'));
-    on('decision-edit', () => openForm(selectedItem()?.role === 'asset' ? 'revise' : 'reclassify'));
+    on('decide-other', () => openForm('revise'));
+    on('decision-edit', () => { const c = selectedItem(); openForm(c && currentDecision(c, draft)?.action === 'reclassify' ? 'reclassify' : 'revise'); });
     on('decision-clear', () => { const c = selectedItem(); if (c && !locked()) { commit(clearDecision(draft, c.id), `Cleared: ${c.name}.`); render(); } });
     on('region-edit', () => openForm('reclassify'));
     on('region-keep', () => { const r = selectedRegion(); if (r && !locked()) { commit(setRegionReclassify(draft, r.id, null), `${r.name} stays in code.`); render(); } });
@@ -466,7 +469,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
     root.getElementById('missing-name')?.addEventListener('input', e => { const m = selectedMissing(); if (m) { m.name = (e.target as HTMLInputElement).value; syncSubmit(); options.onDraftChange?.(structuredClone(draft)); } });
     root.getElementById('missing-name')?.addEventListener('change', () => render());
     root.getElementById('missing-feedback')?.addEventListener('input', e => { const m = selectedMissing(); if (m) { m.feedback = (e.target as HTMLTextAreaElement).value; options.onDraftChange?.(structuredClone(draft)); } });
-    if (locked()) root.querySelectorAll<HTMLButtonElement>('#mark,#decide-yes,#decide-no,#decide-image,#decision-edit,#decision-clear,#region-edit,#region-keep').forEach(b => b.disabled = true);
+    if (locked()) root.querySelectorAll<HTMLButtonElement>('#mark,#decide-yes,#decide-no,#decide-other,#decide-image,#decision-edit,#decision-clear,#region-edit,#region-keep').forEach(b => b.disabled = true);
 
     const map = root.querySelector<HTMLElement>('.map');
     if (!map) return;
@@ -495,6 +498,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
     if (e.metaKey || e.ctrlKey || form) return;
     const key = e.key.toLowerCase();
     if (key === 'a' && selectedItem()) { e.preventDefault(); approveSelected(); }
+    else if (key === 'f' && selectedItem()) { e.preventDefault(); openForm('revise'); }
     else if (key === 'n' && (selectedItem() || selectedRegion())) { e.preventDefault(); if (selectedRegion()) openForm('reclassify'); else root.getElementById('decide-no')?.click(); }
     else if (key === 'j' || (e.key === 'ArrowRight' && !(target instanceof HTMLInputElement))) { e.preventDefault(); step(1); }
     else if (key === 'k' || (e.key === 'ArrowLeft' && !(target instanceof HTMLInputElement))) { e.preventDefault(); step(-1); }

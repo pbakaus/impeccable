@@ -187,6 +187,8 @@ h1{font:300 40px/1.04 var(--ks-font-display);font-variation-settings:'wght' 300;
 .stage-tools{flex-shrink:0;display:flex;justify-content:space-between;align-items:center;gap:10px 16px;flex-wrap:wrap}
 .decisions{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .decisions .ks-button{width:100%}
+.other-action{font-size:var(--ks-type-ui-size);color:var(--ks-text-muted)}
+.other-action .text-action{font-size:var(--ks-type-ui-size)}
 .kinds{display:flex;flex-direction:column;align-items:flex-start;gap:10px}
 .kind-hint{font-size:var(--ks-type-label-size);color:var(--ks-text-muted)}
 .form-actions{display:flex;justify-content:flex-end;gap:8px}

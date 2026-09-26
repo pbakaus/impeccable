@@ -57,9 +57,10 @@ describe('plan and asset review model', () => {
     draft = setRegionReclassify(draft, 'headline', null);
     expect(planSummary(packet, draft).hasChanges).toBe(false);
   });
-  test('revise is for assets, reclassify for plan items', () => {
+  test('revise needs words on a plan item; reclassify is only for plan items', () => {
     const draft = newPlanDraft(packet);
-    expect(() => decide(draft, rule, 'revise')).toThrow();
+    expect(() => decide(draft, rule, 'revise')).toThrow('feedback');
+    expect(decide(draft, rule, 'revise', { feedback: ' Extend the photo under it ' }).decisions.rule).toEqual({ revision: 'r1', action: 'revise', feedback: 'Extend the photo under it', split: false });
     expect(() => decide(draft, figure, 'reclassify')).toThrow();
     expect(itemState(figure, decide(draft, figure, 'revise', { feedback: 'Warmer' }))).toBe('revise');
   });

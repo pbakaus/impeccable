@@ -57,7 +57,7 @@ The stage keeps its name so hosts and `lifecycle --require components hero` keep
 Per component: `{revision, action, feedback, split: false}` plus, for `reclassify`, `kind`:
 
 - `approve`: asset looks right / code is the right medium.
-- `revise` (assets only): regenerate with `feedback`.
+- `revise`: on an asset, regenerate with `feedback`. On a plan item, `feedback` is required and describes a region-map change neither medium fixes (for example, artwork from a neighbouring photo spills over a code region: extend that photo under it, or split the material into its own plate). The region's kind can stay.
 - `reclassify` (plan items, and any `codeRegions` id): `kind` is `plate`, `image` or `texture`; `feedback` optional. Allowed for ids in `codeRegions` without a component entry; those go in `submission.reclassify: [{id, kind, feedback}]`.
 
 `missing` and `inventoryConfirmed` stay. The UI sets `inventoryConfirmed: true` when the user approves with nothing marked missing (the approve button says so). A submission with any `revise`, `reclassify` or `missing` entry is `changes-requested`. Approval requires every component approved and no reclassification.
@@ -68,7 +68,7 @@ v3 needs no browser. `component-review capture` records the raster-source proof 
 
 ## After feedback
 
-The agent applies the receipt: for `reclassify`, change the region's kind (and note) in the regions file, rerun `comp-spec --regions`, produce the new plates; for `revise`, regenerate the plate with the feedback. Then `component-review plan`, `capture`, `serve` again. Unchanged decisions carry.
+The agent applies the receipt: for `reclassify`, change the region's kind (and note) in the regions file, rerun `comp-spec --regions`, produce the new plates; for `revise` on an asset, regenerate the plate with the feedback; for `revise` on a plan item, change the regions file as the feedback says, rerun `comp-spec --regions` and produce any new plates. Then `component-review plan`, `capture`, `serve` again. Unchanged decisions carry.
 
 ## Hero
 
