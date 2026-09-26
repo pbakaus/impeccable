@@ -79,6 +79,7 @@ export const SUITES = {
           'tests/cli-shim.test.mjs',
           'tests/check-engine-release.test.mjs',
           'tests/check-loop-release.test.mjs',
+          'tests/cli-native.test.mjs',
           'tests/launcher-download.test.mjs',
           'tests/publish-platform-packages.test.mjs',
           'tests/github-sheriff.test.mjs',

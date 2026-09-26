@@ -24,6 +24,9 @@ const RUST_PATTERNS = [
   /^browser-bundle\//,
   /^tests\/oracle\//,
   /^\.github\/workflows\/ci\.yml$/,
+  /^\.github\/workflows\/release-engine\.yml$/,
+  /^cli\/(bin|platform-packages)\//,
+  /^tests\/cli-native\.test\.mjs$/,
 ];
 const rustChanged = changedFiles.some((file) => RUST_PATTERNS.some((re) => re.test(file)));
 
