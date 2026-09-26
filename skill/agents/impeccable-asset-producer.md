@@ -26,7 +26,7 @@ When the parent hands you a decision card packet instead of an approved mock, th
 
 ## Review handoff
 
-After the initial production batch, return the actual files and any unresolved drift to the parent for the user-facing component review in [component-review.md](../reference/component-review.md). The parent includes rendered code regions alongside these rasters. A parent or automatic visual check is not a substitute for that human checkpoint. Apply requested repairs and preserve unchanged assets; do not self-approve them. This checkpoint does not apply to the Decision Comps job above.
+Return the actual files and any unresolved drift to the parent for the user's plan and asset review in [component-review.md](../reference/component-review.md). A parent or automatic visual check is not a substitute for that human checkpoint. The parent may call you again after it: for regions the user reclassified from code to raster (the spec now lists them with a plate path), or for plates the user asked to revise, with their feedback as the prompt notes. Produce only those, preserve unchanged assets, and hand off real files as before; never self-approve. This checkpoint does not apply to the Decision Comps job above.
 
 ## Input Contract
 
