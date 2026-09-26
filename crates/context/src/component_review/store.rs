@@ -380,7 +380,10 @@ pub fn submit(dir: &Path, body: &Value) -> Result<Value, String> {
         match d["action"].as_str() {
             Some("approve") if d["split"] == false => approved += 1,
             Some("revise") if !v3 || c["role"] == "asset" => revisions += 1,
-            Some("revise") => return Err(format!("{id} is a plan item; revise applies to assets, reclassify changes a plan item's medium")),
+            // A plan item can need a map change neither medium fixes (artwork spilling over a
+            // code region). Revise then carries the reviewer's words and must not be empty.
+            Some("revise") if d["split"] == false && !d["feedback"].as_str().unwrap().trim().is_empty() => revisions += 1,
+            Some("revise") => return Err(format!("{id} is a plan item; revise on a plan item needs feedback describing the region map change")),
             Some("reclassify") if v3 && c["role"] == "plan" && d["split"] == false && target_kind(d) => reclassified += 1,
             Some("reclassify") => return Err("reclassify applies to plan items and needs kind plate, image or texture".into()),
             _ => return Err("invalid decision action".into()),

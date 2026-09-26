@@ -1081,6 +1081,22 @@ fn plan_freeze_binds_the_spec_and_the_complete_inventory() {
 }
 
 #[test]
+fn a_plan_item_revise_carries_the_map_change_and_requests_changes() {
+    let f = Fixture::new();
+    f.plan_project();
+    f.plates();
+    let dir = f.plan_round();
+    let state = store::read(&dir.join("current.json")).unwrap();
+    let mut body = approve(&state);
+    let rev = state["packet"]["components"][0]["revision"].clone();
+    body["decisions"]["brushed-panel"] = json!({"revision":rev,"action":"revise","feedback":"Extend the photo under the band","split":false});
+    let receipt = store::submit(&dir, &body).unwrap();
+    assert_eq!(receipt["visualDecision"], "changes-requested");
+    assert_eq!(receipt["submission"]["decisions"]["brushed-panel"]["feedback"], "Extend the photo under the band");
+    assert!(f.gate().unwrap_err().contains("requested changes"));
+}
+
+#[test]
 fn reclassification_requests_changes_and_carries_unchanged_decisions_into_the_next_round() {
     let f = Fixture::new();
     f.plan_project();
@@ -1089,9 +1105,9 @@ fn reclassification_requests_changes_and_carries_unchanged_decisions_into_the_ne
     let state = store::read(&dir.join("current.json")).unwrap();
     let rev = |i: usize| state["packet"]["components"][i]["revision"].clone();
     let mut body = approve(&state);
-    // revise is for assets, reclassify for plan items with a raster kind.
-    body["decisions"]["brushed-panel"] = json!({"revision":rev(0),"action":"revise","feedback":"","split":false});
-    assert!(store::submit(&dir, &body).unwrap_err().contains("plan item"));
+    // A plan item takes reclassify with a raster kind, or revise with the reviewer's words.
+    body["decisions"]["brushed-panel"] = json!({"revision":rev(0),"action":"revise","feedback":"  ","split":false});
+    assert!(store::submit(&dir, &body).unwrap_err().contains("needs feedback"));
     body["decisions"]["brushed-panel"] = json!({"revision":rev(0),"action":"reclassify","kind":"svg","feedback":"","split":false});
     assert!(store::submit(&dir, &body).is_err());
     body["decisions"]["art"] = json!({"revision":rev(2),"action":"reclassify","kind":"image","feedback":"","split":false});

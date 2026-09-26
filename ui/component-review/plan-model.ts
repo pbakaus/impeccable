@@ -109,7 +109,8 @@ export function planSummary(packet: PlanPacket, draft: PlanDraft) {
 
 /** Pure decision update. Returns the next draft; callers keep the old one for undo. */
 export function decide(draft: PlanDraft, item: PlanItem, action: PlanDecision['action'], options: { feedback?: string; kind?: AssetKind } = {}): PlanDraft {
-  if (action === 'revise' && item.role !== 'asset') throw new Error('Only generated assets can be revised');
+  // A plan item's revise is a region-map change in the reviewer's words, so it needs them.
+  if (action === 'revise' && item.role !== 'asset' && !(options.feedback ?? '').trim()) throw new Error('Revising a plan item needs feedback');
   if (action === 'reclassify' && item.role !== 'plan') throw new Error('Only planned code can become an image');
   const decision: PlanDecision = { revision: item.revision, action, feedback: action === 'approve' ? '' : (options.feedback ?? '').trim(), split: false };
   if (action === 'reclassify') decision.kind = options.kind ?? defaultAssetKind(item);
