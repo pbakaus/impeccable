@@ -27,6 +27,7 @@ const ICON = {
   mark: svg('<path d="M6 2.5H2.5V6M10 2.5h3.5V6M2.5 10v3.5H6M13.5 10v3.5H10M8 5.5v5M5.5 8h5"/>'),
   close: svg('<path d="m4 4 8 8M4 12l8-8"/>'),
   chevron: svg('<path d="m4 6 4 4 4-4"/>'),
+  arrow: '<svg class="arrow" viewBox="0 0 16 8" aria-hidden="true" focusable="false"><path d="M0 4h14M10 0l4 4-4 4"/></svg>',
   alert: svg('<path d="M8 2 1.5 13.5h13L8 2Z"/><path d="M8 6.5v3.2M8 11.6v.1"/>'),
 };
 
@@ -356,7 +357,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
     return `<footer>
       <button id="mark" class="ghost mark" aria-pressed="${marking}">${marking ? ICON.close : ICON.mark}${marking ? 'Cancel marking' : 'Mark missing'}</button>
       <div class="progress" role="status">${lastDecision ? `<span>${esc(lastDecision.label)}</span><button id="undo" class="link">Undo</button>` : options.status ? '' : `<span class="keys"><kbd>A</kbd> approve <kbd>N</kbd> change <kbd>J</kbd><kbd>K</kbd> move</span>`}</div>
-      <div class="submit"><p>${esc(helper)}</p><button id="submit" class="primary ${s.mode}" ${disabled ? 'disabled' : ''}>${sending ? 'Sending…' : s.mode === 'changes' ? 'Send changes' : 'Approve plan and assets'}</button></div>
+      <div class="submit"><p>${esc(helper)}</p><button id="submit" class="primary ${s.mode}" ${disabled ? 'disabled' : ''}>${sending ? 'Sending…' : s.mode === 'changes' ? 'Send changes' : 'Approve plan and assets'}${sending ? '' : ICON.arrow}</button></div>
     </footer>`;
   }
 
