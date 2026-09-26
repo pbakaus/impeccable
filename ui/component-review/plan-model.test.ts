@@ -115,16 +115,19 @@ describe('plan and asset review model', () => {
     const capped = pairLayout(1, 800, 500, 16, 24, 4, { w: 40, h: 40 });
     expect(capped.w).toBe(160);
   });
-  test('plan views fill the stage without shrinking a band to a sliver', () => {
-    const band = planView({ x: 0, y: .7, w: 1, h: .1 }, 1440, 900, 590, 330);
-    expect(band.scale).toBe(1);
-    expect(band.width).toBeCloseTo(590); expect(band.height).toBeCloseTo(330);
-    expect(band.view.y).toBeLessThan(.7); expect(band.view.y + band.view.h).toBeGreaterThan(.8);
-    const big = planView({ x: .1, y: .1, w: .7, h: .55 }, 1440, 900, 590, 330);
-    expect(big.scale).toBeLessThan(1);
-    expect(big.view.x).toBeLessThanOrEqual(.1); expect(big.view.x + big.view.w).toBeGreaterThanOrEqual(.8);
+  test('plan crops frame the region tightly and fill the pane width', () => {
+    const strip = planView({ x: 0, y: 0, w: 1, h: 102 / 900 }, 1440, 900, 590, 330);
+    expect(strip.width).toBeCloseTo(590);
+    expect(strip.view.h * 900).toBeLessThan(102 + 70);
+    expect(strip.view.y).toBe(0);
+    const card = planView({ x: .5, y: .5, w: .1, h: .1 }, 1440, 900, 590, 330);
+    expect(card.height).toBeCloseTo(330);
+    expect(card.view.w * 1440).toBeLessThan(144 + 40);
     const tiny = planView({ x: .5, y: .5, w: .01, h: .01 }, 1440, 900, 590, 330);
     expect(tiny.scale).toBe(4);
+    const hairline = planView({ x: 0, y: .5, w: 1, h: 2 / 900 }, 1440, 900, 590, 330);
+    expect(2 * hairline.scale).toBeGreaterThanOrEqual(8);
+    expect(hairline.width).toBeLessThanOrEqual(590.01);
     const edge = planView({ x: 0, y: 0, w: .05, h: .002 }, 1440, 900, 590, 330);
     expect(edge.view.x).toBe(0); expect(edge.view.y).toBe(0);
   });

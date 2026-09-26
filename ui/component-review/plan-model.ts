@@ -180,15 +180,18 @@ export function medianColor(samples: [number, number, number][]): string | undef
   return '#' + [0, 1, 2].map(n => channel(n).toString(16).padStart(2, '0')).join('');
 }
 
-/** The comp around a plan region, scaled to fill a stage of `width` x `height` px.
- * Fits the padded region when it can; a long thin region (a hairline, a band) keeps at least
- * comp scale along its short side and shows a segment instead of shrinking to a sliver. */
-export function planView(box: Box, compWidth: number, compHeight: number, width: number, height: number, maxScale = 4) {
+/** The comp crop for a plan region: the box plus a modest margin, scaled so the region fills the
+ * pane width (context lives on the comp map, not in this crop). A region so thin that it would
+ * render under `minHeight` px is scaled up to that height and shown as a centred segment. */
+export function planView(box: Box, compWidth: number, compHeight: number, width: number, height: number, maxScale = 4, minHeight = 24) {
   const bw = box.w * compWidth, bh = box.h * compHeight;
-  const pad = Math.max(24, 0.15 * Math.min(Math.max(bw, bh), 400));
-  const fx = width / (bw + pad * 2), fy = height / (bh + pad * 2);
-  const scale = Math.max(0.01, Math.min(maxScale, Math.max(Math.min(fx, fy), Math.min(1, Math.max(fx, fy)))));
-  const vw = Math.min(compWidth, width / scale), vh = Math.min(compHeight, height / scale);
+  const margin = Math.min(24, Math.max(8, 0.04 * Math.max(bw, bh)));
+  let vw = Math.min(compWidth, bw + margin * 2), vh = Math.min(compHeight, bh + margin * 2);
+  let scale = Math.min(maxScale, width / vw, height / vh);
+  if (bh * scale < minHeight && bh > 0) {
+    scale = Math.min(maxScale, minHeight / bh, height / vh);
+    vw = Math.min(vw, width / scale);
+  }
   const cx = (box.x + box.w / 2) * compWidth, cy = (box.y + box.h / 2) * compHeight;
   const x = Math.max(0, Math.min(compWidth - vw, cx - vw / 2)), y = Math.max(0, Math.min(compHeight - vh, cy - vh / 2));
   return { scale, width: vw * scale, height: vh * scale, view: { x: x / compWidth, y: y / compHeight, w: vw / compWidth, h: vh / compHeight } };

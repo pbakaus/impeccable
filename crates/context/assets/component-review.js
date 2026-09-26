@@ -1,12 +1,12 @@
-(()=>{function wi(a,i){let n=i?.changes[a],e=i?.feedback?.[a],p=e?.decision??(i?.submitted?i.draft.decisions[a]:void 0),s=n?.kind==="unchanged"&&(n.carried??(i?.submitted&&p?.action==="approve"))===!0;return{change:n,prior:p,feedbackRound:e?.round??i?.packet.round,carried:s,label:n?.kind==="added"?"New component":n?.kind==="changed"?"Review again":s?"Approval kept":p?.action==="revise"?"Changes still requested":"Awaiting review"}}function kr(a,i,n){let e=i.decisions[a.id],p=e?.revision===a.revision?e:void 0,s=wi(a.id,n);if(p?.action==="approve")return{kind:"approved",label:s.carried?"Approval kept":"Approved",priority:3};if(p?.action==="revise")return{kind:"feedback",label:"Feedback ready",priority:2};return{kind:"pending",label:s.change?.kind==="changed"?"Review again":s.change?.kind==="added"?"New · review needed":"Not reviewed",priority:s.change?.kind==="changed"||s.change?.kind==="added"?0:1}}function xo(a){return{packetRevision:a.revision,decisions:{},missing:[],inventoryConfirmed:!1}}function Mi(a){return Object.values(a).every(Number.isFinite)&&a.x>=0&&a.y>=0&&a.w>0&&a.h>0&&a.x+a.w<=1.00001&&a.y+a.h<=1.00001}function Lr(a,i){let n=a.components.map((v)=>i.decisions[v.id]?.revision===v.revision?i.decisions[v.id]:void 0),e=n.filter((v)=>v?.action==="approve").length,p=n.filter((v)=>v?.action==="revise").length,s=n.length-e-p,f=p>0||i.missing.length>0;return{approved:e,revisions:p,pending:s,hasFeedback:f,canSubmit:i.packetRevision===a.revision&&i.missing.every((v)=>v.name.trim()&&Mi(v.box))&&(f||!s&&i.inventoryConfirmed)}}function to(a,i){let n={...i.decisions};for(let e of a.components)if(!n[e.id]||n[e.id].revision!==e.revision)n[e.id]={revision:e.revision,action:"approve",feedback:"",split:!1};return{...i,decisions:n}}function so(a,i){if(!Lr(a,i).canSubmit)throw Error("Review is incomplete or stale");return{schemaVersion:1,requestId:a.id,...structuredClone(i)}}function Wr(a){let i=a.preview.kind==="page"||a.preview.sourceKind==="page",n=a.preview.sourceKind==="page";return{code:i,captured:n,label:i?a.medium.match(/html|css|svg/i)?a.medium:"HTML / CSS / SVG":"Raster",caption:i?n?a.preview.isolation?"Component only":"Region capture":"Live component":"Produced asset",fileLabel:n?"Open captured preview":"Open source image"}}function go(a,i,n){let e=a.components.findIndex((p)=>p.id===n);for(let p=1;p<=a.components.length;p++){let s=a.components[(e+p)%a.components.length];if(kr(s,i).kind==="pending")return s.id}}function bi(a,i){if(!i.reviewGroup||!Wr(i).code)return[i];return a.components.filter((n)=>n.reviewGroup===i.reviewGroup&&Wr(n).code)}function li(a,i,n,e,p=[]){let s=e?bi(a,n):[n];if(s.length===1)return[n];return s.filter((f)=>kr(f,i).kind==="pending"&&(f.id===n.id||!p.includes(f.id)))}function ho(a,i,n){let e=new Set;return a.components.flatMap((p)=>{if(e.has(p.id))return[];let s=bi(a,p);s.forEach((b)=>e.add(b.id));let f=s.filter((b)=>kr(b,i,n).kind==="pending"),v=s.filter((b)=>kr(b,i,n).kind==="feedback"),w=f[0]??v[0]??p,c=f.length?"pending":v.length?"feedback":"approved";return[{id:p.id,members:s,representative:w,pending:f.length,kind:c,label:s.length>1?p.reviewGroup.replace(/[-_]+/g," ").replace(/^./,(b)=>b.toUpperCase()):p.name,box:{x:Math.min(...s.map((b)=>b.box.x)),y:Math.min(...s.map((b)=>b.box.y)),w:Math.max(...s.map((b)=>b.box.x+b.box.w))-Math.min(...s.map((b)=>b.box.x)),h:Math.max(...s.map((b)=>b.box.y+b.box.h))-Math.min(...s.map((b)=>b.box.y))},stateLabel:f.length?s.length>1?`${f.length} to review`:kr(w,i,n).label:v.length?s.length>1?`${v.length} ${v.length===1?"needs":"need"} work`:"Feedback ready":"Approved"}]})}function ui(a,i){let n=new Set(i.preview.isolation?.excludedComponents??[]),e=i.box,p=a.components.filter((s)=>{if(s.id===i.id)return!1;if(n.has(s.id))return!0;let f=s.box,v=Math.min(e.x+e.w,f.x+f.w)-Math.max(e.x,f.x),w=Math.min(e.y+e.h,f.y+f.h)-Math.max(e.y,f.y);return f.w*f.h<e.w*e.h&&v*a.comp.width>1&&w*a.comp.height>1});return{description:i.note.trim(),related:p,excluded:p.filter((s)=>n.has(s.id))}}function Ei(a,i,n,e,p){let s=p==="fit"?Math.min(1,n/a,e/i):p;return{scale:s,width:a*s,height:i*s}}function Hi(a,i,n,e){if(n<=0||e<=n)return 0;return Math.max(0,Math.min(1,((a-i)/n-0.08)/0.84))*(e-n)}var vo=`
+(()=>{function wi(r,i){let n=i?.changes[r],o=i?.feedback?.[r],t=o?.decision??(i?.submitted?i.draft.decisions[r]:void 0),d=n?.kind==="unchanged"&&(n.carried??(i?.submitted&&t?.action==="approve"))===!0;return{change:n,prior:t,feedbackRound:o?.round??i?.packet.round,carried:d,label:n?.kind==="added"?"New component":n?.kind==="changed"?"Review again":d?"Approval kept":t?.action==="revise"?"Changes still requested":"Awaiting review"}}function he(r,i,n){let o=i.decisions[r.id],t=o?.revision===r.revision?o:void 0,d=wi(r.id,n);if(t?.action==="approve")return{kind:"approved",label:d.carried?"Approval kept":"Approved",priority:3};if(t?.action==="revise")return{kind:"feedback",label:"Feedback ready",priority:2};return{kind:"pending",label:d.change?.kind==="changed"?"Review again":d.change?.kind==="added"?"New · review needed":"Not reviewed",priority:d.change?.kind==="changed"||d.change?.kind==="added"?0:1}}function hr(r){return{packetRevision:r.revision,decisions:{},missing:[],inventoryConfirmed:!1}}function Bi(r){return Object.values(r).every(Number.isFinite)&&r.x>=0&&r.y>=0&&r.w>0&&r.h>0&&r.x+r.w<=1.00001&&r.y+r.h<=1.00001}function Re(r,i){let n=r.components.map((g)=>i.decisions[g.id]?.revision===g.revision?i.decisions[g.id]:void 0),o=n.filter((g)=>g?.action==="approve").length,t=n.filter((g)=>g?.action==="revise").length,d=n.length-o-t,f=t>0||i.missing.length>0;return{approved:o,revisions:t,pending:d,hasFeedback:f,canSubmit:i.packetRevision===r.revision&&i.missing.every((g)=>g.name.trim()&&Bi(g.box))&&(f||!d&&i.inventoryConfirmed)}}function kr(r,i){let n={...i.decisions};for(let o of r.components)if(!n[o.id]||n[o.id].revision!==o.revision)n[o.id]={revision:o.revision,action:"approve",feedback:"",split:!1};return{...i,decisions:n}}function gr(r,i){if(!Re(r,i).canSubmit)throw Error("Review is incomplete or stale");return{schemaVersion:1,requestId:r.id,...structuredClone(i)}}function Ie(r){let i=r.preview.kind==="page"||r.preview.sourceKind==="page",n=r.preview.sourceKind==="page";return{code:i,captured:n,label:i?r.medium.match(/html|css|svg/i)?r.medium:"HTML / CSS / SVG":"Raster",caption:i?n?r.preview.isolation?"Component only":"Region capture":"Live component":"Produced asset",fileLabel:n?"Open captured preview":"Open source image"}}function vr(r,i,n){let o=r.components.findIndex((t)=>t.id===n);for(let t=1;t<=r.components.length;t++){let d=r.components[(o+t)%r.components.length];if(he(d,i).kind==="pending")return d.id}}function mi(r,i){if(!i.reviewGroup||!Ie(i).code)return[i];return r.components.filter((n)=>n.reviewGroup===i.reviewGroup&&Ie(n).code)}function li(r,i,n,o,t=[]){let d=o?mi(r,n):[n];if(d.length===1)return[n];return d.filter((f)=>he(f,i).kind==="pending"&&(f.id===n.id||!t.includes(f.id)))}function ur(r,i,n){let o=new Set;return r.components.flatMap((t)=>{if(o.has(t.id))return[];let d=mi(r,t);d.forEach((k)=>o.add(k.id));let f=d.filter((k)=>he(k,i,n).kind==="pending"),g=d.filter((k)=>he(k,i,n).kind==="feedback"),v=f[0]??g[0]??t,h=f.length?"pending":g.length?"feedback":"approved";return[{id:t.id,members:d,representative:v,pending:f.length,kind:h,label:d.length>1?t.reviewGroup.replace(/[-_]+/g," ").replace(/^./,(k)=>k.toUpperCase()):t.name,box:{x:Math.min(...d.map((k)=>k.box.x)),y:Math.min(...d.map((k)=>k.box.y)),w:Math.max(...d.map((k)=>k.box.x+k.box.w))-Math.min(...d.map((k)=>k.box.x)),h:Math.max(...d.map((k)=>k.box.y+k.box.h))-Math.min(...d.map((k)=>k.box.y))},stateLabel:f.length?d.length>1?`${f.length} to review`:he(v,i,n).label:g.length?d.length>1?`${g.length} ${g.length===1?"needs":"need"} work`:"Feedback ready":"Approved"}]})}function yi(r,i){let n=new Set(i.preview.isolation?.excludedComponents??[]),o=i.box,t=r.components.filter((d)=>{if(d.id===i.id)return!1;if(n.has(d.id))return!0;let f=d.box,g=Math.min(o.x+o.w,f.x+f.w)-Math.max(o.x,f.x),v=Math.min(o.y+o.h,f.y+f.h)-Math.max(o.y,f.y);return f.w*f.h<o.w*o.h&&g*r.comp.width>1&&v*r.comp.height>1});return{description:i.note.trim(),related:t,excluded:t.filter((d)=>n.has(d.id))}}function Ai(r,i,n,o,t){let d=t==="fit"?Math.min(1,n/r,o/i):t;return{scale:d,width:r*d,height:i*d}}function Wi(r,i,n,o){if(n<=0||o<=n)return 0;return Math.max(0,Math.min(1,((r-i)/n-0.08)/0.84))*(o-n)}var fr=`
 :host{height:var(--component-review-height,100dvh);min-height:0;overflow:hidden}
 .review{height:100%;max-width:none;min-height:0;padding:0;display:flex;flex-direction:column;overflow:hidden;background:var(--color-bg,var(--ks-paper))}
 .review>header{flex-shrink:0;padding:16px 24px;margin:0;border-bottom:1px solid var(--line);gap:16px}.review>header>div{min-width:0}.review h1{font-size:30px;line-height:1}.review>header p{font-size:12px;margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.review .badge{font-size:11px}
 .review>.preview-note{flex-shrink:0;margin:0;padding:8px 24px;font-size:11px}.review>.round-summary{flex-shrink:0;margin:0;padding:8px 24px;border-top:0;gap:6px 16px;max-height:120px;overflow:auto}.round-summary p{font-size:12px;gap:6px 14px}.round-summary button{font-size:12px;min-height:32px;padding:5px 10px}
 .review>.workbench{flex:1;min-height:0;align-items:stretch;padding:20px 24px;gap:32px;overflow:hidden;grid-template-columns:minmax(0,1.12fr) minmax(0,1fr)}.reference{display:flex;flex-direction:column;min-height:0;width:100%;max-width:none;margin:0}.reference>.section-head{flex-shrink:0;margin-bottom:10px}.map-space{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:var(--ks-paper-deep);border:1px solid var(--line);overflow:hidden}.map{flex-shrink:0;max-width:100%;max-height:100%}.map-legend{flex-shrink:0;margin-top:9px;gap:6px 14px}.map-caption{flex-shrink:0;min-height:0;padding-top:6px;font-size:10px}.map-caption button{display:inline-block;margin:0 0 0 8px;min-height:28px;padding:3px 7px}
-.workbench>.inspector{height:100%;min-height:0;padding:0;border:0}.inspector>.section-head{margin-bottom:10px;min-height:32px}.section-head h2{font-size:16px}.inspection-content{padding-bottom:8px}.review-form{max-height:55%;overflow-y:auto;scrollbar-width:thin;scrollbar-gutter:stable}.material{min-height:28px}.material strong{font-size:13px}.compare-toolbar{margin-bottom:12px}.previous-feedback{padding:10px 12px}.repair-context{margin-bottom:12px}.preview-round{margin-bottom:10px}.decision-title p{font-size:11px}.decisions>button{min-height:40px;font-size:13px}.decision-title strong{font-size:13px}.view-controls{margin-top:8px}.component-details{height:auto;max-height:80px}
-.review>.inventory-section{height:236px;flex-shrink:0;display:flex;flex-direction:column;min-height:0;margin:0;padding:10px 24px 8px;border-top:1px solid var(--line);background:var(--color-panel,var(--ks-paper));overflow:hidden}.inventory-section>.section-head{margin:0 0 8px;min-height:36px;flex-shrink:0;gap:10px}.inventory-section h2{font-size:14px}.inventory{flex:1;min-height:0;align-items:stretch;margin:0;padding:3px 3px 7px;overflow-x:auto;overflow-y:hidden}.inventory.all{overflow:auto;align-items:start;grid-auto-rows:160px}.inventory .item{flex:0 0 136px;padding:8px;gap:3px;grid-template-rows:auto auto minmax(24px,1fr) auto;min-height:0}.inventory .item-thumb{height:46px;margin-bottom:3px}.inventory .thumb-crop{max-height:46px}.inventory .item-number{font-size:11px;min-height:16px;padding:0}.inventory .item strong{font-size:12px;min-height:26px;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.inventory .state{font-size:11px;padding-top:4px}.tray-actions{display:flex;gap:6px;align-items:center}.tray-actions button{white-space:nowrap;font-size:11px;min-height:32px}.tray-actions #toggle-tray{display:flex;align-items:center;gap:6px}.tray-actions svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}.review>.inventory-section.tray-expanded{height:min(42dvh,390px)}.review>.inventory-section.tray-collapsed{height:56px;padding-block:10px}.tray-collapsed .inventory{display:none}.tray-collapsed>.section-head{margin-bottom:0}
-.review>footer{flex-shrink:0;margin:0;padding:12px 24px;gap:16px;border-top:1px solid var(--line);background:var(--paper);align-items:center}.review>footer>div:first-child{display:flex;align-items:center;gap:14px;min-width:0}.review>footer .check{margin:0;max-width:240px;font-size:11px}.review>footer #approve-rest{min-height:36px;font-size:12px;max-width:210px;padding:7px 10px}.review>footer .submit-area{gap:12px}.review>footer .submit-area p{font-size:11px;max-width:24ch}.review>footer .primary{min-height:40px;font-size:13px}.mobile-panes{display:none}
+.workbench>.inspector{height:100%;min-height:0;padding:0;border:0}.inspector>.section-head{margin-bottom:10px;min-height:32px}.section-head h2{font-size:16px}.inspection-content{padding-bottom:8px}.review-form{max-height:55%;overflow-y:auto;scrollbar-width:thin;scrollbar-gutter:stable}.material{min-height:28px}.material strong{font-size:13px}.compare-toolbar{margin-bottom:12px}.previous-feedback{padding:10px 12px}.repair-context{margin-bottom:12px}.preview-round{margin-bottom:10px}.decision-title p{font-size:11px}.decision-title strong{font-size:13px}.view-controls{margin-top:8px}.component-details{height:auto;max-height:80px}
+.review>.inventory-section{height:236px;flex-shrink:0;display:flex;flex-direction:column;min-height:0;margin:0;padding:10px 24px 8px;border-top:1px solid var(--line);background:var(--color-panel,var(--ks-paper));overflow:hidden}.inventory-section>.section-head{margin:0 0 8px;min-height:36px;flex-shrink:0;gap:10px}.inventory-section h2{font-size:14px}.inventory{flex:1;min-height:0;align-items:stretch;margin:0;padding:3px 3px 7px;overflow-x:auto;overflow-y:hidden}.inventory.all{overflow:auto;align-items:start;grid-auto-rows:160px}.inventory .item{flex:0 0 136px;padding:8px;gap:3px;grid-template-rows:auto auto minmax(24px,1fr) auto;min-height:0}.inventory .item-thumb{height:46px;margin-bottom:3px}.inventory .thumb-crop{max-height:46px}.inventory .item-number{font-size:11px;min-height:16px;padding:0}.inventory .item strong{font-size:12px;min-height:26px;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.inventory .state{font-size:11px;padding-top:4px}.tray-actions{display:flex;gap:6px;align-items:center}.tray-actions button{white-space:nowrap;font-size:11px;min-height:32px}.tray-actions svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}.review>.inventory-section.tray-expanded{height:min(42dvh,390px)}.review>.inventory-section.tray-collapsed{height:56px;padding-block:10px}.tray-collapsed .inventory{display:none}.tray-collapsed>.section-head{margin-bottom:0}
+.review>footer{flex-shrink:0;margin:0;padding:12px 24px;gap:16px;border-top:1px solid var(--line);background:var(--paper);align-items:center}.review>footer>div:first-child{display:flex;align-items:center;gap:14px;min-width:0}.review>footer .check{margin:0;max-width:240px;font-size:11px}.review>footer .submit-area{gap:12px}.review>footer .submit-area p{font-size:11px;max-width:24ch}.mobile-panes{display:none}
 /* Depth describes the shell: recessed work area, raised inspector, anchored docks. */
 .review{--workspace:var(--ks-paper);--canvas:var(--ks-paper-deep);--dock:var(--ks-paper);--surface:var(--ks-paper-raised);background:var(--workspace)}
 .review>header{position:relative;z-index:8;background:var(--surface);border-bottom-color:var(--ks-rule)}
@@ -34,47 +34,1021 @@
 .mobile-panes{position:relative;z-index:7;box-shadow:0 3px 6px oklch(13% 0 0 / 0.06)}
 /* Utility actions share a compact icon language; decisions retain explicit labels. */
 .utility-icon{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
-:is(.review,.comparison-panel) .icon-button{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:36px;height:36px;min-height:36px;padding:7px;text-decoration:none;border:1px solid transparent;border-radius:4px;background:transparent;color:var(--muted)}
-:is(.review,.comparison-panel) .icon-button:hover{background:var(--ks-gray);border-color:var(--ks-edge);color:var(--teal)}
-:is(.review,.comparison-panel) .icon-button[aria-pressed=true]{background:var(--ks-gray);color:var(--teal)}
-:is(.review,.comparison-panel) .icon-button:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
-.review .label-icon{display:inline-flex;align-items:center;justify-content:center;gap:7px}
 .review .tray-actions .utility-icon{width:18px;height:18px;stroke-width:1.6}
 .material{align-items:center;margin-bottom:10px}
 .compare-toolbar{margin-bottom:10px}
-.view-controls{min-height:0}.view-controls>.background-options{margin-left:auto;gap:2px}.view-controls .swatch-button{display:flex;align-items:center;justify-content:center;min-width:32px;height:32px;padding:5px}
-.background-swatch{display:block;width:20px;height:20px;border:1px solid var(--ks-edge);border-radius:2px;pointer-events:none}.background-swatch.checker{background-size:8px 8px}.page-swatch{background:var(--comp-background,var(--ks-paper-deep))}
+.view-controls{min-height:0}.view-controls>.background-options{margin-left:auto;gap:2px}.page-swatch{background:var(--comp-background,var(--ks-paper-deep))}
 .review>footer .submit-area p{max-width:25ch}
-@media(max-width:1100px) and (min-width:801px){.review>header{padding:12px 20px}.review>.workbench{padding:16px 20px;gap:24px}.review>.round-summary{padding-inline:20px}.round-summary p{max-width:calc(100% - 52px)}.round-summary p>span{font-size:11px}.inventory-section>.section-head h2{max-width:none;white-space:nowrap}.review>footer>div:first-child{gap:8px}.review>footer .submit-area p{max-width:19ch}.inventory-filters button{padding-inline:8px}}
+@media(max-width:1100px) and (min-width:801px){.review>header{padding:12px 20px}.review>.workbench{padding:16px 20px;gap:24px}.review>.round-summary{padding-inline:20px}.round-summary p{max-width:calc(100% - 52px)}.round-summary p>span{font-size:11px}.inventory-section>.section-head h2{max-width:none;white-space:nowrap}.review>footer>div:first-child{gap:8px}.review>footer .submit-area p{max-width:19ch}}
 @media(max-width:800px){
  .review>header{padding:12px 14px;align-items:center}.review h1{font-size:25px}.review>header p{max-width:68vw;font-size:11px}.review .badge{display:none}.review>.preview-note{padding:6px 14px}.review>.round-summary{padding:6px 14px;max-height:76px;gap:4px 8px}.round-summary p{max-width:calc(100% - 44px);gap:4px 10px;font-size:11px}.round-summary p>span{font-size:10px}.round-summary button{font-size:11px}
- .mobile-panes{display:flex;flex-shrink:0;gap:4px;padding:7px 14px;border-bottom:1px solid var(--line);background:var(--paper)}.mobile-panes button{flex:1;font-size:12px;min-height:32px;padding:5px;border-color:transparent;background:transparent}.mobile-panes button[aria-pressed=true]{background:var(--ks-gray);color:var(--teal);box-shadow:none;border-color:var(--ks-edge)}
- .review>.workbench{display:block;padding:12px 14px;min-height:0;overflow:hidden}.workbench[data-mobile-pane=component]>.reference,.workbench[data-mobile-pane=comp]>.inspector{display:none}.reference{height:100%;max-width:none}.connector{display:none}.inspector{height:100%;border:0}.map-legend{gap:6px 12px;font-size:10px}.map-caption{font-size:9px}.reference .section-head button{min-height:30px;padding:4px 8px}.reference .section-head h2{font-size:14px}.inspector>.section-head{min-height:26px;margin-bottom:0;padding:9px 12px}.inspection-content{padding:10px 8px 10px 12px}.inspector>.review-form{padding:8px 8px 8px 12px}.number{width:23px;height:23px;font-size:11px}.section-head h2{font-size:14px}.review-form{padding-top:8px}.decision-title strong{font-size:12px}.decision-title p{font-size:10px}.decisions>button{min-height:36px}.review-form .feedback-field{font-size:12px}.review-form .feedback-field textarea{min-height:60px}.compare{max-width:none}
- .review>.inventory-section{height:160px;padding:6px 14px}.inventory-section>.section-head{flex-direction:row;flex-wrap:nowrap;align-items:center;gap:6px;min-height:34px;margin-bottom:4px}.inventory-section h2{display:none}.inventory-filters{flex:1;width:auto;min-width:0;padding:2px}.inventory-filters button{padding:4px 6px;font-size:10px;min-height:28px}.inventory-filters b{margin-left:3px}.tray-actions #show-all{display:none}.tray-actions #toggle-tray{padding:6px;min-width:32px;min-height:32px}.tray-actions #toggle-tray span{display:none}.tray-actions svg{width:16px;height:16px}.review>.inventory-section.tray-collapsed{height:46px;padding:6px 14px}.review>.inventory-section.tray-expanded{height:160px}.inventory .item{flex-basis:130px;grid-template-rows:auto 1fr auto;padding:6px}.inventory .item-thumb{display:none}.inventory.all{display:flex;overflow-x:auto;overflow-y:hidden}.inventory .item strong{font-size:11px;min-height:22px}.inventory .state{font-size:10px}.inventory .item-number{font-size:10px;min-height:14px}.inventory-empty{padding:8px 0;font-size:12px}
- .review>footer{padding:8px 14px calc(8px + env(safe-area-inset-bottom));gap:8px;flex-direction:column;align-items:stretch}.review>footer>div:first-child{gap:10px;justify-content:space-between}.review>footer #approve-rest{font-size:10px;min-height:32px;max-width:47%;padding:5px 8px}.review>footer .check{font-size:10px;max-width:48%;gap:4px}.review>footer .check input{width:14px;height:14px}.review>footer .submit-area{justify-content:space-between;gap:10px}.review>footer .submit-area p{font-size:10px;max-width:22ch}.review>footer .primary{min-height:34px;font-size:12px;padding:6px 10px}
+ .mobile-panes{display:flex;flex-shrink:0;gap:4px;padding:7px 14px;border-bottom:1px solid var(--line);background:var(--paper)}
+ .review>.workbench{display:block;padding:12px 14px;min-height:0;overflow:hidden}.workbench[data-mobile-pane=component]>.reference,.workbench[data-mobile-pane=comp]>.inspector{display:none}.reference{height:100%;max-width:none}.connector{display:none}.inspector{height:100%;border:0}.map-legend{gap:6px 12px;font-size:10px}.map-caption{font-size:9px}.reference .section-head button{min-height:30px;padding:4px 8px}.reference .section-head h2{font-size:14px}.inspector>.section-head{min-height:26px;margin-bottom:0;padding:9px 12px}.inspection-content{padding:10px 8px 10px 12px}.inspector>.review-form{padding:8px 8px 8px 12px}.number{width:23px;height:23px;font-size:11px}.section-head h2{font-size:14px}.review-form{padding-top:8px}.decision-title strong{font-size:12px}.decision-title p{font-size:10px}.review-form .feedback-field{font-size:12px}.review-form .feedback-field textarea{min-height:60px}.compare{max-width:none}
+ .review>.inventory-section{height:160px;padding:6px 14px}.inventory-section>.section-head{flex-direction:row;flex-wrap:nowrap;align-items:center;gap:6px;min-height:34px;margin-bottom:4px}.inventory-section h2{display:none}.tray-actions svg{width:16px;height:16px}.review>.inventory-section.tray-collapsed{height:46px;padding:6px 14px}.review>.inventory-section.tray-expanded{height:160px}.inventory .item{flex-basis:130px;grid-template-rows:auto 1fr auto;padding:6px}.inventory .item-thumb{display:none}.inventory.all{display:flex;overflow-x:auto;overflow-y:hidden}.inventory .item strong{font-size:11px;min-height:22px}.inventory .state{font-size:10px}.inventory .item-number{font-size:10px;min-height:14px}.inventory-empty{padding:8px 0;font-size:12px}
+ .review>footer{padding:8px 14px calc(8px + env(safe-area-inset-bottom));gap:8px;flex-direction:column;align-items:stretch}.review>footer>div:first-child{gap:10px;justify-content:space-between}.review>footer .check{font-size:10px;max-width:48%;gap:4px}.review>footer .check input{width:14px;height:14px}.review>footer .submit-area{justify-content:space-between;gap:10px}.review>footer .submit-area p{font-size:10px;max-width:22ch}
 }
-`;var mi=`
-:host{color-scheme:light;
- --ks-kinpaku:oklch(84% 0.19 80.46);--ks-kinpaku-rich:oklch(77% 0.13 82);--ks-kinpaku-deep:oklch(61% 0.085 78);--ks-on-gold:oklch(14% 0.018 95);--ks-gold-line:var(--ks-kinpaku-rich);
- --ks-patina:oklch(70% 0.12 188);--ks-patina-pale:oklch(82% 0.07 188);--ks-patina-deep:oklch(45% 0.10 190);--ks-patina-ink:oklch(41% 0.11 190);
- --ks-state-ink:var(--ks-patina-deep);--ks-focus-ring:var(--ks-patina-deep);
- --ks-vermilion:oklch(52% 0.16 35);
- --ks-paper:oklch(97.8% 0 0);--ks-paper-raised:oklch(99.5% 0 0);--ks-paper-deep:oklch(95% 0 0);--ks-gray:oklch(92% 0 0);--ks-gray-2:oklch(88% 0 0);
- --ks-instrument:oklch(24% 0 0);--ks-instrument-deep:oklch(17% 0 0);--ks-instrument-raised:oklch(31% 0 0);--ks-instrument-text:oklch(93% 0 0);--ks-instrument-muted:oklch(68% 0 0);
- --ks-ink:oklch(13% 0 0);--ks-text:oklch(22% 0 0);--ks-text-muted:oklch(46% 0 0);--ks-text-faint:oklch(51% 0 0);--ks-text-mute-deep:oklch(66% 0 0);
- --ks-rule:oklch(13% 0 0 / 0.08);--ks-edge:oklch(13% 0 0 / 0.45);
- --ks-radius-sm:3px;--ks-radius-md:8px;--ks-radius-pill:999px;
- --ks-control-sm:26px;--ks-control-md:32px;--ks-control-lg:44px;
- --ks-lift-1:0 1px 1px oklch(13% 0 0 / 0.05),0 2px 3px oklch(13% 0 0 / 0.04),0 6px 12px oklch(13% 0 0 / 0.05);
- --ks-lift-2:0 1px 1px oklch(13% 0 0 / 0.04),0 3px 5px oklch(13% 0 0 / 0.05),0 12px 20px oklch(13% 0 0 / 0.06),0 32px 48px oklch(13% 0 0 / 0.07);
- --ks-font:var(--font-sans,"Albert Sans"),"Avenir Next","Helvetica Neue",Arial,system-ui,sans-serif;
- --ks-font-display:var(--font-display,"Alumni Sans"),"Albert Sans",Arial,sans-serif;
- --ks-mono:var(--font-mono,"JetBrains Mono"),ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
- --ks-type-eyebrow-size:0.6875rem;--ks-type-eyebrow-track:0.14em;
- --ks-type-micro-size:0.6875rem;--ks-type-label-size:0.75rem;--ks-type-ui-size:0.8125rem;--ks-type-ui-lead:0.9375rem;
- --ks-type-small-size:0.875rem;--ks-type-subhead-size:1.25rem;--ks-type-title-lg-size:1.5rem;
- --ks-ease:cubic-bezier(0.2,0.8,0.2,1);--ks-quick:120ms;--ks-settle:200ms}
-`;var ko=mi+`
+`;var br=`/* VENDORED from impeccable-site/site/styles/kinpaku-tokens.css (the source of truth).
+   Do not edit here: change the site, then run node scripts/sync-kinpaku-kit.mjs. */
+/*
+ * impeccable.style tokens (page-global, single source of truth)
+ *
+ * One theme. The page is neutral paper, the type is ink, and the brand gold
+ * appears as a mark, a line, or an indicator on a dark control surface. It
+ * never carries text and it never fills a large area on paper.
+ *
+ * Three families of surface:
+ *   paper       the page and everything that sits flat on it
+ *   gray        chips, inactive fills, sunk wells
+ *   instrument  dark control surfaces: sliders, tab strips, segmented
+ *               controls, terminals. This is where gold and patina signal.
+ *
+ * New pages read these via var(--ks-*) rather than hand-typing oklch values.
+ * Pages may override a token locally when there is a documented reason.
+ * When in doubt, do not override; match.
+ */
+
+:root {
+	color-scheme: light;
+
+	/* ============================================================
+	   Brand anchors. Kinpaku gold is the mark and the signal. Verdigris
+	   patina carries state, links, and selection wherever color has to
+	   be read as text, because gold cannot pass contrast on paper.
+	   ============================================================ */
+
+	/* Kinpaku gold. Fills on instruments, the mark, hairlines, and the label
+	   of the active key on a dark instrument. Never text on paper. */
+	--ks-kinpaku:        oklch(84% 0.19 80.46);  /* mark, indicators, gold fills on instruments */
+	--ks-kinpaku-vivid:  oklch(87% 0.20 85);     /* lit hover on a gold fill */
+	--ks-kinpaku-pale:   oklch(86% 0.07 84);     /* pale tint; rarely needed on paper */
+	--ks-kinpaku-rich:   oklch(77% 0.13 82);     /* hairline gold on paper, active rule */
+	--ks-kinpaku-deep:   oklch(61% 0.085 78);    /* gold border against paper */
+	--ks-on-gold:        oklch(14% 0.018 95);    /* foreground on a gold fill */
+	--ks-gold-line:      var(--ks-kinpaku-rich); /* the one-pixel gold rule */
+
+	/* Verdigris patina. State, links, selection. */
+	--ks-patina:         oklch(70% 0.12 188);    /* indicator on instruments, focus */
+	--ks-patina-pale:    oklch(82% 0.07 188);    /* soft fill behind a selected row */
+	--ks-patina-deep:    oklch(45% 0.10 190);    /* text-safe patina, including selected gray surfaces */
+	--ks-patina-ink:     oklch(41% 0.11 190);    /* hover on patina text */
+
+	/* Semantic foregrounds. Labels, eyebrows and category names are muted
+	   ink; color is not how this site labels things. Patina is reserved for
+	   state: selected, live, passed. */
+	--ks-gold-ink:       var(--ks-text-muted);
+	--ks-accent-ink:     var(--ks-text-muted);
+	--ks-state-ink:      var(--ks-patina-deep);
+	--ks-focus-ring:     var(--ks-patina-deep); /* paper; dark controls override locally */
+	--ks-kinpaku-ink:    var(--ks-text-muted);   /* legacy alias, same rule */
+
+	/* Links on paper are ink with a quiet underline; the underline turns
+	   gold on hover, which is the brand as a line. */
+	--ks-link-on-paper:            var(--ks-ink);
+	--ks-link-on-paper-hover:      var(--ks-ink);
+	--ks-link-on-paper-line:       oklch(13% 0 0 / 0.28);
+	--ks-link-on-paper-line-hover: var(--ks-kinpaku);
+	--ks-nav-active:               var(--ks-ink);
+
+	/* Warning. Failures and warnings only. */
+	--ks-vermilion:      oklch(52% 0.16 35);
+
+	/* ============================================================
+	   Paper. The page ground is a hair below white so a raised card can
+	   read as raised. Neutral, no warm cast: gold on cream is gold on gold.
+	   ============================================================ */
+	--ks-paper:          oklch(97.8% 0 0);   /* page ground */
+	--ks-paper-raised:   oklch(99.5% 0 0);   /* cards, panels, inputs */
+	--ks-paper-deep:     oklch(95% 0 0);     /* sunk wells, code blocks, footer */
+	--ks-gray:           oklch(92% 0 0);     /* chips, inactive fills */
+	--ks-gray-2:         oklch(88% 0 0);     /* one step down from gray */
+
+	/* ============================================================
+	   Instrument. Dark control surfaces on the paper, like a device on a
+	   desk. The only place the site goes dark, and the only place gold is
+	   read as a signal rather than a mark.
+	   ============================================================ */
+	--ks-instrument:        oklch(24% 0 0);          /* face */
+	--ks-instrument-deep:   oklch(17% 0 0);          /* track, well */
+	--ks-instrument-raised: oklch(31% 0 0);          /* key cap, thumb */
+	--ks-instrument-text:   oklch(93% 0 0);
+	--ks-instrument-muted:  oklch(68% 0 0);
+	--ks-instrument-rule:   oklch(100% 0 0 / 0.12);
+	--ks-instrument-edge:   oklch(100% 0 0 / 0.3);
+
+	/* ============================================================
+	   Ink. Neutral. Body copy is --ks-text; headlines and <strong> are
+	   --ks-ink. Muted is for labels and captions, faint for meta.
+	   ============================================================ */
+	--ks-ink:            oklch(13% 0 0);   /* headlines, <strong>, active nav */
+	--ks-text:           oklch(22% 0 0);   /* body */
+	--ks-text-muted:     oklch(46% 0 0);   /* captions, meta, eyebrows */
+	--ks-text-faint:     oklch(51% 0 0);   /* subdued meta, readable on paper and gray */
+	--ks-text-mute-deep: oklch(66% 0 0);   /* disabled */
+
+	/* ============================================================
+	   Rules. A divider is faint. The boundary of a control is not:
+	   WCAG 1.4.11 asks 3:1 of anything that tells you where a control is.
+	   Use --ks-rule to divide, --ks-edge to bound something you can operate.
+	   ============================================================ */
+	--ks-rule:           oklch(13% 0 0 / 0.08);
+	--ks-edge:           oklch(13% 0 0 / 0.45);
+
+	/* ============================================================
+	   Control scales. Three radii, three heights, two lifts.
+	   ============================================================ */
+	--ks-radius-sm:      3px;
+	--ks-radius-md:      8px;
+	--ks-radius-pill:    999px;
+
+	--ks-control-sm:     26px;
+	--ks-control-md:     32px;
+	--ks-control-lg:     44px;
+
+	/* Section cadence. Every top-level section on a page takes this vertical
+	   padding, so the seams between sections are one rhythm. */
+	--ks-section-pad:    clamp(72px, 8vw, 120px);
+
+	/* Layered, so they read as one soft light from above rather than a
+	   single blurred rectangle: a contact edge, a short throw, a long one. */
+	--ks-lift-1:         0 1px 1px oklch(13% 0 0 / 0.05), 0 2px 3px oklch(13% 0 0 / 0.04), 0 6px 12px oklch(13% 0 0 / 0.05);
+	--ks-lift-2:         0 1px 1px oklch(13% 0 0 / 0.04), 0 3px 5px oklch(13% 0 0 / 0.05), 0 12px 20px oklch(13% 0 0 / 0.06), 0 32px 48px oklch(13% 0 0 / 0.07);
+
+	/* Instrument depth. A raised key sits a pixel off its dark strip, and the
+	   lit indicator throws a short gold glow. These are the only shadows that
+	   read against a dark surface. */
+	--ks-key-lift:       0 1px 2px oklch(0% 0 0 / 0.4);
+
+	/* Light hardware. A paper key is a raised cap: a white highlight along
+	   its top edge, a hard 1px shadow under it, a soft one behind. The track
+	   it sits in is recessed. Gold is the lit indicator. */
+	--ks-cap-lift:       inset 0 1px 0 oklch(100% 0 0 / 0.9), 0 1px 0 oklch(13% 0 0 / 0.14), 0 2px 3px oklch(13% 0 0 / 0.08);
+	--ks-cap-press:      inset 0 1px 2px oklch(13% 0 0 / 0.14);
+	--ks-track-recess:   inset 0 1px 3px oklch(13% 0 0 / 0.16), inset 0 -1px 0 oklch(100% 0 0 / 0.7);
+	--ks-led:            0 0 0 1px oklch(13% 0 0 / 0.12), 0 0 4px oklch(84% 0.19 80 / 0.6);
+	--ks-indicator-glow: 0 0 0 1px oklch(0% 0 0 / 0.3), 0 0 4px oklch(84% 0.19 80 / 0.65);
+
+	/* ============================================================
+	   Code. Inline code is a gray chip. Blocks and CLI commands are a sunk
+	   paper well with a hairline. A command that is itself a link reads as
+	   a link.
+	   ============================================================ */
+	--ks-code-fg:         var(--ks-ink);
+	--ks-code-bg:         var(--ks-gray);
+	--ks-code-radius:     3px;
+	--ks-code-pad:        0.2em 0.45em;
+	--ks-code-block-fg:   var(--ks-text);
+	--ks-code-block-bg:   var(--ks-paper-deep);
+	--ks-code-block-border: var(--ks-rule);
+	--ks-code-block-radius: 3px;
+	--ks-code-cmd:        var(--ks-link-on-paper);
+
+	/* ============================================================
+	   Typography. One family for everything that is read: Albert Sans, a
+	   quiet geometric humanist, at normal weights. The wordmark keeps
+	   Alumni Sans because it is part of the logo lockup, and that is the
+	   only place it appears.
+	   ============================================================ */
+	--ks-font:          "Albert Sans", "Avenir Next", "Helvetica Neue", Arial, system-ui, sans-serif;
+	--ks-font-display:  var(--ks-font-wordmark);  /* Alumni Sans: the brand's own display voice, at a weight that holds on paper */
+	--ks-font-wordmark: "Alumni Sans", "Albert Sans", Arial, sans-serif;
+	--ks-mono:          "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+	/* Display: page h1. */
+	--ks-type-display-size:   clamp(3.2rem, 6.2vw, 5.6rem);
+	--ks-type-display-weight: 200;
+	--ks-type-display-line:   1.0;
+	--ks-type-display-track:  0;
+
+	/* Headline: section h2. */
+	--ks-type-headline-size:   clamp(2.4rem, 3.6vw, 3.4rem);
+	--ks-type-headline-weight: 300;
+	--ks-type-headline-line:   1.04;
+	--ks-type-headline-track:  0;
+
+	/* Title: card and panel headings (h3). */
+	--ks-type-title-size:   1.0625rem;
+	--ks-type-title-weight: 600;
+	--ks-type-title-line:   1.35;
+
+	/* Body. */
+	--ks-type-body-size: 1rem;
+	--ks-type-body-line: 1.65;
+
+	/* Eyebrow: small mono labels above titles. */
+	--ks-type-eyebrow-size:  0.6875rem;
+	--ks-type-eyebrow-track: 0.14em;
+
+	/* Wordmark: IMPECCABLE in the header. */
+	--ks-type-wordmark-size:  1.25rem;
+	--ks-type-wordmark-track: 0.18em;
+
+	/* Mono: code, terminal, audit lines. */
+	--ks-type-mono-size:  0.6875rem;
+	--ks-type-mono-track: 0.12em;
+
+	/* Dense UI ramp. Micro is the floor for anything functional. */
+	--ks-type-micro-size: 0.6875rem;  /* 11px */
+	--ks-type-label-size: 0.75rem;    /* 12px */
+	--ks-type-ui-size:    0.8125rem;  /* 13px */
+	--ks-type-ui-lead:    0.9375rem;  /* 15px */
+
+	/* Reading ramp between body and headline. Small is secondary body copy
+	   and captions that are read, not scanned; lead and subhead are the
+	   intro paragraph and the card-level heading; title-lg is a bento tile
+	   or panel heading that is larger than a card title but not a section. */
+	--ks-type-small-size:    0.875rem;   /* 14px */
+	--ks-type-lead-size:     1.125rem;   /* 18px */
+	--ks-type-subhead-size:  1.25rem;    /* 20px */
+	--ks-type-title-lg-size: 1.5rem;     /* 24px */
+
+	/* ============================================================
+	   Motion. Quick is a state change, settle is something arriving.
+	   ============================================================ */
+	--ks-ease:   cubic-bezier(0.2, 0.8, 0.2, 1);
+	--ks-quick:  120ms;
+	--ks-settle: 200ms;
+}
+`;var cr=`/* VENDORED from impeccable-site/site/styles/kinpaku-kit.css (buttons, tabs, select, icon button, instrument strip, grain, switch, paper strip, thumb) (the source of truth).
+   Do not edit here: change the site, then run node scripts/sync-kinpaku-kit.mjs. */
+/* ============================================================
+   Buttons: primary, secondary, ghost, disabled
+
+   The primary action is ink on paper. Gold does not fill a button on this
+   site: a gold slab on paper is the hotel-lobby read. The brand is present
+   on the primary as the gold arrow, not as the fill.
+
+   Variants chain on .ks-button so specificity (0,2,0) wins over generic page
+   anchor resets like \`.kinpaku-system-page a { color: inherit }\` (0,1,1).
+   Use class="ks-button ks-button-primary", both classes required.
+   ============================================================ */
+
+.ks-button {
+  position: relative;
+  min-height: var(--ks-control-lg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 0 22px;
+  border-radius: var(--ks-radius-sm);
+  font-family: var(--ks-font);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.005em;
+  text-decoration: none;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background-color var(--ks-quick) var(--ks-ease), border-color var(--ks-quick) var(--ks-ease), color var(--ks-quick) var(--ks-ease);
+}
+
+.ks-button .ks-button-arrow {
+  width: 16px;
+  height: 8px;
+  display: inline-block;
+  flex: none;
+}
+
+.ks-button-arrow svg { width: 100%; height: 100%; display: block; overflow: visible; }
+
+/* The arrow says where the button goes. On a button whose target is further
+   down the page (an in-page anchor, or .is-down on the arrow) it curves and
+   points downward on hover, and straightens again on leave. The rest shape
+   is set here too, as the same command list, so the two interpolate. */
+.ks-button-arrow path {
+  d: path("M0 4C5 4 9 4 14 4M10 0L14 4L10 8");
+  transition: d 420ms var(--ks-ease);
+}
+
+.ks-button[href^="#"]:hover .ks-button-arrow path,
+.ks-button:hover .ks-button-arrow.is-down path {
+  d: path("M0 4C7 4 11 4 11 11M7 7L11 11L15 7");
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ks-button-arrow path { transition: none; }
+}
+
+.ks-button.ks-button-primary {
+  color: var(--ks-paper-raised);
+  background: var(--ks-ink);
+  border-color: var(--ks-ink);
+}
+
+.ks-button.ks-button-primary .ks-button-arrow {
+  color: var(--ks-kinpaku);
+}
+
+.ks-button.ks-button-primary:hover {
+  color: var(--ks-paper-raised);
+  background: var(--ks-text);
+  border-color: var(--ks-text);
+}
+
+.ks-button.ks-button-primary:active {
+  background: oklch(8% 0 0);
+  border-color: oklch(8% 0 0);
+}
+
+.ks-button.ks-button-secondary {
+  color: var(--ks-ink);
+  background: var(--ks-paper-raised);
+  border-color: var(--ks-edge);
+}
+
+.ks-button.ks-button-secondary:hover {
+  color: var(--ks-ink);
+  border-color: var(--ks-ink);
+}
+
+.ks-button.ks-button-secondary:active {
+  background: var(--ks-gray);
+}
+
+.ks-button.ks-button-ghost {
+  color: var(--ks-ink);
+  background: transparent;
+  border-color: transparent;
+  padding: 0 12px;
+}
+
+.ks-button.ks-button-ghost:hover {
+  color: var(--ks-accent-ink);
+}
+
+.ks-button[disabled],
+.ks-button.ks-button-disabled {
+  color: var(--ks-text-mute-deep);
+  background: transparent;
+  border-color: var(--ks-rule);
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.ks-button:focus-visible {
+  outline: 2px solid var(--ks-focus-ring);
+  outline-offset: 3px;
+}
+
+.ks-button-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px;
+}
+
+/* ============================================================
+   Tabs
+   ============================================================ */
+
+.ks-tabs { max-width: 460px; }
+
+.ks-tab-list { display: flex; border-bottom: 1px solid var(--ks-rule); }
+
+.ks-tab-list button {
+  flex: 1;
+  min-height: 42px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--ks-text-muted);
+  cursor: pointer;
+  font-size: 0.92rem;
+  transition: color 180ms var(--ks-ease), border-color 180ms var(--ks-ease);
+}
+
+.ks-tab-list button:hover { color: var(--ks-ink); }
+
+.ks-tab-list button[aria-selected="true"] {
+  color: var(--ks-accent-ink);
+  border-bottom-color: var(--ks-kinpaku);
+}
+
+.ks-tab-panel {
+  padding: 22px 4px 0;
+  color: var(--ks-ink);
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+/* ============================================================
+   Form controls — input, toggle, checkbox, select
+   ============================================================ */
+
+.ks-form-sample {
+  display: grid;
+  gap: 22px;
+  max-width: 360px;
+}
+
+.ks-form-sample label {
+  display: grid;
+  gap: 8px;
+  color: var(--ks-text-muted);
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+}
+
+.ks-form-sample input[type="search"],
+.ks-form-sample input[type="text"] {
+  min-height: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--ks-rule);
+  border-radius: var(--ks-radius-sm);
+  background: var(--ks-paper-raised);
+  color: var(--ks-ink);
+  font-size: 0.92rem;
+}
+
+.ks-form-sample input[type="search"]:focus,
+.ks-form-sample input[type="text"]:focus {
+  outline: none;
+  border-color: var(--ks-patina);
+}
+
+.ks-toggle {
+  display: flex !important;
+  align-items: center;
+  gap: 12px !important;
+}
+
+.ks-toggle input {
+  appearance: none;
+  width: 44px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid var(--ks-rule);
+  background: var(--ks-gray);
+  position: relative;
+  cursor: pointer;
+  flex: none;
+}
+
+.ks-toggle input::before {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  left: 3px;
+  top: 3px;
+  border-radius: 999px;
+  background: var(--ks-text-muted);
+  transition: transform 220ms var(--ks-ease), background 220ms var(--ks-ease);
+}
+
+.ks-toggle input:checked {
+  border-color: var(--ks-patina);
+  background: oklch(48% 0.08 188 / 0.2);
+}
+
+.ks-toggle input:checked::before {
+  transform: translateX(20px);
+  background: var(--ks-patina);
+}
+
+.ks-toggle span { color: var(--ks-ink); font-size: 0.92rem; }
+
+.ks-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ks-ink);
+  font-size: 0.92rem;
+  cursor: pointer;
+}
+
+.ks-checkbox input {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--ks-rule);
+  border-radius: var(--ks-radius-sm);
+  background: var(--ks-paper-raised);
+  position: relative;
+  cursor: pointer;
+  flex: none;
+}
+
+.ks-checkbox input:checked {
+  border-color: var(--ks-ink);
+  background: var(--ks-ink);
+}
+
+.ks-checkbox input:checked::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  width: 5px;
+  height: 9px;
+  border: solid var(--ks-paper-raised);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+.ks-select {
+  appearance: none;
+  min-height: 46px;
+  padding: 0 38px 0 14px;
+  border: 1px solid var(--ks-rule);
+  border-radius: var(--ks-radius-sm);
+  background-color: var(--ks-paper-raised);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6' fill='none' stroke='%23222222' stroke-width='1.2'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 10px 6px;
+  color: var(--ks-ink);
+  font-size: 0.92rem;
+  cursor: pointer;
+}
+
+/* ============================================================
+   Icon button + tooltip
+   ============================================================ */
+
+.ks-icon-button {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--ks-rule);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ks-accent-ink);
+  cursor: pointer;
+}
+
+.ks-tooltip {
+  position: absolute;
+  bottom: calc(100% - 18px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 200px;
+  padding: 10px 12px;
+  border: 1px solid var(--ks-rule);
+  background: var(--ks-paper-deep);
+  color: var(--ks-ink);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  border-radius: var(--ks-radius-sm);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms var(--ks-ease);
+}
+
+.ks-icon-button:focus-visible + .ks-tooltip {
+  opacity: 1;
+}
+
+/* ============================================================
+   Instrument strip: the site's one dark control.
+
+   A row of keys on a dark strip, sitting on the paper like a device on a
+   desk. The active key is raised and carries a gold indicator. Use for tab
+   strips, view switches and command pickers: anything the reader operates.
+   Never for decoration, and never for a link list.
+
+   Markup: <div class="ks-instrument-strip" role="tablist">
+             <button class="ks-instrument-key is-active">One</button>
+             <button class="ks-instrument-key">Two</button>
+           </div>
+   ============================================================ */
+.ks-instrument-strip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--ks-instrument);
+  border: 1px solid var(--ks-instrument-deep);
+  border-radius: var(--ks-radius-pill);
+  box-shadow: inset 0 1px 0 var(--ks-instrument-rule), var(--ks-lift-1);
+}
+
+.ks-instrument-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--ks-control-md);
+  padding: 0 14px 0 12px;
+  color: var(--ks-instrument-muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--ks-radius-pill);
+  font-family: var(--ks-mono);
+  font-size: var(--ks-type-label-size);
+  letter-spacing: 0.02em;
+  text-transform: none;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--ks-quick) var(--ks-ease), background-color var(--ks-quick) var(--ks-ease);
+}
+
+.ks-instrument-key::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--ks-instrument-raised);
+  box-shadow: inset 0 0 0 1px var(--ks-instrument-rule);
+  transition: background-color var(--ks-quick) var(--ks-ease), box-shadow var(--ks-quick) var(--ks-ease);
+}
+
+.ks-instrument-key:hover,
+.ks-instrument-key:focus-visible {
+  color: var(--ks-instrument-text);
+}
+
+.ks-instrument-key:focus-visible {
+  outline: 2px solid var(--ks-focus-ring);
+  outline-offset: 2px;
+}
+
+.ks-instrument-key.is-active,
+.ks-instrument-key[aria-selected="true"] {
+  color: var(--ks-instrument-text);
+  background: var(--ks-instrument-raised);
+  box-shadow: inset 0 1px 0 var(--ks-instrument-edge), var(--ks-key-lift);
+}
+
+.ks-instrument-key.is-active::before,
+.ks-instrument-key[aria-selected="true"]::before {
+  background: var(--ks-kinpaku);
+  box-shadow: var(--ks-indicator-glow);
+}
+
+/* ============================================================
+   Grain.
+
+   Grain is part of a material, not a layer over the page. The page ground
+   (the paper) carries it, and so do the moulded surfaces: the recessed
+   track and raised caps of a paper strip, the dark instruments, code
+   blocks. Anything that sits on top of those (a card, a demo, an image,
+   type) is clean. One 160px tile of monochrome noise from an SVG filter,
+   held under 6% on paper and a little higher on dark, where it is what
+   makes a strip read as a part instead of a black rectangle.
+   ============================================================ */
+:root {
+  --ks-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n' x='0' y='0'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* The paper. Fixed behind the page's content, above the canvas colour. */
+body {
+  position: relative;
+  isolation: isolate;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.055;
+  mix-blend-mode: multiply;
+  background-image: var(--ks-grain);
+  background-size: 160px 160px;
+}
+
+/* Moulded surfaces. The pseudo sits under the surface's own children. */
+.ks-grain,
+.ks-instrument-strip {
+  position: relative;
+}
+
+.ks-grain::before,
+.ks-instrument-strip::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0.16;
+  mix-blend-mode: screen;
+  will-change: opacity;
+  background-image: var(--ks-grain);
+  background-size: 160px 160px;
+}
+
+.ks-instrument-strip.is-paper::before {
+  opacity: 0.05;
+  mix-blend-mode: normal;
+}
+
+/* The strip is its own stacking context: grain at 0, the cap at 1, the
+   labels at 2, whatever the page around it does. */
+.ks-instrument-strip {
+  isolation: isolate;
+}
+
+
+.ks-instrument-strip > :not(.ks-thumb) {
+  position: relative;
+  z-index: 2;
+}
+
+/* ============================================================
+   Switch: a physical slide switch for one on/off state.
+
+   A recessed track, a raised knob that slides from left (off) to right
+   (on), and a lit dot on the knob when on. Markup:
+   <button class="ks-switch" type="button" aria-pressed="true">
+     <span class="ks-switch-track" aria-hidden="true"><span class="ks-switch-knob"></span></span>
+     <span class="ks-switch-label">Detector on</span>
+   </button>
+   ============================================================ */
+.ks-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ks-text-muted);
+  font-family: var(--ks-font);
+  font-size: var(--ks-type-ui-size);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.ks-switch[aria-pressed="true"] {
+  color: var(--ks-ink);
+}
+
+.ks-switch-track {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  border-radius: var(--ks-radius-pill);
+  background: var(--ks-gray-2);
+  box-shadow: var(--ks-track-recess);
+  transition: background-color var(--ks-quick) var(--ks-ease);
+}
+
+.ks-switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--ks-paper-raised);
+  box-shadow: var(--ks-cap-lift);
+  transition: transform 220ms cubic-bezier(0.3, 0.7, 0.2, 1);
+}
+
+.ks-switch-knob::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--ks-gray-2);
+  box-shadow: inset 0 1px 1px oklch(13% 0 0 / 0.18);
+  transition: background-color var(--ks-quick) var(--ks-ease), box-shadow var(--ks-quick) var(--ks-ease);
+}
+
+.ks-switch[aria-pressed="true"] .ks-switch-knob {
+  transform: translateX(20px);
+}
+
+.ks-switch[aria-pressed="true"] .ks-switch-knob::after {
+  background: var(--ks-patina);
+  box-shadow: var(--ks-led);
+}
+
+.ks-switch:active .ks-switch-knob {
+  box-shadow: var(--ks-cap-press);
+}
+
+.ks-switch:focus-visible {
+  outline: none;
+}
+
+.ks-switch:focus-visible .ks-switch-track {
+  outline: 2px solid var(--ks-kinpaku);
+  outline-offset: 2px;
+}
+
+/* ============================================================
+   Tag: the brand's label.
+
+   The detector flags bad design with a small gold tag carrying dark mono
+   text. That tag is the one device a visitor already associates with
+   Impeccable, so it is also how the site labels things: section numerals,
+   a card's state, a release's status. Small, mono, ink on gold. It is the
+   only gold fill allowed on paper, and it never grows past a label.
+   ============================================================ */
+.ks-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+  padding: 0 7px;
+  color: var(--ks-ink);
+  background: var(--ks-kinpaku);
+  border-radius: var(--ks-radius-sm);
+  font-family: var(--ks-mono);
+  font-size: var(--ks-type-eyebrow-size);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: normal;
+  text-transform: uppercase;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* A quiet tag for a secondary label sitting next to a gold one. */
+.ks-tag.is-quiet {
+  color: var(--ks-text-muted);
+  background: var(--ks-gray);
+}
+
+/* Paper variant. A page control (a view switch, a tab row) sits on paper
+   and keeps the gold dot, so it does not compete with the primary action
+   the way a dark strip does. The dark strip is for product chrome: the
+   live picker, lab toolbars, terminals. */
+
+.ks-instrument-strip.is-paper {
+  background: var(--ks-gray);
+  border-color: transparent;
+  box-shadow: var(--ks-track-recess);
+}
+
+.ks-instrument-strip.is-paper .ks-instrument-key {
+  color: var(--ks-text-muted);
+  transition: color var(--ks-quick) var(--ks-ease), background-color var(--ks-quick) var(--ks-ease), box-shadow var(--ks-quick) var(--ks-ease), transform var(--ks-quick) var(--ks-ease);
+}
+
+.ks-instrument-strip.is-paper .ks-instrument-key::before {
+  background: var(--ks-gray-2);
+  box-shadow: inset 0 1px 1px oklch(13% 0 0 / 0.18);
+}
+
+.ks-instrument-strip.is-paper .ks-instrument-key:hover,
+.ks-instrument-strip.is-paper .ks-instrument-key:focus-visible {
+  color: var(--ks-ink);
+}
+
+.ks-instrument-strip.is-paper .ks-instrument-key:active {
+  box-shadow: var(--ks-cap-press);
+  transform: translateY(1px);
+}
+
+/* The raised cap. Light from above: a white edge on top, a hard shadow
+   underneath, so it stands a millimetre proud of the track. */
+.ks-instrument-strip.is-paper .ks-instrument-key.is-active,
+.ks-instrument-strip.is-paper .ks-instrument-key[aria-selected="true"],
+.ks-instrument-strip.is-paper .ks-instrument-key[aria-pressed="true"] {
+  color: var(--ks-ink);
+  background: var(--ks-paper-raised);
+  box-shadow: var(--ks-cap-lift);
+}
+
+.ks-instrument-strip.is-paper .ks-instrument-key.is-active::before,
+.ks-instrument-strip.is-paper .ks-instrument-key[aria-selected="true"]::before,
+.ks-instrument-strip.is-paper .ks-instrument-key[aria-pressed="true"]::before {
+  background: var(--ks-patina);
+  box-shadow: 0 0 0 1px oklch(13% 0 0 / 0.12), 0 0 4px color-mix(in oklch, var(--ks-patina) 60%, transparent);
+}
+
+.ks-instrument-strip.is-paper .ks-instrument-key:focus-visible {
+  outline: 2px solid var(--ks-focus-ring);
+  outline-offset: 1px;
+}
+
+/* ============================================================
+   Instrument strip thumb (real element, positioned by
+   instrument-strip.js). Last in the file on purpose: these override the
+   key's own cap, and they must come after every key rule above.
+   ============================================================ */
+.ks-thumb {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  width: 0;
+  border-radius: var(--ks-radius-pill);
+  background: var(--ks-instrument-raised);
+  box-shadow: inset 0 1px 0 var(--ks-instrument-edge), var(--ks-key-lift);
+  transition: transform 360ms cubic-bezier(0.22, 1, 0.3, 1);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.ks-instrument-strip.is-paper .ks-thumb {
+  background: var(--ks-paper-raised);
+  box-shadow: var(--ks-cap-lift);
+}
+
+.ks-instrument-strip.has-thumb .ks-instrument-key,
+.ks-instrument-strip.has-thumb .ks-instrument-key.is-active,
+.ks-instrument-strip.has-thumb .ks-instrument-key[aria-selected="true"],
+.ks-instrument-strip.has-thumb .ks-instrument-key[aria-pressed="true"],
+.ks-instrument-strip.is-paper.has-thumb .ks-instrument-key.is-active,
+.ks-instrument-strip.is-paper.has-thumb .ks-instrument-key[aria-selected="true"],
+.ks-instrument-strip.is-paper.has-thumb .ks-instrument-key[aria-pressed="true"] {
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+  transition: color 120ms var(--ks-ease);
+}
+
+.ks-instrument-strip.has-thumb .ks-instrument-key::before {
+  transition: background-color 120ms var(--ks-ease), box-shadow 120ms var(--ks-ease);
+}
+
+/* Dark instruments need the light state color for keyboard focus. */
+.ks-instrument-strip:not(.is-paper),
+.live-demo-gbar,
+.live-demo-ctx,
+.worlds-rating {
+  --ks-focus-ring: var(--ks-patina);
+}
+
+/* Touch gets the kit's large target, without enlarging the desktop controls
+   or their labels. Pointer capability also covers tablets with a keyboard. */
+@media (any-pointer: coarse) {
+  .ks-instrument-strip .ks-instrument-key,
+  .ks-segmented button {
+    min-height: var(--ks-control-lg);
+    min-width: var(--ks-control-lg);
+  }
+
+  .site-header-menu {
+    width: var(--ks-control-lg);
+    height: var(--ks-control-lg);
+  }
+
+  .kinpaku-chrome .site-header-brand,
+  .kinpaku-chrome .site-header-github {
+    min-height: var(--ks-control-lg);
+  }
+
+  .kinpaku-chrome .site-header-nav a {
+    min-height: var(--ks-control-lg);
+    min-width: var(--ks-control-lg);
+    padding-block: 10px;
+  }
+}
+`;var wr=`/* VENDORED from impeccable-site/site/styles/docs-kinpaku.css (the command rail list: the site's selected-row pattern) (the source of truth).
+   Do not edit here: change the site, then run node scripts/sync-kinpaku-kit.mjs. */
+/* Group headings are ink and bold, so they read as headings over their
+   links rather than as meta beside them; the links are muted and a step
+   smaller, ink on hover and on the current page. */
+.docs-kinpaku .skills-sidebar-category {
+  display: block;
+  font-family: var(--ks-font);
+  font-size: 0.8125rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  color: var(--ks-ink);
+  margin-bottom: 6px;
+  padding: 0 0 0 14px;
+}
+
+.docs-kinpaku .skills-sidebar-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.docs-kinpaku .skills-sidebar-list li {
+  margin: 0;
+}
+
+.docs-kinpaku .skills-sidebar-list a {
+  display: block;
+  padding: 4px 0 4px 12px;
+  border-left: 2px solid transparent;
+  font-family: var(--ks-font);
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--ks-text-muted);
+  text-decoration: none;
+  transition: color 160ms var(--ks-ease),
+              border-color 160ms var(--ks-ease);
+}
+
+.docs-kinpaku .skills-sidebar-list a:hover {
+  color: var(--ks-ink);
+}
+
+.docs-kinpaku .skills-sidebar-list a[aria-current="page"] {
+  color: var(--ks-ink);
+  font-weight: 600;
+  border-left-color: var(--ks-gold-line);
+}
+`;var mr=(r)=>r.replace(/^:root\s*\{/gm,":root, :host {"),zi=mr(br)+`
+`+mr(cr)+`
+`+wr,Be='<span class="ks-button-arrow" aria-hidden="true"><svg viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M0 4h14M10 0l4 4-4 4"/></svg></span>';var yr=`
 .review-peers{display:grid;gap:8px;padding:8px 0 12px;font-size:12px}
 .review-peers strong span{font-weight:400}.review-peers>div{display:flex;flex-wrap:wrap;gap:4px}
 .review-peers button{min-width:28px;min-height:28px;padding:3px;border:1px solid var(--line);border-radius:4px;background:var(--paper);color:inherit}
@@ -85,37 +1059,34 @@
 *{box-sizing:border-box}h1,h2,p,figure{margin:0}button,input,textarea{font:inherit}button{cursor:pointer;border:1px solid var(--line);border-radius:4px;background:var(--paper);color:inherit;padding:8px 12px;min-height:36px}button:hover{border-color:var(--teal);color:var(--teal)}button:disabled{cursor:default;opacity:.45}button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--teal);outline-offset:3px}button[aria-pressed=true]{box-shadow:inset 0 0 0 1px var(--teal)}input[type=checkbox]{accent-color:var(--teal);width:16px;height:16px;flex-shrink:0}textarea,input:not([type=checkbox]){width:100%;background:var(--paper);color:inherit;border:1px solid var(--ks-edge);border-radius:4px;padding:9px 10px}textarea{resize:vertical;min-height:80px}::selection{background:var(--ks-patina-pale)}a{color:var(--teal)}
 .review{max-width:1600px;margin:auto;padding:24px 28px 0}header{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:16px}h1{font:400 40px/1.05 var(--font-display,Arial,sans-serif);letter-spacing:-.02em}header p{margin-top:8px;font-size:15px}header p span,.medium{color:var(--muted)}.badge{border:1px solid var(--line);padding:5px 10px;font-size:12px;white-space:nowrap}.preview-note{color:var(--muted);font-size:12px;border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:24px}
 .connector{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:5;overflow:visible}.connector path{fill:none;stroke:var(--selection);stroke-width:2}.workbench{align-items:start;display:grid;grid-template-columns:minmax(0,1.18fr) minmax(0,1fr);gap:40px;position:relative}.section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;min-height:36px}.section-head h2{font-size:17px;font-weight:500;line-height:1.2}.section-head>span,.section-head h2>span:not(.number){font-size:12px;color:var(--muted)}.section-head button{font-size:12px}.number{display:inline-flex;align-items:center;justify-content:center;width:27px;height:27px;border:1px solid var(--teal);color:var(--teal);margin-right:7px;font:12px var(--font-mono,monospace)}
-.map{position:relative;background:var(--ks-paper-deep);isolation:isolate}.comp{width:100%;height:100%;display:block;user-select:none}.map.marking{touch-action:none;cursor:crosshair}.map.marking .pin{pointer-events:none;opacity:.25}.pin{position:absolute;transform:translate(-50%,-50%);padding:0;min-height:25px;width:25px;height:25px;border-radius:50%;border:1px solid var(--ks-paper-raised);background:var(--ks-paper-raised);color:var(--ks-text);font:11px var(--font-mono,monospace);box-shadow:0 1px 4px oklch(13% 0 0 / .4);z-index:2}.pin.selected{background:var(--teal);color:var(--ks-paper-raised);border-color:var(--teal);box-shadow:none;outline:none;z-index:3}.pin:focus-visible{outline:2px solid var(--ks-paper-raised);outline-offset:3px}.region,.draw-box{position:absolute;pointer-events:none;outline:2px solid var(--selection);z-index:1}.draw-box{background:oklch(45% 0.10 190 / .2);z-index:4}.map-caption{font-size:12px;color:var(--muted);padding-top:12px;min-height:40px}.map-caption button{display:block;margin-top:10px}.compare{display:grid;grid-template-columns:1fr 1fr;gap:12px}.compare figure{min-width:0}.compare figcaption{height:24px;min-height:0;font-size:12px;margin-bottom:9px}.compare figcaption span{display:block;color:var(--muted);font-size:11px}.crop-stage{position:relative;overflow:hidden;background:var(--comp-background,var(--ks-paper-deep));min-width:0}.crop-image{position:absolute;max-width:none;height:auto}.asset{display:block;width:100%;height:100%;object-fit:contain}.crop-stage iframe{position:absolute;max-width:none;border:0;transform-origin:top left;pointer-events:none}.overlay-image{opacity:.5;pointer-events:none}.component-note{font-size:12px;line-height:1.5;color:var(--muted);margin:6px 0 0}.decisions{display:flex;gap:10px;padding:10px 0;background:var(--paper);position:sticky;bottom:0;z-index:6}.decisions>button{flex:1;min-height:48px;font-weight:600;font-size:15px;border-color:var(--teal)}.decision-approve{background:var(--teal);color:var(--ks-paper-raised)}.decision-approve:hover{background:var(--ks-text);color:var(--ks-paper-raised)}.decision-revise{color:var(--teal);background:var(--paper)}.decisions>.quiet{flex:0;border:0;background:transparent;font-size:12px}.decisions .approved{color:var(--teal);background:var(--ks-gray);border-color:var(--teal)}.decisions .revise{color:var(--warn);background:var(--ks-gray);border-color:var(--warn)}.feedback-field{display:block;margin-top:16px;font-size:13px}.feedback-field>span{float:right;color:var(--muted);font-size:12px}.feedback-field textarea,.feedback-field input{display:block;margin-top:7px}.check{display:flex;align-items:center;gap:7px;font-size:12px;line-height:1.5;margin-top:12px}.coordinates{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:16px 0}.coordinates label{font-size:12px}.coordinates input{margin-top:5px}
-.inventory-section{margin-top:28px;border-top:1px solid var(--line);padding-top:16px}.inventory-section .section-head{margin-bottom:10px}.inventory{display:flex;gap:8px;overflow-x:auto;padding:3px 3px 14px;scrollbar-color:var(--ks-gray-2) var(--ks-paper-deep);scrollbar-width:thin}.item{position:relative;flex:0 0 134px;display:grid;grid-template-columns:20px 1fr;column-gap:8px;row-gap:3px;padding:10px;text-align:left;background:transparent}.item strong{grid-column:2;font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.item.active{background:var(--paper);border-color:var(--teal)}.thumb-crop{position:relative;display:block;overflow:hidden}.item-thumb{display:flex;align-items:center;justify-content:center;grid-column:1/-1;position:relative;overflow:hidden;width:100%;height:76px;background:var(--comp-background,var(--ks-paper-deep));margin-bottom:7px}.item-thumb img{width:100%;height:100%;object-fit:contain}.item-thumb img[style]{height:auto}.inventory.all{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));overflow:visible}.item-number{grid-row:2/4;font:12px var(--font-mono,monospace);color:var(--muted);padding-top:2px}.state{grid-column:2;font-size:11px;color:var(--muted)}.state.approve{color:var(--teal)}.state.revise{color:var(--warn)}footer{display:flex;justify-content:space-between;gap:24px;padding:20px 0 24px;border-top:1px solid var(--line);margin-top:8px}.submit-area{display:flex;align-items:center;gap:20px}.submit-area p{font-size:12px;color:var(--muted);max-width:28ch}.primary{min-height:46px;font-weight:600;background:var(--teal);border-color:var(--teal);color:var(--ks-paper-raised);white-space:nowrap}.primary:hover{color:var(--ks-paper-raised);background:var(--ks-text)}.primary:disabled{opacity:.45}.inspector>p{margin:12px 0}
+.map{position:relative;background:var(--ks-paper-deep);isolation:isolate}.comp{width:100%;height:100%;display:block;user-select:none}.map.marking{touch-action:none;cursor:crosshair}.map.marking .pin{pointer-events:none;opacity:.25}.pin{position:absolute;transform:translate(-50%,-50%);padding:0;min-height:25px;width:25px;height:25px;border-radius:50%;border:1px solid var(--ks-paper-raised);background:var(--ks-paper-raised);color:var(--ks-text);font:11px var(--font-mono,monospace);box-shadow:0 1px 4px oklch(13% 0 0 / .4);z-index:2}.pin.selected{background:var(--teal);color:var(--ks-paper-raised);border-color:var(--teal);box-shadow:none;outline:none;z-index:3}.pin:focus-visible{outline:2px solid var(--ks-paper-raised);outline-offset:3px}.region,.draw-box{position:absolute;pointer-events:none;outline:2px solid var(--selection);z-index:1}.draw-box{background:oklch(45% 0.10 190 / .2);z-index:4}.map-caption{font-size:12px;color:var(--muted);padding-top:12px;min-height:40px}.map-caption button{display:block;margin-top:10px}.compare{display:grid;grid-template-columns:1fr 1fr;gap:12px}.compare figure{min-width:0}.compare figcaption{height:24px;min-height:0;font-size:12px;margin-bottom:9px}.compare figcaption span{display:block;color:var(--muted);font-size:11px}.crop-stage{position:relative;overflow:hidden;background:var(--comp-background,var(--ks-paper-deep));min-width:0}.crop-image{position:absolute;max-width:none;height:auto}.asset{display:block;width:100%;height:100%;object-fit:contain}.crop-stage iframe{position:absolute;max-width:none;border:0;transform-origin:top left;pointer-events:none}.overlay-image{opacity:.5;pointer-events:none}.component-note{font-size:12px;line-height:1.5;color:var(--muted);margin:6px 0 0}.decisions{display:flex;gap:10px;padding:10px 0;background:var(--paper);position:sticky;bottom:0;z-index:6}.feedback-field{display:block;margin-top:16px;font-size:13px}.feedback-field>span{float:right;color:var(--muted);font-size:12px}.feedback-field textarea,.feedback-field input{display:block;margin-top:7px}.check{display:flex;align-items:center;gap:7px;font-size:12px;line-height:1.5;margin-top:12px}.coordinates{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:16px 0}.coordinates label{font-size:12px}.coordinates input{margin-top:5px}
+.inventory-section{margin-top:28px;border-top:1px solid var(--line);padding-top:16px}.inventory-section .section-head{margin-bottom:10px}.inventory{display:flex;gap:8px;overflow-x:auto;padding:3px 3px 14px;scrollbar-color:var(--ks-gray-2) var(--ks-paper-deep);scrollbar-width:thin}.item{position:relative;flex:0 0 134px;display:grid;grid-template-columns:20px 1fr;column-gap:8px;row-gap:3px;padding:10px;text-align:left;background:transparent}.item strong{grid-column:2;font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.item.active{background:var(--paper);border-color:var(--teal)}.thumb-crop{position:relative;display:block;overflow:hidden}.item-thumb{display:flex;align-items:center;justify-content:center;grid-column:1/-1;position:relative;overflow:hidden;width:100%;height:76px;background:var(--comp-background,var(--ks-paper-deep));margin-bottom:7px}.item-thumb img{width:100%;height:100%;object-fit:contain}.item-thumb img[style]{height:auto}.inventory.all{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));overflow:visible}.item-number{grid-row:2/4;font:12px var(--font-mono,monospace);color:var(--muted);padding-top:2px}.state{grid-column:2;font-size:11px;color:var(--muted)}.state.approve{color:var(--teal)}.state.revise{color:var(--warn)}footer{display:flex;justify-content:space-between;gap:24px;padding:20px 0 24px;border-top:1px solid var(--line);margin-top:8px}.submit-area{display:flex;align-items:center;gap:20px}.submit-area p{font-size:12px;color:var(--muted);max-width:28ch}.inspector>p{margin:12px 0}
 @media(min-width:1300px){.workbench{gap:56px}.review{padding-top:32px}.component-note{max-width:62ch}}
 @media(max-width:800px){.connector{display:none}.review{padding:20px 16px 0}.workbench{grid-template-columns:1fr;gap:24px}.reference{max-width:640px;margin:auto;width:100%}.inspector{border-top:1px solid var(--line);padding-top:16px}.compare{max-width:640px}.inventory-section .section-head{align-items:flex-start;flex-direction:column;gap:4px}footer{flex-direction:column}.submit-area{justify-content:space-between}.badge{font-size:11px}.section-head{gap:8px}h1{font-size:34px}header{align-items:flex-start}.section-head h2{font-size:16px}}
 
 .inspector{height:690px;overflow-y:auto;scrollbar-gutter:stable;scrollbar-width:thin;padding:0 5px 0 1px;overflow-anchor:none}
 .material{display:flex;align-items:baseline;flex-wrap:wrap;gap:5px 12px;min-height:34px;margin-bottom:6px}.material strong{font-size:14px;font-weight:600}.material span{font:11px var(--font-mono,monospace);color:var(--muted)}
 .compare-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px}.compare-toolbar label{font-size:12px;display:flex;align-items:center;gap:8px}select{font:inherit;color:inherit;background:var(--paper);border:1px solid var(--ks-edge);border-radius:4px;padding:7px 9px;min-height:36px}select:focus-visible,.pan-viewport:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
-.overlay-control{display:flex;align-items:center;gap:8px;border-color:var(--teal);color:var(--teal);font-weight:500}.overlay-control[aria-pressed=true]{background:var(--ks-gray)}.overlay-control svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.3}
 .pan-viewport{height:248px;overflow:auto;display:flex;background:var(--ks-paper-deep);scrollbar-width:thin;scrollbar-color:var(--ks-gray-2) var(--ks-paper-deep);overscroll-behavior:contain}.crop-stage{flex-shrink:0;margin:auto}.checker{background-color:var(--ks-paper-deep);background-image:conic-gradient(var(--ks-gray-2) 25%,transparent 0 50%,var(--ks-gray-2) 0 75%,transparent 0);background-size:16px 16px}
-.view-controls{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px;min-height:36px}.view-controls>div{display:flex;background:var(--ks-paper-deep);border:1px solid var(--line);padding:2px;border-radius:4px}.view-controls button{border:0;background:transparent;font-size:12px;min-height:30px;padding:5px 9px}.view-controls button[aria-pressed=true]{background:var(--paper);box-shadow:0 1px 2px var(--ks-rule)}.view-controls label{font-size:11px;display:flex;gap:6px;align-items:center}.view-controls select{font-size:11px;min-height:32px;padding:5px}.view-controls>span{font-size:12px;color:var(--muted)}.scale-note{font-size:11px;color:var(--muted);margin:10px 0 0;min-height:18px}.scale-note a{white-space:nowrap}
+.view-controls{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px;min-height:36px}.view-controls label{font-size:11px;display:flex;gap:6px;align-items:center}.view-controls select{font-size:11px;min-height:32px;padding:5px}.view-controls>span{font-size:12px;color:var(--muted)}.scale-note{font-size:11px;color:var(--muted);margin:10px 0 0;min-height:18px}.scale-note a{white-space:nowrap}
 .component-details{height:78px;overflow:auto;margin-top:12px;padding-right:4px;scrollbar-width:thin}.layering{font-size:12px;line-height:1.5}.component-details .component-note{margin-top:6px}
-#approve-rest{min-height:44px;font-weight:600;border-color:var(--teal);color:var(--teal)}
 @media(max-width:800px){.inspector{height:720px}.pan-viewport{height:248px}.component-details{height:92px}.view-controls label{font-size:11px}.review header{align-items:flex-start}}
 
 .round-summary{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 20px;padding:14px 0;margin-bottom:22px;border-block:1px solid var(--line)}.round-summary p{display:flex;flex-wrap:wrap;gap:5px 18px;font-size:13px}.round-summary p>span{color:var(--muted)}.round-summary details{flex-basis:100%;font-size:12px}.round-summary details p{font-size:12px;margin-top:8px;max-width:80ch}
 .repair-context{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;margin:0 0 10px;font-size:12px}.previous-feedback{display:contents;overflow-wrap:anywhere}.previous-feedback h3{grid-column:1;grid-row:1;margin:0;font-size:11px;font-weight:500;color:var(--muted);align-self:center}.previous-feedback h3 span{font-weight:400;white-space:nowrap}.previous-feedback blockquote{grid-column:1/-1;grid-row:2;margin:0;white-space:pre-wrap;font-size:13px;line-height:1.45;max-height:5.8em;overflow:auto}.previous-feedback>p{grid-column:1/-1;margin:0;font-size:12px}.kept-approval{color:var(--teal);font-size:12px;align-self:center}
-.round-switch{display:flex;gap:1px;border:1px solid var(--line);border-radius:4px;padding:2px;background:var(--ks-paper-deep);flex-shrink:0}.round-switch button{min-height:28px;font-size:11px;padding:4px 7px;border:0;background:transparent}.round-switch button[aria-pressed=true]{background:var(--paper);color:var(--teal);box-shadow:0 1px 2px var(--ks-rule)}
 .changed-files{grid-column:2;grid-row:1;margin:0;color:var(--muted);font-size:11px}.changed-files summary{padding:2px 0;min-height:24px}.changed-files[open]{grid-column:1/-1;grid-row:auto}.changed-files[open] summary{font-weight:500}summary{cursor:pointer;padding:5px 0;min-height:30px}summary:focus-visible{outline:2px solid var(--teal);outline-offset:2px}.changed-files ul{padding-left:18px;margin:6px 0;overflow-wrap:anywhere;font:11px/1.6 var(--font-mono,monospace)}.description-diff{margin:6px 0 12px}.description-diff dt{font-weight:600;font-size:11px;margin-top:10px}.description-diff dd{margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--color-text,var(--ks-text))}.previous-notice{font-size:12px;color:var(--muted);margin-top:8px}.inspector .previous-notice{display:none}
-.decisions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:8px 10px;padding-top:12px}.decision-title{grid-column:1/-1}.decision-title strong{font-size:14px;font-weight:600;display:flex;justify-content:space-between;gap:12px}.decision-title strong span{font-size:11px;color:var(--muted);font-weight:400}.decision-title p{font-size:12px;font-weight:400;color:var(--muted);margin-top:4px}.decisions>.quiet{align-self:center;padding-inline:4px}.decisions:not(:has(.quiet)){grid-template-columns:1fr 1fr}
+.decisions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:8px 10px;padding-top:12px}.decision-title{grid-column:1/-1}.decision-title strong{font-size:14px;font-weight:600;display:flex;justify-content:space-between;gap:12px}.decision-title strong span{font-size:11px;color:var(--muted);font-weight:400}.decision-title p{font-size:12px;font-weight:400;color:var(--muted);margin-top:4px}.decisions:not(:has(.quiet)){grid-template-columns:1fr 1fr}
 .inspector{display:flex;flex-direction:column;overflow:hidden;padding:0}.inspection-content{flex:1;min-height:0;overflow:auto;scrollbar-width:thin;scrollbar-gutter:stable;overscroll-behavior:contain;padding:0 5px 10px 1px}.review-form{flex-shrink:0;padding:12px 5px 0 1px;border-top:1px solid var(--line);background:var(--paper)}.review-form .decisions{position:static;padding:0 0 8px;background:transparent}.review-form .feedback{margin-top:8px}.review-form .feedback textarea{min-height:72px;max-height:120px}.review-form .check{margin:8px 0;font-size:11px}
 .inspection-content:focus-visible{outline:2px solid var(--teal);outline-offset:-2px}
 .inspector>.section-head{flex-shrink:0;padding:0 5px 0 1px}
 .pin{display:flex;align-items:center;justify-content:center;gap:3px;font-size:12px;font-weight:600;width:30px;height:30px;min-height:30px}.pin svg,.map-legend svg,.item-number svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}.pin.pending,.pin.pending.selected{background:var(--ks-kinpaku);border-color:var(--ks-kinpaku);color:var(--ks-on-gold)}.pin.approved,.pin.approved.selected{width:38px;min-height:24px;height:24px;background:var(--ks-paper-raised);border-color:var(--ks-paper-raised);color:var(--ks-state-ink);border-radius:4px}.pin.approved:not(.selected){opacity:.55;box-shadow:none}.pin.approved:hover,.pin.approved:focus-visible{opacity:1}.pin.feedback,.pin.feedback.selected{width:38px;background:var(--ks-ink);border-color:var(--ks-paper-raised);color:var(--ks-paper-raised);border-radius:4px}.pin.selected{outline:none;border:3px solid var(--ks-paper-raised);box-shadow:none;z-index:3}.pin:focus-visible{outline:2px solid var(--ks-paper-raised);outline-offset:3px}
 .map-legend{display:flex;flex-wrap:wrap;gap:9px 18px;margin-top:14px;font-size:11px;color:var(--muted)}.map-legend>span{display:flex;align-items:center;gap:6px}.map-legend i{display:inline-flex;align-items:center;justify-content:center;min-width:21px;height:21px;font-style:normal}.legend-pending{background:var(--ks-kinpaku);color:var(--ks-on-gold);border-radius:50%}.legend-feedback{background:var(--ks-ink);color:var(--ks-paper-raised);border-radius:3px}.legend-approved{background:var(--ks-paper-raised);color:var(--ks-state-ink);border-radius:3px}.map-caption{font-size:11px}
-.inventory-section .section-head{flex-wrap:wrap}.inventory-filters{display:flex;gap:3px;padding:3px;background:var(--ks-paper-deep);border-radius:5px}.inventory-filters button{border:0;background:transparent;min-height:34px;padding:7px 10px;font-size:12px;white-space:nowrap}.inventory-filters button[aria-pressed=true]{background:var(--paper);color:var(--teal);box-shadow:0 1px 2px var(--ks-rule)}.inventory-filters b{margin-left:5px;font-weight:600;font-variant-numeric:tabular-nums}.item.pending{border-color:var(--ks-kinpaku-deep);background:var(--ks-paper-raised)}.item.feedback{border-color:var(--ks-ink);background:var(--ks-paper-raised)}.item.approved{background:var(--ks-paper);border-color:var(--ks-rule)}.item.approved .item-thumb{opacity:.65}.item.active{outline:2px solid var(--teal);outline-offset:0;box-shadow:none}.item-number{display:flex;align-items:center;gap:3px;grid-column:1/-1;grid-row:auto;min-height:20px;font-weight:600}.item strong{grid-column:1/-1;font-size:13px;white-space:normal;min-height:36px;line-height:1.35}.state{grid-column:1/-1;font-size:12px;font-weight:600;padding-top:6px;border-top:1px solid var(--ks-rule)}.state.pending{color:var(--ks-ink)}.state.feedback{color:var(--ks-ink)}.state.approved{color:var(--ks-state-ink)}.inventory-empty{padding:20px 0;font-size:13px;color:var(--muted)}
-@media(max-width:800px){.inventory-section .section-head{gap:10px}.inventory-filters{width:100%}.inventory-filters button{padding-inline:7px;font-size:11px;flex:1}.inventory-filters b{margin-left:3px}}
+.inventory-section .section-head{flex-wrap:wrap}.item.pending{border-color:var(--ks-kinpaku-deep);background:var(--ks-paper-raised)}.item.feedback{border-color:var(--ks-ink);background:var(--ks-paper-raised)}.item.approved{background:var(--ks-paper);border-color:var(--ks-rule)}.item.approved .item-thumb{opacity:.65}.item.active{outline:2px solid var(--teal);outline-offset:0;box-shadow:none}.item-number{display:flex;align-items:center;gap:3px;grid-column:1/-1;grid-row:auto;min-height:20px;font-weight:600}.item strong{grid-column:1/-1;font-size:13px;white-space:normal;min-height:36px;line-height:1.35}.state{grid-column:1/-1;font-size:12px;font-weight:600;padding-top:6px;border-top:1px solid var(--ks-rule)}.state.pending{color:var(--ks-ink)}.state.feedback{color:var(--ks-ink)}.state.approved{color:var(--ks-state-ink)}.inventory-empty{padding:20px 0;font-size:13px;color:var(--muted)}
+@media(max-width:800px){.inventory-section .section-head{gap:10px}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
 .item-medium{margin-left:auto;font-weight:400;display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted);min-height:16px}.item-medium .utility-icon{width:14px;height:14px;flex-shrink:0}.material>.utility-icon{width:18px;height:18px;align-self:center;color:var(--teal)}
-.feedback-actions{display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap}.feedback-actions .primary{margin-left:auto;display:inline-flex;align-items:center;gap:10px}.feedback-actions svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.5}.feedback-hint,.shortcut-hint{font-size:12px;color:var(--muted)}.feedback-hint{margin-top:6px}.shortcut-hint{flex-basis:100%;text-align:right}.record-verdict{display:flex;flex-wrap:wrap;align-items:baseline;gap:5px 12px;font-size:13px}.record-verdict span{font-size:11px;color:var(--muted)}.review>.record-footer{font-size:12px;color:var(--muted);flex-wrap:wrap;gap:6px 16px}.saved-feedback{font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0}.decision-notice{display:flex;align-items:center;gap:12px;font-size:12px;margin-bottom:10px}.decision-notice>span{flex:1;overflow-wrap:anywhere}.decision-notice button{color:var(--teal);flex-shrink:0}.review-summary{padding:4px 2px}.completion-mark{display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:var(--ks-gray);color:var(--ks-patina-deep);float:left;margin:0 10px 8px 0}.completion-mark svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.6}.completion-link{display:inline-flex;align-items:center;gap:8px;color:var(--teal);border:0;background:transparent;padding:0;font-size:12px;text-align:left}.completion-link svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;flex-shrink:0}.queue-complete #approve-rest{display:none}.review-summary h2{font-size:22px;line-height:32px}.review-summary p{clear:both;margin-top:8px;color:var(--muted)}.summary-decisions{margin-top:24px;display:grid}.summary-decisions button{display:grid;grid-template-columns:1fr auto;gap:6px 16px;text-align:left;border:0;border-bottom:1px solid var(--line);border-radius:0;padding:12px 0;background:transparent}.summary-decisions strong{font-size:13px;font-weight:500}.summary-decisions span{font-size:12px;color:var(--teal)}.summary-decisions small{grid-column:1/-1;font-size:12px;color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere}
-`+vo+`
+.feedback-actions{display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap}.feedback-actions svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.5}.feedback-hint,.shortcut-hint{font-size:12px;color:var(--muted)}.feedback-hint{margin-top:6px}.shortcut-hint{flex-basis:100%;text-align:right}.record-verdict{display:flex;flex-wrap:wrap;align-items:baseline;gap:5px 12px;font-size:13px}.record-verdict span{font-size:11px;color:var(--muted)}.review>.record-footer{font-size:12px;color:var(--muted);flex-wrap:wrap;gap:6px 16px}.saved-feedback{font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0}.decision-notice{display:flex;align-items:center;gap:12px;font-size:12px;margin-bottom:10px}.decision-notice>span{flex:1;overflow-wrap:anywhere}.decision-notice button{color:var(--teal);flex-shrink:0}.review-summary{padding:4px 2px}.completion-mark{display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:var(--ks-gray);color:var(--ks-patina-deep);float:left;margin:0 10px 8px 0}.completion-mark svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.6}.completion-link{display:inline-flex;align-items:center;gap:8px;color:var(--teal);border:0;background:transparent;padding:0;font-size:12px;text-align:left}.completion-link svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;flex-shrink:0}.review-summary h2{font-size:22px;line-height:32px}.review-summary p{clear:both;margin-top:8px;color:var(--muted)}.summary-decisions{margin-top:24px;display:grid}.summary-decisions button{display:grid;grid-template-columns:1fr auto;gap:6px 16px;text-align:left;border:0;border-bottom:1px solid var(--line);border-radius:0;padding:12px 0;background:transparent}.summary-decisions strong{font-size:13px;font-weight:500}.summary-decisions span{font-size:12px;color:var(--teal)}.summary-decisions small{grid-column:1/-1;font-size:12px;color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere}
+`+fr+`
 .review-form:has(#feedback-form){max-height:75%;min-height:0;flex-shrink:1;display:flex;flex-direction:column;overflow:hidden;padding-top:8px}
 #feedback-form{display:flex;flex-direction:column;flex:1;min-height:0}
 /* Leave room inside the scrollport for the 2px focus ring and 3px offset. */
@@ -124,10 +1095,9 @@
 .review-form:has(#feedback-form) .decisions{display:none}
 .feedback-actions{flex-shrink:0;position:static;background:var(--surface,var(--paper));padding:8px 0;margin-top:8px;box-shadow:0 -5px 8px -6px oklch(13% 0 0 / 0.22)}
 .feedback-actions .shortcut-hint{flex-basis:auto;order:-1;margin-right:auto}
-.feedback-actions .primary{margin-left:0}
-@media(max-height:800px),(max-width:800px){.feedback-actions .shortcut-hint{display:none}.feedback-actions .primary{margin-left:auto}.review-form .feedback textarea{min-height:56px}.review-form:has(#feedback-form) .decision-notice{margin-bottom:4px}}
+@media(max-height:800px),(max-width:800px){.feedback-actions .shortcut-hint{display:none}.review-form .feedback textarea{min-height:56px}.review-form:has(#feedback-form) .decision-notice{margin-bottom:4px}}
 
-.comparison-panel{min-width:0;container-type:inline-size}.comparison-panel .expanded-title{display:none}.comparison-panel .compare-toolbar{justify-content:flex-start}.comparison-panel .overlay-control{margin-left:0}.comparison-panel #expand-comparison{flex-shrink:0}.pan-viewport.pannable{cursor:move}.pan-viewport img{user-select:none;-webkit-user-drag:none}
+.comparison-panel{min-width:0;container-type:inline-size}.comparison-panel .expanded-title{display:none}.comparison-panel .compare-toolbar{justify-content:flex-start}.comparison-panel #expand-comparison{flex-shrink:0}.pan-viewport.pannable{cursor:move}.pan-viewport img{user-select:none;-webkit-user-drag:none}
 #comparison-dialog{position:fixed;inset:16px;width:calc(100vw - 32px);height:calc(100dvh - 32px);max-width:none;max-height:none;margin:0;padding:24px;background:var(--paper);color:inherit;border:1px solid var(--line);border-radius:8px;box-shadow:0 20px 60px oklch(13% 0 0 / .25);overflow:hidden;transform-origin:top left}
 #comparison-dialog[open]{display:flex;flex-direction:column;gap:12px}
 #comparison-dialog>.review-form{width:100%;max-width:900px;align-self:center;max-height:55%;padding:12px 4px 0}
@@ -139,21 +1109,14 @@
 #comparison-dialog .compare{flex:1;min-height:0;max-width:none;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
 #comparison-dialog .compare figure{display:flex;flex-direction:column;min-height:0}#comparison-dialog .pan-viewport{flex:1;min-height:0}#comparison-dialog .compare figcaption{flex-shrink:0}
 #comparison-dialog .view-controls{flex-shrink:0;margin:0}
-@media(max-width:600px){#comparison-dialog{inset:6px;width:calc(100vw - 12px);height:calc(100dvh - 12px);padding:14px}.comparison-panel .compare-toolbar{gap:6px}.comparison-panel .overlay-control{padding-inline:8px;font-size:12px}#comparison-dialog .compare{gap:8px}#comparison-dialog .compare figcaption{font-size:11px}}
+@media(max-width:600px){#comparison-dialog{inset:6px;width:calc(100vw - 12px);height:calc(100dvh - 12px);padding:14px}.comparison-panel .compare-toolbar{gap:6px}#comparison-dialog .compare{gap:8px}#comparison-dialog .compare figcaption{font-size:11px}}
 
 .comparison-panel .compare-toolbar{gap:6px;padding:0;min-width:0;flex-wrap:wrap;margin-bottom:8px}
 .comparison-actions{display:flex;align-items:center;gap:2px;margin-left:auto;flex-shrink:0}
-.comparison-panel .zoom-control{position:relative;display:block;flex-shrink:0}
-.zoom-control select{appearance:none;-webkit-appearance:none;width:104px;height:36px;min-height:36px;padding:6px 30px 6px 32px;font-size:12px;line-height:1.4;border-color:var(--line);background:var(--paper);cursor:pointer}
-.zoom-control>.utility-icon{position:absolute;top:50%;transform:translateY(-50%);pointer-events:none}
-.zoom-control>.utility-icon:first-child{left:10px;width:15px;height:15px;color:var(--muted)}
-.zoom-control>.utility-icon:last-child{right:10px;width:13px;height:13px;color:var(--muted)}
-.comparison-panel .overlay-control{height:36px;min-height:36px;font-size:12px;padding:6px 10px;gap:6px}
-.comparison-panel .overlay-control svg{width:18px;height:18px;stroke-width:1.6}
 .comparison-actions .source-link{color:var(--muted)}
 .component-details .material{min-height:0;margin:12px 0 5px;gap:5px 8px}.component-details .material strong{font-size:11px;font-weight:500;color:var(--muted)}.component-details .material>.utility-icon{width:15px;height:15px}.component-details .material span{font-size:10px}
-@container(max-width:460px){.compare-toolbar .overlay-label{display:none}.compare-toolbar .overlay-control{width:34px;padding:7px}.compare-toolbar .zoom-control select{width:86px;padding-left:27px;padding-right:24px}.compare-toolbar .zoom-control>.utility-icon:first-child{left:8px}.compare-toolbar .zoom-control>.utility-icon:last-child{right:7px}}
-@media(forced-colors:active){.zoom-control select{appearance:auto;padding:6px 8px}.zoom-control>.utility-icon{display:none}}
+@container(max-width:460px){}
+@media(forced-colors:active){}
 
 /* A full-page checkpoint is one comparison, not a component inventory. */
 .assembled-review>.workbench{grid-template-columns:minmax(0,1fr);gap:0}
@@ -163,7 +1126,6 @@
 .assembled-review .pan-viewport{background:var(--canvas);border:1px solid var(--ks-rule);box-shadow:inset 0 2px 7px oklch(13% 0 0 / 0.07)}
 .assembled-review .inspector>.review-form{padding:12px 20px;max-height:55%}
 .assembled-review .decisions{display:flex;justify-content:flex-end;gap:10px}
-.assembled-review #approve{order:2;min-width:180px}
 .assembled-review .page-review-status{font-size:11px;color:var(--muted);text-align:right;line-height:1.4;overflow-wrap:anywhere}
 .assembled-review .page-review-status:empty{display:none}
 .assembled-review .review-form:has(#feedback-form){max-height:55%}
@@ -174,7 +1136,6 @@
  .assembled-review .inspection-content{padding:10px}
  .assembled-review .compare{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
  .assembled-review .inspector>.review-form{padding:10px}
- .assembled-review .decisions>button{flex:1;min-width:0}
  .assembled-review .page-review-status{text-align:left}
 }
 
@@ -236,25 +1197,10 @@
 .inventory .item,.inventory .item.active{background:var(--ks-paper-raised)}
 .item.active{box-shadow:inset 0 -2px 0 var(--ks-kinpaku)}
 .review>footer{background:var(--ks-paper-raised);border-top:1px solid var(--ks-rule);box-shadow:none}
-button{border-color:var(--ks-edge);border-radius:var(--ks-radius-sm);color:var(--ks-ink);background:var(--ks-paper-raised)}
-button:hover{border-color:var(--ks-ink);color:var(--ks-ink)}
 button:focus-visible,input:focus-visible,textarea:focus-visible{outline-color:var(--ks-focus-ring)}
 textarea,input:not([type=checkbox]),select{border-color:var(--ks-edge);border-radius:var(--ks-radius-sm);background:var(--ks-paper-raised)}
 input[type=checkbox]{accent-color:var(--ks-ink)}
-.primary,.decision-approve,.decisions>.decision-approve{background:var(--ks-ink);border-color:var(--ks-ink);color:var(--ks-paper-raised)}
-.primary:hover,.decision-approve:hover{background:var(--ks-text);border-color:var(--ks-text);color:var(--ks-paper-raised)}
-.primary:disabled,.decision-approve:disabled{background:transparent;border-color:var(--ks-rule);color:var(--ks-text-mute-deep)}
-.decisions>button{border-color:var(--ks-edge);font-weight:500;border-radius:var(--ks-radius-sm)}
-.decision-revise{color:var(--ks-ink);background:var(--ks-paper-raised)}
-.decisions .approved{color:var(--ks-state-ink);background:var(--ks-paper-raised);border-color:var(--ks-state-ink)}
-.decisions .revise{color:var(--ks-ink);background:var(--ks-paper-raised);border-color:var(--ks-ink);box-shadow:inset 0 0 0 1px var(--ks-ink)}
 .decisions{background:transparent}
-.overlay-control{border-color:var(--ks-edge);color:var(--ks-ink)}
-.overlay-control[aria-pressed=true]{background:var(--ks-gray);border-color:var(--ks-ink)}
-:is(.review,.comparison-panel) .icon-button{color:var(--ks-text-muted)}
-:is(.review,.comparison-panel) .icon-button:hover{background:var(--ks-gray);border-color:transparent;color:var(--ks-ink)}
-.inventory-filters,.round-switch,.view-controls>div{background:var(--ks-paper-deep);border:1px solid var(--ks-edge);border-radius:var(--ks-radius-sm)}
-.inventory-filters button[aria-pressed=true],.round-switch button[aria-pressed=true],.view-controls button[aria-pressed=true]{background:var(--ks-paper-raised);color:var(--ks-ink);box-shadow:inset 0 0 0 1px var(--ks-rule),var(--ks-lift-1)}
 .badge{border:0;border-radius:var(--ks-radius-sm);background:var(--ks-gray);color:var(--ks-text-muted);font:600 var(--ks-type-eyebrow-size)/1 var(--ks-mono);letter-spacing:.02em;text-transform:uppercase;padding:5px 7px}
 #comparison-dialog{background:var(--ks-paper);border-color:var(--ks-rule);border-radius:var(--ks-radius-md);box-shadow:var(--ks-lift-2)}
 /* The first-viewport review: two figures on the paper, a small toolbar, two buttons. */
@@ -265,35 +1211,40 @@ input[type=checkbox]{accent-color:var(--ks-ink)}
 .assembled-review .pan-viewport{background:transparent;border:0;box-shadow:none}
 .assembled-review .inspector>.review-form{padding:14px 0 18px;margin-top:8px}
 .assembled-review .decisions{padding:0}
-.assembled-review .decisions>button{min-height:var(--ks-control-lg);font-size:var(--ks-type-ui-lead);padding:0 22px}
-.assembled-review #approve{min-width:200px}
 .assembled-review .page-review-status{color:var(--ks-text-muted);font-size:var(--ks-type-label-size)}
 @media(max-width:800px){.assembled-review>.workbench{padding:12px 16px 0}.assembled-review .compare{gap:12px}}
-`;var Go={chevronDown:'<path d="m6 9 6 6 6-6"/>',code:'<path d="m8 6-6 6 6 6m8-12 6 6-6 6m-3-15-2 18"/>',image:'<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 6-6 4 4 3-3 5 5"/>',expand:'<path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5M3 3l6 6m12-6-6 6M3 21l6-6m12 6-6-6"/>',compact:'<path d="M3 9h6V3m6 0v6h6M9 21v-6H3m12 6v-6h6M3 3l6 6m12-6-6 6M3 21l6-6m12 6-6-6"/>',hideTray:'<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 14h18m-12 3 3 2 3-2"/>',showTray:'<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 14h18m-12-4 3-3 3 3"/>',next:'<path d="M5 12h14m-6-6 6 6-6 6"/>',mark:'<path d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5M8 12h8m-4-4v8"/>',close:'<path d="m6 6 12 12M6 18 18 6"/>',undo:'<path d="M4 10h9a6 6 0 0 1 0 12M4 10l5-5m-5 5 5 5" transform="translate(0 -2)"/>',external:'<path d="M14 3h7v7m0-7L10 14m0-10H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-5"/>',zoom:'<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>'};function nr(a){return`<svg class="utility-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${Go[a]}</svg>`}var Ti=[{kind:"plate",label:"Illustration / plate",hint:"Painted or drawn artwork"},{kind:"image",label:"Photo / image",hint:"A photograph"},{kind:"texture",label:"Texture",hint:"A surface or material"}],Or=(a)=>Ti.find((i)=>i.kind===a).label;function ci(a){let i=a;return!!i&&i.schemaVersion===3&&i.stage==="components"}function Ir(a){return a.role==="plan"&&(!!a.flags?.length||!!a.codeDrawn)}function Ki(a){let i=(n)=>Ir(n)?0:n.role==="asset"?1:2;return a.components.map((n,e)=>({c:n,i:e})).sort((n,e)=>i(n.c)-i(e.c)||n.i-e.i).map((n)=>n.c)}function yi(a){let i=new Set(a.components.map((n)=>n.id));return(a.codeRegions??[]).filter((n)=>!i.has(n.id))}function Dr(a,i){let n=i.decisions[a.id];return n?.revision===a.revision?n:void 0}function Xr(a,i){let n=Dr(a,i);return n?n.action==="approve"?"approved":n.action:"pending"}function Tr(a,i){return a.reclassify?.find((n)=>n.id===i)}function Ai(a){let i=[a.name,a.note,...(a.flags??[]).map((n)=>n.message)].join(" ");if(/\b(textures?|surfaces?|grain|grainy|brushed|metal(lic)?|steel|brass|copper|paper|linen|canvas|fabric|cloth|wood(en)?|stone|marble|concrete|plaster|leather|noise|pattern(ed)?|weave|patina)\b/i.test(i))return"texture";if(/\b(photo|photos|photograph|photographs|photographic|photography)\b/i.test(i)&&!/\bphotographic shading\b/i.test(i))return"image";return"plate"}function Bi(a){return`Drawn in code (${a.kind})`}function fo(a){if(a.id==="painted-pixels")return`This looks painted: ${a.message}`;return a.message}function Kr(a,i){let n=a.components.map((y)=>Xr(y,i)),e=n.filter((y)=>y==="approved").length,p=n.filter((y)=>y==="revise").length,s=new Set(yi(a).map((y)=>y.id)),f=(i.reclassify??[]).filter((y)=>s.has(y.id)).length,v=n.filter((y)=>y==="reclassify").length+f,w=n.filter((y)=>y==="pending").length,c=i.missing.length,b=p+v+c>0,q=i.packetRevision===a.revision,E=i.missing.every((y)=>y.name.trim()&&Mi(y.box)),Y=q&&!b&&w===0;return{total:n.length,approved:e,revise:p,reclassify:v,pending:w,missing:c,hasChanges:b,canApprove:Y,mode:b?"changes":"approve",canSubmit:q&&E&&(b||Y)}}function Ni(a,i,n,e={}){if(n==="revise"&&i.role!=="asset")throw Error("Only generated assets can be revised");if(n==="reclassify"&&i.role!=="plan")throw Error("Only planned code can become an image");let p={revision:i.revision,action:n,feedback:n==="approve"?"":(e.feedback??"").trim(),split:!1};if(n==="reclassify")p.kind=e.kind??Ai(i);return{...a,inventoryConfirmed:!1,decisions:{...a.decisions,[i.id]:p}}}function wo(a,i){let n={...a.decisions};return delete n[i],{...a,inventoryConfirmed:!1,decisions:n}}function Wi(a,i,n){let e=(a.reclassify??[]).filter((p)=>p.id!==i);return{...a,inventoryConfirmed:!1,reclassify:n?[...e,{id:i,kind:n.kind,feedback:(n.feedback??"").trim()}]:e}}function Li(a,i,n){let e=Ki(a),p=e.findIndex((s)=>s.id===n);for(let s=1;s<=e.length;s++){let f=e[(p+s)%e.length];if(Xr(f,i)==="pending")return f.id}}function bo(a,i){let n=Kr(a,i);if(!n.canSubmit)throw Error("Review is incomplete or stale");let e={};for(let f of a.components){let v=Dr(f,i);if(v)e[f.id]=structuredClone(v)}let p=new Set(yi(a).map((f)=>f.id)),s=(i.reclassify??[]).filter((f)=>p.has(f.id)).map((f)=>({...f}));return{schemaVersion:1,requestId:a.id,packetRevision:i.packetRevision,decisions:e,missing:structuredClone(i.missing),inventoryConfirmed:n.mode==="approve",...s.length?{reclassify:s}:{}}}function uo(a){return{packetRevision:a.revision,decisions:{},missing:[],inventoryConfirmed:!1,reclassify:[]}}function mo(a,i,n,e,p=0.02){let s=Math.max(0,Math.floor((e.x-p)*i)),f=Math.min(i-1,Math.ceil((e.x+e.w+p)*i)),v=Math.max(0,Math.floor((e.y-p)*n)),w=Math.min(n-1,Math.ceil((e.y+e.h+p)*n)),c=Math.floor(e.x*i),b=Math.ceil((e.x+e.w)*i),q=Math.floor(e.y*n),E=Math.ceil((e.y+e.h)*n),Y=[],y=Math.max(1,Math.round(Math.max(f-s,w-v)/80));for(let G=v;G<=w;G+=y)for(let Z=s;Z<=f;Z+=y){if(Z>=c&&Z<b&&G>=q&&G<E)continue;let fr=(G*i+Z)*4;if(a[fr+3]<200)continue;Y.push([a[fr],a[fr+1],a[fr+2]])}return Y}function co(a){if(!a.length)return;let i=(n)=>{let e=a.map((p)=>p[n]).sort((p,s)=>p-s);return e[e.length>>1]};return"#"+[0,1,2].map((n)=>i(n).toString(16).padStart(2,"0")).join("")}function yo(a,i,n,e,p,s=4){let f=a.w*i,v=a.h*n,w=Math.max(24,0.15*Math.min(Math.max(f,v),400)),c=e/(f+w*2),b=p/(v+w*2),q=Math.max(0.01,Math.min(s,Math.max(Math.min(c,b),Math.min(1,Math.max(c,b))))),E=Math.min(i,e/q),Y=Math.min(n,p/q),y=(a.x+a.w/2)*i,G=(a.y+a.h/2)*n,Z=Math.max(0,Math.min(i-E,y-E/2)),fr=Math.max(0,Math.min(n-Y,G-Y/2));return{scale:q,width:E*q,height:Y*q,view:{x:Z/i,y:fr/n,w:E/i,h:Y/n}}}function zo(a,i,n,e,p,s=1/0,f){let v=(b,q)=>{let E=Math.max(0,b),Y=E/a;if(Y>q)Y=Math.max(0,q),E=Y*a;if(f&&E>f.w*s)E=f.w*s,Y=E/a;return{w:E,h:Y}},w=v((i-e)/2,n-p),c=v(i,(n-e)/2-p);return w.w*w.h>=c.w*c.h?{direction:"row",...w}:{direction:"column",...c}}var jo=mi+`
+`+zi+`
+/* Local fit for the vendored kit: sizes the legacy layout expects, the link-style text action,
+   and the paper grain the site puts on its page ground (kit body::before, here on the review root). */
+.review{position:relative;isolation:isolate}
+.review::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:0.055;mix-blend-mode:multiply;background-image:var(--ks-grain);background-size:160px 160px}
+.decisions>.ks-button{flex:1}
+.assembled-review .decisions{display:flex;justify-content:flex-end;gap:12px}
+.assembled-review .decisions>.ks-button{flex:0 0 auto;min-width:200px}
+.assembled-review #approve{order:2}
+.ks-button[disabled] .ks-button-arrow{color:currentColor}
+.text-action{border:0;background:none;padding:0 2px;min-height:0;color:var(--ks-link-on-paper);font:inherit;font-size:var(--ks-type-label-size);text-decoration:underline;text-decoration-color:var(--ks-link-on-paper-line);text-underline-offset:3px;cursor:pointer}
+.text-action:hover{text-decoration-color:var(--ks-link-on-paper-line-hover)}
+.compare-toolbar{align-items:center;gap:16px}
+.comparison-actions{display:flex;gap:8px;margin-left:auto}
+.ks-icon-button .utility-icon{width:16px;height:16px}
+.mobile-panes{padding:8px 14px}
+.ks-checkbox input{margin:0}
+.review .ks-switch,.review .ks-switch[aria-pressed=true],.review .ks-instrument-key[aria-pressed=true]{box-shadow:none}
+`;var Hr={chevronDown:'<path d="m6 9 6 6 6-6"/>',code:'<path d="m8 6-6 6 6 6m8-12 6 6-6 6m-3-15-2 18"/>',image:'<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 6-6 4 4 3-3 5 5"/>',expand:'<path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5M3 3l6 6m12-6-6 6M3 21l6-6m12 6-6-6"/>',compact:'<path d="M3 9h6V3m6 0v6h6M9 21v-6H3m12 6v-6h6M3 3l6 6m12-6-6 6M3 21l6-6m12 6-6-6"/>',hideTray:'<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 14h18m-12 3 3 2 3-2"/>',showTray:'<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 14h18m-12-4 3-3 3 3"/>',next:'<path d="M5 12h14m-6-6 6 6-6 6"/>',mark:'<path d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5M8 12h8m-4-4v8"/>',close:'<path d="m6 6 12 12M6 18 18 6"/>',undo:'<path d="M4 10h9a6 6 0 0 1 0 12M4 10l5-5m-5 5 5 5" transform="translate(0 -2)"/>',external:'<path d="M14 3h7v7m0-7L10 14m0-10H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-5"/>',zoom:'<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>'};function be(r){return`<svg class="utility-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${Hr[r]}</svg>`}var di=[{kind:"plate",label:"Illustration / plate",hint:"Painted or drawn artwork"},{kind:"image",label:"Photo / image",hint:"A photograph"},{kind:"texture",label:"Texture",hint:"A surface or material"}],Fe=(r)=>di.find((i)=>i.kind===r).label;function ji(r){let i=r;return!!i&&i.schemaVersion===3&&i.stage==="components"}function Ce(r){return r.role==="plan"&&(!!r.flags?.length||!!r.codeDrawn)}function Ki(r){let i=(n)=>Ce(n)?0:n.role==="asset"?1:2;return r.components.map((n,o)=>({c:n,i:o})).sort((n,o)=>i(n.c)-i(o.c)||n.i-o.i).map((n)=>n.c)}function qi(r){let i=new Set(r.components.map((n)=>n.id));return(r.codeRegions??[]).filter((n)=>!i.has(n.id))}function Se(r,i){let n=i.decisions[r.id];return n?.revision===r.revision?n:void 0}function Je(r,i){let n=Se(r,i);return n?n.action==="approve"?"approved":n.action:"pending"}function Ae(r,i){return r.reclassify?.find((n)=>n.id===i)}function Hi(r){let i=[r.name,r.note,...(r.flags??[]).map((n)=>n.message)].join(" ");if(/\b(textures?|surfaces?|grain|grainy|brushed|metal(lic)?|steel|brass|copper|paper|linen|canvas|fabric|cloth|wood(en)?|stone|marble|concrete|plaster|leather|noise|pattern(ed)?|weave|patina)\b/i.test(i))return"texture";if(/\b(photo|photos|photograph|photographs|photographic|photography)\b/i.test(i)&&!/\bphotographic shading\b/i.test(i))return"image";return"plate"}function Oi(r){return`Drawn in code (${r.kind})`}function zr(r){if(r.id==="painted-pixels")return`This looks painted: ${r.message}`;return r.message}function We(r,i){let n=r.components.map((z)=>Je(z,i)),o=n.filter((z)=>z==="approved").length,t=n.filter((z)=>z==="revise").length,d=new Set(qi(r).map((z)=>z.id)),f=(i.reclassify??[]).filter((z)=>d.has(z.id)).length,g=n.filter((z)=>z==="reclassify").length+f,v=n.filter((z)=>z==="pending").length,h=i.missing.length,k=t+g+h>0,m=i.packetRevision===r.revision,j=i.missing.every((z)=>z.name.trim()&&Bi(z.box)),V=m&&!k&&v===0;return{total:n.length,approved:o,revise:t,reclassify:g,pending:v,missing:h,hasChanges:k,canApprove:V,mode:k?"changes":"approve",canSubmit:m&&j&&(k||V)}}function Di(r,i,n,o={}){if(n==="revise"&&i.role!=="asset")throw Error("Only generated assets can be revised");if(n==="reclassify"&&i.role!=="plan")throw Error("Only planned code can become an image");let t={revision:i.revision,action:n,feedback:n==="approve"?"":(o.feedback??"").trim(),split:!1};if(n==="reclassify")t.kind=o.kind??Hi(i);return{...r,inventoryConfirmed:!1,decisions:{...r.decisions,[i.id]:t}}}function jr(r,i){let n={...r.decisions};return delete n[i],{...r,inventoryConfirmed:!1,decisions:n}}function Ii(r,i,n){let o=(r.reclassify??[]).filter((t)=>t.id!==i);return{...r,inventoryConfirmed:!1,reclassify:n?[...o,{id:i,kind:n.kind,feedback:(n.feedback??"").trim()}]:o}}function Ri(r,i,n){let o=Ki(r),t=o.findIndex((d)=>d.id===n);for(let d=1;d<=o.length;d++){let f=o[(t+d)%o.length];if(Je(f,i)==="pending")return f.id}}function qr(r,i){let n=We(r,i);if(!n.canSubmit)throw Error("Review is incomplete or stale");let o={};for(let f of r.components){let g=Se(f,i);if(g)o[f.id]=structuredClone(g)}let t=new Set(qi(r).map((f)=>f.id)),d=(i.reclassify??[]).filter((f)=>t.has(f.id)).map((f)=>({...f}));return{schemaVersion:1,requestId:r.id,packetRevision:i.packetRevision,decisions:o,missing:structuredClone(i.missing),inventoryConfirmed:n.mode==="approve",...d.length?{reclassify:d}:{}}}function Tr(r){return{packetRevision:r.revision,decisions:{},missing:[],inventoryConfirmed:!1,reclassify:[]}}function Er(r,i,n,o,t=0.02){let d=Math.max(0,Math.floor((o.x-t)*i)),f=Math.min(i-1,Math.ceil((o.x+o.w+t)*i)),g=Math.max(0,Math.floor((o.y-t)*n)),v=Math.min(n-1,Math.ceil((o.y+o.h+t)*n)),h=Math.floor(o.x*i),k=Math.ceil((o.x+o.w)*i),m=Math.floor(o.y*n),j=Math.ceil((o.y+o.h)*n),V=[],z=Math.max(1,Math.round(Math.max(f-d,v-g)/80));for(let G=g;G<=v;G+=z)for(let X=d;X<=f;X+=z){if(X>=h&&X<k&&G>=m&&G<j)continue;let Te=(G*i+X)*4;if(r[Te+3]<200)continue;V.push([r[Te],r[Te+1],r[Te+2]])}return V}function Vr(r){if(!r.length)return;let i=(n)=>{let o=r.map((t)=>t[n]).sort((t,d)=>t-d);return o[o.length>>1]};return"#"+[0,1,2].map((n)=>i(n).toString(16).padStart(2,"0")).join("")}function Mr(r,i,n,o,t,d=4,f=24){let g=r.w*i,v=r.h*n,h=Math.min(24,Math.max(8,0.04*Math.max(g,v))),k=Math.min(i,g+h*2),m=Math.min(n,v+h*2),j=Math.min(d,o/k,t/m);if(v*j<f&&v>0)j=Math.min(d,f/v,t/m),k=Math.min(k,o/j);let V=(r.x+r.w/2)*i,z=(r.y+r.h/2)*n,G=Math.max(0,Math.min(i-k,V-k/2)),X=Math.max(0,Math.min(n-m,z-m/2));return{scale:j,width:k*j,height:m*j,view:{x:G/i,y:X/n,w:k/i,h:m/n}}}function Jr(r,i,n,o,t,d=1/0,f){let g=(k,m)=>{let j=Math.max(0,k),V=j/r;if(V>m)V=Math.max(0,m),j=V*r;if(f&&j>f.w*d)j=f.w*d,V=j/r;return{w:j,h:V}},v=g((i-o)/2,n-t),h=g(i,(n-o)/2-t);return v.w*v.h>=h.w*h.h?{direction:"row",...v}:{direction:"column",...h}}var Yr=zi+`
 :host{display:block;height:var(--component-review-height,100dvh);min-height:0;overflow:hidden;color:var(--ks-text);font:400 var(--ks-type-small-size)/1.5 var(--ks-font);
  --asset:var(--ks-patina);--plan:var(--ks-ink);--flag:var(--ks-vermilion);--missing:var(--ks-vermilion)}
 *{box-sizing:border-box}
 h1,h2,p,figure,fieldset{margin:0}fieldset{border:0;padding:0}
 button,input,textarea{font:inherit;color:inherit}
-button{cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:var(--ks-control-md);padding:0 12px;border:1px solid var(--ks-edge);border-radius:var(--ks-radius-sm);background:var(--ks-paper-raised);color:var(--ks-ink);font-weight:500;transition:background-color var(--ks-quick) var(--ks-ease),border-color var(--ks-quick) var(--ks-ease),color var(--ks-quick) var(--ks-ease)}
-button:hover:not(:disabled){border-color:var(--ks-ink)}
-button:disabled{cursor:not-allowed;color:var(--ks-text-mute-deep);background:transparent;border-color:var(--ks-rule)}
+button{cursor:pointer}
+button:disabled{cursor:not-allowed}
 :focus-visible{outline:2px solid var(--ks-focus-ring);outline-offset:3px}
 svg{width:16px;height:16px;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
-.arrow{width:16px;height:8px;color:var(--ks-kinpaku);stroke-width:1.5}
-kbd{font:400 var(--ks-type-micro-size)/1 var(--ks-mono);color:inherit;opacity:.6;margin-left:2px}
+kbd{font:400 var(--ks-type-micro-size)/1 var(--ks-mono);color:inherit;opacity:.55;margin-left:-6px}
 textarea,input:not([type=radio]){width:100%;display:block;margin-top:8px;background:var(--ks-paper-raised);color:var(--ks-ink);border:1px solid var(--ks-edge);border-radius:var(--ks-radius-sm);padding:10px 14px;line-height:1.45}
 textarea{resize:vertical;min-height:64px}
 textarea:focus,input:focus{outline:none;border-color:var(--ks-patina);box-shadow:0 0 0 1px var(--ks-patina)}
-.primary{min-height:var(--ks-control-lg);padding:0 22px;background:var(--ks-ink);border-color:var(--ks-ink);color:var(--ks-paper-raised);font-size:var(--ks-type-ui-lead);gap:12px}
-.primary:hover:not(:disabled){background:var(--ks-text);border-color:var(--ks-text)}
-.primary:active:not(:disabled){background:oklch(8% 0 0)}
-.primary:disabled .arrow{color:inherit}
-.secondary{min-height:var(--ks-control-lg);padding:0 22px;font-size:var(--ks-type-ui-lead)}
-.ghost{background:transparent;border-color:transparent;color:var(--ks-ink)}
-.ghost:hover:not(:disabled){border-color:transparent;color:var(--ks-state-ink)}
-.link{border:0;background:none;padding:0 2px;min-height:0;color:var(--ks-ink);text-decoration:underline;text-decoration-color:oklch(13% 0 0 / 0.28);text-underline-offset:3px;font-weight:400}
-.link:hover:not(:disabled){text-decoration-color:var(--ks-kinpaku)}
 .eyebrow{font:400 var(--ks-type-eyebrow-size)/1.3 var(--ks-mono);letter-spacing:var(--ks-type-eyebrow-track);text-transform:uppercase;color:var(--ks-text-muted)}
 
 .plan-review{height:100%;display:flex;flex-direction:column;min-height:0;background:var(--ks-paper)}
@@ -320,9 +1271,8 @@ h1{font:300 40px/1.04 var(--ks-font-display);font-variation-settings:'wght' 300;
 .queue-head span{font-size:var(--ks-type-label-size);color:var(--ks-text-faint)}
 .queue-list{flex:1;min-width:0;display:flex;overflow-x:auto;scrollbar-width:thin;padding-right:28px;-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent)}
 .queue-empty{font-size:var(--ks-type-ui-size);color:var(--ks-text-muted);align-self:center}
-.chip{flex:0 0 auto;justify-content:flex-start;gap:10px;padding:10px 16px 10px 0;margin-right:16px;min-height:0;max-width:250px;text-align:left;border:0;border-radius:0;background:transparent;box-shadow:inset 0 -2px 0 transparent;font-weight:400}
+.chip{display:flex;align-items:center;color:inherit;flex:0 0 auto;justify-content:flex-start;gap:10px;padding:10px 16px 10px 0;margin-right:16px;min-height:0;max-width:250px;text-align:left;border:0;border-radius:0;background:transparent;box-shadow:inset 0 -2px 0 transparent;font-weight:400}
 .chip:hover:not(:disabled){box-shadow:inset 0 -2px 0 var(--ks-gray-2)}
-.chip[aria-current=true]{box-shadow:inset 0 -2px 0 var(--ks-kinpaku)}
 .thumb{position:relative;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--ks-paper-deep);overflow:hidden}
 .crop{position:relative;overflow:hidden;display:block}
 .crop img{position:absolute;max-width:none;height:auto;display:block;user-select:none}
@@ -335,17 +1285,13 @@ h1{font:300 40px/1.04 var(--ks-font-display);font-variation-settings:'wght' 300;
 .chip.approved .chip-state{background:var(--ks-state-ink);border-color:var(--ks-state-ink);color:var(--ks-paper-raised)}
 .chip.revise .chip-state,.chip.reclassify .chip-state{background:var(--ks-ink);border-color:var(--ks-ink);color:var(--ks-paper-raised)}
 .chip.approved .chip-text strong{color:var(--ks-text-muted)}
-.disclosure{flex-shrink:0;align-self:center;border-color:transparent;background:transparent;font-weight:400;font-size:var(--ks-type-label-size);color:var(--ks-text-muted);text-align:left;max-width:300px;justify-content:flex-start;align-items:flex-start;line-height:1.35;padding:6px 0}
+.disclosure{display:flex;gap:8px;cursor:pointer;flex-shrink:0;align-self:center;border-color:transparent;background:transparent;font-weight:400;font-size:var(--ks-type-label-size);color:var(--ks-text-muted);text-align:left;max-width:300px;justify-content:flex-start;align-items:flex-start;line-height:1.35;padding:6px 0}
 .disclosure:hover:not(:disabled){border-color:transparent;color:var(--ks-ink)}
 .disclosure>span{display:flex;flex-direction:column;min-width:0;white-space:normal}
 .disclosure strong{font-weight:500;color:var(--ks-ink)}
 .disclosure>svg{margin-top:1px;transition:transform var(--ks-quick) var(--ks-ease)}
 .disclosure[aria-expanded=true]>svg{transform:rotate(180deg)}
 .region-list{flex-shrink:0;display:flex;flex-wrap:wrap;gap:6px;padding:10px 28px;max-height:104px;overflow:auto;border-bottom:1px solid var(--ks-rule)}
-.region-list button{min-height:var(--ks-control-sm);padding:0 12px;border-radius:var(--ks-radius-pill);gap:6px;border-color:var(--ks-rule);font-size:var(--ks-type-label-size);font-weight:400;color:var(--ks-text)}
-.region-list small{color:var(--ks-text-faint);font-size:var(--ks-type-micro-size)}
-.region-list button[aria-current=true]{border-color:var(--ks-ink);color:var(--ks-ink)}
-.region-list button.reclassify small{color:var(--ks-ink);font-weight:500}
 
 .work{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(400px,.9fr)}
 .map-pane{min-height:0;display:flex;flex-direction:column;gap:12px;padding:22px 28px}
@@ -392,33 +1338,21 @@ h1{font:300 40px/1.04 var(--ks-font-display);font-variation-settings:'wght' 300;
 .change-note{flex-shrink:0;font-size:var(--ks-type-label-size);color:var(--ks-text-muted)}
 .stage{flex:1 1 0;min-height:160px;overflow:hidden;display:flex;gap:16px;align-items:center;justify-content:center}
 .stage[data-direction=column]{flex-direction:column}
+.stage.single{align-items:flex-start}
 .stage figure{display:flex;flex-direction:column;gap:8px;min-width:0}
 .stage figcaption{height:18px;font:400 var(--ks-type-eyebrow-size)/18px var(--ks-mono);letter-spacing:var(--ks-type-eyebrow-track);text-transform:uppercase;color:var(--ks-text-muted)}
 .frame{position:relative;overflow:hidden;background:var(--ks-paper-deep);box-shadow:0 0 0 1px var(--ks-rule)}
 .frame.crop img{position:absolute;max-width:none;height:auto}
 .frame.asset img{display:block;width:100%;height:100%;object-fit:contain}
-.focus-box{position:absolute;outline:2px solid var(--ks-paper-raised);box-shadow:0 0 0 1.5px var(--ks-ink),0 0 0 100vmax oklch(13% 0 0 / .2);pointer-events:none}
+.focus-box{position:absolute;outline:2px solid var(--ks-paper-raised);box-shadow:0 0 0 1.5px var(--ks-ink),0 0 0 100vmax oklch(13% 0 0 / .35);pointer-events:none}
 .stage-empty{color:var(--ks-text-muted)}
-.stage-tools{flex-shrink:0;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
-.seg{display:inline-flex;align-items:center;gap:2px;padding:3px;border:1px solid var(--ks-edge);border-radius:var(--ks-radius-sm);background:var(--ks-paper-deep)}
-.seg-label{font:400 var(--ks-type-micro-size)/1 var(--ks-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--ks-text-faint);padding:0 6px}
-.seg button{min-height:calc(var(--ks-control-md) - 8px);padding:0 9px;border:0;border-radius:calc(var(--ks-radius-sm) - 1px);background:transparent;color:var(--ks-text-faint);font:500 var(--ks-type-label-size)/1 var(--ks-mono);letter-spacing:.02em;gap:6px}
-.seg button:hover:not(:disabled){background:var(--ks-paper-raised);color:var(--ks-text)}
-.seg button[aria-pressed=true]{background:var(--ks-paper-raised);box-shadow:inset 0 0 0 1px var(--ks-rule),var(--ks-lift-1);color:var(--ks-ink)}
-.seg i{display:inline-block;width:11px;height:11px;border-radius:50%;box-shadow:inset 0 0 0 1px var(--ks-edge)}
-.seg i.light{background:var(--ks-paper-raised)}.seg i.dark{background:var(--ks-instrument)}
 .plan-copy{flex-shrink:0;display:flex;flex-direction:column;gap:4px}
 .statement{font-size:var(--ks-type-ui-lead);color:var(--ks-ink)}
 .statement strong{font-weight:600}
 .note{color:var(--ks-text-muted);font-size:var(--ks-type-small-size);max-width:62ch}
 .decide{flex-shrink:0;display:flex;flex-direction:column;gap:12px;padding-top:16px;border-top:1px solid var(--ks-rule)}
 .decisions{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.decisions button{min-height:var(--ks-control-lg);font-size:var(--ks-type-ui-lead)}
-.decisions .yes{background:var(--ks-ink);border-color:var(--ks-ink);color:var(--ks-paper-raised)}
-.decisions .yes:hover:not(:disabled){background:var(--ks-text);border-color:var(--ks-text)}
-.decisions .yes.chosen{background:var(--ks-paper-raised);color:var(--ks-state-ink);border-color:var(--ks-state-ink)}
 .decisions button:disabled,.decisions .yes:disabled{background:transparent;color:var(--ks-text-mute-deep);border-color:var(--ks-rule);box-shadow:none}
-.decisions .no.chosen{border-color:var(--ks-ink);box-shadow:inset 0 0 0 1px var(--ks-ink)}
 .verdict{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:2px 0 2px 14px;border-left:2px solid var(--ks-gray-2);font-size:var(--ks-type-ui-size);color:var(--ks-text)}
 .verdict strong{color:var(--ks-ink);font-weight:500}
 .verdict.approved{border-left-color:var(--ks-state-ink)}
@@ -429,15 +1363,6 @@ h1{font:300 40px/1.04 var(--ks-font-display);font-variation-settings:'wght' 300;
 .region-note p{font-size:var(--ks-type-ui-size);color:var(--ks-text-muted);max-width:44ch}
 .region-note button{flex-shrink:0}
 .decision-form{display:flex;flex-direction:column;gap:14px}
-.kinds{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.kinds legend{font:400 var(--ks-type-eyebrow-size)/1.3 var(--ks-mono);letter-spacing:var(--ks-type-eyebrow-track);text-transform:uppercase;color:var(--ks-text-muted);margin-bottom:10px}
-.kind{position:relative;display:block;cursor:pointer}
-.kind input{position:absolute;opacity:0;pointer-events:none}
-.kind span{display:flex;flex-direction:column;gap:2px;height:100%;padding:10px 12px;border:1px solid var(--ks-edge);border-radius:var(--ks-radius-sm);background:var(--ks-paper-raised);transition:border-color var(--ks-quick) var(--ks-ease)}
-.kind:hover span{border-color:var(--ks-ink)}
-.kind strong{font-size:var(--ks-type-ui-size);font-weight:600;color:var(--ks-ink)}.kind small{font-size:var(--ks-type-micro-size);color:var(--ks-text-muted)}
-.kind input:checked+span{border-color:var(--ks-ink);box-shadow:inset 0 0 0 1px var(--ks-ink)}
-.kind input:focus-visible+span{outline:2px solid var(--ks-focus-ring);outline-offset:2px}
 .field{display:block;font-size:var(--ks-type-ui-size);font-weight:500;color:var(--ks-ink)}
 .field span{font-weight:400;color:var(--ks-text-faint);font-size:var(--ks-type-label-size);margin-left:4px}
 .form-actions{display:flex;justify-content:flex-end;gap:8px}
@@ -482,94 +1407,118 @@ h1{font:300 40px/1.04 var(--ks-font-display);font-variation-settings:'wght' 300;
  .submit .primary{padding:0 16px;white-space:nowrap}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
-`;var J=(a)=>a.replace(/[&<>"']/g,(i)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[i]),zi=(a)=>`${a*100}%`,ji=(a)=>{let i=new URL(a,location.href);if(!["http:","https:"].includes(i.protocol))throw Error("Unsupported preview URL");return J(i.href)},Oi=(a)=>`left:${zi(a.x)};top:${zi(a.y)};width:${zi(a.w)};height:${zi(a.h)}`,Ar=(a)=>`<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">${a}</svg>`,tr={check:Ar('<path d="m3 8.5 3 3 7-7"/>'),pencil:Ar('<path d="m3 11 1 2 2-1 7-7-3-3-7 7v2Z"/>'),image:Ar('<rect x="2" y="2.5" width="12" height="11" rx="1.5"/><path d="m2.5 11.5 3.5-3.5 3 3 2-2 2.5 2.5"/>'),mark:Ar('<path d="M6 2.5H2.5V6M10 2.5h3.5V6M2.5 10v3.5H6M13.5 10v3.5H10M8 5.5v5M5.5 8h5"/>'),close:Ar('<path d="m4 4 8 8M4 12l8-8"/>'),chevron:Ar('<path d="m4 6 4 4 4-4"/>'),arrow:'<svg class="arrow" viewBox="0 0 16 8" aria-hidden="true" focusable="false"><path d="M0 4h14M10 0l4 4-4 4"/></svg>',alert:Ar('<path d="M8 2 1.5 13.5h13L8 2Z"/><path d="M8 6.5v3.2M8 11.6v.1"/>')};function Uo(a){let i=a.match(/^review is stale:\s*(.+?)\s+changed\b/i);if(i)return`${i[1]} changed after this round was prepared.`;let n=a.replace(/;?\s*prepare a new round\.?\s*$/i,"").trim();return n?`${n[0].toUpperCase()}${n.slice(1)}${/[.!?]$/.test(n)?"":"."}`:""}function qo(a,i,n){let e=a.shadowRoot??a.attachShadow({mode:"open"}),p={...uo(i),...structuredClone(n.initialDraft??{})};p.reclassify??=[];let s=Ki(i),f=yi(i),v=n.history??null,w=(()=>{let o=Li(i,p)??s[0]?.id;return o?{type:"item",id:o}:f[0]?{type:"region",id:f[0].id}:null})(),c=null,b=!1,q=null,E=!1,Y="comp",y=!1,G=!1,Z=!!n.completed,fr=!1,er="",_=null,zr=null,Rr=/Mac|iPhone|iPad/.test(navigator.platform),pr=new Map,O=new Map,sr=null,B=(o)=>i.components.find((l)=>l.id===o),Fr=(o)=>f.find((l)=>l.id===o),I=()=>w?.type==="item"?B(w.id):void 0,wr=()=>w?.type==="region"?Fr(w.id):void 0,C=()=>w?.type==="missing"?p.missing.find((o)=>o.id===w.id):void 0,N=()=>Z||G||!!n.status,jr=new Image;jr.onload=()=>{try{let o=Math.min(1,480/jr.naturalWidth),l=document.createElement("canvas");l.width=Math.max(1,Math.round(jr.naturalWidth*o)),l.height=Math.max(1,Math.round(jr.naturalHeight*o));let x=l.getContext("2d",{willReadFrequently:!0});x.drawImage(jr,0,0,l.width,l.height),sr={data:x.getImageData(0,0,l.width,l.height).data,width:l.width,height:l.height},H()}catch{}},jr.src=new URL(i.comp.url,location.href).href;function Sr(o){if(!O.has(o.id)&&sr)O.set(o.id,co(mo(sr.data,sr.width,sr.height,o.box))??"");return O.get(o.id)||i.comp.background||"#e9ebe7"}function br(o,l){if(o.material?.alpha==="transparent")return!0;if(o.material?.alpha==="opaque")return!1;if(pr.has(l))return pr.get(l);if(pr.set(l,!1),!/\.(png|webp)(\?|$)/i.test(l))return!1;let x=new Image;return x.onload=()=>{try{let h=Math.min(1,160/Math.max(x.naturalWidth,x.naturalHeight)),g=document.createElement("canvas");g.width=Math.max(1,Math.round(x.naturalWidth*h)),g.height=Math.max(1,Math.round(x.naturalHeight*h));let d=g.getContext("2d",{willReadFrequently:!0});d.drawImage(x,0,0,g.width,g.height);let m=d.getImageData(0,0,g.width,g.height).data,V=!1;for(let U=3;U<m.length;U+=4)if(m[U]<250){V=!0;break}if(V)pr.set(l,!0),H()}catch{}},x.src=new URL(l,location.href).href,!1}function ir(o,l){_={label:l,before:p,select:w},p=o,c=null,er=""}function dr(o){let l=Li(i,p,o);if(l)w={type:"item",id:l};y=!1,H(),e.getElementById(l?"decide-yes":"submit")?.focus({preventScroll:!0})}function Qr(){let o=I();if(!o||N()||c)return;ir(Ni(p,o,"approve"),`${o.role==="asset"?"Approved":"Kept in code"}: ${o.name}.`),dr(o.id)}function qr(o){if(N())return;let l=I(),x=wr(),h=l??x;if(!h)return;if(l&&o==="revise"&&l.role!=="asset")return;if(l&&o==="reclassify"&&l.role!=="plan")return;let g=l?Dr(l,p):void 0,d=x?Tr(p,x.id):void 0;c={type:o,id:h.id,region:!!x,text:g?.action===o?g.feedback:d?.feedback??"",kind:g?.kind??d?.kind??Ai({name:h.name,note:h.note??"",flags:l?.flags})},H(),e.getElementById("form-text")?.focus(),e.getElementById("decision-form")?.scrollIntoView({block:"nearest"})}function Cr(){if(!c||N())return;let o=c;if(o.region){let x=Fr(o.id);ir(Wi(p,x.id,{kind:o.kind,feedback:o.text}),`${x.name} will become ${Or(o.kind).toLowerCase()}.`),H(),e.getElementById("submit")?.focus({preventScroll:!0});return}let l=B(o.id);ir(Ni(p,l,o.type,{feedback:o.text,kind:o.kind}),o.type==="revise"?`Needs work: ${l.name}.`:`${l.name} will become ${Or(o.kind).toLowerCase()}.`),dr(l.id)}function Gr(){if(!c)return;c=null,H(),(e.getElementById("decide-no")??e.getElementById("decide-image"))?.focus({preventScroll:!0})}function Pr(){if(!_||N())return;p=_.before,w=_.select,_=null,c=null,H()}function ur(o){if(b)return;if(c&&c.id!==o.id)c=null;w=o,y=!1,H()}function xi(o){let l=s.map((h)=>({type:"item",id:h.id}));if(!l.length)return;let x=l.findIndex((h)=>h.id===w?.id&&h.type===w?.type);ur(l[(x+o+l.length)%l.length])}async function ri(){let o=Kr(i,p);if(G||Z||c||!o.canSubmit||n.status)return;G=!0,er="",H();try{await n.onSubmit(bo(i,p)),Z=!0,fr=!0,b=!1,_=null}catch(l){er=l instanceof Error?l.message:"The review could not be saved."}finally{G=!1,H()}}function ii(o){let l=`missing-${crypto.randomUUID()}`;p={...p,inventoryConfirmed:!1,missing:[...p.missing,{id:l,name:"",feedback:"",box:o}]},b=!1,q=null,c=null,w={type:"missing",id:l},H(),e.getElementById("missing-name")?.focus()}let Zr=(o)=>{let l=Xr(o,p);if(l==="approved")return o.role==="asset"?"Looks good":"Code is fine";if(l==="revise")return"Needs work";if(l==="reclassify")return`Make it ${Or(Dr(o,p).kind).toLowerCase()}`;if(Z)return"Not decided";let x=v?.changes[o.id]?.kind;return x==="changed"?"Changed · review again":x==="added"?"New":"To decide"},oi=(o)=>o==="approved"?tr.check:o==="revise"?tr.pencil:o==="reclassify"?tr.image:"",X=(o)=>Ir(o)?`Flagged · ${o.kind}`:o.role==="asset"?`Asset · ${o.kind}`:`Code · ${o.kind}`,$=(o,l=64)=>{let x=o.w*i.comp.width/(o.h*i.comp.height),h=40,g=Math.max(28,Math.min(l,40*x)),d=x>g/40?{w:g,h:g/x}:{w:40*x,h:40};return`<span class="thumb" style="width:${g}px;height:40px"><span class="crop" style="width:${d.w}px;height:${d.h}px">${Q(o)}</span></span>`},Q=(o,l="")=>`<img src="${ji(i.comp.url)}" alt="${J(l)}" draggable="false" style="width:${100/o.w}%;left:${-100*o.x/o.w}%;top:${-100*o.y/o.h}%">`;function K(){let o=s.map((x)=>{let h=Xr(x,p),g=w?.type==="item"&&w.id===x.id;return`<button class="chip ${h} ${Ir(x)?"flagged":""} is-${x.role}" data-item="${J(x.id)}" aria-current="${g}" aria-label="${J(`${x.name}, ${X(x)}, ${Zr(x)}`)}">${$(x.box)}<span class="chip-text"><strong>${J(x.name)}</strong><span>${J(X(x))}</span></span><span class="chip-state" title="${J(Zr(x))}">${oi(h)}</span></button>`}).join(""),l=f.filter((x)=>Tr(p,x.id)).length;return`<nav class="queue" aria-label="Items to decide">
-      <div class="queue-head"><h2>To decide</h2><span>${(()=>{let x=Kr(i,p).pending;return Z?"Read-only":x?`${x} left`:s.length?"All decided":""})()}</span></div>
-      <div class="queue-list">${o||'<p class="queue-empty">Nothing needs a decision. Check the comp for anything missing.</p>'}</div>
-      ${f.length?`<button id="regions-toggle" class="disclosure" aria-expanded="${E}" aria-controls="region-list">${tr.chevron}<span><strong>${f.length} more ${f.length===1?"region":"regions"} set in code${l?` · ${l} changing`:""}</strong><span>Checked in the first-viewport review</span></span></button>`:""}
+.text-action{border:0;background:none;padding:0 2px;min-height:0;color:var(--ks-link-on-paper);font:inherit;font-size:var(--ks-type-label-size);text-decoration:underline;text-decoration-color:var(--ks-link-on-paper-line);text-underline-offset:3px;transition:text-decoration-color var(--ks-quick) var(--ks-ease)}
+.text-action:hover:not(:disabled){text-decoration-color:var(--ks-link-on-paper-line-hover)}
+.text-action:disabled{color:var(--ks-text-mute-deep)}
+.tool{display:inline-flex;align-items:center;gap:10px}
+.tool-label{font:400 var(--ks-type-eyebrow-size)/1.3 var(--ks-mono);letter-spacing:var(--ks-type-eyebrow-track);text-transform:uppercase;color:var(--ks-text-muted)}
+.stage-tools{flex-shrink:0;display:flex;justify-content:space-between;align-items:center;gap:10px 16px;flex-wrap:wrap}
+.decisions{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.decisions .ks-button{width:100%}
+.kinds{display:flex;flex-direction:column;align-items:flex-start;gap:10px}
+.kind-hint{font-size:var(--ks-type-label-size);color:var(--ks-text-muted)}
+.form-actions{display:flex;justify-content:flex-end;gap:8px}
+.region-list.ks-tab-list{flex-wrap:wrap;gap:0 4px;max-height:none}
+.region-list.ks-tab-list button{flex:0 0 auto;min-height:36px;padding:0 10px;font-size:var(--ks-type-ui-size);display:inline-flex;align-items:center;gap:6px}
+.region-list.ks-tab-list small{font-size:var(--ks-type-micro-size);color:var(--ks-text-faint)}
+.region-list.ks-tab-list button.reclassify small{color:var(--ks-ink);font-weight:500}
+.chip{border-bottom:2px solid transparent;box-shadow:none;transition:border-color 180ms var(--ks-ease)}
+.chip:hover:not(:disabled){box-shadow:none;border-bottom-color:var(--ks-rule)}
+.chip[aria-selected=true]{border-bottom-color:var(--ks-kinpaku)}
+.mark{flex-shrink:0}
+.ks-button[disabled] .ks-button-arrow{color:currentColor}
+.plan-review{position:relative;isolation:isolate}
+.plan-review::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:0.055;mix-blend-mode:multiply;background-image:var(--ks-grain);background-size:160px 160px}
+.is-submitted .decisions{display:none}
+@media (max-width:820px){.decisions{grid-template-columns:1fr}.stage-tools{justify-content:flex-start}}
+`;var $r=new Map;function Ti(r){let i=r.querySelector('.ks-instrument-key:is(.is-active, [aria-selected="true"], [aria-pressed="true"])');if(!i){if(r.classList.contains("has-thumb"))r.classList.remove("has-thumb");return}let n=r.getBoundingClientRect(),o=i.getBoundingClientRect();if(!n.width)return;let t=getComputedStyle(r),d=n.width/parseFloat(t.width)||1,f=parseFloat(t.borderLeftWidth)||0,g=Math.round(((o.left-n.left)/d-f+r.scrollLeft)*100)/100,v=Math.round(o.width/d*100)/100,h=r.querySelector(":scope > .ks-thumb"),k=r.dataset.ksStrip;if(!h){h=document.createElement("span"),h.className="ks-thumb",h.setAttribute("aria-hidden","true"),r.appendChild(h);let j=k?$r.get(k):void 0;if(j&&(j.x!==g||j.w!==v))h.style.transition="none",h.style.width=`${j.w}px`,h.style.transform=`translateX(${j.x}px)`,h.offsetWidth,h.style.transition=""}if(k)$r.set(k,{x:g,w:v});if(h.style.width!==`${v}px`)h.style.width=`${v}px`;let m=`translateX(${g}px)`;if(h.style.transform!==m)h.style.transform=m;if(!r.classList.contains("has-thumb"))r.classList.add("has-thumb")}function Or(r,i,n){if(r.dataset.thumb)return;r.dataset.thumb="1",Ti(r);let o=new MutationObserver((j)=>{if(j.some((V)=>V.target!==r&&!V.target.classList?.contains("ks-thumb")))Ti(r)});o.observe(r,{subtree:!0,attributes:!0,attributeFilter:["class","aria-selected","aria-pressed"],childList:!0});let t=new ResizeObserver(()=>Ti(r));t.observe(r);let d=null,f=!1,g=0,v=null,h=(j,V)=>i.elementFromPoint(j,V)?.closest(".ks-instrument-key")??null;r.addEventListener("pointerdown",(j)=>{if(!["mouse","pen"].includes(j.pointerType)||!j.isPrimary||j.button!==0||d!==null)return;d=j.pointerId,f=!1,g=j.clientX,v=h(j.clientX,j.clientY)}),r.addEventListener("pointermove",(j)=>{if(j.pointerId!==d)return;if(!f&&Math.abs(j.clientX-g)<6)return;f=!0;let V=h(j.clientX,j.clientY);if(V&&V!==v&&r.contains(V))v=V,V.click()});let k=()=>{d=null,f=!1,v=null},m=(j)=>{if(j.pointerId===d)k()};window.addEventListener("pointerup",m),window.addEventListener("pointercancel",m),window.addEventListener("blur",k),n.push(()=>{o.disconnect(),t.disconnect(),window.removeEventListener("pointerup",m),window.removeEventListener("pointercancel",m),window.removeEventListener("blur",k)})}function Ei(r){let i=[];return r.querySelectorAll(".ks-instrument-strip").forEach((n)=>Or(n,r,i)),document.fonts?.ready.then(()=>r.querySelectorAll(".ks-instrument-strip").forEach(Ti)),()=>i.forEach((n)=>n())}var M=(r)=>r.replace(/[&<>"']/g,(i)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[i]),Vi=(r)=>`${r*100}%`,Mi=(r)=>{let i=new URL(r,location.href);if(!["http:","https:"].includes(i.protocol))throw Error("Unsupported preview URL");return M(i.href)},Fi=(r)=>`left:${Vi(r.x)};top:${Vi(r.y)};width:${Vi(r.w)};height:${Vi(r.h)}`,Ke=(r)=>`<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">${r}</svg>`,Xe={check:Ke('<path d="m3 8.5 3 3 7-7"/>'),pencil:Ke('<path d="m3 11 1 2 2-1 7-7-3-3-7 7v2Z"/>'),image:Ke('<rect x="2" y="2.5" width="12" height="11" rx="1.5"/><path d="m2.5 11.5 3.5-3.5 3 3 2-2 2.5 2.5"/>'),mark:Ke('<path d="M6 2.5H2.5V6M10 2.5h3.5V6M2.5 10v3.5H6M13.5 10v3.5H10M8 5.5v5M5.5 8h5"/>'),close:Ke('<path d="m4 4 8 8M4 12l8-8"/>'),chevron:Ke('<path d="m4 6 4 4 4-4"/>'),arrow:'<svg class="arrow" viewBox="0 0 16 8" aria-hidden="true" focusable="false"><path d="M0 4h14M10 0l4 4-4 4"/></svg>',alert:Ke('<path d="M8 2 1.5 13.5h13L8 2Z"/><path d="M8 6.5v3.2M8 11.6v.1"/>')};function Dr(r){let i=r.match(/^review is stale:\s*(.+?)\s+changed\b/i);if(i)return`${i[1]} changed after this round was prepared.`;let n=r.replace(/;?\s*prepare a new round\.?\s*$/i,"").trim();return n?`${n[0].toUpperCase()}${n.slice(1)}${/[.!?]$/.test(n)?"":"."}`:""}function Xr(r,i,n){let o=r.shadowRoot??r.attachShadow({mode:"open"}),t={...Tr(i),...structuredClone(n.initialDraft??{})};t.reclassify??=[];let d=Ki(i),f=qi(i),g=n.history??null,v=(()=>{let a=Ri(i,t)??d[0]?.id;return a?{type:"item",id:a}:f[0]?{type:"region",id:f[0].id}:null})(),h=null,k=!1,m=null,j=!1,V="comp",z=!1,G=!1,X=!!n.completed,Te=!1,re="",Q=null,we=null,Ge=null,Ee=/Mac|iPhone|iPad/.test(navigator.platform),K=new Map,me=new Map,B=null,Pe=(a)=>i.components.find((s)=>s.id===a),se=(a)=>f.find((s)=>s.id===a),ae=()=>v?.type==="item"?Pe(v.id):void 0,O=()=>v?.type==="region"?se(v.id):void 0,pe=()=>v?.type==="missing"?t.missing.find((a)=>a.id===v.id):void 0,C=()=>X||G||!!n.status,Ve=new Image;Ve.onload=()=>{try{let a=Math.min(1,480/Ve.naturalWidth),s=document.createElement("canvas");s.width=Math.max(1,Math.round(Ve.naturalWidth*a)),s.height=Math.max(1,Math.round(Ve.naturalHeight*a));let p=s.getContext("2d",{willReadFrequently:!0});p.drawImage(Ve,0,0,s.width,s.height),B={data:p.getImageData(0,0,s.width,s.height).data,width:s.width,height:s.height},_()}catch{}},Ve.src=new URL(i.comp.url,location.href).href;function ke(a){if(!me.has(a.id)&&B)me.set(a.id,Vr(Er(B.data,B.width,B.height,a.box))??"");return me.get(a.id)||i.comp.background||"#e9ebe7"}function ge(a,s){if(a.material?.alpha==="transparent")return!0;if(a.material?.alpha==="opaque")return!1;if(K.has(s))return K.get(s);if(K.set(s,!1),!/\.(png|webp)(\?|$)/i.test(s))return!1;let p=new Image;return p.onload=()=>{try{let b=Math.min(1,160/Math.max(p.naturalWidth,p.naturalHeight)),u=document.createElement("canvas");u.width=Math.max(1,Math.round(p.naturalWidth*b)),u.height=Math.max(1,Math.round(p.naturalHeight*b));let x=u.getContext("2d",{willReadFrequently:!0});x.drawImage(p,0,0,u.width,u.height);let y=x.getImageData(0,0,u.width,u.height).data,T=!1;for(let Z=3;Z<y.length;Z+=4)if(y[Z]<250){T=!0;break}if(T)K.set(s,!0),_()}catch{}},p.src=new URL(s,location.href).href,!1}function ee(a,s){Q={label:s,before:t,select:v},t=a,h=null,re=""}function He(a){let s=Ri(i,t,a);if(s)v={type:"item",id:s};z=!1,_(),o.getElementById(s?"decide-yes":"submit")?.focus({preventScroll:!0})}function Ye(){let a=ae();if(!a||C()||h)return;ee(Di(t,a,"approve"),`${a.role==="asset"?"Approved":"Kept in code"}: ${a.name}.`),He(a.id)}function ye(a){if(C())return;let s=ae(),p=O(),b=s??p;if(!b)return;if(s&&a==="revise"&&s.role!=="asset")return;if(s&&a==="reclassify"&&s.role!=="plan")return;let u=s?Se(s,t):void 0,x=p?Ae(t,p.id):void 0;h={type:a,id:b.id,region:!!p,text:u?.action===a?u.feedback:x?.feedback??"",kind:u?.kind??x?.kind??Hi({name:b.name,note:b.note??"",flags:s?.flags})},_(),o.getElementById("form-text")?.focus(),o.getElementById("decision-form")?.scrollIntoView({block:"nearest"})}function ei(){if(!h||C())return;let a=h;if(a.region){let p=se(a.id);ee(Ii(t,p.id,{kind:a.kind,feedback:a.text}),`${p.name} will become ${Fe(a.kind).toLowerCase()}.`),_(),o.getElementById("submit")?.focus({preventScroll:!0});return}let s=Pe(a.id);ee(Di(t,s,a.type,{feedback:a.text,kind:a.kind}),a.type==="revise"?`Needs work: ${s.name}.`:`${s.name} will become ${Fe(a.kind).toLowerCase()}.`),He(s.id)}function Ze(){if(!h)return;h=null,_(),(o.getElementById("decide-no")??o.getElementById("decide-image"))?.focus({preventScroll:!0})}function ii(){if(!Q||C())return;t=Q.before,v=Q.select,Q=null,h=null,_()}function ve(a){if(k)return;if(h&&h.id!==a.id)h=null;v=a,z=!1,_()}function xi(a){let s=d.map((b)=>({type:"item",id:b.id}));if(!s.length)return;let p=s.findIndex((b)=>b.id===v?.id&&b.type===v?.type);ve(s[(p+a+s.length)%s.length])}async function ri(){let a=We(i,t);if(G||X||h||!a.canSubmit||n.status)return;G=!0,re="",_();try{await n.onSubmit(qr(i,t)),X=!0,Te=!0,k=!1,Q=null}catch(s){re=s instanceof Error?s.message:"The review could not be saved."}finally{G=!1,_()}}function ai(a){let s=`missing-${crypto.randomUUID()}`;t={...t,inventoryConfirmed:!1,missing:[...t.missing,{id:s,name:"",feedback:"",box:a}]},k=!1,m=null,h=null,v={type:"missing",id:s},_(),o.getElementById("missing-name")?.focus()}let $e=(a)=>{let s=Je(a,t);if(s==="approved")return a.role==="asset"?"Looks good":"Code is fine";if(s==="revise")return"Needs work";if(s==="reclassify")return`Make it ${Fe(Se(a,t).kind).toLowerCase()}`;if(X)return"Not decided";let p=g?.changes[a.id]?.kind;return p==="changed"?"Changed · review again":p==="added"?"New":"To decide"},oi=(a)=>a==="approved"?Xe.check:a==="revise"?Xe.pencil:a==="reclassify"?Xe.image:"",Y=(a)=>Ce(a)?`Flagged · ${a.kind}`:a.role==="asset"?`Asset · ${a.kind}`:`Code · ${a.kind}`,J=(a,s=64)=>{let p=a.w*i.comp.width/(a.h*i.comp.height),b=40,u=Math.max(28,Math.min(s,40*p)),x=p>u/40?{w:u,h:u/p}:{w:40*p,h:40};return`<span class="thumb" style="width:${u}px;height:40px"><span class="crop" style="width:${x.w}px;height:${x.h}px">${$(a)}</span></span>`},$=(a,s="")=>`<img src="${Mi(i.comp.url)}" alt="${M(s)}" draggable="false" style="width:${100/a.w}%;left:${-100*a.x/a.w}%;top:${-100*a.y/a.h}%">`;function L(){let a=d.map((p)=>{let b=Je(p,t),u=v?.type==="item"&&v.id===p.id;return`<button class="chip ${b} ${Ce(p)?"flagged":""} is-${p.role}" data-item="${M(p.id)}" role="tab" aria-selected="${u}" aria-label="${M(`${p.name}, ${Y(p)}, ${$e(p)}`)}">${J(p.box)}<span class="chip-text"><strong>${M(p.name)}</strong><span>${M(Y(p))}</span></span><span class="chip-state" title="${M($e(p))}">${oi(b)}</span></button>`}).join(""),s=f.filter((p)=>Ae(t,p.id)).length;return`<nav class="queue" aria-label="Items to decide">
+      <div class="queue-head"><h2>To decide</h2><span>${(()=>{let p=We(i,t).pending;return X?"Read-only":p?`${p} left`:d.length?"All decided":""})()}</span></div>
+      <div class="queue-list">${a||'<p class="queue-empty">Nothing needs a decision. Check the comp for anything missing.</p>'}</div>
+      ${f.length?`<button id="regions-toggle" class="disclosure" aria-expanded="${j}" aria-controls="region-list">${Xe.chevron}<span><strong>${f.length} more ${f.length===1?"region":"regions"} set in code${s?` · ${s} changing`:""}</strong><span>Checked in the first-viewport review</span></span></button>`:""}
     </nav>
-    ${f.length&&E?`<div id="region-list" class="region-list" role="list">${f.map((x)=>{let h=Tr(p,x.id),g=w?.type==="region"&&w.id===x.id;return`<button role="listitem" data-region="${J(x.id)}" aria-current="${g}" class="${h?"reclassify":""}"><span>${J(x.name)}</span><small>${J(h?`to ${Or(h.kind).toLowerCase()}`:x.kind)}</small></button>`}).join("")}</div>`:""}`}function A(){return[...f.map((l)=>({key:`r:${l.id}`,kind:"region",id:l.id,name:l.name,box:l.box,cls:`code ${Tr(p,l.id)?"reclassify":""}`,label:`${l.name}, set in code (${l.kind})`})),...i.components.map((l)=>({key:`i:${l.id}`,kind:"item",id:l.id,name:l.name,box:l.box,cls:`is-${l.role} ${Ir(l)?"flagged":""} ${Xr(l,p)}`,label:`${l.name}, ${X(l)}, ${Zr(l)}`})),...p.missing.map((l)=>({key:`m:${l.id}`,kind:"missing",id:l.id,name:l.name||"Missing",box:l.box,cls:"missing",label:`Missing: ${l.name||"unnamed"}`}))].sort((l,x)=>x.box.w*x.box.h-l.box.w*l.box.h).map((l)=>{let x=w?.type===l.kind&&w.id===l.id;return`<button class="region ${l.cls} ${x?"selected":""} ${l.box.y<0.06?"tag-below":""} ${l.box.x>0.7?"tag-right":""}" style="${Oi(l.box)}" data-${l.kind}="${J(l.id)}" aria-label="${J(l.label)}" aria-pressed="${x}"><span class="tag">${J(l.name)}</span></button>`}).join("")}function W(o,l){if(o?.role==="asset"){let h=v?.changes[o.id]?.kind==="changed"?v.packet.components.find((V)=>V.id===o.id)?.preview.url:void 0,g=y&&h?h:o.preview.url;if(!g)return'<div class="stage"><p class="stage-empty">This asset has no generated file.</p></div>';let d=br(o,g),m=Y==="light"?"#f6f6f3":Y==="dark"?"#1d201e":Sr(o);return`<div class="stage pair" data-ratio="${o.box.w*i.comp.width/(o.box.h*i.comp.height)}" data-natural="${o.box.w*i.comp.width}x${o.box.h*i.comp.height}">
-        <figure><figcaption>In the comp</figcaption><div class="frame crop">${Q(o.box,`Comp region for ${o.name}`)}</div></figure>
-        <figure><figcaption>${y&&h?`Previous version · round ${v.packet.round}`:"Generated asset"}</figcaption><div class="frame asset ${d?"clear":""}" style="${d?`background:${J(m)}`:""}"><img src="${ji(g)}" alt="Generated ${J(o.name)}" draggable="false"></div></figure>
+    ${f.length&&j?`<div id="region-list" class="region-list ks-tab-list" role="tablist" aria-label="Regions set in code">${f.map((p)=>{let b=Ae(t,p.id),u=v?.type==="region"&&v.id===p.id;return`<button role="tab" data-region="${M(p.id)}" aria-selected="${u}" class="${b?"reclassify":""}">${M(p.name)}<small>${M(b?`to ${Fe(b.kind).toLowerCase()}`:p.kind)}</small></button>`}).join("")}</div>`:""}`}function A(){return[...f.map((s)=>({key:`r:${s.id}`,kind:"region",id:s.id,name:s.name,box:s.box,cls:`code ${Ae(t,s.id)?"reclassify":""}`,label:`${s.name}, set in code (${s.kind})`})),...i.components.map((s)=>({key:`i:${s.id}`,kind:"item",id:s.id,name:s.name,box:s.box,cls:`is-${s.role} ${Ce(s)?"flagged":""} ${Je(s,t)}`,label:`${s.name}, ${Y(s)}, ${$e(s)}`})),...t.missing.map((s)=>({key:`m:${s.id}`,kind:"missing",id:s.id,name:s.name||"Missing",box:s.box,cls:"missing",label:`Missing: ${s.name||"unnamed"}`}))].sort((s,p)=>p.box.w*p.box.h-s.box.w*s.box.h).map((s)=>{let p=v?.type===s.kind&&v.id===s.id;return`<button class="region ${s.cls} ${p?"selected":""} ${s.box.y<0.06?"tag-below":""} ${s.box.x>0.7?"tag-right":""}" style="${Fi(s.box)}" data-${s.kind}="${M(s.id)}" aria-label="${M(s.label)}" aria-pressed="${p}"><span class="tag">${M(s.name)}</span></button>`}).join("")}function W(a,s){if(a?.role==="asset"){let b=g?.changes[a.id]?.kind==="changed"?g.packet.components.find((T)=>T.id===a.id)?.preview.url:void 0,u=z&&b?b:a.preview.url;if(!u)return'<div class="stage"><p class="stage-empty">This asset has no generated file.</p></div>';let x=ge(a,u),y=V==="light"?"#f6f6f3":V==="dark"?"#1d201e":ke(a);return`<div class="stage pair" data-ratio="${a.box.w*i.comp.width/(a.box.h*i.comp.height)}" data-natural="${a.box.w*i.comp.width}x${a.box.h*i.comp.height}">
+        <figure><figcaption>In the comp</figcaption><div class="frame crop">${$(a.box,`Comp region for ${a.name}`)}</div></figure>
+        <figure><figcaption>${z&&b?`Previous version · round ${g.packet.round}`:"Generated asset"}</figcaption><div class="frame asset ${x?"clear":""}" style="${x?`background:${M(y)}`:""}"><img src="${Mi(u)}" alt="Generated ${M(a.name)}" draggable="false"></div></figure>
       </div>
-      ${d||h?`<div class="stage-tools">${h?`<div class="seg" role="group" aria-label="Asset version"><button id="ver-current" aria-pressed="${!y}">Current</button><button id="ver-previous" aria-pressed="${y}">Previous version</button></div>`:"<span></span>"}${d?`<div class="seg" role="group" aria-label="Backdrop behind the transparent asset"><span class="seg-label">Backdrop</span><button data-backdrop="comp" aria-pressed="${Y==="comp"}"><i style="background:${J(Sr(o))}"></i>Comp</button><button data-backdrop="light" aria-pressed="${Y==="light"}"><i class="light"></i>Light</button><button data-backdrop="dark" aria-pressed="${Y==="dark"}"><i class="dark"></i>Dark</button></div>`:""}</div>`:""}`}let x=o??l;if(!x)return"";return`<div class="stage single" data-box="${J(JSON.stringify(x.box))}">
-      <figure><figcaption>In the comp</figcaption><div class="frame crop"><img src="${ji(i.comp.url)}" alt="Comp around ${J(x.name)}" draggable="false"><span class="focus-box"></span></div></figure>
-    </div>`}function Vr(o,l){let x=(V)=>`<kbd>${V}</kbd>`;if(c){let V=c.type==="reclassify";return`<form id="decision-form" class="decision-form">
-        ${V?`<fieldset class="kinds"><legend>Make it an image as</legend>${Ti.map((U)=>`<label class="kind"><input type="radio" name="kind" id="kind-${U.kind}" value="${U.kind}" ${c.kind===U.kind?"checked":""}><span><strong>${U.label}</strong><small>${U.hint}</small></span></label>`).join("")}</fieldset>`:""}
-        <label class="field">${V?"Anything the image should keep? <span>Optional</span>":"What needs to change? <span>Optional</span>"}<textarea id="form-text" rows="3" placeholder="${V?"For example: keep the brushed direction horizontal.":"For example: the figure should face the sea."}">${J(c.text)}</textarea></label>
-        <div class="form-actions"><button type="button" id="form-cancel" class="ghost">Cancel</button><button type="submit" class="primary">${V?"Make it an image":"Save feedback"} ${x(Rr?"⌘↵":"Ctrl ↵")}</button></div>
-      </form>`}if(l){let V=Tr(p,l.id);if(V)return`<div class="verdict reclassify"><p><strong>Will become ${J(Or(V.kind).toLowerCase())}.</strong>${V.feedback?` ${J(V.feedback)}`:""}</p>${Z?"":'<div class="verdict-actions"><button id="region-edit" class="ghost">Edit</button><button id="region-keep" class="ghost">Keep in code</button></div>'}</div>`;return`<div class="region-note"><p>No decision needed. Text, controls and layout are judged in the first-viewport review, once the page is built.</p>${Z?"":`<button id="decide-image" class="secondary">${tr.image}Make it an image</button>`}</div>`}if(!o)return"";let h=Dr(o,p);if(Z)return`<div class="verdict ${h?Xr(o,p):"pending"}"><p><strong>${h?J(Zr(o)):"Not decided"}.</strong>${h?.feedback?` ${J(h.feedback)}`:""}</p></div>`;let g=o.role==="asset"?"Looks good":"Code is fine",d=o.role==="asset"?"Needs work":"Make it an image",m=Xr(o,p);return`<div class="decisions" role="group" aria-label="Decision for ${J(o.name)}">
-        <button id="decide-yes" class="yes ${m==="approved"?"chosen":""}" aria-pressed="${m==="approved"}">${m==="approved"?tr.check:""}${g} ${x("A")}</button>
-        <button id="decide-no" class="no ${m==="revise"||m==="reclassify"?"chosen":""}" aria-pressed="${m==="revise"||m==="reclassify"}">${d} ${x("N")}</button>
+      ${x||b?`<div class="stage-tools">${b?`<div class="ks-instrument-strip is-paper" data-ks-strip="version" role="group" aria-label="Asset version"><button type="button" class="ks-instrument-key" id="ver-current" aria-pressed="${!z}">Current</button><button type="button" class="ks-instrument-key" id="ver-previous" aria-pressed="${z}">Previous</button></div>`:"<span></span>"}${x?`<div class="tool"><span class="tool-label">Backdrop</span><div class="ks-instrument-strip is-paper" data-ks-strip="backdrop" role="group" aria-label="Backdrop behind the transparent asset">${["comp","light","dark"].map((T)=>`<button type="button" class="ks-instrument-key" data-backdrop="${T}" aria-pressed="${V===T}">${T==="comp"?"Comp":T==="light"?"Light":"Dark"}</button>`).join("")}</div></div>`:""}</div>`:""}`}let p=a??s;if(!p)return"";return`<div class="stage single" data-box="${M(JSON.stringify(p.box))}">
+      <figure><figcaption>In the comp</figcaption><div class="frame crop"><img src="${Mi(i.comp.url)}" alt="Comp around ${M(p.name)}" draggable="false"><span class="focus-box"></span></div></figure>
+    </div>`}function Me(a,s){let p=(T)=>`<kbd>${T}</kbd>`;if(h){let T=h.type==="reclassify";return`<form id="decision-form" class="decision-form">
+        ${T?`<div class="kinds"><span class="tool-label" id="kinds-label">Make it an image as</span><div class="ks-instrument-strip is-paper" data-ks-strip="kind" role="group" aria-labelledby="kinds-label">${di.map((Z)=>`<button type="button" class="ks-instrument-key" data-kind="${Z.kind}" aria-pressed="${h.kind===Z.kind}">${Z.label}</button>`).join("")}</div><p class="kind-hint" id="kind-hint">${M(di.find((Z)=>Z.kind===h.kind).hint)}.</p></div>`:""}
+        <label class="field">${T?"Anything the image should keep? <span>Optional</span>":"What needs to change? <span>Optional</span>"}<textarea id="form-text" rows="3" placeholder="${T?"For example: keep the brushed direction horizontal.":"For example: the figure should face the sea."}">${M(h.text)}</textarea></label>
+        <div class="form-actions"><button type="button" id="form-cancel" class="ks-button ks-button-ghost">Cancel</button><button type="submit" class="ks-button ks-button-primary">${T?"Make it an image":"Save feedback"}${Be}</button></div>
+      </form>`}if(s){let T=Ae(t,s.id);if(T)return`<div class="verdict reclassify"><p><strong>Will become ${M(Fe(T.kind).toLowerCase())}.</strong>${T.feedback?` ${M(T.feedback)}`:""}</p>${X?"":'<div class="verdict-actions"><button id="region-edit" class="text-action">Edit</button><button id="region-keep" class="text-action">Keep in code</button></div>'}</div>`;return`<div class="region-note"><p>No decision needed. Text, controls and layout are judged in the first-viewport review, once the page is built.</p>${X?"":'<button id="decide-image" class="ks-button ks-button-secondary">Make it an image</button>'}</div>`}if(!a)return"";let b=Se(a,t);if(X)return`<div class="verdict ${b?Je(a,t):"pending"}"><p><strong>${b?M($e(a)):"Not decided"}.</strong>${b?.feedback?` ${M(b.feedback)}`:""}</p></div>`;let u=a.role==="asset"?"Looks good":"Code is fine",x=a.role==="asset"?"Needs work":"Make it an image",y=Je(a,t);return`<div class="decisions" role="group" aria-label="Decision for ${M(a.name)}">
+        <button id="decide-yes" class="ks-button ks-button-primary">${u}</button>
+        <button id="decide-no" class="ks-button ks-button-secondary">${x}</button>
       </div>
-      ${h&&h.action!=="approve"?`<div class="verdict ${m}"><p><strong>${J(Zr(o))}.</strong>${h.feedback?` ${J(h.feedback)}`:" No note; the agent will diagnose."}</p><div class="verdict-actions"><button id="decision-edit" class="ghost">Edit</button><button id="decision-clear" class="ghost">Clear</button></div></div>`:""}`}function D(){let o=I(),l=wr(),x=C();if(x)return`<div class="detail-head"><div><p class="eyebrow missing">Missing from the comp</p><h2>${J(x.name||"Name the missing piece")}</h2></div></div>
-      ${W(void 0,{id:x.id,name:x.name||"the missing piece",kind:"missing",box:x.box})}
-      <div class="missing-form"><label class="field">Name<input id="missing-name" value="${J(x.name)}" placeholder="For example: harbour boat" ${N()?"disabled":""}></label>
-      <label class="field">What is missing? <span>Optional</span><textarea id="missing-feedback" rows="3" ${N()?"disabled":""}>${J(x.feedback)}</textarea></label>
-      ${N()?"":'<button id="missing-remove" class="ghost">Remove this mark</button>'}</div>`;if(!o&&!l)return'<div class="detail-empty"><p>Select a region on the comp.</p></div>';let h=o?.role==="plan"?[...(o.flags??[]).map(fo),...o.codeDrawn?["The plan draws this artwork in code. Painted work drawn in code usually reads as a stand-in."]:[]]:[],g=o?o.role==="asset"?`Generated asset · ${o.kind}`:`Planned in code · ${o.kind}`:`Set in code · ${l.kind}`,d=o?Xr(o,p):Tr(p,l.id)?"reclassify":"code",m=o?`<span class="pill ${d}">${oi(d)}${J(Zr(o))}</span>`:"",V=o&&v?.changes[o.id],U=(o?.note??l?.note??"").trim();return`<div class="detail-head"><div><p class="eyebrow ${o&&Ir(o)?"flagged":""}">${J(g)}</p><h2>${J((o??l).name)}</h2></div>${m}</div>
-      ${h.length?`<div class="flag" role="note">${tr.alert}<div>${h.map((lr)=>`<p>${J(lr)}</p>`).join("")}</div></div>`:""}
-      ${V?.kind==="changed"?`<p class="change-note">Changed since round ${v.packet.round}${V.files.length?`: ${J(V.files.join(", "))}`:""}.</p>`:""}
-      ${W(o,l)}
-      <div class="plan-copy">${o?.role==="asset"?U?`<p class="note">${J(U)}</p>`:"":`<p class="statement">${o?`<strong>Planned:</strong> ${J(Bi(o).replace(/^D/,"d"))}`:`<strong>${J(Bi(l))}</strong>`}</p>${U?`<p class="note">${J(U)}</p>`:""}`}</div>
-      <div class="decide">${Vr(o,l)}</div>`}function ei(){if(n.status)return`<div class="banner stale" role="alert">${tr.alert}<div><strong>This review is out of date.</strong><p>${J(Uo(n.status))} Ask the agent to prepare a new round, then reload this page.</p></div><button id="reload" class="secondary">Reload</button></div>`;if(er)return`<div class="banner error" role="alert">${tr.alert}<div><strong>Your decisions were not sent.</strong><p>${J(er)}</p></div><button id="retry" class="secondary">Try again</button></div>`;if(Z){let o=Kr(i,p);return`<div class="banner done" role="status">${tr.check}<div><strong>${o.hasChanges?"Changes sent.":"Plan and assets approved."}</strong><p>${o.hasChanges?"The agent applies them and opens a new round for anything that changed.":"The agent continues to the first viewport."}${fr?"":" This round is read-only."}</p></div></div>`}return""}function qi(){let o=Kr(i,p);if(Z)return`<footer><span class="progress">Round ${i.round} · read-only</span><span class="progress">${o.approved} approved${o.revise?` · ${o.revise} need${o.revise===1?"s":""} work`:""}${o.reclassify?` · ${o.reclassify} to become images`:""}${o.missing?` · ${o.missing} missing`:""}</span></footer>`;let l=[o.revise?`${o.revise} need${o.revise===1?"s":""} work`:"",o.reclassify?`${o.reclassify} to become ${o.reclassify===1?"an image":"images"}`:"",o.missing?`${o.missing} missing`:""].filter(Boolean),x=c?"Save or cancel the open note first.":n.status?"This round can no longer be sent.":o.mode==="changes"?`${l.join(" · ")}.${o.pending?` ${o.pending} undecided stay open.`:""}`:o.pending?`${o.pending} left to decide. Approval confirms nothing is missing from the comp.`:"Approval confirms nothing is missing from the comp.",h=!o.canSubmit||!!c||G||!!n.status;return`<footer>
-      <button id="mark" class="ghost mark" aria-pressed="${b}">${b?tr.close:tr.mark}${b?"Cancel marking":"Mark missing"}</button>
-      <div class="progress" role="status">${_?`<span>${J(_.label)}</span><button id="undo" class="link">Undo</button>`:n.status?"":'<span class="keys"><kbd>A</kbd> approve <kbd>N</kbd> change <kbd>J</kbd><kbd>K</kbd> move</span>'}</div>
-      <div class="submit"><p>${J(x)}</p><button id="submit" class="primary ${o.mode}" ${h?"disabled":""}>${G?"Sending…":o.mode==="changes"?"Send changes":"Approve plan and assets"}${G?"":tr.arrow}</button></div>
-    </footer>`}function H(){zr?.disconnect();let o=e.activeElement,l=o?.id,x=o?.dataset.item??o?.dataset.region,h=e.querySelector(".queue-list")?.scrollLeft??0,g=o instanceof HTMLTextAreaElement||o instanceof HTMLInputElement?[o.selectionStart,o.selectionEnd]:null;e.innerHTML=`<style>${jo}</style><section class="plan-review ${Z?"is-submitted":""}" aria-label="Plan and asset review">
-      <header><div class="titles"><h1>${Z?"Plan and asset review.":"Review the plan and assets."}</h1><p>Generated images, and what will be drawn in code, before any page code is written.</p></div>
-        <div class="meta"><span class="surface">${J(i.title)}</span><span>Round ${i.round}</span>${Z?'<span class="badge">Submitted · read-only</span>':n.preview?'<span class="badge">Preview</span>':""}</div></header>
-      ${ei()}
-      ${K()}
+      ${b?`<div class="verdict ${y}"><p><strong>${M($e(a))}.</strong>${b.feedback?` ${M(b.feedback)}`:b.action==="approve"?"":" No note; the agent will diagnose."}</p><div class="verdict-actions"><button id="decision-edit" class="text-action">Edit</button><button id="decision-clear" class="text-action">Clear</button></div></div>`:""}`}function D(){let a=ae(),s=O(),p=pe();if(p)return`<div class="detail-head"><div><p class="eyebrow missing">Missing from the comp</p><h2>${M(p.name||"Name the missing piece")}</h2></div></div>
+      ${W(void 0,{id:p.id,name:p.name||"the missing piece",kind:"missing",box:p.box})}
+      <div class="missing-form"><label class="field">Name<input id="missing-name" value="${M(p.name)}" placeholder="For example: harbour boat" ${C()?"disabled":""}></label>
+      <label class="field">What is missing? <span>Optional</span><textarea id="missing-feedback" rows="3" ${C()?"disabled":""}>${M(p.feedback)}</textarea></label>
+      ${C()?"":'<button id="missing-remove" class="ks-button ks-button-ghost">Remove this mark</button>'}</div>`;if(!a&&!s)return'<div class="detail-empty"><p>Select a region on the comp.</p></div>';let b=a?.role==="plan"?[...(a.flags??[]).map(zr),...a.codeDrawn?["The plan draws this artwork in code. Painted work drawn in code usually reads as a stand-in."]:[]]:[],u=a?a.role==="asset"?`Generated asset · ${a.kind}`:`Planned in code · ${a.kind}`:`Set in code · ${s.kind}`,x=a?Je(a,t):Ae(t,s.id)?"reclassify":"code",y=a?`<span class="pill ${x}">${oi(x)}${M($e(a))}</span>`:"",T=a&&g?.changes[a.id],Z=(a?.note??s?.note??"").trim();return`<div class="detail-head"><div><p class="eyebrow ${a&&Ce(a)?"flagged":""}">${M(u)}</p><h2>${M((a??s).name)}</h2></div>${y}</div>
+      ${b.length?`<div class="flag" role="note">${Xe.alert}<div>${b.map((ne)=>`<p>${M(ne)}</p>`).join("")}</div></div>`:""}
+      ${T?.kind==="changed"?`<p class="change-note">Changed since round ${g.packet.round}${T.files.length?`: ${M(T.files.join(", "))}`:""}.</p>`:""}
+      ${W(a,s)}
+      <div class="plan-copy">${a?.role==="asset"?Z?`<p class="note">${M(Z)}</p>`:"":`<p class="statement">${a?`<strong>Planned:</strong> ${M(Oi(a).replace(/^D/,"d"))}`:`<strong>${M(Oi(s))}</strong>`}</p>${Z?`<p class="note">${M(Z)}</p>`:""}`}</div>
+      <div class="decide">${Me(a,s)}</div>`}function ni(){if(n.status)return`<div class="banner stale" role="alert">${Xe.alert}<div><strong>This review is out of date.</strong><p>${M(Dr(n.status))} Ask the agent to prepare a new round, then reload this page.</p></div><button id="reload" class="ks-button ks-button-secondary">Reload</button></div>`;if(re)return`<div class="banner error" role="alert">${Xe.alert}<div><strong>Your decisions were not sent.</strong><p>${M(re)}</p></div><button id="retry" class="ks-button ks-button-secondary">Try again</button></div>`;if(X){let a=We(i,t);return`<div class="banner done" role="status">${Xe.check}<div><strong>${a.hasChanges?"Changes sent.":"Plan and assets approved."}</strong><p>${a.hasChanges?"The agent applies them and opens a new round for anything that changed.":"The agent continues to the first viewport."}${Te?"":" This round is read-only."}</p></div></div>`}return""}function Ji(){let a=We(i,t);if(X)return`<footer><span class="progress">Round ${i.round} · read-only</span><span class="progress">${a.approved} approved${a.revise?` · ${a.revise} need${a.revise===1?"s":""} work`:""}${a.reclassify?` · ${a.reclassify} to become images`:""}${a.missing?` · ${a.missing} missing`:""}</span></footer>`;let s=[a.revise?`${a.revise} need${a.revise===1?"s":""} work`:"",a.reclassify?`${a.reclassify} to become ${a.reclassify===1?"an image":"images"}`:"",a.missing?`${a.missing} missing`:""].filter(Boolean),p=h?"Save or cancel the open note first.":n.status?"This round can no longer be sent.":a.mode==="changes"?`${s.join(" · ")}.${a.pending?` ${a.pending} undecided stay open.`:""}`:a.pending?`${a.pending} left to decide. Approval confirms nothing is missing from the comp.`:"Approval confirms nothing is missing from the comp.",b=!a.canSubmit||!!h||G||!!n.status;return`<footer>
+      <button id="mark" class="ks-button ks-button-ghost mark" aria-pressed="${k}">${k?"Cancel marking":"Mark missing"}</button>
+      <div class="progress" role="status">${Q?`<span>${M(Q.label)}</span><button id="undo" class="text-action">Undo</button>`:n.status?"":'<span class="keys"><kbd>A</kbd> approve <kbd>N</kbd> change <kbd>J</kbd><kbd>K</kbd> move</span>'}</div>
+      <div class="submit"><p>${M(p)}</p><button id="submit" class="ks-button ks-button-primary" ${b?"disabled":""}>${G?"Sending…":a.mode==="changes"?"Send changes":"Approve plan and assets"}${G?"":Be}</button></div>
+    </footer>`}function _(){we?.disconnect(),Ge?.();let a=o.activeElement,s=a?.id,p=a?.dataset.item??a?.dataset.region,b=o.querySelector(".queue-list")?.scrollLeft??0,u=a instanceof HTMLTextAreaElement||a instanceof HTMLInputElement?[a.selectionStart,a.selectionEnd]:null;o.innerHTML=`<style>${Yr}</style><section class="plan-review ${X?"is-submitted":""}" aria-label="Plan and asset review">
+      <header><div class="titles"><h1>${X?"Plan and asset review.":"Review the plan and assets."}</h1><p>Generated images, and what will be drawn in code, before any page code is written.</p></div>
+        <div class="meta"><span class="surface">${M(i.title)}</span><span>Round ${i.round}</span>${X?'<span class="badge">Submitted · read-only</span>':n.preview?'<span class="badge">Preview</span>':""}</div></header>
+      ${ni()}
+      ${L()}
       <div class="work">
         <section class="map-pane" aria-label="Approved comp">
-          <div class="map-space"><div class="map ${b?"marking":""} ${w?"has-selection":""}"><img class="comp" src="${ji(i.comp.url)}" alt="Approved comp for ${J(i.title)}" draggable="false">${A()}<div class="draw-box" hidden></div></div></div>
-          <div class="legend">${b?'<span class="marking-hint">Drag on the comp around what is missing.</span>':`<span><i class="lg asset"></i>Generated asset</span><span><i class="lg plan"></i>Planned in code</span><span><i class="lg flagged"></i>Flagged</span>${f.length?'<span><i class="lg code"></i>Set in code (hover)</span>':""}${p.missing.length?'<span><i class="lg missing"></i>Missing</span>':""}`}</div>
+          <div class="map-space"><div class="map ${k?"marking":""} ${v?"has-selection":""}"><img class="comp" src="${Mi(i.comp.url)}" alt="Approved comp for ${M(i.title)}" draggable="false">${A()}<div class="draw-box" hidden></div></div></div>
+          <div class="legend">${k?'<span class="marking-hint">Drag on the comp around what is missing.</span>':`<span><i class="lg asset"></i>Generated asset</span><span><i class="lg plan"></i>Planned in code</span><span><i class="lg flagged"></i>Flagged</span>${f.length?'<span><i class="lg code"></i>Set in code (hover)</span>':""}${t.missing.length?'<span><i class="lg missing"></i>Missing</span>':""}`}</div>
         </section>
         <section class="detail" aria-label="Selected item">${D()}</section>
       </div>
-      ${qi()}
-    </section>`;let d=e.querySelector(".queue-list");if(d)d.scrollLeft=h;if(l){let V=e.getElementById(l);if(V?.focus({preventScroll:!0}),g&&(V instanceof HTMLTextAreaElement||V instanceof HTMLInputElement))try{V.setSelectionRange(g[0],g[1])}catch{}}else if(x)e.querySelector(`[data-item="${CSS.escape(x)}"],[data-region="${CSS.escape(x)}"]`)?.focus({preventScroll:!0});e.querySelector('.chip[aria-current="true"]')?.scrollIntoView({block:"nearest",inline:"nearest"}),si(),ti();let m=e.querySelector(".work");if(zr=new ResizeObserver(ti),zr.observe(m),!Z)n.onDraftChange?.(structuredClone(p))}function ti(){let o=e.querySelector(".map-space"),l=e.querySelector(".map");if(o&&l){let m=matchMedia("(max-width: 820px)").matches,V=o.clientWidth,U=m?1/0:o.clientHeight,lr=Math.min(V/i.comp.width,U/i.comp.height);l.style.width=`${i.comp.width*lr}px`,l.style.height=`${i.comp.height*lr}px`}let x=26,h=16,g=e.querySelector(".stage.pair");if(g){let m=Number(g.dataset.ratio),[V,U]=(g.dataset.natural??"0x0").split("x").map(Number),lr=zo(m,g.clientWidth,g.clientHeight,h,x,4,{w:V,h:U});g.dataset.direction=lr.direction,g.querySelectorAll(".frame").forEach((ar)=>{ar.style.width=`${Math.floor(lr.w)}px`,ar.style.height=`${Math.floor(lr.h)}px`})}let d=e.querySelector(".stage.single");if(d?.clientWidth){let m=JSON.parse(d.dataset.box),V=yo(m,i.comp.width,i.comp.height,d.clientWidth,Math.max(60,d.clientHeight-x)),U=d.querySelector(".frame"),lr=U.querySelector("img"),ar=U.querySelector(".focus-box"),P=V.view;U.style.width=`${Math.floor(V.width)}px`,U.style.height=`${Math.floor(V.height)}px`,lr.style.cssText=`width:${100/P.w}%;left:${-100*P.x/P.w}%;top:${-100*P.y/P.h}%`,ar.style.cssText=Oi({x:(m.x-P.x)/P.w,y:(m.y-P.y)/P.h,w:m.w/P.w,h:m.h/P.h})}}function si(){let o=(d,m)=>e.getElementById(d)?.addEventListener("click",m);e.querySelectorAll("[data-item]").forEach((d)=>d.addEventListener("click",()=>ur({type:"item",id:d.dataset.item}))),e.querySelectorAll("[data-region]").forEach((d)=>d.addEventListener("click",()=>ur({type:"region",id:d.dataset.region}))),e.querySelectorAll("[data-missing]").forEach((d)=>d.addEventListener("click",()=>ur({type:"missing",id:d.dataset.missing}))),o("regions-toggle",()=>{E=!E,H()}),o("decide-yes",Qr),o("decide-no",()=>qr(I()?.role==="asset"?"revise":"reclassify")),o("decide-image",()=>qr("reclassify")),o("decision-edit",()=>qr(I()?.role==="asset"?"revise":"reclassify")),o("decision-clear",()=>{let d=I();if(d&&!N())ir(wo(p,d.id),`Cleared: ${d.name}.`),H()}),o("region-edit",()=>qr("reclassify")),o("region-keep",()=>{let d=wr();if(d&&!N())ir(Wi(p,d.id,null),`${d.name} stays in code.`),H()}),o("form-cancel",Gr),e.getElementById("decision-form")?.addEventListener("submit",(d)=>{d.preventDefault(),Cr()}),e.getElementById("form-text")?.addEventListener("input",(d)=>{if(c)c.text=d.target.value}),e.querySelectorAll('input[name="kind"]').forEach((d)=>d.addEventListener("change",()=>{if(c)c.kind=d.value})),e.querySelectorAll("[data-backdrop]").forEach((d)=>d.addEventListener("click",()=>{Y=d.dataset.backdrop,H()})),o("ver-current",()=>{y=!1,H()}),o("ver-previous",()=>{y=!0,H()}),o("undo",Pr),o("submit",()=>void ri()),o("retry",()=>void ri()),o("reload",()=>location.reload()),o("mark",()=>{if(N())return;b=!b,c=null,H()}),o("missing-remove",()=>{let d=C();if(!d)return;p={...p,missing:p.missing.filter((m)=>m.id!==d.id)},w=s[0]?{type:"item",id:s[0].id}:null,H()});let l=()=>{let d=e.getElementById("submit");if(d)d.disabled=!Kr(i,p).canSubmit||!!c||G||!!n.status};if(e.getElementById("missing-name")?.addEventListener("input",(d)=>{let m=C();if(m)m.name=d.target.value,l(),n.onDraftChange?.(structuredClone(p))}),e.getElementById("missing-name")?.addEventListener("change",()=>H()),e.getElementById("missing-feedback")?.addEventListener("input",(d)=>{let m=C();if(m)m.feedback=d.target.value,n.onDraftChange?.(structuredClone(p))}),N())e.querySelectorAll("#mark,#decide-yes,#decide-no,#decide-image,#decision-edit,#decision-clear,#region-edit,#region-keep").forEach((d)=>d.disabled=!0);let x=e.querySelector(".map");if(!x)return;let h=(d)=>{let m=x.getBoundingClientRect();return{x:Math.max(0,Math.min(1,(d.clientX-m.left)/m.width)),y:Math.max(0,Math.min(1,(d.clientY-m.top)/m.height))}},g=null;x.addEventListener("pointerdown",(d)=>{if(!b)return;q=h(d),g=null,x.setPointerCapture(d.pointerId),d.preventDefault()}),x.addEventListener("pointermove",(d)=>{if(!q)return;let m=h(d);g={x:Math.min(q.x,m.x),y:Math.min(q.y,m.y),w:Math.abs(m.x-q.x),h:Math.abs(m.y-q.y)};let V=e.querySelector(".draw-box");V.hidden=!1,V.style.cssText=Oi(g)}),x.addEventListener("pointerup",()=>{if(g&&g.w>0.01&&g.h>0.01)ii(g);else q=null,g=null}),x.addEventListener("pointercancel",()=>{q=null,g=null,H()})}let ai=(o)=>{let l=o;if(!a.isConnected||l.defaultPrevented)return;let x=l.composedPath()[0],h=x instanceof HTMLTextAreaElement||x instanceof HTMLInputElement&&x.type!=="radio";if(l.key==="Escape"){if(c)l.preventDefault(),Gr();else if(b)l.preventDefault(),b=!1,H();return}if(l.key==="Enter"&&(l.metaKey||l.ctrlKey)&&c){l.preventDefault(),Cr();return}if(h||l.altKey||l.isComposing||N())return;if((l.metaKey||l.ctrlKey)&&l.key.toLowerCase()==="z"){if(_)l.preventDefault(),Pr();return}if(l.metaKey||l.ctrlKey||c)return;let g=l.key.toLowerCase();if(g==="a"&&I())l.preventDefault(),Qr();else if(g==="n"&&(I()||wr()))if(l.preventDefault(),wr())qr("reclassify");else e.getElementById("decide-no")?.click();else if(g==="j"||l.key==="ArrowRight"&&!(x instanceof HTMLInputElement))l.preventDefault(),xi(1);else if(g==="k"||l.key==="ArrowLeft"&&!(x instanceof HTMLInputElement))l.preventDefault(),xi(-1)};return document.addEventListener("keydown",ai),H(),{destroy(){zr?.disconnect(),document.removeEventListener("keydown",ai),e.replaceChildren()},getDraft(){return structuredClone(p)}}}var u=(a)=>a.replace(/[&<>"']/g,(i)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[i]),_r=(a)=>`${a*100}%`,yr=(a)=>{let i=new URL(a,location.href);if(!["http:","https:"].includes(i.protocol))throw Error("Unsupported preview URL");return u(i.href)};function Jo(a,i,n){if(ci(i))return qo(a,i,{...n,history:n.history,initialDraft:n.initialDraft,onDraftChange:n.onDraftChange,onSubmit:n.onSubmit});let e=a.attachShadow({mode:"open"}),p=structuredClone(n.initialDraft??xo(i)),s=i.stage==="hero"&&i.components.length===1&&!p.missing.length,f=()=>[...i.components].sort(($,Q)=>kr($,p,n.history).priority-kr(Q,p,n.history).priority),v=f().find(($)=>kr($,p,n.history).kind!=="approved")?.id??i.components[0]?.id,w=Lr(i,p).pending?"pending":"reviewed",c=!1,b=!1,q=n.completed??!1,E="",Y={},y=!!n.completed||!Lr(i,p).pending,G=null,Z=!0,fr=/Mac|iPhone|iPad/.test(navigator.platform)?"⌘Enter":"Ctrl+Enter",er=!1,_=!1,zr=!1,Rr=null,pr=!1,O=!0,sr=!1,B="comp",Fr=B,I="fit",wr="checker",C=!1,N="isolated",jr,Sr="fit",br=null,ir=null,dr=null,Qr='<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg>',qr='<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 11 1 2 2-1 7-7-3-3-7 7v2Z"/></svg>',Cr=($,Q)=>{if($.stage==="hero")return"";let K=ui($,Q);if(!K.related.length)return"";let A=K.related.map((W)=>u(W.name)).join(" · ");return`<div class="review-scope" aria-label="Review scope"><p><strong>Reviewing</strong> ${u(K.description||Q.name)}</p><p class="separate-reviews"><strong>Outlined · reviewed separately</strong> ${A}</p>${K.excluded.length?`<p class="scope-excluded">Hidden in this preview: ${K.excluded.map((W)=>u(W.name)).join(" · ")}</p>`:""}</div>`},Gr=($)=>`left:${_r($.x)};top:${_r($.y)};width:${_r($.w)};height:${_r($.h)}`,Pr=($,Q)=>$.stage==="hero"?"":ui($,Q).related.map((K)=>{let A=Q.box,W=K.box,Vr=Math.max(A.x,W.x),D=Math.max(A.y,W.y),ei={x:(Vr-A.x)/A.w,y:(D-A.y)/A.h,w:Math.max(0,Math.min(A.x+A.w,W.x+W.w)-Vr)/A.w,h:Math.max(0,Math.min(A.y+A.h,W.y+W.h)-D)/A.h};return`<span class="reference-layer" style="${Gr(ei)}" title="Reviewed separately: ${u(K.name)}" aria-label="Reviewed separately: ${u(K.name)}"><span>${u(K.name)}</span></span>`}).join("");function ur($){e.getElementById($)?.focus({preventScroll:!0})}function xi($){let Q=go(i,p,$);if(y=!Q,Q)v=Q;B="component",C=!1,er=!1,I="fit",N="isolated",Z=!0,w=y?"reviewed":"pending";let K=()=>{X(),ur(y?"review-summary":Y[v]?"feedback":"approve")};if(y&&_&&Rr)Rr(K);else K()}async function ri(){if(b||q||C||Object.keys(Y).length)return;b=!0,E="",X();try{await n.onSubmit(so(i,p)),q=!0,y=!0,c=!1,w="reviewed"}catch($){E=$ instanceof Error?$.message:"Could not save. Try again."}finally{b=!1,X()}}function ii($){if(b||q||C||zr)return;let Q=i.components.find((D)=>D.id===v);if(!Q||!li(i,p,Q,Z,Object.keys(Y)).length)return;let K=p.decisions[Q.id],A=K?.revision===Q.revision?K:void 0,W=li(i,p,Q,Z,Object.keys(Y));G={id:Q.id,name:W.length>1?`${Q.reviewGroup} · ${W.length} instances`:Q.name,action:$,previous:Object.fromEntries(W.map((D)=>[D.id,p.decisions[D.id]?{...p.decisions[D.id]}:void 0]))};let Vr=Y[Q.id]??A;for(let D of W)p.decisions[D.id]={revision:D.revision,action:$,feedback:$==="revise"?Vr?.feedback??"":"",split:$==="revise"&&(Vr?.split??!1)};if(delete Y[Q.id],sr)O=!0,sr=!1;if(s)p.inventoryConfirmed=$==="approve",G=null,ri();else xi(Q.id)}function Zr(){if(b||q||C||zr)return;let $=i.components.find((A)=>A.id===v);if(!$||!li(i,p,$,Z,Object.keys(Y)).length)return;let Q=p.decisions[$.id],K=Q?.revision===$.revision?Q:void 0;if(Y[$.id]??={feedback:K?.feedback??"",split:K?.split??!1},O&&(e.querySelector(".workbench")?.clientHeight??0)<420)sr=!0,O=!1;y=!1,X(),ur("feedback")}function oi($){let Q=`missing-${crypto.randomUUID()}`;p.missing.push({id:Q,name:"Missing component",feedback:"",box:$}),p.inventoryConfirmed=!1,y=!1,v=Q,B="component",c=!1,br=null,ir=null,X(),e.querySelector("#missing-name")?.focus()}function X(){if(dr?.disconnect(),q||y&&!s)_=!1;let $=e.activeElement,Q=$?.id,K=$?.dataset.select,A=window.scrollX,W=window.scrollY,Vr=e.querySelector(".inventory")?.scrollLeft??0,D=jr===v,ei=B==="component"&&(!D||Fr!==B);Fr=B;let qi=D?e.querySelector(".inspection-content")?.scrollTop??0:0,H=D&&(e.querySelector(".changed-files")?.open??!1),ti=e.querySelector(".comparison-slot")?.clientHeight??200,si=e.querySelector(".pan-viewport"),ai=jr===v&&Sr===I,o=ai?si?.scrollLeft??0:0,l=ai?si?.scrollTop??0:0;jr=v,Sr=I;let x=i.components.find((r)=>r.id===v),h=p.missing.find((r)=>r.id===v),g=ho(i,p,n.history),d=g.find((r)=>r.members.some((t)=>t.id===v)),m=!!d&&d.members.length>1&&Z,V=m?d.box:x?.box??h?.box,U=d?g.indexOf(d)+1:g.length+p.missing.findIndex((r)=>r.id===v)+1,lr=x?p.decisions[x.id]:void 0,ar=lr?.revision===x?.revision?lr:void 0,P=x?Y[x.id]:void 0,Ur=Object.keys(Y).length>0,Ii=x?bi(i,x):[],Mr=x?li(i,p,x,Z,Object.keys(Y)):[],Yo=x?!i.components.some((r)=>!Mr.some((t)=>t.id===r.id)&&kr(r,p).kind==="pending"):!1,Ji=G&&!q?`<div class="decision-notice"><span role="status">${u(G.name)} ${G.action==="approve"?"approved":"flagged for repair"}.</span><button id="undo-decision" class="quiet">Undo</button></div>`:"",L=Lr(i,p),R=n.history,gr=x?wi(x.id,R):void 0,Er=R?.packet.components.find((r)=>r.id===x?.id),Jr=C&&!!Er,z=Jr?Er:x,or=Jr?R.packet:i,Di=Object.values(R?.changes??{}),Ri=Di.filter((r)=>r.kind==="changed").length,Fi=Di.filter((r)=>r.kind==="added").length,Yi=i.components.filter((r)=>kr(r,p,R).kind==="approved"&&wi(r.id,R).carried).length,$i=(r)=>{let t=kr(r,p,R);return q&&t.kind==="feedback"?{...t,label:"Changes requested"}:t},ni=g.filter((r)=>r.kind==="pending").length,$o=g.length-ni+p.missing.length,Si=g.filter((r)=>w==="all"||r.kind==="pending"===(w==="pending")).map((r)=>r.representative),Vo=(r)=>g.find((t)=>t.members.some((k)=>k.id===r))?.label??r,Xo=[L.revisions+p.missing.length?`${L.revisions+p.missing.length} feedback ready`:"",Yi?`${Yi} ${Yi===1?"approval":"approvals"} kept`:"",Ri?`${Ri} changed`:"",Fi?`${Fi} added`:"",R?.removed.length?`${R.removed.length} removed`:""].filter(Boolean).join(" · "),Qo=E||(Ur?"Save or cancel your open feedback before sending.":q?n.preview?"Preview submitted. No run changed.":"Review submitted.":L.hasFeedback?"Ready to send for corrections.":L.pending?`${ni} left to review`:!p.inventoryConfirmed?"Confirm the map is complete.":"Ready to continue."),Yr=z?Wr(z):null,Vi=z?.preview.kind==="image"&&!Yr?.code,Xi=Vi||z?.material?.alpha==="transparent",mr=!!(z?.context&&N==="context"),Ci=z&&(mr?z.context?.kind!=="image":z.preview.kind==="page"),Qi=mr&&z?.context?z.context.url:z?.preview.url,Pi=z?ui(or,z):null,Zo=Yr?.code?`${Yr.label} · ${Yr.captured?"captured from code":"live preview"}`:z?.material?`${z.material.alpha==="transparent"?"Transparent":z.material.alpha==="opaque"?"Opaque":"Transparency unverified"} ${z.material.format}`:"Raster · transparency unverified";e.innerHTML=`<style>${ko}</style><section class="review ${s?"assembled-review":""}" aria-label="${s?"Assembled page review":"Component review"}" style="--comp-background:${/^#[0-9a-f]{6}$/i.test(i.comp.background??"")?i.comp.background:"#eeeeee"}">
-      <header><div><h1>${q?"Review record.":s?"Review the assembled page.":"Review the components."}</h1><p>${u(i.title)} <span>· Round ${i.round}</span></p></div>${q?'<span class="badge">Submitted · read-only</span>':n.preview?'<span class="badge">Interactive preview</span>':""}</header>
+      ${Ji()}
+    </section>`;let x=o.querySelector(".queue-list");if(x)x.scrollLeft=b;if(s){let T=o.getElementById(s);if(T?.focus({preventScroll:!0}),u&&(T instanceof HTMLTextAreaElement||T instanceof HTMLInputElement))try{T.setSelectionRange(u[0],u[1])}catch{}}else if(p)o.querySelector(`[data-item="${CSS.escape(p)}"],[data-region="${CSS.escape(p)}"]`)?.focus({preventScroll:!0});o.querySelector('.chip[aria-selected="true"]')?.scrollIntoView({block:"nearest",inline:"nearest"}),ki(),hi();let y=o.querySelector(".work");if(we=new ResizeObserver(hi),we.observe(y),Ge=Ei(o),!X)n.onDraftChange?.(structuredClone(t))}function hi(){let a=o.querySelector(".map-space"),s=o.querySelector(".map");if(a&&s){let y=matchMedia("(max-width: 820px)").matches,T=a.clientWidth,Z=y?1/0:a.clientHeight,ne=Math.min(T/i.comp.width,Z/i.comp.height);s.style.width=`${i.comp.width*ne}px`,s.style.height=`${i.comp.height*ne}px`}let p=26,b=16,u=o.querySelector(".stage.pair");if(u){let y=Number(u.dataset.ratio),[T,Z]=(u.dataset.natural??"0x0").split("x").map(Number),ne=Jr(y,u.clientWidth,u.clientHeight,b,p,4,{w:T,h:Z});u.dataset.direction=ne.direction,u.querySelectorAll(".frame").forEach((oe)=>{oe.style.width=`${Math.floor(ne.w)}px`,oe.style.height=`${Math.floor(ne.h)}px`})}let x=o.querySelector(".stage.single");if(x?.clientWidth){let y=JSON.parse(x.dataset.box),T=Mr(y,i.comp.width,i.comp.height,x.clientWidth,Math.max(60,x.clientHeight-p)),Z=x.querySelector(".frame"),ne=Z.querySelector("img"),oe=Z.querySelector(".focus-box"),S=T.view;Z.style.width=`${Math.floor(T.width)}px`,Z.style.height=`${Math.floor(T.height)}px`,ne.style.cssText=`width:${100/S.w}%;left:${-100*S.x/S.w}%;top:${-100*S.y/S.h}%`,oe.style.cssText=Fi({x:(y.x-S.x)/S.w,y:(y.y-S.y)/S.h,w:y.w/S.w,h:y.h/S.h})}}function ki(){let a=(x,y)=>o.getElementById(x)?.addEventListener("click",y);o.querySelectorAll("[data-item]").forEach((x)=>x.addEventListener("click",()=>ve({type:"item",id:x.dataset.item}))),o.querySelectorAll("[data-region]").forEach((x)=>x.addEventListener("click",()=>ve({type:"region",id:x.dataset.region}))),o.querySelectorAll("[data-missing]").forEach((x)=>x.addEventListener("click",()=>ve({type:"missing",id:x.dataset.missing}))),a("regions-toggle",()=>{j=!j,_()}),a("decide-yes",Ye),a("decide-no",()=>ye(ae()?.role==="asset"?"revise":"reclassify")),a("decide-image",()=>ye("reclassify")),a("decision-edit",()=>ye(ae()?.role==="asset"?"revise":"reclassify")),a("decision-clear",()=>{let x=ae();if(x&&!C())ee(jr(t,x.id),`Cleared: ${x.name}.`),_()}),a("region-edit",()=>ye("reclassify")),a("region-keep",()=>{let x=O();if(x&&!C())ee(Ii(t,x.id,null),`${x.name} stays in code.`),_()}),a("form-cancel",Ze),o.getElementById("decision-form")?.addEventListener("submit",(x)=>{x.preventDefault(),ei()}),o.getElementById("form-text")?.addEventListener("input",(x)=>{if(h)h.text=x.target.value}),o.querySelectorAll("[data-kind]").forEach((x)=>x.addEventListener("click",()=>{if(!h)return;h.kind=x.dataset.kind,o.querySelectorAll("[data-kind]").forEach((T)=>T.setAttribute("aria-pressed",String(T===x)));let y=o.getElementById("kind-hint");if(y)y.textContent=`${di.find((T)=>T.kind===h.kind).hint}.`})),o.querySelectorAll("[data-backdrop]").forEach((x)=>x.addEventListener("click",()=>{V=x.dataset.backdrop,_()})),a("ver-current",()=>{z=!1,_()}),a("ver-previous",()=>{z=!0,_()}),a("undo",ii),a("submit",()=>void ri()),a("retry",()=>void ri()),a("reload",()=>location.reload()),a("mark",()=>{if(C())return;k=!k,h=null,_()}),a("missing-remove",()=>{let x=pe();if(!x)return;t={...t,missing:t.missing.filter((y)=>y.id!==x.id)},v=d[0]?{type:"item",id:d[0].id}:null,_()});let s=()=>{let x=o.getElementById("submit");if(x)x.disabled=!We(i,t).canSubmit||!!h||G||!!n.status};if(o.getElementById("missing-name")?.addEventListener("input",(x)=>{let y=pe();if(y)y.name=x.target.value,s(),n.onDraftChange?.(structuredClone(t))}),o.getElementById("missing-name")?.addEventListener("change",()=>_()),o.getElementById("missing-feedback")?.addEventListener("input",(x)=>{let y=pe();if(y)y.feedback=x.target.value,n.onDraftChange?.(structuredClone(t))}),C())o.querySelectorAll("#mark,#decide-yes,#decide-no,#decide-image,#decision-edit,#decision-clear,#region-edit,#region-keep").forEach((x)=>x.disabled=!0);let p=o.querySelector(".map");if(!p)return;let b=(x)=>{let y=p.getBoundingClientRect();return{x:Math.max(0,Math.min(1,(x.clientX-y.left)/y.width)),y:Math.max(0,Math.min(1,(x.clientY-y.top)/y.height))}},u=null;p.addEventListener("pointerdown",(x)=>{if(!k)return;m=b(x),u=null,p.setPointerCapture(x.pointerId),x.preventDefault()}),p.addEventListener("pointermove",(x)=>{if(!m)return;let y=b(x);u={x:Math.min(m.x,y.x),y:Math.min(m.y,y.y),w:Math.abs(y.x-m.x),h:Math.abs(y.y-m.y)};let T=o.querySelector(".draw-box");T.hidden=!1,T.style.cssText=Fi(u)}),p.addEventListener("pointerup",()=>{if(u&&u.w>0.01&&u.h>0.01)ai(u);else m=null,u=null}),p.addEventListener("pointercancel",()=>{m=null,u=null,_()})}let ti=(a)=>{let s=a;if(!r.isConnected||s.defaultPrevented)return;let p=s.composedPath()[0],b=p instanceof HTMLTextAreaElement||p instanceof HTMLInputElement&&p.type!=="radio";if(s.key==="Escape"){if(h)s.preventDefault(),Ze();else if(k)s.preventDefault(),k=!1,_();return}if(s.key==="Enter"&&(s.metaKey||s.ctrlKey)&&h){s.preventDefault(),ei();return}if(b||s.altKey||s.isComposing||C())return;if((s.metaKey||s.ctrlKey)&&s.key.toLowerCase()==="z"){if(Q)s.preventDefault(),ii();return}if(s.metaKey||s.ctrlKey||h)return;let u=s.key.toLowerCase();if(u==="a"&&ae())s.preventDefault(),Ye();else if(u==="n"&&(ae()||O()))if(s.preventDefault(),O())ye("reclassify");else o.getElementById("decide-no")?.click();else if(u==="j"||s.key==="ArrowRight"&&!(p instanceof HTMLInputElement))s.preventDefault(),xi(1);else if(u==="k"||s.key==="ArrowLeft"&&!(p instanceof HTMLInputElement))s.preventDefault(),xi(-1)};return document.addEventListener("keydown",ti),_(),{destroy(){we?.disconnect(),Ge?.(),document.removeEventListener("keydown",ti),o.replaceChildren()},getDraft(){return structuredClone(t)}}}var w=(r)=>r.replace(/[&<>"']/g,(i)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[i]),Qe=(r)=>`${r*100}%`,ce=(r)=>{let i=new URL(r,location.href);if(!["http:","https:"].includes(i.protocol))throw Error("Unsupported preview URL");return w(i.href)};function Qr(r,i,n){if(ji(i))return Xr(r,i,{...n,history:n.history,initialDraft:n.initialDraft,onDraftChange:n.onDraftChange,onSubmit:n.onSubmit});let o=r.attachShadow({mode:"open"}),t=structuredClone(n.initialDraft??hr(i)),d=i.stage==="hero"&&i.components.length===1&&!t.missing.length,f=()=>[...i.components].sort((J,$)=>he(J,t,n.history).priority-he($,t,n.history).priority),g=f().find((J)=>he(J,t,n.history).kind!=="approved")?.id??i.components[0]?.id,v=Re(i,t).pending?"pending":"reviewed",h=!1,k=!1,m=n.completed??!1,j="",V={},z=!!n.completed||!Re(i,t).pending,G=null,X=!0,Te=/Mac|iPhone|iPad/.test(navigator.platform)?"⌘Enter":"Ctrl+Enter",re=!1,Q=!1,we=!1,Ge=null,Ee=!1,K=!0,me=!1,B="comp",Pe=B,se="fit",ae="checker",O=!1,pe="isolated",C,Ve="fit",ke=null,ge=null,ee=null,He=null,Ye='<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg>',ye='<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 11 1 2 2-1 7-7-3-3-7 7v2Z"/></svg>',ei=(J,$)=>{if(J.stage==="hero")return"";let L=yi(J,$);if(!L.related.length)return"";let A=L.related.map((W)=>w(W.name)).join(" · ");return`<div class="review-scope" aria-label="Review scope"><p><strong>Reviewing</strong> ${w(L.description||$.name)}</p><p class="separate-reviews"><strong>Outlined · reviewed separately</strong> ${A}</p>${L.excluded.length?`<p class="scope-excluded">Hidden in this preview: ${L.excluded.map((W)=>w(W.name)).join(" · ")}</p>`:""}</div>`},Ze=(J)=>`left:${Qe(J.x)};top:${Qe(J.y)};width:${Qe(J.w)};height:${Qe(J.h)}`,ii=(J,$)=>J.stage==="hero"?"":yi(J,$).related.map((L)=>{let A=$.box,W=L.box,Me=Math.max(A.x,W.x),D=Math.max(A.y,W.y),ni={x:(Me-A.x)/A.w,y:(D-A.y)/A.h,w:Math.max(0,Math.min(A.x+A.w,W.x+W.w)-Me)/A.w,h:Math.max(0,Math.min(A.y+A.h,W.y+W.h)-D)/A.h};return`<span class="reference-layer" style="${Ze(ni)}" title="Reviewed separately: ${w(L.name)}" aria-label="Reviewed separately: ${w(L.name)}"><span>${w(L.name)}</span></span>`}).join("");function ve(J){o.getElementById(J)?.focus({preventScroll:!0})}function xi(J){let $=vr(i,t,J);if(z=!$,$)g=$;B="component",O=!1,re=!1,se="fit",pe="isolated",X=!0,v=z?"reviewed":"pending";let L=()=>{Y(),ve(z?"review-summary":V[g]?"feedback":"approve")};if(z&&Q&&Ge)Ge(L);else L()}async function ri(){if(k||m||O||Object.keys(V).length)return;k=!0,j="",Y();try{await n.onSubmit(gr(i,t)),m=!0,z=!0,h=!1,v="reviewed"}catch(J){j=J instanceof Error?J.message:"Could not save. Try again."}finally{k=!1,Y()}}function ai(J){if(k||m||O||we)return;let $=i.components.find((D)=>D.id===g);if(!$||!li(i,t,$,X,Object.keys(V)).length)return;let L=t.decisions[$.id],A=L?.revision===$.revision?L:void 0,W=li(i,t,$,X,Object.keys(V));G={id:$.id,name:W.length>1?`${$.reviewGroup} · ${W.length} instances`:$.name,action:J,previous:Object.fromEntries(W.map((D)=>[D.id,t.decisions[D.id]?{...t.decisions[D.id]}:void 0]))};let Me=V[$.id]??A;for(let D of W)t.decisions[D.id]={revision:D.revision,action:J,feedback:J==="revise"?Me?.feedback??"":"",split:J==="revise"&&(Me?.split??!1)};if(delete V[$.id],me)K=!0,me=!1;if(d)t.inventoryConfirmed=J==="approve",G=null,ri();else xi($.id)}function $e(){if(k||m||O||we)return;let J=i.components.find((A)=>A.id===g);if(!J||!li(i,t,J,X,Object.keys(V)).length)return;let $=t.decisions[J.id],L=$?.revision===J.revision?$:void 0;if(V[J.id]??={feedback:L?.feedback??"",split:L?.split??!1},K&&(o.querySelector(".workbench")?.clientHeight??0)<420)me=!0,K=!1;z=!1,Y(),ve("feedback")}function oi(J){let $=`missing-${crypto.randomUUID()}`;t.missing.push({id:$,name:"Missing component",feedback:"",box:J}),t.inventoryConfirmed=!1,z=!1,g=$,B="component",h=!1,ke=null,ge=null,Y(),o.querySelector("#missing-name")?.focus()}function Y(){if(ee?.disconnect(),He?.(),m||z&&!d)Q=!1;let J=o.activeElement,$=J?.id,L=J?.dataset.select,A=window.scrollX,W=window.scrollY,Me=o.querySelector(".inventory")?.scrollLeft??0,D=C===g,ni=B==="component"&&(!D||Pe!==B);Pe=B;let Ji=D?o.querySelector(".inspection-content")?.scrollTop??0:0,_=D&&(o.querySelector(".changed-files")?.open??!1),hi=o.querySelector(".comparison-slot")?.clientHeight??200,ki=o.querySelector(".pan-viewport"),ti=C===g&&Ve===se,a=ti?ki?.scrollLeft??0:0,s=ti?ki?.scrollTop??0:0;C=g,Ve=se;let p=i.components.find((e)=>e.id===g),b=t.missing.find((e)=>e.id===g),u=ur(i,t,n.history),x=u.find((e)=>e.members.some((l)=>l.id===g)),y=!!x&&x.members.length>1&&X,T=y?x.box:p?.box??b?.box,Z=x?u.indexOf(x)+1:u.length+t.missing.findIndex((e)=>e.id===g)+1,ne=p?t.decisions[p.id]:void 0,oe=ne?.revision===p?.revision?ne:void 0,S=p?V[p.id]:void 0,Ne=Object.keys(V).length>0,Ci=p?mi(i,p):[],_e=p?li(i,t,p,X,Object.keys(V)):[],Gr=p?!i.components.some((e)=>!_e.some((l)=>l.id===e.id)&&he(e,t).kind==="pending"):!1,Yi=G&&!m?`<div class="decision-notice"><span role="status">${w(G.name)} ${G.action==="approve"?"approved":"flagged for repair"}.</span><button id="undo-decision" class="text-action">Undo</button></div>`:"",H=Re(i,t),I=n.history,le=p?wi(p.id,I):void 0,Ue=I?.packet.components.find((e)=>e.id===p?.id),ze=O&&!!Ue,q=ze?Ue:p,ie=ze?I.packet:i,Si=Object.values(I?.changes??{}),Pi=Si.filter((e)=>e.kind==="changed").length,er=Si.filter((e)=>e.kind==="added").length,$i=i.components.filter((e)=>he(e,t,I).kind==="approved"&&wi(e.id,I).carried).length,Xi=(e)=>{let l=he(e,t,I);return m&&l.kind==="feedback"?{...l,label:"Changes requested"}:l},si=u.filter((e)=>e.kind==="pending").length,Zr=u.length-si+t.missing.length,ir=u.filter((e)=>v==="all"||e.kind==="pending"===(v==="pending")).map((e)=>e.representative),Nr=(e)=>u.find((l)=>l.members.some((c)=>c.id===e))?.label??e,_r=[H.revisions+t.missing.length?`${H.revisions+t.missing.length} feedback ready`:"",$i?`${$i} ${$i===1?"approval":"approvals"} kept`:"",Pi?`${Pi} changed`:"",er?`${er} added`:"",I?.removed.length?`${I.removed.length} removed`:""].filter(Boolean).join(" · "),Ur=j||(Ne?"Save or cancel your open feedback before sending.":m?n.preview?"Preview submitted. No run changed.":"Review submitted.":H.hasFeedback?"Ready to send for corrections.":H.pending?`${si} left to review`:!t.inventoryConfirmed?"Confirm the map is complete.":"Ready to continue."),je=q?Ie(q):null,Qi=q?.preview.kind==="image"&&!je?.code,Gi=Qi||q?.material?.alpha==="transparent",ue=!!(q?.context&&pe==="context"),rr=q&&(ue?q.context?.kind!=="image":q.preview.kind==="page"),Zi=ue&&q?.context?q.context.url:q?.preview.url,ar=q?yi(ie,q):null,Lr=je?.code?`${je.label} · ${je.captured?"captured from code":"live preview"}`:q?.material?`${q.material.alpha==="transparent"?"Transparent":q.material.alpha==="opaque"?"Opaque":"Transparency unverified"} ${q.material.format}`:"Raster · transparency unverified";o.innerHTML=`<style>${yr}</style><section class="review ${d?"assembled-review":""}" aria-label="${d?"Assembled page review":"Component review"}" style="--comp-background:${/^#[0-9a-f]{6}$/i.test(i.comp.background??"")?i.comp.background:"#eeeeee"}">
+      <header><div><h1>${m?"Review record.":d?"Review the assembled page.":"Review the components."}</h1><p>${w(i.title)} <span>· Round ${i.round}</span></p></div>${m?'<span class="badge">Submitted · read-only</span>':n.preview?'<span class="badge">Interactive preview</span>':""}</header>
       ${n.preview?'<p class="preview-note">Historical hotel artwork for testing this interface. Decisions stay in this preview; no run is changed.</p>':""}
-      ${R&&!s?`<section class="round-summary" aria-label="Changes since previous round"><p><strong>${ni} ${ni===1?"item":"items"} to review</strong><span>${Xo}</span></p>${L.pending?`<button id="review-changes" class="icon-button" aria-label="Next to review" title="Next to review">${nr("next")}</button>`:""}${R.removed.length?`<details><summary>Removed from the map</summary><p>${R.removed.map((r)=>u(r.name)).join(" · ")}. Confirm these omissions are intentional before accepting the map.</p></details>`:""}</section>`:""}
-      ${!s?`<div class="mobile-panes" role="group" aria-label="Inspection view"><button id="show-comp" aria-pressed="${B==="comp"}">Approved comp</button><button id="show-component" aria-pressed="${B==="component"}">Component ${U}</button></div>`:""}
-      <div class="workbench" data-mobile-pane="${B}">${!s?`<svg class="connector" aria-hidden="true"><path /></svg>
+      ${I&&!d?`<section class="round-summary" aria-label="Changes since previous round"><p><strong>${si} ${si===1?"item":"items"} to review</strong><span>${_r}</span></p>${H.pending?`<button id="review-changes" class="ks-icon-button" aria-label="Next to review" title="Next to review">${be("next")}</button>`:""}${I.removed.length?`<details><summary>Removed from the map</summary><p>${I.removed.map((e)=>w(e.name)).join(" · ")}. Confirm these omissions are intentional before accepting the map.</p></details>`:""}</section>`:""}
+      ${!d?`<div class="mobile-panes"><div class="ks-instrument-strip is-paper" data-ks-strip="pane" role="group" aria-label="Inspection view"><button type="button" class="ks-instrument-key" id="show-comp" aria-pressed="${B==="comp"}">Approved comp</button><button type="button" class="ks-instrument-key" id="show-component" aria-pressed="${B==="component"}">Component ${Z}</button></div></div>`:""}
+      <div class="workbench" data-mobile-pane="${B}">${!d?`<svg class="connector" aria-hidden="true"><path /></svg>
         <section class="reference" aria-label="Approved composition">
-          <div class="section-head"><h2>Approved comp</h2>${!q?`<button id="mark" class="label-icon" aria-pressed="${c}">${nr(c?"close":"mark")}${c?"Cancel":"Mark missing"}</button>`:""}</div>
-          <div class="map-space"><div class="map ${c?"marking":""}" style="aspect-ratio:${i.comp.width}/${i.comp.height}">
-            <img class="comp" src="${yr(i.comp.url)}" alt="Approved composition for ${u(i.title)}" draggable="false">
-            ${V&&!y?`<div class="region" style="${Gr(V)}"></div>`:""}
-            ${g.map((r,t)=>{let k=r.representative,j={kind:r.kind,label:r.stateLabel},vr=!y&&d?.id===r.id;return`<button class="pin ${j.kind} ${vr?"selected":""}" data-select="${u(k.id)}" style="left:${_r(Math.min(0.96,r.box.x+r.box.w/2))};top:${_r(Math.max(0.035,r.box.y))}" aria-label="Inspect ${u(r.label)}${r.members.length>1?` · ${r.members.length} instances`:""} — ${u(j.label)}" title="${t+1}. ${u(r.label)} · ${u(j.label)}" aria-pressed="${vr}">${j.kind==="approved"?Qr:j.kind==="feedback"?qr:""}<span>${t+1}</span>${r.members.length>1?`<small>×${r.members.length}</small>`:""}</button>`}).join("")}
-            ${m&&!y?d.members.map((r)=>`<div class="region instance-region" style="${Gr(r.box)}"></div>`).join(""):""}
-            ${p.missing.map((r,t)=>`<button class="pin feedback ${!y&&v===r.id?"selected":""}" data-select="${u(r.id)}" style="left:${_r(r.box.x+r.box.w/2)};top:${_r(r.box.y)}" aria-label="Inspect missing ${u(r.name)}" title="Missing: ${u(r.name)}">${qr}<span>${g.length+t+1}</span></button>`).join("")}
+          <div class="section-head"><h2>Approved comp</h2>${!m?`<button id="mark" class="ks-button ks-button-ghost" aria-pressed="${h}">${h?"Cancel":"Mark missing"}</button>`:""}</div>
+          <div class="map-space"><div class="map ${h?"marking":""}" style="aspect-ratio:${i.comp.width}/${i.comp.height}">
+            <img class="comp" src="${ce(i.comp.url)}" alt="Approved composition for ${w(i.title)}" draggable="false">
+            ${T&&!z?`<div class="region" style="${Ze(T)}"></div>`:""}
+            ${u.map((e,l)=>{let c=e.representative,E={kind:e.kind,label:e.stateLabel},xe=!z&&x?.id===e.id;return`<button class="pin ${E.kind} ${xe?"selected":""}" data-select="${w(c.id)}" style="left:${Qe(Math.min(0.96,e.box.x+e.box.w/2))};top:${Qe(Math.max(0.035,e.box.y))}" aria-label="Inspect ${w(e.label)}${e.members.length>1?` · ${e.members.length} instances`:""} — ${w(E.label)}" title="${l+1}. ${w(e.label)} · ${w(E.label)}" aria-pressed="${xe}">${E.kind==="approved"?Ye:E.kind==="feedback"?ye:""}<span>${l+1}</span>${e.members.length>1?`<small>×${e.members.length}</small>`:""}</button>`}).join("")}
+            ${y&&!z?x.members.map((e)=>`<div class="region instance-region" style="${Ze(e.box)}"></div>`).join(""):""}
+            ${t.missing.map((e,l)=>`<button class="pin feedback ${!z&&g===e.id?"selected":""}" data-select="${w(e.id)}" style="left:${Qe(e.box.x+e.box.w/2)};top:${Qe(e.box.y)}" aria-label="Inspect missing ${w(e.name)}" title="Missing: ${w(e.name)}">${ye}<span>${u.length+l+1}</span></button>`).join("")}
 
             <div class="draw-box" hidden></div>
           </div></div>
-          <div class="map-legend" aria-label="Map status legend"><span><i class="legend-pending">#</i> To review</span><span><i class="legend-feedback">${qr}</i> ${q?"Changes requested":"Feedback ready"}</span><span><i class="legend-approved">${Qr}</i> Approved</span></div>
-          ${c?'<div class="map-caption">Draw around the missing piece.<button id="add-box">Add an adjustable box</button></div>':""}
+          <div class="map-legend" aria-label="Map status legend"><span><i class="legend-pending">#</i> To review</span><span><i class="legend-feedback">${ye}</i> ${m?"Changes requested":"Feedback ready"}</span><span><i class="legend-approved">${Ye}</i> Approved</span></div>
+          ${h?'<div class="map-caption">Draw around the missing piece.<button id="add-box">Add an adjustable box</button></div>':""}
         </section>`:""}
-        <section class="inspector" aria-label="${s?"Page comparison":"Selected component"}">
-          ${!s?`<div class="section-head"><h2>${y?"Review summary":`<span class="number">${U}</span> ${u(m?d.label:x?.name??h?.name??"Component")}`}</h2></div>`:""}<div class="inspection-content" role="region" aria-label="${s?"Page comparison":"Component comparison"}" tabindex="0">
-          ${y&&!s?`<section class="review-summary" id="review-summary" tabindex="-1"><div class="completion-mark" aria-hidden="true">${Qr}</div><h2>${q?"Review sent.":"All components reviewed."}</h2><p>${L.approved} approved · ${L.revisions} flagged for repair${p.missing.length?` · ${p.missing.length} missing`:""}</p><p>${q?"Your decisions are saved.":L.hasFeedback?"Send your feedback to start the next repair round.":"Confirm nothing is missing, then approve and continue."}</p><div class="summary-decisions">${g.map((r)=>{let t=r.representative,k=p.decisions[t.id],j=$i(t);return`<button data-select="${u(t.id)}"><strong>${u(r.label)}</strong><span>${r.kind==="pending"?"Not reviewed":j.kind==="feedback"?"Needs work":"Approved"}</span>${k?.action==="revise"?`<small>${u(k.feedback||"No note — agent will diagnose.")}</small>`:""}</button>`}).join("")}${p.missing.map((r)=>`<button data-select="${u(r.id)}"><strong>${u(r.name)}</strong><span>Missing</span><small>${u(r.feedback)}</small></button>`).join("")}</div></section></div>${Ji?`<div class="review-form">${Ji}</div>`:""}`:x?`
-          ${R?`<div class="repair-context">
-            ${Jr&&gr?.prior?.action==="revise"?`<section class="previous-feedback" aria-label="Previous feedback"><h3>Previous feedback <span>· Round ${gr.feedbackRound}</span></h3><blockquote>${u(gr.prior.feedback||"No written feedback was supplied.")}</blockquote>${gr.prior.split?"<p>Requested: split into separately reviewable components.</p>":""}</section>`:gr?.carried?'<p class="kept-approval">Unchanged · approval kept</p>':""}
-            ${gr?.change?.kind==="changed"?`<details class="changed-files" ${H?"open":""}><summary>${gr.change.files.length?`${gr.change.files.length} changed ${gr.change.files.length===1?"file":"files"}`:gr.change.reasons.includes("region")?"Region changed":Er?.note!==x.note?"Description changed · files unchanged":"Component definition changed · files unchanged"}</summary>${gr.change.files.length?`<ul>${gr.change.files.map((r)=>`<li>${u(r)}</li>`).join("")}</ul>`:""}${Er&&Er.note!==x.note?`<dl class="description-diff"><dt>Previous description</dt><dd>${u(Er.note)}</dd><dt>Current description</dt><dd>${u(x.note)}</dd></dl>`:""}</details>`:""}
+        <section class="inspector" aria-label="${d?"Page comparison":"Selected component"}">
+          ${!d?`<div class="section-head"><h2>${z?"Review summary":`<span class="number">${Z}</span> ${w(y?x.label:p?.name??b?.name??"Component")}`}</h2></div>`:""}<div class="inspection-content" role="region" aria-label="${d?"Page comparison":"Component comparison"}" tabindex="0">
+          ${z&&!d?`<section class="review-summary" id="review-summary" tabindex="-1"><div class="completion-mark" aria-hidden="true">${Ye}</div><h2>${m?"Review sent.":"All components reviewed."}</h2><p>${H.approved} approved · ${H.revisions} flagged for repair${t.missing.length?` · ${t.missing.length} missing`:""}</p><p>${m?"Your decisions are saved.":H.hasFeedback?"Send your feedback to start the next repair round.":"Confirm nothing is missing, then approve and continue."}</p><div class="summary-decisions">${u.map((e)=>{let l=e.representative,c=t.decisions[l.id],E=Xi(l);return`<button data-select="${w(l.id)}"><strong>${w(e.label)}</strong><span>${e.kind==="pending"?"Not reviewed":E.kind==="feedback"?"Needs work":"Approved"}</span>${c?.action==="revise"?`<small>${w(c.feedback||"No note — agent will diagnose.")}</small>`:""}</button>`}).join("")}${t.missing.map((e)=>`<button data-select="${w(e.id)}"><strong>${w(e.name)}</strong><span>Missing</span><small>${w(e.feedback)}</small></button>`).join("")}</div></section></div>${Yi?`<div class="review-form">${Yi}</div>`:""}`:p?`
+          ${I?`<div class="repair-context">
+            ${ze&&le?.prior?.action==="revise"?`<section class="previous-feedback" aria-label="Previous feedback"><h3>Previous feedback <span>· Round ${le.feedbackRound}</span></h3><blockquote>${w(le.prior.feedback||"No written feedback was supplied.")}</blockquote>${le.prior.split?"<p>Requested: split into separately reviewable components.</p>":""}</section>`:le?.carried?'<p class="kept-approval">Unchanged · approval kept</p>':""}
+            ${le?.change?.kind==="changed"?`<details class="changed-files" ${_?"open":""}><summary>${le.change.files.length?`${le.change.files.length} changed ${le.change.files.length===1?"file":"files"}`:le.change.reasons.includes("region")?"Region changed":Ue?.note!==p.note?"Description changed · files unchanged":"Component definition changed · files unchanged"}</summary>${le.change.files.length?`<ul>${le.change.files.map((e)=>`<li>${w(e)}</li>`).join("")}</ul>`:""}${Ue&&Ue.note!==p.note?`<dl class="description-diff"><dt>Previous description</dt><dd>${w(Ue.note)}</dd><dt>Current description</dt><dd>${w(p.note)}</dd></dl>`:""}</details>`:""}
           </div>`:""}
 
-          <div class="comparison-slot"><div class="comparison-panel ${m?"group-overview":""}"><h2 class="expanded-title">${u(m?d.label:z.name)}</h2>${Ii.length>1?`<div class="review-peers"><strong>${Ii.length} instances</strong>${!m?'<button id="all-instances" class="quiet">All instances</button>':'<span class="group-hint">Select to inspect</span>'}</div>`:""}<div class="compare-toolbar">${Er?`<div class="round-switch" role="group" aria-label="Preview version"><button id="current-round" aria-label="Current · round ${i.round}" title="Current · round ${i.round}" aria-pressed="${!Jr}">Current</button><button id="previous-round" aria-label="Previous · round ${R.packet.round}" title="Previous · round ${R.packet.round}" aria-pressed="${Jr}">Previous</button></div>`:""}<label class="zoom-control" title="Comparison zoom · based on comp pixels">${nr("zoom")}<select id="zoom" aria-label="Comparison zoom">${[["fit","Fit"],["1","100%"],["2","200%"],["4","400%"]].map(([r,t])=>`<option value="${r}" ${String(I)===r?"selected":""}>${t}</option>`).join("")}</select>${nr("chevronDown")}</label><button id="overlay" class="overlay-control" aria-label="Overlay comp" title="Overlay approved comp" aria-pressed="${er}"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="10" height="10"/><rect x="7" y="7" width="10" height="10"/></svg><span class="overlay-label">Overlay</span></button><div class="comparison-actions" role="group" aria-label="Comparison view actions"><button id="expand-comparison" class="icon-button" aria-label="${_?"Restore comparison":"Enlarge comparison"}" title="${_?"Restore comparison (Esc)":"Enlarge comparison"}" aria-expanded="${_}">${nr(_?"compact":"expand")}</button>${z?.preview.kind==="image"?`<a class="icon-button source-link" href="${yr(Qi)}" target="_blank" rel="noopener" aria-label="${mr?"Open context capture":Yr.fileLabel}" title="${mr?"Open context capture":Yr.fileLabel}">${nr("external")}</a>`:""}</div></div>
-          ${m?`<div class="instance-grid" aria-label="All instances of ${u(d.label)}"><div class="instance-grid-labels"><span>Full comp crop</span><span>Component preview</span></div>${d.members.map((r,t)=>{let k=$i(r);return`<button class="instance-row ${k.kind}" data-instance="${u(r.id)}" aria-label="Inspect instance ${t+1}: ${u(r.name)} — ${u(k.label)}"><span class="instance-caption"><strong>${u(r.name)}</strong><span>${u(k.label)}</span></span><span class="instance-pair"><span class="instance-reference" style="width:min(100%,${r.box.w*i.comp.width}px,${180*r.box.w*i.comp.width/(r.box.h*i.comp.height)}px);aspect-ratio:${r.box.w*i.comp.width}/${r.box.h*i.comp.height}"><img src="${yr(i.comp.url)}" alt="Comp: ${u(r.name)}" loading="lazy" style="width:${100/r.box.w}%;left:${-100*r.box.x/r.box.w}%;top:${-100*r.box.y/r.box.h}%">${Pr(i,r)}</span><span class="instance-produced" style="width:min(100%,${r.box.w*i.comp.width}px,${180*r.box.w*i.comp.width/(r.box.h*i.comp.height)}px);aspect-ratio:${r.box.w*i.comp.width}/${r.box.h*i.comp.height}">${r.preview.kind==="image"?`<img src="${yr(r.preview.url)}" alt="Produced: ${u(r.name)}" loading="lazy">`:r.thumbnail?`<img src="${yr(r.thumbnail.url)}" alt="Preview: ${u(r.name)}" loading="lazy">`:"Open live component"}</span></span>${Cr(i,r)}</button>`}).join("")}</div>`:""}
-          ${!m&&z?Cr(or,z):""}<div class="compare">
-            <figure><figcaption>${Jr?`Comp · Round ${R.packet.round}`:s?"Approved comp":Pi?.related.length?"Full comp crop":"In the comp"}</figcaption><div class="pan-viewport" aria-label="Reference comparison canvas" tabindex="0"><div class="crop-stage"><img class="crop-image" src="${yr(or.comp.url)}" alt="Reference region for ${u(z.name)}" style="width:${100/z.box.w}%;left:${-100*z.box.x/z.box.w}%;top:${-100*z.box.y/z.box.h}%">${Pr(or,z)}</div></div></figure>
-            <figure><figcaption>${Jr?`Previous · Round ${R.packet.round}`:s?"Assembled page":mr?"In context":R?`${Yr.caption} · Round ${i.round}`:Yr.caption}</figcaption><div class="pan-viewport" aria-label="Produced comparison canvas" tabindex="0"><div class="output crop-stage ${Xi&&!mr&&!Ci&&wr==="checker"?"checker":""}">${!Ci?`<img class="asset" src="${yr(Qi)}" alt="Produced ${u(z.name)}" style="object-position:${u(z.preview.position??"center")}">`:`<iframe aria-hidden="true" title="Rendered ${u(z.name)}" src="${yr(Qi)}" sandbox="" tabindex="-1" width="${or.comp.width}" height="${or.comp.height}"></iframe>`}${er?`<img class="crop-image overlay-image" src="${yr(or.comp.url)}" alt="Reference overlay" style="width:${100/z.box.w}%;left:${-100*z.box.x/z.box.w}%;top:${-100*z.box.y/z.box.h}%">`:""}</div></div></figure>
+          <div class="comparison-slot"><div class="comparison-panel ${y?"group-overview":""}"><h2 class="expanded-title">${w(y?x.label:q.name)}</h2>${Ci.length>1?`<div class="review-peers"><strong>${Ci.length} instances</strong>${!y?'<button id="all-instances" class="quiet">All instances</button>':'<span class="group-hint">Select to inspect</span>'}</div>`:""}<div class="compare-toolbar">${Ue?`<div class="round-switch ks-instrument-strip is-paper" data-ks-strip="round" role="group" aria-label="Preview version"><button type="button" class="ks-instrument-key" id="current-round" aria-label="Current · round ${i.round}" title="Current · round ${i.round}" aria-pressed="${!ze}">Current</button><button type="button" class="ks-instrument-key" id="previous-round" aria-label="Previous · round ${I.packet.round}" title="Previous · round ${I.packet.round}" aria-pressed="${ze}">Previous</button></div>`:""}<div class="ks-instrument-strip is-paper zoom-strip" data-ks-strip="zoom" role="group" aria-label="Comparison zoom">${[["fit","Fit"],["1","100%"],["2","200%"],["4","400%"]].map(([e,l])=>`<button type="button" class="ks-instrument-key" data-zoom="${e}" aria-pressed="${String(se)===e}">${l}</button>`).join("")}</div><button id="overlay" type="button" class="ks-switch" title="Overlay the approved comp" aria-pressed="${re}"><span class="ks-switch-track" aria-hidden="true"><span class="ks-switch-knob"></span></span><span class="ks-switch-label">Overlay</span></button><div class="comparison-actions" role="group" aria-label="Comparison view actions"><button id="expand-comparison" class="ks-icon-button" aria-label="${Q?"Restore comparison":"Enlarge comparison"}" title="${Q?"Restore comparison (Esc)":"Enlarge comparison"}" aria-expanded="${Q}">${be(Q?"compact":"expand")}</button>${q?.preview.kind==="image"?`<a class="ks-icon-button source-link" href="${ce(Zi)}" target="_blank" rel="noopener" aria-label="${ue?"Open context capture":je.fileLabel}" title="${ue?"Open context capture":je.fileLabel}">${be("external")}</a>`:""}</div></div>
+          ${y?`<div class="instance-grid" aria-label="All instances of ${w(x.label)}"><div class="instance-grid-labels"><span>Full comp crop</span><span>Component preview</span></div>${x.members.map((e,l)=>{let c=Xi(e);return`<button class="instance-row ${c.kind}" data-instance="${w(e.id)}" aria-label="Inspect instance ${l+1}: ${w(e.name)} — ${w(c.label)}"><span class="instance-caption"><strong>${w(e.name)}</strong><span>${w(c.label)}</span></span><span class="instance-pair"><span class="instance-reference" style="width:min(100%,${e.box.w*i.comp.width}px,${180*e.box.w*i.comp.width/(e.box.h*i.comp.height)}px);aspect-ratio:${e.box.w*i.comp.width}/${e.box.h*i.comp.height}"><img src="${ce(i.comp.url)}" alt="Comp: ${w(e.name)}" loading="lazy" style="width:${100/e.box.w}%;left:${-100*e.box.x/e.box.w}%;top:${-100*e.box.y/e.box.h}%">${ii(i,e)}</span><span class="instance-produced" style="width:min(100%,${e.box.w*i.comp.width}px,${180*e.box.w*i.comp.width/(e.box.h*i.comp.height)}px);aspect-ratio:${e.box.w*i.comp.width}/${e.box.h*i.comp.height}">${e.preview.kind==="image"?`<img src="${ce(e.preview.url)}" alt="Produced: ${w(e.name)}" loading="lazy">`:e.thumbnail?`<img src="${ce(e.thumbnail.url)}" alt="Preview: ${w(e.name)}" loading="lazy">`:"Open live component"}</span></span>${ei(i,e)}</button>`}).join("")}</div>`:""}
+          ${!y&&q?ei(ie,q):""}<div class="compare">
+            <figure><figcaption>${ze?`Comp · Round ${I.packet.round}`:d?"Approved comp":ar?.related.length?"Full comp crop":"In the comp"}</figcaption><div class="pan-viewport" aria-label="Reference comparison canvas" tabindex="0"><div class="crop-stage"><img class="crop-image" src="${ce(ie.comp.url)}" alt="Reference region for ${w(q.name)}" style="width:${100/q.box.w}%;left:${-100*q.box.x/q.box.w}%;top:${-100*q.box.y/q.box.h}%">${ii(ie,q)}</div></div></figure>
+            <figure><figcaption>${ze?`Previous · Round ${I.packet.round}`:d?"Assembled page":ue?"In context":I?`${je.caption} · Round ${i.round}`:je.caption}</figcaption><div class="pan-viewport" aria-label="Produced comparison canvas" tabindex="0"><div class="output crop-stage ${Gi&&!ue&&!rr&&ae==="checker"?"checker":""}">${!rr?`<img class="asset" src="${ce(Zi)}" alt="Produced ${w(q.name)}" style="object-position:${w(q.preview.position??"center")}">`:`<iframe aria-hidden="true" title="Rendered ${w(q.name)}" src="${ce(Zi)}" sandbox="" tabindex="-1" width="${ie.comp.width}" height="${ie.comp.height}"></iframe>`}${re?`<img class="crop-image overlay-image" src="${ce(ie.comp.url)}" alt="Reference overlay" style="width:${100/q.box.w}%;left:${-100*q.box.x/q.box.w}%;top:${-100*q.box.y/q.box.h}%">`:""}</div></div></figure>
           </div>
-          ${Xi||z.context?`<div class="view-controls">${z.context?`<div role="group" aria-label="Component view"><button id="isolated" aria-pressed="${!mr}">${Vi?"Asset only":"Component only"}</button><button id="context" aria-pressed="${mr}">In context</button></div>`:""}${Xi?`<div class="background-options" role="group" aria-label="Asset preview background"><button id="background-checker" class="swatch-button" aria-label="Checkerboard background" title="Checkerboard background" aria-pressed="${wr==="checker"}" ${mr?"disabled":""}><span class="background-swatch checker"></span></button><button id="background-page" class="swatch-button" aria-label="${or.comp.background?"Page color":"Neutral"} background" title="${or.comp.background?"Page color":"Neutral"} background" aria-pressed="${wr==="page"}" ${mr?"disabled":""}><span class="background-swatch page-swatch"></span></button></div>`:""}</div>`:""}
-          </div></div>${!s&&!m?`<div class="component-details"><div class="material">${nr(Yr.code?"code":"image")}<strong>${u(Zo)}</strong><span>${z?.material?`${z.material.width} × ${z.material.height} px`:""}</span></div>${or.stage==="components"&&Yr?.captured&&!z?.preview.isolation?'<p class="layering">Legacy region capture · may include overlapping components.</p>':""}${z?.context?.layering&&(Vi||mr)?`<p class="layering">${u(z.context.layering)}</p>`:""}
-          <p class="component-note">${!Pi?.related.length?u(z.note):""}</p>
-          </div>`:""}</div><div class="review-form">${Ji}${Jr?'<p class="previous-notice">Viewing the previous round. Return to Current to make a decision.</p>':""}${q?`<div class="record-verdict"><strong>${ar?.action==="approve"?"Approved":ar?.action==="revise"?"Changes requested":"Not reviewed"}</strong><span>Submitted in round ${i.round} · read-only</span></div>`:`<div class="decisions" role="group" aria-label="Decision for ${u(x.name)}">${!s?`<div class="decision-title"><strong>Your review <span>Round ${i.round}</span></strong>${Jr?"<p>Return to Current to review this round.</p>":""}</div>`:""}<button id="approve" ${!Mr.length?"disabled":""} class="decision-approve ${ar?.action==="approve"?"approved":""}" aria-pressed="${ar?.action==="approve"}">${s?b?"Sending…":"Approve & continue":Mr.length>1?`Approve ${Mr.length} instances`:"Looks good"}</button><button id="revise" ${!Mr.length?"disabled":""} class="decision-revise ${ar?.action==="revise"?"revise":""}" aria-pressed="${ar?.action==="revise"}">${Mr.length>1?`Revise ${Mr.length} instances`:"Needs work"}</button>${ar&&!s&&!m?`<button id="clear" class="quiet icon-button" aria-label="Clear decision" title="Clear decision">${nr("undo")}</button>`:""}</div>`}
-          ${P?`<form id="feedback-form"><div class="feedback-fields"><label class="feedback-field">What needs to change?<textarea id="feedback" aria-describedby="feedback-hint">${u(P.feedback)}</textarea></label><p id="feedback-hint" class="feedback-hint">Optional — leave blank for the agent to diagnose.</p>${!s?`<label class="check"><input id="split" type="checkbox" ${P.split?"checked":""}> Split into separately reviewable components</label>`:""}</div><div class="feedback-actions"><button id="cancel-feedback" type="button" class="quiet">Cancel</button><button id="save-feedback" type="submit" class="primary">${s?"Send feedback":Yo?"Save & finish review":"Save & next"} <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-6 6 6-6 6"/></svg></button><span class="shortcut-hint">${fr}</span></div></form>`:ar?.action==="revise"?`<p class="saved-feedback">${u(ar.feedback||"No note — agent will diagnose.")}</p>`:""}
-          ${s?`<p class="page-review-status" role="status">${u(E||(q?"Your decision is saved.":b?"Sending…":P?"":"Approval confirms the composition and that nothing is missing."))}</p>`:""}</div>`:h?`<p>This piece will be added to the unresolved inventory.</p><label class="feedback-field">Name<input id="missing-name" value="${u(h.name)}"></label><label class="feedback-field">What is missing?<textarea id="missing-feedback">${u(h.feedback)}</textarea></label><div class="coordinates">${["x","y","w","h"].map((r)=>`<label>${{x:"Left",y:"Top",w:"Width",h:"Height"}[r]} %<input type="number" data-coordinate="${r}" value="${Math.round(h.box[r]*1000)/10}" min="0" max="100" step="0.1"></label>`).join("")}</div><button id="remove-missing">Remove this mark</button></div>`:"<p>No components supplied.</p></div>"}
+          ${Gi||q.context?`<div class="view-controls">${q.context?`<div class="ks-instrument-strip is-paper" data-ks-strip="view" role="group" aria-label="Component view"><button type="button" class="ks-instrument-key" id="isolated" aria-pressed="${!ue}">${Qi?"Asset only":"Component only"}</button><button type="button" class="ks-instrument-key" id="context" aria-pressed="${ue}">In context</button></div>`:""}${Gi?`<div class="background-options ks-instrument-strip is-paper" data-ks-strip="background" role="group" aria-label="Asset preview background"><button type="button" id="background-checker" class="ks-instrument-key" aria-label="Checkerboard background" title="Checkerboard background" aria-pressed="${ae==="checker"}" ${ue?"disabled":""}>Checker</button><button type="button" id="background-page" class="ks-instrument-key" aria-label="${ie.comp.background?"Page color":"Neutral"} background" title="${ie.comp.background?"Page color":"Neutral"} background" aria-pressed="${ae==="page"}" ${ue?"disabled":""}>Page</button></div>`:""}</div>`:""}
+          </div></div>${!d&&!y?`<div class="component-details"><div class="material">${be(je.code?"code":"image")}<strong>${w(Lr)}</strong><span>${q?.material?`${q.material.width} × ${q.material.height} px`:""}</span></div>${ie.stage==="components"&&je?.captured&&!q?.preview.isolation?'<p class="layering">Legacy region capture · may include overlapping components.</p>':""}${q?.context?.layering&&(Qi||ue)?`<p class="layering">${w(q.context.layering)}</p>`:""}
+          <p class="component-note">${!ar?.related.length?w(q.note):""}</p>
+          </div>`:""}</div><div class="review-form">${Yi}${ze?'<p class="previous-notice">Viewing the previous round. Return to Current to make a decision.</p>':""}${m?`<div class="record-verdict"><strong>${oe?.action==="approve"?"Approved":oe?.action==="revise"?"Changes requested":"Not reviewed"}</strong><span>Submitted in round ${i.round} · read-only</span></div>`:`<div class="decisions" role="group" aria-label="Decision for ${w(p.name)}">${!d?`<div class="decision-title"><strong>Your review <span>Round ${i.round}</span></strong>${ze?"<p>Return to Current to review this round.</p>":""}</div>`:""}<button id="approve" ${!_e.length?"disabled":""} class="ks-button ks-button-primary decision-approve ${oe?.action==="approve"?"approved":""}" aria-pressed="${oe?.action==="approve"}">${d?k?"Sending…":`Approve & continue${Be}`:_e.length>1?`Approve ${_e.length} instances`:"Looks good"}</button><button id="revise" ${!_e.length?"disabled":""} class="ks-button ks-button-secondary decision-revise ${oe?.action==="revise"?"revise":""}" aria-pressed="${oe?.action==="revise"}">${_e.length>1?`Revise ${_e.length} instances`:"Needs work"}</button>${oe&&!d&&!y?`<button id="clear" class="ks-icon-button" aria-label="Clear decision" title="Clear decision">${be("undo")}</button>`:""}</div>`}
+          ${S?`<form id="feedback-form"><div class="feedback-fields"><label class="feedback-field">What needs to change?<textarea id="feedback" aria-describedby="feedback-hint">${w(S.feedback)}</textarea></label><p id="feedback-hint" class="feedback-hint">Optional — leave blank for the agent to diagnose.</p>${!d?`<label class="check"><input id="split" type="checkbox" ${S.split?"checked":""}> Split into separately reviewable components</label>`:""}</div><div class="feedback-actions"><button id="cancel-feedback" type="button" class="ks-button ks-button-ghost">Cancel</button><button id="save-feedback" type="submit" class="ks-button ks-button-primary">${d?"Send feedback":Gr?"Save & finish review":"Save & next"}${Be}</button><span class="shortcut-hint">${Te}</span></div></form>`:oe?.action==="revise"?`<p class="saved-feedback">${w(oe.feedback||"No note — agent will diagnose.")}</p>`:""}
+          ${d?`<p class="page-review-status" role="status">${w(j||(m?"Your decision is saved.":k?"Sending…":S?"":"Approval confirms the composition and that nothing is missing."))}</p>`:""}</div>`:b?`<p>This piece will be added to the unresolved inventory.</p><label class="feedback-field">Name<input id="missing-name" value="${w(b.name)}"></label><label class="feedback-field">What is missing?<textarea id="missing-feedback">${w(b.feedback)}</textarea></label><div class="coordinates">${["x","y","w","h"].map((e)=>`<label>${{x:"Left",y:"Top",w:"Width",h:"Height"}[e]} %<input type="number" data-coordinate="${e}" value="${Math.round(b.box[e]*1000)/10}" min="0" max="100" step="0.1"></label>`).join("")}</div><button id="remove-missing">Remove this mark</button></div>`:"<p>No components supplied.</p></div>"}
         </section>
       </div>
-      ${!s?`<section class="inventory-section ${O?"":"tray-collapsed"} ${pr&&O?"tray-expanded":""}" aria-label="Component inventory"><div class="section-head"><h2>Components</h2><div class="inventory-filters" role="group" aria-label="Filter components"><button data-filter="pending" aria-pressed="${w==="pending"}">To review <b>${ni}</b></button><button data-filter="reviewed" aria-pressed="${w==="reviewed"}">Reviewed <b>${$o}</b></button><button data-filter="all" aria-pressed="${w==="all"}">All <b>${g.length+p.missing.length}</b></button></div><div class="tray-actions"><button id="show-all" class="icon-button" aria-pressed="${pr}" aria-controls="component-tray" aria-label="${pr?"Compact":"Expand"} tray" title="${pr?"Compact":"Expand"} tray">${nr(pr?"compact":"expand")}</button><button id="toggle-tray" class="icon-button" aria-expanded="${O}" aria-controls="component-tray" aria-label="${O?"Hide":"Show"} component tray" title="${O?"Hide":"Show"} component tray">${nr(O?"hideTray":"showTray")}</button></div></div>
-      <div id="component-tray" class="inventory ${pr?"all":""}">${Si.map((r)=>{let t=g.find((vr)=>vr.members.some((xr)=>xr.id===r.id)),k=g.indexOf(t),j={kind:t.kind,label:t.stateLabel};return`<button class="item ${j.kind} ${!y&&d?.id===t.id?"active":""}" data-select="${u(r.id)}" aria-pressed="${!y&&d?.id===t.id}">${r.thumbnail?`<span class="item-thumb">${r.thumbnail.box?`<span class="thumb-crop" style="width:min(100%,${76*r.thumbnail.box.w*i.comp.width/(r.thumbnail.box.h*i.comp.height)}px);aspect-ratio:${r.thumbnail.box.w*i.comp.width}/${r.thumbnail.box.h*i.comp.height}"><img alt="" loading="lazy" src="${yr(r.thumbnail.url)}" style="position:absolute;width:${100/r.thumbnail.box.w}%;max-width:none;left:${-100*r.thumbnail.box.x/r.thumbnail.box.w}%;top:${-100*r.thumbnail.box.y/r.thumbnail.box.h}%;"></span>`:`<img alt="" loading="lazy" src="${yr(r.thumbnail.url)}">`}</span>`:""}<span class="item-number">${j.kind==="approved"?Qr:j.kind==="feedback"?qr:""}${k+1}<span class="item-medium">${nr(Wr(r).code?"code":"image")}${u(Wr(r).label)}</span></span><strong>${u(Vo(r.id))}${t.members.length>1?` <small>×${t.members.length}</small>`:""}</strong><span class="state ${j.kind}">${u(j.label)}</span></button>`}).join("")}${(w==="pending"?[]:p.missing).map((r,t)=>`<button class="item feedback ${v===r.id?"active":""}" data-select="${u(r.id)}"><span class="item-number">${g.length+t+1}</span><strong>${u(r.name)}</strong><span class="state revise">Missing</span></button>`).join("")}${!Si.length&&(w==="pending"||!p.missing.length)?`<p class="inventory-empty">${w==="pending"?"Nothing left to review. Your decisions are ready.":"No components reviewed yet."}</p>`:""}</div></section>`:""}
-      ${s?"":q?`<footer class="record-footer"><span>Round ${i.round} submitted · read-only</span><span>${L.approved} approved · ${L.revisions} changes requested</span></footer>`:`<footer class="${!L.pending&&!Ur?"queue-complete":""}"><div>${!L.pending&&!Ur?`<button id="show-summary" class="completion-link">${Qr}${q?"Review sent":"All components reviewed"}</button>`:""}<button id="approve-rest" ${!L.pending?"hidden":""} ${!L.pending||Ur?"disabled":""}>Approve ${L.approved||L.revisions?"remaining":"all"}</button><label class="check"><input id="inventory-confirm" type="checkbox" ${p.inventoryConfirmed?"checked":""}> Nothing missing from the comp</label></div><div class="submit-area"><p role="status">${u(Qo)}</p><button id="submit" class="primary" ${!L.canSubmit||Ur||b||q?"disabled":""}>${b?"Sending…":q?"Review sent":L.hasFeedback?"Send feedback":"Approve & continue"}</button></div></footer>`}
-    </section><dialog id="comparison-dialog" aria-label="${s?"Enlarged page comparison":"Enlarged component comparison"}"></dialog>`;let rr=e.querySelector("#comparison-dialog"),hr=e.querySelector(".comparison-panel"),Hr=e.querySelector(".comparison-slot"),$r=e.querySelector(".inspector > .review-form"),_o=e.querySelector(".inspector"),ro=()=>{if(rr.append(hr),$r)rr.append($r)};if(_&&hr&&Hr)Hr.style.height=`${ti}px`,ro(),rr.showModal();if(Jr)e.querySelectorAll(".decisions button,#feedback,#split,#save-feedback,#cancel-feedback,#undo-decision,#approve-rest,#submit,#inventory-confirm").forEach((r)=>r.disabled=!0);if(e.querySelector(".inspection-content").scrollTop=qi,q||b)e.querySelectorAll(".decisions button,#save-feedback,#cancel-feedback,#undo-decision,#approve-rest,#mark,#inventory-confirm,#missing-name,#missing-feedback,#feedback,#split,#remove-missing,[data-coordinate]").forEach((r)=>r.disabled=!0);let io=e.querySelector(".inventory");if(io)io.scrollLeft=Vr;if(!D&&O)Array.from(e.querySelectorAll(".inventory [data-select]")).find((r)=>r.dataset.select===v)?.scrollIntoView({block:"nearest",inline:"nearest"});if(Q)e.getElementById(Q)?.focus({preventScroll:!0});else if(K)Array.from(e.querySelectorAll(".item[data-select]")).find((r)=>r.dataset.select===K)?.focus({preventScroll:!0});let T=(r,t)=>e.querySelector(`#${r}`)?.addEventListener("click",t);function Zi(r,t=!1,k=!1){if(c)return;if(!k)r=g.find((j)=>j.members.some((vr)=>vr.id===r))?.representative.id??r;if(Z=!k,y=!1,v=r,B="component",er=!1,I="fit",N="isolated",C=!1,X(),t)e.querySelector("#expand-comparison")?.click()}e.querySelectorAll("[data-select]").forEach((r)=>r.onclick=()=>Zi(r.dataset.select,r.classList.contains("pin")&&i.components.some((t)=>t.id===r.dataset.select))),T("previous-round",()=>{C=!0,X()}),T("current-round",()=>{C=!1,X()}),T("review-changes",()=>{let r=f().filter((j)=>$i(j).kind==="pending"),t=r.findIndex((j)=>j.id===v),k=r[(t+1)%r.length];if(k)Z=!0,y=!1,v=k.id,B="component",w="pending",C=!1,I="fit",er=!1,N="isolated",X()}),e.querySelectorAll("[data-filter]").forEach((r)=>r.onclick=()=>{w=r.dataset.filter,y=!L.pending&&w==="pending";let t=g.filter((j)=>w==="all"||j.kind==="pending"===(w==="pending")).map((j)=>j.representative);if(!(w!=="pending"&&p.missing.some((j)=>j.id===v))&&!t.some((j)=>j.id===v)&&t.length)Z=!0,v=t[0].id,B="component",C=!1,I="fit",er=!1,N="isolated";X()}),T("show-summary",()=>{y=!0,B="component",w="reviewed",X(),ur("review-summary")}),T("approve",()=>ii("approve")),T("revise",Zr),T("clear",()=>{if(x)delete p.decisions[x.id],delete Y[x.id];G=null,y=!1,w="pending",X()}),T("cancel-feedback",()=>{if(x)delete Y[x.id];if(sr)O=!0,sr=!1;X(),ur("revise")}),e.querySelector("#feedback-form")?.addEventListener("submit",(r)=>{r.preventDefault(),ii("revise")}),e.querySelector("#feedback")?.addEventListener("keydown",(r)=>{let t=r;if(t.key==="Enter"&&(t.metaKey||t.ctrlKey)&&!t.isComposing)t.preventDefault(),t.stopPropagation(),ii("revise")}),T("undo-decision",()=>{if(!G||b||q)return;let r=G;for(let[t,k]of Object.entries(r.previous))if(k)p.decisions[t]=k;else delete p.decisions[t];delete Y[r.id],v=r.id,y=!1,C=!1,B="component",w="all",G=null,X(),ur("approve")}),T("all-instances",()=>{Z=!0,v=d.representative.id,C=!1,X()}),e.querySelectorAll("[data-instance]").forEach((r)=>r.onclick=()=>Zi(r.dataset.instance,!1,!0)),T("overlay",()=>{er=!er,X()}),T("isolated",()=>{N="isolated",X()}),T("context",()=>{N="context",X()}),e.querySelector("#zoom")?.addEventListener("change",(r)=>{let t=r.target.value;I=t==="fit"?"fit":Number(t),X()}),T("background-checker",()=>{wr="checker",X()}),T("background-page",()=>{wr="page",X()}),T("show-all",()=>{pr=!pr,O=!0,X()}),T("toggle-tray",()=>{sr=!1,O=!O,X()}),T("show-comp",()=>{B="comp",X()}),T("show-component",()=>{B="component",X()}),T("mark",()=>{c=!c,X()}),T("add-box",()=>oi({x:0.35,y:0.35,w:0.2,h:0.2})),T("remove-missing",()=>{p.missing=p.missing.filter((r)=>r.id!==v),v=i.components[0]?.id,X()}),T("approve-rest",()=>{if(Ur)return;p=to(i,p),G=null,y=!0,w="reviewed",B="component",X(),ur("review-summary")}),e.querySelector("#inventory-confirm")?.addEventListener("change",(r)=>{p.inventoryConfirmed=r.target.checked,X()}),e.querySelector("#feedback")?.addEventListener("input",(r)=>{if(x&&Y[x.id])Y[x.id].feedback=r.target.value}),e.querySelector("#split")?.addEventListener("change",(r)=>{if(x&&Y[x.id])Y[x.id].split=r.target.checked}),e.querySelector("#missing-name")?.addEventListener("input",(r)=>{if(h)h.name=r.target.value;let t=e.querySelector("#submit");if(t)t.disabled=Ur||b||q||!Lr(i,p).canSubmit}),e.querySelector("#missing-feedback")?.addEventListener("input",(r)=>{if(h)h.feedback=r.target.value}),e.querySelectorAll("[data-coordinate]").forEach((r)=>r.addEventListener("change",()=>{if(!h)return;let t=r.dataset.coordinate,k=Number(r.value)/100;if(Number.isFinite(k))h.box[t]=Math.max(t==="w"||t==="h"?0.001:0,Math.min(1,k));h.box.w=Math.min(h.box.w,1-h.box.x),h.box.h=Math.min(h.box.h,1-h.box.y),X()})),T("submit",()=>{ri()});let cr=e.querySelector(".map");function _i(r){let t=cr.getBoundingClientRect();return{x:Math.max(0,Math.min(1,(r.clientX-t.left)/t.width)),y:Math.max(0,Math.min(1,(r.clientY-t.top)/t.height))}}function oo(r){let t=_i(r);return i.components.filter(({box:k})=>t.x>=k.x&&t.x<=k.x+k.w&&t.y>=k.y&&t.y<=k.y+k.h).sort((k,j)=>k.box.w*k.box.h-j.box.w*j.box.h)[0]}cr?.addEventListener("click",(r)=>{if(c||r.target.closest("[data-select]"))return;let t=oo(r);if(t)Zi(t.id,!0)}),cr?.addEventListener("pointermove",(r)=>{if(!c)cr.style.cursor=oo(r)?"zoom-in":""}),cr?.addEventListener("pointerdown",(r)=>{if(!c)return;br=_i(r),cr.setPointerCapture(r.pointerId),r.preventDefault()}),cr?.addEventListener("pointermove",(r)=>{if(!br)return;let t=_i(r);ir={x:Math.min(br.x,t.x),y:Math.min(br.y,t.y),w:Math.abs(t.x-br.x),h:Math.abs(t.y-br.y)};let k=e.querySelector(".draw-box");k.hidden=!1,k.style.cssText=Gr(ir)}),cr?.addEventListener("pointerup",()=>{if(ir&&ir.w>0.01&&ir.h>0.01)oi(ir);else br=null,ir=null}),cr?.addEventListener("pointercancel",()=>{br=null,ir=null,X()});let eo=e.querySelector(".output"),di=e.querySelector("iframe"),ao=e.querySelector(".workbench"),Br=e.querySelector(".inspection-content"),Gi=e.querySelector(".inspector");function Ui(){if(!Br||!Gi)return;Gi.dataset.scrollAbove=String(Br.scrollTop>1),Gi.dataset.scrollBelow=String(Br.scrollHeight-Br.clientHeight-Br.scrollTop>1)}Br?.addEventListener("scroll",Ui,{passive:!0});function gi(){let r=e.querySelector(".map-space");if(r&&r.clientWidth&&r.clientHeight){let M=Ei(i.comp.width,i.comp.height,Math.max(1,r.clientWidth-32),Math.max(1,r.clientHeight-32),"fit");cr.style.width=`${M.width}px`,cr.style.height=`${M.height}px`}let t=e.querySelector(".inspection-content"),k=Array.from(e.querySelectorAll(".pan-viewport"));if(t?.clientHeight){let M=_?Math.max(100,rr.clientHeight-(hr?.querySelector(".compare-toolbar")?.clientHeight??0)-(hr?.querySelector(".expanded-title")?.clientHeight??0)-(hr?.querySelector(".view-controls")?.clientHeight??0)-($r?.getBoundingClientRect().height??0)-124):Math.min(s?Number.POSITIVE_INFINITY:248,Math.max(100,t.clientHeight-((k[0]?.getBoundingClientRect().top??t.getBoundingClientRect().top)-t.getBoundingClientRect().top+t.scrollTop)-(hr?.querySelector(".view-controls")?.clientHeight??0)-12));k.forEach((F)=>F.style.height=`${M}px`)}if(z&&k.length&&!m){let M=Ei(z.box.w*or.comp.width,z.box.h*or.comp.height,Math.min(...k.map((F)=>F.clientWidth)),Math.min(...k.map((F)=>F.clientHeight)),I);e.querySelectorAll(".crop-stage").forEach((F)=>{F.style.width=`${M.width}px`,F.style.height=`${M.height}px`})}if(k.forEach((M)=>{let F=M.scrollWidth>M.clientWidth+1||M.scrollHeight>M.clientHeight+1;M.classList.toggle("pannable",F),M.style.cursor=_?"":"zoom-in",M.setAttribute("role",_?"region":"button"),M.title=_?F?"Move your pointer to pan. You can also scroll, swipe, or use arrow keys.":"":"Click to enlarge comparison"}),eo&&di&&z){let M=eo.clientWidth/(z.box.w*or.comp.width);di.style.transform=`scale(${M})`,di.style.left=`${-z.box.x*or.comp.width*M}px`,di.style.top=`${-z.box.y*or.comp.height*M}px`}let j=ao.getBoundingClientRect(),vr=e.querySelector(".region"),xr=e.querySelector(".number"),vi=e.querySelector(".connector path");if(vr&&xr&&vi){let M=vr.getBoundingClientRect(),F=xr.getBoundingClientRect(),ki=M.right-j.left,S=M.top+M.height/2-j.top,pi=F.left-j.left-8,fi=F.top+F.height/2-j.top;vi.setAttribute("d",`M ${ki} ${S} H ${pi-14} V ${fi} H ${pi}`)}}function Nr(r,t){if(!hr||!Hr||r===_)return;let k=e.querySelector("#expand-comparison"),j=(_?rr:hr).getBoundingClientRect(),vr=window.matchMedia("(prefers-reduced-motion: reduce)").matches,xr=hr.querySelector(".pan-viewport"),vi=xr?xr.scrollLeft/Math.max(1,xr.scrollWidth-xr.clientWidth):0,M=xr?xr.scrollTop/Math.max(1,xr.scrollHeight-xr.clientHeight):0,F=()=>hr.querySelectorAll(".pan-viewport").forEach((S)=>{S.scrollLeft=vi*Math.max(0,S.scrollWidth-S.clientWidth),S.scrollTop=M*Math.max(0,S.scrollHeight-S.clientHeight)}),ki=()=>{if(Hr.append(hr),$r)_o.append($r),$r.inert=!1;rr.close(),Hr.style.height="",zr=!1,_=!1,k.innerHTML=nr("expand"),k.setAttribute("aria-label","Enlarge comparison"),k.title="Enlarge comparison",k.setAttribute("aria-expanded","false"),gi(),F(),k.focus({preventScroll:!0}),t?.()};if(r){Hr.style.height=`${j.height}px`,ro(),rr.showModal(),_=!0,k.innerHTML=nr("compact"),k.setAttribute("aria-label","Restore comparison"),k.title="Restore comparison (Esc)",k.setAttribute("aria-expanded","true"),gi(),F(),k.focus({preventScroll:!0});let S=rr.getBoundingClientRect();if(!vr)rr.animate([{transform:`translate(${j.x-S.x}px,${j.y-S.y}px) scale(${j.width/S.width},${j.height/S.height})`,opacity:0.6},{transform:"none",opacity:1}],{duration:240,easing:"cubic-bezier(.2,.8,.2,1)"})}else{if(k.disabled)return;let S=Hr.getBoundingClientRect();if(vr){ki();return}if(k.disabled=!0,zr=!0,$r)$r.inert=!0;let pi=rr.animate([{transform:"none",opacity:1},{transform:`translate(${S.x-j.x}px,${S.y-j.y}px) scale(${S.width/j.width},${S.height/j.height})`,opacity:0.6}],{duration:200,easing:"cubic-bezier(.4,0,.2,1)",fill:"forwards"});rr.inert=!0;let fi=()=>{if(pi.cancel(),k.disabled=!1,rr.inert=!1,rr.isConnected)ki();else zr=!1,_=!1,X(),t?.()};pi.finished.then(fi,fi)}}if(Rr=(r)=>Nr(!1,r),T("expand-comparison",()=>Nr(!_)),rr.addEventListener("cancel",(r)=>{r.preventDefault(),r.stopPropagation(),Nr(!1)}),rr.addEventListener("keydown",(r)=>{if(r.key==="Escape")r.preventDefault(),r.stopPropagation(),Nr(!1)}),dr=new ResizeObserver(()=>{gi(),Ui()}),dr.observe(ao),dr.observe(rr),$r)dr.observe($r);let no=e.querySelector(".inspection-content");if(no)dr.observe(no);let po=e.querySelector(".repair-context");if(po)dr.observe(po);let lo=hr?.querySelector(".compare-toolbar");if(lo)dr.observe(lo);gi();let hi=Array.from(e.querySelectorAll(".pan-viewport"));if(hi.forEach((r)=>{r.scrollLeft=o,r.scrollTop=l}),hi.forEach((r)=>{r.querySelectorAll("img").forEach((t)=>t.draggable=!1),r.addEventListener("click",()=>{if(!_)Nr(!0)}),r.addEventListener("pointermove",(t)=>{if(t.pointerType!=="mouse"||t.buttons||!r.classList.contains("pannable"))return;let k=r.getBoundingClientRect();r.scrollLeft=Hi(t.clientX,k.left,r.clientWidth,r.scrollWidth),r.scrollTop=Hi(t.clientY,k.top,r.clientHeight,r.scrollHeight)}),r.addEventListener("keydown",(t)=>{if(!_&&(t.key==="Enter"||t.key===" ")){t.preventDefault(),t.stopPropagation(),Nr(!0);return}let j={ArrowLeft:[-48,0],ArrowRight:[48,0],ArrowUp:[0,-48],ArrowDown:[0,48]}[t.key];if(!j)return;t.preventDefault(),t.stopPropagation(),r.scrollLeft+=j[0],r.scrollTop+=j[1]})}),hi.forEach((r)=>r.addEventListener("scroll",()=>{for(let t of hi)if(t!==r){if(t.scrollLeft!==r.scrollLeft)t.scrollLeft=r.scrollLeft;if(t.scrollTop!==r.scrollTop)t.scrollTop=r.scrollTop}})),ei&&window.matchMedia("(max-width:800px)").matches){let r=e.querySelector(".inspection-content"),t=e.querySelector(".compare");if(r&&t)r.scrollTop+=t.getBoundingClientRect().top-r.getBoundingClientRect().top}if(Ui(),window.scrollTo(A,W),!q)n.onDraftChange?.(structuredClone(p))}return X(),{destroy(){dr?.disconnect(),e.replaceChildren()},getDraft(){return structuredClone(p)}}}function Mo(){let a=document.createElement("style");a.textContent=[["Albert Sans","albertsans"],["Alumni Sans","alumnisans"],["JetBrains Mono","jetbrainsmono"]].map(([i,n])=>`@font-face{font-family:"${i}";src:url(/fonts/${n}.ttf);font-weight:100 900}`).join(""),document.head.append(a)}function Eo(a){let i=document.createElement("div");i.setAttribute("role","alert"),i.style.cssText="max-width:560px;margin:18vh auto 0;padding:0 0 0 18px;border-left:2px solid oklch(52% 0.16 35);color:oklch(22% 0 0);font:400 15px/1.55 var(--font-sans,Arial,sans-serif)";let n=document.createElement("p");n.textContent="Review unavailable",n.style.cssText="margin:0 0 8px;font:400 11px/1.3 var(--font-mono,monospace);letter-spacing:.14em;text-transform:uppercase;color:oklch(46% 0 0)";let e=document.createElement("strong");e.textContent="The review could not be opened.",e.style.cssText="display:block;font-weight:500;color:oklch(13% 0 0)";let p=document.createElement("p");p.style.cssText="margin:4px 0 18px;color:oklch(46% 0 0)",p.textContent=`${a} If the review server stopped, ask the agent to serve the review again, then reload.`;let s=document.createElement("button");return s.textContent="Reload",s.style.cssText="font:500 15px/1 var(--font-sans,Arial,sans-serif);min-height:44px;padding:0 22px;border:1px solid oklch(13% 0 0);border-radius:3px;background:oklch(13% 0 0);color:oklch(99.5% 0 0);cursor:pointer",s.onclick=()=>location.reload(),i.append(n,e,p,s),i}async function Ho(){Mo(),document.body.style.background="oklch(97.8% 0 0)";let a=document.getElementById("review"),i=await fetch("/packet",{cache:"no-store"});if(!i.ok)throw Error("The review packet could not be loaded.");let n=await i.json(),e=ci(n.packet);if(n.sourceStatus&&!e){let p=document.createElement("p");p.textContent=n.sourceStatus,a.before(p)}Jo(a,n.packet,{initialDraft:n.draft,history:n.history,completed:!!n.receipt,status:e?n.sourceStatus:null,onSubmit:async(p)=>{let s=await fetch("/decision",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(p)}),f=await s.json().catch(()=>({}));if(!s.ok)throw Error(f.error??"The review could not be saved. Try again.")}})}Ho().catch((a)=>{document.getElementById("review")?.replaceChildren(Eo(a instanceof Error?a.message:String(a)))});})();
+      ${!d?`<section class="inventory-section ${K?"":"tray-collapsed"} ${Ee&&K?"tray-expanded":""}" aria-label="Component inventory"><div class="section-head"><h2>Components</h2><div class="inventory-filters ks-instrument-strip is-paper" data-ks-strip="filter" role="group" aria-label="Filter components"><button type="button" class="ks-instrument-key" data-filter="pending" aria-pressed="${v==="pending"}">To review <b>${si}</b></button><button type="button" class="ks-instrument-key" data-filter="reviewed" aria-pressed="${v==="reviewed"}">Reviewed <b>${Zr}</b></button><button type="button" class="ks-instrument-key" data-filter="all" aria-pressed="${v==="all"}">All <b>${u.length+t.missing.length}</b></button></div><div class="tray-actions"><button id="show-all" class="ks-icon-button" aria-pressed="${Ee}" aria-controls="component-tray" aria-label="${Ee?"Compact":"Expand"} tray" title="${Ee?"Compact":"Expand"} tray">${be(Ee?"compact":"expand")}</button><button id="toggle-tray" class="ks-icon-button" aria-expanded="${K}" aria-controls="component-tray" aria-label="${K?"Hide":"Show"} component tray" title="${K?"Hide":"Show"} component tray">${be(K?"hideTray":"showTray")}</button></div></div>
+      <div id="component-tray" class="inventory ${Ee?"all":""}">${ir.map((e)=>{let l=u.find((xe)=>xe.members.some((te)=>te.id===e.id)),c=u.indexOf(l),E={kind:l.kind,label:l.stateLabel};return`<button class="item ${E.kind} ${!z&&x?.id===l.id?"active":""}" data-select="${w(e.id)}" aria-pressed="${!z&&x?.id===l.id}">${e.thumbnail?`<span class="item-thumb">${e.thumbnail.box?`<span class="thumb-crop" style="width:min(100%,${76*e.thumbnail.box.w*i.comp.width/(e.thumbnail.box.h*i.comp.height)}px);aspect-ratio:${e.thumbnail.box.w*i.comp.width}/${e.thumbnail.box.h*i.comp.height}"><img alt="" loading="lazy" src="${ce(e.thumbnail.url)}" style="position:absolute;width:${100/e.thumbnail.box.w}%;max-width:none;left:${-100*e.thumbnail.box.x/e.thumbnail.box.w}%;top:${-100*e.thumbnail.box.y/e.thumbnail.box.h}%;"></span>`:`<img alt="" loading="lazy" src="${ce(e.thumbnail.url)}">`}</span>`:""}<span class="item-number">${E.kind==="approved"?Ye:E.kind==="feedback"?ye:""}${c+1}<span class="item-medium">${be(Ie(e).code?"code":"image")}${w(Ie(e).label)}</span></span><strong>${w(Nr(e.id))}${l.members.length>1?` <small>×${l.members.length}</small>`:""}</strong><span class="state ${E.kind}">${w(E.label)}</span></button>`}).join("")}${(v==="pending"?[]:t.missing).map((e,l)=>`<button class="item feedback ${g===e.id?"active":""}" data-select="${w(e.id)}"><span class="item-number">${u.length+l+1}</span><strong>${w(e.name)}</strong><span class="state revise">Missing</span></button>`).join("")}${!ir.length&&(v==="pending"||!t.missing.length)?`<p class="inventory-empty">${v==="pending"?"Nothing left to review. Your decisions are ready.":"No components reviewed yet."}</p>`:""}</div></section>`:""}
+      ${d?"":m?`<footer class="record-footer"><span>Round ${i.round} submitted · read-only</span><span>${H.approved} approved · ${H.revisions} changes requested</span></footer>`:`<footer class="${!H.pending&&!Ne?"queue-complete":""}"><div>${!H.pending&&!Ne?`<button id="show-summary" class="completion-link">${Ye}${m?"Review sent":"All components reviewed"}</button>`:""}<button id="approve-rest" class="ks-button ks-button-secondary" ${!H.pending?"hidden":""} ${!H.pending||Ne?"disabled":""}>Approve ${H.approved||H.revisions?"remaining":"all"}</button><label class="check ks-checkbox"><input id="inventory-confirm" type="checkbox" ${t.inventoryConfirmed?"checked":""}> Nothing missing from the comp</label></div><div class="submit-area"><p role="status">${w(Ur)}</p><button id="submit" class="ks-button ks-button-primary" ${!H.canSubmit||Ne||k||m?"disabled":""}>${k?"Sending…":m?"Review sent":H.hasFeedback?"Send feedback":"Approve & continue"}${k||m?"":Be}</button></div></footer>`}
+    </section><dialog id="comparison-dialog" aria-label="${d?"Enlarged page comparison":"Enlarged component comparison"}"></dialog>`;let P=o.querySelector("#comparison-dialog"),de=o.querySelector(".comparison-panel"),Le=o.querySelector(".comparison-slot"),qe=o.querySelector(".inspector > .review-form"),Br=o.querySelector(".inspector"),or=()=>{if(P.append(de),qe)P.append(qe)};if(Q&&de&&Le)Le.style.height=`${hi}px`,or(),P.showModal();if(ze)o.querySelectorAll(".decisions button,#feedback,#split,#save-feedback,#cancel-feedback,#undo-decision,#approve-rest,#submit,#inventory-confirm").forEach((e)=>e.disabled=!0);if(o.querySelector(".inspection-content").scrollTop=Ji,m||k)o.querySelectorAll(".decisions button,#save-feedback,#cancel-feedback,#undo-decision,#approve-rest,#mark,#inventory-confirm,#missing-name,#missing-feedback,#feedback,#split,#remove-missing,[data-coordinate]").forEach((e)=>e.disabled=!0);let nr=o.querySelector(".inventory");if(nr)nr.scrollLeft=Me;if(!D&&K)Array.from(o.querySelectorAll(".inventory [data-select]")).find((e)=>e.dataset.select===g)?.scrollIntoView({block:"nearest",inline:"nearest"});if($)o.getElementById($)?.focus({preventScroll:!0});else if(L)Array.from(o.querySelectorAll(".item[data-select]")).find((e)=>e.dataset.select===L)?.focus({preventScroll:!0});let U=(e,l)=>o.querySelector(`#${e}`)?.addEventListener("click",l);function Ni(e,l=!1,c=!1){if(h)return;if(!c)e=u.find((E)=>E.members.some((xe)=>xe.id===e))?.representative.id??e;if(X=!c,z=!1,g=e,B="component",re=!1,se="fit",pe="isolated",O=!1,Y(),l)o.querySelector("#expand-comparison")?.click()}o.querySelectorAll("[data-select]").forEach((e)=>e.onclick=()=>Ni(e.dataset.select,e.classList.contains("pin")&&i.components.some((l)=>l.id===e.dataset.select))),U("previous-round",()=>{O=!0,Y()}),U("current-round",()=>{O=!1,Y()}),U("review-changes",()=>{let e=f().filter((E)=>Xi(E).kind==="pending"),l=e.findIndex((E)=>E.id===g),c=e[(l+1)%e.length];if(c)X=!0,z=!1,g=c.id,B="component",v="pending",O=!1,se="fit",re=!1,pe="isolated",Y()}),o.querySelectorAll("[data-filter]").forEach((e)=>e.onclick=()=>{v=e.dataset.filter,z=!H.pending&&v==="pending";let l=u.filter((E)=>v==="all"||E.kind==="pending"===(v==="pending")).map((E)=>E.representative);if(!(v!=="pending"&&t.missing.some((E)=>E.id===g))&&!l.some((E)=>E.id===g)&&l.length)X=!0,g=l[0].id,B="component",O=!1,se="fit",re=!1,pe="isolated";Y()}),U("show-summary",()=>{z=!0,B="component",v="reviewed",Y(),ve("review-summary")}),U("approve",()=>ai("approve")),U("revise",$e),U("clear",()=>{if(p)delete t.decisions[p.id],delete V[p.id];G=null,z=!1,v="pending",Y()}),U("cancel-feedback",()=>{if(p)delete V[p.id];if(me)K=!0,me=!1;Y(),ve("revise")}),o.querySelector("#feedback-form")?.addEventListener("submit",(e)=>{e.preventDefault(),ai("revise")}),o.querySelector("#feedback")?.addEventListener("keydown",(e)=>{let l=e;if(l.key==="Enter"&&(l.metaKey||l.ctrlKey)&&!l.isComposing)l.preventDefault(),l.stopPropagation(),ai("revise")}),U("undo-decision",()=>{if(!G||k||m)return;let e=G;for(let[l,c]of Object.entries(e.previous))if(c)t.decisions[l]=c;else delete t.decisions[l];delete V[e.id],g=e.id,z=!1,O=!1,B="component",v="all",G=null,Y(),ve("approve")}),U("all-instances",()=>{X=!0,g=x.representative.id,O=!1,Y()}),o.querySelectorAll("[data-instance]").forEach((e)=>e.onclick=()=>Ni(e.dataset.instance,!1,!0)),U("overlay",()=>{re=!re,Y()}),U("isolated",()=>{pe="isolated",Y()}),U("context",()=>{pe="context",Y()}),o.querySelectorAll("[data-zoom]").forEach((e)=>e.addEventListener("click",()=>{let l=e.dataset.zoom;se=l==="fit"?"fit":Number(l),Y()})),U("background-checker",()=>{ae="checker",Y()}),U("background-page",()=>{ae="page",Y()}),U("show-all",()=>{Ee=!Ee,K=!0,Y()}),U("toggle-tray",()=>{me=!1,K=!K,Y()}),U("show-comp",()=>{B="comp",Y()}),U("show-component",()=>{B="component",Y()}),U("mark",()=>{h=!h,Y()}),U("add-box",()=>oi({x:0.35,y:0.35,w:0.2,h:0.2})),U("remove-missing",()=>{t.missing=t.missing.filter((e)=>e.id!==g),g=i.components[0]?.id,Y()}),U("approve-rest",()=>{if(Ne)return;t=kr(i,t),G=null,z=!0,v="reviewed",B="component",Y(),ve("review-summary")}),o.querySelector("#inventory-confirm")?.addEventListener("change",(e)=>{t.inventoryConfirmed=e.target.checked,Y()}),o.querySelector("#feedback")?.addEventListener("input",(e)=>{if(p&&V[p.id])V[p.id].feedback=e.target.value}),o.querySelector("#split")?.addEventListener("change",(e)=>{if(p&&V[p.id])V[p.id].split=e.target.checked}),o.querySelector("#missing-name")?.addEventListener("input",(e)=>{if(b)b.name=e.target.value;let l=o.querySelector("#submit");if(l)l.disabled=Ne||k||m||!Re(i,t).canSubmit}),o.querySelector("#missing-feedback")?.addEventListener("input",(e)=>{if(b)b.feedback=e.target.value}),o.querySelectorAll("[data-coordinate]").forEach((e)=>e.addEventListener("change",()=>{if(!b)return;let l=e.dataset.coordinate,c=Number(e.value)/100;if(Number.isFinite(c))b.box[l]=Math.max(l==="w"||l==="h"?0.001:0,Math.min(1,c));b.box.w=Math.min(b.box.w,1-b.box.x),b.box.h=Math.min(b.box.h,1-b.box.y),Y()})),U("submit",()=>{ri()});let fe=o.querySelector(".map");function _i(e){let l=fe.getBoundingClientRect();return{x:Math.max(0,Math.min(1,(e.clientX-l.left)/l.width)),y:Math.max(0,Math.min(1,(e.clientY-l.top)/l.height))}}function tr(e){let l=_i(e);return i.components.filter(({box:c})=>l.x>=c.x&&l.x<=c.x+c.w&&l.y>=c.y&&l.y<=c.y+c.h).sort((c,E)=>c.box.w*c.box.h-E.box.w*E.box.h)[0]}fe?.addEventListener("click",(e)=>{if(h||e.target.closest("[data-select]"))return;let l=tr(e);if(l)Ni(l.id,!0)}),fe?.addEventListener("pointermove",(e)=>{if(!h)fe.style.cursor=tr(e)?"zoom-in":""}),fe?.addEventListener("pointerdown",(e)=>{if(!h)return;ke=_i(e),fe.setPointerCapture(e.pointerId),e.preventDefault()}),fe?.addEventListener("pointermove",(e)=>{if(!ke)return;let l=_i(e);ge={x:Math.min(ke.x,l.x),y:Math.min(ke.y,l.y),w:Math.abs(l.x-ke.x),h:Math.abs(l.y-ke.y)};let c=o.querySelector(".draw-box");c.hidden=!1,c.style.cssText=Ze(ge)}),fe?.addEventListener("pointerup",()=>{if(ge&&ge.w>0.01&&ge.h>0.01)oi(ge);else ke=null,ge=null}),fe?.addEventListener("pointercancel",()=>{ke=null,ge=null,Y()});let sr=o.querySelector(".output"),gi=o.querySelector("iframe"),pr=o.querySelector(".workbench"),Oe=o.querySelector(".inspection-content"),Ui=o.querySelector(".inspector");function Li(){if(!Oe||!Ui)return;Ui.dataset.scrollAbove=String(Oe.scrollTop>1),Ui.dataset.scrollBelow=String(Oe.scrollHeight-Oe.clientHeight-Oe.scrollTop>1)}Oe?.addEventListener("scroll",Li,{passive:!0});function vi(){let e=o.querySelector(".map-space");if(e&&e.clientWidth&&e.clientHeight){let N=Ai(i.comp.width,i.comp.height,Math.max(1,e.clientWidth-32),Math.max(1,e.clientHeight-32),"fit");fe.style.width=`${N.width}px`,fe.style.height=`${N.height}px`}let l=o.querySelector(".inspection-content"),c=Array.from(o.querySelectorAll(".pan-viewport"));if(l?.clientHeight){let N=Q?Math.max(100,P.clientHeight-(de?.querySelector(".compare-toolbar")?.clientHeight??0)-(de?.querySelector(".expanded-title")?.clientHeight??0)-(de?.querySelector(".view-controls")?.clientHeight??0)-(qe?.getBoundingClientRect().height??0)-124):Math.min(d?Number.POSITIVE_INFINITY:248,Math.max(100,l.clientHeight-((c[0]?.getBoundingClientRect().top??l.getBoundingClientRect().top)-l.getBoundingClientRect().top+l.scrollTop)-(de?.querySelector(".view-controls")?.clientHeight??0)-12));c.forEach((R)=>R.style.height=`${N}px`)}if(q&&c.length&&!y){let N=Ai(q.box.w*ie.comp.width,q.box.h*ie.comp.height,Math.min(...c.map((R)=>R.clientWidth)),Math.min(...c.map((R)=>R.clientHeight)),se);o.querySelectorAll(".crop-stage").forEach((R)=>{R.style.width=`${N.width}px`,R.style.height=`${N.height}px`})}if(c.forEach((N)=>{let R=N.scrollWidth>N.clientWidth+1||N.scrollHeight>N.clientHeight+1;N.classList.toggle("pannable",R),N.style.cursor=Q?"":"zoom-in",N.setAttribute("role",Q?"region":"button"),N.title=Q?R?"Move your pointer to pan. You can also scroll, swipe, or use arrow keys.":"":"Click to enlarge comparison"}),sr&&gi&&q){let N=sr.clientWidth/(q.box.w*ie.comp.width);gi.style.transform=`scale(${N})`,gi.style.left=`${-q.box.x*ie.comp.width*N}px`,gi.style.top=`${-q.box.y*ie.comp.height*N}px`}let E=pr.getBoundingClientRect(),xe=o.querySelector(".region"),te=o.querySelector(".number"),fi=o.querySelector(".connector path");if(xe&&te&&fi){let N=xe.getBoundingClientRect(),R=te.getBoundingClientRect(),bi=N.right-E.left,F=N.top+N.height/2-E.top,pi=R.left-E.left-8,ci=R.top+R.height/2-E.top;fi.setAttribute("d",`M ${bi} ${F} H ${pi-14} V ${ci} H ${pi}`)}}function De(e,l){if(!de||!Le||e===Q)return;let c=o.querySelector("#expand-comparison"),E=(Q?P:de).getBoundingClientRect(),xe=window.matchMedia("(prefers-reduced-motion: reduce)").matches,te=de.querySelector(".pan-viewport"),fi=te?te.scrollLeft/Math.max(1,te.scrollWidth-te.clientWidth):0,N=te?te.scrollTop/Math.max(1,te.scrollHeight-te.clientHeight):0,R=()=>de.querySelectorAll(".pan-viewport").forEach((F)=>{F.scrollLeft=fi*Math.max(0,F.scrollWidth-F.clientWidth),F.scrollTop=N*Math.max(0,F.scrollHeight-F.clientHeight)}),bi=()=>{if(Le.append(de),qe)Br.append(qe),qe.inert=!1;P.close(),Le.style.height="",we=!1,Q=!1,c.innerHTML=be("expand"),c.setAttribute("aria-label","Enlarge comparison"),c.title="Enlarge comparison",c.setAttribute("aria-expanded","false"),vi(),R(),c.focus({preventScroll:!0}),l?.()};if(e){Le.style.height=`${E.height}px`,or(),P.showModal(),Q=!0,c.innerHTML=be("compact"),c.setAttribute("aria-label","Restore comparison"),c.title="Restore comparison (Esc)",c.setAttribute("aria-expanded","true"),vi(),R(),c.focus({preventScroll:!0});let F=P.getBoundingClientRect();if(!xe)P.animate([{transform:`translate(${E.x-F.x}px,${E.y-F.y}px) scale(${E.width/F.width},${E.height/F.height})`,opacity:0.6},{transform:"none",opacity:1}],{duration:240,easing:"cubic-bezier(.2,.8,.2,1)"})}else{if(c.disabled)return;let F=Le.getBoundingClientRect();if(xe){bi();return}if(c.disabled=!0,we=!0,qe)qe.inert=!0;let pi=P.animate([{transform:"none",opacity:1},{transform:`translate(${F.x-E.x}px,${F.y-E.y}px) scale(${F.width/E.width},${F.height/E.height})`,opacity:0.6}],{duration:200,easing:"cubic-bezier(.4,0,.2,1)",fill:"forwards"});P.inert=!0;let ci=()=>{if(pi.cancel(),c.disabled=!1,P.inert=!1,P.isConnected)bi();else we=!1,Q=!1,Y(),l?.()};pi.finished.then(ci,ci)}}if(Ge=(e)=>De(!1,e),U("expand-comparison",()=>De(!Q)),P.addEventListener("cancel",(e)=>{e.preventDefault(),e.stopPropagation(),De(!1)}),P.addEventListener("keydown",(e)=>{if(e.key==="Escape")e.preventDefault(),e.stopPropagation(),De(!1)}),He=Ei(o),ee=new ResizeObserver(()=>{vi(),Li()}),ee.observe(pr),ee.observe(P),qe)ee.observe(qe);let lr=o.querySelector(".inspection-content");if(lr)ee.observe(lr);let dr=o.querySelector(".repair-context");if(dr)ee.observe(dr);let xr=de?.querySelector(".compare-toolbar");if(xr)ee.observe(xr);vi();let ui=Array.from(o.querySelectorAll(".pan-viewport"));if(ui.forEach((e)=>{e.scrollLeft=a,e.scrollTop=s}),ui.forEach((e)=>{e.querySelectorAll("img").forEach((l)=>l.draggable=!1),e.addEventListener("click",()=>{if(!Q)De(!0)}),e.addEventListener("pointermove",(l)=>{if(l.pointerType!=="mouse"||l.buttons||!e.classList.contains("pannable"))return;let c=e.getBoundingClientRect();e.scrollLeft=Wi(l.clientX,c.left,e.clientWidth,e.scrollWidth),e.scrollTop=Wi(l.clientY,c.top,e.clientHeight,e.scrollHeight)}),e.addEventListener("keydown",(l)=>{if(!Q&&(l.key==="Enter"||l.key===" ")){l.preventDefault(),l.stopPropagation(),De(!0);return}let E={ArrowLeft:[-48,0],ArrowRight:[48,0],ArrowUp:[0,-48],ArrowDown:[0,48]}[l.key];if(!E)return;l.preventDefault(),l.stopPropagation(),e.scrollLeft+=E[0],e.scrollTop+=E[1]})}),ui.forEach((e)=>e.addEventListener("scroll",()=>{for(let l of ui)if(l!==e){if(l.scrollLeft!==e.scrollLeft)l.scrollLeft=e.scrollLeft;if(l.scrollTop!==e.scrollTop)l.scrollTop=e.scrollTop}})),ni&&window.matchMedia("(max-width:800px)").matches){let e=o.querySelector(".inspection-content"),l=o.querySelector(".compare");if(e&&l)e.scrollTop+=l.getBoundingClientRect().top-e.getBoundingClientRect().top}if(Li(),window.scrollTo(A,W),!m)n.onDraftChange?.(structuredClone(t))}return Y(),{destroy(){ee?.disconnect(),He?.(),o.replaceChildren()},getDraft(){return structuredClone(t)}}}function Ir(){let r=document.createElement("style");r.textContent=[["Albert Sans","albertsans"],["Alumni Sans","alumnisans"],["JetBrains Mono","jetbrainsmono"]].map(([i,n])=>`@font-face{font-family:"${i}";src:url(/fonts/${n}.ttf);font-weight:100 900}`).join(""),document.head.append(r)}function Rr(r){let i=document.createElement("div");i.setAttribute("role","alert"),i.style.cssText="max-width:560px;margin:18vh auto 0;padding:0 0 0 18px;border-left:2px solid oklch(52% 0.16 35);color:oklch(22% 0 0);font:400 15px/1.55 var(--font-sans,Arial,sans-serif)";let n=document.createElement("p");n.textContent="Review unavailable",n.style.cssText="margin:0 0 8px;font:400 11px/1.3 var(--font-mono,monospace);letter-spacing:.14em;text-transform:uppercase;color:oklch(46% 0 0)";let o=document.createElement("strong");o.textContent="The review could not be opened.",o.style.cssText="display:block;font-weight:500;color:oklch(13% 0 0)";let t=document.createElement("p");t.style.cssText="margin:4px 0 18px;color:oklch(46% 0 0)",t.textContent=`${r} If the review server stopped, ask the agent to serve the review again, then reload.`;let d=document.createElement("button");return d.textContent="Reload",d.style.cssText="font:500 15px/1 var(--font-sans,Arial,sans-serif);min-height:44px;padding:0 22px;border:1px solid oklch(13% 0 0);border-radius:3px;background:oklch(13% 0 0);color:oklch(99.5% 0 0);cursor:pointer",d.onclick=()=>location.reload(),i.append(n,o,t,d),i}async function Fr(){Ir(),document.body.style.background="oklch(97.8% 0 0)";let r=document.getElementById("review"),i=await fetch("/packet",{cache:"no-store"});if(!i.ok)throw Error("The review packet could not be loaded.");let n=await i.json(),o=ji(n.packet);if(n.sourceStatus&&!o){let t=document.createElement("p");t.textContent=n.sourceStatus,r.before(t)}Qr(r,n.packet,{initialDraft:n.draft,history:n.history,completed:!!n.receipt,status:o?n.sourceStatus:null,onSubmit:async(t)=>{let d=await fetch("/decision",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(t)}),f=await d.json().catch(()=>({}));if(!d.ok)throw Error(f.error??"The review could not be saved. Try again.")}})}Fr().catch((r)=>{document.getElementById("review")?.replaceChildren(Rr(r instanceof Error?r.message:String(r)))});})();

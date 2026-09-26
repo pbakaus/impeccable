@@ -405,9 +405,33 @@ fn write_report_contents(dir: &Path, comp: &Image, report: &mut Value) -> Result
         .replace('&', "\\u0026")
         .replace('<', "\\u003c")
         .replace('>', "\\u003e");
+    // The page is standalone: the design-system kit (vendored from impeccable-site, the source of
+    // truth) is inlined, and the three licensed fonts ship beside it.
+    let kit = [
+        include_str!("../../../ui/component-review/vendor/kinpaku-tokens.css"),
+        include_str!("../../../ui/component-review/vendor/kinpaku-kit.css"),
+        include_str!("../../../ui/component-review/vendor/docs-rail.css"),
+    ]
+    .join("\n");
+    let strip = include_str!("../../../ui/component-review/vendor/instrument-strip.js").replace("export function", "function");
+    let fonts = dir.join("fonts");
+    std::fs::create_dir(&fonts).map_err(|e| e.to_string())?;
+    for (name, bytes) in [
+        ("albertsans.ttf", &include_bytes!("../../../ui/component-review/fonts/albertsans.ttf")[..]),
+        ("alumnisans.ttf", &include_bytes!("../../../ui/component-review/fonts/alumnisans.ttf")[..]),
+        ("jetbrainsmono.ttf", &include_bytes!("../../../ui/component-review/fonts/jetbrainsmono.ttf")[..]),
+        ("albertsans-OFL.txt", include_bytes!("../../../ui/component-review/fonts/albertsans-OFL.txt")),
+        ("alumnisans-OFL.txt", include_bytes!("../../../ui/component-review/fonts/alumnisans-OFL.txt")),
+        ("jetbrainsmono-OFL.txt", include_bytes!("../../../ui/component-review/fonts/jetbrainsmono-OFL.txt")),
+    ] {
+        std::fs::write(fonts.join(name), bytes).map_err(|e| e.to_string())?;
+    }
     std::fs::write(
         dir.join("index.html"),
-        include_str!("map_inspection.html").replace("__REPORT_JSON__", &safe),
+        include_str!("map_inspection.html")
+            .replace("/*__KS_KIT__*/", &kit)
+            .replace("/*__KS_STRIP__*/", &strip)
+            .replace("__REPORT_JSON__", &safe),
     )
     .map_err(|e| e.to_string())
 }

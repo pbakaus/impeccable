@@ -5,66 +5,17 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Region map · Impeccable</title>
   <style>
-    /* Impeccable design-system tokens, copied from impeccable-site/site/styles/kinpaku-tokens.css
-       (the source of truth; ui/component-review/tokens.ts carries the same subset). This page is
-       standalone, so the values are inline. Change them there first, then mirror them here. */
-    :root {
-      color-scheme: light;
-      --ks-kinpaku: oklch(84% 0.19 80.46);
-      --ks-kinpaku-deep: oklch(61% 0.085 78);
-      --ks-patina: oklch(70% 0.12 188);
-      --ks-patina-deep: oklch(45% 0.10 190);
-      --ks-state-ink: var(--ks-patina-deep);
-      --ks-focus-ring: var(--ks-patina-deep);
-      --ks-vermilion: oklch(52% 0.16 35);
-      --ks-paper: oklch(97.8% 0 0);
-      --ks-paper-raised: oklch(99.5% 0 0);
-      --ks-paper-deep: oklch(95% 0 0);
-      --ks-gray: oklch(92% 0 0);
-      --ks-ink: oklch(13% 0 0);
-      --ks-text: oklch(22% 0 0);
-      --ks-text-muted: oklch(46% 0 0);
-      --ks-text-faint: oklch(51% 0 0);
-      --ks-text-mute-deep: oklch(66% 0 0);
-      --ks-rule: oklch(13% 0 0 / 0.08);
-      --ks-edge: oklch(13% 0 0 / 0.45);
-      --ks-radius-sm: 3px;
-      --ks-control-sm: 26px;
-      --ks-control-md: 32px;
-      --ks-lift-1: 0 1px 1px oklch(13% 0 0 / 0.05), 0 2px 3px oklch(13% 0 0 / 0.04), 0 6px 12px oklch(13% 0 0 / 0.05);
-      --ks-font: "Albert Sans", "Avenir Next", "Helvetica Neue", Arial, system-ui, sans-serif;
-      --ks-font-display: "Alumni Sans", "Avenir Next Condensed", "Helvetica Neue", "Albert Sans", Arial, sans-serif;
-      --ks-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
-      --ks-type-eyebrow-size: 0.6875rem;
-      --ks-type-eyebrow-track: 0.14em;
-      --ks-type-label-size: 0.75rem;
-      --ks-type-ui-size: 0.8125rem;
-      --ks-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
-      --ks-quick: 120ms;
-      font: 400 14px/1.5 var(--ks-font);
-      color: var(--ks-text);
-      background: var(--ks-paper);
-    }
+    /* Fonts ship beside this page (fonts/), declared with their variable weight ranges. */
+    @font-face { font-family: "Albert Sans"; src: url(fonts/albertsans.ttf); font-weight: 100 900; }
+    @font-face { font-family: "Alumni Sans"; src: url(fonts/alumnisans.ttf); font-weight: 100 900; }
+    @font-face { font-family: "JetBrains Mono"; src: url(fonts/jetbrainsmono.ttf); font-weight: 100 800; }
+/*__KS_KIT__*/
+    :root { font: 400 14px/1.5 var(--ks-font); color: var(--ks-text); background: var(--ks-paper); }
+    button, a { font: inherit; }
     * { box-sizing: border-box; }
     [hidden] { display: none !important; }
     body { margin: 0; }
     button, select, a { font: inherit; }
-    button, select {
-      color: var(--ks-ink);
-      background: var(--ks-paper-raised);
-      border: 1px solid var(--ks-edge);
-      border-radius: var(--ks-radius-sm);
-      min-height: var(--ks-control-md);
-      padding: 0 12px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: border-color var(--ks-quick) var(--ks-ease), background-color var(--ks-quick) var(--ks-ease);
-    }
-    button:hover:not(:disabled) { border-color: var(--ks-ink); }
-    button[aria-pressed=true] { background: var(--ks-ink); border-color: var(--ks-ink); color: var(--ks-paper-raised); }
-    button:disabled { color: var(--ks-text-mute-deep); border-color: var(--ks-rule); background: transparent; cursor: not-allowed; }
-    a { color: var(--ks-ink); text-decoration-color: oklch(13% 0 0 / 0.28); text-underline-offset: 3px; }
-    a:hover { text-decoration-color: var(--ks-kinpaku); }
     :is(button, select, a, summary):focus-visible { outline: 2px solid var(--ks-focus-ring); outline-offset: 3px; }
     ::selection { background: oklch(82% 0.07 188); }
     header {
@@ -82,36 +33,8 @@
     #sheets:empty { display: none; }
     .layout { display: grid; grid-template-columns: 232px minmax(0, 1fr); height: calc(100dvh - 72px); }
     nav { border-right: 1px solid var(--ks-rule); overflow: auto; padding: 18px 14px; }
-    .filters { display: flex; gap: 2px; padding: 3px; margin-bottom: 14px; border: 1px solid var(--ks-edge); border-radius: var(--ks-radius-sm); background: var(--ks-paper-deep); }
-    .filters button { flex: 1; min-height: calc(var(--ks-control-md) - 8px); padding: 0 6px; border: 0; border-radius: 2px; background: transparent; color: var(--ks-text-faint); font: 500 var(--ks-type-label-size)/1 var(--ks-mono); letter-spacing: .02em; }
-    .filters button:hover:not(:disabled) { background: var(--ks-paper-raised); color: var(--ks-text); }
-    .filters button[aria-pressed=true] { background: var(--ks-paper-raised); color: var(--ks-ink); box-shadow: inset 0 0 0 1px var(--ks-rule), var(--ks-lift-1); }
-    .region {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      text-align: left;
-      width: 100%;
-      margin-bottom: 2px;
-      border: 0;
-      border-radius: 0;
-      background: none;
-      padding: 9px 8px 9px 10px;
-      font-weight: 400;
-      color: var(--ks-text);
-      overflow-wrap: anywhere;
-    }
-    .region:hover:not(:disabled) { background: var(--ks-paper-deep); }
-    .region[aria-current=true] { background: var(--ks-paper-raised); color: var(--ks-ink); box-shadow: inset 2px 0 0 var(--ks-kinpaku), inset 0 0 0 1px var(--ks-rule); }
-    .region .dot { flex: 0 0 7px; height: 7px; background: var(--ks-gray); box-shadow: inset 0 0 0 1px var(--ks-edge); border-radius: 50%; }
-    .region.error .dot { background: var(--ks-vermilion); box-shadow: none; }
-    .region.masked .dot { background: var(--ks-kinpaku); box-shadow: 0 0 0 1px oklch(13% 0 0 / 0.12); }
-    .region .name { flex: 1; }
-    .region .status { font: 500 var(--ks-type-label-size)/1 var(--ks-mono); white-space: nowrap; color: var(--ks-text); font-variant-numeric: tabular-nums; }
-    .region.error .status { color: var(--ks-vermilion); }
     #related { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; font-size: var(--ks-type-label-size); color: var(--ks-text-muted); }
     #related:empty { display: none; }
-    #related button { min-height: var(--ks-control-sm); padding: 0 10px; font-size: var(--ks-type-label-size); }
     main { min-width: 0; overflow: auto; padding: 26px 28px; }
     .heading { display: flex; justify-content: space-between; align-items: start; gap: 20px; margin-bottom: 22px; }
     h2 { font-size: 1.5rem; line-height: 1.2; margin: 0 0 8px; font-weight: 500; color: var(--ks-ink); }
@@ -121,7 +44,6 @@
     .inspection { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; align-items: start; }
     .section-title { display: flex; align-items: center; justify-content: space-between; min-height: 36px; gap: 12px; margin-bottom: 12px; }
     h3 { font: 400 var(--ks-type-eyebrow-size)/1.3 var(--ks-mono); letter-spacing: var(--ks-type-eyebrow-track); text-transform: uppercase; color: var(--ks-text-muted); margin: 0; }
-    .section-title button, .section-title select { min-height: var(--ks-control-sm); font-size: var(--ks-type-label-size); padding: 0 8px; }
     .section-title label { font-size: var(--ks-type-label-size); color: var(--ks-text-muted); }
     .context { height: clamp(280px, 48vh, 580px); box-shadow: 0 0 0 1px var(--ks-rule); }
     .context svg { display: block; width: 100%; height: 100%; }
@@ -169,6 +91,19 @@
       .context { height: 300px; }
       .crop { height: 220px; }
     }
+    .strip-row { margin-bottom: 18px; }
+    .strip-row .ks-instrument-strip { width: 100%; }
+    .strip-row .ks-instrument-key { flex: 1; justify-content: center; }
+    nav.docs-kinpaku .skills-sidebar-list a { display: flex; align-items: baseline; gap: 10px; overflow-wrap: anywhere; }
+    nav.docs-kinpaku .skills-sidebar-list a .name { flex: 1; }
+    .status { font: 500 var(--ks-type-label-size)/1 var(--ks-mono); white-space: nowrap; color: var(--ks-text); font-variant-numeric: tabular-nums; font-weight: 500; }
+    .is-error .status { color: var(--ks-vermilion); }
+    .text-action { border: 0; background: none; padding: 0 2px; color: var(--ks-link-on-paper); font: inherit; text-decoration: underline; text-decoration-color: var(--ks-link-on-paper-line); text-underline-offset: 3px; cursor: pointer; }
+    .text-action:hover { text-decoration-color: var(--ks-link-on-paper-line-hover); }
+    a { color: var(--ks-link-on-paper); text-decoration-color: var(--ks-link-on-paper-line); text-underline-offset: 3px; }
+    a:hover { text-decoration-color: var(--ks-link-on-paper-line-hover); }
+    #related .text-action { font-size: var(--ks-type-label-size); }
+    .zoom-strip .ks-instrument-key { padding: 0 12px 0 10px; }
   </style>
 </head>
 <body>
@@ -178,22 +113,22 @@
     <a href="report.json" target="_blank" rel="noopener">Technical report</a>
   </header>
   <div class="layout">
-    <nav aria-label="Regions">
-      <div class="filters">
-        <button id="problems" aria-pressed="true">Inspect</button>
-        <button id="all" aria-pressed="false">All regions</button>
-      </div>
-      <div id="list"></div>
+    <nav class="docs-kinpaku" aria-label="Regions">
+      <div class="strip-row"><div class="ks-instrument-strip is-paper" role="group" aria-label="Which regions to list">
+        <button type="button" class="ks-instrument-key" id="problems" aria-pressed="true">Inspect</button>
+        <button type="button" class="ks-instrument-key" id="all" aria-pressed="false">All regions</button>
+      </div></div>
+      <ul class="skills-sidebar-list" id="list"></ul>
     </nav>
     <main>
       <div class="heading">
         <div><h2 id="title">Check the region map</h2><p id="explanation"></p><div id="related"></div></div>
-        <button id="next">Next check →</button>
+        <button type="button" class="ks-button ks-button-secondary" id="next">Next check</button>
       </div>
       <div id="sheets" aria-label="Comparison sheets"></div>
       <div id="inspection" class="inspection">
         <section>
-          <div class="section-title"><h3>In the comp</h3><button id="context-toggle" aria-pressed="false">Show whole comp</button></div>
+          <div class="section-title"><h3>In the comp</h3><button type="button" class="ks-switch" id="context-toggle" aria-pressed="false"><span class="ks-switch-track" aria-hidden="true"><span class="ks-switch-knob"></span></span><span class="ks-switch-label">Whole comp</span></button></div>
           <div class="context"><svg id="context" role="img" aria-label="Selected asset and overlapping boxes in the original comp"></svg></div>
           <div class="legend">
             <span class="key"><span class="swatch"></span><span id="asset-key">This asset</span></span>
@@ -201,7 +136,7 @@
           </div>
         </section>
         <section>
-          <div class="section-title"><h3>What gets compared</h3><label>Zoom <select id="zoom"><option value="fit">Fit</option><option value="1">100%</option><option value="2">200%</option><option value="4">400%</option></select></label></div>
+          <div class="section-title"><h3>What gets compared</h3><div class="ks-instrument-strip is-paper zoom-strip" id="zoom" role="group" aria-label="Zoom"><button type="button" class="ks-instrument-key" data-zoom="fit" aria-pressed="true">Fit</button><button type="button" class="ks-instrument-key" data-zoom="1" aria-pressed="false">100%</button><button type="button" class="ks-instrument-key" data-zoom="2" aria-pressed="false">200%</button><button type="button" class="ks-instrument-key" data-zoom="4" aria-pressed="false">400%</button></div></div>
           <div class="pair">
             <figure><figcaption>Original crop</figcaption><div class="crop" id="original"></div></figure>
             <figure><figcaption id="ignored-label">Pixels ignored by the checker</figcaption><div class="crop" id="ignored"></div></figure>
@@ -232,6 +167,7 @@
     let selected = null;
     let filter = problemRegions.length ? 'problems' : 'all';
     let wholeComp = false;
+    let zoomValue = 'fit';
 
     function name(region) {
       return region.id.replace(/-plate$/, /photo/i.test(region.note || '') ? ' photo' : ' artwork').replace(/-/g, ' ').replace(/^./, c => c.toUpperCase());
@@ -253,21 +189,23 @@
       $('all').textContent = `All (${data.regions.length})`;
       for (const key of ['problems', 'all']) $(key).setAttribute('aria-pressed', String(filter === key));
       for (const r of filter === 'problems' ? problemRegions : data.regions) {
-        const button = element('button', '', `region ${errors(r.id).length ? 'error' : r.reference?.excludedPixels ? 'masked' : ''}`);
-        button.setAttribute('aria-label', name(r));
-        button.setAttribute('aria-current', String(selected?.id === r.id));
-        button.append(element('span', '', 'dot'), element('span', name(r), 'name'));
+        const li = document.createElement('li');
+        const link = element('a', '', errors(r.id).length ? 'is-error' : r.reference?.excludedPixels ? 'is-masked' : '');
+        link.href = `#region=${encodeURIComponent(r.id)}`;
+        if (selected?.id === r.id) link.setAttribute('aria-current', 'page');
+        link.append(element('span', name(r), 'name'));
         if (errors(r.id).length || r.reference?.excludedPixels) {
           const label = errors(r.id).length ? 'Error' : `${percent(r.reference)}%`;
           const badge = element('span', label, 'status');
           badge.title = errors(r.id).length ? 'Map error' : `${label} excluded. Inspect the foreground bounds.`;
-          button.setAttribute('aria-description', badge.title);
-          button.append(badge);
+          link.setAttribute('aria-description', badge.title);
+          link.append(badge);
         }
-        button.onclick = () => select(r);
-        $('list').append(button);
+        link.onclick = event => { event.preventDefault(); select(r); };
+        li.append(link);
+        $('list').append(li);
       }
-      if (!$('list').children.length) $('list').append(element('p', 'No drawable regions have errors or masked pixels. Crop accuracy still needs visual inspection; rejected entries are in Other map findings.', 'empty'));
+      if (!$('list').children.length) $('list').append(element('li', 'No drawable regions have errors or masked pixels. Crop accuracy still needs visual inspection; rejected entries are in Other map findings.', 'empty'));
     }
     function renderContext() {
       if (!selected) return;
@@ -291,7 +229,6 @@
       svg.append(svgElement('rect', { x: selected.px.x, y: selected.px.y, width: selected.px.w, height: selected.px.h, fill: 'none', stroke: 'oklch(45% 0.10 190)', 'stroke-width': 3, 'vector-effect': 'non-scaling-stroke' }));
       $('covering-key').hidden = covering.length === 0;
       $('covering-key').lastChild.textContent = selected.reference ? ' Overlapping foreground' : ' Affected artwork';
-      $('context-toggle').textContent = wholeComp ? 'Show nearby context' : 'Show whole comp';
       $('context-toggle').setAttribute('aria-pressed', String(wholeComp));
     }
     function renderCrop(target, ignored) {
@@ -309,7 +246,7 @@
           svg.append(svgElement('rect', { x: p.x, y: p.y, width: p.w, height: p.h, fill: 'url(#excluded)' }));
         }
       }
-      const zoom = $('zoom').value;
+      const zoom = zoomValue;
       target.className = `crop ${zoom === 'fit' ? '' : 'zoom'}`;
       if (zoom !== 'fit') {
         svg.style.width = `${selected.px.w * Number(zoom)}px`;
@@ -344,7 +281,7 @@
       if (related.length) {
         $('related').append(element('span', ref ? 'Excluding boxes:' : 'Inspect affected assets:'));
         for (const other of related) {
-          const button = element('button', name(other));
+          const button = element('button', name(other), 'text-action');
           button.onclick = () => select(other);
           $('related').append(button);
         }
@@ -362,14 +299,18 @@
       $('details').append(element('p', 'Reference only. These images cannot ship as page assets. Inspection does not change build state or approvals.'));
       $('next').hidden = problemRegions.length < 2;
       const queueIndex = problemRegions.findIndex(p => p.id === r.id);
-      $('next').textContent = queueIndex >= 0 ? `Next check (${queueIndex + 1}/${problemRegions.length}) →` : 'Next check →';
+      $('next').textContent = queueIndex >= 0 ? `Next check (${queueIndex + 1}/${problemRegions.length})` : 'Next check';
       history.replaceState(null, '', `#region=${encodeURIComponent(r.id)}`);
       renderList(); renderContext(); renderCrop($('original'), false); renderCrop($('ignored'), true);
     }
     for (const key of ['all', 'problems']) $(key).onclick = () => { filter = key; renderList(); };
     $('next').onclick = () => select(problemRegions[(problemRegions.findIndex(r => r.id === selected.id) + 1) % problemRegions.length]);
     $('context-toggle').onclick = () => { wholeComp = !wholeComp; renderContext(); };
-    $('zoom').onchange = () => { if (selected) { renderCrop($('original'), false); renderCrop($('ignored'), true); } };
+    for (const key of document.querySelectorAll('[data-zoom]')) key.onclick = () => {
+      zoomValue = key.dataset.zoom;
+      for (const other of document.querySelectorAll('[data-zoom]')) other.setAttribute('aria-pressed', String(other === key));
+      if (selected) { renderCrop($('original'), false); renderCrop($('ignored'), true); }
+    };
     $('summary').textContent = `${data.inputRegionCount} regions · ${data.issues.filter(i => i.severity === 'error').length} errors · ${partialMasks.length} partial masks to inspect`;
     for (const [index, sheet] of (data.comparisonSheets || []).entries()) {
       const link = element('a', `Comparison sheet ${index + 1}`);
@@ -387,5 +328,6 @@
     if (data.regions.length) select(data.regions.find(r => r.id === requestedRegion) || problemRegions[0] || data.regions[0]);
     else { $('inspection').hidden = true; $('next').hidden = true; $('diagnostics').open = true; renderList(); }
   </script>
+  <script>/*__KS_STRIP__*/</script>
 </body>
 </html>
