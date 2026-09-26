@@ -1,0 +1,728 @@
+/* VENDORED from impeccable-site/site/styles/kinpaku-kit.css (buttons, tabs, select, icon button, instrument strip, grain, switch, paper strip, thumb) (the source of truth).
+   Do not edit here: change the site, then run node scripts/sync-kinpaku-kit.mjs. */
+/* ============================================================
+   Buttons: primary, secondary, ghost, disabled
+
+   The primary action is ink on paper. Gold does not fill a button on this
+   site: a gold slab on paper is the hotel-lobby read. The brand is present
+   on the primary as the gold arrow, not as the fill.
+
+   Variants chain on .ks-button so specificity (0,2,0) wins over generic page
+   anchor resets like `.kinpaku-system-page a { color: inherit }` (0,1,1).
+   Use class="ks-button ks-button-primary", both classes required.
+   ============================================================ */
+
+.ks-button {
+  position: relative;
+  min-height: var(--ks-control-lg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 0 22px;
+  border-radius: var(--ks-radius-sm);
+  font-family: var(--ks-font);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.005em;
+  text-decoration: none;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background-color var(--ks-quick) var(--ks-ease), border-color var(--ks-quick) var(--ks-ease), color var(--ks-quick) var(--ks-ease);
+}
+
+.ks-button .ks-button-arrow {
+  width: 16px;
+  height: 8px;
+  display: inline-block;
+  flex: none;
+}
+
+.ks-button-arrow svg { width: 100%; height: 100%; display: block; overflow: visible; }
+
+/* The arrow says where the button goes. On a button whose target is further
+   down the page (an in-page anchor, or .is-down on the arrow) it curves and
+   points downward on hover, and straightens again on leave. The rest shape
+   is set here too, as the same command list, so the two interpolate. */
+.ks-button-arrow path {
+  d: path("M0 4C5 4 9 4 14 4M10 0L14 4L10 8");
+  transition: d 420ms var(--ks-ease);
+}
+
+.ks-button[href^="#"]:hover .ks-button-arrow path,
+.ks-button:hover .ks-button-arrow.is-down path {
+  d: path("M0 4C7 4 11 4 11 11M7 7L11 11L15 7");
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ks-button-arrow path { transition: none; }
+}
+
+.ks-button.ks-button-primary {
+  color: var(--ks-paper-raised);
+  background: var(--ks-ink);
+  border-color: var(--ks-ink);
+}
+
+.ks-button.ks-button-primary .ks-button-arrow {
+  color: var(--ks-kinpaku);
+}
+
+.ks-button.ks-button-primary:hover {
+  color: var(--ks-paper-raised);
+  background: var(--ks-text);
+  border-color: var(--ks-text);
+}
+
+.ks-button.ks-button-primary:active {
+  background: oklch(8% 0 0);
+  border-color: oklch(8% 0 0);
+}
+
+.ks-button.ks-button-secondary {
+  color: var(--ks-ink);
+  background: var(--ks-paper-raised);
+  border-color: var(--ks-edge);
+}
+
+.ks-button.ks-button-secondary:hover {
+  color: var(--ks-ink);
+  border-color: var(--ks-ink);
+}
+
+.ks-button.ks-button-secondary:active {
+  background: var(--ks-gray);
+}
+
+.ks-button.ks-button-ghost {
+  color: var(--ks-ink);
+  background: transparent;
+  border-color: transparent;
+  padding: 0 12px;
+}
+
+.ks-button.ks-button-ghost:hover {
+  color: var(--ks-accent-ink);
+}
+
+.ks-button[disabled],
+.ks-button.ks-button-disabled {
+  color: var(--ks-text-mute-deep);
+  background: transparent;
+  border-color: var(--ks-rule);
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.ks-button:focus-visible {
+  outline: 2px solid var(--ks-focus-ring);
+  outline-offset: 3px;
+}
+
+.ks-button-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px;
+}
+
+/* ============================================================
+   Tabs
+   ============================================================ */
+
+.ks-tabs { max-width: 460px; }
+
+.ks-tab-list { display: flex; border-bottom: 1px solid var(--ks-rule); }
+
+.ks-tab-list button {
+  flex: 1;
+  min-height: 42px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--ks-text-muted);
+  cursor: pointer;
+  font-size: 0.92rem;
+  transition: color 180ms var(--ks-ease), border-color 180ms var(--ks-ease);
+}
+
+.ks-tab-list button:hover { color: var(--ks-ink); }
+
+.ks-tab-list button[aria-selected="true"] {
+  color: var(--ks-accent-ink);
+  border-bottom-color: var(--ks-kinpaku);
+}
+
+.ks-tab-panel {
+  padding: 22px 4px 0;
+  color: var(--ks-ink);
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+/* ============================================================
+   Form controls — input, toggle, checkbox, select
+   ============================================================ */
+
+.ks-form-sample {
+  display: grid;
+  gap: 22px;
+  max-width: 360px;
+}
+
+.ks-form-sample label {
+  display: grid;
+  gap: 8px;
+  color: var(--ks-text-muted);
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+}
+
+.ks-form-sample input[type="search"],
+.ks-form-sample input[type="text"] {
+  min-height: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--ks-rule);
+  border-radius: var(--ks-radius-sm);
+  background: var(--ks-paper-raised);
+  color: var(--ks-ink);
+  font-size: 0.92rem;
+}
+
+.ks-form-sample input[type="search"]:focus,
+.ks-form-sample input[type="text"]:focus {
+  outline: none;
+  border-color: var(--ks-patina);
+}
+
+.ks-toggle {
+  display: flex !important;
+  align-items: center;
+  gap: 12px !important;
+}
+
+.ks-toggle input {
+  appearance: none;
+  width: 44px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid var(--ks-rule);
+  background: var(--ks-gray);
+  position: relative;
+  cursor: pointer;
+  flex: none;
+}
+
+.ks-toggle input::before {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  left: 3px;
+  top: 3px;
+  border-radius: 999px;
+  background: var(--ks-text-muted);
+  transition: transform 220ms var(--ks-ease), background 220ms var(--ks-ease);
+}
+
+.ks-toggle input:checked {
+  border-color: var(--ks-patina);
+  background: oklch(48% 0.08 188 / 0.2);
+}
+
+.ks-toggle input:checked::before {
+  transform: translateX(20px);
+  background: var(--ks-patina);
+}
+
+.ks-toggle span { color: var(--ks-ink); font-size: 0.92rem; }
+
+.ks-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ks-ink);
+  font-size: 0.92rem;
+  cursor: pointer;
+}
+
+.ks-checkbox input {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--ks-rule);
+  border-radius: var(--ks-radius-sm);
+  background: var(--ks-paper-raised);
+  position: relative;
+  cursor: pointer;
+  flex: none;
+}
+
+.ks-checkbox input:checked {
+  border-color: var(--ks-ink);
+  background: var(--ks-ink);
+}
+
+.ks-checkbox input:checked::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  width: 5px;
+  height: 9px;
+  border: solid var(--ks-paper-raised);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+.ks-select {
+  appearance: none;
+  min-height: 46px;
+  padding: 0 38px 0 14px;
+  border: 1px solid var(--ks-rule);
+  border-radius: var(--ks-radius-sm);
+  background-color: var(--ks-paper-raised);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6' fill='none' stroke='%23222222' stroke-width='1.2'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 10px 6px;
+  color: var(--ks-ink);
+  font-size: 0.92rem;
+  cursor: pointer;
+}
+
+/* ============================================================
+   Icon button + tooltip
+   ============================================================ */
+
+.ks-icon-button {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--ks-rule);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ks-accent-ink);
+  cursor: pointer;
+}
+
+.ks-tooltip {
+  position: absolute;
+  bottom: calc(100% - 18px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 200px;
+  padding: 10px 12px;
+  border: 1px solid var(--ks-rule);
+  background: var(--ks-paper-deep);
+  color: var(--ks-ink);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  border-radius: var(--ks-radius-sm);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms var(--ks-ease);
+}
+
+.ks-icon-button:focus-visible + .ks-tooltip {
+  opacity: 1;
+}
+
+/* ============================================================
+   Instrument strip: the site's one dark control.
+
+   A row of keys on a dark strip, sitting on the paper like a device on a
+   desk. The active key is raised and carries a gold indicator. Use for tab
+   strips, view switches and command pickers: anything the reader operates.
+   Never for decoration, and never for a link list.
+
+   Markup: <div class="ks-instrument-strip" role="tablist">
+             <button class="ks-instrument-key is-active">One</button>
+             <button class="ks-instrument-key">Two</button>
+           </div>
+   ============================================================ */
+.ks-instrument-strip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--ks-instrument);
+  border: 1px solid var(--ks-instrument-deep);
+  border-radius: var(--ks-radius-pill);
+  box-shadow: inset 0 1px 0 var(--ks-instrument-rule), var(--ks-lift-1);
+}
+
+.ks-instrument-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--ks-control-md);
+  padding: 0 14px 0 12px;
+  color: var(--ks-instrument-muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--ks-radius-pill);
+  font-family: var(--ks-mono);
+  font-size: var(--ks-type-label-size);
+  letter-spacing: 0.02em;
+  text-transform: none;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--ks-quick) var(--ks-ease), background-color var(--ks-quick) var(--ks-ease);
+}
+
+.ks-instrument-key::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--ks-instrument-raised);
+  box-shadow: inset 0 0 0 1px var(--ks-instrument-rule);
+  transition: background-color var(--ks-quick) var(--ks-ease), box-shadow var(--ks-quick) var(--ks-ease);
+}
+
+.ks-instrument-key:hover,
+.ks-instrument-key:focus-visible {
+  color: var(--ks-instrument-text);
+}
+
+.ks-instrument-key:focus-visible {
+  outline: 2px solid var(--ks-focus-ring);
+  outline-offset: 2px;
+}
+
+.ks-instrument-key.is-active,
+.ks-instrument-key[aria-selected="true"] {
+  color: var(--ks-instrument-text);
+  background: var(--ks-instrument-raised);
+  box-shadow: inset 0 1px 0 var(--ks-instrument-edge), var(--ks-key-lift);
+}
+
+.ks-instrument-key.is-active::before,
+.ks-instrument-key[aria-selected="true"]::before {
+  background: var(--ks-kinpaku);
+  box-shadow: var(--ks-indicator-glow);
+}
+
+/* ============================================================
+   Grain.
+
+   Grain is part of a material, not a layer over the page. The page ground
+   (the paper) carries it, and so do the moulded surfaces: the recessed
+   track and raised caps of a paper strip, the dark instruments, code
+   blocks. Anything that sits on top of those (a card, a demo, an image,
+   type) is clean. One 160px tile of monochrome noise from an SVG filter,
+   held under 6% on paper and a little higher on dark, where it is what
+   makes a strip read as a part instead of a black rectangle.
+   ============================================================ */
+:root {
+  --ks-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n' x='0' y='0'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* The paper. Fixed behind the page's content, above the canvas colour. */
+body {
+  position: relative;
+  isolation: isolate;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.055;
+  mix-blend-mode: multiply;
+  background-image: var(--ks-grain);
+  background-size: 160px 160px;
+}
+
+/* Moulded surfaces. The pseudo sits under the surface's own children. */
+.ks-grain,
+.ks-instrument-strip {
+  position: relative;
+}
+
+.ks-grain::before,
+.ks-instrument-strip::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0.16;
+  mix-blend-mode: screen;
+  will-change: opacity;
+  background-image: var(--ks-grain);
+  background-size: 160px 160px;
+}
+
+.ks-instrument-strip.is-paper::before {
+  opacity: 0.05;
+  mix-blend-mode: normal;
+}
+
+/* The strip is its own stacking context: grain at 0, the cap at 1, the
+   labels at 2, whatever the page around it does. */
+.ks-instrument-strip {
+  isolation: isolate;
+}
+
+
+.ks-instrument-strip > :not(.ks-thumb) {
+  position: relative;
+  z-index: 2;
+}
+
+/* ============================================================
+   Switch: a physical slide switch for one on/off state.
+
+   A recessed track, a raised knob that slides from left (off) to right
+   (on), and a lit dot on the knob when on. Markup:
+   <button class="ks-switch" type="button" aria-pressed="true">
+     <span class="ks-switch-track" aria-hidden="true"><span class="ks-switch-knob"></span></span>
+     <span class="ks-switch-label">Detector on</span>
+   </button>
+   ============================================================ */
+.ks-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ks-text-muted);
+  font-family: var(--ks-font);
+  font-size: var(--ks-type-ui-size);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.ks-switch[aria-pressed="true"] {
+  color: var(--ks-ink);
+}
+
+.ks-switch-track {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  border-radius: var(--ks-radius-pill);
+  background: var(--ks-gray-2);
+  box-shadow: var(--ks-track-recess);
+  transition: background-color var(--ks-quick) var(--ks-ease);
+}
+
+.ks-switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--ks-paper-raised);
+  box-shadow: var(--ks-cap-lift);
+  transition: transform 220ms cubic-bezier(0.3, 0.7, 0.2, 1);
+}
+
+.ks-switch-knob::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--ks-gray-2);
+  box-shadow: inset 0 1px 1px oklch(13% 0 0 / 0.18);
+  transition: background-color var(--ks-quick) var(--ks-ease), box-shadow var(--ks-quick) var(--ks-ease);
+}
+
+.ks-switch[aria-pressed="true"] .ks-switch-knob {
+  transform: translateX(20px);
+}
+
+.ks-switch[aria-pressed="true"] .ks-switch-knob::after {
+  background: var(--ks-patina);
+  box-shadow: var(--ks-led);
+}
+
+.ks-switch:active .ks-switch-knob {
+  box-shadow: var(--ks-cap-press);
+}
+
+.ks-switch:focus-visible {
+  outline: none;
+}
+
+.ks-switch:focus-visible .ks-switch-track {
+  outline: 2px solid var(--ks-kinpaku);
+  outline-offset: 2px;
+}
+
+/* ============================================================
+   Tag: the brand's label.
+
+   The detector flags bad design with a small gold tag carrying dark mono
+   text. That tag is the one device a visitor already associates with
+   Impeccable, so it is also how the site labels things: section numerals,
+   a card's state, a release's status. Small, mono, ink on gold. It is the
+   only gold fill allowed on paper, and it never grows past a label.
+   ============================================================ */
+.ks-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+  padding: 0 7px;
+  color: var(--ks-ink);
+  background: var(--ks-kinpaku);
+  border-radius: var(--ks-radius-sm);
+  font-family: var(--ks-mono);
+  font-size: var(--ks-type-eyebrow-size);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: normal;
+  text-transform: uppercase;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* A quiet tag for a secondary label sitting next to a gold one. */
+.ks-tag.is-quiet {
+  color: var(--ks-text-muted);
+  background: var(--ks-gray);
+}
+
+/* Paper variant. A page control (a view switch, a tab row) sits on paper
+   and keeps the gold dot, so it does not compete with the primary action
+   the way a dark strip does. The dark strip is for product chrome: the
+   live picker, lab toolbars, terminals. */
+
+.ks-instrument-strip.is-paper {
+  background: var(--ks-gray);
+  border-color: transparent;
+  box-shadow: var(--ks-track-recess);
+}
+
+.ks-instrument-strip.is-paper .ks-instrument-key {
+  color: var(--ks-text-muted);
+  transition: color var(--ks-quick) var(--ks-ease), background-color var(--ks-quick) var(--ks-ease), box-shadow var(--ks-quick) var(--ks-ease), transform var(--ks-quick) var(--ks-ease);
+}
+
+.ks-instrument-strip.is-paper .ks-instrument-key::before {
+  background: var(--ks-gray-2);
+  box-shadow: inset 0 1px 1px oklch(13% 0 0 / 0.18);
+}
+
+.ks-instrument-strip.is-paper .ks-instrument-key:hover,
+.ks-instrument-strip.is-paper .ks-instrument-key:focus-visible {
+  color: var(--ks-ink);
+}
+
+.ks-instrument-strip.is-paper .ks-instrument-key:active {
+  box-shadow: var(--ks-cap-press);
+  transform: translateY(1px);
+}
+
+/* The raised cap. Light from above: a white edge on top, a hard shadow
+   underneath, so it stands a millimetre proud of the track. */
+.ks-instrument-strip.is-paper .ks-instrument-key.is-active,
+.ks-instrument-strip.is-paper .ks-instrument-key[aria-selected="true"],
+.ks-instrument-strip.is-paper .ks-instrument-key[aria-pressed="true"] {
+  color: var(--ks-ink);
+  background: var(--ks-paper-raised);
+  box-shadow: var(--ks-cap-lift);
+}
+
+.ks-instrument-strip.is-paper .ks-instrument-key.is-active::before,
+.ks-instrument-strip.is-paper .ks-instrument-key[aria-selected="true"]::before,
+.ks-instrument-strip.is-paper .ks-instrument-key[aria-pressed="true"]::before {
+  background: var(--ks-patina);
+  box-shadow: 0 0 0 1px oklch(13% 0 0 / 0.12), 0 0 4px color-mix(in oklch, var(--ks-patina) 60%, transparent);
+}
+
+.ks-instrument-strip.is-paper .ks-instrument-key:focus-visible {
+  outline: 2px solid var(--ks-focus-ring);
+  outline-offset: 1px;
+}
+
+/* ============================================================
+   Instrument strip thumb (real element, positioned by
+   instrument-strip.js). Last in the file on purpose: these override the
+   key's own cap, and they must come after every key rule above.
+   ============================================================ */
+.ks-thumb {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  width: 0;
+  border-radius: var(--ks-radius-pill);
+  background: var(--ks-instrument-raised);
+  box-shadow: inset 0 1px 0 var(--ks-instrument-edge), var(--ks-key-lift);
+  transition: transform 360ms cubic-bezier(0.22, 1, 0.3, 1);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.ks-instrument-strip.is-paper .ks-thumb {
+  background: var(--ks-paper-raised);
+  box-shadow: var(--ks-cap-lift);
+}
+
+.ks-instrument-strip.has-thumb .ks-instrument-key,
+.ks-instrument-strip.has-thumb .ks-instrument-key.is-active,
+.ks-instrument-strip.has-thumb .ks-instrument-key[aria-selected="true"],
+.ks-instrument-strip.has-thumb .ks-instrument-key[aria-pressed="true"],
+.ks-instrument-strip.is-paper.has-thumb .ks-instrument-key.is-active,
+.ks-instrument-strip.is-paper.has-thumb .ks-instrument-key[aria-selected="true"],
+.ks-instrument-strip.is-paper.has-thumb .ks-instrument-key[aria-pressed="true"] {
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+  transition: color 120ms var(--ks-ease);
+}
+
+.ks-instrument-strip.has-thumb .ks-instrument-key::before {
+  transition: background-color 120ms var(--ks-ease), box-shadow 120ms var(--ks-ease);
+}
+
+/* Dark instruments need the light state color for keyboard focus. */
+.ks-instrument-strip:not(.is-paper),
+.live-demo-gbar,
+.live-demo-ctx,
+.worlds-rating {
+  --ks-focus-ring: var(--ks-patina);
+}
+
+/* Touch gets the kit's large target, without enlarging the desktop controls
+   or their labels. Pointer capability also covers tablets with a keyboard. */
+@media (any-pointer: coarse) {
+  .ks-instrument-strip .ks-instrument-key,
+  .ks-segmented button {
+    min-height: var(--ks-control-lg);
+    min-width: var(--ks-control-lg);
+  }
+
+  .site-header-menu {
+    width: var(--ks-control-lg);
+    height: var(--ks-control-lg);
+  }
+
+  .kinpaku-chrome .site-header-brand,
+  .kinpaku-chrome .site-header-github {
+    min-height: var(--ks-control-lg);
+  }
+
+  .kinpaku-chrome .site-header-nav a {
+    min-height: var(--ks-control-lg);
+    min-width: var(--ks-control-lg);
+    padding-block: 10px;
+  }
+}

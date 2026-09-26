@@ -1,0 +1,221 @@
+/* VENDORED from impeccable-site/site/styles/kinpaku-tokens.css (the source of truth).
+   Do not edit here: change the site, then run node scripts/sync-kinpaku-kit.mjs. */
+/*
+ * impeccable.style tokens (page-global, single source of truth)
+ *
+ * One theme. The page is neutral paper, the type is ink, and the brand gold
+ * appears as a mark, a line, or an indicator on a dark control surface. It
+ * never carries text and it never fills a large area on paper.
+ *
+ * Three families of surface:
+ *   paper       the page and everything that sits flat on it
+ *   gray        chips, inactive fills, sunk wells
+ *   instrument  dark control surfaces: sliders, tab strips, segmented
+ *               controls, terminals. This is where gold and patina signal.
+ *
+ * New pages read these via var(--ks-*) rather than hand-typing oklch values.
+ * Pages may override a token locally when there is a documented reason.
+ * When in doubt, do not override; match.
+ */
+
+:root {
+	color-scheme: light;
+
+	/* ============================================================
+	   Brand anchors. Kinpaku gold is the mark and the signal. Verdigris
+	   patina carries state, links, and selection wherever color has to
+	   be read as text, because gold cannot pass contrast on paper.
+	   ============================================================ */
+
+	/* Kinpaku gold. Fills on instruments, the mark, hairlines, and the label
+	   of the active key on a dark instrument. Never text on paper. */
+	--ks-kinpaku:        oklch(84% 0.19 80.46);  /* mark, indicators, gold fills on instruments */
+	--ks-kinpaku-vivid:  oklch(87% 0.20 85);     /* lit hover on a gold fill */
+	--ks-kinpaku-pale:   oklch(86% 0.07 84);     /* pale tint; rarely needed on paper */
+	--ks-kinpaku-rich:   oklch(77% 0.13 82);     /* hairline gold on paper, active rule */
+	--ks-kinpaku-deep:   oklch(61% 0.085 78);    /* gold border against paper */
+	--ks-on-gold:        oklch(14% 0.018 95);    /* foreground on a gold fill */
+	--ks-gold-line:      var(--ks-kinpaku-rich); /* the one-pixel gold rule */
+
+	/* Verdigris patina. State, links, selection. */
+	--ks-patina:         oklch(70% 0.12 188);    /* indicator on instruments, focus */
+	--ks-patina-pale:    oklch(82% 0.07 188);    /* soft fill behind a selected row */
+	--ks-patina-deep:    oklch(45% 0.10 190);    /* text-safe patina, including selected gray surfaces */
+	--ks-patina-ink:     oklch(41% 0.11 190);    /* hover on patina text */
+
+	/* Semantic foregrounds. Labels, eyebrows and category names are muted
+	   ink; color is not how this site labels things. Patina is reserved for
+	   state: selected, live, passed. */
+	--ks-gold-ink:       var(--ks-text-muted);
+	--ks-accent-ink:     var(--ks-text-muted);
+	--ks-state-ink:      var(--ks-patina-deep);
+	--ks-focus-ring:     var(--ks-patina-deep); /* paper; dark controls override locally */
+	--ks-kinpaku-ink:    var(--ks-text-muted);   /* legacy alias, same rule */
+
+	/* Links on paper are ink with a quiet underline; the underline turns
+	   gold on hover, which is the brand as a line. */
+	--ks-link-on-paper:            var(--ks-ink);
+	--ks-link-on-paper-hover:      var(--ks-ink);
+	--ks-link-on-paper-line:       oklch(13% 0 0 / 0.28);
+	--ks-link-on-paper-line-hover: var(--ks-kinpaku);
+	--ks-nav-active:               var(--ks-ink);
+
+	/* Warning. Failures and warnings only. */
+	--ks-vermilion:      oklch(52% 0.16 35);
+
+	/* ============================================================
+	   Paper. The page ground is a hair below white so a raised card can
+	   read as raised. Neutral, no warm cast: gold on cream is gold on gold.
+	   ============================================================ */
+	--ks-paper:          oklch(97.8% 0 0);   /* page ground */
+	--ks-paper-raised:   oklch(99.5% 0 0);   /* cards, panels, inputs */
+	--ks-paper-deep:     oklch(95% 0 0);     /* sunk wells, code blocks, footer */
+	--ks-gray:           oklch(92% 0 0);     /* chips, inactive fills */
+	--ks-gray-2:         oklch(88% 0 0);     /* one step down from gray */
+
+	/* ============================================================
+	   Instrument. Dark control surfaces on the paper, like a device on a
+	   desk. The only place the site goes dark, and the only place gold is
+	   read as a signal rather than a mark.
+	   ============================================================ */
+	--ks-instrument:        oklch(24% 0 0);          /* face */
+	--ks-instrument-deep:   oklch(17% 0 0);          /* track, well */
+	--ks-instrument-raised: oklch(31% 0 0);          /* key cap, thumb */
+	--ks-instrument-text:   oklch(93% 0 0);
+	--ks-instrument-muted:  oklch(68% 0 0);
+	--ks-instrument-rule:   oklch(100% 0 0 / 0.12);
+	--ks-instrument-edge:   oklch(100% 0 0 / 0.3);
+
+	/* ============================================================
+	   Ink. Neutral. Body copy is --ks-text; headlines and <strong> are
+	   --ks-ink. Muted is for labels and captions, faint for meta.
+	   ============================================================ */
+	--ks-ink:            oklch(13% 0 0);   /* headlines, <strong>, active nav */
+	--ks-text:           oklch(22% 0 0);   /* body */
+	--ks-text-muted:     oklch(46% 0 0);   /* captions, meta, eyebrows */
+	--ks-text-faint:     oklch(51% 0 0);   /* subdued meta, readable on paper and gray */
+	--ks-text-mute-deep: oklch(66% 0 0);   /* disabled */
+
+	/* ============================================================
+	   Rules. A divider is faint. The boundary of a control is not:
+	   WCAG 1.4.11 asks 3:1 of anything that tells you where a control is.
+	   Use --ks-rule to divide, --ks-edge to bound something you can operate.
+	   ============================================================ */
+	--ks-rule:           oklch(13% 0 0 / 0.08);
+	--ks-edge:           oklch(13% 0 0 / 0.45);
+
+	/* ============================================================
+	   Control scales. Three radii, three heights, two lifts.
+	   ============================================================ */
+	--ks-radius-sm:      3px;
+	--ks-radius-md:      8px;
+	--ks-radius-pill:    999px;
+
+	--ks-control-sm:     26px;
+	--ks-control-md:     32px;
+	--ks-control-lg:     44px;
+
+	/* Section cadence. Every top-level section on a page takes this vertical
+	   padding, so the seams between sections are one rhythm. */
+	--ks-section-pad:    clamp(72px, 8vw, 120px);
+
+	/* Layered, so they read as one soft light from above rather than a
+	   single blurred rectangle: a contact edge, a short throw, a long one. */
+	--ks-lift-1:         0 1px 1px oklch(13% 0 0 / 0.05), 0 2px 3px oklch(13% 0 0 / 0.04), 0 6px 12px oklch(13% 0 0 / 0.05);
+	--ks-lift-2:         0 1px 1px oklch(13% 0 0 / 0.04), 0 3px 5px oklch(13% 0 0 / 0.05), 0 12px 20px oklch(13% 0 0 / 0.06), 0 32px 48px oklch(13% 0 0 / 0.07);
+
+	/* Instrument depth. A raised key sits a pixel off its dark strip, and the
+	   lit indicator throws a short gold glow. These are the only shadows that
+	   read against a dark surface. */
+	--ks-key-lift:       0 1px 2px oklch(0% 0 0 / 0.4);
+
+	/* Light hardware. A paper key is a raised cap: a white highlight along
+	   its top edge, a hard 1px shadow under it, a soft one behind. The track
+	   it sits in is recessed. Gold is the lit indicator. */
+	--ks-cap-lift:       inset 0 1px 0 oklch(100% 0 0 / 0.9), 0 1px 0 oklch(13% 0 0 / 0.14), 0 2px 3px oklch(13% 0 0 / 0.08);
+	--ks-cap-press:      inset 0 1px 2px oklch(13% 0 0 / 0.14);
+	--ks-track-recess:   inset 0 1px 3px oklch(13% 0 0 / 0.16), inset 0 -1px 0 oklch(100% 0 0 / 0.7);
+	--ks-led:            0 0 0 1px oklch(13% 0 0 / 0.12), 0 0 4px oklch(84% 0.19 80 / 0.6);
+	--ks-indicator-glow: 0 0 0 1px oklch(0% 0 0 / 0.3), 0 0 4px oklch(84% 0.19 80 / 0.65);
+
+	/* ============================================================
+	   Code. Inline code is a gray chip. Blocks and CLI commands are a sunk
+	   paper well with a hairline. A command that is itself a link reads as
+	   a link.
+	   ============================================================ */
+	--ks-code-fg:         var(--ks-ink);
+	--ks-code-bg:         var(--ks-gray);
+	--ks-code-radius:     3px;
+	--ks-code-pad:        0.2em 0.45em;
+	--ks-code-block-fg:   var(--ks-text);
+	--ks-code-block-bg:   var(--ks-paper-deep);
+	--ks-code-block-border: var(--ks-rule);
+	--ks-code-block-radius: 3px;
+	--ks-code-cmd:        var(--ks-link-on-paper);
+
+	/* ============================================================
+	   Typography. One family for everything that is read: Albert Sans, a
+	   quiet geometric humanist, at normal weights. The wordmark keeps
+	   Alumni Sans because it is part of the logo lockup, and that is the
+	   only place it appears.
+	   ============================================================ */
+	--ks-font:          "Albert Sans", "Avenir Next", "Helvetica Neue", Arial, system-ui, sans-serif;
+	--ks-font-display:  var(--ks-font-wordmark);  /* Alumni Sans: the brand's own display voice, at a weight that holds on paper */
+	--ks-font-wordmark: "Alumni Sans", "Albert Sans", Arial, sans-serif;
+	--ks-mono:          "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+	/* Display: page h1. */
+	--ks-type-display-size:   clamp(3.2rem, 6.2vw, 5.6rem);
+	--ks-type-display-weight: 200;
+	--ks-type-display-line:   1.0;
+	--ks-type-display-track:  0;
+
+	/* Headline: section h2. */
+	--ks-type-headline-size:   clamp(2.4rem, 3.6vw, 3.4rem);
+	--ks-type-headline-weight: 300;
+	--ks-type-headline-line:   1.04;
+	--ks-type-headline-track:  0;
+
+	/* Title: card and panel headings (h3). */
+	--ks-type-title-size:   1.0625rem;
+	--ks-type-title-weight: 600;
+	--ks-type-title-line:   1.35;
+
+	/* Body. */
+	--ks-type-body-size: 1rem;
+	--ks-type-body-line: 1.65;
+
+	/* Eyebrow: small mono labels above titles. */
+	--ks-type-eyebrow-size:  0.6875rem;
+	--ks-type-eyebrow-track: 0.14em;
+
+	/* Wordmark: IMPECCABLE in the header. */
+	--ks-type-wordmark-size:  1.25rem;
+	--ks-type-wordmark-track: 0.18em;
+
+	/* Mono: code, terminal, audit lines. */
+	--ks-type-mono-size:  0.6875rem;
+	--ks-type-mono-track: 0.12em;
+
+	/* Dense UI ramp. Micro is the floor for anything functional. */
+	--ks-type-micro-size: 0.6875rem;  /* 11px */
+	--ks-type-label-size: 0.75rem;    /* 12px */
+	--ks-type-ui-size:    0.8125rem;  /* 13px */
+	--ks-type-ui-lead:    0.9375rem;  /* 15px */
+
+	/* Reading ramp between body and headline. Small is secondary body copy
+	   and captions that are read, not scanned; lead and subhead are the
+	   intro paragraph and the card-level heading; title-lg is a bento tile
+	   or panel heading that is larger than a card title but not a section. */
+	--ks-type-small-size:    0.875rem;   /* 14px */
+	--ks-type-lead-size:     1.125rem;   /* 18px */
+	--ks-type-subhead-size:  1.25rem;    /* 20px */
+	--ks-type-title-lg-size: 1.5rem;     /* 24px */
+
+	/* ============================================================
+	   Motion. Quick is a state change, settle is something arriving.
+	   ============================================================ */
+	--ks-ease:   cubic-bezier(0.2, 0.8, 0.2, 1);
+	--ks-quick:  120ms;
+	--ks-settle: 200ms;
+}

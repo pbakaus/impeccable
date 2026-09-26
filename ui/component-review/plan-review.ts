@@ -9,6 +9,8 @@ import {
 } from './plan-model';
 import type { Box } from './model';
 import { planStyles } from './plan-styles';
+import { ksArrow } from './kit';
+import { initInstrumentStrips } from './instrument-strip';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 const pct = (n: number) => `${n * 100}%`;
@@ -69,6 +71,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
   let error = '';
   let lastDecision: { label: string; before: PlanDraft; select: Selection } | null = null;
   let resize: ResizeObserver | null = null;
+  let strips: (() => void) | null = null;
   const mac = /Mac|iPhone|iPad/.test(navigator.platform);
   const transparency = new Map<string, boolean>();
   const surround = new Map<string, string>();
@@ -234,7 +237,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
     const chips = queue.map(c => {
       const s = itemState(c, draft);
       const active = selection?.type === 'item' && selection.id === c.id;
-      return `<button class="chip ${s} ${isFlagged(c) ? 'flagged' : ''} is-${c.role}" data-item="${esc(c.id)}" aria-current="${active}" aria-label="${esc(`${c.name}, ${roleLine(c)}, ${stateLabel(c)}`)}">${thumb(c.box)}<span class="chip-text"><strong>${esc(c.name)}</strong><span>${esc(roleLine(c))}</span></span><span class="chip-state" title="${esc(stateLabel(c))}">${stateIcon(s)}</span></button>`;
+      return `<button class="chip ${s} ${isFlagged(c) ? 'flagged' : ''} is-${c.role}" data-item="${esc(c.id)}" role="tab" aria-selected="${active}" aria-label="${esc(`${c.name}, ${roleLine(c)}, ${stateLabel(c)}`)}">${thumb(c.box)}<span class="chip-text"><strong>${esc(c.name)}</strong><span>${esc(roleLine(c))}</span></span><span class="chip-state" title="${esc(stateLabel(c))}">${stateIcon(s)}</span></button>`;
     }).join('');
     const reclassified = regions.filter(r => regionReclassify(draft, r.id)).length;
     return `<nav class="queue" aria-label="Items to decide">
@@ -242,10 +245,10 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
       <div class="queue-list">${chips || '<p class="queue-empty">Nothing needs a decision. Check the comp for anything missing.</p>'}</div>
       ${regions.length ? `<button id="regions-toggle" class="disclosure" aria-expanded="${regionsOpen}" aria-controls="region-list">${ICON.chevron}<span><strong>${regions.length} more ${regions.length === 1 ? 'region' : 'regions'} set in code${reclassified ? ` · ${reclassified} changing` : ''}</strong><span>Checked in the first-viewport review</span></span></button>` : ''}
     </nav>
-    ${regions.length && regionsOpen ? `<div id="region-list" class="region-list" role="list">${regions.map(r => {
+    ${regions.length && regionsOpen ? `<div id="region-list" class="region-list ks-tab-list" role="tablist" aria-label="Regions set in code">${regions.map(r => {
       const re = regionReclassify(draft, r.id);
       const active = selection?.type === 'region' && selection.id === r.id;
-      return `<button role="listitem" data-region="${esc(r.id)}" aria-current="${active}" class="${re ? 'reclassify' : ''}"><span>${esc(r.name)}</span><small>${esc(re ? `to ${assetKindLabel(re.kind).toLowerCase()}` : r.kind)}</small></button>`;
+      return `<button role="tab" data-region="${esc(r.id)}" aria-selected="${active}" class="${re ? 'reclassify' : ''}">${esc(r.name)}<small>${esc(re ? `to ${assetKindLabel(re.kind).toLowerCase()}` : r.kind)}</small></button>`;
     }).join('')}</div>` : ''}`;
   }
 
@@ -273,7 +276,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
         <figure><figcaption>In the comp</figcaption><div class="frame crop">${compImg(c.box, `Comp region for ${c.name}`)}</div></figure>
         <figure><figcaption>${showPrevious && prior ? `Previous version · round ${history!.packet.round}` : 'Generated asset'}</figcaption><div class="frame asset ${clear ? 'clear' : ''}" style="${clear ? `background:${esc(bg)}` : ''}"><img src="${url(src)}" alt="Generated ${esc(c.name)}" draggable="false"></div></figure>
       </div>
-      ${clear || prior ? `<div class="stage-tools">${prior ? `<div class="seg" role="group" aria-label="Asset version"><button id="ver-current" aria-pressed="${!showPrevious}">Current</button><button id="ver-previous" aria-pressed="${showPrevious}">Previous version</button></div>` : '<span></span>'}${clear ? `<div class="seg" role="group" aria-label="Backdrop behind the transparent asset"><span class="seg-label">Backdrop</span><button data-backdrop="comp" aria-pressed="${backdrop === 'comp'}"><i style="background:${esc(compColour(c))}"></i>Comp</button><button data-backdrop="light" aria-pressed="${backdrop === 'light'}"><i class="light"></i>Light</button><button data-backdrop="dark" aria-pressed="${backdrop === 'dark'}"><i class="dark"></i>Dark</button></div>` : ''}</div>` : ''}`;
+      ${clear || prior ? `<div class="stage-tools">${prior ? `<div class="ks-instrument-strip is-paper" data-ks-strip="version" role="group" aria-label="Asset version"><button type="button" class="ks-instrument-key" id="ver-current" aria-pressed="${!showPrevious}">Current</button><button type="button" class="ks-instrument-key" id="ver-previous" aria-pressed="${showPrevious}">Previous</button></div>` : '<span></span>'}${clear ? `<div class="tool"><span class="tool-label">Backdrop</span><div class="ks-instrument-strip is-paper" data-ks-strip="backdrop" role="group" aria-label="Backdrop behind the transparent asset">${(['comp', 'light', 'dark'] as const).map(b => `<button type="button" class="ks-instrument-key" data-backdrop="${b}" aria-pressed="${backdrop === b}">${b === 'comp' ? 'Comp' : b === 'light' ? 'Light' : 'Dark'}</button>`).join('')}</div></div>` : ''}</div>` : ''}`;
     }
     const target = c ?? r;
     if (!target) return '';
@@ -287,15 +290,15 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
     if (form) {
       const reclass = form.type === 'reclassify';
       return `<form id="decision-form" class="decision-form">
-        ${reclass ? `<fieldset class="kinds"><legend>Make it an image as</legend>${ASSET_KINDS.map(k => `<label class="kind"><input type="radio" name="kind" id="kind-${k.kind}" value="${k.kind}" ${form!.kind === k.kind ? 'checked' : ''}><span><strong>${k.label}</strong><small>${k.hint}</small></span></label>`).join('')}</fieldset>` : ''}
+        ${reclass ? `<div class="kinds"><span class="tool-label" id="kinds-label">Make it an image as</span><div class="ks-instrument-strip is-paper" data-ks-strip="kind" role="group" aria-labelledby="kinds-label">${ASSET_KINDS.map(k => `<button type="button" class="ks-instrument-key" data-kind="${k.kind}" aria-pressed="${form!.kind === k.kind}">${k.label}</button>`).join('')}</div><p class="kind-hint" id="kind-hint">${esc(ASSET_KINDS.find(k => k.kind === form!.kind)!.hint)}.</p></div>` : ''}
         <label class="field">${reclass ? 'Anything the image should keep? <span>Optional</span>' : 'What needs to change? <span>Optional</span>'}<textarea id="form-text" rows="3" placeholder="${reclass ? 'For example: keep the brushed direction horizontal.' : 'For example: the figure should face the sea.'}">${esc(form.text)}</textarea></label>
-        <div class="form-actions"><button type="button" id="form-cancel" class="ghost">Cancel</button><button type="submit" class="primary">${reclass ? 'Make it an image' : 'Save feedback'} ${kbd(mac ? '⌘↵' : 'Ctrl ↵')}</button></div>
+        <div class="form-actions"><button type="button" id="form-cancel" class="ks-button ks-button-ghost">Cancel</button><button type="submit" class="ks-button ks-button-primary">${reclass ? 'Make it an image' : 'Save feedback'}${ksArrow}</button></div>
       </form>`;
     }
     if (r) {
       const re = regionReclassify(draft, r.id);
-      if (re) return `<div class="verdict reclassify"><p><strong>Will become ${esc(assetKindLabel(re.kind).toLowerCase())}.</strong>${re.feedback ? ` ${esc(re.feedback)}` : ''}</p>${submitted ? '' : '<div class="verdict-actions"><button id="region-edit" class="ghost">Edit</button><button id="region-keep" class="ghost">Keep in code</button></div>'}</div>`;
-      return `<div class="region-note"><p>No decision needed. Text, controls and layout are judged in the first-viewport review, once the page is built.</p>${submitted ? '' : `<button id="decide-image" class="secondary">${ICON.image}Make it an image</button>`}</div>`;
+      if (re) return `<div class="verdict reclassify"><p><strong>Will become ${esc(assetKindLabel(re.kind).toLowerCase())}.</strong>${re.feedback ? ` ${esc(re.feedback)}` : ''}</p>${submitted ? '' : '<div class="verdict-actions"><button id="region-edit" class="text-action">Edit</button><button id="region-keep" class="text-action">Keep in code</button></div>'}</div>`;
+      return `<div class="region-note"><p>No decision needed. Text, controls and layout are judged in the first-viewport review, once the page is built.</p>${submitted ? '' : `<button id="decide-image" class="ks-button ks-button-secondary">Make it an image</button>`}</div>`;
     }
     if (!c) return '';
     const d = currentDecision(c, draft);
@@ -306,10 +309,10 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
     const no = c.role === 'asset' ? 'Needs work' : 'Make it an image';
     const s = itemState(c, draft);
     return `<div class="decisions" role="group" aria-label="Decision for ${esc(c.name)}">
-        <button id="decide-yes" class="yes ${s === 'approved' ? 'chosen' : ''}" aria-pressed="${s === 'approved'}">${s === 'approved' ? ICON.check : ''}${yes} ${kbd('A')}</button>
-        <button id="decide-no" class="no ${s === 'revise' || s === 'reclassify' ? 'chosen' : ''}" aria-pressed="${s === 'revise' || s === 'reclassify'}">${no} ${kbd('N')}</button>
+        <button id="decide-yes" class="ks-button ks-button-primary">${yes}</button>
+        <button id="decide-no" class="ks-button ks-button-secondary">${no}</button>
       </div>
-      ${d && d.action !== 'approve' ? `<div class="verdict ${s}"><p><strong>${esc(stateLabel(c))}.</strong>${d.feedback ? ` ${esc(d.feedback)}` : ' No note; the agent will diagnose.'}</p><div class="verdict-actions"><button id="decision-edit" class="ghost">Edit</button><button id="decision-clear" class="ghost">Clear</button></div></div>` : ''}`;
+      ${d ? `<div class="verdict ${s}"><p><strong>${esc(stateLabel(c))}.</strong>${d.feedback ? ` ${esc(d.feedback)}` : d.action === 'approve' ? '' : ' No note; the agent will diagnose.'}</p><div class="verdict-actions"><button id="decision-edit" class="text-action">Edit</button><button id="decision-clear" class="text-action">Clear</button></div></div>` : ''}`;
   }
 
   function detailMarkup() {
@@ -318,7 +321,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
       ${stageMarkup(undefined, { id: m.id, name: m.name || 'the missing piece', kind: 'missing', box: m.box })}
       <div class="missing-form"><label class="field">Name<input id="missing-name" value="${esc(m.name)}" placeholder="For example: harbour boat" ${locked() ? 'disabled' : ''}></label>
       <label class="field">What is missing? <span>Optional</span><textarea id="missing-feedback" rows="3" ${locked() ? 'disabled' : ''}>${esc(m.feedback)}</textarea></label>
-      ${locked() ? '' : '<button id="missing-remove" class="ghost">Remove this mark</button>'}</div>`;
+      ${locked() ? '' : '<button id="missing-remove" class="ks-button ks-button-ghost">Remove this mark</button>'}</div>`;
     if (!c && !r) return `<div class="detail-empty"><p>Select a region on the comp.</p></div>`;
     const flags = c?.role === 'plan' ? [...(c.flags ?? []).map(flagMessage), ...(c.codeDrawn ? ['The plan draws this artwork in code. Painted work drawn in code usually reads as a stand-in.'] : [])] : [];
     const eyebrow = c ? (c.role === 'asset' ? `Generated asset · ${c.kind}` : `Planned in code · ${c.kind}`) : `Set in code · ${r!.kind}`;
@@ -335,8 +338,8 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
   }
 
   function bannerMarkup() {
-    if (options.status) return `<div class="banner stale" role="alert">${ICON.alert}<div><strong>This review is out of date.</strong><p>${esc(staleDetail(options.status))} Ask the agent to prepare a new round, then reload this page.</p></div><button id="reload" class="secondary">Reload</button></div>`;
-    if (error) return `<div class="banner error" role="alert">${ICON.alert}<div><strong>Your decisions were not sent.</strong><p>${esc(error)}</p></div><button id="retry" class="secondary">Try again</button></div>`;
+    if (options.status) return `<div class="banner stale" role="alert">${ICON.alert}<div><strong>This review is out of date.</strong><p>${esc(staleDetail(options.status))} Ask the agent to prepare a new round, then reload this page.</p></div><button id="reload" class="ks-button ks-button-secondary">Reload</button></div>`;
+    if (error) return `<div class="banner error" role="alert">${ICON.alert}<div><strong>Your decisions were not sent.</strong><p>${esc(error)}</p></div><button id="retry" class="ks-button ks-button-secondary">Try again</button></div>`;
     if (submitted) {
       const s = planSummary(packet, draft);
       return `<div class="banner done" role="status">${ICON.check}<div><strong>${s.hasChanges ? 'Changes sent.' : 'Plan and assets approved.'}</strong><p>${s.hasChanges ? 'The agent applies them and opens a new round for anything that changed.' : 'The agent continues to the first viewport.'}${justSent ? '' : ' This round is read-only.'}</p></div></div>`;
@@ -355,14 +358,15 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
       : 'Approval confirms nothing is missing from the comp.';
     const disabled = !s.canSubmit || !!form || sending || !!options.status;
     return `<footer>
-      <button id="mark" class="ghost mark" aria-pressed="${marking}">${marking ? ICON.close : ICON.mark}${marking ? 'Cancel marking' : 'Mark missing'}</button>
-      <div class="progress" role="status">${lastDecision ? `<span>${esc(lastDecision.label)}</span><button id="undo" class="link">Undo</button>` : options.status ? '' : `<span class="keys"><kbd>A</kbd> approve <kbd>N</kbd> change <kbd>J</kbd><kbd>K</kbd> move</span>`}</div>
-      <div class="submit"><p>${esc(helper)}</p><button id="submit" class="primary ${s.mode}" ${disabled ? 'disabled' : ''}>${sending ? 'Sending…' : s.mode === 'changes' ? 'Send changes' : 'Approve plan and assets'}${sending ? '' : ICON.arrow}</button></div>
+      <button id="mark" class="ks-button ks-button-ghost mark" aria-pressed="${marking}">${marking ? 'Cancel marking' : 'Mark missing'}</button>
+      <div class="progress" role="status">${lastDecision ? `<span>${esc(lastDecision.label)}</span><button id="undo" class="text-action">Undo</button>` : options.status ? '' : `<span class="keys"><kbd>A</kbd> approve <kbd>N</kbd> change <kbd>J</kbd><kbd>K</kbd> move</span>`}</div>
+      <div class="submit"><p>${esc(helper)}</p><button id="submit" class="ks-button ks-button-primary" ${disabled ? 'disabled' : ''}>${sending ? 'Sending…' : s.mode === 'changes' ? 'Send changes' : 'Approve plan and assets'}${sending ? '' : ksArrow}</button></div>
     </footer>`;
   }
 
   function render() {
     resize?.disconnect();
+    strips?.();
     const active = root.activeElement as HTMLElement | null;
     const focusId = active?.id;
     const focusKey = active?.dataset.item ?? active?.dataset.region;
@@ -389,11 +393,12 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
       el?.focus({ preventScroll: true });
       if (textSel && (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement)) try { el.setSelectionRange(textSel[0], textSel[1]); } catch { /* number inputs */ }
     } else if (focusKey) root.querySelector<HTMLElement>(`[data-item="${CSS.escape(focusKey)}"],[data-region="${CSS.escape(focusKey)}"]`)?.focus({ preventScroll: true });
-    root.querySelector('.chip[aria-current="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    root.querySelector('.chip[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     wire();
     layout();
     const work = root.querySelector<HTMLElement>('.work')!;
     resize = new ResizeObserver(layout); resize.observe(work);
+    strips = initInstrumentStrips(root);
     if (!submitted) options.onDraftChange?.(structuredClone(draft));
   }
 
@@ -442,7 +447,12 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
     on('form-cancel', cancelForm);
     root.getElementById('decision-form')?.addEventListener('submit', e => { e.preventDefault(); saveForm(); });
     root.getElementById('form-text')?.addEventListener('input', e => { if (form) form.text = (e.target as HTMLTextAreaElement).value; });
-    root.querySelectorAll<HTMLInputElement>('input[name="kind"]').forEach(el => el.addEventListener('change', () => { if (form) form.kind = el.value as AssetKind; }));
+    root.querySelectorAll<HTMLElement>('[data-kind]').forEach(el => el.addEventListener('click', () => {
+      if (!form) return;
+      form.kind = el.dataset.kind as AssetKind;
+      root.querySelectorAll<HTMLElement>('[data-kind]').forEach(k => k.setAttribute('aria-pressed', String(k === el)));
+      const hint = root.getElementById('kind-hint'); if (hint) hint.textContent = `${ASSET_KINDS.find(k => k.kind === form!.kind)!.hint}.`;
+    }));
     root.querySelectorAll<HTMLElement>('[data-backdrop]').forEach(el => el.addEventListener('click', () => { backdrop = el.dataset.backdrop as typeof backdrop; render(); }));
     on('ver-current', () => { showPrevious = false; render(); });
     on('ver-previous', () => { showPrevious = true; render(); });
@@ -492,5 +502,5 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
   document.addEventListener('keydown', onKey);
 
   render();
-  return { destroy() { resize?.disconnect(); document.removeEventListener('keydown', onKey); root.replaceChildren(); }, getDraft(): PlanDraft { return structuredClone(draft); } };
+  return { destroy() { resize?.disconnect(); strips?.(); document.removeEventListener('keydown', onKey); root.replaceChildren(); }, getDraft(): PlanDraft { return structuredClone(draft); } };
 }
