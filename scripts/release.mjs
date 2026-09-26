@@ -5,7 +5,7 @@
 // Usage: node scripts/release.mjs <skill|cli|extension|engine> [--dry-run]
 //
 // `engine` is different: it only tags `engine-v<ENGINE_VERSION>` and pushes the
-// tag; .github/workflows/release-engine.yml builds the five binaries and
+// tag; .github/workflows/release-engine.yml builds the binaries and
 // publishes the GitHub Release. It has no changelog entry and no local
 // artifacts.
 //
@@ -135,7 +135,7 @@ if (cfg.sibling) {
 
 // Release-order guard (triage decision D4). Engine-gated components refuse to
 // tag/publish until the engine release for the pinned ENGINE_VERSION is fully
-// live: the five engine-v<version> release binaries + .sha256 and the five @impeccable/cli-<os>-<arch>
+// live: the engine-v<version> release binaries + .sha256 and the @impeccable/cli-<os>-<arch>
 // npm platform packages. Without this the launcher, the npm shim, and
 // `impeccable install` all dead-end. Set IMPECCABLE_SKIP_ENGINE_CHECK=1 only
 // when you know the assets exist and the registry probe is unreachable.
@@ -148,7 +148,7 @@ if (cfg.engineGated && process.env.IMPECCABLE_SKIP_ENGINE_CHECK !== '1') {
     for (const m of result.missing) console.error(`    · ${m.what}\n        ${m.url}`);
     fail(
       `Refusing to release ${cfg.label} ${version}: engine v${engineVersion} is not fully published.\n` +
-      `  Publish engine v${engineVersion} (bun run release:engine) AND the five @impeccable/cli-<os>-<arch>\n` +
+      `  Publish engine v${engineVersion} (bun run release:engine) AND the @impeccable/cli-<os>-<arch>\n` +
       '  npm platform packages first. Ordering: engine release → platform packages → skill/CLI release.\n' +
       '  See CLAUDE.md "Releases" and the engine repo docs/REVIEW-TRIAGE.md D4.'
     );
@@ -405,7 +405,7 @@ function htmlToMarkdown(html) {
 
 
 // The engine release: verify, tag, push. CI does the building and publishing
-// (release-engine.yml), so the maintainer's machine never needs five
+// (release-engine.yml), so the maintainer's machine never needs multiple
 // toolchains. The whole workspace builds from source, so there is nothing to
 // fetch and nothing to order ahead of it.
 async function releaseEngine() {
@@ -459,6 +459,6 @@ async function releaseEngine() {
 
   console.log(`\n✓ Engine ${version} tagged as ${tag}`);
   console.log(`\n→ Next step: watch the release-engine workflow (${REPO_URL}/actions/workflows/release-engine.yml).`);
-  console.log(`  It publishes the five binaries + .sha256 as ${REPO_URL}/releases/tag/${tag}.`);
-  console.log('  Then publish the five @impeccable/cli-<os>-<arch> npm platform packages with `bun run release:platform-packages`, then release the CLI/skill.');
+  console.log(`  It publishes the binaries + .sha256 as ${REPO_URL}/releases/tag/${tag}.`);
+  console.log('  Then publish the @impeccable/cli-<os>-<arch> npm platform packages with `bun run release:platform-packages`, then release the CLI/skill.');
 }
