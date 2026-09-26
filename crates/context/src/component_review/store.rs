@@ -379,6 +379,8 @@ pub fn submit(dir: &Path, body: &Value) -> Result<Value, String> {
         }
         match d["action"].as_str() {
             Some("approve") if d["split"] == false => approved += 1,
+            // On an asset, split: true asks for the region to come back as layers (a frame plate
+            // with a transparent opening, the view, each moving part); feedback is optional.
             Some("revise") if !v3 || c["role"] == "asset" => revisions += 1,
             // A plan item can need a map change neither medium fixes (artwork spilling over a
             // code region). Revise then carries the reviewer's words and must not be empty.

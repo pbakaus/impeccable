@@ -57,7 +57,7 @@ The stage keeps its name so hosts and `lifecycle --require components hero` keep
 Per component: `{revision, action, feedback, split: false}` plus, for `reclassify`, `kind`:
 
 - `approve`: asset looks right / code is the right medium.
-- `revise`: on an asset, regenerate with `feedback`. On a plan item, `feedback` is required and describes a region-map change neither medium fixes (for example, artwork from a neighbouring photo spills over a code region: extend that photo under it, or split the material into its own plate). The region's kind can stay.
+- `revise`: on an asset, regenerate with `feedback`. With `split: true` (assets only; feedback optional) the asset is a baked composite that should come back as layers: a frame plate with a transparent opening at the same box, the view as its own image region at the opening, and each moving part as its own plate. On a plan item, `feedback` is required and describes a region-map change neither medium fixes (for example, artwork from a neighbouring photo spills over a code region: extend that photo under it, or split the material into its own plate). The region's kind can stay.
 - `reclassify` (plan items, and any `codeRegions` id): `kind` is `plate`, `image` or `texture`; `feedback` optional. Allowed for ids in `codeRegions` without a component entry; those go in `submission.reclassify: [{id, kind, feedback}]`.
 
 `missing` and `inventoryConfirmed` stay. The UI sets `inventoryConfirmed: true` when the user approves with nothing marked missing (the approve button says so). A submission with any `revise`, `reclassify` or `missing` entry is `changes-requested`. Approval requires every component approved and no reclassification.

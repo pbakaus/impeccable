@@ -3,7 +3,7 @@
  * with the coverage question and the single submit. The first-viewport stage keeps review.ts. */
 import {
   ASSET_KINDS, clearDecision, currentDecision, decide, defaultAssetKind, extraRegions, figureLayout,
-  flagMessage, introLine, isFlagged, itemState, loupeOffset, medianColor, newPlanDraft, planQueue, planStatement,
+  SPLIT_GUIDANCE, assetFlags, isBakedComposite, isSplit, flagMessage, introLine, isFlagged, itemState, loupeOffset, medianColor, newPlanDraft, planQueue, planStatement,
   planSubmission, planSummary, planView, priorRound, progressLights, regionReclassify, ringSamples, sendLabel,
   setRegionReclassify,
   type AssetKind, type PlanDraft, type PlanHistory, type PlanItem, type PlanPacket,
@@ -43,7 +43,7 @@ const storage = {
 };
 
 type View = 'intro' | 'stage' | 'summary';
-type Form = { type: 'revise' | 'reclassify'; id: string; region: boolean; text: string; kind: AssetKind };
+type Form = { type: 'revise' | 'reclassify'; id: string; region: boolean; text: string; kind: AssetKind; split?: boolean };
 type MountOptions = {
   preview?: boolean; history?: PlanHistory | null; initialDraft?: PlanDraft; completed?: boolean; status?: string | null;
   onDraftChange?: (draft: PlanDraft) => void; onSubmit: (value: ReturnType<typeof planSubmission>) => Promise<void>;
@@ -163,7 +163,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
     commit(decide(draft, c, 'approve'), `${c.role === 'asset' ? 'Approved' : 'Kept in code'}: ${c.name}.`);
     advance();
   }
-  function openForm(type: Form['type'], regionId?: string) {
+  function openForm(type: Form['type'], regionId?: string, split = false) {
     if (locked()) return;
     const r = regionId ? region(regionId) : undefined;
     const c = r ? undefined : item(current);
@@ -171,7 +171,8 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
     if (!target || (c && type === 'reclassify' && c.role !== 'plan')) return;
     const saved = c ? currentDecision(c, draft) : undefined;
     const savedRegion = r ? regionReclassify(draft, r.id) : undefined;
-    form = { type, id: target.id, region: !!r, text: saved?.action === type ? saved.feedback : savedRegion?.feedback ?? '',
+    const keep = saved?.action === type && !!saved.split === split;
+    form = { type, split, id: target.id, region: !!r, text: keep ? saved!.feedback : split ? SPLIT_GUIDANCE : savedRegion?.feedback ?? '',
       kind: saved?.kind ?? savedRegion?.kind ?? defaultAssetKind({ name: target.name, note: target.note ?? '', flags: c?.flags }) };
     render();
     root.getElementById('form-text')?.focus();
@@ -187,7 +188,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
     }
     const c = item(f.id)!;
     if (f.type === 'revise' && c.role === 'plan' && !f.text.trim()) { root.getElementById('form-text')?.focus(); return; }
-    commit(decide(draft, c, f.type, { feedback: f.text, kind: f.kind }), f.type === 'revise' ? `Noted: ${c.name}.` : `${c.name} will become ${KIND_WORD[f.kind]}.`);
+    commit(decide(draft, c, f.type, { feedback: f.text, kind: f.kind, split: f.split }), f.split ? `Split into layers: ${c.name}.` : f.type === 'revise' ? `Noted: ${c.name}.` : `${c.name} will become ${KIND_WORD[f.kind]}.`);
     advance();
   }
   function undo() {
@@ -218,7 +219,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
   const stateWord = (c: PlanItem) => {
     const s = itemState(c, draft);
     if (s === 'approved') return c.role === 'asset' ? 'Looks good' : 'Code is fine';
-    if (s === 'revise') return 'Needs work';
+    if (s === 'revise') return isSplit(currentDecision(c, draft)) ? 'Split into layers' : 'Needs work';
     if (s === 'reclassify') return `Becomes ${KIND_WORD[currentDecision(c, draft)!.kind!]}`;
     return submitted ? 'Not decided' : 'To decide';
   };
@@ -233,7 +234,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
     type Shape = { kind: 'item' | 'region' | 'missing'; id: string; name: string; box: Box; cls: string };
     const shapes: Shape[] = [
       ...(opts.code ? regions.map(r => ({ kind: 'region' as const, id: r.id, name: r.name, box: r.box, cls: `code ${regionReclassify(draft, r.id) ? 'reclassify' : ''}` })) : []),
-      ...packet.components.map(c => ({ kind: 'item' as const, id: c.id, name: c.name, box: c.box, cls: `is-${c.role} ${isFlagged(c) ? 'flagged' : ''} ${itemState(c, draft)}` })),
+      ...packet.components.map(c => ({ kind: 'item' as const, id: c.id, name: c.name, box: c.box, cls: `is-${c.role} ${isFlagged(c) || isBakedComposite(c) ? 'flagged' : ''} ${itemState(c, draft)}` })),
       ...draft.missing.map(m => ({ kind: 'missing' as const, id: m.id, name: m.name || 'Missing', box: m.box, cls: 'missing' })),
     ].sort((a, b) => b.box.w * b.box.h - a.box.w * a.box.h);
     return shapes.map(s => {
@@ -250,7 +251,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
     const doneCount = lights.filter(l => l.state !== 'pending').length;
     return `<header class="bar">
       <div class="bar-title"><span class="bar-name">${esc(packet.title)}</span><span class="bar-round">Round ${packet.round}</span></div>
-      ${queue.length ? `<nav class="lights ${lights.length > 20 ? 'dense' : ''}" aria-label="Progress, ${doneCount} of ${lights.length} decided">${lights.map((l, i) => `<button type="button" class="light ${l.state === 'pending' ? '' : 'decided'} ${l.current ? 'current' : ''}" data-go="${esc(l.id)}" aria-label="${esc(`${i + 1}. ${l.name}: ${stateWord(item(l.id)!)}`)}" ${l.current ? 'aria-current="step"' : ''}><span class="tip">${esc(l.name)}</span></button>`).join('')}<button type="button" class="lights-summary ${view === 'summary' ? 'current' : ''}" id="to-summary">Summary</button></nav>` : ''}
+      ${queue.length ? `<nav class="lights ${lights.length > 20 ? 'dense' : ''}" aria-label="Progress, ${doneCount} of ${lights.length} decided">${lights.map((l, i) => `<button type="button" class="light ${l.state === 'pending' ? '' : 'decided'} ${l.current ? 'current' : ''}" data-go="${esc(l.id)}" aria-label="${esc(`${i + 1}. ${l.name}: ${stateWord(item(l.id)!)}`)}" ${l.current ? 'aria-current="step"' : ''}><span class="tip">${esc(l.name)}${l.state === 'pending' ? '' : `<span class="tip-state"> · ${esc(stateWord(item(l.id)!))}</span>`}</span></button>`).join('')}<button type="button" class="lights-summary ${view === 'summary' ? 'current' : ''}" id="to-summary">Summary</button></nav>` : ''}
       ${view === 'stage' ? `<button type="button" class="bar-locator" id="open-map-bar" aria-label="Open the comp">${compLayer({ x: 0, y: 0, w: 1, h: 1 })}</button>` : ''}
     </header>`;
   }
@@ -303,10 +304,11 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
     if (form && !form.region) {
       const reclass = form.type === 'reclassify';
       const planChange = !reclass && c.role === 'plan';
+      const split = !!form.split;
       return `<form class="decide-bar form" id="decision-form">
         ${reclass ? `<div class="form-row"><span class="eyebrow" id="kinds-label">Make it</span><div class="ks-instrument-strip is-paper" data-ks-strip="kind" role="group" aria-labelledby="kinds-label">${ASSET_KINDS.map(k => `<button type="button" class="ks-instrument-key" data-kind="${k.kind}" aria-pressed="${form!.kind === k.kind}">${k.label}</button>`).join('')}</div></div>` : ''}
-        <label class="field"><span class="eyebrow">${reclass ? 'Anything the image should keep? Optional' : planChange ? 'What should change?' : 'What needs to change? Optional'}</span><textarea id="form-text" rows="2" placeholder="${reclass ? 'For example: keep the brushed direction horizontal.' : planChange ? 'For example: extend the hero photo under the nav.' : 'For example: the figure should face the sea.'}">${esc(form.text)}</textarea></label>
-        <div class="form-actions"><button type="button" id="form-cancel" class="ks-button ks-button-ghost">Cancel${kbd('Esc')}</button><button type="submit" class="ks-button ks-button-primary">${reclass ? 'Make it an image' : 'Save note'}${kbd('⌘↵')}</button></div>
+        <label class="field"><span class="eyebrow">${reclass ? 'Anything the image should keep? Optional' : split ? 'How should it come apart? Edit or keep' : planChange ? 'What should change?' : 'What needs to change? Optional'}</span><textarea id="form-text" rows="2" placeholder="${reclass ? 'For example: keep the brushed direction horizontal.' : planChange ? 'For example: extend the hero photo under the nav.' : 'For example: the figure should face the sea.'}">${esc(form.text)}</textarea></label>
+        <div class="form-actions"><button type="button" id="form-cancel" class="ks-button ks-button-ghost">Cancel${kbd('Esc')}</button><button type="submit" class="ks-button ks-button-primary">${reclass ? 'Make it an image' : split ? 'Split into layers' : 'Save note'}${kbd('⌘↵')}</button></div>
       </form>`;
     }
     const d = currentDecision(c, draft);
@@ -316,7 +318,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
       <div class="decisions">
         <button type="button" id="decide-yes" class="ks-button ks-button-primary">${asset ? 'Looks good' : 'Code is fine'}${kbd('A')}</button>
         <button type="button" id="decide-no" class="ks-button ks-button-secondary">${asset ? 'Needs work' : 'Make it an image'}${kbd('N')}</button>
-        ${asset ? '' : `<button type="button" id="decide-other" class="ks-button ks-button-ghost">Something else…${kbd('F')}</button>`}
+        ${asset ? `<button type="button" id="decide-split" class="ks-button ${isBakedComposite(c) ? 'ks-button-secondary' : 'ks-button-ghost'}">Split into layers${kbd('S')}</button>` : `<button type="button" id="decide-other" class="ks-button ks-button-ghost">Something else…${kbd('F')}</button>`}
       </div>
     </div>`;
   }
@@ -326,7 +328,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
     if (!c) return '<div class="stage"><p>Nothing to review.</p></div>';
     const index = queue.findIndex(q => q.id === c.id) + 1;
     const prior = priorRound(c.id, history);
-    const flags = c.role === 'plan' ? [...(c.flags ?? []).map(flagMessage), ...(c.codeDrawn ? ['The plan draws this artwork in code.'] : [])] : [];
+    const flags = c.role === 'plan' ? [...(c.flags ?? []).map(flagMessage), ...(c.codeDrawn ? ['The plan draws this artwork in code.'] : [])] : assetFlags(c).map(flagMessage);
     const note = (c.note ?? '').trim();
     const sentence = c.role === 'plan'
       ? `<p class="sentence"><strong>Will be drawn in code:</strong> ${esc(note || planStatement(c).toLowerCase())}</p>`
@@ -336,7 +338,8 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
       <div class="stage-head">
         <p class="eyebrow">${c.role === 'asset' ? `Generated ${esc(KIND_WORD[c.kind] ?? c.kind)}` : `Drawn in code · ${esc(c.kind)}`} · ${index} of ${queue.length}</p>
         <h1>${esc(c.name)}</h1>
-        ${prior?.words ? `<blockquote class="asked"><span class="eyebrow">You asked in round ${prior.round}</span><p>“${esc(prior.words)}”</p></blockquote>` : ''}
+        ${prior?.splitFrom ? `<blockquote class="asked"><span class="eyebrow">A layer of ${esc(prior.splitFrom)} · you asked to split it in round ${prior.round}</span>${prior.words ? `<p>“${esc(prior.words)}”</p>` : ''}</blockquote>`
+          : prior?.words ? `<blockquote class="asked"><span class="eyebrow">You asked in round ${prior.round}</span><p>“${esc(prior.words)}”</p></blockquote>` : ''}
       </div>
       ${stageFigures(c)}
       <div class="stage-foot">
@@ -512,6 +515,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
     on('decide-yes', approve);
     on('decide-no', () => openForm(item(current)?.role === 'asset' ? 'revise' : 'reclassify'));
     on('decide-other', () => openForm('revise'));
+    on('decide-split', () => openForm('revise', undefined, true));
     on('decision-clear', () => { const c = item(current); if (c && !locked()) { commit(clearDecision(draft, c.id), `Cleared: ${c.name}.`); render(); } });
     on('form-cancel', () => { form = null; render(); });
     root.getElementById('decision-form')?.addEventListener('submit', e => { e.preventDefault(); saveForm(); });
@@ -537,7 +541,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
     on('missing-remove', () => { if (panel?.type !== 'missing') return; const id = panel.id; draft = { ...draft, missing: draft.missing.filter(x => x.id !== id) }; panel = null; render(); });
     root.getElementById('missing-name')?.addEventListener('input', e => { const m = draft.missing.find(x => x.id === panel?.id); if (m) { m.name = (e.target as HTMLInputElement).value; const b = root.getElementById('send') as HTMLButtonElement | null; if (b) b.disabled = !planSummary(packet, draft).canSubmit || sending || !!options.status; options.onDraftChange?.(structuredClone(draft)); } });
     root.getElementById('missing-feedback')?.addEventListener('input', e => { const m = draft.missing.find(x => x.id === panel?.id); if (m) { m.feedback = (e.target as HTMLTextAreaElement).value; options.onDraftChange?.(structuredClone(draft)); } });
-    if (locked()) root.querySelectorAll<HTMLButtonElement>('#decide-yes,#decide-no,#decide-other,#decision-clear,#mark,#region-image').forEach(b => b.disabled = true);
+    if (locked()) root.querySelectorAll<HTMLButtonElement>('#decide-yes,#decide-no,#decide-other,#decide-split,#decision-clear,#mark,#region-image').forEach(b => b.disabled = true);
 
     // Regions on a map: items open their stage, code regions and missing marks open the side panel.
     root.querySelectorAll<HTMLElement>('.map [data-item]').forEach(el => el.addEventListener('click', () => { if (!marking) go('stage', el.dataset.item!, 'fade'); }));
@@ -608,6 +612,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
     if (key === 'a') { e.preventDefault(); approve(); }
     else if (key === 'n') { e.preventDefault(); root.getElementById('decide-no')?.click(); }
     else if (key === 'f' && item(current)?.role === 'plan') { e.preventDefault(); openForm('revise'); }
+    else if (key === 's' && item(current)?.role === 'asset') { e.preventDefault(); openForm('revise', undefined, true); }
     else if (key === 'j' || e.key === 'ArrowRight') { e.preventDefault(); move(1); }
     else if (key === 'k' || e.key === 'ArrowLeft') { e.preventDefault(); move(-1); }
   };
