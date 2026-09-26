@@ -2,6 +2,8 @@ import { reviewScope, type Component, reviewUnits, reviewPeers, decisionTargets,
 import { comparisonSize, hoverPan } from './viewport';
 import { styles } from './styles';
 import { icon } from './icons';
+import { isPlanPacket, type PlanDraft, type PlanHistory } from './plan-model';
+import { mountPlanReview } from './plan-review';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 const pct = (n: number) => `${n * 100}%`;
@@ -12,8 +14,14 @@ const url = (s: string) => {
   return esc(parsed.href);
 };
 export function mountComponentReview(host: HTMLElement, packet: ReviewPacket, options: {
-  preview?: boolean; history?: ReviewHistory | null; initialDraft?: Draft; completed?: boolean; onDraftChange?: (draft: Draft) => void; onSubmit: (value: ReturnType<typeof submission>) => Promise<void>;
+  preview?: boolean; history?: ReviewHistory | null; initialDraft?: Draft; completed?: boolean; status?: string | null; onDraftChange?: (draft: Draft) => void; onSubmit: (value: ReturnType<typeof submission>) => Promise<void>;
 }) {
+  // Plan and asset review (schemaVersion 3) has its own view; the first-viewport stage keeps this one.
+  if (isPlanPacket(packet)) return mountPlanReview(host, packet, {
+    ...options, history: options.history as unknown as PlanHistory | null, initialDraft: options.initialDraft as PlanDraft | undefined,
+    onDraftChange: options.onDraftChange as ((draft: PlanDraft) => void) | undefined,
+    onSubmit: options.onSubmit as unknown as (value: unknown) => Promise<void>,
+  }) as unknown as { destroy(): void; getDraft(): Draft };
   const root = host.attachShadow({mode: 'open'});
   let draft = structuredClone(options.initialDraft ?? newDraft(packet));
   // Legacy packets with several regions or marked omissions retain the inventory UI.
