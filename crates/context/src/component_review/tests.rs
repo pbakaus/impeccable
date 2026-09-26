@@ -1241,3 +1241,23 @@ fn plan_leaves_bare_grounds_and_straight_rules_to_code_unless_flagged() {
     assert_eq!(ids("components"), ["brushed-panel", "table", "moulding", "art", "photo", "mark"]);
     assert_eq!(ids("codeRegions"), ["nav", "headline", "ground", "strip", "rule"]);
 }
+
+#[test]
+fn plan_puts_flagged_assets_first_with_their_flags() {
+    let f = Fixture::new();
+    f.plan_project();
+    f.plates();
+    let mut spec: Value = serde_json::from_str(PLAN_SPEC).unwrap();
+    spec["regions"][2]["flags"] = json!([{"id":"baked-composite","message":"Frame and view are one image here, so the page can't swap the view on its own."}]);
+    fs::write(f.project.join(".impeccable/build/spec.json"), serde_json::to_vec(&spec).unwrap()).unwrap();
+    let (code, out, err) = f.cli(&["plan"]);
+    assert_eq!(code, 0, "{err}");
+    assert!(out.contains("2 assets (1 flagged), 3 plan items (2 flagged or code-drawn)"), "{out}");
+    let packet = store::read(&f.project.join(".impeccable/review/components.json")).unwrap();
+    let ids: Vec<&str> = packet["components"].as_array().unwrap().iter().map(|c| c["id"].as_str().unwrap()).collect();
+    // Flagged items of either role keep spec order at the front.
+    assert_eq!(ids, ["photo", "brushed-panel", "table", "art", "nav"]);
+    assert_eq!(packet["components"][0]["flags"][0]["id"], "baked-composite");
+    assert_eq!(packet["components"][0]["role"], "asset");
+    assert!(packet["components"][3]["flags"].is_null());
+}
