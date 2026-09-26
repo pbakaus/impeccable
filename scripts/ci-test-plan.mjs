@@ -20,6 +20,7 @@ const forceOptIn = eventName === 'workflow_dispatch';
 const RUST_PATTERNS = [
   /^crates\//,
   /^Cargo\.(toml|lock)$/,
+  /^package\.json$/,
   /^rust-toolchain\.toml$/,
   /^browser-bundle\//,
   /^tests\/oracle\//,
