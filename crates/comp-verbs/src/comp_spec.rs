@@ -400,6 +400,87 @@ fn uncovered_ink_cells(comp: &Image, regions: &[Value]) -> Vec<String> {
     cells
 }
 
+/// Painted-pixel reading of a code region's comp crop: how many colours sit
+/// off the line between its two main tones (ground and ink, with every
+/// antialiased mix between them), and the share of continuous-tone pixels in
+/// its busy 8x8 blocks. Type and flat controls stay near their two tones;
+/// photographs, rendered figures and material surfaces do not.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PaintedPixels { pub colours: usize, pub soft: f64 }
+/// Calibrated on 556 regions of 12 eval comps: at these values no text or
+/// control region reads as painted while about 70% of the raster regions do
+/// (the misses are small single-ink sprigs that look like type).
+pub const PAINTED_COLOURS_MIN: usize = 23;
+pub const PAINTED_SOFT_MIN: f64 = 0.34;
+pub const PAINTED_COLOURS_ALONE: usize = 45;
+
+fn seg_dist(p: [f64; 3], a: [f64; 3], b: [f64; 3]) -> f64 {
+    let ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    let l2 = ab.iter().map(|v| v * v).sum::<f64>();
+    let t = if l2 == 0. { 0. } else { ((0..3).map(|k| (p[k] - a[k]) * ab[k]).sum::<f64>() / l2).clamp(0., 1.) };
+    (0..3).map(|k| (a[k] + t * ab[k] - p[k]).powi(2)).sum::<f64>().sqrt()
+}
+
+/// None when fewer than 64 usable samples remain (`skip` marks crop pixels
+/// another raster region owns).
+pub fn painted_pixels(img: &Image, skip: &dyn Fn(usize, usize) -> bool) -> Option<PaintedPixels> {
+    let (w, d) = (img.width, &img.data);
+    let px = |x: usize, y: usize| { let i = (y * w + x) * 4; [d[i] as f64, d[i + 1] as f64, d[i + 2] as f64] };
+    let key = |p: [f64; 3]| ((p[0] as u32 >> 4) << 8) | ((p[1] as u32 >> 4) << 4) | (p[2] as u32 >> 4);
+    // 2x box average: comp grain and paper noise average out, painted tone does not.
+    let mut samples: Vec<[f64; 3]> = Vec::new();
+    for y in 0..img.height / 2 { for x in 0..w / 2 {
+        let cells = [(2 * x, 2 * y), (2 * x + 1, 2 * y), (2 * x, 2 * y + 1), (2 * x + 1, 2 * y + 1)];
+        if cells.iter().any(|&(cx, cy)| skip(cx, cy)) { continue; }
+        let s = cells.iter().fold([0.; 3], |a, &(cx, cy)| { let p = px(cx, cy); [a[0] + p[0], a[1] + p[1], a[2] + p[2]] });
+        samples.push([(s[0] / 4.).floor(), (s[1] / 4.).floor(), (s[2] / 4.).floor()]);
+    }}
+    if samples.len() < 64 { return None; }
+    let mut bins: std::collections::BTreeMap<u32, (usize, [f64; 3])> = Default::default();
+    for &p in &samples { let e = bins.entry(key(p)).or_insert((0, [0.; 3])); e.0 += 1; for k in 0..3 { e.1[k] += p[k]; } }
+    let mut ranked: Vec<(usize, [f64; 3])> = bins.values().map(|&(n, s)| (n, [s[0] / n as f64, s[1] / n as f64, s[2] / n as f64])).collect();
+    ranked.sort_by(|a, b| b.0.cmp(&a.0));
+    let ground = ranked[0].1;
+    let ink = ranked.iter().map(|r| r.1).find(|c| seg_dist(*c, ground, ground) > 48.).unwrap_or(ground);
+    let mut off: std::collections::HashMap<u32, usize> = Default::default();
+    for &p in &samples { if seg_dist(p, ground, ink) > 24. { *off.entry(key(p)).or_default() += 1; } }
+    let min = (samples.len() as f64 * 0.002).max(2.);
+    let colours = off.values().filter(|&&n| n as f64 >= min).count();
+    let (mut mid, mut busy) = (0usize, 0usize);
+    for by in 0..img.height / 8 { for bx in 0..w / 8 {
+        let cells: Vec<(usize, usize)> = (0..64).map(|k| (bx * 8 + k % 8, by * 8 + k / 8)).collect();
+        if cells.iter().any(|&(x, y)| skip(x, y)) { continue; }
+        let l: Vec<f64> = cells.iter().map(|&(x, y)| { let p = px(x, y); 0.299 * p[0] + 0.587 * p[1] + 0.114 * p[2] }).collect();
+        let (lo, hi) = l.iter().fold((f64::MAX, f64::MIN), |(a, b), &v| (a.min(v), b.max(v)));
+        if hi - lo < 24. { continue; }
+        busy += 64;
+        mid += l.iter().filter(|&&v| (v - lo) / (hi - lo) > 0.25 && (v - lo) / (hi - lo) < 0.75).count();
+    }}
+    Some(PaintedPixels { colours, soft: if busy == 0 { 0. } else { mid as f64 / busy as f64 } })
+}
+
+pub fn reads_painted(p: &PaintedPixels) -> bool {
+    p.colours >= PAINTED_COLOURS_ALONE || (p.colours >= PAINTED_COLOURS_MIN && p.soft >= PAINTED_SOFT_MIN)
+}
+
+/// Flag, never refuse: a code region whose crop reads painted goes to the
+/// human plan review. Pixels inside raster regions belong to their plates.
+fn painted_flags(comp: &Image, regions: &mut [Value]) {
+    let pxbox = |r: &Value| ["x", "y", "w", "h"].map(|k| r["px"][k].as_i64().unwrap_or(0));
+    let rasters: Vec<[i64; 4]> = regions.iter().filter(|r| r["kind"].as_str().is_some_and(is_raster_kind)).map(pxbox).collect();
+    for region in regions.iter_mut() {
+        if !matches!(region["kind"].as_str(), Some("text" | "control" | "chrome")) { continue; }
+        let [x, y, w, h] = pxbox(region);
+        let crop = r::crop(comp, x as f64, y as f64, w as f64, h as f64);
+        let skip = |cx: usize, cy: usize| { let (gx, gy) = (x + cx as i64, y + cy as i64);
+            rasters.iter().any(|b| gx >= b[0] && gx < b[0] + b[2] && gy >= b[1] && gy < b[1] + b[3]) };
+        let Some(p) = painted_pixels(&crop, &skip).filter(reads_painted) else { continue; };
+        region["flags"] = json!([{"id": "painted-pixels", "message": format!(
+            "The comp crop reads as painted material ({} colours off its two main tones, {}% soft-gradient pixels). If it shows an illustration, photograph or texture, make it a plate, image or texture region; code redraws it as a flat copy.",
+            p.colours, round(p.soft * 100.) as i64)}]);
+    }
+}
+
 fn box_json(b: (f64, f64, f64, f64)) -> Value {
     json!({ "x": r4(b.0), "y": r4(b.1), "w": r4(b.2), "h": r4(b.3) })
 }
@@ -585,6 +666,7 @@ pub fn measure_regions(comp: &Image, regions_input: &Value, comp_path: &str) -> 
         obj.insert("text".into(), raw.get("text").filter(|v| !v.is_null()).cloned().unwrap_or(Value::Null));
         regions.push(Value::Object(obj));
     }
+    painted_flags(comp, &mut regions);
     let uncovered = uncovered_ink_cells(comp, &regions);
     if uncovered.len() > 3 && !truthy(regions_input.get("allowUncovered")) {
         return Err(format!(
@@ -845,6 +927,11 @@ pub fn print_spec(spec: &Value) -> String {
             plate.map(|p| format!(" plate {p}")).unwrap_or_default(),
             note.map(|n| format!("  # {n}")).unwrap_or_default()
         ));
+    }
+    for r in &regions {
+        for f in r["flags"].as_array().into_iter().flatten() {
+            lines.push(format!("FLAG {} {}: {}", r["id"].as_str().unwrap_or(""), f["id"].as_str().unwrap_or(""), f["message"].as_str().unwrap_or("")));
+        }
     }
     let plates: Vec<&Value> = regions.iter().filter(|r| r.get("medium").and_then(Value::as_str) == Some("raster")).collect();
     let plate_ids = plates.iter().filter_map(|r| r.get("id").and_then(Value::as_str)).collect::<Vec<_>>().join(", ");
@@ -1265,5 +1352,55 @@ mod reference_tests {
         assert_eq!(reference.excluded_pixels, 0);
         assert!(!reference.fully_excluded());
         assert!(reference.issue("art").is_none());
+    }
+
+    /// Deterministic noise so the synthetic crops carry comp-like grain.
+    fn grain(seed: &mut u64) -> f64 { *seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407); ((*seed >> 33) % 13) as f64 - 6. }
+
+    fn text_like(ground: [f64; 3], ink: [f64; 3]) -> Image {
+        let mut img = r::create_image(240, 80, [0, 0, 0, 255]);
+        let mut seed = 7;
+        for y in 0..80 { for x in 0..240 {
+            // Glyph-ish strokes with a one-pixel antialiased ramp on each side.
+            let t = match (x % 9, (y / 20) % 2 == 0 && y % 20 > 4 && y % 20 < 16) { (3 | 4, true) => 1., (2 | 5, true) => 0.5, _ => 0. };
+            let i = (y * 240 + x) * 4;
+            for k in 0..3 { img.data[i + k] = (ground[k] + (ink[k] - ground[k]) * t + grain(&mut seed)).clamp(0., 255.) as u8; }
+        }}
+        img
+    }
+
+    #[test]
+    fn flat_type_on_grained_ground_does_not_read_painted() {
+        for (ground, ink) in [([236., 229., 214.], [40., 36., 30.]), ([34., 38., 44.], [235., 235., 230.]), ([226., 160., 60.], [30., 70., 45.])] {
+            let p = painted_pixels(&text_like(ground, ink), &|_, _| false).unwrap();
+            assert!(!reads_painted(&p), "{p:?}");
+        }
+    }
+
+    #[test]
+    fn continuous_tone_crop_reads_painted_and_is_flagged_on_a_code_region() {
+        // A shaded, multi-hue surface: what a photograph or rendered figure looks like.
+        let mut comp = r::create_image(240, 160, [0, 0, 0, 255]);
+        let mut seed = 11;
+        for y in 0..160 { for x in 0..240 {
+            let (fx, fy) = (x as f64 / 240., y as f64 / 160.);
+            let i = (y * 240 + x) * 4;
+            let rgb = [60. + 180. * fx * (1. - 0.5 * fy), 40. + 150. * (fy * 3.1).sin().abs(), 50. + 170. * ((fx + fy) * 2.3).cos().abs()];
+            for k in 0..3 { comp.data[i + k] = (rgb[k] + grain(&mut seed)).clamp(0., 255.) as u8; }
+        }}
+        let p = painted_pixels(&comp, &|_, _| false).unwrap();
+        assert!(reads_painted(&p), "{p:?}");
+        let input = json!({"allowUncovered": true, "regions": [
+            {"id": "figure", "kind": "chrome", "note": "decorative panel", "container": true, "pixelBox": {"x": 0, "y": 0, "w": 120, "h": 160}},
+            {"id": "art", "kind": "plate", "note": "the same surface as art", "pixelBox": {"x": 120, "y": 0, "w": 120, "h": 160}}]});
+        let spec = measure_regions(&comp, &input, "comp.png").unwrap();
+        assert_eq!(spec["regions"][0]["flags"][0]["id"], "painted-pixels");
+        assert!(spec["regions"][1].get("flags").is_none(), "raster regions are never flagged");
+        assert!(print_spec(&spec).contains("FLAG figure painted-pixels: The comp crop reads as painted material"));
+        // A code region wholly covered by a raster region has no pixels of its own to judge.
+        let covered = json!({"allowUncovered": true, "regions": [
+            {"id": "caption", "kind": "text", "note": "caption over the art", "pixelBox": {"x": 20, "y": 20, "w": 80, "h": 60}},
+            {"id": "art", "kind": "image", "note": "full photograph", "pixelBox": {"x": 0, "y": 0, "w": 240, "h": 160}}]});
+        assert!(measure_regions(&comp, &covered, "comp.png").unwrap()["regions"][0].get("flags").is_none());
     }
 }

@@ -1481,6 +1481,13 @@ fn gate_hero(
         }
     };
     let native_path = native.as_ref().map(|n| n.path("hero"));
+    // The renderer hands over an approval only while its reviewed sources are
+    // unchanged; the pixels must also still be the ones the user saw, region by region.
+    let human = native.as_ref().and_then(|n| n.capture.approved_reference().map(|a| (n, a))).and_then(|(n, a)| {
+        let spec = load_spec(&abs(io, SPEC_PATH));
+        hero_diff_labeled(io, &n.path("human-approved"), &n.path("hero"), spec.as_ref(), &format!("{out_dir}/human-reviewed"), "human-reviewed").ok()
+            .map(|(comparison, _)| json!({"proof": a.proof, "comparison": comparison}))
+    });
     let mut gate = gate_hero_inner(
         io,
         state,
@@ -1489,6 +1496,7 @@ fn gate_hero(
         out_dir,
         artifact,
         organic_scan,
+        human.as_ref(),
     );
     if let Some(native) = &native {
         finish_native_capture(io, out_dir, &mut gate, native);
@@ -1615,7 +1623,17 @@ fn clear_comparison_artifacts(out_dir: &Path) -> Result<(), String> {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_dir: &str, artifact: Option<&str>, organic_scan: OrganicScan) -> Gate {
+/// Code regions (text, control, chrome) an accepted first-viewport review
+/// covers: the current capture still renders them as the approved one did.
+fn human_accepted_regions(human: Option<&Value>, regions: &[Value]) -> std::collections::HashSet<String> {
+    let reviewed = human.and_then(|h| h["comparison"]["regions"].as_array()).cloned().unwrap_or_default();
+    regions.iter().filter(|r| matches!(r["kind"].as_str(), Some("text" | "control" | "chrome")))
+        .filter(|r| reviewed.iter().any(|v| v["id"] == r["id"] && matches!(v["verdict"].as_str(), Some("match" | "drift")) && rscore(v, "structure") >= 0.75))
+        .filter_map(|r| r["id"].as_str().map(String::from)).collect()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_dir: &str, artifact: Option<&str>, organic_scan: OrganicScan, human: Option<&Value>) -> Gate {
     let s = self_cmd(io);
     if !abs(io, build_path).exists() {
         let bp = state.get("breakpoint").and_then(Value::as_str).map(String::from).unwrap_or_else(|| "comp size".into());
@@ -1668,6 +1686,16 @@ fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_d
     let mut reasons: Vec<String> = Vec::new();
     let mut advisories: Vec<String> = Vec::new();
     let mut region_reasons = Map::new();
+    // Material vetoes (missing or unreferenced plates, SVG illustrations, organic
+    // clips, plate readings, invented ink, the overall bar) never pass through here.
+    let accepted = human_accepted_regions(human, &regions);
+    let mut waived: Vec<String> = Vec::new();
+    let mut waive = |id: &str, message: &str, advisories: &mut Vec<String>| -> bool {
+        if !accepted.contains(id) { return false; }
+        advisories.push(format!("(advisory, accepted in the first-viewport review) {message}"));
+        if !waived.iter().any(|w| w == id) { waived.push(id.to_string()); }
+        true
+    };
     let overall = report.get("overall").and_then(Value::as_f64).unwrap_or(0.0);
     let sc = |k: &str| report.pointer(&format!("/scores/{k}")).and_then(Value::as_f64).unwrap_or(0.0);
     // capture-frame check
@@ -1827,21 +1855,23 @@ fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_d
         } else {
             format!("the plate here does not read as the comp region; regenerate it with the crop as reference ({s} generate-image --ref <crop.png> --prompt-file <prompt.txt> --out <plate.png> for {id}) and place it at its box")
         };
-        push_region_blocker(&mut reasons, &mut region_reasons, id, format!(
+        let message = format!(
             "region {id} ({kind}) is contradicted (structure {}%, detail added {}%): {tail}",
             pct0(rscore(r, "structure")), pct0(rscore(r, "detailAdded"))
-        ));
+        );
+        if !waive(id, &message, &mut advisories) { push_region_blocker(&mut reasons, &mut region_reasons, id, message); }
     }
     for r in &regions {
         if r.get("kind").and_then(Value::as_str) != Some("control") || r.get("verdict").and_then(Value::as_str) != Some("drift") || rscore(r, "overall") >= 0.65 {
             continue;
         }
         let id = r.get("id").and_then(Value::as_str).unwrap_or("");
-        push_region_blocker(&mut reasons, &mut region_reasons, id, format!(
+        let message = format!(
             "control {id} drifts to {}% (structure {}%, color {}%): open {} and compare its lettering and visible shape separately; use the measured readings and preserve the region's control classification",
             pct0(rscore(r, "overall")), pct0(rscore(r, "structure")), pct0(rscore(r, "color")),
             format!("{out_dir}/regions/{id}.png")
-        ));
+        );
+        if !waive(id, &message, &mut advisories) { push_region_blocker(&mut reasons, &mut region_reasons, id, message); }
     }
     // control ink boxes
     for r in &regions {
@@ -1876,12 +1906,14 @@ fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_d
             );
             if above_bar {
                 advisories.push(format!("(advisory, above the {}% bar) {msg}", pct0(min)));
-            } else {
+            } else if !waive(r["id"].as_str().unwrap_or(""), &msg, &mut advisories) {
                 push_region_blocker(&mut reasons, &mut region_reasons, r.get("id").and_then(Value::as_str).unwrap_or(""), msg);
             }
         }
     }
-    let other_contradicted: Vec<&Value> = contradicted.iter().filter(|r| !direction_contradicted.iter().any(|d| d.get("id") == r.get("id"))).collect();
+    let other_contradicted: Vec<&Value> = contradicted.iter().filter(|r| !direction_contradicted.iter().any(|d| d.get("id") == r.get("id")))
+        .filter(|r| { let id = r["id"].as_str().unwrap_or(""); !waive(id, &format!("region {id} ({}) is contradicted (structure {}%)", r["kind"].as_str().unwrap_or(""), pct0(rscore(r, "structure"))), &mut advisories) })
+        .collect();
     let allow = 1usize.max(regions.len() / 3);
     if other_contradicted.len() > allow {
         let message = format!(
@@ -1997,6 +2029,12 @@ fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_d
             }
         } else {
             for f in &kept {
+                let ids = reading_ids.get(f).cloned().unwrap_or_default();
+                if !ids.is_empty() && ids.iter().all(|id| accepted.contains(id)) {
+                    for id in &ids { waive(id, f, &mut advisories); }
+                    advisories.dedup();
+                    continue;
+                }
                 push_reading_blocker(&mut reasons, &mut region_reasons, &reading_ids, f);
             }
         }
@@ -2023,6 +2061,9 @@ fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_d
     let worst_sorted = repair_regions(&regions, &region_reasons);
     let worst_top: Vec<&Value> = worst_sorted.iter().take(3).collect();
     let region_dir = format!("{out_dir}/regions");
+    if let Some(h) = human {
+        report["humanHeroReview"] = json!({"proof": h["proof"], "comparison": h["comparison"], "acceptedRegions": waived, "scope": "contradicted readings on text, control and chrome regions; material vetoes retained"});
+    }
     let mut g = Gate::blank();
     g.ok = reasons.is_empty();
     g.reasons = reasons;
@@ -2145,10 +2186,13 @@ fn hero_loop_verdict(state: &mut Value, gate: &Gate, artifact_path: &str, io: &I
     }
     let last3 = &history[history.len() - 3..];
     let current = json!(gate.reasons);
-    let stuck = !gate.ok && !gate.reasons.is_empty()
-        && last3.iter().all(|h| h.get("blockingReasons") == Some(&current));
-    if stuck {
-        return Some("The same hero gate checks remain unresolved after three attempts. The blocking reasons below still apply.".into());
+    let failed = !gate.ok && !gate.reasons.is_empty()
+        && last3.iter().all(|h| h["blockingReasons"].as_array().is_some_and(|a| !a.is_empty()));
+    if failed {
+        let lead = if last3.iter().all(|h| h.get("blockingReasons") == Some(&current)) {
+            "The same hero gate checks remain unresolved after three attempts."
+        } else { "The hero gate has failed three attempts in a row." };
+        return Some(format!("{lead} Stop iterating and present the first-viewport review (the assembled hero, stage hero, in component-review.md) so the user judges the page in context. An accepted review of this capture turns contradicted readings on text, control and chrome regions into advisories; a missing or unreferenced plate, an SVG illustration and a clipped plate still block. The blocking reasons below still apply."));
     }
     None
 }

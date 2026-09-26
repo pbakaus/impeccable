@@ -1,4 +1,4 @@
-//! A human-approved assembled capture is evidence for text styling, never a
+//! A human-approved assembled capture is evidence for code-region styling, never a
 //! replacement for native integrity, missing-region, or overall fidelity gates.
 use crate::entry_capture::CdpEntryRenderer;
 use impeccable_comp_verbs::asset_capture::capture_sha256;
@@ -164,7 +164,7 @@ fn reference(
     }
     Ok(ApprovedReference {
         png,
-        proof: json!({"schema":"human-assembled-reference-v1","requestId":packet["id"],"packetRevision":packet["revision"],"sha256":hash,"scope":"Text styling accepted in a source-bound assembled-page review; all other gates retained"}),
+        proof: json!({"schema":"human-assembled-reference-v1","requestId":packet["id"],"packetRevision":packet["revision"],"sha256":hash,"scope":"Code-region styling accepted in a source-bound assembled-page review; material and fidelity gates retained"}),
     })
 }
 impl EntryRenderer for ReviewedEntryRenderer {
