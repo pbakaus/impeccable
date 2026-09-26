@@ -14,11 +14,14 @@ fn raster(kind: &str) -> bool {
 fn flagged(region: &Value) -> bool {
     region["flags"].as_array().is_some_and(|f| !f.is_empty()) || region["codeDrawn"] == true
 }
-/// A code region needs a decision when it is flagged, drawn in code, or non-container chrome.
+/// A code region needs a decision when it is flagged, drawn in code, or
+/// non-container chrome that holds more than a bare ground or straight rules
+/// (comp-spec's `surface` reading; a spec without it keeps every such chrome).
 fn plan_item(region: &Value) -> bool {
     let kind = region["kind"].as_str().unwrap_or("");
+    let plain = region["surface"]["flat"] == true || region["surface"]["rules"] == true;
     matches!(kind, "text" | "control" | "chrome")
-        && (flagged(region) || (kind == "chrome" && region["container"] != true))
+        && (flagged(region) || (kind == "chrome" && region["container"] != true && !plain))
 }
 /// Whether a spec yields any component to decide on; without one there is nothing to review.
 pub fn needs_review(spec: &Value) -> bool {

@@ -1182,3 +1182,23 @@ fn hosted_gate_requires_an_accepted_intact_review_in_the_named_sessions() {
     assert!(hosted(&[dir.clone()]).unwrap_err().contains("earlier spec.json"));
     assert!(hosted(&[f.root.join("nowhere")]).is_err());
 }
+
+#[test]
+fn plan_leaves_bare_grounds_and_straight_rules_to_code_unless_flagged() {
+    let f = Fixture::new();
+    f.plan_project();
+    f.plates();
+    let mut spec: Value = serde_json::from_str(PLAN_SPEC).unwrap();
+    let regions = spec["regions"].as_array_mut().unwrap();
+    regions[0]["surface"] = json!({"flat": true, "rules": false});
+    regions.push(json!({"id":"rule","kind":"chrome","note":"Brass hairline","box":{"x":0,"y":0.5,"w":1,"h":0.01},"surface":{"flat":false,"rules":true}}));
+    regions.push(json!({"id":"mark","kind":"chrome","note":"Wave mark","box":{"x":0.9,"y":0,"w":0.05,"h":0.05},"surface":{"flat":false,"rules":false}}));
+    regions.push(json!({"id":"moulding","kind":"chrome","note":"Moulded frieze","box":{"x":0,"y":0.95,"w":1,"h":0.05},"surface":{"flat":false,"rules":true},"flags":[{"id":"painted-pixels","message":"Looks painted"}]}));
+    fs::write(f.project.join(".impeccable/build/spec.json"), serde_json::to_vec(&spec).unwrap()).unwrap();
+    let (code, _, err) = f.cli(&["plan"]);
+    assert_eq!(code, 0, "{err}");
+    let packet = store::read(&f.project.join(".impeccable/review/components.json")).unwrap();
+    let ids = |key: &str| packet[key].as_array().unwrap().iter().map(|c| c["id"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+    assert_eq!(ids("components"), ["brushed-panel", "table", "moulding", "art", "photo", "mark"]);
+    assert_eq!(ids("codeRegions"), ["nav", "headline", "ground", "strip", "rule"]);
+}
