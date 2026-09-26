@@ -98,7 +98,7 @@ describe('plan and asset review model', () => {
     expect(defaultAssetKind({ note: 'Linen paper grain behind the menu' })).toBe('texture');
   });
   test('painted-pixel flags read as a plain statement', () => {
-    expect(flagMessage(panel.flags![0])).toBe('This looks painted: The comp shows photographic shading here.');
+    expect(flagMessage(panel.flags![0])).toBe(panel.flags![0].message);
     expect(flagMessage({ id: 'other', message: 'Custom.' })).toBe('Custom.');
   });
   test('the backdrop colour is the median of the pixels around the box', () => {

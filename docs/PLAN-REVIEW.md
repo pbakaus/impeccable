@@ -35,7 +35,7 @@ The stage keeps its name so hosts and `lifecycle --require components hero` keep
       "note": "Brushed steel band under the nav",
       "medium": "code",
       "preview": {"kind": "comp-crop"},
-      "flags": [{"id": "painted-pixels", "message": "The comp shows photographic shading here (41 colours, soft gradients)."}],
+      "flags": [{"id": "painted-pixels", "message": "Looks painted: 41 colours beyond its two main tones and soft shading across 47% of it. Drawn in code, this becomes a flat copy."}],
       "codeDrawn": false,
       "dependencies": []
     }
@@ -47,7 +47,7 @@ The stage keeps its name so hosts and `lifecycle --require components hero` keep
 ```
 
 - `role: "asset"`: every raster region (`plate`, `image`, `texture`). Preview is its plate file, pinned by hash as today.
-- `role: "plan"`: a code region (`text`, `control`, `chrome`) that needs a human decision: it carries a `flags` entry, or `codeDrawn: true`, or it is non-container `chrome`. Preview is `comp-crop` (no file; the UI crops the pinned comp by `box`).
+- `role: "plan"`: a code region (`text`, `control`, `chrome`) that needs a human decision: it carries a `flags` entry, or `codeDrawn: true`, or it is non-container `chrome` whose `surface` is neither `flat` nor `rules`. Preview is `comp-crop` (no file; the UI crops the pinned comp by `box`).
 - `codeRegions`: every other code region. Listed for completeness and clickable on the map, but no decision is required. Containers (`container: true`) and bands are listed here.
 - Order of `components`: flagged or `codeDrawn` plan items first, then assets, then remaining plan items.
 - `reviewGroup` is not used in v3. `revision` per component is computed as today (component JSON plus pinned file hashes plus `specSha256`).
@@ -79,7 +79,22 @@ The first-viewport review is unchanged in form. Two rule changes:
 
 ## Painted-pixel flag (`comp-spec`)
 
-For every `text`, `control` and `chrome` region, `comp-spec` measures the comp crop and adds `flags: [{"id":"painted-pixels","message":...}]` when it looks painted: many distinct colours outside the two dominant clusters and a high share of soft-gradient pixels. It is a flag, not a refusal. Thresholds are calibrated on eval comps: raster regions should flag, text and controls should not. `comp-spec` prints flagged regions in its summary.
+For every `text`, `control` and `chrome` region, containers included, `comp-spec` measures the comp crop with pixels inside raster regions left out, and adds `flags: [{"id":"painted-pixels","message":...}]` when it looks painted. It is a flag, not a refusal, and `codeDrawn` does not suppress it.
+
+The reading is taken over 64px windows (half-window stride; a smaller crop is one window) and the strongest window counts, so a painted patch reads the same in a tight box and in a generous one, and a container is judged on what shows between its raster children. Per window: `colours`, the distinct colours on a 2x-averaged copy that sit off the line between the window's two main tones, and `soft`, the share of mid-tone pixels in its 8x8 blocks with any contrast. A window reads painted at (colours, soft) of at least (18, 0.44) or (28, 0.38), or 60 colours alone.
+
+Calibration: 556 regions from 12 eval comps plus the 24-run replay. Every photograph and about half the plates read painted when scored as code regions (the misses are small single-ink sprigs and flat plaques that look like type). No text or control region that shows only type flags; the ones that do hold painted material (foliage over a nav bar, a painted shutter button, a plaque).
+
+The stored `message` is an observation for the reviewer ("Looks painted: 35 colours beyond its two main tones and soft shading across 45% of it. Drawn in code, this becomes a flat copy."). The instruction for the agent lives only in comp-spec's printed `FLAG <id> painted-pixels: ...` line.
+
+## Surface reading (`comp-spec`)
+
+Every code region also gets `"surface": {"flat": bool, "rules": bool}`, measured on its own pixels: raster regions and smaller regions inside it (its text, its controls) are set aside.
+
+- `flat`: under 2% of those pixels leave the main tone. A bare ground: a nav field, a section background.
+- `rules`: the box is at most 6px on its short side, or at least 80% of its ink lies on straight horizontal or vertical runs of 12px or more that are at most 6px thick. Frame edges, ticks, dividers, hairline grids.
+
+`component-review plan` keeps non-container `chrome` as a plan item only when it is neither `flat` nor `rules`, so emblems, marks, icons and ornaments stay in the review and grounds and rules move to `codeRegions`. A flagged or `codeDrawn` region is a plan item regardless. A spec written before this reading carries no `surface` and keeps every non-container chrome.
 
 ## Engine notes
 

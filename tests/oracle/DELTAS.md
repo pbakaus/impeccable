@@ -242,3 +242,7 @@ and pins the written v3 packet: `art` as an asset previewed by its plate, `top`
 `codeRegions`, and `specSha256` of the fixture spec. Contract:
 `docs/PLAN-REVIEW.md`. The build-phase plates next-step text gained one
 sentence naming the review; no golden prints it.
+
+## Recorded 2026-09-25: surface reading on code regions
+
+`comp-spec-regions`: the written spec adds `"surface": {"flat": false, "rules": false}` to the two code regions (`top`, `body`). The raster region, every other field, measurement, stdout, stderr and exit status are unchanged, and no region in the fixture reads painted, so no `flags` entry or `FLAG` line appears. No frozen function vectors changed. Rust regressions cover the readings: a painted patch reads the same in tight and generous boxes, containers flag only on unmapped painted material, and grounds and rules separate from marks.

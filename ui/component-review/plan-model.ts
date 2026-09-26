@@ -82,8 +82,8 @@ export function planStatement(item: { kind: string }) {
   return `Drawn in code (${item.kind})`;
 }
 
+/** comp-spec writes each flag message as a reviewer-facing observation; show it as written. */
 export function flagMessage(flag: Flag) {
-  if (flag.id === 'painted-pixels') return `This looks painted: ${flag.message}`;
   return flag.message;
 }
 

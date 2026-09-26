@@ -17,6 +17,6 @@ If the request ends at mapping, stop with the map, inspection report and unresol
 
 ## Painted material
 
-When measuring, `comp-spec` flags a `text`, `control` or `chrome` region whose crop looks painted (`painted-pixels`: many colours, soft gradients) and lists it in its summary. The plan and asset review shows flagged regions, and those marked `codeDrawn` (painted material you chose to draw in code), to the user first. Do not leave the catch to them: if a region is painted material (a figure, a photograph, a metal or paper surface), classify it `plate`, `image` or `texture` now.
+When measuring, `comp-spec` flags a `text`, `control` or `chrome` region, containers included, whose crop looks painted (`painted-pixels`: many colours, soft gradients) and lists it in its summary. The plan and asset review shows flagged regions, and those marked `codeDrawn` (painted material you chose to draw in code), to the user first. Do not leave the catch to them: if a region is painted material (a figure, a photograph, a metal or paper surface), classify it `plate`, `image` or `texture` now.
 
 Comp crops are reference evidence only, never production assets. The map inspector marks its PNGs as comp-derived.
