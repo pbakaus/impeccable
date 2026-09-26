@@ -1,0 +1,50 @@
+/* VENDORED from impeccable-site/site/styles/docs-kinpaku.css (the command rail list: the site's selected-row pattern) (the source of truth).
+   Do not edit here: change the site, then run node scripts/sync-kinpaku-kit.mjs. */
+/* Group headings are ink and bold, so they read as headings over their
+   links rather than as meta beside them; the links are muted and a step
+   smaller, ink on hover and on the current page. */
+.docs-kinpaku .skills-sidebar-category {
+  display: block;
+  font-family: var(--ks-font);
+  font-size: 0.8125rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  color: var(--ks-ink);
+  margin-bottom: 6px;
+  padding: 0 0 0 14px;
+}
+
+.docs-kinpaku .skills-sidebar-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.docs-kinpaku .skills-sidebar-list li {
+  margin: 0;
+}
+
+.docs-kinpaku .skills-sidebar-list a {
+  display: block;
+  padding: 4px 0 4px 12px;
+  border-left: 2px solid transparent;
+  font-family: var(--ks-font);
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--ks-text-muted);
+  text-decoration: none;
+  transition: color 160ms var(--ks-ease),
+              border-color 160ms var(--ks-ease);
+}
+
+.docs-kinpaku .skills-sidebar-list a:hover {
+  color: var(--ks-ink);
+}
+
+.docs-kinpaku .skills-sidebar-list a[aria-current="page"] {
+  color: var(--ks-ink);
+  font-weight: 600;
+  border-left-color: var(--ks-gold-line);
+}

@@ -1481,6 +1481,13 @@ fn gate_hero(
         }
     };
     let native_path = native.as_ref().map(|n| n.path("hero"));
+    // The renderer hands over an approval only while its reviewed sources are
+    // unchanged; the pixels must also still be the ones the user saw, region by region.
+    let human = native.as_ref().and_then(|n| n.capture.approved_reference().map(|a| (n, a))).and_then(|(n, a)| {
+        let spec = load_spec(&abs(io, SPEC_PATH));
+        hero_diff_labeled(io, &n.path("human-approved"), &n.path("hero"), spec.as_ref(), &format!("{out_dir}/human-reviewed"), "human-reviewed").ok()
+            .map(|(comparison, _)| json!({"proof": a.proof, "comparison": comparison}))
+    });
     let mut gate = gate_hero_inner(
         io,
         state,
@@ -1489,6 +1496,7 @@ fn gate_hero(
         out_dir,
         artifact,
         organic_scan,
+        human.as_ref(),
     );
     if let Some(native) = &native {
         finish_native_capture(io, out_dir, &mut gate, native);
@@ -1615,7 +1623,17 @@ fn clear_comparison_artifacts(out_dir: &Path) -> Result<(), String> {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_dir: &str, artifact: Option<&str>, organic_scan: OrganicScan) -> Gate {
+/// Code regions (text, control, chrome) an accepted first-viewport review
+/// covers: the current capture still renders them as the approved one did.
+fn human_accepted_regions(human: Option<&Value>, regions: &[Value]) -> std::collections::HashSet<String> {
+    let reviewed = human.and_then(|h| h["comparison"]["regions"].as_array()).cloned().unwrap_or_default();
+    regions.iter().filter(|r| matches!(r["kind"].as_str(), Some("text" | "control" | "chrome")))
+        .filter(|r| reviewed.iter().any(|v| v["id"] == r["id"] && matches!(v["verdict"].as_str(), Some("match" | "drift")) && rscore(v, "structure") >= 0.75))
+        .filter_map(|r| r["id"].as_str().map(String::from)).collect()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_dir: &str, artifact: Option<&str>, organic_scan: OrganicScan, human: Option<&Value>) -> Gate {
     let s = self_cmd(io);
     if !abs(io, build_path).exists() {
         let bp = state.get("breakpoint").and_then(Value::as_str).map(String::from).unwrap_or_else(|| "comp size".into());
@@ -1668,6 +1686,16 @@ fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_d
     let mut reasons: Vec<String> = Vec::new();
     let mut advisories: Vec<String> = Vec::new();
     let mut region_reasons = Map::new();
+    // Material vetoes (missing or unreferenced plates, SVG illustrations, organic
+    // clips, plate readings, invented ink, the overall bar) never pass through here.
+    let accepted = human_accepted_regions(human, &regions);
+    let mut waived: Vec<String> = Vec::new();
+    let mut waive = |id: &str, message: &str, advisories: &mut Vec<String>| -> bool {
+        if !accepted.contains(id) { return false; }
+        advisories.push(format!("(advisory, accepted in the first-viewport review) {message}"));
+        if !waived.iter().any(|w| w == id) { waived.push(id.to_string()); }
+        true
+    };
     let overall = report.get("overall").and_then(Value::as_f64).unwrap_or(0.0);
     let sc = |k: &str| report.pointer(&format!("/scores/{k}")).and_then(Value::as_f64).unwrap_or(0.0);
     // capture-frame check
@@ -1827,21 +1855,23 @@ fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_d
         } else {
             format!("the plate here does not read as the comp region; regenerate it with the crop as reference ({s} generate-image --ref <crop.png> --prompt-file <prompt.txt> --out <plate.png> for {id}) and place it at its box")
         };
-        push_region_blocker(&mut reasons, &mut region_reasons, id, format!(
+        let message = format!(
             "region {id} ({kind}) is contradicted (structure {}%, detail added {}%): {tail}",
             pct0(rscore(r, "structure")), pct0(rscore(r, "detailAdded"))
-        ));
+        );
+        if !waive(id, &message, &mut advisories) { push_region_blocker(&mut reasons, &mut region_reasons, id, message); }
     }
     for r in &regions {
         if r.get("kind").and_then(Value::as_str) != Some("control") || r.get("verdict").and_then(Value::as_str) != Some("drift") || rscore(r, "overall") >= 0.65 {
             continue;
         }
         let id = r.get("id").and_then(Value::as_str).unwrap_or("");
-        push_region_blocker(&mut reasons, &mut region_reasons, id, format!(
+        let message = format!(
             "control {id} drifts to {}% (structure {}%, color {}%): open {} and compare its lettering and visible shape separately; use the measured readings and preserve the region's control classification",
             pct0(rscore(r, "overall")), pct0(rscore(r, "structure")), pct0(rscore(r, "color")),
             format!("{out_dir}/regions/{id}.png")
-        ));
+        );
+        if !waive(id, &message, &mut advisories) { push_region_blocker(&mut reasons, &mut region_reasons, id, message); }
     }
     // control ink boxes
     for r in &regions {
@@ -1876,12 +1906,14 @@ fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_d
             );
             if above_bar {
                 advisories.push(format!("(advisory, above the {}% bar) {msg}", pct0(min)));
-            } else {
+            } else if !waive(r["id"].as_str().unwrap_or(""), &msg, &mut advisories) {
                 push_region_blocker(&mut reasons, &mut region_reasons, r.get("id").and_then(Value::as_str).unwrap_or(""), msg);
             }
         }
     }
-    let other_contradicted: Vec<&Value> = contradicted.iter().filter(|r| !direction_contradicted.iter().any(|d| d.get("id") == r.get("id"))).collect();
+    let other_contradicted: Vec<&Value> = contradicted.iter().filter(|r| !direction_contradicted.iter().any(|d| d.get("id") == r.get("id")))
+        .filter(|r| { let id = r["id"].as_str().unwrap_or(""); !waive(id, &format!("region {id} ({}) is contradicted (structure {}%)", r["kind"].as_str().unwrap_or(""), pct0(rscore(r, "structure"))), &mut advisories) })
+        .collect();
     let allow = 1usize.max(regions.len() / 3);
     if other_contradicted.len() > allow {
         let message = format!(
@@ -1997,6 +2029,12 @@ fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_d
             }
         } else {
             for f in &kept {
+                let ids = reading_ids.get(f).cloned().unwrap_or_default();
+                if !ids.is_empty() && ids.iter().all(|id| accepted.contains(id)) {
+                    for id in &ids { waive(id, f, &mut advisories); }
+                    advisories.dedup();
+                    continue;
+                }
                 push_reading_blocker(&mut reasons, &mut region_reasons, &reading_ids, f);
             }
         }
@@ -2023,6 +2061,9 @@ fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_d
     let worst_sorted = repair_regions(&regions, &region_reasons);
     let worst_top: Vec<&Value> = worst_sorted.iter().take(3).collect();
     let region_dir = format!("{out_dir}/regions");
+    if let Some(h) = human {
+        report["humanHeroReview"] = json!({"proof": h["proof"], "comparison": h["comparison"], "acceptedRegions": waived, "scope": "contradicted readings on text, control and chrome regions; material vetoes retained"});
+    }
     let mut g = Gate::blank();
     g.ok = reasons.is_empty();
     g.reasons = reasons;
@@ -2145,10 +2186,13 @@ fn hero_loop_verdict(state: &mut Value, gate: &Gate, artifact_path: &str, io: &I
     }
     let last3 = &history[history.len() - 3..];
     let current = json!(gate.reasons);
-    let stuck = !gate.ok && !gate.reasons.is_empty()
-        && last3.iter().all(|h| h.get("blockingReasons") == Some(&current));
-    if stuck {
-        return Some("The same hero gate checks remain unresolved after three attempts. The blocking reasons below still apply.".into());
+    let failed = !gate.ok && !gate.reasons.is_empty()
+        && last3.iter().all(|h| h["blockingReasons"].as_array().is_some_and(|a| !a.is_empty()));
+    if failed {
+        let lead = if last3.iter().all(|h| h.get("blockingReasons") == Some(&current)) {
+            "The same hero gate checks remain unresolved after three attempts."
+        } else { "The hero gate has failed three attempts in a row." };
+        return Some(format!("{lead} Stop iterating and present the first-viewport review (the assembled hero, stage hero, in component-review.md) so the user judges the page in context. An accepted review of this capture turns contradicted readings on text, control and chrome regions into advisories; a missing or unreferenced plate, an SVG illustration and a clipped plate still block. The blocking reasons below still apply."));
     }
     None
 }
@@ -2319,6 +2363,26 @@ fn run_gate(io: &Io, state: &mut Value, phase: &str, opts: &GateOpts, organic_sc
     }
 }
 
+/// Page work waits for the human plan and asset review (docs/PLAN-REVIEW.md) of the
+/// current spec. A hosted review lives in the host's store: the host names its trusted
+/// session directories, and the gate fails closed without them.
+fn plan_review_refusal(io: &Io) -> Option<String> {
+    let s = self_cmd(io);
+    if let Some(tool) = io.env("IMPECCABLE_COMPONENT_REVIEW_TOOL") {
+        let Some(named) = io.env("IMPECCABLE_COMPONENT_REVIEW_SESSIONS") else {
+            // A harness defect, not something the agent can repair: say so rather than invite it to set the variable.
+            return Some(format!("The plan and asset review runs in the host ({tool}), but this host does not name its review sessions, so no acceptance can be verified. This is a harness configuration problem: stop and report it; do not set environment variables to work around it."));
+        };
+        let sessions: Vec<PathBuf> = std::env::split_paths(named).filter(|p| !p.as_os_str().is_empty()).collect();
+        if sessions.is_empty() {
+            return Some(format!("The plan and asset review is not accepted for this build. Call {tool} with manifest_path .impeccable/review/components.json (after `{s} component-review plan`) and wait for the user's decisions; page work waits until then."));
+        }
+        return impeccable_context::component_review::plan::gate_hosted(&sessions, &io.cwd, &s, tool).err();
+    }
+    let Some(home) = io.home() else { return Some("the plan and asset review store needs a home directory".into()) };
+    impeccable_context::component_review::plan::gate(&home.join(".impeccable/component-reviews"), &io.cwd, &s).err()
+}
+
 /// JS: forceAllowed(reason).
 fn force_allowed(reason: Option<&str>) -> bool {
     use once_cell::sync::Lazy;
@@ -2377,7 +2441,10 @@ fn advance(io: &Io, state: &mut Value, force: bool, reason: Option<&str>, opts: 
     if let Some(p) = state.pointer_mut(&format!("/phases/{phase}")).and_then(|p| p.as_object_mut()) {
         p.insert("gate".into(), gate.record_json(&now()));
     }
-    if phase == "plates" { save_plate_receipts(state, &gate); }
+    if phase == "plates" {
+        save_plate_receipts(state, &gate);
+        if let Some(why) = plan_review_refusal(io) { gate.ok = false; gate.reasons.push(why); }
+    }
     if !gate.ok && force && !force_allowed(reason) {
         if let Some(p) = state.pointer_mut(&format!("/phases/{phase}")).and_then(|p| p.as_object_mut()) {
             p.insert("status".into(), json!("open"));
@@ -2464,7 +2531,7 @@ fn next_instruction(io: &Io, state: &Value) -> String {
             "Measure the comp: {s} comp-spec --comp {comp} --grid, open {}, write regions.json (every illustration, photo, texture as its own plate region; every text block its own text region), run {s} comp-spec --comp {comp} --regions regions.json. Then measure the type: {s} font-match --measure <id> for each text region (cap height, width class, weight class) and {s} font-match --rank <lead text region> --text \"<its first words>\" to choose the headline face by metrics (the USE line is the CSS; with no browser it records the catalog's nearest face, which is the choice; do not install one, and do not write a chosen face into the spec by hand). Then {s} build-phase advance.",
             format!("{BUILD_DIR}/comp-grid.png")
         ),
-        "plates" => format!("Produce every plate in the spec ({s} comp-spec --print lists them). For each illustration, photo, or figure, run {s} comp-spec --crop <id> --out <crop.png> and save {s} comp-spec --plate-prompt <id> to a prompt file. For an isolated figure or object on the page ground, add --background transparent to that plate-prompt command. Prefer the harness image tool with the crop as reference and that prompt; request native transparent PNG for cutouts. With the API fallback, run {s} generate-image --ref <crop.png> --prompt-file <prompt.txt> --out <plate.png> --size <WxH> --quality high; add --background transparent for cutouts. Create the output directory first and choose a supported size matching the region's aspect at least 1.5x its pixel size. generate-image embeds the prompt; after a harness generation run {s} embed-prompt <plate.png> --prompt-file <prompt.txt>. Preserve white paint, fine edges, and interior holes; verify alpha and inspect the cutout on light and dark grounds. Do not chroma-key native transparent output. Keep photos and textures opaque. Place cutouts with a plain <img> over the page's own ground; inspect glass and other translucent material carefully. Textures (paper, cloth, grain): crop a clean patch from {s} comp-spec --crop <id> --raw and mirror-tile it to the plate size; generate only when no clean patch exists. The gate scores a texture against its whole region box, so draw its region around clean ground. Keep candidate crops in separate files. Test each with {s} build-phase check-plate <id> --candidate <png> --json; this does not replace the selected asset or advance state. Inspect the candidate before explicitly selecting it at the spec plate path. Then {s} build-phase advance scores all selected plates against their comp regions. A pass does not replace visual inspection of placement, scale, and alpha. Write no page code before this passes."),
+        "plates" => format!("Produce every plate in the spec ({s} comp-spec --print lists them). For each illustration, photo, or figure, run {s} comp-spec --crop <id> --out <crop.png> and save {s} comp-spec --plate-prompt <id> to a prompt file. For an isolated figure or object on the page ground, add --background transparent to that plate-prompt command. Prefer the harness image tool with the crop as reference and that prompt; request native transparent PNG for cutouts. With the API fallback, run {s} generate-image --ref <crop.png> --prompt-file <prompt.txt> --out <plate.png> --size <WxH> --quality high; add --background transparent for cutouts. Create the output directory first and choose a supported size matching the region's aspect at least 1.5x its pixel size. generate-image embeds the prompt; after a harness generation run {s} embed-prompt <plate.png> --prompt-file <prompt.txt>. Preserve white paint, fine edges, and interior holes; verify alpha and inspect the cutout on light and dark grounds. Do not chroma-key native transparent output. Keep photos and textures opaque. Place cutouts with a plain <img> over the page's own ground; inspect glass and other translucent material carefully. Textures (paper, cloth, grain): crop a clean patch from {s} comp-spec --crop <id> --raw and mirror-tile it to the plate size; generate only when no clean patch exists. The gate scores a texture against its whole region box, so draw its region around clean ground. Keep candidate crops in separate files. Test each with {s} build-phase check-plate <id> --candidate <png> --json; this does not replace the selected asset or advance state. Inspect the candidate before explicitly selecting it at the spec plate path. Then {s} build-phase advance scores all selected plates against their comp regions. A pass does not replace visual inspection of placement, scale, and alpha. Once every plate exists, run {s} component-review plan, then {s} component-review capture --manifest .impeccable/review/components.json and {s} component-review serve --session <session>, and wait for the user: advance also waits until they accept this plan and asset review for the current spec. Write no page code before this passes."),
         "hero" => format!(
             "Run {s} build-phase scaffold first: it writes the measured layout as CSS custom properties (.impeccable/build/scaffold/layout.css, --r-<id>-x/y/w/h in % of the comp, plus cap height, font-size, family, and weight where measured) and a reference page with every region at its box. Bind those numbers to your own markup (an element per region, its box from the properties); the reference is a check, not the page, and overlapping boxes are overlapping boxes. Build only the first viewport at {}. Copy the comp's words verbatim in this phase (headline, labels, table cells, footer): the user approved that comp with those words, and rewriting is a later, stated decision, never a silent one here. Set every text region's font-size from its measured cap height and its face from the ranking. Plates first: place every plate at its spec box ({s} comp-spec --print lists boxes as percentages of the viewport) with object-fit: cover before writing a line of text or a control, capture into {HERO_REPRO}, and run {s} build-phase record hero (not advance) once so you see the plate regions read as match before text exists; then lay the semantic layer (text, controls, rules) over the plates from the spec's palette and boxes, capture, advance. When it fails, open the region crops it lists first, in order, then fix; do not build past the hero until it passes.",
             bp.unwrap_or("the comp size")
@@ -2975,6 +3042,10 @@ pub fn run_with_renderer(argv: &[String],io: &mut Io,organic_scan: OrganicScan,r
             let which = argv.get(1).map(String::as_str);
             if which != Some("hero") {
                 io.err("build-phase: record hero --build <png>\n");
+                return 1;
+            }
+            if let Some(why) = plan_review_refusal(io) {
+                io.err(&format!("build-phase: record hero refused. {why}\n"));
                 return 1;
             }
             let build_path = arg(argv, "build").unwrap_or(HERO_REPRO).to_string();

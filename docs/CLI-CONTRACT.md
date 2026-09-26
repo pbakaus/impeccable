@@ -449,7 +449,7 @@ retain their local-development trust behavior. See [bundle signing](BUNDLE-SIGNI
 
 Ported from the former `skill/scripts/{comp-spec,comp-diff,font-match,build-phase}.mjs` (+ `lib/{png,raster,image-metrics,font-fingerprint,font-index,hero-checks}.mjs`) into the engine; invoked as `{{scripts_path}}/impeccable <verb>`. All four resolve paths against the process cwd. Printed commands spell the launcher via `IMPECCABLE_SELF` (default `impeccable`), so they name `{{scripts_path}}/impeccable <verb>`, never `node …mjs`. ISO `createdAt`/`startedAt` timestamps in stdout and written JSON are the only run-dependent output.
 
-- **`comp-spec`** — turns an approved comp into a measured build spec. `--schema` prints the region-map JSON schema without reading or writing a project. `--comp <png> --regions <json> --inspect-map` writes reference-only crops, overlay and report in a new directory; exit 2 means diagnosed hard errors, exit 1 means command/input failure. Masked assets also produce paginated, comp-derived `comparison-N.png` sheets (six original/checker pairs per image, matched scale and aspect ratio), listed by `COMPARE` lines and the JSON `comparisonSheets` array. Every affected instance is retained; sheets do not change matcher inputs or approvals. Partial foreground masks are warnings naming the excluding regions and remain in the inspector’s main inspection queue even with zero hard errors. The CLI summary counts them separately; they do not imply an asset failure or visual approval. Code rectangles exclude their full overlap, so separate text elements need separate bounds. Mapping metadata (`parentId`, `reviewGroup`) survives measurement. Review groups must contain peer code regions of one kind and container status; mixed groups and grouped raster assets are refused both at measurement and at component-review preparation. `--comp <png> --grid` writes `.impeccable/build/comp-grid.png` (10x10 labeled grid) and prints PALETTE/BANDS/NEXT; `--comp <png> --regions <json>` measures regions into `.impeccable/build/spec.json` (region box, sampled palette, medium, aspect, detail energy, plate path for raster kinds) and prints the spec; `--comp <png> --auto [--out <draft.json>]` writes approximate bands to a new draft file (default `.impeccable/build/regions.draft.json`), without modifying the measured spec or build state; `--print` prints the compact spec; `--crop <id> [--out f] [--scale n] [--raw]` writes a reference crop; `--plate-prompt <id>` prints the regeneration prompt. `--spec <path>` overrides the spec path (default `.impeccable/build/spec.json`). Validation refusals (stderr, exit 1) are the JS strings verbatim: a region with no id / duplicate id / no note (bands included) / a missing or unknown kind, a `box` that is not numeric, leaves the 0..1 frame, or rounds below one comp pixel, a code-kind region whose note names painted material, a code region over 25% of the comp, a grid span that is not `<colrow>:<colrow>`, uncovered ink cells without `allowUncovered`. spec.json is byte-identical to the JS output.
+- **`comp-spec`** — turns an approved comp into a measured build spec. `--schema` prints the region-map JSON schema without reading or writing a project. `--comp <png> --regions <json> --inspect-map` writes reference-only crops, overlay and report in a new directory; exit 2 means diagnosed hard errors, exit 1 means command/input failure. Masked assets also produce paginated, comp-derived `comparison-N.png` sheets (six original/checker pairs per image, matched scale and aspect ratio), listed by `COMPARE` lines and the JSON `comparisonSheets` array. Every affected instance is retained; sheets do not change matcher inputs or approvals. Partial foreground masks are warnings naming the excluding regions and remain in the inspector’s main inspection queue even with zero hard errors. The CLI summary counts them separately; they do not imply an asset failure or visual approval. Code rectangles exclude their full overlap, so separate text elements need separate bounds. Mapping metadata (`parentId`, `reviewGroup`) survives measurement. Review groups must contain peer code regions of one kind and container status; mixed groups and grouped raster assets are refused both at measurement and at component-review preparation. `--comp <png> --grid` writes `.impeccable/build/comp-grid.png` (10x10 labeled grid) and prints PALETTE/BANDS/NEXT; `--comp <png> --regions <json>` measures regions into `.impeccable/build/spec.json` (region box, sampled palette, medium, aspect, detail energy, plate path for raster kinds) and prints the spec; `--comp <png> --auto [--out <draft.json>]` writes approximate bands to a new draft file (default `.impeccable/build/regions.draft.json`), without modifying the measured spec or build state; `--print` prints the compact spec; `--crop <id> [--out f] [--scale n] [--raw]` writes a reference crop; `--plate-prompt <id>` prints the regeneration prompt. `--spec <path>` overrides the spec path (default `.impeccable/build/spec.json`). Validation refusals (stderr, exit 1) are the JS strings verbatim: a region with no id / duplicate id / no note (bands included) / a missing or unknown kind, a `box` that is not numeric, leaves the 0..1 frame, or rounds below one comp pixel, a code-kind region whose note names painted material, a code region over 25% of the comp, a grid span that is not `<colrow>:<colrow>`, uncovered ink cells without `allowUncovered`. Every `text`, `control` and `chrome` region (containers included) gets `surface: {flat, rules}` and, when any 64px window of its comp crop reads as painted (pixels inside raster regions left out), `flags: [{"id":"painted-pixels","message":...}]` plus a `FLAG <id> painted-pixels: <message> <agent advice>` line in the printed spec; docs/PLAN-REVIEW.md defines both readings. The flag is never a refusal, and `codeDrawn` does not suppress it. A raster region whose note names a frame and then the view it opens onto gets `flags: [{"id":"baked-composite","message":...}]` and its own `FLAG` line (docs/PLAN-REVIEW.md). Apart from these additions, spec.json is byte-identical to the JS output.
   Automatic drafts require decomposition into actual visible elements before measurement; a draft flag blocks accidental submission, and existing draft files are never overwritten. Successful `--regions` measurements record the source path and SHA-256. Spec and plate gates reject changed or missing source files, so a failed region edit cannot silently reuse the previous measurements. Legacy specs without source metadata remain readable.
   Region inputs support three coordinate representations: inclusive `grid` cells, normalized `box: {x,y,w,h}`, or `pixelBox: {x,y,w,h}` in whole original-comp pixels. Pixel boxes cannot be combined with the other formats and must be positive-sized and contained in the comp; they avoid snapping an asset boundary to a neighbouring grid cell. Foreground UI excluded from a plate reference is excluded at the same aligned coordinates from the candidate during scoring; unmasked asset bytes still undergo provenance checks.
 - **`comp-diff`** — `--comp <png> --build <png> [--spec spec.json] [--out-dir dir] [--align top|stretch|cover] [--label name] [--threshold t] [--json] [--no-files]`. Scores structure / color / detail / bands and per-region verdicts (`match`/`drift`/`missing`/`contradicted`); writes `side-by-side.png`, `heatmap.png`, `regions/<id>.png`, and `report.json` under `--out-dir` (unless `--no-files`); prints the text summary or, with `--json`, the report. Exit 0 measured, 1 usage/unreadable input, 3 below `--threshold`. The JSON report and text summary are byte-identical to the JS.
@@ -1837,11 +1837,45 @@ Conventions: every script's "run directly" guard is `process.argv[1]` ending wit
 - Fake agent polls `GET /poll?token&timeout=5000` (no lease override → 30 s lease), replies via `POST /poll` with `{token,type:'done',sourceEventType:'generate',id,file}`, `steer_done {message,file}`, `error`, accept/discard completions with `data:{carbonize:true,_acceptResult}`/`{_acceptResult}`, manual apply via `live-poll.mjs --reply <id> done --data <json>`. Variant format: 3 variants (font-weights 300/900/600 for render proof), params `lightness` (range), `face` (steps), `italic` (toggle). Scenarios: core, manual, annotations, exit, missed-done, params, mount-failure, republish, storage-loss (fixtures README). Fixture `runtime` block schema is authoritative for what a reimplementation must satisfy end-to-end.
 
 
-## Component review (native, opt-in)
+## Component review (native)
 
-This development command does not yet replace the skill's build-phase gates.
-The packet and evidence contract is documented in
-[`ui/component-review/README.md`](../ui/component-review/README.md).
+The component stage is the plan and asset review (packet `schemaVersion: 3`,
+contract in [`docs/PLAN-REVIEW.md`](PLAN-REVIEW.md)); the assembled first
+viewport is the `hero` stage. The shared UI and the v1/v2 packet shape are
+documented in [`ui/component-review/README.md`](../ui/component-review/README.md).
+
+- `component-review plan [--out <project-relative JSON>]` writes the v3 packet
+  (default `.impeccable/review/components.json`) from `.impeccable/build/spec.json`,
+  the comp it names (`comp`, `compSize`; the build state's `comp` as a fallback)
+  and the plate files. `id` is `components`; `title` is `Plan and asset review`
+  plus ` · <artifact>` when the build state names one. Raster regions
+  (`plate`, `image`, `texture`) become `role: "asset"` previewed by their plate;
+  `text`, `control` and `chrome` regions with a nonempty `flags` array, with
+  `codeDrawn: true`, or non-container `chrome` whose comp-spec `surface` is
+  neither `flat` nor `rules` become `role: "plan"` with
+  `preview: {"kind":"comp-crop"}`, their `flags` passed through and `codeDrawn`
+  always present; every other region (bands, containers, plain text and
+  controls) is listed in `codeRegions` as `{id,name,kind,box,note}`. Components
+  are ordered flagged items (flagged or code-drawn plan items and flagged
+  assets, which keep their `flags`), remaining assets, remaining plan items,
+  each in spec order. `name` is the id with `-`/`_` as spaces, first letter
+  capitalized. `specSha256` is the SHA-256 of the spec bytes. stdout is
+  `PLAN <out>: <n> assets[ (<n> flagged)], <n> plan items (<n> flagged or code-drawn), <n> code regions`
+  and a `NEXT` line naming `capture` then `serve`. It exits 1 without writing
+  when any raster region's plate file is missing (every missing plate is
+  listed as `  - <id> (<kind>): <path>`), when there is no spec, or when the
+  spec has nothing to review (no raster region and no plan item).
+- `prepare` / `capture` accept `schemaVersion` 1 (legacy), 2 with stage `hero`,
+  and 3 with stage `components`. A `schemaVersion: 2` component manifest is
+  refused with a message naming `component-review plan`. A v3 packet must match
+  the pinned spec (`specSha256`), list every measured region exactly once as a
+  component or in `codeRegions`, name no other id, and carry no `reviewGroup`,
+  `context` or `thumbnail`. `capture` of a v3 packet never starts a browser: it
+  records `capture.schema: "plan-review-proof-v1"` with a `raster-source` proof
+  (`path`, `sha256`) per asset and a `comp-crop` proof (`compPath`,
+  `compSha256`, `box`) per plan item. v1/v2 captures keep
+  `native-component-previews-v1`.
+- `component-review prepare --manifest <project-relative JSON>` snapshots the
 
 - `component-review prepare --manifest <project-relative JSON>` snapshots the
   declared comp, components and dependencies into an out-of-project store.
@@ -1880,6 +1914,17 @@ The packet and evidence contract is documented in
   Session IDs are 64 hexadecimal characters. Errors write
   `component-review: <reason>` to stderr and return 1; successful non-server
   operations return 0. There are no external network or model calls.
+- Submissions for a v3 round: each decision is `{revision, action, feedback,
+  split: false}`; `action` is `approve`, `revise` (assets only) or `reclassify`
+  (plan items only, with `kind` `plate`, `image` or `texture`). The optional
+  top-level `reclassify: [{id, kind, feedback?}]` names `codeRegions` ids, each
+  once. Any `revise`, `reclassify` or `missing` entry makes the receipt
+  `changes-requested`; `approved` needs every component approved, no
+  reclassification and `inventoryConfirmed: true`. The draft keeps the
+  `reclassify` list, and the next round's `history.feedback` reports a
+  reclassified id under `{round, decision: {action: "reclassify", kind, feedback}}`.
+  Unchanged approvals carry across rounds (same component definition, preview
+  bytes and comp), including across a spec change.
 - Receipt identity remains `local-browser`. `captureVerified` is false after
   plain `prepare`, and true only for native `capture` evidence committed by the
   trusted in-process adapter. Producer-written capture claims are discarded.
@@ -1894,9 +1939,15 @@ The packet and evidence contract is documented in
 
 `component-review lifecycle [--session-dir <private directory>] [--require components|hero] [--hosted]` reports the native review decision. Both options may repeat. With `--hosted`, only the supplied private sessions are considered; ordinary sessions resolve acceptance from the project in the local store. The result has `schemaVersion: 1`, `status` (`pending`, `approved`, or `accepted`), `reviewClosed`, and nullable `completionFeedback`. Accepted assembly returns `scope: "first-viewport"` and the original request/revision. Hosts transport that result without adding file-hash approval policy.
 
+For a v3 round, `verify`, `lifecycle` and the gate below apply the same integrity check with the plan proofs: assets need their `raster-source` proof, plan items a `comp-crop` proof whose box equals the component's and whose comp path and hash equal the pinned comp, and the packet's `specSha256` must equal the pinned `.impeccable/build/spec.json` source.
+
+`build-phase advance` from `plates`, and `build-phase record hero`, wait for the plan and asset review. They pass when the first viewport is already accepted for this journey, when the spec has nothing to review, or when a v3 component session of the current journey is accepted (intact capture, approved receipt) and its `specSha256` equals the current spec's SHA-256. Otherwise `advance` fails the plates gate with one added reason and `record hero` exits 1 with `build-phase: record hero refused. <reason>` on stderr. The reason is one of: not accepted for this build; accepted for an earlier spec.json; or the user requested changes (read the receipt with `component-review status`). Each names `component-review plan`, `capture --manifest .impeccable/review/components.json` and `serve --session <session>`. The review store is `~/.impeccable/component-reviews`. When `IMPECCABLE_COMPONENT_REVIEW_TOOL` is set the review lives in the host, and the host must name its trusted session directories in `IMPECCABLE_COMPONENT_REVIEW_SESSIONS` (an OS path list, as `lifecycle --hosted --session-dir` takes them). The gate then applies the same rules to those directories (accepted first viewport, or accepted intact v3 review with the current `specSha256`) and names the tool in its refusal; an unreadable directory refuses. Without the variable a hosted session is refused, with a message saying the host must set it. `IMPECCABLE_COMPONENT_REVIEW_PENDING` is not read by this gate (only by the hosted capture service). A quoted `--force --reason` that satisfies the existing plates rule waives this reason together with the plate readings and is recorded the same way; `record hero` has no force.
+
 Assembly acceptance closes component and assembly reviews for this journey. The agent completes the rest of the page using the accepted direction, without reopening review for shared CSS, responsive changes, finish checks, or new manifest IDs. Needs-work rounds remain possible before acceptance. Original receipts and captures remain immutable. A separately requested new design journey uses a fresh review store; changing a manifest alone never starts one. Source-bound metric evidence below remains separate from this lifecycle.
 
 ### Human-reviewed text at the final comp gate
+
+The hero gate uses the same evidence. When the native hero capture carries an approved first-viewport review, `build-phase` compares the approved screenshot with the current hero frame; a `text`, `control` or `chrome` region that still matches it (verdict match or drift, structure at least 75%) has its contradicted verdict, control drift and ink-box readings, and its type readings turned into advisories marked `accepted in the first-viewport review`. The hero report records `humanHeroReview` with the proof, that comparison and `acceptedRegions`. Missing or unreferenced plates, inline SVG illustrations, organic clips, clipped plates, plate readings, invented ink, the palette check and the overall bar stay blocking. After three consecutive failed hero attempts the refusal leads with an instruction to present the first-viewport review instead of iterating further.
 
 For native comp-led runs, a verified assembled-page review can resolve a text-style contradiction against the original comp. The renderer reads the private native review session, binds the approved screenshot and source bytes, and compares the disputed text region against that human-approved rendering at the current desktop breakpoint. The original comp scores remain in the report; accepted region IDs and the review revision are recorded separately under `humanTextReview`.
 

@@ -85,11 +85,18 @@ fn view(
 pub fn freeze(project: &Path, input: &Value) -> Result<(Value, BTreeMap<String, Vec<u8>>), String> {
     let canonical = project.canonicalize().map_err(|e| e.to_string())?;
     let project = canonical.as_path();
-    if !matches!(input["schemaVersion"].as_u64(), Some(1 | 2)) {
-        return Err("manifest schemaVersion must be 1 or 2".into());
+    let v3 = input["schemaVersion"] == 3;
+    if !matches!(input["schemaVersion"].as_u64(), Some(1..=3)) {
+        return Err("manifest schemaVersion must be 1, 2 or 3".into());
     }
-    if input["schemaVersion"] == 2 && !matches!(input["stage"].as_str(), Some("components" | "hero")) {
-        return Err("schemaVersion 2 requires stage components or hero".into());
+    if input["schemaVersion"] == 2 && input["stage"] == "components" {
+        return Err("schemaVersion 2 component manifests are retired. Run impeccable component-review plan to write the plan and asset review (schemaVersion 3) from the measured spec.".into());
+    }
+    if input["schemaVersion"] == 2 && input["stage"] != "hero" {
+        return Err("schemaVersion 2 requires stage hero".into());
+    }
+    if v3 && input["stage"] != "components" {
+        return Err("schemaVersion 3 requires stage components".into());
     }
     let mut packet = input.clone();
     for key in ["capture", "captureVerified"] {
@@ -124,13 +131,35 @@ pub fn freeze(project: &Path, input: &Value) -> Result<(Value, BTreeMap<String, 
         // These checks are independent. Report the complete inventory repair in
         // one response before any browser work, without publishing partial proof.
         let mut errors = Vec::new();
-        for region in &measured_regions {
-            match input["components"].as_array().and_then(|items| items.iter().find(|c| c["id"] == region["id"])) {
-                None => errors.push(format!("component review omitted measured region {}", region["id"])),
-                Some(component) if matches!(region["kind"].as_str(), Some("text" | "control")) && component["preview"]["kind"] != "page" => {
-                    errors.push(format!("semantic region {} requires a rendered code preview", region["id"]));
+        if v3 {
+            if input["specSha256"].as_str() != Some(digest(&files[spec_path]).as_str()) {
+                return Err("spec.json changed since this packet was written; run impeccable component-review plan again".into());
+            }
+            let listed = |key: &str| input[key].as_array().into_iter().flatten().filter_map(|c| c["id"].as_str()).map(String::from).collect::<Vec<_>>();
+            let (components, code) = (listed("components"), listed("codeRegions"));
+            let measured: BTreeSet<&str> = measured_regions.iter().filter_map(|r| r["id"].as_str()).collect();
+            for region in &measured {
+                if !components.iter().chain(&code).any(|id| id == region) {
+                    errors.push(format!("plan review omitted measured region {region:?}; list it as a component or in codeRegions"));
                 }
-                _ => {}
+            }
+            let mut seen = BTreeSet::new();
+            for id in components.iter().chain(&code) {
+                if !measured.contains(id.as_str()) {
+                    errors.push(format!("plan review lists {id:?}, which is not a measured region"));
+                } else if !seen.insert(id) {
+                    errors.push(format!("plan review lists {id:?} twice"));
+                }
+            }
+        } else {
+            for region in &measured_regions {
+                match input["components"].as_array().and_then(|items| items.iter().find(|c| c["id"] == region["id"])) {
+                    None => errors.push(format!("component review omitted measured region {}", region["id"])),
+                    Some(component) if matches!(region["kind"].as_str(), Some("text" | "control")) && component["preview"]["kind"] != "page" => {
+                        errors.push(format!("semantic region {} requires a rendered code preview", region["id"]));
+                    }
+                    _ => {}
+                }
             }
         }
         if !errors.is_empty() {
@@ -139,27 +168,12 @@ pub fn freeze(project: &Path, input: &Value) -> Result<(Value, BTreeMap<String, 
     }
 
     view(&mut packet["comp"], project, &mut files, &mut comp_files)?;
-    // Selector ownership is part of each shared document's input contract. A peer
-    // target changing must invalidate captures that previously excluded it.
-    let mut targets: BTreeMap<String, Vec<Value>> = BTreeMap::new();
-    if input["schemaVersion"] == 2 && input["stage"] == "components" {
-        for c in input["components"].as_array().ok_or("components must be an array")? {
-            if c["preview"]["kind"] != "page" && c["preview"].get("selector").is_some() {
-                return Err("only code previews can declare a selector; place raster DOM targets in context".into());
-            }
-            let target = if c["preview"]["kind"] == "page" { Some(&c["preview"]) }
-                else if c["context"]["kind"] == "page" { Some(&c["context"]) } else { None };
-            if let Some(target) = target {
-                let selector = string(target, "selector")?;
-                if selector.len() > 1024 { return Err("component selector too long".into()); }
-                let path = string(target, "path")?;
-                targets.entry(path.into()).or_default().push(json!({"id":c["id"],"selector":selector}));
-            }
-        }
-    }
     let mut groups: BTreeMap<String, String> = BTreeMap::new();
     for c in input["components"].as_array().ok_or("components must be an array")? {
         if let Some(group) = c.get("reviewGroup") {
+            if v3 {
+                return Err("reviewGroup is not used in the plan and asset review (schemaVersion 3)".into());
+            }
             let name = group.as_str().filter(|s| !s.trim().is_empty() && s.len() <= 120)
                 .ok_or("reviewGroup needs a nonempty name of at most 120 bytes")?;
             if input["stage"] != "components" || c["preview"]["kind"] != "page" {
@@ -178,9 +192,23 @@ pub fn freeze(project: &Path, input: &Value) -> Result<(Value, BTreeMap<String, 
         if let Some(group) = input["components"].as_array().and_then(|cs| cs.iter().find(|c| c["id"] == region["id"]))
             .and_then(|c| c.get("reviewGroup")) { region["reviewGroup"] = group.clone(); }
     }
-    let group_issues = impeccable_comp::review_groups::issues(&measured_regions);
+    let group_issues = if v3 { vec![] } else { impeccable_comp::review_groups::issues(&measured_regions) };
     if !group_issues.is_empty() {
         return Err(group_issues.iter().map(|(id, message)| format!("component {id}: {message}")).collect::<Vec<_>>().join("\n"));
+    }
+    if v3 {
+        let code = packet["codeRegions"].as_array_mut().ok_or("codeRegions must be an array")?;
+        if code.len() > 400 {
+            return Err("codeRegions exceeds 400 entries".into());
+        }
+        for r in code {
+            let id = string(r, "id")?.to_string();
+            if !valid_box(&r["box"]) || !r["name"].is_string() || !r["note"].is_string() || !r["kind"].is_string() {
+                return Err(format!("code region {id:?} needs name, kind, note and a normalized box"));
+            }
+        }
+    } else if packet.get("codeRegions").is_some() || packet.get("specSha256").is_some() {
+        return Err("codeRegions and specSha256 belong to schemaVersion 3".into());
     }
     let mut ids = BTreeSet::new();
     let components = packet["components"]
@@ -214,7 +242,17 @@ pub fn freeze(project: &Path, input: &Value) -> Result<(Value, BTreeMap<String, 
                 return Err(format!("component needs {k}"));
             }
         }
-        if !matches!(c["preview"]["kind"].as_str(), Some("image" | "page")) {
+        if v3 {
+            let (role, kind) = (c["role"].as_str().unwrap_or(""), c["kind"].as_str().unwrap_or(""));
+            let ok = match role {
+                "asset" => matches!(kind, "plate" | "image" | "texture") && c["preview"]["kind"] == "image",
+                "plan" => matches!(kind, "text" | "control" | "chrome") && c["preview"] == json!({"kind":"comp-crop"}),
+                _ => false,
+            };
+            if !ok || c.get("context").is_some() || c.get("thumbnail").is_some() {
+                return Err(format!("component {id:?}: an asset is a plate, image or texture previewed by its image; a plan item is text, control or chrome previewed as {{\"kind\":\"comp-crop\"}}; neither carries context or thumbnail"));
+            }
+        } else if !matches!(c["preview"]["kind"].as_str(), Some("image" | "page")) {
             return Err("preview kind must be image or page".into());
         }
         let deps = c["dependencies"]
@@ -225,6 +263,13 @@ pub fn freeze(project: &Path, input: &Value) -> Result<(Value, BTreeMap<String, 
         for dep in deps {
             let p = dep.as_str().ok_or("dependency must be a path")?;
             used.insert(p.into(), pin(project, p, &mut files)?);
+        }
+        if c["preview"]["kind"] == "comp-crop" {
+            // The UI crops the pinned comp; comp and spec hashes are already in `used`.
+            c.as_object_mut().unwrap().remove("material");
+            c.as_object_mut().unwrap().remove("revision");
+            c["revision"] = json!(digest(&serde_json::to_vec(&json!({"component":c,"files":used,"specSha256":input["specSha256"]})).unwrap()));
+            continue;
         }
         let preview_path = string(&c["preview"], "path")?.to_string();
         view(&mut c["preview"], project, &mut files, &mut used)?;
@@ -257,11 +302,7 @@ pub fn freeze(project: &Path, input: &Value) -> Result<(Value, BTreeMap<String, 
         }
         c.as_object_mut().unwrap().remove("revision");
         let mut identity = json!({"component":c,"files":used});
-        let target_path = if c["preview"]["kind"] == "page" { Some(preview_path.as_str()) }
-            else { c["context"]["url"].as_str().and_then(|url| url.strip_prefix("/files/")) };
-        if let Some(peers) = target_path.and_then(|path| targets.get(path)) {
-            identity["targets"] = json!(peers);
-        }
+        if v3 { identity["specSha256"] = input["specSha256"].clone(); }
         c["revision"] = json!(digest(&serde_json::to_vec(&identity).unwrap()));
     }
     let total: usize = files.values().map(Vec::len).sum();

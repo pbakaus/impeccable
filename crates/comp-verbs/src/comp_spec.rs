@@ -37,6 +37,29 @@ static PAINTED_NOTE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)\b(diagram|drawing|drawn|illustration|illustrations|illustrated|figure|schematic|exploded|photo|photos|photograph\w*|picture|painting|painted|render|rendered|rendering|artwork|engraving|etching|linework|line art|texture|textured|textures|grain|fabric|halftone|watercolou?r|sketch|sketched|blueprint|geometry|leader lines?|callout lines?|thumbnail|silhouette|product shot|hero image|3d)\b").unwrap()
 });
 
+/// A raster note that names a frame (surround, window, shutters, doorway,
+/// arch...) and then an opening onto content behind it (a view, "showing",
+/// "looking out", an interior, "photograph of"). Order matters: in "photograph
+/// of a window" or "coast seen through a carriage window" the frame is the
+/// content, and a bare "framed portrait" gives no sign the frame is separate.
+static FRAME_WORD: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)\b(surround(?:s|ed)?|frame[ds]?|framing|windows?|doorway|doors?|arch(?:es)?|archway|shutter(?:s|ed)?|cartouche|portal|niche|alcove|mirror|porthole|casement|proscenium)\b").unwrap());
+static OPENING: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)\b(views?|viewing|vista|showing|shows|reveal(?:s|ing)?|looking (?:out|through|into|onto|over)|looks? (?:out|onto|into)|inside|interior|through|beyond|opening (?:onto|to|on)|opens? (?:onto|to|on)|glimpse|(?:photo(?:graph)?|scene|picture|image) of)\b").unwrap());
+static MOVING: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)\b(shutters?|doors?|gates?|curtains?|blinds?)\b").unwrap());
+
+/// The reviewer-facing observation when a raster note bakes a frame around the content it opens onto.
+pub fn baked_composite(note: &str) -> Option<String> {
+    static BLEED: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)full-?(?:frame|bleed)|frame[- ]filling").unwrap());
+    // A note that leads with the content ("photograph through window: ...") describes the
+    // view; a window or doors later in it are its subject matter, not a frame around it.
+    static CONTENT_LEAD: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)^\W*(?:(?:a|an|the)\s+)?(?:[\w-]+\s+){0,2}?(?:photo(?:graph)?s?|views?|scenes?|pictures?|images?)\b").unwrap());
+    if CONTENT_LEAD.is_match(note.split([':', ',', ';']).next().unwrap_or("")) { return None; }
+    let note = BLEED.replace_all(note, "");
+    let frame = FRAME_WORD.find(&note)?;
+    OPENING.find_at(&note, frame.end())?;
+    let moving = MOVING.find(&note).map(|m| format!(" or move the {} on their own", m.as_str().to_lowercase())).unwrap_or_else(|| " on its own".into());
+    Some(format!("Frame and view are one image here, so the page can't swap the view{moving}."))
+}
+
 /// JS: gridToBox(span). Err(message) mirrors the thrown Error.
 pub fn grid_to_box(span: &str) -> Result<(f64, f64, f64, f64), String> {
     static RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)^([A-J])([0-9]):([A-J])([0-9])$").unwrap());
@@ -400,6 +423,162 @@ fn uncovered_ink_cells(comp: &Image, regions: &[Value]) -> Vec<String> {
     cells
 }
 
+/// Painted-pixel reading of a code region's comp crop: how many colours sit
+/// off the line between its two main tones (ground and ink, with every
+/// antialiased mix between them), and the share of continuous-tone pixels in
+/// its busy 8x8 blocks. Type and flat controls stay near their two tones;
+/// photographs, rendered figures and material surfaces do not.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PaintedPixels { pub colours: usize, pub soft: f64 }
+/// A window reads painted when any clause holds: (colours, soft) at least
+/// (18, 0.44) or (28, 0.38), or 60 colours alone. Calibrated on 556 regions of
+/// 12 eval comps plus 24 replayed runs: no text or control region that shows
+/// only type reads painted, while every photograph and about half the plates do
+/// (the misses are small single-ink sprigs that look like type).
+pub const PAINTED_CLAUSES: [(usize, f64); 3] = [(18, 0.44), (28, 0.38), (60, 0.)];
+
+fn seg_dist(p: [f64; 3], a: [f64; 3], b: [f64; 3]) -> f64 {
+    let ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    let l2 = ab.iter().map(|v| v * v).sum::<f64>();
+    let t = if l2 == 0. { 0. } else { ((0..3).map(|k| (p[k] - a[k]) * ab[k]).sum::<f64>() / l2).clamp(0., 1.) };
+    (0..3).map(|k| (a[k] + t * ab[k] - p[k]).powi(2)).sum::<f64>().sqrt()
+}
+
+/// Side of the square window the painted reading is taken over, in comp
+/// pixels. A fixed window keeps the reading independent of how much calm
+/// ground a box also holds: a painted patch reads the same in a tight box and
+/// in a generous one.
+pub const PAINTED_WINDOW: usize = 64;
+
+/// The strongest reading over `PAINTED_WINDOW` windows (half-window stride; a
+/// crop smaller than a window is one window). None when no window keeps half
+/// its pixels and 64 samples (`skip` marks crop pixels another raster region owns).
+pub fn painted_pixels(img: &Image, skip: &dyn Fn(usize, usize) -> bool) -> Option<PaintedPixels> {
+    painted_pixels_window(img, skip, PAINTED_WINDOW)
+}
+
+pub fn painted_pixels_window(img: &Image, skip: &dyn Fn(usize, usize) -> bool, win: usize) -> Option<PaintedPixels> {
+    let starts = |n: usize| -> Vec<usize> { let w = win.min(n) & !1; if w == 0 { return vec![]; }
+        let mut v: Vec<usize> = (0..=(n - w)).step_by((w / 2).max(2) & !1).collect(); if *v.last().unwrap() != (n - w) & !1 { v.push((n - w) & !1); } v };
+    let (ww, wh) = (win.min(img.width) & !1, win.min(img.height) & !1);
+    let score = painted_score;
+    let mut best: Option<PaintedPixels> = None;
+    for &y in &starts(img.height) { for &x in &starts(img.width) {
+        let Some(p) = painted_window(img, skip, x, y, ww, wh) else { continue; };
+        if best.as_ref().map_or(true, |b| score(&p) > score(b)) { best = Some(p); }
+    }}
+    best
+}
+
+fn painted_window(img: &Image, skip: &dyn Fn(usize, usize) -> bool, x0: usize, y0: usize, w: usize, h: usize) -> Option<PaintedPixels> {
+    let d = &img.data;
+    let px = |x: usize, y: usize| { let i = (y * img.width + x) * 4; [d[i] as f64, d[i + 1] as f64, d[i + 2] as f64] };
+    let key = |p: [f64; 3]| ((p[0] as u32 >> 4) << 8) | ((p[1] as u32 >> 4) << 4) | (p[2] as u32 >> 4);
+    // 2x box average: comp grain and paper noise average out, painted tone does not.
+    let mut samples: Vec<[f64; 3]> = Vec::new();
+    for y in (y0..y0 + h).step_by(2) { for x in (x0..x0 + w).step_by(2) {
+        let cells = [(x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)];
+        if cells.iter().any(|&(cx, cy)| skip(cx, cy)) { continue; }
+        let s = cells.iter().fold([0.; 3], |a, &(cx, cy)| { let p = px(cx, cy); [a[0] + p[0], a[1] + p[1], a[2] + p[2]] });
+        samples.push([(s[0] / 4.).floor(), (s[1] / 4.).floor(), (s[2] / 4.).floor()]);
+    }}
+    if samples.len() < 64 || samples.len() * 8 < w * h { return None; }
+    let mut bins: std::collections::BTreeMap<u32, (usize, [f64; 3])> = Default::default();
+    for &p in &samples { let e = bins.entry(key(p)).or_insert((0, [0.; 3])); e.0 += 1; for k in 0..3 { e.1[k] += p[k]; } }
+    let mut ranked: Vec<(usize, [f64; 3])> = bins.values().map(|&(n, s)| (n, [s[0] / n as f64, s[1] / n as f64, s[2] / n as f64])).collect();
+    ranked.sort_by(|a, b| b.0.cmp(&a.0));
+    let ground = ranked[0].1;
+    let ink = ranked.iter().map(|r| r.1).find(|c| seg_dist(*c, ground, ground) > 48.).unwrap_or(ground);
+    let mut off: std::collections::HashMap<u32, usize> = Default::default();
+    for &p in &samples { if seg_dist(p, ground, ink) > 24. { *off.entry(key(p)).or_default() += 1; } }
+    let min = (samples.len() as f64 * 0.002).max(2.);
+    let colours = off.values().filter(|&&n| n as f64 >= min).count();
+    let (mut mid, mut busy) = (0usize, 0usize);
+    for by in (y0..y0 + h.saturating_sub(7)).step_by(8) { for bx in (x0..x0 + w.saturating_sub(7)).step_by(8) {
+        let cells: Vec<(usize, usize)> = (0..64).map(|k| (bx + k % 8, by + k / 8)).collect();
+        if cells.iter().any(|&(x, y)| skip(x, y)) { continue; }
+        let l: Vec<f64> = cells.iter().map(|&(x, y)| { let p = px(x, y); 0.299 * p[0] + 0.587 * p[1] + 0.114 * p[2] }).collect();
+        let (lo, hi) = l.iter().fold((f64::MAX, f64::MIN), |(a, b), &v| (a.min(v), b.max(v)));
+        if hi - lo < 24. { continue; }
+        busy += 64;
+        mid += l.iter().filter(|&&v| (v - lo) / (hi - lo) > 0.25 && (v - lo) / (hi - lo) < 0.75).count();
+    }}
+    Some(PaintedPixels { colours, soft: if busy == 0 { 0. } else { mid as f64 / busy as f64 } })
+}
+
+/// How far the reading gets toward its nearest clause; 1 or more reads painted.
+fn painted_score(p: &PaintedPixels) -> f64 {
+    PAINTED_CLAUSES.iter().map(|&(c, s)| (p.colours as f64 / c as f64).min(if s > 0. { p.soft / s } else { f64::MAX })).fold(0., f64::max)
+}
+
+pub fn reads_painted(p: &PaintedPixels) -> bool {
+    PAINTED_CLAUSES.iter().any(|&(c, s)| p.colours >= c && p.soft >= s)
+}
+
+/// What a code region's own pixels hold once raster regions and smaller
+/// regions inside it are set aside. `flat`: under 2% of them leave the main
+/// tone (a bare ground). `rules`: the box is at most 6px on its short side, or
+/// its ink is straight hairlines, at least 80% of ink pixels on a horizontal or
+/// vertical run of 12px or more that is at most 6px thick. Neither needs a
+/// human decision; emblems, marks and icons are neither.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Surface { pub flat: bool, pub rules: bool }
+
+pub fn surface_of(img: &Image, skip: &dyn Fn(usize, usize) -> bool) -> Surface {
+    let (w, h, d) = (img.width, img.height, &img.data);
+    let px = |x: usize, y: usize| { let i = (y * w + x) * 4; [d[i] as f64, d[i + 1] as f64, d[i + 2] as f64] };
+    let key = |p: [f64; 3]| ((p[0] as u32 >> 4) << 8) | ((p[1] as u32 >> 4) << 4) | (p[2] as u32 >> 4);
+    let mut bins: std::collections::HashMap<u32, (usize, [f64; 3])> = Default::default();
+    let mut kept = 0usize;
+    for y in 0..h { for x in 0..w { if skip(x, y) { continue; } kept += 1;
+        let p = px(x, y); let e = bins.entry(key(p)).or_insert((0, [0.; 3])); e.0 += 1; for k in 0..3 { e.1[k] += p[k]; } } }
+    let thin_box = w.min(h) <= 6;
+    let Some(&(n, sum)) = bins.values().max_by_key(|v| v.0) else { return Surface { flat: true, rules: thin_box }; };
+    let ground = sum.map(|v| v / n as f64);
+    let ink: Vec<bool> = (0..w * h).map(|i| !skip(i % w, i / w) && seg_dist(px(i % w, i / w), ground, ground) > 32.).collect();
+    let count = ink.iter().filter(|&&v| v).count();
+    // Length of the ink run through each pixel, per axis (index = y * w + x).
+    let runs = |horizontal: bool| -> Vec<usize> {
+        let (outer, inner) = if horizontal { (h, w) } else { (w, h) };
+        let at = |o: usize, i: usize| if horizontal { o * w + i } else { i * w + o };
+        let mut out = vec![0; w * h];
+        for o in 0..outer { let mut i = 0; while i < inner {
+            if !ink[at(o, i)] { i += 1; continue; }
+            let start = i; while i < inner && ink[at(o, i)] { i += 1; }
+            for k in start..i { out[at(o, k)] = i - start; }
+        }}
+        out
+    };
+    let (hr, vr) = (runs(true), runs(false));
+    let straight = (0..w * h).filter(|&i| ink[i] && ((hr[i] >= 12 && vr[i] <= 6) || (vr[i] >= 12 && hr[i] <= 6))).count();
+    Surface { flat: (count as f64) < 0.02 * kept as f64, rules: thin_box || (count > 0 && straight as f64 >= 0.8 * count as f64) }
+}
+
+/// Per code region: `surface` (above) and, when its crop reads painted, a
+/// `painted-pixels` flag. The flag is never a refusal; it sends the region to
+/// the human plan review. Pixels inside raster regions belong to their plates;
+/// containers are judged on what shows between their raster children.
+fn code_region_readings(comp: &Image, regions: &mut [Value]) {
+    let pxbox = |r: &Value| ["x", "y", "w", "h"].map(|k| r["px"][k].as_i64().unwrap_or(0));
+    let boxes: Vec<(String, bool, [i64; 4])> = regions.iter().filter(|r| r["kind"] != "band")
+        .map(|r| (r["id"].as_str().unwrap_or("").to_string(), r["kind"].as_str().is_some_and(is_raster_kind), pxbox(r))).collect();
+    let inside = |b: &[i64; 4], gx: i64, gy: i64| gx >= b[0] && gx < b[0] + b[2] && gy >= b[1] && gy < b[1] + b[3];
+    for region in regions.iter_mut() {
+        if !matches!(region["kind"].as_str(), Some("text" | "control" | "chrome")) { continue; }
+        let [x, y, w, h] = pxbox(region);
+        let crop = r::crop(comp, x as f64, y as f64, w as f64, h as f64);
+        let raster = |cx: usize, cy: usize| boxes.iter().any(|(_, r, b)| *r && inside(b, x + cx as i64, y + cy as i64));
+        // Smaller regions inside this one (its text, its controls) are theirs to judge.
+        let owned = |cx: usize, cy: usize| boxes.iter().any(|(id, r, b)| (*r || (b[2] * b[3] < w * h && region["id"] != id.as_str())) && inside(b, x + cx as i64, y + cy as i64));
+        let sf = surface_of(&crop, &owned);
+        region["surface"] = json!({"flat": sf.flat, "rules": sf.rules});
+        let Some(p) = painted_pixels(&crop, &raster).filter(reads_painted) else { continue; };
+        region["flags"] = json!([{"id": "painted-pixels", "message": format!(
+            "Looks painted: {} colours beyond its two main tones and soft shading across {}% of it. Drawn in code, this becomes a flat copy.",
+            p.colours, round(p.soft * 100.) as i64)}]);
+    }
+}
+
 fn box_json(b: (f64, f64, f64, f64)) -> Value {
     json!({ "x": r4(b.0), "y": r4(b.1), "w": r4(b.2), "h": r4(b.3) })
 }
@@ -584,6 +763,25 @@ pub fn measure_regions(comp: &Image, regions_input: &Value, comp_path: &str) -> 
         obj.insert("plate".into(), plate);
         obj.insert("text".into(), raw.get("text").filter(|v| !v.is_null()).cloned().unwrap_or(Value::Null));
         regions.push(Value::Object(obj));
+    }
+    code_region_readings(comp, &mut regions);
+    // A frame plate with its own opening already decomposes whatever it covers.
+    static OPEN_FRAME: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)\b(transparent|open|cut-?out|empty)\s+(opening|centre|center|aperture|window)\b|\bcut-?out\b").unwrap());
+    let pxb = |r: &Value| ["x", "y", "w", "h"].map(|k| r["px"][k].as_f64().unwrap_or(0.));
+    let frames: Vec<(Value, [f64; 4])> = regions.iter()
+        .filter(|r| r["kind"] == "plate" && r["note"].as_str().is_some_and(|n| FRAME_WORD.is_match(n) && OPEN_FRAME.is_match(n)))
+        .map(|r| (r["id"].clone(), pxb(r))).collect();
+    for region in regions.iter_mut().filter(|r| r["kind"].as_str().is_some_and(is_raster_kind)) {
+        let b = pxb(region);
+        let framed = frames.iter().any(|(id, f)| *id != region["id"] && {
+            let ix = (b[0] + b[2]).min(f[0] + f[2]) - b[0].max(f[0]);
+            let iy = (b[1] + b[3]).min(f[1] + f[3]) - b[1].max(f[1]);
+            ix > 0. && iy > 0. && ix * iy >= 0.5 * b[2] * b[3]
+        });
+        if framed { continue; }
+        if let Some(message) = region["note"].as_str().and_then(baked_composite) {
+            region["flags"] = json!([{"id": "baked-composite", "message": message}]);
+        }
     }
     let uncovered = uncovered_ink_cells(comp, &regions);
     if uncovered.len() > 3 && !truthy(regions_input.get("allowUncovered")) {
@@ -845,6 +1043,16 @@ pub fn print_spec(spec: &Value) -> String {
             plate.map(|p| format!(" plate {p}")).unwrap_or_default(),
             note.map(|n| format!("  # {n}")).unwrap_or_default()
         ));
+    }
+    for r in &regions {
+        for f in r["flags"].as_array().into_iter().flatten() {
+            let advice = match f["id"].as_str() {
+                Some("painted-pixels") => " If it shows an illustration, photograph or texture, make it a plate, image or texture region; the plan review asks the user either way.",
+                Some("baked-composite") => " Split it: a frame plate with a transparent opening, the view as its own image region beneath it, and moving parts (shutters, doors) as their own plates; the page composites the overlapping regions.",
+                _ => "",
+            };
+            lines.push(format!("FLAG {} {}: {}{advice}", r["id"].as_str().unwrap_or(""), f["id"].as_str().unwrap_or(""), f["message"].as_str().unwrap_or("")));
+        }
     }
     let plates: Vec<&Value> = regions.iter().filter(|r| r.get("medium").and_then(Value::as_str) == Some("raster")).collect();
     let plate_ids = plates.iter().filter_map(|r| r.get("id").and_then(Value::as_str)).collect::<Vec<_>>().join(", ");
@@ -1265,5 +1473,173 @@ mod reference_tests {
         assert_eq!(reference.excluded_pixels, 0);
         assert!(!reference.fully_excluded());
         assert!(reference.issue("art").is_none());
+    }
+
+    /// Deterministic noise so the synthetic crops carry comp-like grain.
+    fn grain(seed: &mut u64) -> f64 { *seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407); ((*seed >> 33) % 13) as f64 - 6. }
+
+    fn text_like(ground: [f64; 3], ink: [f64; 3]) -> Image {
+        let mut img = r::create_image(240, 80, [0, 0, 0, 255]);
+        let mut seed = 7;
+        for y in 0..80 { for x in 0..240 {
+            // Glyph-ish strokes with a one-pixel antialiased ramp on each side.
+            let t = match (x % 9, (y / 20) % 2 == 0 && y % 20 > 4 && y % 20 < 16) { (3 | 4, true) => 1., (2 | 5, true) => 0.5, _ => 0. };
+            let i = (y * 240 + x) * 4;
+            for k in 0..3 { img.data[i + k] = (ground[k] + (ink[k] - ground[k]) * t + grain(&mut seed)).clamp(0., 255.) as u8; }
+        }}
+        img
+    }
+
+    #[test]
+    fn flat_type_on_grained_ground_does_not_read_painted() {
+        for (ground, ink) in [([236., 229., 214.], [40., 36., 30.]), ([34., 38., 44.], [235., 235., 230.]), ([226., 160., 60.], [30., 70., 45.])] {
+            let p = painted_pixels(&text_like(ground, ink), &|_, _| false).unwrap();
+            assert!(!reads_painted(&p), "{p:?}");
+        }
+    }
+
+    #[test]
+    fn continuous_tone_crop_reads_painted_and_is_flagged_on_a_code_region() {
+        // A shaded, multi-hue surface: what a photograph or rendered figure looks like.
+        let mut comp = r::create_image(240, 160, [0, 0, 0, 255]);
+        let mut seed = 11;
+        for y in 0..160 { for x in 0..240 {
+            let (fx, fy) = (x as f64 / 240., y as f64 / 160.);
+            let i = (y * 240 + x) * 4;
+            let rgb = [60. + 180. * fx * (1. - 0.5 * fy), 40. + 150. * (fy * 3.1).sin().abs(), 50. + 170. * ((fx + fy) * 2.3).cos().abs()];
+            for k in 0..3 { comp.data[i + k] = (rgb[k] + grain(&mut seed)).clamp(0., 255.) as u8; }
+        }}
+        let p = painted_pixels(&comp, &|_, _| false).unwrap();
+        assert!(reads_painted(&p), "{p:?}");
+        let input = json!({"allowUncovered": true, "regions": [
+            {"id": "figure", "kind": "chrome", "note": "decorative panel", "container": true, "pixelBox": {"x": 0, "y": 0, "w": 120, "h": 160}},
+            {"id": "art", "kind": "plate", "note": "the same surface as art", "pixelBox": {"x": 120, "y": 0, "w": 120, "h": 160}}]});
+        let spec = measure_regions(&comp, &input, "comp.png").unwrap();
+        assert_eq!(spec["regions"][0]["flags"][0]["id"], "painted-pixels");
+        assert!(spec["regions"][1].get("flags").is_none(), "raster regions are never flagged");
+        assert!(print_spec(&spec).contains("FLAG figure painted-pixels: Looks painted: ") && print_spec(&spec).contains("make it a plate, image or texture region"));
+        assert!(!spec["regions"][0]["flags"][0]["message"].as_str().unwrap().contains("make it"), "the stored message is an observation for the reviewer");
+        // A code region wholly covered by a raster region has no pixels of its own to judge.
+        let covered = json!({"allowUncovered": true, "regions": [
+            {"id": "caption", "kind": "text", "note": "caption over the art", "pixelBox": {"x": 20, "y": 20, "w": 80, "h": 60}},
+            {"id": "art", "kind": "image", "note": "full photograph", "pixelBox": {"x": 0, "y": 0, "w": 240, "h": 160}}]});
+        assert!(measure_regions(&comp, &covered, "comp.png").unwrap()["regions"][0].get("flags").is_none());
+    }
+
+    fn paint(comp: &mut Image, x0: usize, y0: usize, w: usize, h: usize, seed: &mut u64) {
+        for y in y0..y0 + h { for x in x0..x0 + w {
+            let (fx, fy) = ((x - x0) as f64 / w as f64, (y - y0) as f64 / h as f64);
+            let i = (y * comp.width + x) * 4;
+            let rgb = [60. + 180. * fx * (1. - 0.5 * fy), 40. + 150. * (fy * 3.1).sin().abs(), 50. + 170. * ((fx + fy) * 2.3).cos().abs()];
+            for k in 0..3 { comp.data[i + k] = (rgb[k] + grain(seed)).clamp(0., 255.) as u8; }
+        }}
+    }
+
+    #[test]
+    fn a_painted_patch_reads_the_same_in_a_tight_box_and_a_generous_one() {
+        // Type on paper with a painted sprig at the left, like foliage over a nav bar.
+        let mut comp = text_like([236., 229., 214.], [40., 36., 30.]);
+        let mut wide = r::create_image(640, 80, [0, 0, 0, 255]);
+        for y in 0..80 { for x in 0..640 { let (i, j) = ((y * 640 + x) * 4, (y * 240 + x % 240) * 4); wide.data[i..i + 4].copy_from_slice(&comp.data[j..j + 4]); } }
+        let mut seed = 5;
+        paint(&mut wide, 0, 8, 72, 64, &mut seed);
+        comp = wide;
+        let readings: Vec<PaintedPixels> = [120, 240, 400, 640].iter().map(|&w| painted_pixels(&r::crop(&comp, 0., 0., w as f64, 80.), &|_, _| false).unwrap()).collect();
+        assert!(readings.iter().all(reads_painted), "{readings:?}");
+        assert!(readings.windows(2).all(|p| p[0] == p[1]), "the strongest window is the same window: {readings:?}");
+        assert!(!reads_painted(&painted_pixels(&r::crop(&comp, 120., 0., 520., 80.), &|_, _| false).unwrap()), "type alone stays code");
+    }
+
+    #[test]
+    fn containers_flag_on_unmapped_painted_material_between_their_raster_children() {
+        let mut comp = r::create_image(480, 200, [236, 229, 214, 255]);
+        let mut seed = 9;
+        paint(&mut comp, 20, 20, 140, 160, &mut seed);
+        paint(&mut comp, 300, 20, 140, 160, &mut seed);
+        let map = |mapped_both: bool| {
+            let mut regions = vec![json!({"id": "grid", "kind": "control", "container": true, "note": "grid of room cards", "pixelBox": {"x": 0, "y": 0, "w": 480, "h": 200}}),
+                json!({"id": "photo-a", "kind": "image", "note": "room photograph", "pixelBox": {"x": 20, "y": 20, "w": 140, "h": 160}})];
+            if mapped_both { regions.push(json!({"id": "photo-b", "kind": "image", "note": "room photograph", "pixelBox": {"x": 300, "y": 20, "w": 140, "h": 160}})); }
+            measure_regions(&comp, &json!({"allowUncovered": true, "regions": regions}), "comp.png").unwrap()
+        };
+        assert_eq!(map(false)["regions"][0]["flags"][0]["id"], "painted-pixels", "the second photograph is in no raster region");
+        assert!(map(true)["regions"][0].get("flags").is_none(), "every painted pixel belongs to a plate");
+    }
+
+    #[test]
+    fn surface_separates_grounds_and_rules_from_marks() {
+        let ground = [30, 50, 80, 255];
+        let mut comp = r::create_image(800, 240, ground);
+        r::fill_rect(&mut comp, 10., 10., 300., 2., [200., 170., 90., 255.]); // a hairline rule
+        r::fill_rect(&mut comp, 40., 40., 120., 14., [240., 240., 240., 255.]); // a text child on the ground
+        for a in 0..360 { // a ring mark with a dot: curves, not rules
+            let t = a as f64 * std::f64::consts::PI / 180.;
+            r::fill_rect(&mut comp, (340. + 20. * t.cos()).round(), (80. + 20. * t.sin()).round(), 2., 2., [200., 170., 90., 255.]);
+        }
+        r::fill_rect(&mut comp, 337., 77., 6., 6., [200., 170., 90., 255.]);
+        let input = json!({"allowUncovered": true, "regions": [
+            {"id": "rule", "kind": "chrome", "note": "brass hairline rule", "pixelBox": {"x": 5, "y": 4, "w": 310, "h": 14}},
+            {"id": "panel", "kind": "chrome", "note": "blue panel ground", "pixelBox": {"x": 20, "y": 30, "w": 280, "h": 80}},
+            {"id": "label", "kind": "text", "note": "white label text", "pixelBox": {"x": 38, "y": 38, "w": 124, "h": 18}},
+            {"id": "mark", "kind": "chrome", "note": "brass ring mark", "pixelBox": {"x": 312, "y": 52, "w": 56, "h": 56}},
+            {"id": "tick", "kind": "chrome", "note": "short tick", "pixelBox": {"x": 320, "y": 10, "w": 40, "h": 5}}]});
+        let spec = measure_regions(&comp, &input, "comp.png").unwrap();
+        let surface = |i: usize| (spec["regions"][i]["surface"]["flat"] == true, spec["regions"][i]["surface"]["rules"] == true);
+        assert_eq!(surface(0), (false, true), "a hairline rule");
+        assert_eq!(surface(1), (true, false), "the panel's own pixels are bare ground once its label is set aside");
+        assert_eq!(surface(3), (false, false), "a mark is neither");
+        assert_eq!(surface(4).1, true, "a box under 6px is a rule");
+    }
+
+    #[test]
+    fn a_frame_note_that_opens_onto_content_is_a_baked_composite() {
+        // The live hotel run: frame, shutters and room photograph baked into one plate.
+        let hotel = baked_composite("painted stone window surround with keystone, green louvred shutters open, view inside of a whitewashed bedroom with linen bed and a balcony window to the sea").unwrap();
+        assert_eq!(hotel, "Frame and view are one image here, so the page can't swap the view or move the shutters on their own.");
+        assert!(baked_composite("small painted window with rose surround and open green shutters showing a bright hotel bedroom interior").is_some());
+        assert_eq!(baked_composite("arched stone niche framing a photograph of the owner").unwrap(), "Frame and view are one image here, so the page can't swap the view on its own.");
+        // The frame is the content, the frame comes after the view, or nothing opens onto content.
+        for note in ["a photograph of a window with blue shutters", "large sunlit coast photograph seen through a dark train carriage window",
+            "Room 4 Il Limone sea window photo", "framed portrait photo", "Full-frame deep blue Ligurian sea and sky",
+            "painted pale stone cartouche plaque with scalloped arched top, empty centre", "small dark green painted wooden shutter panel with louvre slats"] {
+            assert!(baked_composite(note).is_none(), "{note}");
+        }
+    }
+
+    #[test]
+    fn baked_composites_are_flagged_on_raster_regions_only() {
+        let comp = r::create_image(200, 100, [236, 229, 214, 255]);
+        let note = "painted window surround with open shutters, view of the sea";
+        let input = json!({"allowUncovered": true, "regions": [
+            {"id": "window", "kind": "plate", "note": note, "pixelBox": {"x": 0, "y": 0, "w": 80, "h": 100}},
+            {"id": "caption", "kind": "text", "note": "caption beside the window view of the sea", "codeDrawn": true, "pixelBox": {"x": 100, "y": 10, "w": 60, "h": 20}}]});
+        let spec = measure_regions(&comp, &input, "comp.png").unwrap();
+        assert_eq!(spec["regions"][0]["flags"], json!([{"id": "baked-composite", "message": "Frame and view are one image here, so the page can't swap the view or move the shutters on their own."}]));
+        assert!(spec["regions"][1].get("flags").is_none());
+        assert!(print_spec(&spec).contains("FLAG window baked-composite: Frame and view are one image here") && print_spec(&spec).contains("a frame plate with a transparent opening"));
+    }
+
+    #[test]
+    fn decomposed_views_are_not_baked_composites() {
+        let views = ["photograph through window: whitewashed guest room, blue-striped bed, balcony doors open to the sea",
+            "photograph through window: pergola terrace with a laid table and the sea beyond",
+            "view through the window of a tiled kitchen with copper pans and a door open onto the garden"];
+        for note in views { assert!(baked_composite(note).is_none(), "content-led note: {note}"); }
+        for note in ["painted stone window surround with keystone, green louvred shutters open, view inside of a whitewashed bedroom with linen bed and a balcony window to the sea",
+            "painted stone window surround with keystone, green louvred shutters open, view of a pergola terrace with a laid table, lantern and the sea",
+            "painted stone window surround with keystone, green louvred shutters open, view down a Ligurian cliff to the blue sea"] {
+            assert!(baked_composite(note).is_some(), "{note}");
+        }
+        // The same composite note under its own frame plate is already split; alone it is not.
+        let comp = r::create_image(400, 300, [236, 229, 214, 255]);
+        let baked = "painted stone window surround with keystone, green louvred shutters open, view inside of a whitewashed bedroom";
+        let map = |framed: bool| {
+            let mut regions = vec![json!({"id": "view-room", "kind": "image", "note": baked, "pixelBox": {"x": 40, "y": 40, "w": 120, "h": 200}})];
+            if framed { regions.push(json!({"id": "frame-3", "kind": "plate", "note": "painted grey stone window surround with pediment and sill, transparent opening", "pixelBox": {"x": 20, "y": 20, "w": 160, "h": 260}})); }
+            measure_regions(&comp, &json!({"allowUncovered": true, "regions": regions}), "comp.png").unwrap()
+        };
+        assert_eq!(map(false)["regions"][0]["flags"][0]["id"], "baked-composite");
+        let split = map(true);
+        assert!(split["regions"][0].get("flags").is_none() && split["regions"][1].get("flags").is_none(), "{split}");
     }
 }

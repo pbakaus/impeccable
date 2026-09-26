@@ -86,6 +86,24 @@ const cases = [
     steps: [{ args: ['start', '--comp', 'comp.png'] }, { args: ['status'] }],
   },
   { id: 'build-phase-usage', verb: 'build-phase', workspace: WS, args: [], env: env() },
+
+  // component-review plan: the v3 packet derives from the measured spec. The
+  // spec fixture has one plate region (art), one non-container chrome (top,
+  // a plan item) and one text region (body, a code region).
+  { id: 'component-review-usage', verb: 'component-review', workspace: WS, args: [], env: env() },
+  {
+    id: 'component-review-plan-missing-plates', verb: 'component-review', workspace: WS,
+    setup: (ws) => write(ws, '.impeccable/build/spec.json', fs.readFileSync(path.join(ws, 'spec.json'))),
+    args: ['plan'], env: env(),
+  },
+  {
+    id: 'component-review-plan', verb: 'component-review', workspace: WS,
+    setup: (ws) => {
+      write(ws, '.impeccable/build/spec.json', fs.readFileSync(path.join(ws, 'spec.json')));
+      write(ws, 'assets/plates/art.png', fs.readFileSync(path.join(ws, 'comp.png')));
+    },
+    args: ['plan'], files: ['.impeccable/review/components.json'], env: env(),
+  },
 ];
 
 export default cases;

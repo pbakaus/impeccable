@@ -886,3 +886,169 @@ fn quoted_plate_force_holds_for_the_same_bytes_but_not_a_changed_plate() {
     assert!(failure.reasons.iter().any(|r| r.contains("comp crop")), "{:?}", failure.reasons);
     assert!(state["plates"]["art"]["forced"].is_null());
 }
+
+#[test]
+fn page_work_waits_for_the_plan_and_asset_review_of_the_current_spec() {
+    let ws = Workspace::new();
+    let home = ws.path.join("home");
+    std::fs::create_dir_all(&home).unwrap();
+    let project = ws.path.join("project");
+    let write = |file: &str, bytes: &[u8]| { let p = project.join(file); std::fs::create_dir_all(p.parent().unwrap()).unwrap(); std::fs::write(p, bytes).unwrap(); };
+    write("comp.png", b"comp");
+    write("art.png", b"plate");
+    write(SPEC_PATH, br#"{"comp":"comp.png","compSize":{"width":64,"height":64},"regions":[{"id":"art","kind":"plate","medium":"raster","plate":"art.png","note":"Figure","box":{"x":0,"y":0,"w":1,"h":1}}]}"#);
+    let io_with = |extra: &[(&str, &str)]| {
+        let mut env: std::collections::HashMap<String, String> = [("HOME".to_string(), home.to_string_lossy().into_owned())].into();
+        env.extend(extra.iter().map(|(k, v)| (k.to_string(), v.to_string())));
+        Io::captured("", project.clone(), env)
+    };
+    let (io, _) = io_with(&[]);
+    let why = plan_review_refusal(&io).expect("no review exists yet");
+    assert!(why.contains("not accepted") && why.contains("impeccable component-review plan"), "{why}");
+    // advance from plates carries the refusal with the plate readings.
+    let mut state = json!({"phase":"plates","comp":"comp.png","phases":{"plates":{"attempts":0},"hero":{}}});
+    let opts = GateOpts { build_path: None, min: None, artifact: None };
+    let result = advance(&io, &mut state, false, None, &opts, &no_organic_scan, None);
+    assert!(!result.ok && result.reasons.iter().any(|r| r.contains("plan and asset review")), "{:?}", result.reasons);
+    assert_eq!(state["phase"], "plates");
+    // record hero refuses before measuring anything.
+    write(".impeccable/build/state.json", br#"{"phase":"hero","startedAt":"s","phases":{"hero":{}}}"#);
+    let (mut io, captured) = io_with(&[]);
+    assert_eq!(run(&["record", "hero"].map(String::from), &mut io, &no_organic_scan), 1);
+    let err = String::from_utf8(captured.stderr.borrow().clone()).unwrap();
+    assert!(err.contains("record hero refused") && err.contains("component-review capture --manifest .impeccable/review/components.json"), "{err}");
+    // A hosted session fails closed: no named sessions, or sessions without an accepted review.
+    let (hosted, _) = io_with(&[("IMPECCABLE_COMPONENT_REVIEW_TOOL", "component_review")]);
+    let why = plan_review_refusal(&hosted).unwrap();
+    assert!(why.contains("harness configuration problem") && why.contains("do not set environment variables"), "{why}");
+    let (hosted, _) = io_with(&[("IMPECCABLE_COMPONENT_REVIEW_TOOL", "component_review"), ("IMPECCABLE_COMPONENT_REVIEW_SESSIONS", "")]);
+    let why = plan_review_refusal(&hosted).unwrap();
+    assert!(why.contains("is not accepted for this build") && why.contains("Call component_review") && !why.contains("IMPECCABLE_COMPONENT_REVIEW_SESSIONS"), "{why}");
+    let (hosted, _) = io_with(&[("IMPECCABLE_COMPONENT_REVIEW_TOOL", "component_review"), ("IMPECCABLE_COMPONENT_REVIEW_PENDING", "0")]);
+    assert!(plan_review_refusal(&hosted).is_some(), "the retired pending flag opens nothing");
+    let empty = ws.path.join("host-session");
+    std::fs::create_dir_all(&empty).unwrap();
+    let (hosted, _) = io_with(&[("IMPECCABLE_COMPONENT_REVIEW_TOOL", "component_review"), ("IMPECCABLE_COMPONENT_REVIEW_SESSIONS", empty.to_str().unwrap())]);
+    assert!(plan_review_refusal(&hosted).is_some());
+    // A spec with nothing to decide has no review to wait for.
+    write(SPEC_PATH, br#"{"comp":"comp.png","regions":[{"id":"copy","kind":"text","note":"Body","box":{"x":0,"y":0,"w":1,"h":1}}]}"#);
+    assert!(plan_review_refusal(&io_with(&[]).0).is_none());
+}
+
+struct ReviewedCapture(crate::entry_capture::EntryEvidence, Option<crate::entry_capture::ApprovedReference>);
+impl CapturedEntry for ReviewedCapture {
+    fn approved_reference(&self) -> Option<&crate::entry_capture::ApprovedReference> { self.1.as_ref() }
+    fn evidence(&self) -> &crate::entry_capture::EntryEvidence { &self.0 }
+    fn verify_current(&self) -> Result<(), String> { Ok(()) }
+}
+/// Stands in for the reviewed native renderer: `approved` is what the user accepted.
+struct ReviewedRenderer { hero: Vec<u8>, approved: Option<Vec<u8>> }
+impl EntryRenderer for ReviewedRenderer {
+    fn capture_entry(&self, _: &EntryRequest) -> Result<Box<dyn CapturedEntry>, String> {
+        let frame = crate::entry_capture::FrameEvidence { name: "hero".into(), png: self.hero.clone(), regions: vec![] };
+        Ok(Box::new(ReviewedCapture(crate::entry_capture::EntryEvidence { report: json!({}), frames: vec![frame] },
+            self.approved.clone().map(|png| crate::entry_capture::ApprovedReference { png, proof: json!({"schema": "test-review"}) }))))
+    }
+}
+
+/// A comp with a striped headline and a dark plate; `restyled` turns the headline's stripes
+/// (a contradicted text reading), `plate_shown` decides whether the plate renders.
+fn reviewed_hero(restyled: bool, plate_shown: bool) -> Image {
+    let mut img = r::create_image(200, 120, [230, 220, 200, 255]);
+    if plate_shown {
+        r::fill_rect(&mut img, 18., 18., 44., 44., [40., 40., 40., 255.]);
+        for y in (20..60).step_by(4) { r::fill_rect(&mut img, 20., y as f64, 40., 2., [200., 120., 60., 255.]); }
+    }
+    r::fill_rect(&mut img, 120., 84., 60., 24., [20., 50., 80., 255.]);
+    if restyled {
+        for x in (122..178).step_by(3) { r::fill_rect(&mut img, x as f64, 86., 1., 20., [240., 240., 240., 255.]); }
+    } else {
+        for y in (86..106).step_by(3) { r::fill_rect(&mut img, 124., y as f64, 52., 1., [240., 240., 240., 255.]); }
+    }
+    img
+}
+
+fn run_reviewed_hero(capture: &Image, approved: Option<&Image>, html: &str) -> (Gate, Value) {
+    let ws = Workspace::new();
+    let comp = reviewed_hero(false, true);
+    let png = |i: &Image| png_io::encode_png(i, &[]).unwrap();
+    ws.write("comp.png", &png(&comp));
+    ws.write("art.png", &png(&r::crop(&comp, 10., 10., 60., 60.)));
+    ws.write("index.html", html.as_bytes());
+    let art = json!({"id":"art","kind":"plate","medium":"raster","plate":"art.png","note":"dark printed square",
+        "box":{"x":0.05,"y":0.0833,"w":0.3,"h":0.5},"px":{"x":10,"y":10,"w":60,"h":60}});
+    let spec = json!({"comp":"comp.png","regions":[art.clone(), {"id":"headline","kind":"text","medium":"semantic","note":"striped headline lettering",
+        "type":{},"box":{"x":0.6,"y":0.7,"w":0.3,"h":0.2},"px":{"x":120,"y":84,"w":60,"h":24}}]});
+    ws.write(SPEC_PATH, util::json_pretty(&spec).as_bytes());
+    let io = ws.io();
+    let receipt = json!({"status":"ok","score":0.9,"file":"art.png","assetHash":sha256_file(&io,"art.png"),"compHash":sha256_file(&io,"comp.png"),"regionHash":sha256_bytes(util::json_pretty(&art).as_bytes()),"referenceHash":plate_reference_hash(&spec)});
+    let mut state = json!({"comp":"comp.png","capturePolicy":"native-html-v1","plates":{"art":receipt},"phases":{"hero":{}}});
+    let renderer = ReviewedRenderer { hero: png(capture), approved: approved.map(png) };
+    let gate = gate_hero(&io, &mut state, "unused.png", HERO_MIN, "diff", Some("index.html"), &no_organic_scan, Some(&renderer));
+    let report = serde_json::from_slice(&std::fs::read(ws.path.join("diff/report.json")).unwrap()).unwrap();
+    (gate, report)
+}
+
+const REVIEWED_PAGE: &str = "<main><img src=\"art.png\"><h1>Headline</h1></main>";
+
+#[test]
+fn accepted_first_viewport_review_turns_a_contradicted_text_region_into_an_advisory() {
+    let current = reviewed_hero(true, true);
+    let contradicted = |g: &Gate| g.reasons.iter().any(|r| r.contains("headline (text) is contradicted"));
+    let (unreviewed, _) = run_reviewed_hero(&current, None, REVIEWED_PAGE);
+    assert!(contradicted(&unreviewed), "{:?}", unreviewed.reasons);
+    let (reviewed, report) = run_reviewed_hero(&current, Some(&current), REVIEWED_PAGE);
+    assert!(!contradicted(&reviewed), "{:?}", reviewed.reasons);
+    assert!(reviewed.advisories.iter().any(|a| a.contains("accepted in the first-viewport review") && a.contains("headline")), "{:?}", reviewed.advisories);
+    assert_eq!(report["humanHeroReview"]["acceptedRegions"], json!(["headline"]));
+    assert_eq!(report["humanHeroReview"]["proof"]["schema"], "test-review");
+}
+
+#[test]
+fn stale_first_viewport_approval_waives_nothing() {
+    // The user approved a different rendering of the headline than the one captured now.
+    let (gate, report) = run_reviewed_hero(&reviewed_hero(true, true), Some(&reviewed_hero(false, true)), REVIEWED_PAGE);
+    assert!(!gate.ok);
+    assert!(gate.reasons.iter().any(|r| r.contains("headline (text) is contradicted")), "{:?}", gate.reasons);
+    assert!(!gate.advisories.iter().any(|a| a.contains("first-viewport review")), "{:?}", gate.advisories);
+    assert_eq!(report["humanHeroReview"]["acceptedRegions"], json!([]));
+}
+
+#[test]
+fn accepted_first_viewport_review_keeps_material_vetoes() {
+    // An inline SVG drawing blocks even though the user approved exactly this capture.
+    let current = reviewed_hero(true, true);
+    let svg = format!("{REVIEWED_PAGE}<svg width=\"400\" height=\"300\" viewBox=\"0 0 400 300\">{}</svg>",
+        (0..12).map(|i| format!("<path d=\"M{i} 0 C {} 40 80 {} 120 {i} S 200 90 240 {}\"/>", i * 7, i * 9, i * 11)).collect::<String>());
+    let (gate, _) = run_reviewed_hero(&current, Some(&current), &svg);
+    assert!(!gate.ok);
+    assert!(gate.reasons.iter().any(|r| r.contains("inline SVG")), "{:?}", gate.reasons);
+    assert!(!gate.reasons.iter().any(|r| r.contains("headline (text) is contradicted")), "{:?}", gate.reasons);
+    // A plate that does not render stays missing, approved or not.
+    let blank = reviewed_hero(true, false);
+    let (gate, report) = run_reviewed_hero(&blank, Some(&blank), REVIEWED_PAGE);
+    assert!(!gate.ok, "{report}");
+    assert!(gate.reasons.iter().any(|r| r.contains("region art is missing")), "{:?}", gate.reasons);
+    // And an unreferenced plate refuses before any comparison.
+    let (gate, _) = run_reviewed_hero(&current, Some(&current), "<main><h1>Headline</h1></main>");
+    assert!(gate.reasons.iter().any(|r| r.contains("is not referenced")), "{:?}", gate.reasons);
+}
+
+#[test]
+fn third_failed_hero_attempt_sends_the_agent_to_the_first_viewport_review() {
+    let ws = Workspace::new();
+    let io = ws.io();
+    let mut state = json!({"phases":{"hero":{}}});
+    let mut gate = Gate::fail(vec!["hero overall 61% < 80%".into()]);
+    gate.score = Some(0.61);
+    assert!(hero_loop_verdict(&mut state, &gate, "index.html", &io).is_none());
+    gate.reasons = vec!["region headline (text) is contradicted".into()];
+    assert!(hero_loop_verdict(&mut state, &gate, "index.html", &io).is_none());
+    let third = hero_loop_verdict(&mut state, &gate, "index.html", &io).unwrap();
+    assert!(third.starts_with("The hero gate has failed three attempts in a row. Stop iterating and present the first-viewport review"), "{third}");
+    assert!(hero_loop_verdict(&mut state, &gate, "index.html", &io).unwrap().starts_with("The same hero gate checks remain unresolved"));
+    let mut passed = Gate::fail(vec![]);
+    passed.ok = true;
+    passed.score = Some(0.9);
+    assert!(hero_loop_verdict(&mut state, &passed, "index.html", &io).is_none());
+}

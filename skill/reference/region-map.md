@@ -11,10 +11,16 @@ If the request ends at mapping, stop with the map, inspection report and unresol
 
 `--auto` produces horizontal band scaffolding, not element identification. It is optional and does not replace authoring a map.
 
-## Containment and repetition
+## Containment
 
 `parentId` identifies an enclosing `container: true` region. Parent and children keep separate IDs and crops. Containment never transfers approval.
 
-`reviewGroup` identifies repeated instances of the same code component and role. Members must have the same kind and container status and be peers, not ancestors and children. Sharing a card or section is not a reason to group its different parts. Keep every instance in the map and component kit. Raster assets remain individually reviewable. Grouping does not waive crop checks or approve anything; applying a decision to peers remains the user’s choice.
+## What varies independently
+
+Split regions by what varies independently: content the site swaps (room photos, products, people), moving parts (anything a hover or the signature interaction moves), and structure (frames, surrounds, ornament). A window with open shutters onto a room is three kinds of region: the surround as a plate with a transparent opening, the room as an image region beneath it, and each shutter as its own plate. Overlapping regions are composited in the page. `comp-spec` flags a raster region whose note names a frame and the view it opens onto (`baked-composite`), and the plan and asset review shows it to the user first.
+
+## Painted material
+
+When measuring, `comp-spec` flags a `text`, `control` or `chrome` region, containers included, whose crop looks painted (`painted-pixels`: many colours, soft gradients) and lists it in its summary. The plan and asset review shows flagged regions, and those marked `codeDrawn` (painted material you chose to draw in code), to the user first. Do not leave the catch to them: if a region is painted material (a figure, a photograph, a metal or paper surface), classify it `plate`, `image` or `texture` now.
 
 Comp crops are reference evidence only, never production assets. The map inspector marks its PNGs as comp-derived.

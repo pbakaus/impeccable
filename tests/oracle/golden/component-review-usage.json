@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "component-review: usage: impeccable component-review plan [--out .impeccable/review/components.json] | prepare|capture|verify --manifest <file> | lifecycle [--session-dir <dir>] [--require components|hero] [--hosted] | serve --session <id> [--port 0] [--idle-timeout <seconds>] | status|refresh-approvals --session <id> [--store <outside-project-dir>]\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

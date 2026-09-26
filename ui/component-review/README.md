@@ -104,3 +104,15 @@ rendered state, not a claim that all future interactive states are covered.
 
 The adapter records observed semantic-control, SVG and raster counts as evidence;
 it does not decide that required semantics or visual fidelity pass. Human identity, run routing and exact provider continuation belong to the consuming harness. The hero stage uses the same manifest and native capture contract.
+
+## Plan and asset review (packet schemaVersion 3)
+
+A `components` packet with `schemaVersion: 3` (contract: `docs/PLAN-REVIEW.md`) renders `plan-review.ts` instead of the inventory view; `mountComponentReview` dispatches on the packet, so hosts need no change. The first-viewport (`hero`) stage keeps the view in `review.ts`.
+
+The comp carries region outlines rather than pins: generated assets solid, planned-in-code dashed, flagged plan items (`flags` or `codeDrawn`) amber, and `codeRegions` visible on hover. Every region is clickable. An asset shows its comp crop beside the generated file at the largest same-scale size the panel allows (up to 4x comp pixels); a transparent file sits on the comp colour around its box, with light and dark as alternatives. A plan item shows the comp around it, never shrinking a band below comp scale, with the plan in one sentence and any flag above it. Decisions are one of two buttons: "Looks good" / "Needs work" for assets, "Code is fine" / "Make it an image" for plan items. A `codeRegions` entry needs no decision and offers only "Make it an image", which travels in `submission.reclassify`.
+
+There is no bulk approval and no separate completeness checkbox. "Approve plan and assets" is enabled once every item is approved with nothing changed or missing, and sets `inventoryConfirmed: true`; any feedback, reclassification or missing mark turns it into "Send changes". Pure logic lives in `plan-model.ts` with tests beside it.
+
+## Design-system kit (vendored)
+
+Controls are the Impeccable site kit, not local imitations: `.ks-button`, `.ks-instrument-strip.is-paper` with its sliding `.ks-thumb`, `.ks-switch`, `.ks-checkbox`, `.ks-icon-button`, `.ks-tab-list`, and the docs rail's selected-row pattern. `vendor/` holds verbatim copies of impeccable-site's `kinpaku-tokens.css`, the needed `kinpaku-kit.css` sections, the rail rules from `docs-kinpaku.css`, and `instrument-strip.js`; the site is the source of truth. Refresh with `node scripts/sync-kinpaku-kit.mjs [path-to-impeccable-site]`. `instrument-strip.ts` ports the thumb script to shadow roots and re-rendering views; the region-map inspection page (`crates/comp-verbs/src/map_inspection.html`) inlines the same vendored CSS and script and ships the fonts beside the report.

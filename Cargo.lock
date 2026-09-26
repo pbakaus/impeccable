@@ -592,6 +592,7 @@ version = "0.1.6"
 dependencies = [
  "impeccable-common",
  "impeccable-comp",
+ "impeccable-context",
  "once_cell",
  "regex",
  "serde",
