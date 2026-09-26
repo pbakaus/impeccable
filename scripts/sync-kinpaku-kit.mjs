@@ -3,6 +3,7 @@
 // are verbatim excerpts so a future sync is this script, not a hand edit.
 //   node scripts/sync-kinpaku-kit.mjs [path-to-impeccable-site]
 import { readFileSync, writeFileSync } from 'node:fs';
+import { writeKitCssModule } from './lib/kit-css-module.mjs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 const site = resolve(process.argv[2] ?? `${homedir()}/code/impeccable-site`, 'site');
@@ -29,3 +30,4 @@ const rail = docs.slice(docs.indexOf('/* Group headings are ink and bold'), docs
 writeFileSync(out + 'docs-rail.css', header('styles/docs-kinpaku.css (the command rail list: the site\'s selected-row pattern)') + rail.trimEnd() + '\n');
 writeFileSync(out + 'instrument-strip.js', `// VENDORED from impeccable-site/site/scripts/instrument-strip.js (the source of truth).\n// Do not edit here: change the site, then run node scripts/sync-kinpaku-kit.mjs.\n` + read('scripts/instrument-strip.js'));
 console.log('synced kit into', out);
+writeKitCssModule(out);
