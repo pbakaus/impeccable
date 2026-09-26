@@ -10,6 +10,7 @@ import { test } from 'node:test';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const WINDOWS = process.platform === 'win32';
+const WINDOWS_ARM64 = WINDOWS && process.env.PROCESSOR_ARCHITECTURE?.toUpperCase() === 'ARM64';
 const COMSPEC = process.env.ComSpec || process.env.COMSPEC || 'C:\\Windows\\System32\\cmd.exe';
 // Use the host's command interpreter as a harmless Windows executable. No
 // downloaded release binary is executed, and all network traffic is loopback.
@@ -103,7 +104,8 @@ async function exercise(t, scenario) {
       res.writeHead(scenario === 'no-sidecar' ? 404 : 200);
       res.end(scenario === 'empty-sidecar' ? '' : `${scenario === 'mismatch' ? '0'.repeat(64) : HASH}  engine\n`);
     } else {
-      if (scenario === 'download-failure') res.writeHead(404);
+      if (scenario === 'download-failure'
+        || (scenario === 'arm64-fallback' && req.url.endsWith('windows-arm64.exe'))) res.writeHead(404);
       res.end(scenario === 'empty-download' ? '' : PAYLOAD);
     }
   });
@@ -116,7 +118,7 @@ async function exercise(t, scenario) {
     HOME: home, USERPROFILE: home, TEMP: root, TMP: root,
     IMPECCABLE_HOME: cache,
     IMPECCABLE_DOWNLOAD_BASE: `http://127.0.0.1:${server.address().port}`,
-    ...(WINDOWS ? { SystemRoot: process.env.SystemRoot, ComSpec: COMSPEC, PROCESSOR_ARCHITECTURE: 'AMD64' } : {}),
+    ...(WINDOWS ? { SystemRoot: process.env.SystemRoot, ComSpec: COMSPEC, PROCESSOR_ARCHITECTURE: process.env.PROCESSOR_ARCHITECTURE } : {}),
   };
   const run = () => new Promise((resolve, reject) => {
     const child = WINDOWS
@@ -130,7 +132,7 @@ async function exercise(t, scenario) {
     child.on('close', (status, signal) => resolve({ status, signal, stdout, stderr }));
   });
   const result = await run();
-  if (scenario === 'valid') {
+  if (scenario === 'valid' || scenario === 'arm64-fallback') {
     const requestCount = requests.length;
     const cachedResult = await run();
     assert.equal(cachedResult.status, 0, cachedResult.stderr);
@@ -140,8 +142,15 @@ async function exercise(t, scenario) {
   }
   assert.equal(result.signal, null, JSON.stringify(result));
   const cacheFailure = scenario.startsWith('cache-');
-  assert.equal(requests.filter(url => !url.endsWith('.sha256')).length, cacheFailure ? 0 : 1,
-    'cache failures do not attempt a download; other scenarios download once');
+  const fallback = WINDOWS_ARM64 && ['download-failure', 'transport-failure', 'arm64-fallback'].includes(scenario);
+  assert.equal(requests.filter(url => !url.endsWith('.sha256')).length, cacheFailure ? 0 : fallback ? 2 : 1,
+    'only a failed ARM64 download attempts the x64 fallback');
+  if (WINDOWS && !cacheFailure) {
+    const first = WINDOWS_ARM64 ? 'arm64' : 'x64';
+    const assets = [`/engine-v0.0.0-test/impeccable-windows-${first}.exe`];
+    if (fallback) assets.push('/engine-v0.0.0-test/impeccable-windows-x64.exe');
+    assert.deepEqual(requests.filter(url => !url.endsWith('.sha256')), assets);
+  }
   return { ...result, files: fs.existsSync(cacheDir) ? fs.readdirSync(cacheDir) : [], requests, cacheDir };
 }
 
@@ -159,7 +168,7 @@ for (const scenario of ['cache-directory-failure', 'cache-write-failure', 'downl
       assert.match(result.stderr, /could not download/);
       assert.match(result.stderr, /network/);
       assert.deepEqual(result.files, [], 'failed downloads leave no staging files');
-      assert.equal(result.requests.length, 1, 'no verification without a download');
+      assert.equal(result.requests.length, WINDOWS_ARM64 ? 2 : 1, 'no verification without a download');
     } else {
       assert.match(result.stderr, scenario === 'cache-directory-failure' ? /cannot create/ : /cannot write/);
     }
@@ -172,6 +181,18 @@ test('launcher downloads and runs a verified executable', async t => {
   assert.match(result.stdout, /verified-engine/);
   assert.deepEqual(result.files, [WINDOWS ? 'impeccable.exe' : 'impeccable']);
   assert.equal(result.requests.length, 2);
+});
+
+test('launcher falls back from an unavailable ARM64 asset to a verified x64 download', { skip: !WINDOWS_ARM64 }, async t => {
+  const result = await exercise(t, 'arm64-fallback');
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /verified-engine/);
+  assert.deepEqual(result.files, ['impeccable.exe']);
+  assert.deepEqual(result.requests, [
+    '/engine-v0.0.0-test/impeccable-windows-arm64.exe',
+    '/engine-v0.0.0-test/impeccable-windows-x64.exe',
+    '/engine-v0.0.0-test/impeccable-windows-x64.exe.sha256',
+  ]);
 });
 
 for (const scenario of ['removed', 'emptied', 'empty-download', 'no-sidecar', 'empty-sidecar', 'mismatch', 'hash-failure', 'removed-during-hash', 'removed-before-move', 'removed-after-move', 'emptied-after-move', 'move-failure']) {

@@ -31,6 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       core: ${{ steps.plan.outputs.core }}
+      oracle: ${{ steps.plan.outputs.oracle }}
       rust: ${{ steps.plan.outputs.rust }}
       detector: ${{ steps.plan.outputs.detector }}
       live: ${{ steps.plan.outputs.live }}
@@ -200,8 +201,40 @@ jobs:
       - run: cargo build --workspace --all-targets
       - run: cargo test --workspace --no-fail-fast
 
+  native-cli-windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, arch: x64 }
+          - { os: windows-11-arm, target: aarch64-pc-windows-msvc, arch: arm64 }
+    runs-on: ${{ matrix.os }}
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the pinned toolchain
+        shell: bash
+        run: rustup show && rustup target add ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - run: cargo build -p impeccable --target ${{ matrix.target }}
+      - name: Setup native Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          architecture: ${{ matrix.arch }}
+      - name: Exercise native npm package and skill installation
+        run: node --test tests/cli-native.test.mjs
+        env:
+          IMPECCABLE_BIN: ${{ github.workspace }}/target/${{ matrix.target }}/debug/impeccable.exe
+
   launcher-windows:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, windows-11-arm]
+    runs-on: ${{ matrix.os }}
     needs: changes
     if: needs.changes.outputs.core == 'true'
     steps:
@@ -211,6 +244,7 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
+          architecture: ${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}
       - name: Exercise Windows launcher downloads and verification
         run: node --test tests/launcher-download.test.mjs
 

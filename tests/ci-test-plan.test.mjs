@@ -48,6 +48,13 @@ describe('ci-test-plan', () => {
     assert.equal(outputs.framework, 'false');
   });
 
+  it('builds the native engines when their release or npm package path changes', () => {
+    for (const file of ['.github/workflows/release-engine.yml', 'cli/platform-packages/windows-arm64/package.json', 'cli/bin/cli.js', 'tests/cli-native.test.mjs']) {
+      const outputs = runPlan({ GITHUB_EVENT_NAME: 'pull_request', CI_CHANGED_FILES: file });
+      assert.equal(outputs.rust, 'true', file);
+    }
+  });
+
   it('routes an engine version bump to every binary-driven lane', () => {
     const outputs = runPlan({
       GITHUB_EVENT_NAME: 'pull_request',

@@ -28,6 +28,7 @@ jobs:
           - { os: ubuntu-latest,  target: x86_64-unknown-linux-musl,  short: linux-x64 }
           - { os: ubuntu-latest,  target: aarch64-unknown-linux-musl, short: linux-arm64, cross: true }
           - { os: windows-latest, target: x86_64-pc-windows-msvc,     short: windows-x64 }
+          - { os: windows-11-arm, target: aarch64-pc-windows-msvc,    short: windows-arm64 }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -56,12 +57,16 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           # Keep unsigned Windows output outside the publish job's pattern.
-          name: ${{ matrix.short == 'windows-x64' && 'unsigned-windows-x64' || format('impeccable-{0}', matrix.short) }}
+          name: ${{ runner.os == 'Windows' && format('unsigned-{0}', matrix.short) || format('impeccable-{0}', matrix.short) }}
           path: target/${{ matrix.target }}/release/impeccable${{ runner.os == 'Windows' && '.exe' || '' }}
           if-no-files-found: error
   sign-windows:
     needs: build
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        short: [windows-x64, windows-arm64]
     timeout-minutes: 15
     environment: windows-signing
     permissions:
@@ -72,7 +77,7 @@ jobs:
       # execute repository code with the Azure identity available.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: unsigned-windows-x64
+          name: unsigned-${{ matrix.short }}
           path: unsigned
       - name: Azure login (OIDC)
         uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3
@@ -115,7 +120,7 @@ jobs:
           Write-Output "Verified publisher: $publisher; certificate: $($signature.SignerCertificate.Thumbprint)"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: impeccable-windows-x64
+          name: impeccable-${{ matrix.short }}
           path: unsigned/impeccable.exe
           if-no-files-found: error
   publish:
