@@ -49,6 +49,10 @@ static MOVING: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)\b(shutters?|doors?|g
 /// The reviewer-facing observation when a raster note bakes a frame around the content it opens onto.
 pub fn baked_composite(note: &str) -> Option<String> {
     static BLEED: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)full-?(?:frame|bleed)|frame[- ]filling").unwrap());
+    // A note that leads with the content ("photograph through window: ...") describes the
+    // view; a window or doors later in it are its subject matter, not a frame around it.
+    static CONTENT_LEAD: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)^\W*(?:(?:a|an|the)\s+)?(?:[\w-]+\s+){0,2}?(?:photo(?:graph)?s?|views?|scenes?|pictures?|images?)\b").unwrap());
+    if CONTENT_LEAD.is_match(note.split([':', ',', ';']).next().unwrap_or("")) { return None; }
     let note = BLEED.replace_all(note, "");
     let frame = FRAME_WORD.find(&note)?;
     OPENING.find_at(&note, frame.end())?;
@@ -761,7 +765,20 @@ pub fn measure_regions(comp: &Image, regions_input: &Value, comp_path: &str) -> 
         regions.push(Value::Object(obj));
     }
     code_region_readings(comp, &mut regions);
+    // A frame plate with its own opening already decomposes whatever it covers.
+    static OPEN_FRAME: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)\b(transparent|open|cut-?out|empty)\s+(opening|centre|center|aperture|window)\b|\bcut-?out\b").unwrap());
+    let pxb = |r: &Value| ["x", "y", "w", "h"].map(|k| r["px"][k].as_f64().unwrap_or(0.));
+    let frames: Vec<(Value, [f64; 4])> = regions.iter()
+        .filter(|r| r["kind"] == "plate" && r["note"].as_str().is_some_and(|n| FRAME_WORD.is_match(n) && OPEN_FRAME.is_match(n)))
+        .map(|r| (r["id"].clone(), pxb(r))).collect();
     for region in regions.iter_mut().filter(|r| r["kind"].as_str().is_some_and(is_raster_kind)) {
+        let b = pxb(region);
+        let framed = frames.iter().any(|(id, f)| *id != region["id"] && {
+            let ix = (b[0] + b[2]).min(f[0] + f[2]) - b[0].max(f[0]);
+            let iy = (b[1] + b[3]).min(f[1] + f[3]) - b[1].max(f[1]);
+            ix > 0. && iy > 0. && ix * iy >= 0.5 * b[2] * b[3]
+        });
+        if framed { continue; }
         if let Some(message) = region["note"].as_str().and_then(baked_composite) {
             region["flags"] = json!([{"id": "baked-composite", "message": message}]);
         }
@@ -1600,5 +1617,29 @@ mod reference_tests {
         assert_eq!(spec["regions"][0]["flags"], json!([{"id": "baked-composite", "message": "Frame and view are one image here, so the page can't swap the view or move the shutters on their own."}]));
         assert!(spec["regions"][1].get("flags").is_none());
         assert!(print_spec(&spec).contains("FLAG window baked-composite: Frame and view are one image here") && print_spec(&spec).contains("a frame plate with a transparent opening"));
+    }
+
+    #[test]
+    fn decomposed_views_are_not_baked_composites() {
+        let views = ["photograph through window: whitewashed guest room, blue-striped bed, balcony doors open to the sea",
+            "photograph through window: pergola terrace with a laid table and the sea beyond",
+            "view through the window of a tiled kitchen with copper pans and a door open onto the garden"];
+        for note in views { assert!(baked_composite(note).is_none(), "content-led note: {note}"); }
+        for note in ["painted stone window surround with keystone, green louvred shutters open, view inside of a whitewashed bedroom with linen bed and a balcony window to the sea",
+            "painted stone window surround with keystone, green louvred shutters open, view of a pergola terrace with a laid table, lantern and the sea",
+            "painted stone window surround with keystone, green louvred shutters open, view down a Ligurian cliff to the blue sea"] {
+            assert!(baked_composite(note).is_some(), "{note}");
+        }
+        // The same composite note under its own frame plate is already split; alone it is not.
+        let comp = r::create_image(400, 300, [236, 229, 214, 255]);
+        let baked = "painted stone window surround with keystone, green louvred shutters open, view inside of a whitewashed bedroom";
+        let map = |framed: bool| {
+            let mut regions = vec![json!({"id": "view-room", "kind": "image", "note": baked, "pixelBox": {"x": 40, "y": 40, "w": 120, "h": 200}})];
+            if framed { regions.push(json!({"id": "frame-3", "kind": "plate", "note": "painted grey stone window surround with pediment and sill, transparent opening", "pixelBox": {"x": 20, "y": 20, "w": 160, "h": 260}})); }
+            measure_regions(&comp, &json!({"allowUncovered": true, "regions": regions}), "comp.png").unwrap()
+        };
+        assert_eq!(map(false)["regions"][0]["flags"][0]["id"], "baked-composite");
+        let split = map(true);
+        assert!(split["regions"][0].get("flags").is_none() && split["regions"][1].get("flags").is_none(), "{split}");
     }
 }
