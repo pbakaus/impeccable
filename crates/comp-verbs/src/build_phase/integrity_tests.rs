@@ -919,7 +919,11 @@ fn page_work_waits_for_the_plan_and_asset_review_of_the_current_spec() {
     assert!(err.contains("record hero refused") && err.contains("component-review capture --manifest .impeccable/review/components.json"), "{err}");
     // A hosted session fails closed: no named sessions, or sessions without an accepted review.
     let (hosted, _) = io_with(&[("IMPECCABLE_COMPONENT_REVIEW_TOOL", "component_review")]);
-    assert!(plan_review_refusal(&hosted).unwrap().contains("must set IMPECCABLE_COMPONENT_REVIEW_SESSIONS"));
+    let why = plan_review_refusal(&hosted).unwrap();
+    assert!(why.contains("harness configuration problem") && why.contains("do not set environment variables"), "{why}");
+    let (hosted, _) = io_with(&[("IMPECCABLE_COMPONENT_REVIEW_TOOL", "component_review"), ("IMPECCABLE_COMPONENT_REVIEW_SESSIONS", "")]);
+    let why = plan_review_refusal(&hosted).unwrap();
+    assert!(why.contains("is not accepted for this build") && why.contains("Call component_review") && !why.contains("IMPECCABLE_COMPONENT_REVIEW_SESSIONS"), "{why}");
     let (hosted, _) = io_with(&[("IMPECCABLE_COMPONENT_REVIEW_TOOL", "component_review"), ("IMPECCABLE_COMPONENT_REVIEW_PENDING", "0")]);
     assert!(plan_review_refusal(&hosted).is_some(), "the retired pending flag opens nothing");
     let empty = ws.path.join("host-session");

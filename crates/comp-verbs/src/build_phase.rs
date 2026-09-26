@@ -2369,9 +2369,13 @@ fn run_gate(io: &Io, state: &mut Value, phase: &str, opts: &GateOpts, organic_sc
 fn plan_review_refusal(io: &Io) -> Option<String> {
     let s = self_cmd(io);
     if let Some(tool) = io.env("IMPECCABLE_COMPONENT_REVIEW_TOOL") {
-        let sessions: Vec<PathBuf> = io.env("IMPECCABLE_COMPONENT_REVIEW_SESSIONS").map(|v| std::env::split_paths(v).filter(|p| !p.as_os_str().is_empty()).collect()).unwrap_or_default();
+        let Some(named) = io.env("IMPECCABLE_COMPONENT_REVIEW_SESSIONS") else {
+            // A harness defect, not something the agent can repair: say so rather than invite it to set the variable.
+            return Some(format!("The plan and asset review runs in the host ({tool}), but this host does not name its review sessions, so no acceptance can be verified. This is a harness configuration problem: stop and report it; do not set environment variables to work around it."));
+        };
+        let sessions: Vec<PathBuf> = std::env::split_paths(named).filter(|p| !p.as_os_str().is_empty()).collect();
         if sessions.is_empty() {
-            return Some(format!("The plan and asset review runs in the host ({tool}), and this session does not name its review sessions. The host must set IMPECCABLE_COMPONENT_REVIEW_SESSIONS to its trusted review session directories; page work waits until then."));
+            return Some(format!("The plan and asset review is not accepted for this build. Call {tool} with manifest_path .impeccable/review/components.json (after `{s} component-review plan`) and wait for the user's decisions; page work waits until then."));
         }
         return impeccable_context::component_review::plan::gate_hosted(&sessions, &io.cwd, &s, tool).err();
     }
