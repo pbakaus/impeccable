@@ -917,11 +917,15 @@ fn page_work_waits_for_the_plan_and_asset_review_of_the_current_spec() {
     assert_eq!(run(&["record", "hero"].map(String::from), &mut io, &no_organic_scan), 1);
     let err = String::from_utf8(captured.stderr.borrow().clone()).unwrap();
     assert!(err.contains("record hero refused") && err.contains("component-review capture --manifest .impeccable/review/components.json"), "{err}");
-    // A hosted review is enforced by its host's policy.
-    let (hosted, _) = io_with(&[("IMPECCABLE_COMPONENT_REVIEW_TOOL", "component_review"), ("IMPECCABLE_COMPONENT_REVIEW_PENDING", "1")]);
-    assert!(plan_review_refusal(&hosted).unwrap().contains("call component_review"));
+    // A hosted session fails closed: no named sessions, or sessions without an accepted review.
     let (hosted, _) = io_with(&[("IMPECCABLE_COMPONENT_REVIEW_TOOL", "component_review")]);
-    assert!(plan_review_refusal(&hosted).is_none());
+    assert!(plan_review_refusal(&hosted).unwrap().contains("must set IMPECCABLE_COMPONENT_REVIEW_SESSIONS"));
+    let (hosted, _) = io_with(&[("IMPECCABLE_COMPONENT_REVIEW_TOOL", "component_review"), ("IMPECCABLE_COMPONENT_REVIEW_PENDING", "0")]);
+    assert!(plan_review_refusal(&hosted).is_some(), "the retired pending flag opens nothing");
+    let empty = ws.path.join("host-session");
+    std::fs::create_dir_all(&empty).unwrap();
+    let (hosted, _) = io_with(&[("IMPECCABLE_COMPONENT_REVIEW_TOOL", "component_review"), ("IMPECCABLE_COMPONENT_REVIEW_SESSIONS", empty.to_str().unwrap())]);
+    assert!(plan_review_refusal(&hosted).is_some());
     // A spec with nothing to decide has no review to wait for.
     write(SPEC_PATH, br#"{"comp":"comp.png","regions":[{"id":"copy","kind":"text","note":"Body","box":{"x":0,"y":0,"w":1,"h":1}}]}"#);
     assert!(plan_review_refusal(&io_with(&[]).0).is_none());
