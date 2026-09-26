@@ -37,6 +37,25 @@ static PAINTED_NOTE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)\b(diagram|drawing|drawn|illustration|illustrations|illustrated|figure|schematic|exploded|photo|photos|photograph\w*|picture|painting|painted|render|rendered|rendering|artwork|engraving|etching|linework|line art|texture|textured|textures|grain|fabric|halftone|watercolou?r|sketch|sketched|blueprint|geometry|leader lines?|callout lines?|thumbnail|silhouette|product shot|hero image|3d)\b").unwrap()
 });
 
+/// A raster note that names a frame (surround, window, shutters, doorway,
+/// arch...) and then an opening onto content behind it (a view, "showing",
+/// "looking out", an interior, "photograph of"). Order matters: in "photograph
+/// of a window" or "coast seen through a carriage window" the frame is the
+/// content, and a bare "framed portrait" gives no sign the frame is separate.
+static FRAME_WORD: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)\b(surround(?:s|ed)?|frame[ds]?|framing|windows?|doorway|doors?|arch(?:es)?|archway|shutter(?:s|ed)?|cartouche|portal|niche|alcove|mirror|porthole|casement|proscenium)\b").unwrap());
+static OPENING: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)\b(views?|viewing|vista|showing|shows|reveal(?:s|ing)?|looking (?:out|through|into|onto|over)|looks? (?:out|onto|into)|inside|interior|through|beyond|opening (?:onto|to|on)|opens? (?:onto|to|on)|glimpse|(?:photo(?:graph)?|scene|picture|image) of)\b").unwrap());
+static MOVING: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)\b(shutters?|doors?|gates?|curtains?|blinds?)\b").unwrap());
+
+/// The reviewer-facing observation when a raster note bakes a frame around the content it opens onto.
+pub fn baked_composite(note: &str) -> Option<String> {
+    static BLEED: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)full-?(?:frame|bleed)|frame[- ]filling").unwrap());
+    let note = BLEED.replace_all(note, "");
+    let frame = FRAME_WORD.find(&note)?;
+    OPENING.find_at(&note, frame.end())?;
+    let moving = MOVING.find(&note).map(|m| format!(" or move the {} on their own", m.as_str().to_lowercase())).unwrap_or_else(|| " on its own".into());
+    Some(format!("Frame and view are one image here, so the page can't swap the view{moving}."))
+}
+
 /// JS: gridToBox(span). Err(message) mirrors the thrown Error.
 pub fn grid_to_box(span: &str) -> Result<(f64, f64, f64, f64), String> {
     static RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)^([A-J])([0-9]):([A-J])([0-9])$").unwrap());
@@ -742,6 +761,11 @@ pub fn measure_regions(comp: &Image, regions_input: &Value, comp_path: &str) -> 
         regions.push(Value::Object(obj));
     }
     code_region_readings(comp, &mut regions);
+    for region in regions.iter_mut().filter(|r| r["kind"].as_str().is_some_and(is_raster_kind)) {
+        if let Some(message) = region["note"].as_str().and_then(baked_composite) {
+            region["flags"] = json!([{"id": "baked-composite", "message": message}]);
+        }
+    }
     let uncovered = uncovered_ink_cells(comp, &regions);
     if uncovered.len() > 3 && !truthy(regions_input.get("allowUncovered")) {
         return Err(format!(
@@ -1005,7 +1029,11 @@ pub fn print_spec(spec: &Value) -> String {
     }
     for r in &regions {
         for f in r["flags"].as_array().into_iter().flatten() {
-            let advice = if f["id"] == "painted-pixels" { " If it shows an illustration, photograph or texture, make it a plate, image or texture region; the plan review asks the user either way." } else { "" };
+            let advice = match f["id"].as_str() {
+                Some("painted-pixels") => " If it shows an illustration, photograph or texture, make it a plate, image or texture region; the plan review asks the user either way.",
+                Some("baked-composite") => " Split it: a frame plate with a transparent opening, the view as its own image region beneath it, and moving parts (shutters, doors) as their own plates; the page composites the overlapping regions.",
+                _ => "",
+            };
             lines.push(format!("FLAG {} {}: {}{advice}", r["id"].as_str().unwrap_or(""), f["id"].as_str().unwrap_or(""), f["message"].as_str().unwrap_or("")));
         }
     }
@@ -1544,5 +1572,33 @@ mod reference_tests {
         assert_eq!(surface(1), (true, false), "the panel's own pixels are bare ground once its label is set aside");
         assert_eq!(surface(3), (false, false), "a mark is neither");
         assert_eq!(surface(4).1, true, "a box under 6px is a rule");
+    }
+
+    #[test]
+    fn a_frame_note_that_opens_onto_content_is_a_baked_composite() {
+        // The live hotel run: frame, shutters and room photograph baked into one plate.
+        let hotel = baked_composite("painted stone window surround with keystone, green louvred shutters open, view inside of a whitewashed bedroom with linen bed and a balcony window to the sea").unwrap();
+        assert_eq!(hotel, "Frame and view are one image here, so the page can't swap the view or move the shutters on their own.");
+        assert!(baked_composite("small painted window with rose surround and open green shutters showing a bright hotel bedroom interior").is_some());
+        assert_eq!(baked_composite("arched stone niche framing a photograph of the owner").unwrap(), "Frame and view are one image here, so the page can't swap the view on its own.");
+        // The frame is the content, the frame comes after the view, or nothing opens onto content.
+        for note in ["a photograph of a window with blue shutters", "large sunlit coast photograph seen through a dark train carriage window",
+            "Room 4 Il Limone sea window photo", "framed portrait photo", "Full-frame deep blue Ligurian sea and sky",
+            "painted pale stone cartouche plaque with scalloped arched top, empty centre", "small dark green painted wooden shutter panel with louvre slats"] {
+            assert!(baked_composite(note).is_none(), "{note}");
+        }
+    }
+
+    #[test]
+    fn baked_composites_are_flagged_on_raster_regions_only() {
+        let comp = r::create_image(200, 100, [236, 229, 214, 255]);
+        let note = "painted window surround with open shutters, view of the sea";
+        let input = json!({"allowUncovered": true, "regions": [
+            {"id": "window", "kind": "plate", "note": note, "pixelBox": {"x": 0, "y": 0, "w": 80, "h": 100}},
+            {"id": "caption", "kind": "text", "note": "caption beside the window view of the sea", "codeDrawn": true, "pixelBox": {"x": 100, "y": 10, "w": 60, "h": 20}}]});
+        let spec = measure_regions(&comp, &input, "comp.png").unwrap();
+        assert_eq!(spec["regions"][0]["flags"], json!([{"id": "baked-composite", "message": "Frame and view are one image here, so the page can't swap the view or move the shutters on their own."}]));
+        assert!(spec["regions"][1].get("flags").is_none());
+        assert!(print_spec(&spec).contains("FLAG window baked-composite: Frame and view are one image here") && print_spec(&spec).contains("a frame plate with a transparent opening"));
     }
 }

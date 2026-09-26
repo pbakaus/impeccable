@@ -73,10 +73,11 @@ pub fn run_with_capturer(
                 let packet = plan::write(&io.cwd, &out)?;
                 let components = packet["components"].as_array().unwrap();
                 let count = |role: &str| components.iter().filter(|c| c["role"] == role).count();
-                let flagged = components.iter().filter(|c| c["flags"].is_array() || c["codeDrawn"] == true).count();
+                let flagged = components.iter().filter(|c| c["role"] == "plan" && (c["flags"].is_array() || c["codeDrawn"] == true)).count();
+                let flagged_assets = components.iter().filter(|c| c["role"] == "asset" && c["flags"].is_array()).count();
                 let s = io.env("IMPECCABLE_SELF").filter(|v| !v.trim().is_empty()).unwrap_or("impeccable").to_string();
-                io.out(&format!("PLAN {out}: {} assets, {} plan items ({flagged} flagged or code-drawn), {} code regions\nNEXT {s} component-review capture --manifest {out}, then {s} component-review serve --session <session from capture>\n",
-                    count("asset"), count("plan"), packet["codeRegions"].as_array().map_or(0, Vec::len)));
+                io.out(&format!("PLAN {out}: {} assets{}, {} plan items ({flagged} flagged or code-drawn), {} code regions\nNEXT {s} component-review capture --manifest {out}, then {s} component-review serve --session <session from capture>\n",
+                    count("asset"), if flagged_assets > 0 { format!(" ({flagged_assets} flagged)") } else { String::new() }, count("plan"), packet["codeRegions"].as_array().map_or(0, Vec::len)));
                 Ok(0)
             }
             Some("prepare") | Some("capture") => {

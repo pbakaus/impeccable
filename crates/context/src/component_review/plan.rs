@@ -87,8 +87,13 @@ pub fn build(project: &Path) -> Result<Value, String> {
                 missing.push(format!("  - {id} ({kind}): {plate}"));
                 continue;
             }
-            assets.push(json!({"id":id,"name":name(id),"kind":kind,"role":"asset","box":b,"note":note,
-                "medium":"raster","preview":{"kind":"image","path":plate},"dependencies":[]}));
+            let mut item = json!({"id":id,"name":name(id),"kind":kind,"role":"asset","box":b,"note":note,
+                "medium":"raster","preview":{"kind":"image","path":plate}});
+            // A flagged asset (a frame baked around its view) is a decision too: it sorts first.
+            let flags = r["flags"].as_array().filter(|f| !f.is_empty());
+            if let Some(flags) = flags { item["flags"] = json!(flags); }
+            item["dependencies"] = json!([]);
+            if flags.is_some() { first.push(item) } else { assets.push(item) }
         } else if plan_item(r) {
             let mut item = json!({"id":id,"name":name(id),"kind":kind,"role":"plan","box":b,"note":note,
                 "medium":"code","preview":{"kind":"comp-crop"}});

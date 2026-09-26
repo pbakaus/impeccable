@@ -49,7 +49,7 @@ The stage keeps its name so hosts and `lifecycle --require components hero` keep
 - `role: "asset"`: every raster region (`plate`, `image`, `texture`). Preview is its plate file, pinned by hash as today.
 - `role: "plan"`: a code region (`text`, `control`, `chrome`) that needs a human decision: it carries a `flags` entry, or `codeDrawn: true`, or it is non-container `chrome` whose `surface` is neither `flat` nor `rules`. Preview is `comp-crop` (no file; the UI crops the pinned comp by `box`).
 - `codeRegions`: every other code region. Listed for completeness and clickable on the map, but no decision is required. Containers (`container: true`) and bands are listed here.
-- Order of `components`: flagged or `codeDrawn` plan items first, then assets, then remaining plan items.
+- Order of `components`: flagged items first (plan items with `flags` or `codeDrawn`, and assets with `flags`), in spec order, then the remaining assets, then the remaining plan items. An asset passes its `flags` through.
 - `reviewGroup` is not used in v3. `revision` per component is computed as today (component JSON plus pinned file hashes plus `specSha256`).
 
 ## Decisions
@@ -86,6 +86,14 @@ The reading is taken over 64px windows (half-window stride; a smaller crop is on
 Calibration: 556 regions from 12 eval comps plus the 24-run replay. Every photograph and about half the plates read painted when scored as code regions (the misses are small single-ink sprigs and flat plaques that look like type). No text or control region that shows only type flags; the ones that do hold painted material (foliage over a nav bar, a painted shutter button, a plaque).
 
 The stored `message` is an observation for the reviewer ("Looks painted: 35 colours beyond its two main tones and soft shading across 45% of it. Drawn in code, this becomes a flat copy."). The instruction for the agent lives only in comp-spec's printed `FLAG <id> painted-pixels: ...` line.
+
+## Baked-composite flag (`comp-spec`)
+
+A raster region (`plate`, `image`, `texture`) whose note names a frame and then an opening onto content gets `flags: [{"id":"baked-composite","message":...}]`. Frame words: surround, frame, framing, window, doorway, door, arch, archway, shutter, cartouche, portal, niche, alcove, mirror, porthole, casement, proscenium. Opening words, which must come after the first frame word: view, vista, showing, reveals, looking out/through/into, inside, interior, through, beyond, opening onto, glimpse, "photograph/scene/picture/image of". "Full-frame" and "full-bleed" do not count as frames.
+
+The order rule keeps the frame-as-content cases clean: "a photograph of a window", "coast photograph seen through a carriage window" and "sea window photo" do not flag. "Framed portrait photo" does not flag either: nothing in it says the frame is a separate object with the portrait behind it rather than the photo's own composition, and flagging every framed photo would bury the real case. Checked on 128 raster notes from the calibration comps, the 24-run replay and the plan-review eval workspaces: 11 hits (the hotel run's three windows, seven painted room windows "showing a bright hotel bedroom interior", one "painted window ... photograph of stone terrace"), all real frame-plus-view composites, and no false positives. No pixel signal is used; the note is enough on this data.
+
+The message is an observation for the reviewer and names a moving part when the note has one: "Frame and view are one image here, so the page can't swap the view or move the shutters on their own." The printed `FLAG` line adds the instruction for the agent: a frame plate with a transparent opening, the view as its own image region beneath it, and moving parts as their own plates, composited in the page. It is a flag, not a refusal.
 
 ## Surface reading (`comp-spec`)
 
