@@ -17,13 +17,13 @@ export type PlanPacket = {
   comp: { url: string; width: number; height: number; background?: string };
   components: PlanItem[]; codeRegions?: CodeRegion[]; specSha256?: string;
 };
-export type PlanDecision = { revision: string; action: 'approve' | 'revise' | 'reclassify'; feedback: string; split: false; kind?: AssetKind };
+export type PlanDecision = { revision: string; action: 'approve' | 'revise' | 'reclassify'; feedback: string; split: boolean; kind?: AssetKind };
 export type Reclassify = { id: string; kind: AssetKind; feedback: string };
 export type PlanDraft = { packetRevision: string; decisions: Record<string, PlanDecision>; missing: Missing[]; inventoryConfirmed: boolean; reclassify?: Reclassify[] };
 export type PlanHistory = {
   packet: PlanPacket; submitted: boolean;
   changes: Record<string, { kind: 'added' | 'changed' | 'unchanged'; files: string[]; reasons: string[]; carried?: boolean }>;
-  feedback?: Record<string, { round: number; decision: { action: string; feedback?: string; kind?: string } }>;
+  feedback?: Record<string, { round: number; decision: { action: string; feedback?: string; kind?: string; split?: boolean } }>;
 };
 export type ItemState = 'pending' | 'approved' | 'revise' | 'reclassify';
 
@@ -109,11 +109,13 @@ export function planSummary(packet: PlanPacket, draft: PlanDraft) {
 }
 
 /** Pure decision update. Returns the next draft; callers keep the old one for undo. */
-export function decide(draft: PlanDraft, item: PlanItem, action: PlanDecision['action'], options: { feedback?: string; kind?: AssetKind } = {}): PlanDraft {
+export function decide(draft: PlanDraft, item: PlanItem, action: PlanDecision['action'], options: { feedback?: string; kind?: AssetKind; split?: boolean } = {}): PlanDraft {
+  // Split asks for a baked composite to come back as layers; only an asset's revise can carry it.
+  if (options.split && !(action === 'revise' && item.role === 'asset')) throw new Error('Only a generated asset can be split into layers');
   // A plan item's revise is a region-map change in the reviewer's words, so it needs them.
   if (action === 'revise' && item.role !== 'asset' && !(options.feedback ?? '').trim()) throw new Error('Revising a plan item needs feedback');
   if (action === 'reclassify' && item.role !== 'plan') throw new Error('Only planned code can become an image');
-  const decision: PlanDecision = { revision: item.revision, action, feedback: action === 'approve' ? '' : (options.feedback ?? '').trim(), split: false };
+  const decision: PlanDecision = { revision: item.revision, action, feedback: action === 'approve' ? '' : (options.feedback ?? '').trim(), split: !!options.split };
   if (action === 'reclassify') decision.kind = options.kind ?? defaultAssetKind(item);
   return { ...draft, inventoryConfirmed: false, decisions: { ...draft.decisions, [item.id]: decision } };
 }
@@ -232,8 +234,24 @@ export function introLine(packet: PlanPacket, draft: PlanDraft, history?: PlanHi
 }
 
 /** The last round's request for this item, and what it looked like then. */
+/** Guidance prefilled when the reviewer asks for a composite to be split. */
+export const SPLIT_GUIDANCE = 'Frame, view and moving parts as separate pieces, e.g. the shutters.';
+/** Flags an asset carries (a baked composite, painted pixels): shown as a note on the stage. */
+export function assetFlags(item: PlanItem) { return item.role === 'asset' ? item.flags ?? [] : []; }
+export const isBakedComposite = (item: PlanItem) => assetFlags(item).some(f => f.id === 'baked-composite');
+export const isSplit = (d?: PlanDecision) => d?.action === 'revise' && d.split === true;
+
 export function priorRound(id: string, history?: PlanHistory | null) {
   if (!history) return null;
+  // A split region comes back as new items (window-frame, window-view): link them to the
+  // region they came from by id prefix, so the reviewer sees their own note again.
+  const splitFrom = history.feedback?.[id] ? undefined : Object.entries(history.feedback ?? {})
+    .filter(([from, f]) => f.decision.action === 'revise' && f.decision.split && id.startsWith(`${from}-`))
+    .sort((a, b) => b[0].length - a[0].length)[0];
+  if (splitFrom) {
+    const [from, f] = splitFrom;
+    return { round: f.round, action: 'split', words: (f.decision.feedback ?? '').trim(), splitFrom: history.packet.components.find(c => c.id === from)?.name ?? from, beforeUrl: undefined, wasCode: false, wasKind: undefined, wasNote: '' };
+  }
   const asked = history.feedback?.[id];
   const before = history.packet.components.find(c => c.id === id);
   const beforeRegion = history.packet.codeRegions?.find(r => r.id === id);
@@ -248,6 +266,7 @@ export function priorRound(id: string, history?: PlanHistory | null) {
     wasCode: (before?.role === 'plan' || (!before && !!beforeRegion)),
     wasKind: before?.kind ?? beforeRegion?.kind,
     wasNote: before?.note ?? beforeRegion?.note ?? '',
+    splitFrom: undefined as string | undefined,
   };
 }
 
@@ -279,6 +298,8 @@ export function progressLights(packet: PlanPacket, draft: PlanDraft, current?: s
 export function sendLabel(packet: PlanPacket, draft: PlanDraft) {
   const s = planSummary(packet, draft);
   if (s.mode === 'approve') return 'Approve plan and assets';
-  const parts = [s.revise ? `${s.revise} ${s.revise === 1 ? 'note' : 'notes'}` : '', s.reclassify ? `${s.reclassify} to become ${s.reclassify === 1 ? 'an image' : 'images'}` : '', s.missing ? `${s.missing} missing` : ''].filter(Boolean);
+  const splits = packet.components.filter(c => isSplit(currentDecision(c, draft))).length;
+  const notes = s.revise - splits;
+  const parts = [notes ? `${notes} ${notes === 1 ? 'note' : 'notes'}` : '', splits ? `${splits} to split` : '', s.reclassify ? `${s.reclassify} to become ${s.reclassify === 1 ? 'an image' : 'images'}` : '', s.missing ? `${s.missing} missing` : ''].filter(Boolean);
   return `Send notes (${parts.join(', ')})`;
 }

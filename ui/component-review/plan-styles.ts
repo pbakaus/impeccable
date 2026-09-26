@@ -43,6 +43,7 @@ textarea:focus,input:focus{outline:none;border-color:var(--ks-patina);box-shadow
 .light.current:hover::before{transform:scale(1.35)}
 .light:focus-visible{outline-offset:0;border-radius:var(--ks-radius-sm)}
 .tip{position:absolute;top:calc(100% + 6px);left:50%;transform:translate(-50%,-2px);padding:5px 8px;border:1px solid var(--ks-rule);border-radius:var(--ks-radius-sm);background:var(--ks-paper-deep);color:var(--ks-ink);font-size:var(--ks-type-label-size);white-space:nowrap;opacity:0;pointer-events:none;transition:opacity var(--ks-quick) var(--ks-ease),transform var(--ks-quick) var(--ks-ease);z-index:20}
+.tip-state{color:var(--ks-text-muted)}
 .light:hover .tip,.light:focus-visible .tip{opacity:1;transform:translate(-50%,0)}
 .lights-summary{margin-left:14px;padding:4px 2px;border:0;background:none;border-bottom:2px solid transparent;font-size:var(--ks-type-label-size);color:var(--ks-text-muted);transition:color 180ms var(--ks-ease),border-color 180ms var(--ks-ease)}
 .lights-summary:hover{color:var(--ks-ink)}

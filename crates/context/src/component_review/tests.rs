@@ -1081,6 +1081,29 @@ fn plan_freeze_binds_the_spec_and_the_complete_inventory() {
 }
 
 #[test]
+fn an_asset_split_into_layers_requests_changes_and_a_plan_item_cannot_split() {
+    let f = Fixture::new();
+    f.plan_project();
+    f.plates();
+    let dir = f.plan_round();
+    let state = store::read(&dir.join("current.json")).unwrap();
+    let components = state["packet"]["components"].as_array().unwrap();
+    let asset = components.iter().find(|c| c["role"] == "asset").unwrap();
+    let plan = components.iter().find(|c| c["role"] == "plan").unwrap();
+    let (asset_id, plan_id) = (asset["id"].as_str().unwrap(), plan["id"].as_str().unwrap());
+    let mut body = approve(&state);
+    body["decisions"][asset_id]["split"] = json!(true);
+    assert!(store::submit(&dir, &body).is_err(), "an approval never splits");
+    body["decisions"][asset_id] = json!({"revision":asset["revision"],"action":"revise","feedback":"","split":true});
+    body["decisions"][plan_id] = json!({"revision":plan["revision"],"action":"revise","feedback":"Split it","split":true});
+    assert!(store::submit(&dir, &body).is_err(), "split is for assets");
+    body["decisions"][plan_id] = json!({"revision":plan["revision"],"action":"approve","feedback":"","split":false});
+    let receipt = store::submit(&dir, &body).unwrap();
+    assert_eq!(receipt["visualDecision"], "changes-requested");
+    assert_eq!(receipt["submission"]["decisions"][asset_id]["split"], true);
+}
+
+#[test]
 fn a_plan_item_revise_carries_the_map_change_and_requests_changes() {
     let f = Fixture::new();
     f.plan_project();

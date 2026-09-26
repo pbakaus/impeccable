@@ -174,3 +174,24 @@ describe('stage flow helpers', () => {
     expect(sendLabel(packet, draft)).toBe('Send notes (1 note, 1 to become an image)');
   });
 });
+
+describe('split into layers', () => {
+  test('only an asset revise splits, and the send label counts it apart from notes', async () => {
+    const { isSplit, sendLabel } = await import('./plan-model');
+    let draft = newPlanDraft(packet);
+    expect(() => decide(draft, rule, 'revise', { feedback: 'x', split: true })).toThrow('split');
+    expect(() => decide(draft, figure, 'approve', { split: true })).toThrow('split');
+    draft = decide(draft, figure, 'revise', { split: true, feedback: 'Frame and view apart' });
+    expect(draft.decisions.figure).toEqual({ revision: 'f1', action: 'revise', feedback: 'Frame and view apart', split: true });
+    expect(isSplit(draft.decisions.figure)).toBe(true);
+    expect(planSummary(packet, draft)).toMatchObject({ revise: 1, hasChanges: true });
+    for (const c of [rule, panel]) draft = decide(draft, c, 'approve');
+    expect(sendLabel(packet, draft)).toBe('Send notes (1 to split)');
+  });
+  test('layers of a split region are linked to the note that asked for them', async () => {
+    const { priorRound } = await import('./plan-model');
+    const history: any = { packet, submitted: true, changes: { 'figure-frame': { kind: 'added', files: [], reasons: [] } }, feedback: { figure: { round: 1, decision: { action: 'revise', split: true, feedback: 'Shutters apart' } } } };
+    expect(priorRound('figure-frame', history)).toMatchObject({ action: 'split', words: 'Shutters apart', splitFrom: 'Hero figure', round: 1 });
+    expect(priorRound('figurehead', history)).toBeNull();
+  });
+});

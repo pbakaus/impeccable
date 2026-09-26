@@ -18,6 +18,7 @@ Apply the user's decisions as given, never your own favorable verdict in their p
 
 - **approve**: once every item is approved and the inventory is confirmed, advance to the hero.
 - **revise** (a plate): regenerate that plate at the same path with the user's feedback.
+- **revise with split** (an asset): replace that region in the regions file with its layers: a frame plate with a transparent opening (kind `plate`, same box), the content as its own `image` region at the opening's box, and each moving part (a shutter, a door) as its own plate. Rerun `comp-spec --regions` and produce the plates.
 - **revise** (a plan item): change the regions file as the feedback says (resize or extend a raster region, split material into its own plate region, or adjust the code region), rerun `comp-spec --regions`, and produce any new plates.
 - **reclassify** (a code region): in the regions file, change that region's `kind` to the one the user chose and rewrite its `note` to describe the material. Rerun `comp-spec --regions`, then produce the new plates, with the asset producer when subagents are available.
 - **missing**: add the region to the regions file, rerun `comp-spec --regions`, and produce its plate if it is raster.
