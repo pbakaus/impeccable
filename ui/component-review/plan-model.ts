@@ -23,6 +23,7 @@ export type PlanDraft = { packetRevision: string; decisions: Record<string, Plan
 export type PlanHistory = {
   packet: PlanPacket; submitted: boolean;
   changes: Record<string, { kind: 'added' | 'changed' | 'unchanged'; files: string[]; reasons: string[]; carried?: boolean }>;
+  feedback?: Record<string, { round: number; decision: { action: string; feedback?: string; kind?: string } }>;
 };
 export type ItemState = 'pending' | 'approved' | 'revise' | 'reclassify';
 
@@ -209,4 +210,75 @@ export function pairLayout(ratio: number, width: number, height: number, gap: nu
   const side = fit((width - gap) / 2, height - caption);
   const stacked = fit(width, (height - gap) / 2 - caption);
   return side.w * side.h >= stacked.w * stacked.h ? { direction: 'row' as const, ...side } : { direction: 'column' as const, ...stacked };
+}
+
+// ---------------------------------------------------------------------------
+// Stage flow (intro, one item at a time, summary). Pure helpers for the view.
+
+const WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
+const word = (n: number) => WORDS[n] ?? String(n);
+const Cap = (s: string) => s[0].toUpperCase() + s.slice(1);
+
+/** What the reviewer is about to do, in one sentence (the intro screen). */
+export function introLine(packet: PlanPacket, draft: PlanDraft, history?: PlanHistory | null) {
+  const pending = packet.components.filter(c => itemState(c, draft) === 'pending').length;
+  if (history && packet.round > 1) {
+    const worked = packet.components.filter(c => ['changed', 'added'].includes(history.changes[c.id]?.kind ?? '') || history.feedback?.[c.id]).length;
+    const kept = packet.components.filter(c => itemState(c, draft) === 'approved').length;
+    return `The agent worked on your notes for ${word(worked)} ${worked === 1 ? 'item' : 'items'}. ${Cap(word(kept))} ${kept === 1 ? 'approval is' : 'approvals are'} kept.`;
+  }
+  const minutes = Math.max(1, Math.round(pending * 15 / 60));
+  return `${Cap(word(pending))} ${pending === 1 ? 'thing' : 'things'} to check before any page code is written. About ${word(minutes)} ${minutes === 1 ? 'minute' : 'minutes'}.`;
+}
+
+/** The last round's request for this item, and what it looked like then. */
+export function priorRound(id: string, history?: PlanHistory | null) {
+  if (!history) return null;
+  const asked = history.feedback?.[id];
+  const before = history.packet.components.find(c => c.id === id);
+  const beforeRegion = history.packet.codeRegions?.find(r => r.id === id);
+  const change = history.changes[id]?.kind;
+  if (!asked && change !== 'changed') return null;
+  return {
+    round: asked?.round ?? history.packet.round,
+    action: asked?.decision.action,
+    words: (asked?.decision.feedback ?? '').trim(),
+    beforeUrl: before?.role === 'asset' ? before.preview.url : undefined,
+    // A region that was planned in code last round and is now an asset.
+    wasCode: (before?.role === 'plan' || (!before && !!beforeRegion)),
+    wasKind: before?.kind ?? beforeRegion?.kind,
+    wasNote: before?.note ?? beforeRegion?.note ?? '',
+  };
+}
+
+/** Equal-height figures for aspect ratios (w/h): in a row, or stacked at equal width when
+ * that shows more. Each figure reserves `caption` px above it; `natural` caps the scale. */
+export function figureLayout(ratios: number[], width: number, height: number, gap: number, caption: number, maxScale = 4, natural?: { w: number; h: number }) {
+  const n = ratios.length;
+  let rowH = Math.max(0, Math.min(height - caption, (width - gap * (n - 1)) / ratios.reduce((a, r) => a + r, 0)));
+  let colW = Math.max(0, Math.min(width, (height - n * caption - gap * (n - 1)) / ratios.reduce((a, r) => a + 1 / r, 0)));
+  if (natural) { rowH = Math.min(rowH, natural.h * maxScale); colW = Math.min(colW, natural.w * maxScale); }
+  const rowArea = ratios.reduce((a, r) => a + r * rowH * rowH, 0);
+  const colArea = ratios.reduce((a, r) => a + colW * colW / r, 0);
+  return rowArea >= colArea
+    ? { direction: 'row' as const, sizes: ratios.map(r => ({ w: r * rowH, h: rowH })) }
+    : { direction: 'column' as const, sizes: ratios.map(r => ({ w: colW, h: colW / r })) };
+}
+
+/** Loupe: the translate that centres point (fx, fy) of a w x h image, scaled by zoom, in a lens of radius r. */
+export function loupeOffset(fx: number, fy: number, w: number, h: number, r: number, zoom: number) {
+  return { x: r - fx * w * zoom, y: r - fy * h * zoom };
+}
+
+/** Progress row: one light per item. */
+export function progressLights(packet: PlanPacket, draft: PlanDraft, current?: string) {
+  return planQueue(packet).map(c => ({ id: c.id, name: c.name, state: itemState(c, draft), current: c.id === current }));
+}
+
+/** The submit line on the summary: what will be sent, in counts. */
+export function sendLabel(packet: PlanPacket, draft: PlanDraft) {
+  const s = planSummary(packet, draft);
+  if (s.mode === 'approve') return 'Approve plan and assets';
+  const parts = [s.revise ? `${s.revise} ${s.revise === 1 ? 'note' : 'notes'}` : '', s.reclassify ? `${s.reclassify} to become ${s.reclassify === 1 ? 'an image' : 'images'}` : '', s.missing ? `${s.missing} missing` : ''].filter(Boolean);
+  return `Send notes (${parts.join(', ')})`;
 }

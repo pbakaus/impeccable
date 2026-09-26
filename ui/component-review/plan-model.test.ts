@@ -133,3 +133,44 @@ describe('plan and asset review model', () => {
     expect(edge.view.x).toBe(0); expect(edge.view.y).toBe(0);
   });
 });
+
+describe('stage flow helpers', () => {
+  test('the intro says how much there is to do, or what changed since last round', async () => {
+    const { introLine } = await import('./plan-model');
+    expect(introLine(packet, newPlanDraft(packet))).toBe('Three things to check before any page code is written. About one minute.');
+    const draft = decide(newPlanDraft(packet), rule, 'approve');
+    const history: any = { packet: { ...packet, round: 1 }, submitted: true, changes: { figure: { kind: 'changed', files: [], reasons: [] } }, feedback: { panel: { round: 1, decision: { action: 'revise', feedback: 'Moor the boats' } } } };
+    expect(introLine({ ...packet, round: 2 }, draft, history)).toBe('The agent worked on your notes for two items. One approval is kept.');
+  });
+  test('prior round quotes the user and keeps the old asset for before/after', async () => {
+    const { priorRound } = await import('./plan-model');
+    const old = { ...packet, components: packet.components.map(c => c.id === 'figure' ? { ...c, preview: { kind: 'image' as const, url: '/old.png' } } : c) };
+    const history: any = { packet: old, submitted: true, changes: { figure: { kind: 'changed', files: ['a.png'], reasons: [] } }, feedback: { figure: { round: 1, decision: { action: 'revise', feedback: ' Face the sea ' } } } };
+    expect(priorRound('figure', history)).toMatchObject({ round: 1, words: 'Face the sea', beforeUrl: '/old.png', wasCode: false });
+    expect(priorRound('rule', history)).toBeNull();
+    const reclassified: any = { packet: old, submitted: true, changes: {}, feedback: { headline: { round: 1, decision: { action: 'reclassify', kind: 'plate', feedback: '' } } } };
+    expect(priorRound('headline', reclassified)).toMatchObject({ wasCode: true, wasKind: 'text' });
+  });
+  test('figure layout keeps equal heights and stacks bands', async () => {
+    const { figureLayout } = await import('./plan-model');
+    const row = figureLayout([1, 1, 1], 900, 400, 16, 20);
+    expect(row.direction).toBe('row');
+    expect(new Set(row.sizes.map(s => Math.round(s.h))).size).toBe(1);
+    expect(row.sizes[0].w * 3 + 32).toBeLessThanOrEqual(900.01);
+    expect(figureLayout([10, 10], 900, 500, 16, 20).direction).toBe('column');
+    expect(figureLayout([1, 1], 900, 500, 16, 20, 2, { w: 50, h: 50 }).sizes[0].h).toBe(100);
+  });
+  test('loupe centres the pointed spot', async () => {
+    const { loupeOffset } = await import('./plan-model');
+    expect(loupeOffset(.5, .5, 200, 100, 80, 3)).toEqual({ x: 80 - 300, y: 80 - 150 });
+  });
+  test('send label counts what goes back', async () => {
+    const { sendLabel } = await import('./plan-model');
+    let draft = newPlanDraft(packet);
+    for (const c of packet.components) draft = decide(draft, c, 'approve');
+    expect(sendLabel(packet, draft)).toBe('Approve plan and assets');
+    draft = decide(draft, figure, 'revise', { feedback: 'x' });
+    draft = setRegionReclassify(draft, 'headline', { kind: 'plate' });
+    expect(sendLabel(packet, draft)).toBe('Send notes (1 note, 1 to become an image)');
+  });
+});
