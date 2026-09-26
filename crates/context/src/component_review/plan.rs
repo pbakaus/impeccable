@@ -130,18 +130,38 @@ pub fn gate(store: &Path, project: &Path, s: &str) -> Result<(), String> {
     if super::lifecycle::final_session(store, &project)?.is_some() {
         return Ok(());
     }
+    let steps = format!("Run {s} component-review plan, then {s} component-review capture --manifest {DEFAULT_OUT} and {s} component-review serve --session <session>, and wait for the user's decision.");
+    decide(&super::lifecycle::project_sessions(store, &project)?, &project, s, &steps)
+}
+
+/// A hosted review lives in the host's store and its captures use snapshots, so the
+/// host names its trusted session directories (as `lifecycle --hosted --session-dir`
+/// does) and the same acceptance, integrity and spec-digest rules apply to them.
+pub fn gate_hosted(sessions: &[std::path::PathBuf], project: &Path, s: &str, tool: &str) -> Result<(), String> {
+    let project = project.canonicalize().map_err(|e| e.to_string())?;
+    for dir in sessions {
+        let state = super::store::read(&dir.join("current.json")).map_err(|e| format!("hosted review session {}: {e}", dir.display()))?;
+        if state["packet"]["stage"] == "hero" && super::lifecycle::accepted_in(dir, &state) {
+            return Ok(());
+        }
+    }
+    let steps = format!("Write it with {s} component-review plan, call {tool} with manifest_path=\"{DEFAULT_OUT}\", and wait for the user's decision.");
+    decide(sessions, &project, s, &steps)
+}
+
+fn decide(sessions: &[std::path::PathBuf], project: &Path, s: &str, steps: &str) -> Result<(), String> {
     let bytes = std::fs::read(project.join(SPEC)).map_err(|_| format!("no measured spec at {SPEC}; run comp-spec first"))?;
     let spec: Value = serde_json::from_slice(&bytes).map_err(|e| format!("{SPEC}: {e}"))?;
     if !needs_review(&spec) {
         return Ok(());
     }
     let sha = digest(&bytes);
-    let steps = format!("Run {s} component-review plan, then {s} component-review capture --manifest {DEFAULT_OUT} and {s} component-review serve --session <session>, and wait for the user's decision. Write no page code before it is accepted.");
+    let steps = format!("{steps} Write no page code before it is accepted.");
     let mut plans = Vec::new();
-    for dir in super::lifecycle::project_sessions(store, &project)? {
+    for dir in sessions {
         let state = super::store::read(&dir.join("current.json"))?;
         if state["packet"]["schemaVersion"] == 3 && state["packet"]["stage"] == "components" {
-            if super::lifecycle::accepted_in(&dir, &state) && state["packet"]["specSha256"] == sha.as_str() {
+            if super::lifecycle::accepted_in(dir, &state) && state["packet"]["specSha256"] == sha.as_str() {
                 return Ok(());
             }
             plans.push(state);

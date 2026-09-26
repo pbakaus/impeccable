@@ -2320,11 +2320,16 @@ fn run_gate(io: &Io, state: &mut Value, phase: &str, opts: &GateOpts, organic_sc
 }
 
 /// Page work waits for the human plan and asset review (docs/PLAN-REVIEW.md) of the
-/// current spec. A hosted review lives in the host's store; its policy env decides.
+/// current spec. A hosted review lives in the host's store: the host names its trusted
+/// session directories, and the gate fails closed without them.
 fn plan_review_refusal(io: &Io) -> Option<String> {
     let s = self_cmd(io);
     if let Some(tool) = io.env("IMPECCABLE_COMPONENT_REVIEW_TOOL") {
-        return (io.env("IMPECCABLE_COMPONENT_REVIEW_PENDING") == Some("1")).then(|| format!("The plan and asset review is pending. Write it with {s} component-review plan, call {tool} with manifest_path=\".impeccable/review/components.json\", and wait for the user's decisions. Write no page code before it is accepted."));
+        let sessions: Vec<PathBuf> = io.env("IMPECCABLE_COMPONENT_REVIEW_SESSIONS").map(|v| std::env::split_paths(v).filter(|p| !p.as_os_str().is_empty()).collect()).unwrap_or_default();
+        if sessions.is_empty() {
+            return Some(format!("The plan and asset review runs in the host ({tool}), and this session does not name its review sessions. The host must set IMPECCABLE_COMPONENT_REVIEW_SESSIONS to its trusted review session directories; page work waits until then."));
+        }
+        return impeccable_context::component_review::plan::gate_hosted(&sessions, &io.cwd, &s, tool).err();
     }
     let Some(home) = io.home() else { return Some("the plan and asset review store needs a home directory".into()) };
     impeccable_context::component_review::plan::gate(&home.join(".impeccable/component-reviews"), &io.cwd, &s).err()

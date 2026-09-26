@@ -1150,3 +1150,35 @@ fn approving_every_component_while_reclassifying_a_code_region_is_not_approval()
     legacy_body["reclassify"] = json!([{"id":"art","kind":"plate"}]);
     assert!(store::submit(&legacy_dir, &legacy_body).is_err());
 }
+
+#[test]
+fn hosted_gate_requires_an_accepted_intact_review_in_the_named_sessions() {
+    let f = Fixture::new();
+    f.plan_project();
+    f.plates();
+    let hosted = |dirs: &[PathBuf]| super::plan::gate_hosted(dirs, &f.project, "impeccable", "component_review");
+    assert!(hosted(&[]).unwrap_err().contains("not accepted"));
+    let dir = f.plan_round();
+    let err = hosted(&[dir.clone()]).unwrap_err();
+    assert!(err.contains("not accepted") && err.contains("call component_review"), "{err}");
+    let state = store::read(&dir.join("current.json")).unwrap();
+    store::submit(&dir, &approve(&state)).unwrap();
+    hosted(&[dir.clone()]).unwrap();
+    // A forged or tampered session is not acceptance.
+    let good = store::read(&dir.join("current.json")).unwrap();
+    let mut forged = good.clone();
+    forged["capture"]["components"].as_array_mut().unwrap().pop();
+    forged["receipt"]["capture"] = forged["capture"].clone();
+    store::write(&dir.join("current.json"), &forged).unwrap();
+    assert!(hosted(&[dir.clone()]).is_err());
+    store::write(&dir.join("current.json"), &good).unwrap();
+    let blob = good["files"]["assets/art.png"].as_str().unwrap();
+    fs::write(dir.join("blobs").join(blob), b"swapped").unwrap();
+    assert!(hosted(&[dir.clone()]).is_err());
+    fs::write(dir.join("blobs").join(blob), b"art plate").unwrap();
+    hosted(&[dir.clone()]).unwrap();
+    // A spec changed since the review, or an unreadable session, refuses.
+    fs::write(f.project.join(".impeccable/build/spec.json"), PLAN_SPEC.replace("Top bar", "Top rail")).unwrap();
+    assert!(hosted(&[dir.clone()]).unwrap_err().contains("earlier spec.json"));
+    assert!(hosted(&[f.root.join("nowhere")]).is_err());
+}
