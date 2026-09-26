@@ -3,6 +3,7 @@ pub mod capture;
 mod history;
 mod lifecycle;
 mod manifest;
+pub mod plan;
 mod server;
 mod store;
 #[cfg(test)]
@@ -67,6 +68,17 @@ pub fn run_with_capturer(
                 io.out(&format!("{}\n", lifecycle::inspect(&sessions, &required)?));
                 Ok(0)
             }
+            Some("plan") => {
+                let out = arg(args, "--out").unwrap_or_else(|| plan::DEFAULT_OUT.into());
+                let packet = plan::write(&io.cwd, &out)?;
+                let components = packet["components"].as_array().unwrap();
+                let count = |role: &str| components.iter().filter(|c| c["role"] == role).count();
+                let flagged = components.iter().filter(|c| c["flags"].is_array() || c["codeDrawn"] == true).count();
+                let s = io.env("IMPECCABLE_SELF").filter(|v| !v.trim().is_empty()).unwrap_or("impeccable").to_string();
+                io.out(&format!("PLAN {out}: {} assets, {} plan items ({flagged} flagged or code-drawn), {} code regions\nNEXT {s} component-review capture --manifest {out}, then {s} component-review serve --session <session from capture>\n",
+                    count("asset"), count("plan"), packet["codeRegions"].as_array().map_or(0, Vec::len)));
+                Ok(0)
+            }
             Some("prepare") | Some("capture") => {
                 let path = arg(args, "--manifest")
                     .ok_or("prepare needs --manifest <project-relative file>")?;
@@ -76,7 +88,14 @@ pub fn run_with_capturer(
                     }
                 }
                 let project = io.cwd.canonicalize().map_err(|e| e.to_string())?;
-                let renderer=if args[0]=="capture" {Some(capturer.take().ok_or("native component capturer unavailable")?)}else{None};
+                // The plan review is proven without a browser; only v1/v2 packets reach the native capturer.
+                let v3 = std::fs::read(project.join(manifest::relative(&path)?)).ok()
+                    .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+                    .is_some_and(|m| m["schemaVersion"] == 3);
+                let mut plan_capturer = capture::PlanCapturer;
+                let renderer: Option<&mut dyn capture::ComponentCapturer> = if args[0] != "capture" { None }
+                    else if v3 { Some(&mut plan_capturer) }
+                    else { Some(capturer.take().ok_or("native component capturer unavailable")?) };
                 let dir=store::prepare_file(&store,&project,&path,renderer)?;
                 let state = store::read(&dir.join("current.json"))?;
                 let status = state["receipt"]["visualDecision"]
@@ -145,7 +164,7 @@ pub fn run_with_capturer(
                     Ok(0)
                 }
             }
-            _ => Err("usage: impeccable component-review prepare|capture|verify --manifest <file> | lifecycle [--session-dir <dir>] [--require components|hero] [--hosted] | serve --session <id> [--port 0] [--idle-timeout <seconds>] | status|refresh-approvals --session <id> [--store <outside-project-dir>]".into())
+            _ => Err("usage: impeccable component-review plan [--out .impeccable/review/components.json] | prepare|capture|verify --manifest <file> | lifecycle [--session-dir <dir>] [--require components|hero] [--hosted] | serve --session <id> [--port 0] [--idle-timeout <seconds>] | status|refresh-approvals --session <id> [--store <outside-project-dir>]".into())
         }
     })();
     match result {

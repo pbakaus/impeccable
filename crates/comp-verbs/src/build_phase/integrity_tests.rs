@@ -886,3 +886,43 @@ fn quoted_plate_force_holds_for_the_same_bytes_but_not_a_changed_plate() {
     assert!(failure.reasons.iter().any(|r| r.contains("comp crop")), "{:?}", failure.reasons);
     assert!(state["plates"]["art"]["forced"].is_null());
 }
+
+#[test]
+fn page_work_waits_for_the_plan_and_asset_review_of_the_current_spec() {
+    let ws = Workspace::new();
+    let home = ws.path.join("home");
+    std::fs::create_dir_all(&home).unwrap();
+    let project = ws.path.join("project");
+    let write = |file: &str, bytes: &[u8]| { let p = project.join(file); std::fs::create_dir_all(p.parent().unwrap()).unwrap(); std::fs::write(p, bytes).unwrap(); };
+    write("comp.png", b"comp");
+    write("art.png", b"plate");
+    write(SPEC_PATH, br#"{"comp":"comp.png","compSize":{"width":64,"height":64},"regions":[{"id":"art","kind":"plate","medium":"raster","plate":"art.png","note":"Figure","box":{"x":0,"y":0,"w":1,"h":1}}]}"#);
+    let io_with = |extra: &[(&str, &str)]| {
+        let mut env: std::collections::HashMap<String, String> = [("HOME".to_string(), home.to_string_lossy().into_owned())].into();
+        env.extend(extra.iter().map(|(k, v)| (k.to_string(), v.to_string())));
+        Io::captured("", project.clone(), env)
+    };
+    let (io, _) = io_with(&[]);
+    let why = plan_review_refusal(&io).expect("no review exists yet");
+    assert!(why.contains("not accepted") && why.contains("impeccable component-review plan"), "{why}");
+    // advance from plates carries the refusal with the plate readings.
+    let mut state = json!({"phase":"plates","comp":"comp.png","phases":{"plates":{"attempts":0},"hero":{}}});
+    let opts = GateOpts { build_path: None, min: None, artifact: None };
+    let result = advance(&io, &mut state, false, None, &opts, &no_organic_scan, None);
+    assert!(!result.ok && result.reasons.iter().any(|r| r.contains("plan and asset review")), "{:?}", result.reasons);
+    assert_eq!(state["phase"], "plates");
+    // record hero refuses before measuring anything.
+    write(".impeccable/build/state.json", br#"{"phase":"hero","startedAt":"s","phases":{"hero":{}}}"#);
+    let (mut io, captured) = io_with(&[]);
+    assert_eq!(run(&["record", "hero"].map(String::from), &mut io, &no_organic_scan), 1);
+    let err = String::from_utf8(captured.stderr.borrow().clone()).unwrap();
+    assert!(err.contains("record hero refused") && err.contains("component-review capture --manifest .impeccable/review/components.json"), "{err}");
+    // A hosted review is enforced by its host's policy.
+    let (hosted, _) = io_with(&[("IMPECCABLE_COMPONENT_REVIEW_TOOL", "component_review"), ("IMPECCABLE_COMPONENT_REVIEW_PENDING", "1")]);
+    assert!(plan_review_refusal(&hosted).unwrap().contains("call component_review"));
+    let (hosted, _) = io_with(&[("IMPECCABLE_COMPONENT_REVIEW_TOOL", "component_review")]);
+    assert!(plan_review_refusal(&hosted).is_none());
+    // A spec with nothing to decide has no review to wait for.
+    write(SPEC_PATH, br#"{"comp":"comp.png","regions":[{"id":"copy","kind":"text","note":"Body","box":{"x":0,"y":0,"w":1,"h":1}}]}"#);
+    assert!(plan_review_refusal(&io_with(&[]).0).is_none());
+}

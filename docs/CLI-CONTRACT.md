@@ -1837,11 +1837,43 @@ Conventions: every script's "run directly" guard is `process.argv[1]` ending wit
 - Fake agent polls `GET /poll?token&timeout=5000` (no lease override → 30 s lease), replies via `POST /poll` with `{token,type:'done',sourceEventType:'generate',id,file}`, `steer_done {message,file}`, `error`, accept/discard completions with `data:{carbonize:true,_acceptResult}`/`{_acceptResult}`, manual apply via `live-poll.mjs --reply <id> done --data <json>`. Variant format: 3 variants (font-weights 300/900/600 for render proof), params `lightness` (range), `face` (steps), `italic` (toggle). Scenarios: core, manual, annotations, exit, missed-done, params, mount-failure, republish, storage-loss (fixtures README). Fixture `runtime` block schema is authoritative for what a reimplementation must satisfy end-to-end.
 
 
-## Component review (native, opt-in)
+## Component review (native)
 
-This development command does not yet replace the skill's build-phase gates.
-The packet and evidence contract is documented in
-[`ui/component-review/README.md`](../ui/component-review/README.md).
+The component stage is the plan and asset review (packet `schemaVersion: 3`,
+contract in [`docs/PLAN-REVIEW.md`](PLAN-REVIEW.md)); the assembled first
+viewport is the `hero` stage. The shared UI and the v1/v2 packet shape are
+documented in [`ui/component-review/README.md`](../ui/component-review/README.md).
+
+- `component-review plan [--out <project-relative JSON>]` writes the v3 packet
+  (default `.impeccable/review/components.json`) from `.impeccable/build/spec.json`,
+  the comp it names (`comp`, `compSize`; the build state's `comp` as a fallback)
+  and the plate files. `id` is `components`; `title` is `Plan and asset review`
+  plus ` · <artifact>` when the build state names one. Raster regions
+  (`plate`, `image`, `texture`) become `role: "asset"` previewed by their plate;
+  `text`, `control` and `chrome` regions with a nonempty `flags` array, with
+  `codeDrawn: true`, or non-container `chrome` become `role: "plan"` with
+  `preview: {"kind":"comp-crop"}`, their `flags` passed through and `codeDrawn`
+  always present; every other region (bands, containers, plain text and
+  controls) is listed in `codeRegions` as `{id,name,kind,box,note}`. Components
+  are ordered flagged or code-drawn plan items, assets, remaining plan items,
+  each in spec order. `name` is the id with `-`/`_` as spaces, first letter
+  capitalized. `specSha256` is the SHA-256 of the spec bytes. stdout is
+  `PLAN <out>: <n> assets, <n> plan items (<n> flagged or code-drawn), <n> code regions`
+  and a `NEXT` line naming `capture` then `serve`. It exits 1 without writing
+  when any raster region's plate file is missing (every missing plate is
+  listed as `  - <id> (<kind>): <path>`), when there is no spec, or when the
+  spec has nothing to review (no raster region and no plan item).
+- `prepare` / `capture` accept `schemaVersion` 1 (legacy), 2 with stage `hero`,
+  and 3 with stage `components`. A `schemaVersion: 2` component manifest is
+  refused with a message naming `component-review plan`. A v3 packet must match
+  the pinned spec (`specSha256`), list every measured region exactly once as a
+  component or in `codeRegions`, name no other id, and carry no `reviewGroup`,
+  `context` or `thumbnail`. `capture` of a v3 packet never starts a browser: it
+  records `capture.schema: "plan-review-proof-v1"` with a `raster-source` proof
+  (`path`, `sha256`) per asset and a `comp-crop` proof (`compPath`,
+  `compSha256`, `box`) per plan item. v1/v2 captures keep
+  `native-component-previews-v1`.
+- `component-review prepare --manifest <project-relative JSON>` snapshots the
 
 - `component-review prepare --manifest <project-relative JSON>` snapshots the
   declared comp, components and dependencies into an out-of-project store.
@@ -1880,6 +1912,17 @@ The packet and evidence contract is documented in
   Session IDs are 64 hexadecimal characters. Errors write
   `component-review: <reason>` to stderr and return 1; successful non-server
   operations return 0. There are no external network or model calls.
+- Submissions for a v3 round: each decision is `{revision, action, feedback,
+  split: false}`; `action` is `approve`, `revise` (assets only) or `reclassify`
+  (plan items only, with `kind` `plate`, `image` or `texture`). The optional
+  top-level `reclassify: [{id, kind, feedback?}]` names `codeRegions` ids, each
+  once. Any `revise`, `reclassify` or `missing` entry makes the receipt
+  `changes-requested`; `approved` needs every component approved, no
+  reclassification and `inventoryConfirmed: true`. The draft keeps the
+  `reclassify` list, and the next round's `history.feedback` reports a
+  reclassified id under `{round, decision: {action: "reclassify", kind, feedback}}`.
+  Unchanged approvals carry across rounds (same component definition, preview
+  bytes and comp), including across a spec change.
 - Receipt identity remains `local-browser`. `captureVerified` is false after
   plain `prepare`, and true only for native `capture` evidence committed by the
   trusted in-process adapter. Producer-written capture claims are discarded.
@@ -1893,6 +1936,10 @@ The packet and evidence contract is documented in
 `impeccable component-review verify --manifest <project-relative JSON>` reads the native capture and user receipt. Before assembly acceptance, it requires an approved, natively captured round with unchanged manifest and dependencies. It does not trust the stored `captureVerified` flag: it recomputes capture integrity from the session's pinned blobs (every blob matches its hash, non-capture files match the pinned sources, the evidence covers every component in the manifest and packet, raster previews match their `raster-source` proof, and code views are `_review_captures/<sha256>.png` files whose hash equals the proof's `screenshotSha256`). The accepted-assembly path applies the same integrity check. After the assembled first viewport is accepted, it returns that original receipt: it does not claim later bytes were reviewed. It neither creates nor submits approvals.
 
 `component-review lifecycle [--session-dir <private directory>] [--require components|hero] [--hosted]` reports the native review decision. Both options may repeat. With `--hosted`, only the supplied private sessions are considered; ordinary sessions resolve acceptance from the project in the local store. The result has `schemaVersion: 1`, `status` (`pending`, `approved`, or `accepted`), `reviewClosed`, and nullable `completionFeedback`. Accepted assembly returns `scope: "first-viewport"` and the original request/revision. Hosts transport that result without adding file-hash approval policy.
+
+For a v3 round, `verify`, `lifecycle` and the gate below apply the same integrity check with the plan proofs: assets need their `raster-source` proof, plan items a `comp-crop` proof whose box equals the component's and whose comp path and hash equal the pinned comp, and the packet's `specSha256` must equal the pinned `.impeccable/build/spec.json` source.
+
+`build-phase advance` from `plates`, and `build-phase record hero`, wait for the plan and asset review. They pass when the first viewport is already accepted for this journey, when the spec has nothing to review, or when a v3 component session of the current journey is accepted (intact capture, approved receipt) and its `specSha256` equals the current spec's SHA-256. Otherwise `advance` fails the plates gate with one added reason and `record hero` exits 1 with `build-phase: record hero refused. <reason>` on stderr. The reason is one of: not accepted for this build; accepted for an earlier spec.json; or the user requested changes (read the receipt with `component-review status`). Each names `component-review plan`, `capture --manifest .impeccable/review/components.json` and `serve --session <session>`. The review store is `~/.impeccable/component-reviews`. When `IMPECCABLE_COMPONENT_REVIEW_TOOL` is set the review lives in the host: the gate refuses only when `IMPECCABLE_COMPONENT_REVIEW_PENDING=1`, naming the tool. A quoted `--force --reason` that satisfies the existing plates rule waives this reason together with the plate readings and is recorded the same way; `record hero` has no force.
 
 Assembly acceptance closes component and assembly reviews for this journey. The agent completes the rest of the page using the accepted direction, without reopening review for shared CSS, responsive changes, finish checks, or new manifest IDs. Needs-work rounds remain possible before acceptance. Original receipts and captures remain immutable. A separately requested new design journey uses a fresh review store; changing a manifest alone never starts one. Source-bound metric evidence below remains separate from this lifecycle.
 

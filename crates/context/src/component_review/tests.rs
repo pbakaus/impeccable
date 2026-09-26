@@ -580,39 +580,18 @@ fn measured_inventory_is_bound_without_repeated_author_dependencies() {
 }
 
 #[test]
-fn isolated_components_require_targets_and_pin_their_ownership() {
+fn schema_v2_component_manifests_are_retired_but_v2_hero_still_freezes() {
     let f = Fixture::new();
     fs::create_dir_all(f.project.join(".impeccable/build")).unwrap();
     fs::write(f.project.join(".impeccable/build/spec.json"), br#"{"regions":[{"id":"art","kind":"plate"},{"id":"control","kind":"control"}]}"#).unwrap();
     let mut input = f.manifest();
     input["schemaVersion"] = json!(2);
     input["stage"] = json!("components");
-    assert!(manifest::freeze(&f.project, &input).unwrap_err().contains("selector"));
-    input["components"][1]["preview"]["selector"] = json!("button");
-    let (first, _) = manifest::freeze(&f.project, &input).unwrap();
-    input["components"][1]["preview"]["selector"] = json!("#cta");
-    let (changed, _) = manifest::freeze(&f.project, &input).unwrap();
-    assert_ne!(first["components"][1]["revision"], changed["components"][1]["revision"]);
-    assert_eq!(first["components"][0]["revision"], changed["components"][0]["revision"]);
-    input["components"][0]["preview"]["selector"] = json!("#fake-raster-target");
-    assert!(manifest::freeze(&f.project, &input).is_err());
-}
-
-#[test]
-fn shared_target_changes_invalidate_other_isolated_components() {
-    let f = Fixture::new();
-    fs::create_dir_all(f.project.join(".impeccable/build")).unwrap();
-    fs::write(f.project.join(".impeccable/build/spec.json"), br#"{"regions":[{"id":"art","kind":"chrome"},{"id":"control","kind":"control"}]}"#).unwrap();
-    let mut input = f.manifest();
-    input["schemaVersion"] = json!(2); input["stage"] = json!("components");
-    input["components"][0]["preview"] = json!({"kind":"page","path":"control.html","selector":"#background"});
-    input["components"][1]["preview"]["selector"] = json!("button");
-    let (before,_) = manifest::freeze(&f.project,&input).unwrap();
-    input["components"][1]["preview"]["selector"] = json!("#cta");
-    let (after,_) = manifest::freeze(&f.project,&input).unwrap();
-    assert_ne!(before["components"][0]["revision"],after["components"][0]["revision"]);
+    assert!(manifest::freeze(&f.project, &input).unwrap_err().contains("component-review plan"));
+    input["stage"] = json!("hero");
+    assert!(manifest::freeze(&f.project, &input).is_ok());
     input["stage"] = Value::Null;
-    assert!(manifest::freeze(&f.project,&input).is_err());
+    assert!(manifest::freeze(&f.project, &input).is_err());
 }
 
 #[test]
@@ -957,4 +936,217 @@ fn forged_acceptance_never_closes_review_in_lifecycle() {
     let result = super::lifecycle::inspect(&[dir.clone()], &["components".into(), "hero".into()]).unwrap();
     assert_eq!(result["status"], "pending");
     assert!(super::lifecycle::final_session(&f.store, &f.project.canonicalize().unwrap()).unwrap().is_none());
+}
+
+// ---- plan and asset review (schemaVersion 3) --------------------------------
+
+const PLAN_SPEC: &str = r#"{"comp":"comp.png","compSize":{"width":100,"height":100},"regions":[
+ {"id":"nav","kind":"chrome","note":"Top bar","box":{"x":0,"y":0,"w":1,"h":0.1}},
+ {"id":"art","kind":"plate","note":"Figure","box":{"x":0.5,"y":0.1,"w":0.5,"h":0.5},"plate":"assets/art.png"},
+ {"id":"photo","kind":"image","note":"Harbour photo","box":{"x":0,"y":0.6,"w":0.5,"h":0.4},"plate":"assets/photo.png"},
+ {"id":"headline","kind":"text","note":"A little closer","box":{"x":0.05,"y":0.2,"w":0.4,"h":0.2}},
+ {"id":"brushed-panel","kind":"chrome","note":"Brushed steel","box":{"x":0,"y":0.4,"w":0.5,"h":0.1},"flags":[{"id":"painted-pixels","message":"soft gradients"}]},
+ {"id":"ground","kind":"chrome","container":true,"note":"Page ground","box":{"x":0,"y":0,"w":1,"h":1}},
+ {"id":"strip","kind":"band","note":"Band","box":{"x":0,"y":0.9,"w":1,"h":0.1}},
+ {"id":"table","kind":"text","codeDrawn":true,"note":"Tide table","box":{"x":0.5,"y":0.6,"w":0.5,"h":0.3}}]}"#;
+
+impl Fixture {
+    fn plan_project(&self) {
+        fs::create_dir_all(self.project.join(".impeccable/build")).unwrap();
+        fs::write(self.project.join(".impeccable/build/spec.json"), PLAN_SPEC).unwrap();
+        fs::write(self.project.join(".impeccable/build/state.json"), r#"{"startedAt":"build-1","artifact":"index.html"}"#).unwrap();
+    }
+    fn plates(&self) {
+        fs::create_dir_all(self.project.join("assets")).unwrap();
+        fs::write(self.project.join("assets/art.png"), b"art plate").unwrap();
+        fs::write(self.project.join("assets/photo.png"), b"photo plate").unwrap();
+    }
+    fn io(&self) -> (impeccable_common::Io, impeccable_common::Captured) {
+        impeccable_common::Io::captured("", self.project.clone(), std::collections::HashMap::from([("HOME".into(), self.root.to_string_lossy().into_owned())]))
+    }
+    /// `component-review <args> --store <store>` with no native capturer at all.
+    fn cli(&self, args: &[&str]) -> (i32, String, String) {
+        let (mut io, captured) = self.io();
+        let mut argv: Vec<String> = args.iter().map(|a| a.to_string()).collect();
+        argv.extend(["--store".into(), self.store.to_string_lossy().into_owned()]);
+        let code = super::run_with_capturer(&argv, &mut io, None);
+        let text = |b: &std::cell::RefCell<Vec<u8>>| String::from_utf8(b.borrow().clone()).unwrap();
+        (code, text(&captured.stdout), text(&captured.stderr))
+    }
+    fn plan_round(&self) -> PathBuf {
+        assert_eq!(self.cli(&["plan"]).0, 0);
+        let (code, out, err) = self.cli(&["capture", "--manifest", ".impeccable/review/components.json"]);
+        assert_eq!(code, 0, "{err}");
+        let session: Value = serde_json::from_str(&out).unwrap();
+        self.store.join(session["session"].as_str().unwrap())
+    }
+    fn gate(&self) -> Result<(), String> {
+        super::plan::gate(&self.store, &self.project, "impeccable")
+    }
+}
+
+#[test]
+fn plan_refuses_listing_every_missing_plate_then_orders_roles_from_the_spec() {
+    let f = Fixture::new();
+    f.plan_project();
+    let (code, _, err) = f.cli(&["plan"]);
+    assert_eq!(code, 1);
+    assert!(err.contains("2 raster region(s) lack their plate") && err.contains("art (plate): assets/art.png") && err.contains("photo (image): assets/photo.png"), "{err}");
+    assert!(!f.project.join(".impeccable/review/components.json").exists());
+    f.plates();
+    let (code, out, err) = f.cli(&["plan"]);
+    assert_eq!(code, 0, "{err}");
+    assert!(out.contains("2 assets, 3 plan items (2 flagged or code-drawn), 3 code regions") && out.contains("NEXT impeccable component-review capture --manifest .impeccable/review/components.json"), "{out}");
+    let packet = store::read(&f.project.join(".impeccable/review/components.json")).unwrap();
+    let ids = |key: &str| packet[key].as_array().unwrap().iter().map(|c| c["id"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+    assert_eq!(ids("components"), ["brushed-panel", "table", "art", "photo", "nav"]);
+    assert_eq!(ids("codeRegions"), ["headline", "ground", "strip"]);
+    assert_eq!(packet["schemaVersion"], 3);
+    assert_eq!(packet["stage"], "components");
+    assert_eq!(packet["comp"], json!({"path":"comp.png","width":100,"height":100}));
+    assert_eq!(packet["specSha256"], manifest::digest(PLAN_SPEC.as_bytes()));
+    let c = &packet["components"];
+    assert_eq!((c[0]["role"].as_str(), c[0]["name"].as_str(), c[0]["codeDrawn"].as_bool()), (Some("plan"), Some("Brushed panel"), Some(false)));
+    assert_eq!(c[0]["flags"][0]["id"], "painted-pixels");
+    assert_eq!(c[0]["preview"], json!({"kind":"comp-crop"}));
+    assert_eq!(c[1]["codeDrawn"], true);
+    assert_eq!(c[2]["preview"], json!({"kind":"image","path":"assets/art.png"}));
+    assert_eq!((c[2]["role"].as_str(), c[2]["medium"].as_str()), (Some("asset"), Some("raster")));
+    assert!(c[4]["flags"].is_null());
+    assert_eq!(packet["codeRegions"][0], json!({"id":"headline","name":"Headline","kind":"text","box":{"x":0.05,"y":0.2,"w":0.4,"h":0.2},"note":"A little closer"}));
+}
+
+#[test]
+fn plan_capture_needs_no_browser_and_approval_verifies_against_the_pinned_spec() {
+    let f = Fixture::new();
+    f.plan_project();
+    f.plates();
+    let dir = f.plan_round();
+    let state = store::read(&dir.join("current.json")).unwrap();
+    assert_eq!(state["capture"]["schema"], super::capture::PLAN_SCHEMA);
+    let proofs = state["capture"]["components"].as_array().unwrap();
+    assert_eq!(proofs[0]["views"]["preview"], json!({"kind":"comp-crop","compPath":"comp.png","compSha256":manifest::digest(b"comp"),"box":state["packet"]["components"][0]["box"]}));
+    assert_eq!(proofs[2]["views"]["preview"]["kind"], "raster-source");
+    assert!(state["packet"]["components"][0]["preview"]["url"].is_null());
+    assert_eq!(state["packet"]["codeRegions"].as_array().unwrap().len(), 3);
+    assert!(f.gate().unwrap_err().contains("not accepted"));
+    let receipt = store::submit(&dir, &approve(&state)).unwrap();
+    assert_eq!((receipt["visualDecision"].as_str(), receipt["captureVerified"].as_bool()), (Some("approved"), Some(true)));
+    assert_eq!(super::verify::approved(&f.store, &f.project, ".impeccable/review/components.json").unwrap(), receipt);
+    assert_eq!(super::lifecycle::inspect(&[dir.clone()], &["components".into()]).unwrap()["status"], "approved");
+    f.gate().unwrap();
+    // Stored flags are claims: a packet digest that no longer matches the pinned spec fails integrity.
+    let mut forged = store::read(&dir.join("current.json")).unwrap();
+    forged["packet"]["specSha256"] = json!("0".repeat(64));
+    assert!(super::verify::capture_intact(&dir, &forged).unwrap_err().contains("spec digest"));
+    let mut moved = store::read(&dir.join("current.json")).unwrap();
+    moved["capture"]["components"][0]["views"]["preview"]["box"]["x"] = json!(0.3);
+    moved["receipt"]["capture"] = moved["capture"].clone();
+    assert!(super::verify::capture_intact(&dir, &moved).unwrap_err().contains("comp-crop evidence"));
+    // A native-schema claim is not plan evidence.
+    let mut native = store::read(&dir.join("current.json")).unwrap();
+    native["capture"]["schema"] = json!(super::capture::NATIVE_SCHEMA);
+    native["receipt"]["capture"] = native["capture"].clone();
+    assert!(!super::lifecycle::accepted(&native));
+    // A spec change after acceptance reopens the gate and needs a new round.
+    let mut spec: Value = serde_json::from_str(PLAN_SPEC).unwrap();
+    spec["regions"][3]["note"] = json!("A little closer to the sea");
+    fs::write(f.project.join(".impeccable/build/spec.json"), spec.to_string()).unwrap();
+    assert!(f.gate().unwrap_err().contains("earlier spec.json"));
+    assert!(super::verify::approved(&f.store, &f.project, ".impeccable/review/components.json").is_err());
+}
+
+#[test]
+fn plan_freeze_binds_the_spec_and_the_complete_inventory() {
+    let f = Fixture::new();
+    f.plan_project();
+    f.plates();
+    let packet = super::plan::build(&f.project).unwrap();
+    manifest::freeze(&f.project, &packet).unwrap();
+    let mut omitted = packet.clone();
+    omitted["codeRegions"].as_array_mut().unwrap().remove(0);
+    assert!(manifest::freeze(&f.project, &omitted).unwrap_err().contains("omitted measured region \"headline\""));
+    let mut foreign = packet.clone();
+    foreign["codeRegions"][0]["id"] = json!("elsewhere");
+    assert!(manifest::freeze(&f.project, &foreign).unwrap_err().contains("not a measured region"));
+    let mut rendered = packet.clone();
+    rendered["components"][0]["preview"] = json!({"kind":"page","path":"control.html"});
+    assert!(manifest::freeze(&f.project, &rendered).unwrap_err().contains("comp-crop"));
+    let mut stale = packet.clone();
+    stale["specSha256"] = json!("0".repeat(64));
+    assert!(manifest::freeze(&f.project, &stale).unwrap_err().contains("component-review plan"));
+    let mut grouped = packet;
+    grouped["components"][4]["reviewGroup"] = json!("bars");
+    assert!(manifest::freeze(&f.project, &grouped).unwrap_err().contains("reviewGroup"));
+}
+
+#[test]
+fn reclassification_requests_changes_and_carries_unchanged_decisions_into_the_next_round() {
+    let f = Fixture::new();
+    f.plan_project();
+    f.plates();
+    let dir = f.plan_round();
+    let state = store::read(&dir.join("current.json")).unwrap();
+    let rev = |i: usize| state["packet"]["components"][i]["revision"].clone();
+    let mut body = approve(&state);
+    // revise is for assets, reclassify for plan items with a raster kind.
+    body["decisions"]["brushed-panel"] = json!({"revision":rev(0),"action":"revise","feedback":"","split":false});
+    assert!(store::submit(&dir, &body).unwrap_err().contains("plan item"));
+    body["decisions"]["brushed-panel"] = json!({"revision":rev(0),"action":"reclassify","kind":"svg","feedback":"","split":false});
+    assert!(store::submit(&dir, &body).is_err());
+    body["decisions"]["art"] = json!({"revision":rev(2),"action":"reclassify","kind":"image","feedback":"","split":false});
+    body["decisions"]["brushed-panel"]["kind"] = json!("texture");
+    assert!(store::submit(&dir, &body).is_err(), "assets are not reclassified");
+    body["decisions"]["art"] = json!({"revision":rev(2),"action":"approve","feedback":"","split":false});
+    let mut unknown = body.clone();
+    unknown["reclassify"] = json!([{"id":"nav","kind":"plate"}]);
+    assert!(store::submit(&dir, &unknown).unwrap_err().contains("codeRegions"), "a component is decided in decisions");
+    body["reclassify"] = json!([{"id":"headline","kind":"plate","feedback":"This lettering is painted"}]);
+    let receipt = store::submit(&dir, &body).unwrap();
+    assert_eq!(receipt["visualDecision"], "changes-requested");
+    assert!(f.gate().unwrap_err().contains("requested changes"));
+    // Apply the receipt: headline becomes a plate, the panel a texture.
+    let mut spec: Value = serde_json::from_str(PLAN_SPEC).unwrap();
+    spec["regions"][3]["kind"] = json!("plate");
+    spec["regions"][3]["plate"] = json!("assets/headline.png");
+    spec["regions"][4]["kind"] = json!("texture");
+    spec["regions"][4]["plate"] = json!("assets/panel.png");
+    spec["regions"][4].as_object_mut().unwrap().remove("flags");
+    fs::write(f.project.join(".impeccable/build/spec.json"), spec.to_string()).unwrap();
+    fs::write(f.project.join("assets/headline.png"), b"headline plate").unwrap();
+    fs::write(f.project.join("assets/panel.png"), b"panel plate").unwrap();
+    let next_dir = f.plan_round();
+    assert_eq!(next_dir, dir);
+    let next = store::read(&next_dir.join("current.json")).unwrap();
+    assert_eq!(next["packet"]["round"], 2);
+    let carried: Vec<&str> = next["draft"]["decisions"].as_object().unwrap().keys().map(String::as_str).collect();
+    assert_eq!(carried, ["table", "art", "photo", "nav"], "unchanged approvals carry across a spec change");
+    assert_eq!(next["history"]["feedback"]["headline"]["decision"]["action"], "reclassify");
+    assert_eq!(next["history"]["feedback"]["brushed-panel"]["decision"]["kind"], "texture");
+    store::submit(&next_dir, &approve(&next)).unwrap();
+    f.gate().unwrap();
+}
+
+#[test]
+fn approving_every_component_while_reclassifying_a_code_region_is_not_approval() {
+    let f = Fixture::new();
+    f.plan_project();
+    f.plates();
+    let dir = f.plan_round();
+    let state = store::read(&dir.join("current.json")).unwrap();
+    let mut body = approve(&state);
+    body["inventoryConfirmed"] = json!(false);
+    assert!(store::submit(&dir, &body).unwrap_err().contains("confirm inventory"));
+    body["reclassify"] = json!([{"id":"headline","kind":"plate"},{"id":"headline","kind":"image"}]);
+    assert!(store::submit(&dir, &body).is_err(), "one reclassification per region");
+    body["reclassify"] = json!([{"id":"headline","kind":"plate"}]);
+    let receipt = store::submit(&dir, &body).unwrap();
+    assert_eq!(receipt["visualDecision"], "changes-requested");
+    assert!(super::verify::approved(&f.store, &f.project, ".impeccable/review/components.json").is_err());
+    // v1/v2 reviews have no reclassification.
+    let legacy = Fixture::new();
+    let legacy_dir = legacy.prepare();
+    let mut legacy_body = approve(&store::read(&legacy_dir.join("current.json")).unwrap());
+    legacy_body["reclassify"] = json!([{"id":"art","kind":"plate"}]);
+    assert!(store::submit(&legacy_dir, &legacy_body).is_err());
 }

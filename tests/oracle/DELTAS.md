@@ -229,3 +229,16 @@ should-flag. `detect-fixture-{json,text}-italic-serif-display-html` go from 7 to
 420. Every other finding, count, snippet and exit status is unchanged. Hidden
 heading descendants and sans-serif or small italics stay exempt; Rust
 regressions in `crates/html/tests/italic_heading.rs` pin both sides.
+
+## Recorded 2026-09-25: plan and asset review (component review v3)
+
+Three new cases, recorded from the binary and reviewed by hand; no existing
+golden changed. `component-review-usage` is the usage refusal, which now leads
+with `plan [--out .impeccable/review/components.json]`. `component-review-plan-missing-plates`
+runs `plan` on the comp-basic spec before its one plate exists: exit 1, the
+missing plate listed, nothing written. `component-review-plan` adds the plate
+and pins the written v3 packet: `art` as an asset previewed by its plate, `top`
+(non-container chrome) as a plan item with a `comp-crop` preview, `body` in
+`codeRegions`, and `specSha256` of the fixture spec. Contract:
+`docs/PLAN-REVIEW.md`. The build-phase plates next-step text gained one
+sentence naming the review; no golden prints it.

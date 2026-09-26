@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "component-review: 1 raster region(s) lack their plate; the plan and asset review opens once every plate exists:\n  - art (plate): assets/plates/art.png\nProduce these plates (the build-phase plates step), then run component-review plan again.\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
 pub fn accepted(state: &Value) -> bool {
-    state["capture"]["schema"] == "native-component-previews-v1"
+    super::capture::verified(state)
         && state["receipt"]["captureVerified"] == true
         && state["receipt"]["visualDecision"] == "approved"
         && state["packet"]["revision"].is_string()
@@ -20,7 +20,7 @@ pub fn closed(state: &Value) -> bool {
 }
 
 /// Stored flags are claims; acceptance also needs the session's capture to be intact.
-fn accepted_in(dir: &Path, state: &Value) -> bool {
+pub(crate) fn accepted_in(dir: &Path, state: &Value) -> bool {
     accepted(state) && super::verify::capture_intact(dir, state).is_ok()
 }
 

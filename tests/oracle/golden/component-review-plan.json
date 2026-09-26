@@ -1,0 +1,9 @@
+{
+  "stdout": "PLAN .impeccable/review/components.json: 1 assets, 1 plan items (0 flagged or code-drawn), 1 code regions\nNEXT impeccable component-review capture --manifest .impeccable/review/components.json, then impeccable component-review serve --session <session from capture>\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".impeccable/review/components.json": "{\n  \"schemaVersion\": 3,\n  \"stage\": \"components\",\n  \"id\": \"components\",\n  \"title\": \"Plan and asset review\",\n  \"comp\": {\n    \"path\": \"comp.png\",\n    \"width\": 768,\n    \"height\": 512\n  },\n  \"specSha256\": \"57bb758231d8b9ed00b2c6c7aca44c0e81c08a3753d419403ae7303fdbddf81b\",\n  \"components\": [\n    {\n      \"id\": \"art\",\n      \"name\": \"Art\",\n      \"kind\": \"plate\",\n      \"role\": \"asset\",\n      \"box\": {\n        \"x\": 0.4,\n        \"y\": 0.2,\n        \"w\": 0.6,\n        \"h\": 0.3\n      },\n      \"note\": \"an exploded illustration drawing\",\n      \"medium\": \"raster\",\n      \"preview\": {\n        \"kind\": \"image\",\n        \"path\": \"assets/plates/art.png\"\n      },\n      \"dependencies\": []\n    },\n    {\n      \"id\": \"top\",\n      \"name\": \"Top\",\n      \"kind\": \"chrome\",\n      \"role\": \"plan\",\n      \"box\": {\n        \"x\": 0,\n        \"y\": 0,\n        \"w\": 1,\n        \"h\": 0.2\n      },\n      \"note\": \"top masthead band area\",\n      \"medium\": \"code\",\n      \"preview\": {\n        \"kind\": \"comp-crop\"\n      },\n      \"codeDrawn\": false,\n      \"dependencies\": []\n    }\n  ],\n  \"codeRegions\": [\n    {\n      \"id\": \"body\",\n      \"name\": \"Body\",\n      \"kind\": \"text\",\n      \"box\": {\n        \"x\": 0,\n        \"y\": 0.5,\n        \"w\": 0.4,\n        \"h\": 0.4\n      },\n      \"note\": \"a paragraph of body text content\"\n    }\n  ]\n}"
+  }
+}

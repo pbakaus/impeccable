@@ -6,8 +6,9 @@ license.workspace = true
 publish.workspace = true
 
 # The comp-fidelity verb orchestrators (build-phase / comp-diff / comp-spec /
-# font-match), ported from the skill's JS scripts. OPEN and free of the closed
-# `core` crate: it wires only the pure `comp` foundation plus `common` (Io).
+# font-match), ported from the skill's JS scripts. It wires the pure `comp`
+# foundation plus `common` (Io), and `context` for one thing: build-phase reads
+# the human plan and asset review (docs/PLAN-REVIEW.md) before page work.
 # The one piece it cannot do alone — font-match's headless browser rendering of
 # font specimens — is injected as a `FontRenderer` trait the CLI implements over
 # `crates/browser`, so the browser (and its `core` dependency) stays out of here.
@@ -15,6 +16,8 @@ publish.workspace = true
 [dependencies]
 impeccable-comp = { workspace = true }
 impeccable-common = { workspace = true }
+# The plates -> hero gate reads the human plan review (component_review::plan::gate).
+impeccable-context = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true, features = ["preserve_order", "float_roundtrip"] }
 regex = { workspace = true }

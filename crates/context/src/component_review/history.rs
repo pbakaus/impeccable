@@ -91,8 +91,12 @@ pub fn between(previous: &Value, current: &Value) -> Value {
             json!({"kind":"added","files":[],"reasons":[]})
         };
         change["carried"] = json!(current["draft"]["decisions"][id]["action"] == "approve");
-        let decision = &previous["draft"]["decisions"][id];
-        if decision["action"] == "revise" && !previous["receipt"].is_null() {
+        // A code region reclassified last round comes back as a component under the same id.
+        let listed = previous["draft"]["reclassify"].as_array()
+            .and_then(|all| all.iter().find(|r| r["id"] == id))
+            .map(|r| json!({"action":"reclassify","kind":r["kind"],"feedback":r["feedback"].as_str().unwrap_or("")}));
+        let decision = listed.as_ref().unwrap_or(&previous["draft"]["decisions"][id]);
+        if matches!(decision["action"].as_str(), Some("revise" | "reclassify")) && !previous["receipt"].is_null() {
             feedback.insert(
                 id.into(),
                 json!({"round":previous["packet"]["round"],"decision":decision}),

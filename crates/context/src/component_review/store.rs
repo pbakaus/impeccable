@@ -150,7 +150,7 @@ fn prepare_bound(
             }
             files.insert(path, bytes);
         }
-        if captured.evidence["schema"] != "native-component-previews-v1"
+        if captured.evidence["schema"] != super::capture::schema_for(&packet)
             || captured.evidence["components"].as_array().map(Vec::len)
                 != packet["components"].as_array().map(Vec::len)
         {
@@ -327,6 +327,7 @@ pub fn submit(dir: &Path, body: &Value) -> Result<Value, String> {
                 "decisions",
                 "missing",
                 "inventoryConfirmed",
+                "reclassify",
             ]
             .contains(&k.as_str())
         })
@@ -354,8 +355,11 @@ pub fn submit(dir: &Path, body: &Value) -> Result<Value, String> {
     let components = packet["components"]
         .as_array()
         .ok_or("missing components")?;
+    let v3 = packet["schemaVersion"] == 3;
     let mut approved = 0;
     let mut revisions = 0;
+    let mut reclassified = 0;
+    let target_kind = |d: &Value| matches!(d["kind"].as_str(), Some("plate" | "image" | "texture"));
     for (id, d) in decisions {
         let c = components
             .iter()
@@ -370,11 +374,35 @@ pub fn submit(dir: &Path, body: &Value) -> Result<Value, String> {
         {
             return Err("invalid component feedback".into());
         }
+        if d.get("kind").is_some() && d["action"] != "reclassify" {
+            return Err("only a reclassify decision carries kind".into());
+        }
         match d["action"].as_str() {
             Some("approve") if d["split"] == false => approved += 1,
-            Some("revise") => revisions += 1,
+            Some("revise") if !v3 || c["role"] == "asset" => revisions += 1,
+            Some("revise") => return Err(format!("{id} is a plan item; revise applies to assets, reclassify changes a plan item's medium")),
+            Some("reclassify") if v3 && c["role"] == "plan" && d["split"] == false && target_kind(d) => reclassified += 1,
+            Some("reclassify") => return Err("reclassify applies to plan items and needs kind plate, image or texture".into()),
             _ => return Err("invalid decision action".into()),
         }
+    }
+    let reclassify = body.get("reclassify").map(|r| r.as_array().cloned().ok_or("reclassify must be an array")).transpose()?.unwrap_or_default();
+    if !reclassify.is_empty() && !v3 {
+        return Err("reclassify belongs to the plan and asset review".into());
+    }
+    let mut reclassify_ids = std::collections::BTreeSet::new();
+    for r in &reclassify {
+        let id = string(r, "id")?;
+        let listed = packet["codeRegions"].as_array().is_some_and(|code| code.iter().any(|c| c["id"] == id));
+        if !listed || !reclassify_ids.insert(id) || !target_kind(r)
+            || r.as_object().is_some_and(|m| m.keys().any(|k| !["id", "kind", "feedback"].contains(&k.as_str())))
+            || r.get("feedback").is_some_and(|f| f.as_str().is_none_or(|f| f.len() > 8000))
+        {
+            return Err("invalid reclassification: name a codeRegions id once, with kind plate, image or texture".into());
+        }
+    }
+    if reclassify.len() > 400 {
+        return Err("too many reclassifications".into());
     }
     let missing = body["missing"]
         .as_array()
@@ -392,12 +420,13 @@ pub fn submit(dir: &Path, body: &Value) -> Result<Value, String> {
     if missing.len() > 200 || !body["inventoryConfirmed"].is_boolean() {
         return Err("invalid inventory confirmation".into());
     }
-    let has_feedback = revisions > 0 || !missing.is_empty();
+    let has_feedback = revisions > 0 || reclassified > 0 || !reclassify.is_empty() || !missing.is_empty();
     if !has_feedback && (approved != components.len() || body["inventoryConfirmed"] != true) {
         return Err("approve every component and confirm inventory completeness".into());
     }
-    let receipt = json!({"schemaVersion":1,"reviewer":"local-browser","visualDecision":if has_feedback{"changes-requested"}else{"approved"},"captureVerified":state["capture"]["schema"]=="native-component-previews-v1","capture":state["capture"],"submission":body});
+    let receipt = json!({"schemaVersion":1,"reviewer":"local-browser","visualDecision":if has_feedback{"changes-requested"}else{"approved"},"captureVerified":super::capture::verified(&state),"capture":state["capture"],"submission":body});
     state["draft"] = json!({"packetRevision":body["packetRevision"],"decisions":decisions,"missing":missing,"inventoryConfirmed":body["inventoryConfirmed"]});
+    if v3 { state["draft"]["reclassify"] = json!(reclassify); }
     state["receipt"] = receipt.clone();
     write(&dir.join("current.json"), &state)?;
     // current.json is the authoritative atomic commit; a receipt export is not approval authority.
