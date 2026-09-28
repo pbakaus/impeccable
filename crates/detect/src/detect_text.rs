@@ -123,6 +123,30 @@ fn last_line(output: &str) -> &str {
     }
 }
 
+fn is_jsx_closing_tag(chars: &[char], slash_index: usize) -> bool {
+    if slash_index == 0 || chars[slash_index - 1] != '<' {
+        return false;
+    }
+    let mut cursor = slash_index + 1;
+    if chars.get(cursor) == Some(&'>') {
+        return true;
+    }
+    if !chars.get(cursor).is_some_and(|ch| ch.is_ascii_alphabetic()) {
+        return false;
+    }
+    cursor += 1;
+    while chars
+        .get(cursor)
+        .is_some_and(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '.' | ':' | '-'))
+    {
+        cursor += 1;
+    }
+    while chars.get(cursor).is_some_and(|ch| is_ws(*ch)) {
+        cursor += 1;
+    }
+    chars.get(cursor) == Some(&'>')
+}
+
 /// Tracker of the "significant character" state the JS comment stripper and
 /// template-expression scanner share.
 #[derive(Default)]
@@ -359,7 +383,10 @@ pub fn strip_js_comments(content: &str, jsx: bool) -> String {
                 state = State::Template;
             }
             i += 1;
-        } else if ch == '/' && sig.regex_can_start(last_closed_brace_kind) {
+        } else if ch == '/'
+            && sig.regex_can_start(last_closed_brace_kind)
+            && !(jsx && is_jsx_closing_tag(&chars, i))
+        {
             output.push(ch);
             state = State::Regex;
             regex_char_class = false;
@@ -1582,6 +1609,46 @@ mod tests {
         let out = strip_js_comments("a // x\nb /* y */ c\nconst r = /\\/\\//; d", true);
         assert_eq!(out, "a     \nb         c\nconst r = /\\/\\//; d");
         assert_eq!(strip_css_comments("a /* é */ b"), "a         b");
+    }
+
+    #[test]
+    fn jsx_line_comment_after_sibling_elements_does_not_report_broken_image() {
+        let src = r#"function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </>
+  );
+}
+
+function Thumb({ url }: { url?: string }) {
+  return (
+    <div>
+      {url ? (
+        // Plain <img>: presigned thumbnail URL
+        <img src={url} alt="" />
+      ) : null}
+    </div>
+  );
+}
+"#;
+
+        let findings = detect_text(
+            src,
+            "repro.tsx",
+            &TextOptions {
+                inline_ignores: true,
+                ..Default::default()
+            },
+        );
+
+        assert!(
+            findings
+                .iter()
+                .all(|finding| finding.antipattern != "broken-image"),
+            "JSX line comments must not be scanned as markup: {findings:?}"
+        );
     }
 
     #[test]

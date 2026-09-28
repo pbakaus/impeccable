@@ -50,6 +50,30 @@ export default function cases() {
     { id: 'detect-framework-next-tailwind-json', verb: 'detect', args: ['--no-config', '--json', `<REPO>/tests/fixtures/antipatterns/framework-next-tailwind`], isolateHome: false },
     { id: 'detect-framework-next-modules-text', verb: 'detect', args: ['--no-config', `<REPO>/tests/fixtures/antipatterns/framework-next-modules`], isolateHome: false },
     { id: 'detect-framework-next-cssinjs-json', verb: 'detect', args: ['--no-config', '--json', `<REPO>/tests/fixtures/antipatterns/framework-next-cssinjs`], isolateHome: false },
+    {
+      id: 'detect-jsx-commented-img', verb: 'detect',
+      setup: (ws) => fs.writeFileSync(path.join(ws, 'repro.tsx'), `function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </>
+  );
+}
+
+function Thumb({ url }: { url?: string }) {
+  return (
+    <div>
+      {url ? (
+        // Plain <img>: presigned thumbnail URL
+        <img src={url} alt="" />
+      ) : null}
+    </div>
+  );
+}
+`),
+      args: ['--no-config', '--json', 'repro.tsx'],
+    },
 
     // Flag surface and errors
     { id: 'detect-help', verb: 'detect', args: ['--help'] },
