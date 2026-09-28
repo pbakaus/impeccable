@@ -123,13 +123,79 @@ fn last_line(output: &str) -> &str {
     }
 }
 
+fn jsx_tag_end(chars: &[char], start: usize, limit: usize) -> Option<usize> {
+    let mut quote = None;
+    let mut cursor = start;
+    while cursor < limit {
+        let ch = chars[cursor];
+        if let Some(active_quote) = quote {
+            if ch == '\\' {
+                cursor += 1;
+            } else if ch == active_quote {
+                quote = None;
+            }
+        } else if matches!(ch, '\'' | '"') {
+            quote = Some(ch);
+        } else if ch == '>' {
+            return Some(cursor);
+        }
+        cursor += 1;
+    }
+    None
+}
+
+fn has_unclosed_jsx_tag(chars: &[char], slash_index: usize, name: &[char]) -> bool {
+    let limit = slash_index - 1;
+    let mut depth = 0usize;
+    let mut cursor = 0usize;
+    while cursor < limit {
+        if chars[cursor] != '<' {
+            cursor += 1;
+            continue;
+        }
+
+        let mut name_start = cursor + 1;
+        let closing = chars.get(name_start) == Some(&'/');
+        if closing {
+            name_start += 1;
+        }
+        let name_end = name_start + name.len();
+        let name_matches = if name.is_empty() {
+            chars.get(name_start) == Some(&'>')
+        } else {
+            name_end <= limit
+                && chars[name_start..name_end] == *name
+                && chars
+                    .get(name_end)
+                    .is_some_and(|ch| is_ws(*ch) || matches!(ch, '/' | '>'))
+        };
+        if !name_matches {
+            cursor += 1;
+            continue;
+        }
+
+        let Some(end) = jsx_tag_end(chars, name_end, limit) else {
+            break;
+        };
+        let self_closing =
+            !closing && chars[cursor + 1..end].iter().rev().find(|ch| !is_ws(**ch)) == Some(&'/');
+        if closing {
+            depth = depth.saturating_sub(1);
+        } else if !self_closing {
+            depth += 1;
+        }
+        cursor = end + 1;
+    }
+    depth > 0
+}
+
 fn is_jsx_closing_tag(chars: &[char], slash_index: usize) -> bool {
     if slash_index == 0 || chars[slash_index - 1] != '<' {
         return false;
     }
     let mut cursor = slash_index + 1;
     if chars.get(cursor) == Some(&'>') {
-        return true;
+        return has_unclosed_jsx_tag(chars, slash_index, &[]);
     }
     if !chars
         .get(cursor)
@@ -144,10 +210,12 @@ fn is_jsx_closing_tag(chars: &[char], slash_index: usize) -> bool {
     {
         cursor += 1;
     }
+    let name_end = cursor;
     while chars.get(cursor).is_some_and(|ch| is_ws(*ch)) {
         cursor += 1;
     }
     chars.get(cursor) == Some(&'>')
+        && has_unclosed_jsx_tag(chars, slash_index, &chars[slash_index + 1..name_end])
 }
 
 /// Tracker of the "significant character" state the JS comment stripper and
@@ -1662,6 +1730,15 @@ function Thumb({ url }: { url?: string }) {
                 !strip_js_comments(&src, true).contains("<img>"),
                 "closing tag for {tag} must leave the next line recognizable as a comment"
             );
+        }
+    }
+
+    #[test]
+    fn comparison_regex_is_not_a_jsx_closing_tag() {
+        for prefix in ["", "<foo></foo>;\n"] {
+            let src =
+                format!("{prefix}const matches = value</foo>'/.test(value);\n// Plain <img> comment\n");
+            assert!(!strip_js_comments(&src, true).contains("<img>"));
         }
     }
 
