@@ -125,19 +125,57 @@ fn last_line(output: &str) -> &str {
 
 fn jsx_tag_end(chars: &[char], start: usize, limit: usize) -> Option<usize> {
     let mut quote = None;
+    let mut block_comment = false;
+    let mut line_comment = false;
+    let mut brace_depth = 0usize;
+    let mut angle_depth = 0usize;
     let mut cursor = start;
     while cursor < limit {
         let ch = chars[cursor];
+        let next = chars.get(cursor + 1).copied();
+        if block_comment {
+            if ch == '*' && next == Some('/') {
+                block_comment = false;
+                cursor += 2;
+                continue;
+            }
+            cursor += 1;
+            continue;
+        }
+        if line_comment {
+            if ch == '\n' {
+                line_comment = false;
+            }
+            cursor += 1;
+            continue;
+        }
         if let Some(active_quote) = quote {
             if ch == '\\' {
                 cursor += 1;
             } else if ch == active_quote {
                 quote = None;
             }
-        } else if matches!(ch, '\'' | '"') {
+        } else if ch == '/' && next == Some('*') {
+            block_comment = true;
+            cursor += 2;
+            continue;
+        } else if ch == '/' && next == Some('/') {
+            line_comment = true;
+            cursor += 2;
+            continue;
+        } else if matches!(ch, '\'' | '"' | '`') {
             quote = Some(ch);
-        } else if ch == '>' {
-            return Some(cursor);
+        } else if ch == '{' {
+            brace_depth += 1;
+        } else if ch == '}' {
+            brace_depth = brace_depth.saturating_sub(1);
+        } else if brace_depth == 0 && ch == '<' {
+            angle_depth += 1;
+        } else if brace_depth == 0 && ch == '>' {
+            if angle_depth == 0 {
+                return Some(cursor);
+            }
+            angle_depth -= 1;
         }
         cursor += 1;
     }
@@ -167,7 +205,7 @@ fn has_unclosed_jsx_tag(chars: &[char], slash_index: usize, name: &[char]) -> bo
                 && chars[name_start..name_end] == *name
                 && chars
                     .get(name_end)
-                    .is_some_and(|ch| is_ws(*ch) || matches!(ch, '/' | '>'))
+                    .is_some_and(|ch| is_ws(*ch) || matches!(ch, '<' | '/' | '>'))
         };
         if !name_matches {
             cursor += 1;
@@ -177,8 +215,14 @@ fn has_unclosed_jsx_tag(chars: &[char], slash_index: usize, name: &[char]) -> bo
         let Some(end) = jsx_tag_end(chars, name_end, limit) else {
             break;
         };
-        let self_closing =
-            !closing && chars[cursor + 1..end].iter().rev().find(|ch| !is_ws(**ch)) == Some(&'/');
+        let self_closing_slash = chars[cursor + 1..end]
+            .iter()
+            .rposition(|ch| !is_ws(*ch))
+            .map(|offset| cursor + 1 + offset)
+            .filter(|index| chars[*index] == '/');
+        let self_closing = !closing
+            && self_closing_slash
+                .is_some_and(|index| index == 0 || !matches!(chars[index - 1], '*' | '/'));
         if closing {
             depth = depth.saturating_sub(1);
         } else if !self_closing {
@@ -1734,10 +1778,22 @@ function Thumb({ url }: { url?: string }) {
     }
 
     #[test]
+    fn jsx_opening_tag_shapes_keep_their_matching_closer_out_of_regex_state() {
+        for opener in ["<Component<T>>", "<Component /* comment */>"] {
+            let src = format!("{opener}</Component>\n// Plain <img> comment\n");
+            assert!(
+                !strip_js_comments(&src, true).contains("<img>"),
+                "opening tag {opener} must count toward the matching closer"
+            );
+        }
+    }
+
+    #[test]
     fn comparison_regex_is_not_a_jsx_closing_tag() {
         for prefix in ["", "<foo></foo>;\n"] {
-            let src =
-                format!("{prefix}const matches = value</foo>'/.test(value);\n// Plain <img> comment\n");
+            let src = format!(
+                "{prefix}const matches = value</foo>'/.test(value);\n// Plain <img> comment\n"
+            );
             assert!(!strip_js_comments(&src, true).contains("<img>"));
         }
     }
