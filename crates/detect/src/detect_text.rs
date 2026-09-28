@@ -131,13 +131,16 @@ fn is_jsx_closing_tag(chars: &[char], slash_index: usize) -> bool {
     if chars.get(cursor) == Some(&'>') {
         return true;
     }
-    if !chars.get(cursor).is_some_and(|ch| ch.is_ascii_alphabetic()) {
+    if !chars
+        .get(cursor)
+        .is_some_and(|ch| ch.is_alphabetic() || matches!(ch, '_' | '$'))
+    {
         return false;
     }
     cursor += 1;
     while chars
         .get(cursor)
-        .is_some_and(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '.' | ':' | '-'))
+        .is_some_and(|ch| ch.is_alphanumeric() || matches!(ch, '_' | '$' | '.' | ':' | '-'))
     {
         cursor += 1;
     }
@@ -1649,6 +1652,17 @@ function Thumb({ url }: { url?: string }) {
                 .all(|finding| finding.antipattern != "broken-image"),
             "JSX line comments must not be scanned as markup: {findings:?}"
         );
+    }
+
+    #[test]
+    fn jsx_closing_tag_names_do_not_start_regex_state() {
+        for tag in ["_Row", "$Thumbnail", "Übersicht"] {
+            let src = format!("<{tag}></{tag}>\n// Plain <img> comment\n");
+            assert!(
+                !strip_js_comments(&src, true).contains("<img>"),
+                "closing tag for {tag} must leave the next line recognizable as a comment"
+            );
+        }
     }
 
     #[test]
