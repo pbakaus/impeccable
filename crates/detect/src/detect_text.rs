@@ -80,17 +80,32 @@ fn is_word_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_' || c == '$'
 }
 
-re!(JSX_TAG_START_RE, "^<[A-Za-z][A-Za-z0-9_.:-]*");
+fn is_jsx_name_start(ch: char) -> bool {
+    ch.is_alphabetic() || matches!(ch, '_' | '$')
+}
+
+fn is_jsx_name_continue(ch: char) -> bool {
+    ch.is_alphanumeric() || matches!(ch, '_' | '$' | '.' | ':' | '-')
+}
 
 fn is_inside_opening_jsx_tag(source: &str) -> bool {
     let Some(tag_start) = source.rfind('<') else {
         return false;
     };
-    if !JSX_TAG_START_RE.is_match(&source[tag_start..]) {
+    let mut chars = source[tag_start + 1..].chars().peekable();
+    if !chars.next().is_some_and(is_jsx_name_start) {
+        return false;
+    }
+    while chars.peek().is_some_and(|ch| is_jsx_name_continue(*ch)) {
+        chars.next();
+    }
+    if chars
+        .peek()
+        .is_some_and(|ch| !is_ws(*ch) && !matches!(ch, '<' | '/' | '>'))
+    {
         return false;
     }
     let mut quote: Option<char> = None;
-    let mut chars = source[tag_start + 1..].chars();
     while let Some(ch) = chars.next() {
         if let Some(q) = quote {
             if ch == '\\' {
@@ -123,18 +138,11 @@ fn last_line(output: &str) -> &str {
     }
 }
 
-fn is_jsx_name_start(ch: char) -> bool {
-    ch.is_alphabetic() || matches!(ch, '_' | '$')
-}
-
-fn is_jsx_name_continue(ch: char) -> bool {
-    ch.is_alphanumeric() || matches!(ch, '_' | '$' | '.' | ':' | '-')
-}
-
 struct ParsedJsxTag {
     name: String,
     closing: bool,
     self_closing: bool,
+    end: usize,
 }
 
 fn jsx_expression_end(chars: &[char], start: usize) -> Option<usize> {
@@ -142,10 +150,45 @@ fn jsx_expression_end(chars: &[char], start: usize) -> Option<usize> {
     let mut sig = Significant::default();
     let mut last_closed_brace_kind: &'static str = "";
     let mut brace_kinds: Vec<&'static str> = Vec::new();
+    let mut jsx_stack: Vec<String> = Vec::new();
     let mut cursor = start + 1;
     while cursor < chars.len() {
         let ch = chars[cursor];
         let next = chars.get(cursor + 1).copied();
+        if !jsx_stack.is_empty() {
+            if ch == '<' {
+                if let Some(tag) = parse_jsx_tag(chars, cursor) {
+                    let end = tag.end;
+                    if tag.closing {
+                        if jsx_stack.last() == Some(&tag.name) {
+                            jsx_stack.pop();
+                        }
+                    } else if !tag.self_closing {
+                        jsx_stack.push(tag.name);
+                    }
+                    cursor = end + 1;
+                    continue;
+                }
+            } else if ch == '{' {
+                cursor = jsx_expression_end(chars, cursor)? + 1;
+                continue;
+            }
+            cursor += 1;
+            continue;
+        }
+        if ch == '<' && sig.regex_can_start(last_closed_brace_kind) {
+            if let Some(tag) = parse_jsx_tag(chars, cursor) {
+                if !tag.closing {
+                    let end = tag.end;
+                    if !tag.self_closing {
+                        jsx_stack.push(tag.name);
+                    }
+                    cursor = end + 1;
+                    sig.record(')');
+                    continue;
+                }
+            }
+        }
         if matches!(ch, '\'' | '"') {
             cursor = find_quoted_string_end(chars, cursor, ch)? + 1;
             sig.record(')');
@@ -205,6 +248,7 @@ fn parse_jsx_tag(chars: &[char], start: usize) -> Option<ParsedJsxTag> {
             name: String::new(),
             closing,
             self_closing: false,
+            end: cursor,
         });
     }
     if !chars.get(cursor).is_some_and(|ch| is_jsx_name_start(*ch)) {
@@ -233,6 +277,7 @@ fn parse_jsx_tag(chars: &[char], start: usize) -> Option<ParsedJsxTag> {
             name,
             closing: true,
             self_closing: false,
+            end: cursor,
         });
     }
 
@@ -262,6 +307,7 @@ fn parse_jsx_tag(chars: &[char], start: usize) -> Option<ParsedJsxTag> {
                     name,
                     closing: false,
                     self_closing: chars[last_significant] == '/',
+                    end: cursor,
                 });
             }
             angle_depth -= 1;
@@ -467,10 +513,7 @@ pub fn strip_js_comments(content: &str, jsx: bool) -> String {
             continue;
         }
 
-        if jsx
-            && ch == '<'
-            && (!is_inside_opening_jsx_tag(&output) || jsx_expression_depth > 0)
-        {
+        if jsx && ch == '<' && (!is_inside_opening_jsx_tag(&output) || jsx_expression_depth > 0) {
             let in_jsx_text = !jsx_stack.is_empty() && jsx_expression_depth == 0;
             if in_jsx_text || sig.regex_can_start(last_closed_brace_kind) {
                 if let Some(tag) = parse_jsx_tag(&chars, i) {
@@ -1803,10 +1846,20 @@ function Thumb({ url }: { url?: string }) {
     #[test]
     fn jsx_closing_tag_names_do_not_start_regex_state() {
         for tag in ["_Row", "$Thumbnail", "Übersicht"] {
-            let src = format!("<{tag}></{tag}>\n// Plain <img> comment\n");
+            let src = format!("<{tag} value={{a<b>c}}></{tag}>\n// Plain <img> comment\n");
             assert!(
                 !strip_js_comments(&src, true).contains("<img>"),
-                "closing tag for {tag} must leave the next line recognizable as a comment"
+                "opening tag for {tag} must contain comparison expressions without corrupting JSX depth"
+            );
+        }
+    }
+
+    #[test]
+    fn opening_jsx_tag_guard_accepts_every_supported_name_start() {
+        for source in ["<_Row value=", "<$Thumbnail value=", "<Übersicht value="] {
+            assert!(
+                is_inside_opening_jsx_tag(source),
+                "opening-tag guard must accept the same names as the JSX parser: {source}"
             );
         }
     }
@@ -1837,6 +1890,7 @@ function Thumb({ url }: { url?: string }) {
         for src in [
             "<div>{\"</div>\"}</div>\n// Plain <img> comment\n",
             "<Component pattern={/[//]/}></Component>\n// Plain <img> comment\n",
+            "<Component content={<span></span>}></Component>\n// Plain <img> comment\n",
             "const value = a<foo<T>>b;\nconst matches = value</foo>'/.test(value);\n// Plain <img> comment\n",
         ] {
             assert!(
