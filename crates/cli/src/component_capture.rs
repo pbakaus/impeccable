@@ -239,7 +239,7 @@ impl ComponentCapturer for NativeComponentCapturer {
         if reference_size["width"] != width || reference_size["height"] != height {
             return Err("comp dimensions do not match its image".into());
         }
-        let env = std::env::vars().collect();
+        let env = impeccable_common::process_env();
         let exe =
             discovery::find_browser(&env).map_err(|e| format!("browser unavailable: {e:?}"))?;
         let mut browser = Browser::launch(&exe, &[], false).map_err(|e| e.message)?;

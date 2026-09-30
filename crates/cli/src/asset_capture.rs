@@ -21,7 +21,7 @@ pub struct CdpAssetRenderer {
 impl CdpAssetRenderer {
     pub fn from_process_env() -> Self {
         Self {
-            env: std::env::vars().collect(),
+            env: impeccable_common::process_env(),
         }
     }
 }

@@ -10,8 +10,26 @@ pub mod jsp;
 pub mod proc;
 
 use std::collections::HashMap;
+use std::ffi::OsString;
 use std::io::{Read, Write};
 use std::path::PathBuf;
+
+/// The process environment entries whose names and values are valid UTF-8.
+///
+/// Unix permits arbitrary bytes in both halves of an environment entry, while
+/// the engine's verb APIs intentionally use strings. `std::env::vars()` panics
+/// on the first non-Unicode entry, so collect from `vars_os()` and ignore only
+/// entries that cannot be represented by those APIs.
+pub fn process_env() -> HashMap<String, String> {
+    utf8_env(std::env::vars_os())
+}
+
+fn utf8_env(entries: impl IntoIterator<Item = (OsString, OsString)>) -> HashMap<String, String> {
+    entries
+        .into_iter()
+        .filter_map(|(key, value)| Some((key.into_string().ok()?, value.into_string().ok()?)))
+        .collect()
+}
 
 /// Ceiling on how much stdin a verb will ever read. Deliberately generous:
 /// the largest legitimate payloads (context/detect JSON, hook envelopes
@@ -40,7 +58,7 @@ impl Io {
             stderr: Box::new(std::io::stderr()),
             stdin: Some(Box::new(std::io::stdin())),
             stdin_cache: None,
-            env: std::env::vars().collect(),
+            env: process_env(),
             cwd: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             stdin_is_tty: is_stdin_tty(),
         }
@@ -172,6 +190,21 @@ impl Io {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn utf8_env_ignores_non_unicode_entries() {
+        use std::os::unix::ffi::OsStringExt;
+
+        let env = utf8_env([
+            (OsString::from("HOME"), OsString::from("/tmp/home")),
+            (OsString::from("BAD_VALUE"), OsString::from_vec(vec![0xff])),
+            (OsString::from_vec(vec![0xfe]), OsString::from("bad key")),
+        ]);
+
+        assert_eq!(env.get("HOME").map(String::as_str), Some("/tmp/home"));
+        assert_eq!(env.len(), 1);
+    }
 
     #[test]
     fn stdin_is_capped_at_the_ceiling() {

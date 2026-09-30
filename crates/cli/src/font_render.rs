@@ -26,7 +26,7 @@ pub struct CdpFontRenderer {
 
 impl CdpFontRenderer {
     pub fn from_process_env() -> Self {
-        CdpFontRenderer { env: std::env::vars().collect() }
+        CdpFontRenderer { env: impeccable_common::process_env() }
     }
 
     fn launch(&self) -> Option<Browser> {

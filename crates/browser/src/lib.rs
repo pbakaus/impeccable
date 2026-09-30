@@ -55,7 +55,7 @@ impl BrowserEngine {
 
     /// An engine reading the real process environment.
     pub fn from_process_env() -> Self {
-        BrowserEngine::new(std::env::vars().collect())
+        BrowserEngine::new(impeccable_common::process_env())
     }
 
     /// JS `launchArgs = process.env.CI ? ['--no-sandbox','--disable-setuid-sandbox'] : []`.
