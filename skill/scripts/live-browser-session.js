@@ -44,6 +44,7 @@
 
     function saveSession(session) {
       if (!session || !session.id) return;
+      loadSession(); // adopt a revision another tab stored, so this write never lowers it
       const payload = {
         ...session,
         checkpointRevision,
@@ -56,8 +57,8 @@
     }
 
     function nextCheckpointRevision() {
-      checkpointRevision += 1;
       const existing = loadSession();
+      checkpointRevision += 1;
       if (existing?.id) saveSession(existing);
       return checkpointRevision;
     }
