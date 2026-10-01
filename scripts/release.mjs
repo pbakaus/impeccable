@@ -322,7 +322,7 @@ if (component === 'skill' && !dryRun) {
       console.log('  npx impeccable install/update serve the OLD version until the site\'s signed pointer moves.');
       console.log(`  In impeccable-site, on a branch from main: bun run skill:publish-pointer ${version}`);
       console.log('  Commit published-skill.json and merge it to main; the main deploy then serves the new version.');
-      console.log('  If the pointer already names this version, the main deploy is still running: wait for it.');
+      console.log('  If the pointer already names this version, check the site\'s main deploy: wait if it is running, fix it if it failed.');
     }
   } catch {
     console.log('⚠ could not reach impeccable.style/api/version to verify the served bundle');
