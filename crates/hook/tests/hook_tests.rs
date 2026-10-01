@@ -1058,6 +1058,36 @@ fn git_excludes_land_in_info_exclude_not_gitignore() {
     );
 }
 
+#[test]
+fn git_excludes_in_a_linked_worktree_reach_the_exclude_file_git_reads() {
+    let t = Tmp::new();
+    let repo = jsp::join(&[&t.path(), "repo"]);
+    let wt = jsp::join(&[&t.path(), "wt"]);
+    std::fs::create_dir_all(jsp::join(&[&t.path(), "empty-hooks"])).unwrap();
+    std::fs::create_dir_all(&repo).unwrap();
+    let hooks = format!("core.hooksPath={}/empty-hooks", t.path());
+    let git = |dir: &str, args: &[&str]| {
+        std::process::Command::new("git").current_dir(dir)
+            .args(["-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                "-c", "commit.gpgsign=false", "-c", &hooks])
+            .args(args).output().unwrap()
+    };
+    for args in [
+        &["init", "--quiet"][..],
+        &["commit", "--quiet", "--allow-empty", "-m", "init"],
+        &["worktree", "add", "--quiet", "../wt"],
+    ] {
+        let out = git(&repo, args);
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    }
+    // A linked worktree's `.git` is a file; git reads `info/exclude` from the
+    // common dir, never from the per-worktree gitdir the file points at.
+    assert!(impeccable_detect::config::ensure_config_git_exclude(&wt));
+    assert!(git(&wt, &["check-ignore", "-q", ".impeccable/config.local.json"]).status.success());
+    ensure_hook_git_excludes(&rt(&wt), &wt);
+    assert!(git(&wt, &["check-ignore", "-q", ".impeccable/hook.cache.json"]).status.success());
+}
+
 // ── filtering ─────────────────────────────────────────────────────────────
 
 #[test]
