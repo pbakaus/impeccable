@@ -1,10 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 
-const SCRIPT = join(process.cwd(), 'skill/scripts/live-browser-session.js');
+const SCRIPT = fileURLToPath(new URL('../skill/scripts/live-browser-session.js', import.meta.url));
 
 function createMemoryStorage() {
   const values = new Map();

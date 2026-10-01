@@ -44,7 +44,10 @@
 
     function saveSession(session) {
       if (!session || !session.id) return;
-      loadSession(); // adopt a revision another tab stored, so this write never lowers it
+      // Adopt a revision another tab stored so this write does not lower it.
+      // localStorage has no compare-and-set, so a save from another tab that
+      // lands between this read and the write below can still be overwritten.
+      loadSession();
       const payload = {
         ...session,
         checkpointRevision,
