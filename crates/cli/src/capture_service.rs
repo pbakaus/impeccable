@@ -571,9 +571,10 @@ fn parse_capture(
             } else {
                 // Mobile measures only the first raster region (see entry_capture).
                 let wanted = if name == "mobile" { &raster[..1] } else { &raster[..] };
-                let mut got: Vec<&str> = receipts.iter().filter_map(|g| g["regionId"].as_str()).collect();
+                // Every receipt must name its region: one without an id is malformed, not skipped.
+                let mut got: Vec<Option<&str>> = receipts.iter().map(|g| g["regionId"].as_str()).collect();
                 got.sort_unstable();
-                let mut want: Vec<&str> = wanted.iter().map(String::as_str).collect();
+                let mut want: Vec<Option<&str>> = wanted.iter().map(|w| Some(w.as_str())).collect();
                 want.sort_unstable();
                 if receipts.is_empty() || receipts.len() > MAX_CAPTURE_REGIONS || got != want {
                     return Err("invalid native capture regions".into());
@@ -752,9 +753,15 @@ mod parse_tests {
     }
     /// The parsed report and per-frame receipt counts.
     fn parse(request: &EntryRequest, report: &Value, frame: Value) -> Result<(Value, Vec<usize>), String> {
-        let result = json!({"report":report,"frames":[frame],"approvedReference":null});
-        parse_capture(&result, request, "hero", "h-1")
+        parse_frames(request, report, "hero", vec![frame])
+    }
+    fn parse_frames(request: &EntryRequest, report: &Value, stage: &str, frames: Vec<Value>) -> Result<(Value, Vec<usize>), String> {
+        let result = json!({"report":report,"frames":frames,"approvedReference":null});
+        parse_capture(&result, request, stage, "h-1")
             .map(|(e, _)| (e.report, e.frames.iter().map(|f| f.regions.len()).collect()))
+    }
+    fn named(name: &str, regions: Vec<Value>) -> Value {
+        json!({"name":name,"png":"","regions":regions})
     }
 
     #[test]
@@ -799,6 +806,21 @@ mod parse_tests {
         assert!(e.contains("method"), "{e}");
         // Every raster region needs its own receipt; a missing one is refused.
         assert!(parse(&request, &report, frame(receipts(1))).is_err());
+        // So is a receipt that names no region, even beside a full set.
+        let mut extra = receipts(2);
+        extra.push(json!({"regionId":null}));
+        assert!(parse(&request, &report, frame(extra)).is_err());
+        let mut twice = receipts(1);
+        twice.push(json!({"regionId":"art-0"}));
+        assert!(parse(&request, &report, frame(twice)).is_err());
+        // Responsive: desktop measures every raster region, mobile only the first.
+        let mut responsive = report.clone();
+        responsive["stage"] = json!("responsive");
+        let (_, counts) = parse_frames(&request, &responsive, "responsive", vec![named("desktop", receipts(2)), named("mobile", receipts(1))]).unwrap();
+        assert_eq!(counts, [2, 1]);
+        for (desktop, mobile) in [(receipts(1), receipts(1)), (receipts(2), receipts(2)), (receipts(2), vec![json!({"regionId":"art-1"})]), (receipts(2), vec![])] {
+            assert!(parse_frames(&request, &responsive, "responsive", vec![named("desktop", desktop), named("mobile", mobile)]).is_err());
+        }
         // A spec edited after the capture no longer binds it.
         std::fs::write(request.root.join(SPEC), b"{\"regions\":[]}").unwrap();
         let e = parse(&request, &report, frame(receipts(2))).unwrap_err();

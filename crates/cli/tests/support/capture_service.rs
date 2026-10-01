@@ -55,12 +55,19 @@ impl CaptureService {
             {
                 break port as u16;
             }
-            if let Some(status) = child.try_wait().unwrap() {
-                panic!("capture-server exited before it was ready: {status}");
-            }
-            if started.elapsed() > Duration::from_secs(60) {
+            let failure = match child.try_wait() {
+                Ok(Some(status)) => Some(format!("capture-server exited before it was ready: {status}")),
+                Err(e) => Some(format!("capture-server status unavailable: {e}")),
+                Ok(None) if started.elapsed() > Duration::from_secs(60) => {
+                    Some("capture-server never wrote its ready file".into())
+                }
+                Ok(None) => None,
+            };
+            if let Some(failure) = failure {
                 let _ = child.kill();
-                panic!("capture-server never wrote its ready file");
+                let _ = child.wait();
+                let _ = std::fs::remove_dir_all(&dir);
+                panic!("{failure}");
             }
             std::thread::sleep(Duration::from_millis(20));
         };
