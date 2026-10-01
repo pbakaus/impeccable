@@ -129,6 +129,7 @@ Source files use placeholders that get replaced per-provider:
 - `{{command_prefix}}` — `/` or `$` depending on provider
 - `{{available_commands}}` — auto-populated list of commands (from `IMPECCABLE_SUB_COMMANDS` in `scripts/lib/utils.js`)
 - `{{scripts_path}}` — provider-aware path to the skill's scripts directory
+- `{{reference_path}}` — agent bodies only (`skill/agents/*.md`): the skill's `reference/` directory, relative to each emitted copy
 
 ### Generated provider output policy
 
