@@ -298,6 +298,7 @@ Workflow for any component:
 2. Add a changelog entry to `site/pages/changelog.astro` (see **Website changelog** above for placement and tone). Skill entries use a bare `vX.Y.Z` label; CLI and extension entries use the prefixed forms `CLI vX.Y.Z` and `Extension vX.Y.Z`. The release script extracts notes by matching this label, so the prefix matters.
 3. Commit and push to `main`.
 4. Run `bun run release:<skill|cli|ext>`. Preview first with `node scripts/release.mjs <component> --dry-run`.
+5. Skill only: `npx impeccable install` / `update` serve the version in impeccable-site's `published-skill.json`, a signed pointer that does not follow the release by itself (site `docs/PUBLISHED-SKILL.md`). On a branch from site main, run `bun run skill:publish-pointer <version>` (it verifies the release signature and checksum), commit the pointer, and merge; the main deploy then serves it. Redeploying without moving the pointer republishes the old version. The release script warns when `impeccable.style/api/version` still lags.
 
 The script refuses to run if: the working tree is dirty, HEAD is ahead of origin, the tag already exists, the matching changelog entry is missing, or (for skill/extension) `bun run build:release` / `bun run build:extension` produces uncommitted changes — meaning the harness output dirs or `extension/detector/` files weren't refreshed before the bump was committed.
 

@@ -306,10 +306,11 @@ try {
 
 console.log(`\n✓ ${cfg.label} ${version} released as ${tag}`);
 
-// npx impeccable update serves from impeccable.style, not from this release:
-// the site must be redeployed (its deploy overlays public main first). Warn
-// loudly when the served version lags so a release never silently strands
-// update users on old content again (the 4.0.0 release did exactly that).
+// npx impeccable install/update serve the version named by impeccable-site's
+// published-skill.json, a signed pointer that never follows this release on
+// its own. Redeploying alone republishes the old pointer. Warn loudly when the
+// served version lags so a release never silently strands update users on old
+// content again (the 4.0.0 release did exactly that).
 if (component === 'skill' && !dryRun) {
   try {
     const res = await fetch('https://impeccable.style/api/version');
@@ -318,8 +319,9 @@ if (component === 'skill' && !dryRun) {
       console.log(`✓ impeccable.style serves ${served}`);
     } else {
       console.log(`\n⚠ impeccable.style still serves ${served}, not ${version}.`);
-      console.log('  npx impeccable update users get the OLD version until the site redeploys:');
-      console.log('  cd ../impeccable-site && bun run deploy');
+      console.log('  npx impeccable install/update serve the OLD version until the site\'s signed pointer moves.');
+      console.log(`  In impeccable-site, on a branch from main: bun run skill:publish-pointer ${version}`);
+      console.log('  Commit published-skill.json and merge it to main; the main deploy then serves the new version.');
     }
   } catch {
     console.log('⚠ could not reach impeccable.style/api/version to verify the served bundle');
