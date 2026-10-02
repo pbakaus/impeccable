@@ -863,8 +863,15 @@
     setTimeout(() => input.focus(), 0);
   }
 
+  // The Enter that commits an IME candidate (Zhuyin, Pinyin, kana, Hangul) is
+  // not a submit. Safari fires that keydown after compositionend, so
+  // isComposing is already false there and keyCode 229 is the only signal.
+  function isImeKeydown(e) {
+    return e.isComposing || e.keyCode === 229;
+  }
+
   function onAnnotInputKey(e) {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && !isImeKeydown(e)) {
       e.preventDefault(); e.stopPropagation();
       finalizeEditingPin();
     } else if (e.key === 'Escape') {
@@ -2456,7 +2463,7 @@
     input.addEventListener('focus', () => syncConfigureInputChrome());
     input.addEventListener('blur', () => syncConfigureInputChrome());
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.stopPropagation(); e.preventDefault(); handleGo(); return; }
+      if (e.key === 'Enter' && !isImeKeydown(e)) { e.stopPropagation(); e.preventDefault(); handleGo(); return; }
       if (e.key === 'Escape') {
         e.stopPropagation();
         e.preventDefault();
@@ -2542,7 +2549,7 @@
       try { input.focus({ preventScroll: true }); } catch { input.focus(); }
     });
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
+      if (e.key === 'Enter' && !isImeKeydown(e)) {
         e.stopPropagation(); e.preventDefault();
         if (isInsertCreateEnabled()) handleInsertCreate();
         return;
@@ -11431,7 +11438,7 @@ void main() {
         }
         return;
       }
-      if (e.key === 'Enter') {
+      if (e.key === 'Enter' && !isImeKeydown(e)) {
         e.preventDefault();
         submitSteerMessage();
       }
