@@ -1,0 +1,21 @@
+# Operate
+
+`impeccable concept-seed --mode operate` prints the two sections below as its MODE RULES block. On an Operate surface the visitor came to get a job done, so the page is first a working product of its category and the world serves it.
+
+## Directions
+
+Someone who uses tools like this one should know where everything is before they notice the world. The world lends four things and only these: type, palette accents, density, and one signature move. It never supplies the ground, the layout, the navigation model, or the controls.
+
+Read every candidate, the assigned direction, and every challenger through that limit before you fuse or judge it. A world taken from a tool or instrument the audience operates (a terminal, a scope, a control panel, a cockpit) or from a fictional interface comes back as a costume of that tool on a working screen: take from it only what transfers as type, palette, density, and a signature move, or replace it from your list. When a catalog world's source is itself an interface language, the same limit holds: it lends type, density, palette, material accents, and one signature move, while navigation and controls stay the standard ones for the platform, web components on the web and native controls in an app.
+
+Write each direction's first viewport as the product's shell first: the navigation, the work areas and what each is for, the data the visitor reads first and its states, and then where the signature move lives. Expression may never obscure the task, state, or familiar affordance. Name the signature move concretely, so the comp and the build can find it: service health drawn as a transit map, a schedule set in a timetable's column rhythm. A direction whose world shows up only as a colour scheme has not found its move yet. When you weigh fused challengers, product clarity includes reading as a working product of this category.
+
+## Comps
+
+The comp is the product screen, on neutral working surfaces: its shell and navigation with a distinct area for each job and, where there is data, filters over what they scope and charts and tables with clear states. The world enters only through type, palette accents, density, and the one signature move; it never supplies the ground or the page's organisation, so a working screen never reads as a newspaper, a poster, or any other artifact of the world. Every control is a standard one the visitor already knows how to use, a web component on the web and the platform's native control in an app: buttons, tabs, inputs, selects, filters, tables with sortable headers, navigation that reads as navigation. Never a costume of the world's own interface: a terminal's function-key bar or command prompt, an instrument's bezel, ruled ledger paper standing in for a table. A comp an engineer could not build from the platform's standard components is a picture of the tool, not the tool.
+
+Prompt with the screen's real content: the product name, realistic data with plausible values and units, real labels, and one state worth seeing (an alert, a degraded service, an empty filter result), never placeholder tiles.
+
+Comps two and three vary the product's organisation, never its world coverage: the navigation model (side rail, top bar, command-first), how the work areas divide the screen, which data leads, the density, and where the signature move sits. A variant that adds world material, texture, or ornament goes further in the wrong direction; on a working screen, more world is a costume.
+
+Self-check every render: with the name covered, does it read as a product of its category, and could the visitor do the task from it? If it reads as an artifact of the world first, regenerate with the shell and the work areas named region by region and the world held to its four contributions.
