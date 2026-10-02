@@ -1017,6 +1017,20 @@ impl<'a> Page<'a> {
         true
     }
 
+    /// Start the page's clock at `epoch_ms` for every document this page loads:
+    /// `new Date()`, `Date()`, `Date.now()` and an argument-less
+    /// `Intl.DateTimeFormat` format begin at that instant and advance in real
+    /// time, so a page that renders the current time or day renders the same
+    /// state in every capture pinned to the same instant, while code that measures
+    /// elapsed time still sees time pass. Call before navigating.
+    pub fn pin_clock(&mut self, epoch_ms: f64) -> CdpResult<()> {
+        if !epoch_ms.is_finite() {
+            return Err(CdpError::new("pinned clock must be a finite epoch"));
+        }
+        self.send("Page.addScriptToEvaluateOnNewDocument", json!({ "source": pinned_clock_script(epoch_ms) }))?;
+        Ok(())
+    }
+
     /// Explicit screenshot-environment preference; never injected as page CSS.
     pub fn set_reduced_motion(&mut self, reduce: bool) -> CdpResult<()> {
         self.send("Emulation.setEmulatedMedia", json!({"features": [{
@@ -1639,4 +1653,14 @@ mod tests {
         assert_eq!(with.last().unwrap(), "--no-sandbox");
         assert!(with.contains(&"about:blank".to_string()));
     }
+}
+
+/// The page-side half of [`Page::pin_clock`].
+pub fn pinned_clock_script(epoch_ms: f64) -> String {
+    format!(r#"(()=>{{const T={epoch},P=performance.now(),N=Date;const now=()=>Math.floor(T+performance.now()-P);
+const D=new Proxy(N,{{construct(t,a,nt){{return Reflect.construct(N,a.length?a:[now()],nt)}},apply(){{return new N(now()).toString()}},get(t,k,r){{return k==="now"?now:Reflect.get(t,k,r)}}}});
+Object.defineProperty(globalThis,"Date",{{value:D,writable:true,configurable:true,enumerable:false}});
+const F=Intl.DateTimeFormat.prototype,g=Object.getOwnPropertyDescriptor(F,"format").get,p=F.formatToParts;
+Object.defineProperty(F,"format",{{configurable:true,get(){{const f=g.call(this);return d=>f(d===undefined?now():d)}}}});
+F.formatToParts=function(d){{return p.call(this,d===undefined?now():d)}};}})()"#, epoch = epoch_ms.floor() as i64)
 }

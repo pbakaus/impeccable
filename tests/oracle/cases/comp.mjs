@@ -87,6 +87,38 @@ const cases = [
   },
   { id: 'build-phase-usage', verb: 'build-phase', workspace: WS, args: [], env: env() },
 
+  // build-phase responsive (workspace comp-responsive: a menu column ending in a
+  // sign-off line; spec.json and a state at the responsive phase are staged
+  // under .impeccable/build/, which git ignores in fixtures). A desktop capture whose
+  // column grew pushes the sign-off 40px down past the first viewport: the gate
+  // calls it displaced, prints the repair crops, and on the third failed attempt
+  // leads with the route to the user. A capture without the line calls it missing.
+  {
+    id: 'build-phase-responsive-displaced', verb: 'build-phase', workspace: 'comp-responsive',
+    setup: (ws) => {
+      fs.mkdirSync(path.join(ws, '.impeccable/review'), { recursive: true });
+      fs.mkdirSync(path.join(ws, '.impeccable/build'), { recursive: true });
+      fs.copyFileSync(path.join(ws, 'spec.json'), path.join(ws, '.impeccable/build/spec.json'));
+      fs.copyFileSync(path.join(ws, 'state.json'), path.join(ws, '.impeccable/build/state.json'));
+      fs.copyFileSync(path.join(ws, 'desktop-pushed.png'), path.join(ws, '.impeccable/review/desktop.png'));
+      fs.copyFileSync(path.join(ws, 'mobile.png'), path.join(ws, '.impeccable/review/mobile.png'));
+    },
+    env: env(),
+    steps: [{ args: ['advance', '--min', '0.1'] }, { args: ['advance', '--min', '0.1'] }, { args: ['advance', '--min', '0.1'] }],
+  },
+  {
+    id: 'build-phase-responsive-missing', verb: 'build-phase', workspace: 'comp-responsive',
+    setup: (ws) => {
+      fs.mkdirSync(path.join(ws, '.impeccable/review'), { recursive: true });
+      fs.mkdirSync(path.join(ws, '.impeccable/build'), { recursive: true });
+      fs.copyFileSync(path.join(ws, 'spec.json'), path.join(ws, '.impeccable/build/spec.json'));
+      fs.copyFileSync(path.join(ws, 'state.json'), path.join(ws, '.impeccable/build/state.json'));
+      fs.copyFileSync(path.join(ws, 'desktop-gone.png'), path.join(ws, '.impeccable/review/desktop.png'));
+      fs.copyFileSync(path.join(ws, 'mobile.png'), path.join(ws, '.impeccable/review/mobile.png'));
+    },
+    args: ['advance', '--min', '0.1'], env: env(),
+  },
+
   // component-review plan: the v3 packet derives from the measured spec. The
   // spec fixture has one plate region (art), one non-container chrome (top,
   // a plan item) and one text region (body, a code region).

@@ -3,7 +3,7 @@
 //! shared-CSS edits keep it while the first viewport still matches. It is evidence
 //! for the first viewport's scores, never a
 //! replacement for native integrity, missing-region, or overall fidelity gates.
-use crate::entry_capture::CdpEntryRenderer;
+use crate::entry_capture::{CaptureClock, CdpEntryRenderer};
 use impeccable_comp_verbs::asset_capture::capture_sha256;
 use impeccable_comp_verbs::entry_capture::{
     ApprovedReference, CapturedEntry, EntryEvidence, EntryRenderer, EntryRequest,
@@ -128,10 +128,13 @@ fn reference(session: &Path, r: &EntryRequest) -> Result<ApprovedReference, Stri
     if capture_sha256(&png) != hash {
         return Err("reviewed screenshot changed".into());
     }
-    Ok(ApprovedReference {
-        png,
-        proof: json!({"schema":"human-assembled-reference-v1","requestId":packet["id"],"packetRevision":packet["revision"],"sha256":hash,"scope":"First viewport accepted in an assembled-page review; valid while the current capture matches this screenshot; material gates retained"}),
-    })
+    let mut proof = json!({"schema":"human-assembled-reference-v1","requestId":packet["id"],"packetRevision":packet["revision"],"sha256":hash,"scope":"First viewport accepted in an assembled-page review; valid while the current capture matches this screenshot; material gates retained"});
+    // The instant the approved screenshot's clock was pinned to (reviews captured
+    // before pinning carry none); gate captures render at the same instant.
+    if let Some(clock) = capture["clock"]["pinnedEpochMs"].as_f64().filter(|c| c.is_finite()) {
+        proof["pinnedClockMs"] = json!(clock.floor() as i64);
+    }
+    Ok(ApprovedReference { png, proof })
 }
 impl EntryRenderer for ReviewedEntryRenderer {
     fn capture_entry(&self, r: &EntryRequest) -> Result<Box<dyn CapturedEntry>, String> {
@@ -141,7 +144,9 @@ impl EntryRenderer for ReviewedEntryRenderer {
             .map(|s| reference(s, r));
         // A code-only page must not load or inline the screenshot the user approved.
         let approved_png: Vec<&[u8]> = candidate.iter().filter_map(|c| c.as_ref().ok()).map(|a| a.png.as_slice()).collect();
-        let source = CdpEntryRenderer.capture_forbidding(r, &approved_png)?;
+        let clock = candidate.iter().filter_map(|c| c.as_ref().ok()).find_map(|a| a.proof["pinnedClockMs"].as_f64())
+            .map(|epoch_ms| CaptureClock { epoch_ms, from_review: true }).unwrap_or_else(CaptureClock::now);
+        let source = CdpEntryRenderer.capture_at(r, &approved_png, clock)?;
         let mut report = source.evidence().report.clone();
         if let Some(Err(reason)) = &candidate {
             report["humanTextReview"] = json!({"status":"not-current","reason":reason});

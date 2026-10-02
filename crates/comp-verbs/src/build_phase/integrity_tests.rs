@@ -1095,7 +1095,7 @@ fn accepted_first_viewport_turns_the_overall_bar_into_an_advisory() {
     // A stale approval (another rendering) closes nothing.
     let (stale, report) = run_reviewed_hero_min(&current, Some(&reviewed_hero(false, true)), REVIEWED_PAGE, 0.999);
     assert!(!stale.ok && !bar(&stale), "{:?}", stale.reasons);
-    assert!(stale.reasons[0].starts_with("the hero capture no longer matches the first viewport the user accepted") && stale.reasons[0].contains("changed: headline") && stale.reasons[0].ends_with("Restore what the user accepted; until then the readings apply.") && !stale.reasons[0].contains("review"), "{:?}", stale.reasons);
+    assert!(stale.reasons[0].starts_with("the hero capture no longer matches the first viewport the user accepted") && stale.reasons[0].contains("changed since the acceptance: headline") && stale.reasons[0].ends_with("Restore what the user accepted; until then the readings apply.") && !stale.reasons[0].contains("review"), "{:?}", stale.reasons);
     assert!(stale.advisories.iter().any(|a| a.starts_with("(measured) hero overall")), "the raw score is kept as a measurement: {:?}", stale.advisories);
     assert_eq!(report["humanHeroReview"]["viewportAccepted"], false);
     // The material veto still blocks under an accepted, below-bar viewport.
@@ -1206,4 +1206,217 @@ fn accepted_review_of_a_text_only_first_viewport_lets_it_pass() {
     let (gate, report) = run_text_only_hero(&current, Some(&text_only_hero(false)));
     assert!(!gate.ok);
     assert_eq!(report["humanHeroReview"]["viewportAccepted"], false, "{report}");
+}
+
+/// A menu column ending in a sign-off line near the bottom of the first viewport.
+/// `push` moves the column's rows down progressively and the sign-off by the full
+/// amount, as a px floor on the menu's type does at a narrower desktop width.
+fn menu_page(push: f64, height: usize, sign_off: bool) -> Image {
+    let mut img = r::create_image(400, height, [240, 240, 236, 255]);
+    for i in 0..8 {
+        let y = 40.0 + i as f64 * 34.0 + push * (i as f64 / 8.0);
+        r::fill_rect(&mut img, 220.0, y, 120.0 + (i % 3) as f64 * 20.0, 10.0, [20.0, 20.0, 20.0, 255.0]);
+    }
+    if sign_off {
+        for k in 0..6 {
+            r::fill_rect(&mut img, 230.0 + k as f64 * 22.0, 330.0 + push, 14.0, 18.0, [20.0, 20.0, 20.0, 255.0]);
+        }
+    }
+    img
+}
+
+fn menu_workspace() -> Workspace {
+    let ws = Workspace::new();
+    ws.write("comp.png", &png_io::encode_png(&menu_page(0.0, 360, true), &[]).unwrap());
+    ws.write(SPEC_PATH, util::json_pretty(&json!({"comp":"comp.png","regions":[
+        {"id":"menu","kind":"chrome","medium":"semantic","note":"ruled menu rows","box":{"x":0.54,"y":0.1,"w":0.42,"h":0.78},"px":{"x":216,"y":36,"w":168,"h":281}},
+        {"id":"sign-off","kind":"text","medium":"semantic","note":"sign-off line","type":{},"box":{"x":0.555,"y":0.9111,"w":0.35,"h":0.0611},"px":{"x":222,"y":328,"w":140,"h":22}}]})).as_bytes());
+    ws.write(".impeccable/review/mobile.png", &png_io::encode_png(&menu_page(0.0, 360, true), &[]).unwrap());
+    ws
+}
+
+#[test]
+fn responsive_calls_a_region_pushed_below_the_first_viewport_displaced_not_missing() {
+    let ws = menu_workspace();
+    let mut state = json!({"comp":"comp.png","phases":{}});
+    // A full-page desktop capture: the sign-off is there, 40px lower, past the frame.
+    ws.write(".impeccable/review/desktop.png", &png_io::encode_png(&menu_page(40.0, 480, true), &[]).unwrap());
+    let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None);
+    assert!(!gate.ok);
+    let reason = gate.reasons.iter().find(|r| r.contains("sign-off")).unwrap();
+    assert!(reason.contains("is displaced, not missing") && reason.contains("about 40px lower") && reason.contains("400x360 first viewport"), "{reason}");
+    assert!(!gate.reasons.iter().any(|r| r.contains("is missing")), "{:?}", gate.reasons);
+    assert_eq!(gate.worst_crops[0]["verdict"], "displaced");
+    assert_eq!(gate.worst_crops[0]["file"], "diff/regions/sign-off.png");
+    let report: Value = serde_json::from_slice(&std::fs::read(ws.path.join("diff/report.json")).unwrap()).unwrap();
+    let region = report["regions"].as_array().unwrap().iter().find(|r| r["id"] == "sign-off").unwrap().clone();
+    assert_eq!(region["verdict"], "displaced");
+    assert!(matches!(region["rawVerdict"].as_str(), Some("missing" | "contradicted")), "{region}");
+    assert_eq!(region["displacement"]["dy"], 40.0);
+    assert_eq!(region["blocking"], true);
+    // A native frame is the first viewport alone: the column above says where it went.
+    ws.write(".impeccable/review/desktop.png", &png_io::encode_png(&menu_page(40.0, 360, true), &[]).unwrap());
+    let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None);
+    let reason = gate.reasons.iter().find(|r| r.contains("sign-off")).unwrap();
+    assert!(reason.contains("is displaced, not missing: the content above it in its column sits about"), "{reason}");
+    // Gone is still missing.
+    ws.write(".impeccable/review/desktop.png", &png_io::encode_png(&menu_page(0.0, 360, false), &[]).unwrap());
+    let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None);
+    assert!(gate.reasons.iter().any(|r| r == "at desktop width, region sign-off is missing"), "{:?}", gate.reasons);
+    assert_eq!(gate.worst_crops[0]["verdict"], "missing");
+}
+
+#[test]
+fn responsive_reads_a_region_shifted_inside_the_first_viewport_as_drift() {
+    let ws = menu_workspace();
+    let mut state = json!({"comp":"comp.png","phases":{}});
+    let mut moved = menu_page(0.0, 360, false);
+    for k in 0..6 {
+        r::fill_rect(&mut moved, 230.0 + k as f64 * 22.0, 306.0, 14.0, 18.0, [20.0, 20.0, 20.0, 255.0]);
+    }
+    ws.write(".impeccable/review/desktop.png", &png_io::encode_png(&moved, &[]).unwrap());
+    let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None);
+    assert!(gate.ok, "{:?}", gate.reasons);
+    assert!(gate.advisories.iter().any(|a| a.starts_with("(advisory, still inside the first viewport) at desktop width, region sign-off sits about 24px higher")), "{:?}", gate.advisories);
+}
+
+#[test]
+fn a_present_plate_off_its_box_at_desktop_width_is_drift_not_missing() {
+    let ws = Workspace::new();
+    let comp = reviewed_hero(false, true);
+    let png = |i: &Image| png_io::encode_png(i, &[]).unwrap();
+    ws.write("comp.png", &png(&comp));
+    ws.write("art.png", &png(&r::crop(&comp, 10., 10., 60., 60.)));
+    let art = json!({"id":"art","kind":"plate","medium":"raster","plate":"art.png","note":"dark printed square",
+        "box":{"x":0.05,"y":0.0833,"w":0.3,"h":0.5},"px":{"x":10,"y":10,"w":60,"h":60}});
+    let spec = json!({"comp":"comp.png","regions":[art.clone()]});
+    ws.write(SPEC_PATH, util::json_pretty(&spec).as_bytes());
+    let io = ws.io();
+    let receipt = json!({"status":"ok","score":0.9,"file":"art.png","assetHash":sha256_file(&io,"art.png"),"compHash":sha256_file(&io,"comp.png"),"regionHash":sha256_bytes(util::json_pretty(&art).as_bytes()),"referenceHash":plate_reference_hash(&spec)});
+    let mut state = json!({"comp":"comp.png","plates":{"art":receipt},"phases":{}});
+    // The plate renders 16px lower and to the right of its box: present, shifted.
+    let mut desktop = reviewed_hero(false, false);
+    r::blit(&mut desktop, &r::crop(&comp, 10., 10., 60., 60.), 26., 26.);
+    ws.write(".impeccable/review/desktop.png", &png(&desktop));
+    ws.write(".impeccable/review/mobile.png", &png(&desktop));
+    let gate = gate_responsive(&io, &mut state, 0.1, "diff", None);
+    assert!(!gate.reasons.iter().any(|r| r.contains("art is missing")), "{:?}", gate.reasons);
+    let report: Value = serde_json::from_slice(&std::fs::read(ws.path.join("diff/report.json")).unwrap()).unwrap();
+    assert_eq!(report["regions"][0]["verdict"], "drift", "{report}");
+    assert!(gate.advisories.iter().any(|a| a.contains("art")), "{:?}", gate.advisories);
+}
+
+/// The responsive workspace of the accepted-review tests: one striped control
+/// region and a quiet chrome strip the approved screenshot can differ in.
+fn reviewed_desktop_workspace() -> Workspace {
+    let ws = Workspace::new();
+    let comp = reviewed_hero(false, false);
+    ws.write("comp.png", &png_io::encode_png(&comp, &[]).unwrap());
+    ws.write("index.html", b"<main><h1>Headline</h1></main>");
+    ws.write(SPEC_PATH, util::json_pretty(&json!({"comp":"comp.png","regions":[
+        {"id":"headline","kind":"control","medium":"semantic","note":"striped headline lettering","box":{"x":0.6,"y":0.7,"w":0.3,"h":0.2},"px":{"x":120,"y":84,"w":60,"h":24}},
+        {"id":"strip","kind":"chrome","medium":"semantic","note":"quiet top strip","box":{"x":0.05,"y":0.05,"w":0.4,"h":0.4},"px":{"x":10,"y":6,"w":80,"h":48}}]})).as_bytes());
+    ws
+}
+
+fn run_reviewed_desktop(ws: &Workspace, current: &Image, approved: Option<&Image>, min: f64) -> (Gate, Value) {
+    let png = |i: &Image| png_io::encode_png(i, &[]).unwrap();
+    let mut state = json!({"comp":"comp.png","capturePolicy":"native-html-v1","phases":{}});
+    let gate = gate_responsive(&ws.io(), &mut state, min, "diff", Some(&DesktopRenderer { desktop: png(current), approved: approved.map(png) }));
+    let report = serde_json::from_slice(&std::fs::read(ws.path.join("diff/report.json")).unwrap()).unwrap();
+    (gate, report)
+}
+
+#[test]
+fn a_lapsed_acceptance_is_named_even_above_the_bar() {
+    let ws = reviewed_desktop_workspace();
+    // Above the bar, but the control is contradicted and the user accepted another rendering.
+    let (gate, _) = run_reviewed_desktop(&ws, &reviewed_hero(true, false), Some(&reviewed_hero(false, false)), 0.1);
+    assert!(!gate.ok);
+    assert!(gate.reasons[0].starts_with("the desktop capture no longer matches the first viewport the user accepted") && gate.reasons[0].contains("changed since the acceptance: headline"), "{:?}", gate.reasons);
+    assert!(gate.reasons.iter().any(|r| r.contains("headline (control) is contradicted")), "{:?}", gate.reasons);
+    // Nothing else blocking: the lapse is still said, as an advisory.
+    let mut quiet = reviewed_hero(false, false);
+    r::fill_rect(&mut quiet, 14., 10., 70., 40., [30., 30., 30., 255.]);
+    let (gate, _) = run_reviewed_desktop(&ws, &reviewed_hero(false, false), Some(&quiet), 0.1);
+    assert!(gate.ok, "{:?}", gate.reasons);
+    assert!(gate.advisories[0].starts_with("(advisory) the desktop capture no longer matches the first viewport the user accepted") && gate.advisories[0].contains("strip"), "{:?}", gate.advisories);
+}
+
+#[test]
+fn an_accepted_control_carries_to_desktop_width_like_text() {
+    let ws = reviewed_desktop_workspace();
+    // The user accepted this control's restyle; the strip differs, so the viewport as a whole is not accepted.
+    let current = reviewed_hero(true, false);
+    let mut approved = current.clone();
+    r::fill_rect(&mut approved, 14., 10., 70., 40., [30., 30., 30., 255.]);
+    let (gate, report) = run_reviewed_desktop(&ws, &current, Some(&approved), 0.1);
+    assert!(!gate.reasons.iter().any(|r| r.contains("headline (control) is contradicted")), "{:?}", gate.reasons);
+    assert!(gate.advisories.iter().any(|a| a.starts_with("(advisory, accepted in the first-viewport review) at desktop width, region headline (control) is contradicted")), "{:?}", gate.advisories);
+    assert_eq!(report["humanTextReview"]["acceptedRegions"], json!(["headline"]));
+    assert_eq!(report["humanTextReview"]["viewportAccepted"], false);
+}
+
+#[test]
+fn the_approved_screenshot_is_compared_at_the_desktop_frame_size() {
+    // The user approved the first viewport at the comp's size; the desktop frame is
+    // smaller and renders the same page proportionally. Neither side is upscaled.
+    let ws = reviewed_desktop_workspace();
+    let approved = reviewed_hero(true, false);
+    let frame = r::resize(&approved, 150., 90.);
+    let (gate, report) = run_reviewed_desktop(&ws, &frame, Some(&approved), 0.999);
+    assert_eq!(report["humanTextReview"]["comparison"]["compSize"], "150x90", "{report}");
+    assert_eq!(report["humanTextReview"]["comparison"]["referenceSize"], "200x120");
+    assert_eq!(report["humanTextReview"]["viewportAccepted"], true, "{report}");
+    assert!(gate.ok, "{:?}", gate.reasons);
+}
+
+#[test]
+fn responsive_failures_print_crops_and_escalate_after_three_attempts() {
+    let ws = menu_workspace();
+    ws.write(".impeccable/review/desktop.png", &png_io::encode_png(&menu_page(40.0, 480, true), &[]).unwrap());
+    ws.write(".impeccable/build/state.json", util::json_pretty(&json!({"comp":"comp.png","phase":"responsive","phases":{"responsive":{"status":"open","attempts":0,"notes":[]}}})).as_bytes());
+    let advance = || {
+        let (mut io, out) = Io::captured("", ws.path.clone(), Default::default());
+        let code = run(&["advance".to_string(), "--min".into(), "0.1".into()], &mut io, &no_organic_scan);
+        let text = String::from_utf8(out.stdout.borrow().clone()).unwrap();
+        (code, text)
+    };
+    let (code, first) = advance();
+    assert_eq!(code, 2);
+    assert!(first.contains("LOOK FIRST") && first.contains(".impeccable/review/diff/desktop/regions/sign-off.png   sign-off: displaced"), "{first}");
+    assert!(first.contains("A region scored displaced is present but pushed out of the first viewport"), "{first}");
+    assert!(!first.contains("failed 3 attempts"), "{first}");
+    advance();
+    let (_, third) = advance();
+    assert!(third.contains("- The responsive gate has failed 3 attempts in a row. Stop iterating and present the first-viewport review"), "{third}");
+    let state: Value = serde_json::from_slice(&std::fs::read(ws.path.join(".impeccable/build/state.json")).unwrap()).unwrap();
+    assert_eq!(state["phases"]["responsive"]["history"].as_array().unwrap().len(), 3);
+    assert_eq!(state["phases"]["responsive"]["status"], "open");
+}
+
+#[test]
+fn responsive_escalation_after_acceptance_routes_to_the_user_not_a_new_review() {
+    let mut state = json!({"phases":{"responsive":{}}});
+    let mut gate = Gate::fail(vec!["at desktop width, region sign-off is displaced, not missing".into()]);
+    gate.score = Some(0.8);
+    for _ in 0..2 { assert!(responsive_loop_verdict(&mut state, &gate, true, "impeccable").is_none()); }
+    let third = responsive_loop_verdict(&mut state, &gate, true, "impeccable").unwrap();
+    assert!(third.contains("already accepted a first viewport") && third.contains("impeccable build-phase advance --force --reason") && third.contains("not a fix round"), "{third}");
+    assert!(!third.contains("present the first-viewport review"), "{third}");
+    // A pass in between resets the run of failures.
+    let mut passed = Gate::fail(vec![]);
+    passed.ok = true;
+    passed.score = Some(0.9);
+    assert!(responsive_loop_verdict(&mut state, &passed, true, "impeccable").is_none());
+    assert!(responsive_loop_verdict(&mut state, &gate, true, "impeccable").is_none());
+}
+
+#[test]
+fn responsive_next_names_the_frame_the_gate_actually_diffs() {
+    let (io, _) = Io::captured("", std::env::temp_dir(), Default::default());
+    let native = next_instruction(&io, &json!({"phase":"responsive","breakpoint":"1536x1024","capturePolicy":"native-html-v1"}));
+    assert!(native.contains("a 1440x960 desktop first viewport") && !native.contains("desktop.png"), "{native}");
+    let saved = next_instruction(&io, &json!({"phase":"responsive","breakpoint":"1536x1024"}));
+    assert!(saved.contains("the first viewport of desktop.png (its top 1440x960"), "{saved}");
 }

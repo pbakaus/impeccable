@@ -564,3 +564,38 @@ fn host_capture_service_carries_a_text_only_hero_and_binds_its_accepted_review()
     }
     assert_eq!(fs::read_to_string(f.project.join(".impeccable/review/native/hero/hero-observations.json")).unwrap().trim(), "[]");
 }
+
+#[test]
+fn capture_clock_is_pinned_and_an_approved_review_lends_its_instant() {
+    if !browser_available() {
+        return;
+    }
+    use impeccable::entry_capture::CaptureClock;
+    let f = Fixture::new();
+    // The bars' widths follow the hour, as a page that prints "open now" does:
+    // one through `new Date()`, one through an argument-less Intl format.
+    fs::write(f.project.join("index.html"), format!("{PAGE}<script>const h=new Date().getUTCHours();const p=new Intl.DateTimeFormat('en-US',{{timeZone:'UTC',hour:'numeric',hourCycle:'h23'}}).formatToParts().find(x=>x.type==='hour').value;document.querySelector('h1').style.width=(16+h*8)+'px';document.querySelector('header').style.width=(16+Number(p)*8)+'px';</script>")).unwrap();
+    let at = |hour: u64| CaptureClock { epoch_ms: (1_790_000_000_000u64 / 86_400_000 * 86_400_000 + hour * 3_600_000) as f64, from_review: false };
+    let frame = |clock: CaptureClock| {
+        let captured = CdpEntryRenderer.capture_at(&f.request(EntryStage::Hero), &[], clock).unwrap();
+        assert_eq!(captured.evidence().report["clock"]["pinnedEpochMs"].as_f64(), Some(clock.epoch_ms));
+        captured.evidence().frames[0].png.clone()
+    };
+    let (two, two_again, nine) = (frame(at(2)), frame(at(2)), frame(at(9)));
+    assert_eq!(two, two_again, "the same instant renders the same page");
+    assert_ne!(two, nine, "the pinned instant is the one the page sees");
+    // An approval captured at a pinned instant hands that instant to the gate's capture.
+    f.approve(&two);
+    let path = f.session().join("current.json");
+    let mut state: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    for pointer in ["/capture/components/0/views/preview", "/receipt/capture/components/0/views/preview"] {
+        state.pointer_mut(pointer).unwrap()["clock"] = json!({"pinnedEpochMs": at(2).epoch_ms as i64});
+    }
+    fs::write(&path, serde_json::to_vec(&state).unwrap()).unwrap();
+    let renderer = ReviewedEntryRenderer::local(&f.project, Some(&f.home));
+    let captured = renderer.capture_entry(&f.request(EntryStage::Hero)).unwrap();
+    let report = &captured.evidence().report;
+    assert_eq!(report["clock"]["source"], "approved-review", "{report}");
+    assert_eq!(report["clock"]["pinnedEpochMs"].as_f64(), Some(at(2).epoch_ms));
+    assert_eq!(captured.evidence().frames[0].png, two);
+}

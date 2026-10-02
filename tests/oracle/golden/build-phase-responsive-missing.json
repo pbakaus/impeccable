@@ -1,0 +1,7 @@
+{
+  "stdout": "GATE RESPONSIVE FAILED (state unchanged)\n  LOOK FIRST, in this order, before editing anything (comp on the left, your build on the right):\n    .impeccable/review/diff/desktop/regions/sign-off.png   sign-off: missing 30% (structure 24%, color 54%, detail 0%)\n  A region scored missing needs its material (a plate placed, or produced), not a value change; contradicted needs its structure re-derived from the spec box; drift is where padding and size edits belong. When a thin chrome strip (masthead, breadcrumb, table header) is the worst region, check its box height in the spec against the comp first: a strip one grid row tall in the spec but 53px in the comp compares your build against ground it never had.\n  - at desktop width, region sign-off is missing\n  then <WS>/.impeccable/review/diff/desktop/side-by-side.png for the whole viewport\n",
+  "stderr": "",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

@@ -1,0 +1,51 @@
+{
+  "tool": "build-phase",
+  "version": 2,
+  "comp": "comp.png",
+  "breakpoint": "400x360",
+  "artifact": "index.html",
+  "phase": "responsive",
+  "phases": {
+    "comps": {
+      "status": "closed",
+      "attempts": 0,
+      "notes": []
+    },
+    "spec": {
+      "status": "closed",
+      "attempts": 0,
+      "notes": []
+    },
+    "plates": {
+      "status": "closed",
+      "attempts": 0,
+      "notes": []
+    },
+    "hero": {
+      "status": "closed",
+      "attempts": 0,
+      "notes": []
+    },
+    "sections": {
+      "status": "closed",
+      "attempts": 0,
+      "notes": []
+    },
+    "motion": {
+      "status": "closed",
+      "attempts": 0,
+      "notes": []
+    },
+    "responsive": {
+      "status": "open",
+      "attempts": 0,
+      "notes": []
+    },
+    "review": {
+      "status": "pending",
+      "attempts": 0,
+      "notes": []
+    }
+  },
+  "finish": null
+}

@@ -50,6 +50,22 @@ impl EntryRenderer for CdpEntryRenderer {
         self.capture_forbidding(request, &[])
     }
 }
+/// The instant a capture's clock is pinned to, and where it came from.
+#[derive(Clone, Copy)]
+pub struct CaptureClock {
+    pub epoch_ms: f64,
+    /// True when the instant is the one an approved review screenshot was captured at.
+    pub from_review: bool,
+}
+impl CaptureClock {
+    pub fn now() -> Self {
+        Self { epoch_ms: crate::component_capture::now_ms(), from_review: false }
+    }
+    fn json(&self) -> Value {
+        json!({"pinnedEpochMs": self.epoch_ms.floor() as i64, "source": if self.from_review { "approved-review" } else { "capture-start" },
+            "policy": "every frame's Date starts at the pinned instant and advances in real time"})
+    }
+}
 impl CdpEntryRenderer {
     /// `forbidden` holds approved images (a reviewed screenshot) that a text-only
     /// page must not load or embed; the bound comp is always forbidden there.
@@ -57,6 +73,18 @@ impl CdpEntryRenderer {
         &self,
         request: &EntryRequest,
         forbidden: &[&[u8]],
+    ) -> Result<Box<dyn CapturedEntry>, String> {
+        self.capture_at(request, forbidden, CaptureClock::now())
+    }
+
+    /// As [`Self::capture_forbidding`], with every frame's clock pinned to `clock`:
+    /// a page that renders the time or day shows the same state in each frame,
+    /// and the same state as an approved screenshot captured at that instant.
+    pub fn capture_at(
+        &self,
+        request: &EntryRequest,
+        forbidden: &[&[u8]],
+        clock: CaptureClock,
     ) -> Result<Box<dyn CapturedEntry>, String> {
         // The shared gate chooses the entry/spec/reference, never a caller URL.
         let served = static_inventory(&request.root)?;
@@ -102,10 +130,10 @@ impl CdpEntryRenderer {
             ],
         };
         if ids.is_empty() {
-            return capture_text_only(request, snapshot, &served, &frames, forbidden);
+            return capture_text_only(request, snapshot, &served, &frames, forbidden, clock);
         }
         let mut evidence = EntryEvidence {
-            report: json!({"schema":"native-entry-capture-v1","inputSnapshot":snapshot.digest(),"manifest":snapshot.manifest(),"artifact":request.artifact,"stage":match request.stage {EntryStage::Hero=>"hero",EntryStage::Responsive=>"responsive"},"scope":"Fresh static HTML rendering and scoped raster evidence. No independent aesthetic approval."}),
+            report: json!({"schema":"native-entry-capture-v1","inputSnapshot":snapshot.digest(),"manifest":snapshot.manifest(),"artifact":request.artifact,"stage":match request.stage {EntryStage::Hero=>"hero",EntryStage::Responsive=>"responsive"},"scope":"Fresh static HTML rendering and scoped raster evidence. No independent aesthetic approval.","clock":clock.json()}),
             frames: vec![],
         };
         for (name, viewport) in frames {
@@ -117,7 +145,7 @@ impl CdpEntryRenderer {
                 &ids[..]
             };
             let regions = snapshot.capture_regions_at_viewport(
-                &mut CdpAssetRenderer::from_process_env(),
+                &mut CdpAssetRenderer::from_process_env().pinned_at(clock.epoch_ms),
                 &request.spec,
                 selected,
                 true,
@@ -190,6 +218,7 @@ fn capture_text_only(
     inventory: &[String],
     frames: &[(&str, Option<[u32; 2]>)],
     forbidden: &[&[u8]],
+    clock: CaptureClock,
 ) -> Result<Box<dyn CapturedEntry>, String> {
     let spec: Value = serde_json::from_slice(raster.bytes(&request.spec).ok_or("missing bound spec")?)
         .map_err(|e| e.to_string())?;
@@ -237,7 +266,7 @@ fn capture_text_only(
     let result = (|| -> Result<EntryEvidence, String> {
         let browser_version = browser.version().map_err(|e| e.message)?;
         let mut evidence = EntryEvidence {
-            report: json!({"schema":"native-entry-capture-v1","inputSnapshot":raster.digest(),"manifest":raster.manifest(),"artifact":request.artifact,"stage":match request.stage {EntryStage::Hero=>"hero",EntryStage::Responsive=>"responsive"},"scope":"Fresh static HTML rendering of a first viewport with no raster region. No independent aesthetic approval.","captureMethod":"assembled-page-viewport","integrityScope":"assembled-page viewport from frozen inputs; the comp and approved screenshots are never served; images cover under 15% of each frame; no raster presence check (no raster region)","dependencyPolicy":policy,"servedToPage":page.manifest()["files"],"browser":browser_version,"frameProofs":{}}),
+            report: json!({"schema":"native-entry-capture-v1","inputSnapshot":raster.digest(),"manifest":raster.manifest(),"artifact":request.artifact,"stage":match request.stage {EntryStage::Hero=>"hero",EntryStage::Responsive=>"responsive"},"scope":"Fresh static HTML rendering of a first viewport with no raster region. No independent aesthetic approval.","captureMethod":"assembled-page-viewport","integrityScope":"assembled-page viewport from frozen inputs; the comp and approved screenshots are never served; images cover under 15% of each frame; no raster presence check (no raster region)","dependencyPolicy":policy,"servedToPage":page.manifest()["files"],"browser":browser_version,"frameProofs":{},"clock":clock.json()}),
             frames: vec![],
         };
         for &(name, viewport) in frames {
@@ -252,6 +281,7 @@ fn capture_text_only(
                 true,
                 true,
                 true,
+                clock.epoch_ms,
             )
             .map_err(|e| {
                 // Both the network check and the image-decode check name the path

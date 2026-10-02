@@ -27,7 +27,7 @@ Then run `plan`, `capture` and `serve` again. Unchanged decisions carry over, so
 
 ## Assemble and review
 
-Build the first viewport from the approved plates and plan, and run the hero gate. Human review does not waive its integrity checks. After three failed hero attempts, stop iterating and present the first-viewport review with the current build; the user's eye settles what the readings could not.
+Build the first viewport from the approved plates and plan, and run the hero gate. Human review does not waive its integrity checks. After three failed hero attempts, or three failed responsive attempts before any first viewport is accepted, stop iterating and present the first-viewport review with the current build; the user's eye settles what the readings could not.
 
 Present a second manifest at `.impeccable/review/hero.json`. You write this one, and its shape is fixed:
 

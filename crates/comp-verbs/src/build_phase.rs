@@ -20,6 +20,7 @@ use serde_json::{json, Map, Value};
 
 use crate::comp_diff::{align_build, best_shift, build_report, compare, write_artifacts, write_region_artifacts, CompareResult, Score};
 use crate::comp_spec::{load_spec, prepare_plate_reference, PlateReference, BUILD_DIR, SPEC_PATH};
+use crate::displacement::{Displacement, Rect as DRect};
 use crate::font_match::choice_stamped;
 use crate::entry_capture::{CapturedEntry, EntryRenderer, EntryRequest, EntryStage};
 use crate::util::{self, arg, flag, round, to_fixed};
@@ -1638,14 +1639,27 @@ fn human_accepted_viewport(human: Option<&Value>) -> bool {
 }
 
 /// When the user accepted a first viewport that the current capture no longer
-/// matches: the reason that replaces the raw score.
+/// matches: the reason that replaces the raw score. It names the regions that
+/// changed since the acceptance (those that no longer render as accepted), or,
+/// when the drift is spread thin, the three furthest from it.
 fn lapsed_viewport(human: Option<&Value>, frame: &str) -> Option<String> {
     let c = &human?["comparison"];
     if human_accepted_viewport(human) { return None; }
-    let changed: Vec<&str> = c["regions"].as_array().into_iter().flatten()
-        .filter(|r| matches!(r["verdict"].as_str(), Some("missing" | "contradicted"))).filter_map(|r| r["id"].as_str()).collect();
+    let rows: Vec<&Value> = c["regions"].as_array().into_iter().flatten().collect();
+    let mut changed: Vec<&str> = rows.iter().filter(|r| !region_still_accepted(r)).filter_map(|r| r["id"].as_str()).collect();
+    let spread = changed.is_empty();
+    if spread {
+        let mut sorted = rows.clone();
+        sorted.sort_by(|a, b| rscore(a, "overall").total_cmp(&rscore(b, "overall")));
+        changed = sorted.iter().take(3).filter_map(|r| r["id"].as_str()).collect();
+    }
     Some(format!("the {frame} no longer matches the first viewport the user accepted ({}% against the approved screenshot{}), so that acceptance no longer covers the scores. Restore what the user accepted; until then the readings apply.",
-        pct0(c["overall"].as_f64().unwrap_or(0.)), if changed.is_empty() { String::new() } else { format!("; changed: {}", changed.join(", ")) }))
+        pct0(c["overall"].as_f64().unwrap_or(0.)), if changed.is_empty() { String::new() } else if spread { format!("; furthest from it: {}", changed.join(", ")) } else { format!("; changed since the acceptance: {}{}", changed.iter().take(6).copied().collect::<Vec<_>>().join(", "), if changed.len() > 6 { format!(" and {} more", changed.len() - 6) } else { String::new() }) }))
+}
+
+/// A region of the approved-vs-current comparison that still renders as accepted.
+fn region_still_accepted(v: &Value) -> bool {
+    matches!(v["verdict"].as_str(), Some("match" | "drift")) && rscore(v, "structure") >= 0.75
 }
 
 /// Code regions (text, control, chrome) an accepted first-viewport review
@@ -1653,7 +1667,7 @@ fn lapsed_viewport(human: Option<&Value>, frame: &str) -> Option<String> {
 fn human_accepted_regions(human: Option<&Value>, regions: &[Value]) -> std::collections::HashSet<String> {
     let reviewed = human.and_then(|h| h["comparison"]["regions"].as_array()).cloned().unwrap_or_default();
     regions.iter().filter(|r| matches!(r["kind"].as_str(), Some("text" | "control" | "chrome")))
-        .filter(|r| reviewed.iter().any(|v| v["id"] == r["id"] && matches!(v["verdict"].as_str(), Some("match" | "drift")) && rscore(v, "structure") >= 0.75))
+        .filter(|r| reviewed.iter().any(|v| v["id"] == r["id"] && region_still_accepted(v)))
         .filter_map(|r| r["id"].as_str().map(String::from)).collect()
 }
 
@@ -2114,7 +2128,7 @@ fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_d
         match reasons.iter().position(|r| r.starts_with("hero overall")) {
             Some(i) => { advisories.push(format!("(measured) {}", reasons[i])); reasons[i] = lapse; }
             None if reasons.iter().any(|r| !material.contains(r)) => reasons.insert(0, lapse),
-            None => {}
+            None => advisories.insert(0, format!("(advisory) {lapse}")),
         }
     }
     if let Some(h) = human {
@@ -2258,6 +2272,34 @@ fn hero_loop_verdict(state: &mut Value, gate: &Gate, artifact_path: &str, io: &I
     None
 }
 
+/// Failed responsive attempts in a row before the gate stops asking for edits.
+/// Three, as at the hero: past that, the readings have had their chance.
+const RESPONSIVE_ATTEMPTS: usize = 3;
+
+/// The responsive gate's loop record, and the escalation once it has failed
+/// RESPONSIVE_ATTEMPTS times in a row: the same route the hero takes, so a
+/// stalled desktop width reaches the user instead of a recorded `fix`.
+fn responsive_loop_verdict(state: &mut Value, gate: &Gate, viewport_accepted: bool, s: &str) -> Option<String> {
+    let phase = state.pointer_mut("/phases/responsive")?.as_object_mut()?;
+    let mut history: Vec<Value> = phase.get("history").and_then(Value::as_array).cloned().unwrap_or_default();
+    history.push(json!({ "at": now(), "score": gate.score.map(util::num).unwrap_or(Value::Null), "worstIds": gate.worst_ids, "blockingReasons": gate.reasons }));
+    let start = history.len().saturating_sub(6);
+    phase.insert("history".into(), json!(history[start..].to_vec()));
+    if gate.ok || history.len() < RESPONSIVE_ATTEMPTS {
+        return None;
+    }
+    let recent = &history[history.len() - RESPONSIVE_ATTEMPTS..];
+    if !recent.iter().all(|h| h["blockingReasons"].as_array().is_some_and(|a| !a.is_empty())) {
+        return None;
+    }
+    let lead = format!("The responsive gate has failed {RESPONSIVE_ATTEMPTS} attempts in a row.");
+    let side = gate.side_by_side.as_deref().unwrap_or(".impeccable/review/diff/desktop/side-by-side.png");
+    if viewport_accepted {
+        return Some(format!("{lead} The user already accepted a first viewport, so that review is closed. Stop iterating: show the user {side} with the regions below, and ask them to choose between restoring those regions at desktop width and keeping the desktop first viewport as it renders. Keeping it is their call in their words: quote them in {s} build-phase advance --force --reason. Until they answer, this phase stays open; a finish recorded over it is an unfinished build, not a fix round."));
+    }
+    Some(format!("{lead} Stop iterating and present the first-viewport review (the assembled hero, stage hero, in component-review.md) with the current page, so the user judges the first viewport in context. An accepted review carries to desktop width while the desktop capture still matches the approved screenshot; displaced and missing regions still block. Until then this phase stays open; a finish recorded over it is an unfinished build, not a fix round."))
+}
+
 fn hash_file(io: &Io, file: &str) -> Option<String> {
     use sha1::{Digest, Sha1};
     let data = std::fs::read(abs(io, file)).ok()?;
@@ -2314,91 +2356,185 @@ fn gate_responsive_inner(io: &Io, state: &mut Value, min: f64, out_dir: &str, na
         Err(e) => return Gate::fail(vec![format!("comp-diff failed on {desktop}: {e}")]),
     };
     let mut regions: Vec<Value> = report.get("regions").and_then(Value::as_array).cloned().unwrap_or_default();
-    let missing: Vec<Value> = regions
-        .iter()
-        .filter(|r| {
-            if r.get("verdict").and_then(Value::as_str) != Some("missing") || r.get("kind").and_then(Value::as_str) == Some("texture") {
-                return false;
-            }
-            let id = r.get("id").and_then(Value::as_str).unwrap_or("");
-            let passed = spec.as_ref().is_some_and(|spec| spec_regions(spec).iter().any(|region|
-                region.get("id").and_then(Value::as_str) == Some(id) && plate_receipt_current(io, state, spec, region)));
-            let kind = r.get("kind").and_then(Value::as_str).unwrap_or("");
-            if (kind == "plate" || kind == "image") && passed {
-                let present = rscore_opt(r, "detailRaw").map(|v| v >= 0.3).unwrap_or(rscore(r, "detail") >= 0.3);
-                if present && rscore(r, "structure") >= 0.5 {
-                    return false;
-                }
-            }
-            true
-        })
-        .cloned().collect();
-    // Keep the original scores and all missing/integrity/overall blockers.
-    // A human-approved assembly can qualify a text-style contradiction only
-    // when that region still matches the approved rendering at desktop width.
-    let accepted_text = native.and_then(|n| n.capture.approved_reference().map(|a|(n,a)))
-        .and_then(|(n,a)| hero_diff_labeled(io,&n.path("human-approved"),desktop,spec.as_ref(),&format!("{out_dir}/human-reviewed"),"human-reviewed").ok().map(|(r,_)|(r,a.proof.clone())));
-    if let Some((comparison,proof))=&accepted_text {report["humanTextReview"]=json!({"proof":proof,"comparison":comparison});}
-    let contradicted_direction: Vec<Value> = regions.iter().filter(|r| r.get("verdict").and_then(Value::as_str) == Some("contradicted") && matches!(r.get("kind").and_then(Value::as_str), Some("text" | "control"))).cloned().collect();
-    for region in &mut regions {
-        if region.get("verdict").and_then(Value::as_str) == Some("missing")
-            && matches!(region.get("kind").and_then(Value::as_str), Some("plate" | "image"))
-            && !missing.iter().any(|r| r.get("id") == region.get("id")) {
+    // Where a region went when it is not at its box: the comp, and the capture at
+    // the comp's width with its full height (a full-page capture keeps what lies
+    // below the first viewport; a native frame is the first viewport alone).
+    let images = load_raster(io, comp_path).ok().zip(load_raster(io, desktop).ok());
+    let frame = images.as_ref().map(|(comp, capture)| {
+        let k = capture.width as f64 / comp.width as f64;
+        let tall = r::resize(capture, comp.width as f64, round(capture.height as f64 / k));
+        (k, tall)
+    });
+    let locate = |r: &Value| -> Option<Displacement> {
+        let ((comp, _), (_, tall)) = (images.as_ref()?, frame.as_ref()?);
+        let f = |k: &str| r[k].as_f64().unwrap_or(0.);
+        let (cw, ch) = (comp.width as f64, comp.height as f64);
+        crate::displacement::find(comp, tall, ch, DRect { x: f("x") * cw, y: f("y") * ch, w: f("w") * cw, h: f("h") * ch }, r["kind"].as_str())
+    };
+    // Offsets in the capture's own pixels, the ones the agent edits.
+    let k = frame.as_ref().map(|(k, _)| *k).unwrap_or(1.);
+    let frame_size = images.as_ref().map(|(comp, capture)| format!("{}x{}", capture.width, round(comp.height as f64 * k) as i64)).unwrap_or_default();
+    let passed = |id: &str| spec.as_ref().is_some_and(|spec| spec_regions(spec).iter().any(|region|
+        region.get("id").and_then(Value::as_str) == Some(id) && plate_receipt_current(io, state, spec, region)));
+    let mut region_reasons = Map::new();
+    let mut advisories: Vec<String> = Vec::new();
+    let mut missing_reasons: Vec<(String, String)> = Vec::new();
+    for region in regions.iter_mut() {
+        let id = region["id"].as_str().unwrap_or("").to_string();
+        let kind = region["kind"].as_str().unwrap_or("").to_string();
+        let verdict = region["verdict"].as_str().unwrap_or("").to_string();
+        let plate = kind == "plate" || kind == "image";
+        if kind == "texture" || !(verdict == "missing" || (verdict == "contradicted" && matches!(kind.as_str(), "text" | "control" | "chrome"))) {
+            continue;
+        }
+        // A plate that passed its asset gate and renders at desktop width is present;
+        // where it sits is placement, which the overall bar and the native frame check guard.
+        let present_plate = plate && verdict == "missing" && passed(&id)
+            && rscore_opt(region, "detailRaw").map(|v| v >= 0.3).unwrap_or(rscore(region, "detail") >= 0.3);
+        if present_plate && rscore(region, "structure") >= 0.5 {
             region["verdict"] = json!("drift");
             region["verdictReason"] = json!("current plate passed asset validation and responsive rendered presence check");
+            continue;
+        }
+        match locate(region) {
+            Some(d) if d.beyond_frame() => {
+                let message = displaced_message(&id, &d, k, &frame_size);
+                region["verdict"] = json!("displaced");
+                region["verdictReason"] = json!("present, but displaced past the first viewport");
+                region["displacement"] = displacement_json(&d, k);
+                missing_reasons.push((id, message));
+            }
+            Some(d) => {
+                region["verdict"] = json!("drift");
+                region["verdictReason"] = json!("present, displaced inside the first viewport");
+                region["displacement"] = displacement_json(&d, k);
+                advisories.push(format!("(advisory, still inside the first viewport) at desktop width, region {id} sits {} than in the comp", offset_words(d.dx * k, d.dy * k)));
+            }
+            None if present_plate => {
+                region["verdict"] = json!("drift");
+                region["verdictReason"] = json!("current plate passed asset validation and renders at desktop width away from its comp box");
+                advisories.push(format!("(advisory) at desktop width, plate {id} renders but not at its comp box (structure {}%): size and position it to the spec box", pct0(rscore(region, "structure"))));
+            }
+            None if verdict == "missing" => missing_reasons.push((id.clone(), format!("at desktop width, region {id} is missing"))),
+            None => {}
         }
     }
-    let mut region_reasons = Map::new();
     let overall = report.get("overall").and_then(Value::as_f64).unwrap_or(0.0);
     let mut reasons = Vec::new();
-    // The same first viewport the user accepted, still rendered at desktop width: its
-    // score and contradictions are not re-litigated here; missing regions still block.
-    let viewport_accepted = accepted_text.as_ref().is_some_and(|(comparison, _)| human_accepted_viewport(Some(&json!({"comparison": comparison}))));
-    let mut advisories: Vec<String> = Vec::new();
-    if viewport_accepted { report["humanTextReview"]["viewportAccepted"] = json!(true); }
+    // The approved first viewport at the desktop frame's own size. Its regions that
+    // still render as accepted (text, control, chrome) carry their acceptance here.
+    let accepted_view = native.and_then(|n| n.capture.approved_reference().map(|a| (n, a)))
+        .and_then(|(n, a)| approved_at_frame(io, &n.path("human-approved"), desktop, spec.as_ref(), &format!("{out_dir}/human-reviewed")).ok().map(|(r, _)| (r, a.proof.clone())));
+    let review = accepted_view.as_ref().map(|(comparison, _)| json!({"comparison": comparison}));
+    let viewport_accepted = human_accepted_viewport(review.as_ref());
+    let carried = human_accepted_regions(review.as_ref(), &regions);
+    let mut lapse = lapsed_viewport(review.as_ref(), "desktop capture");
+    if let Some((comparison, proof)) = &accepted_view {
+        report["humanTextReview"] = json!({"proof": proof, "comparison": comparison, "viewportAccepted": viewport_accepted,
+            "referenceScale": "the approved screenshot resampled once to the desktop frame; the capture is compared at its own size"});
+    }
     if overall < min && viewport_accepted {
         advisories.push(format!("(advisory, first viewport accepted) the desktop capture scores {}% against the comp, under {}%", pct0(overall), pct0(min)));
-    } else if let Some(lapse) = (overall < min).then(|| accepted_text.as_ref().and_then(|(comparison, _)| lapsed_viewport(Some(&json!({"comparison": comparison})), "desktop capture"))).flatten() {
+    } else if overall < min && lapse.is_some() {
         advisories.push(format!("(measured) the desktop capture scores {}% against the comp, under {}%", pct0(overall), pct0(min)));
-        reasons.push(lapse);
+        reasons.push(lapse.take().unwrap());
     } else if overall < min {
         let bp = state.get("breakpoint").and_then(Value::as_str).map(String::from).unwrap_or_else(|| "the comp size".into());
         reasons.push(format!(
-            "the desktop capture ({}; the top {} rows scaled to the comp's width are compared, a full-page capture is fine) scores {}% against the comp, under {}%: the first viewport does not survive a common desktop width. The hero passed at {bp}; the layout must hold from ~1280 up, not only at the comp's exact width (grid columns in fr / minmax, not fixed px that overflow and wrap).",
+            "the desktop capture ({}; its first viewport, the top {} rows at the comp's width, is compared) scores {}% against the comp, under {}%: the first viewport does not survive a common desktop width. The hero passed at {bp}; the layout must hold from ~1280 up, not only at the comp's exact width (grid columns in fr / minmax, not fixed px that overflow and wrap).",
             report.get("buildSize").and_then(Value::as_str).unwrap_or(""),
             report.get("compSize").and_then(Value::as_str).unwrap_or(""),
             pct0(overall), pct0(min)
         ));
     }
-    for r in &missing {
-        let id = r.get("id").and_then(Value::as_str).unwrap_or("");
-        push_region_blocker(&mut reasons, &mut region_reasons, id, format!("at desktop width, region {id} is missing"));
+    for (id, message) in missing_reasons {
+        push_region_blocker(&mut reasons, &mut region_reasons, &id, message);
     }
+    let contradicted_direction: Vec<Value> = regions.iter().filter(|r| r.get("verdict").and_then(Value::as_str) == Some("contradicted") && matches!(r.get("kind").and_then(Value::as_str), Some("text" | "control"))).cloned().collect();
+    let mut accepted_ids: Vec<Value> = Vec::new();
     for r in &contradicted_direction {
-        let accepted = r["kind"]=="text" && accepted_text.as_ref().is_some_and(|(comparison,_)| comparison["regions"].as_array().is_some_and(|reviewed| reviewed.iter().any(|region|region["id"]==r["id"] && matches!(region["verdict"].as_str(),Some("match"|"drift")) && rscore(region,"structure")>=0.75)));
-        if viewport_accepted && !accepted {
-            advisories.push(format!("(advisory, first viewport accepted) at desktop width, region {} ({}) is contradicted (structure {}%)", r["id"].as_str().unwrap_or(""), r["kind"].as_str().unwrap_or(""), pct0(rscore(r, "structure"))));
+        let id = r["id"].as_str().unwrap_or("");
+        let message = format!("at desktop width, region {id} ({}) is contradicted (structure {}%)", r["kind"].as_str().unwrap_or(""), pct0(rscore(r, "structure")));
+        if carried.contains(id) {
+            accepted_ids.push(json!(id));
+            advisories.push(format!("(advisory, accepted in the first-viewport review) {message}"));
             continue;
         }
-        if accepted {
-            report["humanTextReview"]["acceptedTextRegions"].as_array_mut().map(|v|v.push(r["id"].clone())).unwrap_or_else(||{report["humanTextReview"]["acceptedTextRegions"]=json!([r["id"].clone()]);});
+        if viewport_accepted {
+            advisories.push(format!("(advisory, first viewport accepted) {message}"));
             continue;
         }
-        push_region_blocker(&mut reasons, &mut region_reasons, r.get("id").and_then(Value::as_str).unwrap_or(""), format!(
-            "at desktop width, region {} ({}) is contradicted (structure {}%)",
-            r.get("id").and_then(Value::as_str).unwrap_or(""),
-            r.get("kind").and_then(Value::as_str).unwrap_or(""),
-            pct0(rscore(r, "structure"))
-        ));
+        push_region_blocker(&mut reasons, &mut region_reasons, id, message);
+    }
+    if accepted_view.is_some() { report["humanTextReview"]["acceptedRegions"] = json!(accepted_ids); }
+    // An acceptance that no longer holds is always said, not only under the bar:
+    // it is why the readings below are not advisories.
+    if let Some(lapse) = lapse {
+        if reasons.is_empty() { advisories.insert(0, format!("(advisory) {lapse}")); } else { reasons.insert(0, lapse); }
     }
     let mut g = if reasons.is_empty() { Gate::ok(format!("desktop {}% ({})", pct0(overall), report.get("verdict").and_then(Value::as_str).unwrap_or(""))) } else { Gate::fail(reasons) };
     g.summary = Some(format!("desktop {}% ({})", pct0(overall), report.get("verdict").and_then(Value::as_str).unwrap_or("")));
     g.score = Some(overall);
+    g.verdict = report.get("verdict").and_then(Value::as_str).map(String::from);
     g.side_by_side = report.pointer("/files/sideBySide").and_then(Value::as_str).map(String::from);
+    // The regions to open first, worst first, as the hero gate lists them.
+    let worst: Vec<Value> = repair_regions(&regions, &region_reasons).into_iter().take(3).collect();
+    g.worst = worst.iter().map(|r| format!("{} {} {}%", r["id"].as_str().unwrap_or(""), r["verdict"].as_str().unwrap_or(""), pct0(rscore(r, "overall")))).collect();
+    g.worst_ids = worst.iter().filter_map(|r| r["id"].as_str().map(String::from)).collect();
+    g.worst_crops = worst.iter().map(|r| {
+        let id = r["id"].as_str().unwrap_or("");
+        json!({ "id": id, "verdict": r["verdict"], "score": r.get("score").cloned().unwrap_or(Value::Null), "file": format!("{out_dir}/regions/{id}.png") })
+    }).collect();
+    g.region_verdicts = regions.iter().filter_map(|r| Some((r.get("id")?.as_str()?.to_string(), json!(r.get("verdict")?.as_str()?)))).collect();
     g.region_reasons = region_reasons;
     g.advisories = advisories;
     publish_gate_evidence(io, out_dir, &mut report, &mut measured, &regions, &mut g, "responsive");
     g
+}
+
+/// "about 64px lower", "about 12px higher and 20px to the right".
+fn offset_words(dx: f64, dy: f64) -> String {
+    let mut parts = Vec::new();
+    if dy.abs() >= 1.5 { parts.push(format!("{}px {}", dy.abs().round() as i64, if dy > 0. { "lower" } else { "higher" })); }
+    if dx.abs() >= 1.5 { parts.push(format!("{}px {}", dx.abs().round() as i64, if dx > 0. { "to the right" } else { "to the left" })); }
+    if parts.is_empty() { "in place".into() } else { format!("about {}", parts.join(" and ")) }
+}
+
+fn displacement_json(d: &Displacement, k: f64) -> Value {
+    json!({"dx": (d.dx * k).round(), "dy": (d.dy * k).round(), "visible": util::num((d.visible * 1000.).round() / 1000.), "inferred": d.inferred, "unit": "capture px"})
+}
+
+fn displaced_message(id: &str, d: &Displacement, k: f64, frame: &str) -> String {
+    let fix = "Restore it into the first viewport: size what sits above it in proportion to the viewport (the comp's own ratios), not with fixed px or a px floor that grows it at this width";
+    if d.inferred {
+        return format!("at desktop width, region {id} is displaced, not missing: the content above it in its column sits {} than in the comp, which pushes {id} out of the {frame} first viewport. {fix}.", offset_words(d.dx * k, d.dy * k));
+    }
+    let shown = (d.visible * 100.).round() as i64;
+    format!("at desktop width, region {id} is displaced, not missing: it renders {} than in the comp, and {} of it stays inside the {frame} first viewport. {fix}.",
+        offset_words(d.dx * k, d.dy * k), if shown == 0 { "none".to_string() } else { format!("{shown}%") })
+}
+
+/// The approved first viewport resampled once to the desktop frame's own size,
+/// compared with the desktop capture there. The capture under test is never
+/// resampled, so a page that scales proportionally reads as the page the user
+/// accepted (a proportional render of a real accepted page scored 98% this way;
+/// see CLI-CONTRACT.md for the measurements behind the 95% bar).
+fn approved_at_frame(io: &Io, approved_path: &str, frame_path: &str, spec: Option<&Value>, out_dir: &str) -> Result<(Value, CompareResult), String> {
+    let approved = load_raster(io, approved_path)?;
+    let frame = load_raster(io, frame_path)?;
+    let scaled = if approved.width == frame.width { approved.clone() } else {
+        r::resize(&approved, frame.width as f64, round(approved.height as f64 * frame.width as f64 / approved.width as f64))
+    };
+    let res = compare(&scaled, &frame, spec, "top", "human-reviewed", None);
+    let files = write_artifacts(&res, &scaled, &abs(io, out_dir)).map_err(|e| format!("cannot persist comparison artifacts: {e}"))?;
+    let meta = json!({
+        "label": "human-reviewed", "comp": approved_path, "build": frame_path,
+        "spec": if spec.is_some() { Value::String(SPEC_PATH.into()) } else { Value::Null },
+        "compSize": format!("{}x{}", scaled.width, scaled.height),
+        "buildSize": format!("{}x{}", frame.width, frame.height),
+        "referenceSize": format!("{}x{}", approved.width, approved.height),
+    });
+    Ok((build_report(&res, Some(&files), &meta), res))
 }
 
 fn hero_diff_labeled(io: &Io, comp_path: &str, build_path: &str, spec: Option<&Value>, out_dir: &str, label: &str) -> Result<(Value, CompareResult), String> {
@@ -2562,6 +2698,12 @@ fn advance(io: &Io, state: &mut Value, force: bool, reason: Option<&str>, opts: 
             }
         }
     }
+    if phase == "responsive" && gate.score.is_some() {
+        let s = self_cmd(io);
+        if let Some(stuck) = responsive_loop_verdict(state, &gate, first_viewport_accepted(io), &s) {
+            gate.reasons.insert(0, stuck);
+        }
+    }
     if !gate.ok && !force {
         if let Some(p) = state.pointer_mut(&format!("/phases/{phase}")).and_then(|p| p.as_object_mut()) {
             p.insert("status".into(), json!("open"));
@@ -2634,7 +2776,17 @@ fn next_instruction(io: &Io, state: &Value) -> String {
         ),
         "sections" => format!("Build the remaining sections inside the spec system (same corner language, rules, and palette; nothing the comp does not show). The hero passed with the comp's words verbatim; from here, content beyond the comp is yours to author at full fidelity, and any change to words the comp showed is a stated decision in your report, never silent. Then {s} build-phase advance."),
         "motion" => format!("Add the signature interaction, reveals, and motion. Then {s} build-phase advance."),
-        "responsive" => format!("Build the other viewports (mobile first if the surface is mobile). The first viewport must hold at common desktop widths (1280 to 1600), not only at the comp's exact size: fluid columns, no fixed-px grid that wraps 96px narrower. Settle or disable entrance motion before capturing (an element mid-animation reads as missing). Capture desktop.png (1440 wide, full page) and mobile.png (390 wide, full page) into .impeccable/review/; the gate diffs the top of desktop.png (scaled to the comp's width) against the comp. Then {s} build-phase advance."),
+        "responsive" => {
+            // The desktop frame keeps the comp's aspect at 1440 wide.
+            let frame = bp.and_then(|b| b.split_once('x')).and_then(|(w, h)| Some((w.parse::<f64>().ok()?, h.parse::<f64>().ok()?)))
+                .filter(|(w, h)| *w > 0. && *h > 0.).map(|(w, h)| format!("1440x{}", (h * 1440. / w).ceil() as i64)).unwrap_or_else(|| "1440 wide at the comp's aspect".into());
+            let compared = if state["capturePolicy"] == "native-html-v1" || io.env("IMPECCABLE_NATIVE_CAPTURE") == Some("1") {
+                format!("The gate renders the page itself, a {frame} desktop first viewport and a 390-wide mobile frame, and diffs that desktop first viewport against the comp (scaled to the comp's width); captures you save are for your own inspection.")
+            } else {
+                format!("Capture desktop.png (1440 wide, full page) and mobile.png (390 wide, full page) into .impeccable/review/; the gate diffs the first viewport of desktop.png (its top {frame}, scaled to the comp's width) against the comp.")
+            };
+            format!("Build the other viewports (mobile first if the surface is mobile). The first viewport must hold at common desktop widths (1280 to 1600), not only at the comp's exact size: fluid columns, no fixed-px grid that wraps 96px narrower, and sizes that scale with the viewport so nothing the comp shows in the first viewport is pushed below it. Settle or disable entrance motion before capturing (an element mid-animation reads as missing). {compared} Then {s} build-phase advance. When it fails, open the region crops it lists first; after three failed attempts it names the route to the user instead of more edits.")
+        }
         "review" => format!("Spawn the finish reviewer with the state file, the hero diff report, and the captures; record its disposition with {s} build-phase finish --disposition <word>."),
         _ => String::new(),
     }
@@ -3207,6 +3359,9 @@ pub fn run_with_renderer(argv: &[String],io: &mut Io,organic_scan: OrganicScan,r
                         io.out(&format!("    {file}   {id}: {verdict} {}% (structure {}%, color {}%, detail {}%)\n", pct0(sc("overall")), pct0(sc("structure")), pct0(sc("color")), pct0(sc("detail"))));
                     }
                     io.out("  A region scored missing needs its material (a plate placed, or produced), not a value change; contradicted needs its structure re-derived from the spec box; drift is where padding and size edits belong. When a thin chrome strip (masthead, breadcrumb, table header) is the worst region, check its box height in the spec against the comp first: a strip one grid row tall in the spec but 53px in the comp compares your build against ground it never had.\n");
+                    if res.worst_crops.iter().any(|c| c["verdict"] == "displaced") {
+                        io.out("  A region scored displaced is present but pushed out of the first viewport: restore it there by sizing what sits above it in proportion to the viewport, not by moving it alone; a px floor or fixed row height that grows at this width is the usual cause.\n");
+                    }
                 }
                 for r in &res.reasons {
                     io.out(&format!("  - {r}\n"));

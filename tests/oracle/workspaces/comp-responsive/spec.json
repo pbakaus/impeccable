@@ -1,0 +1,46 @@
+{
+  "comp": "comp.png",
+  "compSize": {
+    "width": 400,
+    "height": 360
+  },
+  "regions": [
+    {
+      "id": "menu",
+      "kind": "chrome",
+      "medium": "semantic",
+      "note": "ruled menu rows",
+      "box": {
+        "x": 0.54,
+        "y": 0.1,
+        "w": 0.42,
+        "h": 0.78
+      },
+      "px": {
+        "x": 216,
+        "y": 36,
+        "w": 168,
+        "h": 281
+      }
+    },
+    {
+      "id": "sign-off",
+      "kind": "text",
+      "medium": "semantic",
+      "note": "sign-off line",
+      "type": {},
+      "box": {
+        "x": 0.555,
+        "y": 0.9111,
+        "w": 0.35,
+        "h": 0.0611
+      },
+      "px": {
+        "x": 222,
+        "y": 328,
+        "w": 140,
+        "h": 22
+      }
+    }
+  ]
+}
