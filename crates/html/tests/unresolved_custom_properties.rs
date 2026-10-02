@@ -152,6 +152,21 @@ fn unresolved_border_shorthand_component_is_not_a_visible_boundary() {
 }
 
 #[test]
+fn uppercase_var_in_border_shorthand_is_not_a_visible_boundary() {
+    let html = r#"
+        <style>
+          .reverse {
+            border: 1px VAR(--missing-border-style) #111;
+            padding: 0;
+          }
+        </style>
+        <div class="reverse"><p>Readable card copy</p></div>
+    "#;
+
+    assert!(cramped_padding_ids(html, None).is_empty());
+}
+
+#[test]
 fn unresolved_outline_style_is_not_a_visible_boundary() {
     let html = r#"
         <style>

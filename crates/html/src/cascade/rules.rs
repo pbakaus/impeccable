@@ -179,7 +179,7 @@ fn internal_border_style_expansion(prop: &str, value: &str) -> Vec<(String, Stri
     let style = tokens
         .iter()
         .find(|token| BORDER_STYLE_VALUE_RE.is_match(token))
-        .or_else(|| tokens.iter().find(|token| token.contains("var(")));
+        .or_else(|| tokens.iter().find(|token| token.to_ascii_lowercase().contains("var(")));
     let Some(style) = style else {
         return Vec::new();
     };
