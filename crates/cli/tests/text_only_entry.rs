@@ -574,7 +574,7 @@ fn capture_clock_is_pinned_and_an_approved_review_lends_its_instant() {
     let f = Fixture::new();
     // The bars' widths follow the hour, as a page that prints "open now" does:
     // one through `new Date()`, one through an argument-less Intl format.
-    fs::write(f.project.join("index.html"), format!("{PAGE}<script>const h=new Date().getUTCHours();const p=new Intl.DateTimeFormat('en-US',{{timeZone:'UTC',hour:'numeric',hourCycle:'h23'}}).formatToParts().find(x=>x.type==='hour').value;document.querySelector('h1').style.width=(16+h*8)+'px';document.querySelector('header').style.width=(16+Number(p)*8)+'px';</script>")).unwrap();
+    fs::write(f.project.join("index.html"), format!("{PAGE}<script>const h=new Date().getUTCHours();const p=new Intl.DateTimeFormat('en-US',{{timeZone:'UTC',hour:'numeric',hourCycle:'h23'}}).formatToParts().find(x=>x.type==='hour').value;document.querySelector('h1').style.width=(new Date().constructor===Date&&new Date(0) instanceof Date?16+h*8:4)+'px';document.querySelector('header').style.width=(16+Number(p)*8)+'px';</script>")).unwrap();
     let at = |hour: u64| CaptureClock { epoch_ms: (1_790_000_000_000u64 / 86_400_000 * 86_400_000 + hour * 3_600_000) as f64, from_review: false };
     let frame = |clock: CaptureClock| {
         let captured = CdpEntryRenderer.capture_at(&f.request(EntryStage::Hero), &[], clock).unwrap();

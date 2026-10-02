@@ -1267,6 +1267,28 @@ fn responsive_calls_a_region_pushed_below_the_first_viewport_displaced_not_missi
 }
 
 #[test]
+fn a_missing_control_does_not_borrow_its_identical_neighbour() {
+    // Two identical icon controls 24px apart; the lower one is gone at desktop width.
+    let ws = Workspace::new();
+    let icon = |img: &mut Image, y: f64| for k in 0..3 { r::fill_rect(img, 40. + k as f64 * 10., y, 6., 14., [20., 20., 20., 255.]); };
+    let mut comp = r::create_image(200, 200, [240, 240, 236, 255]);
+    icon(&mut comp, 100.);
+    icon(&mut comp, 124.);
+    let mut desktop = r::create_image(200, 200, [240, 240, 236, 255]);
+    icon(&mut desktop, 100.);
+    let png = |i: &Image| png_io::encode_png(i, &[]).unwrap();
+    ws.write("comp.png", &png(&comp));
+    ws.write(".impeccable/review/desktop.png", &png(&desktop));
+    ws.write(".impeccable/review/mobile.png", &png(&desktop));
+    ws.write(SPEC_PATH, util::json_pretty(&json!({"comp":"comp.png","regions":[
+        {"id":"first","kind":"control","medium":"semantic","note":"first icon control","box":{"x":0.19,"y":0.49,"w":0.16,"h":0.09},"px":{"x":38,"y":98,"w":32,"h":18}},
+        {"id":"second","kind":"control","medium":"semantic","note":"second icon control","box":{"x":0.19,"y":0.61,"w":0.16,"h":0.09},"px":{"x":38,"y":122,"w":32,"h":18}}]})).as_bytes());
+    let mut state = json!({"comp":"comp.png","phases":{}});
+    let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None);
+    assert!(gate.reasons.iter().any(|r| r == "at desktop width, region second is missing"), "{:?} {:?}", gate.reasons, gate.advisories);
+}
+
+#[test]
 fn responsive_reads_a_region_shifted_inside_the_first_viewport_as_drift() {
     let ws = menu_workspace();
     let mut state = json!({"comp":"comp.png","phases":{}});
@@ -1404,6 +1426,9 @@ fn responsive_escalation_after_acceptance_routes_to_the_user_not_a_new_review() 
     let third = responsive_loop_verdict(&mut state, &gate, true, "impeccable").unwrap();
     assert!(third.contains("already accepted a first viewport") && third.contains("impeccable build-phase advance --force --reason") && third.contains("not a fix round"), "{third}");
     assert!(!third.contains("present the first-viewport review"), "{third}");
+    // The example it gives is a reason force accepts.
+    let example = third.split("for example: ").nth(1).unwrap().split(')').next().unwrap();
+    assert!(force_allowed(Some(example)), "{example}");
     // A pass in between resets the run of failures.
     let mut passed = Gate::fail(vec![]);
     passed.ok = true;

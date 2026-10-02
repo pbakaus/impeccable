@@ -2127,7 +2127,7 @@ fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_d
         // Say why the acceptance does not hold instead of arguing the raw score.
         match reasons.iter().position(|r| r.starts_with("hero overall")) {
             Some(i) => { advisories.push(format!("(measured) {}", reasons[i])); reasons[i] = lapse; }
-            None if reasons.iter().any(|r| !material.contains(r)) => reasons.insert(0, lapse),
+            None if !reasons.is_empty() => reasons.insert(0, lapse),
             None => advisories.insert(0, format!("(advisory) {lapse}")),
         }
     }
@@ -2295,7 +2295,7 @@ fn responsive_loop_verdict(state: &mut Value, gate: &Gate, viewport_accepted: bo
     let lead = format!("The responsive gate has failed {RESPONSIVE_ATTEMPTS} attempts in a row.");
     let side = gate.side_by_side.as_deref().unwrap_or(".impeccable/review/diff/desktop/side-by-side.png");
     if viewport_accepted {
-        return Some(format!("{lead} The user already accepted a first viewport, so that review is closed. Stop iterating: show the user {side} with the regions below, and ask them to choose between restoring those regions at desktop width and keeping the desktop first viewport as it renders. Keeping it is their call in their words: quote them in {s} build-phase advance --force --reason. Until they answer, this phase stays open; a finish recorded over it is an unfinished build, not a fix round."));
+        return Some(format!("{lead} The user already accepted a first viewport, so that review is closed. Stop iterating: show the user {side} with the regions below, and ask them to choose between restoring those regions at desktop width and keeping the desktop first viewport as it renders. Keeping it downgrades the comp at desktop width, so it takes their words saying so, quoted in {s} build-phase advance --force --reason (for example: the user said: \"the comp does not need to match at desktop width\"); force refuses any other reason. Until they answer, this phase stays open; a finish recorded over it is an unfinished build, not a fix round."));
     }
     Some(format!("{lead} Stop iterating and present the first-viewport review (the assembled hero, stage hero, in component-review.md) with the current page, so the user judges the first viewport in context. An accepted review carries to desktop width while the desktop capture still matches the approved screenshot; displaced and missing regions still block. Until then this phase stays open; a finish recorded over it is an unfinished build, not a fix round."))
 }
@@ -2365,11 +2365,24 @@ fn gate_responsive_inner(io: &Io, state: &mut Value, min: f64, out_dir: &str, na
         let tall = r::resize(capture, comp.width as f64, round(capture.height as f64 / k));
         (k, tall)
     });
+    // A match that lands on another region of the same kind and size is that
+    // region's own pixels (two identical icons, two menu rows), not this one moved.
+    let same_shape: Vec<(String, String, [f64; 4])> = regions.iter().filter_map(|r| Some((r["id"].as_str()?.to_string(), r["kind"].as_str()?.to_string(),
+        [r["x"].as_f64()?, r["y"].as_f64()?, r["w"].as_f64()?, r["h"].as_f64()?]))).collect();
     let locate = |r: &Value| -> Option<Displacement> {
         let ((comp, _), (_, tall)) = (images.as_ref()?, frame.as_ref()?);
         let f = |k: &str| r[k].as_f64().unwrap_or(0.);
         let (cw, ch) = (comp.width as f64, comp.height as f64);
-        crate::displacement::find(comp, tall, ch, DRect { x: f("x") * cw, y: f("y") * ch, w: f("w") * cw, h: f("h") * ch }, r["kind"].as_str())
+        let d = crate::displacement::find(comp, tall, ch, DRect { x: f("x") * cw, y: f("y") * ch, w: f("w") * cw, h: f("h") * ch }, r["kind"].as_str())?;
+        let moved = [f("x") + d.dx / cw, f("y") + d.dy / ch, f("w"), f("h")];
+        let lookalike = same_shape.iter().any(|(id, kind, b)| {
+            if Some(id.as_str()) == r["id"].as_str() || Some(kind.as_str()) != r["kind"].as_str() { return false; }
+            let ratio = (b[2] * b[3]) / (moved[2] * moved[3]).max(1e-9);
+            let ix = ((moved[0] + moved[2]).min(b[0] + b[2]) - moved[0].max(b[0])).max(0.);
+            let iy = ((moved[1] + moved[3]).min(b[1] + b[3]) - moved[1].max(b[1])).max(0.);
+            (0.5..=2.0).contains(&ratio) && ix * iy >= 0.5 * moved[2] * moved[3]
+        });
+        (!lookalike).then_some(d)
     };
     // Offsets in the capture's own pixels, the ones the agent edits.
     let k = frame.as_ref().map(|(k, _)| *k).unwrap_or(1.);

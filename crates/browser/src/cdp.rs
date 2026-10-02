@@ -1660,6 +1660,7 @@ pub fn pinned_clock_script(epoch_ms: f64) -> String {
     format!(r#"(()=>{{const T={epoch},P=performance.now(),N=Date;const now=()=>Math.floor(T+performance.now()-P);
 const D=new Proxy(N,{{construct(t,a,nt){{return Reflect.construct(N,a.length?a:[now()],nt)}},apply(){{return new N(now()).toString()}},get(t,k,r){{return k==="now"?now:Reflect.get(t,k,r)}}}});
 Object.defineProperty(globalThis,"Date",{{value:D,writable:true,configurable:true,enumerable:false}});
+Object.defineProperty(N.prototype,"constructor",{{value:D,writable:true,configurable:true,enumerable:false}});
 const F=Intl.DateTimeFormat.prototype,g=Object.getOwnPropertyDescriptor(F,"format").get,p=F.formatToParts;
 Object.defineProperty(F,"format",{{configurable:true,get(){{const f=g.call(this);return d=>f(d===undefined?now():d)}}}});
 F.formatToParts=function(d){{return p.call(this,d===undefined?now():d)}};}})()"#, epoch = epoch_ms.floor() as i64)
