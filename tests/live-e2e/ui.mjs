@@ -34,6 +34,7 @@ const DETECT_BADGE = '#impeccable-live-detect-badge';
 const DESIGN_TOGGLE = '#impeccable-live-design-toggle';
 const DESIGN_HOST = '#impeccable-live-design-host';
 const EXIT_BUTTON = '#impeccable-live-exit';
+const CONFIGURE_INPUT_ID = '#impeccable-live-input';
 const INSERT_INPUT_ID = '#impeccable-live-insert-input';
 const INSERT_CREATE_ID = '#impeccable-live-insert-create';
 const ANNOTATION_ID = '#impeccable-live-annot';
@@ -521,6 +522,28 @@ async function resetPickMode(page) {
     PICK_TOGGLE_ID,
     { timeout: 5_000 },
   ).catch(() => {});
+}
+
+/**
+ * Type the configure prompt the way a user does. The bar focuses its input
+ * after a pick, so the keys land wherever focus really is: a host focus trap
+ * that pulls focus back into its modal fails this (issue #851).
+ */
+export async function typeConfigurePrompt(page, prompt) {
+  await page.waitForFunction(
+    (sel) => {
+      const input = window.__impeccableLiveQuery(sel);
+      return Boolean(input) && window.__IMPECCABLE_LIVE_CHROME_CORE__?.activeElementDeep?.() === input;
+    },
+    CONFIGURE_INPUT_ID,
+    { timeout: 5_000 },
+  );
+  await page.keyboard.type(prompt);
+  await page.waitForFunction(
+    ({ sel, value }) => window.__impeccableLiveQuery(sel)?.value === value,
+    { sel: CONFIGURE_INPUT_ID, value: prompt },
+    { timeout: 5_000 },
+  );
 }
 
 /**

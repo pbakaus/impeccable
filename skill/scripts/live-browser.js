@@ -295,6 +295,7 @@
     uiGetById,
     activeElementDeep,
     defangOutsideHandlers,
+    stopFocusOutIntoChrome,
   } = domHelpers;
 
   window.__IMPECCABLE_LIVE_CHROME_CORE__ = {
@@ -12286,6 +12287,7 @@ void main() {
     document.removeEventListener('mousemove', handleMouseMove, true);
     document.removeEventListener('click', handleClick, true);
     document.removeEventListener('keydown', handleKeyDown, true);
+    document.removeEventListener('focusout', stopFocusOutIntoChrome, true);
     window.removeEventListener('message', onDetectMessage);
     // Remove detection overlays
     window.postMessage({ source: 'impeccable-command', action: 'remove' }, '*');
@@ -13470,6 +13472,7 @@ void main() {
     document.addEventListener('mousemove', handleMouseMove, true);
     document.addEventListener('click', handleClick, true);
     document.addEventListener('keydown', handleKeyDown, true);
+    document.addEventListener('focusout', stopFocusOutIntoChrome, true);
     connectSSE();
 
     // Check for an active session to resume (variant wrapper already in DOM after HMR)
