@@ -126,7 +126,10 @@ impl<F: Fn(&str) -> Option<String>> CustomProps for F {
 /// value string, recursing up to 8 levels for chained refs. Returns the
 /// input unchanged when no refs are present or a chain does not resolve.
 pub fn resolve_var_refs(raw: &str, custom_props: &dyn CustomProps, depth: u32) -> String {
-    if !raw.contains("var(") {
+    // CSS function names are ASCII case-insensitive; ASCII lowercasing keeps
+    // every byte offset, so positions found in `lower` index `raw` directly.
+    let lower = raw.to_ascii_lowercase();
+    if !lower.contains("var(") {
         return raw.to_string();
     }
     if depth > 8 {
@@ -136,7 +139,7 @@ pub fn resolve_var_refs(raw: &str, custom_props: &dyn CustomProps, depth: u32) -
     let bytes = raw.as_bytes();
     let mut out = String::with_capacity(raw.len());
     let mut cursor = 0;
-    while let Some(relative_start) = raw[cursor..].find("var(") {
+    while let Some(relative_start) = lower[cursor..].find("var(") {
         let start = cursor + relative_start;
         let open = start + 3;
         let mut nesting = 1_u32;

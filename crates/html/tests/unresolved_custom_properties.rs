@@ -167,6 +167,23 @@ fn uppercase_var_in_border_shorthand_is_not_a_visible_boundary() {
 }
 
 #[test]
+fn uppercase_var_fallback_in_border_shorthand_still_reports_cramped_padding() {
+    let html = r#"
+        <style>
+          .card {
+            border: 1px #111 VAR(--missing-border-style, solid);
+            padding: 0;
+          }
+        </style>
+        <div class="card"><p>Readable card copy</p></div>
+    "#;
+    let lower = html.replace("VAR(", "var(");
+
+    assert_eq!(cramped_padding_ids(html, None), cramped_padding_ids(&lower, None));
+    assert!(!cramped_padding_ids(&lower, None).is_empty());
+}
+
+#[test]
 fn unresolved_outline_style_is_not_a_visible_boundary() {
     let html = r#"
         <style>
