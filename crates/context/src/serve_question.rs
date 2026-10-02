@@ -444,7 +444,7 @@ fn visualize_ref(env: &Env, cwd: &str) -> String {
 /// the decision round's comps are about to be written.
 fn visualize_next_line(env: &Env, cwd: &str) -> String {
     format!(
-        "NEXT read {} now, before writing any decision comp prompt; its comp rules govern every card's image. Then generate each declared comp into its slot, lead first, and record the exact prompt in its sidecar, the image's full file name plus .json (a.png gets a.png.json).\n",
+        "NEXT read {} now, before writing any decision comp prompt; it and the MODE RULES block concept-seed printed for this surface govern every card's image. Then generate each declared comp into its slot, lead first, and record the exact prompt in its sidecar, the image's full file name plus .json (a.png gets a.png.json).\n",
         visualize_ref(env, cwd)
     )
 }
@@ -2116,7 +2116,7 @@ mod tests {
     fn visualize_next_line_names_the_skill_reference() {
         let env = Env::from([("IMPECCABLE_SKILL_DIR".into(), "/skill".into())]);
         let line = visualize_next_line(&env, "/proj").replace('\\', "/");
-        assert!(line.starts_with("NEXT read /skill/reference/visualize.md now, before writing any decision comp prompt;"), "{line}");
+        assert!(line.starts_with("NEXT read /skill/reference/visualize.md now, before writing any decision comp prompt; it and the MODE RULES block concept-seed printed for this surface govern every card's image."), "{line}");
         assert!(line.ends_with("the image's full file name plus .json (a.png gets a.png.json).\n"));
     }
 

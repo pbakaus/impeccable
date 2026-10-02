@@ -167,8 +167,12 @@ const imagesSetup = (ws) => {
 };
 
 const CATALOG = `${REPO}/tests/fixtures/concept-catalog`;
-const seedEnv = (extra = {}) => env({ IMPECCABLE_CATALOG_DIR: CATALOG, IMPECCABLE_API_URL: 'http://127.0.0.1:9/api', IMPECCABLE_API_TIMEOUT: '300', ...extra });
-const degradedEnv = (extra = {}) => env({ IMPECCABLE_CATALOG_DIR: `${WS}/no-such-catalog`, IMPECCABLE_API_URL: 'http://127.0.0.1:9/api', IMPECCABLE_API_TIMEOUT: '300', ...extra });
+// concept-seed prints the MODE RULES block from <skill>/reference/mode-*.md.
+// Seed cases point the skill dir at a fixture so goldens do not churn every
+// time the real mode prose in skill/reference/ changes.
+const MODE_RULES_SKILL = `${REPO}/tests/fixtures/mode-rules-skill`;
+const seedEnv = (extra = {}) => env({ IMPECCABLE_SKILL_DIR: MODE_RULES_SKILL, IMPECCABLE_CATALOG_DIR: CATALOG, IMPECCABLE_API_URL: 'http://127.0.0.1:9/api', IMPECCABLE_API_TIMEOUT: '300', ...extra });
+const degradedEnv = (extra = {}) => env({ IMPECCABLE_SKILL_DIR: MODE_RULES_SKILL, IMPECCABLE_CATALOG_DIR: `${WS}/no-such-catalog`, IMPECCABLE_API_URL: 'http://127.0.0.1:9/api', IMPECCABLE_API_TIMEOUT: '300', ...extra });
 
 const QUESTION_PAYLOAD = { title: 'Pick', options: [{ id: 'a', label: 'A', thesis: 'One.' }, { id: 'b', label: 'B', thesis: 'Two.' }] };
 
@@ -659,6 +663,14 @@ const cases = [
   { id: 'seed-direction-local-reroll', verb: 'concept-seed', workspace: 'ctx-product-only', args: ['--scope', 'direction', '--mode', 'persuade', '--from', 'oracle-key-1', '--reroll', '1'], env: seedEnv() },
   { id: 'seed-direction-local-reroll-bolder', verb: 'concept-seed', workspace: 'ctx-product-only', args: ['--scope', 'direction', '--mode', 'persuade', '--from', 'oracle-key-1', '--reroll', '2', '--register', 'bolder'], env: seedEnv() },
   { id: 'seed-direction-local-reroll-safer', verb: 'concept-seed', workspace: 'ctx-product-only', args: ['--scope', 'direction', '--from', 'oracle-key-1', '--reroll', '1', '--register', 'safer'], env: seedEnv() },
+  // MODE RULES: one case per mode file (experience reads mode-persuade.md),
+  // plus the fallback line for a missing file and for a missing section.
+  { id: 'seed-mode-rules-persuade', verb: 'concept-seed', workspace: 'ctx-product-only', args: ['--scope', 'direction', '--mode', 'persuade', '--from', 'oracle-key-5'], env: seedEnv() },
+  { id: 'seed-mode-rules-experience', verb: 'concept-seed', workspace: 'ctx-product-only', args: ['--scope', 'direction', '--mode', 'experience', '--from', 'oracle-key-5'], env: seedEnv() },
+  { id: 'seed-mode-rules-operate', verb: 'concept-seed', workspace: 'ctx-product-only', args: ['--scope', 'surface', '--mode', 'operate', '--from', 'oracle-key-5'], env: seedEnv() },
+  { id: 'seed-mode-rules-read', verb: 'concept-seed', workspace: 'ctx-product-only', args: ['--scope', 'surface', '--mode', 'read', '--from', 'oracle-key-5'], env: seedEnv() },
+  { id: 'seed-mode-rules-missing-file', verb: 'concept-seed', workspace: 'ctx-product-only', args: ['--scope', 'direction', '--mode', 'read', '--from', 'oracle-key-5'], env: seedEnv({ IMPECCABLE_SKILL_DIR: `${REPO}/tests/fixtures/mode-rules-skill-partial` }) },
+  { id: 'seed-mode-rules-missing-section', verb: 'concept-seed', workspace: 'ctx-product-only', args: ['--scope', 'direction', '--mode', 'operate', '--from', 'oracle-key-5'], env: seedEnv({ IMPECCABLE_SKILL_DIR: `${REPO}/tests/fixtures/mode-rules-skill-partial` }) },
   { id: 'seed-direction-local-count-5', verb: 'concept-seed', workspace: 'ctx-product-only', args: ['--scope', 'direction', '--mode', 'operate', '--from', 'oracle-key-2', '--candidate-count', '5'], env: seedEnv() },
   // Operate draws five graphic worlds and one interaction world, never atmosphere
   // (TIER_QUOTAS in roll_selection.rs, in parity with the site's roll API).

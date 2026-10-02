@@ -13,7 +13,12 @@ pub const AUTHORITY_DIRECTION: &str = "PRODUCT.md and explicit incumbent brand c
 
 pub const AUTHORITY_SURFACE: &str = "PRODUCT.md and DESIGN.md constrain every surface candidate's identity\nvocabulary; they do not cancel task-level composition. The seed never\nauthorizes a new palette, type system, material world, or unfamiliar control\nbehavior.";
 
-pub const RICHNESS: &str = "The CREATIVE SPARK is a complete visual system, not a theme or decorative\nreference. Translate every supplied system rule into the product: palette and\nmaterial, type and composition, topology, controls and states, and adaptation.\nKeep the source's visible character, scale, rhythm, and interaction instead of\nreducing vivid grammar to generic nouns. When the source is already a credible\ninterface language, a Persuade or Experience surface may commit to it across\nnavigation, content, controls, and states; an Operate or Read surface takes its\ntype, density, palette, material accents, and one signature move, and keeps the\nplatform's standard navigation and controls. Otherwise keep a literal carrier only when it becomes functional.\nAmbitious motion, spatial media, or interaction is welcome when it strengthens\nthe product without weakening semantics, performance, or fallback behavior.";
+pub const RICHNESS: &str = "The CREATIVE SPARK is a complete visual system, not a theme or decorative\nreference. Translate every supplied system rule into the product: palette and\nmaterial, type and composition, topology, controls and states, and adaptation.\nKeep the source's visible character, scale, rhythm, and interaction instead of\nreducing vivid grammar to generic nouns. Keep a literal carrier only when it\nbecomes functional.\nAmbitious motion, spatial media, or interaction is welcome when it strengthens\nthe product without weakening semantics, performance, or fallback behavior.";
+
+pub const MODE_RULES_BLOCK: &str = "MODE RULES (@@MODE@@, from @@PATH@@). They govern this surface's directions and every comp you write or judge for it, the decision comps included; where shared guidance conflicts, these win.\nDIRECTIONS\n@@DIRECTIONS@@\nCOMPS\n@@COMPS@@";
+
+pub const MODE_RULES_UNAVAILABLE: &str = "MODE RULES unavailable: read @@PATH@@ before writing directions or comps.";
+
 
 pub const DEGRADED_HEADER: &str = "@@SCOPE_UPPER@@ CONCEPT SEED (key: @@KEY@@; mode: @@MODE_OR_UNSCOPED@@; source: degraded; rerun with --scope @@SCOPE@@@@MODE_FLAG@@ --from @@KEY@@@@REROLL_FLAG@@@@REGISTER_FLAG@@ --candidate-count @@CANDIDATECOUNT@@)";
 

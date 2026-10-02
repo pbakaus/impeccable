@@ -20,6 +20,45 @@ fn fill(tpl: &str, pairs: &[(&str, &str)]) -> String {
     s
 }
 
+/// The mode file that carries a seed mode's rules: experience shares persuade's.
+pub fn mode_rules_file(mode: &str) -> &'static str {
+    match mode {
+        "operate" => "mode-operate",
+        "read" => "mode-read",
+        _ => "mode-persuade",
+    }
+}
+
+/// A level-2 section's body, verbatim: every line after `## <name>` up to the
+/// next `## ` heading or EOF, trimmed of leading and trailing blank lines.
+/// `None` when the heading is absent or the body is empty. CRLF tolerant.
+pub fn extract_section(text: &str, name: &str) -> Option<String> {
+    let text = text.replace("\r\n", "\n");
+    let heading = format!("## {}", name);
+    let mut lines = text.split('\n');
+    lines.by_ref().find(|l| l.trim_end() == heading)?;
+    let body: Vec<&str> = lines.take_while(|l| !l.starts_with("## ")).collect();
+    let start = body.iter().position(|l| !l.trim().is_empty())?;
+    let end = body.iter().rposition(|l| !l.trim().is_empty())?;
+    Some(body[start..=end].join("\n"))
+}
+
+/// The MODE RULES block for `mode`, or the one-line fallback naming the file
+/// when it cannot be read or lacks a section. Never fails the roll.
+pub fn mode_rules_block(env: &Env, cwd: &str, mode: &str) -> String {
+    let file = mode_rules_file(mode);
+    let path = crate::provider::detect(env, cwd).reference_path(file);
+    let shown = path.clone().unwrap_or_else(|| format!("reference/{}.md", file));
+    let sections = path
+        .as_deref()
+        .and_then(crate::util::safe_read)
+        .and_then(|text| Some((extract_section(&text, "Directions")?, extract_section(&text, "Comps")?)));
+    match sections {
+        Some((directions, comps)) => fill(t::MODE_RULES_BLOCK, &[("MODE", mode), ("PATH", &shown), ("DIRECTIONS", &directions), ("COMPS", &comps)]),
+        None => fill(t::MODE_RULES_UNAVAILABLE, &[("PATH", &shown)]),
+    }
+}
+
 struct ApiBudget {
     deadline: Option<Instant>,
     timeout: Duration,
@@ -381,7 +420,10 @@ fn render_concept_seed(env: &Env, cwd: &str, budget: &mut ApiBudget, a: &SeedArg
     let promoted = if scope == "direction" { fill(t::PROMOTED_DIRECTION, &common) } else { fill(t::PROMOTED_SURFACE, &common) };
     let challenger_instruction = if scope == "direction" { t::CHALLENGER_DIRECTION.to_string() } else { t::CHALLENGER_SURFACE.to_string() };
     let authority = if scope == "direction" { t::AUTHORITY_DIRECTION.to_string() } else { t::AUTHORITY_SURFACE.to_string() };
-    let richness = t::RICHNESS.to_string();
+    // MODE RULES ride after RICHNESS (after AUTHORITY on the degraded paths,
+    // which carry no RICHNESS), on every round including re-rolls.
+    let mode_block = mode.map(|m| format!("\n{}", mode_rules_block(env, cwd, m))).unwrap_or_default();
+    let richness = format!("{}{}", t::RICHNESS, mode_block);
     let assigned_or_dealt = if scope == "direction" { format!("ASSIGNED INDEX: {}", build_index) } else { format!("DEALT INDICES: {} (index {} leads)", dealt_str, build_index) };
     let restated_assigned_or_dealt = if scope == "direction" {
         fill(t::RESTATED_DIRECTION, &common)
@@ -390,6 +432,7 @@ fn render_concept_seed(env: &Env, cwd: &str, budget: &mut ApiBudget, a: &SeedArg
     };
 
     let Some(data) = data else {
+        let authority = format!("{}{}", authority, mode_block);
         let degraded_header = fill(t::DEGRADED_HEADER, &common);
         if register == Some("safer") {
             let mut pairs = common.clone();
@@ -548,5 +591,142 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             io.err(&format!("{}\n", msg));
             1
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MODE_FILE: &str = "# Operate mode\n\nIntro the engine ignores.\n\n## Directions\n\n- Keep standard navigation.\n\n  Indented continuation.\n\n## Comps\n- Show a working state.\n### Sub heading stays\n\n";
+
+    fn temp_dir(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("impeccable-seed-{}-{}", name, std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// A project with PRODUCT.md plus a skill dir holding the given mode files.
+    fn fixture(name: &str, files: &[(&str, &str)]) -> (std::path::PathBuf, std::path::PathBuf) {
+        let root = temp_dir(name);
+        let proj = root.join("proj");
+        std::fs::create_dir_all(&proj).unwrap();
+        std::fs::write(proj.join("PRODUCT.md"), "# Product\n\n## Users\n\nPeople.\n").unwrap();
+        let skill = root.join("skill");
+        std::fs::create_dir_all(skill.join("reference")).unwrap();
+        for (file, body) in files {
+            std::fs::write(skill.join("reference").join(format!("{}.md", file)), body).unwrap();
+        }
+        (proj, skill)
+    }
+
+    fn seed(proj: &std::path::Path, skill: &std::path::Path, catalog: bool, args: &[&str]) -> (i32, String) {
+        let catalog_dir = if catalog {
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/concept-catalog")
+        } else {
+            proj.join("no-such-catalog")
+        };
+        let env = Env::from([
+            ("IMPECCABLE_SKILL_DIR".into(), skill.to_string_lossy().into_owned()),
+            ("IMPECCABLE_CATALOG_DIR".into(), catalog_dir.to_string_lossy().into_owned()),
+            ("IMPECCABLE_API_URL".into(), "http://127.0.0.1:9/api".into()),
+            ("IMPECCABLE_API_TIMEOUT".into(), "300".into()),
+            ("IMPECCABLE_NO_TELEMETRY".into(), "1".into()),
+            ("IMPECCABLE_NO_STALENESS_CHECK".into(), "1".into()),
+        ]);
+        let (mut io, cap) = Io::captured("", proj.to_path_buf(), env);
+        let argv: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+        let code = run(&argv, &mut io);
+        let out = String::from_utf8(cap.stdout.borrow().clone()).unwrap();
+        (code, out.replace('\\', "/"))
+    }
+
+    #[test]
+    fn extracts_both_sections_verbatim_and_trimmed() {
+        assert_eq!(extract_section(MODE_FILE, "Directions").unwrap(), "- Keep standard navigation.\n\n  Indented continuation.");
+        assert_eq!(extract_section(MODE_FILE, "Comps").unwrap(), "- Show a working state.\n### Sub heading stays");
+    }
+
+    #[test]
+    fn missing_or_empty_section_is_none() {
+        assert_eq!(extract_section("# T\n\n## Directions\n\nx\n", "Comps"), None);
+        assert_eq!(extract_section("# T\n\n## Directions\n\n\n## Comps\ny\n", "Directions"), None);
+        assert_eq!(extract_section("# T\n\n### Directions\nx\n", "Directions"), None);
+    }
+
+    #[test]
+    fn crlf_files_extract_like_lf() {
+        let crlf = MODE_FILE.replace('\n', "\r\n");
+        assert_eq!(extract_section(&crlf, "Directions"), extract_section(MODE_FILE, "Directions"));
+        assert_eq!(extract_section(&crlf, "Comps"), extract_section(MODE_FILE, "Comps"));
+    }
+
+    #[test]
+    fn mode_files_map_experience_to_persuade() {
+        assert_eq!(mode_rules_file("persuade"), "mode-persuade");
+        assert_eq!(mode_rules_file("experience"), "mode-persuade");
+        assert_eq!(mode_rules_file("operate"), "mode-operate");
+        assert_eq!(mode_rules_file("read"), "mode-read");
+    }
+
+    #[test]
+    fn block_for_each_mode_names_its_file_and_bodies() {
+        let files = [
+            ("mode-persuade", "# P\n\n## Directions\nP directions.\n\n## Comps\nP comps.\n"),
+            ("mode-operate", MODE_FILE),
+            ("mode-read", "# R\r\n\r\n## Directions\r\nR directions.\r\n## Comps\r\nR comps.\r\n"),
+        ];
+        let (proj, skill) = fixture("each-mode", &files);
+        let skill_s = skill.to_string_lossy().replace('\\', "/");
+        for (mode, file, dir, comps) in [
+            ("persuade", "mode-persuade", "P directions.", "P comps."),
+            ("experience", "mode-persuade", "P directions.", "P comps."),
+            ("operate", "mode-operate", "- Keep standard navigation.\n\n  Indented continuation.", "- Show a working state.\n### Sub heading stays"),
+            ("read", "mode-read", "R directions.", "R comps."),
+        ] {
+            let (code, out) = seed(&proj, &skill, true, &["--scope", "direction", "--mode", mode, "--from", "k1"]);
+            assert_eq!(code, 0, "{out}");
+            let block = format!(
+                "\nMODE RULES ({}, from {}/reference/{}.md). They govern this surface's directions and every comp you write or judge for it, the decision comps included; where shared guidance conflicts, these win.\nDIRECTIONS\n{}\nCOMPS\n{}\nA user- or brief-pinned decision beats the roll, always.\n",
+                mode, skill_s, file, dir, comps
+            );
+            assert!(out.contains(&block), "{mode}: {out}");
+            assert!(out.contains("behavior.\nMODE RULES ("), "block follows RICHNESS: {out}");
+        }
+    }
+
+    #[test]
+    fn no_mode_prints_no_block_and_richness_is_mode_neutral() {
+        let (proj, skill) = fixture("no-mode", &[("mode-persuade", MODE_FILE)]);
+        let (code, out) = seed(&proj, &skill, true, &["--scope", "direction", "--from", "k1"]);
+        assert_eq!(code, 0, "{out}");
+        assert!(!out.contains("MODE RULES"), "{out}");
+        assert!(!out.contains("Persuade") && !out.contains("Operate or Read"), "{out}");
+        assert!(out.contains("Keep a literal carrier only when it\nbecomes functional."), "{out}");
+    }
+
+    #[test]
+    fn missing_file_or_section_prints_the_fallback_and_still_rolls() {
+        let (proj, skill) = fixture("missing", &[("mode-operate", "# O\n\n## Directions\nonly directions\n")]);
+        let skill_s = skill.to_string_lossy().replace('\\', "/");
+        for (mode, file) in [("operate", "mode-operate"), ("read", "mode-read")] {
+            let (code, out) = seed(&proj, &skill, true, &["--scope", "surface", "--mode", mode, "--from", "k1"]);
+            assert_eq!(code, 0, "{out}");
+            assert!(out.contains(&format!("\nMODE RULES unavailable: read {}/reference/{}.md before writing directions or comps.\n", skill_s, file)), "{out}");
+            assert!(!out.contains("DIRECTIONS\n"), "{out}");
+        }
+    }
+
+    #[test]
+    fn rerolls_and_degraded_rolls_carry_the_block() {
+        let (proj, skill) = fixture("reroll", &[("mode-persuade", MODE_FILE)]);
+        let (_, out) = seed(&proj, &skill, true, &["--scope", "direction", "--mode", "persuade", "--from", "k1", "--reroll", "2", "--register", "bolder"]);
+        assert!(out.contains("MODE RULES (persuade, from "), "{out}");
+        let (_, out) = seed(&proj, &skill, false, &["--scope", "direction", "--mode", "experience", "--from", "k1"]);
+        assert!(out.contains("source: degraded"), "{out}");
+        assert!(out.contains("selected independently.\nMODE RULES (experience, from "), "block follows AUTHORITY: {out}");
+        let (_, out) = seed(&proj, &skill, false, &["--scope", "direction", "--mode", "persuade", "--from", "k1", "--reroll", "1", "--register", "safer"]);
+        assert!(out.contains("MODE RULES (persuade, from "), "{out}");
     }
 }
