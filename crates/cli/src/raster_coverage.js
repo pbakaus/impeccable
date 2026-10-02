@@ -210,7 +210,9 @@
     for (const p of ['::before', '::after']) {
       const ps = getComputedStyle(el, p);
       if (!ps || ps.content === 'none' || ps.content === 'normal' || ps.display === 'none' || ps.visibility !== 'visible' || parseFloat(ps.opacity) === 0) continue;
-      if (!(url(ps.content) || url(ps.backgroundImage) || url(ps.borderImageSource) || url(ps.maskImage) || url(ps.webkitMaskImage) || url(ps.filter) || url(ps.clipPath))) continue;
+      const own = url(ps.content) || url(ps.backgroundImage) || url(ps.borderImageSource) || url(ps.maskImage) || url(ps.webkitMaskImage) || url(ps.clipPath);
+      const filtered = url(ps.filter);
+      if (!own && !filtered) continue;
       // A pseudo-element has no client rect. With a used pixel size, count that
       // size (at the viewport origin when fixed, else at the host's corner);
       // without one, count the host box. Its clipping chain starts at the host.
@@ -222,8 +224,8 @@
         const left = mode === 'fixed' ? (px(ps.left) ?? 0) : r.left, top = mode === 'fixed' ? (px(ps.top) ?? 0) : r.top;
         pr = { left, top, right: left + w, bottom: top + h };
       }
-      mark(el, mode, pr, name(el) + p);
-      if (url(ps.filter)) mark(el, mode, region(ps.filter, pr), name(el) + p + ' filter');
+      if (own) mark(el, mode, pr, name(el) + p);
+      if (filtered) mark(el, mode, region(ps.filter, pr), name(el) + p + ' filter');
     }
   }
   const covered = grid.reduce((n, v) => n + v, 0);
