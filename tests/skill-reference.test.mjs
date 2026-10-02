@@ -108,3 +108,16 @@ describe('skill reference authoring contracts', () => {
     assert.match(verifyHardening, /\*\*Interrupted gestures\*\*/);
   });
 });
+
+describe('mode rule files', () => {
+  it('each shipped mode file has exactly the Directions and Comps sections the engine prints', () => {
+    for (const mode of ['persuade', 'operate', 'read']) {
+      const text = readFileSync(join(ROOT, `skill/reference/mode-${mode}.md`), 'utf-8').replace(/\r\n?/g, '\n');
+      const headings = text.split('\n').filter((line) => line.startsWith('## '));
+      assert.deepEqual(headings, ['## Directions', '## Comps'], `mode-${mode}.md`);
+      for (const section of text.split(/^## (?:Directions|Comps)\n/m).slice(1)) {
+        assert.ok(section.trim().length > 200, `mode-${mode}.md has an empty or stub section`);
+      }
+    }
+  });
+});
