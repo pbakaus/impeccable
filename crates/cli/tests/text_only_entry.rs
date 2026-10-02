@@ -434,6 +434,74 @@ fn svg_fragment_masks_and_patterns_are_code_not_raster() {
     capture_with(&f, &format!("{PAGE}{masked}")).unwrap();
     let patterned = format!("{svg}<svg style=\"position:absolute;left:0;top:0\" width=\"240\" height=\"160\"><rect width=\"240\" height=\"160\" fill=\"url(#p)\"/></svg>");
     capture_with(&f, &format!("{PAGE}{patterned}")).unwrap();
+    // Gradients, vector filters, clips, symbols and markers reached by fragment
+    // are code too, through every reference property at once.
+    let vector = "<svg width=\"0\" height=\"0\" style=\"position:absolute\"><defs>\
+        <mask id=\"m\" maskContentUnits=\"objectBoundingBox\"><rect width=\"1\" height=\"1\" fill=\"white\"/></mask>\
+        <pattern id=\"p\" width=\"8\" height=\"8\" patternUnits=\"userSpaceOnUse\"><rect width=\"4\" height=\"4\" fill=\"url(#g)\"/></pattern>\
+        <linearGradient id=\"g\"><stop offset=\"0\" stop-color=\"#1e5ac8\"/><stop offset=\"1\" stop-color=\"#181c24\"/></linearGradient>\
+        <filter id=\"f\"><feTurbulence baseFrequency=\"0.05\"/><feGaussianBlur stdDeviation=\"2\"/></filter>\
+        <clipPath id=\"c\"><circle cx=\"120\" cy=\"80\" r=\"70\"/></clipPath>\
+        <symbol id=\"s\" viewBox=\"0 0 10 10\"><path d=\"M0 0L10 10\" stroke=\"url(#g)\"/></symbol>\
+        <marker id=\"k\" markerWidth=\"4\" markerHeight=\"4\"><circle cx=\"2\" cy=\"2\" r=\"2\" fill=\"url(#p)\"/></marker></defs></svg>";
+    let drawn = format!("{vector}<svg style=\"position:absolute;left:0;top:0\" width=\"240\" height=\"160\">\
+        <rect width=\"240\" height=\"160\" fill=\"url(#p)\" stroke=\"url(#g)\" stroke-width=\"10\" filter=\"url(#f)\" clip-path=\"url(#c)\" mask=\"url(#m)\"/>\
+        <use href=\"#s\" width=\"240\" height=\"160\"/><path d=\"M0 0L240 160\" stroke=\"#181c24\" marker-start=\"url(#k)\"/></svg>\
+        <div style=\"position:absolute;left:0;top:0;width:240px;height:160px;background:linear-gradient(#1e5ac8,#181c24);filter:url(#f);clip-path:url(#c);mask-image:url(#m);-webkit-mask-image:url(#m)\"></div>");
+    capture_with(&f, &format!("{PAGE}{drawn}")).unwrap();
+}
+
+#[test]
+fn svg_definitions_holding_raster_content_count_through_their_references() {
+    if !browser_available() {
+        return;
+    }
+    let f = Fixture::new();
+    fs::create_dir_all(f.project.join("assets")).unwrap();
+    let big = png_io::encode_png(&raster::create_image(240, 160, [30, 90, 200, 255]), &[]).unwrap();
+    fs::write(f.project.join("assets/big.png"), big).unwrap();
+    // The <image> inside each definition has no rendered box of its own, so the
+    // element that references the definition is what paints the picture.
+    let defs = "<svg width=\"0\" height=\"0\" style=\"position:absolute\"><defs>\
+        <mask id=\"m\" maskContentUnits=\"objectBoundingBox\"><image href=\"assets/big.png\" width=\"1\" height=\"1\" preserveAspectRatio=\"none\"/></mask>\
+        <pattern id=\"p\" width=\"240\" height=\"160\" patternUnits=\"userSpaceOnUse\"><image href=\"assets/big.png\" width=\"240\" height=\"160\"/></pattern>\
+        <pattern id=\"nested\" width=\"8\" height=\"8\" patternUnits=\"userSpaceOnUse\"><rect width=\"8\" height=\"8\" fill=\"url(#p)\"/></pattern>\
+        <filter id=\"f\" x=\"0\" y=\"0\" width=\"1\" height=\"1\"><feImage href=\"assets/big.png\" preserveAspectRatio=\"none\"/></filter>\
+        <symbol id=\"s\" viewBox=\"0 0 240 160\"><image href=\"assets/big.png\" width=\"240\" height=\"160\"/></symbol></defs></svg>";
+    let full = "position:absolute;left:0;top:0;width:240px;height:160px";
+    let svg = |inner: &str| format!("{PAGE}{defs}<svg style=\"position:absolute;left:0;top:0\" width=\"240\" height=\"160\">{inner}</svg>");
+    // A raster mask over a flat block shows the picture through the mask.
+    let e = capture_with(&f, &format!("{PAGE}{defs}<div style=\"{full};background:#181c24;mask-image:url(#m);-webkit-mask-image:url(#m)\"></div>")).unwrap_err();
+    assert!(e.contains("images cover 100% of the viewport") && e.contains("mask"), "{e}");
+    // A pattern holding an image, as fill, through a nested pattern, and as stroke.
+    let e = capture_with(&f, &svg("<rect width=\"240\" height=\"160\" fill=\"url(#p)\"/>")).unwrap_err();
+    assert!(e.contains("images cover 100% of the viewport") && e.contains("rect fill"), "{e}");
+    let e = capture_with(&f, &svg("<rect width=\"240\" height=\"160\" fill=\"url(#nested)\"/>")).unwrap_err();
+    assert!(e.contains("rect fill"), "{e}");
+    let e = capture_with(&f, &svg("<line x1=\"0\" y1=\"80\" x2=\"240\" y2=\"80\" stroke=\"url(#p)\" stroke-width=\"160\"/>")).unwrap_err();
+    assert!(e.contains("line stroke"), "{e}");
+    // An feImage filter paints its image over the filter region of an empty box.
+    let e = capture_with(&f, &format!("{PAGE}{defs}<div style=\"{full};filter:url(#f)\"></div>")).unwrap_err();
+    assert!(e.contains("images cover 100% of the viewport") && e.contains("filter"), "{e}");
+    // A symbol holding an image, drawn through use.
+    let e = capture_with(&f, &svg("<use href=\"#s\" width=\"240\" height=\"160\"/>")).unwrap_err();
+    assert!(e.contains("use href"), "{e}");
+    // A use of a vector symbol that passes the raster pattern down as its fill.
+    let e = capture_with(&f, &svg("<symbol id=\"square\" viewBox=\"0 0 240 160\"><rect width=\"240\" height=\"160\"/></symbol><use href=\"#square\" width=\"240\" height=\"160\" fill=\"url(#p)\"/>")).unwrap_err();
+    assert!(e.contains("use fill"), "{e}");
+    // A thin line stretched sideways paints a wide stroke.
+    let e = capture_with(&f, &svg("<g transform=\"scale(100 1)\"><line x1=\"1.2\" y1=\"0\" x2=\"1.2\" y2=\"160\" stroke=\"url(#p)\" stroke-width=\"2.4\"/></g>")).unwrap_err();
+    assert!(e.contains("line stroke"), "{e}");
+    // A filter region in inches cannot be resolved here, so it counts the viewport;
+    // a pseudo-element's filter counts its region too.
+    let e = capture_with(&f, &format!("{PAGE}{defs}<svg width=\"0\" height=\"0\" style=\"position:absolute\"><filter id=\"inch\" filterUnits=\"userSpaceOnUse\" x=\"-1in\" y=\"-1in\" width=\"5in\" height=\"5in\"><feImage href=\"assets/big.png\"/></filter></svg>\
+        <div style=\"position:absolute;left:100px;top:60px;width:4px;height:4px;filter:url(#inch)\"></div>")).unwrap_err();
+    assert!(e.contains("images cover 100% of the viewport") && e.contains("div filter"), "{e}");
+    let e = capture_with(&f, &format!("{PAGE}{defs}<svg width=\"0\" height=\"0\" style=\"position:absolute\"><filter id=\"wide\" x=\"-20\" y=\"-20\" width=\"40\" height=\"40\"><feImage href=\"assets/big.png\"/></filter></svg>\
+        <style>.dot::before{{content:'';position:absolute;left:100px;top:60px;width:10px;height:10px;filter:url(#wide)}}</style><div class=\"dot\"></div>")).unwrap_err();
+    assert!(e.contains("::before filter"), "{e}");
+    // The same raster pattern on a logo-sized shape stays under the limit.
+    capture_with(&f, &svg("<rect width=\"16\" height=\"16\" fill=\"url(#p)\"/>")).unwrap();
 }
 
 #[test]

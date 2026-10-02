@@ -1063,7 +1063,7 @@ pub fn ensure_config_git_exclude(root: &str) -> bool {
     let Some(git_dir) = resolve_git_dir(root) else {
         return false;
     };
-    let target = jsp::join(&[&git_dir, "info", "exclude"]);
+    let target = impeccable_common::git::info_exclude(&git_dir);
     let existing = crate::util::read_text(&target).unwrap_or_default();
     let mut block_lines = vec![EXCLUDE_OPEN];
     block_lines.extend(EXCLUDE_PATTERNS);

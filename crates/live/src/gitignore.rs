@@ -159,5 +159,35 @@ pub fn resolve_git_info_exclude_path(cwd: &str) -> Option<String> {
     } else {
         jsp::resolve(cwd, &[git_dir_raw])
     };
-    Some(jsp::join(&[&git_dir, "info", "exclude"]))
+    Some(impeccable_common::git::info_exclude(&git_dir))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn linked_worktree_resolves_to_the_common_dir_exclude() {
+        let base = std::env::temp_dir().join(format!(
+            "impeccable-live-gitignore-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&base);
+        let tmp = base.to_string_lossy().into_owned();
+
+        let worktree_git = jsp::join(&[&tmp, "repo", ".git", "worktrees", "wt"]);
+        std::fs::create_dir_all(&worktree_git).unwrap();
+        std::fs::write(jsp::join(&[&worktree_git, "commondir"]), "../..\n").unwrap();
+        let wt = jsp::join(&[&tmp, "wt"]);
+        std::fs::create_dir_all(&wt).unwrap();
+        std::fs::write(jsp::join(&[&wt, ".git"]), format!("gitdir: {worktree_git}\n")).unwrap();
+
+        assert_eq!(
+            resolve_git_info_exclude_path(&wt),
+            Some(jsp::join(&[&tmp, "repo", ".git", "info", "exclude"]))
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
 }
