@@ -6,7 +6,7 @@
 
 When a catalog world's source is itself an interface language, the surface may carry its native grammar across navigation, content, controls, and states, within the platform conventions a native app keeps.
 
-For **Persuade**, the opening must make the offer intelligible and desirable, expose a clear action, and demonstrate something only this product can prove. Conversion lives inside the form's own vocabulary: a hook that lands in one line, a visible primary action, a legible reading order. A committed form that hides the offer or the action has not finished translating. <!-- rule:skill-persuade-conversion-in-form --> For **Experience**, the work itself leads from the first viewport.
+For **Persuade**, the opening must make the offer intelligible and desirable, expose a clear action, and demonstrate something only this product can prove. The action is the one the category's visitors came to take, in its working form: a hotel's dates-and-guests availability search, a restaurant's reservation picker, a store's add to cart. A decorative link pointing at it elsewhere does not count. Conversion lives inside the form's own vocabulary: a hook that lands in one line, a visible primary action, a legible reading order. A committed form that hides the offer or the action has not finished translating. <!-- rule:skill-persuade-conversion-in-form --> For **Experience**, the work itself leads from the first viewport.
 
 ## Comps
 
