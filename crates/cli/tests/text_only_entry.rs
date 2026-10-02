@@ -486,6 +486,20 @@ fn svg_definitions_holding_raster_content_count_through_their_references() {
     // A symbol holding an image, drawn through use.
     let e = capture_with(&f, &svg("<use href=\"#s\" width=\"240\" height=\"160\"/>")).unwrap_err();
     assert!(e.contains("use href"), "{e}");
+    // A use of a vector symbol that passes the raster pattern down as its fill.
+    let e = capture_with(&f, &svg("<symbol id=\"square\" viewBox=\"0 0 240 160\"><rect width=\"240\" height=\"160\"/></symbol><use href=\"#square\" width=\"240\" height=\"160\" fill=\"url(#p)\"/>")).unwrap_err();
+    assert!(e.contains("use fill"), "{e}");
+    // A thin line stretched sideways paints a wide stroke.
+    let e = capture_with(&f, &svg("<g transform=\"scale(100 1)\"><line x1=\"1.2\" y1=\"0\" x2=\"1.2\" y2=\"160\" stroke=\"url(#p)\" stroke-width=\"2.4\"/></g>")).unwrap_err();
+    assert!(e.contains("line stroke"), "{e}");
+    // A filter region in inches cannot be resolved here, so it counts the viewport;
+    // a pseudo-element's filter counts its region too.
+    let e = capture_with(&f, &format!("{PAGE}{defs}<svg width=\"0\" height=\"0\" style=\"position:absolute\"><filter id=\"inch\" filterUnits=\"userSpaceOnUse\" x=\"-1in\" y=\"-1in\" width=\"5in\" height=\"5in\"><feImage href=\"assets/big.png\"/></filter></svg>\
+        <div style=\"position:absolute;left:100px;top:60px;width:4px;height:4px;filter:url(#inch)\"></div>")).unwrap_err();
+    assert!(e.contains("images cover 100% of the viewport") && e.contains("div filter"), "{e}");
+    let e = capture_with(&f, &format!("{PAGE}{defs}<svg width=\"0\" height=\"0\" style=\"position:absolute\"><filter id=\"wide\" x=\"-20\" y=\"-20\" width=\"40\" height=\"40\"><feImage href=\"assets/big.png\"/></filter></svg>\
+        <style>.dot::before{{content:'';position:absolute;left:100px;top:60px;width:10px;height:10px;filter:url(#wide)}}</style><div class=\"dot\"></div>")).unwrap_err();
+    assert!(e.contains("::before filter"), "{e}");
     // The same raster pattern on a logo-sized shape stays under the limit.
     capture_with(&f, &svg("<rect width=\"16\" height=\"16\" fill=\"url(#p)\"/>")).unwrap();
 }

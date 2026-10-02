@@ -7,10 +7,11 @@
 // holds raster content: an <image>, <feImage> or url() raster anywhere inside
 // it, followed through nested fragment references and hrefs. An <image> inside
 // a definition has no rendered box, so the element that references such a
-// definition counts instead: through mask, clip-path, fill or use at its box,
-// through stroke at its box widened by half the stroke width, through filter at
-// the filter region, and an inner SVG element through filter or a marker at its
-// outermost <svg>. A no-repeat background with an explicit pixel size counts at
+// definition counts instead: through mask, clip-path, fill or use at its box
+// (a use also through the fill and stroke it passes to its clones), through
+// stroke at its box widened by half the screen stroke width, through filter at
+// the filter region (the viewport when a region length cannot be resolved), and
+// an inner SVG element through filter or a marker at its outermost <svg>. A no-repeat background with an explicit pixel size counts at
 // that size; object-fit contain/scale-down counts the letterboxed picture, not
 // its box. Every box is clipped by the ancestors that clip it (overflow or
 // contain: paint on its containing-block chain), and an element under an
@@ -142,22 +143,38 @@
   // The filter region of the first raster filter a filter value names, around
   // the box r (attributes x, y, width, height; -10%, -10%, 120%, 120% when
   // absent, in box fractions for objectBoundingBox units and in pixels from the
-  // box corner for userSpaceOnUse). Any other filter counts at the box.
+  // box corner for userSpaceOnUse). A length this cannot resolve exactly (a unit
+  // such as in, mm or em, or a userSpaceOnUse percentage) counts the whole
+  // viewport. Any other filter counts at the box.
   const region = (v, r) => {
     const id = refs(v).map(fragment).find(id => id != null && rasterDef(id));
     const f = id == null ? null : document.getElementById(id);
     if (!f || f.localName !== 'filter') return box(r);
     const user = f.getAttribute('filterUnits') === 'userSpaceOnUse';
+    const viewport = { left: 0, top: 0, right: W, bottom: H };
     const len = (name, fallback, size) => {
-      let raw = (f.getAttribute(name) ?? '').trim();
-      if (!Number.isFinite(parseFloat(raw))) raw = fallback;
-      const n = parseFloat(raw);
-      return raw.endsWith('%') ? n / 100 * size : user ? n : n * size;
+      const raw = (f.getAttribute(name) ?? fallback).trim();
+      const m = /^([-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?)(px|%)?$/i.exec(raw);
+      if (!m || (m[2] === '%' && user) || (m[2] === 'px' && !user)) return null;
+      const n = parseFloat(m[1]);
+      return m[2] === '%' ? n / 100 * size : user ? n : n * size;
     };
     const w = r.right - r.left, h = r.bottom - r.top;
-    const x = r.left + len('x', '-10%', w), y = r.top + len('y', '-10%', h);
-    const fw = len('width', '120%', w), fh = len('height', '120%', h);
-    return fw > 0 && fh > 0 ? { left: x, top: y, right: x + fw, bottom: y + fh } : box(r);
+    const [x, y, fw, fh] = [len('x', '-10%', w), len('y', '-10%', h), len('width', '120%', w), len('height', '120%', h)];
+    if ([x, y, fw, fh].some(n => n == null || !Number.isFinite(n))) return viewport;
+    return fw > 0 && fh > 0 ? { left: r.left + x, top: r.top + y, right: r.left + x + fw, bottom: r.top + y + fh } : box(r);
+  };
+  // Half the painted stroke width in screen pixels: the CTM's largest singular
+  // value bounds the stroke's widest direction, and a non-scaling stroke keeps
+  // its own width.
+  const halfStroke = (el, s) => {
+    const m = s.vectorEffect === 'non-scaling-stroke' ? null : el.getScreenCTM?.();
+    let k = 1;
+    if (m) {
+      const sum = m.a * m.a + m.b * m.b + m.c * m.c + m.d * m.d, det = m.a * m.d - m.b * m.c;
+      k = Math.sqrt((sum + Math.sqrt(Math.max(0, sum * sum - 4 * det * det))) / 2);
+    }
+    return (px(s.strokeWidth) ?? 1) * k / 2;
   };
   for (const el of document.querySelectorAll('*')) {
     const s = getComputedStyle(el);
@@ -178,11 +195,12 @@
     if (el instanceof SVGElement && el.closest('defs,mask,pattern,clipPath,marker,symbol,filter')) continue;
     const inner = el instanceof SVGElement && !!el.ownerSVGElement;
     const shape = el instanceof SVGGeometryElement || el instanceof SVGTextContentElement;
+    // A use paints its cloned shapes with the fill and stroke it passes down.
+    const paints = shape || tag === 'use';
     if (url(s.clipPath)) at(box(r), name(el) + ' clip-path');
-    if (shape && url(s.fill)) at(box(r), name(el) + ' fill');
-    if (shape && url(s.stroke)) {
-      const m = el.getScreenCTM(), k = m ? Math.sqrt(Math.abs(m.a * m.d - m.b * m.c)) : 1;
-      const half = (px(s.strokeWidth) ?? 1) * k / 2;
+    if (paints && url(s.fill)) at(box(r), name(el) + ' fill');
+    if (paints && url(s.stroke)) {
+      const half = halfStroke(el, s);
       at({ left: r.left - half, top: r.top - half, right: r.right + half, bottom: r.bottom + half }, name(el) + ' stroke');
     }
     if (shape && (url(s.markerStart) || url(s.markerMid) || url(s.markerEnd))) at(outer(el), name(el) + ' marker');
@@ -196,11 +214,16 @@
       // A pseudo-element has no client rect. With a used pixel size, count that
       // size (at the viewport origin when fixed, else at the host's corner);
       // without one, count the host box. Its clipping chain starts at the host.
+      // A raster filter paints its filter region around that box instead.
       const mode = ps.position === 'fixed' || ps.position === 'absolute' ? ps.position : 'static';
       const w = px(ps.width), h = px(ps.height);
-      if (w == null || h == null) { mark(el, mode, box(r), name(el) + p); continue; }
-      const left = mode === 'fixed' ? (px(ps.left) ?? 0) : r.left, top = mode === 'fixed' ? (px(ps.top) ?? 0) : r.top;
-      mark(el, mode, { left, top, right: left + w, bottom: top + h }, name(el) + p);
+      let pr = box(r);
+      if (w != null && h != null) {
+        const left = mode === 'fixed' ? (px(ps.left) ?? 0) : r.left, top = mode === 'fixed' ? (px(ps.top) ?? 0) : r.top;
+        pr = { left, top, right: left + w, bottom: top + h };
+      }
+      mark(el, mode, pr, name(el) + p);
+      if (url(ps.filter)) mark(el, mode, region(ps.filter, pr), name(el) + p + ' filter');
     }
   }
   const covered = grid.reduce((n, v) => n + v, 0);
