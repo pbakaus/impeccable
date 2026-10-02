@@ -1434,7 +1434,7 @@ fn finish_native_capture(io: &Io, out_dir: &str, gate: &mut Gate, native: &Nativ
             // No raster region, so no presence or placement check ran; say so.
             json!({"directory":native.directory,"inputs":inputs,"integrityScope":"assembled-page viewport from frozen inputs; the comp and approved screenshots are never served to the page; no raster presence or placement check (no raster region); existing visual scores unchanged","adequateVisibility":"not-established-by-integrity-checks-alone"})
         } else {
-            json!({"directory":native.directory,"inputs":inputs,"integrityScope":"rendered presence and minimum frame placement; existing visual scores unchanged","framePolicy":"central-half-with-1px-quantization-tolerance","adequateVisibility":"not-established-by-integrity-checks-alone"})
+            json!({"directory":native.directory,"inputs":inputs,"integrityScope":"rendered presence and minimum frame placement; the comp and approved screenshots are never served to the page; existing visual scores unchanged","framePolicy":"central-half-with-1px-quantization-tolerance","adequateVisibility":"not-established-by-integrity-checks-alone"})
         };
         report["gate"]["ok"] = json!(gate.ok);
         report["gate"]["reasons"] = json!(gate.reasons);

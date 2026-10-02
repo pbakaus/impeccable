@@ -532,14 +532,19 @@ fn parse_capture(
             "native capture method does not match a spec with raster regions".into()
         });
     }
-    if text_only {
-        if !matches!(report["dependencyPolicy"].as_str(), Some("hero-review-manifest" | "static-inventory")) {
-            return Err("invalid native capture dependency policy".into());
-        }
-        let served = report["servedToPage"].as_array().ok_or("missing native capture page inventory")?;
-        if served.iter().any(|f| f["path"] == r.spec.as_str() || f["path"] == r.reference.as_str()) {
-            return Err("native capture served a bound input to the page".into());
-        }
+    if text_only
+        && !matches!(report["dependencyPolicy"].as_str(), Some("hero-review-manifest" | "static-inventory"))
+    {
+        return Err("invalid native capture dependency policy".into());
+    }
+    // Either kind: the page is never served the spec or the comp, by its list
+    // of served files or by the input manifest's own served flags.
+    let served = report["servedToPage"].as_array().ok_or("missing native capture page inventory")?;
+    let bound = |f: &Value| f["path"] == r.spec.as_str() || f["path"] == r.reference.as_str();
+    if served.iter().any(bound)
+        || report["manifest"]["files"].as_array().into_iter().flatten().any(|f| bound(f) && f["served"] != false)
+    {
+        return Err("native capture served a bound input to the page".into());
     }
     let expected = if stage == "hero" {
         vec!["hero"]
@@ -561,11 +566,15 @@ fn parse_capture(
                 .decode(f["png"].as_str().ok_or("missing frame PNG")?)
                 .map_err(|e| e.to_string())?;
             let receipts = f["regions"].as_array().ok_or("invalid native capture regions")?;
+            // Every frame proves images stayed under the share limit: anywhere
+            // for a text-only spec, outside the declared raster regions otherwise.
+            let share = report["frameProofs"][name]["rasterCoverage"]["share"].as_f64();
+            if !share.is_some_and(|s| (0. ..TEXT_ONLY_RASTER_SHARE_MAX).contains(&s)) {
+                return Err("invalid native capture regions".into());
+            }
             if text_only {
-                // No raster region, so nothing to measure: the frame's evidence is
-                // its proof, which must show images stayed under the share limit.
-                let share = report["frameProofs"][name]["rasterCoverage"]["share"].as_f64();
-                if !receipts.is_empty() || !share.is_some_and(|s| (0. ..TEXT_ONLY_RASTER_SHARE_MAX).contains(&s)) {
+                // No raster region, so nothing to measure: the frame's evidence is its proof.
+                if !receipts.is_empty() {
                     return Err("invalid native capture regions".into());
                 }
             } else {
@@ -736,12 +745,12 @@ mod parse_tests {
         let canonical = std::fs::canonicalize(&dir).unwrap();
         let mut report = json!({"stage":"hero","artifact":"index.html",
             "captureService":{"id":"h-1","registeredRoot":canonical},
-            "manifest":{"files":[{"path":SPEC,"sha256":capture_sha256(&spec)}]}});
+            "manifest":{"files":[{"path":SPEC,"sha256":capture_sha256(&spec),"served":false},{"path":"comp.png","sha256":"0","served":false}]},
+            "servedToPage":[{"path":"index.html"}],
+            "frameProofs":{"hero":{"rasterCoverage":{"share":0.01}},"desktop":{"rasterCoverage":{"share":0.01}},"mobile":{"rasterCoverage":{"share":0.01}}}});
         if raster == 0 {
             report["captureMethod"] = json!("assembled-page-viewport");
             report["dependencyPolicy"] = json!("static-inventory");
-            report["servedToPage"] = json!([{"path":"index.html"}]);
-            report["frameProofs"] = json!({"hero":{"rasterCoverage":{"share":0.01}}});
         }
         (Root(dir), request, report)
     }
@@ -796,6 +805,19 @@ mod parse_tests {
         assert!(parse(&request, &report, frame(receipts(2))).is_ok());
         let e = parse(&request, &report, frame(vec![])).unwrap_err();
         assert_eq!(e, "invalid native capture regions");
+        // The page is never served the comp, and every frame proves images
+        // outside the raster regions stayed under the limit.
+        for (pointer, value) in [
+            ("/frameProofs/hero/rasterCoverage/share", json!(0.15)),
+            ("/frameProofs/hero", json!(null)),
+            ("/servedToPage", json!([{"path":"index.html"},{"path":"comp.png"}])),
+            ("/servedToPage", json!(null)),
+            ("/manifest/files/1/served", json!(true)),
+        ] {
+            let mut broken = report.clone();
+            *broken.pointer_mut(pointer).unwrap() = value;
+            assert!(parse(&request, &broken, frame(receipts(2))).is_err(), "{pointer}");
+        }
         // Claiming the text-only method does not excuse a raster spec.
         let mut claimed = report.clone();
         claimed["captureMethod"] = json!("assembled-page-viewport");

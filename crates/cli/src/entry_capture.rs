@@ -22,7 +22,8 @@ pub struct CdpEntryRenderer;
 /// raster region. Logos, avatars and icons sit well under it (a 200x60 logo is
 /// about 1% of a 1440x900 viewport; a row of twelve 40px avatars under 2%); a
 /// chart, photo or copied comp that carries real weight in the comparison sits
-/// well over it.
+/// well over it. A spec with raster regions gets the same limit for what images
+/// paint outside those regions.
 pub const TEXT_ONLY_RASTER_SHARE_MAX: f64 = 0.15;
 /// The frozen inputs a capture was drawn from. A text-only capture also binds
 /// the hero review manifest whose dependency list chose what the page may load.
@@ -51,19 +52,26 @@ impl EntryRenderer for CdpEntryRenderer {
     }
 }
 impl CdpEntryRenderer {
-    /// `forbidden` holds approved images (a reviewed screenshot) that a text-only
-    /// page must not load or embed; the bound comp is always forbidden there.
+    /// `forbidden` holds approved images (a reviewed screenshot) that the page
+    /// must not load or embed; the bound comp is always forbidden.
     pub fn capture_forbidding(
         &self,
         request: &EntryRequest,
         forbidden: &[&[u8]],
     ) -> Result<Box<dyn CapturedEntry>, String> {
         // The shared gate chooses the entry/spec/reference, never a caller URL.
-        let served = static_inventory(&request.root)?;
+        // Spec and comp are bound (hashed and re-verified) but never served: a
+        // page graded against the comp must not be able to show it.
+        let inventory = static_inventory(&request.root)?;
+        let served: Vec<String> = inventory
+            .iter()
+            .filter(|p| **p != request.spec && **p != request.reference)
+            .cloned()
+            .collect();
         let snapshot = Arc::new(HtmlSnapshot::freeze(SnapshotSelection {
             root: request.root.clone(),
             entry: request.artifact.clone(),
-            served: served.clone(),
+            served,
             bound: vec![request.spec.clone(), request.reference.clone()],
         })?);
         let spec: Value =
@@ -102,10 +110,31 @@ impl CdpEntryRenderer {
             ],
         };
         if ids.is_empty() {
-            return capture_text_only(request, snapshot, &served, &frames, forbidden);
+            return capture_text_only(request, snapshot, &inventory, &frames, forbidden);
+        }
+        let comp = snapshot.bytes(&request.reference).ok_or("reference is not bound to snapshot")?;
+        let mut forbidden: Vec<&[u8]> = forbidden.to_vec();
+        forbidden.push(comp);
+        // Each raster region's plate path and its box in comp pixels.
+        let mut plates = Vec::new();
+        let mut boxes = Vec::new();
+        for region in spec["regions"].as_array().into_iter().flatten().filter(|r| r["medium"] == "raster") {
+            let id = region["id"].as_str().unwrap_or("raster");
+            let plate = region["plate"].as_str().ok_or_else(|| format!("raster region {id} has no plate"))?;
+            if plate == request.reference || plate == request.spec {
+                return Err(format!("raster region {id} names the approved comp ({plate}) as its plate. A plate is the region's own artwork, never the comp."));
+            }
+            if let Some(reason) = snapshot.bytes(plate).and_then(|bytes| forbidden_content(plate, bytes, &forbidden)) {
+                return Err(format!("raster region {id}'s plate {plate} {reason}. A plate is the region's own artwork, never the comp."));
+            }
+            plates.push(plate.to_string());
+            boxes.push(region["px"].clone());
         }
         let mut evidence = EntryEvidence {
-            report: json!({"schema":"native-entry-capture-v1","inputSnapshot":snapshot.digest(),"manifest":snapshot.manifest(),"artifact":request.artifact,"stage":match request.stage {EntryStage::Hero=>"hero",EntryStage::Responsive=>"responsive"},"scope":"Fresh static HTML rendering and scoped raster evidence. No independent aesthetic approval."}),
+            report: json!({"schema":"native-entry-capture-v1","inputSnapshot":snapshot.digest(),"manifest":snapshot.manifest(),"artifact":request.artifact,"stage":match request.stage {EntryStage::Hero=>"hero",EntryStage::Responsive=>"responsive"},"scope":"Fresh static HTML rendering and scoped raster evidence. No independent aesthetic approval.",
+                "integrityScope":"the comp and approved screenshots are never served to the page; images outside the declared raster regions cover under 15% of each frame",
+                "servedToPage":snapshot.manifest()["files"].as_array().into_iter().flatten().filter(|f| f["served"] == true).map(|f| json!({"path":f["path"],"sha256":f["sha256"]})).collect::<Vec<_>>(),
+                "frameProofs":{}}),
             frames: vec![],
         };
         for (name, viewport) in frames {
@@ -116,13 +145,37 @@ impl CdpEntryRenderer {
             } else {
                 &ids[..]
             };
-            let regions = snapshot.capture_regions_at_viewport(
-                &mut CdpAssetRenderer::from_process_env(),
+            // Images outside the declared raster regions contradict the spec as
+            // they would on a page that declares none; that is what catches a
+            // re-encoded comp the byte checks cannot see. Hero and desktop keep
+            // the comp's layout, so the region boxes (scaled to the frame width)
+            // are excluded. Mobile reflows away from them, so there the declared
+            // plates are excluded wherever they land.
+            let exclude = if name == "mobile" {
+                json!({"paths": plates})
+            } else {
+                let scale = viewport.map(|v| v[0] as f64 / width).unwrap_or(1.);
+                let scaled: Vec<Value> = boxes
+                    .iter()
+                    .map(|b| {
+                        let v = |k: &str| b[k].as_f64().unwrap_or(0.) * scale;
+                        json!({"x":v("x"),"y":v("y"),"w":v("w"),"h":v("h")})
+                    })
+                    .collect();
+                json!({"boxes": scaled})
+            };
+            snapshot.take_requested()?;
+            let captured = snapshot.capture_regions_at_viewport(
+                &mut CdpAssetRenderer::from_process_env().measuring_raster_coverage(exclude),
                 &request.spec,
                 selected,
                 true,
                 viewport,
-            )?;
+            );
+            // Judge what the page asked for before anything else, so a capture
+            // that failed because the comp was withheld says why.
+            check_requests(name, &snapshot, request, &forbidden)?;
+            let mut regions = captured?;
             if regions.iter().any(|r| {
                 r.receipt["stableCapture"] != true || r.receipt["batchStabilityVerified"] != true
             }) {
@@ -149,6 +202,23 @@ impl CdpEntryRenderer {
                     "{name} native capture did not retain a stable bound document: {details}"
                 ));
             }
+            let coverage = regions
+                .first()
+                .map(|r| r.receipt["rasterCoverage"].clone())
+                .ok_or("raster coverage was not measured")?;
+            if !coverage["share"].is_number() {
+                return Err(format!("{name} raster coverage was not measured: {}", coverage["unavailable"].as_str().unwrap_or("no measurement")));
+            }
+            for region in &mut regions {
+                if let Some(receipt) = region.receipt.as_object_mut() {
+                    receipt.remove("rasterCoverage");
+                }
+            }
+            let share = coverage["share"].as_f64().unwrap_or(1.);
+            if share >= TEXT_ONLY_RASTER_SHARE_MAX {
+                return Err(format!("{name} raster capture refused: images outside the declared raster regions cover {}% of the viewport (limit {}%): {}. The spec declares every raster in the first viewport as a raster region: declare this image as one (comp-spec --regions), or remove it and draw that area in code.", (share * 100.).round(), (TEXT_ONLY_RASTER_SHARE_MAX * 100.) as u32, largest_images(&coverage)));
+            }
+            evidence.report["frameProofs"][name] = json!({"rasterCoverage": coverage});
             let png = regions[0]
                 .images
                 .iter()
@@ -275,10 +345,7 @@ fn capture_text_only(
             let coverage = &proof["rasterCoverage"];
             let share = coverage["share"].as_f64().ok_or("raster coverage was not measured")?;
             if share >= TEXT_ONLY_RASTER_SHARE_MAX {
-                let largest = coverage["largest"].as_array().into_iter().flatten().take(3)
-                    .map(|i| format!("{} ({}% of the viewport)", i["what"].as_str().unwrap_or("image"), (i["share"].as_f64().unwrap_or(0.) * 100.).round()))
-                    .collect::<Vec<_>>().join(", ");
-                return Err(format!("{name} text-only capture refused: images cover {}% of the viewport (limit {}%): {largest}. The spec declares no raster region, so a large image contradicts it: declare the image as a raster region in the spec (comp-spec --regions), or remove it and draw that area in code.", (share * 100.).round(), (TEXT_ONLY_RASTER_SHARE_MAX * 100.) as u32));
+                return Err(format!("{name} text-only capture refused: images cover {}% of the viewport (limit {}%): {}. The spec declares no raster region, so a large image contradicts it: declare the image as a raster region in the spec (comp-spec --regions), or remove it and draw that area in code.", (share * 100.).round(), (TEXT_ONLY_RASTER_SHARE_MAX * 100.) as u32, largest_images(coverage)));
             }
             evidence.report["frameProofs"][name] = proof;
             evidence.frames.push(FrameEvidence {
@@ -328,6 +395,43 @@ fn declared_dependencies(
         .map(|d| d.as_str().map(|s| s.replace('\\', "/")).ok_or("hero review manifest: dependencies must be paths"))
         .collect::<Result<Vec<_>, _>>()?;
     Ok((Some(deps), Some((path, bytes))))
+}
+
+/// The largest images a coverage measurement names, for a refusal.
+fn largest_images(coverage: &Value) -> String {
+    coverage["largest"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .take(3)
+        .map(|i| format!("{} ({}% of the viewport)", i["what"].as_str().unwrap_or("image"), (i["share"].as_f64().unwrap_or(0.) * 100.).round()))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Refuse a raster frame whose page asked for a bound input it is never served
+/// (the spec or the comp), or loaded a file that is, or inlines, a forbidden
+/// image. Only files the page requested are judged, so an unused backup of the
+/// comp elsewhere in the project does not block an honest page.
+fn check_requests(
+    name: &str,
+    snapshot: &HtmlSnapshot,
+    request: &EntryRequest,
+    forbidden: &[&[u8]],
+) -> Result<(), String> {
+    for path in snapshot.take_requested().map_err(|e| format!("{name} raster capture refused: {e}"))? {
+        if path == request.reference || path == request.spec {
+            return Err(format!("{name} raster capture refused: the page loads the approved comp ({path}). Show the declared plates and draw the rest of the first viewport in code."));
+        }
+        if !snapshot.is_served(&path) {
+            continue;
+        }
+        let bytes = snapshot.bytes(&path).ok_or("requested file is not in the frozen inputs")?;
+        if let Some(reason) = forbidden_content(&path, bytes, forbidden) {
+            return Err(format!("{name} raster capture refused: the page loads {path}, which {reason}. Show the declared plates and draw the rest of the first viewport in code."));
+        }
+    }
+    Ok(())
 }
 
 /// Whether a served file is, or inlines as base64, one of the forbidden images.

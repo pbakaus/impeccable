@@ -17,12 +17,21 @@ use std::{
 
 pub struct CdpAssetRenderer {
     env: HashMap<String, String>,
+    raster_coverage: Option<Value>,
 }
 impl CdpAssetRenderer {
     pub fn from_process_env() -> Self {
         Self {
             env: impeccable_common::process_env(),
+            raster_coverage: None,
         }
+    }
+    /// Also measure the share of the viewport images paint outside `exclude`
+    /// (`{boxes, paths}`, see `raster_coverage.js`) on the settled page, before
+    /// any intervention, and record it as `rasterCoverage` on every receipt.
+    pub fn measuring_raster_coverage(mut self, exclude: Value) -> Self {
+        self.raster_coverage = Some(exclude);
+        self
     }
 }
 impl AssetRenderer for CdpAssetRenderer {
@@ -183,15 +192,28 @@ impl AssetRenderer for CdpAssetRenderer {
                     "(()=>{{globalThis[{key}]?.restore();delete globalThis[{key}];return true;}})()"
                 ),
             );
+            // Measured on the restored page and bound to the graded frame: the
+            // viewport must show the baseline pixels before and after, so a page
+            // that changes later cannot report an earlier, smaller coverage.
+            let coverage = match (&self.raster_coverage, &result) {
+                (Some(exclude), Ok(captures)) => Some(
+                    coverage_on_baseline(&mut capture, &requests[0], exclude, captures)
+                        .unwrap_or_else(|reason| json!({"unavailable": reason})),
+                ),
+                _ => None,
+            };
             drop(capture);
             page.close();
-            result
+            result.map(|captures| (captures, coverage))
         })();
         browser.close();
-        result.map(|captures| {
+        result.map(|(captures, coverage)| {
             captures
                 .into_iter()
                 .map(|mut capture| {
+                    if let Some(coverage) = &coverage {
+                        capture.receipt["rasterCoverage"] = coverage.clone();
+                    }
                     capture.receipt["browser"] = browser_version.clone();
                     capture.receipt["rasterization"] = json!("software");
                     capture.receipt["partialRaster"] = json!(false);
@@ -202,6 +224,28 @@ impl AssetRenderer for CdpAssetRenderer {
                 .collect()
         })
     }
+}
+fn coverage_on_baseline(
+    page: &mut CapturePage<'_, '_>,
+    r: &AssetCaptureRequest,
+    exclude: &Value,
+    captures: &[AssetCapture],
+) -> Result<Value, String> {
+    let baseline = captures
+        .iter()
+        .flat_map(|c| c.images.iter())
+        .find(|i| i.name == "baseline.png")
+        .ok_or("no settled baseline frame")?;
+    let baseline = png_io::decode_png(&baseline.png)
+        .map_err(|e| format!("baseline decode: {e:?}"))?
+        .image;
+    let (_, before) = screenshot(page, r)?;
+    let coverage = eval(page, &format!("({})({exclude})", include_str!("raster_coverage.js")))?;
+    let (_, after) = screenshot(page, r)?;
+    if before.data != baseline.data || after.data != baseline.data {
+        return Err("the page no longer shows the captured frame".into());
+    }
+    Ok(coverage)
 }
 struct CapturePage<'p, 'b> {
     page: &'p mut Page<'b>,

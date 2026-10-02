@@ -9,27 +9,43 @@
 // that clip it (overflow or contain: paint on its containing-block chain), and
 // an element under an ancestor with opacity 0 paints nothing. The union is taken
 // on a 4px grid so tiled or overlapping pieces add up once.
-() => {
+//
+// `exclude` (optional) is what a spec with raster regions declares: `boxes`
+// are the regions' viewport rectangles, whose grid cells (by cell centre) are
+// left out of the count, and `paths` are the declared plates (project paths),
+// whose images are not counted at all. With neither, every image counts.
+(exclude) => {
   const W = innerWidth, H = innerHeight, cell = 4;
   const cols = Math.ceil(W / cell), rows = Math.ceil(H / cell);
   const grid = new Uint8Array(cols * rows);
   const items = [];
   const page = location.href.split('#')[0];
-  // True when the value references at least one image that is not a fragment of
-  // this document. Chromium may report url(#id) resolved against the page URL.
-  const url = v => {
-    if (typeof v !== 'string') return false;
+  const boxes = (exclude && exclude.boxes) || [];
+  // A resource is named by origin and path: the snapshot server ignores the
+  // query string, and a fragment never reaches it, so `art.png?v=2` is the plate.
+  const resource = u => u.origin + u.pathname;
+  const plates = new Set(((exclude && exclude.paths) || []).map(p => resource(new URL(p, location.origin + '/'))));
+  const outside = (x, y) => !boxes.some(b => x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h);
+  // The images a value references that are not fragments of this document.
+  // Chromium may report url(#id) resolved against the page URL. An unparsable
+  // reference is counted, never waived.
+  const refs = v => {
+    const out = [];
+    if (typeof v !== 'string') return out;
     for (const m of v.matchAll(/url\(\s*(["']?)(.*?)\1\s*\)/gi)) {
       const ref = m[2];
       if (ref.startsWith('#')) continue;
       try {
         const u = new URL(ref, page);
         if (u.hash && u.href.split('#')[0] === page) continue;
-      } catch { /* an unparsable reference is counted, never waived */ }
-      return true;
+        out.push(resource(u));
+      } catch { out.push(null); }
     }
-    return false;
+    return out;
   };
+  const url = v => refs(v).length > 0;
+  // A piece drawn only from declared plates is the spec's own raster.
+  const declared = srcs => plates.size > 0 && srcs.length > 0 && srcs.every(u => u && plates.has(u));
   const px = v => /^-?[\d.]+px$/.test(v) ? parseFloat(v) : null;
   const intersect = (a, b) => ({ left: Math.max(a.left, b.left), top: Math.max(a.top, b.top), right: Math.min(a.right, b.right), bottom: Math.min(a.bottom, b.bottom) });
   const createsFixedBlock = s => s.transform !== 'none' || s.perspective !== 'none' || s.filter !== 'none'
@@ -58,12 +74,22 @@
     for (let a = el; a; a = a.parentElement) if (parseFloat(getComputedStyle(a).opacity) === 0) return true;
     return false;
   };
-  const mark = (from, mode, r, what) => {
+  const mark = (from, mode, r, what, srcs) => {
+    if (srcs && declared(srcs)) return;
     r = intersect(clipped(from, mode, r), { left: 0, top: 0, right: W, bottom: H });
     if (r.right <= r.left || r.bottom <= r.top) return;
-    items.push({ what, box: { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.right - r.left), h: Math.round(r.bottom - r.top) }, share: (r.right - r.left) * (r.bottom - r.top) / (W * H) });
+    let own = 0;
     for (let y = Math.floor(r.top / cell); y < Math.ceil(r.bottom / cell); y++)
-      for (let x = Math.floor(r.left / cell); x < Math.ceil(r.right / cell); x++) grid[y * cols + x] = 1;
+      for (let x = Math.floor(r.left / cell); x < Math.ceil(r.right / cell); x++) {
+        if (!outside((x + 0.5) * cell, (y + 0.5) * cell)) continue;
+        grid[y * cols + x] = 1;
+        own++;
+      }
+    if (!own) return;
+    // Without exclusion boxes a piece's share is its painted area; with them,
+    // the share of the viewport it paints outside the declared regions.
+    const share = boxes.length ? own / (cols * rows) : (r.right - r.left) * (r.bottom - r.top) / (W * H);
+    items.push({ what, box: { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.right - r.left), h: Math.round(r.bottom - r.top) }, share });
   };
   const name = el => el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (el.classList.length ? '.' + [...el.classList].slice(0, 2).join('.') : '');
   const box = r => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
@@ -97,12 +123,13 @@
     if (s.display === 'none' || s.visibility !== 'visible' || transparent(el)) continue;
     const r = el.getBoundingClientRect();
     const tag = el.tagName.toLowerCase();
-    const at = (rect, what) => mark(el.parentElement, s.position, rect, what);
-    if (tag === 'img' || tag === 'video' || (tag === 'input' && el.type === 'image')) at(picture(el, s, r), name(el));
-    if (tag === 'image') at(box(r), name(el));
-    if (url(s.backgroundImage)) at(background(s, r), name(el) + ' background');
-    if (url(s.borderImageSource) || url(s.maskImage) || url(s.webkitMaskImage)) at(box(r), name(el) + ' border/mask image');
-    if (url(s.listStyleImage) && s.display === 'list-item') at(box(r), name(el) + ' list marker');
+    const at = (rect, what, srcs) => mark(el.parentElement, s.position, rect, what, srcs);
+    const src = v => { try { return v ? [resource(new URL(v, page))] : []; } catch { return [null]; } };
+    if (tag === 'img' || tag === 'video' || (tag === 'input' && el.type === 'image')) at(picture(el, s, r), name(el), src(el.currentSrc || el.src));
+    if (tag === 'image') at(box(r), name(el), src(el.href && el.href.baseVal));
+    if (url(s.backgroundImage)) at(background(s, r), name(el) + ' background', refs(s.backgroundImage));
+    if (url(s.borderImageSource) || url(s.maskImage) || url(s.webkitMaskImage)) at(box(r), name(el) + ' border/mask image', [...refs(s.borderImageSource), ...refs(s.maskImage), ...refs(s.webkitMaskImage)]);
+    if (url(s.listStyleImage) && s.display === 'list-item') at(box(r), name(el) + ' list marker', refs(s.listStyleImage));
     for (const p of ['::before', '::after']) {
       const ps = getComputedStyle(el, p);
       if (!ps || ps.content === 'none' || ps.content === 'normal' || ps.display === 'none' || ps.visibility !== 'visible' || parseFloat(ps.opacity) === 0) continue;
@@ -112,12 +139,15 @@
       // without one, count the host box. Its clipping chain starts at the host.
       const mode = ps.position === 'fixed' || ps.position === 'absolute' ? ps.position : 'static';
       const w = px(ps.width), h = px(ps.height);
-      if (w == null || h == null) { mark(el, mode, box(r), name(el) + p); continue; }
+      const srcs = [ps.content, ps.backgroundImage, ps.borderImageSource, ps.maskImage, ps.webkitMaskImage].flatMap(refs);
+      if (w == null || h == null) { mark(el, mode, box(r), name(el) + p, srcs); continue; }
       const left = mode === 'fixed' ? (px(ps.left) ?? 0) : r.left, top = mode === 'fixed' ? (px(ps.top) ?? 0) : r.top;
-      mark(el, mode, { left, top, right: left + w, bottom: top + h }, name(el) + p);
+      mark(el, mode, { left, top, right: left + w, bottom: top + h }, name(el) + p, srcs);
     }
   }
   const covered = grid.reduce((n, v) => n + v, 0);
   items.sort((a, b) => b.share - a.share);
-  return { share: covered / (cols * rows), cell, largest: items.slice(0, 5), measure: 'painted-box-union-v2' };
+  const result = { share: covered / (cols * rows), cell, largest: items.slice(0, 5), measure: 'painted-box-union-v2' };
+  if (exclude) result.excluded = { boxes, paths: exclude.paths || [] };
+  return result;
 }

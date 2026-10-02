@@ -14,7 +14,7 @@ use std::{
     net::{TcpListener, TcpStream},
     path::{Component, Path, PathBuf},
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
     thread::{self, JoinHandle},
@@ -40,7 +40,19 @@ pub struct HtmlSnapshot {
     files: BTreeMap<String, Vec<u8>>,
     manifest: Value,
     digest: String,
+    /// Every well-formed path a page asked this snapshot's servers for, served
+    /// or not. Entry capture reads it to refuse a page that
+    /// asks for a bound input it is never served (the comp) or loads a copy.
+    requested: Mutex<RequestLog>,
 }
+/// Distinct requested paths, bounded. A page that asks for more than the bound
+/// cannot hide a request past it: the log reports the overflow instead.
+#[derive(Default)]
+struct RequestLog {
+    paths: BTreeSet<String>,
+    overflowed: bool,
+}
+const MAX_LOGGED_REQUESTS: usize = 4096;
 impl HtmlSnapshot {
     pub fn freeze(selection: SnapshotSelection) -> Result<Self, String> {
         let root = fs::canonicalize(&selection.root).map_err(|e| format!("snapshot root: {e}"))?;
@@ -92,6 +104,7 @@ impl HtmlSnapshot {
             files,
             manifest,
             digest,
+            requested: Mutex::new(RequestLog::default()),
         };
         snapshot.verify_current()?;
         Ok(snapshot)
@@ -254,6 +267,18 @@ impl HtmlSnapshot {
     pub fn bytes(&self, name: &str) -> Option<&[u8]> {
         self.files.get(name).map(Vec::as_slice)
     }
+    /// Whether the page may be served this path (bound-only inputs are not).
+    pub fn is_served(&self, name: &str) -> bool {
+        self.served.contains(name)
+    }
+    /// The distinct paths pages asked for since the last call, emptying the log.
+    pub fn take_requested(&self) -> Result<Vec<String>, String> {
+        let log = std::mem::take(&mut *self.requested.lock().unwrap_or_else(|e| e.into_inner()));
+        if log.overflowed {
+            return Err(format!("the page requested more than {MAX_LOGGED_REQUESTS} distinct paths"));
+        }
+        Ok(log.paths.into_iter().collect())
+    }
     pub fn verify_current(&self) -> Result<(), String> {
         for (name, bytes) in &self.files {
             if read_input(&self.root, name)? != *bytes {
@@ -264,27 +289,7 @@ impl HtmlSnapshot {
     }
     /// Strict origin-form routes. Decode percent-encoded UTF-8, but never separators.
     pub fn serve_path(&self, target: &str) -> Option<String> {
-        let raw = target.strip_prefix('/')?.split('?').next()?;
-        let mut bytes = Vec::new();
-        let input = raw.as_bytes();
-        let mut i = 0;
-        while i < input.len() {
-            if input[i] == b'%' {
-                let hex = std::str::from_utf8(input.get(i + 1..i + 3)?).ok()?;
-                let byte = u8::from_str_radix(hex, 16).ok()?;
-                if matches!(byte, b'/' | b'\\' | 0) {
-                    return None;
-                }
-                bytes.push(byte);
-                i += 3;
-            } else {
-                bytes.push(input[i]);
-                i += 1;
-            }
-        }
-        let name = String::from_utf8(bytes).ok()?;
-        valid_relative(&name).ok()?;
-        self.served.contains(&name).then_some(name)
+        decode_target(target).filter(|name| self.served.contains(name))
     }
     pub fn serve(self: &Arc<Self>) -> Result<SnapshotServer, String> {
         let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
@@ -315,6 +320,29 @@ impl HtmlSnapshot {
             worker: Some(worker),
         })
     }
+}
+fn decode_target(target: &str) -> Option<String> {
+    let raw = target.strip_prefix('/')?.split('?').next()?;
+    let mut bytes = Vec::new();
+    let input = raw.as_bytes();
+    let mut i = 0;
+    while i < input.len() {
+        if input[i] == b'%' {
+            let hex = std::str::from_utf8(input.get(i + 1..i + 3)?).ok()?;
+            let byte = u8::from_str_radix(hex, 16).ok()?;
+            if matches!(byte, b'/' | b'\\' | 0) {
+                return None;
+            }
+            bytes.push(byte);
+            i += 3;
+        } else {
+            bytes.push(input[i]);
+            i += 1;
+        }
+    }
+    let name = String::from_utf8(bytes).ok()?;
+    valid_relative(&name).ok()?;
+    Some(name)
 }
 fn valid_relative(name: &str) -> Result<(), String> {
     if name.is_empty()
@@ -475,11 +503,16 @@ fn respond(
         && protocol == Some("HTTP/1.1")
         && first.next().is_none()
         && hosts == [host];
-    let route = if valid {
-        target.and_then(|t| snapshot.serve_path(t))
-    } else {
-        None
-    };
+    let asked = if valid { target.and_then(decode_target) } else { None };
+    if let Some(name) = &asked {
+        let mut log = snapshot.requested.lock().unwrap_or_else(|e| e.into_inner());
+        if log.paths.len() < MAX_LOGGED_REQUESTS || log.paths.contains(name) {
+            log.paths.insert(name.clone());
+        } else {
+            log.overflowed = true;
+        }
+    }
+    let route = asked.filter(|name| snapshot.served.contains(name));
     let (status, kind, body) = match route.as_deref() {
         Some(name) => ("200 OK", mime(name).unwrap(), snapshot.bytes(name).unwrap()),
         None => ("404 Not Found", "text/plain", b"Not found".as_slice()),
