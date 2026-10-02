@@ -157,6 +157,7 @@ export const SUITES = {
           'tests/live-agent-target.test.mjs',
           'tests/live-boot-fastpath.test.mjs',
           'tests/live-browser-ignores.test.mjs',
+          'tests/live-browser-session.test.mjs',
           'tests/live-browser-source.test.mjs',
           'tests/live-e2e-agent-output.test.mjs',
           'tests/live-e2e-cli-options.test.mjs',

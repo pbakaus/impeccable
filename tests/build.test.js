@@ -683,6 +683,16 @@ describe('agent bodies resolve placeholders on every surface that ships them', (
     }
   });
 
+  // A markdown link resolves against its own file, so it differs per surface.
+  test('the asset producer links to component-review.md from every surface', () => {
+    for (const [relPath] of SURFACES) {
+      const file = path.join(DIST, relPath);
+      const match = fs.readFileSync(file, 'utf-8').match(/\[component-review\.md\]\(([^)]+)\)/);
+      expect(match).not.toBeNull();
+      expect(fs.existsSync(path.resolve(path.dirname(file), match[1]))).toBe(true);
+    }
+  });
+
   test('no emitted agent body carries an unresolved placeholder or a rule marker', () => {
     const synthetic = {
       name: 'impeccable',
@@ -693,7 +703,7 @@ describe('agent bodies resolve placeholders on every surface that ships them', (
           name: 'impeccable-synthetic',
           codexName: 'impeccable_synthetic',
           description: 'synthetic agent',
-          body: 'Run `{{scripts_path}}/impeccable embed-prompt` and ask {{model}}. <!-- rule:synthetic-marker -->',
+          body: 'Run `{{scripts_path}}/impeccable embed-prompt` and ask {{model}}. See [x.md]({{reference_path}}/x.md). <!-- rule:synthetic-marker -->',
         },
       ],
     };
