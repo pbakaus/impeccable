@@ -74,6 +74,13 @@ function Thumb({ url }: { url?: string }) {
 `),
       args: ['--no-config', '--json', 'repro.tsx'],
     },
+    // #884: a non-HTML file only gets the regex engine. Text mode says so, even
+    // on a zero-finding run.
+    {
+      id: 'detect-regex-only-note', verb: 'detect',
+      setup: (ws) => fs.writeFileSync(path.join(ws, 'probe.astro'), '<p style="font-size:8px">tiny functional label</p>\n'),
+      args: ['--no-config', 'probe.astro'],
+    },
     {
       id: 'detect-unresolved-custom-property-padding', verb: 'detect',
       setup: (ws) => fs.writeFileSync(path.join(ws, 'image-card.html'), `<!doctype html>
