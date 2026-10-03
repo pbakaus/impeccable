@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Line length: which characters are on the lines (browser-only)</title>
+  <!--
+    line-length divides an element's characters among its rendered lines, so
+    the count has to be of the characters that rendered. textContent is not
+    that: it holds an inline <style> child's CSS, the source's indentation,
+    and one code unit for every combining mark. Each pass case here read as a
+    long column on textContent and is a comfortable one on the page. Explicit
+    pixel widths throughout.
+  -->
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px 40px; color: #1a1a1a; background: #fff; }
+    h2 { font-size: 14px; line-height: 20px; margin: 32px 0 8px; color: #475569; }
+    .copy { font-size: 16px; line-height: 24px; margin: 0; }
+    .wide { width: 1000px; }
+    .measure { width: 560px; }
+    .marks { width: 640px; font-size: 16px; line-height: 28px; }
+    .keep { white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <!-- FLAG: the count still charges real long columns -->
+  <h2>Flag: a wide column that also carries an inline style child</h2>
+  <p class="copy wide flag-style-child"><style>.flag-style-child { min-height: 48px; }</style>Reading copy set across a column this wide asks the eye to travel a long way back to the start of every line, and after a few lines of it a reader starts to lose their place. The measure is what a designer sets with a max-width on the text block, and this block sets none at all, so every line runs the full width of the column it sits in from one edge to the other.</p>
+
+  <h2>Flag: a wide column written with source indentation</h2>
+  <p class="copy wide flag-indented">
+                    Reading copy set across a column this wide asks the eye to travel a long way back to the start
+                    of every line, and after a few lines of it a reader starts to lose their place. The measure is
+                    what a designer sets with a max-width on the text block, and this block sets none at all, so
+                    every line runs the full width of the column it sits in from one edge to the other.
+  </p>
+
+  <!-- PASS: a comfortable measure that textContent overcounts -->
+  <h2>Pass: a 560px measure with an inline style child</h2>
+  <!-- directus.io's hero paragraph: a typewriter component ships its
+       keyframes in a style element inside the paragraph. -->
+  <p class="copy measure pass-style-child"><style>
+@keyframes pass-style-child-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+.pass-style-child { min-height: 48px; }
+@media (max-width: 768px) {
+  .pass-style-child { min-height: 96px; }
+}
+.pass-style-child .cursor { animation: pass-style-child-blink 1s step-end infinite; }
+</style>A paragraph held to a comfortable measure wraps long before the eye has far to travel back, and this one keeps to about seventy characters a line.</p>
+
+  <h2>Pass: a 560px measure with a hidden child and a script child</h2>
+  <p class="copy measure pass-hidden-child">A paragraph held to a comfortable measure wraps long before the eye has far to travel back,<span style="display: none"> with a long run of words that a script reveals later and that take up no part of any line until then, however many of them there are in the source of the page,</span><script type="application/json">{"note": "data a component reads on hydration, which is text content and never a rendered character on any line of this paragraph"}</script> and this one keeps to about seventy characters a line.</p>
+
+  <h2>Pass: a 560px measure written with deep source indentation</h2>
+  <!-- odishatreasury.gov.in: a template indents every wrapped source line. -->
+  <p class="copy measure pass-indented">
+                                        A paragraph held to a comfortable
+                                        measure wraps long before the eye has
+                                        far to travel back, and this one keeps
+                                        to about seventy characters a line
+                                        from its first sentence to its last.
+  </p>
+
+  <h2>Pass: Devanagari prose on a 640px measure at 16px</h2>
+  <!-- v0-tripura-sundari-mandir.vercel.app: a third of the code units are
+       vowel signs and viramas, which sit on their consonant. -->
+  <p class="marks pass-combining-marks" lang="hi">राजस्थान के दक्षिणी भाग की अरावली पर्वतमाला के बीच स्थित यह प्राचीन मंदिर श्रद्धालुओं के लिए आस्था का प्रमुख केंद्र है और प्रतिवर्ष नवरात्रि के अवसर पर यहाँ विशाल मेले का आयोजन किया जाता है जिसमें दूर-दूर से भक्त आते हैं। इस क्षेत्र से बहने वाली माही नदी को पुराणों में पवित्र माना गया है और मंदिर की मूर्ति काले पत्थर से निर्मित है जिसकी अठारह भुजाएँ हैं।</p>
+
+  <h2>Flag: preserved white space is on the line</h2>
+  <!-- Under pre-wrap the runs of spaces render, so they are characters of
+       the line and the column is as long as it looks. -->
+  <p class="copy wide keep flag-preserved">Reading copy set across a column this wide asks the eye   to travel a long way back   to the start of every line,   and after a few lines of it   a reader starts to lose their place.   The measure is what a designer sets   with a max-width on the text block,   and this block sets none at all,   so every line runs the full width.</p>
+</body>
+</html>

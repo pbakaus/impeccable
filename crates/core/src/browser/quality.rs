@@ -109,6 +109,84 @@ fn rendered_line_widths(dom: &dyn Dom, el: ElId) -> Option<Vec<f64>> {
     )
 }
 
+/// Elements whose text is in `textContent` and never on a line.
+const UNRENDERED_TEXT_TAGS: [&str; 4] = ["style", "script", "noscript", "template"];
+
+static COMBINING_OR_FORMAT_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"[\p{M}\p{Cf}]").expect("COMBINING_OR_FORMAT_RE"));
+
+/// The `textContent` of each topmost descendant of `el` that renders no
+/// text: a `<style>`, `<script>`, `<noscript>` or `<template>`, and a
+/// `display: none` box. Document order.
+fn unrendered_text_runs(dom: &dyn Dom, el: ElId, out: &mut Vec<String>) {
+    for child in dom.children(el) {
+        let tag = tag_lower(dom, child);
+        if UNRENDERED_TEXT_TAGS.contains(&tag.as_str()) || dom.style(child, "display") == "none" {
+            let text = dom.text_content(child);
+            if !text.is_empty() {
+                out.push(text);
+            }
+        } else {
+            unrendered_text_runs(dom, child, out);
+        }
+    }
+}
+
+/// How many characters of `el`'s text reached its rendered lines, which is
+/// the count the line rects have to be divided among.
+///
+/// `textContent` is the source, not the rendering, and it runs over in three
+/// ways. It includes the text of an inline `<style>` or `<script>` child and
+/// of a `display: none` one, none of which is on any line. It keeps the
+/// source's indentation and newlines, which `white-space: normal` collapses
+/// to a single space. And it counts code units, so a combining mark, which
+/// sits on its base and advances nothing, is charged as a character of its
+/// own: a third of a Devanagari paragraph is marks.
+///
+/// So: the text with its unrendered descendants cut out, collapsible white
+/// space folded to one space unless the element preserves it, and combining
+/// marks and format characters (zero-width joiners, soft hyphens) left out.
+fn rendered_text_len(dom: &dyn Dom, el: ElId) -> usize {
+    let full = dom.text_content(el);
+    let mut cuts = Vec::new();
+    unrendered_text_runs(dom, el, &mut cuts);
+    let mut text = String::with_capacity(full.len());
+    let mut rest = full.as_str();
+    // The runs are in document order and each is a substring of what is
+    // left, so cutting the first occurrence of each walks the text once.
+    for cut in &cuts {
+        if let Some(at) = rest.find(cut.as_str()) {
+            text.push_str(&rest[..at]);
+            rest = &rest[at + cut.len()..];
+        }
+    }
+    text.push_str(rest);
+
+    let white_space = dom.style(el, "whiteSpace");
+    let preserved = white_space == "pre" || white_space == "pre-wrap" || white_space == "break-spaces";
+    let collapsible = |c: char| matches!(c, ' ' | '\t' | '\n' | '\r' | '\u{c}');
+    let mut count = 0usize;
+    let mut pending_space = false;
+    let mut buf = [0u8; 4];
+    for c in js::trim(&text).chars() {
+        if collapsible(c) && !preserved {
+            // Leading white space is dropped, a run counts once, and a
+            // trailing run never gets counted because nothing follows it.
+            pending_space = count > 0;
+            continue;
+        }
+        if COMBINING_OR_FORMAT_RE.is_match(c.encode_utf8(&mut buf)) {
+            continue;
+        }
+        if pending_space {
+            count += 1;
+            pending_space = false;
+        }
+        count += 1;
+    }
+    count
+}
+
 /// JS: checks.mjs#textDescendantsFlushSides(el, rect) → [top, right, bottom, left]
 ///
 /// The side is flush when the *text* lands on it, not when a text-bearing box
@@ -279,9 +357,12 @@ pub fn check_quality(dom: &dyn Dom, q: &QualityInput) -> Vec<RuleHit> {
     // at one size, so the average advance is the same on every line of it.
     //
     // The rects cover the element's whole rendered text, descendants and all,
-    // which is the same text `text_len` counts: measuring the direct text
-    // alone and then charging it with the characters of an inline `<strong>`
-    // inflated every paragraph that had one.
+    // so the characters divided among them are the rendered ones too
+    // (`rendered_text_len`): measuring the direct text alone and then
+    // charging it with the characters of an inline `<strong>` inflated every
+    // paragraph that had one, and so does charging the lines with an inline
+    // `<style>` child, the source's indentation, or a script's combining
+    // marks, none of which takes up any of a line.
     //
     // A DOM that cannot say where the lines are gets no finding. The union of
     // a long first line and a short tail is the same union as two even lines,
@@ -301,7 +382,8 @@ pub fn check_quality(dom: &dyn Dom, q: &QualityInput) -> Vec<RuleHit> {
             let total: f64 = widths.iter().sum();
             if total > 0.0 {
                 let over = line_max + 5.0;
-                let chars = |w: f64| (text_len as f64) * w / total;
+                let rendered_len = rendered_text_len(dom, el) as f64;
+                let chars = |w: f64| rendered_len * w / total;
                 let long = widths.iter().filter(|w| chars(**w) > over).count();
                 if long >= 2 {
                     let longest = widths.iter().copied().fold(0.0, js::math_max);
@@ -1285,5 +1367,136 @@ mod tests {
         assert!(is_non_rendered_text(&d, s, "script"));
         d.set_style(s, "visibility", "collapse");
         assert!(is_non_rendered_text(&d, s, "span"));
+    }
+}
+
+#[cfg(test)]
+mod rendered_text_tests {
+    use super::*;
+    use crate::browser::fake_dom::FakeDom;
+
+    /// A paragraph over two rendered lines of 640px and 260px, as
+    /// directus.io's hero paragraph rendered.
+    fn two_line_p(d: &mut FakeDom, body: ElId) -> ElId {
+        let p = d.add(Some(body), "p");
+        d.set_styles(
+            p,
+            &[
+                ("fontSize", "18px"),
+                ("lineHeight", "normal"),
+                ("letterSpacing", "normal"),
+                ("backgroundColor", "rgba(0, 0, 0, 0)"),
+                ("position", "static"),
+                ("textTransform", "none"),
+                ("textAlign", "start"),
+                ("whiteSpace", "normal"),
+            ],
+        );
+        d.set_rect(p, 100.0, 270.0, 700.0, 56.0);
+        d.set_text_lines(p, &[(100.0, 272.0, 640.0, 24.0), (100.0, 300.0, 260.0, 24.0)]);
+        p
+    }
+
+    fn line_length(d: &FakeDom, el: ElId) -> Option<String> {
+        check_element_quality_dom(d, el, &BrowserConfig::default())
+            .into_iter()
+            .find(|h| h.id == "line-length")
+            .map(|h| h.snippet)
+    }
+
+    const SENTENCE: &str = "The collaborative backend that turns any database into an API your whole team can use today.";
+
+    /// An inline `<style>` child is in `textContent` and on no line. Its 240
+    /// characters were shared out between the two rendered lines and turned
+    /// a 66-character line into a 240-character one.
+    #[test]
+    fn an_inline_style_child_is_not_counted() {
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        let p = two_line_p(&mut d, body);
+        let style = d.add(Some(p), "style");
+        d.set_style(style, "display", "none");
+        d.add_text(style, &"@keyframes blink { 0%, 50% { opacity: 1; } } ".repeat(6));
+        d.add_text(p, SENTENCE);
+        assert_eq!(rendered_text_len(&d, p), SENTENCE.len());
+        assert_eq!(line_length(&d, p), None);
+
+        // The same lines with that many characters of prose do report.
+        let q = two_line_p(&mut d, body);
+        d.add_text(q, &"w".repeat(SENTENCE.len() + 270));
+        assert_eq!(
+            line_length(&d, q).as_deref(),
+            Some("~257 chars on 2 of 2 rendered lines (aim for <80)")
+        );
+    }
+
+    /// A `display: none` child and a `<script>` are cut the same way, and a
+    /// rendered inline child stays in.
+    #[test]
+    fn hidden_and_script_children_are_cut_and_inline_children_kept() {
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        let p = two_line_p(&mut d, body);
+        d.add_text(p, "Before ");
+        let hidden = d.add(Some(p), "span");
+        d.set_style(hidden, "display", "none");
+        d.add_text(hidden, &"hidden ".repeat(40));
+        let strong = d.add(Some(p), "strong");
+        d.set_style(strong, "display", "inline");
+        d.add_text(strong, "kept");
+        let script = d.add(Some(p), "script");
+        d.add_text(script, &"var x = 1; ".repeat(30));
+        d.add_text(p, " after");
+        assert_eq!(rendered_text_len(&d, p), "Before kept after".len());
+    }
+
+    /// Source indentation collapses to one space under `white-space: normal`
+    /// and is kept under `pre-wrap`.
+    #[test]
+    fn source_indentation_collapses_unless_preserved() {
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        let p = two_line_p(&mut d, body);
+        d.add_text(p, "\n        Copyright 2017, all rights reserved\n                with the Directorate.\n    ");
+        assert_eq!(
+            rendered_text_len(&d, p),
+            "Copyright 2017, all rights reserved with the Directorate.".len()
+        );
+        d.set_style(p, "whiteSpace", "pre-wrap");
+        assert_eq!(
+            rendered_text_len(&d, p),
+            "Copyright 2017, all rights reserved\n                with the Directorate.".len()
+        );
+    }
+
+    /// A combining mark sits on its base and a zero-width joiner or soft
+    /// hyphen draws nothing, so none of them is a character on the line.
+    #[test]
+    fn combining_marks_and_format_characters_are_not_counted() {
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        let p = two_line_p(&mut d, body);
+        // "राजस्थान के": र ा ज स ् थ ा न, a space, क े.
+        d.add_text(p, "\u{930}\u{93e}\u{91c}\u{938}\u{94d}\u{925}\u{93e}\u{928} \u{915}\u{947}");
+        assert_eq!(rendered_text_len(&d, p), 7);
+        let q = two_line_p(&mut d, body);
+        d.add_text(q, "cafe\u{301} co\u{ad}operate\u{200b}s");
+        assert_eq!(rendered_text_len(&d, q), "cafe cooperates".len());
+    }
+
+    /// Plain prose counts as before, so a long column still reports the same
+    /// number.
+    #[test]
+    fn plain_prose_counts_every_character() {
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        let p = two_line_p(&mut d, body);
+        d.set_text_lines(p, &[(100.0, 272.0, 640.0, 24.0), (100.0, 300.0, 640.0, 24.0)]);
+        d.add_text(p, &"word ".repeat(40));
+        assert_eq!(rendered_text_len(&d, p), 199);
+        assert_eq!(
+            line_length(&d, p).as_deref(),
+            Some("~100 chars on 2 of 2 rendered lines (aim for <80)")
+        );
     }
 }
