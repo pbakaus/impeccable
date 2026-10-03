@@ -3034,6 +3034,29 @@ function createImpeccableOverlay({ extensionMode = false, antipatterns = [] } = 
     overlay.style.height = `${rect.height + 4}px`;
   }
 
+  // Where an outline lives and which coordinates it takes. A modal <dialog>
+  // paints over everything outside its subtree, so live mode parks a popover
+  // (#impeccable-live-top-layer) inside the topmost open one; an outline
+  // whose target is in that dialog mounts there, in viewport coordinates
+  // because the host is a fixed box. Live fires an event of the same name on
+  // every move of the host, and every outline is placed again. Without live
+  // mode the lookup misses.
+  function placeOverlay(overlay) {
+    const host = document.getElementById('impeccable-live-top-layer');
+    const mount = host && host.parentNode.contains(overlay._targetEl) ? host : document.body;
+    if (overlay.parentNode !== mount) mount.appendChild(overlay);
+    overlay._isFixed = mount === host || isInFixedContext(overlay._targetEl);
+    overlay.style.position = overlay._isFixed ? 'fixed' : 'absolute';
+  }
+
+  document.addEventListener('impeccable-live-top-layer', () => {
+    for (const o of overlays) {
+      if (!o._targetEl) continue;
+      placeOverlay(o);
+      positionOverlay(o);
+    }
+  });
+
   function repositionOverlays() {
     for (const o of overlays) {
       if (!o._targetEl || o.classList.contains('impeccable-banner')) continue;
@@ -3068,6 +3091,7 @@ function createImpeccableOverlay({ extensionMode = false, antipatterns = [] } = 
       if (!overlay) continue;
       if (entry.isIntersecting) {
         overlay.style.display = '';
+        placeOverlay(overlay);
         positionOverlay(overlay);
         if (!overlay._revealed) {
           overlay._revealed = true;
@@ -3120,19 +3144,10 @@ function createImpeccableOverlay({ extensionMode = false, antipatterns = [] } = 
     if (el._impeccableOverlay) detachOverlay(el._impeccableOverlay);
     const hasSlop = findings.some(f => RULE_CATEGORY[f.type || f.id] === 'slop');
 
-    const fixed = isInFixedContext(el);
-    const rect = el.getBoundingClientRect();
     const outline = document.createElement('div');
     outline.className = 'impeccable-overlay';
     outline._targetEl = el;
-    outline._isFixed = fixed;
-    Object.assign(outline.style, {
-      position: fixed ? 'fixed' : 'absolute',
-      top: fixed ? `${rect.top - 2}px` : `${rect.top + scrollY - 2}px`,
-      left: fixed ? `${rect.left - 2}px` : `${rect.left + scrollX - 2}px`,
-      width: `${rect.width + 4}px`, height: `${rect.height + 4}px`,
-      zIndex: '99999', boxSizing: 'border-box',
-    });
+    Object.assign(outline.style, { zIndex: '99999', boxSizing: 'border-box' });
 
     // Build per-finding label entries: ✦ prefix for slop
     const entries = findings.map(f => {
@@ -3260,7 +3275,8 @@ function createImpeccableOverlay({ extensionMode = false, antipatterns = [] } = 
       el.removeEventListener('mouseleave', onMouseLeave);
     };
 
-    document.body.appendChild(outline);
+    placeOverlay(outline);
+    positionOverlay(outline);
     overlays.push(outline);
   };
 

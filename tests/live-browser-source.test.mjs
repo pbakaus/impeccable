@@ -311,17 +311,22 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /function sanitizedContextOuterHTML\(el, maxLength\)[\s\S]*?stripManualEditRuntimeState\(clone\);/,
-      'manual copy edit prompt context should strip browser-only edit markers before staging HTML',
+      /function sanitizedContextClone\(el\) \{\s*const clone = cloneWithoutChrome\(el\);\s*stripManualEditRuntimeState\(clone\);/,
+      'staged context should drop chrome parked in a picked modal dialog and strip browser-only edit markers',
     );
     assert.match(
       SOURCE,
-      /outerHTML: sanitizedContextOuterHTML\(el, 10000\),/,
+      /filter: \(node\) => node !== topLayerHost,/,
+      'element captures should leave out chrome parked in a picked modal dialog',
+    );
+    assert.match(
+      SOURCE,
+      /function extractContext\(el\)[\s\S]*?const clone = sanitizedContextClone\(el\);[\s\S]*?outerHTML: \(clone\.outerHTML \|\| ''\)\.slice\(0, 10000\),/,
       'staged element context should not include live edit runtime attributes',
     );
     assert.match(
       SOURCE,
-      /function copyEditLeafContext\(el, originalText, newText\)[\s\S]*?outerHTML: sanitizedContextOuterHTML\(el, 3000\) \|\| null,/,
+      /function copyEditLeafContext\(el, originalText, newText\)[\s\S]*?const clone = sanitizedContextClone\(el\);[\s\S]*?outerHTML: \(clone\.outerHTML \|\| ''\)\.slice\(0, 3000\) \|\| null,/,
       'staged leaf context should not include live edit runtime attributes',
     );
     assert.match(

@@ -223,13 +223,14 @@ export const SUITES = {
       /^ENGINE_VERSION$/,
       /^tests\/framework-fixtures/,
       /^tests\/live-e2e(\.test\.mjs|\/)/,
+      /^browser-bundle\/40-overlay\.js$/,
     ],
     commands: [
       {
         runner: 'node',
         timeoutMs: 600000,
         forceExit: true,
-        files: ['tests/live-e2e.test.mjs'],
+        files: ['tests/live-e2e.test.mjs', 'tests/live-top-layer.test.mjs'],
       },
     ],
   },

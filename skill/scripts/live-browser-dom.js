@@ -100,8 +100,108 @@
       return doc.body;
     }
 
+    // A modal <dialog> (showModal) paints in the top layer and makes every
+    // node outside its subtree inert, so chrome on <body> can be neither seen
+    // nor clicked while one is open, and no z-index reaches it (issue #879).
+    // While a modal is open the chrome parks inside the topmost one, in one
+    // popover: inside the dialog it is not inert, and a popover shown after
+    // the dialog paints above it. One popover for all of it, because
+    // top-layer entries stack by show order, which would drop the z-index
+    // order between the roots. The detect overlay (browser-bundle/
+    // 40-overlay.js) mounts its outlines here too: it finds the host by this
+    // id and places its outlines again on the event of the same name, fired
+    // on every move.
+    const topLayerHost = doc.createElement('div');
+    topLayerHost.id = prefix + '-top-layer';
+    // Same box as the SvelteKit shadow host: 0x0, fixed, chrome overflows it.
+    // `all: initial` also clears the popover UA box.
+    for (const [name, value] of Object.entries({
+      all: 'initial', position: 'fixed', top: '0', left: '0', width: '0', height: '0', overflow: 'visible',
+    })) topLayerHost.style.setProperty(name, value, 'important');
+    const pageRoots = new WeakSet(); // chrome nodes mounted on the page itself
+    const openModals = [];           // in the order they opened; last is topmost
+
+    // Modals that were open before watching began have no readable top-layer
+    // order, but the topmost one's backdrop covers the viewport, so a hit
+    // test lands in it. Raise that one to the top of the stack.
+    function raiseHitModal() {
+      const i = openModals.indexOf(doc.elementFromPoint(0, 0)?.closest('dialog:modal'));
+      if (i !== -1) openModals.push(...openModals.splice(i, 1));
+    }
+
+    function syncTopLayerHost(records = []) {
+      for (const { type, target, oldValue } of records) {
+        if (type !== 'attributes' || oldValue !== null || !target.matches('dialog:modal')) continue;
+        // Opened, or closed and reopened in one task (the observer sees only
+        // the end state): either way it is back on top of the top layer, so
+        // a host shown inside it earlier has to be shown again. A write to an
+        // `open` that was already set (oldValue not null) moved nothing.
+        const i = openModals.indexOf(target);
+        if (i !== -1) openModals.splice(i, 1);
+        openModals.push(target);
+        if (topLayerHost.parentNode === target) topLayerHost.remove();
+      }
+      // A closed dialog, or one removed from the document while open, stops
+      // matching :modal. Whichever is now on top may predate the watch.
+      const before = openModals.length;
+      for (let i = openModals.length - 1; i >= 0; i--) {
+        if (!openModals[i].matches('dialog:modal')) openModals.splice(i, 1);
+      }
+      if (openModals.length < before && openModals.length > 1) raiseHitModal();
+      const modal = openModals[openModals.length - 1] || null;
+      if (topLayerHost.parentNode === modal) return;
+      if (modal) {
+        modal.appendChild(topLayerHost);
+        for (const el of [...doc.body.children]) if (pageRoots.has(el)) topLayerHost.appendChild(el);
+        topLayerHost.showPopover();
+      } else {
+        doc.body.append(...topLayerHost.childNodes);
+        topLayerHost.remove();
+      }
+      doc.dispatchEvent(new Event(topLayerHost.id));
+    }
+
+    // Returns the function that stops watching and puts the chrome back.
+    function watchModalDialogs() {
+      if (typeof topLayerHost.showPopover !== 'function') return () => {};
+      topLayerHost.popover = 'manual';
+      // Parked in the page's dialog, chrome clicks would bubble into its own
+      // handlers, such as a click-outside-the-box close. Live listens in capture.
+      topLayerHost.addEventListener('click', (e) => e.stopPropagation());
+      openModals.push(...doc.querySelectorAll('dialog:modal'));
+      raiseHitModal();
+      const observer = new MutationObserver(syncTopLayerHost);
+      observer.observe(doc, { subtree: true, childList: true, attributes: true, attributeOldValue: true, attributeFilter: ['open'] });
+      syncTopLayerHost();
+      return () => {
+        observer.disconnect();
+        openModals.length = 0;
+        syncTopLayerHost();
+      };
+    }
+
+    // A copy of a page element without the chrome parked inside it, which a
+    // picked modal dialog contains.
+    function cloneWithoutChrome(el) {
+      const clone = el.cloneNode(true);
+      if (el.contains(topLayerHost)) clone.querySelector('#' + cssId(topLayerHost.id)).remove();
+      return clone;
+    }
+
+    // Mount a chrome node on the page itself: <body>, or the top-layer host
+    // while the chrome is parked in a modal.
+    function uiAppendToPage(el) {
+      pageRoots.add(el);
+      (topLayerHost.parentNode ? topLayerHost : doc.body).appendChild(el);
+      return el;
+    }
+
     function uiAppend(el) {
-      liveUiRoot().appendChild(el);
+      const uiRoot = liveUiRoot();
+      if (uiRoot === doc.body) return uiAppendToPage(el);
+      // An adapter shadow root: its host is the node that sits on the page.
+      if (uiRoot.host) pageRoots.add(uiRoot.host);
+      uiRoot.appendChild(el);
       return el;
     }
 
@@ -153,6 +253,10 @@
       cssId,
       liveUiRoot,
       uiAppend,
+      uiAppendToPage,
+      topLayerHost,
+      watchModalDialogs,
+      cloneWithoutChrome,
       uiAppendStyle,
       uiGetById,
       activeElementDeep,

@@ -265,6 +265,7 @@
   let editBadgeEl = null;
   let editBadgeProxyRoot = null;
   let editBadgeProxyByTarget = new Map();
+  let stopModalWatch = null;
 
   //
   // Helpers
@@ -291,6 +292,10 @@
     cssId,
     liveUiRoot,
     uiAppend,
+    uiAppendToPage,
+    topLayerHost,
+    watchModalDialogs,
+    cloneWithoutChrome,
     uiAppendStyle,
     uiGetById,
     activeElementDeep,
@@ -967,11 +972,12 @@
     }
   }
 
-  function sanitizedContextOuterHTML(el, maxLength) {
-    if (!el || !el.cloneNode) return '';
-    const clone = el.cloneNode(true);
+  // The element as the agent reads it, text and markup alike: no parked
+  // chrome (a picked modal dialog contains it) and no edit runtime state.
+  function sanitizedContextClone(el) {
+    const clone = cloneWithoutChrome(el);
     stripManualEditRuntimeState(clone);
-    return clone.outerHTML ? clone.outerHTML.slice(0, maxLength) : '';
+    return clone;
   }
 
   function extractContext(el) {
@@ -1001,12 +1007,13 @@
       : (anchorClasses.length ? el.tagName.toLowerCase() + '.' + anchorClasses.join('.') : null);
     let anchorMatches = null;
     if (anchor) { try { anchorMatches = document.querySelectorAll(anchor).length; } catch { anchorMatches = null; } }
+    const clone = sanitizedContextClone(el);
     return {
       tagName: el.tagName.toLowerCase(), id: el.id || null,
       classes: [...el.classList],
       anchor, anchorMatches,
-      textContent: (el.textContent || '').slice(0, 500),
-      outerHTML: sanitizedContextOuterHTML(el, 10000),
+      textContent: (clone.textContent || '').slice(0, 500),
+      outerHTML: (clone.outerHTML || '').slice(0, 10000),
       computedStyles: {
         'font-family': cs.fontFamily, 'font-size': cs.fontSize,
         'font-weight': cs.fontWeight, 'line-height': cs.lineHeight,
@@ -3710,6 +3717,7 @@
 
   function copyEditLeafContext(el, originalText, newText) {
     if (!el) return null;
+    const clone = sanitizedContextClone(el);
     return {
       ref: documentRefForElement(el),
       tagName: el.tagName ? el.tagName.toLowerCase() : null,
@@ -3717,8 +3725,8 @@
       classes: el.classList ? [...el.classList].filter((cls) => cls.indexOf('impeccable-') !== 0) : [],
       originalText,
       newText,
-      textContent: (el.textContent || '').slice(0, 500),
-      outerHTML: sanitizedContextOuterHTML(el, 3000) || null,
+      textContent: (clone.textContent || '').slice(0, 500),
+      outerHTML: (clone.outerHTML || '').slice(0, 3000) || null,
     };
   }
 
@@ -3744,13 +3752,14 @@
 
   function copyEditContainerContext(el) {
     if (!el) return null;
+    const clone = sanitizedContextClone(el);
     return {
       ref: documentRefForElement(el),
       tagName: el.tagName ? el.tagName.toLowerCase() : null,
       id: el.id || null,
       classes: el.classList ? [...el.classList].filter((cls) => cls.indexOf('impeccable-') !== 0) : [],
-      textContent: (el.textContent || '').slice(0, 1000),
-      outerHTML: sanitizedContextOuterHTML(el, 10000) || null,
+      textContent: (clone.textContent || '').slice(0, 1000),
+      outerHTML: (clone.outerHTML || '').slice(0, 10000) || null,
     };
   }
 
@@ -4540,7 +4549,7 @@
     for (const [name, value] of Object.entries(styles)) {
       setImportantStyle(editBadgeProxyRoot, name.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase()), value);
     }
-    document.body.appendChild(editBadgeProxyRoot);
+    uiAppendToPage(editBadgeProxyRoot);
   }
 
   function styleEditBadgeProxy(proxy, target) {
@@ -8032,8 +8041,8 @@
     let depth = 0;
     while (node && depth < 12) {
       // 1. Active dialog / modal
-      if (node.getAttribute && node.getAttribute('role') === 'dialog'
-          && node.getAttribute('aria-modal') === 'true') {
+      if (node.tagName === 'DIALOG' || (node.getAttribute && node.getAttribute('role') === 'dialog'
+          && node.getAttribute('aria-modal') === 'true')) {
         showToast('Heads up: this element lives inside a dialog. If state resets during generation, you may need to re-open it.', 6000);
         return;
       }
@@ -8645,6 +8654,7 @@
       const opts = {
         scale: Math.min(window.devicePixelRatio || 1, 2),
         font: fontCssText ? { cssText: fontCssText } : undefined,
+        filter: (node) => node !== topLayerHost,
       };
       if (shouldUseAncestorCropShaderProxy(el)) {
         try {
@@ -12249,6 +12259,7 @@ void main() {
     pagePickSkipClick = false;
     cleanup();
     hideBar();
+    if (stopModalWatch) { stopModalWatch(); stopModalWatch = null; }
     if (pendingDockResizeObserver) { pendingDockResizeObserver.disconnect(); pendingDockResizeObserver = null; }
     window.removeEventListener('resize', positionPendingDock);
     if (pendingIntroAnimation) { pendingIntroAnimation.cancel(); pendingIntroAnimation = null; }
@@ -13466,6 +13477,7 @@ void main() {
     attachSteerFocusDebug();
     attachSteerFocusGuard();
     initDesignPanel();
+    stopModalWatch = watchModalDialogs();
     fetchPendingCount();
     document.addEventListener('mousemove', handleMouseMove, true);
     document.addEventListener('click', handleClick, true);
