@@ -51,12 +51,17 @@ export const LAUNCHER_NAME_WINDOWS = 'impeccable.cmd';
 export const guardedLauncher = (launcherPath, verb = 'hook') =>
   `[ ! -f "${launcherPath}" ] || "${launcherPath}" ${verb}`;
 
-// cmd.exe form for harnesses that read a `commandWindows` sibling (Codex
-// 0.146.0+ selects it on Windows; issue #452). `exit /b` forwards the
-// launcher's errorlevel. Paths keep forward slashes; cmd.exe accepts them in
-// quoted paths and it is the form the CLI already writes.
-export const windowsLauncherCommand = (launcherCmdPath, verb = 'hook') =>
-  `if exist "${launcherCmdPath}" ("${launcherCmdPath}" ${verb} & exit /b)`;
+// Windows form for harnesses that read a `commandWindows` sibling (Codex
+// 0.146.0+ selects it on Windows; issue #452). Codex runs it in the session
+// shell, PowerShell by default and cmd.exe only as a fallback (#848), so the
+// string starts with `cmd /c`, an ordinary command in both, and cmd.exe gets
+// the guard: a missing launcher exits 0, a failing one non-zero. Backslash
+// separators: PowerShell drops the quotes around a space-free argument, and
+// cmd.exe would read a bare `/` as a switch.
+export const windowsLauncherCommand = (launcherCmdPath, verb = 'hook') => {
+  const quoted = `"${launcherCmdPath.replaceAll('/', '\\')}"`;
+  return `cmd /c if exist ${quoted} ${quoted} ${verb}`;
+};
 
 function stopEntry(command, commandWindows) {
   return {
@@ -200,6 +205,8 @@ export function buildGitHubHooksManifest() {
 // folder trust (`/hooks-trust` or `--trust`) before they run. Event schema is
 // Claude-compatible (PostToolUse / Stop / PreToolUse); Claude tool names in
 // matchers are aliased to Grok tools (Edit|Write|MultiEdit → search_replace).
+// There is no per-OS command field; a Windows install rewrites `command` to
+// the `cmd /c` form (crates/skills hook_manifest.rs).
 // https://docs.x.ai/build/features/hooks
 export function buildGrokHooksManifest() {
   return {

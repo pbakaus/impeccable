@@ -120,7 +120,7 @@ fn codex_gets_command_windows_sibling_pointing_at_cmd_shim() {
     );
     assert_eq!(
         entry["commandWindows"],
-        "if exist \".agents/skills/impeccable/scripts/impeccable.cmd\" (\".agents/skills/impeccable/scripts/impeccable.cmd\" hook & exit /b)"
+        r#"cmd /c if exist ".agents\skills\impeccable\scripts\impeccable.cmd" ".agents\skills\impeccable\scripts\impeccable.cmd" hook"#
     );
     // JS key order: existing keys, then the appended commandWindows.
     let keys: Vec<&String> = entry.as_object().unwrap().keys().collect();
@@ -166,6 +166,137 @@ fn github_manifests_pass_through_and_grok_is_rewritten() {
     );
     // Grok is not Codex: no commandWindows sibling is added.
     assert!(rel["hooks"]["PostToolUse"][0]["hooks"][0].get("commandWindows").is_none());
+    // Grok has no per-OS field and runs `command` in the session shell
+    // (PowerShell by default on Windows), so a Windows install writes the
+    // `cmd /c` form into `command` itself (#859).
+    let win_rel = rewrite_hook_commands_for_platform(&grok, ".grok", "/proj", false, true);
+    assert_eq!(
+        win_rel["hooks"]["PostToolUse"][0]["hooks"][0]["command"],
+        r#"cmd /c if exist ".grok\skills\impeccable\scripts\impeccable.cmd" ".grok\skills\impeccable\scripts\impeccable.cmd" hook"#
+    );
+    assert!(win_rel["hooks"]["PostToolUse"][0]["hooks"][0].get("commandWindows").is_none());
+    assert!(value_has_impeccable_hook_marker(&win_rel));
+    let win_abs = rewrite_hook_commands_for_platform(&grok, ".grok", "/home/u", true, true);
+    let w = format!("{}.cmd", p.replace('/', "\\"));
+    assert_eq!(
+        win_abs["hooks"]["PostToolUse"][0]["hooks"][0]["command"],
+        serde_json::Value::String(format!("cmd /c if exist \"{w}\" \"{w}\" hook"))
+    );
+}
+
+/// The Windows form only counts if the shells the harnesses hand it to run it
+/// (#848, #859), so spawn it the way they do: PowerShell 5.1 and 7 with
+/// `-Command` (Grok, Codex), Git Bash with MSYS path conversion off (Grok),
+/// and cmd.exe behind Codex's raw `/C "<line>"` fallback. The stub shim saves
+/// the event piped to it and exits 3. It runs only on a Windows host.
+#[cfg(windows)]
+#[test]
+fn windows_form_runs_the_shim_in_each_harness_shell() {
+    use std::io::Write;
+    use std::os::windows::process::CommandExt;
+    use std::process::{Command, Stdio};
+
+    struct Shell {
+        name: &'static str,
+        spawn: fn(&str) -> Command,
+        /// pwsh and Git Bash are not on every Windows host; CI has both, so
+        /// a missing one fails there instead of skipping.
+        optional: bool,
+        /// What a shim exiting 3 comes back as; `None` where the shell never
+        /// reaches the shim.
+        exit: Option<i32>,
+    }
+    fn powershell(program: &str, line: &str) -> Command {
+        let mut c = Command::new(program);
+        c.args(["-NoProfile", "-NonInteractive", "-Command", line]);
+        c
+    }
+    let shells = [
+        // `-Command` reports any native failure as 1.
+        Shell { name: "powershell", spawn: |line| powershell("powershell.exe", line), optional: false, exit: Some(1) },
+        Shell { name: "pwsh", spawn: |line| powershell("pwsh", line), optional: true, exit: Some(1) },
+        Shell {
+            name: "git-bash",
+            spawn: |line| {
+                let mut c = Command::new("C:\\Program Files\\Git\\bin\\bash.exe");
+                c.args(["-c", line]).env("MSYS_NO_PATHCONV", "1").env("MSYS2_ARG_CONV_EXCL", "*");
+                c
+            },
+            optional: true,
+            exit: Some(3),
+        },
+        Shell {
+            name: "cmd (Codex fallback)",
+            spawn: |line| {
+                let mut c = Command::new("cmd.exe");
+                c.arg("/C").raw_arg(format!("\"{line}\""));
+                c
+            },
+            optional: false,
+            exit: Some(3),
+        },
+        // `GROK_SHELL=cmd`: Grok passes the line as a plain argument, so its
+        // quotes reach cmd.exe as `\"` and the guard never finds the shim.
+        Shell {
+            name: "cmd (GROK_SHELL=cmd)",
+            spawn: |line| {
+                let mut c = Command::new("cmd");
+                c.args(["/C", line]);
+                c
+            },
+            optional: false,
+            exit: None,
+        },
+    ];
+
+    // A space in the install root, which the absolute form has to survive.
+    let root = std::env::temp_dir().join(format!("imp hook {}", std::process::id()));
+    let scripts = root.join(".grok").join("skills").join("impeccable").join("scripts");
+    let seen = scripts.join("seen-hook.txt");
+    std::fs::create_dir_all(&root).unwrap();
+    let bundle = json!({ "hooks": { "Stop": [{ "hooks": [{ "type": "command", "command": "\".grok/skills/impeccable/scripts/impeccable\" hook" }] }] } });
+    for present in [false, true] {
+        if present {
+            std::fs::create_dir_all(&scripts).unwrap();
+            std::fs::write(scripts.join("impeccable.cmd"), "@echo off\r\nfindstr \"^\" > \"%~dp0seen-%1.txt\"\r\nexit /b 3\r\n").unwrap();
+        }
+        for absolute in [false, true] {
+            let out = rewrite_hook_commands_for_platform(&bundle, ".grok", root.to_str().unwrap(), absolute, true);
+            let line = out["hooks"]["Stop"][0]["hooks"][0]["command"].as_str().unwrap();
+            for shell in &shells {
+                let _ = std::fs::remove_file(&seen);
+                let at = format!("{} absolute={absolute} present={present}: {line}", shell.name);
+                let spawned = (shell.spawn)(line).current_dir(&root).stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+                let mut child = match spawned {
+                    Ok(child) => child,
+                    Err(_) if shell.optional && std::env::var_os("CI").is_none() => continue,
+                    Err(e) => panic!("{at}: {e}"),
+                };
+                let _ = child.stdin.take().unwrap().write_all(b"{\"probe\":1}\n");
+                // A shell that kept stdin from the shim would leave it reading forever.
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+                let code = loop {
+                    if let Some(status) = child.try_wait().unwrap() {
+                        break status.code();
+                    }
+                    if std::time::Instant::now() > deadline {
+                        let _ = child.kill();
+                        panic!("timed out: {at}");
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                };
+                if present && shell.exit.is_some() {
+                    assert_eq!(std::fs::read_to_string(&seen).unwrap_or_default().trim(), "{\"probe\":1}", "{at}");
+                    assert_eq!(code, shell.exit, "{at}");
+                } else {
+                    assert!(!seen.exists(), "{at}");
+                    // A missing shim is a silent no-op wherever the form works.
+                    assert!(shell.exit.is_none() || code == Some(0), "{at}: {code:?}");
+                }
+            }
+        }
+    }
+    let _ = std::fs::remove_dir_all(&root);
 }
 
 #[test]
