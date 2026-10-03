@@ -1286,6 +1286,21 @@ fn a_missing_control_does_not_borrow_its_identical_neighbour() {
     let mut state = json!({"comp":"comp.png","phases":{}});
     let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None);
     assert!(gate.reasons.iter().any(|r| r == "at desktop width, region second is missing"), "{:?} {:?}", gate.reasons, gate.advisories);
+    // Two distinct controls that both moved down a row: the first lands in the
+    // second's old box, which the second no longer occupies, so it is found.
+    let bars = |img: &mut Image, y: f64| r::fill_rect(img, 40., y + 12., 26., 2., [20., 20., 20., 255.]);
+    let mut comp = r::create_image(200, 200, [240, 240, 236, 255]);
+    icon(&mut comp, 100.);
+    bars(&mut comp, 124.);
+    let mut desktop = r::create_image(200, 200, [240, 240, 236, 255]);
+    icon(&mut desktop, 124.);
+    bars(&mut desktop, 148.);
+    ws.write("comp.png", &png(&comp));
+    ws.write(".impeccable/review/desktop.png", &png(&desktop));
+    let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None);
+    let report: Value = serde_json::from_slice(&std::fs::read(ws.path.join("diff/report.json")).unwrap()).unwrap();
+    assert!(!gate.reasons.iter().any(|r| r.contains("region first is missing")), "{:?} {}", gate.reasons, report["regions"]);
+    assert!(gate.advisories.iter().any(|a| a.contains("region first sits about 24px lower")), "{:?}", gate.advisories);
 }
 
 #[test]

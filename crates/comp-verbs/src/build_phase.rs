@@ -2365,9 +2365,11 @@ fn gate_responsive_inner(io: &Io, state: &mut Value, min: f64, out_dir: &str, na
         let tall = r::resize(capture, comp.width as f64, round(capture.height as f64 / k));
         (k, tall)
     });
-    // A match that lands on another region of the same kind and size is that
-    // region's own pixels (two identical icons, two menu rows), not this one moved.
-    let same_shape: Vec<(String, String, [f64; 4])> = regions.iter().filter_map(|r| Some((r["id"].as_str()?.to_string(), r["kind"].as_str()?.to_string(),
+    // A match that lands on another region of the same kind and size, where that
+    // region still renders as itself, is its own pixels (two identical icons), not
+    // this one moved. A neighbour that is itself gone or moved leaves its box free.
+    let same_shape: Vec<(String, String, [f64; 4])> = regions.iter().filter(|r| matches!(r["verdict"].as_str(), Some("match" | "drift")))
+        .filter_map(|r| Some((r["id"].as_str()?.to_string(), r["kind"].as_str()?.to_string(),
         [r["x"].as_f64()?, r["y"].as_f64()?, r["w"].as_f64()?, r["h"].as_f64()?]))).collect();
     let locate = |r: &Value| -> Option<Displacement> {
         let ((comp, _), (_, tall)) = (images.as_ref()?, frame.as_ref()?);
