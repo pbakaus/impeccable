@@ -38,6 +38,7 @@ env:
     .kiro
     .opencode
     .pi
+    .omp
     .qoder
     .rovodev
     .trae

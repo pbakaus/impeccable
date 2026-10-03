@@ -70,6 +70,7 @@ fn provider_from_skill_dir(skill_dir: &str) -> Option<&'static str> {
         ".kiro" => "kiro",
         ".opencode" => "opencode",
         ".pi" => "pi",
+        ".omp" => "omp",
         ".qoder" => "qoder",
         ".trae" => "trae",
         ".trae-cn" => "trae-cn",

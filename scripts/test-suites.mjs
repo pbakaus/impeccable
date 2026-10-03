@@ -22,7 +22,7 @@ const COMMON_INFRA_PATTERNS = [
   /^tests\/lib\/live-servers\.mjs$/,
   /^scripts\/lib\/(live-server-processes|process-group|test-orphan-reaper)\.mjs$/,
   /^tests\/lib\/live-servers\.mjs$/,
-  /^\.github\/workflows\/ci\.yml$/,
+  /^\.github\/workflows\/(ci|sync-generated-output)\.yml$/,
 ];
 
 export const SUITES = {
