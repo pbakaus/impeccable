@@ -64,6 +64,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # The workspace's floor (package.json devEngines); the published shim's is held by cli-shim-floor (#850).
         node-version: [22.18.0, 24]
     steps:
       - name: Checkout repository
@@ -213,6 +214,32 @@ jobs:
           node-version: 24
       - name: Exercise Windows launcher downloads and verification
         run: node --test tests/launcher-download.test.mjs
+
+  # The npm package ships only the shim (cli/bin/cli.js), and npm skips
+  # `latest` for a Node its engines reject, serving the newest version that
+  # admits it instead. So engines.node in package.json is the shim's floor, not
+  # the workspace's (that one is devEngines): raising it sends everyone below
+  # it to an older CLI that can no longer install (#361, #850). SHIM_FLOOR is
+  # the version this job proves, and engines.node must match it.
+  cli-shim-floor:
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.core == 'true'
+    env:
+      SHIM_FLOOR: 18.19.0
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check the published Node floor
+        run: |
+          floor=$(jq -r .engines.node package.json)
+          [ "$floor" = ">=$SHIM_FLOOR" ] || { echo "::error::package.json engines.node is $floor, but the shim is proven on >=$SHIM_FLOOR. Raise SHIM_FLOOR only when the shim itself needs a newer Node."; exit 1; }
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.SHIM_FLOOR }}
+      - name: Exercise the npm shim on its Node floor
+        run: node --test tests/cli-shim.test.mjs
 
   # Behavior gate: replays the tests/oracle/ goldens against a release build
   # of the engine from THIS checkout (so a PR is judged on its own source,
