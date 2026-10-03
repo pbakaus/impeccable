@@ -40,6 +40,10 @@ export default [
   W('live-wrap-jsx-deferred', 'live-vite', ['--id', 'ab12cd34', '--classes', 'hero-title', '--tag', 'h1', '--defer-source-write'], { snap: ['src/**'] }),
   W('live-wrap-jsx-mapped-item', 'live-vite', ['--id', 'ab12cd34', '--classes', 'item-row', '--tag', 'li', '--text', 'First'], { snap: ['src/**'] }),
   W('live-wrap-tsx-multiline', 'live-vite', ['--id', 'ab12cd34', '--classes', 'panel', '--tag', 'section'], { snap: ['src/**'] }),
+  W('live-wrap-tsx-component-tag-case', 'live-vite', ['--id', 'ab12cd34', '--count', '1', '--element-id', 'password', '--tag', 'input', '--file', 'src/Login.tsx', '--defer-source-write'], {
+    snap: ['src/Login.tsx'],
+    setup: (ws) => write(ws, 'src/Login.tsx', 'export function Login() {\n  return (\n    <form>\n      <Input id="password" type="password" required />\n    </form>\n  );\n}\n'),
+  }),
   W('live-wrap-astro', 'live-astro', ['--id', 'ab12cd34', '--classes', 'hero-title', '--tag', 'h1'], { snap: ['src/**'] }),
   W('live-wrap-astro-deferred', 'live-astro', ['--id', 'ab12cd34', '--element-id', 'features', '--defer-source-write'], { snap: ['src/**'] }),
   W('live-wrap-vue', 'live-nuxt', ['--id', 'ab12cd34', '--classes', 'hero-title', '--tag', 'h1'], { snap: ['pages/**'] }),

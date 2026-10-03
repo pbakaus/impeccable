@@ -228,11 +228,12 @@ pub fn filter_by_text(
 }
 
 /// JS: findOpenerLine(lines, matchLine, tag)
+/// The browser reports the rendered tag lowercased, so a source `<Input>` matches `input`.
 pub fn find_opener_line(lines: &[String], match_line: usize, tag: Option<&str>) -> Option<usize> {
     if let Some(t) = opener_tag(&lines[match_line]) {
         return match tag {
             None => Some(match_line),
-            Some(want) if want == t => Some(match_line),
+            Some(want) if want.eq_ignore_ascii_case(&t) => Some(match_line),
             _ => None,
         };
     }
@@ -246,7 +247,7 @@ pub fn find_opener_line(lines: &[String], match_line: usize, tag: Option<&str>) 
         };
         return match tag {
             None => Some(i),
-            Some(want) if want == t => Some(i),
+            Some(want) if want.eq_ignore_ascii_case(&t) => Some(i),
             _ => None,
         };
     }
@@ -402,5 +403,24 @@ pub fn count_len(count: i64) -> i64 {
         0
     } else {
         count
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn lines(src: &[&str]) -> Vec<String> {
+        src.iter().map(|l| l.to_string()).collect()
+    }
+
+    #[test]
+    fn find_opener_line_ignores_tag_case() {
+        let one_line = lines(&[r#"<Input id="password" type="password" required />"#]);
+        assert_eq!(find_opener_line(&one_line, 0, Some("input")), Some(0));
+        let multi_line = lines(&["<Input", r#"  id="email""#, "/>"]);
+        assert_eq!(find_opener_line(&multi_line, 1, Some("input")), Some(0));
+        let other = lines(&[r#"<Label id="email" />"#]);
+        assert_eq!(find_opener_line(&other, 0, Some("input")), None);
     }
 }
