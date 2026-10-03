@@ -132,7 +132,19 @@ pub fn opener_tag(line: &str) -> Option<String> {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ElementMatch {
     pub start_line: usize,
-    pub end_line: usize,
+    /// None when the element never closes; callers refuse rather than guess.
+    pub end_line: Option<usize>,
+}
+
+/// The refusal wrap and insert print for a match with no end line.
+pub fn element_unclosed_error(file: &str, start_line: usize) -> Value {
+    json!({
+        "error": "element_unclosed",
+        "fallback": "agent-driven",
+        "file": file,
+        "startLine": start_line + 1,
+        "hint": "Found the element's opening tag at startLine but not where it closes. Find its end and write the scaffold manually. See \"Handle fallback\" in live.md.",
+    })
 }
 
 fn skip_line(line: &str) -> bool {
@@ -155,10 +167,9 @@ pub fn find_element(lines: &[String], query: &str, tag: Option<&str>) -> Option<
         let Some(opener) = find_opener_line(lines, i, tag) else {
             continue;
         };
-        let end = find_closing_line(lines, opener);
         return Some(ElementMatch {
             start_line: opener,
-            end_line: end,
+            end_line: find_closing_line(lines, opener),
         });
     }
     None
@@ -185,10 +196,9 @@ pub fn find_all_elements(lines: &[String], query: &str, tag: Option<&str>) -> Ve
             continue;
         }
         seen.push(opener);
-        let end = find_closing_line(lines, opener);
         out.push(ElementMatch {
             start_line: opener,
-            end_line: end,
+            end_line: find_closing_line(lines, opener),
         });
     }
     out
@@ -214,7 +224,12 @@ pub fn filter_by_text(
     candidates
         .iter()
         .filter(|c| {
-            let body = lines[c.start_line..=c.end_line.min(lines.len() - 1)].join(" ");
+            // An unclosed element has no end to read up to. For matching only,
+            // look ahead a fixed window; nothing is written from this range.
+            let end = c
+                .end_line
+                .unwrap_or_else(|| (c.start_line + 50).min(lines.len() - 1));
+            let body = lines[c.start_line..=end].join(" ");
             let inner = TAG_RE.replace_all(&body, " ");
             let inner = JSX_EXPR_RE.replace_all(&inner, " ");
             let inner = inner.to_lowercase();
@@ -253,45 +268,95 @@ pub fn find_opener_line(lines: &[String], match_line: usize, tag: Option<&str>) 
     None
 }
 
-fn count_matches(re: &Regex, line: &str) -> usize {
-    re.find_iter(line).count()
-}
-
-/// JS: findClosingLine(lines, start)
-pub fn find_closing_line(lines: &[String], start: usize) -> usize {
+/// The line the element opened on `start` closes on. None when it never
+/// closes: a guessed end would hand the caller the element's neighbours.
+pub fn find_closing_line(lines: &[String], start: usize) -> Option<usize> {
     let Some(tag_name) = opener_tag(&lines[start]) else {
-        return start;
+        return Some(start);
     };
-    let esc = regex::escape(&tag_name);
-    // JS: new RegExp('<' + tagName + '(?=[\\s/>]|$)', 'g'), no lookahead in
-    // `regex`: match `<tag` and check the follower by hand.
-    let open_re = Regex::new(&format!("<{}", esc)).unwrap();
-    let self_close_re = Regex::new(&format!("<{}[^>]*/>", esc)).unwrap();
-    let close_re = Regex::new(&format!("</{}{}*>", esc, WS)).unwrap();
-    let tag_len = tag_name.chars().count();
+    // Scan chars with state carried across lines: an opening tag can span
+    // lines and hold `>` inside a quoted value or a `{...}` prop (`=>`).
+    let name: Vec<char> = tag_name.chars().collect();
     let mut depth: i64 = 0;
+    let mut in_tag = false;
+    let mut braces = 0usize;
+    let mut quote: Option<char> = None;
+    // A closing tag whose `>` sits on the next line (`</section` / `>`).
+    let mut pending_close = false;
     for (i, line) in lines.iter().enumerate().skip(start) {
         let chars: Vec<char> = line.chars().collect();
-        let mut opens = 0usize;
-        for m in open_re.find_iter(line) {
-            let start_c = line[..m.start()].chars().count();
-            let after = start_c + 1 + tag_len;
-            let ok = after >= chars.len()
-                || is_js_whitespace(chars[after])
-                || chars[after] == '/'
-                || chars[after] == '>';
-            if ok {
-                opens += 1;
+        if std::mem::take(&mut pending_close)
+            && chars.iter().find(|c| !is_js_whitespace(**c)) == Some(&'>')
+        {
+            depth -= 1;
+        }
+        let mut escaped = false;
+        for (j, &c) in chars.iter().enumerate() {
+            if in_tag {
+                if let Some(q) = quote {
+                    // A JS string takes backslash escapes; an attribute value
+                    // does not.
+                    if escaped {
+                        escaped = false;
+                    } else if braces > 0 && c == '\\' {
+                        escaped = true;
+                    } else if c == q {
+                        quote = None;
+                    }
+                } else if c == '{' {
+                    braces += 1;
+                } else if c == '}' {
+                    braces = braces.saturating_sub(1);
+                } else if c == '"' || c == '\'' || c == '`' {
+                    // Outside `{...}` a quote opens an attribute value. Inside,
+                    // a backtick opens a template literal, and `"` or `'` open
+                    // a JS string only when it closes on this line and is no
+                    // contraction: an apostrophe in a comment or in text is not
+                    // a delimiter.
+                    let opens = if braces == 0 {
+                        c != '`'
+                    } else {
+                        c == '`'
+                            || chars[j + 1..].contains(&c)
+                                && !(c == '\'' && j > 0 && chars[j - 1].is_alphanumeric())
+                    };
+                    if opens {
+                        quote = Some(c);
+                    }
+                } else if braces == 0 && c == '>' {
+                    in_tag = false;
+                    if j > 0 && chars[j - 1] == '/' {
+                        depth -= 1;
+                    }
+                }
+            } else if c == '<' {
+                let rest = &chars[j + 1..];
+                if rest.first() == Some(&'/') && rest[1..].starts_with(&name) {
+                    let after = &rest[1 + name.len()..];
+                    match after.iter().find(|c| !is_js_whitespace(**c)) {
+                        Some('>') => depth -= 1,
+                        None => pending_close = true,
+                        _ => {}
+                    }
+                } else if rest.starts_with(&name) {
+                    // JS: `(?=[\s/>]|$)`, so `<legend` does not match `<legendary`.
+                    let k = name.len();
+                    if k >= rest.len()
+                        || is_js_whitespace(rest[k])
+                        || rest[k] == '/'
+                        || rest[k] == '>'
+                    {
+                        depth += 1;
+                        in_tag = true;
+                    }
+                }
             }
         }
-        let self_closes = count_matches(&self_close_re, line);
-        let closes = count_matches(&close_re, line);
-        depth += opens as i64 - self_closes as i64 - closes as i64;
         if depth <= 0 {
-            return i;
+            return Some(i);
         }
     }
-    (start + 50).min(lines.len().saturating_sub(1))
+    None
 }
 
 /// JS: detectCommentSyntax(filePath) → (open, close)
@@ -402,5 +467,47 @@ pub fn count_len(count: i64) -> i64 {
         0
     } else {
         count
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn closing_line_is_the_elements_own_end() {
+        let cases = [
+            // Self-closing over several lines (#852).
+            ("<legend\n  className={cn(\"a\", className)}\n  {...props}\n/>\n);\n}\n", Some(3)),
+            // `>` inside a prop expression, then inside a quoted value.
+            ("<input onChange={(e) => set(e.target.value)} />\n<p>a</p>\n<p>b</p>\n", Some(0)),
+            ("<input className=\"[&>svg]:size-4\" />\n<p>a</p>\n<p>b</p>\n", Some(0)),
+            // An apostrophe inside a prop expression is not a quote, a string is.
+            ("<button onClick={() => {\n  // don't resubmit\n  go();\n}}>\n  Go\n</button>\n<p>a</p>\n", Some(5)),
+            ("<Field label={\"{\"} />\n<p>a</p>\n<p>b</p>\n", Some(0)),
+            ("<Field sql={`\n  a {\n`} />\n<p>a</p>\n<p>b</p>\n", Some(2)),
+            ("<Field title={`a\\`b`} />\n<p>a</p>\n<p>b</p>\n", Some(0)),
+            // Nested same-name tags, and a sibling opened on the closing line.
+            ("<section>\n  <section>\n    x\n  </section>\n</section>\n<p>a</p>\n", Some(4)),
+            ("<a>x</a> and <a>y\nz</a>\n<p>a</p>\n", Some(1)),
+            // A closing tag split before its `>`.
+            ("<section>\n  x\n</section\n>\n<p>a</p>\n", Some(3)),
+            // Never closed: no end line rather than a guessed one.
+            ("<img class=\"hero\">\n<p>a</p>\n<p>b</p>\n", None),
+        ];
+        for (src, end) in cases {
+            let lines: Vec<String> = src.lines().map(String::from).collect();
+            assert_eq!(find_closing_line(&lines, 0), end, "{src}");
+        }
+    }
+
+    #[test]
+    fn text_filter_reads_an_unclosed_elements_text_past_its_children() {
+        let src = "<div class=\"n\">Earlier card</div>\n<div class=\"n\">\n  <div class=\"n\">Nested card</div>\n  Parent trailing text\n<p>after</p>\n";
+        let lines: Vec<String> = src.lines().map(String::from).collect();
+        let candidates = find_all_elements(&lines, "class=\"n\"", Some("div"));
+        let picked = filter_by_text(&candidates, &lines, "Parent trailing text");
+        assert_eq!(picked.len(), 1);
+        assert_eq!((picked[0].start_line, picked[0].end_line), (1, None));
     }
 }

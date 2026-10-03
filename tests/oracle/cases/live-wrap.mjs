@@ -9,6 +9,24 @@ const F = LIVE_FILES;
 const W = (id, workspace, args, extra = {}) => ({ id, verb: 'live-wrap', workspace, args, files: [...F, ...(extra.snap || [])], ...extra });
 const I = (id, workspace, args, extra = {}) => ({ id, verb: 'live-insert', workspace, args, files: [...F, ...(extra.snap || [])], ...extra });
 const buffered = (ws, ops, pageUrl = '/') => writeBuffer(ws, [{ id: 'e1', pageUrl, element: { tagName: 'p' }, ops, stagedAt: '2026-08-01T00:00:00.000Z' }]);
+// Two components in one file; the first returns a multi-line self-closing tag.
+const FIELD_TSX = `export function FieldLegend(props) {
+  return (
+    <legend
+      className="field-legend"
+      {...props}
+    />
+  );
+}
+
+export function FieldGroup({ children }) {
+  return <div className="field-group">{children}</div>;
+}
+`;
+// An img that never closes, then a twin that does: the first stays the match.
+const UNCLOSED = {
+  snap: ['src/**'], setup: (ws) => write(ws, 'src/void.html', '<main>\n  <img class="void-hero" src="/a.png">\n  <img class="void-hero" src="/b.png" />\n</main>\n'),
+};
 
 export default [
   // --- argument / usage paths ---
@@ -20,6 +38,7 @@ export default [
   W('live-wrap-element-not-in-source', 'live-html', ['--id', 'ab12cd34', '--classes', 'built-title']),
   W('live-wrap-file-is-generated', 'live-html', ['--id', 'ab12cd34', '--classes', 'built-title', '--file', 'dist/generated.html']),
   W('live-wrap-file-element-missing', 'live-html', ['--id', 'ab12cd34', '--classes', 'hero-title', '--file', 'src/cards.html']),
+  W('live-wrap-file-element-unclosed', 'live-html', ['--id', 'ab12cd34', '--classes', 'void-hero', '--tag', 'img', '--file', 'src/void.html'], UNCLOSED),
   // --- HTML replace wrappers ---
   W('live-wrap-html-by-id', 'live-html', ['--id', 'ab12cd34', '--count', '3', '--element-id', 'hero'], { snap: ['index.html'] }),
   W('live-wrap-html-by-classes-tag', 'live-html', ['--id', 'ab12cd34', '--classes', 'hero-title', '--tag', 'h1'], { snap: ['index.html'] }),
@@ -40,6 +59,9 @@ export default [
   W('live-wrap-jsx-deferred', 'live-vite', ['--id', 'ab12cd34', '--classes', 'hero-title', '--tag', 'h1', '--defer-source-write'], { snap: ['src/**'] }),
   W('live-wrap-jsx-mapped-item', 'live-vite', ['--id', 'ab12cd34', '--classes', 'item-row', '--tag', 'li', '--text', 'First'], { snap: ['src/**'] }),
   W('live-wrap-tsx-multiline', 'live-vite', ['--id', 'ab12cd34', '--classes', 'panel', '--tag', 'section'], { snap: ['src/**'] }),
+  W('live-wrap-tsx-multiline-self-closing', 'live-vite', ['--id', 'ab12cd34', '--classes', 'field-legend', '--tag', 'legend'], {
+    snap: ['src/**'], setup: (ws) => write(ws, 'src/Field.tsx', FIELD_TSX),
+  }),
   W('live-wrap-astro', 'live-astro', ['--id', 'ab12cd34', '--classes', 'hero-title', '--tag', 'h1'], { snap: ['src/**'] }),
   W('live-wrap-astro-deferred', 'live-astro', ['--id', 'ab12cd34', '--element-id', 'features', '--defer-source-write'], { snap: ['src/**'] }),
   W('live-wrap-vue', 'live-nuxt', ['--id', 'ab12cd34', '--classes', 'hero-title', '--tag', 'h1'], { snap: ['pages/**'] }),
@@ -85,6 +107,8 @@ export default [
   I('live-insert-html-deferred', 'live-html', ['--id', 'ab12cd34', '--position', 'after', '--classes', 'side-note', '--tag', 'aside', '--defer-source-write'], { snap: ['index.html'] }),
   I('live-insert-html-text-ambiguous', 'live-html', ['--id', 'ab12cd34', '--position', 'after', '--classes', 'card-body', '--tag', 'p', '--text', 'card body copy', '--file', 'src/cards.html'], { snap: ['src/**'] }),
   I('live-insert-html-text-picks', 'live-html', ['--id', 'ab12cd34', '--position', 'before', '--classes', 'card', '--tag', 'div', '--text', 'Gamma card Third card body copy.', '--file', 'src/cards.html'], { snap: ['src/**'] }),
+  I('live-insert-html-unclosed-before', 'live-html', ['--id', 'ab12cd34', '--position', 'before', '--classes', 'void-hero', '--tag', 'img', '--file', 'src/void.html'], UNCLOSED),
+  I('live-insert-html-unclosed-after', 'live-html', ['--id', 'ab12cd34', '--position', 'after', '--classes', 'void-hero', '--tag', 'img', '--file', 'src/void.html'], UNCLOSED),
   I('live-insert-jsx-after', 'live-vite', ['--id', 'ab12cd34', '--position', 'after', '--element-id', 'features'], { snap: ['src/**'] }),
   I('live-insert-jsx-before-deferred', 'live-vite', ['--id', 'ab12cd34', '--position', 'before', '--classes', 'hero-title', '--tag', 'h1', '--defer-source-write'], { snap: ['src/**'] }),
   I('live-insert-astro-after', 'live-astro', ['--id', 'ab12cd34', '--position', 'after', '--element-id', 'features'], { snap: ['src/**'] }),

@@ -244,7 +244,7 @@ fn insert_cli(args: &[String], io: &mut Io) -> i32 {
                     "error": "element_ambiguous",
                     "fallback": "agent-driven",
                     "file": jsp::relative("/", &cwd, &target_abs),
-                    "candidates": candidates.iter().map(|c| json!({ "startLine": c.start_line + 1, "endLine": c.end_line + 1 })).collect::<Vec<_>>(),
+                    "candidates": candidates.iter().map(|c| json!({ "startLine": c.start_line + 1, "endLine": c.end_line.map(|e| e + 1) })).collect::<Vec<_>>(),
                 })),
             );
             return 1;
@@ -260,7 +260,20 @@ fn insert_cli(args: &[String], io: &mut Io) -> i32 {
     };
 
     let start_line = m.start_line;
-    let end_line = m.end_line;
+    let svelte_component = should_use_svelte_component_injection(&target_file, &env);
+    let end_line = match m.end_line {
+        Some(end) => end,
+        // Inserting before a source anchor needs only its start line.
+        None if position == "before" && !svelte_component => start_line,
+        None => {
+            let file = jsp::relative("/", &cwd, &target_abs);
+            eprintln(
+                io,
+                &json_compact(&element_unclosed_error(&file, start_line)),
+            );
+            return 1;
+        }
+    };
     let comment_syntax = detect_comment_syntax(&target_file);
     let style_mode = detect_style_mode(&target_file);
     let is_jsx = comment_syntax.0 == "{/*";
@@ -271,7 +284,7 @@ fn insert_cli(args: &[String], io: &mut Io) -> i32 {
     };
     let rel_target_file = jsp::to_posix(&jsp::relative("/", &cwd, &target_abs));
 
-    if should_use_svelte_component_injection(&target_file, &env) {
+    if svelte_component {
         let anchor_end = end_line.min(lines.len() - 1);
         let session = scaffold_svelte_component_insert_session(
             &id,

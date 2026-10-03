@@ -62,7 +62,7 @@ fn nonempty(v: Option<String>) -> Option<String> {
 fn candidates_json(list: &[ElementMatch]) -> Value {
     Value::Array(
         list.iter()
-            .map(|c| json!({ "startLine": c.start_line + 1, "endLine": c.end_line + 1 }))
+            .map(|c| json!({ "startLine": c.start_line + 1, "endLine": c.end_line.map(|e| e + 1) }))
             .collect(),
     )
 }
@@ -261,7 +261,11 @@ fn wrap_cli(args: &[String], io: &mut Io) -> i32 {
     }
 
     let start_line = m.start_line;
-    let end_line = m.end_line.min(lines.len() - 1);
+    let Some(end_line) = m.end_line else {
+        let err = element_unclosed_error(&target_rel_for_errors, start_line);
+        eprintln(io, &json_compact(&err));
+        return 1;
+    };
     let comment_syntax = detect_comment_syntax(&target_file);
     let style_mode = detect_style_mode(&target_file);
     let is_jsx = comment_syntax.0 == "{/*";
