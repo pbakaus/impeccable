@@ -855,7 +855,9 @@ pub fn check_element_oversized_h1(el: &StaticElement<'_>, tag: &str) -> Vec<Rule
     if tag != "h1" {
         return Vec::new();
     }
-    let font_size = resolve_font_size_px(el);
+    let Some(font_size) = resolve_font_size_px(el) else {
+        return Vec::new();
+    };
     let heading_text = collapse_ws(js::trim(&el.text_content()));
     hits(check_oversized_h1(&OversizedH1Input {
         tag,
