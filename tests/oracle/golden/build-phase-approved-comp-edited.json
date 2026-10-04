@@ -1,0 +1,49 @@
+{
+  "steps": [
+    {
+      "stdout": "BUILD-PHASE SPEC  comp comp.png  breakpoint 768x512\n  comps       skipped \n  spec        open    \n  plates      pending \n  hero        pending \n  sections    pending \n  motion      pending \n  responsive  pending \n  review      pending \nNEXT Measure the comp: impeccable comp-spec --comp comp.png --grid, open .impeccable/build/comp-grid.png, write regions.json (every illustration, photo, texture as its own plate region; every text block its own text region), run impeccable comp-spec --comp comp.png --regions regions.json. Then measure the type: impeccable font-match --measure <id> for each text region (cap height, width class, weight class) and impeccable font-match --rank <lead text region> --text \"<its first words>\" to choose the headline face by metrics (the USE line is the CSS; with no browser it records the catalog's nearest face, which is the choice; do not install one, and do not write a chosen face into the spec by hand). Then impeccable build-phase advance.\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "WROTE .impeccable/build/spec.json\nSPEC comp comp.png 768x512 landscape\nPALETTE #f7e8e8(69%) #182838(14%) #9a9aa5(7%) #c5c5d1(7%) #7c7c82(4%)\nBANDS 6% 9% 14% 18% 20% 24% 47% 51% 54% 58% 60% 64% 66% 69% 72% 75% 78% 81% 84% 88% 91% 98%\nREGION top                chrome   semantic box x0% y0% w100% h20% (768x102px, 7.5294:1) palette #f5e7e8 #182838 #bdbdc8  # top masthead band area\nREGION art                plate    raster   box x40% y20% w60% h30% (461x154px, 2.9935:1) palette #e6dfe5 #a2a2ad #7f7f88 plate assets/plates/art.png  # an exploded illustration drawing\nREGION body               text     semantic box x0% y50% w40% h40% (307x205px, 1.4976:1) palette #f8e8e8 #182838 #787878  # a paragraph of body text content\nPLATES 1 to produce: art\nRULE anything not in this list does not exist on the page: no borders, rules, chrome, or containers the comp does not show. Every raster region ships as its plate, never as CSS.\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "GATE SPEC FAILED (state unchanged)\n  - the approved comp comp.png has changed since approval: expected pixel sha256 4c640a415d36339b4895de01ef99f1ab7726d8e4cf70029652485137c24d914e, found d1a3b9afdc27007e973dc2578d240b8b11253a482c6ecd1d19cc4fdf1d8590ac. The approved comp is the fixed reference every gate measures against; never edit it, composite into it, or regenerate it. Nothing was measured against the changed file. Restore it with impeccable build-phase restore-comp (the engine kept the approved copy at .impeccable/build/approved-comp.png), then regenerate the plates or change the page code until they match the unchanged comp.\n",
+      "stderr": "",
+      "exit": 2,
+      "signal": null
+    },
+    {
+      "stdout": "",
+      "stderr": "comp-spec: the approved comp comp.png has changed since approval: expected pixel sha256 4c640a415d36339b4895de01ef99f1ab7726d8e4cf70029652485137c24d914e, found d1a3b9afdc27007e973dc2578d240b8b11253a482c6ecd1d19cc4fdf1d8590ac. The approved comp is the fixed reference every gate measures against; never edit it, composite into it, or regenerate it. Nothing was measured against the changed file. Restore it with impeccable build-phase restore-comp (the engine kept the approved copy at .impeccable/build/approved-comp.png), then regenerate the plates or change the page code until they match the unchanged comp.\n",
+      "exit": 2,
+      "signal": null
+    },
+    {
+      "stdout": "",
+      "stderr": "comp-diff: the approved comp comp.png has changed since approval: expected pixel sha256 4c640a415d36339b4895de01ef99f1ab7726d8e4cf70029652485137c24d914e, found d1a3b9afdc27007e973dc2578d240b8b11253a482c6ecd1d19cc4fdf1d8590ac. The approved comp is the fixed reference every gate measures against; never edit it, composite into it, or regenerate it. Nothing was measured against the changed file. Restore it with impeccable build-phase restore-comp (the engine kept the approved copy at .impeccable/build/approved-comp.png), then regenerate the plates or change the page code until they match the unchanged comp.\n",
+      "exit": 2,
+      "signal": null
+    },
+    {
+      "stdout": "RESTORED comp.png from .impeccable/build/approved-comp.png (pixel sha256 4c640a415d36339b4895de01ef99f1ab7726d8e4cf70029652485137c24d914e). The edited file is kept at .impeccable/build/edited-comp-d1a3b9afdc27.png as evidence, not as a comp. Re-run the step that refused; plates and page code built against the edited comp now have to match the approved one.\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "GATE SPEC FAILED (state unchanged)\n  - measure the type before closing the spec: impeccable font-match --measure <id> for each text region (body); the region with the largest cap height is the lead and gets --rank.\n",
+      "stderr": "",
+      "exit": 2,
+      "signal": null
+    }
+  ],
+  "files": {
+    ".impeccable/build/approved-comp.json": "{\n  \"comp\": \"comp.png\",\n  \"pixelSha256\": \"4c640a415d36339b4895de01ef99f1ab7726d8e4cf70029652485137c24d914e\",\n  \"fileSha256\": \"b4dd0dcead73188eb9a4043e70f9050c8a397182d3dfbad6f4be4f06a6a1db64\",\n  \"copy\": \".impeccable/build/approved-comp.png\",\n  \"at\": \"<ISO>\"\n}"
+  }
+}

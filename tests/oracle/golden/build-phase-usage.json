@@ -1,6 +1,6 @@
 {
   "stdout": "CANDIDATE CHECK: build-phase check-plate <region-id> --candidate <png> [--json] validates a separate file with the normal plate gate; never replaces the selected asset, records approval, or advances the phase.\n",
-  "stderr": "usage: build-phase.mjs start --comp <png> [--breakpoint WxH] [--artifact <entry file>] [--session-id <id>] | status [--json] | completion [--session-id <id>] | advance [--force --reason \"...\"] | record hero --build <png> | scaffold | note \"<text>\" | finish --disposition <word>\n",
+  "stderr": "usage: build-phase.mjs start --comp <png> [--breakpoint WxH] [--artifact <entry file>] [--session-id <id>] | status [--json] | completion [--session-id <id>] | advance [--force --reason \"...\"] | record hero --build <png> | scaffold | note \"<text>\" | finish --disposition <word> | restore-comp\n",
   "exit": 1,
   "signal": null,
   "files": {}

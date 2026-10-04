@@ -729,6 +729,14 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
             }
         }
     }
+    // Measuring against the build's comp: refuse while it differs from the
+    // approved pixels, so a reading never comes from an edited reference.
+    if let Some(sp) = spec.as_ref().filter(|sp| sp["comp"].as_str().is_some_and(|c| crate::approved_comp::same_file(io, c, comp_path))) {
+        if let Some(why) = crate::approved_comp::issue(io, sp, &crate::build_phase::self_cmd(io)) {
+            io.err(&format!("comp-diff: {why}\n"));
+            return 2;
+        }
+    }
     let default_out = {
         let d = Path::new(build_path).parent().map(|p| p.to_path_buf()).unwrap_or_default();
         d.join("diff").to_string_lossy().replace('\\', "/")

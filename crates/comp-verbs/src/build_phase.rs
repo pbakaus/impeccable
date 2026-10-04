@@ -57,7 +57,7 @@ fn abs(io: &Io, p: &str) -> PathBuf {
     }
 }
 
-fn self_cmd(io: &Io) -> String {
+pub(crate) fn self_cmd(io: &Io) -> String {
     let value = io.env.get("IMPECCABLE_SELF").filter(|v| !v.is_empty()).cloned().unwrap_or_else(|| "impeccable".to_string());
     // The skill launcher exports a raw filename; the npm shim exports a
     // command prefix such as `npx impeccable`. Quote only a complete filename,
@@ -325,6 +325,13 @@ fn gate_comps(io: &Io) -> Gate {
     g
 }
 
+/// The approved-comp refusal for the measured spec, when there is one. Every
+/// entry point that measures against the comp runs this before measuring.
+fn comp_refusal(io: &Io) -> Option<String> {
+    let spec = load_spec(&abs(io, SPEC_PATH))?;
+    crate::approved_comp::issue(io, &spec, &self_cmd(io))
+}
+
 fn spec_regions(spec: &Value) -> Vec<Value> {
     spec.get("regions").and_then(Value::as_array).cloned().unwrap_or_default()
 }
@@ -337,6 +344,7 @@ fn gate_spec(io: &Io, state: &Value) -> Gate {
             "no spec at {SPEC_PATH}: run comp-spec.mjs --comp {comp} --grid, name the regions, then --regions regions.json"
         )]);
     };
+    if let Some(why) = crate::approved_comp::issue(io, &spec, &s) { return Gate::fail(vec![why]); }
     if spec["draft"] == true { return Gate::fail(vec!["automatic region draft is not a measured element map; refine it with comp-spec --regions".into()]); }
     if let Some(issue) = crate::comp_spec::region_source_issue(io,&spec) { return Gate::fail(vec![issue]); }
     let regions = spec_regions(&spec);
@@ -514,6 +522,11 @@ fn gate_plates(io: &Io) -> Gate {
 
 fn gate_plates_for(io: &Io, spec: &Value, only_id: Option<&str>) -> Gate {
     let s = self_cmd(io);
+    if let Some(why) = crate::approved_comp::issue(io, spec, &s) {
+        let mut gate = Gate::fail(vec![why]);
+        gate.plates = Some(vec![]);
+        return gate;
+    }
     if let Some(issue) = crate::comp_spec::region_source_issue(io,spec) { return Gate::fail(vec![issue]); }
     let regions = spec_regions(&spec);
     let raster_regions: Vec<Value> = regions.iter().filter(|r| r.get("medium").and_then(Value::as_str) == Some("raster")
@@ -1480,6 +1493,11 @@ fn gate_hero(
     if let Err(e) = unavailable_report(io, out_dir, &pending, "hero") {
         return Gate::fail(vec![format!("cannot persist hero gate evidence: {e}")]);
     }
+    if let Some(why) = comp_refusal(io) {
+        let gate = Gate::fail(vec![why]);
+        let _ = unavailable_report(io, out_dir, &gate, "hero");
+        return gate;
+    }
     let native = match prepare_native_capture(io, state, artifact, renderer, EntryStage::Hero) {
         Ok(value) => value,
         Err(gate) => {
@@ -2323,6 +2341,11 @@ fn gate_responsive(io: &Io, state: &mut Value, min: f64, out_dir: &str, renderer
     if let Err(e) = unavailable_report(io, out_dir, &pending, "responsive") {
         return Gate::fail(vec![format!("cannot persist responsive gate evidence: {e}")]);
     }
+    if let Some(why) = comp_refusal(io) {
+        let gate = Gate::fail(vec![why]);
+        let _ = unavailable_report(io, out_dir, &gate, "responsive");
+        return gate;
+    }
     let native=match prepare_native_capture(io,state,None,renderer,EntryStage::Responsive) {Ok(value)=>value,Err(gate)=>{let _=unavailable_report(io,out_dir,&gate,"responsive");return gate;}};
     let mut gate = gate_responsive_inner(io, state, min, out_dir, native.as_ref());
     if gate.ok && native.is_none() {
@@ -2595,7 +2618,8 @@ fn run_gate(io: &Io, state: &mut Value, phase: &str, opts: &GateOpts, organic_sc
             gate_hero(io, state, &build_path, min, ".impeccable/review/diff/hero", opts.artifact.as_deref(), organic_scan, renderer)
         }
         "responsive" => gate_responsive(io, state, opts.min.unwrap_or(RESPONSIVE_MIN), ".impeccable/review/diff/desktop", renderer),
-        _ => Gate::ok("no mechanical gate".into()),
+        // No measurement here, but the build still stands on the approved comp.
+        _ => match comp_refusal(io) { Some(why) => Gate::fail(vec![why]), None => Gate::ok("no mechanical gate".into()) },
     }
 }
 
@@ -2748,6 +2772,8 @@ fn advance(io: &Io, state: &mut Value, force: bool, reason: Option<&str>, opts: 
     }
     if phase == "comps" {
         if let Some(approved) = &gate.approved {
+            // The approval fixes the reference: keep the engine's own copy now.
+            crate::approved_comp::keep(io, approved);
             state.as_object_mut().unwrap().insert("comp".into(), json!(approved));
             if state.get("breakpoint").map(|v| v.is_null()).unwrap_or(true) {
                 if let Ok(img) = load_raster(io, approved) {
@@ -3185,7 +3211,7 @@ pub fn run_with_renderer(argv: &[String],io: &mut Io,organic_scan: OrganicScan,r
     let cmd = argv.first().map(String::as_str);
     if cmd.is_none() || flag(argv, "help") {
         io.out("CANDIDATE CHECK: build-phase check-plate <region-id> --candidate <png> [--json] validates a separate file with the normal plate gate; never replaces the selected asset, records approval, or advances the phase.\n");
-        io.err("usage: build-phase.mjs start --comp <png> [--breakpoint WxH] [--artifact <entry file>] [--session-id <id>] | status [--json] | completion [--session-id <id>] | advance [--force --reason \"...\"] | record hero --build <png> | scaffold | note \"<text>\" | finish --disposition <word>\n");
+        io.err("usage: build-phase.mjs start --comp <png> [--breakpoint WxH] [--artifact <entry file>] [--session-id <id>] | status [--json] | completion [--session-id <id>] | advance [--force --reason \"...\"] | record hero --build <png> | scaffold | note \"<text>\" | finish --disposition <word> | restore-comp\n");
         return 1;
     }
     let cmd = cmd.unwrap();
@@ -3218,6 +3244,11 @@ pub fn run_with_renderer(argv: &[String],io: &mut Io,organic_scan: OrganicScan,r
             for reason in &gate.reasons { io.out(&format!("  - {reason}\n")); }
         }
         return if gate.ok { 0 } else { 2 };
+    }
+    if cmd == "restore-comp" {
+        let (message, code) = crate::approved_comp::restore(io);
+        if code == 0 { io.out(&message); } else { io.err(&message); }
+        return code;
     }
     if cmd == "completion" {
         let state = load_state(io);
@@ -3264,6 +3295,17 @@ pub fn run_with_renderer(argv: &[String],io: &mut Io,organic_scan: OrganicScan,r
                 io.out(&format!("{}\n", render_status(io, existing)));
                 return 0;
             }
+        }
+        match comp {
+            Some(c) => {
+                if let Some(why) = crate::approved_comp::restart_refusal(io, c, &self_cmd(io)) {
+                    io.err(&format!("build-phase: start refused: {why}\n"));
+                    return 2;
+                }
+                crate::approved_comp::keep(io, c);
+            }
+            // A new comp round: the comp it approves is kept when the comps gate closes.
+            None => crate::approved_comp::forget(io),
         }
         let mut state = new_state(comp, breakpoint.as_deref(), arg(argv, "artifact"), direction);
         if io.env("IMPECCABLE_NATIVE_CAPTURE")==Some("1") {state["capturePolicy"]=json!("native-html-v1");}
@@ -3431,6 +3473,12 @@ pub fn run_with_renderer(argv: &[String],io: &mut Io,organic_scan: OrganicScan,r
                 return 1;
             }
             let disposition = disposition.unwrap();
+            if disposition == "ship" {
+                if let Some(why) = comp_refusal(io) {
+                    io.err(&format!("build-phase: finish --disposition ship refused: {why}\n"));
+                    return 2;
+                }
+            }
             let open_before = crate::completion::open_phases(&state, false);
             if disposition == "ship" && !open_before.is_empty() {
                 let phase = state.get("phase").and_then(Value::as_str).unwrap_or("");

@@ -1169,6 +1169,10 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
             return 1;
         };
         let comp_file = spec.get("comp").and_then(Value::as_str).unwrap_or("");
+        if let Some(why) = crate::approved_comp::issue(io, &spec, &crate::build_phase::self_cmd(io)) {
+            io.err(&format!("comp-spec: {why}\n"));
+            return 2;
+        }
         let comp = match png_io::load_raster(&resolve(io, comp_file)) {
             Ok((d, _)) => d.image,
             Err(e) => {
@@ -1338,11 +1342,14 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
     let spec_out = resolve(io, &spec_path);
     // Bind cached font evidence to the decoded reference, including dimensions.
     // Legacy specs without this identity are deliberately remeasured once.
-    let mut hasher = Sha256::new();
-    hasher.update(comp.width.to_le_bytes());
-    hasher.update(comp.height.to_le_bytes());
-    hasher.update(&comp.data);
-    spec["compSha256"] = json!(format!("{:x}", hasher.finalize()));
+    let comp_hash = crate::approved_comp::pixel_sha256(&comp);
+    // The approved comp is the fixed reference: re-measuring an edited copy of
+    // the build's comp would move the spec's identity along with the edit.
+    if let Some(why) = crate::approved_comp::spec_refusal(io, comp_path, &comp_hash, &crate::build_phase::self_cmd(io)) {
+        io.err(&format!("comp-spec: {why}\n"));
+        return 2;
+    }
+    spec["compSha256"] = json!(comp_hash);
     spec["regionsSource"] = regions_source;
     if let Some(previous) = std::fs::read(&spec_out).ok()
         .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok()) {

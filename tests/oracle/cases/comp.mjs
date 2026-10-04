@@ -88,6 +88,25 @@ const cases = [
   },
   { id: 'build-phase-usage', verb: 'build-phase', workspace: WS, args: [], env: env() },
 
+  // The approved comp is a fixed reference: start keeps a copy, comp-spec binds
+  // the same pixels, and once the comp is edited (build.png copied over it, the
+  // shape of compositing plates into it) the gate, a re-measure and comp-diff
+  // all refuse before measuring. restore-comp puts the approved pixels back and
+  // the spec gate measures again (its own readings, not the refusal).
+  {
+    id: 'build-phase-approved-comp-edited', verb: 'build-phase', workspace: WS,
+    files: ['.impeccable/build/approved-comp.json'], env: env(),
+    steps: [
+      { args: ['start', '--comp', 'comp.png'] },
+      { verb: 'comp-spec', args: ['--comp', 'comp.png', '--regions', 'regions.json'] },
+      { setup: (ws) => fs.copyFileSync(path.join(ws, 'build.png'), path.join(ws, 'comp.png')), args: ['advance'] },
+      { verb: 'comp-spec', args: ['--comp', 'comp.png', '--regions', 'regions.json'] },
+      { verb: 'comp-diff', args: ['--comp', 'comp.png', '--build', 'build.png', '--spec', '.impeccable/build/spec.json', '--no-files'] },
+      { args: ['restore-comp'] },
+      { args: ['advance'] },
+    ],
+  },
+
   // build-phase responsive (workspace comp-responsive: a menu column ending in a
   // sign-off line; spec.json and a state at the responsive phase are staged
   // under .impeccable/build/, which git ignores in fixtures). A desktop capture whose
