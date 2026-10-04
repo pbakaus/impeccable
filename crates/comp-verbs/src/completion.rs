@@ -51,6 +51,50 @@ pub fn input_hash(root: &Path) -> Option<String> {
     Some(format!("{:x}",hasher.finalize()))
 }
 
+/// The files the final native capture bound (its `inputs.json` manifest), as
+/// `finish` recorded them. Returns the recorded paths whose bytes differ now (a
+/// deleted file counts as changed), or `None` when nothing was recorded or a
+/// recorded path is not a plain project-relative path.
+pub fn changed_capture_inputs(root: &Path, state: &Value) -> Option<Vec<String>> {
+    let files = state.pointer("/finish/captureInputs")?.as_array()?;
+    let root = root.canonicalize().ok()?;
+    let mut changed = Vec::new();
+    for file in files {
+        let relative = file.get("path")?.as_str()?;
+        let recorded = file.get("sha256")?.as_str()?;
+        let path = Path::new(relative);
+        if relative.is_empty() || !path.components().all(|c| matches!(c, std::path::Component::Normal(_))) {
+            return None;
+        }
+        let current = std::fs::read(root.join(path)).ok().map(|bytes| format!("{:x}", Sha256::digest(bytes)));
+        if current.as_deref() != Some(recorded) {
+            changed.push(relative.to_string());
+        }
+    }
+    Some(changed)
+}
+
+/// A fingerprint of everything the recorded finish is checked against now: the
+/// entry's bytes and each recorded capture input's current bytes. It moves when
+/// any bound file changes, not only the entry.
+pub fn bound_fingerprint(root: &Path, state: &Value) -> Option<String> {
+    let mut hasher = Sha256::new();
+    hasher.update(artifact_hash(root, state)?.as_bytes());
+    if let Some(files) = state.pointer("/finish/captureInputs").and_then(Value::as_array) {
+        let root = root.canonicalize().ok()?;
+        for file in files {
+            let relative = file.get("path").and_then(Value::as_str).unwrap_or("");
+            let path = Path::new(relative);
+            hasher.update([0]);
+            hasher.update(relative.as_bytes());
+            if !relative.is_empty() && path.components().all(|c| matches!(c, std::path::Component::Normal(_))) {
+                if let Ok(bytes) = std::fs::read(root.join(path)) { hasher.update(Sha256::digest(bytes)); }
+            }
+        }
+    }
+    Some(format!("{:x}", hasher.finalize()))
+}
+
 pub fn open_phases(state: &Value, include_review: bool) -> Vec<&'static str> {
     PHASES.iter().copied().filter(|phase| {
         (include_review || *phase != "review") && !matches!(
@@ -75,6 +119,20 @@ pub fn report(root: &Path, state: Option<&Value>, session_id: Option<&str>) -> V
     let current_hash = artifact_hash(root, state);
     let recorded_hash = state.pointer("/finish/artifactSha256").and_then(Value::as_str);
     let mut unchanged = recorded_hash.zip(current_hash.as_deref()).map(|(a,b)| a == b);
+    let mut changed_inputs: Vec<String> = Vec::new();
+    if unchanged == Some(false) {
+        if let Some(artifact) = state.get("artifact").and_then(Value::as_str) { changed_inputs.push(artifact.to_string()); }
+    }
+    if state.pointer("/finish/captureInputs").is_some() {
+        unchanged = match (unchanged, changed_capture_inputs(root, state)) {
+            (entry, Some(changed)) => {
+                for path in changed { if !changed_inputs.contains(&path) { changed_inputs.push(path); } }
+                // A deleted entry has no hash, but the manifest still names it as changed.
+                if !changed_inputs.is_empty() { Some(false) } else { entry }
+            }
+            _ => None,
+        };
+    }
     if let Some(recorded) = state.pointer("/finish/artifactInputsSha256").and_then(Value::as_str) {
         unchanged = match (unchanged,input_hash(root)) {
             (Some(entry),Some(inputs)) => Some(entry && recorded == inputs),
@@ -93,9 +151,12 @@ pub fn report(root: &Path, state: Option<&Value>, session_id: Option<&str>) -> V
         "sessionScope":scope, "sessionId":owner, "buildStartedAt":state.get("startedAt"),
         "artifact":state.get("artifact"), "openPhases":phases,
         "disposition":disposition, "artifactUnchangedSinceFinish":unchanged,
+        "changedSinceFinish":changed_inputs,
         "canContinue":scope == "current-session" && current_hash.is_some()
             && matches!(status, "incomplete" | "changed-after-finish"),
-        "verificationScope":if state["finish"]["artifactInputsSha256"].is_string() {"local frontend inputs and recorded phase status"} else {"entry artifact bytes and recorded phase status; dependencies retain their own gate evidence"}
+        "verificationScope":if state["finish"]["artifactInputsSha256"].is_string() {"local frontend inputs and recorded phase status"}
+            else if state["finish"]["captureInputs"].is_array() {"entry artifact and every file the final native capture bound, and recorded phase status"}
+            else {"entry artifact bytes and recorded phase status; dependencies retain their own gate evidence"}
     })
 }
 

@@ -1,0 +1,23 @@
+{
+  "steps": [
+    {
+      "stdout": "BUILD-PHASE REVIEW  comp comp.png  breakpoint 768x512\n  comps       closed   oracle\n  spec        closed   oracle\n  plates      closed   oracle\n  hero        closed   oracle\n  sections    closed   oracle\n  motion      closed   oracle\n  responsive  closed   oracle\n  review      closed   oracle\n  finish      ship at <ISO>\nNEXT Finish is recorded for the current entry. Any later edit to a file the final check bound (the page, what it loads, the spec, the comp), a fix for a hook finding included, voids it: run impeccable build-phase finish --disposition ship again before you stop; ship re-captures the current files natively and must pass the responsive gate again.\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "BUILD-PHASE REVIEW  comp comp.png  breakpoint 768x512\n  comps       closed   oracle\n  spec        closed   oracle\n  plates      closed   oracle\n  hero        closed   oracle\n  sections    closed   oracle\n  motion      closed   oracle\n  responsive  closed   oracle\n  review      closed   oracle\n  finish      ship at <ISO>\nNEXT A file the final check bound changed after finish (fonts/face.ttf), so the recorded ship no longer covers the build. Repeat final review if the change goes beyond a fix it asked for, then run impeccable build-phase finish --disposition ship again; ship re-captures the current files natively and must pass the responsive gate again.\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "{\n  \"tool\": \"build-completion\",\n  \"version\": 1,\n  \"status\": \"changed-after-finish\",\n  \"sessionScope\": \"current-session\",\n  \"sessionId\": \"oracle-build\",\n  \"buildStartedAt\": \"<ISO>\",\n  \"artifact\": \"index.html\",\n  \"openPhases\": [],\n  \"disposition\": \"ship\",\n  \"artifactUnchangedSinceFinish\": false,\n  \"changedSinceFinish\": [\n    \"fonts/face.ttf\"\n  ],\n  \"canContinue\": true,\n  \"verificationScope\": \"entry artifact and every file the final native capture bound, and recorded phase status\"\n}\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    }
+  ],
+  "files": {}
+}

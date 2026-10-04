@@ -1,5 +1,5 @@
 //! Completion feedback for a build explicitly owned by this native session.
-use crate::hook_lib::{Cache, Runtime, ensure_session, persist_cache};
+use crate::hook_lib::{Cache, Runtime, ENVELOPE_PREFIX, ensure_session, persist_cache};
 use impeccable_comp_verbs::completion;
 use serde_json::{json, Value};
 use std::path::Path;
@@ -30,6 +30,15 @@ pub fn gemini_shell_identity(rt: &Runtime, event: &serde_json::Map<String, Value
 
 pub fn reminder(rt: &Runtime, cwd: &str, session: &str, active: bool, cache: &mut Cache) -> Option<String> {
     if session == "unknown" || session.is_empty() { return None; }
+    // A continuation this hook started itself (findings shown over a recorded
+    // ship) is ours to follow up once: the fixes it asked for changed the build.
+    // The marker grants that one continuation and is spent on the first active
+    // Stop, so a later continuation another hook starts is never taken over.
+    let marker = if active {
+        let taken = ensure_session(cache, session).remove(FINDINGS_AFTER_FINISH);
+        if taken.is_some() && !persist_cache(rt, cwd, cache) { return None; }
+        taken.and_then(|v| v.as_str().map(String::from))
+    } else { None };
     let root = Path::new(cwd);
     let state: Value = serde_json::from_str(&std::fs::read_to_string(root.join(".impeccable/build/state.json")).ok()?).ok()?;
     let report = completion::report(root, Some(&state), Some(session));
@@ -37,24 +46,46 @@ pub fn reminder(rt: &Runtime, cwd: &str, session: &str, active: bool, cache: &mu
     let build = state.get("startedAt")?.as_str()?;
     let artifact = state.get("artifact")?.as_str()?;
     let key = format!("{build}:{artifact}");
-    let current_hash = completion::artifact_hash(root, &state)?;
+    // Every bound file, not only the entry: a stylesheet-only edit is new work too.
+    let current_hash = completion::bound_fingerprint(root, &state)?;
     let old = ensure_session(cache, session).get("buildCompletionNotice").cloned().unwrap_or(Value::Null);
     let same_build = old["build"] == key;
     let count = if same_build { old["count"].as_u64().unwrap_or(0) } else { 0 };
     // Do not take over a continuation issued by another Stop hook. On a new
     // turn, unchanged old work must not consume another reminder either.
-    if count >= 3 || (active && count == 0)
-        || (!active && same_build && old["artifactSha256"] == current_hash) { return None; }
+    let ours = marker.as_deref() == Some(key.as_str());
+    if count >= 3 || (active && count == 0 && !ours)
+        || (!active && same_build && old["boundSha256"] == current_hash) { return None; }
     ensure_session(cache, session).insert("buildCompletionNotice".into(), json!({
-        "build":key, "count":count+1, "artifactSha256":current_hash
+        "build":key, "count":count+1, "boundSha256":current_hash
     }));
     // Never emit an unbounded continuation if the counter cannot be saved.
     if !persist_cache(rt, cwd, cache) { return None; }
     let open = report["openPhases"].as_array()?.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(", ");
-    let evidence = if report["status"] == "changed-after-finish" {
-        "The entry artifact changed after the recorded final review.".to_string()
-    } else { format!("Open phases: {open}.") };
-    Some(format!("Comp build for {artifact} is unfinished. {evidence} Complete the remaining checks and record the actual finish disposition. If work is blocked, report what remains unresolved. This is completion pass {} of 3; existing fidelity gates still apply.", count+1))
+    if report["status"] == "changed-after-finish" {
+        let changed = report["changedSinceFinish"].as_array().into_iter().flatten().filter_map(Value::as_str).take(6).collect::<Vec<_>>().join(", ");
+        let changed = if changed.is_empty() { String::new() } else { format!(" ({changed})") };
+        return Some(format!("Comp build for {artifact} is unfinished. A file the recorded finish bound changed after it{changed}, so that ship no longer covers the build. Run {} build-phase finish --disposition ship again before you stop: it rechecks the current files and must pass the responsive gate again. If it refuses, follow what it prints. If work is blocked, report what remains unresolved. This is completion pass {} of 3; existing fidelity gates still apply.", rt.self_command, count+1));
+    }
+    Some(format!("Comp build for {artifact} is unfinished. Open phases: {open}. Complete the remaining checks and record the actual finish disposition. If work is blocked, report what remains unresolved. This is completion pass {} of 3; existing fidelity gates still apply.", count+1))
+}
+
+const FINDINGS_AFTER_FINISH: &str = "findingsAfterFinish";
+
+/// When the Stop pass is about to show findings over a comp build this session
+/// already recorded as shipped, the note that tells the agent a fix voids that
+/// finish. It also marks the build, so the next Stop, a continuation this hook
+/// started, may ask for the finish again once the fixes changed the page.
+pub fn finished_build_note(rt: &Runtime, cwd: &str, session: &str, cache: &mut Cache) -> Option<String> {
+    if session == "unknown" || session.is_empty() { return None; }
+    let root = Path::new(cwd);
+    let state: Value = serde_json::from_str(&std::fs::read_to_string(root.join(".impeccable/build/state.json")).ok()?).ok()?;
+    let report = completion::report(root, Some(&state), Some(session));
+    if report["status"] != "complete" || report["sessionScope"] != "current-session" { return None; }
+    let build = state.get("startedAt")?.as_str()?;
+    let artifact = state.get("artifact")?.as_str()?;
+    ensure_session(cache, session).insert(FINDINGS_AFTER_FINISH.into(), json!(format!("{build}:{artifact}")));
+    Some(format!("{ENVELOPE_PREFIX} The comp build for {artifact} has finish --disposition ship recorded. A fix after it voids that finish: once the fixes are in, run {} build-phase finish --disposition ship again so the final check covers the current files.", rt.self_command))
 }
 
 /// Claude exposes a session-specific environment file at SessionStart. Store

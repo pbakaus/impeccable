@@ -44,7 +44,7 @@ fn status_next_step_tracks_the_recorded_finish_and_later_entry_edits() {
     assert!(!finished.contains("Spawn"));
     ws.write("index.html", b"<main>Changed after finish</main>");
     let changed = next_instruction(&io, &state);
-    assert!(changed.contains("entry changed after finish"), "{changed}");
+    assert!(changed.contains("changed after finish (index.html)"), "{changed}");
     assert!(changed.contains("build-phase finish"));
     // Reporting status does not reopen phases or silently sign the new bytes.
     assert_eq!(state["phases"]["review"]["status"], "closed");
@@ -1459,4 +1459,153 @@ fn responsive_next_names_the_frame_the_gate_actually_diffs() {
     assert!(native.contains("a 1440x960 desktop first viewport") && !native.contains("desktop.png"), "{native}");
     let saved = next_instruction(&io, &json!({"phase":"responsive","breakpoint":"1536x1024"}));
     assert!(saved.contains("the first viewport of desktop.png (its top 1440x960"), "{saved}");
+}
+
+/// A native renderer that binds the files it read, like the real one: its
+/// evidence report carries the `inputs.json` manifest of the current bytes.
+/// `changed_during` stands in for an edit landing while the capture ran.
+struct ManifestRenderer { desktop: Vec<u8>, changed_during: Option<&'static str> }
+struct ManifestCapture(crate::entry_capture::EntryEvidence, crate::entry_capture::ApprovedReference, Option<&'static str>);
+impl CapturedEntry for ManifestCapture {
+    fn approved_reference(&self) -> Option<&crate::entry_capture::ApprovedReference> { Some(&self.1) }
+    fn evidence(&self) -> &crate::entry_capture::EntryEvidence { &self.0 }
+    fn verify_current(&self) -> Result<(), String> {
+        self.2.map_or(Ok(()), |file| Err(format!("capture input changed: {file}")))
+    }
+}
+impl EntryRenderer for ManifestRenderer {
+    fn capture_entry(&self, request: &EntryRequest) -> Result<Box<dyn CapturedEntry>, String> {
+        let files: Vec<Value> = ["index.html", "fonts/face.ttf"].iter().map(|path| {
+            let bytes = std::fs::read(request.root.join(path)).unwrap();
+            json!({"path": path, "sha256": sha256_bytes(&bytes), "bytes": bytes.len(), "served": true})
+        }).collect();
+        let report = json!({"schema":"native-entry-capture-v1","inputSnapshot":"test",
+            "manifest":{"schema":"native-html-input-snapshot-v1","entry":"index.html","files":files}});
+        let frame = |name: &str| crate::entry_capture::FrameEvidence { name: name.into(), png: self.desktop.clone(), regions: vec![] };
+        Ok(Box::new(ManifestCapture(crate::entry_capture::EntryEvidence { report, frames: vec![frame("desktop"), frame("mobile")] },
+            crate::entry_capture::ApprovedReference { png: self.desktop.clone(), proof: json!({"schema": "test-review"}) }, self.changed_during)))
+    }
+}
+
+/// A comp-led native build with every phase closed and the review open, the
+/// page accepted at the first viewport so the final recheck passes on fidelity.
+fn finished_native_workspace() -> (Workspace, Vec<u8>) {
+    let ws = reviewed_desktop_workspace();
+    ws.write("fonts/face.ttf", b"font v1");
+    let mut state = json!({"phase":"review", "capturePolicy":"native-html-v1", "artifact":"index.html",
+        "comp":"comp.png", "sessionId":"owner", "startedAt":"build-one", "phases":{}});
+    for phase in PHASES { state["phases"][phase] = json!({"status":"closed", "attempts":1, "gate":{"ok":true}}); }
+    state["phases"]["review"]["status"] = json!("open");
+    save_state(&ws.io(), &state);
+    let desktop = png_io::encode_png(&reviewed_hero(true, false), &[]).unwrap();
+    (ws, desktop)
+}
+
+#[test]
+fn native_ship_binds_every_captured_input_and_a_later_edit_voids_it_until_recaptured() {
+    let (ws, desktop) = finished_native_workspace();
+    let renderer = ManifestRenderer { desktop, changed_during: None };
+    let mut io = ws.io();
+    let ship = ["finish", "--disposition", "ship"].map(String::from);
+    assert_eq!(run_with_renderer(&ship, &mut io, &no_organic_scan, Some(&renderer)), 0);
+    let state = load_state(&io).unwrap();
+    let inputs = state["finish"]["captureInputs"].as_array().unwrap();
+    assert_eq!(inputs.iter().map(|f| f["path"].as_str().unwrap()).collect::<Vec<_>>(), ["index.html", "fonts/face.ttf"]);
+    let report = crate::completion::report(&ws.path, Some(&state), Some("owner"));
+    assert_eq!(report["status"], "complete");
+    let next = next_instruction(&io, &state);
+    assert!(next.starts_with("Finish is recorded for the current entry.") && next.contains("a fix for a hook finding included, voids it")
+        && next.contains("build-phase finish --disposition ship again") && next.contains("re-captures the current files natively"), "{next}");
+
+    // A font the page loads changes after ship: the entry bytes are the same,
+    // but the shipped page is not the one the final capture saw.
+    ws.write("fonts/face.ttf", b"font v2");
+    let report = crate::completion::report(&ws.path, Some(&state), Some("owner"));
+    assert_eq!(report["status"], "changed-after-finish");
+    assert_eq!(report["changedSinceFinish"], json!(["fonts/face.ttf"]));
+    assert_eq!(report["canContinue"], true);
+    let next = next_instruction(&io, &state);
+    assert!(next.contains("A file the final check bound changed after finish (fonts/face.ttf)") && next.contains("build-phase finish --disposition ship again"), "{next}");
+    ws.write("index.html", b"<main><h1>Headline, fixed after ship</h1></main>");
+    let report = crate::completion::report(&ws.path, Some(&state), Some("owner"));
+    assert_eq!(report["changedSinceFinish"], json!(["index.html", "fonts/face.ttf"]));
+    // A deleted entry is a change the manifest names, not an unverifiable finish.
+    std::fs::remove_file(ws.path.join("index.html")).unwrap();
+    let report = crate::completion::report(&ws.path, Some(&state), Some("owner"));
+    assert_eq!(report["status"], "changed-after-finish");
+    assert_eq!(report["changedSinceFinish"], json!(["index.html", "fonts/face.ttf"]));
+    ws.write("index.html", b"<main><h1>Headline, fixed after ship</h1></main>");
+
+    // Recording ship again re-captures the current files and binds them.
+    assert_eq!(run_with_renderer(&ship, &mut io, &no_organic_scan, Some(&renderer)), 0);
+    let state = load_state(&io).unwrap();
+    assert_eq!(crate::completion::report(&ws.path, Some(&state), Some("owner"))["status"], "complete");
+    assert_eq!(state["phases"]["responsive"]["attempts"], 3);
+}
+
+#[test]
+fn native_ship_is_refused_when_an_input_changes_while_the_final_capture_runs() {
+    let (ws, desktop) = finished_native_workspace();
+    let renderer = ManifestRenderer { desktop, changed_during: Some("index.html") };
+    let mut io = ws.io();
+    let ship = ["finish", "--disposition", "ship"].map(String::from);
+    assert_eq!(run_with_renderer(&ship, &mut io, &no_organic_scan, Some(&renderer)), 2);
+    let state = load_state(&io).unwrap();
+    assert_eq!(state["finish"]["disposition"], "fix");
+    assert!(state["finish"]["captureInputs"].is_null());
+    assert_eq!(state["phase"], "responsive");
+    assert_eq!(state["phases"]["responsive"]["status"], "open");
+    let reasons = state["phases"]["responsive"]["gate"]["reasons"].as_array().unwrap();
+    assert!(reasons.iter().any(|r| r.as_str().unwrap().contains("capture input changed: index.html")), "{reasons:?}");
+}
+
+/// A native renderer whose capture leaves no input manifest.
+struct BareRenderer(Vec<u8>);
+impl EntryRenderer for BareRenderer {
+    fn capture_entry(&self, _: &EntryRequest) -> Result<Box<dyn CapturedEntry>, String> {
+        let frame = |name: &str| crate::entry_capture::FrameEvidence { name: name.into(), png: self.0.clone(), regions: vec![] };
+        Ok(Box::new(ManifestCapture(crate::entry_capture::EntryEvidence { report: json!({}), frames: vec![frame("desktop"), frame("mobile")] },
+            crate::entry_capture::ApprovedReference { png: self.0.clone(), proof: json!({"schema": "test-review"}) }, None)))
+    }
+}
+
+#[test]
+fn native_ship_is_refused_when_the_final_capture_leaves_no_manifest() {
+    let (ws, desktop) = finished_native_workspace();
+    let mut io = ws.io();
+    let ship = ["finish", "--disposition", "ship"].map(String::from);
+    assert_eq!(run_with_renderer(&ship, &mut io, &no_organic_scan, Some(&BareRenderer(desktop))), 2);
+    let state = load_state(&io).unwrap();
+    assert_eq!(state["finish"]["disposition"], "fix");
+    assert!(state["finish"]["captureInputs"].is_null());
+    assert_ne!(crate::completion::report(&ws.path, Some(&state), Some("owner"))["status"], "complete");
+}
+
+#[test]
+fn screenshot_policy_finish_binds_no_capture_manifest() {
+    let ws = Workspace::new();
+    ws.write("index.html", b"<main>Finished</main>");
+    ws.write(".impeccable/review/native/responsive/inputs.json", br#"{"manifest":{"files":[{"path":"index.html","sha256":"stale"}]}}"#);
+    let mut io = ws.io();
+    let mut state = json!({"phase":"review", "artifact":"index.html", "phases":{}});
+    for phase in PHASES { state["phases"][phase] = json!({"status":"closed"}); }
+    state["responsiveInputSha256"] = json!(crate::completion::input_hash(&ws.path));
+    save_state(&io, &state);
+    assert_eq!(run(&["finish", "--disposition", "ship"].map(String::from), &mut io, &no_organic_scan), 0);
+    let state = load_state(&io).unwrap();
+    assert!(state["finish"]["captureInputs"].is_null());
+    assert_eq!(crate::completion::report(&ws.path, Some(&state), None)["status"], "complete");
+    let next = next_instruction(&io, &state);
+    assert!(next.contains("recapture desktop and mobile and advance responsive first"), "{next}");
+}
+
+#[test]
+fn review_next_says_ship_rechecks_and_a_later_edit_needs_ship_again() {
+    let ws = Workspace::new();
+    let io = ws.io();
+    let native = next_instruction(&io, &json!({"phase":"review", "capturePolicy":"native-html-v1"}));
+    assert!(native.starts_with("Spawn the finish reviewer") && native.contains("Make every fix before ship: ship re-captures the current files natively")
+        && native.contains("needs ship recorded again"), "{native}");
+    let screenshots = next_instruction(&io, &json!({"phase":"review"}));
+    assert!(screenshots.contains("ship refuses while the frontend files differ from the responsive screenshots"), "{screenshots}");
 }

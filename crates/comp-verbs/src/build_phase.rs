@@ -2300,6 +2300,15 @@ fn responsive_loop_verdict(state: &mut Value, gate: &Gate, viewport_accepted: bo
     Some(format!("{lead} Stop iterating and present the first-viewport review (the assembled hero, stage hero, in component-review.md) with the current page, so the user judges the first viewport in context. An accepted review carries to desktop width while the desktop capture still matches the approved screenshot; displaced and missing regions still block. Until then this phase stays open; a finish recorded over it is an unfinished build, not a fix round."))
 }
 
+/// The `{path, sha256}` rows of the manifest the last native responsive capture
+/// bound (`.impeccable/review/native/responsive/inputs.json`).
+fn native_capture_inputs(io: &Io) -> Option<Vec<Value>> {
+    let bytes = std::fs::read(abs(io, ".impeccable/review/native/responsive/inputs.json")).ok()?;
+    let report: Value = serde_json::from_slice(&bytes).ok()?;
+    let files = report.pointer("/manifest/files")?.as_array()?;
+    files.iter().map(|f| Some(json!({"path": f.get("path")?.as_str()?, "sha256": f.get("sha256")?.as_str()?}))).collect()
+}
+
 fn hash_file(io: &Io, file: &str) -> Option<String> {
     use sha1::{Digest, Sha1};
     let data = std::fs::read(abs(io, file)).ok()?;
@@ -2758,6 +2767,15 @@ fn advance(io: &Io, state: &mut Value, force: bool, reason: Option<&str>, opts: 
 
 // ---- guidance strings ------------------------------------------------------
 
+/// What `finish --disposition ship` does with the current files, per capture policy.
+fn ship_recheck(io: &Io, state: &Value) -> &'static str {
+    if state["capturePolicy"] == "native-html-v1" || io.env("IMPECCABLE_NATIVE_CAPTURE") == Some("1") {
+        "ship re-captures the current files natively and must pass the responsive gate again"
+    } else {
+        "ship refuses while the frontend files differ from the responsive screenshots, so recapture desktop and mobile and advance responsive first"
+    }
+}
+
 fn next_instruction(io: &Io, state: &Value) -> String {
     let s = self_cmd(io);
     let phase = state.get("phase").and_then(Value::as_str).unwrap_or("");
@@ -2766,8 +2784,12 @@ fn next_instruction(io: &Io, state: &Value) -> String {
     {
         let completion = crate::completion::report(&io.cwd, Some(state), None);
         match completion.get("status").and_then(Value::as_str) {
-            Some("complete") => return "Finish is recorded for the current entry. Repeat final review and finish if the entry or its dependencies change.".into(),
-            Some("changed-after-finish") => return format!("The entry changed after finish. Repeat final review, then {s} build-phase finish --disposition <word> to validate the current artifact."),
+            Some("complete") => return format!("Finish is recorded for the current entry. Any later edit to a file the final check bound (the page, what it loads, the spec, the comp), a fix for a hook finding included, voids it: run {s} build-phase finish --disposition ship again before you stop; {}.", ship_recheck(io, state)),
+            Some("changed-after-finish") => {
+                let changed = completion["changedSinceFinish"].as_array().into_iter().flatten().filter_map(Value::as_str).take(6).collect::<Vec<_>>().join(", ");
+                let changed = if changed.is_empty() { String::new() } else { format!(" ({changed})") };
+                return format!("A file the final check bound changed after finish{changed}, so the recorded ship no longer covers the build. Repeat final review if the change goes beyond a fix it asked for, then run {s} build-phase finish --disposition ship again; {}.", ship_recheck(io, state));
+            }
             Some("unverified") => return format!("The recorded finish cannot be verified against the entry. Check the artifact path and repeat final review before {s} build-phase finish --disposition <word>."),
             _ => {}
         }
@@ -2802,7 +2824,7 @@ fn next_instruction(io: &Io, state: &Value) -> String {
             };
             format!("Build the other viewports (mobile first if the surface is mobile). The first viewport must hold at common desktop widths (1280 to 1600), not only at the comp's exact size: fluid columns, no fixed-px grid that wraps 96px narrower, and sizes that scale with the viewport so nothing the comp shows in the first viewport is pushed below it. Settle or disable entrance motion before capturing (an element mid-animation reads as missing). {compared} Then {s} build-phase advance. When it fails, open the region crops it lists first; after three failed attempts it names the route to the user instead of more edits.")
         }
-        "review" => format!("Spawn the finish reviewer with the state file, the hero diff report, and the captures; record its disposition with {s} build-phase finish --disposition <word>."),
+        "review" => format!("Spawn the finish reviewer with the state file, the hero diff report, and the captures; record its disposition with {s} build-phase finish --disposition <word>. Make every fix before ship: {}, and any edit after it, a fix for a hook finding included, needs ship recorded again.", ship_recheck(io, state)),
         _ => String::new(),
     }
 }
@@ -3466,6 +3488,24 @@ pub fn run_with_renderer(argv: &[String],io: &mut Io,organic_scan: OrganicScan,r
             }
             if let Some(hash) = crate::completion::artifact_hash(&io.cwd, &state) {
                 state["finish"]["artifactSha256"] = json!(hash);
+            }
+            // Bind the finish to every file the final native capture read, not
+            // only the entry: a font or stylesheet edited after ship changes the
+            // shipped page as surely as the HTML does.
+            if disposition == "ship" && state["capturePolicy"] == "native-html-v1" {
+                match native_capture_inputs(io) {
+                    Some(files) => state["finish"]["captureInputs"] = json!(files),
+                    None => {
+                        // A ship that cannot name what it checked binds only the
+                        // entry, so a later font or stylesheet edit would pass
+                        // unseen. Refuse rather than record a weaker finish.
+                        state["finish"] = json!({"disposition":"fix", "at":now(), "phaseAtFinish":phase,
+                            "reason":"final native capture manifest unavailable"});
+                        save_state(io, &state);
+                        io.err("build-phase: finish --disposition ship refused: the final native capture's input manifest (.impeccable/review/native/responsive/inputs.json) is missing or unreadable, so the finish cannot bind the files it checked. Run finish --disposition ship again; if it is refused again, report that the native capture left no manifest.\n");
+                        return 2;
+                    }
+                }
             }
             if phase == "review" {
                 if let Some(rev) = state.pointer_mut("/phases/review").and_then(|v| v.as_object_mut()) {
