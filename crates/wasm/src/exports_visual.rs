@@ -181,6 +181,12 @@ pub fn vc_sample_is_opaque(sample_json: &str) -> bool {
     vc::sample_is_opaque(&parse(sample_json))
 }
 
+/// Whether an unresolved reason keeps walking down the same hit stack.
+#[wasm_bindgen]
+pub fn vc_is_walk_continuable(reason: &str) -> bool {
+    vc::is_walk_continuable(reason)
+}
+
 /// The alpha-compositing step over the sample beneath.
 #[wasm_bindgen]
 pub fn vc_alpha_composite(sample_json: &str, under_json: &str) -> String {

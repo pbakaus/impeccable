@@ -686,6 +686,22 @@ pub fn stack_nodes(dom: &dyn Dom, el: ElId, x: f64, y: f64, depth: f64) -> Resul
         .collect())
 }
 
+/// Whether an unresolved visual-background reason means "this layer paints
+/// nothing here, keep walking down the same hit stack" (transparent or the
+/// point misses the image) versus "the ground cannot be read, defer to
+/// screenshot pixels" (cross-origin / missing image, tainted canvas).
+/// Issue #927: skipping an unreadable photo composites the scrim over the
+/// page behind the photo, so only transparent misses continue.
+pub fn is_walk_continuable(reason: &str) -> bool {
+    matches!(
+        reason,
+        "no readable background"
+            | "no readable visual background"
+            | "point outside image"
+            | "point outside background image"
+    )
+}
+
 /// JS: index.mjs#sampleImageElement — painted rect + source point for the
 /// `<img>` at `node` (`intrinsic_*` are the JS `naturalWidth || videoWidth ||
 /// width` chain, 0 when none). `Err` is the unresolved sample.
@@ -1134,6 +1150,12 @@ mod tests {
         assert_eq!(out["color"]["r"].as_f64(), Some(128.0));
         assert_eq!(unresolved_from_reasons(&["a".into(), "".into(), "a".into(), "b".into(), "c".into(), "d".into()])["reason"], "a, b, c");
         assert_eq!(unresolved_from_reasons(&[])["reason"], "no readable visual background");
+        // #927: transparent misses keep walking, unreadable photo grounds stop.
+        assert!(is_walk_continuable("no readable background"));
+        assert!(is_walk_continuable("point outside background image"));
+        assert!(!is_walk_continuable("image unavailable"));
+        assert!(!is_walk_continuable("tainted image"));
+        assert!(!is_walk_continuable("canvas unavailable"));
         let mut d = FakeDom::new();
         let (_h, body) = d.with_page();
         let p = d.add(Some(body), "p");
@@ -1142,6 +1164,23 @@ mod tests {
         let nodes = stack_nodes(&d, p, 10.0, 10.0, 0.0).unwrap();
         assert_eq!(nodes[0].el, p);
         assert_eq!(nodes[0].kind, "css");
+    }
+
+    #[test]
+    fn translucent_tint_composites_over_white() {
+        // #927 repro shape: 8% indigo tint over white is near-white, not indigo.
+        let tint = json!({ "status": "sampled", "color": { "r": 99, "g": 102, "b": 241, "a": 0.08 }, "method": "solid-background" });
+        let white = json!({ "status": "sampled", "color": { "r": 255, "g": 255, "b": 255, "a": 1 } });
+        let out = alpha_composite(tint, &white);
+        let r = out["color"]["r"].as_f64().unwrap();
+        let g = out["color"]["g"].as_f64().unwrap();
+        let b = out["color"]["b"].as_f64().unwrap();
+        // Blended tint stays within 25 of white; self-composite would sit near 99,102,241.
+        assert!(r > 230.0 && g > 230.0 && b > 230.0, "{r},{g},{b}");
+        let text = crate::color::Rgba { r: 103.0, g: 105.0, b: 111.0, a: Some(1.0) };
+        let bg = crate::color::Rgba { r, g, b, a: Some(1.0) };
+        let fg = blend_rgba(Some(&text), Some(&bg)).unwrap();
+        assert!(crate::color::contrast_ratio(&fg, &bg) > 4.5);
     }
 
     #[test]
