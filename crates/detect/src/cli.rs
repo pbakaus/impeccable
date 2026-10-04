@@ -241,6 +241,9 @@ struct Ctx<'a> {
     /// JS `hadOperationalFailure`: at least one requested target could not be
     /// scanned, which forces exit 1 (#711).
     had_operational_failure: bool,
+    /// Local files that went to the regex engine instead of the static HTML
+    /// engine, so the run can say its findings are an undercount (#884).
+    regex_only_files: usize,
 }
 
 impl<'a> Ctx<'a> {
@@ -291,6 +294,7 @@ impl<'a> Ctx<'a> {
                 }));
             }
         };
+        self.regex_only_files += 1;
         Ok(detect_text(
             &content,
             file_path,
@@ -542,6 +546,7 @@ fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32,
         cache: DesignSystemCache::new(),
         stdin_tty,
         had_operational_failure: false,
+        regex_only_files: 0,
     };
 
     let mut all: Vec<Finding> = Vec::new();
@@ -585,6 +590,13 @@ fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32,
             s.close();
         }
         result?;
+        if !json_mode && !quiet_mode && ctx.regex_only_files > 0 {
+            let n = ctx.regex_only_files;
+            ctx.io.err(&format!(
+                "\n{n} non-HTML file{} scanned with regex matching only.\nRules that need a parsed page (tiny-text, low-contrast and other element rules) are NOT evaluated there; findings are an undercount, not a clean bill of health.\nScan built .html files or a URL for full coverage.\n",
+                if n == 1 { "" } else { "s" }
+            ));
+        }
     }
 
     all = filter_detection_findings(all, &ctx.config);
