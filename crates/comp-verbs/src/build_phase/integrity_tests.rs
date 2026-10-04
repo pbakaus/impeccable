@@ -1525,10 +1525,16 @@ fn native_ship_binds_every_captured_input_and_a_later_edit_voids_it_until_recapt
     assert_eq!(report["changedSinceFinish"], json!(["fonts/face.ttf"]));
     assert_eq!(report["canContinue"], true);
     let next = next_instruction(&io, &state);
-    assert!(next.contains("changed after finish (fonts/face.ttf)") && next.contains("build-phase finish --disposition ship again"), "{next}");
+    assert!(next.contains("A file the final check bound changed after finish (fonts/face.ttf)") && next.contains("build-phase finish --disposition ship again"), "{next}");
     ws.write("index.html", b"<main><h1>Headline, fixed after ship</h1></main>");
     let report = crate::completion::report(&ws.path, Some(&state), Some("owner"));
     assert_eq!(report["changedSinceFinish"], json!(["index.html", "fonts/face.ttf"]));
+    // A deleted entry is a change the manifest names, not an unverifiable finish.
+    std::fs::remove_file(ws.path.join("index.html")).unwrap();
+    let report = crate::completion::report(&ws.path, Some(&state), Some("owner"));
+    assert_eq!(report["status"], "changed-after-finish");
+    assert_eq!(report["changedSinceFinish"], json!(["index.html", "fonts/face.ttf"]));
+    ws.write("index.html", b"<main><h1>Headline, fixed after ship</h1></main>");
 
     // Recording ship again re-captures the current files and binds them.
     assert_eq!(run_with_renderer(&ship, &mut io, &no_organic_scan, Some(&renderer)), 0);
@@ -1551,6 +1557,28 @@ fn native_ship_is_refused_when_an_input_changes_while_the_final_capture_runs() {
     assert_eq!(state["phases"]["responsive"]["status"], "open");
     let reasons = state["phases"]["responsive"]["gate"]["reasons"].as_array().unwrap();
     assert!(reasons.iter().any(|r| r.as_str().unwrap().contains("capture input changed: index.html")), "{reasons:?}");
+}
+
+/// A native renderer whose capture leaves no input manifest.
+struct BareRenderer(Vec<u8>);
+impl EntryRenderer for BareRenderer {
+    fn capture_entry(&self, _: &EntryRequest) -> Result<Box<dyn CapturedEntry>, String> {
+        let frame = |name: &str| crate::entry_capture::FrameEvidence { name: name.into(), png: self.0.clone(), regions: vec![] };
+        Ok(Box::new(ManifestCapture(crate::entry_capture::EntryEvidence { report: json!({}), frames: vec![frame("desktop"), frame("mobile")] },
+            crate::entry_capture::ApprovedReference { png: self.0.clone(), proof: json!({"schema": "test-review"}) }, None)))
+    }
+}
+
+#[test]
+fn native_ship_is_refused_when_the_final_capture_leaves_no_manifest() {
+    let (ws, desktop) = finished_native_workspace();
+    let mut io = ws.io();
+    let ship = ["finish", "--disposition", "ship"].map(String::from);
+    assert_eq!(run_with_renderer(&ship, &mut io, &no_organic_scan, Some(&BareRenderer(desktop))), 2);
+    let state = load_state(&io).unwrap();
+    assert_eq!(state["finish"]["disposition"], "fix");
+    assert!(state["finish"]["captureInputs"].is_null());
+    assert_ne!(crate::completion::report(&ws.path, Some(&state), Some("owner"))["status"], "complete");
 }
 
 #[test]

@@ -213,7 +213,7 @@ fn findings_over_a_shipped_build_say_a_fix_voids_the_finish_and_the_follow_up_as
     let active = json!({"session_id":"owner","cwd":t.path(),"hook_event_name":"Stop","stop_hook_active":true}).to_string();
     let follow_up = hook::run_stop_hook(&r, &active);
     assert_eq!(follow_up.audit["kind"], "build-completion", "{:?}", follow_up.audit);
-    assert!(follow_up.stdout.contains("The page changed after the recorded finish (index.html)"), "{}", follow_up.stdout);
+    assert!(follow_up.stdout.contains("A file the recorded finish bound changed after it (index.html)"), "{}", follow_up.stdout);
     assert!(follow_up.stdout.contains("build-phase finish --disposition ship again before you stop"), "{}", follow_up.stdout);
 }
 
@@ -227,7 +227,45 @@ fn another_hooks_continuation_after_a_shipped_build_is_not_taken_over() {
     assert!(stop.stdout.is_empty(), "{}", stop.stdout);
     // A new turn is still told the ship no longer covers the page.
     let fresh = hook::run_stop_hook(&rt(&t.path()), &stop_event(&t.path(), "owner"));
-    assert!(fresh.stdout.contains("changed after the recorded finish"), "{}", fresh.stdout);
+    assert!(fresh.stdout.contains("changed after it (index.html)"), "{}", fresh.stdout);
+}
+
+#[test]
+fn the_findings_marker_grants_one_continuation_not_the_build() {
+    let t = Tmp::new();
+    t.write("package.json", "{}");
+    shipped_build(&t);
+    let file = t.write("card.css", SIDE_TAB_CSS);
+    let r = rt(&t.path());
+    hook::run_hook(&r, &edit_with_original(&t.path(), &file, "owner", ".card {}\n", ".card {}\n", SIDE_TAB_CSS));
+    assert!(hook::run_stop_hook(&r, &stop_event(&t.path(), "owner")).stdout.contains("finish --disposition ship recorded"));
+    // The continuation the findings started changes nothing the finish bound.
+    let active = json!({"session_id":"owner","cwd":t.path(),"hook_event_name":"Stop","stop_hook_active":true}).to_string();
+    assert!(hook::run_stop_hook(&r, &active).audit.get("kind").is_none());
+    // A later continuation another hook started changes the page: not ours to take over.
+    t.write("index.html", "<main>Changed in another hook's continuation</main>");
+    let later = hook::run_stop_hook(&r, &active);
+    assert!(!later.stdout.contains("Comp build"), "{}", later.stdout);
+}
+
+#[test]
+fn a_bound_stylesheet_edit_after_a_reminder_earns_another() {
+    let t = Tmp::new();
+    t.write("site.css", "body{}");
+    shipped_build(&t);
+    let path = t.0.join(".impeccable/build/state.json");
+    let mut state: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let css_hash = format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(b"body{}"));
+    state["finish"]["captureInputs"].as_array_mut().unwrap().push(json!({"path":"site.css","sha256":css_hash}));
+    std::fs::write(&path, state.to_string()).unwrap();
+    let r = rt(&t.path());
+    t.write("index.html", "<main>Edited after ship</main>");
+    assert!(hook::run_stop_hook(&r, &stop_event(&t.path(), "owner")).stdout.contains("Comp build"));
+    assert!(hook::run_stop_hook(&r, &stop_event(&t.path(), "owner")).stdout.is_empty());
+    // Only the stylesheet changes now; the entry bytes stay as the last reminder saw them.
+    t.write("site.css", "body{color:red}");
+    let stop = hook::run_stop_hook(&r, &stop_event(&t.path(), "owner"));
+    assert!(stop.stdout.contains("(index.html, site.css)"), "{}", stop.stdout);
 }
 
 #[test]

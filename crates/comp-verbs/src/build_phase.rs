@@ -2784,11 +2784,11 @@ fn next_instruction(io: &Io, state: &Value) -> String {
     {
         let completion = crate::completion::report(&io.cwd, Some(state), None);
         match completion.get("status").and_then(Value::as_str) {
-            Some("complete") => return format!("Finish is recorded for the current entry. Any later edit to the page or a file it loads, a fix for a hook finding included, voids it: run {s} build-phase finish --disposition ship again before you stop; {}.", ship_recheck(io, state)),
+            Some("complete") => return format!("Finish is recorded for the current entry. Any later edit to a file the final check bound (the page, what it loads, the spec, the comp), a fix for a hook finding included, voids it: run {s} build-phase finish --disposition ship again before you stop; {}.", ship_recheck(io, state)),
             Some("changed-after-finish") => {
                 let changed = completion["changedSinceFinish"].as_array().into_iter().flatten().filter_map(Value::as_str).take(6).collect::<Vec<_>>().join(", ");
                 let changed = if changed.is_empty() { String::new() } else { format!(" ({changed})") };
-                return format!("The entry or a file it loads changed after finish{changed}, so the recorded ship no longer covers the page. Repeat final review if the change goes beyond a fix it asked for, then run {s} build-phase finish --disposition ship again; {}.", ship_recheck(io, state));
+                return format!("A file the final check bound changed after finish{changed}, so the recorded ship no longer covers the build. Repeat final review if the change goes beyond a fix it asked for, then run {s} build-phase finish --disposition ship again; {}.", ship_recheck(io, state));
             }
             Some("unverified") => return format!("The recorded finish cannot be verified against the entry. Check the artifact path and repeat final review before {s} build-phase finish --disposition <word>."),
             _ => {}
@@ -3493,8 +3493,18 @@ pub fn run_with_renderer(argv: &[String],io: &mut Io,organic_scan: OrganicScan,r
             // only the entry: a font or stylesheet edited after ship changes the
             // shipped page as surely as the HTML does.
             if disposition == "ship" && state["capturePolicy"] == "native-html-v1" {
-                if let Some(files) = native_capture_inputs(io) {
-                    state["finish"]["captureInputs"] = json!(files);
+                match native_capture_inputs(io) {
+                    Some(files) => state["finish"]["captureInputs"] = json!(files),
+                    None => {
+                        // A ship that cannot name what it checked binds only the
+                        // entry, so a later font or stylesheet edit would pass
+                        // unseen. Refuse rather than record a weaker finish.
+                        state["finish"] = json!({"disposition":"fix", "at":now(), "phaseAtFinish":phase,
+                            "reason":"final native capture manifest unavailable"});
+                        save_state(io, &state);
+                        io.err("build-phase: finish --disposition ship refused: the final native capture's input manifest (.impeccable/review/native/responsive/inputs.json) is missing or unreadable, so the finish cannot bind the files it checked. Run finish --disposition ship again; if it is refused again, report that the native capture left no manifest.\n");
+                        return 2;
+                    }
                 }
             }
             if phase == "review" {

@@ -30,6 +30,15 @@ pub fn gemini_shell_identity(rt: &Runtime, event: &serde_json::Map<String, Value
 
 pub fn reminder(rt: &Runtime, cwd: &str, session: &str, active: bool, cache: &mut Cache) -> Option<String> {
     if session == "unknown" || session.is_empty() { return None; }
+    // A continuation this hook started itself (findings shown over a recorded
+    // ship) is ours to follow up once: the fixes it asked for changed the build.
+    // The marker grants that one continuation and is spent on the first active
+    // Stop, so a later continuation another hook starts is never taken over.
+    let marker = if active {
+        let taken = ensure_session(cache, session).remove(FINDINGS_AFTER_FINISH);
+        if taken.is_some() && !persist_cache(rt, cwd, cache) { return None; }
+        taken.and_then(|v| v.as_str().map(String::from))
+    } else { None };
     let root = Path::new(cwd);
     let state: Value = serde_json::from_str(&std::fs::read_to_string(root.join(".impeccable/build/state.json")).ok()?).ok()?;
     let report = completion::report(root, Some(&state), Some(session));
@@ -37,19 +46,18 @@ pub fn reminder(rt: &Runtime, cwd: &str, session: &str, active: bool, cache: &mu
     let build = state.get("startedAt")?.as_str()?;
     let artifact = state.get("artifact")?.as_str()?;
     let key = format!("{build}:{artifact}");
-    let current_hash = completion::artifact_hash(root, &state)?;
+    // Every bound file, not only the entry: a stylesheet-only edit is new work too.
+    let current_hash = completion::bound_fingerprint(root, &state)?;
     let old = ensure_session(cache, session).get("buildCompletionNotice").cloned().unwrap_or(Value::Null);
     let same_build = old["build"] == key;
     let count = if same_build { old["count"].as_u64().unwrap_or(0) } else { 0 };
     // Do not take over a continuation issued by another Stop hook. On a new
     // turn, unchanged old work must not consume another reminder either.
-    // A continuation this hook started itself (findings shown over a recorded
-    // ship) is ours to follow up: the fixes it asked for changed the page.
-    let ours = ensure_session(cache, session).get(FINDINGS_AFTER_FINISH).and_then(Value::as_str) == Some(key.as_str());
+    let ours = marker.as_deref() == Some(key.as_str());
     if count >= 3 || (active && count == 0 && !ours)
-        || (!active && same_build && old["artifactSha256"] == current_hash) { return None; }
+        || (!active && same_build && old["boundSha256"] == current_hash) { return None; }
     ensure_session(cache, session).insert("buildCompletionNotice".into(), json!({
-        "build":key, "count":count+1, "artifactSha256":current_hash
+        "build":key, "count":count+1, "boundSha256":current_hash
     }));
     // Never emit an unbounded continuation if the counter cannot be saved.
     if !persist_cache(rt, cwd, cache) { return None; }
@@ -57,7 +65,7 @@ pub fn reminder(rt: &Runtime, cwd: &str, session: &str, active: bool, cache: &mu
     if report["status"] == "changed-after-finish" {
         let changed = report["changedSinceFinish"].as_array().into_iter().flatten().filter_map(Value::as_str).take(6).collect::<Vec<_>>().join(", ");
         let changed = if changed.is_empty() { String::new() } else { format!(" ({changed})") };
-        return Some(format!("Comp build for {artifact} is unfinished. The page changed after the recorded finish{changed}, so that ship no longer covers it. Run {} build-phase finish --disposition ship again before you stop: it rechecks the current files and must pass the responsive gate again. If it refuses, follow what it prints. If work is blocked, report what remains unresolved. This is completion pass {} of 3; existing fidelity gates still apply.", rt.self_command, count+1));
+        return Some(format!("Comp build for {artifact} is unfinished. A file the recorded finish bound changed after it{changed}, so that ship no longer covers the build. Run {} build-phase finish --disposition ship again before you stop: it rechecks the current files and must pass the responsive gate again. If it refuses, follow what it prints. If work is blocked, report what remains unresolved. This is completion pass {} of 3; existing fidelity gates still apply.", rt.self_command, count+1));
     }
     Some(format!("Comp build for {artifact} is unfinished. Open phases: {open}. Complete the remaining checks and record the actual finish disposition. If work is blocked, report what remains unresolved. This is completion pass {} of 3; existing fidelity gates still apply.", count+1))
 }

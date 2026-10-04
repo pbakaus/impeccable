@@ -74,6 +74,27 @@ pub fn changed_capture_inputs(root: &Path, state: &Value) -> Option<Vec<String>>
     Some(changed)
 }
 
+/// A fingerprint of everything the recorded finish is checked against now: the
+/// entry's bytes and each recorded capture input's current bytes. It moves when
+/// any bound file changes, not only the entry.
+pub fn bound_fingerprint(root: &Path, state: &Value) -> Option<String> {
+    let mut hasher = Sha256::new();
+    hasher.update(artifact_hash(root, state)?.as_bytes());
+    if let Some(files) = state.pointer("/finish/captureInputs").and_then(Value::as_array) {
+        let root = root.canonicalize().ok()?;
+        for file in files {
+            let relative = file.get("path").and_then(Value::as_str).unwrap_or("");
+            let path = Path::new(relative);
+            hasher.update([0]);
+            hasher.update(relative.as_bytes());
+            if !relative.is_empty() && path.components().all(|c| matches!(c, std::path::Component::Normal(_))) {
+                if let Ok(bytes) = std::fs::read(root.join(path)) { hasher.update(Sha256::digest(bytes)); }
+            }
+        }
+    }
+    Some(format!("{:x}", hasher.finalize()))
+}
+
 pub fn open_phases(state: &Value, include_review: bool) -> Vec<&'static str> {
     PHASES.iter().copied().filter(|phase| {
         (include_review || *phase != "review") && !matches!(
@@ -104,9 +125,10 @@ pub fn report(root: &Path, state: Option<&Value>, session_id: Option<&str>) -> V
     }
     if state.pointer("/finish/captureInputs").is_some() {
         unchanged = match (unchanged, changed_capture_inputs(root, state)) {
-            (Some(entry), Some(changed)) => {
+            (entry, Some(changed)) => {
                 for path in changed { if !changed_inputs.contains(&path) { changed_inputs.push(path); } }
-                Some(entry && changed_inputs.is_empty())
+                // A deleted entry has no hash, but the manifest still names it as changed.
+                if !changed_inputs.is_empty() { Some(false) } else { entry }
             }
             _ => None,
         };
