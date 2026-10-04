@@ -1,0 +1,7 @@
+{
+  "stdout": "BUILD-PHASE REVIEW  comp comp.png  breakpoint 768x512\n  comps               \n  spec                \n  plates              \n  hero                \n  sections            \n  motion              \n  responsive          \n  review              \nNEXT Spawn the finish reviewer with the state file, the hero diff report, and the captures; record its disposition with impeccable build-phase finish --disposition <word>. Make every fix before ship: ship re-captures the current files natively and must pass the responsive gate again, and any edit after it, a fix for a hook finding included, needs ship recorded again.\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

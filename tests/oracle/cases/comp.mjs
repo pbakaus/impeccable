@@ -18,6 +18,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 
 const WS = 'comp-basic';
 
@@ -117,6 +118,43 @@ const cases = [
       fs.copyFileSync(path.join(ws, 'mobile.png'), path.join(ws, '.impeccable/review/mobile.png'));
     },
     args: ['advance', '--min', '0.1'], env: env(),
+  },
+
+  // build-phase after a native ship: the finish binds every file the final
+  // capture read (captureInputs), so a later font edit, entry bytes unchanged,
+  // voids it. status prints the NEXT line for each state; completion lists the
+  // changed paths. A review-phase status prints the review NEXT.
+  {
+    id: 'build-phase-shipped-then-edited', verb: 'build-phase', workspace: WS,
+    env: env(),
+    steps: [
+      {
+        setup: (ws) => {
+          const sha = (rel) => crypto.createHash('sha256').update(fs.readFileSync(path.join(ws, rel))).digest('hex');
+          write(ws, 'index.html', '<main><h1>Shipped</h1></main>\n');
+          write(ws, 'fonts/face.ttf', 'font v1');
+          const phases = Object.fromEntries(['comps', 'spec', 'plates', 'hero', 'sections', 'motion', 'responsive', 'review']
+            .map((p) => [p, { status: 'closed', attempts: 1, gate: { ok: true, summary: 'oracle' } }]));
+          write(ws, '.impeccable/build/state.json', JSON.stringify({
+            tool: 'build-phase', version: 2, startedAt: '2026-10-04T00:00:00.000Z', comp: 'comp.png', breakpoint: '768x512',
+            artifact: 'index.html', phase: 'review', capturePolicy: 'native-html-v1', sessionId: 'oracle-build', phases,
+            finish: { disposition: 'ship', at: '2026-10-04T00:00:00.000Z', phaseAtFinish: 'review', artifactSha256: sha('index.html'),
+              captureInputs: [{ path: 'index.html', sha256: sha('index.html') }, { path: 'fonts/face.ttf', sha256: sha('fonts/face.ttf') }] },
+          }, null, 2));
+        },
+        args: ['status'],
+      },
+      { setup: (ws) => write(ws, 'fonts/face.ttf', 'font v2'), args: ['status'] },
+      { args: ['completion', '--session-id', 'oracle-build'] },
+    ],
+  },
+  {
+    id: 'build-phase-review-next-native', verb: 'build-phase', workspace: WS,
+    setup: (ws) => write(ws, '.impeccable/build/state.json', JSON.stringify({
+      tool: 'build-phase', version: 2, startedAt: '2026-10-04T00:00:00.000Z', comp: 'comp.png', breakpoint: '768x512',
+      artifact: 'index.html', phase: 'review', capturePolicy: 'native-html-v1', phases: {},
+    }, null, 2)),
+    args: ['status'], env: env(),
   },
 
   // component-review plan: the v3 packet derives from the measured spec. The

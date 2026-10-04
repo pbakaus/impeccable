@@ -868,6 +868,12 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
     let text = if shows_unknown { format!("{attribution_note}\n\n{rendered}") } else { rendered };
     let text =
         append_design_system_note_once(rt, &text, scan, &mut cache, &session_id, &config);
+    // Findings shown over a comp build already recorded as shipped: a fix voids
+    // that finish, so say so with the findings, not after the agent stops.
+    let text = match crate::build_completion::finished_build_note(rt, &project_cwd, &session_id, &mut cache) {
+        Some(note) => format!("{text}\n\n{note}"),
+        None => text,
+    };
     commit_footer_shown(rt, &mut cache, &session_id, &text);
     persist_cache(rt, &project_cwd, &cache);
     let all: usize = fresh_groups.iter().map(|g| g.findings.len()).sum();

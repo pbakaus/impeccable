@@ -217,6 +217,8 @@ pub struct Runtime<'a> {
     /// The `HOOK_ADMIN_COMMAND` printed in the full footer
     /// (JS: `node '<abs>/hook-admin.mjs'`; here `'<self>' hooks`).
     pub hook_admin_command: String,
+    /// The engine as the printed commands spell it (`'<self>'`).
+    pub self_command: String,
     pub html: &'a dyn HtmlEngine,
     /// `process.platform === 'win32'` (command-arg quoting).
     pub win32: bool,
@@ -237,6 +239,7 @@ impl<'a> Runtime<'a> {
             env,
             impeccable_command,
             hook_admin_command: format!("{} hooks", quote_command_arg(self_cmd, win32)),
+            self_command: quote_command_arg(self_cmd, win32),
             html,
             win32,
             canonical_cache: std::cell::RefCell::new(HashMap::new()),
