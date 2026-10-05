@@ -171,6 +171,8 @@ struct Gate {
     // plates: per-plate rows
     plates: Option<Vec<Value>>,
     error: bool,
+    // a failure no quoted --force may waive (the approved comp cannot be kept)
+    unforceable: bool,
 }
 
 impl Gate {
@@ -198,6 +200,7 @@ impl Gate {
             approved: None,
             plates: None,
             error: false,
+            unforceable: false,
         }
     }
     /// The subset stored on the phase (JS: `const { plates, ...gateRecord } = gate`).
@@ -2620,7 +2623,7 @@ fn run_gate(io: &Io, state: &mut Value, phase: &str, opts: &GateOpts, organic_sc
                     Ok(None) => Some(format!("the approved comp {approved} is not a decodable PNG, WebP or JPEG image, so it cannot be kept as the fixed reference; approve a readable comp")),
                     Err(e) => Some(format!("{e}; make {BUILD_DIR} writable and advance again")),
                 };
-                if let Some(why) = failure { gate.ok = false; gate.reasons.push(why); }
+                if let Some(why) = failure { gate.ok = false; gate.unforceable = true; gate.reasons.push(why); }
             }
             gate
         }
@@ -2738,6 +2741,14 @@ fn advance(io: &Io, state: &mut Value, force: bool, reason: Option<&str>, opts: 
         // The same spec-change gate `record hero` applies: a reclassified region after
         // the plates closed reopens the plan review before the hero can close.
         if let Some(why) = hero_plan_review_refusal(io, state) { gate.ok = false; gate.reasons.push(why); }
+    }
+    if !gate.ok && force && gate.unforceable {
+        if let Some(p) = state.pointer_mut(&format!("/phases/{phase}")).and_then(|p| p.as_object_mut()) {
+            p.insert("status".into(), json!("open"));
+        }
+        let mut reasons = gate.reasons.clone();
+        reasons.push("--force refused: a quoted downgrade can relax the comp round, but never close it on an approved comp the engine cannot keep as the fixed reference; fix the reason above and advance again".into());
+        return AdvanceResult { ok: false, phase, next: None, reasons, worst_crops: gate.worst_crops, advisories: gate.advisories, side_by_side: gate.side_by_side, forced: false, gate_summary: gate.summary };
     }
     if !gate.ok && force && !force_allowed(reason) {
         if let Some(p) = state.pointer_mut(&format!("/phases/{phase}")).and_then(|p| p.as_object_mut()) {
