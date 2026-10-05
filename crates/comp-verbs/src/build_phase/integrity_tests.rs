@@ -1719,6 +1719,46 @@ fn every_comp_measuring_entry_point_refuses_an_edited_comp() {
 }
 
 #[test]
+fn font_match_and_a_spec_less_comp_diff_refuse_an_edited_comp_too() {
+    let ws = approved_build();
+    composite_into_comp(&ws);
+    let (mut io, c) = captured(&ws);
+    let mut renderer = crate::font_match::NoRenderer;
+    assert_eq!(crate::font_match::run(&["--measure", "photo"].map(String::from), &mut io, &mut renderer), 2);
+    assert!(out_err(&c).contains("has changed since approval"), "{}", out_err(&c));
+    ws.write("build.png", &png_io::encode_png(&approved_comp_image(), &[]).unwrap());
+    let (mut io, c) = captured(&ws);
+    assert_eq!(crate::comp_diff::run(&["--comp", APPROVED, "--build", "build.png", "--no-files"].map(String::from), &mut io), 2);
+    assert!(out_err(&c).contains("has changed since approval"), "{}", out_err(&c));
+    // A missing comp is refused, not waved through by the gates that do not read it.
+    std::fs::remove_file(ws.path.join(APPROVED)).unwrap();
+    let why = comp_refusal(&ws.io()).unwrap();
+    assert!(why.contains("is missing or not a decodable image") && why.contains("build-phase restore-comp"), "{why}");
+}
+
+#[test]
+fn a_build_that_predates_the_copy_cannot_remeasure_an_edited_comp() {
+    let ws = approved_build();
+    crate::approved_comp::forget(&ws.io());
+    composite_into_comp(&ws);
+    let (mut io, c) = captured(&ws);
+    assert_eq!(crate::comp_spec::run(&["--comp", APPROVED, "--regions", "regions.json"].map(String::from), &mut io), 2);
+    assert!(out_err(&c).contains("No intact engine copy"), "{}", out_err(&c));
+    assert!(!ws.path.join(crate::approved_comp::RECORD_PATH).exists(), "the edited pixels are not adopted");
+}
+
+#[test]
+fn a_spec_for_another_comp_never_replaces_the_build_record() {
+    let ws = approved_build();
+    let record = std::fs::read(ws.path.join(crate::approved_comp::RECORD_PATH)).unwrap();
+    ws.write("other.png", &png_io::encode_png(&r::create_image(300, 100, [1, 2, 3, 255]), &[]).unwrap());
+    let io = ws.io();
+    let other = json!({"comp": "other.png", "compSha256": crate::approved_comp::file_pixel_sha256(&io, "other.png")});
+    assert_eq!(crate::approved_comp::issue(&io, &other, "impeccable"), None);
+    assert_eq!(std::fs::read(ws.path.join(crate::approved_comp::RECORD_PATH)).unwrap(), record);
+}
+
+#[test]
 fn restore_comp_puts_the_approved_pixels_back_and_the_gates_measure_again() {
     let ws = approved_build();
     let approved_bytes = std::fs::read(ws.path.join(APPROVED)).unwrap();

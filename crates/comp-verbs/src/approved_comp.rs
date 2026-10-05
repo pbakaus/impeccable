@@ -80,16 +80,17 @@ fn record_for(io: &Io, comp: &str) -> Option<Value> {
 }
 
 /// Keep a byte copy of `comp` as the approved reference and record its hash.
-/// Returns the record, or `None` when the file cannot be read or decoded.
-pub fn keep(io: &Io, comp: &str) -> Option<Value> {
-    let bytes = std::fs::read(resolve(io, comp)).ok()?;
-    let pixels = bytes_pixel_sha256(&bytes)?;
+/// `Ok(None)` when the file cannot be read or decoded (nothing to keep);
+/// `Err` when the copy or record cannot be written, which approval refuses on.
+pub fn keep(io: &Io, comp: &str) -> Result<Option<Value>, String> {
+    let Ok(bytes) = std::fs::read(resolve(io, comp)) else { return Ok(None) };
+    let Some(pixels) = bytes_pixel_sha256(&bytes) else { return Ok(None) };
     let ext = Path::new(comp).extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase)
         .filter(|e| e.chars().all(|c| c.is_ascii_alphanumeric())).unwrap_or_else(|| "png".into());
     let copy = format!("{BUILD_DIR}/{COPY_STEM}.{ext}");
-    let dir = resolve(io, BUILD_DIR);
-    std::fs::create_dir_all(&dir).ok()?;
-    std::fs::write(resolve(io, &copy), &bytes).ok()?;
+    let failed = |what: &str, e: std::io::Error| format!("cannot keep the approved comp: writing {what} failed ({e})");
+    std::fs::create_dir_all(resolve(io, BUILD_DIR)).map_err(|e| failed(BUILD_DIR, e))?;
+    std::fs::write(resolve(io, &copy), &bytes).map_err(|e| failed(&copy, e))?;
     let record = json!({
         "comp": comp,
         "pixelSha256": pixels,
@@ -97,8 +98,8 @@ pub fn keep(io: &Io, comp: &str) -> Option<Value> {
         "copy": copy,
         "at": crate::util::iso_now(),
     });
-    std::fs::write(resolve(io, RECORD_PATH), crate::util::json_pretty(&record)).ok()?;
-    Some(record)
+    std::fs::write(resolve(io, RECORD_PATH), crate::util::json_pretty(&record)).map_err(|e| failed(RECORD_PATH, e))?;
+    Ok(Some(record))
 }
 
 /// Forget the kept reference (a build restarted on a new comp round).
@@ -114,27 +115,37 @@ fn copy_intact(io: &Io, record: &Value) -> Option<String> {
 
 const FIXED: &str = "The approved comp is the fixed reference every gate measures against; never edit it, composite into it, or regenerate it.";
 
-fn changed_message(io: &Io, comp: &str, expected: &str, actual: &str, record: Option<&Value>, s: &str) -> String {
-    let remedy = match record.and_then(|r| copy_intact(io, r)) {
+fn remedy(io: &Io, record: Option<&Value>, s: &str) -> String {
+    match record.and_then(|r| copy_intact(io, r)) {
         Some(copy) => format!("Restore it with {s} build-phase restore-comp (the engine kept the approved copy at {copy}), then regenerate the plates or change the page code until they match the unchanged comp."),
         None => "No intact engine copy exists for this build: restore the approved file from its original source, then regenerate the plates or change the page code until they match the unchanged comp.".to_string(),
+    }
+}
+
+fn changed_message(io: &Io, comp: &str, expected: &str, actual: Option<&str>, record: Option<&Value>, s: &str) -> String {
+    let found = match actual {
+        Some(actual) => format!("has changed since approval: expected pixel sha256 {expected}, found {actual}"),
+        None => format!("is missing or not a decodable image: expected pixel sha256 {expected}"),
     };
-    format!("the approved comp {comp} has changed since approval: expected pixel sha256 {expected}, found {actual}. {FIXED} Nothing was measured against the changed file. {remedy}")
+    format!("the approved comp {comp} {found}. {FIXED} Nothing was measured against the changed file. {}", remedy(io, record, s))
 }
 
 /// The refusal owed before anything measures against the spec's comp, or
-/// `None` when the comp still holds the approved pixels (or cannot be checked:
-/// no comp, an unreadable one, or a legacy spec with no recorded identity).
-/// A build with no kept copy yet gets one here, once the comp matches the spec.
+/// `None` when the comp still holds the approved pixels (or has no recorded
+/// identity at all: no comp, or a legacy spec with neither a record nor a
+/// `compSha256`). A build with no kept copy yet gets one here, once the comp
+/// matches the spec; a record kept for another comp is never replaced here.
 pub fn issue(io: &Io, spec: &Value, s: &str) -> Option<String> {
     let comp = spec.get("comp").and_then(Value::as_str)?;
-    let actual = file_pixel_sha256(io, comp)?;
     let spec_hash = spec.get("compSha256").and_then(Value::as_str);
-    match record_for(io, comp) {
+    let record = record_for(io, comp);
+    if record.is_none() && spec_hash.is_none() { return None; }
+    let actual = file_pixel_sha256(io, comp);
+    match record {
         Some(record) => {
             let expected = record["pixelSha256"].as_str().unwrap_or("");
-            if actual != expected {
-                return Some(changed_message(io, comp, expected, &actual, Some(&record), s));
+            if actual.as_deref() != Some(expected) {
+                return Some(changed_message(io, comp, expected, actual.as_deref(), Some(&record), s));
             }
             match spec_hash {
                 Some(hash) if hash != expected => Some(format!(
@@ -145,33 +156,44 @@ pub fn issue(io: &Io, spec: &Value, s: &str) -> Option<String> {
         }
         None => {
             let expected = spec_hash?;
-            if actual != expected {
-                return Some(changed_message(io, comp, expected, &actual, None, s));
+            if actual.as_deref() != Some(expected) {
+                return Some(changed_message(io, comp, expected, actual.as_deref(), None, s));
             }
-            keep(io, comp);
+            if load_record(io).is_none() { let _ = keep(io, comp); }
             None
         }
     }
 }
 
+/// The refusal for a comparison against `comp` with no spec that names it:
+/// only a record kept for that file can say what its pixels should be.
+pub fn issue_for_comp(io: &Io, comp: &str, s: &str) -> Option<String> {
+    let record = record_for(io, comp)?;
+    let expected = record["pixelSha256"].as_str().unwrap_or("");
+    let actual = file_pixel_sha256(io, comp);
+    (actual.as_deref() != Some(expected)).then(|| changed_message(io, comp, expected, actual.as_deref(), Some(&record), s))
+}
+
 /// `comp-spec --regions` on the build's comp: refuse to re-measure a comp whose
 /// pixels differ from the approved ones, and keep the reference when the build
-/// has none yet. `actual` is the pixel hash of the image comp-spec decoded. A
+/// has none yet. `actual` is the pixel hash of the comp comp-spec read and
+/// `previous` the spec it is about to replace: a build that predates the record
+/// is checked against that spec's `compSha256` before its pixels are kept. A
 /// comp no build state names (a mapping-only run) is not guarded.
-pub fn spec_refusal(io: &Io, comp: &str, actual: &str, s: &str) -> Option<String> {
+pub fn spec_refusal(io: &Io, comp: &str, actual: &str, previous: Option<&Value>, s: &str) -> Option<String> {
     let state = std::fs::read_to_string(resolve(io, &format!("{BUILD_DIR}/state.json"))).ok()
         .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())?;
     if !state["comp"].as_str().is_some_and(|c| same_file(io, c, comp)) { return None; }
-    match record_for(io, comp) {
-        Some(record) => {
-            let expected = record["pixelSha256"].as_str().unwrap_or("");
-            (actual != expected).then(|| changed_message(io, comp, expected, actual, Some(&record), s))
-        }
-        None => {
-            keep(io, comp);
-            None
-        }
+    if let Some(record) = record_for(io, comp) {
+        let expected = record["pixelSha256"].as_str().unwrap_or("");
+        return (actual != expected).then(|| changed_message(io, comp, expected, Some(actual), Some(&record), s));
     }
+    let measured = previous.filter(|p| p["comp"].as_str().is_some_and(|c| same_file(io, c, comp)))
+        .and_then(|p| p["compSha256"].as_str());
+    if let Some(expected) = measured.filter(|h| *h != actual) {
+        return Some(changed_message(io, comp, expected, Some(actual), None, s));
+    }
+    keep(io, comp).err().map(|e| format!("{e}; the build cannot fix its reference, so nothing was measured. Make {BUILD_DIR} writable and re-run."))
 }
 
 /// `build-phase start --reset --comp` on the file the engine kept as approved,
@@ -183,7 +205,7 @@ pub fn restart_refusal(io: &Io, comp: &str, s: &str) -> Option<String> {
     let actual = file_pixel_sha256(io, comp)?;
     (actual != expected).then(|| format!(
         "{} A comp the user newly approves is saved under a new file name and started with {s} build-phase start --reset --comp <new file>.",
-        changed_message(io, comp, expected, &actual, Some(&record), s)
+        changed_message(io, comp, expected, Some(&actual), Some(&record), s)
     ))
 }
 
@@ -247,7 +269,7 @@ mod tests {
     fn unchanged_comp_passes_and_a_metadata_rewrite_keeps_the_identity() {
         let (io, dir) = ws();
         std::fs::write(dir.join(COMP), png([10, 20, 30, 255])).unwrap();
-        let record = keep(&io, COMP).unwrap();
+        let record = keep(&io, COMP).unwrap().unwrap();
         let spec = json!({"comp": COMP, "compSha256": record["pixelSha256"]});
         assert_eq!(issue(&io, &spec, "impeccable"), None);
         let tagged = png_io::encode_png(&r::create_image(8, 8, [10, 20, 30, 255]), &[("prompt".into(), "x".into())]).unwrap();
@@ -259,7 +281,7 @@ mod tests {
     fn an_edited_comp_is_refused_with_both_hashes_and_restored_from_the_copy() {
         let (io, dir) = ws();
         std::fs::write(dir.join(COMP), png([10, 20, 30, 255])).unwrap();
-        let record = keep(&io, COMP).unwrap();
+        let record = keep(&io, COMP).unwrap().unwrap();
         let expected = record["pixelSha256"].as_str().unwrap().to_string();
         let spec = json!({"comp": COMP, "compSha256": expected});
         std::fs::write(dir.join(COMP), png([200, 20, 30, 255])).unwrap();
@@ -280,7 +302,7 @@ mod tests {
     fn a_spec_remeasured_on_an_edited_comp_does_not_move_the_reference() {
         let (io, dir) = ws();
         std::fs::write(dir.join(COMP), png([10, 20, 30, 255])).unwrap();
-        let record = keep(&io, COMP).unwrap();
+        let record = keep(&io, COMP).unwrap().unwrap();
         let spec = json!({"comp": COMP, "compSha256": "0".repeat(64)});
         let why = issue(&io, &spec, "impeccable").unwrap();
         assert!(why.contains("not the approved comp") && why.contains(record["pixelSha256"].as_str().unwrap()), "{why}");
@@ -307,7 +329,7 @@ mod tests {
     fn a_damaged_copy_is_never_restored() {
         let (io, dir) = ws();
         std::fs::write(dir.join(COMP), png([10, 20, 30, 255])).unwrap();
-        keep(&io, COMP).unwrap();
+        keep(&io, COMP).unwrap().unwrap();
         std::fs::write(dir.join(".impeccable/build/approved-comp.png"), png([9, 9, 9, 255])).unwrap();
         std::fs::write(dir.join(COMP), png([200, 20, 30, 255])).unwrap();
         assert_eq!(restore(&io).1, 2);

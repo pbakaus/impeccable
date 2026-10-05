@@ -1342,18 +1342,21 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
     let spec_out = resolve(io, &spec_path);
     // Bind cached font evidence to the decoded reference, including dimensions.
     // Legacy specs without this identity are deliberately remeasured once.
-    let comp_hash = crate::approved_comp::pixel_sha256(&comp);
+    // Identify the comp by its own bytes: load_raster may have read a stale
+    // sibling PNG cache for a WebP or JPEG source.
+    let comp_hash = crate::approved_comp::file_pixel_sha256(io, comp_path)
+        .unwrap_or_else(|| crate::approved_comp::pixel_sha256(&comp));
+    let previous = std::fs::read(&spec_out).ok().and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
     // The approved comp is the fixed reference: re-measuring an edited copy of
     // the build's comp would move the spec's identity along with the edit.
-    if let Some(why) = crate::approved_comp::spec_refusal(io, comp_path, &comp_hash, &crate::build_phase::self_cmd(io)) {
+    if let Some(why) = crate::approved_comp::spec_refusal(io, comp_path, &comp_hash, previous.as_ref(), &crate::build_phase::self_cmd(io)) {
         io.err(&format!("comp-spec: {why}\n"));
         return 2;
     }
     spec["compSha256"] = json!(comp_hash);
     spec["regionsSource"] = regions_source;
-    if let Some(previous) = std::fs::read(&spec_out).ok()
-        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok()) {
-        preserve_typography(&mut spec, &previous);
+    if let Some(previous) = &previous {
+        preserve_typography(&mut spec, previous);
     }
     if let Some(parent) = spec_out.parent() {
         let _ = std::fs::create_dir_all(parent);

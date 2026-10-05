@@ -449,6 +449,11 @@ pub fn run(argv: &[String], io: &mut Io, renderer: &mut dyn FontRenderer) -> i32
         return 1;
     };
     let comp_file = spec_val.get("comp").and_then(Value::as_str).unwrap_or("").to_string();
+    // Type read off an edited comp would land in the spec as approved evidence.
+    if let Some(why) = crate::approved_comp::issue(io, spec_val, &crate::build_phase::self_cmd(io)) {
+        io.err(&format!("font-match: {why}\n"));
+        return 2;
+    }
     let comp = match png_io::load_raster(&resolve(io, &comp_file)) {
         Ok((d, _)) => d.image,
         Err(e) => {

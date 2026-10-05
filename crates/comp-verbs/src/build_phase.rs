@@ -2609,7 +2609,18 @@ struct GateOpts {
 
 fn run_gate(io: &Io, state: &mut Value, phase: &str, opts: &GateOpts, organic_scan: OrganicScan, renderer: Option<&dyn EntryRenderer>) -> Gate {
     match phase {
-        "comps" => gate_comps(io),
+        "comps" => {
+            let mut gate = gate_comps(io);
+            // The approval fixes the reference: keep the engine's own copy now,
+            // and refuse to close on an approval that cannot be kept.
+            if let Some(approved) = gate.approved.clone().filter(|_| gate.ok) {
+                if let Err(e) = crate::approved_comp::keep(io, &approved) {
+                    gate.ok = false;
+                    gate.reasons.push(format!("{e}; make {BUILD_DIR} writable and advance again"));
+                }
+            }
+            gate
+        }
         "spec" => gate_spec(io, state),
         "plates" => gate_plates(io),
         "hero" => {
@@ -2772,8 +2783,6 @@ fn advance(io: &Io, state: &mut Value, force: bool, reason: Option<&str>, opts: 
     }
     if phase == "comps" {
         if let Some(approved) = &gate.approved {
-            // The approval fixes the reference: keep the engine's own copy now.
-            crate::approved_comp::keep(io, approved);
             state.as_object_mut().unwrap().insert("comp".into(), json!(approved));
             if state.get("breakpoint").map(|v| v.is_null()).unwrap_or(true) {
                 if let Ok(img) = load_raster(io, approved) {
@@ -3302,7 +3311,10 @@ pub fn run_with_renderer(argv: &[String],io: &mut Io,organic_scan: OrganicScan,r
                     io.err(&format!("build-phase: start refused: {why}\n"));
                     return 2;
                 }
-                crate::approved_comp::keep(io, c);
+                if let Err(e) = crate::approved_comp::keep(io, c) {
+                    io.err(&format!("build-phase: start refused: {e}; make {BUILD_DIR} writable and start again\n"));
+                    return 1;
+                }
             }
             // A new comp round: the comp it approves is kept when the comps gate closes.
             None => crate::approved_comp::forget(io),
