@@ -48,8 +48,8 @@ function expectCommand(command, expectedScriptsDir, verb = 'hook') {
 
 function expectWindowsCommand(command, expectedScriptsDir, verb = 'hook') {
   assert.equal(typeof command, 'string');
-  const launcher = `${expectedScriptsDir}/impeccable.cmd`;
-  assert.equal(command, `if exist "${launcher}" ("${launcher}" ${verb} & exit /b)`);
+  const launcher = `"${expectedScriptsDir.replaceAll('/', '\\')}\\impeccable.cmd"`;
+  assert.equal(command, `cmd /c if exist ${launcher} ${launcher} ${verb}`);
 }
 
 function manifestCommands(manifest) {

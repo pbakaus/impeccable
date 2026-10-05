@@ -790,6 +790,11 @@ pub fn element_direct_text(dom: &dyn Dom, el: ElId) -> String {
 
 /// JS: checks.mjs#isPaintedForOcclusion(el)
 pub fn is_painted_for_occlusion(dom: &dyn Dom, el: ElId) -> bool {
+    // Closed <details> content is hidden through ::details-content, which no
+    // element's computed style reports, so the browser's own verdict comes first.
+    if dom.check_visibility(el) == Some(false) {
+        return false;
+    }
     let mut cur = Some(el);
     while let Some(c) = cur {
         let visibility = js::to_lower_case(&dom.style(c, "visibility"));
@@ -1656,6 +1661,35 @@ mod tests {
                 class_selector(&d, sib)
             )
         );
+    }
+
+    /// A link in a closed <details> keeps its rect but paints nothing; the
+    /// hero text behind it must not read as covering it.
+    #[test]
+    fn text_occlusion_skips_content_the_browser_reports_unpainted() {
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        let base = &[("display", "block"), ("visibility", "visible"), ("opacity", "1"), ("contentVisibility", "visible"), ("position", "static"), ("cssFloat", "none"), ("animationName", "none")][..];
+        let details = d.add(Some(body), "details");
+        d.set_styles(details, base);
+        let link = d.add(Some(details), "a");
+        d.add_text(link, "Documentation");
+        d.set_styles(link, base);
+        d.set_style(link, "position", "absolute");
+        d.set_rect(link, 100.0, 100.0, 240.0, 28.0);
+        let h1 = d.add(Some(body), "h1");
+        d.add_text(h1, "Hero headline");
+        d.set_styles(h1, base);
+        d.set_rect(h1, 100.0, 100.0, 240.0, 28.0);
+        mark_body_descendants(&mut d);
+
+        d.el_mut(link).check_visibility = Some(false);
+        assert!(check_text_occlusion_dom(&d).is_empty());
+
+        d.el_mut(link).check_visibility = Some(true);
+        let f = check_text_occlusion_dom(&d);
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert_eq!(f[0].el, Some(link));
     }
 
     #[test]

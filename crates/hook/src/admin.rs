@@ -96,7 +96,6 @@ fn stop_manifest_entry_with_windows(command: &str, windows: &str) -> Value {
 /// resolves on every teammate's checkout.
 const CLAUDE_HOOK_COMMAND: &str = "\"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook";
 const AGENTS_HOOK_COMMAND: &str = "\".agents/skills/impeccable/scripts/impeccable\" hook";
-const AGENTS_HOOK_COMMAND_WINDOWS: &str = "\".agents/skills/impeccable/scripts/impeccable.cmd\" hook";
 const CURSOR_HOOK_COMMAND: &str = "\".cursor/skills/impeccable/scripts/impeccable\" hook-before-edit";
 const GITHUB_HOOK_COMMAND: &str = "\"$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/impeccable\" hook";
 
@@ -138,7 +137,7 @@ fn claude_manifest() -> Value {
 
 fn agents_manifest() -> Value {
     let cmd = AGENTS_HOOK_COMMAND;
-    let win = AGENTS_HOOK_COMMAND_WINDOWS;
+    let win = &impeccable_context::hook_markers::windows_launcher_hook_command(".agents/skills/impeccable/scripts/impeccable", "hook");
     obj(vec![(
         "hooks",
         obj(vec![

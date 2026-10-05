@@ -1187,4 +1187,34 @@ describe('live-browser source contracts', () => {
       'done should source-inject via the 750ms fallback for harnesses without HMR',
     );
   });
+
+  it('never submits on the Enter that commits an IME candidate (#856)', () => {
+    const imeSrc = SOURCE.match(/function isImeKeydown\(e\) \{[\s\S]*?\n  \}/)?.[0];
+    const annotSrc = SOURCE.match(/function onAnnotInputKey\(e\) \{[\s\S]*?\n  \}/)?.[0];
+    const calls = [];
+    const onAnnotInputKey = runInNewContext(`${imeSrc}\n(${annotSrc})`, {
+      finalizeEditingPin: () => calls.push('finalize'),
+    });
+    const press = (isComposing, keyCode) => {
+      const ev = {
+        key: 'Enter', isComposing, keyCode, prevented: false,
+        preventDefault() { this.prevented = true; }, stopPropagation() {},
+      };
+      onAnnotInputKey(ev);
+      return ev;
+    };
+    assert.equal(press(true, 13).prevented, false, 'the IME must still receive the key');
+    // Safari fires the committing keydown after compositionend, so only keyCode says so.
+    press(false, 229);
+    assert.deepEqual(calls, []);
+    press(false, 13);
+    assert.deepEqual(calls, ['finalize']);
+
+    const handlers = SOURCE.match(/(?:input|pageChatInput)\.addEventListener\('keydown', \(e\) => \{[\s\S]*?\n    \}\);/g);
+    assert.equal(handlers?.length, 3, 'configure, insert and steer inputs');
+    for (const handler of handlers) {
+      assert.match(handler, /e\.key === 'Enter' && !isImeKeydown\(e\)/);
+      assert.doesNotMatch(handler, /e\.key === 'Enter'(?! && !isImeKeydown\(e\))/);
+    }
+  });
 });

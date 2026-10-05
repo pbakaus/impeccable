@@ -242,6 +242,15 @@
       rootEl.addEventListener('focusin', stop);
     }
 
+    // The half of the defang that cannot sit on the chrome: a focus trap (Radix /
+    // Reka FocusScope) also hears the page's own focusout as focus leaves its
+    // modal for our chrome, and pulls it back. Register on the document in
+    // capture, ahead of the trap. The page's own focusout handlers miss that
+    // one transition too; blur still fires.
+    function stopFocusOutIntoChrome(e) {
+      if (own(e.relatedTarget)) e.stopPropagation();
+    }
+
     return {
       own,
       pickable,
@@ -261,6 +270,7 @@
       uiGetById,
       activeElementDeep,
       defangOutsideHandlers,
+      stopFocusOutIntoChrome,
     };
   }
 

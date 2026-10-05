@@ -8,15 +8,16 @@
 //! writes the launcher form `[ ! -f "<skill>/scripts/impeccable" ] ||
 //! "<skill>/scripts/impeccable" hook` (`hook-before-edit` for Cursor), the
 //! shape the public build's `transformers/hooks.js` puts in the bundle; the
-//! Codex `commandWindows` sibling runs `impeccable.cmd` behind `if exist`.
+//! Codex `commandWindows` sibling and a Windows Grok `command` run
+//! `impeccable.cmd` behind `cmd /c if exist`.
 //! `impeccable hooks on` (`impeccable_hook::admin`) writes the same launcher
-//! invocation for a project install (without the existence guard). Recognition of an
+//! invocation for a project install (no existence guard on the POSIX `command`). Recognition of an
 //! Impeccable-owned entry (either the JS `.mjs` generation or the launcher
 //! generation) is shared with the hook crate, `context`, and `doctor` through
 //! `impeccable_context::hook_markers::is_impeccable_hook_command`, so the two
 //! writers and the three readers can never disagree on what counts as ours.
 
-use impeccable_context::hook_markers::{is_impeccable_hook_command, is_launcher_hook_command, parse_manifest_jsonc};
+use impeccable_context::hook_markers::{is_impeccable_hook_command, is_launcher_hook_command, parse_manifest_jsonc, windows_launcher_hook_command};
 use serde_json::{Map, Value};
 
 use crate::providers::Sys;
@@ -135,8 +136,8 @@ pub struct QuotedPath {
     pub posix: String,
     /// Double-quoted (cmd.exe treats `'` as literal, issue #533).
     pub win32: String,
-    /// The `.cmd` shim, double-quoted, for Codex's `commandWindows`.
-    pub win32_cmd: String,
+    /// Unquoted, for the forms that do their own quoting.
+    pub raw: String,
 }
 
 /// JS: the `quotedPath` computed in rewriteHookCommandsForSkillRoot: the
@@ -149,7 +150,7 @@ pub fn quoted_launcher_path(skill_root: &str, provider: &str, absolute: bool) ->
     Some(QuotedPath {
         posix: if absolute { sh_single_quote(&path) } else { json_string(&path) },
         win32: json_string(&path),
-        win32_cmd: json_string(&format!("{path}.cmd")),
+        raw: path,
     })
 }
 
@@ -162,12 +163,17 @@ pub fn quoted_launcher_path(skill_root: &str, provider: &str, absolute: bool) ->
 /// the double-quoted path (cmd.exe treats `'` as literal, issue #533); the JS
 /// `node -e` existence wrapper has no launcher equivalent, so the POSIX guard
 /// stands there too (Claude Code on Windows runs hooks through Git Bash).
+/// Grok is another exception: it has no per-OS field and runs `command` in the
+/// session shell (PowerShell by default on Windows), so a Windows Grok install
+/// takes the `windows_hook_command` form.
 pub fn hook_command(quoted: &QuotedPath, provider: &str, win32: bool) -> String {
     let verb = hook_verb(provider);
-    if provider == ".gemini" {
-        return gemini_hook_command(quoted, verb, win32);
-    }
-    let q = if provider != ".agents" && win32 { &quoted.win32 } else { &quoted.posix };
+    let q = match (provider, win32) {
+        (".gemini", _) => return gemini_hook_command(quoted, verb, win32),
+        (".grok", true) => return windows_hook_command(quoted, provider),
+        (".agents", _) | (_, false) => &quoted.posix,
+        (_, true) => &quoted.win32,
+    };
     format!("[ ! -f {q} ] || {q} {verb}")
 }
 
@@ -180,7 +186,7 @@ pub fn hook_command(quoted: &QuotedPath, provider: &str, win32: bool) -> String 
 /// the PowerShell form reads `$env:GEMINI_PROJECT_DIR`, which that
 /// substitution does not touch.
 fn gemini_hook_command(quoted: &QuotedPath, verb: &str, win32: bool) -> String {
-    let path: String = serde_json::from_str(&quoted.win32).unwrap_or_default();
+    let path = quoted.raw.clone();
     let relative = path.starts_with("$GEMINI_PROJECT_DIR");
     if !win32 {
         let q = if relative { path } else { quoted.posix.clone() };
@@ -196,11 +202,10 @@ fn gemini_hook_command(quoted: &QuotedPath, verb: &str, win32: bool) -> String {
 }
 
 /// JS: windowsHookCommand(quotedPath), launcher edition (`transformers/hooks.js`
-/// `windowsLauncherCommand`): the `.cmd` shim behind a cmd.exe `if exist`
-/// guard; `exit /b` forwards the launcher's errorlevel.
+/// `windowsLauncherCommand`): `windows_launcher_hook_command` over this
+/// install's launcher path.
 pub fn windows_hook_command(quoted: &QuotedPath, provider: &str) -> String {
-    let q = &quoted.win32_cmd;
-    format!("if exist {q} ({q} {} & exit /b)", hook_verb(provider))
+    windows_launcher_hook_command(&quoted.raw, hook_verb(provider))
 }
 
 /// JS: rewriteHookCommandsForSkillRoot(value, provider, {skillRoot, absolute})

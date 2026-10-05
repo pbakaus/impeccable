@@ -60,6 +60,13 @@
   .pass-scrollbox p:first-child { padding-top: 12px; }
   .pass-underbar { width: 420px; height: 64px; background: #223; color: #fff;
     display: flex; align-items: center; padding: 0 12px; font-size: 16px; }
+  /* ── PASS: closed <details> menu ──
+     Chrome lays out closed <details> content and hides it through
+     ::details-content, so this link has a real rect over the cover box below
+     and paints nothing. */
+  .pass-menu { position: absolute; top: 160px; left: 40px; }
+  .pass-menu nav { position: absolute; top: 80px; left: 0; width: 300px; }
+  .pass-menu nav a { display: block; height: 44px; line-height: 44px; }
 </style>
 </head>
 <body>
@@ -73,6 +80,10 @@
     <p>Controls and state, align and overlay and compare and annotate</p>
   </div>
   <div class="pass-underbar">Scrolled-out lines report rects that land here</div>
+  <details class="pass-menu">
+    <summary>Menu</summary>
+    <nav><a href="#docs">Documentation</a></nav>
+  </details>
 
   <section>
     <div class="flag-box-wrap">
