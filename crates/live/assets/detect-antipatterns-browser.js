@@ -2706,16 +2706,31 @@ function createVisualContrast(IO) {
     return sample;
   }
 
+  function isWalkContinuable(reason) {
+    // Mirrors vc::is_walk_continuable: transparent misses keep walking down
+    // the same hit stack, unreadable photo/canvas grounds end as unresolved
+    // so the screenshot check decides (#927).
+    return reason === 'no readable background'
+      || reason === 'no readable visual background'
+      || reason === 'point outside image'
+      || reason === 'point outside background image';
+  }
+
   async function sampleVisualBackgroundAtPoint(el, point, textColor, depth = 0) {
     const walk = await core('vc_stack_nodes', IO.handle(el), point.x, point.y, depth);
     if (walk.unresolved) return walk.unresolved;
     const nodes = walk.nodes.map(n => ({ node: IO.node(n.el), kind: n.kind }));
-    const unresolved = [];
+    return sampleWalkFrom(nodes, 0, point, textColor, depth, []);
+  }
 
-    for (const { node, kind } of nodes) {
+  async function sampleWalkFrom(nodes, start, point, textColor, depth, unresolved) {
+    if (depth > 8) return core('vc_unresolved_from_reasons', __j(['background stack too deep']));
+    for (let i = start; i < nodes.length; i++) {
+      const { node, kind } = nodes[i];
       if (kind === 'img') {
         const sample = await sampleImageElement(node, point);
         if (sample.status === 'sampled') return sample;
+        if (!isWalkContinuable(sample.reason)) return core('vc_unresolved_from_reasons', __j([sample.reason]));
         unresolved.push(sample.reason);
         continue;
       }
@@ -2725,6 +2740,7 @@ function createVisualContrast(IO) {
         if (sourcePoint) {
           const sample = await core('vc_raster_finish', IO.handle(node), __j(await sampleDrawablePixel(node, intrinsic, sourcePoint)));
           if (sample.status === 'sampled') return sample;
+          if (!isWalkContinuable(sample.reason)) return core('vc_unresolved_from_reasons', __j([sample.reason]));
           unresolved.push(sample.reason);
         }
         continue;
@@ -2732,10 +2748,15 @@ function createVisualContrast(IO) {
       const sample = await sampleCssBackground(node, point, textColor);
       if (sample.status === 'sampled') {
         if (await IO.core('vc_sample_is_opaque', __j(sample))) return sample;
-        const parent = IO.parentOrBody(node);
-        const under = await sampleVisualBackgroundAtPoint(parent, point, textColor, depth + 1);
+        // #927: continue down the same hit stack instead of restarting from
+        // the parent (which re-samples this same translucent node until the
+        // depth cap and composites it over itself). Exhausting the stack
+        // defers to pixels, which also covers pointer-events:none ancestors
+        // missing from elementsFromPoint.
+        const under = await sampleWalkFrom(nodes, i + 1, point, textColor, depth + 1, []);
         return core('vc_alpha_composite', __j(sample), __j(under));
       }
+      if (!isWalkContinuable(sample.reason)) return core('vc_unresolved_from_reasons', __j([sample.reason]));
       unresolved.push(sample.reason);
     }
 

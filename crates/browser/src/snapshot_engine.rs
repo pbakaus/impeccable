@@ -478,15 +478,41 @@ fn sample_background_impl(
         Err(unresolved) => return Ok(unresolved),
         Ok(nodes) => nodes,
     };
+    sample_walk_from(page, dom, &nodes, 0, depth, px, py, text_color)
+}
+
+fn sample_walk_from(
+    page: &mut Page<'_>,
+    dom: &SnapshotDom,
+    nodes: &[StackNode],
+    start: usize,
+    depth: f64,
+    px: f64,
+    py: f64,
+    text_color: &Rgba,
+) -> CdpResult<Value> {
+    if depth > 8.0 {
+        return Ok(visual::unresolved_from_reasons(&[
+            "background stack too deep".to_string()
+        ]));
+    }
     let mut unresolved: Vec<String> = Vec::new();
-    for StackNode { el: node, kind } in nodes {
+    for (i, StackNode { el: node, kind }) in nodes.iter().enumerate().skip(start) {
+        let node = *node;
         match kind.as_str() {
             "img" => {
                 let sample = sample_image_element(page, dom, node, px, py)?;
                 if is_sampled(&sample) {
                     return Ok(sample);
                 }
-                unresolved.push(sample_reason(&sample));
+                let reason = sample_reason(&sample);
+                // ponytail: unreadable photo ends the walk as unresolved so the
+                // screenshot check decides; skipping it would composite the
+                // scrim over the page behind the photo (#927).
+                if !visual::is_walk_continuable(&reason) {
+                    return Ok(visual::unresolved_from_reasons(&[reason]));
+                }
+                unresolved.push(reason);
             }
             "raster" => {
                 let intrinsic = intrinsic_raster(dom, node);
@@ -500,7 +526,11 @@ fn sample_background_impl(
                     if is_sampled(&sample) {
                         return Ok(sample);
                     }
-                    unresolved.push(sample_reason(&sample));
+                    let reason = sample_reason(&sample);
+                    if !visual::is_walk_continuable(&reason) {
+                        return Ok(visual::unresolved_from_reasons(&[reason]));
+                    }
+                    unresolved.push(reason);
                 }
             }
             _ => {
@@ -509,12 +539,29 @@ fn sample_background_impl(
                     if visual::sample_is_opaque(&sample) {
                         return Ok(sample);
                     }
-                    let parent = dom.parent(node).or_else(|| dom.body()).unwrap_or(0);
-                    let under =
-                        sample_background_impl(page, dom, parent, px, py, depth + 1.0, text_color)?;
+                    // #927: continue down the same hit stack instead of
+                    // restarting from the parent (which re-samples this same
+                    // translucent node until the depth cap and composites it
+                    // over itself). Exhausting the hit stack defers to pixels,
+                    // which also covers pointer-events:none ancestors missing
+                    // from elementsFromPoint.
+                    let under = sample_walk_from(
+                        page,
+                        dom,
+                        nodes,
+                        i + 1,
+                        depth + 1.0,
+                        px,
+                        py,
+                        text_color,
+                    )?;
                     return Ok(visual::alpha_composite(sample, &under));
                 }
-                unresolved.push(sample_reason(&sample));
+                let reason = sample_reason(&sample);
+                if !visual::is_walk_continuable(&reason) {
+                    return Ok(visual::unresolved_from_reasons(&[reason]));
+                }
+                unresolved.push(reason);
             }
         }
     }
