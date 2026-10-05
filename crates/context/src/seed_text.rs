@@ -76,7 +76,7 @@ pub const PRESENT_FIRST: &str = "- Present this hand on the decision page: write
 
 pub const PRESENT_REROLL: &str = "- Re-roll round: while the page is open on a key, deliver this hand to it with `@@SQ@@ --update --key <same key> --payload <file>` and never --start a second server. A re-roll made before any page opened starts one with `@@SQ@@ --start --payload <file>`; a round already on the structured-tool fallback stays there.";
 
-pub const PRESENT_WAIT: &str = "- Then hold `@@SQ@@ --wait --key <key>`, after the last comp generated now has landed. If your shell hands back a session before --wait exits, keep polling that session until it exits; rerun --wait only after it exits 3 with no answer.";
+pub const PRESENT_WAIT: &str = "- @@WHEN@@ hold `@@SQ@@ --wait --key <key>`. If your shell hands back a session before --wait exits, keep polling that session until it exits; rerun --wait only after it exits 3 with no answer.";
 
 pub const COMPS_DIRECTION: &str = "- With image generation, every card declares a comp under .impeccable/mocks/decision/, canon included, declined challengers excepted. Serve first, then generate each comp in reading order (assigned, pick, full-card hand, canon), writing its prompt sidecar as it lands (a.png gets a.png.json).";
 
@@ -91,5 +91,9 @@ pub const COMPS_SURFACE_CODE: &str = "- Code-led round: each dealt card carries 
 pub const BUILD_PATH_RECORDED: &str = "- Build path: recorded default @@VALUE@@ (from @@SOURCE@@). With image generation, put \"buildPath\": {\"value\": \"@@VALUE@@\", \"toggle\": true} in the payload; without it there is no toggle and the build is code-led. Never ask the user about the build path.";
 
 pub const BUILD_PATH_NONE: &str = "- Build path: none recorded in .impeccable/config.json or .impeccable/config.local.json, so comp-led whenever image generation exists. Then put \"buildPath\": {\"value\": \"comp\", \"toggle\": true} in the payload; without image generation there is no toggle and the build is code-led. Never ask about the build path during the round; only when the ANSWER returns buildPathFlipped: true, offer once afterwards to keep the flipped value as the default.";
+
+pub const WAIT_AFTER_COMPS: &str = "After the last comp lands (at once when this round generates none),";
+
+pub const WAIT_NOW: &str = "Right after serving, with no comp to generate first,";
 
 pub const PRESENT_FALLBACK: &str = "- The structured question tool is the fallback, never the first channel: take it when --start exits 2, when --wait exits 4 after the page closed unanswered, or when your harness cannot hold a blocking --wait at all (say so in your first reply). It carries the same options and asks nothing about the build path.";

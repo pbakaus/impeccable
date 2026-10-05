@@ -79,7 +79,10 @@ pub fn presentation_block(env: &Env, cwd: &str, scope: &str, reroll: usize, degr
         Some((value, source)) => fill(t::BUILD_PATH_RECORDED, &[("VALUE", value), ("SOURCE", source)]),
         None => t::BUILD_PATH_NONE.to_string(),
     };
-    let wait = fill(t::PRESENT_WAIT, &[("SQ", &sq)]);
+    // Comps generated up front come before the wait; a code-led round's
+    // comps wait for the flip --wait reports, and a single text card has none.
+    let when = if code_led || (scope == "direction" && single_card) { t::WAIT_NOW } else { t::WAIT_AFTER_COMPS };
+    let wait = fill(t::PRESENT_WAIT, &[("SQ", &sq), ("WHEN", when)]);
     [t::PRESENTATION_HEADER, &present, comps, &wait, &build, t::PRESENT_FALLBACK].join("\n") + "\n"
 }
 
@@ -788,7 +791,7 @@ mod tests {
         assert!(lines[2].starts_with("- With image generation, every card declares a comp under .impeccable/mocks/decision/, canon included, declined challengers excepted. Serve first"), "{block}");
         assert!(lines[2].contains("(a.png gets a.png.json)"), "{block}");
         // The wait follows comp generation, never precedes it.
-        assert!(lines[3].starts_with("- Then hold `impeccable serve-question --wait --key <key>`, after the last comp generated now has landed. If your shell hands back a session before --wait exits, keep polling that session until it exits; rerun --wait only after it exits 3"), "{block}");
+        assert!(lines[3].starts_with("- After the last comp lands (at once when this round generates none), hold `impeccable serve-question --wait --key <key>`. If your shell hands back a session before --wait exits, keep polling that session until it exits; rerun --wait only after it exits 3"), "{block}");
         assert!(lines[4].starts_with("- Build path: none recorded"), "{block}");
         assert!(lines[4].contains("\"buildPath\": {\"value\": \"comp\", \"toggle\": true}"), "{block}");
         assert!(lines[5].starts_with("- The structured question tool is the fallback, never the first channel: take it when --start exits 2, when --wait exits 4"), "{block}");
@@ -835,6 +838,7 @@ mod tests {
         let block = presentation(&out);
         assert!(block.contains(PRESENT_FIRST_LINE), "{block}");
         assert!(block.contains("- This degraded hand goes on the page as a single text-only card with re-roll; it declares no comp."), "{block}");
+        assert!(block.contains("- Right after serving, with no comp to generate first, hold `impeccable serve-question --wait --key <key>`."), "{block}");
         // Degraded safer keeps its lineup: the full-hand comp line, not one card.
         let (_, out) = seed(&proj, &skill, false, &["--scope", "direction", "--from", "k1", "--reroll", "1", "--register", "safer"]);
         let block = presentation(&out);
@@ -860,6 +864,7 @@ mod tests {
         assert!(block.contains("- Build path: recorded default code (from .impeccable/config.json). With image generation, put \"buildPath\": {\"value\": \"code\", \"toggle\": true} in the payload; without it there is no toggle and the build is code-led. Never ask the user about the build path."), "{block}");
         assert!(block.contains("- Code-led round: with image generation, every card still declares a comp path under .impeccable/mocks/decision/ as a flip reserve"), "{block}");
         assert!(block.contains("only when --wait prints BUILD PATH FLIPPED"), "{block}");
+        assert!(block.contains("- Right after serving, with no comp to generate first, hold `impeccable serve-question --wait --key <key>`."), "{block}");
         let out = roll("surface");
         assert!(presentation(&out).contains("- Code-led round: each dealt card carries a wireframe (shape in --schema)"), "{out}");
 
