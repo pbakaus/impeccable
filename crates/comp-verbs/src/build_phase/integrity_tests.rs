@@ -942,6 +942,12 @@ fn page_work_waits_for_the_plan_and_asset_review_of_the_current_spec() {
     // A spec with nothing to decide has no review to wait for.
     write(SPEC_PATH, br#"{"comp":"comp.png","regions":[{"id":"copy","kind":"text","note":"Body","box":{"x":0,"y":0,"w":1,"h":1}}]}"#);
     assert!(plan_review_refusal(&io_with(&[]).0).is_none());
+    // The hosted gate reads the same spec: no host acceptance is demanded for a review
+    // `component-review plan` refuses to write, with the sessions empty or unnamed.
+    let (hosted, _) = io_with(&[("IMPECCABLE_COMPONENT_REVIEW_TOOL", "component_review"), ("IMPECCABLE_COMPONENT_REVIEW_SESSIONS", "")]);
+    assert!(plan_review_refusal(&hosted).is_none());
+    let (hosted, _) = io_with(&[("IMPECCABLE_COMPONENT_REVIEW_TOOL", "component_review")]);
+    assert!(plan_review_refusal(&hosted).is_none());
 }
 
 struct ReviewedCapture(crate::entry_capture::EntryEvidence, Option<crate::entry_capture::ApprovedReference>);

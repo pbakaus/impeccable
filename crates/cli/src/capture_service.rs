@@ -11,7 +11,7 @@ use std::{
     collections::HashMap,
     io::{BufRead, BufReader, Read, Write},
     net::{TcpListener, TcpStream},
-    path::PathBuf,
+    path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 
@@ -164,7 +164,8 @@ pub fn serve(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             let text = |k: &str| body[k].as_str().ok_or_else(|| format!("missing {k}"));
             match route.as_str() {
                 "/capture" => {
-                    require_component_review(component_review_pending, &review_tool)?;
+                    require_component_review(component_review_pending
+                        && capture_owes_review(&root, text("spec")?), &review_tool)?;
                     if active.len() >= 2 {
                         return Err("active capture limit".into());
                     }
@@ -357,6 +358,12 @@ pub struct RemoteEntryRenderer {
     key: String,
 }
 
+/// Pending binds only while the spec being captured owes a kit review: a spec with
+/// nothing to decide never produces a kit to approve. The requested spec, not the
+/// default path, so a capture cannot borrow another file's exemption.
+fn capture_owes_review(root: &Path, spec: &str) -> bool {
+    impeccable_context::component_review::plan::spec_file_needs_review(&root.join(spec))
+}
 fn require_component_review(pending: bool, tool: &str) -> Result<(), String> {
     if pending {
         return Err(format!("Component kit approval is pending. Call {tool} with the component manifest's manifest_path and wait for the user's decisions before assembled-page comparison. No page comparison was performed."));
@@ -704,6 +711,22 @@ mod component_boundary_tests {
         assert!(error.contains("Component kit approval is pending"));
         assert!(error.contains("No page comparison was performed"));
         assert!(require_component_review(false, "component_review").is_ok());
+    }
+    #[test]
+    fn pending_binds_only_while_the_captured_spec_owes_a_review() {
+        let root = std::env::temp_dir().join(format!("impeccable-capture-owed-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("specs")).unwrap();
+        let write = |name: &str, body: &str| std::fs::write(root.join("specs").join(name), body).unwrap();
+        write("text.json", r#"{"regions":[{"id":"copy","kind":"text","box":{"x":0,"y":0,"w":1,"h":1}}]}"#);
+        write("plate.json", r#"{"regions":[{"id":"art","kind":"plate","box":{"x":0,"y":0,"w":1,"h":1}}]}"#);
+        write("invalid.json", "{}");
+        assert!(!capture_owes_review(&root, "specs/text.json"));
+        assert!(capture_owes_review(&root, "specs/plate.json"));
+        assert!(capture_owes_review(&root, "specs/invalid.json"), "no regions array is not a measured spec");
+        assert!(capture_owes_review(&root, "specs/missing.json"));
+        assert!(require_component_review(true && capture_owes_review(&root, "specs/plate.json"), "component_review").is_err());
+        assert!(require_component_review(true && capture_owes_review(&root, "specs/text.json"), "component_review").is_ok());
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
 

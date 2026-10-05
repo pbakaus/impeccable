@@ -105,6 +105,33 @@ fn hosted_capture_routes_to_the_review_tool_before_browser_or_store_access() {
     assert!(error.contains("Call component_review with manifest_path=\"review.json\""), "{error}");
     assert!(!f.root.join(".impeccable").exists());
 }
+#[test]
+fn hosted_lifecycle_owes_no_components_review_for_a_spec_with_nothing_to_decide() {
+    let f = Fixture::new();
+    let lifecycle = |project: Option<&std::path::Path>| {
+        let (mut io, captured) = impeccable_common::Io::captured("", f.project.clone(),
+            std::collections::HashMap::from([("HOME".into(), f.root.to_string_lossy().into_owned())]));
+        let mut args: Vec<String> = ["lifecycle", "--hosted", "--require", "components", "--require", "hero"].map(String::from).to_vec();
+        if let Some(project) = project { args.extend(["--project".into(), project.to_string_lossy().into_owned()]); }
+        assert_eq!(super::run(&args, &mut io), 0);
+        let out = captured.stdout.borrow().clone();
+        serde_json::from_slice::<Value>(&out).unwrap()
+    };
+    // No spec yet: the components stage stays owed, with or without the project named.
+    assert_eq!(lifecycle(Some(&f.project))["stage"], "components");
+    fs::create_dir_all(f.project.join(".impeccable/build")).unwrap();
+    // A spec without a regions array is not a measured spec: still owed.
+    fs::write(f.project.join(super::plan::SPEC), b"{}").unwrap();
+    assert_eq!(lifecycle(Some(&f.project))["stage"], "components");
+    fs::write(f.project.join(super::plan::SPEC), br#"{"regions":[{"id":"copy","kind":"text","box":{"x":0,"y":0,"w":1,"h":1}}]}"#).unwrap();
+    assert_eq!(lifecycle(None)["stage"], "components");
+    // Named, a spec with nothing to decide releases the kit review; the hero review still binds.
+    let named = lifecycle(Some(&f.project));
+    assert_eq!((named["status"].as_str(), named["stage"].as_str()), (Some("pending"), Some("hero")), "{named}");
+    // A spec with a raster region owes the kit review again.
+    fs::write(f.project.join(super::plan::SPEC), br#"{"regions":[{"id":"art","kind":"plate","box":{"x":0,"y":0,"w":1,"h":1}}]}"#).unwrap();
+    assert_eq!(lifecycle(Some(&f.project))["stage"], "components");
+}
 struct Fixture {
     root: PathBuf,
     project: PathBuf,
@@ -1220,6 +1247,53 @@ fn hosted_gate_requires_an_accepted_intact_review_in_the_named_sessions() {
     fs::write(f.project.join(".impeccable/build/spec.json"), PLAN_SPEC.replace("Top bar", "Top rail")).unwrap();
     assert!(hosted(&[dir.clone()]).unwrap_err().contains("earlier spec.json"));
     assert!(hosted(&[f.root.join("nowhere")]).is_err());
+}
+
+#[test]
+fn hosted_gate_checks_the_builders_files_not_the_hosts_snapshot() {
+    // gallery-20261004-c-sol-08: the host recorded its review-project snapshot as the
+    // session's project, the builder's sandbox could not read it, and the gate called
+    // the EPERM "a reviewed plate changed" three rounds running.
+    let f = Fixture::new();
+    f.plan_project();
+    f.plates();
+    let dir = f.plan_round();
+    let state = store::read(&dir.join("current.json")).unwrap();
+    store::submit(&dir, &approve(&state)).unwrap();
+    let mut snapshot = store::read(&dir.join("current.json")).unwrap();
+    snapshot["project"] = json!(f.root.join("host-snapshot-unreadable").to_string_lossy());
+    store::write(&dir.join("current.json"), &snapshot).unwrap();
+    let hosted = || super::plan::gate_hosted(std::slice::from_ref(&dir), &f.project, "impeccable", "component_review");
+    hosted().unwrap();
+    fs::write(f.project.join("assets/art.png"), b"a different art plate").unwrap();
+    let err = hosted().unwrap_err();
+    assert!(err.contains("A reviewed plate changed") && err.contains("assets/art.png changed"), "{err}");
+}
+
+#[cfg(unix)]
+#[test]
+fn an_unreadable_reviewed_file_is_reported_as_unreadable_not_changed() {
+    use std::os::unix::fs::PermissionsExt;
+    let f = Fixture::new();
+    f.plan_project();
+    f.plates();
+    let dir = f.plan_round();
+    let state = store::read(&dir.join("current.json")).unwrap();
+    store::submit(&dir, &approve(&state)).unwrap();
+    let art = f.project.join("assets/art.png");
+    fs::set_permissions(&art, fs::Permissions::from_mode(0o000)).unwrap();
+    let result = f.gate();
+    fs::set_permissions(&art, fs::Permissions::from_mode(0o644)).unwrap();
+    if result.is_ok() { return; } // root reads through mode bits
+    let err = result.unwrap_err();
+    assert!(err.contains("could not be checked") && err.contains("not a changed plate") && !err.contains("A reviewed plate changed"), "{err}");
+    // A directory the builder cannot traverse is unreadable too, not a vanished plate.
+    let assets = f.project.join("assets");
+    fs::set_permissions(&assets, fs::Permissions::from_mode(0o000)).unwrap();
+    let result = f.gate();
+    fs::set_permissions(&assets, fs::Permissions::from_mode(0o755)).unwrap();
+    let err = result.unwrap_err();
+    assert!(err.contains("could not be checked") && !err.contains("disappeared"), "{err}");
 }
 
 #[test]

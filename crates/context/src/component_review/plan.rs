@@ -29,6 +29,21 @@ pub fn needs_review(spec: &Value) -> bool {
         rs.iter().any(|r| raster(r["kind"].as_str().unwrap_or("")) || plan_item(r))
     })
 }
+/// Whether the project's measured spec owes a plan and asset review. A missing or
+/// unreadable spec owes one, so every gate keeps failing closed; only a spec that was
+/// measured and holds nothing to decide releases the review, the same reading
+/// `component-review plan` reports when it refuses to write an empty packet.
+pub fn spec_needs_review(project: &Path) -> bool {
+    spec_file_needs_review(&project.join(SPEC))
+}
+/// `spec_needs_review` for a spec at an explicit path. A spec without a `regions`
+/// array is not a measured spec (`plan` refuses it), so it owes the review too.
+pub fn spec_file_needs_review(path: &Path) -> bool {
+    std::fs::read(path).ok()
+        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+        .filter(|spec| spec["regions"].is_array())
+        .is_none_or(|spec| needs_review(&spec))
+}
 fn name(id: &str) -> String {
     let words = id.replace(['-', '_'], " ");
     let mut chars = words.trim().chars();
@@ -206,18 +221,25 @@ fn decide(sessions: &[std::path::PathBuf], project: &Path, s: &str, steps: &str)
     let steps = format!("{steps} Write no page code before it is accepted.");
     let mut plans = Vec::new();
     let mut stale = None;
+    let mut unreadable = None;
     for dir in sessions {
         let state = super::store::read(&dir.join("current.json"))?;
         if state["packet"]["schemaVersion"] == 3 && state["packet"]["stage"] == "components" {
             if super::lifecycle::accepted_in(dir, &state) && state["packet"]["specSha256"] == sha.as_str() {
                 // The user judged these plate bytes; a plate replaced since is unreviewed.
-                match super::store::sources_current(&state) {
+                match super::store::sources_current_in(&state, project) {
                     Ok(()) => return Ok(()),
-                    Err(why) => stale = Some(why),
+                    Err(why) if why.starts_with("review is stale") => stale = Some(why),
+                    // Not a changed plate; keep looking, a later session may still satisfy the gate.
+                    Err(why) => unreadable = Some(why),
                 }
             }
             plans.push(state);
         }
+    }
+    if let Some(why) = unreadable {
+        // Asking the user to approve the same bytes again cannot help.
+        return Err(format!("The accepted plan and asset review could not be checked against this project ({why}). This is a harness or filesystem problem, not a changed plate: stop and report it; do not request the same review again."));
     }
     if let Some(why) = stale {
         let why = why.strip_prefix("review is stale: ").unwrap_or(&why).trim_end_matches("; prepare a new round");

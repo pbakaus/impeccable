@@ -283,7 +283,13 @@ fn prepare_bound(
     Ok(dir)
 }
 pub fn sources_current(state: &Value) -> Result<(), String> {
-    let project = Path::new(string(state, "project")?);
+    sources_current_in(state, Path::new(string(state, "project")?))
+}
+/// `sources_current` against an explicit project. A hosted session records the
+/// host's snapshot of the project, which the builder's shell may not be able to
+/// read and which never changes; the gate checks the builder's own files instead.
+/// A file that exists but cannot be read is reported as unreadable, never as changed.
+pub fn sources_current_in(state: &Value, project: &Path) -> Result<(), String> {
     for (path, hash) in state
         .get("sources")
         .unwrap_or(&state["files"])
@@ -293,9 +299,10 @@ pub fn sources_current(state: &Value) -> Result<(), String> {
         let full = project
             .join(relative(path)?)
             .canonicalize()
-            .map_err(|_| format!("review is stale: {path} disappeared"))?;
+            .map_err(|e| if e.kind() == std::io::ErrorKind::NotFound { format!("review is stale: {path} disappeared") }
+                else { format!("reviewed source unreadable: {path}: {e}") })?;
         if !full.starts_with(project)
-            || digest(&fs::read(full).map_err(|e| e.to_string())?) != hash.as_str().unwrap_or("")
+            || digest(&fs::read(&full).map_err(|e| format!("reviewed source unreadable: {path}: {e}"))?) != hash.as_str().unwrap_or("")
         {
             return Err(format!(
                 "review is stale: {path} changed; prepare a new round"
