@@ -791,7 +791,8 @@ mod tests {
         assert!(lines[3].starts_with("- Then hold `impeccable serve-question --wait --key <key>`, after the last comp generated now has landed. If your shell hands back a session before --wait exits, keep polling that session until it exits; rerun --wait only after it exits 3"), "{block}");
         assert!(lines[4].starts_with("- Build path: none recorded"), "{block}");
         assert!(lines[4].contains("\"buildPath\": {\"value\": \"comp\", \"toggle\": true}"), "{block}");
-        assert!(lines[5].starts_with("- The structured question tool is only the fallback, when --start exits 2"), "{block}");
+        assert!(lines[5].starts_with("- The structured question tool is the fallback, never the first channel: take it when --start exits 2, when --wait exits 4"), "{block}");
+        assert!(lines[5].contains("cannot hold a blocking --wait at all"), "{block}");
         assert!(lines[5].contains("asks nothing about the build path"), "{block}");
         assert!(!block.contains('\u{2014}'), "no em dashes: {block}");
         assert!(out.ends_with('\n'));

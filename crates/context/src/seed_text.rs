@@ -92,4 +92,4 @@ pub const BUILD_PATH_RECORDED: &str = "- Build path: recorded default @@VALUE@@ 
 
 pub const BUILD_PATH_NONE: &str = "- Build path: none recorded in .impeccable/config.json or .impeccable/config.local.json, so comp-led whenever image generation exists. Then put \"buildPath\": {\"value\": \"comp\", \"toggle\": true} in the payload; without image generation there is no toggle and the build is code-led. Never ask about the build path during the round; only when the ANSWER returns buildPathFlipped: true, offer once afterwards to keep the flipped value as the default.";
 
-pub const PRESENT_FALLBACK: &str = "- The structured question tool is only the fallback, when --start exits 2 (or --wait exits 4 after the page closed unanswered); it carries the same options and asks nothing about the build path.";
+pub const PRESENT_FALLBACK: &str = "- The structured question tool is the fallback, never the first channel: take it when --start exits 2, when --wait exits 4 after the page closed unanswered, or when your harness cannot hold a blocking --wait at all (say so in your first reply). It carries the same options and asks nothing about the build path.";
