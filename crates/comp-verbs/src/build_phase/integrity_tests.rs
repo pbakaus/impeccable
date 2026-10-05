@@ -1794,4 +1794,8 @@ fn comps_gate_keeps_the_approved_comp_and_a_new_round_forgets_it() {
     assert_eq!(record["pixelSha256"].as_str(), crate::approved_comp::file_pixel_sha256(&io, APPROVED).as_deref());
     assert_eq!(run(&["start", "--reset", "--direction", "other"].map(String::from), &mut io, &no_organic_scan), 0);
     assert!(!ws.path.join(crate::approved_comp::RECORD_PATH).exists());
+    // An approved comp that cannot be decoded cannot become the fixed reference.
+    ws.write(APPROVED, b"not an image");
+    let gate = run_gate(&io, &mut load_state(&io).unwrap(), "comps", &GateOpts { build_path: None, min: None, artifact: None }, &no_organic_scan, None);
+    assert!(!gate.ok && gate.reasons.iter().any(|r| r.contains("is not a decodable PNG, WebP or JPEG image")), "{:?}", gate.reasons);
 }

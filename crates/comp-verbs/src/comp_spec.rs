@@ -1226,8 +1226,12 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
         io.err("usage: comp-spec.mjs --comp <png> (--grid | --regions <json> | --auto) [--spec out.json]\n       comp-spec.mjs --print | --crop <id> [--out file] [--scale n] | --plate-prompt <id>\n");
         return 1;
     };
-    let comp = match png_io::load_raster(&resolve(io, comp_path)) {
-        Ok((d, _)) => d.image,
+    // Decode the comp's own bytes first: load_raster may read a stale sibling
+    // PNG cache for a WebP or JPEG source, and the spec must measure (and
+    // identify) the pixels the approved-comp record identifies.
+    let own = std::fs::read(resolve(io, comp_path)).ok().and_then(|b| png_io::decode_review_image(&b).ok()).map(|(img, _)| img);
+    let comp = match own.map(Ok).unwrap_or_else(|| png_io::load_raster(&resolve(io, comp_path)).map(|(d, _)| d.image)) {
+        Ok(img) => img,
         Err(e) => {
             io.err(&format!("comp-spec: cannot read {comp_path}: {e}\n"));
             return 1;
@@ -1342,10 +1346,7 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
     let spec_out = resolve(io, &spec_path);
     // Bind cached font evidence to the decoded reference, including dimensions.
     // Legacy specs without this identity are deliberately remeasured once.
-    // Identify the comp by its own bytes: load_raster may have read a stale
-    // sibling PNG cache for a WebP or JPEG source.
-    let comp_hash = crate::approved_comp::file_pixel_sha256(io, comp_path)
-        .unwrap_or_else(|| crate::approved_comp::pixel_sha256(&comp));
+    let comp_hash = crate::approved_comp::pixel_sha256(&comp);
     let previous = std::fs::read(&spec_out).ok().and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
     // The approved comp is the fixed reference: re-measuring an edited copy of
     // the build's comp would move the spec's identity along with the edit.

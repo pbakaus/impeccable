@@ -2611,13 +2611,16 @@ fn run_gate(io: &Io, state: &mut Value, phase: &str, opts: &GateOpts, organic_sc
     match phase {
         "comps" => {
             let mut gate = gate_comps(io);
-            // The approval fixes the reference: keep the engine's own copy now,
-            // and refuse to close on an approval that cannot be kept.
-            if let Some(approved) = gate.approved.clone().filter(|_| gate.ok) {
-                if let Err(e) = crate::approved_comp::keep(io, &approved) {
-                    gate.ok = false;
-                    gate.reasons.push(format!("{e}; make {BUILD_DIR} writable and advance again"));
-                }
+            // The approval fixes the reference: keep the engine's own copy now
+            // (a quoted --force closes on the approved comp too), and refuse to
+            // close on an approval that cannot be kept.
+            if let Some(approved) = gate.approved.clone() {
+                let failure = match crate::approved_comp::keep(io, &approved) {
+                    Ok(Some(_)) => None,
+                    Ok(None) => Some(format!("the approved comp {approved} is not a decodable PNG, WebP or JPEG image, so it cannot be kept as the fixed reference; approve a readable comp")),
+                    Err(e) => Some(format!("{e}; make {BUILD_DIR} writable and advance again")),
+                };
+                if let Some(why) = failure { gate.ok = false; gate.reasons.push(why); }
             }
             gate
         }
