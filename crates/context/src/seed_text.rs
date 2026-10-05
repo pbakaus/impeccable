@@ -65,3 +65,35 @@ pub const RENDER_COMPOSITION: &str = "  @@COMP_INDEX_PREFIX@@@@COMPOSITION_FORM@
 pub const RENDER_CHALLENGER_RULE: &str = "       - @@RULE@@";
 pub const RENDER_COMPOSITION_RULE: &str = "       - @@RULE@@";
 pub const REROLL_DERIVE_TEXT: &str = " Derive\n  genuinely new grounded candidates from unexplored angles before judging\n  these fresh challengers.";
+
+// PRESENTATION: the decision-round procedure from reference/new-work.md
+// (steps 4-5, the decision-page and build-path paragraphs), condensed and
+// printed after every roll so a truncated read of that file cannot lose it.
+// new-work.md stays the source of truth; change the two together.
+pub const PRESENTATION_HEADER: &str = "PRESENTATION (the decision round, condensed from new-work.md; follow it even when your read of that file came back cut):";
+
+pub const PRESENT_FIRST: &str = "- Present this hand on the decision page: write the options payload (`@@SQ@@ --schema` prints its shape), run `@@SQ@@ --start --payload <file>`, and open the URL it prints for the user.";
+
+pub const PRESENT_REROLL: &str = "- Re-roll round: while the page is open on a key, deliver this hand to it with `@@SQ@@ --update --key <same key> --payload <file>` and never --start a second server. A re-roll made before any page opened starts one with `@@SQ@@ --start --payload <file>`; a round already on the structured-tool fallback stays there.";
+
+pub const PRESENT_WAIT: &str = "- @@WHEN@@ hold `@@SQ@@ --wait --key <key>`. If your shell hands back a session before --wait exits, keep polling that session until it exits; rerun --wait only after it exits 3 with no answer.";
+
+pub const COMPS_DIRECTION: &str = "- With image generation, every card declares a comp under .impeccable/mocks/decision/, canon included, declined challengers excepted. Serve first, then generate each comp in reading order (assigned, pick, full-card hand, canon), writing its prompt sidecar as it lands (a.png gets a.png.json).";
+
+pub const COMPS_DIRECTION_CODE: &str = "- Code-led round: with image generation, every card still declares a comp path under .impeccable/mocks/decision/ as a flip reserve, canon included, declined challengers excepted. Generate those comps only when --wait prints BUILD PATH FLIPPED, in reading order, each with its prompt sidecar (a.png gets a.png.json).";
+
+pub const COMPS_DIRECTION_DEGRADED: &str = "- This degraded hand goes on the page as a single text-only card with re-roll; it declares no comp.";
+
+pub const COMPS_SURFACE: &str = "- With image generation, each dealt card declares a comp under .impeccable/mocks/decision/; serve first, then generate them in reading order, lead first, each with its prompt sidecar (a.png gets a.png.json). Without image generation, each card carries a wireframe instead (shape in --schema). Surface rounds have no pick card and no canon card.";
+
+pub const COMPS_SURFACE_CODE: &str = "- Code-led round: each dealt card carries a wireframe (shape in --schema) and, with image generation, declares a comp path under .impeccable/mocks/decision/ as a flip reserve; generate those comps only when --wait prints BUILD PATH FLIPPED, lead first, each with its prompt sidecar (a.png gets a.png.json). Surface rounds have no pick card and no canon card.";
+
+pub const BUILD_PATH_RECORDED: &str = "- Build path: recorded default @@VALUE@@ (from @@SOURCE@@). With image generation, put \"buildPath\": {\"value\": \"@@VALUE@@\", \"toggle\": true} in the payload; without it there is no toggle and the build is code-led. Never ask the user about the build path.";
+
+pub const BUILD_PATH_NONE: &str = "- Build path: none recorded in .impeccable/config.json or .impeccable/config.local.json, so comp-led whenever image generation exists. Then put \"buildPath\": {\"value\": \"comp\", \"toggle\": true} in the payload; without image generation there is no toggle and the build is code-led. Never ask about the build path during the round; only when the ANSWER returns buildPathFlipped: true, offer once afterwards to keep the flipped value as the default.";
+
+pub const WAIT_AFTER_COMPS: &str = "After the last comp lands (at once when this round generates none),";
+
+pub const WAIT_NOW: &str = "Right after serving, with no comp to generate first,";
+
+pub const PRESENT_FALLBACK: &str = "- The structured question tool is the fallback, never the first channel: take it when --start exits 2, when --wait exits 4 after the page closed unanswered, or when your harness cannot hold a blocking --wait at all (say so in your first reply). It carries the same options and asks nothing about the build path.";

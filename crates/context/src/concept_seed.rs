@@ -59,6 +59,33 @@ pub fn mode_rules_block(env: &Env, cwd: &str, mode: &str) -> String {
     }
 }
 
+/// The PRESENTATION block printed after every roll: new-work.md's decision
+/// round, condensed. `build_path` is the recorded default and its file.
+pub fn presentation_block(env: &Env, cwd: &str, scope: &str, reroll: usize, degraded: bool, register: Option<&str>, build_path: Option<&(String, String)>) -> String {
+    let sq = crate::provider::detect(env, cwd).verb_cmd("serve-question");
+    let present = fill(if reroll > 0 { t::PRESENT_REROLL } else { t::PRESENT_FIRST }, &[("SQ", &sq)]);
+    let code_led = build_path.map(|(v, _)| v == "code").unwrap_or(false);
+    // A degraded roll is one text-only card, except the safer register,
+    // whose lineup of grounded candidates plus canon is a full hand.
+    let single_card = degraded && register != Some("safer");
+    let comps = match (scope, single_card, code_led) {
+        ("direction", true, _) => t::COMPS_DIRECTION_DEGRADED,
+        ("direction", false, true) => t::COMPS_DIRECTION_CODE,
+        ("direction", false, false) => t::COMPS_DIRECTION,
+        (_, _, true) => t::COMPS_SURFACE_CODE,
+        _ => t::COMPS_SURFACE,
+    };
+    let build = match build_path {
+        Some((value, source)) => fill(t::BUILD_PATH_RECORDED, &[("VALUE", value), ("SOURCE", source)]),
+        None => t::BUILD_PATH_NONE.to_string(),
+    };
+    // Comps generated up front come before the wait; a code-led round's
+    // comps wait for the flip --wait reports, and a single text card has none.
+    let when = if code_led || (scope == "direction" && single_card) { t::WAIT_NOW } else { t::WAIT_AFTER_COMPS };
+    let wait = fill(t::PRESENT_WAIT, &[("SQ", &sq), ("WHEN", when)]);
+    [t::PRESENTATION_HEADER, &present, comps, &wait, &build, t::PRESENT_FALLBACK].join("\n") + "\n"
+}
+
 struct ApiBudget {
     deadline: Option<Instant>,
     timeout: Duration,
@@ -289,6 +316,8 @@ pub struct SeedArgs {
     pub grain: Option<Option<String>>,
     pub platform: Option<Option<String>>,
     pub candidate_count: f64,
+    /// The recorded build-path default and its file (`recorded_build_path`).
+    pub build_path: Option<(String, String)>,
 }
 
 fn unit(scope: &str, salt: &str, key: &str) -> f64 {
@@ -298,6 +327,15 @@ fn unit(scope: &str, salt: &str, key: &str) -> f64 {
 
 /// JS: renderConceptSeed
 fn render_concept_seed(env: &Env, cwd: &str, budget: &mut ApiBudget, a: &SeedArgs) -> Result<String, String> {
+    let (scope, reroll, roll, degraded) = render_roll(env, cwd, budget, a)?;
+    // PRESENTATION closes every roll, where a middle-truncated read still
+    // reaches it, like the restated lines above it.
+    let register = a.register.clone().flatten();
+    Ok(roll + &presentation_block(env, cwd, scope, reroll, degraded, register.as_deref(), a.build_path.as_ref()))
+}
+
+/// The roll itself: (scope, re-roll round, text, degraded).
+fn render_roll(env: &Env, cwd: &str, budget: &mut ApiBudget, a: &SeedArgs) -> Result<(&'static str, usize, String, bool), String> {
     let scope = match a.scope.as_deref() {
         Some("surface") => "surface",
         Some("direction") => "direction",
@@ -438,7 +476,7 @@ fn render_concept_seed(env: &Env, cwd: &str, budget: &mut ApiBudget, a: &SeedArg
             let mut pairs = common.clone();
             pairs.push(("DEGRADEDHEADER", &degraded_header));
             pairs.push(("AUTHORITYINSTRUCTION", &authority));
-            return Ok(fill(t::DEGRADED_SAFER, &pairs));
+            return Ok((scope, reroll, fill(t::DEGRADED_SAFER, &pairs), true));
         }
         let degraded_register = if register == Some("bolder") { t::DEGRADED_BOLDER.to_string() } else { String::new() };
         let mut pairs = common.clone();
@@ -448,7 +486,7 @@ fn render_concept_seed(env: &Env, cwd: &str, budget: &mut ApiBudget, a: &SeedArg
         pairs.push(("PROMOTEDINSTRUCTION", &promoted));
         pairs.push(("AUTHORITYINSTRUCTION", &authority));
         pairs.push(("RESTATED_ASSIGNED_OR_DEALT", &restated_assigned_or_dealt));
-        return Ok(fill(t::DEGRADED_BODY, &pairs));
+        return Ok((scope, reroll, fill(t::DEGRADED_BODY, &pairs), true));
     };
 
     let compositions_enabled = env.get("IMPECCABLE_COMPOSITIONS").map(|v| v == "1").unwrap_or(false);
@@ -523,7 +561,7 @@ fn render_concept_seed(env: &Env, cwd: &str, budget: &mut ApiBudget, a: &SeedArg
     pairs.push(("RICHNESSINSTRUCTION", &richness));
     pairs.push(("TELEMETRYBLOCK", &telemetry_block));
     pairs.push(("RESTATED", &restated));
-    Ok(fill(t::MAIN, &pairs))
+    Ok((scope, reroll, fill(t::MAIN, &pairs), false))
 }
 
 fn random_hex8() -> String {
@@ -581,6 +619,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         grain: val("--grain"),
         platform: val("--platform"),
         candidate_count: num(val("--candidate-count")).unwrap_or(7.0),
+        build_path: crate::context_cli::recorded_build_path(&ctx, &cwd),
     };
     match render_concept_seed(&env, &cwd, &mut budget, &seed) {
         Ok(text) => {
@@ -634,6 +673,7 @@ mod tests {
             ("IMPECCABLE_API_TIMEOUT".into(), "300".into()),
             ("IMPECCABLE_NO_TELEMETRY".into(), "1".into()),
             ("IMPECCABLE_NO_STALENESS_CHECK".into(), "1".into()),
+            ("IMPECCABLE_SELF".into(), "impeccable".into()),
         ]);
         let (mut io, cap) = Io::captured("", proj.to_path_buf(), env);
         let argv: Vec<String> = args.iter().map(|s| s.to_string()).collect();
@@ -728,5 +768,125 @@ mod tests {
         assert!(out.contains("selected independently.\nMODE RULES (experience, from "), "block follows AUTHORITY: {out}");
         let (_, out) = seed(&proj, &skill, false, &["--scope", "direction", "--mode", "persuade", "--from", "k1", "--reroll", "1", "--register", "safer"]);
         assert!(out.contains("MODE RULES (persuade, from "), "{out}");
+    }
+
+    /// The PRESENTATION block: everything from its header to the end.
+    fn presentation(out: &str) -> &str {
+        let at = out.find("PRESENTATION (").unwrap_or_else(|| panic!("no PRESENTATION block: {out}"));
+        &out[at..]
+    }
+
+    const PRESENT_FIRST_LINE: &str = "- Present this hand on the decision page: write the options payload (`impeccable serve-question --schema` prints its shape), run `impeccable serve-question --start --payload <file>`, and open the URL it prints for the user.";
+
+    #[test]
+    fn direction_roll_ends_with_the_presentation_block() {
+        let (proj, skill) = fixture("present-direction", &[("mode-persuade", MODE_FILE)]);
+        let (code, out) = seed(&proj, &skill, true, &["--scope", "direction", "--mode", "persuade", "--from", "k1"]);
+        assert_eq!(code, 0, "{out}");
+        let block = presentation(&out);
+        assert!(out.contains("seed key k1.\nPRESENTATION (the decision round, condensed from new-work.md;"), "block follows the restated line: {out}");
+        let lines: Vec<&str> = block.trim_end().split('\n').collect();
+        assert_eq!(lines.len(), 6, "{block}");
+        assert_eq!(lines[1], PRESENT_FIRST_LINE);
+        assert!(lines[2].starts_with("- With image generation, every card declares a comp under .impeccable/mocks/decision/, canon included, declined challengers excepted. Serve first"), "{block}");
+        assert!(lines[2].contains("(a.png gets a.png.json)"), "{block}");
+        // The wait follows comp generation, never precedes it.
+        assert!(lines[3].starts_with("- After the last comp lands (at once when this round generates none), hold `impeccable serve-question --wait --key <key>`. If your shell hands back a session before --wait exits, keep polling that session until it exits; rerun --wait only after it exits 3"), "{block}");
+        assert!(lines[4].starts_with("- Build path: none recorded"), "{block}");
+        assert!(lines[4].contains("\"buildPath\": {\"value\": \"comp\", \"toggle\": true}"), "{block}");
+        assert!(lines[5].starts_with("- The structured question tool is the fallback, never the first channel: take it when --start exits 2, when --wait exits 4"), "{block}");
+        assert!(lines[5].contains("cannot hold a blocking --wait at all"), "{block}");
+        assert!(lines[5].contains("asks nothing about the build path"), "{block}");
+        assert!(!block.contains('\u{2014}'), "no em dashes: {block}");
+        assert!(out.ends_with('\n'));
+    }
+
+    #[test]
+    fn surface_roll_carries_wireframes_and_no_pick_or_canon() {
+        let (proj, skill) = fixture("present-surface", &[("mode-operate", MODE_FILE)]);
+        let (code, out) = seed(&proj, &skill, true, &["--scope", "surface", "--mode", "operate", "--from", "k1"]);
+        assert_eq!(code, 0, "{out}");
+        let block = presentation(&out);
+        assert!(block.contains(PRESENT_FIRST_LINE), "{block}");
+        assert!(block.contains("- With image generation, each dealt card declares a comp under .impeccable/mocks/decision/; serve first"), "{block}");
+        assert!(block.contains("Without image generation, each card carries a wireframe instead (shape in --schema). Surface rounds have no pick card and no canon card."), "{block}");
+        assert!(!block.contains("canon included"), "{block}");
+    }
+
+    #[test]
+    fn rerolls_deliver_through_update_on_the_same_key() {
+        let (proj, skill) = fixture("present-reroll", &[("mode-persuade", MODE_FILE)]);
+        for args in [
+            &["--scope", "direction", "--mode", "persuade", "--from", "k1", "--reroll", "1"][..],
+            &["--scope", "direction", "--mode", "persuade", "--from", "k1", "--reroll", "2", "--register", "bolder"][..],
+            &["--scope", "direction", "--from", "k1", "--reroll", "1", "--register", "safer"][..],
+            &["--scope", "surface", "--mode", "persuade", "--from", "k1", "--reroll", "1"][..],
+        ] {
+            let (code, out) = seed(&proj, &skill, true, args);
+            assert_eq!(code, 0, "{out}");
+            let block = presentation(&out);
+            assert!(block.contains("- Re-roll round: while the page is open on a key, deliver this hand to it with `impeccable serve-question --update --key <same key> --payload <file>` and never --start a second server. A re-roll made before any page opened starts one with `impeccable serve-question --start --payload <file>`;"), "{args:?}: {block}");
+            assert!(!block.contains("- Present this hand"), "{args:?}: {block}");
+        }
+    }
+
+    #[test]
+    fn degraded_rolls_present_on_the_page_too() {
+        let (proj, skill) = fixture("present-degraded", &[("mode-persuade", MODE_FILE)]);
+        let (_, out) = seed(&proj, &skill, false, &["--scope", "direction", "--mode", "persuade", "--from", "k1"]);
+        assert!(out.contains("source: degraded"), "{out}");
+        let block = presentation(&out);
+        assert!(block.contains(PRESENT_FIRST_LINE), "{block}");
+        assert!(block.contains("- This degraded hand goes on the page as a single text-only card with re-roll; it declares no comp."), "{block}");
+        assert!(block.contains("- Right after serving, with no comp to generate first, hold `impeccable serve-question --wait --key <key>`."), "{block}");
+        // Degraded safer keeps its lineup: the full-hand comp line, not one card.
+        let (_, out) = seed(&proj, &skill, false, &["--scope", "direction", "--from", "k1", "--reroll", "1", "--register", "safer"]);
+        let block = presentation(&out);
+        assert!(block.contains("- Re-roll round:"), "{block}");
+        assert!(!block.contains("single text-only card"), "{block}");
+        assert!(block.contains("every card declares a comp"), "{block}");
+        let (_, out) = seed(&proj, &skill, false, &["--scope", "direction", "--from", "k1", "--reroll", "1", "--register", "bolder"]);
+        assert!(presentation(&out).contains("single text-only card"), "{out}");
+        let (_, out) = seed(&proj, &skill, false, &["--scope", "surface", "--mode", "persuade", "--from", "k1"]);
+        assert!(presentation(&out).contains("each dealt card declares a comp"), "{out}");
+    }
+
+    #[test]
+    fn build_path_line_names_the_recorded_default() {
+        let (proj, skill) = fixture("present-build-path", &[("mode-persuade", MODE_FILE)]);
+        let dir = proj.join(".impeccable");
+        std::fs::create_dir_all(&dir).unwrap();
+        let roll = |scope: &str| seed(&proj, &skill, true, &["--scope", scope, "--mode", "persuade", "--from", "k1"]).1;
+
+        std::fs::write(dir.join("config.json"), r#"{"buildPath": "code"}"#).unwrap();
+        let out = roll("direction");
+        let block = presentation(&out);
+        assert!(block.contains("- Build path: recorded default code (from .impeccable/config.json). With image generation, put \"buildPath\": {\"value\": \"code\", \"toggle\": true} in the payload; without it there is no toggle and the build is code-led. Never ask the user about the build path."), "{block}");
+        assert!(block.contains("- Code-led round: with image generation, every card still declares a comp path under .impeccable/mocks/decision/ as a flip reserve"), "{block}");
+        assert!(block.contains("only when --wait prints BUILD PATH FLIPPED"), "{block}");
+        assert!(block.contains("- Right after serving, with no comp to generate first, hold `impeccable serve-question --wait --key <key>`."), "{block}");
+        let out = roll("surface");
+        assert!(presentation(&out).contains("- Code-led round: each dealt card carries a wireframe (shape in --schema)"), "{out}");
+
+        // The machine-local file wins over the committed one.
+        std::fs::write(dir.join("config.local.json"), r#"{"buildPath": "comp"}"#).unwrap();
+        let out = roll("direction");
+        let block = presentation(&out);
+        assert!(block.contains("- Build path: recorded default comp (from .impeccable/config.local.json)."), "{block}");
+        assert!(block.contains("\"buildPath\": {\"value\": \"comp\", \"toggle\": true}"), "{block}");
+        assert!(block.contains("Serve first, then generate each comp in reading order"), "{block}");
+
+        // Only exact comp / code count; anything else reads as unrecorded.
+        std::fs::remove_file(dir.join("config.local.json")).unwrap();
+        std::fs::write(dir.join("config.json"), r#"{"buildPath": "comp-first"}"#).unwrap();
+        let out = roll("direction");
+        assert!(presentation(&out).contains("- Build path: none recorded"), "{out}");
+    }
+
+    #[test]
+    fn telemetry_pings_print_no_presentation() {
+        let (proj, skill) = fixture("present-ping", &[]);
+        let (_, out) = seed(&proj, &skill, true, &["--kind", "assigned", "--from", "k1", "--scope", "direction"]);
+        assert!(!out.contains("PRESENTATION"), "{out}");
     }
 }
