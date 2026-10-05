@@ -61,11 +61,14 @@ pub fn mode_rules_block(env: &Env, cwd: &str, mode: &str) -> String {
 
 /// The PRESENTATION block printed after every roll: new-work.md's decision
 /// round, condensed. `build_path` is the recorded default and its file.
-pub fn presentation_block(env: &Env, cwd: &str, scope: &str, reroll: usize, degraded: bool, build_path: Option<&(String, String)>) -> String {
+pub fn presentation_block(env: &Env, cwd: &str, scope: &str, reroll: usize, degraded: bool, register: Option<&str>, build_path: Option<&(String, String)>) -> String {
     let sq = crate::provider::detect(env, cwd).verb_cmd("serve-question");
     let present = fill(if reroll > 0 { t::PRESENT_REROLL } else { t::PRESENT_FIRST }, &[("SQ", &sq)]);
     let code_led = build_path.map(|(v, _)| v == "code").unwrap_or(false);
-    let comps = match (scope, degraded, code_led) {
+    // A degraded roll is one text-only card, except the safer register,
+    // whose lineup of grounded candidates plus canon is a full hand.
+    let single_card = degraded && register != Some("safer");
+    let comps = match (scope, single_card, code_led) {
         ("direction", true, _) => t::COMPS_DIRECTION_DEGRADED,
         ("direction", false, true) => t::COMPS_DIRECTION_CODE,
         ("direction", false, false) => t::COMPS_DIRECTION,
@@ -76,7 +79,8 @@ pub fn presentation_block(env: &Env, cwd: &str, scope: &str, reroll: usize, degr
         Some((value, source)) => fill(t::BUILD_PATH_RECORDED, &[("VALUE", value), ("SOURCE", source)]),
         None => t::BUILD_PATH_NONE.to_string(),
     };
-    [t::PRESENTATION_HEADER, &present, t::PRESENT_POLL, comps, &build, t::PRESENT_FALLBACK].join("\n") + "\n"
+    let wait = fill(t::PRESENT_WAIT, &[("SQ", &sq)]);
+    [t::PRESENTATION_HEADER, &present, comps, &wait, &build, t::PRESENT_FALLBACK].join("\n") + "\n"
 }
 
 struct ApiBudget {
@@ -323,7 +327,8 @@ fn render_concept_seed(env: &Env, cwd: &str, budget: &mut ApiBudget, a: &SeedArg
     let (scope, reroll, roll, degraded) = render_roll(env, cwd, budget, a)?;
     // PRESENTATION closes every roll, where a middle-truncated read still
     // reaches it, like the restated lines above it.
-    Ok(roll + &presentation_block(env, cwd, scope, reroll, degraded, a.build_path.as_ref()))
+    let register = a.register.clone().flatten();
+    Ok(roll + &presentation_block(env, cwd, scope, reroll, degraded, register.as_deref(), a.build_path.as_ref()))
 }
 
 /// The roll itself: (scope, re-roll round, text, degraded).
@@ -768,7 +773,7 @@ mod tests {
         &out[at..]
     }
 
-    const PRESENT_FIRST_LINE: &str = "- Present this hand on the decision page: write the options payload (`impeccable serve-question --schema` prints its shape), run `impeccable serve-question --start --payload <file>`, open the URL it prints for the user, then hold `impeccable serve-question --wait --key <key>`.";
+    const PRESENT_FIRST_LINE: &str = "- Present this hand on the decision page: write the options payload (`impeccable serve-question --schema` prints its shape), run `impeccable serve-question --start --payload <file>`, and open the URL it prints for the user.";
 
     #[test]
     fn direction_roll_ends_with_the_presentation_block() {
@@ -780,9 +785,10 @@ mod tests {
         let lines: Vec<&str> = block.trim_end().split('\n').collect();
         assert_eq!(lines.len(), 6, "{block}");
         assert_eq!(lines[1], PRESENT_FIRST_LINE);
-        assert!(lines[2].starts_with("- If your shell hands back a session before --wait exits, keep polling that session until it exits; rerun --wait only after it exits 3"), "{block}");
-        assert!(lines[3].starts_with("- With image generation, every card declares a comp under .impeccable/mocks/decision/, canon included, declined challengers excepted. Serve first"), "{block}");
-        assert!(lines[3].contains("(a.png gets a.png.json)"), "{block}");
+        assert!(lines[2].starts_with("- With image generation, every card declares a comp under .impeccable/mocks/decision/, canon included, declined challengers excepted. Serve first"), "{block}");
+        assert!(lines[2].contains("(a.png gets a.png.json)"), "{block}");
+        // The wait follows comp generation, never precedes it.
+        assert!(lines[3].starts_with("- Then hold `impeccable serve-question --wait --key <key>`, after the last comp generated now has landed. If your shell hands back a session before --wait exits, keep polling that session until it exits; rerun --wait only after it exits 3"), "{block}");
         assert!(lines[4].starts_with("- Build path: none recorded"), "{block}");
         assert!(lines[4].contains("\"buildPath\": {\"value\": \"comp\", \"toggle\": true}"), "{block}");
         assert!(lines[5].starts_with("- The structured question tool is only the fallback, when --start exits 2"), "{block}");
@@ -815,8 +821,8 @@ mod tests {
             let (code, out) = seed(&proj, &skill, true, args);
             assert_eq!(code, 0, "{out}");
             let block = presentation(&out);
-            assert!(block.contains("- Re-roll round: the page is still open on a loading hand. Deliver this hand with `impeccable serve-question --update --key <same key> --payload <file>`, then hold `impeccable serve-question --wait --key <key>` again; never --start a second server."), "{args:?}: {block}");
-            assert!(!block.contains("--start --payload"), "{args:?}: {block}");
+            assert!(block.contains("- Re-roll round: while the page is open on a key, deliver this hand to it with `impeccable serve-question --update --key <same key> --payload <file>` and never --start a second server. A re-roll made before any page opened starts one with `impeccable serve-question --start --payload <file>`;"), "{args:?}: {block}");
+            assert!(!block.contains("- Present this hand"), "{args:?}: {block}");
         }
     }
 
@@ -828,8 +834,14 @@ mod tests {
         let block = presentation(&out);
         assert!(block.contains(PRESENT_FIRST_LINE), "{block}");
         assert!(block.contains("- This degraded hand goes on the page as a single text-only card with re-roll; it declares no comp."), "{block}");
+        // Degraded safer keeps its lineup: the full-hand comp line, not one card.
         let (_, out) = seed(&proj, &skill, false, &["--scope", "direction", "--from", "k1", "--reroll", "1", "--register", "safer"]);
-        assert!(presentation(&out).contains("- Re-roll round:"), "{out}");
+        let block = presentation(&out);
+        assert!(block.contains("- Re-roll round:"), "{block}");
+        assert!(!block.contains("single text-only card"), "{block}");
+        assert!(block.contains("every card declares a comp"), "{block}");
+        let (_, out) = seed(&proj, &skill, false, &["--scope", "direction", "--from", "k1", "--reroll", "1", "--register", "bolder"]);
+        assert!(presentation(&out).contains("single text-only card"), "{out}");
         let (_, out) = seed(&proj, &skill, false, &["--scope", "surface", "--mode", "persuade", "--from", "k1"]);
         assert!(presentation(&out).contains("each dealt card declares a comp"), "{out}");
     }

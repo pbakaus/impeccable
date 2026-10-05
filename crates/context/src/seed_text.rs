@@ -72,11 +72,11 @@ pub const REROLL_DERIVE_TEXT: &str = " Derive\n  genuinely new grounded candidat
 // new-work.md stays the source of truth; change the two together.
 pub const PRESENTATION_HEADER: &str = "PRESENTATION (the decision round, condensed from new-work.md; follow it even when your read of that file came back cut):";
 
-pub const PRESENT_FIRST: &str = "- Present this hand on the decision page: write the options payload (`@@SQ@@ --schema` prints its shape), run `@@SQ@@ --start --payload <file>`, open the URL it prints for the user, then hold `@@SQ@@ --wait --key <key>`.";
+pub const PRESENT_FIRST: &str = "- Present this hand on the decision page: write the options payload (`@@SQ@@ --schema` prints its shape), run `@@SQ@@ --start --payload <file>`, and open the URL it prints for the user.";
 
-pub const PRESENT_REROLL: &str = "- Re-roll round: the page is still open on a loading hand. Deliver this hand with `@@SQ@@ --update --key <same key> --payload <file>`, then hold `@@SQ@@ --wait --key <key>` again; never --start a second server. A round already on the structured-tool fallback stays there.";
+pub const PRESENT_REROLL: &str = "- Re-roll round: while the page is open on a key, deliver this hand to it with `@@SQ@@ --update --key <same key> --payload <file>` and never --start a second server. A re-roll made before any page opened starts one with `@@SQ@@ --start --payload <file>`; a round already on the structured-tool fallback stays there.";
 
-pub const PRESENT_POLL: &str = "- If your shell hands back a session before --wait exits, keep polling that session until it exits; rerun --wait only after it exits 3 with no answer.";
+pub const PRESENT_WAIT: &str = "- Then hold `@@SQ@@ --wait --key <key>`, after the last comp generated now has landed. If your shell hands back a session before --wait exits, keep polling that session until it exits; rerun --wait only after it exits 3 with no answer.";
 
 pub const COMPS_DIRECTION: &str = "- With image generation, every card declares a comp under .impeccable/mocks/decision/, canon included, declined challengers excepted. Serve first, then generate each comp in reading order (assigned, pick, full-card hand, canon), writing its prompt sidecar as it lands (a.png gets a.png.json).";
 
