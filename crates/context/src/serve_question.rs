@@ -2236,7 +2236,8 @@ mod tests {
         // The first wait after a comp lands with its sidecar prints it once.
         std::fs::write(dir.join(format!("{}.json", comps[0])), r#"{"prompt":"p"}"#).unwrap();
         let out = wait();
-        assert!(out.contains("NEXT open each decision comp once and run /skill/reference/visualize.md's render checks (shipped screen, one dominant move); regenerate any that fail before the user answers.\n"), "{out}");
+        // Windows resolves the skill dir with a drive letter, so match from the path on.
+        assert!(out.contains("/skill/reference/visualize.md's render checks (shipped screen, one dominant move); regenerate any that fail before the user answers.\n"), "{out}");
         assert_eq!(out.matches(LINE).count(), 1, "{out}");
         // Later polls of the same hand stay quiet, even as more comps land.
         assert!(!wait().contains(LINE));
