@@ -686,6 +686,10 @@ const cases = [
   { id: 'seed-degraded-surface', verb: 'concept-seed', workspace: 'ctx-product-only', args: ['--scope', 'surface', '--mode', 'operate', '--from', 'oracle-key-1'], env: degradedEnv() },
   { id: 'seed-degraded-safer', verb: 'concept-seed', workspace: 'ctx-product-only', args: ['--scope', 'direction', '--from', 'oracle-key-1', '--reroll', '1', '--register', 'safer'], env: degradedEnv() },
   { id: 'seed-degraded-bolder', verb: 'concept-seed', workspace: 'ctx-product-only', args: ['--scope', 'direction', '--from', 'oracle-key-1', '--reroll', '1', '--register', 'bolder'], env: degradedEnv() },
+  // PRESENTATION names the recorded build path: config.json alone, then
+  // config.local.json winning over it (code-led surface: wireframes, flip reserve).
+  { id: 'seed-presentation-build-path-code', verb: 'concept-seed', workspace: 'ctx-product-only', setup: (ws) => { write(ws, '.impeccable/config.json', '{"buildPath": "code"}\n'); }, args: ['--scope', 'direction', '--mode', 'persuade', '--from', 'oracle-key-1'], env: seedEnv() },
+  { id: 'seed-presentation-build-path-local', verb: 'concept-seed', workspace: 'ctx-product-only', setup: (ws) => { write(ws, '.impeccable/config.json', '{"buildPath": "comp"}\n'); write(ws, '.impeccable/config.local.json', '{"buildPath": "code"}\n'); }, args: ['--scope', 'surface', '--mode', 'operate', '--from', 'oracle-key-1'], env: seedEnv() },
   { id: 'seed-degraded-no-product-gate', verb: 'concept-seed', workspace: 'ctx-empty', args: ['--scope', 'direction', '--from', 'k1'], env: degradedEnv() },
   { id: 'seed-chosen-telemetry-off', verb: 'concept-seed', workspace: 'ctx-empty', args: ['--chosen', 'some-id', '--kind', 'challenger', '--from', 'k1', '--scope', 'direction'], env: seedEnv() },
   { id: 'seed-kind-assigned-telemetry-off', verb: 'concept-seed', workspace: 'ctx-empty', args: ['--kind', 'assigned', '--from', 'k1', '--scope', 'direction'], env: seedEnv() },
