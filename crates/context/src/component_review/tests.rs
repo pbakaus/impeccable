@@ -120,6 +120,9 @@ fn hosted_lifecycle_owes_no_components_review_for_a_spec_with_nothing_to_decide(
     // No spec yet: the components stage stays owed, with or without the project named.
     assert_eq!(lifecycle(Some(&f.project))["stage"], "components");
     fs::create_dir_all(f.project.join(".impeccable/build")).unwrap();
+    // A spec without a regions array is not a measured spec: still owed.
+    fs::write(f.project.join(super::plan::SPEC), b"{}").unwrap();
+    assert_eq!(lifecycle(Some(&f.project))["stage"], "components");
     fs::write(f.project.join(super::plan::SPEC), br#"{"regions":[{"id":"copy","kind":"text","box":{"x":0,"y":0,"w":1,"h":1}}]}"#).unwrap();
     assert_eq!(lifecycle(None)["stage"], "components");
     // Named, a spec with nothing to decide releases the kit review; the hero review still binds.

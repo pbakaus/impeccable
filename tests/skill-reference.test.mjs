@@ -80,6 +80,10 @@ describe('skill reference authoring contracts', () => {
     assert.match(visualDecisionPage, /first reply/);
     assert.match(visualDecisionPage, /exit code 2 from starting it/);
     assert.match(visualDecisionPage, /wait check before starting/);
+    // Codex's exec_command returns a still-running --wait as a pollable session;
+    // that is not a harness that backgrounds the command away (astra/sol, 2026-10-04).
+    assert.match(visualDecisionPage, /session you can poll holds the wait/);
+    assert.match(visualDecisionPage, /rerun `--wait` only after it exits without an answer/);
     assert.doesNotMatch(
       visualDecisionPage,
       /only exit code 2 from starting it routes the decision to the structured tool; that exit is the fallback/,

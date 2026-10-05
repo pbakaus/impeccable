@@ -34,8 +34,14 @@ pub fn needs_review(spec: &Value) -> bool {
 /// measured and holds nothing to decide releases the review, the same reading
 /// `component-review plan` reports when it refuses to write an empty packet.
 pub fn spec_needs_review(project: &Path) -> bool {
-    std::fs::read(project.join(SPEC)).ok()
+    spec_file_needs_review(&project.join(SPEC))
+}
+/// `spec_needs_review` for a spec at an explicit path. A spec without a `regions`
+/// array is not a measured spec (`plan` refuses it), so it owes the review too.
+pub fn spec_file_needs_review(path: &Path) -> bool {
+    std::fs::read(path).ok()
         .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+        .filter(|spec| spec["regions"].is_array())
         .is_none_or(|spec| needs_review(&spec))
 }
 fn name(id: &str) -> String {
