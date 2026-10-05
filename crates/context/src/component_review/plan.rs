@@ -226,9 +226,11 @@ fn decide(sessions: &[std::path::PathBuf], project: &Path, s: &str, steps: &str)
         if state["packet"]["schemaVersion"] == 3 && state["packet"]["stage"] == "components" {
             if super::lifecycle::accepted_in(dir, &state) && state["packet"]["specSha256"] == sha.as_str() {
                 // The user judged these plate bytes; a plate replaced since is unreviewed.
-                match super::store::sources_current(&state) {
+                match super::store::sources_current_in(&state, project) {
                     Ok(()) => return Ok(()),
-                    Err(why) => stale = Some(why),
+                    Err(why) if why.starts_with("review is stale") => stale = Some(why),
+                    // Not a changed plate: asking the user to approve the same bytes again cannot help.
+                    Err(why) => return Err(format!("The accepted plan and asset review could not be checked against this project ({why}). This is a harness or filesystem problem, not a changed plate: stop and report it; do not request the same review again.")),
                 }
             }
             plans.push(state);

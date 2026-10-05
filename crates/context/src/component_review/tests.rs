@@ -1250,6 +1250,46 @@ fn hosted_gate_requires_an_accepted_intact_review_in_the_named_sessions() {
 }
 
 #[test]
+fn hosted_gate_checks_the_builders_files_not_the_hosts_snapshot() {
+    // gallery-20261004-c-sol-08: the host recorded its review-project snapshot as the
+    // session's project, the builder's sandbox could not read it, and the gate called
+    // the EPERM "a reviewed plate changed" three rounds running.
+    let f = Fixture::new();
+    f.plan_project();
+    f.plates();
+    let dir = f.plan_round();
+    let state = store::read(&dir.join("current.json")).unwrap();
+    store::submit(&dir, &approve(&state)).unwrap();
+    let mut snapshot = store::read(&dir.join("current.json")).unwrap();
+    snapshot["project"] = json!(f.root.join("host-snapshot-unreadable").to_string_lossy());
+    store::write(&dir.join("current.json"), &snapshot).unwrap();
+    let hosted = || super::plan::gate_hosted(std::slice::from_ref(&dir), &f.project, "impeccable", "component_review");
+    hosted().unwrap();
+    fs::write(f.project.join("assets/art.png"), b"a different art plate").unwrap();
+    let err = hosted().unwrap_err();
+    assert!(err.contains("A reviewed plate changed") && err.contains("assets/art.png changed"), "{err}");
+}
+
+#[cfg(unix)]
+#[test]
+fn an_unreadable_reviewed_file_is_reported_as_unreadable_not_changed() {
+    use std::os::unix::fs::PermissionsExt;
+    let f = Fixture::new();
+    f.plan_project();
+    f.plates();
+    let dir = f.plan_round();
+    let state = store::read(&dir.join("current.json")).unwrap();
+    store::submit(&dir, &approve(&state)).unwrap();
+    let art = f.project.join("assets/art.png");
+    fs::set_permissions(&art, fs::Permissions::from_mode(0o000)).unwrap();
+    let result = f.gate();
+    fs::set_permissions(&art, fs::Permissions::from_mode(0o644)).unwrap();
+    if result.is_ok() { return; } // root reads through mode bits
+    let err = result.unwrap_err();
+    assert!(err.contains("could not be checked") && err.contains("not a changed plate") && !err.contains("A reviewed plate changed"), "{err}");
+}
+
+#[test]
 fn plan_leaves_bare_grounds_and_straight_rules_to_code_unless_flagged() {
     let f = Fixture::new();
     f.plan_project();
