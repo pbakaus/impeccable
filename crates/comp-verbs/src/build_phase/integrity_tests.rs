@@ -1758,8 +1758,10 @@ fn a_spec_for_another_comp_never_replaces_the_build_record() {
     ws.write("other.png", &png_io::encode_png(&r::create_image(300, 100, [1, 2, 3, 255]), &[]).unwrap());
     let io = ws.io();
     let other = json!({"comp": "other.png", "compSha256": crate::approved_comp::file_pixel_sha256(&io, "other.png")});
-    // ... and a spec measured on another file than the approved comp is refused.
-    let why = crate::approved_comp::issue(&io, &other, "impeccable").unwrap();
+    // An independent spec for another file is not the build's business ...
+    assert_eq!(crate::approved_comp::issue_at(&io, &other, "other-spec.json", "impeccable"), None);
+    // ... but the build's spec measured on another file is refused.
+    let why = crate::approved_comp::issue_at(&io, &other, SPEC_PATH, "impeccable").unwrap();
     assert!(why.contains("measures other.png, but the approved comp is .impeccable/mocks/comp-1.png"), "{why}");
     assert_eq!(std::fs::read(ws.path.join(crate::approved_comp::RECORD_PATH)).unwrap(), record);
     let mut state = load_state(&io).unwrap();

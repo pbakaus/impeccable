@@ -733,7 +733,7 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
     // approved pixels, so a reading never comes from an edited reference.
     let s = crate::build_phase::self_cmd(io);
     let refusal = match spec.as_ref().filter(|sp| sp["comp"].as_str().is_some_and(|c| crate::approved_comp::same_file(io, c, comp_path))) {
-        Some(sp) => crate::approved_comp::issue(io, sp, &s),
+        Some(sp) => crate::approved_comp::issue_at(io, sp, spec_path.unwrap_or(""), &s),
         None => crate::approved_comp::issue_for_comp(io, comp_path, &s),
     };
     if let Some(why) = refusal {

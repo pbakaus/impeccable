@@ -1169,7 +1169,7 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
             return 1;
         };
         let comp_file = spec.get("comp").and_then(Value::as_str).unwrap_or("");
-        if let Some(why) = crate::approved_comp::issue(io, &spec, &crate::build_phase::self_cmd(io)) {
+        if let Some(why) = crate::approved_comp::issue_at(io, &spec, &spec_path, &crate::build_phase::self_cmd(io)) {
             io.err(&format!("comp-spec: {why}\n"));
             return 2;
         }
@@ -1229,7 +1229,7 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
     // Decode the comp's own bytes first: load_raster may read a stale sibling
     // PNG cache for a WebP or JPEG source, and the spec must measure (and
     // identify) the pixels the approved-comp record identifies.
-    let own = std::fs::read(resolve(io, comp_path)).ok().and_then(|b| crate::approved_comp::decode_comp(&resolve(io, comp_path), &b));
+    let own = std::fs::read(resolve(io, comp_path)).ok().and_then(|b| crate::approved_comp::decode_comp(&b));
     let comp = match own.map(Ok).unwrap_or_else(|| png_io::load_raster(&resolve(io, comp_path)).map(|(d, _)| d.image)) {
         Ok(img) => img,
         Err(e) => {

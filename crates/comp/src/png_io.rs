@@ -155,6 +155,18 @@ pub fn load_raster(file: &std::path::Path) -> Result<(Decoded, std::path::PathBu
     Ok((Decoded { image: img, text: HashMap::new() }, cache))
 }
 
+/// Decode an image from its own bytes, any format `load_raster` reads, without
+/// consulting or writing the sibling PNG cache (which an edit to a WebP or
+/// JPEG source never refreshes).
+pub fn decode_source(bytes: &[u8]) -> Result<Image, String> {
+    if is_png(bytes) {
+        return Ok(decode_png(bytes)?.image);
+    }
+    let rgba = image::load_from_memory(bytes).map_err(|e| format!("not a decodable image: {e}"))?.to_rgba8();
+    let (width, height) = (rgba.width() as usize, rgba.height() as usize);
+    Ok(Image { width, height, data: rgba.into_raw() })
+}
+
 /// Decode a static review image from its pinned bytes, without consulting or
 /// writing sibling conversion caches. Keep the original file as review evidence.
 pub fn decode_review_image(bytes: &[u8]) -> Result<(Image, &'static str), String> {

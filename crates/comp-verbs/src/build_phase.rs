@@ -332,7 +332,7 @@ fn gate_comps(io: &Io) -> Gate {
 /// entry point that measures against the comp runs this before measuring.
 fn comp_refusal(io: &Io) -> Option<String> {
     let spec = load_spec(&abs(io, SPEC_PATH))?;
-    crate::approved_comp::issue(io, &spec, &self_cmd(io))
+    crate::approved_comp::build_issue(io, &spec, &self_cmd(io))
 }
 
 fn spec_regions(spec: &Value) -> Vec<Value> {
@@ -347,7 +347,7 @@ fn gate_spec(io: &Io, state: &Value) -> Gate {
             "no spec at {SPEC_PATH}: run comp-spec.mjs --comp {comp} --grid, name the regions, then --regions regions.json"
         )]);
     };
-    if let Some(why) = crate::approved_comp::issue(io, &spec, &s) { return Gate::fail(vec![why]); }
+    if let Some(why) = crate::approved_comp::build_issue(io, &spec, &s) { return Gate::fail(vec![why]); }
     if spec["draft"] == true { return Gate::fail(vec!["automatic region draft is not a measured element map; refine it with comp-spec --regions".into()]); }
     if let Some(issue) = crate::comp_spec::region_source_issue(io,&spec) { return Gate::fail(vec![issue]); }
     let regions = spec_regions(&spec);
@@ -525,7 +525,7 @@ fn gate_plates(io: &Io) -> Gate {
 
 fn gate_plates_for(io: &Io, spec: &Value, only_id: Option<&str>) -> Gate {
     let s = self_cmd(io);
-    if let Some(why) = crate::approved_comp::issue(io, spec, &s) {
+    if let Some(why) = crate::approved_comp::build_issue(io, spec, &s) {
         let mut gate = Gate::fail(vec![why]);
         gate.plates = Some(vec![]);
         return gate;

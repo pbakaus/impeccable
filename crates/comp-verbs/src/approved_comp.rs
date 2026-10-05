@@ -57,25 +57,21 @@ pub fn same_file(io: &Io, a: &str, b: &str) -> bool {
     }
 }
 
-/// The comp as every comp reader should see it: decoded from the file's own
-/// bytes (`load_raster` would read a sibling PNG cache for a WebP or JPEG comp,
-/// which an edit to the source never refreshes), falling back to `load_raster`
-/// only for what the review decoder does not read (GIF, very large PNGs), so
-/// comp-spec, the record and the checks always agree on one decode.
-pub fn decode_comp(path: &Path, bytes: &[u8]) -> Option<Image> {
-    png_io::decode_review_image(bytes).map(|(img, _)| img).ok()
-        .or_else(|| png_io::load_raster(path).ok().map(|(d, _)| d.image))
+/// The comp as comp-spec, the record and every check see it: decoded from the
+/// file's own bytes, never from the sibling PNG cache `load_raster` keeps for a
+/// WebP or JPEG source (an edit to the source never refreshes it).
+pub fn decode_comp(bytes: &[u8]) -> Option<Image> {
+    png_io::decode_source(bytes).ok()
 }
 
-fn bytes_pixel_sha256(path: &Path, bytes: &[u8]) -> Option<String> {
-    decode_comp(path, bytes).map(|img| pixel_sha256(&img))
+fn bytes_pixel_sha256(bytes: &[u8]) -> Option<String> {
+    decode_comp(bytes).map(|img| pixel_sha256(&img))
 }
 
 /// The pixel hash of the file at `comp`, or `None` when it is missing or not a
 /// decodable image (the callers' own unreadable-comp handling speaks then).
 pub fn file_pixel_sha256(io: &Io, comp: &str) -> Option<String> {
-    let path = resolve(io, comp);
-    bytes_pixel_sha256(&path, &std::fs::read(&path).ok()?)
+    bytes_pixel_sha256(&std::fs::read(resolve(io, comp)).ok()?)
 }
 
 fn load_record(io: &Io) -> Option<Value> {
@@ -93,7 +89,7 @@ fn record_for(io: &Io, comp: &str) -> Option<Value> {
 /// `Err` when the copy or record cannot be written, which approval refuses on.
 pub fn keep(io: &Io, comp: &str) -> Result<Option<Value>, String> {
     let Ok(bytes) = std::fs::read(resolve(io, comp)) else { return Ok(None) };
-    let Some(pixels) = bytes_pixel_sha256(&resolve(io, comp), &bytes) else { return Ok(None) };
+    let Some(pixels) = bytes_pixel_sha256(&bytes) else { return Ok(None) };
     let ext = Path::new(comp).extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase)
         .filter(|e| e.chars().all(|c| c.is_ascii_alphanumeric())).unwrap_or_else(|| "png".into());
     let copy = format!("{BUILD_DIR}/{COPY_STEM}.{ext}");
@@ -144,18 +140,32 @@ fn changed_message(io: &Io, comp: &str, expected: &str, actual: Option<&str>, re
 /// identity at all: no comp, or a legacy spec with neither a record nor a
 /// `compSha256`). A build with no kept copy yet gets one here, once the comp
 /// matches the spec; a record kept for another comp is never replaced here.
+/// [`issue`] for the spec read from `spec_path`: the build's own spec gets
+/// [`build_issue`], any other spec only the pixel check for the comp it names.
+pub fn issue_at(io: &Io, spec: &Value, spec_path: &str, s: &str) -> Option<String> {
+    if same_file(io, spec_path, SPEC_PATH) { build_issue(io, spec, s) } else { issue(io, spec, s) }
+}
+
+/// [`issue`] for the build's own spec (`.impeccable/build/spec.json`): it must
+/// also measure the recorded approved comp, not another file (a composite
+/// saved under a new name and re-specced is not the build's reference).
+pub fn build_issue(io: &Io, spec: &Value, s: &str) -> Option<String> {
+    let comp = spec.get("comp").and_then(Value::as_str)?;
+    if record_for(io, comp).is_none() {
+        if let Some(other) = load_record(io) {
+            let approved = other["comp"].as_str().unwrap_or("");
+            return Some(format!(
+                "{SPEC_PATH} measures {comp}, but the approved comp is {approved}. {FIXED} Re-run {s} comp-spec --comp {approved} --regions <regions file> on the approved comp; a comp the user newly approves is saved under a new file name and started with {s} build-phase start --reset --comp <new file>."
+            ));
+        }
+    }
+    issue(io, spec, s)
+}
+
 pub fn issue(io: &Io, spec: &Value, s: &str) -> Option<String> {
     let comp = spec.get("comp").and_then(Value::as_str)?;
     let spec_hash = spec.get("compSha256").and_then(Value::as_str);
     let record = record_for(io, comp);
-    // A spec measured on another file than the approved comp (a composite saved
-    // under a new name and re-specced) is not the build's reference either.
-    if let Some(other) = load_record(io).filter(|_| record.is_none()) {
-        let approved = other["comp"].as_str().unwrap_or("");
-        return Some(format!(
-            "{SPEC_PATH} measures {comp}, but the approved comp is {approved}. {FIXED} Re-run {s} comp-spec --comp {approved} --regions <regions file> on the approved comp; a comp the user newly approves is saved under a new file name and started with {s} build-phase start --reset --comp <new file>."
-        ));
-    }
     if record.is_none() && spec_hash.is_none() { return None; }
     let actual = file_pixel_sha256(io, comp);
     match record {
@@ -176,7 +186,9 @@ pub fn issue(io: &Io, spec: &Value, s: &str) -> Option<String> {
             if actual.as_deref() != Some(expected) {
                 return Some(changed_message(io, comp, expected, actual.as_deref(), None, s));
             }
-            let _ = keep(io, comp);
+            // Keep a copy only for a build with none yet; never replace the
+            // record of another comp from a spec that is not the build's.
+            if load_record(io).is_none() { let _ = keep(io, comp); }
             None
         }
     }
