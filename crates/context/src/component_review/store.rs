@@ -299,7 +299,8 @@ pub fn sources_current_in(state: &Value, project: &Path) -> Result<(), String> {
         let full = project
             .join(relative(path)?)
             .canonicalize()
-            .map_err(|_| format!("review is stale: {path} disappeared"))?;
+            .map_err(|e| if e.kind() == std::io::ErrorKind::NotFound { format!("review is stale: {path} disappeared") }
+                else { format!("reviewed source unreadable: {path}: {e}") })?;
         if !full.starts_with(project)
             || digest(&fs::read(&full).map_err(|e| format!("reviewed source unreadable: {path}: {e}"))?) != hash.as_str().unwrap_or("")
         {

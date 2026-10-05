@@ -221,6 +221,7 @@ fn decide(sessions: &[std::path::PathBuf], project: &Path, s: &str, steps: &str)
     let steps = format!("{steps} Write no page code before it is accepted.");
     let mut plans = Vec::new();
     let mut stale = None;
+    let mut unreadable = None;
     for dir in sessions {
         let state = super::store::read(&dir.join("current.json"))?;
         if state["packet"]["schemaVersion"] == 3 && state["packet"]["stage"] == "components" {
@@ -229,12 +230,16 @@ fn decide(sessions: &[std::path::PathBuf], project: &Path, s: &str, steps: &str)
                 match super::store::sources_current_in(&state, project) {
                     Ok(()) => return Ok(()),
                     Err(why) if why.starts_with("review is stale") => stale = Some(why),
-                    // Not a changed plate: asking the user to approve the same bytes again cannot help.
-                    Err(why) => return Err(format!("The accepted plan and asset review could not be checked against this project ({why}). This is a harness or filesystem problem, not a changed plate: stop and report it; do not request the same review again.")),
+                    // Not a changed plate; keep looking, a later session may still satisfy the gate.
+                    Err(why) => unreadable = Some(why),
                 }
             }
             plans.push(state);
         }
+    }
+    if let Some(why) = unreadable {
+        // Asking the user to approve the same bytes again cannot help.
+        return Err(format!("The accepted plan and asset review could not be checked against this project ({why}). This is a harness or filesystem problem, not a changed plate: stop and report it; do not request the same review again."));
     }
     if let Some(why) = stale {
         let why = why.strip_prefix("review is stale: ").unwrap_or(&why).trim_end_matches("; prepare a new round");

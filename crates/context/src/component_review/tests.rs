@@ -1287,6 +1287,13 @@ fn an_unreadable_reviewed_file_is_reported_as_unreadable_not_changed() {
     if result.is_ok() { return; } // root reads through mode bits
     let err = result.unwrap_err();
     assert!(err.contains("could not be checked") && err.contains("not a changed plate") && !err.contains("A reviewed plate changed"), "{err}");
+    // A directory the builder cannot traverse is unreadable too, not a vanished plate.
+    let assets = f.project.join("assets");
+    fs::set_permissions(&assets, fs::Permissions::from_mode(0o000)).unwrap();
+    let result = f.gate();
+    fs::set_permissions(&assets, fs::Permissions::from_mode(0o755)).unwrap();
+    let err = result.unwrap_err();
+    assert!(err.contains("could not be checked") && !err.contains("disappeared"), "{err}");
 }
 
 #[test]
