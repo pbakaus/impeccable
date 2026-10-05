@@ -138,8 +138,7 @@ fn changed_message(io: &Io, comp: &str, expected: &str, actual: Option<&str>, re
 /// The refusal owed before anything measures against the spec's comp, or
 /// `None` when the comp still holds the approved pixels (or has no recorded
 /// identity at all: no comp, or a legacy spec with neither a record nor a
-/// `compSha256`). A build with no kept copy yet gets one here, once the comp
-/// matches the spec; a record kept for another comp is never replaced here.
+/// `compSha256`). It writes nothing; [`build_issue`] keeps a build's first copy.
 /// [`issue`] for the spec read from `spec_path`: the build's own spec gets
 /// [`build_issue`], any other spec only the pixel check for the comp it names.
 pub fn issue_at(io: &Io, spec: &Value, spec_path: &str, s: &str) -> Option<String> {
@@ -159,7 +158,13 @@ pub fn build_issue(io: &Io, spec: &Value, s: &str) -> Option<String> {
             ));
         }
     }
-    issue(io, spec, s)
+    let why = issue(io, spec, s);
+    // A build with no kept copy yet gets one here, from its own spec only and
+    // only once the comp matches it; never from a spec at another path.
+    if why.is_none() && load_record(io).is_none() && spec.get("compSha256").and_then(Value::as_str).is_some() {
+        let _ = keep(io, comp);
+    }
+    why
 }
 
 pub fn issue(io: &Io, spec: &Value, s: &str) -> Option<String> {
@@ -186,9 +191,6 @@ pub fn issue(io: &Io, spec: &Value, s: &str) -> Option<String> {
             if actual.as_deref() != Some(expected) {
                 return Some(changed_message(io, comp, expected, actual.as_deref(), None, s));
             }
-            // Keep a copy only for a build with none yet; never replace the
-            // record of another comp from a spec that is not the build's.
-            if load_record(io).is_none() { let _ = keep(io, comp); }
             None
         }
     }
@@ -344,6 +346,8 @@ mod tests {
         let hash = file_pixel_sha256(&io, COMP).unwrap();
         let spec = json!({"comp": COMP, "compSha256": hash});
         assert_eq!(issue(&io, &spec, "impeccable"), None);
+        assert!(!dir.join(RECORD_PATH).exists(), "a spec at another path never pins the reference");
+        assert_eq!(build_issue(&io, &spec, "impeccable"), None);
         assert!(dir.join(RECORD_PATH).exists() && dir.join(".impeccable/build/approved-comp.png").exists());
         forget(&io);
         std::fs::write(dir.join(COMP), png([1, 2, 3, 255])).unwrap();
